@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { KeyboardEvent } from "react";
 import "./index.css";
 import {
-  animateWorld, fetchCornerNotchLog, fetchDebugScenarios, fetchEarthquakes, fetchElevationPoint, fetchElevationPointAt, fetchFaults, fetchLakes, fetchNodeAt, fetchPlates, fetchPointSample, fetchRivers, fetchStats, fetchStatsHistory, fetchVolcanoes, fetchWorldSummary, generateDebugWorld, generateWorld, renderWorld, stepWorld, stopAnimation, updateControls,
+  animateWorld, fetchDebugScenarios, fetchEarthquakes, fetchElevationPointAt, fetchFaults, fetchLakes, fetchNodeAt, fetchPlates, fetchPointSample, fetchRivers, fetchStats, fetchStatsHistory, fetchVolcanoes, fetchWorldSummary, generateDebugWorld, generateWorld, renderWorld, stepWorld, stopAnimation, updateControls,
   TUNING_MULTIPLIER_KEYS,
 } from "./api";
 import type {
-  AnimateResponse, CornerNotchLogEntry, DebugScenario, EarthquakeSummary, ElevationPointResponse, FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, NodeAtResponse, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, TuningKey, TuningMultipliers, VolcanoSummary, WorldStats, WorldSummary, WorldSurface,
+  AnimateResponse, DebugScenario, EarthquakeSummary, ElevationPointResponse, FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, NodeAtResponse, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, TuningKey, TuningMultipliers, VolcanoSummary, WorldStats, WorldSummary,
 } from "./api";
 import MapCanvas from "./MapCanvas";
 import SketchEditor from "./SketchEditor";
@@ -17,7 +16,6 @@ import LakeInspector from "./LakeInspector";
 import PlatesAndFaults from "./PlatesAndFaults";
 import type { PlatesLayers } from "./PlatesAndFaults";
 import EventConsole from "./EventConsole";
-import CornerNotchLogPanel from "./CornerNotchLogPanel";
 import StatsModal from "./StatsModal";
 import ControlsModal from "./ControlsModal";
 import AdvancedSettingsModal from "./AdvancedSettingsModal";
@@ -150,7 +148,7 @@ const DEFAULT_WIND_MODEL = "diagnostic";
 // collision zone still deforms -- as fault-tracking ridges rather than one smooth swell);
 // "boundary" is the pre-faults-rework behaviour (smooth uplift/rift bands at the polygon
 // edge); "both" runs the boundary bands plus the scaled-up fault relief. See faults.py /
-// LithospherePlate.deform.
+// lithosphere_plate.deform_columns.
 const DEFAULT_FAULT_DEFORMATION_MODE = "fault";
 // Off by default for an ordinarily-generated/loaded world -- see World.debug_diagnostics.
 const DEFAULT_DEBUG_DIAGNOSTICS = false;
@@ -300,9 +298,6 @@ export default function App() {
   const [autoPlates, setAutoPlates] = useState(true);
   const [numPlates, setNumPlates] = useState(DEFAULT_PLATES);
   const [voronoiPoints, setVoronoiPoints] = useState(DEFAULT_VORONOI_POINTS_RANDOM);
-  // Sparse quads are the production surface. Keep the legacy line representation available
-  // here as an explicitly labelled diagnostic/rollback option during the initial cutover.
-  const [worldSurface, setWorldSurface] = useState<WorldSurface>("quad");
 
   const [stepYears, setStepYears] = useState(STEP_YEARS_OPTIONS[1]);
   const [projection, setProjection] = useState<Projection>(initialView?.projection ?? "eckert4");
@@ -492,13 +487,9 @@ export default function App() {
     nodeProbeRequestIdRef.current++;
     setNodeProbe(null);
   }, [mapView, projection, rotation, renderData]);
-  // The "Points" (platesDetail) debug view's click-to-inspect + arrow-key navigation (see
-  // MapCanvas.tsx's highlightLine prop and fetchElevationPointAt/fetchElevationPoint in
-  // api.ts). Kept as its own probe, same reasoning as nodeProbe above (a different view's
-  // popup shows entirely different fields) -- but unlike every other probe here, this one
-  // also drives a keyboard-navigable selection rather than being purely mouse-driven, so the
-  // full ElevationPointResponse (not just the fields the popup renders) is kept in state:
-  // arrow-key stepping below reads plate_id/line_index/point_index straight back out of it.
+  // The "Points" (platesDetail) debug view's click-to-inspect (see MapCanvas.tsx's
+  // highlightPoint prop and fetchElevationPointAt in api.ts). Kept as its own probe, same
+  // reasoning as nodeProbe above (a different view's popup shows entirely different fields).
   const [pointProbe, setPointProbe] = useState<
     | {
         displayX: number; displayY: number; latDeg: number; lonDeg: number;
@@ -507,10 +498,6 @@ export default function App() {
     | null
   >(null);
   const pointProbeRequestIdRef = useRef(0);
-  // Focused right after a successful click (see handlePointProbe) so ArrowLeft/Right and
-  // Shift+ArrowLeft/Right work immediately without an extra click on the map first --
-  // same "focus on selection" pattern PlateInspector's own containerRef uses for Tab/Shift+Tab.
-  const pointContainerRef = useRef<HTMLDivElement>(null);
   const handlePointProbe = useCallback(
     (next: { displayX: number; displayY: number; latDeg: number; lonDeg: number } | null) => {
       const requestId = ++pointProbeRequestIdRef.current;
@@ -523,7 +510,6 @@ export default function App() {
         .then((result) => {
           if (requestId === pointProbeRequestIdRef.current) {
             setPointProbe({ ...next, status: "ok", result });
-            pointContainerRef.current?.focus();
           }
         })
         .catch(() => {
@@ -536,35 +522,6 @@ export default function App() {
     pointProbeRequestIdRef.current++;
     setPointProbe(null);
   }, [mapView, projection, rotation, renderData]);
-  // ArrowLeft/Right steps to the previous/next point on the selected line (wrapping);
-  // Shift+ArrowLeft/Right steps to the previous/next line on the same plate instead, ordered
-  // by ascending phi (also wrapping) -- see backend plates.sorted_nonempty_lines -- keeping
-  // the same point_index (the server clamps it into the new line's own range, see
-  // GET /world/elevation_point). No-op with nothing selected, or outside the Points view.
-  const handlePointKeyDown = useCallback(
-    (e: KeyboardEvent<HTMLDivElement>) => {
-      if (mapView !== "platesDetail") return;
-      const result = pointProbe?.result;
-      if (!result) return;
-      const dir = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
-      if (dir === 0) return;
-      if (!result.line) return; // quad nodes have no row/line navigation
-      e.preventDefault();
-      const requestId = ++pointProbeRequestIdRef.current;
-      const lineIndex = e.shiftKey
-        ? (result.line.line_index + dir + result.line.num_lines) % result.line.num_lines
-        : result.line.line_index;
-      const pointIndex = e.shiftKey
-        ? result.point.index
-        : (result.point.index + dir + result.line.num_points) % result.line.num_points;
-      fetchElevationPoint(result.plate_id, lineIndex, pointIndex).then((next) => {
-        if (requestId === pointProbeRequestIdRef.current) {
-          setPointProbe((cur) => (cur ? { ...cur, status: "ok", result: next } : cur));
-        }
-      });
-    },
-    [mapView, pointProbe],
-  );
   // Stats panel data (see StatsModal.tsx) -- `stats` is the latest snapshot, `statsHistory`
   // accumulates one entry per generate/step (deduped by elapsed_years) for the panel's graph
   // tabs. Recorded continuously, not just while the modal is open, so opening it later still
@@ -595,13 +552,9 @@ export default function App() {
   // "boundary" / "fault" / "both" -- see backend app/world.py's World.fault_deformation_mode.
   // Live-adjustable via Controls like windModel.
   const [faultDeformationMode, setFaultDeformationMode] = useState(DEFAULT_FAULT_DEFORMATION_MODE);
-  // Gate for the verbose _fill_corner_notch decision log -- see backend World.debug_diagnostics
-  // / GET /world/corner_notch_log. Live-adjustable via Controls like windModel.
+  // Gate for the debug-only diagnostics -- see backend World.debug_diagnostics. Live-adjustable
+  // via Controls like windModel.
   const [debugDiagnostics, setDebugDiagnostics] = useState(DEFAULT_DEBUG_DIAGNOSTICS);
-  // The corner-notch log itself, refreshed alongside faultsData (see refreshCornerNotchLog) --
-  // populated regardless of debugDiagnostics' current value (cheap to fetch; stays empty when
-  // off), so toggling the flag on mid-session shows entries from the very next step.
-  const [cornerNotchLog, setCornerNotchLog] = useState<CornerNotchLogEntry[]>([]);
   // Geomorphic-budget tuning knobs (see DEFAULT_TUNING / backend World's *_multiplier
   // group) -- one object of dimensionless multipliers, live-adjustable via Controls, reset
   // to all-1.0 on a fresh Generate and synced from the loaded world on Load.
@@ -739,17 +692,6 @@ export default function App() {
     };
   }, [mapView, summary, projection, rotation, wantCratonLayer, showWater]);
 
-  // Best-effort, same spirit as recordStats -- a failed fetch here shouldn't surface as the
-  // main error line or block generate/step, since this is a debug-only side panel.
-  const refreshCornerNotchLog = useCallback(async () => {
-    try {
-      const log = await fetchCornerNotchLog();
-      setCornerNotchLog(log.entries);
-    } catch {
-      // ignored -- see comment above
-    }
-  }, []);
-
   // Shared by recordStats below and the animation progress handler (see handleStartAnimation)
   // -- both just land a WorldStats snapshot, one fetched, one riding along an animate() stream
   // line, so both dedupe against the history's last entry the same way.
@@ -801,7 +743,6 @@ export default function App() {
               fluidDensity,
               numPlates: autoPlates ? null : numPlates,
               voronoiPoints,
-              surface: worldSurface,
               sketchImageBase64: sketchBase64,
               premadeWorldId: generateMode === "premade" ? premadeWorldId : null,
               onProgress: setGenProgress,
@@ -812,7 +753,6 @@ export default function App() {
       setSelectedBasin(null);
       setSelectedBasinKind(null);
       setShowGenerateDialog(false);
-      setWorldSurface("quad"); // legacy comparison is one-shot; the next dialog defaults to production
       setStatsHistory([]); // plate ids and elapsed_years both reset with a fresh world
       setSeaLevelM(DEFAULT_SEA_LEVEL_M); // live controls reset with a fresh world too
       setSolarMultiplier(DEFAULT_SOLAR_MULTIPLIER);
@@ -825,7 +765,7 @@ export default function App() {
       // match that here rather than resetting to the ordinary default.
       setDebugDiagnostics(generateMode === "debug" ? true : DEFAULT_DEBUG_DIAGNOSTICS);
       setTuning(DEFAULT_TUNING);
-      await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), refreshCornerNotchLog(), recordStats()]);
+      await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), recordStats()]);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -834,7 +774,7 @@ export default function App() {
     }
   }, [
     seed, continentalPercent, landPercent, axialTiltDeg, detail, fluidDensity, initialSoilMaturityPercent, autoPlates, numPlates, voronoiPoints,
-    generateMode, sketchImageDataUrl, premadeWorldId, debugScenario, projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, refreshCornerNotchLog, recordStats,
+    generateMode, sketchImageDataUrl, premadeWorldId, debugScenario, projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats,
   ]);
 
 
@@ -937,7 +877,7 @@ export default function App() {
       setSelectedBasinKind(null);
       // mapViewRef.current, not mapView -- see the ref's own comment above.
       await Promise.all([
-        refresh(projection, mapViewRef.current, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), refreshCornerNotchLog(), recordStats(),
+        refresh(projection, mapViewRef.current, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), recordStats(),
       ]);
     } catch (e) {
       setError(String(e));
@@ -946,7 +886,7 @@ export default function App() {
       setStepping(false);
       setStepProgress(undefined);
     }
-  }, [summary, stepYears, projection, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, refreshCornerNotchLog, recordStats]);
+  }, [summary, stepYears, projection, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats]);
 
   // FileModal's "Load World" -- a loaded world fully replaces the current one, same as a
   // fresh Generate (see handleGenerate above), plus syncing every live Controls value
@@ -986,13 +926,13 @@ export default function App() {
       setFaultDeformationMode(controls.fault_deformation_mode);
       setDebugDiagnostics(controls.debug_diagnostics);
       setTuning(Object.fromEntries(TUNING_MULTIPLIER_KEYS.map((k) => [k, controls[k]])) as TuningMultipliers);
-      await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), refreshCornerNotchLog(), recordStats()]);
+      await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), recordStats()]);
     } catch (e) {
       setError(String(e));
     } finally {
       setBusy(false);
     }
-  }, [projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, refreshCornerNotchLog, recordStats]);
+  }, [projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats]);
 
   // Post-animation refresh -- an animation run already advanced the world for real (see
   // api.ts's animateWorld), so this just runs the same post-step refresh handleStep does.
@@ -1001,8 +941,8 @@ export default function App() {
     setSelectedRiverId(null);
     setSelectedBasin(null);
     setSelectedBasinKind(null);
-    await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), refreshCornerNotchLog(), recordStats()]);
-  }, [projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, refreshCornerNotchLog, recordStats]);
+    await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), recordStats()]);
+  }, [projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats]);
 
   // The Record toolbar button's AnimationModal -- run the whole recording in the background.
   // Each streamed frame's PNG is painted straight onto the main map (the run holds the server
@@ -1467,7 +1407,6 @@ export default function App() {
                 <div style={{ opacity: 0.9 }}>
                   <div>id: {selectedPlate.plate_id}</div>
                   <div>crust: {selectedPlate.crust_type}</div>
-                  {selectedPlate.num_rows != null && <div>rows: {selectedPlate.num_rows}</div>}
                   <div>points: {selectedPlate.num_points}</div>
                   <div>age: {selectedPlate.age_steps} steps</div>
                   <div style={{ color: selectedPlate.at_max_rate ? "#e06c4b" : undefined }}>
@@ -1631,21 +1570,13 @@ export default function App() {
             <div style={{ fontSize: 11, opacity: 0.8 }}>
               <div>seed: {summary.seed}</div>
               <div>plates: {summary.num_plates}</div>
-              {summary.surface === "lines" && <div style={{ color: "#e9b96e" }}>terrain: legacy elevation lines</div>}
               <div>elapsed: {(summary.elapsed_years / 1e6).toFixed(stepYears === 10_000 ? 2 : 1)} Myr</div>
               {animation && <div>{animation.frame} frames recorded</div>}
             </div>
           )}
           {error && <div style={{ color: "#ff8080", fontSize: 11 }}>{error}</div>}
 
-          {DEBUG_UI && (
-            <>
-              <EventConsole events={summary?.events ?? []} />
-              <div style={{ marginTop: 8 }}>
-                <CornerNotchLogPanel entries={cornerNotchLog} enabled={debugDiagnostics} />
-              </div>
-            </>
-          )}
+          {DEBUG_UI && <EventConsole events={summary?.events ?? []} />}
         </div>
 
         <div>
@@ -1728,11 +1659,7 @@ export default function App() {
               interactionDisabled={animating}
             />
           ) : (
-            // tabIndex + onKeyDown: only the Points (platesDetail) view's ArrowLeft/Right and
-            // Shift+ArrowLeft/Right do anything (see handlePointKeyDown), but the container is
-            // always present/focusable, same as PlateInspector's own wrapper -- harmless on
-            // every other view since handlePointKeyDown no-ops when mapView isn't platesDetail.
-            <div ref={pointContainerRef} tabIndex={0} onKeyDown={handlePointKeyDown} style={{ outline: "none", display: "inline-block" }}>
+            <div style={{ display: "inline-block" }}>
               <MapCanvas
                 imageBase64={renderData?.image_base64 ?? null}
                 width={RENDER_WIDTH}
@@ -1753,11 +1680,7 @@ export default function App() {
                         ? handleProbe
                         : undefined
                 }
-                highlightLine={
-                  mapView === "platesDetail" && pointProbe?.result
-                    ? { pointsXyz: pointProbe.result.line_points_xyz, selectedIndex: pointProbe.result.point.index }
-                    : null
-                }
+                highlightPoint={mapView === "platesDetail" && pointProbe?.result ? pointProbe.result.point_xyz : null}
                 alphaEncodedIds={mapView === "combined" || mapView === "biome"}
                 interactionDisabled={animating}
                 coastlineSegments={coastlineSegments}
@@ -1933,19 +1856,6 @@ export default function App() {
                     <span style={{ opacity: 0.55 }}>Elevation</span>
                     <span>{Math.round(pointProbe.result.point.elevation_m).toLocaleString()} m</span>
                   </div>
-                  {pointProbe.result.line && (
-                    <div
-                      style={{
-                        marginTop: 6, paddingTop: 6, borderTop: "1px solid #333",
-                        display: "grid", gridTemplateColumns: "auto 1fr", columnGap: 8, rowGap: 1,
-                      }}
-                    >
-                      <span style={{ opacity: 0.55 }}>Point</span>
-                      <span>{pointProbe.result.point.index + 1} of {pointProbe.result.line.num_points}</span>
-                      <span style={{ opacity: 0.55 }}>Line</span>
-                      <span>{pointProbe.result.line.line_index + 1} of {pointProbe.result.line.num_lines}</span>
-                    </div>
-                  )}
                 </div>
               )}
             </div>
@@ -1987,7 +1897,7 @@ export default function App() {
                   : mapView === "combined" || mapView === "elevation" || mapView === "biome"
                     ? "Click any point for its elevation, biome, precipitation, temperature, and plate. Press and hold, then drag to rotate."
                     : mapView === "platesDetail"
-                      ? "Click a point for its phi/theta and its ElevationLine. Left/Right steps along the line, Shift+Left/Right steps to the next/previous line. Press and hold, then drag to rotate."
+                      ? "Click a point for its plate, phi/theta and elevation. Press and hold, then drag to rotate."
                       : "Press and hold, then drag the map to rotate it."}
           </p>
         </div>
@@ -2280,7 +2190,6 @@ export default function App() {
           axialTiltDeg={axialTiltDeg}
           initialSoilMaturityPercent={initialSoilMaturityPercent}
           fluidDensity={fluidDensity}
-          worldSurface={worldSurface}
           fluidDensityChoices={FLUID_DETAIL_CHOICES}
           onLandPercentChange={setLandPercent}
           onContinentalPercentChange={setContinentalPercent}
@@ -2290,7 +2199,6 @@ export default function App() {
           onAxialTiltDegChange={setAxialTiltDeg}
           onInitialSoilMaturityPercentChange={setInitialSoilMaturityPercent}
           onFluidDensityChange={setFluidDensity}
-          onWorldSurfaceChange={setWorldSurface}
           onClose={() => setShowAdvancedSettings(false)}
         />
       )}

@@ -1,5 +1,5 @@
 """Elastic-viscoplastic Mohr-Coulomb deformation (spec section 2.3): replaces v1's empirical
-per-Myr rate tables (`plates.CONVERGENT_MOUNTAIN_RATE_M_PER_MYR` and friends) with a strain-
+per-Myr rate tables (a flat convergent uplift rate in m/Myr and friends) with a strain-
 rate-driven update to the crustal/mantle-lithosphere thickness columns (`Hc`/`Hm`), gated by
 a real yield check. Elevation itself is never touched directly here -- see `lithosphere.py`'s
 `sync_plate_elevation`, called by `lithosphere_plate.py` after every deform() pass, which derives it
@@ -52,8 +52,8 @@ SECONDS_PER_YEAR = 365.25 * 86400.0
 PLASTIC_THICKENING_RATE_PER_MYR_PER_YIELD_EXCESS = 0.06
 
 # Section 2.3: below this Hc, decompression melting erupts new oceanic crust at a rift --
-# the spec's own literal ~5km critical-thinning trigger, replacing v1's flat
-# STRETCH_VOLCANO_PROBABILITY roll.
+# the spec's own literal ~5km critical-thinning trigger, replacing v1's flat per-event
+# stretch-volcano roll.
 RIFT_CRITICAL_THICKNESS_M = 5_000.0
 
 # Same fold-thrust-belt "not every point in a collision belt rises at the same rate" texture
@@ -126,8 +126,8 @@ def apply_convergent_deformation(
     the plastic strain this particular node actually accumulates, giving the same
     discrete-thrust-sheet visual texture v1 had, now as a real strain-rate multiplier rather
     than a post-hoc elevation multiplier. `strength` is the live collision-uplift tuning knob
-    (World.collision_uplift_multiplier, plus the reach knob's near-field taper -- see
-    lithosphere_plate.py); a plain 1.0 default keeps every existing caller/behaviour
+    (World.collision_uplift_multiplier -- see lithosphere_plate.boundary_context); a plain 1.0
+    default keeps every existing caller/behaviour
     unchanged.
 
     Hc/Hm are clipped at `lithosphere.MAX_CRUSTAL_THICKNESS_M`/`MAX_MANTLE_LITHOSPHERE_
@@ -138,9 +138,8 @@ def apply_convergent_deformation(
     zero everywhere the node wasn't already at the ceiling) -- real continental crust doesn't
     just vanish at that ceiling, it spreads laterally into the surrounding foreland (a
     fold-thrust belt widening once its hinterland can't thicken any further), so the caller
-    (lithosphere_plate.deform) is expected to thrust this onto the near-field band rather than
-    silently dropping it, the same mass-conserving idiom `_redistribute_accreted_column` uses
-    for suture retreat. Hm's own overflow is not returned/conserved -- unlike buoyant crust, an
+    (lithosphere_plate.deform_columns) is expected to place this rather than silently dropping
+    it, the same mass-conserving idiom suture accretion uses for suture retreat. Hm's own overflow is not returned/conserved -- unlike buoyant crust, an
     over-thickened mantle-lithosphere root has nowhere to spread to; it delaminates (sinks into
     the asthenosphere), a real geodynamic sink, not a modeling shortcut."""
     fractional_change = convergent_strain(closing_rate_m_per_s, years_myr, fault_factor, strength)
@@ -152,8 +151,8 @@ def apply_convergent_deformation(
 
 
 # Lateral magma transport (GitHub issue #205, follow-up to #120's "Land fraction slowly
-# declines"). Everything that thickens crust today acts right at a collision boundary (or, at
-# most, `lithosphere_plate.py`'s own fixed ~350km near-field ring on the *same* plate) -- #120's
+# declines"). Everything that thickened crust then acted right at a collision boundary (or, at
+# most, a fixed ~350km ring on the *same* plate) -- #120's
 # own remaining land-loss driver is that nothing carries mass from a plate being over-thickened
 # by collision to a distant, over-stretched interior losing land to thinning. This is the
 # *source* half of the fix (the transport/deposit half lives in the new magma_transport.py,
@@ -169,13 +168,12 @@ def apply_convergent_deformation(
 # function's existing ceiling-overflow path (`overflow_hc_m`) rather than being additive to it.
 #
 # Design discussion (GitHub issue #205) went through two full review rounds before landing here
-# (v3): the earlier drafts skimmed the near-field ring too, which turned out to starve that
-# ring's *other* melt supply (`apply_delamination_melt_intrusion`'s own overflow-fed intrusion,
-# lithosphere_plate.py) a second, independent way -- so this only ever applies to the core
-# `convergent` mask, never `near_field`. Earlier drafts also skimmed every convergent node
-# unconditionally; a node already close enough to `MAX_CRUSTAL_THICKNESS_M` to be generating (or
-# about to generate) ceiling overflow needs that overflow undisturbed (it is the near-field
-# ring's only supply), so `MAGMA_EXPORT_HC_CEILING_FRACTION` exempts nodes already past that
+# (v3): the earlier drafts skimmed the line engine's near-field ring too, which starved that
+# ring's other melt supply -- so this only ever applies to the core `convergent` mask. Earlier
+# drafts also skimmed every convergent node unconditionally; a node already close enough to
+# `MAX_CRUSTAL_THICKNESS_M` to be generating (or about to generate) ceiling overflow needs that
+# overflow undisturbed (the caller places it -- quad_tectonics._place_ceiling_overflow), so
+# `MAGMA_EXPORT_HC_CEILING_FRACTION` exempts nodes already past that
 # headroom threshold -- they get back their full, undiminished strength and contribute nothing
 # to the export pool.
 MAGMA_EXPORT_HC_CEILING_FRACTION = 0.9
@@ -192,8 +190,7 @@ def magma_export_strength_and_volume(
     fault_factor: np.ndarray,
     strength: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """For the core convergent band only (never the near-field ring -- see module comment
-    above): splits `strength` into what stays in place (`reduced_strength`, to feed
+    """For the core convergent band only (see module comment above): splits `strength` into what stays in place (`reduced_strength`, to feed
     `apply_convergent_deformation` in the caller's place of the original `strength`) and how
     much Hc-equivalent volume per node is withheld into a mobile magma parcel instead
     (`export_hc_m`).
@@ -208,7 +205,7 @@ def magma_export_strength_and_volume(
     A node already at/past `MAGMA_EXPORT_HC_CEILING_FRACTION * MAX_CRUSTAL_THICKNESS_M` is left
     completely undisturbed (`reduced_strength == strength`, `export_hc_m == 0`) -- it reverts to
     ordinary full-strength behaviour so `apply_convergent_deformation`'s own ceiling-overflow
-    path, the near-field ring's only supply, is unaffected by this mechanism entirely."""
+    path is unaffected by this mechanism entirely."""
     rate = np.clip(plastic_strain_rate_per_myr(closing_rate_m_per_s), 0.0, None)
     full_fractional_change = rate * years_myr * fault_factor * strength
     has_headroom = hc_m < MAGMA_EXPORT_HC_CEILING_FRACTION * lithosphere.MAX_CRUSTAL_THICKNESS_M
@@ -216,50 +213,6 @@ def magma_export_strength_and_volume(
     reduced_strength = strength * (1.0 - export_fraction)
     export_hc_m = hc_m * full_fractional_change * export_fraction
     return reduced_strength, export_hc_m
-
-
-def stretch_components(sep_theta: np.ndarray, sep_phi: np.ndarray, gap_rad: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """(theta_gap, phi_gap): `gap_rad` of required rift-closing stretch, decomposed along a
-    node's own local (theta, phi) tangent basis by the local separation direction
-    `(sep_theta, sep_phi)` -- not necessarily unit length (a fault tangent or a raw
-    `direction_to_neighbor` projection, either one, in either mode), normalized here.
-
-    This is a plain vector decomposition, not a physical law of its own: `gap_rad` closing
-    distance in the direction `(sep_theta, sep_phi)` points has that much of it running along
-    this node's own theta axis and that much along its phi axis, by definition of what a
-    component *is*. `lithosphere_plate.py` feeds `theta_gap` to its own line-end stretch
-    (`_grow_or_shrink_line_for_deform`) and `phi_gap` to its own new-row claim
-    (`_claim_adjacent_territory`) -- see each call site for why a fault/boundary's orientation
-    relative to a *row* (not the fault's own absolute heading) is what decides which of the two
-    existing growth mechanisms should absorb how much of a given gap."""
-    norm = np.hypot(sep_theta, sep_phi)
-    norm = np.where(norm < 1e-12, 1.0, norm)
-    return gap_rad * np.abs(sep_theta) / norm, gap_rad * np.abs(sep_phi) / norm
-
-
-def apply_stretch_thinning(
-    hc_m: np.ndarray, hm_m: np.ndarray, old_spacing_rad: np.ndarray, extra_gap_rad: np.ndarray
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """(new_hc, new_hm, melting_mask): a column whose own footprint just widened from
-    `old_spacing_rad` to `old_spacing_rad + extra_gap_rad` -- closing a rift by stretching the
-    *existing* crust to cover the new ground, rather than growing fresh nodes into it -- thins
-    by that same ratio. Same mass/area-conservation idea as real crustal extension's beta
-    factor (a column of fixed cross-sectional volume, spread over more footprint, is thinner by
-    exactly the ratio its footprint grew): `new_hc = hc * old_spacing / new_spacing`. Floored at
-    the same `MIN_CRUSTAL_THICKNESS_M`/`MIN_MANTLE_LITHOSPHERE_THICKNESS_M` this module's other
-    thinning path (`apply_divergent_deformation`) never lets Hc/Hm integrate through, and
-    `melting_mask` marks nodes whose Hc just crossed below `RIFT_CRITICAL_THICKNESS_M` in the
-    same was-above-and-now-below convention, so a caller can feed it through the exact same
-    decompression-melting eruption path an ordinary divergent rift already uses -- stretch-thinning
-    is still thinning, and thin-enough crust still erupts."""
-    new_spacing = old_spacing_rad + extra_gap_rad
-    safe_spacing = np.where(new_spacing < 1e-12, 1.0, new_spacing)
-    ratio = np.where(new_spacing < 1e-12, 1.0, old_spacing_rad / safe_spacing)
-    was_above = hc_m >= RIFT_CRITICAL_THICKNESS_M
-    new_hc = np.clip(hc_m * ratio, lithosphere.MIN_CRUSTAL_THICKNESS_M, None)
-    new_hm = np.clip(hm_m * ratio, lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M, None)
-    melting = was_above & (new_hc < RIFT_CRITICAL_THICKNESS_M)
-    return new_hc, new_hm, melting
 
 
 def apply_divergent_deformation(hc_m: np.ndarray, hm_m: np.ndarray, closing_rate_m_per_s: np.ndarray, years_myr: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -319,59 +272,6 @@ def apply_arc_magmatic_thickening(
     rate_mult = np.where(active, np.clip(0.4 + 0.6 * convergence, 0.0, ARC_MAGMATIC_CONVERGENCE_CAP), 0.0)
     new_hc = hc_m + ARC_MAGMATIC_HC_RATE_M_PER_MYR * years_myr * rate_mult * np.asarray(intensity)
     return np.clip(new_hc, None, lithosphere.MAX_CRUSTAL_THICKNESS_M), hm_m
-
-
-# Delamination melt intrusion (GitHub issue #145's reopened investigation, following up on
-# issue #161's own overflow-conservation fix). When `apply_convergent_deformation`'s Hc hits
-# MAX_CRUSTAL_THICKNESS_M, the excess doesn't keep shortening in place -- but it also doesn't
-# stay together as one coherent slab of ordinary crust either. Real over-thickened lower
-# continental crust at that depth is dense enough (largely eclogitized) to delaminate: it
-# breaks off and sinks into the asthenosphere, the same sink Hm's own overflow already uses.
-# What #161 modeled as the *entire* overflow instead re-emerging, whole and instantly, as
-# ordinary crust on the near-field foreland turned out to be the dominant driver of #145's
-# reopened runaway (50%+ of a real save's continental land pinned at the Hc ceiling by 48 Myr)
-# -- an unbounded, un-rate-limited mass transfer standing in for what should be a slow
-# geological process.
-#
-# The physically-grounded middle ground: delaminating lower crust partially melts as it sinks
-# (asthenospheric upwelling into the gap it leaves, plus decompression and fluid flux) into
-# buoyant, silica-rich (granitic) magma that rises back through the overriding plate and
-# intrudes/erupts into the surrounding foreland -- while the denser mafic/ultramafic residue
-# it separated from keeps sinking as a genuine sink, same as everywhere else this ceiling
-# applies. So overflow is only partially conserved (`GRANITIC_MELT_FRACTION`, a real crustal-
-# anatexis partial-melt fraction), and even that fraction arrives the same bounded way every
-# other magmatic-addition path in this module does -- a per-Myr rate
-# (`DELAMINATION_MELT_INTRUSION_RATE_M_PER_MYR`, the same order as `ARC_MAGMATIC_HC_RATE_M_
-# PER_MYR`) rather than an instant lump. Melt that arrives faster than that rate can place it
-# in a given step is not banked for later; it is lost the same way the non-melted residue is --
-# this is deliberately *not* a strict crustal-mass-conservation law (real crust isn't one
-# either, once magmatic transport is in the picture), only a bound on how fast new crust can
-# plausibly show up in one place.
-#
-# Line engine only. The quad engine places its ceiling overflow through the staged suture
-# placement and leaves melting to `orogeny.anatexis` (issue #290).
-GRANITIC_MELT_FRACTION = 0.35
-DELAMINATION_MELT_INTRUSION_RATE_M_PER_MYR = 300.0
-
-
-def apply_delamination_melt_intrusion(hc_near_field_m: np.ndarray, overflow_hc_m: float, years_myr: float) -> np.ndarray:
-    """New Hc for the near-field ring receiving this step's delamination melt, given the total
-    Hc `overflow_hc_m` (a scalar, already summed over the core convergent band) that hit
-    `apply_convergent_deformation`'s ceiling this step. Spreads whatever melt actually
-    intrudes (`GRANITIC_MELT_FRACTION` of the overflow, capped by `DELAMINATION_MELT_
-    INTRUSION_RATE_M_PER_MYR` summed across the receiving ring) evenly across
-    `hc_near_field_m`, same as #161's own even-spread idiom -- just on a bounded melt budget
-    instead of the full overflow. Only Hc grows, matching `apply_arc_magmatic_thickening`'s
-    own convention: this is juvenile buoyant melt intruding, not shortened crust dragging its
-    own mantle-lithosphere root along, so Hm is left untouched here (unlike the mass-
-    conserving Hc/Hm coupling `_redistribute_accreted_column`'s suture-retreat path uses)."""
-    n = len(hc_near_field_m)
-    if n == 0 or overflow_hc_m <= 0.0:
-        return hc_near_field_m
-    melt_available = overflow_hc_m * GRANITIC_MELT_FRACTION
-    melt_capacity = DELAMINATION_MELT_INTRUSION_RATE_M_PER_MYR * years_myr * n
-    melt_to_intrude = min(melt_available, melt_capacity)
-    return np.minimum(hc_near_field_m + melt_to_intrude / n, lithosphere.MAX_CRUSTAL_THICKNESS_M)
 
 
 # Rift magmatic underplating: the "further rifting -> more volcanism" middle stage a real

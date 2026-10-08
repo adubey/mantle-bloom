@@ -1,16 +1,25 @@
 import numpy as np
 import pytest
 
-from app import climate, lithosphere, stats
+from app import climate, geometry, lithosphere, stats
 from app.elevation_lines import line_spacing_rad
-from app.plates import ElevationLine, PlateWithLines
 from app.world import World, generate_world
+
+from .quad_fixtures import globe_plate, quad_plate
+
+_GLOBE_DENSITY = 0.5
+
+
+def _globe_world(crust_type: str, **fields_at) -> World:
+    return World(seed=0, plates=[globe_plate(crust_type, _GLOBE_DENSITY, **fields_at)], node_density=_GLOBE_DENSITY)
+
+
+def _longitude(points: np.ndarray) -> np.ndarray:
+    return geometry.xyz_to_latlon(points)[1]
 
 
 def _all_ocean_world() -> World:
-    line = ElevationLine(phi=0.0, theta=np.linspace(-np.pi, np.pi, 20, endpoint=False), elevation=np.full(20, -3800.0))
-    plate = PlateWithLines(plate_id=0, frame=np.eye(3), crust_type="oceanic", lines=[line])
-    return World(seed=0, plates=[plate])
+    return _globe_world("oceanic", elevation=lambda pts: np.full(len(pts), -3800.0))
 
 
 @pytest.mark.parametrize("climate_density", [0.5, 2.0])
@@ -62,8 +71,7 @@ def test_compute_stats_land_and_ocean_fractions_sum_to_one():
 def test_compute_stats_all_land_is_exactly_one():
     world = _all_ocean_world()
     for plate in world.plates:
-        for line in plate.lines:
-            line.elevation[:] = 500.0
+        plate.set_fields_on_plate(elevation=np.full(plate.node_count(), 500.0))
     result = stats.compute_stats(world)
     assert result["land_fraction"] == 1.0
     assert result["ocean_fraction"] == 0.0
@@ -112,75 +120,61 @@ def test_compute_stats_total_land_area_and_continental_volume_are_zero_for_all_o
 
 
 def test_compute_stats_total_continental_crust_volume_matches_hand_computed_sum():
-    # One continental line plate, every node holding a known Hc -- total volume should be
-    # exactly node_area_m2 * sum(Hc), converted to km^3: line plates weight every node by the
-    # nominal area (see Plate.accounting_areas_m2).
+    # One continental plate, every cell holding a known Hc -- total volume should be exactly
+    # sum(Hc * cell area), converted to km^3 (see Plate.accounting_areas_m2).
     n = 20
     hc = np.linspace(20_000.0, 40_000.0, n)
-    line = ElevationLine(
-        phi=0.0, theta=np.linspace(-np.pi, np.pi, n, endpoint=False),
-        elevation=np.full(n, 500.0), crustal_thickness_m=hc,
-    )
-    plate = PlateWithLines(plate_id=0, frame=np.eye(3), crust_type="continental", lines=[line])
+    plate = quad_plate(0, "continental", columns=range(n), elevation=500.0, crustal_thickness_m=hc)
     world = World(seed=0, plates=[plate])
     result = stats.compute_stats(world)
 
-    area_m2 = lithosphere.node_area_m2(line_spacing_rad(world.node_density))
-    expected_km3 = float(hc.sum()) * area_m2 / 1.0e9
-    assert result["total_continental_crust_volume_km3"] == pytest.approx(expected_km3)
-    # Every node here sits above the default sea_level_m=0.0, so the whole plate is land.
-    assert result["total_land_area_km2"] == pytest.approx(n * area_m2 / 1.0e6)
+    area_m2 = plate.node_areas_m2()
+    assert result["total_continental_crust_volume_km3"] == pytest.approx(float(hc @ area_m2) / 1.0e9)
+    # Every cell here sits above the default sea_level_m=0.0, so the whole plate is land.
+    assert result["total_land_area_km2"] == pytest.approx(float(area_m2.sum()) / 1.0e6)
 
 
 def test_overlap_once_totals_count_stacked_ground_once():
-    # Issue #289: two continental line plates whose 10-node rows sit exactly on top of each
-    # other. The plain totals count both plates in full (as the ledger does); the dedup
-    # totals count the shared ground once.
+    # Issue #289: two continental plates whose 10-cell rows sit exactly on top of each other.
+    # The plain totals count both plates in full (as the ledger does); the dedup totals count
+    # the shared ground once.
     n = 10
-    theta = np.linspace(-0.05, 0.05, n)
     hc = 35_000.0
 
     def plate(plate_id):
-        line = ElevationLine(phi=0.0, theta=theta, elevation=np.full(n, 500.0), crustal_thickness_m=np.full(n, hc))
-        return PlateWithLines(plate_id=plate_id, frame=np.eye(3), crust_type="continental", lines=[line])
+        return quad_plate(plate_id, "continental", columns=range(n), elevation=500.0, crustal_thickness_m=hc)
 
     world = World(seed=0, plates=[plate(0), plate(1)], next_plate_id=2)
     result = stats.compute_stats(world)
 
-    area_m2 = lithosphere.node_area_m2(line_spacing_rad(world.node_density))
-    assert result["total_continental_crust_volume_km3"] == pytest.approx(2 * n * hc * area_m2 / 1.0e9)
-    assert result["total_continental_crust_volume_dedup_km3"] == pytest.approx(n * hc * area_m2 / 1.0e9)
-    assert result["total_land_area_km2"] == pytest.approx(2 * n * area_m2 / 1.0e6)
-    assert result["total_land_area_dedup_km2"] == pytest.approx(n * area_m2 / 1.0e6)
-    assert result["plate_overlap_area_fraction"] == pytest.approx(2 * n * area_m2 / stats.SPHERE_AREA_M2)
-    assert result["represented_area_fraction"] == pytest.approx(2 * n * area_m2 / stats.SPHERE_AREA_M2)
+    area_m2 = float(world.plates[0].node_areas_m2().sum())
+    assert result["total_continental_crust_volume_km3"] == pytest.approx(2 * hc * area_m2 / 1.0e9)
+    assert result["total_continental_crust_volume_dedup_km3"] == pytest.approx(hc * area_m2 / 1.0e9)
+    assert result["total_land_area_km2"] == pytest.approx(2 * area_m2 / 1.0e6)
+    assert result["total_land_area_dedup_km2"] == pytest.approx(area_m2 / 1.0e6)
+    assert result["plate_overlap_area_fraction"] == pytest.approx(2 * area_m2 / stats.SPHERE_AREA_M2)
+    assert result["represented_area_fraction"] == pytest.approx(2 * area_m2 / stats.SPHERE_AREA_M2)
 
 
 def test_continental_dedup_volume_ignores_an_oceanic_plate_on_top():
     # PR #295 review: an oceanic plate overlapping a continental one duplicates no continental
     # crust, so the continental plate keeps its full volume; land area still counts once.
     n = 10
-    theta = np.linspace(-0.05, 0.05, n)
     hc = 35_000.0
 
     def plate(plate_id, crust_type):
-        line = ElevationLine(phi=0.0, theta=theta, elevation=np.full(n, 500.0), crustal_thickness_m=np.full(n, hc))
-        return PlateWithLines(plate_id=plate_id, frame=np.eye(3), crust_type=crust_type, lines=[line])
+        return quad_plate(plate_id, crust_type, columns=range(n), elevation=500.0, crustal_thickness_m=hc)
 
     world = World(seed=0, plates=[plate(0, "continental"), plate(1, "oceanic")], next_plate_id=2)
     result = stats.compute_stats(world)
 
-    area_m2 = lithosphere.node_area_m2(line_spacing_rad(world.node_density))
-    assert result["total_continental_crust_volume_dedup_km3"] == pytest.approx(n * hc * area_m2 / 1.0e9)
-    assert result["total_land_area_dedup_km2"] == pytest.approx(n * area_m2 / 1.0e6)
+    area_m2 = float(world.plates[0].node_areas_m2().sum())
+    assert result["total_continental_crust_volume_dedup_km3"] == pytest.approx(hc * area_m2 / 1.0e9)
+    assert result["total_land_area_dedup_km2"] == pytest.approx(area_m2 / 1.0e6)
 
 
 def test_overlap_once_totals_match_plain_totals_without_overlap():
-    line = ElevationLine(
-        phi=0.0, theta=np.linspace(-np.pi, np.pi, 20, endpoint=False),
-        elevation=np.full(20, 500.0), crustal_thickness_m=np.full(20, 35_000.0),
-    )
-    world = World(seed=0, plates=[PlateWithLines(plate_id=0, frame=np.eye(3), crust_type="continental", lines=[line])])
+    world = World(seed=0, plates=[quad_plate(0, "continental", columns=range(20), elevation=500.0, crustal_thickness_m=35_000.0)])
     result = stats.compute_stats(world)
     assert result["total_continental_crust_volume_dedup_km3"] == result["total_continental_crust_volume_km3"]
     assert result["plate_overlap_area_fraction"] == 0.0
@@ -189,7 +183,7 @@ def test_overlap_once_totals_match_plain_totals_without_overlap():
 def test_total_land_area_uses_each_quad_cells_own_area():
     # Issue #257: quad cells are not equal-area, so land area is the sum of the land cells'
     # own areas, not land-node count times the nominal area.
-    world = generate_world(seed=5, num_plates=5, surface="quad")
+    world = generate_world(seed=5, num_plates=5)
     land_area = 0.0
     for plate in world.plates:
         nodes = plate.surface_nodes("elevation")
@@ -222,11 +216,8 @@ def test_compute_stats_biome_ocean_fraction_excludes_land_and_sums_to_one():
 
 
 def _land_and_ocean_world() -> World:
-    theta = np.linspace(-np.pi, np.pi, 40, endpoint=False)
-    elevation = np.where(np.abs(theta) < np.pi / 2, 500.0, -3800.0)  # half land, half ocean
-    line = ElevationLine(phi=0.0, theta=theta, elevation=elevation)
-    plate = PlateWithLines(plate_id=0, frame=np.eye(3), crust_type="continental", lines=[line])
-    return World(seed=0, plates=[plate])
+    # Half land (the hemisphere around longitude 0), half ocean.
+    return _globe_world("continental", elevation=lambda pts: np.where(np.abs(_longitude(pts)) < np.pi / 2, 500.0, -3800.0))
 
 
 def test_compute_stats_biome_land_fraction_sums_to_one_with_land():
@@ -245,16 +236,16 @@ def test_compute_stats_land_and_ocean_fractions_count_a_lake_as_water():
     # part of the connected ocean -- that's exactly what makes it a lake), so `is_ocean` alone
     # would miss it entirely. land_fraction/ocean_fraction ("Land"/"Water" in the frontend's
     # Stats panel) must still count it as water, not land -- see stats.py's own docstring.
-    n = 40
-    theta = np.linspace(-np.pi, np.pi, n, endpoint=False)
-    elevation = np.full(n, 500.0)  # all land, well above the default sea_level_m=0.0
-    lake_depth = np.where(np.abs(theta) < np.pi / 4, 20.0, 0.0)  # a lake over a quarter of it
-    line = ElevationLine(phi=0.0, theta=theta, elevation=elevation, lake_depth=lake_depth)
-    plate = PlateWithLines(plate_id=0, frame=np.eye(3), crust_type="continental", lines=[line])
-    world = World(seed=0, plates=[plate])
+    world = _globe_world(
+        "continental",
+        elevation=lambda pts: np.full(len(pts), 500.0),  # all land, well above the default sea_level_m=0.0
+        lake_depth=lambda pts: np.where(np.abs(_longitude(pts)) < np.pi / 4, 20.0, 0.0),  # a lake over a quarter of it
+    )
+    plate = world.plates[0]
 
     result = stats.compute_stats(world)
-    lake_fraction = float(np.count_nonzero(lake_depth > 0.0)) / n
+    areas = plate.node_areas_m2()
+    lake_fraction = float(areas[plate.collect("lake_depth") > 0.0].sum() / areas.sum())
     assert result["ocean_fraction"] == pytest.approx(lake_fraction, abs=0.05)
     assert result["land_fraction"] == pytest.approx(1.0 - lake_fraction, abs=0.05)
     assert result["land_fraction"] + result["ocean_fraction"] == pytest.approx(1.0)
@@ -289,8 +280,7 @@ def test_compute_stats_land_fraction_node_matches_raw_elevation_count():
     # land_fraction_node (see stats.py's own docstring, GitHub issue #121) is a plain
     # elevation > sea_level_m node count/total -- unlike land_fraction, not connectivity-aware
     # and not resampled from any hydrology cache. Compare against an independent recount
-    # straight off world.plates (line regularization means node count isn't necessarily the
-    # ElevationLine's original theta length, so don't assume exactly half).
+    # straight off world.plates.
     world = _land_and_ocean_world()
     result = stats.compute_stats(world)
 

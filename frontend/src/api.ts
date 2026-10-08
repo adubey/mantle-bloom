@@ -48,14 +48,12 @@ export interface WorldEvent {
   message: string;
 }
 
-export type WorldSurface = "quad" | "lines";
-
 export interface WorldSummary {
   seed: number;
   elapsed_years: number;
   num_plates: number;
   // `empty` is only possible for a loaded save with no plates.
-  surface: WorldSurface | "empty";
+  surface: "quad" | "empty";
   events: WorldEvent[];
 }
 
@@ -81,7 +79,7 @@ export interface PlateOverlap {
   plate_id: number;
   fraction: number; // share of THIS plate's nodes sitting on top of plate_id
   // elapsed_years at which the earliest still-overlapping node first went over another
-  // plate (ElevationLine.overlap_onset_years). null if the save predates the field or the
+  // plate (the `overlap_onset_years` node field). null if the save predates the field or the
   // overlap only appeared this step. Not partner-specific -- see backend _plate_overlaps.
   since_years: number | null;
 }
@@ -89,9 +87,6 @@ export interface PlateOverlap {
 export interface PlateSummary {
   plate_id: number;
   crust_type: "continental" | "oceanic";
-  // null for a Plate representation with no row concept (see backend app/main.py's
-  // _plate_summary).
-  num_rows: number | null;
   num_points: number;
   // Plate motion + shape health (see _plate_summary). `at_max_rate` true for most plates at
   // once is a long-run pathology; a continental plate with a high `submerged_fraction` is
@@ -525,8 +520,6 @@ async function readProgressStream(resp: Response, onProgress?: (fraction: number
 // real geometry/motion instead of the sketch alone (see world.generate_world's own
 // `premade_world_id` param). `null` (every other tab, "Dragons & Zombie World" included) is
 // unaffected.
-// surface is the authoritative plate terrain representation. `"quad"` is the production
-// default selected by App.tsx; `"lines"` remains an explicitly labelled diagnostic option.
 // `onProgress`, if given, is called with a fraction (0 to 1) as the backend's
 // generate_world_progress passes its three phase boundaries (plate/site generation,
 // mantle-center fitting, the finish_generation bootstrap -- see backend app/main.py's
@@ -542,7 +535,6 @@ export interface GenerateWorldOptions {
   fluidDensity: number;
   numPlates: number | null;
   voronoiPoints: number;
-  surface: WorldSurface;
   sketchImageBase64?: string | null;
   premadeWorldId?: string | null;
   onProgress?: (fraction: number) => void;
@@ -552,7 +544,7 @@ export function generateWorld(options: GenerateWorldOptions): Promise<WorldSumma
   const {
     seed, continentalFraction, landFraction, axialTiltDeg, nodeDensity,
     initialSoilMaturity, climateDensity, fluidDensity, numPlates, voronoiPoints,
-    surface, sketchImageBase64 = null, premadeWorldId = null, onProgress,
+    sketchImageBase64 = null, premadeWorldId = null, onProgress,
   } = options;
   return fetch(`${API_BASE}/world/generate`, {
     method: "POST",
@@ -568,7 +560,6 @@ export function generateWorld(options: GenerateWorldOptions): Promise<WorldSumma
       initial_soil_maturity: initialSoilMaturity,
       climate_density: climateDensity,
       fluid_density: fluidDensity,
-      surface,
       sketch: sketchImageBase64 ? { image_base64: sketchImageBase64 } : null,
       premade_world_id: premadeWorldId,
     }),
@@ -634,7 +625,7 @@ export type ControlsState = {
   simulate_climate_biomes: boolean;
   wind_model: string;
   fault_deformation_mode: string;
-  // Gate for the verbose _fill_corner_notch decision log (see fetchCornerNotchLog) -- on by
+  // Gate for the debug-only diagnostics (see backend World.debug_diagnostics) -- on by
   // default for a Debugging Worlds tab world, off/toggleable here for any other loaded save.
   debug_diagnostics: boolean;
 } & TuningMultipliers;
@@ -665,26 +656,6 @@ export function updateControls(controls: {
       ...controls.tuning,
     }),
   }).then(asJson<ControlsState>);
-}
-
-export interface CornerNotchLogEntry {
-  plate_id: number;
-  outcome: "no_neighbours" | "no_own_lines" | "no_candidate_rows" | "claimed" | "no_claim";
-  nodes_added: number;
-  elapsed_years: number;
-  // Present only on some outcomes -- see backend LithospherePlate._fill_corner_notch_frontier.
-  window_rad?: number;
-  phi_lo?: number;
-  phi_hi?: number;
-  algorithm?: "frontier";
-}
-
-// The debug-only structured decision log for LithospherePlate._fill_corner_notch_frontier (see
-// World.corner_notch_log / World.debug_diagnostics) -- empty unless debug_diagnostics is on.
-export function fetchCornerNotchLog(): Promise<{ debug_diagnostics: boolean; entries: CornerNotchLogEntry[] }> {
-  return fetch(`${API_BASE}/world/corner_notch_log`).then(
-    asJson<{ debug_diagnostics: boolean; entries: CornerNotchLogEntry[] }>,
-  );
 }
 
 // The backend rejects an overlapping /world/step with 503 (see backend app/main.py's
@@ -779,7 +750,7 @@ export interface NodeAtResponse {
     theta: number; // plate-local longitude, radians
     elevation_m: number;
     // world.elapsed_years this node was created; -1 = predates creation-time tracking (a
-    // genesis node from initial world generation). See ElevationLine.node_created_years.
+    // genesis node from initial world generation). See the `node_created_years` node field.
     node_created_years: number;
   } | null;
   // The nearest World.removed_points_log entry, only if one sits within the backend's own
@@ -799,51 +770,23 @@ export function fetchNodeAt(latDeg: number, lonDeg: number): Promise<NodeAtRespo
   return fetch(`${API_BASE}/world/node_at?${params}`).then(asJson<NodeAtResponse>);
 }
 
-// The "Points" (platesDetail) debug view's click-to-inspect response. Every representation
-// reports the selected node's plate-local coordinates and elevation. Line worlds additionally
-// provide the owning ElevationLine and keyboard-navigation metadata; quad worlds return null
-// for `line` and highlight only the selected terrain node.
+// The "Points" (platesDetail) debug view's click-to-inspect response: the nearest terrain
+// node's plate-local coordinates and elevation, plus its world position for the map highlight.
 export interface ElevationPointResponse {
   plate_id: number;
   point: {
-    phi: number; // == line.phi -- a point's phi is always its line's own fixed phi
-    theta: number;
+    phi: number; // plate-local latitude, radians
+    theta: number; // plate-local longitude, radians
     elevation_m: number;
     node_created_years: number;
-    index: number; // this point's position within its line, 0 to line.num_points - 1
   };
-  line: {
-    phi: number;
-    num_points: number;
-    line_index: number; // this line's position among the plate's lines, ascending phi
-    num_lines: number;
-  } | null;
-  // Line worlds return every node's world-space xyz on this line, in the same order as
-  // `point.index`; quad worlds return the selected node as a one-element highlight.
-  line_points_xyz: [number, number, number][];
+  point_xyz: [number, number, number];
 }
 
 // The click-to-inspect hit-test -- same true-frame contract as fetchPlateAt/fetchNodeAt.
 export function fetchElevationPointAt(latDeg: number, lonDeg: number): Promise<ElevationPointResponse> {
   const params = new URLSearchParams({ lat_deg: String(latDeg), lon_deg: String(lonDeg) });
   return fetch(`${API_BASE}/world/elevation_point_at?${params}`).then(asJson<ElevationPointResponse>);
-}
-
-// Direct lookup by index -- backs ArrowLeft/Right (steps pointIndex within the current line)
-// and Shift+ArrowLeft/Right (steps lineIndex) navigation without a fresh click. The server
-// clamps both indices into range, so the caller can pass a wrapped-around or just-stale index
-// (e.g. right after a step changed a line's length) without erroring first.
-export function fetchElevationPoint(
-  plateId: number,
-  lineIndex: number,
-  pointIndex: number,
-): Promise<ElevationPointResponse> {
-  const params = new URLSearchParams({
-    plate_id: String(plateId),
-    line_index: String(lineIndex),
-    point_index: String(pointIndex),
-  });
-  return fetch(`${API_BASE}/world/elevation_point?${params}`).then(asJson<ElevationPointResponse>);
 }
 
 export function fetchStats(): Promise<WorldStats> {

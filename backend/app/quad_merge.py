@@ -1,9 +1,9 @@
 """Cross-plate merge for `PlateWithSparseQuadPatch` plates (issue #228 Phase 4).
 
-The line engine fuses two plates by resampling both node clouds onto a fresh lattice in the
-surviving plate's frame (`lithosphere_plate._merge_lines_from_resample`), carrying only Hc/Hm
-by nearest neighbour and re-deriving elevation. Nearest-neighbour sampling at a constant
-nominal node area can't conserve volume, and the resample discards every other field.
+The retired line engine fused two plates by resampling both node clouds onto a fresh lattice
+in the surviving plate's frame, carrying only Hc/Hm by nearest neighbour and re-deriving
+elevation. Nearest-neighbour sampling at a constant nominal node area can't conserve volume,
+and the resample discarded every other field.
 
 Quad plates keep the surviving plate's cells and IDs as they are and remap the absorbed plate
 onto that plate's lattice by exact area:

@@ -1,8 +1,9 @@
 import numpy as np
 import pytest
-from app import biomes, climate, geometry
-from app.plates import ElevationLine, PlateWithLines
+from app import biomes, climate
 from app.world import World, generate_world, step_world
+
+from .quad_fixtures import globe_plate
 
 
 def _world(seed=1, num_plates=12, continental_fraction=0.7, land_fraction=0.29, steps=0, years=5_000_000):
@@ -28,13 +29,7 @@ def test_submerged_continental_crust_is_treated_as_ocean():
     # continent, not just a shelf) should read as ocean everywhere -- is_ocean is derived
     # from elevation, not crust_type, so evaporation/currents/coastal effects apply to it
     # exactly like any other ocean cell.
-    frame = geometry.plate_frame_from_seed(np.array([1.0, 0.0, 0.0]))
-    lines = [
-        ElevationLine(phi=float(phi), theta=np.linspace(-np.pi, np.pi, 30, endpoint=False), elevation=np.full(30, -500.0))
-        for phi in np.linspace(-1.4, 1.4, 15)
-    ]
-    plate = PlateWithLines(plate_id=0, frame=frame, crust_type="continental", lines=lines)
-    world = World(seed=1, plates=[plate])
+    world = World(seed=1, plates=[globe_plate("continental", elevation=-500.0)], node_density=0.5)
 
     fields = climate.compute_climate(world, height=30, width=60)
     assert np.all(fields.is_ocean)
@@ -540,13 +535,7 @@ def test_compute_climate_falls_back_to_diagnostics_when_cfd_state_is_none():
     # temperature/humidity/precipitation via its own diagnostic formulas rather than crashing
     # on a missing state. Same bare-World construction test_submerged_continental_crust_is_
     # treated_as_ocean above already uses, which has no atmosphere_cfd_state.
-    frame = geometry.plate_frame_from_seed(np.array([1.0, 0.0, 0.0]))
-    lines = [
-        ElevationLine(phi=float(phi), theta=np.linspace(-np.pi, np.pi, 30, endpoint=False), elevation=np.full(30, 200.0))
-        for phi in np.linspace(-1.4, 1.4, 15)
-    ]
-    plate = PlateWithLines(plate_id=0, frame=frame, crust_type="continental", lines=lines)
-    world = World(seed=1, plates=[plate])
+    world = World(seed=1, plates=[globe_plate("continental", elevation=200.0)], node_density=0.5)
     assert world.atmosphere_cfd_state is None
 
     fields = climate.compute_climate(world, height=30, width=60)

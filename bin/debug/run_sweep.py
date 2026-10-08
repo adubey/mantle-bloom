@@ -58,7 +58,7 @@ from sweep_lib import (  # noqa: E402
 DEFAULT_OUT = Path(__file__).resolve().parent / "results" / "sweep_results.jsonl"
 
 
-def _seen_checkpoints(out_path: Path, node_density: float, surface: str) -> dict[tuple[str, float, int], set[float]]:
+def _seen_checkpoints(out_path: Path, node_density: float) -> dict[tuple[str, float, int], set[float]]:
     """(parameter, multiplier, seed) -> the set of checkpoint_years already recorded for it at
     this exact `node_density` in `out_path`. Used both to decide which triples are complete
     (see `_completed_triples`) and, row-by-row, to skip re-writing a checkpoint that's already
@@ -83,7 +83,7 @@ def _seen_checkpoints(out_path: Path, node_density: float, surface: str) -> dict
             if row.get("node_density", NODE_DENSITY) != node_density:
                 continue
             # Rows predating the quad default (#250) carry no "surface" and were line-backed.
-            if row.get("surface", "lines") != surface:
+            if row.get("surface", "lines") != "quad":
                 continue
             # Before #289, land_volume_above_sea_km3 used nominal node areas and counted
             # overlapped ground twice; resuming onto those rows would mix the two metrics.
@@ -138,7 +138,6 @@ def main() -> None:
         "--checkpoints", default=",".join(str(y // 1_000_000) for y in CHECKPOINT_YEARS), help="Myr, comma-separated"
     )
     parser.add_argument("--node-density", type=float, default=NODE_DENSITY)
-    parser.add_argument("--surface", choices=("quad", "lines"), default="quad")
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     args = parser.parse_args()
@@ -153,7 +152,7 @@ def main() -> None:
     node_density = args.node_density
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    seen_checkpoints = _seen_checkpoints(args.out, node_density, args.surface)
+    seen_checkpoints = _seen_checkpoints(args.out, node_density)
     done = _completed_triples(seen_checkpoints, checkpoint_years)
     all_jobs = build_jobs(params, multipliers, seeds)
     jobs = [j for j in all_jobs if j not in done]
@@ -165,7 +164,7 @@ def main() -> None:
     completed = 0
     with args.out.open("a") as f, ProcessPoolExecutor(max_workers=args.workers) as pool:
         futures = {
-            pool.submit(run_one_job, param, multiplier, seed, node_density, tuple(checkpoint_years), args.surface): (
+            pool.submit(run_one_job, param, multiplier, seed, node_density, tuple(checkpoint_years)): (
                 param,
                 multiplier,
                 seed,

@@ -4,6 +4,10 @@ A running record of where wall-clock time actually goes, measured against a real
 path rather than guessed at. Each section says what was measured, on what commit, with
 what inputs, so a later run can be compared like-for-like.
 
+Passes dated before 2026-10-02 (#250) profiled the elevation-line plate surface
+(`PlateWithLines`, `LithospherePlate`, `ElevationLine`), retired in #251; the hot spots they
+name in that code no longer exist, but their measurements of the shared phases still stand.
+
 ## File > Make Animation (`POST /world/animate`), 60 frames
 
 **Measured:** re-run 2026-09-01, commit `f68fa46` (`perf/vectorize-all-points-elevation`

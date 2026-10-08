@@ -5,12 +5,7 @@ import numpy as np
 import pytest
 
 from app import eustasy
-from app.world import generate_world as _generate_world, step_world
-
-
-def generate_world(*args, **kwargs):
-    kwargs.setdefault("surface", "lines")
-    return _generate_world(*args, **kwargs)
+from app.world import generate_world, step_world
 
 
 def test_total_water_volume_is_monotonic_and_area_weighted():
@@ -56,8 +51,7 @@ def test_deepening_the_ocean_basins_drops_sea_level():
     for plate in world.plates:
         if plate.crust_type != "oceanic":
             continue
-        for i, line in enumerate(plate.lines):
-            plate.replace_line(i, line.replace(elevation=line.elevation - 800.0))
+        plate.set_fields_on_plate(elevation=plate.collect("elevation") - 800.0)
     eustasy.update_sea_level(world)
 
     assert world.sea_level_m < sea_before - 50.0
@@ -162,10 +156,7 @@ def test_solve_sea_level_connected_ignores_the_pits_volume():
 
 def _pile_ice_everywhere(world, depth_m):
     for plate in world.plates:
-        for i, line in enumerate(plate.lines):
-            gd = line.glacier_depth.copy()
-            gd[:] = depth_m
-            plate.replace_line(i, line.replace(glacier_depth=gd))
+        plate.set_fields_on_plate(glacier_depth=np.full(plate.node_count(), depth_m))
 
 
 def test_trapped_ice_lowers_sea_level_and_total_budget_is_conserved():

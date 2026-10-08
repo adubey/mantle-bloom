@@ -65,7 +65,7 @@ def run_one(seed: int, collision_uplift_multiplier: float) -> list[dict]:
 
     rows = []
     for plate in world.plates:
-        if not plate.lines:
+        if plate.node_count() == 0:
             continue
         elevation = plate.collect("elevation")
         land = elevation > world.sea_level_m

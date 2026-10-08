@@ -9,9 +9,11 @@ terrain moves from `PlateWithLines`/`ElevationLine` to a sparse quad representat
 - what Phase 0a found that the `PlateSurface` interface (Phase 1) needs to provide.
 
 It deliberately proposes no API. The measurements behind the numbers are in
-[`analysis/issue228-phase0a/report.md`](../analysis/issue228-phase0a/report.md). They come from
-[`bin/debug/characterize_plate_surface.py`](../bin/debug/characterize_plate_surface.py), which
-turns any `.mbworld` into a deterministic JSON document.
+[`analysis/issue228-phase0a/report.md`](../analysis/issue228-phase0a/report.md). They came from
+`bin/debug/characterize_plate_surface.py`, which turned a line-backed `.mbworld` into a
+deterministic JSON document; #251 removed it with the line surface it read. The neutral and
+quad metrics live on in the audit harness (`app/surface_parity.py`, see
+[surface-parity.md](surface-parity.md)).
 
 ## 1. Metrics
 

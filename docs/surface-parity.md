@@ -1,10 +1,9 @@
-# Line vs quad parity harness
+# Plate-surface audit harness
 
-Issue #247 (Phase 5a of #228). The harness runs line-backed and sparse-quad worlds from the same
-seed and settings, records the same measurements for both, and judges them against the gates
-below. Sparse quad is the production default as of issue #250; diagnostic and parity runs can
-still pick `generate_world(surface="lines" | "quad")`, and the harness exposes this as
-`--surfaces`.
+Issue #247 (Phase 5a of #228). The harness steps sparse-quad worlds, records their
+measurements, and judges them against the gates below. It began as a line-vs-quad parity
+harness; since the line surface was retired (#251), every run audits the quad surface on its
+own and every gate has an absolute threshold.
 
 Code: `backend/app/surface_parity.py` (runs, audits, metrics),
 `backend/app/surface_parity_gates.py` (gates, report), `bin/debug/surface_parity.py` (CLI).
@@ -13,21 +12,21 @@ Code: `backend/app/surface_parity.py` (runs, audits, metrics),
 
 ```sh
 cd backend
-.venv/bin/python ../bin/debug/surface_parity.py paired --preset smoke --seeds 3 --out ../analysis/parity-smoke
+.venv/bin/python ../bin/debug/surface_parity.py audit --preset smoke --seeds 3 --out ../analysis/parity-smoke
 ```
 
-`paired` runs every seed × surface combination, then writes `comparison.json` and `report.md`.
-It exits with status 1 when the verdict is `fail`. Other subcommands:
+`audit` runs every seed, then writes `comparison.json` and `report.md`. It exits with status 1
+when the verdict is `fail`. Other subcommands:
 
-- `run --seed S --surface quad|lines --out DIR` runs one world. Use it to spread a campaign
+- `run --seed S --out DIR` runs one world. Use it to spread a campaign
   across processes or machines. `--from-world SAVE.mbworld` continues a saved world instead of
   generating one; checkpoint ages then count from the save's age, and the save's own
   densities apply.
-- `compare DIR` re-judges every run in a directory, for example after collecting runs made
+- `judge DIR` re-judges every run in a directory, for example after collecting runs made
   separately.
 
 `--jobs N` runs worlds in parallel. Timings are only comparable between runs made at
-`--jobs 1` on an otherwise quiet machine, so a performance comparison needs a sequential run.
+`--jobs 1` on an otherwise quiet machine, so a performance measurement needs a sequential run.
 
 | preset | density | step | checkpoints (Myr) | audit every | approx. cost per world |
 |---|---:|---:|---|---:|---|
@@ -49,11 +48,11 @@ asserts that every hard invariant holds and that the metrics document reproduces
 
 | file | contents |
 |---|---|
-| `seed<S>-<surface>.json` | Deterministic metrics: config, checkpoints, audit violations, per-step climate series, load checks. Floats are rounded to 6 significant figures and keys sorted, so a rerun of the same code reproduces the file byte for byte. |
-| `seed<S>-<surface>.timings.json` | Wall-clock only: generation, per-step phase buckets, derived-index builds/hits/build time, revision bumps, and index build/query time and memory at checkpoints. |
+| `seed<S>.json` | Deterministic metrics: config, checkpoints, audit violations, per-step climate series, load checks. Floats are rounded to 6 significant figures and keys sorted, so a rerun of the same code reproduces the file byte for byte. |
+| `seed<S>.timings.json` | Wall-clock only: generation, per-step phase buckets, derived-index builds/hits/build time, revision bumps, and index build/query time and memory at checkpoints. |
 | `provenance.json` | Command line, git commit (and whether `backend/app` or `bin/debug` were dirty), Python/numpy/scipy versions, platform. |
 | `comparison.json` | Every gate result, and one summary per gate that keeps its worst case. |
-| `report.md` | The verdict, gate tables, side-by-side checkpoint metrics, and performance tables. |
+| `report.md` | The verdict, gate tables, per-seed checkpoint metrics, and performance tables. |
 | `renders/` | With `--render` only. |
 
 ### What is measured
@@ -70,8 +69,7 @@ throughout a run, not only at the end:
   and cube-face seams;
 - no folded cells (a corner that turns clockwise in the cell's tangent plane);
 - **derived caches**: every *populated* plate cache (outline, outline KD-tree, node KD-tree,
-  world points, and on quad plates centres, areas, adjacency, loops, row/column intervals and
-  probes) equals a fresh rebuild from authoritative state. So do the world caches
+  world points, cell centres, areas, adjacency, loops, row/column intervals and probes) equals a fresh rebuild from authoritative state. So do the world caches
   (`node_position_tree_cache`, `node_kdtree_cache`, `node_healpix_index_cache`);
 - **revision tracking**: if a plate's local node set changed since the previous audit, its
   topology revision must have increased; if its frame changed, its geometry revision must
@@ -81,18 +79,15 @@ throughout a run, not only at the end:
 
 **Checkpoints** record:
 
-- area-weighted totals from each node's actual area (`SurfaceNodes.area_m2`): exact cell areas
-  on quad plates, the line adapter's Voronoi-style estimate on line plates. These cover Hc/Hm
-  volume, continental Hc, land fraction, elevation p05/p50/p95, plate counts and sea level;
+- area-weighted totals from each cell's exact area (`SurfaceNodes.area_m2`): Hc/Hm volume,
+  continental Hc, land fraction, elevation p05/p50/p95, plate counts and sea level;
 - whole-sphere coverage from a Fibonacci sample tested against each plate's own
   `contains_batch`: uncovered, multiply covered, and void (uncovered and more than 1.5
-  spacings from any node). Also the fraction of nodes inside another plate. Quad territory
-  is exact; the line outline approximates its node cloud;
+  spacings from any node). Also the fraction of nodes inside another plate;
 - neutral lattice quality (docs/plate-surface-baseline.md §1.1): stacked, anisotropic, row
   alignment, boundary, thin, and fragments;
 - quad lattice quality: refined cells, one-cell-thin cells, hole loops, aspect ratio above
   4, skew above 45°;
-- the legacy one-node-line fraction on line plates;
 - climate stats, biome fractions, and hydrology summaries (rivers, lakes, glaciers, land sinks);
 - **derived-index parity**. First, the cached world KD-tree must answer a query of the sample
   exactly like a freshly built one. Second, HEALPix nearest-node resampling is compared with
@@ -109,74 +104,53 @@ still has warm caches. That shows no derived index acts as persistent authority.
 **Timings** use phase buckets that match `step_world`'s sequence. `deform`, `topology`,
 `gap_fill` and `overlap_tracking` add up to the `deform_topology` phase #228 calls out.
 Derived-index builds are counted where the cache is filled (`Plate.get_node_kdtree`, the
-outline and its tree, quad adjacency and loops, the line row lookup, and the world
-KD-tree/HEALPix helpers). Rebuild frequency is reported as builds per step plus topology and
-geometry revision bumps per step.
+outline and its tree, quad adjacency and loops, and the world KD-tree/HEALPix helpers).
+Rebuild frequency is reported as builds per step plus topology and geometry revision bumps per
+step.
 
 ## Gates
 
-A gate result is `pass`, `warn`, `fail`, `insufficient` (too little data, such as an
-ensemble gate with fewer than 3 seeds) or `info`. `info` marks a failure on the *line* surface:
-it is a baseline finding and never gates the quad surface. The verdict is `fail` if any gate
-fails, otherwise `warn` if any gate warns, otherwise `pass`.
+A gate result is `pass`, `warn`, `fail` or `insufficient` (too little data to judge). The
+verdict is `fail` if any gate fails, otherwise `warn` if any gate warns, otherwise `pass`.
 
-The tolerances come from docs/plate-surface-baseline.md §3. `l` is the paired line run at the
-same age and seed.
+The tolerances come from docs/plate-surface-baseline.md §3.
 
 | id | gate | applies to | fail | warn |
 |---|---|---|---|---|
-| H1 | quad leaf topology valid | quad, every audit | any violation | |
-| H2 | quad neighbours valid | quad, every audit | any violation | |
-| H3 | no folded cells | quad, every audit | any | |
-| H4 | fields finite and sized; areas positive | both, every audit | any (quad) | |
-| H5 | frames are proper rotations (1e-6) | both, every audit | any (quad) | |
-| H6 | derived caches equal fresh rebuilds; exact KD-tree parity; atmosphere grid fixed | both | any (quad) | |
-| H7 | revisions track node-set/frame changes | both, every audit | any (quad) | |
-| H8 | save/load identical, derived indexes dropped | both, checkpoints | any (quad) | |
-| H9 | loaded-world continuation identical | both, final checkpoint | any (quad) | |
-| H10 | no stacked quad nodes (< 0.5 s) | quad, checkpoints | any | |
-| H11 | elevation, Hc, Hm within their caps | both, every audit | | any (quad) |
-| S1 | climate stats and hydrology finite | both, checkpoints | any (quad) | |
-| C1 | uncovered sphere | checkpoints | > l + 0.5 pp | |
+| H1 | quad leaf topology valid | every audit | any violation | |
+| H2 | quad neighbours valid | every audit | any violation | |
+| H3 | no folded cells | every audit | any | |
+| H4 | fields finite and sized; areas positive | every audit | any | |
+| H5 | frames are proper rotations (1e-6) | every audit | any | |
+| H6 | derived caches equal fresh rebuilds; exact KD-tree parity; atmosphere grid fixed | every audit | any | |
+| H7 | revisions track node-set/frame changes | every audit | any | |
+| H8 | save/load identical, derived indexes dropped | checkpoints | any | |
+| H9 | loaded-world continuation identical | final checkpoint | any | |
+| H10 | no stacked nodes (< 0.5 spacing) | checkpoints | any | |
+| H11 | elevation, Hc, Hm within their caps | every audit | | any |
+| S1 | climate stats and hydrology finite | checkpoints | any | |
 | C2 | void | checkpoints | > 0.05% | |
-| C3 | multiply covered sphere | quad, checkpoints | > 2.0% | > 1.5% |
-| C4 | nodes inside another plate | checkpoints | > l + 0.5 pp | > l |
-| K1 | Hc volume drift since 0 Myr, quad vs line | checkpoints > 0 | gap > 10 pp | gap > 5 pp |
-| K2 | continental Hc drift, quad vs line | checkpoints > 0 | gap > 10 pp | gap > 5 pp |
-| K3 | quad Σ cell area = sphere − uncovered + overlap | checkpoints | | off by > 1 pp |
-| K4 | Hm volume drift, quad vs line | checkpoints > 0 | gap > 10 pp | gap > 5 pp |
-| M1 | anisotropic fraction (ratio > 2) | quad, checkpoints | | > 1% |
-| M2 | anisotropic row alignment \|cos 2α\| | quad, when ≥ 0.1% anisotropic | | > 0.3 |
-| M3 | thin (tendril) fraction | quad, checkpoints | | > l or > 1% |
-| M4 / M5 | cells with aspect > 4 / skew > 45° | quad, checkpoints | | > 0.1% |
-| M6 | extra components + isolated nodes | quad, checkpoints | | > 0 |
-| S2 | per-step jitter (std of first differences over the second half) of air/ocean temperature, precipitation, sea level, land fraction | per seed | | > 2 × l + slack |
-| X1 | HEALPix vs KD-tree, per category | checkpoints | | same-node rate < l − 5 pp, or p95 distance > 1.25 × l |
-| R1 | deform + topology s/step | per seed | | > 1.25 × l |
-| R2 | total s/step | per seed | | > 1.25 × l |
-| P1 | land fraction, Hc, continental Hc, plates, sea level, elevation p05/p50/p95 | ensemble ≥ 3 seeds, checkpoints > 0 | quad mean outside line mean ± 2σ (seed-to-seed) | |
+| C3 | multiply covered sphere | checkpoints | > 2.0% | > 1.5% |
+| K3 | Σ cell area = sphere − uncovered + overlap | checkpoints | | off by > 1 pp |
+| M1 | anisotropic fraction (ratio > 2) | checkpoints | | > 1% |
+| M2 | anisotropic row alignment \|cos 2α\| | when ≥ 0.1% anisotropic | | > 0.3 |
+| M3 | thin (tendril) fraction | checkpoints | | > 1% |
+| M4 / M5 | cells with aspect > 4 / skew > 45° | checkpoints | | > 0.1% |
+| M6 | extra components + isolated nodes | checkpoints | | > 0 |
 
-The comparisons are statistical, never byte-for-byte. Three random streams are keyed on line
-indices (docs/plate-surface-baseline.md §4.4), so line and quad trajectories diverge from the
-first step. Coverage gates compare each quad run with its own paired line run. P1 compares
-the two ensembles.
+The gate ids keep their numbering from the line-vs-quad campaigns (#249), whose comparison
+gates (C1, C4, K1, K2, K4, S2, X1, R1, R2, P1) were retired with the line surface. The report
+still tabulates the per-step phase timings and the HEALPix-vs-KD-tree resampling metrics;
+they are no longer gated.
 
 H11 warns instead of failing. Before issue #256, the engine clamped the Hc/Hm caps only in
-specific code paths, and both surfaces breached the Hm floor or ceiling within 15 Myr at
-density 1: the line surface down to about 290 m, and quad up to 242 km against the 240 km cap.
+specific code paths, and worlds breached the Hm floor or ceiling within 15 Myr at density 1
+(quad up to 242 km against the 240 km cap).
 Every step now ends with a clamp on every plate (`lithosphere.clamp_column_caps`), so an H11
 finding means the clamp itself has regressed. The Phase 0a table lists the caps as exact.
 
-Performance only warns. #228 asks that a dominant-phase regression be explicitly accepted or
-fixed, so a `warn` on R1/R2 needs a decision in the campaign report (#249), not a silent pass.
-For the `issue147` preset, the report adds a column with the #147 profile's per-step phase
-means (`analysis/issue147-profile-20260922/frames.csv`). That run was under cProfile, so
-compare it by ratios.
-
-C3 uses an absolute quad tolerance rather than a paired-line margin. The two measurements are
-not like for like: line territory is an outline polygon around a node cloud, so same-plate
-stacking is invisible to C3, while every quad cell is authoritative territory and any double
-claim is real duplicated crust. Quad plates also carry independently rotated lattices. At a
+Every quad cell is authoritative territory, so any double claim C3 measures is real
+duplicated crust. Quad plates also carry independently rotated lattices. At a
 seam their cell edges generally cannot coincide, so claiming the last whole cell trades a
 thin overlap for the uncovered sliver that leaving it empty would preserve. The #249 long and
 stress campaigns found this overlap growing toward a stable 1.2--1.9% plateau by 400 Myr,
@@ -208,11 +182,9 @@ Neither index is authoritative plate state:
   state at `fluid_density`'s resolution.
 
 Plate caches are invalidated through `_invalidate_bounding_polygon` / `_reset_caches`. They
-follow the geometry revision (rigid rotation) and the topology revision (any cell/line edit).
+follow the geometry revision (rigid rotation) and the topology revision (any cell edit).
 World caches are dropped at the start of every `step_world` and on load
 (`persistence._drop_derived_caches`). `unit_tests/test_surface_parity.py` walks every quad
 mutation (insert, remove, refine, coarsen, merge, split, failed rift, rotation, field-only
 writes, pickling). For each one it checks that the right revision moved and that no populated
-cache is left stale. Line mutations (`set_lines`, `replace_line`, rotation) are covered by
-`test_plates.py` and `test_plate_surface_contract.py`. The run-time audit
-repeats that check against real trajectories.
+cache is left stale. The run-time audit repeats that check against real trajectories.

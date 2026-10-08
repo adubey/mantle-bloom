@@ -42,20 +42,13 @@ def account_for_phase(phase: str) -> str:
         return "extensional_thinning"
     if phase == "decompression_melting":
         return "melt_reset"
-    if phase in {"boundary_advance", "adjacent_row_claim", "corner_notch_fill", "gap_fill"}:
+    if phase in {"boundary_advance", "gap_fill"}:
         return "seeded_hm"
-    if phase in {"boundary_retreat", "contested_leading_row_retreat"}:
+    if phase == "boundary_retreat":
         return "subduction_and_suture_transfer"
     if phase == "column_cap_clamp":
         return "floor_and_cap_clamps"
-    if phase in {
-        "plate_merge",
-        "forced_plate_merge",
-        "continental_relattice",
-        "line_regularization",
-        "plate_cleanup_removal",
-        "line_growth_shrink",
-    }:
+    if phase in {"plate_merge", "forced_plate_merge", "plate_cleanup_removal"}:
         return "topology_and_regridding"
     if phase == "orogenic_relief":
         return "orogenic_relaxation"

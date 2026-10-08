@@ -12,7 +12,7 @@ Generates a world per seed, runs erosion alone a few times and, around every cal
 Areas are each plate's own `accounting_areas_m2` (exact cell areas on quad worlds).
 
     cd backend
-    .venv/bin/python ../bin/debug/measure_erosion_budget.py --seeds 3 4 --steps 5 --surface quad
+    .venv/bin/python ../bin/debug/measure_erosion_budget.py --seeds 3 4 --steps 5
 """
 
 from __future__ import annotations
@@ -49,8 +49,8 @@ def snapshot(world) -> dict[str, float]:
     }
 
 
-def run(seed: int, steps: int, years: float, surface: str, num_plates: int) -> list[dict[str, float]]:
-    world = generate_world(seed=seed, num_plates=num_plates, surface=surface)
+def run(seed: int, steps: int, years: float, num_plates: int) -> list[dict[str, float]]:
+    world = generate_world(seed=seed, num_plates=num_plates)
     rows = []
     for step in range(steps):
         before = snapshot(world)
@@ -83,12 +83,11 @@ def main() -> None:
     parser.add_argument("--seeds", type=int, nargs="+", default=[3])
     parser.add_argument("--steps", type=int, default=3)
     parser.add_argument("--years", type=float, default=5_000_000.0)
-    parser.add_argument("--surface", default="quad")
     parser.add_argument("--num-plates", type=int, default=8)
     parser.add_argument("--out", type=Path)
     args = parser.parse_args()
 
-    rows = [row for seed in args.seeds for row in run(seed, args.steps, args.years, args.surface, args.num_plates)]
+    rows = [row for seed in args.seeds for row in run(seed, args.steps, args.years, args.num_plates)]
     for row in rows:
         print(json.dumps({k: (f"{v:.4g}" if isinstance(v, float) else v) for k, v in row.items()}))
     if args.out:

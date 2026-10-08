@@ -239,7 +239,6 @@ def run_one_job(
     seed: int,
     node_density: float = NODE_DENSITY,
     checkpoint_years: tuple[int, ...] = CHECKPOINT_YEARS,
-    surface: str = "quad",
 ) -> list[dict]:
     """Runs one (parameter, multiplier-of-baseline, seed) job from a fresh `generate_world`
     out to `checkpoint_years`' last entry, returning one outcome-stats record per checkpoint.
@@ -249,8 +248,8 @@ def run_one_job(
     parameter. `node_density`/`checkpoint_years` default to this module's own constants so old
     call sites are unaffected; a run at different values records them on every row (see
     run_sweep.py's own dedup key) so results at incompatible settings never silently average
-    together in the same output file. `surface` ("quad", the production default since #250,
-    or "lines") is passed straight to `generate_world` and recorded on every row the same way."""
+    together in the same output file. Every row also records `"surface": "quad"`, which tells
+    it apart from line-backed rows written before #251."""
     _apply_rotation_rate_overrides(BASELINE_AVG_RATE_CM_YR, BASELINE_MAX_RATE_CM_YR)
 
     value = None
@@ -262,7 +261,7 @@ def run_one_job(
         elif spec.rotation_kind == "max":
             _apply_rotation_rate_overrides(BASELINE_AVG_RATE_CM_YR, value)
 
-    world = generate_world(seed=seed, node_density=node_density, surface=surface)
+    world = generate_world(seed=seed, node_density=node_density)
 
     if spec is not None and spec.world_field is not None:
         setattr(world, spec.world_field, value)
@@ -281,7 +280,7 @@ def run_one_job(
             "seed": seed,
             "checkpoint_years": checkpoint,
             "node_density": node_density,
-            "surface": surface,
+            "surface": "quad",
         }
         record.update(compute_outcome_stats(world))
         records.append(record)

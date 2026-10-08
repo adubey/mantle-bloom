@@ -207,9 +207,9 @@ SPHERE_AREA_M2 = 4.0 * np.pi * (PLANET_RADIUS_KM * 1000.0) ** 2
 
 
 def _node_overlap(world: World) -> dict[int, dict]:
-    from .plates import OVERLAP_TOLERANCE_MULT, compute_node_overlap
+    from .plates import compute_node_overlap
 
-    return compute_node_overlap(world.plates, OVERLAP_TOLERANCE_MULT * line_spacing_rad(world.node_density))
+    return compute_node_overlap(world.plates)
 
 
 def overlap_area_weights(world: World, overlap: dict[int, dict] | None = None) -> dict[int, np.ndarray]:
@@ -261,8 +261,8 @@ def _total_land_area_and_continental_volume(world: World) -> tuple[float, float,
     """(total land area m^2, total continental crustal volume m^3, total land node count)
     straight off `world.plates` -- see this module's own docstring for why these are computed
     here rather than off the climate grid `compute_stats` otherwise uses throughout.
-    Each node is weighted by its accounting area (`Plate.accounting_areas_m2`: exact cells on
-    quad plates, which are not equal-area; nominal on line plates) -- one pass per plate, no
+    Each node is weighted by its accounting area (`Plate.accounting_areas_m2`: exact cell
+    areas, since cells are not equal-area) -- one pass per plate, no
     grid resample. The node count is also `land_fraction_node`'s numerator (see `compute_stats`) -- a raw
     `elevation > sea_level_m` count, immune to the same hydrology-cache staleness as
     `land_area`/`continental_volume`, for the same reason."""

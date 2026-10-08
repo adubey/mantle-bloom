@@ -3,11 +3,26 @@ import pickle
 import numpy as np
 import pytest
 from app import persistence
+from app.elevation_lines import line_spacing_rad
 from app.world import generate_world, step_world
+
+from .legacy_lines import LegacyRowLookup, line_world_like, retired_class_names
+
+
+def _line_world(seed=3, num_plates=4):
+    """A line-backed world, as a save from before #251 holds."""
+    world = generate_world(seed=seed, num_plates=num_plates, node_density=1.0)
+    return line_world_like(world, line_spacing_rad(1.0))
+
+
+def _line_pickle(payload) -> bytes:
+    """`payload` pickled the way a build that still had the line classes pickled it."""
+    with retired_class_names():
+        return pickle.dumps(payload)
 
 
 def test_round_trip_preserves_a_freshly_generated_world():
-    world = generate_world(seed=42, num_plates=6, surface="lines")
+    world = generate_world(seed=42, num_plates=6)
     data = persistence.save_world_bytes(world)
     loaded = persistence.load_world_bytes(data)
 
@@ -19,10 +34,8 @@ def test_round_trip_preserves_a_freshly_generated_world():
         assert loaded_plate.plate_id == original_plate.plate_id
         assert loaded_plate.crust_type == original_plate.crust_type
         assert np.allclose(loaded_plate.frame, original_plate.frame)
-        assert len(loaded_plate.lines) == len(original_plate.lines)
-        for original_line, loaded_line in zip(original_plate.lines, loaded_plate.lines):
-            assert np.allclose(loaded_line.theta, original_line.theta)
-            assert np.allclose(loaded_line.elevation, original_line.elevation)
+        assert np.array_equal(loaded_plate.cell_keys, original_plate.cell_keys)
+        assert np.array_equal(loaded_plate.collect("elevation"), original_plate.collect("elevation"))
 
 
 def test_round_trip_preserves_state_only_a_step_would_populate():
@@ -100,20 +113,25 @@ def test_loading_a_world_pickled_before_gap_tracks_existed_defaults_to_empty():
     assert loaded.gap_tracks == []
 
 
-def test_loading_a_world_pickled_before_corner_notch_log_existed_defaults_to_empty():
-    world = generate_world(seed=3, num_plates=4)
-    del world.__dict__["corner_notch_log"]
-
-    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
-    assert loaded.corner_notch_log == []
-
-
 def test_loading_a_world_pickled_before_pending_magma_parcels_existed_defaults_to_empty():
     world = generate_world(seed=3, num_plates=4)
     del world.__dict__["pending_magma_parcels"]
 
     loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
     assert loaded.pending_magma_parcels == []
+
+
+def test_loading_a_save_drops_the_retired_line_engine_state():
+    # #251: saves from before the line surface was retired pickled the line engine's
+    # corner-notch log and gap-fill choice; a loaded world, and so its next save, carries no
+    # line state.
+    world = generate_world(seed=3, num_plates=4)
+    world.__dict__["corner_notch_log"] = [{"plate_id": 0, "outcome": "claimed"}]
+    world.__dict__["gap_fill_algorithm"] = "frontier"
+
+    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+    assert "corner_notch_log" not in loaded.__dict__
+    assert "gap_fill_algorithm" not in loaded.__dict__
 
 
 def test_loading_a_save_with_the_old_water_column_budget_rebuilds_it_in_m3():
@@ -130,21 +148,18 @@ def test_loading_a_save_with_the_old_water_column_budget_rebuilds_it_in_m3():
     assert loaded.ocean_water_volume_m3 == pytest.approx(budget, rel=1e-9)
 
 
-def test_loading_a_world_whose_lines_predate_elev_change_reason_still_steps():
-    # An ElevationLine pickled before the elev_change_reason OPTIONAL_FIELD existed has no
-    # _elev_change_reason backing attr (pickle restores __dict__, never calls __init__).
-    # ElevationLine.__getattr__ backfills it lazily as zeros so load + step still work.
-    from app.world import step_world
-
-    world = generate_world(seed=4, num_plates=6, surface="lines")
+def test_loading_a_line_save_whose_lines_predate_elev_change_reason_still_steps():
+    # A line pickled before the elev_change_reason field existed has no _elev_change_reason
+    # backing attr (pickle restores __dict__, never calls __init__). Conversion reads it as
+    # its registry default, so load + step still work.
+    world = _line_world(seed=4, num_plates=6)
     for plate in world.plates:
         for line in plate.lines:
             line.__dict__.pop("_elev_change_reason", None)
 
-    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+    loaded = persistence.load_world_bytes(_line_pickle(world))
     for plate in loaded.plates:
-        for line in plate.lines:
-            assert np.all(line.elev_change_reason == 0.0)
+        assert np.all(plate.collect("elev_change_reason") == 0.0)
     step_world(loaded, years=1_000_000)  # must not raise
 
 
@@ -208,33 +223,32 @@ def test_loading_an_envelope_with_an_invalid_version_raises(version):
 
 
 def test_saves_declare_their_surface_and_the_loader_checks_it():
-    lines = generate_world(seed=3, num_plates=4, surface="lines")
-    quad = generate_world(seed=3, num_plates=4, surface="quad")
-    assert pickle.loads(persistence.save_world_bytes(lines))["surface"] == "lines"
+    lines = _line_world()
+    quad = generate_world(seed=3, num_plates=4)
     assert pickle.loads(persistence.save_world_bytes(quad))["surface"] == "quad"
 
-    lying = pickle.dumps({"format": persistence.SAVE_FORMAT, "version": 3, "surface": "quad", "world": lines})
+    lying = _line_pickle({"format": persistence.SAVE_FORMAT, "version": 3, "surface": "quad", "world": lines})
     with pytest.raises(persistence.CorruptSaveError, match="declares a 'quad' world"):
         persistence.load_world_bytes(lying)
-    unknown = pickle.dumps({"format": persistence.SAVE_FORMAT, "version": 3, "surface": "hexes", "world": lines})
+    unknown = _line_pickle({"format": persistence.SAVE_FORMAT, "version": 3, "surface": "hexes", "world": lines})
     with pytest.raises(persistence.CorruptSaveError, match="unknown surface"):
         persistence.load_world_bytes(unknown)
 
 
 def test_a_world_mixing_line_and_quad_plates_is_refused():
-    lines = generate_world(seed=3, num_plates=4, surface="lines")
-    quad = generate_world(seed=3, num_plates=4, surface="quad")
+    lines = _line_world()
+    quad = generate_world(seed=3, num_plates=4)
     lines.plates.append(quad.plates[0])
     with pytest.raises(persistence.CorruptSaveError, match="mixes"):
         persistence.save_world_bytes(lines)
     with pytest.raises(persistence.CorruptSaveError, match="mixes"):
-        persistence.load_world_bytes(pickle.dumps({"format": persistence.SAVE_FORMAT, "version": 2, "world": lines}))
+        persistence.load_world_bytes(_line_pickle({"format": persistence.SAVE_FORMAT, "version": 2, "world": lines}))
 
 
 def test_a_quad_plate_from_a_newer_build_makes_the_save_unsupported(monkeypatch):
     from app import sparse_quad_patch
 
-    world = generate_world(seed=3, num_plates=4, surface="quad")
+    world = generate_world(seed=3, num_plates=4)
     monkeypatch.setattr(sparse_quad_patch, "QUAD_SURFACE_FORMAT_VERSION", sparse_quad_patch.QUAD_SURFACE_FORMAT_VERSION + 1)
     data = persistence.save_world_bytes(world)
     monkeypatch.undo()
@@ -242,19 +256,35 @@ def test_a_quad_plate_from_a_newer_build_makes_the_save_unsupported(monkeypatch)
         persistence.load_world_bytes(data)
 
 
-def test_a_line_save_loads_as_lines_unless_conversion_is_asked_for():
-    world = generate_world(seed=3, num_plates=4, surface="lines")
-    data = pickle.dumps(world)  # a version 1 save, like every save written before #228
+def test_a_line_save_converts_to_quads_on_load():
+    world = _line_world()
+    data = _line_pickle(world)  # a version 1 save, like every save written before #228
 
-    legacy = persistence.load_world_bytes(data)
-    assert persistence.world_surface(legacy) == "lines"
-    assert legacy.surface_conversion is None
-
-    converted = persistence.load_world_bytes(data, convert_lines=True)
+    converted = persistence.load_world_bytes(data)
     assert persistence.world_surface(converted) == "quad"
     assert converted.surface_conversion["from"] == "lines"
     assert converted.ocean_water_volume_m3 is not None
-    assert converted.sea_level_m == legacy.sea_level_m
-    # Asking to convert a world that is already quad is a no-op.
-    again = persistence.load_world_bytes(persistence.save_world_bytes(converted), convert_lines=True)
+    assert converted.sea_level_m == world.sea_level_m
+    # The conversion summary rides along through later saves; a quad save never converts.
+    again = persistence.load_world_bytes(persistence.save_world_bytes(converted))
     assert again.surface_conversion == converted.surface_conversion
+    assert persistence.load_world_bytes(persistence.save_world_bytes(generate_world(seed=3, num_plates=4))).surface_conversion is None
+
+
+def test_a_line_save_holding_a_cached_row_lookup_converts_on_load():
+    # A line plate whose containment fast path had run pickled its `_RowLookup` cache, a
+    # class #251 deleted; 20 of the 51 real saves #248 inventoried hold one.
+    world = _line_world()
+    for plate in world.plates:
+        plate._row_lookup_cache = LegacyRowLookup([line.phi for line in plate.lines])
+
+    converted = persistence.load_world_bytes(_line_pickle(world))
+    assert persistence.world_surface(converted) == "quad"
+    assert len(converted.plates) == len(world.plates)
+
+
+def test_a_line_save_the_converter_refuses_is_a_corrupt_save():
+    world = _line_world()
+    world.plates[0].lines[0].__dict__["_future_field"] = np.zeros(len(world.plates[0].lines[0]))
+    with pytest.raises(persistence.CorruptSaveError, match="_future_field"):
+        persistence.load_world_bytes(_line_pickle(world))

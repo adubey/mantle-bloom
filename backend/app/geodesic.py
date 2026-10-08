@@ -34,7 +34,7 @@ from .world import World
 PLANET_RADIUS_KM = plates.PLANET_RADIUS_KM
 
 # UI-facing choices for `frequency` (the geodesic subdivision level) -- a discrete set, not
-# a free-form input, same "pick from a few sane presets" reasoning plates.NODE_DENSITY_CHOICES
+# a free-form input, same "pick from a few sane presets" reasoning elevation_lines.NODE_DENSITY_CHOICES
 # and climate.CLIMATE_DENSITY_CHOICES already use. Tile count is exactly 10*frequency**2 + 2
 # (see tile_count below) -- 642 / 2562 / 10242 tiles respectively.
 FREQUENCY_CHOICES = (8, 16, 32)

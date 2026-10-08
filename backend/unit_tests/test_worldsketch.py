@@ -3,7 +3,7 @@ import io
 import numpy as np
 import pytest
 from app import worldsketch
-from app.lithosphere_plate import build_plate_tiling, generate_plates as _generate_plates
+from app.lithosphere_plate import build_plate_tiling, generate_plates
 from app.worldsketch import (
     SKETCH_GRID_H,
     SKETCH_GRID_W,
@@ -12,11 +12,6 @@ from app.worldsketch import (
     sketch_plate_sites,
 )
 from PIL import Image, ImageDraw
-
-
-def generate_plates(*args, **kwargs):
-    kwargs.setdefault("surface", "lines")
-    return _generate_plates(*args, **kwargs)
 
 
 def _png_bytes(img: Image.Image) -> bytes:
@@ -44,8 +39,8 @@ def _island_canvas(gap_px: int = 0) -> Image.Image:
 
 
 def _measured_land_fraction(plates_list) -> float:
-    total = sum(p.node_count() for p in plates_list)
-    land = sum(int(np.sum(line.elevation > 0)) for p in plates_list for line in p.lines)
+    total = sum(float(p.node_areas_m2().sum()) for p in plates_list)
+    land = sum(float(p.node_areas_m2()[p.collect("elevation") > 0].sum()) for p in plates_list)
     return land / total if total else 0.0
 
 
@@ -192,4 +187,4 @@ def test_generate_plates_sketch_none_is_unaffected():
     for pa, pb in zip(a, b):
         assert pa.crust_type == pb.crust_type
         assert np.allclose(pa.frame, pb.frame)
-        assert len(pa.lines) == len(pb.lines)
+        assert np.array_equal(pa.cell_keys, pb.cell_keys)

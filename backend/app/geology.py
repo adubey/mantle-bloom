@@ -1,5 +1,5 @@
 """Resource deposits (coal, oil & gas, mineral-rich ore) and soil formation -- all persistent
-per-node fields (see plates.ElevationLine) that accumulate over sustained geologic conditions,
+per-node surface fields (see surface_fields.py) that accumulate over sustained geologic conditions,
 the same "rides along for free with plate rotation" pattern channel_depth/silt_depth/
 glacier_depth already use.
 
@@ -235,7 +235,7 @@ def seed_initial_soil(plate_list: list[Plate], seed: int, initial_soil_maturity:
     """Seeds soil_depth/soil_organic_content/soil_mineral_content on every land node (elevation
     > 0), scaled by `initial_soil_maturity` (the UI's "initial soil maturity" slider, 0 to 1) --
     called once from world.generate_world, right after plates.generate_plates. At 0 (the
-    default), every land node starts at exactly zero soil -- ElevationLine's own zero defaults
+    default), every land node starts at exactly zero soil -- the fields' own zero defaults
     already give this, so this function is a no-op rather than special-casing it. Deliberately
     *not* climate-informed at seed time (no biome differentiation yet at generation, unlike the
     organic-content relaxation apply_resource_formation drives every step thereafter) -- just a

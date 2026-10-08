@@ -4,40 +4,22 @@ from scipy.spatial import cKDTree
 
 from app import geometry, mantle, merge_split
 from app import plates as plates_mod
-from app.lithosphere import reference_thickness
-from app.lithosphere_plate import LithospherePlate
-from app.plates import ElevationLine, PlateWithLines, line_spacing_rad, node_components
-from app.world import World, generate_world, step_world
+from app.elevation_lines import line_spacing_rad
+from app.plates import node_components
+from app.sparse_quad_patch import pack_cell_keys
+from app.world import World
+
+from .quad_fixtures import lobed_plate, quad_plate, row_plate
 
 
-def _thick_line(phi, theta, elevation, crust_type="continental"):
-    """An `ElevationLine` carrying reference Hc/Hm for `crust_type` -- what a
-    `LithospherePlate` needs on every line, since its merge/split resample reads the
-    thickness columns. `elevation` may be a scalar (broadcast) or a per-node array."""
-    theta = np.asarray(theta, dtype=float)
-    elev = np.asarray(elevation, dtype=float)
-    if elev.ndim == 0:
-        elev = np.full(len(theta), float(elev))
-    hc0, hm0 = reference_thickness(crust_type)
-    return ElevationLine(
-        phi=phi,
-        theta=theta,
-        elevation=elev,
-        crustal_thickness_m=np.full(len(theta), hc0),
-        mantle_lithosphere_thickness_m=np.full(len(theta), hm0),
-    )
-
-
-def _test_plate(plate_id, seed_xyz, crust_type, theta, elevation):
-    """A plate with the given line at phi=0 (what each test actually exercises) plus a
-    second, far-away placeholder line at a different latitude -- purely so the plate has
-    more than one line. Otherwise apply_topology_changes's "no land left" pruning (a plate
-    reduced to a single line, see merge_split.remove_defunct_plates) would remove these
-    synthetic single-line test plates before the test's own logic ever ran."""
-    frame = geometry.plate_frame_from_seed(seed_xyz)
-    line = _thick_line(0.0, theta, elevation, crust_type)
-    filler = _thick_line(1.0, np.array([0.0, 0.1]), np.zeros(2), crust_type)
-    return LithospherePlate(plate_id=plate_id, frame=frame, crust_type=crust_type, lines=[line, filler])
+def _test_plate(plate_id, seed_xyz, crust_type, theta, elevation, rows=range(1)):
+    """A row of cells at the plate's own (phi=0, `theta`) positions (see
+    `quad_fixtures.row_plate`), at reference Hc/Hm for `crust_type`. `elevation` may be a
+    scalar (broadcast) or a per-node array."""
+    elevation = np.asarray(elevation, dtype=float)
+    count = len(theta) * len(rows)
+    elevation = np.full(count, float(elevation)) if elevation.ndim == 0 else np.tile(elevation, len(rows))
+    return row_plate(plate_id, crust_type, theta, frame=geometry.plate_frame_from_seed(seed_xyz), rows=rows, elevation=elevation)
 
 
 def _converging_omega_pair(rate_cm_per_yr=5.0):
@@ -52,28 +34,24 @@ def _converging_pair_world(seed=123):
     # See test_find_continental_collision_pairs_detects_close_and_converging_plates for why
     # these offsets are fractions of MERGE_CONTACT_DISTANCE_RAD rather than hardcoded angles.
     d = merge_split.MERGE_CONTACT_DISTANCE_RAD
-    keep = _test_plate(0, [1.0, 0.0, 0.0], "continental", np.linspace(-d, 0.0, 6), np.zeros(6))
+    # Two rows each, so the contact band holds more than MERGE_MIN_CONTACT_NODES nodes.
+    keep = _test_plate(0, [1.0, 0.0, 0.0], "continental", np.linspace(-d, 0.0, 6), np.zeros(6), rows=range(2))
     seed_absorb = geometry.rotate_vectors(
         np.array([1.0, 0.0, 0.0])[None, :], axis=np.array([0.0, 0.0, 1.0]), angle=d * 0.3
     )[0]
-    absorb = _test_plate(1, seed_absorb, "continental", np.linspace(-d * 0.2, d * 0.2, 6), np.full(6, 50.0))
+    absorb = _test_plate(1, seed_absorb, "continental", np.linspace(-d * 0.2, d * 0.2, 6), np.full(6, 50.0), rows=range(2))
     keep_omega, absorb_omega = _converging_omega_pair()
     keep.set_omega(keep_omega)
     absorb.set_omega(absorb_omega)
     return World(seed=seed, plates=[keep, absorb], next_plate_id=2)
 
 
-def test_remove_defunct_plates_drops_empty_and_single_line_plates():
-    survives = _test_plate(0, [1.0, 0.0, 0.0], "oceanic", [0.0, 0.1], [1.0, 2.0])
-    empty = PlateWithLines(plate_id=1, frame=np.eye(3), crust_type="oceanic", lines=[])
-    # A single line, however many nodes it carries, counts as "no land left" too -- not just
-    # zero lines (see the new condition merge_split.remove_defunct_plates checks for).
-    sliver = PlateWithLines(
-        plate_id=2,
-        frame=np.eye(3),
-        crust_type="oceanic",
-        lines=[ElevationLine(phi=0.0, theta=np.array([0.0, 0.1, 0.2]), elevation=np.array([1.0, 2.0, 3.0]))],
-    )
+def test_remove_defunct_plates_drops_empty_and_negligible_plates():
+    survives = _test_plate(0, [1.0, 0.0, 0.0], "oceanic", [0.0, 0.1, 0.2, 0.3], [1.0, 2.0, 3.0, 4.0])
+    empty = quad_plate(1, "oceanic", keys=np.zeros(0, dtype=np.int64))
+    # Fewer cells than can form a real 2D patch counts as "no land left" too, not just zero
+    # cells (see Plate.has_negligible_territory).
+    sliver = _test_plate(2, [1.0, 0.0, 0.0], "oceanic", [0.0, 0.1, 0.2], [1.0, 2.0, 3.0])
     world = World(seed=0, plates=[survives, empty, sliver])
 
     merge_split.remove_defunct_plates(world)
@@ -91,11 +69,12 @@ def test_find_continental_collision_pairs_detects_close_and_converging_plates():
     # rate -- inconsistent from point to point). Most, but not all, of keep's points end up
     # within d of their nearest absorb point -- comfortably above MERGE_MIN_CONTACT_NODES.
     d = merge_split.MERGE_CONTACT_DISTANCE_RAD
-    keep = _test_plate(0, [1.0, 0.0, 0.0], "continental", np.linspace(-d, 0.0, 6), np.zeros(6))
+    # Two rows each, so the contact band holds more than MERGE_MIN_CONTACT_NODES nodes.
+    keep = _test_plate(0, [1.0, 0.0, 0.0], "continental", np.linspace(-d, 0.0, 6), np.zeros(6), rows=range(2))
     seed_absorb = geometry.rotate_vectors(
         np.array([1.0, 0.0, 0.0])[None, :], axis=np.array([0.0, 0.0, 1.0]), angle=d * 0.3
     )[0]
-    absorb = _test_plate(1, seed_absorb, "continental", np.linspace(-d * 0.2, d * 0.2, 6), np.full(6, 50.0))
+    absorb = _test_plate(1, seed_absorb, "continental", np.linspace(-d * 0.2, d * 0.2, 6), np.full(6, 50.0), rows=range(2))
     keep_omega, absorb_omega = _converging_omega_pair()
     keep.set_omega(keep_omega)
     absorb.set_omega(absorb_omega)
@@ -284,30 +263,31 @@ def test_merge_plates_books_stacked_material_it_could_not_place(monkeypatch):
 
 
 def test_merge_plates_does_not_claim_another_plates_territory():
-    """Old bug: merge_plates' is_owned only checked distance to the merging pair's own old
-    points, so if either parent carried a stray far-flung node (as a plate that's already
-    been through an earlier merge can, see merge_plates' own docstring), the resample would
-    claim lattice cells near that stray point even where a completely unrelated,
-    still-living plate already owns the space -- confirmed directly as the cause of large
-    cross-plate node overlap in a real, long-run save file."""
+    """Old bug: a merge only checked distance to the merging pair's own old points, so if
+    either parent carried a stray far-flung node (as a plate that's already been through an
+    earlier merge can), it would claim ground near that stray point even where a completely
+    unrelated, still-living plate already owns the space -- confirmed directly as the cause
+    of large cross-plate node overlap in a real, long-run save file."""
     theta = np.linspace(-0.01, 0.01, 5)
     keep = _test_plate(0, [1.0, 0.0, 0.0], "continental", theta, np.zeros(5))
     tiny_angle = merge_split.MERGE_CONTACT_DISTANCE_RAD * 0.3
     seed_absorb = geometry.rotate_vectors(
         np.array([1.0, 0.0, 0.0])[None, :], axis=np.array([0.0, 0.0, 1.0]), angle=tiny_angle
     )[0]
-    absorb = _test_plate(1, seed_absorb, "continental", theta, np.full(5, 50.0))
 
     # A bystander plate on the opposite side of the sphere, with no relation to keep/absorb's
-    # actual collision. Give `keep` one stray node planted right at the bystander's own seed
-    # -- standing in for a scattered leftover point a plate that's already been through a
-    # prior merge can carry.
+    # actual collision. Give `absorb` one stray cell right at the bystander's own seed -- the
+    # centre of cube face 2 in absorb's frame -- standing in for a scattered leftover point a
+    # plate that's already been through a prior merge can carry.
     bystander_seed = np.array([-1.0, 0.0, 0.0])
     bystander = _test_plate(2, bystander_seed, "continental", theta, np.zeros(5))
-    stray_local = geometry.to_local(keep.frame, bystander_seed)
-    stray_phi, stray_theta = geometry.xyz_to_latlon(stray_local)
-    stray_line = ElevationLine(phi=float(stray_phi), theta=np.array([float(stray_theta)]), elevation=np.array([0.0]))
-    keep.set_lines([*keep.lines, stray_line])
+    proto = _test_plate(1, seed_absorb, "continental", theta, np.full(5, 50.0))
+    n = proto.cells_per_edge
+    stray = pack_cell_keys(np.array([2]), np.array([n // 2]), np.array([n // 2]))
+    absorb = quad_plate(
+        1, "continental", frame=proto.frame, n=n, keys=np.concatenate([proto.cell_keys, stray]),
+        elevation=np.full(6, 50.0),
+    )
 
     world = World(seed=0, plates=[keep, absorb, bystander], next_plate_id=3)
     bystander_points_before, _ = bystander.all_points_and_elevation()
@@ -327,9 +307,8 @@ def test_merge_plates_does_not_claim_another_plates_territory():
     # the stray node planted right at bystander's seed would have made it do so under the old
     # (merging-pair-only) exclusivity check.
     spacing_rad = line_spacing_rad(world.node_density)
-    coverage_radius_rad = merge_split.MERGE_COVERAGE_RADIUS_RAD * (spacing_rad / merge_split.TARGET_LINE_SPACING_RAD)
     dist, _ = cKDTree(bystander_points_after).query(merged_points)
-    assert dist.min() > coverage_radius_rad
+    assert dist.min() > 1.2 * spacing_rad
 
 
 def test_merge_probability_decreases_with_combined_size_and_floors():
@@ -395,24 +374,11 @@ def test_refine_split_cut_recovers_a_clean_spatial_split_from_noisy_labels():
 
 
 def _engineered_split_world():
-    """The `test_maybe_split_plate_splits_under_engineered_flow_divergence` setup as a
-    `LithospherePlate` (Hc/Hm columns) so the rift-failure test can reuse the exact same
-    split-eligible plate + engineered flow."""
-    from app.lithosphere_plate import LithospherePlate
-    from app.lithosphere import REFERENCE_HC_CONTINENTAL_M, REFERENCE_HM_CONTINENTAL_M
-
+    """The `test_maybe_split_plate_splits_under_engineered_flow_divergence` setup, shared with
+    the rift-failure tests: the same split-eligible plate + engineered flow."""
     seed_xyz = np.array([1.0, 0.0, 0.0])
     frame = geometry.plate_frame_from_seed(seed_xyz)
-    n = 4 * merge_split.SPLIT_MIN_NODES
-    theta = np.linspace(-0.5, 0.5, n)
-    line = ElevationLine(
-        phi=0.0, theta=theta, elevation=np.zeros(n),
-        crustal_thickness_m=np.full(n, REFERENCE_HC_CONTINENTAL_M),
-        mantle_lithosphere_thickness_m=np.full(n, REFERENCE_HM_CONTINENTAL_M),
-    )
-    plate = LithospherePlate(
-        plate_id=0, frame=frame, crust_type="continental", lines=[line], age_steps=merge_split.SPLIT_MIN_AGE_STEPS
-    )
+    plate = _split_eligible_plate(0, seed_xyz)
     strong_rate = mantle.MANTLE_FLOW_REFERENCE_RATE * 20
     # Offset in *phi* (not just mirrored in theta) and same-signed, not opposite-signed: a
     # west/east-mirrored, opposite-strength pair (the original shape here) makes the whole
@@ -494,50 +460,11 @@ def test_a_failed_rift_thins_continental_material_with_its_column(monkeypatch):
     assert abs(continental_ledger.balance_error_m3(world)) <= 1e-9 * continental_ledger.surface_volume_m3(world)
 
 
-def test_apply_failed_rift_thins_a_band_into_an_aulacogen_not_the_whole_plate():
-    """`LithospherePlate.apply_failed_rift` thins Hc/Hm within a band of the cut great circle
-    (a sag basin) and subsides it, leaving the rest of the plate and the far side untouched --
-    a fraction of the crust a successful rift's sustained divergent thinning would remove."""
-    from app.lithosphere_plate import LithospherePlate
-    from app.lithosphere import REFERENCE_HC_CONTINENTAL_M, REFERENCE_HM_CONTINENTAL_M
-    from app.elevation_lines import line_spacing_rad
-
-    n = 200
-    rows = np.linspace(-0.3, 0.3, 10)
-    lines = [
-        ElevationLine(
-            phi=p, theta=np.linspace(-0.6, 0.6, n), elevation=np.zeros(n),
-            crustal_thickness_m=np.full(n, REFERENCE_HC_CONTINENTAL_M),
-            mantle_lithosphere_thickness_m=np.full(n, REFERENCE_HM_CONTINENTAL_M),
-        )
-        for p in rows
-    ]
-    plate = LithospherePlate(plate_id=0, frame=np.eye(3), crust_type="continental", lines=lines)
-    # A cut great circle through theta ~= 0 (its normal is the local +theta tangent at the
-    # plate's own centre, ~world +y for an identity frame at phi=theta=0).
-    cut_normal = np.array([0.0, 1.0, 0.0])
-
-    z_before = np.concatenate([ln.elevation for ln in plate.lines])
-    plate.apply_failed_rift(cut_normal, line_spacing_rad(1.0))
-
-    hc = plate.collect("crustal_thickness_m")
-    z_after = np.concatenate([ln.elevation for ln in plate.lines])
-    thinned = hc < REFERENCE_HC_CONTINENTAL_M - 1.0
-    assert thinned.any() and not thinned.all()  # a band, not the whole plate
-    assert hc.min() > 0.8 * REFERENCE_HC_CONTINENTAL_M  # a sag basin (~10%), not oceanised
-    assert z_after.min() < z_before.min() - 10.0  # the basin subsided
-    # The plate is still one connected piece -- no nodes removed.
-    assert plate.node_count() == len(rows) * n
-
-
 def test_maybe_split_plate_splits_under_engineered_flow_divergence(monkeypatch):
     monkeypatch.setattr(merge_split, "RIFT_SUCCESS_PROBABILITY", 1.0)  # this test pins the *cut*, not the outcome roll
     seed_xyz = np.array([1.0, 0.0, 0.0])
     frame = geometry.plate_frame_from_seed(seed_xyz)
-    # Comfortably more than 2 * SPLIT_MIN_NODES, so each half still clears the threshold.
-    theta = np.linspace(-0.5, 0.5, 4 * merge_split.SPLIT_MIN_NODES)
-    line = _thick_line(0.0, theta, 0.0, "continental")
-    plate = LithospherePlate(plate_id=0, frame=frame, crust_type="continental", lines=[line], age_steps=merge_split.SPLIT_MIN_AGE_STEPS)
+    plate = _split_eligible_plate(0, seed_xyz)
 
     # Two strong convection centers, offset in *phi* (not mirrored in theta) and same-signed
     # (not opposite): a west/east-mirrored, opposite-strength pair makes the whole velocity
@@ -573,9 +500,18 @@ def test_maybe_split_plate_splits_under_engineered_flow_divergence(monkeypatch):
     assert plate_b.plate_id == 1  # drawn from world.next_plate_id
     assert world.next_plate_id == 2
 
-    total_before = sum(len(l.theta) for l in plate.lines)
+    total_before = plate.node_count()
     total_after = plate_a.node_count() + plate_b.node_count()
     assert total_after == total_before
+
+
+def _split_eligible_plate(plate_id: int, seed_xyz, rows=range(1)):
+    """A continental row of `4 * SPLIT_MIN_NODES` cells per row -- comfortably more than
+    2 * SPLIT_MIN_NODES, so each half of a split still clears the threshold -- past its split
+    cooldown."""
+    plate = _test_plate(plate_id, seed_xyz, "continental", np.linspace(-0.5, 0.5, 4 * merge_split.SPLIT_MIN_NODES), 0.0, rows=rows)
+    plate.set_age_steps(merge_split.SPLIT_MIN_AGE_STEPS)
+    return plate
 
 
 def _weak_flow_split_world(mult: float):
@@ -589,9 +525,7 @@ def _weak_flow_split_world(mult: float):
     only thing that can still push it over the gate."""
     seed_xyz = np.array([1.0, 0.0, 0.0])
     frame = geometry.plate_frame_from_seed(seed_xyz)
-    theta = np.linspace(-0.5, 0.5, 4 * merge_split.SPLIT_MIN_NODES)
-    line = _thick_line(0.0, theta, 0.0, "continental")
-    plate = LithospherePlate(plate_id=0, frame=frame, crust_type="continental", lines=[line], age_steps=merge_split.SPLIT_MIN_AGE_STEPS)
+    plate = _split_eligible_plate(0, seed_xyz)
 
     west_pt = geometry.to_world(frame, geometry.local_xyz(np.array([0.0]), np.array([-0.4]))[0])
     east_pt = geometry.to_world(frame, geometry.local_xyz(np.array([0.0]), np.array([0.4]))[0])
@@ -645,7 +579,7 @@ def test_maybe_split_plate_with_failed_outcome_halves_accumulated_stress(monkeyp
 
 def test_accumulate_plate_stress_grows_with_plate_radius():
     small = _test_plate(0, [1.0, 0.0, 0.0], "continental", np.linspace(-0.05, 0.05, 6), np.zeros(6))
-    big = _test_plate(1, [-1.0, 0.0, 0.0], "continental", np.linspace(-1.0, 1.0, 200), np.zeros(200))
+    big = _test_plate(1, [-1.0, 0.0, 0.0], "continental", np.linspace(-0.7, 0.7, 200), np.zeros(200))
     world = World(seed=0, plates=[small, big], mantle_centers=[], next_plate_id=2, node_density=1.0)
 
     merge_split.accumulate_plate_stress(world, years=1_000_000.0, overlap={})
@@ -671,7 +605,7 @@ def test_accumulate_plate_stress_from_overlap_favours_the_larger_plate_in_the_pa
     *larger* one (relative_largeness > 0.5) should accumulate more of the overlap-driven
     top-up than the smaller one it's overriding, not an equal split."""
     small = _test_plate(0, [1.0, 0.0, 0.0], "continental", np.linspace(-0.05, 0.05, 6), np.zeros(6))
-    big = _test_plate(1, [-1.0, 0.0, 0.0], "continental", np.linspace(-1.0, 1.0, 200), np.zeros(200))
+    big = _test_plate(1, [-1.0, 0.0, 0.0], "continental", np.linspace(-0.7, 0.7, 200), np.zeros(200))
     world = World(seed=0, plates=[small, big], mantle_centers=[], next_plate_id=2, node_density=1.0)
 
     overlap = {
@@ -689,7 +623,7 @@ def test_accumulate_plate_stress_from_overlap_favours_the_larger_plate_in_the_pa
         return p.internal_stress
 
     small_overlap_component = small.internal_stress - _background_only(_test_plate(0, [1.0, 0.0, 0.0], "continental", np.linspace(-0.05, 0.05, 6), np.zeros(6)))
-    big_overlap_component = big.internal_stress - _background_only(_test_plate(1, [-1.0, 0.0, 0.0], "continental", np.linspace(-1.0, 1.0, 200), np.zeros(200)))
+    big_overlap_component = big.internal_stress - _background_only(_test_plate(1, [-1.0, 0.0, 0.0], "continental", np.linspace(-0.7, 0.7, 200), np.zeros(200)))
     assert big_overlap_component > small_overlap_component
 
 
@@ -704,14 +638,8 @@ def test_apply_topology_changes_splits_at_most_one_plate_per_call(monkeypatch):
     for i, base in enumerate(([1.0, 0.0, 0.0], [0.0, 1.0, 0.0])):
         seed_xyz = np.array(base, dtype=float)
         frame = geometry.plate_frame_from_seed(seed_xyz)
-        theta = np.linspace(-0.5, 0.5, 4 * merge_split.SPLIT_MIN_NODES)
-        line = _thick_line(0.0, theta, 0.0, "continental")
-        # A second real row so remove_defunct_plates doesn't prune the plate as "one line
-        # left" before the split loop is even reached (see _test_plate's own note).
-        filler = _thick_line(0.05, theta.copy(), 0.0, "continental")
-        plate = LithospherePlate(
-            plate_id=i, frame=frame, crust_type="continental", lines=[line, filler], age_steps=merge_split.SPLIT_MIN_AGE_STEPS
-        )
+        # A second row 0.05 rad north (140 cells at this lattice), as the line fixture had.
+        plate = _split_eligible_plate(i, seed_xyz, rows=[0, 140])
         west = geometry.to_world(frame, geometry.local_xyz(np.array([0.0]), np.array([-0.4]))[0])
         east = geometry.to_world(frame, geometry.local_xyz(np.array([0.0]), np.array([0.4]))[0])
         all_centers += [
@@ -720,9 +648,8 @@ def test_apply_topology_changes_splits_at_most_one_plate_per_call(monkeypatch):
         ]
         plates_list.append(plate)
 
-    # steps_taken=1 so the DEFRAG_INTERVAL_STEPS-gated defragment pass (which would also
-    # slice these synthetic two-row plates) doesn't run this call -- the split loop is what's
-    # under test.
+    # steps_taken=1 so the DEFRAG_INTERVAL_STEPS-gated defragment pass doesn't run this call --
+    # the split loop is what's under test.
     world = World(
         seed=0, plates=plates_list, mantle_centers=all_centers, next_plate_id=len(plates_list),
         node_density=1.0, steps_taken=1,
@@ -746,22 +673,13 @@ def test_apply_topology_changes_splits_at_most_one_plate_per_call(monkeypatch):
 
 _FRAG_SPACING_RAD = line_spacing_rad(1.0)
 _FRAG_CONNECT_RAD = merge_split.DEFRAG_CONNECT_RADIUS_MULT * _FRAG_SPACING_RAD
+# A frame whose cube face 0 is centred well away from an identity-frame plate's.
+_ELSEWHERE = geometry.plate_frame_from_seed(np.array([0.0, 1.0, 0.0]))
 
 
 def _lobed_plate(lobes, plate_id, rows=12, per_row=8, **plate_kwargs):
-    """A `PlateWithLines` (identity frame) whose nodes form one connected blob per entry in
-    `lobes` -- each a theta centre (rad) or `(centre, nodes_per_row)` tuple, spaced far
-    enough apart to read as separate components at `_FRAG_CONNECT_RAD`. See test_plates.py's
-    identically-named helper."""
-    lines = []
-    for r in range(rows):
-        chunks = []
-        for lobe in lobes:
-            centre, count = lobe if isinstance(lobe, tuple) else (lobe, per_row)
-            chunks.append(centre + np.arange(count) * _FRAG_SPACING_RAD)
-        theta = np.concatenate(chunks)
-        lines.append(ElevationLine(phi=r * _FRAG_SPACING_RAD, theta=theta, elevation=np.zeros(len(theta))))
-    return PlateWithLines(plate_id=plate_id, frame=np.eye(3), crust_type="oceanic", lines=lines, **plate_kwargs)
+    """See `quad_fixtures.lobed_plate`."""
+    return lobed_plate(lobes, plate_id=plate_id, rows=rows, per_row=per_row, **plate_kwargs)
 
 
 def _single_component(plate):
@@ -770,8 +688,8 @@ def _single_component(plate):
 
 
 def test_defragment_plates_splits_a_severed_plate_and_consumes_a_fresh_id():
-    severed = _lobed_plate([(0.0, 10), (0.6, 6)], plate_id=0)
-    intact = _lobed_plate([2.0], plate_id=1)
+    severed = _lobed_plate([(0, 10), (30, 6)], plate_id=0)
+    intact = _lobed_plate([0], plate_id=1, frame=_ELSEWHERE)
     world = World(seed=0, plates=[severed, intact], next_plate_id=2, node_density=1.0)
 
     events = merge_split.defragment_plates(world)
@@ -783,7 +701,7 @@ def test_defragment_plates_splits_a_severed_plate_and_consumes_a_fresh_id():
 
 
 def test_defragment_plates_sheds_stranded_nodes_and_logs_it():
-    plate = _lobed_plate([(0.0, 10), (0.6, 1)], plate_id=0)  # 12 stranded nodes, below the floor
+    plate = _lobed_plate([(0, 10), (30, 1)], plate_id=0)  # 12 stranded nodes, below the floor
     before = plate.node_count()
     world = World(seed=0, plates=[plate], next_plate_id=1, node_density=1.0)
 
@@ -800,13 +718,8 @@ def test_dropped_fragments_and_defunct_plates_book_their_continental_material():
     # sink, not an unbooked loss.
     from app import continental_ledger
 
-    plate = _lobed_plate([(0.0, 10), (0.6, 1)], plate_id=0)
-    sliver = PlateWithLines(
-        plate_id=1,
-        frame=np.eye(3),
-        crust_type="continental",
-        lines=[ElevationLine(phi=0.0, theta=np.array([2.0, 2.1]), elevation=np.zeros(2))],
-    )
+    plate = _lobed_plate([(0, 10), (30, 1)], plate_id=0)
+    sliver = quad_plate(1, "continental", columns=range(2), frame=_ELSEWHERE, elevation=0.0)
     world = World(seed=0, plates=[plate, sliver], next_plate_id=2, node_density=1.0)
     for p in world.plates:
         p.set_fields_on_plate(continental_material_m=np.full(p.node_count(), 1_000.0))
@@ -825,40 +738,10 @@ def test_dropped_fragments_and_defunct_plates_book_their_continental_material():
     assert abs(continental_ledger.balance_error_m3(world)) < 1e-9 * world.continental_material_ledger["initial_continental_m3"]
 
 
-def test_a_line_surface_continental_fragment_is_dropped_and_booked_not_accreted():
-    # Issue #305 review: the line merge resample carries only Hc/Hm, so accreting a line
-    # fragment through it would erase its continental material unbooked. Line fragments are
-    # still dropped and booked, even when one touches a plate that could absorb it.
-    from app import continental_ledger
-
-    def rows(theta, crust_type):
-        return [_thick_line(r * _FRAG_SPACING_RAD, theta, 0.0, crust_type) for r in range(12)]
-
-    body = np.arange(10) * _FRAG_SPACING_RAD
-    islet = np.array([0.6])  # one node per row, well clear of the body: 12 stranded nodes
-    parent = LithospherePlate(
-        plate_id=0, frame=np.eye(3), crust_type="continental", lines=rows(np.concatenate([body, islet]), "continental")
-    )
-    # Its first column one spacing from the islet's -- in contact.
-    neighbour_theta = 0.6 + (1 + np.arange(8)) * _FRAG_SPACING_RAD
-    neighbour = LithospherePlate(plate_id=1, frame=np.eye(3), crust_type="oceanic", lines=rows(neighbour_theta, "oceanic"))
-    world = World(seed=0, plates=[parent, neighbour], next_plate_id=2, node_density=1.0)
-    continental_ledger.ensure_initialized(world)
-    start = world.continental_material_ledger["initial_continental_m3"]
-    neighbour_nodes = neighbour.node_count()
-
-    events = merge_split.defragment_plates(world)
-
-    assert events == ["Plate 0 shed 12 stranded nodes."]
-    assert world.plates[1].node_count() == neighbour_nodes
-    assert world.continental_material_ledger["topology_removed_m3"] > 0.0
-    assert abs(continental_ledger.balance_error_m3(world)) < 1e-9 * start
-
-
 def test_defragment_plates_leaves_a_contiguous_world_untouched():
     world = World(
         seed=0,
-        plates=[_lobed_plate([0.0], plate_id=0), _lobed_plate([2.0], plate_id=1)],
+        plates=[_lobed_plate([0], plate_id=0), _lobed_plate([0], plate_id=1, frame=_ELSEWHERE)],
         next_plate_id=2,
         node_density=1.0,
     )
@@ -872,7 +755,7 @@ def test_defragment_plates_leaves_a_contiguous_world_untouched():
 def test_defragment_plates_clears_collision_progress_touching_a_vanished_plate():
     # plate 5 is shed down to one lobe (no split, keeps its id); plate 7 is all debris and
     # untouched here. A stale key that names a plate id no longer in world.plates is dropped.
-    shed = _lobed_plate([(0.0, 10), (0.6, 1)], plate_id=5)
+    shed = _lobed_plate([(0, 10), (30, 1)], plate_id=5)
     world = World(seed=0, plates=[shed], next_plate_id=6, node_density=1.0)
     world.collision_progress = {(5, 7): 3.0e6, (2, 5): 1.0e6}  # 7 and 2 aren't live
 
@@ -883,7 +766,7 @@ def test_defragment_plates_clears_collision_progress_touching_a_vanished_plate()
 
 def test_apply_topology_changes_runs_defragment_only_on_cadence():
     def severed_world(steps_taken):
-        w = World(seed=0, plates=[_lobed_plate([(0.0, 10), (0.6, 6)], plate_id=0)], next_plate_id=1, node_density=1.0)
+        w = World(seed=0, plates=[_lobed_plate([(0, 10), (30, 6)], plate_id=0)], next_plate_id=1, node_density=1.0)
         w.steps_taken = steps_taken
         return w
 
@@ -897,71 +780,13 @@ def test_apply_topology_changes_runs_defragment_only_on_cadence():
     assert all(_single_component(p) for p in on_cadence.plates)
 
 
-def _drifted_continental_plate(plate_id=0, n_rows=6, per_row=20):
-    """A multi-row continental plate whose rows drift further apart one from the next --
-    enough of GitHub issue #119's "staircase" symptom to make `relattice` visibly do
-    something (see test_plates.py's `_staircase_continental_plate`, the same idea, here
-    surviving `remove_defunct_plates`'s multi-line requirement without a separate filler
-    line)."""
-    spacing = line_spacing_rad(1.0)
-    lines = []
-    for r in range(n_rows):
-        phi = r * spacing
-        shift = r * 0.4 * spacing
-        theta = np.linspace(-0.3, 0.3, per_row) + shift
-        lines.append(_thick_line(phi, theta, 0.0, "continental"))
-    return LithospherePlate(plate_id=plate_id, frame=np.eye(3), crust_type="continental", lines=lines)
-
-
-def test_relattice_continental_plates_refits_continents_and_skips_oceanic():
-    continent = _drifted_continental_plate(plate_id=0)
-    ocean = _test_plate(1, np.array([0.0, 0.0, 1.0]), "oceanic", np.linspace(-0.3, 0.3, 20), 0.0)
-    world = World(seed=0, plates=[continent, ocean], next_plate_id=2, node_density=1.0)
-    total_hc_before = float(np.sum(continent.collect("crustal_thickness_m")))
-    ocean_line_before = ocean.lines[0]
-
-    merge_split.relattice_continental_plates(world)
-
-    total_hc_after = float(np.sum(continent.collect("crustal_thickness_m")))
-    assert np.isclose(total_hc_after, total_hc_before, rtol=1e-6)
-    assert ocean.lines[0] is ocean_line_before  # untouched -- oceanic is a no-op
-
-
-def test_apply_topology_changes_relattices_continental_plates_only_on_cadence():
-    def drifted_world(steps_taken):
-        w = World(seed=0, plates=[_drifted_continental_plate(plate_id=0)], next_plate_id=1, node_density=1.0)
-        w.steps_taken = steps_taken
-        return w
-
-    off_cadence = drifted_world(steps_taken=merge_split.RELATTICE_INTERVAL_STEPS + 1)
-    line_before = off_cadence.plates[0].lines[0]
-    merge_split.apply_topology_changes(off_cadence, years=1.0e6)
-    assert off_cadence.plates[0].lines[0] is line_before  # untouched off-cadence
-
-    on_cadence = drifted_world(steps_taken=merge_split.RELATTICE_INTERVAL_STEPS)
-    total_hc_before = float(np.sum(on_cadence.plates[0].collect("crustal_thickness_m")))
-    node_count_before = on_cadence.plates[0].node_count()
-
-    merge_split.apply_topology_changes(on_cadence, years=1.0e6)
-
-    total_hc_after = float(np.sum(on_cadence.plates[0].collect("crustal_thickness_m")))
-    assert np.isclose(total_hc_after, total_hc_before, rtol=1e-6)
-    # The lattice was actually rebuilt -- node count changed from the raw staircase input.
-    assert on_cadence.plates[0].node_count() != node_count_before
-
-
 def test_apply_topology_changes_drops_a_defrag_debris_plate_via_the_territory_check():
-    # A comb of one-node rows in three disconnected clusters: no component is big enough to
-    # anchor a plate, so defragment_plates declines -- then the comb-of-stubs branch of
-    # has_negligible_territory removes the whole thing.
-    stub_lines = []
-    for cluster, centre in enumerate((0.0, 0.6, 1.2)):
-        for r in range(10):
-            phi = (cluster * 20 + r) * _FRAG_SPACING_RAD
-            stub_lines.append(ElevationLine(phi=phi, theta=np.array([centre]), elevation=np.zeros(1)))
-    debris = PlateWithLines(plate_id=0, frame=np.eye(3), crust_type="oceanic", lines=stub_lines)
+    # Three stray cells in three disconnected clusters: no component is big enough to anchor a
+    # plate, so defragment_plates declines -- then has_negligible_territory removes the whole
+    # thing.
+    debris = _lobed_plate([(0, 1), (25, 1), (50, 1)], plate_id=0, rows=1)
     assert debris.has_negligible_territory()
-    healthy = _lobed_plate([2.0], plate_id=1)
+    healthy = _lobed_plate([0], plate_id=1, frame=_ELSEWHERE)
     world = World(seed=0, plates=[debris, healthy], next_plate_id=2, node_density=1.0)
     world.steps_taken = merge_split.DEFRAG_INTERVAL_STEPS
 
@@ -985,8 +810,7 @@ def _overlapping_continental_pair_world(main_nodes=30):
 
 
 def _overlap_read(world):
-    tol = plates_mod.OVERLAP_TOLERANCE_MULT * line_spacing_rad(world.node_density)
-    return plates_mod.compute_node_overlap(world.plates, tol)
+    return plates_mod.compute_node_overlap(world.plates)
 
 
 def test_merge_probability_speed_boost_raises_a_large_pairs_odds():

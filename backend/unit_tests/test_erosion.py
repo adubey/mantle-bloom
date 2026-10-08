@@ -2,12 +2,7 @@ import numpy as np
 
 from app import erosion, faults, geometry, plates
 from app.elevation_lines import MAX_ELEVATION_M, MIN_ELEVATION_M
-from app.world import World, generate_world as _generate_world
-
-
-def generate_world(*args, **kwargs):
-    kwargs.setdefault("surface", "lines")
-    return _generate_world(*args, **kwargs)
+from app.world import World, generate_world
 
 
 def _unloaded_elevation(world) -> np.ndarray:
@@ -175,9 +170,7 @@ def test_apply_erosion_stamps_geomorphic_provenance_but_leaves_a_sticky_structur
     # background erosion, one step, must leave the overwhelming majority of them alone (only a
     # node with a genuinely large net geomorphic step overrides a structural code).
     for p in world.plates:
-        for l in p.lines:
-            if len(l):
-                l.set_fields(elev_change_reason=np.full(len(l), ELEV_CHANGE_COLLISION, dtype=float))
+        p.set_fields_on_plate(elev_change_reason=np.full(p.node_count(), ELEV_CHANGE_COLLISION, dtype=float))
 
     erosion.apply_erosion(world, years=1_000_000)
 
@@ -197,9 +190,7 @@ def test_apply_erosion_treats_lateral_magma_as_a_sticky_structural_code():
 
     world = generate_world(seed=21, num_plates=8)
     for p in world.plates:
-        for l in p.lines:
-            if len(l):
-                l.set_fields(elev_change_reason=np.full(len(l), ELEV_CHANGE_LATERAL_MAGMA, dtype=float))
+        p.set_fields_on_plate(elev_change_reason=np.full(p.node_count(), ELEV_CHANGE_LATERAL_MAGMA, dtype=float))
 
     erosion.apply_erosion(world, years=1_000_000)
 
@@ -256,9 +247,8 @@ def test_apply_erosion_respects_elevation_bounds():
     world = generate_world(seed=22, num_plates=8)
     erosion.apply_erosion(world, years=5_000_000)
     for plate in world.plates:
-        for line in plate.lines:
-            assert np.all(line.elevation >= MIN_ELEVATION_M - 1e-6)
-            assert np.all(line.elevation <= MAX_ELEVATION_M + 1e-6)
+        assert np.all(plate.collect("elevation") >= MIN_ELEVATION_M - 1e-6)
+        assert np.all(plate.collect("elevation") <= MAX_ELEVATION_M + 1e-6)
 
 
 def test_apply_erosion_noop_for_empty_world():
@@ -508,7 +498,7 @@ def _tracked_continental_m3(world) -> float:
 def test_apply_erosion_closes_volume_and_continental_ledger_on_a_quad_world():
     from app import continental_ledger
 
-    world = _generate_world(seed=3, num_plates=8, surface="quad")
+    world = generate_world(seed=3, num_plates=8)
     assert continental_ledger.inventories(world)["continental_sediment_on_oceanic_hosts_m3"] == 0.0
     # Two steps: the second has glaciers and spill/ice edges that point uphill.
     for _ in range(2):
@@ -526,7 +516,7 @@ def test_apply_erosion_closes_volume_and_continental_ledger_on_a_quad_world():
 def test_apply_erosion_never_routes_more_than_a_column_can_give_up():
     from app import lithosphere
 
-    world = _generate_world(seed=3, num_plates=8, surface="quad")
+    world = generate_world(seed=3, num_plates=8)
     headroom_m = 5.0
     for plate in world.plates:
         hc = np.full(plate.node_count(), lithosphere.MIN_CRUSTAL_THICKNESS_M + headroom_m)
@@ -669,7 +659,7 @@ def test_capped_lake_spread_leaves_what_no_member_can_hold_where_it_landed():
 
 
 def test_apply_erosion_routes_landslide_debris_into_basins_and_closes_the_ledger():
-    world = _generate_world(seed=3, num_plates=8, surface="quad")
+    world = generate_world(seed=3, num_plates=8)
     world.seismic_erosion_multiplier = 4.0
     tracked_before = _tracked_continental_m3(world)
     budget = erosion.apply_erosion(world, years=5_000_000).budget
@@ -695,7 +685,7 @@ def test_landslides_lower_a_frozen_summit_that_water_cannot_drain(monkeypatch):
         return dataclasses.replace(hydro, flow_target=np.where(hydro.is_ocean, hydro.flow_target, -1))
 
     monkeypatch.setattr(hydrology, "compute_hydrology", all_frozen)
-    world = _generate_world(seed=3, num_plates=8, surface="quad")
+    world = generate_world(seed=3, num_plates=8)
     world.glacier_erosion_multiplier = 0.0
     world.wind_erosion_multiplier = 0.0
     _, elevation, _, _, _, order = erosion._gather_nodes(world)
@@ -706,7 +696,7 @@ def test_landslides_lower_a_frozen_summit_that_water_cannot_drain(monkeypatch):
 
 
 def test_ocean_deposition_knob_below_one_declares_the_continental_sediment_it_withholds():
-    world = _generate_world(seed=3, num_plates=8, surface="quad")
+    world = generate_world(seed=3, num_plates=8)
     world.ocean_deposition_multiplier = 0.5
     tracked_before = _tracked_continental_m3(world)
     result = erosion.apply_erosion(world, years=5_000_000)
@@ -776,7 +766,7 @@ def _force_glacier_depth(monkeypatch, depth_for_step):
 def test_ice_load_depresses_the_surface_and_meltback_rebounds_it_exactly(monkeypatch):
     from app import lithosphere
 
-    world = _generate_world(seed=3, num_plates=8, surface="quad")
+    world = generate_world(seed=3, num_plates=8)
     _, elevation, _, _, _, plates_in_order = erosion._gather_nodes(world)
     hc = np.concatenate([p.collect("crustal_thickness_m") for p in plates_in_order])
     # Thick ice on high, comfortably-dry continental columns only.
@@ -1024,7 +1014,7 @@ def _saturate_lowlands(world, quantile=0.5):
 def test_apply_erosion_carries_cap_overflow_on_instead_of_booking_numerical_loss():
     from app import continental_ledger, lithosphere
 
-    world = _generate_world(seed=3, num_plates=8, surface="quad")
+    world = generate_world(seed=3, num_plates=8)
     continental_ledger.ensure_initialized(world)
     _saturate_lowlands(world)
     for _ in range(2):
@@ -1064,7 +1054,7 @@ def test_apply_erosion_books_unplaceable_overflow_as_overloaded_root_delaminatio
         return erosion.OverflowCarry(np.zeros_like(excess), excess.sum(axis=0), np.zeros(len(excess)), np.zeros(len(excess)))
 
     monkeypatch.setattr(erosion, "_carry_overflow", nowhere)
-    world = _generate_world(seed=3, num_plates=8, surface="quad")
+    world = generate_world(seed=3, num_plates=8)
     continental_ledger.ensure_initialized(world)
     _saturate_lowlands(world)
     unplaced_before = world.continental_material_ledger["numerical_unplaced_m3"]
@@ -1078,7 +1068,7 @@ def test_apply_erosion_books_unplaceable_overflow_as_overloaded_root_delaminatio
 
 
 def test_glacial_erosion_carves_channels_rivers_can_inherit():
-    world = _generate_world(seed=3, num_plates=8, surface="quad")
+    world = generate_world(seed=3, num_plates=8)
     world.rain_erosion_multiplier = 0.0
     world.river_erosion_multiplier = 0.0
     for plate in world.plates:
@@ -1094,12 +1084,10 @@ def _set_channel_state(world, depth_m, uplift_m):
     """Every node gets `depth_m` of channel and a reference elevation `uplift_m` below its
     current elevation, as if it had risen that much since last step's erosion."""
     for p in world.plates:
-        for line in p.lines:
-            if len(line):
-                line.set_fields(
-                    channel_depth=np.full(len(line), depth_m),
-                    channel_reference_elevation_m=line.elevation - uplift_m,
-                )
+        p.set_fields_on_plate(
+            channel_depth=np.full(p.node_count(), depth_m),
+            channel_reference_elevation_m=p.collect("elevation") - uplift_m,
+        )
 
 
 def test_apply_erosion_records_the_reference_elevation_for_next_steps_uplift():
@@ -1127,10 +1115,9 @@ def test_uplift_only_fades_channels_where_it_rises_across_them(monkeypatch):
     rise[::2] = 300.0
     offset = 0
     for p in patchy.plates:
-        for line in p.lines:
-            if len(line):
-                line.set_fields(channel_reference_elevation_m=line.elevation - rise[offset : offset + len(line)])
-                offset += len(line)
+        n = p.node_count()
+        p.set_fields_on_plate(channel_reference_elevation_m=p.collect("elevation") - rise[offset : offset + n])
+        offset += n
     erosion.apply_erosion(still, years=1_000_000)
     erosion.apply_erosion(even, years=1_000_000)
     erosion.apply_erosion(patchy, years=1_000_000)
@@ -1211,11 +1198,9 @@ def test_a_reference_blended_with_the_unset_sentinel_counts_as_no_uplift(monkeyp
     _set_channel_state(still, 500.0, 0.0)
     _set_channel_state(blended, 500.0, 0.0)
     for p in blended.plates:
-        for line in p.lines:
-            if len(line):
-                reference = line.channel_reference_elevation_m.copy()
-                reference[::2] = 2.5e17
-                line.set_fields(channel_reference_elevation_m=reference)
+        reference = p.collect("channel_reference_elevation_m").copy()
+        reference[::2] = 2.5e17
+        p.set_fields_on_plate(channel_reference_elevation_m=reference)
     erosion.apply_erosion(still, years=1_000_000)
     erosion.apply_erosion(blended, years=1_000_000)
     np.testing.assert_allclose(

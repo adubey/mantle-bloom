@@ -14,10 +14,9 @@ back as continental freeboard.
 Model. The ocean's water volume is `V_ocean = sum_i A_i * max(0, sea_level - z_i)` over every
 node *actually part of the connected ocean* -- see `_ocean_connected_mask` below for why
 "actually part of," not just "below `sea_level`," matters. `A_i` is each node's accounting
-area (`Plate.accounting_areas_m2`): exact cell areas on quad plates, whose cells are not
-equal-area and whose count changes with topology -- a nominal-area budget drifts whenever
-water moves between cells of different sizes, in effect adding or removing ocean water
-(issue #257) -- and the nominal `lithosphere.node_area_m2` on line plates.
+area (`Plate.accounting_areas_m2`): exact cell areas, since cells are not equal-area and
+their count changes with topology -- a nominal-area budget drifts whenever water moves
+between cells of different sizes, in effect adding or removing ocean water (issue #257).
 
 `World.ocean_water_volume_m3` holds the world's *total* surface-water budget `V_total` (m^3),
 snapshot once at generation (from the flat starting sea level, with no ice or lakes yet) and

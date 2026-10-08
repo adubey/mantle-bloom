@@ -48,7 +48,7 @@ def _total_isostatic_debt_km3(world) -> float:
     area_m2 = lithosphere.node_area_m2(line_spacing_rad(world.node_density))
     total_m3 = 0.0
     for plate in world.plates:
-        if not plate.lines:
+        if plate.node_count() == 0:
             continue
         hc = plate.collect("crustal_thickness_m")
         hm = plate.collect("mantle_lithosphere_thickness_m")

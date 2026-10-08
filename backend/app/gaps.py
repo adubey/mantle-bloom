@@ -3,33 +3,30 @@ currently covers into it, falling back to spawning new crust -- oceanic almost e
 continental only where a gap point genuinely borders a still-standing continental coastline
 (see GAP_LAND_ADOPTION_RADIUS_MULT) -- only when nothing is adjacent.
 
-`LithospherePlate.deform()`'s per-step boundary growth only ever extends a line from an
-*existing* node -- a plate can spread into space right next to its own current edge, but
-nothing grows crust somewhere no plate has any nearby line at all. Most of the time that's
-fine: a newly-opened divergent gap is one or two nodes wide and next step's ordinary growth
-closes it. But once every oceanic plate bordering a stretch of open ocean has been ground
+Per-step boundary advance (quad_tectonics.py) only ever grows a plate from its *existing*
+edge -- a plate can spread into space right next to its own current edge, but nothing grows
+crust somewhere no plate has any nearby cell at all. Most of the time that's fine: a
+newly-opened divergent gap is one or two cells wide and next step's ordinary growth closes
+it. But once every oceanic plate bordering a stretch of open ocean has been ground
 down by subduction and fully removed (see `merge_split.remove_defunct_plates`), the sphere
 area it used to occupy has no plate left anywhere near it -- there is nothing there to grow,
 so it just stays empty forever. Confirmed on a 399 My / node_density=4 save (seed 920135003,
 see GitHub issue #126's "Very-long-run collapse" section): ~42% of the sphere had zero elevation
-nodes, all of it sphere area no live plate's lines reached.
+nodes, all of it sphere area no live plate reached.
 
-This module finds those genuinely-uncovered regions periodically (same cadence as
-`merge_split.defragment_plates` -- a whole-world k-d-tree pass, cheap but not free) and grows
-the plate(s) genuinely adjacent to each one into it (`fill_gaps_by_growing_neighbours`, via
-`gap_fill_frontier.fill_gap_by_growing_plates` on line plates and `quad_tectonics.fill_gap` on
-quad plates) -- falling back to spawning a brand-new neutral plate (`_spawn_plate_from_gap`)
-only when nothing is adjacent at all (a fully-vacated region with no live plate left nearby to
-grow). On line plates only regions of at least `MIN_GAP_NODES` are handled. On cell surfaces
-(`PlateSurface.territory_is_exact`) smaller regions are grown into as well, since there they
-are seams boundary advance leaves for good; only spawning needs `MIN_GAP_NODES`.
+This module finds those genuinely-uncovered regions every step and grows the plate(s)
+genuinely adjacent to each one into it (`fill_gaps_by_growing_neighbours`, via
+`quad_tectonics.fill_gap`) -- falling back to spawning a brand-new neutral plate
+(`_spawn_plate_from_gap`) only when nothing is adjacent at all (a fully-vacated region with no
+live plate left nearby to grow). Regions of any size are grown into, since small ones are seams
+boundary advance leaves for good; only spawning needs `MIN_GAP_NODES`.
 
 The new plate's own composition (spawn fallback) is decided per node, not blanket-oceanic: real
 new crust in open water is oceanic (the same crust type any mid-ocean ridge produces), but a gap
 point right at a still-standing continental coastline -- e.g. a fully-subducted marginal sea
 landlocked by continent -- comes back continental instead (see `_spawn_plate_from_gap`'s own
 `node_is_continental`). The spawned plate's own `crust_type` label is the majority of what it
-actually ended up with (`elevation_lines.majority_crust_type`), so it is oceanic in practice
+actually ended up with (by cell area, see `lithosphere_plate.new_plate`), so it is oceanic in practice
 for all but that rare landlocked case.
 """
 
@@ -43,30 +40,30 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
-from . import gap_fill_frontier, geometry, mantle, quad_tectonics
+from . import geometry, mantle, quad_tectonics
 from .elevation_lines import (
     COVERAGE_RADIUS_MULT as _SHARED_COVERAGE_RADIUS_MULT,
     effective_is_continental_from_codes,
     iter_local_lattice,
     line_spacing_rad,
 )
-from .lithosphere_plate import LithospherePlate, new_plate
-from .plates import Plate, PlateWithLines, _contested_by_any
-from .sparse_quad_patch import PlateWithSparseQuadPatch
+from .lithosphere_plate import new_plate
+from .plates import Plate, _contested_by_any
 
 if TYPE_CHECKING:
     from .world import World
 
-# Cadence: `fill_gaps_by_growing_neighbours` is a whole-sphere lattice sweep (O(nodes) at full
-# density), cheap but not free, and coverage doesn't collapse fast -- same reasoning and same
-# cadence as merge_split.DEFRAG_INTERVAL_STEPS, which world.step_world calls it alongside.
-# Line worlds only: on cell surfaces (`PlateSurface.territory_is_exact`) the pass runs every
-# step -- see `gap_fill_due`.
+# Cadence of `reconcile_gap_tracks`, the gap-age diagnostic: a whole-sphere lattice sweep
+# (O(nodes) at full density), cheap but not free, and nothing in the physics reads it -- same
+# cadence as merge_split.DEFRAG_INTERVAL_STEPS. Gap *filling* runs every step: quad retreat
+# drops cells immediately, and left to this interval the represented area sags ~0.5% of the
+# sphere per step and snaps back on the fourth, which drags eustatic sea level ~50 m/step with
+# it (GitHub issue #259).
 GAP_FILL_INTERVAL_STEPS = 4
 
-# "Covered" (see elevation_lines.COVERAGE_RADIUS_MULT, shared with LithospherePlate's own
-# local divergent-boundary growth so both agree on the same tolerance) -- re-exported under
-# this module's own name since callers/tests already refer to it as gaps.COVERAGE_RADIUS_MULT.
+# "Covered" (see elevation_lines.COVERAGE_RADIUS_MULT, shared with quad_tectonics.py's
+# boundary growth so both agree on the same tolerance) -- re-exported under this module's own
+# name since callers/tests already refer to it as gaps.COVERAGE_RADIUS_MULT.
 COVERAGE_RADIUS_MULT = _SHARED_COVERAGE_RADIUS_MULT
 # Two uncovered lattice points within this of each other belong to the same gap cluster --
 # a bit looser than COVERAGE_RADIUS_MULT so one contiguous void isn't sliced into several
@@ -76,9 +73,8 @@ CLUSTER_RADIUS_MULT = 2.0
 # merge_split.SPLIT_MIN_NODES/DEFRAG_FRAGMENT_MIN_NODES. Deliberately in the same range as
 # SPLIT_MIN_NODES (a split's own minimum daughter size): anything smaller than "big enough to
 # be its own plate" never spawns a plate, so a busy divergent boundary doesn't shed a sliver
-# plate every interval. On line plates a smaller gap is also left alone, as ordinary
-# boundary-growth catch-up lag. On cell surfaces it is still grown into by its adjacent plates
-# (see fill_gaps_by_growing_neighbours).
+# plate every step. A smaller gap is still grown into by its adjacent plates (see
+# fill_gaps_by_growing_neighbours).
 MIN_GAP_NODES = 500
 
 # `fill_gaps_by_growing_neighbours`'s own "detect adjacent plates" gate: a plate with at least
@@ -119,6 +115,10 @@ GAP_AGE_MIN_CLUSTER_NODES = 1
 # ocean a fully-subducted plate vacated) stays oceanic, exactly as before this field existed.
 GAP_LAND_ADOPTION_RADIUS_MULT = 3.0
 
+# Floor on how many layers of cells `quad_tectonics.fill_gap` may grow a plate into a gap in
+# one call; the real depth is scaled up from this by the cluster's own radius.
+MIN_FILL_LAYERS = 1
+
 
 class _ExistingNodeContext:
     """Every currently-live node's position plus enough context to decide a newly-upwelled
@@ -150,34 +150,16 @@ def _existing_node_tree(world: "World") -> _ExistingNodeContext | None:
     )
 
 
-def _territory_is_exact(world: "World") -> bool:
-    """Every live plate's territory is its cells (`PlateSurface.territory_is_exact`) -- a quad
-    world. Coverage is then a containment question, not a node-distance one."""
-    live = [p for p in world.plates if p.node_count() > 0]
-    return bool(live) and all(p.territory_is_exact for p in live)
-
-
-def gap_fill_due(world: "World") -> bool:
-    """Whether `world.step_world` should run `fill_gaps_by_growing_neighbours` this step. Every
-    step on cell surfaces (`_territory_is_exact`): quad retreat drops cells immediately, and
-    left to `GAP_FILL_INTERVAL_STEPS` the represented area sags ~0.5% of the sphere per step
-    and snaps back on the fourth, which drags eustatic sea level ~50 m/step with it (GitHub
-    issue #259). Line worlds keep the interval -- a node there already stands for the ground
-    around it, so the same lag never shows up as missing area."""
-    return _territory_is_exact(world) or world.steps_taken % GAP_FILL_INTERVAL_STEPS == 0
-
-
 def _find_gap_points(existing_tree: _ExistingNodeContext, spacing_rad: float, plates: list[Plate] | None = None) -> np.ndarray:
-    """Sweep points no plate covers. With `plates` given and every plate's territory exact, a
-    point is uncovered when no plate contains it. Otherwise it is uncovered when no node lies
-    within `COVERAGE_RADIUS_MULT` spacings -- the line engine's reading, where a node stands
-    for the ground around it. That radius is wide enough to hide the one-cell seams quad
-    plates leave between each other (issue #228 Phase 4), which is why cells use containment."""
+    """Sweep points no plate covers. With `plates` given, a point is uncovered when no plate
+    contains it: a plate's cells are its territory, and a node-distance test would hide the
+    one-cell seams quad plates leave between each other (issue #228 Phase 4). Without
+    `plates`, a point is uncovered when no node lies within `COVERAGE_RADIUS_MULT` spacings."""
     sweep = [world_pts for _, _, world_pts in iter_local_lattice(_GLOBAL_FRAME, spacing_rad=spacing_rad)]
     if not sweep:
         return np.zeros((0, 3))
     points = np.concatenate(sweep, axis=0)
-    if plates and all(p.territory_is_exact for p in plates):
+    if plates:
         return points[~_contested_by_any(points, plates)]
     dist, _ = existing_tree.tree.query(points)
     return points[dist > COVERAGE_RADIUS_MULT * spacing_rad]
@@ -220,8 +202,6 @@ def _spawn_plate_from_gap(
         borders_land = existing_context.is_continental[idx] & (existing_context.elevation[idx] > 0.0)
         return borders_land & (dist <= land_adoption_radius_rad)
 
-    # A quad world spawns quad crust, so gap filling never mixes representations into it.
-    surface = "quad" if any(isinstance(p, PlateWithSparseQuadPatch) for p in world.plates) else "lines"
     plate = new_plate(
         world.next_plate_id,
         frame,
@@ -230,7 +210,6 @@ def _spawn_plate_from_gap(
         world.seed,
         is_owned=is_owned,
         node_is_continental=node_is_continental,
-        surface=surface,
     )
     world.next_plate_id += 1
 
@@ -265,9 +244,8 @@ def fill_gaps_by_growing_neighbours(world: "World") -> list[str]:
     adjacent plate at all -- a fully-vacated region with nothing nearby to grow.
 
     Clusters of at least `MIN_GAP_NODES` (scaled by `world.node_density`) are handled one by
-    one and logged. Smaller clusters are skipped on line plates. On cell surfaces
-    (`PlateSurface.territory_is_exact`) they are pooled and grown into once per adjacent
-    plate, unlogged, and never spawn a plate.
+    one and logged. Smaller clusters are pooled and grown into once per adjacent plate,
+    unlogged, and never spawn a plate.
 
     Mutates `world.plates`/`world.next_plate_id` (spawn) and the adjacent plates' surfaces
     (growth) in place; returns event strings for the UI's console."""
@@ -283,20 +261,18 @@ def fill_gaps_by_growing_neighbours(world: "World") -> list[str]:
 
     labels = _cluster(gap_points, CLUSTER_RADIUS_MULT * spacing_rad)
     min_gap_nodes = max(1, round(MIN_GAP_NODES * world.node_density))
-    # On cells a cluster below MIN_GAP_NODES is not catch-up lag the next advance will close: it
-    # is a seam the advance's standoff from neighbouring nodes leaves for good (issue #228 Phase
-    # 4). Growing an adjacent plate into it is cheap and local, so MIN_GAP_NODES only gates
-    # spawns there. There are typically a couple of hundred such seams, so they're pooled and
-    # each plate grows into its share once -- routine upkeep, not logged as a gap event.
-    grow_any_size = _territory_is_exact(world)
+    # A cluster below MIN_GAP_NODES is not catch-up lag the next advance will close: it is a
+    # seam the advance's standoff from neighbouring nodes leaves for good (issue #228 Phase 4).
+    # Growing an adjacent plate into it is cheap and local, so MIN_GAP_NODES only gates spawns.
+    # There are typically a couple of hundred such seams, so they're pooled and each plate
+    # grows into its share once -- routine upkeep, not logged as a gap event.
     seams: list[np.ndarray] = []
 
     events: list[str] = []
     for label in np.unique(labels):
         cluster_points = gap_points[labels == label]
         if len(cluster_points) < min_gap_nodes:
-            if grow_any_size:
-                seams.append(cluster_points)
+            seams.append(cluster_points)
             continue
         adjacent = _adjacent_plates_to_cluster(world, cluster_points, spacing_rad)
         if not adjacent:
@@ -325,28 +301,18 @@ def fill_gaps_by_growing_neighbours(world: "World") -> list[str]:
 def _grow_adjacent_into_gap(
     world: "World", cluster_points: np.ndarray, adjacent: list[Plate], spacing_rad: float, radius_rad: float | None = None
 ) -> dict[int, int]:
-    """Grow `adjacent` plates into one gap cluster. Line-backed plates share
-    `gap_fill_frontier.fill_gap_by_growing_plates`' own frontier walk exactly as before; when
-    quad plates are adjacent too, each gap point first goes to whichever adjacent plate has the
-    nearest node, and each quad plate grows into its own share through
+    """Grow `adjacent` plates into one gap cluster: each gap point goes to whichever adjacent
+    plate has the nearest node, and each plate grows into its own share through
     `quad_tectonics.fill_gap`. `radius_rad` bounds how deep the walk may go; it defaults to
     the cluster's own bounding radius, and pooled seams pass their largest one."""
-    line_plates = [p for p in adjacent if isinstance(p, PlateWithLines)]
-    quad_plates = [p for p in adjacent if isinstance(p, PlateWithSparseQuadPatch)]
-    if not quad_plates:
-        return gap_fill_frontier.fill_gap_by_growing_plates(world, cluster_points, line_plates, spacing_rad)
-
     distances = np.stack([p.get_node_kdtree().query(cluster_points)[0] for p in adjacent])
     owner = np.argmin(distances, axis=0)
     if radius_rad is None:
         _, radius_rad = geometry.bounding_sphere(cluster_points)
-    max_layers = max(gap_fill_frontier.MIN_FRONTIER_HOPS, int(np.ceil(2.0 * radius_rad / spacing_rad)) + 1)
+    max_layers = max(MIN_FILL_LAYERS, int(np.ceil(2.0 * radius_rad / spacing_rad)) + 1)
     added: dict[int, int] = {}
-    line_points = cluster_points[np.isin(owner, [adjacent.index(p) for p in line_plates])]
-    if line_plates and len(line_points):
-        added.update(gap_fill_frontier.fill_gap_by_growing_plates(world, line_points, line_plates, spacing_rad))
-    for plate in quad_plates:
-        points = cluster_points[owner == adjacent.index(plate)]
+    for k, plate in enumerate(adjacent):
+        points = cluster_points[owner == k]
         others = [p for p in world.plates if p.plate_id != plate.plate_id]
         n = quad_tectonics.fill_gap(world, plate, points, others, spacing_rad, max_layers)
         if n:
@@ -392,8 +358,7 @@ def reconcile_gap_tracks(world: "World") -> None:
     track; a track with no matching cluster this step is dropped by omission. Same "replace
     wholesale" pattern as `stranded_basins.reconcile_world_tracks`. Called every
     `GAP_FILL_INTERVAL_STEPS` from `world.step_world`, right after
-    `fill_gaps_by_growing_neighbours` (which on quad worlds also runs in between -- see
-    `gap_fill_due`)."""
+    `fill_gaps_by_growing_neighbours` (which runs every step)."""
     existing_context = _existing_node_tree(world)
     if existing_context is None:
         world.gap_tracks = []

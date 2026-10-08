@@ -126,13 +126,13 @@ def load_major_plates() -> list[RealPlate]:
 # same way, from the unrotated `major_plates.json` boundaries) directly assigns every 0.25-
 # degree cell to whichever of the 16 real plates' polygon contains it (covering ~93% of the
 # globe; the rest is real microplates this app's simplified 16-plate set omits entirely).
-# `build_exact_earth_plates` below turns that into actual `LithospherePlate` territories: one
+# `build_exact_earth_plates` below turns that into actual plate territories: one
 # oceanic sub-plate per real plate (its crust type is "monolithic" in this engine, see
 # `generate_plates`'s own docstring, so a real plate's onshore/offshore crust still has to be
-# two separate LithospherePlate objects here, same as the old Voronoi path already did) plus
+# two separate plates here, same as the old Voronoi path already did) plus
 # one continental sub-plate per land component *above `_MIN_LAND_COMPONENT_KM2`* within it --
 # smaller than that is folded into the surrounding ocean rather than getting its own plate.
-# That floor exists only because a `LithospherePlate` is a real, persistent per-step cost
+# That floor exists only because a plate is a real, persistent per-step cost
 # (its own KD-tree, its own deform() pass, ...) and this app has never been run with more than
 # a few dozen of them (32 in its own stress tests) -- every real island get its own exact
 # plate would mean several hundred, untested territory for the whole engine, not just
@@ -192,7 +192,7 @@ def load_plate_owner_grid() -> tuple[np.ndarray, list[str]]:
 class ExactEarthPlates:
     """`build_exact_earth_plates`'s result: `label_grid` ((_EXACT_GRID_H, _EXACT_GRID_W)
     int32, -1 or an index into `crust_types`/`frame_xyz`) assigns every cell to one final
-    LithospherePlate-to-be; `crust_types[i]`/`frame_xyz[i]` (a representative unit vector,
+    plate-to-be; `crust_types[i]`/`frame_xyz[i]` (a representative unit vector,
     that sub-plate's own member-cell centroid) describe sub-plate `i`."""
 
     label_grid: np.ndarray
@@ -208,7 +208,7 @@ _exact_earth_plates_cache: ExactEarthPlates | None = None
 
 
 def build_exact_earth_plates() -> ExactEarthPlates:
-    """The real-plate-grounded partition "Present-day Earth" builds its `LithospherePlate`s
+    """The real-plate-grounded partition "Present-day Earth" builds its plates
     from -- see the module comment above for the oceanic/continental split and why
     `_MIN_LAND_COMPONENT_KM2` exists. Deterministic (no seed/rng: both input rasters are
     static data), so cached at module scope like the rasters it's built from."""
@@ -339,7 +339,7 @@ def real_plate_sites(
     intersection by area (`worldsketch.distribute_counts`) and placed by k-means within it
     (`worldsketch.kmeans_sites`) -- so the resulting Voronoi tiling approximates each real
     plate's actual shape (continental and oceanic portions can end up as separate
-    LithospherePlate objects, same as a real plate's onshore/offshore crust already differs in
+    plates, same as a real plate's onshore/offshore crust already differs in
     this engine's monolithic-crust-type-per-plate model) rather than being seeded from the
     drawn coastline's connected components alone.
 

@@ -39,7 +39,6 @@ from .boundary import MERGE_THRESHOLD_RAD, TRANSFORM_RATE_THRESHOLD, closing_rat
 from .elevation_lines import (
     DEFRAG_CONNECT_RADIUS_MULT,
     TARGET_LINE_SPACING_RAD,
-    effective_is_continental_from_codes,
     line_spacing_rad,
 )
 from .plates import Plate, query_workers
@@ -53,7 +52,6 @@ if TYPE_CHECKING:
 # read bare, same reasoning as boundary.py's own _far_threshold_rad and friends.
 MERGE_CONTACT_DISTANCE_RAD = MERGE_THRESHOLD_RAD
 MERGE_MIN_CONTACT_NODES = 4
-MERGE_COVERAGE_RADIUS_RAD = 1.2 * TARGET_LINE_SPACING_RAD
 # A single step can already show a real (not just proximity-driven) closing rate over part
 # of a shared boundary without the two plates being in anything like a genuine, sustained
 # collision -- a curving boundary is often locally convergent in one stretch even while the
@@ -107,7 +105,7 @@ FORCED_MERGE_SUSTAINED_YEARS = 30_000_000
 
 # A node count, not a distance -- doesn't scale automatically with TARGET_LINE_SPACING_RAD
 # the way the distance-based thresholds elsewhere do. Node count for a given physical plate
-# area scales with the *square* of resolution (more rows and more samples per row), so this
+# area scales with the *square* of resolution, so this
 # is scaled by node_density directly at the point of use.
 #
 # Halved 1200 -> 600 (2026): the great-circle cut between the two k-means flow centroids is
@@ -144,10 +142,7 @@ SPLIT_MIN_AGE_STEPS = 20
 # A plate's own sheer size independently raises its odds of rifting, on top of (not instead
 # of) the mantle-flow-fit criteria above -- a bigger footprint is both more likely to
 # straddle genuinely different mantle flow regimes and, mechanically, more likely to run its
-# local (phi, theta) parametrization into trouble the longer it's left uncut (a boundary
-# line that ends up spiraling many times around a plate's own local-frame pole as the plate
-# grows past it is exactly what overwhelmed elevation_lines.py's periodic regularization pass
-# once). Modeled as linearly relaxing the two split gates (residual-fit and pole-separation)
+# local frame into trouble the longer it's left uncut). Modeled as linearly relaxing the two split gates (residual-fit and pole-separation)
 # toward zero as the plate's own angular radius (`geometry.bounding_sphere`, centroid to
 # farthest node) approaches SPLIT_SIZE_CERTAIN_RIFT_RAD -- at that size essentially any
 # mantle-flow variation at all, however small, is enough to both trigger and pass a split,
@@ -216,7 +211,7 @@ FAILED_RIFT_STRESS_RELIEF = 0.5
 # daughters, ending in decompression melting -> oceanic crust and permanently drowned passive
 # margins. So a plate that clears every split gate (flow-fit, pole separation, size, and a
 # viable great-circle cut) still only actually breaks up with this probability; otherwise the
-# rift fails -- `LithospherePlate.apply_failed_rift` books a one-off aulacogen thinning along
+# rift fails -- `PlateWithSparseQuadPatch.apply_failed_rift` books a one-off aulacogen thinning along
 # the cut and the plate's split cooldown is reset (`reset_age`), and it stays one plate.
 # Tuned against plate-count churn: 0.55 keeps the healthy ~18-26 oscillation from the 2026
 # split-gate loosening (GitHub issue #119, "Plate count only decreases") while roughly halving the
@@ -228,19 +223,19 @@ _RIFT_OUTCOME_SEED_TAG = 71  # np.random.default_rng tuple slot, distinct from o
 # within FAILED_RIFT_BAND_MULT node spacings of the would-be cut great circle, tapering to
 # zero at the band edge. A sag basin (a few hundred m of subsidence on a 35 km column), not a
 # breakup -- far less crust lost than the sustained divergent thinning a successful rift
-# inflicts. See LithospherePlate.apply_failed_rift.
+# inflicts. See PlateWithSparseQuadPatch.apply_failed_rift.
 FAILED_RIFT_THINNING_FRACTION = 0.10
 FAILED_RIFT_BAND_MULT = 2.5
 
-# Defragmentation (see defragment_plates / Plate.defragment). Ordinary deform() never
-# deletes a line's last node and only ever shrinks a line's ends, so subduction/transform
-# can sever a plate's node cloud into two disconnected landmasses (still carried as one
-# Plate) or leave a comb of stranded one-node rows behind; maybe_split_plate only cuts on
-# mantle-flow disagreement, not geometry, so neither case is caught. This pass finds them.
+# Defragmentation (see defragment_plates / Plate.defragment). Ordinary deform() only adds
+# and removes cells at the boundary, so subduction/transform can sever a plate's cells into
+# two disconnected landmasses (still carried as one Plate) or leave a few stranded cells
+# behind; maybe_split_plate only cuts on mantle-flow disagreement, not geometry, so neither
+# case is caught. This pass finds them.
 #
 # Connectivity radius (see elevation_lines.DEFRAG_CONNECT_RADIUS_MULT, shared with
-# LithospherePlate's own local divergent-boundary growth so new nodes it adds are guaranteed
-# to survive this same connected-components check) -- re-exported under this module's own
+# quad_tectonics.py's boundary growth so new cells it adds are guaranteed to survive this
+# same connected-components check) -- re-exported under this module's own
 # name since callers/tests already refer to it as merge_split.DEFRAG_CONNECT_RADIUS_MULT.
 # A component smaller than this becomes stranded crust rather than its own plate: accreted
 # as a terrane onto the plate it touches when it carries continental material, dropped
@@ -251,34 +246,19 @@ DEFRAG_FRAGMENT_MIN_NODES = 50
 # topology doesn't fragment fast. cf. the removed reassign.py's REASSIGN_INTERVAL_STEPS = 5.
 DEFRAG_INTERVAL_STEPS = 4
 
-# Periodic conservative continental re-lattice (see relattice_continental_plates /
-# LithospherePlate.relattice; GitHub issue #119, "Continental ratchet: solution design,"
-# mechanism 4). A heavier whole-plate k-d-tree rebuild than defragment_plates above -- every
-# node of every continental plate gets resampled, not just a connectivity check -- and the
-# drift it corrects (row-to-row phase drift from independent per-row end-growth) accumulates
-# over many steps, so a longer interval than DEFRAG_INTERVAL_STEPS/gaps.GAP_FILL_INTERVAL_STEPS.
-RELATTICE_INTERVAL_STEPS = 20
-
-
 def remove_defunct_plates(world: "World") -> list[str]:
-    """A plate whose every elevation node was deleted (fully subducted, see boundary.py), or
-    that's been eroded down to a single line (or none) -- no real remaining territory, just
-    a sliver along one latitude -- simply vanishes. No special-cased merge algorithm needed
+    """A plate whose every elevation node was deleted (fully subducted), or that's been
+    whittled down to negligible territory (`Plate.has_negligible_territory`) -- simply
+    vanishes. No special-cased merge algorithm needed
     either way; see apply_topology_changes for the distinct log messages for each case. A
     sliver still carrying continental material is accreted as a terrane onto the plate it
     touches instead (see `_accrete_stranded_terrane`, issue #305); returns an event string
     for each one.
 
-    `node_count() > 0` is its own check, not implied by `not p.has_negligible_territory()`: a
-    plate can have two or more lines that have each individually shrunk to zero nodes (see
-    `_grow_or_shrink_line`) without ever dropping below the line-count threshold, which
-    would otherwise leave an empty-but-not-removed plate sitting in world.plates -- e.g.
-    still counted by /world/summary's num_plates, still iterated by every other per-step
-    pass -- indefinitely. Called every step via apply_topology_changes, so this never lingers
-    more than one step. `has_negligible_territory` is representation-generic (`Plate`'s own
-    method, see plates.py) -- `PlateWithLines` still means "at most one line left" by it,
-    just expressed through the abstract interface now instead of reaching into `.lines`
-    directly, so this works for any `Plate` subclass, not just that one."""
+    Called every step via apply_topology_changes, so an empty or negligible plate never
+    lingers more than one step (still counted by /world/summary's num_plates, still iterated
+    by every other per-step pass). `has_negligible_territory` is `Plate`'s own
+    representation-generic method (see plates.py)."""
     defunct = [p for p in world.plates if p.node_count() == 0 or p.has_negligible_territory()]
     world.plates = [p for p in world.plates if p.node_count() > 0 and not p.has_negligible_territory()]
     spacing_rad = line_spacing_rad(world.node_density)
@@ -373,23 +353,20 @@ def _accrete_stranded_terrane(
     (`bin/debug/attribute_topology_removed.py`). An oceanic fragment with no material on it
     is still dropped.
 
-    Returns the receiver, or None -- for a fragment with no continental material, one no
-    plate touches, one no toucher can absorb (a different surface representation), or one on
-    a surface whose merge doesn't conserve every field (`Plate.merge_conserves_fields`; the
-    line resample would erase the tracer unbooked) -- leaving the caller to drop it and book
-    its material as `topology_removed_m3`. A fragment
+    Returns the receiver, or None -- for a fragment with no continental material or one no
+    plate touches -- leaving the caller to drop it and book its material as
+    `topology_removed_m3`. A fragment
     no plate touches isn't handed to the nearest one anyway: it would sit there as another
     disconnected lobe, cut off again by the next defragmentation."""
-    if not fragment.merge_conserves_fields or _material_m3(fragment, line_spacing_rad(world.node_density)) <= 0.0:
+    if _material_m3(fragment, line_spacing_rad(world.node_density)) <= 0.0:
         return None
     points = fragment.all_points_and_elevation()[0]
-    merge_with = getattr(type(fragment), "merge_with", None)
     touching = [
         (count, -nearest, plate)
         for plate, count, nearest in contacts.contact_counts(points, connect_radius_rad)
-        if count > 0 and plate is not fragment and getattr(type(plate), "merge_with", None) is merge_with
+        if count > 0 and plate is not fragment
     ]
-    if merge_with is None or not touching:
+    if not touching:
         return None
     receiver = max(touching, key=lambda entry: entry[:2])[2]
     age = receiver.age_steps
@@ -624,21 +601,18 @@ def accumulate_plate_stress(world: "World", years: float, overlap: dict[int, dic
         plate.set_internal_stress(plate.internal_stress * decay + rate * years_myr)
 
 
-def pop_ready_forced_merge(world: "World", can_merge=None) -> tuple[int, int] | None:
+def pop_ready_forced_merge(world: "World") -> tuple[int, int] | None:
     """The continental pair that has sustained a deep overlap longest past
     `FORCED_MERGE_SUSTAINED_YEARS`, as `(id_keep, id_absorb)` with `id_keep` the larger plate
     (more territory, more stable frame -- `merge_plates`' own keep/absorb sense) -- removed
     from `world.overlap_progress` and returned, or `None`. At most one per step, same as every
     other topology change. A pair whose plate has since vanished (subducted, defragmented) is
-    silently dropped. `can_merge(a, b)`, when given, excludes pairs that can't be fused yet
-    *before* one is chosen, so an excluded pair keeps its accumulated overlap time instead of
-    losing it every time it comes due."""
+    silently dropped."""
     live = {p.plate_id: p for p in world.plates if p.crust_type == "continental" and p.node_count() > 0}
     ready = [
         pair
         for pair, acc in world.overlap_progress.items()
         if acc >= FORCED_MERGE_SUSTAINED_YEARS and pair[0] in live and pair[1] in live
-        and (can_merge is None or can_merge(*pair))
     ]
     for pair in list(world.overlap_progress):
         if pair[0] not in live or pair[1] not in live:
@@ -675,20 +649,19 @@ def _fuse_plates(world: "World", keep: Plate, absorb: Plate, phase: str) -> None
     other plate in `world.plates`. `absorb` needn't be live; removing it is the caller's job.
     `phase` labels the debug phase budget."""
     spacing_rad = line_spacing_rad(world.node_density)
-    coverage_radius_rad = MERGE_COVERAGE_RADIUS_RAD * (spacing_rad / TARGET_LINE_SPACING_RAD)
 
     other_points_list = [p.all_points_and_elevation()[0] for p in world.plates if p is not keep and p is not absorb]
     other_points = np.concatenate(other_points_list, axis=0) if other_points_list else np.zeros((0, 3))
 
     if world.debug_diagnostics:
-        # GitHub issue #216 item 4: the whole-row resample folding the two node clouds
+        # GitHub issue #216 item 4: the merge folding the two plates' cells
         # together (Plate.merge_with) against both plates' own pre-merge totals, keyed to
         # `keep`'s own crust_type. A quad merge remaps onto a rotated lattice whose cells
         # differ in size from the absorbed plate's -- the snapshots' own cell areas keep that
         # out of the volumes.
         pair = [phase_budget.snapshot(keep, spacing_rad), phase_budget.snapshot(absorb, spacing_rad)]
         before = phase_budget.Snapshot(*(np.concatenate(parts) for parts in zip(*pair)))
-    keep.merge_with(absorb, spacing_rad, coverage_radius_rad, other_points)
+    keep.merge_with(absorb, other_points)
     collision_polarity.note_lineage(world, absorb.plate_id, keep.plate_id)
     # Continental material stacked past the suture cap that the merge couldn't place leaves
     # with the crust that carried it, booked as collision subduction (issue #276).
@@ -797,18 +770,16 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
     # incremented), the failed-rift thinning is booked, and the plate's cooldown resets.
     outcome_rng = np.random.default_rng((world.seed, round(world.elapsed_years), plate.plate_id, _RIFT_OUTCOME_SEED_TAG))
     if outcome_rng.random() >= RIFT_SUCCESS_PROBABILITY:
-        failed_rift = getattr(plate, "apply_failed_rift", None)
-        if callable(failed_rift):
-            if world.debug_diagnostics:
-                before = phase_budget.snapshot(plate, line_spacing_rad(world.node_density))
-            hc_before = plate.collect("crustal_thickness_m")
-            failed_rift(cut_normal, line_spacing_rad(world.node_density))
-            cratons.thin_with_column(world, plate, hc_before, "rifted_m3")
-            mobile_cover.thin_with_column(world, plate, hc_before, "rift_thinned_m3")
-            continental_ledger.thin_with_column(world, plate, hc_before, "rift_thinned_m3")
-            if world.debug_diagnostics:
-                after = phase_budget.snapshot(plate, line_spacing_rad(world.node_density))
-                phase_budget.record_snapshots(world, plate, "failed_rift_thinning", before, after)
+        if world.debug_diagnostics:
+            before = phase_budget.snapshot(plate, line_spacing_rad(world.node_density))
+        hc_before = plate.collect("crustal_thickness_m")
+        plate.apply_failed_rift(cut_normal, line_spacing_rad(world.node_density))
+        cratons.thin_with_column(world, plate, hc_before, "rifted_m3")
+        mobile_cover.thin_with_column(world, plate, hc_before, "rift_thinned_m3")
+        continental_ledger.thin_with_column(world, plate, hc_before, "rift_thinned_m3")
+        if world.debug_diagnostics:
+            after = phase_budget.snapshot(plate, line_spacing_rad(world.node_density))
+            phase_budget.record_snapshots(world, plate, "failed_rift_thinning", before, after)
         plate.reset_age()
         # The attempt released some, but not all, of the accumulated pressure that drove it --
         # see FAILED_RIFT_STRESS_RELIEF's own comment.
@@ -826,34 +797,6 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
     plate_a.set_internal_stress(0.0)
     plate_b.set_internal_stress(0.0)
     return plate_a, plate_b
-
-
-def relattice_continental_plates(world: "World") -> None:
-    """Refit every continental plate's lattice to its own current outline, on
-    `RELATTICE_INTERVAL_STEPS` cadence -- see `LithospherePlate.relattice`'s own docstring for
-    what this fixes and why. `relattice` is a v2 (`lithosphere_plate.LithospherePlate`)
-    method; duck-typed via `getattr` the same way `maybe_split_plate`'s failed-rift path
-    checks for `apply_failed_rift`, since v1's `plates.PlateWithLines` has no equivalent (this
-    mechanism, like the rest of the continental-ratchet work, only applies to the running v2
-    engine). A no-op per plate if `crust_type` isn't continental or it has no nodes -- see
-    that method.
-
-    Quad plates (`PlateWithSparseQuadPatch`) deliberately have no `relattice`. What it repairs
-    is row-to-row phase drift from growing each row's ends independently; cells are fixed
-    lattice keys that grow and retreat across every side at once, so there is no drift to
-    refit. Measured on seed 7 over 150 Myr, the quad lattice stays unrefined, under 1% of
-    cells are one cell thin and at most one transient hole opens, where the line lattice
-    reaches 15% one-node lines by 60 Myr (issue #228 Phase 4, `bin/debug/measure_quad_passes.py`)."""
-    spacing_rad = line_spacing_rad(world.node_density)
-    for plate in world.plates:
-        relattice = getattr(plate, "relattice", None)
-        if callable(relattice):
-            if world.debug_diagnostics:
-                before = phase_budget.snapshot(plate, spacing_rad)
-            relattice(spacing_rad, world)
-            if world.debug_diagnostics:
-                after = phase_budget.snapshot(plate, spacing_rad)
-                phase_budget.record_snapshots(world, plate, "continental_relattice", before, after)
 
 
 def defragment_plates(world: "World") -> list[str]:
@@ -930,7 +873,7 @@ def update_overlap_tracking(world: "World", years: float) -> None:
     `apply_topology_changes` so it sees this step's final geometry:
 
     - Diagnostic (nothing in the physics reads it back): stamp
-      `ElevationLine.overlap_onset_years` with `world.elapsed_years` on every node that has
+      the `overlap_onset_years` field with `world.elapsed_years` on every node that has
       *just* started sitting on top of another plate's territory, and clear it (to 0.0) on
       every node no longer overlapping anything.
     - `update_overlap_progress`: advance `World.overlap_progress`, the sustained-deep-overlap
@@ -943,8 +886,7 @@ def update_overlap_tracking(world: "World", years: float) -> None:
     "...since 178 My" are the same underlying node set. Mirrors
     `stranded_basins.reconcile_world_tracks` / `World.collision_progress` -- lightweight
     cross-step trackers, persisted in the save."""
-    tol = plates_mod.OVERLAP_TOLERANCE_MULT * line_spacing_rad(world.node_density)
-    overlap = plates_mod.compute_node_overlap(world.plates, tol)
+    overlap = plates_mod.compute_node_overlap(world.plates)
     update_overlap_progress(world, years, overlap)
     accumulate_plate_stress(world, years, overlap)
     for plate in world.plates:
@@ -957,16 +899,6 @@ def update_overlap_tracking(world: "World", years: float) -> None:
         onset[mask & (onset == 0.0)] = world.elapsed_years
         onset[~mask] = 0.0
         plate.set_fields_on_plate(overlap_onset_years=onset)
-
-
-def _supports_merge(world: "World", id_keep: int, id_absorb: int) -> bool:
-    """Whether `merge_plates` can fuse this pair: both plates share one `merge_with`, i.e.
-    one surface representation. A line plate and a quad plate never meet in a generated
-    world, but a mixed pair has no transfer between the two lattices, so it keeps colliding
-    instead of fusing."""
-    plates = [p for p in world.plates if p.plate_id in (id_keep, id_absorb)]
-    methods = {getattr(type(p), "merge_with", None) for p in plates}
-    return len(methods) == 1 and callable(next(iter(methods)))
 
 
 def _merge_plates_with_craton_audit(world: "World", id_keep: int, id_absorb: int) -> None:
@@ -1007,13 +939,7 @@ def apply_topology_changes(world: "World", years: float) -> list[str]:
     if world.steps_taken % DEFRAG_INTERVAL_STEPS == 0:
         events.extend(defragment_plates(world))
 
-    # Periodic continental lattice refit -- see relattice_continental_plates. Also geometric
-    # cleanup, so gated and placed the same way as defragment_plates above (before collision/
-    # split reads this step's geometry), just on its own, longer cadence.
-    if world.steps_taken % RELATTICE_INTERVAL_STEPS == 0:
-        relattice_continental_plates(world)
-
-    ready_pairs = [pair for pair in update_collision_progress(world, years) if _supports_merge(world, *pair)]
+    ready_pairs = update_collision_progress(world, years)
     merged_this_step = False
     if ready_pairs:
         # Real continental collisions don't resolve all at once, and merging every ready
@@ -1033,7 +959,7 @@ def apply_topology_changes(world: "World", years: float) -> list[str]:
     # above never fired (see update_overlap_progress / FORCED_MERGE_OVERLAP_FRACTION). Still at
     # most one fusion per step; skipped on a step that already merged a ready pair.
     if not merged_this_step:
-        forced = pop_ready_forced_merge(world, can_merge=lambda a, b: _supports_merge(world, a, b))
+        forced = pop_ready_forced_merge(world)
         if forced is not None:
             id_keep, id_absorb = forced
             _merge_plates_with_craton_audit(world, id_keep, id_absorb)

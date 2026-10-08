@@ -8,8 +8,8 @@ import numpy as np
 import pytest
 
 from app import eustasy, lithosphere, persistence, plates as plates_mod, surface_parity as sp, surface_parity_gates as gates
-from app.elevation_lines import ElevationLine, line_spacing_rad
-from app.plates import PlateWithLines, gather_node_positions
+from app.elevation_lines import line_spacing_rad
+from app.plates import gather_node_positions
 from app.sparse_quad_patch import PlateWithSparseQuadPatch
 from app.world import World
 
@@ -29,11 +29,6 @@ def _cap(plate_id=1, frame=None, centre=(1.0, 0.0, 0.0), radius=6 * SPACING) -> 
     plate.set_fields_on_plate(crustal_thickness_m=np.full(n, hc), mantle_lithosphere_thickness_m=np.full(n, hm))
     lithosphere.sync_plate_elevation(plate)
     return plate
-
-
-def _line_plate() -> PlateWithLines:
-    lines = [ElevationLine(phi=phi, theta=np.linspace(-0.05, 0.05, 11), elevation=np.zeros(11)) for phi in np.linspace(-0.04, 0.04, 9)]
-    return PlateWithLines(plate_id=2, frame=np.eye(3), crust_type="continental", lines=lines)
 
 
 def _prime(plate) -> None:
@@ -146,7 +141,7 @@ def _insert(plate):
 
 def _merge(plate):
     other = _cap(9, ROTATED, centre=plate._get_world_points()[0], radius=3 * SPACING)
-    plate.merge_with(other, SPACING, SPACING, other.all_points_and_elevation()[0])
+    plate.merge_with(other, other.all_points_and_elevation()[0])
     return plate
 
 
@@ -199,9 +194,8 @@ def test_quad_rotation_bumps_geometry_only_and_keeps_local_caches():
     assert sp.stale_plate_caches(plate) == []
 
 
-@pytest.mark.parametrize("make", [_cap, _line_plate], ids=["quad", "lines"])
-def test_field_only_writes_keep_position_indexes(make):
-    plate = make()
+def test_field_only_writes_keep_position_indexes():
+    plate = _cap()
     tree, outline = plate.get_node_kdtree(), plate.get_bounding_polygon()
     revisions = (plate.topology_revision, plate.geometry_revision)
     plate.set_fields_on_plate(elevation=plate.collect("elevation") + 1.0)
@@ -225,22 +219,17 @@ def test_quad_split_and_failed_rift_leave_consistent_caches():
     assert sp.stale_plate_caches(plate) == []
 
 
-@pytest.mark.parametrize("make", [_cap, _line_plate], ids=["quad", "lines"])
-def test_pickling_drops_every_derived_cache(make):
-    plate = make()
+def test_pickling_drops_every_derived_cache():
+    plate = _cap()
     _prime(plate)
     assert _populated(plate)
     loaded = pickle.loads(pickle.dumps(plate))
-    # The line surface pickles its caches; persistence drops them for whole-world loads.
-    if isinstance(plate, PlateWithSparseQuadPatch):
-        assert _populated(loaded) == []
+    assert _populated(loaded) == []
     assert sp.stale_plate_caches(loaded) == []
 
 
-@pytest.mark.parametrize("make_plate", [_cap, _line_plate], ids=["quad", "lines"])
-def test_world_load_drops_every_derived_index_and_keeps_authoritative_state(make_plate):
-    # One surface per world: saves refuse to mix them (docs/save-compatibility.md).
-    world = World(seed=0, plates=[make_plate()], next_plate_id=3, node_density=DENSITY)
+def test_world_load_drops_every_derived_index_and_keeps_authoritative_state():
+    world = World(seed=0, plates=[_cap()], next_plate_id=3, node_density=DENSITY)
     # A generated world always has its water budget; without one, load's backfill would
     # rebuild the area caches it reads.
     eustasy.initialize_water_budget(world)
@@ -332,11 +321,10 @@ def _checkpoint(age, **overrides):
     return checkpoint
 
 
-def _run(surface, seed=1, checkpoints=None, violations=(), series=None):
+def _run(seed=1, checkpoints=None, violations=(), series=None):
     return {
         "config": {"name": "test"},
         "seed": seed,
-        "surface": surface,
         "checkpoints": checkpoints or [_checkpoint(0.0), _checkpoint(10.0)],
         "violations": list(violations),
         "audits": 3,
@@ -349,93 +337,57 @@ def _gate(evaluation, key):
     return evaluation["gates"][key]["status"]
 
 
-def test_matching_runs_pass():
-    evaluation = gates.evaluate([(_run("lines"), None), (_run("quad"), None)])
+def test_a_clean_run_passes():
+    evaluation = gates.evaluate([(_run(), None)])
     assert evaluation["verdict"] == gates.PASS
-    assert _gate(evaluation, "P1:land_fraction") == gates.INSUFFICIENT
 
 
-def test_quad_invariant_violation_fails_but_a_line_one_is_only_a_baseline_finding():
+def test_a_hard_invariant_violation_fails():
     violation = {"kind": "quad_folded", "detail": "1 folded cells", "step": 4}
-    evaluation = gates.evaluate([(_run("lines"), None), (_run("quad", violations=[violation]), None)])
+    evaluation = gates.evaluate([(_run(violations=[violation]), None)])
     assert evaluation["verdict"] == gates.FAIL and _gate(evaluation, "H3:quad_folded") == gates.FAIL
 
     stale = {"kind": "stale_plate_cache", "detail": "_node_kdtree_cache", "step": 4}
-    evaluation = gates.evaluate([(_run("lines", violations=[stale]), None), (_run("quad"), None)])
-    assert evaluation["verdict"] == gates.PASS
-    assert evaluation["gates"]["H6:derived_caches"]["line_baseline_findings"] == 1
+    assert _gate(gates.evaluate([(_run(violations=[stale]), None)]), "H6:derived_caches") == gates.FAIL
 
 
-def test_a_quad_cap_breach_warns():
+def test_a_cap_breach_warns():
     breach = {"kind": "field_bounds", "detail": "mantle_lithosphere_thickness_m: 1 values outside", "step": 4}
-    evaluation = gates.evaluate([(_run("lines", violations=[breach]), None), (_run("quad", violations=[breach]), None)])
+    evaluation = gates.evaluate([(_run(violations=[breach]), None)])
     assert _gate(evaluation, "H11:field_caps") == gates.WARN and evaluation["verdict"] == gates.WARN
 
 
-def test_coverage_regression_beyond_tolerance_fails():
-    quad = _run("quad", checkpoints=[_checkpoint(0.0), _checkpoint(10.0, **{"coverage.uncovered": 0.03})])
-    evaluation = gates.evaluate([(_run("lines"), None), (quad, None)])
-    assert _gate(evaluation, "C1:uncovered") == gates.FAIL
-
-    quad = _run("quad", checkpoints=[_checkpoint(0.0), _checkpoint(10.0, **{"coverage.multiply_covered": 0.021})])
-    assert _gate(gates.evaluate([(_run("lines"), None), (quad, None)]), "C3:multiply_covered") == gates.FAIL
+def test_a_void_fails():
+    run = _run(checkpoints=[_checkpoint(0.0), _checkpoint(10.0, **{"coverage.void": 0.001})])
+    assert _gate(gates.evaluate([(run, None)]), "C2:void") == gates.FAIL
 
 
-def test_quad_multiply_covered_uses_its_exact_cell_tolerance_not_the_line_outline():
-    lines = _run("lines", checkpoints=[_checkpoint(0.0), _checkpoint(10.0, **{"coverage.multiply_covered": 0.001})])
+def test_multiply_covered_uses_its_exact_cell_tolerance():
+    def status(value):
+        run = _run(checkpoints=[_checkpoint(0.0), _checkpoint(10.0, **{"coverage.multiply_covered": value})])
+        return gates.evaluate([(run, None)])
 
-    quad = _run("quad", checkpoints=[_checkpoint(0.0), _checkpoint(10.0, **{"coverage.multiply_covered": 0.014})])
-    result = gates.evaluate([(lines, None), (quad, None)])
-    assert _gate(result, "C3:multiply_covered") == gates.PASS
-
-    quad = _run("quad", checkpoints=[_checkpoint(0.0), _checkpoint(10.0, **{"coverage.multiply_covered": 0.019})])
-    result = gates.evaluate([(lines, None), (quad, None)])
+    assert _gate(status(0.014), "C3:multiply_covered") == gates.PASS
+    result = status(0.019)
     assert _gate(result, "C3:multiply_covered") == gates.WARN
     assert result["gates"]["C3:multiply_covered"]["worst"]["fail_above"] == gates.QUAD_MULTIPLY_COVERED_FAIL
+    assert _gate(status(0.021), "C3:multiply_covered") == gates.FAIL
 
 
-def test_quad_multiply_covered_gates_unpaired_checkpoints():
-    quad_only = _run("quad", checkpoints=[_checkpoint(0.0), _checkpoint(10.0, **{"coverage.multiply_covered": 0.05})])
-    assert _gate(gates.evaluate([(quad_only, None)]), "C3:multiply_covered") == gates.FAIL
-
-    lines = _run("lines", checkpoints=[_checkpoint(0.0)])
-    quad = _run("quad", checkpoints=[_checkpoint(0.0), _checkpoint(10.0, **{"coverage.multiply_covered": 0.05})])
-    assert _gate(gates.evaluate([(lines, None), (quad, None)]), "C3:multiply_covered") == gates.FAIL
-
-
-def test_conservation_drift_gap_is_banded():
-    quad = _run("quad", checkpoints=[_checkpoint(0.0), _checkpoint(10.0, **{"totals.hc_volume_km3": 88.0})])
-    assert _gate(gates.evaluate([(_run("lines"), None), (quad, None)]), "K1:hc_volume_km3_drift") == gates.FAIL
-    quad = _run("quad", checkpoints=[_checkpoint(0.0), _checkpoint(10.0, **{"totals.hc_volume_km3": 93.0})])
-    assert _gate(gates.evaluate([(_run("lines"), None), (quad, None)]), "K1:hc_volume_km3_drift") == gates.WARN
-
-
-def test_ensemble_parity_uses_the_line_seed_spread():
-    runs = []
-    for seed, land in zip((1, 2, 3), (0.28, 0.30, 0.32)):
-        runs.append((_run("lines", seed, [_checkpoint(0.0), _checkpoint(10.0, **{"totals.land_fraction": land})]), None))
-        runs.append((_run("quad", seed, [_checkpoint(0.0), _checkpoint(10.0, **{"totals.land_fraction": land + 0.01})]), None))
-    assert _gate(gates.evaluate(runs), "P1:land_fraction") == gates.PASS
-
-    for run, _ in runs:
-        if run["surface"] == "quad":
-            run["checkpoints"][1]["totals"]["land_fraction"] += 0.05
-    assert _gate(gates.evaluate(runs), "P1:land_fraction") == gates.FAIL
-
-
-def test_performance_gate_isolates_deformation_and_topology():
-    def timings(deform):
-        return {"steps": [{"wall_s": 1.0 + deform, "phases": {"deform": deform, "climate_erosion_hydrology": 1.0}, "index_builds": {}}]}
-
-    evaluation = gates.evaluate([(_run("lines"), timings(0.2)), (_run("quad"), timings(0.4))])
-    assert _gate(evaluation, "R1:deform_topology_s_per_step") == gates.WARN
-    assert _gate(evaluation, "R2:step_total_s_per_step") == gates.PASS
+def test_area_accounting_must_match_the_covered_sphere():
+    exact = {"totals.area_is_exact": True, "totals.area_over_sphere": 0.99}
+    run = _run(checkpoints=[_checkpoint(0.0), _checkpoint(10.0, **exact)])
+    assert _gate(gates.evaluate([(run, None)]), "K3:quad_area_accounting") == gates.PASS
+    run = _run(checkpoints=[_checkpoint(0.0), _checkpoint(10.0, **{**exact, "totals.area_over_sphere": 0.9})])
+    assert _gate(gates.evaluate([(run, None)]), "K3:quad_area_accounting") == gates.WARN
 
 
 def test_report_renders_every_group_present():
-    evaluation = gates.evaluate([(_run("lines"), None), (_run("quad"), None)])
-    report = gates.render_report(evaluation, [(_run("lines"), None), (_run("quad"), None)], ["cmd"])
+    timings = {"steps": [{"wall_s": 1.2, "phases": {"deform": 0.2, "climate_erosion_hydrology": 1.0}, "index_builds": {}}]}
+    evaluation = gates.evaluate([(_run(), timings)])
+    report = gates.render_report(evaluation, [(_run(), timings)], ["cmd"])
     assert "**Verdict: PASS**" in report and "## Hard invariants" in report and "## Checkpoints, seed 1" in report
+    assert "## Performance" in report
 
 
 def test_presets_have_consistent_checkpoints():
@@ -448,16 +400,16 @@ def test_presets_have_consistent_checkpoints():
 def test_run_can_continue_a_saved_world(tmp_path):
     from app.world import generate_world
 
-    world = generate_world(seed=4, node_density=0.25, surface="lines")
+    world = generate_world(seed=4, node_density=0.25)
     path = tmp_path / "w.mbworld"
     path.write_bytes(persistence.save_world_bytes(world))
     config = sp.RunConfig("resume", node_density=0.25, step_years=1e6, checkpoints_myr=(), audit_every=1, samples=500, load_checks=False)
 
-    document, _ = sp.run_surface(config, 4, "lines", initial_world=path, log=lambda _: None)
+    document, _ = sp.run_world(config, 4, initial_world=path, log=lambda _: None)
     assert document["initial_world"]["name"] == "w.mbworld"
     assert document["checkpoints"][0]["totals"]["nodes"] == sum(p.node_count() for p in world.plates)
     with pytest.raises(ValueError):
-        sp.run_surface(config, 4, "quad", initial_world=path, log=lambda _: None)
+        sp.run_world(config, 5, initial_world=path, log=lambda _: None)
 
 
 def test_hydrology_finite_check_allows_the_no_rim_sentinel_only():

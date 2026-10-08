@@ -1,8 +1,8 @@
 """Reusable contract tests for every authoritative PlateSurface implementation.
 
-Each shared test runs unchanged against `PlateWithLines` and `PlateWithSparseQuadPatch`, built
-as equivalent small patches around the local seed; representation-specific behaviour (legacy
-line mutation, coincident line nodes) is tested separately below.
+`PlateWithSparseQuadPatch` is the only implementation since the line surface was retired
+(#251); each test runs against small patches around the local seed, so a new implementation
+can be added to the fixtures and inherit the whole contract.
 """
 
 from types import SimpleNamespace
@@ -10,20 +10,13 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from app.elevation_lines import ElevationLine
-from app.plates import PlateSurface, PlateWithLines
+from app.plates import PlateSurface
 from app.sparse_quad_patch import PlateWithSparseQuadPatch, pack_cell_keys
 from app.surface_fields import SURFACE_FIELDS, RemapClass
 
-# A 157-cell cube face has ~0.01 rad cells with cell 78 centred on the seed, matching the
-# 0.01 rad line spacing below.
+# A 157-cell cube face has ~0.01 rad cells with cell 78 centred on the seed.
 QUAD_N = 157
 QUAD_CENTRE = 78
-
-
-def _line(phi, theta, elevation=None):
-    theta = np.asarray(theta, dtype=float)
-    return ElevationLine(phi=phi, theta=theta, elevation=np.zeros(len(theta)) if elevation is None else elevation)
 
 
 def _quad(plate_id, cells, **fields) -> PlateWithSparseQuadPatch:
@@ -33,32 +26,9 @@ def _quad(plate_id, cells, **fields) -> PlateWithSparseQuadPatch:
     return PlateWithSparseQuadPatch(plate_id, np.eye(3), "continental", QUAD_N, keys, fields=fields)
 
 
-def _lines_square() -> PlateSurface:
-    lines = [
-        _line(-0.01, [-0.01, 0.0, 0.01], np.array([1.0, 2.0, 3.0])),
-        _line(0.0, [-0.01, 0.0, 0.01], np.array([4.0, 5.0, 6.0])),
-        _line(0.01, [-0.01, 0.0, 0.01], np.array([7.0, 8.0, 9.0])),
-    ]
-    return PlateWithLines(plate_id=7, frame=np.eye(3), crust_type="continental", lines=lines)
-
-
 def _quad_square() -> PlateSurface:
     cells = [(di, dj) for dj in (-1, 0, 1) for di in (-1, 0, 1)]
     return _quad(7, cells, elevation=np.arange(1.0, 10.0))
-
-
-def _lines_ring() -> PlateSurface:
-    return PlateWithLines(
-        plate_id=8,
-        frame=np.eye(3),
-        crust_type="continental",
-        lines=[
-            _line(-0.02, np.linspace(-0.03, 0.03, 7)),
-            _line(0.0, [-0.03, -0.02]),
-            _line(0.0, [0.02, 0.03]),
-            _line(0.02, np.linspace(-0.03, 0.03, 7)),
-        ],
-    )
 
 
 def _quad_ring() -> PlateSurface:
@@ -66,8 +36,8 @@ def _quad_ring() -> PlateSurface:
     return _quad(8, cells)
 
 
-SQUARES = {"lines": _lines_square, "quad": _quad_square}
-RINGS = {"lines": _lines_ring, "quad": _quad_ring}
+SQUARES = {"quad": _quad_square}
+RINGS = {"quad": _quad_ring}
 
 
 @pytest.fixture(params=sorted(SQUARES))
@@ -197,10 +167,7 @@ def test_surface_node_id_lookup_is_storage_neutral_and_valid_only_in_its_revisio
 
 
 def test_every_persistent_field_has_remap_metadata(surface):
-    expected = {"elevation", *ElevationLine.OPTIONAL_FIELDS}
-
     assert surface.field_metadata() is SURFACE_FIELDS
-    assert set(surface.field_metadata()) == expected
     assert SURFACE_FIELDS["crustal_thickness_m"].remap_class is RemapClass.EXTENSIVE
     assert SURFACE_FIELDS["is_volcano"].remap_class is RemapClass.BOOLEAN_PROVENANCE
     assert SURFACE_FIELDS["node_created_years"].remap_class is RemapClass.WRITE_ONCE_HISTORY
@@ -217,38 +184,5 @@ def test_every_persistent_field_reads_back_with_its_registry_dtype_and_default(s
         np.testing.assert_array_equal(values, np.full(9, spec.default, dtype=spec.dtype), err_msg=name)
 
 
-# --- Representation-specific behaviour ----------------------------------------------------
-
-
-def test_line_surface_area_is_a_compatibility_estimate_and_quad_area_is_exact():
-    assert not _lines_square().surface_nodes().area_is_exact
+def test_quad_area_is_exact():
     assert _quad_square().surface_nodes().area_is_exact
-
-
-def test_line_surface_topology_revision_tracks_line_geometry_changes():
-    surface = _lines_square()
-    assert isinstance(surface, PlateWithLines)
-    topology0, geometry0 = surface.topology_revision, surface.geometry_revision
-
-    surface.set_lines(list(surface.lines))
-    assert surface.topology_revision == topology0
-    assert surface.geometry_revision == geometry0
-
-    lines = list(surface.lines)
-    lines[0] = _line(-0.01, [-0.01, 0.0])
-    surface.set_lines(lines)
-    assert surface.topology_revision == topology0 + 1
-    assert surface.geometry_revision == geometry0 + 1
-
-
-def test_surface_ids_distinguish_coincident_legacy_nodes_and_area_is_not_double_counted():
-    duplicate_a = _line(0.0, [0.0])
-    duplicate_b = _line(0.0, [0.0])
-    neighbour = _line(0.0, [0.01])
-    surface: PlateSurface = PlateWithLines(9, np.eye(3), "oceanic", [duplicate_a, duplicate_b, neighbour])
-
-    nodes = surface.surface_nodes()
-
-    assert len({tuple(node_id) for node_id in nodes.node_ids}) == 3
-    np.testing.assert_allclose(nodes.area_m2[0], nodes.area_m2[1])
-    np.testing.assert_allclose(nodes.area_m2[0] + nodes.area_m2[1], nodes.area_m2[2])

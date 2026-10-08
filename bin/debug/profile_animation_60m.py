@@ -15,7 +15,7 @@ import numpy as np
 from PIL import Image
 
 from app import erosion, eustasy, faults, geology, merge_split, render_image, volcanism, world as world_mod
-from app.lithosphere_plate import LithospherePlate
+from app.sparse_quad_patch import PlateWithSparseQuadPatch
 
 FRAMES = 60
 STEPS_PER_FRAME = 10
@@ -40,8 +40,8 @@ def main() -> None:
 
     # These wrappers match step_world's major sequential phases. shift/deform are aggregated
     # over all plates; the remaining step overhead is reported explicitly as unclassified.
-    wrap(LithospherePlate, "shift", "plate_shift")
-    wrap(LithospherePlate, "deform", "plate_deform")
+    wrap(PlateWithSparseQuadPatch, "shift", "plate_shift")
+    wrap(PlateWithSparseQuadPatch, "deform", "plate_deform")
     wrap(faults, "update_faults", "faults")
     wrap(merge_split, "apply_topology_changes", "topology_changes")
     wrap(erosion, "apply_erosion", "climate_erosion_hydrology")

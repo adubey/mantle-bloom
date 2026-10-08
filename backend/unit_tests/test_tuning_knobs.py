@@ -9,8 +9,9 @@ import numpy as np
 import pytest
 
 from app import erosion, volcanism
-from app.plates import ElevationLine, PlateWithLines
 from app.world import TUNING_MULTIPLIER_FIELDS, World, generate_world, step_world
+
+from .quad_fixtures import quad_plate
 
 
 def _elevation_snapshot(world: World) -> np.ndarray:
@@ -95,32 +96,31 @@ def test_ocean_deposition_knob_builds_or_starves_the_shelf():
     assert fed_elev[ocean].mean() > starved_elev[ocean].mean()
 
 
-def _all_active_volcano_world(n: int = 200) -> World:
-    line = ElevationLine(
-        phi=0.0, theta=np.arange(n) * 0.001, elevation=np.full(n, 200.0),
-        is_volcano=np.ones(n, dtype=bool), volcano_active_years_remaining=np.full(n, 5_000_000.0),
+def _all_active_volcano_world() -> World:
+    plate = quad_plate(
+        0, "continental", columns=range(20), rows=range(10), elevation=200.0,
+        is_volcano=True, volcano_active_years_remaining=5_000_000.0,
     )
-    plate = PlateWithLines(plate_id=0, frame=np.eye(3), crust_type="continental", lines=[line])
     return World(seed=0, plates=[plate])
 
 
 def test_volcanism_multiplier_zero_stops_all_eruptions():
     world = _all_active_volcano_world()
     world.volcanism_multiplier = 0.0
-    before = world.plates[0].lines[0].elevation.copy()
+    before = world.plates[0].collect("elevation").copy()
     for _ in range(10):
         volcanism.apply_volcanic_activity(world, years=200_000)
-    np.testing.assert_array_equal(world.plates[0].lines[0].elevation, before)
+    np.testing.assert_array_equal(world.plates[0].collect("elevation"), before)
 
 
 def test_volcanism_multiplier_scales_total_land_built():
     def built(multiplier: float) -> float:
         world = _all_active_volcano_world()
         world.volcanism_multiplier = multiplier
-        before = world.plates[0].lines[0].elevation.copy()
+        before = world.plates[0].collect("elevation").copy()
         for _ in range(10):
             volcanism.apply_volcanic_activity(world, years=200_000)
-        return float((world.plates[0].lines[0].elevation - before).sum())
+        return float((world.plates[0].collect("elevation") - before).sum())
 
     assert built(3.0) > built(1.0) > 0.0
 
@@ -166,13 +166,10 @@ def test_collision_uplift_reach_widens_the_thickened_belt():
 
 
 def test_collision_uplift_reach_at_zero_thickens_less_than_its_own_default():
-    # 2026-09-04 (GitHub issue #120, "Land fraction slowly declines"): the near-field dilation ring
-    # is no longer "extra width above 1.0" -- it's linear in the knob from 0 (see
-    # COLLISION_REACH_DILATION_NODES_PER_UNIT's own comment), so the knob's own untuned value
-    # (1.0) already carries a real near-field ring, not none. reach=0.0 both drops the ring
-    # (dilation_nodes == 0) *and* zeroes the core contested-band strength
+    # The knob scales how far the shortening cascade carries a collision inland
+    # (shortening.py's `reach_scale`) and, below 1, the core contested-band strength
     # (`orogen_contested_strength = orogen_amount * min(orogen_reach, 1.0)`), so this isn't a
-    # surgical ring-only isolation -- just confirms the knob's default now does more than an
+    # surgical isolation of either -- just confirms the knob's default does more than an
     # explicit "off".
     default_hc, _ = _stepped_crust_and_relief(559394024, 6, collision_uplift_reach_multiplier=1.0)
     zero_reach_hc, _ = _stepped_crust_and_relief(559394024, 6, collision_uplift_reach_multiplier=0.0)

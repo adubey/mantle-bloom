@@ -3,12 +3,7 @@ from scipy.spatial import cKDTree
 
 from app import bathymetry, lithosphere
 from app.elevation_lines import line_spacing_rad
-from app.lithosphere_plate import generate_plates as _generate_plates
-
-
-def generate_plates(*args, **kwargs):
-    kwargs.setdefault("surface", "lines")
-    return _generate_plates(*args, **kwargs)
+from app.lithosphere_plate import generate_plates
 
 _GEN_KWARGS = dict(seed=7, num_plates=12, continental_fraction=0.5, land_fraction=0.2, node_density=1.0)
 
@@ -112,14 +107,11 @@ def test_deep_ocean_interior_stays_deep():
 def test_bathymetry_shaping_keeps_elevation_consistent_with_isostasy():
     """Both passes mutate Hc/Hm and must re-sync `elevation`, not leave it stale."""
     for plate in generate_plates(**_GEN_KWARGS):
-        rho_c = lithosphere.crust_density(plate.crust_type)
-        for line in plate.lines:
-            if len(line) == 0:
-                continue
-            expected = lithosphere.isostatic_elevation(
-                line.crustal_thickness_m, line.mantle_lithosphere_thickness_m, rho_c
-            )
-            assert np.allclose(line.elevation, expected, atol=1e-6)
+        rho_c = lithosphere.node_crust_density(plate.collect("crust_type_code"), plate.crust_type)
+        expected = lithosphere.isostatic_elevation(
+            plate.collect("crustal_thickness_m"), plate.collect("mantle_lithosphere_thickness_m"), rho_c
+        )
+        assert np.allclose(plate.collect("elevation"), expected, atol=1e-6)
 
 
 def test_shape_initial_bathymetry_no_op_on_single_crust_world():

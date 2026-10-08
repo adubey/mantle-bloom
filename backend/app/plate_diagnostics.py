@@ -51,7 +51,7 @@ def build_report(world: World) -> dict:
     version also carries every node coordinate, which a diagnostics dump has no use for)."""
     overlaps = _plate_overlaps(world)
     keep = (
-        "plate_id", "crust_type", "num_points", "num_rows", "age_steps",
+        "plate_id", "crust_type", "num_points", "age_steps",
         "speed_cm_per_yr", "at_max_rate", "euler_pole", "median_elevation_m",
         "submerged_fraction", "overlaps", "collisions",
     )
@@ -123,7 +123,7 @@ def format_report(report: dict) -> str:
         f"  ! = continental & >50% submerged )"
     )
     header = (
-        f"  {'id':>3}  {'crust':<11} {'nodes':>7} {'rows':>5} {'age':>5}"
+        f"  {'id':>3}  {'crust':<11} {'nodes':>7} {'age':>5}"
         f"  {'speed':>8}  {'pole lat,lon':>15}  {'med.elev':>9}  {'submrg':>6}"
     )
     lines.append(header)
@@ -133,11 +133,10 @@ def format_report(report: dict) -> str:
         drowned = (
             "!" if row["crust_type"] == "continental" and row["submerged_fraction"] > 0.5 else " "
         )
-        rows_cell = "--" if row["num_rows"] is None else f"{row['num_rows']}"
         elev_cell = "--" if row["median_elevation_m"] is None else f"{row['median_elevation_m']:>9.0f}"
         lines.append(
             f"  {row['plate_id']:>3}  {row['crust_type']:<11} {row['num_points']:>7}"
-            f" {rows_cell:>5} {row['age_steps']:>5}"
+            f" {row['age_steps']:>5}"
             f"  {row['speed_cm_per_yr']:>7.2f}{railed}  {_fmt_pole(row['euler_pole']):>15}"
             f"  {elev_cell}  {row['submerged_fraction']:>5.2f}{drowned}"
         )

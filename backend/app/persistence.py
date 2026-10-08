@@ -32,7 +32,8 @@ from .world import World
 #   loader can check, which surface representations it may contain -- see
 #   sparse_quad_patch.py, whose plates also version their own pickled state.
 # - Version 3 adds `"surface"`: `"lines"`, `"quad"`, or `"empty"` (no plates), checked
-#   against the plates actually unpickled. A world never mixes the two surfaces.
+#   against the plates actually unpickled. A world never mixes the two surfaces, and this
+#   build only writes `"quad"` or `"empty"`: a `"lines"` save converts on load.
 #
 # Bump on any change an older build can't read. docs/save-compatibility.md is the policy for
 # line-backed (legacy) saves and how they move to quads (legacy_conversion.py).
@@ -72,18 +73,21 @@ def save_world_bytes(world: World) -> bytes:
     return pickle.dumps({"format": SAVE_FORMAT, "version": SAVE_FORMAT_VERSION, "surface": world_surface(world), "world": world})
 
 
-def load_world_bytes(data: bytes, *, convert_lines: bool = False) -> World:
+def load_world_bytes(data: bytes) -> World:
     """The `World` in a save of any supported version. Raises `CorruptSaveError` for bytes
     that aren't a readable save (pickle's own errors are wrapped, never passed through) or a
     save that contradicts itself, and `UnsupportedSaveVersionError` for a save, or a sparse
     quad plate inside one, written in a newer format than this build reads. Nothing falls back
     silently to a partial load.
 
-    A line-backed save loads as a line world unless `convert_lines`, which converts it to
-    sparse quads one way (legacy_conversion.convert_world_to_quad); the conversion summary is
-    then on `World.surface_conversion`."""
+    A line-backed save is unpickled with inert stand-ins for the retired line classes
+    (`legacy_conversion.legacy_unpickler`) and converted to sparse quads one way
+    (`legacy_conversion.convert_world_to_quad`); the conversion summary is then on
+    `World.surface_conversion`."""
+    from .legacy_conversion import convert_world_to_quad, legacy_unpickler
+
     try:
-        payload = pickle.loads(data)
+        payload = legacy_unpickler(data).load()
     except SaveFormatError:
         raise
     except Exception as exc:  # noqa: BLE001 - pickle raises many types on foreign input
@@ -107,13 +111,16 @@ def load_world_bytes(data: bytes, *, convert_lines: bool = False) -> World:
     surface = world_surface(world)
     if declared is not None and declared != surface:
         raise CorruptSaveError(f"save declares a {declared!r} world but holds a {surface!r} one")
+    if surface == "lines":
+        # First: the stand-in line plates have no behaviour, and the backfills below read
+        # plate fields. Snapshots the water budget against the quad hypsometry itself.
+        try:
+            convert_world_to_quad(world)
+        except ValueError as exc:
+            raise CorruptSaveError(f"line-backed save can't be converted: {exc}") from exc
     _backfill_added_fields(world)
+    _drop_retired_state(world)
     _drop_derived_caches(world)
-    if convert_lines and surface == "lines":
-        from .legacy_conversion import convert_world_to_quad
-
-        # Snapshots the water budget against the quad hypsometry itself.
-        convert_world_to_quad(world)
     _backfill_water_budget(world)
     return world
 
@@ -142,8 +149,6 @@ def _backfill_added_fields(world: World) -> None:
         world.earthquakes = []
     if not hasattr(world, "removed_points_log"):
         world.removed_points_log = []
-    if not hasattr(world, "corner_notch_log"):
-        world.corner_notch_log = []
     if not hasattr(world, "pinned_omegas"):
         world.pinned_omegas = {}
     if not hasattr(world, "stats_history"):
@@ -176,6 +181,15 @@ def _backfill_added_fields(world: World) -> None:
     mobile_cover.ensure_ledger(world)
 
 
+def _drop_retired_state(world: World) -> None:
+    """Drop `World` attributes the line surface (retired in #251) kept, so a loaded world --
+    and anything it is saved as -- carries no line state. `corner_notch_log` recorded the line
+    engine's corner-notch filler; every save before #251, quad ones included, pickled it.
+    `gap_fill_algorithm` chose the line engine's gap filler, in saves older still."""
+    world.__dict__.pop("corner_notch_log", None)
+    world.__dict__.pop("gap_fill_algorithm", None)
+
+
 def _backfill_water_budget(world: World) -> None:
     """Eustatic sea level (eustasy.py): a save written before this existed has a fixed
     sea_level_m and no water budget -- snapshot the budget from that save's own hypsometry +
@@ -192,19 +206,12 @@ def _backfill_water_budget(world: World) -> None:
 
 
 def _drop_derived_caches(world: World) -> None:
-    """Clear every plate's lazily-rebuilt geometry cache (bounding polygon, its k-d tree,
-    the contains_batch row lookup). These are pure functions of a plate's current lines +
-    frame, so a stale one from an older app version -- e.g. a pre-keyhole `outline_world`
-    result, or a `_RowLookup` from before it grew per-arc intervals -- would otherwise be
-    trusted as-is on load. Cheap: each rebuilds on first use after this."""
+    """Clear every plate's lazily-rebuilt geometry caches (bounding polygon, k-d trees,
+    adjacency). These are pure functions of a plate's current cells + frame, so a stale one
+    from an older app version would otherwise be trusted as-is on load. Cheap: each rebuilds
+    on first use after this."""
     for plate in world.plates:
-        reset = getattr(plate, "_reset_caches", None)
-        if callable(reset):
-            reset()
-            continue
-        invalidate = getattr(plate, "_invalidate_bounding_polygon", None)
-        if callable(invalidate):
-            invalidate()
+        plate._reset_caches()
     # The render path's cached node-cloud k-d tree and its positions-only sibling shared with
     # climate.py (see World.node_kdtree_cache/node_position_tree_cache) -- both pure functions
     # of the just-invalidated plate geometry, rebuilt on first use after load.

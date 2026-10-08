@@ -78,7 +78,6 @@ def main() -> None:
     source.add_argument("--save", type=Path)
     parser.add_argument("--steps", type=int, default=100)
     parser.add_argument("--years", type=float, default=1_000_000.0)
-    parser.add_argument("--surface", default="quad")
     parser.add_argument("--every", type=int, default=10, help="snapshot every Nth step")
     parser.add_argument("--set", dest="settings", action="append", default=[], metavar="NAME=VALUE")
     parser.add_argument("--label", default="baseline")
@@ -100,7 +99,7 @@ def main() -> None:
             world = persistence.load_world_bytes(key.expanduser().read_bytes())
             run_id = key.name
         else:
-            world = generate_world(seed=key, surface=args.surface)
+            world = generate_world(seed=key)
             run_id = f"seed{key}"
         continental_ledger.ensure_initialized(world)
         budget = orogeny.ensure_budget(world)

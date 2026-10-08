@@ -63,7 +63,6 @@ def main() -> None:
     parser.add_argument("--seeds", type=int, nargs="+", default=[1])
     parser.add_argument("--steps", type=int, default=100)
     parser.add_argument("--years", type=float, default=1_000_000.0)
-    parser.add_argument("--surface", default="quad")
     parser.add_argument("--every", type=int, default=10, help="snapshot every Nth step")
     parser.add_argument("--belt-fraction", type=float, default=0.9, help="Hc / cap that counts as thickened")
     parser.add_argument("--per-pathway", action="store_true", help="also print per-pathway columns")
@@ -95,7 +94,7 @@ def main() -> None:
 
     rows = []
     for seed in args.seeds:
-        world = generate_world(seed=seed, surface=args.surface)
+        world = generate_world(seed=seed)
         start = time.perf_counter()
         window.clear()
         for step in range(1, args.steps + 1):

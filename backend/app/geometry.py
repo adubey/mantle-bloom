@@ -183,33 +183,11 @@ def azimuthal_equidistant_inverse(pole: np.ndarray, east: np.ndarray, north: np.
     return np.cos(theta)[..., None] * pole + np.sin(theta)[..., None] * tangent_dir
 
 
-def point_in_spherical_polygon(point_xyz: np.ndarray, polygon_xyz: np.ndarray) -> bool:
-    """True if unit vector `point_xyz` lies inside the simple spherical polygon whose
-    ordered (CW or CCW, either works) vertices are `polygon_xyz` (unit vectors) -- the
-    spherical analogue of the planar winding-number point-in-polygon test. Projects each
-    vertex into `point_xyz`'s own local tangent plane (see `local_tangent_basis`) and sums
-    the signed bearing change edge to edge: a point enclosed by a simple polygon
-    accumulates a full +-2*pi turn as the vertices sweep around it, one outside accumulates
-    ~0. Degenerate (numerically singular) for a polygon vertex antipodal to `point_xyz`,
-    not a concern for the compact plate outlines this is actually used on."""
-    polygon_xyz = np.asarray(polygon_xyz, dtype=float)
-    if len(polygon_xyz) < 3:
-        return False
-    east, north = local_tangent_basis(point_xyz)
-    tangent = polygon_xyz - np.outer(polygon_xyz @ point_xyz, point_xyz)
-    bearings = np.arctan2(tangent @ north, tangent @ east)
-    diffs = np.diff(np.concatenate([bearings, bearings[:1]]))
-    diffs = (diffs + np.pi) % (2.0 * np.pi) - np.pi
-    return abs(float(np.sum(diffs))) > np.pi
-
-
 def local_tangent_frame_batch(points_xyz: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Batched `local_tangent_basis`: (east, north) for every point in `points_xyz` at once
     -- the part of `points_in_spherical_polygon` that depends only on the query points, not
     on which polygon they're being tested against. Factored out so a caller checking the
-    same points against several polygons in a row (every `deform`-adjacent boundary-growth
-    check in plates.py loops its own near-boundary nodes over each neighbour in turn) can
-    build this once and reuse it, rather than paying for it again on every polygon -- see
+    same points against several polygons in a row can build this once and reuse it, rather than paying for it again on every polygon -- see
     `points_in_any_spherical_polygon`. Public (not module-private), same reasoning as
     `climate_grid_indices`'s own docstring: erosion.py's wind-transported deposition also
     needs a per-node (east, north) tangent basis, to resolve each node's own (wind_u,
@@ -295,13 +273,12 @@ def _plausibly_near(points_xyz: np.ndarray, polygon_xyz: np.ndarray) -> np.ndarr
 
 
 def points_in_spherical_polygon(points_xyz: np.ndarray, polygon_xyz: np.ndarray) -> np.ndarray:
-    """Vectorized `point_in_spherical_polygon`: same winding-number algorithm, batched over
-    every point in `points_xyz` at once instead of a Python-level loop calling the scalar
-    version per point. Needed once `PlateWithLines.deform` started calling the containment
-    test for every one of a plate's own near-boundary nodes, every turn -- profiled directly
-    as the dominant per-step cost at realistic node counts (a single step_world call on a
-    10-plate, default-density world went from ~46s to well under a second after switching
-    to this). Returns a bool array, one entry per point in `points_xyz` (empty if either
+    """True for each unit vector in `points_xyz` that lies inside the simple spherical polygon
+    whose ordered (CW or CCW, either works) vertices are `polygon_xyz` -- the spherical
+    analogue of the planar winding-number test: each vertex is projected into the point's own
+    tangent plane and the signed bearing change summed edge to edge, a full +-2*pi turn for an
+    enclosed point and ~0 for one outside. Degenerate for a vertex antipodal to a point, not
+    a concern for compact plate outlines. Returns a bool array, one entry per point in `points_xyz` (empty if either
     input is empty or the polygon has fewer than 3 vertices). Checking the same points
     against several polygons in a row (`neighbour in neighbours`, ORed together) should use
     `points_in_any_spherical_polygon` instead -- this recomputes `points_xyz`'s own tangent
@@ -354,31 +331,3 @@ def to_local(frame: np.ndarray, world_xyz: np.ndarray) -> np.ndarray:
 def to_world(frame: np.ndarray, local_xyz_vec: np.ndarray) -> np.ndarray:
     """Plate-local unit vectors (..., 3) -> world unit vectors, given local frame `frame`."""
     return local_xyz_vec @ frame.T
-
-
-def local_separation_components(
-    frame: np.ndarray, phi: np.ndarray, theta: np.ndarray, direction_world: np.ndarray
-) -> tuple[np.ndarray, np.ndarray]:
-    """A world-frame direction vector (e.g. `torque.BoundaryForceInputs.direction_to_neighbor`),
-    at each node's own plate-local (phi, theta), projected onto that node's own local tangent
-    basis and returned as (component along theta_hat, component along phi_hat) -- not
-    normalized to unit length (the caller, `rheology.stretch_components`, normalizes).
-
-    theta_hat = d(local_xyz)/dtheta / cos(phi) = (-sin theta, cos theta, 0): the direction
-    increasing theta moves a point, at fixed phi. phi_hat = d(local_xyz)/dphi (already unit
-    length) = (-sin phi cos theta, -sin phi sin theta, cos phi): the direction increasing phi
-    moves a point, at fixed theta. Both are exact tangent-plane basis vectors for the
-    `local_xyz` convention this module's own docstring defines, so this needs no lookup table
-    or finite-difference approximation -- see `lithosphere_plate.py`'s boundary-mode use for why
-    a node's own separation direction, decomposed this way, stands in for "the line that would
-    pass through most of the empty space" without needing to fit one."""
-    phi = np.asarray(phi, dtype=float)
-    theta = np.asarray(theta, dtype=float)
-    direction_local = to_local(frame, direction_world)
-    sin_p, cos_p = np.sin(phi), np.cos(phi)
-    sin_t, cos_t = np.sin(theta), np.cos(theta)
-    theta_hat = np.stack([-sin_t, cos_t, np.zeros_like(theta)], axis=-1)
-    phi_hat = np.stack([-sin_p * cos_t, -sin_p * sin_t, cos_p], axis=-1)
-    sep_theta = np.sum(direction_local * theta_hat, axis=-1)
-    sep_phi = np.sum(direction_local * phi_hat, axis=-1)
-    return sep_theta, sep_phi

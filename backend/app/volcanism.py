@@ -1,7 +1,7 @@
 """Volcanic eruption lifecycle for existing volcano nodes.
 
-Volcanic fields themselves are now created directly by `LithospherePlate.deform` (see
-lithosphere_plate.py) when a rift boundary has stretched too thin to keep filling with plain
+Volcanic fields themselves are created directly by the tectonic engine (see
+quad_tectonics.py and lithosphere_plate.py) when a rift boundary has stretched too thin to keep filling with plain
 ridge/rift crust -- detection/spawning/merging/isolated-growth of whole volcanic-field
 *plates* used to live here as a periodic clean-up pass, but that's subsumed by deform()'s
 own per-turn rift handling now (see docs/simulation-model.md and the plan this replaced).
@@ -12,8 +12,7 @@ volcano node came to exist: each individual volcano point has its own
 at creation), decremented every step. While active, it rolls a per-step eruption chance
 (`1 - exp(-ERUPTION_RATE_PER_MYR * active_years_this_step / 1e6)`) and, if it erupts, adds
 `elevation_lines.ERUPTION_ELEVATION_M` of new land and grows `mineral_deposit_m`.
-Deterministic per `(seed, elapsed_years, plate_id, line_index)` on line plates, and per
-`(seed, elapsed_years, plate_id, node ID)` on other surfaces (`_node_uniforms`).
+Deterministic per `(seed, elapsed_years, plate_id, node ID)` (`_node_uniforms`).
 """
 
 from __future__ import annotations
@@ -23,7 +22,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import continental_ledger, geometry, lithosphere, mobile_cover
+from . import continental_ledger, lithosphere, mobile_cover
 from .elevation_lines import (
     ELEV_CHANGE_MIN_DELTA_M,
     ELEV_CHANGE_VOLCANIC_PLAIN,
@@ -36,7 +35,7 @@ from .elevation_lines import (
     VOLCANIC_PLAIN_ELEVATION_M,
     VOLCANIC_PLAIN_REACH_KM,
 )
-from .plates import Plate, PlateWithLines
+from .plates import Plate
 
 if TYPE_CHECKING:
     from .world import World
@@ -55,7 +54,7 @@ ERUPTION_RATE_PER_MYR = 5.0
 # metal-rich ore (porphyry-copper/VMS-style deposits), so mineral_deposit_m is grown right
 # here, at the same eruption roll that already adds ERUPTION_ELEVATION_M -- "an eruption
 # deposits mineral-rich material" is exactly what that mask already means, no separate
-# detection pass needed. Monotonically non-decreasing (see plates.ElevationLine), same
+# detection pass needed. Monotonically non-decreasing, same
 # self-reinforcing convention coal_deposit_m/oil_gas_deposit_m already use.
 MINERAL_DEPOSIT_PER_ERUPTION_M = 0.5
 MAX_MINERAL_DEPOSIT_M = 20.0
@@ -71,10 +70,7 @@ def apply_volcanic_activity(world: "World", years: float) -> None:
     for plate in world.plates:
         hc_before = plate.collect("crustal_thickness_m")
         elevation_before = plate.collect("elevation")
-        if isinstance(plate, PlateWithLines):
-            erupted_points = _apply_volcanic_activity_to_lines(plate, world, years)
-        else:
-            erupted_points = _apply_volcanic_activity_to_surface(plate, world, years)
+        erupted_points = _apply_volcanic_activity_to_surface(plate, world, years)
         if erupted_points:
             _spread_volcanic_plains(plate, world, years, erupted_points)
         hc_after = plate.collect("crustal_thickness_m")
@@ -91,64 +87,6 @@ def apply_volcanic_activity(world: "World", years: float) -> None:
         lava_m = np.maximum(plate.collect("elevation") - elevation_before, 0.0)
         sealed = lava_m / mobile_cover.VOLCANIC_SEAL_THICKNESS_M
         mobile_cover.end(world, plate, sealed, "volcanic_buried_m3")
-
-
-def _apply_volcanic_activity_to_lines(plate: PlateWithLines, world: "World", years: float) -> list[np.ndarray]:
-    """`PlateWithLines`' own per-line eruption roll. Returns the world-space positions of
-    every node that erupted this step (across all of the plate's lines), for
-    `_spread_volcanic_plains` to spread an apron around."""
-    erupted_points: list[np.ndarray] = []
-    for line_index, line in enumerate(plate.lines):
-        if len(line) == 0 or not np.any(line.is_volcano):
-            continue
-        active_mask = line.is_volcano & (line.volcano_active_years_remaining > 0)
-        if not np.any(active_mask):
-            continue
-
-        active_years_this_step = np.minimum(years, line.volcano_active_years_remaining)
-        # world.volcanism_multiplier (the "Controls" tuning knob, 1.0 == untuned) scales both
-        # the per-step eruption probability *and* the elevation each eruption adds below, so a
-        # single knob controls total volcanic land-building. 0.0 -> p_erupt == 0 everywhere.
-        p_erupt = 1.0 - np.exp(
-            -ERUPTION_RATE_PER_MYR * world.volcanism_multiplier * active_years_this_step / 1_000_000.0
-        )
-        rng = np.random.default_rng((world.seed, round(world.elapsed_years), plate.plate_id, line_index))
-        erupts = active_mask & (rng.random(len(line)) < p_erupt)
-
-        # Issue #173: an eruption's elevation gain has to come with a matching
-        # crustal_thickness_m (Hc) addition, or it's "phantom" relief no crustal mass backs --
-        # exactly the gap that let erosion's slope-driven terms tear down more real crust than
-        # volcanism ever added. See lithosphere.back_elevation_gain's own docstring for why
-        # this is anchored to the column's isostatic equilibrium rather than raw elevation.
-        new_crustal_thickness, new_elevation = lithosphere.back_elevation_gain(
-            line, plate, ERUPTION_ELEVATION_M * world.volcanism_multiplier, erupts
-        )
-        new_remaining = np.clip(line.volcano_active_years_remaining - years, 0.0, None)
-        new_mineral_deposit = np.clip(
-            line.mineral_deposit_m + np.where(erupts, MINERAL_DEPOSIT_PER_ERUPTION_M, 0.0), 0.0, MAX_MINERAL_DEPOSIT_M
-        )
-        # Elevation-change provenance (diagnostic only -- see elevation_lines.ELEV_CHANGE_*):
-        # an eruption always adds ERUPTION_ELEVATION_M, well past the min-delta threshold.
-        new_reason = np.where(erupts, ELEV_CHANGE_VOLCANO, line.elev_change_reason)
-
-        if np.any(erupts):
-            erupted_points.append(geometry.to_world(plate.frame, geometry.local_xyz(np.full(len(line), line.phi), line.theta))[erupts])
-
-        # theta unchanged -- line.replace copies every other field (including
-        # channel_width) from the existing line automatically. See plates.ElevationLine's
-        # own docstring for why this pattern replaced explicit field-by-field
-        # reconstruction here.
-        plate.replace_line(
-            line_index,
-            line.replace(
-                elevation=new_elevation,
-                crustal_thickness_m=new_crustal_thickness,
-                volcano_active_years_remaining=new_remaining,
-                mineral_deposit_m=new_mineral_deposit,
-                elev_change_reason=new_reason,
-            ),
-        )
-    return erupted_points
 
 
 def _splitmix64(x: np.ndarray) -> np.ndarray:
@@ -171,9 +109,10 @@ def _node_uniforms(stream: tuple[int, ...], node_ids: np.ndarray) -> np.ndarray:
 
 
 def _apply_volcanic_activity_to_surface(plate: Plate, world: "World", years: float) -> list[np.ndarray]:
-    """The same eruption roll as `_apply_volcanic_activity_to_lines`, over the whole plate at
-    once through the representation-neutral field API (issue #228's quad surface). Each
-    node's draw is keyed by its stable node ID rather than its line (`_node_uniforms`)."""
+    """Each active volcano's eruption roll, over the whole plate at once through the
+    representation-neutral field API. Each node's draw is keyed by its stable node ID
+    (`_node_uniforms`). Returns the world-space positions of every node that erupted this
+    step, for `_spread_volcanic_plains` to spread an apron around."""
     is_volcano = plate.collect("is_volcano")
     if not np.any(is_volcano):
         return []
@@ -214,7 +153,7 @@ def _apply_volcanic_activity_to_surface(plate: Plate, world: "World", years: flo
 def _spread_volcanic_plains(plate: Plate, world: "World", years: float, erupted_points: list[np.ndarray]) -> None:
     """Spread a broad, low-relief apron around every vent that erupted this step -- a
     flood-basalt/shield-flank plain, distinct from the sharp point bump `_apply_volcanic_
-    activity_to_lines` already applied there. Tapers linearly from
+    activity_to_surface` already applied there. Tapers linearly from
     VOLCANIC_PLAIN_ELEVATION_M at the vent to 0 at VOLCANIC_PLAIN_REACH_KM, same taper shape
     `faults._apply_plate_fault_relief` uses for a fault's own relief. Where two aprons
     overlap this step, the *larger* contribution wins (not the sum) -- a cluster of vents

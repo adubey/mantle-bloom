@@ -8,7 +8,6 @@ import logging
 import os
 import threading
 from pathlib import Path
-from typing import Literal
 
 import numpy as np
 from fastapi import FastAPI, HTTPException, Request, Response
@@ -39,6 +38,7 @@ from . import (
     stranded_basins,
     worldsketch,
 )
+from .elevation_lines import NODE_DENSITY_CHOICES
 from .world import DEFAULT_MANTLE_CENTERS, TUNING_MULTIPLIER_FIELDS, World, generate_world_progress, step_world_progress
 
 # A generous ceiling on requested image dimensions -- width/height come straight from the
@@ -106,10 +106,6 @@ class SketchRequest(BaseModel):
 
 class GenerateRequest(BaseModel):
     seed: int = 0
-    # Sparse quads are the production representation. Lines remain selectable as a narrow
-    # diagnostic/rollback path while the cutover settles, but are no longer the implicit API
-    # behavior (issue #250).
-    surface: Literal["quad", "lines"] = "quad"
     # Optional: the world tiles itself into a plausible plate count when omitted (see
     # plates.generate_plates) -- the frontend doesn't ask for one.
     num_plates: int | None = None
@@ -127,9 +123,9 @@ class GenerateRequest(BaseModel):
     # world.DEFAULT_AXIAL_TILT_DEG, but the frontend always sends it.
     axial_tilt_deg: float | None = None
     num_mantle_centers: int = DEFAULT_MANTLE_CENTERS
-    # The UI's "point density" choice -- how many elevation-line nodes each plate starts
+    # The UI's "point density" choice -- how many surface nodes each plate starts
     # with, relative to elevation_lines.TARGET_LINE_SPACING_KM's own default spacing.
-    # Validated against plates.NODE_DENSITY_CHOICES below rather than accepted as an
+    # Validated against NODE_DENSITY_CHOICES below rather than accepted as an
     # arbitrary float -- there's no continuous "in-between" density the UI offers, only a
     # fixed set of multipliers.
     node_density: float = 1.0
@@ -230,9 +226,8 @@ class ControlsRequest(BaseModel):
     collision_uplift_reach_multiplier: float | None = None
     volcanism_multiplier: float | None = None
     fault_relief_multiplier: float | None = None
-    # Gate for the verbose _fill_corner_notch_frontier decision log (see World.debug_diagnostics /
-    # World.corner_notch_log / GET /world/corner_notch_log) -- on by default for a "Debugging
-    # Worlds" tab world, off/toggleable here for any other loaded save.
+    # Gate for the debug-only diagnostics (see World.debug_diagnostics) -- on by default for a
+    # "Debugging Worlds" tab world, off/toggleable here for any other loaded save.
     debug_diagnostics: bool | None = None
 
 
@@ -301,12 +296,11 @@ def _plate_overlaps(world: World) -> dict[int, list[dict]]:
     """For every plate, which other plates its territory currently overlaps and by how much
     (`fraction` = share of *this* plate's own nodes that sit on top of that other plate),
     plus `since_years` -- the earliest `world.elapsed_years` at which any of this plate's
-    still-overlapping nodes first went over that partner (`ElevationLine.overlap_onset_years`,
+    still-overlapping nodes first went over that partner (the `overlap_onset_years` field,
     stamped by merge_split.update_overlap_tracking; None if the save predates the field or the
     overlap only appeared this step). The node-cloud overlap itself is
     `plates.compute_node_overlap`, shared with that tracker so the two can't drift."""
-    tol = plates.OVERLAP_TOLERANCE_MULT * plates.line_spacing_rad(world.node_density)
-    overlap = plates.compute_node_overlap(world.plates, tol)
+    overlap = plates.compute_node_overlap(world.plates)
     active = [p for p in world.plates if p.node_count() > 0]
     result: dict[int, list[dict]] = {p.plate_id: [] for p in active}
     for src_plate in active:
@@ -370,13 +364,6 @@ def _plate_summary(plate: plates.Plate, world: World, overlaps: dict[int, list[d
         # and any sustained-collision timers involving it (merge_split.update_collision_progress).
         "overlaps": overlaps.get(plate.plate_id, []),
         "collisions": collisions,
-        # A PlateWithLines-only concept (how many of its own rows still have at least one
-        # node -- see merge_split.py's own "no_land"/consumption checks, which mirror this
-        # same "zero nodes is a real, filtered-out state" reasoning); None for any other
-        # representation, which has no notion of "rows" at all.
-        "num_rows": (
-            sum(1 for line in plate.lines if len(line) > 0) if isinstance(plate, plates.PlateWithLines) else None
-        ),
         "num_points": plate.node_count(),
         "outline": _round_coords(outline),
         # Every node's own position (not just the outline loop) -- lets the client plot each
@@ -627,8 +614,8 @@ def generate(req: GenerateRequest) -> StreamingResponse:
     (density/voronoi_points/premade_world_id/sketch) still happens synchronously before the
     stream starts, so a bad request still gets an ordinary 400 response rather than an error
     line."""
-    if req.node_density not in plates.NODE_DENSITY_CHOICES:
-        raise HTTPException(status_code=400, detail=f"unknown node_density {req.node_density!r}; choices are {plates.NODE_DENSITY_CHOICES}")
+    if req.node_density not in NODE_DENSITY_CHOICES:
+        raise HTTPException(status_code=400, detail=f"unknown node_density {req.node_density!r}; choices are {NODE_DENSITY_CHOICES}")
     if req.climate_density not in climate.CLIMATE_DENSITY_CHOICES:
         raise HTTPException(
             status_code=400, detail=f"unknown climate_density {req.climate_density!r}; choices are {climate.CLIMATE_DENSITY_CHOICES}"
@@ -670,7 +657,6 @@ def generate(req: GenerateRequest) -> StreamingResponse:
             fluid_density=req.fluid_density,
             sketch=sketch_masks,
             premade_world_id=req.premade_world_id,
-            surface=req.surface,
         )
         world = None
         try:
@@ -814,17 +800,17 @@ def save_world() -> Response:
 
 
 @app.post("/world/load")
-async def load_world(request: Request, convert_lines: bool = False) -> dict:
+async def load_world(request: Request) -> dict:
     """The "File > Load World" upload -- the raw bytes of a file /world/save previously
     produced, as the request body (not JSON -- see persistence.py). Replaces whatever world
-    previously existed, same as /world/generate. `convert_lines=true` converts a line-backed
-    (legacy) save to sparse quads on load, one way -- see docs/save-compatibility.md; the
-    summary's `surface_conversion` then reports what changed. `400` with the reason if the
+    previously existed, same as /world/generate. A line-backed (legacy) save is converted to
+    sparse quads on load, one way -- see docs/save-compatibility.md; the summary's
+    `surface_conversion` then reports what changed. `400` with the reason if the
     bytes are corrupt or in a save format this build doesn't read; any other failure is
     still a `400`, without detail."""
     body = await request.body()
     try:
-        world = persistence.load_world_bytes(body, convert_lines=convert_lines)
+        world = persistence.load_world_bytes(body)
     except persistence.SaveFormatError as exc:
         raise HTTPException(status_code=400, detail=f"invalid or incompatible world file: {exc}") from exc
     except Exception as exc:
@@ -1066,24 +1052,9 @@ def set_controls(req: ControlsRequest) -> dict:
     }
 
 
-@app.get("/world/corner_notch_log")
-def corner_notch_log() -> dict:
-    """The verbose, structured decision log for `LithospherePlate._fill_corner_notch_frontier` (see
-    `World.corner_notch_log` / `World.debug_diagnostics`, toggled via `POST /world/controls`)
-    -- empty unless `debug_diagnostics` is on, in which case one entry per plate per step
-    records whether/why the notch-filler added points (`outcome`: `no_neighbours`,
-    `no_own_lines`, `no_candidate_rows`, `hop_no_progress`, `claimed`, or `no_claim`), plus
-    `nodes_added` and the window geometry that call used. Deliberately separate from
-    `GET /world/summary`'s `events` -- this is debug-only, per-plate-per-step volume, never
-    meant for the always-on Event Console (see docs/debugging.md). `404` if no world has been
-    generated yet."""
-    world = _require_world()
-    return {"debug_diagnostics": world.debug_diagnostics, "entries": world.corner_notch_log}
-
-
 @app.get("/world/plates")
 def list_plates() -> dict:
-    """Every plate's outline + metadata (row/point counts, bounding ellipse) as JSON, for the
+    """Every plate's outline + metadata (point count, bounding ellipse) as JSON, for the
     "Plate Inspector" map mode -- unlike /world/render, the client renders this itself
     interactively rather than receiving a baked PNG. Un-rotated/true-frame throughout (no
     `rotation` param): the client applies its current view rotation only at draw time, same
@@ -1143,7 +1114,7 @@ _REMOVED_POINT_MATCH_RAD = 0.02  # ~127 km at PLANET_RADIUS_KM
 @app.get("/world/node_at")
 def node_at(lat_deg: float, lon_deg: float) -> dict:
     """The "Added/Removed Points" (`nodeAge`) debug view's click-to-inspect popup: the single
-    live `ElevationLine` node nearest (lat_deg, lon_deg) -- its owning plate, plate-local
+    live surface node nearest (lat_deg, lon_deg) -- its owning plate, plate-local
     `phi`/`theta`, elevation, and `node_created_years` -- plus, independently, the nearest
     `World.removed_points_log` entry if one sits within `_REMOVED_POINT_MATCH_RAD` of the
     click (a removed point has no live node to report instead, so this is reported alongside,
@@ -1152,8 +1123,7 @@ def node_at(lat_deg: float, lon_deg: float) -> dict:
     Unlike `/world/sample_at` (which reads the climate grid), this reports the actual nearest
     node's own plate-local coordinates -- recovered by inverse-transforming its world position
     through its owning plate's frame, which round-trips exactly to the value the node was
-    created with (see `ElevationLine`'s own phi/theta convention, geometry.py's module
-    docstring). `node` is `null` if no world has any live nodes yet (shouldn't happen via the
+    created with (see geometry.py's module docstring for the phi/theta convention). `node` is `null` if no world has any live nodes yet (shouldn't happen via the
     API, but see `plates.nearest_node_index`'s own docstring). `400` for non-finite input,
     `404` if no world has been generated yet."""
     world = _require_world()
@@ -1194,39 +1164,9 @@ def node_at(lat_deg: float, lon_deg: float) -> dict:
     return {"lat_deg": lat_deg, "lon_deg": lon_deg, "node": node_info, "removed": removed_info}
 
 
-def _elevation_point_summary(plate, line, point_index: int, line_index: int, num_lines: int) -> dict:
-    """Shared payload for `GET /world/elevation_point_at` and `GET /world/elevation_point`
-    (the "Points" (`platesDetail`) debug view's click-to-inspect + arrow-key navigation): the
-    selected node's own plate-local `phi`/`theta`, its line's summary, and every node's world
-    position on that line -- lets the client both show phi/theta and draw the owning line's
-    full extent on the map (see `plates.sorted_nonempty_lines` for the `line_index`/
-    `num_lines` ordering)."""
-    return {
-        "plate_id": plate.plate_id,
-        "point": {
-            "phi": float(line.phi),
-            "theta": float(line.theta[point_index]),
-            "elevation_m": float(line.elevation[point_index]),
-            "node_created_years": float(line.node_created_years[point_index]),
-            "index": point_index,
-        },
-        "line": {
-            "phi": float(line.phi),
-            "num_points": len(line),
-            "line_index": line_index,
-            "num_lines": num_lines,
-        },
-        "line_points_xyz": [[float(x), float(y), float(z)] for x, y, z in line.world_xyz(plate.frame)],
-    }
-
-
 def _surface_point_summary(plate: plates.Plate, point_index: int) -> dict:
-    """Representation-neutral Points-view payload for a non-line surface.
-
-    There is no meaningful owning row to highlight or navigate, so `line` is null and the
-    highlight contains only the selected node. The common point fields still use real
-    plate-local coordinates and authoritative surface fields.
-    """
+    """The Points-view payload for one node: its real plate-local coordinates, authoritative
+    surface fields, and world position (`point_xyz`, for the map highlight)."""
     nodes = plate.surface_nodes("elevation", "node_created_years")
     point_index = max(0, min(point_index, len(nodes.world_xyz) - 1))
     phi, theta = geometry.xyz_to_latlon(nodes.local_xyz[point_index])
@@ -1237,10 +1177,8 @@ def _surface_point_summary(plate: plates.Plate, point_index: int) -> dict:
             "theta": float(theta),
             "elevation_m": float(nodes.fields["elevation"][point_index]),
             "node_created_years": float(nodes.fields["node_created_years"][point_index]),
-            "index": 0,
         },
-        "line": None,
-        "line_points_xyz": [[float(value) for value in nodes.world_xyz[point_index]]],
+        "point_xyz": [float(value) for value in nodes.world_xyz[point_index]],
     }
 
 
@@ -1293,13 +1231,9 @@ def surface_node(plate_id: int, node_id_hi: str, node_id_lo: str) -> dict:
 
 @app.get("/world/elevation_point_at")
 def elevation_point_at(lat_deg: float, lon_deg: float) -> dict:
-    """The "Points" (`platesDetail`) debug view's representation-neutral inspector.
-
-    Returns the nearest terrain node. Line surfaces also return the owning line and its world
-    positions for highlighting/navigation; quad surfaces return ``line: null`` and highlight
-    only the selected node. `400` for non-finite input, `404` if no world has been generated
-    yet or no plate has any live nodes.
-    """
+    """The "Points" (`platesDetail`) debug view's click-to-inspect: the nearest terrain node
+    (see `_surface_point_summary`). `400` for non-finite input, `404` if no world has been
+    generated yet or no plate has any live nodes."""
     world = _require_world()
     if not (np.isfinite(lat_deg) and np.isfinite(lon_deg)):
         raise HTTPException(status_code=400, detail="lat_deg/lon_deg must be finite")
@@ -1311,45 +1245,13 @@ def elevation_point_at(lat_deg: float, lon_deg: float) -> dict:
         points, _elevation, owner = plates.collect_all_points(world.plates)
         plate_id = int(owner[idx])
         plate = next((p for p in world.plates if p.plate_id == plate_id), None)
-        if plate is not None and not isinstance(plate, plates.PlateWithLines):
-            tree = plate.get_node_kdtree()
-            if tree is None:
-                raise HTTPException(status_code=404, detail="owning plate has no live nodes")
-            _distance, point_index = tree.query(points[idx])
-            return _surface_point_summary(plate, int(point_index))
-        found = plates.nearest_line_point(plate, points[idx]) if plate is not None else None
-        if found is None:
-            raise HTTPException(status_code=404, detail="owning plate not found")
-        line, point_index = found
-        sorted_lines = plates.sorted_nonempty_lines(plate)
-        line_index = next(i for i, candidate in enumerate(sorted_lines) if candidate is line)
-        return _elevation_point_summary(plate, line, point_index, line_index, len(sorted_lines))
-
-
-@app.get("/world/elevation_point")
-def elevation_point(plate_id: int, line_index: int, point_index: int) -> dict:
-    """Direct lookup by index -- backs the "Points" debug view's arrow-key navigation
-    (ArrowLeft/Right steps `point_index` within the current line, Shift+ArrowLeft/Right steps
-    `line_index`) without needing a fresh click. `line_index` is clamped into
-    `[0, num_lines)` and `point_index` into the resulting line's `[0, num_points)`, so a
-    caller passing an index that just fell out of range (e.g. a step just ran and shrank a
-    line) lands on the nearest valid one rather than erroring. `404` if no world has been
-    generated yet, the plate doesn't exist, or it has no live nodes. `400` when the current
-    surface has no elevation-line navigation."""
-    world = _require_world()
-    with _world_lock:
-        plate = next((p for p in world.plates if p.plate_id == plate_id), None)
         if plate is None:
-            raise HTTPException(status_code=404, detail=f"no plate {plate_id}")
-        if not isinstance(plate, plates.PlateWithLines):
-            raise HTTPException(status_code=400, detail="line navigation is unavailable for quad surfaces")
-        sorted_lines = plates.sorted_nonempty_lines(plate)
-        if not sorted_lines:
-            raise HTTPException(status_code=404, detail=f"plate {plate_id} has no live nodes")
-        line_index = max(0, min(line_index, len(sorted_lines) - 1))
-        line = sorted_lines[line_index]
-        point_index = max(0, min(point_index, len(line) - 1))
-        return _elevation_point_summary(plate, line, point_index, line_index, len(sorted_lines))
+            raise HTTPException(status_code=404, detail="owning plate not found")
+        tree = plate.get_node_kdtree()
+        if tree is None:
+            raise HTTPException(status_code=404, detail="owning plate has no live nodes")
+        _distance, point_index = tree.query(points[idx])
+        return _surface_point_summary(plate, int(point_index))
 
 
 def _fault_summary(fault, plate, other_plate_tree) -> dict:

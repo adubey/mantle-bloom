@@ -8,11 +8,11 @@ import numpy as np
 import pytest
 from app import geometry, legacy_conversion, persistence, surface_parity
 from app.elevation_lines import line_spacing_rad
-from app.lithosphere_plate import new_plate
-from app.plates import PlateWithLines
 from app.sparse_quad_patch import PlateWithSparseQuadPatch
 from app.surface_fields import SURFACE_FIELDS, RemapClass
 from app.world import World, generate_world, step_world
+
+from .legacy_lines import legacy_line_plate, line_world_like, retired_class_names
 
 DENSITY = 1.0
 SPACING = line_spacing_rad(DENSITY)
@@ -50,7 +50,7 @@ def _shape_world() -> World:
     }
     frames = {1: c_frame}
     plates = [
-        new_plate(plate_id, frames.get(plate_id, geometry.plate_frame_from_seed(centre)), crust_type, SPACING, seed=11, is_owned=owned)
+        legacy_line_plate(plate_id, frames.get(plate_id, geometry.plate_frame_from_seed(centre)), crust_type, SPACING, owned)
         for plate_id, (centre, crust_type, owned) in shapes.items()
     ]
     world = World(seed=11, plates=plates, next_plate_id=len(plates), node_density=DENSITY)
@@ -267,52 +267,73 @@ def test_corrupt_line_fields_are_refused():
         legacy_conversion.convert_world_to_quad(world)
 
 
-def test_conversion_reads_saves_whose_line_classes_are_retired(shape_world):
-    # After #251 deletes PlateWithLines, a line save can only be read with stand-ins for the
-    # retired classes. The structural reader must give the same world either way.
-    data = persistence.save_world_bytes(shape_world)
-    with_classes = persistence.load_world_bytes(data)
-    legacy_conversion.convert_world_to_quad(with_classes)
+def test_a_line_save_converts_on_load_exactly_as_its_world_converts_in_memory(shape_world):
+    # A save written before #251 pickled the retired line classes. Loading it reads their
+    # state through inert stand-ins (legacy_conversion.legacy_unpickler) and converts it: the
+    # same world converting the in-memory line plates gives.
+    with retired_class_names():
+        data = persistence.save_world_bytes(shape_world)
+    assert legacy_conversion.legacy_unpickler(data).load()["surface"] == "lines"
 
-    payload = legacy_conversion.legacy_unpickler(data).load()
-    stand_in = payload["world"]
-    assert all(isinstance(p, legacy_conversion.LegacyRecord) and not isinstance(p, PlateWithLines) for p in stand_in.plates)
-    report = legacy_conversion.convert_world_to_quad(stand_in)
-    assert report.coverage["before"] is None
-    assert surface_parity.state_hash(stand_in) == surface_parity.state_hash(with_classes)
+    loaded = persistence.load_world_bytes(data)
+    direct = copy.deepcopy(shape_world)
+    legacy_conversion.convert_world_to_quad(direct)
+
+    assert all(isinstance(plate, PlateWithSparseQuadPatch) for plate in loaded.plates)
+    assert loaded.surface_conversion["from"] == "lines"
+    assert surface_parity.state_hash(loaded) == surface_parity.state_hash(direct)
 
 
 # --- Stepped worlds -------------------------------------------------------------------------
 
 
+def _line_world_like(world: World) -> World:
+    return line_world_like(world, SPACING)
+
+
 @pytest.fixture(scope="module")
-def stepped_line_world() -> World:
-    world = generate_world(seed=7, num_plates=8, node_density=DENSITY, surface="lines")
+def stepped_quad_world() -> World:
+    world = generate_world(seed=7, num_plates=8, node_density=DENSITY)
     for _ in range(4):
         step_world(world, 1_000_000)
     return world
 
 
-def test_sea_level_and_land_carry_over_and_the_world_keeps_stepping(stepped_line_world):
+@pytest.fixture(scope="module")
+def stepped_line_world(stepped_quad_world) -> World:
+    return _line_world_like(stepped_quad_world)
+
+
+def _land_fraction(world: World) -> float:
+    """A line world's land fraction: every node stands for the same nominal footprint."""
+    elevation = np.concatenate([plate.collect("elevation") for plate in world.plates])
+    return float(np.mean(elevation > world.sea_level_m))
+
+
+def test_sea_level_and_land_carry_over_and_the_world_keeps_stepping(stepped_quad_world, stepped_line_world):
+    source = copy.deepcopy(stepped_quad_world)
     lines = copy.deepcopy(stepped_line_world)
     quad = copy.deepcopy(stepped_line_world)
     report = legacy_conversion.convert_world_to_quad(quad)
 
     assert quad.sea_level_m == lines.sea_level_m
     assert report.sea_level["after_m"] == report.sea_level["before_m"]
-    assert abs(surface_parity.totals(quad)["land_fraction"] - surface_parity.totals(lines)["land_fraction"]) < 0.01
+    assert abs(surface_parity.totals(quad)["land_fraction"] - _land_fraction(lines)) < 0.01
     assert abs(report.extensive["crustal_thickness_m"]["delta_vs_deduplicated"]) < 0.01
-    assert report.coverage["after"]["uncovered"] <= report.coverage["before"]["uncovered"]
+    assert report.coverage["before"] is None
+    assert report.coverage["after"]["uncovered"] < 0.01
     assert quad.surface_conversion["from"] == "lines"
     assert "Converted line-backed world" in quad.events[-1][1]
 
+    # The converted world keeps stepping cleanly and tracks the quad world its lines were
+    # sampled from.
     signatures = {}
     for _ in range(2):
-        step_world(lines, 1_000_000)
+        step_world(source, 1_000_000)
         step_world(quad, 1_000_000)
         violations, signatures = surface_parity.audit_world(quad, signatures)
         assert violations == []
-    assert abs(quad.sea_level_m - lines.sea_level_m) < 50.0
+    assert abs(quad.sea_level_m - source.sea_level_m) < 50.0
 
 
 def test_overlapping_plates_stack_their_crust_instead_of_dropping_it(stepped_line_world):
@@ -332,7 +353,7 @@ def test_overlapping_plates_stack_their_crust_instead_of_dropping_it(stepped_lin
 
 
 def test_stacking_overflow_spreads_across_the_plate_and_conserves_volume():
-    world = generate_world(seed=3, num_plates=4, node_density=0.5, surface="quad")
+    world = generate_world(seed=3, num_plates=4, node_density=0.5)
     plate = world.plates[0]
     cap = 84_000.0
     before = np.full(plate.node_count(), 30_000.0)
@@ -353,7 +374,7 @@ def test_overlap_nodes_bring_every_field_onto_the_cell_they_stack_on():
     # remap class (quad_merge's suture rules), not keep only the receiving cell's value.
     from app import lithosphere
 
-    world = generate_world(seed=7, num_plates=8, node_density=DENSITY, surface="lines")
+    world = _line_world_like(generate_world(seed=7, num_plates=8, node_density=DENSITY))
     for plate in world.plates:
         count = plate.node_count()
         mine = plate is world.plates[0]

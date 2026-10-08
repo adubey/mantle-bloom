@@ -1,12 +1,10 @@
-"""Plates as spherical polygons, each carrying its own set of `ElevationLine`s.
+"""Plates: identity, motion, territory, and the `PlateSurface` contract.
 
-Each plate owns a rotation matrix (`frame`) mapping its local (phi, theta) spherical
-coordinates to world unit vectors (see `geometry.plate_frame_from_seed`). Rotating a plate
-rigidly only ever updates `frame` -- the (phi, theta) node coordinates themselves never
-change, so rotation never needs resampling. See docs/simulation-model.md for the full design
-writeup, and elevation_lines.py for the node representation itself (`ElevationLine`, node
-density/spacing, and periodic line regularization) -- this module is about the plates that
-carry it: identity, motion, territory, and generation.
+Each plate owns a rotation matrix (`frame`) mapping its plate-local coordinates to world unit
+vectors (see `geometry.plate_frame_from_seed`). Rotating a plate rigidly only ever updates
+`frame` -- the plate-local node positions themselves never change, so rotation never needs
+resampling. See docs/simulation-model.md for the full design writeup, and
+sparse_quad_patch.py for the surface representation itself (`PlateWithSparseQuadPatch`).
 """
 
 from __future__ import annotations
@@ -18,22 +16,15 @@ from typing import TYPE_CHECKING, Iterator, Mapping, Protocol
 import numpy as np
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
-from scipy.spatial import ConvexHull, QhullError, cKDTree
+from scipy.spatial import cKDTree
 
-from . import ellipse, geometry, healpix_grid, lithosphere
+from . import ellipse, geometry, healpix_grid
 from . import elevation_lines
 from .elevation_lines import (
-    DEFAULT_NODE_DENSITY,
-    NODE_DENSITY_CHOICES,
     PLANET_RADIUS_KM,
-    TARGET_LINE_SPACING_KM,
     TARGET_LINE_SPACING_RAD,
-    ElevationLine,
     ElevationPoint,
-    install_point_field_accessors,
     iter_local_lattice,
-    line_spacing_rad,
-    split_into_contiguous_runs,
 )
 from .surface_fields import SURFACE_FIELDS, SurfaceField
 
@@ -88,7 +79,7 @@ class SurfaceNodes:
     All arrays share one stable ordering for the lifetime of ``topology_revision``. The
     position arrays are ``(n, 3)`` unit vectors; ``node_ids`` is an ``(n, 2)`` opaque uint64
     identity; ``area_m2`` and every requested field are ``(n,)`` arrays. ``area_is_exact``
-    distinguishes cell-backed areas from the line adapter's best available estimate. Callers
+    is true for cell-backed areas (every current surface). Callers
     must treat this container as read-only and use ``set_fields_on_plate`` for write-back.
     """
 
@@ -114,20 +105,6 @@ class PlateSurface(abc.ABC):
     Phase 1 deliberately describes capabilities, not rows, vertices, or quads. Topology
     operations and conservative remapping remain implementation-specific until later phases.
     """
-
-    # Whether `contains_batch` is the territory itself rather than an approximation of it --
-    # true for cell surfaces, whose active cells *are* the territory, false for line rows,
-    # whose outline polygon only approximates the node cloud. Passes that decide coverage or
-    # overlap (`compute_node_overlap`, gaps.py) answer by containment when every plate's
-    # territory is exact, and by node proximity otherwise.
-    territory_is_exact: bool = False
-
-    # Whether `merge_with` carries every surface field (continental material, cover, craton,
-    # crust type, ...) across conservatively -- true for cells (quad_merge.py's exact-area
-    # remap), false for line rows, whose merge resample carries only Hc/Hm. Terrane accretion
-    # of stranded fragments (merge_split._accrete_stranded_terrane) needs it: a lossy merge
-    # would erase the tracer it exists to keep, unbooked.
-    merge_conserves_fields: bool = False
 
     @property
     @abc.abstractmethod
@@ -175,9 +152,7 @@ NEIGHBOUR_DISTANCE_RAD = 6.0 * TARGET_LINE_SPACING_RAD
 
 def _plates_within(plate: "Plate", all_plates: list["Plate"], threshold_rad: float) -> list["Plate"]:
     """Every other plate in `all_plates` whose outline (`Plate.get_bounding_polygon`) comes
-    within `threshold_rad` of `plate`'s own -- shared by both PlateWithLines.get_neighbours
-    and PlateWithRTree.get_neighbours, which differ only in what outline_world() itself does
-    for that representation. Uses the cached get_bounding_polygon() rather than outline_world()
+    within `threshold_rad` of `plate`'s own -- backs `get_neighbours`. Uses the cached get_bounding_polygon() rather than outline_world()
     directly since this runs once per plate per call, each time re-reading every other
     plate's own outline -- an O(n) set of calls across all_plates that would otherwise
     recompute the same unchanged outlines from scratch every time (see get_neighbours' own
@@ -218,10 +193,9 @@ def _plates_within(plate: "Plate", all_plates: list["Plate"], threshold_rad: flo
 
 def _contested_by_any(points_xyz: np.ndarray, neighbours: list["Plate"]) -> np.ndarray:
     """`geometry.points_in_any_spherical_polygon`, OR-ed across every neighbour's own
-    `contains_batch` instead of a shared polygon-list winding test -- lets a `PlateWithLines`
-    neighbour answer via its own O(log rows) fast path (see `PlateWithLines.contains_batch`)
-    rather than every neighbour paying the full winding-number cost regardless of
-    representation. Same semantics otherwise: stops early once every point is already
+    `contains_batch` instead of a shared polygon-list winding test -- each neighbour answers
+    with its own exact cell lookup rather than paying the full winding-number cost. Same
+    semantics otherwise: stops early once every point is already
     contested by some earlier neighbour, all-`False` if either input is empty."""
     n = len(points_xyz)
     contested = np.zeros(n, dtype=bool)
@@ -232,205 +206,6 @@ def _contested_by_any(points_xyz: np.ndarray, neighbours: list["Plate"]) -> np.n
         if np.all(contested):
             break
     return contested
-
-
-# --- Deformation constants (LithospherePlate.deform) ---
-#
-# `shift()`/`deform()` replace the old boundary.py `step_boundaries` pipeline: instead of
-# classifying a boundary node as convergent/divergent/transform from the *velocity*
-# decomposition `closing_rate`, deform() classifies it from *geometry* -- did this plate's
-# rotated territory end up overlapping a neighbour's polygon (contested -> convergent), or
-# is it in open space nobody else claims (-> divergent/rift), or is it merely close to a
-# neighbour without overlapping (-> transform)? The elevation-delta rates/reaches below are
-# carried over unchanged from the old model -- only the classification predicate and the
-# grow/shrink node-count cap (now `D`, this step's actual max node displacement, rather than
-# `closing_rate * years`) changed. See docs/simulation-model.md's "Boundary evolution"
-# section for the physical reasoning behind each rate/reach.
-
-CONVERGENT_MOUNTAIN_RATE_M_PER_MYR = 800.0
-CONVERGENT_TRENCH_RATE_M_PER_MYR = 700.0
-DIVERGENT_RIDGE_TARGET_M = -1500.0  # new oceanic crust at a mid-ocean ridge
-DIVERGENT_RIFT_TARGET_M = -200.0  # new continental crust in a rift valley
-DIVERGENT_RELAX_RATE_PER_MYR = 0.15  # was 0.5 -- see the comment below
-
-# The "divergent" classification is purely geometric (uncontested and within reach of a
-# neighbour, see deform()'s own comment) -- it can't by itself tell a genuinely active,
-# still-subsiding rift apart from a long-settled passive margin that simply happens to sit
-# near a neighbour (most of a real continent's own coastline, in reality: the Atlantic
-# seaboard hasn't been actively rifting for tens of millions of years, yet still reads as
-# "uncontested and close to an oceanic neighbour" under this same geometric test every
-# turn). Confirmed directly as a real, previously-unnoticed drain -- and confirmed as two
-# separate contributors, needing both constants below to actually fix: at the old rate
-# (0.5, ~78% of the remaining gap closed per 3 Myr step), already-elevated, long-stable
-# coastline got yanked most of the way to DIVERGENT_RIFT_TARGET_M/DIVERGENT_RIDGE_TARGET_M
-# within a step or two of ever qualifying as divergent -- so fast that DIVERGENT_YOUNG_AGE_
-# MYR's own age gate (below) mostly closes the barn door after the horse has left: a plate's
-# own ongoing rotation continuously sweeps *fresh* coastline into the divergent band, so most
-# of the loss was already-done first-time hits, not repeat hits on the same settled land the
-# age gate alone can prevent. Slowing the rate itself (0.5 -> 0.15) shrinks *every* hit,
-# first time included -- the tradeoff being that genuinely active rifting/ridge spreading
-# also settles more gradually now, not just the stale-coastline case, so a fresh rift no
-# longer reaches its target in a step or two the way it used to.
-#
-# DIVERGENT_YOUNG_AGE_MYR still matters on top of the slower rate: deform() only relaxes a
-# node while ElevationLine.divergent_age_myr (Myr spent *continuously* divergent, reset to 0
-# the instant it isn't) stays under this threshold, so a margin that's stayed divergent this
-# long is treated as mature and left alone from then on, no matter how much longer it keeps
-# testing as geometrically divergent -- still needed even at the slower rate, since given
-# enough consecutive divergent steps a node would otherwise keep creeping toward the target
-# forever rather than ever actually settling.
-DIVERGENT_YOUNG_AGE_MYR = 10.0
-
-# Continental rifting stretches and thins the crust over a much wider zone than oceanic
-# ridge spreading (which keeps FAR_THRESHOLD_RAD's narrower reach, below).
-RIFT_RANGE_KM = 300.0
-RIFT_RANGE_RAD = RIFT_RANGE_KM / PLANET_RADIUS_KM
-
-# Continent-continent collision crumples a much broader belt than a plain trench/mountain
-# boundary (e.g. the Himalaya/Tibetan Plateau deformation zone).
-COLLISION_RANGE_KM = 400.0
-COLLISION_RANGE_RAD = COLLISION_RANGE_KM / PLANET_RADIUS_KM
-
-# Reverse faults: real shortening in a collision belt isn't smooth vertical uplift spread
-# evenly across the whole zone -- fold-thrust belts partition it into discrete thrust sheets
-# (fast-rising ridges) separated by footwall synclines/intermontane basins that keep rising far
-# more slowly, a real, well-documented process (the north-south rift valleys cutting straight
-# across the Tibetan Plateau's own overall convergent uplift; Basin-and-Range-style extension
-# nested inside the Anatolian collision zone). Modeled as a smooth, deterministic noise field
-# sampled in the plate's own *local* frame (geometry.local_xyz(line.phi, line.theta), not world
-# xyz -- see LithospherePlate.deform's own use) so a given downthrown block stays attached to the
-# same crust as the plate rotates, the same "attached to the crust, not the world" property
-# every other persistent field in this codebase already has (see docs/simulation-model.md's
-# "Why not a grid"). Seeded from (world.seed, plate_id) only, not elapsed_years, so the fault
-# pattern is a fixed geological feature of this plate rather than reshuffling every step.
-REVERSE_FAULT_SEED_TAG = 9001  # arbitrary, distinguishes this RNG stream from any other keyed by (world.seed, plate_id, ...)
-REVERSE_FAULT_NOISE_FREQ = 9.0
-REVERSE_FAULT_VALLEY_THRESHOLD = -0.15  # noise below this reads as a downthrown fault block
-REVERSE_FAULT_VALLEY_UPLIFT_FACTOR = 0.15  # a valley block still rises, just far slower than a thrust ridge
-
-# Oceanic-under-continental subduction: the volcanic arc forms inland of the trench, not at
-# it -- a band (see _band_intensity), zero at the boundary, peaking at the band's midpoint,
-# zero again past the outer edge.
-SUBDUCTION_ARC_INNER_KM = 100.0
-SUBDUCTION_ARC_OUTER_KM = 300.0
-SUBDUCTION_ARC_INNER_RAD = SUBDUCTION_ARC_INNER_KM / PLANET_RADIUS_KM
-SUBDUCTION_ARC_OUTER_RAD = SUBDUCTION_ARC_OUTER_KM / PLANET_RADIUS_KM
-
-# Transform (strike-slip) boundaries: narrower reach and gentler rate than either
-# convergent case -- real motion here produces at most local pressure-ridge relief.
-TRANSFORM_RANGE_KM = 50.0
-TRANSFORM_RANGE_RAD = TRANSFORM_RANGE_KM / PLANET_RADIUS_KM
-TRANSFORM_UPLIFT_RATE_M_PER_MYR = 200.0
-
-# Reference (World.node_density == 1.0) values for the density-scaled thresholds below.
-FAR_THRESHOLD_RAD = 1.6 * TARGET_LINE_SPACING_RAD
-EXTEND_THRESHOLD_RAD = 1.3 * TARGET_LINE_SPACING_RAD
-MAX_BOUNDARY_EFFECT_RAD = max(
-    FAR_THRESHOLD_RAD,
-    COLLISION_RANGE_RAD,
-    SUBDUCTION_ARC_OUTER_RAD,
-    TRANSFORM_RANGE_RAD,
-    RIFT_RANGE_RAD,
-)
-# Hard safety ceiling only, not the primary cap any more -- D (this step's actual max node
-# displacement, see Plate.shift) is deform()'s real physical bound on how much a line's end
-# can grow/shrink in one call.
-MAX_EXTEND_NODES_PER_STEP = 400
-
-# How many target spacings of margin `_claim_adjacent_territory` keeps between a plate's
-# poleward-most row and its own local pole (+-pi/2). A row is a circle of local latitude, so
-# its theta step (spacing_rad / cos(phi)) blows up as cos(phi) -> 0: without a margin a plate
-# that grows to encircle its own pole ends up with a handful of degenerate near-pole rings,
-# and -- since nothing here treats theta as periodic -- ordinary end-growth just keeps winding
-# those rings past a full revolution, covering the same ground many times over (the
-# concentric-circle / moire "holes" artifacts in the Plate Inspector, plus a real unbounded
-# contribution to plate overlap and node count on long runs). This margin keeps near-pole
-# rows at a sane circumference; `_grow_or_shrink_line_for_deform` separately refuses to extend
-# any row past 2*pi (`_ROW_FULL_REVOLUTION_SLACK`). Generation's own lattice sweep
-# (`iter_local_lattice`) still fills to the pole -- a plate that legitimately owns the pole at
-# generation keeps its small Voronoi-clipped rings; only *growth* toward the pole is capped.
-POLE_CAP_MARGIN_MULT = 4.0
-# A row whose theta span is within this many target-spacing steps of a full 2*pi revolution
-# is treated as a closed ring and never grown further (nor, in regularize_line, resampled to
-# more than one revolution).
-_ROW_FULL_REVOLUTION_SLACK = 1.0
-
-# Minimum length (nodes) of an interior `shrinkable` run for `_grow_or_shrink_line_for_deform`
-# to carve it out and split the row into separate contiguous `ElevationLine`s -- see that
-# method. Shorter transient interior contests are left for when they reach an end: a 1-2 node
-# gap wouldn't clear `elevation_lines.CONTIGUOUS_RUN_GAP_MULT` to survive as a real split, and
-# would just be refilled by the next regularize pass. Set to CONTIGUOUS_RUN_GAP_MULT so the
-# post-removal gap is always wide enough for `split_into_contiguous_runs` to actually break.
-_INTERIOR_SUBDUCTION_MIN_RUN = int(elevation_lines.CONTIGUOUS_RUN_GAP_MULT)
-
-# Growth at a line end -- ordinarily plain ridge/rift fill -- instead comes back as a fresh
-# volcano (guaranteed one immediate eruption, then the ordinary per-step eruption roll in
-# volcanism.py takes over) with this probability per growth *event*, representing "the plate
-# has been stretched too thin to keep filling with plain crust." Deliberately probabilistic
-# rather than a hard threshold on any per-call quantity -- two threshold-based designs were
-# tried and rejected during development:
-#   - "the line's own existing gap already exceeds target spacing": dead code, confirmed
-#     directly -- elevation_lines.regularize_line runs at the end of every deform() call and
-#     resamples every line back to (within tolerance of) exact target spacing, so by the time
-#     the *next* call's growth check runs, any such gap has already been smoothed away by the
-#     *previous* call's own regularize pass.
-#   - "this call is inserting at least N new nodes at once": also confirmed empirically
-#     unreachable at realistic step sizes/plate rates -- sampled 1392 real growth events
-#     across a running simulation and 100% of them inserted exactly 1 node, since ordinary
-#     per-step divergence rarely outruns a single spacing unit's worth of growth in one call
-#     regardless of how the threshold was tuned.
-# A small per-event probability sidesteps needing any persistent "how long has this been
-# thinning" state to track (which line/end bookkeeping would have to survive regularize,
-# split, and merge) while still producing "occasionally, not constantly" volcanic crust at
-# active rifts over the course of a real run -- the same shape volcanism.py's own eruption
-# roll already uses for "occasional" events elsewhere in this codebase.
-STRETCH_VOLCANO_PROBABILITY = 0.02
-
-def _divergent_target(crust_type: str) -> float:
-    return DIVERGENT_RIDGE_TARGET_M if crust_type == "oceanic" else DIVERGENT_RIFT_TARGET_M
-
-
-def _band_intensity(dist: np.ndarray, inner: float, outer: float) -> np.ndarray:
-    """Triangular profile: 0 at and outside [inner, outer], peaking at 1.0 at the band's
-    midpoint -- for the subduction volcanic arc, strongest *offset* from the boundary."""
-    mid = (inner + outer) / 2.0
-    half_width = (outer - inner) / 2.0
-    return np.clip(1.0 - np.abs(dist - mid) / half_width, 0.0, 1.0)
-
-
-def _far_threshold_rad(spacing_rad: float) -> float:
-    return 1.6 * spacing_rad
-
-
-def _extend_threshold_rad(spacing_rad: float) -> float:
-    return 1.3 * spacing_rad
-
-
-def _max_boundary_effect_rad(spacing_rad: float) -> float:
-    return max(
-        _far_threshold_rad(spacing_rad),
-        COLLISION_RANGE_RAD,
-        SUBDUCTION_ARC_OUTER_RAD,
-        TRANSFORM_RANGE_RAD,
-        RIFT_RANGE_RAD,
-    )
-
-
-def _max_extend_nodes_per_step(node_density: float) -> int:
-    # A 1D count, not an area -- scales by sqrt(node_density), same reasoning as
-    # MAX_EXTEND_NODES_PER_STEP's own comment.
-    return max(1, round(MAX_EXTEND_NODES_PER_STEP * np.sqrt(node_density)))
-
-
-def _row_median_step(line: ElevationLine) -> float | None:
-    """The typical theta step of `line` before it's masked by a partition -- passed to
-    `largest_contiguous_run` as its reference spacing so it can still recognise a
-    partition-stranded two-node row (too short to estimate a spacing from what survives). A
-    pre-partition row is contiguous and regularized, so its median step is a clean estimate;
-    `None` for a row with fewer than two nodes."""
-    if len(line) < 2:
-        return None
-    return float(np.median(np.diff(line.theta)))
 
 
 def node_components(points_xyz: np.ndarray, connect_radius_rad: float) -> np.ndarray:
@@ -451,66 +226,9 @@ def node_components(points_xyz: np.ndarray, connect_radius_rad: float) -> np.nda
     return labels
 
 
-def _surface_node_ids(local_xyz: np.ndarray) -> np.ndarray:
-    """Stable topology-local IDs as ``(position hash, collision ordinal)`` uint64 pairs.
-
-    The position hash is independent of backing-store indices and rigid rotation. The second
-    word keeps coincident legacy nodes distinct (issue #230) without pretending they are one
-    material sample. Phase 3 may replace this compatibility identity with explicit lineage.
-    """
-    n = len(local_xyz)
-    if n == 0:
-        return np.zeros((0, 2), dtype=np.uint64)
-    quantized = np.rint(local_xyz * 1.0e12).astype(np.int64).view(np.uint64)
-    hashes = (
-        quantized[:, 0] * np.uint64(0x9E3779B185EBCA87)
-        ^ quantized[:, 1] * np.uint64(0xC2B2AE3D27D4EB4F)
-        ^ quantized[:, 2] * np.uint64(0x165667B19E3779F9)
-    )
-    ordinals = np.zeros(n, dtype=np.uint64)
-    seen: dict[int, int] = {}
-    for i, value in enumerate(hashes):
-        key = int(value)
-        ordinals[i] = seen.get(key, 0)
-        seen[key] = int(ordinals[i]) + 1
-    return np.column_stack([hashes, ordinals])
-
-
-def _surface_node_areas_m2(points_xyz: np.ndarray) -> np.ndarray:
-    """Legacy line-surface area weights, corrected for co-located same-plate samples.
-
-    The line representation has no authoritative cells, so these remain compatibility
-    estimates (``SurfaceNodes.area_is_exact`` is false). A typical nearest-neighbour spacing
-    supplies the nominal footprint; connected samples closer than half that spacing share one
-    footprint. This removes issue #230's most serious over-count while making the limitation
-    explicit until quad cells provide exact areas.
-    """
-    n = len(points_xyz)
-    if n == 0:
-        return np.zeros(0)
-    if n == 1:
-        return np.zeros(1)
-    tree = cKDTree(points_xyz)
-    nearest = tree.query(points_xyz, k=2)[0][:, 1]
-    positive = nearest[np.isfinite(nearest) & (nearest > 1.0e-12)]
-    if len(positive) == 0:
-        return np.zeros(n)
-    chord = float(np.median(positive))
-    spacing_rad = 2.0 * np.arcsin(min(chord / 2.0, 1.0))
-    nominal = (PLANET_RADIUS_KM * 1000.0 * spacing_rad) ** 2
-    pairs = tree.query_pairs(0.5 * chord, output_type="ndarray")
-    if len(pairs) == 0:
-        return np.full(n, nominal)
-    graph = coo_matrix((np.ones(len(pairs)), (pairs[:, 0], pairs[:, 1])), shape=(n, n))
-    _, labels = connected_components(graph, directed=False)
-    counts = np.bincount(labels)
-    return nominal / counts[labels]
-
-
 class Plate(PlateSurface, abc.ABC):
     """A plate's shared identity/motion state plus an abstract interface over however it
-    represents its own terrain nodes -- `PlateWithLines` (parallel `ElevationLine`s, see
-    elevation_lines.py) and `PlateWithRTree` (an R-tree-indexed point cloud, see below).
+    represents its own terrain nodes (`PlateWithSparseQuadPatch`, see sparse_quad_patch.py).
     Every method below that doesn't depend on node representation (motion, identity) is
     implemented once here; `node_count`/`all_points_and_elevation`/`outline_world`/`collect`
     are representation-specific and left abstract."""
@@ -541,10 +259,9 @@ class Plate(PlateSurface, abc.ABC):
         # Lazily (re)computed by get_bounding_polygon() below -- None means "stale, recompute
         # on next call," not "empty polygon" (an empty plate's real outline is a valid
         # np.zeros((0, 3)), which must stay distinguishable from "not computed yet").
-        # Invalidated by rotate() here and by whichever of set_lines/replace_line
-        # (PlateWithLines) or set_nodes (PlateWithRTree) actually changes node positions --
-        # elevation-only mutations (erosion, uplift, ...) don't touch outline_world's inputs
-        # (each line's/point cloud's own theta/phi), so they leave the cache untouched.
+        # Invalidated by rotate() here and by the subclass's own topology changes --
+        # elevation-only mutations (erosion, uplift, ...) don't touch outline_world's inputs,
+        # so they leave the cache untouched.
         self._bounding_polygon_cache: np.ndarray | None = None
         # A cKDTree over that same cached outline, built lazily by get_bounding_polygon_tree()
         # below and invalidated in lockstep with it (same _invalidate_bounding_polygon call) --
@@ -606,8 +323,8 @@ class Plate(PlateSurface, abc.ABC):
         """Integrate this plate's rigid motion through the shared torque model.
 
         Torque inputs consume only the representation-neutral surface API, so rigid motion
-        belongs here rather than on the legacy line-backed tectonics implementation. Quad
-        topology remains fixed by this operation: only the frame and geometry revision move.
+        belongs here rather than in the tectonic engine. Topology remains fixed by this
+        operation: only the frame and geometry revision move.
         """
         # Local import avoids plates <-> torque's module-level dependency cycle.
         from . import torque
@@ -658,23 +375,12 @@ class Plate(PlateSurface, abc.ABC):
         """A `Plate` unpickled from a save written before `internal_stress` existed has no
         `_internal_stress` in its restored `__dict__` (pickle bypasses `__init__` entirely) --
         default it to 0.0, the same "quiet, unstressed plate" reading a fresh Plate.__init__
-        gives, rather than raising. Mirrors ElevationLine.__getattr__'s own precedent for the
-        same class of backward-compatibility gap."""
+        gives, rather than raising."""
         defaults = {"_internal_stress": 0.0, "_topology_revision": 0, "_geometry_revision": 0}
         if name in defaults:
             object.__setattr__(self, name, defaults[name])
             return defaults[name]
         raise AttributeError(name)
-
-    def accounting_areas_m2(self, spacing_rad: float) -> np.ndarray:
-        """Each node's area for whole-world sums (ocean water volume, land area, crustal
-        volume, basal drag), in `all_points_and_elevation` order.
-
-        Surfaces with real cells override this with their exact areas. The line surface only
-        has an estimate (`SurfaceNodes.area_is_exact` is false), and it drifts badly once rows
-        stack (issue #230), so line plates keep the nominal `lithosphere.node_area_m2` per
-        node (issue #257)."""
-        return np.full(self.node_count(), lithosphere.node_area_m2(spacing_rad))
 
     @abc.abstractmethod
     def node_count(self) -> int: ...
@@ -684,10 +390,7 @@ class Plate(PlateSurface, abc.ABC):
         the "no land left" half of merge_split.remove_defunct_plates/apply_topology_changes'
         own pruning (the other half, `node_count() == 0`, is checked separately by both
         callers). Default: fewer nodes than can form a real 2D hull (see
-        `OUTLINE_MIN_NODES_FOR_HULL`) -- a representation-agnostic floor any subclass without
-        its own more specific notion can fall back to. `PlateWithLines` overrides this with
-        its own exact, pre-existing "at most one line left" definition, so that behavior is
-        unchanged for it; `PlateWithMesh`/`PlateWithRTree` use this default."""
+        `OUTLINE_MIN_NODES_FOR_HULL`)."""
         return self.node_count() < OUTLINE_MIN_NODES_FOR_HULL
 
     def defragment(
@@ -695,11 +398,9 @@ class Plate(PlateSurface, abc.ABC):
     ) -> tuple[list["Plate"], int, list["Plate"]] | None:
         """Reconcile "one `Plate` object" with "one contiguous patch of crust."
 
-        Ordinary per-step `deform()` only ever grows/shrinks a line's *ends*, and its shrink
-        rule deliberately never deletes a line's last node (see
-        `_grow_or_shrink_line_for_deform`) -- so subduction/transform can carve a plate's
-        node cloud into two disconnected landmasses, or strand a comb of one-node rows far
-        from the plate body, and nothing notices: `maybe_split_plate` only cuts on mantle-
+        Per-step `deform()` adds and removes cells only at the boundary, so
+        subduction/transform can carve a plate's cells into two disconnected landmasses, or
+        strand a few cells far from the plate body, and nothing notices: `maybe_split_plate` only cuts on mantle-
         flow *disagreement*, not geometry, and two co-moving lobes never trip it.
 
         This finds those cases directly. Connected components of this plate's nodes at
@@ -754,13 +455,13 @@ class Plate(PlateSurface, abc.ABC):
         plates = self._plates_from_node_masks(masks, ids)
         return plates[: len(kept)], n_new_ids, plates[len(kept) :]
 
+    @abc.abstractmethod
     def _plates_from_node_masks(self, masks: list[np.ndarray], ids: list[int]) -> list["Plate"]:
         """Build one plate per mask in `masks` (each a boolean array over this plate's nodes
         in `all_points_and_elevation` order), assigning `ids[k]` to `masks[k]`'s plate --
         `ids[0]` is always this plate's own id, so the first mask should be the one that
-        keeps this plate's identity. Representation-specific; only `PlateWithLines`
-        implements it (the one representation `defragment` is wired up for)."""
-        raise NotImplementedError
+        keeps this plate's identity."""
+        ...
 
     @abc.abstractmethod
     def all_points_and_elevation(self) -> tuple[np.ndarray, np.ndarray]:
@@ -811,73 +512,15 @@ class Plate(PlateSurface, abc.ABC):
             self._node_kdtree_cache = cKDTree(points, balanced_tree=False, compact_nodes=False)
         return self._node_kdtree_cache
 
-    def surface_nodes(self, *field_names: str) -> SurfaceNodes:
-        """Bulk positions and fields in the surface's canonical per-revision order."""
-        world_xyz, _ = self.all_points_and_elevation()
-        local_xyz = geometry.to_local(self._frame, world_xyz)
-        return SurfaceNodes(
-            local_xyz=local_xyz,
-            world_xyz=world_xyz,
-            node_ids=_surface_node_ids(local_xyz),
-            area_m2=_surface_node_areas_m2(world_xyz),
-            area_is_exact=False,
-            fields={name: self.collect(name) for name in field_names},
-        )
-
-    def adjacency(self) -> SurfaceAdjacency:
-        """Local proximity adjacency for compatibility implementations.
-
-        A future mesh surface overrides this with connectivity from its authoritative cells.
-        The compatibility implementation infers the current surface's typical spacing and
-        uses a 1.6-spacing neighbourhood. This includes immediate lattice neighbours without
-        baking the configured line density into the contract.
-        """
-        points = self.all_points_and_elevation()[0]
-        n = len(points)
-        if n == 0:
-            return SurfaceAdjacency(np.zeros(1, dtype=np.int64), np.zeros(0, dtype=np.int64))
-        tree = cKDTree(points)
-        if n == 1:
-            return SurfaceAdjacency(np.zeros(2, dtype=np.int64), np.zeros(0, dtype=np.int64))
-        nearest = tree.query(points, k=2)[0][:, 1]
-        finite_positive = nearest[np.isfinite(nearest) & (nearest > 0.0)]
-        if len(finite_positive) == 0:
-            return SurfaceAdjacency(np.zeros(n + 1, dtype=np.int64), np.zeros(0, dtype=np.int64))
-        radius = 1.6 * float(np.median(finite_positive))
-        pairs = tree.query_pairs(radius, output_type="ndarray")
-        neighbours: list[list[int]] = [[] for _ in range(n)]
-        for a, b in pairs:
-            neighbours[int(a)].append(int(b))
-            neighbours[int(b)].append(int(a))
-        offsets = np.zeros(n + 1, dtype=np.int64)
-        offsets[1:] = np.cumsum([len(values) for values in neighbours])
-        flat = np.fromiter((j for values in neighbours for j in sorted(values)), dtype=np.int64)
-        return SurfaceAdjacency(offsets, flat)
-
-    def boundary_loops_world(self) -> tuple[np.ndarray, ...]:
-        """Outer/inner boundary loops; generic surfaces expose their single outline."""
-        outline = self.outline_world()
-        return () if len(outline) == 0 else (outline,)
-
     def _invalidate_bounding_polygon(self) -> None:
         self._bounding_polygon_cache = None
         self._bounding_polygon_tree_cache = None
         self._node_kdtree_cache = None
 
-    def contains_batch(self, points_xyz: np.ndarray) -> np.ndarray:
-        """True for every point in `points_xyz` (world unit vectors) currently inside this
-        plate's territory -- the batched form of `contains`, and what `deform`'s own
-        contested/open classification actually calls (see `_contested_by_any`). Default
-        implementation: the generic winding-number test against `get_bounding_polygon()`.
-        `PlateWithLines` overrides this with a much faster row-lookup path (see there);
-        `PlateWithRTree` has no equivalent row structure to exploit, so it's left on this
-        default."""
-        return geometry.points_in_spherical_polygon(points_xyz, self.get_bounding_polygon())
-
     @abc.abstractmethod
     def collect(self, field_name: str) -> np.ndarray:
-        """Every node's current `field_name` value (elevation or any ElevationLine
-        OPTIONAL_FIELDS name), concatenated in this plate's own node order. Empty
+        """Every node's current `field_name` value (any `surface_fields.SURFACE_FIELDS` name),
+        concatenated in this plate's own node order. Empty
         (`np.zeros(0)`, or `dtype=bool` for "is_volcano") if this plate has no nodes."""
         ...
 
@@ -897,661 +540,30 @@ class Plate(PlateSurface, abc.ABC):
 
     @abc.abstractmethod
     def __iter__(self) -> Iterator[ElevationPoint]:
-        """Every node this plate owns, as `ElevationPoint`s, in whatever order this plate's
-        own representation stores them -- `PlateWithLines` line-by-line, `PlateWithRTree` in
-        its flat array's own order. Lets code that just wants "every node, read or write"
-        (not a bulk array op) work the same way against either representation instead of
-        reaching into `PlateWithLines.lines`/`ElevationLine`'s arrays or `PlateWithRTree`'s
-        own flat `_theta`/`_phi`/`_elevation`/`_fields`."""
+        """Every node this plate owns, as `ElevationPoint`s, in this plate's own node order.
+        Lets code that just wants "every node, read or write" (not a bulk array op) work
+        without reaching into the representation's own storage."""
         ...
 
     @abc.abstractmethod
     def map_world_points(self) -> Iterator[tuple[ElevationPoint, np.ndarray]]:
         """Every node this plate owns, paired with its own world xyz position -- the same
         nodes/order as `__iter__`, just with each `ElevationPoint` accompanied by the world
-        coordinate a caller would otherwise have had to derive itself (e.g. via
-        `ElevationLine.world_xyz(plate.frame)`). Each `ElevationPoint` is a live view, so a
-        value computed as a function of world position (noise, distance, sampled field) can be
-        written straight back with the point's own `set_*` -- in place, no
-        `replace`/`replace_line`/`set_nodes` round-trip needed."""
+        coordinate a caller would otherwise have had to derive itself. Each `ElevationPoint` is
+        a live view, so a value computed as a function of world position (noise, distance,
+        sampled field) can be written straight back with the point's own `set_*` -- in place,
+        no topology round-trip needed."""
         ...
 
     @abc.abstractmethod
     def set_fields_on_plate(self, **fields: np.ndarray) -> None:
-        """Bulk in-place write for `elevation` and/or any `ElevationLine.OPTIONAL_FIELDS`
-        name: each keyword's array must be exactly this plate's own node count, in the same
+        """Bulk in-place write for any `surface_fields.SURFACE_FIELDS` name: each keyword's array must be exactly this plate's own node count, in the same
         order `map_world_points`/`collect` already read/traverse it in. The
         vectorized counterpart to looping `map_world_points` and calling each
         point's own `set_*` -- for a caller that already has a full per-node array computed
         (erosion/bathymetry/geology's per-step recompute), this writes it back without
         constructing a `Plate.__iter__`-style point object per node."""
         ...
-
-
-@dataclass
-class _RowLookup:
-    """`PlateWithLines.contains_batch`'s cached fast-path data -- see that method's own
-    docstring for the algorithm. `phis` is every *distinct* line phi, sorted ascending (a
-    row split into arcs by interior subduction has several lines at one phi -- see
-    `_grow_or_shrink_line_for_deform`). `low_thetas[i]`/`high_thetas[i]` are that row's
-    overall theta envelope (min arc low / max arc high), index-aligned with `phis`;
-    `interval_lo`/`interval_hi` are `(n_rows, max_arcs)` with each row's actual arc
-    intervals, absent slots padded (+inf / -inf) so they never match. The rest are derived
-    once here rather than per query:
-
-    `margin_rad` -- see `_row_lookup_bulge_margin_rad`'s own docstring: a query point whose
-    nearest-row interval test says "outside" isn't necessarily outside -- this bounds how
-    far the *true* boundary can lie beyond the idealized per-row interval.
-    `phi_min_pad`/`phi_max_pad` -- `phis[0]`/`phis[-1]`, padded outward by `margin_rad`.
-    `padded_low`/`padded_high` -- `low_thetas`/`high_thetas`, each widened by `margin_rad`
-    *and* by whichever of its own immediate row-neighbours (index - 1, index + 1) reaches
-    further -- covers a query point landing just past a shelf-step boundary, whose relevant
-    bulge belongs jointly to the two rows either side of that step, not to its own nearest
-    row alone. (An interior hole's rim within `margin_rad` falls back to the winding test
-    against the keyholed `get_bounding_polygon()`, same as any other near-boundary point.)"""
-
-    phis: np.ndarray
-    low_thetas: np.ndarray
-    high_thetas: np.ndarray
-    interval_lo: np.ndarray
-    interval_hi: np.ndarray
-    margin_rad: float
-    phi_min_pad: float
-    phi_max_pad: float
-    padded_low: np.ndarray
-    padded_high: np.ndarray
-
-
-def _row_lookup_bulge_margin_rad(phis: np.ndarray, low_thetas: np.ndarray, high_thetas: np.ndarray) -> float:
-    """How far a `PlateWithLines` outline's real boundary can lie beyond the idealized
-    "nearest row, check its own theta interval" model `contains_batch` uses as its fast path.
-
-    `outline_world` connects consecutive vertices with straight 3D chords, not the curves an
-    idealized fixed-phi/fixed-theta staircase would trace. A chord between two vertices that
-    share a theta (the "vertical" step edges, phi changing) is an exact meridian -- no
-    deviation. A chord between two vertices that share a *phi* instead (a row's own closing
-    edge at the plate's extreme phi, or a shelf step's own "horizontal" jump between two
-    adjacent rows' theta) is not: on a sphere, two equal-latitude points' connecting chord
-    bulges *toward the nearer pole*, exactly the way a great-circle flight path between two
-    equal-latitude cities bulges poleward. For two points at shared latitude phi separated by
-    a theta half-span `d`, the chord's own peak latitude phi_mid satisfies
-    `sin(phi_mid) = sin(phi) / sqrt(1 - cos(phi)^2 * sin(d)^2)` (derived by normalizing the
-    two points' own vector sum, which -- for equal-magnitude equal-latitude inputs -- gives
-    exactly that arc's midpoint). `phi_mid - phi` is that edge's own bulge; this returns the
-    max over every such edge in this plate's outline (every shelf step between adjacent rows,
-    plus the two extreme closing edges) -- a global, not per-edge, bound, so
-    `contains_batch`'s per-row padding stays a simple lookup rather than tracking which
-    specific edges bound which specific phi range.
-
-    Purely additive, not proportional to plate size: verified by direct measurement (real
-    plates from stepped worlds) to only ever be a small fraction of a plate's own line
-    spacing, however large the plate -- see `_FAR_FIELD_PAD_RAD` in geometry.py for the same
-    "additive, not multiplicative" reasoning applied to a related but distinct problem (how
-    far the winding-number test itself stays reliable)."""
-
-    def bulge(phi_edge: np.ndarray, half_span: np.ndarray) -> np.ndarray:
-        denom = np.sqrt(np.clip(1.0 - np.cos(phi_edge) ** 2 * np.sin(half_span) ** 2, 1e-12, None))
-        sin_phi_mid = np.clip(np.sin(phi_edge) / denom, -1.0, 1.0)
-        return np.abs(np.arcsin(sin_phi_mid)) - np.abs(phi_edge)
-
-    margins = [0.0]
-    if len(phis) >= 2:
-        boundary_phi = (phis[:-1] + phis[1:]) / 2.0
-        margins.append(float(np.max(bulge(boundary_phi, np.abs(high_thetas[1:] - high_thetas[:-1]) / 2.0))))
-        margins.append(float(np.max(bulge(boundary_phi, np.abs(low_thetas[1:] - low_thetas[:-1]) / 2.0))))
-    margins.append(float(bulge(np.asarray(phis[0]), np.asarray((high_thetas[0] - low_thetas[0]) / 2.0))))
-    margins.append(float(bulge(np.asarray(phis[-1]), np.asarray((high_thetas[-1] - low_thetas[-1]) / 2.0))))
-    return max(margins)
-
-
-def _row_intervals(lines: list[ElevationLine]) -> list[tuple[float, list[tuple[float, float]]]]:
-    """`(phi, [(theta_lo, theta_hi), ...])` per *distinct* phi across `lines`, phi ascending
-    and each row's intervals sorted, non-overlapping. One `ElevationLine` is one interval;
-    a row split by interior subduction (see `_grow_or_shrink_line_for_deform`) contributes
-    two or more. Touching/overlapping intervals at one phi (not expected -- arcs are carved
-    with a real gap between them) are merged so downstream gap detection stays clean."""
-    by_phi: dict[float, list[tuple[float, float]]] = {}
-    for line in lines:
-        if len(line) == 0:
-            continue
-        by_phi.setdefault(line.phi, []).append((float(line.theta[0]), float(line.theta[-1])))
-    rows: list[tuple[float, list[tuple[float, float]]]] = []
-    for phi in sorted(by_phi):
-        merged: list[list[float]] = []
-        for lo, hi in sorted(by_phi[phi]):
-            if merged and lo <= merged[-1][1]:
-                merged[-1][1] = max(merged[-1][1], hi)
-            else:
-                merged.append([lo, hi])
-        rows.append((phi, [(lo, hi) for lo, hi in merged]))
-    return rows
-
-
-def _interval_complement(lo: float, hi: float, cover: list[tuple[float, float]]) -> list[tuple[float, float]]:
-    """The sub-intervals of `[lo, hi]` left uncovered by any interval in `cover`."""
-    segs = [(lo, hi)]
-    for c_lo, c_hi in cover:
-        nxt: list[tuple[float, float]] = []
-        for s_lo, s_hi in segs:
-            if c_hi <= s_lo or c_lo >= s_hi:
-                nxt.append((s_lo, s_hi))
-                continue
-            if s_lo < c_lo:
-                nxt.append((s_lo, c_lo))
-            if c_hi < s_hi:
-                nxt.append((c_hi, s_hi))
-        segs = nxt
-    return segs
-
-
-def _plate_outline_loops(rows: list[tuple[float, list[tuple[float, float]]]]) -> list[list[tuple[float, float]]]:
-    """Every closed boundary loop of a plate's territory, as the exact boundary of the union
-    of its rows' theta-intervals (each row's band runs from the midpoint phi with the row
-    below to the midpoint with the row above; the two extreme rows' outer edges sit at their
-    own phi, matching the old single-interval staircase). One outer loop for a simple plate;
-    additional inner loops, wound opposite, for every hole a split row leaves between its
-    arcs (interior subduction -- see `_grow_or_shrink_line_for_deform`) or a notch a
-    partial override cuts. `_stitch_loops` joins them into the single vertex array
-    `get_bounding_polygon()` returns.
-
-    Handles the general case directly (holes, one-sided notches, disjoint pieces) rather
-    than the old "outer staircase + separately detected enclosed holes" split, which
-    mishandled a hole that stays open where an adjacent row was end-eroded instead of
-    interior-split."""
-    n = len(rows)
-    if n == 0:
-        return []
-    phis = [phi for phi, _ in rows]
-    band_lo = [phis[0], *[(phis[i - 1] + phis[i]) / 2.0 for i in range(1, n)]]
-    band_hi = [*[(phis[i] + phis[i + 1]) / 2.0 for i in range(n - 1)], phis[-1]]
-
-    # Axis-aligned boundary segments in (phi, theta): every interval's two vertical edges
-    # (full band height), plus the parts of its top/bottom edges not shared with the
-    # neighbouring row's coverage.
-    adjacency: dict[tuple[float, float], list[tuple[float, float]]] = {}
-
-    def add_segment(a: tuple[float, float], b: tuple[float, float]) -> None:
-        if a == b:
-            return
-        adjacency.setdefault(a, []).append(b)
-        adjacency.setdefault(b, []).append(a)
-
-    for i, (_phi, ivs) in enumerate(rows):
-        above = rows[i + 1][1] if i + 1 < n else []
-        below = rows[i - 1][1] if i - 1 >= 0 else []
-        lo_b, hi_b = band_lo[i], band_hi[i]
-        for lo, hi in ivs:
-            add_segment((lo_b, lo), (hi_b, lo))
-            add_segment((lo_b, hi), (hi_b, hi))
-            for s_lo, s_hi in _interval_complement(lo, hi, above):
-                add_segment((hi_b, s_lo), (hi_b, s_hi))
-            for s_lo, s_hi in _interval_complement(lo, hi, below):
-                add_segment((lo_b, s_lo), (lo_b, s_hi))
-
-    # Walk the segment graph into closed loops, keeping the covered region on the left at
-    # every vertex (turn as far counterclockwise as the available edges allow). That orients
-    # the outer boundary CCW and every hole CW -- opposite windings, so a keyhole stitch
-    # cancels to zero inside the holes.
-    used: set[tuple[tuple[float, float], tuple[float, float]]] = set()
-
-    def turn_key(incoming: tuple[float, float], outgoing: tuple[float, float]) -> int:
-        # incoming/outgoing are unit cardinal directions (dx, dy). Rank: left(0) < straight(1)
-        # < right(2) < back(3), by the cross product and dot of the two headings.
-        ix, iy = incoming
-        ox, oy = outgoing
-        cross = ix * oy - iy * ox
-        dot = ix * ox + iy * oy
-        if cross > 0:
-            return 0
-        if cross == 0 and dot > 0:
-            return 1
-        if cross < 0:
-            return 2
-        return 3
-
-    def direction(a: tuple[float, float], b: tuple[float, float]) -> tuple[float, float]:
-        dx, dy = b[1] - a[1], b[0] - a[0]  # (theta, phi) as (x, y)
-        if abs(dx) >= abs(dy):
-            return (1.0 if dx > 0 else -1.0, 0.0)
-        return (0.0, 1.0 if dy > 0 else -1.0)
-
-    def covered(phi_t: float, theta_t: float) -> bool:
-        for i in range(n):
-            if band_lo[i] <= phi_t <= band_hi[i]:
-                if any(lo <= theta_t <= hi for lo, hi in rows[i][1]):
-                    return True
-        return False
-
-    def left_is_covered(loop: list[tuple[float, float]]) -> bool:
-        # Test a point a hair to the left of the loop's first edge -- keep the loop only if
-        # covered territory sits on its left (drops the unbounded face and each hole's own
-        # interior face, keeps the outer boundary and every real hole rim).
-        (ay, ax), (by, bx) = loop[0], loop[1]
-        dx, dy = bx - ax, by - ay
-        norm = (dx * dx + dy * dy) ** 0.5
-        if norm == 0:
-            return False
-        eps = 1e-6
-        theta_t = (ax + bx) / 2.0 + eps * (-dy / norm)
-        phi_t = (ay + by) / 2.0 + eps * (dx / norm)
-        return covered(phi_t, theta_t)
-
-    loops: list[list[tuple[float, float]]] = []
-    for start, neighbours in adjacency.items():
-        for first in neighbours:
-            if (start, first) in used:
-                continue
-            loop = [start]
-            prev, cur = start, first
-            while True:
-                used.add((prev, cur))
-                loop.append(cur)
-                incoming = direction(prev, cur)
-                candidates = [nb for nb in adjacency[cur] if (cur, nb) not in used and nb != prev]
-                if not candidates and (cur, prev) not in used and prev != cur:
-                    candidates = [prev]  # dead end -- retrace the spur
-                if not candidates:
-                    break
-                nxt = min(candidates, key=lambda nb: turn_key(incoming, direction(cur, nb)))
-                prev, cur = cur, nxt
-                if cur == start:
-                    used.add((prev, cur))
-                    break
-                if (prev, cur) in used:
-                    break
-            if len(loop) >= 4 and left_is_covered(loop):
-                loops.append(loop)
-    return loops
-
-
-def _stitch_loops(loops: list[list[tuple[float, float]]]) -> list[tuple[float, float]]:
-    """Join several boundary loops into one vertex loop via zero-width keyhole seams -- a
-    degenerate out-and-back seam edge pair contributes zero winding everywhere off itself,
-    so the winding-number test still reads covered territory as inside and holes as outside,
-    and every `get_bounding_polygon()` consumer keeps working on one plain array. The seam
-    for each loop runs between its nearest vertex and the nearest vertex of the loop stitched
-    so far."""
-    if not loops:
-        return []
-    combined = list(loops[0])
-    for extra in loops[1:]:
-        best = None
-        for i, (pi, ti) in enumerate(combined):
-            for j, (pj, tj) in enumerate(extra):
-                d = (pi - pj) ** 2 + (ti - tj) ** 2
-                if best is None or d < best[0]:
-                    best = (d, i, j)
-        _, i, j = best
-        rotated = extra[j:] + extra[:j]
-        combined = combined[: i + 1] + rotated + [extra[j], combined[i]] + combined[i + 1 :]
-    return combined
-
-
-class PlateWithLines(Plate):
-    """A plate whose terrain is a set of parallel `ElevationLine`s at fixed plate-local
-    latitudes -- see the module docstring for why this representation makes rigid rotation
-    exact and resampling-free."""
-
-    def __init__(
-        self,
-        plate_id: int,
-        frame: np.ndarray,
-        crust_type: str,
-        lines: list[ElevationLine] | None = None,
-        omega: np.ndarray | None = None,
-        age_steps: int = 0,
-        internal_stress: float = 0.0,
-    ) -> None:
-        super().__init__(plate_id, frame, crust_type, omega=omega, age_steps=age_steps, internal_stress=internal_stress)
-        self._lines: list[ElevationLine] = list(lines) if lines is not None else []
-        # Lazily (re)built by _get_row_lookup() below, invalidated in lockstep with the
-        # bounding-polygon cache (same rotate()/set_lines()/replace_line() call sites) --
-        # see contains_batch's own docstring for what this backs.
-        self._row_lookup_cache: _RowLookup | None = None
-        # Every non-empty line's node world-xyz, concatenated in line order -- a pure
-        # function of each line's plate-local (phi, theta) and this plate's frame, so it
-        # only changes on rotate() or a node-set mutation, never an elevation-only edit.
-        # Built in one vectorized pass by _get_world_points() (a single local_xyz + frame
-        # rotation over the whole plate, not a small pair of numpy calls per line) and
-        # invalidated in lockstep with the bounding-polygon caches. Backs
-        # all_points_and_elevation, itself called dozens of times per step for the same
-        # unchanged geometry (torque's per-neighbour shift/deform passes, erosion,
-        # merge/defrag checks). Read-only for callers, same as get_bounding_polygon().
-        self._world_points_cache: np.ndarray | None = None
-
-    @property
-    def lines(self) -> tuple[ElevationLine, ...]:
-        """Read-only -- use `set_lines`/`replace_line` to change this plate's lines."""
-        return tuple(self._lines)
-
-    def set_lines(self, new_lines: list[ElevationLine]) -> None:
-        new_lines = list(new_lines)
-        geometry_changed = len(new_lines) != len(self._lines) or any(
-            old.phi != new.phi or not np.array_equal(old.theta, new.theta)
-            for old, new in zip(self._lines, new_lines)
-        )
-        self._lines = new_lines
-        if geometry_changed:
-            self._topology_revision += 1
-            self._geometry_revision += 1
-        # Preserve the legacy mutation-boundary guarantee: callers may have replaced an
-        # array in place before handing the line back, which equality cannot reliably spot.
-        self._invalidate_bounding_polygon()
-
-    def replace_line(self, index: int, new_line: ElevationLine) -> None:
-        old_line = self._lines[index]
-        geometry_changed = old_line.phi != new_line.phi or not np.array_equal(old_line.theta, new_line.theta)
-        self._lines[index] = new_line
-        if geometry_changed:
-            self._topology_revision += 1
-            self._geometry_revision += 1
-        self._invalidate_bounding_polygon()
-
-    def has_negligible_territory(self) -> bool:
-        """"No real remaining territory" for this representation. Two cases:
-
-        - At most one non-empty line (the original definition -- a sliver along one
-          latitude).
-        - A *comb of stubs*: many lines but barely more than one node each on average
-          (< 2). Ordinary `deform()` shrinks a line only from its ends and never deletes a
-          line's last node, so a heavily-subducted oceanic plate decays into 100+ rows of
-          one stranded node apiece -- a high line count masking that there's no 2D patch
-          left. The original `len(self.lines) <= 1` never caught this; the ratio test is
-          scale-free (same at any node_density) and sits far below any legitimate plate
-          (whose rows carry tens of nodes -- `maybe_split_plate`/defrag both floor a real
-          plate well above this). The base-class node-count floor still covers
-          `PlateWithMesh`/`PlateWithRTree`."""
-        nonempty = [line for line in self._lines if len(line) > 0]
-        if len(nonempty) <= 1:
-            return True
-        return sum(len(line) for line in nonempty) < 2.0 * len(nonempty)
-
-    def _invalidate_bounding_polygon(self) -> None:
-        super()._invalidate_bounding_polygon()
-        self._row_lookup_cache = None
-        self._world_points_cache = None
-
-    def outline_world(self) -> np.ndarray:
-        """Derived directly from each line's current endpoints -- the actual edge deform()
-        maintains -- rather than a separately-tracked polygon that could drift out of sync
-        with the real data. The exact boundary of the union of every row's theta-interval(s),
-        each row's band spanning the midpoint phi to the row below and above (a straight
-        diagonal between two rows with very different theta bounds would cut across the
-        concave notch between them, silently claiming sphere area this plate doesn't cover --
-        fatal once `deform()` uses this same outline for its own contested/open
-        classification; see `LithospherePlate.deform` and the no-node-inside-a-neighbour's-
-        polygon invariant test in `unit_tests/test_plates.py` / `stress_tests/
-        test_world_stepping.py`).
-
-        A row split into two arcs by interior subduction (see
-        `_grow_or_shrink_line_for_deform`), or by a split/defragment partition, contributes
-        both intervals; the gap between them is a genuine hole in this plate's territory
-        (a neighbour's lobe that punched through the middle of it, or a stranded sibling),
-        traced as its own loop wound opposite to the outer boundary and stitched in via a
-        zero-width keyhole seam (`_plate_outline_loops` / `_stitch_loops`) so the winding-
-        number test reads it as outside the plate. Still one plain `(n, 3)` array, so every
-        `get_bounding_polygon()` consumer is unchanged."""
-        lines_with_nodes = [line for line in self._lines if len(line) > 0]
-        if not lines_with_nodes:
-            return np.zeros((0, 3))
-        loop = _stitch_loops(_plate_outline_loops(_row_intervals(lines_with_nodes)))
-        if len(loop) < 3:
-            return np.zeros((0, 3))
-        phi_arr = np.array([p for p, _ in loop])
-        theta_arr = np.array([t for _, t in loop])
-        loop_local = geometry.local_xyz(phi_arr, theta_arr)
-        return geometry.to_world(self._frame, loop_local)
-
-    def boundary_loops_world(self) -> tuple[np.ndarray, ...]:
-        """Every derived territory loop, preserving holes instead of keyhole-stitching."""
-        lines = [line for line in self._lines if len(line) > 0]
-        loops = _plate_outline_loops(_row_intervals(lines)) if lines else []
-        result = []
-        for loop in loops:
-            if len(loop) < 3:
-                continue
-            phi = np.asarray([p for p, _ in loop])
-            theta = np.asarray([t for _, t in loop])
-            result.append(geometry.to_world(self._frame, geometry.local_xyz(phi, theta)))
-        return tuple(result)
-
-    def _get_row_lookup(self) -> _RowLookup | None:
-        """`_RowLookup`, cached and invalidated the same way `get_bounding_polygon` is (see
-        `_invalidate_bounding_polygon`) -- `None` if this plate currently has no lines."""
-        if self._row_lookup_cache is not None:
-            return self._row_lookup_cache
-        lines_with_nodes = [line for line in self._lines if len(line) > 0]
-        if not lines_with_nodes:
-            return None
-        rows = _row_intervals(lines_with_nodes)
-        phis = np.array([phi for phi, _ in rows])
-        low_thetas = np.array([ivs[0][0] for _, ivs in rows])
-        high_thetas = np.array([ivs[-1][1] for _, ivs in rows])
-        max_arcs = max(len(ivs) for _, ivs in rows)
-        interval_lo = np.full((len(rows), max_arcs), np.inf)
-        interval_hi = np.full((len(rows), max_arcs), -np.inf)
-        for i, (_, ivs) in enumerate(rows):
-            for k, (lo, hi) in enumerate(ivs):
-                interval_lo[i, k] = lo
-                interval_hi[i, k] = hi
-
-        margin_rad = _row_lookup_bulge_margin_rad(phis, low_thetas, high_thetas)
-        if len(phis) >= 2:
-            low_prev = np.concatenate([low_thetas[:1], low_thetas[:-1]])
-            low_next = np.concatenate([low_thetas[1:], low_thetas[-1:]])
-            high_prev = np.concatenate([high_thetas[:1], high_thetas[:-1]])
-            high_next = np.concatenate([high_thetas[1:], high_thetas[-1:]])
-        else:
-            low_prev = low_next = low_thetas
-            high_prev = high_next = high_thetas
-        padded_low = np.minimum(np.minimum(low_prev, low_thetas), low_next) - margin_rad
-        padded_high = np.maximum(np.maximum(high_prev, high_thetas), high_next) + margin_rad
-
-        self._row_lookup_cache = _RowLookup(
-            phis=phis,
-            low_thetas=low_thetas,
-            high_thetas=high_thetas,
-            interval_lo=interval_lo,
-            interval_hi=interval_hi,
-            margin_rad=margin_rad,
-            phi_min_pad=float(phis[0] - margin_rad),
-            phi_max_pad=float(phis[-1] + margin_rad),
-            padded_low=padded_low,
-            padded_high=padded_high,
-        )
-        return self._row_lookup_cache
-
-    def contains_batch(self, points_xyz: np.ndarray) -> np.ndarray:
-        """Overrides `Plate.contains_batch` with an O(log rows) fast path exploiting this
-        representation's own structure, exact-fallback for the rest: `outline_world`'s
-        staircase is sorted by phi, so which row governs a given query phi is a `searchsorted`
-        away, not a full winding-number test over every polygon vertex.
-
-        A query point (converted to this plate's own local phi/theta) is:
-        - definitely inside if its phi falls within this plate's own row range *and* its
-          theta falls within its nearest row's own [low_theta, high_theta] -- verified exact
-          (zero false positives across 96k+ points sampled from real captured production
-          calls, plus 70k+ adversarial synthetic cases): the idealized per-row interval can
-          only *underclaim* territory relative to the true outline (see
-          `_row_lookup_bulge_margin_rad`'s own docstring for why), never overclaim it.
-        - definitely outside if it's not even within `_RowLookup`'s own padded margin of the
-          idealized region -- that margin already bounds the maximum the true boundary can
-          deviate from the idealized one, so anything beyond it truly cannot be inside.
-        - otherwise (idealized says outside, but within the padded margin -- a thin band that
-          only matters near a plate's own boundary) exactly resolved via the same winding-
-          number test `Plate.contains_batch`'s default uses, for just those points.
-
-        Bit-exact against that same winding-number test on every real call captured from a
-        multi-world, multi-step run (0 mismatches / 123k+ points) once geometry.py's own
-        far-field guard (`_plausibly_near`) was fixed -- see that function's docstring for
-        the unrelated pre-existing bug that surfaced during this validation."""
-        n = len(points_xyz)
-        if n == 0:
-            return np.zeros(0, dtype=bool)
-        row_lookup = self._get_row_lookup()
-        if row_lookup is None:
-            return np.zeros(n, dtype=bool)
-        phis = row_lookup.phis
-
-        local_xyz = geometry.to_local(self._frame, points_xyz)
-        phi_q, theta_q = geometry.xyz_to_latlon(local_xyz)
-        idx = np.searchsorted(phis, phi_q)
-        idx_lo = np.clip(idx - 1, 0, len(phis) - 1)
-        idx_hi = np.clip(idx, 0, len(phis) - 1)
-        nearer_to_lo = np.abs(phi_q - phis[idx_lo]) <= np.abs(phis[idx_hi] - phi_q)
-        nearest = np.where(nearer_to_lo, idx_lo, idx_hi)
-
-        # theta_q inside *any* of the nearest row's arc intervals (usually one; two+ when a
-        # row was split by interior subduction). Absent arc slots are +inf/-inf padded, so
-        # they never match -- a point in the gap between two arcs reads as outside here and,
-        # if beyond the bulge margin, as definitely outside below.
-        lo_sel = row_lookup.interval_lo[nearest]
-        hi_sel = row_lookup.interval_hi[nearest]
-        in_any_interval = np.any((theta_q[:, None] >= lo_sel) & (theta_q[:, None] <= hi_sel), axis=1)
-        idealized_inside = (phi_q >= phis[0]) & (phi_q <= phis[-1]) & in_any_interval
-        maybe_boundary = (
-            ~idealized_inside
-            & (phi_q >= row_lookup.phi_min_pad)
-            & (phi_q <= row_lookup.phi_max_pad)
-            & (theta_q >= row_lookup.padded_low[nearest])
-            & (theta_q <= row_lookup.padded_high[nearest])
-        )
-        result = idealized_inside.copy()
-        if np.any(maybe_boundary):
-            result[maybe_boundary] = geometry.points_in_spherical_polygon(
-                points_xyz[maybe_boundary], self.get_bounding_polygon()
-            )
-        return result
-
-    def node_count(self) -> int:
-        return sum(len(line) for line in self._lines)
-
-    def _get_world_points(self) -> np.ndarray:
-        """Every non-empty line's node world-xyz `(n, 3)`, concatenated in line order --
-        cached (see `_world_points_cache`). Rebuilt with a single `local_xyz` +
-        frame-rotation over the whole plate's `(phi, theta)` rather than a per-line pair of
-        small numpy calls, which is what drove the profiled `world_xyz`/`latlon_to_xyz`
-        call counts (see docs/profiling.md). Read-only for callers."""
-        if self._world_points_cache is None:
-            lines = [line for line in self._lines if len(line) > 0]
-            if not lines:
-                self._world_points_cache = np.zeros((0, 3))
-            else:
-                theta = np.concatenate([line.theta for line in lines])
-                phi = np.repeat(
-                    np.array([line.phi for line in lines], dtype=float),
-                    [len(line) for line in lines],
-                )
-                self._world_points_cache = geometry.to_world(self._frame, geometry.local_xyz(phi, theta))
-        return self._world_points_cache
-
-    def all_points_and_elevation(self) -> tuple[np.ndarray, np.ndarray]:
-        """Every elevation-line node's world position and elevation, concatenated. The
-        positions come from `_get_world_points()`'s cache (read-only, like
-        `get_bounding_polygon()`); elevation is gathered fresh every call since it changes
-        without a node-set mutation."""
-        return self._get_world_points(), self.collect("elevation")
-
-    def surface_nodes(self, *field_names: str) -> SurfaceNodes:
-        lines = [line for line in self._lines if len(line) > 0]
-        if lines:
-            theta = np.concatenate([line.theta for line in lines])
-            phi = np.repeat(np.asarray([line.phi for line in lines]), [len(line) for line in lines])
-            local_xyz = geometry.local_xyz(phi, theta)
-        else:
-            local_xyz = np.zeros((0, 3))
-        world_xyz = self._get_world_points()
-        return SurfaceNodes(
-            local_xyz=local_xyz,
-            world_xyz=world_xyz,
-            node_ids=_surface_node_ids(local_xyz),
-            area_m2=_surface_node_areas_m2(world_xyz),
-            area_is_exact=False,
-            fields={name: self.collect(name) for name in field_names},
-        )
-
-    def collect(self, field_name: str) -> np.ndarray:
-        chunks = [getattr(line, field_name) for line in self._lines if len(line) > 0]
-        if not chunks:
-            return np.zeros(0, dtype=bool) if field_name == "is_volcano" else np.zeros(0)
-        return np.concatenate(chunks, axis=0)
-
-    def contains(self, lat: float, lon: float) -> bool:
-        point_xyz = geometry.latlon_to_xyz(np.asarray(lat), np.asarray(lon))
-        return geometry.point_in_spherical_polygon(point_xyz, self.get_bounding_polygon())
-
-    def get_neighbours(self, all_plates: list["Plate"], threshold_rad: float = NEIGHBOUR_DISTANCE_RAD) -> list["Plate"]:
-        return _plates_within(self, all_plates, threshold_rad)
-
-    def __iter__(self) -> Iterator[ElevationPoint]:
-        for line in self._lines:
-            yield from line
-
-    def map_world_points(self) -> Iterator[tuple[ElevationPoint, np.ndarray]]:
-        for line in self._lines:
-            if len(line) == 0:
-                continue
-            world_pts = line.world_xyz(self._frame)
-            for point, world_xyz in zip(line, world_pts):
-                yield point, world_xyz
-
-    def set_fields_on_plate(self, **fields: np.ndarray) -> None:
-        expected = self.node_count()
-        invalid = [name for name in fields if name != "elevation" and name not in ElevationLine.OPTIONAL_FIELDS]
-        if invalid:
-            raise ValueError(f"unknown surface field(s): {', '.join(sorted(invalid))}")
-        wrong = {name: np.asarray(values).shape for name, values in fields.items() if np.asarray(values).shape != (expected,)}
-        if wrong:
-            raise ValueError(f"surface fields must have shape ({expected},); got {wrong}")
-        offset = 0
-        for line in self._lines:
-            n = len(line)
-            if n == 0:
-                continue
-            line.set_fields(**{name: values[offset : offset + n] for name, values in fields.items()})
-            offset += n
-
-    def _plates_from_node_masks(self, masks: list[np.ndarray], ids: list[int]) -> list["Plate"]:
-        """Partition this plate's lines by per-node membership (same `ElevationLine.masked`
-        machinery as `split`, so every `OPTIONAL_FIELDS` value survives exactly -- no
-        resample). `ids[0]` keeps this plate's own id, omega, and age; the rest are fresh
-        fragments carrying a copy of this plate's omega (they were co-moving with it, which
-        is exactly why `maybe_split_plate` never separated them) and age 0. `type(self)` so a
-        `LithospherePlate` stays a `LithospherePlate`."""
-        plates: list["Plate"] = []
-        for k, (mask, pid) in enumerate(zip(masks, ids)):
-            offset = 0
-            lines: list[ElevationLine] = []
-            for line in self._lines:
-                n = len(line)
-                sub = mask[offset : offset + n]
-                offset += n
-                if np.any(sub):
-                    # A single connected component can still wrap a row into two arcs (a
-                    # U-shape closed through other rows) -- carry each arc as its own
-                    # contiguous `ElevationLine` so the fragment's envelope keyholes the gap
-                    # out rather than claiming it (see `split_into_contiguous_runs`).
-                    lines.extend(split_into_contiguous_runs(line.masked(sub), _row_median_step(line)))
-            if not lines:
-                continue
-            # A fragment's own crust_type is the majority of what its nodes actually are, not
-            # a blind copy of the parent's -- see elevation_lines.majority_crust_type. A no-op
-            # for every plate that's never had a magma-typing event (rift decompression
-            # melting or gap-fill), which is every fragment before that feature existed.
-            fragment_crust_type = elevation_lines.majority_crust_type(lines, self._crust_type)
-            lines = elevation_lines.freeze_inherited_crust_type(lines, self._crust_type, fragment_crust_type)
-            plates.append(
-                type(self)(
-                    plate_id=pid,
-                    frame=self._frame.copy(),
-                    crust_type=fragment_crust_type,
-                    lines=lines,
-                    omega=self._omega.copy(),
-                    age_steps=self._age_steps if k == 0 else 0,
-                    internal_stress=self._internal_stress if k == 0 else 0.0,
-                )
-            )
-        return plates
 
 
 # outline_world's boundary-detection pass needs at least this many nodes for "boundary node"
@@ -1642,9 +654,7 @@ def gather_node_positions(plate_list: list[Plate]) -> tuple[np.ndarray, list[Pla
     (see docs/architecture.md's World.climate_cache/hydrology_cache notes for the same
     "compute once this step, reuse" precedent).
 
-    `plates_in_order` -- not, as an earlier version of this function returned, (plate,
-    line_index, start, end) references into `PlateWithLines`' own `.lines` -- is what makes
-    this representation-agnostic: any bulk per-field gather (`collect_all_elevation` and
+    `plates_in_order` is what makes this representation-agnostic: any bulk per-field gather (`collect_all_elevation` and
     friends, below) or per-plate write-back loop (`Plate.set_fields_on_plate`) already
     visits nodes in this same plate-major order, so a caller never needs to reach into any one
     representation's own storage just to stay aligned with `points`. Each caller still gathers
@@ -1735,19 +745,17 @@ def collect_all_points(plate_list: list[Plate]) -> tuple[np.ndarray, np.ndarray,
 # Two plates' node clouds are "co-located" -- overlapping the same patch of sphere rather
 # than merely adjacent -- when nodes land within this multiple of a target spacing of each
 # other. Ordinary shared boundaries sit ~one full spacing apart, so half a spacing only fires
-# on genuine territory overlap (a stalled collision, a bad split partition, a plate drifting
-# over a neighbour it can't merge with). Shared by main._plate_overlaps (the Plate Inspector /
-# diagnostics view) and merge_split.update_overlap_tracking (the per-node onset stamp).
+# on genuine territory overlap. Used by faults.py's point-overlap fault spawning.
 OVERLAP_TOLERANCE_MULT = 0.5
 
 
-def compute_node_overlap(plate_list: list[Plate], tol_rad: float) -> dict[int, dict]:
-    """Per plate (keyed by plate_id, only plates with nodes), a genuine node-cloud overlap
+def compute_node_overlap(plate_list: list[Plate]) -> dict[int, dict]:
+    """Per plate (keyed by plate_id, only plates with nodes), a genuine territory overlap
     read against every *other* plate:
 
     - `overlap_mask`: bool array aligned to this plate's own node order
-      (`all_points_and_elevation()` / `collect` order) -- True where this node sits within
-      `tol_rad` of some other plate's node.
+      (`all_points_and_elevation()` / `collect` order) -- True where this node's centre lies
+      inside some other plate's territory.
     - `by_partner`: {other_plate_id: count of this plate's own unique nodes on top of it},
       sorted-desc when iterated is up to the caller.
     - `cover_count`: int array aligned like `overlap_mask` -- how many *other* plates this
@@ -1757,15 +765,11 @@ def compute_node_overlap(plate_list: list[Plate], tol_rad: float) -> dict[int, d
       continental -- the denominator for a continental-plates-only sum, where an oceanic
       plate on top duplicates nothing.
 
-    One global `cKDTree.query_pairs` over every node, so O(N log N) once rather than a
-    per-pair envelope test -- the same construction main._plate_overlaps used inline before
-    this was factored out so the API view and merge_split's onset tracker can't drift.
-
-    When every plate's territory is exact (`PlateSurface.territory_is_exact`, i.e. cells), a
-    node overlaps instead when its centre lies inside another plate's territory -- the same
-    containment test deform's contested classification uses. Two cell lattices in different
-    frames never line up node for node, so a proximity tolerance there misses about a third
-    of the nodes that really sit on another plate (issue #228 Phase 4)."""
+    Containment, not node proximity: the same test deform's contested classification uses.
+    Two cell lattices in different frames never line up node for node, so a proximity
+    tolerance misses about a third of the nodes that really sit on another plate (issue #228
+    Phase 4). Shared by main._plate_overlaps (the Plate Inspector / diagnostics view) and
+    merge_split.update_overlap_tracking (the per-node onset stamp), so the two can't drift."""
     active = [p for p in plate_list if p.node_count() > 0]
     result: dict[int, dict] = {
         p.plate_id: {
@@ -1776,46 +780,13 @@ def compute_node_overlap(plate_list: list[Plate], tol_rad: float) -> dict[int, d
         }
         for p in active
     }
-    if len(active) < 2:
-        return result
-    if all(p.territory_is_exact for p in active):
+    if len(active) >= 2:
         _contained_node_overlap(active, result)
-        return result
-
-    clouds = [p.all_points_and_elevation()[0] for p in active]
-    counts = [len(c) for c in clouds]
-    offsets = np.cumsum([0, *counts])
-    owner = np.concatenate([np.full(n, i) for i, n in enumerate(counts)])
-    pairs = cKDTree(np.concatenate(clouds)).query_pairs(tol_rad, output_type="ndarray")
-    if len(pairs) == 0:
-        return result
-
-    owners_lo, owners_hi = owner[pairs[:, 0]], owner[pairs[:, 1]]
-    cross = owners_lo != owners_hi
-    pairs, owners_lo, owners_hi = pairs[cross], owners_lo[cross], owners_hi[cross]
-
-    for glob, src, dst in ((pairs[:, 0], owners_lo, owners_hi), (pairs[:, 1], owners_hi, owners_lo)):
-        for i, src_plate in enumerate(active):
-            here = src == i
-            if not here.any():
-                continue
-            local = glob[here] - offsets[i]
-            result[src_plate.plate_id]["overlap_mask"][local] = True
-            dst_here = dst[here]
-            for j, dst_plate in enumerate(active):
-                on_j = dst_here == j
-                if not on_j.any():
-                    continue
-                unique_local = np.unique(local[on_j])
-                result[src_plate.plate_id]["by_partner"][dst_plate.plate_id] = int(len(unique_local))
-                result[src_plate.plate_id]["cover_count"][unique_local] += 1
-                if dst_plate.crust_type == "continental":
-                    result[src_plate.plate_id]["continental_cover_count"][unique_local] += 1
     return result
 
 
 def _contained_node_overlap(active: list[Plate], result: dict[int, dict]) -> None:
-    """`compute_node_overlap`'s exact-territory form, filling `result` in place. Candidate
+    """`compute_node_overlap`'s containment test, filling `result` in place. Candidate
     pairs come from bounding caps rather than outline proximity (`_plates_within`), so a plate
     buried wholly inside another -- the superimposed case the forced merge exists for -- is
     still tested."""
@@ -1842,12 +813,11 @@ def _contained_node_overlap(active: list[Plate], result: dict[int, dict]) -> Non
 
 
 def _collect_all(plate_list: list[Plate], field_name: str) -> np.ndarray:
-    """Every plate's current `field_name` (elevation or an ElevationLine OPTIONAL_FIELDS
-    name), concatenated in the exact same per-plate/per-node order collect_all_points uses --
+    """Every plate's current `field_name` (any `surface_fields.SURFACE_FIELDS` name),
+    concatenated in the exact same per-plate/per-node order collect_all_points uses --
     so results from two different `_collect_all` calls can still be indexed together with the
     same nearest-neighbor result (see render_image._render_grid_arrays). Delegates to each
-    plate's own `collect` -- representation-independent, works against the abstract `Plate`
-    interface, not just PlateWithLines."""
+    plate's own `collect`, through the abstract `Plate` interface."""
     chunks = [p.collect(field_name) for p in plate_list if p.node_count() > 0]
     if not chunks:
         return np.zeros(0, dtype=bool) if field_name == "is_volcano" else np.zeros(0)
@@ -1906,14 +876,14 @@ def collect_all_volcano_active_years_remaining(plate_list: list[Plate]) -> np.nd
 
 def collect_all_overlap_onset_years(plate_list: list[Plate]) -> np.ndarray:
     """Used by render_image.py's `overlapAge` debug view -- see
-    merge_split.update_overlap_tracking / ElevationLine.overlap_onset_years."""
+    merge_split.update_overlap_tracking / the `overlap_onset_years` field."""
     return _collect_all(plate_list, "overlap_onset_years")
 
 
 def collect_all_node_created_years(plate_list: list[Plate]) -> np.ndarray:
     """Every live node's `world.elapsed_years` at creation (-1.0 = predates tracking / a
     genesis node from initial world generation) -- used by render_image.py's `nodeAge` debug
-    view. See ElevationLine.node_created_years."""
+    view. See the `node_created_years` field."""
     return _collect_all(plate_list, "node_created_years")
 
 
@@ -1929,14 +899,14 @@ def collect_all_elevation(plate_list: list[Plate]) -> np.ndarray:
 
 
 def collect_all_crustal_thickness(plate_list: list[Plate]) -> np.ndarray:
-    """Every node's Hc (v2 LithospherePlate only -- all-zero for v1 PlateWithLines). Read by
+    """Every node's Hc. Read by
     erosion.py so a step's net rock-column change lands on Hc and Airy isostasy can rebound
     it, not just on the bare `elevation` cache."""
     return _collect_all(plate_list, "crustal_thickness_m")
 
 
 def collect_all_mantle_lithosphere_thickness(plate_list: list[Plate]) -> np.ndarray:
-    """Every node's Hm (v2 LithospherePlate only -- all-zero for v1). Paired with
+    """Every node's Hm. Paired with
     `collect_all_crustal_thickness` for erosion.py's isostatic-rebound bookkeeping."""
     return _collect_all(plate_list, "mantle_lithosphere_thickness_m")
 
@@ -2034,44 +1004,6 @@ def nearest_node_index(plate_list: list[Plate], query_xyz: np.ndarray) -> int | 
     points, _, _owner = collected
     _, idx = cKDTree(points).query(query_xyz)
     return int(idx)
-
-
-def line_and_point_for_flat_index(plate: "PlateWithLines", flat_index: int) -> tuple[ElevationLine, int]:
-    """The `(line, point_index)` a `flat_index` into `plate`'s own
-    `all_points_and_elevation()`/`collect(...)` concatenation (every non-empty line in
-    `plate.lines` order) refers to. Used to recover which `ElevationLine` a click landed on
-    once the owning plate is already known -- see `nearest_line_point` below."""
-    cum = 0
-    for line in plate.lines:
-        n = len(line)
-        if n == 0:
-            continue
-        if flat_index < cum + n:
-            return line, flat_index - cum
-        cum += n
-    raise IndexError(f"flat index {flat_index} out of range for plate {plate.plate_id}")
-
-
-def nearest_line_point(plate: "PlateWithLines", query_xyz: np.ndarray) -> tuple[ElevationLine, int] | None:
-    """The `(line, point_index)` of `plate`'s own node nearest `query_xyz` -- a per-plate
-    refinement of `nearest_node_index` once the owning plate is already known (see
-    `GET /world/elevation_point_at`), so the global concatenated index that function returns
-    never needs to be de-offset back out of `collect_all_points`'s whole-world ordering.
-    `None` if `plate` has no live nodes."""
-    points, _elevation = plate.all_points_and_elevation()
-    if len(points) == 0:
-        return None
-    _, idx = cKDTree(points).query(query_xyz)
-    return line_and_point_for_flat_index(plate, int(idx))
-
-
-def sorted_nonempty_lines(plate: "PlateWithLines") -> list[ElevationLine]:
-    """Every non-empty line on `plate`, ordered by ascending plate-local latitude `phi` --
-    `plate.lines` itself carries no such ordering guarantee, but the Points debug view's
-    click-to-inspect (`GET /world/elevation_point_at`) and arrow-key line navigation
-    (`GET /world/elevation_point`) both need one stable order to report/step a `line_index`
-    against."""
-    return sorted((line for line in plate.lines if len(line) > 0), key=lambda line: line.phi)
 
 
 def base_elevation(crust_type: str) -> float:

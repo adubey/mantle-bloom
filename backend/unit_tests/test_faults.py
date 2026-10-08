@@ -6,7 +6,6 @@ from app.elevation_lines import (
     ELEV_CHANGE_FAULT_REVERSE,
     ELEV_CHANGE_FAULT_STRIKE_SLIP,
     PLANET_RADIUS_KM,
-    ElevationLine,
 )
 from app.faults import (
     Fault,
@@ -20,13 +19,9 @@ from app.faults import (
     reconcile_faults,
     update_faults,
 )
-from app.plates import PlateWithLines
-from app.world import World, generate_world as _generate_world, step_world
+from app.world import World, generate_world, step_world
 
-
-def generate_world(*args, **kwargs):
-    kwargs.setdefault("surface", "lines")
-    return _generate_world(*args, **kwargs)
+from .quad_fixtures import quad_plate
 
 # A high BASE_SPAWN_RATE keeps the step-count (and so the runtime) of the integration tests
 # low while still exercising spawn/age/retire/reconcile -- the default rate is tuned for
@@ -205,8 +200,7 @@ def test_fault_relief_stamps_a_fault_reason_code_on_nearby_crust():
     fault_reasons = {ELEV_CHANGE_FAULT_NORMAL, ELEV_CHANGE_FAULT_REVERSE, ELEV_CHANGE_FAULT_STRIKE_SLIP}
     stamped: set[int] = set()
     for plate in world.plates:
-        for line in plate.lines:
-            stamped |= set(np.unique(line.elev_change_reason).astype(int))
+        stamped |= set(np.unique(plate.collect("elev_change_reason")).astype(int))
     assert stamped & fault_reasons
 
 
@@ -235,9 +229,9 @@ def test_reverse_fault_has_no_second_uplift_and_normal_fault_balances_relief():
             plate_id=plate.plate_id,
         )
         world.faults = [f]
-        before = np.concatenate([ln.elevation.copy() for ln in plate.lines])
+        before = plate.collect("elevation").copy()
         faults._apply_plate_fault_relief(world, plate, years_myr=1.0)
-        after = np.concatenate([ln.elevation for ln in plate.lines])
+        after = plate.collect("elevation")
         return after - before
 
     rev = relief_delta(_KIND_REVERSE)
@@ -272,28 +266,30 @@ def test_fault_relief_backs_elevation_change_with_crustal_thickness():
             plate_id=plate.plate_id,
         )
         world.faults = [f] * repeats
-        hc_before = np.concatenate([ln.crustal_thickness_m.copy() for ln in plate.lines])
-        elev_before = np.concatenate([ln.elevation.copy() for ln in plate.lines])
+        hc_before = plate.collect("crustal_thickness_m").copy()
+        elev_before = plate.collect("elevation").copy()
         faults._apply_plate_fault_relief(world, plate, years_myr=1.0)
-        hc_after = np.concatenate([ln.crustal_thickness_m for ln in plate.lines])
-        elev_after = np.concatenate([ln.elevation for ln in plate.lines])
+        hc_after = plate.collect("crustal_thickness_m")
+        elev_after = plate.collect("elevation")
         return hc_after - hc_before, elev_after - elev_before
 
     hc_delta, elev_delta = relief_deltas(_KIND_REVERSE)
     assert np.allclose(hc_delta, 0.0)
     assert np.allclose(elev_delta, 0.0)
 
+    # Cells differ in area, so the transfer balances volume (thickness x area), not thickness.
+    areas = plate.node_areas_m2()
     hc_delta, elev_delta = relief_deltas(_KIND_NORMAL)
     dropped = elev_delta < -1e-9
     assert np.any(dropped)
     assert np.all(hc_delta[dropped] < 0.0)  # extensional throw thins Hc
-    assert abs(hc_delta.sum()) < 1e-6
+    assert abs(hc_delta @ areas) < 1e-6 * (np.abs(hc_delta) @ areas)
     hc_delta, elev_delta = relief_deltas(_KIND_STRIKE_SLIP)
-    assert abs(hc_delta.sum()) < 1e-6
+    assert abs(hc_delta @ areas) < 1e-6 * (np.abs(hc_delta) @ areas)
     assert np.any(elev_delta > 0.0) and np.any(elev_delta < 0.0)
     hc_delta, _ = relief_deltas(_KIND_NORMAL, repeats=4)
-    assert abs(hc_delta.sum()) < 1e-6
-    assert np.all(np.concatenate([ln.crustal_thickness_m for ln in plate.lines]) <= lithosphere.MAX_CRUSTAL_THICKNESS_M + 1e-6)
+    assert abs(hc_delta @ areas) < 1e-6 * (np.abs(hc_delta) @ areas)
+    assert np.all(plate.collect("crustal_thickness_m") <= lithosphere.MAX_CRUSTAL_THICKNESS_M + 1e-6)
     world.fault_relief_multiplier = 0.0
     hc_delta, elev_delta = relief_deltas(_KIND_NORMAL)
     assert np.allclose(hc_delta, 0.0)
@@ -305,7 +301,7 @@ def test_fault_relief_conserves_volume_and_carries_material_on_unequal_quad_cell
     # Issue #276: the transfer balances volume on cells of unequal area, and a donor's
     # continental material leaves with its crust, so no tracer is left above Hc for erosion
     # to clip away unbooked.
-    world = generate_world(seed=2, num_plates=6, surface="quad")
+    world = generate_world(seed=2, num_plates=6)
     step_world(world, 1_000_000)
     world.boundary_faults = []
     plate = max((p for p in world.plates if p.crust_type == "continental"), key=lambda p: p.node_count())
@@ -347,19 +343,21 @@ def test_strike_slip_fault_shears_the_field_along_strike_without_crossing_the_tr
     # step's worth of slip -- the node field itself never crosses the trace (see GitHub issue
     # #125 item 2). A small hand-built regular plate (rather than a real generated one, whose
     # ~125 km node spacing rarely puts a second node within reach of a short hand-placed
-    # trace) gives predictable node positions to assert against.
-    phis = np.array([-0.02, -0.01, 0.0, 0.01, 0.02])
-    # Fine enough that the marker column below (picked as a *fraction* of MAX_FAULT_REACH_KM,
-    # not a hardcoded distance -- see that comment) lands close to its intended offset
-    # regardless of how that reach constant gets retuned.
-    thetas = np.linspace(-0.05, 0.05, 101)
+    # trace) gives predictable node positions to assert against: five rows 0.01 rad apart, of
+    # 101 cells 0.001 rad apart -- fine enough that the marker column below (picked as a
+    # *fraction* of MAX_FAULT_REACH_KM, not a hardcoded distance -- see that comment) lands
+    # close to its intended offset regardless of how that reach constant gets retuned. On
+    # cube face 0 a column of cells shares one plate-local longitude, so columns line up
+    # across rows.
+    n = int(round((np.pi / 2) / 0.001))
+    rows, columns = np.arange(-20, 21, 10), np.arange(-50, 51)
     rng = np.random.default_rng(0)
-    lines = [
-        ElevationLine(phi=float(phi), theta=thetas.copy(), elevation=rng.uniform(100.0, 200.0, size=len(thetas)))
-        for phi in phis
-    ]
-    plate = PlateWithLines(plate_id=0, frame=np.eye(3), crust_type="continental", lines=lines)
+    plate = quad_plate(
+        0, "continental", columns=columns, rows=rows, n=n,
+        elevation=rng.uniform(100.0, 200.0, size=len(rows) * len(columns)),
+    )
     own_points = plate.all_points_and_elevation()[0]
+    thetas = geometry.xyz_to_latlon(own_points[: len(columns)])[1]
 
     # Marker sits 55% of the way out to MAX_FAULT_REACH_KM (reach_scale == 1.0 in "boundary"
     # mode) -- the taper this gives, combined with this fault's SLIP_RATE_MAX_M_PER_MYR over
@@ -442,7 +440,7 @@ def test_fault_mode_is_the_default_and_differs_from_boundary_mode():
     b.fault_deformation_mode = "boundary"
 
     def elev(w):
-        return np.concatenate([ln.elevation for p in w.plates for ln in p.lines])
+        return np.concatenate([p.collect("elevation") for p in w.plates])
 
     # First step: same node count (topology hasn't diverged yet), fault-localised gating of
     # the boundary thickening already perturbs the field.
@@ -457,12 +455,8 @@ def test_fault_mode_is_the_default_and_differs_from_boundary_mode():
     for _ in range(9):
         step_world(a, 1_000_000)
         step_world(b, 1_000_000)
-    # Threshold lowered 2026-09-04 alongside lithosphere_plate.COLLISION_REACH_DILATION_NODES_
-    # PER_UNIT's baseline-dilation change (GitHub issue #120, "Land fraction slowly declines"): both
-    # modes now carry a near-field ring even at the default reach multiplier, which -- being
-    # unconditional on fault_deformation_mode -- narrows the *aggregate* mean-elevation gap
-    # between them (the per-node arrays still diverge from step 1, asserted above; this is
-    # just a coarser whole-world summary, not the only evidence of a behavioural difference).
+    # A coarse whole-world summary, not the only evidence of a behavioural difference: the
+    # per-node arrays already diverge from step 1, asserted above.
     assert abs(float(elev(a).mean()) - float(elev(b).mean())) > 0.02
 
 
@@ -474,8 +468,8 @@ def test_boundary_mode_deform_is_deterministic():
     for _ in range(6):
         step_world(a, 1_000_000)
         step_world(b, 1_000_000)
-    ea = np.concatenate([ln.elevation for p in a.plates for ln in p.lines])
-    eb = np.concatenate([ln.elevation for p in b.plates for ln in p.lines])
+    ea = np.concatenate([p.collect("elevation") for p in a.plates])
+    eb = np.concatenate([p.collect("elevation") for p in b.plates])
     assert np.array_equal(ea, eb)
 
 

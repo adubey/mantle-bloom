@@ -12,8 +12,17 @@ from app.world import World
 
 
 def _small_world(seed=1, num_plates=4, node_density=1.0):
-    plates = generate_plates(seed=seed, num_plates=num_plates, node_density=node_density, surface="lines")
+    plates = generate_plates(seed=seed, num_plates=num_plates, node_density=node_density)
     return World(seed=seed, plates=plates, next_plate_id=len(plates), node_density=node_density, mantle_centers=[])
+
+
+# Independently rotated cell lattices leave one-cell seams between plates, which the gap
+# tracker also reports (see test_quad_tectonics.py); a vacated plate's gap is far larger.
+_SEAM_MAX_NODES = 50
+
+
+def _real_gap_tracks(world):
+    return [track for track in world.gap_tracks if track.node_count >= _SEAM_MAX_NODES]
 
 
 def test_fill_gaps_by_growing_neighbours_handles_a_world_with_no_plates():
@@ -96,10 +105,10 @@ def test_fill_gaps_mid_ocean_gap_stays_all_oceanic():
 # -- gap-age tracking (world.gap_tracks) --------------------------------------------------
 
 
-def test_reconcile_gap_tracks_is_a_no_op_on_a_freshly_generated_world():
+def test_reconcile_gap_tracks_sees_only_seams_on_a_freshly_generated_world():
     world = _small_world()
     gaps.reconcile_gap_tracks(world)
-    assert world.gap_tracks == []
+    assert _real_gap_tracks(world) == []
 
 
 def test_reconcile_gap_tracks_persists_first_seen_years_and_accumulates_steps_seen():
@@ -108,15 +117,15 @@ def test_reconcile_gap_tracks_persists_first_seen_years_and_accumulates_steps_se
     world.elapsed_years = 1_000_000.0
 
     gaps.reconcile_gap_tracks(world)
-    assert len(world.gap_tracks) == 1
-    track = world.gap_tracks[0]
+    assert len(_real_gap_tracks(world)) == 1
+    track = _real_gap_tracks(world)[0]
     assert track.first_seen_years == 1_000_000.0
     assert track.steps_seen == 1
 
     world.elapsed_years = 5_000_000.0
     gaps.reconcile_gap_tracks(world)
-    assert len(world.gap_tracks) == 1
-    track = world.gap_tracks[0]
+    assert len(_real_gap_tracks(world)) == 1
+    track = _real_gap_tracks(world)[0]
     # Same gap, re-identified by centroid proximity -- first_seen_years is carried forward,
     # not reset, and steps_seen accumulates.
     assert track.first_seen_years == 1_000_000.0
@@ -129,14 +138,14 @@ def test_reconcile_gap_tracks_drops_a_track_once_the_gap_heals():
     removed = world.plates.pop(1)
     world.elapsed_years = 1_000_000.0
     gaps.reconcile_gap_tracks(world)
-    assert len(world.gap_tracks) == 1
+    assert len(_real_gap_tracks(world)) == 1
 
     # Heal the gap the same way fill_gaps_by_growing_neighbours would -- put a plate back over
     # the vacated ground.
     world.plates.append(removed)
     world.elapsed_years = 2_000_000.0
     gaps.reconcile_gap_tracks(world)
-    assert world.gap_tracks == []
+    assert _real_gap_tracks(world) == []
 
 
 def test_reconcile_gap_tracks_surfaces_a_cluster_smaller_than_min_gap_nodes(monkeypatch):
@@ -155,28 +164,6 @@ def test_reconcile_gap_tracks_surfaces_a_cluster_smaller_than_min_gap_nodes(monk
     # the two floors are genuinely independent (GAP_AGE_MIN_CLUSTER_NODES doesn't move just
     # because MIN_GAP_NODES did).
     assert gaps.fill_gaps_by_growing_neighbours(world) == []
-
-
-# -- gap_fill_due --------------------------------------------------------------------------
-
-
-def test_gap_fill_due_keeps_the_interval_on_line_worlds():
-    world = _small_world()
-    due = []
-    for steps_taken in range(2 * gaps.GAP_FILL_INTERVAL_STEPS):
-        world.steps_taken = steps_taken
-        due.append(gaps.gap_fill_due(world))
-    assert due == [s % gaps.GAP_FILL_INTERVAL_STEPS == 0 for s in range(2 * gaps.GAP_FILL_INTERVAL_STEPS)]
-
-
-def test_gap_fill_due_every_step_on_quad_worlds():
-    """Issue #259: quad retreat drops cells immediately, so waiting for the interval lets the
-    represented area (and with it sea level) sawtooth."""
-    plates = generate_plates(seed=1, num_plates=4, node_density=0.5, surface="quad")
-    world = World(seed=1, plates=plates, next_plate_id=len(plates), node_density=0.5, mantle_centers=[])
-    for steps_taken in range(gaps.GAP_FILL_INTERVAL_STEPS):
-        world.steps_taken = steps_taken
-        assert gaps.gap_fill_due(world)
 
 
 # -- fill_gaps_by_growing_neighbours -------------------------------------------------------

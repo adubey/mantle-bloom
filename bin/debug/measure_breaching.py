@@ -38,7 +38,6 @@ def main() -> None:
     parser.add_argument("--seeds", type=int, nargs="+", default=[1])
     parser.add_argument("--steps", type=int, default=50)
     parser.add_argument("--years", type=float, default=100_000.0)
-    parser.add_argument("--surface", default="quad")
     parser.add_argument("--every", type=int, default=10, help="print every Nth step")
     parser.add_argument("--modes", default="off,on", help="breaching modes to run, e.g. 'on' for an A/B against another --backend")
     parser.add_argument("--out", type=Path)
@@ -96,7 +95,7 @@ def main() -> None:
         for enabled in [mode.strip() == "on" for mode in args.modes.split(",")]:
             hydrology.BREACH_DEPRESSIONS_ENABLED = enabled
             label = f"seed={seed} breaching={'on' if enabled else 'off'}"
-            world = generate_world(seed=seed, surface=args.surface)
+            world = generate_world(seed=seed)
             rows = []
             for step in range(1, args.steps + 1):
                 step_world(world, args.years)

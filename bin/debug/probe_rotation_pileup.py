@@ -5,7 +5,7 @@ On quad worlds, `avg_rotation_rate` 4x leaves less land than 0.25x but much more
 volume above sea level. The sweep's original land-volume metric weighted every node by the
 nominal `node_area_m2` and summed every plate, so part of the rise was measurement: quad cells
 aren't equal-area, and overlapping plates count the same ground twice. This probe splits the
-metric up per (surface, multiplier, seed, checkpoint):
+metric up per (multiplier, seed, checkpoint):
 
 - `land_vol_nominal_km3`: the pre-#289 sweep metric (`sweep_lib._land_volume_above_sea_nominal_km3`);
 - `land_vol_exact_km3`: the same, weighted by `Plate.accounting_areas_m2`;
@@ -86,39 +86,37 @@ def measure(world) -> dict:
     return record
 
 
-def run(surface: str, multiplier: float, seed: int, checkpoints: tuple[int, ...]) -> list[dict]:
+def run(multiplier: float, seed: int, checkpoints: tuple[int, ...]) -> list[dict]:
     sweep_lib._apply_rotation_rate_overrides(
         sweep_lib.BASELINE_AVG_RATE_CM_YR * multiplier, sweep_lib.BASELINE_MAX_RATE_CM_YR
     )
-    world = generate_world(seed=seed, node_density=1.0, surface=surface)
+    world = generate_world(seed=seed, node_density=1.0)
     rows, done = [], 0
     for cp in checkpoints:
         while done < cp:
             step_world(world, years=sweep_lib.STEP_YEARS)
             done += sweep_lib.STEP_YEARS
-        rows.append({"surface": surface, "multiplier": multiplier, "seed": seed, "checkpoint_years": cp, **measure(world)})
+        rows.append({"multiplier": multiplier, "seed": seed, "checkpoint_years": cp, **measure(world)})
     return rows
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--seeds", required=True)
-    parser.add_argument("--surfaces", default="quad,lines")
     parser.add_argument("--multipliers", default="0.25,4.0")
     parser.add_argument("--checkpoints", default="30,120", help="Myr, comma-separated")
     parser.add_argument("--workers", type=int, default=2)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     cps = tuple(int(float(c) * 1e6) for c in args.checkpoints.split(","))
-    jobs = [(s, float(m), int(seed), cps) for s in args.surfaces.split(",")
-            for m in args.multipliers.split(",") for seed in args.seeds.split(",")]
+    jobs = [(float(m), int(seed), cps) for m in args.multipliers.split(",") for seed in args.seeds.split(",")]
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("a") as f, ProcessPoolExecutor(max_workers=args.workers) as pool:
         for rows in pool.map(run, *zip(*jobs)):
             for r in rows:
                 f.write(json.dumps(r) + "\n")
             f.flush()
-            print(f"done {rows[0]['surface']} x{rows[0]['multiplier']} seed={rows[0]['seed']}", flush=True)
+            print(f"done x{rows[0]['multiplier']} seed={rows[0]['seed']}", flush=True)
 
 
 if __name__ == "__main__":

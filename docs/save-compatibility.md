@@ -1,9 +1,10 @@
 # Save compatibility and legacy line-backed worlds
 
 Issue #248 (Phase 5b of #228). This document is the compatibility policy for `.mbworld` saves
-as the plate surface moves from `PlateWithLines` (latitude rows of nodes) to
-`PlateWithSparseQuadPatch` (cube-sphere cells). It covers which saves load, what happens to a
-line-backed save, and what a conversion is allowed to change.
+across the plate surface's move from `PlateWithLines` (latitude rows of nodes) to
+`PlateWithSparseQuadPatch` (cube-sphere cells), which #251 completed by retiring the line
+surface. It covers which saves load, what happens to a line-backed save, and what a
+conversion is allowed to change.
 
 Code: [`persistence.py`](../backend/app/persistence.py) (envelope, versions, errors),
 [`legacy_conversion.py`](../backend/app/legacy_conversion.py) (the converter; its module
@@ -19,20 +20,14 @@ invariant audit. It keeps crust volume within 1.2% and land within about 1 pp; s
 meet every tolerance and two miss one narrowly. There is no quad-to-line path, and no
 long-lived line loader for legacy saves after #251.
 
-Until the cutover (#250), line worlds remain a supported surface, so conversion is opt-in:
-
-| stage | a line-backed save loads as | how to convert |
-|---|---|---|
-| now (before #250) | a line world, unchanged | `POST /world/load?convert_lines=true`, `persistence.load_world_bytes(data, convert_lines=True)`, or `bin/debug/convert_legacy_saves.py --write-converted` |
-| after #250 (quads are the default) | flip `convert_lines` to default on: a quad world, converted on load | (automatic) |
-| after #251 (`PlateWithLines` deleted) | a quad world, converted on load through `legacy_conversion.legacy_unpickler` | (automatic) |
-
-The converter reads line state structurally (§3), never through `PlateWithLines` methods, so
-it outlives the line classes. #251 removes the line *engine*, not `legacy_conversion.py`,
-`LegacyRecord` and `legacy_unpickler`; it switches `load_world_bytes` to unpickle a
-line-backed save with `legacy_unpickler` and always convert it.
-`test_conversion_reads_saves_whose_line_classes_are_retired` proves conversion through the
-stand-ins gives exactly the same world as through the real classes.
+Since #251 the line classes no longer exist. `persistence.load_world_bytes` unpickles every
+save through `legacy_conversion.legacy_unpickler`, which loads the retired line classes
+(`PlateWithLines`, `LithospherePlate`, `ElevationLine`, and `_RowLookup`, the cached row index
+a line plate pickled once its containment fast path had run) as inert `LegacyRecord`s, and converts
+a line-backed world before anything else reads it. There is no opt-in and no way to load a
+line world as one. The converter reads line state structurally (§3), never through line-class
+methods, so it never depended on those classes. `legacy_conversion.py`, `LegacyRecord` and
+`legacy_unpickler` are the only code that still knows line state.
 
 ## 2. Save format
 
@@ -40,9 +35,9 @@ A save is a pickled envelope. `persistence.SAVE_FORMAT_VERSION` is 3.
 
 | version | shape | loads? |
 |---|---|---|
-| 1 | a bare pickled `World` (every save before the envelope existed) | yes; may be a line world |
+| 1 | a bare pickled `World` (every save before the envelope existed) | yes; a line world converts on load |
 | 2 | `{"format": "mantle-bloom-world", "version": 2, "world": World}` | yes |
-| 3 | v2 plus `"surface": "lines" \| "quad" \| "empty"`, checked against the unpickled plates | yes |
+| 3 | v2 plus `"surface": "lines" \| "quad" \| "empty"`, checked against the unpickled plates | yes; this build writes only `quad` or `empty`, and a `lines` save converts on load |
 | > 3 | written by a newer build | no: `UnsupportedSaveVersionError` |
 
 Each `PlateWithSparseQuadPatch` also versions its own pickled state
@@ -56,7 +51,8 @@ loads part of a save:
   (garbage, truncation, a class this build doesn't have), another program's envelope,
   anything other than a `World` inside, a declared surface that doesn't match the plates, a
   world mixing line and quad plates, or a quad plate whose cells break the leaf-topology
-  invariants.
+  invariants. A line-backed save whose state the converter refuses (§3) is also a
+  `CorruptSaveError` ("line-backed save can't be converted").
 - `UnsupportedSaveVersionError`: an envelope version outside 1–3 (including a non-integer), or
   a quad plate in another surface format version.
 
@@ -65,13 +61,15 @@ either.
 
 **Fields a save predates.** A `World` field added after a save was written is backfilled on
 load (`persistence._backfill_added_fields`: a `default_factory` field gets its empty default;
-a plain-default field falls through to the class attribute). An `ElevationLine` field added
-since reads as its registry default (`ElevationLine.__getattr__`, matching
-`surface_fields.SURFACE_FIELDS`). The eustatic water budget, if missing or in its pre-#257
+a plain-default field falls through to the class attribute). A line field the save predates
+reads as its `surface_fields.SURFACE_FIELDS` default, the value the retired `ElevationLine`
+backfilled lazily. The eustatic water budget, if missing or in its pre-#257
 units, is re-snapshotted from the save's own hypsometry and sea level, so the shoreline
 doesn't move. Attributes an older build set on `World` that this build no longer declares
 (found in real saves: `gap_fill_algorithm`, `volcanic_field_plate_ids`, the old
-`ocean_water_column_m`) are inert; the last is dropped.
+`ocean_water_column_m`, the line engine's `corner_notch_log`) are inert. All but
+`volcanic_field_plate_ids` are dropped on load, so a loaded world and its next save carry no
+line state.
 
 **Fields from a newer build.** A save from a newer build has a newer envelope version and is
 refused. Conversion separately refuses line state it doesn't recognise (§3) instead of
@@ -90,7 +88,8 @@ dropping it.
 | faults and fault systems (plate id + plate-local trace) | kept: frames are unchanged |
 | collision evidence and front records (plate id + plate-local points) | kept: frames are unchanged |
 | `collision_polarity_frame` (this step's per-node masks) | dropped; the next step's prepass rebuilds it |
-| magma parcels, earthquakes, gap/stranded-basin tracks, removed-points and corner-notch logs (world-space) | kept |
+| magma parcels, earthquakes, gap/stranded-basin tracks, removed-points log (world-space) | kept |
+| `corner_notch_log` (line-row events) | dropped on load, from every pre-#251 save |
 | `stats_history`, `phase_budget`, `events` | kept; the conversion is logged as an event |
 | climate, hydrology, erosion and node-index caches | dropped; recomputed on the next use |
 | `ocean_water_volume_m3` | re-snapshotted against the converted hypsometry at the same sea level |
@@ -146,7 +145,7 @@ world's even where its state matches. Comparisons are statistical, as in #247/#2
 `ConversionReport` (in `World.surface_conversion` as a summary, in full from
 `convert_world_to_quad`) records each quantity below. `bin/debug/convert_legacy_saves.py`
 converts saves, audits the result with the #247 hard-invariant audit, round-trips it, steps
-the line and converted worlds side by side, and checks these tolerances:
+the converted world, and checks these tolerances:
 
 | check | tolerance | why |
 |---|---|---|
@@ -156,7 +155,7 @@ the line and converted worlds side by side, and checks these tolerances:
 | worst plate Hc volume, plates ≥ 500 nodes not touched by an overlap (< 1% of nodes stacked to or from) | ≤ 5% | each edge moves up to half a cell; an overlap legitimately moves crust between plates |
 | land share of the covered sphere at the save's sea level, sampled | ≤ 1 pp | |
 | continental share of the covered sphere, sampled | ≤ 1 pp | |
-| uncovered sphere, quad minus line | ≤ +0.5 pp | conversion must not open gaps |
+| uncovered sphere, quad minus line | ≤ +0.5 pp | conversion must not open gaps; measured in the #248 runs below, while the line plates' own containment test still existed |
 | multiply-covered sphere (quad) | ≤ 2.0% (warn above 1.5%) | rotated lattices overlap at edges by construction; the #247 harness's C3 levels |
 | sea level at conversion | unchanged | the water budget is re-snapshotted |
 | #247 hard-invariant audit, at conversion and after each step | no violations | |
@@ -179,7 +178,7 @@ Nine of the 51 real saves, chosen to span age (0–1,064 Myr), density (one at 0
 at 4), fragmentation (the 352.4 Myr #228 reproducer and the most fragmented save, 363 Myr with
 10,947 lines) and legacy damage (saves holding up to 7.6% of their crust past today's caps).
 Each converted world was audited, round-tripped and stepped twice (100 kyr) beside its line
-original. Results are in [`analysis/issue248/`](../analysis/issue248/): the inventory of all
+original, before #251 retired the line engine. Results are in [`analysis/issue248/`](../analysis/issue248/): the inventory of all
 51 saves, one JSON per conversion, `summary.md`, and before/after renders.
 
 | save | Myr | line nodes | quad cells | Hc Δ | Hm Δ | Hc over cap in save | Hc delaminated | worst untouched plate Hc Δ | stacked nodes | land line→quad | continental line→quad | uncovered line→quad | multiply covered line→quad | sea level after steps, line / quad | result |
@@ -212,18 +211,20 @@ re-tuned away:
 The policy decision does not depend on these: conversion keeps every save's crust within
 1.2% and its land within about 1 pp, with no field or provenance lost.
 
-Rerun:
+Rerun the conversion checks (since #251 the script steps only the converted world, so the
+line-side columns above can't be regenerated):
 
 ```sh
-backend/.venv/bin/python bin/debug/inventory_legacy_saves.py ~/Downloads/*.mbworld --out analysis/issue248/save_inventory.json
 backend/.venv/bin/python bin/debug/convert_legacy_saves.py SAVE.mbworld [...] --out analysis/issue248/conversions --steps 2 --render --jobs 3
 backend/.venv/bin/python bin/debug/convert_legacy_saves.py --out analysis/issue248/conversions --recheck   # after a tolerance change
 ```
 
 ### Inventory of real saves
 
-All 51 `.mbworld` files on hand (`analysis/issue248/save_inventory.json`) are version 1 (bare
-pickles), hold only `LithospherePlate`s, and load in this build. Older ones lack up to 44
+All 51 `.mbworld` files on hand (`analysis/issue248/save_inventory.json`, written by an
+inventory script #251 removed with the line classes) are version 1 (bare pickles) and hold
+only `LithospherePlate`s; 20 of them also pickle a `_RowLookup` cache. All of them load and
+convert in this build; every `.mbworld` on hand (54 files, these 51 included) loads. Older ones lack up to 44
 `World` fields (all backfilled) and up to four line fields (`crust_type_code`,
 `node_created_years`, `elev_change_reason`, `overlap_onset_years`; all defaulted). No line
 carries a field this build doesn't know. The only line-only plate state is
@@ -242,5 +243,3 @@ carries a field this build doesn't know. The only line-only plate state is
   fills them on the first step. A save with a large void will see sea level move on that
   step as new ocean floor appears. The report's `coverage.after.uncovered` shows how much to
   expect.
-- `corner_notch_log` entries describe line-row events; they are kept as history but have no
-  quad counterpart going forward.

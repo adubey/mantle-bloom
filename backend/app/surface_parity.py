@@ -1,16 +1,15 @@
-"""Line-vs-quad parity runs for issue #228 Phase 5 (issue #247).
+"""Plate-surface audit runs for issue #228 Phase 5 (issues #247/#249).
 
-Steps one world per `(seed, surface)` from identical settings and records, at agreed ages, the
-measurements `surface_parity_gates` judges. Nothing here changes production defaults: the
-surface is chosen with `generate_world(surface=...)`, which is what diagnostics and tests
-already use.
+Steps one world per seed and records, at agreed ages, the measurements `surface_parity_gates`
+judges. These runs began as line-vs-quad parity runs; since the line surface was retired
+(#251), each run audits the quad surface on its own.
 
 A run writes two documents:
 
-- `seed<S>-<surface>.json` -- deterministic metrics only (sorted keys, floats rounded), so a
-  rerun of the same code on the same inputs reproduces it byte for byte.
-- `seed<S>-<surface>.timings.json` -- wall-clock timings: per-step phase buckets, derived-index
-  build counts/times, index query timings and memory. Never byte-stable.
+- `seed<S>.json` -- deterministic metrics only (sorted keys, floats rounded), so a rerun of the
+  same code on the same inputs reproduces it byte for byte.
+- `seed<S>.timings.json` -- wall-clock timings: per-step phase buckets, derived-index build
+  counts/times, index query timings and memory. Never byte-stable.
 
 What a run records:
 
@@ -21,13 +20,12 @@ What a run records:
   plate or on `World` equal to a fresh rebuild; and revision tracking -- a plate whose local
   node set or frame changed must have bumped its topology or geometry revision, respectively.
   The atmospheric HEALPix grid must keep its resolution, independent of node count.
-- **Checkpoints** -- area-weighted conservation totals (actual node/cell areas from
-  `SurfaceNodes.area_m2`, not a nominal area per node), land fraction, elevation percentiles,
-  plate counts, whole-sphere coverage/overlap, neutral sample-cloud quality, quad lattice
-  quality, legacy line fragmentation, climate and hydrology summaries, and derived-index
-  parity: the cached world KD-tree against a fresh one (exact), and HEALPix nearest-value
-  resampling against the KD-tree (statistical, broken out near coasts, plate boundaries,
-  holes, poles and the antimeridian).
+- **Checkpoints** -- area-weighted conservation totals (exact cell areas from
+  `SurfaceNodes.area_m2`), land fraction, elevation percentiles, plate counts, whole-sphere
+  coverage/overlap, neutral sample-cloud quality, quad lattice quality, climate and hydrology
+  summaries, and derived-index parity: the cached world KD-tree against a fresh one (exact),
+  and HEALPix nearest-value resampling against the KD-tree (statistical, broken out near
+  coasts, plate boundaries, holes, poles and the antimeridian).
 - **Load checks** at each checkpoint -- a save/load round trip must reproduce the
   authoritative state exactly and come back with every derived index dropped; at the final
   checkpoint, one step from the loaded copy must match one step from the in-memory world.
@@ -73,8 +71,7 @@ from . import (
     world as world_mod,
 )
 from .elevation_lines import PLANET_RADIUS_KM, line_spacing_rad
-from .lithosphere_plate import LithospherePlate
-from .plates import Plate, PlateWithLines
+from .plates import Plate
 from .sparse_quad_patch import (
     PlateWithSparseQuadPatch,
     _corner_coordinates,
@@ -83,8 +80,8 @@ from .sparse_quad_patch import (
 )
 from .surface_fields import SURFACE_FIELDS
 
-SURFACES = ("lines", "quad")
-RESULT_SCHEMA_VERSION = 1
+# 2: runs no longer carry a `surface` (#251); every run is a quad run.
+RESULT_SCHEMA_VERSION = 2
 
 # Distances below are in multiples of the world's lattice spacing `s`, as in
 # docs/plate-surface-baseline.md.
@@ -153,7 +150,7 @@ class RunConfig:
 
 
 # `issue147` is the issue #147 profile world (seed 0 at density 4, climate 4, fluid 2, 100 kyr
-# steps; analysis/issue147-profile-20260922); its timings are compared against that profile.
+# steps; analysis/issue147-profile-20260922), so its timings line up with that profile.
 PRESETS: dict[str, RunConfig] = {
     "smoke": RunConfig("smoke", node_density=0.5, step_years=1e6, checkpoints_myr=(2.0, 4.0), audit_every=1, samples=20_000),
     "standard": RunConfig(
@@ -252,7 +249,6 @@ def state_hash(world) -> str:
 # `gap_fill` and `overlap_tracking`, are the deformation/topology phases #228 calls out.
 _PHASES = (
     (Plate, "shift", "shift"),
-    (LithospherePlate, "deform", "deform"),
     (PlateWithSparseQuadPatch, "deform", "deform"),
     (faults, "update_faults", "faults"),
     (merge_split, "apply_topology_changes", "topology"),
@@ -278,7 +274,6 @@ _PLATE_INDEXES = (
     (Plate, "get_bounding_polygon_tree", "_bounding_polygon_tree_cache", "plate_outline_kdtree"),
     (PlateWithSparseQuadPatch, "_neighbour_indices", "_adjacency_cache", "quad_adjacency"),
     (PlateWithSparseQuadPatch, "_local_boundary_loops", "_local_loops_cache", "quad_boundary_loops"),
-    (PlateWithLines, "_get_row_lookup", "_row_lookup_cache", "line_row_lookup"),
 )
 # Module-level world caches: modules that import the helper by name are patched too.
 _WORLD_INDEXES = (
@@ -413,10 +408,6 @@ _BASE_CACHE_BUILDERS = {
     "_bounding_polygon_tree_cache": "get_bounding_polygon_tree",
     "_node_kdtree_cache": "get_node_kdtree",
 }
-_LINE_CACHE_BUILDERS = {
-    "_world_points_cache": "_get_world_points",
-    "_row_lookup_cache": "_get_row_lookup",
-}
 _QUAD_CACHE_BUILDERS = {
     "_local_cache": "_local_centres",
     "_latlon_cache": "_node_latlon",
@@ -434,8 +425,6 @@ def cache_builders(plate: Plate) -> dict[str, str]:
     builders = dict(_BASE_CACHE_BUILDERS)
     if isinstance(plate, PlateWithSparseQuadPatch):
         builders.update(_QUAD_CACHE_BUILDERS)
-    elif isinstance(plate, PlateWithLines):
-        builders.update(_LINE_CACHE_BUILDERS)
     return builders
 
 
@@ -545,7 +534,7 @@ def field_violations(plate: Plate) -> list[str]:
 
 def field_bound_violations(plate: Plate) -> list[str]:
     """Values outside elevation/Hc/Hm caps. Kept apart from `field_violations`: the engine
-    clamps these caps in specific code paths only, and the line surface breaches them too."""
+    clamps these caps in specific code paths only."""
     return _field_problems(plate)[1]
 
 
@@ -693,7 +682,7 @@ def audit_world(world, signatures: dict[int, dict]) -> tuple[list[dict], dict[in
     def add(kind: str, detail: str, plate: Plate | None = None) -> None:
         entry = {"kind": kind, "detail": detail}
         if plate is not None:
-            entry.update(plate_id=int(plate.plate_id), surface="quad" if isinstance(plate, PlateWithSparseQuadPatch) else "lines")
+            entry["plate_id"] = int(plate.plate_id)
         violations.append(entry)
 
     new_signatures = {}
@@ -732,7 +721,7 @@ def audit_world(world, signatures: dict[int, dict]) -> tuple[list[dict], dict[in
 
 def totals(world) -> dict:
     """Area-weighted totals from each node's actual area (`SurfaceNodes.area_m2`: exact cell
-    areas on quad plates, the line adapter's Voronoi-style estimate otherwise)."""
+    areas)."""
     names = ("elevation", "crustal_thickness_m", "mantle_lithosphere_thickness_m", "crust_type_code")
     elevation, area, hc, hm, continental, owner_continental = [], [], [], [], [], []
     area_exact = True
@@ -794,7 +783,6 @@ def coverage(world, sample: np.ndarray, node_tree: cKDTree | None) -> dict:
         inside += int(mask.sum())
         total += len(points)
     return {
-        "territory_is_exact": all(getattr(p, "territory_is_exact", False) for p in live),
         "uncovered": fraction(uncovered),
         "multiply_covered": fraction(count >= 2),
         "void": fraction(void),
@@ -931,19 +919,6 @@ def quad_lattice(world) -> dict | None:
     }
 
 
-def line_topology(world) -> dict | None:
-    """Legacy fragmentation (no quad equivalent): one-node row stubs, the #228 artifact."""
-    line_plates = [p for p in live_plates(world) if isinstance(p, PlateWithLines)]
-    if not line_plates:
-        return None
-    lengths = np.array([len(line) for plate in line_plates for line in plate.lines if len(line) > 0])
-    return {
-        "lines": int(len(lengths)),
-        "one_node_lines": float(np.mean(lengths == 1)) if len(lengths) else 0.0,
-        "nodes_in_one_node_lines": float(np.sum(lengths == 1) / max(1, lengths.sum())),
-    }
-
-
 def climate_hydrology(world) -> dict:
     stats = world.stats_history[-1] if world.stats_history else {}
     climate = {name: stats.get(name) for name in CHECKPOINT_STATS}
@@ -1067,7 +1042,6 @@ def checkpoint_metrics(world, sample: np.ndarray) -> tuple[dict, dict]:
         "coverage": coverage(world, sample, tree),
         "sample_cloud": sample_cloud(world),
         "quad_lattice": quad_lattice(world),
-        "line_topology": line_topology(world),
         "climate_hydrology": climate_hydrology(world),
         "index_parity": parity,
         "atmosphere": atmosphere_signature(world),
@@ -1094,30 +1068,20 @@ def load_check(world) -> tuple[dict, object]:
 # --- Runs -----------------------------------------------------------------------------------
 
 
-def run_name(seed: int, surface: str) -> str:
-    return f"seed{seed}-{surface}"
+def run_name(seed: int) -> str:
+    return f"seed{seed}"
 
 
-def surface_of(world) -> str:
-    kinds = {"quad" if isinstance(p, PlateWithSparseQuadPatch) else "lines" for p in world.plates}
-    if len(kinds) != 1:
-        raise ValueError(f"world mixes plate surfaces: {sorted(kinds)}")
-    return kinds.pop()
-
-
-def run_surface(
-    config: RunConfig, seed: int, surface: str, out_dir: Path | None = None, log=print, initial_world: Path | None = None
-) -> tuple[dict, dict]:
+def run_world(config: RunConfig, seed: int, out_dir: Path | None = None, log=print, initial_world: Path | None = None) -> tuple[dict, dict]:
     """Generate and step one world, returning (metrics document, timings document) and writing
     both under `out_dir` when given. With `initial_world`, continue a saved `.mbworld`
-    instead of generating one: `seed` and `surface` must match the save, checkpoint ages count
-    from the save's own age, and the world's own densities apply (the config's are ignored)."""
-    if surface not in SURFACES:
-        raise ValueError(f"surface must be one of {SURFACES}, got {surface!r}")
+    instead of generating one: `seed` must match the save, checkpoint ages count from the
+    save's own age, and the world's own densities apply (the config's are ignored). A
+    line-backed save converts on load, like any other load."""
     checkpoint_steps = set(config.checkpoint_steps)
     sample = fibonacci_sphere(config.samples)
     instrumentation = Instrumentation()
-    generation_kwargs = {"seed": seed, "node_density": config.node_density, "fluid_density": config.fluid_density, "surface": surface}
+    generation_kwargs = {"seed": seed, "node_density": config.node_density, "fluid_density": config.fluid_density}
     if config.climate_density is not None:
         generation_kwargs["climate_density"] = config.climate_density
 
@@ -1125,7 +1089,6 @@ def run_surface(
         "schema_version": RESULT_SCHEMA_VERSION,
         "config": config.to_json(),
         "seed": seed,
-        "surface": surface,
         "checkpoints": [],
         "violations": [],
         "audits": 0,
@@ -1135,7 +1098,7 @@ def run_surface(
     if initial_world is not None:
         data = Path(initial_world).read_bytes()
         document["initial_world"] = {"name": Path(initial_world).name, "sha256": hashlib.sha256(data).hexdigest()}
-    timings: dict = {"schema_version": RESULT_SCHEMA_VERSION, "seed": seed, "surface": surface, "steps": [], "checkpoints": []}
+    timings: dict = {"schema_version": RESULT_SCHEMA_VERSION, "seed": seed, "steps": [], "checkpoints": []}
     renders_dir = out_dir / "renders" if out_dir is not None and config.render else None
 
     with instrumentation.installed():
@@ -1145,8 +1108,8 @@ def run_surface(
         else:
             world = persistence.load_world_bytes(data)
             del data
-            if world.seed != seed or surface_of(world) != surface:
-                raise ValueError(f"{initial_world} is seed {world.seed} on {surface_of(world)}, not seed {seed} on {surface}")
+            if world.seed != seed:
+                raise ValueError(f"{initial_world} is seed {world.seed}, not seed {seed}")
         timings["generation_s"] = time.perf_counter() - started
         signatures: dict[int, dict] = {}
         atmosphere = atmosphere_signature(world)
@@ -1179,7 +1142,7 @@ def run_surface(
                 document["violations"].extend(violations)
                 document["audits"] += 1
                 if violations:
-                    log(f"{run_name(seed, surface)} step {step}: {len(violations)} violation(s): {violations[:3]}")
+                    log(f"{run_name(seed)} step {step}: {len(violations)} violation(s): {violations[:3]}")
             if is_checkpoint:
                 started = time.perf_counter()
                 metrics, index_timings = checkpoint_metrics(world, sample)
@@ -1188,12 +1151,12 @@ def run_surface(
                 timing_row = {"step": step, "metrics_s": time.perf_counter() - started, "index": index_timings}
                 totals_row = metrics["totals"]
                 log(
-                    f"{run_name(seed, surface)} {world.elapsed_years / 1e6:g} Myr: {totals_row.get('plates')} plates, "
+                    f"{run_name(seed)} {world.elapsed_years / 1e6:g} Myr: {totals_row.get('plates')} plates, "
                     f"{totals_row.get('nodes')} nodes, land {totals_row.get('land_fraction', 0):.3f}, "
                     f"uncovered {metrics['coverage']['uncovered']:.4f}"
                 )
                 if renders_dir is not None:
-                    timing_row["render_s"] = _render(world, renders_dir, run_name(seed, surface), step, config.render_size)
+                    timing_row["render_s"] = _render(world, renders_dir, run_name(seed), step, config.render_size)
                 if config.load_checks:
                     result, loaded = load_check(world)
                     result["step"] = step
@@ -1205,8 +1168,8 @@ def run_surface(
     timings["total_s"] = timings["generation_s"] + sum(row["wall_s"] for row in timings["steps"])
     if out_dir is not None:
         out_dir.mkdir(parents=True, exist_ok=True)
-        (out_dir / f"{run_name(seed, surface)}.json").write_text(dumps(document))
-        (out_dir / f"{run_name(seed, surface)}.timings.json").write_text(dumps(timings))
+        (out_dir / f"{run_name(seed)}.json").write_text(dumps(document))
+        (out_dir / f"{run_name(seed)}.timings.json").write_text(dumps(timings))
     return document, timings
 
 
@@ -1231,7 +1194,7 @@ def _render(world, renders_dir: Path, name: str, step: int, size: tuple[int, int
 
 def load_results(out_dir: Path) -> list[tuple[dict, dict | None]]:
     runs = []
-    for path in sorted(out_dir.glob("seed*-*.json")):
+    for path in sorted(out_dir.glob("seed*.json")):
         if path.name.endswith(".timings.json"):
             continue
         timings_path = path.with_name(path.stem + ".timings.json")

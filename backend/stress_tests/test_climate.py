@@ -1,6 +1,5 @@
 import numpy as np
 from app import climate, geometry
-from app.plates import ElevationLine, Plate
 from app.world import World, generate_world, step_world
 
 

@@ -69,12 +69,6 @@ a coarser (faster) resolution, or vice versa -- see
 [simulation-model.md#ocean-atmospheric-fluid-dynamics](simulation-model.md#ocean-atmospheric-fluid-dynamics).
 Replaces whatever world previously existed.
 
-`surface` selects the authoritative plate terrain representation: `"quad"` (the default)
-uses sparse adaptive quad patches and is the supported production path. `"lines"` retains
-the former elevation-line representation as a temporary legacy/diagnostic rollback option.
-Any other value is rejected during request validation. Generate World's Advanced Settings
-exposes the same choice as **Terrain model**, defaulting to **Standard** (quad).
-
 `sketch` (the Generate World dialog's "Human-made" tab) is optional and omitted by the
 "Random" tab entirely -- `{"image_base64": "<a PNG>"}`, the drawn or loaded coastline (see
 [simulation-model.md#worldsketch](simulation-model.md#worldsketch) for the ink convention and
@@ -101,8 +95,8 @@ Response: a summary --
 }
 ```
 
-`surface` is `"quad"` or `"lines"` for generated worlds and lets clients identify a loaded
-legacy line save. A loaded save with no plates reports `"empty"`.
+`surface` is always `"quad"` (plates are sparse adaptive quad patches), except that a loaded
+save with no plates reports `"empty"`.
 
 `events` is the *entire* current event log (capped at `world.MAX_EVENT_LOG_LENGTH = 200`
 entries, oldest dropped first), not just what changed this call -- simplest for the frontend,
@@ -135,7 +129,7 @@ The "File > Save World" download -- the *entire* current world (every plate surf
 field, caches, event log -- see [architecture.md#world-state](architecture.md#world-state))
 pickled as a single opaque `application/octet-stream` file (`Content-Disposition:
 attachment`), not JSON (see `backend/app/persistence.py`). The file is a versioned envelope
-that declares the world's plate surface (`lines` or `quad`). It is not a stable interchange
+that declares the world's plate surface (`quad`, or `empty` with no plates). It is not a stable interchange
 format (contrast with `/world/export_hexgrid` below): pickling by class identity ties it to
 the code. [save-compatibility.md](save-compatibility.md) lists which older saves this build
 reads and how line-backed saves move to sparse quads. `404` if no world has been generated
@@ -150,10 +144,10 @@ pickle caveat) -- acceptable given this server is a single-user localhost dev to
 The "File > Load World" upload -- the raw bytes of a file `/world/save` previously
 produced, as the request body (`Content-Type: application/octet-stream`, not JSON).
 Replaces whatever world previously existed, same as `/world/generate`. Returns the same
-summary shape `/world/generate` does; its `surface` is `"lines"`, `"quad"` or `"empty"`.
+summary shape `/world/generate` does; its `surface` is `"quad"` or `"empty"`.
 
-Query parameter `convert_lines` (default `false`): convert a line-backed save to sparse quads
-on load, one way (see [save-compatibility.md](save-compatibility.md)). The summary's
+A line-backed save (written before #251 retired that surface) is converted to sparse quads on
+load, one way (see [save-compatibility.md](save-compatibility.md)). The summary's
 `surface_conversion` then reports what the conversion changed; it is `null` for a world that
 was never converted, and stays with the world through later saves.
 
@@ -253,7 +247,7 @@ unrecognized projection/view name, a width/height outside `[1, main.MAX_RENDER_D
 
 - `view` selects what gets drawn: `"elevation"` (colored by height/depth), `"plates"`
   (colored by owning plate, plus boundary outlines/pole markers/rotation arcs), or
-  `"platesDetail"` (each plate's raw elevation-line nodes as dots, colored by elevation,
+  `"platesDetail"` (each plate's raw terrain nodes as dots, colored by elevation,
   plus boundary outlines) -- the frontend's Map View dropdown picks this directly.
   `"speckle"` is a debug overlay for diagnosing dithered coastlines (see
   [debugging.md#speckle-coastal-dither-overlay](debugging.md#speckle-coastal-dither-overlay)):
@@ -295,12 +289,12 @@ unrecognized projection/view name, a width/height outside `[1, main.MAX_RENDER_D
   doesn't persist the cache). `"elevReason"` (a debug view, see
   [debugging.md](debugging.md#elevreason-render-view-last-elevation-change)) colours every
   node by which process last moved its elevation -- a persistent per-node code
-  (`ElevationLine.elev_change_reason`), so unlike `"geomorph"` it accumulates over the whole
+  (the `elev_change_reason` node field), so unlike `"geomorph"` it accumulates over the whole
   run: grey where terrain is untouched since generation, warm where crust is being built,
   cool/pale where it's being planed down or buried. `"overlapAge"` (a debug view, see
   [debugging.md](debugging.md#overlapage-render-view-plate-overlap-onset)) colours every node
   currently sitting on top of another plate by how long it has
-  (`elapsed_years - ElevationLine.overlap_onset_years`) over a muted land/ocean backdrop plus
+  (`elapsed_years - overlap_onset_years`) over a muted land/ocean backdrop plus
   the coastline, pale where fresh and magenta where stuck for tens of Myr; all-backdrop is
   the healthy case. `"oceanCfdSediment"`/
   `"oceanCfdDeposition"` (from the retired ocean solver) are not valid `view` values
@@ -401,7 +395,6 @@ has been generated yet.
     {
       "plate_id": 0,
       "crust_type": "continental",
-      "num_rows": 85,
       "num_points": 3437,
       "speed_cm_per_yr": 4.12,
       "at_max_rate": false,
@@ -424,10 +417,7 @@ has been generated yet.
 }
 ```
 
-- `num_rows` is the count of `ElevationLine`s with at least one node (a plate can carry
-  zero-node placeholder rows -- see `merge_split.py`'s own consumption checks -- excluded
-  here to match `outline_world()`'s own filtering). `num_points` is the total node count
-  across every row.
+- `num_points` is the plate's node (quad cell) count.
 - `outline` traces the plate's live territorial boundary (`Plate.outline_world()`) as a
   closed loop of world-space unit vectors.
 - `points` is every one of the plate's `num_points` node positions individually (not just the
@@ -450,11 +440,11 @@ has been generated yet.
   against `world.sea_level_m`. A continental plate reading mostly submerged is a red flag for
   over-stretching (see [GitHub issue #119](https://github.com/adubey/mantle-bloom/issues/119)).
 - `overlaps` lists the other plates this plate's territory currently sits on top of --
-  `fraction` is the share of *this* plate's nodes within half a target node spacing of a
-  node owned by `plate_id` (ordinary shared boundaries sit ~one full spacing apart, so this
-  only fires on genuine territory overlap; `plates.compute_node_overlap`). `since_years` is
+  `fraction` is the share of *this* plate's nodes whose centres lie inside `plate_id`'s
+  territory (`plates.compute_node_overlap`; plates that merely share a boundary don't
+  count). `since_years` is
   the earliest `elapsed_years` any of this plate's still-overlapping nodes first went over
-  another plate (`ElevationLine.overlap_onset_years`, stamped by
+  another plate (the `overlap_onset_years` node field, stamped by
   `merge_split.update_overlap_tracking`) -- `null` if the save predates the field or the
   overlap only appeared this step; not partner-specific. See the `overlapAge` debug render
   view. `collisions` surfaces

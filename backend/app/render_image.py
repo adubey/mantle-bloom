@@ -29,7 +29,7 @@ from PIL import Image, ImageDraw, ImageFilter
 from scipy.spatial import cKDTree
 
 from . import biomes, climate, coastline, cratons, geology, geometry, healpix_grid, hydrology, lithosphere, mantle, plates, projections, volcanism
-from .elevation_lines import effective_is_continental_from_codes
+from .elevation_lines import effective_is_continental_from_codes, line_spacing_rad
 from .world import World, step_world
 
 # Climate views draw from climate.py's own fixed (H, W) grid, not the render grid below --
@@ -58,17 +58,17 @@ RESOURCE_VIEWS = ("resources", "soilQuality")
 # (_render_geomorph_view), a debug view for the per-step erosion/deposition lumpiness that's
 # invisible in every other view (see GitHub issue #123 / docs/debugging.md).
 # "elevReason" is node-cloud-derived from a persistent per-node field
-# (ElevationLine.elev_change_reason -- the ELEV_CHANGE_* code for whatever process last moved
+# (the `elev_change_reason` field -- the ELEV_CHANGE_* code for whatever process last moved
 # that node's elevation past elevation_lines.ELEV_CHANGE_MIN_DELTA_M), its own dispatch
 # branch (_render_elev_reason_view). A categorical debug view built to answer "why is so much
 # of this world flat: never uplifted, or actively planed down" (see docs/debugging.md).
-# "overlapAge" is node-cloud-derived from ElevationLine.overlap_onset_years (the year each
+# "overlapAge" is node-cloud-derived from the `overlap_onset_years` field (the year each
 # still-overlapping node first went over another plate -- merge_split.update_overlap_tracking),
 # its own dispatch branch (_render_overlap_age_view). See docs/debugging.md.
 # "nodeAge" ("Added/Removed Points") composites two independent node-cloud layers: live nodes
-# coloured by how recently they were created (ElevationLine.node_created_years) and no-longer-
+# coloured by how recently they were created (the `node_created_years` field) and no-longer-
 # live nodes coloured by how recently they were removed (World.removed_points_log, since a
-# removed node has no live ElevationLine to carry a field on). Its own dispatch branch
+# removed node has no live node to carry a field on). Its own dispatch branch
 # (_render_node_age_view). See docs/debugging.md.
 # "craton" is node-cloud-derived from the craton fields (cratons.py): where the cratons are,
 # which predate the simulation and which formed during it, and how far each quiet continental
@@ -526,7 +526,7 @@ def crust_type_colors(codes: np.ndarray) -> np.ndarray:
 
 # Overlap Age debug view (see _render_overlap_age_view): how long (Myr) each node has been
 # continuously sitting on top of another plate's territory -- elapsed_years minus
-# ElevationLine.overlap_onset_years, drawn only for nodes currently overlapping. A sequential
+# the `overlap_onset_years` field, drawn only for nodes currently overlapping. A sequential
 # ramp, pale where the overlap is fresh (this is transient envelope slop, self-correcting)
 # deepening to magenta where it has been stuck for tens of Myr (a real stalled collision the
 # merge path never resolves -- docs/debugging.md). Clamped at 60 Myr.
@@ -570,7 +570,7 @@ def gap_age_colors(age_myr: np.ndarray) -> np.ndarray:
 
 # "Added/Removed Points" (nodeAge) debug view (see _render_node_age_view): two independent
 # sequential ramps composited over the same muted backdrop overlapAge uses -- warm for how
-# recently a still-live node was created (ElevationLine.node_created_years), cool/blue for how
+# recently a still-live node was created (the `node_created_years` field), cool/blue for how
 # long ago a now-gone node was removed (World.removed_points_log). Deliberately disjoint from
 # _OVERLAP_AGE_STOP_RGB's own yellow-orange-magenta ramp so the two debug views are never
 # confusable even glanced at side by side. Both clamped at 20 Myr -- older activity is exactly
@@ -978,7 +978,7 @@ def _render_grid_arrays(
         all_terrain_relief = _classify_terrain_relief(all_points, all_elevation, relief_tree, world.sea_level_m)
 
     # At the default node_density, GRID_SPACING_RAD (100km) is already finer than the
-    # physics resolution (plates.line_spacing_rad(1.0) = 125km), so it's the effective
+    # physics resolution (line_spacing_rad(1.0) = 125km), so it's the effective
     # resolution ceiling. At a higher node_density (e.g. 4x), the physics data itself gets
     # finer than 100km -- capping this render grid at the fixed 100km spacing regardless
     # made "Elevation" look visibly blockier than "Plates (details)" (which draws the raw
@@ -986,7 +986,7 @@ def _render_grid_arrays(
     # the exact same underlying data. Taking the finer of the two keeps this view at least
     # as sharp as the data actually supports, without wasting resolution at the default
     # density where 100km was already the tighter bound.
-    grid_spacing_rad = min(GRID_SPACING_RAD, plates.line_spacing_rad(world.node_density))
+    grid_spacing_rad = min(GRID_SPACING_RAD, line_spacing_rad(world.node_density))
 
     xy_chunks, elev_chunks, owner_chunks, lake_chunks, glacier_chunks, volcano_chunks, sea_chunks, hw_chunks, hh_chunks, hillshade_chunks, terrain_chunks = (
         [], [], [], [], [], [], [], [], [], [], [],
@@ -2108,7 +2108,7 @@ def _render_overlap_age_view(world: World, projection: str, width: int, height: 
     backdrop (same full-sphere grid as the Elevation view) overlaid with two independent dot
     layers. The first, warm (yellow -> magenta), is one dot per node that is *currently*
     sitting on top of another plate's territory, coloured by how long it has been --
-    `world.elapsed_years - ElevationLine.overlap_onset_years`, stamped by
+    `world.elapsed_years - the `overlap_onset_years` field`, stamped by
     merge_split.update_overlap_tracking. The second, cool (teal -> navy), is one dot per
     `world.gap_tracks` entry -- a still-uncovered lattice cluster, coloured by how long it's
     persisted (`gaps.reconcile_gap_tracks`) -- deliberately a disjoint hue from the first so
@@ -2175,7 +2175,7 @@ def _render_overlap_age_view(world: World, projection: str, width: int, height: 
 def _render_node_age_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
     """Renders the "nodeAge" ("Added/Removed Points") debug view (see docs/debugging.md): the
     same muted land/ocean backdrop as overlapAge, overlaid with two independent dot layers --
-    warm dots for still-live nodes created recently (`ElevationLine.node_created_years`, via
+    warm dots for still-live nodes created recently (the `node_created_years` field, via
     `plates.collect_all_node_created_years`; the -1.0 "predates tracking" sentinel and anything
     past `_NODE_ADDED_STOP_MYR`'s top stop are left as plain backdrop), and cool dots for
     `World.removed_points_log` entries -- nodes no longer part of any plate, drawn at their
@@ -2281,7 +2281,7 @@ def _render_geomorph_view(world: World, projection: str, width: int, height: int
 
 def _render_elev_reason_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
     """Renders "elevReason" (see DEBUG_VIEWS): every node coloured by its
-    ElevationLine.elev_change_reason code -- the process (tectonic, volcanic, or geomorphic)
+    the `elev_change_reason` field code -- the process (tectonic, volcanic, or geomorphic)
     that last moved that node's elevation past elevation_lines.ELEV_CHANGE_MIN_DELTA_M.
     Nearest-node resampled onto the same fine grid the Biome/Geomorph views use, coloured by
     the flat categorical elev_reason_colors palette, coastline overlaid for orientation.
@@ -2323,7 +2323,7 @@ def _render_elev_reason_view(world: World, projection: str, width: int, height: 
 
 def _render_crust_type_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
     """Renders "crustType" (see DEBUG_VIEWS): every node coloured by its own effective crust
-    type (elevation_lines.ElevationLine.crust_type_code, resolved against its owning plate's
+    type (the `crust_type_code` field, resolved against its owning plate's
     nominal crust_type -- see plates.collect_all_crust_type_view_codes), with the rare nodes
     whose own composition actually *disagrees* with their plate highlighted in bright colours.
     Those are exactly the places rift decompression melting or gap-fill (docs/
@@ -2706,9 +2706,8 @@ def render_png(
     tectonics = {p.plate_id: _plate_tectonics(projection, p, view_rotation) for p in world.plates}
 
     detail_lines = []  # (projected_xy, elevation) per non-empty plate, "platesDetail" only --
-    # one chunk per plate rather than per PlateWithLines line: each chunk is independently
-    # projected/colored/filled with no line-connecting drawing, so per-line grouping was
-    # never load-bearing here, and this way it works for any Plate representation.
+    # one chunk per plate: each chunk is independently projected/colored/filled with no
+    # node-connecting drawing.
     if view == "platesDetail":
         for plate in world.plates:
             points, elevation = plate.all_points_and_elevation()

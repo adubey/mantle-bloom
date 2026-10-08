@@ -3,12 +3,12 @@ from app.elevation_lines import MAX_ELEVATION_M, MIN_ELEVATION_M
 from app.world import generate_world, step_world
 
 
-def test_stepping_with_boundary_evolution_keeps_lines_sorted_and_elevation_bounded():
+def test_stepping_with_boundary_evolution_keeps_elevation_bounded():
     # node_density=0.5 (the coarsest choice, an eighth of the default 4.0, see
     # plates.NODE_DENSITY_CHOICES) -- this test only checks sortedness/elevation bounds, not
     # exact node positions.
     world = generate_world(seed=21, num_plates=8, node_density=0.5)
-    # This test only checks shift()/deform()'s own output (line sorting, elevation bounds),
+    # This test only checks shift()/deform()'s own output (elevation bounds),
     # which doesn't depend on climate/erosion/hydrology at all (see
     # World.simulate_climate_biomes) -- skipping that per-step computation cuts this test's
     # runtime substantially without changing what it exercises.
@@ -17,10 +17,9 @@ def test_stepping_with_boundary_evolution_keeps_lines_sorted_and_elevation_bound
         step_world(world, years=3_000_000)
 
     for plate in world.plates:
-        for line in plate.lines:
-            assert np.all(np.diff(line.theta) > 0), "line thetas must stay strictly ascending"
-            assert np.all(line.elevation >= MIN_ELEVATION_M)
-            assert np.all(line.elevation <= MAX_ELEVATION_M)
+        elevation = plate.collect("elevation")
+        assert np.all(elevation >= MIN_ELEVATION_M)
+        assert np.all(elevation <= MAX_ELEVATION_M)
 
 
 def test_boundary_evolution_changes_node_counts_over_time():

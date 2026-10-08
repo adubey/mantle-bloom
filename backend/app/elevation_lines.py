@@ -1,54 +1,25 @@
-"""Elevation lines: a plate's terrain nodes, and the node-density/spacing choices that
-govern them.
+"""Per-node terrain constants and the node-density/spacing choices that govern a plate's
+surface.
 
-An `ElevationLine` sits at a fixed plate-local latitude `phi`, holding elevation (and other
-persistent, land-only or lake/volcano/soil/resource) samples at plate-local longitude nodes
-`theta`. Because a plate's local (phi, theta) coordinates never change -- only its `frame`
-(rotation matrix, local -> world) does, see `Plate` in plates.py -- rotating a plate rigidly
-never needs resampling: it's exact for every carried point. See docs/simulation-model.md for
-the full design writeup.
-
-`TARGET_LINE_SPACING_RAD`/`line_spacing_rad`/`NODE_DENSITY_CHOICES` (how densely a plate's
-lattice is sampled) and `iter_local_lattice`/`build_lines_from_lattice` (sweeping that
-lattice to build a fresh set of lines) live here too, rather than in plates.py, since they
-only ever produce or describe `ElevationLine`s -- nothing about them depends on how those
-lines get bundled into a `Plate`.
-
-This module also owns periodic line regularization. Per-step boundary evolution
-(boundary.py) only ever touches the two ends of a line -- inserting at target spacing when
-growing, deleting when shrinking -- so interior spacing stays regular on its own. What it
-can't fix is spacing that's drifted at a *transform* boundary (nodes sheared along the line
-without insertion/deletion) or after several steps' worth of end-growth at a slightly
-different rate than the line's original spacing. `regularize_line` re-derives a fresh
-evenly-spaced node set spanning each line's *existing* extent (the two endpoints are
-preserved exactly -- regularizing never changes where a line's physical edge is, only how
-regularly it's sampled) and interpolates elevation onto it.
-
-`spacing_rad` (default `TARGET_LINE_SPACING_RAD`, the reference density) should always be
-`line_spacing_rad(world.node_density)` in practice -- `regularize_world_lines` computes it
-once per call and threads it down. Without this, a world generated at a non-default density
-would regularize itself right back down to the reference density the first time any line's
-spacing drifted enough to trigger this pass (every REGULARIZE_INTERVAL_STEPS steps) --
-confirmed directly as the failure mode that made a "just build denser lines at generation"
-version of a density option pointless within a handful of steps."""
+Node spacing (`TARGET_LINE_SPACING_RAD`, `line_spacing_rad`, `NODE_DENSITY_CHOICES`),
+elevation bounds, the per-node elevation-change provenance and crust-type codes, volcano
+constants, and the `ElevationPoint` per-node view protocol live here, shared by every module
+that reads or writes plate surface nodes. `iter_local_lattice` sweeps a plate-local sampling
+lattice for whole-sphere coverage tests and rendering; it is a derived sampling grid, not plate
+topology. See docs/simulation-model.md for the full design writeup."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterator, Protocol
+from typing import Protocol
 
 import numpy as np
 
 from . import geometry
-from .surface_fields import CHANNEL_REFERENCE_UNSET_M, CRATON_UNFORMED_YEARS
-
-if TYPE_CHECKING:
-    from .plates import PlateWithLines
-    from .world import World
+from .surface_fields import SURFACE_FIELDS
 
 PLANET_RADIUS_KM = 6371.0
 
-# Halving this doubles resolution in each dimension (phi rows and theta samples per row),
-# i.e. ~4x the nodes per plate. Several other modules define *absolute node-count*
+# Halving this doubles resolution in each dimension, i.e. ~4x the nodes per plate. Several other modules define *absolute node-count*
 # thresholds (not distances, which already scale automatically as multiples of
 # TARGET_LINE_SPACING_RAD) that represent a physical area or distance in terms of the *old*
 # density -- those were rescaled alongside this (merge_split.SPLIT_MIN_NODES,
@@ -76,17 +47,16 @@ NODE_DENSITY_CHOICES = (0.5, 1.0, 2.0, 4.0, 6.0)
 DEFAULT_NODE_DENSITY = 4.0
 
 # Physical elevation bounds every module that modifies elevation clips against (boundary.py,
-# erosion.py, volcanism.py, and this module's own crumpling below) -- kept in one place so
+# erosion.py, volcanism.py) -- kept in one place so
 # they can't drift out of sync between call sites.
 MIN_ELEVATION_M = -11000.0
 MAX_ELEVATION_M = 9000.0
 
 # --- Elevation-change provenance ("why did this node's elevation last move") -------------
 #
-# `ElevationLine.elev_change_reason` (an OPTIONAL_FIELDS member below, so it rides along with
-# every rotation/split/merge/mask/regularize for free -- see that list's own comment) holds
+# The `elev_change_reason` surface field (see surface_fields.SURFACE_FIELDS) holds
 # one of these integer codes per node: the dominant process that last moved that node's
-# `elevation` by a non-trivial amount. plates.py's `deform()` stamps the tectonic codes,
+# `elevation` by a non-trivial amount. The tectonic engine stamps the tectonic codes,
 # volcanism.py the eruption code, erosion.py the geomorphic codes -- each only where its own
 # per-step delta clears `ELEV_CHANGE_MIN_DELTA_M`, so a quiescent low-relief node keeps
 # whatever last genuinely shaped it (often NONE -- untouched since generation) rather than
@@ -132,7 +102,7 @@ ELEV_CHANGE_FAULT_STRIKE_SLIP = 17  # strike-slip transpressional ridge / transt
 ELEV_CHANGE_VOLCANIC_PLAIN = 18
 # Lateral magma transport deposit (GitHub issue #205, magma_transport.py): a cross-plate melt
 # deposit landing far from the collision boundary that generated it, so it can't ride along
-# inside lithosphere_plate.deform()'s own per-line reason-stamping block the way delamination
+# inside the tectonic engine's own reason-stamping block the way delamination
 # melt does (that one shares ELEV_CHANGE_COLLISION only because it's applied *inside* the same
 # deform() call). Structural, so it gets the same erosion-override protection as the other codes.
 ELEV_CHANGE_LATERAL_MAGMA = 19
@@ -162,18 +132,14 @@ ELEV_CHANGE_LABELS = (
     "Lateral magma transport deposit",
 )
 
-REGULARIZE_INTERVAL_STEPS = 5
-IRREGULARITY_TOLERANCE = 1.5  # regularize a line if any gap exceeds this multiple of target
-
-# --- Per-node crust type (`ElevationLine.crust_type_code`) -------------------------------
+# --- Per-node crust type (the `crust_type_code` surface field) ---------------------------
 #
 # A plate's `crust_type` ("oceanic"/"continental") is the *usual* case, but real crust is
 # genuinely composite: a rift can erupt continental-type magma while sitting on an oceanic
 # plate (a volcanic island breaching the surface) or oceanic-type magma while sitting on a
 # continental plate (a drowned continental margin finally thinning through to true seafloor),
 # and a plate spawned to fill a whole-sphere gap can straddle both if it borders a continent.
-# CRUST_TYPE_INHERIT (0, the zeros-default every ElevationLine field already gets -- see
-# __getattr__/with_new_nodes) means "same as the owning plate," which is both the safe
+# CRUST_TYPE_INHERIT (0, the field's registry default) means "same as the owning plate," which is both the safe
 # backward-compatible reading for a pre-existing save and the exactly-correct reading for
 # every node created by ordinary generation/growth/merge/split -- those are never stamped
 # otherwise, so nothing about their existing (calibrated) physics changes. Only decompression
@@ -187,60 +153,14 @@ def effective_is_continental_from_codes(codes: np.ndarray, plate_is_continental:
     """Per-node bool: is this node's crust actually continental, resolving
     CRUST_TYPE_INHERIT against the owning plate's own `crust_type` and taking an explicit
     CRUST_TYPE_OCEANIC/CONTINENTAL code at face value. Takes a raw code array directly (e.g.
-    `Plate.collect("crust_type_code")`, already flattened across every line in node order) --
-    see `effective_is_continental` for the single-line convenience wrapper."""
+    `Plate.collect("crust_type_code")`)."""
     return np.where(codes == CRUST_TYPE_INHERIT, plate_is_continental, codes == CRUST_TYPE_CONTINENTAL)
 
 
-def effective_is_continental(line: "ElevationLine", plate_is_continental: bool) -> np.ndarray:
-    """Per-node bool for one line's own nodes -- see `effective_is_continental_from_codes`."""
-    return effective_is_continental_from_codes(line.crust_type_code, plate_is_continental)
-
-
-def majority_crust_type(lines: list["ElevationLine"], fallback: str) -> str:
-    """The crust type a *new* plate assembled from `lines` should be labeled -- the majority
-    of its own nodes' effective type (see effective_is_continental), falling back to
-    `fallback` (the parent/nominal type) on a tie or if there are no nodes at all. `fallback`
-    also resolves every still-CRUST_TYPE_INHERIT node, so a plate that has never had a
-    magma-typing event (the common case) always returns `fallback` unchanged, regardless of
-    how many lines/nodes it has."""
-    plate_is_continental = fallback == "continental"
-    total = 0
-    continental = 0
-    for line in lines:
-        n = len(line)
-        if n == 0:
-            continue
-        total += n
-        continental += int(np.count_nonzero(effective_is_continental(line, plate_is_continental)))
-    if total == 0 or continental * 2 == total:
-        return fallback
-    return "continental" if continental * 2 > total else "oceanic"
-
-
-def freeze_inherited_crust_type(lines: list["ElevationLine"], parent_crust_type: str, new_crust_type: str) -> list["ElevationLine"]:
-    """`lines` about to move from a `parent_crust_type` plate onto a new `new_crust_type`
-    plate (split/defragment -- see majority_crust_type). CRUST_TYPE_INHERIT is relative to
-    the owning plate, so if the type changes, a still-inheriting node would silently take on
-    the new plate's composition (and density). Stamp those nodes with the parent's explicit
-    code first. Returns `lines` unchanged when the type doesn't change."""
-    if new_crust_type == parent_crust_type:
-        return lines
-    parent_code = CRUST_TYPE_CONTINENTAL if parent_crust_type == "continental" else CRUST_TYPE_OCEANIC
-    frozen: list["ElevationLine"] = []
-    for line in lines:
-        codes = line.crust_type_code
-        inherit = codes == CRUST_TYPE_INHERIT
-        if np.any(inherit):
-            line = line.replace(crust_type_code=np.where(inherit, parent_code, codes).astype(codes.dtype))
-        frozen.append(line)
-    return frozen
-
 # Shared between volcanism.py (per-step eruption rolling for every existing volcano node)
-# and plates.py (PlateWithLines.deform spawning a brand-new volcano when a rift has
-# stretched too thin to keep filling with plain ridge/rift crust) -- kept here, rather than
-# in volcanism.py, so plates.py can use them without importing volcanism.py (which itself
-# imports from plates.py).
+# and the tectonic engine (spawning a brand-new volcano when a rift has stretched too thin to
+# keep filling with plain ridge/rift crust) -- kept here, rather than in volcanism.py, so the
+# engine can use them without importing volcanism.py (which itself imports from plates.py).
 VOLCANO_ACTIVE_MIN_YEARS = 100_000
 VOLCANO_ACTIVE_MAX_YEARS = 1_000_000
 # A single eruption's land contribution. Volcano nodes only ever spawn where a rift has
@@ -265,17 +185,6 @@ ERUPTION_ELEVATION_M = 300.0
 VOLCANIC_PLAIN_REACH_KM = 120.0
 VOLCANIC_PLAIN_ELEVATION_M = 60.0
 
-# Self-affine scaling exponent used by _crumple_elevation below: real terrain roughened by
-# compressing a profile horizontally by k doesn't just get resampled at the new spacing, its
-# vertical amplitude grows by roughly k**-CRUMPLE_HURST_EXPONENT (a Hurst exponent -- 0.5 is
-# the standard "random walk" / Brownian terrain default used when no better estimate of a
-# specific landscape's roughness is available). This is what makes the vulcanism-driven
-# density increase that triggers crumpling look like real compression -- ridges pushed
-# together get taller, not just thinned out -- rather than plain decimation, which would
-# leave peak/valley heights untouched and only make the line coarser.
-CRUMPLE_HURST_EXPONENT = 0.5
-
-
 def line_spacing_rad(node_density: float) -> float:
     """The line spacing (radians) that gives a plate ~node_density times as many nodes as
     the default TARGET_LINE_SPACING_RAD would. Node count for a fixed physical area scales
@@ -285,7 +194,7 @@ def line_spacing_rad(node_density: float) -> float:
     node-count cap from TARGET_LINE_SPACING_RAD calls this (with the world's own
     node_density) instead of reading the bare module constant directly, so that a world
     generated at a non-default density stays self-consistent for its entire life -- not just
-    at generation, but through every later regularize/gap-fill/merge/split/volcanism pass
+    at generation, but through every later gap-fill/merge/split/volcanism pass
     too (each of those modules' own docstrings/comments explain why its own particular
     thresholds need this)."""
     return TARGET_LINE_SPACING_RAD / np.sqrt(node_density)
@@ -294,497 +203,36 @@ def line_spacing_rad(node_density: float) -> float:
 # Shared geometry-tolerance constants for "is this lattice point already covered by real
 # crust" / "is this node still part of the same contiguous patch" checks -- kept in one place
 # (rather than each caller defining its own copy) so gaps.py's whole-sphere sweep,
-# merge_split.py's defragmentation pass, and LithospherePlate's own local divergent-boundary
-# growth all agree on the same tolerances.
+# merge_split.py's defragmentation pass, and quad_tectonics.py's boundary growth all agree on
+# the same tolerances.
 
-# A lattice point counts as "covered" if some real node sits within this multiple of line
+# A lattice point counts as "covered" if some real node sits within this multiple of node
 # spacing of it -- comfortably more than one spacing so ordinary per-step catch-up growth
 # isn't mistaken for a genuine void, but tight enough that a real neighbouring patch is never
 # missed. See gaps.py's own module docstring for the whole-sphere case this was written for.
 COVERAGE_RADIUS_MULT = 1.5
 
 # Two nodes count as connected (the same contiguous patch) if they're within this multiple of
-# line spacing of each other -- one row-step is ~1x spacing in phi and >= 1x in theta, a
-# diagonal neighbour ~1.4x, so 2.5x comfortably links a genuinely contiguous patch while still
+# node spacing of each other -- an edge neighbour is ~1x spacing away and a diagonal
+# neighbour ~1.4x, so 2.5x comfortably links a genuinely contiguous patch while still
 # separating two lobes across a real (>~300km) subduction gap. Validated against real saved
 # worlds by merge_split.py's defragmentation pass: every healthy plate comes back as a single
 # component at this radius.
 DEFRAG_CONNECT_RADIUS_MULT = 2.5
 
 
-class ElevationLine:
-    """A fixed plate-local latitude `phi` holding elevation (and other persistent, land-only
-    or lake/volcano/soil/resource) samples at plate-local longitude nodes `theta`.
-
-    Iterating a line (`for point in line`, `line[i]`, `len(line)`) yields `ElevationPointOnLine`
-    instances -- one per node, each a live view onto this line's own arrays (see that class
-    below). A point's `set_*` methods mutate this line's data in place; that's the one way an
-    existing line's *data* changes without going through the whole-array methods below. What
-    stays off-limits to per-point mutation is the node set itself (`theta`'s shape/order) --
-    for that, use:
-    - `replace(...)` swaps in a subset of fields, keeping `theta`'s shape/order untouched
-      (the common case -- most steps only ever change `elevation` or one or two persistent
-      fields for the same set of nodes, in bulk).
-    - `masked(mask)` filters and/or reorders every field together by a boolean mask or
-      fancy index (plate split, node removal, node reassignment reordering).
-    - `with_new_nodes(theta, elevation)` appends brand-new nodes (zero/False for every
-      persistent field -- no history to carry) to the end, unsorted.
-
-    Threading every persistent field through a single generic method here (keyed off
-    `OPTIONAL_FIELDS`, one list) is what earlier avoided a real, previously confirmed bug:
-    erosion.py's and bathymetry.py's own hand-written reconstruction sites were both written
-    before is_volcano/volcano_active_years_remaining existed, so neither passed them through
-    -- silently wiping every node's volcanic status to False every single step. A call site
-    that constructs a new field-by-field `ElevationLine(...)` directly (bypassing these
-    methods) reintroduces exactly that risk."""
-
-    # All persistent, land-only, meters (unless noted), same shape as theta -- see
-    # hydrology.py/lakes.py/volcanism.py/geology.py. Because the grid is plate-local and
-    # rotates with a plate's `frame` rather than sitting fixed in world space, these ride
-    # along for free just by being an ordinary parallel array on this same line, exactly
-    # like elevation itself -- no explicit semi-Lagrangian advection needed every step:
-    # rotating a plate only ever touches `frame`, never these arrays.
-    OPTIONAL_FIELDS = (
-        "channel_depth",  # river channel incision, self-reinforcing
-        "channel_width",  # river channel width, grows with flow -- see erosion.py
-        "lake_depth",  # standing lake water depth
-        "glacier_depth",  # accumulated ice, meters ice-equivalent
-        # Sediment settled on a lake's own bed (meters). A record only: the silt itself is
-        # folded into `elevation`/Hc as mobile cover (erosion.py), and this is capped at
-        # `mobile_cover_m`, so it shrinks once the cover it describes is stripped.
-        "silt_depth",
-        # Two more of the same "rides along for free" persistent fields, see volcanism.py.
-        # is_volcano never reverts to False once set (permanent provenance -- a dormant
-        # volcano is still excluded from being redetected as a fresh rift gap);
-        # volcano_active_years_remaining is a countdown, 0 once dormant (whether or not
-        # is_volcano is set).
-        "is_volcano",  # bool
-        "volcano_active_years_remaining",  # years
-        # Soil, land-only -- see geology.py. Unlike every other field here, these three can
-        # both rise *and* fall (real soil forms and erodes), not just accumulate.
-        "soil_depth",  # meters, regolith/soil thickness
-        "soil_mineral_content",  # [0, 1], weathered/hydrothermal richness
-        "soil_organic_content",  # [0, 1], accumulated organic matter
-        # Resource deposits -- see geology.py/volcanism.py. All monotonically non-decreasing,
-        # the same self-reinforcing "once formed, never erodes back away" convention
-        # silt_depth already uses (buried peat/hydrocarbons/ore aren't un-buried by a later
-        # climate shift).
-        "coal_deposit_m",  # land-only
-        "oil_gas_deposit_m",  # ocean-only
-        "mineral_deposit_m",  # either -- grown by volcanism.py's own eruptions
-        # How long (Myr) a node has been *continuously* classified divergent by plates.py's
-        # own deform() -- accumulates while divergent, resets to 0 the moment it isn't. See
-        # plates.DIVERGENT_YOUNG_AGE_MYR: this is what lets deform() tell a genuinely active,
-        # still-subsiding rift apart from land that reached equilibrium long ago and simply
-        # still happens to sit near a neighbour (a real passive margin), so the latter stops
-        # being pulled toward the rift target once it's had its one-time settling period.
-        "divergent_age_myr",
-        # Elevation-change provenance -- one ELEV_CHANGE_* code per node (see the constants
-        # above). Diagnostic only, nothing in the physics reads it. Interpolated as a
-        # nearest-neighbour pick in regularize_line (it's categorical, not a quantity), unlike
-        # every other field here.
-        "elev_change_reason",
-        # Diagnostic only (nothing in the physics reads it back): `world.elapsed_years` at
-        # which this node *first* started sitting on top of another plate's territory, per
-        # merge_split.update_overlap_tracking -- 0.0 whenever the node is not currently
-        # overlapping anything. Surfaced by main._plate_overlaps / plate_diagnostics.py /
-        # the `overlapAge` debug render view so a stalled territory conflict (see
-        # docs/debugging.md "Plate geometry degrades on long runs") can be read as "which
-        # nodes, since when" instead of a bare current-fraction number. Same lightweight
-        # first-seen-per-key tracker role World.collision_progress plays for plate pairs.
-        "overlap_onset_years",
-        # `world.elapsed_years` at which this node was first created by rift eruption /
-        # boundary growth / the corner-notch fallback (see lithosphere_plate.py's
-        # `_seed_and_erupt_new_nodes`, the one choke point every node-creation call site funnels
-        # through). Unlike overlap_onset_years, this is write-once and permanent -- a node's
-        # birth date never reverts or re-stamps. The sentinel is -1.0, not 0.0: year 0 is a
-        # legitimate real creation time (nothing stamps this during initial world generation, so
-        # a freshly generated plate's own starting nodes correctly read as "predates tracking"
-        # rather than falsely "created at year 0"). Diagnostic only -- surfaced by the "Added/
-        # Removed Points" (`nodeAge`) debug render view and `GET /world/node_at`; nothing in the
-        # physics reads it back. See docs/debugging.md.
-        "node_created_years",
-        # V2 only (see v2/lithosphere.py) -- the 3D lithospheric column state Airy isostasy
-        # derives `elevation` from (v2/lithosphere.isostatic_elevation). Zero/unused for every
-        # v1 line. Kept here rather than as a v2-only subclass field so a single ElevationLine
-        # implementation serves both engines -- v1 never reads or writes these, v2 treats
-        # `elevation` as a cache it recomputes from these after every mutation.
-        "crustal_thickness_m",  # Hc, meters
-        "mantle_lithosphere_thickness_m",  # Hm, meters
-        # Per-node crust-type override -- see CRUST_TYPE_* below. 0 (CRUST_TYPE_INHERIT) is
-        # both the zeros-default `__getattr__` already gives a line missing this field (every
-        # pre-existing save, and every ordinary generation/growth/merge/split node) *and* the
-        # correct physical reading for those nodes: "same composition as the owning plate,"
-        # exactly what every one of those code paths already assumed before this field
-        # existed. Only stamped to an explicit CRUST_TYPE_OCEANIC/CONTINENTAL value at the two
-        # places a single node's own composition can genuinely diverge from its plate's
-        # nominal crust_type -- rift decompression melting (lithosphere_plate.py) and
-        # whole-sphere gap-fill (gaps.py) -- see effective_is_continental/majority_crust_type
-        # below and docs/simulation-model.md.
-        "crust_type_code",
-        # Thickness-equivalent continental-derived material, independent of the receiving
-        # column's binary crust type.  This is a conserved tracer, not another type flag.
-        "continental_material_m",
-        # Cratons -- see cratons.py: the cratonic share of Hc (extensive), the year the
-        # craton stabilised (surface_fields.CRATON_UNFORMED_YEARS = none), and the
-        # quiet-interior formation clock (Myr).
-        "craton_crust_m",
-        "craton_formed_years",
-        "stable_continental_myr",
-        # The isostatic depression (<= 0, meters) the current ice load has applied to
-        # `elevation` -- see lithosphere.ice_load_deflection. Zero wherever there's no ice.
-        "ice_load_deflection_m",
-        # Anatexis state (orogeny.py) -- quad plates only, so always zero on a line: the
-        # Moho's lag below its steady-state temperature (C) and the restite thickness (m).
-        "moho_thermal_lag_c",
-        "restite_m",
-        # Mobile cover (erosion.py): the loose sediment/regolith share of Hc at the top of the
-        # column (m), and the continental-derived share of that (m).
-        "mobile_cover_m",
-        "mobile_cover_continental_m",
-        # Elevation right after last step's erosion, used to measure uplift that fades
-        # channel_depth (surface_fields.CHANNEL_REFERENCE_UNSET_M = no record yet).
-        "channel_reference_elevation_m",
-        # Breach notch depth (breaching.py): sub-cell relief that lowers only the passage
-        # elevation, kept apart from channel_depth.
-        "breach_notch_depth_m",
-    )
-
-    def __init__(
-        self,
-        phi: float,
-        theta: np.ndarray,
-        elevation: np.ndarray,
-        channel_depth: np.ndarray | None = None,
-        channel_width: np.ndarray | None = None,
-        lake_depth: np.ndarray | None = None,
-        glacier_depth: np.ndarray | None = None,
-        silt_depth: np.ndarray | None = None,
-        is_volcano: np.ndarray | None = None,
-        volcano_active_years_remaining: np.ndarray | None = None,
-        soil_depth: np.ndarray | None = None,
-        soil_mineral_content: np.ndarray | None = None,
-        soil_organic_content: np.ndarray | None = None,
-        coal_deposit_m: np.ndarray | None = None,
-        oil_gas_deposit_m: np.ndarray | None = None,
-        mineral_deposit_m: np.ndarray | None = None,
-        divergent_age_myr: np.ndarray | None = None,
-        elev_change_reason: np.ndarray | None = None,
-        overlap_onset_years: np.ndarray | None = None,
-        node_created_years: np.ndarray | None = None,
-        crustal_thickness_m: np.ndarray | None = None,
-        mantle_lithosphere_thickness_m: np.ndarray | None = None,
-        crust_type_code: np.ndarray | None = None,
-        continental_material_m: np.ndarray | None = None,
-        craton_crust_m: np.ndarray | None = None,
-        craton_formed_years: np.ndarray | None = None,
-        stable_continental_myr: np.ndarray | None = None,
-        ice_load_deflection_m: np.ndarray | None = None,
-        moho_thermal_lag_c: np.ndarray | None = None,
-        restite_m: np.ndarray | None = None,
-        mobile_cover_m: np.ndarray | None = None,
-        mobile_cover_continental_m: np.ndarray | None = None,
-        channel_reference_elevation_m: np.ndarray | None = None,
-        breach_notch_depth_m: np.ndarray | None = None,
-    ) -> None:
-        self._phi = phi
-        self._theta = theta
-        self._elevation = elevation
-        self._channel_depth = channel_depth if channel_depth is not None else np.zeros_like(theta)
-        self._channel_width = channel_width if channel_width is not None else np.zeros_like(theta)
-        self._lake_depth = lake_depth if lake_depth is not None else np.zeros_like(theta)
-        self._glacier_depth = glacier_depth if glacier_depth is not None else np.zeros_like(theta)
-        self._silt_depth = silt_depth if silt_depth is not None else np.zeros_like(theta)
-        self._is_volcano = is_volcano if is_volcano is not None else np.zeros_like(theta, dtype=bool)
-        self._volcano_active_years_remaining = (
-            volcano_active_years_remaining if volcano_active_years_remaining is not None else np.zeros_like(theta)
-        )
-        self._soil_depth = soil_depth if soil_depth is not None else np.zeros_like(theta)
-        self._soil_mineral_content = soil_mineral_content if soil_mineral_content is not None else np.zeros_like(theta)
-        self._soil_organic_content = soil_organic_content if soil_organic_content is not None else np.zeros_like(theta)
-        self._coal_deposit_m = coal_deposit_m if coal_deposit_m is not None else np.zeros_like(theta)
-        self._oil_gas_deposit_m = oil_gas_deposit_m if oil_gas_deposit_m is not None else np.zeros_like(theta)
-        self._mineral_deposit_m = mineral_deposit_m if mineral_deposit_m is not None else np.zeros_like(theta)
-        self._divergent_age_myr = divergent_age_myr if divergent_age_myr is not None else np.zeros_like(theta)
-        self._elev_change_reason = elev_change_reason if elev_change_reason is not None else np.zeros_like(theta)
-        self._overlap_onset_years = overlap_onset_years if overlap_onset_years is not None else np.zeros_like(theta)
-        # -1.0 sentinel, not 0.0 -- see OPTIONAL_FIELDS' own comment on node_created_years.
-        self._node_created_years = (
-            node_created_years if node_created_years is not None else np.full_like(theta, -1.0)
-        )
-        self._crustal_thickness_m = crustal_thickness_m if crustal_thickness_m is not None else np.zeros_like(theta)
-        self._mantle_lithosphere_thickness_m = (
-            mantle_lithosphere_thickness_m if mantle_lithosphere_thickness_m is not None else np.zeros_like(theta)
-        )
-        self._crust_type_code = (
-            crust_type_code if crust_type_code is not None else np.zeros_like(theta, dtype=np.int8)
-        )
-        self._continental_material_m = (
-            continental_material_m if continental_material_m is not None else np.zeros_like(theta)
-        )
-        self._craton_crust_m = craton_crust_m if craton_crust_m is not None else np.zeros_like(theta)
-        self._craton_formed_years = (
-            craton_formed_years if craton_formed_years is not None else np.full_like(theta, CRATON_UNFORMED_YEARS)
-        )
-        self._stable_continental_myr = stable_continental_myr if stable_continental_myr is not None else np.zeros_like(theta)
-        self._ice_load_deflection_m = ice_load_deflection_m if ice_load_deflection_m is not None else np.zeros_like(theta)
-        self._moho_thermal_lag_c = moho_thermal_lag_c if moho_thermal_lag_c is not None else np.zeros_like(theta)
-        self._restite_m = restite_m if restite_m is not None else np.zeros_like(theta)
-        self._mobile_cover_m = mobile_cover_m if mobile_cover_m is not None else np.zeros_like(theta)
-        self._mobile_cover_continental_m = (
-            mobile_cover_continental_m if mobile_cover_continental_m is not None else np.zeros_like(theta)
-        )
-        self._channel_reference_elevation_m = (
-            channel_reference_elevation_m
-            if channel_reference_elevation_m is not None
-            else np.full_like(theta, CHANNEL_REFERENCE_UNSET_M)
-        )
-        self._breach_notch_depth_m = breach_notch_depth_m if breach_notch_depth_m is not None else np.zeros_like(theta)
-
-    def __getattr__(self, name: str) -> np.ndarray:
-        """A line unpickled from a save written before some OPTIONAL_FIELDS member existed has
-        no backing `_<field>` attribute -- pickle restores `__dict__` directly and never calls
-        `__init__`. Lazily materialise it as the same zeros/False default `__init__` uses (and
-        cache it, so this only runs once per line per missing field). Only OPTIONAL_FIELDS
-        backing names are handled here; every other missing attribute is a real
-        `AttributeError`, and `__getattr__` is never consulted for an attribute that already
-        exists, so live lines pay nothing."""
-        if name.startswith("_") and name[1:] in ElevationLine.OPTIONAL_FIELDS:
-            if name == "_is_volcano":
-                dtype = bool
-            elif name == "_crust_type_code":
-                dtype = np.int8
-            else:
-                dtype = float
-            if name == "_node_created_years":
-                # -1.0 sentinel ("predates tracking"), not the generic zeros default -- see
-                # OPTIONAL_FIELDS' own comment on node_created_years.
-                value = np.full_like(self._theta, -1.0, dtype=dtype)
-            elif name == "_craton_formed_years":
-                value = np.full_like(self._theta, CRATON_UNFORMED_YEARS, dtype=dtype)
-            elif name == "_channel_reference_elevation_m":
-                value = np.full_like(self._theta, CHANNEL_REFERENCE_UNSET_M, dtype=dtype)
-            else:
-                value = np.zeros_like(self._theta, dtype=dtype)
-            object.__setattr__(self, name, value)
-            return value
-        raise AttributeError(name)
-
-    @property
-    def phi(self) -> float:
-        return self._phi
-
-    @property
-    def theta(self) -> np.ndarray:
-        return self._theta
-
-    @property
-    def elevation(self) -> np.ndarray:
-        return self._elevation
-
-    @property
-    def channel_depth(self) -> np.ndarray:
-        return self._channel_depth
-
-    @property
-    def channel_width(self) -> np.ndarray:
-        return self._channel_width
-
-    @property
-    def lake_depth(self) -> np.ndarray:
-        return self._lake_depth
-
-    @property
-    def glacier_depth(self) -> np.ndarray:
-        return self._glacier_depth
-
-    @property
-    def silt_depth(self) -> np.ndarray:
-        return self._silt_depth
-
-    @property
-    def is_volcano(self) -> np.ndarray:
-        return self._is_volcano
-
-    @property
-    def volcano_active_years_remaining(self) -> np.ndarray:
-        return self._volcano_active_years_remaining
-
-    @property
-    def soil_depth(self) -> np.ndarray:
-        return self._soil_depth
-
-    @property
-    def soil_mineral_content(self) -> np.ndarray:
-        return self._soil_mineral_content
-
-    @property
-    def soil_organic_content(self) -> np.ndarray:
-        return self._soil_organic_content
-
-    @property
-    def coal_deposit_m(self) -> np.ndarray:
-        return self._coal_deposit_m
-
-    @property
-    def oil_gas_deposit_m(self) -> np.ndarray:
-        return self._oil_gas_deposit_m
-
-    @property
-    def mineral_deposit_m(self) -> np.ndarray:
-        return self._mineral_deposit_m
-
-    @property
-    def divergent_age_myr(self) -> np.ndarray:
-        return self._divergent_age_myr
-
-    @property
-    def elev_change_reason(self) -> np.ndarray:
-        return self._elev_change_reason
-
-    @property
-    def overlap_onset_years(self) -> np.ndarray:
-        return self._overlap_onset_years
-
-    @property
-    def node_created_years(self) -> np.ndarray:
-        return self._node_created_years
-
-    @property
-    def crustal_thickness_m(self) -> np.ndarray:
-        return self._crustal_thickness_m
-
-    @property
-    def mantle_lithosphere_thickness_m(self) -> np.ndarray:
-        return self._mantle_lithosphere_thickness_m
-
-    @property
-    def crust_type_code(self) -> np.ndarray:
-        return self._crust_type_code
-
-    @property
-    def continental_material_m(self) -> np.ndarray:
-        return self._continental_material_m
-
-    @property
-    def craton_crust_m(self) -> np.ndarray:
-        return self._craton_crust_m
-
-    @property
-    def craton_formed_years(self) -> np.ndarray:
-        return self._craton_formed_years
-
-    @property
-    def stable_continental_myr(self) -> np.ndarray:
-        return self._stable_continental_myr
-
-    @property
-    def ice_load_deflection_m(self) -> np.ndarray:
-        return self._ice_load_deflection_m
-
-    @property
-    def moho_thermal_lag_c(self) -> np.ndarray:
-        return self._moho_thermal_lag_c
-
-    @property
-    def restite_m(self) -> np.ndarray:
-        return self._restite_m
-
-    @property
-    def mobile_cover_m(self) -> np.ndarray:
-        return self._mobile_cover_m
-
-    @property
-    def mobile_cover_continental_m(self) -> np.ndarray:
-        return self._mobile_cover_continental_m
-
-    @property
-    def channel_reference_elevation_m(self) -> np.ndarray:
-        return self._channel_reference_elevation_m
-
-    @property
-    def breach_notch_depth_m(self) -> np.ndarray:
-        return self._breach_notch_depth_m
-
-    def world_xyz(self, frame: np.ndarray) -> np.ndarray:
-        phi_arr = np.full_like(self.theta, self.phi)
-        local = geometry.local_xyz(phi_arr, self.theta)
-        return geometry.to_world(frame, local)
-
-    def __len__(self) -> int:
-        return len(self._theta)
-
-    def __iter__(self) -> Iterator["ElevationPointOnLine"]:
-        for i in range(len(self._theta)):
-            yield ElevationPointOnLine(self, i)
-
-    def __getitem__(self, index: int) -> "ElevationPointOnLine":
-        return ElevationPointOnLine(self, index)
-
-    def replace(self, **overrides: np.ndarray) -> "ElevationLine":
-        """A new line with the given fields (elevation and/or any of OPTIONAL_FIELDS)
-        swapped in and every other field copied from this one unchanged -- `theta`/`phi`
-        are never touched here, so only use this when the node set itself isn't changing."""
-        kwargs: dict[str, np.ndarray] = {name: getattr(self, name) for name in self.OPTIONAL_FIELDS}
-        kwargs["elevation"] = self.elevation
-        kwargs.update(overrides)
-        return ElevationLine(phi=self.phi, theta=self.theta, **kwargs)
-
-    def masked(self, mask) -> "ElevationLine":
-        """A new line with `theta`, `elevation`, and every OPTIONAL_FIELDS array filtered
-        and/or reordered together by a boolean mask or fancy index -- for removing nodes
-        (plate split, node reassignment) or reordering them (after concatenating in new
-        nodes at the end)."""
-        kwargs = {name: getattr(self, name)[mask] for name in self.OPTIONAL_FIELDS}
-        return ElevationLine(phi=self.phi, theta=self.theta[mask], elevation=self.elevation[mask], **kwargs)
-
-    def set_fields(self, **fields: np.ndarray) -> None:
-        """In-place bulk write for `elevation` and/or any `OPTIONAL_FIELDS` name, straight
-        into this line's own backing arrays -- unlike `replace`, no new `ElevationLine` comes
-        back. For a caller (`Plate.set_fields_on_plate`) writing values already aligned 1:1
-        with this line's existing node order (theta's shape/order unchanged), this is the
-        vectorized counterpart to looping `ElevationPointOnLine.set_*` one node at a time."""
-        for name, values in fields.items():
-            getattr(self, f"_{name}")[:] = values
-
-    def with_new_nodes(self, theta: np.ndarray, elevation: np.ndarray) -> "ElevationLine":
-        """A new line with `theta`/`elevation` nodes appended at the end -- every
-        OPTIONAL_FIELDS value for the new nodes starts at zero/False, no history to carry.
-        The result is unsorted by theta; follow with `.masked(np.argsort(new_line.theta))`
-        if ascending order matters to the caller.
-
-        No current call site uses this method (every real node-creation path builds a fresh
-        `ElevationLine` directly instead, see `lithosphere_plate._seed_and_erupt_new_nodes`).
-        `node_created_years` is the one OPTIONAL_FIELDS member a zero-fill is wrong for -- 0.0
-        reads as "created at year 0," not "unknown" (see its own comment on OPTIONAL_FIELDS,
-        sentinel -1.0) -- so a caller adding a real call site here must pass
-        `node_created_years` explicitly rather than relying on this method's generic fill."""
-        n = len(theta)
-        kwargs = {
-            name: np.concatenate([getattr(self, name), np.zeros(n, dtype=getattr(self, name).dtype)])
-            for name in self.OPTIONAL_FIELDS
-        }
-        return ElevationLine(
-            phi=self.phi,
-            theta=np.concatenate([self.theta, theta]),
-            elevation=np.concatenate([self.elevation, elevation]),
-            **kwargs,
-        )
-
-
 class ElevationPoint(Protocol):
-    """A single node's worth of `ElevationLine` data -- structural (not a base class), so any
-    representation-specific backing (`ElevationPointOnLine`, plates.py's own
-    `ElevationPointInCloud` for `PlateWithRTree`) can satisfy it without sharing a base.
+    """A single surface node's data -- structural (not a base class), so a
+    representation-specific backing (`sparse_quad_patch.ElevationPointInPatch`) can satisfy it
+    without sharing a base.
 
-    `phi`/`get_theta()` are this point's fixed position, get-only: no code in this simulation
-    ever moves a single node in place -- position changes always go through a whole-line or
-    whole-plate rebuild (`ElevationLine.replace`/`masked`/`with_new_nodes`, boundary growth,
-    `regularize_line`, `PlateWithRTree.set_nodes`), so a per-point position setter would just
-    invite a caller to silently desync a line's ordering or an R-tree's index instead of going
-    through one of those. `elevation` and every `ElevationLine.OPTIONAL_FIELDS` name get real
-    setters, since per-node *value* mutation (an eroded elevation, a grown channel, a newly lit
-    volcano) is exactly what per-step simulation passes do."""
+    `phi`/`get_theta()` are this point's fixed plate-local position, get-only: no code in this
+    simulation ever moves a single node in place -- position changes always go through a
+    topology change on the whole plate, so a per-point position setter would just invite a
+    caller to silently desync the surface's own ordering. `elevation` and every other
+    `surface_fields.SURFACE_FIELDS` name get real setters, since per-node *value* mutation
+    (an eroded elevation, a grown channel, a newly lit volcano) is exactly what per-step
+    simulation passes do."""
 
     @property
     def phi(self) -> float: ...
@@ -859,60 +307,23 @@ def _point_field_setter(name: str):
 
 
 def install_point_field_accessors(cls: type) -> type:
-    """Class decorator attaching `get_theta` plus a `get_<name>`/`set_<name>` pair for
-    `elevation` and every `ElevationLine.OPTIONAL_FIELDS` name to `cls`, which need only
-    provide `_field_array(self, name) -> np.ndarray` and an `_index` attribute -- shared by
-    `ElevationPointOnLine` below and plates.py's `ElevationPointInCloud`, so both
-    `ElevationPoint` implementations stay wired to the same one field list `ElevationLine`'s
-    own `replace`/`masked`/`with_new_nodes` are keyed off, rather than each hand-writing (and
-    risking silently forgetting) a method per field -- see `ElevationLine`'s own docstring for
-    the bug class that's avoided by never doing this field-by-field by hand."""
+    """Class decorator attaching `get_theta` plus a `get_<name>`/`set_<name>` pair for every
+    `surface_fields.SURFACE_FIELDS` name to `cls`, which need only provide
+    `_field_array(self, name) -> np.ndarray` and an `_index` attribute -- so an
+    `ElevationPoint` implementation stays wired to the one field registry rather than
+    hand-writing (and risking silently forgetting) a method per field."""
     setattr(cls, "get_theta", _point_field_getter("theta"))
-    for _name in ("elevation",) + ElevationLine.OPTIONAL_FIELDS:
+    for _name in SURFACE_FIELDS:
         setattr(cls, f"get_{_name}", _point_field_getter(_name))
         setattr(cls, f"set_{_name}", _point_field_setter(_name))
     return cls
 
 
-@install_point_field_accessors
-class ElevationPointOnLine:
-    """One node of an `ElevationLine`: a pointer to the line plus its index within it. A live
-    view, not a snapshot -- `get_*` reads the line's own arrays and `set_*` mutates them in
-    place at `index`, so a point handed out by iterating a line (or plate) stays valid and
-    stays wired to that same underlying data for as long as the line's node set itself doesn't
-    change shape (a `replace`/`masked`/`with_new_nodes` call, or `regularize_line`, produces a
-    *new* `ElevationLine` -- any point held from before that call is now stale, the same way a
-    Python list index would be after the list it was taken from got reassigned elsewhere)."""
-
-    def __init__(self, line: ElevationLine, index: int) -> None:
-        n = len(line)
-        if not -n <= index < n:
-            raise IndexError(f"ElevationLine point index {index} out of range for length {n}")
-        self._line = line
-        self._index = index % n
-
-    @property
-    def line(self) -> ElevationLine:
-        return self._line
-
-    @property
-    def index(self) -> int:
-        """This point's (always non-negative) position within `line`."""
-        return self._index
-
-    @property
-    def phi(self) -> float:
-        return self._line.phi
-
-    def _field_array(self, name: str) -> np.ndarray:
-        return getattr(self._line, f"_{name}")
-
-
 def iter_local_lattice(frame: np.ndarray, spacing_rad: float = TARGET_LINE_SPACING_RAD):
     """Sweep a full plate-local (phi, theta) lattice at `spacing_rad` resolution, yielding
-    (phi, theta_candidates, world_pts) per row. Shared by initial generation and by
-    plate-merge resampling (see merge_split.py), and, at a resolution independent of the
-    physical line spacing, by the render-grid sweep (see render_image.py's
+    (phi, theta_candidates, world_pts) per row. A derived sampling grid: used by whole-sphere
+    coverage sweeps (gaps.py) and, at a resolution independent of the physical node spacing,
+    by the render-grid sweep (see render_image.py's
     _render_grid_arrays) that gives the rendered map full coverage regardless of how sparse
     the underlying physical data is once projected."""
     max_abs_phi = np.pi / 2 - spacing_rad / 2
@@ -925,347 +336,3 @@ def iter_local_lattice(frame: np.ndarray, spacing_rad: float = TARGET_LINE_SPACI
         local_pts = geometry.local_xyz(np.full_like(theta_candidates, phi), theta_candidates)
         world_pts = geometry.to_world(frame, local_pts)
         yield float(phi), theta_candidates, world_pts
-
-
-def build_lines_from_lattice(frame: np.ndarray, is_owned, elevation_at, spacing_rad: float = TARGET_LINE_SPACING_RAD) -> list[ElevationLine]:
-    """Build a plate's elevation lines by sweeping its local lattice and keeping whichever
-    nodes `is_owned(world_pts) -> bool array` selects, with elevation from
-    `elevation_at(owned_world_pts) -> array`. `spacing_rad` defaults to the reference
-    density (1.0) -- every caller that has a `World` in hand should instead pass
-    `line_spacing_rad(world.node_density)`, so newly-built lines (initial generation, gap
-    absorption/spawning, plate merges, volcanic fields) match whatever density that world was
-    actually generated at, not silently fall back to the default."""
-    lines: list[ElevationLine] = []
-    for phi, theta_candidates, world_pts in iter_local_lattice(frame, spacing_rad=spacing_rad):
-        owned = is_owned(world_pts)
-        if not np.any(owned):
-            continue
-        theta_owned = theta_candidates[owned]
-        elevation = elevation_at(world_pts[owned])
-        lines.append(ElevationLine(phi=phi, theta=theta_owned, elevation=elevation))
-    return lines
-
-
-# A row is one small circle of constant plate-local latitude, and every consumer of an
-# ElevationLine treats it as a single contiguous arc from theta[0] to theta[-1]:
-# PlateWithLines.outline_world()'s polygon trace and contains_batch()'s row-lookup fast path
-# both read only each line's own two endpoints, and regularize_line() resamples evenly
-# between them. A plate-partition op (split's great-circle cut, defragment's per-component
-# mask) can mask a row down to two arcs with the *other* daughter's territory sitting in the
-# gap between them -- keeping the whole masked row would then make this plate's envelope
-# claim that gap and every sibling node inside it (the "split/defragmentation produces
-# overlapping siblings" degradation). A genuinely contiguous, regularized row's largest
-# interior gap sits within IRREGULARITY_TOLERANCE of its own node spacing; this multiple is
-# well clear of that and orders of magnitude below a real partition gap.
-CONTIGUOUS_RUN_GAP_MULT = 4.0
-
-
-def largest_contiguous_run(line: ElevationLine, ref_spacing_rad: float | None = None) -> ElevationLine:
-    """`line` restricted to its single longest run of nodes with no interior theta gap wider
-    than `CONTIGUOUS_RUN_GAP_MULT` times a reference node spacing -- see that constant for
-    why the one-arc-per-row invariant matters. `ref_spacing_rad` is that reference (the
-    caller's own `dtheta_target`, or the pre-partition row's own median step); without it the
-    surviving line's median step is used, which needs `len >= 3` to be meaningful (a shorter
-    line is then returned unchanged). A line already contiguous -- the overwhelming common
-    case -- is returned unchanged. Node order is assumed ascending in theta, as every
-    construction path in this module produces."""
-    if len(line) < 2:
-        return line
-    gaps = np.diff(line.theta)
-    if ref_spacing_rad is None:
-        if len(line) < 3:
-            return line
-        ref_spacing_rad = float(np.median(gaps))
-    break_after = np.nonzero(gaps > CONTIGUOUS_RUN_GAP_MULT * ref_spacing_rad)[0]
-    if len(break_after) == 0:
-        return line
-    # A break "after index k" starts a new run at k + 1; bracket the runs with 0 and len.
-    bounds = [0, *(int(k) + 1 for k in break_after), len(line)]
-    lo, hi = max(zip(bounds[:-1], bounds[1:]), key=lambda run: run[1] - run[0])
-    keep = np.zeros(len(line), dtype=bool)
-    keep[lo:hi] = True
-    return line.masked(keep)
-
-
-def split_into_contiguous_runs(line: ElevationLine, ref_spacing_rad: float | None = None) -> list[ElevationLine]:
-    """`line` partitioned at every interior theta gap wider than `CONTIGUOUS_RUN_GAP_MULT`
-    times a reference node spacing, into a list of `ElevationLine`s each a single contiguous
-    arc (ascending theta) -- the multi-arc generalisation of `largest_contiguous_run`, which
-    is just this followed by picking the longest. An already-contiguous line (the common
-    case) comes back as a one-element `[line]`, the same object.
-
-    Used by `PlateWithLines._grow_or_shrink_line_for_deform` when an oceanic self-plate has
-    dropped a neighbour-overridden run out of a row's *interior*: the surviving nodes fall
-    into two arcs with a real gap between them, and each arc is carried as its own line so
-    the one-contiguous-arc-per-`ElevationLine` invariant every other consumer relies on still
-    holds (`outline_world` and the row-lookup fast path both handle several lines at one
-    `phi`; see their own docstrings). `ref_spacing_rad` is the caller's `dtheta` target;
-    without it the line's own median step is used (needs `len >= 3`, else returned unsplit).
-    Every persistent field rides along via `ElevationLine.masked`, no resample."""
-    if len(line) < 2:
-        return [line]
-    gaps = np.diff(line.theta)
-    if ref_spacing_rad is None:
-        if len(line) < 3:
-            return [line]
-        ref_spacing_rad = float(np.median(gaps))
-    break_after = np.nonzero(gaps > CONTIGUOUS_RUN_GAP_MULT * ref_spacing_rad)[0]
-    if len(break_after) == 0:
-        return [line]
-    bounds = [0, *(int(k) + 1 for k in break_after), len(line)]
-    runs: list[ElevationLine] = []
-    for lo, hi in zip(bounds[:-1], bounds[1:]):
-        keep = np.zeros(len(line), dtype=bool)
-        keep[lo:hi] = True
-        runs.append(line.masked(keep))
-    return runs
-
-
-def needs_regularizing(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACING_RAD) -> bool:
-    if len(line) < 3:
-        return False
-    # A row is a circle of local latitude: any theta span past a full 2*pi revolution is an
-    # over-wound ring (a plate that grew around its own local pole before the wrap guard in
-    # plates._grow_or_shrink_line_for_deform, or on a world saved from back then) -- the
-    # inner windings are duplicate coverage of the same ground. regularize_line unwinds it.
-    if line.theta[-1] - line.theta[0] > 2.0 * np.pi:
-        return True
-    dtheta_target = spacing_rad / max(np.cos(line.phi), 1e-3)
-    gaps = np.diff(line.theta)
-    ratio = gaps / dtheta_target
-    return bool(np.any(ratio > IRREGULARITY_TOLERANCE) or np.any(ratio < 1.0 / IRREGULARITY_TOLERANCE))
-
-
-def _crumple_elevation(elevation: np.ndarray, m: int, hurst: float = CRUMPLE_HURST_EXPONENT) -> np.ndarray:
-    """Replace n points' worth of elevation with m < n points' worth by "crumpling": fit a
-    smooth curve e = f(x) to the n original points (x = 0..n-1, plain sample index -- the
-    fit doesn't need to know about theta/phi, just the shape), then read m new values off a
-    horizontally squashed version of that same curve, e' = f(x / k), where k = m/n < 1 is how
-    squashed the m points are relative to the n they replace. Dividing by k (rather than
-    multiplying) is what makes k < 1 actually squash the domain: as the m new sample indices
-    range over [0, m-1], x/k ranges over [0, (m-1)/k] = [0, n-1] -- i.e. the same few new
-    points now have to cover the *entire* original curve's span, packing all of its shape
-    into fewer samples, exactly like real crumpling packs the same strip of material into
-    less room.
-
-    Squashing alone (no amplitude change) would keep every new sample within the original
-    curve's min/max -- steeper-looking between points, but never actually taller. Real
-    crumpled terrain isn't just steeper, it's taller: compressing a self-affine profile
-    horizontally by k grows its vertical amplitude by k**-hurst (see CRUMPLE_HURST_EXPONENT),
-    so peaks get pushed higher and valleys pulled lower in proportion to how aggressively
-    this call is squashing, not by some unrelated fixed multiplier.
-
-    The fit itself is a truncated cosine series (a real, non-periodic basis -- unlike a raw
-    FFT, it has no wraparound artifact at the two ends of what is an open curve, never a
-    periodic one) with only m+1 terms, not n -- deliberately under-resolved relative to the n
-    input points, so the fit is a smoothing regression through them rather than an exact
-    interpolation. That smoothing is what discards the sub-target-spacing detail crumpling is
-    supposed to be discarding in the first place; fitting all n harmonics would just
-    reconstruct every original point exactly and defeat the point of thinning them out.
-    """
-    n = len(elevation)
-    x = np.arange(n, dtype=float)
-    num_harmonics = min(n - 1, max(2, m))
-    denom = max(n - 1, 1)
-    basis = np.stack([np.cos(np.pi * p * x / denom) for p in range(num_harmonics + 1)], axis=1)
-    coeffs, *_ = np.linalg.lstsq(basis, elevation, rcond=None)
-
-    k = m / n
-    x_new = np.clip(np.arange(m, dtype=float) / k, 0.0, n - 1)
-    new_basis = np.stack([np.cos(np.pi * p * x_new / denom) for p in range(num_harmonics + 1)], axis=1)
-    fitted = new_basis @ coeffs
-
-    amplitude = k**-hurst
-    mean_e = elevation.mean()
-    crumpled = mean_e + amplitude * (fitted - mean_e)
-    # amplitude > 1 (k < 1) means crumpling can push a peak/valley past what the original n
-    # points ever reached -- clamp back into the world's elevation bounds the same way every
-    # other module that modifies elevation does (boundary.py, bathymetry.py, erosion.py,
-    # volcanism.py), since nothing downstream of regularizing re-checks this.
-    crumpled = np.clip(crumpled, MIN_ELEVATION_M, MAX_ELEVATION_M)
-    # The fit is a smoothing regression, not an exact interpolant, so it can drift slightly
-    # from the original data even at x=0/x=n-1 -- force the two ends back to the real
-    # original values so a crumpled line still butts up exactly against its neighbors'
-    # elevation at the endpoints regularize_line preserves the position of.
-    crumpled[0] = elevation[0]
-    crumpled[-1] = elevation[-1]
-    return crumpled
-
-
-def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACING_RAD) -> ElevationLine:
-    if len(line) < 3:
-        return line
-
-    dtheta_target = spacing_rad / max(np.cos(line.phi), 1e-3)
-
-    # Over-wound ring (span > a full revolution): keep only the outermost single revolution
-    # -- the most recently grown one -- and resample that. See needs_regularizing.
-    if line.theta[-1] - line.theta[0] > 2.0 * np.pi:
-        keep = line.theta >= line.theta[-1] - (2.0 * np.pi - dtheta_target)
-        line = line.masked(keep)
-        if len(line) < 3:
-            return line
-
-    # A row masked into two arcs by an earlier partition (a plate split / defragment on a
-    # world saved before those paths kept every row contiguous) -- resampling evenly across
-    # theta_min..theta_max below would refill the gap, which is another plate's territory,
-    # with fresh nodes. Keep only the largest arc; see largest_contiguous_run.
-    line = largest_contiguous_run(line)
-    if len(line) < 3:
-        return line
-
-    theta_min, theta_max = line.theta[0], line.theta[-1]
-    span = theta_max - theta_min
-    n = max(int(round(span / dtheta_target)) + 1, 2)
-
-    new_theta = np.linspace(theta_min, theta_max, n)
-    # Fewer new nodes than the line already has -- vulcanism-driven density increases (fresh
-    # volcano nodes inserted mid-line, see volcanism.py) can push points closer together than
-    # target spacing without ever widening a gap, so this is the "too close" direction
-    # needs_regularizing also fires on. Crumple instead of linearly resampling here: a plain
-    # np.interp thin-out can smooth away or altogether skip a narrow peak that happens to fall
-    # between two kept sample points, where crumpling fits the whole n-point shape first and
-    # only then reads fewer values off it, so a peak influences every new sample near it
-    # rather than being invisible to all but its two immediate neighbors.
-    if n < len(line):
-        new_elevation = _crumple_elevation(line.elevation, n)
-    else:
-        new_elevation = np.interp(new_theta, line.theta, line.elevation)
-    # channel_depth/channel_width/lake_depth/glacier_depth interpolated the same way -- a
-    # plain reset to 0 here would wipe out a river's carved channel (or a glacier) every time
-    # this line's spacing drifts enough to trigger regularizing, which runs periodically
-    # throughout the simulation (see REGULARIZE_INTERVAL_STEPS), not as a rare one-off event
-    # like a merge/split resample.
-    new_channel_depth = np.interp(new_theta, line.theta, line.channel_depth)
-    new_channel_width = np.interp(new_theta, line.theta, line.channel_width)
-    new_lake_depth = np.interp(new_theta, line.theta, line.lake_depth)
-    new_glacier_depth = np.interp(new_theta, line.theta, line.glacier_depth)
-    new_silt_depth = np.interp(new_theta, line.theta, line.silt_depth)
-    # volcano_active_years_remaining interpolates the same way; is_volcano is interpolated as
-    # a float (blending a volcano node's 1.0 against a non-volcano neighbor's 0.0) then
-    # thresholded back to bool, same spirit as the others -- a resampled node keeps "was this
-    # near a volcano" rather than silently losing volcanic provenance every regularize pass.
-    new_volcano_active_years_remaining = np.interp(new_theta, line.theta, line.volcano_active_years_remaining)
-    new_is_volcano = np.interp(new_theta, line.theta, line.is_volcano.astype(float)) > 0.5
-    # Soil/resource fields (see geology.py/volcanism.py) interpolated the same way as the
-    # rest -- a plain reset to 0 here would wipe out accumulated soil/coal/oil-gas/mineral
-    # deposits every time a line's spacing drifts enough to trigger regularizing.
-    new_soil_depth = np.interp(new_theta, line.theta, line.soil_depth)
-    new_soil_mineral_content = np.interp(new_theta, line.theta, line.soil_mineral_content)
-    new_soil_organic_content = np.interp(new_theta, line.theta, line.soil_organic_content)
-    new_coal_deposit_m = np.interp(new_theta, line.theta, line.coal_deposit_m)
-    new_oil_gas_deposit_m = np.interp(new_theta, line.theta, line.oil_gas_deposit_m)
-    new_mineral_deposit_m = np.interp(new_theta, line.theta, line.mineral_deposit_m)
-    # divergent_age_myr is a continuous Myr counter -- interpolated the same way. Leaving it
-    # out (as this function once did) zero-filled it, so every regularize pass made a line's
-    # nodes look freshly divergent again to deform()/rheology's young-lithosphere checks.
-    new_divergent_age_myr = np.interp(new_theta, line.theta, line.divergent_age_myr)
-    # v2's crustal/mantle-lithosphere thickness columns -- interpolated the same way as every
-    # other persistent field so a regularize pass (which runs every deform() call) doesn't
-    # silently reset a v2 line's isostatic state to zero, the exact bug class this module's
-    # own docstring warns about. A no-op array of zeros for v1 lines.
-    new_crustal_thickness_m = np.interp(new_theta, line.theta, line.crustal_thickness_m)
-    new_mantle_lithosphere_thickness_m = np.interp(new_theta, line.theta, line.mantle_lithosphere_thickness_m)
-    # Continental material is a continuous thickness, so interpolate it with the lithosphere
-    # columns above to preserve the ledger inventory across regularization.
-    new_continental_material_m = np.interp(new_theta, line.theta, line.continental_material_m)
-    material_total = float(np.sum(line.continental_material_m))
-    interpolated_total = float(np.sum(new_continental_material_m))
-    if material_total > 0.0 and interpolated_total > 0.0:
-        new_continental_material_m *= material_total / interpolated_total
-        new_continental_material_m = np.minimum(new_continental_material_m, new_crustal_thickness_m)
-        residual = material_total - float(np.sum(new_continental_material_m))
-        if residual > 0.0:
-            # Spread the capped-off remainder into Hc headroom, never past it; whatever still
-            # doesn't fit is left for the caller to book (see LithospherePlate.deform).
-            headroom = np.maximum(new_crustal_thickness_m - new_continental_material_m, 0.0)
-            total_headroom = float(np.sum(headroom))
-            if total_headroom > 0.0:
-                new_continental_material_m += headroom * min(residual / total_headroom, 1.0)
-    # Interpolated like elevation, which it is a component of.
-    new_ice_load_deflection_m = np.interp(new_theta, line.theta, line.ice_load_deflection_m)
-    new_moho_thermal_lag_c = np.interp(new_theta, line.theta, line.moho_thermal_lag_c)
-    new_restite_m = np.interp(new_theta, line.theta, line.restite_m)
-    # Mobile cover is the top share of Hc, interpolated like craton crust; its continental share
-    # is also a share of the tracer, which was rescaled above, so it is clipped to both.
-    new_mobile_cover_m = np.minimum(np.interp(new_theta, line.theta, line.mobile_cover_m), new_crustal_thickness_m)
-    new_mobile_cover_continental_m = np.minimum(
-        np.interp(new_theta, line.theta, line.mobile_cover_continental_m),
-        np.minimum(new_mobile_cover_m, new_continental_material_m),
-    )
-    # Interpolated like elevation. An unset sentinel blends into a huge value, which still
-    # reads as "no uplift".
-    new_channel_reference_elevation_m = np.interp(new_theta, line.theta, line.channel_reference_elevation_m)
-    new_breach_notch_depth_m = np.interp(new_theta, line.theta, line.breach_notch_depth_m)
-    # elev_change_reason is a categorical ELEV_CHANGE_* code, not a quantity -- carry it onto
-    # each resampled node from its nearest original node rather than np.interp'ing between two
-    # unrelated code values. Provenance is diagnostic only, so an approximate carry is fine.
-    nearest_original = np.abs(new_theta[:, None] - line.theta[None, :]).argmin(axis=1)
-    new_elev_change_reason = line.elev_change_reason[nearest_original]
-    # overlap_onset_years is a per-node "year this overlap started" stamp (diagnostic only,
-    # merge_split.update_overlap_tracking). Carry it onto each resampled node from its nearest
-    # original -- np.interp between two onset years would invent an in-between year, and a
-    # nearest-neighbour carry keeps a genuinely-stuck overlap's onset intact across the
-    # regularize pass that runs every deform() call.
-    new_overlap_onset_years = line.overlap_onset_years[nearest_original]
-    # node_created_years is a permanent, write-once birth timestamp -- nearest-neighbour carry,
-    # same reasoning as overlap_onset_years (averaging two birth years with np.interp would
-    # invent a meaningless in-between date).
-    new_node_created_years = line.node_created_years[nearest_original]
-    # crust_type_code is likewise categorical (CRUST_TYPE_INHERIT/OCEANIC/CONTINENTAL) --
-    # nearest-neighbour carry, same reasoning as elev_change_reason.
-    new_crust_type_code = line.crust_type_code[nearest_original]
-    # Cratonic thickness is an extensive tracer like Hc, interpolated the same way; the
-    # formation clock is a counter like divergent_age_myr; the craton's formation year is a
-    # stamp, carried nearest-neighbour like node_created_years.
-    new_craton_crust_m = np.interp(new_theta, line.theta, line.craton_crust_m)
-    new_stable_continental_myr = np.interp(new_theta, line.theta, line.stable_continental_myr)
-    new_craton_formed_years = np.where(new_craton_crust_m > 0.0, line.craton_formed_years[nearest_original], CRATON_UNFORMED_YEARS)
-    return ElevationLine(
-        phi=line.phi,
-        theta=new_theta,
-        elevation=new_elevation,
-        channel_depth=new_channel_depth,
-        channel_width=new_channel_width,
-        lake_depth=new_lake_depth,
-        glacier_depth=new_glacier_depth,
-        silt_depth=new_silt_depth,
-        is_volcano=new_is_volcano,
-        volcano_active_years_remaining=new_volcano_active_years_remaining,
-        soil_depth=new_soil_depth,
-        soil_mineral_content=new_soil_mineral_content,
-        soil_organic_content=new_soil_organic_content,
-        coal_deposit_m=new_coal_deposit_m,
-        oil_gas_deposit_m=new_oil_gas_deposit_m,
-        mineral_deposit_m=new_mineral_deposit_m,
-        divergent_age_myr=new_divergent_age_myr,
-        elev_change_reason=new_elev_change_reason,
-        overlap_onset_years=new_overlap_onset_years,
-        node_created_years=new_node_created_years,
-        crustal_thickness_m=new_crustal_thickness_m,
-        mantle_lithosphere_thickness_m=new_mantle_lithosphere_thickness_m,
-        crust_type_code=new_crust_type_code,
-        continental_material_m=new_continental_material_m,
-        craton_crust_m=new_craton_crust_m,
-        craton_formed_years=new_craton_formed_years,
-        stable_continental_myr=new_stable_continental_myr,
-        ice_load_deflection_m=new_ice_load_deflection_m,
-        moho_thermal_lag_c=new_moho_thermal_lag_c,
-        restite_m=new_restite_m,
-        mobile_cover_m=new_mobile_cover_m,
-        mobile_cover_continental_m=new_mobile_cover_continental_m,
-        channel_reference_elevation_m=new_channel_reference_elevation_m,
-        breach_notch_depth_m=new_breach_notch_depth_m,
-    )
-
-
-def regularize_plate_lines(plate: "PlateWithLines", spacing_rad: float = TARGET_LINE_SPACING_RAD) -> None:
-    plate.set_lines(
-        [regularize_line(line, spacing_rad) if needs_regularizing(line, spacing_rad) else line for line in plate.lines]
-    )
-
-
-def regularize_world_lines(world: "World") -> None:
-    spacing_rad = line_spacing_rad(world.node_density)
-    for plate in world.plates:
-        regularize_plate_lines(plate, spacing_rad)

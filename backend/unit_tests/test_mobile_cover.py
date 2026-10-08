@@ -15,7 +15,7 @@ COVER_FIELDS = ("mobile_cover_m", "mobile_cover_continental_m")
 
 
 def _quad_world():
-    world = generate_world(seed=3, num_plates=8, surface="quad")
+    world = generate_world(seed=3, num_plates=8)
     continental_ledger.ensure_initialized(world)
     return world
 
