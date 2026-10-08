@@ -5,10 +5,11 @@ the boundary-search cache the prepass shares with deform() -- see collision_pola
 import copy
 
 import numpy as np
+import pytest
 
 from app import collision_polarity as cp
 from app import geometry, lithosphere, mantle, persistence, quad_tectonics, torque
-from app.elevation_lines import line_spacing_rad
+from app.elevation_lines import CRUST_TYPE_CONTINENTAL, line_spacing_rad
 from app.lithosphere_plate import CONTINENTAL_CONTESTED_RETREAT_MIN_RUN, boundary_context
 from app.sparse_quad_patch import PlateWithSparseQuadPatch, cells_per_face_edge, pack_cell_keys, unpack_cell_keys
 from app.world import World
@@ -691,7 +692,7 @@ def _busy_world() -> World:
 def _frame_signature(world: World):
     frame = world.collision_polarity_frame
     masks = {
-        pid: tuple(np.flatnonzero(getattr(m, name)).tolist() for name in ("lower", "upper", "retreat_eligible", "override"))
+        pid: tuple(np.flatnonzero(getattr(m, name)).tolist() for name in ("lower", "upper", "retreat_eligible", "retreatable", "override"))
         + (m.front_id.tolist(),)
         for pid, m in frame.masks.items()
     }
@@ -772,6 +773,98 @@ def test_retreat_records_consumed_ocean_floor_on_both_sides():
     assert set(lower.neighbour.tolist()) == {1}
     assert set(upper.source.tolist()) == {cp.SOURCE_CONSUMPTION} and np.all(upper.role == cp.ROLE_UPPER)
     assert set(upper.neighbour.tolist()) == {2}
+
+
+def test_polarized_quad_retreat_books_exact_donor_hm_sink_and_closes_inventory():
+    from app import hm_ledger
+
+    world, lower, upper, _ = _front_with_lower_a()
+    _move(upper, _column(20), _column(19))
+    cp.observe_contacts(world, STEP_YEARS)
+    world.debug_diagnostics = True
+    ctx = boundary_context(
+        world,
+        lower,
+        [upper],
+        STEP_YEARS,
+        lambda mask: quad_tectonics.components_of_at_least(lower, mask, CONTINENTAL_CONTESTED_RETREAT_MIN_RUN),
+    )
+    hm_before = lower.collect("mantle_lithosphere_thickness_m")
+    areas = lower.node_areas_m2()
+    inventory_before = hm_ledger.inventory_scopes_m3(world)["all"]
+
+    survivors = quad_tectonics._retreat(lower, world, ctx, SPACING * 2, lower.node_count(), STEP_YEARS)
+
+    removed = ~survivors
+    expected_sink = float(np.sum(hm_before[removed & ctx.suture_hm_subduct] * areas[removed & ctx.suture_hm_subduct]))
+    inventory_after = hm_ledger.inventory_scopes_m3(world)["all"]
+    booked = world.hm_source_sink_ledger["suture_hm_subducted_m3"]["scopes"]["all"]["sink_m3"]
+    assert expected_sink > 0.0
+    assert booked == pytest.approx(expected_sink)
+    assert inventory_before - inventory_after == pytest.approx(expected_sink, rel=1e-10)
+    assert world.hm_suture_budget["placed_hm_m3"] == pytest.approx(0.0)
+
+
+def test_collision_front_falls_back_to_bilateral_retreat_when_lower_is_cratonic():
+    world, lower, upper, _ = _front_with_lower_a()
+    _move(upper, _column(20), _column(19))
+    cp.observe_contacts(world, STEP_YEARS)
+    frame = world.collision_polarity_frame
+    lower_mask = frame.masks[lower.plate_id]
+    craton = lower.collect("craton_crust_m")
+    craton[lower_mask.front_id >= 0] = lower.collect("crustal_thickness_m")[lower_mask.front_id >= 0]
+    lower.set_fields_on_plate(craton_crust_m=craton)
+    # Re-freeze after setting the lower plate's cratonic resistance.
+    cp.observe_contacts(world, STEP_YEARS)
+
+    context = boundary_context(
+        world,
+        upper,
+        [lower],
+        STEP_YEARS,
+        lambda mask: quad_tectonics.components_of_at_least(upper, mask, CONTINENTAL_CONTESTED_RETREAT_MIN_RUN),
+    )
+
+    assert np.any(context.shrinkable & context.contested)
+    assert not np.any(context.suture_hm_subduct)
+
+
+def test_continental_terrane_on_oceanic_carrier_can_be_frozen_lower_donor():
+    lower = _plate(1, _block((10, 20), (0, 50)), "oceanic")
+    codes = np.full(lower.node_count(), CRUST_TYPE_CONTINENTAL, dtype=np.uint8)
+    lower.set_fields_on_plate(crust_type_code=codes)
+    upper = _plate(2, _block((20, 30), (0, 50)))
+    world = _world(lower, upper)
+    _drive(upper, _plate_centroid(lower), 3.0)
+    cp.add_evidence(world, lower, _near(lower, upper), cp.SOURCE_CONSUMPTION, cp.ROLE_LOWER, 99)
+    _move(upper, _column(20), _column(19))
+    _step(world)
+    context = boundary_context(
+        world,
+        lower,
+        [upper],
+        STEP_YEARS,
+        lambda mask: quad_tectonics.components_of_at_least(lower, mask, CONTINENTAL_CONTESTED_RETREAT_MIN_RUN),
+    )
+
+    assert np.any(context.suture_hm_subduct)
+    assert np.all(context.shrinkable[context.suture_hm_subduct])
+
+
+def test_stale_collision_masks_are_ignored_after_plate_topology_changes():
+    world, lower, upper, _ = _front_with_lower_a()
+    lower.remove_cells(np.arange(lower.node_count()) == 0)
+
+    context = boundary_context(
+        world,
+        lower,
+        [upper],
+        STEP_YEARS,
+        lambda mask: quad_tectonics.components_of_at_least(lower, mask, CONTINENTAL_CONTESTED_RETREAT_MIN_RUN),
+    )
+
+    assert len(context.shrinkable) == lower.node_count()
+    assert not np.any(context.suture_hm_subduct)
 
 
 def test_step_world_runs_the_prepass_and_reports_its_cost():

@@ -317,6 +317,7 @@ class BoundaryContext:
     suppress_growth: bool
     # Single-element and mutable: the retreat spends it down in place (quad_tectonics._retreat).
     oceanic_override_retreat_budget_hc: np.ndarray
+    suture_hm_subduct: np.ndarray
     orogen_amount: float
     orogen_contested_strength: float
     fault_noise: SphereNoise | None
@@ -412,6 +413,59 @@ def boundary_context(
     else:
         shrinkable = continental_retreat_runs(contested)
 
+    # Apply frozen continental-collision fronts independently. The prepass stores each
+    # side's retreatability in its original node order, before any plate can deform.
+    suture_hm_subduct = np.zeros(len(own_points), dtype=bool)
+    frame = getattr(world, "collision_polarity_frame", None)
+    masks = getattr(frame, "masks", {}).get(plate.plate_id) if frame is not None else None
+    if (
+        masks is not None
+        and len(masks.front_id) == len(own_points)
+        and np.array_equal(masks.node_keys, plate.cell_keys)
+        and len(masks.retreatable) == len(own_points)
+        and len(masks.continental) == len(own_points)
+    ):
+        active_fronts: list[int] = []
+        plate_by_id = {p.plate_id: p for p in [plate, *other_plates]}
+        for front_id, pair in frame.polarity.items():
+            if plate.plate_id not in pair:
+                continue
+            counterpart = pair[1] if pair[0] == plate.plate_id else pair[0]
+            other = plate_by_id.get(counterpart)
+            other_masks = getattr(frame, "masks", {}).get(counterpart)
+            if (
+                other is None
+                or other_masks is None
+                or len(other_masks.front_id) != len(other_masks.retreatable)
+                or len(other_masks.front_id) != len(other_masks.continental)
+                or len(other_masks.front_id) != len(other_masks.node_keys)
+            ):
+                continue
+            own_front = masks.front_id == front_id
+            other_front = other_masks.front_id == front_id
+            if not np.any(own_front) or not np.any(other_front):
+                continue
+            own_cont = masks.continental
+            other_cont = other_masks.continental
+            if not np.any(own_front & own_cont) or not np.any(other_front & other_cont):
+                continue
+            lower_id = pair[0]
+            lower_masks = masks if lower_id == plate.plate_id else other_masks
+            lower_front = lower_masks.front_id == front_id
+            lower_cont = own_cont if lower_id == plate.plate_id else other_cont
+            lower_can_retreat = bool(np.any(lower_masks.retreatable & lower_front & lower_cont))
+            # If every lower-plate candidate is too small or still cratonic, preserve the
+            # ordinary bilateral retreat for this front so overlap cannot become permanent.
+            if lower_can_retreat:
+                active_fronts.append(front_id)
+        if active_fronts:
+            collision_nodes = np.isin(masks.front_id, active_fronts)
+            active_lower = masks.lower & collision_nodes
+            own_cont = masks.continental
+            selected = masks.retreatable & active_lower & own_cont
+            shrinkable = (shrinkable & ~collision_nodes) | selected
+            suture_hm_subduct = selected & own_cont
+
     # Continental suture retreat conserves the consumed column's volume by accreting it
     # onto this plate's own leading edge; a retreat where the overriding neighbour is
     # *oceanic* does not -- that column subducts and is lost. Oceanic self-plates never
@@ -491,6 +545,7 @@ def boundary_context(
         fault_influence=fault_influence,
         suppress_growth=suppress_growth,
         oceanic_override_retreat_budget_hc=oceanic_override_retreat_budget_hc,
+        suture_hm_subduct=suture_hm_subduct,
         orogen_amount=orogen_amount,
         orogen_contested_strength=orogen_contested_strength,
         fault_noise=fault_noise,

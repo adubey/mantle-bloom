@@ -168,6 +168,29 @@ def test_suture_placement_books_cross_type_volume_as_reclassification():
     assert accounts["oceanic_node"]["reclassification_m3"] == pytest.approx(-25.0)
 
 
+def test_suture_subduction_and_delamination_have_separate_budget_accounts():
+    world = _World()
+    hm_ledger.record_suture_front(
+        world,
+        donor_plate_id=1,
+        neighbour_plate_ids=[2],
+        donor_hm_m3=100.0,
+        placed_hm_m3=30.0,
+        donor_is_continental=True,
+        placed_hm_continental_m3=30.0,
+        subducted_hm_m3=50.0,
+    )
+
+    budget = world.hm_suture_budget
+    assert budget["donor_hm_m3"] == pytest.approx(
+        budget["placed_hm_m3"] + budget["subducted_hm_m3"] + budget["unplaced_hm_m3"]
+    )
+    assert budget["subducted_hm_m3"] == pytest.approx(50.0)
+    assert budget["unplaced_hm_m3"] == pytest.approx(20.0)
+    assert budget["by_pair"]["1->2"]["subducted_hm_m3"] == pytest.approx(50.0)
+    assert world.hm_source_sink_ledger["suture_hm_subducted_m3"]["scopes"]["all"]["sink_m3"] == pytest.approx(50.0)
+
+
 def test_direct_retreat_reclassification_books_existing_hm_without_phase_double_count():
     world = _World()
     hm_ledger.record_reclassification(

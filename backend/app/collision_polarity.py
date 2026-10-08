@@ -186,7 +186,10 @@ class PlateCollisionMasks:
     lower: np.ndarray  # front nodes where this plate is the lower plate
     upper: np.ndarray  # front nodes where this plate is the upper plate
     front_id: np.ndarray  # record id per front node, -1 elsewhere
+    node_keys: np.ndarray  # exact sparse-cell identity/order captured by the prepass
+    continental: np.ndarray  # effective node type frozen with the contact snapshot
     retreat_eligible: np.ndarray  # lower & contested: what may be consumed
+    retreatable: np.ndarray  # frozen eligibility after run-size and craton-delay gates
     override: np.ndarray  # upper & contested: what overrides rather than retreats
 
 
@@ -425,7 +428,10 @@ def observe_contacts(world: "World", years: float) -> PolarityFrame:
             lower=np.zeros(len(c.points), dtype=bool),
             upper=np.zeros(len(c.points), dtype=bool),
             front_id=np.full(len(c.points), -1, dtype=np.int64),
+            node_keys=c.plate.cell_keys.copy(),
+            continental=c.continental.copy(),
             retreat_eligible=np.zeros(len(c.points), dtype=bool),
+            retreatable=np.zeros(len(c.points), dtype=bool),
             override=np.zeros(len(c.points), dtype=bool),
         )
         for pid, c in contacts.items()
@@ -453,6 +459,17 @@ def observe_contacts(world: "World", years: float) -> PolarityFrame:
     for pid, m in masks.items():
         contested = contacts[pid].contested
         m.retreat_eligible = m.lower & contested
+        plate = by_id[pid]
+        eligible = m.retreat_eligible.copy()
+        if plate.crust_type == "continental":
+            from .quad_tectonics import components_of_at_least
+
+            eligible = components_of_at_least(
+                plate, eligible, CONTINENTAL_CONTESTED_RETREAT_MIN_RUN
+            )
+        from . import cratons
+
+        m.retreatable = eligible & cratons.retreat_allowed(world, plate)
         m.override = m.upper & contested
     frame = PolarityFrame(elapsed_years=now, masks=masks, polarity=polarity)
     world.collision_polarity_frame = frame
