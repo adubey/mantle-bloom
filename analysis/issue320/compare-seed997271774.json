@@ -1,0 +1,128 @@
+{
+ "#314": {
+  "commit": "?",
+  "span_myr": 43.099999999999994,
+  "land_area_Mkm2": 141.5354737954616,
+  "continental_area_Mkm2": 235.13325201540536,
+  "emergent_continental_Mkm2": 137.76691943102566,
+  "land_elevation_p10_p50_p90_p99_m": [
+   183,
+   1086,
+   6796,
+   8043
+  ],
+  "continental_hc_p50_p90_p99_km": [
+   33.31,
+   77.58,
+   84.0
+  ],
+  "continental_hm_cap_pct": 13.615988245299695,
+  "continental_hm_cap_change_pp": 7.671890354359785,
+  "runtime_s": null,
+  "peak_memory_mb": null
+ },
+ "main": {
+  "commit": "4d9a28a30e",
+  "span_myr": 43.099999999999994,
+  "land_area_Mkm2": 146.0886954819034,
+  "continental_area_Mkm2": 232.41019937213642,
+  "emergent_continental_Mkm2": 141.53526495215635,
+  "land_elevation_p10_p50_p90_p99_m": [
+   197,
+   1207,
+   6779,
+   8728
+  ],
+  "continental_hc_p50_p90_p99_km": [
+   33.58,
+   74.73,
+   83.97
+  ],
+  "continental_hm_cap_pct": 6.1456613847031205,
+  "continental_hm_cap_change_pp": 0.20156349376321062,
+  "runtime_s": 2466.57683300972,
+  "peak_memory_mb": 2692.03125,
+  "continental_material_Mkm3": 8398.360472126844,
+  "continental_material_change_pct": -0.3591739267531284,
+  "collision_loss_km3_by_account": {
+   "delaminated_lower_crust_m3": 7568804,
+   "collision_subducted_m3": 0,
+   "collision_lower_crust_subducted_m3": 0,
+   "deeply_subducted_m3": 45979880
+  },
+  "collision_loss_pct_inventory_per_myr": 0.0020834967284181893,
+  "suture_donated_pct_inventory_per_myr": 0.6595065822955223,
+  "suture_budget_km3": {
+   "suture_donated_m3": 2395816748,
+   "overrider_placed_m3": 0,
+   "no_outlet_subducted_m3": 0,
+   "delamination_completed_m3": 7792267
+  },
+  "ledger_errors_km3": {
+   "continental_balance_error_km3": -204410957.80914995,
+   "craton_balance_error_km3": -1.024e-06,
+   "mobile_cover_balance_error_km3": -6065.803074944
+  },
+  "boundary_retreat_newly_capped_continental_km2": 22244837.46489012,
+  "median_step_s": 4.832365500042215
+ },
+ "transfer": {
+  "commit": "4d9a28a30e",
+  "span_myr": 43.099999999999994,
+  "land_area_Mkm2": 141.42906477920457,
+  "continental_area_Mkm2": 237.19889057105863,
+  "emergent_continental_Mkm2": 137.5532396848347,
+  "land_elevation_p10_p50_p90_p99_m": [
+   181,
+   1172,
+   6739,
+   8875
+  ],
+  "continental_hc_p50_p90_p99_km": [
+   33.46,
+   70.52,
+   83.99
+  ],
+  "continental_hm_cap_pct": 5.755861328920477,
+  "continental_hm_cap_change_pp": -0.18823656201943303,
+  "runtime_s": 2252.882146835327,
+  "peak_memory_mb": 2639.0625,
+  "continental_material_Mkm3": 8390.10064646079,
+  "continental_material_change_pct": -0.4571711317216346,
+  "collision_loss_km3_by_account": {
+   "delaminated_lower_crust_m3": 2432786,
+   "collision_subducted_m3": 0,
+   "collision_lower_crust_subducted_m3": 25563013,
+   "deeply_subducted_m3": 25585071
+  },
+  "collision_loss_pct_inventory_per_myr": 0.007706521685664959,
+  "suture_donated_pct_inventory_per_myr": 0.5053730750924137,
+  "suture_budget_km3": {
+   "suture_donated_m3": 1835889603,
+   "suture_scraped_m3": 809591825,
+   "suture_underthrust_m3": 245331535,
+   "suture_underthrust_placed_m3": 170325968,
+   "suture_lower_crust_subducted_m3": 27259059,
+   "upper_plate_placed_m3": 884597393,
+   "overrider_placed_m3": 0,
+   "no_outlet_subducted_m3": 0,
+   "delamination_completed_m3": 2546817
+  },
+  "ledger_errors_km3": {
+   "continental_balance_error_km3": -204410957.80914688,
+   "craton_balance_error_km3": 0.0,
+   "mobile_cover_balance_error_km3": -6065.80306752
+  },
+  "transfer": {
+   "fronts": 1948,
+   "seconds": 3.8615804399596527,
+   "mean_front_ms": 1.9823308213345239,
+   "max_front_ms": 11.002416955307126,
+   "steps_with_fronts": 424,
+   "median_step_ms": 8.398958132602274,
+   "max_step_ms": 28.822624823078513
+  },
+  "boundary_retreat_newly_capped_continental_km2": 19000412.15933019,
+  "median_step_s": 4.660698749939911
+ }
+}
