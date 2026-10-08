@@ -723,6 +723,31 @@ over-thickened crust of a suture or a standing orogen goes through these process
   its restite, whichever reaches higher. Restite is garnet-rich and dense well above the
   eclogite transition. Delaminating roots shed restite first, so roots that founder are
   mostly restite rather than whatever lies below a fixed depth.
+- **Polarized collision fronts** (`crust_transfer.py`, issues #318-#320). A continental
+  collision front gets a lower and an upper plate from the subduction history of the ocean
+  that closed (`collision_polarity.py`). Only the lower plate's contested cells retreat. Their
+  mantle lithosphere goes down with the slab (`suture_hm_subducted_m3`), and none of it is
+  added to either plate. Their crust is split, with exact cell areas, into three shares of
+  the crust below the mobile cover; the cover goes with the first:
+  - **scraped** (`World.suture_scrape_fraction`, default 0.7): thrust onto the upper plate
+    through the staged placement below (stages 1-4), seeded at the upper plate's cells
+    nearest the front;
+  - **underthrust** (`World.suture_underthrust_fraction`, 0.27): added to the base of the
+    upper plate's continental columns within `UNDERTHRUST_REACH_KM` (200 km) of the front,
+    under the Hc cap. Whatever the reach can't hold is thrust up with the scraped share;
+  - **lost** (`World.suture_lower_crust_loss_fraction`, 0.03): subducted with the slab.
+
+  Scraped crust the upper plate can't hold goes to the front's other continental neighbours
+  (stage 6), then down with the slab (stage 7). Continental material, restite and cratonic
+  crust split in the same proportions as the Hc. Cratonic crust that lands becomes ordinary
+  orogenic crust (`collision_reworked_m3`). The lost share's material is booked to
+  `collision_lower_crust_subducted_m3`, apart from the no-outlet remainder. Receivers' Moho
+  is buried and their elevation follows the Hc they gained. The shares are model knobs, not
+  measured fractions: the partition varies along strike, and India-Asia mass balances that
+  put the loss near half the converged crust are disputed. The defaults keep collision loss
+  close to issue #276's calibration. `/world/stats` reports them under
+  `suture_crust_transfer`. `crust_transfer.transfer_column` takes a column as volumes plus a
+  world-frame front, so terrane docking (#321) can reuse it.
 - **Suture accretion** (`quad_tectonics._place_suture_crust`). A front's consumed Hc tries each
   of these in turn, and only what one can't hold moves on to the next:
   1. **Belts.** It fills the first `SUTURE_ACCRETION_SPREAD_NODES` hops, then three more belts
@@ -805,14 +830,17 @@ handled: `suture_donated_m3`, `suture_belt_placed_m3`, `escape_attempted_m3` /
 `escape_placed_m3`, `delamination_attempted_m3` / `delamination_completed_m3`,
 `far_field_placed_m3`, `foreland_spill_placed_m3`, `overrider_placed_m3`,
 `no_outlet_subducted_m3` (saves from before issue #276 call it `no_outlet_delaminated_m3`,
-renamed on load); `ceiling_overflow_m3` (= `ceiling_overflow_residue_m3` +
+renamed on load); at polarized fronts, `suture_scraped_m3`, `suture_underthrust_m3` (=
+`suture_underthrust_placed_m3` + what was thrust up), `suture_lower_crust_subducted_m3`,
+`upper_plate_placed_m3` and `restite_subducted_m3`; `ceiling_overflow_m3` (= `ceiling_overflow_residue_m3` +
 `ceiling_overflow_melt_placed_m3` + `ceiling_overflow_no_outlet_m3`);
 `anatexis_melt_extracted_m3` (= `anatexis_melt_emplaced_m3` +
 `anatexis_melt_relaminated_m3`) and `anatexis_residue_m3`; `restite_delaminated_m3` (the
 restite share of every shed suture root); `relief_mobile_excess_m3`, `collapse_transferred_m3` and
 `ductile_flow_transferred_m3`. The continental-material ledger books delaminated roots'
-provenance in `delaminated_lower_crust_m3`, and the terminal remainder's in
-`collision_subducted_m3`.
+provenance in `delaminated_lower_crust_m3`, the terminal remainder's in
+`collision_subducted_m3`, and a polarized front's lost share in
+`collision_lower_crust_subducted_m3`.
 
 Issue #276 recalibrated these against long runs. `bin/debug/calibrate_collision_sinks.py`
 steps a seed or a save and reports the retreat-processed loss (the share of donated suture

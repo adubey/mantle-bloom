@@ -42,7 +42,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
-from app import elevation_lines, hm_ledger, lithosphere, persistence, plates, quad_tectonics, rheology, world as world_mod  # noqa: E402
+from app import continental_ledger, cratons, elevation_lines, hm_ledger, mobile_cover, orogeny, lithosphere, persistence, plates, quad_tectonics, rheology, world as world_mod  # noqa: E402
 
 HM_CAP = lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M
 HC_CAP = lithosphere.MAX_CRUSTAL_THICKNESS_M
@@ -130,6 +130,29 @@ def metrics(world) -> dict:
         "oceanic": group(~cont),
         "per_plate": dict(sorted(per_plate.items(), key=lambda kv: -kv[1]["hm_cap_fraction_of_continental"] * kv[1]["continental_area_km2"])),
     }
+
+
+def crust_accounts(world) -> dict:
+    """Issue #320: continental-material, craton, mobile-cover and orogeny ledgers (km^3), with
+    the live continental-material inventory and each ledger's closure error. Accounts a
+    baseline engine doesn't have are simply absent."""
+    km3 = lambda ledger: {key: float(value) / 1e9 for key, value in dict(ledger).items()}  # noqa: E731
+    continental_ledger.ensure_initialized(world)
+    out = {
+        "continental_material_live_km3": continental_ledger.surface_volume_m3(world) / 1e9,
+        "continental_ledger_km3": km3(world.continental_material_ledger),
+        "craton_ledger_km3": km3(getattr(world, "craton_ledger", {})),
+        "craton_balance_error_km3": cratons.balance_error_m3(world) / 1e9,
+        "mobile_cover_ledger_km3": km3(mobile_cover.ensure_ledger(world)),
+        "mobile_cover_balance_error_km3": mobile_cover.balance_error_m3(world) / 1e9,
+        "orogeny_budget_km3": km3(orogeny.ensure_budget(world)),
+    }
+    if hasattr(continental_ledger, "balance_error_m3"):
+        out["continental_balance_error_km3"] = continental_ledger.balance_error_m3(world) / 1e9
+    transfer = getattr(world, "suture_transfer_stats", None)
+    if isinstance(transfer, dict):
+        out["suture_transfer"] = copy.deepcopy(transfer)
+    return out
 
 
 class ClipTap:
@@ -356,7 +379,9 @@ def main() -> None:
     per_checkpoint = max(1, int(round(args.checkpoint_myr * 1e6 / args.step_years)))
     inventory0 = hm_inventory_km3(world)
     unattributed = defaultdict(float)
-    result["checkpoints"].append({"metrics": metrics(world), "inventory_km3": inventory0, "hm_state": hm_state(world)})
+    result["checkpoints"].append(
+        {"metrics": metrics(world), "inventory_km3": inventory0, "hm_state": hm_state(world), "crust_accounts": crust_accounts(world)}
+    )
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     started = time.time()
@@ -419,6 +444,7 @@ def main() -> None:
                     "hm_cap_transitions_km2": after_caps,
                     "hm_suture_budget_km3": after_suture,
                     "runtime_profile": {key: dict(row) for key, row in profile.stats.items()},
+                    "crust_accounts": crust_accounts(world),
                 }
                 result["checkpoints"].append(entry)
                 m = entry["metrics"]

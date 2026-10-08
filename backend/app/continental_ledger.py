@@ -25,6 +25,7 @@ LedgerAccount = Literal[
     "accreted_thickened_m3",
     "delaminated_lower_crust_m3",
     "collision_subducted_m3",
+    "collision_lower_crust_subducted_m3",
     "deeply_subducted_m3",
     "remelted_relaminated_returns_m3",
     "rift_thinned_m3",
@@ -44,6 +45,10 @@ class ContinentalMaterialLedger(TypedDict):
     # terminal remainder), which goes down with the consumed plate (issue #276). Kept apart
     # from trench subduction in `deeply_subducted_m3`.
     collision_subducted_m3: float
+    # The lower-crust loss share of a consumed lower-plate column at a polarized collision
+    # front (crust_transfer.py, issue #320): a deliberate model partition, kept apart from
+    # the no-outlet remainder above.
+    collision_lower_crust_subducted_m3: float
     deeply_subducted_m3: float
     remelted_relaminated_returns_m3: float
     # Rifting: stretch thinning a column's footprint can't hold on the fixed-area node, plus
@@ -71,6 +76,7 @@ LEDGER_KEYS: tuple[LedgerAccount, ...] = (
     "accreted_thickened_m3",
     "delaminated_lower_crust_m3",
     "collision_subducted_m3",
+    "collision_lower_crust_subducted_m3",
     "deeply_subducted_m3",
     "remelted_relaminated_returns_m3",
     "rift_thinned_m3",
@@ -222,6 +228,7 @@ def balance_error_m3(world: "World", *, surface: float | None = None) -> float:
         surface
         + ledger["delaminated_lower_crust_m3"]
         + ledger["collision_subducted_m3"]
+        + ledger["collision_lower_crust_subducted_m3"]
         + ledger["deeply_subducted_m3"]
         + ledger["rift_thinned_m3"]
         + ledger["numerical_unplaced_m3"]

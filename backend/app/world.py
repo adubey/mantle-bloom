@@ -75,6 +75,9 @@ class World:
     # ordinary simulation; see hm_ledger.py.
     hm_source_sink_ledger: dict[str, dict] = field(default_factory=dict)
     hm_suture_budget: dict = field(default_factory=dict)
+    # Debug-only cost and volume counters for crust transfer at polarized continental
+    # sutures (crust_transfer.py), reset with phase_budget.
+    suture_transfer_stats: dict = field(default_factory=dict)
     # A fixed per-world property, like `seed` -- set once at generation and read again on
     # every future climate render (see climate.py's compute_insolation), not rendering/cache
     # state. The one deliberate exception to climate being otherwise fully stateless.
@@ -445,6 +448,17 @@ class World:
     # deformation. Meaningful only in "fault"/"both" mode, where it directly controls how sharp
     # fault-line ridges/scarps read relative to the surrounding boundary swell.
     fault_relief_multiplier: float = 1.0
+    # How a consumed lower-plate continental column splits at a polarized collision front
+    # (issue #320, crust_transfer.py). Shares of the crust below the mobile cover, which all
+    # goes with the scraped share. Scraped: thrust onto the upper plate's frontal belt.
+    # Underthrust: pushed under the upper plate's front as lower crust. Lost: subducted with
+    # the slab. Must sum to 1. These are model knobs for a partition that varies along
+    # strike and is unresolved in the literature, not universal fractions; see
+    # crust_transfer.py for the defaults' rationale. Plain-scalar defaults, so an older
+    # pickle loads with them.
+    suture_scrape_fraction: float = 0.7
+    suture_underthrust_fraction: float = 0.27
+    suture_lower_crust_loss_fraction: float = 0.03
     # Live-adjustable via POST /world/controls, same pattern as sea_level_m/solar_multiplier
     # above -- the UI's "Controls" window lets the user run *just* plate tectonics or *just*
     # climate & biomes. When False, step_world skips plate rotation, boundary evolution
@@ -556,6 +570,7 @@ class World:
         saved world to attribute that interval's Hc/Hm change to specific phases."""
         self.phase_budget = {}
         hm_ledger.reset(self)
+        self.suture_transfer_stats = {}
 
     def distance_from_land_approx(self, points: np.ndarray) -> np.ndarray:
         """Approximate distance from each given world-xyz point (shape (n, 3)) to the

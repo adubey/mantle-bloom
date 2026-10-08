@@ -9,7 +9,10 @@ two operations on the cell graph:
 
 - **Retreat** peels the plate's contested boundary in layers: any retreatable cell with a
   wholly exposed side (the 2D analogue of a line end) is deactivated, then the newly exposed
-  layer is considered, up to this step's displacement in cells. A continental suture's
+  layer is considered, up to this step's displacement in cells. At a polarized continental
+  collision front only the lower plate retreats; its consumed crust is partitioned onto the
+  upper plate and its mantle lithosphere subducts (`crust_transfer.py`, issues #319-#320).
+  Any other continental suture's
   consumed crust is thrust onto the nearest surviving cells (area-weighted, so volume is
   conserved). Past the receiving
   belts it escapes along strike before any of it may delaminate (issue #290; `orogeny.py`).
@@ -42,7 +45,7 @@ from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import breadth_first_order, connected_components
 from scipy.spatial import cKDTree
 
-from . import collision_polarity, continental_ledger, cratons, geometry, hm_ledger, lithosphere, mobile_cover, orogeny, phase_budget, rheology, shortening, terrain_noise, torque
+from . import collision_polarity, continental_ledger, crust_transfer, cratons, geometry, hm_ledger, lithosphere, mobile_cover, orogeny, phase_budget, rheology, shortening, terrain_noise, torque
 from .elevation_lines import (
     COVERAGE_RADIUS_MULT,
     CRUST_TYPE_CONTINENTAL,
@@ -493,6 +496,7 @@ def _retreat(
         _accrete_onto_survivors(
             plate, donors, ~removed, world, convergence_xyz=ctx.inputs.direction_to_neighbor, years=years,
             overriders=ctx.neighbours, hm_subduct_mask=ctx.suture_hm_subduct,
+            upper_plate_ids=ctx.suture_upper_plate_id,
         )
     plate.remove_cells(removed)
     return ~removed
@@ -549,6 +553,7 @@ def _accrete_onto_survivors(
     years: float = 0.0,
     overriders: list | None = None,
     hm_subduct_mask: np.ndarray | None = None,
+    upper_plate_ids: np.ndarray | None = None,
 ) -> None:
     """Thrust each continental suture's consumed Hc/Hm volume onto the surviving cells within
     `SUTURE_ACCRETION_SPREAD_NODES` hops behind it, as a uniform thickening. Each edge-connected run of donor cells is one suture
@@ -574,7 +579,16 @@ def _accrete_onto_survivors(
     cratonic crust becomes ordinary orogenic crust (craton ledger: collision reworked) or
     delaminates. A relocated terrane keeps all three whole. Shed roots are restite first.
     Receivers' Moho is buried under the crust they take (`orogeny.bury_moho`). Booking needs
-    `world`; without one only the fields move."""
+    `world`; without one only the fields move.
+
+    Donors with a frozen upper plate in `upper_plate_ids` (the lower side of a polarized
+    collision front) don't come here: their crust is partitioned and goes to that plate, and
+    their Hm subducts (`crust_transfer`, issue #320). `hm_subduct_mask` subducts the Hm of
+    any such donor whose upper plate is gone, which falls back to this path."""
+    if upper_plate_ids is not None and world is not None:
+        donors = donors & ~crust_transfer.transfer_fronts(
+            world, plate, donors, upper_plate_ids, convergence_xyz, years, overriders
+        )
     survivor_idx = np.flatnonzero(survivors)
     if not len(survivor_idx):
         return
@@ -744,8 +758,8 @@ def _accrete_onto_survivors(
                 # plate overriding it, as real suture crust does.
                 share = stuck / hc_volume
                 handed = _hand_to_overrider(
-                    world, plate, front, overriders, stuck, share * material_volume, convergence_xyz, years,
-                    share * restite_volume,
+                    world, plate, geometry.to_world(plate.frame, points[front]), overriders, stuck,
+                    share * material_volume, _overrider_approach(convergence_xyz, front), years, share * restite_volume,
                 )
                 handed_share = handed / hc_volume
                 stages["overrider_placed_m3"] = handed
@@ -1061,14 +1075,23 @@ def _suture_strike(points: np.ndarray, front: np.ndarray, convergence_local: np.
     return axes[0]
 
 
+def _overrider_approach(convergence_xyz: np.ndarray | None, front: np.ndarray) -> np.ndarray | None:
+    """The world-frame direction an overriding plate converges on a consumed front from:
+    against the front's mean direction toward it (`convergence_xyz`, per node). None
+    without one."""
+    if convergence_xyz is None:
+        return None
+    return -np.asarray(convergence_xyz, dtype=float)[front].mean(axis=0)
+
+
 def _hand_to_overrider(
     world: "World | None",
     plate: "PlateWithSparseQuadPatch",
-    front: np.ndarray,
+    front_world: np.ndarray,
     overriders: list,
     volume: float,
     material_volume: float,
-    convergence_xyz: np.ndarray | None,
+    approach_world: np.ndarray | None,
     years: float,
     restite_volume: float = 0.0,
 ) -> float:
@@ -1081,16 +1104,17 @@ def _hand_to_overrider(
     those rather than stranding (issue #276). An oceanic neighbour is skipped, since its
     cells aren't retyped. The front's continental material and `restite_volume` go with the
     Hc each places, in proportion. Whatever none of them can hold is left for the caller's
-    terminal remainder. Returns the Hc volume placed."""
+    terminal remainder. `front_world` is the front's cell centres and `approach_world` the
+    direction the overriders converge on it from (`_overrider_approach`), both world frame.
+    Returns the Hc volume placed."""
     candidates = [p for p in overriders if p is not plate and hasattr(p, "adjacency") and p.node_count() > 0]
     if not candidates or volume <= 0.0:
         return 0.0
-    front_world = geometry.to_world(plate.frame, plate.surface_nodes().local_xyz[front])
     centre = geometry.normalize(front_world.mean(axis=0))
 
     def rank(candidate) -> tuple[int, float]:
         inside = int(np.count_nonzero(candidate.contains_batch(front_world)))
-        nearest = float(cKDTree(candidate.all_points_and_elevation()[0]).query(centre)[0])
+        nearest = float(candidate.get_node_kdtree().query(centre)[0])
         return -inside, nearest
 
     ranked = [c for _, _, c in sorted(((rank(c), i, c) for i, c in enumerate(candidates)), key=lambda entry: entry[:2])]
@@ -1103,7 +1127,7 @@ def _hand_to_overrider(
             break
         share = remaining / volume
         placed += _place_on_overrider(
-            world, over, front_world, front, remaining, share * material_volume, convergence_xyz, years,
+            world, over, front_world, remaining, share * material_volume, approach_world, years,
             share * restite_volume,
         )
     return placed
@@ -1115,16 +1139,23 @@ def _has_continental_crust(plate: "PlateWithSparseQuadPatch") -> bool:
     )
 
 
+def _overrider_seed(over: "PlateWithSparseQuadPatch", front_world: np.ndarray) -> np.ndarray:
+    """`over`'s cells nearest each of a front's world-frame cell centres, through the plate's
+    cached spatial index."""
+    _, seed = over.get_node_kdtree().query(front_world)
+    return np.unique(seed)
+
+
 def _place_on_overrider(
     world: "World | None",
     over: "PlateWithSparseQuadPatch",
     front_world: np.ndarray,
-    front: np.ndarray,
     volume: float,
     material_volume: float,
-    convergence_xyz: np.ndarray | None,
+    approach_world: np.ndarray | None,
     years: float,
     restite_volume: float,
+    adjacency: csr_matrix | None = None,
 ) -> float:
     """Accrete `volume` of a consumed front's Hc onto one overriding quad plate `over`, through
     the same staged `_place_suture_crust` placement on that plate, seeded at its cells nearest
@@ -1132,10 +1163,10 @@ def _place_on_overrider(
     proportion, and so does its `restite_volume`; its cratonic crust becomes ordinary orogenic
     crust, which the caller books. The overrider's own belts may shed eligible roots to make
     room, booked here with their own provenance, and the Moho of the cells that take crust is
-    buried under it. Returns the Hc volume placed."""
-    over_world = over.all_points_and_elevation()[0]
-    _, seed = cKDTree(over_world).query(front_world)
-    seed = np.unique(seed)
+    buried under it. `approach_world` is the world-frame direction `over` converges on the
+    front from, which sets the suture's strike; `adjacency` reuses `over`'s cell graph.
+    Returns the Hc volume placed."""
+    seed = _overrider_seed(over, front_world)
 
     areas = over.node_areas_m2()
     hc = over.collect("crustal_thickness_m")
@@ -1151,17 +1182,16 @@ def _place_on_overrider(
     root_capacity = orogeny.plate_delamination_capacity_m3(over, continental, years)
     points = over.surface_nodes().local_xyz
     convergence_local = None
-    if convergence_xyz is not None:
-        # The overrider converges on the front from the other side.
-        toward = -np.asarray(convergence_xyz, dtype=float)[front].mean(axis=0)
+    if approach_world is not None:
         convergence_local = np.zeros_like(points)
-        convergence_local[seed] = geometry.to_local(over.frame, toward[None, :])[0]
+        convergence_local[seed] = geometry.to_local(over.frame, np.asarray(approach_world, dtype=float)[None, :])[0]
     strike = _suture_strike(points, seed, convergence_local)
 
     hc_before = hc.copy()
     shed = np.zeros(len(hc))
     changed, stages = _place_suture_crust(
-        hc, areas, _adjacency_matrix(over), points, seed, eligible, volume, SUTURE_ACCRETION_MAX_HC_M, strike,
+        hc, areas, _adjacency_matrix(over) if adjacency is None else adjacency, points, seed, eligible, volume,
+        SUTURE_ACCRETION_MAX_HC_M, strike,
         root_capacity, shed,
     )
     placed = max(volume - stages["no_outlet_subducted_m3"], 0.0)

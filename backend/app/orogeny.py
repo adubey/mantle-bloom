@@ -145,6 +145,17 @@ BUDGET_ACCOUNTS = (
     "foreland_spill_placed_m3",
     "overrider_placed_m3",
     "no_outlet_subducted_m3",
+    # Crust transfer at a polarized collision front (crust_transfer.py, issue #320): the
+    # consumed lower-plate crust (also in `suture_donated_m3`) splits into scraped (with all
+    # its mobile cover), underthrust and lost shares. scraped + underthrust overflow =
+    # upper-plate placed + overrider placed + no outlet; underthrust = underthrust placed +
+    # underthrust overflow.
+    "suture_scraped_m3",
+    "suture_underthrust_m3",
+    "suture_underthrust_placed_m3",
+    "suture_lower_crust_subducted_m3",
+    "upper_plate_placed_m3",
+    "restite_subducted_m3",
     # Convergent shortening past the Hc ceiling (quad_tectonics._place_ceiling_overflow):
     # overflow = residue + melt placed + melt with no outlet.
     "ceiling_overflow_m3",

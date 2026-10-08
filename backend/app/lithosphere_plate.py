@@ -318,6 +318,9 @@ class BoundaryContext:
     # Single-element and mutable: the retreat spends it down in place (quad_tectonics._retreat).
     oceanic_override_retreat_budget_hc: np.ndarray
     suture_hm_subduct: np.ndarray
+    # Per node, the frozen upper plate of the polarized collision front a `suture_hm_subduct`
+    # node belongs to; -1 elsewhere. Its crust transfers there (crust_transfer.py).
+    suture_upper_plate_id: np.ndarray
     orogen_amount: float
     orogen_contested_strength: float
     fault_noise: SphereNoise | None
@@ -416,6 +419,7 @@ def boundary_context(
     # Apply frozen continental-collision fronts independently. The prepass stores each
     # side's retreatability in its original node order, before any plate can deform.
     suture_hm_subduct = np.zeros(len(own_points), dtype=bool)
+    suture_upper_plate_id = np.full(len(own_points), -1, dtype=np.int64)
     frame = getattr(world, "collision_polarity_frame", None)
     masks = getattr(frame, "masks", {}).get(plate.plate_id) if frame is not None else None
     if (
@@ -465,6 +469,8 @@ def boundary_context(
             selected = masks.retreatable & active_lower & own_cont
             shrinkable = (shrinkable & ~collision_nodes) | selected
             suture_hm_subduct = selected & own_cont
+            for front_id in active_fronts:
+                suture_upper_plate_id[suture_hm_subduct & (masks.front_id == front_id)] = frame.polarity[front_id][1]
 
     # Continental suture retreat conserves the consumed column's volume by accreting it
     # onto this plate's own leading edge; a retreat where the overriding neighbour is
@@ -546,6 +552,7 @@ def boundary_context(
         suppress_growth=suppress_growth,
         oceanic_override_retreat_budget_hc=oceanic_override_retreat_budget_hc,
         suture_hm_subduct=suture_hm_subduct,
+        suture_upper_plate_id=suture_upper_plate_id,
         orogen_amount=orogen_amount,
         orogen_contested_strength=orogen_contested_strength,
         fault_noise=fault_noise,
