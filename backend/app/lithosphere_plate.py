@@ -317,6 +317,7 @@ class BoundaryContext:
     suppress_growth: bool
     # Single-element and mutable: the retreat spends it down in place (quad_tectonics._retreat).
     oceanic_override_retreat_budget_hc: np.ndarray
+    suture_hm_subduct: np.ndarray
     orogen_amount: float
     orogen_contested_strength: float
     fault_noise: SphereNoise | None
@@ -412,6 +413,24 @@ def boundary_context(
     else:
         shrinkable = continental_retreat_runs(contested)
 
+    # Apply each frozen continental-collision front independently. The prepass masks retain
+    # this plate's node order, which has not changed before deform begins. Keep the ordinary
+    # minimum-run gate so polarity does not make isolated envelope-fuzz cells retreatable.
+    suture_hm_subduct = np.zeros(len(own_points), dtype=bool)
+    frame = getattr(world, "collision_polarity_frame", None)
+    masks = getattr(frame, "masks", {}).get(plate.plate_id) if frame is not None else None
+    if plate.crust_type == "continental" and masks is not None:
+        is_collision = np.zeros(len(own_points), dtype=bool)
+        plate_by_id = {p.plate_id: p for p in [plate, *other_plates]}
+        for front_id, pair in frame.polarity.items():
+            counterpart = pair[1] if pair[0] == plate.plate_id else pair[0]
+            other = plate_by_id.get(counterpart)
+            if other is not None and other.crust_type == "continental":
+                is_collision |= masks.front_id == front_id
+        if np.any(is_collision):
+            shrinkable = (shrinkable & ~is_collision) | (shrinkable & masks.retreat_eligible & is_collision)
+            suture_hm_subduct = shrinkable & masks.retreat_eligible & is_collision
+
     # Continental suture retreat conserves the consumed column's volume by accreting it
     # onto this plate's own leading edge; a retreat where the overriding neighbour is
     # *oceanic* does not -- that column subducts and is lost. Oceanic self-plates never
@@ -491,6 +510,7 @@ def boundary_context(
         fault_influence=fault_influence,
         suppress_growth=suppress_growth,
         oceanic_override_retreat_budget_hc=oceanic_override_retreat_budget_hc,
+        suture_hm_subduct=suture_hm_subduct,
         orogen_amount=orogen_amount,
         orogen_contested_strength=orogen_contested_strength,
         fault_noise=fault_noise,

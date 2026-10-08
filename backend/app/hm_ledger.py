@@ -237,6 +237,8 @@ def record_suture_front(
     *,
     donor_is_continental: bool,
     placed_hm_continental_m3: float,
+    sink_account: str = "suture_delamination",
+    subducted_hm_m3: float = 0.0,
 ) -> None:
     """Record one connected donor front without feeding the closure accounts again.
 
@@ -253,7 +255,11 @@ def record_suture_front(
     donor = max(float(donor_hm_m3), 0.0)
     placed = min(max(float(placed_hm_m3), 0.0), donor)
     unplaced = donor - placed
-    record_typed_sink(world, "suture_delamination", unplaced, continental=donor_is_continental)
+    subducted = min(max(float(subducted_hm_m3), 0.0), unplaced)
+    if subducted > 0.0:
+        record_typed_sink(world, sink_account, subducted, continental=donor_is_continental)
+    if unplaced > subducted:
+        record_typed_sink(world, "suture_delamination", unplaced - subducted, continental=donor_is_continental)
     placed_continental = min(max(float(placed_hm_continental_m3), 0.0), placed)
     placed_oceanic = placed - placed_continental
     cross_type_placed = placed_oceanic if donor_is_continental else placed_continental

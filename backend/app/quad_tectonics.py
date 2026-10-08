@@ -492,7 +492,7 @@ def _retreat(
     if np.any(donors):
         _accrete_onto_survivors(
             plate, donors, ~removed, world, convergence_xyz=ctx.inputs.direction_to_neighbor, years=years,
-            overriders=ctx.neighbours,
+            overriders=ctx.neighbours, hm_subduct_mask=ctx.suture_hm_subduct,
         )
     plate.remove_cells(removed)
     return ~removed
@@ -548,6 +548,7 @@ def _accrete_onto_survivors(
     convergence_xyz: np.ndarray | None = None,
     years: float = 0.0,
     overriders: list | None = None,
+    hm_subduct_mask: np.ndarray | None = None,
 ) -> None:
     """Thrust each continental suture's consumed Hc/Hm volume onto the surviving cells within
     `SUTURE_ACCRETION_SPREAD_NODES` hops behind it, as a uniform thickening. Each edge-connected run of donor cells is one suture
@@ -629,7 +630,10 @@ def _accrete_onto_survivors(
             restite_volume = float(np.dot(restite[front], areas[front]))
             typed_survivors = survivors & (continental == donor_type)
             hc_volume = float(np.sum(hc[front] * areas[front]))
-            hm_volume = float(np.sum(hm[front] * areas[front]))
+            hm_front_volume = float(np.sum(hm[front] * areas[front]))
+            hm_sink_mask = np.zeros(len(hm), dtype=bool) if hm_subduct_mask is None else front & hm_subduct_mask
+            hm_subducted_volume = float(np.sum(hm[hm_sink_mask] * areas[hm_sink_mask]))
+            hm_volume = max(hm_front_volume - hm_subducted_volume, 0.0)
             hc_room = float(
                 np.sum(
                     np.maximum(SUTURE_ACCRETION_MAX_HC_M - hc[typed_survivors], 0.0)
@@ -775,10 +779,12 @@ def _accrete_onto_survivors(
                 world,
                 plate.plate_id,
                 front_neighbour_ids(front),
-                hm_volume,
+                hm_front_volume,
                 placed_hm_volume,
                 donor_is_continental=bool(donor_type),
                 placed_hm_continental_m3=placed_hm_continental_volume,
+                sink_account="suture_hm_subducted_m3" if hm_subducted_volume > 0 else "suture_delamination",
+                subducted_hm_m3=hm_subducted_volume,
             )
 
     gained = np.flatnonzero(changed)
