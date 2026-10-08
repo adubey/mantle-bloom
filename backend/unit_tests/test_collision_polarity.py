@@ -264,6 +264,107 @@ def test_new_front_without_evidence_inherits_the_pairs_existing_polarity():
     assert world.collision_polarity_stats["decided_fallback"] == 0
 
 
+def test_fragment_beside_an_established_front_copies_it_before_pair_evidence():
+    # Pair evidence far along the boundary says A is lower; the established front beside the
+    # new fragment says B is. The fragment is part of that collision.
+    world, a, full = _long_contact()
+    _, _, _, j = unpack_cell_keys(full.cell_keys)
+
+    def b_with(mask):
+        plate = _plate(2, full.cell_keys[mask])
+        plate.set_omega(full.omega.copy())
+        return plate
+
+    first = b_with(j < 20)
+    world.plates = [a, first]
+    cp.add_evidence(world, first, _near(first, a), cp.SOURCE_CONSUMPTION, cp.ROLE_LOWER, 99)
+    cp.add_evidence(world, a, _far_end(a, full, 45), cp.SOURCE_CONSUMPTION, cp.ROLE_LOWER, 2)
+    _step(world)
+    (established,) = _records(world, (1, 2))
+    assert established.lower_plate_id == 2
+
+    # A separate stretch eight cells along: past the link radius, inside FRONT_INHERIT_SPACINGS,
+    # and well short of the far-end evidence.
+    world.plates = [a, b_with((j < 20) | ((j >= 28) & (j < 36)))]
+    _step(world)
+    (fragment,) = [r for r in _records(world, (1, 2)) if r.front_id != established.front_id]
+    assert (fragment.source, fragment.lower_plate_id, fragment.parent_id) == ("inherited", 2, established.front_id)
+
+
+def test_disagreeing_fronts_that_grow_together_keep_their_own_stretches():
+    # Two fronts of one pair with opposite polarities (as in the nearby-fronts test), then
+    # B's gap fills in and they become one connected contact.
+    a = _plate(1, _block((10, 20), (10, 44)))
+    prongs = np.concatenate([_block((20, 26), (12, 17)), _block((20, 26), (24, 29)), _block((26, 32), (12, 29))])
+    b = _plate(2, prongs)
+    world = _world(a, b)
+    _drive(b, _plate_centroid(a), 3.0)
+    prong_1 = _column(19, (12, 17))
+    prong_2 = _column(19, (24, 29))
+    near_b, near_a = _near(b, a), _near(a, b)
+    cp.add_evidence(world, b, near_b[near_b @ prong_1 > near_b @ prong_2], cp.SOURCE_CONSUMPTION, cp.ROLE_LOWER, 99)
+    cp.add_evidence(world, a, near_a[near_a @ prong_2 > near_a @ prong_1], cp.SOURCE_CONSUMPTION, cp.ROLE_LOWER, 99)
+    _step(world)
+    lowers = {r.front_id: r.lower_plate_id for r in _records(world, (1, 2))}
+    assert sorted(lowers.values()) == [1, 2]
+
+    filled = _plate(2, np.concatenate([prongs, _block((20, 26), (17, 24))]))
+    filled.set_omega(b.omega.copy())
+    world.plates = [a, filled]
+    for _ in range(3):
+        frame = _step(world)
+        assert {r.front_id: r.lower_plate_id for r in _records(world, (1, 2))} == lowers
+        assert set(frame.polarity) == set(lowers)
+    assert world.collision_polarity_stats["fronts_merged"] == 0
+    assert world.collision_polarity_stats["conflicts_kept_apart"] == 3
+    # Each record holds the stretch it started on: B is lower along prong 1, upper along prong 2.
+    masks = world.collision_polarity_frame.masks[2]
+    _, _, _, j = unpack_cell_keys(filled.cell_keys)
+    assert np.any(masks.lower & (j < 17)) and not np.any(masks.lower & (j >= 24))
+    assert np.any(masks.upper & (j >= 24)) and not np.any(masks.upper & (j < 17))
+
+
+def test_agreeing_fronts_that_grow_together_merge_into_the_oldest():
+    a = _plate(1, _block((10, 20), (10, 44)))
+    prong_1 = _plate(2, np.concatenate([_block((20, 26), (24, 29)), _block((26, 32), (12, 29))]))
+    world = _world(a, prong_1)
+    _drive(prong_1, _plate_centroid(a), 3.0)
+    cp.add_evidence(world, a, _near(a, prong_1), cp.SOURCE_CONSUMPTION, cp.ROLE_LOWER, 99)
+    _step(world)
+    (oldest,) = _records(world, (1, 2))
+    world.elapsed_years += 1_000_000.0
+    both = _plate(2, np.concatenate([prong_1.cell_keys, _block((20, 26), (12, 17))]))
+    both.set_omega(prong_1.omega.copy())
+    world.plates = [a, both]
+    cp.add_evidence(world, a, _near(a, both), cp.SOURCE_CONSUMPTION, cp.ROLE_LOWER, 99)
+    _step(world)
+    assert len(_records(world, (1, 2))) == 2
+    filled = _plate(2, np.concatenate([both.cell_keys, _block((20, 26), (17, 24))]))
+    filled.set_omega(prong_1.omega.copy())
+    world.plates = [a, filled]
+    _step(world)
+    (merged,) = _records(world, (1, 2))
+    assert merged.front_id == oldest.front_id
+    assert world.collision_polarity_stats["fronts_merged"] == 1
+
+
+def test_a_contact_returning_after_expiry_is_decided_afresh():
+    world, a, b = _contact()
+    _step(world)
+    (old,) = world.collision_fronts
+    away = _column(26)
+    _move(b, _column(20), away)
+    b.set_omega(np.zeros(3))
+    world.elapsed_years += cp.FRONT_EXPIRY_YEARS + 1.0
+    # Back onto exactly its old footprint, driving in again.
+    _move(b, away, _column(20))
+    _drive(b, _plate_centroid(a), 3.0)
+    _step(world)
+    (fresh,) = world.collision_fronts
+    assert fresh.front_id != old.front_id and fresh.parent_id is None
+    assert world.collision_polarity_stats["fronts_expired"] == 1
+
+
 # --- Fallback --------------------------------------------------------------------------------
 
 
@@ -359,9 +460,9 @@ def test_front_split_inherits_polarity_and_merge_folds_back():
     b2.set_omega(b.omega.copy())
     _step(world)
     (merged,) = _records(world, (1, 2))
-    assert merged.lower_plate_id == 1
+    assert merged.lower_plate_id == 1 and merged.front_id == parent.front_id
     assert world.collision_polarity_stats["fronts_merged"] == 1
-    assert world.collision_polarity_stats["merge_conflicts"] == 0
+    assert world.collision_polarity_stats["conflicts_kept_apart"] == 0
 
 
 def test_front_expires_after_sustained_loss_of_contact():

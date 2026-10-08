@@ -30,17 +30,19 @@ under.
 sides are continental-coded and the boundary is converging or overlapping. Fronts are matched
 to the previous step's records by how much their plate-local extents overlap, one to one. A
 record that matches several fronts has split (each extra front starts a child record with
-the parent's polarity); several records matching one front have merged into the oldest
-match. A record keeps its polarity for life. It expires after `FRONT_EXPIRY_YEARS` without
-contact, which covers both separation and divergence, since a diverging stretch is no longer
-a front.
+the parent's polarity). Several records matching one front have grown together: those that
+agree merge into the oldest, and those that disagree stay separate records, each keeping the
+stretch of the front nearer its own nodes. A record keeps its polarity for life, so no
+stretch of contact changes polarity while it lasts. A record expires after
+`FRONT_EXPIRY_YEARS` without contact, which covers both separation and divergence, since a
+diverging stretch is no longer a front; expired records are dropped before matching.
 
 **Decision.** A new front looks up the evidence near it on both plates. The physical sources
 (`consumption`, `slab`) decide when they agree; the `arc` cue decides only when no physical
 evidence is present, and never overrules it. Evidence pointing both ways, or arcs on both
-sides, is ambiguous. With nothing near the front, the pair's own evidence from elsewhere
-along their boundary decides, then the polarity of another front of the same pair; only
-then a labelled heuristic (`_fallback`). See `_decide`.
+sides, is ambiguous. With nothing near the front, an adjacent front of the same pair lends
+its polarity, then the pair's own evidence from elsewhere along their boundary decides, then
+any front of the pair; only then a labelled heuristic (`_fallback`). See `_decide`.
 
 **Freezing.** `observe_contacts` runs after every plate has shifted and before the first
 `deform()`. It visits plates in id order, so its records and its per-plate lower/upper masks
@@ -102,6 +104,9 @@ FRONT_LINK_SPACINGS = 3.0
 FRONT_MATCH_SPACINGS = 3.0
 # Smaller contacts are envelope fuzz, the same threshold continental retreat uses.
 FRONT_MIN_NODES = CONTINENTAL_CONTESTED_RETREAT_MIN_RUN
+# A new front with no evidence of its own copies a same-pair front this close (see `_decide`):
+# twice the evidence lookup, comfortably past the matching tolerance.
+FRONT_INHERIT_SPACINGS = 8.0
 # Node samples kept per side of a record, for matching.
 FRONT_SAMPLE_POINTS = 64
 # A record with no matching front for this long expires: contact was lost, or the boundary
@@ -346,7 +351,7 @@ _STAT_KEYS = (
     "fronts_created",
     "fronts_split",
     "fronts_merged",
-    "merge_conflicts",
+    "conflicts_kept_apart",
     "fronts_expired",
     "fronts_dropped_topology",
     "fronts_fused",
@@ -424,23 +429,25 @@ def observe_contacts(world: "World", years: float) -> PolarityFrame:
         )
         for pid, c in contacts.items()
     }
+    # Expire first, so matching and every decision below only ever see live records.
+    expired = [r for r in world.collision_fronts if r.last_contact_years < now - FRONT_EXPIRY_YEARS]
+    if expired:
+        stats["fronts_expired"] += len(expired)
+        world.collision_fronts = [r for r in world.collision_fronts if r.last_contact_years >= now - FRONT_EXPIRY_YEARS]
+
     polarity: dict[int, tuple[int, int]] = {}
     for pair, fronts in fronts_by_pair.items():
-        for front, record in zip(fronts, _match_fronts(world, pair, fronts, contacts, spacing_rad, now)):
+        segments = _match_fronts(world, pair, fronts, contacts, spacing_rad, now)
+        for segment, record in segments:
             polarity[record.front_id] = (record.lower_plate_id, record.upper_plate_id)
-            for side, idx in front.items():
+            for side, idx in segment.items():
                 m = masks[side]
                 if side == record.lower_plate_id:
                     m.lower[idx] = True
                 else:
                     m.upper[idx] = True
                 m.front_id[idx] = record.front_id
-        stats["front_steps"] += len(fronts)
-
-    expired = [r for r in world.collision_fronts if r.last_contact_years < now - FRONT_EXPIRY_YEARS]
-    if expired:
-        stats["fronts_expired"] += len(expired)
-        world.collision_fronts = [r for r in world.collision_fronts if r.last_contact_years >= now - FRONT_EXPIRY_YEARS]
+        stats["front_steps"] += len(segments)
 
     for pid, m in masks.items():
         contested = contacts[pid].contested
@@ -544,23 +551,29 @@ def _overlap(front_points: np.ndarray, record_points: np.ndarray, tol: float) ->
 
 def _match_fronts(
     world: "World", pair: tuple[int, int], fronts: list[dict[int, np.ndarray]], contacts: dict[int, _Contact], spacing_rad: float, now: float
-) -> list[CollisionFront]:
-    """The record for each of this pair's fronts, matched to prior records one to one by
-    overlap, with splits and merges resolved and new fronts decided."""
+) -> list[tuple[dict[int, np.ndarray], CollisionFront]]:
+    """This pair's fronts matched to records: (segment, record) pairs, where a segment is a
+    front's nodes or, for a front two disagreeing records share, the part nearer one of them.
+
+    Fronts take prior records one to one by overlap. A front no free record overlaps but a
+    taken one does has split off it, and inherits its polarity. Several records overlapping
+    one front have grown together: records that agree on polarity merge into the oldest, and
+    records that disagree never merge -- each keeps the stretch nearer its own stored nodes,
+    so no stretch of contact ever changes polarity while it lasts."""
     stats = _stats(world)
     tol = FRONT_MATCH_SPACINGS * spacing_rad
     records = [r for r in world.collision_fronts if r.plate_ids == pair]
+    stored_world = [
+        {side: geometry.to_world(contacts[side].plate.frame, r.side_points[side]) for side in pair if len(r.side_points.get(side, ()))}
+        for r in records
+    ]
     scores = np.zeros((len(fronts), len(records)))
-    for j, record in enumerate(records):
-        for side in pair:
-            stored = record.side_points.get(side)
-            if stored is None or not len(stored):
-                continue
-            stored_world = geometry.to_world(contacts[side].plate.frame, stored)
+    for j in range(len(records)):
+        for side, points in stored_world[j].items():
             for i, front in enumerate(fronts):
-                scores[i, j] += 0.5 * _overlap(contacts[side].points[front[side]], stored_world, tol)
+                scores[i, j] += 0.5 * _overlap(contacts[side].points[front[side]], points, tol)
 
-    assigned: dict[int, CollisionFront] = {}
+    assigned: dict[int, int] = {}
     taken: set[int] = set()
     candidates = sorted(
         ((-scores[i, j], records[j].front_id, i, j) for i in range(len(fronts)) for j in range(len(records)) if scores[i, j] > 0.0)
@@ -568,31 +581,44 @@ def _match_fronts(
     for _, _, i, j in candidates:
         if i in assigned or j in taken:
             continue
-        assigned[i] = records[j]
+        assigned[i] = j
         taken.add(j)
 
+    # Each matched front's group: its record plus every free record it also overlaps.
+    claimed = set(taken)
+    survivors: dict[int, list[int]] = {}
     absorbed: set[int] = set()
-    for i in range(len(fronts)):
-        if i not in assigned:
-            continue
-        # Merge: unassigned records this front also overlaps fold into its record.
-        record = assigned[i]
-        for j in np.flatnonzero(scores[i] > 0.0):
-            if int(j) in taken or records[j].front_id in absorbed:
-                continue
-            other = records[j]
-            absorbed.add(other.front_id)
-            stats["fronts_merged"] += 1
-            if other.lower_plate_id != record.lower_plate_id:
-                stats["merge_conflicts"] += 1
-            record.established_years = min(record.established_years, other.established_years)
+    for i in sorted(assigned):
+        group = [assigned[i]] + [int(j) for j in np.flatnonzero(scores[i] > 0.0) if int(j) not in claimed]
+        claimed.update(group)
+        by_lower: dict[int, list[int]] = defaultdict(list)
+        for j in group:
+            by_lower[records[j].lower_plate_id].append(j)
+        keep = []
+        for lower in sorted(by_lower):
+            members = sorted(by_lower[lower], key=lambda j: (records[j].established_years, records[j].front_id))
+            keep.append(members[0])
+            for j in members[1:]:
+                absorbed.add(records[j].front_id)
+                stats["fronts_merged"] += 1
+        if len(keep) > 1:
+            stats["conflicts_kept_apart"] += len(keep) - 1
+        survivors[i] = keep
     if absorbed:
         world.collision_fronts = [r for r in world.collision_fronts if r.front_id not in absorbed]
 
-    out: list[CollisionFront] = []
+    out: list[tuple[dict[int, np.ndarray], CollisionFront]] = []
     for i, front in enumerate(fronts):
-        record = assigned.get(i)
-        if record is None:
+        if i in survivors:
+            keep = survivors[i]
+            if len(keep) == 1:
+                segments = [(front, records[keep[0]])]
+            else:
+                segments = _segment(front, [stored_world[j] for j in keep], contacts)
+                segments = [(segment, records[keep[k]]) for k, segment in enumerate(segments) if segment is not None]
+            for _, record in segments:
+                record.contact_steps += 1
+        else:
             overlapping = np.flatnonzero(scores[i] > 0.0)
             if len(overlapping):
                 # Split: a front off a record already matched elsewhere inherits its polarity.
@@ -612,13 +638,32 @@ def _match_fronts(
                 _decide(world, record, front, contacts, spacing_rad)
                 stats["fronts_created"] += 1
             world.collision_fronts.append(record)
-        else:
-            record.contact_steps += 1
-        record.last_contact_years = now
-        for side in pair:
-            if len(front[side]):
-                record.side_points[side] = _sample(geometry.to_local(contacts[side].plate.frame, contacts[side].points[front[side]]))
-        out.append(record)
+            segments = [(front, record)]
+        for segment, record in segments:
+            record.last_contact_years = now
+            for side in pair:
+                if len(segment[side]):
+                    record.side_points[side] = _sample(geometry.to_local(contacts[side].plate.frame, contacts[side].points[segment[side]]))
+            out.append((segment, record))
+    return out
+
+
+def _segment(front: dict[int, np.ndarray], stored: list[dict[int, np.ndarray]], contacts: dict[int, _Contact]) -> list[dict[int, np.ndarray] | None]:
+    """Split one front's nodes between records that disagree: each node goes to the record
+    whose stored nodes on the same plate are nearest (ties to the first). None for a record
+    left with no nodes this step."""
+    owner: dict[int, np.ndarray] = {}
+    for side, idx in front.items():
+        points = contacts[side].points[idx]
+        dist = np.full((len(stored), len(idx)), np.inf)
+        for k, record_points in enumerate(stored):
+            if side in record_points and len(idx):
+                dist[k] = cKDTree(record_points[side]).query(points)[0]
+        owner[side] = np.argmin(dist, axis=0) if len(idx) else np.zeros(0, dtype=int)
+    out = []
+    for k in range(len(stored)):
+        segment = {side: idx[owner[side] == k] for side, idx in front.items()}
+        out.append(segment if any(len(v) for v in segment.values()) else None)
     return out
 
 
@@ -700,13 +745,16 @@ def _decide(world: "World", record: CollisionFront, front: dict[int, np.ndarray]
     """Set a new record's polarity, from the first of these that can decide:
 
     1. "front": evidence on either plate within `EVIDENCE_LOOKUP_SPACINGS` of the front.
-    2. "pair": evidence anywhere on either plate that names the other as the neighbour --
+    2. "record": a live front of the same pair within `FRONT_INHERIT_SPACINGS`, whose
+       polarity this one copies. A fragment beside an established front is part of the same
+       collision; deciding it afresh lets it disagree, and when the two grow together one of
+       them would have to give way.
+    3. "pair": evidence anywhere on either plate that names the other as the neighbour --
        still this pair's own recent history, from elsewhere along their shared boundary. A
        collision often starts as a few continental cells touching along a margin whose
        subduction was recorded a few hundred km away.
-    3. "record": the nearest live front of the same pair, whose polarity this one copies, so
-       the pieces of one collision agree with each other.
-    4. "fallback": `_fallback`'s heuristic.
+    4. "record": the nearest live front of the same pair at any distance.
+    5. "fallback": `_fallback`'s heuristic.
 
     Contradictory evidence at the front stops the search there: it is ambiguous, and evidence
     from farther away can't be trusted over it, so the fallback decides."""
@@ -723,7 +771,27 @@ def _decide(world: "World", record: CollisionFront, front: dict[int, np.ndarray]
     def naming_other(side: int, store: EvidenceStore) -> np.ndarray:
         return store.neighbour == (b if side == a else a)
 
-    for scope, select in (("front", near_front), ("pair", naming_other)):
+    sibling, gap = _nearest_pair_record(world, record, front, contacts)
+
+    def inherit() -> bool:
+        if sibling is None:
+            return False
+        record.lower_plate_id = sibling.lower_plate_id
+        record.source = "inherited"
+        record.scope = "record"
+        record.parent_id = sibling.front_id
+        stats["decided_inherited"] += 1
+        stats["scope_record"] += 1
+        return True
+
+    tiers = (("front", near_front), ("adjacent", None), ("pair", naming_other), ("any_record", None))
+    for scope, select in tiers:
+        if select is None:
+            # A front of the same pair close by is the same collision: copy it. Farther away,
+            # the pair's own evidence comes first.
+            if (scope == "any_record" or gap <= FRONT_INHERIT_SPACINGS * spacing_rad) and inherit():
+                return
+            continue
         positive, negative = _tally(world, record.plate_ids, select)
         outcome = _judge(world, record, positive, negative)
         if outcome is None:
@@ -737,17 +805,6 @@ def _decide(world: "World", record: CollisionFront, front: dict[int, np.ndarray]
         record.ambiguous = True
         break
 
-    if not record.ambiguous:
-        sibling = _nearest_pair_record(world, record, front, contacts)
-        if sibling is not None:
-            record.lower_plate_id = sibling.lower_plate_id
-            record.source = "inherited"
-            record.scope = "record"
-            record.parent_id = sibling.front_id
-            stats["decided_inherited"] += 1
-            stats["scope_record"] += 1
-            return
-
     record.source = "fallback"
     record.scope = "fallback"
     record.lower_plate_id, record.fallback_basis = _fallback(record.plate_ids, front, contacts, spacing_rad)
@@ -758,9 +815,9 @@ def _decide(world: "World", record: CollisionFront, front: dict[int, np.ndarray]
 
 def _nearest_pair_record(
     world: "World", record: CollisionFront, front: dict[int, np.ndarray], contacts: dict[int, _Contact]
-) -> CollisionFront | None:
+) -> tuple[CollisionFront | None, float]:
     """The live record of the same pair whose stored nodes come closest to this front, ties to
-    the lower id; None if the pair has no other record."""
+    the lower id, and that distance; (None, inf) if the pair has no other record."""
     best: tuple[float, int] | None = None
     chosen = None
     for other in world.collision_fronts:
@@ -776,7 +833,7 @@ def _nearest_pair_record(
         key = (gap, other.front_id)
         if best is None or key < best:
             best, chosen = key, other
-    return chosen
+    return chosen, (best[0] if best is not None else np.inf)
 
 
 def _fallback(pair: tuple[int, int], front: dict[int, np.ndarray], contacts: dict[int, _Contact], spacing_rad: float) -> tuple[int, str]:
@@ -952,11 +1009,11 @@ def summary(world: "World") -> dict:
         "front_records": len(world.collision_fronts),
         "evidence_bins": int(sum(len(s) for s in world.collision_evidence.values())),
         "decision_share": {name: share(stats[f"decided_{name}"]) for name in sources},
-        "scope_share": {name: share(stats[f"scope_{name}"]) for name in ("front", "pair", "record")},
+        "scope_share": {name: share(stats[f"scope_{name}"]) for name in ("front", "record", "pair")},
         "fallback_rate": share(stats["decided_fallback"]),
         "ambiguity_rate": share(stats["ambiguous_physical"] + stats["ambiguous_opposing_arcs"]),
         "evidence_obs_share": {name: (stats[f"evidence_obs_{name}"] / observed if observed else 0.0) for name in SOURCE_NAMES},
-        "churn": {key: stats[key] for key in ("fronts_created", "fronts_split", "fronts_merged", "merge_conflicts", "fronts_expired", "fronts_dropped_topology", "fronts_fused")},
+        "churn": {key: stats[key] for key in ("fronts_created", "fronts_split", "fronts_merged", "conflicts_kept_apart", "fronts_expired", "fronts_dropped_topology", "fronts_fused")},
         "prepass_seconds_per_step": stats["prepass_seconds"] / stats["prepass_calls"] if stats["prepass_calls"] else 0.0,
         # Searches deform() would have run without the cache, and how many the cache answered.
         "deform_search_reuse": stats["deform_searches_reused"] / deform_total if deform_total else 0.0,
