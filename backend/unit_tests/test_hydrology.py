@@ -1,28 +1,29 @@
 import numpy as np
 import pytest
 from app import erosion, geometry, hydrology, lakes
-from app.plates import ElevationLine, PlateWithLines
 from app.world import World, generate_world, step_world
+
+from .quad_fixtures import quad_plate
+
+
+def _row(count: int) -> np.ndarray:
+    """Column offsets for a row of `count` cells centred on the face."""
+    return np.arange(count) - count // 2
 
 
 def _flow_line_plate(plate_id, theta, elevation):
-    frame = geometry.plate_frame_from_seed([1.0, 0.0, 0.0])
-    theta = np.asarray(theta, dtype=float)
-    line = ElevationLine(phi=0.0, theta=theta, elevation=np.asarray(elevation, dtype=float))
-    return PlateWithLines(plate_id=plate_id, frame=frame, crust_type="continental", lines=[line])
+    """A continental row of cells, one per entry of `theta` (only its length matters)."""
+    return quad_plate(plate_id, "continental", columns=_row(len(theta)), elevation=np.asarray(elevation, dtype=float))
 
 
 def _flow_line_plate_with_lake(plate_id, theta, elevation, lake_depth, glacier_depth=None):
-    frame = geometry.plate_frame_from_seed([1.0, 0.0, 0.0])
-    theta = np.asarray(theta, dtype=float)
     kw = {}
     if glacier_depth is not None:
         kw["glacier_depth"] = np.asarray(glacier_depth, dtype=float)
-    line = ElevationLine(
-        phi=0.0, theta=theta, elevation=np.asarray(elevation, dtype=float),
+    return quad_plate(
+        plate_id, "continental", columns=_row(len(theta)), elevation=np.asarray(elevation, dtype=float),
         lake_depth=np.asarray(lake_depth, dtype=float), **kw,
     )
-    return PlateWithLines(plate_id=plate_id, frame=frame, crust_type="continental", lines=[line])
 
 
 def _normalize(v):
@@ -380,9 +381,7 @@ def test_compute_hydrology_spilling_lake_erodes_its_outlet_from_its_own_surface_
     lake_depth = np.zeros(22)
     lake_depth[10] = 160.0
 
-    frame = geometry.plate_frame_from_seed([1.0, 0.0, 0.0])
-    line = ElevationLine(phi=0.0, theta=theta, elevation=elevation, lake_depth=lake_depth)
-    plate = PlateWithLines(plate_id=0, frame=frame, crust_type="continental", lines=[line])
+    plate = _flow_line_plate_with_lake(0, theta, elevation, lake_depth)
     world = World(seed=0, plates=[plate])
 
     precipitation_at_nodes = np.full(22, 10.0)  # small -- the breach term should dominate

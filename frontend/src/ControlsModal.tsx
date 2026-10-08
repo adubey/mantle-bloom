@@ -379,12 +379,12 @@ export default function ControlsModal({
                   checked={debugDiagnostics}
                   onChange={(e) => onDebugDiagnosticsChange(e.target.checked)}
                 />
-                Log corner-notch decisions
+                Record debug diagnostics
               </label>
               <div style={{ fontSize: 11, color: "#999", marginTop: 8 }}>
-                Records where/why each plate's boundary-gap fallback (the triple-junction /
-                diagonal-residual closer) adds or skips points, every step. Debug-only --
-                separate from the Event Console, viewable in the corner-notch log panel.
+                Books every step phase's crust and mantle-lithosphere change into the world's
+                phase budget (see python -m app.phase_budget_diagnostics). Debug-only; slows
+                stepping a little.
               </div>
             </div>
 

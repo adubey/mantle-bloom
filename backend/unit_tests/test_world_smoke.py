@@ -6,7 +6,7 @@ from app.world import generate_world, step_world
 # Coarse settings throughout -- this is a smoke test (nothing crashes, state stays finite and
 # in a sane range across several real steps), not a physics-precision test; see
 # unit_tests/test_lithosphere.py/test_torque.py/test_healpix_grid.py for those.
-_COARSE_KWARGS = dict(node_density=0.5, climate_density=0.5, fluid_density=0.5, num_plates=6, surface="lines")
+_COARSE_KWARGS = dict(node_density=0.5, climate_density=0.5, fluid_density=0.5, num_plates=6)
 
 
 @pytest.fixture(scope="module")
@@ -59,41 +59,37 @@ def test_isostasy_derived_elevation_matches_hc_hm_state_at_generation():
 
     world = generate_world(seed=11, **_COARSE_KWARGS)
     for plate in world.plates:
-        rho_c = lithosphere.crust_density(plate.crust_type)
-        for line in plate.lines:
-            if len(line) == 0:
-                continue
-            expected = lithosphere.isostatic_elevation(line.crustal_thickness_m, line.mantle_lithosphere_thickness_m, rho_c)
-            assert np.allclose(line.elevation, expected, atol=1e-6)
+        rho_c = lithosphere.node_crust_density(plate.collect("crust_type_code"), plate.crust_type)
+        expected = lithosphere.isostatic_elevation(plate.collect("crustal_thickness_m"), plate.collect("mantle_lithosphere_thickness_m"), rho_c)
+        assert np.allclose(plate.collect("elevation"), expected, atol=1e-6)
 
 
 def test_erosion_books_against_hc_and_survives_deform(stepped_world):
     """Erosion now hands its per-step rock change to Hc and moves `elevation` by the Airy
     response (erosion.apply_erosion), instead of mutating `elevation` alone. So after several
     real steps: (1) Hc has moved off its generation value on plenty of nodes -- erosion's
-    contribution wasn't silently reset by deform()/regularize; and (2) `elevation` still
+    contribution wasn't silently reset by deform(); and (2) `elevation` still
     tracks `isostatic_elevation(Hc, Hm)`, i.e. the derived-field contract that used to break
     the moment erosion ran now holds across a stepped world too."""
     from app import lithosphere
 
     world = stepped_world
     fresh = generate_world(seed=11, **_COARSE_KWARGS)
-    fresh_hc_total = sum(float(line.crustal_thickness_m.sum()) for p in fresh.plates for line in p.lines if len(line))
+    fresh_hc_total = sum(float(p.collect("crustal_thickness_m") @ p.node_areas_m2()) for p in fresh.plates if p.node_count())
 
     residuals = []
     for plate in world.plates:
-        rho_c = lithosphere.crust_density(plate.crust_type)
-        for line in plate.lines:
-            if len(line) == 0:
-                continue
-            pure_isostasy = lithosphere.isostatic_elevation(
-                line.crustal_thickness_m, line.mantle_lithosphere_thickness_m, rho_c
-            )
-            residuals.append(np.abs(line.elevation - pure_isostasy))
+        if plate.node_count() == 0:
+            continue
+        rho_c = lithosphere.node_crust_density(plate.collect("crust_type_code"), plate.crust_type)
+        pure_isostasy = lithosphere.isostatic_elevation(
+            plate.collect("crustal_thickness_m"), plate.collect("mantle_lithosphere_thickness_m"), rho_c
+        )
+        residuals.append(np.abs(plate.collect("elevation") - pure_isostasy))
     # The invariant erosion used to violate: elevation is the isostatic readout of the column
     # (bar the odd MIN_CRUSTAL_THICKNESS / elevation-bound clamp).
     assert np.median(np.concatenate(residuals)) < 5.0
 
     # Erosion genuinely thinned crust somewhere (not a no-op that deform then papered over).
-    stepped_hc_total = sum(float(line.crustal_thickness_m.sum()) for p in world.plates for line in p.lines if len(line))
+    stepped_hc_total = sum(float(p.collect("crustal_thickness_m") @ p.node_areas_m2()) for p in world.plates if p.node_count())
     assert stepped_hc_total != pytest.approx(fresh_hc_total, rel=1e-6)

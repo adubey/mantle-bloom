@@ -1,6 +1,6 @@
 """Shared boundary-motion primitives that survive the move to polygon-based deformation.
 
-Per-step boundary evolution itself now lives on `LithospherePlate.deform` (see
+Per-step boundary evolution itself now lives on `quad_tectonics.deform` (see
 lithosphere_plate.py) --
 classification is by *geometry* (did a plate's rotated territory end up overlapping a
 neighbor's, or open up unclaimed space) rather than by the *velocity* decomposition this

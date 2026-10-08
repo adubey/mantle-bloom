@@ -1,42 +1,40 @@
 """merge_split.update_overlap_tracking / plates.compute_node_overlap / the
-ElevationLine.overlap_onset_years field and its pickle backfill."""
-
-import pickle
+`overlap_onset_years` field."""
 
 import numpy as np
 
 from app import geometry, lithosphere, merge_split
-from app.elevation_lines import ElevationLine
 from app.lithosphere_plate import growth_seed_thickness
-from app.plates import PlateWithLines, compute_node_overlap, line_spacing_rad
+from app.plates import compute_node_overlap
 from app.world import World, generate_world, step_world
 
+from .quad_fixtures import block_keys, quad_plate
 
-def _plate(plate_id, seed_xyz, theta, phi=0.0, crust_type="continental", filler_phi=1.0):
+
+def _plate(plate_id, filler_column, crust_type="continental", seed_xyz=(1.0, 0.0, 0.0)):
+    """Eight cells on the face-centre row, plus two filler cells further north starting at
+    `filler_column` -- so in node order the row comes first, then the filler."""
+    keys = np.concatenate([block_keys(range(8), [0]), block_keys([filler_column, filler_column + 1], [20])])
     frame = geometry.plate_frame_from_seed(np.asarray(seed_xyz, dtype=float))
-    line = ElevationLine(phi=phi, theta=np.asarray(theta, dtype=float), elevation=np.zeros(len(theta)))
-    filler = ElevationLine(phi=filler_phi, theta=np.array([0.0, 0.1]), elevation=np.zeros(2))
-    return PlateWithLines(plate_id=plate_id, frame=frame, crust_type=crust_type, lines=[line, filler])
+    return quad_plate(plate_id, crust_type, frame=frame, keys=keys)
 
 
 def _overlapping_world(seed=1):
-    """Plate B's phi=0 row is placed right on top of plate A's phi=0 row (same frame, same
-    thetas) so every one of B's row nodes reads as overlapping A and vice versa. Their filler
-    rows sit at opposite latitudes so those 2 nodes each are NOT co-located."""
-    theta = np.linspace(-0.05, 0.05, 8)
-    a = _plate(0, [1.0, 0.0, 0.0], theta, filler_phi=1.0)
-    b = _plate(1, [1.0, 0.0, 0.0], theta, filler_phi=-1.0)
+    """Plate B's row sits exactly on top of plate A's (same frame, same cells), so every row
+    cell of each lies inside the other. Their filler cells are far apart, so those 2 cells
+    each are NOT co-located."""
+    a = _plate(0, filler_column=20)
+    b = _plate(1, filler_column=-20)
     return World(seed=seed, plates=[a, b], next_plate_id=2)
 
 
 def test_compute_node_overlap_flags_colocated_nodes_both_ways():
     world = _overlapping_world()
-    tol = 0.5 * line_spacing_rad(world.node_density)
-    overlap = compute_node_overlap(world.plates, tol)
+    overlap = compute_node_overlap(world.plates)
 
     for pid, other in ((0, 1), (1, 0)):
         info = overlap[pid]
-        # The 8 phi=0 nodes overlap; the 2 filler nodes at phi=1 don't.
+        # The 8 row cells overlap; the 2 filler cells don't.
         assert info["overlap_mask"][:8].all()
         assert not info["overlap_mask"][8:].any()
         assert info["by_partner"] == {other: 8}
@@ -47,10 +45,8 @@ def test_compute_node_overlap_flags_colocated_nodes_both_ways():
 def test_compute_node_overlap_cover_count_counts_every_plate_on_a_node():
     # A third plate stacked on the same row: each row node now sits on two other plates.
     world = _overlapping_world()
-    world.plates.append(
-        _plate(2, [1.0, 0.0, 0.0], np.linspace(-0.05, 0.05, 8), crust_type="oceanic", filler_phi=0.5)
-    )
-    overlap = compute_node_overlap(world.plates, 0.5 * line_spacing_rad(world.node_density))
+    world.plates.append(_plate(2, filler_column=0, crust_type="oceanic"))
+    overlap = compute_node_overlap(world.plates)
 
     for pid in (0, 1, 2):
         np.testing.assert_array_equal(overlap[pid]["cover_count"], [2] * 8 + [0, 0])
@@ -73,22 +69,9 @@ def test_update_overlap_tracking_stamps_once_then_clears():
     assert np.all(world.plates[0].collect("overlap_onset_years")[:8] == 5_000_000.0)
 
     # Move B off A entirely -> the stamp clears back to 0.
-    world.plates[1] = _plate(1, [-1.0, 0.0, 0.0], np.linspace(-0.05, 0.05, 8))
+    world.plates[1] = _plate(1, filler_column=-20, seed_xyz=(-1.0, 0.0, 0.0))
     merge_split.update_overlap_tracking(world, 100_000.0)
     assert np.all(world.plates[0].collect("overlap_onset_years") == 0.0)
-
-
-def test_overlap_onset_years_survives_masked_and_pickle_backfill():
-    line = ElevationLine(phi=0.0, theta=np.arange(5.0), elevation=np.zeros(5))
-    line.set_fields(overlap_onset_years=np.array([0.0, 1.0, 2.0, 3.0, 4.0]))
-    kept = line.masked(np.array([1, 3]))
-    assert list(kept.overlap_onset_years) == [1.0, 3.0]
-
-    # Simulate a save written before the field existed: drop the backing array, round-trip.
-    stale = pickle.loads(pickle.dumps(line))
-    del stale.__dict__["_overlap_onset_years"]
-    restored = pickle.loads(pickle.dumps(stale))
-    assert list(restored.overlap_onset_years) == [0.0] * 5
 
 
 def test_growth_seed_thickness_is_oceanic_and_submerged():

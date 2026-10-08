@@ -24,11 +24,7 @@ MAX_EVENT_LOG_LENGTH = 200
 # past MAX_EVENT_LOG_LENGTH since removal is per-node, not per-event -- see
 # World.record_removed_points and the "Added/Removed Points" (`nodeAge`) debug render view.
 MAX_REMOVED_POINTS_LOG = 20_000
-# Bounds World.corner_notch_log -- one entry per plate per step while World.debug_diagnostics
-# is on, so a longer debugging session can still build up a lot of entries. More generous than
-# MAX_EVENT_LOG_LENGTH since this is meant for an active debugging session (see
-# World.log_corner_notch), not indefinite retention.
-MAX_CORNER_NOTCH_LOG_LENGTH = 2_000
+
 
 # The dimensionless geomorphic-budget tuning knobs on World (see the field group below),
 # named once here so main.py's /world/controls route can validate/apply/echo them without
@@ -91,11 +87,11 @@ class World:
     # before this field existed still loads (reading None, no override) same as any other
     # field added here, see persistence.py.
     premade_world_id: str | None = None
-    # Another fixed per-world property, set once at generation (see plates.generate_plates'
+    # Another fixed per-world property, set once at generation (see lithosphere_plate.generate_plates'
     # own node_density parameter) and read for the rest of this world's life by every module
-    # that builds new elevation-line nodes or derives a distance/count threshold from
-    # elevation_lines.TARGET_LINE_SPACING_RAD (elevation_lines.py, plates.py's deform(),
-    # merge_split.py -- see plates.line_spacing_rad's own docstring for why each of those
+    # that builds new terrain cells or derives a distance/count threshold from
+    # elevation_lines.TARGET_LINE_SPACING_RAD (quad_tectonics.py's deform(), gaps.py,
+    # merge_split.py -- see elevation_lines.line_spacing_rad's own docstring for why each of those
     # needs this rather than reading the bare module constant), so a world generated at a
     # non-default density stays self-consistent through deforming/merging/splitting, not
     # just at the moment it's generated.
@@ -154,7 +150,7 @@ class World:
     # field -> backfilled on load (see persistence._backfill_added_fields).
     gap_tracks: list = field(default_factory=list)
     # Cross-step memory for lateral magma transport (GitHub issue #205, magma_transport.py):
-    # exported convergent-boundary melt banked here every step (by LithospherePlate.deform())
+    # exported convergent-boundary melt banked here every step (by quad_tectonics.deform)
     # and drained -- fully or partially, see MagmaParcel.unplaced_cycles -- every
     # magma_transport.MAGMA_TRANSPORT_INTERVAL_STEPS'th step's magma_transport.
     # run_magma_transport call below. A `default_factory` field -> backfilled on load (see
@@ -168,7 +164,7 @@ class World:
     magma_transport_banked_years: float = 0.0
     # Cross-step memory for the "Added/Removed Points" debug view's removed-node half (the
     # added half needs no cross-step state -- it reads straight off each live node's own
-    # ElevationLine.node_created_years). A node vanishes from every plate's own node cloud the
+    # the `node_created_years` field). A node vanishes from every plate's own node cloud the
     # instant it's removed (retreat, interior-subduction carve, merge absorption, defrag
     # stripping, whole-plate subduction -- see World.record_removed_points' own call sites),
     # so unlike every other per-node diagnostic field this can't ride along on the node itself
@@ -177,28 +173,16 @@ class World:
     # MAX_REMOVED_POINTS_LOG's own comment. `default_factory` -> backfilled on load (see
     # persistence._backfill_added_fields).
     removed_points_log: list[tuple[np.ndarray, float, int]] = field(default_factory=list)
-    # Gate for the verbose, structured `_fill_corner_notch_frontier` decision log below -- off by
-    # default (a plain-scalar field, so an old pickle falls through to False with no
+    # Gate for the debug-only per-step diagnostics (the phase budget below and its ledgers) --
+    # off by default (a plain-scalar field, so an old pickle falls through to False with no
     # persistence backfill needed), on by default for a "Debugging Worlds" tab world, and
     # toggleable for any other loaded save via POST /world/controls. Kept as an explicit flag
-    # rather than always logging: this runs once per plate per step, and the codebase's own
-    # precedent (lakes.summarize_lake_events, see docs/debugging.md) is that this volume of
-    # per-step diagnostic detail does not belong in the always-on Event Console -- see
-    # corner_notch_log's own comment for where it goes instead.
+    # rather than always recording: this runs once per plate per phase per step.
     debug_diagnostics: bool = False
-    # Verbose, structured decision log for `LithospherePlate._fill_corner_notch_frontier` (see
-    # World.log_corner_notch) -- populated only while `debug_diagnostics` is True. Deliberately
-    # separate from `events` (the always-on Event Console): this can fire once per plate per
-    # step, far higher volume than that log is meant to carry, so it gets its own capped buffer
-    # and its own `GET /world/corner_notch_log` endpoint / panel instead of ever going through
-    # `log_event`. Capped by count like `events`, just a more generous ceiling since it's
-    # meant for an active debugging session, not indefinite retention. A `default_factory`
-    # field -> backfilled on load (see persistence._backfill_added_fields).
-    corner_notch_log: list[dict] = field(default_factory=list)
     # GitHub issue #216 (long-run Hc/Hm decline): cumulative per-phase Hc/Hm budget, populated
     # only while `debug_diagnostics` is True -- see phase_budget.py's module docstring for the
     # schema and `phase_budget.record`'s callers (lithosphere_plate.py, merge_split.py,
-    # erosion.py) for which mechanisms feed it. Unlike corner_notch_log this is a running total,
+    # erosion.py) for which mechanisms feed it. Unlike `events` this is a running total,
     # not a capped event log -- reset it (`reset_phase_budget`) before stepping forward the
     # interval you want to measure. A `default_factory` field -> backfilled on load (see
     # persistence._backfill_added_fields).
@@ -254,11 +238,11 @@ class World:
     #     lines. Faults spawn boundary-hugging (see faults.SPAWN_PLACE_*), so the collision
     #     zone still deforms -- just as a family of fault-tracking ridges rather than one
     #     smooth swell.
-    #   "boundary" -- LithospherePlate.deform's smooth distance-band thickening at the polygon
+    #   "boundary" -- quad_tectonics.deform's smooth distance-band thickening at the polygon
     #     edge, exactly as before the faults rework (bit-identical to a pre-field pickle
     #     stepped in "boundary" mode).
     #   "both" -- boundary bands at full strength *and* the scaled-up fault relief layer.
-    # See faults.FAULT_DEFORMATION_MODES and LithospherePlate.deform.
+    # See faults.FAULT_DEFORMATION_MODES and quad_tectonics.deform.
     fault_deformation_mode: str = "fault"
     # Which structure `render_image._node_cloud_and_tree` resamples the node cloud through --
     # live-adjustable via POST /world/controls, but backend/API-only for now (no Controls-panel
@@ -279,10 +263,10 @@ class World:
     # only in the frontend's own React state (built one fetch at a time from the stateless
     # GET /world/stats -- see stats.py's own module docstring), which meant a Save/Load
     # round-trip silently dropped the whole run's history even though every other per-step
-    # record (events, corner_notch_log) already survives one. Recorded here instead so it
+    # record (events) already survives one. Recorded here instead so it
     # rides along in the pickle like everything else on World, and GET /world/stats_history
     # (main.py) hands the *full* series back after a load. Deliberately uncapped, unlike
-    # events/corner_notch_log -- a history chart needs the whole run, not just recent
+    # events -- a history chart needs the whole run, not just recent
     # activity, and mirrors what the frontend already kept unbounded client-side before this.
     # `default_factory` field -> backfilled on load (see persistence._backfill_added_fields).
     stats_history: list[dict] = field(default_factory=list)
@@ -409,7 +393,7 @@ class World:
     ocean_water_volume_m3: float | None = None
     # Set once when a line-backed save is converted to sparse quads (legacy_conversion.py,
     # issue #248): `ConversionReport.summary()`, so a converted world says where it came from
-    # and what the conversion changed. `None` for a world generated as either surface. A plain
+    # and what the conversion changed. `None` for a generated world. A plain
     # default an old pickle falls through to, so no persistence backfill is needed.
     surface_conversion: dict | None = None
     solar_multiplier: float = 1.0
@@ -437,7 +421,7 @@ class World:
     # volcanism processes whose individual hard-coded rates can't be re-tuned for one seed
     # without regressing another -- these let the user rebalance a *live* world and watch
     # the result. Read directly off `world` by erosion.apply_erosion (the *_erosion_/
-    # *_deposition_ knobs), lithosphere_plate.LithospherePlate.deform (the collision_uplift_*
+    # *_deposition_ knobs), quad_tectonics.deform (the collision_uplift_*
     # knobs, via rheology.apply_convergent_deformation's `strength`) and
     # volcanism.apply_volcanic_activity (volcanism_multiplier) -- none of those need a
     # signature change since they already take `world`. Plain-scalar defaults, so an older
@@ -557,7 +541,7 @@ class World:
         defrag stripping, or the whole plate being removed as defunct). A no-op for an empty
         array, so every call site can call this unconditionally rather than guarding on "did
         anything actually get removed this call." See removed_points_log's own comment for why
-        this can't just be another ElevationLine field."""
+        this can't just be another surface field."""
         if len(points_xyz) == 0:
             return
         for point in points_xyz:
@@ -565,21 +549,6 @@ class World:
         overflow = len(self.removed_points_log) - MAX_REMOVED_POINTS_LOG
         if overflow > 0:
             del self.removed_points_log[:overflow]
-
-    def log_corner_notch(self, entry: dict) -> None:
-        """Append one structured decision record from `_fill_corner_notch_frontier` -- a no-op unless
-        `debug_diagnostics` is on, so a caller can build `entry` unconditionally without
-        worrying about cost on an ordinary (non-debugging) world; see this method's own
-        callers in lithosphere_plate.py for the exact guard-then-build pattern that keeps this
-        genuinely free when diagnostics are off. Stamps `elapsed_years` onto the entry itself
-        so a caller doesn't need to repeat it."""
-        if not self.debug_diagnostics:
-            return
-        entry["elapsed_years"] = self.elapsed_years
-        self.corner_notch_log.append(entry)
-        overflow = len(self.corner_notch_log) - MAX_CORNER_NOTCH_LOG_LENGTH
-        if overflow > 0:
-            del self.corner_notch_log[:overflow]
 
     def reset_phase_budget(self) -> None:
         """Clear `phase_budget` (see its own field comment) so the next stretch of stepping
@@ -642,7 +611,6 @@ def generate_world(
     voronoi_points: int | None = None,
     sketch: worldsketch.SketchMasks | None = None,
     premade_world_id: str | None = None,
-    surface: str = "quad",
 ) -> World:
     """`num_plates` is optional -- see lithosphere_plate.generate_plates for why: the world
     tiles itself into a plausible number of plates rather than requiring the caller to pick
@@ -681,8 +649,7 @@ def generate_world(
     ones fit to reproduce known (or, for Pangaea, directionally-approximated) real plate
     motion, for `"earth"`/`"pangaea"` specifically -- see real_plates.py's
     `fit_mantle_centers`. `"got"` has no real-world motion to fit to and keeps the ordinary
-    random centers. `surface` (`"lines"` or `"quad"`) picks the plates' terrain
-    representation -- see lithosphere_plate.generate_plates."""
+    random centers."""
     world = None
     for message in generate_world_progress(
         seed,
@@ -699,7 +666,6 @@ def generate_world(
         voronoi_points=voronoi_points,
         sketch=sketch,
         premade_world_id=premade_world_id,
-        surface=surface,
     ):
         if message[0] == "done":
             world = message[1]
@@ -721,7 +687,6 @@ def generate_world_progress(
     voronoi_points: int | None = None,
     sketch: worldsketch.SketchMasks | None = None,
     premade_world_id: str | None = None,
-    surface: str = "quad",
 ):
     """Generator form of `generate_world`, driving the exact same work but yielding
     `("progress", fraction)` at each of its three natural phase boundaries -- plate/site
@@ -744,7 +709,6 @@ def generate_world_progress(
         voronoi_points=voronoi_points,
         sketch=sketch,
         premade_world_id=premade_world_id,
-        surface=surface,
     )
     yield ("progress", 1 / 3)
 
@@ -874,8 +838,7 @@ def step_world_progress(world: World, years: float):
     Plate movement (skippable via World.simulate_plate_movement) is two per-plate passes:
     `Plate.shift(world, years)` for every plate (integrate the torque balance and rotate
     rigidly), then `deform(world, other_plates, years, D)` for every plate in a freshly
-    randomized order each turn (Mohr-Coulomb yield/isostasy -- see lithosphere_plate.py for
-    line-backed plates and quad_tectonics.py for quad-surface ones).
+    randomized order each turn (Mohr-Coulomb yield/isostasy -- see quad_tectonics.py).
     Randomizing the processing order each turn is what keeps two neighbors from both claiming
     the same contested/unclaimed space in the same turn.
 
@@ -936,7 +899,7 @@ def step_world_progress(world: World, years: float):
         # docstring above), but reproducible given the same seed and step history.
         np.random.default_rng((world.seed, round(world.elapsed_years))).shuffle(order)
         # deform() books its own rifting, consumption and delamination at each site; any
-        # cratonic volume still vanishing (line plates' row retreat) lands in unattributed.
+        # cratonic volume still vanishing lands in unattributed.
         audit = cratons.PhaseAudit(world)
         for plate in order:
             others = [p for p in world.plates if p.plate_id != plate.plate_id]
@@ -958,7 +921,7 @@ def step_world_progress(world: World, years: float):
         world.magma_transport_banked_years += years
     world.elapsed_years += years
     if world.simulate_plate_movement:
-        # Topology: merges, splits and relattices conserve craton volume by remap; a plate or
+        # Topology: merges and splits conserve craton volume by remap; a plate or
         # stranded fragment removed outright takes its craton with it (failed rifts book their
         # own thinning, see merge_split.maybe_split_plate).
         audit = cratons.PhaseAudit(world)
@@ -970,41 +933,38 @@ def step_world_progress(world: World, years: float):
         audit.settle("unattributed_m3", "topology_removed_m3")
         # Re-home faults onto surviving plates after any merge/split, drop subducted ones.
         faults.reconcile_faults(world)
-        # Stamp/clear ElevationLine.overlap_onset_years and advance World.overlap_progress
+        # Stamp/clear the `overlap_onset_years` field and advance World.overlap_progress
         # against this step's final geometry (see merge_split.update_overlap_tracking /
         # docs/debugging.md).
         merge_split.update_overlap_tracking(world, years)
-        # Whole-sphere coverage maintenance: spawn new oceanic crust into any region no plate
-        # has reached in a long time (see gaps.py) -- e.g. ocean floor a fully-subducted
-        # plate vacated with no neighbour left nearby to grow into it. Gated to the same
-        # cadence as defragment_plates above (a whole-world pass, not needed every step) on
-        # line worlds; every step on quad worlds -- see gaps.gap_fill_due.
-        if gaps.gap_fill_due(world):
-            if world.debug_diagnostics:
-                spacing_rad = line_spacing_rad(world.node_density)
-                before_gap_fill = {p.plate_id: phase_budget.snapshot(p, spacing_rad) for p in world.plates}
-            for message in gaps.fill_gaps_by_growing_neighbours(world):
-                world.log_event(message)
-            if world.debug_diagnostics:
-                for plate in world.plates:
-                    after = phase_budget.snapshot(plate, spacing_rad)
-                    before = before_gap_fill.get(plate.plate_id)
-                    if before is None:
-                        empty = np.array([])
-                        before = phase_budget.Snapshot(
-                            empty,
-                            empty,
-                            np.array([], dtype=after.codes.dtype),
-                            empty,
-                            empty,
-                            np.empty((0, after.node_ids.shape[1]), dtype=after.node_ids.dtype),
-                            np.array([], dtype=bool),
-                        )
-                    phase_budget.record_snapshots(world, plate, "gap_fill", before, after)
+        # Whole-sphere coverage maintenance, every step: grow adjacent plates into, or spawn
+        # new crust over, any region no plate covers (see gaps.py) -- e.g. ocean floor a
+        # fully-subducted plate vacated, or seams boundary advance leaves between plates.
+        if world.debug_diagnostics:
+            spacing_rad = line_spacing_rad(world.node_density)
+            before_gap_fill = {p.plate_id: phase_budget.snapshot(p, spacing_rad) for p in world.plates}
+        for message in gaps.fill_gaps_by_growing_neighbours(world):
+            world.log_event(message)
+        if world.debug_diagnostics:
+            for plate in world.plates:
+                after = phase_budget.snapshot(plate, spacing_rad)
+                before = before_gap_fill.get(plate.plate_id)
+                if before is None:
+                    empty = np.array([])
+                    before = phase_budget.Snapshot(
+                        empty,
+                        empty,
+                        np.array([], dtype=after.codes.dtype),
+                        empty,
+                        empty,
+                        np.empty((0, after.node_ids.shape[1]), dtype=after.node_ids.dtype),
+                        np.array([], dtype=bool),
+                    )
+                phase_budget.record_snapshots(world, plate, "gap_fill", before, after)
         # Gap-age diagnostic (see docs/debugging.md's overlapAge section): reconciles
         # world.gap_tracks against this step's uncovered-lattice clusters -- the same
-        # whole-sphere sweep as fill_gaps_by_growing_neighbours, kept on the interval on every
-        # surface since nothing in the physics reads it -- see gaps.reconcile_gap_tracks.
+        # whole-sphere sweep as fill_gaps_by_growing_neighbours, kept on an interval since
+        # nothing in the physics reads it -- see gaps.reconcile_gap_tracks.
         if world.steps_taken % gaps.GAP_FILL_INTERVAL_STEPS == 0:
             gaps.reconcile_gap_tracks(world)
         # Lateral magma transport (GitHub issue #205, magma_transport.py): another whole-sphere

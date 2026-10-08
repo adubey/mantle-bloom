@@ -1,8 +1,8 @@
 """Sparse plate-local quad patches for issue #228's quad-surface migration.
 
-`PlateWithSparseQuadPatch` is a second implementation of the `PlateSurface` contract
-(plates.py) alongside `PlateWithLines`. Its territory is a sparse set of active cells on an
-equiangular cube-sphere lattice laid out in the plate's own local frame:
+`PlateWithSparseQuadPatch` implements the `PlateSurface` contract (plates.py), and since #251
+retired the line surface it is the only one. Its territory is a sparse set of active cells on
+an equiangular cube-sphere lattice laid out in the plate's own local frame:
 
 - Six faces, each an `n x n` grid of cells whose edges are great-circle arcs (lines of
   constant equiangular coordinate on a cube face are planes through the origin). Face 0 is
@@ -60,7 +60,7 @@ PLANET_RADIUS_M = PLANET_RADIUS_KM * 1000.0
 # (u x v = normal), so counter-clockwise in a face's (u, v) grid is counter-clockwise seen
 # from outside the sphere, and boundary loops come out with outer boundaries CCW and holes
 # CW. Face 0 is centred on local +x (the plate's seed); its u/v axes are local east/north
-# there, matching `PlateWithLines`' (theta, phi) orientation.
+# there, matching the plate-local (theta, phi) orientation.
 _FACE_AXES = np.array(
     [
         [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
@@ -99,9 +99,9 @@ _EDGE_CORNERS = (((0, 0), (1, 0)), ((1, 0), (1, 1)), ((1, 1), (0, 1)), ((0, 1), 
 
 
 def cells_per_face_edge(spacing_rad: float) -> int:
-    """Cells along one cube-face edge for a lattice whose *mean* cell area matches a line
-    node's nominal `spacing_rad ** 2` footprint, so a quad world and a line world generated
-    at the same `node_density` carry about the same number of nodes."""
+    """Cells along one cube-face edge for a lattice whose *mean* cell area matches a node's
+    nominal `spacing_rad ** 2` footprint (`lithosphere.node_area_m2`), so `node_density` keeps
+    the node count it has always meant."""
     return max(1, int(round(np.sqrt(4.0 * np.pi / 6.0) / spacing_rad)))
 
 
@@ -286,7 +286,7 @@ def _stitch_xyz_loops(loops: list[np.ndarray]) -> np.ndarray:
 class ElevationPointInPatch:
     """One active cell of a `PlateWithSparseQuadPatch`, as a live `ElevationPoint` view --
     `set_*` writes straight into the plate's field arrays. Valid until the plate's topology
-    changes, the same lifetime `ElevationPointOnLine` has against its line."""
+    changes."""
 
     def __init__(self, plate: "PlateWithSparseQuadPatch", index: int) -> None:
         self._plate = plate
@@ -307,8 +307,6 @@ class PlateWithSparseQuadPatch(Plate):
     docstring. It can be generated, queried, rendered, remeshed, rigidly rotated, partitioned,
     deformed (quad_tectonics.py), merged with another quad plate (quad_merge.py), and saved."""
 
-    territory_is_exact = True
-    merge_conserves_fields = True
 
     # Derived state rebuilt on demand from (`_n`, `_keys`, `_frame`); never pickled.
     _TOPOLOGY_CACHES = (
@@ -374,8 +372,7 @@ class PlateWithSparseQuadPatch(Plate):
         **kwargs,
     ) -> "PlateWithSparseQuadPatch":
         """Sweep this plate's whole local lattice and keep every cell whose centre
-        `is_owned(world_pts)` claims -- the quad analogue of
-        `elevation_lines.build_lines_from_lattice`, driven by the same ownership test."""
+        `is_owned(world_pts)` claims."""
         n = cells_per_face_edge(spacing_rad)
         jj, ii = np.meshgrid(np.arange(n), np.arange(n), indexing="ij")
         ii, jj = ii.reshape(-1), jj.reshape(-1)
@@ -1006,12 +1003,9 @@ class PlateWithSparseQuadPatch(Plate):
 
         quad_tectonics.deform(self, world, other_plates, years, max_distance)
 
-    def merge_with(
-        self, other: "PlateWithSparseQuadPatch", spacing_rad: float, coverage_radius_rad: float, other_points_xyz: np.ndarray
-    ) -> None:
-        """Absorb `other` onto this plate's lattice by exact-area remap -- see quad_merge.py.
-        `spacing_rad` and `coverage_radius_rad` are the line merge's resampling parameters;
-        cells need neither."""
+    def merge_with(self, other: "PlateWithSparseQuadPatch", other_points_xyz: np.ndarray) -> None:
+        """Absorb `other` onto this plate's lattice by exact-area remap, keeping clear of
+        `other_points_xyz` (every other plate's nodes) -- see quad_merge.py."""
         from . import quad_merge
 
         quad_merge.merge(self, other, other_points_xyz)
@@ -1020,7 +1014,7 @@ class PlateWithSparseQuadPatch(Plate):
         """Nominal crust type for a newly partitioned patch.
 
         Explicit per-cell composition wins by area; inherited cells retain the parent's
-        nominal type. Ties deliberately keep the parent type, matching the line surface.
+        nominal type. Ties deliberately keep the parent type.
         """
         codes = self.collect("crust_type_code")[mask]
         areas = self.node_areas_m2()[mask]
@@ -1092,7 +1086,7 @@ class PlateWithSparseQuadPatch(Plate):
         # A tectonic split creates two fresh plates for the split cooldown. The shared
         # partition helper preserves the first fragment's age for defragmentation, where the
         # largest surviving piece keeps the parent's identity and history, so override that
-        # policy here just as LithospherePlate.split does for both line-backed daughters.
+        # policy here: both daughters start their split cooldown fresh.
         result[0].reset_age()
         result[1].reset_age()
         return result[0], result[1]

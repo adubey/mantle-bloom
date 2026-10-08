@@ -26,9 +26,9 @@ always is), whereas liquid water's flow_target is deliberately forced shut there
 
 **Persistence.** A grid-based approach where plates move relative to fixed cells would need a
 persistent field like channel_depth to be deliberately advected (semi-Lagrangian, every step)
-to keep following the crust -- mantle-bloom's elevation-line nodes sidestep that entirely,
-since they already rotate exactly with their own plate. lake_depth and glacier_depth, stored
-as ordinary parallel arrays on ElevationLine right alongside elevation itself (see plates.py),
+to keep following the crust -- mantle-bloom's plate-local surface nodes sidestep that
+entirely, since they already rotate exactly with their own plate. lake_depth and glacier_depth,
+stored as ordinary surface fields right alongside elevation itself (see surface_fields.py),
 get that same "just works" persistence for free: no advection scheme needed, since rotating a
 plate never touches those arrays at all. flow_target/flow_accum/river_speed are deliberately
 *not* persisted -- they're recomputed fresh every step, from that step's real climate, purely
@@ -446,7 +446,7 @@ def _build_neighbor_graph(points: np.ndarray, world: "World | None" = None) -> n
     # of rebuilding an equivalent one from scratch -- see that function's own docstring.
     # `world=None` (connected_ocean_mask's own fallback build, and direct unit-test calls)
     # keeps the old balanced_tree=False/compact_nodes=False build -- same build-once/
-    # query-once tradeoff plates.PlateWithLines.deform's own per-plate tree uses: built fresh
+    # query-once tradeoff as a single-use per-plate tree: built fresh
     # and queried exactly once (one batched k-NN query over every node at once). Either way,
     # an exact k-nearest-neighbor search -- results unchanged.
     tree = (

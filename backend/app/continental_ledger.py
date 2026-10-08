@@ -86,7 +86,7 @@ def empty_ledger() -> ContinentalMaterialLedger:
 
 
 def ensure_initialized(world: "World") -> None:
-    """Backfill old saves and seed untracked line or quad surfaces."""
+    """Backfill old saves and seed untracked surfaces."""
     ledger_is_new = not hasattr(world, "continental_material_ledger") or not world.continental_material_ledger
     if not hasattr(world, "continental_material_ledger"):
         world.continental_material_ledger = {}

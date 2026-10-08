@@ -1856,7 +1856,7 @@ def apply_erosion(
     channel_width (from discharge alone -- larger flows carve a wider channel); lake_depth/
     glacier_depth/silt_depth are hydrology.py's own state transitions, read directly from
     World.hydrology_cache. Keeps each column's mobile cover (see MOBILE_COVER_*): removals take
-    it first and everything that settles adds to it. All persistent, see plates.ElevationLine.
+    it first and everything that settles adds to it. All persistent surface fields.
     Mutates world.plates'
     line elevations in place; never touches node positions or line topology, so this can't
     interact with line regularization or point reassignment at all (both of those are
@@ -1983,8 +1983,8 @@ def apply_erosion(
     # Issue #275: every removal below is also capped at its column's Hc headroom above
     # lithosphere.MIN_CRUSTAL_THICKNESS_M *before* anything is routed. The Hc floor clip at the
     # write-back used to be the only guard, so a column eroded to the floor still handed its
-    # full computed load downstream -- rock its source never gave up. Nodes with no column (v1
-    # PlateWithLines, Hc 0) keep the bare elevation-only caps.
+    # full computed load downstream -- rock its source never gave up. Nodes with no column
+    # (Hc 0) keep the bare elevation-only caps.
     prior_hc = collect_all_crustal_thickness(plates_in_order)
     prior_hm = collect_all_mantle_lithosphere_thickness(plates_in_order)
     has_column = prior_hc > 0.0
@@ -2398,8 +2398,8 @@ def apply_erosion(
     # ~1/6 of subaerial erosion, ~1/4 of submarine, survives as a surface drop) and a
     # sediment pile subsides under its own load, the same delta idiom deform() already uses
     # for tectonic Hc/Hm changes. `elevation` stays a faithful readout of the column, so
-    # deform()'s mechanism stays exact. v1 PlateWithLines carries no Hc (all-zero) -- those
-    # nodes keep the bare 1:1 response.
+    # deform()'s mechanism stays exact. Nodes with no column (Hc 0) keep the bare 1:1
+    # response.
     rho_c_per_node = np.concatenate(
         [lithosphere.node_crust_density(p.collect("crust_type_code"), p.crust_type) for p in plates_in_order]
     )

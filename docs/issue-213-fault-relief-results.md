@@ -2,7 +2,7 @@
 
 ![Mean, 95th-percentile, and capped Hc/Hm through 320 My](img/issue-213/hc-hm-sweep.png)
 
-The [paired sweep](../bin/debug/compare_fault_relief.py) starts 30 fresh worlds with the
+The paired sweep (`bin/debug/compare_fault_relief.py`) started 30 fresh worlds with the
 same seed under two fault-relief implementations. `old_additive` reproduces the
 pre-#213 pass, including its Hc-backed but unbalanced elevation increments.
 `conserved` uses the local transfer pass in this change. Both use node density 1,
@@ -27,7 +27,6 @@ continuation in the issue's initial report.
 
 The [summary](data/issue-213-hc-hm-summary.json) has every checkpoint's paired
 mean and standard error. The [raw records](data/issue-213-hc-hm-raw.jsonl) allow
-the aggregates to be recomputed. Run the sweep with
-`backend/.venv/bin/python bin/debug/compare_fault_relief.py --workers 4`; the
-output is resumable. The [plot script](../bin/debug/plot_fault_relief.py) renders
-the chart with Pillow.
+the aggregates to be recomputed. The sweep and its plot script
+(`bin/debug/plot_fault_relief.py`) were removed in #251: the `old_additive` arm
+reimplemented the pre-#213 pass on the retired line surface, so it can't be rerun.

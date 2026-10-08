@@ -51,9 +51,9 @@ Browser then fetches, for whichever projection/map view/resolution/rotation is s
 Time-stepping:
   POST /world/step  { years }
   → world.step_world(world, years): every plate refits its Euler pole and rotates
-    (`LithospherePlate.shift`), then every plate reconciles its actual footprint against the
-    sphere minus every other live plate's own territory (`LithospherePlate.deform`, in a
-    freshly randomized order each turn) -- collision/subduction uplift or trench elevation where a plate's
+    (`Plate.shift`), then every plate reconciles its actual footprint against the
+    sphere minus every other live plate's own territory (`Plate.deform` -- quad_tectonics.py --
+    in a freshly randomized order each turn) -- collision/subduction uplift or trench elevation where a plate's
     rotated territory now overlaps a neighbor's, rift fill (or, occasionally, a fresh
     volcano) where it opens unclaimed space, transform uplift where it's merely close --
     see simulation-model.md#boundary-evolution. Then topology changes (at most one collision
@@ -64,12 +64,9 @@ Time-stepping:
     simulation-model.md#glaciation), and roll each active volcano's own eruption chance (every
     step -- see simulation-model.md#volcanism). (Submerged crust's depth is set directly by
     isostasy, not a per-step relaxation; `bathymetry.py` now only grades continent/ocean
-    margins once, at generation -- see simulation-model.md#bathymetry.) Line regularization and "claim adjacent
-    territory" (a plate growing toward its own pole, or reclaiming ground a subducted
-    neighbor vacated) now happen inline inside every `deform()` call rather than on a
-    periodic cadence -- the old separate gap-filling and boundary-point-reassignment passes
-    are gone entirely (see simulation-model.md#gap-filling and
-    simulation-model.md#reassignment)
+    margins once, at generation -- see simulation-model.md#bathymetry.) Boundary advance into
+    open ground happens inside every `deform()` call; whatever it leaves uncovered is filled
+    by `gaps.py` every step (see simulation-model.md#gap-filling)
   → browser re-fetches /world/render, and appends any new `events` to the console
 
 Every POST /world/step call also advances the atmospheric wind solve -- not a separate
@@ -154,10 +151,6 @@ simpler, matching the v1 "elevation view only" scope. A `World` holds:
   the world.
 - `elapsed_years`, `next_plate_id` (a monotonically increasing counter so a plate created by
   a split never collides with an existing id, even after other plates have been removed).
-  Line regularization and gap-filling no longer run on a periodic cadence (both happen
-  inline inside every `LithospherePlate.deform()` call now -- see
-  simulation-model.md#boundary-evolution), so the counters that used to gate them
-  (`steps_since_regularize`, `steps_since_reassign`) are gone.
 - `steps_taken` -- a plain `step_world` call count (not a year count -- step sizes vary and
   the thing it gates is about accumulated topology drift, not elapsed time). Drives the
   cadence of `merge_split.py`'s geometric plate defragmentation pass
@@ -205,30 +198,27 @@ Each `Plate` (`backend/app/plates.py`) is:
   Rotating a plate is one matrix multiply; nothing else about the plate needs to change.
 - `omega` -- current angular velocity (Euler pole direction x rate), refit from the mantle
   flow field every step.
-- `lines: list[ElevationLine]` -- the actual carried terrain, each a set of elevation
-  samples at fixed plate-local longitudes along one plate-local latitude. This is the
+- the actual carried terrain: a sparse set of active cells on an equiangular cube-sphere
+  lattice in the plate's own local frame (`PlateWithSparseQuadPatch`,
+  `backend/app/sparse_quad_patch.py`), one terrain node per cell at its centre. This is the
   central data structure; see
-  [simulation-model.md#plate-local-frames](simulation-model.md#plate-local-frames). Each
-  line also carries `channel_depth`/`channel_width`/`lake_depth`/`silt_depth`/`glacier_depth`
-  (persistent, land-only -- see simulation-model.md#hydrology and
-  simulation-model.md#glaciation) and `is_volcano`/`volcano_active_years_remaining`
-  (persistent -- see simulation-model.md#volcanism) as ordinary parallel arrays right
-  alongside `elevation` itself, so they rotate with the plate for free, no advection scheme
-  needed. Any such field should be threaded via `dataclasses.replace(line, ...)` at a call
-  site that only changes elevation/a value or two (not `theta`), rather than an explicit
-  field-by-field reconstruction -- see `plates.ElevationLine`'s own docstring for a real bug
-  that pattern caused (`is_volcano` silently wiped every step at two call sites that predated
-  it).
+  [simulation-model.md#plate-local-frames](simulation-model.md#plate-local-frames). Every
+  per-node field in `surface_fields.SURFACE_FIELDS` -- `elevation`, crustal and
+  mantle-lithosphere thickness, `channel_depth`/`channel_width`/`lake_depth`/`silt_depth`/
+  `glacier_depth` (persistent, land-only -- see simulation-model.md#hydrology and
+  simulation-model.md#glaciation), `is_volcano`/`volcano_active_years_remaining`
+  (persistent -- see simulation-model.md#volcanism) and the provenance fields -- is one
+  parallel array over the plate's cells, so it rotates with the plate for free, no advection
+  scheme needed. Read fields with `Plate.collect` / `Plate.surface_nodes` and write them with
+  `Plate.set_fields_on_plate`; a cell edit (insert, remove, refine, merge) carries every
+  field through the cell's remap class, so a new field needs only its `SURFACE_FIELDS` entry.
 
 A plate has no separately-tracked boundary polygon at all -- an earlier version kept one
 (`boundary_local`, frozen at generation and rotated rigidly thereafter) purely for the
 "Plates" map view's outline overlay, and it visibly drifted out of sync with the real
-territory after enough stepping (looking like plates overlapping, since it was never
-touched by `deform()`, merge, or split). `Plate.outline_world()` replaces it: every render
-(and, now, every `deform()` call, which uses this same outline to decide what's contested vs.
-open territory), the outline is traced live from each line's current two endpoints -- the
-actual edge `deform()` maintains -- so it can never be stale (see
-[simulation-model.md#boundary-evolution](simulation-model.md#boundary-evolution)).
+territory after enough stepping. `Plate.outline_world()` replaces it: the outline is traced
+live from the plate's boundary cells, cached per topology/geometry revision, so it can never
+be stale (see [simulation-model.md#boundary-evolution](simulation-model.md#boundary-evolution)).
 
 ## The simulation pipeline, module by module
 
@@ -240,28 +230,28 @@ ellipse.py         minimum-volume enclosing ellipse (Khachiyan's algorithm), sph
                    pure 2D math -- see simulation-model.md#plate-inspector
 projections.py     Behrmann and Eckert IV map projections, vectorized
 noise.py           cheap smooth sphere noise (sum of sinusoids) for initial terrain texture
-elevation_lines.py  ElevationLine data structure, node density/spacing (TARGET_LINE_SPACING_RAD,
-                    line_spacing_rad), the plate-local lattice sweep shared by generation and
-                    merge, and periodic line-spacing regularization (formerly line_regrid.py)
+elevation_lines.py  terrain-node constants and codes (planet radius, node density/spacing --
+                    TARGET_LINE_SPACING_RAD, line_spacing_rad -- elevation-change and crust-type
+                    codes) and the plate-local lattice sweep; the name predates #251, which
+                    retired the line surface it used to hold
 rtree_index.py      minimal bulk-loaded (STR-packed) R-tree over 2D points -- box/nearest-
                     neighbor queries, used by PlateWithRTree
-plates.py          PlateSurface / Plate (ABC) and PlateWithLines -- representation-neutral
-                    node iteration and bulk field access, plate identity and territory,
-                    plus the line surface's plate-local lattice, per-row outline / row-lookup
-                    fast path, and initial plate generation
-                    (nearest-seed tiling), the live per-plate outline used by the "Plates"
-                    map view and by `deform()`'s own contested/open classification, and
-                    the Plate Inspector's bounding-ellipse fit and nearest-plate click
-                    hit-test. The tectonic engine itself -- `shift()`/`deform()`, per-turn
-                    Euler-pole refit + rotation, polygon-containment boundary
-                    classification, elevation/Hc/Hm deltas, line growth/shrinkage, over-
-                    stretched-rift volcano spawning, claiming adjacent territory, and
-                    inline line regularization -- lives on `LithospherePlate`
-                    (lithosphere_plate.py)
+plates.py          PlateSurface / Plate (ABC) -- node iteration and bulk field access, plate
+                    identity and territory, `shift()` (per-turn Euler-pole refit + rotation),
+                    the live per-plate outline used by the "Plates" map view, whole-world
+                    overlap detection, and the Plate Inspector's bounding-ellipse fit and
+                    nearest-plate click hit-test
 sparse_quad_patch.py
-                   PlateWithSparseQuadPatch, the cell-backed PlateSurface implementation.
-                   Its row/column intervals are derived topology caches used by cell-native
-                   algorithms; they do not expose row ends through the shared surface API.
+                   PlateWithSparseQuadPatch, the cell-backed PlateSurface implementation
+                   and the only one. Its row/column intervals are derived topology caches used
+                   by cell-native algorithms; they do not expose row ends through the shared
+                   surface API.
+lithosphere_plate.py
+                   plate generation (nearest-seed tiling, reference Hc/Hm, composite relief)
+                   and the per-node column physics -- boundary classification context,
+                   elevation/Hc/Hm deltas, decompression melting and rift volcanism
+quad_tectonics.py  the tectonic engine, `deform()`: boundary retreat and advance on the cell
+                   graph, rift opening, interior subduction, gap filling
 mantle.py           cubed-sphere convection-cell flow field, per-plate Euler-pole
                     least-squares fit
 boundary.py         `closing_rate` (used only by merge_split.py now, to confirm two
@@ -272,14 +262,13 @@ merge_split.py       plate consumption, sustained-collision continental merging 
                      at most one per step), mantle-flow-driven splitting, periodic geometric
                      defragmentation (severed-lobe / stranded-node cleanup deform() can't do),
                      event log messages
-gaps.py              whole-sphere coverage maintenance, periodic (world.step_world, same
-                     cadence as merge_split's defragmentation): finds any region no plate's
-                     lines currently reach -- e.g. ocean floor a fully-subducted plate
-                     vacated with no neighbour left nearby to grow into it -- and spawns a
-                     new oceanic plate to cover it (`lithosphere_plate.new_plate`).
-                     deform()'s own per-step boundary growth only ever extends a line from
-                     an existing node, so it structurally can't reach a region with no
-                     nearby line at all; this is the periodic backstop for that gap
+gaps.py              whole-sphere coverage maintenance, every step (world.step_world): finds
+                     any region no plate currently covers and grows the adjacent plate(s)
+                     into it (`quad_tectonics.fill_gap`), or -- for ocean floor a
+                     fully-subducted plate vacated with no neighbour left nearby -- spawns a
+                     new plate to cover it (`lithosphere_plate.new_plate`). deform()'s own
+                     boundary advance only grows a plate from its existing edge, so this is
+                     the backstop for seams and vacated regions
 volcanism.py          every-step eruption lifecycle for existing volcano nodes (active-years
                      countdown, per-step eruption roll, elevation/mineral_deposit_m growth) --
                      volcanic-field *creation* now happens inline inside `deform()`'s own
@@ -362,8 +351,8 @@ render_image.py      renders /world/render's requested view/resolution to a PNG 
 persistence.py       whole-World save/load to a single versioned pickle envelope (File >
                      Save/Load World -- see api-reference.md's /world/save//world/load and
                      save-compatibility.md)
-legacy_conversion.py one-way conversion of line-backed saves to sparse quads (issue #248,
-                     see save-compatibility.md)
+legacy_conversion.py the legacy reader for line-backed saves and their one-way conversion
+                     to sparse quads on load (issues #248/#251, see save-compatibility.md)
 geodesic.py          geodesic-icosahedron hex/pentagon dome tiling + elevation/biome
                      sampling for File > Export Hex Grid (see docs/hex-export-format.md),
                      independent of the plate simulation's own node cloud

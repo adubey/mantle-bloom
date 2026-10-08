@@ -1,37 +1,35 @@
 """Per-step tectonics for `PlateWithSparseQuadPatch` plates (issue #228 Phase 4).
 
-The line-backed engine (`lithosphere_plate.LithospherePlate.deform`) moves boundaries by
-editing the two ends of plate-local latitude rows: end-trim for retreat, end-stretch plus
-whole-row claims plus a diagonal corner-notch filler for advance, and a whole-leading-row drop
-for the "parallel suture" case end-trim can't reach. Every one of those exists because a row
-can only grow or shrink along its own axis. A quad surface has no preferred axis, so this
-module replaces all of them with two operations on the cell graph:
+The retired line-backed engine (#251) moved boundaries by editing the two ends of plate-local
+latitude rows: end-trim for retreat, end-stretch plus whole-row claims plus a diagonal
+corner-notch filler for advance, and a whole-leading-row drop for the "parallel suture" case
+end-trim couldn't reach. Every one of those existed because a row can only grow or shrink
+along its own axis. A quad surface has no preferred axis, so this module does all of it with
+two operations on the cell graph:
 
 - **Retreat** peels the plate's contested boundary in layers: any retreatable cell with a
   wholly exposed side (the 2D analogue of a line end) is deactivated, then the newly exposed
   layer is considered, up to this step's displacement in cells. A continental suture's
   consumed crust is thrust onto the nearest surviving cells (area-weighted, so volume is
-  conserved), as `_redistribute_accreted_column` does for a line end. Past the receiving
+  conserved). Past the receiving
   belts it escapes along strike before any of it may delaminate (issue #290; `orogeny.py`).
   A continental plate's convergent shortening is carried into its interior by the shortening
   cascade (`shortening.py`, issue #314), which keeps every column under the caps; on an
   oceanic plate, the melt of the band's shortening past the Hc ceiling is placed the same way
-  as suture crust (`_place_ceiling_overflow`). An oceanic plate also carves out contested patches the peel
-  can't reach from its edge (the line engine's interior-subduction carve-out,
-  `_carve_interior`).
+  as suture crust (`_place_ceiling_overflow`). An oceanic plate also carves out contested
+  patches the peel can't reach from its edge (`_carve_interior`).
 - **Advance** activates the empty cell across each exposed side of an eligible boundary
   cell, wherever no neighbour already covers it, again in layers. Ordinary new ground is a
   rift opening (`_open_rift`): the share of each new cell's footprint that lines up with the
   plates' separation is covered by stretching the crust within
-  `K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION` cells behind it, volume-conservingly -- the 2D
-  form of the line engine's `_stretch_end` -- and the rest is fresh magmatic oceanic crust.
+  `K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION` cells behind it, volume-conservingly -- and the
+  rest is fresh magmatic oceanic crust.
   Columns stretched through `RIFT_CRITICAL_THICKNESS_M` erupt (breakup / ridge accretion).
   An active continental margin grows juvenile arc crust instead (`ARC_MARGIN_SEED_*`).
 
 Boundary classification and the per-node column physics (convergent/arc/divergent/transform
-updates, melting, provenance) are shared with the line engine unchanged -- see
-`lithosphere_plate.boundary_context` and `deform_columns`. Nothing here needs regularizing:
-cells never drift off the lattice.
+updates, melting, provenance) live in `lithosphere_plate.boundary_context` and
+`deform_columns`. Nothing here needs regularizing: cells never drift off the lattice.
 """
 
 from __future__ import annotations
@@ -75,7 +73,7 @@ from .lithosphere_plate import (
     deform_columns,
     growth_seed_thickness,
 )
-from .plates import _INTERIOR_SUBDUCTION_MIN_RUN, _contested_by_any
+from .plates import _contested_by_any
 from .sparse_quad_patch import lattice_points, unpack_cell_keys
 from .surface_fields import CRATON_UNFORMED_YEARS, SURFACE_FIELDS
 
@@ -83,9 +81,13 @@ if TYPE_CHECKING:
     from .sparse_quad_patch import PlateWithSparseQuadPatch
     from .world import World
 
-# How many layers of cells a boundary may advance in one step -- the same per-step ceiling the
-# line engine's row claim uses (MAX_CLAIM_ROWS_PER_STEP), now applying in every direction.
+# How many layers of cells a boundary may advance in one step (see MAX_CLAIM_ROWS_PER_STEP).
 MAX_ADVANCE_LAYERS_PER_STEP = MAX_CLAIM_ROWS_PER_STEP
+
+# Minimum size (cells) of an interior patch of contested oceanic cells for
+# `_carve_interior` to remove it. Smaller transient contests are left for when they
+# reach the boundary.
+INTERIOR_SUBDUCTION_MIN_CELLS = 4
 
 # The eruption rng stream keys `deform_columns` / `_open_rift` use in place of a line index.
 # Distinct values keep the column pass's melting draw and each advance layer's draws from
@@ -128,8 +130,7 @@ def _adjacency_matrix(plate: "PlateWithSparseQuadPatch") -> csr_matrix:
 
 
 def hop_distance(plate: "PlateWithSparseQuadPatch", mask: np.ndarray, width: int) -> np.ndarray:
-    """Per cell, edge hops to the nearest `mask` cell, saturating at `width + 1` -- the cell
-    graph's version of `lithosphere_plate._distance_to_mask_1d`."""
+    """Per cell, edge hops to the nearest `mask` cell, saturating at `width + 1`."""
     dist = np.where(mask, 0, width + 1)
     if width <= 0 or not np.any(mask):
         return dist
@@ -146,8 +147,7 @@ def hop_distance(plate: "PlateWithSparseQuadPatch", mask: np.ndarray, width: int
 
 
 def components_of_at_least(plate: "PlateWithSparseQuadPatch", mask: np.ndarray, min_size: int) -> np.ndarray:
-    """`mask`, with every edge-connected component smaller than `min_size` cleared -- the cell
-    graph's version of `lithosphere_plate._runs_of_at_least`."""
+    """`mask`, with every edge-connected component smaller than `min_size` cleared."""
     mask = np.asarray(mask, dtype=bool)
     if min_size <= 1 or not np.any(mask):
         return mask.copy()
@@ -161,7 +161,7 @@ def components_of_at_least(plate: "PlateWithSparseQuadPatch", mask: np.ndarray, 
 
 
 def deform(plate: "PlateWithSparseQuadPatch", world: "World", other_plates: list, years: float, max_distance: float) -> None:
-    """The quad counterpart of `LithospherePlate.deform` -- see this module's docstring."""
+    """One step of this plate's boundary tectonics -- see this module's docstring."""
     if plate.node_count() == 0:
         return
     continental_ledger.ensure_initialized(world)
@@ -177,7 +177,7 @@ def deform(plate: "PlateWithSparseQuadPatch", world: "World", other_plates: list
         node_weight=areas / nominal_area_m2,
     )
     # Convergent shortening spreads into continental interiors through the shortening cascade
-    # (issue #314) instead of the line engine's fixed near-field ring.
+    # (issue #314).
     accommodate = _shortening_accommodation(plate, world, ctx, areas, spacing_rad)
     fields = {name: plate.collect(name) for name in COLUMN_FIELDS}
     ceiling_overflow = np.zeros(plate.node_count())
@@ -186,9 +186,7 @@ def deform(plate: "PlateWithSparseQuadPatch", world: "World", other_plates: list
         world,
         plate,
         ctx,
-        slice(None),
         fields,
-        None,
         lambda: plate.surface_nodes().local_xyz,
         areas,
         _COLUMN_RNG_INDEX,
@@ -324,9 +322,9 @@ def _place_ceiling_overflow(
     (`ceiling_overflow_no_outlet_m3`).
 
     The shortening increment was never in the continental-material tracer, so none of this
-    touches the ledger. On quad plates this replaces `rheology.apply_delamination_melt_intrusion`,
-    which intruded a fixed 35% of the overflow into the near-field ring at a capped rate and
-    dropped the rest unbooked. Placing all of it instead fills the continents with crust the
+    touches the ledger. This replaced the line engine's delamination melt intrusion, which
+    intruded a fixed 35% of the overflow into a near-field ring at a capped rate and dropped
+    the rest unbooked. Placing all of it instead fills the continents with crust the
     tracer never counted and leaves sutures' real crust nowhere to go."""
     areas = plate.node_areas_m2()
     overflowing = np.flatnonzero(overflow_hc * areas > 0.0)
@@ -436,8 +434,8 @@ def _retreat(
         take[exposed[:remaining]] = True
         if plate.crust_type == "continental":
             # Issue #177: a continental passive margin overridden by an oceanic neighbour may
-            # only subduct as much volume as this step's arc magmatism creates -- the same
-            # budget the line engine spends end by end (see `_budget_limited_removal`).
+            # only subduct as much volume as this step's arc magmatism creates (see
+            # lithosphere_plate.OCEANIC_OVERRIDE_RETREAT_BUDGET_MULTIPLIER).
             override = np.flatnonzero(take & ~ctx.accrete)
             cost = np.cumsum(hc[override] * weights[override])
             allowed = cost <= max(float(budget_hc[0]), 0.0)
@@ -501,13 +499,12 @@ def _retreat(
 
 
 def _carve_interior(plate: "PlateWithSparseQuadPatch", retreatable: np.ndarray, open_half: np.ndarray, max_cells: int) -> np.ndarray:
-    """Interior subduction -- the 2D form of the line engine's mid-row carve-out: remove
-    contested patches the layered peel can never reach, leaving a hole the quad surface
+    """Interior subduction: remove contested patches the layered peel can never reach, leaving a hole the quad surface
     represents directly. Returns the mask to remove.
 
     Eligibility. A patch is an edge-connected component of `retreatable` cells (contested by
     a neighbour overriding this plate somewhere other than its edge) with at least
-    `_INTERIOR_SUBDUCTION_MIN_RUN` cells. Oceanic plates only, as in the line engine; the
+    `INTERIOR_SUBDUCTION_MIN_CELLS` cells. Oceanic plates only; the
     caller never passes a continental plate, since carving a continent's middle would sever
     it into a spurious defragmentation plate.
 
@@ -523,7 +520,7 @@ def _carve_interior(plate: "PlateWithSparseQuadPatch", retreatable: np.ndarray, 
     edge to continue from."""
     carved = np.zeros(len(retreatable), dtype=bool)
     members = np.flatnonzero(retreatable)
-    if len(members) < _INTERIOR_SUBDUCTION_MIN_RUN or max_cells <= 0:
+    if len(members) < INTERIOR_SUBDUCTION_MIN_CELLS or max_cells <= 0:
         return carved
     exposed = np.any(np.all(open_half[members], axis=2), axis=1)
     sub = _adjacency_matrix(plate)[members][:, members]
@@ -531,7 +528,7 @@ def _carve_interior(plate: "PlateWithSparseQuadPatch", retreatable: np.ndarray, 
     sizes = np.bincount(labels)
     reachable = np.bincount(labels, weights=exposed) > 0
     budget = max_cells
-    for label in np.flatnonzero((sizes >= _INTERIOR_SUBDUCTION_MIN_RUN) & ~reachable):
+    for label in np.flatnonzero((sizes >= INTERIOR_SUBDUCTION_MIN_CELLS) & ~reachable):
         if budget <= 0:
             break
         patch = np.flatnonzero(labels == label)
@@ -553,9 +550,7 @@ def _accrete_onto_survivors(
     overriders: list | None = None,
 ) -> None:
     """Thrust each continental suture's consumed Hc/Hm volume onto the surviving cells within
-    `SUTURE_ACCRETION_SPREAD_NODES` hops behind it, as a uniform thickening -- the 2D form of
-    `_redistribute_accreted_column`, which spreads a retreating line end's volume over that
-    many nodes *inward along the row*. Each edge-connected run of donor cells is one suture
+    `SUTURE_ACCRETION_SPREAD_NODES` hops behind it, as a uniform thickening. Each edge-connected run of donor cells is one suture
     front with its own band, so separate sutures on one plate don't share volume. Donors and
     receivers are matched by effective crust type, which keeps continental terranes on
     nominally oceanic plates in the continental reservoir. A terrane on an oceanic plate
@@ -1379,7 +1374,7 @@ def _advance(
     inputs = ctx.inputs
     extend_threshold_rad = EXTEND_THRESHOLD_MULTIPLIER * spacing_rad
     # Sources for the first layer: uncontested boundary cells with open water between them
-    # and the nearest neighbour -- the line engine's end-growth condition, per cell.
+    # and the nearest neighbour.
     eligible = (~ctx.contested & (inputs.dist_to_neighbor > extend_threshold_rad))[survivors]
     if not np.any(eligible):
         return
@@ -1495,9 +1490,7 @@ def _stretch_share(
     """Per candidate cell, the share of its footprint the plate covers by stretching its own
     crust rather than by fresh magmatic accretion: how much of the outward step from its
     source runs along the separation direction (toward the nearest neighbour node -- 1 with
-    no neighbour in view, where the whole step is the plate pulling apart). The 2D form of
-    the line engine's `rheology.stretch_components` split between end-stretch and row claim.
-    Arc cells are fed by the slab, not by stretching: 0."""
+    no neighbour in view, where the whole step is the plate pulling apart). Arc cells are fed by the slab, not by stretching: 0."""
     source_local = plate.surface_nodes().local_xyz[sources]
     outward = geometry.normalize(local - source_local)
     toward = np.zeros_like(outward)
@@ -1655,17 +1648,14 @@ def _open_rift(
     """Rift opening for this layer's `rifted` cells (node indices; `inserted_indices` is every
     cell this layer inserted, arc cells included). Each rifted cell covers `stretch_share` of
     its footprint by stretching the pre-existing cells behind it (`_allocate_stretch`), and
-    the rest with the fresh magmatic column it was inserted with. The areal form of
-    `rheology.apply_stretch_thinning`, the line engine's `_stretch_end`, and exactly
-    volume-conserving.
+    the rest with the fresh magmatic column it was inserted with. Exactly volume-conserving.
 
     So a continental margin pulled apart thins into a widening band of stretched continental
     crust instead of losing it, and only once a column thins past `RIFT_CRITICAL_THICKNESS_M`
     does it erupt -- continental breakup or ridge accretion, through the same
     `_erupt_melted_nodes` path the column pass uses. Magmatic share is new crust from the
     mantle, as at any spreading ridge. A cell that is mostly magmatic is a vent: it starts a
-    volcano lifecycle without changing its column, as every node the line engine's row claims
-    and gap filling create does (`seed_and_erupt_new_nodes`)."""
+    volcano lifecycle without changing its column."""
     hc = plate.collect("crustal_thickness_m")
     hm = plate.collect("mantle_lithosphere_thickness_m")
     codes = plate.collect("crust_type_code")
@@ -1687,8 +1677,8 @@ def _open_rift(
     donors, ratio = transfer.donor_indices, transfer.donor_thinning_ratio
     if len(donors):
         before = lithosphere.isostatic_elevation(hc[donors], hm[donors], lithosphere.node_crust_density(codes[donors], plate.crust_type))
-        # Hm floored like `rheology.apply_stretch_thinning`: a donor too thin to melt through
-        # is never reset, and repeated rifts would otherwise thin it without limit (issue #256).
+        # Hm floored at the lithosphere minimum: a donor too thin to melt through is never
+        # reset, and repeated rifts would otherwise thin it without limit (issue #256).
         new_hc = hc[donors] * ratio
         new_hm = np.maximum(hm[donors] * ratio, lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M)
         melting = (hc[donors] >= rheology.RIFT_CRITICAL_THICKNESS_M) & (new_hc < rheology.RIFT_CRITICAL_THICKNESS_M)
@@ -1818,9 +1808,8 @@ def _gap_cells_mostly_uncovered(
 def fill_gap(
     world: "World", plate: "PlateWithSparseQuadPatch", gap_points: np.ndarray, others: list, spacing_rad: float, max_layers: int
 ) -> int:
-    """Grow `plate` into the uncovered `gap_points` (world xyz) -- the quad counterpart of
-    `gap_fill_frontier.fill_gap_by_growing_plates` for one claimant. The same frontier walk as
-    boundary advance, from every boundary cell, restricted to cells whose centre lies within
+    """Grow `plate` into the uncovered `gap_points` (world xyz) for `gaps.py`. The same
+    frontier walk as boundary advance, from every boundary cell, restricted to cells whose centre lies within
     `COVERAGE_RADIUS_MULT` spacings of a gap point and that no plate in `others` contains.
     A 4x4 interior sample must also show that most of the candidate footprint is uncovered;
     checking only its centre lets a rotated neighbour already own most of the cell (#268).

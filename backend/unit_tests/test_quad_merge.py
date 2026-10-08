@@ -8,7 +8,7 @@ import pytest
 
 from app import continental_ledger, geometry, lithosphere, merge_split, quad_merge
 from app.elevation_lines import CRUST_TYPE_INHERIT, CRUST_TYPE_OCEANIC, line_spacing_rad
-from app.lithosphere_plate import SUTURE_ACCRETION_MAX_HC_M, new_plate
+from app.lithosphere_plate import SUTURE_ACCRETION_MAX_HC_M
 from app.sparse_quad_patch import PLANET_RADIUS_M, PlateWithSparseQuadPatch, unpack_cell_keys
 from app.world import World
 
@@ -427,7 +427,6 @@ def test_quad_pairs_are_offered_to_merge_and_fuse_through_merge_plates():
     world.debug_diagnostics = True
     before = _volume([keep, absorb], "crustal_thickness_m")
 
-    assert merge_split._supports_merge(world, 1, 2)
     merge_split.merge_plates(world, 1, 2)
 
     assert [p.plate_id for p in world.plates] == [1, 3]
@@ -436,18 +435,6 @@ def test_quad_pairs_are_offered_to_merge_and_fuse_through_merge_plates():
     # remap onto differently sized cells.
     scope = world.phase_budget["plate_merge"]["scopes"]["all"]
     assert scope["hc_volume_after_m3"] == pytest.approx(scope["hc_volume_before_m3"], rel=1e-12)
-
-
-def test_a_line_plate_and_a_quad_plate_are_not_offered_to_merge():
-    quad = _cap(1, np.eye(3), _direction(0.0))
-    line = new_plate(2, np.eye(3), "continental", SPACING, seed=0, is_owned=lambda pts: pts @ _direction(2 * RADIUS) > np.cos(RADIUS))
-    world = _world(quad, line)
-    world.overlap_progress[(1, 2)] = merge_split.FORCED_MERGE_SUSTAINED_YEARS * 2
-
-    assert not merge_split._supports_merge(world, 1, 2)
-    forced = merge_split.pop_ready_forced_merge(world, can_merge=lambda x, y: merge_split._supports_merge(world, x, y))
-    assert forced is None
-    assert world.overlap_progress[(1, 2)] == merge_split.FORCED_MERGE_SUSTAINED_YEARS * 2
 
 
 def test_merge_across_a_cube_face_seam_of_the_survivors_lattice():

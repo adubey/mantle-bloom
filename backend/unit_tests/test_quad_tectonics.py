@@ -1,6 +1,6 @@
 """Per-step deformation on sparse quad plates (issue #228 Phase 4): the cell-graph topology
 primitives, 2D boundary retreat/advance, and the step passes that had to learn about quad
-plates (volcanism, gap filling, overlap tracking, merge eligibility, relattice) -- see
+plates (volcanism, gap filling, overlap tracking, merge eligibility) -- see
 quad_tectonics.py."""
 
 import numpy as np
@@ -566,12 +566,12 @@ def _converging_ctx(n: int, convergent: np.ndarray, divergent: np.ndarray | None
         closing_rate=np.where(convergent, rate, np.where(divergent, -rate, 0.0)),
         inputs=SimpleNamespace(neighbor_is_oceanic=zeros),
         arc_band=convergent if arc else zeros, arc_intensity=np.where(convergent & arc, 1.0, 0.0),
-        fault_influence=np.ones(n), orogen_dilation_nodes=3, orogen_contested_strength=1.0, orogen_amount=1.0,
+        fault_influence=np.ones(n), orogen_contested_strength=1.0, orogen_amount=1.0,
         fault_noise=None, own_points=np.zeros((n, 3)),
     )
 
 
-def test_quad_column_pass_reports_ceiling_overflow_instead_of_intruding_melt():
+def test_column_pass_reports_ceiling_overflow_for_the_caller_to_place():
     from app.lithosphere_plate import COLUMN_FIELDS, deform_columns
 
     a, _ = _capped_strip(12)
@@ -580,25 +580,15 @@ def test_quad_column_pass_reports_ceiling_overflow_instead_of_intruding_melt():
     n = a.node_count()
     convergent = np.zeros(n, dtype=bool)
     convergent[:2] = True
-    near_field_dist = quad_tectonics.hop_distance(a, convergent, 3)
-
-    def run(overflow):
-        fields = {name: a.collect(name) for name in COLUMN_FIELDS}
-        return deform_columns(
-            world, a, _converging_ctx(n, convergent), slice(None), fields, near_field_dist, lambda: None,
-            a.node_areas_m2(), 0, 1_000_000.0, ceiling_overflow=overflow,
-        )
-
-    line_engine = run(None)
+    fields = {name: a.collect(name) for name in COLUMN_FIELDS}
     overflow = np.zeros(n)
-    quad = run(overflow)
+
+    columns = deform_columns(
+        world, a, _converging_ctx(n, convergent), fields, lambda: None, a.node_areas_m2(), 0, 1_000_000.0, ceiling_overflow=overflow,
+    )
 
     assert np.all(overflow[:2] > 0.0) and not np.any(overflow[2:])
-    ring = (near_field_dist > 0) & (near_field_dist <= 3)
-    # The line engine still intrudes part of the overflow as melt into the ring; the quad
-    # engine leaves the ring to its own shortening and places the overflow itself.
-    assert np.all(line_engine["crustal_thickness_m"][ring] > quad["crustal_thickness_m"][ring])
-    np.testing.assert_array_equal(line_engine["crustal_thickness_m"][convergent], quad["crustal_thickness_m"][convergent])
+    np.testing.assert_array_equal(columns["crustal_thickness_m"][~convergent], fields["crustal_thickness_m"][~convergent])
 
 
 def test_oceanic_relaxation_leaves_a_continental_terrane_keel_alone():
@@ -616,7 +606,7 @@ def test_oceanic_relaxation_leaves_a_continental_terrane_keel_alone():
     n = len(keys)
 
     columns = deform_columns(
-        world, a, _converging_ctx(n, np.zeros(n, dtype=bool)), slice(None), fields, None, lambda: None,
+        world, a, _converging_ctx(n, np.zeros(n, dtype=bool)), fields, lambda: None,
         a.node_areas_m2(), 0, 1_000_000.0,
     )
 
@@ -633,7 +623,7 @@ def _thermal_state_after_columns(a, ctx):
     fields = {name: a.collect(name) for name in COLUMN_FIELDS}
     strained: dict = {}
     columns = deform_columns(
-        world, a, ctx, slice(None), fields, None, lambda: None, a.node_areas_m2(), 0, 1_000_000.0,
+        world, a, ctx, fields, lambda: None, a.node_areas_m2(), 0, 1_000_000.0,
         ceiling_overflow=np.zeros(a.node_count()), strained=strained,
     )
     return fields, strained, columns, quad_tectonics._column_thermal_state(a, fields, strained, columns)
@@ -1159,7 +1149,6 @@ def test_gap_spawn_in_a_quad_world_makes_a_quad_plate():
         5, np.eye(3), "oceanic", SPACING, seed=0,
         is_owned=lambda pts: pts @ np.array([1.0, 0.0, 0.0]) > np.cos(5 * SPACING),
         node_is_continental=lambda pts: pts[:, 1] > 0.0,
-        surface="quad",
     )
 
     assert isinstance(plate, PlateWithSparseQuadPatch)
@@ -1176,8 +1165,7 @@ def test_a_quad_pair_past_its_forced_merge_time_comes_due():
     world = _world(a, b)
     world.overlap_progress[(1, 2)] = merge_split.FORCED_MERGE_SUSTAINED_YEARS * 2
 
-    assert merge_split._supports_merge(world, 1, 2)
-    forced = merge_split.pop_ready_forced_merge(world, can_merge=lambda x, y: merge_split._supports_merge(world, x, y))
+    forced = merge_split.pop_ready_forced_merge(world)
 
     assert set(forced) == {1, 2}
 
@@ -1248,9 +1236,9 @@ def test_quad_overlap_is_read_by_containment():
     world = _world(a, b)
     tol = plates.OVERLAP_TOLERANCE_MULT * SPACING
 
-    overlap = plates.compute_node_overlap(world.plates, tol)
+    overlap = plates.compute_node_overlap(world.plates)
 
-    # The node-proximity reading line plates use misses this overlap entirely.
+    # A node-proximity reading would miss this overlap entirely.
     points = [p.all_points_and_elevation()[0] for p in (a, b)]
     assert np.arccos(np.clip(points[0] @ points[1].T, -1.0, 1.0)).min() > tol
     for plate, other in ((a, b), (b, a)):
@@ -1268,7 +1256,7 @@ def test_quad_overlap_sees_a_plate_buried_inside_another():
     buried = _plate(2, _block((N // 2 - 3, N // 2 + 3), (N // 2 - 3, N // 2 + 3)), "continental", frame=_misaligned_frame())
     world = _world(big, buried)
 
-    overlap = plates.compute_node_overlap(world.plates, plates.OVERLAP_TOLERANCE_MULT * SPACING)
+    overlap = plates.compute_node_overlap(world.plates)
 
     assert overlap[2]["overlap_mask"].all()
     assert overlap[1]["by_partner"][2] > 0
@@ -1329,7 +1317,7 @@ def test_gap_fill_closes_a_one_cell_seam_between_quad_plates():
         plate._validate_leaf_topology()
     assert covered.all()
     # Filled, not overlapped: no plate took a cell another holds.
-    overlap = plates.compute_node_overlap(world.plates, plates.OVERLAP_TOLERANCE_MULT * SPACING)
+    overlap = plates.compute_node_overlap(world.plates)
     assert not any(info["overlap_mask"].any() for info in overlap.values())
 
 
@@ -1375,19 +1363,6 @@ def test_gap_tracks_on_a_quad_world_see_the_seam():
     assert len(world.gap_tracks) >= 1
 
 
-def test_relattice_leaves_quad_plates_alone():
-    keys = _block((10, 20), (20, 30))
-    a = _plate(1, keys, "continental", crustal_thickness_m=np.linspace(30_000.0, 40_000.0, len(keys)))
-    world = _world(a)
-    world.steps_taken = merge_split.RELATTICE_INTERVAL_STEPS
-    hc_before = a.collect("crustal_thickness_m")
-
-    merge_split.relattice_continental_plates(world)
-
-    np.testing.assert_array_equal(a.cell_keys, keys)
-    np.testing.assert_array_equal(a.collect("crustal_thickness_m"), hc_before)
-
-
 def test_continental_shortening_reaches_the_interior_and_is_booked():
     # Issue #314: a continental quad plate's convergent band hands its shortening to the
     # cascade, which thickens the interior beyond the band and books what it returns.
@@ -1410,7 +1385,7 @@ def test_continental_shortening_reaches_the_interior_and_is_booked():
     hc0 = fields["crustal_thickness_m"].copy()
 
     columns = deform_columns(
-        world, a, ctx, slice(None), fields, None, lambda: None, areas, 0, 1_000_000.0,
+        world, a, ctx, fields, lambda: None, areas, 0, 1_000_000.0,
         ceiling_overflow=np.zeros(n), accommodate=accommodate,
     )
 
@@ -1434,3 +1409,107 @@ def test_continental_shortening_is_a_no_op_without_a_collision():
     accommodate = quad_tectonics._shortening_accommodation(a, world, ctx, a.node_areas_m2(), SPACING)
     hc, hm = a.collect("crustal_thickness_m"), a.collect("mantle_lithosphere_thickness_m")
     assert not np.any(accommodate(np.zeros(n), hc, hm))
+
+
+# --- Column physics shared by every deform (lithosphere_plate.deform_columns) ---------------
+
+
+def _quiet_ctx(n: int, **overrides):
+    """No convergent, divergent or transform band: only what `overrides` switches on runs."""
+    ctx = _converging_ctx(n, np.zeros(n, dtype=bool))
+    for name, value in overrides.items():
+        setattr(ctx, name, value)
+    return ctx
+
+
+def _columns_after(plate, ctx, years: float = 1_000_000.0) -> tuple[dict, dict]:
+    """(the columns going in, the columns `deform_columns` returns)."""
+    from app.lithosphere_plate import COLUMN_FIELDS, deform_columns
+
+    world = _world(plate)
+    continental_ledger.ensure_initialized(world)
+    fields = {name: plate.collect(name) for name in COLUMN_FIELDS}
+    return fields, deform_columns(world, plate, ctx, fields, lambda: None, plate.node_areas_m2(), 0, years)
+
+
+def test_decompression_melting_types_the_erupted_crust_by_its_pre_melt_elevation():
+    # A rift that thins past RIFT_CRITICAL_THICKNESS_M erupts fresh crust in place: continental
+    # where the column still stood above sea level, oceanic where it was already drowned.
+    from app import rheology
+    from app.elevation_lines import ELEV_CHANGE_VOLCANO
+
+    keys = _block((10, 12), (20, 21))
+    a = _plate(1, keys, "continental", crustal_thickness_m=np.full(2, 5_050.0), elevation=np.array([500.0, -2_000.0]))
+    rate = -0.05 / rheology.SECONDS_PER_YEAR
+    ctx = _quiet_ctx(2, divergent=np.ones(2, dtype=bool), closing_rate=np.full(2, rate))
+
+    _, columns = _columns_after(a, ctx)
+
+    np.testing.assert_array_equal(columns["crust_type_code"], [CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC])
+    np.testing.assert_allclose(columns["crustal_thickness_m"], [lithosphere.REFERENCE_HC_CONTINENTAL_M, lithosphere.REFERENCE_HC_OCEANIC_M])
+    assert columns["is_volcano"].all()
+    assert np.all(columns["elev_change_reason"] == ELEV_CHANGE_VOLCANO)
+    assert columns["elevation"][1] < -3_000.0  # a fresh oceanic column floats at abyssal depth
+
+
+def test_unbacked_relief_debt_decays_toward_isostatic_equilibrium():
+    # Elevation a column's Hc/Hm don't support (transform pressure ridges leave it behind) is
+    # worked off as a bare elevation delta, never laundered into crust (issue #189).
+    from app.lithosphere_plate import UNBACKED_RELIEF_DECAY_PER_MYR
+
+    keys = _block((10, 13), (20, 21))
+    hc0, hm0 = lithosphere.reference_thickness("continental")
+    equilibrium = float(lithosphere.isostatic_elevation(np.array([hc0]), np.array([hm0]), lithosphere.RHO_CONTINENTAL_CRUST)[0])
+    debt = np.array([3_000.0, 0.0, 3_000.0])
+    hc = np.array([hc0, hc0, 0.0])  # the last node has no column to define an equilibrium
+    hm = np.array([hm0, hm0, 0.0])
+    a = _plate(
+        1, keys, "continental", crustal_thickness_m=hc, mantle_lithosphere_thickness_m=hm,
+        elevation=np.array([equilibrium + debt[0], equilibrium, 5_000.0]),
+    )
+    years = 10_000_000.0
+
+    _, columns = _columns_after(a, _quiet_ctx(3), years)
+
+    relief = debt[0] * (1.0 - np.exp(-UNBACKED_RELIEF_DECAY_PER_MYR * years / 1e6))
+    np.testing.assert_allclose(columns["elevation"], [equilibrium + debt[0] - relief, equilibrium, 5_000.0], atol=1e-6)
+    np.testing.assert_array_equal(columns["crustal_thickness_m"], hc)
+
+
+def test_arc_magmatism_thickens_only_the_arc_band():
+    from app import rheology
+
+    keys = _block((10, 16), (20, 21))
+    a = _plate(1, keys, "continental")
+    arc = np.array([True, True, True, False, False, False])
+    rate = 0.05 / rheology.SECONDS_PER_YEAR
+    ctx = _quiet_ctx(6, arc_band=arc, arc_intensity=np.where(arc, 1.0, 0.0), closing_rate=np.where(arc, rate, 0.0))
+    before, columns = _columns_after(a, ctx)
+
+    gain = columns["crustal_thickness_m"] - before["crustal_thickness_m"]
+    assert np.all(gain[arc] > 300.0)
+    np.testing.assert_array_equal(gain[~arc], 0.0)
+    # The juvenile crust is continental material, booked as such.
+    np.testing.assert_allclose(columns["continental_material_m"] - before["continental_material_m"], np.where(arc, gain, 0.0))
+
+
+def test_oceanic_override_retreat_waits_for_arc_creation_but_a_suture_does_not():
+    # Issue #177: a continental margin overridden by an oceanic neighbour subducts only as much
+    # volume as this step's arc magmatism creates. These plates are static, so no arc grows and
+    # nothing retreats against the ocean; a continental suture conserves its own volume and is
+    # not capped.
+    def survivors_against(neighbour_crust: str) -> np.ndarray:
+        a = _plate(1, _block((10, 24), (20, 30)), "continental")
+        b = _plate(2, _block((20, 34), (20, 30)), neighbour_crust)
+        world = _world(a, b)
+        ctx = boundary_context(
+            world, a, [b], 1_000_000,
+            lambda contested: quad_tectonics.components_of_at_least(a, contested, CONTINENTAL_CONTESTED_RETREAT_MIN_RUN),
+            node_weight=a.node_areas_m2() / lithosphere.node_area_m2(SPACING),
+        )
+        assert ctx.oceanic_override_retreat_budget_hc[0] == 0.0
+        return quad_tectonics._retreat(a, world, ctx, 1.5 * SPACING, 1000)
+
+    assert np.all(survivors_against("oceanic"))
+    assert not np.all(survivors_against("continental"))
+

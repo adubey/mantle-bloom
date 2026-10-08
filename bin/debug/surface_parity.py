@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Issue #247: paired line-vs-quad parity runs and their quality gates.
+"""Issues #247/#249: plate-surface audit runs and their quality gates.
 
     cd backend
-    .venv/bin/python ../bin/debug/surface_parity.py paired --preset smoke --seeds 3 --out ../analysis/parity-smoke
+    .venv/bin/python ../bin/debug/surface_parity.py audit --preset smoke --seeds 3 --out ../analysis/parity-smoke
 
-`paired` runs every (seed, surface) combination -- in parallel with `--jobs` -- then compares
-them: `comparison.json` holds every gate result and `report.md` a readable summary. The exit
-status is 1 when the verdict is `fail`, so a script can gate on it. `run` does one
-(seed, surface) world, optionally continuing a saved one (`--from-world`); `compare`
-re-judges an existing output directory, e.g. after combining runs made on several machines.
+`audit` runs every seed -- in parallel with `--jobs` -- then judges them: `comparison.json`
+holds every gate result and `report.md` a readable summary. The exit status is 1 when the
+verdict is `fail`, so a script can gate on it. `run` does one seed's world, optionally
+continuing a saved one (`--from-world`); `judge` re-judges an existing output directory, e.g.
+after combining runs made on several machines.
 
 Presets (`surface_parity.PRESETS`): `smoke` (CI-sized, density 0.5, 4 Myr), `standard`
 (density 1, 120 Myr), `long` (density 1, 400 Myr), `issue147` (the issue #147 profile world:
@@ -73,12 +73,12 @@ def provenance(argv: list[str]) -> dict:
     }
 
 
-def _run_one(config: surface_parity.RunConfig, seed: int, surface: str, out: Path, initial_world: Path | None = None) -> str:
-    surface_parity.run_surface(config, seed, surface, out, log=lambda message: print(message, flush=True), initial_world=initial_world)
-    return surface_parity.run_name(seed, surface)
+def _run_one(config: surface_parity.RunConfig, seed: int, out: Path, initial_world: Path | None = None) -> str:
+    surface_parity.run_world(config, seed, out, log=lambda message: print(message, flush=True), initial_world=initial_world)
+    return surface_parity.run_name(seed)
 
 
-def compare(out: Path, commands: list[str] | None = None) -> int:
+def judge(out: Path, commands: list[str] | None = None) -> int:
     runs = surface_parity.load_results(out)
     if not runs:
         print(f"no runs under {out}", file=sys.stderr)
@@ -102,7 +102,7 @@ def compare(out: Path, commands: list[str] | None = None) -> int:
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("run", "paired"):
+    for name in ("run", "audit"):
         p = sub.add_parser(name)
         p.add_argument("--preset", choices=sorted(surface_parity.PRESETS), default="smoke")
         p.add_argument("--out", type=Path, required=True)
@@ -117,39 +117,37 @@ def main(argv: list[str]) -> int:
         p.add_argument("--no-load-checks", action="store_true")
         if name == "run":
             p.add_argument("--seed", type=int, required=True)
-            p.add_argument("--surface", choices=surface_parity.SURFACES, required=True)
-            p.add_argument("--from-world", type=Path, help="continue this .mbworld instead of generating (its seed/surface must match)")
+            p.add_argument("--from-world", type=Path, help="continue this .mbworld instead of generating (its seed must match)")
         else:
             p.add_argument("--seeds", default="3", help="comma-separated seeds")
-            p.add_argument("--surfaces", default=",".join(surface_parity.SURFACES))
             p.add_argument("--jobs", type=int, default=1, help="parallel worlds; timings are only comparable at --jobs 1")
-    p = sub.add_parser("compare")
+    p = sub.add_parser("judge")
     p.add_argument("out", type=Path)
     args = parser.parse_args(argv)
 
-    if args.command == "compare":
-        return compare(args.out)
+    if args.command == "judge":
+        return judge(args.out)
 
     config = config_from_args(args)
     args.out.mkdir(parents=True, exist_ok=True)
     meta = provenance(argv) | {"config": config.to_json()}
     if args.command == "run":
-        (args.out / f"provenance-{surface_parity.run_name(args.seed, args.surface)}.json").write_text(json.dumps(meta, indent=2) + "\n")
-        _run_one(config, args.seed, args.surface, args.out, args.from_world)
+        (args.out / f"provenance-{surface_parity.run_name(args.seed)}.json").write_text(json.dumps(meta, indent=2) + "\n")
+        _run_one(config, args.seed, args.out, args.from_world)
         return 0
 
     meta["jobs"] = args.jobs
     (args.out / "provenance.json").write_text(json.dumps(meta, indent=2) + "\n")
-    combos = [(int(seed), surface) for seed in args.seeds.split(",") for surface in args.surfaces.split(",")]
+    seeds = [int(seed) for seed in args.seeds.split(",")]
     if args.jobs > 1:
         with ProcessPoolExecutor(max_workers=args.jobs) as pool:
-            futures = [pool.submit(_run_one, config, seed, surface, args.out) for seed, surface in combos]
+            futures = [pool.submit(_run_one, config, seed, args.out) for seed in seeds]
             for future in as_completed(futures):
                 print("finished", future.result(), flush=True)
     else:
-        for seed, surface in combos:
-            _run_one(config, seed, surface, args.out)
-    return compare(args.out, [meta["command"]])
+        for seed in seeds:
+            _run_one(config, seed, args.out)
+    return judge(args.out, [meta["command"]])
 
 
 if __name__ == "__main__":

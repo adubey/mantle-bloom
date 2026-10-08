@@ -60,7 +60,7 @@ COMPARE_KEYS = (
 )
 
 
-def _run_seed(backend: str, seed: int, steps: int, years: float, surface: str, every: int) -> list[dict]:
+def _run_seed(backend: str, seed: int, steps: int, years: float, every: int) -> list[dict]:
     sys.path.insert(0, backend)
     from app import continental_ledger, cratons, erosion  # noqa: E402
     from app.elevation_lines import line_spacing_rad  # noqa: E402
@@ -82,7 +82,7 @@ def _run_seed(backend: str, seed: int, steps: int, years: float, surface: str, e
     wrapped.__wrapped__ = original_apply
     erosion.apply_erosion = wrapped
 
-    world = generate_world(seed=seed, surface=surface)
+    world = generate_world(seed=seed)
     craton0 = cratons.diagnostics(world)
     vol0 = max(craton0["craton_volume_m3"], 1.0)
     area0 = max(craton0["craton_area_m2"], 1.0)
@@ -133,7 +133,7 @@ def _run_seed(backend: str, seed: int, steps: int, years: float, surface: str, e
     return rows
 
 
-def _run_controlled(backend: str, seed: int, steps: int, years: float, surface: str, every: int, extra: int) -> list[dict]:
+def _run_controlled(backend: str, seed: int, steps: int, years: float, every: int, extra: int) -> list[dict]:
     sys.path.insert(0, backend)
     from app import erosion, faults  # noqa: E402
     from app.world import generate_world, step_world  # noqa: E402
@@ -154,7 +154,7 @@ def _run_controlled(backend: str, seed: int, steps: int, years: float, surface: 
     def triggered_ids(world) -> set[int]:
         return {q.earthquake_id for q in world.earthquakes if getattr(q, "trigger", "tectonic") == "ice_unloading"}
 
-    world = generate_world(seed=seed, surface=surface)
+    world = generate_world(seed=seed)
     rows = []
     for step in range(1, steps + 1):
         step_world(world, years)
@@ -219,7 +219,6 @@ def main() -> None:
     parser.add_argument("--seeds", type=int, nargs="+", default=[1])
     parser.add_argument("--steps", type=int, default=20)
     parser.add_argument("--years", type=float, default=1_000_000.0)
-    parser.add_argument("--surface", default="quad")
     parser.add_argument("--every", type=int, default=10, help="snapshot every Nth step")
     parser.add_argument("--workers", type=int, default=3)
     parser.add_argument("--out", type=Path, help="JSON-lines output")
@@ -235,11 +234,11 @@ def main() -> None:
     with ProcessPoolExecutor(max_workers=args.workers) as pool:
         if args.controlled:
             futures = [
-                pool.submit(_run_controlled, backend, s, args.steps, args.years, args.surface, args.every, args.controlled_steps)
+                pool.submit(_run_controlled, backend, s, args.steps, args.years, args.every, args.controlled_steps)
                 for s in args.seeds
             ]
         else:
-            futures = [pool.submit(_run_seed, backend, s, args.steps, args.years, args.surface, args.every) for s in args.seeds]
+            futures = [pool.submit(_run_seed, backend, s, args.steps, args.years, args.every) for s in args.seeds]
         rows = [row for f in futures for row in f.result()]
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)

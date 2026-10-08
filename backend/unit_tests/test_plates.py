@@ -1,22 +1,19 @@
 import numpy as np
-import pytest
 from app import geometry
 from app.elevation_lines import (
     CRUST_TYPE_CONTINENTAL,
     CRUST_TYPE_INHERIT,
     CRUST_TYPE_OCEANIC,
-    ElevationLine,
+    NODE_DENSITY_CHOICES,
     line_spacing_rad,
 )
-from app.lithosphere_plate import build_plate_tiling, generate_plates as _generate_plates
+from app.lithosphere_plate import build_plate_tiling, generate_plates
 from app import healpix_grid
 from app.plates import (
     ELLIPSE_OUTLINE_POINTS,
     MAX_AUTO_PLATES,
     MIN_AUTO_PLATES,
     MIN_OCEANIC_PLATES,
-    NODE_DENSITY_CHOICES,
-    PlateWithLines,
     cached_node_healpix_index,
     collect_all_coal_deposit,
     collect_all_mineral_deposit,
@@ -29,30 +26,26 @@ from app.plates import (
     node_components,
     plate_bounding_ellipse,
 )
-from app.world import generate_world as _generate_world, step_world
+from app.sparse_quad_patch import cells_per_face_edge, unpack_cell_keys
+from app.world import generate_world, step_world
 
-
-def generate_plates(*args, **kwargs):
-    """This module exercises the legacy row/line implementation unless a test opts into quad."""
-    kwargs.setdefault("surface", "lines")
-    return _generate_plates(*args, **kwargs)
-
-
-def generate_world(*args, **kwargs):
-    kwargs.setdefault("surface", "lines")
-    return _generate_world(*args, **kwargs)
+from .quad_fixtures import lobed_plate
 
 
 def _measured_land_fraction(plates_list) -> float:
-    total = sum(p.node_count() for p in plates_list)
-    land = sum(int(np.sum(line.elevation > 0)) for p in plates_list for line in p.lines)
+    total = sum(float(p.node_areas_m2().sum()) for p in plates_list)
+    land = sum(float(p.node_areas_m2()[p.collect("elevation") > 0].sum()) for p in plates_list)
     return land / total if total else 0.0
 
 
 def _measured_continental_area_fraction(plates_list) -> float:
-    total = sum(p.node_count() for p in plates_list)
-    continental = sum(p.node_count() for p in plates_list if p.crust_type == "continental")
+    total = sum(float(p.node_areas_m2().sum()) for p in plates_list)
+    continental = sum(float(p.node_areas_m2().sum()) for p in plates_list if p.crust_type == "continental")
     return continental / total if total else 0.0
+
+
+def _remove_every_cell(plate) -> None:
+    plate.remove_cells(np.ones(plate.node_count(), dtype=bool))
 
 
 def test_generate_plates_node_density_quadruples_node_count():
@@ -76,7 +69,7 @@ def test_generate_plates_count_and_crust_types():
     assert all(p.crust_type in ("continental", "oceanic") for p in plates)
 
 
-def test_every_plate_has_elevation_lines():
+def test_every_plate_has_nodes():
     plates = generate_plates(seed=1, num_plates=8)
     for p in plates:
         assert p.node_count() > 0, f"plate {p.plate_id} has no elevation nodes"
@@ -99,11 +92,10 @@ def test_every_node_is_closest_to_a_site_of_its_own_plate():
     plates = generate_plates(seed=seed, num_plates=num_plates)
 
     for p in plates:
-        for line in p.lines:
-            world_pts = line.world_xyz(p.frame)
-            dists = geometry.angular_distance(world_pts[:, None, :], tiling.site_xyz[None, :, :])
-            nearest_site = np.argmin(dists, axis=1)
-            assert np.all(tiling.site_plate[nearest_site] == p.plate_id)
+        world_pts = p.all_points_and_elevation()[0]
+        dists = geometry.angular_distance(world_pts[:, None, :], tiling.site_xyz[None, :, :])
+        nearest_site = np.argmin(dists, axis=1)
+        assert np.all(tiling.site_plate[nearest_site] == p.plate_id)
 
 
 def test_build_plate_tiling_is_deterministic_and_covers_every_plate():
@@ -143,26 +135,6 @@ def test_voronoi_points_is_deterministic():
     assert [p.outline_world().tolist() for p in a] == [p.outline_world().tolist() for p in b]
 
 
-def test_lines_are_evenly_spaced_in_phi():
-    # node_density pinned to 1.0 (not DEFAULT_NODE_DENSITY): the spacing check below compares
-    # against the reference TARGET_LINE_SPACING_RAD, which only holds at density 1.0 -- at any
-    # other density, actual line spacing is TARGET_LINE_SPACING_RAD / sqrt(node_density) (see
-    # line_spacing_rad), and this test only cares that spacing is *even*, not what density
-    # produced it.
-    plates = generate_plates(seed=4, num_plates=6, node_density=1.0)
-    for p in plates:
-        phis = sorted(line.phi for line in p.lines)
-        if len(phis) < 2:
-            continue
-        diffs = np.diff(phis)
-        # All gaps should be an integer multiple of the target spacing (some plates
-        # won't own every consecutive row near their boundary).
-        from app.elevation_lines import TARGET_LINE_SPACING_RAD
-
-        ratios = diffs / TARGET_LINE_SPACING_RAD
-        assert np.allclose(ratios, np.round(ratios), atol=1e-6)
-
-
 def test_generate_world_matches_plate_count():
     world = generate_world(seed=7, num_plates=9)
     assert len(world.plates) == 9
@@ -176,7 +148,7 @@ def test_generation_is_deterministic_for_same_seed():
     for p1, p2 in zip(w1.plates, w2.plates):
         assert p1.crust_type == p2.crust_type
         assert np.allclose(p1.frame, p2.frame)
-        assert len(p1.lines) == len(p2.lines)
+        assert np.array_equal(p1.cell_keys, p2.cell_keys)
 
 
 def test_generate_plates_auto_count_is_deterministic_for_same_seed():
@@ -246,10 +218,10 @@ def _land_points_and_elevation(plates_list):
 
 def test_generation_elevation_is_deterministic_for_same_seed():
     # Stronger than test_generation_is_deterministic_for_same_seed (which only checks
-    # frame/crust type/line count): the composite relief field must reproduce the exact
-    # per-node elevation for a given seed.
-    e1 = np.concatenate([l.elevation for p in generate_plates(seed=321, num_plates=10) for l in p.lines])
-    e2 = np.concatenate([l.elevation for p in generate_plates(seed=321, num_plates=10) for l in p.lines])
+    # frame/crust type/cells): the composite relief field must reproduce the exact per-node
+    # elevation for a given seed.
+    e1 = np.concatenate([p.collect("elevation") for p in generate_plates(seed=321, num_plates=10)])
+    e2 = np.concatenate([p.collect("elevation") for p in generate_plates(seed=321, num_plates=10)])
     assert np.array_equal(e1, e2)
 
 
@@ -297,27 +269,6 @@ def test_generation_has_elevated_flats():
     assert elevated_flat.sum() > 150
 
 
-def test_outline_world_traces_a_loop_covering_every_line():
-    # A staircase, not a smooth scanline (see PlateWithLines.outline_world's own docstring):
-    # every line contributes at least one point per side (high/low theta), plus extra
-    # "corner" points wherever two adjacent rows' theta extents actually differ -- which is
-    # the normal case for a real, non-uniform plate, not the exception -- so the loop is at
-    # least, not exactly, 2 points per line.
-    plates = generate_plates(seed=5, num_plates=8)
-    for p in plates:
-        lines_with_nodes = [line for line in p.lines if len(line.theta) > 0]
-        outline = p.outline_world()
-        assert len(outline) >= 2 * len(lines_with_nodes)
-        assert np.allclose(np.linalg.norm(outline, axis=-1), 1.0, atol=1e-9)
-
-
-def test_outline_world_empty_for_plate_with_no_lines():
-    plates = generate_plates(seed=6, num_plates=8)
-    p = plates[0]
-    p.set_lines([])
-    assert len(p.outline_world()) == 0
-
-
 def test_get_bounding_polygon_matches_outline_world():
     plates = generate_plates(seed=7, num_plates=8)
     for p in plates:
@@ -340,21 +291,21 @@ def test_get_bounding_polygon_cache_invalidated_by_rotate():
     assert np.array_equal(rotated, p.outline_world())
 
 
-def test_get_bounding_polygon_cache_invalidated_by_set_lines():
+def test_get_bounding_polygon_cache_invalidated_by_a_topology_change():
     p = generate_plates(seed=10, num_plates=8)[0]
     cached = p.get_bounding_polygon()
-    p.set_lines(list(p.lines))
+    drop = np.zeros(p.node_count(), dtype=bool)
+    drop[0] = True
+    p.remove_cells(drop)
     refreshed = p.get_bounding_polygon()
     assert refreshed is not cached
-    assert np.array_equal(refreshed, cached)  # same lines, so same outline -- just recomputed
+    assert np.array_equal(refreshed, p.outline_world())
 
 
-def test_get_bounding_polygon_cache_invalidated_by_replace_line():
-    p = generate_plates(seed=11, num_plates=8)[0]
-    cached = p.get_bounding_polygon()
-    p.replace_line(0, p.lines[0])
-    refreshed = p.get_bounding_polygon()
-    assert refreshed is not cached
+def test_outline_world_empty_for_plate_with_no_cells():
+    p = generate_plates(seed=6, num_plates=8)[0]
+    _remove_every_cell(p)
+    assert len(p.outline_world()) == 0
 
 
 def test_get_node_kdtree_is_cached_until_geometry_changes():
@@ -365,8 +316,10 @@ def test_get_node_kdtree_is_cached_until_geometry_changes():
     rotated = p.get_node_kdtree()
     assert rotated is not first  # invalidated by rotate
     assert np.allclose(np.asarray(rotated.data), p.all_points_and_elevation()[0])
-    p.set_lines(list(p.lines))
-    assert p.get_node_kdtree() is not rotated  # invalidated by set_lines
+    drop = np.zeros(p.node_count(), dtype=bool)
+    drop[0] = True
+    p.remove_cells(drop)
+    assert p.get_node_kdtree() is not rotated  # invalidated by a topology change
 
 
 def test_plate_bounding_ellipse_empty_for_no_points():
@@ -442,7 +395,7 @@ def test_collect_all_points_concatenates_across_plates():
 def test_collect_all_points_none_when_every_plate_is_empty():
     world_plates = generate_plates(seed=9, num_plates=3)
     for p in world_plates:
-        p.set_lines([])
+        _remove_every_cell(p)
     assert collect_all_points(world_plates) is None
 
 
@@ -457,11 +410,8 @@ def test_nearest_plate_id_finds_the_owning_plate_at_its_own_seed():
 def test_collect_all_soil_and_resource_fields_are_index_aligned_with_collect_all_points():
     world_plates = generate_plates(seed=9, num_plates=6)
     for p in world_plates:
-        for i, line in enumerate(p.lines):
-            n = len(line.theta)
-            if n == 0:
-                continue
-            p.replace_line(i, line.replace(soil_depth=np.full(n, 2.5), coal_deposit_m=np.full(n, 1.5)))
+        n = p.node_count()
+        p.set_fields_on_plate(soil_depth=np.full(n, 2.5), coal_deposit_m=np.full(n, 1.5))
     points, _, _ = collect_all_points(world_plates)
     soil_depth = collect_all_soil_depth(world_plates)
     coal = collect_all_coal_deposit(world_plates)
@@ -479,14 +429,9 @@ def test_collect_all_soil_and_resource_fields_are_index_aligned_with_collect_all
 def _sampled_overlap_fraction(plates_list, sample_per_plate: int = 20) -> float:
     """Fraction of sampled nodes (each plate's own nodes, thinned to at most
     `sample_per_plate`) found geometrically inside a *different* plate's current
-    `get_bounding_polygon()` -- the closest testable proxy for "bounding polygons don't
-    overlap" available with an envelope-based (not exact) outline. Not expected to be
-    exactly zero: `PlateWithLines.deform`'s own docstring, and docs/simulation-model.md's
-    account of this design's known limits, explain why -- one-turn processing lag (a
-    neighbour that grows into adjacent space later in the same turn's randomized order
-    isn't re-checked until this plate's own next turn) and residual envelope looseness for
-    a genuinely non-convex, lateral-sheared plate shape. What *should* hold is that this
-    stays bounded rather than climbing without limit turn over turn -- see
+    `get_bounding_polygon()`. Not expected to be exactly zero -- independently rotated cell
+    lattices overlap a little where they meet (issue #255) -- but it should stay bounded
+    rather than climbing without limit turn over turn -- see
     stress_tests/test_world_stepping.py's own long-running version of this same check."""
     total = 0
     overlapping = 0
@@ -529,41 +474,29 @@ def test_deform_keeps_plate_overlap_bounded_not_runaway():
 # -- node_components / Plate.defragment / _plates_from_node_masks -----------------------
 #
 # Geometric plate cleanup -- see merge_split.defragment_plates and Plate.defragment.
-# Ordinary deform() only shrinks a line from its ends and never deletes its last node, so
-# subduction/transform can sever one Plate's node cloud into two disconnected landmasses or
-# strand a comb of one-node rows; maybe_split_plate only cuts on mantle-flow disagreement,
-# not geometry, so it never catches either. These exercise the pass that does.
+# Boundary retreat can sever one Plate's cells into two disconnected landmasses or strand a
+# few cells; maybe_split_plate only cuts on mantle-flow disagreement, not geometry, so it
+# never catches either. These exercise the pass that does.
 
 _DEFRAG_SPACING_RAD = line_spacing_rad(1.0)
 _DEFRAG_CONNECT_RAD = 2.5 * _DEFRAG_SPACING_RAD
+_DEFRAG_I0 = cells_per_face_edge(_DEFRAG_SPACING_RAD) // 2 - 20  # see quad_fixtures.lobed_plate
 
 
 def _lobed_plate(lobes, plate_id=0, rows=12, per_row=8, crust_type="oceanic", **plate_kwargs):
-    """A `PlateWithLines` (frame = identity, so plate-local phi/theta are world lat/lon)
-    whose nodes form one connected blob per entry in `lobes`. Each entry is either a theta
-    centre (radians) or a `(centre, nodes_per_row)` tuple; centres must sit far enough apart
-    to read as separate connected components at `_DEFRAG_CONNECT_RAD`. `rows` lines are
-    stacked one spacing apart in phi, so a lobe contributes `rows * nodes_per_row` nodes."""
-    lines = []
-    for r in range(rows):
-        chunks = []
-        for lobe in lobes:
-            centre, count = lobe if isinstance(lobe, tuple) else (lobe, per_row)
-            chunks.append(centre + np.arange(count) * _DEFRAG_SPACING_RAD)
-        theta = np.concatenate(chunks)
-        lines.append(ElevationLine(phi=r * _DEFRAG_SPACING_RAD, theta=theta, elevation=np.zeros(len(theta))))
-    return PlateWithLines(plate_id=plate_id, frame=np.eye(3), crust_type=crust_type, lines=lines, **plate_kwargs)
+    """See `quad_fixtures.lobed_plate`."""
+    return lobed_plate(lobes, plate_id=plate_id, rows=rows, per_row=per_row, crust_type=crust_type, **plate_kwargs)
 
 
 def test_node_components_labels_isolated_clusters_separately():
-    points, _ = _lobed_plate([0.0, 0.6]).all_points_and_elevation()
+    points, _ = _lobed_plate([0, 30]).all_points_and_elevation()
     labels = node_components(points, _DEFRAG_CONNECT_RAD)
     _, counts = np.unique(labels, return_counts=True)
     assert sorted(counts.tolist()) == [96, 96]  # two equal lobes, 12 rows x 8 nodes each
 
 
 def test_node_components_one_label_for_a_contiguous_blob():
-    points, _ = _lobed_plate([0.0]).all_points_and_elevation()
+    points, _ = _lobed_plate([0]).all_points_and_elevation()
     assert set(node_components(points, _DEFRAG_CONNECT_RAD).tolist()) == {0}
 
 
@@ -574,7 +507,7 @@ def test_node_components_empty_input():
 def test_defragment_splits_a_severed_plate_and_keeps_identity_on_the_largest():
     from app.world import World
 
-    plate = _lobed_plate([(0.0, 10), (0.6, 6)], plate_id=7, omega=np.array([0.1, 0.2, 0.3]), age_steps=9)
+    plate = _lobed_plate([(0, 10), (30, 6)], plate_id=7, omega=np.array([0.1, 0.2, 0.3]), age_steps=9)
     before = plate.node_count()
     world = World(seed=0, plates=[plate], mantle_centers=[])
 
@@ -602,7 +535,7 @@ def test_defragment_sheds_stranded_nodes_without_splitting():
 
     # second lobe is 12 nodes (1 per row), well below min_fragment_nodes -- dropped, not
     # promoted to its own plate, and no new id is consumed.
-    plate = _lobed_plate([(0.0, 10), (0.6, 1)], plate_id=3)
+    plate = _lobed_plate([(0, 10), (30, 1)], plate_id=3)
     before = plate.node_count()
     world = World(seed=0, plates=[plate], mantle_centers=[])
 
@@ -621,7 +554,7 @@ def test_defragment_sheds_stranded_nodes_without_splitting():
 def test_defragment_leaves_a_contiguous_plate_alone():
     from app.world import World
 
-    plate = _lobed_plate([0.0])
+    plate = _lobed_plate([0])
     world = World(seed=0, plates=[plate], mantle_centers=[])
     assert plate.defragment(next_id=20, connect_radius_rad=_DEFRAG_CONNECT_RAD, min_fragment_nodes=50, world=world) is None
 
@@ -632,7 +565,7 @@ def test_defragment_leaves_an_all_debris_plate_for_the_territory_check():
     # three lobes, none reaching min_fragment_nodes: defrag declines (returns None) rather
     # than deleting a whole plate itself -- has_negligible_territory / remove_defunct_plates
     # own that call.
-    plate = _lobed_plate([(0.0, 2), (0.6, 2), (1.2, 2)], rows=10)
+    plate = _lobed_plate([(0, 2), (25, 2), (50, 2)], rows=10)
     world = World(seed=0, plates=[plate], mantle_centers=[])
     assert plate.defragment(next_id=20, connect_radius_rad=_DEFRAG_CONNECT_RAD, min_fragment_nodes=50, world=world) is None
 
@@ -640,14 +573,9 @@ def test_defragment_leaves_an_all_debris_plate_for_the_territory_check():
 def test_defragment_partition_carries_each_nodes_own_fields_to_the_right_fragment():
     from app.world import World
 
-    plate = _lobed_plate([0.0, 0.6], plate_id=4)
-    points, _ = plate.all_points_and_elevation()
-    marker = np.arange(len(points), dtype=float)  # a distinct value per node
-    offset = 0
-    for i, line in enumerate(plate.lines):
-        k = len(line)
-        plate.replace_line(i, line.replace(channel_depth=marker[offset : offset + k]))
-        offset += k
+    plate = _lobed_plate([0, 30], plate_id=4)
+    marker = np.arange(plate.node_count(), dtype=float)  # a distinct value per node
+    plate.set_fields_on_plate(channel_depth=marker)
 
     world = World(seed=0, plates=[plate], mantle_centers=[])
     replacements, _, _ = plate.defragment(
@@ -665,11 +593,11 @@ def test_defragment_freezes_inherited_crust_when_a_fragment_changes_type():
     from app.lithosphere import node_crust_density
     from app.world import World
 
-    plate = _lobed_plate([0.0, 0.6], plate_id=4, crust_type="continental")
-    for i, line in enumerate(plate.lines):
-        codes = np.full(len(line), CRUST_TYPE_INHERIT, dtype=line.crust_type_code.dtype)
-        codes[8:15] = CRUST_TYPE_OCEANIC  # second lobe: 7 of 8 nodes oceanic, last inherits
-        plate.replace_line(i, line.replace(crust_type_code=codes))
+    plate = _lobed_plate([0, 30], plate_id=4, crust_type="continental")
+    column = unpack_cell_keys(plate.cell_keys)[2] - _DEFRAG_I0
+    codes = np.full(plate.node_count(), CRUST_TYPE_INHERIT, dtype=np.int8)
+    codes[(column >= 30) & (column < 37)] = CRUST_TYPE_OCEANIC  # second lobe: 7 of 8 cells per row oceanic, last inherits
+    plate.set_fields_on_plate(crust_type_code=codes)
     points_before, _ = plate.all_points_and_elevation()
     density_before = node_crust_density(plate.collect("crust_type_code"), plate.crust_type)
 
@@ -692,1299 +620,8 @@ def test_defragment_freezes_inherited_crust_when_a_fragment_changes_type():
         assert [before[tuple(np.round(pt, 12))] for pt in pts] == rho.tolist()
 
 
-def test_lithosphere_split_freezes_inherited_crust_when_a_daughter_changes_type():
-    # Issue #239, LithospherePlate.split path: continental parent, the +y half mostly
-    # re-marked oceanic by rift melting, so daughter A comes out oceanic. Its remaining
-    # inheriting node per row must keep reading as continental.
-    from app.lithosphere import node_crust_density
-    from app.lithosphere_plate import LithospherePlate
-
-    theta = (np.arange(10) - 4.5) * 0.05  # indices 5..9 have theta > 0, i.e. world y > 0
-    lines = []
-    for r in range(4):
-        codes = np.full(10, CRUST_TYPE_INHERIT, dtype=np.int8)
-        codes[5:9] = CRUST_TYPE_OCEANIC
-        lines.append(ElevationLine(phi=r * 0.05, theta=theta.copy(), elevation=np.zeros(10), crust_type_code=codes))
-    plate = LithospherePlate(plate_id=1, frame=np.eye(3), crust_type="continental", lines=lines)
-    points_before, _ = plate.all_points_and_elevation()
-    density_before = node_crust_density(plate.collect("crust_type_code"), plate.crust_type)
-
-    plate_a, plate_b = plate.split(9, np.array([0.0, 1.0, 0.0]), min_nodes=4)
-    assert plate_a.crust_type == "oceanic"
-    assert plate_b.crust_type == "continental"
-    codes_a = plate_a.collect("crust_type_code")
-    assert np.count_nonzero(codes_a == CRUST_TYPE_CONTINENTAL) == 4
-    assert not np.any(codes_a == CRUST_TYPE_INHERIT)
-    assert set(plate_b.collect("crust_type_code").tolist()) == {CRUST_TYPE_INHERIT}
-
-    before = {tuple(np.round(pt, 12)): rho for pt, rho in zip(points_before, density_before)}
-    for p in (plate_a, plate_b):
-        pts, _ = p.all_points_and_elevation()
-        rho = node_crust_density(p.collect("crust_type_code"), p.crust_type)
-        assert [before[tuple(np.round(pt, 12))] for pt in pts] == rho.tolist()
-
-
-def test_has_negligible_territory_flags_a_comb_of_one_node_stubs():
-    # Many lines but ~1 node each: deform() decayed a heavily-subducted plate into stranded
-    # rows. High line count masks that there's no 2D patch left -- the original
-    # len(lines) <= 1 test missed this.
-    comb = PlateWithLines(
-        plate_id=0,
-        frame=np.eye(3),
-        crust_type="oceanic",
-        lines=[ElevationLine(phi=i * _DEFRAG_SPACING_RAD, theta=np.array([0.0]), elevation=np.zeros(1)) for i in range(40)],
-    )
-    assert comb.has_negligible_territory()
-
-
-def test_has_negligible_territory_false_for_a_plate_with_real_rows():
-    assert not _lobed_plate([0.0]).has_negligible_territory()
-
-
-# -- pole cap / theta-winding guard --------------------------------------------------
-#
-# A row is a circle of local latitude, so its theta extent can't physically exceed a full
-# 2*pi revolution -- nothing here treats theta as periodic, so a plate that grew to encircle
-# its own local pole would otherwise keep winding the same ring every step (concentric-circle
-# artifacts in the Plate Inspector, unbounded overlap + node count on long runs). LithospherePlate's
-# _grow_or_shrink_line_for_deform / _claim_adjacent_territory guard against both.
-
-
-def _lithosphere_polar_plate(near_pole_phis, theta, crust_type="oceanic"):
-    from app.lithosphere import reference_thickness
-    from app.lithosphere_plate import LithospherePlate
-
-    hc0, hm0 = reference_thickness(crust_type)
-    lines = [
-        ElevationLine(
-            phi=phi,
-            theta=theta.copy(),
-            elevation=np.zeros(len(theta)),
-            crustal_thickness_m=np.full(len(theta), hc0),
-            mantle_lithosphere_thickness_m=np.full(len(theta), hm0),
-        )
-        for phi in near_pole_phis
-    ]
-    return LithospherePlate(plate_id=0, frame=np.eye(3), crust_type=crust_type, lines=lines)
-
-
-def test_lithosphere_deform_never_winds_a_row_past_a_full_revolution():
-    from app.world import World
-
-    spacing = line_spacing_rad(1.0)
-    near_pole_phis = [0.3] + [np.pi / 2 - k * spacing for k in (8, 7, 6, 5, 4)]
-    plate = _lithosphere_polar_plate(near_pole_phis, np.linspace(-0.5, 0.5, 6))
-    world = World(seed=0, plates=[plate], mantle_centers=[], node_density=1.0)
-
-    from app.elevation_lines import needs_regularizing
-
-    for _ in range(25):
-        plate.deform(world, [], years=1_000_000, max_distance=5 * spacing)
-
-    grew_a_full_ring = False
-    for line in plate.lines:
-        span = float(line.theta[-1] - line.theta[0])
-        dtheta = spacing / max(np.cos(line.phi), 1e-3)
-        assert span <= 2.0 * np.pi + spacing, f"row at phi={line.phi:.3f} wound to {span:.2f} rad"
-        assert np.all(np.diff(line.theta) > 0)
-        if line.phi > 1.0 and span > 2.0 * np.pi - 4 * dtheta:
-            grew_a_full_ring = True
-
-    # A near-pole row *did* grow all the way around to the ring cap (the cap stopped it there,
-    # it isn't just slow growth).
-    assert grew_a_full_ring
-    # ... and the mid-latitude row is still an ordinary partial arc, untouched by the cap.
-    mid = min(plate.lines, key=lambda ln: ln.phi)
-    assert mid.theta[-1] - mid.theta[0] < 2.0 * np.pi
-
-    # The point of the ring_room cap (vs. leaning on regularize_line's after-the-fact unwind):
-    # once a near-pole ring has closed, end-growth stops there rather than over-winding past
-    # 2*pi and being unwound again on the very next step, step after step. Spy on one more
-    # step: no row should still be tripping regularize_line (pre-fix, the near-pole rings wind
-    # past 2*pi and get unwound every single step, forever).
-    assert not any(needs_regularizing(line, spacing) for line in plate.lines)
-    import app.lithosphere_plate as _lp
-
-    regularized_phis = []
-    orig = _lp.regularize_line
-
-    def _spy(line, *a, **k):
-        regularized_phis.append(round(line.phi, 3))
-        return orig(line, *a, **k)
-
-    _lp.regularize_line = _spy
-    try:
-        plate.deform(world, [], years=1_000_000, max_distance=5 * spacing)
-    finally:
-        _lp.regularize_line = orig
-    assert not regularized_phis, f"rows still churning through regularize every step: {regularized_phis}"
-
-
-def test_runs_of_at_least_clears_short_true_runs():
-    from app.lithosphere_plate import _runs_of_at_least
-
-    mask = np.array([1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1], dtype=bool)
-    assert list(_runs_of_at_least(mask, 3)) == [0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1]
-    assert list(_runs_of_at_least(mask, 1)) == list(mask)
-    assert not _runs_of_at_least(np.array([1, 1, 0, 0, 1], dtype=bool), 3).any()
-    # a qualifying run flush against the end is kept
-    assert list(_runs_of_at_least(np.array([0, 0, 1, 1, 1], dtype=bool), 3)) == [0, 0, 1, 1, 1]
-
-
-def test_lithosphere_continental_contested_edge_retreats(monkeypatch):
-    """A continental line's contested end retreats one node per step whether the overriding
-    neighbour is oceanic (a passive margin / accretion front, breaking the node ratchet) or
-    continental (a suture whose territory overlap is consumed into the orogen rather than
-    frozen for tens of Myr). Both cases lose real theta extent.
-
-    This scenario's plates are static (zero omega, no relative motion at all), so closing rate
-    -- and with it this step's arc-magmatic creation -- is uniformly zero regardless of which
-    neighbour type is retreated against (see issue #177 direction 1's
-    `_budget_limited_removal`/`oceanic_override_retreat_budget_hc`): a real simulated world's
-    plates always carry a real omega, so an actively-contested boundary there is never stuck at
-    exactly zero closing rate the way this handcrafted static setup is. Bypassing
-    `_budget_limited_removal` here keeps this test about the retreat/accretion mechanic itself
-    -- the budget cap gets its own dedicated test below."""
-    from app import lithosphere_plate as lp
-    from app.lithosphere_plate import CONTINENTAL_CONTESTED_RETREAT_MIN_RUN, LithospherePlate
-    from app.lithosphere import reference_thickness
-    from app.world import World
-
-    monkeypatch.setattr(lp, "_budget_limited_removal", lambda hc, n_remove, budget_hc, from_high: n_remove)
-    spacing = line_spacing_rad(1.0)
-
-    def _plate(pid, crust_type, theta_lo, theta_hi, n):
-        hc0, hm0 = reference_thickness(crust_type)
-        theta = np.linspace(theta_lo, theta_hi, n)
-        line = ElevationLine(
-            phi=0.2,
-            theta=theta,
-            elevation=np.zeros(n),
-            crustal_thickness_m=np.full(n, hc0),
-            mantle_lithosphere_thickness_m=np.full(n, hm0),
-        )
-        filler = ElevationLine(
-            phi=-0.6,
-            theta=np.linspace(-0.2, 0.2, 8),
-            elevation=np.zeros(8),
-            crustal_thickness_m=np.full(8, hc0),
-            mantle_lithosphere_thickness_m=np.full(8, hm0),
-        )
-        return LithospherePlate(plate_id=pid, frame=np.eye(3), crust_type=crust_type, lines=[line, filler])
-
-    def _high_end_retreat(neighbour_crust: str) -> float:
-        continent = _plate(0, "continental", -0.5, 0.5, 40)
-        # Same frame, theta range overlapping the continent's high end -> the continent's
-        # nodes with theta > ~0.15 fall inside this neighbour's polygon (contested). The
-        # regularize pass keeps the node *count* ~constant, so it's the line's theta *extent*
-        # (its actual territory) that retreats.
-        neighbour = _plate(1, neighbour_crust, 0.15, 0.9, 40)
-        world = World(seed=0, plates=[continent, neighbour], mantle_centers=[], node_density=1.0)
-
-        def high_theta() -> float:
-            return max(ln.theta[-1] for ln in continent.lines if abs(ln.phi - 0.2) < 1e-6)
-
-        before = high_theta()
-        for _ in range(6):
-            continent.deform(world, [neighbour], years=200_000, max_distance=1.5 * spacing)
-        return before - high_theta()
-
-    retreat_against_ocean = _high_end_retreat("oceanic")
-    retreat_against_continent = _high_end_retreat("continental")
-    assert retreat_against_ocean > CONTINENTAL_CONTESTED_RETREAT_MIN_RUN * spacing
-    assert retreat_against_continent > CONTINENTAL_CONTESTED_RETREAT_MIN_RUN * spacing
-
-
-def test_redistribute_accreted_column_conserves_crustal_volume():
-    """`_redistribute_accreted_column` moves the exact summed Hc/Hm of the dropped, accretion-
-    flagged nodes onto the surviving edge nodes (node area is constant, so summed thickness is
-    the conserved volume), and lifts their elevation by the matching isostatic delta. Dropped
-    nodes not flagged (a passive margin against an oceanic slab) contribute nothing. Hm is
-    conserved the same way as Hc -- the donor's own removed_hm must actually enter the
-    calculation, not just a ratio derived from the survivor's own prior Hc/Hm (GitHub issue
-    #216: that ratio-based scaling silently discarded the donor's Hm)."""
-    from app.lithosphere import crust_density, isostatic_elevation
-    from app.lithosphere_plate import _redistribute_accreted_column, SUTURE_ACCRETION_SPREAD_NODES
-
-    rho_c = crust_density("continental")
-    hc = np.full(10, 35_000.0)
-    hm = np.full(10, 100_000.0)
-    fields = {
-        "crustal_thickness_m": hc,
-        "mantle_lithosphere_thickness_m": hm,
-        "continental_material_m": hc.copy(),
-    }
-    elevation = isostatic_elevation(hc, hm, rho_c).copy()
-
-    removed_hc = np.array([35_000.0, 35_000.0, 35_000.0])
-    removed_hm = np.array([120_000.0, 90_000.0, 200_000.0])  # last one unused -> not accreted
-    accrete_removed = np.array([True, True, False])  # last one was against ocean -> subducts
-
-    total_hc_before = hc.sum()
-    total_hm_before = hm.sum()
-    _redistribute_accreted_column(
-        fields, elevation, rho_c, removed_hc, removed_hm, removed_hc,
-        accrete_removed, from_high=True,
-    )
-
-    assert fields["crustal_thickness_m"].sum() == pytest.approx(total_hc_before + 2 * 35_000.0)
-    assert fields["mantle_lithosphere_thickness_m"].sum() == pytest.approx(total_hm_before + 120_000.0 + 90_000.0)
-    # spread over the last SUTURE_ACCRETION_SPREAD_NODES nodes, evenly
-    k = SUTURE_ACCRETION_SPREAD_NODES
-    assert np.allclose(fields["crustal_thickness_m"][-k:], 35_000.0 + 2 * 35_000.0 / k)
-    assert np.allclose(fields["crustal_thickness_m"][:-k], 35_000.0)
-    assert np.allclose(fields["mantle_lithosphere_thickness_m"][-k:], 100_000.0 + (120_000.0 + 90_000.0) / k)
-    assert np.allclose(fields["mantle_lithosphere_thickness_m"][:-k], 100_000.0)
-    # thicker crust -> higher ground on exactly those nodes
-    assert np.all(elevation[-k:] > elevation[:-k].max())
-
-    # A suture that never heals would pile columns onto the same nodes forever -- Hc is capped
-    # (the overflow delaminates), so it can't run away.
-    from app.lithosphere_plate import SUTURE_ACCRETION_MAX_HC_M
-
-    hc2 = np.full(6, 60_000.0)
-    fields2 = {
-        "crustal_thickness_m": hc2,
-        "mantle_lithosphere_thickness_m": np.full(6, 100_000.0),
-        "continental_material_m": hc2.copy(),
-    }
-    elev2 = isostatic_elevation(hc2, fields2["mantle_lithosphere_thickness_m"], rho_c).copy()
-    _redistribute_accreted_column(
-        fields2, elev2, rho_c,
-        np.full(5, 90_000.0), np.full(5, 90_000.0), np.full(5, 90_000.0),
-        np.ones(5, dtype=bool), from_high=True,
-    )
-    assert np.all(fields2["crustal_thickness_m"] <= SUTURE_ACCRETION_MAX_HC_M + 1e-6)
-
-
-def test_continent_continent_suture_consumes_its_overlap_as_mass_conserving_accretion(monkeypatch):
-    """The overlap a retreating continent-continent suture consumes is thrust onto the plate's
-    own leading edge, not discarded: the retreated column's crustal volume reappears on the
-    surviving edge nodes (so the belt thickens and the plate's total Hc is conserved). A
-    retreat against an *oceanic* neighbour is a passive margin -- that column subducts, so the
-    edge does not thicken and total Hc drops.
-
-    This scenario's plates are static (zero omega), so this step's arc-magmatic creation is
-    always zero and issue #177 direction 1's oceanic-override retreat budget would otherwise
-    block every oceanic-neighbour retreat outright (a real simulated world's plates always
-    carry a real omega, so this exact-zero-closing-rate case doesn't arise there) --
-    `_budget_limited_removal` is bypassed here so this test stays about the retreat/accretion
-    mechanic itself; the budget cap gets its own dedicated test below."""
-    from app import lithosphere_plate as lp
-    from app.lithosphere import reference_thickness
-    from app.lithosphere_plate import LithospherePlate
-    from app.world import World
-
-    monkeypatch.setattr(lp, "_budget_limited_removal", lambda hc, n_remove, budget_hc, from_high: n_remove)
-    hc0, hm0 = reference_thickness("continental")
-    spacing = line_spacing_rad(1.0)
-
-    def _plate(pid, crust_type, theta_lo, theta_hi, n):
-        theta = np.linspace(theta_lo, theta_hi, n)
-        line = ElevationLine(
-            phi=0.2,
-            theta=theta,
-            elevation=np.zeros(n),
-            crustal_thickness_m=np.full(n, hc0 if crust_type == "continental" else reference_thickness("oceanic")[0]),
-            mantle_lithosphere_thickness_m=np.full(n, hm0 if crust_type == "continental" else reference_thickness("oceanic")[1]),
-        )
-        filler = ElevationLine(
-            phi=-0.6,
-            theta=np.linspace(-0.2, 0.2, 8),
-            elevation=np.zeros(8),
-            crustal_thickness_m=np.full(8, hc0),
-            mantle_lithosphere_thickness_m=np.full(8, hm0),
-        )
-        return LithospherePlate(plate_id=pid, frame=np.eye(3), crust_type=crust_type, lines=[line, filler])
-
-    def _run(neighbour_crust: str) -> tuple[float, float]:
-        continent = _plate(0, "continental", -0.5, 0.5, 40)
-        neighbour = _plate(1, neighbour_crust, 0.15, 0.9, 40)  # overlaps the continent's high end
-        world = World(seed=0, plates=[continent, neighbour], mantle_centers=[], node_density=1.0)
-
-        def suture_line():
-            return next(ln for ln in continent.lines if abs(ln.phi - 0.2) < 1e-6)
-
-        edge_hc_before = float(suture_line().crustal_thickness_m[-4:].max())
-        for _ in range(6):
-            continent.deform(world, [neighbour], years=200_000, max_distance=1.5 * spacing)
-        edge_hc_after = float(suture_line().crustal_thickness_m[-4:].max())
-        return edge_hc_after - edge_hc_before, float(suture_line().crustal_thickness_m.sum())
-
-    edge_gain_cc, suture_hc_cc = _run("continental")
-    edge_gain_co, suture_hc_co = _run("oceanic")
-
-    # Suture accretion piles the consumed columns onto the leading edge -- kilometres, not the
-    # metres a bare sub-yield graze would add.
-    assert edge_gain_cc > 3_000.0
-    # Passive margin against an oceanic slab: the retreated column is subducted, so no edge
-    # pile-up...
-    assert edge_gain_co < edge_gain_cc / 3
-    # ...and the suture line keeps several consumed continental columns' worth of extra crust
-    # that the oceanic-neighbour run simply loses.
-    assert suture_hc_cc > suture_hc_co + 3 * 30_000.0
-
-
-def test_budget_limited_removal_caps_by_remaining_budget():
-    """`_budget_limited_removal` (issue #177 direction 1) takes the largest prefix of the
-    candidate removal window, counted in from the true (retreating) end, whose summed Hc fits
-    the remaining budget -- and debits exactly that much back out of the shared budget array."""
-    from app.lithosphere_plate import _budget_limited_removal
-
-    hc = np.array([10_000.0, 20_000.0, 30_000.0, 40_000.0, 50_000.0])
-
-    # from_high=True: the true end is the *last* node, so the window is scanned back-to-front
-    # (50_000 first, then 40_000, ...). A budget of 95_000 covers 50_000+40_000 (=90_000) but
-    # not another 30_000 (=120_000), so only the last 2 of the 4 candidates are allowed.
-    budget = np.array([95_000.0])
-    k = _budget_limited_removal(hc, 4, budget, from_high=True)
-    assert k == 2
-    assert budget[0] == pytest.approx(95_000.0 - 90_000.0)
-
-    # from_high=False: the true end is the *first* node (10_000, then 20_000, ...) -- same
-    # budget, different order, so it covers more nodes before running out.
-    budget = np.array([95_000.0])
-    k = _budget_limited_removal(hc, 4, budget, from_high=False)
-    assert k == 3  # 10_000 + 20_000 + 30_000 = 60_000 <= 95_000; + 40_000 = 100_000 > 95_000
-    assert budget[0] == pytest.approx(95_000.0 - 60_000.0)
-
-    # Exhausted budget refuses everything; a budget covering the whole window returns it whole
-    # and only spends what it actually removed.
-    assert _budget_limited_removal(hc, 3, np.array([0.0]), from_high=True) == 0
-    budget = np.array([1_000_000.0])
-    k = _budget_limited_removal(hc, 5, budget, from_high=True)
-    assert k == 5
-    assert budget[0] == pytest.approx(1_000_000.0 - hc.sum())
-
-    # n_remove <= 0 is a no-op that doesn't touch the budget.
-    budget = np.array([500.0])
-    assert _budget_limited_removal(hc, 0, budget, from_high=True) == 0
-    assert budget[0] == pytest.approx(500.0)
-
-
-def test_oceanic_override_retreat_is_blocked_without_arc_creation_but_suture_is_not():
-    """GitHub issue #177 direction 1: a continental margin's oceanic-override retreat is
-    capped by however much this same step's arc-magmatic creation is adding across the whole
-    plate -- so with these plates static (zero omega, hence zero closing rate, hence zero arc
-    creation), retreat against an *oceanic* neighbour is refused outright (no compensating
-    creation exists to spend the budget on), while retreat against a *continental* neighbour
-    (a suture, fully self-conserving and not the uncapped channel this targets) is completely
-    unaffected -- the two cases this file's own retreat test exercises with the cap bypassed,
-    now shown with the cap left in place."""
-    from app.lithosphere_plate import LithospherePlate
-    from app.lithosphere import reference_thickness
-    from app.world import World
-
-    spacing = line_spacing_rad(1.0)
-
-    def _plate(pid, crust_type, theta_lo, theta_hi, n):
-        hc0, hm0 = reference_thickness(crust_type)
-        theta = np.linspace(theta_lo, theta_hi, n)
-        line = ElevationLine(
-            phi=0.2, theta=theta, elevation=np.zeros(n),
-            crustal_thickness_m=np.full(n, hc0), mantle_lithosphere_thickness_m=np.full(n, hm0),
-        )
-        filler = ElevationLine(
-            phi=-0.6, theta=np.linspace(-0.2, 0.2, 8), elevation=np.zeros(8),
-            crustal_thickness_m=np.full(8, hc0), mantle_lithosphere_thickness_m=np.full(8, hm0),
-        )
-        return LithospherePlate(plate_id=pid, frame=np.eye(3), crust_type=crust_type, lines=[line, filler])
-
-    def _high_end_retreat(neighbour_crust: str) -> float:
-        continent = _plate(0, "continental", -0.5, 0.5, 40)
-        neighbour = _plate(1, neighbour_crust, 0.15, 0.9, 40)
-        world = World(seed=0, plates=[continent, neighbour], mantle_centers=[], node_density=1.0)
-
-        def high_theta() -> float:
-            return max(ln.theta[-1] for ln in continent.lines if abs(ln.phi - 0.2) < 1e-6)
-
-        before = high_theta()
-        for _ in range(6):
-            continent.deform(world, [neighbour], years=200_000, max_distance=1.5 * spacing)
-        return before - high_theta()
-
-    assert _high_end_retreat("oceanic") == 0.0
-    assert _high_end_retreat("continental") > 0.0
-
-
-def test_lithosphere_continental_volume_budget_suppresses_growth():
-    """A continental plate whose node footprint has outrun its crustal volume -- most of its
-    lattice diluted to the oceanic reference column by the boundary ratchet -- grows no new
-    *areal* crust this step: `_claim_adjacent_territory` (a claimed new row) and
-    `_fill_corner_notch_frontier` (a claimed sub-row notch) are both skipped, so it thins/drowns back
-    toward budget instead of tiling drowned margin outward forever. A plate at genuine
-    continental thickness everywhere is within budget and both run normally.
-
-    This is no longer measurable via the row's own theta span, though: `_stretch_end` (an
-    open end's own existing node stretching/thinning in place, mass-conserving, not areal) is
-    deliberately *not* gated by this budget any more (see
-    `LithospherePlate._grow_or_shrink_line_for_deform`'s own comment on why) and grows the row
-    regardless of budget status -- so this spies on the two gated calls directly instead of
-    inferring suppression from an outcome `_stretch_end` now also produces either way."""
-    from app.lithosphere import (
-        REFERENCE_HC_CONTINENTAL_M,
-        REFERENCE_HC_OCEANIC_M,
-        REFERENCE_HM_CONTINENTAL_M,
-    )
-    from app.lithosphere_plate import LithospherePlate
-    from app.world import World
-
-    spacing = line_spacing_rad(1.0)
-
-    def _continent(main_hc: float) -> LithospherePlate:
-        n = 40
-        main = ElevationLine(
-            phi=0.2,
-            theta=np.linspace(-0.5, 0.5, n),
-            elevation=np.zeros(n),
-            crustal_thickness_m=np.full(n, main_hc),
-            mantle_lithosphere_thickness_m=np.full(n, REFERENCE_HM_CONTINENTAL_M),
-        )
-        # A genuinely-continental core so `n_continental` is never zero in either case.
-        core = ElevationLine(
-            phi=-0.6,
-            theta=np.linspace(-0.2, 0.2, 8),
-            elevation=np.zeros(8),
-            crustal_thickness_m=np.full(8, REFERENCE_HC_CONTINENTAL_M),
-            mantle_lithosphere_thickness_m=np.full(8, REFERENCE_HM_CONTINENTAL_M),
-        )
-        return LithospherePlate(plate_id=0, frame=np.eye(3), crust_type="continental", lines=[main, core])
-
-    def _areal_growth_attempted(main_hc: float) -> bool:
-        plate = _continent(main_hc)
-        world = World(seed=0, plates=[plate], mantle_centers=[], node_density=1.0)
-        called = {"claim": False, "notch": False}
-        orig_claim, orig_notch = LithospherePlate._claim_adjacent_territory, LithospherePlate._fill_corner_notch_frontier
-
-        def spy_claim(self, *a, **k):
-            called["claim"] = True
-            return orig_claim(self, *a, **k)
-
-        def spy_notch(self, *a, **k):
-            called["notch"] = True
-            return orig_notch(self, *a, **k)
-
-        LithospherePlate._claim_adjacent_territory = spy_claim
-        LithospherePlate._fill_corner_notch_frontier = spy_notch
-        try:
-            plate.deform(world, [], years=200_000, max_distance=5 * spacing)
-        finally:
-            LithospherePlate._claim_adjacent_territory = orig_claim
-            LithospherePlate._fill_corner_notch_frontier = orig_notch
-        return called["claim"] or called["notch"]
-
-    def _main_span_growth(main_hc: float) -> float:
-        plate = _continent(main_hc)
-        world = World(seed=0, plates=[plate], mantle_centers=[], node_density=1.0)
-
-        def main_span() -> float:
-            line = next(ln for ln in plate.lines if abs(ln.phi - 0.2) < 1e-6)
-            return float(line.theta[-1] - line.theta[0])
-
-        before = main_span()
-        plate.deform(world, [], years=200_000, max_distance=5 * spacing)
-        return main_span() - before
-
-    # Diluted lattice (main row at the oceanic reference column): ~40 nodes vs ~8 genuine
-    # continental -> well past CONTINENTAL_AREA_BUDGET_MULT -> the areal-growth calls are
-    # skipped entirely.
-    assert not _areal_growth_attempted(REFERENCE_HC_OCEANIC_M)
-    # Genuine continental thickness everywhere -> within budget -> they run (whether either
-    # actually finds a claimable gap in this single-plate, no-neighbour fixture is a separate
-    # question from whether the budget gate let them try).
-    assert _areal_growth_attempted(REFERENCE_HC_CONTINENTAL_M)
-    # `_stretch_end` itself grows the row's own theta span regardless of budget status, in
-    # both cases -- the mass-conserving path this budget was never meant to gate.
-    assert _main_span_growth(REFERENCE_HC_OCEANIC_M) > 0.8 * spacing
-    assert _main_span_growth(REFERENCE_HC_CONTINENTAL_M) > 0.8 * spacing
-
-
-def _staircase_continental_plate(n_rows=20, per_row=30):
-    """A continental plate whose rows drift further right one from the next -- the diagonal
-    "staircase" boundary GitHub issue #119 describes as the signature of repeated row-end
-    extension at a slightly different rate per row. Each node starts at genuine reference
-    crustal thickness with a small per-node variation, so a nearest-neighbour resample onto a
-    denser lattice is actually observable."""
-    from app.lithosphere import REFERENCE_HC_CONTINENTAL_M, REFERENCE_HM_CONTINENTAL_M
-    from app.lithosphere_plate import LithospherePlate
-
-    spacing = line_spacing_rad(1.0)
-    rng = np.random.default_rng(0)
-    lines = []
-    for r in range(n_rows):
-        phi = -0.3 + r * spacing
-        shift = r * 0.4 * spacing
-        theta = np.linspace(-0.4, 0.4, per_row) + shift
-        hc = REFERENCE_HC_CONTINENTAL_M + rng.uniform(-500.0, 500.0, per_row)
-        hm = np.full(per_row, REFERENCE_HM_CONTINENTAL_M)
-        lines.append(ElevationLine(phi=phi, theta=theta, elevation=np.zeros(per_row), crustal_thickness_m=hc, mantle_lithosphere_thickness_m=hm))
-    plate = LithospherePlate(plate_id=0, frame=np.eye(3), crust_type="continental", lines=lines)
-    return plate, spacing
-
-
-def test_relattice_conserves_total_crustal_volume_and_regularizes_the_lattice():
-    """`LithospherePlate.relattice` refits a drifted, staircase-shaped lattice onto the
-    canonical evenly-phased grid (each row's own theta spacing lands back at target spacing,
-    not whatever the row's own incremental growth history left it at) while conserving the
-    plate's total crustal volume -- `sum(Hc)`, since per-node area is constant -- to floating-
-    point precision."""
-    from app.lithosphere_plate import LithospherePlate
-
-    plate, spacing = _staircase_continental_plate()
-    total_hc_before = float(np.sum(plate.collect("crustal_thickness_m")))
-    # Before: at least one row is well off target spacing (the staircase drift), confirming
-    # the fixture actually exercises what's under test.
-    assert not all(np.allclose(np.diff(line.theta), spacing / max(np.cos(line.phi), 1e-3), atol=1e-9) for line in plate.lines if len(line) > 1)
-
-    plate.relattice(spacing)
-
-    total_hc_after = float(np.sum(plate.collect("crustal_thickness_m")))
-    assert total_hc_after == pytest.approx(total_hc_before, rel=1e-9)
-    # After: every surviving row is evenly spaced (the canonical lattice's own row spacing,
-    # not exactly `spacing_rad` since `iter_local_lattice` rounds to a whole number of nodes
-    # around the full circle -- close to it, and uniform within the row either way).
-    for line in plate.lines:
-        if len(line) < 2:
-            continue
-        dtheta_target = spacing / max(np.cos(line.phi), 1e-3)
-        diffs = np.diff(line.theta)
-        assert np.allclose(diffs, diffs[0])  # uniform within the row
-        assert diffs[0] == pytest.approx(dtheta_target, rel=0.05)
-
-
-def test_relattice_carries_persistent_fields_onto_the_new_lattice():
-    """A whole-plate rebuild must not silently wipe out persistent per-node state (soil,
-    volcanic provenance, crust-type overrides, ...) the way `ElevationLine`'s own docstring
-    warns a hand-rolled reconstruction can -- `relattice` carries every `OPTIONAL_FIELDS`
-    value onto its nearest new site, not just Hc/Hm."""
-    plate, spacing = _staircase_continental_plate()
-    # Mark one whole row as volcanic with real soil accumulation.
-    marked = plate.lines[len(plate.lines) // 2]
-    plate.replace_line(
-        len(plate.lines) // 2,
-        marked.replace(
-            is_volcano=np.ones(len(marked), dtype=bool),
-            soil_depth=np.full(len(marked), 12.5),
-        ),
-    )
-    assert np.sum(plate.collect("is_volcano")) > 0
-
-    plate.relattice(spacing)
-
-    # Some nodes near that row's phi still read as volcanic with soil after the rebuild.
-    assert np.sum(plate.collect("is_volcano")) > 0
-    assert np.sum(plate.collect("soil_depth") > 0.0) > 0
-
-
-def test_relattice_is_a_noop_for_oceanic_plates():
-    """Oceanic footprint is already self-bounding via subduction (see the method's own
-    docstring) -- `relattice` only touches continental crust."""
-    from app.lithosphere import REFERENCE_HC_OCEANIC_M, REFERENCE_HM_OCEANIC_M
-    from app.lithosphere_plate import LithospherePlate
-
-    spacing = line_spacing_rad(1.0)
-    theta = np.linspace(-0.4, 0.4, 30)
-    line = ElevationLine(
-        phi=0.0, theta=theta, elevation=np.zeros(30),
-        crustal_thickness_m=np.full(30, REFERENCE_HC_OCEANIC_M),
-        mantle_lithosphere_thickness_m=np.full(30, REFERENCE_HM_OCEANIC_M),
-    )
-    plate = LithospherePlate(plate_id=1, frame=np.eye(3), crust_type="oceanic", lines=[line])
-    original_line = plate.lines[0]
-
-    plate.relattice(spacing)
-
-    assert plate.lines[0] is original_line
-
-
-def test_relattice_is_a_noop_for_an_empty_plate():
-    from app.lithosphere_plate import LithospherePlate
-
-    spacing = line_spacing_rad(1.0)
-    plate = LithospherePlate(plate_id=2, frame=np.eye(3), crust_type="continental", lines=[])
-    plate.relattice(spacing)  # must not raise
-    assert plate.node_count() == 0
-
-
-def test_lithosphere_active_margin_grows_arc_crust_not_ocean_floor():
-    """A continental plate's *leading* edge advancing into space a subducting oceanic slab is
-    vacating still grows juvenile arc / accreted-terrane crust (the thicker ARC_MARGIN_SEED_*
-    column, stamped as a subduction arc, via the old node-appending growth this active-margin
-    case is deliberately kept on) -- distinct from an *ordinary* open end (no active-margin
-    signal), which now stretches and thins its own existing crust in place
-    (`LithospherePlate._grow_or_shrink_line_for_deform`'s `_stretch_end`, stamped rift/volcano
-    provenance) rather than appending a fresh flat oceanic-reference node. The active-margin
-    signal here is the subduction-arc provenance stamp a recent convergent step left on the
-    leading nodes."""
-    from app.elevation_lines import ELEV_CHANGE_NEW_CRUST, ELEV_CHANGE_RIFT, ELEV_CHANGE_SUBDUCTION_ARC, ELEV_CHANGE_VOLCANO
-    from app.lithosphere import REFERENCE_HC_CONTINENTAL_M, REFERENCE_HM_CONTINENTAL_M
-    from app.lithosphere_plate import ARC_MARGIN_SEED_HC_M, LithospherePlate
-    from app.world import World
-
-    spacing = line_spacing_rad(1.0)
-
-    def _grown_high_end(mark_active_margin: bool):
-        n = 40
-        reason = np.zeros(n)
-        if mark_active_margin:
-            reason[-4:] = ELEV_CHANGE_SUBDUCTION_ARC
-        main = ElevationLine(
-            phi=0.2,
-            theta=np.linspace(-0.5, 0.5, n),
-            elevation=np.zeros(n),
-            crustal_thickness_m=np.full(n, REFERENCE_HC_CONTINENTAL_M),
-            mantle_lithosphere_thickness_m=np.full(n, REFERENCE_HM_CONTINENTAL_M),
-            elev_change_reason=reason,
-        )
-        plate = LithospherePlate(plate_id=0, frame=np.eye(3), crust_type="continental", lines=[main])
-        world = World(seed=0, plates=[plate], mantle_centers=[], node_density=1.0)
-        plate.deform(world, [], years=200_000, max_distance=5 * spacing)
-        line = next(ln for ln in plate.lines if abs(ln.phi - 0.2) < 1e-6)
-        new = line.theta > 0.5 + 1e-9
-        assert new.any(), "expected the open high end to grow"
-        return line.crustal_thickness_m[new], line.elev_change_reason[new]
-
-    ocean_hc, ocean_reason = _grown_high_end(mark_active_margin=False)
-    arc_hc, arc_reason = _grown_high_end(mark_active_margin=True)
-
-    # Baseline (no active-margin signal): the ordinary end-stretch thins the existing
-    # continental column in place -- strictly below where it started, not seeded at a flat
-    # oceanic reference or left untouched -- and its provenance is rift/volcanic, never
-    # "new crust" (that stamp is arc-growth's own, below).
-    assert ocean_hc.mean() < REFERENCE_HC_CONTINENTAL_M
-    assert not (ocean_reason == ELEV_CHANGE_NEW_CRUST).any()
-    assert np.isin(ocean_reason, [ELEV_CHANGE_RIFT, ELEV_CHANGE_VOLCANO]).all()
-    # Active margin: markedly thicker juvenile crust than the thinned ordinary case, stamped
-    # as a subduction arc, still via the old flat-seed append (this case is untouched by the
-    # rift-stretch change).
-    assert arc_hc.mean() > ocean_hc.mean()
-    assert arc_hc.max() >= ARC_MARGIN_SEED_HC_M - 1e-6 or arc_hc.mean() > 20_000.0
-    assert (arc_reason == ELEV_CHANGE_SUBDUCTION_ARC).any()
-
-
-def test_lithosphere_arc_magmatism_thickens_the_continental_margin_band(monkeypatch):
-    """A converging oceanic neighbour underplates juvenile crust across the overriding
-    continental plate's arc *band* (out to `reach_rad`, not just the contested contact line).
-    Isolated by running the same setup with the magmatic rate zeroed -- the difference is the
-    arc contribution alone, and it is a real multi-hundred-metre Hc gain over a swath many
-    nodes wide, not confined to the two or three nodes that actually overlap."""
-    from app import mantle, rheology
-    from app.lithosphere import REFERENCE_HC_CONTINENTAL_M, REFERENCE_HC_OCEANIC_M, REFERENCE_HM_CONTINENTAL_M, REFERENCE_HM_OCEANIC_M
-    from app.lithosphere_plate import LithospherePlate
-    from app.world import World
-
-    spacing = line_spacing_rad(1.0)
-
-    def _line(phi, lo, hi, count, hc, hm, elev):
-        theta = np.linspace(lo, hi, count)
-        return ElevationLine(
-            phi=phi, theta=theta, elevation=np.full(count, elev),
-            crustal_thickness_m=np.full(count, hc), mantle_lithosphere_thickness_m=np.full(count, hm),
-        )
-
-    def _run(arc_rate: float):
-        monkeypatch.setattr(rheology, "ARC_MAGMATIC_HC_RATE_M_PER_MYR", arc_rate)
-        cont = LithospherePlate(
-            plate_id=0, frame=np.eye(3), crust_type="continental",
-            lines=[
-                _line(0.15, -0.6, 0.6, 60, REFERENCE_HC_CONTINENTAL_M, REFERENCE_HM_CONTINENTAL_M, 0.0),
-                _line(-0.05, -0.6, 0.6, 60, REFERENCE_HC_CONTINENTAL_M, REFERENCE_HM_CONTINENTAL_M, 0.0),
-            ],
-        )
-        ocean = LithospherePlate(
-            plate_id=1, frame=np.eye(3), crust_type="oceanic",
-            lines=[
-                _line(0.15, 0.55, 1.6, 50, REFERENCE_HC_OCEANIC_M, REFERENCE_HM_OCEANIC_M, -4000.0),
-                _line(-0.05, 0.55, 1.6, 50, REFERENCE_HC_OCEANIC_M, REFERENCE_HM_OCEANIC_M, -4000.0),
-            ],
-        )
-        cont.set_omega(np.zeros(3))
-        ocean.set_omega(np.array([0.0, 0.0, -0.35 * mantle.MAX_PLATE_RATE]))  # drifts toward the continent's high end
-        world = World(seed=1, plates=[cont, ocean], mantle_centers=[], node_density=1.0)
-        for _ in range(6):
-            cont.deform(world, [ocean], years=500_000, max_distance=1.5 * spacing)
-        line = next(ln for ln in cont.lines if abs(ln.phi - 0.15) < 1e-6)
-        return line.theta.copy(), line.crustal_thickness_m.copy()
-
-    default_rate = rheology.ARC_MAGMATIC_HC_RATE_M_PER_MYR
-    theta_off, hc_off = _run(0.0)
-    theta_on, hc_on = _run(default_rate)
-
-    # Compare on the shared theta support (regularize can shift node counts a hair). The
-    # difference is the arc contribution alone -- convergent shortening at the contested
-    # contact runs identically in both.
-    hi = theta_on > 0.2
-    gain = hc_on[hi] - np.interp(theta_on[hi], theta_off, hc_off)
-    assert gain.max() > 400.0  # the margin band genuinely thickened over the 3 My run
-    assert int((gain > 30.0).sum()) >= 3  # ... over a swath, not a single contact node
-    # No effect on the trailing (non-margin) half.
-    lo = theta_on < -0.3
-    assert np.allclose(hc_on[lo], np.interp(theta_on[lo], theta_off, hc_off), atol=5.0)
-
-
-def test_lithosphere_contested_leading_row_is_dropped_after_sustained_override():
-    """The parallel-suture retreat op: a continental plate's outermost phi-row that a
-    neighbour has overridden over its full theta width -- no uncontested end for end-trim,
-    no mid-row carve allowed -- is dropped whole once the override has held for a cumulative
-    LEADING_ROW_RETREAT_SUSTAINED_YEARS. Inner rows and a control plate with open ground are
-    untouched."""
-    from app.lithosphere import reference_thickness
-    from app.lithosphere_plate import (
-        LEADING_ROW_CONTESTED_FRACTION,
-        LEADING_ROW_RETREAT_SUSTAINED_YEARS,
-        LithospherePlate,
-    )
-    from app.world import World
-
-    spacing = line_spacing_rad(1.0)
-    hc0, hm0 = reference_thickness("continental")
-
-    def _rows(phis, theta_lo, theta_hi, n):
-        theta = np.linspace(theta_lo, theta_hi, n)
-        return [
-            ElevationLine(
-                phi=phi,
-                theta=theta.copy(),
-                elevation=np.zeros(n),
-                crustal_thickness_m=np.full(n, hc0),
-                mantle_lithosphere_thickness_m=np.full(n, hm0),
-            )
-            for phi in phis
-        ]
-
-    # Grid-aligned to `spacing` (a real generated plate's rows are always exactly one
-    # `spacing_rad` apart) -- not just arbitrary values -- so `_fill_corner_notch_frontier`'s own
-    # local-lattice grid lines up with these rows exactly, matching a real plate's geometry and
-    # avoiding a sub-spacing sliver between the continent's own hand-built rows that only this
-    # synthetic setup would ever have room to insert a spurious intermediate row into.
-    front_phi = 14 * spacing
-    inner_phis = [10 * spacing, 11 * spacing, 12 * spacing, 13 * spacing]
-    continent = LithospherePlate(
-        plate_id=0, frame=np.eye(3), crust_type="continental",
-        lines=_rows(inner_phis + [front_phi], -0.5, 0.5, 40),
-    )
-    # A continental neighbour whose (densely-spaced) rows straddle the continent's front row
-    # and just outrun it in theta -> every node of the phi=0.30 row falls inside the
-    # neighbour's polygon (a suture *parallel* to the continent's own rows: no uncontested
-    # end, so end-trim can't touch it), while the lower inner rows stay clear of it.
-    neighbour = LithospherePlate(
-        plate_id=1, frame=np.eye(3), crust_type="continental",
-        lines=_rows(list(front_phi - 0.5 * spacing + spacing * np.arange(10)), -0.53, 0.53, 60),
-    )
-    world = World(seed=0, plates=[continent, neighbour], mantle_centers=[], node_density=1.0)
-
-    def front_row_present() -> bool:
-        return any(abs(ln.phi - front_phi) < 1e-6 for ln in continent.lines)
-
-    def inner_rows_present() -> bool:
-        return all(any(abs(ln.phi - p) < 1e-6 for ln in continent.lines) for p in inner_phis)
-
-    years_per_step = 1_000_000
-    steps_to_drop = int(np.ceil(LEADING_ROW_RETREAT_SUSTAINED_YEARS / years_per_step))
-
-    assert LEADING_ROW_CONTESTED_FRACTION <= 1.0
-    for step in range(steps_to_drop):
-        assert front_row_present(), f"front row gone early, on step {step}"
-        continent.deform(world, [neighbour], years=years_per_step, max_distance=1.5 * spacing)
-
-    assert not front_row_present(), "sustained-override front row should have been dropped"
-    assert inner_rows_present(), "inner rows must survive a leading-row drop"
-
-    # Control: same plate, no neighbour -- nothing is contested, nothing is dropped.
-    lonely = LithospherePlate(
-        plate_id=0, frame=np.eye(3), crust_type="continental",
-        lines=_rows(inner_phis + [front_phi], -0.5, 0.5, 40),
-    )
-    lonely_world = World(seed=0, plates=[lonely], mantle_centers=[], node_density=1.0)
-    for _ in range(steps_to_drop + 2):
-        lonely.deform(lonely_world, [], years=years_per_step, max_distance=1.5 * spacing)
-    assert any(abs(ln.phi - front_phi) < 1e-6 for ln in lonely.lines)
-
-
-def test_lithosphere_leading_row_drop_conserves_crustal_volume():
-    """The whole-row drop above used to just discard the row's Hc/Hm with nothing
-    thrusting it anywhere -- a confirmed mass-conservation bug (see
-    `_accrete_dropped_row_volume`'s own docstring). The dropped row's summed Hc must now
-    reappear on the plate's new leading row at that same extreme, so total continental
-    crustal volume (sum of Hc, since node area is constant per node) is conserved across the
-    drop, not merely reduced by exactly one row's worth."""
-    from app.lithosphere import reference_thickness
-    from app.lithosphere_plate import LEADING_ROW_RETREAT_SUSTAINED_YEARS, LithospherePlate
-    from app.world import World
-
-    spacing = line_spacing_rad(1.0)
-    hc0, hm0 = reference_thickness("continental")
-
-    def _rows(phis, theta_lo, theta_hi, n):
-        theta = np.linspace(theta_lo, theta_hi, n)
-        return [
-            ElevationLine(
-                phi=phi,
-                theta=theta.copy(),
-                elevation=np.zeros(n),
-                crustal_thickness_m=np.full(n, hc0),
-                mantle_lithosphere_thickness_m=np.full(n, hm0),
-            )
-            for phi in phis
-        ]
-
-    front_phi = 14 * spacing
-    inner_phis = [10 * spacing, 11 * spacing, 12 * spacing, 13 * spacing]
-    continent = LithospherePlate(
-        plate_id=0, frame=np.eye(3), crust_type="continental",
-        lines=_rows(inner_phis + [front_phi], -0.5, 0.5, 40),
-    )
-    neighbour = LithospherePlate(
-        plate_id=1, frame=np.eye(3), crust_type="continental",
-        lines=_rows(list(front_phi - 0.5 * spacing + spacing * np.arange(10)), -0.53, 0.53, 60),
-    )
-    world = World(seed=0, plates=[continent, neighbour], mantle_centers=[], node_density=1.0)
-
-    def total_hc(plate) -> float:
-        return float(sum(ln.crustal_thickness_m.sum() for ln in plate.lines))
-
-    years_per_step = 1_000_000
-    steps_to_drop = int(np.ceil(LEADING_ROW_RETREAT_SUSTAINED_YEARS / years_per_step))
-
-    hc_before_drop = None
-    for step in range(steps_to_drop):
-        if not any(abs(ln.phi - front_phi) < 1e-6 for ln in continent.lines):
-            break
-        hc_before_drop = total_hc(continent)
-        continent.deform(world, [neighbour], years=years_per_step, max_distance=1.5 * spacing)
-
-    assert not any(abs(ln.phi - front_phi) < 1e-6 for ln in continent.lines), "front row should have dropped"
-    assert hc_before_drop is not None
-    hc_after_drop = total_hc(continent)
-    # Ordinary per-step deformation (isostasy-neutral Hc changes elsewhere) still moves this
-    # a little step to step -- the assertion is "the whole row's worth of Hc survived
-    # somewhere on the plate," not "nothing at all changed."
-    assert hc_after_drop == pytest.approx(hc_before_drop, rel=0.05)
-
-
-def test_merge_lines_from_resample_sums_hc_where_both_plates_overlap():
-    """Confirmed bug (2026-09-12, investigating a "land keeps declining across a continental
-    collision" report): the old merge resample queried the merging pair's *concatenated*
-    node cloud with a single nearest-neighbor lookup per new lattice site -- so wherever
-    `keep` and `absorb` had each already built up a full-thickness column at close to the
-    same location (a genuine, deep suture overlap -- exactly the geometry a real collision
-    leaves behind right before the two plates actually fuse), the resample kept only
-    whichever one happened to be nearest and silently discarded the other's entire Hc.
-    Measured live across 5 seeds of the `two_colliding_pairs` Debugging World: every one of
-    7 sampled merges lost 9-17% of the pair's total continental crustal volume at the moment
-    of fusion.
-
-    `_merge_lines_from_resample` now queries `keep`'s and `absorb`'s clouds separately and
-    sums Hc wherever both are present. This constructs `keep`/`absorb` point clouds that
-    exactly coincide at the *same* lattice sites `iter_local_lattice` will itself resample
-    onto (matching a real plate's own full-density node cloud, unlike a sparse synthetic
-    fixture) so the expected total is exact, not approximate."""
-    from app.elevation_lines import iter_local_lattice
-    from app.lithosphere_plate import SUTURE_ACCRETION_MAX_HC_M, _merge_lines_from_resample
-
-    frame = geometry.plate_frame_from_seed(np.array([1.0, 0.0, 0.0]))
-    spacing_rad = line_spacing_rad(1.0)
-    coverage_radius_rad = 1.2 * spacing_rad
-
-    rows = []
-    for phi, _theta_candidates, world_pts in iter_local_lattice(frame, spacing_rad=spacing_rad):
-        rows.append(world_pts)
-        if len(rows) >= 3:  # a handful of rows is enough to exercise the resample
-            break
-    points = np.concatenate(rows, axis=0)
-    n = len(points)
-
-    keep_hc, keep_hm = np.full(n, 35_000.0), np.full(n, 100_000.0)
-    absorb_hc, absorb_hm = np.full(n, 20_000.0), np.full(n, 80_000.0)
-
-    # keep_points/absorb_points are the identical array here, so every resampled site --
-    # even one just past this test's own 3-row slice that a coverage-radius-driven bleed
-    # into a neighboring row still picks up -- is equidistant from both, i.e. "both present"
-    # by construction: the whole plate should come back at the summed-and-capped value, not
-    # some diluted mix.
-    lines = _merge_lines_from_resample(
-        frame, points, keep_hc, keep_hm, points, absorb_hc, absorb_hm, coverage_radius_rad, spacing_rad,
-    )
-
-    assert sum(len(ln) for ln in lines) >= n  # every original site survived (plus maybe a row-bleed edge)
-    expected_hc_per_node = min(35_000.0 + 20_000.0, SUTURE_ACCRETION_MAX_HC_M)
-    for ln in lines:
-        assert ln.crustal_thickness_m == pytest.approx(np.full(len(ln), expected_hc_per_node))
-
-
-def test_lithosphere_claim_adjacent_territory_keeps_a_margin_from_the_local_pole():
-    from app.plates import POLE_CAP_MARGIN_MULT
-    from app.world import World
-
-    spacing = line_spacing_rad(1.0)
-    phis = [np.pi / 2 - k * spacing for k in (POLE_CAP_MARGIN_MULT + 2, POLE_CAP_MARGIN_MULT + 1)]
-    plate = _lithosphere_polar_plate(phis, np.linspace(-0.3, 0.3, 20))
-    world = World(seed=0, plates=[plate], mantle_centers=[], node_density=1.0)
-
-    for _ in range(10):
-        plate.deform(world, [], years=1_000_000, max_distance=5 * spacing)
-
-    assert max(ln.phi for ln in plate.lines) <= np.pi / 2 - POLE_CAP_MARGIN_MULT * spacing + 1e-9
-
-
-def test_fill_corner_notch_logs_no_neighbours_outcome_when_diagnostics_on():
-    from app.world import World
-
-    spacing = line_spacing_rad(1.0)
-    plate = _lithosphere_polar_plate([0.0], np.linspace(-0.3, 0.3, 20))
-    world = World(seed=0, plates=[plate], mantle_centers=[], node_density=1.0, debug_diagnostics=True)
-
-    plate._fill_corner_notch_frontier(world, [], spacing, years=1_000_000)
-
-    assert len(world.corner_notch_log) == 1
-    entry = world.corner_notch_log[0]
-    assert entry["plate_id"] == plate.plate_id
-    assert entry["outcome"] == "no_neighbours"
-    assert entry["nodes_added"] == 0
-    assert entry["elapsed_years"] == world.elapsed_years
-
-
-def test_fill_corner_notch_logs_nothing_when_diagnostics_off():
-    from app.world import World
-
-    spacing = line_spacing_rad(1.0)
-    plate = _lithosphere_polar_plate([0.0], np.linspace(-0.3, 0.3, 20))
-    world = World(seed=0, plates=[plate], mantle_centers=[], node_density=1.0)
-    assert world.debug_diagnostics is False
-
-    plate._fill_corner_notch_frontier(world, [], spacing, years=1_000_000)
-
-    assert world.corner_notch_log == []
-
-
-def test_fill_corner_notch_logs_a_real_call_during_ordinary_generation():
-    """End-to-end: a real generated world's plates already tile the sphere with no gaps, so
-    every neighbouring pair's own `_fill_corner_notch_frontier` call should log a real,
-    recognizable outcome (most commonly `no_candidate_rows` -- nothing uncovered to claim)
-    rather than silently doing nothing."""
-    from app.world import World
-
-    plates_list = generate_plates(seed=5, num_plates=6, node_density=1.0)
-    world = World(seed=5, plates=plates_list, next_plate_id=len(plates_list), mantle_centers=[], node_density=1.0, debug_diagnostics=True)
-    spacing = line_spacing_rad(1.0)
-
-    plate = plates_list[0]
-    neighbours = [p for p in plates_list if p.plate_id != plate.plate_id]
-    plate._fill_corner_notch_frontier(world, neighbours, spacing, years=1_000_000)
-
-    # A stalled hop (hop_no_progress) is always followed by exactly one final outcome entry
-    # (claimed/no_claim) summarizing the call as a whole -- so 1 or 2 entries, never 0.
-    assert 1 <= len(world.corner_notch_log) <= 2
-    known_outcomes = {"no_own_lines", "no_candidate_rows", "hop_no_progress", "claimed", "no_claim"}
-    assert all(entry["outcome"] in known_outcomes for entry in world.corner_notch_log)
-    assert world.corner_notch_log[-1]["outcome"] in {"no_own_lines", "no_candidate_rows", "claimed", "no_claim"}
-
-
-def test_corner_notch_log_caps_length():
-    from app.world import MAX_CORNER_NOTCH_LOG_LENGTH, World
-
-    world = World(seed=0, plates=[], mantle_centers=[], debug_diagnostics=True)
-    over_cap = MAX_CORNER_NOTCH_LOG_LENGTH + 20
-    for i in range(over_cap):
-        world.log_corner_notch({"plate_id": 0, "outcome": "no_neighbours", "nodes_added": 0, "seq": i})
-    assert len(world.corner_notch_log) == MAX_CORNER_NOTCH_LOG_LENGTH
-    # Oldest entries evicted first -- the surviving ones are the most recent.
-    surviving_seqs = [e["seq"] for e in world.corner_notch_log]
-    assert min(surviving_seqs) == over_cap - MAX_CORNER_NOTCH_LOG_LENGTH
-    assert max(surviving_seqs) == over_cap - 1
-
-
-def test_seed_and_erupt_new_nodes_stamps_node_created_years():
-    """`_seed_and_erupt_new_nodes` is the one choke point every node-creation call site
-    (`_claim_adjacent_territory`, `_fill_corner_notch_frontier`) funnels through -- it should stamp
-    every brand-new node's `node_created_years` at exactly `world.elapsed_years`, the real
-    creation time, not the 0.0/-1.0 defaults any other field falls back to."""
-    from app import terrain_noise
-    from app.lithosphere_plate import _TERRAIN_SEED_TAG, LithospherePlate, growth_seed_thickness
-    from app.world import World
-
-    plate = _lithosphere_polar_plate([0.0], np.linspace(-0.3, 0.3, 5))
-    world = World(seed=0, plates=[plate], mantle_centers=[], node_density=1.0)
-    world.elapsed_years = 12_345_000.0
-
-    hc0, hm0 = growth_seed_thickness()
-    texture = terrain_noise.FractalTexture(np.random.default_rng((world.seed, plate.plate_id, _TERRAIN_SEED_TAG)))
-    world_pts = geometry.to_world(plate.frame, geometry.local_xyz(np.zeros(4), np.linspace(0.4, 0.7, 4)))
-
-    seeded = plate._seed_and_erupt_new_nodes(world, 0, world_pts, thin_ratio=0.3, hc0=hc0, hm0=hm0, amp=hc0 * 0.1, texture=texture)
-
-    assert "node_created_years" in seeded
-    assert np.all(seeded["node_created_years"] == world.elapsed_years)
-
-
-# -- interior subduction: an overridden mid-row patch is carved out and keyholed -----------
-#
-# deform()'s end-only shrink can't reach a run of overridden nodes stranded in the *middle*
-# of an oceanic row (live nodes on both sides). _grow_or_shrink_line_for_deform carves it
-# out and returns the row as two contiguous ElevationLines; outline_world / contains_batch
-# then keyhole the gap out instead of claiming the neighbour's lobe. Fixes the frozen
-# continental-over-oceanic overlap in the seed-888151728 world.
-
-
-def _oceanic_slab(plate_id: int, frame: np.ndarray, half_theta: float = 0.6) -> PlateWithLines:
-    spacing = line_spacing_rad(1.0)
-    lines = []
-    for r in range(-18, 19):
-        phi = r * spacing
-        dtheta = spacing / max(np.cos(phi), 1e-3)
-        theta = np.arange(-half_theta, half_theta, dtheta)
-        if len(theta) < 3:
-            continue
-        lines.append(ElevationLine(phi=phi, theta=theta, elevation=np.full(len(theta), -3800.0)))
-    return PlateWithLines(plate_id=plate_id, frame=frame, crust_type="oceanic", lines=lines)
-
-
-def test_outline_world_still_one_contiguous_array_and_excludes_the_hole():
-    from app.plates import _plate_outline_loops, _row_intervals
-
-    ocean = _oceanic_slab(1, np.eye(3))
-    lines = list(ocean.lines)
-    spacing = line_spacing_rad(1.0)
-    holed = []
-    for i, ln in enumerate(lines):
-        if 12 <= i <= 24 and len(ln.theta) > 24:
-            keep = np.ones(len(ln.theta), dtype=bool)
-            mid = len(ln.theta) // 2
-            keep[mid - 4 : mid + 4] = False
-            from app.elevation_lines import split_into_contiguous_runs
-
-            holed.extend(split_into_contiguous_runs(ln.masked(keep), spacing / max(np.cos(ln.phi), 1e-3)))
-        else:
-            holed.append(ln)
-    ocean.set_lines(holed)
-
-    rows = _row_intervals([ln for ln in ocean.lines if len(ln) > 0])
-    loops = _plate_outline_loops(rows)
-    assert len(loops) == 2  # outer boundary + one hole
-
-    poly = ocean.get_bounding_polygon()
-    assert poly.ndim == 2 and poly.shape[1] == 3
-    assert np.allclose(np.linalg.norm(poly, axis=-1), 1.0, atol=1e-9)
-
-    # a point in the hole is outside the polygon and outside contains_batch;
-    # a point in a still-covered row is inside.
-    hole_phi = ocean.lines[len(ocean.lines) // 2].phi
-    gap = [ivs for phi, ivs in rows if abs(phi - hole_phi) < 1e-9][0]
-    hole_theta = (gap[0][1] + gap[1][0]) / 2.0
-    hole_pt = geometry.to_world(ocean.frame, geometry.local_xyz(np.array([hole_phi]), np.array([hole_theta])))
-    assert not geometry.points_in_spherical_polygon(hole_pt, poly)[0]
-    assert not ocean.contains_batch(hole_pt)[0]
-
-    edge_row = ocean.lines[0]
-    solid_pt = geometry.to_world(
-        ocean.frame, geometry.local_xyz(np.array([edge_row.phi]), np.array([float(np.median(edge_row.theta))]))
-    )
-    assert ocean.contains_batch(solid_pt)[0]
-
-
-def _melt_test_plates(elevation: float):
-    """Two plates spreading apart at the equator (mirrors test_boundary.py's own "self spins
-    -z away from an eastward neighbour" divergent geometry), with the near-boundary end
-    already just above RIFT_CRITICAL_THICKNESS_M so one real divergent step thins it past the
-    threshold and triggers decompression melting there. `elevation` is the boundary end's
-    *pre-melt* elevation -- the thing that decides whether the erupted material comes back
-    continental (still land) or oceanic (at/below sea level), see LithospherePlate.deform.
-
-    A stationary "wall" plate pins west's own *far* end (its low-theta end has no other
-    neighbour, and is now also a legitimate `_stretch_end` target since suppress_growth no
-    longer blocks it -- see lithosphere_plate.py's own comment on that): sitting right up
-    against it, within extend_threshold_rad, so `dist[0] <= extend_threshold_rad` and
-    `_stretch_end` never fires there. Without it, the far end would also stretch (and, being
-    a fresh 20-node row with no growth history, immediately trigger a regularize_line resample
-    that interpolates every field across the whole row) -- isolating this fixture's melting
-    event to the boundary end it's meant to test, same as before suppress_growth applied to
-    _stretch_end at all."""
-    from app import mantle
-    from app.lithosphere import reference_thickness
-    from app.lithosphere_plate import LithospherePlate
-
-    rate = mantle.cm_per_yr_to_rad_per_yr(5.0)
-
-    def _plate(pid, crust_type, theta_lo, theta_hi, omega_z, hc):
-        theta = np.linspace(theta_lo, theta_hi, 20)
-        line = ElevationLine(
-            phi=0.0,
-            theta=theta,
-            elevation=np.full(20, elevation if pid == 0 else -3000.0),
-            crustal_thickness_m=np.full(20, hc),
-            mantle_lithosphere_thickness_m=np.full(20, reference_thickness(crust_type)[1]),
-        )
-        filler = ElevationLine(
-            phi=-0.6,
-            theta=np.linspace(-0.2, 0.2, 8),
-            elevation=np.zeros(8),
-            crustal_thickness_m=np.full(8, reference_thickness(crust_type)[0]),
-            mantle_lithosphere_thickness_m=np.full(8, reference_thickness(crust_type)[1]),
-        )
-        return LithospherePlate(plate_id=pid, frame=np.eye(3), crust_type=crust_type, omega=np.array([0.0, 0.0, omega_z]), lines=[line, filler])
-
-    # Hc just above the melting threshold (rheology.RIFT_CRITICAL_THICKNESS_M, 5000m) -- a
-    # single divergent step's thinning is enough to cross it.
-    west = _plate(0, "continental", -0.5, -0.02, -rate, hc=5050.0)
-    east = _plate(1, "oceanic", 0.02, 0.5, rate, hc=reference_thickness("oceanic")[0])
-    wall = _plate(2, "continental", -0.52, -0.51, 0.0, hc=reference_thickness("continental")[0])
-    return west, east, wall
-
-
-def test_decompression_melting_above_sea_level_erupts_continental_crust():
-    from app.elevation_lines import CRUST_TYPE_CONTINENTAL, ELEV_CHANGE_RIFT
-    from app.lithosphere import REFERENCE_HC_CONTINENTAL_M
-    from app.world import World
-
-    west, east, wall = _melt_test_plates(elevation=500.0)  # still standing above sea level
-    world = World(seed=0, plates=[west, east, wall], mantle_centers=[], node_density=1.0)
-    spacing = line_spacing_rad(1.0)
-    west.deform(world, [east, wall], years=300_000, max_distance=1.5 * spacing)
-
-    line = next(ln for ln in west.lines if abs(ln.phi - 0.0) < 1e-6)
-    # The boundary end erupts to the full reference column, then -- still separating from
-    # `east` by more than extend_threshold_rad this same step -- immediately stretches by
-    # `_grow_or_shrink_line_for_deform`'s own per-step cap ((IRREGULARITY_TOLERANCE-1)/
-    # IRREGULARITY_TOLERANCE = 1/3), landing at 2/3 of the reference column rather than the
-    # reference column itself: a real, intended two-phase interaction (erupt, then keep
-    # stretching the same step), not a partial eruption.
-    assert line.crustal_thickness_m[-1] == pytest.approx(REFERENCE_HC_CONTINENTAL_M * 2.0 / 3.0)
-    assert line.crust_type_code[-1] == CRUST_TYPE_CONTINENTAL
-    # The eruption's own ELEV_CHANGE_VOLCANO stamp is overwritten by the immediately-following
-    # stretch this same step (which doesn't itself cross the melting threshold a second time) --
-    # crust_type_code and the exact 2/3-of-reference thickness above are what actually pin the
-    # eruption having happened; this reason code reflects the *last* thing that touched the
-    # node this step, which really was ordinary rift stretching.
-    assert line.elev_change_reason[-1] == ELEV_CHANGE_RIFT
-    # The immediately-following stretch thins the freshly erupted column enough to isostatically
-    # submerge it (real rifting can turn land into a shallow sea) -- shallower than the oceanic
-    # variant's abyssal depth below, not the dry land a bare eruption alone would leave it at.
-    assert -3000.0 < line.elevation[-1] < 0.0
-    # Far-from-the-boundary nodes are essentially unaffected -- the `wall` plate pins this end
-    # close enough to block `_stretch_end` there, but still close enough to register as
-    # ordinary boundary-adjacent for the ordinary per-step thickness update, hence "close to",
-    # not exactly, its untouched starting value.
-    assert line.crustal_thickness_m[0] == pytest.approx(5050.0, abs=100.0)
-
-
-def test_decompression_melting_at_or_below_sea_level_erupts_oceanic_crust():
-    from app.elevation_lines import CRUST_TYPE_OCEANIC, ELEV_CHANGE_RIFT
-    from app.lithosphere import REFERENCE_HC_OCEANIC_M
-    from app.world import World
-
-    west, east, wall = _melt_test_plates(elevation=-2000.0)  # a drowned, already-submerged margin
-    world = World(seed=0, plates=[west, east, wall], mantle_centers=[], node_density=1.0)
-    spacing = line_spacing_rad(1.0)
-    west.deform(world, [east, wall], years=300_000, max_distance=1.5 * spacing)
-
-    line = next(ln for ln in west.lines if abs(ln.phi - 0.0) < 1e-6)
-    # See the continental-crust variant of this test for why 2/3 of the reference column, not
-    # the reference column itself: erupt, then one more capped stretch the same step.
-    assert line.crustal_thickness_m[-1] == pytest.approx(REFERENCE_HC_OCEANIC_M * 2.0 / 3.0)
-    assert line.crust_type_code[-1] == CRUST_TYPE_OCEANIC
-    # See the continental-crust variant of this test for why RIFT, not VOLCANO, survives as
-    # the final reason code even though a real eruption happened this same step.
-    assert line.elev_change_reason[-1] == ELEV_CHANGE_RIFT
-    # A fresh oceanic reference column floats at abyssal depth, not dry land.
-    assert line.elevation[-1] < -3000.0
-
-
-# -- Issue #189 follow-up: unbacked transform_uplift debt decay -----------------------------
-
-
-# A lone (no-neighbour) line's ends are free to `_stretch_end`/grow every step (nothing
-# blocks them the way the melting tests' "wall" plate does) -- 40 nodes, checking only the
-# interior [10:-10] slice below, is comfortably past any single 10 My step's worth of
-# per-end growth, so the assertions aren't sensitive to that unrelated, well-covered-elsewhere
-# growth behavior.
-_DEBT_TEST_LINE_NODES = 40
-_DEBT_TEST_INTERIOR = slice(10, -10)
-
-
-def _debt_test_plate(debt_m: float, hc0: float | None = None):
-    """A single lone (no-neighbour) continental plate whose one line's `elevation` sits
-    `debt_m` above what its own Hc/Hm isostatically support -- the same "unbacked debt" shape
-    transform_uplift leaves behind (see UNBACKED_RELIEF_DECAY_PER_MYR's own
-    comment in lithosphere_plate.py). No neighbours at all means classify_boundary_nodes
-    returns every mask empty (convergent/divergent/transform/near_field), so this
-    isolates the new decay term from every other elevation-moving path in deform()."""
-    from app.lithosphere import RHO_CONTINENTAL_CRUST, isostatic_elevation, reference_thickness
-    from app.lithosphere_plate import LithospherePlate
-
-    hc0 = reference_thickness("continental")[0] if hc0 is None else hc0
-    hm0 = reference_thickness("continental")[1]
-    equilibrium = float(isostatic_elevation(np.array([hc0]), np.array([hm0]), RHO_CONTINENTAL_CRUST)[0])
-    n = _DEBT_TEST_LINE_NODES
-    line = ElevationLine(
-        phi=0.0,
-        theta=np.linspace(-0.5, 0.5, n),
-        elevation=np.full(n, equilibrium + debt_m),
-        crustal_thickness_m=np.full(n, hc0),
-        mantle_lithosphere_thickness_m=np.full(n, hm0),
-    )
-    plate = LithospherePlate(plate_id=0, frame=np.eye(3), crust_type="continental", lines=[line])
-    return plate, equilibrium
-
-
-def test_unbacked_relief_debt_decays_toward_isostatic_equilibrium():
-    from app.lithosphere import reference_thickness
-    from app.lithosphere_plate import UNBACKED_RELIEF_DECAY_PER_MYR
-    from app.world import World
-
-    debt = 3000.0
-    hc0 = reference_thickness("continental")[0]
-    plate, equilibrium = _debt_test_plate(debt, hc0=hc0)
-    world = World(seed=0, plates=[plate], mantle_centers=[], node_density=1.0)
-    spacing = line_spacing_rad(1.0)
-
-    years = 10_000_000.0
-    plate.deform(world, [], years=years, max_distance=5 * spacing)
-
-    new_line = plate.lines[0]
-    expected_relief = debt * (1.0 - np.exp(-UNBACKED_RELIEF_DECAY_PER_MYR * (years / 1_000_000.0)))
-    assert expected_relief > 0.0
-    assert np.allclose(new_line.elevation[_DEBT_TEST_INTERIOR], equilibrium + debt - expected_relief, atol=1.0)
-    # Worked off as a bare elevation delta, the same way it was created -- never laundered into
-    # real crust (unlike lithosphere.back_elevation_gain's callers).
-    assert np.allclose(new_line.crustal_thickness_m[_DEBT_TEST_INTERIOR], hc0)
-
-
-def test_unbacked_relief_debt_decay_is_a_noop_with_no_pre_existing_debt():
-    """A line already sitting exactly at its own isostatic equilibrium (no debt) shouldn't
-    drift at all from this new decay term -- it only relaxes debt that's actually there."""
-    from app.world import World
-
-    plate, equilibrium = _debt_test_plate(debt_m=0.0)
-    world = World(seed=0, plates=[plate], mantle_centers=[], node_density=1.0)
-    spacing = line_spacing_rad(1.0)
-
-    plate.deform(world, [], years=10_000_000.0, max_distance=5 * spacing)
-
-    assert np.allclose(plate.lines[0].elevation[_DEBT_TEST_INTERIOR], equilibrium, atol=1e-6)
-
-
-def test_unbacked_relief_debt_decay_ignores_lines_with_no_crustal_thickness_tracking():
-    """v1-style lines with crustal_thickness_m all zero (has_column false) keep their bare
-    elevation untouched by this term, same has_column gating lithosphere.back_elevation_gain
-    uses -- there's no Hc/Hm to define an equilibrium against in the first place."""
-    from app.lithosphere_plate import LithospherePlate
-    from app.world import World
-
-    n = _DEBT_TEST_LINE_NODES
-    line = ElevationLine(
-        phi=0.0,
-        theta=np.linspace(-0.5, 0.5, n),
-        elevation=np.full(n, 5000.0),
-        crustal_thickness_m=np.zeros(n),
-        mantle_lithosphere_thickness_m=np.zeros(n),
-    )
-    plate = LithospherePlate(plate_id=0, frame=np.eye(3), crust_type="continental", lines=[line])
-    world = World(seed=0, plates=[plate], mantle_centers=[], node_density=1.0)
-    spacing = line_spacing_rad(1.0)
-
-    plate.deform(world, [], years=10_000_000.0, max_distance=5 * spacing)
-
-    assert np.allclose(plate.lines[0].elevation[_DEBT_TEST_INTERIOR], 5000.0)
+def test_has_negligible_territory_false_for_a_plate_with_real_territory():
+    assert not _lobed_plate([0]).has_negligible_territory()
 
 
 # -- Issue #133 phase 2: cached_node_healpix_index -------------------------------------------

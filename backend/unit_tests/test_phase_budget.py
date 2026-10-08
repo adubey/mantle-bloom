@@ -1,12 +1,7 @@
 import numpy as np
 import pytest
 from app import elevation_lines, lithosphere, phase_budget
-from app.world import generate_world as _generate_world, step_world
-
-
-def generate_world(*args, **kwargs):
-    kwargs.setdefault("surface", "lines")
-    return _generate_world(*args, **kwargs)
+from app.world import generate_world, step_world
 
 
 class _FakeWorld:
@@ -120,11 +115,11 @@ def test_record_handles_a_node_count_change_between_before_and_after():
     world = _FakeWorld()
     plate = _FakePlate("oceanic")
     phase_budget.record(
-        world, plate, "line_growth_shrink",
+        world, plate, "boundary_retreat",
         np.array([10.0, 10.0, 10.0]), np.array([40.0, 40.0, 40.0]), _codes(INHERIT, INHERIT, INHERIT),
         np.array([10.0]), np.array([40.0]), _codes(INHERIT),
     )
-    all_scope = world.phase_budget["line_growth_shrink"]["scopes"]["all"]
+    all_scope = world.phase_budget["boundary_retreat"]["scopes"]["all"]
     assert all_scope["count_before"] == 3
     assert all_scope["count_after"] == 1
     assert all_scope["sum_hc_before"] == pytest.approx(30.0)
@@ -152,7 +147,7 @@ def test_snapshot_reads_hc_hm_and_codes_from_a_real_plate():
     hc, hm, codes, area_m2, craton_m, node_ids, owning_types = phase_budget.snapshot(plate, spacing_rad)
     assert len(hc) == len(hm) == len(codes) == len(area_m2) == plate.node_count()
     assert hc.sum() == pytest.approx(plate.collect("crustal_thickness_m").sum())
-    assert np.allclose(area_m2, lithosphere.node_area_m2(spacing_rad))
+    np.testing.assert_allclose(area_m2, plate.accounting_areas_m2(spacing_rad))
     assert len(craton_m) == len(node_ids) == len(owning_types) == plate.node_count()
     assert np.all(owning_types == (plate.crust_type == "continental"))
 
@@ -193,7 +188,7 @@ def test_record_defaults_to_the_nominal_area_per_node():
 
 
 def test_snapshot_of_a_quad_plate_carries_its_cells_own_areas():
-    world = generate_world(seed=5, num_plates=5, surface="quad")
+    world = generate_world(seed=5, num_plates=5)
     plate = max(world.plates, key=lambda p: p.node_count())
     snap = phase_budget.snapshot(plate, elevation_lines.line_spacing_rad(world.node_density))
     assert np.array_equal(snap.area_m2, plate.surface_nodes().area_m2)
@@ -207,7 +202,7 @@ def test_snapshot_of_a_quad_plate_carries_its_cells_own_areas():
 def test_quad_deform_phases_book_each_cells_own_area():
     # Issue #257: quad deformation runs over the whole plate's columns at once, and the
     # budget weights them by the cells' areas, not the nominal one.
-    world = generate_world(seed=5, num_plates=5, node_density=0.5, surface="quad")
+    world = generate_world(seed=5, num_plates=5, node_density=0.5)
     world.debug_diagnostics = True
     world.reset_phase_budget()
     step_world(world, years=100_000)

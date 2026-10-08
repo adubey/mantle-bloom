@@ -91,7 +91,7 @@ def main() -> int:
     quad_tectonics._accrete_onto_survivors = accrete
     rows = []
     try:
-        world = world_mod.generate_world(seed=args.seed, node_density=args.density, surface="quad")
+        world = world_mod.generate_world(seed=args.seed, node_density=args.density)
         start = sum(continental_volume(p) for p in world.plates if p.node_count())
         for step in range(1, args.steps + 1):
             world_mod.step_world(world, 1e6)

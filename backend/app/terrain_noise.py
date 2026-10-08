@@ -175,7 +175,7 @@ class _CalibratedMask:
 class FractalTexture:
     """A cheap domain-warped multi-octave fractal in roughly [-1, 1], with no per-instance
     calibration sweep. For adding believable texture to crust that is grown or claimed
-    mid-simulation (`LithospherePlate._claim_adjacent_territory`), where a full
+    mid-simulation (boundary advance, gap fill), where a full
     `ContinentalRelief` -- orogenic belts, plateaus, calibration -- is neither wanted (that
     crust is an extension of an already-shaped plate, not a fresh orogen) nor worth the
     cost. Duck-types `SphereNoise` via `sample()`. Deterministic in `rng`."""

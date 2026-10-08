@@ -1,8 +1,7 @@
 """Lateral magma transport (GitHub issue #205, follow-up to #120's "Land fraction slowly
-declines"). Everything that thickens crust today (`apply_convergent_deformation`, the
-near-field ring, arc magmatism, delamination melt intrusion -- all in rheology.py/
-lithosphere_plate.py) either acts right at a collision boundary or, at most, a fixed ~350 km
-ring on the *same* plate. Nothing transports mass from a plate actively being over-thickened by
+declines"). Everything that thickened crust then (`apply_convergent_deformation`, the line
+engine's near-field ring, arc magmatism, delamination melt intrusion) either acted right at a
+collision boundary or, at most, a fixed ~350 km ring on the *same* plate. Nothing transported mass from a plate actively being over-thickened by
 collision to a plate (or a distant part of the same plate) losing land to stretching/thinning
 elsewhere -- #120's own remaining land-loss driver.
 
@@ -10,8 +9,8 @@ This module is the transport/deposit half of the fix. The source half -- a small
 skim of `apply_convergent_deformation`'s own strain increment at core convergent nodes,
 diverted into a `MagmaParcel` instead of thickening the node in place -- lives in
 `rheology.magma_export_strength_and_volume` (the mechanism reasoning, including why it's melt
-and not diverted solid rock, and why the near-field ring is exempt, is documented there) and is
-wired in by `lithosphere_plate.LithospherePlate.deform()`, which appends parcels to
+and not diverted solid rock, is documented there) and is
+wired in by `quad_tectonics.deform`, which appends parcels to
 `world.pending_magma_parcels`.
 
 Parcels are banked across steps (real magmatic transport is a slow cumulative process, in the
@@ -47,17 +46,17 @@ close a gap an earlier draft's review caught:
   alone doesn't stop several unrelated collisions worldwide from each (validly, by their own
   local budget) piling onto the same globally-thinnest node, which is a different route back to
   GitHub issue #145's "unbounded reappearance concentrated on a small target set" regression
-  that `apply_delamination_melt_intrusion` already had to fix once.
-- The deposit uses the same before/after isostasy-*delta* idiom `LithospherePlate.deform()`
+  that the line engine's delamination melt intrusion already had to fix once.
+- The deposit uses the same before/after isostasy-*delta* idiom `quad_tectonics.deform`
   itself uses (see that method's own comment on why an elevation overwrite would silently
   launder/erase erosion history or existing transform debt already baked into a line's
   elevation), with per-node-resolved crust density (a destination can be a
   diverged-type patch, same reason the continental filter above is per-node not per-plate).
 - Hc-only at both ends, no Hm coupling: this is genuinely mantle-derived melt (see
   `rheology.magma_export_strength_and_volume`'s own docstring for why), not relocated solid
-  crust dragging its own mantle-lithosphere root along -- unlike
-  `lithosphere_plate._redistribute_accreted_column`, which is a different case (relocating an
-  already-solid retreated column) and does couple Hm.
+  crust dragging its own mantle-lithosphere root along -- unlike suture accretion
+  (quad_tectonics.py, see `lithosphere_plate.SUTURE_ACCRETION_SPREAD_NODES`), which is a
+  different case (relocating an already-solid retreated column) and does couple Hm.
 """
 
 from __future__ import annotations
@@ -89,9 +88,9 @@ MAGMA_TRANSPORT_INTERVAL_STEPS = 4
 # the same #120-style toggle-sweep methodology as rheology.MAGMA_EXPORT_FRACTION.
 MAGMA_TRANSPORT_RANGE_KM = 1000.0
 
-# Same order of magnitude as rheology.DELAMINATION_MELT_INTRUSION_RATE_M_PER_MYR (300 m/Myr) --
+# Same order of magnitude as the arc-magmatic rate (rheology.ARC_MAGMATIC_HC_RATE_M_PER_MYR) --
 # melt arriving faster than this can place it in one firing is not banked for later at that
-# destination, same "lost, not banked" convention that rate already uses. Applied once per
+# destination ("lost, not banked"). Applied once per
 # destination *node*, not summed across the whole world -- each destination has exactly one
 # ceiling, enforced once, however many parcels (from however many unrelated collisions)
 # independently targeted it this firing.
@@ -99,9 +98,8 @@ MAGMA_DEPOSIT_RATE_M_PER_MYR = 300.0
 
 # A parcel that can't find rate-cap headroom at any qualifying destination for this many
 # transport-pass firings running is dropped rather than banked indefinitely -- same "arrives too
-# fast/too congested to place, is lost, not banked forever" convention
-# rheology.apply_delamination_melt_intrusion's own rate cap already establishes, just applied
-# across firings instead of within one.
+# fast/too congested to place, is lost, not banked forever" convention the per-node rate cap
+# above uses within one firing, applied across firings.
 MAGMA_PARCEL_MAX_AGE_CYCLES = 3
 
 # A parcel with less than this much unplaced volume left is considered fully placed and
@@ -256,9 +254,8 @@ def run_magma_transport(world: "World", banked_myr: float) -> list[str]:
         # more than a near-ceiling destination has room for; without this, the promised amount
         # (used below for `placed_per_parcel` and the logged deposited total) would silently
         # drift from what `_scatter_write_deposits` actually writes, losing mass without
-        # accounting for it -- unlike every other bounded-rate melt path in this codebase
-        # (e.g. rheology.apply_delamination_melt_intrusion), where "can't be placed" is always
-        # reflected in what the caller is told was placed.
+        # accounting for it -- every bounded-rate melt path must reflect "can't be placed" in
+        # what the caller is told was placed.
         headroom_hc = np.clip(lithosphere.MAX_CRUSTAL_THICKNESS_M - dest_index.hc_m, 0.0, None)
         realized_at_dest = np.minimum(np.minimum(total_requested_hc, cap_hc), headroom_hc)
         safe_total = np.where(total_requested_hc > 0.0, total_requested_hc, 1.0)

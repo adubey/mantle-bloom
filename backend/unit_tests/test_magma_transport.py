@@ -56,23 +56,14 @@ def _two_adjacent_continental_plates(radius_rad=0.15, node_density=1.0, seed=1):
 
 def _thin_nearest_node(plate, target_xyz, hc_m):
     """Sets the single node on `plate` nearest `target_xyz` to `hc_m`, returning
-    `(line_index, node_index, actual_xyz)` -- the address a test needs to later check that
-    exact node's own elev_change_reason/crustal_thickness_m."""
+    `(node_index, actual_xyz)` -- the address a test needs to later check that exact node's
+    own elev_change_reason/crustal_thickness_m."""
     points, _ = plate.all_points_and_elevation()
-    global_idx = int(np.argmin(np.linalg.norm(points - target_xyz, axis=1)))
-    offset = 0
-    for line_index, line in enumerate(plate.lines):
-        n = len(line)
-        if n == 0:
-            continue
-        if offset <= global_idx < offset + n:
-            node_index = global_idx - offset
-            hc = line.crustal_thickness_m.copy()
-            hc[node_index] = hc_m
-            plate.replace_line(line_index, line.replace(crustal_thickness_m=hc))
-            return line_index, node_index, points[global_idx]
-        offset += n
-    raise AssertionError("node not found")
+    node_index = int(np.argmin(np.linalg.norm(points - target_xyz, axis=1)))
+    hc = plate.collect("crustal_thickness_m").copy()
+    hc[node_index] = hc_m
+    plate.set_fields_on_plate(crustal_thickness_m=hc)
+    return node_index, points[node_index]
 
 
 # -- destination weighting -----------------------------------------------------------------
@@ -144,7 +135,7 @@ def test_run_magma_transport_is_a_no_op_with_no_pending_parcels():
 def test_deposit_writes_into_a_different_plates_line_and_stamps_lateral_magma():
     world, plate_a, plate_b = _two_adjacent_continental_plates()
     target = geometry.normalize(np.array([-0.05, 0.0, 1.0]))  # plate_b's side, near the seam
-    line_index, node_index, actual_xyz = _thin_nearest_node(plate_b, target, hc_m=5_000.0)
+    node_index, actual_xyz = _thin_nearest_node(plate_b, target, hc_m=5_000.0)
 
     origin = geometry.normalize(np.array([0.05, 0.0, 1.0]))  # plate_a's side, near the seam
     world.pending_magma_parcels.append(
@@ -154,9 +145,8 @@ def test_deposit_writes_into_a_different_plates_line_and_stamps_lateral_magma():
     events = magma_transport.run_magma_transport(world, banked_myr=4.0)
 
     assert len(events) == 1
-    updated_line = plate_b.lines[line_index]
-    assert updated_line.crustal_thickness_m[node_index] > 5_000.0
-    assert updated_line.elev_change_reason[node_index] == ELEV_CHANGE_LATERAL_MAGMA
+    assert plate_b.collect("crustal_thickness_m")[node_index] > 5_000.0
+    assert plate_b.collect("elev_change_reason")[node_index] == ELEV_CHANGE_LATERAL_MAGMA
 
 
 def test_global_cap_bounds_a_single_destination_regardless_of_parcel_count():
@@ -166,8 +156,8 @@ def test_global_cap_bounds_a_single_destination_regardless_of_parcel_count():
     enforced once, however many parcels reach it."""
     world, plate_a, plate_b = _two_adjacent_continental_plates()
     target = geometry.normalize(np.array([-0.05, 0.0, 1.0]))
-    line_index, node_index, _ = _thin_nearest_node(plate_b, target, hc_m=5_000.0)
-    hc_before = plate_b.lines[line_index].crustal_thickness_m[node_index]
+    node_index, _ = _thin_nearest_node(plate_b, target, hc_m=5_000.0)
+    hc_before = plate_b.collect("crustal_thickness_m")[node_index]
 
     origin = geometry.normalize(np.array([0.05, 0.0, 1.0]))
     # Five independent parcels, each individually large enough to blow past the rate cap on
@@ -179,7 +169,7 @@ def test_global_cap_bounds_a_single_destination_regardless_of_parcel_count():
     banked_myr = 4.0
     magma_transport.run_magma_transport(world, banked_myr=banked_myr)
 
-    hc_after = plate_b.lines[line_index].crustal_thickness_m[node_index]
+    hc_after = plate_b.collect("crustal_thickness_m")[node_index]
     max_allowed = magma_transport.MAGMA_DEPOSIT_RATE_M_PER_MYR * banked_myr
     # The 5 parcels' combined request (well over max_allowed, by construction) must still be
     # clipped to a single ceiling -- not just bounded by it, but actually pinned at it, which
@@ -212,7 +202,7 @@ def test_deposit_never_exceeds_a_destinations_own_headroom_to_the_ceiling():
     credit more than what actually landed."""
     world, plate_a, plate_b = _two_adjacent_continental_plates()
     target = geometry.normalize(np.array([-0.05, 0.0, 1.0]))
-    line_index, node_index, _ = _thin_nearest_node(plate_b, target, hc_m=34_000.0)
+    node_index, _ = _thin_nearest_node(plate_b, target, hc_m=34_000.0)
 
     origin = geometry.normalize(np.array([0.05, 0.0, 1.0]))
     world.pending_magma_parcels.append(magma_transport.MagmaParcel(origin_xyz=origin, volume_m3=1e16, step_generated=0))
@@ -220,7 +210,7 @@ def test_deposit_never_exceeds_a_destinations_own_headroom_to_the_ceiling():
     banked_myr = 1_000.0  # cap_hc = 300,000 m -- far past this node's own ~50,000 m headroom
     events = magma_transport.run_magma_transport(world, banked_myr=banked_myr)
 
-    hc_after = plate_b.lines[line_index].crustal_thickness_m[node_index]
+    hc_after = plate_b.collect("crustal_thickness_m")[node_index]
     assert hc_after == lithosphere.MAX_CRUSTAL_THICKNESS_M
     actual_delta = hc_after - 34_000.0
 

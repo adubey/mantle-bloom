@@ -47,14 +47,12 @@ def test_plate_overlap_stays_bounded_over_many_steps():
     assert max(fractions) < 0.35
 
 
-def test_node_density_persists_through_regularize_and_gap_fill():
-    # The core correctness concern for a runtime density option: elevation_lines.py's own
-    # regularize pass (and LithospherePlate.deform's own claim-adjacent-territory/merge_split.py's
-    # merging) previously always rebuilt/resampled nodes at the module's default
-    # TARGET_LINE_SPACING_RAD regardless of what density a world was actually generated at,
-    # silently reverting a non-default density back to the reference one within a handful of
-    # steps. Confirmed directly this stays fixed: total node count should keep tracking
-    # node_density's ratio, not decay toward the 1x baseline, across enough steps.
+def test_node_density_persists_through_stepping_and_gap_fill():
+    # The core correctness concern for a runtime density option: anything that rebuilds or
+    # grows nodes at the reference TARGET_LINE_SPACING_RAD instead of the world's own density
+    # silently reverts a non-default density back to the reference one within a handful of
+    # steps. Total node count should keep tracking node_density's ratio, not decay toward the
+    # 1x baseline, across enough steps.
     reference = generate_world(seed=5, num_plates=8, continental_fraction=0.5, node_density=1.0)
     denser = generate_world(seed=5, num_plates=8, continental_fraction=0.5, node_density=4.0)
     # This test only checks node counts, never climate/erosion/hydrology output (see
@@ -64,7 +62,7 @@ def test_node_density_persists_through_regularize_and_gap_fill():
     denser.simulate_climate_biomes = False
 
     def total_nodes(world):
-        return sum(len(line.theta) for p in world.plates for line in p.lines)
+        return sum(p.node_count() for p in world.plates)
 
     for _ in range(8):
         step_world(reference, years=300_000)
@@ -84,24 +82,20 @@ def test_step_world_advances_elapsed_years():
 
 def test_rigid_rotation_preserves_interior_node_spacing_exactly():
     """The whole point of the plate-local-frame design: rotating a plate must not disturb
-    the relative spacing of its own elevation-line nodes at all (no resampling)."""
+    the relative spacing of its own nodes at all (no resampling)."""
     world = generate_world(seed=12, num_plates=6)
     world.simulate_climate_biomes = False  # only node spacing/rotation is checked here
     plate = max(world.plates, key=lambda p: p.node_count())
-    line = max(plate.lines, key=lambda l: len(l.theta))
+    local = plate.surface_nodes().local_xyz
 
-    before_world = line.world_xyz(plate.frame)
-    before_spacing = geometry.angular_distance(before_world[:-1], before_world[1:])
+    def spacing():
+        world_xyz = geometry.to_world(plate.frame, local)
+        return geometry.angular_distance(world_xyz[:-1], world_xyz[1:])
 
+    before_spacing = spacing()
     for _ in range(5):
-        step_world(world, years=2_000_000)
-
-    after_world = line.world_xyz(plate.frame)
-    after_spacing = geometry.angular_distance(after_world[:-1], after_world[1:])
-
-    assert np.allclose(before_spacing, after_spacing, atol=1e-9)
-    # theta/elevation arrays themselves must be untouched (identity-based, not resampled).
-    assert np.array_equal(line.theta, line.theta)
+        plate.rotate(geometry.rotation_matrix(np.array([0.3, -0.2, 0.9]) / np.linalg.norm([0.3, -0.2, 0.9]), 0.05))
+    assert np.allclose(before_spacing, spacing(), atol=1e-9)
 
 
 def test_rigid_rotation_preserves_plate_frame_orthonormality():
@@ -131,11 +125,7 @@ def test_step_world_events_are_timestamped_with_post_step_elapsed_years():
 
 
 def _continental_node_count(world) -> int:
-    return sum(
-        sum(len(line) for line in plate.lines)
-        for plate in world.plates
-        if plate.crust_type == "continental"
-    )
+    return sum(plate.node_count() for plate in world.plates if plate.crust_type == "continental")
 
 
 def test_continental_volume_budget_bounds_the_boundary_ratchet(monkeypatch):
@@ -180,7 +170,7 @@ def _continental_hc_hm(world):
     return hc, hm
 
 
-def test_sustained_collision_caps_hc_hm_without_losing_the_overflow():
+def test_sustained_collision_caps_hc_hm():
     """GitHub issue #161 ("Unbounded Hc/Hm growth in apply_convergent_deformation"): with no
     ceiling, a node sitting in a long-lived convergent regime compounded Hc/Hm exponentially
     (measured up to Hc=413,885 m / Hm=1,311,592 m on a 626 My save -- more than an order of
@@ -189,40 +179,30 @@ def test_sustained_collision_caps_hc_hm_without_losing_the_overflow():
     for this: two continental plates pinned into a head-on collision that "never resolves...
     the two landmasses keep shoving into and piling onto each other indefinitely."
 
-    Two properties, run over a long stretch (400 My -- several multiples of the ~45 My a
-    strong collision takes to double Hc, so the core boundary band should saturate against
-    the new ceiling well before the run ends):
+    Over a long stretch (400 My -- several multiples of the ~45 My a strong collision takes to
+    double Hc), Hc/Hm never exceed `lithosphere.MAX_CRUSTAL_THICKNESS_M`/`MAX_MANTLE_
+    LITHOSPHERE_THICKNESS_M`, and the ceiling is actually reached, so the caps are tested.
 
-    1. Hc/Hm never exceed `lithosphere.MAX_CRUSTAL_THICKNESS_M`/`MAX_MANTLE_LITHOSPHERE_
-       THICKNESS_M` -- the regression this test exists to catch.
-    2. Total continental crustal volume keeps growing well past the point the core boundary
-       band saturates, rather than flatlining the moment its own nodes first hit the ceiling
-       -- confirming the capped overflow is actually reaching the near-field foreland
-       (`lithosphere_plate.deform`'s redistribution), not just silently vanishing at the cap
-       the way a bare clip with no conservation would (all growth would stop dead once the
-       one-line-wide boundary band saturated, however much longer the collision ran)."""
+    This test used to also require total continental Hc to keep growing in the second 200 My,
+    which the retired line engine's near-field overflow redistribution produced. The quad
+    engine places only the melt of over-ceiling crust and delaminates the rest (#290), and
+    this pinned collision subducts more continental crust than it adds, so that property no
+    longer holds (#251)."""
     world = debug_worlds.generate_debug_world("two_continental_collision", seed=1)
 
     for _ in range(40):
         step_world(world, years=5_000_000)  # 200 My: the core boundary band should be saturated by now
     hc_mid, hm_mid = _continental_hc_hm(world)
-    total_hc_mid = float(np.sum(hc_mid))
     assert np.all(hc_mid <= lithosphere.MAX_CRUSTAL_THICKNESS_M + 1e-6)
     assert np.all(hm_mid <= lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M + 1e-6)
-    # The ceiling should actually be biting by now, not just headroom that was never reached --
-    # otherwise property 2 below wouldn't be testing anything.
+    # The ceiling should actually be biting by now, not just headroom that was never reached.
     assert np.any(hc_mid >= 0.95 * lithosphere.MAX_CRUSTAL_THICKNESS_M)
 
     for _ in range(40):
         step_world(world, years=5_000_000)  # another 200 My
     hc_late, hm_late = _continental_hc_hm(world)
-    total_hc_late = float(np.sum(hc_late))
-
     assert np.all(hc_late <= lithosphere.MAX_CRUSTAL_THICKNESS_M + 1e-6)
     assert np.all(hm_late <= lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M + 1e-6)
-    # Real continued growth in the second 200 My, not a plateau -- the overflow from the
-    # (already-saturated) core band is still landing somewhere real.
-    assert total_hc_late > total_hc_mid * 1.02
 
 
 def test_coastal_feedback_stays_stable_over_many_steps():
@@ -268,7 +248,7 @@ def test_quad_world_steps_with_bounded_coverage_and_valid_topology():
     # Issue #228 Phase 4: a quad world steps with plate movement. Boundary retreat/advance
     # must keep every plate a valid balanced leaf mesh, and keep the sphere covered about as
     # well as it started -- neither leaking territory nor piling it up.
-    world = generate_world(seed=5, num_plates=6, surface="quad", node_density=0.5)
+    world = generate_world(seed=5, num_plates=6, node_density=0.5)
     world.simulate_climate_biomes = False
     cells_before = sum(p.node_count() for p in world.plates)
     for _ in range(12):
@@ -286,7 +266,7 @@ def test_quad_world_steps_with_bounded_coverage_and_valid_topology():
 
 def test_quad_world_stepping_is_deterministic():
     def run():
-        world = generate_world(seed=9, num_plates=4, surface="quad", node_density=0.5)
+        world = generate_world(seed=9, num_plates=4, node_density=0.5)
         world.simulate_climate_biomes = False
         for _ in range(2):
             step_world(world, 1_000_000)
@@ -304,7 +284,7 @@ def test_quad_merge_of_neighbouring_plates_in_a_stepped_world():
     # the other plates' territory than the pair already overlapped.
     from app import merge_split
 
-    world = generate_world(seed=5, num_plates=6, surface="quad", node_density=0.5)
+    world = generate_world(seed=5, num_plates=6, node_density=0.5)
     world.simulate_climate_biomes = False
     for _ in range(3):
         step_world(world, years=1_000_000)
@@ -344,7 +324,7 @@ def test_mobile_cover_ledger_closes_over_full_quad_steps():
     # (see mobile_cover.py), so the live inventory equals sources less sinks every step.
     from app import mobile_cover
 
-    world = generate_world(seed=7, num_plates=8, surface="quad")
+    world = generate_world(seed=7, num_plates=8)
     for _ in range(8):
         step_world(world, 5_000_000)
         live = mobile_cover.surface_volume_m3(world)

@@ -1,23 +1,6 @@
 import numpy as np
-from app import erosion, geometry, hydrology
-from app.plates import ElevationLine, PlateWithLines
+from app import erosion, hydrology
 from app.world import World, generate_world, step_world
-
-
-def _flow_line_plate(plate_id, theta, elevation):
-    frame = geometry.plate_frame_from_seed([1.0, 0.0, 0.0])
-    theta = np.asarray(theta, dtype=float)
-    line = ElevationLine(phi=0.0, theta=theta, elevation=np.asarray(elevation, dtype=float))
-    return PlateWithLines(plate_id=plate_id, frame=frame, crust_type="continental", lines=[line])
-
-
-def _flow_line_plate_with_lake(plate_id, theta, elevation, lake_depth):
-    frame = geometry.plate_frame_from_seed([1.0, 0.0, 0.0])
-    theta = np.asarray(theta, dtype=float)
-    line = ElevationLine(
-        phi=0.0, theta=theta, elevation=np.asarray(elevation, dtype=float), lake_depth=np.asarray(lake_depth, dtype=float)
-    )
-    return PlateWithLines(plate_id=plate_id, frame=frame, crust_type="continental", lines=[line])
 
 
 def _normalize(v):
@@ -79,13 +62,13 @@ def test_channel_depth_and_lake_depth_persist_across_boundary_and_erosion_steps(
     world = generate_world(seed=30, num_plates=8, continental_fraction=0.5)
     step_world(world, years=2_000_000)
 
-    channel_total_1 = sum(line.channel_depth.sum() for p in world.plates for line in p.lines)
-    lake_total_1 = sum(line.lake_depth.sum() for p in world.plates for line in p.lines)
+    channel_total_1 = sum(p.collect("channel_depth").sum() for p in world.plates)
+    lake_total_1 = sum(p.collect("lake_depth").sum() for p in world.plates)
     assert channel_total_1 > 0.0 or lake_total_1 > 0.0
 
     step_world(world, years=2_000_000)  # boundary.step_boundaries runs first here again
 
-    channel_total_2 = sum(line.channel_depth.sum() for p in world.plates for line in p.lines)
+    channel_total_2 = sum(p.collect("channel_depth").sum() for p in world.plates)
     # Channel depth only ever grows (monotonic, see erosion.py) -- if boundary.py had reset
     # it, this would have dropped back toward 0 instead.
     assert channel_total_2 >= channel_total_1 * 0.5  # loose bound: some nodes can be pruned/moved
@@ -116,8 +99,8 @@ def test_channel_width_grows_with_flow_and_persists_across_steps():
     for _ in range(4):
         step_world(world, years=2_000_000)
 
-    widths = np.concatenate([line.channel_width for p in world.plates for line in p.lines])
-    depths = np.concatenate([line.channel_depth for p in world.plates for line in p.lines])
+    widths = np.concatenate([p.collect("channel_width") for p in world.plates])
+    depths = np.concatenate([p.collect("channel_depth") for p in world.plates])
     assert np.any(widths > 0.0)
     assert np.all(widths <= erosion.MAX_CHANNEL_WIDTH_M)
     # Width grows from discharge alone, unlike depth (which also needs real slope -- see
@@ -128,7 +111,7 @@ def test_channel_width_grows_with_flow_and_persists_across_steps():
 
     width_total_1 = widths.sum()
     step_world(world, years=2_000_000)
-    width_total_2 = sum(line.channel_width.sum() for p in world.plates for line in p.lines)
+    width_total_2 = sum(p.collect("channel_width").sum() for p in world.plates)
     # Monotonic like channel_depth -- if boundary.py/bathymetry.py had reset it, this would
     # have dropped back toward 0 instead.
     assert width_total_2 >= width_total_1 * 0.5  # loose bound: some nodes can be pruned/moved
@@ -137,23 +120,22 @@ def test_channel_width_grows_with_flow_and_persists_across_steps():
 def test_is_volcano_survives_a_full_step_cycle():
     # Regression check: erosion.py's own line-reconstruction site must not silently wipe
     # is_volcano/volcano_active_years_remaining to False/0 before volcanism.apply_volcanic_
-    # activity ever gets a chance to read them. Directly seeds a volcano on one line rather
+    # activity ever gets a chance to read them. Directly seeds a volcano on one node rather
     # than waiting for one to occur organically -- decompression melting (see rheology.py's
     # RIFT_CRITICAL_THICKNESS_M) is a real, comparatively rare rift event under the isostasy-
     # driven engine, not v1's own flat per-step probability roll, so it isn't guaranteed (or
     # even likely) within any fixed step budget.
     world = generate_world(seed=34, num_plates=10, continental_fraction=0.4)
-    plate = next(p for p in world.plates if any(len(line) > 0 for line in p.lines))
-    line_index, line = next((i, line) for i, line in enumerate(plate.lines) if len(line) > 0)
-    is_volcano = np.zeros(len(line), dtype=bool)
+    plate = next(p for p in world.plates if p.node_count() > 0)
+    is_volcano = np.zeros(plate.node_count(), dtype=bool)
     is_volcano[0] = True
-    volcano_active_years_remaining = np.zeros(len(line))
+    volcano_active_years_remaining = np.zeros(plate.node_count())
     volcano_active_years_remaining[0] = 5_000_000.0
-    plate.replace_line(line_index, line.replace(is_volcano=is_volcano, volcano_active_years_remaining=volcano_active_years_remaining))
+    plate.set_fields_on_plate(is_volcano=is_volcano, volcano_active_years_remaining=volcano_active_years_remaining)
 
     step_world(world, years=2_000_000)
 
-    total_volcano_nodes = sum(int(line.is_volcano.sum()) for p in world.plates for line in p.lines)
+    total_volcano_nodes = sum(int(p.collect("is_volcano").sum()) for p in world.plates)
     assert total_volcano_nodes > 0
 
 
@@ -165,11 +147,11 @@ def test_channel_lake_and_glacier_depth_persist_across_boundary_and_erosion_step
     for _ in range(6):
         step_world(world, years=2_000_000)
 
-    glacier_total_1 = sum(line.glacier_depth.sum() for p in world.plates for line in p.lines)
+    glacier_total_1 = sum(p.collect("glacier_depth").sum() for p in world.plates)
 
     step_world(world, years=2_000_000)  # boundary.step_boundaries runs first here again
 
-    glacier_total_2 = sum(line.glacier_depth.sum() for p in world.plates for line in p.lines)
+    glacier_total_2 = sum(p.collect("glacier_depth").sum() for p in world.plates)
     # Not a strict monotonic-growth assertion (unlike channel_depth, glacier_depth can melt)
     # -- just confirms boundary.py didn't wipe the whole world's ice to exactly 0.
     assert glacier_total_1 > 0.0
@@ -186,9 +168,9 @@ def test_silt_depth_persists_across_boundary_and_erosion_steps():
     for _ in range(6):
         step_world(world, years=2_000_000)
 
-    silt_total_1 = sum(line.silt_depth.sum() for p in world.plates for line in p.lines)
+    silt_total_1 = sum(p.collect("silt_depth").sum() for p in world.plates)
     step_world(world, years=2_000_000)  # boundary.step_boundaries runs first here again
-    silt_total_2 = sum(line.silt_depth.sum() for p in world.plates for line in p.lines)
+    silt_total_2 = sum(p.collect("silt_depth").sum() for p in world.plates)
 
     assert silt_total_1 > 0.0
     assert silt_total_2 > 0.0

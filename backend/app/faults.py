@@ -1,6 +1,6 @@
 """Intraplate fault lines -- a first-class tectonic feature that is *not* a plate boundary.
 
-Plate boundaries carry their own deformation in `LithospherePlate.deform` (lithosphere_plate.py):
+Plate boundaries carry their own deformation in `quad_tectonics.deform`:
 classification there is geometric (contested territory -> convergent, uncontested-but-near
 -> transform, wider -> divergent). That model has no notion of a fault line sitting *inside*
 a plate, away from any edge -- yet in reality faults nucleate at a wide range of distances
@@ -34,13 +34,13 @@ This module leaves the live deform() classification in place. Each step it
 
 When `World.fault_deformation_mode` is `"fault"` or `"both"`,
 `_apply_plate_fault_relief`'s rates/reach scale up (`FAULT_RELIEF_MODE_*`) and, in
-`"fault"` mode, `LithospherePlate.deform` gates its own boundary thickening by
+`"fault"` mode, `quad_tectonics.deform` gates its own boundary thickening by
 `fault_influence()` so plate-boundary transformation localises onto fault lines rather than a
 smooth band at the polygon edge. `"boundary"` keeps the narrower relief scale.
 
 Geometry is stored in the owning plate's **local frame** (`local_phi` / `local_theta`), so
 a fault rides along with the crust as the plate rotates for free -- the same "attached to
-the crust, not the world" property every persistent `ElevationLine` field already has.
+the crust, not the world" property every persistent surface field already has.
 `reconcile_faults` re-homes faults across merges/splits and drops those whose plate
 subducted (see world.step_world).
 
@@ -68,9 +68,9 @@ from .elevation_lines import (
     ELEV_CHANGE_FAULT_STRIKE_SLIP,
     ELEV_CHANGE_MIN_DELTA_M,
     PLANET_RADIUS_KM,
-    ElevationLine,
     line_spacing_rad,
 )
+from .surface_fields import SURFACE_FIELDS
 from .plates import OVERLAP_TOLERANCE_MULT, Plate, cached_node_position_tree, collect_all_points, query_workers
 
 if TYPE_CHECKING:
@@ -258,9 +258,9 @@ BOUNDARY_FAULT_RELIEF_SCALE = 0.3
 # lines" overlay and erosion's seismic burst).
 BOUNDARY_FAULT_MAX_QUAKES_PER_STEP = 40
 
-# --- Fault-deformation mode (World.fault_deformation_mode; see LithospherePlate.deform) ---
+# --- Fault-deformation mode (World.fault_deformation_mode; see quad_tectonics.deform) ---
 FAULT_DEFORMATION_MODES = ("boundary", "fault", "both")
-# In "fault" mode (the default), boundary thickening in LithospherePlate.deform is multiplied
+# In "fault" mode (the default), boundary thickening in quad_tectonics.deform is multiplied
 # by fault_influence(): 1.0 within FAULT_DEFORM_REACH_KM of an active fault trace, tapering to
 # FAULT_DEFORM_FLOOR far from one (never 0 -- a contested zone with no fault yet still
 # deforms while Piece-1 spawning fills it in). Faults spawn boundary-hugging (SPAWN_PLACE_*),
@@ -1287,7 +1287,7 @@ def fault_influence(
     """Per own-node, 1.0 within `reach_km` of one of this plate's active fault traces,
     tapering linearly to `floor` beyond -- never 0, so a contested zone that has no fault yet
     still deforms while Piece-1 spawning fills it in. All-ones if the plate has no active
-    fault. Used by LithospherePlate.deform in "fault" mode to localise boundary thickening
+    fault. Used by quad_tectonics.deform in "fault" mode to localise boundary thickening
     onto fault lines (see World.fault_deformation_mode). Uses each fault's `world_polyline`
     (refreshed at the end of update_faults last step -- deform runs before update_faults, so
     "last step's faults" is the right, and only available, set)."""
@@ -1304,47 +1304,6 @@ def fault_influence(
     trace_points = np.concatenate(traces, axis=0)
     d, _ = cKDTree(trace_points).query(own_points, workers=query_workers(len(own_points)))
     return np.clip(1.0 - d / reach_rad, floor, 1.0)
-
-
-def fault_tangent_components(world: "World", plate: Plate, phi: float, theta: float) -> tuple[float, float] | None:
-    """(sep_theta, sep_phi): this plate's own rift separation direction at plate-local
-    (phi, theta), from the nearest active fault trace's own tangent -- swapped, since a fault
-    opens *across* its own strike, not along it (a fault running along theta, i.e. `d_phi ~ 0`,
-    means the ground actually pulls apart along phi, so `sep_phi` should be the large
-    component). `None` if this plate has no active fault at all, so the caller
-    (`lithosphere_plate.py`'s rift-stretch wiring) can fall back to
-    `geometry.local_separation_components` against `direction_to_neighbor` instead -- the same
-    "no fault yet" fallback shape `fault_influence` above already uses.
-
-    Compares in physical (arc-length) units, not raw (phi, theta): a theta step's physical
-    length is `cos(phi)` times its angular size (see `elevation_lines.line_spacing_rad`'s own
-    `dtheta = spacing / cos(phi)`), so both the nearest-point search and the tangent itself
-    scale `local_theta` by `cos(phi)` before comparing against `local_phi`, which needs no such
-    correction. Not normalized -- `rheology.stretch_components` (every caller) normalizes."""
-    candidates = [f for f in _all_faults(world) if f.plate_id == plate.plate_id and f.active and len(f.local_phi) >= 2]
-    if not candidates:
-        return None
-    cos_p = np.cos(phi)
-    best_dist_sq = np.inf
-    best_tangent: tuple[float, float] | None = None
-    for fault in candidates:
-        dist_sq = (fault.local_phi - phi) ** 2 + ((fault.local_theta - theta) * cos_p) ** 2
-        idx = int(np.argmin(dist_sq))
-        if dist_sq[idx] >= best_dist_sq:
-            continue
-        lo, hi = max(idx - 1, 0), min(idx + 1, len(fault.local_phi) - 1)
-        if lo == hi:
-            continue
-        tangent_phi = fault.local_phi[hi] - fault.local_phi[lo]
-        tangent_theta = (fault.local_theta[hi] - fault.local_theta[lo]) * cos_p
-        if tangent_phi == 0.0 and tangent_theta == 0.0:
-            continue
-        best_dist_sq = dist_sq[idx]
-        best_tangent = (tangent_theta, tangent_phi)
-    if best_tangent is None:
-        return None
-    tangent_theta, tangent_phi = best_tangent
-    return tangent_phi, tangent_theta  # swapped: separation runs across the fault's own strike
 
 
 def _own_points_and_tree(plate: Plate, cache: dict | None) -> tuple[np.ndarray, cKDTree | None]:
@@ -1365,8 +1324,8 @@ def _apply_plate_fault_shear(world: "World", plate: Plate, years_myr: float, _ca
     """Physically displace crust across an active strike-slip trace -- a river valley or
     ridge crest straddling the fault should end up offset along-strike by
     `cumulative_offset_m`, the visually recognisable thing about a real transform like the
-    San Andreas (see GitHub issue #125 item 2). `ElevationLine.theta` is fixed once a node
-    exists (see elevation_lines.py) -- nodes themselves never move -- so this advects the
+    San Andreas (see GitHub issue #125 item 2). A node's plate-local position is fixed once
+    it exists -- nodes themselves never move -- so this advects the
     *field values* instead: every node within `MAX_FAULT_REACH_KM` of an active strike-slip
     trace is overwritten with whatever this plate's own crust held one step's worth of
     along-strike slip upstream of it, nearest-neighbour sampled from this same step's
@@ -1374,7 +1333,7 @@ def _apply_plate_fault_shear(world: "World", plate: Plate, years_myr: float, _ca
     technique `fluid_dynamics.semi_lagrangian_advect` uses for wind/humidity on a fixed
     grid). `taper` (1 at the trace, 0 at the reach) scales the slip distance itself, so at
     the outer edge the upstream sample point collapses back onto the node and every field
-    -- `elevation` and everything in `ElevationLine.OPTIONAL_FIELDS`, categorical/bool
+    -- every `surface_fields.SURFACE_FIELDS` field, categorical/bool
     fields included -- is an exact no-op with no type-specific blending needed.
 
     Side of the trace comes from the fault's own `dip_dir_local` (already computed at spawn
@@ -1385,13 +1344,12 @@ def _apply_plate_fault_shear(world: "World", plate: Plate, years_myr: float, _ca
     `_apply_plate_fault_relief` -- an additive layer regardless of
     `World.fault_deformation_mode`, only `reach_scale`-widened in "fault"/"both" mode.
 
-    Sharing OPTIONAL_FIELDS wholesale (rather than cherry-picking "terrain" fields) means a
+    Sharing the field registry wholesale (rather than cherry-picking "terrain" fields) means a
     node's silt/coal/mineral deposit -- normally monotonically non-decreasing over that
     node's own history -- can drop if sheared-in crust from across the fault happened to
-    carry less: correct once you read it as "this is different material now," and the same
-    generic-field-list choice `ElevationLine`'s own docstring already argues for (the
-    alternative -- a hand-picked field subset -- is exactly what silently dropped
-    is_volcano/volcano_active_years_remaining before OPTIONAL_FIELDS existed)."""
+    carry less: correct once you read it as "this is different material now" (the
+    alternative -- a hand-picked field subset -- is exactly what once silently dropped
+    is_volcano/volcano_active_years_remaining)."""
     active = [
         f for f in _all_faults(world)
         if f.plate_id == plate.plate_id and f.active and f.kind == _KIND_STRIKE_SLIP
@@ -1404,7 +1362,7 @@ def _apply_plate_fault_shear(world: "World", plate: Plate, years_myr: float, _ca
     _, reach_scale = _relief_mode_scales(world)
     reach_rad = reach_scale * MAX_FAULT_REACH_KM / PLANET_RADIUS_KM
 
-    field_names = ("elevation",) + ElevationLine.OPTIONAL_FIELDS
+    field_names = tuple(SURFACE_FIELDS)
     originals = {name: plate.collect(name) for name in field_names}
     overrides = {name: arr.copy() for name, arr in originals.items()}
     any_shifted = False

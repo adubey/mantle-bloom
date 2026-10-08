@@ -1,12 +1,11 @@
 """Per-phase Hc/Hm budget instrumentation for GitHub issue #216 ("Investigate long-run Hc/Hm
 decline: geological sinks, changing node counts, and numerical volume losses").
 
-Gated entirely by `World.debug_diagnostics` (the same flag `World.log_corner_notch` already
-uses) so it costs nothing on an ordinary world. Each call site that mutates crustal thickness
-(Hc) / mantle-lithosphere thickness (Hm) -- convergent/divergent deformation, arc magmatism,
-oceanic cooling relaxation, decompression melting, boundary growth/shrink, row claiming,
-regularization, plate merges/cleanup/relatticing, failed rifts, erosion, the end-of-step cap
-clamp -- calls `record()` with the same node slice's Hc/Hm (and `crust_type_code`) just
+Gated entirely by `World.debug_diagnostics` so it costs nothing on an ordinary world. Each
+call site that mutates crustal thickness (Hc) / mantle-lithosphere thickness (Hm) --
+convergent/divergent deformation, arc magmatism, oceanic cooling relaxation, decompression
+melting, boundary advance/retreat, gap fill, plate merges/cleanup, failed rifts, erosion, the
+end-of-step cap clamp -- calls `record()` with the same node slice's Hc/Hm (and `crust_type_code`) just
 before and just after that phase ran. `record()` accumulates the delta into `World.phase_budget[phase_name]`, broken out
 by plate type (the owning plate's own `crust_type`) and by node type (`crust_type_code`,
 resolved via `elevation_lines.effective_is_continental_from_codes` -- a node can carry a type
@@ -22,11 +21,11 @@ per-step time series it may never need.
 
 Each scope carries node counts and plain per-node Hc/Hm sums (`sum_hc_*`, `sum_hm_*`), plus the
 covered area and Hc/Hm volumes weighted by each node's own accounting area
-(`Plate.accounting_areas_m2`: exact cells on quad plates, nominal on line plates). Quad cells
-are not equal-area and a phase can swap large cells for small ones, so on a quad world only
-the area-weighted fields measure real crust gained or lost (issue #257). They have to be
-weighted per node as each call is recorded -- the aggregate counts can't be converted
-afterwards. A caller passing bare arrays (line-level phases) gets the nominal area per node.
+(`Plate.accounting_areas_m2`: exact cell areas). Quad cells are not equal-area and a phase can
+swap large cells for small ones, so only the area-weighted fields measure real crust gained or
+lost (issue #257). They have to be weighted per node as each call is recorded -- the aggregate
+counts can't be converted afterwards. A caller passing no areas gets the nominal area per
+node.
 
 One entry is not an Hc/Hm phase: `SHORTENING_PHASE` (issue #314) books a quad plate's
 collisional shortening -- demanded by its convergent band, absorbed into its columns, or
@@ -89,8 +88,8 @@ _CAP_FIELDS = (
     "left_cap_area_m2",
 )
 # These snapshots can change the physical identity behind a node ID. Do not infer per-cell
-# cap entries/exits from a coincidental ID match across a merge or lattice rebuild.
-_UNALIGNED_CAP_TRANSITION_PHASES = {"plate_merge", "forced_plate_merge", "continental_relattice"}
+# cap entries/exits from a coincidental ID match across a merge.
+_UNALIGNED_CAP_TRANSITION_PHASES = {"plate_merge", "forced_plate_merge"}
 
 
 class Snapshot(NamedTuple):
@@ -107,10 +106,9 @@ class Snapshot(NamedTuple):
 
 def snapshot(plate, spacing_rad: float) -> Snapshot:
     """Hc, Hm, crust_type_code and `Plate.accounting_areas_m2`, each concatenated across the
-    whole plate in node order (`Plate.collect`) -- for a phase that operates plate-wide rather
-    than one line at a time (row claiming, corner-notch fill, merge, relattice, cleanup
-    removal, quad retreat/advance, erosion, the cap clamp), where no single line's local
-    `hc`/`hm` arrays capture the whole effect."""
+    whole plate in node order (`Plate.collect`) -- for a phase that changes topology or works
+    plate-wide (merge, cleanup removal, retreat/advance, gap fill, erosion, the cap clamp),
+    where `record`'s per-node before/after arrays can't capture the whole effect."""
     nodes = plate.surface_nodes()
     return Snapshot(
         plate.collect("crustal_thickness_m"),
@@ -274,7 +272,7 @@ def record(
     are accumulated independently so this is measured correctly either way). `codes_after`
     defaults to `codes_before` for a phase that cannot itself reclassify a node.
     `area_before_m2`/`area_after_m2` are each node's accounting area; omitted, every node gets
-    the nominal `lithosphere.node_area_m2` -- right only for a line plate's nodes."""
+    the nominal `lithosphere.node_area_m2`, which a cell's exact area only approximates."""
     if not getattr(world, "debug_diagnostics", False):
         return
     if len(hc_before) == 0 and len(hc_after) == 0:

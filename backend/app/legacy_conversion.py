@@ -4,12 +4,11 @@ docs/save-compatibility.md is the policy this implements; this docstring covers 
 
 **Reading.** Line state is read structurally from each pickled object's `__dict__` -- a
 plate's `_lines`, `_frame`, `_omega` and so on, and each line's `_phi`, `_theta` and
-`_<field>` arrays -- never through `PlateWithLines` methods. A field a line predates
-(`ElevationLine.__getattr__`'s lazy backfill) reads as its `surface_fields.SURFACE_FIELDS`
+`_<field>` arrays -- never through line-class methods. A field a line predates (which the
+retired `ElevationLine` backfilled lazily) reads as its `surface_fields.SURFACE_FIELDS`
 default, which is the same value. State this build doesn't recognise is refused, not dropped.
-Because nothing here calls line behaviour, the converter keeps working once `PlateWithLines`
-is retired (#251): `legacy_unpickler` loads the legacy line classes as inert `LegacyRecord`s
-and conversion runs unchanged.
+The line classes themselves were retired in #251: `legacy_unpickler` loads them as inert
+`LegacyRecord`s, and this module is the only code that still reads line state.
 
 **Node areas.** Each node stands for the nominal footprint at the world's spacing
 (`lithosphere.node_area_m2`, what the line engine's own budgets use), shared with the nodes of
@@ -390,7 +389,6 @@ def convert_world_to_quad(world: "World", *, coverage_samples: int = COVERAGE_SA
     n = cells_per_face_edge(spacing)
     report = ConversionReport(cells_per_edge=n, spacing_rad=spacing)
     legacy = [read_line_plate(p) for p in world.plates]
-    coverage_before = _line_coverage(world.plates, coverage_samples)
     sea_level = float(world.sea_level_m)
     budget_before = getattr(world, "ocean_water_volume_m3", None)
 
@@ -523,7 +521,9 @@ def convert_world_to_quad(world: "World", *, coverage_samples: int = COVERAGE_SA
         "cells": sum(q.node_count() for q in converted),
         "area_m2": float(sum(q.node_areas_m2().sum() for q in converted if q.node_count())),
     }
-    report.coverage = {"before": coverage_before, "after": _quad_coverage(converted, coverage_samples)}
+    # "before" would need the retired line plates' own containment test; kept for the
+    # report's shape.
+    report.coverage = {"before": None, "after": _quad_coverage(converted, coverage_samples)}
     report.sea_level = {
         "before_m": sea_level,
         "after_m": float(world.sea_level_m),
@@ -1057,14 +1057,6 @@ def _coverage(plates: list, count: int) -> dict[str, float]:
         if plate.node_count():
             claims += np.asarray(plate.contains_batch(samples), dtype=bool)
     return {"uncovered": float(np.mean(claims == 0)), "multiply_covered": float(np.mean(claims > 1))}
-
-
-def _line_coverage(plates: list, count: int) -> dict[str, float] | None:
-    """Coverage by the line plates' own `contains_batch`, when they are live line plates
-    (a `LegacyRecord` has no behaviour to ask, so it reports none)."""
-    if not count or not all(callable(getattr(p, "contains_batch", None)) for p in plates):
-        return None
-    return _coverage(plates, count)
 
 
 def _quad_coverage(plates: list[PlateWithSparseQuadPatch], count: int) -> dict[str, float]:

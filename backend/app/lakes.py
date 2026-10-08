@@ -107,10 +107,10 @@ LAKE_EVAPORATION_BASELINE_M_PER_MYR = 0.5
 # GitHub issue #144 asked whether this coefficient's magnitude actually keeps pace with the
 # tectonic roughening rate that carves the small pits it's meant to fill, since it was tuned by
 # feel (the ~100x above) rather than against a measured comparison. Measured directly on a live
-# 30 My run of issue #117's own repro seed (23097282): `elevation_lines._crumple_elevation`
-# (the actual roughening injector, run through `regularize_line` on plate node-density
-# increases) shifts a line's elevation by a median ~51 m per event (p90 ~160 m, up to ~3,000 m)
-# against a naive resample -- vs. this coefficient depositing a median ~0.02 m/step (p90 ~0.32
+# 30 My run of issue #117's own repro seed (23097282): the line engine's crumpling pass (the
+# actual roughening injector then, run on plate node-density increases; retired with the line
+# surface in #251) shifted a line's elevation by a median ~51 m per event (p90 ~160 m, up
+# to ~3,000 m) against a naive resample -- vs. this coefficient depositing a median ~0.02 m/step (p90 ~0.32
 # m/step) on a small leaf catchment's bed -- roughly a 1,000x gap per event. Despite that gap,
 # re-running issue #117's exact repro (seed 23097282 @ 79.2 My) against current code via
 # `app.lake_hierarchy_diagnostics` shows the pathology it named already resolved: max hierarchy

@@ -71,7 +71,7 @@ humidity field ocean evaporation does.** The "rain in a rainforest" effect, wher
 densely-vegetated region partly sustains its own precipitation: `compute_humidity`'s land
 cells get an extra local source alongside ocean cells' own evaporation ceiling -- lake surface
 and river-channel evaporation (sized from the *persisted*, already-known `lake_depth`/
-`channel_depth` fields on `plates.ElevationLine`, resampled onto this grid exactly like
+`channel_depth` surface fields, resampled onto this grid exactly like
 elevation itself -- see `_sample_elevation_and_crust`) plus vegetation transpiration (sized
 from a biome classification, `biomes.classify_biomes`, of *last* step's climate snapshot --
 see `_vegetation_transpiration_source`). A frozen surface (`air_temperature_c` below
@@ -169,7 +169,7 @@ def grid_dimensions(climate_density: float) -> tuple[int, int]:
     GRID_HEIGHT/GRID_WIDTH constants, so a world generated at a non-default density stays
     self-consistent for its entire life (every step, not just the moment it's generated) --
     the same "thread the world's own chosen density through, don't read the bare module
-    constant" precedent plates.line_spacing_rad already sets."""
+    constant" precedent elevation_lines.line_spacing_rad already sets."""
     return round(GRID_HEIGHT * climate_density), round(GRID_WIDTH * climate_density)
 
 _EPS = 1e-9

@@ -1,24 +1,23 @@
 import numpy as np
-from app import biomes, geology, geometry, volcanism
+from app import geology, volcanism
 from app.erosion import ErosionResult
 from app.hydrology import HydrologyFields
-from app.plates import ElevationLine, PlateWithLines
 from app.world import World
+
+from .quad_fixtures import block_keys, node_points, quad_plate
 
 
 def _plate(theta, elevation):
-    frame = geometry.plate_frame_from_seed(np.array([1.0, 0.0, 0.0]))
-    theta = np.asarray(theta, dtype=float)
-    line = ElevationLine(phi=0.0, theta=theta, elevation=np.asarray(elevation, dtype=float))
-    return PlateWithLines(plate_id=0, frame=frame, crust_type="continental", lines=[line])
+    """One continental row of cells, one per entry of `theta` (only its length matters)."""
+    return quad_plate(0, "continental", columns=range(len(theta)), elevation=np.asarray(elevation, dtype=float))
 
 
 def _world_with_hydrology(plate, is_ocean, water_deposited):
-    n = len(plate.lines[0].theta)
-    points = plate.lines[0].world_xyz(plate.frame)
+    n = plate.node_count()
+    points = node_points(plate)
     hydro = HydrologyFields(
         points=points,
-        elevation=plate.lines[0].elevation.copy(),
+        elevation=plate.collect("elevation").copy(),
         is_ocean=np.asarray(is_ocean, dtype=bool),
         neighbor_idx=np.zeros((n, 1), dtype=int),
         flow_target=np.full(n, -1),
@@ -60,9 +59,9 @@ def _erosion_result(
 def test_apply_resource_formation_noop_when_hydrology_cache_missing():
     plate = _plate([0.0], [200.0])
     world = World(seed=0, plates=[plate])  # hydrology_cache defaults to None
-    result = _erosion_result(plate.lines[0].world_xyz(plate.frame), [200.0])
+    result = _erosion_result(node_points(plate), [200.0])
     geology.apply_resource_formation(world, years=1_000_000, erosion_result=result)
-    assert world.plates[0].lines[0].coal_deposit_m[0] == 0.0
+    assert world.plates[0].collect("coal_deposit_m")[0] == 0.0
 
 
 def test_coal_accumulates_fastest_in_carboniferous_forest_conditions():
@@ -71,7 +70,7 @@ def test_coal_accumulates_fastest_in_carboniferous_forest_conditions():
     theta = [-0.001, 0.0, 0.001]
     plate = _plate(theta, elevation=[5.0, 5.0, 5.0])
     world = _world_with_hydrology(plate, is_ocean=[False, False, False], water_deposited=[0.0, 0.0, 0.0])
-    points = plate.lines[0].world_xyz(plate.frame)
+    points = node_points(plate)
     result = _erosion_result(
         points, elevation=[5.0, 5.0, 5.0],
         slope=[0.0001, 0.0001, 0.05],
@@ -81,7 +80,7 @@ def test_coal_accumulates_fastest_in_carboniferous_forest_conditions():
 
     geology.apply_resource_formation(world, years=10_000_000, erosion_result=result)
 
-    coal = world.plates[0].lines[0].coal_deposit_m
+    coal = world.plates[0].collect("coal_deposit_m")
     assert coal[0] > coal[1] > 0.0
     assert coal[2] == 0.0
 
@@ -89,13 +88,13 @@ def test_coal_accumulates_fastest_in_carboniferous_forest_conditions():
 def test_coal_deposit_is_monotonic_across_repeated_steps():
     plate = _plate([0.0], elevation=[5.0])
     world = _world_with_hydrology(plate, is_ocean=[False], water_deposited=[0.0])
-    points = plate.lines[0].world_xyz(plate.frame)
+    points = node_points(plate)
     result = _erosion_result(points, elevation=[5.0], slope=[0.0001], temperature_c=[25.0], precipitation_mm=[2500.0])
 
     prior = 0.0
     for _ in range(5):
         geology.apply_resource_formation(world, years=5_000_000, erosion_result=result)
-        current = float(world.plates[0].lines[0].coal_deposit_m[0])
+        current = float(world.plates[0].collect("coal_deposit_m")[0])
         assert current >= prior
         prior = current
     assert prior > 0.0
@@ -103,22 +102,22 @@ def test_coal_deposit_is_monotonic_across_repeated_steps():
 
 
 def test_oil_gas_forms_only_on_shelf_water_and_is_boosted_near_a_river_mouth():
-    # A land cluster near theta=0, a shelf ocean point ~127km out (inside SHELF_RANGE_RAD),
-    # a second shelf point at the same distance but with heavy river-mouth inflow, and a deep
-    # ocean point far outside shelf range -- same theta-to-km relationship
-    # test_bathymetry.py's own shelf-vs-deep test already establishes.
-    theta = [-0.001, -0.0009, -0.0011, 0.02, 0.0205, 0.3]
+    # A land cluster of three cells, a shelf ocean cell one cell (~135 km) east of it (inside
+    # SHELF_RANGE_RAD), a second shelf cell one cell north of it with heavy river-mouth inflow,
+    # and a deep ocean cell far outside shelf range. In node order: land x3, the east shelf
+    # cell, the north shelf cell, the deep cell.
+    keys = np.concatenate([block_keys(range(4), [0]), block_keys([0, 20], [1])])
     elevation = [200.0, 200.0, 200.0, -50.0, -50.0, -3000.0]
-    plate = _plate(theta, elevation)
+    plate = quad_plate(0, "continental", keys=keys, elevation=np.array(elevation))
     is_ocean = [False, False, False, True, True, True]
     water_deposited = [0.0, 0.0, 0.0, 0.0, 10.0, 0.0]
     world = _world_with_hydrology(plate, is_ocean, water_deposited)
-    points = plate.lines[0].world_xyz(plate.frame)
+    points = node_points(plate)
     result = _erosion_result(points, elevation=elevation)
 
     geology.apply_resource_formation(world, years=10_000_000, erosion_result=result)
 
-    oil_gas = world.plates[0].lines[0].oil_gas_deposit_m
+    oil_gas = world.plates[0].collect("oil_gas_deposit_m")
     assert oil_gas[0] == 0.0  # land
     assert oil_gas[5] == 0.0  # deep, off-shelf
     assert oil_gas[3] > 0.0  # ordinary shelf water
@@ -129,7 +128,7 @@ def test_oil_gas_forms_only_on_shelf_water_and_is_boosted_near_a_river_mouth():
 def test_soil_depth_rises_from_weathering_and_deposition_and_falls_from_erosion():
     plate = _plate([0.0, 0.01], elevation=[500.0, 500.0])
     world = _world_with_hydrology(plate, is_ocean=[False, False], water_deposited=[0.0, 0.0])
-    points = plate.lines[0].world_xyz(plate.frame)
+    points = node_points(plate)
     # node0: gentle weathering + floodplain deposition, no fast erosion -- soil should build up.
     # node1: heavy rain+river erosion, no weathering/deposition -- soil should stay at 0 (can't
     # go negative) and definitely not exceed node0's.
@@ -141,7 +140,7 @@ def test_soil_depth_rises_from_weathering_and_deposition_and_falls_from_erosion(
 
     geology.apply_resource_formation(world, years=1_000_000, erosion_result=result)
 
-    soil = world.plates[0].lines[0].soil_depth
+    soil = world.plates[0].collect("soil_depth")
     assert soil[0] > 0.0
     assert soil[1] == 0.0
     assert soil[0] <= geology.MAX_SOIL_DEPTH_M
@@ -155,11 +154,11 @@ def test_riparian_boost_reaches_depositing_node_and_its_bank_neighbor_but_not_fu
     # the boost shouldn't reach it at all.
     theta = [0.0, 0.001, 0.002]
     plate = _plate(theta, elevation=[100.0, 100.0, 100.0])
-    points = plate.lines[0].world_xyz(plate.frame)
+    points = node_points(plate)
     n = len(points)
     hydro = HydrologyFields(
         points=points,
-        elevation=plate.lines[0].elevation.copy(),
+        elevation=plate.collect("elevation").copy(),
         is_ocean=np.zeros(n, dtype=bool),
         neighbor_idx=np.array([[1], [0], [1]]),
         flow_target=np.full(n, -1),
@@ -182,7 +181,7 @@ def test_riparian_boost_reaches_depositing_node_and_its_bank_neighbor_but_not_fu
     )
     geology.apply_resource_formation(world, years=2_000_000, erosion_result=result)
 
-    organic = world.plates[0].lines[0].soil_organic_content
+    organic = world.plates[0].collect("soil_organic_content")
     # Same base climate everywhere, so any ordering here is purely the riparian boost: the
     # depositing node itself grows the richest, its bank neighbor a real but smaller boost,
     # and node2 (not adjacent to the depositing node at all) is unaffected by either.
@@ -192,15 +191,15 @@ def test_riparian_boost_reaches_depositing_node_and_its_bank_neighbor_but_not_fu
 def test_soil_zeroed_over_ocean():
     plate = _plate([0.0], elevation=[-500.0])
     world = _world_with_hydrology(plate, is_ocean=[True], water_deposited=[0.0])
-    points = plate.lines[0].world_xyz(plate.frame)
+    points = node_points(plate)
     result = _erosion_result(points, elevation=[-500.0], weathering=[10.0], sediment_deposited=[10.0])
 
     geology.apply_resource_formation(world, years=1_000_000, erosion_result=result)
 
-    line = world.plates[0].lines[0]
-    assert line.soil_depth[0] == 0.0
-    assert line.soil_mineral_content[0] == 0.0
-    assert line.soil_organic_content[0] == 0.0
+    plate = world.plates[0]
+    assert plate.collect("soil_depth")[0] == 0.0
+    assert plate.collect("soil_mineral_content")[0] == 0.0
+    assert plate.collect("soil_organic_content")[0] == 0.0
 
 
 def test_soil_organic_content_relaxes_toward_productivity_and_mineral_toward_deposit():
@@ -208,20 +207,20 @@ def test_soil_organic_content_relaxes_toward_productivity_and_mineral_toward_dep
     plate = _plate(theta, elevation=[100.0])
     # Seed a real mineral_deposit_m and enough soil_depth to hold content, so the relaxation
     # target/gate are both meaningfully nonzero.
-    plate.lines[0].mineral_deposit_m[:] = volcanism.MAX_MINERAL_DEPOSIT_M
-    plate.lines[0].soil_depth[:] = 1.0
+    plate.set_fields_on_plate(mineral_deposit_m=np.full(1, volcanism.MAX_MINERAL_DEPOSIT_M), soil_depth=np.ones(1))
     world = _world_with_hydrology(plate, is_ocean=[False], water_deposited=[0.0])
-    points = plate.lines[0].world_xyz(plate.frame)
+    points = node_points(plate)
     # Warm and wet -- productivity (and so the organic-content target) saturates near 1.0.
     result = _erosion_result(points, elevation=[100.0], temperature_c=[25.0], precipitation_mm=[2500.0], weathering=[0.1])
 
     organic_prev, mineral_prev = 0.0, 0.0
     for _ in range(20):
         geology.apply_resource_formation(world, years=2_000_000, erosion_result=result)
-        line = world.plates[0].lines[0]
-        assert line.soil_organic_content[0] >= organic_prev
-        assert line.soil_mineral_content[0] >= mineral_prev
-        organic_prev, mineral_prev = float(line.soil_organic_content[0]), float(line.soil_mineral_content[0])
+        organic = float(world.plates[0].collect("soil_organic_content")[0])
+        mineral = float(world.plates[0].collect("soil_mineral_content")[0])
+        assert organic >= organic_prev
+        assert mineral >= mineral_prev
+        organic_prev, mineral_prev = organic, mineral
 
     assert 0.0 < organic_prev <= 1.0
     assert 0.0 < mineral_prev <= 1.0
@@ -230,16 +229,15 @@ def test_soil_organic_content_relaxes_toward_productivity_and_mineral_toward_dep
 def test_seed_initial_soil_is_noop_at_zero_maturity():
     plate = _plate([0.0, 0.01], elevation=[500.0, -500.0])
     geology.seed_initial_soil([plate], seed=1, initial_soil_maturity=0.0)
-    line = plate.lines[0]
-    assert np.all(line.soil_depth == 0.0)
-    assert np.all(line.soil_organic_content == 0.0)
+    assert np.all(plate.collect("soil_depth") == 0.0)
+    assert np.all(plate.collect("soil_organic_content") == 0.0)
 
 
 def test_seed_initial_soil_seeds_land_only_at_full_maturity():
     plate = _plate([0.0, 0.01], elevation=[500.0, -500.0])
     geology.seed_initial_soil([plate], seed=1, initial_soil_maturity=1.0)
-    line = plate.lines[0]
-    assert line.soil_depth[0] > 0.0  # land
-    assert line.soil_depth[1] == 0.0  # ocean, untouched
-    assert 0.0 < line.soil_organic_content[0] <= 1.0
-    assert 0.0 < line.soil_mineral_content[0] <= 1.0
+    soil = plate.collect("soil_depth")
+    assert soil[0] > 0.0  # land
+    assert soil[1] == 0.0  # ocean, untouched
+    assert 0.0 < plate.collect("soil_organic_content")[0] <= 1.0
+    assert 0.0 < plate.collect("soil_mineral_content")[0] <= 1.0

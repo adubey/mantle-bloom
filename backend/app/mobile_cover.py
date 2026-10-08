@@ -27,7 +27,7 @@ booked, signed, as ``fault_advection_m3``.
 Like continental_ledger.py, the world stores only sources and sinks; the live inventory is
 recomputed from the nodes, so ``balance_error_m3`` is zero when every change is booked. The
 continental share is a share of ``continental_material_m``, whose own ledger covers it.
-Booking is quad-complete; the line engine's row trimming doesn't book what it removes."""
+Booking is complete: every quad topology change books what it removes."""
 
 from __future__ import annotations
 

@@ -1,5 +1,4 @@
 import numpy as np
-import pytest
 from app import climate, geometry
 from app.world import generate_world, step_world
 
@@ -102,7 +101,7 @@ def test_step_world_at_doubled_climate_density_does_not_crash_and_uses_the_finer
 
 def test_pinned_omega_overrides_the_real_torque_balance():
     """World.pinned_omegas (the "Debugging Worlds" tab's scripted-motion mechanism) should
-    make LithospherePlate.shift use the pinned value verbatim, bypassing torque.shift_plate's
+    make Plate.shift use the pinned value verbatim, bypassing torque.shift_plate's
     own torque-balance recompute entirely -- not just happen to produce the same result."""
     world = generate_world(seed=10, num_plates=8)
     pinned_plate = world.plates[0]
@@ -150,7 +149,7 @@ def test_quad_world_keeps_its_represented_area_between_gap_fill_intervals():
     the next interval and eustatic sea level jumps with it."""
     from app.sparse_quad_patch import PLANET_RADIUS_M
 
-    world = generate_world(seed=3, node_density=0.5, surface="quad")
+    world = generate_world(seed=3, node_density=0.5)
     sphere_m2 = 4.0 * np.pi * PLANET_RADIUS_M**2
     for _ in range(2):
         step_world(world, years=1_000_000)
@@ -193,15 +192,14 @@ def test_record_removed_points_caps_the_log_evicting_oldest_first():
     assert max(surviving_years) == float(over_cap - 1)
 
 
-@pytest.mark.parametrize("surface", ["lines", "quad"])
-def test_step_world_ends_with_every_column_inside_its_caps(surface, monkeypatch):
+def test_step_world_ends_with_every_column_inside_its_caps(monkeypatch):
     """Issue #256: "Hc, Hm within caps" is a hard per-step invariant (docs/plate-surface-
     baseline.md section 3.1). A writer that leaves a column outside them -- simulated here by
     the last Hc/Hm writer in the step -- is caught by the end-of-step clamp, which books what
     it changed in `phase_budget`."""
     from app import lithosphere, volcanism
 
-    world = generate_world(seed=3, node_density=0.5, surface=surface)
+    world = generate_world(seed=3, node_density=0.5)
     world.simulate_climate_biomes = False
     world.debug_diagnostics = True
     original = volcanism.apply_volcanic_activity

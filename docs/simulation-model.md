@@ -10,15 +10,12 @@
 - [Plate motion: shift and deform](#boundary-evolution)
 - [Quad-surface deformation](#quad-deformation)
   - [Orogenic relief before delamination](#orogenic-relief)
-- [Line regularization](#line-regularization)
 - [Merge and split](#merge-and-split)
 - [Whole-sphere coverage: local thinning-then-melting, plus a whole-sphere fallback](#gap-filling)
-  - [Frontier gap-fill: an opt-in alternative at both sites](#frontier-gap-fill)
   - [Per-node crust type](#per-node-crust-type)
   - [Cratons](#cratons)
 - [Volcanism](#volcanism)
 - [Faults (intraplate)](#faults)
-- [Boundary point reassignment (subsumed into deform)](#reassignment)
 - [Projections](#projections)
 - [Render image](#render-image)
 - [Rotating the view](#rotating-the-view)
@@ -52,9 +49,10 @@ step via nearest-neighbor
 [semi-Lagrangian](https://en.wikipedia.org/wiki/Semi-Lagrangian_scheme) backward-advection,
 which doesn't conserve mass where a plate stretches or compresses.
 
-mantle-bloom drops the grid entirely: plates are spherical polygons, and elevation lives on
-polylines that rotate *exactly* with their plate (no resampling at all for ordinary motion)
-and are only ever touched where a boundary actually creates or destroys crust.
+mantle-bloom drops the global grid entirely: each plate carries its terrain on its own
+plate-local lattice of cells that rotates *exactly* with the plate (no resampling at all for
+ordinary motion), and cells are only ever added or removed where a boundary actually creates
+or destroys crust.
 
 <a id="plate-local-frames"></a>
 ## Plate-local frames
@@ -62,9 +60,11 @@ and are only ever touched where a boundary actually creates or destroys crust.
 Each plate owns a rotation matrix `frame` (world = `frame @ local`, see
 `geometry.plate_frame_from_seed`) defining its own local spherical coordinate system
 `(phi, theta)`, with local `(phi=0, theta=0)` mapping to the plate's original seed point.
-Terrain is stored as `ElevationLine`s: each one a fixed plate-local latitude `phi`, holding
-elevation samples at plate-local longitude nodes `theta` -- literally a local graticule glued
-to the plate.
+Terrain is stored as a sparse set of active cells (`PlateWithSparseQuadPatch`,
+`sparse_quad_patch.py`) on an equiangular cube-sphere lattice laid out in that local frame:
+six faces, each an `n x n` grid whose cell edges are great-circle arcs, face 0 centred on the
+seed. One terrain node sits at each active cell's centre, carrying every surface field
+(`surface_fields.SURFACE_FIELDS`) for that cell's exact footprint.
 
 - **Rotating a plate is exact.** Advancing `frame` by composing the incremental rotation
   from the plate's current Euler pole/rate ([Rodrigues'
@@ -73,16 +73,15 @@ to the plate.
   with no interpolation and no lost material -- because ordinary rotation never resamples
   anything, there's no semi-Lagrangian resampling step to lose or duplicate mass in the
   first place.
-- **Equidistant and parallel, by construction.** Equal `delta-phi` between lines is already
-  physically equidistant (meridional spacing on a sphere doesn't depend on latitude), and
-  each line's `delta-theta` node spacing is chosen from that line's angular radius
-  (`cos(phi)`) to hit `TARGET_LINE_SPACING_KM` (`plates.py`, default 125 km) -- this is what
-  avoids the latitude-distortion problem a fixed-resolution lat/lon grid has, where node
-  spacing narrows sharply toward the poles.
-- **Irregular intervals at boundaries, naturally.** A line only exists for the theta-range
-  currently inside the plate's territory; nodes at that cutoff are the ones boundary
-  evolution adds or removes (see below), which is exactly where irregular spacing should
-  show up.
+- **Nearly uniform, and no pole singularity.** An equiangular cube-sphere cell's area varies
+  by at most about 1.4x across a face, and `n` is chosen so cells are about
+  `TARGET_LINE_SPACING_KM` (default 125 km) across -- avoiding the latitude distortion a
+  fixed lat/lon grid has, where spacing narrows sharply toward the poles. A plate of any
+  size, including one owning a pole, needs no special case. Every cell's area is exact, so
+  area-weighted totals (crustal volume, land area) are exact too.
+- **Territory is the cell set.** A plate owns exactly its active cells; boundary evolution
+  (see below) adds or removes whole cells at the plate's edge, which is where irregular
+  shapes should show up.
 
 <a id="initial-plate-generation"></a>
 ## Initial plate generation (`plates.py`)
@@ -101,8 +100,7 @@ angularly closest to any already-assigned site joins that site's plate). A plate
 is then the *union* of its own sites' Voronoi cells -- still a nearest-site lookup, so still
 gap/overlap-free by construction, but the merged cells give lumpier, less convex outlines
 than one-cell-per-plate did. `extra_sites_per_plate = 0` recovers the original tiling. Kept
-modest deliberately: the more cells a plate fuses, the more concave its outline gets, and
-`PlateWithLines`' per-row outline is only an envelope for a genuinely non-convex shape.
+modest deliberately: the more cells a plate fuses, the more concave its outline gets.
 
 Three generation choices *are* user-facing -- the UI's "continental plates" and "initial
 land" sliders, both 0 to 1 (percent in the UI), defaulting to
@@ -132,10 +130,10 @@ density" choice (`NODE_DENSITY_CHOICES = (0.5, 1.0, 2.0, 4.0)`, see below).
   sea level implausible regardless). Confirmed directly: at the defaults, measured land
   fraction across several seeds lands within about a percentage point of 29%.
 
-Each plate's elevation lines are populated by `plates.iter_local_lattice`: sweep a full
-plate-local `(phi, theta)` lattice at `TARGET_LINE_SPACING_KM` resolution (or a finer one --
-see "Elevation point density" below), and for every candidate node, keep it only if the
-*nearest* site to it (`cKDTree` against all sites, primary and extra) is one this plate owns
+Each plate's cells are populated by `PlateWithSparseQuadPatch.from_lattice`: sweep the plate's
+whole cube-sphere lattice at `TARGET_LINE_SPACING_KM` resolution (or a finer one -- see
+"Elevation point density" below), and for every candidate cell, keep it only if the
+*nearest* site to its centre (`cKDTree` against all sites, primary and extra) is one this plate owns
 -- the defining property of a spherical [Voronoi
 diagram](https://en.wikipedia.org/wiki/Voronoi_diagram), computed directly rather than via
 an explicit polygon-construction step. Every node ends up owned by exactly one plate, so the
@@ -154,43 +152,27 @@ several hundred meters deeper, without disturbing the land/sea split near sea le
 (`BASE_CONTINENTAL_M`, or the `land_fraction`-derived threshold when one is given, is
 untouched -- only how far the noise texture swings around whichever baseline is already used).
 
-The same lattice-sweep helper (`plates.build_lines_from_lattice`) is reused by plate merging
-(see [Merge and split](#merge-and-split)) -- the only other place a full-footprint sweep is
-needed.
-
 **Elevation point density.** The UI's "point density" choice (`node_density`, 4x default,
 0.5x/1x/2x also available) scales `TARGET_LINE_SPACING_RAD` down via `plates.line_spacing_rad`
 (halved at 4x -- node count for a fixed area scales with the *square* of resolution, so 4x the
 nodes needs half the spacing, not a quarter; conversely 0.5x, the coarsest option, doubles the
 spacing). Stored on `World.node_density`, set once at generation and
 read for that world's entire life, not just at the moment it's generated: every later module
-that builds new elevation-line nodes or derives a distance/count threshold from
-`TARGET_LINE_SPACING_RAD` -- `elevation_lines.py`'s line regularization, `lithosphere_plate.py`'s
-`LithospherePlate.deform` (per-turn growth/shrink/claim thresholds -- see [Plate motion: shift
-and deform](#boundary-evolution)), `merge_split.py`'s plate-merge contact distance,
-split-size floor, and defragmentation connect-radius / fragment-size floor -- calls
+that builds new cells or derives a distance/count threshold from `TARGET_LINE_SPACING_RAD` --
+the quad lattice size, `quad_tectonics.py`'s per-step advance/retreat thresholds (see [Plate
+motion: shift and deform](#boundary-evolution)), `merge_split.py`'s plate-merge contact
+distance, split-size floor, and defragmentation connect-radius / fragment-size floor -- calls
 `line_spacing_rad(world.node_density)` (or scales its own reference constant by the same
-ratio) instead of reading the bare module constant. This matters because
-it's not just a generation-time cosmetic choice: `elevation_lines.py`'s regularize pass in
-particular runs at the end of every single `deform()` call now (not periodically -- see [Line
-regularization](#line-regularization)) and, before this threading existed, always resampled a
-line back down to the *reference* spacing regardless of what density the world was actually
-generated at -- confirmed directly as a real bug during development, a 4x-density world's
-own node count reverting to the 1x baseline within the first handful of steps. Every
-distance-based threshold derived from `TARGET_LINE_SPACING_RAD` (e.g. `plates.py`'s
-`EXTEND_THRESHOLD_RAD`) scales linearly with the new spacing; every absolute node-*count*
-constant tied to a fixed physical area (`merge_split.SPLIT_MIN_NODES`, etc.) scales with
-`node_density` directly, not its square root, since it's already an area -- see each
-constant's own comment for the exact reasoning, which predates this option (the same
-rescaling used to happen as a one-off hardcoded code change whenever `TARGET_LINE_SPACING_KM`
-itself changed; this option just makes it a per-world runtime choice instead). Genuine fixed
-physical distances unrelated to sampling resolution (e.g. `plates.COLLISION_RANGE_KM`, a real
-~400km-wide collision belt) are deliberately *not* scaled -- only thresholds explicitly
-defined as multiples of `TARGET_LINE_SPACING_RAD` are. 4x density comes with a real,
-continuous performance cost, not just a one-time generation cost -- confirmed directly,
-several times slower per-step time (not just 4x, since the polygon-containment classification
-`deform()` runs against every near-boundary node is closer to `O(n log n)` than linear) --
-which the UI surfaces as a short note when 4x is selected.
+ratio) instead of reading the bare module constant. Every distance-based threshold derived
+from `TARGET_LINE_SPACING_RAD` scales linearly with the new spacing; every absolute
+node-*count* constant tied to a fixed physical area (`merge_split.SPLIT_MIN_NODES`, etc.)
+scales with `node_density` directly, not its square root, since it's already an area -- see
+each constant's own comment for the exact reasoning. Genuine fixed physical distances
+unrelated to sampling resolution (e.g. a real ~400km-wide collision belt) are deliberately
+*not* scaled -- only thresholds explicitly defined as multiples of `TARGET_LINE_SPACING_RAD`
+are. 4x density comes with a real, continuous performance cost, not just a one-time
+generation cost -- several times slower per step -- which the UI surfaces as a short note when
+4x is selected.
 
 <a id="worldsketch"></a>
 ## Human-made worlds (sketch-driven generation) (`worldsketch.py`)
@@ -257,8 +239,8 @@ coverage with no pole clustering. Each center contributes a tangential flow vect
 away from it (upwelling, positive strength) or toward it (downwelling, negative strength),
 with Gaussian falloff by angular distance (`mantle.flow_at`).
 
-Every step, each plate samples this field at its own current footprint (every elevation-line
-node plus its boundary loop -- already available, no separate sampling grid needed) and fits
+Every step, each plate samples this field at its own current footprint (every terrain node
+plus its boundary loop -- already available, no separate sampling grid needed) and fits
 the best-fit rigid rotation via ordinary least squares: minimize
 `sum |omega x p_i - v_i|^2`, a linear problem in `omega` solved as one 3x3 system per plate
 (`mantle.fit_euler_pole`). `omega`'s direction is the [Euler
@@ -311,21 +293,20 @@ Each plate runs two operations every step, in this order:
    here, since rotating one plate only ever touches its own `frame`.
 2. **`deform(world, other_plates, years, D)`** -- reconcile the plate's actual post-`shift`
    footprint against the footprint it's entitled to occupy: the sphere minus every *other*
-   currently-live plate's own bounding polygon (`Plate.get_bounding_polygon()`, a live,
-   cached outline derived directly from the plate's own current line endpoints -- see [Known
-   simplifications](#known-simplifications) for why this is an envelope, not an exact
-   polygon). Runs once per plate, in a **freshly randomized order every turn** -- the reason
+   currently-live plate's own territory (its active cells). Runs once per plate, in a **freshly randomized order every turn** -- the reason
    is explained below.
 
 A node is **contested** if it's now geometrically contained in some other live plate's
-polygon (`geometry.points_in_spherical_polygon`, checked only for nodes a cheap k-d-tree
-distance prefilter can't already rule out -- deep-interior nodes are never near enough to
-matter). Contested nodes are what used to be "convergent"; nodes that are uncontested and
+territory (`Plate.contains_batch`, checked only for nodes a cheap bounding-sphere prefilter
+can't already rule out). Contested nodes are what used to be "convergent"; nodes that are uncontested and
 far from every neighbor are what used to be "divergent" (open, unclaimed territory); nodes
 that are uncontested but still close to a neighbor are "transform." This reframing needs no
 real polygon union/intersection/subtraction machinery at all: "is this point in the union of
 every other plate's territory" is just "is it contained in *any* one of them," a plain
-boolean OR over the same containment test used everywhere else.
+boolean OR over the same containment test used everywhere else. The per-node consequences
+below are computed by `lithosphere_plate.deform_columns`; the cell-level changes (which cells
+retreat, which open) by `quad_tectonics.py` -- see [Quad-surface
+deformation](#quad-deformation).
 
 **Why randomize the processing order.** Two plates can both border the same unclaimed
 patch of sphere (a polar cap nobody's reached yet, or ground a subducted neighbor just
@@ -345,8 +326,8 @@ The rates/reaches below are unchanged from the model `step_boundaries` used to r
 trigger (contested, not a positive closing rate) changed:
 
 - **Continent-continent collision** (both plates continental) -> elevation rises through real
-  crustal thickening, scaled by the Mohr-Coulomb deformation model and the boundary-band /
-  near-field-ring intensity in `LithospherePlate.deform` -- a broad crumple zone, matching how
+  crustal thickening, scaled by the Mohr-Coulomb deformation model and the boundary-band
+  intensity in `lithosphere_plate.deform_columns` -- a broad crumple zone, matching how
   wide a real collision belt is (e.g. the Himalaya/Tibetan Plateau). Older builds also added a
   direct far-field elevation delta, but issue #206 retired that hack now that lateral magma
   transport can move collision-generated melt into distant thin continental crust and raise it
@@ -364,7 +345,7 @@ trigger (contested, not a positive closing rate) changed:
   (below `REVERSE_FAULT_VALLEY_THRESHOLD`). Those nodes still rise (this is differential uplift
   within an active belt, not literal subsidence), just far slower than their neighbours, so a
   real valley opens up between ranges as the gap widens step after step. The noise is sampled
-  in the plate's own *local* frame (`geometry.local_xyz(line.phi, line.theta)`, not world xyz),
+  in the plate's own *local* frame (each node's plate-local position, not world xyz),
   seeded from `(world.seed, plate_id)` only -- so a given downthrown block stays attached to
   the same crust as the plate rotates, a fixed geological feature rather than something that
   reshuffles every step, the same "attached to the crust, not the world" property every other
@@ -394,206 +375,85 @@ trigger (contested, not a positive closing rate) changed:
   (fades from 1 at zero distance to 0 at `FAR_THRESHOLD_RAD`, ~200km); continental rifting
   reaches much farther (`RIFT_RANGE_RAD`, 300km) -- stretching and thinning the crust
   subsides land well beyond the fault line itself, not just right at it.
-- **Structural growth/shrink**, applied independently at each line's two ends (the true
-  edge of that line's territory): if an end is uncontested and its gap to the nearest
-  neighbor node has opened past `EXTEND_THRESHOLD_RAD`, insert new nodes at target spacing --
-  as many as it actually takes to close the gap, capped by both `D` (this step's own physical
-  bound -- see `shift()` above) and `MAX_EXTEND_NODES_PER_STEP` as a hard safety ceiling, not
-  the normal limit. Each new node gets the ridge/rift target elevation (brand new material,
-  not interpolated from anything), *unless* the growth event rolls "overstretched" (see
-  below), in which case it comes back as a fresh volcano instead.
+- **Structural change: retreat and advance.** Contested cells at the plate's edge are removed
+  and open ground in front of an uncontested edge gains new cells, both bounded by `D`
+  (this step's own physical bound -- see `shift()` above) and a per-step safety cap; see
+  [Quad-surface deformation](#quad-deformation) for how. The physics those cell operations
+  carry:
 
-  **Torque engine (`lithosphere_plate.py`): new areal crust is oceanic, except at an active
-  margin.** Under the
-  Hc/Hm isostasy engine, a growing end (`_grow_or_shrink_line_for_deform`) and a claimed new
-  phi row (`_claim_adjacent_territory`) seed the new nodes' lithospheric column via
-  `lithosphere_plate.growth_seed_thickness()` -- the *oceanic* reference column regardless of
-  the plate's own `crust_type`, because any gap that opens on the sphere is floored by
-  sea-floor spreading, not by the neighbouring plate's crust. Seeding a continental plate's
-  own reference column there was a real land-area runaway: continental plates continuously
-  grow into space subducting oceanic plates vacate, and continental crust never subducts
-  back, so every such step permanently converted ocean floor into ~+200 m dry land (measured
-  land fraction climbed 0.27 -> 0.48, mean planet elevation rose ~1.7 km over 180 Myr on one
-  seed). New oceanic crust on a continental plate lands ~-3.5 km -- a drowned passive margin
-  / accreted terrane. Genuine continental rifting is untouched: that thins *existing* crust
-  (`rheology.apply_divergent_deformation`), it doesn't grow new nodes here.
+  **New areal crust is oceanic, except at an active margin.** Ordinary new ground is a rift
+  opening: the share of each new cell that lines up with the plates' separation stretches the
+  crust behind it, volume conserved, and the rest is fresh magmatic crust seeded at the
+  *oceanic* reference column (`lithosphere_plate.growth_seed_thickness()`) regardless of the
+  plate's own `crust_type`, because any gap that opens on the sphere is floored by sea-floor
+  spreading, not by the neighbouring plate's crust. Seeding a continental plate's own
+  reference column there was a real land-area runaway: continental plates continuously grow
+  into space subducting oceanic plates vacate, and continental crust never subducts back, so
+  every such step permanently converted ocean floor into ~+200 m dry land (measured land
+  fraction climbed 0.27 -> 0.48, mean planet elevation rose ~1.7 km over 180 Myr on one seed).
+  New oceanic crust on a continental plate lands ~-3.5 km -- a drowned passive margin /
+  accreted terrane. Genuine continental rifting thins *existing* crust
+  (`rheology.apply_divergent_deformation`).
 
-  **The one exception is a continental plate's *leading* edge advancing into space a
-  subducting oceanic slab is vacating** (slab rollback / trench retreat). That ground is
-  juvenile arc + accreted-terrane crust, so `deform()` flags an end as an *active margin*
-  (`arc_end_low`/`arc_end_high`: a node in the arc band -- see [arc magmatism](#boundary-
-  evolution) -- or a recent subduction-arc provenance stamp within a few nodes of the end)
-  and `grow_end` seeds it at `ARC_MARGIN_SEED_HC_M` / `ARC_MARGIN_SEED_HM_M` (~28 km / 55 km
-  -> a shallow ~-450 m forearc that builds to land as convergence continues) rather than the
-  drowned oceanic column, stamped `ELEV_CHANGE_SUBDUCTION_ARC`. This is the deliberately
-  restricted reverse of the runaway above: the runaway was +200 m dry land on *every* growth
-  event; a thicker seed *only* where the growing edge abuts a genuinely converging oceanic
-  slab -- and still under the volume-budget gate below -- is arc accretion, the dominant
+  The one exception is a continental plate's *leading* edge advancing into space a subducting
+  oceanic slab is vacating (slab rollback / trench retreat). That ground is juvenile arc +
+  accreted-terrane crust, so a new cell beside the arc band is seeded at
+  `ARC_MARGIN_SEED_HC_M` / `ARC_MARGIN_SEED_HM_M` (~28 km / 55 km -> a shallow ~-450 m forearc
+  that builds to land as convergence continues) rather than the drowned oceanic column,
+  stamped `ELEV_CHANGE_SUBDUCTION_ARC`. This is the deliberately restricted reverse of the
+  runaway above: a thicker seed *only* where the growing edge abuts a genuinely converging
+  oceanic slab -- and still under the volume-budget gate below -- is arc accretion, the
   land-decline driver's physical counterweight ("an oceanic plate subducting under a
-  continent makes more continent"). Open-ocean growth and poleward row claims stay oceanic.
+  continent makes more continent").
 
-  If an end is contested,
-  remove however many *consecutive* contested nodes sit there, capped the same way by `D` and
-  the safety ceiling -- but never the plate's last remaining node in a line. **A continental
-  end retreats whether the overriding neighbour is oceanic or continental**, gated to runs of
-  at least `CONTINENTAL_CONTESTED_RETREAT_MIN_RUN` consecutive contested nodes (so a
-  bounding-polygon envelope-fuzz node can't nibble a stable coast) and to one node per step.
-  Against an *oceanic* neighbour this is a passive margin (the slab descends under the buried
-  continental node, which is genuinely subducted and lost). Against a *continental* neighbour
-  it is a suture whose territory overlap is **consumed into the orogen as accretion**: the
-  retreated column's crustal volume is conserved and thrust back onto the plate's own
-  surviving leading-edge nodes, spread over `SUTURE_ACCRETION_SPREAD_NODES` of them
-  (`_redistribute_accreted_column` -- an imbricate thrust wedge), so the belt thickens in
-  direct proportion to the overlap it actually eats, up to a `SUTURE_ACCRETION_MAX_HC_M`
-  (~2.4x reference Hc) ceiling past which the crustal root delaminates (a suture that never
-  heals would otherwise pile every consumed column onto the same retreating-edge nodes
-  forever). Node area is constant per node, so this is just moving the dropped nodes' summed
-  Hc onto the survivors (the attached mantle lithosphere thickening in proportion);
-  `regularize_line` re-evens the spacing next pass and isostasy lifts the thickened belt.
-  (This replaced an earlier
-  `rheology.CONTINENTAL_COLLISION_SHORTENING_BOOST` fudge -- a flat 2.5x `fault_factor`
-  multiplier at continent-continent contested nodes, unrelated to how much overlap was
-  consumed.) Before any retreat at all, a continent-continent suture only crumpled in place, so a deep
-  territory overlap just sat there for tens of Myr until `merge_split`'s forced-merge timer
-  fused the pair (the `overlapAge` view's stalled multi-plate collisions; on
-  `seed 656865324` @ 60 My, plate 8 sat 17% on top of plate 6 since 33 My and the
-  30%-forced-merge threshold was never reached -- with retreat it drains to ~2% within
-  ~1.5 My). Retreat also breaks the **continental node ratchet** -- before it, a continental
-  line's contested (leading) end was a no-op every step while its divergent (trailing) end
-  kept growing, so every continent tiled itself with ever more drowned ~-3.5 km
-  accreted-margin nodes (`growth_seed_thickness`, above) and the dry-land fraction drifted
-  down under a fixed sea level with nothing able to compensate. The interior-subduction carve
-  below stays oceanic-only (a continental row is only ever shrunk from its ends) for the
-  lobe-severing reason -- carving a continental row's middle would sever the landmass into a
-  spurious defragmentation plate.
+  **A continental edge retreats whether the overriding neighbour is oceanic or
+  continental**, gated to contested patches of at least `CONTINENTAL_CONTESTED_RETREAT_MIN_RUN`
+  cells (so boundary fuzz can't nibble a stable coast). Against an *oceanic* neighbour this
+  is a passive margin (the slab descends under the buried continental cell, which is
+  genuinely subducted and lost). Against a *continental* neighbour it is a suture whose
+  territory overlap is **consumed into the orogen as accretion**: the retreated column's
+  crustal volume is conserved and thrust onto the plate's own surviving cells behind the
+  suture front, up to `SUTURE_ACCRETION_MAX_HC_M` (~2.4x reference Hc); past that it spreads
+  farther and escapes along strike before any of it delaminates (see [Orogenic relief before
+  delamination](#orogenic-relief)). Before any retreat at all, a continent-continent suture
+  only crumpled in place, so a deep territory overlap just sat there for tens of Myr until
+  `merge_split`'s forced-merge timer fused the pair (on `seed 656865324` @ 60 My, plate 8 sat
+  17% on top of plate 6 since 33 My; with retreat it drains to ~2% within ~1.5 My). Retreat
+  also breaks the **continental node ratchet**: a continent whose contested leading edge
+  never gave ground while its trailing edge kept growing tiled itself with ever more drowned
+  accreted-margin crust, and the dry-land fraction drifted down under a fixed sea level.
 
-  **Whole-row drop (parallel suture).** End-trim can only bite where a row has an *uncontested*
-  end. When a neighbour overrides a continental plate's frontmost phi-row across its full theta
-  width -- a suture running *along* that plate's rows -- there is no uncontested end and (per
-  the previous paragraph) no mid-row carve, so end-trim alone leaves that plate unable to give
-  ground while its trailing edge keeps growing: the ratchet again. `LithospherePlate._retreat_
-  contested_leading_rows` (continental crust only, run just before `_claim_adjacent_territory`)
-  is the sign-flipped mirror of the claim: once a plate's outermost row at *either* phi extreme
-  has been `LEADING_ROW_CONTESTED_FRACTION` (0.7) contested for a cumulative `LEADING_ROW_
-  RETREAT_SUSTAINED_YEARS` (5 My) of deform time -- tracked per-plate in `_leading_row_retreat_
-  years`, keyed by extreme -- the whole row is deleted. Removing an outermost row keeps the
-  plate contiguous (unlike a mid-row carve), so it is gated only by `LEADING_ROW_DROP_MIN_ROWS`
-  (4). Volume is not conserved through the drop (parity with the end-retreat above); the row
-  it exposes is contested next step and thickens through the same `CONTINENTAL_COLLISION_
-  SHORTENING_BOOST` path. The claim/drop timing is deliberately asymmetric -- a row is claimed
-  the instant open space appears, but only dropped after a sustained override, so a transient
-  boundary wobble can't thrash a stable margin.
+  **Interior subduction** is oceanic-only: an oceanic plate also removes contested patches
+  stranded in its interior (a neighbour rotated bodily over them faster than its edge could
+  retreat), leaving a hole the peel continues from. A continent's middle is never carved,
+  since cutting it would sever the landmass into a spurious defragmentation plate. Before
+  this, a continental lobe planted mid-plate on an oceanic plate left a frozen overlap that
+  never healed (`seed 888151728` at 6.9 Myr, plates 9 and 1).
 
-  Growth and
-  *ordinary* shrink are end-only: each `ElevationLine` is a single contiguous arc, and
-  inserting/deleting anywhere but an end would break that. The one interior case handled is
-  **interior subduction** on an oceanic self-plate: a run of at least
-  `_INTERIOR_SUBDUCTION_MIN_RUN` contested nodes stranded in a row's *middle*, live nodes on
-  both sides (a neighbor -- typically a continental plate, whose own contested nodes never
-  subduct -- has rotated bodily over a mid-row patch faster than the end-shrink could
-  retreat). That run is carved out and the row's survivors returned as *two* separate
-  contiguous `ElevationLine`s at the same `phi`, one per arc; `PlateWithLines.outline_world`
-  and `contains_batch` both handle several lines at one `phi`, tracing the gap between the
-  arcs as a genuine hole (keyholed out of the plate's polygon, see [Known
-  simplifications](#known-simplifications)) rather than claiming it. Total interior deletion
-  per call is capped by the safety ceiling, not `D` -- those nodes were overridden over many
-  past steps, so clearing them is catch-up cleanup, not this step's own subduction. Before
-  this, an interior-only contested patch was left untouched every turn on the reasoning that
-  "the neighbor's own growth reaches this row's nearer end before long" -- which never
-  happens when the neighbor plants a lobe mid-row and then stops advancing, leaving a frozen
-  continental-over-oceanic overlap that didn't heal (seen in a real long-run world:
-  `seed 888151728` at 6.9 Myr, plates 9 and 1). This is also where mass conservation lives:
-  material is only ever created at open ends and destroyed where genuinely overridden, as
-  literal point insertion/deletion -- there's no grid-resampling step that can lose or
+  **A continental plate stops growing once its footprint outruns its crustal volume.** A
+  continental plate sheared into a much larger envelope by a far-off Euler pole would
+  otherwise tile unbounded drowned passive margin outward (a plate reaching ~16% of the whole
+  planet, 70%+ of its own area below sea level, was a real long-run symptom).
+  `lithosphere_plate.boundary_context` measures a continental plate's *genuine* continental
+  area -- cells with `crustal_thickness_m` at least `CONTINENTAL_BUDGET_HC_FRACTION` (0.6) of
+  the continental reference -- and once the plate's total area exceeds
+  `CONTINENTAL_AREA_BUDGET_MULT` (1.8) times that, suppresses all areal growth for the step.
+  Retreat, divergent thinning and convergent thickening keep running, so an over-budget plate
+  thins / drowns / crumples back toward its crustal volume rather than merely freezing at its
+  current size. A real craton sits near reference Hc across its whole area, far below the
+  cap; the >1 multiplier is the realistic continental-shelf + accreted-terrane allowance.
+  Oceanic plates are exempt -- their footprint is already bounded by subduction.
+
+  Mass conservation lives here: material is only created where new cells open and destroyed
+  where cells are genuinely overridden -- there's no grid-resampling step that can lose or
   duplicate it.
 
-  **A continental plate stops growing once its footprint outruns its crustal volume.**
-  Every lattice node covers the same physical area (`lithosphere.node_area_m2` is constant
-  by construction), and every node grown at a margin -- end-growth here or a whole new row
-  in `_claim_adjacent_territory` -- is seeded at the *oceanic* reference column
-  (`growth_seed_thickness`). A continental plate sheared into a much larger envelope by a
-  far-off euler pole therefore tiles unbounded drowned passive-margin outward while nothing
-  removes a leading row, so its node count and its bounding envelope both creep upward
-  without limit (a plate reaching ~16% of the whole planet, 70%+ of its own area below sea
-  level, was a real long-run symptom). `LithospherePlate.deform` counts a continental
-  plate's *genuine* continental nodes -- `crustal_thickness_m` at least
-  `CONTINENTAL_BUDGET_HC_FRACTION` (0.6) of the continental reference -- and once the plate's
-  total node count exceeds `CONTINENTAL_AREA_BUDGET_MULT` (1.8) times that, suppresses all
-  areal growth for the step (both `grow_end` branches here, and the
-  `_claim_adjacent_territory` call is skipped entirely). Retreat, divergent thinning and
-  convergent thickening keep running, so an over-budget plate thins / drowns / crumples back
-  toward its crustal volume rather than merely freezing at its current size. The gate is
-  regime- and neighbour-independent (unlike the contested-run retreat it does not care how
-  the suture sits against the row grid). A real craton sits near reference Hc across its
-  whole area, far below the cap; the >1 multiplier is the realistic continental-shelf +
-  accreted-terrane allowance. Over a 120 My run this roughly halves the continental-node
-  creep. Oceanic plates are exempt -- their footprint is already bounded by subduction.
-
-  **A row never winds past a full revolution.** A line is a circle of plate-local latitude,
-  so its theta extent physically can't exceed `2*pi`. Nothing here treats theta as periodic,
-  and near a plate's own local pole the "gap to the nearest neighbor" reads as wide open
-  forever (the polar cap belongs to nobody), so without a guard a plate that has grown to
-  encircle its pole just keeps winding the same ring -- the same ground covered many times
-  over (`theta` spans of tens of revolutions were seen on long runs, showing up as
-  concentric circles / moire "holes" in the Plate Inspector and as an unbounded contribution
-  to plate overlap and node count). End-growth is capped so a row's span never exceeds one
-  revolution; once it closes, that end stops. `elevation_lines.regularize_line` also unwinds
-  an already-over-wound row (keeping the outermost single revolution) so a world saved before
-  this guard heals on its next few steps.
-- **Overstretched growth becomes volcanic.** Ordinary ridge/rift fill at a growing end
-  instead spawns a fresh volcano (`is_volcano=True`, a random `volcano_active_years_remaining`
-  draw, and one *guaranteed* immediate eruption -- see [Volcanism](#volcanism)) with a small
-  fixed probability per growth event (`STRETCH_VOLCANO_PROBABILITY`, 0.02), representing "the
-  plate has been stretched too thin to keep filling with plain crust." Deliberately
-  probabilistic rather than a threshold on some per-call quantity: two threshold designs were
-  tried and rejected during development. Checking whether *this line's own existing gap*
-  already exceeds target spacing turned out to be dead code -- line regularization (below)
-  runs at the end of every `deform()` call and resamples every line back to (within
-  tolerance of) exact target spacing, so by the time the *next* call's growth check runs, any
-  such gap has already been smoothed away by the *previous* call's own regularize pass.
-  Checking whether *this call* needs to insert several nodes at once was confirmed
-  empirically unreachable at realistic step sizes and plate rates: sampled 1392 real growth
-  events across a running simulation, and 100% of them inserted exactly one node, since
-  ordinary per-step divergence rarely outruns a single spacing unit's worth of growth in one
-  call regardless of how the threshold was tuned. A small per-event probability sidesteps
-  needing any persistent "how long has this been thinning" state (which would have to survive
-  regularization, split, and merge) while still producing "occasionally, not constantly"
-  volcanic crust at active rifts over a real run.
-- **Claiming adjacent territory** (subsumes the old whole-sphere gap-filling pass described
-  below): after growing/shrinking each existing line's ends, a plate checks for a whole new
-  phi row just beyond its current phi extremes -- the one case ordinary end-growth
-  structurally can't reach, since growth only ever extends an *existing* line's own theta
-  range, never adds a new line. The new row is only added if it stays at least
-  `POLE_CAP_MARGIN_MULT` target spacings clear of the plate's own local pole (`+-pi/2`):
-  right at the pole a row's theta step (`spacing / cos(phi)`) blows up and the row degenerates
-  into a handful of sub-spacing-circumference rings, so growth *toward* the pole stops short
-  and a small permanent polar cap is left unclaimed (harmless -- the render grid's
-  nearest-node fill covers it, and `deform()`'s contested test doesn't care). Generation's own
-  lattice sweep still fills to the pole, so a plate that legitimately owns its pole *at
-  generation* keeps those rings. If that row is open (uncontested) territory, it's added
-  directly as a new `ElevationLine` -- not via a full lattice resample (`Plate.grow_into`,
-  used elsewhere for rare, merge-scale events): calling that every turn for every plate was
-  tried and rejected during development, confirmed to balloon a plate's own node count by
-  several times in a single call, since a full resample's own coverage radius around a
-  handful of newly-claimed points reconstructs far more lattice area than just those points.
-  Reclaiming ground a subducted neighbor vacated *within* an existing row's own theta range
-  needs no separate mechanism at all -- the very next time that row's end-growth check runs,
-  the vacated neighbor is simply gone from the distance/contested check, and ordinary
-  end-growth already extends into it.
-
-**Known limitation: overlap isn't exactly zero, but stays bounded.** `Plate.
-get_bounding_polygon()` is an envelope (see [Known simplifications](#known-simplifications)),
-and the randomized-order design above means a plate's own "what am I entitled to" check can
-be up to one turn stale against a neighbor not yet processed this same turn. Both mean a
-node can transiently read as inside a neighbor's polygon without the two plates' actual node
-clouds genuinely interpenetrating. Confirmed directly across many stepped turns: sampled
-overlap stays low single-digit percent and doesn't grow -- bounded, self-correcting behavior,
-not a runaway. (It used to sit in the low teens: the interior-subduction carve-out above
-removed the one case -- a neighbor's lobe frozen mid-row on an oceanic plate -- that stayed
-put indefinitely rather than self-correcting. Re-running `seed 888151728` from 6.9 Myr, the
-plates 9/1 envelope overlap drops from ~15% to a bounded ~2-3% on the first step and stays
-there.) A stricter, exactly-zero invariant would need either a self-intersection-safe polygon
-construction or a supplementary node-cloud distance guard; not pursued for v1.
+**Overlap stays bounded.** The randomized-order design above means a plate's own "what am I
+entitled to" check can be up to one turn stale against a neighbour not yet processed this
+same turn, and two plates' lattices sit in different frames, so whole cells can't tile the
+boundary between them exactly: a thin doubly-covered margin always remains (see
+[docs/surface-parity.md](surface-parity.md)'s C3 gate, which bounds it at 2% of the sphere).
+Deeper overlap is contested and so retreats, subducts, or thickens into an orogen.
 
 **Boundary classification is motion-based (torque engine, 2026-09).** `torque.classify_boundary_nodes`
 used to be purely geometric: `contested` meant "currently inside a neighbour polygon" and
@@ -669,31 +529,21 @@ not added -- it's juvenile mass from the mantle wedge, not conserved from anywhe
 to add more past the ceiling loses nothing that existed a moment ago.
 
 `apply_convergent_deformation`'s overflow is different: real over-thickened crust doesn't just
-vanish at its strength limit. The version of this fix that shipped first thrust the *entire*
-clipped-off Hc onto the near-field ring in one instant, fully conserved, every single step --
-and that turned out to be its own runaway ([GitHub issue #145](https://github.com/adubey/mantle-bloom/issues/145)'s reopened investigation:
-by 48 Myr into a real save, over half of all continental land was pinned at the Hc ceiling,
-because an unbounded, un-rate-limited mass transfer was standing in for what should be a slow
-geological process). The physically-grounded fix
-(`rheology.apply_delamination_melt_intrusion`): over-thickened lower crust at that depth is
-dense enough (largely eclogitized) to delaminate and sink, same as Hm's own overflow below --
-but as it sinks, asthenospheric upwelling into the gap partially melts it into buoyant,
-silica-rich (granitic) magma that rises back through the overriding plate and intrudes the
-surrounding foreland, while the denser residue keeps sinking as a genuine sink. So only a
-fraction of the overflow is conserved this way (`GRANITIC_MELT_FRACTION`, a real crustal-
-anatexis partial-melt fraction), and even that fraction arrives at a bounded per-Myr rate
-(`DELAMINATION_MELT_INTRUSION_RATE_M_PER_MYR`, the same order `ARC_MAGMATIC_HC_RATE_M_PER_MYR`
-uses) rather than an instant lump -- `lithosphere_plate.deform` spreads whatever melt actually
-intrudes this step evenly across the near-field ring (the same dilated band
-`collision_uplift_reach_multiplier` already widens/narrows). Only Hc grows here, matching
-`apply_arc_magmatic_thickening`'s own convention: this is juvenile melt intruding, not
-shortened crust dragging its own Hm root along. Melt that would arrive faster than the rate
-allows in a given step is not banked for later; it delaminates in full, same as the non-melted
-residue and the near-field ring's own (rarer) overflow. `backend/stress_tests/
-test_world_stepping.py`'s `two_continental_collision` debug-world test confirms both that the
-ceilings hold over a long sustained collision and that total continental crustal volume keeps
-growing well past the point the core boundary band saturates, rather than flatlining the
-moment it first hits the cap.
+vanish at its strength limit. A first fix thrust the *entire* clipped-off Hc onto the
+surrounding crust in one instant, every step -- its own runaway ([GitHub issue
+#145](https://github.com/adubey/mantle-bloom/issues/145): by 48 Myr into a real save, over half
+of all continental land was pinned at the Hc ceiling). Two mechanisms now handle it. On a
+continental plate, the convergent band's shortening is carried into the plate's interior by
+the shortening cascade (`shortening.py`, [GitHub issue
+#314](https://github.com/adubey/mantle-bloom/issues/314)), which keeps every column under the
+caps and leaves what the plate can't absorb in the boundary overlap for retreat and suture
+accretion. What still overflows the ceiling (`deform_columns`' `ceiling_overflow`) is the
+bottom of its column: `quad_tectonics._place_ceiling_overflow` melts out
+`orogeny.melt_fraction` of it at that column's Moho temperature and places the melt the way a
+suture front places consumed crust -- belts, escape along strike, then the far field (see
+[Orogenic relief before delamination](#orogenic-relief)); the rest delaminates.
+`backend/stress_tests/test_world_stepping.py`'s `two_continental_collision` debug-world test
+confirms the ceilings hold over a long sustained collision.
 
 Three more Hc/Hm growth paths needed the same ceiling, found by running that debug world long
 enough to actually saturate the tectonic cap and checking every subsequent step. Plate
@@ -709,41 +559,36 @@ the same `MAX_CRUSTAL_THICKNESS_M`, with the overflow simply not booked (a thin,
 sliver, not a source of runaway growth the way unbounded multiplicative thickening was, so
 not worth threading through erosion's own already-elsewhere redistribution accounting). And
 every place Hc/Hm growth is conserved by scaling Hm in *proportion* to a capped Hc's own
-growth ratio (`_redistribute_accreted_column`, `_accrete_dropped_row_volume`,
-`_merge_lines_from_resample`'s deep-overlap-sum branch, `relattice`'s volume-conserving
-rescale, and this section's own near-field redistribution) can still carry Hm past its own
-ceiling even though Hc's is respected: a node that started with very little Hc sees a large
-new-Hc/old-Hc ratio when a whole dropped row/column's volume lands on it, and that ratio
-multiplies Hm too. Every one of those sites now also clips its own Hm result at
+growth ratio (suture accretion, `quad_merge`'s stacked-overlap remap) can still carry Hm past
+its own ceiling even though Hc's is respected: a cell that started with very little Hc sees a
+large new-Hc/old-Hc ratio when a consumed column's volume lands on it, and that ratio
+multiplies Hm too. Every one of those sites also clips its own Hm result at
 `MAX_MANTLE_LITHOSPHERE_THICKNESS_M`.
 
 The floor needed the same treatment ([GitHub issue #256](https://github.com/adubey/mantle-bloom/issues/256)).
-Thinning by a fractional share -- new-node seeds (`seed_and_erupt_new_nodes`), the source
-nodes `gap_fill_frontier._stretch_extend_line` draws a new node from, the rolling window of
-rows `_claim_adjacent_territory` thins on every claim, and the quad donors
-`quad_tectonics._open_rift` stretches -- only resets a column when its Hc melts through
+Thinning by a fractional share -- the donor cells `quad_tectonics._open_rift` stretches to
+cover a rift opening -- only resets a column when its Hc melts through
 `RIFT_CRITICAL_THICKNESS_M`. Oceanic crust already below that threshold never does, so
-repeated claims compounded its Hm (and, on lines, its Hc) toward zero. Each of those sites
-now floors Hm at `MIN_MANTLE_LITHOSPHERE_THICKNESS_M`, the line sites also floor Hc at
-`MIN_CRUSTAL_THICKNESS_M`, and `quad_merge`'s remap holds newly created cells to
+repeated rifts compounded its Hm toward zero. The donors' Hm is floored at
+`MIN_MANTLE_LITHOSPHERE_THICKNESS_M`, and `quad_merge`'s remap holds newly created cells to
 both caps, not only the stacked suture cells. As a backstop, `step_world` runs
 `lithosphere.clamp_column_caps` on every plate once the step's last Hc/Hm writer (volcanism)
 has finished. It clips both fields into their caps, shifts elevation by the isostatic change,
 and books anything it adds or removes under `phase_budget`'s `column_cap_clamp` phase. That
 phase should stay empty. A nonzero entry means some writer upstream is missing its own cap.
 
-Every node's onset year is also stamped onto
-`ElevationLine.overlap_onset_years` each step (`merge_split.update_overlap_tracking`) and
+Every node's onset year is also stamped onto its
+`overlap_onset_years` field each step (`merge_split.update_overlap_tracking`) and
 surfaced as `since_years` in `GET /world/plates` and the `overlapAge` debug render view --
 see [debugging.md](debugging.md#overlapage-render-view-plate-overlap-onset).
 
-**Consuming a continent-continent overlap (2026-09).** A contested continental end now
-retreats one node per step against a *continental* neighbour too, not only an oceanic one
-(see [Boundary evolution](#boundary-evolution) / `CONTINENTAL_CONTESTED_RETREAT_MIN_RUN`), so
-the territory overlap of a stalled suture is consumed geologically instead of only by the
-forced-merge timer below. The retreated column's volume is conserved as accretion onto the
-plate's own leading edge (`_redistribute_accreted_column` -- see [Boundary evolution](#boundary-evolution)),
-so the overlap crumples into an orogen rather than the boundary just sliding back. On
+**Consuming a continent-continent overlap (2026-09).** A contested continental edge
+retreats against a *continental* neighbour too, not only an oceanic one (see [Boundary
+evolution](#boundary-evolution) / `CONTINENTAL_CONTESTED_RETREAT_MIN_RUN`), so the territory
+overlap of a stalled suture is consumed geologically instead of only by the forced-merge timer
+below. The retreated column's volume is conserved as accretion onto the plate's own cells
+behind the suture front (see [Quad-surface deformation](#quad-deformation)), so the overlap
+crumples into an orogen rather than the boundary just sliding back. On
 `seed 656865324` @ 60 My, plate 8's 17%-since-33-My overlap on plate 6 drains to ~2% within
 ~1.5 My, with no spurious defragmentation plates and a flat node count.
 
@@ -765,75 +610,67 @@ a fast, decisive convergence merges more readily than a slow oblique graze.
 <a id="quad-deformation"></a>
 ## Quad-surface deformation (`quad_tectonics.py`)
 
-A world generated with `surface="quad"` (issue #228) steps through the same pipeline as a
-line world. Only the per-plate `deform()` differs. The boundary classification and every
-per-node column update above are shared code: `lithosphere_plate.boundary_context` and
-`deform_columns`. The line engine calls `deform_columns` once per line and the quad engine
-once per plate. The line engine's row-shaped operations, which are end-trim, end-stretch, row
-claims, the corner-notch filler, the leading-row drop and regularization, are replaced by two
-operations on the cell graph:
+Each plate's `deform()` (issue #228) classifies its boundary and updates every node's column
+through `lithosphere_plate.boundary_context` and `deform_columns` (above), once per plate, then
+changes its territory with two operations on the cell graph. They replaced the retired line
+engine's row-shaped operations (end-trim, end-stretch, row claims, a corner-notch filler, a
+leading-row drop and regularization), each of which existed only because a row can grow or
+shrink along its own axis alone:
 
 - **Retreat.** Any retreatable cell (the same `shrinkable` set, with the continental
-  minimum-run rule applied to connected components instead of runs along a line) that has a
-  wholly exposed side is removed. The newly exposed layer is considered next, up to this
+  minimum-run rule applied to connected components) that has a wholly exposed side is
+  removed. The newly exposed layer is considered next, up to this
   step's displacement in cells and the usual per-step cell cap. A continental suture's
   consumed volume goes onto the surviving cells within `SUTURE_ACCRETION_SPREAD_NODES` hops
-  behind that suture front, conserved by exact cell area. This matches the line engine,
-  which spreads a retreating end over that many nodes inward along its row. Once that band
-  is full the crust spreads farther, escapes along strike, and only then may partly
+  behind that suture front, conserved by exact cell area. Once that band is full the crust spreads farther, escapes along strike, and only then may partly
   delaminate; see [Orogenic relief before delamination](#orogenic-relief).
   The issue #177 retreat budget is spent in area-weighted Hc.
 
-  An oceanic plate also subducts contested patches the peel can't reach (`_carve_interior`,
-  the line engine's mid-row carve-out). A patch qualifies when it is an edge-connected
-  component of at least `_INTERIOR_SUBDUCTION_MIN_RUN` retreatable cells and none of its
+  An oceanic plate also subducts contested patches the peel can't reach (`_carve_interior`).
+  A patch qualifies when it is an edge-connected component of at least
+  `INTERIOR_SUBDUCTION_MIN_CELLS` retreatable cells and none of its
   cells has a wholly open side; touching open ground only through half a side doesn't count.
   It is removed whole, which opens a hole in the plate. The carve shares the step's cell cap
   with the peel: a patch larger than what is left is carved partway, as a connected
   breadth-first prefix, so the hole gives next step's peel an edge to continue from.
   Continental plates are never carved, since cutting a continent's middle would sever it
   into a spurious defragmentation plate.
-- **Advance.** Each uncontested boundary cell with open water in front of it (the line
-  engine's end-growth test) activates the same-level empty cell across each exposed side,
+- **Advance.** Each uncontested boundary cell with open ground in front of it activates the same-level empty cell across each exposed side,
   for up to `MAX_CLAIM_ROWS_PER_STEP` layers. A candidate cell must not lie inside any
   neighbour, and must be farther than `EXTEND_THRESHOLD_MULTIPLIER` spacings from every
   neighbour node. Each new cell is a rift opening (`_open_rift`). The share of its footprint
   that lines up with the direction to the nearest neighbour is covered by stretching the
   `K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION` layers of cells behind it, with volume conserved
   exactly. The rest is fresh magmatic oceanic crust. A cell that is mostly magmatic is a
-  vent: it starts a volcano lifecycle without changing its column. This matches the line
-  engine, where every node a row claim or gap fill creates erupts
-  (`seed_and_erupt_new_nodes`). An active continental margin grows `ARC_MARGIN_SEED_*` arc
+  vent: it starts a volcano lifecycle without changing its column. An active continental
+  margin grows `ARC_MARGIN_SEED_*` arc
   crust instead. The continental area-budget gate is measured in area, not node count.
 
 Growth never follows a lattice axis, so a plate advances isotropically and there are no row
 stubs to regularize. Cell insertion keeps the mesh 2:1 balanced by rejecting any candidate
 that would border a leaf two levels away. Quad pairs merge through `quad_merge.py`.
 
-The whole-world passes read a quad world's territory from its cells
-(`PlateSurface.territory_is_exact`) rather than from node distances:
+The whole-world passes read territory from the cells rather than from node distances:
 
 - **Overlap tracking.** `plates.compute_node_overlap` flags a node when its centre lies
   inside another plate, the same containment test the contested classification uses.
   Candidate pairs come from bounding caps, so a plate buried wholly inside another is still
-  seen. The node-proximity tolerance line worlds use misses about a third of real overlap
-  here, because two plates' lattices never line up node for node. `overlap_onset_years`, the
-  forced-merge timer and the plate stress accumulator all read this.
-- **Gap filling.** The sweep counts a point as uncovered when no plate contains it. The
-  line reading, no node within `COVERAGE_RADIUS_MULT` spacings, can't see the seam about one
-  cell wide that advance's standoff leaves between two plates. Adjacent plates grow into
-  every uncovered cluster through the same frontier walk (`grow_frontier`), with no standoff.
-  Clusters below `MIN_GAP_NODES` are pooled, so each plate grows once per pass, and aren't
-  logged as gap events. `MIN_GAP_NODES` still gates spawning a new quad plate
-  (`new_plate(surface="quad")`). Two plates' lattices sit in different frames, so whole cells
+  seen. A node-proximity tolerance would miss about a third of real overlap, because two
+  plates' lattices never line up node for node. `overlap_onset_years`, the forced-merge timer
+  and the plate stress accumulator all read this.
+- **Gap filling.** Every step, the sweep counts a point as uncovered when no plate contains
+  it; a node-distance reading (no node within `COVERAGE_RADIUS_MULT` spacings) couldn't see
+  the seam about one cell wide that advance's standoff leaves between two plates. Adjacent
+  plates grow into every uncovered cluster through the same frontier walk (`grow_frontier`),
+  with no standoff. Clusters below `MIN_GAP_NODES` are pooled, so each plate grows once per
+  pass, and aren't logged as gap events. `MIN_GAP_NODES` still gates spawning a new plate
+  (`lithosphere_plate.new_plate`). Two plates' lattices sit in different frames, so whole cells
   can't tile the boundary between them exactly, and a thin uncovered and doubly covered
   margin always remains. Measurements are in
   [analysis/issue228-phase4-passes/report.md](../analysis/issue228-phase4-passes/report.md).
-- **Volcanism.** Quad volcanoes erupt through the field API. Each node's eruption draw is
-  keyed by the seed, step, plate and the node's stable ID (`SurfaceNodes.node_ids`; the cell
-  key on quad plates), so adding or removing cells elsewhere on the plate doesn't change it.
-- **Relattice.** Quad plates have none. `relattice_continental_plates` repairs row-to-row
-  phase drift, and cells never drift off their lattice.
+- **Volcanism.** Volcanoes erupt through the field API. Each node's eruption draw is keyed
+  by the seed, step, plate and the node's stable ID (`SurfaceNodes.node_ids`, the cell key),
+  so adding or removing cells elsewhere on the plate doesn't change it.
 
 <a id="orogenic-relief"></a>
 ### Orogenic relief before delamination (`orogeny.py`)
@@ -945,7 +782,7 @@ over-thickened crust of a suture or a standing orogen goes through these process
   Hc worth ~15% of the starting inventory reached the ceiling over 100 Myr. Placing all of it
   raised continental Hc by 12.7% (4.6% without it) and left suture crust, which does carry
   material, with no outlet: cumulative delamination rose to 7.6% of the inventory, against
-  6.4%. The line engine keeps the old intrusion.
+  6.4%.
 - **Collapse and ductile flow** (`relax_orogens`, at the end of each quad `deform`). Crust
   thicker than `COLLAPSE_ONSET_HC_M` (50 km, ~2.7 km of isostatic relief) spreads down
   thickness gradients into neighbouring continental columns, never into oceanic ones. Only
@@ -989,24 +826,7 @@ or not at all, and a higher Hc cap would pass Earth's ~80 km maximum. Over 500 M
 1-6, collision keeps 95-99.7% of donated crust and loses 1-14% of the starting inventory.
 That save still loses ~0.15%/Myr to collision because ~3% of its whole inventory passes
 through suture retreat every Myr (the quad rotation pile-up, issue #289), not because any
-one donation loses much. The line engine is unchanged.
-
-<a id="line-regularization"></a>
-## Line regularization (`elevation_lines.py`)
-
-Per-step `deform()` only ever touches a line's two ends, so interior spacing stays regular
-on its own during ordinary convergent/divergent motion -- but a *transform* boundary shears
-nodes along a line without inserting or deleting anything, which can leave spacing uneven.
-At the end of every single `deform()` call (not periodically -- unlike the earlier
-`REGULARIZE_INTERVAL_STEPS`-gated cadence this replaced, since `deform()` itself now needs
-every line back at (within tolerance of) exact target spacing before the *next* call's
-overstretch check can mean anything -- see [Plate motion: shift and
-deform](#boundary-evolution)), any line whose gaps have drifted past
-`IRREGULARITY_TOLERANCE` (1.5x target spacing, either direction) gets a fresh evenly-spaced
-node set across its *existing* extent -- the two endpoints are preserved exactly, since this
-never changes where a line's physical edge is, only how regularly it's sampled -- with
-elevation re-interpolated onto the new nodes (`np.interp`, 1D since it's along a single
-already-ordered curve, not 2D scattered-data interpolation).
+one donation loses much.
 
 <a id="merge-and-split"></a>
 ## Merge and split (`merge_split.py`)
@@ -1016,29 +836,17 @@ resample is an acceptable cost here -- the exact, no-resampling guarantee only m
 routine per-step motion.
 
 - **Consumption.** A plate with no real remaining territory is simply dropped from
-  `world.plates` (`remove_defunct_plates`, run every step). Three shapes count, all falling
-  directly out of `deform()`'s own grow/shrink rule -- no special algorithm needed:
-  - every elevation node deleted (fully subducted);
-  - eroded/subducted down to a single remaining line -- a sliver along one latitude,
-    regardless of how many nodes are still on it;
-  - a *comb of stubs*: many lines but fewer than two nodes each on average. `deform()`
-    shrinks a line only from its ends and never deletes its last node, so a heavily
-    subducted oceanic plate decays into a hundred-plus rows of one stranded node apiece --
-    a high line count masking that there's no 2D patch left. `has_negligible_territory`'s
-    node-to-nonempty-line ratio test catches this; the old "at most one line" check didn't.
-    The ratio is scale-free (same at any `node_density`) and sits far below any legitimate
-    plate, whose rows carry tens of nodes.
+  `world.plates` (`remove_defunct_plates`, run every step): every cell removed (fully
+  subducted), or too few left to form a real 2D hull (`Plate.has_negligible_territory`,
+  `OUTLINE_MIN_NODES_FOR_HULL`).
 - **Continental collision merge.** If two continental plates have at least
   `MERGE_MIN_CONTACT_NODES` node pairs within `MERGE_CONTACT_DISTANCE_RAD` of each other
   *and* a real closing rate at those points (`boundary.closing_rate` -- the one place this
   velocity-based check still runs; see [Plate motion: shift and
   deform](#boundary-evolution) for why ordinary per-step evolution no longer uses it), they're
-  fused: keep one plate's
-  `frame`, and resample the union footprint from scratch -- a k-d tree over the pre-merge
-  combined point cloud, with every candidate lattice node within `MERGE_COVERAGE_RADIUS_RAD`
-  of *some* old node kept and given that old node's elevation
-  (`plates.build_lines_from_lattice` again). The dropped plate's contribution is gone; the
-  boundary between them becomes ordinary interior territory.
+  fused: keep one plate's `frame` and lattice, and remap the absorbed plate's cells onto it
+  by exact cell area (`quad_merge.py`), stacking crust where the two overlap (capped at the
+  suture ceiling). The boundary between them becomes ordinary interior territory.
 
   **Why distance alone isn't enough.** plates.py's tiling has no gaps (every point belongs
   to exactly one plate at generation), so *every* pair of neighboring plates is already
@@ -1098,7 +906,7 @@ routine per-step motion.
   extension routinely localizes elsewhere or the driving stress relaxes before breakup,
   leaving a thinned but intact continental sag basin (an aulacogen -- the North Sea, the
   Benue Trough, the failed arm of a triple junction), not a new ocean. On a failed roll
-  `LithospherePlate.apply_failed_rift` books a one-off thinning
+  `Plate.apply_failed_rift` books a one-off thinning
   (`FAILED_RIFT_THINNING_FRACTION`, 10%) of `Hc`/`Hm` in a band
   (`FAILED_RIFT_BAND_MULT` node spacings) around the would-be cut great circle -- tapering to
   zero at the band edge, with the isostatic subsidence booked as an `elevation` delta -- and
@@ -1162,7 +970,7 @@ routine per-step motion.
   **Overlap severity also scales uplift and slowdown directly (2026-09).** Two more local,
   already-available-fraction severity signals, both scoped to continent-continent collision
   (an oceanic overlap already resolves quickly via subduction deletion, so "slows the plate
-  down" doesn't apply the same way there): in `LithospherePlate.deform`, the near-field
+  down" doesn't apply the same way there): in `lithosphere_plate.boundary_context`, the
   contested-band thickening rate (`orogen_contested_strength`) is scaled by `1 +
   OVERLAP_UPLIFT_SEVERITY_GAIN * overlap_severity`, where `overlap_severity` is the fraction of
   this plate's own near-boundary band currently classified contested (not the whole plate --
@@ -1174,77 +982,43 @@ routine per-step motion.
   overlap_severity` (the same band-normalized fraction) -- a deep pile-up brakes both plates
   several times harder than a light graze, not just proportionally more from summing over more
   contested nodes.
-- **Defragmentation.** `deform()` only ever grows or shrinks a line's *ends*, and never
-  deletes its last node -- so subduction or transform shear can carve one plate's node
-  cloud into two (or more) fully disconnected landmasses, still carried as a single
-  `Plate`, or leave a comb of stranded one-node rows trailing behind it. The split check
+- **Defragmentation.** `deform()` only ever adds or removes cells at the plate's boundary,
+  so subduction or transform shear can carve one plate's cells into two (or more) fully
+  disconnected landmasses, still carried as a single `Plate`, or strand a few cells far
+  from the plate body. The split check
   above doesn't catch this: it cuts on mantle-flow *disagreement*, and two lobes of one
   plate are co-moving by definition, so their flow samples never diverge. `deform()`
   doesn't catch it either -- an interior node only reads as contested if it's inside a
-  *neighbour's* polygon, and a gap between two lobes of the same plate belongs to nobody.
+  *neighbour's* territory, and a gap between two lobes of the same plate belongs to nobody.
 
   So `defragment_plates` (`merge_split.py`, every `DEFRAG_INTERVAL_STEPS` steps -- a
   whole-world k-d-tree pass, cheap but not free, and topology doesn't fragment fast) checks
   it directly. Each plate's nodes are grouped into connected components at
   `DEFRAG_CONNECT_RADIUS_MULT * line_spacing_rad` (`plates.node_components`, via
   `scipy.sparse.csgraph.connected_components` over a k-d-tree radius graph -- ~2.5x the
-  world's own line spacing links a genuinely contiguous patch while still separating two
+  world's own node spacing links a genuinely contiguous patch while still separating two
   lobes across a real subduction gap). Every component with at least
   `DEFRAG_FRAGMENT_MIN_NODES` nodes (an area, so it scales with `node_density` directly,
   same as `SPLIT_MIN_NODES`) becomes its own plate; the largest keeps the original plate's
   id, `frame`, `omega`, and age, and the rest are fresh plates carrying a *copy* of that
   `omega` (they were co-moving) and age 0, drawing ids from `World.next_plate_id`. Anything
-  smaller is dropped as stranded crust. Nodes are repartitioned by boolean mask through the
-  same `ElevationLine.masked` machinery `split` uses, so every persistent per-node field
-  survives exactly with no resample.
+  smaller is dropped as stranded crust. Cells are repartitioned by boolean mask through the
+  same `Plate._plates_from_node_masks` machinery `split` uses, so every persistent per-node
+  field and stable cell ID survives exactly with no resample.
 
   A plate that's *all* small components -- no lobe big enough to anchor a plate -- is left
-  alone here, not deleted; the comb-of-stubs branch of consumption (above) prunes it on the
-  same step. This runs before the collision and split passes so a severed lobe or a ghost
-  comb stops polluting neighbour polygons and collision detection first.
-- **Periodic continental re-lattice** (`relattice_continental_plates`, every
-  `RELATTICE_INTERVAL_STEPS` steps, [GitHub issue #119](https://github.com/adubey/mantle-bloom/issues/119),
-  "Continental ratchet: solution design," mechanism 4). Defragmentation above catches a
-  severed lobe; this catches a subtler geometric failure mode in an intact one.
-  `_grow_or_shrink_line_for_deform` grows each row's own open end independently, one node at
-  a time, at whatever rate that row's own local contact happens to demand -- so nothing stops
-  row-to-row phase drift from compounding: each row ends up shifted a little further from its
-  neighbours than the row before, and after enough steps the boundary reads as a diagonal
-  staircase (issue #119's "streaking" symptom -- a thin triangular tongue built one row-end
-  extension at a time) rather than a smooth coastline. [Line regularization](#line-
-  regularization) can't reach this: it re-evens spacing *within* one already-existing row,
-  preserving that row's own two endpoints exactly, so it never touches where a row's edge
-  actually sits relative to its neighbours.
-
-  `LithospherePlate.relattice` is the 2-D generalisation: sweep the plate's canonical,
-  evenly-phased lattice from scratch (`elevation_lines.iter_local_lattice`, the same sweep
-  initial generation and merge resampling use) and keep whichever candidate sites this
-  plate's own `contains_batch` -- its exact current outline, not a coverage-radius dilation
-  of the existing node cloud -- says it owns. (A radius-based resample, `Plate.grow_into`,
-  was already rejected for routine per-step use -- see [Plate motion: shift and
-  deform](#boundary-evolution)'s "Claiming adjacent territory" -- because its coverage
-  radius around even a handful of points reconstructs far more area than they actually
-  cover; testing the outline directly instead reproduces exactly the plate's existing
-  footprint.) Every persistent per-node field, Hc/Hm included, is carried onto each new site
-  from its nearest surviving node (a 2-D scatter resample has no single ordered axis to
-  `np.interp` along), then `crustal_thickness_m`/`mantle_lithosphere_thickness_m` are rescaled
-  by one uniform factor so the plate's total crustal volume (`sum(Hc)`, since per-node area is
-  constant) comes out exactly where it started -- a nearest-neighbour carry alone doesn't
-  conserve it exactly, since a different-shaped node set overweights whichever old nodes end
-  up nearest the most new sites near the boundary. Continental crust only: an oceanic plate's
-  footprint is already self-bounding via subduction. A heavier whole-plate rebuild than
-  defragmentation or gap-filling (every node of every continental plate, not just a
-  connectivity check), so its own interval is longer than either of theirs.
+  alone here, not deleted. This runs before the collision and split passes so a severed
+  lobe stops polluting neighbour territory and collision detection first.
 
 <a id="gap-filling"></a>
 ## Whole-sphere coverage: local thinning-then-melting, plus a whole-sphere fallback (`gaps.py`)
 
-Ordinary per-step boundary growth (`deform()`'s end-growth / `_claim_adjacent_territory`, see
-[Plate motion: shift and deform](#boundary-evolution)) keeps pace with almost every gap that
-opens next to a live plate. Two mechanisms handle the two regimes a gap can actually be in:
+Ordinary per-step boundary advance (`deform()`, see [Quad-surface
+deformation](#quad-deformation)) keeps pace with almost every gap that opens next to a live
+plate. Two mechanisms handle the two regimes a gap can actually be in:
 
-**Local: a plate thins, and once too thin, magma flows up (`lithosphere_plate.py`'s own
-`deform()`, `rheology.apply_divergent_deformation`).** A divergent (opening) boundary node
+**Local: a plate thins, and once too thin, magma flows up (`lithosphere_plate.deform_columns`,
+`rheology.apply_divergent_deformation`).** A divergent (opening) boundary node
 doesn't just relax toward the ridge/rift target elevation -- its crustal column (`Hc`)
 genuinely thins under extension every step it stays divergent. Once `Hc` drops below
 `rheology.RIFT_CRITICAL_THICKNESS_M` (the spec's literal ~5 km decompression-melting
@@ -1256,7 +1030,7 @@ nominal `crust_type`: a node still standing above sea level at the moment it mel
 stay bimodal-volcanic land for a long stretch before a true ocean opens (the East African
 Rift, well before the Red Sea stage) -- while a node already at or below sea level (a drowned
 margin, or an ordinary mid-ocean ridge) gets the usual oceanic-reference column. Either way
-the node's own `ElevationLine.crust_type_code` is stamped explicitly to match (see
+the node's own `crust_type_code` is stamped explicitly to match (see
 [Per-node crust type](#per-node-crust-type)), so a continental plate that melts through to
 real ocean floor is no longer isostatically floated as if it were still continental crust,
 and vice versa for a volcanic island breaching the surface on an oceanic plate. This is the
@@ -1288,90 +1062,30 @@ reset -- see [Volcanism](#volcanism)'s own "Creation" section below. Measured (s
 accretion ~10%, eustasy ~50%, see [GitHub issue #120](https://github.com/adubey/mantle-bloom/issues/120), "Land fraction slowly declines over a long
 run"). `backend/unit_tests/test_rheology.py` pins the calibration.
 
-**Triple junctions: a real neighbour, up to CORNER_NOTCH_NEIGHBOUR_REACH_MULT away, is enough
-to keep claiming.** The two ordinary per-step growth ops are each confined to one axis of a
-plate's own local (theta, phi) lattice -- `_grow_or_shrink_line_for_deform`'s `_stretch_end`
-moves a row's own end node along that row's theta axis, and `_claim_adjacent_territory` claims
-a new phi row. Where three independently-oriented plate grids all recede from a shared point,
-the gap between them is a diagonal wedge neither axis-aligned op can ever fully reach on its
-own, and (confirmed by stepping a real triple-junction save forward) that wedge widens every
-step regardless of how far either op's own per-step caps are loosened -- a structural gap, not
-a tuning one. Two changes close most of it: `_claim_adjacent_territory` now loops up to
-`MAX_CLAIM_ROWS_PER_STEP` rows per direction (instead of exactly one) with each row trimmed to
-only its genuinely open runs (a real coverage/proximity test, not the old "not inside a
-neighbour's polygon" one), so a converging wedge narrows or widens row by row instead of
-insisting on full-width rectangular strips; and `_fill_corner_notch_frontier` sweeps a narrow
-window of this plate's own local lattice (past its current phi extent, scaling with
-`mantle.MAX_PLATE_RATE * years`) for the sub-row diagonal residual even that leaves behind,
-gathering every lattice point that's genuinely uncovered and within
-`CORNER_NOTCH_NEIGHBOUR_REACH_MARGIN_MULT` of a real neighbour (without that last guard, a lone
-plate's entire open perimeter looks claimable, growing it outward forever with nothing to stop
-it) -- see [Frontier gap-fill](#frontier-gap-fill) below for what happens to those candidate
-points. Every node either op originates is seeded thin and routed through the same
-`_erupt_melted_nodes` decompression-melting path as the local mechanism above -- mechanically
-a real eruption, never a distinct silent "spawn". On the real save that motivated this, the
-fix turns a triple-junction void that grew without bound into one that stays roughly steady
-state as the three plates keep separating -- production genuinely keeping pace with opening,
-though not (yet) shrinking it to nothing; see
-[GitHub issue #127](https://github.com/adubey/mantle-bloom/issues/127) for what's still open.
-
-**Whole-sphere fallback (`gaps.py`'s `fill_gaps_by_growing_neighbours`).** Once every plate
-bordering a stretch of open ocean has been fully subducted and removed
-(`merge_split.remove_defunct_plates`), that sphere area has no plate left anywhere near it to
-thin/melt from -- there is nothing there to grow via the local mechanism above.
-`fill_gaps_by_growing_neighbours` runs a whole-sphere lattice sweep on the same cadence as
-`merge_split.defragment_plates` (`gaps.GAP_FILL_INTERVAL_STEPS`), finds every connected region
-at least `gaps.MIN_GAP_NODES` large that no live plate's lines currently reach, and grows the
-plate(s) genuinely adjacent to it into the gap (see [Frontier gap-fill](#frontier-gap-fill)),
-falling back to spawning a brand-new plate (`gaps._spawn_plate_from_gap`) only when a cluster
+**Whole-sphere fallback (`gaps.py`'s `fill_gaps_by_growing_neighbours`).** Boundary advance
+keeps a standoff from neighbouring plates, and two plates' lattices can't tile their shared
+boundary exactly, so thin seams stay uncovered; and once every plate bordering a stretch of
+open ocean has been fully subducted and removed (`merge_split.remove_defunct_plates`), that
+sphere area has no plate left anywhere near it to grow from at all.
+`fill_gaps_by_growing_neighbours` runs a whole-sphere sweep every step, finds every connected
+region no live plate contains, and grows the plate(s) genuinely adjacent to it into the gap
+(`quad_tectonics.fill_gap`: a frontier walk outward from the plates' own cells, each new cell
+claimed only when most of its footprint is still uncovered), falling back to spawning a
+brand-new plate (`gaps._spawn_plate_from_gap`) only when a cluster
 has no adjacent plate at all -- a genuinely isolated void with nothing nearby to grow. The
 spawn fallback types nodes oceanic almost everywhere (real gaps are overwhelmingly open water a
 fully-subducted plate vacated), except nodes genuinely hugging a still-standing continental
 coastline: for each gap point, if the *nearest pre-existing node* is continental, still above
-sea level, and within `gaps.GAP_LAND_ADOPTION_RADIUS_MULT` line-spacings, the new node comes
+sea level, and within `gaps.GAP_LAND_ADOPTION_RADIUS_MULT` node spacings, the new node comes
 back continental too (`gaps.GAP_LAND_ADOPTION_RADIUS_MULT = 3.0`, hugging a real coastline --
 e.g. a fully-subducted marginal sea landlocked by continent -- not reaching all the way across
 an ocean basin to a far-off continent). A spawned plate's own `crust_type` label is the
 majority of what its nodes actually ended up being (see
 [Per-node crust type](#per-node-crust-type)), not a hardcoded "oceanic" -- it is oceanic in
-practice for all but the rare landlocked case. Known stopgap, not the real fix: the local
-thinning-then-melting mechanism above should, over time, make this whole-sphere sweep an
-increasingly rare fallback rather than a routine occurrence -- see `gaps.py`'s own module
-docstring and [GitHub issue #127](https://github.com/adubey/mantle-bloom/issues/127).
-
-<a id="frontier-gap-fill"></a>
-### Frontier gap-fill: growing existing plates into a gap (`gap_fill_frontier.py`)
-
-Once either mechanism above has detected a gap and the plate(s) genuinely adjacent to it (the
-corner-notch site's own `self`; the whole-sphere site's `gaps._adjacent_plates_to_cluster`, any
-plate with a node within `gaps.ADJACENT_PLATE_REACH_MULT` of the cluster),
-`gap_fill_frontier.fill_gap_by_growing_plates` iteratively grows those existing plates into it,
-one node at a time, rather than either always creating disjoint new lines or spawning a whole
-new plate: it walks the connected frontier outward in `DEFRAG_CONNECT_RADIUS_MULT`-sized hops
-(so a claim can't outrun `merge_split.defragment_plates`'s own connectivity check); at each hop,
-every reachable gap point is assigned to whichever claimant's node cloud is nearest, then, per
-claimant/row, either **extends an existing line** by one node (a real "stretch" --
-mass-conserving, drawing the new node's material down from that line's own nearest
-`K_STRETCH_SOURCE_NODES` end nodes, the same row-claim draw-down `_claim_adjacent_territory`
-already does for a whole new phi row, applied here at single-node granularity) or, where no
-line is close enough to extend, **opens a brand-new single-node line** -- a genuine magma
-eruption with nothing thinned in exchange, same seeding `_seed_and_erupt_new_nodes` always
-uses. Either way the claimed node still routes through `_erupt_melted_nodes`, typed oceanic vs.
-continental/volcanic by whether it was above or below sea level the instant it erupted --
-never a free area grant.
-
-At the whole-sphere site in particular, this grows a plate's own existing territory into a
-vacated region instead of always spawning a new plate -- exactly the "absorb into a dominant
-bordering plate" behaviour a pre-refactor `gaps.py` deliberately avoided (see
-[GitHub issue #127](https://github.com/adubey/mantle-bloom/issues/127) for the continental-
-growth-ratchet question this reopens). Promoted from an opt-in comparison mode to the sole
-mechanism at both sites on 2026-09-09 after comparing against the prior fixed-window/spawn-only
-behavior on every Debugging Worlds scenario (GitHub issue #127's frontier-gap-fill addendum has
-the numbers): consistently fewer, longer lines per plate and far fewer stalled
-(`hop_no_progress`/`no_claim`) corner-notch calls. That comparison covered only the small
-hand-scripted scenarios plus one synthetic whole-sphere fixture, not a real long-running save --
-see `docs/debugging.md`'s "Debugging Worlds" section for the diagnostic workflow if a real
-save's behavior needs checking.
+practice for all but the rare landlocked case. Spawning only happens for a cluster of at
+least `gaps.MIN_GAP_NODES`; smaller isolated clusters wait for a neighbour to reach them. See
+`gaps.py`'s own module docstring and [GitHub issue
+#127](https://github.com/adubey/mantle-bloom/issues/127).
 
 <a id="per-node-crust-type"></a>
 ### Per-node crust type
@@ -1379,10 +1093,10 @@ save's behavior needs checking.
 A plate's `crust_type` ("oceanic"/"continental") is the usual, plate-wide answer to "what is
 this crust made of" -- but real crust is genuinely composite, and the two magma-typing events
 above (rift melting, gap-fill) are exactly the places a single node's own composition can
-diverge from the plate it sits on. `ElevationLine.crust_type_code` (`elevation_lines.py`)
-carries that per-node: `CRUST_TYPE_INHERIT` (0, the default every node gets -- including every
-node on every save written before this field existed) means "same as the owning plate,"
-resolved by `elevation_lines.effective_is_continental`; `CRUST_TYPE_OCEANIC`/
+diverge from the plate it sits on. The `crust_type_code` surface field carries that per-node:
+`CRUST_TYPE_INHERIT` (0, the default every node gets -- including every node on every save
+written before this field existed) means "same as the owning plate," resolved by
+`elevation_lines.effective_is_continental_from_codes`; `CRUST_TYPE_OCEANIC`/
 `CRUST_TYPE_CONTINENTAL` are explicit overrides, stamped only by the two events above.
 Ordinary generation, boundary growth, merge, and split never stamp an explicit code, so every
 existing calibrated isostasy/inertia number is unchanged for every node except the ones this
@@ -1396,11 +1110,11 @@ continental plate's margin that melted through to real oceanic crust is therefor
 oceanic density, not continental, and its mass properly contributes to the plate's own inertia
 as what it actually is.
 
-**A new plate's own `crust_type` is a majority vote, not a copy.** Per
-`elevation_lines.majority_crust_type`, every place a *new* plate is assembled from an existing
-one's nodes -- `LithospherePlate.split()`'s two daughters, `Plate.defragment()`'s fragments,
-and `gaps.py`'s freshly-spawned plate -- labels itself by the actual majority of its own
-nodes' effective type, falling back to the parent/nominal type unchanged when every node is
+**A new plate's own `crust_type` is a majority vote, not a copy.** Every place a *new* plate is
+assembled from an existing one's cells -- `Plate.split()`'s two daughters, `Plate.defragment()`'s
+fragments (`PlateWithSparseQuadPatch._crust_type_for_mask`), and `gaps.py`'s freshly-spawned
+plate (`lithosphere_plate.new_plate`) -- labels itself by the actual majority, by cell area, of
+its own nodes' effective type, falling back to the parent/nominal type unchanged when every node is
 still `CRUST_TYPE_INHERIT` (the common case, a total no-op). A `merge_plates` fusion is left
 alone -- it keeps one of the two existing plates' identity rather than creating a new one.
 
@@ -1433,8 +1147,7 @@ and at least `CRATON_FORMATION_MARGIN_KM` from its plate's edge or any non-genui
 clock runs only while it stays quiet. After `CRATON_FORMATION_MYR` its whole Hc becomes
 cratonic. Generation seeds the interiors at least `CRATON_SEED_MARGIN_KM` from a margin as
 cratons that predate the run. A save from before cratons existed is seeded on its first step:
-loading never changes plate state. Line-backed plates carry the fields but neither seed nor
-form cratons; that surface is being retired (#251).
+loading never changes plate state.
 
 **Resistance.** Strength rises linearly with cratonic thickness, reaching 1 at
 `CRATON_FULL_STRENGTH_HC_M`. At full strength a craton:
@@ -1482,7 +1195,7 @@ moves each donor's material with the crust it gives up, balancing the transfer b
 volume.
 
 <a id="volcanism"></a>
-## Volcanism (`volcanism.py`, plus `lithosphere_plate.py`'s own `LithospherePlate.deform`)
+## Volcanism (`volcanism.py`, plus `lithosphere_plate.deform_columns`)
 
 New continental crust forming where plates are separating. This used to be two halves in one
 module: a periodic whole-sphere *detection* pass that spawned brand-new "volcanic field"
@@ -1496,7 +1209,7 @@ lifecycle, which is unchanged.
 of two ways, both inline in `deform()`'s own divergent-boundary handling (see [Plate motion:
 shift and deform](#boundary-evolution) / [Whole-sphere coverage](#gap-filling)) rather than a
 separately spawned `Plate` the old whole-sphere detection pass used -- a volcano node is
-always a node *on* the growing/thinning plate's own existing line:
+always a node *on* the growing/thinning plate itself:
 
 - **Decompression melt-through** (`_erupt_melted_nodes`, triggered when `Hc` crosses below
   `rheology.RIFT_CRITICAL_THICKNESS_M`, ~5 km) -- the hard reset described above, which also
@@ -1656,7 +1369,7 @@ scales with the seed's stress weight² between `SLIP_RATE_MIN` (150 m/Myr) and `
 Stored as `local_phi`/`local_theta` in the owning plate's frame (the system's master trace as
 `master_local_phi`/`_theta`), so a fault rides along with the crust as the plate rotates for
 free -- the same "attached to the crust, not the world" property every persistent
-`ElevationLine` field has.
+per-node field has.
 
 **6. Relief.** Each active fault applies its own relief to crust within `MAX_FAULT_REACH_KM`
 (45 km) of the trace, tapering linearly to zero at that distance and scaled by
@@ -1673,7 +1386,7 @@ free -- the same "attached to the crust, not the world" property every persisten
 cuts, so a river valley or ridge crest straddling it visibly offsets along-strike as
 `cumulative_offset_m` grows -- previously relief-only (see
 [GitHub issue #125](https://github.com/adubey/mantle-bloom/issues/125)). Grid nodes never
-move (`ElevationLine.theta` is fixed once a node exists), so `_apply_plate_fault_shear`
+move (a cell's plate-local position is fixed once it exists), so `_apply_plate_fault_shear`
 advects each node's *field values* instead: every node within `MAX_FAULT_REACH_KM` of an
 active strike-slip trace is overwritten, this step, with whatever the plate's own crust held
 one step's worth of along-strike slip upstream of it -- nearest-neighbour sampled from this
@@ -1681,7 +1394,7 @@ step's own snapshot, the same semi-Lagrangian-backward-trace technique
 `fluid_dynamics.semi_lagrangian_advect` uses for wind/humidity on a fixed grid. The relief
 taper (1 at the trace, 0 at the reach) scales the slip distance itself, so at the outer edge
 the upstream sample point collapses back onto the node and every field -- `elevation` and
-everything in `ElevationLine.OPTIONAL_FIELDS`, bool/categorical fields included -- is an
+everything else in `surface_fields.SURFACE_FIELDS`, bool/categorical fields included -- is an
 exact no-op with no type-specific handling needed. Which side of the trace moves which way
 comes from the fault's own `dip_dir_local` (already computed at spawn for every kind, just
 otherwise idle for strike-slip) crossed with `strike_sense` (otherwise only the relief bend
@@ -1710,7 +1423,7 @@ culled first; active faults are never culled.
 
 **Deformation mode (`World.fault_deformation_mode`).** A live Controls select, three values:
 
-- **`"fault"`** (default) -- `LithospherePlate.deform` multiplies its own convergent
+- **`"fault"`** (default) -- `lithosphere_plate.deform_columns` multiplies its own convergent
   (`orogen_strength`), transform, and divergent deformation by `faults.fault_influence()`:
   1.0 within `FAULT_DEFORM_REACH_KM` (80 km) of an active fault trace on that plate, tapering
   to `FAULT_DEFORM_FLOOR` (0.06) far from one (never 0). With **boundary faults** now lining
@@ -1800,28 +1513,6 @@ backfilled to `[]`, though it is rebuilt on the first step regardless) and `Worl
 / `next_earthquake_id`. `fault_deformation_mode` is a plain-str default (`"fault"`), so an
 old pickle falls through with no backfill entry.
 
-<a id="reassignment"></a>
-## Boundary point reassignment (subsumed into `deform()`)
-
-This used to be a separate periodic pass (`reassign.py`, since removed): ordinary per-step
-boundary evolution only ever grew or shrunk a line's two *ends*, never revisiting whether an
-*interior* node still actually belonged to the plate carrying it, so a node that drifted
-into a neighboring plate's own territory (enough shearing along a transform boundary, or
-slow rotational drift) could sit there unnoticed until a periodic whole-world scan caught it.
-
-In the polygon-based model this class of bug can't accumulate unnoticed in the first place:
-every plate's `deform()` call, every single turn, directly tests every one of its own
-near-boundary nodes for containment in a neighbor's current polygon (see [Plate motion:
-shift and deform](#boundary-evolution)) -- a node that's drifted into a neighbor's territory
-reads as contested the very next turn and gets removed by the ordinary shrink rule, not
-waiting for a periodic pass every `REASSIGN_INTERVAL_STEPS` calls. There's no equivalent
-"move this node onto the neighbor's own nearest line" step, since a contested node is
-deleted (and, on the neighbor's own next turn, its territory is either already covered by
-ordinary growth or gets reclaimed via "claiming adjacent territory") rather than transferred
-node-for-node -- a coarser mechanism than the old point-relocation logic, but one that keeps
-the same underlying invariant (every node ends up owned by whichever plate's polygon
-actually contains it) without needing a separate whole-world pass at all.
-
 <a id="projections"></a>
 ## Projections (`projections.py`)
 
@@ -1847,8 +1538,8 @@ client's job shrank to "decode this PNG and draw it on a canvas" (see `MapCanvas
 every drawing decision -- fill colors, grid-cell sizing, boundary/pole/rotation-arc
 overlays, per-node dots -- lives in one place now.
 
-**Why a grid, still.** The elevation-line/gap-filling data is genuinely Lagrangian: nodes
-are spaced at `TARGET_LINE_SPACING_KM` *within each plate's own local frame*, not on any
+**Why a grid, still.** The plate terrain is genuinely Lagrangian: nodes are spaced at
+`TARGET_LINE_SPACING_KM` *within each plate's own local frame*, not on any
 shared, screen-aligned grid. Drawing that raw point cloud directly -- one dot per node --
 leaves visible gaps once projected: projected spacing isn't uniform (Behrmann, for
 instance, stretches longitude spacing by roughly 50x at high latitudes relative to the
@@ -1857,7 +1548,7 @@ the way the latitude term does), so a dot sized to look right at the equator lea
 near the poles, and no single fixed dot size closes the gap everywhere without grossly
 overlapping elsewhere. `_render_grid_arrays` fixes this the way the user originally asked:
 sweep a uniform lat/lon grid over the whole sphere
-(`plates.iter_local_lattice(identity_frame, spacing_rad=GRID_SPACING_RAD)` -- reusing
+(`elevation_lines.iter_local_lattice(identity_frame, spacing_rad=GRID_SPACING_RAD)` -- reusing
 `iter_local_lattice` with the identity frame as a plain global lat/lon sweep, rather than any
 one plate's own local frame), assign every cell its nearest
 elevation node via one `cKDTree` query against every plate's current nodes (no distance
@@ -2377,7 +2068,7 @@ first and closing the loop only for the final consumer-facing fields:
 
 **Moisture recycling: rivers, lakes, and vegetation release moisture too** -- the "rain in a
 rainforest" effect, where a wet, densely-vegetated region partly sustains its own
-precipitation. `compute_humidity` samples `plates.ElevationLine`'s own persisted `lake_depth`/
+precipitation. `compute_humidity` samples the plates' own persisted `lake_depth`/
 `channel_depth` fields onto the climate grid (the same nearest-neighbor resample elevation
 itself already gets, see `_sample_elevation_and_crust`) to size a lake-evaporation and a
 river-evaporation source; a third source, vegetation transpiration, comes from
@@ -2497,7 +2188,7 @@ flat, low-lying land (`elevation_m > 0`, `<= WETLAND_MAX_ELEVATION_M`,
 **Slope** (`biomes.grid_slope`, still used by `classify_wetland` and `geology.py`) -- real
 elevation difference to each cell's steeper of its north/south or east/west neighbor, divided
 by that neighbor's real great-circle spacing in meters (longitude narrowed by `cos(lat)`, the
-same convention `plates.iter_local_lattice` uses) -- computed on the fine Biome/Combined grid
+same convention `elevation_lines.iter_local_lattice` uses) -- computed on the fine Biome/Combined grid
 (`_biome_fields`'s own `elevation_m`, previously unused by these two views) rather than
 climate.py's coarser native grid. A different, coarser discretization than
 `erosion.compute_slope`'s own node-cloud slope (used by `geology.py`, see below), but both are
@@ -2795,7 +2486,7 @@ hundreds of CFL-stable substeps, see `fluid_dynamics.cfl_substeps`, over a ~250k
 an accepted trade-off rather than something silently degraded -- lowering `fluid_density`
 trades that away deliberately, both by shrinking the cell count itself and, since CFL substep
 count scales inversely with grid spacing, by needing fewer substeps to cover the same
-requested `seconds` per step. `World.node_density` (plate/elevation-line resolution) is
+requested `seconds` per step. `World.node_density` (plate terrain resolution) is
 unrelated and has no bearing on either FD mode.
 
 <a id="fd-render-views"></a>
@@ -2847,7 +2538,7 @@ lattice.
 **Slope is the one genuinely new piece of math.** climate.py's grid gets slope for free
 from neighbor-index differences; an irregular node cloud has no such structure. This reuses
 the same whole-world cKDTree pattern (build once, query `SLOPE_NEIGHBOR_COUNT=4`
-nearest neighbors per node) `LithospherePlate.deform` uses for its own per-plate distance
+nearest neighbors per node) the tectonic engine uses for its own per-plate distance
 queries: for each node, the elevation drop to the *lowest* of
 its nearest neighbors (0 if the node is already a local minimum -- the "slope to lowest
 neighbor" definition), divided by the real great-circle distance to that
@@ -2877,7 +2568,7 @@ needed no rescaling.
   CHANNEL_EROSION_BOOST * clip(channel_depth / CHANNEL_BOOST_REFERENCE_M, 0, 1)` -- a river
   preferentially re-carves its own established channel, the real mechanism behind
   meandering rivers staying within their valleys rather than cutting a fresh path every
-  step. `channel_depth` (persistent, see `plates.ElevationLine`) grows by this same term
+  step. `channel_depth` (persistent, see `surface_fields.SURFACE_FIELDS`) grows by this same term
   every step (`clip(channel_depth + river_erosion_amount, 0, MAX_CHANNEL_DEPTH_M)`) --
   monotonically non-decreasing, land-only, capped purely as a sanity bound (not a
   physically-derived limit).
@@ -3080,12 +2771,11 @@ in which case `DEPOSITION_FRACTION` of the material passing through that node se
 there (a floodplain or delta) instead of continuing on; the rest keeps going, eventually
 reaching either another depositing node, an internal sink, or the coast (where it can raise
 an *ocean* node's own elevation -- a river delta building outward is real, intended
-behavior, not a bug). `line.elevation`, `line.channel_depth` (this module's own), and
-`line.lake_depth`/`line.glacier_depth`/`line.silt_depth` (state transitions owned by
+behavior, not a bug). `elevation`, `channel_depth` (this module's own), and
+`lake_depth`/`glacier_depth`/`silt_depth` (state transitions owned by
 `hydrology.py`/`lakes.py`, read directly from `World.hydrology_cache` -- see
-[Hydrology](#hydrology)) all get written back
-together per line -- no resampling, no topology change, so none of this can interact with
-line regularization or point reassignment at all.
+[Hydrology](#hydrology)) all get written back together per plate
+(`Plate.set_fields_on_plate`) -- no resampling, no topology change.
 
 **Erosional isostatic compensation.** The net per-step surface change (all erosion minus all
 deposition, plus glacial flattening and lake silt) is the rock added to or stripped from a
@@ -3171,8 +2861,7 @@ it alone. Anything left above a column is clipped at the next erosion step
 (`stale_mobile_cover_excess_m3`). Strike-slip advection copies every field from its nearest
 upstream node, which conserves no extensive field, Hc and the continental tracer included. Its
 net change to the cover is booked, signed, as `fault_advection_m3`. `World.mobile_cover_ledger`
-keeps these sources and sinks, so `mobile_cover.balance_error_m3` closes to round-off on quad
-worlds. The line engine's row trimming doesn't book what it removes.
+keeps these sources and sinks, so `mobile_cover.balance_error_m3` closes to round-off.
 
 The budget reports `bedrock_detached_m3` plus the cover's
 `prior`, `entrained`, `deposited`, `consolidated`, `clip` and remaining volumes, with
@@ -3185,11 +2874,7 @@ before). Flow routing (`hydrology.compute_hydrology`) is comparatively expensive
 available, so rather than computing it twice per step, this module computes it once and
 reuses the result for both erosion and `World.hydrology_cache` (see
 [Hydrology](#hydrology)). Runs in `world.step_world`
-right after `shift`/`deform` and topology changes, every step (line regularization now runs
-inline at the end of every `deform()` call rather than on a periodic cadence -- see [Line
-regularization](#line-regularization) -- and the old periodic gap-fill/reassign passes are
-gone entirely, see [Whole-sphere coverage](#gap-filling)/[Boundary point
-reassignment](#reassignment)).
+right after `shift`/`deform`, topology changes and gap filling, every step.
 
 Nine of the twelve live [tuning knobs](#tuning-knobs) act here -- each erosion/deposition
 term reads a `world.*_multiplier` scale (default `1.0`) at the point it is formed.
@@ -3251,8 +2936,8 @@ ocean water volume*, so the shoreline responds to tectonics and erosion the way 
 the real Earth: open a new ocean basin and sea level drops, handing that volume of coastline
 back to the continents as freeboard.
 
-Ocean volume is summed over each node's accounting area `A_i` (`Plate.accounting_areas_m2`:
-exact cell areas on quad plates, the nominal `lithosphere.node_area_m2` on line plates):
+Ocean volume is summed over each node's accounting area `A_i` (`Plate.accounting_areas_m2`,
+the exact cell areas):
 
 ```
 V = sum over all nodes of  A_i * max(0, sea_level - z_i)
@@ -3313,8 +2998,8 @@ rejected with a `400`.
 | `seismic_erosion_multiplier` | earthquake-triggered landsliding term | `erosion.apply_erosion` |
 | `river_deposition_multiplier` | floodplain/delta settle-out fraction (`DEPOSITION_FRACTION`, clamped `< 0.95`) | `erosion.apply_erosion` |
 | `ocean_deposition_multiplier` | *settled* beach + marine sediment (see caveat below) | `erosion.apply_erosion` |
-| `collision_uplift_multiplier` | plastic crustal-thickening rate at contested nodes | `rheology.apply_convergent_deformation`'s `strength` arg, driven from `LithospherePlate.deform` |
-| `collision_uplift_reach_multiplier` | width of the belt that thickens: dilates the contested band along the line by a physical-km ring, density-independent (`_distance_to_mask_1d`), thickening at a rate that tapers across the ring rather than a flat factor; `<1` narrows/weakens it instead | `LithospherePlate.deform` |
+| `collision_uplift_multiplier` | plastic crustal-thickening rate at contested nodes | `rheology.apply_convergent_deformation`'s `strength` arg, driven from `lithosphere_plate.boundary_context` |
+| `collision_uplift_reach_multiplier` | how far the shortening cascade carries a collision into the plate (`shortening.py`'s `reach_scale`); `<1` also weakens the contested-band thickening in proportion | `lithosphere_plate.boundary_context`, `shortening.py` |
 | `volcanism_multiplier` | per-step eruption probability **and** metres added per eruption | `volcanism.apply_volcanic_activity` |
 
 **Mass-conservation caveats.** The erosion terms are scaled where they are computed, so the
@@ -3329,29 +3014,16 @@ share it withholds is booked to the ledger's `discarded_marine_sediment_m3` sink
 [issue #275](https://github.com/adubey/mantle-bloom/issues/275) above).
 
 **Collision uplift is in the real engine.** The live mountain-building path is
-`LithospherePlate.deform` -> `rheology.apply_convergent_deformation` (thicken `Hc`/`Hm`, then
-read isostasy), **not** a direct `plates.CONVERGENT_MOUNTAIN_RATE_M_PER_MYR` elevation
-delta (the removed v1 `PlateWithLines.deform` did that). The *amount* knob is a
-`strength` multiplier on the plastic thickening; the *reach* knob widens the node band that
-thickens (a near-field ring, `COLLISION_NEAR_FIELD_REACH_KM_PER_UNIT` (350 km) wider per unit
-of multiplier, thickening at a rate that tapers linearly across the ring from
-`COLLISION_NEAR_FIELD_INNER_FACTOR` of the contested rate down to 0 at its outer edge --
-2026-09-16, GitHub issue #146: this used to be a flat factor with a hard drop to 0 past the
-ring, a two-level "shelf" rather than a falloff).
-
-**Near-field reach is now density-independent (2026-09-04).** The ring used to widen by a flat
-node count (`COLLISION_REACH_DILATION_NODES_PER_UNIT`, 2 nodes/unit) -- at the default
-`node_density` (1.0, line spacing 125 km) that is ~250 km, a plausible orogen crumple-zone
-width, but at higher `node_density` the same flat node count is a *narrower* physical belt
-(only ~125 km at density 4), since line spacing itself shrinks with density. Confirmed as a
-real "mountains look too narrow at higher detail" bug, not just a subjective impression.
-`COLLISION_NEAR_FIELD_REACH_KM_PER_UNIT` fixes this by converting the reach knob to a physical
-km figure first, then dividing by this step's *actual* `spacing_rad` to get the node count --
-the belt now reads the same width across every `node_density` / detail-level setting.
+`lithosphere_plate.deform_columns` -> `rheology.apply_convergent_deformation` (thicken
+`Hc`/`Hm`, then read isostasy), **not** a direct `plates.CONVERGENT_MOUNTAIN_RATE_M_PER_MYR`
+elevation delta (the removed v1 `PlateWithLines.deform` did that). The *amount* knob is a
+`strength` multiplier on the plastic thickening; the *reach* knob scales how far the
+shortening cascade (`shortening.py`, issue #314) carries the collision's shortening into the
+plate's interior, each cell taking a share by its strength and the room left under the caps.
 
 **Far-field collision uplift is retired.** `ELEV_CHANGE_COLLISION_FAR_FIELD` remains a legacy
 "Last elevation change" code so old saves still render intelligibly, but
-`LithospherePlate.deform` no longer applies a direct far-field elevation delta. Issue #206
+the tectonic engine no longer applies a direct far-field elevation delta. Issue #206
 retired that unbacked shortcut after lateral magma transport landed: collision-generated melt
 can now reach distant thin continental crust as real Hc growth, so far-field relief comes
 through isostasy rather than a separate raw elevation term.
@@ -3400,21 +3072,18 @@ hand -- which is why the shipped defaults are all `1.0`.
 <a id="resources-and-soil"></a>
 ## Resources and soil (`geology.py`, plus `volcanism.py`'s own eruption roll)
 
-Six new persistent per-node fields on `ElevationLine` (see [Why not a
+Six new persistent per-node fields (`surface_fields.SURFACE_FIELDS`; see [Why not a
 grid](#why-not-a-grid)/[World state](architecture.md#world-state) for why "persistent" is
 free here) -- `soil_depth`/`soil_mineral_content`/`soil_organic_content` (can rise *and*
 fall, real soil erodes) and `coal_deposit_m`/`oil_gas_deposit_m`/`mineral_deposit_m`
 (monotonically non-decreasing, the same self-reinforcing convention `silt_depth`/
 `channel_depth` already establish -- buried peat/hydrocarbons/ore aren't un-buried by a later
-climate shift). Threaded through every explicit `ElevationLine` reconstruction site the same
-way `channel_depth`/`is_volcano` already are (`LithospherePlate.deform`'s own growth/shrink,
-`elevation_lines.py`'s regularize interpolation, `merge_split.py`'s split) -- every other
-mutation site already uses `dataclasses.replace`, which copies them automatically (see
-`plates.ElevationLine`'s own docstring).
+climate shift). Like every surface field, they ride through every cell edit (insert, remove,
+merge, split) by their remap class, with no per-site handling.
 
 **Minerals** come from real hydrothermal circulation around volcanic activity (porphyry-copper/
 VMS-style ore deposits) -- grown directly inside `volcanism.apply_volcanic_activity`'s existing
-per-line eruption roll, at the same `erupts` mask that already adds `ERUPTION_ELEVATION_M`, so
+per-plate eruption roll, at the same `erupts` mask that already adds `ERUPTION_ELEVATION_M`, so
 no separate detection pass is needed: "an eruption deposits mineral-rich material" is exactly
 what that mask already means. This only ever fires where this codebase's own volcanism model
 already places `is_volcano` nodes (rift-spawned volcanic fields, see
@@ -3475,7 +3144,7 @@ than either alone, rather than a plain average.
 a one-time seed, the same treatment `continental_fraction`/`land_fraction` already get), seeds
 `soil_depth`/`soil_organic_content`/`soil_mineral_content` on land nodes scaled by the UI's
 "initial soil maturity" slider (0 to 1, default 0). At 0, every land node starts at exactly
-zero soil -- `ElevationLine`'s own zero defaults already give this, so the function is a no-op
+zero soil -- the fields' own zero defaults already give this, so the function is a no-op
 rather than special-casing it; the planet is barren by default, the same way `channel_depth`/
 `glacier_depth` start empty at generation. Deliberately *not* climate-informed at seed time (no
 biome differentiation yet at generation, unlike the organic-content relaxation
@@ -3525,28 +3194,16 @@ runs the same three algorithms directly on it.
 
 **Persistence comes for free.** A fixed-grid tectonic model has plates moving relative to
 its grid, so a persistent field like `channel_depth` needs deliberate semi-Lagrangian
-advection every step just to keep following the crust. mantle-bloom's elevation-line nodes
-already rotate exactly with their own plate, so `channel_depth`, `channel_width`, `lake_depth`,
-`silt_depth` (see [Lakes](#lakes-are-an-explicit-tree) below), and
-`glacier_depth` (see [Glaciation](#glaciation)), stored as ordinary parallel arrays on
-`ElevationLine` right alongside `elevation` itself (see
-[Why not a grid](#why-not-a-grid)), get that same "just works" persistence for free -- no
-advection scheme needed, since rotating a plate never touches those arrays at all. Making
-this persistence real required threading every one of these fields through every place an
-`ElevationLine` gets rebuilt: preserved unchanged where a rebuild doesn't change node
-identity (`deform()`'s own elevation deltas, bathymetry -- via `dataclasses.replace`, not an
-explicit field-by-field reconstruction, specifically so a *future* persistent field is
-preserved automatically rather than needing every such call site updated by hand; see
-`plates.ElevationLine`'s own docstring for the concrete bug this replaced -- `is_volcano`
-silently reset to `False` every step at exactly these two sites, for several steps of actual
-development, before it was caught), sliced/concatenated to match where nodes are added or
-removed (`deform()`'s own growth/shrink -- new nodes start at 0, no history to carry; a
-merge/split's boolean-mask slice), interpolated alongside elevation where a line gets
-resampled onto a fresh spacing (`elevation_lines.regularize_line`, since that now runs at the
-end of every `deform()` call and a plain reset would erase rivers/glaciers constantly, not
-rarely). One call site *does* deliberately reset to 0 rather than preserve:
-`plates.build_lines_from_lattice` (generation, plate merge -- genuinely new or
-wholesale-resampled territory has no history to carry).
+advection every step just to keep following the crust. mantle-bloom's terrain nodes already
+rotate exactly with their own plate, so `channel_depth`, `channel_width`, `lake_depth`,
+`silt_depth` (see [Lakes](#lakes-are-an-explicit-tree) below), and `glacier_depth` (see
+[Glaciation](#glaciation)), stored as ordinary parallel arrays over the plate's cells right
+alongside `elevation` itself (see [Why not a grid](#why-not-a-grid)), get that same "just
+works" persistence for free -- no advection scheme needed, since rotating a plate never
+touches those arrays at all. Every cell edit carries them by their `SURFACE_FIELDS` remap
+class: preserved where a cell survives, remapped by area, vote or carry where cells merge,
+and reset to the field default on a genuinely new cell (generation, boundary advance,
+gap fill -- new territory has no history to carry).
 
 `flow_target`/`flow_accum`/`river_speed` are deliberately *not* persisted: recomputed fresh
 every step, from that step's real climate -- purely this-step derived quantities, cached on
@@ -3726,8 +3383,7 @@ freshly-rebuilt tree against last step's by member-overlap, which would be fragi
 exact shape shifting from ordinary terrain churn even when nothing physical about the lake
 changed.
 
-**Lakes accumulate silt.** `silt_depth` (a new persistent per-node array, threaded through
-`LithospherePlate.deform`/`elevation_lines.py`/`merge_split.py` exactly like `lake_depth`) is a
+**Lakes accumulate silt.** `silt_depth` (a persistent per-node field, carried exactly like `lake_depth`) is a
 small, ~100x-slower-than-water-growth fraction of the same inflow, settling permanently
 (monotonically -- silt never erodes back away) on a lake's own bed. `erosion.py` folds each
 step's `silt_deposited` straight into real terrain `elevation` (like every other deposition
@@ -4406,37 +4062,11 @@ identically to both the server-side PNG stroke and the River Inspector's canvas 
 Deliberate scoping decisions for v1 (elevation only), each an acceptable line to draw rather
 than an oversight:
 
-- **The bounding polygon (`Plate.outline_world`/`get_bounding_polygon`) is an envelope, not
-  an exact polygon -- and now a load-bearing one, not just a rendering convenience.** It's
-  traced as a *staircase* from each line's current endpoints, stepping at the midpoint phi
-  between adjacent rows so a straight diagonal never cuts across a concave notch between two
-  rows with very different theta extents (an earlier, smoother scanline version did exactly
-  that, and -- since `LithospherePlate.deform` now uses this same polygon to decide
-  contested/open territory every turn, see [Plate motion: shift and
-  deform](#boundary-evolution) -- confirmed directly to cause real over-claiming, not just a
-  cosmetic smoothing). Since the split-row work below, the outline is traced as the exact
-  boundary of the union of every row's theta-interval(s) (`_plate_outline_loops`), a general
-  rectilinear-union trace that also handles a plate momentarily in two disconnected pieces,
-  or with an interior hole, without the old single-staircase's diagonal over-claiming. It's
-  still one `(n, 3)` vertex array -- holes and disjoint pieces are joined by zero-width
-  keyhole seams (`_stitch_loops`) that the winding-number test cancels through -- so every
-  `get_bounding_polygon()` consumer is unchanged. Always in sync with the real territory
-  (read live from the same line data, never a separately-tracked, driftable copy). Not
-  guaranteed self-intersection-safe for an arbitrarily large lateral shift between rows (e.g.
-  heavy transform shearing) -- a residual source of the bounded-but-nonzero overlap noted in
-  [Plate motion: shift and deform](#boundary-evolution).
-- **Each `ElevationLine` is one contiguous arc; a row may carry several of them.** A line's
-  two ends (`theta[0]`, `theta[-1]`) are its true territorial edges, and `deform()`'s
-  ordinary grow/shrink only ever touches those ends. What it *can't* fix that way is a run of
-  overridden nodes stranded in a row's interior with live nodes either side -- so `deform()`
-  carves that run out (oceanic self-plate only) and hands the row back as two separate
-  contiguous `ElevationLine`s at the same `phi`, with the gap between them a real hole in the
-  plate's territory (see [Plate motion: shift and deform](#boundary-evolution)). `outline_
-  world` / `contains_batch` / `_RowLookup` all take several lines per `phi`; `split` and
-  defragmentation likewise now keep every arc of a partition-severed row (`split_into_
-  contiguous_runs`) rather than dropping all but the largest. An earlier version instead left
-  an interior contested patch untouched, punching no hole but never resolving the overlap
-  either -- the frozen `seed 888151728` plates 9/1 case.
+- **Two plates' lattices can't tile a shared boundary exactly.** Each plate's cells sit in
+  its own rotated frame, so whole cells leave a thin uncovered or doubly-covered margin where
+  two plates meet; gap filling closes the uncovered side and the overlap stays bounded (see
+  [Plate motion: shift and deform](#boundary-evolution) and
+  [docs/surface-parity.md](surface-parity.md)'s C3 gate).
 - **Vegetation is a derived climate classification, not a persisted field.** Climate (see
   [Climate](#climate)) feeds erosion, deposition, hydrology, and glaciation (see
   [Erosion](#erosion), [Hydrology](#hydrology), and [Glaciation](#glaciation):

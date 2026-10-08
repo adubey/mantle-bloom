@@ -9,7 +9,7 @@ import pytest
 
 from app import continental_ledger, cratons, lithosphere, persistence, quad_merge, quad_tectonics, rheology
 from app import world as world_mod
-from app.elevation_lines import CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC, ElevationLine, line_spacing_rad, regularize_line
+from app.elevation_lines import CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC, line_spacing_rad
 from app.lithosphere_plate import deform_columns
 from app.surface_fields import CRATON_UNFORMED_YEARS
 from app.sparse_quad_patch import PlateWithSparseQuadPatch, cells_per_face_edge, pack_cell_keys
@@ -191,7 +191,7 @@ def _divergent_ctx(n, closing_rate):
     return SimpleNamespace(
         convergent=zeros, divergent=~zeros, transform=zeros, closing_rate=np.full(n, closing_rate),
         inputs=SimpleNamespace(neighbor_is_oceanic=zeros), arc_band=zeros, arc_intensity=np.zeros(n),
-        fault_influence=np.ones(n), orogen_dilation_nodes=0, orogen_contested_strength=0.0, orogen_amount=1.0,
+        fault_influence=np.ones(n), orogen_contested_strength=0.0, orogen_amount=1.0,
         fault_noise=None, own_points=np.zeros((n, 3)),
     )
 
@@ -206,7 +206,7 @@ def test_a_craton_resists_divergent_thinning_and_books_what_it_loses(monkeypatch
     rate = -0.05 / rheology.SECONDS_PER_YEAR
     areas = plate.node_areas_m2()
 
-    out = deform_columns(world, plate, _divergent_ctx(2, rate), slice(None), fields, None, lambda: None, areas, 0, 1_000_000)
+    out = deform_columns(world, plate, _divergent_ctx(2, rate), fields, lambda: None, areas, 0, 1_000_000)
 
     start = fields["crustal_thickness_m"]
     thinned = start - out["crustal_thickness_m"]
@@ -383,23 +383,6 @@ def test_phase_audit_books_vanished_craton_to_the_residual_account(monkeypatch):
     assert world.craton_ledger["topology_removed_m3"] == pytest.approx(vanished)
     assert world.craton_ledger["unattributed_m3"] == 0.0
     assert cratons.balance_error_m3(world) == pytest.approx(0.0, abs=1.0)
-
-
-def test_line_regularize_carries_craton_fields_and_continental_material():
-    theta = np.linspace(0.0, 0.5, 9)
-    ones = np.ones_like(theta)
-    line = ElevationLine(
-        phi=0.0, theta=theta, elevation=ones, crustal_thickness_m=35_000.0 * ones,
-        continental_material_m=35_000.0 * ones, craton_crust_m=30_000.0 * ones,
-        craton_formed_years=-1e9 * ones, stable_continental_myr=300.0 * ones,
-    )
-
-    out = regularize_line(line, 0.1)
-
-    np.testing.assert_allclose(out.continental_material_m, 35_000.0)
-    np.testing.assert_allclose(out.craton_crust_m, 30_000.0)
-    np.testing.assert_allclose(out.craton_formed_years, -1e9)
-    np.testing.assert_allclose(out.stable_continental_myr, 300.0)
 
 
 def test_craton_state_round_trips_and_old_saves_are_seeded_on_their_first_step():

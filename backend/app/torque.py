@@ -539,7 +539,7 @@ BOUNDARY_TRANSFORM_RATE_M_PER_S = 0.01 / SECONDS_PER_YEAR
 def boundary_closing_rate_m_per_s(plate, inputs: BoundaryForceInputs) -> np.ndarray:
     """Per own-node relative closing rate against the nearest neighbour plate, in real m/s
     (positive = converging). Thin wrapper over `rheology.normal_closing_rate_m_per_s` so
-    `classify_boundary_nodes` here and `LithospherePlate.deform` share one call/convention."""
+    `classify_boundary_nodes` here and `quad_tectonics.deform` share one call/convention."""
     from . import rheology
 
     n = len(inputs.own_points)
@@ -689,8 +689,8 @@ def shift_plate(plate, world, other_plates: list, years: float) -> float:
 
 
 def merge_omega(plate_a, inertia_a: np.ndarray, plate_b, inertia_b: np.ndarray) -> np.ndarray:
-    """Angular-momentum-conserving blend for `LithospherePlate.merge_with`, replacing the
-    base `Plate.merge_with`'s naive `(omega_a + omega_b) / 2`: L = I @ omega is additive
+    """Angular-momentum-conserving blend for a plate merge (quad_merge.py), rather than a
+    naive `(omega_a + omega_b) / 2`: L = I @ omega is additive
     across a fusion, so the combined plate's omega is `(I_a + I_b)^-1 @ (L_a + L_b)`, not a
     plain average of two possibly very differently-massed plates' rates."""
     l_total = lithosphere.angular_momentum(inertia_a, plate_a.omega) + lithosphere.angular_momentum(inertia_b, plate_b.omega)

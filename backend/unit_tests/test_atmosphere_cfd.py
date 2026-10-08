@@ -6,7 +6,7 @@ from app.world import generate_world
 # Coarse settings throughout -- same rationale as test_world_smoke.py's own
 # _COARSE_KWARGS: these are regression/boundedness checks, not physics-precision tests, so
 # a small fast-to-run grid is preferable.
-_COARSE_KWARGS = dict(node_density=0.5, climate_density=0.5, fluid_density=0.5, num_plates=6, surface="lines")
+_COARSE_KWARGS = dict(node_density=0.5, climate_density=0.5, fluid_density=0.5, num_plates=6)
 
 
 def _world(seed=1):
@@ -76,11 +76,11 @@ def test_prevailing_wind_is_sustained_over_many_steps():
 
 def test_atmosphere_cfd_never_mutates_world_plates():
     world = _world()
-    elevations_before = [line.elevation.copy() for plate in world.plates for line in plate.lines]
+    elevations_before = [plate.collect("elevation").copy() for plate in world.plates]
     state = world.atmosphere_cfd_state
     for _ in range(3):
         atmosphere_cfd.step_atmosphere_cfd(world, state, seconds=3600.0 * 6)
-    elevations_after = [line.elevation for plate in world.plates for line in plate.lines]
+    elevations_after = [plate.collect("elevation") for plate in world.plates]
     assert len(elevations_before) == len(elevations_after)
     for before, after in zip(elevations_before, elevations_after):
         assert np.array_equal(before, after)

@@ -33,8 +33,6 @@ Destruction. Every loss of cratonic volume is booked into ``World.craton_ledger`
 mechanism that caused it (CRATON_SINK_ACCOUNTS); ``balance_error_m3`` checks that sources,
 sinks and the live inventory agree. Boundary consumption also books the continental material
 it removes into the continental-material ledger (continental_ledger.py).
-Line-backed plates carry the fields through every operation but neither seed nor form
-cratons and get no retreat resistance: that surface is being retired (issue #251).
 """
 
 from __future__ import annotations
@@ -131,13 +129,12 @@ def _genuine_continental(plate: "Plate") -> np.ndarray:
 
 def _interior_hops(plate: "Plate", host: np.ndarray, max_hops: int) -> np.ndarray | None:
     """Per cell, edge hops to the nearest plate edge or non-`host` cell, saturating at
-    `max_hops + 1`. None on surfaces without cell adjacency (line plates)."""
-    probe = getattr(plate, "_probe_neighbour_indices", None)
-    if probe is None or plate.node_count() == 0:
+    `max_hops + 1`. None on a plate with no cells."""
+    if plate.node_count() == 0:
         return None
     from .quad_tectonics import hop_distance
 
-    edge = np.any(np.any(probe() < 0, axis=2), axis=1)
+    edge = np.any(np.any(plate._probe_neighbour_indices() < 0, axis=2), axis=1)
     return hop_distance(plate, edge | ~host, max_hops)
 
 
@@ -154,13 +151,12 @@ def ensure_ledger(world: "World") -> None:
 
 
 def ensure_initialized(world: "World") -> None:
-    """`ensure_ledger`, then -- the first time a world with cell-surface plates is generated
-    or stepped -- seed its starting cratons. The `initial_m3` key's presence marks a seeded
-    world, so a world with no eligible interior is never reseeded, while a line world stays
-    unmarked so the quad world a legacy save converts into is still seeded. Loading a save
-    never seeds: an older save gets its cratons on its first step."""
+    """`ensure_ledger`, then -- the first time a world with plates is generated or stepped --
+    seed its starting cratons. The `initial_m3` key's presence marks a seeded world, so a
+    world with no eligible interior is never reseeded. Loading a save never seeds: an older
+    save (including one converted from line plates) gets its cratons on its first step."""
     ensure_ledger(world)
-    if "initial_m3" not in world.craton_ledger and any(hasattr(p, "_probe_neighbour_indices") for p in world.plates):
+    if "initial_m3" not in world.craton_ledger and world.plates:
         world.craton_ledger["initial_m3"] = seed_initial_cratons(world)
 
 
@@ -281,7 +277,7 @@ class PhaseAudit:
 
 def seed_initial_cratons(world: "World") -> float:
     """Mark the deep interiors of the world's genuine continents as pre-existing cratons.
-    Returns the seeded volume (m^3). No-op on line plates."""
+    Returns the seeded volume (m^3)."""
     spacing_rad = line_spacing_rad(world.node_density)
     hops = _hops(CRATON_SEED_MARGIN_KM, spacing_rad)
     seeded = 0.0

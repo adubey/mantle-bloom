@@ -9,35 +9,44 @@ from PIL import Image
 from app import climate, cratons, geometry, healpix_grid, hydrology, render_image
 from app.world import World, generate_world, step_world
 
+from .quad_fixtures import quad_plate
+
 
 def _world(seed=1, num_plates=10, continental_fraction=0.4):
-    return generate_world(seed, num_plates=num_plates, continental_fraction=continental_fraction, surface="lines")
+    return generate_world(seed, num_plates=num_plates, continental_fraction=continental_fraction)
 
 
-def _set_one_node_channel(world, depth_m, width_m):
-    """Carves a single land node's channel_depth/channel_width in place (first node of the
-    first plate's first line) -- everything else in the world is untouched, so any resulting
-    hillshade difference at that one node can only be this incision, not some unrelated terrain
-    feature."""
-    plate = world.plates[0]
-    line = plate.lines[0]
-    depth = line.channel_depth.copy()
-    width = line.channel_width.copy()
-    depth[0] = depth_m
-    width[0] = width_m
-    plate.replace_line(0, line.replace(channel_depth=depth, channel_width=width))
+def _set_one_node_channel(world, depth_m, width_m) -> int:
+    """Carves a single land node's channel_depth/channel_width in place (the first land node
+    of the first plate that has one) -- everything else in the world is untouched, so any
+    resulting hillshade difference at that one node can only be this incision, not some
+    unrelated terrain feature. Returns that node's index in the whole-world node order."""
+    offset = 0
+    for plate in world.plates:
+        land = plate.collect("elevation") > world.sea_level_m
+        if np.any(land):
+            break
+        offset += plate.node_count()
+    index = int(np.argmax(land))
+    depth = plate.collect("channel_depth").copy()
+    width = plate.collect("channel_width").copy()
+    depth[index] = depth_m
+    width[index] = width_m
+    plate.set_fields_on_plate(channel_depth=depth, channel_width=width)
+    return offset + index
 
 
 def test_hillshade_shows_a_deep_wide_channel_as_real_relief():
     # Issue #190: a deep-and-wide-enough channel should show up as genuinely lit/shadowed
     # relief via the same directional hillshade mountains already use, not a flat darken.
     world = _world()
-    baseline = render_image._hillshade_for_world(world)[0]
+    baseline = render_image._hillshade_for_world(world)
 
     world.node_hillshade_cache = None
     world.node_kdtree_cache = None
-    _set_one_node_channel(world, depth_m=1200.0, width_m=3000.0)
-    carved = render_image._hillshade_for_world(world)[0]
+    node = _set_one_node_channel(world, depth_m=1200.0, width_m=3000.0)
+    carved = render_image._hillshade_for_world(world)[node]
+    baseline = baseline[node]
 
     assert carved != pytest.approx(baseline, abs=1e-9)
 
@@ -45,12 +54,13 @@ def test_hillshade_shows_a_deep_wide_channel_as_real_relief():
 def test_hillshade_stays_flat_for_a_deep_but_skinny_channel():
     # The issue's own explicit requirement: even a deep channel may not show up if it's skinny.
     world = _world()
-    baseline = render_image._hillshade_for_world(world)[0]
+    baseline = render_image._hillshade_for_world(world)
 
     world.node_hillshade_cache = None
     world.node_kdtree_cache = None
-    _set_one_node_channel(world, depth_m=1200.0, width_m=20.0)
-    carved = render_image._hillshade_for_world(world)[0]
+    node = _set_one_node_channel(world, depth_m=1200.0, width_m=20.0)
+    carved = render_image._hillshade_for_world(world)[node]
+    baseline = baseline[node]
 
     assert carved == pytest.approx(baseline, abs=1e-9)
 
@@ -469,10 +479,7 @@ def test_combined_view_encodes_biome_ids_in_the_alpha_channel():
 
 def _pile_ice_everywhere(world, depth_m):
     for plate in world.plates:
-        for i, line in enumerate(plate.lines):
-            gd = line.glacier_depth.copy()
-            gd[:] = depth_m
-            plate.replace_line(i, line.replace(glacier_depth=gd))
+        plate.set_fields_on_plate(glacier_depth=np.full(plate.node_count(), depth_m))
 
 
 @pytest.mark.parametrize("view", ["elevation", "combined"])
@@ -528,10 +535,9 @@ def test_combined_view_ocean_ice_stays_flat_not_shaded_by_seafloor_relief():
     world = _world(seed=11, num_plates=8, continental_fraction=0.5)
     depth = hydrology.GLACIER_VISIBLE_DEPTH_M + 500.0
     for plate in world.plates:
-        for i, line in enumerate(plate.lines):
-            gd = line.glacier_depth.copy()
-            gd[line.elevation <= world.sea_level_m] = depth
-            plate.replace_line(i, line.replace(glacier_depth=gd))
+        gd = plate.collect("glacier_depth").copy()
+        gd[plate.collect("elevation") <= world.sea_level_m] = depth
+        plate.set_fields_on_plate(glacier_depth=gd)
 
     png = render_image.render_png(world, "behrmann", "combined", 320, 180)
     pixels = np.asarray(Image.open(io.BytesIO(png)).convert("RGB"))
@@ -1098,17 +1104,14 @@ def test_rotation_arc_direction_mirrors_when_omega_sign_flips():
     """Two plates at the same seed, rotating at the same rate but in opposite senses,
     should render different (mirror-image) arcs -- confirms the arc's sweep direction is
     actually sensitive to the sign of omega, not just its magnitude."""
-    from app.plates import ElevationLine, PlateWithLines
-
     def make_plate(plate_id, omega_sign):
         seed_xyz = np.array([1.0, 0.0, 0.0])
-        frame = geometry.plate_frame_from_seed(seed_xyz)
-        lines = [
-            ElevationLine(phi=float(phi), theta=np.linspace(-0.3, 0.3, 8), elevation=np.full(8, 100.0))
-            for phi in np.linspace(-0.3, 0.3, 8)
-        ]
-        omega = omega_sign * 0.03 * seed_xyz  # pole exactly at the seed either way
-        return PlateWithLines(plate_id=plate_id, frame=frame, crust_type="continental", omega=omega, lines=lines)
+        plate = quad_plate(
+            plate_id, "continental", columns=range(-8, 8), rows=range(-8, 8),
+            frame=geometry.plate_frame_from_seed(seed_xyz), elevation=100.0,
+        )
+        plate.set_omega(omega_sign * 0.03 * seed_xyz)  # pole exactly at the seed either way
+        return plate
 
     world_pos = World(seed=1, plates=[make_plate(0, +1.0)])
     world_neg = World(seed=1, plates=[make_plate(0, -1.0)])

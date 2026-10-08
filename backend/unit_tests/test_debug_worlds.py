@@ -61,20 +61,6 @@ def test_two_plate_divergent_scenario_actually_diverges():
     assert after > before
 
 
-def test_triple_junction_mixed_scenario_exercises_fill_corner_notch_frontier():
-    """This is the exact scenario `_fill_corner_notch_frontier`'s own docstring calls out (a
-    triple junction with mixed divergent/convergent legs) -- confirm the debug world actually
-    drives real corner-notch activity, not just ordinary end-growth, so it's a genuine
-    reproduction of the problem this whole diagnostic suite exists to investigate."""
-    world = debug_worlds.generate_debug_world("triple_junction_mixed", seed=1)
-    for _ in range(10):
-        step_world(world, years=1_000_000)
-
-    outcomes = {entry["outcome"] for entry in world.corner_notch_log}
-    assert "claimed" in outcomes, "expected the frontier notch-filler to have claimed real nodes at some point"
-    assert all(entry.get("algorithm") == "frontier" for entry in world.corner_notch_log)
-
-
 def test_pinned_omegas_backfilled_on_load_of_an_older_save():
     world = debug_worlds.generate_debug_world("two_plate_divergent", seed=1)
     del world.__dict__["pinned_omegas"]

@@ -1,15 +1,14 @@
 """Small, hand-scripted plate configurations for the "Debugging Worlds" Generate World tab
-(see main.py's `POST /world/generate_debug`) -- fast-iteration fixtures for the gap-filling
-problem (`lithosphere_plate._fill_corner_notch_frontier`, `gaps.py`) that don't depend on any real
-save's history.
+(see main.py's `POST /world/generate_debug`) -- fast-iteration fixtures for boundary growth and
+gap filling (quad_tectonics.py, `gaps.py`) that don't depend on any real save's history.
 
 Each scenario places a handful of explicit seed points directly (no Voronoi tiling -- see
 `_build_plates`'s nearest-seed-wins ownership predicate), assigns every plate an explicit
 `World.pinned_omegas` entry so it moves exactly as scripted every step regardless of what the
 real torque balance would have done (see `Plate.shift`), and runs at the coarsest
 real `node_density` choice so a step is fast enough to iterate on quickly. `debug_diagnostics`
-is on by default so the corner-notch decision log (docs/debugging.md) is populated from the
-very first step; both are ordinary Controls the user can change afterward.
+is on by default so the phase budget (docs/debugging.md) is populated from the very first
+step; both are ordinary Controls the user can change afterward.
 
 Every plate's own omega is derived from a set of pairwise "this boundary is
 convergent/divergent" relationships (see `_omegas_from_relationships`) rather than hand-picked
@@ -33,9 +32,8 @@ from .world import World, finish_generation
 DEBUG_WORLD_NODE_DENSITY = 0.5
 
 # A fixed fraction of MAX_PLATE_RATE, not the rail itself -- keeps every scenario's motion
-# representative of an ordinary plate (so `_fill_corner_notch_frontier`'s own window/budget math, which
-# scales with `mantle.MAX_PLATE_RATE * years`, sees realistic per-step gaps to close) without
-# the corner-notch fallback's reach constant alone swallowing whatever gap opens each step.
+# representative of an ordinary plate, so boundary growth and gap filling see realistic
+# per-step gaps to close.
 _DEBUG_WORLD_RATE = 0.3 * mantle.MAX_PLATE_RATE
 
 
@@ -76,7 +74,7 @@ def _omegas_from_relationships(
 def _build_plates(
     seed: int, seeds_latlon_deg: list[tuple[float, float]], crust_types: list[str], node_density: float
 ) -> tuple[list, list[np.ndarray]]:
-    """One `LithospherePlate` per seed, partitioning the *entire* sphere between them by
+    """One plate per seed, partitioning the *entire* sphere between them by
     nearest-seed-wins (a manual, exact-position stand-in for `generate_plates`' own random
     Voronoi tiling -- see `new_plate`'s `is_owned` parameter). Returns the plates alongside
     their world-xyz seed positions, which callers need again to compute pinned omegas."""
@@ -209,10 +207,10 @@ def scenario_two_plate_convergent(seed: int) -> World:
 
 
 def scenario_triple_junction_mixed(seed: int) -> World:
-    """Three plates meeting at one point, two legs divergent and one convergent -- the exact
-    shape `_fill_corner_notch_frontier`'s own docstring calls out as the case `_stretch_end` (theta-
-    axis-only) and `_claim_adjacent_territory` (phi-axis-only, whole rows) structurally can't
-    reach on their own (confirmed on a real save, seed 430031492)."""
+    """Three plates meeting at one point, two legs divergent and one convergent -- the shape
+    where three independently-oriented plates all recede from a shared point, so boundary
+    growth has to keep pace with three-way divergence (confirmed as a gap source on a real
+    save, seed 430031492)."""
     return _build_debug_world(
         seed,
         seeds_latlon_deg=[(10.0, 0.0), (-10.0, 10.0), (-10.0, -10.0)],
@@ -297,7 +295,7 @@ def scenario_two_colliding_pairs(seed: int) -> World:
     """Two independent continent-continent collisions happening at once, far enough apart on
     the sphere (roughly opposite sides) that neither pair's gap-filling activity should ever
     touch the other's -- two separate copies of `scenario_two_continental_collision`'s boundary
-    in one otherwise-oceanic world, for exercising several unrelated corner-notch/collision
+    in one otherwise-oceanic world, for exercising several unrelated gap-fill/collision
     zones simultaneously."""
     return _build_collision_world(
         seed,

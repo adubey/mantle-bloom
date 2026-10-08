@@ -1,6 +1,6 @@
 """PlateWithSparseQuadPatch-specific invariants: the cube-sphere lattice, derived views,
 exact containment, persistence, and generation from the shared tiling (issue #228 Phase 2).
-Behaviour shared with PlateWithLines lives in test_plate_surface_contract.py."""
+The representation-neutral `PlateSurface` contract is tested in test_plate_surface_contract.py."""
 
 import pickle
 
@@ -10,7 +10,6 @@ from scipy.spatial import cKDTree
 
 from app import geometry, persistence
 from app.lithosphere_plate import generate_plates
-from app.plates import gather_node_positions
 from app.sparse_quad_patch import (
     PLANET_RADIUS_M,
     QUAD_SURFACE_FORMAT_VERSION,
@@ -239,28 +238,25 @@ def test_lattice_resolution_tracks_line_spacing():
 
 
 def test_generated_quad_plates_tile_the_sphere_from_the_shared_tiling():
-    quad = generate_plates(3, num_plates=6, node_density=1.0, surface="quad")
-    lines = generate_plates(3, num_plates=6, node_density=1.0)
+    from app.lithosphere_plate import build_plate_tiling
 
-    assert [p.crust_type for p in quad] == [p.crust_type for p in lines]
-    np.testing.assert_allclose([p.frame for p in quad], [p.frame for p in lines])
+    quad = generate_plates(3, num_plates=6, node_density=1.0)
+    # generate_plates' first draw is the tiling (num_plates given, continental_fraction None).
+    tiling = build_plate_tiling(np.random.default_rng(3), 6)
+
+    assert len(quad) == 6
     total_area = sum(p.node_areas_m2().sum() for p in quad)
     np.testing.assert_allclose(total_area, 4 * np.pi * PLANET_RADIUS_M**2, rtol=0.01)
 
     points = _random_unit_vectors(20000, seed=4)
     coverage = sum(p.contains_batch(points).astype(int) for p in quad)
     assert np.mean(coverage == 1) > 0.97
-    # Same ownership test, so each point belongs to the same plate in both worlds, up to
-    # one-cell boundary jitter. Line ownership is read as "plate of the nearest line node"
-    # rather than PlateWithLines.contains_batch, whose polygon fallback is unreliable for a
-    # plate covering about a hemisphere (this seed has one).
-    line_points, line_plates = gather_node_positions(lines)
-    counts = [p.node_count() for p in line_plates]
-    node_owner = np.repeat([p.plate_id for p in line_plates], counts)
-    line_owner = node_owner[cKDTree(line_points).query(points)[1]]
+    # Each point belongs to the plate whose Voronoi sites are nearest, up to one-cell boundary
+    # jitter.
+    tiling_owner = tiling.site_plate[cKDTree(tiling.site_xyz).query(points)[1]]
     quad_owner = np.array([p.plate_id for p in quad])[np.argmax([p.contains_batch(points) for p in quad], axis=0)]
     covered = coverage == 1
-    assert np.mean(line_owner[covered] == quad_owner[covered]) > 0.98
+    assert np.mean(tiling_owner[covered] == quad_owner[covered]) > 0.98
     # Every field the isostasy sync reads was populated.
     for plate in quad:
         assert np.all(plate.collect("crustal_thickness_m") > 0.0)
@@ -268,7 +264,7 @@ def test_generated_quad_plates_tile_the_sphere_from_the_shared_tiling():
 
 
 def test_quad_world_round_trips_through_the_versioned_save_format():
-    world = generate_world(seed=5, num_plates=5, surface="quad")
+    world = generate_world(seed=5, num_plates=5)
     data = persistence.save_world_bytes(world)
     envelope = pickle.loads(data)
     assert envelope["version"] == persistence.SAVE_FORMAT_VERSION
@@ -282,7 +278,7 @@ def test_quad_world_round_trips_through_the_versioned_save_format():
 
 
 def test_quad_plate_uses_shared_torque_pipeline_for_rigid_motion():
-    world = generate_world(seed=5, num_plates=5, surface="quad")
+    world = generate_world(seed=5, num_plates=5)
     plate = world.plates[0]
     topology0, geometry0 = plate.topology_revision, plate.geometry_revision
 
@@ -292,11 +288,6 @@ def test_quad_plate_uses_shared_torque_pipeline_for_rigid_motion():
     assert np.all(np.isfinite(plate.omega))
     assert plate.topology_revision == topology0
     assert plate.geometry_revision == geometry0 + 1
-
-
-def test_unknown_surface_representation_is_rejected():
-    with pytest.raises(ValueError):
-        generate_plates(3, num_plates=4, surface="hexes")
 
 
 def test_refine_and_coarsen_round_trip_geometry_identity_and_revisions():

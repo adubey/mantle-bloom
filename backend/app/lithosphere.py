@@ -1,13 +1,12 @@
 """The lithospheric column state: Airy isostasy (spec section 2), and the mass/moment-of-
 inertia integrals `torque.py` needs to solve for plate motion (spec section 3.1, Eq 6).
 
-Every `ElevationLine` node carries two new fields (`crustal_thickness_m`/
-`mantle_lithosphere_thickness_m`, see elevation_lines.py) instead of an independently-set
+Every surface node carries two column fields (`crustal_thickness_m`/
+`mantle_lithosphere_thickness_m`, see surface_fields.py) instead of an independently-set
 `elevation`. `elevation` becomes a *cache*: after any mutation to Hc/Hm,
-`sync_line_elevation`/`sync_plate_elevation` below recompute it via `isostatic_elevation` and
-write it back onto the line, so every module downstream (render_image.py, erosion.py,
-hydrology.py, stats.py, ...) keeps reading `line.elevation` exactly as before, unaware it's
-derived rather than primary state.
+`sync_plate_elevation` below recomputes it via `isostatic_elevation` and writes it back onto
+the plate, so every module downstream (render_image.py, erosion.py, hydrology.py, stats.py,
+...) keeps reading `elevation`, unaware it's derived rather than primary state.
 """
 
 from __future__ import annotations
@@ -19,7 +18,6 @@ import numpy as np
 from .elevation_lines import CRUST_TYPE_CONTINENTAL, CRUST_TYPE_INHERIT, MAX_ELEVATION_M, MIN_ELEVATION_M, PLANET_RADIUS_KM
 
 if TYPE_CHECKING:
-    from .lithosphere_plate import LithospherePlate
     from .plates import Plate
 
 PLANET_RADIUS_M = PLANET_RADIUS_KM * 1000.0
@@ -98,7 +96,7 @@ def crust_density(crust_type: str) -> float:
 
 
 def node_crust_density(crust_type_codes: np.ndarray, plate_crust_type: str) -> np.ndarray:
-    """Per-node crust density, resolving `ElevationLine.crust_type_code`
+    """Per-node crust density, resolving the `crust_type_code` field
     (elevation_lines.CRUST_TYPE_*) against this plate's own nominal `crust_type` -- the
     array counterpart of `crust_density` above. For a plate that has never had a magma-typing
     event (every code still CRUST_TYPE_INHERIT, the overwhelming common case) this is
@@ -228,7 +226,24 @@ def back_elevation_gain_fields(
     gain: np.ndarray | float,
     apply_mask: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Representation-neutral implementation of :func:`back_elevation_gain`."""
+    """Where `apply_mask` is set, raise `crustal_thickness_m` by whatever a real tectonic/
+    magmatic process would need to isostatically support `gain` meters of *new* elevation, and
+    move `elevation` by exactly that much -- issue #173's fix (originally volcanism-only, moved
+    here for other Hc-backed relief processes -- issue #189).
+
+    Anchored to the column's own current isostatic *equilibrium* (`isostatic_elevation(hc, hm,
+    rho_c)`), never to raw `elevation` directly: a node can carry elevation
+    `isostatic_elevation` doesn't actually back (e.g. lithosphere_plate.deform_columns'
+    transform_uplift term, kept as a bare elevation delta by design -- "local relief without
+    net crustal shortening"), and solving Hc from that raw value would retroactively -- and
+    hugely disproportionately -- launder that unrelated drift into real crust the moment the
+    node happens to erupt or slip again. Anchoring to the column's own
+    equilibrium instead means a caller only ever bills its own contribution; whatever debt/
+    surplus already existed passes through untouched, riding along in the
+    `elevation + isostatic_delta` sum below. Nodes with no Hc tracking
+    (`crustal_thickness_m` zero) keep the bare direct-elevation response. `gain` may be
+    negative (e.g. a normal fault's extensional hanging-wall throw), which thins Hc the same way
+    a positive gain thickens it."""
     bare_elevation = np.clip(elevation + np.where(apply_mask, gain, 0.0), MIN_ELEVATION_M, MAX_ELEVATION_M)
     if not np.any(apply_mask):
         return crustal_thickness_m, bare_elevation
@@ -254,36 +269,6 @@ def back_elevation_gain_fields(
     return new_crustal_thickness, new_elevation
 
 
-def back_elevation_gain(line, plate: "Plate", gain: np.ndarray | float, apply_mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Where `apply_mask` is set, raise `crustal_thickness_m` by whatever a real tectonic/
-    magmatic process would need to isostatically support `gain` meters of *new* elevation, and
-    move `elevation` by exactly that much -- issue #173's fix (originally volcanism-only, moved
-    here for other Hc-backed relief processes -- issue #189).
-
-    Anchored to the column's own current isostatic *equilibrium* (`isostatic_elevation(hc, hm,
-    rho_c)`), never to raw `line.elevation` directly: a node can carry elevation
-    `isostatic_elevation` doesn't actually back (e.g. lithosphere_plate.deform()'s
-    transform_uplift term, kept as a bare elevation delta by design -- "local relief without
-    net crustal shortening"), and solving Hc from that raw value would retroactively -- and
-    hugely disproportionately -- launder that unrelated drift into real crust the moment the
-    node happens to erupt or slip again. Anchoring to the column's own
-    equilibrium instead means a caller only ever bills its own contribution; whatever debt/
-    surplus already existed passes through untouched, riding along in the
-    `line.elevation + isostatic_delta` sum below. v1/legacy lines with no Hc tracking
-    (`crustal_thickness_m` all zero) keep the old bare direct-elevation response. `gain` may be
-    negative (e.g. a normal fault's extensional hanging-wall throw), which thins Hc the same way
-    a positive gain thickens it."""
-    return back_elevation_gain_fields(
-        line.elevation,
-        line.crustal_thickness_m,
-        line.mantle_lithosphere_thickness_m,
-        line.crust_type_code,
-        plate.crust_type,
-        gain,
-        apply_mask,
-    )
-
-
 def _with_ice_deflection(bare_elevation: np.ndarray, deflection: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """`bare_elevation` plus the stored ice-load `deflection`, clipped to the elevation
     bounds, and the deflection that clip actually let through -- stored back so a later
@@ -292,23 +277,14 @@ def _with_ice_deflection(bare_elevation: np.ndarray, deflection: np.ndarray) -> 
     return z, z - bare_elevation
 
 
-def sync_line_elevation(line, rho_c: float):
-    """Recompute `line.elevation` from its current Hc/Hm columns -- call after any mutation
-    to `crustal_thickness_m`/`mantle_lithosphere_thickness_m`. Returns a new `ElevationLine`
-    (this module never mutates a line's arrays in place). Keeps the line's current ice-load
-    deflection (see `ice_load_deflection`), so a resync doesn't silently unload the ice."""
-    bare = isostatic_elevation(line.crustal_thickness_m, line.mantle_lithosphere_thickness_m, rho_c)
-    z, deflection = _with_ice_deflection(bare, line.ice_load_deflection_m)
-    return line.replace(elevation=z, ice_load_deflection_m=deflection)
-
-
-def sync_plate_elevation(plate: "LithospherePlate") -> None:
+def sync_plate_elevation(plate: "Plate") -> None:
     """Recompute elevation from Hc/Hm through the representation-neutral surface API.
-    Density is per-node (`node_crust_density`, resolving each line's own `crust_type_code`
+    Density is per-node (`node_crust_density`, resolving each node's own `crust_type_code`
     against this plate's nominal `crust_type`) rather than one scalar for the whole plate, so
     a rift-typed or gap-filled patch whose composition genuinely differs from its plate isn't
     isostatically floated as if it were the plate's own usual crust. Keeps each node's
-    current ice-load deflection, as `sync_line_elevation` does."""
+    current ice-load deflection (see `ice_load_deflection`), so a resync doesn't silently
+    unload the ice."""
     hc = plate.collect("crustal_thickness_m")
     hm = plate.collect("mantle_lithosphere_thickness_m")
     rho_c = node_crust_density(plate.collect("crust_type_code"), plate.crust_type)
@@ -338,14 +314,10 @@ def clamp_column_caps(plate: "Plate") -> bool:
 
 
 def node_area_m2(spacing_rad: float) -> float:
-    """Physical footprint area (m^2) of one lattice node at this world's line spacing.
-
-    Nodes are deliberately placed so this is (almost exactly) constant across latitude: rows
-    are equally spaced in phi (physically equidistant on a sphere regardless of latitude),
-    and each row's own theta spacing is widened by 1/cos(phi) specifically so the node's
-    *physical* along-row spacing is also `spacing_rad` (see elevation_lines.py's module
-    docstring / docs/simulation-model.md#plate-local-frames) -- so every node, at any
-    latitude, represents the same physical patch, `spacing_rad^2` steradians times R^2."""
+    """Nominal footprint area (m^2) of one terrain node at this node spacing:
+    `spacing_rad^2` steradians times R^2. A quad cell's exact area (`Plate.node_areas_m2`)
+    varies around this by up to ~1.4x across a cube face; this is the per-node scale for
+    thresholds and for callers with no per-node area to hand."""
     return (spacing_rad * PLANET_RADIUS_M) ** 2
 
 

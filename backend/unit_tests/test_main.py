@@ -11,7 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 from app.lithosphere_plate import generate_plates
-from app import main
+from app import main, persistence
 from app.main import app
 from app.plates import MAX_AUTO_PLATES, MIN_AUTO_PLATES
 
@@ -182,18 +182,8 @@ def test_node_at_before_generate_returns_404(client):
     assert client.get("/world/node_at", params={"lat_deg": 0, "lon_deg": 0}).status_code == 404
 
 
-def test_corner_notch_log_before_generate_returns_404(client):
-    assert client.get("/world/corner_notch_log").status_code == 404
-
-
 def test_elevation_point_at_before_generate_returns_404(client):
     assert client.get("/world/elevation_point_at", params={"lat_deg": 0, "lon_deg": 0}).status_code == 404
-
-
-def test_elevation_point_before_generate_returns_404(client):
-    assert client.get(
-        "/world/elevation_point", params={"plate_id": 0, "line_index": 0, "point_index": 0},
-    ).status_code == 404
 
 
 def test_lakes_before_generate_returns_404(client):
@@ -453,21 +443,6 @@ def test_generate_defaults_to_quad_surfaces(client):
     assert all(isinstance(plate, PlateWithSparseQuadPatch) for plate in main._state["world"].plates)
 
 
-def test_generate_accepts_the_legacy_line_surface(client):
-    from app.lithosphere_plate import LithospherePlate
-
-    resp = _post_generate(client, json={"seed": 1, "num_plates": 6, "node_density": 0.5, "surface": "lines"})
-
-    assert resp.status_code == 200
-    assert all(isinstance(plate, LithospherePlate) for plate in main._state["world"].plates)
-
-
-def test_generate_rejects_an_unknown_surface(client):
-    resp = _post_generate(client, json={"seed": 1, "num_plates": 6, "surface": "triangles"})
-
-    assert resp.status_code == 422
-
-
 def test_generate_returns_a_generation_event(client):
     resp = _post_generate(client, json={"seed": 1, "num_plates": 6, "continental_fraction": 0.5})
     body = resp.json()
@@ -667,7 +642,6 @@ def test_plates_endpoint_matches_directly_generated_plate_state(client):
         truth = ground_truth[entry["plate_id"]]
         assert entry["crust_type"] == truth.crust_type
         assert entry["num_points"] == truth.node_count()
-        assert entry["num_rows"] is None
         assert len(entry["outline"]) == len(truth.outline_world())
         assert len(entry["points"]) == truth.node_count()
         if truth.node_count() > 0:
@@ -680,7 +654,7 @@ def test_plates_endpoint_matches_directly_generated_plate_state(client):
 def test_plates_endpoint_reports_motion_shape_and_overlap_diagnostics(client):
     from app import mantle
 
-    _post_generate(client, json={"seed": 11, "num_plates": 9, "continental_fraction": 0.5, "surface": "lines"})
+    _post_generate(client, json={"seed": 11, "num_plates": 9, "continental_fraction": 0.5})
     plates = client.get("/world/plates").json()["plates"]
 
     for entry in plates:
@@ -690,16 +664,13 @@ def test_plates_endpoint_reports_motion_shape_and_overlap_diagnostics(client):
         assert entry["at_max_rate"] == (entry["speed_cm_per_yr"] >= mantle.rad_per_yr_to_cm_per_yr(mantle.MAX_PLATE_RATE) - 1e-9)
         assert 0.0 <= entry["submerged_fraction"] <= 1.0
         assert entry["age_steps"] >= 0
-        # Overlap is symmetric in *existence* (if A sits on B, B sits on A), even though the
-        # fractions differ; and a plate never overlaps itself.
+        # A plate never overlaps itself. (Overlap is read by containment of cell centres, so it
+        # can be one-sided where two lattices meet: A's centre inside B, but no centre of B's
+        # inside A.)
         for over in entry["overlaps"]:
             assert over["plate_id"] != entry["plate_id"]
             assert 0.0 < over["fraction"] <= 1.0
 
-    by_id = {p["plate_id"]: p for p in plates}
-    for entry in plates:
-        for over in entry["overlaps"]:
-            assert entry["plate_id"] in {o["plate_id"] for o in by_id[over["plate_id"]]["overlaps"]}
 
 
 def test_plate_at_returns_the_owning_plate_id(client):
@@ -769,7 +740,7 @@ def test_node_at_returns_the_owning_node_phi_theta_and_creation_year(client):
     assert node["plate_id"] == target["plate_id"]
     assert math.isfinite(node["phi"]) and math.isfinite(node["theta"])
     # A freshly generated world's nodes all predate creation-time tracking (see
-    # ElevationLine.node_created_years' own -1.0 sentinel).
+    # the node_created_years field's own -1.0 sentinel).
     assert node["node_created_years"] == -1.0
 
     # Round-trips through the owning plate's own frame back to (approximately) the query point.
@@ -817,33 +788,7 @@ def test_elevation_point_at_rejects_non_finite_query(client):
     assert client.get("/world/elevation_point_at", params={"lat_deg": 0, "lon_deg": "inf"}).status_code == 400
 
 
-def test_elevation_point_at_returns_point_and_line_info(client):
-    _post_generate(client, json={"seed": 12, "num_plates": 8, "surface": "lines"})
-    plates_data = client.get("/world/plates").json()["plates"]
-    target = next(p for p in plates_data if p["num_points"] > 0)
-    x, y, z = target["outline"][0]
-    lat_deg = math.degrees(math.asin(max(-1.0, min(1.0, z))))
-    lon_deg = math.degrees(math.atan2(y, x))
-
-    resp = client.get("/world/elevation_point_at", params={"lat_deg": lat_deg, "lon_deg": lon_deg})
-    assert resp.status_code == 200
-    body = resp.json()
-    assert set(body) == {"plate_id", "point", "line", "line_points_xyz"}
-    assert body["plate_id"] == target["plate_id"]
-
-    point, line = body["point"], body["line"]
-    assert math.isfinite(point["phi"]) and math.isfinite(point["theta"])
-    assert point["phi"] == line["phi"]  # a point's phi is always its line's own fixed phi
-    assert 0 <= point["index"] < line["num_points"]
-    assert 0 <= line["line_index"] < line["num_lines"]
-    assert len(body["line_points_xyz"]) == line["num_points"]
-
-    # The selected point's own entry in line_points_xyz should land back near the query.
-    px, py, pz = body["line_points_xyz"][point["index"]]
-    assert abs(px * px + py * py + pz * pz - 1.0) < 1e-6
-
-
-def test_elevation_point_at_returns_point_info_for_default_quad_surface(client):
+def test_elevation_point_at_returns_the_nearest_node(client):
     _post_generate(client, json={"seed": 12, "num_plates": 8})
     plates_data = client.get("/world/plates").json()["plates"]
     target = next(p for p in plates_data if p["num_points"] > 0)
@@ -855,25 +800,12 @@ def test_elevation_point_at_returns_point_info_for_default_quad_surface(client):
 
     assert resp.status_code == 200
     body = resp.json()
+    assert set(body) == {"plate_id", "point", "point_xyz"}
     assert body["plate_id"] == target["plate_id"]
-    assert body["line"] is None
-    assert len(body["line_points_xyz"]) == 1
-    assert body["point"]["index"] == 0
+    px, py, pz = body["point_xyz"]
+    assert math.isclose(px * px + py * py + pz * pz, 1.0, abs_tol=1e-6)
     assert math.isfinite(body["point"]["phi"])
     assert math.isfinite(body["point"]["theta"])
-
-
-def test_elevation_point_line_navigation_rejects_default_quad_surface(client):
-    _post_generate(client, json={"seed": 12, "num_plates": 8})
-    plate_id = main._state["world"].plates[0].plate_id
-
-    resp = client.get(
-        "/world/elevation_point",
-        params={"plate_id": plate_id, "line_index": 0, "point_index": 0},
-    )
-
-    assert resp.status_code == 400
-    assert "unavailable for quad" in resp.json()["detail"]
 
 
 def test_surface_node_lookup_uses_storage_neutral_node_id(client):
@@ -900,46 +832,6 @@ def test_surface_node_lookup_uses_storage_neutral_node_id(client):
         params={"plate_id": plate.plate_id, "node_id_hi": str(2**64), "node_id_lo": "0"},
     )
     assert invalid.status_code == 400
-
-
-def test_elevation_point_navigates_by_index_and_clamps_out_of_range(client):
-    _post_generate(client, json={"seed": 12, "num_plates": 8, "surface": "lines"})
-    plates_data = client.get("/world/plates").json()["plates"]
-    target = next(p for p in plates_data if p["num_points"] > 0)
-    x, y, z = target["outline"][0]
-    lat_deg = math.degrees(math.asin(max(-1.0, min(1.0, z))))
-    lon_deg = math.degrees(math.atan2(y, x))
-    clicked = client.get("/world/elevation_point_at", params={"lat_deg": lat_deg, "lon_deg": lon_deg}).json()
-
-    # Re-requesting the exact same (plate_id, line_index, point_index) is idempotent.
-    resp = client.get(
-        "/world/elevation_point",
-        params={
-            "plate_id": clicked["plate_id"],
-            "line_index": clicked["line"]["line_index"],
-            "point_index": clicked["point"]["index"],
-        },
-    )
-    assert resp.status_code == 200
-    assert resp.json() == clicked
-
-    # Wildly out-of-range indices clamp into range rather than erroring.
-    resp = client.get(
-        "/world/elevation_point",
-        params={"plate_id": clicked["plate_id"], "line_index": 10_000, "point_index": -10_000},
-    )
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["line"]["line_index"] == body["line"]["num_lines"] - 1
-    assert body["point"]["index"] == 0
-
-
-def test_elevation_point_unknown_plate_returns_404(client):
-    _post_generate(client, json={"seed": 12, "num_plates": 8})
-    resp = client.get(
-        "/world/elevation_point", params={"plate_id": 999_999, "line_index": 0, "point_index": 0},
-    )
-    assert resp.status_code == 404
 
 
 def test_rivers_and_river_at_are_empty_before_the_first_step(client):
@@ -1173,21 +1065,21 @@ def test_load_reports_a_save_from_a_newer_build_as_unsupported(client):
     assert "unsupported save format version" in resp.json()["detail"]
 
 
-def test_load_converts_a_line_save_to_quads_only_when_asked(client):
-    # docs/save-compatibility.md: before the sparse-quad cutover a line-backed save loads as
-    # lines unless the caller opts in to the one-way conversion.
-    _post_generate(client, json={"seed": 5, "num_plates": 6, "surface": "lines"})
-    _post_step(client, json={"years": 1_000_000})
-    saved = client.get("/world/save").content
+def test_load_converts_a_line_save_to_quads(client):
+    # docs/save-compatibility.md: a line-backed save converts to sparse quads on load, one way.
+    from app.elevation_lines import line_spacing_rad
+    from app.world import generate_world
 
-    as_lines = client.post("/world/load", content=saved).json()
-    assert as_lines["surface"] == "lines"
-    assert as_lines["surface_conversion"] is None
+    from .legacy_lines import line_world_like, retired_class_names
 
-    converted = client.post("/world/load?convert_lines=true", content=saved).json()
+    lines = line_world_like(generate_world(seed=5, num_plates=6, node_density=1.0), line_spacing_rad(1.0))
+    with retired_class_names():
+        saved = persistence.save_world_bytes(lines)
+
+    converted = client.post("/world/load", content=saved).json()
     assert converted["surface"] == "quad"
     assert converted["surface_conversion"]["from"] == "lines"
-    assert converted["num_plates"] == as_lines["num_plates"]
+    assert converted["num_plates"] == 6
     assert client.get("/world/render").status_code == 200
     resaved = client.get("/world/save").content
     assert client.post("/world/load", content=resaved).json()["surface"] == "quad"
@@ -1434,22 +1326,6 @@ def test_controls_debug_diagnostics_round_trip(client):
     assert resp.status_code == 200
     assert resp.json()["debug_diagnostics"] is True
     assert world.debug_diagnostics is True
-
-
-def test_corner_notch_log_stays_empty_until_diagnostics_enabled(client):
-    _post_generate(client, json={"seed": 12, "num_plates": 6, "surface": "lines"})
-    resp = client.get("/world/corner_notch_log")
-    assert resp.status_code == 200
-    assert resp.json() == {"debug_diagnostics": False, "entries": []}
-
-    client.post("/world/controls", json={"debug_diagnostics": True})
-    _post_step(client, json={"years": 1_000_000})
-    resp = client.get("/world/corner_notch_log")
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["debug_diagnostics"] is True
-    assert len(body["entries"]) > 0
-    assert all("outcome" in entry and "plate_id" in entry for entry in body["entries"])
 
 
 def test_controls_wind_model_toggle_and_validation(client):
