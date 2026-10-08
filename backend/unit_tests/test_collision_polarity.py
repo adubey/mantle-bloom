@@ -571,20 +571,50 @@ def test_plate_split_across_a_front_keeps_the_decision_on_every_daughter():
 
 
 def test_narrow_stretch_left_on_a_daughter_keeps_the_decision():
-    # A long front split so one daughter holds only a two-column stretch of the contact: four
-    # front nodes on A, a valid front, but only two of every 64 evenly spaced samples would
-    # land on it -- so mapping the split through a sample would drop it.
+    # A long front split so one daughter holds a one-column stretch of the contact: two front
+    # nodes on each side, a valid front (FRONT_MIN_NODES counts both sides). Through a
+    # 64-point sample of the front (over 120 nodes a side) it would hold fewer anchors than
+    # that and be dropped.
     world, a, b, record = _front_with_lower_a()
     assert len(record.side_points[1]) > 64
-    _split_a(world, {1: (0, 30), 10: (30, 32), 11: (32, 50)})
+    _split_a(world, {1: (0, 30), 10: (30, 31), 11: (31, 50)})
 
     lowers = {r.plate_ids: r.lower_plate_id for r in world.collision_fronts}
     assert lowers == {(1, 2): 1, (2, 10): 10, (2, 11): 11}
     narrow = next(r for r in world.collision_fronts if r.plate_ids == (2, 10))
-    assert len(narrow.side_points[10]) >= cp.FRONT_MIN_NODES
+    assert {pid: len(points) for pid, points in narrow.side_points.items()} == {10: 2, 2: 2}
     _step(world)
     assert world.collision_polarity_stats["fronts_created"] == 1
     assert {r.plate_ids: r.lower_plate_id for r in world.collision_fronts} == lowers
+
+
+def test_a_small_front_survives_its_plate_being_rehomed():
+    # A three-node front -- the minimum, split two nodes to one across the contact. Absorbing
+    # one of its plates into another is re-homing, not a split, so the record must survive
+    # however few nodes it has on that side.
+    world, a, b, record = _front_with_lower_a()
+    record.side_points = {pid: points[:2] if pid == 1 else points[:1] for pid, points in record.side_points.items()}
+    frames = cp.begin_topology(world)
+    world.plates = [_plate(5, a.cell_keys), b]
+    cp.note_lineage(world, 1, 5)
+    cp.end_topology(world, frames)
+    assert world.collision_fronts == [record]
+    assert record.plate_ids == (2, 5) and record.lower_plate_id == 5
+    assert world.collision_polarity_stats["fronts_dropped_topology"] == 0
+
+
+def test_a_front_seen_from_one_side_survives_its_plate_being_rehomed():
+    # A front can be detected with nodes on one plate only, so its record stores none for the
+    # other. Re-homing the side it does have must keep it.
+    world, a, b, record = _front_with_lower_a()
+    del record.side_points[2]
+    frames = cp.begin_topology(world)
+    world.plates = [_plate(5, a.cell_keys), b]
+    cp.note_lineage(world, 1, 5)
+    cp.end_topology(world, frames)
+    assert world.collision_fronts == [record]
+    assert record.plate_ids == (2, 5) and record.lower_plate_id == 5
+    assert set(record.side_points) == {5}
 
 
 def test_merging_the_pair_drops_the_front_and_merging_a_third_plate_rehomes_it():

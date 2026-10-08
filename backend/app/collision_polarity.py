@@ -877,7 +877,8 @@ def end_topology(world: "World", frames_before: dict[int, np.ndarray]) -> None:
     merged into another, split, or fragmented hands each stored point to whichever of its
     descendants now holds that ground; a plate that vanished with no descendant takes its
     evidence and fronts with it. A front split between descendants keeps a record for every
-    stretch of contact that survives, all with the parent's frozen decision. A stretch whose
+    stretch of contact that survives (at least `FRONT_MIN_NODES` nodes across both sides,
+    except the largest, which is always kept), all with the parent's frozen decision. A stretch whose
     two sides end up on one plate is dropped: the suture is now internal."""
     lineage = world.topology_lineage or []
     world.topology_lineage = None
@@ -952,42 +953,45 @@ def end_topology(world: "World", frames_before: dict[int, np.ndarray]) -> None:
             kept.append(record)
             continue
         # Each side's parts: (plate now holding them, their world positions), one per
-        # descendant holding at least FRONT_MIN_NODES of the front's nodes.
+        # descendant holding any of the front's nodes on that side.
         parts: dict[int, list[tuple[int, np.ndarray]]] = {}
         for side in record.plate_ids:
             stored = record.side_points.get(side, np.zeros((0, 3)))
             if not changed(side):
-                parts[side] = [(side, geometry.to_world(live[side].frame, stored))] if len(stored) else []
+                # Unchanged, it stays one part -- even with no stored nodes, as a front detected
+                # from the other side only has.
+                parts[side] = [(side, geometry.to_world(live[side].frame, stored))]
                 continue
             world_xyz, owner = owners(side, stored)
-            parts[side] = [
-                (int(pid), world_xyz[owner == pid])
-                for pid in np.unique(owner[owner >= 0])
-                if np.count_nonzero(owner == pid) >= FRONT_MIN_NODES
-            ]
+            parts[side] = [(int(pid), world_xyz[owner == pid]) for pid in np.unique(owner[owner >= 0])]
         a, b = record.plate_ids
         if not parts[a] or not parts[b]:
             stats["fronts_dropped_topology"] += 1
             continue
-        # Pair each part with the nearest part across the contact, from both sides, so a split
-        # on either side (or both) leaves one record per surviving stretch of contact.
-        combos: set[tuple[int, int]] = set()
-        for k, (_, points) in enumerate(parts[a]):
-            combos.add((k, _nearest_part(points, parts[b])))
-        for k, (_, points) in enumerate(parts[b]):
-            combos.add((_nearest_part(points, parts[a]), k))
+        # Each node pairs with the part across the contact nearest to it. A pair of parts that
+        # some node pairs is a stretch of contact; it holds its nodes on both sides that chose
+        # that pairing. So a split on either side (or both) leaves one piece per surviving
+        # stretch, and the side that didn't split is shared out among them.
+        partner = {a: _partners(parts[a], parts[b]), b: _partners(parts[b], parts[a])}
+        combos = {(ka, int(kb)) for ka, near in enumerate(partner[a]) for kb in np.unique(near)}
+        combos |= {(int(ka), kb) for kb, near in enumerate(partner[b]) for ka in np.unique(near)}
         pieces = []
         for ka, kb in sorted(combos):
             (pid_a, points_a), (pid_b, points_b) = parts[a][ka], parts[b][kb]
+            points_a = points_a[partner[a][ka] == kb]
+            points_b = points_b[partner[b][kb] == ka]
             if pid_a == pid_b:
                 stats["fronts_fused"] += 1
                 continue
             pieces.append((len(points_a) + len(points_b), pid_a, pid_b, points_a, points_b))
+        # The largest piece keeps the record whatever its size, as re-homing always has. Every
+        # other piece is a stretch a split left on another daughter: a child with the same
+        # frozen decision when it holds at least FRONT_MIN_NODES nodes across both sides (the
+        # threshold front detection applies), envelope fuzz otherwise.
+        pieces.sort(key=lambda piece: (-piece[0], piece[1], piece[2]))
+        pieces = pieces[:1] + [piece for piece in pieces[1:] if piece[0] >= FRONT_MIN_NODES]
         if not pieces:
             continue
-        # The largest piece keeps the record; every other surviving stretch is a child with the
-        # same frozen decision.
-        pieces.sort(key=lambda piece: (-piece[0], piece[1], piece[2]))
         for n, (_, pid_a, pid_b, points_a, points_b) in enumerate(pieces):
             target = record if n == 0 else _new_record(world, record.plate_ids, record.established_years)
             if n > 0:
@@ -1003,17 +1007,19 @@ def end_topology(world: "World", frames_before: dict[int, np.ndarray]) -> None:
             target.lower_plate_id = pid_a if record.lower_plate_id == a else pid_b
             target.plate_ids = (min(pid_a, pid_b), max(pid_a, pid_b))
             target.side_points = {
-                pid_a: geometry.to_local(live[pid_a].frame, points_a),
-                pid_b: geometry.to_local(live[pid_b].frame, points_b),
+                pid: geometry.to_local(live[pid].frame, points) for pid, points in ((pid_a, points_a), (pid_b, points_b)) if len(points)
             }
             kept.append(target)
     world.collision_fronts = kept
 
 
-def _nearest_part(points: np.ndarray, parts: list[tuple[int, np.ndarray]]) -> int:
-    """Index of the part in `parts` with a point nearest any of `points`, ties to the first."""
-    gaps = [float(cKDTree(other).query(points)[0].min()) for _, other in parts]
-    return int(np.argmin(gaps))
+def _partners(parts: list[tuple[int, np.ndarray]], others: list[tuple[int, np.ndarray]]) -> list[np.ndarray]:
+    """For each part's points, the index of the part in `others` nearest each point (ties to
+    the first). Every point pairs with a lone part, which may hold no points itself."""
+    if len(others) == 1:
+        return [np.zeros(len(points), dtype=int) for _, points in parts]
+    trees = [cKDTree(points) for _, points in others]
+    return [np.argmin(np.stack([tree.query(points)[0] for tree in trees]), axis=0) for _, points in parts]
 
 
 def note_lineage(world: "World", parent_id: int, child_id: int) -> None:
