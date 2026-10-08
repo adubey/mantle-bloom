@@ -603,6 +603,20 @@ def test_a_small_front_survives_its_plate_being_rehomed():
     assert world.collision_polarity_stats["fronts_dropped_topology"] == 0
 
 
+def test_a_front_seen_from_one_side_survives_its_plate_being_rehomed():
+    # A front can be detected with nodes on one plate only, so its record stores none for the
+    # other. Re-homing the side it does have must keep it.
+    world, a, b, record = _front_with_lower_a()
+    del record.side_points[2]
+    frames = cp.begin_topology(world)
+    world.plates = [_plate(5, a.cell_keys), b]
+    cp.note_lineage(world, 1, 5)
+    cp.end_topology(world, frames)
+    assert world.collision_fronts == [record]
+    assert record.plate_ids == (2, 5) and record.lower_plate_id == 5
+    assert set(record.side_points) == {5}
+
+
 def test_merging_the_pair_drops_the_front_and_merging_a_third_plate_rehomes_it():
     world, a, b = _front_with_history()
     frames = cp.begin_topology(world)

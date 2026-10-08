@@ -958,7 +958,9 @@ def end_topology(world: "World", frames_before: dict[int, np.ndarray]) -> None:
         for side in record.plate_ids:
             stored = record.side_points.get(side, np.zeros((0, 3)))
             if not changed(side):
-                parts[side] = [(side, geometry.to_world(live[side].frame, stored))] if len(stored) else []
+                # Unchanged, it stays one part -- even with no stored nodes, as a front detected
+                # from the other side only has.
+                parts[side] = [(side, geometry.to_world(live[side].frame, stored))]
                 continue
             world_xyz, owner = owners(side, stored)
             parts[side] = [(int(pid), world_xyz[owner == pid]) for pid in np.unique(owner[owner >= 0])]
@@ -970,7 +972,7 @@ def end_topology(world: "World", frames_before: dict[int, np.ndarray]) -> None:
         # some node pairs is a stretch of contact; it holds its nodes on both sides that chose
         # that pairing. So a split on either side (or both) leaves one piece per surviving
         # stretch, and the side that didn't split is shared out among them.
-        partner = {a: _nearest_parts(parts[a], parts[b]), b: _nearest_parts(parts[b], parts[a])}
+        partner = {a: _partners(parts[a], parts[b]), b: _partners(parts[b], parts[a])}
         combos = {(ka, int(kb)) for ka, near in enumerate(partner[a]) for kb in np.unique(near)}
         combos |= {(int(ka), kb) for kb, near in enumerate(partner[b]) for ka in np.unique(near)}
         pieces = []
@@ -1011,9 +1013,11 @@ def end_topology(world: "World", frames_before: dict[int, np.ndarray]) -> None:
     world.collision_fronts = kept
 
 
-def _nearest_parts(parts: list[tuple[int, np.ndarray]], others: list[tuple[int, np.ndarray]]) -> list[np.ndarray]:
+def _partners(parts: list[tuple[int, np.ndarray]], others: list[tuple[int, np.ndarray]]) -> list[np.ndarray]:
     """For each part's points, the index of the part in `others` nearest each point (ties to
-    the first)."""
+    the first). Every point pairs with a lone part, which may hold no points itself."""
+    if len(others) == 1:
+        return [np.zeros(len(points), dtype=int) for _, points in parts]
     trees = [cKDTree(points) for _, points in others]
     return [np.argmin(np.stack([tree.query(points)[0] for tree in trees]), axis=0) for _, points in parts]
 
