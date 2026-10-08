@@ -56,7 +56,8 @@ when that cell is active, otherwise the nearest active cell of any plate.
   isostatic change. Clamping is the only place volume leaves, and it is reported.
 
 **World.** Plate ids, `collision_progress`/`overlap_progress`, faults (plate id plus plate-local
-traces), magma parcels and the world-space logs carry over unchanged. Node-order-keyed caches
+traces), collision evidence and front records (plate id plus plate-local points), magma parcels
+and the world-space logs carry over unchanged. Node-order-keyed caches
 are dropped. The line-row tracker `_leading_row_retreat_years` has no quad meaning and is not
 carried. The eustatic water budget is re-snapshotted at the current sea level against the
 quad hypsometry, so the shoreline doesn't jump on the first step. `World.surface_conversion`
@@ -1085,6 +1086,8 @@ def _reset_world_caches(world: "World") -> None:
         "node_healpix_index_cache",
         "node_kdtree_relief_cache",
         "node_hillshade_cache",
+        "collision_polarity_frame",
+        "boundary_search_cache",
     ):
         if hasattr(world, name):
             setattr(world, name, None)

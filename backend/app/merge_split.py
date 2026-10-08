@@ -34,7 +34,7 @@ import numpy as np
 from scipy.cluster.vq import kmeans2
 from scipy.spatial import cKDTree
 
-from . import continental_ledger, cratons, geometry, mantle, mobile_cover, phase_budget, plates as plates_mod
+from . import collision_polarity, continental_ledger, cratons, geometry, mantle, mobile_cover, phase_budget, plates as plates_mod
 from .boundary import MERGE_THRESHOLD_RAD, TRANSFORM_RATE_THRESHOLD, closing_rate
 from .elevation_lines import (
     DEFRAG_CONNECT_RADIUS_MULT,
@@ -681,6 +681,7 @@ def _fuse_plates(world: "World", keep: Plate, absorb: Plate, phase: str) -> None
         pair = [phase_budget.snapshot(keep, spacing_rad), phase_budget.snapshot(absorb, spacing_rad)]
         before = phase_budget.Snapshot(*(np.concatenate(parts) for parts in zip(*pair)))
     keep.merge_with(absorb, spacing_rad, coverage_radius_rad, other_points)
+    collision_polarity.note_lineage(world, absorb.plate_id, keep.plate_id)
     # Continental material stacked past the suture cap that the merge couldn't place leaves
     # with the crust that carried it, booked as collision subduction (issue #276).
     material = keep.collect("continental_material_m")
@@ -874,6 +875,8 @@ def defragment_plates(world: "World") -> list[str]:
 
         replacements, ids_consumed, fragments = result
         world.next_plate_id += ids_consumed
+        for piece in (*replacements, *fragments):
+            collision_polarity.note_lineage(world, plate.plate_id, piece.plate_id)
         new_plates.extend(replacements)
         stranded.extend(fragments)
         if len(replacements) > 1:
@@ -1043,6 +1046,8 @@ def apply_topology_changes(world: "World", years: float) -> list[str]:
         else:
             split_done = True
             new_plates.extend(split_result)
+            for piece in split_result:
+                collision_polarity.note_lineage(world, plate.plate_id, piece.plate_id)
             events.append(
                 f"Plate {plate.plate_id} split into plates {split_result[0].plate_id} "
                 f"and {split_result[1].plate_id}."

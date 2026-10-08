@@ -42,7 +42,7 @@ from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import breadth_first_order, connected_components
 from scipy.spatial import cKDTree
 
-from . import continental_ledger, cratons, geometry, lithosphere, mobile_cover, orogeny, phase_budget, rheology, terrain_noise
+from . import collision_polarity, continental_ledger, cratons, geometry, lithosphere, mobile_cover, orogeny, phase_budget, rheology, terrain_noise
 from .elevation_lines import (
     COVERAGE_RADIUS_MULT,
     CRUST_TYPE_CONTINENTAL,
@@ -397,6 +397,11 @@ def _retreat(
     world.record_removed_points(own_points[removed], plate.plate_id)
     codes = plate.collect("crust_type_code")
     continental = effective_is_continental_from_codes(codes, plate.crust_type == "continental")
+    # Oceanic floor going under a neighbour is the subduction history a later continental
+    # collision inherits its polarity from (issue #318).
+    collision_polarity.record_consumption(
+        world, plate, own_points[removed], ~continental[removed], ctx.inputs.neighbor_plate_id[removed], ctx.neighbours
+    )
     # A continental terrane keeps being continental even when it rides an oceanic plate.
     # Treat those cells like the explicit continent-continent suture donors instead of
     # subducting them with their nominal owning plate (issue #253).

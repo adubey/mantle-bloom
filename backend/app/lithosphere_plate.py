@@ -649,6 +649,16 @@ class BoundaryContext:
     fault_noise: SphereNoise | None
 
 
+def continental_arc_band(plate: Plate, inputs: torque.BoundaryForceInputs, closing_rate: np.ndarray) -> np.ndarray:
+    """A continental plate's own nodes within reach of a converging *oceanic* neighbour plate
+    -- the arc band `boundary_context` thickens and grows arc crust on. A model cue, not an
+    observed slab: it follows continental ownership, an oceanic neighbour and positive
+    closing, with no independent test of which way the slab dips."""
+    if plate.crust_type != "continental":
+        return np.zeros(len(inputs.own_points), dtype=bool)
+    return inputs.neighbor_is_oceanic & np.isfinite(inputs.dist_to_neighbor) & (closing_rate > rheology.ARC_MIN_CONVERGENCE_M_PER_S)
+
+
 def boundary_context(
     world: "World",  # noqa: F821
     plate: Plate,
@@ -684,13 +694,20 @@ def boundary_context(
     spacing_rad = line_spacing_rad(world.node_density)
     reach_rad = torque.BOUNDARY_FORCE_REACH_MULTIPLIER * spacing_rad
 
-    neighbours = plate.get_neighbours(other_plates, threshold_rad=reach_rad)
-    inputs = torque.gather_boundary_force_inputs(plate, neighbours, spacing_rad, reach_rad)
+    # The step's shared boundary searches, when the collision-polarity prepass ran this step
+    # (issue #318): a neighbour that hasn't deformed yet is answered from the prepass's own
+    # search -- see torque.BoundarySearchCache.
+    cache = getattr(world, "boundary_search_cache", None)
+    if cache is None:
+        neighbours = plate.get_neighbours(other_plates, threshold_rad=reach_rad)
+    else:
+        neighbours = cache.neighbours(plate, other_plates, reach_rad)
+    inputs = torque.gather_boundary_force_inputs(plate, neighbours, spacing_rad, reach_rad, cache)
     # Motion-based: `convergent` is the whole converging band (not just the nodes that
     # already overlap a neighbour polygon), so a boundary builds an orogen before any overlap
     # accumulates; `contested` (the geometric overlap subset, folded into `convergent`) still
     # gates node deletion / continental retreat.
-    convergent, divergent, transform, contested = torque.classify_boundary_nodes(plate, neighbours, inputs, reach_rad)
+    convergent, divergent, transform, contested = torque.classify_boundary_nodes(plate, neighbours, inputs, reach_rad, cache)
 
     # Fault-localised deformation (World.fault_deformation_mode == "fault"): scale this
     # step's convergent thickening and divergent thinning by proximity to an active fault
@@ -738,14 +755,9 @@ def boundary_context(
     # decline). `arc_intensity` fades from 1 at the contact to ~0.3 at the band edge.
     # Feeds both the magmatic Hc thickening and the arc-crust growth seed. See
     # ARC_MARGIN_SEED_HC_M.
-    arc_band = np.zeros(len(own_points), dtype=bool)
+    arc_band = continental_arc_band(plate, inputs, closing_rate)
     arc_intensity = np.zeros(len(own_points))
     if plate.crust_type == "continental":
-        arc_band = (
-            inputs.neighbor_is_oceanic
-            & np.isfinite(inputs.dist_to_neighbor)
-            & (closing_rate > rheology.ARC_MIN_CONVERGENCE_M_PER_S)
-        )
         arc_intensity = np.where(arc_band, np.clip(1.0 - 0.7 * (inputs.dist_to_neighbor / reach_rad), 0.3, 1.0), 0.0)
 
     years_myr = years / 1_000_000.0

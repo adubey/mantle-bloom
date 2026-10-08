@@ -88,6 +88,8 @@ dropping it.
 | topology/geometry revisions, outline/row-lookup/KD-tree caches | dropped (derived) |
 | `collision_progress`, `overlap_progress`, `pinned_omegas` (plate-id keyed) | kept |
 | faults and fault systems (plate id + plate-local trace) | kept: frames are unchanged |
+| collision evidence and front records (plate id + plate-local points) | kept: frames are unchanged |
+| `collision_polarity_frame` (this step's per-node masks) | dropped; the next step's prepass rebuilds it |
 | magma parcels, earthquakes, gap/stranded-basin tracks, removed-points and corner-notch logs (world-space) | kept |
 | `stats_history`, `phase_budget`, `events` | kept; the conversion is logged as an event |
 | climate, hydrology, erosion and node-index caches | dropped; recomputed on the next use |

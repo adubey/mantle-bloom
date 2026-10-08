@@ -1,0 +1,977 @@
+{
+ "save": "/Users/adubey/Downloads/mantle-bloom-seed997271774-87400000y.mbworld",
+ "merges": 242,
+ "conflicts": [
+  {
+   "elapsed_myr": 98.4,
+   "pair": [
+    2,
+    22
+   ],
+   "merged_front_nodes": {
+    "2": 44,
+    "22": 49
+   },
+   "survivor": {
+    "front_id": 35,
+    "lower": 22,
+    "source": "slab",
+    "scope": "front",
+    "ambiguous": false,
+    "fallback_basis": null,
+    "age_myr": 11.0,
+    "since_contact_myr": 0.1,
+    "contact_steps": 31,
+    "parent_id": 5,
+    "stored_points": {
+     "2": 42,
+     "22": 49
+    },
+    "votes": {
+     "consumption": 0.0,
+     "slab": 5.0,
+     "arc": 5.0
+    }
+   },
+   "survivor_coverage": 0.956989247311828,
+   "absorbed": {
+    "front_id": 46,
+    "lower": 2,
+    "source": "slab",
+    "scope": "front",
+    "ambiguous": false,
+    "fallback_basis": null,
+    "age_myr": 0.2,
+    "since_contact_myr": 0.1,
+    "contact_steps": 2,
+    "parent_id": null,
+    "stored_points": {
+     "22": 3
+    },
+    "votes": {
+     "consumption": -3.0,
+     "slab": -13.0,
+     "arc": -85.0
+    }
+   },
+   "absorbed_coverage": 0.043010752688172046,
+   "fronts_this_step": 3
+  },
+  {
+   "elapsed_myr": 99.4,
+   "pair": [
+    2,
+    22
+   ],
+   "merged_front_nodes": {
+    "2": 20,
+    "22": 16
+   },
+   "survivor": {
+    "front_id": 5,
+    "lower": 22,
+    "source": "slab",
+    "scope": "front",
+    "ambiguous": false,
+    "fallback_basis": null,
+    "age_myr": 12.0,
+    "since_contact_myr": 0.1,
+    "contact_steps": 120,
+    "parent_id": null,
+    "stored_points": {
+     "2": 17,
+     "22": 13
+    },
+    "votes": {
+     "consumption": 0.0,
+     "slab": 5.0,
+     "arc": 5.0
+    }
+   },
+   "survivor_coverage": 0.8888888888888888,
+   "absorbed": {
+    "front_id": 52,
+    "lower": 2,
+    "source": "consumption",
+    "scope": "pair",
+    "ambiguous": false,
+    "fallback_basis": null,
+    "age_myr": 0.1,
+    "since_contact_myr": 0.1,
+    "contact_steps": 1,
+    "parent_id": null,
+    "stored_points": {
+     "22": 3
+    },
+    "votes": {
+     "consumption": -4.0,
+     "slab": 0.0,
+     "arc": 0.0
+    }
+   },
+   "absorbed_coverage": 0.1111111111111111,
+   "fronts_this_step": 4
+  },
+  {
+   "elapsed_myr": 100.4,
+   "pair": [
+    20,
+    21
+   ],
+   "merged_front_nodes": {
+    "20": 50,
+    "21": 53
+   },
+   "survivor": {
+    "front_id": 10,
+    "lower": 21,
+    "source": "fallback",
+    "scope": "fallback",
+    "ambiguous": false,
+    "fallback_basis": "motion",
+    "age_myr": 13.0,
+    "since_contact_myr": 0.1,
+    "contact_steps": 130,
+    "parent_id": null,
+    "stored_points": {
+     "20": 44,
+     "21": 52
+    },
+    "votes": {}
+   },
+   "survivor_coverage": 0.9514563106796117,
+   "absorbed": {
+    "front_id": 56,
+    "lower": 20,
+    "source": "fallback",
+    "scope": "fallback",
+    "ambiguous": true,
+    "fallback_basis": "motion",
+    "age_myr": 0.5,
+    "since_contact_myr": 0.1,
+    "contact_steps": 5,
+    "parent_id": null,
+    "stored_points": {
+     "20": 3,
+     "21": 1
+    },
+    "votes": {
+     "consumption": 2.0,
+     "slab": 0.0,
+     "arc": 0.0
+    }
+   },
+   "absorbed_coverage": 0.05825242718446602,
+   "fronts_this_step": 2
+  },
+  {
+   "elapsed_myr": 101.2,
+   "pair": [
+    3,
+    20
+   ],
+   "merged_front_nodes": {
+    "3": 32,
+    "20": 18
+   },
+   "survivor": {
+    "front_id": 7,
+    "lower": 20,
+    "source": "fallback",
+    "scope": "fallback",
+    "ambiguous": false,
+    "fallback_basis": "motion",
+    "age_myr": 13.8,
+    "since_contact_myr": 0.1,
+    "contact_steps": 138,
+    "parent_id": null,
+    "stored_points": {
+     "3": 12,
+     "20": 11
+    },
+    "votes": {}
+   },
+   "survivor_coverage": 0.48,
+   "absorbed": {
+    "front_id": 22,
+    "lower": 3,
+    "source": "consumption",
+    "scope": "front",
+    "ambiguous": false,
+    "fallback_basis": null,
+    "age_myr": 10.6,
+    "since_contact_myr": 0.1,
+    "contact_steps": 94,
+    "parent_id": null,
+    "stored_points": {
+     "3": 18,
+     "20": 6
+    },
+    "votes": {
+     "consumption": -11.0,
+     "slab": 0.0,
+     "arc": 0.0
+    }
+   },
+   "absorbed_coverage": 0.54,
+   "fronts_this_step": 3
+  },
+  {
+   "elapsed_myr": 101.4,
+   "pair": [
+    3,
+    20
+   ],
+   "merged_front_nodes": {
+    "3": 35,
+    "20": 18
+   },
+   "survivor": {
+    "front_id": 7,
+    "lower": 20,
+    "source": "fallback",
+    "scope": "fallback",
+    "ambiguous": false,
+    "fallback_basis": "motion",
+    "age_myr": 14.0,
+    "since_contact_myr": 0.1,
+    "contact_steps": 140,
+    "parent_id": null,
+    "stored_points": {
+     "3": 30,
+     "20": 18
+    },
+    "votes": {}
+   },
+   "survivor_coverage": 0.9245283018867925,
+   "absorbed": {
+    "front_id": 63,
+    "lower": 3,
+    "source": "consumption",
+    "scope": "front",
+    "ambiguous": false,
+    "fallback_basis": null,
+    "age_myr": 10.8,
+    "since_contact_myr": 0.1,
+    "contact_steps": 4,
+    "parent_id": 22,
+    "stored_points": {
+     "3": 4
+    },
+    "votes": {
+     "consumption": -11.0,
+     "slab": 0.0,
+     "arc": 0.0
+    }
+   },
+   "absorbed_coverage": 0.09433962264150944,
+   "fronts_this_step": 2
+  },
+  {
+   "elapsed_myr": 107.5,
+   "pair": [
+    2,
+    22
+   ],
+   "merged_front_nodes": {
+    "2": 50,
+    "22": 47
+   },
+   "survivor": {
+    "front_id": 35,
+    "lower": 22,
+    "source": "slab",
+    "scope": "front",
+    "ambiguous": false,
+    "fallback_basis": null,
+    "age_myr": 20.1,
+    "since_contact_myr": 0.1,
+    "contact_steps": 122,
+    "parent_id": 5,
+    "stored_points": {
+     "2": 44,
+     "22": 38
+    },
+    "votes": {
+     "consumption": 0.0,
+     "slab": 5.0,
+     "arc": 5.0
+    }
+   },
+   "survivor_coverage": 0.8556701030927835,
+   "absorbed": {
+    "front_id": 64,
+    "lower": 2,
+    "source": "arc",
+    "scope": "front",
+    "ambiguous": false,
+    "fallback_basis": null,
+    "age_myr": 6.2,
+    "since_contact_myr": 0.1,
+    "contact_steps": 62,
+    "parent_id": null,
+    "stored_points": {
+     "2": 6,
+     "22": 6
+    },
+    "votes": {
+     "consumption": 0.0,
+     "slab": 0.0,
+     "arc": -74.0
+    }
+   },
+   "absorbed_coverage": 0.14432989690721648,
+   "fronts_this_step": 2
+  },
+  {
+   "elapsed_myr": 114.7,
+   "pair": [
+    3,
+    20
+   ],
+   "merged_front_nodes": {
+    "3": 42,
+    "20": 6
+   },
+   "survivor": {
+    "front_id": 76,
+    "lower": 3,
+    "source": "consumption",
+    "scope": "front",
+    "ambiguous": false,
+    "fallback_basis": null,
+    "age_myr": 10.2,
+    "since_contact_myr": 0.1,
+    "contact_steps": 65,
+    "parent_id": null,
+    "stored_points": {
+     "3": 5,
+     "20": 3
+    },
+    "votes": {
+     "consumption": -20.0,
+     "slab": 0.0,
+     "arc": 0.0
+    }
+   },
+   "survivor_coverage": 0.1875,
+   "absorbed": {
+    "front_id": 146,
+    "lower": 20,
+    "source": "fallback",
+    "scope": "fallback",
+    "ambiguous": false,
+    "fallback_basis": "motion",
+    "age_myr": 27.3,
+    "since_contact_myr": 0.1,
+    "contact_steps": 1,
+    "parent_id": 7,
+    "stored_points": {
+     "3": 8
+    },
+    "votes": {}
+   },
+   "absorbed_coverage": 0.20833333333333334,
+   "fronts_this_step": 3
+  },
+  {
+   "elapsed_myr": 115.1,
+   "pair": [
+    1,
+    4
+   ],
+   "merged_front_nodes": {
+    "1": 76,
+    "4": 40
+   },
+   "survivor": {
+    "front_id": 125,
+    "lower": 4,
+    "source": "inherited",
+    "scope": "record",
+    "ambiguous": false,
+    "fallback_basis": null,
+    "age_myr": 27.7,
+    "since_contact_myr": 0.1,
+    "contact_steps": 26,
+    "parent_id": 116,
+    "stored_points": {
+     "1": 62,
+     "4": 41
+    },
+    "votes": {}
+   },
+   "survivor_coverage": 0.8793103448275862,
+   "absorbed": {
+    "front_id": 85,
+    "lower": 1,
+    "source": "slab",
+    "scope": "front",
+    "ambiguous": false,
+    "fallback_basis": null,
+    "age_myr": 7.7,
+    "since_contact_myr": 0.1,
+    "contact_steps": 64,
+    "parent_id": null,
+    "stored_points": {
+     "1": 14,
+     "4": 2
+    },
+    "votes": {
+     "consumption": -3.0,
+     "slab": -334.0,
+     "arc": -224.0
+    }
+   },
+   "absorbed_coverage": 0.12931034482758622,
+   "fronts_this_step": 3
+  },
+  {
+   "elapsed_myr": 115.2,
+   "pair": [
+    3,
+    20
+   ],
+   "merged_front_nodes": {
+    "3": 68,
+    "20": 37
+   },
+   "survivor": {
+    "front_id": 7,
+    "lower": 20,
+    "source": "fallback",
+    "scope": "fallback",
+    "ambiguous": false,
+    "fallback_basis": "motion",
+    "age_myr": 27.8,
+    "since_contact_myr": 0.1,
+    "contact_steps": 278,
+    "parent_id": null,
+    "stored_points": {
+     "3": 38,
+     "20": 32
+    },
+    "votes": {}
+   },
+   "survivor_coverage": 0.7047619047619048,
+   "absorbed": {
+    "front_id": 150,
+    "lower": 3,
+    "source": "consumption",
+    "scope": "front",
+    "ambiguous": false,
+    "fallback_basis": null,
+    "age_myr": 27.8,
+    "since_contact_myr": 0.1,
+    "contact_steps": 1,
+    "parent_id": 148,
+    "stored_points": {
+     "3": 27,
+     "20": 4
+    },
+    "votes": {
+     "consumption": -20.0,
+     "slab": 0.0,
+     "arc": 0.0
+    }
+   },
+   "absorbed_coverage": 0.3047619047619048,
+   "fronts_this_step": 2
+  },
+  {
+   "elapsed_myr": 116.3,
+   "pair": [
+    3,
+    20
+   ],
+   "merged_front_nodes": {
+    "3": 89,
+    "20": 56
+   },
+   "survivor": {
+    "front_id": 7,
+    "lower": 20,
+    "source": "fallback",
+    "scope": "fallback",
+    "ambiguous": false,
+    "fallback_basis": "motion",
+    "age_myr": 28.9,
+    "since_contact_myr": 0.1,
+    "contact_steps": 289,
+    "parent_id": null,
+    "stored_points": {
+     "3": 64,
+     "20": 41
+    },
+    "votes": {}
+   },
+   "survivor_coverage": 0.7655172413793103,
+   "absorbed": {
+    "front_id": 148,
+    "lower": 3,
+    "source": "consumption",
+    "scope": "front",
+    "ambiguous": false,
+    "fallback_basis": null,
+    "age_myr": 28.9,
+    "since_contact_myr": 0.1,
+    "contact_steps": 15,
+    "parent_id": 76,
+    "stored_points": {
+     "3": 19,
+     "20": 13
+    },
+    "votes": {
+     "consumption": -20.0,
+     "slab": 0.0,
+     "arc": 0.0
+    }
+   },
+   "absorbed_coverage": 0.2413793103448276,
+   "fronts_this_step": 2
+  },
+  {
+   "elapsed_myr": 119.5,
+   "pair": [
+    3,
+    21
+   ],
+   "merged_front_nodes": {
+    "3": 109,
+    "21": 80
+   },
+   "survivor": {
+    "front_id": 166,
+    "lower": 3,
+    "source": "arc",
+    "scope": "front",
+    "ambiguous": false,
+    "fallback_basis": null,
+    "age_myr": 32.1,
+    "since_contact_myr": 0.1,
+    "contact_steps": 13,
+    "parent_id": 8,
+    "stored_points": {
+     "3": 64,
+     "21": 64
+    },
+    "votes": {
+     "consumption": 0.0,
+     "slab": 0.0,
+     "arc": -3.0
+    }
+   },
+   "survivor_coverage": 0.9788359788359788,
+   "absorbed": {
+    "front_id": 179,
+    "lower": 21,
+    "source": "consumption",
+    "scope": "pair",
+    "ambiguous": false,
+    "fallback_basis": null,
+    "age_myr": 0.1,
+    "since_contact_myr": 0.1,
+    "contact_steps": 1,
+    "parent_id": null,
+    "stored_points": {
+     "3": 2,
+     "21": 1
+    },
+    "votes": {
+     "consumption": 43.0,
+     "slab": 0.0,
+     "arc": 0.0
+    }
+   },
+   "absorbed_coverage": 0.026455026455026454,
+   "fronts_this_step": 3
+  },
+  {
+   "elapsed_myr": 120.1,
+   "pair": [
+    3,
+    21
+   ],
+   "merged_front_nodes": {
+    "3": 111,
+    "21": 78
+   },
+   "survivor": {
+    "front_id": 166,
+    "lower": 3,
+    "source": "arc",
+    "scope": "front",
+    "ambiguous": false,
+    "fallback_basis": null,
+    "age_myr": 32.7,
+    "since_contact_myr": 0.1,
+    "contact_steps": 19,
+    "parent_id": 8,
+    "stored_points": {
+     "3": 64,
+     "21": 64
+    },
+    "votes": {
+     "consumption": 0.0,
+     "slab": 0.0,
+     "arc": -3.0
+    }
+   },
+   "survivor_coverage": 1.0,
+   "absorbed": {
+    "front_id": 186,
+    "lower": 21,
+    "source": "consumption",
+    "scope": "pair",
+    "ambiguous": false,
+    "fallback_basis": null,
+    "age_myr": 0.1,
+    "since_contact_myr": 0.1,
+    "contact_steps": 1,
+    "parent_id": null,
+    "stored_points": {
+     "3": 2,
+     "21": 1
+    },
+    "votes": {
+     "consumption": 49.0,
+     "slab": 0.0,
+     "arc": 0.0
+    }
+   },
+   "absorbed_coverage": 0.005291005291005291,
+   "fronts_this_step": 3
+  },
+  {
+   "elapsed_myr": 120.4,
+   "pair": [
+    3,
+    21
+   ],
+   "merged_front_nodes": {
+    "3": 127,
+    "21": 114
+   },
+   "survivor": {
+    "front_id": 166,
+    "lower": 3,
+    "source": "arc",
+    "scope": "front",
+    "ambiguous": false,
+    "fallback_basis": null,
+    "age_myr": 33.0,
+    "since_contact_myr": 0.1,
+    "contact_steps": 22,
+    "parent_id": 8,
+    "stored_points": {
+     "3": 64,
+     "21": 64
+    },
+    "votes": {
+     "consumption": 0.0,
+     "slab": 0.0,
+     "arc": -3.0
+    }
+   },
+   "survivor_coverage": 0.8215767634854771,
+   "absorbed": {
+    "front_id": 187,
+    "lower": 21,
+    "source": "consumption",
+    "scope": "pair",
+    "ambiguous": false,
+    "fallback_basis": null,
+    "age_myr": 0.2,
+    "since_contact_myr": 0.1,
+    "contact_steps": 2,
+    "parent_id": null,
+    "stored_points": {
+     "3": 2,
+     "21": 2
+    },
+    "votes": {
+     "consumption": 49.0,
+     "slab": 0.0,
+     "arc": 0.0
+    }
+   },
+   "absorbed_coverage": 0.04149377593360996,
+   "fronts_this_step": 2
+  },
+  {
+   "elapsed_myr": 124.2,
+   "pair": [
+    3,
+    21
+   ],
+   "merged_front_nodes": {
+    "3": 338,
+    "21": 349
+   },
+   "survivor": {
+    "front_id": 8,
+    "lower": 3,
+    "source": "arc",
+    "scope": "front",
+    "ambiguous": false,
+    "fallback_basis": null,
+    "age_myr": 36.8,
+    "since_contact_myr": 0.1,
+    "contact_steps": 368,
+    "parent_id": null,
+    "stored_points": {
+     "3": 64,
+     "21": 64
+    },
+    "votes": {
+     "consumption": 0.0,
+     "slab": 0.0,
+     "arc": -3.0
+    }
+   },
+   "survivor_coverage": 0.9155749636098981,
+   "absorbed": {
+    "front_id": 224,
+    "lower": 21,
+    "source": "consumption",
+    "scope": "pair",
+    "ambiguous": false,
+    "fallback_basis": null,
+    "age_myr": 0.1,
+    "since_contact_myr": 0.1,
+    "contact_steps": 1,
+    "parent_id": null,
+    "stored_points": {
+     "3": 2,
+     "21": 1
+    },
+    "votes": {
+     "consumption": 90.0,
+     "slab": 0.0,
+     "arc": 0.0
+    }
+   },
+   "absorbed_coverage": 0.005822416302765648,
+   "fronts_this_step": 1
+  },
+  {
+   "elapsed_myr": 124.6,
+   "pair": [
+    1,
+    2
+   ],
+   "merged_front_nodes": {
+    "1": 117,
+    "2": 103
+   },
+   "survivor": {
+    "front_id": 169,
+    "lower": 1,
+    "source": "slab",
+    "scope": "front",
+    "ambiguous": false,
+    "fallback_basis": null,
+    "age_myr": 37.2,
+    "since_contact_myr": 0.1,
+    "contact_steps": 60,
+    "parent_id": 121,
+    "stored_points": {
+     "1": 64,
+     "2": 64
+    },
+    "votes": {
+     "consumption": 0.0,
+     "slab": 5.0,
+     "arc": 5.0
+    }
+   },
+   "survivor_coverage": 0.990909090909091,
+   "absorbed": {
+    "front_id": 212,
+    "lower": 2,
+    "source": "consumption",
+    "scope": "front",
+    "ambiguous": false,
+    "fallback_basis": null,
+    "age_myr": 1.4,
+    "since_contact_myr": 0.5,
+    "contact_steps": 6,
+    "parent_id": null,
+    "stored_points": {
+     "2": 3
+    },
+    "votes": {
+     "consumption": 4.0,
+     "slab": 0.0,
+     "arc": 0.0
+    }
+   },
+   "absorbed_coverage": 0.013636363636363636,
+   "fronts_this_step": 1
+  },
+  {
+   "elapsed_myr": 124.9,
+   "pair": [
+    1,
+    4
+   ],
+   "merged_front_nodes": {
+    "1": 11,
+    "4": 7
+   },
+   "survivor": {
+    "front_id": 145,
+    "lower": 4,
+    "source": "fallback",
+    "scope": "fallback",
+    "ambiguous": true,
+    "fallback_basis": "motion",
+    "age_myr": 10.3,
+    "since_contact_myr": 0.1,
+    "contact_steps": 85,
+    "parent_id": null,
+    "stored_points": {
+     "4": 4,
+     "1": 6
+    },
+    "votes": {
+     "consumption": -33.0,
+     "slab": 168.0,
+     "arc": 40.0
+    }
+   },
+   "survivor_coverage": 0.6111111111111112,
+   "absorbed": {
+    "front_id": 222,
+    "lower": 1,
+    "source": "slab",
+    "scope": "pair",
+    "ambiguous": false,
+    "fallback_basis": null,
+    "age_myr": 0.9,
+    "since_contact_myr": 0.1,
+    "contact_steps": 9,
+    "parent_id": null,
+    "stored_points": {
+     "1": 4,
+     "4": 3
+    },
+    "votes": {
+     "consumption": -60.0,
+     "slab": -283.0,
+     "arc": -126.0
+    }
+   },
+   "absorbed_coverage": 0.4444444444444444,
+   "fronts_this_step": 3
+  },
+  {
+   "elapsed_myr": 128.1,
+   "pair": [
+    3,
+    20
+   ],
+   "merged_front_nodes": {
+    "3": 120,
+    "20": 119
+   },
+   "survivor": {
+    "front_id": 7,
+    "lower": 20,
+    "source": "fallback",
+    "scope": "fallback",
+    "ambiguous": false,
+    "fallback_basis": "motion",
+    "age_myr": 40.7,
+    "since_contact_myr": 0.1,
+    "contact_steps": 407,
+    "parent_id": null,
+    "stored_points": {
+     "3": 64,
+     "20": 64
+    },
+    "votes": {}
+   },
+   "survivor_coverage": 0.9330543933054394,
+   "absorbed": {
+    "front_id": 139,
+    "lower": 3,
+    "source": "consumption",
+    "scope": "front",
+    "ambiguous": false,
+    "fallback_basis": null,
+    "age_myr": 13.9,
+    "since_contact_myr": 0.1,
+    "contact_steps": 125,
+    "parent_id": null,
+    "stored_points": {
+     "3": 8,
+     "20": 7
+    },
+    "votes": {
+     "consumption": -20.0,
+     "slab": 0.0,
+     "arc": 0.0
+    }
+   },
+   "absorbed_coverage": 0.06694560669456066,
+   "fronts_this_step": 1
+  },
+  {
+   "elapsed_myr": 129.4,
+   "pair": [
+    1,
+    2
+   ],
+   "merged_front_nodes": {
+    "1": 38,
+    "2": 28
+   },
+   "survivor": {
+    "front_id": 238,
+    "lower": 1,
+    "source": "slab",
+    "scope": "front",
+    "ambiguous": false,
+    "fallback_basis": null,
+    "age_myr": 42.0,
+    "since_contact_myr": 0.1,
+    "contact_steps": 32,
+    "parent_id": 169,
+    "stored_points": {
+     "1": 33,
+     "2": 27
+    },
+    "votes": {
+     "consumption": 0.0,
+     "slab": 5.0,
+     "arc": 5.0
+    }
+   },
+   "survivor_coverage": 0.9848484848484849,
+   "absorbed": {
+    "front_id": 253,
+    "lower": 2,
+    "source": "slab",
+    "scope": "pair",
+    "ambiguous": false,
+    "fallback_basis": null,
+    "age_myr": 0.3,
+    "since_contact_myr": 0.2,
+    "contact_steps": 2,
+    "parent_id": null,
+    "stored_points": {
+     "1": 2,
+     "2": 1
+    },
+    "votes": {
+     "consumption": 51.0,
+     "slab": 629.0,
+     "arc": 522.0
+    }
+   },
+   "absorbed_coverage": 0.06060606060606061,
+   "fronts_this_step": 3
+  }
+ ]
+}
