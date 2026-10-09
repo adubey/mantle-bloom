@@ -67,62 +67,62 @@
   "median_step_s": 4.832365500042215
  },
  "transfer": {
-  "commit": "4d9a28a30e",
+  "commit": "7d79c01175",
   "span_myr": 43.099999999999994,
-  "land_area_Mkm2": 141.42906477920457,
-  "continental_area_Mkm2": 237.19889057105863,
-  "emergent_continental_Mkm2": 137.5532396848347,
+  "land_area_Mkm2": 141.70257209750608,
+  "continental_area_Mkm2": 236.98940669541798,
+  "emergent_continental_Mkm2": 137.73473737387968,
   "land_elevation_p10_p50_p90_p99_m": [
-   181,
-   1172,
-   6739,
-   8875
+   167,
+   1150,
+   6692,
+   8842
   ],
   "continental_hc_p50_p90_p99_km": [
-   33.46,
-   70.52,
-   83.99
+   33.56,
+   70.9,
+   83.96
   ],
-  "continental_hm_cap_pct": 5.755861328920477,
-  "continental_hm_cap_change_pp": -0.18823656201943303,
-  "runtime_s": 2252.882146835327,
-  "peak_memory_mb": 2639.0625,
-  "continental_material_Mkm3": 8390.10064646079,
-  "continental_material_change_pct": -0.4571711317216346,
+  "continental_hm_cap_pct": 6.128975219905115,
+  "continental_hm_cap_change_pp": 0.18487732896520434,
+  "runtime_s": 2658.509562730789,
+  "peak_memory_mb": 2562.1875,
+  "continental_material_Mkm3": 8402.331449649186,
+  "continental_material_change_pct": -0.31206098346406486,
   "collision_loss_km3_by_account": {
-   "delaminated_lower_crust_m3": 2432786,
+   "delaminated_lower_crust_m3": 2412758,
    "collision_subducted_m3": 0,
-   "collision_lower_crust_subducted_m3": 25563013,
-   "deeply_subducted_m3": 25585071
+   "collision_lower_crust_subducted_m3": 25124677,
+   "deeply_subducted_m3": 26415358
   },
-  "collision_loss_pct_inventory_per_myr": 0.007706521685664959,
-  "suture_donated_pct_inventory_per_myr": 0.5053730750924137,
+  "collision_loss_pct_inventory_per_myr": 0.0075803460463351015,
+  "suture_donated_pct_inventory_per_myr": 0.5034978339083063,
   "suture_budget_km3": {
-   "suture_donated_m3": 1835889603,
-   "suture_scraped_m3": 809591825,
-   "suture_underthrust_m3": 245331535,
-   "suture_underthrust_placed_m3": 170325968,
-   "suture_lower_crust_subducted_m3": 27259059,
-   "upper_plate_placed_m3": 884597393,
+   "suture_donated_m3": 1829077337,
+   "suture_scraped_m3": 806213792,
+   "suture_underthrust_m3": 240885671,
+   "suture_underthrust_placed_m3": 163183569,
+   "suture_lower_crust_subducted_m3": 26765075,
+   "upper_plate_placed_m3": 883915894,
    "overrider_placed_m3": 0,
    "no_outlet_subducted_m3": 0,
-   "delamination_completed_m3": 2546817
+   "delamination_completed_m3": 2525776
   },
   "ledger_errors_km3": {
-   "continental_balance_error_km3": -204410957.80914688,
+   "continental_balance_error_km3": -204410957.80914482,
    "craton_balance_error_km3": 0.0,
-   "mobile_cover_balance_error_km3": -6065.80306752
+   "mobile_cover_balance_error_km3": -6065.803061632
   },
   "transfer": {
-   "fronts": 1948,
-   "seconds": 3.8615804399596527,
-   "mean_front_ms": 1.9823308213345239,
-   "max_front_ms": 11.002416955307126,
-   "steps_with_fronts": 424,
-   "median_step_ms": 8.398958132602274,
-   "max_step_ms": 28.822624823078513
+   "fronts": 1848,
+   "seconds": 2.9245087628951296,
+   "mean_front_ms": 1.582526386848014,
+   "max_front_ms": 90.73708299547434,
+   "steps_with_fronts": 420,
+   "mean_step_ms": 6.963116102131261,
+   "max_step_ms": 109.04679319355637
   },
-  "boundary_retreat_newly_capped_continental_km2": 19000412.15933019,
-  "median_step_s": 4.660698749939911
+  "boundary_retreat_newly_capped_continental_km2": 18367977.710705373,
+  "median_step_s": 4.7458094579633325
  }
 }
