@@ -110,10 +110,11 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import biomes, geometry, hydrology, plates
+from .. import geometry, plates
+from . import biomes, fluid_dynamics, hydrology
 
 if TYPE_CHECKING:
-    from .world import World
+    from ..world import World
 
 # ---------------------------------------------------------------------------------------
 # Grid

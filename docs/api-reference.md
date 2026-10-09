@@ -765,7 +765,7 @@ depression hierarchy (`world.hydrology_cache.lake_forest`): a top-level basin wi
 spill (`lakes.Lake.max_depth is None`) whose floor is below `world.sea_level_m`. `stranded_basins`
 is `[]` before the first step (or when no basin is stranded -- the healthy case). `404` if no
 world has been generated yet. See [debugging.md](debugging.md) for how to read this and the
-matching offline dump (`python -m app.stranded_basins`).
+matching offline dump (`python -m app.hydroclimate.stranded_basins`).
 
 ```json
 {

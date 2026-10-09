@@ -1,5 +1,5 @@
 import numpy as np
-from app import fluid_dynamics
+from app.hydroclimate import fluid_dynamics
 
 
 def test_coriolis_parameter_flips_sign_by_hemisphere():

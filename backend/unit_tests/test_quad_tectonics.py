@@ -6,7 +6,18 @@ quad_tectonics.py."""
 import numpy as np
 import pytest
 
-from app import continental_ledger, gaps, geometry, lithosphere, merge_split, orogeny, plates, quad_tectonics, volcanism
+from app import (
+    continental_ledger,
+    gaps,
+    geometry,
+    hm_ledger,
+    lithosphere,
+    merge_split,
+    orogeny,
+    plates,
+    quad_tectonics,
+)
+from app.hydroclimate import volcanism
 from app.elevation_lines import CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC, line_spacing_rad
 from app.lithosphere_plate import (
     CONTINENTAL_CONTESTED_RETREAT_MIN_RUN,
@@ -16,7 +27,12 @@ from app.lithosphere_plate import (
     boundary_context,
     new_plate,
 )
-from app.sparse_quad_patch import PlateWithSparseQuadPatch, cells_per_face_edge, pack_cell_keys, unpack_cell_keys
+from app.sparse_quad_patch import (
+    PlateWithSparseQuadPatch,
+    cells_per_face_edge,
+    pack_cell_keys,
+    unpack_cell_keys,
+)
 from app.world import World
 
 DENSITY = 0.5

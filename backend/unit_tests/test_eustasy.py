@@ -1,10 +1,10 @@
-"""Eustatic sea level (`app.eustasy`): `World.sea_level_m` re-solved each step from a
+"""Eustatic sea level (`app.hydroclimate.eustasy`): `World.sea_level_m` re-solved each step from a
 conserved ocean water volume against the world's hypsometry."""
 
 import numpy as np
 import pytest
 
-from app import eustasy
+from app.hydroclimate import eustasy
 from app.world import generate_world, step_world
 
 

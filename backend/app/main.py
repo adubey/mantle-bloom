@@ -18,28 +18,28 @@ from pydantic import BaseModel
 from scipy.spatial import cKDTree
 
 from . import (
-    biomes,
-    climate,
-    coastline,
     debug_worlds,
-    eustasy,
     faults,
     geodesic,
     geometry,
     healpix_grid,
-    hydrology,
-    lakes,
     mantle,
     persistence,
     plates,
     projections,
     render_image,
     stats,
-    stranded_basins,
     worldsketch,
 )
+from .hydroclimate import biomes, climate, coastline, eustasy, hydrology, lakes, stranded_basins
 from .elevation_lines import NODE_DENSITY_CHOICES
-from .world import DEFAULT_MANTLE_CENTERS, TUNING_MULTIPLIER_FIELDS, World, generate_world_progress, step_world_progress
+from .world import (
+    DEFAULT_MANTLE_CENTERS,
+    TUNING_MULTIPLIER_FIELDS,
+    World,
+    generate_world_progress,
+    step_world_progress,
+)
 
 # A generous ceiling on requested image dimensions -- width/height come straight from the
 # client's query string, and PIL will happily try to allocate whatever it's told, so an

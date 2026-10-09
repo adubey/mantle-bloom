@@ -59,8 +59,8 @@ import numpy as np
 
 from . import biomes
 from .bathymetry import SHELF_RANGE_RAD
-from .noise import SphereNoise
-from .plates import (
+from ..noise import SphereNoise
+from ..plates import (
     Plate,
     collect_all_coal_deposit,
     collect_all_mineral_deposit,
@@ -72,7 +72,7 @@ from .plates import (
 
 if TYPE_CHECKING:
     from .erosion import ErosionResult
-    from .world import World
+    from ..world import World
 
 # Coal: Carboniferous Forest (warm tropical swamp) accumulates several times faster than plain
 # Wetland (a cooler bog/marsh) -- real Carboniferous/Permian coal is predominantly of that

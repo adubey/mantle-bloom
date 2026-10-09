@@ -36,7 +36,7 @@ from scipy.ndimage import distance_transform_edt
 from scipy.special import erf
 from scipy.stats import rankdata
 
-from .elevation_lines import PLANET_RADIUS_KM
+from ..elevation_lines import PLANET_RADIUS_KM
 
 # Earth's real tilt -- the reference the seasonal-amplitude synthesis is calibrated against,
 # and the default when a caller has no World handy (kept in sync with world.DEFAULT_AXIAL_TILT_DEG

@@ -5,7 +5,8 @@ import copy
 import numpy as np
 import pytest
 
-from app import continental_ledger, erosion, lithosphere, mobile_cover, orogeny, persistence, quad_tectonics, volcanism
+from app import continental_ledger, lithosphere, orogeny, persistence, quad_tectonics
+from app.hydroclimate import erosion, mobile_cover, volcanism
 from app.elevation_lines import line_spacing_rad
 from app.sparse_quad_patch import PlateWithSparseQuadPatch, cells_per_face_edge, pack_cell_keys
 from app.world import World, generate_world
@@ -402,7 +403,7 @@ def test_the_silt_record_is_removed_with_the_cover_it_is_mixed_through():
 
 
 def test_hydrology_never_reads_more_silt_than_the_cover_holds():
-    from app import hydrology
+    from app.hydroclimate import hydrology
 
     world = _quad_world()
     for plate in world.plates:

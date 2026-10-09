@@ -34,10 +34,11 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import geometry, hydrology, plates
+from .. import geometry, plates
+from . import hydrology
 
 if TYPE_CHECKING:
-    from .world import World
+    from ..world import World
 
 
 def _lake_mask_on_grid(world: "World", world_xyz: np.ndarray) -> np.ndarray:

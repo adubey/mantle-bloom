@@ -80,7 +80,7 @@ mode/endpoint (see simulation-model.md#mode-toggle):
     terrain refreshed from the world's *current* elevation/climate each step (refresh_forcing)
   → browser re-fetches /world/render as usual (wind/temperature draw off this state; the
     oceanCurrents/humidity/precipitation/biome views are diagnostic climate.py fields -- see
-    climate.py's own module docstring)
+    hydroclimate/climate.py's own module docstring)
 
 When the "Plate Inspector" or "Plates & Faults" map view is active, the browser instead
 (also on every generate/step, but never on a projection/rotation-only change) fetches:
@@ -269,7 +269,7 @@ gaps.py              whole-sphere coverage maintenance, every step (world.step_w
                      new plate to cover it (`lithosphere_plate.new_plate`). deform()'s own
                      boundary advance only grows a plate from its existing edge, so this is
                      the backstop for seams and vacated regions
-volcanism.py          every-step eruption lifecycle for existing volcano nodes (active-years
+hydroclimate/volcanism.py          every-step eruption lifecycle for existing volcano nodes (active-years
                      countdown, per-step eruption roll, elevation/mineral_deposit_m growth) --
                      volcanic-field *creation* now happens inline inside `deform()`'s own
                      overstretched-rift handling, not a separate periodic detection pass (see
@@ -288,10 +288,13 @@ worldsketch.py       parses a drawn/loaded coastline image (Generate World's "Hu
                      simulation-model.md#worldsketch. Consumed by lithosphere_plate.py's
                      generate_plates (its `sketch` param), not part of the per-step pipeline
 world.py             World/Plate orchestration: generate_world, step_world
-climate.py           temperature/wind/currents/humidity/precipitation, computed fresh on
+hydroclimate/        climate, hydrology, and surface-process package: atmospheric and
+                     diagnostic climate, flow routing/lakes, erosion, geology, eustasy,
+                     bathymetry, surface cover, volcanism, and their shared numerics
+hydroclimate/climate.py           temperature/wind/currents/humidity/precipitation, computed fresh on
                      their own fixed equirectangular grid -- every render, and now every
                      step too, to drive erosion.py (see simulation-model.md#climate)
-erosion.py           every-step rain/river/weathering/glacier erosion + downstream sediment
+hydroclimate/erosion.py           every-step rain/river/weathering/glacier erosion + downstream sediment
                      deposition + glacier flattening + coastal planation/infill feedback
                      (near-sea-level wave-cut planation + sheltered-shelf silting, emergent
                      barrier islands), elevation deltas driven by climate.py's
@@ -299,7 +302,7 @@ erosion.py           every-step rain/river/weathering/glacier erosion + downstre
                      simulation-model.md#erosion) -- the weather-influences-geology half of
                      the coupling; climate.py's own elevation-reading mechanics (lapse rate,
                      mountain wind deflection, orographic rain shadow) are the other half
-hydrology.py         every-step flow routing over the geology node cloud (a k-nearest-
+hydroclimate/hydrology.py         every-step flow routing over the geology node cloud (a k-nearest-
                      neighbor graph, not a grid): basin-spill detection, steepest-
                      descent flow direction, downstream flow accumulation, glacier
                      accumulation/melt/flow -- feeds erosion.py's river/glacier erosion and
@@ -309,35 +312,35 @@ hydrology.py         every-step flow routing over the geology node cloud (a k-ne
                      (group_rivers) and answers the River Inspector's click hit-test
                      (river_at), on demand rather than every step (see
                      simulation-model.md#river-inspector)
-lakes.py              every-step lake growth/evaporation/merge/split/silt, an explicit n-ary
+hydroclimate/lakes.py              every-step lake growth/evaporation/merge/split/silt, an explicit n-ary
                      tree of Lake objects built from a depression-hierarchy pass over
-                     hydrology.py's own k-NN graph -- called from hydrology.compute_hydrology,
+                     hydroclimate/hydrology.py's own k-NN graph -- called from hydrology.compute_hydrology,
                      projects back down into the same flat lake_depth array every other
                      consumer already reads (see simulation-model.md#lakes-are-an-explicit-tree);
                      also rebuilt fresh, on demand, by main.py to answer the Lake Inspector's
                      GET /world/lakes and GET /world/lake_at (see
                      simulation-model.md#lake-inspector)
-stranded_basins.py   diagnostic-only: finds endorheic below-sea-level basins with no ocean
+hydroclimate/stranded_basins.py   diagnostic-only: finds endorheic below-sea-level basins with no ocean
                      drainage (the "land-locked coastal pit") in lakes.py's forest, and
                      tracks how long each has persisted across steps (world.stranded_basin_
                      tracks, reconciled from world.step_world) -- backs GET /world/stranded_
-                     basins and the python -m app.stranded_basins offline dump (see
+                     basins and the python -m app.hydroclimate.stranded_basins offline dump (see
                      debugging.md)
-bathymetry.py        the shelf-width constant geology.py keys off, plus a one-off
+hydroclimate/bathymetry.py        the shelf-width constant geology.py keys off, plus a one-off
                      generation-time pass (shape_initial_bathymetry) that drowns submerged
                      continental interiors toward abyssal depth by distance from land and
                      grades every continent/ocean plate margin into a slope, so the seabed
                      reads as real relief rather than a bright shelf and hard cliffs (see
                      simulation-model.md#bathymetry)
-coastline.py          traces the land/ocean and lake boundary as line segments over
-                     climate.py's own grid, on demand (not every step) -- drawn into the
+hydroclimate/coastline.py          traces the land/ocean and lake boundary as line segments over
+                     hydroclimate/climate.py's own grid, on demand (not every step) -- drawn into the
                      temperature/humidity/precipitation renders and sent as JSON alongside
                      GET /world/rivers and GET /world/lakes (see simulation-model.md#coastline)
-fluid_dynamics.py      shared numerical primitives for atmosphere_cfd.py: real physical-unit
+hydroclimate/fluid_dynamics.py      shared numerical primitives for atmosphere_cfd.py: real physical-unit
                      gradients/Laplacians/divergence, real Coriolis parameter, CFL-stable
                      substep sizing, semi-Lagrangian advection (see
                      simulation-model.md#ocean-atmospheric-fluid-dynamics)
-atmosphere_cfd.py      the atmospheric wind solver: a genuine time-integrated (not diagnostic)
+hydroclimate/atmosphere_cfd.py      the atmospheric wind solver: a genuine time-integrated (not diagnostic)
                      shallow-water simulation of wind + air temperature -- prognostic state
                      (World.atmosphere_cfd_state) that persists/evolves step to step, plus a
                      sustained latitude-banded wind forcing. Ocean currents and precipitation

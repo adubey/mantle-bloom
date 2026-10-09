@@ -18,7 +18,7 @@ from __future__ import annotations
 import numpy as np
 from numba import njit, prange
 
-from . import plates
+from .. import plates
 
 # Every stencil below (gradient/laplacian/divergence/grid_noise_filter/polar_zonal_filter/
 # semi_lagrangian_advect) is called several times per substep, up to MAX_SUBSTEPS_PER_STEP

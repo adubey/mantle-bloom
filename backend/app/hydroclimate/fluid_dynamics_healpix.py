@@ -33,7 +33,7 @@ from __future__ import annotations
 import numpy as np
 from numba import njit, prange
 
-from .healpix_grid import PLANET_RADIUS_M, HealpixGrid, ang2pix_nest_scalar
+from ..healpix_grid import PLANET_RADIUS_M, HealpixGrid, ang2pix_nest_scalar
 
 # Same convention as fluid_dynamics.py's own _NUMBA_JIT_KWARGS (see that module's docstring
 # for cache=True/parallel=True/fastmath=True's own rationale) -- kept as a separate constant

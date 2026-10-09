@@ -44,7 +44,8 @@ def main() -> None:
     args = parser.parse_args()
 
     sys.path.insert(0, str(args.backend.resolve()))
-    from app import breaching, cratons, erosion, hydrology, lakes  # noqa: E402
+    from app import cratons
+    from app.hydroclimate import breaching, erosion, hydrology, lakes  # noqa: E402
     from app.world import generate_world, step_world  # noqa: E402
 
     original_compute = hydrology.compute_hydrology

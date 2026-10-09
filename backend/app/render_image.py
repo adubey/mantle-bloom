@@ -28,7 +28,8 @@ from numba import njit
 from PIL import Image, ImageDraw, ImageFilter
 from scipy.spatial import cKDTree
 
-from . import biomes, climate, coastline, cratons, geology, geometry, healpix_grid, hydrology, lithosphere, mantle, plates, projections, volcanism
+from . import cratons, geometry, healpix_grid, lithosphere, mantle, plates, projections
+from .hydroclimate import biomes, climate, coastline, geology, hydrology, volcanism
 from .elevation_lines import effective_is_continental_from_codes, line_spacing_rad
 from .world import World, step_world
 

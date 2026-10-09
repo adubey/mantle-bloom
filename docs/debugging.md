@@ -26,8 +26,8 @@ and the UI can never disagree.
 cd backend
 source .venv/bin/activate
 python -m app.plate_diagnostics <save.mbworld>            # plate geometry
-python -m app.stranded_basins <save.mbworld>               # land-locked sub-sea-level pits
-python -m app.lake_hierarchy_diagnostics <save.mbworld>    # lake-merge-forest depth/size
+python -m app.hydroclimate.stranded_basins <save.mbworld>            # land-locked sub-sea-level pits
+python -m app.hydroclimate.lake_hierarchy_diagnostics <save.mbworld> # lake-merge-forest depth/size
 python -m app.phase_budget_diagnostics <save.mbworld> --years 1000000  # per-phase Hc/Hm budget
 ```
 
@@ -98,7 +98,7 @@ node budget
 Tests: [`unit_tests/test_plate_diagnostics.py`](../backend/unit_tests/test_plate_diagnostics.py).
 
 <a id="stranded-basins-cli"></a>
-### `python -m app.stranded_basins` -- land-locked sub-sea-level pits
+### `python -m app.hydroclimate.stranded_basins` -- land-locked sub-sea-level pits
 
 A "stranded basin" is an endorheic depression whose floor sits *below sea level* and that has
 **no drainage path to the ocean at all**. Such a node is neither hydrology's connectivity-aware
@@ -151,7 +151,7 @@ never-stepped world reports nothing.
 
 Test: [`unit_tests/test_stranded_basins.py`](../backend/unit_tests/test_stranded_basins.py).
 
-### `python -m app.lake_hierarchy_diagnostics` -- lake-merge-forest depth/size
+### `python -m app.hydroclimate.lake_hierarchy_diagnostics` -- lake-merge-forest depth/size
 
 Measures two numbers nothing else does: the longest root-to-leaf chain in
 `lakes.build_lake_hierarchy`'s merge forest, and a histogram of leaf-catchment node counts.
@@ -654,7 +654,7 @@ the console and bury real basin/tectonic events.
 
 `lakes.step_lakes` returns structured `lakes.LakeEvent`s (`kind` / `node_count` /
 `elevation_m` / `basin_count`, plus a `.message` property with the same wording as before)
-instead of pre-formatted strings. [`erosion.py`](../backend/app/erosion.py) runs a step's
+instead of pre-formatted strings. [`erosion.py`](../backend/app/hydroclimate/erosion.py) runs a step's
 events through `lakes.summarize_lake_events(events, world.sea_level_m)` before logging:
 
 - A transition whose water surface is more than `lakes.NEAR_SEA_LEVEL_EVENT_BAND_M`
@@ -728,7 +728,7 @@ Two tools were scoped out but never started:
 
 1. **A map-view render of the stranded-basin report.** `GET /world/stranded_basins` already
    returns `centroid_xyz`/`floor_xyz` ready for one -- currently the report is CLI/JSON-only
-   (see [`python -m app.stranded_basins`](#stranded-basins-cli) above), with no map view to
+   (see [`python -m app.hydroclimate.stranded_basins`](#stranded-basins-cli) above), with no map view to
    see the basins in place.
 2. **A `/world/sample_at` field for the `geomorph` / `elevReason` click-popup.** The popup is
    only wired for elevation/biome/combined today (see `GET /world/sample_at` in

@@ -14,7 +14,8 @@ import av
 import numpy as np
 from PIL import Image
 
-from app import erosion, eustasy, faults, geology, merge_split, render_image, volcanism, world as world_mod
+from app import faults, merge_split, render_image, world as world_mod
+from app.hydroclimate import erosion, eustasy, geology, volcanism
 from app.sparse_quad_patch import PlateWithSparseQuadPatch
 
 FRAMES = 60

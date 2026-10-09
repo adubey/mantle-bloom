@@ -8,7 +8,7 @@ existing), and turning a knob up/down actually moves the corresponding process.
 import numpy as np
 import pytest
 
-from app import erosion, volcanism
+from app.hydroclimate import erosion, volcanism
 from app.world import TUNING_MULTIPLIER_FIELDS, World, generate_world, step_world
 
 from .quad_fixtures import quad_plate

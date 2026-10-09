@@ -22,8 +22,9 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import continental_ledger, lithosphere, mobile_cover
-from .elevation_lines import (
+from .. import continental_ledger, lithosphere
+from . import mobile_cover
+from ..elevation_lines import (
     ELEV_CHANGE_MIN_DELTA_M,
     ELEV_CHANGE_VOLCANIC_PLAIN,
     ELEV_CHANGE_VOLCANO,
@@ -33,10 +34,10 @@ from .elevation_lines import (
     VOLCANIC_PLAIN_ELEVATION_M,
     VOLCANIC_PLAIN_REACH_KM,
 )
-from .plates import Plate
+from ..plates import Plate
 
 if TYPE_CHECKING:
-    from .world import World
+    from ..world import World
 
 # Expected number of eruption events over a volcano's full active life is
 # ERUPTION_RATE_PER_MYR * (active life in Myr) -- e.g. at the low end of VOLCANO_ACTIVE

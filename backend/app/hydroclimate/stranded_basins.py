@@ -36,10 +36,11 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from . import geometry, hydrology, lakes
+from .. import geometry
+from . import hydrology, lakes
 
 if TYPE_CHECKING:
-    from .world import World
+    from ..world import World
 
 # A stranded basin drifts with its own plate at most ~MAX_PLATE_RATE (15 cm/yr) -> ~15 km per
 # 100-ky step, far under this; two genuinely distinct stranded basins in the GitHub issue #122
@@ -195,7 +196,7 @@ def reconcile_world_tracks(world: "World") -> list[StrandedBasin]:
 
 
 # ---------------------------------------------------------------------------
-# Offline dump: python -m app.stranded_basins <save.mbworld> [--json]
+# Offline dump: python -m app.hydroclimate.stranded_basins <save.mbworld> [--json]
 # ---------------------------------------------------------------------------
 
 
@@ -286,7 +287,7 @@ def format_report(report: dict) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="python -m app.stranded_basins",
+        prog="python -m app.hydroclimate.stranded_basins",
         description="List endorheic below-sea-level basins with no ocean drainage in a saved world.",
     )
     parser.add_argument("save", type=Path, help="path to a .mbworld save file")
@@ -295,7 +296,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.save.is_file():
         parser.error(f"no such file: {args.save}")
-    from . import persistence  # local: keeps world.py -> stranded_basins -> persistence -> world out of the import cycle
+    from .. import persistence  # local: keeps world.py -> stranded_basins -> persistence -> world out of the import cycle
+
 
     world = persistence.load_world_bytes(args.save.read_bytes())
     report = build_report(world)

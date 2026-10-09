@@ -1,5 +1,6 @@
 import numpy as np
-from app import debug_worlds, erosion, geometry, lithosphere
+from app import debug_worlds, geometry, lithosphere
+from app.hydroclimate import erosion
 from app import lithosphere_plate
 from app.sparse_quad_patch import PlateWithSparseQuadPatch
 from app.world import generate_world, step_world
@@ -322,7 +323,7 @@ def test_quad_merge_of_neighbouring_plates_in_a_stepped_world():
 def test_mobile_cover_ledger_closes_over_full_quad_steps():
     # Issue #297 phase 2: every process that moves or ends erosion's mobile cover books it
     # (see mobile_cover.py), so the live inventory equals sources less sinks every step.
-    from app import mobile_cover
+    from app.hydroclimate import mobile_cover
 
     world = generate_world(seed=7, num_plates=8)
     for _ in range(8):

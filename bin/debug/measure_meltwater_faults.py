@@ -62,7 +62,8 @@ COMPARE_KEYS = (
 
 def _run_seed(backend: str, seed: int, steps: int, years: float, every: int) -> list[dict]:
     sys.path.insert(0, backend)
-    from app import continental_ledger, cratons, erosion  # noqa: E402
+    from app import continental_ledger, cratons
+    from app.hydroclimate import erosion  # noqa: E402
     from app.elevation_lines import line_spacing_rad  # noqa: E402
     from app.plates import collect_all_accounting_areas_m2, collect_all_crustal_thickness  # noqa: E402
     from app.world import generate_world, step_world  # noqa: E402
@@ -135,7 +136,8 @@ def _run_seed(backend: str, seed: int, steps: int, years: float, every: int) -> 
 
 def _run_controlled(backend: str, seed: int, steps: int, years: float, every: int, extra: int) -> list[dict]:
     sys.path.insert(0, backend)
-    from app import erosion, faults  # noqa: E402
+    from app import faults
+    from app.hydroclimate import erosion  # noqa: E402
     from app.world import generate_world, step_world  # noqa: E402
 
     real_trigger = faults.trigger_unloading_earthquakes

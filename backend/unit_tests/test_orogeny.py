@@ -6,7 +6,12 @@ import pytest
 
 from app import continental_ledger, cratons, lithosphere, orogeny
 from app.elevation_lines import CRUST_TYPE_OCEANIC, line_spacing_rad
-from app.sparse_quad_patch import PlateWithSparseQuadPatch, cells_per_face_edge, pack_cell_keys, unpack_cell_keys
+from app.sparse_quad_patch import (
+    PlateWithSparseQuadPatch,
+    cells_per_face_edge,
+    pack_cell_keys,
+    unpack_cell_keys,
+)
 from app.world import World
 
 DENSITY = 0.5

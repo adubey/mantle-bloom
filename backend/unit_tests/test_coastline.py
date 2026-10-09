@@ -1,6 +1,7 @@
 import numpy as np
 
-from app import climate, coastline, geometry, hydrology
+from app import geometry
+from app.hydroclimate import climate, coastline, hydrology
 from app.world import World, generate_world, step_world
 
 

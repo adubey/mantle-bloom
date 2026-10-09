@@ -27,11 +27,11 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import lithosphere
-from .elevation_lines import PLANET_RADIUS_KM
+from .. import lithosphere
+from ..elevation_lines import PLANET_RADIUS_KM
 
 if TYPE_CHECKING:
-    from .plates import Plate
+    from ..plates import Plate
 
 # Real continental shelves are shallow and comparatively narrow before the "shelf break"
 # drops off toward deep water -- SHELF_RANGE_KM has no exact figure to port (none was given),
@@ -114,7 +114,7 @@ def _gather_columns(plates: list["Plate"]):
     """(points, plates_in_order, per-plate node counts, and node-aligned is_continental /
     Hc / Hm / elevation arrays) for every plate with nodes -- the common preamble both passes
     below need."""
-    from . import plates as plates_mod
+    from .. import plates as plates_mod
 
     points, plates_in_order = plates_mod.gather_node_positions(plates)
     counts = [p.node_count() for p in plates_in_order]
@@ -169,7 +169,7 @@ def _subside_offshore_continental_crust(plates: list["Plate"]) -> None:
     if not np.any(land) or not np.any(submerged_continental):
         return
 
-    from . import plates as plates_mod
+    from .. import plates as plates_mod
 
     dist_to_land_chord, _ = cKDTree(points[land]).query(points, workers=plates_mod.query_workers(len(points)))
     dist_km = _arc_km(dist_to_land_chord)
@@ -221,7 +221,7 @@ def _smooth_continental_margins(plates: list["Plate"]) -> None:
     ocean floor erupting at a rift, old floor bending into a trench) -- correctly, since those
     features really are abrupt.
     """
-    from . import plates as plates_mod
+    from .. import plates as plates_mod
 
     points, plates_in_order, counts, is_continental, hc, hm, elevation = _gather_columns(plates)
     if len(points) < 3:

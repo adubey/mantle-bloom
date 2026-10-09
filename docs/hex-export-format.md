@@ -46,7 +46,7 @@ tile. See `backend/app/geodesic.py` for the construction itself; this document i
   sharing the edge between `corner_vertex_ids[k]` and `corner_vertex_ids[(k+1) % n]`.
 - `elevation_m`/`is_ocean`/`biome` are sampled from the world exactly as it stood at export
   time -- `is_ocean` is `elevation_m <= ` the world's current sea level, `biome` is one of
-  `backend/app/biomes.py`'s `BIOME_NAMES` (a descriptive Köppen-Geiger climate class such as
+  `backend/app/hydroclimate/biomes.py`'s `BIOME_NAMES` (a descriptive Köppen-Geiger climate class such as
   `"Hot Desert"` or `"Subarctic (Boreal)"` for land, or a pelagic class such as
   `"Subtropical Gyre"` for ocean -- the same categories the Biome/Combined map views use).
 

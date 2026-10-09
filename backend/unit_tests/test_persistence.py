@@ -192,6 +192,14 @@ def test_saves_carry_a_format_version_envelope():
     assert envelope["version"] == persistence.SAVE_FORMAT_VERSION
 
 
+def test_old_hydroclimate_pickle_module_paths_resolve_to_moved_classes():
+    from app import legacy_conversion
+    from app.hydroclimate.climate import ClimateFields
+
+    unpickler = legacy_conversion.legacy_unpickler(b"")
+    assert unpickler.find_class("app.climate", "ClimateFields") is ClimateFields
+
+
 def test_loading_a_version_1_bare_world_pickle_still_works():
     world = generate_world(seed=3, num_plates=4)
 

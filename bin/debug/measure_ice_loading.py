@@ -82,7 +82,8 @@ def main() -> None:
     args = parser.parse_args()
 
     sys.path.insert(0, str(args.backend.resolve()))
-    from app import hydrology, lithosphere, plates  # noqa: E402
+    from app import lithosphere, plates
+    from app.hydroclimate import hydrology  # noqa: E402
     from app.elevation_lines import line_spacing_rad  # noqa: E402
     from app.world import generate_world, step_world  # noqa: E402
 

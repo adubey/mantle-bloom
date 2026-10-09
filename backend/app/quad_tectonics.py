@@ -45,7 +45,22 @@ from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import breadth_first_order, connected_components
 from scipy.spatial import cKDTree
 
-from . import collision_polarity, continental_ledger, crust_transfer, cratons, geometry, hm_ledger, lithosphere, mobile_cover, orogeny, phase_budget, rheology, shortening, terrain_noise, torque
+from . import (
+    collision_polarity,
+    continental_ledger,
+    crust_transfer,
+    cratons,
+    geometry,
+    hm_ledger,
+    lithosphere,
+    orogeny,
+    phase_budget,
+    rheology,
+    shortening,
+    terrain_noise,
+    torque,
+)
+from .hydroclimate import mobile_cover
 from .elevation_lines import (
     COVERAGE_RADIUS_MULT,
     CRUST_TYPE_CONTINENTAL,

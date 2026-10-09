@@ -1,6 +1,7 @@
 import numpy as np
-from app import climate
-from app.world import generate_world, step_world
+from app import geometry
+from app.hydroclimate import climate
+from app.world import World, generate_world, step_world
 
 
 def _world(seed=1, num_plates=12, continental_fraction=0.7, land_fraction=0.29, steps=0, years=5_000_000):

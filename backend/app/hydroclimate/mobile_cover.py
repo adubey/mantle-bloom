@@ -35,11 +35,11 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from .elevation_lines import line_spacing_rad
+from ..elevation_lines import line_spacing_rad
 
 if TYPE_CHECKING:
-    from .plates import Plate
-    from .world import World
+    from ..plates import Plate
+    from ..world import World
 
 FIELDS = ("mobile_cover_m", "mobile_cover_continental_m")
 # Erupted lava seals the cover under it, but a cell-mean addition is not a uniform sheet: the

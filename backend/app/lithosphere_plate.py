@@ -37,7 +37,19 @@ from .plates import (
     Plate,
     _land_noise_threshold,
 )
-from . import bathymetry, continental_ledger, cratons, lithosphere, magma_transport, mobile_cover, phase_budget, rheology, shortening, terrain_noise, torque, worldsketch
+from . import (
+    continental_ledger,
+    cratons,
+    lithosphere,
+    magma_transport,
+    phase_budget,
+    rheology,
+    shortening,
+    terrain_noise,
+    torque,
+    worldsketch,
+)
+from .hydroclimate import bathymetry, mobile_cover
 from .sparse_quad_patch import PlateWithSparseQuadPatch
 
 # A boundary cell may advance into open space whose centre lies within this many node

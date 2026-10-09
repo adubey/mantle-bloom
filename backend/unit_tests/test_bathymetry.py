@@ -1,7 +1,8 @@
 import numpy as np
 from scipy.spatial import cKDTree
 
-from app import bathymetry, lithosphere
+from app import lithosphere
+from app.hydroclimate import bathymetry
 from app.elevation_lines import line_spacing_rad
 from app.lithosphere_plate import generate_plates
 

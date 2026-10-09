@@ -421,7 +421,7 @@ def test_maybe_split_plate_with_failed_outcome_returns_none_and_resets_cooldown(
 def test_a_failed_rift_thins_the_mobile_cover_with_its_column(monkeypatch):
     """`maybe_split_plate`'s failed-rift branch thins the mobile cover with the column, like
     the craton, and books it to the cover ledger (issue #302)."""
-    from app import mobile_cover
+    from app.hydroclimate import mobile_cover
 
     monkeypatch.setattr(merge_split, "RIFT_SUCCESS_PROBABILITY", 0.0)  # every rift fails
     world, plate = _engineered_split_world()

@@ -1,7 +1,7 @@
 import numpy as np
-from app import geology, volcanism
-from app.erosion import ErosionResult
-from app.hydrology import HydrologyFields
+from app.hydroclimate import geology, volcanism
+from app.hydroclimate.erosion import ErosionResult
+from app.hydroclimate.hydrology import HydrologyFields
 from app.world import World
 
 from .quad_fixtures import block_keys, node_points, quad_plate

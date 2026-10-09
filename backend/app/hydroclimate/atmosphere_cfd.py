@@ -24,11 +24,11 @@ from numba import njit
 
 from . import climate, fluid_dynamics
 from . import fluid_dynamics_healpix as fdh
-from . import healpix_grid
-from .healpix_grid import ang2pix_nest_scalar
+from .. import healpix_grid
+from ..healpix_grid import ang2pix_nest_scalar
 
 if TYPE_CHECKING:
-    from .world import World
+    from ..world import World
 
 REDUCED_GRAVITY_M_S2 = 0.5
 EFFECTIVE_TROPOSPHERE_DEPTH_M = 8000.0

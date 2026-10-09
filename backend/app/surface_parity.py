@@ -54,22 +54,17 @@ from scipy.spatial import cKDTree
 
 from . import (
     elevation_lines,
-    erosion,
-    eustasy,
     faults,
     gaps,
-    geology,
     healpix_grid,
-    hydrology,
     lithosphere,
     magma_transport,
     merge_split,
     persistence,
     plates as plates_mod,
-    stranded_basins,
-    volcanism,
     world as world_mod,
 )
+from .hydroclimate import erosion, eustasy, geology, hydrology, stranded_basins, volcanism
 from .elevation_lines import PLANET_RADIUS_KM, line_spacing_rad
 from .plates import Plate
 from .sparse_quad_patch import (

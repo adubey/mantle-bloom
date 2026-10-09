@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from app import biomes
+from app.hydroclimate import biomes, hydrology
 
 _UPLAND_ELEVATION = np.array([1000.0])
 _UPLAND_SLOPE = np.array([0.01])

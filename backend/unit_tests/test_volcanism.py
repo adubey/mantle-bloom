@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
-from app import continental_ledger, elevation_lines, lithosphere, volcanism
+from app import continental_ledger, elevation_lines, lithosphere
+from app.hydroclimate import volcanism
 from app.world import World
 
 from .quad_fixtures import quad_plate
