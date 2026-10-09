@@ -10,7 +10,6 @@ from app import (
     continental_ledger,
     gaps,
     geometry,
-    hm_ledger,
     lithosphere,
     merge_split,
     orogeny,
@@ -971,13 +970,15 @@ def test_foreland_spill_retypes_cells_and_books_their_existing_hm():
 
 
 def test_oceanic_plate_retreat_accretes_continental_terrane_onto_terrane_survivors():
+    # The overrider is oceanic, so the terrane has nowhere to dock and stays on its carrier
+    # (a continental overrider takes it: test_terrane_docking.py).
     keys = _block((10, 24), (20, 30))
     a = _plate(1, keys, "oceanic")
     i, _ = _columns(a)
     codes = a.collect("crust_type_code")
     codes[i >= 18] = CRUST_TYPE_CONTINENTAL
     a.set_fields_on_plate(crust_type_code=codes)
-    b = _plate(2, _block((20, 34), (20, 30)), "continental")
+    b = _plate(2, _block((20, 34), (20, 30)), "oceanic")
     world = _world(a, b)
     ctx = boundary_context(
         world,

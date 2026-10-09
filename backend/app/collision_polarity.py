@@ -153,7 +153,7 @@ class CollisionFront:
     # Evidence was present but contradictory (both physical directions, or arcs on both
     # sides), so the fallback decided.
     ambiguous: bool
-    # "motion", "size" or "plate_id" for a fallback decision: which tier broke the tie.
+    # "carrier", "motion", "size" or "plate_id" for a fallback decision: which tier decided.
     fallback_basis: str | None
     # Signed evidence weight per source at decision time, positive toward plate_ids[0] being
     # the upper plate.
@@ -372,6 +372,7 @@ _STAT_KEYS = (
     "ambiguous_physical",
     "ambiguous_opposing_arcs",
     "arc_overruled",
+    "fallback_carrier",
     "fallback_motion",
     "fallback_size",
     "fallback_plate_id",
@@ -851,6 +852,13 @@ def _nearest_pair_record(
 def _fallback(pair: tuple[int, int], front: dict[int, np.ndarray], contacts: dict[int, _Contact], spacing_rad: float) -> tuple[int, str]:
     """Heuristic polarity when the evidence can't decide. Returns (lower plate id, basis).
 
+    0. "carrier": a continental terrane riding an oceanic plate against a continental plate
+       goes down with its carrier. The carrier is oceanic lithosphere, so it subducts and the
+       terrane docks onto the continent (issue #321). The reverse -- a continental margin
+       going under an oceanic plate's arc -- is the arc-continent case #315 leaves out of
+       scope, so it is never chosen without evidence for it. A carrier is nominally oceanic
+       and mostly oceanic-coded by area (`_is_carrier`); a nominally oceanic plate that is
+       mostly continent is left to the tiers below.
     1. "motion": the plate moving faster into the front, in the mantle frame (`omega` is
        absolute), goes down -- it's the one being driven into the boundary. Absolute motion
        depends on the reference frame and on trench motion, so this is a guess, not a test.
@@ -860,6 +868,9 @@ def _fallback(pair: tuple[int, int], front: dict[int, np.ndarray], contacts: dic
     Column buoyancy is deliberately not used: without a thermal density term every column in
     this model is buoyant (#315), so it can't say which side sinks."""
     a, b = pair
+    oceanic = [side for side in pair if contacts[side].plate.crust_type == "oceanic"]
+    if len(oceanic) == 1 and _is_carrier(contacts[oceanic[0]].plate):
+        return oceanic[0], "carrier"
     speed = {}
     for side in pair:
         other = b if side == a else a
@@ -877,6 +888,14 @@ def _fallback(pair: tuple[int, int], front: dict[int, np.ndarray], contacts: dic
     if not np.isclose(area[a], area[b], rtol=1e-9, atol=0.0):
         return (a if area[a] < area[b] else b), "size"
     return a, "plate_id"
+
+
+def _is_carrier(plate) -> bool:
+    """Whether a nominally oceanic plate is mostly oceanic-coded by area, so its continental
+    cells are terranes it carries rather than the bulk of the plate."""
+    areas = plate.node_areas_m2()
+    continental = effective_is_continental_from_codes(plate.collect("crust_type_code"), False)
+    return float(areas[continental].sum()) < 0.5 * float(areas.sum())
 
 
 # --- Topology --------------------------------------------------------------------------------

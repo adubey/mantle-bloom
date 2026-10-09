@@ -110,7 +110,10 @@ def test_add_material_thickness_updates_tracer_account_and_balance_together():
 
     assert booked == pytest.approx(expected)
     assert world.continental_material_ledger["juvenile_additions_m3"] == pytest.approx(expected)
-    assert continental_ledger.balance_error_m3(world) == pytest.approx(0.0, abs=1.0)
+    # Relative to the inventory: at ~2.5e17 m^3 one float64 step is 32 m^3, so a fixed 1 m^3
+    # tolerance passes or fails with the platform's rounding.
+    inventory = world.continental_material_ledger["initial_continental_m3"]
+    assert continental_ledger.balance_error_m3(world) == pytest.approx(0.0, abs=1e-10 * inventory)
 
 
 def test_balance_treats_relaminated_returns_as_a_surface_source():

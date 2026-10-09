@@ -1,0 +1,726 @@
+{
+ "936513024": {
+  "base": {
+   "commit": "10b657b",
+   "save": "mantle-bloom-seed936513024-90000000y.mbworld",
+   "trajectory": [
+    {
+     "elapsed_myr": 90.0,
+     "terrane_area_mkm2": 9.307708871827543,
+     "terrane_hc_mkm3": 563.9274531593813,
+     "continental_area_mkm2": 450.49855986648805,
+     "continental_hc_mkm3": 14979.209410946854,
+     "land_area_mkm2": 192.7546075475635,
+     "ledger_errors_km3": {
+      "continental_material": 0.0,
+      "craton": 0.0,
+      "mobile_cover": 0.0
+     }
+    },
+    {
+     "elapsed_myr": 92.0,
+     "terrane_area_mkm2": 1.642232607352703,
+     "terrane_hc_mkm3": 47.602582614009094,
+     "continental_area_mkm2": 456.47760080259013,
+     "continental_hc_mkm3": 15060.753928349292,
+     "land_area_mkm2": 204.68858866411125,
+     "ledger_errors_km3": {
+      "continental_material": -4.096e-06,
+      "craton": 0.0,
+      "mobile_cover": -1.6e-08
+     }
+    },
+    {
+     "elapsed_myr": 94.0,
+     "terrane_area_mkm2": 1.8521932681116784,
+     "terrane_hc_mkm3": 41.0540444652366,
+     "continental_area_mkm2": 455.6599727510839,
+     "continental_hc_mkm3": 15010.561438204208,
+     "land_area_mkm2": 239.6084726260966,
+     "ledger_errors_km3": {
+      "continental_material": 2.048e-06,
+      "craton": 0.0,
+      "mobile_cover": -1.28e-07
+     }
+    },
+    {
+     "elapsed_myr": 96.0,
+     "terrane_area_mkm2": 2.009782233213014,
+     "terrane_hc_mkm3": 37.386119256826575,
+     "continental_area_mkm2": 454.7317609138786,
+     "continental_hc_mkm3": 14976.033387068761,
+     "land_area_mkm2": 267.8249814668675,
+     "ledger_errors_km3": {
+      "continental_material": 0.0,
+      "craton": 0.0,
+      "mobile_cover": -7.68e-07
+     }
+    },
+    {
+     "elapsed_myr": 98.0,
+     "terrane_area_mkm2": 2.058837226553438,
+     "terrane_hc_mkm3": 34.11801751982429,
+     "continental_area_mkm2": 453.5755616466264,
+     "continental_hc_mkm3": 14945.84075791405,
+     "land_area_mkm2": 276.08401601015873,
+     "ledger_errors_km3": {
+      "continental_material": 4.096e-06,
+      "craton": 0.0,
+      "mobile_cover": -8.32e-07
+     }
+    },
+    {
+     "elapsed_myr": 100.0,
+     "terrane_area_mkm2": 2.0247468043050594,
+     "terrane_hc_mkm3": 31.129411778247658,
+     "continental_area_mkm2": 451.75959314115806,
+     "continental_hc_mkm3": 14924.445779565976,
+     "land_area_mkm2": 278.5699792781771,
+     "ledger_errors_km3": {
+      "continental_material": 0.0,
+      "craton": 0.0,
+      "mobile_cover": 1.92e-07
+     }
+    },
+    {
+     "elapsed_myr": 102.0,
+     "terrane_area_mkm2": 1.8883789765068708,
+     "terrane_hc_mkm3": 28.26866450912609,
+     "continental_area_mkm2": 449.7605495051225,
+     "continental_hc_mkm3": 14891.050973021329,
+     "land_area_mkm2": 279.5327324881814,
+     "ledger_errors_km3": {
+      "continental_material": 0.0,
+      "craton": 0.0,
+      "mobile_cover": 1.408e-06
+     }
+    },
+    {
+     "elapsed_myr": 104.0,
+     "terrane_area_mkm2": 1.7714690924935212,
+     "terrane_hc_mkm3": 25.501208520976043,
+     "continental_area_mkm2": 447.5484885346791,
+     "continental_hc_mkm3": 14855.128613235025,
+     "land_area_mkm2": 280.8254344137589,
+     "ledger_errors_km3": {
+      "continental_material": 4.096e-06,
+      "craton": 0.0,
+      "mobile_cover": 1.408e-06
+     }
+    },
+    {
+     "elapsed_myr": 106.0,
+     "terrane_area_mkm2": 1.6068305469600261,
+     "terrane_hc_mkm3": 23.13564701011551,
+     "continental_area_mkm2": 445.0905315930023,
+     "continental_hc_mkm3": 14825.678685785297,
+     "land_area_mkm2": 276.79904506386674,
+     "ledger_errors_km3": {
+      "continental_material": 4.096e-06,
+      "craton": -5.12e-07,
+      "mobile_cover": 1.28e-06
+     }
+    },
+    {
+     "elapsed_myr": 108.0,
+     "terrane_area_mkm2": 1.4256057873398789,
+     "terrane_hc_mkm3": 20.61991325219421,
+     "continental_area_mkm2": 442.6002037958638,
+     "continental_hc_mkm3": 14788.886272441363,
+     "land_area_mkm2": 287.19195442510005,
+     "ledger_errors_km3": {
+      "continental_material": -2.048e-06,
+      "craton": 0.0,
+      "mobile_cover": 3.584e-06
+     }
+    },
+    {
+     "elapsed_myr": 110.0,
+     "terrane_area_mkm2": 1.2403695104811514,
+     "terrane_hc_mkm3": 17.950200388756222,
+     "continental_area_mkm2": 440.30532346056015,
+     "continental_hc_mkm3": 14761.698864439059,
+     "land_area_mkm2": 289.36434358842223,
+     "ledger_errors_km3": {
+      "continental_material": 0.0,
+      "craton": 0.0,
+      "mobile_cover": 4.096e-06
+     }
+    }
+   ],
+   "relocations": 0,
+   "terranes": {},
+   "polarity_fallbacks": {
+    "fallback_no_evidence": 28,
+    "fallback_ambiguous": 91,
+    "fallback_motion": 115,
+    "fallback_size": 4,
+    "fallback_plate_id": 0
+   },
+   "orogeny_km3": {
+    "suture_donated_m3": 3620449044.0683413,
+    "suture_lower_crust_subducted_m3": 59372448.2752702,
+    "no_outlet_subducted_m3": 1391985.2655613774,
+    "terrane_returned_m3": 0.0
+   },
+   "oceanic_subduction_hm_mkm3": {
+    "continental_node": 3.275717896782524,
+    "oceanic_node": 1275.9618059379948
+   },
+   "runtime": {
+    "total_s": 3039.1589019298553,
+    "mean_step_s": 10.120302668748772,
+    "p95_step_s": 22.958386730938212
+   }
+  },
+  "dock": {
+   "commit": "10b657b",
+   "save": "mantle-bloom-seed936513024-90000000y.mbworld",
+   "trajectory": [
+    {
+     "elapsed_myr": 90.0,
+     "terrane_area_mkm2": 9.307708871827543,
+     "terrane_hc_mkm3": 563.9274531593813,
+     "continental_area_mkm2": 450.49855986648805,
+     "continental_hc_mkm3": 14979.209410946854,
+     "land_area_mkm2": 192.7546075475635,
+     "ledger_errors_km3": {
+      "continental_material": 0.0,
+      "craton": 0.0,
+      "mobile_cover": 0.0
+     }
+    },
+    {
+     "elapsed_myr": 92.0,
+     "terrane_area_mkm2": 1.6488309778827666,
+     "terrane_hc_mkm3": 45.916226654811034,
+     "continental_area_mkm2": 456.27444948558343,
+     "continental_hc_mkm3": 15059.709795471344,
+     "land_area_mkm2": 207.63769703756603,
+     "ledger_errors_km3": {
+      "continental_material": 0.0,
+      "craton": -5.12e-07,
+      "mobile_cover": -3.2e-08
+     }
+    },
+    {
+     "elapsed_myr": 94.0,
+     "terrane_area_mkm2": 1.9299882473143533,
+     "terrane_hc_mkm3": 40.01169627180535,
+     "continental_area_mkm2": 456.00216762400544,
+     "continental_hc_mkm3": 15010.690662848858,
+     "land_area_mkm2": 235.5619351410355,
+     "ledger_errors_km3": {
+      "continental_material": 4.096e-06,
+      "craton": -5.12e-07,
+      "mobile_cover": -3.2e-08
+     }
+    },
+    {
+     "elapsed_myr": 96.0,
+     "terrane_area_mkm2": 1.8832935588455768,
+     "terrane_hc_mkm3": 34.305697099180954,
+     "continental_area_mkm2": 455.0392026776096,
+     "continental_hc_mkm3": 14979.333393866651,
+     "land_area_mkm2": 246.6611719770276,
+     "ledger_errors_km3": {
+      "continental_material": 0.0,
+      "craton": -5.12e-07,
+      "mobile_cover": -1.024e-06
+     }
+    },
+    {
+     "elapsed_myr": 98.0,
+     "terrane_area_mkm2": 1.7805261855255512,
+     "terrane_hc_mkm3": 29.894592626487864,
+     "continental_area_mkm2": 454.0575171366105,
+     "continental_hc_mkm3": 14955.727362122869,
+     "land_area_mkm2": 277.6110495399748,
+     "ledger_errors_km3": {
+      "continental_material": 0.0,
+      "craton": -5.12e-07,
+      "mobile_cover": -1.792e-06
+     }
+    },
+    {
+     "elapsed_myr": 100.0,
+     "terrane_area_mkm2": 1.6281713624858676,
+     "terrane_hc_mkm3": 25.96884258531646,
+     "continental_area_mkm2": 452.2409619431225,
+     "continental_hc_mkm3": 14930.594764492282,
+     "land_area_mkm2": 280.7755066228231,
+     "ledger_errors_km3": {
+      "continental_material": 0.0,
+      "craton": 0.0,
+      "mobile_cover": -2.048e-06
+     }
+    },
+    {
+     "elapsed_myr": 102.0,
+     "terrane_area_mkm2": 1.576635802618977,
+     "terrane_hc_mkm3": 23.80673907012462,
+     "continental_area_mkm2": 450.53832092133456,
+     "continental_hc_mkm3": 14902.819904370297,
+     "land_area_mkm2": 279.4366933367397,
+     "ledger_errors_km3": {
+      "continental_material": 2.048e-06,
+      "craton": 0.0,
+      "mobile_cover": -3.52e-06
+     }
+    },
+    {
+     "elapsed_myr": 104.0,
+     "terrane_area_mkm2": 1.4073623886054516,
+     "terrane_hc_mkm3": 20.83678967988766,
+     "continental_area_mkm2": 448.56607961279474,
+     "continental_hc_mkm3": 14877.735606981472,
+     "land_area_mkm2": 276.98413434738893,
+     "ledger_errors_km3": {
+      "continental_material": -2.048e-06,
+      "craton": -5.12e-07,
+      "mobile_cover": -3.392e-06
+     }
+    },
+    {
+     "elapsed_myr": 106.0,
+     "terrane_area_mkm2": 1.2477961040924315,
+     "terrane_hc_mkm3": 18.58209449695041,
+     "continental_area_mkm2": 446.91943308149234,
+     "continental_hc_mkm3": 14856.41021861225,
+     "land_area_mkm2": 281.14631438763735,
+     "ledger_errors_km3": {
+      "continental_material": 0.0,
+      "craton": 0.0,
+      "mobile_cover": -2.048e-06
+     }
+    },
+    {
+     "elapsed_myr": 108.0,
+     "terrane_area_mkm2": 1.144889543589533,
+     "terrane_hc_mkm3": 17.355445334078702,
+     "continental_area_mkm2": 444.98328590478826,
+     "continental_hc_mkm3": 14844.98650472865,
+     "land_area_mkm2": 274.4128816442857,
+     "ledger_errors_km3": {
+      "continental_material": 0.0,
+      "craton": 0.0,
+      "mobile_cover": -3.2e-06
+     }
+    },
+    {
+     "elapsed_myr": 110.0,
+     "terrane_area_mkm2": 1.1071465607878104,
+     "terrane_hc_mkm3": 16.853880685401414,
+     "continental_area_mkm2": 442.24955326119954,
+     "continental_hc_mkm3": 14817.29662125826,
+     "land_area_mkm2": 281.23951906600115,
+     "ledger_errors_km3": {
+      "continental_material": 0.0,
+      "craton": 0.0,
+      "mobile_cover": -3.072e-06
+     }
+    }
+   ],
+   "relocations": 0,
+   "terranes": {
+    "polarized_cells": 2173,
+    "contact_docking_cells": 36,
+    "terrane_to_terrane_cells": 0,
+    "docked_fronts": 2021,
+    "partial_fronts": 0,
+    "fallback_fronts": 206,
+    "relocated_fronts": 0,
+    "docked_hc_m3": 3.820049913423965e+17,
+    "docked_craton_m3": 0.0,
+    "returned_hc_m3": 0.0,
+    "fallback_hc_m3": 2.773533944247956e+16,
+    "relocated_hc_m3": 0
+   },
+   "polarity_fallbacks": {
+    "fallback_no_evidence": 28,
+    "fallback_ambiguous": 86,
+    "fallback_carrier": 27,
+    "fallback_motion": 86,
+    "fallback_size": 1,
+    "fallback_plate_id": 0
+   },
+   "orogeny_km3": {
+    "suture_donated_m3": 3414487063.9504633,
+    "suture_lower_crust_subducted_m3": 58929144.564911395,
+    "no_outlet_subducted_m3": 2941844.6517223925,
+    "terrane_returned_m3": 0.0
+   },
+   "oceanic_subduction_hm_mkm3": {
+    "continental_node": 1106.8634164575753,
+    "oceanic_node": 1233.3136742469726
+   },
+   "runtime": {
+    "total_s": 1818.8921401500702,
+    "mean_step_s": 9.094294420420773,
+    "p95_step_s": 17.135111470834804
+   }
+  }
+ },
+ "910211954": {
+  "base": {
+   "commit": "10b657b",
+   "save": "mantle-bloom-seed910211954-220200000y.mbworld",
+   "trajectory": [
+    {
+     "elapsed_myr": 220.4,
+     "terrane_area_mkm2": 44.56112315449087,
+     "terrane_hc_mkm3": 1725.7792316862617,
+     "continental_area_mkm2": 216.1897974490793,
+     "continental_hc_mkm3": 8285.95330993437,
+     "land_area_mkm2": 167.49943262547765,
+     "ledger_errors_km3": {
+      "continental_material": 0.0,
+      "craton": 4.608e-06,
+      "mobile_cover": -9.344e-05
+     }
+    },
+    {
+     "elapsed_myr": 222.4,
+     "terrane_area_mkm2": 42.497361177041434,
+     "terrane_hc_mkm3": 1642.0189093880242,
+     "continental_area_mkm2": 212.4676959987177,
+     "continental_hc_mkm3": 8206.09012046602,
+     "land_area_mkm2": 167.4741295713262,
+     "ledger_errors_km3": {
+      "continental_material": 2.048e-06,
+      "craton": 4.096e-06,
+      "mobile_cover": -9.4208e-05
+     }
+    },
+    {
+     "elapsed_myr": 224.4,
+     "terrane_area_mkm2": 40.160532270584625,
+     "terrane_hc_mkm3": 1564.6301006015756,
+     "continental_area_mkm2": 209.7535725976215,
+     "continental_hc_mkm3": 8131.84284456848,
+     "land_area_mkm2": 166.39377741673536,
+     "ledger_errors_km3": {
+      "continental_material": -2.048e-06,
+      "craton": 3.584e-06,
+      "mobile_cover": -9.2032e-05
+     }
+    },
+    {
+     "elapsed_myr": 226.4,
+     "terrane_area_mkm2": 38.1229317402765,
+     "terrane_hc_mkm3": 1500.3602468771103,
+     "continental_area_mkm2": 207.17284123660306,
+     "continental_hc_mkm3": 8059.5378875391625,
+     "land_area_mkm2": 166.64371516628628,
+     "ledger_errors_km3": {
+      "continental_material": 4.096e-06,
+      "craton": 4.608e-06,
+      "mobile_cover": -9.7792e-05
+     }
+    },
+    {
+     "elapsed_myr": 228.4,
+     "terrane_area_mkm2": 33.201452120551195,
+     "terrane_hc_mkm3": 1199.690863913355,
+     "continental_area_mkm2": 204.3818063230744,
+     "continental_hc_mkm3": 7988.7273090485505,
+     "land_area_mkm2": 164.39570436743185,
+     "ledger_errors_km3": {
+      "continental_material": 4.096e-06,
+      "craton": 5.12e-06,
+      "mobile_cover": -0.00010624
+     }
+    },
+    {
+     "elapsed_myr": 230.4,
+     "terrane_area_mkm2": 31.565267775770028,
+     "terrane_hc_mkm3": 1142.719072541292,
+     "continental_area_mkm2": 201.6348567023947,
+     "continental_hc_mkm3": 7917.381961213987,
+     "land_area_mkm2": 163.6645512123766,
+     "ledger_errors_km3": {
+      "continental_material": 2.048e-06,
+      "craton": 4.096e-06,
+      "mobile_cover": -0.000108544
+     }
+    },
+    {
+     "elapsed_myr": 232.4,
+     "terrane_area_mkm2": 31.744992413601278,
+     "terrane_hc_mkm3": 1220.5489316754774,
+     "continental_area_mkm2": 198.5686444915479,
+     "continental_hc_mkm3": 7845.129029406466,
+     "land_area_mkm2": 162.834241861622,
+     "ledger_errors_km3": {
+      "continental_material": 6.144e-06,
+      "craton": 3.584e-06,
+      "mobile_cover": -0.00011648
+     }
+    },
+    {
+     "elapsed_myr": 234.4,
+     "terrane_area_mkm2": 30.19800514066094,
+     "terrane_hc_mkm3": 1175.737525700923,
+     "continental_area_mkm2": 196.42414364808454,
+     "continental_hc_mkm3": 7763.537420311891,
+     "land_area_mkm2": 161.11975358954504,
+     "ledger_errors_km3": {
+      "continental_material": 8.192e-06,
+      "craton": 2.56e-06,
+      "mobile_cover": -0.00012608
+     }
+    },
+    {
+     "elapsed_myr": 236.4,
+     "terrane_area_mkm2": 31.031174472369006,
+     "terrane_hc_mkm3": 1296.1759739562215,
+     "continental_area_mkm2": 194.18861370053995,
+     "continental_hc_mkm3": 7692.319822809313,
+     "land_area_mkm2": 159.9576244012627,
+     "ledger_errors_km3": {
+      "continental_material": 1.024e-05,
+      "craton": 2.048e-06,
+      "mobile_cover": -0.000113024
+     }
+    },
+    {
+     "elapsed_myr": 238.4,
+     "terrane_area_mkm2": 29.641338210694926,
+     "terrane_hc_mkm3": 1259.0020278651332,
+     "continental_area_mkm2": 191.93833701229443,
+     "continental_hc_mkm3": 7626.079231246702,
+     "land_area_mkm2": 158.7625984976596,
+     "ledger_errors_km3": {
+      "continental_material": 8.192e-06,
+      "craton": 5.12e-07,
+      "mobile_cover": -9.4848e-05
+     }
+    },
+    {
+     "elapsed_myr": 240.4,
+     "terrane_area_mkm2": 19.928968744995363,
+     "terrane_hc_mkm3": 840.1103790004249,
+     "continental_area_mkm2": 188.46006192363123,
+     "continental_hc_mkm3": 7567.39928345693,
+     "land_area_mkm2": 157.60546813112137,
+     "ledger_errors_km3": {
+      "continental_material": 8.192e-06,
+      "craton": 1.024e-06,
+      "mobile_cover": -0.000121088
+     }
+    }
+   ],
+   "relocations": 159,
+   "terranes": {},
+   "polarity_fallbacks": {
+    "fallback_no_evidence": 25,
+    "fallback_ambiguous": 308,
+    "fallback_motion": 324,
+    "fallback_size": 9,
+    "fallback_plate_id": 0
+   },
+   "orogeny_km3": {
+    "suture_donated_m3": 35959354448.98484,
+    "suture_lower_crust_subducted_m3": 25260620.403013468,
+    "no_outlet_subducted_m3": 82908134.67265218,
+    "terrane_returned_m3": 0.0
+   },
+   "oceanic_subduction_hm_mkm3": {
+    "continental_node": 0.0,
+    "oceanic_node": 2730.1030463469024
+   },
+   "runtime": {
+    "total_s": 3675.1888859272003,
+    "mean_step_s": 18.375535390204167,
+    "p95_step_s": 65.14685299547853
+   }
+  },
+  "dock": {
+   "commit": "10b657b",
+   "save": "mantle-bloom-seed910211954-220200000y.mbworld",
+   "trajectory": [
+    {
+     "elapsed_myr": 220.4,
+     "terrane_area_mkm2": 44.56112315449087,
+     "terrane_hc_mkm3": 1725.7792316862617,
+     "continental_area_mkm2": 216.1897974490793,
+     "continental_hc_mkm3": 8285.95330993437,
+     "land_area_mkm2": 167.49943262547765,
+     "ledger_errors_km3": {
+      "continental_material": 0.0,
+      "craton": 4.608e-06,
+      "mobile_cover": -9.344e-05
+     }
+    },
+    {
+     "elapsed_myr": 222.4,
+     "terrane_area_mkm2": 42.40040854229066,
+     "terrane_hc_mkm3": 1632.7572733005582,
+     "continental_area_mkm2": 212.37227776173143,
+     "continental_hc_mkm3": 8205.902277754381,
+     "land_area_mkm2": 167.49578611686536,
+     "ledger_errors_km3": {
+      "continental_material": -2.048e-06,
+      "craton": 5.632e-06,
+      "mobile_cover": -0.00011072
+     }
+    },
+    {
+     "elapsed_myr": 224.4,
+     "terrane_area_mkm2": 39.915250952660855,
+     "terrane_hc_mkm3": 1546.6351379608204,
+     "continental_area_mkm2": 209.61203041181278,
+     "continental_hc_mkm3": 8132.407016794652,
+     "land_area_mkm2": 164.97436988361875,
+     "ledger_errors_km3": {
+      "continental_material": -2.048e-06,
+      "craton": 4.608e-06,
+      "mobile_cover": -0.00011648
+     }
+    },
+    {
+     "elapsed_myr": 226.4,
+     "terrane_area_mkm2": 37.76265886272189,
+     "terrane_hc_mkm3": 1480.3537376486133,
+     "continental_area_mkm2": 206.82260937602473,
+     "continental_hc_mkm3": 8052.9054977460455,
+     "land_area_mkm2": 163.17933415131478,
+     "ledger_errors_km3": {
+      "continental_material": -2.048e-06,
+      "craton": 4.096e-06,
+      "mobile_cover": -0.000101248
+     }
+    },
+    {
+     "elapsed_myr": 228.4,
+     "terrane_area_mkm2": 32.773255219232816,
+     "terrane_hc_mkm3": 1176.8002739586914,
+     "continental_area_mkm2": 204.22346626278073,
+     "continental_hc_mkm3": 7972.060690634176,
+     "land_area_mkm2": 165.68177625492626,
+     "ledger_errors_km3": {
+      "continental_material": -2.048e-06,
+      "craton": 3.072e-06,
+      "mobile_cover": -0.000101248
+     }
+    },
+    {
+     "elapsed_myr": 230.4,
+     "terrane_area_mkm2": 31.27485785714083,
+     "terrane_hc_mkm3": 1120.716418017943,
+     "continental_area_mkm2": 201.73750572951815,
+     "continental_hc_mkm3": 7895.33120689697,
+     "land_area_mkm2": 161.84534421255725,
+     "ledger_errors_km3": {
+      "continental_material": -2.048e-06,
+      "craton": 4.096e-06,
+      "mobile_cover": -0.000109696
+     }
+    },
+    {
+     "elapsed_myr": 232.4,
+     "terrane_area_mkm2": 30.026257607353003,
+     "terrane_hc_mkm3": 1083.4145512492328,
+     "continental_area_mkm2": 199.30434224805677,
+     "continental_hc_mkm3": 7828.7469045177995,
+     "land_area_mkm2": 161.71578254222862,
+     "ledger_errors_km3": {
+      "continental_material": 0.0,
+      "craton": 4.096e-06,
+      "mobile_cover": -0.000118656
+     }
+    },
+    {
+     "elapsed_myr": 234.4,
+     "terrane_area_mkm2": 28.788261648694537,
+     "terrane_hc_mkm3": 1052.5621463548514,
+     "continental_area_mkm2": 196.5620907942857,
+     "continental_hc_mkm3": 7756.87197435871,
+     "land_area_mkm2": 161.7198054963712,
+     "ledger_errors_km3": {
+      "continental_material": -2.048e-06,
+      "craton": 3.072e-06,
+      "mobile_cover": -0.000124672
+     }
+    },
+    {
+     "elapsed_myr": 236.4,
+     "terrane_area_mkm2": 27.86494805848759,
+     "terrane_hc_mkm3": 1028.4212209574957,
+     "continental_area_mkm2": 194.7723008220906,
+     "continental_hc_mkm3": 7695.598456849287,
+     "land_area_mkm2": 160.38108733767248,
+     "ledger_errors_km3": {
+      "continental_material": -4.096e-06,
+      "craton": 3.584e-06,
+      "mobile_cover": -9.4848e-05
+     }
+    },
+    {
+     "elapsed_myr": 238.4,
+     "terrane_area_mkm2": 18.98464224601225,
+     "terrane_hc_mkm3": 686.1049951162333,
+     "continental_area_mkm2": 191.615034513997,
+     "continental_hc_mkm3": 7636.785047244382,
+     "land_area_mkm2": 159.71383590274766,
+     "ledger_errors_km3": {
+      "continental_material": -6.144e-06,
+      "craton": 5.12e-06,
+      "mobile_cover": -0.000104192
+     }
+    },
+    {
+     "elapsed_myr": 240.4,
+     "terrane_area_mkm2": 17.804965023376553,
+     "terrane_hc_mkm3": 659.3609926256896,
+     "continental_area_mkm2": 188.65787118090293,
+     "continental_hc_mkm3": 7580.509448030381,
+     "land_area_mkm2": 159.23516622237855,
+     "ledger_errors_km3": {
+      "continental_material": -8.192e-06,
+      "craton": 5.632e-06,
+      "mobile_cover": -8.8832e-05
+     }
+    }
+   ],
+   "relocations": 196,
+   "terranes": {
+    "polarized_cells": 1769,
+    "contact_docking_cells": 397,
+    "terrane_to_terrane_cells": 345,
+    "docked_fronts": 1872,
+    "partial_fronts": 0,
+    "fallback_fronts": 4308,
+    "relocated_fronts": 196,
+    "docked_hc_m3": 4.945610165181551e+17,
+    "docked_craton_m3": 503877533998057.06,
+    "returned_hc_m3": 0.0,
+    "fallback_hc_m3": 1.0793397965144963e+18,
+    "relocated_hc_m3": 6.9131630313972824e+16
+   },
+   "polarity_fallbacks": {
+    "fallback_no_evidence": 25,
+    "fallback_ambiguous": 302,
+    "fallback_motion": 319,
+    "fallback_size": 8,
+    "fallback_plate_id": 0,
+    "fallback_carrier": 0
+   },
+   "orogeny_km3": {
+    "suture_donated_m3": 35878899193.274155,
+    "suture_lower_crust_subducted_m3": 26235250.50482829,
+    "no_outlet_subducted_m3": 86042431.20619436,
+    "terrane_returned_m3": 0.0
+   },
+   "oceanic_subduction_hm_mkm3": {
+    "continental_node": 1010.4166706651639,
+    "oceanic_node": 2645.229540410595
+   },
+   "runtime": {
+    "total_s": 4169.282143831253,
+    "mean_step_s": 20.846072485630867,
+    "p95_step_s": 73.87730725475701
+   }
+  }
+ }
+}

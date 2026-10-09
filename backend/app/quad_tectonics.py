@@ -12,7 +12,8 @@ two operations on the cell graph:
   layer is considered, up to this step's displacement in cells. At a polarized continental
   collision front only the lower plate retreats; its consumed crust is partitioned onto the
   upper plate and its mantle lithosphere subducts (`crust_transfer.py`, issues #319-#320).
-  Any other continental suture's
+  A continental terrane consumed with its oceanic carrier docks the same way onto a
+  continental overrider (#321). Any other continental suture's
   consumed crust is thrust onto the nearest surviving cells (area-weighted, so volume is
   conserved). Past the receiving
   belts it escapes along strike before any of it may delaminate (issue #290; `orogeny.py`).
@@ -487,9 +488,16 @@ def _retreat(
     )
     # A continental terrane keeps being continental even when it rides an oceanic plate.
     # Treat those cells like the explicit continent-continent suture donors instead of
-    # subducting them with their nominal owning plate (issue #253).
+    # subducting them with their nominal owning plate (issue #253). Against a continental
+    # overrider they dock onto it; only without one do they stay on their carrier (#321).
     terrane = continental if plate.crust_type == "oceanic" else np.zeros_like(continental)
     donors = removed & (ctx.accrete | terrane)
+    upper_plate_ids = ctx.suture_upper_plate_id
+    if np.any(donors & terrane):
+        upper_plate_ids = crust_transfer.dock_targets(
+            world, plate, donors & terrane, upper_plate_ids, ctx.inputs.neighbor_plate_id,
+            ctx.inputs.neighbor_node_index, ctx.neighbours,
+        )
     # Everything else removed goes down the trench: its craton and its continental-derived
     # material leave the surface as deep subduction.
     subducted = removed & ~donors
@@ -508,15 +516,15 @@ def _retreat(
         world, "deeply_subducted_m3", float(np.dot(plate.collect("continental_material_m")[subducted], areas[subducted]))
     )
     # Their mobile cover goes down the trench with them; a suture donor's is metamorphosed
-    # into the crust it thrusts onto the survivors. A polarized front's donors book theirs
-    # where their crust lands (crust_transfer).
+    # into the crust it thrusts onto the survivors. A polarized front's donors and a docking
+    # terrane book theirs where their crust lands (crust_transfer).
     mobile_cover.book_removed(world, plate, subducted, "subducted_m3")
-    mobile_cover.book_removed(world, plate, donors & (ctx.suture_upper_plate_id < 0), "accreted_m3")
+    mobile_cover.book_removed(world, plate, donors & (upper_plate_ids < 0), "accreted_m3")
     if np.any(donors):
         _accrete_onto_survivors(
             plate, donors, ~removed, world, convergence_xyz=ctx.inputs.direction_to_neighbor, years=years,
             overriders=ctx.neighbours, hm_subduct_mask=ctx.suture_hm_subduct,
-            upper_plate_ids=ctx.suture_upper_plate_id, neighbour_plate_ids=ctx.inputs.neighbor_plate_id,
+            upper_plate_ids=upper_plate_ids, neighbour_plate_ids=ctx.inputs.neighbor_plate_id,
         )
     plate.remove_cells(removed)
     return ~removed
@@ -581,7 +589,8 @@ def _accrete_onto_survivors(
     front with its own band, so separate sutures on one plate don't share volume. Donors and
     receivers are matched by effective crust type, which keeps continental terranes on
     nominally oceanic plates in the continental reservoir. A terrane on an oceanic plate
-    relocates onto oceanic footprint when its reservoir has no room.
+    comes here only when no continental overrider can take it (`crust_transfer`, issue
+    #321), and relocates onto oceanic footprint when its reservoir has no room.
 
     When the first band fills, Hc goes where `_place_suture_crust` finds room, in order
     (issue #290): three more belts (lateral spreading), cells along the suture's strike
@@ -602,17 +611,26 @@ def _accrete_onto_survivors(
     Receivers' Moho is buried under the crust they take (`orogeny.bury_moho`). Booking needs
     `world`; without one only the fields move.
 
-    Donors with a frozen upper plate in `upper_plate_ids` (the lower side of a polarized
-    collision front) don't come here: their crust is partitioned and goes to that plate, and
-    their Hm subducts (`crust_transfer`, issue #320); `neighbour_plate_ids` (each node's
-    nearest other plate) aims each front at its upper plate. `hm_subduct_mask` subducts the
-    Hm of any such donor whose upper plate is gone, which falls back to this path, and the
-    caller must not have booked those donors' mobile cover."""
+    Donors with an upper plate in `upper_plate_ids` (the lower side of a polarized collision
+    front, or a docking terrane) don't come here: their crust is partitioned and goes to that
+    plate, and their Hm subducts (`crust_transfer`, issues #320, #321); `neighbour_plate_ids`
+    (each node's nearest other plate) aims each front at its upper plate. `hm_subduct_mask`
+    subducts the Hm of any such donor whose upper plate is gone, which falls back to this
+    path, and the caller must not have booked those donors' mobile cover. A terrane that
+    docked only in part comes back with its remainder. That remainder's Hm goes down with the
+    carrier's slab, as the docked share's did, unless the terrane must relocate: then it
+    keeps it, so its new footprint has a mantle column under it."""
+    returned = np.zeros(len(donors), dtype=bool)
     if upper_plate_ids is not None and world is not None:
-        donors = donors & ~crust_transfer.transfer_fronts(
-            world, plate, donors, upper_plate_ids, convergence_xyz, neighbour_plate_ids, years, overriders
+        # A returned remainder needs surviving cells on the carrier to stay on.
+        handled, returned = crust_transfer.transfer_fronts(
+            world, plate, donors, upper_plate_ids, convergence_xyz, neighbour_plate_ids, years, overriders,
+            can_return=bool(np.any(survivors)),
         )
-        # A polarized donor whose upper plate is gone accretes here; its cover too.
+        donors = donors & ~handled
+        hm_subduct_mask = returned if hm_subduct_mask is None else hm_subduct_mask | returned
+        # A donor whose upper plate is gone accretes here, and a terrane's returned remainder
+        # stays on its carrier; their cover too.
         mobile_cover.book_removed(world, plate, donors & (upper_plate_ids >= 0), "accreted_m3")
     survivor_idx = np.flatnonzero(survivors)
     if not len(survivor_idx):
@@ -673,6 +691,15 @@ def _accrete_onto_survivors(
             hm_sink_idx = np.array([], dtype=int) if hm_subduct_mask is None else front[hm_subduct_mask[front]]
             hm_subducted_volume = float(np.sum(hm[hm_sink_idx] * areas[hm_sink_idx]))
             hm_volume = max(hm_front_volume - hm_subducted_volume, 0.0)
+            # A returned terrane remainder that has to relocate keeps its mantle column; other
+            # donors' Hm sinks as their mask says.
+            is_returned = bool(np.any(returned[front]))
+            kept_back = front[returned[front]]
+            relocation_hm_volume = hm_volume + float(np.dot(hm[kept_back], areas[kept_back]))
+            # A docking terrane's craton stays craton wherever its remainder lands (#321).
+            dated = front[craton[front] > 0.0]
+            carried_craton = craton_volume if is_returned else 0.0
+            craton_date = float(formed[dated].min()) if is_returned and len(dated) else CRATON_UNFORMED_YEARS
             hc_room = float(
                 np.sum(
                     np.maximum(SUTURE_ACCRETION_MAX_HC_M - hc[typed_survivors], 0.0)
@@ -700,7 +727,8 @@ def _accrete_onto_survivors(
                 # as newly continental.
                 was_continental = continental.copy()
                 relocated = _relocate_terrane_column(
-                    hc, hm, codes, continental, areas, points, adjacency, front, survivors, hc_volume, hm_volume
+                    hc, hm, codes, continental, areas, points, adjacency, front, survivors, hc_volume,
+                    relocation_hm_volume,
                 )
                 if np.any(relocated):
                     changed |= relocated
@@ -719,11 +747,12 @@ def _accrete_onto_survivors(
                         world,
                         plate.plate_id,
                         front_neighbour_ids(front),
-                        hm_volume,
-                        hm_volume,
+                        relocation_hm_volume,
+                        relocation_hm_volume,
                         donor_is_continental=bool(donor_type),
-                        placed_hm_continental_m3=hm_volume,
+                        placed_hm_continental_m3=relocation_hm_volume,
                     )
+                    crust_transfer.record_terrane_fallback(world, hc_volume, relocated=True, returned=is_returned)
                     continue
             if not np.any(typed_survivors):
                 # Preserve the old any-type nearest-survivor fallback. Same-type placement is
@@ -785,19 +814,25 @@ def _accrete_onto_survivors(
                 handed = _hand_to_overrider(
                     world, plate, geometry.to_world(plate.frame, points[front]), overriders, stuck,
                     share * material_volume, _overrider_approach(convergence_xyz, front), years, share * restite_volume,
+                    share * carried_craton, craton_date,
                 )
                 handed_share = handed / hc_volume
                 stages["overrider_placed_m3"] = handed
                 stages["no_outlet_subducted_m3"] = max(stuck - handed, 0.0)
             placed_share = _carry_material(material, areas, hc - hc_front_start + shed, hc_volume, material_volume)
             _carry_material(restite, areas, hc - hc_front_start + shed, hc_volume, restite_volume)
+            if carried_craton > 0.0:
+                craton_before_carry = craton.copy()
+                _carry_material(craton, areas, hc - hc_front_start + shed, hc_volume, carried_craton)
+                took = craton > craton_before_carry
+                formed[took] = np.minimum(formed[took], craton_date)
             lost_share = max(1.0 - placed_share - handed_share, 0.0)
             if world is not None:
                 # The terminal remainder is crust of a plate being consumed with no room
                 # anywhere: it goes down with the slab, as deep continental subduction in a
                 # collision does, rather than delaminating (issue #276).
                 continental_ledger.record(world, "collision_subducted_m3", lost_share * material_volume)
-                cratons.record(world, "collision_reworked_m3", (1.0 - lost_share) * craton_volume)
+                cratons.record(world, "collision_reworked_m3", (1.0 - lost_share) * (craton_volume - carried_craton))
                 cratons.record(world, "subducted_m3", lost_share * craton_volume)
                 orogeny.record(world, "suture_donated_m3", hc_volume)
                 for account, volume in stages.items():
@@ -814,6 +849,12 @@ def _accrete_onto_survivors(
             placed_hm_by_node = np.maximum(hm - hm_front_start, 0.0) * areas
             placed_hm_volume = float(placed_hm_by_node.sum())
             placed_hm_continental_volume = float(placed_hm_by_node[continental].sum())
+            if plate.crust_type == "oceanic" and donor_type and hm_subducted_volume > 0.0:
+                # A terrane's sunk Hm goes down with its carrier's slab, as a docked one's
+                # does (crust_transfer); it is not a continental suture's.
+                hm_ledger.record_typed_sink(world, "oceanic_and_deep_subduction", hm_subducted_volume, continental=True)
+                hm_front_volume -= hm_subducted_volume
+                hm_subducted_volume = 0.0
             hm_ledger.record_suture_front(
                 world,
                 plate.plate_id,
@@ -824,6 +865,8 @@ def _accrete_onto_survivors(
                 placed_hm_continental_m3=placed_hm_continental_volume,
                 subducted_hm_m3=hm_subducted_volume,
             )
+            if plate.crust_type == "oceanic" and donor_type:
+                crust_transfer.record_terrane_fallback(world, hc_volume, relocated=False, returned=is_returned)
 
     gained = np.flatnonzero(changed)
     density_before = lithosphere.node_crust_density(codes_before[gained], plate.crust_type)
@@ -1119,6 +1162,8 @@ def _hand_to_overrider(
     approach_world: np.ndarray | None,
     years: float,
     restite_volume: float = 0.0,
+    craton_volume: float = 0.0,
+    craton_formed_years: float = CRATON_UNFORMED_YEARS,
 ) -> float:
     """Accrete `volume` of a consumed front's Hc onto the quad plates overriding it, each
     through `_place_on_overrider`. The first is the candidate containing most of the front's
@@ -1128,7 +1173,8 @@ def _hand_to_overrider(
     overrider; the orogen they make spans their neighbours too, so the crust escapes into
     those rather than stranding (issue #276). An oceanic neighbour is skipped, since its
     cells aren't retyped. The front's continental material and `restite_volume` go with the
-    Hc each places, in proportion. Whatever none of them can hold is left for the caller's
+    Hc each places, in proportion, and so does `craton_volume` when the caller carries the
+    front's craton (`_place_on_overrider`). Whatever none of them can hold is left for the caller's
     terminal remainder. `front_world` is the front's cell centres and `approach_world` the
     direction the overriders converge on it from (`_overrider_approach`), both world frame.
     Returns the Hc volume placed."""
@@ -1153,7 +1199,7 @@ def _hand_to_overrider(
         share = remaining / volume
         placed += _place_on_overrider(
             world, over, front_world, remaining, share * material_volume, approach_world, years,
-            share * restite_volume,
+            share * restite_volume, craton_volume=share * craton_volume, craton_formed_years=craton_formed_years,
         )
     return placed
 
@@ -1183,12 +1229,16 @@ def _place_on_overrider(
     adjacency: csr_matrix | None = None,
     seed: np.ndarray | None = None,
     root_capacity: np.ndarray | None = None,
+    craton_volume: float = 0.0,
+    craton_formed_years: float = CRATON_UNFORMED_YEARS,
 ) -> float:
     """Accrete `volume` of a consumed front's Hc onto one overriding quad plate `over`, through
     the same staged `_place_suture_crust` placement on that plate, seeded at its cells nearest
     the front (`front_world`). The front's continental material goes with the Hc it placed, in
-    proportion, and so does its `restite_volume`; its cratonic crust becomes ordinary orogenic
-    crust, which the caller books. The overrider's own belts may shed eligible roots to make
+    proportion, and so does its `restite_volume`. Its cratonic crust becomes ordinary orogenic
+    crust, which the caller books -- unless the caller carries it as `craton_volume` (a
+    docking terrane's, issue #321), which goes with the Hc like the material, dated
+    `craton_formed_years` (`settle_received_crust`). The overrider's own belts may shed eligible roots to make
     room, booked here with their own provenance, and the Moho of the cells that take crust is
     buried under it. `approach_world` is the world-frame direction `over` converges on the
     front from, which sets the suture's strike; `adjacency` reuses `over`'s cell graph and
@@ -1235,7 +1285,7 @@ def _place_on_overrider(
             orogeny.record(world, account, stages[account])
     settle_received_crust(
         over, hc_before, hc, hc - hc_before + shed, changed, volume, material_volume, restite_volume,
-        material, restite, craton,
+        material, restite, craton, craton_volume, craton_formed_years,
     )
     return placed
 
@@ -1252,12 +1302,16 @@ def settle_received_crust(
     material: np.ndarray,
     restite: np.ndarray,
     craton: np.ndarray | None = None,
+    craton_volume: float = 0.0,
+    craton_formed_years: float = CRATON_UNFORMED_YEARS,
 ) -> None:
     """Write crust a plate received (`hc`, from `hc_before`) back onto it: the donation's
     continental material and restite go with each cell's `gain` (thickness) in proportion,
     the `changed` cells' elevation follows their Hc change isostatically, and their Moho is
     buried under it. Mantle lithosphere is unchanged. `material`, `restite` and `craton` are
-    the plate's own fields as the caller left them (shed roots already taken out)."""
+    the plate's own fields as the caller left them (shed roots already taken out). A carried
+    `craton_volume` goes with the gain too; each cell that takes some keeps the older of its
+    own craton date and `craton_formed_years`."""
     areas = over.node_areas_m2()
     hm = over.collect("mantle_lithosphere_thickness_m")
     codes = over.collect("crust_type_code")
@@ -1279,6 +1333,15 @@ def settle_received_crust(
         moho_thermal_lag_c=lag,
         elevation=elevation,
     )
+    if craton_volume > 0.0:
+        if craton is None:
+            craton = over.collect("craton_crust_m")
+        before = craton.copy()
+        _carry_material(craton, areas, gain, volume, craton_volume)
+        formed = over.collect("craton_formed_years")
+        took = craton > before
+        formed[took] = np.minimum(formed[took], craton_formed_years)
+        fields["craton_formed_years"] = formed
     if craton is not None:
         fields["craton_crust_m"] = craton
     over.set_fields_on_plate(**fields)

@@ -111,7 +111,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from .. import geometry, plates
-from . import biomes, fluid_dynamics, hydrology
+from . import biomes, hydrology
 
 if TYPE_CHECKING:
     from ..world import World

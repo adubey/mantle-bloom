@@ -148,14 +148,17 @@ BUDGET_ACCOUNTS = (
     # Crust transfer at a polarized collision front (crust_transfer.py, issue #320): the
     # consumed lower-plate crust (also in `suture_donated_m3`) splits into scraped (with all
     # its mobile cover), underthrust and lost shares. scraped + underthrust overflow =
-    # upper-plate placed + overrider placed + no outlet; underthrust = underthrust placed +
-    # underthrust overflow.
+    # upper-plate placed + overrider placed + no outlet + terrane returned; underthrust =
+    # underthrust placed + underthrust overflow. A docking terrane's crust that no overrider
+    # can hold goes back to its carrier (`terrane_returned_m3`, issue #321), which donates it
+    # again to its own-plate path, so the transfer's `suture_donated_m3` excludes it.
     "suture_scraped_m3",
     "suture_underthrust_m3",
     "suture_underthrust_placed_m3",
     "suture_lower_crust_subducted_m3",
     "upper_plate_placed_m3",
     "restite_subducted_m3",
+    "terrane_returned_m3",
     # Convergent shortening past the Hc ceiling (quad_tectonics._place_ceiling_overflow):
     # overflow = residue + melt placed + melt with no outlet.
     "ceiling_overflow_m3",
