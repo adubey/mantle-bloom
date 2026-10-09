@@ -751,7 +751,26 @@ over-thickened crust of a suture or a standing orogen goes through these process
   close to issue #276's calibration. They are checked at the start of each step's deform
   pass, so bad values fail before any plate deforms. `/world/stats` reports them under
   `suture_crust_transfer`. `crust_transfer.transfer_column` takes a column as volumes plus a
-  world-frame front, so terrane docking (#321) can reuse it.
+  world-frame front, so terrane docking reuses it.
+- **Terrane docking** (`crust_transfer.py`, issue #321). A continental terrane is identified
+  by its cells' crust type. When one is consumed with its oceanic carrier against a
+  continental plate, it docks onto that plate through the same three-way split. Its upper
+  plate is the frozen front's when the contact is a polarized front. Otherwise it is the
+  plate overriding it, if that plate's cell at the contact is continental-coded
+  (`dock_targets`): a continent's margin, or another terrane, since terranes also
+  amalgamate offshore. When no evidence decides a terrane front's polarity,
+  the carrier goes down (the `carrier` fallback tier), as long as the carrier is mostly
+  oceanic-coded by area. Its cratonic crust lands as craton, not reworked: it moves with its
+  share of the crust, and each receiving cell keeps the older craton date. The terrane's
+  mantle lithosphere goes down with the carrier's slab
+  (`oceanic_and_deep_subduction`); none of it is added to the upper plate. Its crust never
+  subducts for lack of room. Crust that no continental plate can hold goes back to the
+  carrier's cells, with the same share of the column's provenance (`terrane_returned_m3`).
+  There, the older own-plate path thrusts it onto the terrane's survivors, its Hm going down
+  with the slab, or relocates it onto the carrier's oceanic footprint (#253), keeping its Hm
+  so the new footprint has a mantle column. Terranes with no
+  continental overrider take that path too. With debug diagnostics,
+  `suture_transfer_stats["terranes"]` counts docked, partial, fallback and relocated fronts.
 - **Suture accretion** (`quad_tectonics._place_suture_crust`). A front's consumed Hc tries each
   of these in turn, and only what one can't hold moves on to the next:
   1. **Belts.** It fills the first `SUTURE_ACCRETION_SPREAD_NODES` hops, then three more belts
