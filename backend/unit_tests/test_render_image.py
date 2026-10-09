@@ -6,7 +6,8 @@ import av
 import numpy as np
 import pytest
 from PIL import Image
-from app import climate, cratons, geometry, healpix_grid, hydrology, render_image
+from app import cratons, geometry, healpix_grid, render_image
+from app.hydroclimate import climate, hydrology
 from app.world import World, generate_world, step_world
 
 from .quad_fixtures import quad_plate
@@ -562,7 +563,7 @@ def test_biome_view_smoothing_preserves_the_major_biomes_and_barely_moves_the_re
     # smooth_biome_field is a cleanup pass, not a reclassification: on the real biome render
     # grid it should change only a small slice of land and never erase a biome that has a
     # genuine regional presence.
-    from app import biomes
+    from app.hydroclimate import biomes
 
     world = _world(seed=7, num_plates=12, continental_fraction=0.6)
     lat_deg, _lon, _xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, _lake, glacier_depth, _is_sea, _hillshade = render_image._biome_fields(
@@ -961,6 +962,7 @@ def test_ocean_currents_view_marks_swells_at_synthetic_convergence(monkeypatch):
     # (climate.compute_ocean_swells' picked convergence cells) resampled to xyz. Monkeypatch
     # that pick to a known grid cell and confirm render_png actually draws a white marker
     # there -- the same "does the drawing step work" contract as before.
+    from app.hydroclimate import climate
 
     monkeypatch.setattr(climate, "compute_ocean_swells", lambda *a, **k: (np.array([20]), np.array([40])))
 

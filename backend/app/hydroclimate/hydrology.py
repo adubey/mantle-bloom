@@ -91,9 +91,10 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
-from . import breaching, cratons, geometry, healpix_grid, lakes
-from .elevation_lines import PLANET_RADIUS_KM, line_spacing_rad
-from .plates import (
+from .. import cratons, geometry, healpix_grid
+from . import breaching, lakes
+from ..elevation_lines import PLANET_RADIUS_KM, line_spacing_rad
+from ..plates import (
     Plate,
     cached_node_position_tree,
     collect_all_accounting_areas_m2,
@@ -109,7 +110,7 @@ from .plates import (
 )
 
 if TYPE_CHECKING:
-    from .world import World
+    from ..world import World
 
 # Same 8-neighbor D8 structure as a regular grid's adjacency -- the graph every algorithm
 # below runs on.

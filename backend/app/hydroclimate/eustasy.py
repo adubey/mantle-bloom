@@ -60,10 +60,10 @@ import numpy as np
 from numba import njit
 
 from . import hydrology
-from .elevation_lines import line_spacing_rad
+from ..elevation_lines import line_spacing_rad
 
 if TYPE_CHECKING:
-    from .world import World
+    from ..world import World
 
 # Bisection tolerance for the sea-level solve: this many metres of water over one mean-sized
 # node, i.e. `_SOLVE_TOLERANCE_M * mean(A_i)` m^3. The ocean volume is ~1e5-1e7 such units for
@@ -89,7 +89,7 @@ def hypsometry(world: "World") -> tuple[np.ndarray, np.ndarray]:
     """`(elevations, areas_m2)`: every node's current live elevation and own area across every
     plate, concatenated in the same order -- the hypsometry the water volume is filled
     against."""
-    from .plates import collect_all_accounting_areas_m2, collect_all_elevation
+    from ..plates import collect_all_accounting_areas_m2, collect_all_elevation
 
     spacing_rad = line_spacing_rad(world.node_density)
     return collect_all_elevation(world.plates), collect_all_accounting_areas_m2(world.plates, spacing_rad)
@@ -292,7 +292,7 @@ def trapped_water_volume_m3(world: "World") -> float:
     fell as precipitation and would otherwise have run back to the sea; debiting them is what
     makes sea level fall as an ice age's ice sheets grow (glacio-eustasy). 0.0 for a world
     with neither."""
-    from .plates import collect_all_accounting_areas_m2, collect_all_glacier_depth, collect_all_lake_depth
+    from ..plates import collect_all_accounting_areas_m2, collect_all_glacier_depth, collect_all_lake_depth
 
     if not world.plates:
         return 0.0

@@ -1,8 +1,9 @@
 import json
 
 import numpy as np
-from app import lakes, persistence
-from app.lake_hierarchy_diagnostics import (
+from app import persistence
+from app.hydroclimate import lakes
+from app.hydroclimate.lake_hierarchy_diagnostics import (
     build_report,
     format_report,
     hierarchy_depths,

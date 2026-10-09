@@ -7,7 +7,32 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import atmosphere_cfd, climate, collision_polarity, cratons, crust_transfer, erosion, eustasy, faults, gaps, geology, healpix_grid, hm_ledger, hydrology, lithosphere, magma_transport, mantle, merge_split, phase_budget, stranded_basins, torque, volcanism, worldsketch
+from . import (
+    collision_polarity,
+    cratons,
+    crust_transfer,
+    faults,
+    gaps,
+    healpix_grid,
+    hm_ledger,
+    lithosphere,
+    magma_transport,
+    mantle,
+    merge_split,
+    phase_budget,
+    torque,
+    worldsketch,
+)
+from .hydroclimate import (
+    atmosphere_cfd,
+    climate,
+    erosion,
+    eustasy,
+    geology,
+    hydrology,
+    stranded_basins,
+    volcanism,
+)
 from .elevation_lines import DEFAULT_NODE_DENSITY, line_spacing_rad
 from . import lithosphere_plate
 from .lithosphere_plate import generate_plates

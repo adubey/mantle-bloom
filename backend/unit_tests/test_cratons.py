@@ -435,7 +435,7 @@ def test_stepping_a_world_keeps_the_craton_ledger_closed():
 
 
 def test_a_craton_resists_glacial_flattening_like_every_other_erosion_source(monkeypatch):
-    from app import erosion
+    from app.hydroclimate import erosion
 
     def run(send_m):
         world = world_mod.generate_world(21, num_plates=8, node_density=0.25)

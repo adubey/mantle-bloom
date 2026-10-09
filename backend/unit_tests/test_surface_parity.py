@@ -7,7 +7,14 @@ import pickle
 import numpy as np
 import pytest
 
-from app import eustasy, lithosphere, persistence, plates as plates_mod, surface_parity as sp, surface_parity_gates as gates
+from app import (
+    lithosphere,
+    persistence,
+    plates as plates_mod,
+    surface_parity as sp,
+    surface_parity_gates as gates,
+)
+from app.hydroclimate import eustasy
 from app.elevation_lines import line_spacing_rad
 from app.plates import gather_node_positions
 from app.sparse_quad_patch import PlateWithSparseQuadPatch

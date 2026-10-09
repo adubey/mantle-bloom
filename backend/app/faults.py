@@ -61,7 +61,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import boundary, geometry, lithosphere, mobile_cover
+from . import boundary, geometry, lithosphere
+from .hydroclimate import mobile_cover
 from .elevation_lines import (
     ELEV_CHANGE_FAULT_NORMAL,
     ELEV_CHANGE_FAULT_REVERSE,

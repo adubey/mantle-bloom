@@ -13,10 +13,10 @@ from app import (
     crust_transfer,
     hm_ledger,
     lithosphere,
-    mobile_cover,
     orogeny,
     quad_tectonics,
 )
+from app.hydroclimate import mobile_cover
 from app.elevation_lines import line_spacing_rad
 from app.lithosphere_plate import CONTINENTAL_CONTESTED_RETREAT_MIN_RUN, SUTURE_ACCRETION_MAX_HC_M, boundary_context
 from app.sparse_quad_patch import PlateWithSparseQuadPatch, cells_per_face_edge, pack_cell_keys, unpack_cell_keys

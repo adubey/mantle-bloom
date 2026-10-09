@@ -73,8 +73,9 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import biomes, climate, continental_ledger, cratons, faults, geometry, hydrology, lithosphere, mobile_cover
-from .elevation_lines import (
+from .. import continental_ledger, cratons, faults, geometry, lithosphere
+from . import biomes, climate, hydrology, mobile_cover
+from ..elevation_lines import (
     ELEV_CHANGE_COASTAL_LEVELING,
     ELEV_CHANGE_COLLISION,
     ELEV_CHANGE_DEPOSITION,
@@ -93,7 +94,7 @@ from .elevation_lines import (
     PLANET_RADIUS_KM,
     line_spacing_rad,
 )
-from .plates import (
+from ..plates import (
     Plate,
     cached_node_position_tree,
     collect_all_breach_notch_depth,
@@ -109,10 +110,10 @@ from .plates import (
     gather_node_positions,
     query_workers,
 )
-from .surface_fields import CHANNEL_REFERENCE_VALID_BELOW_M
+from ..surface_fields import CHANNEL_REFERENCE_VALID_BELOW_M
 
 if TYPE_CHECKING:
-    from .world import World
+    from ..world import World
 
 SLOPE_NEIGHBOR_COUNT = 4
 

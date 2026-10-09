@@ -65,6 +65,7 @@ keeps the report's summary, and the event log records the conversion.
 
 from __future__ import annotations
 
+import importlib
 import io
 import pickle
 from dataclasses import dataclass, field
@@ -145,6 +146,28 @@ COVERAGE_SAMPLES = 200_000
 # reading their state through `legacy_unpickler`. `_RowLookup` is a line plate's cached row
 # index (`_row_lookup_cache`, dropped on conversion), pickled by any plate whose containment
 # fast path had run -- 20 of the 51 real saves in docs/save-compatibility.md hold one.
+MOVED_MODULES = frozenset(
+    {
+        "atmosphere_cfd",
+        "bathymetry",
+        "biomes",
+        "breaching",
+        "climate",
+        "coastline",
+        "erosion",
+        "eustasy",
+        "fluid_dynamics",
+        "fluid_dynamics_healpix",
+        "geology",
+        "hydrology",
+        "lake_hierarchy_diagnostics",
+        "lakes",
+        "mobile_cover",
+        "stranded_basins",
+        "volcanism",
+    }
+)
+
 LEGACY_LINE_CLASSES = frozenset(
     {
         ("app.plates", "PlateWithLines"),
@@ -194,6 +217,11 @@ def legacy_unpickler(data: bytes, retired: frozenset[tuple[str, str]] = LEGACY_L
                 if (module, name) not in stand_ins:
                     stand_ins[(module, name)] = type(name, (LegacyRecord,), {"legacy_class": f"{module}.{name}"})
                 return stand_ins[(module, name)]
+            prefix = "app."
+            if module.startswith(prefix) and module[len(prefix):] in MOVED_MODULES:
+                moved_module = importlib.import_module(f"app.hydroclimate.{module[len(prefix):]}")
+                if hasattr(moved_module, name):
+                    return getattr(moved_module, name)
             return super().find_class(module, name)
 
     return _Unpickler(io.BytesIO(data))
@@ -516,7 +544,7 @@ def convert_world_to_quad(world: "World", *, coverage_samples: int = COVERAGE_SA
 
     world.plates = converted
     _reset_world_caches(world)
-    from . import eustasy
+    from .hydroclimate import eustasy
 
     eustasy.initialize_water_budget(world)
     report.result = {

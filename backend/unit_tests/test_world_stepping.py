@@ -1,5 +1,6 @@
 import numpy as np
-from app import climate
+from app import geometry
+from app.hydroclimate import climate
 from app.world import generate_world, step_world
 
 
@@ -197,7 +198,8 @@ def test_step_world_ends_with_every_column_inside_its_caps(monkeypatch):
     baseline.md section 3.1). A writer that leaves a column outside them -- simulated here by
     the last Hc/Hm writer in the step -- is caught by the end-of-step clamp, which books what
     it changed in `phase_budget`."""
-    from app import lithosphere, volcanism
+    from app import lithosphere
+    from app.hydroclimate import volcanism
 
     world = generate_world(seed=3, node_density=0.5)
     world.simulate_climate_biomes = False

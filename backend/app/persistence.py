@@ -34,11 +34,14 @@ from .world import World
 # - Version 3 adds `"surface"`: `"lines"`, `"quad"`, or `"empty"` (no plates), checked
 #   against the plates actually unpickled. A world never mixes the two surfaces, and this
 #   build only writes `"quad"` or `"empty"`: a `"lines"` save converts on load.
+# - Version 4 moves climate, hydrology, and surface-process modules under
+#   `app.hydroclimate`. Pickle records class module paths, so earlier builds cannot read
+#   the new paths.
 #
 # Bump on any change an older build can't read. docs/save-compatibility.md is the policy for
 # line-backed (legacy) saves and how they move to quads (legacy_conversion.py).
 SAVE_FORMAT = "mantle-bloom-world"
-SAVE_FORMAT_VERSION = 3
+SAVE_FORMAT_VERSION = 4
 SURFACES = ("lines", "quad", "empty")
 
 
@@ -174,7 +177,8 @@ def _backfill_added_fields(world: World) -> None:
 
         # Infer the tracer and opening balance only for saves that predate the ledger.
         continental_ledger.ensure_initialized(world)
-    from . import cratons, mobile_cover, orogeny
+    from . import cratons, orogeny
+    from .hydroclimate import mobile_cover
 
     # Accounts only: a save from before cratons existed seeds them on its first step.
     cratons.ensure_ledger(world)
@@ -202,7 +206,7 @@ def _backfill_water_budget(world: World) -> None:
     against the converted hypsometry itself."""
     world.__dict__.pop("ocean_water_column_m", None)
     if getattr(world, "ocean_water_volume_m3", None) is None:
-        from . import eustasy
+        from .hydroclimate import eustasy
 
         eustasy.initialize_water_budget(world)
 

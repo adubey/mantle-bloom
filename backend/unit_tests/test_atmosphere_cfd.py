@@ -1,6 +1,6 @@
 import numpy as np
 
-from app import atmosphere_cfd
+from app.hydroclimate import atmosphere_cfd
 from app.world import generate_world
 
 # Coarse settings throughout -- same rationale as test_world_smoke.py's own

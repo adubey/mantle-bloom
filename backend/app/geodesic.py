@@ -28,7 +28,8 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.spatial import ConvexHull, cKDTree
 
-from . import biomes, climate, geometry, plates
+from . import geometry, plates
+from .hydroclimate import biomes, climate
 from .world import World
 
 PLANET_RADIUS_KM = plates.PLANET_RADIUS_KM

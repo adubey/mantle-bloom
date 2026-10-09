@@ -2,8 +2,9 @@ import json
 
 import numpy as np
 import pytest
-from app import lakes, persistence, stranded_basins
-from app.stranded_basins import (
+from app import persistence
+from app.hydroclimate import lakes, stranded_basins
+from app.hydroclimate.stranded_basins import (
     StrandedBasinTrack,
     build_report,
     enrich_with_persistence,

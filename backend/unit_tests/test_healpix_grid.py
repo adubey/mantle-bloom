@@ -2,7 +2,7 @@ import astropy.units as u
 import numpy as np
 from astropy_healpix import HEALPix
 
-from app import fluid_dynamics_healpix as fdh
+from app.hydroclimate import fluid_dynamics_healpix as fdh
 from app import healpix_grid
 
 

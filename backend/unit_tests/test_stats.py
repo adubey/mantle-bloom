@@ -1,7 +1,8 @@
 import numpy as np
 import pytest
 
-from app import climate, geometry, lithosphere, stats
+from app import geometry, lithosphere, stats
+from app.hydroclimate import climate
 from app.elevation_lines import line_spacing_rad
 from app.world import World, generate_world
 
@@ -210,7 +211,7 @@ def test_compute_stats_biome_ocean_fraction_excludes_land_and_sums_to_one():
     # land class should appear as a key.
     assert result["biome_ocean_fraction"] != {}
     assert np.isclose(sum(result["biome_ocean_fraction"].values()), 1.0)
-    from app import biomes
+    from app.hydroclimate import biomes
 
     assert all(name in biomes.PELAGIC_NAMES for name in result["biome_ocean_fraction"])
 
@@ -257,7 +258,7 @@ def test_compute_stats_biome_land_fraction_reads_the_stored_climate_cache_biome_
     # caller shares (see climate.py). Recomputing the expected fractions directly from
     # world.climate_cache.biome_ids (populated as a side effect of compute_stats calling
     # compute_climate_cached) should match stats.py's own result exactly.
-    from app import biomes
+    from app.hydroclimate import biomes
 
     world = _land_and_ocean_world()
     result = stats.compute_stats(world)

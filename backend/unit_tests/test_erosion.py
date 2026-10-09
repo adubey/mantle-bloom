@@ -1,6 +1,7 @@
 import numpy as np
 
-from app import erosion, faults, geometry, plates
+from app import faults, geometry, plates
+from app.hydroclimate import erosion
 from app.elevation_lines import MAX_ELEVATION_M, MIN_ELEVATION_M
 from app.world import World, generate_world
 
@@ -676,7 +677,7 @@ def test_landslides_lower_a_frozen_summit_that_water_cannot_drain(monkeypatch):
     # straight back. Landslide debris moves by gravity and must still leave the summit.
     import dataclasses
 
-    from app import hydrology
+    from app.hydroclimate import hydrology
 
     real = hydrology.compute_hydrology
 
@@ -727,7 +728,7 @@ def test_flatten_is_a_volume_conserving_downhill_exchange():
 
 
 def test_apply_erosion_passes_seasonal_amplitude_to_hydrology(monkeypatch):
-    from app import hydrology
+    from app.hydroclimate import hydrology
 
     world = generate_world(seed=20, num_plates=8)
     seen = {}
@@ -752,7 +753,7 @@ def _force_glacier_depth(monkeypatch, depth_for_step):
     `depth_for_step(n)` for the current call."""
     import dataclasses
 
-    from app import hydrology
+    from app.hydroclimate import hydrology
 
     real = hydrology.compute_hydrology
 
@@ -1102,7 +1103,7 @@ def test_uplift_only_fades_channels_where_it_rises_across_them(monkeypatch):
     # every channel up with its banks and fades nothing. The other rose 300 m only on every
     # other node, so a node that rose above the node it drains to loses exactly that much
     # channel. Breaching is off so no new notch takes part of the fill.
-    from app import hydrology
+    from app.hydroclimate import hydrology
 
     monkeypatch.setattr(hydrology, "BREACH_DEPRESSIONS_ENABLED", False)
     still = generate_world(seed=21, num_plates=8)
@@ -1139,7 +1140,7 @@ def test_deposition_fills_channels_back_in(monkeypatch):
     # A fresh world has no ice, so wherever no river erodes nothing carves the channel. There
     # the channel loses exactly what settled into it: deposited sediment plus lake silt.
     # Breaching is off so no new notch takes part of the fill.
-    from app import hydrology
+    from app.hydroclimate import hydrology
 
     monkeypatch.setattr(hydrology, "BREACH_DEPRESSIONS_ENABLED", False)
     world = generate_world(seed=21, num_plates=8)
@@ -1157,7 +1158,7 @@ def test_breach_notches_persist_apart_from_channel_depth(monkeypatch):
     # Hydrology reports a 7 m notch on every node. It lands in breach_notch_depth_m, faded by
     # what settled there, and channel_depth comes out exactly as without it. Real breaching is
     # off in both runs, so the injected notch is the only one.
-    from app import hydrology
+    from app.hydroclimate import hydrology
 
     monkeypatch.setattr(hydrology, "BREACH_DEPRESSIONS_ENABLED", False)
     original = hydrology.compute_hydrology
@@ -1190,7 +1191,7 @@ def test_a_reference_blended_with_the_unset_sentinel_counts_as_no_uplift(monkeyp
     # A remap can blend a recorded reference with the 1e18 "unset" sentinel, e.g. to 2.5e17.
     # That must read as unset, not as a hugely negative rise that would give every node
     # draining into it an enormous across-channel uplift and wipe its channel.
-    from app import hydrology
+    from app.hydroclimate import hydrology
 
     monkeypatch.setattr(hydrology, "BREACH_DEPRESSIONS_ENABLED", False)
     still = generate_world(seed=21, num_plates=8)

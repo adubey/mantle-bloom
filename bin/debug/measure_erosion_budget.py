@@ -27,7 +27,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
-from app import continental_ledger, erosion  # noqa: E402
+from app import continental_ledger
+from app.hydroclimate import erosion  # noqa: E402
 from app.elevation_lines import line_spacing_rad  # noqa: E402
 from app.world import generate_world  # noqa: E402
 

@@ -113,7 +113,7 @@ LAKE_EVAPORATION_BASELINE_M_PER_MYR = 0.5
 # to ~3,000 m) against a naive resample -- vs. this coefficient depositing a median ~0.02 m/step (p90 ~0.32
 # m/step) on a small leaf catchment's bed -- roughly a 1,000x gap per event. Despite that gap,
 # re-running issue #117's exact repro (seed 23097282 @ 79.2 My) against current code via
-# `app.lake_hierarchy_diagnostics` shows the pathology it named already resolved: max hierarchy
+# `app.hydroclimate.lake_hierarchy_diagnostics` shows the pathology it named already resolved: max hierarchy
 # depth stays in the single digits the whole run (peak 8, ending at 2 with only 6 leaf
 # catchments, none sub-6-node) -- nowhere near the originally-reported ~3,500-level cascade.
 # That's because crumple events are sparse and localized (~5/step across a whole world's worth
@@ -149,7 +149,7 @@ LAKE_EVAPORATION_BASELINE_M_PER_MYR = 0.5
 # `hydrology.py`'s own module docstring documents (an earlier standalone priority-flood
 # basin-spill pass, `_compute_basin_spill`, was removed because it could drift out of sync with
 # this module's own hierarchy). Issue #144 is closed on that basis: item #1 measured (above),
-# item #2 decided (no pre-fill pass), item #3's tooling is `app.lake_hierarchy_diagnostics`.
+# item #2 decided (no pre-fill pass), item #3's tooling is `app.hydroclimate.lake_hierarchy_diagnostics`.
 SILT_ACCUMULATION_COEFFICIENT = LAKE_FILL_RATE / 100.0
 
 # Same value elevation_lines.py/mantle.py each already redefine locally rather than import --

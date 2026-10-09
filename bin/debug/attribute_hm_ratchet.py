@@ -42,7 +42,20 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
-from app import continental_ledger, cratons, elevation_lines, hm_ledger, mobile_cover, orogeny, lithosphere, persistence, plates, quad_tectonics, rheology, world as world_mod  # noqa: E402
+from app import (
+    continental_ledger,
+    cratons,
+    elevation_lines,
+    hm_ledger,
+    lithosphere,
+    orogeny,
+    persistence,
+    plates,
+    quad_tectonics,
+    rheology,
+    world as world_mod,
+)  # noqa: E402
+from app.hydroclimate import mobile_cover  # noqa: E402
 
 HM_CAP = lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M
 HC_CAP = lithosphere.MAX_CRUSTAL_THICKNESS_M

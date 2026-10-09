@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from app import biomes, climate
+from app.hydroclimate import biomes, climate
 from app.world import World, generate_world, step_world
 
 from .quad_fixtures import globe_plate

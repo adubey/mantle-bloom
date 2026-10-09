@@ -1,6 +1,6 @@
 import numpy as np
-from app import erosion, hydrology
-from app.world import generate_world, step_world
+from app.hydroclimate import erosion, hydrology
+from app.world import World, generate_world, step_world
 
 
 def _normalize(v):

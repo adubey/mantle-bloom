@@ -32,7 +32,8 @@ if str(BACKEND_DIR) not in sys.path:
 
 import numpy as np  # noqa: E402
 
-from app import biomes, mantle, render_image, stats  # noqa: E402
+from app import mantle, render_image, stats
+from app.hydroclimate import biomes  # noqa: E402
 from app.elevation_lines import line_spacing_rad  # noqa: E402
 from app import lithosphere  # noqa: E402
 from app.world import World, generate_world, step_world  # noqa: E402

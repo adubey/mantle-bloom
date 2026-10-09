@@ -25,7 +25,8 @@ if str(BACKEND_DIR) not in sys.path:
 
 import numpy as np  # noqa: E402
 
-from app import erosion, lithosphere, plates as plates_mod, stats, volcanism  # noqa: E402
+from app import lithosphere, plates as plates_mod, stats
+from app.hydroclimate import erosion, volcanism  # noqa: E402
 from app.world import generate_world, step_world  # noqa: E402
 
 SEED = 829071382

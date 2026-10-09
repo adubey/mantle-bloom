@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 
-from app import hydrology, lakes
+from app.hydroclimate import hydrology, lakes
 
 
 def _leaves(roots):

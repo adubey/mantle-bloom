@@ -34,7 +34,16 @@ import numpy as np
 from scipy.cluster.vq import kmeans2
 from scipy.spatial import cKDTree
 
-from . import collision_polarity, continental_ledger, cratons, geometry, mantle, mobile_cover, phase_budget, plates as plates_mod
+from . import (
+    collision_polarity,
+    continental_ledger,
+    cratons,
+    geometry,
+    mantle,
+    phase_budget,
+    plates as plates_mod,
+)
+from .hydroclimate import mobile_cover
 from .boundary import MERGE_THRESHOLD_RAD, TRANSFORM_RATE_THRESHOLD, closing_rate
 from .elevation_lines import (
     DEFRAG_CONNECT_RADIUS_MULT,

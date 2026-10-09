@@ -11,7 +11,12 @@ from app import collision_polarity as cp
 from app import geometry, lithosphere, mantle, persistence, quad_tectonics, torque
 from app.elevation_lines import CRUST_TYPE_CONTINENTAL, line_spacing_rad
 from app.lithosphere_plate import CONTINENTAL_CONTESTED_RETREAT_MIN_RUN, boundary_context
-from app.sparse_quad_patch import PlateWithSparseQuadPatch, cells_per_face_edge, pack_cell_keys, unpack_cell_keys
+from app.sparse_quad_patch import (
+    PlateWithSparseQuadPatch,
+    cells_per_face_edge,
+    pack_cell_keys,
+    unpack_cell_keys,
+)
 from app.world import World
 
 DENSITY = 0.5

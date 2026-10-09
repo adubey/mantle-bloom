@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from app import breaching, lakes
+from app.hydroclimate import breaching, lakes
 
 
 def _chain(n):
@@ -285,7 +285,7 @@ def test_the_water_gate_uses_the_rim_height_not_the_rock_weighted_cost():
 
 
 def test_the_gate_routes_runoff_with_the_same_river_losses_as_route_downstream():
-    from app import hydrology
+    from app.hydroclimate import hydrology
 
     elevation = np.array([60.0, 40.0, 20.0, 0.0, 15.0, -50.0])
     is_ocean = np.array([False] * 5 + [True])

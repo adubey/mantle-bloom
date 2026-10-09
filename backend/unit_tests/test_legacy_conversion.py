@@ -54,7 +54,7 @@ def _shape_world() -> World:
         for plate_id, (centre, crust_type, owned) in shapes.items()
     ]
     world = World(seed=11, plates=plates, next_plate_id=len(plates), node_density=DENSITY)
-    from app import eustasy
+    from app.hydroclimate import eustasy
 
     eustasy.initialize_water_budget(world)
     return world

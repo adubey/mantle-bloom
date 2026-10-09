@@ -42,7 +42,7 @@ from typing import TYPE_CHECKING
 from . import lakes
 
 if TYPE_CHECKING:
-    from .world import World
+    from ..world import World
 
 # Convention only -- nothing in the engine hardcodes a step size -- but every long-run save
 # examined in GitHub issues #119, #120, and #126, and the UI's Step/Play buttons, uses 100 ky,
@@ -188,7 +188,7 @@ def format_report(report: dict) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="python -m app.lake_hierarchy_diagnostics",
+        prog="python -m app.hydroclimate.lake_hierarchy_diagnostics",
         description="Report lake-hierarchy depth / leaf catchment-size distribution for a saved world.",
     )
     parser.add_argument("save", type=Path, help="path to a .mbworld save file")
@@ -197,7 +197,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.save.is_file():
         parser.error(f"no such file: {args.save}")
-    from . import persistence  # local: keeps world.py -> lake_hierarchy_diagnostics -> persistence -> world out of the import cycle
+    from .. import persistence  # local: keeps world.py -> lake_hierarchy_diagnostics -> persistence -> world out of the import cycle
+
 
     world = persistence.load_world_bytes(args.save.read_bytes())
     report = build_report(world)

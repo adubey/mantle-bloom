@@ -109,7 +109,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from . import biomes, climate, cratons, crust_transfer, hydrology, lithosphere, orogeny
+from . import cratons, crust_transfer, lithosphere, orogeny
+from .hydroclimate import biomes, climate, hydrology
 from .elevation_lines import PLANET_RADIUS_KM, line_spacing_rad
 from .world import World
 

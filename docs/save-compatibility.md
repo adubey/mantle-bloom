@@ -31,14 +31,15 @@ methods, so it never depended on those classes. `legacy_conversion.py`, `LegacyR
 
 ## 2. Save format
 
-A save is a pickled envelope. `persistence.SAVE_FORMAT_VERSION` is 3.
+A save is a pickled envelope. `persistence.SAVE_FORMAT_VERSION` is 4.
 
 | version | shape | loads? |
 |---|---|---|
 | 1 | a bare pickled `World` (every save before the envelope existed) | yes; a line world converts on load |
 | 2 | `{"format": "mantle-bloom-world", "version": 2, "world": World}` | yes |
 | 3 | v2 plus `"surface": "lines" \| "quad" \| "empty"`, checked against the unpickled plates | yes; this build writes only `quad` or `empty`, and a `lines` save converts on load |
-| > 3 | written by a newer build | no: `UnsupportedSaveVersionError` |
+| 4 | v3 plus climate, hydrology, and surface-process classes under `app.hydroclimate` | yes; old module paths are mapped while loading |
+| > 4 | written by a newer build | no: `UnsupportedSaveVersionError` |
 
 Each `PlateWithSparseQuadPatch` also versions its own pickled state
 (`QUAD_SURFACE_FORMAT_VERSION`, now 1). A quad plate from a newer build makes the whole save
@@ -53,7 +54,7 @@ loads part of a save:
   world mixing line and quad plates, or a quad plate whose cells break the leaf-topology
   invariants. A line-backed save whose state the converter refuses (§3) is also a
   `CorruptSaveError` ("line-backed save can't be converted").
-- `UnsupportedSaveVersionError`: an envelope version outside 1–3 (including a non-integer), or
+- `UnsupportedSaveVersionError`: an envelope version outside 1–4 (including a non-integer), or
   a quad plate in another surface format version.
 
 `POST /world/load` returns `400` with `invalid or incompatible world file: <reason>` for

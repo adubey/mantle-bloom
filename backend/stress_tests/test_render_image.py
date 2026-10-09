@@ -1,6 +1,8 @@
 import numpy as np
-from app import climate, geometry, render_image
-from app.world import generate_world
+from PIL import Image, ImageDraw
+from app import geometry, render_image
+from app.hydroclimate import climate, hydrology
+from app.world import World, generate_world
 
 
 def _world(seed=1, num_plates=10, continental_fraction=0.4):

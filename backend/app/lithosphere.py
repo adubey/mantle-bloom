@@ -15,7 +15,13 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from .elevation_lines import CRUST_TYPE_CONTINENTAL, CRUST_TYPE_INHERIT, MAX_ELEVATION_M, MIN_ELEVATION_M, PLANET_RADIUS_KM
+from .elevation_lines import (
+    CRUST_TYPE_CONTINENTAL,
+    CRUST_TYPE_INHERIT,
+    MAX_ELEVATION_M,
+    MIN_ELEVATION_M,
+    PLANET_RADIUS_KM,
+)
 
 if TYPE_CHECKING:
     from .plates import Plate

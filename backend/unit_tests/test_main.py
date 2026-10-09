@@ -957,7 +957,7 @@ def test_stranded_basins_returns_well_formed_entries_after_stepping(client):
 
 def test_stranded_basin_summary_wire_shape():
     from app.main import _stranded_basin_summary
-    from app.stranded_basins import StrandedBasin
+    from app.hydroclimate.stranded_basins import StrandedBasin
 
     basin = StrandedBasin(
         floor_elevation_m=-1770.58,
@@ -1271,7 +1271,8 @@ def test_step_advances_atmosphere_cfd_by_its_own_fixed_seconds(client):
     # by its own fixed real-time increment per step (atmosphere_cfd.SECONDS_PER_TECTONIC_STEP)
     # -- reaches into main.py's internal `_state` since this is not surfaced through any HTTP
     # response.
-    from app import atmosphere_cfd, main
+    from app import main
+    from app.hydroclimate import atmosphere_cfd
 
     _post_generate(client, json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
     client.post("/world/controls", json={"wind_model": "cfd"})  # the CFD solve only advances under "cfd" (default is "diagnostic")
