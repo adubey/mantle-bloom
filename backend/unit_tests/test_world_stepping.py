@@ -1,5 +1,4 @@
 import numpy as np
-from app import geometry
 from app.hydroclimate import climate
 from app.world import generate_world, step_world
 

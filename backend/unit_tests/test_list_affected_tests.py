@@ -199,3 +199,67 @@ def test_base_override(fake_repo):
         "unit_tests/test_b.py",
         "unit_tests/test_c.py",
     }
+
+
+def _add_subpackage(repo: Path) -> None:
+    # app/pkg/d.py reaches up a level for a (`from .. import a`), like app/hydroclimate/*.py
+    # importing app/geometry.py; test_d imports it absolutely through the package
+    _write(repo / "backend/app/pkg/__init__.py", "")
+    _write(repo / "backend/app/pkg/d.py", "from .. import a\nVALUE = a.VALUE\n")
+    _write(repo / "backend/app/pkg/e.py", "from .d import VALUE\n")
+    _write(
+        repo / "backend/unit_tests/test_d.py",
+        "from app.pkg import d\n\n\ndef test_d():\n    assert d.VALUE == 1\n",
+    )
+    _write(
+        repo / "backend/unit_tests/test_e.py",
+        "from app.pkg.e import VALUE\n\n\ndef test_e():\n    assert VALUE == 1\n",
+    )
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "add pkg")
+
+
+def test_change_propagates_into_a_subpackage(fake_repo):
+    # #329 moved the climate modules into app/hydroclimate/; a change to a top-level module
+    # they import must still reach their tests
+    _add_subpackage(fake_repo)
+    (fake_repo / "backend/app/a.py").write_text("VALUE = 2\n")
+    assert _affected(_run(fake_repo)) == {
+        "unit_tests/test_a.py",
+        "unit_tests/test_b.py",
+        "unit_tests/test_c.py",
+        "unit_tests/test_d.py",
+        "unit_tests/test_e.py",
+    }
+
+
+def test_subpackage_module_change_is_mapped_not_a_full_suite_fallback(fake_repo):
+    _add_subpackage(fake_repo)
+    (fake_repo / "backend/app/pkg/d.py").write_text("from .. import a\nVALUE = a.VALUE * 1\n")
+    assert _affected(_run(fake_repo)) == {"unit_tests/test_d.py", "unit_tests/test_e.py"}
+
+
+def test_changed_subpackage_init_falls_back_to_full_suite(fake_repo):
+    _add_subpackage(fake_repo)
+    (fake_repo / "backend/app/pkg/__init__.py").write_text("X = 1\n")
+    assert len(_affected(_run(fake_repo))) == 5
+
+
+def test_changed_dependency_pins_fall_back_to_full_suite(fake_repo):
+    # a numpy/scipy/numba bump can change any test's outcome without touching an import
+    _write(fake_repo / "backend/constraints.txt", "numpy==9.9\n")
+    assert _affected(_run(fake_repo)) == {
+        "unit_tests/test_a.py",
+        "unit_tests/test_b.py",
+        "unit_tests/test_c.py",
+    }
+
+
+def test_changed_script_affects_its_own_test(fake_repo):
+    # test_list_affected_tests.py runs the script as a subprocess, so no import edge links them
+    _write(fake_repo / "backend/unit_tests/test_list_affected_tests.py", "def test_x():\n    pass\n")
+    _git(fake_repo, "add", "-A")
+    _git(fake_repo, "commit", "-q", "-m", "add script test")
+    script = fake_repo / "bin" / "list_affected_tests.py"
+    script.write_text(script.read_text() + "\n# tweak\n")
+    assert _affected(_run(fake_repo)) == {"unit_tests/test_list_affected_tests.py"}

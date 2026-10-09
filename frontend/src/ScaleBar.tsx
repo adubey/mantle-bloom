@@ -73,6 +73,7 @@ function niceScaleKm(roughKm: number): number {
   return niceResidual * magnitude;
 }
 
+// oxlint-disable-next-line eslint/complexity -- over the cap when it was turned on; split it rather than add more
 export default function ScaleBar({ projection, width, height, displayWidth, displayHeight, mapWrapperRef }: Props) {
   const [dropped, setDropped] = useState<{ left: number; top: number } | null>(null); // viewport px
   const [orientation, setOrientation] = useState<Orientation>("horizontal");

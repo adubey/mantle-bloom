@@ -1,6 +1,11 @@
-# Checks every pull request (and main after a merge): ruff + the backend's fast unit suite,
-# and the frontend's lint + typecheck/build. The slow stress_tests/ suite is not run here --
-# see bin/stress_test.sh.
+# Checks every pull request (and main after a merge): ruff (incl. complexity), vulture dead
+# code and the backend unit tests *affected* by the change (bin/affected_test.sh -- the
+# import-graph subset, or everything when that can't be trusted); the frontend's lint (incl.
+# complexity), knip dead code, jscpd duplicate code (over the whole repo) and
+# typecheck/build. bin/quality_check.sh runs the dead/duplicate-code checks locally.
+#
+# The full unit suite and the slow stress_tests/ run on a schedule instead -- see
+# full-suite.yml. A manual run (workflow_dispatch) here runs the full unit suite.
 name: test
 
 on:
@@ -11,17 +16,18 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # PR runs supersede each other, but a push to main only tests what that push changed, so
+  # cancelling one would leave its changes untested until the scheduled full run.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   backend:
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    defaults:
-      run:
-        working-directory: backend
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # list_affected_tests.py diffs against the base
 
       - uses: actions/setup-python@v5
         with:
@@ -30,16 +36,29 @@ jobs:
           cache-dependency-path: backend/constraints.txt
 
       - name: Install deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt -c constraints.txt
+        run: ./bin/setup.sh --backend-only
 
       - name: Ruff
-        working-directory: .
-        run: ruff check --output-format github
+        run: backend/.venv/bin/ruff check --output-format github
 
-      - name: Unit tests
-        run: python -m pytest unit_tests/ -q -n auto --dist loadscope --durations=15
+      - name: Dead code (vulture)
+        run: backend/.venv/bin/vulture --config vulture.toml
+
+      - name: Unit tests (affected)
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          # A PR is checked out as its merge into the base, so diffing against the base is
+          # exactly the PR's change; a push to main diffs against the previous tip.
+          if [ "$EVENT" = pull_request ]; then
+            ./bin/affected_test.sh --base "origin/$BASE_REF" --durations=15
+          elif [ "$EVENT" = push ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            ./bin/affected_test.sh --base "$BEFORE" --durations=15
+          else
+            ./bin/unit_test.sh --durations=15
+          fi
 
   frontend:
     runs-on: ubuntu-latest
@@ -58,4 +77,6 @@ jobs:
 
       - run: npm ci --no-audit --no-fund
       - run: npm run lint
+      - run: npm run deadcode
+      - run: npm run dupes
       - run: npm run build

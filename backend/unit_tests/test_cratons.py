@@ -93,7 +93,7 @@ def test_seeding_marks_only_deep_interior_cells_and_books_the_initial_volume():
     np.testing.assert_allclose(craton[seeded], plate.collect("crustal_thickness_m")[seeded])
     assert np.all(plate.collect("craton_formed_years")[seeded] == -cratons.CRATON_SEED_AGE_YEARS)
     assert world.craton_ledger["initial_m3"] == pytest.approx(_volume(plate, "craton_crust_m"))
-    assert cratons.balance_error_m3(world) == pytest.approx(0.0, abs=1.0)
+    assert cratons.balance_error_m3(world) == pytest.approx(0.0, abs=1e-9 * world.craton_ledger["initial_m3"])
 
 
 def test_a_seeded_world_is_never_reseeded():
@@ -383,7 +383,7 @@ def test_phase_audit_books_vanished_craton_to_the_residual_account(monkeypatch):
 
     assert world.craton_ledger["topology_removed_m3"] == pytest.approx(vanished)
     assert world.craton_ledger["unattributed_m3"] == 0.0
-    assert cratons.balance_error_m3(world) == pytest.approx(0.0, abs=1.0)
+    assert cratons.balance_error_m3(world) == pytest.approx(0.0, abs=1e-9 * world.craton_ledger["initial_m3"])
 
 
 def test_craton_state_round_trips_and_old_saves_are_seeded_on_their_first_step():

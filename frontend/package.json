@@ -7,6 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
+    "deadcode": "knip",
+    "dupes": "cd .. && jscpd --baseline .jscpd-baseline.json --fail-on-new-clones",
+    "dupes:baseline": "cd .. && jscpd --baseline .jscpd-baseline.json --update-baseline",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -18,6 +21,8 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.4",
+    "jscpd": "^5.4.1",
+    "knip": "^6.41.0",
     "oxlint": "^1.75.0",
     "typescript": "~6.0.2",
     "vite": "^8.2.0"

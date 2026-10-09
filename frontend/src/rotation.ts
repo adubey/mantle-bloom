@@ -48,20 +48,6 @@ export function matIdentity(): Mat3 {
   return [...IDENTITY_ROTATION];
 }
 
-// b applied first, then a -- i.e. the combined matrix represents "rotate by b, then by a",
-// matching standard matrix-multiplication composition order (a @ b).
-export function matMultiply(a: Mat3, b: Mat3): Mat3 {
-  const out = new Array(9).fill(0);
-  for (let r = 0; r < 3; r++) {
-    for (let c = 0; c < 3; c++) {
-      let sum = 0;
-      for (let k = 0; k < 3; k++) sum += a[r * 3 + k] * b[k * 3 + c];
-      out[r * 3 + c] = sum;
-    }
-  }
-  return out;
-}
-
 export function matApply(m: Mat3, [x, y, z]: Vec3): Vec3 {
   return [
     m[0] * x + m[1] * y + m[2] * z,
@@ -249,12 +235,6 @@ export function backingPixelsToDisplayLatLon(projection: Projection, width: numb
   const x = (backingX - transform.offsetX) / transform.scale;
   const y = -(backingY - transform.offsetY) / transform.scale;
   return unproject(projection, x, y);
-}
-
-export function displayLatLonToBackingPixels(projection: Projection, width: number, height: number, lat: number, lon: number): [number, number] {
-  const transform = getRenderTransform(projection, width, height);
-  const [x, y] = project(projection, lat, lon);
-  return toPixels(transform, x, y);
 }
 
 // Great-circle distance between two display-frame lat/lons, in km -- valid for MeasureOverlay's

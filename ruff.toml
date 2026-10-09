@@ -1,8 +1,14 @@
-# Lint only: pyflakes (unused/undefined names, dead locals) plus syntax errors. Formatting is
-# deliberately not enforced -- the codebase predates ruff and a reformat would touch every file.
+# Lint only: pyflakes (unused/undefined names, dead locals), syntax errors and a cyclomatic
+# complexity cap. Formatting is deliberately not enforced -- the codebase predates ruff and a
+# reformat would touch every file.
 # Run: backend/.venv/bin/ruff check
 target-version = "py310"
-extend-exclude = ["build", "dist", "frontend", "analysis"]
+extend-exclude = ["build", "dist", "frontend", "analysis", "vulture_whitelist.py"]
 
 [lint]
-select = ["E9", "F"]
+select = ["E9", "F", "C901"]
+
+# Functions that were already over the cap when it was turned on carry `# noqa: C901`. Drop
+# the noqa when one is split up; don't add new ones without a reason next to it.
+[lint.mccabe]
+max-complexity = 20

@@ -19,15 +19,26 @@ Run from the repo root (or worktree root).
 | Unit tests for what changed (dev loop) | `./bin/affected_test.sh --base origin/main` |
 | Full unit suite (required before push) | `./bin/unit_test.sh` (extra args go to pytest, e.g. `-k biome`) |
 | Slow full-simulation tests | `./bin/stress_test.sh` |
-| Python lint | `backend/.venv/bin/ruff check` |
-| Frontend lint, typecheck and build | `cd frontend && npm run lint && npm run build` |
+| Python lint (incl. complexity) | `backend/.venv/bin/ruff check` |
+| Frontend lint (incl. complexity), typecheck and build | `cd frontend && npm run lint && npm run build` |
+| Dead code and duplicate code | `./bin/quality_check.sh` |
 | Run the app | `./bin/restart.sh --port <P>`, or add `--dev --frontend-port <Q>` for Vite HMR |
 | Stop the app | `./bin/stop.sh --port <P> [--frontend-port <Q>]` |
 
 - `affected_test.sh` maps changed files to tests through the import graph, and falls back
   to the full suite when that mapping can't be trusted. It's a dev-loop shortcut only.
-- The full suite (~1,300 tests, about 12 minutes) and ruff are the gate before pushing. CI
-  (`.github/workflows/test.yml`) runs both, plus the frontend checks, on every PR.
+- The full suite (~1,300 tests, about 12 minutes), ruff and `quality_check.sh` are the gate
+  before pushing. CI (`.github/workflows/test.yml`) runs ruff, `quality_check.sh`'s checks,
+  the frontend checks and only the *affected* unit tests on every PR. The full unit suite runs
+  four times a day and the stress tests nightly (`full-suite.yml`); a failure there opens a
+  "Scheduled full test run is failing" issue, which takes priority over new work.
+- **Quality gates are ratchets.** Functions over the complexity cap of 20 carry a
+  `# noqa: C901` or `oxlint-disable-next-line eslint/complexity`, and pre-existing dead and
+  duplicate code is baselined (`vulture_whitelist.py`, `.jscpd-baseline.json`). Don't add to
+  any of these to get a check passing: split the function, delete the dead code or factor
+  out the copy. Remove an entry when its code goes. Editing inside a baselined clone counts
+  as a new clone; refresh with `cd frontend && npm run dupes:baseline` only after deciding
+  the copy should stay.
 - The frontend has no unit tests. `npm run build` runs `tsc`.
 - Backend deps are pinned in `backend/constraints.txt`. Change versions only with
   `./bin/pin_deps.sh`, never by hand. Upgrades can move simulation results.

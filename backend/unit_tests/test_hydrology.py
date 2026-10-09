@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 from app import geometry
-from app.hydroclimate import erosion, hydrology, lakes
+from app.hydroclimate import hydrology
 from app.world import World, generate_world, step_world
 
 from .quad_fixtures import quad_plate

@@ -540,7 +540,7 @@ def _catchment_roots(elevation: np.ndarray, is_ocean: np.ndarray, neighbor_idx: 
     return catchment_root
 
 
-def build_lake_hierarchy(
+def build_lake_hierarchy(  # noqa: C901
     elevation: np.ndarray,
     is_ocean: np.ndarray,
     neighbor_idx: np.ndarray,

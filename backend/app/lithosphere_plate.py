@@ -1147,7 +1147,7 @@ def build_plate_tiling(
     return PlateTiling(site_xyz=site_xyz, site_plate=site_plate, num_plates=num_plates)
 
 
-def generate_plates(
+def generate_plates(  # noqa: C901
     seed: int,
     num_plates: int | None = None,
     continental_fraction: float | None = None,
