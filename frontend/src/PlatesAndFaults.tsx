@@ -217,6 +217,7 @@ export default function PlatesAndFaults({
     return [toPixels(transform, xA, yA), toPixels(transform, xB, yB)];
   };
 
+  // oxlint-disable-next-line eslint/complexity -- over the cap when it was turned on; split it rather than add more
   const draw = (previewRotation: Mat3) => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");

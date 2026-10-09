@@ -170,7 +170,7 @@ def _mountain_deflection_tendency(u: np.ndarray, v: np.ndarray, geom) -> tuple[n
 
 
 @njit(cache=True, fastmath=True)
-def _atmosphere_substep_loop_kernel(
+def _atmosphere_substep_loop_kernel(  # noqa: C901
     u,
     v,
     eta,

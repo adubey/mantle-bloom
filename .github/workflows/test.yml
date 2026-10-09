@@ -1,5 +1,7 @@
-# Checks every pull request (and main after a merge): ruff + the backend's fast unit suite,
-# and the frontend's lint + typecheck/build. The slow stress_tests/ suite is not run here --
+# Checks every pull request (and main after a merge): ruff (incl. complexity), vulture dead
+# code and the backend's fast unit suite; the frontend's lint (incl. complexity), knip dead
+# code, jscpd duplicate code (over the whole repo) and typecheck/build. bin/quality_check.sh
+# runs the dead/duplicate-code checks locally. The slow stress_tests/ suite is not run here --
 # see bin/stress_test.sh.
 name: test
 
@@ -38,6 +40,10 @@ jobs:
         working-directory: .
         run: ruff check --output-format github
 
+      - name: Dead code (vulture)
+        working-directory: .
+        run: vulture --config vulture.toml
+
       - name: Unit tests
         run: python -m pytest unit_tests/ -q -n auto --dist loadscope --durations=15
 
@@ -58,4 +64,6 @@ jobs:
 
       - run: npm ci --no-audit --no-fund
       - run: npm run lint
+      - run: npm run deadcode
+      - run: npm run dupes
       - run: npm run build

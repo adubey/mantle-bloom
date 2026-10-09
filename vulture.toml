@@ -1,0 +1,10 @@
+# Dead-code check for the backend (issue: readiness follow-up). Run from the repo root:
+#   backend/.venv/bin/vulture --config vulture.toml
+# Tests and bin/ scripts are scanned too, so code they use counts as used.
+# vulture_whitelist.py holds the findings that predate the check (and the false positives
+# it can't see through: dataclass fields read via asdict/pickle, PyAV attributes). Remove an
+# entry when its code goes; add one only for a genuine false positive.
+[tool.vulture]
+paths = ["backend/app", "backend/unit_tests", "backend/stress_tests", "bin", "vulture_whitelist.py"]
+ignore_decorators = ["@app.*", "@router.*", "@pytest.fixture"]
+min_confidence = 60

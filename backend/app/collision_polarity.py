@@ -889,7 +889,7 @@ def begin_topology(world: "World") -> dict[int, np.ndarray]:
     return {p.plate_id: p.frame.copy() for p in world.plates}
 
 
-def end_topology(world: "World", frames_before: dict[int, np.ndarray]) -> None:
+def end_topology(world: "World", frames_before: dict[int, np.ndarray]) -> None:  # noqa: C901
     """Move evidence and front records onto the plates that now carry them. A plate that
     merged into another, split, or fragmented hands each stored point to whichever of its
     descendants now holds that ground; a plate that vanished with no descendant takes its

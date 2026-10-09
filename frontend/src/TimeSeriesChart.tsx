@@ -79,6 +79,7 @@ function niceTicks(rawMin: number, rawMax: number, count = 4): number[] {
 // hairline gridlines, an always-on crosshair+tooltip, a legend for 2+ series, an 8px
 // surface-ringed end-dot per series. Single-series charts skip the legend -- the caller's
 // own heading/dropdown already names what's plotted.
+// oxlint-disable-next-line eslint/complexity -- over the cap when it was turned on; split it rather than add more
 export default function TimeSeriesChart({ series, data, yFormat, bands, height = 200 }: TimeSeriesChartProps) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);

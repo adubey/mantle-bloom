@@ -124,7 +124,7 @@ def imported_app_modules(path: Path) -> set[str] | None:
     return deps
 
 
-def main() -> int:
+def main() -> int:  # noqa: C901
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--base", help="compare against this ref instead of the merge-base with main/origin-main"

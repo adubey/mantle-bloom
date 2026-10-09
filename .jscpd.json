@@ -1,0 +1,7 @@
+{
+  "path": ["backend/app", "frontend/src", "bin"],
+  "format": ["python", "typescript", "tsx"],
+  "minTokens": 70,
+  "reporters": ["console"],
+  "gitignore": true
+}

@@ -2643,7 +2643,7 @@ def _draw_coastline(
         draw.line([(x1, y1), (x2, y2)], fill=COASTLINE_COLOR_RGB, width=line_width_px)
 
 
-def render_png(
+def render_png(  # noqa: C901
     world: World,
     projection: str,
     view: str,

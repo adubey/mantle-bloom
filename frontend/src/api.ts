@@ -834,12 +834,6 @@ export function fetchVolcanoes(): Promise<VolcanoesResponse> {
   return fetch(`${API_BASE}/world/volcanoes`).then(asJson<VolcanoesResponse>);
 }
 
-// The Fault Line Inspector's click hit-test -- same true-frame contract as fetchPlateAt.
-export function fetchFaultAt(latDeg: number, lonDeg: number): Promise<{ fault_id: number | null }> {
-  const params = new URLSearchParams({ lat_deg: String(latDeg), lon_deg: String(lonDeg) });
-  return fetch(`${API_BASE}/world/fault_at?${params}`).then(asJson<{ fault_id: number | null }>);
-}
-
 // "File > Save World" -- the entire current world state as an opaque binary blob (see
 // backend app/persistence.py -- deliberately pickle, no cross-version compatibility
 // promise). The caller downloads this via the usual SPA blob-download pattern

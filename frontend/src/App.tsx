@@ -228,6 +228,7 @@ function loadViewCookie(): ViewCookie | null {
 // it always used.
 const initialView = loadViewCookie();
 
+// oxlint-disable-next-line eslint/complexity -- over the cap when it was turned on; split it rather than add more
 export default function App() {
   const [showGenerateDialog, setShowGenerateDialog] = useState(false);
   // "Random" (today's noise-driven generation, default) vs. "Human-made" (a drawn or loaded

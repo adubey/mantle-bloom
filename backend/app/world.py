@@ -866,7 +866,7 @@ def step_world(world: World, years: float) -> None:
         pass
 
 
-def step_world_progress(world: World, years: float):
+def step_world_progress(world: World, years: float):  # noqa: C901
     """Generator form of step_world, advancing the world by `years` exactly as it did before
     this function existed, but yielding a fraction-complete float (0 to 1) after each
     per-plate `shift()`/`deform()` call -- main.py's /world/step endpoint streams these

@@ -1314,7 +1314,7 @@ def _capped_fill(
     return given, left
 
 
-def _carry_overflow(
+def _carry_overflow(  # noqa: C901
     points: np.ndarray,
     elevation: np.ndarray,
     is_ocean: np.ndarray,
