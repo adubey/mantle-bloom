@@ -1,0 +1,61 @@
+# Checks every pull request (and main after a merge): ruff + the backend's fast unit suite,
+# and the frontend's lint + typecheck/build. The slow stress_tests/ suite is not run here --
+# see bin/stress_test.sh.
+name: test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: backend/constraints.txt
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -c constraints.txt
+
+      - name: Ruff
+        working-directory: .
+        run: ruff check --output-format github
+
+      - name: Unit tests
+        run: python -m pytest unit_tests/ -q -n auto --dist loadscope --durations=15
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci --no-audit --no-fund
+      - run: npm run lint
+      - run: npm run build
