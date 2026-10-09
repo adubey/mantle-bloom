@@ -165,6 +165,8 @@ def _backfill_added_fields(world: World) -> None:
         world.hm_source_sink_ledger = {}
     if not hasattr(world, "hm_suture_budget"):
         world.hm_suture_budget = {}
+    if not hasattr(world, "suture_transfer_stats"):
+        world.suture_transfer_stats = {}
     ledger_missing = not hasattr(world, "continental_material_ledger")
     if ledger_missing:
         world.continental_material_ledger = {}
