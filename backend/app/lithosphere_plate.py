@@ -480,6 +480,10 @@ def boundary_context(
         accrete = shrinkable & ~inputs.neighbor_is_oceanic
     else:
         accrete = np.zeros_like(shrinkable)
+    # A polarized front's lower-plate cell is a suture donor whatever its nearest neighbour
+    # is: at a triple junction that can be an oceanic third plate, and the cell must still
+    # transfer to its frozen upper plate rather than subduct or spend the #177 budget.
+    accrete |= suture_hm_subduct
 
     # Continental arc band: this plate's own nodes within `reach_rad` of a *converging
     # oceanic* neighbour -- the volcanic arc + accreted forearc / underplated wedge sits

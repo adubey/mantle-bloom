@@ -488,3 +488,42 @@ def test_invalid_partition_fails_the_step_before_any_plate_deforms():
             world_mod.step_world(world, STEP_YEARS)
     assert deformed == []
     assert "error" in crust_transfer.summary(world)["partition"]
+
+
+def test_a_polarized_donor_nearest_an_oceanic_plate_still_transfers(monkeypatch):
+    """At a triple junction a lower-plate front cell's nearest neighbour can be an oceanic
+    third plate. It must still be a suture donor: not subducted, not charged to the #177
+    oceanic-override budget, and its crust still goes to the frozen upper plate."""
+    from app import torque
+    from unit_tests.test_collision_polarity import _column, _front_with_lower_a, _move
+
+    world, a, b, _ = _front_with_lower_a()
+    _move(b, _column(20), _column(19))
+    cp.observe_contacts(world, STEP_YEARS)
+    original = torque.gather_boundary_force_inputs
+
+    def oceanic_nearest(*args, **kwargs):
+        inputs = original(*args, **kwargs)
+        inputs.neighbor_is_oceanic[:] = True
+        return inputs
+
+    monkeypatch.setattr(torque, "gather_boundary_force_inputs", oceanic_nearest)
+    ctx = boundary_context(
+        world, a, [b], STEP_YEARS,
+        lambda mask: quad_tectonics.components_of_at_least(a, mask, CONTINENTAL_CONTESTED_RETREAT_MIN_RUN),
+    )
+    assert np.any(ctx.suture_hm_subduct)
+    assert np.all(ctx.accrete[ctx.suture_hm_subduct])
+    hc = a.collect("crustal_thickness_m")
+    areas = a.node_areas_m2()
+    b_hc = _volume(b, "crustal_thickness_m")
+    deep_before = continental_ledger.inventories(world)["deeply_subducted_m3"]
+
+    survivors = quad_tectonics._retreat(a, world, ctx, SPACING * 2, a.node_count(), STEP_YEARS)
+
+    removed = ~survivors
+    assert np.any(removed)
+    donated = float(hc[removed] @ areas[removed])
+    lost = world.orogenic_relief_budget["suture_lower_crust_subducted_m3"]
+    assert _volume(b, "crustal_thickness_m") - b_hc == pytest.approx(donated - lost, rel=1e-10)
+    assert continental_ledger.inventories(world)["deeply_subducted_m3"] == deep_before
