@@ -1,16 +1,8 @@
-from app import geometry
 from app.lithosphere_plate import generate_plates
-from app.elevation_lines import NODE_DENSITY_CHOICES, TARGET_LINE_SPACING_RAD, iter_local_lattice, line_spacing_rad
 from app.plates import (
-    ELLIPSE_OUTLINE_POINTS,
     MAX_AUTO_PLATES,
     MIN_AUTO_PLATES,
-    MIN_OCEANIC_PLATES,
-    collect_all_points,
-    nearest_plate_id,
-    plate_bounding_ellipse,
 )
-from app.world import generate_world
 
 
 def _measured_land_fraction(plates_list) -> float:

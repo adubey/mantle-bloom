@@ -632,7 +632,6 @@ class PlateWithSparseQuadPatch(Plate):
         full_cell, full_direction = np.nonzero(np.all(empty, axis=2))
         partial_cell, partial_direction, partial_half = np.nonzero(empty & ~np.all(empty, axis=2)[..., None])
         cell = np.concatenate([full_cell, partial_cell])
-        direction = np.concatenate([full_direction, partial_direction])
 
         whole_corners = 2 * np.asarray(_EDGE_CORNERS)[full_direction]
         half_corners = np.array(

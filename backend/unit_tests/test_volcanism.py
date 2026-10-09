@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from app import continental_ledger, lithosphere, volcanism
+from app import continental_ledger, elevation_lines, lithosphere, volcanism
 from app.world import World
 
 from .quad_fixtures import quad_plate
@@ -36,7 +36,7 @@ def test_apply_volcanic_activity_can_erupt_and_add_elevation():
         volcanism.apply_volcanic_activity(world, years=100_000)
     new_elevation = world.plates[0].collect("elevation")
     assert np.any(new_elevation > original_elevation)
-    assert np.all(new_elevation <= volcanism.MAX_ELEVATION_M)
+    assert np.all(new_elevation <= elevation_lines.MAX_ELEVATION_M)
 
 
 def test_apply_volcanic_activity_backs_erupted_elevation_with_crustal_thickness():

@@ -1,0 +1,8 @@
+# Lint only: pyflakes (unused/undefined names, dead locals) plus syntax errors. Formatting is
+# deliberately not enforced -- the codebase predates ruff and a reformat would touch every file.
+# Run: backend/.venv/bin/ruff check
+target-version = "py310"
+extend-exclude = ["build", "dist", "frontend", "analysis"]
+
+[lint]
+select = ["E9", "F"]

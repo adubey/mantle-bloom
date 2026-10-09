@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from app import erosion, geometry, hydrology, lakes
+from app import geometry, hydrology
 from app.world import World, generate_world, step_world
 
 from .quad_fixtures import quad_plate
@@ -912,7 +912,7 @@ def test_nearest_hydro_node_idx_cache_does_not_cross_contaminate_between_modes()
     world_xyz = _grid_xyz(21, 41)
 
     idx_kd = hydrology._nearest_hydro_node_idx(hydro, world_xyz, "kdtree")
-    idx_hp = hydrology._nearest_hydro_node_idx(hydro, world_xyz, "healpix")
+    hydrology._nearest_hydro_node_idx(hydro, world_xyz, "healpix")  # overwrites the single-entry cache
     idx_kd_again = hydrology._nearest_hydro_node_idx(hydro, world_xyz, "kdtree")
 
     assert np.array_equal(idx_kd, idx_kd_again)  # re-fetching "kdtree" wasn't clobbered by the "healpix" call

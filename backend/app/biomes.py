@@ -382,7 +382,6 @@ def _seasonal_extremes(
     summer_month = precip_mm * summer_share / 6.0
     winter_month = precip_mm * (1.0 - summer_share) / 6.0
     wet_is_summer = summer_share >= 0.5
-    wettest_month = np.where(wet_is_summer, summer_month, winter_month) * (1.0 + 4.0 * conc)
     driest_other = np.where(wet_is_summer, winter_month, summer_month) * (1.0 - conc)
     driest_month = np.minimum(driest_other, monthly_mean * (1.0 - conc))
 

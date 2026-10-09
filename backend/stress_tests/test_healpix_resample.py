@@ -19,7 +19,7 @@ import time
 import numpy as np
 from scipy.ndimage import binary_dilation, binary_erosion
 
-from app import climate, healpix_grid, hydrology, plates, render_image
+from app import climate, healpix_grid, hydrology, render_image
 from app.world import generate_world, step_world
 
 SEED = 0

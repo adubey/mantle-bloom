@@ -26,12 +26,16 @@ import json
 import math
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 from scipy import ndimage
 from scipy.spatial import cKDTree
 
 from . import geometry, mantle
+
+if TYPE_CHECKING:
+    from . import worldsketch
 
 # Plain __file__-relative path (matching desktop.py's own convention) rather than
 # importlib.resources -- the PyInstaller onedir build's `datas` list (see

@@ -27,7 +27,6 @@ from scipy.spatial import cKDTree
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
 from app import collision_polarity as cp, geometry, persistence, world as world_mod  # noqa: E402
-from app.elevation_lines import line_spacing_rad  # noqa: E402
 
 HISTORY_STEPS = 100  # 10 Myr at the UI step
 
@@ -41,7 +40,6 @@ def main() -> None:
     args = ap.parse_args()
 
     world = persistence.load_world_bytes(args.save.read_bytes())
-    spacing = line_spacing_rad(world.node_density)
     history: dict[tuple[int, int], deque] = defaultdict(lambda: deque(maxlen=HISTORY_STEPS))
     state = {"step": 0}
     decisions: list[dict] = []

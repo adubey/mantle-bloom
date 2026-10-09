@@ -228,8 +228,6 @@ def _atmosphere_substep_loop_kernel(
     npix = u.shape[0]
     n_neighbours = neighbours.shape[1]
 
-    gx_eta = np.empty(npix, dtype=np.float32)
-    gy_eta = np.empty(npix, dtype=np.float32)
     u_raw = np.empty(npix, dtype=np.float32)
     v_raw = np.empty(npix, dtype=np.float32)
     filt_u = np.empty(npix, dtype=np.float32)

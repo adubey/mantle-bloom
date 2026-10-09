@@ -6,7 +6,7 @@ quad_tectonics.py."""
 import numpy as np
 import pytest
 
-from app import continental_ledger, gaps, geometry, hm_ledger, lithosphere, merge_split, orogeny, plates, quad_tectonics, volcanism
+from app import continental_ledger, gaps, geometry, lithosphere, merge_split, orogeny, plates, quad_tectonics, volcanism
 from app.elevation_lines import CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC, line_spacing_rad
 from app.lithosphere_plate import (
     CONTINENTAL_CONTESTED_RETREAT_MIN_RUN,

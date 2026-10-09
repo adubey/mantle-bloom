@@ -99,7 +99,7 @@ def render(data: dict) -> str:
             "",
             "## Reconciliation",
             "",
-            f"| Measure | By pair/candidate groups | Recorded total |",
+            "| Measure | By pair/candidate groups | Recorded total |",
             "|---|---:|---:|",
             f"| Fronts | {recorded_fronts:,} | {budget['fronts']:,} |",
             f"| Donor Hm (M km³) | {_millions(sum(r['donor_hm_km3'] for r in by_pair.values()))} | {_millions(budget['donor_hm_km3'])} |",

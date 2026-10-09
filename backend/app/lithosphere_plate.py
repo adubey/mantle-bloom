@@ -18,7 +18,6 @@ from . import geometry
 from .elevation_lines import (
     ELEV_CHANGE_COLLISION,
     ELEV_CHANGE_MIN_DELTA_M,
-    ELEV_CHANGE_NEW_CRUST,
     ELEV_CHANGE_RIFT,
     ELEV_CHANGE_SUBDUCTION_ARC,
     ELEV_CHANGE_TRANSFORM,

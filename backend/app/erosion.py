@@ -2301,7 +2301,6 @@ def apply_erosion(
     # Everything above is a volume per receiving node; back to thickness there.
     till_vol = glacier_till * area
     plain_deposit_vol = sediment_vol + till_vol + glacier_transport_deposit + wind_deposit + landslide_land
-    deposited_vol = plain_deposit_vol + marine_deposit + leveling_fill + flatten_received
     deposited_tagged = (
         sediment_tagged
         + till_vol * tag

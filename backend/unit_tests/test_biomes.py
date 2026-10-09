@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from app import biomes, hydrology
+from app import biomes
 
 _UPLAND_ELEVATION = np.array([1000.0])
 _UPLAND_SLOPE = np.array([0.01])
@@ -138,7 +138,6 @@ def test_classify_biomes_covers_a_broad_climate_sweep():
     lats = np.linspace(-80.0, 80.0, 50)
     t, p = np.meshgrid(temps, precips)
     lat = np.repeat(lats[:, None], 50, axis=1)
-    is_ocean = np.zeros_like(t, dtype=bool)
     result = biomes.classify_koppen(t, p, lat, np.full_like(t, 0.5))
     # At least half of all 31 Köppen classes should show up in a sweep this wide.
     assert len(np.unique(result)) >= len(biomes.KOPPEN_CODES) // 2

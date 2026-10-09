@@ -36,7 +36,6 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "backend"))
 
-import numpy as np  # noqa: E402
 
 from app import legacy_conversion, persistence, surface_parity  # noqa: E402
 from app.surface_parity_gates import QUAD_MULTIPLY_COVERED_FAIL, QUAD_MULTIPLY_COVERED_WARN  # noqa: E402
