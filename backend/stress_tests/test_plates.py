@@ -1,10 +1,4 @@
 from app.lithosphere_plate import generate_plates
-from app.elevation_lines import (
-    NODE_DENSITY_CHOICES,
-    TARGET_LINE_SPACING_RAD,
-    iter_local_lattice,
-    line_spacing_rad,
-)
 from app.plates import (
     MAX_AUTO_PLATES,
     MIN_AUTO_PLATES,
