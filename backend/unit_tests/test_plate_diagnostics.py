@@ -1,6 +1,5 @@
 import json
 
-import numpy as np
 import pytest
 from app import persistence
 from app.plate_diagnostics import build_report, clean_tiling_node_estimate, format_report, main

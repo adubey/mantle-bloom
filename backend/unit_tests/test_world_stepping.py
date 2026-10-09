@@ -1,5 +1,5 @@
 import numpy as np
-from app import climate, geometry
+from app import climate
 from app.world import generate_world, step_world
 
 

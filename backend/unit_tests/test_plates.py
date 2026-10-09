@@ -8,11 +8,8 @@ from app.elevation_lines import (
     line_spacing_rad,
 )
 from app.lithosphere_plate import build_plate_tiling, generate_plates
-from app import healpix_grid
 from app.plates import (
     ELLIPSE_OUTLINE_POINTS,
-    MAX_AUTO_PLATES,
-    MIN_AUTO_PLATES,
     MIN_OCEANIC_PLATES,
     cached_node_healpix_index,
     collect_all_coal_deposit,

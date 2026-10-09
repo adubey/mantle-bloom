@@ -961,7 +961,6 @@ def test_ocean_currents_view_marks_swells_at_synthetic_convergence(monkeypatch):
     # (climate.compute_ocean_swells' picked convergence cells) resampled to xyz. Monkeypatch
     # that pick to a known grid cell and confirm render_png actually draws a white marker
     # there -- the same "does the drawing step work" contract as before.
-    from app import climate
 
     monkeypatch.setattr(climate, "compute_ocean_swells", lambda *a, **k: (np.array([20]), np.array([40])))
 

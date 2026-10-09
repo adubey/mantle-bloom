@@ -92,7 +92,6 @@ def test_parse_sketch_image_river_and_mountain_restricted_to_land():
 
 
 def test_sample_land_matches_grid_at_cell_centers():
-    from app import geometry
 
     masks = parse_sketch_image(_png_bytes(_island_canvas()))
     xyz = masks.cell_centers_xyz()

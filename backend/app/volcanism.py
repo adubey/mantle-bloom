@@ -28,8 +28,6 @@ from .elevation_lines import (
     ELEV_CHANGE_VOLCANIC_PLAIN,
     ELEV_CHANGE_VOLCANO,
     ERUPTION_ELEVATION_M,
-    MAX_ELEVATION_M,
-    MIN_ELEVATION_M,
     effective_is_continental_from_codes,
     PLANET_RADIUS_KM,
     VOLCANIC_PLAIN_ELEVATION_M,

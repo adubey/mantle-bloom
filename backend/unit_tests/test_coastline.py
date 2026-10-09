@@ -39,7 +39,6 @@ def _hydrology_fields(points: np.ndarray, lake_depth: np.ndarray) -> hydrology.H
     coastline._lake_mask_on_grid; every other field is a correctly-shaped placeholder."""
     n = len(points)
     zeros_f = np.zeros(n)
-    zeros_i = np.zeros(n, dtype=np.int64)
     return hydrology.HydrologyFields(
         points=points,
         elevation=zeros_f,

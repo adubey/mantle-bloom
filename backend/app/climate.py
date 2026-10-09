@@ -110,7 +110,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import biomes, fluid_dynamics, geometry, hydrology, plates
+from . import biomes, geometry, hydrology, plates
 
 if TYPE_CHECKING:
     from .world import World
@@ -747,7 +747,6 @@ def _smooth_along_coast(u: np.ndarray, v: np.ndarray, is_ocean: np.ndarray, lat_
     fraction back toward the ambient (pre-deflection) value each pass so the deflection's
     reach along a coast is real but bounded, not an unbounded diffusion of the whole basin."""
     ocean_f = is_ocean.astype(float)
-    safe_count = np.where(ocean_f > 0, ocean_f, 1.0)
 
     def neighbor_average(field: np.ndarray) -> np.ndarray:
         masked = field * ocean_f

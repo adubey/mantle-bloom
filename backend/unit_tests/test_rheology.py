@@ -12,7 +12,6 @@ multi-plate collisions never crumpled into orogens). These tests pin the calibra
 import numpy as np
 
 from app import lithosphere, rheology
-from app.lithosphere import PLANET_RADIUS_M
 
 SECONDS_PER_YEAR = 365.25 * 86400.0
 
