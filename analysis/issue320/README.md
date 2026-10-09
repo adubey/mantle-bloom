@@ -53,6 +53,40 @@ thickens it into land behind the suture; the transfer moves it onto the upper pl
 frontal belt and under its front, where part of it goes into the root rather than the
 surface. The Hm-cap change matches `main` within noise (the pre-fix run ended at −0.19 pp).
 
+### Reading the land gap
+
+Against `main` the transfer costs ~4.4 M km² of land at 130.5 Myr, but the trajectory shows
+`main` is the run that drifts:
+
+| Myr | #314 | main | transfer |
+|---:|---:|---:|---:|
+| 87.4 | 148.8 | 148.8 | 148.8 |
+| 107.4 | 147.2 | 148.7 | 148.2 |
+| 114.9 | 142.2 | 144.0 | 143.5 |
+| 119.9 | 142.0 | 145.2 | 143.0 |
+| 124.9 | 142.9 | 147.0 | 143.1 |
+| 127.4 | 141.6 | 147.8 | 141.6 |
+| 130.5 | 141.5 | 146.1 | 141.7 |
+
+- **The runs agree until ~117 Myr.** All three stay within ~1 M km² of each other through
+  117 Myr. They share a ~5 M km² drop at 114.9 Myr, so that drop isn't from crust handling.
+- **Then `main` climbs ~4 M km² while #314 and the transfer stay together.** A likely
+  cause, not yet tested directly: #319's interim treatment subducts the lower plate's Hm
+  but piles its crust on the lower plate's own margin. That gives near-sea-level margin
+  cells crust with no dense mantle under it, and they emerge. #319 called that state
+  temporary, and this change removes it.
+- **The transfer piles crust onto highlands.** Its crust goes onto the upper plate's
+  orogen and under its front, onto already-high columns: median land elevation is lower
+  (1150 vs 1207 m) and p99 higher (8842 vs 8728 m). It also keeps more continental area
+  (+4.6 M km²).
+- **The gap is about the size of the noise.** This is one seed, and the gap opens only in
+  the last 12 Myr. It is about the size of #315's run-to-run noise (~±2%, ~4 M km²), and
+  the pre- and post-review transfer runs differ by up to 1 M km² at some checkpoints.
+- **Open checks:**
+  - loss = 0, and underthrust = 0, to see whether the partition is the lever;
+  - where `main`'s late land appears;
+  - two more seeds.
+
 ## Transfer at polarized fronts
 
 1,848 fronts over 420 steps moved 1,074 M km³ of lower-plate crust (the rest of the 1,829
