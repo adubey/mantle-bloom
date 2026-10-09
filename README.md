@@ -25,28 +25,23 @@ An Earth-like planet simulator, including plate tectonics, climate and biosphere
 
 ### Prerequisites
 
-- **Python 3.10+** (backend: fastapi, uvicorn, numpy, scipy, pytest, httpx --
-  `backend/requirements.txt`).
-- **Node.js 18+** (frontend: React + TypeScript + Vite -- `npm install` in `frontend/`
-  pulls in everything, including TypeScript itself).
+- **Python 3.10+** (backend: fastapi, uvicorn, numpy, scipy, numba, pytest, ruff --
+  `backend/requirements.txt`, with exact versions pinned in `backend/constraints.txt`).
+- **Node.js 20+** (frontend: React + TypeScript + Vite -- `npm ci` in `frontend/` pulls in
+  everything, including TypeScript itself).
 
 ### First-time setup
 
 ```bash
 git clone https://github.com/adubey/mantle-bloom/
 cd mantle-bloom
-
-cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-deactivate
-cd ..
-
-cd frontend
-npm install
-cd ..
+./bin/setup.sh
 ```
+
+Creates `backend/.venv`, installs the pinned backend deps into it, and installs the frontend's
+from `package-lock.json`. Safe to re-run after pulling; run it in each new git worktree too.
+`PYTHON=/path/to/python3.x ./bin/setup.sh` picks the interpreter. To upgrade the pinned
+versions on purpose, run `./bin/pin_deps.sh` and commit the diff.
 
 ### Running it
 
@@ -122,6 +117,8 @@ mantle-bloom/
     src/             # React + TypeScript + Canvas map viewer
   docs/              # you are here
   bin/
+    setup.sh         # create backend/.venv and install backend + frontend deps
+    pin_deps.sh      # regenerate backend/constraints.txt (deliberate dependency upgrades)
     restart.sh       # start/restart the single-process app (--dev for the Vite HMR setup)
     stop.sh          # stop everything restart.sh started
     package.sh       # build the self-contained desktop binary (see docs/packaging.md)
