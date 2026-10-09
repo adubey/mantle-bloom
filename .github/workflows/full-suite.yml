@@ -1,0 +1,111 @@
+# The checks too slow for every PR: the full backend unit suite four times a day, and the
+# stress_tests/ full-simulation suite nightly (test.yml runs only the affected unit tests).
+# Both test main's tip. A failure opens (or comments on) a "Scheduled full test run is
+# failing" issue, and the next green run closes it.
+#
+# Run on demand from the Actions tab or with `gh workflow run full-suite.yml` (optionally
+# `-f stress=true`).
+name: full-suite
+
+on:
+  schedule:
+    - cron: "0 2,14,20 * * *"  # full unit suite
+    - cron: "0 8 * * *"        # full unit suite + stress tests
+  workflow_dispatch:
+    inputs:
+      stress:
+        description: Also run the stress tests
+        type: boolean
+        default: false
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip if this commit already passed
+        id: skip
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # main often doesn't move between runs; don't spend 30 runner-minutes re-proving it
+          if gh run list --workflow full-suite.yml --branch main --status success \
+               --json headSha -q '.[].headSha' | grep -qx "$GITHUB_SHA"; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "$GITHUB_SHA already passed a full run; skipping."
+          fi
+
+      - uses: actions/setup-python@v5
+        if: steps.skip.outputs.skip != 'true'
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: backend/constraints.txt
+
+      - name: Install deps
+        if: steps.skip.outputs.skip != 'true'
+        run: ./bin/setup.sh --backend-only
+
+      - name: Full unit suite
+        if: steps.skip.outputs.skip != 'true'
+        run: ./bin/unit_test.sh --durations=25
+
+  stress:
+    if: github.event.schedule == '0 8 * * *' || inputs.stress
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: backend/constraints.txt
+
+      - name: Install deps
+        run: ./bin/setup.sh --backend-only
+
+      - name: Stress tests
+        run: ./bin/stress_test.sh --durations=25
+
+  report:
+    needs: [unit, stress]
+    if: always() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Open, update or close the tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          UNIT: ${{ needs.unit.result }}
+          STRESS: ${{ needs.stress.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Scheduled full test run is failing"
+          issue=$(gh issue list --state open --search "\"$title\" in:title" --json number -q '.[0].number')
+          if [ "$UNIT" = failure ] || [ "$STRESS" = failure ]; then
+            body="unit: $UNIT, stress: $STRESS at $GITHUB_SHA -- $RUN_URL"
+            if [ -n "$issue" ]; then
+              gh issue comment "$issue" --body "Still failing. $body"
+            else
+              gh issue create --title "$title" --label bug --body "The scheduled full-suite workflow failed on main. $body
+
+          Reproduce locally with \`./bin/unit_test.sh\` / \`./bin/stress_test.sh\` on that commit. The next green scheduled run closes this issue."
+            fi
+          elif [ -n "$issue" ]; then
+            gh issue close "$issue" --comment "Passing again at $GITHUB_SHA -- $RUN_URL"
+          fi

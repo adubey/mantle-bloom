@@ -28,8 +28,10 @@ Run from the repo root (or worktree root).
 - `affected_test.sh` maps changed files to tests through the import graph, and falls back
   to the full suite when that mapping can't be trusted. It's a dev-loop shortcut only.
 - The full suite (~1,300 tests, about 12 minutes), ruff and `quality_check.sh` are the gate
-  before pushing. CI (`.github/workflows/test.yml`) runs all of them, plus the frontend
-  checks, on every PR.
+  before pushing. CI (`.github/workflows/test.yml`) runs ruff, `quality_check.sh`'s checks,
+  the frontend checks and only the *affected* unit tests on every PR. The full unit suite runs
+  four times a day and the stress tests nightly (`full-suite.yml`); a failure there opens a
+  "Scheduled full test run is failing" issue, which takes priority over new work.
 - **Quality gates are ratchets.** Functions over the complexity cap of 20 carry a
   `# noqa: C901` or `oxlint-disable-next-line eslint/complexity`, and pre-existing dead and
   duplicate code is baselined (`vulture_whitelist.py`, `.jscpd-baseline.json`). Don't add to
