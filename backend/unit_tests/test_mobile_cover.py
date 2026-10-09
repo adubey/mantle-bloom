@@ -221,7 +221,7 @@ def test_the_ledger_seeds_its_initial_inventory_and_only_signed_accounts_go_nega
     plate = _plate(1, _block((10, 14), (20, 24)), "continental", cover=10.0)
     world = _tectonic_world(plate)
     assert world.mobile_cover_ledger["initial_m3"] == pytest.approx(_cover_m3(plate))
-    assert mobile_cover.balance_error_m3(world) == pytest.approx(0.0, abs=1e-3)
+    assert mobile_cover.balance_error_m3(world) == pytest.approx(0.0, abs=1e-9 * _cover_m3(plate))
     mobile_cover.record(world, "fault_advection_m3", -5.0)
     with pytest.raises(ValueError):
         mobile_cover.record(world, "subducted_m3", -5.0)
@@ -308,7 +308,9 @@ def test_erupted_crust_buries_the_cover_under_it():
     cover = plate.collect("mobile_cover_m")
     assert np.all(cover[gained] == 0.0) and np.all(cover[~gained] == 20.0)
     assert world.mobile_cover_ledger["volcanic_buried_m3"] > 0.0
-    assert mobile_cover.balance_error_m3(world) == pytest.approx(0.0, abs=1e-6)
+    # relative, like the other balance checks: at ~1e13 m^3 one float64 ulp is ~0.004 m^3
+    initial = world.mobile_cover_ledger["initial_m3"]
+    assert mobile_cover.balance_error_m3(world) == pytest.approx(0.0, abs=1e-9 * initial)
 
 
 def test_thin_lava_seals_only_its_share_of_the_cover():
