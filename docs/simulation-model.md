@@ -737,15 +737,19 @@ over-thickened crust of a suture or a standing orogen goes through these process
     under the Hc cap. Whatever the reach can't hold is thrust up with the scraped share;
   - **lost** (`World.suture_lower_crust_loss_fraction`, 0.03): subducted with the slab.
 
-  Scraped crust the upper plate can't hold goes to the front's other continental neighbours
-  (stage 6), then down with the slab (stage 7). Continental material, restite and cratonic
+  An upper plate with no continental columns takes no underthrust. Scraped crust the upper
+  plate can't hold goes to the front's other neighbours with continental crust, never an
+  oceanic one (stage 6), then down with the slab (stage 7); the mobile cover shares the
+  fate of that thrust-up crust in proportion. All fronts landing on one upper plate in a
+  step share one allowance of its root shedding (stage 3). Continental material, restite and cratonic
   crust split in the same proportions as the Hc. Cratonic crust that lands becomes ordinary
   orogenic crust (`collision_reworked_m3`). The lost share's material is booked to
   `collision_lower_crust_subducted_m3`, apart from the no-outlet remainder. Receivers' Moho
   is buried and their elevation follows the Hc they gained. The shares are model knobs, not
   measured fractions: the partition varies along strike, and India-Asia mass balances that
   put the loss near half the converged crust are disputed. The defaults keep collision loss
-  close to issue #276's calibration. `/world/stats` reports them under
+  close to issue #276's calibration. They are checked at the start of each step's deform
+  pass, so bad values fail before any plate deforms. `/world/stats` reports them under
   `suture_crust_transfer`. `crust_transfer.transfer_column` takes a column as volumes plus a
   world-frame front, so terrane docking (#321) can reuse it.
 - **Suture accretion** (`quad_tectonics._place_suture_crust`). A front's consumed Hc tries each

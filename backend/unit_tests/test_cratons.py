@@ -254,6 +254,7 @@ def test_subducted_cells_book_their_craton_and_continental_material(monkeypatch)
         shrinkable=shrinkable, accrete=np.zeros(n, dtype=bool), spacing_rad=SPACING,
         oceanic_override_retreat_budget_hc=np.zeros(1), own_points=plate.all_points_and_elevation()[0],
         inputs=SimpleNamespace(neighbor_plate_id=np.full(n, -1)), neighbours=[],
+        suture_upper_plate_id=np.full(n, -1),
     )
     areas = plate.node_areas_m2()
 

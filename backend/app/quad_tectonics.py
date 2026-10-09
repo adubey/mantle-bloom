@@ -132,12 +132,16 @@ def _adjacency_matrix(plate: "PlateWithSparseQuadPatch") -> csr_matrix:
     return csr_matrix((np.ones(len(graph.neighbours), dtype=np.int8), (rows, graph.neighbours)), shape=(n, n))
 
 
-def hop_distance(plate: "PlateWithSparseQuadPatch", mask: np.ndarray, width: int) -> np.ndarray:
-    """Per cell, edge hops to the nearest `mask` cell, saturating at `width + 1`."""
+def hop_distance(
+    plate: "PlateWithSparseQuadPatch", mask: np.ndarray, width: int, adjacency: csr_matrix | None = None
+) -> np.ndarray:
+    """Per cell, edge hops to the nearest `mask` cell, saturating at `width + 1`. `adjacency`
+    reuses the plate's cell graph."""
     dist = np.where(mask, 0, width + 1)
     if width <= 0 or not np.any(mask):
         return dist
-    adjacency = _adjacency_matrix(plate)
+    if adjacency is None:
+        adjacency = _adjacency_matrix(plate)
     reached = np.asarray(mask, dtype=bool).copy()
     frontier = reached.copy()
     for hop in range(1, width + 1):
@@ -489,14 +493,15 @@ def _retreat(
         world, "deeply_subducted_m3", float(np.dot(plate.collect("continental_material_m")[subducted], areas[subducted]))
     )
     # Their mobile cover goes down the trench with them; a suture donor's is metamorphosed
-    # into the crust it thrusts onto the survivors.
+    # into the crust it thrusts onto the survivors. A polarized front's donors book theirs
+    # where their crust lands (crust_transfer).
     mobile_cover.book_removed(world, plate, subducted, "subducted_m3")
-    mobile_cover.book_removed(world, plate, donors, "accreted_m3")
+    mobile_cover.book_removed(world, plate, donors & (ctx.suture_upper_plate_id < 0), "accreted_m3")
     if np.any(donors):
         _accrete_onto_survivors(
             plate, donors, ~removed, world, convergence_xyz=ctx.inputs.direction_to_neighbor, years=years,
             overriders=ctx.neighbours, hm_subduct_mask=ctx.suture_hm_subduct,
-            upper_plate_ids=ctx.suture_upper_plate_id,
+            upper_plate_ids=ctx.suture_upper_plate_id, neighbour_plate_ids=ctx.inputs.neighbor_plate_id,
         )
     plate.remove_cells(removed)
     return ~removed
@@ -554,6 +559,7 @@ def _accrete_onto_survivors(
     overriders: list | None = None,
     hm_subduct_mask: np.ndarray | None = None,
     upper_plate_ids: np.ndarray | None = None,
+    neighbour_plate_ids: np.ndarray | None = None,
 ) -> None:
     """Thrust each continental suture's consumed Hc/Hm volume onto the surviving cells within
     `SUTURE_ACCRETION_SPREAD_NODES` hops behind it, as a uniform thickening. Each edge-connected run of donor cells is one suture
@@ -583,12 +589,16 @@ def _accrete_onto_survivors(
 
     Donors with a frozen upper plate in `upper_plate_ids` (the lower side of a polarized
     collision front) don't come here: their crust is partitioned and goes to that plate, and
-    their Hm subducts (`crust_transfer`, issue #320). `hm_subduct_mask` subducts the Hm of
-    any such donor whose upper plate is gone, which falls back to this path."""
+    their Hm subducts (`crust_transfer`, issue #320); `neighbour_plate_ids` (each node's
+    nearest other plate) aims each front at its upper plate. `hm_subduct_mask` subducts the
+    Hm of any such donor whose upper plate is gone, which falls back to this path, and the
+    caller must not have booked those donors' mobile cover."""
     if upper_plate_ids is not None and world is not None:
         donors = donors & ~crust_transfer.transfer_fronts(
-            world, plate, donors, upper_plate_ids, convergence_xyz, years, overriders
+            world, plate, donors, upper_plate_ids, convergence_xyz, neighbour_plate_ids, years, overriders
         )
+        # A polarized donor whose upper plate is gone accretes here; its cover too.
+        mobile_cover.book_removed(world, plate, donors & (upper_plate_ids >= 0), "accreted_m3")
     survivor_idx = np.flatnonzero(survivors)
     if not len(survivor_idx):
         return
@@ -1156,6 +1166,8 @@ def _place_on_overrider(
     years: float,
     restite_volume: float,
     adjacency: csr_matrix | None = None,
+    seed: np.ndarray | None = None,
+    root_capacity: np.ndarray | None = None,
 ) -> float:
     """Accrete `volume` of a consumed front's Hc onto one overriding quad plate `over`, through
     the same staged `_place_suture_crust` placement on that plate, seeded at its cells nearest
@@ -1164,22 +1176,24 @@ def _place_on_overrider(
     crust, which the caller books. The overrider's own belts may shed eligible roots to make
     room, booked here with their own provenance, and the Moho of the cells that take crust is
     buried under it. `approach_world` is the world-frame direction `over` converges on the
-    front from, which sets the suture's strike; `adjacency` reuses `over`'s cell graph.
-    Returns the Hc volume placed."""
-    seed = _overrider_seed(over, front_world)
+    front from, which sets the suture's strike; `adjacency` reuses `over`'s cell graph and
+    `seed` its cells nearest the front. `root_capacity` (volume per cell) is the roots `over`
+    may still shed this step, drawn down in place so several fronts landing on one plate
+    share one step's allowance; without it, a fresh one is computed. Returns the Hc volume
+    placed."""
+    if seed is None:
+        seed = _overrider_seed(over, front_world)
 
     areas = over.node_areas_m2()
     hc = over.collect("crustal_thickness_m")
-    hm = over.collect("mantle_lithosphere_thickness_m")
     codes = over.collect("crust_type_code")
     material = over.collect("continental_material_m")
     craton = over.collect("craton_crust_m")
     restite = over.collect("restite_m")
-    lag = over.collect("moho_thermal_lag_c")
-    elevation = over.collect("elevation")
     continental = effective_is_continental_from_codes(codes, over.crust_type == "continental")
     eligible = continental.copy() if np.any(continental) else np.ones(len(hc), dtype=bool)
-    root_capacity = orogeny.plate_delamination_capacity_m3(over, continental, years)
+    if root_capacity is None:
+        root_capacity = orogeny.plate_delamination_capacity_m3(over, continental, years)
     points = over.surface_nodes().local_xyz
     convergence_local = None
     if approach_world is not None:
@@ -1198,30 +1212,61 @@ def _place_on_overrider(
     if placed <= 0.0:
         return 0.0
     _book_shed_roots(world, material, craton, restite, areas, hc_before, shed)
-    _carry_material(material, areas, hc - hc_before + shed, volume, material_volume)
-    _carry_material(restite, areas, hc - hc_before + shed, volume, restite_volume)
     if world is not None:
         for account in (
             "suture_belt_placed_m3", "escape_attempted_m3", "escape_placed_m3", "delamination_attempted_m3",
             "delamination_completed_m3", "far_field_placed_m3",
         ):
             orogeny.record(world, account, stages[account])
-    density = lithosphere.node_crust_density(codes, over.crust_type)
+    settle_received_crust(
+        over, hc_before, hc, hc - hc_before + shed, changed, volume, material_volume, restite_volume,
+        material, restite, craton,
+    )
+    return placed
+
+
+def settle_received_crust(
+    over: "PlateWithSparseQuadPatch",
+    hc_before: np.ndarray,
+    hc: np.ndarray,
+    gain: np.ndarray,
+    changed: np.ndarray,
+    volume: float,
+    material_volume: float,
+    restite_volume: float,
+    material: np.ndarray,
+    restite: np.ndarray,
+    craton: np.ndarray | None = None,
+) -> None:
+    """Write crust a plate received (`hc`, from `hc_before`) back onto it: the donation's
+    continental material and restite go with each cell's `gain` (thickness) in proportion,
+    the `changed` cells' elevation follows their Hc change isostatically, and their Moho is
+    buried under it. Mantle lithosphere is unchanged. `material`, `restite` and `craton` are
+    the plate's own fields as the caller left them (shed roots already taken out)."""
+    areas = over.node_areas_m2()
+    hm = over.collect("mantle_lithosphere_thickness_m")
+    codes = over.collect("crust_type_code")
+    lag = over.collect("moho_thermal_lag_c")
+    elevation = over.collect("elevation")
+    _carry_material(material, areas, gain, volume, material_volume)
+    _carry_material(restite, areas, gain, volume, restite_volume)
     gained = np.flatnonzero(changed)
-    shift = lithosphere.isostatic_elevation(hc[gained], hm[gained], density[gained]) - lithosphere.isostatic_elevation(
-        hc_before[gained], hm[gained], density[gained]
+    density = lithosphere.node_crust_density(codes[gained], over.crust_type)
+    shift = lithosphere.isostatic_elevation(hc[gained], hm[gained], density) - lithosphere.isostatic_elevation(
+        hc_before[gained], hm[gained], density
     )
     elevation[gained] = rheology.clip_elevation_bounds(elevation[gained] + shift)
     lag[gained] = orogeny.bury_moho(lag[gained], hc_before[gained], hm[gained], hc[gained], hm[gained])
-    over.set_fields_on_plate(
+    fields = dict(
         crustal_thickness_m=hc,
         continental_material_m=material,
-        craton_crust_m=craton,
         restite_m=np.minimum(restite, hc),
         moho_thermal_lag_c=lag,
         elevation=elevation,
     )
-    return placed
+    if craton is not None:
+        fields["craton_crust_m"] = craton
+    over.set_fields_on_plate(**fields)
 
 
 def _place_suture_crust(

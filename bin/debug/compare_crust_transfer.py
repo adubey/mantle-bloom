@@ -74,16 +74,14 @@ def summarize(path: Path) -> dict:
         }
         transfer = a1.get("suture_transfer")
         if transfer:
-            by_step = transfer.get("by_step", {})
-            per_step = sorted(row["seconds"] for row in by_step.values())
             out["transfer"] = {
                 "fronts": transfer.get("fronts"),
                 "seconds": transfer.get("seconds"),
                 "mean_front_ms": 1e3 * transfer["seconds"] / max(transfer["fronts"], 1),
                 "max_front_ms": 1e3 * transfer.get("max_front_seconds", 0.0),
-                "steps_with_fronts": len(by_step),
-                "median_step_ms": 1e3 * per_step[len(per_step) // 2] if per_step else 0.0,
-                "max_step_ms": 1e3 * per_step[-1] if per_step else 0.0,
+                "steps_with_fronts": transfer.get("steps_with_fronts"),
+                "mean_step_ms": 1e3 * transfer["seconds"] / max(transfer.get("steps_with_fronts") or 1, 1),
+                "max_step_ms": 1e3 * transfer.get("max_step_seconds", 0.0),
             }
     steps = run.get("steps", [])
     if steps:

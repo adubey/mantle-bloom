@@ -82,8 +82,9 @@ def _volume(plate, name, mask=None) -> float:
 
 
 def _consume(world, lower, donors, upper_ids, overriders=None, years=0.0) -> None:
-    """What `_retreat` does to suture donors: book their cover, accrete, remove them."""
-    mobile_cover.book_removed(world, lower, donors, "accreted_m3")
+    """What `_retreat` does to suture donors: book the cover of those with no upper plate
+    (the transfer books the rest), accrete, remove them."""
+    mobile_cover.book_removed(world, lower, donors & (upper_ids < 0), "accreted_m3")
     quad_tectonics._accrete_onto_survivors(
         lower, donors, ~donors, world, years=years, overriders=overriders, upper_plate_ids=upper_ids,
     )
@@ -206,6 +207,7 @@ def test_a_full_upper_plate_hands_on_then_subducts_what_has_no_outlet():
     neighbour = _plate(3, _block((24, 26), (20, 32)), crustal_thickness_m=np.full(24, full - 1_000.0))
     world = _world(lower, upper, neighbour)
     donors, ids = _front(lower, 2)
+    lower_areas = lower.node_areas_m2()[donors]
     donated = _volume(lower, "crustal_thickness_m", donors)
     room = float(np.full(24, 1_000.0) @ neighbour.node_areas_m2())
     material = _volume(lower, "continental_material_m", donors)
@@ -219,6 +221,11 @@ def test_a_full_upper_plate_hands_on_then_subducts_what_has_no_outlet():
     unplaced = donated - lost - room
     assert budget["no_outlet_subducted_m3"] == pytest.approx(unplaced, rel=1e-9)
     assert world.continental_material_ledger["collision_subducted_m3"] == pytest.approx(material * unplaced / donated)
+    # The cover rides on the thrust-up crust, so it shares the no-outlet share's fate.
+    cover = float(np.full(int(donors.sum()), COVER_M) @ lower_areas)
+    covers = world.mobile_cover_ledger
+    assert covers["subducted_m3"] == pytest.approx(cover * unplaced / (donated - lost), rel=1e-9)
+    assert covers["accreted_m3"] == pytest.approx(cover * (1.0 - unplaced / (donated - lost)), rel=1e-9)
     _assert_ledgers_close(world)
 
 
@@ -342,8 +349,10 @@ def test_transfer_column_is_callable_without_the_source_plate():
     assert result.scraped_m3 == pytest.approx(5e14) and result.underthrust_m3 == pytest.approx(5e14)
     assert _volume(upper, "crustal_thickness_m") - before == pytest.approx(1e15, rel=1e-10)
     assert world.hm_source_sink_ledger["suture_hm_subducted_m3"]["scopes"]["all"]["sink_m3"] == pytest.approx(2e15)
-    assert world.suture_transfer_stats["fronts"] == 1
-    assert str(world.steps_taken) in world.suture_transfer_stats["by_step"]
+    stats = world.suture_transfer_stats
+    assert stats["fronts"] == 1 and stats["steps_with_fronts"] == 1
+    assert stats["max_step_seconds"] == pytest.approx(stats["seconds"])
+    assert "by_step" not in stats
 
 
 @pytest.mark.parametrize("shares", [(0.5, 0.5, 0.5), (1.2, -0.2, 0.0), (float("nan"), 0.5, 0.5)])
@@ -376,3 +385,106 @@ def test_hm_ledger_closes_on_a_transfer():
     assert inventory - hm_ledger.inventory_scopes_m3(world)["all"] == pytest.approx(donor_hm, rel=1e-10)
     sink = world.hm_source_sink_ledger["suture_hm_subducted_m3"]["scopes"]["all"]["sink_m3"]
     assert sink == pytest.approx(donor_hm)
+
+
+def test_fronts_on_one_upper_plate_share_its_root_shedding_allowance():
+    # Two separate fronts against one hot, nearly saturated upper plate in one step.
+    lower = _lower(j_range=(10, 40))
+    upper_hc = np.full(20 * 40, SUTURE_ACCRETION_MAX_HC_M - 300.0)
+    # Thin mantle lid: a hot Moho, so its roots are eligible to founder.
+    upper = _plate(
+        2, _block((20, 40), (5, 45)), crustal_thickness_m=upper_hc,
+        mantle_lithosphere_thickness_m=np.full(upper_hc.size, 20_000.0),
+    )
+    world = _world(lower, upper)
+    world.suture_root_capacity = {}
+    i_cols, j_cols = _columns(lower)
+    donors = (i_cols == 19) & ((j_cols < 18) | (j_cols >= 32))
+    ids = np.where(donors, 2, -1)
+    continental = np.ones(upper.node_count(), dtype=bool)
+    allowance = float(orogeny.plate_delamination_capacity_m3(upper, continental, 1_000_000.0).sum())
+    assert allowance > 0.0
+
+    _consume(world, lower, donors, ids, years=1_000_000.0)
+
+    shed = world.orogenic_relief_budget["delamination_completed_m3"]
+    assert shed > 0.0
+    assert shed <= allowance * (1.0 + 1e-9)
+    _, left = world.suture_root_capacity[2]
+    assert float(left.sum()) == pytest.approx(allowance - shed, rel=1e-9)
+    _assert_ledgers_close(world)
+
+
+def test_overflow_is_never_handed_to_an_oceanic_neighbour():
+    lower = _lower()
+    upper = _plate(2, _block((20, 24), (20, 32)), crustal_thickness_m=np.full(48, SUTURE_ACCRETION_MAX_HC_M))
+    ocean = _plate(3, _block((20, 30), (32, 40)), "oceanic")
+    world = _world(lower, upper, ocean)
+    donors, ids = _front(lower, 2)
+    ocean_hc = ocean.collect("crustal_thickness_m")
+
+    _consume(world, lower, donors, ids, overriders=[ocean, upper])
+
+    assert np.array_equal(ocean.collect("crustal_thickness_m"), ocean_hc)
+    assert world.orogenic_relief_budget["overrider_placed_m3"] == 0.0
+    assert world.orogenic_relief_budget["no_outlet_subducted_m3"] > 0.0
+    _assert_ledgers_close(world)
+
+
+def test_an_upper_plate_with_no_continental_columns_takes_no_underthrust():
+    upper = _plate(2, _block((20, 40), (10, 40)), "oceanic")
+    world = _world(upper)
+    front = upper.all_points_and_elevation()[0][_columns(upper)[0] == 20]
+    column = crust_transfer.ConsumedColumn(
+        plate_id=99, front_world=front * 1.0, approach_world=None, hc_m3=1e14, hm_m3=0.0,
+        mobile_cover_m3=0.0, material_m3=1e14, craton_m3=0.0, restite_m3=0.0,
+    )
+
+    result = crust_transfer.transfer_column(world, column, upper)
+
+    assert result.underthrust_m3 > 0.0
+    assert result.underthrust_placed_m3 == 0.0
+    assert result.upper_placed_m3 + result.unplaced_m3 == pytest.approx(result.scraped_m3 + result.underthrust_m3)
+
+
+def test_the_approach_comes_from_the_nodes_facing_the_upper_plate(monkeypatch):
+    lower = _lower()
+    upper = _plate(2, _block((20, 40), (10, 40)))
+    world = _world(lower, upper)
+    donors, ids = _front(lower, 2)
+    toward_upper, toward_third = np.array([1.0, 0.0, 0.0]), np.array([0.0, 1.0, 0.0])
+    convergence = np.tile(toward_third, (lower.node_count(), 1))
+    neighbours = np.full(lower.node_count(), 3)
+    facing = np.flatnonzero(donors)[::2]
+    convergence[facing] = toward_upper
+    neighbours[facing] = 2
+    seen = []
+    original = quad_tectonics._place_on_overrider
+
+    def spy(world, over, front_world, volume, material, approach, *args, **kwargs):
+        seen.append(approach)
+        return original(world, over, front_world, volume, material, approach, *args, **kwargs)
+
+    monkeypatch.setattr(quad_tectonics, "_place_on_overrider", spy)
+    crust_transfer.transfer_fronts(world, lower, donors, ids, convergence, neighbours, 0.0, None)
+
+    assert len(seen) == 1
+    assert np.allclose(seen[0], -toward_upper)
+
+
+def test_invalid_partition_fails_the_step_before_any_plate_deforms():
+    from app import world as world_mod
+
+    lower = _lower()
+    upper = _plate(2, _block((20, 40), (10, 40)))
+    world = _world(lower, upper)
+    world.suture_scrape_fraction = 0.8
+    deformed = []
+    monkeypatch_target = quad_tectonics.deform
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(quad_tectonics, "deform", lambda *a, **k: deformed.append(a) or monkeypatch_target(*a, **k))
+        with pytest.raises(ValueError):
+            world_mod.step_world(world, STEP_YEARS)
+    assert deformed == []
+    assert "error" in crust_transfer.summary(world)["partition"]

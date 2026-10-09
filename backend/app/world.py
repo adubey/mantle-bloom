@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import atmosphere_cfd, climate, collision_polarity, cratons, erosion, eustasy, faults, gaps, geology, healpix_grid, hm_ledger, hydrology, lithosphere, magma_transport, mantle, merge_split, phase_budget, stranded_basins, torque, volcanism, worldsketch
+from . import atmosphere_cfd, climate, collision_polarity, cratons, crust_transfer, erosion, eustasy, faults, gaps, geology, healpix_grid, hm_ledger, hydrology, lithosphere, magma_transport, mantle, merge_split, phase_budget, stranded_basins, torque, volcanism, worldsketch
 from .elevation_lines import DEFAULT_NODE_DENSITY, line_spacing_rad
 from . import lithosphere_plate
 from .lithosphere_plate import generate_plates
@@ -291,6 +291,9 @@ class World:
     # plate-id pairs topology changes record (`collision_polarity.note_lineage`).
     boundary_search_cache: object | None = None
     topology_lineage: list | None = None
+    # Step-scoped scratch for the deform pass: the roots each upper plate may still shed
+    # this step under crust transfer (`crust_transfer.root_capacity`), by plate id.
+    suture_root_capacity: dict | None = None
     # This step's climate snapshot (see climate.py), populated by erosion.py -- which needs
     # a fresh one every step regardless -- and reused by /world/stats and a climate map
     # render so they don't each trigger their own (~50ms) recomputation the same turn. See
@@ -908,6 +911,9 @@ def step_world_progress(world: World, years: float):
         # deform() -- see torque.BoundarySearchCache.
         world.boundary_search_cache = torque.BoundarySearchCache()
         collision_polarity.observe_contacts(world, years)
+        # Fail before any plate deforms, not at the first polarized front mid-pass.
+        crust_transfer.partition(world)
+        world.suture_root_capacity = {}
         order = list(world.plates)
         # Deterministic per (seed, elapsed_years) so a replayed session still deforms plates
         # in the same order -- not the same order every turn, which is the whole point (see
@@ -922,6 +928,7 @@ def step_world_progress(world: World, years: float):
             done_units += 1
             yield done_units / total_units
         collision_polarity.finish_deform_pass(world)
+        world.suture_root_capacity = None
         audit.settle("rifted_m3")
         # Intraplate faults: age/spawn/retire and apply their own relief, on top of (never
         # replacing) deform()'s boundary classification -- see faults.py. Before topology
