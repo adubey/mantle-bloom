@@ -81,8 +81,9 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.sparse.csgraph import connected_components
 
-from . import continental_ledger, cratons, hm_ledger, mobile_cover, orogeny, quad_tectonics
+from . import continental_ledger, cratons, hm_ledger, orogeny, quad_tectonics
 from .elevation_lines import effective_is_continental_from_codes, line_spacing_rad
+from .hydroclimate import mobile_cover
 from .lithosphere_plate import SUTURE_ACCRETION_MAX_HC_M
 
 if TYPE_CHECKING:
