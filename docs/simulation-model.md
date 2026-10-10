@@ -1218,7 +1218,7 @@ loading never changes plate state.
 |---|---|
 | `rifted_m3` | divergent thinning, rift stretching, decompression melting, failed rifts |
 | `subducted_m3` | subduction erosion of a craton's edge at a trench (`cratons.attrite`); on quad plates, suture crust with no outlet anywhere |
-| `delaminated_m3` | suture delamination (line plates: overflow past the accretion belts; quad roots never take craton), merge stacking past the suture cap |
+| `delaminated_m3` | suture delamination (line plates: overflow past the accretion belts; quad roots never take craton), craton stacked past the suture cap in a merge that the overflow placement couldn't place |
 | `collision_reworked_m3` | craton reworked by fault relief; suture accretion and crust transfer still book here any craton a front hands them, though retreat no longer consumes craton cells (#340) |
 | `eroded_m3` | erosional unroofing below the craton's top |
 | `topology_removed_m3` | a plate or stranded fragment removed outright |
@@ -1233,7 +1233,8 @@ Sites that know their mechanism book it directly (`deform_columns`,
 also books the continental-derived material it removes into the continental-material ledger
 (`deeply_subducted_m3`, `delaminated_lower_crust_m3`, `collision_subducted_m3`). Suture
 accretion carries `continental_material_m` onto the cells that receive the crust, and so does the quad merge for
-crust stacked past the suture cap; material a merge still can't place is booked as
+crust stacked past the suture cap, and so does craton stacked on craton past it, keeping its
+oldest date (#340); material a merge still can't place is booked as
 `collision_subducted_m3`. A failed rift thins the tracer with its column (`rift_thinned_m3`). A
 stranded fragment cut off in defragmentation, or a plate with no territory left, that still
 carries continental material (continental crust, or continental sediment on an oceanic sliver)
