@@ -409,15 +409,15 @@ def _book_shed_roots(
     hc_before: np.ndarray,
     shed: np.ndarray,
 ) -> None:
-    """In place: delaminated roots (`shed`, thickness per cell) take their columns' continental
-    material and cratonic crust with them (`_shed_provenance`), and they are restite first --
-    the dense residue at the base of the column. Books all three."""
-    shed_material, shed_craton = _shed_provenance(material, craton, hc_before, shed)
+    """In place: delaminated roots (`shed`, thickness per cell) take their columns'
+    non-cratonic continental material with them (`_shed_provenance`), and they are restite
+    first -- the dense residue at the base of the column. The craton stays (#340). Books
+    both."""
+    shed_material = _shed_provenance(material, craton, hc_before, shed)
     shed_restite = np.minimum(restite, shed)
     restite -= shed_restite
     if world is not None:
         continental_ledger.record(world, "delaminated_lower_crust_m3", float(shed_material @ areas))
-        cratons.record(world, "delaminated_m3", float(shed_craton @ areas))
         orogeny.record(world, "restite_delaminated_m3", float(shed_restite @ areas))
 
 
@@ -846,18 +846,16 @@ def _accrete_onto_survivors(
     )
 
 
-def _shed_provenance(
-    material: np.ndarray, craton: np.ndarray, hc_before: np.ndarray, shed: np.ndarray
-) -> tuple[np.ndarray, np.ndarray]:
-    """In place: remove the continental material and cratonic crust that delaminated roots
-    (`shed`, thickness per cell) take with them -- each cell's own fractions of the column it
-    had before this front arrived. Returns the removed thicknesses (material, craton)."""
-    fraction = np.divide(shed, hc_before, out=np.zeros(len(shed)), where=(shed > 0.0) & (hc_before > 0.0))
-    shed_material = material * np.minimum(fraction, 1.0)
-    shed_craton = craton * np.minimum(fraction, 1.0)
+def _shed_provenance(material: np.ndarray, craton: np.ndarray, hc_before: np.ndarray, shed: np.ndarray) -> np.ndarray:
+    """In place: remove the continental material that delaminated roots (`shed`, thickness
+    per cell) take with them -- each cell's own fraction of the non-cratonic crust it had
+    before this front arrived. Roots never take craton: the capacity they shed from excludes
+    it (`orogeny.plate_delamination_capacity_m3`, #340). Returns the removed thickness."""
+    fertile = hc_before - craton
+    fraction = np.divide(shed, fertile, out=np.zeros(len(shed)), where=(shed > 0.0) & (fertile > 0.0))
+    shed_material = np.maximum(material - craton, 0.0) * np.minimum(fraction, 1.0)
     material -= shed_material
-    craton -= shed_craton
-    return shed_material, shed_craton
+    return shed_material
 
 
 def _carry_material(

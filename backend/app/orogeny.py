@@ -19,14 +19,17 @@ and the relief processes that act on standing orogens:
   `MELT_ONSET_MOHO_C` isotherm, rate-limited. The melt rises: most of it is emplaced in the
   column's own upper crust, and `ANATEXIS_RELAMINATION_FRACTION` of it relaminates into
   thinner neighbouring columns. The refractory residue stays at the base of the column as
-  `restite_m`, which can't melt again.
+  `restite_m`, which can't melt again. Cratonic crust is refractory and depleted: only a
+  column's non-cratonic share melts, and no melt relaminates into a cratonic column (#340).
 - **Collapse and ductile flow.** `relax_orogens` lets crust thicker than
   `COLLAPSE_ONSET_HC_M` spread down thickness gradients into neighbouring continental
   columns. Gravitational collapse and normal faulting act on any such column, hot or cold.
   Lower- and mid-crustal ductile flow adds to that as the Moho heats through the
   `DUCTILE_*_MOHO_C` ramp. Each transfer moves Hc and its continental-material provenance
   between cells. It is volume-conserving by cell area and subcycled so the result doesn't
-  depend on the step size.
+  depend on the step size. Cratonic crust doesn't flow: only a column's non-cratonic crust
+  is mobile, and flow into a cratonic column is resisted by its strength, so an orogen
+  ponds against a craton instead of draining it (#340).
 - **Delamination eligibility.** `delaminable_root_m` is the dense lower-crustal root a
   column could shed: the crust below `ECLOGITE_DEPTH_M` or its restite, whichever reaches
   higher, where the Moho is at least `DELAMINATION_MIN_MOHO_C`.
@@ -272,23 +275,29 @@ def delamination_capacity_m(
     years_myr: float,
     lag_c: np.ndarray | None = None,
     restite_m: np.ndarray | None = None,
+    craton_m: np.ndarray | None = None,
 ) -> np.ndarray:
     """How much of each column's eligible root may founder in `years_myr` -- the rate limit
-    integrated exactly, so it doesn't depend on step size."""
+    integrated exactly, so it doesn't depend on step size. With `craton_m`, never more than
+    the column's non-cratonic crust: a craton's crust doesn't founder (#340)."""
     if years_myr <= 0.0:
         return np.zeros(np.shape(hc_m))
-    return delaminable_root_m(hc_m, hm_m, lag_c, restite_m) * -np.expm1(-DELAMINATION_RATE_PER_MYR * years_myr)
+    root = delaminable_root_m(hc_m, hm_m, lag_c, restite_m)
+    if craton_m is not None:
+        root = np.minimum(root, np.maximum(np.asarray(hc_m, dtype=float) - craton_m, 0.0))
+    return root * -np.expm1(-DELAMINATION_RATE_PER_MYR * years_myr)
 
 
 def plate_delamination_capacity_m3(plate, continental: np.ndarray, years: float) -> np.ndarray:
     """Per cell of a quad plate, the root volume (m^3) it may shed over `years` (zero off
-    `continental`), from its own thermal lag and restite."""
+    `continental`), from its own thermal lag and restite, and never from its craton."""
     capacity = delamination_capacity_m(
         plate.collect("crustal_thickness_m"),
         plate.collect("mantle_lithosphere_thickness_m"),
         years / 1_000_000.0,
         plate.collect("moho_thermal_lag_c"),
         plate.collect("restite_m"),
+        plate.collect("craton_crust_m"),
     )
     return np.where(continental, capacity * plate.node_areas_m2(), 0.0)
 
@@ -402,9 +411,9 @@ def anatexis(plate, world: "World", years: float) -> None:
     the melt, with its column's continental-material fraction, into thinner continental
     neighbours across shared edges; the rest of the melt stays in its own column's upper
     crust, which changes no thickness. Relaminated melt that would push a receiver past the
-    Hc cap stays home instead. Cratonic crust that melts out becomes ordinary crust (craton
-    ledger `collision_reworked_m3`). The intruding melt brings its heat, so it doesn't touch
-    the thermal lag."""
+    Hc cap stays home instead. Only a column's non-cratonic share melts, and cratonic columns
+    take no relaminated melt, so anatexis never changes a craton (#340). The intruding melt
+    brings its heat, so it doesn't touch the thermal lag."""
     if plate.node_count() == 0 or years <= 0.0 or not hasattr(plate, "adjacency"):
         return
     hc = plate.collect("crustal_thickness_m")
@@ -413,9 +422,12 @@ def anatexis(plate, world: "World", years: float) -> None:
     codes = plate.collect("crust_type_code")
     continental = effective_is_continental_from_codes(codes, plate.crust_type == "continental")
     restite = np.where(continental, np.clip(plate.collect("restite_m"), 0.0, hc), 0.0)
+    craton = plate.collect("craton_crust_m")
     melt, residue = anatexis_yield_m(hc, hm, lag, restite, years / 1_000_000.0)
-    melt = np.where(continental, melt, 0.0)
-    residue = np.where(continental, residue, 0.0)
+    # Cratonic crust is refractory: only the column's non-cratonic share melts (#340).
+    fertile_share = np.where(continental, np.clip(np.divide(hc - craton, hc, out=np.zeros(len(hc)), where=hc > 0.0), 0.0, 1.0), 0.0)
+    melt = melt * fertile_share
+    residue = residue * fertile_share
     if not np.any(melt > 0.0):
         plate.set_fields_on_plate(restite_m=restite)
         return
@@ -428,10 +440,10 @@ def anatexis(plate, world: "World", years: float) -> None:
     relaminated = 0.0
     if len(i):
         material = plate.collect("continental_material_m")
-        craton = plate.collect("craton_crust_m")
         donor = np.where(hc[i] >= hc[j], i, j)
         receiver = np.where(hc[i] >= hc[j], j, i)
-        downhill = hc[donor] > hc[receiver]
+        # Melt stalls against a craton's cold, strong crust rather than intruding it (#340).
+        downhill = (hc[donor] > hc[receiver]) & (craton[receiver] <= 0.0)
         donor, receiver = donor[downhill], receiver[downhill]
         weight = _edge_conductance(plate, donor, receiver, areas)
         share = np.divide(weight, np.bincount(donor, weight, len(hc))[donor], out=np.zeros(len(weight)), where=weight > 0.0)
@@ -443,22 +455,21 @@ def anatexis(plate, world: "World", years: float) -> None:
             hc_start = hc.copy()
             out = np.bincount(donor, flux, len(hc))
             into = np.bincount(receiver, flux, len(hc))
-            material_fraction = np.divide(material, hc, out=np.zeros(len(hc)), where=hc > 0.0)
-            craton_fraction = np.divide(craton, hc, out=np.zeros(len(hc)), where=hc > 0.0)
+            # The melt is the non-cratonic crust's, so it carries that part's material fraction.
+            fertile = hc - craton
+            material_fraction = np.clip(
+                np.divide(material - craton, fertile, out=np.zeros(len(hc)), where=fertile > 0.0), 0.0, 1.0
+            )
             material_moved = np.bincount(receiver, flux * material_fraction[donor], len(hc))
-            craton_out = out * craton_fraction
             hc = hc + (into - out) / areas
             material = np.maximum(material + (material_moved - out * material_fraction) / areas, 0.0)
-            craton = np.maximum(craton - craton_out / areas, 0.0)
             restite = np.minimum(restite, hc)
             relaminated = float(out.sum())
-            cratons.record(world, "collision_reworked_m3", float(craton_out.sum()))
             density = lithosphere.node_crust_density(codes, plate.crust_type)
             shift = lithosphere.isostatic_elevation(hc, hm, density) - lithosphere.isostatic_elevation(hc_start, hm, density)
             plate.set_fields_on_plate(
                 crustal_thickness_m=hc,
                 continental_material_m=material,
-                craton_crust_m=craton,
                 elevation=rheology.clip_elevation_bounds(plate.collect("elevation") + shift),
             )
     record(world, "anatexis_melt_relaminated_m3", relaminated)

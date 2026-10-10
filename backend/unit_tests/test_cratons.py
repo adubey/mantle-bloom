@@ -272,7 +272,7 @@ def test_subducted_cells_book_their_craton_and_continental_material(monkeypatch)
     assert world.continental_material_ledger["deeply_subducted_m3"] == pytest.approx(500.0 * float(areas[removed].sum()))
 
 
-def test_suture_accretion_reworks_the_donor_craton_and_delaminates_the_receivers_roots(monkeypatch):
+def test_suture_accretion_reworks_the_donor_craton_and_the_receivers_shed_roots_leave_theirs(monkeypatch):
     keys = _block((10, 30), (20, 21))
     near_cap = quad_tectonics.SUTURE_ACCRETION_MAX_HC_M - 1_500.0
     hc = np.full(len(keys), near_cap)
@@ -283,7 +283,7 @@ def test_suture_accretion_reworks_the_donor_craton_and_delaminates_the_receivers
     donors = np.zeros(len(keys), dtype=bool)
     donors[0] = True
     # Both the donor and the receiving belt carry cratonic crust, so the test can tell whose
-    # crust is reworked and whose sinks.
+    # crust is reworked and whose stays.
     craton = np.where(donors, hc, 5_000.0)
     plate.set_fields_on_plate(craton_crust_m=craton)
     areas = plate.node_areas_m2()
@@ -298,8 +298,9 @@ def test_suture_accretion_reworks_the_donor_craton_and_delaminates_the_receivers
     ledger = world.craton_ledger
     belt_craton_after = float(plate.collect("craton_crust_m")[~donors] @ areas[~donors])
     assert ledger["collision_reworked_m3"] == pytest.approx(donor_craton)
-    assert ledger["delaminated_m3"] > 0.0
-    assert ledger["delaminated_m3"] == pytest.approx(belt_craton_before - belt_craton_after)
+    # The roots are the belts' non-cratonic lower crust: their craton stays (#340).
+    assert ledger["delaminated_m3"] == 0.0
+    assert belt_craton_after == belt_craton_before
     material_after = float(np.dot(plate.collect("continental_material_m")[~donors], areas[~donors]))
     delaminated = world.continental_material_ledger["delaminated_lower_crust_m3"]
     assert delaminated > 0.0

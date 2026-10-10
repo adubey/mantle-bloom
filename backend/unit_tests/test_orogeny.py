@@ -224,6 +224,41 @@ def test_relaminated_melt_never_enters_oceanic_cells():
     assert budget["anatexis_melt_relaminated_m3"] == 0.0
 
 
+def test_anatexis_melts_only_non_cratonic_crust_and_never_relaminates_into_a_craton():
+    def melt(cratonic: bool):
+        plate = _strip(8, _peak(72_000.0, width=3))
+        world = _world(plate)
+        cratons.ensure_ledger(world)
+        craton = np.zeros(plate.node_count())
+        if cratonic:
+            craton[:3] = 36_000.0  # half of each plateau column
+            craton[3:] = REF_HC  # its thinner neighbours are craton too
+        plate.set_fields_on_plate(craton_crust_m=craton)
+        hc_before = plate.collect("crustal_thickness_m")
+        orogeny.anatexis(plate, world, 1_000_000.0)
+        return plate, world, hc_before, craton
+
+    _, open_world, _, _ = melt(False)
+    plate, world, hc_before, craton = melt(True)
+
+    budget = world.orogenic_relief_budget
+    open_extracted = open_world.orogenic_relief_budget["anatexis_melt_extracted_m3"]
+    assert budget["anatexis_melt_extracted_m3"] == pytest.approx(0.5 * open_extracted, rel=1e-9)
+    assert budget["anatexis_melt_relaminated_m3"] == 0.0
+    assert np.array_equal(plate.collect("crustal_thickness_m"), hc_before)
+    assert np.array_equal(plate.collect("craton_crust_m"), craton)
+    assert world.craton_ledger["collision_reworked_m3"] == 0.0
+
+
+def test_a_cratons_crust_is_never_part_of_its_delaminable_root():
+    hc, hm = np.array([80_000.0, 80_000.0]), np.array([60_000.0, 60_000.0])
+    lag = np.zeros(2)
+    open_root = orogeny.delamination_capacity_m(hc, hm, 1e6, lag)
+    capped = orogeny.delamination_capacity_m(hc, hm, 1e6, lag, craton_m=np.array([0.0, 75_000.0]))
+    assert open_root[0] == pytest.approx(30_000.0) and capped[0] == open_root[0]
+    assert capped[1] == pytest.approx(5_000.0)
+
+
 def test_evolving_standing_orogens_relaxes_the_lag():
     plate = _strip(4)
     world = _world(plate)
