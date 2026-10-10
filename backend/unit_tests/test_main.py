@@ -16,9 +16,25 @@ from app.main import app
 from app.plates import MAX_AUTO_PLATES, MIN_AUTO_PLATES
 
 
+def _reset_app_state():
+    main._state["world"] = None
+    main._animation_stop_event.clear()
+
+
 @pytest.fixture
 def client():
-    return TestClient(app)
+    """A TestClient over a fresh app.main: no world, no pending animation stop. app.main keeps
+    its world, busy lock and stop signal in module globals, so without this reset each test
+    saw whatever the previous one left behind -- the *_before_generate_returns_404 tests only
+    passed by running before any generate in source order (#334). A test that needs a world
+    generates its own. Teardown also fails a test that leaves `_world_lock` held (releasing
+    it first, so the leak doesn't cascade into every later test as a 503 or a hang)."""
+    _reset_app_state()
+    yield TestClient(app)
+    _reset_app_state()
+    if main._world_lock.locked():
+        main._world_lock.release()
+        pytest.fail("test left app.main._world_lock held")
 
 
 def _decode_image(body: dict) -> Image.Image:
@@ -146,6 +162,18 @@ def _wait_until(predicate, timeout: float = 5.0, interval: float = 0.05) -> bool
         time.sleep(interval)
         result = predicate()
     return result
+
+
+def test_client_fixture_discards_state_left_by_an_earlier_test(request):
+    # Stand-ins for what a previous test could leave behind: its generated world and an
+    # animate stop that nothing consumed. The fixture must clear both, or the 404 tests below
+    # depend on their position in the file (#334).
+    main._state["world"] = object()
+    main._animation_stop_event.set()
+    client = request.getfixturevalue("client")
+    assert main._state["world"] is None
+    assert not main._animation_stop_event.is_set()
+    assert client.get("/world/stats").status_code == 404
 
 
 def test_render_before_generate_returns_404(client):
