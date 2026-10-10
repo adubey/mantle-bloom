@@ -1218,10 +1218,11 @@ loading never changes plate state.
 |---|---|
 | `rifted_m3` | divergent thinning, rift stretching, decompression melting, failed rifts |
 | `subducted_m3` | subduction erosion of a craton's edge at a trench (`cratons.attrite`); on quad plates, suture crust with no outlet anywhere |
-| `delaminated_m3` | suture delamination (quad: from eligible roots; line: overflow past the accretion belts), merge stacking past the suture cap, the column-cap clamp |
+| `delaminated_m3` | suture delamination (line plates: overflow past the accretion belts; quad roots never take craton), merge stacking past the suture cap |
 | `collision_reworked_m3` | craton reworked by fault relief; suture accretion and crust transfer still book here any craton a front hands them, though retreat no longer consumes craton cells (#340) |
 | `eroded_m3` | erosional unroofing below the craton's top |
 | `topology_removed_m3` | a plate or stranded fragment removed outright |
+| `audit_clipped_m3` | craton the deform-phase or end-of-step audit clipped to a column some writer thinned below it without booking it (#340); should stay small |
 | `unattributed_m3` | signed; should stay ~0 |
 
 Sites that know their mechanism book it directly (`deform_columns`,

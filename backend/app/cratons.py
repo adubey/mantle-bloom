@@ -95,8 +95,11 @@ CRATON_SOURCE_ACCOUNTS = ("initial_m3", "formed_m3")
 # Each declared destruction mechanism. "collision_reworked" is cratonic crust consumed at a
 # suture or reworked by faulting: the material stays on the surface as ordinary continental
 # crust. "topology_removed" is craton on a plate or fragment removed outright by topology
-# cleanup. "unattributed" is signed and should stay ~0 -- anything there escaped every
-# instrumented site.
+# cleanup. "audit_clipped" is craton a catch-all phase audit (the deform phase, the end of
+# the step) had to clip to its column because some writer thinned the column below it
+# without booking it: kept apart from any mechanism so the real sinks can be read (#340).
+# "unattributed" is signed and should stay ~0 -- anything there escaped every instrumented
+# site.
 CRATON_SINK_ACCOUNTS = (
     "rifted_m3",
     "subducted_m3",
@@ -104,6 +107,7 @@ CRATON_SINK_ACCOUNTS = (
     "collision_reworked_m3",
     "eroded_m3",
     "topology_removed_m3",
+    "audit_clipped_m3",
     "unattributed_m3",
 )
 CRATON_ACCOUNTS = CRATON_SOURCE_ACCOUNTS + CRATON_SINK_ACCOUNTS
