@@ -338,21 +338,49 @@ def test_crust_never_flows_into_an_oceanic_column():
     assert np.array_equal(plate.collect("crustal_thickness_m"), before)
 
 
-def test_cratonic_crust_that_flows_is_booked_as_collision_reworked():
+def test_cratonic_crust_never_flows_but_crust_thickened_onto_it_relaxes_away():
     plate = _strip(8, _peak(70_000.0, 1))
     craton = np.zeros(plate.node_count())
-    craton[0] = 10_000.0  # weak enough (40% strength) to flow somewhat
+    craton[0] = REF_HC  # a full-strength craton under 35 km of orogenic crust
     plate.set_fields_on_plate(craton_crust_m=craton)
     world = _world(plate)
     cratons.ensure_ledger(world)
-    areas = plate.node_areas_m2()
-    craton_before = float(craton @ areas)
+    material = _volume(plate, "continental_material_m")
 
-    orogeny.relax_orogens(plate, world, 2_000_000.0)
+    orogeny.relax_orogens(plate, world, 20_000_000.0)
 
-    craton_after = float(plate.collect("craton_crust_m") @ areas)
-    assert craton_after < craton_before
-    assert world.craton_ledger["collision_reworked_m3"] == pytest.approx(craton_before - craton_after)
+    hc = plate.collect("crustal_thickness_m")
+    assert hc[0] < 60_000.0  # the added crust spread away
+    assert np.array_equal(plate.collect("craton_crust_m"), craton)
+    assert world.craton_ledger["collision_reworked_m3"] == 0.0
+    assert _volume(plate, "continental_material_m") == pytest.approx(material, rel=1e-12)
+
+
+def test_a_cratonic_column_never_drains_below_its_craton():
+    plate = _strip(8, _peak(56_000.0, 1))
+    craton = np.zeros(plate.node_count())
+    craton[0] = 54_000.0
+    plate.set_fields_on_plate(craton_crust_m=craton)
+    world = _world(plate)
+
+    orogeny.relax_orogens(plate, world, 50_000_000.0)
+
+    assert plate.collect("crustal_thickness_m")[0] == pytest.approx(54_000.0)
+
+
+def test_an_orogen_ponds_against_a_craton_instead_of_flooding_it():
+    def spread(cratonic: bool) -> np.ndarray:
+        plate = _strip(8, _peak(lithosphere.MAX_CRUSTAL_THICKNESS_M, 1))
+        if cratonic:
+            craton = np.zeros(plate.node_count())
+            craton[1:] = REF_HC
+            plate.set_fields_on_plate(craton_crust_m=craton)
+        orogeny.relax_orogens(plate, _world(plate), 2_000_000.0)
+        return plate.collect("crustal_thickness_m")
+
+    open_ground, against_craton = spread(False), spread(True)
+    assert against_craton[1] < open_ground[1]
+    assert against_craton[0] > open_ground[0]
 
 
 # --- Competition with suture accretion ----------------------------------------------------

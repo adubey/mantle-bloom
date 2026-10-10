@@ -30,7 +30,9 @@ and the relief processes that act on standing orogens:
 - **Delamination eligibility.** `delaminable_root_m` is the dense lower-crustal root a
   column could shed: the crust below `ECLOGITE_DEPTH_M` or its restite, whichever reaches
   higher, where the Moho is at least `DELAMINATION_MIN_MOHO_C`.
-  `quad_tectonics._accrete_onto_survivors` lets a suture delaminate only from that root,
+  A craton is never part of that root: its keel, not its crust, is what founders (eastern
+  North China, #340). `quad_tectonics._accrete_onto_survivors` lets a suture delaminate only
+  from that root,
   restite first, at `DELAMINATION_RATE_PER_MYR`, and only after lateral spreading and
   tectonic escape have had first call.
 
@@ -125,7 +127,10 @@ COLLAPSE_ONSET_HC_M = 50_000.0
 # about a third of that: Tibet's ~1e-15/s E-W extension thins a 70 km plateau ~2 km/Myr.
 COLLAPSE_DIFFUSIVITY_M2_PER_YR = 1_000.0
 DUCTILE_DIFFUSIVITY_M2_PER_YR = 3_000.0
-# Strong cratonic crust resists flowing like it resists rifting (cratons.CRATON_*_RESISTANCE).
+# Cratons act as rigid blocks that orogenic crust piles up against (Jordan 1978; the Sichuan
+# Basin diverts Tibet's lower-crustal flow around itself, Clark & Royden 2000). Their own
+# crust never flows (#340); flow *into* a cratonic column is cut by this fraction at full
+# strength, like the craton's other resistances (cratons.CRATON_*_RESISTANCE).
 CRATON_FLOW_RESISTANCE = 0.75
 # Explicit diffusion is monotone below a Courant number of 0.5. 0.1 also holds the time-
 # discretization error to well under 1% of the relief, so the outcome doesn't depend on
@@ -474,10 +479,13 @@ def evolve_standing_orogens(plate, world: "World", years: float) -> None:
 
 def relax_orogens(plate, world: "World", years: float) -> None:
     """Collapse and ductile flow on this quad plate's standing orogens -- see the module
-    docstring. Moves Hc, `continental_material_m` and the mobile cover (mobile_cover.py) in
-    proportion, and craton crust (which becomes ordinary orogenic crust where it flows: craton
-    ledger `collision_reworked_m3`) from thicker to thinner continental columns across shared
-    cell edges. Hm stays: the crust flows over its mantle lid, decoupled from it."""
+    docstring. Moves Hc, the non-cratonic part of `continental_material_m` and the mobile
+    cover (mobile_cover.py) in proportion from thicker to thinner continental columns across
+    shared cell edges. Cratonic crust stays: only the crust above both the onset and a
+    column's craton is mobile, and each transfer into a cratonic column is cut by the
+    receiver's strength (CRATON_FLOW_RESISTANCE), so an orogen ponds against a craton and
+    crust added on top of one relaxes away again (#340). Hm stays: the crust flows over its
+    mantle lid, decoupled from it."""
     if plate.node_count() == 0 or years <= 0.0 or not hasattr(plate, "adjacency"):
         return
     hc = plate.collect("crustal_thickness_m")
@@ -500,8 +508,10 @@ def relax_orogens(plate, world: "World", years: float) -> None:
     areas = plate.node_areas_m2()
     conductance = _edge_conductance(plate, i, j, areas)
     resistance = 1.0 - CRATON_FLOW_RESISTANCE * cratons.strength(craton)
+    # The craton never flows, so no column drains below it (#340).
+    floor = np.maximum(craton, COLLAPSE_ONSET_HC_M)
 
-    max_k = (COLLAPSE_DIFFUSIVITY_M2_PER_YR + DUCTILE_DIFFUSIVITY_M2_PER_YR) * resistance
+    max_k = COLLAPSE_DIFFUSIVITY_M2_PER_YR + DUCTILE_DIFFUSIVITY_M2_PER_YR
     per_cell = np.bincount(i, conductance, len(hc)) + np.bincount(j, conductance, len(hc))
     rate = per_cell * max_k / areas
     stable_dt = FLOW_COURANT / max(float(rate.max()), 1e-300)
@@ -511,26 +521,30 @@ def relax_orogens(plate, world: "World", years: float) -> None:
     excess = np.maximum(hc - COLLAPSE_ONSET_HC_M, 0.0) * continental
     record(world, "relief_mobile_excess_m3", float(np.dot(excess, areas)))
     hc_start = hc.copy()
-    craton_start = craton.copy()
     collapse_total = ductile_total = 0.0
     for _ in range(substeps):
         mobile_hc = np.maximum(hc, COLLAPSE_ONSET_HC_M)
         diff = mobile_hc[i] - mobile_hc[j]
         donor = np.where(diff > 0.0, i, j)
         receiver = np.where(diff > 0.0, j, i)
-        collapse_k = COLLAPSE_DIFFUSIVITY_M2_PER_YR * resistance[donor]
-        ductile_k = DUCTILE_DIFFUSIVITY_M2_PER_YR * ductile_weakness(moho_temperature_c(hc[donor], hm[donor], lag[donor])) * resistance[donor]
+        collapse_k = COLLAPSE_DIFFUSIVITY_M2_PER_YR * resistance[receiver]
+        ductile_k = DUCTILE_DIFFUSIVITY_M2_PER_YR * ductile_weakness(moho_temperature_c(hc[donor], hm[donor], lag[donor])) * resistance[receiver]
         flux = (collapse_k + ductile_k) * conductance * np.abs(diff) * dt
-        # Never draw a donor below the onset in one substep, however its edges add up.
+        # Never draw a donor below the onset or its craton in one substep, however its edges
+        # add up.
         out = np.bincount(donor, flux, len(hc))
-        available = np.maximum(hc - COLLAPSE_ONSET_HC_M, 0.0) * areas
+        available = np.maximum(hc - floor, 0.0) * areas
         scale = np.divide(available, out, out=np.ones(len(hc)), where=out > available)
         flux = flux * scale[donor]
         if not np.any(flux > 0.0):
             break
         thickness = flux / areas[donor]
-        material_moved = flux * np.divide(material[donor], hc[donor], out=np.zeros(len(flux)), where=hc[donor] > 0.0)
-        craton_moved = flux * np.divide(craton[donor], hc[donor], out=np.zeros(len(flux)), where=hc[donor] > 0.0)
+        # The mobile crust is the column's non-cratonic part, so it carries that part's
+        # material fraction.
+        mobile = hc[donor] - craton[donor]
+        material_moved = flux * np.clip(
+            np.divide(material[donor] - craton[donor], mobile, out=np.zeros(len(flux)), where=mobile > 0.0), 0.0, 1.0
+        )
         fraction = np.divide(flux, hc[donor], out=np.zeros(len(flux)), where=hc[donor] > 0.0)
         for layer in (cover, cover_material):
             moved = fraction * layer[donor]
@@ -540,19 +554,16 @@ def relax_orogens(plate, world: "World", years: float) -> None:
         hc += np.bincount(receiver, flux, len(hc)) / areas
         material -= np.bincount(donor, material_moved, len(hc)) / areas
         material += np.bincount(receiver, material_moved, len(hc)) / areas
-        craton -= np.bincount(donor, craton_moved, len(hc)) / areas
         ductile_share = np.divide(ductile_k, collapse_k + ductile_k, out=np.zeros(len(flux)), where=(collapse_k + ductile_k) > 0.0)
         ductile_total += float(np.dot(flux, ductile_share))
         collapse_total += float(np.dot(flux, 1.0 - ductile_share))
-    # Each transfer carries its donor's own material and craton fractions, so neither can
-    # exceed its column; these clips only absorb round-off.
+    # Each transfer carries its donor's own material fraction, so it can't exceed its column;
+    # these clips only absorb round-off.
     material = np.maximum(material, 0.0)
-    craton = np.maximum(craton, 0.0)
     cover = np.maximum(cover, 0.0)
     cover_material = np.clip(cover_material, 0.0, np.minimum(cover, material))
     record(world, "collapse_transferred_m3", collapse_total)
     record(world, "ductile_flow_transferred_m3", ductile_total)
-    cratons.record(world, "collision_reworked_m3", float(np.dot(np.maximum(craton_start - craton, 0.0), areas)))
 
     density = lithosphere.node_crust_density(codes, plate.crust_type)
     elevation = plate.collect("elevation")
@@ -560,7 +571,6 @@ def relax_orogens(plate, world: "World", years: float) -> None:
     plate.set_fields_on_plate(
         crustal_thickness_m=hc,
         continental_material_m=material,
-        craton_crust_m=craton,
         mobile_cover_m=cover,
         mobile_cover_continental_m=cover_material,
         # Refractory restite stays at the base, like Hm; only a column thinned below it
