@@ -14,8 +14,9 @@ each booking by its caller, so the share from each mechanism can be read off:
 - **anatexis relamination** and **orogen relaxation** (`orogeny`).
 - **phase-audit clips and residuals** (`cratons.PhaseAudit.settle`, the faults phase).
 
-`subducted_m3` is split the same way, since #332 moves the kept share out of
-`collision_reworked_m3` and leaves only the lost and no-outlet shares there. Checkpoints
+Every other sink account is split by caller too, so a phase audit's clips and residuals
+(`cratons.PhaseAudit.settle`) read apart from the sink's own site (e.g. real rift thinning
+in `rifted_m3`, #340 item 6). Checkpoints
 also record the craton inventory, the cratonic area (cells with `craton_crust_m > 0`) and
 the mean relief of the non-cratonic continental crust within CRATON_EDGE_RELIEF_WINDOW_KM
 of a craton (every craton edge, not only those facing convergent fronts).
@@ -53,7 +54,7 @@ from app.mantle import PLANET_RADIUS_KM  # noqa: E402
 
 KM2 = 1e6
 KM3 = 1e9
-SPLIT_ACCOUNTS = ("collision_reworked_m3", "subducted_m3")
+SPLIT_ACCOUNTS = cratons.CRATON_SINK_ACCOUNTS
 # Issue #340's acceptance targets, both uncalibrated (#313). The non-attrition craton loss
 # rate may be at most this fraction of `main`'s on the same save and span.
 NON_ATTRITION_LOSS_MAX_FRACTION = 0.2
@@ -92,7 +93,7 @@ def _split(account: str, volume: float, frame) -> dict[str, float]:
                 f"{site}:placed": volume * placed / (placed + handed),
                 f"{site}:handed": volume * handed / (placed + handed),
             }
-    if site == "cratons.clip_to_column":
+    if site in ("cratons.clip_to_column", "cratons.thin_with_column"):
         site = f"{site}<-{_site(frame.f_back)}"
     return {site: volume}
 
