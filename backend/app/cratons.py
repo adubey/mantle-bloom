@@ -25,9 +25,11 @@ Resistance. Strength rises linearly with cratonic thickness up to CRATON_FULL_ST
 It scales back erosional Hc removal (erosion.py), divergent thinning
 (lithosphere_plate.deform_columns), collisional shortening (a craton passes it on to weaker
 ground instead of thickening -- shortening.py), how much of a rift's stretched footprint a craton donates
-(quad_tectonics._allocate_stretch), and delays boundary consumption of a craton cell until it
-has been overlapped for CRATON_RETREAT_DELAY_YEARS (quad_tectonics._retreat), so shortening
-goes into the younger belts around it first.
+(quad_tectonics._allocate_stretch), and how hard a collision front it jams brakes the plates
+(torque.collision_drag_coefficients). Cratonic crust doesn't flow, melt or delaminate
+(orogeny.py), and boundary retreat never consumes a craton cell whole (`retreat_allowed`): at
+a collision front it jams, so the weaker crust around it takes the shortening, and at a trench
+its edge wears back by subduction erosion first (`attrite`, #340).
 
 Destruction. Every loss of cratonic volume is booked into ``World.craton_ledger`` under the
 mechanism that caused it (CRATON_SINK_ACCOUNTS); ``balance_error_m3`` checks that sources,
@@ -80,14 +82,12 @@ CRATON_RIFT_RESISTANCE = 0.75
 # Fraction of its share of a rift's stretched footprint a full-strength craton donor
 # withholds -- the rest of that footprint is fresh magmatic crust instead.
 CRATON_STRETCH_RESISTANCE = 0.75
-# How long a full-strength craton cell must sit overlapped by another plate before boundary
-# retreat may consume it. Linear in strength. Longer than merge_split's
-# FORCED_MERGE_SUSTAINED_YEARS, so a collision jammed against a craton gets the chance to end
-# in a suture merge rather than consuming it. Measured over 300 Myr on three seeds
-# (bin/debug/compare_cratons.py): 20 Myr still let collisions rework about half the seeded
-# cratons; 60 Myr cut that by 2-3x, and never consuming them kept no more continent than
-# 60 Myr did while making deep craton subduction impossible.
-CRATON_RETREAT_DELAY_YEARS = 60_000_000.0
+# Subduction erosion and sediment subduction recycle ~2.5 km^3/yr of crust globally, ~40 km^3
+# of eroded forearc per Myr per km of margin (Scholl & von Huene). Cratonic crust is lost at
+# large scale only this way, by attrition at its margins (#340), so a craton edge at a trench
+# wears back at this rate instead of being consumed whole. The rate is measured at
+# ocean-continent margins and doesn't carry over to collision fronts, where cratons jam.
+CRATON_ATTRITION_KM2_PER_MYR = 40.0
 
 # --- Ledger ------------------------------------------------------------------------------
 
@@ -331,17 +331,52 @@ def update(world: "World", years: float) -> None:
         )
 
 
-def retreat_allowed(world: "World", plate: "Plate") -> np.ndarray:
-    """Per node, whether boundary retreat may consume it this step: always for non-cratonic
-    cells; for a craton cell, only once it has been overlapped by another plate for
-    CRATON_RETREAT_DELAY_YEARS scaled by its strength."""
+def retreat_allowed(plate: "Plate") -> np.ndarray:
+    """Per node, whether boundary retreat may consume it: only cells with no craton left.
+    Cratons are lost at large scale only by attrition at their margins (#340): at a collision
+    front a craton cell jams, and the polarized front falls back to the other side's retreat
+    (lithosphere_plate.boundary_context), so the weak crust between the blocks takes the
+    shortening; craton against craton holds until the plates merge. At a trench `attrite`
+    wears the cell's craton away first. Measured over 300 Myr on three seeds
+    (bin/debug/compare_cratons.py, #274), never consuming cratons kept no more continent than
+    a 60 Myr consumption delay did."""
+    return plate.collect("craton_crust_m") <= 0.0
+
+
+def attrite(world: "World", plate: "Plate", margin: np.ndarray, years: float) -> float:
+    """Subduction erosion of the craton cells in `margin` (a trench's exposed edge) over
+    `years`: each loses CRATON_ATTRITION_KM2_PER_MYR times its edge length (the square root
+    of its area) of crust from its craton, which goes down the trench -- craton ledger
+    `subducted_m3`, its continental material `deeply_subducted_m3`. Hc thins with it and the
+    surface subsides isostatically. Returns the volume lost (m^3)."""
     craton = plate.collect("craton_crust_m")
-    allowed = craton <= 0.0
-    if np.all(allowed):
-        return allowed
-    onset = plate.collect("overlap_onset_years")
-    overlapped_for = np.where(onset != 0.0, world.elapsed_years - onset, -np.inf)
-    return allowed | (overlapped_for >= CRATON_RETREAT_DELAY_YEARS * strength(craton))
+    margin = np.asarray(margin, dtype=bool) & (craton > 0.0)
+    if years <= 0.0 or not np.any(margin):
+        return 0.0
+    from . import continental_ledger, rheology
+
+    areas = _areas(world, plate)
+    hc = plate.collect("crustal_thickness_m")
+    material = plate.collect("continental_material_m")
+    hm = plate.collect("mantle_lithosphere_thickness_m")
+    codes = plate.collect("crust_type_code")
+    # km^2/Myr is m^2/yr: the volume per unit margin length, spread over the cell.
+    loss = np.where(margin, np.minimum(CRATON_ATTRITION_KM2_PER_MYR * years / np.sqrt(areas), craton), 0.0)
+    material_loss = np.minimum(loss, material)
+    new_hc = hc - loss
+    density = lithosphere.node_crust_density(codes, plate.crust_type)
+    shift = lithosphere.isostatic_elevation(new_hc, hm, density) - lithosphere.isostatic_elevation(hc, hm, density)
+    lost = float(loss @ areas)
+    record(world, "subducted_m3", lost)
+    continental_ledger.record(world, "deeply_subducted_m3", float(material_loss @ areas))
+    plate.set_fields_on_plate(
+        crustal_thickness_m=new_hc,
+        continental_material_m=material - material_loss,
+        restite_m=np.minimum(plate.collect("restite_m"), new_hc),
+        elevation=rheology.clip_elevation_bounds(plate.collect("elevation") + shift),
+    )
+    _write(plate, craton - loss)
+    return lost
 
 
 def log_destruction(world: "World", before: dict[str, float], live_before: float) -> None:

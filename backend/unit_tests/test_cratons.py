@@ -175,15 +175,14 @@ def test_retyped_columns_lose_their_craton_and_its_date(monkeypatch):
     assert plate.collect("craton_formed_years")[1] != CRATON_UNFORMED_YEARS
 
 
-def test_retreat_waits_for_a_sustained_overlap_scaled_by_strength(monkeypatch):
+def test_retreat_never_consumes_a_craton_however_long_it_is_overlapped(monkeypatch):
     plate = _plate(1, _block((10, 14), (10, 11)))
     world = _unseeded(monkeypatch, plate)
-    _set_craton(plate, np.array([False, True, True, True]))
-    world.elapsed_years = 100e6
-    onset = np.array([0.0, 0.0, 99e6, 100e6 - cratons.CRATON_RETREAT_DELAY_YEARS])
-    plate.set_fields_on_plate(overlap_onset_years=onset)
+    _set_craton(plate, np.array([False, True, True, False]))
+    world.elapsed_years = 1e9
+    plate.set_fields_on_plate(overlap_onset_years=np.full(4, 1.0))
 
-    np.testing.assert_array_equal(cratons.retreat_allowed(world, plate), [True, False, False, True])
+    np.testing.assert_array_equal(cratons.retreat_allowed(plate), [True, False, False, True])
 
 
 def _divergent_ctx(n, closing_rate):
@@ -243,33 +242,62 @@ def test_rift_stretch_draws_less_from_a_craton_and_books_its_thinning(monkeypatc
     assert craton.collect("crustal_thickness_m")[new] < plain.collect("crustal_thickness_m")[new]
 
 
-def test_subducted_cells_book_their_craton_and_continental_material(monkeypatch):
-    plate = _plate(1, _block((10, 16), (10, 11)), "oceanic")
-    world = _unseeded(monkeypatch, plate)
+def _retreat_ctx(plate, shrinkable, accrete):
     n = plate.node_count()
-    plate.set_fields_on_plate(continental_material_m=np.full(n, 500.0), craton_crust_m=np.full(n, 200.0))
-    shrinkable = np.zeros(n, dtype=bool)
-    shrinkable[-2:] = True
-    ctx = SimpleNamespace(
-        shrinkable=shrinkable, accrete=np.zeros(n, dtype=bool), spacing_rad=SPACING,
-        oceanic_override_retreat_budget_hc=np.zeros(1), own_points=plate.all_points_and_elevation()[0],
-        inputs=SimpleNamespace(neighbor_plate_id=np.full(n, -1)), neighbours=[],
-        suture_upper_plate_id=np.full(n, -1),
+    return SimpleNamespace(
+        shrinkable=shrinkable, accrete=accrete, spacing_rad=SPACING,
+        oceanic_override_retreat_budget_hc=np.full(1, np.inf), own_points=plate.all_points_and_elevation()[0],
+        inputs=SimpleNamespace(neighbor_plate_id=np.full(n, -1), direction_to_neighbor=np.zeros((n, 3))), neighbours=[],
+        suture_upper_plate_id=np.full(n, -1), suture_hm_subduct=np.zeros(n, dtype=bool),
     )
+
+
+def test_a_craton_at_a_trench_wears_back_by_attrition_before_its_cell_retreats(monkeypatch):
+    plate = _plate(1, _block((10, 16), (10, 11)))
+    world = _unseeded(monkeypatch, plate)
+    continental_ledger.ensure_initialized(world)
+    n = plate.node_count()
+    plate.set_fields_on_plate(continental_material_m=plate.collect("crustal_thickness_m"), craton_crust_m=np.full(n, 2_000.0))
+    shrinkable = np.zeros(n, dtype=bool)
+    shrinkable[-2:] = True  # overridden by an oceanic plate: a trench, not a suture
+    ctx = _retreat_ctx(plate, shrinkable, np.zeros(n, dtype=bool))
     areas = plate.node_areas_m2()
+    hc_before = plate.collect("crustal_thickness_m")
 
-    # Freshly overlapped craton cells hold out...
-    assert np.all(quad_tectonics._retreat(plate, world, ctx, 4 * SPACING, 10))
-    assert world.craton_ledger["subducted_m3"] == 0.0
-    # ...until the overlap has lasted long enough.
-    world.elapsed_years = 1.0 + cratons.CRATON_RETREAT_DELAY_YEARS
-    plate.set_fields_on_plate(overlap_onset_years=np.where(shrinkable, 1.0, 0.0))
-    survivors = quad_tectonics._retreat(plate, world, ctx, 4 * SPACING, 10)
+    # Over 1 Myr the trench's exposed cells (in a one-cell strip, both) wear back by the
+    # attrition rate along their edge, and nothing retreats while it still has craton.
+    assert np.all(quad_tectonics._retreat(plate, world, ctx, 4 * SPACING, 10, years=1e6))
+    worn = cratons.CRATON_ATTRITION_KM2_PER_MYR * 1e6 / np.sqrt(areas)
+    craton = plate.collect("craton_crust_m")
+    np.testing.assert_allclose(craton[-2:], 2_000.0 - worn[-2:])
+    assert np.all(craton[:-2] == 2_000.0)
+    np.testing.assert_allclose(plate.collect("crustal_thickness_m")[-2:], hc_before[-2:] - worn[-2:])
+    assert world.craton_ledger["subducted_m3"] == pytest.approx(worn[-2:] @ areas[-2:])
+    assert world.continental_material_ledger["deeply_subducted_m3"] == pytest.approx(worn[-2:] @ areas[-2:])
 
-    removed = ~survivors
-    assert np.any(removed)
-    assert world.craton_ledger["subducted_m3"] == pytest.approx(200.0 * float(areas[removed].sum()))
-    assert world.continental_material_ledger["deeply_subducted_m3"] == pytest.approx(500.0 * float(areas[removed].sum()))
+    # Once their craton is gone, the cells retreat down the trench like any others.
+    survivors = quad_tectonics._retreat(plate, world, ctx, 4 * SPACING, 10, years=1e9)
+    assert not np.any(survivors[-2:])
+    assert world.craton_ledger["subducted_m3"] == pytest.approx(2_000.0 * areas[-2:].sum())
+
+
+def test_a_craton_at_a_collision_front_jams_and_loses_nothing(monkeypatch):
+    plate = _plate(1, _block((10, 16), (10, 11)))
+    world = _unseeded(monkeypatch, plate)
+    continental_ledger.ensure_initialized(world)
+    n = plate.node_count()
+    _set_craton(plate, np.arange(n) >= n - 2)
+    shrinkable = np.zeros(n, dtype=bool)
+    shrinkable[-3:] = True
+    ctx = _retreat_ctx(plate, shrinkable, shrinkable.copy())
+    craton_before = _volume(plate, "craton_crust_m")
+
+    survivors = quad_tectonics._retreat(plate, world, ctx, 4 * SPACING, 10, years=1e9)
+
+    # The weak crust beside the craton takes the shortening; the craton holds, whole.
+    np.testing.assert_array_equal(survivors[-3:], [False, True, True])
+    assert _volume(plate, "craton_crust_m") == pytest.approx(craton_before, rel=1e-12)
+    assert sum(world.craton_ledger[key] for key in cratons.CRATON_SINK_ACCOUNTS) == 0.0
 
 
 def test_suture_accretion_reworks_the_donor_craton_and_the_receivers_shed_roots_leave_theirs(monkeypatch):

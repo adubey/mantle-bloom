@@ -430,19 +430,30 @@ def _retreat(
     years: float = 0.0,
 ) -> np.ndarray:
     """Peel retreatable boundary cells, layer by layer -- see the module docstring. Returns the
-    survivor mask over the pre-retreat node order. `years` sets how much of the receiving
-    belts' dense roots may delaminate (none at 0)."""
+    survivor mask over the pre-retreat node order. `years` sets how much craton a trench
+    wears away and how much of the receiving belts' dense roots may delaminate (none at 0)."""
     n = plate.node_count()
     survivors = np.ones(n, dtype=bool)
-    # A craton cell holds out against consumption until it has been overlapped long enough
-    # (cratons.retreat_allowed), so the younger belts around it take the shortening first.
-    retreatable = ctx.shrinkable & cratons.retreat_allowed(world, plate)
-    if not np.any(retreatable) or n <= 1:
+    if n <= 1:
         return survivors
-
     probes = plate._probe_neighbour_indices()
     has_probe = probes >= 0
     safe_probes = np.where(has_probe, probes, 0)
+    codes = plate.collect("crust_type_code")
+    continental = effective_is_continental_from_codes(codes, plate.crust_type == "continental")
+    # A continental terrane keeps being continental even when it rides an oceanic plate.
+    # Treat those cells like the explicit continent-continent suture donors instead of
+    # subducting them with their nominal owning plate (issue #253).
+    terrane = continental if plate.crust_type == "oceanic" else np.zeros_like(continental)
+    # Boundary retreat never consumes a craton cell whole (cratons.retreat_allowed, #340). At a
+    # collision front it jams; at a trench its exposed edge wears back by subduction erosion
+    # first, and the cell retreats once no craton is left.
+    trench = ctx.shrinkable & ~(ctx.accrete | terrane)
+    cratons.attrite(world, plate, trench & np.any(np.all(~has_probe, axis=2), axis=1), years)
+    retreatable = ctx.shrinkable & cratons.retreat_allowed(plate)
+    if not np.any(retreatable):
+        return survivors
+
     weights = plate.node_areas_m2() / lithosphere.node_area_m2(ctx.spacing_rad)
     hc = plate.collect("crustal_thickness_m")
     budget_hc = ctx.oceanic_override_retreat_budget_hc
@@ -478,17 +489,11 @@ def _retreat(
 
     own_points = ctx.own_points
     world.record_removed_points(own_points[removed], plate.plate_id)
-    codes = plate.collect("crust_type_code")
-    continental = effective_is_continental_from_codes(codes, plate.crust_type == "continental")
     # Oceanic floor going under a neighbour is the subduction history a later continental
     # collision inherits its polarity from (issue #318).
     collision_polarity.record_consumption(
         world, plate, own_points[removed], ~continental[removed], ctx.inputs.neighbor_plate_id[removed], ctx.neighbours
     )
-    # A continental terrane keeps being continental even when it rides an oceanic plate.
-    # Treat those cells like the explicit continent-continent suture donors instead of
-    # subducting them with their nominal owning plate (issue #253).
-    terrane = continental if plate.crust_type == "oceanic" else np.zeros_like(continental)
     donors = removed & (ctx.accrete | terrane)
     # Everything else removed goes down the trench: its craton and its continental-derived
     # material leave the surface as deep subduction.

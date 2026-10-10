@@ -469,7 +469,7 @@ def observe_contacts(world: "World", years: float) -> PolarityFrame:
             )
         from . import cratons
 
-        m.retreatable = eligible & cratons.retreat_allowed(world, plate)
+        m.retreatable = eligible & cratons.retreat_allowed(plate)
         m.override = m.upper & contested
     frame = PolarityFrame(elapsed_years=now, masks=masks, polarity=polarity)
     world.collision_polarity_frame = frame
