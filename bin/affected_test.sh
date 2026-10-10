@@ -8,9 +8,9 @@
 # `./bin/affected_test.sh -v`.
 #
 # Falls back to the full suite whenever the affected set can't be trusted (a file the import
-# graph can't map, e.g. a new __init__.py) -- see list_affected_tests.py's docstring. Always
-# review with bin/unit_test.sh before pushing; this is a dev-loop shortcut, not a substitute
-# for the full suite.
+# graph can't map, e.g. a new __init__.py) -- see list_affected_tests.py's docstring. This is
+# the pre-push check (CI runs it on every PR with --base set to the PR's base); the full
+# suite runs on a schedule in .github/workflows/full-suite.yml.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"

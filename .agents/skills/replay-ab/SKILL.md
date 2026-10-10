@@ -23,7 +23,7 @@ description: Measure a mantle-bloom change by replaying a saved world (.mbworld)
 
 4. **Run replays in series.** The machine is short on RAM: each replay takes 0.6–2.7 GB.
    Run at most two at once (the baseline and branch pair on a small save), and never
-   alongside the full unit suite. A 43 Myr replay of the seed 997271774 save takes about
+   alongside a unit or stress test run. A 43 Myr replay of the seed 997271774 save takes about
    40 minutes. Run it in the background, and write outputs to a scratch directory, not the
    repo:
 

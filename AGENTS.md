@@ -16,8 +16,8 @@ Run from the repo root (or worktree root).
 | What | Command |
 |---|---|
 | Set up or refresh deps (safe to repeat) | `./bin/setup.sh` |
-| Unit tests for what changed (dev loop) | `./bin/affected_test.sh --base origin/main` |
-| Full unit suite (required before push) | `./bin/unit_test.sh` (extra args go to pytest, e.g. `-k biome`) |
+| Unit tests for what changed (required before push) | `./bin/affected_test.sh --base origin/main` |
+| Full unit suite (CI runs it on a schedule) | `./bin/unit_test.sh` (extra args go to pytest, e.g. `-k biome`) |
 | Slow full-simulation tests | `./bin/stress_test.sh` |
 | Python lint (incl. complexity) | `backend/.venv/bin/ruff check` |
 | Frontend lint (incl. complexity), typecheck and build | `cd frontend && npm run lint && npm run build` |
@@ -26,11 +26,12 @@ Run from the repo root (or worktree root).
 | Stop the app | `./bin/stop.sh --port <P> [--frontend-port <Q>]` |
 
 - `affected_test.sh` maps changed files to tests through the import graph, and falls back
-  to the full suite when that mapping can't be trusted. It's a dev-loop shortcut only.
-- The full suite (~1,300 tests, about 12 minutes), ruff and `quality_check.sh` are the gate
-  before pushing. CI (`.github/workflows/test.yml`) runs ruff, `quality_check.sh`'s checks,
-  the frontend checks and only the *affected* unit tests on every PR. The full unit suite runs
-  four times a day and the stress tests nightly (`full-suite.yml`); a failure there opens a
+  to the full suite on its own when that mapping can't be trusted (an `__init__.py`, a data
+  file, a dependency pin).
+- The affected tests, ruff and `quality_check.sh` are the gate before pushing -- the same
+  checks CI (`.github/workflows/test.yml`) runs on every PR, plus the frontend checks. You
+  don't need to run the full suite (~1,300 tests, about 12 minutes) locally: it runs four
+  times a day and the stress tests nightly (`full-suite.yml`). A failure there opens a
   "Scheduled full test run is failing" issue, which takes priority over new work.
 - **Quality gates are ratchets.** Functions over the complexity cap of 20 carry a
   `# noqa: C901` or `oxlint-disable-next-line eslint/complexity`, and pre-existing dead and
@@ -55,9 +56,9 @@ Run from the repo root (or worktree root).
 - **Before/after comparisons** use a detached `origin/main` worktree. Never use
   `git stash`: the stash is shared by every worktree, including the user's.
 - **Replays are RAM-heavy** (0.6–2.7 GB each). Run at most two at once, and never alongside
-  the full unit suite.
-- **Reviews:** when a PR's author reports the full suite passing, don't rerun it. Run
-  targeted checks they couldn't have covered instead.
+  a unit or stress test run.
+- **Reviews:** when a PR's author reports its tests passing, don't rerun them. Run targeted
+  checks they couldn't have covered instead.
 - Skills for these workflows, shared by Claude Code and Codex, are in `.agents/skills/`
   (`.claude/skills` links there): `start-issue`, `replay-ab`, `pre-push-check`.
 
