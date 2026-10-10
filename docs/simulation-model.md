@@ -1233,8 +1233,8 @@ Sites that know their mechanism book it directly (`deform_columns`,
 also books the continental-derived material it removes into the continental-material ledger
 (`deeply_subducted_m3`, `delaminated_lower_crust_m3`, `collision_subducted_m3`). Suture
 accretion carries `continental_material_m` onto the cells that receive the crust, and so does the quad merge for
-crust stacked past the suture cap, and so does craton stacked on craton past it, keeping its
-oldest date (#340); material a merge still can't place is booked as
+crust stacked past the suture cap, along with any craton stacked on craton past the cap,
+which keeps its oldest date (#340); material a merge still can't place is booked as
 `collision_subducted_m3`. A failed rift thins the tracer with its column (`rift_thinned_m3`). A
 stranded fragment cut off in defragmentation, or a plate with no territory left, that still
 carries continental material (continental crust, or continental sediment on an oceanic sliver)
