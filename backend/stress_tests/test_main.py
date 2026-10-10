@@ -5,12 +5,22 @@ import math
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
+from app import main
 from app.main import app
 
 
 @pytest.fixture
 def client():
-    return TestClient(app)
+    """A TestClient over a fresh app.main (no world) -- see unit_tests/test_main.py's own
+    `client` fixture, which this mirrors, for why the module globals need resetting (#334)."""
+    main._state["world"] = None
+    main._animation_stop_event.clear()
+    yield TestClient(app)
+    main._state["world"] = None
+    main._animation_stop_event.clear()
+    if main._world_lock.locked():
+        main._world_lock.release()
+        pytest.fail("test left app.main._world_lock held")
 
 
 def _decode_image(body: dict) -> Image.Image:

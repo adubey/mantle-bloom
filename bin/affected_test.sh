@@ -44,4 +44,4 @@ fi
 
 cd "$REPO_ROOT/backend"
 source .venv/bin/activate
-python -m pytest $AFFECTED -q -n auto --dist loadscope "${PYTEST_ARGS[@]+"${PYTEST_ARGS[@]}"}"
+python -m pytest $AFFECTED -q -n auto "${PYTEST_ARGS[@]+"${PYTEST_ARGS[@]}"}"
