@@ -1,6 +1,6 @@
 ---
 name: pre-push-check
-description: Run mantle-bloom's full verification (ruff, dead/duplicate-code checks, full backend unit suite, frontend lint and build when touched) and report the results. Use before pushing a branch, opening or updating a PR, or saying a task is done.
+description: Run mantle-bloom's pre-push verification (ruff, dead/duplicate-code checks, affected backend unit tests, frontend lint and build when touched) and report the results. Use before pushing a branch, opening or updating a PR, or saying a task is done.
 ---
 
 # Pre-push check
@@ -20,9 +20,11 @@ Run these from the worktree root, in order, and stop to fix anything that fails.
    Fix findings rather than adding them to `vulture_whitelist.py` or the jscpd baseline;
    see the ratchet note in AGENTS.md.
 
-4. **Full unit suite:** `./bin/unit_test.sh`, about 12 minutes on 10 cores.
-   `affected_test.sh` doesn't count as this check. Don't run the suite while replays are
-   going (RAM). You can skip it if this exact HEAD already passed in this session.
+4. **Affected unit tests:** `./bin/affected_test.sh --base origin/main`. It falls back to
+   the full suite by itself when the change can't be mapped through the import graph. The
+   full suite isn't required: CI runs it on a schedule (`full-suite.yml`). Don't run tests
+   while replays are going (RAM). You can skip this if this exact HEAD already passed in
+   this session.
 
 5. **Frontend**, only if `git diff --name-only origin/main...HEAD -- frontend` is non-empty:
    `cd frontend && npm run lint && npm run build`. The build runs `tsc`, which is the

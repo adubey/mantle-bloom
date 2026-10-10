@@ -12,7 +12,7 @@ only after reproducing it on origin/main. -->
 
 - [ ] `backend/.venv/bin/ruff check`
 - [ ] `./bin/quality_check.sh` (dead and duplicate code)
-- [ ] `./bin/unit_test.sh`: N passed
+- [ ] `./bin/affected_test.sh --base origin/main`: N passed
 - [ ] Frontend touched: `cd frontend && npm run lint && npm run build`
 - [ ] Stress tests (`./bin/stress_test.sh`), if the step pipeline, world generation or persistence changed
 - [ ] Old `.mbworld` saves still load, if pickled state changed (docs/save-compatibility.md)

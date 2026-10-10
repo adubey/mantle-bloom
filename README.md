@@ -94,8 +94,8 @@ changes (committed since `main` plus anything uncommitted) instead of the whole 
 
 It maps changed files to test files through `app`'s own import graph -- a module's own
 tests, plus every module that transitively imports it -- and falls back to the full suite
-whenever that mapping can't be trusted. It's a dev-loop shortcut, not a substitute for
-`./bin/unit_test.sh` before pushing.
+whenever that mapping can't be trusted. It's the pre-push check, the same one CI runs on
+every PR; CI runs the full suite on a schedule.
 
 The suite's slow, full-simulation tests (many-step integration/determinism checks, anywhere
 from a few seconds to several minutes each) live separately in `backend/stress_tests/`,
