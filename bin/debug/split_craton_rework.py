@@ -19,7 +19,12 @@ Every other sink account is split by caller too, so a phase audit's clips and re
 in `rifted_m3`, #340 item 6). Checkpoints
 also record the craton inventory, the cratonic area (cells with `craton_crust_m > 0`) and
 the mean relief of the non-cratonic continental crust within CRATON_EDGE_RELIEF_WINDOW_KM
-of a craton (every craton edge, not only those facing convergent fronts).
+of a craton (every craton edge, not only those facing convergent fronts). For #340's
+side effects they also record land and emergent continental area, land hypsometry, the share
+of cratonic area under orogenic crust (Hc above the craton host window), the orogenic
+`ceiling_overflow_m3` (ponding against cratons sends more crust to the Hc cap), the
+area-weighted mean plate surface speed (collision braking moves it), and the plate merges
+(collision or forced fusion) so far.
 
 Given `--baseline` (this script's JSON from `main`, same save and span), it checks issue
 #340's acceptance targets: the non-attrition craton loss rate (every craton sink but
@@ -48,7 +53,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
-from app import continental_ledger, cratons, persistence, quad_tectonics, shortening, world as world_mod  # noqa: E402
+from app import continental_ledger, cratons, merge_split, persistence, quad_tectonics, shortening, world as world_mod  # noqa: E402
 from app.elevation_lines import effective_is_continental_from_codes, line_spacing_rad  # noqa: E402
 from app.mantle import PLANET_RADIUS_KM  # noqa: E402
 
@@ -64,6 +69,17 @@ NON_ATTRITION_LOSS_MAX_FRACTION = 0.2
 CRATON_EDGE_RELIEF_WINDOW_KM = 300.0
 # Every craton sink except margin attrition, which #340 books to `subducted_m3`.
 NON_ATTRITION_SINKS = tuple(account for account in cratons.CRATON_SINK_ACCOUNTS if account != "subducted_m3")
+MERGES = [0]
+
+
+def _count_merges() -> None:
+    original = merge_split._merge_plates_with_craton_audit
+
+    def counted(*args, **kwargs):
+        MERGES[0] += 1
+        return original(*args, **kwargs)
+
+    merge_split._merge_plates_with_craton_audit = counted
 
 
 def _site(frame) -> str:
@@ -133,15 +149,35 @@ def _edge_window(plate, cratonic: np.ndarray, hops: int) -> np.ndarray:
     return continental & ~cratonic & (ring >= 1) & (ring <= hops)
 
 
+def _weighted_quantile(values: np.ndarray, weights: np.ndarray, q: float) -> float:
+    if values.size == 0:
+        return float("nan")
+    order = np.argsort(values)
+    cum = np.cumsum(weights[order])
+    return float(values[order][np.searchsorted(cum, q * cum[-1])])
+
+
 def metrics(world) -> dict:
     out = {"elapsed_myr": world.elapsed_years / 1e6, "craton_mkm3": 0.0, "cratonic_area_mkm2": 0.0, "by_plate_type": {}}
     hops = max(1, round(CRATON_EDGE_RELIEF_WINDOW_KM / (line_spacing_rad(world.node_density) * PLANET_RADIUS_KM)))
     edge_relief_m3 = edge_area_m2 = 0.0
+    land_elev, land_area, emergent_m2, buried_craton_m2, speed_m2 = [], [], 0.0, 0.0, 0.0
+    total_m2 = 0.0
     for plate in world.plates:
         if plate.node_count() == 0:
             continue
         areas = plate.node_areas_m2()
         craton = plate.collect("craton_crust_m")
+        elevation = plate.collect("elevation")
+        land = elevation > world.sea_level_m
+        continental = effective_is_continental_from_codes(plate.collect("crust_type_code"), plate.crust_type == "continental")
+        land_elev.append(elevation[land])
+        land_area.append(areas[land])
+        emergent_m2 += float(areas[land & continental].sum())
+        buried_craton_m2 += float(areas[(craton > 0.0) & (plate.collect("crustal_thickness_m") > cratons.CRATON_HOST_MAX_HC_M)].sum())
+        points, _ = plate.all_points_and_elevation()
+        speed_m2 += float(np.linalg.norm(np.cross(plate.omega, points), axis=1) @ areas)
+        total_m2 += float(areas.sum())
         if np.any(craton > 0.0):
             window = _edge_window(plate, craton > 0.0, hops)
             relief = np.maximum(plate.collect("elevation") - world.sea_level_m, 0.0)
@@ -155,6 +191,15 @@ def metrics(world) -> dict:
         row["craton_mkm3"] += volume
         row["cratonic_area_mkm2"] += area
     out["craton_edge_relief_m"] = edge_relief_m3 / edge_area_m2 if edge_area_m2 > 0.0 else 0.0
+    elev, area = np.concatenate(land_elev), np.concatenate(land_area)
+    out["land_area_mkm2"] = float(area.sum()) / KM2 / 1e6
+    out["emergent_continental_area_mkm2"] = emergent_m2 / KM2 / 1e6
+    out["land_elevation_m"] = {f"p{q}": _weighted_quantile(elev, area, q / 100.0) for q in (10, 50, 90, 99)}
+    out["cratonic_area_under_orogen_mkm2"] = buried_craton_m2 / KM2 / 1e6
+    # omega is rad/yr; x R (m) x 100 -> cm/yr.
+    out["mean_surface_speed_cm_yr"] = speed_m2 / total_m2 * PLANET_RADIUS_KM * 1e5 if total_m2 > 0.0 else 0.0
+    out["ceiling_overflow_km3"] = float((getattr(world, "orogenic_relief_budget", {}) or {}).get("ceiling_overflow_m3", 0.0)) / KM3
+    out["merges"] = MERGES[0]
     out["craton_ledger_km3"] = {k: v / KM3 for k, v in (getattr(world, "craton_ledger", {}) or {}).items()}
     out["craton_balance_error_km3"] = cratons.balance_error_m3(world) / KM3
     return out
@@ -194,6 +239,7 @@ def main() -> None:
     args = parser.parse_args()
 
     commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, check=False).stdout.strip()
+    _count_merges()
     world = persistence.load_world_bytes(args.save.read_bytes())
     world.reset_phase_budget()
     continental_ledger.ensure_initialized(world)
