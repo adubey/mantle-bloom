@@ -273,6 +273,16 @@ def _transfer(keep: "PlateWithSparseQuadPatch", absorb: "PlateWithSparseQuadPatc
             merged[is_new & (total <= 0.0)] = 0.0
         out[name] = merged
 
+    # A column holding craton stays continental, however much other crust the vote counts on
+    # it: craton lives only on continental hosts, so a thick oceanic-coded pile fused onto a
+    # craton would otherwise strip it (#340: 4.4 M km^3 in one terrane accretion on the
+    # seed 910211954 replay).
+    if "craton_crust_m" in out and "crust_type_code" in out:
+        codes = out["crust_type_code"]
+        oceanic = (codes == CRUST_TYPE_OCEANIC) | ((codes == CRUST_TYPE_INHERIT) & (keep.crust_type == "oceanic"))
+        relabel = (out["craton_crust_m"] > 0.0) & oceanic
+        codes[relabel] = CRUST_TYPE_INHERIT if keep.crust_type == "continental" else CRUST_TYPE_CONTINENTAL
+
     # Crust: the suture cap applies to stacked columns only, never lowers a column already
     # past it, and caps Hm the way `quad_tectonics._accrete_onto_survivors` does.
     old_hc = own_values("crustal_thickness_m")

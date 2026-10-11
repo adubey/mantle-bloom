@@ -1234,7 +1234,8 @@ also books the continental-derived material it removes into the continental-mate
 (`deeply_subducted_m3`, `delaminated_lower_crust_m3`, `collision_subducted_m3`). Suture
 accretion carries `continental_material_m` onto the cells that receive the crust, and so does the quad merge for
 crust stacked past the suture cap, along with any craton stacked on craton past the cap,
-which keeps its oldest date (#340); material a merge still can't place is booked as
+which keeps its oldest date, and a column holding craton stays continental whatever the
+merge's crust-volume vote says (#340); material a merge still can't place is booked as
 `collision_subducted_m3`. A failed rift thins the tracer with its column (`rift_thinned_m3`). A
 stranded fragment cut off in defragmentation, or a plate with no territory left, that still
 carries continental material (continental crust, or continental sediment on an oceanic sliver)

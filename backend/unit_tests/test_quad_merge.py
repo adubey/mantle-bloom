@@ -210,6 +210,22 @@ def test_craton_stacked_on_craton_past_the_cap_goes_with_the_overflow():
     assert keep.collect("craton_formed_years").min() == -2e9
 
 
+def test_a_craton_column_stays_continental_under_a_thicker_oceanic_pile():
+    # Issue #340: the crust-type vote counts crust volume, so an oceanic-coded pile at the Hc
+    # cap fused onto a craton used to retype it oceanic and strip its craton.
+    keep = _cap(1, np.eye(3), _direction(0.0))
+    absorb = _cap(2, ROTATED, _direction(2 * RADIUS - 3 * SPACING), crust_type="oceanic")
+    keep.set_fields_on_plate(craton_crust_m=keep.collect("crustal_thickness_m"))
+    absorb.set_fields_on_plate(crustal_thickness_m=np.full(absorb.node_count(), SUTURE_ACCRETION_MAX_HC_M))
+    craton_before = _volume([keep], "craton_crust_m")
+
+    quad_merge.merge(keep, absorb, np.zeros((0, 3)))
+
+    craton, codes = keep.collect("craton_crust_m"), keep.collect("crust_type_code")
+    assert _volume([keep], "craton_crust_m") == pytest.approx(craton_before, rel=1e-9)
+    assert not np.any((craton > 0.0) & (codes == CRUST_TYPE_OCEANIC))
+
+
 @pytest.mark.parametrize("hc, hm", [
     (lithosphere.MAX_CRUSTAL_THICKNESS_M, lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M),
     (lithosphere.MIN_CRUSTAL_THICKNESS_M, lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M),
