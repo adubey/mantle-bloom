@@ -73,8 +73,8 @@ against 1.5 on main.
 ## Two merge paths that destroyed craton
 
 Steps 1+2 alone took seed 997271774 to 29% of main's rate. A plate-merge clip grew from 4.2 to
-44.2 M km³, because cratons the front no longer drained were left for a merge to stack. Scratch
-probes (taps on the step's functions, not checked in) found two paths, both now fixed
+44.2 M km³, because cratons the front no longer drained were left for a merge to stack. `bin/debug/probe_craton_clips.py`
+found two paths, both now fixed
 in `quad_merge.py`:
 
 - **Stacking past the Hc cap.** At 114.6 Myr on main, a merge stacked two cratons on 412
