@@ -13,9 +13,9 @@ onto that plate's lattice by exact area:
   is carried through world space into the surviving plate's local frame and located on its
   lattice. The sub-cell areas form the overlap weights between absorbed and surviving cells.
 - **Territory.** An empty surviving-lattice cell becomes active when absorbed sub-cells cover
-  at least `NEW_CELL_MIN_COVERAGE` of its exact area, its centre isn't in a third plate's
-  cell, and it isn't closer to some third plate's node than to either fusing plate's (the
-  Voronoi exclusivity the line merge uses).
+  at least `NEW_CELL_MIN_COVERAGE` of its exact area, no part of it lies in a third plate's
+  cell (sampled at `FOOTPRINT_SAMPLES_PER_SIDE`), and it isn't closer to some third plate's
+  node than to either fusing plate's (the Voronoi exclusivity the line merge uses).
 - **Transfer.** A new cell takes the area-weighted remap of the sub-cells inside it. For
   extensive fields that's the mean thickness, so a partly covered boundary cell isn't left
   thin. The volume of sub-cells whose cell wasn't activated, plus the coverage difference,
@@ -56,6 +56,15 @@ MERGE_REMAP_SUBSAMPLES = 4
 # to the absorbed plate's: the two lattices are rotated against each other, so boundary cells
 # are partly covered, and those under half cover give their share to a neighbour instead.
 NEW_CELL_MIN_COVERAGE = 0.5
+
+# Sample intervals per side of a candidate cell's footprint, corners and edges included, for
+# the third-plate check. A neighbour's cell reaching less than 1/8 of a cell into a candidate
+# between two samples can go unseen; at 8, that's ~81 points a candidate (issue #344).
+FOOTPRINT_SAMPLES_PER_SIDE = 8
+
+# Inset of the footprint samples from the cell's own edges, in cell units, so a point on an
+# edge isn't read as the neighbouring lattice cell's.
+FOOTPRINT_EDGE_INSET = 1e-6
 
 
 def merge(
@@ -138,6 +147,24 @@ def _free_cell_keys(plate: "PlateWithSparseQuadPatch", local: np.ndarray) -> np.
     return keys
 
 
+def _footprint_points(plate: "PlateWithSparseQuadPatch", keys: np.ndarray) -> np.ndarray:
+    """World points sampling each of `keys`' (not necessarily active) cells on `plate`'s
+    lattice, edges and corners included: shape (len(keys), (FOOTPRINT_SAMPLES_PER_SIDE + 1)^2, 3)."""
+    from .sparse_quad_patch import lattice_points, unpack_cell_keys
+
+    face, level, i, j = unpack_cell_keys(keys)
+    offsets = np.linspace(FOOTPRINT_EDGE_INSET, 1.0 - FOOTPRINT_EDGE_INSET, FOOTPRINT_SAMPLES_PER_SIDE + 1)
+    da, db = (offset.ravel() for offset in np.meshgrid(offsets, offsets, indexing="ij"))
+    count = len(da)
+    local = np.zeros((len(keys), count, 3))
+    for lev in np.unique(level):
+        at = level == lev
+        local[at] = lattice_points(
+            face[at, None], i[at, None] + da, j[at, None] + db, plate.cells_per_edge * (1 << int(lev))
+        )
+    return geometry.to_world(plate.frame, local.reshape(-1, 3)).reshape(len(keys), count, 3)
+
+
 def _explicit_codes(codes: np.ndarray, crust_type: str) -> np.ndarray:
     """`crust_type_code` with CRUST_TYPE_INHERIT resolved against the owning plate's type."""
     inherited = CRUST_TYPE_CONTINENTAL if crust_type == "continental" else CRUST_TYPE_OCEANIC
@@ -174,9 +201,13 @@ def _transfer(
             blocked |= other_dist < own_dist
         # A quad plate's cells are its territory, whichever node is nearest. Where `absorb`
         # already overlapped a third plate, its own nodes win the distance test above, and the
-        # rotated lattice put new cells' centres inside that plate (issue #344).
-        for other in other_plates:
-            blocked |= other.contains_batch(centres)
+        # rotated lattice put new cells' centres inside that plate; a cell centred just outside
+        # can still lie across its edge. So no part of a new cell's footprint may be in a
+        # third plate (issue #344).
+        if other_plates:
+            footprint = _footprint_points(keep, cell_keys[at]).reshape(-1, 3)
+            for other in other_plates:
+                blocked |= other.contains_batch(footprint).reshape(len(at), -1).any(axis=1)
         chosen[at[blocked]] = False
 
     old_keys = keep.cell_keys.copy()

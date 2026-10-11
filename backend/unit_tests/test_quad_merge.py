@@ -253,6 +253,31 @@ def test_merge_plates_puts_no_new_cell_inside_a_third_plate_the_absorbed_one_ove
     assert _volume([keep], "crustal_thickness_m") == pytest.approx(before, rel=1e-12)
 
 
+def test_merge_plates_grows_no_new_cell_across_a_third_plates_edge():
+    # Issue #344 review: a new cell centred just outside a third plate can still lie across its
+    # edge. Here the absorbed plate stops short of the third plate, so any overlap after the
+    # merge is new.
+    q, _ = np.linalg.qr(np.random.default_rng(11).normal(size=(3, 3)))
+    keep = _cap(1, np.eye(3), _direction(0.0))
+    absorb = _cap(2, ROTATED, _direction(2 * RADIUS + 0.5 * SPACING))
+    third = _cap(3, q * np.sign(np.linalg.det(q)), _direction(3.6 * RADIUS + 1.1 * SPACING), radius=0.6 * RADIUS, crust_type="oceanic")
+
+    def overlap(plates):
+        total = 0.0
+        for plate in plates:
+            _, local, area = quad_merge.subsample_cells(plate, 8)
+            total += float(area[third.contains_batch(geometry.to_world(plate.frame, local))].sum())
+        return total
+
+    assert overlap([keep, absorb]) == 0.0
+    before = _volume([keep, absorb], "crustal_thickness_m")
+
+    merge_split.merge_plates(_world(keep, absorb, third), keep.plate_id, absorb.plate_id)
+
+    assert overlap([keep]) == 0.0
+    assert _volume([keep], "crustal_thickness_m") == pytest.approx(before, rel=1e-12)
+
+
 def test_merge_carries_composition_provenance_and_history():
     keep = _cap(1, np.eye(3), _direction(0.0))
     absorb = _cap(2, ROTATED, _direction(2 * RADIUS + 0.5 * SPACING))
