@@ -16,6 +16,11 @@ Runs:
   and delamination.
 - **branch**: `f721e73`, all of #340 plus the two merge fixes the replays found (below).
 - **no braking** (seed 997271774 only): `f721e73` with `CRATON_COLLISION_FRICTION_GAIN = 0`.
+- **review fixes**: `d816e0e`, after the PR #345 review. It brakes by the weaker side of each
+  contact, charges attrition to the #177 budget, and makes the vote, root, anatexis and dating
+  fixes. See [After the review fixes](#after-the-review-fixes).
+
+The tables below are for `f721e73` unless they say otherwise.
 
 Every replay ran alone (one at a time), from a snapshot of its commit's `backend/app` and
 `bin/debug`.
@@ -144,6 +149,54 @@ Two sinks grow over 300 Myr on the branch and are worth watching:
   doesn't split it by site, so this run can't say how much is attrition and how much is
   no-outlet subduction. At 5 Myr steps, attrition removes about 1.6 km of a 125 km cell's
   craton per step.
+
+## After the review fixes
+
+`d816e0e` changes the model in five ways, from the PR #345 review:
+
+- The craton collision brake now uses the weaker side's craton at each contact, so both
+  plates brake alike and a craton pushing into weak crust adds no friction.
+- Trench attrition is charged to the #177 arc-magmatism budget.
+- Coarsening and legacy conversion keep a column holding craton continental.
+- A shared root allowance is capped at the receiver's current non-cratonic crust.
+- Anatexis melts only the non-cratonic crust above the restite.
+
+| Measure at the end | 997 main | 997 `f721e73` | 997 `d816e0e` | 910 main | 910 `f721e73` | 910 `d816e0e` |
+|---|---:|---:|---:|---:|---:|---:|
+| Non-attrition loss vs main | 100% | 6.5% | **6.6%** | 100% | 17.4% | **18.7%** |
+| Craton (M km³) | 2,354.3 | 2,531.9 | 2,531.6 | 1,928.8 | 2,027.4 | 2,025.1 |
+| Craton-edge relief (m) | 1,610 | 1,732 | 1,730 | 3,482 | 3,575 | 3,563 |
+| Cratonic area (M km²) | 66.61 | 69.07 | 68.84 | 64.62 | 66.01 | 66.03 |
+| Land area (M km²) | 141.7 | 146.0 | 146.2 | 156.9 | 158.9 | 156.4 |
+| Emergent continental area (M km²) | 137.7 | 141.3 | 141.6 | 122.0 | 121.4 | 118.6 |
+| `ceiling_overflow_m3` added (M km³) | 0 | 0 | 0 | 0.78 | 0.22 | 0.48 |
+| Mean plate speed (cm/yr) | 2.59 | 2.93 | 3.01 | 4.09 | 3.54 | 4.42 |
+
+- **Targets.** Both saves still pass. Seed 910211954's rise to 18.7% is mostly rifting: rift
+  opening books 16.3 M km³ against 14.6, as the plates move differently.
+- **Plate speed.** On seed 910211954 (no merges) the branch's plates now end 8% *faster* than
+  main's, where the one-sided brake had left them 14% slower. Most of its contacts are craton
+  against weaker crust, which no longer brakes. Why they end faster than main is something
+  this replay can't separate: main consumes cratons at its fronts and the branch jams them.
+- **Ceiling overflow** is still below main's on seed 910211954, and zero on seed 997271774.
+- **Emergent continental area** on seed 910211954 is 2.8% below main, just outside the ±2%
+  noise.
+- **Attrition** books 1.08 M km³ on seed 910211954, within the #177 budget.
+
+`compare_cratons.py` at `d816e0e` (300 Myr, 5 Myr steps):
+
+| Seed | Craton kept, main / `f721e73` / `d816e0e` | Genuine continental area (M km²) | Mean rotation (10⁻⁹ rad/yr) |
+|---|---:|---:|---:|
+| 7 | 69% / 96% / 92% | 144.2 / 145.0 / 138.3 | 10.6 / 9.0 / 7.7 |
+| 11 | 59% / 88% / 87% | 80.7 / 89.5 / 89.0 | 8.7 / 6.0 / 6.6 |
+| 2024 | 74% / 106% / 105% | 95.4 / 106.3 / 104.9 | 6.7 / 5.9 / 6.5 |
+
+The branch still keeps far more craton than main. The continental-area gain holds on seeds 11
+and 2024 (+10%), but seed 7 now ends 4% *below* main, so "more continent" is two seeds of
+three, not a general result. Over 300 Myr, plates rotate 3–27% more slowly than on main on all
+three seeds. The symmetric brake doesn't change that consistently: seed 7 is slower than at
+`f721e73`, seeds 11 and 2024 faster. Erosion of craton stays high on
+seed 11 (294 M km³ against 99 on main).
 
 ## Not addressed here
 

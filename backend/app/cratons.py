@@ -344,10 +344,10 @@ def retreat_allowed(plate: "Plate") -> np.ndarray:
     (lithosphere_plate.boundary_context), so the weak crust between the blocks takes the
     shortening; craton against craton holds until the plates merge. At a trench `attrite`
     wears the cell's craton away first. Over 300 Myr on seeds 7, 11 and 2024
-    (bin/debug/compare_cratons.py), this kept 88-106% of the cratons against 59-74% for the
-    old 60 Myr consumption delay, and 0.6-11% more genuine continental area. #274 had found
-    never consuming kept no more continent, but flow and melt then drained cratons anyway
-    (analysis/issue340)."""
+    (bin/debug/compare_cratons.py), this kept 87-105% of the cratons against 59-74% for the
+    old 60 Myr consumption delay, and 10% more genuine continental area on two seeds (4% less
+    on the third). #274 had found never consuming kept no more continent, but flow and melt
+    then drained cratons anyway (analysis/issue340)."""
     return plate.collect("craton_crust_m") <= 0.0
 
 
