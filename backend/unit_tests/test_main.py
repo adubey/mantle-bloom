@@ -1037,20 +1037,27 @@ def test_stats_history_records_generate_and_each_step_and_survives_save_load(cli
     # The whole point of World.stats_history (see world.py/persistence.py): a save/load round
     # trip should keep the Stats panel's history charts, not silently drop them.
     _post_generate(client, json={"seed": 13, "num_plates": 8, "continental_fraction": 0.5})
-    history = client.get("/world/stats_history").json()["history"]
-    assert [s["elapsed_years"] for s in history] == [0.0]
+    history = client.get("/world/stats_history").json()
+    assert history["format"] == "columnar-v1"
+    assert history["length"] == 1
+    assert history["columns"]["elapsed_years"] == [0.0]
+    land_biomes = history["columns"]["biome_land_fraction"]
+    assert land_biomes["states"] == [2]
+    assert land_biomes["keys"]
+    assert all(len(values) == 1 for values in land_biomes["columns"].values())
 
     _post_step(client, json={"years": 1_000_000})
-    history = client.get("/world/stats_history").json()["history"]
-    assert [s["elapsed_years"] for s in history] == [0.0, 1_000_000.0]
+    history = client.get("/world/stats_history").json()
+    assert history["length"] == 2
+    assert history["columns"]["elapsed_years"] == [0.0, 1_000_000.0]
 
     saved = client.get("/world/save").content
     _post_generate(client, json={"seed": 99, "num_plates": 4})  # replace with something else
-    assert [s["elapsed_years"] for s in client.get("/world/stats_history").json()["history"]] == [0.0]
+    assert client.get("/world/stats_history").json()["columns"]["elapsed_years"] == [0.0]
 
     client.post("/world/load", content=saved)
-    reloaded_history = client.get("/world/stats_history").json()["history"]
-    assert [s["elapsed_years"] for s in reloaded_history] == [0.0, 1_000_000.0]
+    reloaded_history = client.get("/world/stats_history").json()
+    assert reloaded_history["columns"]["elapsed_years"] == [0.0, 1_000_000.0]
     assert reloaded_history == history
 
 

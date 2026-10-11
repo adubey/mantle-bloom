@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
+    "test": "tsc -p tsconfig.test.json && node --test .test-dist/tests/*.test.js",
     "deadcode": "knip",
     "dupes": "cd .. && jscpd --baseline .jscpd-baseline.json --fail-on-new-clones",
     "dupes:baseline": "cd .. && jscpd --baseline .jscpd-baseline.json --update-baseline",

@@ -1086,7 +1086,33 @@ def get_stats_history() -> dict:
     panel's history charts from a save, instead of the pre-history-persistence behaviour of
     just resetting them to empty. `404` if no world has been generated yet."""
     world = _require_world()
-    return {"history": world.stats_history}
+    return _columnar_stats_history(world.stats_history)
+
+
+def _columnar_stats_history(history: list[dict]) -> dict:
+    """Transpose recorded stats snapshots into per-field arrays for compact transfer."""
+    fields = list(dict.fromkeys(key for snapshot in history for key in snapshot))
+    columns: dict[str, object] = {}
+    for field in fields:
+        values = [snapshot.get(field) for snapshot in history]
+        # The stats breakdowns are maps whose keys repeat in every snapshot. Transpose those
+        # too, so biome names and ledger categories are sent once for the whole time series.
+        if any(isinstance(value, dict) for value in values) and all(
+            value is None or isinstance(value, dict) for value in values
+        ):
+            map_keys = list(dict.fromkeys(key for value in values if isinstance(value, dict) for key in value))
+            columns[field] = {
+                "keys": map_keys,
+                "columns": {
+                    key: [value.get(key) if isinstance(value, dict) and key in value else None for value in values]
+                    for key in map_keys
+                },
+                # 0 = null/missing, 1 = empty map, 2 = non-empty map.
+                "states": [0 if value is None else 2 if value else 1 for value in values],
+            }
+        else:
+            columns[field] = values
+    return {"format": "columnar-v1", "length": len(history), "columns": columns}
 
 
 @app.get("/world/plate_at")
