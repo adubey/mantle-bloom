@@ -878,7 +878,10 @@ routine per-step motion.
   deform](#boundary-evolution) for why ordinary per-step evolution no longer uses it), they're
   fused: keep one plate's `frame` and lattice, and remap the absorbed plate's cells onto it
   by exact cell area (`quad_merge.py`), stacking crust where the two overlap (capped at the
-  suture ceiling). The boundary between them becomes ordinary interior territory.
+  suture ceiling). The boundary between them becomes ordinary interior territory. A remapped
+  cell is dropped if its centre lies in any third plate's cell, or nearer a third plate's
+  node than either fusing plate's, so the merged plate doesn't grow into its neighbours
+  (#344). The dropped cells' volume is spread over the cells that are kept.
 
   **Why distance alone isn't enough.** plates.py's tiling has no gaps (every point belongs
   to exactly one plate at generation), so *every* pair of neighboring plates is already
