@@ -659,7 +659,8 @@ def _fuse_plates(world: "World", keep: Plate, absorb: Plate, phase: str) -> None
     `phase` labels the debug phase budget."""
     spacing_rad = line_spacing_rad(world.node_density)
 
-    other_points_list = [p.all_points_and_elevation()[0] for p in world.plates if p is not keep and p is not absorb]
+    others = [p for p in world.plates if p is not keep and p is not absorb]
+    other_points_list = [p.all_points_and_elevation()[0] for p in others]
     other_points = np.concatenate(other_points_list, axis=0) if other_points_list else np.zeros((0, 3))
 
     if world.debug_diagnostics:
@@ -670,7 +671,7 @@ def _fuse_plates(world: "World", keep: Plate, absorb: Plate, phase: str) -> None
         # out of the volumes.
         pair = [phase_budget.snapshot(keep, spacing_rad), phase_budget.snapshot(absorb, spacing_rad)]
         before = phase_budget.Snapshot(*(np.concatenate(parts) for parts in zip(*pair)))
-    keep.merge_with(absorb, other_points)
+    keep.merge_with(absorb, other_points, others)
     collision_polarity.note_lineage(world, absorb.plate_id, keep.plate_id)
     # Continental material stacked past the suture cap that the merge couldn't place leaves
     # with the crust that carried it, booked as collision subduction (issue #276).

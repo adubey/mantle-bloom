@@ -234,6 +234,25 @@ def test_merge_does_not_grow_over_a_third_plate_and_still_conserves():
     assert deep.sum() < 0.1 * third.node_count()
 
 
+def test_merge_plates_puts_no_new_cell_inside_a_third_plate_the_absorbed_one_overlapped():
+    # Issue #344: where the absorbed plate already overlapped a third plate, its own nodes are
+    # nearer than the third plate's, so the nearest-node test alone let the rotated lattice
+    # put new cells' centres inside the third plate's cells. The third plate has a lattice of
+    # its own and cuts about one cell into the absorbed plate's edge.
+    q, _ = np.linalg.qr(np.random.default_rng(7).normal(size=(3, 3)))
+    keep = _cap(1, np.eye(3), _direction(0.0))
+    absorb = _cap(2, ROTATED, _direction(2 * RADIUS + 0.5 * SPACING))
+    third = _cap(3, q * np.sign(np.linalg.det(q)), _direction(3.6 * RADIUS - 0.5 * SPACING), radius=0.6 * RADIUS, crust_type="oceanic")
+    assert np.any(third.contains_batch(absorb.all_points_and_elevation()[0]))
+    world = _world(keep, absorb, third)
+    before = _volume([keep, absorb], "crustal_thickness_m")
+
+    merge_split.merge_plates(world, keep.plate_id, absorb.plate_id)
+
+    assert not np.any(third.contains_batch(keep.all_points_and_elevation()[0]))
+    assert _volume([keep], "crustal_thickness_m") == pytest.approx(before, rel=1e-12)
+
+
 def test_merge_carries_composition_provenance_and_history():
     keep = _cap(1, np.eye(3), _direction(0.0))
     absorb = _cap(2, ROTATED, _direction(2 * RADIUS + 0.5 * SPACING))

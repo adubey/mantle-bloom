@@ -13,8 +13,9 @@ onto that plate's lattice by exact area:
   is carried through world space into the surviving plate's local frame and located on its
   lattice. The sub-cell areas form the overlap weights between absorbed and surviving cells.
 - **Territory.** An empty surviving-lattice cell becomes active when absorbed sub-cells cover
-  at least `NEW_CELL_MIN_COVERAGE` of its exact area and it isn't closer to some third
-  plate's node than to either fusing plate's (the Voronoi exclusivity the line merge uses).
+  at least `NEW_CELL_MIN_COVERAGE` of its exact area, its centre isn't in a third plate's
+  cell, and it isn't closer to some third plate's node than to either fusing plate's (the
+  Voronoi exclusivity the line merge uses).
 - **Transfer.** A new cell takes the area-weighted remap of the sub-cells inside it. For
   extensive fields that's the mean thickness, so a partly covered boundary cell isn't left
   thin. The volume of sub-cells whose cell wasn't activated, plus the coverage difference,
@@ -31,6 +32,7 @@ onto that plate's lattice by exact area:
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -56,11 +58,16 @@ MERGE_REMAP_SUBSAMPLES = 4
 NEW_CELL_MIN_COVERAGE = 0.5
 
 
-def merge(keep: "PlateWithSparseQuadPatch", absorb: "PlateWithSparseQuadPatch", other_points_xyz: np.ndarray) -> None:
+def merge(
+    keep: "PlateWithSparseQuadPatch",
+    absorb: "PlateWithSparseQuadPatch",
+    other_points_xyz: np.ndarray,
+    other_plates: Sequence["PlateWithSparseQuadPatch"] = (),
+) -> None:
     """Fuse `absorb` into `keep` in place: `keep`'s frame, cells, and cell IDs survive, and
     `absorb`'s territory and fields are remapped onto `keep`'s lattice by exact area (see the
     module docstring). `other_points_xyz` are every other live plate's nodes (world xyz),
-    which `keep` doesn't grow over.
+    which `keep` doesn't grow over; nor does it grow into any of `other_plates`' cells.
 
     `omega` conserves angular momentum through the transfer: both plates' momentum before,
     solved against the merged plate's own inertia after -- the remap moves material to new
@@ -69,7 +76,7 @@ def merge(keep: "PlateWithSparseQuadPatch", absorb: "PlateWithSparseQuadPatch", 
     momentum with it; that is absorbed material, so it leaves moving with `absorb`."""
     momentum = lithosphere.angular_momentum(_inertia(keep), keep.omega) + lithosphere.angular_momentum(_inertia(absorb), absorb.omega)
     if absorb.node_count():
-        lost = _transfer(keep, absorb, np.asarray(other_points_xyz, dtype=float).reshape(-1, 3))
+        lost = _transfer(keep, absorb, np.asarray(other_points_xyz, dtype=float).reshape(-1, 3), other_plates)
         momentum = momentum - lithosphere.angular_momentum(lost, absorb.omega)
     keep.set_omega(mantle.clamp_rate(lithosphere.omega_from_angular_momentum(_inertia(keep), momentum)))
     keep.reset_age()
@@ -137,7 +144,12 @@ def _explicit_codes(codes: np.ndarray, crust_type: str) -> np.ndarray:
     return np.where(codes == CRUST_TYPE_INHERIT, inherited, codes).astype(codes.dtype)
 
 
-def _transfer(keep: "PlateWithSparseQuadPatch", absorb: "PlateWithSparseQuadPatch", other_points_xyz: np.ndarray) -> np.ndarray:
+def _transfer(
+    keep: "PlateWithSparseQuadPatch",
+    absorb: "PlateWithSparseQuadPatch",
+    other_points_xyz: np.ndarray,
+    other_plates: Sequence["PlateWithSparseQuadPatch"] = (),
+) -> np.ndarray:
     """Remap `absorb` onto `keep` in place; returns the inertia tensor of the mass the caps
     removed (zero when nothing was capped)."""
     source, absorb_local, sub_area = subsample_cells(absorb, MERGE_REMAP_SUBSAMPLES)
@@ -151,12 +163,21 @@ def _transfer(keep: "PlateWithSparseQuadPatch", absorb: "PlateWithSparseQuadPatc
     cell_keys, cell_of = np.unique(candidate, return_inverse=True)
     coverage = np.bincount(cell_of, weights=sub_area[fresh], minlength=len(cell_keys))
     chosen = coverage >= NEW_CELL_MIN_COVERAGE * _cell_areas_m2(keep, cell_keys)
-    if len(other_points_xyz) and np.any(chosen):
-        centres = geometry.to_world(keep.frame, keep.cell_centres_local(cell_keys[chosen]))
-        own = np.concatenate([keep.all_points_and_elevation()[0], absorb.all_points_and_elevation()[0]])
-        own_dist, _ = cKDTree(own).query(centres)
-        other_dist, _ = cKDTree(other_points_xyz).query(centres)
-        chosen[np.flatnonzero(chosen)[other_dist < own_dist]] = False
+    if (len(other_points_xyz) or other_plates) and np.any(chosen):
+        at = np.flatnonzero(chosen)
+        centres = geometry.to_world(keep.frame, keep.cell_centres_local(cell_keys[at]))
+        blocked = np.zeros(len(at), dtype=bool)
+        if len(other_points_xyz):
+            own = np.concatenate([keep.all_points_and_elevation()[0], absorb.all_points_and_elevation()[0]])
+            own_dist, _ = cKDTree(own).query(centres)
+            other_dist, _ = cKDTree(other_points_xyz).query(centres)
+            blocked |= other_dist < own_dist
+        # A quad plate's cells are its territory, whichever node is nearest. Where `absorb`
+        # already overlapped a third plate, its own nodes win the distance test above, and the
+        # rotated lattice put new cells' centres inside that plate (issue #344).
+        for other in other_plates:
+            blocked |= other.contains_batch(centres)
+        chosen[at[blocked]] = False
 
     old_keys = keep.cell_keys.copy()
     old_fields = {name: keep.collect(name) for name in _materialised(keep, absorb)}
