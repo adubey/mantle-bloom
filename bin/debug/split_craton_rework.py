@@ -27,16 +27,26 @@ area-weighted mean plate surface speed (collision braking moves it), and the pla
 (collision or forced fusion) so far.
 
 Given `--baseline` (this script's JSON from `main`, same save and span), it checks issue
-#340's acceptance targets: the non-attrition craton loss rate (every craton sink but
-`subducted_m3`, where #340 books margin attrition) at most NON_ATTRITION_LOSS_MAX_FRACTION
-of the baseline's, and craton-edge relief above the baseline's. Both thresholds are
-uncalibrated (tracked in #313).
+#340's acceptance targets, both uncalibrated (tracked in #313):
+
+- **Non-attrition loss rate.** The craton volume booked to every sink account
+  (`cratons.CRATON_SINK_ACCOUNTS`: rifting, subduction, delamination, collisional reworking,
+  erosion, topology removal, audit clips and unattributed loss) over the replay, less what
+  trench attrition booked (the `cratons.attrite` site of `subducted_m3`), divided by the
+  replay's span in Myr. Sources (`formed_m3`) are not netted off. It must be at most
+  NON_ATTRITION_LOSS_MAX_FRACTION of the baseline's rate on the same save and span.
+- **Craton-edge relief** above the baseline's at the last checkpoint.
+
+`--rescore RUN_JSON --baseline MAIN_JSON` recomputes the targets from finished replays
+without stepping anything.
 
 Runs on any branch: sites a branch doesn't have simply don't appear.
 
     PYTHONPATH=backend backend/.venv/bin/python bin/debug/split_craton_rework.py \\
         ~/Downloads/mantle-bloom-seed910211954-220200000y.mbworld --myr 20.2 --out split.json \\
         [--baseline split-main.json]
+    PYTHONPATH=backend backend/.venv/bin/python bin/debug/split_craton_rework.py \
+        --rescore split.json --baseline split-main.json
 """
 
 from __future__ import annotations
@@ -67,8 +77,9 @@ NON_ATTRITION_LOSS_MAX_FRACTION = 0.2
 # distance of a craton: roughly the width of a foreland thrust belt against a cratonic
 # backstop.
 CRATON_EDGE_RELIEF_WINDOW_KM = 300.0
-# Every craton sink except margin attrition, which #340 books to `subducted_m3`.
-NON_ATTRITION_SINKS = tuple(account for account in cratons.CRATON_SINK_ACCOUNTS if account != "subducted_m3")
+# Margin attrition is the one craton sink #340 allows; it books to `subducted_m3` from this
+# site, alongside no-outlet suture subduction, which still counts as loss.
+ATTRITION_SITE = ("subducted_m3", "cratons.attrite")
 MERGES = [0]
 
 
@@ -206,8 +217,11 @@ def metrics(world) -> dict:
 
 
 def non_attrition_loss_km3_per_myr(run: dict) -> float:
+    """Every sink's booked craton over the replay, less trench attrition, per Myr."""
     first, last = run["checkpoints"][0], run["checkpoints"][-1]
-    lost = sum(last["craton_ledger_km3"].get(k, 0.0) - first["craton_ledger_km3"].get(k, 0.0) for k in NON_ATTRITION_SINKS)
+    lost = sum(last["craton_ledger_km3"].get(k, 0.0) - first["craton_ledger_km3"].get(k, 0.0) for k in cratons.CRATON_SINK_ACCOUNTS)
+    account, site = ATTRITION_SITE
+    lost -= last.get("by_site_km3", {}).get(account, {}).get(site, 0.0)
     return lost / (last["elapsed_myr"] - first["elapsed_myr"])
 
 
@@ -230,13 +244,21 @@ def acceptance(run: dict, baseline: dict) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("save", type=Path)
+    parser.add_argument("save", type=Path, nargs="?")
     parser.add_argument("--myr", type=float, default=20.0)
     parser.add_argument("--step-years", type=float, default=100_000.0)
     parser.add_argument("--checkpoint-myr", type=float, default=2.0)
-    parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--out", type=Path)
     parser.add_argument("--baseline", type=Path, help="this script's JSON from main, same save and span")
+    parser.add_argument("--rescore", type=Path, help="a finished replay's JSON: recompute the targets against --baseline")
     args = parser.parse_args()
+    if args.rescore is not None:
+        if args.baseline is None:
+            parser.error("--rescore needs --baseline")
+        print(json.dumps(acceptance(json.loads(args.rescore.read_text()), json.loads(args.baseline.read_text())), indent=1))
+        return
+    if args.save is None or args.out is None:
+        parser.error("a save and --out are required unless --rescore is given")
 
     commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, check=False).stdout.strip()
     _count_merges()

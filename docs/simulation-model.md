@@ -716,8 +716,19 @@ over-thickened crust of a suture or a standing orogen goes through these process
   - The rest, and all the melt of a column with no thinner neighbour, is emplaced in the
     column's own upper crust, which changes no thickness.
 
-  Cratonic crust is refractory: only a column's non-cratonic share melts, and no melt
-  relaminates into a cratonic column, so anatexis never changes a craton (#340). Restite is
+  Cratonic crust is refractory, so anatexis never changes a craton (#340). In a partly
+  cratonic column:
+  - the melting zone and its fertile part come from the whole column's geotherm, as above;
+  - the melt and residue are then scaled by the column's non-cratonic share,
+    (Hc - craton) / Hc. The craton is treated as spread through the column in proportion,
+    not as a basal layer: orogenic crust can arrive above a craton (thrust sheets) or below
+    it (underthrusting), and the model doesn't record which;
+  - relaminated melt carries the non-cratonic crust's material fraction,
+    (material - craton) / (Hc - craton);
+  - receivers are thinner continental columns with no craton, each up to its room under the
+    Hc cap.
+
+  Restite is
   an extensive share of Hc. It thickens and thins with its column's strain, travels
   with suture crust, and stays put when crust flows, as Hm does.
 - **Residue feeds delamination.** A column's delaminable root is its crust below 50 km or
@@ -828,13 +839,19 @@ over-thickened crust of a suture or a standing orogen goes through these process
     act on any such column.
   - Ductile flow (`DUCTILE_DIFFUSIVITY_M2_PER_YR`, 3e3 m^2/yr, about Tibet's lower-crustal
     channel) ramps in from 700 to 900 C of Moho temperature.
-  - Cratonic crust never flows: a column drains no lower than its craton or the onset,
-    whichever is thicker. Flux into a cratonic column is cut by `CRATON_FLOW_RESISTANCE`
-    times the receiver's strength, so an orogen ponds against a craton and builds up or
-    spreads along it, and crust thickened onto a craton relaxes away again (#340).
+  - Cratonic crust never flows (#340). In a partly cratonic column:
+    - the gradient that drives flow is still the whole column's thickness above the onset;
+    - a donor's mobile crust is what lies above its craton or the onset, whichever is
+      thicker, so no column drains below its craton;
+    - flux into a cratonic column is cut by `CRATON_FLOW_RESISTANCE` times the receiver's
+      strength. An orogen ponds against a craton and builds up or spreads along it, and
+      crust thickened onto a craton relaxes away again;
+    - receivers take no capacity limit, as before: flow only runs down the gradient.
 
-  Hc moves with the `continental_material_m` fraction of its column's non-cratonic crust, and
-  Hm stays in place.
+  Hc moves with the `continental_material_m` fraction of its column's non-cratonic crust,
+  (material - craton) / (Hc - craton), and Hm stays in place. The mobile cover still moves
+  in proportion to the whole column, flux / Hc, so a cratonic donor keeps slightly more of
+  its cover than its share; this is a known loose end.
   The flow is subcycled at a Courant number of 0.1, so 1 x 4 Myr and 16 x 0.25 Myr give the
   same result to within 1-2% of the relief.
 
@@ -1206,10 +1223,16 @@ loading never changes plate state.
 - is never consumed whole by boundary retreat (`cratons.retreat_allowed`). At a collision
   front it jams: the weaker crust around it takes the shortening, the contact brakes the
   plates (`torque.CRATON_COLLISION_FRICTION_GAIN`), and craton against craton holds until the
-  plates merge. At a trench its exposed edge wears back by subduction erosion,
-  `CRATON_ATTRITION_KM2_PER_MYR` (40 km^3 per Myr per km of margin, Scholl & von Huene) times
-  the cell's edge length, removing crust and craton together (`cratons.attrite`), and the
-  cell retreats once no craton is left (#340).
+  plates merge. At a trench its exposed edge wears back by subduction erosion, removing
+  crust and craton together (`cratons.attrite`), and the cell retreats once no craton is
+  left (#340). Each exposed craton cell (one with an open side) in the trench's retreating
+  set loses `CRATON_ATTRITION_KM2_PER_MYR` x step / sqrt(cell area) of thickness: the
+  margin length is approximated by one edge per cell, however many sides are open, and the
+  loss is linear in the step. The rate is the nonaccreting-margin value (~40 km^3 per Myr per
+  km, Scholl & von Huene); accreting margins erode more slowly (~12 km^3/Myr/km) and aren't
+  distinguished. Attrition acts on the craton plate's own retreating edge at an
+  oceanic-override contact (#177). Real subduction erosion removes the overriding plate's
+  forearc, so a craton overriding a subducting ocean loses nothing here.
 
 **Destruction is ledgered.** Every loss of cratonic volume is booked into
 `World.craton_ledger` under the mechanism responsible:

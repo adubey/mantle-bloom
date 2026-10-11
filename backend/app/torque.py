@@ -105,8 +105,10 @@ COLLISION_RELIEF_FRICTION_SCALE_M = 4000.0
 # lithosphere sets how much strain an orogen takes). Retreat never consumes craton
 # (cratons.retreat_allowed), so a contested cratonic node scales the reference stress by up to
 # 1 + this factor at full strength (cratons.strength), as much as a Tibet-height plateau does.
-# Uncalibrated (#313). A keel's basal drag isn't part of it: thick keels don't slow plates
-# (Stoddard & Abbott 1996).
+# Uncalibrated (#313). The brake acts only at a contact; a keel adds no basal drag here. That
+# leaves out a contested effect rather than settling it: Stoddard & Abbott (1996) found
+# tectosphere sped plates up in the configurations they tested, which argues against a simple
+# basal-drag slowdown but doesn't show keels never slow plates.
 CRATON_COLLISION_FRICTION_GAIN = 3.0
 
 # Boundary-line integrals (slab-pull/ridge-push) treat each contributing node as owning one

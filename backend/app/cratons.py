@@ -86,7 +86,9 @@ CRATON_STRETCH_RESISTANCE = 0.75
 # of eroded forearc per Myr per km of margin (Scholl & von Huene). Cratonic crust is lost at
 # large scale only this way, by attrition at its margins (#340), so a craton edge at a trench
 # wears back at this rate instead of being consumed whole. The rate is measured at
-# ocean-continent margins and doesn't carry over to collision fronts, where cratons jam.
+# ocean-continent margins and doesn't carry over to collision fronts, where cratons jam. It
+# is the nonaccreting-margin value; accreting margins erode more slowly (~12 km^3/Myr/km),
+# and the model doesn't yet tell the two apart.
 CRATON_ATTRITION_KM2_PER_MYR = 40.0
 
 # --- Ledger ------------------------------------------------------------------------------
