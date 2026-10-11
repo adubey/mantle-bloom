@@ -609,3 +609,36 @@ def test_a_continental_plate_with_no_territory_left_accretes_onto_its_neighbour(
     assert events == ["Plate 1's last crust accreted onto plate 2."]
     assert world.continental_material_ledger["topology_removed_m3"] == 0.0
     assert _material(world) == pytest.approx(material, rel=1e-12)
+
+
+def test_overflow_craton_keeps_the_date_of_the_front_it_came_from():
+    # #340: two overflowing fronts in one merge; a receiver gets its nearest front's date, not
+    # the oldest of them all.
+    from app.sparse_quad_patch import cells_per_face_edge, pack_cell_keys
+    from app.surface_fields import CRATON_UNFORMED_YEARS
+
+    n = 16
+    keys = pack_cell_keys(np.zeros(n, dtype=int), np.arange(10, 10 + n), np.full(n, 20))
+    hc = np.full(n, lithosphere.REFERENCE_HC_CONTINENTAL_M)
+    hc[[0, -1]] = SUTURE_ACCRETION_MAX_HC_M
+    keep = PlateWithSparseQuadPatch(
+        1, np.eye(3), "continental", cells_per_face_edge(SPACING), keys,
+        fields={"crustal_thickness_m": hc, "mantle_lithosphere_thickness_m": np.full(n, 100_000.0)},
+    )
+    overflow = np.zeros(n)
+    overflow[[0, -1]] = 5_000.0
+    craton = np.zeros(n)
+    craton[[0, -1]] = SUTURE_ACCRETION_MAX_HC_M + 5_000.0
+    formed = np.full(n, CRATON_UNFORMED_YEARS)
+    formed[0], formed[-1] = -3e9, -1e9
+    out = {
+        "crustal_thickness_m": hc.copy(), "crust_type_code": np.zeros(n, dtype=np.int8),
+        "continental_material_m": hc + overflow, "craton_crust_m": craton, "craton_formed_years": formed,
+    }
+
+    quad_merge._place_stacking_overflow(keep, out, overflow, keep.node_areas_m2())
+
+    received = (out["craton_crust_m"] > 0.0) & (np.arange(n) > 0) & (np.arange(n) < n - 1)
+    assert np.any(received[: n // 2]) and np.any(received[n // 2 :])
+    assert np.all(out["craton_formed_years"][: n // 2][received[: n // 2]] == -3e9)
+    assert np.all(out["craton_formed_years"][n // 2 :][received[n // 2 :]] == -1e9)

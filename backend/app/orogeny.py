@@ -424,8 +424,16 @@ def anatexis(plate, world: "World", years: float) -> None:
     restite = np.where(continental, np.clip(plate.collect("restite_m"), 0.0, hc), 0.0)
     craton = plate.collect("craton_crust_m")
     melt, residue = anatexis_yield_m(hc, hm, lag, restite, years / 1_000_000.0)
-    # Cratonic crust is refractory: only the column's non-cratonic share melts (#340).
-    fertile_share = np.where(continental, np.clip(np.divide(hc - craton, hc, out=np.zeros(len(hc)), where=hc > 0.0), 0.0, 1.0), 0.0)
+    # Cratonic crust is refractory: only the column's non-cratonic share melts (#340). The
+    # craton is spread through the crust above the restite (anatexis_yield_m already left the
+    # restite out), so a column whose restite and craton fill it melts nothing, and restite
+    # plus craton never exceed Hc.
+    above_restite = hc - restite
+    fertile_share = np.where(
+        continental,
+        np.clip(np.divide(above_restite - craton, above_restite, out=np.zeros(len(hc)), where=above_restite > 0.0), 0.0, 1.0),
+        0.0,
+    )
     melt = melt * fertile_share
     residue = residue * fertile_share
     if not np.any(melt > 0.0):
@@ -529,7 +537,7 @@ def relax_orogens(plate, world: "World", years: float) -> None:
     substeps = int(min(MAX_FLOW_SUBSTEPS, max(1, np.ceil(years / stable_dt))))
     dt = years / substeps
 
-    excess = np.maximum(hc - COLLAPSE_ONSET_HC_M, 0.0) * continental
+    excess = np.maximum(hc - floor, 0.0) * continental
     record(world, "relief_mobile_excess_m3", float(np.dot(excess, areas)))
     hc_start = hc.copy()
     collapse_total = ductile_total = 0.0

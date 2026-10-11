@@ -389,11 +389,14 @@ def _place_stacking_overflow(
         craton += (1.0 - placed) * craton_moving
         formed = out.get("craton_formed_years")
         if formed is not None:
-            # A HISTORY field: each receiver keeps the oldest date it now holds.
-            dated = formed[(craton_moving > 0.0) & (formed != CRATON_UNFORMED_YEARS)]
-            gained = craton > before
-            if len(dated):
-                formed[gained] = np.minimum(formed[gained], float(dated.min()))
+            # The placement fills nearest-first, so a receiver's craton came from its nearest
+            # overflowing cell; it keeps the older of that date and its own (HISTORY).
+            sources = np.flatnonzero((craton_moving > 0.0) & (formed != CRATON_UNFORMED_YEARS))
+            gained = np.flatnonzero(craton > before)
+            if len(sources) and len(gained):
+                points = keep.surface_nodes().local_xyz
+                _, nearest = cKDTree(points[sources]).query(points[gained])
+                formed[gained] = np.minimum(formed[gained], formed[sources][nearest])
     return changed, placed
 
 

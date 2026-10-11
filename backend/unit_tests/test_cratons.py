@@ -463,28 +463,24 @@ def test_stepping_a_world_keeps_the_craton_ledger_closed():
     assert stats["craton_volume_km3"] == pytest.approx(cratons.live_volume_m3(world) / 1e9)
 
 
-def test_a_column_left_below_its_craton_is_booked_to_audit_clipped_not_a_mechanism(monkeypatch):
-    world = world_mod.generate_world(5, num_plates=4, node_density=0.1)
-    world.simulate_climate_biomes = False
-    plate = max(world.plates, key=lambda p: cratons.plate_volume_m3(world, p))
-    cell = int(np.argmax(plate.collect("craton_crust_m")))
-    clamp = world_mod._clamp_column_caps
+def test_an_audit_clip_books_to_its_own_account_not_a_mechanism(monkeypatch):
+    # #340: the deform-phase and end-of-step audits clip to `audit_clipped_m3`; the stepped
+    # world is covered in stress_tests/test_cratons.py.
+    plate = _plate(1, _block((10, 13), (10, 11)))
+    world = _unseeded(monkeypatch, plate)
+    _set_craton(plate, np.ones(3, dtype=bool))
+    world.craton_ledger["initial_m3"] = cratons.live_volume_m3(world)
+    audit = cratons.PhaseAudit(world)
+    hc = plate.collect("crustal_thickness_m")
+    clipped = 0.5 * hc[0] * plate.node_areas_m2()[0]
+    hc[0] *= 0.5  # a writer thins a cratonic column without booking it
+    plate.set_fields_on_plate(crustal_thickness_m=hc)
 
-    def unbooked_thinning(w):
-        # A writer that thins a cratonic column without booking it.
-        hc = plate.collect("crustal_thickness_m")
-        hc[cell] = 0.5 * plate.collect("craton_crust_m")[cell]
-        plate.set_fields_on_plate(crustal_thickness_m=hc)
-        clamp(w)
+    audit.settle("audit_clipped_m3")
 
-    monkeypatch.setattr(world_mod, "_clamp_column_caps", unbooked_thinning)
-    before = dict(world.craton_ledger)
-
-    world_mod.step_world(world, 100_000)
-
-    assert world.craton_ledger["audit_clipped_m3"] > 0.0
-    assert world.craton_ledger["delaminated_m3"] == before["delaminated_m3"]
-    assert abs(cratons.balance_error_m3(world)) <= 1e-9 * world.craton_ledger["initial_m3"]
+    assert "audit_clipped_m3" in cratons.CRATON_SINK_ACCOUNTS
+    assert world.craton_ledger["audit_clipped_m3"] == pytest.approx(clipped)
+    assert cratons.balance_error_m3(world) == pytest.approx(0.0, abs=1e-9 * world.craton_ledger["initial_m3"])
 
 
 def test_a_craton_resists_glacial_flattening_like_every_other_erosion_source(monkeypatch):
@@ -511,3 +507,46 @@ def test_a_craton_resists_glacial_flattening_like_every_other_erosion_source(mon
 
     sent = run(0.0) - run(40.0)
     assert sent == pytest.approx((1.0 - cratons.CRATON_EROSION_RESISTANCE) * 40.0, rel=1e-6)
+
+
+def test_trench_attrition_on_a_continental_margin_is_capped_by_the_arc_budget(monkeypatch):
+    # #177: a continental margin under an oceanic neighbour subducts only as much as the arc
+    # magmatism allows, and craton attrition is charged to the same budget (#340).
+    def worn(budget):
+        plate = _plate(1, _block((10, 16), (10, 11)))
+        world = _unseeded(monkeypatch, plate)
+        continental_ledger.ensure_initialized(world)
+        n = plate.node_count()
+        plate.set_fields_on_plate(continental_material_m=plate.collect("crustal_thickness_m"), craton_crust_m=np.full(n, 2_000.0))
+        shrinkable = np.arange(n) >= n - 2
+        ctx = _retreat_ctx(plate, shrinkable, np.zeros(n, dtype=bool))
+        ctx.oceanic_override_retreat_budget_hc = np.array([budget])
+        quad_tectonics._retreat(plate, world, ctx, 4 * SPACING, 10, years=1e6)
+        return world.craton_ledger["subducted_m3"], ctx.oceanic_override_retreat_budget_hc[0]
+
+    assert worn(0.0) == (0.0, 0.0)
+    full, _ = worn(np.inf)
+    node_area = lithosphere.node_area_m2(SPACING)
+    half_budget = 0.5 * full / node_area
+    lost, left = worn(half_budget)
+    assert lost == pytest.approx(0.5 * full)
+    assert left == pytest.approx(0.0, abs=1e-9 * half_budget)
+
+
+def test_coarsening_keeps_a_column_with_craton_continental():
+    # #340: the area vote would make this parent oceanic and strip the craton it averages in.
+    plate = _plate(1, _block((10, 12), (10, 11)))
+    parent = plate.cell_keys[0]
+    children = plate.refine_cells(np.array([parent]))[int(parent)]
+    child = np.isin(plate.cell_keys, children)
+    codes = plate.collect("crust_type_code")
+    codes[np.flatnonzero(child)[:3]] = CRUST_TYPE_OCEANIC
+    craton = np.where(child & (codes != CRUST_TYPE_OCEANIC), plate.collect("crustal_thickness_m"), 0.0)
+    plate.set_fields_on_plate(crust_type_code=codes, craton_crust_m=craton)
+    volume = _volume(plate, "craton_crust_m")
+
+    plate.coarsen_cells(np.array([parent]))
+
+    at = int(np.flatnonzero(plate.cell_keys == parent)[0])
+    assert plate.collect("crust_type_code")[at] != CRUST_TYPE_OCEANIC
+    assert _volume(plate, "craton_crust_m") == pytest.approx(volume, rel=1e-12)

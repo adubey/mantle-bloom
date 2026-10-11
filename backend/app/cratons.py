@@ -351,12 +351,13 @@ def retreat_allowed(plate: "Plate") -> np.ndarray:
     return plate.collect("craton_crust_m") <= 0.0
 
 
-def attrite(world: "World", plate: "Plate", margin: np.ndarray, years: float) -> float:
+def attrite(world: "World", plate: "Plate", margin: np.ndarray, years: float, max_m3: float | None = None) -> float:
     """Subduction erosion of the craton cells in `margin` (a trench's exposed edge) over
     `years`: each loses CRATON_ATTRITION_KM2_PER_MYR times its edge length (the square root
     of its area) of crust from its craton, which goes down the trench -- craton ledger
     `subducted_m3`, its continental material `deeply_subducted_m3`. Hc thins with it and the
-    surface subsides isostatically. Returns the volume lost (m^3)."""
+    surface subsides isostatically. `max_m3` caps the total (a trench's #177 budget), scaling
+    every cell's loss alike. Returns the volume lost (m^3)."""
     craton = plate.collect("craton_crust_m")
     margin = np.asarray(margin, dtype=bool) & (craton > 0.0)
     if years <= 0.0 or not np.any(margin):
@@ -370,6 +371,9 @@ def attrite(world: "World", plate: "Plate", margin: np.ndarray, years: float) ->
     codes = plate.collect("crust_type_code")
     # km^2/Myr is m^2/yr: the volume per unit margin length, spread over the cell.
     loss = np.where(margin, np.minimum(CRATON_ATTRITION_KM2_PER_MYR * years / np.sqrt(areas), craton), 0.0)
+    wanted = float(loss @ areas)
+    if max_m3 is not None and wanted > max_m3:
+        loss = loss * (max(max_m3, 0.0) / wanted)
     material_loss = np.minimum(loss, material)
     new_hc = hc - loss
     density = lithosphere.node_crust_density(codes, plate.crust_type)

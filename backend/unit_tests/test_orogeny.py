@@ -490,3 +490,29 @@ def test_stepping_a_quad_world_books_finite_relief_budgets():
     assert set(orogeny.BUDGET_ACCOUNTS) <= set(budget)
     assert all(np.isfinite(v) and v >= 0.0 for v in budget.values())
     assert budget["suture_donated_m3"] >= budget["suture_belt_placed_m3"] + budget["escape_placed_m3"]
+
+
+def test_a_column_filled_by_restite_and_craton_melts_nothing():
+    plate = _strip(4, _peak(72_000.0, width=1))
+    hc = plate.collect("crustal_thickness_m")
+    # A thin restite leaves fertile crust below the melt isotherm, but the craton fills the rest.
+    plate.set_fields_on_plate(craton_crust_m=np.where(hc > REF_HC, 67_000.0, 0.0), restite_m=np.where(hc > REF_HC, 5_000.0, 0.0))
+    world = _world(plate)
+    cratons.ensure_ledger(world)
+
+    orogeny.anatexis(plate, world, 1_000_000.0)
+
+    assert world.orogenic_relief_budget.get("anatexis_melt_extracted_m3", 0.0) == 0.0
+    assert np.all(plate.collect("restite_m") + plate.collect("craton_crust_m") <= plate.collect("crustal_thickness_m") + 1e-6)
+
+
+def test_mobile_excess_counts_only_crust_above_the_craton():
+    plate = _strip(6, _peak(60_000.0, 1))
+    craton = np.zeros(plate.node_count())
+    craton[0] = 56_000.0
+    plate.set_fields_on_plate(craton_crust_m=craton)
+    world = _world(plate)
+
+    orogeny.relax_orogens(plate, world, 1.0)
+
+    assert world.orogenic_relief_budget["relief_mobile_excess_m3"] == pytest.approx(4_000.0 * plate.node_areas_m2()[0], rel=1e-9)

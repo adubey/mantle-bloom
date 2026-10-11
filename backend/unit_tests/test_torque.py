@@ -496,3 +496,25 @@ def test_collision_friction_torque_brakes_harder_against_a_craton():
     jammed = torque.collision_friction_torque(plate, inputs, collision_mask, spacing_rad=0.02, craton_m=np.full(n, 35_000.0))
 
     assert np.linalg.norm(jammed) == pytest.approx((1.0 + torque.CRATON_COLLISION_FRICTION_GAIN) * np.linalg.norm(plain))
+
+
+def test_contact_craton_is_the_weaker_side_so_both_plates_brake_alike():
+    # #340: collision resistance is one force across a contact, set by the weaker side.
+    class FakePlate:
+        def __init__(self, plate_id, craton):
+            self.plate_id, self.craton = plate_id, np.asarray(craton, dtype=float)
+
+        def collect(self, name):
+            assert name == "craton_crust_m"
+            return self.craton
+
+    a = FakePlate(1, [30_000.0, 30_000.0, 0.0, 30_000.0])
+    b = FakePlate(2, [20_000.0, 0.0])
+    c = FakePlate(3, [5_000.0])
+    inputs = torque.BoundaryForceInputs(
+        own_points=np.zeros((4, 3)), own_hc=np.zeros(4), own_hm=np.zeros(4), own_crust_type_codes=np.zeros(4, dtype=np.int8),
+        dist_to_neighbor=np.zeros(4), direction_to_neighbor=np.zeros((4, 3)), neighbor_is_oceanic=np.zeros(4, dtype=bool),
+        neighbor_omega=np.zeros((4, 3)), neighbor_plate_id=np.array([2, 2, 3, -1]), neighbor_node_index=np.array([0, 1, 0, -1]),
+    )
+
+    np.testing.assert_array_equal(torque.contact_craton_m(a, [b, c], inputs), [20_000.0, 0.0, 0.0, 0.0])

@@ -719,10 +719,12 @@ over-thickened crust of a suture or a standing orogen goes through these process
   Cratonic crust is refractory, so anatexis never changes a craton (#340). In a partly
   cratonic column:
   - the melting zone and its fertile part come from the whole column's geotherm, as above;
-  - the melt and residue are then scaled by the column's non-cratonic share,
-    (Hc - craton) / Hc. The craton is treated as spread through the column in proportion,
-    not as a basal layer: orogenic crust can arrive above a craton (thrust sheets) or below
-    it (underthrusting), and the model doesn't record which;
+  - the melt and residue are then scaled by the non-cratonic share of the crust above the
+    restite, (Hc - restite - craton) / (Hc - restite). The craton is treated as spread
+    through that crust in proportion, not as a basal layer: orogenic crust can arrive above
+    a craton (thrust sheets) or below it (underthrusting), and the model doesn't record
+    which. A column whose restite and craton fill it melts nothing, so restite plus craton
+    never exceed Hc;
   - relaminated melt carries the non-cratonic crust's material fraction,
     (material - craton) / (Hc - craton);
   - receivers are thinner continental columns with no craton, each up to its room under the
@@ -1039,9 +1041,13 @@ routine per-step motion.
   (`COLLISION_FRICTION_REFERENCE_PA`) is scaled by `1 + OVERLAP_FRICTION_SEVERITY_GAIN *
   overlap_severity` (the same band-normalized fraction) -- a deep pile-up brakes both plates
   several times harder than a light graze, not just proportionally more from summing over more
-  contested nodes. Each contested node's relief (`COLLISION_RELIEF_FRICTION_GAIN`) and craton
-  (`1 + CRATON_COLLISION_FRICTION_GAIN * cratons.strength`, #340) scale it further: retreat
-  never consumes craton, so a front jammed against one has to slow.
+  contested nodes. Each contested node's relief (`COLLISION_RELIEF_FRICTION_GAIN`) scales it
+  further, and so does the contact's craton, `1 + CRATON_COLLISION_FRICTION_GAIN *
+  cratons.strength` of the weaker side: the lesser of the node's own craton and that at its
+  neighbour's nearest node (`torque.contact_craton_m`, #340). Collision resistance is one
+  force across the contact, and it is the weak side's deformation that sets it (Copley et
+  al. 2010; Clark 2012), so craton against craton brakes both plates fully, while a craton
+  pushing into weak crust adds nothing beyond the relief term.
 - **Defragmentation.** `deform()` only ever adds or removes cells at the plate's boundary,
   so subduction or transform shear can carve one plate's cells into two (or more) fully
   disconnected landmasses, still carried as a single `Plate`, or strand a few cells far
@@ -1221,14 +1227,16 @@ loading never changes plate state.
   with fresh magmatic crust filling the rest (`quad_tectonics._allocate_stretch`);
 - never flows, melts or delaminates (`orogeny.py`); an orogen ponds against it;
 - is never consumed whole by boundary retreat (`cratons.retreat_allowed`). At a collision
-  front it jams: the weaker crust around it takes the shortening, the contact brakes the
-  plates (`torque.CRATON_COLLISION_FRICTION_GAIN`), and craton against craton holds until the
-  plates merge. At a trench its exposed edge wears back by subduction erosion, removing
+  front it jams: the weaker crust around it takes the shortening, and craton against craton
+  holds, braking both plates (`torque.CRATON_COLLISION_FRICTION_GAIN`), until the plates
+  merge. At a trench its exposed edge wears back by subduction erosion, removing
   crust and craton together (`cratons.attrite`), and the cell retreats once no craton is
   left (#340). Each exposed craton cell (one with an open side) in the trench's retreating
   set loses `CRATON_ATTRITION_KM2_PER_MYR` x step / sqrt(cell area) of thickness: the
   margin length is approximated by one edge per cell, however many sides are open, and the
-  loss is linear in the step. The rate is the nonaccreting-margin value (~40 km^3 per Myr per
+  loss is linear in the step. On a continental plate it is charged to the same arc-magmatism
+  budget that caps the margin's whole-cell retreat (#177), scaled down alike when it would
+  exceed it. The rate is the nonaccreting-margin value (~40 km^3 per Myr per
   km, Scholl & von Huene); accreting margins erode more slowly (~12 km^3/Myr/km) and aren't
   distinguished. Attrition acts on the craton plate's own retreating edge at an
   oceanic-override contact (#177). Real subduction erosion removes the overriding plate's
@@ -1256,9 +1264,10 @@ Sites that know their mechanism book it directly (`deform_columns`,
 also books the continental-derived material it removes into the continental-material ledger
 (`deeply_subducted_m3`, `delaminated_lower_crust_m3`, `collision_subducted_m3`). Suture
 accretion carries `continental_material_m` onto the cells that receive the crust, and so does the quad merge for
-crust stacked past the suture cap, along with any craton stacked on craton past the cap,
-which keeps its oldest date, and a column holding craton stays continental whatever the
-merge's crust-volume vote says (#340); material a merge still can't place is booked as
+crust stacked past the suture cap, along with any craton stacked on craton past the cap.
+Each receiver dates that craton from its nearest overflowing cell, keeping the older of
+that date and its own. A column holding craton stays continental whatever the crust-type
+vote says, in a merge, a coarsening or a legacy conversion (#340). Material a merge still can't place is booked as
 `collision_subducted_m3`. A failed rift thins the tracer with its column (`rift_thinned_m3`). A
 stranded fragment cut off in defragmentation, or a plate with no territory left, that still
 carries continental material (continental crust, or continental sediment on an oceanic sliver)

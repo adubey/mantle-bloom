@@ -527,3 +527,28 @@ def test_a_polarized_donor_nearest_an_oceanic_plate_still_transfers(monkeypatch)
     lost = world.orogenic_relief_budget["suture_lower_crust_subducted_m3"]
     assert _volume(b, "crustal_thickness_m") - b_hc == pytest.approx(donated - lost, rel=1e-10)
     assert continental_ledger.inventories(world)["deeply_subducted_m3"] == deep_before
+
+
+def test_a_stale_root_allowance_never_sheds_an_upper_plates_craton():
+    # #340: the step's shared allowance may predate thinning; a shed root never takes craton.
+    lower = _lower(j_range=(10, 40))
+    upper_hc = np.full(20 * 40, SUTURE_ACCRETION_MAX_HC_M - 300.0)
+    upper = _plate(
+        2, _block((20, 40), (5, 45)), crustal_thickness_m=upper_hc,
+        mantle_lithosphere_thickness_m=np.full(upper_hc.size, 20_000.0), craton_crust_m=upper_hc - 50.0,
+    )
+    non_cratonic = 50.0 * float(upper.node_areas_m2().sum())
+    world = _world(lower, upper)
+    world.craton_ledger["initial_m3"] = cratons.live_volume_m3(world)
+    # Cached before the upper plate's columns were (notionally) thinned to their craton.
+    world.suture_root_capacity = {2: (upper.cell_keys.copy(), upper_hc * upper.node_areas_m2())}
+    craton_before = upper.collect("craton_crust_m")
+    i_cols, j_cols = _columns(lower)
+    donors = (i_cols == 19) & ((j_cols < 18) | (j_cols >= 32))
+
+    _consume(world, lower, donors, np.where(donors, 2, -1), years=1_000_000.0)
+
+    # Every shed root came out of the 50 m of non-cratonic crust the columns had.
+    shed = world.orogenic_relief_budget["delamination_completed_m3"]
+    assert 0.0 < shed <= non_cratonic * (1.0 + 1e-9)
+    np.testing.assert_array_equal(upper.collect("craton_crust_m"), craton_before)

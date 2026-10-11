@@ -189,7 +189,7 @@ class PlateCollisionMasks:
     node_keys: np.ndarray  # exact sparse-cell identity/order captured by the prepass
     continental: np.ndarray  # effective node type frozen with the contact snapshot
     retreat_eligible: np.ndarray  # lower & contested: what may be consumed
-    retreatable: np.ndarray  # frozen eligibility after run-size and craton-delay gates
+    retreatable: np.ndarray  # frozen eligibility after the run-size gate and the no-craton gate (#340)
     override: np.ndarray  # upper & contested: what overrides rather than retreats
 
 
