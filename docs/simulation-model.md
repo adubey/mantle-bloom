@@ -736,10 +736,13 @@ over-thickened crust of a suture or a standing orogen goes through these process
 - **Residue feeds delamination.** A column's delaminable root is its crust below 50 km or
   its restite, whichever reaches higher. Restite is garnet-rich and dense well above the
   eclogite transition. Delaminating roots shed restite first, so roots that founder are
-  mostly restite rather than whatever lies below a fixed depth. A craton is never part of the
-  root: its delaminable root is capped at its non-cratonic crust, and a shed root takes only
-  non-cratonic material (#340). Where cratons lose lithosphere, as eastern North China did, it
-  is the keel (Hm), not the crust.
+  mostly restite rather than whatever lies below a fixed depth. In the model a craton is never
+  part of the root: its delaminable root is capped at its non-cratonic crust, and a shed root
+  takes only non-cratonic material (#340). That is a modelling rule, not a settled result.
+  Lower-crustal delamination is conditional and debated. The lithosphere eastern North China
+  lost is usually attributed to its keel (Hm), and eclogitized lower crust has stayed in
+  place beneath the Fennoscandian Shield for ~2 Gyr (Buntin et al. 2021), but cratonic lower
+  crust may founder elsewhere.
 - **Polarized collision fronts** (`crust_transfer.py`, issues #318-#320). A continental
   collision front gets a lower and an upper plate from the subduction history of the ocean
   that closed (`collision_polarity.py`). Only the lower plate's contested cells retreat. Their

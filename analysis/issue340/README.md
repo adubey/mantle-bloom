@@ -171,6 +171,10 @@ Two sinks grow over 300 Myr on the branch and are worth watching:
 | Emergent continental area (M km²) | 137.7 | 141.3 | 141.6 | 122.0 | 121.4 | 118.6 |
 | `ceiling_overflow_m3` added (M km³) | 0 | 0 | 0 | 0.78 | 0.22 | 0.48 |
 | Mean plate speed (cm/yr) | 2.59 | 2.93 | 3.01 | 4.09 | 3.54 | 4.42 |
+| Land elevation p10 (m) | −218 | −267 | −271 | −369 | −277 | −553 |
+| Land elevation p50 (m) | 765 | 728 | 737 | 1,834 | 1,971 | 1,814 |
+| Land elevation p90 (m) | 6,307 | 6,382 | 6,346 | 5,522 | 5,478 | 5,593 |
+| Land elevation p99 (m) | 8,457 | 8,476 | 8,459 | 8,316 | 8,135 | 8,456 |
 
 - **Targets.** Both saves still pass. Seed 910211954's rise to 18.7% is mostly rifting: rift
   opening books 16.3 M km³ against 14.6, as the plates move differently.

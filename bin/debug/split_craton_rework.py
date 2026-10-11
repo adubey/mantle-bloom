@@ -19,7 +19,9 @@ Every other sink account is split by caller too, so a phase audit's clips and re
 in `rifted_m3`, #340 item 6). Checkpoints
 also record the craton inventory, the cratonic area (cells with `craton_crust_m > 0`) and
 the mean relief of the non-cratonic continental crust within CRATON_EDGE_RELIEF_WINDOW_KM
-of a craton (every craton edge, not only those facing convergent fronts). For #340's
+of a craton, twice: at every craton edge, and at the edges facing a convergent front, where
+that crust also lies within CRATON_EDGE_RELIEF_WINDOW_KM of one of its plate's convergent or
+contested boundary nodes (`torque.classify_boundary_nodes`). For #340's
 side effects they also record land and emergent continental area, land hypsometry, the share
 of cratonic area under orogenic crust (Hc above the craton host window), the orogenic
 `ceiling_overflow_m3` (ponding against cratons sends more crust to the Hc cap), the
@@ -35,7 +37,8 @@ Given `--baseline` (this script's JSON from `main`, same save and span), it chec
   trench attrition booked (the `cratons.attrite` site of `subducted_m3`), divided by the
   replay's span in Myr. Sources (`formed_m3`) are not netted off. It must be at most
   NON_ATTRITION_LOSS_MAX_FRACTION of the baseline's rate on the same save and span.
-- **Craton-edge relief** above the baseline's at the last checkpoint.
+- **Craton-edge relief** at the edges facing convergent fronts, above the baseline's at the
+  last checkpoint. The all-edge mean is reported alongside it.
 
 `--rescore RUN_JSON --baseline MAIN_JSON` recomputes the targets from finished replays
 without stepping anything.
@@ -63,7 +66,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
-from app import continental_ledger, cratons, merge_split, persistence, quad_tectonics, shortening, world as world_mod  # noqa: E402
+from app import continental_ledger, cratons, merge_split, persistence, quad_tectonics, shortening, torque, world as world_mod  # noqa: E402
 from app.elevation_lines import effective_is_continental_from_codes, line_spacing_rad  # noqa: E402
 from app.mantle import PLANET_RADIUS_KM  # noqa: E402
 from attribute_hm_ratchet import _weighted_quantile  # noqa: E402
@@ -154,6 +157,18 @@ class RecordTap:
         }
 
 
+def _convergent_front(world, plate) -> np.ndarray:
+    """This plate's boundary nodes that converge on, or overlap, a neighbour."""
+    spacing = line_spacing_rad(world.node_density)
+    neighbours = plate.get_neighbours(world.plates)
+    if not neighbours:
+        return np.zeros(plate.node_count(), dtype=bool)
+    reach = torque.BOUNDARY_FORCE_REACH_MULTIPLIER * spacing
+    inputs = torque.gather_boundary_force_inputs(plate, neighbours, spacing, reach)
+    convergent, _, _, contested = torque.classify_boundary_nodes(plate, neighbours, inputs, reach)
+    return convergent | contested
+
+
 def _edge_window(plate, cratonic: np.ndarray, hops: int) -> np.ndarray:
     """Non-cratonic continental cells within `hops` cell hops of a cratonic one."""
     continental = effective_is_continental_from_codes(plate.collect("crust_type_code"), plate.crust_type == "continental")
@@ -164,7 +179,7 @@ def _edge_window(plate, cratonic: np.ndarray, hops: int) -> np.ndarray:
 def metrics(world) -> dict:
     out = {"elapsed_myr": world.elapsed_years / 1e6, "craton_mkm3": 0.0, "cratonic_area_mkm2": 0.0, "by_plate_type": {}}
     hops = max(1, round(CRATON_EDGE_RELIEF_WINDOW_KM / (line_spacing_rad(world.node_density) * PLANET_RADIUS_KM)))
-    edge_relief_m3 = edge_area_m2 = 0.0
+    edge_relief_m3 = edge_area_m2 = facing_relief_m3 = facing_area_m2 = 0.0
     land_elev, land_area, emergent_m2, buried_craton_m2, speed_m2 = [], [], 0.0, 0.0, 0.0
     total_m2 = 0.0
     for plate in world.plates:
@@ -187,6 +202,11 @@ def metrics(world) -> dict:
             relief = np.maximum(plate.collect("elevation") - world.sea_level_m, 0.0)
             edge_relief_m3 += float(relief[window] @ areas[window])
             edge_area_m2 += float(areas[window].sum())
+            front = _convergent_front(world, plate)
+            if np.any(front):
+                facing = window & (shortening.rings(quad_tectonics._adjacency_matrix(plate), front, hops) <= hops)
+                facing_relief_m3 += float(relief[facing] @ areas[facing])
+                facing_area_m2 += float(areas[facing].sum())
         volume = float(craton @ areas) / KM3 / 1e6
         area = float(areas[craton > 0.0].sum()) / KM2 / 1e6
         out["craton_mkm3"] += volume
@@ -195,6 +215,8 @@ def metrics(world) -> dict:
         row["craton_mkm3"] += volume
         row["cratonic_area_mkm2"] += area
     out["craton_edge_relief_m"] = edge_relief_m3 / edge_area_m2 if edge_area_m2 > 0.0 else 0.0
+    out["craton_convergent_edge_relief_m"] = facing_relief_m3 / facing_area_m2 if facing_area_m2 > 0.0 else 0.0
+    out["craton_convergent_edge_area_mkm2"] = facing_area_m2 / KM2 / 1e6
     elev, area = np.concatenate(land_elev), np.concatenate(land_area)
     out["land_area_mkm2"] = float(area.sum()) / KM2 / 1e6
     out["emergent_continental_area_mkm2"] = emergent_m2 / KM2 / 1e6
@@ -222,16 +244,20 @@ def acceptance(run: dict, baseline: dict) -> dict:
     """Issue #340's targets for `run` against `baseline` (same save and span)."""
     loss, base_loss = non_attrition_loss_km3_per_myr(run), non_attrition_loss_km3_per_myr(baseline)
     ratio = loss / base_loss if base_loss > 0.0 else float("inf")
-    relief = run["checkpoints"][-1].get("craton_edge_relief_m", 0.0)
-    base_relief = baseline["checkpoints"][-1].get("craton_edge_relief_m", 0.0)
+    last, base_last = run["checkpoints"][-1], baseline["checkpoints"][-1]
+    if "craton_convergent_edge_relief_m" not in last or "craton_convergent_edge_relief_m" not in base_last:
+        raise ValueError("both runs need craton_convergent_edge_relief_m: replay them with this script")
+    relief, base_relief = last["craton_convergent_edge_relief_m"], base_last["craton_convergent_edge_relief_m"]
     return {
         "non_attrition_loss_km3_per_myr": loss,
         "baseline_non_attrition_loss_km3_per_myr": base_loss,
         "non_attrition_loss_ratio": ratio,
         "non_attrition_loss_pass": ratio <= NON_ATTRITION_LOSS_MAX_FRACTION,
-        "craton_edge_relief_m": relief,
-        "baseline_craton_edge_relief_m": base_relief,
-        "craton_edge_relief_pass": relief > base_relief,
+        "craton_convergent_edge_relief_m": relief,
+        "baseline_craton_convergent_edge_relief_m": base_relief,
+        "craton_convergent_edge_relief_pass": relief > base_relief,
+        "craton_edge_relief_m": last.get("craton_edge_relief_m", 0.0),
+        "baseline_craton_edge_relief_m": base_last.get("craton_edge_relief_m", 0.0),
     }
 
 

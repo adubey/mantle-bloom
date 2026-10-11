@@ -33,8 +33,10 @@ and the relief processes that act on standing orogens:
 - **Delamination eligibility.** `delaminable_root_m` is the dense lower-crustal root a
   column could shed: the crust below `ECLOGITE_DEPTH_M` or its restite, whichever reaches
   higher, where the Moho is at least `DELAMINATION_MIN_MOHO_C`.
-  A craton is never part of that root: its keel, not its crust, is what founders (eastern
-  North China, #340). `quad_tectonics._accrete_onto_survivors` lets a suture delaminate only
+  In the model a craton is never part of that root (#340): a modelling rule, since
+  lower-crustal delamination is conditional and debated. Eastern North China's lost
+  lithosphere is usually attributed to its keel, and eclogitized lower crust has stayed
+  beneath the Fennoscandian Shield for ~2 Gyr (Buntin et al. 2021). `quad_tectonics._accrete_onto_survivors` lets a suture delaminate only
   from that root,
   restite first, at `DELAMINATION_RATE_PER_MYR`, and only after lateral spreading and
   tectonic escape have had first call.
