@@ -58,7 +58,7 @@
   "boundary_retreat_newly_capped_continental_km2": 18367977.710705373,
   "median_step_s": 4.135386000038125
  },
- "fix": {
+ "centre": {
   "commit": "66cde3f80c",
   "span_myr": 43.099999999999994,
   "land_area_Mkm2": 143.18316630866488,
@@ -116,5 +116,64 @@
   },
   "boundary_retreat_newly_capped_continental_km2": 18174185.977972053,
   "median_step_s": 4.614528791978955
+ },
+ "footprint": {
+  "commit": "ace2033794",
+  "span_myr": 43.099999999999994,
+  "land_area_Mkm2": 141.12847163780773,
+  "continental_area_Mkm2": 237.9817708332105,
+  "emergent_continental_Mkm2": 137.12121835566333,
+  "land_elevation_p10_p50_p90_p99_m": [
+   185,
+   1209,
+   6731,
+   8867
+  ],
+  "continental_hc_p50_p90_p99_km": [
+   33.49,
+   70.69,
+   83.96
+  ],
+  "continental_hm_cap_pct": 5.835369829977736,
+  "continental_hm_cap_change_pp": -0.1087280609621738,
+  "runtime_s": 4781.463120222092,
+  "peak_memory_mb": 2342.515625,
+  "continental_material_Mkm3": 8402.916619238602,
+  "continental_material_change_pct": -0.30511834490073914,
+  "collision_loss_km3_by_account": {
+   "delaminated_lower_crust_m3": 2170126,
+   "collision_subducted_m3": 0,
+   "collision_lower_crust_subducted_m3": 24370872,
+   "deeply_subducted_m3": 27598662
+  },
+  "collision_loss_pct_inventory_per_myr": 0.0073060523843553335,
+  "suture_donated_pct_inventory_per_myr": 0.4964094559652567,
+  "suture_budget_km3": {
+   "suture_donated_m3": 1803327094,
+   "suture_scraped_m3": 773682527,
+   "suture_underthrust_m3": 233925483,
+   "suture_underthrust_placed_m3": 159060218,
+   "suture_lower_crust_subducted_m3": 25991720,
+   "upper_plate_placed_m3": 848547792,
+   "overrider_placed_m3": 0,
+   "no_outlet_subducted_m3": 0,
+   "delamination_completed_m3": 2270229
+  },
+  "ledger_errors_km3": {
+   "continental_balance_error_km3": -204410957.80914587,
+   "craton_balance_error_km3": 5.12e-07,
+   "mobile_cover_balance_error_km3": -6065.803075328
+  },
+  "transfer": {
+   "fronts": 1801,
+   "seconds": 2.9905444064643234,
+   "mean_front_ms": 1.660491064111229,
+   "max_front_ms": 14.556999900378287,
+   "steps_with_fronts": 414,
+   "mean_step_ms": 7.223537213681941,
+   "max_step_ms": 49.287165980786085
+  },
+  "boundary_retreat_newly_capped_continental_km2": 17518976.475500587,
+  "median_step_s": 5.388056957977824
  }
 }
