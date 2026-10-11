@@ -1,3 +1,5 @@
+import { asBlob, asJson, expandColumnarStatsHistory, type ColumnarStatsHistory } from "./apiResponse";
+
 // Overridable at build/dev time via VITE_API_BASE (see bin/restart.sh's --backend-port), so a
 // non-default backend port stays wired up correctly instead of silently pointing at :8000.
 // With no override, a production build talks to its own origin ("" -> same host/port) -- that's
@@ -395,22 +397,6 @@ export interface WorldStats {
   biome_ocean_fraction?: Record<string, number>;
 }
 
-async function asJson<T>(resp: Response): Promise<T> {
-  if (!resp.ok) {
-    const detail = await resp.text();
-    throw new Error(`${resp.status} ${resp.statusText}: ${detail}`);
-  }
-  return resp.json() as Promise<T>;
-}
-
-async function asBlob(resp: Response): Promise<Blob> {
-  if (!resp.ok) {
-    const detail = await resp.text();
-    throw new Error(`${resp.status} ${resp.statusText}: ${detail}`);
-  }
-  return resp.blob();
-}
-
 // Shared by readProgressStream and animateWorld below -- both consume a newline-delimited
 // JSON stream the same way: read a chunk, decode it, split on "\n", hand each complete line
 // to `onLine`, and keep the last (possibly partial) line buffered for the next chunk.
@@ -797,8 +783,9 @@ export function fetchStats(): Promise<WorldStats> {
 // present in every saved .mbworld, unlike the single instantaneous fetchStats() snapshot
 // above. App.tsx calls this after a Load to restore the Stats panel's history charts instead
 // of resetting them to empty.
-export function fetchStatsHistory(): Promise<{ history: WorldStats[] }> {
-  return fetch(`${API_BASE}/world/stats_history`).then(asJson<{ history: WorldStats[] }>);
+export async function fetchStatsHistory(): Promise<{ history: WorldStats[] }> {
+  const payload = await fetch(`${API_BASE}/world/stats_history`).then(asJson<ColumnarStatsHistory>);
+  return { history: expandColumnarStatsHistory<WorldStats>(payload) };
 }
 
 // Re-syncs with whatever world is already sitting in server memory -- used on page load to
