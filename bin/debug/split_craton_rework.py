@@ -66,6 +66,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 from app import continental_ledger, cratons, merge_split, persistence, quad_tectonics, shortening, world as world_mod  # noqa: E402
 from app.elevation_lines import effective_is_continental_from_codes, line_spacing_rad  # noqa: E402
 from app.mantle import PLANET_RADIUS_KM  # noqa: E402
+from attribute_hm_ratchet import _weighted_quantile  # noqa: E402
 
 KM2 = 1e6
 KM3 = 1e9
@@ -158,14 +159,6 @@ def _edge_window(plate, cratonic: np.ndarray, hops: int) -> np.ndarray:
     continental = effective_is_continental_from_codes(plate.collect("crust_type_code"), plate.crust_type == "continental")
     ring = shortening.rings(quad_tectonics._adjacency_matrix(plate), cratonic, hops)
     return continental & ~cratonic & (ring >= 1) & (ring <= hops)
-
-
-def _weighted_quantile(values: np.ndarray, weights: np.ndarray, q: float) -> float:
-    if values.size == 0:
-        return float("nan")
-    order = np.argsort(values)
-    cum = np.cumsum(weights[order])
-    return float(values[order][np.searchsorted(cum, q * cum[-1])])
 
 
 def metrics(world) -> dict:
