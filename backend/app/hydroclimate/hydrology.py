@@ -16,13 +16,10 @@ could drift out of sync with `lakes.py`'s own, physically-correct hierarchy -- s
 `lakes.compute_spill_routing`'s own docstring for the real, save-file-confirmed drift this
 caused, and `compute_hydrology`'s own docstring for the resulting step order.
 
-Glacier flow (accumulated ice moving one hop downhill per
-step) reuses the same steepest-descent/spill-redirect machinery water's own flow_target does
-(`_compute_flow_direction`), but with its own separate target (`ice_flow_target`, on
-HydrologyFields) rather than literally sharing water's: ice keeps moving downhill under its own
-weight even on a step where the node itself is below freezing (and a glaciated node almost
-always is), whereas liquid water's flow_target is deliberately forced shut there instead
-(rivers freeze over) -- see `_compute_flow_direction`'s `apply_freeze` parameter.
+River and glacier flow use the same least-cumulative-climb routes to the ocean as depression
+breaching, with separate targets (`flow_target` and `ice_flow_target`). Frozen nodes block
+liquid water but not ice. Lakes retain their own basin hierarchy and redirect to their actual
+outlet only when their water or ice surface reaches the spill level.
 
 **Persistence.** A grid-based approach where plates move relative to fixed cells would need a
 persistent field like channel_depth to be deliberately advected (semi-Lagrangian, every step)
@@ -64,10 +61,9 @@ river's flow_target can point at a node that's part of a lake (real inflow), but
 itself is never classified `is_river` -- a river ends at the lake's shore rather than its
 classification continuing straight across the water to whatever's on the far side (see
 `compute_hydrology`).
-Flow *routing* itself also isn't pure steepest descent: `_compute_flow_direction` prefers a
-downhill neighbor that already has a real, established channel over the literal lowest one,
-so a river stays in its own valley rather than recalculating the mathematically steepest path
-every step -- real rivers meander within, not across, their banks.
+The route cost counts cumulative uphill channel-passage barriers across the graph, with a small
+per-hop tie breaker. The existing channel surface lowers passage elevations and therefore can
+make an established valley the least-cost route.
 
 **A lake that finds a way out erodes its outlet hard.** Once a lake is actively spilling
 (`should_spill`, from `_compute_flow_direction`), `compute_hydrology` injects extra "water"
@@ -776,21 +772,12 @@ def _compute_flow_direction(
     is_frozen: np.ndarray,
     apply_freeze: bool = True,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Flow target per node, among its k nearest neighbors strictly below its own elevation
-    (a downhill candidate) -- preferring whichever candidate already has the deepest
-    established channel (`prev_channel_depth > CHANNEL_PREFERENCE_THRESHOLD_M`), falling back
-    to plain steepest descent only when *no* downhill candidate has a real channel yet. Real
-    rivers meander within, and stay inside, their own existing valley rather than
-    recalculating the mathematically steepest path every step -- this is that preference
-    applied to routing itself, distinct from (and upstream of) erosion.py's own
-    channel_boost, which only affects how *fast* a node erodes once water is already flowing
-    there. -1 if there's no downhill candidate at all (a sink) -- unless the sink's current
-    water surface (elevation + `water_surface_offset`, the previous step's water surface above
-    the cell's centre, a one-step-lagged "memory" of the water surface; compute_hydrology
-    recovers it from lake_depth through lakes.CellHypsometry) has already reached its
-    basin's true spill point, in which case it redirects to spill_target instead of staying
-    a dead-end sink forever. Ocean nodes are never routed (they're a destination, not a
-    source).
+    """Use the least-cumulative-climb ocean route, with a local fallback for unreachable nodes.
+
+    A local sink redirects through ``spill_target`` only after its lake water surface reaches
+    the basin's spill level. Ocean nodes are destinations, never sources. The frozen-water
+    override omits frozen land from the liquid route graph; glacial ice calls this with
+    ``apply_freeze=False`` and can keep moving below freezing.
 
     Also returns `should_spill`, the exact per-node mask of which sinks got redirected this
     way -- `compute_hydrology` needs this specific mask (not something recomputed after the
@@ -812,16 +799,8 @@ def _compute_flow_direction(
     `should_spill`'s own returned mask still reflects genuine basin-spill events only, since
     it's computed before this override runs.
 
-    `apply_freeze=False` skips that last override, returning the *un*-frozen-gated target
-    instead -- for glacial ice, which flows downhill under its own weight via internal
-    deformation regardless of whether this particular step happens to be below freezing,
-    unlike liquid water/rivers (which do stop dead at a frozen node). `compute_hydrology` calls
-    this twice, once each way, rather than folding an ice-specific branch into the water path:
-    reusing the exact same steepest-descent/channel-preference/spill-redirect logic for both
-    keeps the two flow directions from silently drifting apart, and callers that only need
-    water's own semantics (every existing caller, including this function's own test suite)
-    see no change at all, since `apply_freeze` defaults to the prior (always-frozen-gated)
-    behavior."""
+    `apply_freeze=False` is used for ice, which moves below freezing. ``should_spill`` describes
+    actual lake-spill events independently of the least-cost route selected for other nodes."""
     n = len(elevation)
     neighbor_elev = elevation[neighbor_idx]  # (n, k)
     own_elev = elevation[:, None]
@@ -848,7 +827,36 @@ def _compute_flow_direction(
     if apply_freeze:
         flow_target = np.where(is_frozen & ~is_ocean, -1, flow_target).astype(np.int64)
     flow_target = np.where(is_ocean, -1, flow_target).astype(np.int64)
+    # Replace locally selected hops with the shared least-cost route to the ocean wherever one
+    # exists. Keep the local target for disconnected components and frozen nodes.
+    blocked = (is_frozen & ~is_ocean) if apply_freeze else None
+    ocean_target = _least_cost_ocean_flow_targets(elevation, is_ocean, neighbor_idx, prev_channel_depth, blocked)
+    flow_target = np.where(ocean_target >= 0, ocean_target, flow_target).astype(np.int64)
+    flow_target = np.where(should_spill, spill_target, flow_target).astype(np.int64)
     return flow_target, should_spill
+
+
+def _least_cost_ocean_flow_targets(
+    elevation: np.ndarray,
+    is_ocean: np.ndarray,
+    neighbor_idx: np.ndarray,
+    channel_depth: np.ndarray,
+    blocked: np.ndarray | None = None,
+) -> np.ndarray:
+    """Return the least cumulative barrier-cost route to the ocean for each reachable node.
+
+    Reuse the depression-breach graph search so flowing water, glaciers, and breaching share
+    the same passage-height and uphill-cost definition. Blocked nodes (frozen land for liquid
+    water) are removed from the traversable graph; unreachable nodes retain their local
+    fallback target in ``_compute_flow_direction``.
+    """
+    n = len(elevation)
+    passage = breaching.channel_passage_elevation(elevation, channel_depth, neighbor_idx)
+    ordinary_rate = np.full(n, breaching.BREACH_REFERENCE_CARVE_M_PER_MYR)
+    _, next_hop = breaching.least_climb_to_ocean(
+        passage, is_ocean, neighbor_idx, ordinary_rate, blocked=blocked
+    )
+    return next_hop
 
 
 def _slope_to_flow_target(points: np.ndarray, elevation: np.ndarray, flow_target: np.ndarray) -> np.ndarray:
