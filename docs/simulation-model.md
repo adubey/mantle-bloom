@@ -3325,6 +3325,11 @@ thousand land nodes, a real chunk of a step's total cost), so `erosion.py` compu
   and frozen river ice stay ice, so none of them is discharge. The ledger is still in the
   glacier model's own units (see [Glaciation](#glaciation)), so meltwater is small next to
   runoff.
+- **Frozen river ice** is the physical water that settles at a frozen land node, turned into
+  ice at the rate snowfall builds it (`hydrology.RIVER_WATER_TO_ICE`, which is
+  `GLACIER_ACCUMULATION_RATE / 1000`, 1/50,000 of real), a step late. The breach surge never
+  becomes ice. Once glacier mass balance is physical (#353), this should convert by mass,
+  water at 1000 kg/m^3 to glacier ice at about 917 kg/m^3, and meltwater should too.
 - **The breach surge** (`HydrologyFields.breach_surge`) is a spilling lake's erosive forcing,
   sized by node count (`LAKE_BREACH_EROSION_COEFFICIENT`). It is never part of the discharge.
 
@@ -3337,7 +3342,6 @@ the quantities above, the breach surge still reaches every one of them, not only
 |---|---|---|
 | River erosion, channel width, river speed, River Inspector | `flow_accum` | #355 step 3 |
 | Geology's river-mouth resource boost | `water_deposited` | #355 step 3 |
-| Frozen river ice | `water_deposited` | #355 step 2 |
 | Lake silt | `water_deposited` | #363 |
 
 Taking the surge out of the older routing before then would change all of them.
@@ -3397,7 +3401,10 @@ Taking the surge out of the older routing before then would change all of them.
   Inflow is area-weighted runoff (the same Budyko curve the breach gate uses) plus glacier
   melt, routed as volume (m^3/yr). In-transit river losses on these real-unit flows are a
   fixed per-node fraction, taken at a 100 kyr reference step
-  (`hydrology.river_transit_loss_fraction`), so they don't grow with step length. A spilling lake's inflow is the flow through its sink.
+  (`hydrology.river_transit_loss_fraction`), so they don't grow with step length. The breach
+  gate uses the same losses, and only frozen and ocean nodes are exempt: a spilling lake's
+  sink and rim lose their share like any other node. A spilling lake's inflow is the flow
+  through its sink.
   Evaporation is the real open-water rate, about 0.3 m/yr at 0 C rising to 1.8 m/yr at 25 C.
   Partly flooded cells evaporate up to 30% faster, since shallow margins warm faster
   (`SHALLOW_EVAPORATION_BOOST`). A real lake reaches balance in years to centuries, far
@@ -3791,18 +3798,18 @@ the very same step, double-counting the same water as both a lake and a glacier 
 **A frozen river doesn't just vanish.** `_compute_flow_direction` forces a frozen node's
 `flow_target` to -1 unconditionally (see [Hydrology](#hydrology) for why this override can't
 reuse the ordinary should-spill escape valve a genuine closed-basin lake gets) -- water
-arriving there this step has nowhere to go, so `route_downstream` deposits it in place
-(`water_deposited`), and that deposited amount is folded straight into `glacier_depth` right
-after routing finishes (the ice solve already ran by then, so this newly-frozen river ice
+arriving there this step has nowhere to go, so `route_downstream` settles it in place, and
+the physical water settled there (see *Water units* above) is folded into `glacier_depth`
+right after routing finishes (the ice solve already ran by then, so this newly-frozen river ice
 joins its ice body from next step onward -- an explicit one-step lag the ice ledger books,
 see below). A river's flow also loses a
 real, evaporating fraction of itself every step it's *not* frozen (`RIVER_EVAPORATION_*`,
 applied as `route_downstream`'s new `loss_fraction`, distinct from `retain_fraction`'s
 locally-deposited share -- an evaporated share simply vanishes rather than settling anywhere)
 -- warmer nodes lose more, capped well short of 1.0 so a single very large step can't
-evaporate an entire river in one hop. Excluded at an already-frozen node (already blocked
-above) and at a spilling lake's own breach node (`should_spill`, see [Hydrology](#hydrology)):
-that term already models a lake's concentrated overflow surge sized purely from its own
+evaporate an entire river in one hop. In the legacy `flow_accum` routing, it's excluded at
+an already-frozen node (already blocked above) and at a spilling lake's own breach node
+(`should_spill`, see [Hydrology](#hydrology)): that term already models a lake's concentrated overflow surge sized purely from its own
 surface area, and shouldn't also lose a further fraction to evaporation in the very same step
 it's cut loose. This evaporated water is genuinely lost from the river system, and is exactly
 half of the "rivers, lakes, and vegetation release moisture" ask (see [Climate](#climate)'s own
@@ -3812,9 +3819,9 @@ this module evaporates, since climate.py runs *before* this module each step).
 
 - **Accumulation and melt rates**: `GLACIER_ACCUMULATION_RATE` converts frozen
   precipitation into metres of ice per Myr, the same stylized-units-to-meters role
-  `LAKE_FILL_RATE` plays for lakes, and also converts the water a river deposits when it
-  freezes solid at a cold sink (`water_deposited`, an accumulated flux -- not added 1:1 the
-  way a standing frozen lake's own `lake_depth`, already a depth, is).
+  `LAKE_FILL_RATE` plays for lakes. The same rate, as `RIVER_WATER_TO_ICE`, converts the
+  physical water a river settles when it freezes solid at a cold sink (not added 1:1 the way
+  a standing frozen lake's own `lake_depth` is).
   `GLACIER_MELT_RATE_M_PER_MYR`, scaled by the seasonal positive degrees over
   `GLACIER_MELT_REFERENCE_DEGREES_C` (capped at `GLACIER_MELT_MAX_FACTOR`; see above), is the
   surface melt. Where these rates apply, and to how much ice, is the ice-body solve below.
@@ -3903,8 +3910,8 @@ this module evaporates, since climate.py runs *before* this module each step).
   frozen on one node can be kilometres thick, and held to that node it saturates, sheds the
   excess as meltwater that refreezes on the same frozen node, and repeats every step.
 - **Frozen river ice, a step late.** The ice solve needs this step's meltwater to route
-  rivers, so it can't know `water_deposited` yet. River water frozen at a sink is added to
-  `glacier_depth` after routing (converted by the same `GLACIER_ACCUMULATION_RATE`, clipped to
+  rivers, so it can't know what settles yet. River water frozen at a sink is added to
+  `glacier_depth` after routing (converted by `RIVER_WATER_TO_ICE`, clipped to
   `GLACIER_MAX_DEPTH_M`) and joins its body's opening volume next step; the ledger books it
   as `frozen_river_ice_m3`, and next step's opening is this step's closing plus it.
 - **Flux, velocity and sliding** (diagnostic only; volume moves through the body solve). The

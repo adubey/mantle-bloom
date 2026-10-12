@@ -776,6 +776,8 @@ def river_transit_loss_fraction(temperature_c: np.ndarray, excluded: np.ndarray)
 #   ice stay ice, so none of them is discharge. The ledger is still in #353's model units, so
 #   meltwater is small next to runoff. Rescaling glacier mass balance changes discharge only
 #   through the ledger.
+# - Frozen river ice is the physical water that settles at a frozen land node, converted to
+#   ice at the glacier model's own exchange rate (`RIVER_WATER_TO_ICE`), one step late.
 # - The breach surge (`HydrologyFields.breach_surge`) is a spilling lake's erosive forcing.
 #   It's sized by node count (LAKE_BREACH_EROSION_COEFFICIENT) and is in model units. It is
 #   never physical discharge.
@@ -784,9 +786,8 @@ def river_transit_loss_fraction(temperature_c: np.ndarray, excluded: np.ndarray)
 # moves to the quantities above, the surge still reaches all of them, not only erosion:
 # - river erosion, channel width and river speed (`flow_accum`; #355 step 3);
 # - geology's river-mouth boost (`water_deposited`; #355 step 3);
-# - frozen river ice (`water_deposited`; #355 step 2);
 # - lake silt (`water_deposited`; #363).
-# Removing the surge from the legacy routing before then changes all four.
+# Removing the surge from the legacy routing before then changes all three.
 SECONDS_PER_YEAR = 3.15576e7
 
 
@@ -795,6 +796,20 @@ def meltwater_m3_per_yr(melt_m: np.ndarray, areas_m2: np.ndarray, years: float) 
     ice over the cell, summed over the step) times cell area, divided by the step length. Its
     total over all nodes is `IceLedger.meltwater_m3 / years`."""
     return melt_m * areas_m2 / max(years, 1.0)
+
+
+# Metres of glacier ice per metre of liquid water settling at a frozen node (issue #355). It's
+# the rate snowfall builds ice at: GLACIER_ACCUMULATION_RATE turns mm/yr over Myr into metres,
+# so a metre of water (1000 mm for 1e-6 Myr-years) is GLACIER_ACCUMULATION_RATE / 1000 m of
+# ice, 1/50,000 of real. Frozen river ice therefore keeps the scale of the old
+# `GLACIER_ACCUMULATION_RATE * water_deposited` sizing, whose stacked mm/yr is roughly
+# catchment volume over cell area, and stays comparable with snowfall in the ledger.
+# TODO(#353 decision B): when glacier mass balance moves to physical units, convert by mass
+# instead of this model-unit factor. Water (1000 kg/m^3) freezing to glacier ice (about
+# 917 kg/m^3, denser than the snow and firn it compacts from, and denser still deep in a
+# sheet under pressure) gains roughly 9% in volume, and meltwater (`meltwater_m3_per_yr`,
+# booked 1:1 today) should use the same density ratio.
+RIVER_WATER_TO_ICE = GLACIER_ACCUMULATION_RATE / 1000.0
 
 
 def _compute_flow_direction(
@@ -1153,22 +1168,24 @@ def compute_hydrology(
     # at its own floor, so it drains instead of ponding. A costlier pit keeps its centre-height
     # rim and is filled or held as an endorheic lake as before (see breaching.py).
     areas = collect_all_accounting_areas_m2(plates_in_order, line_spacing_rad(world.node_density))
+    # One in-transit loss rule for all physical water (issue #355): the breach gate and the
+    # routing below both use it. Frozen nodes are dead ends and the ocean isn't a river, so
+    # neither loses water in transit. A spilling sink or its rim loses the same share as any
+    # other node: the breach surge's own exemption belongs to the legacy routing only.
+    transit_loss = river_transit_loss_fraction(temperature_at_nodes, is_frozen | is_ocean)
     breach = None
     interface_pass = None
     if BREACH_DEPRESSIONS_ENABLED:
         craton_strength = cratons.strength(np.concatenate([p.collect("craton_crust_m") for p in plates_in_order]))
         mobile_cover = np.concatenate([p.collect("mobile_cover_m") for p in plates_in_order])
         # The gate sees the same water budget the lakes are balanced with below, as far as it
-        # can before routing: liquid precipitation, and the same per-node river losses. The
-        # lake routing also exempts should_spill sinks and rim-breach nodes, but those are
-        # only known after this hierarchy is built, so the gate exempts frozen and ocean
-        # nodes only.
+        # can before routing: liquid precipitation, and the same per-node river losses.
         breach = breaching.breach_depressions(
             elevation, is_ocean, neighbor_idx, prev_channel_depth,
             breaching.bedrock_carve_rate_m_per_myr(craton_strength), years,
             water=breaching.WaterBalance(
                 np.where(is_frozen, 0.0, precipitation_at_nodes), temperature_at_nodes, areas,
-                loss_fraction=river_transit_loss_fraction(temperature_at_nodes, is_frozen | is_ocean),
+                loss_fraction=transit_loss,
             ),
             mobile_cover_m=mobile_cover,
             prior_notch_m=collect_all_breach_notch_depth(plates_in_order),
@@ -1269,29 +1286,38 @@ def compute_hydrology(
     )
 
     # The surge stays in this legacy routing on purpose (issue #355 "Water units"): through
-    # `water_deposited` it also sizes frozen river ice below (#355 step 2) and lake silt
-    # (#363), and geology's river-mouth boost reads it too (#355 step 3). Move those consumers
-    # before taking it out of here.
+    # `water_deposited` it also sizes lake silt (#363), and geology's river-mouth boost reads
+    # it too (#355 step 3). Move those consumers before taking it out of here.
     breach_surge = lake_breach_source + rim_breach_source
     water_source = liquid_precip + melt + breach_surge
     flow_accum, water_deposited = route_downstream(elevation, is_ocean, flow_target, water_source, loss_fraction=river_evap_fraction)
 
+    # Physical water, routed once (issue #355 "Water units"). Lakes balance in real units
+    # (issue #297): area-weighted runoff (the same Budyko curve and open-water evaporation the
+    # breach gate uses) plus glacier melt, routed as volume along the same flow paths, with
+    # the same transit loss as the gate. Its through-flow is the river discharge; what settles
+    # feeds the lakes and frozen river ice below.
+    evaporation_mm = breaching.open_water_evaporation_mm(temperature_at_nodes)
+    runoff_m3 = breaching.runoff_mm(liquid_precip, evaporation_mm) / 1000.0 * areas
+    through_m3, settled_m3 = route_downstream(
+        elevation, is_ocean, flow_target, runoff_m3 + meltwater_m3_per_yr(melt, areas, years), loss_fraction=transit_loss,
+    )
+
     # A river blocked by its own freeze doesn't just vanish -- its water piles up as ice right
-    # where it froze (route_downstream already deposited it there, since a frozen node's
+    # where it froze (route_downstream already settled it there, since a frozen node's
     # flow_target was forced to -1 above), joining this step's glacier_depth. Added after the
-    # ice solve (which needs this routing pass's meltwater, so it can't know water_deposited)
+    # ice solve (which needs this routing pass's meltwater, so it can't know what settles)
     # rather than folded into its accumulation -- an explicit one-step lag (issue #353 section
     # 5): this ice joins its body's opening volume next step, and the ledger books it as
     # `frozen_river_ice_m3`.
-    # `water_deposited` is an accumulated *flux* (mm/yr-equivalent, and at a should_spill sink
-    # it also carries the LAKE_BREACH_EROSION_COEFFICIENT-scaled synthetic surge), so it's
-    # converted to an ice *depth* by the same GLACIER_ACCUMULATION_RATE * (·) * years_myr the
-    # frozen-precipitation term uses -- not added 1:1 the way a standing frozen lake's own
-    # lake_depth (already a depth) is -- and then re-clipped to GLACIER_MAX_DEPTH_M so a large
-    # river (or a lake breach) freezing into a cold sink can't create a physically absurd
-    # ice column in a single step. What the clip drops is booked (`frozen_river_capped_m3`)
-    # and logged as a warning (review of #359): reaching it means a missing sink.
-    frozen_river_ice = GLACIER_ACCUMULATION_RATE * water_deposited * (years / 1_000_000.0)
+    # It's the physical water settled over the step, at the glacier model's exchange rate
+    # (RIVER_WATER_TO_ICE, issue #355), so the breach surge never becomes ice. It's then
+    # re-clipped to GLACIER_MAX_DEPTH_M so a large river freezing into a cold sink can't
+    # create a physically absurd ice column in a single step. What the clip drops is booked
+    # (`frozen_river_capped_m3`) and logged as a warning (review of #359): reaching it means a
+    # missing sink.
+    settled_water_m = np.divide(settled_m3 * years, areas, out=np.zeros(n), where=areas > 0.0)
+    frozen_river_ice = RIVER_WATER_TO_ICE * settled_water_m
     with_river_ice = np.where(
         is_frozen & ~is_ocean,
         np.minimum(new_glacier_depth + frozen_river_ice, GLACIER_MAX_DEPTH_M),
@@ -1316,19 +1342,11 @@ def compute_hydrology(
     # actual water_deposited -- not a second lakes.step_lakes call, which would rebuild the
     # hierarchy from scratch a second time and risk it disagreeing with what spill routing just
     # used (see lakes.resolve_lakes's own docstring).
-    # Lakes balance in real units (issue #297): area-weighted runoff (the same Budyko curve
-    # and open-water evaporation the breach gate uses) plus glacier melt, routed as volume
-    # along the same flow paths. A spilling lake's sink passes its water on, so its inflow
-    # is the flow through the sink, not what settles there. That through-flow also carries on
-    # to any lake downstream without the upstream lake's own evaporation taken off. That
-    # overfeeds lake chains a little, but only through lakes already full and spilling.
-    # Subtracting it would need lakes resolved during routing (follow-up on #297).
-    evaporation_mm = breaching.open_water_evaporation_mm(temperature_at_nodes)
-    runoff_m3 = breaching.runoff_mm(liquid_precip, evaporation_mm) / 1000.0 * areas
-    through_m3, settled_m3 = route_downstream(
-        elevation, is_ocean, flow_target, runoff_m3 + meltwater_m3_per_yr(melt, areas, years),
-        loss_fraction=river_transit_loss_fraction(temperature_at_nodes, is_frozen | is_ocean | should_spill | is_rim_breach),
-    )
+    # A spilling lake's sink passes its water on, so its inflow is the flow through the sink,
+    # not what settles there. That through-flow also carries on to any lake downstream
+    # without the upstream lake's own evaporation taken off. That overfeeds lake chains a
+    # little, but only through lakes already full and spilling. Subtracting it would need
+    # lakes resolved during routing (follow-up on #297).
     fields.discharge_m3_s = through_m3 / SECONDS_PER_YEAR
     fields.breach_surge = breach_surge
     lake_climate = lakes.LakeClimate(
