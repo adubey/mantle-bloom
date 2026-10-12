@@ -950,7 +950,7 @@ MAX_EVAPORATION_CEILING = 1.4
 # frozen interior (`_land_moisture_source` -> 0 where lakes/rivers are ice and vegetation is
 # absent), so without this floor a large cold continent's centre reaches *exactly* zero
 # humidity -- and then, via `PRECIP_HUMIDITY_COEFFICIENT_MM * humidity`, exactly zero
-# precipitation, which starves glacier accumulation (hydrology `_update_glaciers` scales
+# precipitation, which starves glacier accumulation (`ice_sheet.SurfaceClimate.rates` scales
 # accumulation by frozen precipitation) so a permanently-below-freezing pole that is cold
 # enough to keep ice forever never receives a single flake to keep. ~0.02 q is a few tens of
 # mm/yr of baseline precipitation -- the order of a real polar desert (central Antarctica

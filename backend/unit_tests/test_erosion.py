@@ -1077,8 +1077,10 @@ def test_glacial_erosion_carves_channels_rivers_can_inherit():
     _, _, before, _, _, _ = erosion._gather_nodes(world)
     erosion.apply_erosion(world, years=5_000_000)
     _, _, after, _, _, _ = erosion._gather_nodes(world)
-    # No river erosion at all, so every metre of new channel is a glacial trough.
-    assert np.max(after - before) > 1.0
+    # No river erosion at all, so all new channel is a glacial trough. Abrasion follows the
+    # basal sliding speed (issue #353), slow for a uniform blanket out of balance with its
+    # climate, so the troughs here are tens of centimetres, not metres.
+    assert np.max(after - before) > 0.1
 
 
 def _set_channel_state(world, depth_m, uplift_m):

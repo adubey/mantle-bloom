@@ -1,7 +1,9 @@
 import numpy as np
 import pytest
 from app import geometry
+from app.elevation_lines import line_spacing_rad
 from app.hydroclimate import hydrology
+from app.plates import collect_all_accounting_areas_m2
 from app.world import World, generate_world, step_world
 
 from .quad_fixtures import quad_plate
@@ -465,134 +467,8 @@ def test_compute_flow_direction_ignores_a_barely_established_channel():
     assert result[0] == 1
 
 
-def _expected_basal_melt(depth: float, years_myr: float = 1.0) -> float:
-    ratio = depth / hydrology.GLACIER_BASAL_MELT_REFERENCE_DEPTH_M
-    return hydrology.GLACIER_BASAL_MELT_M_PER_MYR * ratio * ratio * years_myr
-
-
-def test_update_glaciers_accumulates_when_cold_and_precipitating():
-    # A single isolated node (no flow target) -- glacier_depth grows by
-    # GLACIER_ACCUMULATION_RATE * frozen_precip * years_myr, less the always-on depth-squared
-    # basal melt (negligible at this depth, but no longer exactly zero -- see
-    # GLACIER_BASAL_MELT_M_PER_MYR).
-    elevation = np.array([500.0])
-    is_ocean = np.array([False])
-    flow_target = np.array([-1])
-    slope = np.array([0.0])
-    prev_glacier = np.array([0.0])
-    frozen_precip = np.array([50.0])
-    frozen_from_lake = np.array([0.0])
-    is_accumulating = np.array([True])
-    temperature = np.array([-20.0])  # well below GLACIER_MELT_THRESHOLD_C, no seasonal swing
-
-    new_depth, melt = hydrology._update_glaciers(
-        elevation, is_ocean, flow_target, slope, prev_glacier, frozen_precip, frozen_from_lake, is_accumulating, temperature, years=1_000_000
-    )
-    accumulated = hydrology.GLACIER_ACCUMULATION_RATE * 50.0 * 1.0
-    assert np.isclose(melt[0], _expected_basal_melt(accumulated))  # only basal melt, no surface melt
-    assert np.isclose(new_depth[0], accumulated - melt[0])
-    assert new_depth[0] == pytest.approx(accumulated, rel=1e-3)  # basal melt is a rounding-error share here
-
-
-def test_update_glaciers_melts_when_warm_capped_at_available_depth():
-    elevation = np.array([500.0, 500.0])
-    is_ocean = np.array([False, False])
-    flow_target = np.array([-1, -1])
-    slope = np.array([0.0, 0.0])
-    prev_glacier = np.array([5000.0, 1.0])  # first has plenty of ice; second has very little
-    frozen_precip = np.array([0.0, 0.0])
-    frozen_from_lake = np.array([0.0, 0.0])
-    is_accumulating = np.array([False, False])
-    # Well above the melt-saturation point -> maximum melt factor.
-    temperature = np.full(
-        2, hydrology.GLACIER_MELT_THRESHOLD_C + hydrology.GLACIER_MELT_REFERENCE_DEGREES_C * hydrology.GLACIER_MELT_MAX_FACTOR + 10.0
-    )
-
-    new_depth, melt = hydrology._update_glaciers(
-        elevation, is_ocean, flow_target, slope, prev_glacier, frozen_precip, frozen_from_lake, is_accumulating, temperature, years=1_000_000
-    )
-    # Node 0 has plenty of ice -- melts at the full, uncapped surface rate (max melt factor)
-    # plus the depth-squared basal melt for its 5000 m.
-    expected_surface_melt = hydrology.GLACIER_MELT_RATE_M_PER_MYR * hydrology.GLACIER_MELT_MAX_FACTOR * 1.0
-    expected_melt = expected_surface_melt + _expected_basal_melt(5000.0)
-    assert np.isclose(melt[0], expected_melt)
-    assert np.isclose(new_depth[0], 5000.0 - expected_melt)
-    # Node 1 barely has any ice -- melt can't remove more than what's actually there, so it
-    # melts away completely rather than going negative.
-    assert melt[1] == 1.0
-    assert new_depth[1] == 0.0
-
-
-def test_update_glaciers_flows_downhill_via_flow_target():
-    # Node 0 (elevation 500) flows into node 1 (elevation 100) -- a slope-driven fraction of
-    # node 0's ice should move to node 1 this step.
-    elevation = np.array([500.0, 100.0])
-    is_ocean = np.array([False, False])
-    flow_target = np.array([1, -1])
-    slope = np.array([0.5, 0.0])  # steep -- meaningful flow_fraction
-    prev_glacier = np.array([200.0, 0.0])
-    frozen_precip = np.array([0.0, 0.0])
-    frozen_from_lake = np.array([0.0, 0.0])
-    is_accumulating = np.array([False, False])
-    temperature = np.full(2, hydrology.GLACIER_MELT_THRESHOLD_C)  # right at threshold, no swing -- no melt
-
-    new_depth, melt = hydrology._update_glaciers(
-        elevation, is_ocean, flow_target, slope, prev_glacier, frozen_precip, frozen_from_lake, is_accumulating, temperature, years=1_000_000
-    )
-    # Temperature at the threshold -> no surface melt; only the small depth-squared basal
-    # melt on node 0's 200 m.
-    assert np.isclose(melt[0], _expected_basal_melt(200.0))
-    assert melt[1] == 0.0
-    assert new_depth[0] < 200.0  # some ice flowed out
-    assert new_depth[1] > 0.0  # and arrived downstream
-    # Conservation: nothing lost besides basal melt, nothing gained besides inflow.
-    assert np.isclose(new_depth[0] + new_depth[1], 200.0 - melt[0])
-
-
-def test_update_glaciers_discards_ice_reaching_an_ocean_node():
-    elevation = np.array([500.0, -50.0])
-    is_ocean = np.array([False, True])
-    flow_target = np.array([1, -1])
-    slope = np.array([0.9, 0.0])  # steep -- most of node 0's ice flows out this step
-    prev_glacier = np.array([50.0, 999.0])  # node 1 already (wrongly) has ice, to prove it gets zeroed
-    frozen_precip = np.array([0.0, 0.0])
-    frozen_from_lake = np.array([0.0, 0.0])
-    is_accumulating = np.array([False, False])
-    temperature = np.full(2, hydrology.GLACIER_MELT_THRESHOLD_C)
-
-    new_depth, _ = hydrology._update_glaciers(
-        elevation, is_ocean, flow_target, slope, prev_glacier, frozen_precip, frozen_from_lake, is_accumulating, temperature, years=1_000_000
-    )
-    assert new_depth[1] == 0.0  # ocean never accumulates ice, regardless of inflow -- calving
-    assert new_depth[0] < 50.0  # node 0 still lost the ice that flowed out
-
-
-def test_update_glaciers_keeps_ice_over_ocean_when_allow_ocean_ice():
-    # Same setup as the calving test, but with allow_ocean_ice set for the ocean node -- an
-    # ice age lets a floating ice cap grow over freezing polar water instead of calving.
-    elevation = np.array([500.0, -50.0])
-    is_ocean = np.array([False, True])
-    flow_target = np.array([1, -1])
-    slope = np.array([0.9, 0.0])
-    prev_glacier = np.array([50.0, 20.0])
-    frozen_precip = np.array([0.0, 5.0])  # snow falling on the frozen sea itself
-    frozen_from_lake = np.array([0.0, 0.0])
-    is_accumulating = np.array([False, True])
-    temperature = np.full(2, hydrology.GLACIER_MELT_THRESHOLD_C)
-
-    new_depth, _ = hydrology._update_glaciers(
-        elevation, is_ocean, flow_target, slope, prev_glacier, frozen_precip, frozen_from_lake,
-        is_accumulating, temperature, years=1_000_000,
-        allow_ocean_ice=np.array([False, True]),
-    )
-    assert new_depth[1] > 20.0  # the polar sea now holds (and grew) its ice cap
-    # A False mask entry still calves -- prove the exemption is per-node, not global.
-    new_depth_calving, _ = hydrology._update_glaciers(
-        elevation, is_ocean, flow_target, slope, prev_glacier, frozen_precip, frozen_from_lake,
-        is_accumulating, temperature, years=1_000_000,
-        allow_ocean_ice=np.array([False, False]),
-    )
-    assert new_depth_calving[1] == 0.0
+def _node_areas(world):
+    return collect_all_accounting_areas_m2(world.plates, line_spacing_rad(world.node_density))
 
 
 def test_seasonal_positive_degrees_matches_a_sampled_annual_cycle():
@@ -617,49 +493,6 @@ def test_seasonal_positive_degrees_limits():
     assert np.all(np.diff(hydrology.seasonal_positive_degrees(np.full_like(amps, -6.0), amps)[21:]) > 0.0)
 
 
-def _isolated_surface_melt(temperature, amplitude, depth=100.0):
-    n = len(temperature)
-    _, melt = hydrology._update_glaciers(
-        np.full(n, 500.0), np.zeros(n, dtype=bool), np.full(n, -1), np.zeros(n), np.full(n, depth), np.zeros(n), np.zeros(n),
-        np.ones(n, dtype=bool), np.asarray(temperature, dtype=float), years=1_000_000,
-        seasonal_amplitude=None if amplitude is None else np.asarray(amplitude, dtype=float),
-    )
-    return melt - _expected_basal_melt(depth)
-
-
-def test_update_glaciers_seasonal_melt_around_the_freezing_threshold():
-    # With no swing, surface melt switches on exactly at a 0C annual mean.
-    no_swing = _isolated_surface_melt([-0.1, 0.0, 0.1], None)
-    assert no_swing[0] == pytest.approx(0.0, abs=1e-9) and no_swing[1] == pytest.approx(0.0, abs=1e-9)
-    assert no_swing[2] > 0.0
-    # A valley whose annual mean is below freezing but whose summer peaks above it melts; the
-    # same mean with a swing too small to reach 0C doesn't.
-    melt = _isolated_surface_melt([-5.0, -5.0, -15.0], [15.0, 4.0, 10.0])
-    assert melt[0] > 0.0
-    assert melt[1] == pytest.approx(0.0, abs=1e-9)
-    assert melt[2] == pytest.approx(0.0, abs=1e-9)  # summer peak -5C: never thaws
-    # A bigger swing at the same sub-freezing mean melts more.
-    swings = _isolated_surface_melt(np.full(4, -8.0), [10.0, 15.0, 20.0, 25.0])
-    assert np.all(np.diff(swings) > 0.0)
-
-
-def test_seasonal_melt_prevents_permanent_ice_from_annual_mean_alone():
-    # Repeated steps at one isolated, snowy node with a sub-freezing annual mean: with a
-    # strong seasonal swing the summer melt outpaces the snowfall and no ice survives; with
-    # no swing (annual-mean-only melt) the same node builds a permanent glacier.
-    def run(amplitude):
-        depth = np.zeros(1)
-        for _ in range(20):
-            depth, _ = hydrology._update_glaciers(
-                np.array([500.0]), np.array([False]), np.array([-1]), np.array([0.0]), depth, np.array([500.0]), np.zeros(1),
-                np.array([True]), np.array([-8.0]), years=1_000_000, seasonal_amplitude=np.array([amplitude]),
-            )
-        return depth[0]
-
-    assert run(15.0) == 0.0
-    assert run(0.0) > 100.0
-
-
 def test_compute_hydrology_threads_seasonal_amplitude_into_glacier_melt():
     d = 0.002
     theta = d * np.arange(12)
@@ -668,15 +501,19 @@ def test_compute_hydrology_threads_seasonal_amplitude_into_glacier_melt():
     precipitation = np.full(12, 100.0)
     temperature = np.full(12, -6.0)
 
-    def depth(amplitude):
+    def run(amplitude):
         world = World(seed=0, plates=[_flow_line_plate_with_lake(0, theta, elevation, np.zeros(12), glacier_depth=glacier)])
         amp = None if amplitude is None else np.full(12, amplitude)
-        return hydrology.compute_hydrology(world, precipitation, temperature, years=1_000_000, seasonal_amplitude_at_nodes=amp).glacier_depth
+        fields = hydrology.compute_hydrology(world, precipitation, temperature, years=1_000_000, seasonal_amplitude_at_nodes=amp)
+        return fields.glacier_depth, fields.ice.ledger
 
-    land = elevation > 0.0
-    no_swing = depth(None)
-    assert np.array_equal(no_swing, depth(0.0))
-    assert np.sum(depth(18.0)[land]) < np.sum(no_swing[land]) - 100.0
+    no_swing, still = run(None)
+    assert np.array_equal(no_swing, run(0.0)[0])
+    assert still.surface_melt_m3 == 0.0
+    # A -6C mean with an 18C swing has summers well above freezing: the ice melts.
+    swing, melting = run(18.0)
+    assert melting.surface_melt_m3 > 0.0
+    assert melting.closing_m3 < still.closing_m3
 
 
 def test_compute_hydrology_freezes_an_existing_lake_when_cold():
@@ -703,7 +540,9 @@ def test_compute_hydrology_freezes_an_existing_lake_when_cold():
     assert np.isfinite(fields.filled_elevation[7])  # confirms the sink really is graph-connected to the ocean
 
     assert fields.lake_depth[7] == 0.0  # the lake froze, not still sitting there as water
-    assert fields.glacier_depth[7] > 0.0  # its water moved into glacier_depth instead
+    # Its water joined the ice instead (issue #353: into its ice body, which may reshape it).
+    assert fields.ice.ledger.frozen_lake_m3 == pytest.approx(30.0 * _node_areas(world)[7])
+    assert fields.ice.ledger.closing_m3 >= fields.ice.ledger.frozen_lake_m3
 
 
 def test_compute_hydrology_freezes_a_lake_below_freezing_even_above_glacier_accumulation_temp():
@@ -725,7 +564,7 @@ def test_compute_hydrology_freezes_a_lake_below_freezing_even_above_glacier_accu
 
     fields = hydrology.compute_hydrology(world, precipitation, mildly_cold_temperature, years=1_000_000)
     assert fields.lake_depth[7] == 0.0  # frozen solid despite being only mildly cold
-    assert fields.glacier_depth[7] > 0.0
+    assert fields.ice.ledger.frozen_lake_m3 > 0.0
 
 
 def test_compute_hydrology_freezing_river_blocks_flow_and_banks_ice_at_the_freeze_point():
@@ -745,7 +584,10 @@ def test_compute_hydrology_freezing_river_blocks_flow_and_banks_ice_at_the_freez
     land = ~fields.is_ocean
     assert np.all(fields.flow_target[land] == -1)  # every land node frozen -- nothing routes onward
     assert np.all(fields.water_deposited[fields.is_ocean] == 0.0)  # so nothing reaches the ocean this step
-    assert np.all(fields.glacier_depth[land] > 0.0)  # the water that would have flowed froze in place instead
+    # The snow stays on the ground as ice instead (issue #353: gathered into its ice body).
+    ledger = fields.ice.ledger
+    assert ledger.accumulation_m3 > 0.0
+    assert float(np.dot(fields.glacier_depth, _node_areas(world))) == pytest.approx(ledger.closing_m3 + ledger.frozen_river_ice_m3)
 
 
 def test_compute_hydrology_freezes_rivers_and_snow_over_an_ice_cap_above_freezing():
@@ -984,3 +826,55 @@ def test_route_downstream_applies_loss_and_retention_on_cycle_nodes():
     # Without loss, the cycle still conserves everything it received.
     _, kept = hydrology.route_downstream(elevation, is_ocean, flow_target, source, retain_fraction=retain)
     assert np.isclose(kept.sum(), source.sum())
+
+
+def test_ice_ledger_closes_across_steps_with_frozen_river_ice_a_step_late():
+    # Cold, snowy uplands above a band whose summers melt snow that refreezes in place as
+    # river ice: that ice is added after the solve and joins next step's opening volume.
+    d = 0.002
+    theta = d * np.arange(12)
+    elevation = 500.0 - 60.0 * np.arange(12)
+    plate = _flow_line_plate(0, theta, elevation)
+    world = World(seed=0, plates=[plate])
+    precipitation = np.full(12, 800.0)
+    temperature = np.where(np.arange(12) < 4, -20.0, -3.0)
+    amplitude = np.where(np.arange(12) < 4, 0.0, 10.0)
+    areas = _node_areas(world)
+    ledgers = []
+    for _ in range(2):
+        fields = hydrology.compute_hydrology(world, precipitation, temperature, years=1_000_000, seasonal_amplitude_at_nodes=amplitude)
+        ledgers.append(fields.ice.ledger)
+        assert float(np.dot(fields.glacier_depth, areas)) == pytest.approx(fields.ice.ledger.closing_m3 + fields.ice.ledger.frozen_river_ice_m3)
+        plate.set_fields_on_plate(glacier_depth=fields.glacier_depth)
+    first, second = ledgers
+    assert first.frozen_river_ice_m3 > 0.0
+    assert second.opening_m3 == pytest.approx(first.closing_m3 + first.frozen_river_ice_m3)
+
+
+def test_ice_flow_target_follows_the_ice_surface_on_the_ice_and_the_ground_off_it():
+    # A dome on a flat bed: on the ice, material moves down the ice surface (away from the
+    # divide), even where the bed under it doesn't slope; off the ice, the ground's own target.
+    elevation = np.zeros(5)
+    depth = np.array([0.0, 500.0, 1000.0, 500.0, 0.0])
+    neighbor_idx = np.array([[1, 1], [0, 2], [1, 3], [2, 4], [3, 3]])
+    ground = np.array([-1, 0, -1, 4, -1])
+    target = hydrology._ice_surface_flow_target(elevation + depth, neighbor_idx, depth, ground)
+    assert target[1] == 0 and target[3] == 4
+    assert target[2] in (1, 3)
+    assert target[0] == -1 and target[4] == -1
+
+
+def test_a_lake_under_ice_on_warm_ground_stays_water():
+    # Issue #353: only cold ground (annual mean below freezing) freezes a lake. A lake beside or
+    # under ice on warm ground is refilled by runoff in real units every step; freezing it into
+    # the ice 1:1 fed the conserved ice volume far faster than snowfall.
+    d = 0.002
+    theta = d * np.arange(16)
+    elevation = np.array([500, 450, 400, 350, 300, 250, 200, 50, 300, 250, 200, 150, 100, 50, 10, -50], dtype=float)
+    lake_depth = np.zeros(16)
+    lake_depth[7] = 30.0
+    world = World(seed=0, plates=[_flow_line_plate_with_lake(0, theta, elevation, lake_depth, glacier_depth=np.full(16, 200.0))])
+    fields = hydrology.compute_hydrology(world, np.full(16, 500.0), np.full(16, 2.0), years=1_000_000)
+    ledger = fields.ice.ledger
+    assert ledger.frozen_lake_m3 == 0.0
+    assert ledger.closing_m3 <= ledger.opening_m3 + ledger.accumulation_m3  # the lake didn't become ice

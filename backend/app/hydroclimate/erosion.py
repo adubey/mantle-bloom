@@ -183,40 +183,26 @@ DEPOSITION_SPEED_THRESHOLD = 2.0
 DEPOSITION_MIN_FLOW_M = 0.05
 DEPOSITION_FRACTION = 0.15
 
-# Glacier erosion: scales with slope and actual accumulated ice depth (hydrology.py's
-# glacier_depth, a real persistent field, not a stateless cold proxy) -- depth*slope
-# approximates basal shear stress, a standard real glacial-erosion proxy: a flat-bottomed
-# accumulation bowl still correctly erodes near zero regardless of ice depth.
-# Temperature/precipitation-driven ice depth is a real length in consistent units (unlike the
-# slope-based rain/river coefficients above, which needed re-derivation for a rise/run
-# convention), so this coefficient doesn't need the same treatment. Coefficient and max factor
-# both raised from an earlier, more timid starting point (0.05/2.0): basal shear stress under
-# real ice scales with the ice's own *weight* (depth), and a thin valley glacier's few hundred
-# meters versus a real continental ice sheet's kilometers is a large enough range that capping
-# the erosive multiplier at 2x was leaving thick ice under-erosive relative to thin ice -- the
-# higher cap lets genuinely deep, heavy ice keep scaling up over a wider depth range before
-# saturating.
+# Glacier erosion (issue #353): abrasion scales with basal sliding speed,
+# GLACIER_ABRASION_COEFFICIENT * u_b ** GLACIER_ABRASION_EXPONENT (Hallet 1979). u_b is
+# ice_sheet.py's sliding speed, a share of the balance velocity on a warm (thawed) bed and zero
+# on a frozen one, so ice frozen to its bed no longer erodes the way sliding ice does. Herman
+# et al. (2015) fit an exponent near 2 on one Alpine glacier; Cook et al. (2020) find
+# sub-linear scaling across a global compilation. 1 sits between them, and keeps the
+# calibration linear while u_b is a model-unit proxy.
 #
-# GLACIER_EROSION_COEFFICIENT re-derived (see GitHub issue #145's investigation) against a
-# published global compilation of measured erosion rates (Nature Geoscience 2025's "Drivers of
-# global glacial erosion rates", building on Koppes & Montgomery 2009): glacial erosion's
-# log-mean rate (~0.51 mm/yr, 99% of glaciers between 0.02-2.68 mm/yr, alpine tidewater
-# glaciers -- the fastest-eroding type -- averaging ~2.2 mm/yr) sits within the *same order of
-# magnitude* as fluvial erosion measured specifically in actively uplifting mountain terrain
-# (1-10 mm/yr) -- not a full order of magnitude above it the way glacial-vs-*all*-rivers
-# (including ordinary lowland ones, log-mean ~0.067 mm/yr) misleadingly suggests. Since
-# RAIN_EROSION_COEFFICIENT above is itself calibrated for exactly that terrain (steep, wet,
-# actively uplifting), the fair comparison is glacier-vs-rain at matched reference conditions,
-# not glacier-vs-global-river-average -- so the coefficient is set equal to
-# RAIN_EROSION_COEFFICIENT (the same "put it in the same bucket as the thing it's being
-# compared to" precedent SEISMIC_EROSION_COEFFICIENT below already uses), rather than the
-# ~650,000x jump a naive "glacial is 10x fluvial" headline would have implied. At their
-# respective reference points (ice_factor=1, i.e. GLACIER_EROSION_REFERENCE_DEPTH_M of ice;
-# 1000 mm/yr precipitation) the two terms now erode at the same rate for a given slope, with
-# GLACIER_EROSION_MAX_FACTOR still letting genuinely thick ice (a real continental sheet) scale
-# up to 4x that before saturating -- the ceiling a modest valley glacier's ~100 m couldn't
-# plausibly reach.
-GLACIER_EROSION_COEFFICIENT = 6000.0
+# The balance velocity is ~50,000x slower than real ice while glacier mass balance stays in
+# model units (issue #353's open decision), so the coefficient is calibrated, not physical: set
+# so total glacial erosion on the reference replay matches the old depth * slope law it
+# replaced (see analysis/issue353/README.md). That old law's own calibration -- equal to
+# RAIN_EROSION_COEFFICIENT at 100 m of ice, against the global compilation of glacial erosion
+# rates in issue #145 -- is what this inherits.
+GLACIER_ABRASION_COEFFICIENT = 430.0
+GLACIER_ABRASION_EXPONENT = 1.0
+
+# Ice-thickness scale for the glacial flattening blur below: the blur rate grows linearly with
+# ice depth up to GLACIER_EROSION_MAX_FACTOR times its value under
+# GLACIER_EROSION_REFERENCE_DEPTH_M of ice.
 GLACIER_EROSION_REFERENCE_DEPTH_M = 100.0
 GLACIER_EROSION_MAX_FACTOR = 4.0
 
@@ -224,11 +210,11 @@ GLACIER_EROSION_MAX_FACTOR = 4.0
 # sheets grind down local relief over broad areas (e.g. the Canadian Shield/Fennoscandia read
 # as glacially smoothed bedrock, not just eroded-lower). Implemented as a relaxation of each
 # node's elevation toward the mean of its hydrology.py flow-graph neighbors (a genuine local
-# blur, not a directional erosion/deposition), scaled by the same ice_factor glacier erosion
-# uses -- reuses hydrology's own k=FLOW_NEIGHBOR_COUNT neighbor graph rather than a separate
+# blur, not a directional erosion/deposition), scaled by an ice-thickness factor (see above)
+# -- reuses hydrology's own k=FLOW_NEIGHBOR_COUNT neighbor graph rather than a separate
 # query. GLACIER_FLATTEN_RATE_PER_MYR has no established real-world value to draw on; picked
 # as a starting point, checked against a live run the same way every other from-scratch rate
-# in this codebase was. Raised alongside the erosion coefficient above, same "heavier ice grinds
+# in this codebase was. Raised alongside the old depth * slope erosion coefficient, same "heavier ice grinds
 # harder" reasoning.
 GLACIER_FLATTEN_RATE_PER_MYR = 0.3
 
@@ -1957,7 +1943,8 @@ def apply_erosion(
     relief_factor = np.clip(slope / WEATHERING_RELIEF_REFERENCE_SLOPE, 0.0, 1.0)
     weathering = WEATHERING_COEFFICIENT * world.wind_erosion_multiplier * wind_speed * humidity_norm * relief_factor * dt_myr
     ice_factor = np.clip(prior_glacier_depth / GLACIER_EROSION_REFERENCE_DEPTH_M, 0.0, GLACIER_EROSION_MAX_FACTOR)
-    glacier = GLACIER_EROSION_COEFFICIENT * world.glacier_erosion_multiplier * slope * ice_factor * dt_myr
+    sliding = hydro.ice.sliding_speed_m_per_yr if hydro.ice is not None else np.zeros(n)
+    glacier = GLACIER_ABRASION_COEFFICIENT * world.glacier_erosion_multiplier * np.power(sliding, GLACIER_ABRASION_EXPONENT) * dt_myr
     # See SEISMIC_EROSION_* constants' own comment: elevation (clipped/normalized against
     # SEISMIC_EROSION_ELEVATION_REFERENCE_M, then raised to a superlinear power) stands in for
     # how tectonically active/seismic a mountain range is, this model having no separate
@@ -2557,6 +2544,7 @@ def apply_erosion(
     )
     budget = {
         "removed_m3": removed_m3,
+        "glacial_erosion_m3": float(np.sum(applied_glacier * area)),
         "deposited_m3": deposited_m3,
         # Net material the ocean_deposition_multiplier knob adds (> 1) or withholds (< 1).
         "ocean_deposition_knob_m3": float(beach_deposit.sum() + marine_unscaled.sum() + landslide_marine_unscaled.sum())
