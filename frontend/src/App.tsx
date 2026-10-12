@@ -1266,10 +1266,10 @@ export default function App() {
               style={{ width: "100%", marginBottom: 6, fontSize: 12 }}
             >
               <optgroup label="Maps">
-                <option value="crossSection">Lithosphere cross-section</option>
                 <option value="combined">Elevation &amp; Biome</option>
                 <option value="elevation">Elevation</option>
                 <option value="biome">Biome</option>
+                <option value="crossSection">Lithosphere cross-section</option>
                 <option value="temperature">Temperature</option>
                 <option value="wind">Wind</option>
                 <option value="oceanCurrents">Ocean currents</option>
