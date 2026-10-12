@@ -1,7 +1,8 @@
 # The checks too slow for every PR: the full backend unit suite four times a day, and the
 # stress_tests/ full-simulation suite nightly (test.yml runs only the affected unit tests).
 # Both test main's tip. A failure opens (or comments on) a "Scheduled full test run is
-# failing" issue, and the next green run closes it.
+# failing" issue. It closes once every suite recorded failing on it has run and passed again:
+# a unit-only run can't close an issue the stress tests opened.
 #
 # Run on demand from the Actions tab or with `gh workflow run full-suite.yml` (optionally
 # `-f stress=true`).
@@ -104,8 +105,15 @@ jobs:
             else
               gh issue create --title "$title" --label bug --body "The scheduled full-suite workflow failed on main. $body
 
-          Reproduce locally with \`./bin/unit_test.sh\` / \`./bin/stress_test.sh\` on that commit. The next green scheduled run closes this issue."
+          Reproduce locally with \`./bin/unit_test.sh\` / \`./bin/stress_test.sh\` on that commit. The next scheduled run on which every failing suite passes closes this issue."
             fi
           elif [ -n "$issue" ]; then
-            gh issue close "$issue" --comment "Passing again at $GITHUB_SHA -- $RUN_URL"
+            # A run that skipped the stress tests says nothing about them, so it closes the
+            # issue only if the last stress result recorded on it wasn't a failure. #344 was
+            # closed by a unit-only run while the stress tests were still failing.
+            last_stress=$(gh issue view "$issue" --json body,comments -q '.body, .comments[].body' \
+              | grep -o 'stress: [a-z]*' | grep -v 'stress: skipped' | tail -n 1 || true)
+            if [ "$UNIT" = success ] && { [ "$STRESS" = success ] || { [ "$STRESS" = skipped ] && [ "$last_stress" != "stress: failure" ]; }; }; then
+              gh issue close "$issue" --comment "Passing again at $GITHUB_SHA -- $RUN_URL"
+            fi
           fi
