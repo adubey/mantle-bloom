@@ -8,9 +8,9 @@
   `scipy.sparse.csgraph.connected_components` for plate defragmentation), Pillow
   (server-side map rendering, see `render_image.py`), pytest.
 - **Frontend:** React + TypeScript via Vite, plain HTML `<canvas>` — no mapping/charting
-  library: the frontend's whole job is decoding a PNG the backend already rendered and
-  drawing it (`ctx.drawImage`), which a library would be more ceremony than the problem
-  needs. Three exceptions: `rotation.ts` — a
+  library: data-backed raster maps decode a PNG the backend already rendered and draw it
+  (`ctx.drawImage`), which a library would be more ceremony than the problem needs. Other
+  client-side views are `rotation.ts` — a
   small, dependency-free port of just enough backend geometry/projection math to drive the
   "rotate the planet" drag gesture and preview it live client-side (see
   [simulation-model.md#rotating-the-view](simulation-model.md#rotating-the-view)) — and the
@@ -21,9 +21,10 @@
   [simulation-model.md#plate-inspector](simulation-model.md#plate-inspector),
   [simulation-model.md#river-inspector](simulation-model.md#river-inspector),
   [simulation-model.md#lake-inspector](simulation-model.md#lake-inspector), and
-  [simulation-model.md#fault-inspector](simulation-model.md#fault-inspector)). None of this makes
-  it a mapping library, and the real detailed rendering stays entirely server-side for every
-  other view.
+  [simulation-model.md#fault-inspector](simulation-model.md#fault-inspector)). The shallow
+  mantle cross-section preview (`MantleCrossSection.tsx`) also draws its locator and schematic
+  shell slice client-side; it has no sampled world data yet. The detailed data-backed rendering
+  remains server-side.
 
 ## Request flow
 
@@ -46,7 +47,9 @@ Browser then fetches, for whichever projection/map view/resolution/rotation is s
     simulation-model.md#render-image. `rotation` (see simulation-model.md#rotating-the-view)
     is the map's current view orientation, driven by a long-press-and-drag gesture on the
     canvas -- client-local view state, not simulation state, so it's sent fresh with every
-    render call rather than stored server-side.
+    render call rather than stored server-side. The shallow mantle cross-section is currently
+    a UI-only schematic preview and skips this raster request until its section data path is
+    implemented.
 
 Time-stepping:
   POST /world/step  { years }
@@ -125,10 +128,9 @@ the shared coastline_segments, as JSON not a PNG -- see api-reference.md. It bac
 unused by the frontend since faults aren't selectable there).
 ```
 
-The frontend never holds simulation state, and holds only one small piece of *rendering*
-logic -- it's a thin client that re-fetches `/world/render` after every `generate`/`step`
-call (or a projection/map-view/rotation change) and draws the returned PNG onto the canvas
-(`MapCanvas.tsx`). That component also owns the rotate-the-planet drag gesture -- a
+The frontend never holds simulation state. Data-backed raster views re-fetch `/world/render`
+after every `generate`/`step` call (or a projection/map-view/rotation change) and draw the
+returned PNG onto the canvas (`MapCanvas.tsx`). That component also owns the rotate-the-planet drag gesture -- a
 long-press-and-drag interaction that previews a cheap wireframe graticule client-side (via
 `rotation.ts`) while dragging, then commits the real rotation and lets the usual
 `/world/render` re-fetch replace it with the actual detailed frame (see
