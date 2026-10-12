@@ -511,7 +511,7 @@ def test_compute_hydrology_threads_seasonal_amplitude_into_glacier_melt():
     assert np.array_equal(no_swing, run(0.0)[0])
     assert still.surface_melt_m3 == 0.0
     # A -6C mean with an 18C swing has summers well above freezing: the ice melts.
-    swing, melting = run(18.0)
+    _, melting = run(18.0)
     assert melting.surface_melt_m3 > 0.0
     assert melting.closing_m3 < still.closing_m3
 

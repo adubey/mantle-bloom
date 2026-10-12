@@ -421,16 +421,13 @@ class IceStep:
     carries elsewhere, aren't repeated here).
 
     `thickness` is the plastic profile's ice thickness at each node and `covered` the cell's
-    ice-covered fraction. `ice_surface_m` is the plastic surface (unloaded bed + thickness; NaN
-    off the ice). `calved_m3` is ice that left for the ocean, unrouted. Velocities are m/yr in
-    model units (a calibrated proxy while mass balance stays in model units)."""
+    ice-covered fraction. `calved_m3` is ice that left for the ocean, unrouted. The sliding
+    speed is m/yr in model units (a calibrated proxy while mass balance stays in model units)."""
 
     thickness: np.ndarray
     covered: np.ndarray
-    ice_surface_m: np.ndarray
     warm_based: np.ndarray
     balance_flux_m3_per_yr: np.ndarray
-    velocity_m_per_yr: np.ndarray
     sliding_speed_m_per_yr: np.ndarray
     calved_m3: np.ndarray
     ledger: IceLedger
@@ -855,17 +852,15 @@ def step_ice(
 
     thickness = out.thickness
     is_warm = warm_based(thickness, climate.temperature_c - LAPSE_RATE_C_PER_KM * thickness / 1000.0)
-    flux, velocity, sliding = _diagnose_flow(
+    flux, _, sliding = _diagnose_flow(
         points, neighbor_idx, area, out.surface, out.depth, opening_depth + lake_ice, thickness, out.covered, climate, is_warm, years,
     )
     melt_m = out.melt_m3 / np.where(area > 0.0, area, 1.0)
     return out.depth, melt_m, IceStep(
         thickness=thickness,
         covered=out.covered,
-        ice_surface_m=out.surface,
         warm_based=is_warm,
         balance_flux_m3_per_yr=flux,
-        velocity_m_per_yr=velocity,
         sliding_speed_m_per_yr=sliding,
         calved_m3=out.calved,
         ledger=ledger,
@@ -905,7 +900,7 @@ def _plastic_body(out: _Output, dom: _Domain, body_nodes, opening, area, dt_myr,
     out.covered[nodes] = cov
     out.depth[nodes] = shape.depth
     out.surface[nodes] = np.where(shape.active, dom.bed + shape.thickness, np.nan)
-    r_acc, r_sm, r_bm = shape.rates
+    _, r_sm, r_bm = shape.rates
     acc0, sm0, _ = dom.bare_rates
     feeds = (acc0 - sm0) > 0.0
     # Booked melt goes to the nodes in proportion to where it happens.
