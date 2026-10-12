@@ -318,6 +318,15 @@ unrecognized projection/view name, a width/height outside `[1, main.MAX_RENDER_D
 - `image_base64` decodes to a PNG. The frontend builds `data:image/png;base64,<this>` as an
   `<img>` source and draws it onto the canvas with `drawImage` -- see `MapCanvas.tsx`.
 
+## `GET /world/cross-section?plane_angle_deg=0&position_index=0&width=1100&height=611`
+
+Reserved request path for the shallow mantle cross-section view (#360). `plane_angle_deg`
+selects a great-circle plane in `[0, 180]`, and `position_index` selects one of 120 evenly
+spaced centers along that circle in `[0, 119]`. `width` and `height` use the same `[1,
+main.MAX_RENDER_DIMENSION_PX]` limit as `/world/render`. A valid request returns `404` when
+there is no current world and `501 Not Implemented` until section sampling and image rendering
+are added. The route does not currently return section data or an image.
+
 ## `POST /world/animate`
 
 The toolbar's "⏺ Record" action (opens the animation dialog, then starts this) -- an

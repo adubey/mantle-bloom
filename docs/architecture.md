@@ -47,9 +47,9 @@ Browser then fetches, for whichever projection/map view/resolution/rotation is s
     simulation-model.md#render-image. `rotation` (see simulation-model.md#rotating-the-view)
     is the map's current view orientation, driven by a long-press-and-drag gesture on the
     canvas -- client-local view state, not simulation state, so it's sent fresh with every
-    render call rather than stored server-side. The shallow mantle cross-section is currently
-    a UI-only schematic preview and skips this raster request until its section data path is
-    implemented.
+    render call rather than stored server-side. The shallow mantle cross-section has its own
+    `GET /world/cross-section` request contract for plane angle, arc position, and output size;
+    it currently returns `501` until section sampling and rendering are implemented.
 
 Time-stepping:
   POST /world/step  { years }

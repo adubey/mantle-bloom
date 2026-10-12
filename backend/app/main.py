@@ -877,6 +877,30 @@ def render(
     }
 
 
+@app.get("/world/cross-section")
+def cross_section(
+    plane_angle_deg: float = 0.0,
+    position_index: int = 0,
+    width: int = 1100,
+    height: int = 611,
+) -> dict:
+    """Reserved request path for the shallow mantle cross-section view (#360).
+
+    Accepts a great-circle plane orientation, one of the 120 evenly spaced arc-center
+    positions, and the requested output dimensions. Section sampling and image rendering
+    will be implemented in the follow-up; until then, a valid request for an available world
+    returns `501 Not Implemented`. `404` if no world has been generated yet.
+    """
+    _require_world()
+    if not 0.0 <= plane_angle_deg <= 180.0:
+        raise HTTPException(status_code=400, detail="plane_angle_deg must be in [0, 180]")
+    if not 0 <= position_index < 120:
+        raise HTTPException(status_code=400, detail="position_index must be in [0, 119]")
+    if not (1 <= width <= MAX_RENDER_DIMENSION_PX and 1 <= height <= MAX_RENDER_DIMENSION_PX):
+        raise HTTPException(status_code=400, detail=f"width/height must be in [1, {MAX_RENDER_DIMENSION_PX}]")
+    raise HTTPException(status_code=501, detail="cross-section rendering is not implemented yet")
+
+
 @app.post("/world/animate")
 def animate(req: AnimateRequest) -> StreamingResponse:
     """The "File > Make Animation" action: streams newline-delimited JSON progress while

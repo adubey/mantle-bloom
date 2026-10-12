@@ -181,6 +181,15 @@ def test_render_before_generate_returns_404(client):
     assert resp.status_code == 404
 
 
+def test_cross_section_contract_is_reserved_until_rendering_is_implemented(client):
+    assert client.get("/world/cross-section").status_code == 404
+
+    main._state["world"] = object()
+    assert client.get("/world/cross-section").status_code == 501
+    assert client.get("/world/cross-section", params={"position_index": 120}).status_code == 400
+    assert client.get("/world/cross-section", params={"width": main.MAX_RENDER_DIMENSION_PX + 1}).status_code == 400
+
+
 def test_step_before_generate_returns_404(client):
     resp = _post_step(client, json={"years": 1_000_000})
     assert resp.status_code == 404
