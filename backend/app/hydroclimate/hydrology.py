@@ -391,7 +391,8 @@ class HydrologyFields:
     # cache pickled before these existed still loads.
     discharge_m3_s: np.ndarray | None = None
     # This step's breach-surge sources (`lake_breach_source + rim_breach_source`), in model
-    # units. They're for erosion only and are kept out of `discharge_m3_s`.
+    # units. They're kept out of `discharge_m3_s`, but they still reach every consumer of the
+    # legacy `flow_accum`/`water_deposited` routing (see "Water units").
     breach_surge: np.ndarray | None = None
 
 
@@ -776,11 +777,16 @@ def river_transit_loss_fraction(temperature_c: np.ndarray, excluded: np.ndarray)
 #   meltwater is small next to runoff. Rescaling glacier mass balance changes discharge only
 #   through the ledger.
 # - The breach surge (`HydrologyFields.breach_surge`) is a spilling lake's erosive forcing.
-#   It's sized by node count (LAKE_BREACH_EROSION_COEFFICIENT), is in model units, and drives
-#   erosion only. It is never physical discharge.
-# `flow_accum` is the legacy quantity: stacked mm/yr of liquid precipitation, melt and breach
-# surge, with step-scaled evaporation. Erosion, channel width, river speed, geology and the
-# River Inspector read it until they move to the quantities above.
+#   It's sized by node count (LAKE_BREACH_EROSION_COEFFICIENT) and is in model units. It is
+#   never physical discharge.
+# `flow_accum`/`water_deposited` are the legacy routing: stacked mm/yr of liquid
+# precipitation, melt and breach surge, with step-scaled evaporation. Until each consumer
+# moves to the quantities above, the surge still reaches all of them, not only erosion:
+# - river erosion, channel width and river speed (`flow_accum`; #355 step 3);
+# - geology's river-mouth boost (`water_deposited`; #355 step 3);
+# - frozen river ice (`water_deposited`; #355 step 2);
+# - lake silt (`water_deposited`; #363).
+# Removing the surge from the legacy routing before then changes all four.
 SECONDS_PER_YEAR = 3.15576e7
 
 
@@ -1262,6 +1268,10 @@ def compute_hydrology(
         temperature_at_nodes, years, is_frozen | is_ocean | should_spill | is_rim_breach
     )
 
+    # The surge stays in this legacy routing on purpose (issue #355 "Water units"): through
+    # `water_deposited` it also sizes frozen river ice below (#355 step 2) and lake silt
+    # (#363), and geology's river-mouth boost reads it too (#355 step 3). Move those consumers
+    # before taking it out of here.
     breach_surge = lake_breach_source + rim_breach_source
     water_source = liquid_precip + melt + breach_surge
     flow_accum, water_deposited = route_downstream(elevation, is_ocean, flow_target, water_source, loss_fraction=river_evap_fraction)

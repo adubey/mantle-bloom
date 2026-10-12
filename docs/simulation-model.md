@@ -3326,14 +3326,21 @@ thousand land nodes, a real chunk of a step's total cost), so `erosion.py` compu
   glacier model's own units (see [Glaciation](#glaciation)), so meltwater is small next to
   runoff.
 - **The breach surge** (`HydrologyFields.breach_surge`) is a spilling lake's erosive forcing,
-  sized by node count (`LAKE_BREACH_EROSION_COEFFICIENT`). It drives erosion only and is never
-  part of the discharge.
+  sized by node count (`LAKE_BREACH_EROSION_COEFFICIENT`). It is never part of the discharge.
 
-`flow_accum` is the older quantity: stacked mm/yr of liquid precipitation, melt and breach
-surge, with in-transit evaporation that scales with step length. It grows with node density
-as well as with rainfall. River erosion, channel width, river speed, the river-mouth
-resource boost and the River Inspector still read it. Moving them to the quantities above
-is the rest of #355.
+`flow_accum` and `water_deposited` come from the older routing: stacked mm/yr of liquid
+precipitation, melt and breach surge, with in-transit evaporation that scales with step
+length. They grow with node density as well as with rainfall. Until each consumer moves to
+the quantities above, the breach surge still reaches every one of them, not only erosion:
+
+| Consumer | Reads | Moves in |
+|---|---|---|
+| River erosion, channel width, river speed, River Inspector | `flow_accum` | #355 step 3 |
+| Geology's river-mouth resource boost | `water_deposited` | #355 step 3 |
+| Frozen river ice | `water_deposited` | #355 step 2 |
+| Lake silt | `water_deposited` | #363 |
+
+Taking the surge out of the older routing before then would change all of them.
 
 **The core algorithms**, all operating on the k-NN graph:
 
