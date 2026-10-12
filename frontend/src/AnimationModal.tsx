@@ -15,7 +15,7 @@ const DEFAULT_NUM_FRAMES = 480;
 // "keep going until Stop is pressed" (see the `unbounded` checkbox below).
 const MAX_NUM_FRAMES = 480;
 
-const INSPECTOR_VIEWS: MapView[] = ["plateInspector", "riverInspector", "lakeInspector", "platesAndFaults"];
+const NON_RENDERED_VIEWS: MapView[] = ["crossSection", "plateInspector", "riverInspector", "lakeInspector", "platesAndFaults"];
 
 interface Props {
   hasWorld: boolean;
@@ -50,8 +50,8 @@ export default function AnimationModal({ hasWorld, stepYears, mapView, onClose, 
   const [unbounded, setUnbounded] = useState(true);
   const yearsPerFrame = stepsPerFrame * stepYears;
 
-  const isInspectorView = INSPECTOR_VIEWS.includes(mapView);
-  const canStart = hasWorld && !isInspectorView;
+  const isRenderedMapView = !NON_RENDERED_VIEWS.includes(mapView);
+  const canStart = hasWorld && isRenderedMapView;
 
   return (
     <div
@@ -76,9 +76,9 @@ export default function AnimationModal({ hasWorld, stepYears, mapView, onClose, 
           </button>
         </div>
 
-        {isInspectorView ? (
+        {!isRenderedMapView ? (
           <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 12 }}>
-            Switch to a map view (not an Inspector) to make an animation.
+            Switch to a rendered map view to make an animation.
           </div>
         ) : (
           <>
