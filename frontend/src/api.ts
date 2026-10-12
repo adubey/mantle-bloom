@@ -12,11 +12,13 @@ export const API_BASE = API_ROOT;
 
 export type Projection = "behrmann" | "eckert4";
 
-// The "kind of map" requested from /world/render -- the server now bakes this choice
+// The kind of view requested from /world/render -- the server now bakes this choice
 // directly into the returned image (fill color rule, whether boundaries/poles/velocity
 // arrows or raw per-plate node dots are drawn), rather than the frontend deciding how to
-// draw raw coordinate data it fetched.
+// draw raw coordinate data it fetched. `crossSection` is the client-side schematic Map View;
+// it is deliberately omitted from /world/render until its section-data endpoint is added.
 export type MapView =
+  | "crossSection"
   | "elevation"
   | "platesDetail"
   | "speckle"
