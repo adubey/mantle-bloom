@@ -16,13 +16,13 @@ could drift out of sync with `lakes.py`'s own, physically-correct hierarchy -- s
 `lakes.compute_spill_routing`'s own docstring for the real, save-file-confirmed drift this
 caused, and `compute_hydrology`'s own docstring for the resulting step order.
 
-Glacier flow (accumulated ice moving one hop downhill per
-step) reuses the same steepest-descent/spill-redirect machinery water's own flow_target does
-(`_compute_flow_direction`), but with its own separate target (`ice_flow_target`, on
-HydrologyFields) rather than literally sharing water's: ice keeps moving downhill under its own
-weight even on a step where the node itself is below freezing (and a glaciated node almost
-always is), whereas liquid water's flow_target is deliberately forced shut there instead
-(rivers freeze over) -- see `_compute_flow_direction`'s `apply_freeze` parameter.
+Glacier ice is solved by `ice_sheet.py` (issue #353): volume conserved per ice body, shaped
+by a plastic ice-sheet profile. This module calls it and owns the result's place in the step
+(lake ice in, meltwater out to the rivers, frozen river ice in a step later). Material riding
+the ice has its own target (`ice_flow_target`, on HydrologyFields) rather than water's: down
+the ice surface on the ice, and down the ground off it, never stopped by freezing, whereas
+liquid water's flow_target is deliberately forced shut at a frozen node (rivers freeze over)
+-- see `_compute_flow_direction`'s `apply_freeze` parameter.
 
 **Persistence.** A grid-based approach where plates move relative to fixed cells would need a
 persistent field like channel_depth to be deliberately advected (semi-Lagrangian, every step)
@@ -103,6 +103,7 @@ from ..plates import (
     collect_all_channel_width,
     collect_all_elevation,
     collect_all_glacier_depth,
+    collect_all_ice_load_deflection,
     collect_all_lake_depth,
     collect_all_silt_depth,
     gather_node_positions,
@@ -111,6 +112,7 @@ from ..plates import (
 
 if TYPE_CHECKING:
     from ..world import World
+    from .ice_sheet import IceStep
 
 # Same 8-neighbor D8 structure as a regular grid's adjacency -- the graph every algorithm
 # below runs on.
@@ -229,43 +231,21 @@ GLACIER_ACCUMULATION_RATE = 0.02
 GLACIER_MELT_RATE_M_PER_MYR = 400.0
 GLACIER_MELT_REFERENCE_DEGREES_C = 20.0
 GLACIER_MELT_MAX_FACTOR = 3.0
-GLACIER_FLOW_RATE_PER_MYR = 0.15
-GLACIER_MAX_FLOW_FRACTION = 0.5
 GLACIER_VISIBLE_DEPTH_M = 10.0
 
-# Basal melt / sublimation loss that applies to *all* ice every step, independent of the
-# surface-temperature-driven melt_factor above (which is zero wherever the seasonal cycle
-# never reaches GLACIER_MELT_THRESHOLD_C -- see seasonal_positive_degrees). Without an always-on sink,
-# ice that flows into a closed interior basin with no route to the ocean -- and ice from a
-# whole catchment converging on one flat-floored downstream node it can't drain off of
-# (glacier flow scales with bed slope, ~0 there) -- accumulates without bound (the no-cap
-# behavior docs/simulation-model.md#glaciation already flags), which real precipitation
-# turned from a slow cosmetic quirk into runaway multi-hundred-km ice columns. The loss rate
-# grows with the *square* of ice depth (`(depth / GLACIER_BASAL_MELT_REFERENCE_DEPTH_M) ** 2`):
-# a real effect in direction -- thicker ice insulates its bed toward the pressure-melting
-# point -- exaggerated in degree so the equilibrium depth is stiff. Thin valley/plateau
-# glaciers (a few hundred m) lose a fraction of a m/Myr, utterly negligible next to their
-# accumulation; a normal continental sheet (~2-4 km) loses tens to low hundreds of m/Myr,
-# reaching a finite equilibrium; a pathological convergence column is cut back hard. The lost
-# ice joins the step's meltwater like surface melt does.
-GLACIER_BASAL_MELT_M_PER_MYR = 60.0
-GLACIER_BASAL_MELT_REFERENCE_DEPTH_M = 2500.0
-
-# A hard ceiling on per-node ice depth, a backstop beneath the depth-squared basal melt
-# above. The basal-melt term sets a soft equilibrium in the low-thousands of metres for an
-# ordinary accumulation/convergence node, but a rare pathological sink -- a whole cold
-# catchment's ice converging on one flat-floored node in a single step -- can still deliver a
-# one-step pile far past anything physical before the next step's basal melt trims it. Real
-# ice that thick spreads laterally under its own weight within a step; here the excess is
-# shed into that step's meltwater (mass-conserving into the river system, not deleted).
-# ~1.5x the thickest ice sheet on real Earth.
+# A hard ceiling on per-node ice depth, kept as a guard (issue #353). Ice is shaped by
+# ice_sheet.py's plastic profile now, whose divide thickness is sqrt(2 c L) for a sheet whose
+# margin is L from its divide: 3.3 km at L = 500 km and 4.7 km at L = 1000 km under 100 kPa,
+# so only sheets wider than about 1100 km reach it. The excess is shed into the step's
+# meltwater (mass-conserving into the river system, not deleted). ~1.5x the thickest ice
+# sheet on real Earth.
 GLACIER_MAX_DEPTH_M = 5000.0
 
 # During a deep enough ice age -- climate.ice_age_glacial_intensity at or above
 # ICE_AGE_SEA_ICE_MIN_INTENSITY -- ice is allowed to pile up on, and persist over, genuinely
 # freezing polar *ocean* nodes (surface temperature below SEA_ICE_FORMATION_TEMP_C) rather
 # than being discarded at the coastline the way it is the rest of the time (see
-# _update_glaciers' is_ocean guard, now gated by an `allow_ocean_ice` mask). This is the "ice
+# ice_sheet.step_ice's calving of floating ice, gated by an `allow_ocean_ice` mask). This is the "ice
 # caps can grow over polar water in an ice age" behaviour: land glaciers calving toward the
 # coast, plus frozen precipitation landing on the sea itself, build a floating ice cap over
 # the pole. Outside an ice age -- or during its interglacial phase, intensity near 0 -- the
@@ -401,6 +381,11 @@ class HydrologyFields:
     # keeps them. Empty when breaching is off. Defaulted, for the same backward-compatibility
     # reason as is_sea.
     breach_notch_m: np.ndarray = field(default_factory=lambda: np.zeros(0))
+    # This step's glacier solve (issue #353): the ice ledger, per-body budgets, plastic
+    # thickness, thermal state, balance flux and sliding speed erosion.py abrades with.
+    # `glacier_depth` above already includes it. A plain None default (a class attribute),
+    # so a cache pickled before this field existed still reads as "no ice diagnostics".
+    ice: "IceStep | None" = None
 
 
 def _gather_nodes(
@@ -859,8 +844,8 @@ def _compute_flow_direction(
 
 def _slope_to_flow_target(points: np.ndarray, elevation: np.ndarray, flow_target: np.ndarray) -> np.ndarray:
     """Dimensionless rise/run from each node to its own flow_target (0 for a node with no
-    target) -- the slope glacier flow moves along, distinct from erosion.py's own
-    SLOPE_NEIGHBOR_COUNT=4 "lowest of k neighbors" slope: glacier flow specifically follows
+    target) -- the slope a river's mouth speed uses (see group_rivers), distinct from
+    erosion.py's own SLOPE_NEIGHBOR_COUNT=4 "lowest of k neighbors" slope: it follows
     `flow_target` (this module's own k=FLOW_NEIGHBOR_COUNT graph), not erosion's separate,
     smaller neighborhood."""
     has_target = flow_target >= 0
@@ -997,74 +982,19 @@ def seasonal_positive_degrees(mean_c: np.ndarray, amplitude_c: np.ndarray, thres
     return out
 
 
-def _update_glaciers(
-    elevation: np.ndarray,
-    is_ocean: np.ndarray,
-    flow_target: np.ndarray,
-    slope_to_target: np.ndarray,
-    prev_glacier_depth: np.ndarray,
-    frozen_precip: np.ndarray,
-    frozen_from_lake: np.ndarray,
-    is_frozen: np.ndarray,
-    temperature: np.ndarray,
-    years: float,
-    allow_ocean_ice: np.ndarray | None = None,
-    seasonal_amplitude: np.ndarray | None = None,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Grows/melts/flows glacier ice, generalized from grid 8-neighbor D8 routing to this
-    module's flow_target graph. Returns (new_glacier_depth, melt): melt feeds back into this
-    step's water source (see compute_hydrology) as real meltwater, not a separate accounting
-    bucket -- glacial melt becomes real river discharge rather than a parallel, disconnected
-    accounting path.
-
-    `allow_ocean_ice` is the per-node mask of freezing polar ocean nodes that an active ice
-    age lets ice accumulate over (see SEA_ICE_FORMATION_TEMP_C); `None` (the default) means
-    all-False, reproducing the old unconditional calve-at-the-coast behaviour exactly.
-
-    `seasonal_amplitude` is each node's imputed seasonal half-amplitude (C) around its annual
-    mean `temperature`; surface melt scales with that cycle's positive degrees (see
-    GLACIER_MELT_THRESHOLD_C's comment). `None` means no seasons: melt above a 0C mean only."""
-    if seasonal_amplitude is None:
-        seasonal_amplitude = np.zeros_like(temperature, dtype=float)
-    if allow_ocean_ice is None:
-        allow_ocean_ice = np.zeros_like(is_ocean, dtype=bool)
-    years_myr = years / 1_000_000.0
-    accumulation = np.where(is_frozen, GLACIER_ACCUMULATION_RATE * frozen_precip * years_myr, 0.0)
-    depth_before_flow = prev_glacier_depth + frozen_from_lake + accumulation
-
-    melt_factor = np.clip(
-        seasonal_positive_degrees(temperature, seasonal_amplitude) / GLACIER_MELT_REFERENCE_DEGREES_C, 0.0, GLACIER_MELT_MAX_FACTOR
-    )
-    melt = np.minimum(GLACIER_MELT_RATE_M_PER_MYR * melt_factor * years_myr, depth_before_flow)
-    # Depth-squared basal melt/sublimation, applied even where melt_factor is zero -- see
-    # GLACIER_BASAL_MELT_M_PER_MYR's comment for why an always-on, steeply thickness-scaled
-    # sink is what keeps convergence/closed-basin ice from growing without bound.
-    depth_ratio = depth_before_flow / GLACIER_BASAL_MELT_REFERENCE_DEPTH_M
-    basal_melt = np.minimum(
-        GLACIER_BASAL_MELT_M_PER_MYR * depth_ratio * depth_ratio * years_myr,
-        depth_before_flow - melt,
-    )
-    melt = melt + basal_melt
-    depth_after_melt = depth_before_flow - melt
-
-    flow_fraction = np.clip(GLACIER_FLOW_RATE_PER_MYR * slope_to_target * years_myr, 0.0, GLACIER_MAX_FLOW_FRACTION)
-    has_target = flow_target >= 0
-    outflow = np.where(has_target, depth_after_melt * flow_fraction, 0.0)
-    remaining = depth_after_melt - outflow
-
-    inflow = np.zeros_like(elevation)
-    np.add.at(inflow, flow_target[has_target], outflow[has_target])
-
-    # Ice reaching (or accumulating on) an ocean node is normally discarded, not piled up --
-    # ordinary sea ice is a different, thinner, seasonal phenomenon this model doesn't
-    # represent; that guard reads as calving where a glacier reaches a coast. During a deep
-    # ice age, `allow_ocean_ice` exempts genuinely freezing polar ocean nodes, so a real
-    # floating ice cap grows over the pole (see SEA_ICE_FORMATION_TEMP_C).
-    piled = np.where(is_ocean & ~allow_ocean_ice, 0.0, np.clip(remaining + inflow, 0.0, None))
-    # Shed anything past GLACIER_MAX_DEPTH_M (see its comment) into this step's meltwater.
-    overflow = np.clip(piled - GLACIER_MAX_DEPTH_M, 0.0, None)
-    new_depth = piled - overflow
-    return new_depth, melt + overflow
+def _ice_surface_flow_target(
+    ice_surface: np.ndarray, neighbor_idx: np.ndarray, glacier_depth: np.ndarray, ground_target: np.ndarray
+) -> np.ndarray:
+    """Where material riding the ice moves next (issue #353 section 6): on visible ice, the
+    steepest descent of the ice surface (elevation + ice); elsewhere, or on an ice-surface
+    pit, `ground_target` (the ground's own downhill path)."""
+    on_ice = glacier_depth >= GLACIER_VISIBLE_DEPTH_M
+    neighbor_surface = ice_surface[neighbor_idx]
+    lower = np.where(neighbor_surface < ice_surface[:, None], neighbor_surface, np.inf)
+    col = np.argmin(lower, axis=1)
+    rows = np.arange(len(ice_surface))
+    has_lower = np.isfinite(lower[rows, col])
+    return np.where(on_ice & has_lower, neighbor_idx[rows, col], ground_target).astype(np.int64)
 
 
 def compute_hydrology(
@@ -1078,7 +1008,7 @@ def compute_hydrology(
     """Runs the full flow-routing pipeline against the world's current node cloud and this
     step's climate: (lake freeze, if cold enough) -> depression hierarchy + spill routing (see
     `lakes.build_lake_hierarchy`/`lakes.compute_spill_routing`) -> flow direction ->
-    glacier accumulation/melt/flow -> precipitation(-minus-frozen)-plus-meltwater-plus-lake-
+    glacier mass balance and shape (`ice_sheet.step_ice`) -> precipitation(-minus-frozen)-plus-meltwater-plus-lake-
     breach downstream accumulation -> lake growth/evaporation/merge/split, resolved against the
     *same* depression hierarchy spill routing already used (`lakes.resolve_lakes`) -> river
     classification (excluding flooded lake nodes, so a river ends at a lake's shore
@@ -1149,16 +1079,22 @@ def compute_hydrology(
     # as snow, a river crossing it stops -- when its sampled surface temperature is below the
     # real freezing point, OR when it already carries a real ice cap (GLACIER_VISIBLE_DEPTH_M
     # of accumulated ice, the same "genuine ice, not a trace" threshold rendering uses). The
-    # second clause is what keeps rivers/lakes/snowfall frozen *over the ice caps* even on a
+    # second clause is what keeps rivers and snowfall frozen *over the ice caps* even on a
     # step whose temperature briefly ticks above 0: a marginal thaw doesn't put liquid water
-    # back on top of kilometres of ice. The glacier's own surface melt (`_update_glaciers`,
+    # back on top of kilometres of ice. The glacier's own surface melt (`ice_sheet.step_ice`,
     # temperature-driven) still ablates the cap regardless -- this governs only what happens to
     # water and precipitation arriving on it, not whether the ice itself survives. Computed
     # *before* the depression hierarchy/spill routing below (moved up from its old position
     # after basin-spill) since compute_spill_routing needs lake_depth_adjusted, not just bare
     # terrain -- see that function's own docstring for why.
     is_frozen = (temperature_at_nodes < FREEZE_POINT_C) | (prev_glacier_depth >= GLACIER_VISIBLE_DEPTH_M)
-    freezing_lake = is_frozen & (prev_lake_depth > 0.0)
+    # A standing lake freezes only where the annual mean is below freezing (issue #353). Ice on
+    # warm ground no longer freezes the lake under or beside it: such a lake (sub- or
+    # proglacial) is refilled every step by runoff and meltwater balanced in real units
+    # (#297), and freezing it 1:1 into ice -- whose snowfall is in model units, ~50,000x
+    # slower -- fed the ice ~60x faster than snow did once the ice volume was conserved.
+    lake_frozen = temperature_at_nodes < FREEZE_POINT_C
+    freezing_lake = lake_frozen & (prev_lake_depth > 0.0)
     lake_depth_adjusted = np.where(freezing_lake, 0.0, prev_lake_depth)
     frozen_from_lake = np.where(freezing_lake, prev_lake_depth, 0.0)
 
@@ -1215,23 +1151,14 @@ def compute_hydrology(
     flow_target, should_spill = _compute_flow_direction(
         elevation, is_ocean, neighbor_idx, lake_surface_offset, filled_elevation, spill_target, prev_channel_depth, is_frozen
     )
-    # Ice moves under its own weight regardless of whether this step is literally below
-    # freezing (unlike liquid water, gated above) -- see _compute_flow_direction's own
-    # apply_freeze docstring. Without this, a glaciated node (almost always is_frozen, or it
-    # wouldn't be accumulating ice) could never advance its own ice downhill at all.
-    #
-    # The "water surface" the spill-redirect test uses is elevation + prev lake depth + prev
-    # ice depth: a deep enough ice mass in a closed interior basin overtops its confining rim
-    # and drains toward the ocean via spill_target, exactly as a filled lake does (real ice
-    # sheets overflow basins -- that is what outlet glaciers and ice streams are). Without the
-    # ice term here, a topological sink accumulates every upstream node's converging ice with
-    # no release, and realistic frozen precipitation piles it into physically absurd
-    # multi-hundred-km columns (see also GLACIER_BASAL_MELT_M_PER_MYR).
+    # Off the ice, material riding the ice (glacial till, landslide debris) leaves along the
+    # ground's own downhill path, never gated by freezing -- see _compute_flow_direction's
+    # apply_freeze docstring. On the ice it follows the ice surface instead (set below, once
+    # this step's ice is solved).
     ice_flow_target, _ = _compute_flow_direction(
-        elevation, is_ocean, neighbor_idx, lake_surface_offset + prev_glacier_depth, filled_elevation, spill_target, prev_channel_depth, is_frozen, apply_freeze=False
+        elevation, is_ocean, neighbor_idx, lake_surface_offset, filled_elevation, spill_target, prev_channel_depth, is_frozen, apply_freeze=False
     )
 
-    frozen_precip = np.where(is_frozen, precipitation_at_nodes, 0.0)
     liquid_precip = np.where(is_frozen, 0.0, precipitation_at_nodes)
 
     # In a deep enough glacial phase, let ice pile up over freezing polar ocean (a floating
@@ -1243,18 +1170,29 @@ def compute_hydrology(
     # Freezing polar ocean grows an ice cap; an ocean node that *already* holds one keeps it
     # (a bit of thermal-inertia hysteresis -- sea ice doesn't vanish the instant the water
     # edges back above its freezing point) -- but only while the glacial phase itself lasts:
-    # once intensity falls back below the gate the cap is shed regardless (see _update_glaciers).
+    # once intensity falls back below the gate the cap is shed regardless (it calves, see
+    # ice_sheet.step_ice).
     allow_ocean_ice = (
         is_ocean
         & ((temperature_at_nodes < SEA_ICE_FORMATION_TEMP_C) | (prev_glacier_depth >= GLACIER_VISIBLE_DEPTH_M))
         & (climate.ice_age_glacial_intensity(world) >= ICE_AGE_SEA_ICE_MIN_INTENSITY)
     )
 
-    slope_to_ice_target = _slope_to_flow_target(points, elevation, ice_flow_target)
-    new_glacier_depth, melt = _update_glaciers(
-        elevation, is_ocean, ice_flow_target, slope_to_ice_target, prev_glacier_depth, frozen_precip, frozen_from_lake, is_frozen, temperature_at_nodes, years, allow_ocean_ice=allow_ocean_ice,
-        seasonal_amplitude=seasonal_amplitude_at_nodes,
+    # Issue #353: ice volume is conserved per ice body and shaped by a plastic ice-sheet
+    # profile (ice_sheet.py), replacing one-hop bed-slope flow. Imported here for the same
+    # reason as climate above: ice_sheet imports this module.
+    from . import ice_sheet
+
+    new_glacier_depth, melt, ice = ice_sheet.step_ice(
+        points, neighbor_idx, areas, elevation, collect_all_ice_load_deflection(plates_in_order), world.sea_level_m,
+        prev_glacier_depth, frozen_from_lake,
+        ice_sheet.SurfaceClimate(
+            precipitation_at_nodes, temperature_at_nodes,
+            seasonal_amplitude_at_nodes if seasonal_amplitude_at_nodes is not None else np.zeros(n), is_frozen,
+        ),
+        np.concatenate([p.collect("mobile_cover_m") for p in plates_in_order]), is_ocean, allow_ocean_ice, years,
     )
+    ice_flow_target = _ice_surface_flow_target(elevation + new_glacier_depth, neighbor_idx, new_glacier_depth, ice_flow_target)
 
     # A spilling lake's own surface area feeds extra erosive "water" in at its sink, on top of
     # whatever ordinary precip/melt landed there this step -- see LAKE_BREACH_EROSION_
@@ -1294,24 +1232,30 @@ def compute_hydrology(
 
     # A river blocked by its own freeze doesn't just vanish -- its water piles up as ice right
     # where it froze (route_downstream already deposited it there, since a frozen node's
-    # flow_target was forced to -1 above), joining this step's glacier_depth. Added after
-    # _update_glaciers (which ran before this routing pass could know water_deposited) rather
-    # than folded into its own accumulation term -- this newly-frozen river ice simply starts
-    # flowing/melting from next step onward, an accepted one-step lag matching this codebase's
-    # general tolerance for that (see e.g. climate_cache/hydrology_cache's own docstrings).
+    # flow_target was forced to -1 above), joining this step's glacier_depth. Added after the
+    # ice solve (which needs this routing pass's meltwater, so it can't know water_deposited)
+    # rather than folded into its accumulation -- an explicit one-step lag (issue #353 section
+    # 5): this ice joins its body's opening volume next step, and the ledger books it as
+    # `frozen_river_ice_m3`.
     # `water_deposited` is an accumulated *flux* (mm/yr-equivalent, and at a should_spill sink
     # it also carries the LAKE_BREACH_EROSION_COEFFICIENT-scaled synthetic surge), so it's
     # converted to an ice *depth* by the same GLACIER_ACCUMULATION_RATE * (·) * years_myr the
     # frozen-precipitation term uses -- not added 1:1 the way a standing frozen lake's own
     # lake_depth (already a depth) is -- and then re-clipped to GLACIER_MAX_DEPTH_M so a large
     # river (or a lake breach) freezing into a cold sink can't create a physically absurd
-    # ice column in a single step.
+    # ice column in a single step. What the clip drops is booked (`frozen_river_capped_m3`)
+    # and logged as a warning (review of #359): reaching it means a missing sink.
     frozen_river_ice = GLACIER_ACCUMULATION_RATE * water_deposited * (years / 1_000_000.0)
-    new_glacier_depth = np.where(
+    with_river_ice = np.where(
         is_frozen & ~is_ocean,
         np.minimum(new_glacier_depth + frozen_river_ice, GLACIER_MAX_DEPTH_M),
         new_glacier_depth,
     )
+    ice.ledger.frozen_river_ice_m3 = float(np.dot(with_river_ice - new_glacier_depth, areas))
+    unclipped = np.where(is_frozen & ~is_ocean, new_glacier_depth + frozen_river_ice, new_glacier_depth)
+    ice.ledger.frozen_river_capped_m3 = float(np.dot(unclipped - with_river_ice, areas))
+    ice_sheet.warn_if_river_ice_capped(ice.ledger)
+    new_glacier_depth = with_river_ice
 
     # is_river isn't known yet -- it needs this step's *final* lake_depth (below) to exclude
     # flooded nodes, so fields is built with a placeholder here and finished after.
@@ -1320,6 +1264,7 @@ def compute_hydrology(
         np.zeros(n, dtype=bool), lake_depth_adjusted, new_glacier_depth, plates_in_order, ice_flow_target=ice_flow_target,
         channel_width=prev_channel_width,
         breach_notch_m=breach.notch_m if breach is not None else np.zeros(0),
+        ice=ice,
     )
     # Resolves the *same* forest built early (above, for spill routing) against this step's
     # actual water_deposited -- not a second lakes.step_lakes call, which would rebuild the
@@ -1344,7 +1289,7 @@ def compute_hydrology(
         evaporation_m_per_yr=evaporation_mm / 1000.0,
     )
     fields.lake_depth, fields.silt_deposited, fields.is_sea, fields.lake_events = lakes.resolve_lakes(
-        forest, elevation, lake_depth_adjusted, water_deposited, years, is_frozen, hypsometry, lake_climate
+        forest, elevation, lake_depth_adjusted, water_deposited, years, lake_frozen, hypsometry, lake_climate
     )
     fields.lake_forest = forest
     fields.hypsometry = hypsometry

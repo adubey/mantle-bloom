@@ -305,13 +305,19 @@ hydroclimate/erosion.py           every-step rain/river/weathering/glacier erosi
 hydroclimate/hydrology.py         every-step flow routing over the geology node cloud (a k-nearest-
                      neighbor graph, not a grid): basin-spill detection, steepest-
                      descent flow direction, downstream flow accumulation, glacier
-                     accumulation/melt/flow -- feeds erosion.py's river/glacier erosion and
+                     mass balance and shape (via ice_sheet.py) -- feeds erosion.py's river/glacier erosion and
                      deposition and the rendered river/lake/glacier overlay (see
                      simulation-model.md#hydrology and simulation-model.md#glaciation); also
                      groups the flat is_river mask into distinct drainage networks
                      (group_rivers) and answers the River Inspector's click hit-test
                      (river_at), on demand rather than every step (see
                      simulation-model.md#river-inspector)
+hydroclimate/ice_sheet.py         every-step glacier solve, called from hydrology.compute_hydrology:
+                     groups ice into bodies, conserves each body's volume with a backward-
+                     Euler update of its extent, shapes it with a plastic ice-sheet profile
+                     (an ordered-upwind numba sweep on the k-NN graph), books an ice ledger,
+                     and diagnoses balance flux and the basal sliding speed erosion.py's
+                     glacial abrasion reads (see simulation-model.md#glaciation)
 hydroclimate/lakes.py              every-step lake growth/evaporation/merge/split/silt, an explicit n-ary
                      tree of Lake objects built from a depression-hierarchy pass over
                      hydroclimate/hydrology.py's own k-NN graph -- called from hydrology.compute_hydrology,
