@@ -227,6 +227,7 @@ def least_climb_to_ocean(
     neighbor_idx: np.ndarray,
     bedrock_rate: np.ndarray,
     cover_m: np.ndarray | None = None,
+    blocked: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """`(cost_m, next_hop)` for every node, from one multi-source Dijkstra rooted at every
     ocean node. Water moves from `i` to each `j` in `neighbor_idx[i]`. That step costs the time
@@ -246,11 +247,12 @@ def least_climb_to_ocean(
     cols = neighbor_idx.reshape(-1)
     cover_m = np.zeros(n) if cover_m is None else np.clip(np.asarray(cover_m, dtype=float), 0.0, None)
     bedrock_rate = np.asarray(bedrock_rate, dtype=float)
+    blocked = np.zeros(n, dtype=bool) if blocked is None else np.asarray(blocked, dtype=bool)
     climb = np.clip(passage[cols] - passage[rows], 0.0, None)
     weight = _cut_time_myr(climb, cover_m[cols], bedrock_rate[cols]) * BREACH_REFERENCE_CARVE_M_PER_MYR + _HOP_EPSILON_M
     # Water never leaves the ocean, so no edge starts there. This also stops a path from
     # running back out of the ocean.
-    keep = ~is_ocean[rows]
+    keep = ~is_ocean[rows] & ~blocked[rows] & ~blocked[cols]
     rows, cols, weight = rows[keep], cols[keep], weight[keep]
     # A padded neighbour row can repeat an edge, and a sparse matrix sums duplicates, so keep
     # one copy of each.

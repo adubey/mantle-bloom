@@ -166,9 +166,8 @@ MAX_CHANNEL_DEPTH_M = 2000.0
 # function of how much water
 # passes through, not of slope (a wide, lazy lowland river and a narrow, steep mountain
 # torrent can carry comparable discharge, but width is driven by the water, not the
-# gradient). Grows the same way channel_depth does -- persistent, monotonically
-# non-decreasing, capped -- rather than a stateless function of this step's flow alone, so a
-# river that temporarily dries up doesn't instantly narrow either.
+# gradient). River discharge and thick ice grow the shared corridor; deposited fill can narrow
+# it again.
 WIDTH_GROWTH_COEFFICIENT = 50.0
 WIDTH_FLOW_EXPONENT = 0.5
 MAX_CHANNEL_WIDTH_M = 5000.0
@@ -269,22 +268,24 @@ EARTHQUAKE_EROSION_PEAK_BOOST = 4.0
 EARTHQUAKE_EROSION_MW_REF = 6.5
 EARTHQUAKE_EROSION_REACH_KM_PER_MW = 12.0
 
-# Mass-wasting runout (issue #275 phase 4). Landslide and rockfall debris moves by gravity, not
-# with liquid water, so seismic erosion no longer joins the water-routed pool. That pool stops
-# dead at a frozen node (hydrology gives frozen land no flow target), and nearly every column
-# at the Hc cap is a frozen summit: its debris was "deposited" straight back where it came
-# from, so the highest belts never lost any net rock. `_route_mass_wasting` instead carries the
-# debris down the bare-rock steepest-descent path, frozen or not, and settles it where the
-# ground flattens out -- the foreland. On ground at or above MASS_WASTING_RUNOUT_SLOPE (a
-# mountain flank) none of it settles; on flat ground it all does, linearly in between. A
-# column within MASS_WASTING_HEADROOM_TAPER_M of the Hc cap takes proportionally less, and none
-# at the cap, so debris runs on past a saturated plateau rather than overflowing it. Debris
-# that reaches the sea spreads onto the shelf and down into the ocean basin like the other
-# marine sediment (_spread_marine_sediment) -- turbidity currents off a collision margin.
-# MASS_WASTING_RUNOUT_SLOPE sits between a mountain flank (~0.05) and a foreland plain (median
-# land slope ~3e-4, see WEATHERING_RELIEF_REFERENCE_SLOPE), a starting point like the others.
+# Mass-wasting runout (issue #275 phase 4). Earthquake debris follows the same channel-adjusted
+# least-cost ocean route as rivers and ice. It deposits at the source and at successive channel
+# nodes; the carried remainder tapers downstream, with extra deposition before a rise and less
+# on steep drops. Headroom limits deposition near the Hc cap. Debris reaching the sea spreads
+# onto the shelf like other marine sediment (_spread_marine_sediment).
 MASS_WASTING_RUNOUT_SLOPE = 0.005
 MASS_WASTING_HEADROOM_TAPER_M = 2000.0
+# The channel-following runout path leaves a modest share at each traversed cell, so more
+# material lands close to its source. A substantial uphill step concentrates deposition on
+# the upstream side of that rise; steep downhill steps reduce it.
+MASS_WASTING_CHANNEL_BASE_DEPOSITION = 0.12
+MASS_WASTING_CHANNEL_FLAT_BONUS = 0.25
+MASS_WASTING_CHANNEL_RISE_BONUS = 0.45
+MASS_WASTING_CHANNEL_RISE_SCALE_M = 500.0
+MASS_WASTING_CHANNEL_MAX_DEPOSITION = 0.65
+CHANNEL_PATH_BASE_DEPOSITION_FRACTION = 0.02
+CHANNEL_PATH_RISE_DEPOSITION_FRACTION = 0.35
+CHANNEL_PATH_RISE_SCALE_M = 500.0
 # A land pit fills only to its Hc room; the rest spills over the basin rim (hydrology's
 # spill_target) and runs on. This many downhill sweeps, then any debris still spilling stays
 # in its pit.
@@ -914,18 +915,14 @@ def _route_mass_wasting(
     on_ice: np.ndarray | None = None,
     inflow_vol: np.ndarray | None = None,
     inflow_tagged: np.ndarray | None = None,
+    channel_flow_target: np.ndarray | None = None,
+    points: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Gravity runout of landslide debris (see MASS_WASTING_*). Each node hands its debris to
-    its lowest strictly-lower `neighbor_idx` neighbour -- bare rock, frozen or not, with no
-    lake-spill or ice edges, so elevation-descending order visits every node before its target.
-    Debris leaves its source; from the first node downslope on, a share settles at each node it
-    passes (MASS_WASTING_RUNOUT_SLOPE's linear taper, scaled by the column's Hc headroom), never
-    more than `capacity_vol` there. Debris reaching an ocean node stops there.
-
-    A land pit fills up to its capacity, and the rest spills over the basin rim to
-    `spill_target` (hydrology's one-hop basin escape) and runs on from there in a further sweep,
-    up to MASS_WASTING_SPILL_PASSES sweeps. Whatever is still left -- a pit with no spill
-    target, or debris still spilling after the last sweep -- settles in its pit, room or not.
+    """Route earthquake debris along the shared channel graph when supplied, otherwise use
+    gravity runout for legacy callers. Channel-following deposits start at the source and settle
+    at each downstream node, weighted toward nearby cells and the upstream side of rises, and
+    away from steep drops. Headroom limits each deposit, and the route's remaining load continues
+    to the ocean. Pits use `spill_target` or retain their load locally.
 
     Debris that starts on, or runs onto, a land node marked `on_ice` stops there and is handed
     back as "ice arrival": a glacier carries rockfall on and in the ice to its margin (lateral
@@ -952,29 +949,68 @@ def _route_mass_wasting(
     rows = np.arange(n)
     neighbor_elevation = elevation[neighbor_idx]
     lowest = np.argmin(neighbor_elevation, axis=1)
-    target = np.where(neighbor_elevation[rows, lowest] < elevation, neighbor_idx[rows, lowest], -1)
-    settle = np.clip(1.0 - slope / MASS_WASTING_RUNOUT_SLOPE, 0.0, 1.0)
-    settle = settle * np.clip(headroom_m / MASS_WASTING_HEADROOM_TAPER_M, 0.0, 1.0)
+    gravity_target = np.where(neighbor_elevation[rows, lowest] < elevation, neighbor_idx[rows, lowest], -1)
+    follows_channels = channel_flow_target is not None
+    target = gravity_target if channel_flow_target is None else np.where(channel_flow_target >= 0, channel_flow_target, gravity_target)
     spill = spill_target if spill_target is not None else np.full(n, -1)
+    if follows_channels:
+        target = np.where(target >= 0, target, spill)
     glaciated = (on_ice if on_ice is not None else np.zeros(n, dtype=bool)) & ~is_ocean
+
+    if follows_channels:
+        has_target = target >= 0
+        safe_target = np.where(has_target, target, 0)
+        if points is not None:
+            run_m = geometry.angular_distance(points, points[safe_target]) * PLANET_RADIUS_KM * 1000.0
+            run_m = np.maximum(run_m, 1.0)
+            route_slope = np.where(has_target, np.clip(elevation - elevation[safe_target], 0.0, None) / run_m, 0.0)
+        else:
+            route_slope = np.where(has_target, slope, 0.0)
+        flat_preference = np.clip(1.0 - route_slope / MASS_WASTING_RUNOUT_SLOPE, 0.0, 1.0)
+        steep_drop_penalty = np.exp(-route_slope / MASS_WASTING_RUNOUT_SLOPE)
+        rise_ahead = np.where(has_target, np.clip(elevation[safe_target] - elevation, 0.0, None), 0.0)
+        settle = MASS_WASTING_CHANNEL_BASE_DEPOSITION * steep_drop_penalty
+        settle += MASS_WASTING_CHANNEL_FLAT_BONUS * flat_preference
+        settle += MASS_WASTING_CHANNEL_RISE_BONUS * np.clip(rise_ahead / MASS_WASTING_CHANNEL_RISE_SCALE_M, 0.0, 1.0)
+        settle = np.clip(settle, 0.0, MASS_WASTING_CHANNEL_MAX_DEPOSITION)
+    else:
+        settle = np.clip(1.0 - slope / MASS_WASTING_RUNOUT_SLOPE, 0.0, 1.0)
+    settle = settle * np.clip(headroom_m / MASS_WASTING_HEADROOM_TAPER_M, 0.0, 1.0)
 
     # Debris shed onto the ice rides it; a source with nowhere lower to send its debris keeps it.
     rides = (source_vol > 0) & glaciated
     ice[rides] += source_vol[rides]
     ice_tagged[rides] += source_tagged[rides]
-    stays = (source_vol > 0) & (target < 0) & ~glaciated
-    deposit[stays] += source_vol[stays]
-    deposit_tagged[stays] += source_tagged[stays]
-    moves = (source_vol > 0) & (target >= 0) & ~glaciated
     flux = np.zeros(n)
     flux_tagged = np.zeros(n)
-    np.add.at(flux, target[moves], source_vol[moves])
-    np.add.at(flux_tagged, target[moves], source_tagged[moves])
+    if follows_channels:
+        # Retention starts at the source and acts at every point on the route. The remaining
+        # flux diminishes downstream, favoring nearby channel cells while still reaching rises.
+        land_sources = (source_vol > 0) & ~glaciated
+        flux[land_sources] += source_vol[land_sources]
+        flux_tagged[land_sources] += source_tagged[land_sources]
+    else:
+        stays = (source_vol > 0) & (target < 0) & ~glaciated
+        deposit[stays] += source_vol[stays]
+        deposit_tagged[stays] += source_tagged[stays]
+        moves = (source_vol > 0) & (target >= 0) & ~glaciated
+        np.add.at(flux, target[moves], source_vol[moves])
+        np.add.at(flux_tagged, target[moves], source_tagged[moves])
     flux += inflow
     if inflow_tagged is not None:
         flux_tagged += inflow_tagged
 
-    order = np.argsort(-elevation).tolist()
+    if follows_channels:
+        order, stuck = hydrology._routing_order(elevation, is_ocean, target)
+        if stuck:
+            # Spill overrides can make a rare cycle. Break it into terminal deposits so debris
+            # never circulates or disappears.
+            target[np.asarray(stuck, dtype=np.int64)] = -1
+            order.extend(stuck)
+        sweep_count = 1
+    else:
+        order = np.argsort(-elevation).tolist()
+        sweep_count = MASS_WASTING_SPILL_PASSES
     target_list = target.tolist()
     spill_list = spill.tolist()
     settle_list = settle.tolist()
@@ -985,8 +1021,8 @@ def _route_mass_wasting(
     deposit_tagged_list = [0.0] * n
     flux_list = flux.tolist()
     tagged_list = flux_tagged.tolist()
-    for sweep in range(MASS_WASTING_SPILL_PASSES):
-        last = sweep == MASS_WASTING_SPILL_PASSES - 1
+    for sweep in range(sweep_count):
+        last = sweep == sweep_count - 1
         spilled = [0.0] * n
         spilled_tagged = [0.0] * n
         for i in order:
@@ -1071,6 +1107,28 @@ def _route_wind_deposit(
     _, nearest = tree.query(target_points[active_idx], k=1, workers=query_workers(len(active_idx)))
     np.add.at(result, nearest, source_amount[active_idx])
     return result
+
+
+def _channel_path_deposition_fraction(
+    points: np.ndarray, elevation: np.ndarray, flow_target: np.ndarray
+) -> np.ndarray:
+    """A small deposition share on every channel hop, raised before barriers and reduced on
+    steep drops. The routed remainder naturally favors cells near each source because each
+    hop deposits from a shrinking load."""
+    n = len(elevation)
+    has_target = flow_target >= 0
+    if n == 0 or not np.any(has_target):
+        return np.zeros(n)
+    safe_target = np.where(has_target, flow_target, 0)
+    run_m = geometry.angular_distance(points, points[safe_target]) * PLANET_RADIUS_KM * 1000.0
+    run_m = np.maximum(run_m, 1.0)
+    drop = np.clip(elevation - elevation[safe_target], 0.0, None)
+    route_slope = np.where(has_target, drop / run_m, 0.0)
+    steep_drop_penalty = np.exp(-route_slope / MASS_WASTING_RUNOUT_SLOPE)
+    rise = np.where(has_target, np.clip(elevation[safe_target] - elevation, 0.0, None), 0.0)
+    fraction = CHANNEL_PATH_BASE_DEPOSITION_FRACTION * steep_drop_penalty
+    fraction += CHANNEL_PATH_RISE_DEPOSITION_FRACTION * np.clip(rise / CHANNEL_PATH_RISE_SCALE_M, 0.0, 1.0)
+    return np.where(has_target, np.clip(fraction, 0.0, 0.9), 0.0)
 
 
 def _spread_beach_sediment(points: np.ndarray, elevation: np.ndarray, is_ocean: np.ndarray, ocean_terminal_deposit: np.ndarray) -> np.ndarray:
@@ -2164,7 +2222,8 @@ def apply_erosion(
     # multiplier can't make a reach retain more than passes through it (route_downstream still
     # conserves the routed total exactly at any fraction in [0, 1)).
     deposition_fraction = float(np.clip(DEPOSITION_FRACTION * world.river_deposition_multiplier, 0.0, 0.95))
-    retain_fraction = np.where(is_depositing, deposition_fraction, 0.0)
+    path_retention = _channel_path_deposition_fraction(points, elevation, hydro.flow_target)
+    retain_fraction = np.clip(path_retention + np.where(is_depositing, deposition_fraction, 0.0), 0.0, 0.95)
     water_routed_vol = water_routed_amount * area
     _, water_routed_deposit = hydrology.route_downstream(
         elevation, is_ocean_node, hydro.flow_target, water_routed_vol, retain_fraction=retain_fraction
@@ -2204,23 +2263,22 @@ def apply_erosion(
     # ice_factor above is deliberately built from -- this is about where the ice sits *after*
     # this step's own flow, not about damping the erosion-rate formula.
     at_glacier_margin = np.where(hydro.glacier_depth < hydrology.GLACIER_VISIBLE_DEPTH_M, 1.0, 0.0)
+    ice_path_retention = _channel_path_deposition_fraction(points, elevation, hydro.ice_flow_target)
+    ice_retain_fraction = np.maximum(ice_path_retention, at_glacier_margin)
     glacier_carried_vol = glacier_carried * area
     _, glacier_transport_deposit = hydrology.route_downstream(
-        elevation, is_ocean_node, hydro.ice_flow_target, glacier_carried_vol, retain_fraction=at_glacier_margin
+        elevation, is_ocean_node, hydro.ice_flow_target, glacier_carried_vol, retain_fraction=ice_retain_fraction
     )
     _, glacier_transport_tagged = hydrology.route_downstream(
-        elevation, is_ocean_node, hydro.ice_flow_target, glacier_carried_vol * tag, retain_fraction=at_glacier_margin
+        elevation, is_ocean_node, hydro.ice_flow_target, glacier_carried_vol * tag, retain_fraction=ice_retain_fraction
     )
 
-    # Mass wasting (issue #275 phase 4): landslide debris runs out downslope by gravity and
-    # settles on the foreland, never past a column's Hc cap -- see `_route_mass_wasting`.
-    # Debris that falls onto a glacier rides the ice instead: along ice_flow_target, the same
-    # path glacial debris takes, out to the ice margin -- and out through a basin's lowest
-    # outlet once the ice overtops its rim. Wherever the ice drops it, it runs out by gravity
-    # again from there, under the same Hc room, so the ice can't pile it past the cap. Debris
-    # landing in a lake spreads across it the same capacity-aware way. What reaches the sea
-    # spreads onto the shelf and into the basin like the other marine sediment, under the same
-    # ocean_deposition_multiplier.
+    # Mass wasting (issue #275 phase 4): earthquake debris follows the same channel-adjusted
+    # ocean route as river and ice-carried material. It settles progressively along that path,
+    # with extra retention before rises and reduced retention on steep drops; headroom still
+    # caps each receiver. Debris on ice rides the ice route to its margin, then resumes along
+    # the same channel graph. Lake deposits remain capacity-aware and ocean arrivals spread on
+    # the shelf like other marine sediment.
     mass_wasting_vol = applied_seismic * area
     landslide_room = np.where(has_column, lithosphere.MAX_CRUSTAL_THICKNESS_M - prior_hc + removed_m, np.inf) * area
     headroom_m = np.where(has_column, lithosphere.MAX_CRUSTAL_THICKNESS_M - prior_hc, np.inf)
@@ -2235,12 +2293,14 @@ def apply_erosion(
         headroom_m=headroom_m,
         spill_target=hydro.spill_target,
         on_ice=hydro.glacier_depth >= hydrology.GLACIER_VISIBLE_DEPTH_M,
+        channel_flow_target=hydro.ice_flow_target,
+        points=points,
     )
     _, ice_dropped = hydrology.route_downstream(
-        elevation, is_ocean_node, hydro.ice_flow_target, landslide_ice, retain_fraction=at_glacier_margin
+        elevation, is_ocean_node, hydro.ice_flow_target, landslide_ice, retain_fraction=ice_retain_fraction
     )
     _, ice_dropped_tagged = hydrology.route_downstream(
-        elevation, is_ocean_node, hydro.ice_flow_target, landslide_ice_tagged, retain_fraction=at_glacier_margin
+        elevation, is_ocean_node, hydro.ice_flow_target, landslide_ice_tagged, retain_fraction=ice_retain_fraction
     )
     off_ice_land, off_ice_arrival, _, off_ice_land_tagged, off_ice_arrival_tagged, _ = _route_mass_wasting(
         elevation,
@@ -2254,6 +2314,8 @@ def apply_erosion(
         spill_target=hydro.spill_target,
         inflow_vol=ice_dropped,
         inflow_tagged=ice_dropped_tagged,
+        channel_flow_target=hydro.ice_flow_target,
+        points=points,
     )
     landslide_land = landslide_land + off_ice_land
     landslide_land_tagged = landslide_land_tagged + off_ice_land_tagged
@@ -2453,10 +2515,20 @@ def apply_erosion(
     new_breach_notch_depth = np.where(is_ocean_node, 0.0, np.clip(notch_before_fill - channel_fill_m, 0.0, MAX_CHANNEL_DEPTH_M))
     channel_fill_m = np.clip(channel_fill_m - notch_before_fill, 0.0, None)
     new_channel_depth = np.where(is_ocean_node, 0.0, np.clip(prior_channel_depth + carved_m - channel_fill_m, 0.0, MAX_CHANNEL_DEPTH_M))
-    # Width grows with discharge alone (no slope/channel_boost term -- see module constants'
-    # own comment for why), same persistent/monotonic/capped shape as depth.
-    width_growth = WIDTH_GROWTH_COEFFICIENT * np.power(np.clip(water_accum_m, 0.0, None), WIDTH_FLOW_EXPONENT) * dt_myr
-    new_channel_width = np.where(is_ocean_node, 0.0, np.clip(prior_channel_width + width_growth, 0.0, MAX_CHANNEL_WIDTH_M))
+    # Rivers widen channels with discharge; thick moving ice widens the same troughs. Deposits
+    # and uplifted fill narrow them in proportion to how much of the existing channel depth
+    # they occupy, alongside the channel-depth reduction above.
+    ice_width_factor = np.sqrt(
+        np.clip(hydro.glacier_depth / GLACIER_EROSION_REFERENCE_DEPTH_M, 0.0, GLACIER_EROSION_MAX_FACTOR)
+    ) * world.glacier_erosion_multiplier
+    width_growth = WIDTH_GROWTH_COEFFICIENT * (
+        np.power(np.clip(water_accum_m, 0.0, None), WIDTH_FLOW_EXPONENT) + ice_width_factor
+    ) * dt_myr
+    width_fill_fraction = np.clip(channel_fill_m / np.maximum(prior_channel_depth, 50.0), 0.0, 1.0)
+    width_after_fill = prior_channel_width * (1.0 - width_fill_fraction)
+    new_channel_width = np.where(
+        is_ocean_node, 0.0, np.clip(width_after_fill + width_growth, 0.0, MAX_CHANNEL_WIDTH_M)
+    )
 
     # The tracer moves with its rock and can never exceed the column holding it; whatever the
     # column can't hold (clip round-off, a no-column v1 node, or a stale excess above) is
