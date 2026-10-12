@@ -320,61 +320,56 @@ round(world.elapsed_years))`, so a replayed session still reaches the same order
 same history) is what keeps this fair on average across many turns, rather than always
 favoring whichever plate happens to be processed first.
 
-**Convergent effects aren't a single shape** -- what happens depends on both plates'
-crust type, and how far the effect reaches (and its shape with distance) differs by case.
-The rates/reaches below are unchanged from the model `step_boundaries` used to run; only the
-trigger (contested, not a positive closing rate) changed:
+**What each boundary class does to the column.** `lithosphere_plate.deform_columns` changes
+crust and mantle-lithosphere thickness (Hc/Hm) and lets isostasy move the surface; only the
+transform term below writes elevation directly. The near-boundary band (`reach_rad`,
+`torque.BOUNDARY_FORCE_REACH_MULTIPLIER` = 3 spacings) is split by closing rate into
+convergent, divergent and transform nodes (see the motion-based classification below). The
+older elevation-line surface instead added per-case elevation deltas with their own distance
+tapers (a banded arc, a trench rate, a 300 km rift reach); #251 retired it, and with it those
+deltas.
 
-- **Continent-continent collision** (both plates continental) -> elevation rises through real
-  crustal thickening, scaled by the Mohr-Coulomb deformation model and the boundary-band
-  intensity in `lithosphere_plate.deform_columns` -- a broad crumple zone, matching how
-  wide a real collision belt is (e.g. the Himalaya/Tibetan Plateau). Older builds also added a
-  direct far-field elevation delta, but issue #206 retired that hack now that lateral magma
-  transport can move collision-generated melt into distant thin continental crust and raise it
-  through isostasy-backed Hc growth instead.
+- **Convergent** (either crust type) -> yield-limited plastic shortening
+  (`rheology.apply_convergent_deformation`), scaled by `orogen_contested_strength` (the
+  collision tuning knobs, boosted by how much of the band is in overlap -- see
+  `OVERLAP_UPLIFT_SEVERITY_GAIN`) and, in "fault" mode, by `fault_influence`. The shortening
+  is spread into the plate's interior by the shortening cascade (`shortening.py`, issue #314),
+  and part of the core band's strain leaves as lateral magma parcels (issue #205). The result
+  is a broad crumple zone, matching how wide a real collision belt is (e.g. the
+  Himalaya/Tibetan Plateau). On a continental plate it is stamped `ELEV_CHANGE_COLLISION`
+  (continental neighbour) or `ELEV_CHANGE_SUBDUCTION_ARC` (oceanic neighbour); on an oceanic
+  plate, `ELEV_CHANGE_TRENCH`, and its contested cells subduct (see retreat below).
 
   **Reverse faults: mountain ranges aren't uniformly smooth.** Real shortening in a collision
   belt isn't spread evenly across the whole zone -- fold-thrust belts partition it into
   discrete thrust sheets (fast-rising ridges) separated by footwall synclines/intermontane
-  basins that keep rising far more slowly, a real, documented process (the north-south rift
-  valleys cutting straight across the Tibetan Plateau's own overall convergent uplift;
-  Basin-and-Range-style extension nested inside the Anatolian collision zone). Both the
-  near-field collision uplift and the subduction volcanic-arc uplift above are multiplied by a
-  `fault_factor` -- 1.0 almost everywhere, dropping to `REVERSE_FAULT_VALLEY_UPLIFT_FACTOR`
-  (0.15) on whichever nodes a smooth, deterministic noise field marks as a downthrown block
-  (below `REVERSE_FAULT_VALLEY_THRESHOLD`). Those nodes still rise (this is differential uplift
-  within an active belt, not literal subsidence), just far slower than their neighbours, so a
-  real valley opens up between ranges as the gap widens step after step. The noise is sampled
-  in the plate's own *local* frame (each node's plate-local position, not world xyz),
-  seeded from `(world.seed, plate_id)` only -- so a given downthrown block stays attached to
-  the same crust as the plate rotates, a fixed geological feature rather than something that
-  reshuffles every step, the same "attached to the crust, not the world" property every other
-  persistent field in this codebase already has (see [Why not a grid](#why-not-a-grid)).
-  Confirmed directly at a real seed run 20 steps (60 Myr): with this and the seismic-erosion addition
-  below, the fraction of land nodes pegged at `MAX_ELEVATION_M` dropped from roughly 9% to
-  under 2% versus the same run without either -- mountain ranges keep growing, but no longer
-  collapse into a flat plateau at the elevation ceiling.
-- **Oceanic-under-continental subduction** (continental plate, oceanic neighbor) -> elevation
-  rises on the continental side too, but shaped as a **band** (`_band_intensity`): zero right
-  at the boundary, peaking at the midpoint of `SUBDUCTION_ARC_INNER_RAD`..
-  `SUBDUCTION_ARC_OUTER_RAD` (100-300km), zero again past the outer edge -- a volcanic arc
-  forms where the subducting slab has descended deep enough to melt, not at the trench
-  itself. This is the one non-monotonic shape here; every other effect peaks at the boundary
-  and decays outward.
-- **A subducting oceanic plate's own trench** (oceanic plate, any neighbor) -> elevation
-  falls (`CONVERGENT_TRENCH_RATE_M_PER_MYR`), fading from 1 at zero distance to 0 at
-  `FAR_THRESHOLD_RAD` (~200km) -- unaffected by the neighbor's crust type or by the two cases
-  above.
-- **Transform** -> elevation rises modestly (`TRANSFORM_UPLIFT_RATE_M_PER_MYR`, a fraction of
-  the mountain-building rate -- real strike-slip motion produces at most local pressure-ridge
-  relief, not real mountains), fading from 1 at zero distance to 0 at `TRANSFORM_RANGE_RAD`
-  (50km).
-- **Divergent** -> elevation relaxes exponentially toward a ridge (`oceanic`,
-  `DIVERGENT_RIDGE_TARGET_M = -1500`) or rift (`continental`, `DIVERGENT_RIFT_TARGET_M =
-  -200`) target -- new crust forming at the boundary. Oceanic ridge spreading is unchanged
-  (fades from 1 at zero distance to 0 at `FAR_THRESHOLD_RAD`, ~200km); continental rifting
-  reaches much farther (`RIFT_RANGE_RAD`, 300km) -- stretching and thinning the crust
-  subsides land well beyond the fault line itself, not just right at it.
+  basins that keep rising far more slowly (the north-south rift valleys cutting across the
+  Tibetan Plateau's overall convergent uplift; Basin-and-Range-style extension nested inside
+  the Anatolian collision zone). On a continental plate the convergent strain rate is
+  multiplied by a `fault_factor` -- 1.0 almost everywhere, dropping to
+  `rheology.REVERSE_FAULT_VALLEY_UPLIFT_FACTOR` (0.15) where a smooth, deterministic noise
+  field (`BoundaryContext.fault_noise`) falls below -0.15. Those nodes still thicken, just far
+  slower than their neighbours, so a valley opens between ranges as the belt grows. The noise
+  is sampled in the plate's own *local* frame, seeded from `(world.seed, plate_id)`, so a
+  downthrown block stays attached to the same crust as the plate rotates (see [Why not a
+  grid](#why-not-a-grid)). The elevation-line surface applied the same factor to elevation
+  directly; there, with the seismic-erosion addition below, it cut the share of land pegged at
+  `MAX_ELEVATION_M` from roughly 9% to under 2% on a 60 Myr seed run.
+- **Continental arc** (continental plate, converging oceanic neighbour) -> on top of the
+  shortening, `rheology.apply_arc_magmatic_thickening` adds juvenile Hc across the whole
+  `arc_band` -- every node within `reach_rad` of the converging oceanic neighbour, weighted
+  1 at the contact and fading to 0.3 at the band edge. Not gated by `fault_influence`: a
+  volcanic arc is a broad magmatic swath. See the continental arc magmatism note below.
+- **Transform** -> a modest direct elevation delta, `TRANSFORM_UPLIFT_RATE_M_PER_MYR`
+  (100 m/Myr) times `fault_influence`, with no distance taper -- strike-slip motion shoulders
+  up local pressure ridges without net crustal shortening, so it bypasses Hc. Because nothing
+  else consumes it, relief a node carries above what its column supports decays at
+  `UNBACKED_RELIEF_DECAY_PER_MYR` (issue #189).
+- **Divergent** -> `rheology.apply_divergent_deformation` thins Hc and Hm (a craton resists,
+  `cratons.CRATON_RIFT_RESISTANCE`); a column thinned past the rift threshold melts through
+  and erupts fresh crust (see [Volcanism](#volcanism)), and one that thinned past
+  `RIFT_VOLCANISM_ONSET_HC_M` without melting gets a partial magmatic underplate
+  (`apply_rift_magmatic_thickening`). Elevation follows the thinner column through isostasy.
 - **Structural change: retreat and advance.** Contested cells at the plate's edge are removed
   and open ground in front of an uncontested edge gains new cells, both bounded by `D`
   (this step's own physical bound -- see `shift()` above) and a per-step safety cap; see
@@ -495,7 +490,7 @@ timescale); `backend/unit_tests/test_rheology.py` pins it. See
 *shortening* -- it conserves crustal volume, and only bites at the contested contact line (a
 few tens of nodes). Real Cordilleran margins also *grow* crust: the subducting slab dehydrates,
 fluxes the mantle wedge, and the melt underplates / intrudes the overriding continental plate
-across the whole arc band inboard of the trench. `lithosphere_plate.deform` computes an
+across the whole arc band inboard of the trench. `lithosphere_plate.boundary_context` computes an
 `arc_band` -- this plate's own continental nodes within `reach_rad` (~500 km at default
 density) of a *converging oceanic* neighbour -- and `rheology.apply_arc_magmatic_thickening`
 adds juvenile Hc there (Hc only; the contested subset's Hm is dragged along by the shortening
@@ -1256,7 +1251,7 @@ loading never changes plate state.
 |---|---|
 | `rifted_m3` | divergent thinning, rift stretching, decompression melting, failed rifts |
 | `subducted_m3` | subduction erosion of a craton's edge at a trench (`cratons.attrite`); on quad plates, suture crust with no outlet anywhere |
-| `delaminated_m3` | suture delamination (line plates: overflow past the accretion belts; quad roots never take craton), craton stacked past the suture cap in a merge that the overflow placement couldn't place |
+| `delaminated_m3` | craton stacked past the suture cap in a merge that the overflow placement couldn't place |
 | `collision_reworked_m3` | craton reworked by fault relief; suture accretion and crust transfer still book here any craton a front hands them, though retreat no longer consumes craton cells (#340) |
 | `eroded_m3` | erosional unroofing below the craton's top |
 | `topology_removed_m3` | a plate or stranded fragment removed outright |
@@ -1454,8 +1449,8 @@ transform classification so the two can't drift.
 lognormal -- lone faults ~12–200 km, system strands to ~1300 km) sampled at ~1 node per 15 km
 (35 km for the longer system strands), with a sinusoidal along-strike bend up to
 `BEND_MAX_FRACTION` (0.12) of its length so sets don't look like a ruled grid. Slip rate
-scales with the seed's stress weight² between `SLIP_RATE_MIN` (150 m/Myr) and `SLIP_RATE_MAX`
-(30000 m/Myr); lifespan scales with stress weight between `LIFESPAN_MIN..MAX_MYR` (2–25 Myr).
+scales with the seed's stress weight² between `SLIP_RATE_MIN_M_PER_MYR` (150) and
+`SLIP_RATE_MAX_M_PER_MYR` (30000); lifespan scales with stress weight between `LIFESPAN_MIN..MAX_MYR` (2–25 Myr).
 Stored as `local_phi`/`local_theta` in the owning plate's frame (the system's master trace as
 `master_local_phi`/`_theta`), so a fault rides along with the crust as the plate rotates for
 free -- the same "attached to the crust, not the world" property every persistent
@@ -1492,8 +1487,8 @@ above) as an arbitrary but per-fault-consistent left/right-lateral handedness. R
 unconditionally alongside relief -- an additive layer regardless of
 `World.fault_deformation_mode`, only `reach_scale`-widened in `"fault"`/`"both"` mode.
 
-All rates are kept well below `deform()`'s boundary rates (`CONVERGENT_MOUNTAIN_RATE_M_PER_MYR`
-= 800) so this additive layer doesn't disturb long-run hypsometry tuning. The affected nodes'
+All rates were kept well below the boundary's own convergent uplift (the retired
+`CONVERGENT_MOUNTAIN_RATE_M_PER_MYR`, 800 m/Myr, when this layer was calibrated) so this additive layer doesn't disturb long-run hypsometry tuning. The affected nodes'
 `elev_change_reason` is stamped with one of three new codes,
 `ELEV_CHANGE_FAULT_NORMAL`/`_REVERSE`/`_STRIKE_SLIP` (15/16/17) -- distinct from
 `ELEV_CHANGE_TRANSFORM`, which is boundary-only -- and `erosion.py` gives them the same
@@ -1664,13 +1659,11 @@ side that 100km closes most of that gap at a real render size (~220ms at 2200x12
 
 **Sizing each cell correctly is what actually closes the gaps.** A uniform *sphere* grid
 still isn't a uniform *projected* grid -- so each cell is drawn at a size measured from the
-projection's own local behavior, not a fixed pixel size: `_row_cell_half_extent` projects
-two extra nearby samples per row (one step further in theta, one row further in phi) and
-measures the resulting on-screen offset directly, giving that row's cell half-width and
-half-height in the same projected units as the point coordinates. theta-only and phi-only
-offsets are used deliberately so each measurement isolates one derivative exactly (in both
-projections, moving in longitude at fixed latitude never perturbs the projected y
-coordinate, and vice versa) rather than approximating a mixed partial derivative.
+projection's own local behavior, not a fixed pixel size: `_compute_projected_climate_grid`
+projects each cell's four corners (half a cell away in latitude and longitude, through the
+current view rotation) and takes the largest on-screen offset in x and in y as that cell's
+half-width and half-height. This is per cell, not per row, because a rotated view no longer
+keeps a latitude row at one projected scale (see [Rotating the view](#rotating-the-view)).
 `render_png` fills each cell as a rectangle of that measured size (with a small
 `CELL_OVERLAP_FACTOR` margin so adjacent cells overlap a hair rather than risk a hairline
 gap from floating-point rounding), written directly into a numpy pixel array via array
@@ -2635,8 +2628,8 @@ neighbor" definition), divided by the real great-circle distance to that
 neighbor. This is a genuine dimensionless rise/run -- elevation drop over real distance, not
 elevation drop per grid step (a grid-step measure isn't a true slope at all, since it
 silently depends on grid resolution) -- which is why `RAIN_EROSION_COEFFICIENT` was picked
-by order-of-magnitude reasoning against `plates.CONVERGENT_MOUNTAIN_RATE_M_PER_MYR`
-(800 m/Myr) and checked against real slope/precipitation distributions from an actual run,
+by order-of-magnitude reasoning against the then-current direct convergent uplift rate
+(`CONVERGENT_MOUNTAIN_RATE_M_PER_MYR`, 800 m/Myr, since retired for Hc-driven uplift) and checked against real slope/precipitation distributions from an actual run,
 rather than reused from a value tuned against a different scale.
 `WEATHERING_COEFFICIENT` needed no such rescaling, since wind speed already uses a directly
 comparable scale (`MERIDIONAL_BASE_SPEED = 6.0`) unaffected by the slope re-derivation. River
@@ -2701,15 +2694,15 @@ needed no rescaling.
   at all. `mountain_height_factor = clip(elevation / SEISMIC_EROSION_ELEVATION_REFERENCE_M, 0,
   SEISMIC_EROSION_MAX_HEIGHT_FACTOR)`: this model has no explicit fault/stress field, so
   sustained elevation itself stands in for "how tectonically active/seismic this range is,"
-  there being no other elevation source that reaches these heights (see
-  `plates.CONVERGENT_MOUNTAIN_RATE_M_PER_MYR`). The height term is deliberately superlinear
+  there being no other elevation source that reaches these heights (collisional
+  thickening -- see [Plate motion: shift and deform](#boundary-evolution)). The height term is deliberately superlinear
   (exponent 2) -- real seismicity in young orogens grows faster than linearly with height/
   ongoing convergence, and this is also the model's main mechanism for capping how tall an
   actively colliding range can get before its own erosion catches up with uplift, a real
   "geomorphic ceiling" effect rather than just cosmetic variation. Still needs a slope to fail
   down (an earthquake can't landslide a perfectly flat plateau); `SEISMIC_EROSION_COEFFICIENT`
-  was picked the same order-of-magnitude way `RAIN_EROSION_COEFFICIENT` was, against
-  `CONVERGENT_MOUNTAIN_RATE_M_PER_MYR` (800 m/Myr). Confirmed directly at a real seed run 20
+  was picked the same order-of-magnitude way `RAIN_EROSION_COEFFICIENT` was, against the
+  retired 800 m/Myr direct convergent uplift rate. Confirmed directly at a real seed run 20
   steps (60 Myr): together with reverse-fault valleys (see [Plate motion: shift and
   deform](#boundary-evolution)), the fraction of land nodes pegged at `MAX_ELEVATION_M` dropped
   from roughly 9% to under 2% versus the same run without either addition. Its debris runs
@@ -2728,8 +2721,8 @@ needed no rescaling.
   pressure term fades as a crest climbs toward the surface, the brake on a submerged colliding
   range is strongest while it is deep and eases continuously as it approaches sea level, handing
   off to the subaerial sources the moment it breaches. Coefficients picked the same
-  order-of-magnitude way `RAIN_EROSION_COEFFICIENT` was, against
-  `CONVERGENT_MOUNTAIN_RATE_M_PER_MYR` (800 m/Myr): at a moderate submarine-ridge slope
+  order-of-magnitude way `RAIN_EROSION_COEFFICIENT` was, against the retired 800 m/Myr
+  direct convergent uplift rate: at a moderate submarine-ridge slope
   (~0.02) and mid-depth the two terms sum to roughly half the uplift rate -- a sustained drag
   on submarine orogeny, not a hard ceiling.
 - **Coastal erosion** = `(COASTAL_EROSION_WAVE_RATE_M_PER_MYR + COASTAL_FROST_MAX_RATE_M_PER_MYR
@@ -2754,46 +2747,57 @@ needed no rescaling.
   `sediment_deposited` total the `ErosionResult` carries, so [Resources and soil](#resources-and-soil)'s
   shelf oil-and-gas and soil terms see it alongside every other deposition pathway.
 
-**Coastal planation + infill feedback** (`_coastal_openness` / `coastal_planation_amount` /
-`_spread_coastal_infill`, mantle-bloom-original): every source above is either purely
+**Coastal leveling** (`_coastal_openness` / `leveling_datum_m` / `coastal_leveling_grind` /
+`_spread_coastal_leveling`, mantle-bloom-original): every source above is either purely
 subaerial or purely submarine, and none look at coastal *connectivity*, so a
 marginally-submerged flat continental shelf sitting right on the waterline is a stable fixed
 point that just dithers land↔ocean node-by-node forever (the per-node elevation noise
 exceeds the surface's own height above/below sea level). This pass makes a coherent
-coastline the stable state instead:
+coastline the stable state instead. It is one symmetric operation over a band straddling sea
+level (`COASTAL_LEVELING_BAND_M`, ±45 m): every band node has a local target datum, nodes above
+it are ground down (wave-cut planation) and nodes below it are filled (sheltered-shelf and
+interdistributary infill), both toward that same datum. It replaced separate one-sided
+planation (land, `PLANATION_BAND_M`) and infill (ocean, `INFILL_DEPTH_M`) passes, which each
+saw only half the checkerboard (b7df00a).
 
 - **Wave exposure.** `_coastal_openness` is a per-node proxy in [0, 1] -- the fraction of
   nodes within `COASTAL_OPENNESS_RANGE_KM` (~150 km, a coarse fetch scale) that are open
   ocean (`hydrology`'s connectivity-aware `is_ocean`, so an inland-lake or enclosed-pit
   shore reads as fully sheltered). Two radius counts
   (`cKDTree.query_ball_point(..., return_length=True)`), density-independent.
-- **Planation.** Land within `PLANATION_BAND_M` of sea level is ground down toward a wave-cut
-  platform sitting `PLANATION_UNDERCUT_M * exposure` *below* sea level (so a genuinely
-  wave-exposed low sheet is cut into open water rather than balanced on the waterline still
-  dithering), at `PLANATION_RATE_M_PER_MYR * exposure * proximity * prominence * dt_myr`.
-- **Infill.** The planed rock, plus `COASTAL_INFILL_MARINE_FRACTION` of that step's
-  submarine + coastal erosion (redirected from `_spread_marine_sediment`'s downhill-to-deep
-  spread, which is counterproductive in a shallow embayment), is spread by
-  `_spread_coastal_infill` onto shallow ocean within `INFILL_DEPTH_M` of sea level, weighted
-  toward the most sheltered (`shelter = 1 - openness / INFILL_SHELTER_REF`), shallowest, and
-  most hollow nodes, and toward whatever headroom each still has below its fill cap (so a
-  sink stops accreting as it fills -- no per-step overshoot, no iteration). A sheltered sink
-  caps `INFILL_MARSH_CREST_M * shelter` *above* sea level, so a silted-up embayment emerges
-  as marsh ([Biomes](#biomes)' `classify_wetland`). Exactly mass-conserving via `np.add.at`,
-  same as `_spread_marine_sediment`; a source with no sheltered-shallow sink in range keeps
-  its full amount locally.
+- **Datum.** `leveling_datum_m` is `sea_level - LEVELING_PLATFORM_UNDERCUT_M * exposure +
+  LEVELING_MARSH_CREST_M * shelter`: an exposed coast targets a wave-cut platform a few
+  metres below the waterline, a sheltered one (`shelter = 1 - openness / INFILL_SHELTER_REF`)
+  a marsh crest a few metres above it ([Biomes](#biomes)' `classify_wetland`). Aiming off the
+  waterline, rather than exactly at it, is what resolves a checkerboard into a coast that
+  follows the shelter field instead of only damping it. Grind and fill share this one number,
+  so they never fight over a node.
+- **Grind.** `coastal_leveling_grind` planes a band node above its datum at
+  `LEVELING_RATE_M_PER_MYR * coastal * proximity * prominence * dt_myr`, never past the
+  datum; a just-submerged shoal is planed as readily as low land, and a landlocked lowland
+  (openness ~0) not at all. `coastal_leveling_multiplier` scales it.
+- **Fill.** `_spread_coastal_leveling` spreads the ground-off rock, plus
+  `COASTAL_INFILL_MARINE_FRACTION` of that step's submarine + coastal erosion (redirected
+  from `_spread_marine_sediment`'s downhill-to-deep spread, which is counterproductive in a
+  shallow embayment) and `DELTA_REDIRECT_FRACTION` of a slow river's near-sea-level deposit
+  (the distributary fan), onto band nodes below their datum, land or ocean alike, within
+  `INFILL_RANGE_KM`. Each sink can take only its own room to the datum per step; over
+  `LEVELING_FILL_ITERS` passes a source's remaining load flows on to sinks that still have
+  room, weighted by shelter, hollowness and room left. A sink needs at least
+  `LEVELING_MIN_OPENNESS` of open water nearby, so a lake shore never silts up here. Exactly
+  mass-conserving via `np.add.at`; whatever no sink can hold stays on the source.
 - **Barrier islands** are emergent, not explicitly detected: a shallow sink with land within
   `BARRIER_LANDWARD_KM` that still faces open water (`openness >= BARRIER_MIN_OPENNESS`) gets
-  a `BARRIER_PRIORITY` weight boost and a cap raised `BARRIER_CREST_M` above sea level, so a
+  a `BARRIER_PRIORITY` weight boost and a datum `BARRIER_CREST_M` above sea level, so a
   shore-parallel bar breaches; the water it then shelters loses open-ocean neighbours, so on
   later steps its own openness falls, its `shelter` rises, and the back-barrier lagoon silts
   up to marsh.
 - **Prominence** (`PROMINENCE_REF_M` / `PROMINENCE_MAX`, from each node's height above its
-  flow-graph neighbourhood mean) reweights planation up on protrusions and infill up in
+  flow-graph neighbourhood mean) reweights the grind up on protrusions and the fill up in
   hollows -- what actually collapses a pixel-scale checkerboard, since `openness` measured at
   a ~150 km fetch scale is far too smooth to make a land/ocean call at ~60 km node spacing.
   It only reweights; the rock a prominence-boosted node loses still flows through the
-  conservative infill pool.
+  conservative fill.
 
 **Glacier flattening** (`_flatten`, mantle-bloom-original): real
 continental ice sheets grind down local relief over broad areas (the Canadian Shield and
@@ -3035,18 +3039,20 @@ V = sum over all nodes of  A_i * max(0, sea_level - z_i)
 
 Quad cells are not equal-area and their count changes with topology, so weighting quad nodes
 by the nominal area would drift the budget as water moves between cells of different sizes
-(issue #257). Line plates stay nominal: their only per-node area is an estimate that drifts
-badly once rows stack (issue #230).
+(issue #257).
 
 `V` (m³) is snapshotted once at generation (`eustasy.initialize_water_budget`, from the flat
 `sea_level_m = 0` starting datum) and stored on `World.ocean_water_volume_m3`. Each step,
-`eustasy.update_sea_level` (called unconditionally at the end of `step_world`) solves the
-monotonic 1-D equation `total_water_volume(h) == V` for the new `h` by bisection (~40
-iterations, each one vectorized sum). `total_water_volume` is strictly increasing in `h`, so
-the bracket `[min z, max z + headroom]` always contains exactly one root.
+`eustasy.update_sea_level` (called unconditionally at the end of `step_world`) subtracts the
+water currently held in ice and lakes (`trapped_water_volume_m3`) from `V` and solves
+`ocean_water_volume_m3(h) == V - trapped` for the new `h` by bisection. `ocean_water_volume_m3`
+counts only ocean connected to the open sea at that candidate `h`, so a landlocked basin below
+sea level isn't counted as free ocean depth; raising `h` can only merge components, so it is
+still strictly increasing in `h` and the bracket `[min z, max z + headroom]` holds exactly one
+root.
 
 - **Deepening a basin** (sea-floor spreading, a subducting slab, `growth_seed_thickness`
-  tiling drowned oceanic column) raises `total_water_volume(h)` at every `h`, so the solved
+  tiling drowned oceanic column) raises `ocean_water_volume_m3(h)` at every `h`, so the solved
   `h` **falls** -- the eustatic response that a fixed sea level never produced, and the
   reason continental subsidence is no longer a one-way loss of dry land.
 - **Node-count creep** (the continental boundary ratchet) grows total represented area; the
@@ -3088,7 +3094,7 @@ rejected with a `400`.
 | `seismic_erosion_multiplier` | earthquake-triggered landsliding term | `erosion.apply_erosion` |
 | `river_deposition_multiplier` | floodplain/delta settle-out fraction (`DEPOSITION_FRACTION`, clamped `< 0.95`) | `erosion.apply_erosion` |
 | `ocean_deposition_multiplier` | *settled* beach + marine sediment (see caveat below) | `erosion.apply_erosion` |
-| `collision_uplift_multiplier` | plastic crustal-thickening rate at contested nodes | `rheology.apply_convergent_deformation`'s `strength` arg, driven from `lithosphere_plate.boundary_context` |
+| `collision_uplift_multiplier` | plastic crustal-thickening rate across the convergent band | `rheology.apply_convergent_deformation`'s `strength` arg, driven from `lithosphere_plate.boundary_context` |
 | `collision_uplift_reach_multiplier` | how far the shortening cascade carries a collision into the plate (`shortening.py`'s `reach_scale`); `<1` also weakens the contested-band thickening in proportion | `lithosphere_plate.boundary_context`, `shortening.py` |
 | `volcanism_multiplier` | per-step eruption probability **and** metres added per eruption | `volcanism.apply_volcanic_activity` |
 
@@ -3191,8 +3197,7 @@ from `world.step_world` -- can reuse them directly rather than re-deriving them 
 Two of its own private helpers became public for the same reason (mirroring
 `hydrology.compute_river_speed`'s own earlier relocation): `climate_grid_indices`,
 `compute_slope`. `geology.py`'s own node ordering comes directly from
-`World.hydrology_cache.line_refs` -- the exact `(plate, line_index, start, end)` list that
-produced `hydro`'s own flat arrays -- rather than a second independent gather, so there's
+`World.hydrology_cache.plates_in_order` -- the exact plate list that produced `hydro`'s own flat arrays -- rather than a second independent gather, so there's
 nothing to keep in sync by hand.
 
 **Coal** forms from peat accumulating in flat, low-lying, waterlogged land -- Wetland or
@@ -3831,7 +3836,7 @@ this module evaporates, since climate.py runs *before* this module each step).
   isostatic adjustment takes ~10 kyr, so each step the column is in equilibrium with its
   current ice. The applied depression is stored per node in `ice_load_deflection_m`, and
   elevation moves by only its change each step, so meltback rebounds the surface by exactly
-  what loading took. `sync_line_elevation`/`sync_plate_elevation` keep it when they recompute
+  what loading took. `lithosphere.sync_plate_elevation` keeps it when it recomputes
   elevation from Hc/Hm. `ErosionResult.ice_load_pa`/`ice_load_change_pa` expose the vertical
   load and this step's loading or unloading. Unloading can trigger earthquakes on nearby
   faults; see [Faults](#faults) (`trigger_unloading_earthquakes`, phase 5).
@@ -3871,7 +3876,7 @@ in a deep glacial phase: hydrology lets ice pile up over freezing polar *ocean* 
 of calving at the coast (`hydrology.SEA_ICE_FORMATION_TEMP_C`, gated at intensity ≥
 `hydrology.ICE_AGE_SEA_ICE_MIN_INTENSITY`, with a little hysteresis for a cap that already
 exists) -- a floating polar ice cap that retreats when the
-age passes; and **glacial eustasy** returns -- `eustasy.trapped_water_column_m` debits the
+age passes; and **glacial eustasy** returns -- `eustasy.trapped_water_volume_m3` debits the
 liquid-water equivalent of all `glacier_depth` plus every visible lake's `lake_depth` from the
 conserved total surface-water budget, so the ocean's share (and the shoreline) falls as the
 ice sheets grow and rises again as they melt.
