@@ -202,6 +202,35 @@ three seeds. The symmetric brake doesn't change that consistently: seed 7 is slo
 `f721e73`, seeds 11 and 2024 faster. Erosion of craton stays high on
 seed 11 (294 M km³ against 99 on main).
 
+## Relief at convergent fronts (second review)
+
+The issue's relief target is the mean relief within 300 km of craton edges *facing convergent
+fronts*. The all-edge mean above doesn't measure that. `split_craton_rework.py` now also
+reports the non-cratonic continental crust within 300 km of both a craton and a convergent
+or contested boundary node of its plate. Replays of main (`6b4e102`) and the branch
+(`6dbe92a`, the same model as `d816e0e`), each run alone:
+
+| Save | Convergent-front edge relief, branch / main | Target | All-edge relief, branch / main |
+|---|---:|---|---:|
+| seed 997271774 | 5,020 / 5,537 m (−9.3%) | **fails** | 1,730 / 1,610 m |
+| seed 910211954 | 4,659 / 4,777 m (−2.5%) | **fails** | 3,563 / 3,482 m |
+
+The loss target still passes (6.6% and 18.7%); those runs repeat the `d816e0e` ones exactly.
+
+- **Seed 997271774 is confounded by merges.** The branch is above or level with main at
+  convergent fronts until the merges at about 115 Myr (5,054 vs 4,925 m at 113.4 Myr). The
+  only dips are 6 m at 99.4 Myr and 58 m at 115.4 Myr. After the merges the two runs have
+  different plates and fronts, and the measured windows differ (3.23 vs 2.44 M km² at
+  119.4 Myr). The final gap compares different fronts.
+- **Seed 910211954, with no merges, is a steady gap.** The branch trails main by 100–430 m
+  from 224 Myr on.
+- **One likely cause is the metric itself.** The window counts only non-cratonic crust.
+  On the branch, orogens pond on top of cratons: the cratonic area under Hc > 50 km ends at
+  33.3 against 31.6 M km² on main. On main, flow drains cratons, so thick orogenic crust that
+  was cratonic leaves the craton and enters the window. This is untested. Testing it would
+  need relief over the cratonic side of the edge as well, which changes the target's
+  definition.
+
 ## Not addressed here
 
 - **Attrition placement.** Attrition acts on the craton plate's own retreating edge at an

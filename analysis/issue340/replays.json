@@ -336,6 +336,340 @@
      "cratons.clip_to_column<-cratons.settle": 7.011
     }
    }
+  },
+  "convergent_edge_relief": {
+   "main": {
+    "commit": "6b4e102",
+    "by_checkpoint": [
+     {
+      "myr": 87.4,
+      "relief_m": 4623,
+      "window_mkm2": 3.05,
+      "all_edge_relief_m": 1562,
+      "cratonic_area_under_orogen_mkm2": 11.7
+     },
+     {
+      "myr": 89.4,
+      "relief_m": 4836,
+      "window_mkm2": 3.23,
+      "all_edge_relief_m": 1598,
+      "cratonic_area_under_orogen_mkm2": 12.1
+     },
+     {
+      "myr": 91.4,
+      "relief_m": 5005,
+      "window_mkm2": 3.26,
+      "all_edge_relief_m": 1631,
+      "cratonic_area_under_orogen_mkm2": 12.6
+     },
+     {
+      "myr": 93.4,
+      "relief_m": 5042,
+      "window_mkm2": 3.37,
+      "all_edge_relief_m": 1647,
+      "cratonic_area_under_orogen_mkm2": 13.1
+     },
+     {
+      "myr": 95.4,
+      "relief_m": 5261,
+      "window_mkm2": 3.42,
+      "all_edge_relief_m": 1662,
+      "cratonic_area_under_orogen_mkm2": 13.5
+     },
+     {
+      "myr": 97.4,
+      "relief_m": 5327,
+      "window_mkm2": 3.44,
+      "all_edge_relief_m": 1666,
+      "cratonic_area_under_orogen_mkm2": 14.0
+     },
+     {
+      "myr": 99.4,
+      "relief_m": 5306,
+      "window_mkm2": 3.42,
+      "all_edge_relief_m": 1666,
+      "cratonic_area_under_orogen_mkm2": 14.5
+     },
+     {
+      "myr": 101.4,
+      "relief_m": 5351,
+      "window_mkm2": 3.31,
+      "all_edge_relief_m": 1663,
+      "cratonic_area_under_orogen_mkm2": 14.8
+     },
+     {
+      "myr": 103.4,
+      "relief_m": 5279,
+      "window_mkm2": 3.31,
+      "all_edge_relief_m": 1639,
+      "cratonic_area_under_orogen_mkm2": 15.4
+     },
+     {
+      "myr": 105.4,
+      "relief_m": 5213,
+      "window_mkm2": 3.18,
+      "all_edge_relief_m": 1615,
+      "cratonic_area_under_orogen_mkm2": 15.8
+     },
+     {
+      "myr": 107.4,
+      "relief_m": 4978,
+      "window_mkm2": 3.16,
+      "all_edge_relief_m": 1595,
+      "cratonic_area_under_orogen_mkm2": 16.1
+     },
+     {
+      "myr": 109.4,
+      "relief_m": 5012,
+      "window_mkm2": 3.13,
+      "all_edge_relief_m": 1592,
+      "cratonic_area_under_orogen_mkm2": 16.5
+     },
+     {
+      "myr": 111.4,
+      "relief_m": 4827,
+      "window_mkm2": 2.94,
+      "all_edge_relief_m": 1555,
+      "cratonic_area_under_orogen_mkm2": 16.9
+     },
+     {
+      "myr": 113.4,
+      "relief_m": 4925,
+      "window_mkm2": 2.74,
+      "all_edge_relief_m": 1532,
+      "cratonic_area_under_orogen_mkm2": 17.4
+     },
+     {
+      "myr": 115.4,
+      "relief_m": 4473,
+      "window_mkm2": 1.91,
+      "all_edge_relief_m": 1674,
+      "cratonic_area_under_orogen_mkm2": 20.7
+     },
+     {
+      "myr": 117.4,
+      "relief_m": 4570,
+      "window_mkm2": 1.89,
+      "all_edge_relief_m": 1661,
+      "cratonic_area_under_orogen_mkm2": 20.9
+     },
+     {
+      "myr": 119.4,
+      "relief_m": 5726,
+      "window_mkm2": 2.44,
+      "all_edge_relief_m": 1641,
+      "cratonic_area_under_orogen_mkm2": 21.1
+     },
+     {
+      "myr": 121.4,
+      "relief_m": 5778,
+      "window_mkm2": 2.37,
+      "all_edge_relief_m": 1628,
+      "cratonic_area_under_orogen_mkm2": 21.3
+     },
+     {
+      "myr": 123.4,
+      "relief_m": 5784,
+      "window_mkm2": 2.38,
+      "all_edge_relief_m": 1614,
+      "cratonic_area_under_orogen_mkm2": 21.4
+     },
+     {
+      "myr": 125.4,
+      "relief_m": 5754,
+      "window_mkm2": 2.49,
+      "all_edge_relief_m": 1607,
+      "cratonic_area_under_orogen_mkm2": 21.6
+     },
+     {
+      "myr": 127.4,
+      "relief_m": 5714,
+      "window_mkm2": 2.53,
+      "all_edge_relief_m": 1598,
+      "cratonic_area_under_orogen_mkm2": 21.7
+     },
+     {
+      "myr": 129.4,
+      "relief_m": 5604,
+      "window_mkm2": 2.67,
+      "all_edge_relief_m": 1615,
+      "cratonic_area_under_orogen_mkm2": 21.8
+     },
+     {
+      "myr": 130.5,
+      "relief_m": 5537,
+      "window_mkm2": 2.7,
+      "all_edge_relief_m": 1610,
+      "cratonic_area_under_orogen_mkm2": 21.8
+     }
+    ]
+   },
+   "branch": {
+    "commit": "6dbe92a",
+    "by_checkpoint": [
+     {
+      "myr": 87.4,
+      "relief_m": 4623,
+      "window_mkm2": 3.05,
+      "all_edge_relief_m": 1562,
+      "cratonic_area_under_orogen_mkm2": 11.7
+     },
+     {
+      "myr": 89.4,
+      "relief_m": 4851,
+      "window_mkm2": 3.23,
+      "all_edge_relief_m": 1602,
+      "cratonic_area_under_orogen_mkm2": 12.1
+     },
+     {
+      "myr": 91.4,
+      "relief_m": 5033,
+      "window_mkm2": 3.26,
+      "all_edge_relief_m": 1639,
+      "cratonic_area_under_orogen_mkm2": 12.6
+     },
+     {
+      "myr": 93.4,
+      "relief_m": 5039,
+      "window_mkm2": 3.39,
+      "all_edge_relief_m": 1651,
+      "cratonic_area_under_orogen_mkm2": 13.1
+     },
+     {
+      "myr": 95.4,
+      "relief_m": 5310,
+      "window_mkm2": 3.42,
+      "all_edge_relief_m": 1672,
+      "cratonic_area_under_orogen_mkm2": 13.4
+     },
+     {
+      "myr": 97.4,
+      "relief_m": 5401,
+      "window_mkm2": 3.44,
+      "all_edge_relief_m": 1675,
+      "cratonic_area_under_orogen_mkm2": 13.9
+     },
+     {
+      "myr": 99.4,
+      "relief_m": 5300,
+      "window_mkm2": 3.47,
+      "all_edge_relief_m": 1672,
+      "cratonic_area_under_orogen_mkm2": 14.4
+     },
+     {
+      "myr": 101.4,
+      "relief_m": 5368,
+      "window_mkm2": 3.4,
+      "all_edge_relief_m": 1674,
+      "cratonic_area_under_orogen_mkm2": 14.7
+     },
+     {
+      "myr": 103.4,
+      "relief_m": 5378,
+      "window_mkm2": 3.36,
+      "all_edge_relief_m": 1653,
+      "cratonic_area_under_orogen_mkm2": 15.2
+     },
+     {
+      "myr": 105.4,
+      "relief_m": 5318,
+      "window_mkm2": 3.27,
+      "all_edge_relief_m": 1641,
+      "cratonic_area_under_orogen_mkm2": 15.6
+     },
+     {
+      "myr": 107.4,
+      "relief_m": 5101,
+      "window_mkm2": 3.27,
+      "all_edge_relief_m": 1617,
+      "cratonic_area_under_orogen_mkm2": 16.1
+     },
+     {
+      "myr": 109.4,
+      "relief_m": 5164,
+      "window_mkm2": 3.1,
+      "all_edge_relief_m": 1598,
+      "cratonic_area_under_orogen_mkm2": 16.4
+     },
+     {
+      "myr": 111.4,
+      "relief_m": 5112,
+      "window_mkm2": 2.96,
+      "all_edge_relief_m": 1588,
+      "cratonic_area_under_orogen_mkm2": 16.8
+     },
+     {
+      "myr": 113.4,
+      "relief_m": 5054,
+      "window_mkm2": 2.85,
+      "all_edge_relief_m": 1572,
+      "cratonic_area_under_orogen_mkm2": 17.2
+     },
+     {
+      "myr": 115.4,
+      "relief_m": 4415,
+      "window_mkm2": 1.99,
+      "all_edge_relief_m": 1618,
+      "cratonic_area_under_orogen_mkm2": 23.1
+     },
+     {
+      "myr": 117.4,
+      "relief_m": 4579,
+      "window_mkm2": 1.94,
+      "all_edge_relief_m": 1636,
+      "cratonic_area_under_orogen_mkm2": 23.3
+     },
+     {
+      "myr": 119.4,
+      "relief_m": 4594,
+      "window_mkm2": 3.23,
+      "all_edge_relief_m": 1643,
+      "cratonic_area_under_orogen_mkm2": 23.6
+     },
+     {
+      "myr": 121.4,
+      "relief_m": 4791,
+      "window_mkm2": 3.31,
+      "all_edge_relief_m": 1688,
+      "cratonic_area_under_orogen_mkm2": 23.8
+     },
+     {
+      "myr": 123.4,
+      "relief_m": 4864,
+      "window_mkm2": 3.43,
+      "all_edge_relief_m": 1712,
+      "cratonic_area_under_orogen_mkm2": 24.0
+     },
+     {
+      "myr": 125.4,
+      "relief_m": 4742,
+      "window_mkm2": 2.05,
+      "all_edge_relief_m": 1701,
+      "cratonic_area_under_orogen_mkm2": 25.8
+     },
+     {
+      "myr": 127.4,
+      "relief_m": 5255,
+      "window_mkm2": 2.42,
+      "all_edge_relief_m": 1713,
+      "cratonic_area_under_orogen_mkm2": 26.0
+     },
+     {
+      "myr": 129.4,
+      "relief_m": 5104,
+      "window_mkm2": 2.59,
+      "all_edge_relief_m": 1725,
+      "cratonic_area_under_orogen_mkm2": 26.1
+     },
+     {
+      "myr": 130.5,
+      "relief_m": 5020,
+      "window_mkm2": 2.68,
+      "all_edge_relief_m": 1730,
+      "cratonic_area_under_orogen_mkm2": 26.2
+     }
+    ]
+   }
   }
  },
  "seed910211954_220.4_to_240.6Myr": {
@@ -542,6 +876,186 @@
     "eroded_m3": {
      "cratons.clip_to_column<-cratons.settle": 1.0
     }
+   }
+  },
+  "convergent_edge_relief": {
+   "main": {
+    "commit": "6b4e102",
+    "by_checkpoint": [
+     {
+      "myr": 220.4,
+      "relief_m": 3673,
+      "window_mkm2": 9.53,
+      "all_edge_relief_m": 2937,
+      "cratonic_area_under_orogen_mkm2": 28.1
+     },
+     {
+      "myr": 222.4,
+      "relief_m": 3832,
+      "window_mkm2": 8.37,
+      "all_edge_relief_m": 3158,
+      "cratonic_area_under_orogen_mkm2": 28.1
+     },
+     {
+      "myr": 224.4,
+      "relief_m": 4083,
+      "window_mkm2": 8.05,
+      "all_edge_relief_m": 3226,
+      "cratonic_area_under_orogen_mkm2": 28.3
+     },
+     {
+      "myr": 226.4,
+      "relief_m": 4237,
+      "window_mkm2": 8.2,
+      "all_edge_relief_m": 3286,
+      "cratonic_area_under_orogen_mkm2": 28.6
+     },
+     {
+      "myr": 228.4,
+      "relief_m": 4233,
+      "window_mkm2": 7.88,
+      "all_edge_relief_m": 3330,
+      "cratonic_area_under_orogen_mkm2": 29.0
+     },
+     {
+      "myr": 230.4,
+      "relief_m": 4499,
+      "window_mkm2": 7.94,
+      "all_edge_relief_m": 3410,
+      "cratonic_area_under_orogen_mkm2": 29.3
+     },
+     {
+      "myr": 232.4,
+      "relief_m": 4608,
+      "window_mkm2": 7.75,
+      "all_edge_relief_m": 3441,
+      "cratonic_area_under_orogen_mkm2": 29.8
+     },
+     {
+      "myr": 234.4,
+      "relief_m": 4527,
+      "window_mkm2": 7.86,
+      "all_edge_relief_m": 3443,
+      "cratonic_area_under_orogen_mkm2": 29.9
+     },
+     {
+      "myr": 236.4,
+      "relief_m": 4698,
+      "window_mkm2": 7.8,
+      "all_edge_relief_m": 3439,
+      "cratonic_area_under_orogen_mkm2": 30.1
+     },
+     {
+      "myr": 238.4,
+      "relief_m": 4575,
+      "window_mkm2": 7.93,
+      "all_edge_relief_m": 3436,
+      "cratonic_area_under_orogen_mkm2": 30.4
+     },
+     {
+      "myr": 240.4,
+      "relief_m": 4837,
+      "window_mkm2": 7.71,
+      "all_edge_relief_m": 3509,
+      "cratonic_area_under_orogen_mkm2": 31.4
+     },
+     {
+      "myr": 240.6,
+      "relief_m": 4777,
+      "window_mkm2": 7.68,
+      "all_edge_relief_m": 3482,
+      "cratonic_area_under_orogen_mkm2": 31.6
+     }
+    ]
+   },
+   "branch": {
+    "commit": "6dbe92a",
+    "by_checkpoint": [
+     {
+      "myr": 220.4,
+      "relief_m": 3673,
+      "window_mkm2": 9.53,
+      "all_edge_relief_m": 2937,
+      "cratonic_area_under_orogen_mkm2": 28.1
+     },
+     {
+      "myr": 222.4,
+      "relief_m": 3930,
+      "window_mkm2": 8.19,
+      "all_edge_relief_m": 3081,
+      "cratonic_area_under_orogen_mkm2": 28.6
+     },
+     {
+      "myr": 224.4,
+      "relief_m": 3924,
+      "window_mkm2": 7.77,
+      "all_edge_relief_m": 3101,
+      "cratonic_area_under_orogen_mkm2": 28.9
+     },
+     {
+      "myr": 226.4,
+      "relief_m": 3922,
+      "window_mkm2": 8.0,
+      "all_edge_relief_m": 3142,
+      "cratonic_area_under_orogen_mkm2": 29.4
+     },
+     {
+      "myr": 228.4,
+      "relief_m": 4108,
+      "window_mkm2": 8.04,
+      "all_edge_relief_m": 3217,
+      "cratonic_area_under_orogen_mkm2": 29.8
+     },
+     {
+      "myr": 230.4,
+      "relief_m": 4230,
+      "window_mkm2": 7.69,
+      "all_edge_relief_m": 3284,
+      "cratonic_area_under_orogen_mkm2": 30.4
+     },
+     {
+      "myr": 232.4,
+      "relief_m": 4173,
+      "window_mkm2": 8.32,
+      "all_edge_relief_m": 3322,
+      "cratonic_area_under_orogen_mkm2": 30.7
+     },
+     {
+      "myr": 234.4,
+      "relief_m": 4253,
+      "window_mkm2": 8.31,
+      "all_edge_relief_m": 3324,
+      "cratonic_area_under_orogen_mkm2": 31.0
+     },
+     {
+      "myr": 236.4,
+      "relief_m": 4466,
+      "window_mkm2": 8.33,
+      "all_edge_relief_m": 3433,
+      "cratonic_area_under_orogen_mkm2": 31.4
+     },
+     {
+      "myr": 238.4,
+      "relief_m": 4488,
+      "window_mkm2": 7.95,
+      "all_edge_relief_m": 3456,
+      "cratonic_area_under_orogen_mkm2": 32.1
+     },
+     {
+      "myr": 240.4,
+      "relief_m": 4654,
+      "window_mkm2": 7.91,
+      "all_edge_relief_m": 3550,
+      "cratonic_area_under_orogen_mkm2": 33.2
+     },
+     {
+      "myr": 240.6,
+      "relief_m": 4659,
+      "window_mkm2": 7.86,
+      "all_edge_relief_m": 3563,
+      "cratonic_area_under_orogen_mkm2": 33.3
+     }
+    ]
    }
   }
  },
