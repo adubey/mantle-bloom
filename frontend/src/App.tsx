@@ -8,6 +8,7 @@ import type {
   AnimateResponse, DebugScenario, EarthquakeSummary, ElevationPointResponse, FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, NodeAtResponse, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, TuningKey, TuningMultipliers, VolcanoSummary, WorldStats, WorldSummary,
 } from "./api";
 import MapCanvas from "./MapCanvas";
+import MantleCrossSection from "./MantleCrossSection";
 import SketchEditor from "./SketchEditor";
 import PlateInspector from "./PlateInspector";
 import RiverInspector from "./RiverInspector";
@@ -188,7 +189,7 @@ function isIdentityRotation(rotation: Mat3): boolean {
 const VIEW_COOKIE_NAME = "mantle-bloom-view";
 const MAP_VIEW_CHOICES = new Set<MapView>([
 
-  "elevation", "platesDetail", "speckle", "temperature", "wind", "oceanCurrents", "humidity", "precipitation", "biome", "combined",
+  "crossSection", "elevation", "platesDetail", "speckle", "temperature", "wind", "oceanCurrents", "humidity", "precipitation", "biome", "combined",
   "resources", "soilQuality", "geomorph", "elevReason", "overlapAge", "nodeAge", "plateInspector", "riverInspector", "lakeInspector", "platesAndFaults", "hc", "hm", "craton",
 ]);
 const PROJECTION_CHOICES = new Set<Projection>(["behrmann", "eckert4"]);
@@ -305,6 +306,10 @@ export default function App() {
   const [mapView, setMapView] = useState<MapView>(
     initialView && (DEBUG_UI || !DEBUG_MAP_VIEWS.has(initialView.mapView)) ? initialView.mapView : "combined",
   );
+  // These controls describe only the cross-section's great-circle cut. Keep them independent
+  // of the map projection/rotation state, and retain their values when switching views.
+  const [crossSectionPlaneAngleDeg, setCrossSectionPlaneAngleDeg] = useState(0);
+  const [crossSectionArcPosition, setCrossSectionArcPosition] = useState(0);
   // handleStep's own closure over `mapView` is captured when the step *starts*, so if the map
   // mode changes while that step is still in flight, its post-step refresh would otherwise
   // render the world's new (stepped) state back in the old, now-stale map mode -- overwriting
@@ -611,7 +616,7 @@ export default function App() {
   // instead of overwriting a newer one.
   const renderRequestIdRef = useRef(0);
   const refresh = useCallback(async (proj: Projection, view: MapView, viewRotation: Mat3) => {
-    if (view === "plateInspector" || view === "riverInspector" || view === "lakeInspector" || view === "platesAndFaults") return; // none of these use renderData -- see below
+    if (view === "crossSection" || view === "plateInspector" || view === "riverInspector" || view === "lakeInspector" || view === "platesAndFaults") return; // frontend-rendered views do not use renderData
     const requestId = ++renderRequestIdRef.current;
     const { showMountains: mountains, showPlainsPlateaus: plainsPlateaus } = terrainOverlayRef.current;
     try {
@@ -1249,11 +1254,19 @@ export default function App() {
             <legend style={{ fontSize: 11 }}>Map View</legend>
             <select
               value={mapView}
-              onChange={(e) => setMapView(e.target.value as MapView)}
+              onChange={(e) => {
+                const nextView = e.target.value as MapView;
+                setMapView(nextView);
+                if (nextView === "crossSection") {
+                  setEditingCenter(false);
+                  setCenterEditError(null);
+                }
+              }}
               disabled={animating || !summary}
               style={{ width: "100%", marginBottom: 6, fontSize: 12 }}
             >
               <optgroup label="Maps">
+                <option value="crossSection">Lithosphere cross-section</option>
                 <option value="combined">Elevation &amp; Biome</option>
                 <option value="elevation">Elevation</option>
                 <option value="biome">Biome</option>
@@ -1283,6 +1296,8 @@ export default function App() {
                 </optgroup>
               )}
             </select>
+            {mapView !== "crossSection" && (
+              <>
             <select
               value={projection}
               onChange={(e) => setProjection(e.target.value as Projection)}
@@ -1375,6 +1390,8 @@ export default function App() {
             >
               Re-center
             </button>
+              </>
+            )}
           </fieldset>
 
           {/* Only for a fixed-frame-count recording -- "frame 12 of 20" is meaningful
@@ -1582,7 +1599,16 @@ export default function App() {
 
         <div>
           <div ref={mapWrapperRef} style={{ position: "relative", width: DISPLAY_WIDTH, height: DISPLAY_HEIGHT }}>
-          {mapView === "plateInspector" ? (
+          {mapView === "crossSection" ? (
+            <MantleCrossSection
+              width={DISPLAY_WIDTH}
+              height={DISPLAY_HEIGHT}
+              planeAngleDeg={crossSectionPlaneAngleDeg}
+              arcPosition={crossSectionArcPosition}
+              onPlaneAngleChange={setCrossSectionPlaneAngleDeg}
+              onArcPositionChange={setCrossSectionArcPosition}
+            />
+          ) : mapView === "plateInspector" ? (
             <PlateInspector
               plates={platesData}
               width={RENDER_WIDTH}
@@ -1688,7 +1714,7 @@ export default function App() {
               />
             </div>
           )}
-          {probe && (
+          {mapView !== "crossSection" && probe && (
             <div
               style={{
                 position: "absolute",
@@ -1867,7 +1893,7 @@ export default function App() {
             height={RENDER_HEIGHT}
             displayWidth={DISPLAY_WIDTH}
             displayHeight={DISPLAY_HEIGHT}
-            disabled={animating}
+            disabled={animating || mapView === "crossSection"}
           />
           </div>
           <Legend
@@ -1887,7 +1913,9 @@ export default function App() {
             onTogglePlainsPlateaus={() => setShowPlainsPlateaus((cur) => !cur)}
           />
           <p style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>
-            {mapView === "plateInspector"
+            {mapView === "crossSection"
+              ? "Adjust plane orientation and arc center in the locator. The section image is a schematic placeholder until sampled world fields are connected."
+              : mapView === "plateInspector"
               ? "Click a plate to select it. Tab / Shift+Tab cycles plates. Press and hold, then drag to rotate."
               : mapView === "riverInspector"
                 ? "Click a river to select it. Tab / Shift+Tab cycles rivers. Press and hold, then drag to rotate."
