@@ -821,6 +821,10 @@ class PlateWithSparseQuadPatch(Plate):
         if spec.remap_class == RemapClass.CATEGORICAL:
             if name == "crust_type_code":
                 inherited = CRUST_TYPE_CONTINENTAL if self.crust_type == "continental" else CRUST_TYPE_OCEANIC
+                # The coarse cell keeps any craton its children had, and craton lives only on
+                # continental hosts, so it stays continental whatever the area vote says (#340).
+                if np.any(all_fields.get("craton_crust_m", np.zeros(len(values))) > 0.0):
+                    return 0 if inherited == CRUST_TYPE_CONTINENTAL else CRUST_TYPE_CONTINENTAL
                 values = np.where(values == 0, inherited, values)
             choices = np.unique(values)
             totals = np.array([areas[values == choice].sum() for choice in choices])

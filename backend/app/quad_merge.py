@@ -39,7 +39,7 @@ from scipy.spatial import cKDTree
 from . import geometry, lithosphere, mantle, rheology
 from .elevation_lines import CRUST_TYPE_CONTINENTAL, CRUST_TYPE_INHERIT, CRUST_TYPE_OCEANIC
 from .lithosphere_plate import SUTURE_ACCRETION_MAX_HC_M
-from .surface_fields import SURFACE_FIELDS, RemapClass
+from .surface_fields import CRATON_UNFORMED_YEARS, SURFACE_FIELDS, RemapClass
 
 if TYPE_CHECKING:
     from .sparse_quad_patch import PlateWithSparseQuadPatch
@@ -273,6 +273,16 @@ def _transfer(keep: "PlateWithSparseQuadPatch", absorb: "PlateWithSparseQuadPatc
             merged[is_new & (total <= 0.0)] = 0.0
         out[name] = merged
 
+    # A column holding craton stays continental, however much other crust the vote counts on
+    # it: craton lives only on continental hosts, so a thick oceanic-coded pile fused onto a
+    # craton would otherwise strip it (#340: 4.4 M km^3 in one terrane accretion on the
+    # seed 910211954 replay).
+    if "craton_crust_m" in out and "crust_type_code" in out:
+        codes = out["crust_type_code"]
+        oceanic = (codes == CRUST_TYPE_OCEANIC) | ((codes == CRUST_TYPE_INHERIT) & (keep.crust_type == "oceanic"))
+        relabel = (out["craton_crust_m"] > 0.0) & oceanic
+        codes[relabel] = CRUST_TYPE_INHERIT if keep.crust_type == "continental" else CRUST_TYPE_CONTINENTAL
+
     # Crust: the suture cap applies to stacked columns only, never lowers a column already
     # past it, and caps Hm the way `quad_tectonics._accrete_onto_survivors` does.
     old_hc = own_values("crustal_thickness_m")
@@ -329,9 +339,12 @@ def _place_stacking_overflow(
     cell's included) is suture crust like any other, so it goes through the same staged
     placement (`quad_tectonics._place_suture_crust`: belts, then the far field) across the
     merged plate's continental cells, carrying each overflowing cell's share of its
-    continental material (issue #276). What can't be placed leaves its material above the column for
-    `merge_split.merge_plates` to book. Returns the cells whose Hc the placement changed and
-    the share of `overflow` it placed, the same share on every overflowing cell."""
+    continental material (issue #276). Where craton stacked on craton past the cap, the craton
+    above the capped column is the overflow's own: it goes with the overflow and keeps its
+    oldest date, so welding two cratons doesn't destroy any (#340). What can't be placed
+    leaves its material and craton above the column for `merge_split.merge_plates` and its
+    craton audit to book. Returns the cells whose Hc the placement changed and the share of
+    `overflow` it placed, the same share on every overflowing cell."""
     volume = float(overflow @ areas)
     if volume <= 0.0:
         return np.zeros(len(overflow), dtype=bool), 0.0
@@ -347,6 +360,13 @@ def _place_stacking_overflow(
     moving = material * share
     material_volume = float(moving @ areas)
     material -= moving
+    # The craton summed past the capped column (craton on craton) can only be overflow; it is
+    # never more than the overflow, so no receiver ends up with craton above its Hc.
+    craton = out.get("craton_crust_m")
+    craton_moving = np.maximum(craton - hc, 0.0) if craton is not None else np.zeros(len(hc))
+    craton_volume = float(craton_moving @ areas)
+    if craton is not None:
+        craton -= craton_moving
     hc_before = hc.copy()
     changed, _ = quad_tectonics._place_suture_crust(
         hc,
@@ -363,6 +383,20 @@ def _place_stacking_overflow(
     placed = quad_tectonics._carry_material(material, areas, hc - hc_before, volume, material_volume)
     # The unplaced share stays on the overflowing cells, in proportion.
     material += (1.0 - placed) * moving
+    if craton_volume > 0.0:
+        before = craton.copy()
+        quad_tectonics._carry_material(craton, areas, hc - hc_before, volume, craton_volume)
+        craton += (1.0 - placed) * craton_moving
+        formed = out.get("craton_formed_years")
+        if formed is not None:
+            # The placement fills nearest-first, so a receiver's craton came from its nearest
+            # overflowing cell; it keeps the older of that date and its own (HISTORY).
+            sources = np.flatnonzero((craton_moving > 0.0) & (formed != CRATON_UNFORMED_YEARS))
+            gained = np.flatnonzero(craton > before)
+            if len(sources) and len(gained):
+                points = keep.surface_nodes().local_xyz
+                _, nearest = cKDTree(points[sources]).query(points[gained])
+                formed[gained] = np.minimum(formed[gained], formed[sources][nearest])
     return changed, placed
 
 

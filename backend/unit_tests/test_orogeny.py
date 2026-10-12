@@ -224,6 +224,41 @@ def test_relaminated_melt_never_enters_oceanic_cells():
     assert budget["anatexis_melt_relaminated_m3"] == 0.0
 
 
+def test_anatexis_melts_only_non_cratonic_crust_and_never_relaminates_into_a_craton():
+    def melt(cratonic: bool):
+        plate = _strip(8, _peak(72_000.0, width=3))
+        world = _world(plate)
+        cratons.ensure_ledger(world)
+        craton = np.zeros(plate.node_count())
+        if cratonic:
+            craton[:3] = 36_000.0  # half of each plateau column
+            craton[3:] = REF_HC  # its thinner neighbours are craton too
+        plate.set_fields_on_plate(craton_crust_m=craton)
+        hc_before = plate.collect("crustal_thickness_m")
+        orogeny.anatexis(plate, world, 1_000_000.0)
+        return plate, world, hc_before, craton
+
+    _, open_world, _, _ = melt(False)
+    plate, world, hc_before, craton = melt(True)
+
+    budget = world.orogenic_relief_budget
+    open_extracted = open_world.orogenic_relief_budget["anatexis_melt_extracted_m3"]
+    assert budget["anatexis_melt_extracted_m3"] == pytest.approx(0.5 * open_extracted, rel=1e-9)
+    assert budget["anatexis_melt_relaminated_m3"] == 0.0
+    assert np.array_equal(plate.collect("crustal_thickness_m"), hc_before)
+    assert np.array_equal(plate.collect("craton_crust_m"), craton)
+    assert world.craton_ledger["collision_reworked_m3"] == 0.0
+
+
+def test_a_cratons_crust_is_never_part_of_its_delaminable_root():
+    hc, hm = np.array([80_000.0, 80_000.0]), np.array([60_000.0, 60_000.0])
+    lag = np.zeros(2)
+    open_root = orogeny.delamination_capacity_m(hc, hm, 1e6, lag)
+    capped = orogeny.delamination_capacity_m(hc, hm, 1e6, lag, craton_m=np.array([0.0, 75_000.0]))
+    assert open_root[0] == pytest.approx(30_000.0) and capped[0] == open_root[0]
+    assert capped[1] == pytest.approx(5_000.0)
+
+
 def test_evolving_standing_orogens_relaxes_the_lag():
     plate = _strip(4)
     world = _world(plate)
@@ -338,21 +373,49 @@ def test_crust_never_flows_into_an_oceanic_column():
     assert np.array_equal(plate.collect("crustal_thickness_m"), before)
 
 
-def test_cratonic_crust_that_flows_is_booked_as_collision_reworked():
+def test_cratonic_crust_never_flows_but_crust_thickened_onto_it_relaxes_away():
     plate = _strip(8, _peak(70_000.0, 1))
     craton = np.zeros(plate.node_count())
-    craton[0] = 10_000.0  # weak enough (40% strength) to flow somewhat
+    craton[0] = REF_HC  # a full-strength craton under 35 km of orogenic crust
     plate.set_fields_on_plate(craton_crust_m=craton)
     world = _world(plate)
     cratons.ensure_ledger(world)
-    areas = plate.node_areas_m2()
-    craton_before = float(craton @ areas)
+    material = _volume(plate, "continental_material_m")
 
-    orogeny.relax_orogens(plate, world, 2_000_000.0)
+    orogeny.relax_orogens(plate, world, 20_000_000.0)
 
-    craton_after = float(plate.collect("craton_crust_m") @ areas)
-    assert craton_after < craton_before
-    assert world.craton_ledger["collision_reworked_m3"] == pytest.approx(craton_before - craton_after)
+    hc = plate.collect("crustal_thickness_m")
+    assert hc[0] < 60_000.0  # the added crust spread away
+    assert np.array_equal(plate.collect("craton_crust_m"), craton)
+    assert world.craton_ledger["collision_reworked_m3"] == 0.0
+    assert _volume(plate, "continental_material_m") == pytest.approx(material, rel=1e-12)
+
+
+def test_a_cratonic_column_never_drains_below_its_craton():
+    plate = _strip(8, _peak(56_000.0, 1))
+    craton = np.zeros(plate.node_count())
+    craton[0] = 54_000.0
+    plate.set_fields_on_plate(craton_crust_m=craton)
+    world = _world(plate)
+
+    orogeny.relax_orogens(plate, world, 50_000_000.0)
+
+    assert plate.collect("crustal_thickness_m")[0] == pytest.approx(54_000.0)
+
+
+def test_an_orogen_ponds_against_a_craton_instead_of_flooding_it():
+    def spread(cratonic: bool) -> np.ndarray:
+        plate = _strip(8, _peak(lithosphere.MAX_CRUSTAL_THICKNESS_M, 1))
+        if cratonic:
+            craton = np.zeros(plate.node_count())
+            craton[1:] = REF_HC
+            plate.set_fields_on_plate(craton_crust_m=craton)
+        orogeny.relax_orogens(plate, _world(plate), 2_000_000.0)
+        return plate.collect("crustal_thickness_m")
+
+    open_ground, against_craton = spread(False), spread(True)
+    assert against_craton[1] < open_ground[1]
+    assert against_craton[0] > open_ground[0]
 
 
 # --- Competition with suture accretion ----------------------------------------------------
@@ -427,3 +490,29 @@ def test_stepping_a_quad_world_books_finite_relief_budgets():
     assert set(orogeny.BUDGET_ACCOUNTS) <= set(budget)
     assert all(np.isfinite(v) and v >= 0.0 for v in budget.values())
     assert budget["suture_donated_m3"] >= budget["suture_belt_placed_m3"] + budget["escape_placed_m3"]
+
+
+def test_a_column_filled_by_restite_and_craton_melts_nothing():
+    plate = _strip(4, _peak(72_000.0, width=1))
+    hc = plate.collect("crustal_thickness_m")
+    # A thin restite leaves fertile crust below the melt isotherm, but the craton fills the rest.
+    plate.set_fields_on_plate(craton_crust_m=np.where(hc > REF_HC, 67_000.0, 0.0), restite_m=np.where(hc > REF_HC, 5_000.0, 0.0))
+    world = _world(plate)
+    cratons.ensure_ledger(world)
+
+    orogeny.anatexis(plate, world, 1_000_000.0)
+
+    assert world.orogenic_relief_budget.get("anatexis_melt_extracted_m3", 0.0) == 0.0
+    assert np.all(plate.collect("restite_m") + plate.collect("craton_crust_m") <= plate.collect("crustal_thickness_m") + 1e-6)
+
+
+def test_mobile_excess_counts_only_crust_above_the_craton():
+    plate = _strip(6, _peak(60_000.0, 1))
+    craton = np.zeros(plate.node_count())
+    craton[0] = 56_000.0
+    plate.set_fields_on_plate(craton_crust_m=craton)
+    world = _world(plate)
+
+    orogeny.relax_orogens(plate, world, 1.0)
+
+    assert world.orogenic_relief_budget["relief_mobile_excess_m3"] == pytest.approx(4_000.0 * plate.node_areas_m2()[0], rel=1e-9)

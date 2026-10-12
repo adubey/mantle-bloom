@@ -409,15 +409,15 @@ def _book_shed_roots(
     hc_before: np.ndarray,
     shed: np.ndarray,
 ) -> None:
-    """In place: delaminated roots (`shed`, thickness per cell) take their columns' continental
-    material and cratonic crust with them (`_shed_provenance`), and they are restite first --
-    the dense residue at the base of the column. Books all three."""
-    shed_material, shed_craton = _shed_provenance(material, craton, hc_before, shed)
+    """In place: delaminated roots (`shed`, thickness per cell) take their columns'
+    non-cratonic continental material with them (`_shed_provenance`), and they are restite
+    first -- the dense residue at the base of the column. The craton stays (#340). Books
+    both."""
+    shed_material = _shed_provenance(material, craton, hc_before, shed)
     shed_restite = np.minimum(restite, shed)
     restite -= shed_restite
     if world is not None:
         continental_ledger.record(world, "delaminated_lower_crust_m3", float(shed_material @ areas))
-        cratons.record(world, "delaminated_m3", float(shed_craton @ areas))
         orogeny.record(world, "restite_delaminated_m3", float(shed_restite @ areas))
 
 
@@ -430,22 +430,38 @@ def _retreat(
     years: float = 0.0,
 ) -> np.ndarray:
     """Peel retreatable boundary cells, layer by layer -- see the module docstring. Returns the
-    survivor mask over the pre-retreat node order. `years` sets how much of the receiving
-    belts' dense roots may delaminate (none at 0)."""
+    survivor mask over the pre-retreat node order. `years` sets how much craton a trench
+    wears away and how much of the receiving belts' dense roots may delaminate (none at 0)."""
     n = plate.node_count()
     survivors = np.ones(n, dtype=bool)
-    # A craton cell holds out against consumption until it has been overlapped long enough
-    # (cratons.retreat_allowed), so the younger belts around it take the shortening first.
-    retreatable = ctx.shrinkable & cratons.retreat_allowed(world, plate)
-    if not np.any(retreatable) or n <= 1:
+    if n <= 1:
         return survivors
-
     probes = plate._probe_neighbour_indices()
     has_probe = probes >= 0
     safe_probes = np.where(has_probe, probes, 0)
+    budget_hc = ctx.oceanic_override_retreat_budget_hc
+    # Boundary retreat never consumes a craton cell whole (cratons.retreat_allowed, #340). At a
+    # collision front it jams; at a trench its exposed edge wears back by subduction erosion
+    # first, and the cell retreats once no craton is left.
+    if years > 0.0 and np.any(ctx.shrinkable & (plate.collect("craton_crust_m") > 0.0)):
+        codes = plate.collect("crust_type_code")
+        terrane = (
+            effective_is_continental_from_codes(codes, False) if plate.crust_type == "oceanic" else np.zeros(n, dtype=bool)
+        )
+        trench = ctx.shrinkable & ~(ctx.accrete | terrane) & np.any(np.all(~has_probe, axis=2), axis=1)
+        # A continental margin under an oceanic neighbour subducts only as much as this
+        # step's arc magmatism creates (#177), and attrition is part of that.
+        node_area = lithosphere.node_area_m2(ctx.spacing_rad)
+        cap = max(float(budget_hc[0]), 0.0) * node_area if plate.crust_type == "continental" else None
+        worn = cratons.attrite(world, plate, trench, years, cap)
+        if plate.crust_type == "continental":
+            budget_hc[0] -= worn / node_area
+    retreatable = ctx.shrinkable & cratons.retreat_allowed(plate)
+    if not np.any(retreatable):
+        return survivors
+
     weights = plate.node_areas_m2() / lithosphere.node_area_m2(ctx.spacing_rad)
     hc = plate.collect("crustal_thickness_m")
-    budget_hc = ctx.oceanic_override_retreat_budget_hc
     remaining = min(max_cells, n - 1)
     removed = np.zeros(n, dtype=bool)
     for _ in range(max(1, int(max_distance / ctx.spacing_rad))):
@@ -480,15 +496,15 @@ def _retreat(
     world.record_removed_points(own_points[removed], plate.plate_id)
     codes = plate.collect("crust_type_code")
     continental = effective_is_continental_from_codes(codes, plate.crust_type == "continental")
+    # A continental terrane keeps being continental even when it rides an oceanic plate.
+    # Treat those cells like the explicit continent-continent suture donors instead of
+    # subducting them with their nominal owning plate (issue #253).
+    terrane = continental if plate.crust_type == "oceanic" else np.zeros_like(continental)
     # Oceanic floor going under a neighbour is the subduction history a later continental
     # collision inherits its polarity from (issue #318).
     collision_polarity.record_consumption(
         world, plate, own_points[removed], ~continental[removed], ctx.inputs.neighbor_plate_id[removed], ctx.neighbours
     )
-    # A continental terrane keeps being continental even when it rides an oceanic plate.
-    # Treat those cells like the explicit continent-continent suture donors instead of
-    # subducting them with their nominal owning plate (issue #253).
-    terrane = continental if plate.crust_type == "oceanic" else np.zeros_like(continental)
     donors = removed & (ctx.accrete | terrane)
     # Everything else removed goes down the trench: its craton and its continental-derived
     # material leave the surface as deep subduction.
@@ -846,18 +862,16 @@ def _accrete_onto_survivors(
     )
 
 
-def _shed_provenance(
-    material: np.ndarray, craton: np.ndarray, hc_before: np.ndarray, shed: np.ndarray
-) -> tuple[np.ndarray, np.ndarray]:
-    """In place: remove the continental material and cratonic crust that delaminated roots
-    (`shed`, thickness per cell) take with them -- each cell's own fractions of the column it
-    had before this front arrived. Returns the removed thicknesses (material, craton)."""
-    fraction = np.divide(shed, hc_before, out=np.zeros(len(shed)), where=(shed > 0.0) & (hc_before > 0.0))
-    shed_material = material * np.minimum(fraction, 1.0)
-    shed_craton = craton * np.minimum(fraction, 1.0)
+def _shed_provenance(material: np.ndarray, craton: np.ndarray, hc_before: np.ndarray, shed: np.ndarray) -> np.ndarray:
+    """In place: remove the continental material that delaminated roots (`shed`, thickness
+    per cell) take with them -- each cell's own fraction of the non-cratonic crust it had
+    before this front arrived. Roots never take craton: the capacity they shed from excludes
+    it (`orogeny.plate_delamination_capacity_m3`, #340). Returns the removed thickness."""
+    fertile = hc_before - craton
+    fraction = np.divide(shed, fertile, out=np.zeros(len(shed)), where=(shed > 0.0) & (fertile > 0.0))
+    shed_material = np.maximum(material - craton, 0.0) * np.minimum(fraction, 1.0)
     material -= shed_material
-    craton -= shed_craton
-    return shed_material, shed_craton
+    return shed_material
 
 
 def _carry_material(
@@ -1209,6 +1223,9 @@ def _place_on_overrider(
     eligible = continental.copy() if np.any(continental) else np.ones(len(hc), dtype=bool)
     if root_capacity is None:
         root_capacity = orogeny.plate_delamination_capacity_m3(over, continental, years)
+    # A shared allowance was computed earlier in the step; the column may have thinned since,
+    # and a shed root never takes craton (#340).
+    np.minimum(root_capacity, np.maximum(hc - craton, 0.0) * areas, out=root_capacity)
     points = over.surface_nodes().local_xyz
     convergence_local = None
     if approach_world is not None:

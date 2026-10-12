@@ -584,7 +584,11 @@ grey, warming to amber as its formation clock (`stable_continental_myr`) approac
 
 Destruction is recorded in `World.craton_ledger`, one account per mechanism (rifting,
 subduction, delamination, collisional reworking, erosion, topology removal), and
-`cratons.balance_error_m3` checks it against the live volume. `unattributed_m3` should stay
+`cratons.balance_error_m3` checks it against the live volume. `audit_clipped_m3` is craton a
+catch-all phase audit had to clip to its column, kept apart from the real mechanisms (#340);
+`bin/debug/split_craton_rework.py` replays a save and splits every account by the site that
+booked it, and `bin/debug/probe_craton_clips.py` finds the writer behind a one-off audit clip.
+`unattributed_m3` should stay
 near zero; anything there escaped every instrumented site. Every stats snapshot carries the
 ledger (`craton_ledger_km3`), so the Stats window's *Craton destroyed (cumulative)* series
 shows when cratons were lost. A step whose losses to one mechanism exceed

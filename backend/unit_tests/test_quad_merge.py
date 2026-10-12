@@ -189,6 +189,43 @@ def test_crust_stacked_past_the_suture_cap_is_placed_not_lost(monkeypatch):
     assert np.any(keep2.collect("crustal_thickness_m") > cap)
 
 
+def test_craton_stacked_on_craton_past_the_cap_goes_with_the_overflow():
+    # Issue #340: welding two cratons conserves both. Craton summed past the capped column is
+    # the overflow's own crust, so it is placed with it, never above a receiver's Hc.
+    keep = _cap(1, np.eye(3), _direction(0.0))
+    absorb = _cap(2, ROTATED, _direction(2 * RADIUS - 3 * SPACING))
+    for plate, formed in ((keep, -1e9), (absorb, -2e9)):
+        hc = np.full(plate.node_count(), 0.6 * SUTURE_ACCRETION_MAX_HC_M)
+        plate.set_fields_on_plate(
+            crustal_thickness_m=hc, continental_material_m=hc, craton_crust_m=hc,
+            craton_formed_years=np.full(plate.node_count(), formed),
+        )
+    craton_before = _volume([keep, absorb], "craton_crust_m")
+
+    quad_merge.merge(keep, absorb, np.zeros((0, 3)))
+
+    craton, hc = keep.collect("craton_crust_m"), keep.collect("crustal_thickness_m")
+    assert _volume([keep], "craton_crust_m") == pytest.approx(craton_before, rel=1e-9)
+    assert np.all(craton <= hc + 1e-6)
+    assert keep.collect("craton_formed_years").min() == -2e9
+
+
+def test_a_craton_column_stays_continental_under_a_thicker_oceanic_pile():
+    # Issue #340: the crust-type vote counts crust volume, so an oceanic-coded pile at the Hc
+    # cap fused onto a craton used to retype it oceanic and strip its craton.
+    keep = _cap(1, np.eye(3), _direction(0.0))
+    absorb = _cap(2, ROTATED, _direction(2 * RADIUS - 3 * SPACING), crust_type="oceanic")
+    keep.set_fields_on_plate(craton_crust_m=keep.collect("crustal_thickness_m"))
+    absorb.set_fields_on_plate(crustal_thickness_m=np.full(absorb.node_count(), SUTURE_ACCRETION_MAX_HC_M))
+    craton_before = _volume([keep], "craton_crust_m")
+
+    quad_merge.merge(keep, absorb, np.zeros((0, 3)))
+
+    craton, codes = keep.collect("craton_crust_m"), keep.collect("crust_type_code")
+    assert _volume([keep], "craton_crust_m") == pytest.approx(craton_before, rel=1e-9)
+    assert not np.any((craton > 0.0) & (codes == CRUST_TYPE_OCEANIC))
+
+
 @pytest.mark.parametrize("hc, hm", [
     (lithosphere.MAX_CRUSTAL_THICKNESS_M, lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M),
     (lithosphere.MIN_CRUSTAL_THICKNESS_M, lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M),
@@ -572,3 +609,36 @@ def test_a_continental_plate_with_no_territory_left_accretes_onto_its_neighbour(
     assert events == ["Plate 1's last crust accreted onto plate 2."]
     assert world.continental_material_ledger["topology_removed_m3"] == 0.0
     assert _material(world) == pytest.approx(material, rel=1e-12)
+
+
+def test_overflow_craton_keeps_the_date_of_the_front_it_came_from():
+    # #340: two overflowing fronts in one merge; a receiver gets its nearest front's date, not
+    # the oldest of them all.
+    from app.sparse_quad_patch import cells_per_face_edge, pack_cell_keys
+    from app.surface_fields import CRATON_UNFORMED_YEARS
+
+    n = 16
+    keys = pack_cell_keys(np.zeros(n, dtype=int), np.arange(10, 10 + n), np.full(n, 20))
+    hc = np.full(n, lithosphere.REFERENCE_HC_CONTINENTAL_M)
+    hc[[0, -1]] = SUTURE_ACCRETION_MAX_HC_M
+    keep = PlateWithSparseQuadPatch(
+        1, np.eye(3), "continental", cells_per_face_edge(SPACING), keys,
+        fields={"crustal_thickness_m": hc, "mantle_lithosphere_thickness_m": np.full(n, 100_000.0)},
+    )
+    overflow = np.zeros(n)
+    overflow[[0, -1]] = 5_000.0
+    craton = np.zeros(n)
+    craton[[0, -1]] = SUTURE_ACCRETION_MAX_HC_M + 5_000.0
+    formed = np.full(n, CRATON_UNFORMED_YEARS)
+    formed[0], formed[-1] = -3e9, -1e9
+    out = {
+        "crustal_thickness_m": hc.copy(), "crust_type_code": np.zeros(n, dtype=np.int8),
+        "continental_material_m": hc + overflow, "craton_crust_m": craton, "craton_formed_years": formed,
+    }
+
+    quad_merge._place_stacking_overflow(keep, out, overflow, keep.node_areas_m2())
+
+    received = (out["craton_crust_m"] > 0.0) & (np.arange(n) > 0) & (np.arange(n) < n - 1)
+    assert np.any(received[: n // 2]) and np.any(received[n // 2 :])
+    assert np.all(out["craton_formed_years"][: n // 2][received[: n // 2]] == -3e9)
+    assert np.all(out["craton_formed_years"][n // 2 :][received[n // 2 :]] == -1e9)

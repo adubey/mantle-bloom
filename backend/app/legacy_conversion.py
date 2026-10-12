@@ -927,6 +927,11 @@ def _stack_foreign(
                 mixed = receiving & (total > 0.0)
                 fields[name] = np.where(mixed, blended / np.where(total > 0.0, total, 1.0), own[name])
 
+        # A cell holding craton stays continental whatever the volume vote said: craton lives
+        # only on continental hosts (#340, as in quad_merge).
+        keeps_craton = receiving & (fields["craton_crust_m"] > 0.0)
+        fields["crust_type_code"][keeps_craton] = CRUST_TYPE_INHERIT if own_code == CRUST_TYPE_CONTINENTAL else CRUST_TYPE_CONTINENTAL
+
         # Elevation: isostasy from the stacked column, plus both sides' non-isostatic residual
         # blended by area, as quad_merge does at a suture.
         own_residual = own["elevation"] - lithosphere.isostatic_elevation(old_hc, old_hm, lithosphere.node_crust_density(own["crust_type_code"], quad.crust_type))

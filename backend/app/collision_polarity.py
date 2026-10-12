@@ -189,7 +189,7 @@ class PlateCollisionMasks:
     node_keys: np.ndarray  # exact sparse-cell identity/order captured by the prepass
     continental: np.ndarray  # effective node type frozen with the contact snapshot
     retreat_eligible: np.ndarray  # lower & contested: what may be consumed
-    retreatable: np.ndarray  # frozen eligibility after run-size and craton-delay gates
+    retreatable: np.ndarray  # frozen eligibility after the run-size gate and the no-craton gate (#340)
     override: np.ndarray  # upper & contested: what overrides rather than retreats
 
 
@@ -469,7 +469,7 @@ def observe_contacts(world: "World", years: float) -> PolarityFrame:
             )
         from . import cratons
 
-        m.retreatable = eligible & cratons.retreat_allowed(world, plate)
+        m.retreatable = eligible & cratons.retreat_allowed(plate)
         m.override = m.upper & contested
     frame = PolarityFrame(elapsed_years=now, masks=masks, polarity=polarity)
     world.collision_polarity_frame = frame

@@ -944,8 +944,9 @@ def step_world_progress(world: World, years: float):  # noqa: C901
         # in the same order -- not the same order every turn, which is the whole point (see
         # docstring above), but reproducible given the same seed and step history.
         np.random.default_rng((world.seed, round(world.elapsed_years))).shuffle(order)
-        # deform() books its own rifting, consumption and delamination at each site; any
-        # cratonic volume still vanishing lands in unattributed.
+        # deform() books its own rifting, consumption and delamination at each site. A column
+        # some writer left thinner than its craton is clipped to audit_clipped, not to a
+        # guessed mechanism (#340); any cratonic volume still vanishing lands in unattributed.
         audit = cratons.PhaseAudit(world)
         for plate in order:
             others = [p for p in world.plates if p.plate_id != plate.plate_id]
@@ -954,7 +955,7 @@ def step_world_progress(world: World, years: float):  # noqa: C901
             yield done_units / total_units
         collision_polarity.finish_deform_pass(world)
         world.suture_root_capacity = None
-        audit.settle("rifted_m3")
+        audit.settle("audit_clipped_m3")
         # Intraplate faults: age/spawn/retire and apply their own relief, on top of (never
         # replacing) deform()'s boundary classification -- see faults.py. Before topology
         # changes so a fresh fault's relief is in place when merge/split geometry is judged.
@@ -1070,10 +1071,11 @@ def step_world_progress(world: World, years: float):  # noqa: C901
 
     # Every Hc/Hm writer has run for this step: hold each column to its caps (issue #256), so
     # the hard invariant holds even where a writer misses one. Sea level below then sees the
-    # clamped hypsometry.
+    # clamped hypsometry. Its audit also catches every unaudited writer since the erosion
+    # phase, so what it clips is audit_clipped, not delamination (#340).
     audit = cratons.PhaseAudit(world)
     _clamp_column_caps(world)
-    audit.settle("delaminated_m3")
+    audit.settle("audit_clipped_m3")
     # Advance the craton formation clocks against this step's final columns, then report any
     # mechanism that destroyed a noticeable share of the cratons this step.
     cratons.update(world, years)
