@@ -155,7 +155,8 @@ def test_volume_contract_closes_per_body_and_across_the_world():
         # Every booked sink reaches the water or the ocean: melt (with snow on bare ground) as
         # meltwater at its node, calving unrouted.
         assert float(np.dot(melt, area)) == pytest.approx(
-            ledger.surface_melt_m3 + ledger.basal_melt_m3 + ledger.overflow_m3 + ledger.snow_melted_m3, rel=1e-9, abs=1.0
+            ledger.surface_melt_m3 + ledger.basal_melt_m3 + ledger.overflow_m3 + ledger.capped_m3 + ledger.snow_melted_m3,
+            rel=1e-9, abs=1.0,
         )
         assert float(ice.calved_m3.sum()) == pytest.approx(ledger.calved_m3)
     assert ledger.closing_m3 > 0.0
@@ -338,3 +339,27 @@ def test_sea_ice_cap_keeps_its_own_rule_and_other_floating_ice_calves():
     assert depth[cap] == pytest.approx(20.0 + gained)
     assert np.all(depth[ocean & ~cap] == 0.0)
     assert ice.ledger.calved_m3 == pytest.approx(float(np.dot(start[ocean & ~cap], area[ocean & ~cap])))
+
+
+def test_sea_ice_cap_is_held_to_the_depth_guard_booked_and_logged(caplog):
+    # A cold spell with no summer melt: the floating cap gains 20 m on 4,990 m. The guard keeps
+    # it at GLACIER_MAX_DEPTH_M, sheds the excess as meltwater, books it, and warns.
+    points, r, elevation, area = _continent(land_radius_km=300.0, half_km=600.0)
+    n = len(points)
+    cap = elevation < 0.0
+    start = np.where(cap, hydrology.GLACIER_MAX_DEPTH_M - 10.0, 0.0)
+    with caplog.at_level("WARNING", logger="app.hydroclimate.ice_sheet"):
+        depth, melt, ice = _step(points, area, elevation, start, _cold(n, 1000.0), 1e6, allow_ocean_ice=cap)
+    ledger = ice.ledger
+    assert np.all(depth[cap] == hydrology.GLACIER_MAX_DEPTH_M)
+    assert ledger.capped_m3 == pytest.approx(10.0 * float(area[cap].sum()))
+    assert ledger.capped_nodes >= int(cap.sum())
+    assert abs(ledger.residual_m3) < 1e-9 * ledger.closing_m3
+    assert float(np.dot(melt[cap], area[cap])) == pytest.approx(ledger.capped_m3)
+    assert "GLACIER_MAX_DEPTH_M" in caplog.text
+
+    caplog.clear()
+    with caplog.at_level("WARNING", logger="app.hydroclimate.ice_sheet"):
+        _, _, ice = _step(points, area, elevation, np.where(cap, 100.0, 0.0), _cold(n, 1000.0), 1e6, allow_ocean_ice=cap)
+    assert ice.ledger.capped_m3 == 0.0 and ice.ledger.capped_nodes == 0
+    assert caplog.text == ""

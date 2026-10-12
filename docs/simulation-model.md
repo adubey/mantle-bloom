@@ -3857,7 +3857,11 @@ this module evaporates, since climate.py runs *before* this module each step).
 - **Thickness guard.** `GLACIER_MAX_DEPTH_M` (5 km) caps the plastic profile itself, so a
   sheet too big for it gets a flat top and its volume spreads outward through the root find
   instead of being shed. A plastic divide is `sqrt(2 c L)` thick for a margin L from the
-  divide: 3.3 km at 500 km and 4.7 km at 1000 km under 100 kPa.
+  divide: 3.3 km at 500 km and 4.7 km at 1000 km under 100 kPa. The same guard holds the
+  ice-age sea-ice cap and frozen river ice. Ice shed there is booked (`capped_m3`,
+  `frozen_river_capped_m3`), and the cap is never treated as physics: real ice spreads and
+  melts at its base long before 5 km, so any step where ice reaches it logs a warning
+  (`ice_sheet.warn_if_capped`, `warn_if_river_ice_capped`).
 - **Small bodies.** A plastic profile on one or two cells is meaningless, so a body with room
   for fewer than `ICE_BODY_MIN_NODES` (3) cells -- counting the ground it could advance onto,
   not just the nodes it covers -- spreads its volume evenly over its own nodes, under the same

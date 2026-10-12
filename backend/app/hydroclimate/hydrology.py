@@ -1243,7 +1243,8 @@ def compute_hydrology(
     # frozen-precipitation term uses -- not added 1:1 the way a standing frozen lake's own
     # lake_depth (already a depth) is -- and then re-clipped to GLACIER_MAX_DEPTH_M so a large
     # river (or a lake breach) freezing into a cold sink can't create a physically absurd
-    # ice column in a single step.
+    # ice column in a single step. What the clip drops is booked (`frozen_river_capped_m3`)
+    # and logged as a warning (review of #359): reaching it means a missing sink.
     frozen_river_ice = GLACIER_ACCUMULATION_RATE * water_deposited * (years / 1_000_000.0)
     with_river_ice = np.where(
         is_frozen & ~is_ocean,
@@ -1251,6 +1252,9 @@ def compute_hydrology(
         new_glacier_depth,
     )
     ice.ledger.frozen_river_ice_m3 = float(np.dot(with_river_ice - new_glacier_depth, areas))
+    unclipped = np.where(is_frozen & ~is_ocean, new_glacier_depth + frozen_river_ice, new_glacier_depth)
+    ice.ledger.frozen_river_capped_m3 = float(np.dot(unclipped - with_river_ice, areas))
+    ice_sheet.warn_if_river_ice_capped(ice.ledger)
     new_glacier_depth = with_river_ice
 
     # is_river isn't known yet -- it needs this step's *final* lake_depth (below) to exclude

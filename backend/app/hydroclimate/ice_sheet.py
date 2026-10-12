@@ -31,6 +31,7 @@ previous extent from where that ice sits.
 from __future__ import annotations
 
 import heapq
+import logging
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -43,6 +44,8 @@ from ..elevation_lines import PLANET_RADIUS_KM
 from ..lithosphere import GRAVITY_M_S2, RHO_ICE, RHO_WATER
 from . import hydrology
 from .climate import LAPSE_RATE_C_PER_KM
+
+_logger = logging.getLogger(__name__)
 
 # Basal yield stress (Pa) of the plastic profile. A frozen bed, or a thawed one on bare rock,
 # holds about 100 kPa (Nye's classic value, and the upper range ice-sheet reconstructions use);
@@ -363,7 +366,9 @@ def _balance_flux(order, indptr, indices, length, surface, is_ice, source):
 @dataclass
 class BodyBalance:
     """One ice body's volume budget for the step (m^3). The contract is
-    closing = opening + accumulation - surface_melt - basal_melt - calved - overflow."""
+    closing = opening + accumulation - surface_melt - basal_melt - calved - overflow - capped.
+    `overflow_m3` is what a saturated body can't hold; `capped_m3` is ice shed at the
+    GLACIER_MAX_DEPTH_M guard (see `IceLedger`)."""
 
     nodes: np.ndarray
     opening_m3: float
@@ -373,6 +378,7 @@ class BodyBalance:
     calved_m3: float
     overflow_m3: float
     closing_m3: float
+    capped_m3: float = 0.0
     margin_m: float = 0.0  # the solved d (signed graph distance of the margin from S), metres
     saturated: bool = False
     # Every node whose ice this body sets: its own nodes, plus the ground it can advance onto.
@@ -382,7 +388,7 @@ class BodyBalance:
     def residual_m3(self) -> float:
         return (
             self.opening_m3 + self.accumulation_m3 - self.surface_melt_m3 - self.basal_melt_m3
-            - self.calved_m3 - self.overflow_m3 - self.closing_m3
+            - self.calved_m3 - self.overflow_m3 - self.capped_m3 - self.closing_m3
         )
 
 
@@ -393,7 +399,15 @@ class IceLedger:
     step (`frozen_lake_m3`). `closing_m3` is the ice after the solve; hydrology then adds this
     step's frozen river ice (`frozen_river_ice_m3`, a one-step lag, issue #353 section 5), so
     next step's opening is closing + frozen_river_ice. `snow_melted_m3` is snowfall on
-    ice-free ground that melts within the step and never joins the ice."""
+    ice-free ground that melts within the step and never joins the ice.
+
+    `capped_m3` is ice shed as meltwater at the GLACIER_MAX_DEPTH_M guard, and
+    `capped_nodes` how many nodes reached it (including sheets whose plastic profile was
+    flattened there, which sheds nothing). Real ice spreads and melts at its base long before
+    5 km, so either being nonzero means some sink or flow is missing for that ice, and it is
+    logged as a warning (`warn_if_capped`). `frozen_river_capped_m3` is frozen river ice the
+    same guard clipped after routing (outside the solve's identity, like
+    `frozen_river_ice_m3`); it returns to the ocean's share of the water budget."""
 
     opening_m3: float = 0.0
     frozen_lake_m3: float = 0.0
@@ -405,13 +419,37 @@ class IceLedger:
     closing_m3: float = 0.0
     frozen_river_ice_m3: float = 0.0
     snow_melted_m3: float = 0.0
+    capped_m3: float = 0.0
+    capped_nodes: int = 0
+    frozen_river_capped_m3: float = 0.0
 
     @property
     def residual_m3(self) -> float:
         return (
             self.opening_m3 + self.frozen_lake_m3 + self.accumulation_m3 - self.surface_melt_m3 - self.basal_melt_m3
-            - self.calved_m3 - self.overflow_m3 - self.closing_m3
+            - self.calved_m3 - self.overflow_m3 - self.capped_m3 - self.closing_m3
         )
+
+
+def warn_if_capped(ledger: IceLedger) -> None:
+    """Log a warning when any ice reached GLACIER_MAX_DEPTH_M in the solve (see `IceLedger`)."""
+    if ledger.capped_nodes == 0 and ledger.capped_m3 <= 0.0:
+        return
+    _logger.warning(
+        "glacier ice reached GLACIER_MAX_DEPTH_M (%.0f m) at %d nodes, %.3g km^3 shed as meltwater: "
+        "a missing sink or flow for ice this thick",
+        hydrology.GLACIER_MAX_DEPTH_M, ledger.capped_nodes, ledger.capped_m3 / 1e9,
+    )
+
+
+def warn_if_river_ice_capped(ledger: IceLedger) -> None:
+    """Log a warning when frozen river ice was clipped at GLACIER_MAX_DEPTH_M (see `IceLedger`)."""
+    if ledger.frozen_river_capped_m3 <= 0.0:
+        return
+    _logger.warning(
+        "frozen river ice clipped at GLACIER_MAX_DEPTH_M (%.0f m): %.3g km^3 not added to the ice",
+        hydrology.GLACIER_MAX_DEPTH_M, ledger.frozen_river_capped_m3 / 1e9,
+    )
 
 
 @dataclass
@@ -770,10 +808,16 @@ def step_ice(
         acc, sm, _ = climate.subset(cap).rates(np.zeros(int(cap.sum())))
         gained = acc * dt_myr
         lost = np.minimum(sm * dt_myr, h0[cap] + gained)
-        out.depth[cap] = h0[cap] + gained - lost
-        out.melt_m3[cap] += lost * area[cap]
+        depth = h0[cap] + gained - lost
+        # The same depth guard as the bodies (review of #359): a sustained cold spell with
+        # little summer melt would otherwise stack the floating cap past it.
+        over = np.clip(depth - hydrology.GLACIER_MAX_DEPTH_M, 0.0, None)
+        out.depth[cap] = depth - over
+        out.melt_m3[cap] += (lost + over) * area[cap]
         ledger.accumulation_m3 += float(np.dot(gained, area[cap]))
         ledger.surface_melt_m3 += float(np.dot(lost, area[cap]))
+        ledger.capped_m3 += float(np.dot(over, area[cap]))
+        ledger.capped_nodes += int(np.count_nonzero(over > 0.0))
 
     # Nodes a body may occupy: never the sea-ice cap, never ocean too deep to ground the
     # thickest ice allowed. Ice already afloat anywhere else calves.
@@ -847,8 +891,13 @@ def step_ice(
         ledger.surface_melt_m3 += body.surface_melt_m3
         ledger.basal_melt_m3 += body.basal_melt_m3
         ledger.overflow_m3 += body.overflow_m3
+        ledger.capped_m3 += body.capped_m3
     ledger.calved_m3 = float(out.calved.sum())
     ledger.closing_m3 = float(np.dot(out.depth, area))
+    # Body nodes at the depth guard, whether shed there or flattened by the profile's cap.
+    at_cap = ~cap & (out.depth > 0.0) & (out.thickness >= hydrology.GLACIER_MAX_DEPTH_M * (1.0 - 1e-9))
+    ledger.capped_nodes += int(np.count_nonzero(at_cap))
+    warn_if_capped(ledger)
 
     thickness = out.thickness
     is_warm = warm_based(thickness, climate.temperature_c - LAPSE_RATE_C_PER_KM * thickness / 1000.0)
@@ -937,7 +986,7 @@ def _shed_excess(out: _Output, body: BodyBalance, excess: float, margin, marine:
 
 def _guard_body(out: _Output, body: BodyBalance, bed, area, sea_level_m) -> None:
     """Per-node guards on a solved body, booked in its own budget: ice over
-    GLACIER_MAX_DEPTH_M overflows as meltwater, and any marine cell the final (scaled) ice
+    GLACIER_MAX_DEPTH_M is shed as meltwater (`capped_m3`), and any marine cell the final (scaled) ice
     no longer grounds calves -- so stored ice is grounded exactly where
     `grounded_ice_load_kg_m2` loads it. Then the closing volume."""
     nodes = body.domain_nodes
@@ -947,7 +996,7 @@ def _guard_body(out: _Output, body: BodyBalance, bed, area, sea_level_m) -> None
         out.thickness[nodes] *= np.divide(kept, out.depth[nodes], out=np.ones_like(kept), where=out.depth[nodes] > 0.0)
         out.depth[nodes] = kept
         out.melt_m3[nodes] += over * area[nodes]
-        body.overflow_m3 += float(np.dot(over, area[nodes]))
+        body.capped_m3 += float(np.dot(over, area[nodes]))
     afloat = (out.depth[nodes] > 0.0) & ~is_grounded(out.depth[nodes], bed[nodes], sea_level_m)
     if np.any(afloat):
         idx = nodes[afloat]
