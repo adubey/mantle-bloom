@@ -479,8 +479,8 @@ def _lake_basin_summary(
     is whatever `_smallest_lake_containing` resolved) and a dry, never-flooded basin
     (`is_lake=False`, `lake` is the leaf catchment straight from `_leaf_lakes_by_node`) -- same
     shape either way, since "a basin nonetheless" (the user's own framing) should read as the
-    same kind of information, just without live water. `floor_*`/`outlet_*`/`water_elevation_m`/
-    `is_spilling` are read directly off `lake` itself (`floor_elevation`/`max_depth`/
+    same kind of information, just without live water. `outlet_*`/`water_elevation_m`/
+    `is_spilling` are read directly off `lake` itself (`max_depth`/
     `current_water_elevation`/`is_spilling`, already resolved by `lakes.step_lakes` -- see
     `HydrologyFields.lake_forest`'s own docstring for why this must be the *same* `Lake` object
     that produced `fields.lake_depth`, not a hierarchy rebuilt from a different elevation/silt
@@ -517,9 +517,12 @@ def _lake_basin_summary(
     display_members = wet_members if is_lake and len(wet_members) > 0 else members
 
     # Bare elevation only picks *which* node represents the floor for the map marker's
-    # position -- the reported elevation *value* comes from `lake.floor_elevation` itself
-    # (below), not a separate recomputation, so it's guaranteed consistent with `outlet_elev`.
+    # position. The reported value is the basin's lowest ground under the same hypsometry
+    # `lakes.resolve_lakes` used: `lake.floor_elevation` is the lowest cell *mean*, and a lake
+    # wet only in its floor cell's low ground has its surface below that (issue #344). That
+    # ground is never above `lake.floor_elevation`, so it stays at or below `outlet_elev`.
     floor_node = int(display_members[np.argmin(fields.elevation[display_members])])
+    floor_elevation = lake.floor_elevation if fields.hypsometry is None else fields.hypsometry.dry_level(members)
     outlet_elev = lake.max_depth
     outlet_node = lake.outlet_node_idx
 
@@ -558,7 +561,7 @@ def _lake_basin_summary(
         "member_count": int(len(display_members)),
         "member_xyz": _round_coords(fields.points[display_members]),
         "floor_xyz": _round_coords(fields.points[floor_node]),
-        "floor_elevation_m": float(lake.floor_elevation),
+        "floor_elevation_m": float(floor_elevation),
         "outlet_xyz": None if outlet_elev is None else _round_coords(fields.points[outlet_node]),
         "outlet_elevation_m": outlet_elev,
         "water_elevation_m": None if water_elevation is None else float(water_elevation),

@@ -584,7 +584,10 @@ been generated yet.
   catchment, which routinely includes dry higher ground on the way down to the basin's floor --
   see `main._lake_basin_summary`'s own comment) -- what the Lake Inspector plots per node,
   bright for the selected lake and dim for every other one.
-- `floor_xyz`/`floor_elevation_m` is this lake's own lowest point.
+- `floor_elevation_m` is this lake's lowest ground, counting each cell's sub-cell relief (the
+  level at which the lake model holds no water), so it is never above `water_elevation_m`.
+  `floor_xyz` is the lowest cell's centre. A lake wet only in its floor cell's low ground has
+  its surface below that cell's mean elevation (#344).
 - `outlet_xyz`/`outlet_elevation_m` is "the lowest point of the edge of the basin" -- the
   saddle a river out of it would source from, resolved from this step's freshly-rebuilt
   depression hierarchy (`lakes.build_lake_hierarchy`) so a lake that's currently the result of

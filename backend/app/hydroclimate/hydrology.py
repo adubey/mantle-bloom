@@ -364,6 +364,12 @@ class HydrologyFields:
     # `floor_elevation_m`. Also defaulted, same backward-compatibility reasoning as
     # `lake_events`/`silt_depth` above.
     lake_forest: list["lakes.Lake"] = field(default_factory=list)
+    # The `CellHypsometry` `lake_forest` was resolved against, kept for the same reason: a
+    # lake's lowest ground is `hypsometry.dry_level(members)`, below `Lake.floor_elevation`
+    # (the lowest cell *mean*) by the floor cell's sub-cell relief, and a lake wet only in that
+    # low ground has its surface below `floor_elevation` (issue #344). None until hydrology
+    # has run with it. Defaulted, same reasoning as `lake_events` above.
+    hypsometry: "lakes.CellHypsometry | None" = None
     # Ice's own downhill flow target -- like flow_target, but never zeroed by is_frozen: glacial
     # ice flows via gravity/internal deformation regardless of whether this particular step is
     # literally below freezing, unlike liquid water/rivers (see _compute_flow_direction's
@@ -1341,6 +1347,7 @@ def compute_hydrology(
         forest, elevation, lake_depth_adjusted, water_deposited, years, is_frozen, hypsometry, lake_climate
     )
     fields.lake_forest = forest
+    fields.hypsometry = hypsometry
     # Record only (erosion.py folds `silt_deposited` into real `elevation` and caps the
     # persisted silt_depth at the mobile cover holding it).
     fields.silt_depth = prev_silt_depth + fields.silt_deposited

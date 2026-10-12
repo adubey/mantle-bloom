@@ -890,6 +890,36 @@ def test_lakes_and_lake_at_are_empty_before_the_first_step(client):
     assert at == {"kind": "no_basin", "basin": None}
 
 
+def test_lake_summary_floor_is_the_lowest_ground_under_sub_cell_relief():
+    # Issue #344: a one-cell lake wet only in its cell's low ground (relief 20 m about a
+    # 180.17 m mean) has its surface below the cell mean. The reported floor is that low
+    # ground, the level the lake model holds no water at, so it's never above the water.
+    import types
+
+    import numpy as np
+
+    from app.hydroclimate import hydrology, lakes
+
+    elevation = np.array([180.17, 185.0, 186.0])
+    hyps = lakes.CellHypsometry(elevation, np.full(3, 1.0e9), np.array([20.0, 0.0, 0.0]), 1.0e9)
+    members = np.array([0], dtype=np.int64)
+    water = 179.32
+    lake_depth = np.zeros(3)
+    lake_depth[0] = hyps.mean_depth(water, members)[0]
+    assert lake_depth[0] > hydrology.LAKE_MIN_VISIBLE_DEPTH_M
+    lake = lakes.Lake(
+        lake_id=0, members=members, floor_elevation=180.17, min_depth=180.17, max_depth=180.34,
+        outlet_node_idx=0, current_water_elevation=water, sink_node_idx=0,
+    )
+    fields = types.SimpleNamespace(elevation=elevation, lake_depth=lake_depth, points=np.eye(3), hypsometry=hyps)
+
+    out = main._lake_basin_summary(fields, lake, 0, [], {}, is_lake=True)
+
+    assert out["water_elevation_m"] == pytest.approx(water)
+    assert out["floor_elevation_m"] == pytest.approx(160.17)
+    assert out["floor_elevation_m"] <= out["water_elevation_m"] <= out["outlet_elevation_m"]
+
+
 def test_lake_at_rejects_non_finite_query(client):
     _post_generate(client, json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
     assert client.get("/world/lake_at", params={"lat_deg": "nan", "lon_deg": 0}).status_code == 400
