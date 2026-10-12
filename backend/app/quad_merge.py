@@ -147,6 +147,35 @@ def _free_cell_keys(plate: "PlateWithSparseQuadPatch", local: np.ndarray) -> np.
     return keys
 
 
+def _on_other_plates(
+    keep: "PlateWithSparseQuadPatch",
+    absorb: "PlateWithSparseQuadPatch",
+    keys: np.ndarray,
+    other_points_xyz: np.ndarray,
+    other_plates: Sequence["PlateWithSparseQuadPatch"],
+) -> np.ndarray:
+    """Per candidate cell of `keep`'s lattice: whether it belongs to some third plate, so the
+    merge mustn't activate it. A cell does if its centre is nearer a node in `other_points_xyz`
+    than either fusing plate's, or if any part of its footprint lies in one of `other_plates`."""
+    blocked = np.zeros(len(keys), dtype=bool)
+    if len(other_points_xyz):
+        centres = geometry.to_world(keep.frame, keep.cell_centres_local(keys))
+        own = np.concatenate([keep.all_points_and_elevation()[0], absorb.all_points_and_elevation()[0]])
+        own_dist, _ = cKDTree(own).query(centres)
+        other_dist, _ = cKDTree(other_points_xyz).query(centres)
+        blocked |= other_dist < own_dist
+    # A quad plate's cells are its territory, whichever node is nearest. Where `absorb` already
+    # overlapped a third plate, its own nodes win the distance test above, and the rotated
+    # lattice put new cells' centres inside that plate; a cell centred just outside can still
+    # lie across its edge. So no part of a new cell's footprint may be in a third plate
+    # (issue #344).
+    if other_plates:
+        footprint = _footprint_points(keep, keys).reshape(-1, 3)
+        for other in other_plates:
+            blocked |= other.contains_batch(footprint).reshape(len(keys), -1).any(axis=1)
+    return blocked
+
+
 def _footprint_points(plate: "PlateWithSparseQuadPatch", keys: np.ndarray) -> np.ndarray:
     """World points sampling each of `keys`' (not necessarily active) cells on `plate`'s
     lattice, edges and corners included: shape (len(keys), (FOOTPRINT_SAMPLES_PER_SIDE + 1)^2, 3)."""
@@ -192,23 +221,7 @@ def _transfer(
     chosen = coverage >= NEW_CELL_MIN_COVERAGE * _cell_areas_m2(keep, cell_keys)
     if (len(other_points_xyz) or other_plates) and np.any(chosen):
         at = np.flatnonzero(chosen)
-        centres = geometry.to_world(keep.frame, keep.cell_centres_local(cell_keys[at]))
-        blocked = np.zeros(len(at), dtype=bool)
-        if len(other_points_xyz):
-            own = np.concatenate([keep.all_points_and_elevation()[0], absorb.all_points_and_elevation()[0]])
-            own_dist, _ = cKDTree(own).query(centres)
-            other_dist, _ = cKDTree(other_points_xyz).query(centres)
-            blocked |= other_dist < own_dist
-        # A quad plate's cells are its territory, whichever node is nearest. Where `absorb`
-        # already overlapped a third plate, its own nodes win the distance test above, and the
-        # rotated lattice put new cells' centres inside that plate; a cell centred just outside
-        # can still lie across its edge. So no part of a new cell's footprint may be in a
-        # third plate (issue #344).
-        if other_plates:
-            footprint = _footprint_points(keep, cell_keys[at]).reshape(-1, 3)
-            for other in other_plates:
-                blocked |= other.contains_batch(footprint).reshape(len(at), -1).any(axis=1)
-        chosen[at[blocked]] = False
+        chosen[at[_on_other_plates(keep, absorb, cell_keys[at], other_points_xyz, other_plates)]] = False
 
     old_keys = keep.cell_keys.copy()
     old_fields = {name: keep.collect(name) for name in _materialised(keep, absorb)}
