@@ -435,6 +435,71 @@ def test_compute_hydrology_spilling_lake_also_erodes_its_own_rim_when_that_is_th
     assert fields.flow_accum[15] >= hydrology.LAKE_BREACH_EROSION_COEFFICIENT
 
 
+def test_breach_surge_drives_flow_accum_but_never_physical_discharge(monkeypatch):
+    # The single-node spilling lake above. Its surge rides the legacy flow_accum (erosion's
+    # input) but is kept out of discharge_m3_s (issue #355): turning the surge off leaves the
+    # discharge exactly unchanged.
+    elevation = np.array(
+        [500.0, 480.0, 460.0, 440.0, 420.0, 400.0, 380.0, 360.0, 340.0, 320.0]
+        + [50.0]
+        + [250.0, 300.0, 260.0, 200.0, 150.0, 100.0, 50.0, 20.0]
+        + [-10.0, -50.0, -100.0]
+    )
+    n = len(elevation)
+    lake_depth = np.zeros(n)
+    lake_depth[10] = 160.0
+
+    def run():
+        world = World(seed=0, plates=[_flow_line_plate_with_lake(0, 0.002 * np.arange(n), elevation, lake_depth)])
+        return hydrology.compute_hydrology(world, np.full(n, 10.0), np.full(n, 15.0), years=1_000_000)
+
+    surged = run()
+    assert surged.breach_surge[10] == pytest.approx(hydrology.LAKE_BREACH_EROSION_COEFFICIENT)
+    monkeypatch.setattr(hydrology, "LAKE_BREACH_EROSION_COEFFICIENT", 0.0)
+    calm = run()
+    assert np.all(calm.breach_surge == 0.0)
+    assert surged.flow_accum[10] > calm.flow_accum[10] + 0.9 * surged.breach_surge[10]
+    assert np.array_equal(surged.discharge_m3_s, calm.discharge_m3_s)
+    assert surged.discharge_m3_s[10] > 0.0  # the lake's own runoff still passes through
+
+
+def test_discharge_carries_the_ice_ledgers_meltwater_exactly_once_at_any_step_length():
+    # An all-land chain under 200 m of melting ice: every node is frozen, so each is its own
+    # sink and the discharge summed over nodes is each node's own meltwater. That's the
+    # ledger's meltwater (surface and basal melt, overflow, capped ice, bare-ground snow; not
+    # calving) spread over the step, in m^3/s (issue #355).
+    theta = 0.002 * np.arange(12)
+    elevation = 900.0 - 60.0 * np.arange(12)
+    for years in (100_000, 1_000_000):
+        world = World(seed=0, plates=[_flow_line_plate_with_lake(0, theta, elevation, np.zeros(12), glacier_depth=np.full(12, 200.0))])
+        fields = hydrology.compute_hydrology(
+            world, np.full(12, 100.0), np.full(12, -6.0), years=years, seasonal_amplitude_at_nodes=np.full(12, 18.0)
+        )
+        ledger = fields.ice.ledger
+        assert not np.any(fields.is_ocean) and np.all(fields.flow_target == -1)
+        assert ledger.surface_melt_m3 > 0.0 and ledger.basal_melt_m3 > 0.0
+        routed_m3 = float(fields.discharge_m3_s.sum()) * hydrology.SECONDS_PER_YEAR * years
+        assert routed_m3 == pytest.approx(ledger.meltwater_m3, rel=1e-9)
+
+
+def test_discharge_from_fixed_rainfall_does_not_depend_on_step_length():
+    # A warm, ice-free chain to the sea: runoff and the transit loss are both per-year rates,
+    # so the same rainfall gives the same discharge at a 100 kyr and a 1 Myr step (issue #355).
+    # The legacy flow_accum still loses more water to evaporation on the longer step.
+    theta = 0.002 * np.arange(12)
+    elevation = 500.0 - 60.0 * np.arange(12)
+
+    def run(years):
+        world = World(seed=0, plates=[_flow_line_plate(0, theta, elevation)])
+        return hydrology.compute_hydrology(world, np.full(12, 800.0), np.full(12, 20.0), years=years)
+
+    short, long = run(100_000), run(1_000_000)
+    land = ~short.is_ocean
+    assert np.max(short.discharge_m3_s[land]) > 0.0
+    assert long.discharge_m3_s == pytest.approx(short.discharge_m3_s, rel=1e-12)
+    assert np.max(long.flow_accum[land]) < np.max(short.flow_accum[land])
+
+
 def test_compute_flow_direction_prefers_an_existing_channel_over_the_literal_steepest_neighbor():
     # Node 0's two downhill candidates: node 1 (elevation 20, steeper, no channel) and node 2
     # (elevation 25, less steep, but already has a real established channel).

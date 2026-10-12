@@ -386,6 +386,13 @@ class HydrologyFields:
     # `glacier_depth` above already includes it. A plain None default (a class attribute),
     # so a cache pickled before this field existed still reads as "no ice diagnostics".
     ice: "IceStep | None" = None
+    # Physical river discharge (issue #355, see "Water units" below): the through-flow of the
+    # m^3/yr runoff-plus-meltwater routing, in m^3/s. Plain None defaults, like `ice`, so a
+    # cache pickled before these existed still loads.
+    discharge_m3_s: np.ndarray | None = None
+    # This step's breach-surge sources (`lake_breach_source + rim_breach_source`), in model
+    # units. They're for erosion only and are kept out of `discharge_m3_s`.
+    breach_surge: np.ndarray | None = None
 
 
 def _gather_nodes(
@@ -754,6 +761,34 @@ def river_transit_loss_fraction(temperature_c: np.ndarray, excluded: np.ndarray)
     """Per-node in-transit evaporation for real-unit fluxes, independent of step length (see
     RIVER_TRANSIT_LOSS_REFERENCE_YEARS)."""
     return river_evaporation_fraction(temperature_c, RIVER_TRANSIT_LOSS_REFERENCE_YEARS, excluded)
+
+
+# Water units (issue #355). Three kinds of water move along `flow_target`:
+# - Physical water, in m^3/yr: area-weighted Budyko runoff of liquid precipitation
+#   (`breaching.runoff_mm`) plus glacier meltwater (`meltwater_m3_per_yr`). It balances the
+#   lakes, and its through-flow is the river discharge, reported in m^3/s
+#   (`HydrologyFields.discharge_m3_s`).
+# - Glacier meltwater is the #353 ice ledger's per-step volume (`IceLedger.meltwater_m3`),
+#   spread over the step. It covers surface and basal melt, overflow, ice shed at the depth
+#   guard, and snow that melts on bare ground. Ice and water volumes are booked 1:1, as a
+#   freezing lake is. Calved ice goes straight to the ocean, and accumulation and frozen river
+#   ice stay ice, so none of them is discharge. The ledger is still in #353's model units, so
+#   meltwater is small next to runoff. Rescaling glacier mass balance changes discharge only
+#   through the ledger.
+# - The breach surge (`HydrologyFields.breach_surge`) is a spilling lake's erosive forcing.
+#   It's sized by node count (LAKE_BREACH_EROSION_COEFFICIENT), is in model units, and drives
+#   erosion only. It is never physical discharge.
+# `flow_accum` is the legacy quantity: stacked mm/yr of liquid precipitation, melt and breach
+# surge, with step-scaled evaporation. Erosion, channel width, river speed, geology and the
+# River Inspector read it until they move to the quantities above.
+SECONDS_PER_YEAR = 3.15576e7
+
+
+def meltwater_m3_per_yr(melt_m: np.ndarray, areas_m2: np.ndarray, years: float) -> np.ndarray:
+    """Glacier meltwater as a rate in m^3/yr: `ice_sheet.step_ice`'s per-node melt (metres of
+    ice over the cell, summed over the step) times cell area, divided by the step length. Its
+    total over all nodes is `IceLedger.meltwater_m3 / years`."""
+    return melt_m * areas_m2 / max(years, 1.0)
 
 
 def _compute_flow_direction(
@@ -1227,7 +1262,8 @@ def compute_hydrology(
         temperature_at_nodes, years, is_frozen | is_ocean | should_spill | is_rim_breach
     )
 
-    water_source = liquid_precip + melt + lake_breach_source + rim_breach_source
+    breach_surge = lake_breach_source + rim_breach_source
+    water_source = liquid_precip + melt + breach_surge
     flow_accum, water_deposited = route_downstream(elevation, is_ocean, flow_target, water_source, loss_fraction=river_evap_fraction)
 
     # A river blocked by its own freeze doesn't just vanish -- its water piles up as ice right
@@ -1279,11 +1315,12 @@ def compute_hydrology(
     # Subtracting it would need lakes resolved during routing (follow-up on #297).
     evaporation_mm = breaching.open_water_evaporation_mm(temperature_at_nodes)
     runoff_m3 = breaching.runoff_mm(liquid_precip, evaporation_mm) / 1000.0 * areas
-    melt_m3 = melt * areas / max(years, 1.0)
     through_m3, settled_m3 = route_downstream(
-        elevation, is_ocean, flow_target, runoff_m3 + melt_m3,
+        elevation, is_ocean, flow_target, runoff_m3 + meltwater_m3_per_yr(melt, areas, years),
         loss_fraction=river_transit_loss_fraction(temperature_at_nodes, is_frozen | is_ocean | should_spill | is_rim_breach),
     )
+    fields.discharge_m3_s = through_m3 / SECONDS_PER_YEAR
+    fields.breach_surge = breach_surge
     lake_climate = lakes.LakeClimate(
         inflow_m3_per_yr=settled_m3 + np.where(should_spill, through_m3, 0.0),
         evaporation_m_per_yr=evaporation_mm / 1000.0,
