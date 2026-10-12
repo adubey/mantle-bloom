@@ -30,7 +30,7 @@ children and coarsening reverses that operation. The key itself therefore record
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Iterator, Mapping
+from typing import Callable, Iterator, Mapping, Sequence
 
 import numpy as np
 from scipy.spatial import cKDTree
@@ -1006,12 +1006,15 @@ class PlateWithSparseQuadPatch(Plate):
 
         quad_tectonics.deform(self, world, other_plates, years, max_distance)
 
-    def merge_with(self, other: "PlateWithSparseQuadPatch", other_points_xyz: np.ndarray) -> None:
+    def merge_with(
+        self, other: "PlateWithSparseQuadPatch", other_points_xyz: np.ndarray, other_plates: Sequence["PlateWithSparseQuadPatch"] = ()
+    ) -> None:
         """Absorb `other` onto this plate's lattice by exact-area remap, keeping clear of
-        `other_points_xyz` (every other plate's nodes) -- see quad_merge.py."""
+        `other_points_xyz` (every other plate's nodes) and `other_plates`' cells -- see
+        quad_merge.py."""
         from . import quad_merge
 
-        quad_merge.merge(self, other, other_points_xyz)
+        quad_merge.merge(self, other, other_points_xyz, other_plates)
 
     def _crust_type_for_mask(self, mask: np.ndarray) -> str:
         """Nominal crust type for a newly partitioned patch.
