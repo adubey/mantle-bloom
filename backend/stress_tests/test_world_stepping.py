@@ -1,7 +1,7 @@
 import numpy as np
 from app import debug_worlds, geometry, lithosphere
 from app.hydroclimate import erosion
-from app import lithosphere_plate
+from app import lithosphere_plate, merge_split
 from app.sparse_quad_patch import PlateWithSparseQuadPatch
 from app.world import generate_world, step_world
 
@@ -145,6 +145,11 @@ def test_continental_volume_budget_bounds_the_boundary_ratchet(monkeypatch):
     across the full 60-step schedule and never approaches that fragmentation crash: the
     gated/ungated gap grows smoothly and monotonically from step ~20 on, giving this assertion
     real headroom instead of sitting on a knife-edge."""
+
+    # The seed was picked for a trajectory with little fragmentation under the 20-step split
+    # cooldown, 40 Myr at this step length. Since #358 the cooldown is 2 Myr whatever the step,
+    # which lets plates here rift every step and swamps the gate's effect; keep the old pace.
+    monkeypatch.setattr(merge_split, "SPLIT_MIN_AGE_YEARS", 20 * 2_000_000)
 
     def _run_continental_growth(budget_mult: float) -> float:
         monkeypatch.setattr(lithosphere_plate, "CONTINENTAL_AREA_BUDGET_MULT", budget_mult)
