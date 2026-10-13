@@ -27,53 +27,26 @@ Replays `--myr` from the save in `--step-years` steps and records, at every chec
 
 from __future__ import annotations
 
-import argparse
-import hashlib
 import inspect
 import json
 import resource
-import subprocess
-import sys
 import time
-from pathlib import Path
 
 import numpy as np
+from replay_lib import load_replay, parse_replay_args, start_checkpoints
 
 # The pre-#363 SILT_ACCUMULATION_COEFFICIENT (1/100 of the retired lake fill rate 0.12).
 LEGACY_SILT_COEFFICIENT = 0.12 / 100.0
 
 
 def main() -> None:  # noqa: C901
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("save", type=Path)
-    ap.add_argument("--backend", type=Path, default=Path(__file__).resolve().parents[2] / "backend")
-    ap.add_argument("--myr", type=float, required=True)
-    ap.add_argument("--step-years", type=float, default=100_000.0)
-    ap.add_argument("--checkpoint-myr", type=float, default=1.0)
-    ap.add_argument("--out", type=Path, required=True)
-    args = ap.parse_args()
-
-    backend = args.backend.resolve()
-    sys.path.insert(0, str(backend))
-    from app import persistence, plates as plates_mod, world as world_mod  # noqa: E402
+    args = parse_replay_args(__doc__)
+    world, result = load_replay(args, issue=363)
+    from app import plates as plates_mod, world as world_mod  # noqa: E402
     from app.elevation_lines import line_spacing_rad  # noqa: E402
     from app.hydroclimate import hydrology, lakes  # noqa: E402
 
-    commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=backend, check=True, capture_output=True, text=True).stdout.strip()
-    data = args.save.read_bytes()
-    world = persistence.load_world_bytes(data)
-    result = {
-        "issue": 363,
-        "backend": str(backend),
-        "commit": commit,
-        "save": str(args.save),
-        "save_sha256": hashlib.sha256(data).hexdigest(),
-        "step_years": args.step_years,
-        "node_density": world.node_density,
-        "silt_coefficient": lakes.SILT_ACCUMULATION_COEFFICIENT,
-        "checkpoints": [],
-    }
-    del data
+    result.update(node_density=world.node_density, silt_coefficient=lakes.SILT_ACCUMULATION_COEFFICIENT)
 
     def empty_window() -> dict:
         budget = {f"{unit}_{kind}": 0.0 for unit in ("legacy_km3", "real_per_unit_km3") for kind in ("closed", "spilling")}
@@ -144,11 +117,7 @@ def main() -> None:  # noqa: C901
             "lake_volume_km3": float(np.dot(np.where(land, hydro.lake_depth, 0.0), areas)) / 1e9,
         }
 
-    steps = int(round(args.myr * 1e6 / args.step_years))
-    per_checkpoint = max(1, int(round(args.checkpoint_myr * 1e6 / args.step_years)))
-    result["checkpoints"].append(snapshot())
-    print(json.dumps(result["checkpoints"][-1]), flush=True)
-    args.out.parent.mkdir(parents=True, exist_ok=True)
+    steps, per_checkpoint = start_checkpoints(args, result, snapshot())
     for i in range(1, steps + 1):
         started = time.perf_counter()
         world_mod.step_world(world, args.step_years)

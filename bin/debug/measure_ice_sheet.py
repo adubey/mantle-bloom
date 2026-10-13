@@ -27,31 +27,18 @@ Replays `--myr` from the save in `--step-years` steps and records, at every chec
 
 from __future__ import annotations
 
-import argparse
-import hashlib
 import json
 import resource
-import subprocess
-import sys
 import time
-from pathlib import Path
 
 import numpy as np
+from replay_lib import load_replay, parse_replay_args, start_checkpoints
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("save", type=Path)
-    ap.add_argument("--backend", type=Path, default=Path(__file__).resolve().parents[2] / "backend")
-    ap.add_argument("--myr", type=float, required=True)
-    ap.add_argument("--step-years", type=float, default=100_000.0)
-    ap.add_argument("--checkpoint-myr", type=float, default=1.0)
-    ap.add_argument("--out", type=Path, required=True)
-    args = ap.parse_args()
-
-    backend = args.backend.resolve()
-    sys.path.insert(0, str(backend))
-    from app import persistence, plates as plates_mod, world as world_mod  # noqa: E402
+    args = parse_replay_args(__doc__)
+    world, result = load_replay(args, issue=353)
+    from app import plates as plates_mod, world as world_mod  # noqa: E402
     from app.elevation_lines import line_spacing_rad  # noqa: E402
     from app.hydroclimate import erosion, hydrology  # noqa: E402
 
@@ -59,20 +46,6 @@ def main() -> None:
         from app.hydroclimate import ice_sheet  # noqa: E402
     except ImportError:
         ice_sheet = None
-
-    commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=backend, check=True, capture_output=True, text=True).stdout.strip()
-    data = args.save.read_bytes()
-    world = persistence.load_world_bytes(data)
-    result = {
-        "issue": 353,
-        "backend": str(backend),
-        "commit": commit,
-        "save": str(args.save),
-        "save_sha256": hashlib.sha256(data).hexdigest(),
-        "step_years": args.step_years,
-        "checkpoints": [],
-    }
-    del data
 
     # Taps: the glacier depth erosion sees (the old law's input), the erosion result, and the
     # time spent in the ice solve.
@@ -137,11 +110,7 @@ def main() -> None:
             out["warm_based_pct_of_ice"] = 100.0 * float(areas[ice & hydro.ice.warm_based].sum()) / max(float(areas[ice].sum()), 1.0)
         return out
 
-    steps = int(round(args.myr * 1e6 / args.step_years))
-    per_checkpoint = max(1, int(round(args.checkpoint_myr * 1e6 / args.step_years)))
-    result["checkpoints"].append(snapshot())
-    print(json.dumps(result["checkpoints"][-1]), flush=True)
-    args.out.parent.mkdir(parents=True, exist_ok=True)
+    steps, per_checkpoint = start_checkpoints(args, result, snapshot())
     window = {"raw": 0.0, "applied": 0.0, "seconds": 0.0, "ice_seconds": 0.0, "ledger": {}, "worst_residual_m3": 0.0}
     for i in range(1, steps + 1):
         tap["ice_seconds"] = 0.0
