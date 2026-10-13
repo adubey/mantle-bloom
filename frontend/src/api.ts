@@ -439,6 +439,43 @@ async function readNdjsonLines(
   }
 }
 
+// The `{type: ...}` protocol on top of readNdjsonLines that both streaming endpoints share:
+// every `progress` message goes to `onProgress`, an `error` message throws its `detail`, and
+// the `done` message is returned (null if the stream ended without one).
+async function readStreamMessages(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  onProgress: (msg: Record<string, unknown>) => void,
+  onChunk?: () => void,
+): Promise<Record<string, unknown> | null> {
+  let done: Record<string, unknown> | null = null;
+  await readNdjsonLines(
+    reader,
+    (line) => {
+      const msg = JSON.parse(line) as Record<string, unknown>;
+      if (msg.type === "progress") {
+        onProgress(msg);
+      } else if (msg.type === "error") {
+        throw new Error(String(msg.detail));
+      } else if (msg.type === "done") {
+        done = msg;
+      }
+    },
+    onChunk,
+  );
+  return done;
+}
+
+// The WorldSummary fields of a stream's `done` message.
+function worldSummaryFrom(msg: Record<string, unknown>): WorldSummary {
+  return {
+    seed: msg.seed as number,
+    elapsed_years: msg.elapsed_years as number,
+    num_plates: msg.num_plates as number,
+    surface: msg.surface as WorldSummary["surface"],
+    events: msg.events as WorldEvent[],
+  };
+}
+
 // Shared by generateWorld/stepWorld below -- both stream newline-delimited JSON progress the
 // same shape /world/animate does (see AnimateProgress/animateWorld's own comment for that
 // established contract): a `{type: "progress", fraction}` line (0 to 1) per phase/plate
@@ -455,26 +492,9 @@ async function readProgressStream(resp: Response, onProgress?: (fraction: number
     throw new Error(`${resp.status} ${resp.statusText}: ${detail}`);
   }
 
-  let done: WorldSummary | null = null;
-  await readNdjsonLines(resp.body.getReader(), (line) => {
-    const msg = JSON.parse(line) as Record<string, unknown>;
-    if (msg.type === "progress") {
-      onProgress?.(msg.fraction as number);
-    } else if (msg.type === "error") {
-      throw new Error(String(msg.detail));
-    } else if (msg.type === "done") {
-      done = {
-        seed: msg.seed as number,
-        elapsed_years: msg.elapsed_years as number,
-        num_plates: msg.num_plates as number,
-        surface: msg.surface as WorldSummary["surface"],
-        events: msg.events as WorldEvent[],
-      };
-    }
-  });
-
+  const done = await readStreamMessages(resp.body.getReader(), (msg) => onProgress?.(msg.fraction as number));
   if (!done) throw new Error("stream ended without a result");
-  return done;
+  return worldSummaryFrom(done);
 }
 
 // `numPlates`: the "Number of plates" slider (see backend app/plates.py's MIN_AUTO_PLATES/
@@ -977,39 +997,26 @@ export async function animateWorld(
       throw new Error(`${resp.status} ${resp.statusText}: ${detail}`);
     }
 
-    let done: AnimateResponse | null = null;
-    await readNdjsonLines(
+    const done = await readStreamMessages(
       resp.body.getReader(),
-      (line) => {
-        const msg = JSON.parse(line) as Record<string, unknown>;
-        if (msg.type === "progress") {
-          onProgress?.({
-            frame: msg.frame as number,
-            total: msg.total as number,
-            imageBase64: msg.image_base64 as string | undefined,
-            elapsedYears: msg.elapsed_years as number,
-            stats: (msg.stats as WorldStats | null | undefined) ?? undefined,
-          });
-        } else if (msg.type === "error") {
-          throw new Error(String(msg.detail));
-        } else if (msg.type === "done") {
-          done = {
-            seed: msg.seed as number,
-            elapsed_years: msg.elapsed_years as number,
-            num_plates: msg.num_plates as number,
-            surface: msg.surface as WorldSummary["surface"],
-            events: msg.events as WorldEvent[],
-            videoBase64: msg.video_base64 as string,
-            mime: msg.mime as string,
-            stoppedEarly: Boolean(msg.stopped_early),
-          };
-        }
-      },
+      (msg) =>
+        onProgress?.({
+          frame: msg.frame as number,
+          total: msg.total as number,
+          imageBase64: msg.image_base64 as string | undefined,
+          elapsedYears: msg.elapsed_years as number,
+          stats: (msg.stats as WorldStats | null | undefined) ?? undefined,
+        }),
       rearmIdleTimer,
     );
 
     if (!done) throw new Error("animation stream ended without a result");
-    return done;
+    return {
+      ...worldSummaryFrom(done),
+      videoBase64: done.video_base64 as string,
+      mime: done.mime as string,
+      stoppedEarly: Boolean(done.stopped_early),
+    };
   } finally {
     clearTimeout(idleTimer);
   }

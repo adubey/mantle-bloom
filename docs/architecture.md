@@ -21,7 +21,10 @@
   [simulation-model.md#plate-inspector](simulation-model.md#plate-inspector),
   [simulation-model.md#river-inspector](simulation-model.md#river-inspector),
   [simulation-model.md#lake-inspector](simulation-model.md#lake-inspector), and
-  [simulation-model.md#fault-inspector](simulation-model.md#fault-inspector)). The shallow
+  [simulation-model.md#fault-inspector](simulation-model.md#fault-inspector)). Those four
+  share `InspectorCanvas.tsx` (the focusable canvas, rotate-drag, click-to-select and
+  Tab/Shift+Tab cycling), and with `MapCanvas.tsx` they share `screenProjector.ts`, which
+  projects true world points through the live view rotation. The shallow
   mantle cross-section preview (`MantleCrossSection.tsx`) also draws its locator and schematic
   shell slice client-side; it has no sampled world data yet. The detailed data-backed rendering
   remains server-side.

@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { Projection, Segment } from "./api";
 import type { HighlightTarget } from "./legendData";
-import type { Mat3, RenderTransform, Vec3 } from "./rotation";
-import {
-  getGraticule, getRenderTransform, latLonToXyz, matApply, matTranspose, project, toPixels, unproject,
-  wrapLongitudeNear, xyzToLatLon,
-} from "./rotation";
+import type { Mat3, Vec3 } from "./rotation";
+import { getGraticule } from "./rotation";
 import { useRotationDrag } from "./rotationDrag";
+import { COASTLINE_HALO_RGB, COASTLINE_RGB } from "./inspectorDrawing";
+import { ScreenProjector, trueLatLonDegAt } from "./screenProjector";
 
 interface Props {
   imageBase64: string | null;
@@ -68,11 +67,6 @@ interface Props {
 const BACKGROUND = "#0b1020";
 const GRATICULE_COLOR = "rgba(235, 238, 245, 0.85)";
 const GRATICULE_LINE_WIDTH = 1;
-// Matches backend render_image.py's COASTLINE_COLOR_RGB/COASTLINE_HALO_RGB -- same colors
-// LakeInspector.tsx/RiverInspector.tsx/PlatesAndFaults.tsx already draw their own coastline
-// overlays with.
-const COASTLINE_RGB = "235, 235, 235";
-const COASTLINE_HALO_RGB = "15, 15, 15";
 // A graticule line segment longer than this multiple of the line's own median segment length
 // is skipped -- the same "don't draw across a projection discontinuity" technique
 // render_image.py's _stroke_robust_loop uses for plate boundaries.
@@ -183,17 +177,14 @@ export default function MapCanvas({
   const rotationRef = useRef(rotation);
   rotationRef.current = rotation;
 
-  // Draws highlightPoint on top of whatever's already on the canvas, projected through `mat`
-  // (the committed `rotation` when idle, or the live drag `previewRotation` when dragging --
-  // see drawGraticule below) -- same per-dot projection PlateInspector's own drawPoints uses.
-  const drawHighlightPoint = (ctx: CanvasRenderingContext2D, transform: RenderTransform, mat: Mat3) => {
+  // Draws highlightPoint on top of whatever's already on the canvas, through `projector`
+  // (built on the committed `rotation` when idle, or the live drag `previewRotation` when
+  // dragging -- see drawGraticule below).
+  const drawHighlightPoint = (ctx: CanvasRenderingContext2D, projector: ScreenProjector) => {
     const point = highlightPointRef.current;
     if (!point) return;
     const pixelScale = width / 1100;
-    const r = matApply(mat, point as Vec3);
-    const lat = Math.asin(Math.min(1, Math.max(-1, r[2])));
-    const lon = Math.atan2(r[1], r[0]);
-    const [px, py] = toPixels(transform, ...project(projection, lat, lon));
+    const [px, py] = projector.point(point as Vec3);
     ctx.fillStyle = "#ff3b3b";
     ctx.beginPath();
     ctx.arc(px, py, 3.8 * pixelScale, 0, Math.PI * 2);
@@ -220,7 +211,7 @@ export default function MapCanvas({
     ctx.drawImage(img, 0, 0, width, height);
     ctx.globalCompositeOperation = "source-over";
     applyHighlight(ctx, width, height, highlightTargetRef.current ?? null, alphaEncodedIdsRef.current ?? false);
-    drawHighlightPoint(ctx, getRenderTransform(projection, width, height), rotationRef.current);
+    drawHighlightPoint(ctx, new ScreenProjector(projection, rotationRef.current, width, height));
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [width, height, projection]);
 
@@ -285,18 +276,12 @@ export default function MapCanvas({
       ctx.fillRect(0, 0, width, height);
     }
 
-    const transform = getRenderTransform(projection, width, height);
+    const projector = new ScreenProjector(projection, previewRotation, width, height);
     ctx.strokeStyle = GRATICULE_COLOR;
     ctx.lineWidth = GRATICULE_LINE_WIDTH * (width / 1100);
 
     for (const line of getGraticule()) {
-      const pixels = line.points.map((p) => {
-        const rotated = matApply(previewRotation, p);
-        const lon = Math.atan2(rotated[1], rotated[0]);
-        const lat = Math.asin(Math.min(1, Math.max(-1, rotated[2])));
-        const [x, y] = project(projection, lat, lon);
-        return toPixels(transform, x, y);
-      });
+      const pixels = line.points.map((p) => projector.point(p));
       const segLengths: number[] = [];
       for (let i = 0; i < pixels.length - 1; i++) {
         segLengths.push(Math.hypot(pixels[i + 1][0] - pixels[i][0], pixels[i + 1][1] - pixels[i][1]));
@@ -324,7 +309,7 @@ export default function MapCanvas({
     // flat, unordered edge list (see coastline.compute_coastline_segments), not loops that
     // could reuse the graticule's own break-on-long-segment heuristic. Unwrapping each
     // segment's second endpoint relative to its first (rather than projecting both
-    // independently) is what LakeInspector.tsx's own projectSegment does, and for the same
+    // independently) is what ScreenProjector.segment does, as in every inspector, for the same
     // reason: two independently-projected endpoints can bow a short real-world edge all the
     // way across the map at the antimeridian once the view is rotated.
     //
@@ -333,17 +318,7 @@ export default function MapCanvas({
     // projected exactly once (not once per color pass) and both passes stroke a single batched
     // path each (one stroke() call apiece) rather than one beginPath/stroke() per segment.
     if (coastlineSegments && coastlineSegments.length > 0) {
-      const projectedSegments: [[number, number], [number, number]][] = coastlineSegments.map(([a, b]) => {
-        const ra = matApply(previewRotation, a);
-        const latA = Math.asin(Math.min(1, Math.max(-1, ra[2])));
-        const lonA = Math.atan2(ra[1], ra[0]);
-        const rb = matApply(previewRotation, b);
-        const latB = Math.asin(Math.min(1, Math.max(-1, rb[2])));
-        const lonB = wrapLongitudeNear(Math.atan2(rb[1], rb[0]), lonA);
-        const [xA, yA] = project(projection, latA, lonA);
-        const [xB, yB] = project(projection, latB, lonB);
-        return [toPixels(transform, xA, yA), toPixels(transform, xB, yB)];
-      });
+      const projectedSegments = coastlineSegments.map(([a, b]) => projector.segment(a, b));
       const strokeCoastline = (color: string, lineWidth: number) => {
         ctx.strokeStyle = color;
         ctx.lineWidth = lineWidth;
@@ -359,31 +334,24 @@ export default function MapCanvas({
       strokeCoastline(`rgba(${COASTLINE_RGB}, 1.0)`, coastlineWidth * 1.1);
     }
 
-    drawHighlightPoint(ctx, transform, previewRotation);
+    drawHighlightPoint(ctx, projector);
   };
 
   // A plain click (routed through useRotationDrag so a completed rotate-drag's terminating
   // mouseup is never mistaken for one -- same as the inspector views): unproject it through
-  // the current view rotation to a true lat/lon and hand it up for the inspect popup. Same
-  // math as LakeInspector.handleClick.
+  // the current view rotation to a true lat/lon and hand it up for the inspect popup.
   const handleProbeClick = useCallback((backingX: number, backingY: number) => {
     if (!onProbe) return;
-    const transform = getRenderTransform(projection, width, height);
-    const x = (backingX - transform.offsetX) / transform.scale;
-    const y = -(backingY - transform.offsetY) / transform.scale;
-    const latLon = unproject(projection, x, y);
+    const latLon = trueLatLonDegAt(projection, rotation, width, height, backingX, backingY);
     if (!latLon) {
       onProbe(null); // clicked off the globe -- dismiss any open popup
       return;
     }
-    const displayXyz = latLonToXyz(latLon[0], latLon[1]); // display (rotated) frame
-    const trueXyz = matApply(matTranspose(rotation), displayXyz); // transpose == inverse for a rotation matrix
-    const [trueLat, trueLon] = xyzToLatLon(trueXyz);
     onProbe({
       displayX: (backingX / width) * displayWidth,
       displayY: (backingY / height) * displayHeight,
-      latDeg: (trueLat * 180) / Math.PI,
-      lonDeg: (trueLon * 180) / Math.PI,
+      latDeg: latLon[0],
+      lonDeg: latLon[1],
     });
   }, [onProbe, projection, width, height, displayWidth, displayHeight, rotation]);
 
