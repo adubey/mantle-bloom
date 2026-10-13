@@ -361,9 +361,13 @@ export default function MantleCrossSection({
     worldRevision, planeAngleDeg, arcPosition, width: Math.round(width), height: Math.round(height),
   };
   const currentCacheKey = frameCacheKey(currentFrameKey);
+  const cachedDataUrl = frameCache.get(currentCacheKey)?.dataUrl ?? null;
   // A prop change can render before its effect runs; only show a frame whose full cache key
-  // still matches, so old geology never flashes after a world/plane/size change.
-  const imageDataUrl = displayedFrame?.key === currentCacheKey ? displayedFrame.dataUrl : null;
+  // still matches, so old geology never flashes after a world/plane/size change. Read the
+  // decoded frame cache during render so a cached arc replaces the placeholder immediately.
+  const imageDataUrl = displayedFrame?.key === currentCacheKey
+    ? displayedFrame.dataUrl
+    : cachedDataUrl;
   const statusMessage = loadMessage ?? (
     prefetchProgress !== null && prefetchProgress < PREFETCHED_FRAME_COUNT
       ? `Preparing nearby arc positions ${prefetchProgress}/${PREFETCHED_FRAME_COUNT}`
@@ -497,25 +501,24 @@ export default function MantleCrossSection({
         </p>
         <div style={{ display: "flex", position: "relative", minHeight: 0, flex: 1, width: "100%" }}>
           <div aria-hidden="true" style={{ display: "flex", minHeight: 0, flex: 1, width: "100%" }}>
-            <SectionPlaceholder width={width} height={height} />
+            {!imageDataUrl && <SectionPlaceholder width={width} height={height} />}
           </div>
-          <img
-            src={imageDataUrl ?? undefined}
-            alt={imageDataUrl ? `Rendered shallow mantle section at arc position ${arcPosition + 1} of ${ARC_POSITION_COUNT}` : ""}
-            aria-hidden={imageDataUrl === null}
-            style={{
-              position: "absolute",
-              inset: 0,
-              display: "block",
-              minHeight: 0,
-              width: "100%",
-              height: "100%",
-              objectFit: "contain",
-              opacity: imageDataUrl ? 1 : 0,
-              transition: "opacity 140ms ease-out",
-              pointerEvents: "none",
-            }}
-          />
+          {imageDataUrl && (
+            <img
+              src={imageDataUrl}
+              alt={`Rendered shallow mantle section at arc position ${arcPosition + 1} of ${ARC_POSITION_COUNT}`}
+              style={{
+                position: "absolute",
+                inset: 0,
+                display: "block",
+                minHeight: 0,
+                width: "100%",
+                height: "100%",
+                objectFit: "contain",
+                pointerEvents: "none",
+              }}
+            />
+          )}
         </div>
         <div
           role="status"
