@@ -320,12 +320,21 @@ unrecognized projection/view name, a width/height outside `[1, main.MAX_RENDER_D
 
 ## `GET /world/cross-section?plane_angle_deg=0&position_index=0&width=1100&height=611`
 
-Reserved request path for the shallow mantle cross-section view (#360). `plane_angle_deg`
+Renders a surface-sampled shallow mantle section for the current world. `plane_angle_deg`
 selects a great-circle plane in `[0, 180]`, and `position_index` selects one of 120 evenly
 spaced centers along that circle in `[0, 119]`. `width` and `height` use the same `[1,
-main.MAX_RENDER_DIMENSION_PX]` limit as `/world/render`. A valid request returns `404` when
-there is no current world and `501 Not Implemented` until section sampling and image rendering
-are added. The route does not currently return section data or an image.
+main.MAX_RENDER_DIMENSION_PX]` limit as `/world/render`. `404` means there is no current world;
+`409` means the world has no active surface nodes. The JSON response contains `image_base64`
+(PNG), `world_revision`, `elapsed_years`, the request's plane and position, `arc_length_km`,
+`section_depth_km`, and `vertical_exaggeration`.
+
+The PNG samples existing per-column surface fields along the selected 3,000 km arc at a rate
+derived from `World.node_density`. Categorical crust type is nearest-node sampled, with no
+cross-boundary blending. Crust and mantle-lithosphere thickness are drawn from their stored
+columns; the crustal temperature profile is illustrative and melt eligibility is hatched
+separately. The mantle below the stored lithosphere is schematic. Pending magma parcel origins,
+stored volcano vents, and the available tangential mantle-flow field are shown at the surface;
+the route does not invent subsurface parcel trajectories or depth-resolved mantle flow.
 
 ## `POST /world/animate`
 

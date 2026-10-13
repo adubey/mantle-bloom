@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from scipy.spatial import cKDTree
 
 from . import (
+    cross_section as cross_section_view,
     debug_worlds,
     faults,
     geodesic,
@@ -884,21 +885,26 @@ def cross_section(
     width: int = 1100,
     height: int = 611,
 ) -> dict:
-    """Reserved request path for the shallow mantle cross-section view (#360).
+    """Render one surface-sampled section for the shallow mantle view (#360).
 
-    Accepts a great-circle plane orientation, one of the 120 evenly spaced arc-center
-    positions, and the requested output dimensions. Section sampling and image rendering
-    will be implemented in the follow-up; until then, a valid request for an available world
-    returns `501 Not Implemented`. `404` if no world has been generated yet.
+    The image uses existing per-column crust/lithosphere thicknesses and an illustrative
+    geotherm; the mantle below modeled lithosphere is schematic. `404` if no world exists.
     """
-    _require_world()
-    if not 0.0 <= plane_angle_deg <= 180.0:
-        raise HTTPException(status_code=400, detail="plane_angle_deg must be in [0, 180]")
-    if not 0 <= position_index < 120:
-        raise HTTPException(status_code=400, detail="position_index must be in [0, 119]")
-    if not (1 <= width <= MAX_RENDER_DIMENSION_PX and 1 <= height <= MAX_RENDER_DIMENSION_PX):
-        raise HTTPException(status_code=400, detail=f"width/height must be in [1, {MAX_RENDER_DIMENSION_PX}]")
-    raise HTTPException(status_code=501, detail="cross-section rendering is not implemented yet")
+    with _world_lock:
+        world = _require_world()
+        if not 0.0 <= plane_angle_deg <= 180.0:
+            raise HTTPException(status_code=400, detail="plane_angle_deg must be in [0, 180]")
+        if not 0 <= position_index < 120:
+            raise HTTPException(status_code=400, detail="position_index must be in [0, 119]")
+        if not (1 <= width <= MAX_RENDER_DIMENSION_PX and 1 <= height <= MAX_RENDER_DIMENSION_PX):
+            raise HTTPException(status_code=400, detail=f"width/height must be in [1, {MAX_RENDER_DIMENSION_PX}]")
+        try:
+            _, result = cross_section_view.render_png_base64(
+                world, plane_angle_deg, position_index, width, height
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return result
 
 
 @app.post("/world/animate")
