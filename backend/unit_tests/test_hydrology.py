@@ -463,6 +463,38 @@ def test_breach_surge_drives_flow_accum_but_never_physical_discharge(monkeypatch
     assert surged.discharge_m3_s[10] > 0.0  # the lake's own runoff still passes through
 
 
+def test_breach_surge_never_sizes_lake_silt(monkeypatch):
+    # A spilling lake (sink 10, behind the 11-13 barrier) whose overflow runs into a pit (16)
+    # before the ocean. The surge settles in the pit's legacy water_deposited, but silt is
+    # sized from the physical inflow (issue #363), so turning the surge off leaves every
+    # lake's silt unchanged. Breaching is off so the pit holds water instead of draining.
+    elevation = np.array(
+        [500.0, 480.0, 460.0, 440.0, 420.0, 400.0, 380.0, 360.0, 340.0, 320.0]
+        + [50.0]
+        + [250.0, 300.0, 260.0, 200.0, 150.0]
+        + [40.0]
+        + [120.0, 130.0, 140.0, 130.0, 60.0, 20.0]
+        + [-10.0, -50.0, -100.0]
+    )
+    n = len(elevation)
+    lake_depth = np.zeros(n)
+    lake_depth[10] = 160.0
+    lake_depth[16] = 5.0
+    monkeypatch.setattr(hydrology, "BREACH_DEPRESSIONS_ENABLED", False)
+
+    def run():
+        world = World(seed=0, plates=[_flow_line_plate_with_lake(0, 0.002 * np.arange(n), elevation, lake_depth)])
+        return hydrology.compute_hydrology(world, np.full(n, 2000.0), np.full(n, 5.0), years=1_000_000)
+
+    surged = run()
+    assert surged.breach_surge[10] > 0.0
+    monkeypatch.setattr(hydrology, "LAKE_BREACH_EROSION_COEFFICIENT", 0.0)
+    calm = run()
+    assert surged.water_deposited[16] > calm.water_deposited[16]  # the surge reached the pit
+    assert surged.silt_deposited[16] > 0.0 and surged.silt_deposited[10] > 0.0
+    assert np.array_equal(surged.silt_deposited, calm.silt_deposited)
+
+
 def test_a_spilling_sink_loses_the_same_transit_share_as_any_node():
     # The single-node spilling lake above. Physical water has one transit-loss rule (issue
     # #355): the spilling sink loses its share like any other node. Only the legacy routing

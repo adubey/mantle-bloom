@@ -76,14 +76,22 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-# How much of a lake's own inflow settles as silt on its bed each step. It was set at 1/100 of
-# the retired model-unit lake fill rate (0.12, issue #358 item 5), in the same "spread over
-# member count" units, so silt rises ~100x slower than that balance raised water: siltation is a slow, permanent process compared to a lake's water level, which rises and
-# falls with ordinary season-to-season-equivalent inflow/evaporation swings every step. At this
-# rate a small, low-inflow lake plausibly silts in entirely over the tens-of-Myr span a real
-# small lake actually survives; a large, actively-flowing lake's own inflow is spread over far
-# more members, so its own silt accumulates correspondingly slower per node, matching the
-# real-world intuition that big lakes take far longer to fill in than small ones.
+# Silt settled on a lake's bed per cubic metre of water flowing into it (issue #363): each
+# step a lake gains its real inflow (`LakeClimate.inflow_m3_per_yr`, the same water that sets
+# its level, including the flow through a spilling lake's sink) times the step length times
+# this, as a volume spread over its wet area. Being a volume fraction, it gives a catchment
+# the same silt at any node density, and the breach surge (model units, erosion-only) never
+# reaches it. The value keeps the total silt laid on lake beds (after each lake's room clamp)
+# under the earlier model-unit rule (1/100 of the retired lake fill rate, times
+# `water_deposited`) on the seed 997271774 replay at the default node density in
+# `analysis/issue363/`, rather than being set from real sediment loads: erosion.py delivers
+# routed river sediment into lakes separately (`_spread_lake_sediment`). Siltation is a slow,
+# permanent process next to a lake's water level, which tracks its climate every step. A
+# small, low-inflow lake plausibly silts in entirely over the tens-of-Myr span a real small
+# lake survives; a large lake spreads its silt over far more wet area, so it fills in far more
+# slowly, as real big lakes do. Unlike the old rule, a spilling lake now silts from the water
+# passing through it, as a real through-flow lake traps sediment; before, it got almost none
+# apart from the breach surge.
 #
 # `step_lakes` returns this step's per-node silt increment (`silt_deposited`); erosion.py folds
 # it straight into real terrain `elevation` (like every other deposition pathway), so a basin
@@ -97,8 +105,8 @@ import numpy as np
 # 30 My run of issue #117's own repro seed (23097282): the line engine's crumpling pass (the
 # actual roughening injector then, run on plate node-density increases; retired with the line
 # surface in #251) shifted a line's elevation by a median ~51 m per event (p90 ~160 m, up
-# to ~3,000 m) against a naive resample -- vs. this coefficient depositing a median ~0.02 m/step (p90 ~0.32
-# m/step) on a small leaf catchment's bed -- roughly a 1,000x gap per event. Despite that gap,
+# to ~3,000 m) against a naive resample -- vs. this coefficient (then in model units) depositing a median ~0.02
+# m/step (p90 ~0.32 m/step) on a small leaf catchment's bed -- roughly a 1,000x gap per event. Despite that gap,
 # re-running issue #117's exact repro (seed 23097282 @ 79.2 My) against current code via
 # `app.hydroclimate.lake_hierarchy_diagnostics` shows the pathology it named already resolved: max hierarchy
 # depth stays in the single digits the whole run (peak 8, ending at 2 with only 6 leaf
@@ -137,7 +145,7 @@ import numpy as np
 # basin-spill pass, `_compute_basin_spill`, was removed because it could drift out of sync with
 # this module's own hierarchy). Issue #144 is closed on that basis: item #1 measured (above),
 # item #2 decided (no pre-fill pass), item #3's tooling is `app.hydroclimate.lake_hierarchy_diagnostics`.
-SILT_ACCUMULATION_COEFFICIENT = 0.0012
+SILT_ACCUMULATION_COEFFICIENT = 4.1e-6
 
 # Same value elevation_lines.py/mantle.py each already redefine locally rather than import --
 # following that precedent here too rather than pulling in plates.py (a much heavier module,
@@ -694,7 +702,6 @@ def iter_all_lakes(roots: list[Lake]):
 def _water_balance(
     lake: Lake,
     elevation: np.ndarray,
-    water_deposited: np.ndarray,
     years_myr: float,
     is_frozen: bool,
     out_silt_deposited: np.ndarray,
@@ -718,8 +725,8 @@ def _water_balance(
     exists -- a depth ceiling doubles as the fix for lakes that should never have stayed merged
     this large in the first place.
 
-    The same inflow that grows standing water also drops a small amount of sediment
-    (`SILT_ACCUMULATION_COEFFICIENT`, ~100x smaller -- see that constant's own comment) onto the
+    The same real inflow also drops a small volume of sediment
+    (`SILT_ACCUMULATION_COEFFICIENT` per cubic metre -- see that constant's own comment) onto the
     lake bed: written into `out_silt_deposited` as *this step's* per-node increment (erosion.py
     folds it straight into real terrain `elevation`, see that constant's comment), spread only
     over the members actually underwater this step (`elevation < new_level`) so a leaf's dry
@@ -742,10 +749,8 @@ def _water_balance(
     into their neighbors)."""
     hyps = hypsometry if hypsometry is not None else CellHypsometry.whole_cells(elevation)
     members = lake.members
-    # Model-unit inflow. It sizes this step's silt, while `climate` sets the level in real
-    # units, so silt and level use different units, which matters when tuning silt against
-    # lake size.
-    inflow = float(water_deposited[members].sum())
+    # The same real inflow that sets the level sizes the silt (issue #363).
+    inflow_m3_per_yr = float(climate.inflow_m3_per_yr[members].sum())
 
     rim_cap_depth = (lake.max_depth - lake.floor_elevation) if lake.max_depth is not None else None
     cap_depth = tier_max_depth if rim_cap_depth is None else min(rim_cap_depth, tier_max_depth)
@@ -764,7 +769,7 @@ def _water_balance(
         # The silt volume settles evenly over the wet area, so a partly flooded cell gains its
         # wet fraction's share of that thickness, as a cell-mean rise.
         wet_area = float((wet_fraction[is_wet] * hyps.area_m2[wet]).sum())
-        silt_m3 = SILT_ACCUMULATION_COEFFICIENT * inflow * years_myr * hyps.reference_area_m2
+        silt_m3 = SILT_ACCUMULATION_COEFFICIENT * inflow_m3_per_yr * years_myr * 1e6
         silt_rise = silt_m3 / wet_area * wet_fraction[is_wet]
         # Never lift a node's bed above this step's own water surface (sediment settles under
         # water, it doesn't pile into the air) -- which also keeps the fill at or below the
@@ -908,7 +913,6 @@ def _resolve(
     lake: Lake,
     elevation: np.ndarray,
     prev_lake_depth: np.ndarray,
-    water_deposited: np.ndarray,
     years_myr: float,
     is_frozen: np.ndarray,
     out_lake_depth: np.ndarray,
@@ -1009,7 +1013,7 @@ def _resolve(
         node_is_frozen = bool(is_frozen[node.members].any())
         is_sea, tier_max_depth = _classify_tier(node.members, prev_lake_depth, node_area_km2)
         new_level = _water_balance(
-            node, elevation, water_deposited, years_myr, node_is_frozen,
+            node, elevation, years_myr, node_is_frozen,
             out_silt_deposited, tier_max_depth, is_sea, out_lake_is_sea, climate, hyps,
         )
         if node.children and new_level < node.min_depth:
@@ -1053,7 +1057,6 @@ def resolve_lakes(
     forest: list[Lake],
     elevation: np.ndarray,
     prev_lake_depth: np.ndarray,
-    water_deposited: np.ndarray,
     years: float,
     is_frozen: np.ndarray,
     climate: LakeClimate,
@@ -1080,7 +1083,7 @@ def resolve_lakes(
     `hypsometry` gives each cell's real area and sub-cell relief, for partial-cell flooding
     (see `CellHypsometry`). Without it every cell is an equal share of the sphere and floods
     all at once. `climate` resolves each lake at its real-unit balanced level (see
-    `LakeClimate`). `water_deposited` only sizes this step's silt."""
+    `LakeClimate`), and its inflow sizes this step's silt."""
     n = len(elevation)
     lake_depth = np.zeros(n)
     silt_deposited = np.zeros(n)
@@ -1093,7 +1096,7 @@ def resolve_lakes(
     events: list[LakeEvent] = []
     for root in forest:
         _resolve(
-            root, elevation, prev_lake_depth, water_deposited, years_myr, is_frozen,
+            root, elevation, prev_lake_depth, years_myr, is_frozen,
             lake_depth, silt_deposited, lake_is_sea, node_area_km2, events, climate, hypsometry,
         )
     return lake_depth, silt_deposited, lake_is_sea, events
@@ -1104,7 +1107,6 @@ def step_lakes(
     is_ocean: np.ndarray,
     neighbor_idx: np.ndarray,
     prev_lake_depth: np.ndarray,
-    water_deposited: np.ndarray,
     years: float,
     is_frozen: np.ndarray,
     climate: LakeClimate,
@@ -1135,6 +1137,6 @@ def step_lakes(
     calls `world.log_event` directly, keeping it testable without a `World`)."""
     forest = build_lake_hierarchy(elevation, is_ocean, neighbor_idx)
     lake_depth, silt_deposited, lake_is_sea, events = resolve_lakes(
-        forest, elevation, prev_lake_depth, water_deposited, years, is_frozen, climate, hypsometry
+        forest, elevation, prev_lake_depth, years, is_frozen, climate, hypsometry
     )
     return lake_depth, silt_deposited, lake_is_sea, forest, events

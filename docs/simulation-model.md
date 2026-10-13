@@ -3342,9 +3342,9 @@ the quantities above, the breach surge still reaches every one of them, not only
 |---|---|---|
 | River erosion, channel width, river speed, River Inspector | `flow_accum` | #355 step 3 |
 | Geology's river-mouth resource boost | `water_deposited` | #355 step 3 |
-| Lake silt | `water_deposited` | #363 |
 
-Taking the surge out of the older routing before then would change all of them.
+Taking the surge out of the older routing before then would change all of them. Lake silt
+already reads the physical lake inflow (#363).
 
 **The core algorithms**, all operating on the k-NN graph:
 
@@ -3514,8 +3514,13 @@ exact shape shifting from ordinary terrain churn even when nothing physical abou
 changed.
 
 **Lakes accumulate silt.** `silt_depth` (a persistent per-node field, carried exactly like `lake_depth`) is a
-small, ~100x-slower-than-water-growth fraction of the same inflow, settling permanently
-(monotonically -- silt never erodes back away) on a lake's own bed. `erosion.py` folds each
+small volume fraction (`SILT_ACCUMULATION_COEFFICIENT`, m^3 of silt per m^3 of water) of the
+same real inflow that sets the lake's level, including the flow through a spilling lake's
+sink, settling permanently (monotonically -- silt never erodes back away) on a lake's own bed.
+Because it's sized in m^3/yr, a catchment silts the same at any node density, and the breach
+surge never reaches it (#363). The coefficient keeps the total silt laid down under the
+earlier model-unit rule, which read `water_deposited`, on a reference replay
+(`analysis/issue363/`). That old rule gave a spilling lake almost no silt beyond the surge. `erosion.py` folds each
 step's `silt_deposited` straight into real terrain `elevation` (like every other deposition
 pathway), so `build_lake_hierarchy` builds every hierarchy from bare `elevation` -- last
 step's fill is already baked into it, no separate `elevation + silt_depth` effective floor

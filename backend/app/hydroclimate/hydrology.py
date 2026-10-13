@@ -785,9 +785,9 @@ def river_transit_loss_fraction(temperature_c: np.ndarray, excluded: np.ndarray)
 # precipitation, melt and breach surge, with step-scaled evaporation. Until each consumer
 # moves to the quantities above, the surge still reaches all of them, not only erosion:
 # - river erosion, channel width and river speed (`flow_accum`; #355 step 3);
-# - geology's river-mouth boost (`water_deposited`; #355 step 3);
-# - lake silt (`water_deposited`; #363).
-# Removing the surge from the legacy routing before then changes all three.
+# - geology's river-mouth boost (`water_deposited`; #355 step 3).
+# Removing the surge from the legacy routing before then changes both. Lake silt reads the
+# physical water (#363).
 SECONDS_PER_YEAR = 3.15576e7
 
 
@@ -1159,8 +1159,8 @@ def compute_hydrology(
     # step's spill routing (immediately below -- see compute_spill_routing's own docstring for
     # why lakes.py's own hierarchy, not a separate independently-computed basin-spill pass, is
     # now the single source of truth for where a lake's overflow goes) and, later, this same
-    # step's lake water-balance resolution (`lakes.resolve_lakes`, once water_deposited is
-    # known) -- the exact same `forest` object threaded through both, rather than paying for a
+    # step's lake water-balance resolution (`lakes.resolve_lakes`, once this step's physical water
+    # is routed) -- the exact same `forest` object threaded through both, rather than paying for a
     # second, redundant `build_lake_hierarchy` call and risking the two disagreeing.
     #
     # With breaching on, the hierarchy's boundary edges use notched passage elevations, not
@@ -1285,9 +1285,9 @@ def compute_hydrology(
         temperature_at_nodes, years, is_frozen | is_ocean | should_spill | is_rim_breach
     )
 
-    # The surge stays in this legacy routing on purpose (issue #355 "Water units"): through
-    # `water_deposited` it also sizes lake silt (#363), and geology's river-mouth boost reads
-    # it too (#355 step 3). Move those consumers before taking it out of here.
+    # The surge stays in this legacy routing on purpose (issue #355 "Water units"): geology's
+    # river-mouth boost reads it through `water_deposited` (#355 step 3). Move that consumer
+    # before taking it out of here.
     breach_surge = lake_breach_source + rim_breach_source
     water_source = liquid_precip + melt + breach_surge
     flow_accum, water_deposited = route_downstream(elevation, is_ocean, flow_target, water_source, loss_fraction=river_evap_fraction)
@@ -1339,7 +1339,7 @@ def compute_hydrology(
         ice=ice,
     )
     # Resolves the *same* forest built early (above, for spill routing) against this step's
-    # actual water_deposited -- not a second lakes.step_lakes call, which would rebuild the
+    # routed physical water -- not a second lakes.step_lakes call, which would rebuild the
     # hierarchy from scratch a second time and risk it disagreeing with what spill routing just
     # used (see lakes.resolve_lakes's own docstring).
     # A spilling lake's sink passes its water on, so its inflow is the flow through the sink,
@@ -1354,7 +1354,7 @@ def compute_hydrology(
         evaporation_m_per_yr=evaporation_mm / 1000.0,
     )
     fields.lake_depth, fields.silt_deposited, fields.is_sea, fields.lake_events = lakes.resolve_lakes(
-        forest, elevation, lake_depth_adjusted, water_deposited, years, lake_frozen, lake_climate, hypsometry
+        forest, elevation, lake_depth_adjusted, years, lake_frozen, lake_climate, hypsometry
     )
     fields.lake_forest = forest
     fields.hypsometry = hypsometry
