@@ -24,13 +24,10 @@ baseline:
 
 from __future__ import annotations
 
-import argparse
-import json
-import sys
-import time
 from pathlib import Path
 
 import numpy as np
+from seed_run_lib import import_backend, run_seeds, seed_run_parser
 
 LEDGER_KEYS = (
     "initial_continental_m3",
@@ -58,23 +55,17 @@ TOTALS = (
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--backend", type=Path, default=Path(__file__).resolve().parents[2] / "backend")
-    parser.add_argument("--seeds", type=int, nargs="+", default=[1])
-    parser.add_argument("--steps", type=int, default=100)
-    parser.add_argument("--years", type=float, default=1_000_000.0)
-    parser.add_argument("--every", type=int, default=10, help="snapshot every Nth step")
+    parser = seed_run_parser(__doc__, steps=100)
     parser.add_argument("--belt-fraction", type=float, default=0.9, help="Hc / cap that counts as thickened")
     parser.add_argument("--per-pathway", action="store_true", help="also print per-pathway columns")
     parser.add_argument("--out", type=Path)
     args = parser.parse_args()
 
-    sys.path.insert(0, str(args.backend.resolve()))
+    import_backend(args)
     from app import continental_ledger, lithosphere
     from app.hydroclimate import erosion  # noqa: E402
     from app.elevation_lines import effective_is_continental_from_codes, line_spacing_rad  # noqa: E402
     from app.plates import collect_all_accounting_areas_m2, collect_all_crustal_thickness  # noqa: E402
-    from app.world import generate_world, step_world  # noqa: E402
 
     cap = lithosphere.MAX_CRUSTAL_THICKNESS_M
     window: dict[str, float] = {}
@@ -93,41 +84,28 @@ def main() -> None:
 
     erosion.apply_erosion = wrapped
 
-    rows = []
-    for seed in args.seeds:
-        world = generate_world(seed=seed)
-        start = time.perf_counter()
+    def measure(world, seed, step) -> dict:
+        order = world.hydrology_cache.plates_in_order
+        hc = collect_all_crustal_thickness(order)
+        areas = collect_all_accounting_areas_m2(order, line_spacing_rad(world.node_density))
+        continental = np.concatenate(
+            [effective_is_continental_from_codes(p.collect("crust_type_code"), p.crust_type == "continental") for p in order]
+        )
+        inv = continental_ledger.inventories(world)
+        initial = max(float(inv.get("initial_continental_m3", 0.0)), 1.0)
+        row = {
+            "myr": step * args.years / 1e6,
+            "hc_at_max_area_fraction": float(np.sum(areas[hc >= cap - 1e-6]) / np.sum(areas)),
+            "thickened_area_fraction": float(np.sum(areas[hc >= args.belt_fraction * cap]) / np.sum(areas)),
+            "continental_mean_hc_km": float(np.sum(hc[continental] * areas[continental]) / max(np.sum(areas[continental]), 1.0)) / 1e3,
+            "unplaced_share_of_initial": float(inv.get("numerical_unplaced_m3", 0.0)) / initial,
+            **{k: v for k, v in window.items() if args.per_pathway or not any(f"_{p}_" in k for p in PATHWAYS)},
+            **{f"ledger_{k}": float(inv.get(k, 0.0)) for k in LEDGER_KEYS},
+        }
         window.clear()
-        for step in range(1, args.steps + 1):
-            step_world(world, args.years)
-            if step % args.every and step != args.steps:
-                continue
-            order = world.hydrology_cache.plates_in_order
-            hc = collect_all_crustal_thickness(order)
-            areas = collect_all_accounting_areas_m2(order, line_spacing_rad(world.node_density))
-            continental = np.concatenate(
-                [effective_is_continental_from_codes(p.collect("crust_type_code"), p.crust_type == "continental") for p in order]
-            )
-            inv = continental_ledger.inventories(world)
-            initial = max(float(inv.get("initial_continental_m3", 0.0)), 1.0)
-            row = {
-                "seed": seed,
-                "step": step,
-                "myr": step * args.years / 1e6,
-                "seconds": round(time.perf_counter() - start, 1),
-                "hc_at_max_area_fraction": float(np.sum(areas[hc >= cap - 1e-6]) / np.sum(areas)),
-                "thickened_area_fraction": float(np.sum(areas[hc >= args.belt_fraction * cap]) / np.sum(areas)),
-                "continental_mean_hc_km": float(np.sum(hc[continental] * areas[continental]) / max(np.sum(areas[continental]), 1.0)) / 1e3,
-                "unplaced_share_of_initial": float(inv.get("numerical_unplaced_m3", 0.0)) / initial,
-                **{k: v for k, v in window.items() if args.per_pathway or not any(f"_{p}_" in k for p in PATHWAYS)},
-                **{f"ledger_{k}": float(inv.get(k, 0.0)) for k in LEDGER_KEYS},
-            }
-            window.clear()
-            rows.append(row)
-            print(json.dumps({k: (float(f"{v:.4g}") if isinstance(v, float) else v) for k, v in row.items()}), flush=True)
-            if args.out:
-                args.out.parent.mkdir(parents=True, exist_ok=True)
-                args.out.write_text(json.dumps(rows, indent=2))
+        return row
+
+    run_seeds(args, measure, lambda world, seed: window.clear())
 
 
 if __name__ == "__main__":

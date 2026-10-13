@@ -21,6 +21,7 @@ below for each one's confirming run. They're still fully available via an explic
 
 from __future__ import annotations
 
+import argparse
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -125,6 +126,22 @@ DEFAULT_SWEEP_PARAMS = tuple(p for p in PARAM_SPECS if p not in CONFIRMED_NULL_P
 # seed and shared across every real parameter's own multiplier=1.0 point rather than re-run
 # per parameter, since it's the same world either way. See run_sweep.build_jobs.
 BASELINE_PARAM = "baseline"
+
+
+def add_seed_grid_args(parser: argparse.ArgumentParser) -> None:
+    """The `--seeds --checkpoints --node-density` options every sweep-style script shares."""
+    parser.add_argument("--seeds", default=",".join(str(s) for s in SWEEP_SEEDS))
+    parser.add_argument(
+        "--checkpoints", default=",".join(str(y // 1_000_000) for y in CHECKPOINT_YEARS), help="Myr, comma-separated"
+    )
+    parser.add_argument("--node-density", type=float, default=NODE_DENSITY)
+
+
+def parse_seed_grid(args: argparse.Namespace) -> tuple[list[int], list[int]]:
+    """`(seeds, checkpoint_years)` from the options `add_seed_grid_args` added."""
+    seeds = [int(s) for s in args.seeds.split(",")]
+    checkpoint_years = [int(float(m) * 1_000_000) for m in args.checkpoints.split(",")]
+    return seeds, checkpoint_years
 
 
 def _apply_rotation_rate_overrides(avg_cm_yr: float, max_cm_yr: float) -> None:

@@ -45,13 +45,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from sweep_lib import (  # noqa: E402
+    add_seed_grid_args,
+    parse_seed_grid,
     BASELINE_PARAM,
-    CHECKPOINT_YEARS,
     DEFAULT_SWEEP_PARAMS,
     MULTIPLIERS,
     NODE_DENSITY,
     PARAM_SPECS,
-    SWEEP_SEEDS,
     run_one_job,
 )
 
@@ -133,11 +133,7 @@ def main() -> None:
         ),
     )
     parser.add_argument("--multipliers", default=",".join(str(m) for m in MULTIPLIERS))
-    parser.add_argument("--seeds", default=",".join(str(s) for s in SWEEP_SEEDS))
-    parser.add_argument(
-        "--checkpoints", default=",".join(str(y // 1_000_000) for y in CHECKPOINT_YEARS), help="Myr, comma-separated"
-    )
-    parser.add_argument("--node-density", type=float, default=NODE_DENSITY)
+    add_seed_grid_args(parser)
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     args = parser.parse_args()
@@ -147,8 +143,7 @@ def main() -> None:
         if p not in PARAM_SPECS:
             parser.error(f"unknown parameter {p!r}; choices are {', '.join(PARAM_SPECS)}")
     multipliers = [float(m) for m in args.multipliers.split(",")]
-    seeds = [int(s) for s in args.seeds.split(",")]
-    checkpoint_years = [int(float(m) * 1_000_000) for m in args.checkpoints.split(",")]
+    seeds, checkpoint_years = parse_seed_grid(args)
     node_density = args.node_density
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
