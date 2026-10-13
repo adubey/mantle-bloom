@@ -3313,6 +3313,35 @@ thousand land nodes, a real chunk of a step's total cost), so `erosion.py` compu
 (`hydrology.compute_hydrology`) and reuses the result for both erosion and
 `World.hydrology_cache`, rather than paying for it twice.
 
+**Water units** (issue #355). Three kinds of water move along `flow_target`:
+
+- **Physical water**, in m^3/yr: area-weighted Budyko runoff of liquid precipitation plus
+  glacier meltwater. It balances the lakes (see *Balanced lakes* below), and its through-flow
+  is the river discharge, `HydrologyFields.discharge_m3_s`, in m^3/s.
+- **Glacier meltwater** is the ice ledger's per-step volume (`IceLedger.meltwater_m3`: surface
+  and basal melt, overflow, ice shed at the depth guard, and snow melting on bare ground)
+  divided by the step length (`hydrology.meltwater_m3_per_yr`). Ice and water volumes are
+  booked 1:1, as a freezing lake is. Calved ice goes to the ocean unrouted, and accumulation
+  and frozen river ice stay ice, so none of them is discharge. The ledger is still in the
+  glacier model's own units (see [Glaciation](#glaciation)), so meltwater is small next to
+  runoff.
+- **The breach surge** (`HydrologyFields.breach_surge`) is a spilling lake's erosive forcing,
+  sized by node count (`LAKE_BREACH_EROSION_COEFFICIENT`). It is never part of the discharge.
+
+`flow_accum` and `water_deposited` come from the older routing: stacked mm/yr of liquid
+precipitation, melt and breach surge, with in-transit evaporation that scales with step
+length. They grow with node density as well as with rainfall. Until each consumer moves to
+the quantities above, the breach surge still reaches every one of them, not only erosion:
+
+| Consumer | Reads | Moves in |
+|---|---|---|
+| River erosion, channel width, river speed, River Inspector | `flow_accum` | #355 step 3 |
+| Geology's river-mouth resource boost | `water_deposited` | #355 step 3 |
+| Frozen river ice | `water_deposited` | #355 step 2 |
+| Lake silt | `water_deposited` | #363 |
+
+Taking the surge out of the older routing before then would change all of them.
+
 **The core algorithms**, all operating on the k-NN graph:
 
 - **Basin-spill / spill routing** (`lakes.compute_spill_routing`): where a lake's overflow
