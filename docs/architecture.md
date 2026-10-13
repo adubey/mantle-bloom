@@ -167,9 +167,9 @@ machine. A session cookie (`mb_session`) is an HMAC-signed `{uid, login, exp}` t
 `/auth/github/callback` sets only when GitHub's numeric user ID matches the configured owner.
 It's `Secure`, `HttpOnly` and `SameSite=Lax`, lasts 14 days, and isn't stored server-side.
 A request counts as made on this machine when the client is loopback, `Host` is loopback,
-and there are no `Forwarded`/`X-Forwarded-*`/`X-Real-IP` headers. That covers
-`bin/restart.sh` and the desktop build, so neither needs login. The OAuth flow uses PKCE and
-a signed, short-lived `state` cookie.
+and there are no proxy headers (`Forwarded`, `Via`, any `X-Forwarded-*`, `X-Real-IP`,
+`CF-Connecting-IP` and similar). That covers `bin/restart.sh` and the desktop build, so
+neither needs login. The OAuth flow uses PKCE and a signed, short-lived `state` cookie.
 
 Configuration is read from the environment on every request:
 

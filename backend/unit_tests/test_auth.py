@@ -127,8 +127,12 @@ def test_local_requests_skip_login():
         assert client.get("/auth/session").json()["admin"] is True
 
 
-@pytest.mark.parametrize("headers", [{"X-Forwarded-For": "203.0.113.9"}, {"Forwarded": "for=203.0.113.9"},
-                                     {"Host": "mantle.example.com"}])
+@pytest.mark.parametrize("headers", [
+    {"X-Forwarded-For": "203.0.113.9"}, {"Forwarded": "for=203.0.113.9"}, {"Host": "mantle.example.com"},
+    # A proxy that rewrites Host to localhost may forward only these (PR #377 review).
+    {"X-Forwarded-Proto": "https"}, {"X-Forwarded-Port": "443"}, {"Via": "1.1 caddy"},
+    {"CF-Connecting-IP": "203.0.113.9"},
+])
 def test_proxied_loopback_requests_need_login(headers):
     with _local() as client:
         assert client.get("/world/summary", headers=headers).status_code == 401

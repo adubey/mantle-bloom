@@ -54,7 +54,14 @@ GITHUB_TIMEOUT_S = 10
 
 _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 _LOOPBACK_HOSTNAMES = frozenset({"localhost", "127.0.0.1", "::1"})
-_FORWARDING_HEADERS = ("forwarded", "x-forwarded-for", "x-forwarded-host", "x-real-ip")
+# Any of these on a loopback request means a proxy relayed it from elsewhere. Every
+# `X-Forwarded-*` header counts, not just -For/-Host: a proxy that rewrites Host to localhost
+# may forward only -Proto or -Port (PR #377 review).
+_PROXY_HEADERS = frozenset({
+    "forwarded", "via", "x-real-ip", "x-client-ip", "true-client-ip", "cf-connecting-ip",
+    "fastly-client-ip", "x-original-forwarded-for",
+})
+_PROXY_HEADER_PREFIX = "x-forwarded"
 
 # /login?error=<code> only ever shows one of these, so the page never reflects input.
 LOGIN_ERRORS = {
@@ -149,7 +156,12 @@ def is_local_request(request: Request, config: AuthConfig) -> bool:
         return False
     if request.url.hostname not in _LOOPBACK_HOSTNAMES:
         return False
-    return not any(name in request.headers for name in _FORWARDING_HEADERS)
+    return not any(_is_proxy_header(name) for name in request.headers.keys())
+
+
+def _is_proxy_header(name: str) -> bool:
+    # Starlette lowercases header names.
+    return name in _PROXY_HEADERS or name.startswith(_PROXY_HEADER_PREFIX)
 
 
 def session_user(request: Request, config: AuthConfig) -> dict | None:
