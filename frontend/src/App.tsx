@@ -306,10 +306,10 @@ export default function App() {
   const [mapView, setMapView] = useState<MapView>(
     initialView && (DEBUG_UI || !DEBUG_MAP_VIEWS.has(initialView.mapView)) ? initialView.mapView : "combined",
   );
-  // These controls describe only the cross-section's great-circle cut. Keep them independent
+  // These controls describe only the cross-section's latitude and longitude. Keep them independent
   // of the map projection/rotation state, and retain their values when switching views.
-  const [crossSectionPlaneAngleDeg, setCrossSectionPlaneAngleDeg] = useState(0);
-  const [crossSectionArcPosition, setCrossSectionArcPosition] = useState(0);
+  const [crossSectionLatitudeDeg, setCrossSectionLatitudeDeg] = useState(0);
+  const [crossSectionLongitudeIndex, setCrossSectionLongitudeIndex] = useState(0);
   // Local cache epoch: advance it after every operation that can change sampled section data.
   const [crossSectionWorldRevision, setCrossSectionWorldRevision] = useState(0);
   // handleStep's own closure over `mapView` is captured when the step *starts*, so if the map
@@ -1611,10 +1611,10 @@ export default function App() {
               width={DISPLAY_WIDTH}
               height={DISPLAY_HEIGHT}
               worldRevision={crossSectionWorldRevision}
-              planeAngleDeg={crossSectionPlaneAngleDeg}
-              arcPosition={crossSectionArcPosition}
-              onPlaneAngleChange={setCrossSectionPlaneAngleDeg}
-              onArcPositionChange={setCrossSectionArcPosition}
+              latitudeDeg={crossSectionLatitudeDeg}
+              longitudeIndex={crossSectionLongitudeIndex}
+              onLatitudeChange={setCrossSectionLatitudeDeg}
+              onLongitudeIndexChange={setCrossSectionLongitudeIndex}
             />
           ) : mapView === "plateInspector" ? (
             <PlateInspector
@@ -1922,7 +1922,7 @@ export default function App() {
           />
           <p style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>
             {mapView === "crossSection"
-              ? "Adjust plane orientation and arc center in the locator. The section follows sampled world fields; nearby arc positions are prepared in the background."
+              ? "Choose a latitude line and move the section around it. The section follows sampled world fields; nearby arc positions are prepared in the background."
               : mapView === "plateInspector"
               ? "Click a plate to select it. Tab / Shift+Tab cycles plates. Press and hold, then drag to rotate."
               : mapView === "riverInspector"

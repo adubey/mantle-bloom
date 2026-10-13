@@ -7,7 +7,7 @@ const ARC_LENGTH_KM = 3_000;
 const ARC_POSITION_COUNT = 120;
 const SECTION_DEPTH_KM = 350;
 const VERTICAL_EXAGGERATION = 2;
-const SECTION_STYLE_VERSION = 1;
+const SECTION_STYLE_VERSION = 2;
 const MAX_CACHED_SECTION_FRAMES = ARC_POSITION_COUNT;
 const PREFETCH_CONCURRENCY = 3;
 const PREFETCHED_FRAME_COUNT = MAX_CACHED_SECTION_FRAMES;
@@ -15,8 +15,8 @@ const ARC_KEYBOARD_STEP = 2;
 
 interface FrameKey {
   worldRevision: number;
-  planeAngleDeg: number;
-  arcPosition: number;
+  latitudeDeg: number;
+  longitudeIndex: number;
   width: number;
   height: number;
 }
@@ -34,13 +34,13 @@ let cacheClock = 0;
 
 function frameCacheKey(key: FrameKey): string {
   return [
-    key.worldRevision, key.planeAngleDeg, key.arcPosition, key.width, key.height, SECTION_STYLE_VERSION,
+    key.worldRevision, key.latitudeDeg, key.longitudeIndex, key.width, key.height, SECTION_STYLE_VERSION,
   ].join(":");
 }
 
 function sameFrameSet(left: FrameKey, right: FrameKey): boolean {
   return left.worldRevision === right.worldRevision
-    && left.planeAngleDeg === right.planeAngleDeg
+    && left.latitudeDeg === right.latitudeDeg
     && left.width === right.width
     && left.height === right.height;
 }
@@ -57,7 +57,7 @@ function pruneFrameCache(): void {
   if (frameCache.size <= MAX_CACHED_SECTION_FRAMES) return;
   const distance = (entry: CachedFrame) => {
     if (!activeFrameKey || !sameFrameSet(entry.key, activeFrameKey)) return Number.POSITIVE_INFINITY;
-    const direct = Math.abs(entry.key.arcPosition - activeFrameKey.arcPosition);
+    const direct = Math.abs(entry.key.longitudeIndex - activeFrameKey.longitudeIndex);
     return Math.min(direct, ARC_POSITION_COUNT - direct);
   };
   const keep = [...frameCache.entries()]
@@ -90,7 +90,7 @@ async function loadFrame(key: FrameKey, signal: AbortSignal): Promise<string> {
   if (pending && !pending.signal.aborted) return pending.promise;
 
   const promise = (async () => {
-    const response = await fetchCrossSection(key.planeAngleDeg, key.arcPosition, key.width, key.height, signal);
+  const response = await fetchCrossSection(key.latitudeDeg, key.longitudeIndex, key.width, key.height, signal);
     const dataUrl = `data:image/png;base64,${response.image_base64}`;
     if (signal.aborted) throw new DOMException("Cross-section request aborted", "AbortError");
 
@@ -117,10 +117,10 @@ interface Props {
   width: number;
   height: number;
   worldRevision: number;
-  planeAngleDeg: number;
-  arcPosition: number;
-  onPlaneAngleChange: (value: number) => void;
-  onArcPositionChange: (value: number) => void;
+  latitudeDeg: number;
+  longitudeIndex: number;
+  onLatitudeChange: (value: number) => void;
+  onLongitudeIndexChange: (value: number) => void;
 }
 
 interface ProjectedPoint {
@@ -134,17 +134,18 @@ interface CurveSegment {
   points: ProjectedPoint[];
 }
 
-function globePoint(planeAngleDeg: number, arcAngle: number, cx: number, cy: number, radius: number): ProjectedPoint {
-  const planeAngle = (planeAngleDeg * Math.PI) / 180;
+function globePoint(latitudeDeg: number, longitudeRad: number, cx: number, cy: number, radius: number): ProjectedPoint {
+  const latitude = (latitudeDeg * Math.PI) / 180;
+  const horizontalRadius = Math.cos(latitude);
   return {
-    x: cx + radius * Math.cos(planeAngle) * Math.cos(arcAngle),
-    y: cy - radius * Math.sin(arcAngle),
-    depth: Math.sin(planeAngle) * Math.cos(arcAngle),
+    x: cx + radius * horizontalRadius * Math.cos(longitudeRad),
+    y: cy - radius * Math.sin(latitude),
+    depth: horizontalRadius * Math.sin(longitudeRad),
   };
 }
 
 function projectedCurveSegments(
-  planeAngleDeg: number,
+  latitudeDeg: number,
   startAngle: number,
   endAngle: number,
   sampleCount: number,
@@ -154,7 +155,7 @@ function projectedCurveSegments(
 ): CurveSegment[] {
   const points: ProjectedPoint[] = Array.from({ length: sampleCount + 1 }, (_, index) => {
     const angle = startAngle + ((endAngle - startAngle) * index) / sampleCount;
-    return globePoint(planeAngleDeg, angle, cx, cy, radius);
+    return globePoint(latitudeDeg, angle, cx, cy, radius);
   });
   const segments: CurveSegment[] = [];
 
@@ -176,63 +177,77 @@ function pathForPoints(points: ProjectedPoint[]): string {
 }
 
 function sectionPoint(
-  radiusKm: number,
+  depthKm: number,
   distanceKm: number,
+  latitudeDeg: number,
   centerX: number,
   centerY: number,
   pixelsPerKm: number,
 ): ProjectedPoint {
-  const arcAngle = distanceKm / PLANET_RADIUS_KM;
+  const latitude = (latitudeDeg * Math.PI) / 180;
+  const parallelRadiusKm = PLANET_RADIUS_KM * Math.max(Math.cos(latitude), 0);
+  const arcAngle = parallelRadiusKm > 1e-9 ? distanceKm / parallelRadiusKm : 0;
   return {
-    x: centerX + PLANET_RADIUS_KM * Math.sin(arcAngle) * pixelsPerKm,
-    y: centerY + VERTICAL_EXAGGERATION * (PLANET_RADIUS_KM - radiusKm * Math.cos(arcAngle)) * pixelsPerKm,
+    x: centerX + parallelRadiusKm * Math.sin(arcAngle) * pixelsPerKm,
+    y: centerY + VERTICAL_EXAGGERATION
+      * (parallelRadiusKm * (1 - Math.cos(arcAngle)) + depthKm * Math.cos(arcAngle))
+      * pixelsPerKm,
     depth: 0,
   };
 }
 
-function shellPath(radiusKm: number, halfArcKm: number, centerX: number, centerY: number, pixelsPerKm: number): string {
+function shellPath(
+  depthKm: number,
+  halfArcKm: number,
+  latitudeDeg: number,
+  centerX: number,
+  centerY: number,
+  pixelsPerKm: number,
+): string {
   const sampleCount = 100;
   return Array.from({ length: sampleCount + 1 }, (_, index) => {
     const distanceKm = -halfArcKm + (2 * halfArcKm * index) / sampleCount;
-    const point = sectionPoint(radiusKm, distanceKm, centerX, centerY, pixelsPerKm);
+    const point = sectionPoint(depthKm, distanceKm, latitudeDeg, centerX, centerY, pixelsPerKm);
     return `${index === 0 ? "M" : "L"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`;
   }).join(" ");
 }
 
 function sectionAreaPath(
   halfArcKm: number,
+  latitudeDeg: number,
   centerX: number,
   centerY: number,
   pixelsPerKm: number,
 ): string {
-  const top = shellPath(PLANET_RADIUS_KM, halfArcKm, centerX, centerY, pixelsPerKm);
+  const top = shellPath(0, halfArcKm, latitudeDeg, centerX, centerY, pixelsPerKm);
   const sampleCount = 100;
   const bottom = Array.from({ length: sampleCount + 1 }, (_, index) => {
     const distanceKm = halfArcKm - (2 * halfArcKm * index) / sampleCount;
-    const point = sectionPoint(PLANET_RADIUS_KM - SECTION_DEPTH_KM, distanceKm, centerX, centerY, pixelsPerKm);
+    const point = sectionPoint(SECTION_DEPTH_KM, distanceKm, latitudeDeg, centerX, centerY, pixelsPerKm);
     return `L ${point.x.toFixed(2)} ${point.y.toFixed(2)}`;
   }).join(" ");
   return `${top} ${bottom} Z`;
 }
 
-function SectionPlaceholder({ width, height }: { width: number; height: number }) {
+function SectionPlaceholder({ width, height, latitudeDeg }: { width: number; height: number; latitudeDeg: number }) {
   const viewWidth = width;
   const viewHeight = height;
   const marginX = Math.max(16, Math.round(viewWidth * 0.025));
   const marginTop = Math.max(30, Math.round(viewHeight * 0.075));
   const centerX = viewWidth / 2;
   const centerY = marginTop + Math.round(viewHeight * 0.08);
-  const halfArcKm = ARC_LENGTH_KM / 2;
-  const arcHalfAngle = halfArcKm / PLANET_RADIUS_KM;
+  const parallelRadiusKm = PLANET_RADIUS_KM * Math.max(Math.cos((latitudeDeg * Math.PI) / 180), 0);
+  const visibleArcLengthKm = Math.min(ARC_LENGTH_KM, Math.PI * parallelRadiusKm);
+  const halfArcKm = visibleArcLengthKm / 2;
   // Mirror cross_section.py's frame geometry so the schematic stays in place as its PNG fades in.
   const arcWidth = (viewWidth - 2 * marginX) * (690 / 820);
-  const pixelsPerKm = arcWidth / (2 * PLANET_RADIUS_KM * Math.sin(arcHalfAngle));
-  const surfacePath = shellPath(PLANET_RADIUS_KM, halfArcKm, centerX, centerY, pixelsPerKm);
-  const areaPath = sectionAreaPath(halfArcKm, centerX, centerY, pixelsPerKm);
+  const pixelsPerKm = arcWidth / (2 * PLANET_RADIUS_KM * Math.sin(ARC_LENGTH_KM / (2 * PLANET_RADIUS_KM)));
+  const surfacePath = shellPath(0, halfArcKm, latitudeDeg, centerX, centerY, pixelsPerKm);
+  const areaPath = sectionAreaPath(halfArcKm, latitudeDeg, centerX, centerY, pixelsPerKm);
   return (
     <svg
       role="img"
-      aria-label="Schematic 3,000 kilometre arc section to 350 kilometres below the local surface; world terrain and geology are not connected yet"
+      aria-label={`Schematic ${visibleArcLengthKm.toFixed(0)} kilometre latitude arc section to 350 kilometres below the local surface; world terrain and geology are not connected yet`}
       viewBox={`0 0 ${viewWidth} ${viewHeight}`}
       width="100%"
       height="100%"
@@ -240,13 +255,13 @@ function SectionPlaceholder({ width, height }: { width: number; height: number }
       style={{ display: "block", minHeight: 0, flex: 1, width: "100%" }}
     >
       <rect x="0" y="0" width={viewWidth} height={viewHeight} fill="#0e1422" />
-      <text x={marginX} y="17" fill="#ebeff6" fontSize="11">Surface-sampled lithosphere section · 3,000 km arc</text>
+      <text x={marginX} y="17" fill="#ebeff6" fontSize="11">Surface-sampled latitude section · {visibleArcLengthKm.toFixed(0)} km arc</text>
       <text x={marginX} y="31" fill="#a8b4c5" fontSize="10">350 km below local surface · vertical relief 2× · geotherm illustrative</text>
       <path d={areaPath} fill="#756C94" />
       <path d={surfacePath} fill="none" stroke="#e5e7ca" strokeWidth="1" />
 
       {[100, 200, 300, SECTION_DEPTH_KM].map((depthKm) => {
-        const point = sectionPoint(PLANET_RADIUS_KM - depthKm, 0, centerX, centerY, pixelsPerKm);
+        const point = sectionPoint(depthKm, 0, latitudeDeg, centerX, centerY, pixelsPerKm);
         return (
           <g key={depthKm}>
             <line x1={centerX - 5} y1={point.y} x2={centerX + 5} y2={point.y} stroke="#e6e7ef" strokeWidth="1" />
@@ -259,28 +274,31 @@ function SectionPlaceholder({ width, height }: { width: number; height: number }
   );
 }
 
-function GlobeLocator({ planeAngleDeg, arcPosition }: { planeAngleDeg: number; arcPosition: number }) {
+function GlobeLocator({ latitudeDeg, longitudeIndex }: { latitudeDeg: number; longitudeIndex: number }) {
   const centerX = 130;
   const centerY = 130;
   const radius = 106;
-  const centerAngle = (2 * Math.PI * arcPosition) / ARC_POSITION_COUNT;
-  const halfArcAngle = ARC_LENGTH_KM / (2 * PLANET_RADIUS_KM);
-  const wholeCircle = projectedCurveSegments(planeAngleDeg, 0, 2 * Math.PI, 720, centerX, centerY, radius);
+  const latitudeRad = (latitudeDeg * Math.PI) / 180;
+  const parallelRadiusKm = PLANET_RADIUS_KM * Math.max(Math.cos(latitudeRad), 0);
+  const visibleArcLengthKm = Math.min(ARC_LENGTH_KM, Math.PI * parallelRadiusKm);
+  const halfArcAngle = parallelRadiusKm > 1e-9 ? visibleArcLengthKm / (2 * parallelRadiusKm) : 0;
+  const centerLongitude = (2 * Math.PI * longitudeIndex) / ARC_POSITION_COUNT;
+  const wholeCircle = projectedCurveSegments(latitudeDeg, 0, 2 * Math.PI, 720, centerX, centerY, radius);
   const selectedArc = projectedCurveSegments(
-    planeAngleDeg,
-    centerAngle - halfArcAngle,
-    centerAngle + halfArcAngle,
+    latitudeDeg,
+    centerLongitude - halfArcAngle,
+    centerLongitude + halfArcAngle,
     96,
     centerX,
     centerY,
     radius,
   );
-  const arcCenter = globePoint(planeAngleDeg, centerAngle, centerX, centerY, radius);
+  const arcCenter = globePoint(latitudeDeg, centerLongitude, centerX, centerY, radius);
 
   return (
     <svg
       role="img"
-      aria-label={`Globe locator, plane orientation ${planeAngleDeg} degrees, arc center at position ${arcPosition + 1} of ${ARC_POSITION_COUNT}`}
+      aria-label={`Globe locator, latitude ${latitudeDeg} degrees, arc center at longitude position ${longitudeIndex + 1} of ${ARC_POSITION_COUNT}`}
       viewBox="0 0 260 260"
       style={{ width: "100%", maxWidth: 260, height: "auto", display: "block", alignSelf: "center" }}
     >
@@ -342,26 +360,26 @@ export default function MantleCrossSection({
   width,
   height,
   worldRevision,
-  planeAngleDeg,
-  arcPosition,
-  onPlaneAngleChange,
-  onArcPositionChange,
+  latitudeDeg,
+  longitudeIndex,
+  onLatitudeChange,
+  onLongitudeIndexChange,
 }: Props) {
-  const centerDegrees = (360 * arcPosition) / ARC_POSITION_COUNT;
+  const centerDegrees = (360 * longitudeIndex) / ARC_POSITION_COUNT;
   const [displayedFrame, setDisplayedFrame] = useState<{ key: string; dataUrl: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [prefetchProgress, setPrefetchProgress] = useState<number | null>(null);
   const [loadMessage, setLoadMessage] = useState<string | null>(null);
   const scopeControllerRef = useRef<AbortController | null>(null);
-  const arcPositionRef = useRef(arcPosition);
-  arcPositionRef.current = arcPosition;
+  const longitudeIndexRef = useRef(longitudeIndex);
+  longitudeIndexRef.current = longitudeIndex;
   const currentFrameKey: FrameKey = {
-    worldRevision, planeAngleDeg, arcPosition, width: Math.round(width), height: Math.round(height),
+    worldRevision, latitudeDeg, longitudeIndex, width: Math.round(width), height: Math.round(height),
   };
   const currentCacheKey = frameCacheKey(currentFrameKey);
   const cachedDataUrl = frameCache.get(currentCacheKey)?.dataUrl ?? null;
   // A prop change can render before its effect runs; only show a frame whose full cache key
-  // still matches, so old geology never flashes after a world/plane/size change. Read the
+  // still matches, so old geology never flashes after a world/latitude/size change. Read the
   // decoded frame cache during render so a cached arc replaces the placeholder immediately.
   const imageDataUrl = displayedFrame?.key === currentCacheKey
     ? displayedFrame.dataUrl
@@ -372,14 +390,14 @@ export default function MantleCrossSection({
       : ""
   );
 
-  const frameScopeKey = [worldRevision, planeAngleDeg, Math.round(width), Math.round(height), SECTION_STYLE_VERSION].join(":");
+  const frameScopeKey = [worldRevision, latitudeDeg, Math.round(width), Math.round(height), SECTION_STYLE_VERSION].join(":");
 
   useEffect(() => {
     const controller = new AbortController();
     scopeControllerRef.current = controller;
-    const initialPosition = arcPositionRef.current;
+    const initialPosition = longitudeIndexRef.current;
     const activeKey: FrameKey = {
-      worldRevision, planeAngleDeg, arcPosition: initialPosition, width: Math.round(width), height: Math.round(height),
+      worldRevision, latitudeDeg, longitudeIndex: initialPosition, width: Math.round(width), height: Math.round(height),
     };
     rememberActiveFrame(activeKey);
     setPrefetchProgress(null);
@@ -400,7 +418,7 @@ export default function MantleCrossSection({
             const queueIndex = nextPosition++;
             if (queueIndex >= positions.length) return;
             const position = positions[queueIndex];
-            const frameKey = { ...activeKey, arcPosition: position };
+            const frameKey = { ...activeKey, longitudeIndex: position };
             try {
               await loadFrame(frameKey, controller.signal);
               if (controller.signal.aborted) return;
@@ -435,11 +453,11 @@ export default function MantleCrossSection({
       controller.abort();
       if (scopeControllerRef.current === controller) scopeControllerRef.current = null;
     };
-  }, [worldRevision, planeAngleDeg, width, height, frameScopeKey]);
+  }, [worldRevision, latitudeDeg, width, height, frameScopeKey]);
 
   useEffect(() => {
     const activeKey: FrameKey = {
-      worldRevision, planeAngleDeg, arcPosition, width: Math.round(width), height: Math.round(height),
+      worldRevision, latitudeDeg, longitudeIndex, width: Math.round(width), height: Math.round(height),
     };
     rememberActiveFrame(activeKey);
     const cached = cachedFrame(activeKey);
@@ -468,7 +486,7 @@ export default function MantleCrossSection({
     return () => {
       isCurrentSelection = false;
     };
-  }, [worldRevision, planeAngleDeg, arcPosition, width, height, currentCacheKey]);
+  }, [worldRevision, latitudeDeg, longitudeIndex, width, height, currentCacheKey]);
 
   useEffect(() => () => clearMantleCrossSectionCache(), []);
 
@@ -497,16 +515,16 @@ export default function MantleCrossSection({
           </span>
         </div>
         <p style={{ margin: "0 0 2px", color: "#a9b3c4", fontSize: 11 }}>
-          A stable local frame follows the selected surface arc as its center moves around the planet.
+          The fast control moves the section around its selected line of latitude.
         </p>
         <div style={{ display: "flex", position: "relative", minHeight: 0, flex: 1, width: "100%" }}>
           <div aria-hidden="true" style={{ display: "flex", minHeight: 0, flex: 1, width: "100%" }}>
-            {!imageDataUrl && <SectionPlaceholder width={width} height={height} />}
+            {!imageDataUrl && <SectionPlaceholder width={width} height={height} latitudeDeg={latitudeDeg} />}
           </div>
           {imageDataUrl && (
             <img
               src={imageDataUrl}
-              alt={`Rendered shallow mantle section at arc position ${arcPosition + 1} of ${ARC_POSITION_COUNT}`}
+              alt={`Rendered shallow mantle section at latitude ${latitudeDeg} degrees, longitude position ${longitudeIndex + 1} of ${ARC_POSITION_COUNT}`}
               style={{
                 position: "absolute",
                 inset: 0,
@@ -554,61 +572,61 @@ export default function MantleCrossSection({
 
       <aside style={{ minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", gap: 7, borderLeft: "1px solid #303a4d", paddingLeft: 12 }}>
         <h3 style={{ margin: "1px 0 0", fontSize: 13, fontWeight: 600 }}>Globe locator</h3>
-        <GlobeLocator planeAngleDeg={planeAngleDeg} arcPosition={arcPosition} />
+        <GlobeLocator latitudeDeg={latitudeDeg} longitudeIndex={longitudeIndex} />
         <div style={{ color: "#aeb8ca", fontSize: 10, textAlign: "center", marginTop: -3 }}>
-          <div style={{ color: "#91a0b8" }}>Slow axis: rotate the whole plane toward the poles</div>
-          <div style={{ color: "#61ded0" }}>Fast axis: move the highlighted arc center along the plane</div>
+          <div style={{ color: "#91a0b8" }}>Slow: select the latitude line</div>
+          <div style={{ color: "#61ded0" }}>Fast: move the arc center around that line</div>
         </div>
 
         <label style={{ display: "block", marginTop: 2, fontSize: 11 }}>
           <span style={{ display: "flex", justifyContent: "space-between", gap: 6 }}>
-            <span>Plane orientation</span>
-            <span style={{ color: "#b8c3d3", fontVariantNumeric: "tabular-nums" }}>{planeAngleDeg}°</span>
+            <span>Latitude</span>
+            <span style={{ color: "#b8c3d3", fontVariantNumeric: "tabular-nums" }}>{latitudeDeg}°</span>
           </span>
           <input
             type="range"
-            min={0}
-            max={180}
+            min={-90}
+            max={90}
             step={0.25}
-            value={planeAngleDeg}
-            onChange={(event) => onPlaneAngleChange(Number(event.target.value))}
-            aria-label="Great-circle plane orientation"
+            value={latitudeDeg}
+            onChange={(event) => onLatitudeChange(Number(event.target.value))}
+            aria-label="Latitude of the cross-section line"
             style={{ width: "100%", margin: "3px 0 0", accentColor: "#8797af" }}
           />
         </label>
         <div style={{ color: "#7f8ba0", fontSize: 9, marginTop: -7 }}>
-          Fine 0.25° steps make pole-crossing plane changes slower.
+          Fine 0.25° steps; the selected line shrinks toward either pole.
         </div>
 
         <label style={{ display: "block", marginTop: 1, fontSize: 11 }}>
           <span style={{ display: "flex", justifyContent: "space-between", gap: 6 }}>
-            <span>Arc center position</span>
-            <span style={{ color: "#b8c3d3", fontVariantNumeric: "tabular-nums" }}>{arcPosition + 1} / {ARC_POSITION_COUNT}</span>
+            <span>Arc center longitude</span>
+            <span style={{ color: "#b8c3d3", fontVariantNumeric: "tabular-nums" }}>{longitudeIndex + 1} / {ARC_POSITION_COUNT}</span>
           </span>
           <input
             type="range"
             min={0}
             max={ARC_POSITION_COUNT - 1}
             step={1}
-            value={arcPosition}
-            onChange={(event) => onArcPositionChange(Number(event.target.value))}
+            value={longitudeIndex}
+            onChange={(event) => onLongitudeIndexChange(Number(event.target.value))}
             onKeyDown={(event) => {
               if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
                 event.preventDefault();
-                onArcPositionChange(advanceCrossSectionPosition(
-                  arcPosition,
+                onLongitudeIndexChange(advanceCrossSectionPosition(
+                  longitudeIndex,
                   ARC_POSITION_COUNT,
                   event.key === "ArrowRight" ? 1 : -1,
                   ARC_KEYBOARD_STEP,
                 ));
               }
             }}
-            aria-label="Position of the 3,000 kilometre arc around the great circle"
+            aria-label="Fast rotation of the section around the selected latitude"
             style={{ width: "100%", margin: "3px 0 0", accentColor: "#61ded0" }}
           />
         </label>
         <div style={{ color: "#7f8ba0", fontSize: 9, marginTop: -7 }}>
-          Center {centerDegrees.toFixed(0)}° of 360° · 3,000 km arc · keys: 6° steps
+          Center {centerDegrees.toFixed(0)}° longitude · up to 3,000 km arc · keys: 6° steps
         </div>
       </aside>
     </div>

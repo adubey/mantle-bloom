@@ -7,14 +7,14 @@ export interface CrossSectionResponse {
 
 export function crossSectionUrl(
   apiBase: string,
-  planeAngleDeg: number,
-  positionIndex: number,
+  latitudeDeg: number,
+  longitudeIndex: number,
   width: number,
   height: number,
 ): string {
   const params = new URLSearchParams({
-    plane_angle_deg: String(planeAngleDeg),
-    position_index: String(positionIndex),
+    latitude_deg: String(latitudeDeg),
+    longitude_index: String(longitudeIndex),
     width: String(width),
     height: String(height),
   });
@@ -23,13 +23,13 @@ export function crossSectionUrl(
 
 export function requestCrossSection(
   apiBase: string,
-  planeAngleDeg: number,
-  positionIndex: number,
+  latitudeDeg: number,
+  longitudeIndex: number,
   width: number,
   height: number,
   signal?: AbortSignal,
   fetcher: typeof fetch = fetch,
 ): Promise<CrossSectionResponse> {
-  return fetcher(crossSectionUrl(apiBase, planeAngleDeg, positionIndex, width, height), { signal })
+  return fetcher(crossSectionUrl(apiBase, latitudeDeg, longitudeIndex, width, height), { signal })
     .then(asJson<CrossSectionResponse>);
 }

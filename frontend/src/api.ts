@@ -702,13 +702,13 @@ export function renderWorld(
 // Fetch one rendered frame from the shallow mantle cross-section route. The output size is
 // fixed for a panel layout so cached frames for the same world/plane/position are identical.
 export function fetchCrossSection(
-  planeAngleDeg: number,
-  positionIndex: number,
+  latitudeDeg: number,
+  longitudeIndex: number,
   width: number,
   height: number,
   signal?: AbortSignal,
 ): Promise<CrossSectionResponse> {
-  return requestCrossSection(API_BASE, planeAngleDeg, positionIndex, width, height, signal);
+  return requestCrossSection(API_BASE, latitudeDeg, longitudeIndex, width, height, signal);
 }
 
 export function fetchPlates(): Promise<PlatesResponse> {

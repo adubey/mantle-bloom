@@ -185,16 +185,24 @@ def test_cross_section_route_renders_image_and_keeps_request_validation(client, 
     assert client.get("/world/cross-section").status_code == 404
 
     main._state["world"] = object()
+    render_calls = []
+
+    def render_section(*args):
+        render_calls.append(args)
+        return "cG5n", {"image_base64": "cG5n", "world_revision": "revision"}
+
     monkeypatch.setattr(
         main.cross_section_view,
         "render_png_base64",
-        lambda *args: ("cG5n", {"image_base64": "cG5n", "world_revision": "revision"}),
+        render_section,
     )
-    response = client.get("/world/cross-section")
+    response = client.get("/world/cross-section", params={"latitude_deg": 30, "longitude_index": 60})
     assert response.status_code == 200
     assert response.json()["image_base64"] == "cG5n"
     assert response.json()["world_revision"] == "revision"
-    assert client.get("/world/cross-section", params={"position_index": 120}).status_code == 400
+    assert render_calls == [(main._state["world"], 30.0, 60, 1100, 611)]
+    assert client.get("/world/cross-section", params={"longitude_index": 120}).status_code == 400
+    assert client.get("/world/cross-section", params={"latitude_deg": 91}).status_code == 400
     assert client.get("/world/cross-section", params={"width": main.MAX_RENDER_DIMENSION_PX + 1}).status_code == 400
 
 
