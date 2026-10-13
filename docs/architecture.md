@@ -51,8 +51,9 @@ Browser then fetches, for whichever projection/map view/resolution/rotation is s
     `GET /world/cross-section` request path for plane angle, arc position, and output size;
     `cross_section.py` samples the existing surface columns along a node-density-scaled corridor
     and renders a shallow PNG. It draws stored crust/lithosphere thicknesses, an illustrative
-    crustal geotherm, and supported surface vents, magma-source markers, and mantle flow; deeper
-    asthenosphere remains schematic.
+    crustal geotherm, and supported surface vents and magma-source markers. Surface-sampled
+    mantle-flow directions are projected into the schematic asthenosphere; deeper mantle flow
+    remains unresolved. The frontend renders the shared legend over either placeholder or PNG.
 
 Time-stepping:
   POST /world/step  { years }

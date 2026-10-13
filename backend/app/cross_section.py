@@ -2,7 +2,8 @@
 
 The section is a narrow cut through the existing surface-node columns. It deliberately does
 not construct a volumetric mantle: only Hc/Hm columns, their illustrative thermal profile,
-surface vents/flow, and the schematic asthenosphere below the modeled lithosphere are drawn.
+surface vents, and the schematic asthenosphere below the modeled lithosphere are drawn.
+Surface-sampled mantle-flow directions are projected into that schematic asthenosphere.
 """
 
 from __future__ import annotations
@@ -182,6 +183,12 @@ def render_png_base64(world, plane_angle_deg: float, position_index: int, width:
     flow = mantle.flow_at(sample_xyz[line_samples], world.mantle_centers)
     flow_along = np.sum(flow * tangent[line_samples], axis=1)
     flow_max = max(float(np.max(np.abs(flow_along), initial=0.0)), 1e-15)
+    lithosphere_base_km = (hc[line_samples] + hm[line_samples]) / 1000.0
+    asthenosphere_thickness_km = np.maximum(SECTION_DEPTH_KM - lithosphere_base_km, 0.0)
+    # The model's mantle-flow field is tangential at the surface, not depth-resolved. Place
+    # its direction markers midway through the schematic asthenosphere (#360), rather than
+    # above the surface where they looked like surface-plate arrows.
+    flow_depth_km = lithosphere_base_km + asthenosphere_thickness_km * 0.5
 
     for x in range(
         max(margin_x, int(x_samples[0])),
@@ -249,11 +256,14 @@ def render_png_base64(world, plane_angle_deg: float, position_index: int, width:
         y = int(surface_y[len(surface_y) // 2] + depth_km * vertical_scale)
         draw.line((center_x - 5, y, center_x + 5, y), fill=(230, 231, 239), width=1)
         draw.text((center_x + 8, y - 6), f"{depth_km} km", fill=(222, 225, 235))
-    for j, value in zip(line_samples, flow_along):
-        if abs(value) < flow_max * 0.03:
+    for j, value, depth_km, asthenosphere_km in zip(
+        line_samples, flow_along, flow_depth_km, asthenosphere_thickness_km
+    ):
+        if abs(value) < flow_max * 0.03 or asthenosphere_km <= 0.0:
             continue
         x = int(x_samples[j])
-        y = int(surface_y[j] - 12)
+        local_depth_scale = vertical_scale * np.cos(distances[j] / PLANET_RADIUS_KM)
+        y = int(surface_y[j] + depth_km * local_depth_scale)
         direction = 1 if value >= 0 else -1
         length = 9 + 13 * abs(float(value)) / flow_max
         end_x = int(x + direction * length)
@@ -262,26 +272,6 @@ def render_png_base64(world, plane_angle_deg: float, position_index: int, width:
 
     draw.text((margin_x, 8), "Surface-sampled lithosphere section · 3,000 km arc", fill=(235, 239, 246))
     draw.text((margin_x, 22), f"350 km below local surface · vertical relief {VERTICAL_EXAGGERATION:g}× · geotherm illustrative", fill=(168, 180, 197))
-    draw.text((margin_x, 35), "Active vents retain eruption potential; dormant vents have none. Neither label means erupting now.", fill=(150, 164, 184))
-    legend_y = height - max(32, round(height * 0.06))
-    legend = (
-        (SEA_LEVEL_COLOR, "Water"), ((224, 237, 242), "Stored glacier"),
-        (CRUST_CONTINENTAL, "Continental crust"), (CRUST_OCEANIC, "Oceanic crust"),
-        (MANTLE_LITHOSPHERE, "Mantle lithosphere"), (ASTHENOSPHERE, "Schematic asthenosphere"),
-        (MAGMA_PALETTE[1], "Stored melt source"), ((255, 210, 120), "Melt-eligible estimate"),
-        ((71, 236, 210), "Surface mantle flow"), ((237, 126, 60), "Active vent"),
-        ((183, 190, 193), "Dormant vent"),
-    )
-    x = margin_x
-    for color, label in legend:
-        item_width = 12 + len(label) * 6 + 11
-        if x + item_width > width - margin_x and x > margin_x:
-            legend_y -= 14
-            x = margin_x
-        draw.rectangle((x, legend_y, x + 9, legend_y + 9), fill=color)
-        draw.text((x + 12, legend_y - 1), label, fill=(204, 212, 225))
-        x += item_width
-
     buffer = io.BytesIO()
     image.save(buffer, format="PNG", optimize=True)
     revision = f"{id(world):x}:{world.steps_taken}:{float(world.elapsed_years).hex()}:{sea_level.hex()}:{float(world.solar_multiplier).hex()}"

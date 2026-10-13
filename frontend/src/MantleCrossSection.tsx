@@ -231,34 +231,6 @@ function SectionPlaceholder({ width, height }: { width: number; height: number }
   const pixelsPerKm = arcWidth / (2 * PLANET_RADIUS_KM * Math.sin(arcHalfAngle));
   const surfacePath = shellPath(PLANET_RADIUS_KM, halfArcKm, centerX, centerY, pixelsPerKm);
   const areaPath = sectionAreaPath(halfArcKm, centerX, centerY, pixelsPerKm);
-  const legend = [
-    { color: "#539FCB", label: "Water" },
-    { color: "#E0EDF2", label: "Stored glacier" },
-    { color: "#C98F82", label: "Continental crust" },
-    { color: "#526779", label: "Oceanic crust" },
-    { color: "#425A5A", label: "Mantle lithosphere" },
-    { color: "#756C94", label: "Schematic asthenosphere" },
-    { color: "#F47A3C", label: "Stored melt source" },
-    { color: "#FFD278", label: "Melt-eligible estimate" },
-    { color: "#47ECD2", label: "Surface mantle flow" },
-    { color: "#ED7E3C", label: "Active vent" },
-    { color: "#B7BEC1", label: "Dormant vent" },
-  ];
-  let legendX = marginX;
-  let legendY = viewHeight - Math.max(32, Math.round(viewHeight * 0.06));
-  const legendPositions = legend.map((item) => {
-    const position = { ...item, x: legendX, y: legendY };
-    const itemWidth = 12 + item.label.length * 6 + 11;
-    if (legendX + itemWidth > viewWidth - marginX && legendX > marginX) {
-      legendY -= 14;
-      legendX = marginX;
-      position.x = legendX;
-      position.y = legendY;
-    }
-    legendX += itemWidth;
-    return position;
-  });
-
   return (
     <svg
       role="img"
@@ -272,8 +244,6 @@ function SectionPlaceholder({ width, height }: { width: number; height: number }
       <rect x="0" y="0" width={viewWidth} height={viewHeight} fill="#0e1422" />
       <text x={marginX} y="17" fill="#ebeff6" fontSize="11">Surface-sampled lithosphere section · 3,000 km arc</text>
       <text x={marginX} y="31" fill="#a8b4c5" fontSize="10">350 km below local surface · vertical relief 2× · geotherm illustrative</text>
-      <text x={marginX} y="44" fill="#96a4b8" fontSize="9">Terrain and geology are schematic until the sampled section loads.</text>
-
       <path d={areaPath} fill="#756C94" />
       <path d={surfacePath} fill="none" stroke="#e5e7ca" strokeWidth="1" />
 
@@ -287,12 +257,6 @@ function SectionPlaceholder({ width, height }: { width: number; height: number }
         );
       })}
 
-      {legendPositions.map(({ color, label, x, y }) => (
-        <g key={label}>
-          <rect x={x} y={y} width="9" height="9" fill={color} />
-          <text x={x + 12} y={y + 8} fill="#ccd4e1" fontSize="9">{label}</text>
-        </g>
-      ))}
     </svg>
   );
 }
@@ -570,13 +534,18 @@ export default function MantleCrossSection({
         >
           {statusMessage}
         </div>
-        <div style={{ color: "#8f9bb0", fontSize: 10, display: "flex", flexWrap: "wrap", gap: 4 }}>
+        <div style={{ color: "#8f9bb0", fontSize: 9, display: "flex", flexWrap: "wrap", gap: 4 }}>
+          <LegendKey color="#539FCB" label="Water" />
+          <LegendKey color="#E0EDF2" label="Stored glacier" />
           <LegendKey color="#C98F82" label="Continental crust" />
           <LegendKey color="#526779" label="Oceanic crust" />
           <LegendKey color="#425A5A" label="Mantle lithosphere" />
           <LegendKey color="#756C94" label="Schematic asthenosphere" />
-          <LegendKey color="#C93D3D" label="Stored magma / melt" />
-          <LegendKey color="#d5d8e6" label="Melt eligibility estimate" line />
+          <LegendKey color="#F47A3C" label="Stored melt source" />
+          <LegendKey color="#FFD278" label="Melt-eligible estimate" />
+          <LegendKey color="#47ECD2" label="Mantle flow (schematic depth)" line />
+          <LegendKey color="#ED7E3C" label="Active vent" />
+          <LegendKey color="#B7BEC1" label="Dormant vent" />
         </div>
       </section>
 

@@ -332,9 +332,11 @@ The PNG samples existing per-column surface fields along the selected 3,000 km a
 derived from `World.node_density`. Categorical crust type is nearest-node sampled, with no
 cross-boundary blending. Crust and mantle-lithosphere thickness are drawn from their stored
 columns; the crustal temperature profile is illustrative and melt eligibility is hatched
-separately. The mantle below the stored lithosphere is schematic. Pending magma parcel origins,
-stored volcano vents, and the available tangential mantle-flow field are shown at the surface;
-the route does not invent subsurface parcel trajectories or depth-resolved mantle flow.
+separately. The mantle below the stored lithosphere is schematic. Pending magma parcel origins
+and stored volcano vents are shown at the surface. Tangential mantle-flow directions are
+sampled from the surface field and drawn midway through the schematic asthenosphere to
+distinguish them from surface features; this is not depth-resolved mantle flow or a subsurface
+parcel trajectory. The color legend is rendered by the client.
 
 ## `POST /world/animate`
 

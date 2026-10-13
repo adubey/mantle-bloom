@@ -82,7 +82,7 @@ def test_render_returns_png_and_section_revision(section_world, monkeypatch):
 
 def test_render_keeps_sampled_crust_and_lithosphere_above_schematic_asthenosphere(monkeypatch):
     sample_xyz = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [-1.0, 0.0, 0.0]])
-    tangent = np.zeros_like(sample_xyz)
+    tangent = np.tile([0.0, 1.0, 0.0], (len(sample_xyz), 1))
     distances = np.array([-1500.0, 0.0, 1500.0])
     fields = {
         "elevation": np.zeros(3),
@@ -99,7 +99,11 @@ def test_render_keeps_sampled_crust_and_lithosphere_above_schematic_asthenospher
     monkeypatch.setattr(cross_section, "_biome_colors", lambda *_: np.zeros((3, 3)))
     monkeypatch.setattr(cross_section.orogeny, "moho_temperature_c", lambda hc, hm, lag: np.zeros_like(hc))
     monkeypatch.setattr(cross_section, "_geotherm_temperature", lambda hc, hm, lag, depth: np.zeros_like(depth))
-    monkeypatch.setattr(cross_section.mantle, "flow_at", lambda points, _centers: np.zeros_like(points))
+    monkeypatch.setattr(
+        cross_section.mantle,
+        "flow_at",
+        lambda points, _centers: np.tile([0.0, 1.0, 0.0], (len(points), 1)),
+    )
     world = SimpleNamespace(
         node_density=4.0,
         sea_level_m=1000.0,
@@ -124,7 +128,11 @@ def test_render_keeps_sampled_crust_and_lithosphere_above_schematic_asthenospher
 
     assert image.getpixel((sample_x, surface_y + 10)) == cross_section.CRUST_OCEANIC
     assert image.getpixel((sample_x, surface_y + round(70 * vertical_scale))) == cross_section.MANTLE_LITHOSPHERE
-    assert image.getpixel((sample_x, surface_y + round(250 * vertical_scale))) == cross_section.ASTHENOSPHERE
+    assert image.getpixel((sample_x + 40, surface_y + round(300 * vertical_scale))) == cross_section.ASTHENOSPHERE
+    flow_depth_km = (35_000.0 + 120_000.0) / 1000.0
+    flow_depth_km += (cross_section.SECTION_DEPTH_KM - flow_depth_km) * 0.5
+    flow_y = surface_y + round(flow_depth_km * vertical_scale)
+    assert image.getpixel((sample_x + 1, flow_y)) == (71, 236, 210)
     assert image.getpixel((sample_x, surface_y - 2)) == (14, 20, 34)
     arc_half_angle = cross_section.ARC_LENGTH_KM / (2.0 * cross_section.PLANET_RADIUS_KM)
     edge_x = int(np.ceil(800 / 2 + arc_width / 2))
