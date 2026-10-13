@@ -160,8 +160,12 @@ def render_png_base64(world, plane_angle_deg: float, position_index: int, width:
     draw_height = max(1, height - margin_top - margin_bottom)
     vertical_scale = draw_height / (SECTION_DEPTH_KM + RELIEF_ALLOWANCE_KM + 10.0)
     depth_scale = vertical_scale / 1000.0
-    lower_limit_y = height - margin_bottom - RELIEF_ALLOWANCE_KM * 0.5 * depth_scale
-    surface_y = lower_limit_y - SECTION_DEPTH_KM * depth_scale - (elev - sea_level) / 1000.0 * VERTICAL_EXAGGERATION * depth_scale
+    lower_limit_y = height - margin_bottom - RELIEF_ALLOWANCE_KM * 0.5 * vertical_scale
+    surface_y = (
+        lower_limit_y
+        - SECTION_DEPTH_KM * vertical_scale
+        - (elev - sea_level) / 1000.0 * VERTICAL_EXAGGERATION * vertical_scale
+    )
     x_samples = margin_x + (distances + ARC_LENGTH_KM / 2.0) / ARC_LENGTH_KM * (width - 2 * margin_x)
     x_pixel = np.arange(width)
     nearest = np.clip(np.searchsorted(x_samples, x_pixel, side="right") - 1, 0, len(x_samples) - 1)
@@ -182,13 +186,13 @@ def render_png_base64(world, plane_angle_deg: float, position_index: int, width:
         i = int(nearest[x])
         x0, x1 = x, min(x + 1, width - margin_x)
         top = float(surface_y[i])
-        bottom = top + SECTION_DEPTH_KM * depth_scale
+        bottom = top + SECTION_DEPTH_KM * vertical_scale
         seabed = float(elev[i])
-        sea_y = lower_limit_y - SECTION_DEPTH_KM * depth_scale
+        sea_y = lower_limit_y - SECTION_DEPTH_KM * vertical_scale
         hcm = min(float(hc[i]) / 1000.0, SECTION_DEPTH_KM)
         hml = min((float(hc[i]) + float(hm[i])) / 1000.0, SECTION_DEPTH_KM)
-        crust_end = top + hcm * depth_scale
-        lith_end = top + hml * depth_scale
+        crust_end = top + hcm * vertical_scale
+        lith_end = top + hml * vertical_scale
         base_color = tuple(np.clip(land_colors[i], 0, 255).astype(int)) if continental[i] else CRUST_OCEANIC
         # Ocean fill lies above the sampled seafloor, with shallow shelves visibly lighter.
         if seabed < sea_level:
@@ -216,7 +220,7 @@ def render_png_base64(world, plane_angle_deg: float, position_index: int, width:
         draw.rectangle((x0, round(crust_end), x1, min(round(lith_end), height - margin_bottom)), fill=MANTLE_LITHOSPHERE)
         draw.rectangle((x0, round(lith_end), x1, round(bottom)), fill=ASTHENOSPHERE)
         if melt_eligible[i] and hcm > 0:
-            hatch_top = max(round(crust_end - 8.0 * depth_scale), round(top))
+            hatch_top = max(round(crust_end - 8.0 * vertical_scale), round(top))
             hatch_bottom = min(round(crust_end), height - margin_bottom)
             if hatch_bottom > hatch_top and x % 7 == 0:
                 draw.line((x0, hatch_top, x1, hatch_bottom), fill=(255, 210, 120), width=1)
@@ -233,7 +237,7 @@ def render_png_base64(world, plane_angle_deg: float, position_index: int, width:
     draw.line(profile, fill=(229, 231, 202), width=max(1, round(width / 900)))
     center_x = width // 2
     for depth_km in (100, 200, 300, 350):
-        y = int(surface_y[len(surface_y) // 2] + depth_km * depth_scale)
+        y = int(surface_y[len(surface_y) // 2] + depth_km * vertical_scale)
         draw.line((center_x - 5, y, center_x + 5, y), fill=(230, 231, 239), width=1)
         draw.text((center_x + 8, y - 6), f"{depth_km} km", fill=(222, 225, 235))
     for j, value in zip(line_samples, flow_along):

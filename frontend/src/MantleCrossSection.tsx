@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fetchCrossSection } from "./api";
 import { nearbyCrossSectionPositions } from "./crossSectionFrames";
 
@@ -28,6 +28,7 @@ interface CachedFrame {
 }
 
 const frameCache = new Map<string, CachedFrame>();
+const inFlightFrames = new Map<string, { signal: AbortSignal; promise: Promise<string> }>();
 let activeFrameKey: FrameKey | null = null;
 let cacheClock = 0;
 
@@ -76,27 +77,38 @@ async function loadFrame(key: FrameKey, signal: AbortSignal): Promise<string> {
   const cacheKey = frameCacheKey(key);
   const existing = cachedFrame(key);
   if (existing) return existing;
+  const pending = inFlightFrames.get(cacheKey);
+  if (pending && !pending.signal.aborted) return pending.promise;
 
-  const response = await fetchCrossSection(key.planeAngleDeg, key.arcPosition, key.width, key.height, signal);
-  const dataUrl = `data:image/png;base64,${response.image_base64}`;
-  // Decode in the background before a frame is eligible for reuse so slider changes can
-  // swap to a nearby cached frame without waiting for PNG decoding on the paint path.
-  const image = new Image();
-  if (typeof image.decode === "function") {
-    image.src = dataUrl;
-    await image.decode();
-  } else {
-    await new Promise<void>((resolve, reject) => {
-      image.onload = () => resolve();
-      image.onerror = () => reject(new Error("Could not decode cross-section image"));
+  const promise = (async () => {
+    const response = await fetchCrossSection(key.planeAngleDeg, key.arcPosition, key.width, key.height, signal);
+    const dataUrl = `data:image/png;base64,${response.image_base64}`;
+    // Decode in the background before a frame is eligible for reuse so slider changes can
+    // swap to a nearby cached frame without waiting for PNG decoding on the paint path.
+    const image = new Image();
+    if (typeof image.decode === "function") {
       image.src = dataUrl;
-    });
-  }
-  if (signal.aborted) throw new DOMException("Cross-section request aborted", "AbortError");
+      await image.decode();
+    } else {
+      await new Promise<void>((resolve, reject) => {
+        image.onload = () => resolve();
+        image.onerror = () => reject(new Error("Could not decode cross-section image"));
+        image.src = dataUrl;
+      });
+    }
+    if (signal.aborted) throw new DOMException("Cross-section request aborted", "AbortError");
 
-  frameCache.set(cacheKey, { key, dataUrl, image, lastUsed: ++cacheClock });
-  pruneFrameCache();
-  return dataUrl;
+    frameCache.set(cacheKey, { key, dataUrl, image, lastUsed: ++cacheClock });
+    pruneFrameCache();
+    return dataUrl;
+  })();
+  const entry = { signal, promise };
+  inFlightFrames.set(cacheKey, entry);
+  try {
+    return await promise;
+  } finally {
+    if (inFlightFrames.get(cacheKey) === entry) inFlightFrames.delete(cacheKey);
+  }
 }
 
 function isNotImplementedError(error: unknown): boolean {
@@ -386,6 +398,9 @@ export default function MantleCrossSection({
   const [loading, setLoading] = useState(true);
   const [prefetchProgress, setPrefetchProgress] = useState<number | null>(null);
   const [loadMessage, setLoadMessage] = useState<string | null>(null);
+  const scopeControllerRef = useRef<AbortController | null>(null);
+  const arcPositionRef = useRef(arcPosition);
+  arcPositionRef.current = arcPosition;
   const currentFrameKey: FrameKey = {
     worldRevision, planeAngleDeg, arcPosition, width: Math.round(width), height: Math.round(height),
   };
@@ -394,28 +409,26 @@ export default function MantleCrossSection({
   // still matches, so old geology never flashes after a world/plane/size change.
   const imageDataUrl = displayedFrame?.key === currentCacheKey ? displayedFrame.dataUrl : null;
 
+  const frameScopeKey = [worldRevision, planeAngleDeg, Math.round(width), Math.round(height), SECTION_STYLE_VERSION].join(":");
+
   useEffect(() => {
     const controller = new AbortController();
+    scopeControllerRef.current = controller;
+    const initialPosition = arcPositionRef.current;
     const activeKey: FrameKey = {
-      worldRevision, planeAngleDeg, arcPosition, width: Math.round(width), height: Math.round(height),
+      worldRevision, planeAngleDeg, arcPosition: initialPosition, width: Math.round(width), height: Math.round(height),
     };
     rememberActiveFrame(activeKey);
-    const cached = cachedFrame(activeKey);
-    setDisplayedFrame(cached ? { key: currentCacheKey, dataUrl: cached } : null);
-    setLoading(true);
     setPrefetchProgress(null);
-    setLoadMessage(null);
 
     void (async () => {
       try {
-        const selectedImage = await loadFrame(activeKey, controller.signal);
+        await loadFrame(activeKey, controller.signal);
         if (controller.signal.aborted) return;
-        setDisplayedFrame({ key: currentCacheKey, dataUrl: selectedImage });
-        setLoading(false);
         setPrefetchProgress(1);
 
         const positions = nearbyCrossSectionPositions(
-          arcPosition, ARC_POSITION_COUNT, PREFETCHED_FRAME_COUNT - 1,
+          initialPosition, ARC_POSITION_COUNT, PREFETCHED_FRAME_COUNT - 1,
         );
         let nextPosition = 0;
         let completed = 1;
@@ -455,7 +468,43 @@ export default function MantleCrossSection({
       }
     })();
 
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      if (scopeControllerRef.current === controller) scopeControllerRef.current = null;
+    };
+  }, [worldRevision, planeAngleDeg, width, height, frameScopeKey]);
+
+  useEffect(() => {
+    const activeKey: FrameKey = {
+      worldRevision, planeAngleDeg, arcPosition, width: Math.round(width), height: Math.round(height),
+    };
+    rememberActiveFrame(activeKey);
+    const cached = cachedFrame(activeKey);
+    setDisplayedFrame(cached ? { key: currentCacheKey, dataUrl: cached } : null);
+    setLoading(cached === null);
+    setLoadMessage(null);
+    let isCurrentSelection = true;
+    const controller = scopeControllerRef.current;
+
+    if (!cached && controller) {
+      void loadFrame(activeKey, controller.signal)
+        .then((image) => {
+          if (!isCurrentSelection || controller.signal.aborted) return;
+          setDisplayedFrame({ key: currentCacheKey, dataUrl: image });
+          setLoading(false);
+        })
+        .catch((error) => {
+          if (!isCurrentSelection || controller.signal.aborted) return;
+          setLoading(false);
+          setLoadMessage(isNotImplementedError(error)
+            ? "The cross-section route is reserved, but this backend does not render section images yet."
+            : `Could not load this cross-section: ${String(error)}`);
+        });
+    }
+
+    return () => {
+      isCurrentSelection = false;
+    };
   }, [worldRevision, planeAngleDeg, arcPosition, width, height, currentCacheKey]);
 
   return (

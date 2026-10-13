@@ -80,6 +80,51 @@ def test_render_returns_png_and_section_revision(section_world, monkeypatch):
     assert metadata["section_depth_km"] == cross_section.SECTION_DEPTH_KM
 
 
+def test_render_keeps_sampled_crust_and_lithosphere_above_schematic_asthenosphere(monkeypatch):
+    sample_xyz = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [-1.0, 0.0, 0.0]])
+    tangent = np.zeros_like(sample_xyz)
+    distances = np.array([-1500.0, 0.0, 1500.0])
+    fields = {
+        "elevation": np.zeros(3),
+        "crustal_thickness_m": np.full(3, 35_000.0),
+        "mantle_lithosphere_thickness_m": np.full(3, 120_000.0),
+        "crust_type_code": np.full(3, CRUST_TYPE_OCEANIC),
+        "glacier_depth": np.zeros(3),
+        "is_volcano": np.zeros(3, dtype=bool),
+        "volcano_active_years_remaining": np.zeros(3),
+        "moho_thermal_lag_c": np.zeros(3),
+    }
+    monkeypatch.setattr(cross_section, "_great_circle_samples", lambda *_: (sample_xyz, tangent, distances))
+    monkeypatch.setattr(cross_section, "_sample_fields", lambda *_: (fields, np.zeros(3, dtype=bool), sample_xyz))
+    monkeypatch.setattr(cross_section, "_biome_colors", lambda *_: np.zeros((3, 3)))
+    monkeypatch.setattr(cross_section.orogeny, "moho_temperature_c", lambda hc, hm, lag: np.zeros_like(hc))
+    monkeypatch.setattr(cross_section, "_geotherm_temperature", lambda hc, hm, lag, depth: np.zeros_like(depth))
+    monkeypatch.setattr(cross_section.mantle, "flow_at", lambda points, _centers: np.zeros_like(points))
+    world = SimpleNamespace(
+        node_density=4.0,
+        sea_level_m=1000.0,
+        elapsed_years=0.0,
+        solar_multiplier=1.0,
+        steps_taken=0,
+        mantle_centers=[],
+        pending_magma_parcels=[],
+    )
+
+    image_base64, _ = cross_section.render_png_base64(world, 0.0, 0, 800, 500)
+    image = Image.open(io.BytesIO(base64.b64decode(image_base64))).convert("RGB")
+    margin_top, margin_bottom = 38, 55
+    vertical_scale = (500 - margin_top - margin_bottom) / (
+        cross_section.SECTION_DEPTH_KM + cross_section.RELIEF_ALLOWANCE_KM + 10.0
+    )
+    lower_limit_y = 500 - margin_bottom - cross_section.RELIEF_ALLOWANCE_KM * 0.5 * vertical_scale
+    surface_y = round(lower_limit_y - cross_section.SECTION_DEPTH_KM * vertical_scale)
+    sample_x = 800 // 2 - 15  # Clear of the center depth-tick labels.
+
+    assert image.getpixel((sample_x, surface_y + 10)) == cross_section.CRUST_OCEANIC
+    assert image.getpixel((sample_x, surface_y + round(70 * vertical_scale))) == cross_section.MANTLE_LITHOSPHERE
+    assert image.getpixel((sample_x, surface_y + round(250 * vertical_scale))) == cross_section.ASTHENOSPHERE
+
+
 def test_sampling_empty_world_reports_no_active_surface_nodes():
     world = SimpleNamespace(plates=[], node_position_tree_cache=None)
 
