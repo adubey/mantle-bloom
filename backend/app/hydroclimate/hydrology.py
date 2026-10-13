@@ -93,7 +93,7 @@ from scipy.spatial import cKDTree
 
 from .. import cratons, geometry, healpix_grid
 from . import breaching, lakes
-from ..elevation_lines import PLANET_RADIUS_KM, line_spacing_rad
+from ..elevation_lines import DEFAULT_NODE_DENSITY, PLANET_RADIUS_KM, line_spacing_rad
 from ..plates import (
     Plate,
     cached_node_position_tree,
@@ -118,7 +118,7 @@ if TYPE_CHECKING:
 # below runs on.
 FLOW_NEIGHBOR_COUNT = 8
 
-# Top ~7% of land flow_accum counts as "a river" -- used for both rendering and the
+# Top ~7% of land physical discharge counts as "a river" -- used for both rendering and the
 # major_river_fraction stat. Raised from an earlier 88.0 (top ~12%): at that lower bar a
 # world's full drainage tree, down to its thinnest low-volume headwater tributaries, all
 # registered as "a river" -- correct on a topographic map, but visually noisy on this one,
@@ -274,11 +274,10 @@ RIVER_EVAPORATION_REFERENCE_TEMP_C = 25.0
 RIVER_EVAPORATION_RATE_PER_MYR = 0.2
 RIVER_EVAPORATION_MAX_FRACTION = 0.6
 
-# River speed -- a stylized, unitless quantity (faster where slope is steeper and where more
-# water has accumulated); meaningful only relative to other nodes in the same world, not a
-# real physical speed. Lives here rather than erosion.py (which only *consumes* it for its
-# deposition threshold) so the River Inspector's per-river mouth speed (see group_rivers)
-# can share it without a hydrology.py -> erosion.py reverse import.
+# River speed -- a stylized, unitless quantity (faster where slope is steeper and discharge is
+# larger); discharge is first mapped to the default-density reference scale below. Lives here
+# rather than erosion.py so the River Inspector's per-river mouth speed can share it without a
+# hydrology.py -> erosion.py reverse import.
 RIVER_SPEED_COEFFICIENT = 4.0
 RIVER_SPEED_DISCHARGE_EXPONENT = 0.2
 
@@ -305,11 +304,11 @@ class HydrologyFields:
     is_ocean: np.ndarray
     neighbor_idx: np.ndarray  # (N, FLOW_NEIGHBOR_COUNT)
     flow_target: np.ndarray  # (N,) int, index into these same arrays; -1 = sink or ocean
-    flow_accum: np.ndarray  # (N,) precipitation-weighted downstream water accumulation
-    water_deposited: np.ndarray  # (N,) water settled here (nonzero only at a true sink)
+    flow_accum: np.ndarray  # (N,) legacy stacked-mm/yr routing, retained for lake silt
+    water_deposited: np.ndarray  # (N,) legacy water settled here, retained for lake silt
     filled_elevation: np.ndarray  # (N,) minimal-bottleneck elevation to reach open ocean
     spill_target: np.ndarray  # (N,) one-hop basin-escape neighbor index; -1 = none/ocean
-    is_river: np.ndarray  # (N,) bool -- top RIVER_FLOW_PERCENTILE of land flow_accum
+    is_river: np.ndarray  # (N,) bool -- top RIVER_FLOW_PERCENTILE of land discharge_m3_s
     lake_depth: np.ndarray  # (N,) this step's final standing lake depth
     glacier_depth: np.ndarray  # (N,) this step's final accumulated ice depth
     plates_in_order: list[Plate]
@@ -386,14 +385,18 @@ class HydrologyFields:
     # `glacier_depth` above already includes it. A plain None default (a class attribute),
     # so a cache pickled before this field existed still reads as "no ice diagnostics".
     ice: "IceStep | None" = None
-    # Physical river discharge (issue #355, see "Water units" below): the through-flow of the
-    # m^3/yr runoff-plus-meltwater routing, in m^3/s. Plain None defaults, like `ice`, so a
-    # cache pickled before these existed still loads.
+    # Physical river discharge (issue #355, see "Water units" below): land-node through-flow
+    # and ocean-mouth inflow of the m^3/yr runoff-plus-meltwater routing, in m^3/s. Plain None
+    # default, like `ice`, so a cache pickled before this existed still loads.
     discharge_m3_s: np.ndarray | None = None
     # This step's breach-surge sources (`lake_breach_source + rim_breach_source`), in model
     # units. They're kept out of `discharge_m3_s`, but they still reach every consumer of the
     # legacy `flow_accum`/`water_deposited` routing (see "Water units").
     breach_surge: np.ndarray | None = None
+    # Routed breach forcing in model units, aligned with the drainage graph. River erosion
+    # consumes it separately from physical discharge; other legacy consumers retain the
+    # combined routing until their own migration. None keeps older pickled caches readable.
+    breach_surge_accum: np.ndarray | None = None
 
 
 def _gather_nodes(
@@ -782,13 +785,63 @@ def river_transit_loss_fraction(temperature_c: np.ndarray, excluded: np.ndarray)
 #   It's sized by node count (LAKE_BREACH_EROSION_COEFFICIENT) and is in model units. It is
 #   never physical discharge.
 # `flow_accum`/`water_deposited` are the legacy routing: stacked mm/yr of liquid
-# precipitation, melt and breach surge, with step-scaled evaporation. Until each consumer
-# moves to the quantities above, the surge still reaches all of them, not only erosion:
-# - river erosion, channel width and river speed (`flow_accum`; #355 step 3);
-# - geology's river-mouth boost (`water_deposited`; #355 step 3);
-# - lake silt (`water_deposited`; #363).
-# Removing the surge from the legacy routing before then changes all three.
+# precipitation, melt and breach surge, with step-scaled evaporation. Step 3 moved erosion,
+# width, speed, Inspector flow values and the geology river-mouth boost to physical discharge
+# (erosion also gets separately-routed `breach_surge_accum`). The legacy fields now only serve
+# lake silt (#363), so the surge stays here until that consumer is reviewed or moved.
 SECONDS_PER_YEAR = 3.15576e7
+# A reference cell area maps physical catchment discharge back to the old stacked-rainfall
+# scale at the default node density. Keeping the old scalar calibration on this fixed area
+# preserves its default-density meaning while making a fixed catchment independent of the
+# actual node density. The square-spacing estimate is intentionally a reference, not a claim
+# about each irregular node's true accounting area.
+RIVER_REFERENCE_CELL_AREA_M2 = (PLANET_RADIUS_KM * 1000.0 * line_spacing_rad(DEFAULT_NODE_DENSITY)) ** 2
+
+
+def discharge_m3_s_to_flow_accum_mm_yr(discharge_m3_s: np.ndarray) -> np.ndarray:
+    """Map physical discharge to the legacy mm/yr-equivalent scale at default node density."""
+    return np.clip(np.asarray(discharge_m3_s, dtype=float), 0.0, None) * SECONDS_PER_YEAR * 1000.0 / RIVER_REFERENCE_CELL_AREA_M2
+
+
+def flow_accum_mm_yr_to_discharge_m3_s(flow_accum_mm_yr: np.ndarray | float) -> np.ndarray:
+    """Convert the legacy accumulated mm/yr scalar to discharge at the reference cell area."""
+    return np.clip(np.asarray(flow_accum_mm_yr, dtype=float), 0.0, None) * RIVER_REFERENCE_CELL_AREA_M2 / (SECONDS_PER_YEAR * 1000.0)
+
+
+def _extend_river_mask_downstream(
+    is_river: np.ndarray,
+    flow_target: np.ndarray,
+    discharge_m3_s: np.ndarray,
+    is_ocean: np.ndarray,
+    is_lake: np.ndarray,
+) -> np.ndarray:
+    """Keep a qualifying river connected to its mouth across positive-flow transit losses.
+
+    Physical discharge can decrease downstream through evaporation, so applying the percentile
+    independently at every node can punch gaps in an otherwise-real channel. Once a node is
+    selected, include its positive-discharge downstream path up to the first ocean, lake, or dry
+    node. The shared visited set keeps this linear in the routed graph even when many selected
+    headwaters feed the same mainstem.
+    """
+    selected = np.array(is_river, dtype=bool, copy=True)
+    visited: set[int] = set()
+    for source in np.flatnonzero(selected):
+        node = int(source)
+        while True:
+            target = int(flow_target[node])
+            if (
+                target < 0
+                or target >= len(selected)
+                or is_ocean[target]
+                or is_lake[target]
+                or discharge_m3_s[target] <= 0.0
+                or target in visited
+            ):
+                break
+            visited.add(target)
+            selected[target] = True
+            node = target
+    return selected
 
 
 def meltwater_m3_per_yr(melt_m: np.ndarray, areas_m2: np.ndarray, years: float) -> np.ndarray:
@@ -912,11 +965,10 @@ def _slope_to_flow_target(points: np.ndarray, elevation: np.ndarray, flow_target
     return np.where(has_target, np.clip(drop, 0.0, None) / run_m, 0.0)
 
 
-def compute_river_speed(slope: np.ndarray, flow_accum: np.ndarray) -> np.ndarray:
-    """Stylized, unitless river speed -- faster where slope is steeper and where more water
-    has accumulated; meaningful only relative to other nodes in the same world, not a real
-    physical speed."""
-    return RIVER_SPEED_COEFFICIENT * np.sqrt(np.clip(slope, 0.0, None)) * np.power(np.clip(flow_accum, 0.0, None), RIVER_SPEED_DISCHARGE_EXPONENT)
+def compute_river_speed(slope: np.ndarray, discharge_m3_s: np.ndarray | float) -> np.ndarray:
+    """Stylized, unitless speed using physical discharge on the default-density reference scale."""
+    flow_scale = discharge_m3_s_to_flow_accum_mm_yr(np.asarray(discharge_m3_s, dtype=float))
+    return RIVER_SPEED_COEFFICIENT * np.sqrt(np.clip(slope, 0.0, None)) * np.power(flow_scale, RIVER_SPEED_DISCHARGE_EXPONENT)
 
 
 def _routing_order(elevation: np.ndarray, is_ocean: np.ndarray, flow_target: np.ndarray) -> tuple[list[int], list[int]]:
@@ -969,7 +1021,8 @@ def route_downstream(
     source_amount: np.ndarray,
     retain_fraction: np.ndarray | None = None,
     loss_fraction: np.ndarray | None = None,
-) -> tuple[np.ndarray, np.ndarray]:
+    erosion_only_source_amount: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray] | tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Single forward sweep over land nodes in elevation-descending order, accumulating
     `source_amount` downstream along `flow_target` edges. Correct in one pass because every
     node's target is visited *later* in this same order -- see `_routing_order` for the
@@ -981,9 +1034,16 @@ def route_downstream(
     retention -- so, like flow_accum itself, the lost fraction compounds along a long flow
     path rather than being taken once at the very end. Returns (through_flux, deposited): each
     node's own accumulated flux passing through it (net of any loss), and how much settled
-    there (from `retain_fraction` and/or reaching a sink/ocean)."""
+    there (from `retain_fraction` and/or reaching a sink/ocean). When
+    `erosion_only_source_amount` is supplied, it is propagated beside the primary source with
+    the same losses but without retention/deposition, and returned as a third through-flux array."""
     n = len(elevation)
     through_flux = np.where(~is_ocean, source_amount, 0.0).astype(np.float64).tolist()
+    erosion_only_flux = (
+        np.where(~is_ocean, erosion_only_source_amount, 0.0).astype(np.float64).tolist()
+        if erosion_only_source_amount is not None
+        else None
+    )
     deposited = [0.0] * n
     retain = (retain_fraction if retain_fraction is not None else np.zeros(n)).tolist()
     loss = (loss_fraction if loss_fraction is not None else np.zeros(n)).tolist()
@@ -994,6 +1054,8 @@ def route_downstream(
     for i in order:
         evaporated_here = through_flux[i] * loss[i]
         through_flux[i] -= evaporated_here
+        if erosion_only_flux is not None:
+            erosion_only_flux[i] -= erosion_only_flux[i] * loss[i]
 
         retained_here = through_flux[i] * retain[i]
         through_flux[i] -= retained_here
@@ -1007,15 +1069,21 @@ def route_downstream(
             deposited[target] += through_flux[i]
         else:
             through_flux[target] += through_flux[i]
+            if erosion_only_flux is not None:
+                erosion_only_flux[target] += erosion_only_flux[i]
     # A node on a flow cycle has no valid place in the sweep: it still loses/retains its own
     # share like any other node, then keeps the remainder, like a sink, rather than losing it.
     # Same loss -> retain -> dead-end sequence the sweep applies to a sink (target < 0).
     for i in stuck:
         through_flux[i] -= through_flux[i] * loss[i]
+        if erosion_only_flux is not None:
+            erosion_only_flux[i] -= erosion_only_flux[i] * loss[i]
         retained_here = through_flux[i] * retain[i]
         through_flux[i] -= retained_here
         deposited[i] += retained_here + through_flux[i]
 
+    if erosion_only_flux is not None:
+        return np.array(through_flux), np.array(deposited), np.array(erosion_only_flux)
     return np.array(through_flux), np.array(deposited)
 
 
@@ -1069,11 +1137,10 @@ def compute_hydrology(
     *same* depression hierarchy spill routing already used (`lakes.resolve_lakes`) -> river
     classification (excluding flooded lake nodes, so a river ends at a lake's shore
     rather than being treated as continuing through it). A lake that's actively spilling this
-    step also adds `LAKE_BREACH_EROSION_COEFFICIENT`-scaled extra "water" into the routed total
+    step also adds `LAKE_BREACH_EROSION_COEFFICIENT`-scaled extra "water" into the legacy route
     at its own sink, sized by its connected lake's own node count (see that constant's own
-    comment) -- so `flow_accum`, and everything erosion.py derives from it (river erosion,
-    channel_depth/channel_width growth), reflects a spilling lake's real erosive force, not
-    just the ordinary precip passing through that one node. `precipitation_at_nodes`/
+    comment). River erosion receives this forcing from a separate sidecar accumulation;
+    physical discharge, channel growth and river classification exclude it. `precipitation_at_nodes`/
     `temperature_at_nodes` are precomputed by the caller (erosion.py, which already needs the
     same climate-grid lookups for its own erosion terms) rather than looked up again here.
     `node_cloud`, likewise, is erosion.py's own already-gathered (points, plates_in_order) pair (see
@@ -1285,12 +1352,18 @@ def compute_hydrology(
         temperature_at_nodes, years, is_frozen | is_ocean | should_spill | is_rim_breach
     )
 
-    # The surge stays in this legacy routing on purpose (issue #355 "Water units"): through
-    # `water_deposited` it also sizes lake silt (#363), and geology's river-mouth boost reads
-    # it too (#355 step 3). Move those consumers before taking it out of here.
+    # The surge stays in this legacy routing on purpose (issue #355 "Water units"): lake silt
+    # still reads `water_deposited` (#363); river visibility now uses the physical routing.
     breach_surge = lake_breach_source + rim_breach_source
     water_source = liquid_precip + melt + breach_surge
-    flow_accum, water_deposited = route_downstream(elevation, is_ocean, flow_target, water_source, loss_fraction=river_evap_fraction)
+    flow_accum, water_deposited, breach_surge_accum = route_downstream(
+        elevation,
+        is_ocean,
+        flow_target,
+        water_source,
+        loss_fraction=river_evap_fraction,
+        erosion_only_source_amount=breach_surge,
+    )
 
     # Physical water, routed once (issue #355 "Water units"). Lakes balance in real units
     # (issue #297): area-weighted runoff (the same Budyko curve and open-water evaporation the
@@ -1347,8 +1420,12 @@ def compute_hydrology(
     # without the upstream lake's own evaporation taken off. That overfeeds lake chains a
     # little, but only through lakes already full and spilling. Subtracting it would need
     # lakes resolved during routing (follow-up on #297).
-    fields.discharge_m3_s = through_m3 / SECONDS_PER_YEAR
+    # Ocean targets hold the land-to-ocean flux in `settled_m3`, since ocean nodes are sinks
+    # rather than members of the river routing graph. Expose that mouth discharge on the target
+    # too for shelf geology; river networks themselves still report their last land node.
+    fields.discharge_m3_s = np.where(is_ocean, settled_m3, through_m3) / SECONDS_PER_YEAR
     fields.breach_surge = breach_surge
+    fields.breach_surge_accum = breach_surge_accum
     lake_climate = lakes.LakeClimate(
         inflow_m3_per_yr=settled_m3 + np.where(should_spill, through_m3, 0.0),
         evaporation_m_per_yr=evaporation_mm / 1000.0,
@@ -1369,23 +1446,29 @@ def compute_hydrology(
     land = ~is_ocean
     is_lake = fields.lake_depth > LAKE_MIN_VISIBLE_DEPTH_M
     is_river = np.zeros(n, dtype=bool)
-    if np.any(land) and np.any(flow_accum[land] > 0):
-        threshold = np.percentile(flow_accum[land], RIVER_FLOW_PERCENTILE)
-        is_river = land & (flow_accum > 0) & (flow_accum >= threshold) & ~is_lake
+    if np.any(land) and np.any(fields.discharge_m3_s[land] > 0):
+        threshold = np.percentile(fields.discharge_m3_s[land], RIVER_FLOW_PERCENTILE)
+        is_river = land & (fields.discharge_m3_s > 0) & (fields.discharge_m3_s >= threshold) & ~is_lake
 
     # Rivers commonly begin right where a glacier's meltwater first emerges from the ice --
     # a fresh headwater has, by definition, no upstream tributaries yet, so it can easily fail
-    # to clear the ordinary top-decile flow_accum threshold above on its own even though it's a
+    # to clear the ordinary discharge threshold above on its own even though it's a
     # perfectly real river source. A land node not itself under visible ice but with at least
     # one neighbor that is (GLACIER_VISIBLE_DEPTH_M, the same "real ice, not just a trace"
     # threshold rendering already uses) sits right at a glacier's edge; if it's actually
-    # carrying real outflow this step (flow_accum > 0, i.e. meltwater genuinely reached here),
+    # carrying real outflow this step (`discharge_m3_s > 0`, i.e. meltwater genuinely reached here),
     # it's marked is_river directly, giving that stream a visible source at the ice margin
     # instead of only appearing once downstream tributaries happen to push it over the
     # percentile cut.
     has_glacier_neighbor = np.any(new_glacier_depth[neighbor_idx] >= GLACIER_VISIBLE_DEPTH_M, axis=1)
-    is_glacial_source = land & ~is_lake & (new_glacier_depth < GLACIER_VISIBLE_DEPTH_M) & has_glacier_neighbor & (flow_accum > 0)
-    fields.is_river = is_river | is_glacial_source
+    is_glacial_source = land & ~is_lake & (new_glacier_depth < GLACIER_VISIBLE_DEPTH_M) & has_glacier_neighbor & (fields.discharge_m3_s > 0)
+    fields.is_river = _extend_river_mask_downstream(
+        is_river | is_glacial_source,
+        fields.flow_target,
+        fields.discharge_m3_s,
+        fields.is_ocean,
+        is_lake,
+    )
     return fields
 
 
@@ -1394,33 +1477,30 @@ class RiverInfo:
     """One connected drainage network within `HydrologyFields.is_river` -- the River
     Inspector's unit of selection. There's no such grouping concept anywhere else in this
     module; `is_river` is otherwise just a flat per-node boolean. `member_idx` indexes back
-    into the *same* HydrologyFields arrays (points/elevation/flow_accum/flow_target/...) this
+    into the *same* HydrologyFields arrays (points/elevation/discharge_m3_s/flow_target/...) this
     was built from, so a caller (main.py) resolves geometry/segments straight from those
     rather than this dataclass duplicating them."""
 
     member_idx: np.ndarray  # (M,) indices into the source HydrologyFields arrays
-    mouth_idx: int  # index into the same arrays -- the network's max-flow_accum member
+    mouth_idx: int  # index into the same arrays -- the network's downstream mouth member
     mouth_type: str  # "ocean" | "lake" | "other" (a dry interior sink)
-    flow_rate: float  # flow_accum at the mouth
+    flow_rate: float  # physical discharge_m3_s at the mouth
     speed: float  # compute_river_speed at the mouth
     num_tributaries: int  # separate headwater branches feeding this network, see group_rivers
+    length_m: float | None = None  # summed physical length; None only for legacy fixtures
 
 
 def group_rivers(fields: HydrologyFields) -> list[RiverInfo]:
     """Groups the flat `is_river` node mask into distinct connected drainage networks, via
     union-find over `flow_target` edges restricted to nodes that are `is_river` on *both*
-    ends. This is exact (not a heuristic) because flow_accum is monotonically non-decreasing
-    downhill: once a node clears
-    RIVER_FLOW_PERCENTILE, every node further downstream in its own chain does too, so two
-    river nodes joined by a flow_target edge always belong to the same real drainage network,
-    and two nodes in different connected components never do.
+    ends. Since river selection uses a percentile of physical discharge, joining neighboring
+    selected nodes preserves the current flow topology without using the legacy accumulated
+    rainfall field.
 
-    A network's **mouth** is always its own max-flow_accum member -- flow only accumulates
-    downhill, so nothing in the group can out-flow it -- which also guarantees the mouth's
-    own `flow_target` (if any) points *outside* the group: a same-or-higher-flow_accum land
-    node downstream would itself have cleared the threshold and been unioned in already, so
-    the only things left outside are open ocean, a lake (excluded from `is_river` by the
-    `~is_lake` term below, regardless of its own flow_accum), or a true dead-end sink.
+    A network's **mouth** is its downstream-most member. Its `flow_target` chain determines
+    whether it empties into open ocean, a lake (excluded from `is_river` by the `~is_lake`
+    term below), or a true dead-end sink. A cycle in a hand-built fixture falls back to the
+    member with greatest physical discharge.
 
     **mouth_type** reads `lake_depth`/`is_ocean` off the chain starting at
     *`flow_target[mouth_idx]`* -- the node(s) the mouth actually empties into -- not off the
@@ -1482,11 +1562,29 @@ def group_rivers(fields: HydrologyFields) -> list[RiverInfo]:
         groups.setdefault(find(i), []).append(i)
 
     slope_to_target = _slope_to_flow_target(fields.points, fields.elevation, fields.flow_target)
+    edge_length_m = np.zeros(len(fields.points), dtype=float)
+    edge_sources = river_idx[fields.flow_target[river_idx] >= 0]
+    edge_targets = fields.flow_target[edge_sources]
+    edge_length_m[edge_sources] = (
+        geometry.angular_distance(fields.points[edge_sources], fields.points[edge_targets])
+        * PLANET_RADIUS_KM
+        * 1000.0
+    )
+    discharge_m3_s = fields.discharge_m3_s
+    if discharge_m3_s is None or len(discharge_m3_s) != len(fields.flow_accum):
+        # Hand-built fixtures and pre-step-1 caches have only the old stacked-mm/yr quantity.
+        # Loaded saves with that cache are invalidated by main.load_world before reaching this
+        # fallback; it keeps internal callers with legacy fixtures working.
+        discharge_m3_s = flow_accum_mm_yr_to_discharge_m3_s(fields.flow_accum)
 
     rivers: list[RiverInfo] = []
     for members in groups.values():
         member_idx = np.array(members, dtype=np.int64)
-        mouth_idx = int(member_idx[np.argmax(fields.flow_accum[member_idx])])
+        member_set = set(members)
+        terminal_members = [member for member in members if flow_target_list[member] not in member_set]
+        mouth_candidates = terminal_members or members
+        # A cycle in a hand-built fixture has no terminal; use its greatest-discharge member.
+        mouth_idx = max(mouth_candidates, key=lambda member: discharge_m3_s[member])
 
         # See this function's own docstring for why this reads the *target*'s state, not the
         # (structurally always-dry) mouth's own -- and why it walks the chain past that first
@@ -1513,7 +1611,6 @@ def group_rivers(fields: HydrologyFields) -> list[RiverInfo]:
             visited.add(node)
             node = int(fields.flow_target[node])
 
-        member_set = set(members)
         in_degree = {m: 0 for m in members}
         for m in members:
             t = flow_target_list[m]
@@ -1521,14 +1618,17 @@ def group_rivers(fields: HydrologyFields) -> list[RiverInfo]:
                 in_degree[t] += 1
         headwater_count = sum(1 for m in members if in_degree[m] == 0)
 
+        length_m = float(np.sum(edge_length_m[member_idx]))
+
         rivers.append(
             RiverInfo(
                 member_idx=member_idx,
                 mouth_idx=mouth_idx,
                 mouth_type=mouth_type,
-                flow_rate=float(fields.flow_accum[mouth_idx]),
-                speed=float(compute_river_speed(slope_to_target[mouth_idx], fields.flow_accum[mouth_idx])),
+                flow_rate=float(discharge_m3_s[mouth_idx]),
+                speed=float(compute_river_speed(slope_to_target[mouth_idx], discharge_m3_s[mouth_idx])),
                 num_tributaries=max(0, headwater_count - 1),
+                length_m=length_m,
             )
         )
     return rivers

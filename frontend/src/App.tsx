@@ -1525,8 +1525,8 @@ export default function App() {
                 <div style={{ opacity: 0.9 }}>
                   <div>id: {selectedRiver.river_id}</div>
                   <div>ends at: {selectedRiver.mouth_type}</div>
-                  <div>flow rate: {selectedRiver.flow_rate.toFixed(1)}</div>
-                  <div>speed: {selectedRiver.speed.toFixed(2)}</div>
+                  <div>flow rate: {selectedRiver.flow_rate.toFixed(1)} m³/s</div>
+                  <div>speed (model): {selectedRiver.speed.toFixed(2)}</div>
                   <div>tributaries: {selectedRiver.num_tributaries}</div>
                   <div>nodes: {selectedRiver.num_nodes}</div>
                 </div>
@@ -1561,7 +1561,7 @@ export default function App() {
                   </div>
                   {selectedBasin.inflow_rivers.map((r, i) => (
                     <div key={i} style={{ paddingLeft: 8, opacity: 0.8 }}>
-                      - flow {r.flow_rate.toFixed(1)}, {r.num_nodes} nodes
+                      - flow {r.flow_rate.toFixed(1)} m³/s, {r.num_nodes} nodes
                     </div>
                   ))}
                   <div style={{ marginTop: 6 }}>
@@ -1575,7 +1575,7 @@ export default function App() {
                   {selectedBasin.outflow_river && (
                     <div style={{ paddingLeft: 8, opacity: 0.8 }}>
                       - ends at {selectedBasin.outflow_river.mouth_type}, flow{" "}
-                      {selectedBasin.outflow_river.flow_rate.toFixed(1)}, {selectedBasin.outflow_river.num_nodes} nodes
+                      {selectedBasin.outflow_river.flow_rate.toFixed(1)} m³/s, {selectedBasin.outflow_river.num_nodes} nodes
                     </div>
                   )}
                 </div>

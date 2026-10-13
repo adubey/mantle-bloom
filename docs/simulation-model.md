@@ -2633,13 +2633,12 @@ by order-of-magnitude reasoning against the then-current direct convergent uplif
 rather than reused from a value tuned against a different scale.
 `WEATHERING_COEFFICIENT` needed no such rescaling, since wind speed already uses a directly
 comparable scale (`MERIDIONAL_BASE_SPEED = 6.0`) unaffected by the slope re-derivation. River
-erosion needs the same re-derivation, one level further removed: it depends on `water_accum`
-(see [Hydrology](#hydrology)), itself downstream-accumulated *precipitation* rather than a raw
-grid-cell count (a cell-count accumulation would implicitly scale with grid resolution),
-so `RIVER_EROSION_COEFFICIENT` was re-derived the same order-of-magnitude way, then checked
-against real channel-depth growth over an actual run (see below). Glacier erosion is
-calibrated separately, against the glacial erosion the old depth * slope law produced (see
-the formula below).
+erosion depends on physical catchment discharge (see [Hydrology](#hydrology)), converted to a
+fixed reference-cell scale before the stream-power law. `RIVER_EROSION_COEFFICIENT` was
+originally derived by order of magnitude and checked against channel-depth growth; issue
+#355 step 5 recalibrated it after replacing accumulated precipitation with Budyko runoff.
+Glacier erosion is calibrated separately, against the glacial erosion the old depth * slope
+law produced (see the formula below).
 
 **The formulas**, all computed per-node:
 
@@ -3313,7 +3312,10 @@ thousand land nodes, a real chunk of a step's total cost), so `erosion.py` compu
 (`hydrology.compute_hydrology`) and reuses the result for both erosion and
 `World.hydrology_cache`, rather than paying for it twice.
 
-**Water units** (issue #355). Three kinds of water move along `flow_target`:
+**Water units** (issue #355). Physical discharge and erosion-only breach forcing now drive the
+river model; the legacy route remains for lake silt while river presentation uses physical
+discharge and physical flow-edge length.
+Three kinds of water/forcing move along `flow_target`:
 
 - **Physical water**, in m^3/yr: area-weighted Budyko runoff of liquid precipitation plus
   glacier meltwater. It balances the lakes (see *Balanced lakes* below), and its through-flow
@@ -3332,19 +3334,32 @@ thousand land nodes, a real chunk of a step's total cost), so `erosion.py` compu
   water at 1000 kg/m^3 to glacier ice at about 917 kg/m^3, and meltwater should too.
 - **The breach surge** (`HydrologyFields.breach_surge`) is a spilling lake's erosive forcing,
   sized by node count (`LAKE_BREACH_EROSION_COEFFICIENT`). It is never part of the discharge.
+  Its separately-routed accumulation (`breach_surge_accum`) contributes to river erosion only.
 
 `flow_accum` and `water_deposited` come from the older routing: stacked mm/yr of liquid
 precipitation, melt and breach surge, with in-transit evaporation that scales with step
-length. They grow with node density as well as with rainfall. Until each consumer moves to
-the quantities above, the breach surge still reaches every one of them, not only erosion:
+length. They grow with node density as well as with rainfall. River erosion, width, speed,
+geology and river visibility no longer consume them; the breach surge remains in this route
+for lake silt:
 
 | Consumer | Reads | Moves in |
 |---|---|---|
-| River erosion, channel width, river speed, River Inspector | `flow_accum` | #355 step 3 |
-| Geology's river-mouth resource boost | `water_deposited` | #355 step 3 |
+| River erosion | physical discharge on the default-density reference scale + `breach_surge_accum` | #355 step 3 |
+| Channel width, river speed, deposition gates and River/Lake Inspector flow values | physical discharge | #355 step 3 |
+| Geology's river-mouth resource boost | physical discharge at ocean-mouth nodes | #355 step 3 |
+| River selection and server-rendered styling | physical discharge | #355 step 4 |
+| River network visibility | physical flow-edge length | #355 step 4 |
 | Lake silt | `water_deposited` | #363 |
 
-Taking the surge out of the older routing before then would change all of them.
+The fixed reference cell area maps physical discharge back onto the old accumulated-mm/yr
+scale at the default node density, making a fixed catchment independent of mesh density.
+Because Budyko runoff is smaller than the old raw-precipitation source, the old numeric
+erosion and width-growth coefficients did not preserve the default-density outcomes. Step 5
+calibrated `RIVER_EROSION_COEFFICIENT` from 100 to 190 and `WIDTH_GROWTH_COEFFICIENT` from
+50 to 75 against young and mature density-4 replays; the measured changes and the decision
+to leave glacier coefficients alone are in [issue #355's analysis](../analysis/issue355/README.md).
+The breach surge uses the same reference scale for erosion but never contributes to reported
+discharge, channel-width growth, deposition or geology.
 
 **The core algorithms**, all operating on the k-NN graph:
 
@@ -3715,13 +3730,13 @@ big":
   staying exactly monotonic in `channel_width` -- so a real confluence (a genuine local width
   increase) still visibly brightens everything downstream of it toward the river-blue overlay
   color.
-- **Line width** is a percentile rank of `flow_accum` instead, floored at a much steeper
+- **Line width** is a percentile rank of physical discharge instead, floored at a much steeper
   `RIVER_WIDE_MIN_PERCENTILE` (only a genuine top few percent of drawn segments ever widen past
-  1px). `flow_accum`, not `channel_width`, because `channel_width` only ever grows (see
+  1px). Discharge, not `channel_width`, because `channel_width` only ever grows (see
   `erosion.py`) and, confirmed directly against a real 60My-old run, its *median* across every
   currently-drawn segment already sits within 1% of the physical `MAX_CHANNEL_WIDTH_M` cap --
   it has essentially no discriminating power left at world maturity, so an absolute
-  `channel_width` threshold either caught most of the map or nothing. `flow_accum` has no such
+  `channel_width` threshold either caught most of the map or nothing. Physical discharge has no such
   ceiling and still meaningfully separates a world's few truly major rivers once `channel_width`
   has saturated for most of what's drawn.
 
@@ -3732,9 +3747,10 @@ a fixed cap on how many get considered. A segment that does draw wider than 1px 
 cross-section (`RIVER_CORE_WIDTH_FRACTION`/`RIVER_HALO_FILL_FRACTION`): a full-width, dimmer
 "halo" first, then a narrower full-color "core" on top, so its outer edge visibly blends toward
 the land color while its centerline stays close to full river-blue, instead of reading as one
-flat, uniformly-blended slab. The River Inspector (below) deliberately keeps listing/drawing
-every `is_river` network regardless of flow or width, unaffected by any of this, since picking
-a minor tributary out of the full list is exactly what that view is for.
+flat, uniformly-blended slab. The River Inspector also filters short networks for legibility,
+using a 1,875 km physical-length cutoff (the former 30-node threshold at default
+`node_density=4`). The cutoff stays fixed as mesh density changes. River selection itself uses
+physical discharge, so breach-only erosion paths cannot appear as physical rivers.
 
 **Canyons via hillshade (issue #190).** A channel deep past `CHANNEL_INCISION_MIN_DEPTH_M`
 and wide past `CHANNEL_INCISION_MIN_WIDTH_M` (ramped over `CHANNEL_INCISION_WIDTH_RANGE_M`) has
@@ -4000,21 +4016,22 @@ plus click-to-select and Tab/Shift+Tab to cycle through rivers.
 
 **There is no "a river" concept anywhere else in the codebase before this feature.**
 `hydrology.py`'s `is_river` is (and remains) a flat per-node boolean mask -- the top ~7%
-(`RIVER_FLOW_PERCENTILE`) of land `flow_accum`, plus one addition: a land node not itself under visible ice but with at
-least one neighbor that is (`GLACIER_VISIBLE_DEPTH_M`), and that's actually carrying real
-outflow this step (`flow_accum > 0`), is also marked `is_river` directly. Rivers commonly begin
-right where a glacier's meltwater first emerges from the ice, but a fresh headwater has, by
-definition, no upstream tributaries yet, so it can easily fail to clear the ordinary percentile
-threshold on its own even though it's a perfectly real river source -- this gives such a stream
-a visible source right at the glacier's edge instead of only appearing once downstream
-tributaries happen to push it over the percentile cut. With no grouping into distinct networks
-otherwise. `hydrology.group_rivers` adds
-exactly that grouping, via union-find over `flow_target` edges restricted to nodes that are
-`is_river` on *both* ends. This is exact,
-not a heuristic: `flow_accum` is monotonically non-decreasing downhill, so once a node clears
-the percentile threshold, every node further downstream in its own chain does too -- meaning
-two river nodes joined by a `flow_target` edge always belong to the same real drainage
-network, and two nodes in different connected components never do. Grouping is recomputed
+(`RIVER_FLOW_PERCENTILE`) of land physical discharge, plus every still-positive downstream node
+along a selected channel. Transit evaporation can lower discharge below the percentile threshold
+partway to the mouth; extending the mask downstream across that positive-flow path prevents the
+River Inspector from splitting one routed channel into disconnected networks. A land node not
+itself under visible ice but with at least one neighbor that is (`GLACIER_VISIBLE_DEPTH_M`), and
+that's actually carrying real outflow this step (`discharge_m3_s > 0`), is also selected as a
+source before that downstream extension. Rivers commonly begin right where a glacier's
+meltwater first emerges from the ice, but a fresh headwater has, by definition, no upstream
+tributaries yet, so it can easily fail to clear the ordinary percentile threshold on its own
+even though it's a perfectly real river source -- this gives such a stream a visible source
+right at the glacier's edge instead of only appearing once downstream tributaries happen to
+push it over the percentile cut. With no grouping into distinct networks otherwise.
+`hydrology.group_rivers` adds
+that grouping with union-find over `flow_target` edges restricted to nodes that are `is_river`
+on *both* ends. Adjacent selected nodes stay in one component; disconnected selected segments
+remain separate. Grouping is recomputed
 fresh from `world.hydrology_cache` on every `/world/rivers` (and `/world/river_at`) call
 rather than persisted -- `hydrology_cache` itself is already at most one step stale by design,
 and grouping it is cheap, so a `river_id` is only ever meaningful against the most recent
@@ -4022,12 +4039,7 @@ and grouping it is cheap, so a `river_id` is only ever meaningful against the mo
 `plate_id`, which survives a plate's whole lifetime). `App.tsx` resets `selectedRiverId` on
 every step for the same reason, not just on generate.
 
-**A network's mouth is always its own max-`flow_accum` member** -- flow only accumulates
-downhill, so nothing in the group can out-flow it, which also guarantees the mouth's own
-`flow_target` (if any) points *outside* the group: a same-or-higher-`flow_accum` land node
-downstream would itself have cleared the threshold and been unioned in already, so the only
-things left outside are open ocean, a lake (`is_river` always excludes flooded nodes, so a
-lake can never itself be a group member), or a true dead-end sink. **`mouth_type`** reads
+**A network's mouth is its downstream-most member.** **`mouth_type`** reads
 `is_ocean`/`lake_depth` off *what the mouth's own `flow_target` points at*, not off the mouth
 itself -- the mouth can never itself carry standing water, so checking its own lake_depth
 would make `"lake"` unreachable and silently mislabel a river ending at a lake as `"ocean"`
@@ -4036,6 +4048,11 @@ instead (a real bug an earlier version of this had, since fixed): `"other"` only
 `lakes.step_lakes` is already busy growing into a real lake node by node every step, so this
 reads as `"lake"` on its own the moment that basin's water crosses
 `LAKE_MIN_VISIBLE_DEPTH_M`).
+
+The API's `flow_rate` is the physical discharge at this mouth in m^3/s
+(`HydrologyFields.discharge_m3_s`). `length_m` is the summed geodesic length of its flow edges.
+This same discharge field supplies each Lake Inspector inflow/outflow summary. The Inspector's
+`speed` remains a stylized, unitless comparison value.
 
 **`num_tributaries` is an original definition** -- nothing existing to build on. Counts each
 member's in-network in-degree (how

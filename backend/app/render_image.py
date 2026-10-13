@@ -30,7 +30,7 @@ from scipy.spatial import cKDTree
 
 from . import cratons, geometry, healpix_grid, lithosphere, mantle, plates, projections
 from .hydroclimate import biomes, climate, coastline, geology, hydrology, volcanism
-from .elevation_lines import effective_is_continental_from_codes, line_spacing_rad
+from .elevation_lines import DEFAULT_NODE_DENSITY, PLANET_RADIUS_KM, effective_is_continental_from_codes, line_spacing_rad
 from .world import World, step_world
 
 # Climate views draw from climate.py's own fixed (H, W) grid, not the render grid below --
@@ -93,15 +93,16 @@ LAKE_COLOR_RGB = (58, 92, 122)
 SEA_COLOR_RGB = (42, 128, 140)
 # River overlay color (#4dd8e6) -- the color a river's color blend (see
 # RIVER_COLOR_BLEND_MIN_FRACTION below) tints toward. See _draw_rivers and _rivers_to_draw:
-# every is_river network is a drawing candidate (no top-N-networks cap), gated only on an
-# absolute "is this even a real, visible channel" floor (RIVER_VISIBLE_MIN_WIDTH_M). Color and
+# every is_river network is a drawing candidate (no top-N-networks cap), gated on an absolute
+# "is this even a real, visible channel" floor (RIVER_VISIBLE_MIN_WIDTH_M); elevation views
+# also apply the physical-length minor-network filter below. Color and
 # line width are deliberately driven by two *different* notions of "how big":
 #
 # - Color blend is a *percentile rank* of channel_width among this render's own currently-
 #   visible drawn segments, not a fraction of any fixed physical scale. Both an absolute
 #   fraction of MAX_CHANNEL_WIDTH_M and a fraction of each segment's own network's widest point
 #   were tried and rejected: confirmed directly against a real 60My-old run that is_river's own
-#   selection (hydrology.RIVER_FLOW_PERCENTILE -- only the top decile-ish of land flow_accum
+#   selection (hydrology.RIVER_FLOW_PERCENTILE -- only the top decile-ish of land discharge
 #   ever qualifies) already means most *drawn* segments sit close to whatever denominator you
 #   pick, so either absolute approach reads as uniformly bright with barely any visible
 #   head-to-mouth gradient or confluence "gets bluer" moment. A percentile rank is, by
@@ -110,7 +111,7 @@ SEA_COLOR_RGB = (42, 128, 140)
 #   channel_width values happen to be -- and it's still exactly monotonic in channel_width, so
 #   a real confluence (a genuine local width increase) still visibly brightens everything
 #   downstream of it.
-# - Line width is gated on a *percentile rank of flow_accum* (not channel_width) among this
+# - Line width is gated on a *percentile rank of physical discharge* (not channel_width) among this
 #   same drawn population, requiring the top RIVER_WIDE_MIN_PERCENTILE (a steep bar, so only a
 #   genuine few ever widen) -- deliberately a different field than color's own channel_width
 #   rank. channel_width turned out to have essentially no discriminating power left at world
@@ -118,14 +119,13 @@ SEA_COLOR_RGB = (42, 128, 140)
 #   channel_width across every currently-drawn segment already sits at 4959 of the 5000
 #   physical cap (channel_width only ever grows, never shrinks, see erosion.py) -- so almost
 #   any fixed real-meters threshold below the cap either catches "most of the map" or catches
-#   nothing, with no meaningful few-percent band in between. flow_accum has no such artificial
-#   ceiling (it's recomputed from real precipitation/routing every step, not a monotonically-
-#   saturating persisted quantity), so a percentile rank of it still meaningfully separates a
-#   world's few truly major rivers from everything else even once channel_width has long since
+#   nothing, with no meaningful few-percent band in between. Physical discharge has no such
+#   artificial ceiling and is recomputed from each step's area-weighted routing, so its
+#   percentile rank still separates a world's few truly major rivers once channel_width has
 #   saturated for most of what's drawn.
 #
-# The River Inspector (main.py's /world/rivers, RiverInspector.tsx) is unaffected either way --
-# it lists every is_river network regardless of size or width already.
+# The River Inspector uses the same physical-length visibility rule as the elevation map and
+# retains its explicit, scale-independent discharge readout.
 RIVER_COLOR_RGB = (77, 216, 230)
 RIVER_LINE_WIDTH_PX = 1.0
 # Widest drawn line, at flow-percentile-rank 1.0 (see RIVER_WIDE_MIN_PERCENTILE), is this many
@@ -149,19 +149,19 @@ RIVER_BLUR_RADIUS_PX = 0.6
 # just expressed directly in physical channel_width now that color is a per-render percentile
 # rank rather than a direct function of it.
 RIVER_VISIBLE_MIN_WIDTH_M = 100.0
-# General-purpose terrain/biome maps omit short drainage networks unless they have at least
-# this many tributaries. The River Inspector intentionally remains exhaustive.
-RIVER_VISIBLE_MIN_NODES = 30
-RIVER_VISIBLE_MIN_TRIBUTARIES = 5
+# General-purpose maps and the River Inspector omit networks shorter than the old 30-node
+# cutoff at default density. Use summed physical edge length so the threshold does not move
+# with node density; issue #355.
+RIVER_VISIBLE_MIN_LENGTH_M = 30 * PLANET_RADIUS_KM * 1000.0 * line_spacing_rad(DEFAULT_NODE_DENSITY)
 # The floor on the percentile-rank color fraction above (RIVER_COLOR_BLEND_MIN_FRACTION) plus
 # (1 - floor) * (this segment's own percentile rank, see RIVER_COLOR_RGB's own comment) -- so
 # even this render's own narrowest visible channel still reads as a pale, visible trickle
 # rather than fading all the way to indistinguishable-from-land-color.
 RIVER_COLOR_BLEND_MIN_FRACTION = 0.15
-# Only the top (1 - RIVER_WIDE_MIN_PERCENTILE) of drawn segments by flow_accum percentile rank
+# Only the top (1 - RIVER_WIDE_MIN_PERCENTILE) of drawn segments by physical-discharge percentile rank
 # ever draw wider than 1px, ramping from 0 extra width at this floor to full
 # RIVER_LINE_WIDTH_MAX_MULT at percentile-rank 1.0 (this render's single highest-flow drawn
-# segment) -- see RIVER_COLOR_RGB's own comment for why flow_accum rather than channel_width.
+# segment) -- see RIVER_COLOR_RGB's own comment for why discharge rather than channel_width.
 # 0.97 (a steep top-3% bar) is a starting point calibrated by eye against a real run rather
 # than any hard requirement -- issue #190 asked for multi-pixel width to stay rare and reserved
 # for genuinely major rivers, not for a specific percentage.
@@ -2495,9 +2495,11 @@ def _percentile_rank(values: np.ndarray) -> np.ndarray:
 
 
 def _river_network_is_visible(river: hydrology.RiverInfo) -> bool:
-    """Whether a network belongs on terrain/biome maps. The River Inspector does not use
-    this filter and continues to show every network."""
-    return len(river.member_idx) >= RIVER_VISIBLE_MIN_NODES or river.num_tributaries >= RIVER_VISIBLE_MIN_TRIBUTARIES
+    """Whether a network clears the physical-length cutoff for terrain/biome maps."""
+    if river.length_m is None:
+        # Preserve hand-built pre-length fixtures; computed river networks always set length_m.
+        return len(river.member_idx) >= 30 or river.num_tributaries >= 5
+    return river.length_m >= RIVER_VISIBLE_MIN_LENGTH_M
 
 
 def _rivers_to_draw(world: World, hide_minor_networks: bool = False) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -2509,12 +2511,12 @@ def _rivers_to_draw(world: World, hide_minor_networks: bool = False) -> tuple[np
     >= 0). `color_alpha` is in [RIVER_COLOR_BLEND_MIN_FRACTION, 1.0], a percentile rank of this
     segment's own channel_width among every other segment drawn in this same call -- see
     RIVER_COLOR_RGB's own comment for why a rank beats a fixed fraction here. `width_frac` is
-    in [0, 1], a percentile rank of this segment's own flow_accum (not channel_width -- see
+    in [0, 1], a percentile rank of this segment's own physical discharge (not channel_width -- see
     RIVER_COLOR_RGB's own comment for why) among the same drawn population, floored at
     RIVER_WIDE_MIN_PERCENTILE (0 below it, an ordinary 1px line) and reaching 1 at this call's
     single highest-flow segment. Every is_river network is a candidate, not just the strongest
     few by mouth flow -- hydrology.py's own is_river cut (top RIVER_FLOW_PERCENTILE of land
-    flow_accum) is already the world-relative "how many rivers exist at all" decision; this
+    physical discharge) is already the world-relative "how many rivers exist at all" decision; this
     only additionally drops individual segments whose channel is too narrow to be a real,
     visible river at all (RIVER_VISIBLE_MIN_WIDTH_M), which both keeps a bone-dry world's few
     real rivers from being buried in an unbounded creek count and keeps the per-segment
@@ -2543,7 +2545,11 @@ def _rivers_to_draw(world: World, hide_minor_networks: bool = False) -> tuple[np
     color_percentile = _percentile_rank(channel_width[candidates])
     color_alpha = RIVER_COLOR_BLEND_MIN_FRACTION + (1.0 - RIVER_COLOR_BLEND_MIN_FRACTION) * color_percentile
 
-    flow_percentile = _percentile_rank(hydro.flow_accum[candidates])
+    discharge_m3_s = hydro.discharge_m3_s
+    if discharge_m3_s is None or len(discharge_m3_s) != len(hydro.points):
+        # Hand-built internal fixtures may still carry only the legacy field.
+        discharge_m3_s = hydrology.flow_accum_mm_yr_to_discharge_m3_s(hydro.flow_accum)
+    flow_percentile = _percentile_rank(discharge_m3_s[candidates])
     width_frac = np.clip((flow_percentile - RIVER_WIDE_MIN_PERCENTILE) / (1.0 - RIVER_WIDE_MIN_PERCENTILE), 0.0, 1.0)
 
     return candidates.astype(np.int64), color_alpha, width_frac

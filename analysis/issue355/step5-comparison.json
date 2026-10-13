@@ -1,0 +1,213 @@
+{
+  "issue": 355,
+  "baseline_commit": "93ab3bbba8a1983e8fc2dc398cb06ce04b62d716",
+  "branch_base_commit": "357eeac8e35fce668449c684b7c98e45b2556b9d",
+  "step_years": 100000,
+  "replay_myr": 10,
+  "cases": {
+    "generated-density1": {
+      "seed": 355004,
+      "node_density": 1.0,
+      "save_sha256": "f5fce4df6933feaf8202200d3adb474b70ee587f8224042f2a13e90c544ead52",
+      "start_myr": 0.0,
+      "baseline": {
+        "land_pct": 18.199,
+        "river_erosion_raw_km3": 153988.382,
+        "glacial_erosion_raw_km3": 259.622,
+        "glacial_erosion_applied_km3": 510.719,
+        "removed_km3": 645890752.796,
+        "deposited_km3": 645890752.796,
+        "ice_volume_km3": 55806.027,
+        "ice_cap_pct_of_land": 0.41,
+        "lake_volume_km3": 67203.964,
+        "river_deposition_area_pct_of_land": 44.993,
+        "river_area_pct_of_land": 6.744,
+        "ice_meltwater_km3": 3620660.424,
+        "ice_frozen_river_km3": 4549.296,
+        "ice_calving_km3": 0.04,
+        "step_seconds_mean": 1.728,
+        "peak_rss_mb": 803.668,
+        "ice_worst_residual_m3": 0.023,
+        "channel_depth": {
+          "coverage_pct_of_land": 1.193,
+          "p50_m": 0.033,
+          "p90_m": 0.323,
+          "p99_m": 3.005
+        },
+        "channel_width": {
+          "coverage_pct_of_land": 99.305,
+          "p50_m": 120.174,
+          "p90_m": 849.32,
+          "p99_m": 2537.709
+        }
+      },
+      "branch": {
+        "land_pct": 18.214,
+        "river_erosion_raw_km3": 332150.75,
+        "glacial_erosion_raw_km3": 261.148,
+        "glacial_erosion_applied_km3": 512.556,
+        "removed_km3": 645906188.501,
+        "deposited_km3": 645906188.501,
+        "ice_volume_km3": 57648.077,
+        "ice_cap_pct_of_land": 0.409,
+        "lake_volume_km3": 66640.477,
+        "river_deposition_area_pct_of_land": 24.049,
+        "river_area_pct_of_land": 6.883,
+        "ice_meltwater_km3": 3627657.373,
+        "ice_frozen_river_km3": 4864.578,
+        "ice_calving_km3": 0.04,
+        "step_seconds_mean": 1.849,
+        "peak_rss_mb": 804.258,
+        "ice_worst_residual_m3": 0.016,
+        "channel_depth": {
+          "coverage_pct_of_land": 1.007,
+          "p50_m": 0.145,
+          "p90_m": 4.47,
+          "p99_m": 21.536
+        },
+        "channel_width": {
+          "coverage_pct_of_land": 99.306,
+          "p50_m": 30.183,
+          "p90_m": 1710.184,
+          "p99_m": 5000.0
+        }
+      }
+    },
+    "generated-density4": {
+      "seed": 355004,
+      "node_density": 4.0,
+      "save_sha256": "9ad8d1cfae9b3460a89b46c6a8781b9a104822e2fa9733c2756171645c2555cd",
+      "start_myr": 0.0,
+      "baseline": {
+        "land_pct": 18.578,
+        "river_erosion_raw_km3": 198962.974,
+        "glacial_erosion_raw_km3": 1478.175,
+        "glacial_erosion_applied_km3": 2865.747,
+        "removed_km3": 706880908.216,
+        "deposited_km3": 706880908.216,
+        "ice_volume_km3": 280413.839,
+        "ice_cap_pct_of_land": 0.833,
+        "lake_volume_km3": 81230.616,
+        "river_deposition_area_pct_of_land": 47.261,
+        "river_area_pct_of_land": 6.604,
+        "ice_meltwater_km3": 3796409.701,
+        "ice_frozen_river_km3": 20477.036,
+        "ice_calving_km3": 0.024,
+        "step_seconds_mean": 4.77,
+        "peak_rss_mb": 3137.896,
+        "ice_worst_residual_m3": 0.094,
+        "channel_depth": {
+          "coverage_pct_of_land": 2.223,
+          "p50_m": 0.15,
+          "p90_m": 4.224,
+          "p99_m": 35.763
+        },
+        "channel_width": {
+          "coverage_pct_of_land": 99.285,
+          "p50_m": 138.061,
+          "p90_m": 1223.531,
+          "p99_m": 3129.455
+        }
+      },
+      "branch": {
+        "land_pct": 18.571,
+        "river_erosion_raw_km3": 224023.061,
+        "glacial_erosion_raw_km3": 4551.421,
+        "glacial_erosion_applied_km3": 13258.121,
+        "removed_km3": 704751326.991,
+        "deposited_km3": 704751326.991,
+        "ice_volume_km3": 265831.757,
+        "ice_cap_pct_of_land": 0.803,
+        "lake_volume_km3": 77950.504,
+        "river_deposition_area_pct_of_land": 23.044,
+        "river_area_pct_of_land": 6.709,
+        "ice_meltwater_km3": 3803029.179,
+        "ice_frozen_river_km3": 20963.028,
+        "ice_calving_km3": 0.024,
+        "step_seconds_mean": 4.697,
+        "peak_rss_mb": 3238.232,
+        "ice_worst_residual_m3": 0.125,
+        "channel_depth": {
+          "coverage_pct_of_land": 1.844,
+          "p50_m": 0.076,
+          "p90_m": 9.206,
+          "p99_m": 57.372
+        },
+        "channel_width": {
+          "coverage_pct_of_land": 99.28,
+          "p50_m": 17.499,
+          "p90_m": 1201.911,
+          "p99_m": 3809.306
+        }
+      }
+    },
+    "mature-density4": {
+      "seed": 997271774,
+      "node_density": 4.0,
+      "save_sha256": "08ad9461d9585e92be93a58d81e326c7e4b685ae7d462135d01b0e9931ed762b",
+      "start_myr": 87.4,
+      "baseline": {
+        "land_pct": 28.985,
+        "river_erosion_raw_km3": 356785.803,
+        "glacial_erosion_raw_km3": 5054837.561,
+        "glacial_erosion_applied_km3": 7678195.556,
+        "removed_km3": 1561580877.149,
+        "deposited_km3": 1561580877.149,
+        "ice_volume_km3": 5357365.36,
+        "ice_cap_pct_of_land": 5.148,
+        "lake_volume_km3": 50138.12,
+        "river_deposition_area_pct_of_land": 60.654,
+        "river_area_pct_of_land": 8.165,
+        "ice_meltwater_km3": 3934002.182,
+        "ice_frozen_river_km3": 312306.763,
+        "ice_calving_km3": 41569.971,
+        "step_seconds_mean": 4.98,
+        "peak_rss_mb": 2777.924,
+        "ice_worst_residual_m3": 3.0,
+        "channel_depth": {
+          "coverage_pct_of_land": 4.626,
+          "p50_m": 1.949,
+          "p90_m": 210.705,
+          "p99_m": 1126.923
+        },
+        "channel_width": {
+          "coverage_pct_of_land": 100.0,
+          "p50_m": 1990.094,
+          "p90_m": 5000.0,
+          "p99_m": 5000.0
+        }
+      },
+      "branch": {
+        "land_pct": 29.007,
+        "river_erosion_raw_km3": 322813.097,
+        "glacial_erosion_raw_km3": 4909259.673,
+        "glacial_erosion_applied_km3": 7518086.713,
+        "removed_km3": 1563423542.327,
+        "deposited_km3": 1563423542.327,
+        "ice_volume_km3": 5447300.759,
+        "ice_cap_pct_of_land": 5.271,
+        "lake_volume_km3": 62896.372,
+        "river_deposition_area_pct_of_land": 31.17,
+        "river_area_pct_of_land": 8.194,
+        "ice_meltwater_km3": 3941459.835,
+        "ice_frozen_river_km3": 373011.925,
+        "ice_calving_km3": 42874.634,
+        "step_seconds_mean": 5.407,
+        "peak_rss_mb": 2694.824,
+        "ice_worst_residual_m3": 3.0,
+        "channel_depth": {
+          "coverage_pct_of_land": 4.673,
+          "p50_m": 0.973,
+          "p90_m": 202.937,
+          "p99_m": 1135.27
+        },
+        "channel_width": {
+          "coverage_pct_of_land": 100.0,
+          "p50_m": 1832.524,
+          "p90_m": 5000.0,
+          "p99_m": 5000.0
+        }
+      }
+    }
+  }
+}

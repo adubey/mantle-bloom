@@ -13,10 +13,10 @@ silt_depth/channel_depth already establish.
 
 **Oil and gas** form the same way, in shallow marine shelf water instead of on land --
 organic-rich (mostly planktonic) sediment settling in a quiet, sunlit, nutrient-fed shelf sea,
-real petroleum source rocks. Nutrient input is boosted near a river mouth: reuses
-hydrology.py's own `water_deposited` directly -- an ocean node a river empties into already
-tells this module "land-derived nutrient runoff reaches the sea here," no separate river-mouth
-search needed. Also monotonic, gated to shelf water via the same shelf-distance concept
+real petroleum source rocks. Nutrient input is boosted near a river mouth using physical
+discharge recorded at the ocean target node -- an ocean node a river empties into already tells
+this module "land-derived nutrient runoff reaches the sea here," no separate river-mouth search
+needed. Also monotonic, gated to shelf water via the same shelf-distance concept
 bathymetry.py already established (`bathymetry.SHELF_RANGE_RAD`).
 
 **Minerals** come from volcanism -- grown directly inside volcanism.apply_volcanic_activity's
@@ -57,7 +57,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from . import biomes
+from . import biomes, hydrology
 from .bathymetry import SHELF_RANGE_RAD
 from ..noise import SphereNoise
 from ..plates import (
@@ -86,11 +86,11 @@ MAX_COAL_DEPOSIT_M = 50.0
 
 # Oil & gas: a baseline shelf-sea productivity rate, boosted near a river mouth (real deltas --
 # the Gulf of Mexico, Niger Delta -- are major petroleum provinces for exactly this reason).
-# OIL_GAS_RIVER_REFERENCE_M is the water_deposited scale (hydrology.py's own stylized units, see
-# that module) at which the river-mouth boost saturates.
+# Preserve the previous saturation point (5 stacked mm/yr-equivalent units at default node
+# density) as a physical discharge threshold for the river-mouth boost.
 OIL_GAS_BASE_RATE_M_PER_MYR = 0.02
 OIL_GAS_RIVER_BOOST_RATE_M_PER_MYR = 0.3
-OIL_GAS_RIVER_REFERENCE_M = 5.0
+OIL_GAS_RIVER_REFERENCE_M3_S = float(hydrology.flow_accum_mm_yr_to_discharge_m3_s(5.0))
 MAX_OIL_GAS_DEPOSIT_M = 30.0
 
 # Soil formation/loss. WEATHERING_TO_REGOLITH is the fraction of this step's weathering erosion
@@ -184,7 +184,11 @@ def apply_resource_formation(world: "World", years: float, erosion_result: "Eros
     # --- Oil & gas (ocean, monotonic), gated to shelf water and boosted near a river mouth ---
     dist_to_land = world.distance_from_land_approx(erosion_result.points)
     is_shelf = is_ocean & (dist_to_land <= SHELF_RANGE_RAD)
-    river_boost = np.clip(hydro.water_deposited / OIL_GAS_RIVER_REFERENCE_M, 0.0, 1.0)
+    discharge_m3_s = hydro.discharge_m3_s
+    if discharge_m3_s is None or len(discharge_m3_s) != len(is_ocean):
+        # Pre-step-1 caches and hand-built internal fixtures have only legacy deposited water.
+        discharge_m3_s = hydrology.flow_accum_mm_yr_to_discharge_m3_s(hydro.water_deposited)
+    river_boost = np.clip(discharge_m3_s / OIL_GAS_RIVER_REFERENCE_M3_S, 0.0, 1.0)
     oil_gas_rate = np.where(is_shelf, OIL_GAS_BASE_RATE_M_PER_MYR + OIL_GAS_RIVER_BOOST_RATE_M_PER_MYR * river_boost, 0.0)
     new_oil_gas_deposit_m = np.clip(prior_oil_gas_deposit_m + oil_gas_rate * dt_myr, 0.0, MAX_OIL_GAS_DEPOSIT_M)
 
