@@ -217,18 +217,47 @@ function sectionAreaPath(
   return `${top} ${bottom} Z`;
 }
 
-function SectionPlaceholder() {
-  const viewWidth = 820;
-  const viewHeight = 420;
-  const centerX = 425;
-  const centerY = 80;
+function SectionPlaceholder({ width, height }: { width: number; height: number }) {
+  const viewWidth = width;
+  const viewHeight = height;
+  const marginX = Math.max(16, Math.round(viewWidth * 0.025));
+  const marginTop = Math.max(30, Math.round(viewHeight * 0.075));
+  const centerX = viewWidth / 2;
+  const centerY = marginTop + Math.round(viewHeight * 0.08);
   const halfArcKm = ARC_LENGTH_KM / 2;
   const arcHalfAngle = halfArcKm / PLANET_RADIUS_KM;
-  const halfSurfaceWidthKm = PLANET_RADIUS_KM * Math.sin(arcHalfAngle);
-  const pixelsPerKm = 690 / (2 * halfSurfaceWidthKm);
+  // Mirror cross_section.py's frame geometry so the schematic stays in place as its PNG fades in.
+  const arcWidth = (viewWidth - 2 * marginX) * (690 / 820);
+  const pixelsPerKm = arcWidth / (2 * PLANET_RADIUS_KM * Math.sin(arcHalfAngle));
   const surfacePath = shellPath(PLANET_RADIUS_KM, halfArcKm, centerX, centerY, pixelsPerKm);
   const areaPath = sectionAreaPath(halfArcKm, centerX, centerY, pixelsPerKm);
-  const centerSurface = sectionPoint(PLANET_RADIUS_KM, 0, centerX, centerY, pixelsPerKm);
+  const legend = [
+    { color: "#539FCB", label: "Water" },
+    { color: "#E0EDF2", label: "Stored glacier" },
+    { color: "#C98F82", label: "Continental crust" },
+    { color: "#526779", label: "Oceanic crust" },
+    { color: "#425A5A", label: "Mantle lithosphere" },
+    { color: "#756C94", label: "Schematic asthenosphere" },
+    { color: "#F47A3C", label: "Stored melt source" },
+    { color: "#FFD278", label: "Melt-eligible estimate" },
+    { color: "#47ECD2", label: "Surface mantle flow" },
+    { color: "#ED7E3C", label: "Active vent" },
+    { color: "#B7BEC1", label: "Dormant vent" },
+  ];
+  let legendX = marginX;
+  let legendY = viewHeight - Math.max(32, Math.round(viewHeight * 0.06));
+  const legendPositions = legend.map((item) => {
+    const position = { ...item, x: legendX, y: legendY };
+    const itemWidth = 12 + item.label.length * 6 + 11;
+    if (legendX + itemWidth > viewWidth - marginX && legendX > marginX) {
+      legendY -= 14;
+      legendX = marginX;
+      position.x = legendX;
+      position.y = legendY;
+    }
+    legendX += itemWidth;
+    return position;
+  });
 
   return (
     <svg
@@ -240,67 +269,30 @@ function SectionPlaceholder() {
       preserveAspectRatio="xMidYMid meet"
       style={{ display: "block", minHeight: 0, flex: 1, width: "100%" }}
     >
-      <defs>
-        <linearGradient id="cross-section-placeholder-fill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#756C94" stopOpacity="0.48" />
-          <stop offset="100%" stopColor="#423D5A" stopOpacity="0.58" />
-        </linearGradient>
-        <pattern id="cross-section-pending-hatch" width="8" height="8" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
-          <line x1="0" y1="0" x2="0" y2="8" stroke="#c9b9e8" strokeOpacity="0.12" strokeWidth="2" />
-        </pattern>
-      </defs>
-      <rect x="0.5" y="0.5" width={viewWidth - 1} height={viewHeight - 1} rx="9" fill="#101827" stroke="#2d394d" />
+      <rect x="0" y="0" width={viewWidth} height={viewHeight} fill="#0e1422" />
+      <text x={marginX} y="17" fill="#ebeff6" fontSize="11">Surface-sampled lithosphere section · 3,000 km arc</text>
+      <text x={marginX} y="31" fill="#a8b4c5" fontSize="10">350 km below local surface · vertical relief 2× · geotherm illustrative</text>
+      <text x={marginX} y="44" fill="#96a4b8" fontSize="9">Terrain and geology are schematic until the sampled section loads.</text>
 
-      <text x="24" y="28" fill="#e7ebf3" fontSize="15" fontWeight="600">Schematic section · 3,000 km surface arc</text>
-      <text x="796" y="28" textAnchor="end" fill="#a6b0c2" fontSize="11">local tangent left → right · radial up</text>
+      <path d={areaPath} fill="#756C94" />
+      <path d={surfacePath} fill="none" stroke="#e5e7ca" strokeWidth="1" />
 
-      <path d={areaPath} fill="url(#cross-section-placeholder-fill)" />
-      <path d={areaPath} fill="url(#cross-section-pending-hatch)" />
-
-      {[-1500, -750, 0, 750, 1500].map((distanceKm) => {
-        const point = sectionPoint(PLANET_RADIUS_KM, distanceKm, centerX, centerY, pixelsPerKm);
-        return (
-          <g key={distanceKm}>
-            <line x1={point.x} y1={point.y - 20} x2={point.x} y2={point.y + 5} stroke="#64738a" strokeWidth="1" />
-            <text x={point.x} y={point.y - 27} textAnchor="middle" fill="#9aa8bd" fontSize="10">
-              {distanceKm > 0 ? `+${distanceKm}` : distanceKm}
-            </text>
-          </g>
-        );
-      })}
-
-      {[100, 200, SECTION_DEPTH_KM].map((depthKm) => {
-        const path = shellPath(PLANET_RADIUS_KM - depthKm, halfArcKm, centerX, centerY, pixelsPerKm);
+      {[100, 200, 300, SECTION_DEPTH_KM].map((depthKm) => {
         const point = sectionPoint(PLANET_RADIUS_KM - depthKm, 0, centerX, centerY, pixelsPerKm);
         return (
           <g key={depthKm}>
-            <path
-              d={path}
-              fill="none"
-              stroke={depthKm === SECTION_DEPTH_KM ? "#d5d8e6" : "#9f9db5"}
-              strokeWidth={depthKm === SECTION_DEPTH_KM ? 1.5 : 1}
-              strokeDasharray={depthKm === SECTION_DEPTH_KM ? "5 4" : "2 5"}
-              opacity={depthKm === SECTION_DEPTH_KM ? 0.95 : 0.48}
-            />
-            <line x1={centerX - 7} y1={point.y} x2={centerX + 7} y2={point.y} stroke="#d5d8e6" strokeWidth="1" opacity="0.8" />
-            <text x={centerX + 12} y={point.y + 4} fill="#c3c7d6" fontSize="10">
-              {depthKm} km
-            </text>
+            <line x1={centerX - 5} y1={point.y} x2={centerX + 5} y2={point.y} stroke="#e6e7ef" strokeWidth="1" />
+            <text x={centerX + 8} y={point.y - 2} fill="#dee1eb" fontSize="9">{depthKm} km</text>
           </g>
         );
       })}
 
-      <path d={surfacePath} fill="none" stroke="#a8d19e" strokeWidth="3" />
-      <text x={centerX - 14} y={centerSurface.y - 8} textAnchor="end" fill="#c8e1c0" fontSize="10">idealized surface</text>
-
-      <g>
-        <rect x="231" y="286" width="389" height="64" rx="7" fill="#111726" fillOpacity="0.94" stroke="#3a4355" />
-        <text x="425.5" y="310" textAnchor="middle" fill="#e0e4ed" fontSize="12" fontWeight="600">World section data placeholder</text>
-        <text x="425.5" y="331" textAnchor="middle" fill="#a7b1c2" fontSize="11">Terrain and geological layers will appear when sampled fields are connected.</text>
-      </g>
-
-      <text x="24" y="390" fill="#a7b1c2" fontSize="10">Vertical scale exaggerated {VERTICAL_EXAGGERATION}× (fixed); the section window remains 350 km below each local surface point.</text>
-      <text x="796" y="390" textAnchor="end" fill="#a7b1c2" fontSize="10">Depth labels are below the local surface</text>
+      {legendPositions.map(({ color, label, x, y }) => (
+        <g key={label}>
+          <rect x={x} y={y} width="9" height="9" fill={color} />
+          <text x={x + 12} y={y + 8} fill="#ccd4e1" fontSize="9">{label}</text>
+        </g>
+      ))}
     </svg>
   );
 }
@@ -408,6 +400,11 @@ export default function MantleCrossSection({
   // A prop change can render before its effect runs; only show a frame whose full cache key
   // still matches, so old geology never flashes after a world/plane/size change.
   const imageDataUrl = displayedFrame?.key === currentCacheKey ? displayedFrame.dataUrl : null;
+  const statusMessage = loadMessage ?? (
+    prefetchProgress !== null && prefetchProgress < PREFETCHED_FRAME_COUNT
+      ? `Preparing nearby arc positions ${prefetchProgress}/${PREFETCHED_FRAME_COUNT}`
+      : ""
+  );
 
   const frameScopeKey = [worldRevision, planeAngleDeg, Math.round(width), Math.round(height), SECTION_STYLE_VERSION].join(":");
 
@@ -535,39 +532,51 @@ export default function MantleCrossSection({
           A stable local frame follows the selected surface arc as its center moves around the planet.
         </p>
         <div style={{ display: "flex", position: "relative", minHeight: 0, flex: 1, width: "100%" }}>
-          {imageDataUrl ? (
-            <img
-              src={imageDataUrl}
-              alt={`Rendered shallow mantle section at arc position ${arcPosition + 1} of ${ARC_POSITION_COUNT}`}
-              style={{ display: "block", minHeight: 0, width: "100%", height: "100%", objectFit: "contain" }}
-            />
-          ) : (
-            <SectionPlaceholder />
-          )}
-        </div>
-        {loadMessage && <div role="status" style={{ color: "#d6bb85", fontSize: 10 }}>{loadMessage}</div>}
-        {!loadMessage && prefetchProgress !== null && prefetchProgress < PREFETCHED_FRAME_COUNT && (
-          <div role="status" style={{ color: "#9daac0", fontSize: 10 }}>
-            Preparing nearby arc positions {prefetchProgress}/{PREFETCHED_FRAME_COUNT}
+          <div aria-hidden="true" style={{ display: "flex", minHeight: 0, flex: 1, width: "100%" }}>
+            <SectionPlaceholder width={width} height={height} />
           </div>
-        )}
+          <img
+            src={imageDataUrl ?? undefined}
+            alt={imageDataUrl ? `Rendered shallow mantle section at arc position ${arcPosition + 1} of ${ARC_POSITION_COUNT}` : ""}
+            aria-hidden={imageDataUrl === null}
+            style={{
+              position: "absolute",
+              inset: 0,
+              display: "block",
+              minHeight: 0,
+              width: "100%",
+              height: "100%",
+              objectFit: "contain",
+              opacity: imageDataUrl ? 1 : 0,
+              transition: "opacity 140ms ease-out",
+              pointerEvents: "none",
+            }}
+          />
+        </div>
+        <div
+          role="status"
+          style={{
+            boxSizing: "border-box",
+            height: 12,
+            flexShrink: 0,
+            overflow: "hidden",
+            color: loadMessage ? "#d6bb85" : "#9daac0",
+            fontSize: 10,
+            lineHeight: "12px",
+            whiteSpace: "nowrap",
+            textOverflow: "ellipsis",
+            visibility: statusMessage ? "visible" : "hidden",
+          }}
+        >
+          {statusMessage}
+        </div>
         <div style={{ color: "#8f9bb0", fontSize: 10, display: "flex", flexWrap: "wrap", gap: 4 }}>
-          {imageDataUrl ? (
-            <>
-              <LegendKey color="#C98F82" label="Continental crust" />
-              <LegendKey color="#526779" label="Oceanic crust" />
-              <LegendKey color="#425A5A" label="Mantle lithosphere" />
-              <LegendKey color="#756C94" label="Schematic asthenosphere" />
-              <LegendKey color="#C93D3D" label="Stored magma / melt" />
-              <LegendKey color="#d5d8e6" label="Melt eligibility estimate" line />
-            </>
-          ) : (
-            <>
-              <LegendKey color="#a8d19e" label="Idealized sphere surface" line />
-              <LegendKey color="#756c94" label="Subsurface placeholder" />
-              <LegendKey color="#d5d8e6" label="350 km depth limit" line />
-            </>
-          )}
+          <LegendKey color="#C98F82" label="Continental crust" />
+          <LegendKey color="#526779" label="Oceanic crust" />
+          <LegendKey color="#425A5A" label="Mantle lithosphere" />
+          <LegendKey color="#756C94" label="Schematic asthenosphere" />
+          <LegendKey color="#C93D3D" label="Stored magma / melt" />
+          <LegendKey color="#d5d8e6" label="Melt eligibility estimate" line />
         </div>
       </section>
 
