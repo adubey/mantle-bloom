@@ -1,0 +1,242 @@
+# RFC 0005: Balance continental recycling at trenches
+
+- **Status:** Draft
+- **Date:** 2026-10-13
+- **Related:** #120 (land fraction decline), #177 (margin retreat budget), #276 and #320
+  (collision sinks), #297 (mobile cover); RFCs [0002](0002-craton-trench-attrition.md),
+  [0006](0006-intra-oceanic-arcs.md)
+
+## Problem
+
+Continental crust in the model leaves the surface much faster than it is made, and the
+continents drain away. The continental-material ledger (`continental_ledger.py`) books
+every source and sink.
+
+In the run behind RFCs 0001–0006, the ledger shows the imbalance from the first step. The
+run is seed 456862899, 19.2 Gyr, saved locally as
+`mantle-bloom-seed456862899-19191800000y.mbworld`; the file is on the author's machine and
+**not available for download**. Numbers come from `bin/debug/ledger_history.py` on that
+save.
+
+| Window (Myr) | Juvenile (km³/yr) | Remelted returns (km³/yr) | All sinks (km³/yr) | of which `deeply_subducted` | Mean inventory (M km³) | Share on oceanic hosts at window end |
+|---|---|---|---|---|---|---|
+| 0–100 | 7.3 | 0.7 | 11.3 | 10.1 | 7,851 | 6% |
+| 100–500 | 2.6 | 1.1 | 8.5 | 7.7 | 6,460 | 18% |
+| 500–1,000 | 4.3 | 1.2 | 8.4 | 7.4 | 4,638 | 30% |
+| 1,000–2,000 | 2.8 | 0.7 | 5.2 | 4.9 | 3,228 | 25% |
+| 2,000–4,000 | 2.1 | 1.1 | 3.5 | 3.1 | 1,378 | 35% |
+| 12,000–19,200 | 0.4 | 0.3 | 0.8 | 0.7 | 128 | 72% |
+
+The world started with 7.9 × 10⁹ km³ of continental material, almost exactly Earth's
+8.0 × 10⁹ km³ [[Clift & Vannucchi, 2004]](#ref-clift2004), so its fluxes compare directly
+with Earth's.
+
+**Earth's budget.** For the Cenozoic, [[Clift et al., 2009]](#ref-clift2009) estimate these
+sinks:
+
+| Sink | km³/yr |
+|---|---|
+| Sediment subduction | 1.65 |
+| Subducted eroded forearc | 1.3 |
+| Lower-crust delamination | ~1.1 |
+| Collision losses | 0.4 |
+| Material fixed in oceanic crust | ~0.4 |
+| **Total** | **≈ 4.9** |
+
+Arcs (about 2.0–3.8 km³/yr) and accreted oceanic plateaus (about 1.1) replace it, and the
+crust has been in rough equilibrium through the Phanerozoic
+[[Clift et al., 2009]](#ref-clift2009) [[Stern & Scholl, 2010]](#ref-stern2010).
+
+The model's new crust, 2.6–4.3 km³/yr after the first 100 Myr, is in Earth's range. Its
+sinks, 8–11 km³/yr, are about twice Earth's, and nearly all of the excess is
+`deeply_subducted_m3`.
+
+That account mixes several channels:
+- continental material, mostly sediment, on oceanic plates consumed at trenches
+  (`quad_tectonics._retreat`);
+- continental margins consumed under an oceanic neighbour, which on continental plates is
+  capped 1:1 by arc production (#177);
+- craton attrition (`cratons.attrite`; RFC 0002).
+
+Because the #177 cap holds margin consumption to arc output, **the prime suspect is
+sediment**: continental material eroded onto ocean floor and carried into trenches. The
+share of continental material sitting on oceanic hosts rose from 0 to 30% in the first Gyr,
+which supports that. But the ledger can't confirm it until the channels are split.
+
+## Proposed solutions
+
+**How sediment moves on Earth.**
+- Rivers delivered about 14 Gt/yr of sediment to the coast before human influence
+  [[Syvitski et al., 2005]](#ref-syvitski2005). At 2.65 t/m³ that is about 5.3 km³/yr of
+  rock.
+- About 1.65 km³/yr of sediment is subducted [[Clift et al., 2009]](#ref-clift2009), so
+  roughly two-thirds of what reaches the coast stays on continental margins (shelves,
+  slopes, rises) instead of reaching a trench.
+- At the trench, accretion is inefficient. A median of only 17% (range 7–37%) of the
+  sediment arriving is scraped off into the accretionary prism; the rest is subducted
+  [[Clift & Vannucchi, 2004]](#ref-clift2004). Erosive and accretionary margins are told
+  apart by trench sediment and convergence rate
+  [[von Huene & Scholl, 1991]](#ref-vonhuene1991).
+- Some subducted sediment returns: it melts into arc magmas, and buoyant subducted crust
+  can relaminate to the base of the overriding crust
+  [[Hacker et al., 2011]](#ref-hacker2011).
+
+1. **Measure the channels (required first).** Split `deeply_subducted_m3` into:
+   - `sediment_subducted_m3`: material on oceanic hosts, consumed at a trench;
+   - `margin_subducted_m3`: continental hosts consumed under an oceanic neighbour, the
+     #177 channel;
+   - `craton_attrited_m3`: from `cratons.attrite`.
+
+   Add a flux diagnostic for continental material crossing from continental hosts onto
+   oceanic hosts by erosion and marine spreading (km³/yr). This tells us whether the excess
+   is *export* (too much sediment reaching the deep ocean) or *consumption* (too much of
+   it subducted).
+2. **Keep sediment on the margins.** If export to oceanic hosts is above ~35–40% of the
+   continental denudation flux (Earth's ~1.65 subducted out of ~5.3 delivered, plus the
+   accreted share), change the marine sediment spread so most continental sediment settles
+   on continental-host cells (shelf, slope and rise) and only the overflow reaches oceanic
+   hosts.
+3. **Accretionary prisms.** At contacts RFC 0002 classes as accretionary, transfer
+   `OFFSCRAPE_FRACTION` of the arriving sediment onto the overriding plate's nearest cells
+   as continental material instead of subducting it.
+4. **Sediment return through arcs.** Book a fraction of subducted sediment as
+   `remelted_relaminated_returns_m3` on the overriding arc band, after
+   [[Hacker et al., 2011]](#ref-hacker2011). It has a large effect and is hard to
+   constrain, so it is kept as a last resort.
+
+**Recommendation:** 1, then decide. If export dominates, do 2. Do 3 alongside RFC 0002,
+which needs the same contact classification; it only moves 17% of trench sediment, but it
+is cheap and grounded. Do 4 only if the budget still fails once 2 and 3 are in.
+
+## Design
+
+**Units.** Ledger accounts are m³ and reports are km³/yr. Sediment thickness is metres of
+`continental_material_m` and `mobile_cover_continental_m` on a cell.
+
+**Channel split (1).** In `quad_tectonics._retreat`, the `subducted` set is booked in one
+call today. Book three ways instead:
+- cells with `~continental` (oceanic hosts) → `sediment_subducted_m3`;
+- continental cells on a continental plate → `margin_subducted_m3`;
+- attrition as RFC 0002 books it.
+
+`deeply_subducted_m3` stays as their sum for old saves and dashboards: the new keys are
+sub-accounts, and the balance uses the parent only. In `erosion.py`, the marine spread
+measures the continental material it moves from continental to oceanic host cells per
+step, kept in a world-level diagnostic (not pickled).
+
+**Shelf retention (2).** Sediment reaches the sea floor by several paths in `erosion.py`:
+- `_spread_marine_sediment`, for submarine and sea-cliff erosion: inverse-distance over
+  the nearest lower ocean nodes within `MARINE_SPREAD_RANGE_RAD`;
+- `_spread_beach_sediment`;
+- settling of the river-routed pool where it meets the sea.
+
+None of them looks at the host's crust type. The flux diagnostic in (1) says which path
+carries most continental material onto oceanic hosts, and the change goes there first.
+That path's receiver weights give continental-host cells first claim, up to an
+accommodation limit: the room between the cell's depth and `SHELF_ACCOMMODATION_DEPTH_M`,
+a physical depth for the shelf, slope and upper rise. Only the remainder goes to oceanic
+hosts. Each path conserves mass through `np.add.at`, and that is kept.
+
+**Offscraping (3).** For trench cells on an oceanic plate in the accretionary class:
+- `OFFSCRAPE_FRACTION` × the cell's continental material (and its mobile cover) moves to
+  the overriding plate's nearest node, through `inputs.neighbor_node_index` as in
+  `torque.contact_craton_m`;
+- there it adds to Hc and `continental_material_m`, and to the mobile cover as
+  `accreted_m3` in the mobile-cover ledger;
+- the rest subducts as now.
+
+This is a cross-plate write. It reuses the upper-plate placement in `crust_transfer.py`
+(#320) rather than adding a second path.
+
+**Runtime.** The split and the flux diagnostic are O(cells) sums over masks already built,
+negligible. Shelf retention reweights receivers the spreading paths already query: O(sources ×
+neighbours), with no new tree query. Offscraping is O(trench cells).
+Budget: under 3% of step time in total.
+
+**Save compatibility.** New ledger keys are backfilled at 0.0 by
+`continental_ledger.ensure_initialized`. No new per-node field: the flux diagnostic isn't
+pickled. Old saves keep their history in `deeply_subducted_m3`.
+
+**Knobs.**
+
+| Knob | Start | Source | Tuning |
+|---|---|---|---|
+| `SHELF_ACCOMMODATION_DEPTH_M` | 2,000 m | The foot of the continental slope and upper rise | Sweep 1,000–4,000 m; pick the value that brings export to oceanic hosts to 35–40% of the denudation flux |
+| `OFFSCRAPE_FRACTION` | 0.17 | Global median [[Clift & Vannucchi, 2004]](#ref-clift2004) | Fixed; 0.07 and 0.37 are the sensitivity bounds from the same source |
+| `ocean_deposition_multiplier` (existing live knob) | 1.0 | — | Unchanged; not a substitute for 2, since below 1.0 it books the sediment it declines to a sink |
+
+Tune on seeds 7, 11 and 2024 to 1 Gyr, plus a regenerated seed 456862899 to 3 Gyr; run the
+replays one at a time. Report each channel in km³/yr, the export share, juvenile and total
+sinks, and genuine continental area and land fraction. The `replay-ab` skill does the
+before/after against a detached `origin/main` worktree.
+
+## Detailed design
+
+- `backend/app/continental_ledger.py`: add `sediment_subducted_m3`, `margin_subducted_m3`
+  and `craton_attrited_m3` as documented sub-accounts of `deeply_subducted_m3`, outside
+  `balance_error_m3`. `inventories` reports them.
+- `backend/app/quad_tectonics.py`, `_retreat`: book the split. For (3), call the offscrape
+  transfer before `plate.remove_cells`.
+- `backend/app/cratons.py`, `attrite`: book `craton_attrited_m3` alongside
+  `deeply_subducted_m3`.
+- `backend/app/hydroclimate/erosion.py`: the flux diagnostic across all marine settling
+  paths, then continental-host priority up to `SHELF_ACCOMMODATION_DEPTH_M` in whichever of
+  `_spread_marine_sediment`, `_spread_beach_sediment` and river-mouth settling dominates.
+  Those functions take a host-type mask.
+- `backend/app/crust_transfer.py`: expose the upper-plate placement as a function callable
+  for offscraped trench sediment.
+- `backend/app/hydroclimate/mobile_cover.py`: book offscraped cover as `accreted_m3`.
+- `backend/app/stats.py`: channel fluxes and export share in the stats row.
+- `bin/debug/ledger_history.py`: print the new channels when present.
+- Tests:
+  - `test_continental_ledger.py`: the sub-accounts sum to the parent, and an old ledger
+    loads.
+  - `test_quad_tectonics.py`: the three-way split on a synthetic trench; offscraping moves
+    exactly `OFFSCRAPE_FRACTION` and the ledgers close.
+  - `test_erosion.py`: with shelf room, marine sediment settles on continental hosts first,
+    and the total is conserved.
+- Docs: `docs/simulation-model.md` ("Erosion", "Quad-surface deformation"),
+  `docs/api-reference.md` if stats keys are listed there.
+
+## Acceptance criteria
+
+- [ ] Channel split in place, and a written measurement (in `analysis/`) of each channel
+      and of the export share on the tuning seeds, before any of 2–4 is merged.
+- [ ] With the chosen fixes, over the first 2 Gyr on seed 456862899 and the 1 Gyr runs of
+      seeds 7, 11 and 2024:
+  - [ ] total continental sinks are 3–7 km³/yr while the inventory is above 5 × 10⁹ km³
+        (Earth ≈ 4.9; 8–11 today);
+  - [ ] `sediment_subducted_m3` is at most 2.5 km³/yr (Earth 1.65);
+  - [ ] the continental inventory changes by less than 15% per Gyr (−47% in the first Gyr
+        today).
+- [ ] Juvenile additions are unchanged within 10%: this RFC is about sinks, not sources.
+- [ ] Both ledgers close; step time changes by less than 3%.
+- [ ] Unit tests above pass; affected tests, ruff and `bin/quality_check.sh` are green.
+- [ ] Saves from before the change load.
+
+## References
+
+- <a id="ref-clift2004"></a>Clift, P., & Vannucchi, P. (2004). Controls on tectonic
+  accretion versus erosion in subduction zones: Implications for the origin and recycling
+  of the continental crust. *Reviews of Geophysics*, 42, RG2001.
+  [doi:10.1029/2003RG000127](https://doi.org/10.1029/2003RG000127)
+- <a id="ref-clift2009"></a>Clift, P. D., Vannucchi, P., & Morgan, J. P. (2009). Crustal
+  redistribution, crust–mantle recycling and Phanerozoic evolution of the continental
+  crust. *Earth-Science Reviews*, 97, 80–104.
+  [doi:10.1016/j.earscirev.2009.10.003](https://doi.org/10.1016/j.earscirev.2009.10.003)
+- <a id="ref-hacker2011"></a>Hacker, B. R., Kelemen, P. B., & Behn, M. D. (2011).
+  Differentiation of the continental crust by relamination. *Earth and Planetary Science
+  Letters*, 307, 501–516.
+  [doi:10.1016/j.epsl.2011.05.024](https://doi.org/10.1016/j.epsl.2011.05.024)
+- <a id="ref-stern2010"></a>Stern, R. J., & Scholl, D. W. (2010). Yin and yang of
+  continental crust creation and destruction by plate tectonic processes. *International
+  Geology Review*, 52, 1–31.
+  [doi:10.1080/00206810903332322](https://doi.org/10.1080/00206810903332322)
+- <a id="ref-syvitski2005"></a>Syvitski, J. P. M., Vörösmarty, C. J., Kettner, A. J., &
+  Green, P. (2005). Impact of humans on the flux of terrestrial sediment to the global
+  coastal ocean. *Science*, 308, 376–380.
+  [doi:10.1126/science.1109454](https://doi.org/10.1126/science.1109454)
+- <a id="ref-vonhuene1991"></a>von Huene, R., & Scholl, D. W. (1991). Observations at
+  convergent margins concerning sediment subduction, subduction erosion, and the growth of
+  continental crust. *Reviews of Geophysics*, 29, 279–316.
+  [doi:10.1029/91RG00969](https://doi.org/10.1029/91RG00969)

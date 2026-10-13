@@ -86,6 +86,23 @@ Run from the repo root (or worktree root).
 - **Investigations:** diagnostic scripts go in `bin/debug/` (checked in, with a usage
   docstring). Findings go in `analysis/issue<N>/README.md`, with only compact JSON checked
   in. Saves and full replay outputs stay out of the repo.
+- **RFCs:** a model change that is large, uncertain or rests on the science starts as an RFC
+  in `rfc/NNNN-slug.md` ([rfc/README.md](rfc/README.md) has the index). Each RFC is
+  Markdown, with these sections in order:
+  1. A header: status, date, and related issues and RFCs.
+  2. **Problem**, in general terms with the evidence. Local files such as saves may be
+     cited, but say they are not available for download.
+  3. **Proposed solutions**, grounded in the geology, geodynamics, climatology, ecology or
+     biology literature. Cite as `[[Author et al., 2020]](#ref-author2020)`, linking to a
+     **References** entry that links to the paper (its DOI where it has one).
+  4. **Design**: physical units, runtime cost, save compatibility, and each knob with its
+     starting value, its source, and how it will be tuned.
+  5. **Detailed design**: the source files and functions to change, plus their tests and
+     docs.
+  6. **Acceptance criteria**: measurable checks.
+
+  Implement an accepted RFC through ordinary issues and PRs that cite it, and update its
+  status when it lands.
 - **Commits:** imperative subject that says what changed in model terms (e.g. "Transfer
   consumed lower-plate crust to the upper plate"), with the issue number when useful.
 - **PRs:** a `## Summary` that explains what changed and why, with replay numbers in a
