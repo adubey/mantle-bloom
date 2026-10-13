@@ -27,31 +27,16 @@ Replays `--myr` from the save in `--step-years` steps and records, at every chec
 
 from __future__ import annotations
 
-import argparse
-import hashlib
-import json
-import resource
-import subprocess
-import sys
 import time
-from pathlib import Path
 
 import numpy as np
+from replay_lib import load_replay, parse_replay_args, run_replay
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("save", type=Path)
-    ap.add_argument("--backend", type=Path, default=Path(__file__).resolve().parents[2] / "backend")
-    ap.add_argument("--myr", type=float, required=True)
-    ap.add_argument("--step-years", type=float, default=100_000.0)
-    ap.add_argument("--checkpoint-myr", type=float, default=1.0)
-    ap.add_argument("--out", type=Path, required=True)
-    args = ap.parse_args()
-
-    backend = args.backend.resolve()
-    sys.path.insert(0, str(backend))
-    from app import persistence, plates as plates_mod, world as world_mod  # noqa: E402
+    args = parse_replay_args(__doc__)
+    world, result = load_replay(args, issue=353)
+    from app import plates as plates_mod  # noqa: E402
     from app.elevation_lines import line_spacing_rad  # noqa: E402
     from app.hydroclimate import erosion, hydrology  # noqa: E402
 
@@ -59,20 +44,6 @@ def main() -> None:
         from app.hydroclimate import ice_sheet  # noqa: E402
     except ImportError:
         ice_sheet = None
-
-    commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=backend, check=True, capture_output=True, text=True).stdout.strip()
-    data = args.save.read_bytes()
-    world = persistence.load_world_bytes(data)
-    result = {
-        "issue": 353,
-        "backend": str(backend),
-        "commit": commit,
-        "save": str(args.save),
-        "save_sha256": hashlib.sha256(data).hexdigest(),
-        "step_years": args.step_years,
-        "checkpoints": [],
-    }
-    del data
 
     # Taps: the glacier depth erosion sees (the old law's input), the erosion result, and the
     # time spent in the ice solve.
@@ -137,18 +108,15 @@ def main() -> None:
             out["warm_based_pct_of_ice"] = 100.0 * float(areas[ice & hydro.ice.warm_based].sum()) / max(float(areas[ice].sum()), 1.0)
         return out
 
-    steps = int(round(args.myr * 1e6 / args.step_years))
-    per_checkpoint = max(1, int(round(args.checkpoint_myr * 1e6 / args.step_years)))
-    result["checkpoints"].append(snapshot())
-    print(json.dumps(result["checkpoints"][-1]), flush=True)
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    window = {"raw": 0.0, "applied": 0.0, "seconds": 0.0, "ice_seconds": 0.0, "ledger": {}, "worst_residual_m3": 0.0}
-    for i in range(1, steps + 1):
-        tap["ice_seconds"] = 0.0
-        started = time.perf_counter()
-        world_mod.step_world(world, args.step_years)
-        window["seconds"] += time.perf_counter() - started
+    def empty_window() -> dict:
+        return {"raw": 0.0, "applied": 0.0, "seconds": 0.0, "ice_seconds": 0.0, "ledger": {}, "worst_residual_m3": 0.0}
+
+    window = empty_window()
+
+    def after_step(seconds: float) -> None:
+        window["seconds"] += seconds
         window["ice_seconds"] += tap["ice_seconds"]
+        tap["ice_seconds"] = 0.0
         res, hydro = world.erosion_cache, world.hydrology_cache
         if res is not None and hydro is not None:
             raw, applied = glacial_erosion_km3(res, hydro, args.step_years)
@@ -159,28 +127,23 @@ def main() -> None:
                 for key, value in vars(ice.ledger).items():
                     window["ledger"][key] = window["ledger"].get(key, 0.0) + value / 1e9
                 window["worst_residual_m3"] = max(window["worst_residual_m3"], abs(ice.ledger.residual_m3))
-        if i % per_checkpoint == 0 or i == steps:
-            snap = snapshot()
-            snap.update(
-                {
-                    "glacial_erosion_raw_km3": window["raw"],
-                    "glacial_erosion_applied_km3": window["applied"],
-                    "lake_frozen_km3": window["ledger"].get("frozen_lake_m3", tap["lake_frozen_km3"]),
-                    "step_seconds_mean": window["seconds"] / per_checkpoint,
-                    "ice_step_share_pct": 100.0 * window["ice_seconds"] / max(window["seconds"], 1e-9),
-                    "ice_ledger_km3": {k: round(v, 3) for k, v in window["ledger"].items()} or None,
-                    "ice_worst_residual_m3": window["worst_residual_m3"],
-                    "peak_rss_mb": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1e6,
-                }
-            )
-            result["checkpoints"].append(snap)
-            print(json.dumps(snap), flush=True)
-            args.out.write_text(json.dumps(result, indent=1))
-            window = {"raw": 0.0, "applied": 0.0, "seconds": 0.0, "ice_seconds": 0.0, "ledger": {}, "worst_residual_m3": 0.0}
-            tap["lake_frozen_km3"] = 0.0
-    args.out.write_text(json.dumps(result, indent=1))
-    print(f"wrote {args.out}")
 
+    def close_window(steps: int) -> dict:
+        nonlocal window
+        closed = {
+            "glacial_erosion_raw_km3": window["raw"],
+            "glacial_erosion_applied_km3": window["applied"],
+            "lake_frozen_km3": window["ledger"].get("frozen_lake_m3", tap["lake_frozen_km3"]),
+            "step_seconds_mean": window["seconds"] / steps,
+            "ice_step_share_pct": 100.0 * window["ice_seconds"] / max(window["seconds"], 1e-9),
+            "ice_ledger_km3": {k: round(v, 3) for k, v in window["ledger"].items()} or None,
+            "ice_worst_residual_m3": window["worst_residual_m3"],
+        }
+        window = empty_window()
+        tap["lake_frozen_km3"] = 0.0
+        return closed
+
+    run_replay(world, args, result, snapshot, after_step, close_window)
 
 if __name__ == "__main__":
     main()

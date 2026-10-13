@@ -1079,7 +1079,7 @@ MFC_NOISE_SPECTRAL_BETA = 2.6
 # local land-surface source alongside ocean cells' own evap_ceiling -- see module docstring.
 # Reference depths pick the point at which a lake/river reads as "big enough to evaporate at
 # its own full rate" -- LAKE_EVAPORATION_REFERENCE_DEPTH_M against lake_depth's own realistic
-# range (lakes.py's LAKE_FILL_RATE-driven depths), RIVER_EVAPORATION_REFERENCE_DEPTH_M against
+# range (lakes.py's balanced-level depths), RIVER_EVAPORATION_REFERENCE_DEPTH_M against
 # channel_depth's much larger range (erosion.py's MAX_CHANNEL_DEPTH_M = 2000 -- a real river
 # doesn't need to be anywhere near that incised to have a substantial, fully-evaporating
 # surface). Ceilings are smaller than a full ocean cell's own MAX_EVAPORATION_CEILING -- a

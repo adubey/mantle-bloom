@@ -1,0 +1,621 @@
+{
+ "issue": 363,
+ "save": "mantle-bloom-seed997271774-87400000y.mbworld",
+ "save_sha256": "08ad9461d9585e92be93a58d81e326c7e4b685ae7d462135d01b0e9931ed762b",
+ "node_density": 4.0,
+ "step_years": 100000.0,
+ "runs": {
+  "main": {
+   "commit": "93ab3bbba8a1983e8fc2dc398cb06ce04b62d716",
+   "silt_coefficient": "0.0012 x water_deposited (model units)",
+   "checkpoints": [
+    {
+     "elapsed_myr": 87.4,
+     "land_pct": 29.198,
+     "lake_count": 35,
+     "lake_area_km2": 1633564.63,
+     "sea_tier_area_km2": 348835.689,
+     "lake_volume_km3": 320125.284
+    },
+    {
+     "elapsed_myr": 88.4,
+     "land_pct": 29.061,
+     "lake_count": 29,
+     "lake_area_km2": 1694086.214,
+     "sea_tier_area_km2": 744332.764,
+     "lake_volume_km3": 230624.342,
+     "silt_applied_km3": 9373.4,
+     "silt_budget_km3": {
+      "closed": 4490.0,
+      "spilling": 6872.1
+     },
+     "real_inflow_x_years_km3": {
+      "closed": 456942001,
+      "spilling": 2277490931
+     },
+     "step_seconds_mean": 5.21,
+     "peak_rss_mb": 1949
+    },
+    {
+     "elapsed_myr": 89.4,
+     "land_pct": 29.113,
+     "lake_count": 29,
+     "lake_area_km2": 1589553.973,
+     "sea_tier_area_km2": 814630.975,
+     "lake_volume_km3": 220801.382,
+     "silt_applied_km3": 8713.8,
+     "silt_budget_km3": {
+      "closed": 4732.5,
+      "spilling": 7269.4
+     },
+     "real_inflow_x_years_km3": {
+      "closed": 308766011,
+      "spilling": 2646459311
+     },
+     "step_seconds_mean": 5.0,
+     "peak_rss_mb": 1999
+    },
+    {
+     "elapsed_myr": 90.4,
+     "land_pct": 29.159,
+     "lake_count": 28,
+     "lake_area_km2": 1925496.95,
+     "sea_tier_area_km2": 972930.754,
+     "lake_volume_km3": 208395.97,
+     "silt_applied_km3": 7724.3,
+     "silt_budget_km3": {
+      "closed": 3566.6,
+      "spilling": 5925.5
+     },
+     "real_inflow_x_years_km3": {
+      "closed": 314634247,
+      "spilling": 2505666430
+     },
+     "step_seconds_mean": 5.62,
+     "peak_rss_mb": 1999
+    },
+    {
+     "elapsed_myr": 91.4,
+     "land_pct": 29.157,
+     "lake_count": 21,
+     "lake_area_km2": 2068746.982,
+     "sea_tier_area_km2": 1215194.052,
+     "lake_volume_km3": 198745.906,
+     "silt_applied_km3": 7797.0,
+     "silt_budget_km3": {
+      "closed": 3682.1,
+      "spilling": 6212.5
+     },
+     "real_inflow_x_years_km3": {
+      "closed": 348385436,
+      "spilling": 2524118504
+     },
+     "step_seconds_mean": 5.66,
+     "peak_rss_mb": 1999
+    },
+    {
+     "elapsed_myr": 92.4,
+     "land_pct": 29.131,
+     "lake_count": 27,
+     "lake_area_km2": 2094111.793,
+     "sea_tier_area_km2": 1111531.279,
+     "lake_volume_km3": 207566.241,
+     "silt_applied_km3": 5898.2,
+     "silt_budget_km3": {
+      "closed": 2834.2,
+      "spilling": 7451.4
+     },
+     "real_inflow_x_years_km3": {
+      "closed": 193839117,
+      "spilling": 2565791427
+     },
+     "step_seconds_mean": 5.71,
+     "peak_rss_mb": 1999
+    },
+    {
+     "elapsed_myr": 93.4,
+     "land_pct": 29.186,
+     "lake_count": 25,
+     "lake_area_km2": 1146977.018,
+     "sea_tier_area_km2": 342808.809,
+     "lake_volume_km3": 76388.232,
+     "silt_applied_km3": 22935.2,
+     "silt_budget_km3": {
+      "closed": 3971.0,
+      "spilling": 22433.8
+     },
+     "real_inflow_x_years_km3": {
+      "closed": 264994807,
+      "spilling": 2531593057
+     },
+     "step_seconds_mean": 5.39,
+     "peak_rss_mb": 1999
+    },
+    {
+     "elapsed_myr": 94.4,
+     "land_pct": 29.143,
+     "lake_count": 26,
+     "lake_area_km2": 1412470.322,
+     "sea_tier_area_km2": 699058.554,
+     "lake_volume_km3": 68802.433,
+     "silt_applied_km3": 6774.4,
+     "silt_budget_km3": {
+      "closed": 2580.2,
+      "spilling": 12616.7
+     },
+     "real_inflow_x_years_km3": {
+      "closed": 227726276,
+      "spilling": 2083923830
+     },
+     "step_seconds_mean": 5.56,
+     "peak_rss_mb": 1999
+    },
+    {
+     "elapsed_myr": 95.4,
+     "land_pct": 29.14,
+     "lake_count": 24,
+     "lake_area_km2": 1315706.023,
+     "sea_tier_area_km2": 447200.052,
+     "lake_volume_km3": 74386.676,
+     "silt_applied_km3": 6738.2,
+     "silt_budget_km3": {
+      "closed": 3232.7,
+      "spilling": 6015.6
+     },
+     "real_inflow_x_years_km3": {
+      "closed": 233039267,
+      "spilling": 1967660668
+     },
+     "step_seconds_mean": 5.43,
+     "peak_rss_mb": 1999
+    },
+    {
+     "elapsed_myr": 96.4,
+     "land_pct": 29.136,
+     "lake_count": 18,
+     "lake_area_km2": 1050968.517,
+     "sea_tier_area_km2": 350178.642,
+     "lake_volume_km3": 63947.39,
+     "silt_applied_km3": 12695.1,
+     "silt_budget_km3": {
+      "closed": 2844.6,
+      "spilling": 12110.2
+     },
+     "real_inflow_x_years_km3": {
+      "closed": 239877430,
+      "spilling": 2430037296
+     },
+     "step_seconds_mean": 5.51,
+     "peak_rss_mb": 1999
+    },
+    {
+     "elapsed_myr": 97.4,
+     "land_pct": 28.985,
+     "lake_count": 23,
+     "lake_area_km2": 1011835.422,
+     "sea_tier_area_km2": 355614.772,
+     "lake_volume_km3": 50138.12,
+     "silt_applied_km3": 5421.3,
+     "silt_budget_km3": {
+      "closed": 2812.3,
+      "spilling": 4541.5
+     },
+     "real_inflow_x_years_km3": {
+      "closed": 205514966,
+      "spilling": 2205622152
+     },
+     "step_seconds_mean": 5.52,
+     "peak_rss_mb": 1999
+    }
+   ]
+  },
+  "branch": {
+   "commit": "(this branch, coefficient 4.1e-6)",
+   "silt_coefficient": 4.1e-06,
+   "checkpoints": [
+    {
+     "elapsed_myr": 87.4,
+     "land_pct": 29.198,
+     "lake_count": 35,
+     "lake_area_km2": 1633564.63,
+     "sea_tier_area_km2": 348835.689,
+     "lake_volume_km3": 320125.284
+    },
+    {
+     "elapsed_myr": 88.4,
+     "land_pct": 29.061,
+     "lake_count": 32,
+     "lake_area_km2": 1677681.56,
+     "sea_tier_area_km2": 772709.335,
+     "lake_volume_km3": 230587.059,
+     "silt_applied_km3": 10324.8,
+     "silt_budget_km3": {
+      "closed": 1870.0,
+      "spilling": 9300.3
+     },
+     "real_inflow_x_years_km3": {
+      "closed": 456104837,
+      "spilling": 2268358434
+     },
+     "step_seconds_mean": 5.11,
+     "peak_rss_mb": 2179
+    },
+    {
+     "elapsed_myr": 89.4,
+     "land_pct": 29.106,
+     "lake_count": 35,
+     "lake_area_km2": 1822886.273,
+     "sea_tier_area_km2": 848490.072,
+     "lake_volume_km3": 221006.485,
+     "silt_applied_km3": 9811.4,
+     "silt_budget_km3": {
+      "closed": 1296.8,
+      "spilling": 9747.4
+     },
+     "real_inflow_x_years_km3": {
+      "closed": 316286961,
+      "spilling": 2377411872
+     },
+     "step_seconds_mean": 4.83,
+     "peak_rss_mb": 2371
+    },
+    {
+     "elapsed_myr": 90.4,
+     "land_pct": 29.158,
+     "lake_count": 24,
+     "lake_area_km2": 2005485.535,
+     "sea_tier_area_km2": 998555.708,
+     "lake_volume_km3": 208382.365,
+     "silt_applied_km3": 9476.2,
+     "silt_budget_km3": {
+      "closed": 1373.2,
+      "spilling": 9748.5
+     },
+     "real_inflow_x_years_km3": {
+      "closed": 334927630,
+      "spilling": 2377694681
+     },
+     "step_seconds_mean": 4.99,
+     "peak_rss_mb": 2410
+    },
+    {
+     "elapsed_myr": 91.4,
+     "land_pct": 29.108,
+     "lake_count": 24,
+     "lake_area_km2": 1925844.299,
+     "sea_tier_area_km2": 998099.579,
+     "lake_volume_km3": 195451.471,
+     "silt_applied_km3": 11121.8,
+     "silt_budget_km3": {
+      "closed": 1497.1,
+      "spilling": 11078.5
+     },
+     "real_inflow_x_years_km3": {
+      "closed": 365157100,
+      "spilling": 2702063919
+     },
+     "step_seconds_mean": 4.85,
+     "peak_rss_mb": 2410
+    },
+    {
+     "elapsed_myr": 92.4,
+     "land_pct": 29.108,
+     "lake_count": 25,
+     "lake_area_km2": 2126464.214,
+     "sea_tier_area_km2": 1325628.513,
+     "lake_volume_km3": 206063.085,
+     "silt_applied_km3": 9805.0,
+     "silt_budget_km3": {
+      "closed": 1144.6,
+      "spilling": 10431.1
+     },
+     "real_inflow_x_years_km3": {
+      "closed": 279174046,
+      "spilling": 2544167813
+     },
+     "step_seconds_mean": 5.2,
+     "peak_rss_mb": 2510
+    },
+    {
+     "elapsed_myr": 93.4,
+     "land_pct": 29.208,
+     "lake_count": 20,
+     "lake_area_km2": 1035879.76,
+     "sea_tier_area_km2": 364394.168,
+     "lake_volume_km3": 77386.319,
+     "silt_applied_km3": 9595.9,
+     "silt_budget_km3": {
+      "closed": 1089.5,
+      "spilling": 10115.8
+     },
+     "real_inflow_x_years_km3": {
+      "closed": 265736715,
+      "spilling": 2467265552
+     },
+     "step_seconds_mean": 4.98,
+     "peak_rss_mb": 2510
+    },
+    {
+     "elapsed_myr": 94.4,
+     "land_pct": 29.122,
+     "lake_count": 14,
+     "lake_area_km2": 1557221.538,
+     "sea_tier_area_km2": 816376.124,
+     "lake_volume_km3": 85346.658,
+     "silt_applied_km3": 8421.6,
+     "silt_budget_km3": {
+      "closed": 999.6,
+      "spilling": 8492.8
+     },
+     "real_inflow_x_years_km3": {
+      "closed": 243799448,
+      "spilling": 2071408667
+     },
+     "step_seconds_mean": 11.18,
+     "peak_rss_mb": 2510
+    },
+    {
+     "elapsed_myr": 95.4,
+     "land_pct": 29.184,
+     "lake_count": 19,
+     "lake_area_km2": 1447628.724,
+     "sea_tier_area_km2": 634677.963,
+     "lake_volume_km3": 70253.551,
+     "silt_applied_km3": 7731.3,
+     "silt_budget_km3": {
+      "closed": 1127.5,
+      "spilling": 8186.2
+     },
+     "real_inflow_x_years_km3": {
+      "closed": 275002491,
+      "spilling": 1996626663
+     },
+     "step_seconds_mean": 11.59,
+     "peak_rss_mb": 2510
+    },
+    {
+     "elapsed_myr": 96.4,
+     "land_pct": 29.126,
+     "lake_count": 16,
+     "lake_area_km2": 1156009.121,
+     "sea_tier_area_km2": 496223.23,
+     "lake_volume_km3": 56625.379,
+     "silt_applied_km3": 9420.3,
+     "silt_budget_km3": {
+      "closed": 951.0,
+      "spilling": 10427.7
+     },
+     "real_inflow_x_years_km3": {
+      "closed": 231955462,
+      "spilling": 2543339212
+     },
+     "step_seconds_mean": 10.91,
+     "peak_rss_mb": 2510
+    },
+    {
+     "elapsed_myr": 97.4,
+     "land_pct": 29.093,
+     "lake_count": 21,
+     "lake_area_km2": 863554.406,
+     "sea_tier_area_km2": 327734.182,
+     "lake_volume_km3": 44560.528,
+     "silt_applied_km3": 7699.5,
+     "silt_budget_km3": {
+      "closed": 771.1,
+      "spilling": 8881.5
+     },
+     "real_inflow_x_years_km3": {
+      "closed": 188061130,
+      "spilling": 2166227878
+     },
+     "step_seconds_mean": 5.8,
+     "peak_rss_mb": 2510
+    }
+   ]
+  },
+  "branch_4.8e-6": {
+   "commit": "(this branch, first calibration)",
+   "silt_coefficient": 4.8e-06,
+   "checkpoints": [
+    {
+     "elapsed_myr": 87.4,
+     "land_pct": 29.198,
+     "lake_count": 35,
+     "lake_area_km2": 1633564.63,
+     "sea_tier_area_km2": 348835.689,
+     "lake_volume_km3": 320125.284
+    },
+    {
+     "elapsed_myr": 88.4,
+     "land_pct": 29.061,
+     "lake_count": 33,
+     "lake_area_km2": 1700650.497,
+     "sea_tier_area_km2": 762388.244,
+     "lake_volume_km3": 230172.698,
+     "silt_applied_km3": 11614.1,
+     "silt_budget_km3": {
+      "closed": 2217.7,
+      "spilling": 10365.8
+     },
+     "real_inflow_x_years_km3": {
+      "closed": 462018579,
+      "spilling": 2159541810
+     },
+     "step_seconds_mean": 5.3,
+     "peak_rss_mb": 2134
+    },
+    {
+     "elapsed_myr": 89.4,
+     "land_pct": 29.107,
+     "lake_count": 31,
+     "lake_area_km2": 1743724.469,
+     "sea_tier_area_km2": 747237.591,
+     "lake_volume_km3": 221167.205,
+     "silt_applied_km3": 10553.0,
+     "silt_budget_km3": {
+      "closed": 1388.3,
+      "spilling": 10509.5
+     },
+     "real_inflow_x_years_km3": {
+      "closed": 289239426,
+      "spilling": 2189488368
+     },
+     "step_seconds_mean": 5.33,
+     "peak_rss_mb": 2134
+    },
+    {
+     "elapsed_myr": 90.4,
+     "land_pct": 29.164,
+     "lake_count": 33,
+     "lake_area_km2": 2034304.663,
+     "sea_tier_area_km2": 1014321.97,
+     "lake_volume_km3": 208560.428,
+     "silt_applied_km3": 11068.4,
+     "silt_budget_km3": {
+      "closed": 1510.4,
+      "spilling": 11257.4
+     },
+     "real_inflow_x_years_km3": {
+      "closed": 314676925,
+      "spilling": 2345291579
+     },
+     "step_seconds_mean": 5.4,
+     "peak_rss_mb": 2134
+    },
+    {
+     "elapsed_myr": 91.4,
+     "land_pct": 29.122,
+     "lake_count": 28,
+     "lake_area_km2": 2024153.372,
+     "sea_tier_area_km2": 1013094.92,
+     "lake_volume_km3": 199622.19,
+     "silt_applied_km3": 13246.6,
+     "silt_budget_km3": {
+      "closed": 2069.0,
+      "spilling": 12981.4
+     },
+     "real_inflow_x_years_km3": {
+      "closed": 431047015,
+      "spilling": 2704452164
+     },
+     "step_seconds_mean": 5.36,
+     "peak_rss_mb": 2134
+    },
+    {
+     "elapsed_myr": 92.4,
+     "land_pct": 29.105,
+     "lake_count": 26,
+     "lake_area_km2": 1797470.065,
+     "sea_tier_area_km2": 1060310.732,
+     "lake_volume_km3": 201933.713,
+     "silt_applied_km3": 11397.5,
+     "silt_budget_km3": {
+      "closed": 932.9,
+      "spilling": 11391.0
+     },
+     "real_inflow_x_years_km3": {
+      "closed": 194358283,
+      "spilling": 2373132742
+     },
+     "step_seconds_mean": 5.47,
+     "peak_rss_mb": 2301
+    },
+    {
+     "elapsed_myr": 93.4,
+     "land_pct": 29.201,
+     "lake_count": 28,
+     "lake_area_km2": 1126810.588,
+     "sea_tier_area_km2": 454828.89,
+     "lake_volume_km3": 65499.159,
+     "silt_applied_km3": 13843.2,
+     "silt_budget_km3": {
+      "closed": 890.4,
+      "spilling": 15037.8
+     },
+     "real_inflow_x_years_km3": {
+      "closed": 185493303,
+      "spilling": 3132876341
+     },
+     "step_seconds_mean": 5.33,
+     "peak_rss_mb": 2301
+    },
+    {
+     "elapsed_myr": 94.4,
+     "land_pct": 29.099,
+     "lake_count": 23,
+     "lake_area_km2": 1435482.781,
+     "sea_tier_area_km2": 708190.213,
+     "lake_volume_km3": 65936.729,
+     "silt_applied_km3": 9291.8,
+     "silt_budget_km3": {
+      "closed": 1453.3,
+      "spilling": 10112.5
+     },
+     "real_inflow_x_years_km3": {
+      "closed": 302770507,
+      "spilling": 2106768972
+     },
+     "step_seconds_mean": 5.47,
+     "peak_rss_mb": 2301
+    },
+    {
+     "elapsed_myr": 95.4,
+     "land_pct": 29.167,
+     "lake_count": 17,
+     "lake_area_km2": 822537.682,
+     "sea_tier_area_km2": 320582.675,
+     "lake_volume_km3": 74868.323,
+     "silt_applied_km3": 8007.2,
+     "silt_budget_km3": {
+      "closed": 1358.6,
+      "spilling": 8906.2
+     },
+     "real_inflow_x_years_km3": {
+      "closed": 283046979,
+      "spilling": 1855450534
+     },
+     "step_seconds_mean": 5.02,
+     "peak_rss_mb": 2458
+    },
+    {
+     "elapsed_myr": 96.4,
+     "land_pct": 29.131,
+     "lake_count": 22,
+     "lake_area_km2": 887044.292,
+     "sea_tier_area_km2": 339778.875,
+     "lake_volume_km3": 62042.22,
+     "silt_applied_km3": 11036.5,
+     "silt_budget_km3": {
+      "closed": 1183.2,
+      "spilling": 13282.3
+     },
+     "real_inflow_x_years_km3": {
+      "closed": 246495168,
+      "spilling": 2767142359
+     },
+     "step_seconds_mean": 5.34,
+     "peak_rss_mb": 2461
+    },
+    {
+     "elapsed_myr": 97.4,
+     "land_pct": 29.084,
+     "lake_count": 22,
+     "lake_area_km2": 1120954.114,
+     "sea_tier_area_km2": 353760.507,
+     "lake_volume_km3": 50183.942,
+     "silt_applied_km3": 9009.7,
+     "silt_budget_km3": {
+      "closed": 986.2,
+      "spilling": 10943.7
+     },
+     "real_inflow_x_years_km3": {
+      "closed": 205467662,
+      "spilling": 2279932846
+     },
+     "step_seconds_mean": 5.05,
+     "peak_rss_mb": 2461
+    }
+   ]
+  }
+ }
+}
