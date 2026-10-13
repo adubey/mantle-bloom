@@ -107,6 +107,11 @@ def _unb64(text: str) -> bytes:
     return base64.urlsafe_b64decode(text + "=" * (-len(text) % 4))
 
 
+def _same(a: str, b: str) -> bool:
+    # compare_digest raises on non-ASCII str; a crafted cookie or query value must just fail.
+    return hmac.compare_digest(a.encode(), b.encode())
+
+
 def _mac(secret: bytes, purpose: str, body: str) -> str:
     # `purpose` keeps a token minted for one cookie from validating as the other.
     return _b64(hmac.new(secret, f"{purpose}.{body}".encode(), hashlib.sha256).digest())
@@ -123,7 +128,7 @@ def read_token(token: str | None, secret: bytes, purpose: str) -> dict | None:
     if not token or not secret or token.count(".") != 1:
         return None
     body, mac = token.split(".")
-    if not hmac.compare_digest(mac, _mac(secret, purpose, body)):
+    if not _same(mac, _mac(secret, purpose, body)):
         return None
     try:
         payload = json.loads(_unb64(body))
@@ -342,7 +347,7 @@ def github_callback(
     if error:
         return _login_failure("denied")
     expected = read_token(request.cookies.get(STATE_COOKIE), config.session_secret, "oauth-state")
-    if not code or not state or expected is None or not hmac.compare_digest(state, str(expected.get("state"))):
+    if not code or not state or expected is None or not _same(state, str(expected.get("state"))):
         return _login_failure("state")
     try:
         user = fetch_github_user(config, code, str(expected.get("verifier")), _callback_url(request, config))

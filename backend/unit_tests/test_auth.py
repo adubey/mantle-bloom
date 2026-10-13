@@ -78,6 +78,7 @@ def test_token_round_trips_only_with_same_secret_and_purpose():
     body, mac = token.split(".")
     assert auth.read_token(f"{body}x.{mac}", b"k" * 32, "session") is None
     assert auth.read_token("garbage", b"k" * 32, "session") is None
+    assert auth.read_token(f"{body}.\u00e9", b"k" * 32, "session") is None
 
 
 def test_expired_token_is_rejected(monkeypatch):
@@ -185,6 +186,7 @@ def test_other_github_account_gets_no_session(monkeypatch, remote):
     ({"error": "access_denied", "state": "x"}, "denied"),
     ({"code": "abc", "state": "wrong"}, "state"),
     ({"code": "abc"}, "state"),
+    ({"code": "abc", "state": "\u00e9"}, "state"),
 ])
 def test_callback_failures_redirect_to_login(monkeypatch, remote, params, error):
     _fake_github(monkeypatch, {"id": OWNER_ID})
