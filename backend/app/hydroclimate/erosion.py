@@ -28,10 +28,10 @@ coarser, resolution-dependent scale would make rain erosion negligible here.
 WEATHERING_COEFFICIENT needs no such rescaling, since it depends only on wind speed, whose
 scale (MERIDIONAL_BASE_SPEED = 6.0) is fixed by this module's own climate pipeline rather
 than by any grid convention. River erosion needs the same reasoning as rain erosion, one
-level further removed: it depends on `water_accum` (see hydrology.py), which is itself
-downstream-accumulated *precipitation* (not a raw grid-cell count, which would implicitly
-scale with resolution) -- RIVER_EROSION_COEFFICIENT is derived the same order-of-magnitude
-way RAIN_EROSION_COEFFICIENT is.
+level further removed: it depends on physical catchment discharge (see hydrology.py), mapped
+to a fixed reference-cell scale so a denser mesh does not increase the forcing. Issue #355
+step 5 recalibrated RIVER_EROSION_COEFFICIENT after the source changed from raw precipitation
+to Budyko runoff.
 
 **Erosion sources implemented here, and what's still out of scope.** Submarine erosion (deep
 bottom currents plus pressure-driven mass wasting slumping a freshly-uplifted submerged range
@@ -147,10 +147,11 @@ WEATHERING_RELIEF_REFERENCE_SLOPE = 0.002
 
 # Stream-power river erosion: coefficient*channel_boost*flow^FLOW_EXPONENT*slope^SLOPE_EXPONENT.
 # `flow` is discharge converted to the default-density mm/yr-equivalent reference scale in
-# hydrology.py; this preserves the existing coefficient calibration at the default density
-# while removing the actual mesh density from the forcing. Breach forcing is added on that
-# same legacy-equivalent scale for erosion only.
-RIVER_EROSION_COEFFICIENT = 100.0
+# hydrology.py, removing actual mesh density from the forcing. Physical Budyko runoff is
+# lower than legacy raw-rainfall routing: the #355 step-5 density-4 replays needed 1.9x the
+# old coefficient to keep raw river erosion near the old default-density budget. Breach
+# forcing is added on that same legacy-equivalent scale for erosion only.
+RIVER_EROSION_COEFFICIENT = 190.0
 RIVER_FLOW_EXPONENT = 0.5
 RIVER_SLOPE_EXPONENT = 1.0
 # A river preferentially re-carves its own established channel (real rivers meander within,
@@ -170,9 +171,32 @@ MAX_CHANNEL_DEPTH_M = 2000.0
 # gradient). Grows the same way channel_depth does -- persistent, monotonically
 # non-decreasing, capped -- rather than a stateless function of this step's flow alone, so a
 # river that temporarily dries up doesn't instantly narrow either.
-WIDTH_GROWTH_COEFFICIENT = 50.0
+# #355 step-5 density-4 replay: the physical route narrowed the p90 young channels by about
+# one third. A 1.5x growth rate restores that distribution without changing the width cap.
+WIDTH_GROWTH_COEFFICIENT = 75.0
 WIDTH_FLOW_EXPONENT = 0.5
 MAX_CHANNEL_WIDTH_M = 5000.0
+
+
+def _river_erosion_amount(
+    discharge_m3_s: np.ndarray, breach_surge_accum: np.ndarray, slope: np.ndarray,
+    prior_channel_depth: np.ndarray, multiplier: float, dt_myr: float,
+) -> np.ndarray:
+    """Stream-power detachment from fixed-reference discharge plus erosion-only breach force."""
+    water_accum_m = hydrology.discharge_m3_s_to_flow_accum_mm_yr(discharge_m3_s) / 1000.0
+    erosion_flow_m = water_accum_m + breach_surge_accum / 1000.0
+    channel_boost = 1.0 + CHANNEL_EROSION_BOOST * np.clip(prior_channel_depth / CHANNEL_BOOST_REFERENCE_M, 0.0, 1.0)
+    return (
+        RIVER_EROSION_COEFFICIENT * multiplier * channel_boost
+        * np.power(np.clip(erosion_flow_m, 0.0, None), RIVER_FLOW_EXPONENT)
+        * np.power(slope, RIVER_SLOPE_EXPONENT) * dt_myr
+    )
+
+
+def _channel_width_growth(discharge_m3_s: np.ndarray, dt_myr: float) -> np.ndarray:
+    """Persistent channel widening driven by physical discharge on the fixed reference scale."""
+    water_accum_m = hydrology.discharge_m3_s_to_flow_accum_mm_yr(discharge_m3_s) / 1000.0
+    return WIDTH_GROWTH_COEFFICIENT * np.power(np.clip(water_accum_m, 0.0, None), WIDTH_FLOW_EXPONENT) * dt_myr
 
 # A big, slow river drops part of its sediment load locally (floodplain/delta) instead of
 # carrying all of it to the coast. river_speed here is a stylized, unitless quantity (see
@@ -1934,21 +1958,15 @@ def apply_erosion(
     breach_surge_accum = hydro.breach_surge_accum
     if breach_surge_accum is None or len(breach_surge_accum) != n:
         breach_surge_accum = np.zeros(n)
-    erosion_flow_m = water_accum_m + breach_surge_accum / 1000.0
 
     # `world.*_erosion_multiplier` (and the deposition/leveling knobs further down) are the
     # user's live geomorphic-budget tuning knobs -- 1.0 everywhere == untuned behaviour (see
     # World's field group). Applied right where each term is formed so every downstream cap/
     # split/isostasy step just sees a scaled amount and stays self-consistent.
     rain = RAIN_EROSION_COEFFICIENT * world.rain_erosion_multiplier * slope * (precipitation_mm / 1000.0) * dt_myr
-    channel_boost = 1.0 + CHANNEL_EROSION_BOOST * np.clip(prior_channel_depth / CHANNEL_BOOST_REFERENCE_M, 0.0, 1.0)
-    river = (
-        RIVER_EROSION_COEFFICIENT
-        * world.river_erosion_multiplier
-        * channel_boost
-        * np.power(np.clip(erosion_flow_m, 0.0, None), RIVER_FLOW_EXPONENT)
-        * np.power(slope, RIVER_SLOPE_EXPONENT)
-        * dt_myr
+    river = _river_erosion_amount(
+        discharge_m3_s, breach_surge_accum, slope, prior_channel_depth,
+        world.river_erosion_multiplier, dt_myr,
     )
     humidity_norm = np.clip(humidity / HUMIDITY_REFERENCE, 0.0, 1.0)
     relief_factor = np.clip(slope / WEATHERING_RELIEF_REFERENCE_SLOPE, 0.0, 1.0)
@@ -2453,7 +2471,7 @@ def apply_erosion(
     new_channel_depth = np.where(is_ocean_node, 0.0, np.clip(prior_channel_depth + carved_m - channel_fill_m, 0.0, MAX_CHANNEL_DEPTH_M))
     # Width grows with discharge alone (no slope/channel_boost term -- see module constants'
     # own comment for why), same persistent/monotonic/capped shape as depth.
-    width_growth = WIDTH_GROWTH_COEFFICIENT * np.power(np.clip(water_accum_m, 0.0, None), WIDTH_FLOW_EXPONENT) * dt_myr
+    width_growth = _channel_width_growth(discharge_m3_s, dt_myr)
     new_channel_width = np.where(is_ocean_node, 0.0, np.clip(prior_channel_width + width_growth, 0.0, MAX_CHANNEL_WIDTH_M))
 
     # The tracer moves with its rock and can never exceed the column holding it; whatever the

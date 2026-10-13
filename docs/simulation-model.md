@@ -2633,13 +2633,12 @@ by order-of-magnitude reasoning against the then-current direct convergent uplif
 rather than reused from a value tuned against a different scale.
 `WEATHERING_COEFFICIENT` needed no such rescaling, since wind speed already uses a directly
 comparable scale (`MERIDIONAL_BASE_SPEED = 6.0`) unaffected by the slope re-derivation. River
-erosion needs the same re-derivation, one level further removed: it depends on `water_accum`
-(see [Hydrology](#hydrology)), itself downstream-accumulated *precipitation* rather than a raw
-grid-cell count (a cell-count accumulation would implicitly scale with grid resolution),
-so `RIVER_EROSION_COEFFICIENT` was re-derived the same order-of-magnitude way, then checked
-against real channel-depth growth over an actual run (see below). Glacier erosion is
-calibrated separately, against the glacial erosion the old depth * slope law produced (see
-the formula below).
+erosion depends on physical catchment discharge (see [Hydrology](#hydrology)), converted to a
+fixed reference-cell scale before the stream-power law. `RIVER_EROSION_COEFFICIENT` was
+originally derived by order of magnitude and checked against channel-depth growth; issue
+#355 step 5 recalibrated it after replacing accumulated precipitation with Budyko runoff.
+Glacier erosion is calibrated separately, against the glacial erosion the old depth * slope
+law produced (see the formula below).
 
 **The formulas**, all computed per-node:
 
@@ -3353,10 +3352,14 @@ for lake silt:
 | Lake silt | `water_deposited` | #363 |
 
 The fixed reference cell area maps physical discharge back onto the old accumulated-mm/yr
-scale at the default node density. This preserves the existing river-erosion, width, speed and
-deposition calibration at that reference density while making a fixed catchment independent of
-mesh density. The breach surge uses the same reference scale for erosion but never contributes
-to reported discharge, channel-width growth, deposition or geology.
+scale at the default node density, making a fixed catchment independent of mesh density.
+Because Budyko runoff is smaller than the old raw-precipitation source, the old numeric
+erosion and width-growth coefficients did not preserve the default-density outcomes. Step 5
+calibrated `RIVER_EROSION_COEFFICIENT` from 100 to 190 and `WIDTH_GROWTH_COEFFICIENT` from
+50 to 75 against young and mature density-4 replays; the measured changes and the decision
+to leave glacier coefficients alone are in [issue #355's analysis](../analysis/issue355/README.md).
+The breach surge uses the same reference scale for erosion but never contributes to reported
+discharge, channel-width growth, deposition or geology.
 
 **The core algorithms**, all operating on the k-NN graph:
 
