@@ -31,6 +31,10 @@ The world started with 7.9 × 10⁹ km³ of continental material, almost exactly
 8.0 × 10⁹ km³ [[Clift & Vannucchi, 2004]](#ref-clift2004), so its fluxes compare directly
 with Earth's.
 
+The run is a stress test of the model's long-term behaviour, not a calibration interval.
+The first Gyr's fluxes are compared with Earth's below only because that is when the
+model's continents are Earth-sized. Later windows describe a degenerate world.
+
 **Earth's budget.** For the Cenozoic, [[Clift et al., 2009]](#ref-clift2009) estimate these
 sinks:
 
@@ -47,9 +51,18 @@ Arcs (about 2.0–3.8 km³/yr) and accreted oceanic plateaus (about 1.1) replace
 crust has been in rough equilibrium through the Phanerozoic
 [[Clift et al., 2009]](#ref-clift2009) [[Stern & Scholl, 2010]](#ref-stern2010).
 
-The model's new crust, 2.6–4.3 km³/yr after the first 100 Myr, is in Earth's range. Its
-sinks, 8–11 km³/yr, are about twice Earth's, and nearly all of the excess is
-`deeply_subducted_m3`.
+**These are sanity checks, not targets.** Clift et al.'s figures are global estimates for
+specific processes, mostly over the Cenozoic, with large uncertainties. Three kinds of
+number must also be kept apart:
+- **gross production**: what a process makes (arc magma, eroded sediment);
+- **net preservation**: what survives as continental crust;
+- **model-ledger fluxes**: what an account books in a step.
+
+The comparison here is ledger sinks against Earth's recycling estimates: both are
+material leaving the continental inventory, so they are comparable, with that caveat. The
+model's new crust, 2.6–4.3 km³/yr after the first 100 Myr, is within Earth's range for arc
+production. Its sinks, 8–11 km³/yr, are about twice Earth's recycling estimate, and nearly
+all of the excess is `deeply_subducted_m3`.
 
 That account mixes several channels:
 - continental material, mostly sediment, on oceanic plates consumed at trenches
@@ -69,9 +82,10 @@ which supports that. But the ledger can't confirm it until the channels are spli
 - Rivers delivered about 14 Gt/yr of sediment to the coast before human influence
   [[Syvitski et al., 2005]](#ref-syvitski2005). At 2.65 t/m³ that is about 5.3 km³/yr of
   rock.
-- About 1.65 km³/yr of sediment is subducted [[Clift et al., 2009]](#ref-clift2009), so
-  roughly two-thirds of what reaches the coast stays on continental margins (shelves,
-  slopes, rises) instead of reaching a trench.
+- About 1.65 km³/yr of sediment is subducted [[Clift et al., 2009]](#ref-clift2009). The
+  two figures have different scopes (modern rivers versus a Cenozoic global budget), so
+  their ratio is not a measured share of sediment kept on margins, and this RFC doesn't
+  use it as one.
 - At the trench, accretion is inefficient. A median of only 17% (range 7–37%) of the
   sediment arriving is scraped off into the accretionary prism; the rest is subducted
   [[Clift & Vannucchi, 2004]](#ref-clift2004). Erosive and accretionary margins are told
@@ -87,15 +101,19 @@ which supports that. But the ledger can't confirm it until the channels are spli
      #177 channel;
    - `craton_attrited_m3`: from `cratons.attrite`.
 
-   Add a flux diagnostic for continental material crossing from continental hosts onto
-   oceanic hosts by erosion and marine spreading (km³/yr). This tells us whether the excess
-   is *export* (too much sediment reaching the deep ocean) or *consumption* (too much of
-   it subducted).
-2. **Keep sediment on the margins.** If export to oceanic hosts is above ~35–40% of the
-   continental denudation flux (Earth's ~1.65 subducted out of ~5.3 delivered, plus the
-   accreted share), change the marine sediment spread so most continental sediment settles
-   on continental-host cells (shelf, slope and rise) and only the overflow reaches oceanic
-   hosts.
+   Add the flux diagnostics defined in Design (G, E, D, T, S, A, P). These tell us whether
+   the excess is *erosion* (too much crust eroded), *export* (too much sediment reaching
+   the deep ocean) or *consumption* (too much of what reaches the trench subducted). No
+   fix is chosen until this measurement is in.
+2. **Correct the dominant flux.** Which fix depends on the measurement:
+   - Erosion high (G well above Earth's sediment delivery to the coast): erosion
+     calibration, which is out of scope here, so a separate RFC.
+   - Export high (most of E ends on oceanic hosts): a sediment-routing change. One
+     candidate is an accommodation-limited priority for continental-host cells (Design).
+     It needs independent justification before it's chosen, from the passive-margin
+     sedimentation literature and from the model's own shelf geometry; the Earth budget
+     above doesn't establish where sediment should settle.
+   - Consumption high (S/T near 1 at margins the classification calls accretionary): 3.
 3. **Accretionary prisms.** At contacts RFC 0002 classes as accretionary, transfer
    `OFFSCRAPE_FRACTION` of the arriving sediment onto the overriding plate's nearest cells
    as continental material instead of subducting it.
@@ -104,9 +122,10 @@ which supports that. But the ledger can't confirm it until the channels are spli
    [[Hacker et al., 2011]](#ref-hacker2011). It has a large effect and is hard to
    constrain, so it is kept as a last resort.
 
-**Recommendation:** 1, then decide. If export dominates, do 2. Do 3 alongside RFC 0002,
-which needs the same contact classification; it only moves 17% of trench sediment, but it
-is cheap and grounded. Do 4 only if the budget still fails once 2 and 3 are in.
+**Recommendation:** 1 as a diagnosis gate, then the branch of 2 that the measurement
+points to. Do 3 alongside RFC 0002, which needs the same contact classification; it only
+moves a median 17% of trench sediment, but it is cheap and grounded. Do 4 only if the
+budget still fails once the rest is in.
 
 ## Design
 
@@ -120,11 +139,27 @@ call today. Book three ways instead:
 - attrition as RFC 0002 books it.
 
 `deeply_subducted_m3` stays as their sum for old saves and dashboards: the new keys are
-sub-accounts, and the balance uses the parent only. In `erosion.py`, the marine spread
-measures the continental material it moves from continental to oceanic host cells per
-step, kept in a world-level diagnostic (not pickled).
+sub-accounts, and the balance uses the parent only.
 
-**Shelf retention (2).** Sediment reaches the sea floor by several paths in `erosion.py`:
+**Flux definitions (1).** All in km³/yr of continental material (the
+`continental_material_m` tracer), so each is like-for-like with the others:
+
+| Symbol | Flux | Where measured | Earth sanity value (scope) |
+|---|---|---|---|
+| G | Gross denudation: continental material eroded from continental hosts | `erosion.py`, removal step | ~5.3 km³/yr of sediment reaching the coast, pre-human [[Syvitski et al., 2005]](#ref-syvitski2005) (modern rivers; excludes dissolved load and glacial input) |
+| E | Erosion product deposited in the sea, on any host | `erosion.py` marine settling paths | — |
+| D | The part of E deposited on oceanic hosts | the same paths, split by host type | — |
+| T | Trench delivery: continental material on oceanic cells consumed at trenches | `quad_tectonics._retreat` | — |
+| S | Sediment subducted: T minus offscraped | `sediment_subducted_m3` | 1.65 km³/yr [[Clift et al., 2009]](#ref-clift2009) (Cenozoic, global) |
+| A | Offscraped and accreted | RFC 0005 (3) | median 17% of T [[Clift & Vannucchi, 2004]](#ref-clift2004) (modern margins) |
+| P | Net preservation: change in the live inventory | `continental_ledger.inventories` | ~0 over the Phanerozoic [[Clift et al., 2009]](#ref-clift2009) |
+
+E, D and the stored marine inventory are recorded per step in a world-level diagnostic
+(not pickled). D/E and T/D are the model's own ratios: there is no established Earth value
+for them, and none is assumed.
+
+**Accommodation-limited routing (a candidate for 2, if export dominates).** Sediment
+reaches the sea floor by several paths in `erosion.py`:
 - `_spread_marine_sediment`, for submarine and sea-cliff erosion: inverse-distance over
   the nearest lower ocean nodes within `MARINE_SPREAD_RANGE_RAD`;
 - `_spread_beach_sediment`;
@@ -136,6 +171,12 @@ That path's receiver weights give continental-host cells first claim, up to an
 accommodation limit: the room between the cell's depth and `SHELF_ACCOMMODATION_DEPTH_M`,
 a physical depth for the shelf, slope and upper rise. Only the remainder goes to oceanic
 hosts. Each path conserves mass through `np.add.at`, and that is kept.
+
+Before this candidate is chosen, the RFC must be revised with:
+- an independent justification for the depth limit and the host priority;
+- a comparison against a physically simpler alternative, transport-limited spreading by
+  slope, so sediment runs out until the gradient is too low to carry it, regardless of
+  host.
 
 **Offscraping (3).** For trench cells on an oceanic plate in the accretionary class:
 - `OFFSCRAPE_FRACTION` × the cell's continental material (and its mobile cover) moves to
@@ -161,16 +202,16 @@ pickled. Old saves keep their history in `deeply_subducted_m3`.
 
 | Knob | Start | Source | Tuning |
 |---|---|---|---|
-| `SHELF_ACCOMMODATION_DEPTH_M` | 2,000 m | The foot of the continental slope and upper rise | Sweep 1,000–4,000 m; pick the value that brings export to oceanic hosts to 35–40% of the denudation flux |
+| `SHELF_ACCOMMODATION_DEPTH_M` (candidate only) | 2,000 m | Calibration assumption: the foot of the continental slope and upper rise; needs independent justification before use | Sweep 1,000–4,000 m against the acceptance targets on S and P, not against a fixed export share |
 | `OFFSCRAPE_FRACTION` | 0.17 | Global median [[Clift & Vannucchi, 2004]](#ref-clift2004) | Fixed; 0.07 and 0.37 are the sensitivity bounds from the same source |
 | `ocean_deposition_multiplier` (existing live knob) | 1.0 | — | Unchanged; not a substitute for 2, since below 1.0 it books the sediment it declines to a sink |
 
 Tune on seeds 7, 11 and 2024 to 1 Gyr, plus a regenerated seed 456862899 to 3 Gyr; run the
-replays one at a time. Report each channel in km³/yr, the export share, juvenile and total
-sinks, and genuine continental area and land fraction. The `replay-ab` skill does the
+replays one at a time. Report G, E, D, T, S, A and P, juvenile additions and total sinks, and genuine continental
+area and land fraction. The `replay-ab` skill does the
 before/after against a detached `origin/main` worktree.
 
-## Detailed design
+## Detailed design (provisional touchpoints)
 
 - `backend/app/continental_ledger.py`: add `sediment_subducted_m3`, `margin_subducted_m3`
   and `craton_attrited_m3` as documented sub-accounts of `deeply_subducted_m3`, outside
@@ -179,40 +220,66 @@ before/after against a detached `origin/main` worktree.
   transfer before `plate.remove_cells`.
 - `backend/app/cratons.py`, `attrite`: book `craton_attrited_m3` alongside
   `deeply_subducted_m3`.
-- `backend/app/hydroclimate/erosion.py`: the flux diagnostic across all marine settling
-  paths, then continental-host priority up to `SHELF_ACCOMMODATION_DEPTH_M` in whichever of
-  `_spread_marine_sediment`, `_spread_beach_sediment` and river-mouth settling dominates.
-  Those functions take a host-type mask.
+- `backend/app/hydroclimate/erosion.py`: the G, E and D diagnostics across the removal
+  step and all marine settling paths. Only if the export branch of 2 is chosen:
+  host-aware routing in whichever of `_spread_marine_sediment`, `_spread_beach_sediment`
+  and river-mouth settling dominates.
 - `backend/app/crust_transfer.py`: expose the upper-plate placement as a function callable
   for offscraped trench sediment.
 - `backend/app/hydroclimate/mobile_cover.py`: book offscraped cover as `accreted_m3`.
-- `backend/app/stats.py`: channel fluxes and export share in the stats row.
+- `backend/app/stats.py`: G, E, D, T, S, A and P in the stats row.
 - `bin/debug/ledger_history.py`: print the new channels when present.
 - Tests:
   - `test_continental_ledger.py`: the sub-accounts sum to the parent, and an old ledger
     loads.
   - `test_quad_tectonics.py`: the three-way split on a synthetic trench; offscraping moves
     exactly `OFFSCRAPE_FRACTION` and the ledgers close.
-  - `test_erosion.py`: with shelf room, marine sediment settles on continental hosts first,
-    and the total is conserved.
+  - `test_erosion.py`: the E/D split sums to E and matches the host masks. If routing
+    changes, the total is conserved.
 - Docs: `docs/simulation-model.md` ("Erosion", "Quad-surface deformation"),
   `docs/api-reference.md` if stats keys are listed there.
 
+## Assumptions and uncertainty
+
+- **Sediment is only the prime suspect.** The channel split may show margin consumption
+  or attrition dominating instead.
+- **Earth values are scoped.** Every Earth figure here is a global, process-specific,
+  mostly Cenozoic estimate with large uncertainty. None says where sediment should settle
+  in this model. They bound magnitudes; they are not fitting targets.
+- **The tracer may mislead.** `continental_material_m` on oceanic hosts mixes sediment
+  with continental fragments. The channel split separates them only by host type.
+- **Offscraping efficiency doesn't travel well.** The 17% median comes from modern margins
+  with modern sediment lithologies. It may not hold for the model's sediment, which has
+  no lithology.
+
 ## Acceptance criteria
 
-- [ ] Channel split in place, and a written measurement (in `analysis/`) of each channel
-      and of the export share on the tuning seeds, before any of 2–4 is merged.
+- [ ] **Gate:** channel split and flux diagnostics are in place, and a written measurement
+      (in `analysis/`) of G, E, D, T, S, A and P on the tuning seeds names the dominant
+      excess, before any fix under 2–4 is chosen.
 - [ ] With the chosen fixes, over the first 2 Gyr on seed 456862899 and the 1 Gyr runs of
-      seeds 7, 11 and 2024:
+      seeds 7, 11 and 2024 (sanity ranges from scoped Earth estimates, not fits):
   - [ ] total continental sinks are 3–7 km³/yr while the inventory is above 5 × 10⁹ km³
-        (Earth ≈ 4.9; 8–11 today);
-  - [ ] `sediment_subducted_m3` is at most 2.5 km³/yr (Earth 1.65);
-  - [ ] the continental inventory changes by less than 15% per Gyr (−47% in the first Gyr
-        today).
+        (Earth's recycling estimate ≈ 4.9; 8–11 today);
+  - [ ] S, `sediment_subducted_m3`, is at most 2.5 km³/yr (Earth 1.65);
+  - [ ] P, the continental inventory, changes by less than 15% per Gyr (−47% in the first
+        Gyr today).
 - [ ] Juvenile additions are unchanged within 10%: this RFC is about sinks, not sources.
 - [ ] Both ledgers close; step time changes by less than 3%.
 - [ ] Unit tests above pass; affected tests, ruff and `bin/quality_check.sh` are green.
 - [ ] Saves from before the change load.
+
+## Falsification criteria
+
+- **Sediment isn't the sink.** If S is under a third of `deeply_subducted_m3` on the tuning
+  seeds, the prime suspect is wrong. Re-scope to the dominant channel: margin
+  consumption (the #177 cap) or attrition (RFC 0002).
+- **The budget isn't the cause of the decline.** If S and the other sinks are brought
+  within the sanity ranges and P still falls by more than 15% per Gyr, the loss is not at
+  trenches. Look for the unledgered change (`balance_error_m3`) or a source that's too
+  small (RFCs 0006 and 0007).
+- **Offscraping can't matter.** If A is under 0.1 km³/yr on every seed at the 0.37
+  sensitivity bound, solution 3 isn't worth its cross-plate write. Drop it.
 
 ## References
 

@@ -48,6 +48,11 @@ The ledger also lumps three paths into `subducted_m3`:
 
 Until they are split, we can't say for certain how much is attrition.
 
+The run is a stress test of the model's long-term behaviour, not a calibration interval. It
+shows that attrition, applied without regard to margin type, removes cratons on a Gyr
+timescale. It does not give a rate to fit, and its late windows, when only small craton
+fragments were left, say more about fragment geometry than about attrition.
+
 ## Proposed solutions
 
 **What controls subduction erosion.** Margins are either *accretionary*, growing an
@@ -55,10 +60,14 @@ accretionary prism from offscraped trench sediment, or *erosive*, losing forearc
 down the trench. [[von Huene & Scholl, 1991]](#ref-vonhuene1991) and
 [[Clift & Vannucchi, 2004]](#ref-clift2004) found the split is set mainly by trench
 sediment and convergence rate. Clift & Vannucchi find tectonic erosion favoured where
-convergence exceeds 6 cm/yr *and* the trench's sedimentary cover is under 1 km. Accretion
-favours slow convergence (below 7.6 cm/yr) and/or trench sediment over 1 km. Erosion happens at the forearc, in the upper plate's crust
-above the slab, and erosive episodes alternate with accretion, collisions and ridge
-subduction. Cratons survive because they sit behind younger, weaker mobile belts that take
+convergence exceeds 6 cm/yr *and* the trench's sedimentary cover is under 1 km, and
+accretion favoured by slow convergence (below 7.6 cm/yr) and/or trench sediment over 1 km.
+These are **statistical tendencies across margins, not a rule for any one point**:
+- They classify a margin by its *net* behaviour over 10 Myr or more.
+- Accretionary margins have short erosive episodes (Nankai, after seamount collisions),
+  and erosive margins have short accretionary ones [[Clift & Vannucchi, 2004]](#ref-clift2004).
+
+Erosion happens at the forearc, in the upper plate's crust above the slab. Cratons survive because they sit behind younger, weaker mobile belts that take
 the deformation [[Lenardic et al., 2003]](#ref-lenardic2003). Where cratonic lithosphere is
 destroyed, the root is removed by refertilisation, heating and delamination
 [[Foley, 2008]](#ref-foley2008) [[Lee et al., 2011]](#ref-lee2011)
@@ -69,11 +78,16 @@ destroyed, the root is removed by refertilisation, heating and delamination
    `subducted_m3` keeps only what `_retreat` takes down a trench, and an assertion or
    diagnostic flags it as non-zero. Record attrition separately for continental and
    oceanic host plates, since only the continental case is capped by the #177 arc budget.
-2. **Attrition only at erosive margins.** Classify each trench contact as accretionary or
-   erosive from the subducting plate's trench sediment and the convergence rate, using the
-   thresholds of [[Clift & Vannucchi, 2004]](#ref-clift2004). An accretionary contact wears
-   no craton. With RFC 0005, it also keeps the offscraped sediment on the upper plate. An
-   erosive contact keeps today's 40 km²/Myr.
+2. **Margin-dependent attrition, averaged and probabilistic.** Set each trench segment's
+   attrition rate from its sediment and convergence, averaged over a margin-scale window in
+   space and ~10 Myr in time, as the classification is defined. The rate moves smoothly
+   between an accretionary floor and the erosive rate according to how strongly the
+   averaged conditions favour erosion. An accretionary margin still wears slowly,
+   standing in for its erosive episodes; it never goes to zero. Three variants are tested
+   against each other (Design):
+   - (a) binary on the averaged inputs;
+   - (b) expected rate from a logistic erosive probability, recommended;
+   - (c) stochastic regime switching per segment, with a minimum dwell time.
 3. **Erode the root, not the crust.** At an erosive contact on a cratonic margin, attrition
    first thins the mantle lithosphere (Hm) of the exposed cells toward the continental
    reference. Only once the keel is gone does the cell lose cratonic status
@@ -84,11 +98,15 @@ destroyed, the root is removed by refertilisation, heating and delamination
    do. It is simple, but has no physical basis for any particular value, so it's listed
    only as the fallback.
 
-**Recommendation:** 1 then 2. Solution 2 has thresholds taken straight from the literature,
-uses fields the model already carries, and also benefits RFC 0005, which needs the same
-classification for sediment. Re-measure after 2. If the attrition share is still above the
-target, add 3. It is the more physical answer, but changes how cratons die and needs its
-own calibration.
+**Recommendation:** 1 as a diagnosis gate, then 2(b), with 2(a) and 2(c) as sensitivity
+cases.
+- Solution 1 decides whether attrition is the problem at all. If `cratons.attrite` turns
+  out to be a minor part of `subducted_m3`, the RFC re-scopes (see Falsification
+  criteria).
+- Solution 2 is centred on the literature's thresholds, uses fields the model already
+  carries, and gives RFC 0005 the classification it needs.
+- Re-measure after 2. If the attrition share is still above target, add 3. It is the more
+  physical answer, but it changes how cratons die and needs its own calibration.
 
 ## Design
 
@@ -101,18 +119,31 @@ own calibration.
 - Convergence: the node's normal closing rate, `rheology.normal_closing_rate_m_per_s`,
   converted to cm/yr for the threshold.
 
-**Classification (2).** Per node in the trench set of `_retreat` on the *overriding*
-(craton) plate:
-- read the sediment at its nearest neighbour node, through
-  `inputs.neighbor_node_index` / `neighbor_plate_id`, exactly as
-  `torque.contact_craton_m` reads the neighbour's craton;
-- the node is erosive when sediment < `EROSIVE_MAX_TRENCH_SEDIMENT_M` *and* closing rate
-  > `EROSIVE_MIN_CONVERGENCE_CM_PER_YR`, the joint condition of
-  [[Clift & Vannucchi, 2004]](#ref-clift2004), and accretionary otherwise;
-- attrition runs only on erosive nodes.
+**Phase 1: channel split (gate).** Land the ledger split alone, and run the tuning
+seeds. Proceed to phase 2 only if `attrited_m3` is the largest part of what used to be
+`subducted_m3`. Otherwise revise the RFC toward whichever channel dominates.
 
-The rule is binary, as in the source. A smooth ramp across ±25% of each threshold would
-avoid flicker between steps; it is listed as a tuning choice, not a default.
+**Phase 2: margin-dependent rate.**
+- *Segments.* Trench nodes on the overriding (craton-bearing) plate are grouped into
+  segments: connected runs of trench cells facing the same neighbour plate, cut into
+  pieces no longer than `MARGIN_SEGMENT_KM`.
+- *Inputs.* Trench sediment h (m) is read at each node's nearest neighbour node through
+  `inputs.neighbor_node_index` / `neighbor_plate_id`, as `torque.contact_craton_m` reads
+  the neighbour's craton. It is `mobile_cover_m` plus `continental_material_m` on oceanic
+  hosts. Convergence v (cm/yr) is `rheology.normal_closing_rate_m_per_s`. Each input is
+  averaged along the segment (length-weighted).
+- *Time averaging.* Per node on the overriding plate, the averaged h and v relax toward
+  the segment value with time constant `MARGIN_REGIME_AVERAGING_MYR`:
+  `avg += (value − avg) × (1 − exp(−years/τ))`. This is exact for any step length, so a
+  10 Myr step and ten 1 Myr steps agree for constant inputs.
+- *Erosive probability (b).*
+  `p = σ((v̄ − v₀)/Δv) × σ((h₀ − h̄)/Δh)`, with σ the logistic function, v₀ = 6 cm/yr and
+  h₀ = 1,000 m. p is in [0, 1] by construction.
+- *Rate.* `rate = R_acc + (R_ero − R_acc) × p`, in km²/Myr. R_ero = 40 is today's
+  `CRATON_ATTRITION_KM2_PER_MYR`; R_acc is the accretionary floor.
+- *Variant (a):* `p ∈ {0, 1}` from the averaged inputs.
+- *Variant (c):* each segment draws its regime from p, deterministically per
+  (seed, segment, epoch), and keeps it for at least `MARGIN_REGIME_MIN_DWELL_MYR`.
 
 **Root-first variant (3), if needed.**
 - At an erosive cratonic node, Hm thins at `CRATON_KEEL_EROSION_M_PER_MYR` until it reaches
@@ -128,9 +159,14 @@ avoid flicker between steps; it is listed as a tuning choice, not a default.
 
 | Knob | Start | Source | Tuning |
 |---|---|---|---|
-| `EROSIVE_MAX_TRENCH_SEDIMENT_M` | 1,000 m | [[Clift & Vannucchi, 2004]](#ref-clift2004) | Fixed unless sediment thickness in the model is off by a large factor; check its distribution at trench contacts first |
-| `EROSIVE_MIN_CONVERGENCE_CM_PER_YR` | 6 cm/yr | [[Clift & Vannucchi, 2004]](#ref-clift2004) | Fixed; 7.6 cm/yr (their upper bound for accretion) is the sensitivity case |
-| `CRATON_ATTRITION_KM2_PER_MYR` | 40 (unchanged) | [[Scholl & von Huene, 2007]](#ref-scholl2007) | Unchanged |
+| h₀, `EROSIVE_MAX_TRENCH_SEDIMENT_M` | 1,000 m | [[Clift & Vannucchi, 2004]](#ref-clift2004) | Centre fixed; check the model's distribution of h at trench contacts first |
+| v₀, `EROSIVE_MIN_CONVERGENCE_CM_PER_YR` | 6 cm/yr | [[Clift & Vannucchi, 2004]](#ref-clift2004) | Centre fixed; 7.6 cm/yr (their upper bound for accretion) is the sensitivity case |
+| Δh, Δv (logistic widths) | 250 m, 1 cm/yr | Calibration assumption: the source gives tendencies with scatter, not a width | Sensitivity at ½× and 2× |
+| `MARGIN_REGIME_AVERAGING_MYR` | 10 Myr | The ≥10 Myr window over which [[Clift & Vannucchi, 2004]](#ref-clift2004) classify margins | Sensitivity at 5 and 20 Myr |
+| `MARGIN_SEGMENT_KM` | 500 km | Calibration assumption: the along-strike scale of margin segments in the compilations | Sensitivity at 250 and 1,000 km |
+| `MARGIN_REGIME_MIN_DWELL_MYR` (variant c) | 10 Myr | Same window | — |
+| R_ero, `CRATON_ATTRITION_KM2_PER_MYR` | 40 (unchanged) | Non-accreting margins [[Scholl & von Huene, 2007]](#ref-scholl2007) | Unchanged |
+| R_acc, `CRATON_ATTRITION_ACCRETING_KM2_PER_MYR` | 12 | The accreting-margin value the #340 code comment attributes to [[Scholl & von Huene, 2007]](#ref-scholl2007); not re-verified for this RFC | Verify against the source before use; sensitivity at 0 and 20 |
 | `CRATON_KEEL_EROSION_M_PER_MYR` (variant 3 only) | 1,000 m/Myr | [[Zhu et al., 2012]](#ref-zhu2012) timescale | Sweep 300–3,000 |
 
 How tuning works:
@@ -145,29 +181,37 @@ How tuning works:
   model's trench sediment or convergence rates are off, and RFC 0005 should look at that
   before these thresholds move.
 
-**Runtime.** Classification reads one field per trench node from a neighbour, with indices
-already computed for the step: O(trench nodes), well under 1 ms per plate. Variant 3 adds an
+**Runtime.** The inputs read one field per trench node from a neighbour, with indices
+already computed for the step. Segmenting is a connected-components pass over trench
+cells. Both are O(trench nodes), about 1 ms per plate. Variant 3 adds an
 O(trench nodes) Hm update. There's no new search.
 
-**Save compatibility.** No new per-node field. New craton ledger accounts (`attrited_m3`,
+**Save compatibility.** Two new per-node fields, `trench_sediment_avg_m` and
+`trench_convergence_avg_cm_per_yr`, are registered in `surface_fields.py` with blending
+remaps. Old saves backfill them with a sentinel, meaning "no history". The first step
+initialises them from the current values instead of relaxing toward them. New craton ledger accounts (`attrited_m3`,
 `collision_lost_m3`, and `decratonised_m3` for variant 3) are backfilled at 0.0 by
 `cratons.ensure_ledger`. A pre-change save keeps its history in `subducted_m3`.
 
-## Detailed design
+## Detailed design (provisional touchpoints)
 
 - `backend/app/cratons.py`
   - Add `attrited_m3`, `collision_lost_m3` (and `decratonised_m3`) to
     `CRATON_SINK_ACCOUNTS`.
-  - `attrite` books to `attrited_m3` and takes an `erosive` mask (or the classification
-    inputs).
+  - `attrite` books to `attrited_m3` and takes a per-node rate in km²/Myr, in place of
+    the constant.
+  - New `margin_attrition_rate(...)`: segments, averaged inputs, p, rate; variants (a),
+    (b) and (c) behind a module constant.
   - For variant 3, a `wear_keel` helper next to `attrite`.
   - Update the module docstring's Destruction paragraph.
-- `backend/app/quad_tectonics.py`, `_retreat`: build the erosive mask for the `trench` set
-  before calling `cratons.attrite`; split the attrition booking by host plate type. The
+- `backend/app/quad_tectonics.py`, `_retreat`: compute the per-node rate for the `trench`
+  set before calling `cratons.attrite`, and update the time-averaged fields; split the attrition booking by host plate type. The
   #177 budget logic is unchanged.
 - `backend/app/torque.py`: add a `contact_trench_sediment_m(plate, neighbours, inputs)`
   next to `contact_craton_m`, reading `mobile_cover_m + continental_material_m` at the
   nearest neighbour node, counting the latter only on oceanic hosts.
+- `backend/app/surface_fields.py`: register `trench_sediment_avg_m` and
+  `trench_convergence_avg_cm_per_yr` (new).
 - `backend/app/lithosphere_plate.py`: expose the closing rate in the `BoundaryContext` if
   `_retreat` doesn't already have it.
 - `backend/app/crust_transfer.py`: book the lost and unplaced craton shares to
@@ -176,27 +220,71 @@ O(trench nodes) Hm update. There's no new search.
   accretionary fraction of trench length.
 - `bin/debug/compare_cratons.py`: report the new accounts per Gyr.
 - Tests:
-  - `backend/unit_tests/test_cratons.py`: attrition skips accretionary contacts; erosive
-    contacts lose 40 km²/Myr × edge; the ledger balances with the new accounts; an old
-    ledger without them loads.
+  - `backend/unit_tests/test_cratons.py`:
+    - p is in [0, 1] and monotone in v and h;
+    - a strongly erosive segment wears at 40 km²/Myr × edge, and a strongly accretionary
+      one at R_acc;
+    - time averaging gives the same result for one 10 Myr step as for ten 1 Myr steps,
+      under constant inputs;
+    - the ledger balances with the new accounts;
+    - an old ledger without them loads.
   - `backend/unit_tests/test_torque.py`: `contact_trench_sediment_m` reads the neighbour's
     nearest node.
 - Docs: `docs/simulation-model.md`, Cratons ("Resistance" and the destruction ledger), and
   the boundary-retreat description in "Quad-surface deformation".
 
+## Assumptions and uncertainty
+
+- **Attrition may not be the main path.** `subducted_m3` lumps three paths. Phase 1
+  decides.
+- **The classification is a tendency.** The thresholds come from a compilation of modern
+  margins, classified by net behaviour over ≥ 10 Myr. The logistic widths, segment length
+  and averaging window are calibration assumptions. Sensitivity runs and variants (a) and
+  (c) bound how much the result depends on them.
+- **The model's trench sediment is untested.** If it is far from Earth's (RFC 0005), the
+  thresholds act on the wrong quantity and the classification is skewed. Hence the
+  20%-per-regime sanity check.
+- **The rates are modern.** R_ero and R_acc are Cenozoic forearc rates. Over Gyr they are
+  an assumption, not a measurement.
+- **Target versus Earth.** The 3%-per-Gyr acceptance target is a model design target that
+  lets cratons last several Gyr. It is not a measured Earth rate: no such rate is
+  published for subduction erosion of cratons.
+
 ## Acceptance criteria
 
-- [ ] Ledger split: on a 1 Gyr replay, `subducted_m3` is below 0.1% of the initial craton
-      volume, and `attrited_m3` and `collision_lost_m3` account for the rest of what was
-      booked there before.
+- [ ] **Gate (phase 1):** the ledger split lands, and on a 1 Gyr replay `subducted_m3` is
+      below 0.1% of the initial craton volume, with `attrited_m3` and
+      `collision_lost_m3` accounting for the rest. A note in `analysis/` records each
+      channel's share before phase 2 starts.
 - [ ] Craton loss to attrition is at most **3% of live craton per Gyr** over the first
-      3 Gyr on seed 456862899 (6–18% today), and on average across seeds 7, 11 and 2024.
-- [ ] Each regime covers at least 20% of trench contact length, averaged over a run.
+      3 Gyr on seed 456862899 (6–18% today), and on average across seeds 7, 11 and 2024,
+      for variant (b) at the starting knobs.
+- [ ] The sensitivity runs (variants a and c; logistic widths and averaging window at ½×
+      and 2×) are reported, and the 3%-per-Gyr result holds for most of them.
+- [ ] Each regime (p < 0.5, p ≥ 0.5) covers at least 20% of trench contact length,
+      averaged over a run.
 - [ ] Genuine continental area at 1 Gyr is no lower than on `origin/main` for each seed.
 - [ ] Ledgers balance (craton within 1e-9 of live volume; continental material closes).
 - [ ] Step time on a density-4 world changes by less than 2% (`docs/profiling.md` method).
 - [ ] Unit tests above pass; affected tests, ruff and `bin/quality_check.sh` are green.
 - [ ] Saves from before the change load.
+
+## Falsification criteria
+
+- **Attrition isn't the sink.** If phase 1 shows `attrited_m3` under half of the old
+  `subducted_m3` on the tuning seeds, the premise is wrong. Re-scope to the dominant
+  channel; `collision_lost_m3` would point at crust_transfer's partition (#320).
+- **Margin type doesn't matter in the model.** If p is near 1 almost everywhere (or near 0)
+  on every seed, even at the sensitivity extremes, the model's trench conditions don't
+  span Earth's range. The classification can't do its job until RFC 0005 or plate speeds
+  are addressed; pause this RFC behind them.
+- **Losses just move.** If total craton destruction per Gyr falls by less than half of
+  the attrition reduction, the craton is being lost by another route once attrition stops.
+  Then the edge exposure itself (no buffer of younger crust) is the problem, and the
+  root-first variant or RFC 0005 comes first.
+- **The result hangs on knobs.** If the 3%-per-Gyr result holds for some sensitivity cases
+  and fails for others by more than a factor of two, the mechanism is underdetermined.
+  Don't merge on the starting knobs; revisit with a physically derived rate.
 
 ## References
 

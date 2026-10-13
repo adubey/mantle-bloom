@@ -19,41 +19,30 @@ implemented through ordinary issues and PRs (see [AGENTS.md](../AGENTS.md)), eac
 | [0007](0007-mantle-plumes-and-plateaus.md) | Mantle plumes: oceanic plateaus, flood basalts and hotspot tracks | Draft |
 
 RFCs 0001-0007 come from one investigation: a 19.2 Gyr run (seed 456862899) that lost
-almost all of its continental crust and all of its cratons. They are numbered by how
+almost all of its continental crust and all of its cratons. The run is used as a stress
+test of the model's long-term behaviour, not as a calibration interval. They are numbered by how
 directly they act on that loss, not by priority. The suggested implementation order:
 1. 0001;
 2. 0002, together with 0005's measurement phase;
 3. 0003, 0006 and 0004;
 4. 0007, the largest. RFC 0003's plume weakening depends on it.
 
-## Format
+## Writing and reviewing
 
-One Markdown file per RFC, `rfc/NNNN-short-slug.md`, numbered in order of creation. Each
-has these sections, in this order:
+RFCs are written with the [`rfc-authoring`](../.agents/skills/rfc-authoring/SKILL.md) skill.
+It sets the sections (problem, solutions, design, provisional touchpoints, assumptions and
+uncertainty, acceptance and falsification criteria, references), the citation format, and
+how sources are checked. They are reviewed with
+[`rfc-review`](../.agents/skills/rfc-review/SKILL.md).
+`.agents/skills/rfc-authoring/check_citations.py` checks citations and DOIs.
 
-1. **Header**: title, status (Draft, Accepted, Implemented, Rejected or Superseded by
-   NNNN), date, and related issues and RFCs.
-2. **Problem**: what goes wrong, in general terms, with the evidence. An RFC may cite local
-   files such as saved worlds (`.mbworld`) or replay outputs, but must say they are not
-   available for download, and give enough numbers that the argument stands without them.
-   Prefer evidence anyone can regenerate: a seed and a script in `bin/debug/`.
-3. **Proposed solutions**: one or more, each grounded in the geology, computational
-   geodynamics, climatology, ecology or biology literature as the problem calls for.
-   Cite as `[[Author et al., 2020]](#ref-author2020)`: the citation links to its entry in a
-   **References** section at the end, and that entry links to the paper itself (a DOI
-   link where one exists). One author is `[Author, 2020]`, two are
-   `[Author & Other, 2020]`, three or more are `[Author et al., 2020]`. Say which solution
-   is recommended and why.
-4. **Design**: how the recommended solution works in the model: the quantities and their
-   physical units (metres, m^3, Myr, km^2/Myr, ... rather than per-step or per-node
-   factors), the runtime cost per step, save compatibility, and every knob that needs
-   tuning, with its starting value, the source of that value, and how it will be tuned
-   (which seeds, which script, which metric).
-5. **Detailed design**: the actual source files and functions that change, the tests that
-   go with them, and the docs that need updating.
-6. **Acceptance criteria**: a checklist of measurable outcomes (replay metrics with
-   thresholds, tests, ledger closure, runtime budget) that says when the RFC is done.
+## Lifecycle
 
-A **References** section closes the file. Keep the RFC current while it is a Draft. Once
-it is Implemented, the code and `docs/` are the source of truth; the RFC stays as the record
-of why.
+1. **Draft:** opened as a PR that adds the RFC; revised in place as review comes in.
+2. **Accepted:** the user merges it. Any diagnosis gate the RFC sets (a measurement that
+   decides between fixes) is run next, and the RFC is updated with the result.
+3. **Implemented:** the accepted design is split into issues and PRs that cite the RFC.
+   The status is updated when the last one lands. From then on the code and `docs/` are
+   the source of truth, and the RFC stays as the record of why.
+4. **Rejected or Superseded:** kept, with the reason, or a link to what replaced it. This
+   includes an RFC whose falsification criteria were met.
