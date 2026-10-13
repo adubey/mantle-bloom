@@ -1,12 +1,110 @@
+import { useEffect, useState } from "react";
+import { fetchCrossSection } from "./api";
+
 const PLANET_RADIUS_KM = 6_371;
 const ARC_LENGTH_KM = 3_000;
 const ARC_POSITION_COUNT = 120;
 const SECTION_DEPTH_KM = 350;
 const VERTICAL_EXAGGERATION = 2;
+const SECTION_STYLE_VERSION = 1;
+const MAX_CACHED_SECTION_FRAMES = 9;
+const PREFETCH_CONCURRENCY = 3;
+
+interface FrameKey {
+  worldRevision: number;
+  planeAngleDeg: number;
+  arcPosition: number;
+  width: number;
+  height: number;
+}
+
+interface CachedFrame {
+  key: FrameKey;
+  dataUrl: string;
+  image: HTMLImageElement;
+  lastUsed: number;
+}
+
+const frameCache = new Map<string, CachedFrame>();
+let activeFrameKey: FrameKey | null = null;
+let cacheClock = 0;
+
+function frameCacheKey(key: FrameKey): string {
+  return [
+    key.worldRevision, key.planeAngleDeg, key.arcPosition, key.width, key.height, SECTION_STYLE_VERSION,
+  ].join(":");
+}
+
+function sameFrameSet(left: FrameKey, right: FrameKey): boolean {
+  return left.worldRevision === right.worldRevision
+    && left.planeAngleDeg === right.planeAngleDeg
+    && left.width === right.width
+    && left.height === right.height;
+}
+
+function rememberActiveFrame(key: FrameKey): void {
+  activeFrameKey = key;
+  pruneFrameCache();
+}
+
+function pruneFrameCache(): void {
+  if (frameCache.size <= MAX_CACHED_SECTION_FRAMES) return;
+  const distance = (entry: CachedFrame) => {
+    if (!activeFrameKey || !sameFrameSet(entry.key, activeFrameKey)) return Number.POSITIVE_INFINITY;
+    const direct = Math.abs(entry.key.arcPosition - activeFrameKey.arcPosition);
+    return Math.min(direct, ARC_POSITION_COUNT - direct);
+  };
+  const keep = [...frameCache.entries()]
+    .sort((left, right) => distance(left[1]) - distance(right[1]) || right[1].lastUsed - left[1].lastUsed)
+    .slice(0, MAX_CACHED_SECTION_FRAMES);
+  const retained = new Set(keep.map(([key]) => key));
+  for (const key of frameCache.keys()) {
+    if (!retained.has(key)) frameCache.delete(key);
+  }
+}
+
+function cachedFrame(key: FrameKey): string | null {
+  const entry = frameCache.get(frameCacheKey(key));
+  if (!entry) return null;
+  entry.lastUsed = ++cacheClock;
+  return entry.dataUrl;
+}
+
+async function loadFrame(key: FrameKey, signal: AbortSignal): Promise<string> {
+  const cacheKey = frameCacheKey(key);
+  const existing = cachedFrame(key);
+  if (existing) return existing;
+
+  const response = await fetchCrossSection(key.planeAngleDeg, key.arcPosition, key.width, key.height, signal);
+  const dataUrl = `data:image/png;base64,${response.image_base64}`;
+  // Decode in the background before a frame is eligible for reuse so slider changes can
+  // swap to a nearby cached frame without waiting for PNG decoding on the paint path.
+  const image = new Image();
+  if (typeof image.decode === "function") {
+    image.src = dataUrl;
+    await image.decode();
+  } else {
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error("Could not decode cross-section image"));
+      image.src = dataUrl;
+    });
+  }
+  if (signal.aborted) throw new DOMException("Cross-section request aborted", "AbortError");
+
+  frameCache.set(cacheKey, { key, dataUrl, image, lastUsed: ++cacheClock });
+  pruneFrameCache();
+  return dataUrl;
+}
+
+function isNotImplementedError(error: unknown): boolean {
+  return String(error).includes("501");
+}
 
 interface Props {
   width: number;
   height: number;
+  worldRevision: number;
   planeAngleDeg: number;
   arcPosition: number;
   onPlaneAngleChange: (value: number) => void;
@@ -275,12 +373,87 @@ function LegendKey({ color, label, line = false }: { color: string; label: strin
 export default function MantleCrossSection({
   width,
   height,
+  worldRevision,
   planeAngleDeg,
   arcPosition,
   onPlaneAngleChange,
   onArcPositionChange,
 }: Props) {
   const centerDegrees = (360 * arcPosition) / ARC_POSITION_COUNT;
+  const [displayedFrame, setDisplayedFrame] = useState<{ key: string; dataUrl: string } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [prefetchProgress, setPrefetchProgress] = useState<number | null>(null);
+  const [loadMessage, setLoadMessage] = useState<string | null>(null);
+  const currentFrameKey: FrameKey = {
+    worldRevision, planeAngleDeg, arcPosition, width: Math.round(width), height: Math.round(height),
+  };
+  const currentCacheKey = frameCacheKey(currentFrameKey);
+  // A prop change can render before its effect runs; only show a frame whose full cache key
+  // still matches, so old geology never flashes after a world/plane/size change.
+  const imageDataUrl = displayedFrame?.key === currentCacheKey ? displayedFrame.dataUrl : null;
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const activeKey: FrameKey = {
+      worldRevision, planeAngleDeg, arcPosition, width: Math.round(width), height: Math.round(height),
+    };
+    rememberActiveFrame(activeKey);
+    const cached = cachedFrame(activeKey);
+    setDisplayedFrame(cached ? { key: currentCacheKey, dataUrl: cached } : null);
+    setLoading(true);
+    setPrefetchProgress(null);
+    setLoadMessage(null);
+
+    void (async () => {
+      try {
+        const selectedImage = await loadFrame(activeKey, controller.signal);
+        if (controller.signal.aborted) return;
+        setDisplayedFrame({ key: currentCacheKey, dataUrl: selectedImage });
+        setLoading(false);
+        setPrefetchProgress(1);
+
+        const positions = Array.from({ length: ARC_POSITION_COUNT }, (_, index) => index)
+          .filter((index) => index !== arcPosition);
+        let nextPosition = 0;
+        let completed = 1;
+        const worker = async () => {
+          while (!controller.signal.aborted) {
+            const queueIndex = nextPosition++;
+            if (queueIndex >= positions.length) return;
+            const position = positions[queueIndex];
+            const frameKey = { ...activeKey, arcPosition: position };
+            try {
+              await loadFrame(frameKey, controller.signal);
+              if (controller.signal.aborted) return;
+              completed++;
+              setPrefetchProgress(completed);
+            } catch (error) {
+              if (controller.signal.aborted) return;
+              if (isNotImplementedError(error)) {
+                setLoadMessage("The cross-section route is reserved, but this backend does not render section images yet.");
+                controller.abort();
+                return;
+              }
+              setLoadMessage(`Could not cache arc positions: ${String(error)}`);
+              controller.abort();
+              return;
+            }
+          }
+        };
+        await Promise.all(Array.from({ length: PREFETCH_CONCURRENCY }, () => worker()));
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        setLoading(false);
+        if (isNotImplementedError(error)) {
+          setLoadMessage("The cross-section route is reserved, but this backend does not render section images yet.");
+        } else {
+          setLoadMessage(`Could not load this cross-section: ${String(error)}`);
+        }
+      }
+    })();
+
+    return () => controller.abort();
+  }, [worldRevision, planeAngleDeg, arcPosition, width, height, currentCacheKey]);
 
   return (
     <div
@@ -302,16 +475,47 @@ export default function MantleCrossSection({
       <section style={{ minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", gap: 5 }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
           <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600 }}>Shallow mantle cross-section</h2>
-          <span style={{ color: "#d6bb85", fontSize: 9, letterSpacing: "0.09em", whiteSpace: "nowrap" }}>SCHEMATIC PLACEHOLDER</span>
+          <span style={{ color: imageDataUrl ? "#8fe0b0" : "#d6bb85", fontSize: 9, letterSpacing: "0.09em", whiteSpace: "nowrap" }}>
+            {imageDataUrl ? "SAMPLED SECTION" : loading ? "PREPARING CROSS-SECTION" : "SCHEMATIC PLACEHOLDER"}
+          </span>
         </div>
         <p style={{ margin: "0 0 2px", color: "#a9b3c4", fontSize: 11 }}>
           A stable local frame follows the selected surface arc as its center moves around the planet.
         </p>
-        <SectionPlaceholder />
+        <div style={{ display: "flex", position: "relative", minHeight: 0, flex: 1, width: "100%" }}>
+          {imageDataUrl ? (
+            <img
+              src={imageDataUrl}
+              alt={`Rendered shallow mantle section at arc position ${arcPosition + 1} of ${ARC_POSITION_COUNT}`}
+              style={{ display: "block", minHeight: 0, width: "100%", height: "100%", objectFit: "contain" }}
+            />
+          ) : (
+            <SectionPlaceholder />
+          )}
+        </div>
+        {loadMessage && <div role="status" style={{ color: "#d6bb85", fontSize: 10 }}>{loadMessage}</div>}
+        {!loadMessage && prefetchProgress !== null && prefetchProgress < ARC_POSITION_COUNT && (
+          <div role="status" style={{ color: "#9daac0", fontSize: 10 }}>
+            Caching arc positions {prefetchProgress}/{ARC_POSITION_COUNT}
+          </div>
+        )}
         <div style={{ color: "#8f9bb0", fontSize: 10, display: "flex", flexWrap: "wrap", gap: 4 }}>
-          <LegendKey color="#a8d19e" label="Idealized sphere surface" line />
-          <LegendKey color="#756c94" label="Subsurface placeholder" />
-          <LegendKey color="#d5d8e6" label="350 km depth limit" line />
+          {imageDataUrl ? (
+            <>
+              <LegendKey color="#C98F82" label="Continental crust" />
+              <LegendKey color="#526779" label="Oceanic crust" />
+              <LegendKey color="#425A5A" label="Mantle lithosphere" />
+              <LegendKey color="#756C94" label="Schematic asthenosphere" />
+              <LegendKey color="#C93D3D" label="Stored magma / melt" />
+              <LegendKey color="#d5d8e6" label="Melt eligibility estimate" line />
+            </>
+          ) : (
+            <>
+              <LegendKey color="#a8d19e" label="Idealized sphere surface" line />
+              <LegendKey color="#756c94" label="Subsurface placeholder" />
+              <LegendKey color="#d5d8e6" label="350 km depth limit" line />
+            </>
+          )}
         </div>
       </section>
 

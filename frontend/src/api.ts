@@ -15,8 +15,8 @@ export type Projection = "behrmann" | "eckert4";
 // The kind of view requested from /world/render -- the server now bakes this choice
 // directly into the returned image (fill color rule, whether boundaries/poles/velocity
 // arrows or raw per-plate node dots are drawn), rather than the frontend deciding how to
-// draw raw coordinate data it fetched. `crossSection` is the client-side schematic Map View;
-// it is deliberately omitted from /world/render until its section-data endpoint is added.
+// draw raw coordinate data it fetched. `crossSection` is served by its own
+// /world/cross-section endpoint and remains omitted from /world/render.
 export type MapView =
   | "crossSection"
   | "elevation"
@@ -66,6 +66,11 @@ export interface RenderResponse {
   elapsed_years: number;
   // Raw PNG bytes, base64-encoded -- decode via `data:image/png;base64,${image_base64}`.
   // See backend app/render_image.py for how it's drawn.
+  image_base64: string;
+}
+
+export interface CrossSectionResponse {
+  // Raw PNG bytes, base64-encoded, following the /world/render image response convention.
   image_base64: string;
 }
 
@@ -694,6 +699,24 @@ export function renderWorld(
   if (showMountains) params.set("show_mountains", "true");
   if (showPlainsPlateaus) params.set("show_plains_plateaus", "true");
   return fetch(`${API_BASE}/world/render?${params}`).then(asJson<RenderResponse>);
+}
+
+// Fetch one rendered frame from the shallow mantle cross-section route. The output size is
+// fixed for a panel layout so cached frames for the same world/plane/position are identical.
+export function fetchCrossSection(
+  planeAngleDeg: number,
+  positionIndex: number,
+  width: number,
+  height: number,
+  signal?: AbortSignal,
+): Promise<CrossSectionResponse> {
+  const params = new URLSearchParams({
+    plane_angle_deg: String(planeAngleDeg),
+    position_index: String(positionIndex),
+    width: String(width),
+    height: String(height),
+  });
+  return fetch(`${API_BASE}/world/cross-section?${params}`, { signal }).then(asJson<CrossSectionResponse>);
 }
 
 export function fetchPlates(): Promise<PlatesResponse> {

@@ -310,6 +310,8 @@ export default function App() {
   // of the map projection/rotation state, and retain their values when switching views.
   const [crossSectionPlaneAngleDeg, setCrossSectionPlaneAngleDeg] = useState(0);
   const [crossSectionArcPosition, setCrossSectionArcPosition] = useState(0);
+  // Local cache epoch: advance it after every operation that can change sampled section data.
+  const [crossSectionWorldRevision, setCrossSectionWorldRevision] = useState(0);
   // handleStep's own closure over `mapView` is captured when the step *starts*, so if the map
   // mode changes while that step is still in flight, its post-step refresh would otherwise
   // render the world's new (stepped) state back in the old, now-stale map mode -- overwriting
@@ -754,6 +756,7 @@ export default function App() {
               onProgress: setGenProgress,
             });
       setSummary(s);
+      setCrossSectionWorldRevision((revision) => revision + 1);
       setSelectedPlateId(null);
       setSelectedRiverId(null);
       setSelectedBasin(null);
@@ -811,6 +814,7 @@ export default function App() {
       pendingControlsRef.current = {};
       try {
         await updateControls(payload);
+        setCrossSectionWorldRevision((revision) => revision + 1);
         await Promise.all([refresh(projection, mapViewRef.current, rotation), recordStats()]);
       } catch (e) {
         setError(String(e));
@@ -878,6 +882,7 @@ export default function App() {
     try {
       const s = await stepWorld(stepYears, setStepProgress);
       setSummary(s);
+      setCrossSectionWorldRevision((revision) => revision + 1);
       setSelectedRiverId(null); // rivers are regrouped fresh every step -- a stale id could point at an unrelated network
       setSelectedBasin(null); // lakes are regrouped fresh every step too -- same reasoning
       setSelectedBasinKind(null);
@@ -908,6 +913,7 @@ export default function App() {
     setError(null);
     try {
       setSummary(s);
+      setCrossSectionWorldRevision((revision) => revision + 1);
       setSelectedPlateId(null);
       setSelectedRiverId(null);
       setSelectedBasin(null);
@@ -944,6 +950,7 @@ export default function App() {
   // api.ts's animateWorld), so this just runs the same post-step refresh handleStep does.
   const handleWorldAdvanced = useCallback(async (s: WorldSummary) => {
     setSummary(s);
+    setCrossSectionWorldRevision((revision) => revision + 1);
     setSelectedRiverId(null);
     setSelectedBasin(null);
     setSelectedBasinKind(null);
@@ -1603,6 +1610,7 @@ export default function App() {
             <MantleCrossSection
               width={DISPLAY_WIDTH}
               height={DISPLAY_HEIGHT}
+              worldRevision={crossSectionWorldRevision}
               planeAngleDeg={crossSectionPlaneAngleDeg}
               arcPosition={crossSectionArcPosition}
               onPlaneAngleChange={setCrossSectionPlaneAngleDeg}
