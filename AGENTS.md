@@ -6,8 +6,10 @@ canvas viewer is in `frontend/src/`. There's one human author, and most changes 
 Claude Code and Codex agents, one GitHub issue per branch.
 
 Before changing the model, read [docs/architecture.md](docs/architecture.md) (module map,
-request flow) and [docs/simulation-model.md](docs/simulation-model.md). For offline
-diagnostics of saved worlds, see [docs/debugging.md](docs/debugging.md).
+request flow), [docs/simulation-model.md](docs/simulation-model.md), and
+[docs/design-principles.md](docs/design-principles.md). In simulation issues and PRs, name
+the principle the current behavior violates and the invariant or metric that will demonstrate
+the fix. For offline diagnostics of saved worlds, see [docs/debugging.md](docs/debugging.md).
 
 ## Commands
 
