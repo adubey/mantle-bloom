@@ -95,6 +95,7 @@ def _post_streaming_then_disconnect(path: str, body: dict, disconnect_after_chun
 
     async def _drive() -> int:
         body_bytes = json.dumps(body).encode()
+        # Loopback client and host, like the `client` fixture, so the auth guard lets it through (#372).
         scope = {
             "type": "http",
             "asgi": {"version": "3.0", "spec_version": "2.3"},
@@ -106,12 +107,12 @@ def _post_streaming_then_disconnect(path: str, body: dict, disconnect_after_chun
             "query_string": b"",
             "root_path": "",
             "headers": [
-                (b"host", b"testserver"),
+                (b"host", b"localhost"),
                 (b"content-type", b"application/json"),
                 (b"content-length", str(len(body_bytes)).encode()),
             ],
-            "client": ("testclient", 123),
-            "server": ("testserver", 80),
+            "client": ("127.0.0.1", 123),
+            "server": ("localhost", 80),
         }
 
         request_body_sent = False
