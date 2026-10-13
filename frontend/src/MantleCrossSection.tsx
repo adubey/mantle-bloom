@@ -318,7 +318,7 @@ function GlobeLocator({ planeAngleDeg, arcPosition }: { planeAngleDeg: number; a
         ))}
       </g>
       {arcCenter.depth >= -0.0001 && (
-        <circle cx={arcCenter.x} cy={arcCenter.y} r="4" fill="#fff4d2" stroke="#253147" strokeWidth="1.5" />
+        <circle cx={arcCenter.x} cy={arcCenter.y} r="4" fill="#61ded0" stroke="#253147" strokeWidth="1.5" />
       )}
       <circle cx={centerX} cy={centerY} r={radius} fill="none" stroke="#8796ad" strokeWidth="1.5" />
     </svg>
@@ -556,9 +556,8 @@ export default function MantleCrossSection({
         <h3 style={{ margin: "1px 0 0", fontSize: 13, fontWeight: 600 }}>Globe locator</h3>
         <GlobeLocator planeAngleDeg={planeAngleDeg} arcPosition={arcPosition} />
         <div style={{ color: "#aeb8ca", fontSize: 10, textAlign: "center", marginTop: -3 }}>
-          <span style={{ color: "#91a0b8" }}>Selected great circle</span>
-          <span aria-hidden> · </span>
-          <span style={{ color: "#61ded0" }}>3,000 km arc</span>
+          <div style={{ color: "#91a0b8" }}>Slow axis: rotate the whole plane toward the poles</div>
+          <div style={{ color: "#61ded0" }}>Fast axis: move the highlighted arc center along the plane</div>
         </div>
 
         <label style={{ display: "block", marginTop: 2, fontSize: 11 }}>
@@ -574,7 +573,7 @@ export default function MantleCrossSection({
             value={planeAngleDeg}
             onChange={(event) => onPlaneAngleChange(Number(event.target.value))}
             aria-label="Great-circle plane orientation"
-            style={{ width: "100%", margin: "3px 0 0", accentColor: "#61ded0" }}
+            style={{ width: "100%", margin: "3px 0 0", accentColor: "#8797af" }}
           />
         </label>
         <div style={{ color: "#7f8ba0", fontSize: 9, marginTop: -7 }}>
