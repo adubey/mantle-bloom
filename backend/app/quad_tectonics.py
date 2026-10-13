@@ -1828,7 +1828,7 @@ def _open_rift(
         reason[donors[melting]] = ELEV_CHANGE_VOLCANO
         # A donor's cratonic crust thins with it, and is gone where it melted through.
         thinned = np.where(melting, 0.0, craton[donors] * ratio)
-        cratons.record(world, "rifted_m3", float(np.dot(craton[donors] - thinned, plate.node_areas_m2()[donors])))
+        cratons.record(world, "rifted_stretch_m3", float(np.dot(craton[donors] - thinned, plate.node_areas_m2()[donors])))
         craton[donors] = thinned
 
     # Rifted cells: stretched crust received from behind plus the magmatic remainder.

@@ -973,7 +973,7 @@ def deform_columns(
     new_craton[melting] = 0.0
     rifted = craton - new_craton
     if np.any(rifted > 0.0):
-        cratons.record(world, "rifted_m3", float(np.sum(rifted * node_area_m2)))
+        cratons.record(world, "rifted_divergent_m3", float(np.sum(rifted * node_area_m2)))
 
     if strained is not None:
         strained.update(crustal_thickness_m=strained_hc, mantle_lithosphere_thickness_m=strained_hm, melted=melting)

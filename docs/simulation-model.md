@@ -1262,7 +1262,16 @@ Sites that know their mechanism book it directly (`deform_columns`,
 `quad_tectonics._open_rift`, `_retreat`, `_accrete_onto_survivors`,
 `merge_split.maybe_split_plate`'s failed rift). `world.step_world` also wraps each phase in a
 `cratons.PhaseAudit`, which holds craton to its column and books whatever else vanished.
-`cratons.balance_error_m3` checks seeded + formed = live + destroyed. Boundary consumption
+`cratons.balance_error_m3` checks seeded + formed = live + destroyed.
+
+Rifting is also booked by path (RFC 0003 phase 1), in diagnostic accounts outside the balance
+that sum to the `rifted_m3` booked since a save began tracking them: `rifted_divergent_m3`
+(`deform_columns`), `rifted_stretch_m3` (donors to new rift cells, `_open_rift`) and
+`rifted_failed_m3` (failed rifts). Every cut that clears the split gates is also counted, as
+`split_*` or `failed_rift_*` by outcome: how many cuts, how many had craton within the
+failed-rift band (`FAILED_RIFT_BAND_MULT` spacings) of the cut, and that band's total and
+cratonic area. Stats snapshots carry the paths in `craton_ledger_km3` and the cut counters in
+`craton_rift_cuts`. Boundary consumption
 also books the continental-derived material it removes into the continental-material ledger
 (`deeply_subducted_m3`, `delaminated_lower_crust_m3`, `collision_subducted_m3`). Suture
 accretion carries `continental_material_m` onto the cells that receive the crust, and so does the quad merge for

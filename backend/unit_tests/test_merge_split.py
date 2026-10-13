@@ -460,6 +460,43 @@ def test_a_failed_rift_thins_continental_material_with_its_column(monkeypatch):
     assert abs(continental_ledger.balance_error_m3(world)) <= 1e-9 * continental_ledger.surface_volume_m3(world)
 
 
+def test_a_failed_rift_books_its_craton_loss_and_cut_to_the_failed_rift_path(monkeypatch):
+    """RFC 0003 phase 1: a failed rift's craton thinning is booked to `rifted_failed_m3` as
+    well as `rifted_m3`, and its cut is counted with the craton area inside its band."""
+    from app import cratons
+
+    monkeypatch.setattr(merge_split, "RIFT_SUCCESS_PROBABILITY", 0.0)
+    world, plate = _engineered_split_world()
+    plate.set_fields_on_plate(craton_crust_m=np.minimum(plate.collect("crustal_thickness_m"), 20_000.0))
+    cratons.ensure_ledger(world)
+    before = cratons.plate_volume_m3(world, plate)
+
+    assert merge_split.maybe_split_plate(world, plate) is None
+
+    ledger = world.craton_ledger
+    lost = before - cratons.plate_volume_m3(world, plate)
+    assert lost > 0.0
+    assert ledger["rifted_failed_m3"] == pytest.approx(lost, rel=1e-9)
+    assert ledger["rifted_m3"] == ledger["rifted_failed_m3"]
+    assert (ledger["failed_rift_cuts"], ledger["failed_rift_cuts_through_craton"], ledger["split_cuts"]) == (1.0, 1.0, 0.0)
+    assert 0.0 < ledger["failed_rift_band_craton_area_m2"] == ledger["failed_rift_band_area_m2"]
+
+
+def test_a_split_counts_its_cut_and_whether_the_band_holds_craton(monkeypatch):
+    from app import cratons
+
+    monkeypatch.setattr(merge_split, "RIFT_SUCCESS_PROBABILITY", 1.0)
+    world, plate = _engineered_split_world()
+    cratons.ensure_ledger(world)
+
+    assert merge_split.maybe_split_plate(world, plate) is not None
+
+    ledger = world.craton_ledger
+    assert (ledger["split_cuts"], ledger["split_cuts_through_craton"], ledger["failed_rift_cuts"]) == (1.0, 0.0, 0.0)
+    assert ledger["split_band_area_m2"] > 0.0
+    assert ledger["split_band_craton_area_m2"] == 0.0
+
+
 def test_maybe_split_plate_splits_under_engineered_flow_divergence(monkeypatch):
     monkeypatch.setattr(merge_split, "RIFT_SUCCESS_PROBABILITY", 1.0)  # this test pins the *cut*, not the outcome roll
     seed_xyz = np.array([1.0, 0.0, 0.0])

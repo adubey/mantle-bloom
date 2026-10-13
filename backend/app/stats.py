@@ -394,5 +394,9 @@ def compute_stats(world: World) -> dict:
         "craton_continental_fraction": craton["craton_area_fraction_of_continental"],
         "craton_volume_km3": craton["craton_volume_m3"] / 1.0e9,
         "craton_destroyed_km3": sum(craton[f"craton_{key}"] for key in cratons.CRATON_SINK_ACCOUNTS) / 1.0e9,
-        "craton_ledger_km3": {key: craton[f"craton_{key}"] / 1.0e9 for key in cratons.CRATON_ACCOUNTS},
+        "craton_ledger_km3": {
+            key: craton[f"craton_{key}"] / 1.0e9 for key in cratons.CRATON_ACCOUNTS + cratons.CRATON_RIFT_PATH_ACCOUNTS
+        },
+        # Split and failed-rift cut counts, and the band areas they crossed (m^2), RFC 0003.
+        "craton_rift_cuts": {key: craton[f"craton_{key}"] for key in cratons.CRATON_RIFT_CUT_COUNTERS},
     }

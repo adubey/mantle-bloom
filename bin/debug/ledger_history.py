@@ -9,8 +9,9 @@ Prints three tables:
 
 - checkpoints: craton volume and area, genuine continental area, land fraction, and each
   craton sink's running total;
-- per-Gyr craton destruction by sink, as a share of the craton volume at the window start,
-  plus each sink's largest single-sample jumps (lumpy sinks are one-off events);
+- per-Gyr craton destruction by sink, as a share of the craton volume at the window start
+  (rifting also by path, RFC 0003), plus each sink's largest single-sample jumps (lumpy sinks
+  are one-off events);
 - continental-material fluxes per window, in km^3/yr: juvenile additions, remelted returns,
   and the terminal sinks, against the mean live inventory.
 
@@ -32,6 +33,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 from app import persistence  # noqa: E402
 
 CRATON_SINKS = ("rifted_m3", "subducted_m3", "delaminated_m3", "collision_reworked_m3", "eroded_m3")
+# rifted_m3 by path (RFC 0003); zero in saves from before the split.
+RIFT_PATHS = ("rifted_divergent_m3", "rifted_stretch_m3", "rifted_failed_m3")
 CONTINENTAL_SINKS = (
     "deeply_subducted_m3",
     "rift_thinned_m3",
@@ -52,7 +55,7 @@ def _index(t_myr: np.ndarray, at_myr: float) -> int:
 
 def summarize(history: list[dict]) -> dict:
     t = np.array([row["elapsed_years"] for row in history]) / 1e6
-    craton = {key: np.array([row["craton_ledger_km3"].get(key, 0.0) for row in history]) for key in (*CRATON_SINKS, "formed_m3")}
+    craton = {key: np.array([row["craton_ledger_km3"].get(key, 0.0) for row in history]) for key in (*CRATON_SINKS, *RIFT_PATHS, "formed_m3")}
     volume = np.array([row["craton_volume_km3"] for row in history])
     material = [row["continental_material_ledger"] for row in history]
 
@@ -76,7 +79,8 @@ def summarize(history: list[dict]) -> dict:
         if j <= i or volume[i] <= 1e-3 * volume[0]:
             continue
         shares = {key: (craton[key][j] - craton[key][i]) / volume[i] for key in CRATON_SINKS}
-        per_gyr.append({"gyr": start, "start_volume_mkm3": volume[i] / MKM3, **shares, "total": sum(shares.values())})
+        paths = {key: (craton[key][j] - craton[key][i]) / volume[i] for key in RIFT_PATHS}
+        per_gyr.append({"gyr": start, "start_volume_mkm3": volume[i] / MKM3, **shares, "total": sum(shares.values()), **paths})
 
     jumps = {}
     for key in (*CRATON_SINKS, "formed_m3"):
@@ -120,7 +124,8 @@ def _print(summary: dict) -> None:
         )
     print("\ncraton destruction per Gyr, share of the volume at the window start")
     for row in summary["craton_loss_per_gyr"]:
-        print(f"{row['gyr']:3d}-{row['gyr'] + 1:<3d} V0={row['start_volume_mkm3']:7.0f} Mkm3 " + " ".join(f"{k.removesuffix('_m3')[:9]}={row[k]:4.0%}" for k in CRATON_SINKS) + f"  total={row['total']:.0%}")
+        print(f"{row['gyr']:3d}-{row['gyr'] + 1:<3d} V0={row['start_volume_mkm3']:7.0f} Mkm3 " + " ".join(f"{k.removesuffix('_m3')[:9]}={row[k]:4.0%}" for k in CRATON_SINKS) + f"  total={row['total']:.0%}"
+              + "  rifted by path: " + " ".join(f"{k.removeprefix('rifted_').removesuffix('_m3')}={row[k]:4.1%}" for k in RIFT_PATHS))
     print("\nlargest single-sample craton ledger jumps")
     for key, rows in summary["craton_largest_jumps"].items():
         print(f"  {key:24s} " + ", ".join(f"{r['myr']:.0f} My: {r['mkm3']:.0f} Mkm3 ({r['share_of_live']:.0%})" for r in rows))

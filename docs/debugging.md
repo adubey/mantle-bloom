@@ -593,7 +593,9 @@ near zero; anything there escaped every instrumented site. Every stats snapshot 
 ledger (`craton_ledger_km3`), so the Stats window's *Craton destroyed (cumulative)* series
 shows when cratons were lost. A step whose losses to one mechanism exceed
 `CRATON_EVENT_FRACTION` of the live cratons is also written to the Event Console.
-`bin/debug/compare_cratons.py` runs long multi-seed comparisons with cratons on and off.
+`bin/debug/compare_cratons.py` runs long multi-seed comparisons with cratons on and off, and
+reports rifting by path per Gyr and the share of split and failed-rift cuts through craton
+(RFC 0003); `bin/debug/ledger_history.py` reads the same paths from a save's stats history.
 
 #### Plate Inspector, Rivers, Lake Inspector, Plates & Faults
 

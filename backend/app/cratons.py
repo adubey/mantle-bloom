@@ -34,7 +34,9 @@ its edge wears back by subduction erosion first (`attrite`, #340).
 Destruction. Every loss of cratonic volume is booked into ``World.craton_ledger`` under the
 mechanism that caused it (CRATON_SINK_ACCOUNTS); ``balance_error_m3`` checks that sources,
 sinks and the live inventory agree. Boundary consumption also books the continental material
-it removes into the continental-material ledger (continental_ledger.py).
+it removes into the continental-material ledger (continental_ledger.py). Rifting is also split
+by path (CRATON_RIFT_PATH_ACCOUNTS), and every split or failed-rift cut records how much craton
+its band crosses (CRATON_RIFT_CUT_COUNTERS) -- diagnostics outside the balance (RFC 0003).
 """
 
 from __future__ import annotations
@@ -113,6 +115,21 @@ CRATON_SINK_ACCOUNTS = (
     "unattributed_m3",
 )
 CRATON_ACCOUNTS = CRATON_SOURCE_ACCOUNTS + CRATON_SINK_ACCOUNTS
+# rifted_m3 by path (RFC 0003 phase 1): divergent-boundary thinning
+# (lithosphere_plate.deform_columns), stretch donated to new rift cells
+# (quad_tectonics._allocate_stretch) and failed rifts (merge_split.maybe_split_plate). Booking
+# one of these also books rifted_m3, so they are diagnostics outside the balance; their sum
+# equals rifted_m3 only from when a save started tracking them.
+CRATON_RIFT_PATH_ACCOUNTS = ("rifted_divergent_m3", "rifted_stretch_m3", "rifted_failed_m3")
+# Every plate-split cut that cleared the split gates, by outcome ("split" broke the plate up,
+# "failed_rift" became an aulacogen): how many there were, how many had craton in the cut's
+# band (the band a failed rift thins), and the band's total and cratonic area -- the share of
+# cuts through cratons that steering the cut (RFC 0003) would act on.
+CRATON_RIFT_CUT_KINDS = ("split", "failed_rift")
+CRATON_RIFT_CUT_COUNTERS = tuple(
+    f"{kind}_{name}" for kind in CRATON_RIFT_CUT_KINDS
+    for name in ("cuts", "cuts_through_craton", "band_area_m2", "band_craton_area_m2")
+)
 # A single step's destruction above this fraction of the live craton volume is logged to the
 # event console, naming the mechanism.
 CRATON_EVENT_FRACTION = 0.01
@@ -151,7 +168,7 @@ def ensure_ledger(world: "World") -> None:
     """Backfill the ledger's accounts without touching any plate -- safe on load."""
     if not isinstance(getattr(world, "craton_ledger", None), dict):
         world.craton_ledger = {}
-    for key in CRATON_ACCOUNTS:
+    for key in CRATON_ACCOUNTS + CRATON_RIFT_PATH_ACCOUNTS + CRATON_RIFT_CUT_COUNTERS:
         if key != "initial_m3":
             world.craton_ledger.setdefault(key, 0.0)
 
@@ -168,8 +185,8 @@ def ensure_initialized(world: "World") -> None:
 
 def record(world: "World", account: str, volume_m3: float) -> None:
     """Book `volume_m3` of cratonic crust into one account. Only `unattributed_m3` may go
-    negative (a remap that gained volume)."""
-    if account not in CRATON_ACCOUNTS:
+    negative (a remap that gained volume). A rift path account books rifted_m3 too."""
+    if account not in CRATON_ACCOUNTS and account not in CRATON_RIFT_PATH_ACCOUNTS:
         raise KeyError(f"unknown craton ledger account: {account}")
     volume_m3 = float(volume_m3)
     if not np.isfinite(volume_m3) or (volume_m3 < 0.0 and account != "unattributed_m3"):
@@ -178,6 +195,25 @@ def record(world: "World", account: str, volume_m3: float) -> None:
         return
     ensure_ledger(world)
     world.craton_ledger[account] = world.craton_ledger.get(account, 0.0) + volume_m3
+    if account in CRATON_RIFT_PATH_ACCOUNTS:
+        world.craton_ledger["rifted_m3"] += volume_m3
+
+
+def record_rift_cut(world: "World", plate: "Plate", points: np.ndarray, cut_normal: np.ndarray, band_sin: float, kind: str) -> None:
+    """Count one split cut of `kind` (CRATON_RIFT_CUT_KINDS) through `plate` along the great
+    circle with unit normal `cut_normal`, and the area and craton area of the nodes (world
+    positions `points`, in collect order) within `band_sin` of it."""
+    if kind not in CRATON_RIFT_CUT_KINDS:
+        raise KeyError(f"unknown rift cut kind: {kind}")
+    ensure_ledger(world)
+    in_band = np.abs(points @ np.asarray(cut_normal, dtype=float)) < band_sin
+    areas = _areas(world, plate)[in_band]
+    craton_area = float(areas[plate.collect("craton_crust_m")[in_band] > 0.0].sum())
+    ledger = world.craton_ledger
+    ledger[f"{kind}_cuts"] += 1.0
+    ledger[f"{kind}_cuts_through_craton"] += float(craton_area > 0.0)
+    ledger[f"{kind}_band_area_m2"] += float(areas.sum())
+    ledger[f"{kind}_band_craton_area_m2"] += craton_area
 
 
 def _areas(world: "World", plate: "Plate") -> np.ndarray:
@@ -417,7 +453,8 @@ def diagnostics(world: "World") -> dict[str, float]:
         area += float(areas[craton > 0.0].sum())
         continental_area += float(areas[_genuine_continental(plate)].sum())
         volume += float(np.dot(craton, areas))
-    result = {f"craton_{key}": float(world.craton_ledger.get(key, 0.0)) for key in CRATON_ACCOUNTS}
+    keys = CRATON_ACCOUNTS + CRATON_RIFT_PATH_ACCOUNTS + CRATON_RIFT_CUT_COUNTERS
+    result = {f"craton_{key}": float(world.craton_ledger.get(key, 0.0)) for key in keys}
     result["craton_area_m2"] = area
     result["craton_area_fraction_of_continental"] = area / continental_area if continental_area > 0.0 else 0.0
     result["craton_volume_m3"] = volume

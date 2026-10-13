@@ -213,6 +213,7 @@ def test_a_craton_resists_divergent_thinning_and_books_what_it_loses(monkeypatch
     assert thinned[1] == pytest.approx((1.0 - cratons.CRATON_RIFT_RESISTANCE) * thinned[0], rel=1e-9)
     np.testing.assert_allclose(out["craton_crust_m"][1], out["crustal_thickness_m"][1])
     assert world.craton_ledger["rifted_m3"] == pytest.approx(thinned[1] * areas[1])
+    assert world.craton_ledger["rifted_divergent_m3"] == world.craton_ledger["rifted_m3"]
 
 
 def test_rift_stretch_draws_less_from_a_craton_and_books_its_thinning(monkeypatch):
@@ -238,6 +239,7 @@ def test_rift_stretch_draws_less_from_a_craton_and_books_its_thinning(monkeypatc
     # quarter as much, since thinning is not linear in the area asked of it.
     assert 0.0 < craton_loss < 0.5 * plain_loss
     assert world.craton_ledger["rifted_m3"] == pytest.approx(craton_loss, rel=1e-9)
+    assert world.craton_ledger["rifted_stretch_m3"] == world.craton_ledger["rifted_m3"]
     # What the craton withheld is fresh magmatic crust: the new cell is thinner, not missing.
     assert craton.collect("crustal_thickness_m")[new] < plain.collect("crustal_thickness_m")[new]
 
@@ -438,6 +440,33 @@ def test_craton_state_round_trips_and_old_saves_are_seeded_on_their_first_step()
     world_mod.step_world(old, 1_000_000)
     assert old.craton_ledger["initial_m3"] > 0.0
     assert cratons.balance_error_m3(old) == pytest.approx(0.0, abs=1e-9 * old.craton_ledger["initial_m3"])
+
+
+def test_a_rift_path_account_also_books_rifted_m3_outside_the_balance():
+    # RFC 0003 phase 1: the paths are diagnostics; the balance counts rifted_m3 once.
+    world = _world(_cap(1))
+    cratons.ensure_initialized(world)
+    cratons.record(world, "rifted_m3", 2.0)  # booked before a save tracked the paths
+    cratons.record(world, "rifted_failed_m3", 3.0)
+    cratons.record(world, "rifted_stretch_m3", 5.0)
+
+    ledger = world.craton_ledger
+    assert ledger["rifted_m3"] == 10.0
+    assert (ledger["rifted_divergent_m3"], ledger["rifted_stretch_m3"], ledger["rifted_failed_m3"]) == (0.0, 5.0, 3.0)
+    assert cratons.booked_sinks_m3(world) == 10.0
+
+
+def test_an_old_ledger_gains_the_rift_diagnostics_on_load():
+    world = _world(_cap(1))
+    cratons.ensure_initialized(world)
+    for key in cratons.CRATON_RIFT_PATH_ACCOUNTS + cratons.CRATON_RIFT_CUT_COUNTERS:
+        del world.craton_ledger[key]
+
+    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+
+    assert all(loaded.craton_ledger[key] == 0.0 for key in cratons.CRATON_RIFT_PATH_ACCOUNTS + cratons.CRATON_RIFT_CUT_COUNTERS)
+    cratons.record(loaded, "rifted_divergent_m3", 1.0)
+    assert loaded.craton_ledger["rifted_m3"] == 1.0
 
 
 def test_record_rejects_negative_or_unknown_entries():

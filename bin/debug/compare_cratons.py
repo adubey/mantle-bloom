@@ -65,7 +65,8 @@ def _snapshot(world, events_seen: dict[str, int]) -> dict:
         "craton_continental_fraction": craton["craton_area_fraction_of_continental"],
         "craton_volume_km3": craton["craton_volume_m3"] / 1e9,
         "craton_balance_error_km3": craton["craton_balance_error_m3"] / 1e9,
-        "craton_ledger_km3": {key: value / 1e9 for key, value in world.craton_ledger.items()},
+        "craton_ledger_km3": {key: value / 1e9 for key, value in world.craton_ledger.items() if key not in cratons.CRATON_RIFT_CUT_COUNTERS},
+        "rift_cuts": {key: world.craton_ledger.get(key, 0.0) for key in cratons.CRATON_RIFT_CUT_COUNTERS},
         "events": dict(events_seen),
     }
 
@@ -133,6 +134,38 @@ def summarize(path: Path) -> None:
         ledger = {k.removesuffix("_m3"): round(v / 1e6, 2) for k, v in last["craton_ledger_km3"].items() if v}
         print(f"  {seed} {variant}: {ledger} balance={last['craton_balance_error_km3']:.3g} km^3 events={last['events']}"
               f" plates={last['plate_count']} mean_omega={last['mean_rotation_rate']:.3g}")
+    _summarize_rifting(by)
+
+
+def _summarize_rifting(by: dict) -> None:
+    """RFC 0003 phase 1: craton rifting by path, per Gyr as a share of the live craton at the
+    window start, and how many split and failed-rift cuts crossed craton."""
+    print("\nCraton rifting by path, per Gyr (% of live craton at window start), and cuts through craton")
+    for (seed, variant), runs in sorted(by.items()):
+        if variant != "on":
+            continue
+        myrs = sorted(runs)
+        # Whole-Gyr windows where the checkpoints allow, else the whole run.
+        bounds = [m for m in myrs if m % 1000 == 0]
+        windows = list(zip(bounds, bounds[1:])) or [(myrs[0], myrs[-1])]
+        for start, end in windows:
+            first, last = runs[start], runs[end]
+            volume = first["craton_volume_km3"]
+            if volume <= 0.0:
+                continue
+            gyr = (end - start) / 1000.0
+            shares = {
+                key.removesuffix("_m3"): (last["craton_ledger_km3"].get(key, 0.0) - first["craton_ledger_km3"].get(key, 0.0)) / volume / gyr
+                for key in ("rifted_m3", *cratons.CRATON_RIFT_PATH_ACCOUNTS)
+            }
+            print(f"  {seed} {start:5d}-{end:<5d} Myr " + " ".join(f"{k}={v:5.1%}/Gyr" for k, v in shares.items()))
+        cuts = runs[myrs[-1]].get("rift_cuts", {})
+        for kind in cratons.CRATON_RIFT_CUT_KINDS:
+            n = cuts.get(f"{kind}_cuts", 0.0)
+            band = cuts.get(f"{kind}_band_area_m2", 0.0)
+            through = cuts.get(f"{kind}_cuts_through_craton", 0.0) / n if n else 0.0
+            cratonic = cuts.get(f"{kind}_band_craton_area_m2", 0.0) / band if band else 0.0
+            print(f"  {seed} {kind:11s} cuts={n:4.0f} through craton={through:4.0%} craton share of band area={cratonic:4.0%}")
 
 
 def main() -> None:
