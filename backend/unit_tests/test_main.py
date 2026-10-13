@@ -1204,12 +1204,13 @@ def test_animate_progress_carries_a_live_stats_snapshot(client):
     _post_generate(client, json={"seed": 9, "num_plates": 6})
     resp = client.post(
         "/world/animate",
-        json={"projection": "eckert4", "view": "elevation", "width": 64, "height": 64, "step_years": 1_000_000, "num_frames": 3},
+        json={"projection": "eckert4", "view": "elevation", "width": 64, "height": 64, "step_years": 100_000, "num_frames": 3},
     )
     assert resp.status_code == 200
 
+    # Steps well inside merge_split.SPLIT_MIN_AGE_YEARS, so no plate can rift mid-recording.
     progress = [json.loads(line) for line in resp.text.splitlines() if line.strip() and json.loads(line)["type"] == "progress"]
-    assert [m["stats"]["elapsed_years"] for m in progress] == [0.0, 1_000_000.0, 2_000_000.0]
+    assert [m["stats"]["elapsed_years"] for m in progress] == [0.0, 100_000.0, 200_000.0]
     assert all(m["stats"]["plate_count"] == 6 for m in progress)
 
 
