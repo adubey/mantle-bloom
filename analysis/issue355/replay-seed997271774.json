@@ -1,0 +1,370 @@
+{
+ "save": "/Users/adubey/Downloads/mantle-bloom-seed997271774-87400000y.mbworld",
+ "save_sha256": "08ad9461d9585e92be93a58d81e326c7e4b685ae7d462135d01b0e9931ed762b",
+ "step_years": 100000.0,
+ "note": "ledger_km3 values are per 1 Myr window (the script's _m3 keys are km^3)",
+ "main": {
+  "commit": "b47448190ebb95fc5fc93945a3918ebf61e18e31",
+  "checkpoints": [
+   {
+    "elapsed_myr": 87.4,
+    "land_pct": 29.198,
+    "ice_cap_pct_of_land": 6.235,
+    "ice_volume_km3": 5653428.422,
+    "ice_max_depth_m": 5000.0
+   },
+   {
+    "elapsed_myr": 88.4,
+    "land_pct": 29.075,
+    "ice_cap_pct_of_land": 5.338,
+    "ice_volume_km3": 5867943.756,
+    "ice_max_depth_m": 5000.0,
+    "glacial_erosion_raw_km3": 816825.561,
+    "step_seconds_mean": 5.067,
+    "ledger_km3": {
+     "accumulation_m3": 153774,
+     "surface_melt_m3": 127317,
+     "frozen_river_ice_m3": 266475,
+     "frozen_river_capped_m3": 137573,
+     "frozen_lake_m3": 45993,
+     "calved_m3": 4880
+    }
+   },
+   {
+    "elapsed_myr": 89.4,
+    "land_pct": 29.14,
+    "ice_cap_pct_of_land": 5.95,
+    "ice_volume_km3": 6223992.23,
+    "ice_max_depth_m": 5000.0,
+    "glacial_erosion_raw_km3": 540094.203,
+    "step_seconds_mean": 4.786,
+    "ledger_km3": {
+     "accumulation_m3": 171370,
+     "surface_melt_m3": 148942,
+     "frozen_river_ice_m3": 469382,
+     "frozen_river_capped_m3": 321506,
+     "frozen_lake_m3": 20259,
+     "calved_m3": 20111
+    }
+   },
+   {
+    "elapsed_myr": 90.4,
+    "land_pct": 29.189,
+    "ice_cap_pct_of_land": 6.193,
+    "ice_volume_km3": 6354078.779,
+    "ice_max_depth_m": 2461.709,
+    "glacial_erosion_raw_km3": 625903.387,
+    "step_seconds_mean": 4.978,
+    "ledger_km3": {
+     "accumulation_m3": 186131,
+     "surface_melt_m3": 166286,
+     "frozen_river_ice_m3": 267852,
+     "frozen_river_capped_m3": 146529,
+     "frozen_lake_m3": 13525,
+     "calved_m3": 14275
+    }
+   },
+   {
+    "elapsed_myr": 91.4,
+    "land_pct": 29.146,
+    "ice_cap_pct_of_land": 6.177,
+    "ice_volume_km3": 6308418.667,
+    "ice_max_depth_m": 3568.478,
+    "glacial_erosion_raw_km3": 677545.56,
+    "step_seconds_mean": 4.852,
+    "ledger_km3": {
+     "accumulation_m3": 195449,
+     "surface_melt_m3": 170093,
+     "frozen_river_ice_m3": 59902,
+     "frozen_river_capped_m3": 0,
+     "frozen_lake_m3": 1506,
+     "calved_m3": 8330
+    }
+   },
+   {
+    "elapsed_myr": 92.4,
+    "land_pct": 29.169,
+    "ice_cap_pct_of_land": 6.015,
+    "ice_volume_km3": 6234793.495,
+    "ice_max_depth_m": 2525.563,
+    "glacial_erosion_raw_km3": 743052.313,
+    "step_seconds_mean": 5.038,
+    "ledger_km3": {
+     "accumulation_m3": 185748,
+     "surface_melt_m3": 166074,
+     "frozen_river_ice_m3": 48501,
+     "frozen_river_capped_m3": 0,
+     "frozen_lake_m3": 0,
+     "calved_m3": 13800
+    }
+   },
+   {
+    "elapsed_myr": 93.4,
+    "land_pct": 29.25,
+    "ice_cap_pct_of_land": 5.791,
+    "ice_volume_km3": 6198818.292,
+    "ice_max_depth_m": 2192.653,
+    "glacial_erosion_raw_km3": 677729.181,
+    "step_seconds_mean": 4.879,
+    "ledger_km3": {
+     "accumulation_m3": 179883,
+     "surface_melt_m3": 158885,
+     "frozen_river_ice_m3": 37724,
+     "frozen_river_capped_m3": 0,
+     "frozen_lake_m3": 1,
+     "calved_m3": 277
+    }
+   },
+   {
+    "elapsed_myr": 94.4,
+    "land_pct": 29.151,
+    "ice_cap_pct_of_land": 5.842,
+    "ice_volume_km3": 6098598.816,
+    "ice_max_depth_m": 2230.676,
+    "glacial_erosion_raw_km3": 641452.592,
+    "step_seconds_mean": 5.085,
+    "ledger_km3": {
+     "accumulation_m3": 178982,
+     "surface_melt_m3": 162629,
+     "frozen_river_ice_m3": 28761,
+     "frozen_river_capped_m3": 0,
+     "frozen_lake_m3": 11834,
+     "calved_m3": 16
+    }
+   },
+   {
+    "elapsed_myr": 95.4,
+    "land_pct": 29.215,
+    "ice_cap_pct_of_land": 5.398,
+    "ice_volume_km3": 6074550.845,
+    "ice_max_depth_m": 2236.192,
+    "glacial_erosion_raw_km3": 594878.808,
+    "step_seconds_mean": 4.88,
+    "ledger_km3": {
+     "accumulation_m3": 178674,
+     "surface_melt_m3": 153801,
+     "frozen_river_ice_m3": 35505,
+     "frozen_river_capped_m3": 0,
+     "frozen_lake_m3": 0,
+     "calved_m3": 12469
+    }
+   },
+   {
+    "elapsed_myr": 96.4,
+    "land_pct": 29.09,
+    "ice_cap_pct_of_land": 5.534,
+    "ice_volume_km3": 6050623.935,
+    "ice_max_depth_m": 2010.978,
+    "glacial_erosion_raw_km3": 487416.962,
+    "step_seconds_mean": 5.078,
+    "ledger_km3": {
+     "accumulation_m3": 176300,
+     "surface_melt_m3": 158580,
+     "frozen_river_ice_m3": 43229,
+     "frozen_river_capped_m3": 0,
+     "frozen_lake_m3": 0,
+     "calved_m3": 2179
+    }
+   },
+   {
+    "elapsed_myr": 97.4,
+    "land_pct": 29.038,
+    "ice_cap_pct_of_land": 5.427,
+    "ice_volume_km3": 6026994.083,
+    "ice_max_depth_m": 2140.974,
+    "glacial_erosion_raw_km3": 434424.979,
+    "step_seconds_mean": 4.856,
+    "ledger_km3": {
+     "accumulation_m3": 178500,
+     "surface_melt_m3": 153454,
+     "frozen_river_ice_m3": 42896,
+     "frozen_river_capped_m3": 0,
+     "frozen_lake_m3": 2256,
+     "calved_m3": 7171
+    }
+   }
+  ]
+ },
+ "branch": {
+  "commit": "4512bb6ed23f4b600ebed483b477a0e395469800",
+  "checkpoints": [
+   {
+    "elapsed_myr": 87.4,
+    "land_pct": 29.198,
+    "ice_cap_pct_of_land": 6.235,
+    "ice_volume_km3": 5653428.422,
+    "ice_max_depth_m": 5000.0
+   },
+   {
+    "elapsed_myr": 88.4,
+    "land_pct": 29.061,
+    "ice_cap_pct_of_land": 5.12,
+    "ice_volume_km3": 5635316.229,
+    "ice_max_depth_m": 2447.581,
+    "glacial_erosion_raw_km3": 825250.392,
+    "step_seconds_mean": 4.973,
+    "ledger_km3": {
+     "accumulation_m3": 150126,
+     "surface_melt_m3": 110474,
+     "frozen_river_ice_m3": 35567,
+     "frozen_river_capped_m3": 0,
+     "frozen_lake_m3": 37571,
+     "calved_m3": 11290
+    }
+   },
+   {
+    "elapsed_myr": 89.4,
+    "land_pct": 29.113,
+    "ice_cap_pct_of_land": 5.364,
+    "ice_volume_km3": 5601419.149,
+    "ice_max_depth_m": 2282.932,
+    "glacial_erosion_raw_km3": 508752.147,
+    "step_seconds_mean": 4.787,
+    "ledger_km3": {
+     "accumulation_m3": 153257,
+     "surface_melt_m3": 98097,
+     "frozen_river_ice_m3": 38144,
+     "frozen_river_capped_m3": 0,
+     "frozen_lake_m3": 31617,
+     "calved_m3": 14930
+    }
+   },
+   {
+    "elapsed_myr": 90.4,
+    "land_pct": 29.159,
+    "ice_cap_pct_of_land": 5.472,
+    "ice_volume_km3": 5548687.288,
+    "ice_max_depth_m": 2429.229,
+    "glacial_erosion_raw_km3": 484618.931,
+    "step_seconds_mean": 5.011,
+    "ledger_km3": {
+     "accumulation_m3": 158758,
+     "surface_melt_m3": 105318,
+     "frozen_river_ice_m3": 40059,
+     "frozen_river_capped_m3": 0,
+     "frozen_lake_m3": 16055,
+     "calved_m3": 2293
+    }
+   },
+   {
+    "elapsed_myr": 91.4,
+    "land_pct": 29.157,
+    "ice_cap_pct_of_land": 5.536,
+    "ice_volume_km3": 5544243.151,
+    "ice_max_depth_m": 3563.55,
+    "glacial_erosion_raw_km3": 567989.793,
+    "step_seconds_mean": 4.839,
+    "ledger_km3": {
+     "accumulation_m3": 166449,
+     "surface_melt_m3": 111189,
+     "frozen_river_ice_m3": 41549,
+     "frozen_river_capped_m3": 0,
+     "frozen_lake_m3": 28226,
+     "calved_m3": 1001
+    }
+   },
+   {
+    "elapsed_myr": 92.4,
+    "land_pct": 29.131,
+    "ice_cap_pct_of_land": 5.243,
+    "ice_volume_km3": 5455075.175,
+    "ice_max_depth_m": 2484.039,
+    "glacial_erosion_raw_km3": 513215.774,
+    "step_seconds_mean": 5.037,
+    "ledger_km3": {
+     "accumulation_m3": 160809,
+     "surface_melt_m3": 109199,
+     "frozen_river_ice_m3": 33292,
+     "frozen_river_capped_m3": 0,
+     "frozen_lake_m3": 3956,
+     "calved_m3": 5481
+    }
+   },
+   {
+    "elapsed_myr": 93.4,
+    "land_pct": 29.186,
+    "ice_cap_pct_of_land": 5.186,
+    "ice_volume_km3": 5442049.944,
+    "ice_max_depth_m": 2209.839,
+    "glacial_erosion_raw_km3": 594730.067,
+    "step_seconds_mean": 4.895,
+    "ledger_km3": {
+     "accumulation_m3": 156679,
+     "surface_melt_m3": 107870,
+     "frozen_river_ice_m3": 28649,
+     "frozen_river_capped_m3": 0,
+     "frozen_lake_m3": 3379,
+     "calved_m3": 164
+    }
+   },
+   {
+    "elapsed_myr": 94.4,
+    "land_pct": 29.143,
+    "ice_cap_pct_of_land": 5.266,
+    "ice_volume_km3": 5373611.896,
+    "ice_max_depth_m": 2194.458,
+    "glacial_erosion_raw_km3": 467512.762,
+    "step_seconds_mean": 5.112,
+    "ledger_km3": {
+     "accumulation_m3": 152465,
+     "surface_melt_m3": 104702,
+     "frozen_river_ice_m3": 18596,
+     "frozen_river_capped_m3": 0,
+     "frozen_lake_m3": 189,
+     "calved_m3": 1892
+    }
+   },
+   {
+    "elapsed_myr": 95.4,
+    "land_pct": 29.14,
+    "ice_cap_pct_of_land": 4.994,
+    "ice_volume_km3": 5379946.469,
+    "ice_max_depth_m": 2459.888,
+    "glacial_erosion_raw_km3": 480874.588,
+    "step_seconds_mean": 4.886,
+    "ledger_km3": {
+     "accumulation_m3": 147314,
+     "surface_melt_m3": 98638,
+     "frozen_river_ice_m3": 23846,
+     "frozen_river_capped_m3": 0,
+     "frozen_lake_m3": 397,
+     "calved_m3": 754
+    }
+   },
+   {
+    "elapsed_myr": 96.4,
+    "land_pct": 29.136,
+    "ice_cap_pct_of_land": 5.139,
+    "ice_volume_km3": 5366511.546,
+    "ice_max_depth_m": 2075.037,
+    "glacial_erosion_raw_km3": 331368.891,
+    "step_seconds_mean": 5.124,
+    "ledger_km3": {
+     "accumulation_m3": 148021,
+     "surface_melt_m3": 104905,
+     "frozen_river_ice_m3": 26435,
+     "frozen_river_capped_m3": 0,
+     "frozen_lake_m3": 415,
+     "calved_m3": 1734
+    }
+   },
+   {
+    "elapsed_myr": 97.4,
+    "land_pct": 28.985,
+    "ice_cap_pct_of_land": 5.148,
+    "ice_volume_km3": 5357365.36,
+    "ice_max_depth_m": 2179.062,
+    "glacial_erosion_raw_km3": 280524.217,
+    "step_seconds_mean": 4.88,
+    "ledger_km3": {
+     "accumulation_m3": 149414,
+     "surface_melt_m3": 102714,
+     "frozen_river_ice_m3": 26171,
+     "frozen_river_capped_m3": 0,
+     "frozen_lake_m3": 0,
+     "calved_m3": 2032
+    }
+   }
+  ]
+ }
+}

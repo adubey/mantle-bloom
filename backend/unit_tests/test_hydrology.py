@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from app import geometry
 from app.elevation_lines import line_spacing_rad
-from app.hydroclimate import hydrology
+from app.hydroclimate import breaching, hydrology
 from app.plates import collect_all_accounting_areas_m2
 from app.world import World, generate_world, step_world
 
@@ -461,6 +461,55 @@ def test_breach_surge_drives_flow_accum_but_never_physical_discharge(monkeypatch
     assert surged.flow_accum[10] > calm.flow_accum[10] + 0.9 * surged.breach_surge[10]
     assert np.array_equal(surged.discharge_m3_s, calm.discharge_m3_s)
     assert surged.discharge_m3_s[10] > 0.0  # the lake's own runoff still passes through
+
+
+def test_a_spilling_sink_loses_the_same_transit_share_as_any_node():
+    # The single-node spilling lake above. Physical water has one transit-loss rule (issue
+    # #355): the spilling sink loses its share like any other node. Only the legacy routing
+    # exempts it, for the breach surge's sake.
+    elevation = np.array(
+        [500.0, 480.0, 460.0, 440.0, 420.0, 400.0, 380.0, 360.0, 340.0, 320.0]
+        + [50.0]
+        + [250.0, 300.0, 260.0, 200.0, 150.0, 100.0, 50.0, 20.0]
+        + [-10.0, -50.0, -100.0]
+    )
+    n = len(elevation)
+    lake_depth = np.zeros(n)
+    lake_depth[10] = 160.0
+    world = World(seed=0, plates=[_flow_line_plate_with_lake(0, 0.002 * np.arange(n), elevation, lake_depth)])
+    fields = hydrology.compute_hydrology(world, np.full(n, 10.0), np.full(n, 15.0), years=1_000_000)
+
+    assert fields.breach_surge[10] > 0.0
+    loss = hydrology.river_transit_loss_fraction(np.array([15.0]), np.array([False]))[0]
+    assert loss > 0.0
+    runoff_m3_s = breaching.runoff_mm(np.array([10.0]), breaching.open_water_evaporation_mm(np.array([15.0])))[0] / 1000.0
+    runoff_m3_s *= _node_areas(world)[10] / hydrology.SECONDS_PER_YEAR
+    inflow_m3_s = float(fields.discharge_m3_s[fields.flow_target == 10].sum())
+    assert inflow_m3_s > 0.0
+    assert fields.discharge_m3_s[10] == pytest.approx((inflow_m3_s + runoff_m3_s) * (1.0 - loss), rel=1e-12)
+
+
+def test_frozen_river_ice_is_the_physical_water_settling_at_frozen_sinks():
+    # Warm uplands drain into a frozen band: each frozen land node is a dead end, so the
+    # physical water reaching it settles there and freezes at the glacier exchange rate
+    # (RIVER_WATER_TO_ICE, issue #355). The ice per year doesn't depend on step length, and
+    # the breach surge never reaches it.
+    theta = 0.002 * np.arange(12)
+    elevation = 500.0 - 60.0 * np.arange(12)
+    temperature = np.where(np.arange(12) < 6, 15.0, -10.0)
+    per_year = []
+    for years in (100_000, 1_000_000):
+        world = World(seed=0, plates=[_flow_line_plate(0, theta, elevation)])
+        fields = hydrology.compute_hydrology(world, np.full(12, 800.0), temperature, years=years)
+        frozen_land = (temperature < 0.0) & ~fields.is_ocean
+        assert np.all(fields.flow_target[frozen_land] == -1)
+        settled_m3 = float(fields.discharge_m3_s[frozen_land].sum()) * hydrology.SECONDS_PER_YEAR * years
+        assert settled_m3 > 0.0
+        ledger = fields.ice.ledger
+        assert ledger.frozen_river_capped_m3 == 0.0
+        assert ledger.frozen_river_ice_m3 == pytest.approx(hydrology.RIVER_WATER_TO_ICE * settled_m3, rel=1e-9)
+        per_year.append(ledger.frozen_river_ice_m3 / years)
+    assert per_year[1] == pytest.approx(per_year[0], rel=1e-6)  # snowmelt on the cold band varies a hair
 
 
 def test_discharge_carries_the_ice_ledgers_meltwater_exactly_once_at_any_step_length():
