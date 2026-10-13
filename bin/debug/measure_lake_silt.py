@@ -28,21 +28,18 @@ Replays `--myr` from the save in `--step-years` steps and records, at every chec
 from __future__ import annotations
 
 import inspect
-import json
-import resource
-import time
 
 import numpy as np
-from replay_lib import load_replay, parse_replay_args, start_checkpoints
+from replay_lib import load_replay, parse_replay_args, run_replay
 
 # The pre-#363 SILT_ACCUMULATION_COEFFICIENT (1/100 of the retired lake fill rate 0.12).
 LEGACY_SILT_COEFFICIENT = 0.12 / 100.0
 
 
-def main() -> None:  # noqa: C901
+def main() -> None:
     args = parse_replay_args(__doc__)
     world, result = load_replay(args, issue=363)
-    from app import plates as plates_mod, world as world_mod  # noqa: E402
+    from app import plates as plates_mod  # noqa: E402
     from app.elevation_lines import line_spacing_rad  # noqa: E402
     from app.hydroclimate import hydrology, lakes  # noqa: E402
 
@@ -117,28 +114,21 @@ def main() -> None:  # noqa: C901
             "lake_volume_km3": float(np.dot(np.where(land, hydro.lake_depth, 0.0), areas)) / 1e9,
         }
 
-    steps, per_checkpoint = start_checkpoints(args, result, snapshot())
-    for i in range(1, steps + 1):
-        started = time.perf_counter()
-        world_mod.step_world(world, args.step_years)
-        window["seconds"] += time.perf_counter() - started
+    def after_step(seconds: float) -> None:
+        window["seconds"] += seconds
         hydro = world.hydrology_cache
         if hydro is not None:
             areas = plates_mod.collect_all_accounting_areas_m2(hydro.plates_in_order, line_spacing_rad(world.node_density))
             window["applied_km3"] += float(np.dot(hydro.silt_deposited, areas)) / 1e9
-        if i % per_checkpoint == 0 or i == steps:
-            snap = snapshot()
-            seconds = window.pop("seconds")
-            snap["silt"] = {k: round(v, 6) for k, v in window.items()}
-            snap["step_seconds_mean"] = seconds / per_checkpoint
-            snap["peak_rss_mb"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1e6
-            result["checkpoints"].append(snap)
-            print(json.dumps(snap), flush=True)
-            args.out.write_text(json.dumps(result, indent=1))
-            window = empty_window()
-    args.out.write_text(json.dumps(result, indent=1))
-    print(f"wrote {args.out}")
 
+    def close_window(steps: int) -> dict:
+        nonlocal window
+        seconds = window.pop("seconds")
+        closed = {"silt": {k: round(v, 6) for k, v in window.items()}, "step_seconds_mean": seconds / steps}
+        window = empty_window()
+        return closed
+
+    run_replay(world, args, result, snapshot, after_step, close_window)
 
 if __name__ == "__main__":
     main()

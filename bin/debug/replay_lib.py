@@ -1,6 +1,6 @@
 """Shared plumbing for the save-replay measurement scripts (measure_ice_sheet.py,
 measure_lake_silt.py): the common command line, loading a save against a chosen backend tree,
-and starting the checkpoint loop.
+and the step-and-checkpoint loop.
 
 `--backend` points at the backend to import, so one script measures both `origin/main` (a
 detached worktree) and the branch. `load_replay` puts it first on `sys.path` before anything
@@ -12,8 +12,11 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import resource
 import subprocess
 import sys
+import time
+from collections.abc import Callable
 from pathlib import Path
 
 
@@ -51,12 +54,36 @@ def load_replay(args: argparse.Namespace, issue: int):
     return world, result
 
 
-def start_checkpoints(args: argparse.Namespace, result: dict, first: dict) -> tuple[int, int]:
-    """Record and print the starting checkpoint `first`, and create the output directory.
-    Returns `(steps, steps_per_checkpoint)`."""
+def run_replay(
+    world,
+    args: argparse.Namespace,
+    result: dict,
+    snapshot: Callable[[], dict],
+    after_step: Callable[[float], None],
+    close_window: Callable[[int], dict],
+) -> None:
+    """Step `world` for `--myr` in `--step-years` steps, writing `result` to `--out` at every
+    checkpoint. `snapshot()` measures the world's state. `after_step(seconds)` runs after each
+    step with that step's wall time, to add to the script's window. `close_window(steps)` returns
+    the window's measures for a checkpoint `steps` steps after the last one, and starts a new
+    window."""
+    from app import world as world_mod  # noqa: E402
+
     steps = int(round(args.myr * 1e6 / args.step_years))
     per_checkpoint = max(1, int(round(args.checkpoint_myr * 1e6 / args.step_years)))
-    result["checkpoints"].append(first)
-    print(json.dumps(first), flush=True)
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    return steps, per_checkpoint
+    result["checkpoints"].append(snapshot())
+    print(json.dumps(result["checkpoints"][-1]), flush=True)
+    for i in range(1, steps + 1):
+        started = time.perf_counter()
+        world_mod.step_world(world, args.step_years)
+        after_step(time.perf_counter() - started)
+        if i % per_checkpoint == 0 or i == steps:
+            snap = snapshot()
+            snap.update(close_window(per_checkpoint))
+            snap["peak_rss_mb"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1e6
+            result["checkpoints"].append(snap)
+            print(json.dumps(snap), flush=True)
+            args.out.write_text(json.dumps(result, indent=1))
+    args.out.write_text(json.dumps(result, indent=1))
+    print(f"wrote {args.out}")
