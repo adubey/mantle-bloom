@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { fetchCrossSection } from "./api";
-import { nearbyCrossSectionPositions } from "./crossSectionFrames";
+import { advanceCrossSectionPosition, nearbyCrossSectionPositions } from "./crossSectionFrames";
 
 const PLANET_RADIUS_KM = 6_371;
 const ARC_LENGTH_KM = 3_000;
@@ -8,9 +8,10 @@ const ARC_POSITION_COUNT = 120;
 const SECTION_DEPTH_KM = 350;
 const VERTICAL_EXAGGERATION = 2;
 const SECTION_STYLE_VERSION = 1;
-const MAX_CACHED_SECTION_FRAMES = 9;
+const MAX_CACHED_SECTION_FRAMES = ARC_POSITION_COUNT;
 const PREFETCH_CONCURRENCY = 3;
 const PREFETCHED_FRAME_COUNT = MAX_CACHED_SECTION_FRAMES;
+const ARC_KEYBOARD_STEP = 2;
 
 interface FrameKey {
   worldRevision: number;
@@ -23,7 +24,6 @@ interface FrameKey {
 interface CachedFrame {
   key: FrameKey;
   dataUrl: string;
-  image: HTMLImageElement;
   lastUsed: number;
 }
 
@@ -51,6 +51,9 @@ function rememberActiveFrame(key: FrameKey): void {
 }
 
 function pruneFrameCache(): void {
+  for (const [key, entry] of frameCache) {
+    if (!activeFrameKey || !sameFrameSet(entry.key, activeFrameKey)) frameCache.delete(key);
+  }
   if (frameCache.size <= MAX_CACHED_SECTION_FRAMES) return;
   const distance = (entry: CachedFrame) => {
     if (!activeFrameKey || !sameFrameSet(entry.key, activeFrameKey)) return Number.POSITIVE_INFINITY;
@@ -64,6 +67,12 @@ function pruneFrameCache(): void {
   for (const key of frameCache.keys()) {
     if (!retained.has(key)) frameCache.delete(key);
   }
+}
+
+function clearMantleCrossSectionCache(): void {
+  frameCache.clear();
+  inFlightFrames.clear();
+  activeFrameKey = null;
 }
 
 function cachedFrame(key: FrameKey): string | null {
@@ -83,22 +92,11 @@ async function loadFrame(key: FrameKey, signal: AbortSignal): Promise<string> {
   const promise = (async () => {
     const response = await fetchCrossSection(key.planeAngleDeg, key.arcPosition, key.width, key.height, signal);
     const dataUrl = `data:image/png;base64,${response.image_base64}`;
-    // Decode in the background before a frame is eligible for reuse so slider changes can
-    // swap to a nearby cached frame without waiting for PNG decoding on the paint path.
-    const image = new Image();
-    if (typeof image.decode === "function") {
-      image.src = dataUrl;
-      await image.decode();
-    } else {
-      await new Promise<void>((resolve, reject) => {
-        image.onload = () => resolve();
-        image.onerror = () => reject(new Error("Could not decode cross-section image"));
-        image.src = dataUrl;
-      });
-    }
     if (signal.aborted) throw new DOMException("Cross-section request aborted", "AbortError");
 
-    frameCache.set(cacheKey, { key, dataUrl, image, lastUsed: ++cacheClock });
+    // Keep the compressed PNG string for every arc; the browser decodes only the selected
+    // frame when it is attached to the visible image.
+    frameCache.set(cacheKey, { key, dataUrl, lastUsed: ++cacheClock });
     pruneFrameCache();
     return dataUrl;
   })();
@@ -472,6 +470,8 @@ export default function MantleCrossSection({
     };
   }, [worldRevision, planeAngleDeg, arcPosition, width, height, currentCacheKey]);
 
+  useEffect(() => () => clearMantleCrossSectionCache(), []);
+
   return (
     <div
       style={{
@@ -570,14 +570,16 @@ export default function MantleCrossSection({
             type="range"
             min={0}
             max={180}
-            step={1}
+            step={0.25}
             value={planeAngleDeg}
             onChange={(event) => onPlaneAngleChange(Number(event.target.value))}
             aria-label="Great-circle plane orientation"
             style={{ width: "100%", margin: "3px 0 0", accentColor: "#61ded0" }}
           />
         </label>
-        <div style={{ color: "#7f8ba0", fontSize: 9, marginTop: -7 }}>Rotates the great-circle plane through the globe.</div>
+        <div style={{ color: "#7f8ba0", fontSize: 9, marginTop: -7 }}>
+          Fine 0.25° steps make pole-crossing plane changes slower.
+        </div>
 
         <label style={{ display: "block", marginTop: 1, fontSize: 11 }}>
           <span style={{ display: "flex", justifyContent: "space-between", gap: 6 }}>
@@ -592,12 +594,14 @@ export default function MantleCrossSection({
             value={arcPosition}
             onChange={(event) => onArcPositionChange(Number(event.target.value))}
             onKeyDown={(event) => {
-              if (event.key === "ArrowRight" && arcPosition === ARC_POSITION_COUNT - 1) {
+              if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
                 event.preventDefault();
-                onArcPositionChange(0);
-              } else if (event.key === "ArrowLeft" && arcPosition === 0) {
-                event.preventDefault();
-                onArcPositionChange(ARC_POSITION_COUNT - 1);
+                onArcPositionChange(advanceCrossSectionPosition(
+                  arcPosition,
+                  ARC_POSITION_COUNT,
+                  event.key === "ArrowRight" ? 1 : -1,
+                  ARC_KEYBOARD_STEP,
+                ));
               }
             }}
             aria-label="Position of the 3,000 kilometre arc around the great circle"
@@ -605,7 +609,7 @@ export default function MantleCrossSection({
           />
         </label>
         <div style={{ color: "#7f8ba0", fontSize: 9, marginTop: -7 }}>
-          Center {centerDegrees.toFixed(0)}° of 360° · {ARC_LENGTH_KM.toLocaleString()} km fixed length
+          Center {centerDegrees.toFixed(0)}° of 360° · 3,000 km arc · keys: 6° steps
         </div>
       </aside>
     </div>

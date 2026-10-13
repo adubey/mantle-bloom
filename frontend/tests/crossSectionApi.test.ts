@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { requestCrossSection } from "../src/crossSectionApi.js";
-import { nearbyCrossSectionPositions } from "../src/crossSectionFrames.js";
+import { advanceCrossSectionPosition, nearbyCrossSectionPositions } from "../src/crossSectionFrames.js";
 
 test("requests the selected cross-section frame with its dimensions and abort signal", async () => {
   const controller = new AbortController();
@@ -46,4 +46,13 @@ test("preserves the backend status when section rendering is unavailable", async
 test("selects only nearby prefetch frames and wraps around the great circle", () => {
   assert.deepEqual(nearbyCrossSectionPositions(119, 120, 8), [118, 0, 117, 1, 116, 2, 115, 3]);
   assert.deepEqual(nearbyCrossSectionPositions(4, 8, 20), [3, 5, 2, 6, 1, 7, 0]);
+  const remainingFrames = nearbyCrossSectionPositions(37, 120, 119);
+  assert.equal(remainingFrames.length, 119);
+  assert.equal(new Set(remainingFrames).size, 119);
+  assert.equal(remainingFrames.includes(37), false);
+});
+
+test("fast arc keyboard steps wrap across two positions", () => {
+  assert.equal(advanceCrossSectionPosition(0, 120, -1, 2), 118);
+  assert.equal(advanceCrossSectionPosition(119, 120, 1, 2), 1);
 });

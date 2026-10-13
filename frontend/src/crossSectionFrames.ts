@@ -1,3 +1,12 @@
+export function advanceCrossSectionPosition(
+  currentIndex: number,
+  totalPositions: number,
+  direction: number,
+  step = 1,
+): number {
+  return (currentIndex + direction * step + totalPositions) % totalPositions;
+}
+
 export function nearbyCrossSectionPositions(centerIndex: number, totalPositions: number, limit: number): number[] {
   if (!Number.isInteger(totalPositions) || totalPositions < 1) {
     throw new RangeError("totalPositions must be a positive integer");
