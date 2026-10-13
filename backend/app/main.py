@@ -390,6 +390,7 @@ def _river_summary(fields: hydrology.HydrologyFields, river: hydrology.RiverInfo
     return {
         "river_id": river_id,
         "num_nodes": int(len(river.member_idx)),
+        "length_m": river.length_m,
         "segments": segments,
         "mouth_xyz": _round_coords(fields.points[river.mouth_idx]),
         "mouth_type": river.mouth_type,
@@ -539,6 +540,7 @@ def _lake_basin_summary(
             "mouth_xyz": _round_coords(fields.points[river.mouth_idx]),
             "flow_rate": river.flow_rate,
             "num_nodes": int(len(river.member_idx)),
+            "length_m": river.length_m,
         }
         for river in rivers
         if river.mouth_idx in member_set

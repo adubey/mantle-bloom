@@ -120,6 +120,7 @@ export interface PlatesResponse {
 export interface RiverSummary {
   river_id: number;
   num_nodes: number;
+  length_m: number; // summed geodesic length of flow edges, in meters
   // Each entry is one flow edge (a node and its downstream flow_target) as a pair of world-
   // space points -- a flat edge list, not an ordered polyline, since a river network can
   // branch (see PlateInspector.tsx's segment-based river rendering for the same shape used
@@ -245,6 +246,7 @@ export interface InflowRiver {
   mouth_xyz: [number, number, number];
   flow_rate: number; // physical discharge at the mouth, m^3/s
   num_nodes: number;
+  length_m: number; // summed geodesic length of flow edges
 }
 
 // The river actually carrying a lake's current spill outward (see LakeSummary.outflow_river
@@ -258,6 +260,7 @@ export interface OutflowRiver {
   mouth_type: "ocean" | "lake" | "other";
   flow_rate: number; // physical discharge at the mouth, m^3/s
   num_nodes: number;
+  length_m: number; // summed geodesic length of flow edges
 }
 
 // Lake Inspector data -- same "raw JSON, client renders itself" philosophy as PlatesResponse/

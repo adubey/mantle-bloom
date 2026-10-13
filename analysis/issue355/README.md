@@ -55,3 +55,14 @@ area differs by 0.05 points, inside the ±2% run-to-run noise (#315). Runtime do
 **Not measured here.** Lake inflow through spilling sinks also changed: those nodes now
 lose the ordinary transit share (at most about 2% per node). This script doesn't report lake
 volumes. The two-density A/B of the whole change, including discharge, is #355 step 5.
+
+## Step 4: river visibility across node densities
+
+Rendered the same seed (`355004`) at node densities 1 and 4, advanced each by 10 Myr, and
+compared the elevation map and `/world/rivers` summaries. Broad river placement remained
+readable at both densities; the finer mesh resolves more separate river networks. Replacing
+the UI's 30-node visibility cutoff with a 1,875 km physical-length cutoff yields 11 and 14
+eligible networks at densities 1 and 4. The cutoff is no longer directly tied to mesh spacing.
+This is a visual spot check; the step 5 replay will measure model outcomes.
+
+Counts and setup are recorded in [step4-visual.json](step4-visual.json).
