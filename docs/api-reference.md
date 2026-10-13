@@ -510,10 +510,9 @@ runs once). `404` if no world has been generated yet.
   (a true dead-end sink, `flow_target == -1` -- a basin `lakes.step_lakes` is already growing
   into a real lake node by node every step, so this flips to `"lake"` on its own once that
   basin's water crosses `LAKE_MIN_VISIBLE_DEPTH_M`).
-- `flow_rate` is `flow_accum` at the mouth; `speed` is `hydrology.compute_river_speed`
-  evaluated there. Both are stylized, unitless quantities -- meaningful only relative to other
-  rivers in the same world, not real physical units (see
-  [simulation-model.md#hydrology](simulation-model.md#hydrology)).
+- `flow_rate` is physical discharge at the river mouth in m^3/s, from
+  `HydrologyFields.discharge_m3_s`. `speed` is the stylized, unitless
+  `hydrology.compute_river_speed` value evaluated there.
 - `num_tributaries` counts separate headwater branches feeding the network -- see
   [simulation-model.md#river-inspector](simulation-model.md#river-inspector) for the exact
   definition (an original one; no precedent to port).
@@ -598,11 +597,13 @@ been generated yet.
   it's actively overflowing its own outlet.
 - `inflow_rivers` is every `RiverInfo` (see `/world/rivers`) whose own mouth lands somewhere in
   this basin, as a small inline summary rather than a full `RiverSummary` -- the River
-  Inspector's own map mode is what draws a river's full path.
+  Inspector's own map mode is what draws a river's full path. Each `flow_rate` is physical
+  discharge in m^3/s.
 - `outflow_river` is, unlike an inflow, found by which river network (if any) owns the node
   just *outside* the rim on the far side (`Lake.outlet_target_idx`) -- the same full shape
   `/world/rivers` returns (minus `river_id`/`speed`/`num_tributaries`, meaningless outside that
-  view's own ranked list), since the Lake Inspector draws this one's whole path. `null` when
+  view's own ranked list), since the Lake Inspector draws this one's whole path. Its
+  `flow_rate` is physical discharge in m^3/s. `null` when
   there's no live outflow to show: a closed/endorheic basin with no known spill, a resolved rim
   that isn't currently `is_spilling`, or a spilling rim whose flow hasn't yet cleared
   `hydrology.RIVER_FLOW_PERCENTILE` to register as its own river network yet.

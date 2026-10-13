@@ -3313,7 +3313,9 @@ thousand land nodes, a real chunk of a step's total cost), so `erosion.py` compu
 (`hydrology.compute_hydrology`) and reuses the result for both erosion and
 `World.hydrology_cache`, rather than paying for it twice.
 
-**Water units** (issue #355). Three kinds of water move along `flow_target`:
+**Water units** (issue #355). Physical discharge and erosion-only breach forcing now drive the
+river model; the legacy route remains only for lake silt and the step 4 river-visibility audit.
+Three kinds of water/forcing move along `flow_target`:
 
 - **Physical water**, in m^3/yr: area-weighted Budyko runoff of liquid precipitation plus
   glacier meltwater. It balances the lakes (see *Balanced lakes* below), and its through-flow
@@ -3332,19 +3334,27 @@ thousand land nodes, a real chunk of a step's total cost), so `erosion.py` compu
   water at 1000 kg/m^3 to glacier ice at about 917 kg/m^3, and meltwater should too.
 - **The breach surge** (`HydrologyFields.breach_surge`) is a spilling lake's erosive forcing,
   sized by node count (`LAKE_BREACH_EROSION_COEFFICIENT`). It is never part of the discharge.
+  Its separately-routed accumulation (`breach_surge_accum`) contributes to river erosion only.
 
 `flow_accum` and `water_deposited` come from the older routing: stacked mm/yr of liquid
 precipitation, melt and breach surge, with in-transit evaporation that scales with step
-length. They grow with node density as well as with rainfall. Until each consumer moves to
-the quantities above, the breach surge still reaches every one of them, not only erosion:
+length. They grow with node density as well as with rainfall. River erosion, width, speed and
+the geology boost no longer consume them; the breach surge remains in this route only for
+legacy consumers that have not moved:
 
 | Consumer | Reads | Moves in |
 |---|---|---|
-| River erosion, channel width, river speed, River Inspector | `flow_accum` | #355 step 3 |
-| Geology's river-mouth resource boost | `water_deposited` | #355 step 3 |
+| River erosion | physical discharge on the default-density reference scale + `breach_surge_accum` | #355 step 3 |
+| Channel width, river speed, deposition gates and River/Lake Inspector flow values | physical discharge | #355 step 3 |
+| Geology's river-mouth resource boost | physical discharge at ocean-mouth nodes | #355 step 3 |
+| River visibility mask and server-rendered river styling | `flow_accum` | #355 step 4 audit |
 | Lake silt | `water_deposited` | #363 |
 
-Taking the surge out of the older routing before then would change all of them.
+The fixed reference cell area maps physical discharge back onto the old accumulated-mm/yr
+scale at the default node density. This preserves the existing river-erosion, width, speed and
+deposition calibration at that reference density while making a fixed catchment independent of
+mesh density. The breach surge uses the same reference scale for erosion but never contributes
+to reported discharge, channel-width growth, deposition or geology.
 
 **The core algorithms**, all operating on the k-NN graph:
 
@@ -4036,6 +4046,11 @@ instead (a real bug an earlier version of this had, since fixed): `"other"` only
 `lakes.step_lakes` is already busy growing into a real lake node by node every step, so this
 reads as `"lake"` on its own the moment that basin's water crosses
 `LAKE_MIN_VISIBLE_DEPTH_M`).
+
+The API's `flow_rate` is the physical discharge at this mouth in m^3/s
+(`HydrologyFields.discharge_m3_s`), not the legacy `flow_accum` value used to select river
+members. This same field supplies each Lake Inspector inflow/outflow summary. The Inspector's
+`speed` remains a stylized, unitless comparison value.
 
 **`num_tributaries` is an original definition** -- nothing existing to build on. Counts each
 member's in-network in-degree (how

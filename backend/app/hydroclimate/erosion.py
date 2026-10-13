@@ -145,10 +145,11 @@ HUMIDITY_REFERENCE = 1.0
 # ~3e-3, reaches full strength).
 WEATHERING_RELIEF_REFERENCE_SLOPE = 0.002
 
-# Stream-power river erosion: coefficient*channel_boost*water_accum^FLOW_EXPONENT*
-# slope^SLOPE_EXPONENT. Coefficient re-derived by the same order-of-magnitude reasoning as
-# RAIN_EROSION_COEFFICIENT (see module docstring); the two exponents need no such
-# re-derivation, being dimensionless and not tied to any grid/unit convention.
+# Stream-power river erosion: coefficient*channel_boost*flow^FLOW_EXPONENT*slope^SLOPE_EXPONENT.
+# `flow` is discharge converted to the default-density mm/yr-equivalent reference scale in
+# hydrology.py; this preserves the existing coefficient calibration at the default density
+# while removing the actual mesh density from the forcing. Breach forcing is added on that
+# same legacy-equivalent scale for erosion only.
 RIVER_EROSION_COEFFICIENT = 100.0
 RIVER_FLOW_EXPONENT = 0.5
 RIVER_SLOPE_EXPONENT = 1.0
@@ -160,10 +161,10 @@ CHANNEL_EROSION_BOOST = 0.6
 CHANNEL_BOOST_REFERENCE_M = 200.0
 MAX_CHANNEL_DEPTH_M = 2000.0
 
-# Channel width is a mantle-bloom-original addition. "Larger flows make a channel larger":
+# Channel width is a mantle-bloom-original addition. "Larger discharges make a channel larger":
 # standard hydraulic-geometry scaling (width ~ discharge^b, b commonly observed near 0.5 for
 # real rivers) -- same discharge exponent as RIVER_FLOW_EXPONENT above, but width is purely a
-# function of how much water
+# function of how much physical water
 # passes through, not of slope (a wide, lazy lowland river and a narrow, steep mountain
 # torrent can carry comparable discharge, but width is driven by the water, not the
 # gradient). Grows the same way channel_depth does -- persistent, monotonically
@@ -177,8 +178,9 @@ MAX_CHANNEL_WIDTH_M = 5000.0
 # carrying all of it to the coast. river_speed here is a stylized, unitless quantity (see
 # hydrology.compute_river_speed) rather than a literal speed -- so its threshold isn't a
 # physical speed either, just derived against this codebase's own river_speed scale.
-# DEPOSITION_MIN_FLOW_M and DEPOSITION_FRACTION need no such derivation (both are already
-# dimensionless/fractional, not tied to any particular scale convention).
+# Deposition gates on discharge expressed in the same fixed default-density reference scale as
+# the stream-power law; `DEPOSITION_MIN_FLOW_M` keeps its historical numeric calibration.
+# DEPOSITION_FRACTION is a ratio and remains scale-free.
 DEPOSITION_SPEED_THRESHOLD = 2.0
 DEPOSITION_MIN_FLOW_M = 0.05
 DEPOSITION_FRACTION = 0.15
@@ -1923,7 +1925,16 @@ def apply_erosion(
     # deliberately *not* routed to World.log_event: even after the near-sea-level aggregation
     # they churn constantly along a dithering coastline and drown out the genuine tectonic
     # events in the console. The structured events are still computed and available for tests.
-    water_accum_m = hydro.flow_accum / 1000.0
+    discharge_m3_s = hydro.discharge_m3_s
+    if discharge_m3_s is None or len(discharge_m3_s) != n:
+        # Hand-built/pre-step-1 caches can still be used by internal callers; live loaded saves
+        # with this cache are invalidated before API use and each simulation step rebuilds it.
+        discharge_m3_s = hydrology.flow_accum_mm_yr_to_discharge_m3_s(hydro.flow_accum)
+    water_accum_m = hydrology.discharge_m3_s_to_flow_accum_mm_yr(discharge_m3_s) / 1000.0
+    breach_surge_accum = hydro.breach_surge_accum
+    if breach_surge_accum is None or len(breach_surge_accum) != n:
+        breach_surge_accum = np.zeros(n)
+    erosion_flow_m = water_accum_m + breach_surge_accum / 1000.0
 
     # `world.*_erosion_multiplier` (and the deposition/leveling knobs further down) are the
     # user's live geomorphic-budget tuning knobs -- 1.0 everywhere == untuned behaviour (see
@@ -1935,7 +1946,7 @@ def apply_erosion(
         RIVER_EROSION_COEFFICIENT
         * world.river_erosion_multiplier
         * channel_boost
-        * np.power(np.clip(water_accum_m, 0.0, None), RIVER_FLOW_EXPONENT)
+        * np.power(np.clip(erosion_flow_m, 0.0, None), RIVER_FLOW_EXPONENT)
         * np.power(slope, RIVER_SLOPE_EXPONENT)
         * dt_myr
     )
@@ -2145,7 +2156,7 @@ def apply_erosion(
     # (river_speed < DEPOSITION_SPEED_THRESHOLD) river passes through, DEPOSITION_FRACTION
     # of the material passing through settles right there instead of continuing downstream
     # -- route_downstream still conserves the total exactly either way.
-    river_speed = hydrology.compute_river_speed(slope, hydro.flow_accum)
+    river_speed = hydrology.compute_river_speed(slope, discharge_m3_s)
     is_depositing = (river_speed < DEPOSITION_SPEED_THRESHOLD) & (water_accum_m > DEPOSITION_MIN_FLOW_M)
     # river_deposition_multiplier scales the settle-out fraction; clamped below 1.0 so a big
     # multiplier can't make a reach retain more than passes through it (route_downstream still

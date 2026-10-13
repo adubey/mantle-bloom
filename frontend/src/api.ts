@@ -127,7 +127,8 @@ export interface RiverSummary {
   segments: Segment[];
   mouth_xyz: [number, number, number];
   mouth_type: "ocean" | "lake" | "other";
-  flow_rate: number;
+  flow_rate: number; // physical discharge at the mouth, m^3/s
+  // A stylized, unitless comparison value from hydrology.compute_river_speed.
   speed: number;
   num_tributaries: number;
 }
@@ -242,7 +243,7 @@ export interface RiversResponse {
 // Inspector's own map mode is for). Contrast OutflowRiver below, which *does* need a full path.
 export interface InflowRiver {
   mouth_xyz: [number, number, number];
-  flow_rate: number;
+  flow_rate: number; // physical discharge at the mouth, m^3/s
   num_nodes: number;
 }
 
@@ -255,7 +256,7 @@ export interface OutflowRiver {
   segments: Segment[];
   mouth_xyz: [number, number, number];
   mouth_type: "ocean" | "lake" | "other";
-  flow_rate: number;
+  flow_rate: number; // physical discharge at the mouth, m^3/s
   num_nodes: number;
 }
 
