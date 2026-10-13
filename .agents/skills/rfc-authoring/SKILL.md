@@ -18,16 +18,18 @@ implementation issues while drafting.
   and continental-material budgets.
 - A local `.mbworld` save or replay output may be cited by file name, but say it is **not
   available for download**, and quote enough numbers that the argument stands without it.
-- **A long run is a stress test of model behaviour, not a calibration interval.** Many-Gyr
-  runs expose ratchets and missing sources and sinks. Don't fit Earth rates to them, and
-  don't read their late, degenerate states (no continents, no cratons) as geology.
+- **A long run is a stress test of model behaviour, not a calibration interval.** Runs of
+  hundreds of Myr are typical; a multi-Gyr run is rare. Long runs expose ratchets and
+  missing sources and sinks. Don't fit Earth rates to them, and don't read their late,
+  degenerate states (no continents, no cratons) as geology.
 - Say what the evidence does *not* show. A ledger account that lumps several code paths
   can't attribute a loss to one of them.
 
 ## 2. Find and check the literature
 
-- Ground each proposed mechanism in the geology, geodynamics, climatology, ecology or
-  biology literature, whichever the problem calls for.
+- Ground each proposed mechanism in whatever literature the problem calls for: geology,
+  geodynamics, climatology, hydrology, ecology, biology, numerical methods, or another
+  field.
 - **Verify every reference:** run `check_citations.py --crossref` from this skill's
   directory. It checks that every DOI resolves and prints title, authors and year to
   compare against the citation.
