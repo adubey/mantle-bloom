@@ -4013,15 +4013,19 @@ plus click-to-select and Tab/Shift+Tab to cycle through rivers.
 
 **There is no "a river" concept anywhere else in the codebase before this feature.**
 `hydrology.py`'s `is_river` is (and remains) a flat per-node boolean mask -- the top ~7%
-(`RIVER_FLOW_PERCENTILE`) of land physical discharge, plus one addition: a land node not itself under visible ice but with at
-least one neighbor that is (`GLACIER_VISIBLE_DEPTH_M`), and that's actually carrying real
-outflow this step (`discharge_m3_s > 0`), is also marked `is_river` directly. Rivers commonly begin
-right where a glacier's meltwater first emerges from the ice, but a fresh headwater has, by
-definition, no upstream tributaries yet, so it can easily fail to clear the ordinary percentile
-threshold on its own even though it's a perfectly real river source -- this gives such a stream
-a visible source right at the glacier's edge instead of only appearing once downstream
-tributaries happen to push it over the percentile cut. With no grouping into distinct networks
-otherwise. `hydrology.group_rivers` adds
+(`RIVER_FLOW_PERCENTILE`) of land physical discharge, plus every still-positive downstream node
+along a selected channel. Transit evaporation can lower discharge below the percentile threshold
+partway to the mouth; extending the mask downstream across that positive-flow path prevents the
+River Inspector from splitting one routed channel into disconnected networks. A land node not
+itself under visible ice but with at least one neighbor that is (`GLACIER_VISIBLE_DEPTH_M`), and
+that's actually carrying real outflow this step (`discharge_m3_s > 0`), is also selected as a
+source before that downstream extension. Rivers commonly begin right where a glacier's
+meltwater first emerges from the ice, but a fresh headwater has, by definition, no upstream
+tributaries yet, so it can easily fail to clear the ordinary percentile threshold on its own
+even though it's a perfectly real river source -- this gives such a stream a visible source
+right at the glacier's edge instead of only appearing once downstream tributaries happen to
+push it over the percentile cut. With no grouping into distinct networks otherwise.
+`hydrology.group_rivers` adds
 that grouping with union-find over `flow_target` edges restricted to nodes that are `is_river`
 on *both* ends. Adjacent selected nodes stay in one component; disconnected selected segments
 remain separate. Grouping is recomputed

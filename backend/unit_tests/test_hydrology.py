@@ -39,7 +39,7 @@ def _river_inspector_fields():
     # through compute_hydrology (small enough to hit its FLOW_NEIGHBOR_COUNT bail-out path
     # anyway). Three separate is_river-classified networks, one per mouth_type:
     #   Network A -- a Y-confluence: 0 and 1 (two headwaters) both flow into 2, which flows
-    #   into 3 (the mouth, highest flow_accum in the group), which flows onward into ocean
+    #   into 3 (the mouth, highest fallback discharge in the group), which flows onward into ocean
     #   node 4. mouth_type "ocean".
     #   Network B -- a single lone node 5, flowing into node 7, a real lake (lake_depth above
     #   the visible threshold). Node 7 itself is deliberately *not* is_river -- exactly the real
@@ -737,10 +737,55 @@ def test_group_rivers_groups_confluence_and_finds_max_flow_mouth():
 
     network_a = next(r for r in rivers if len(r.member_idx) == 4)
     assert sorted(network_a.member_idx.tolist()) == [0, 1, 2, 3]
-    assert network_a.mouth_idx == 3  # highest flow_accum (40) in the group
-    assert network_a.flow_rate == 40.0
+    assert network_a.mouth_idx == 3  # highest fallback discharge (converted from flow_accum)
+    assert network_a.flow_rate == pytest.approx(
+        float(hydrology.flow_accum_mm_yr_to_discharge_m3_s(40.0))
+    )
     # Two headwaters (0 and 1) merging into one mainstem -- one tributary joins it.
     assert network_a.num_tributaries == 1
+
+
+def test_river_selection_stays_connected_through_positive_downstream_discharge():
+    # Transit evaporation can reduce discharge below the percentile cutoff along a real river.
+    # Once selected upstream, its positive-flow path remains connected to the mouth.
+    selected = hydrology._extend_river_mask_downstream(
+        np.array([True, False, False, False, False]),
+        np.array([1, 2, 3, 4, -1]),
+        np.array([10.0, 0.5, 0.01, 0.0, 0.0]),
+        np.zeros(5, dtype=bool),
+        np.zeros(5, dtype=bool),
+    )
+    assert selected.tolist() == [True, True, True, False, False]
+
+    # Multiple selected headwaters may share a mainstem; walking it once must still retain the
+    # whole shared path without revisiting it for every tributary.
+    confluence = hydrology._extend_river_mask_downstream(
+        np.array([True, True, False, False, False]),
+        np.array([2, 2, 3, 4, -1]),
+        np.array([10.0, 5.0, 0.5, 0.01, 0.0]),
+        np.zeros(5, dtype=bool),
+        np.zeros(5, dtype=bool),
+    )
+    assert confluence.tolist() == [True, True, True, True, False]
+
+
+def test_river_selection_stops_downstream_extension_at_lakes_and_oceans():
+    flow_target = np.array([1, 2, 3, 4, -1])
+    discharge = np.ones(5)
+    is_ocean = np.zeros(5, dtype=bool)
+    is_lake = np.zeros(5, dtype=bool)
+    is_lake[2] = True
+    lake_path = hydrology._extend_river_mask_downstream(
+        np.array([True, False, False, False, False]), flow_target, discharge, is_ocean, is_lake
+    )
+    assert lake_path.tolist() == [True, True, False, False, False]
+
+    ocean = np.zeros(5, dtype=bool)
+    ocean[2] = True
+    ocean_path = hydrology._extend_river_mask_downstream(
+        np.array([True, False, False, False, False]), flow_target, discharge, ocean, np.zeros(5, dtype=bool)
+    )
+    assert ocean_path.tolist() == [True, True, False, False, False]
 
 
 def test_group_rivers_classifies_mouth_type_ocean_lake_and_other():

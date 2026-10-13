@@ -787,9 +787,8 @@ def river_transit_loss_fraction(temperature_c: np.ndarray, excluded: np.ndarray)
 # `flow_accum`/`water_deposited` are the legacy routing: stacked mm/yr of liquid
 # precipitation, melt and breach surge, with step-scaled evaporation. Step 3 moved erosion,
 # width, speed, Inspector flow values and the geology river-mouth boost to physical discharge
-# (erosion also gets separately-routed `breach_surge_accum`). The legacy fields still serve
-# river classification/rendering (#355 step 4 audit) and lake silt (#363), so the surge stays
-# here until those remaining consumers are reviewed or moved.
+# (erosion also gets separately-routed `breach_surge_accum`). The legacy fields now only serve
+# lake silt (#363), so the surge stays here until that consumer is reviewed or moved.
 SECONDS_PER_YEAR = 3.15576e7
 # A reference cell area maps physical catchment discharge back to the old stacked-rainfall
 # scale at the default node density. Keeping the old scalar calibration on this fixed area
@@ -807,6 +806,42 @@ def discharge_m3_s_to_flow_accum_mm_yr(discharge_m3_s: np.ndarray) -> np.ndarray
 def flow_accum_mm_yr_to_discharge_m3_s(flow_accum_mm_yr: np.ndarray | float) -> np.ndarray:
     """Convert the legacy accumulated mm/yr scalar to discharge at the reference cell area."""
     return np.clip(np.asarray(flow_accum_mm_yr, dtype=float), 0.0, None) * RIVER_REFERENCE_CELL_AREA_M2 / (SECONDS_PER_YEAR * 1000.0)
+
+
+def _extend_river_mask_downstream(
+    is_river: np.ndarray,
+    flow_target: np.ndarray,
+    discharge_m3_s: np.ndarray,
+    is_ocean: np.ndarray,
+    is_lake: np.ndarray,
+) -> np.ndarray:
+    """Keep a qualifying river connected to its mouth across positive-flow transit losses.
+
+    Physical discharge can decrease downstream through evaporation, so applying the percentile
+    independently at every node can punch gaps in an otherwise-real channel. Once a node is
+    selected, include its positive-discharge downstream path up to the first ocean, lake, or dry
+    node. The shared visited set keeps this linear in the routed graph even when many selected
+    headwaters feed the same mainstem.
+    """
+    selected = np.array(is_river, dtype=bool, copy=True)
+    visited: set[int] = set()
+    for source in np.flatnonzero(selected):
+        node = int(source)
+        while True:
+            target = int(flow_target[node])
+            if (
+                target < 0
+                or target >= len(selected)
+                or is_ocean[target]
+                or is_lake[target]
+                or discharge_m3_s[target] <= 0.0
+                or target in visited
+            ):
+                break
+            visited.add(target)
+            selected[target] = True
+            node = target
+    return selected
 
 
 def meltwater_m3_per_yr(melt_m: np.ndarray, areas_m2: np.ndarray, years: float) -> np.ndarray:
@@ -1427,7 +1462,13 @@ def compute_hydrology(
     # percentile cut.
     has_glacier_neighbor = np.any(new_glacier_depth[neighbor_idx] >= GLACIER_VISIBLE_DEPTH_M, axis=1)
     is_glacial_source = land & ~is_lake & (new_glacier_depth < GLACIER_VISIBLE_DEPTH_M) & has_glacier_neighbor & (fields.discharge_m3_s > 0)
-    fields.is_river = is_river | is_glacial_source
+    fields.is_river = _extend_river_mask_downstream(
+        is_river | is_glacial_source,
+        fields.flow_target,
+        fields.discharge_m3_s,
+        fields.is_ocean,
+        is_lake,
+    )
     return fields
 
 
