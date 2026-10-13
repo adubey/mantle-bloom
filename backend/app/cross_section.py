@@ -62,23 +62,17 @@ def _world_surface(world) -> tuple[np.ndarray, dict[str, np.ndarray], np.ndarray
     return xyz, fields, continental
 
 
-def _latitude_samples(
-    latitude_deg: float, longitude_index: int, spacing_km: float
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    latitude = np.radians(latitude_deg)
-    center_longitude = 2.0 * np.pi * longitude_index / ARC_POSITION_COUNT
-    parallel_radius_km = PLANET_RADIUS_KM * max(float(np.cos(latitude)), 0.0)
-    # Keep the section on one monotonic side of the latitude ring; near a pole its
-    # circumference cannot hold a 3,000 km arc without wrapping over itself.
-    arc_length_km = min(ARC_LENGTH_KM, np.pi * parallel_radius_km)
-    count = max(3, int(np.ceil(arc_length_km / max(spacing_km * 0.5, 1.0))) + 1)
-    distance_km = np.linspace(-arc_length_km / 2.0, arc_length_km / 2.0, count)
-    if parallel_radius_km > 1e-9:
-        longitudes = center_longitude + distance_km / parallel_radius_km
-    else:
-        longitudes = np.full(count, center_longitude)
-    points = geometry.latlon_to_xyz(np.full(count, latitude), longitudes)
-    tangent = np.stack((-np.sin(longitudes), np.cos(longitudes), np.zeros(count)), axis=1)
+def _great_circle_samples(plane_angle_deg: float, position_index: int, spacing_km: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    plane = np.radians(plane_angle_deg)
+    center_angle = 2.0 * np.pi * position_index / ARC_POSITION_COUNT
+    half_angle = ARC_LENGTH_KM / (2.0 * PLANET_RADIUS_KM)
+    count = max(3, int(np.ceil(ARC_LENGTH_KM / max(spacing_km * 0.5, 1.0))) + 1)
+    angles = np.linspace(center_angle - half_angle, center_angle + half_angle, count)
+    plane_axis = np.array([np.cos(plane), 0.0, np.sin(plane)])
+    along_axis = np.array([0.0, 1.0, 0.0])
+    points = np.cos(angles)[:, None] * plane_axis + np.sin(angles)[:, None] * along_axis
+    tangent = -np.sin(angles)[:, None] * plane_axis + np.cos(angles)[:, None] * along_axis
+    distance_km = (angles - center_angle) * PLANET_RADIUS_KM
     return points, tangent, distance_km
 
 
@@ -141,10 +135,10 @@ def _parcel_markers(world, sample_xyz: np.ndarray, spacing_km: float) -> list[tu
     return [(int(i), float(np.clip(v / max_volume, 0.0, 1.0))) for i, v, d in zip(nearest, volumes, distance_km) if d <= corridor_km]
 
 
-def render_png_base64(world, latitude_deg: float, longitude_index: int, width: int, height: int) -> tuple[str, dict]:
-    """Render the selected latitude arc from current surface columns and return PNG plus metadata."""
+def render_png_base64(world, plane_angle_deg: float, position_index: int, width: int, height: int) -> tuple[str, dict]:
+    """Render the selected arc from current surface columns and return PNG plus metadata."""
     spacing_km = line_spacing_rad(world.node_density) * PLANET_RADIUS_KM
-    sample_xyz, tangent, distances = _latitude_samples(latitude_deg, longitude_index, spacing_km)
+    sample_xyz, tangent, distances = _great_circle_samples(plane_angle_deg, position_index, spacing_km)
     sampled, continental, _ = _sample_fields(world, sample_xyz)
     elev = sampled["elevation"].astype(float)
     hc = np.maximum(sampled["crustal_thickness_m"].astype(float), 0.0)
@@ -164,21 +158,15 @@ def render_png_base64(world, latitude_deg: float, longitude_index: int, width: i
     # the frame, and radial depth is exaggerated twice using the same pixel/km scale.
     # This keeps server frames comparable to the placeholder at any rendered size (#360).
     arc_width = (width - 2 * margin_x) * (690.0 / 820.0)
-    latitude_rad = np.radians(latitude_deg)
-    parallel_radius_km = PLANET_RADIUS_KM * max(float(np.cos(latitude_rad)), 0.0)
-    section_arc_length_km = min(ARC_LENGTH_KM, np.pi * parallel_radius_km)
-    horizontal_scale = arc_width / (
-        2.0 * PLANET_RADIUS_KM * np.sin(ARC_LENGTH_KM / (2.0 * PLANET_RADIUS_KM))
-    )
+    half_arc_angle = ARC_LENGTH_KM / (2.0 * PLANET_RADIUS_KM)
+    horizontal_scale = arc_width / (2.0 * PLANET_RADIUS_KM * np.sin(half_arc_angle))
     vertical_scale = VERTICAL_EXAGGERATION * horizontal_scale
     surface_center_y = margin_top + round(height * 0.08)
-    arc_angles = (
-        distances / parallel_radius_km if parallel_radius_km > 1e-9 else np.zeros_like(distances)
-    )
-    x_samples = width / 2.0 + parallel_radius_km * np.sin(arc_angles) * horizontal_scale
+    arc_angles = distances / PLANET_RADIUS_KM
+    x_samples = width / 2.0 + PLANET_RADIUS_KM * np.sin(arc_angles) * horizontal_scale
     surface_y = (
         surface_center_y
-        + VERTICAL_EXAGGERATION * parallel_radius_km * (1.0 - np.cos(arc_angles)) * horizontal_scale
+        + VERTICAL_EXAGGERATION * PLANET_RADIUS_KM * (1.0 - np.cos(arc_angles)) * horizontal_scale
         - (elev - sea_level) / 1000.0 * vertical_scale
     )
     x_pixel = np.arange(width)
@@ -215,7 +203,7 @@ def render_png_base64(world, latitude_deg: float, longitude_index: int, width: i
         seabed = float(elev[i])
         sea_y = (
             surface_center_y
-            + VERTICAL_EXAGGERATION * parallel_radius_km * (1.0 - np.cos(arc_angles[i])) * horizontal_scale
+            + VERTICAL_EXAGGERATION * PLANET_RADIUS_KM * (1.0 - np.cos(arc_angles[i])) * horizontal_scale
         )
         hcm = min(float(hc[i]) / 1000.0, SECTION_DEPTH_KM)
         hml = min((float(hc[i]) + float(hm[i])) / 1000.0, SECTION_DEPTH_KM)
@@ -274,11 +262,7 @@ def render_png_base64(world, latitude_deg: float, longitude_index: int, width: i
         if abs(value) < flow_max * 0.03 or asthenosphere_km <= 0.0:
             continue
         x = int(x_samples[j])
-        local_depth_scale = (
-            vertical_scale * np.cos(distances[j] / parallel_radius_km)
-            if parallel_radius_km > 1e-9
-            else vertical_scale
-        )
+        local_depth_scale = vertical_scale * np.cos(distances[j] / PLANET_RADIUS_KM)
         y = int(surface_y[j] + depth_km * local_depth_scale)
         direction = 1 if value >= 0 else -1
         length = 9 + 13 * abs(float(value)) / flow_max
@@ -286,17 +270,17 @@ def render_png_base64(world, latitude_deg: float, longitude_index: int, width: i
         draw.line((x, y, end_x, y), fill=(71, 236, 210), width=2)
         draw.polygon(((end_x, y), (end_x - direction * 5, y - 3), (end_x - direction * 5, y + 3)), fill=(71, 236, 210))
 
-    draw.text((margin_x, 8), "Surface-sampled latitude section", fill=(235, 239, 246))
-    draw.text((margin_x, 22), f"{section_arc_length_km:.0f} km arc · 350 km below local surface · vertical relief {VERTICAL_EXAGGERATION:g}×", fill=(168, 180, 197))
+    draw.text((margin_x, 8), "Surface-sampled lithosphere section · 3,000 km arc", fill=(235, 239, 246))
+    draw.text((margin_x, 22), f"350 km below local surface · vertical relief {VERTICAL_EXAGGERATION:g}× · geotherm illustrative", fill=(168, 180, 197))
     buffer = io.BytesIO()
     image.save(buffer, format="PNG", optimize=True)
     revision = f"{id(world):x}:{world.steps_taken}:{float(world.elapsed_years).hex()}:{sea_level.hex()}:{float(world.solar_multiplier).hex()}"
     metadata = {
         "world_revision": revision,
         "elapsed_years": float(world.elapsed_years),
-        "latitude_deg": float(latitude_deg),
-        "longitude_index": int(longitude_index),
-        "arc_length_km": float(section_arc_length_km),
+        "plane_angle_deg": float(plane_angle_deg),
+        "position_index": int(position_index),
+        "arc_length_km": ARC_LENGTH_KM,
         "section_depth_km": SECTION_DEPTH_KM,
         "vertical_exaggeration": VERTICAL_EXAGGERATION,
         "image_base64": base64.b64encode(buffer.getvalue()).decode("ascii"),

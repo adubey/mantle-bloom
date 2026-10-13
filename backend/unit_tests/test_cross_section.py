@@ -41,39 +41,14 @@ def section_world():
     )
 
 
-def test_latitude_samples_follow_parallel_and_fixed_arc_length():
-    points, tangent, distance_km = cross_section._latitude_samples(30.0, 30, 60.0)
+def test_great_circle_samples_follow_rotated_plane_and_fixed_arc_length():
+    points, tangent, distance_km = cross_section._great_circle_samples(90.0, 30, 60.0)
 
     assert np.allclose(np.linalg.norm(points, axis=1), 1.0)
     assert np.allclose(np.sum(points * tangent, axis=1), 0.0, atol=1e-12)
     assert distance_km[0] == pytest.approx(-cross_section.ARC_LENGTH_KM / 2.0)
     assert distance_km[-1] == pytest.approx(cross_section.ARC_LENGTH_KM / 2.0)
-    lat_rad, _ = cross_section.geometry.xyz_to_latlon(points)
-    assert np.degrees(lat_rad) == pytest.approx(np.full(len(points), 30.0))
-    assert points[len(points) // 2] == pytest.approx([0.0, np.cos(np.radians(30.0)), 0.5])
-
-
-def test_latitude_arc_shortens_to_stay_on_one_side_of_near_polar_parallel():
-    points, _, distance_km = cross_section._latitude_samples(89.0, 0, 60.0)
-
-    expected_length = np.pi * cross_section.PLANET_RADIUS_KM * np.cos(np.radians(89.0))
-    assert distance_km[[0, -1]] == pytest.approx([-expected_length / 2.0, expected_length / 2.0])
-    assert np.allclose(np.degrees(np.arcsin(points[:, 2])), 89.0)
-
-
-def test_polar_render_reports_the_shortened_arc_length(section_world, monkeypatch):
-    monkeypatch.setattr(
-        cross_section.climate,
-        "compute_climate_cached",
-        lambda _world: SimpleNamespace(biome_ids=np.zeros((90, 180), dtype=int)),
-    )
-
-    _, metadata = cross_section.render_png_base64(section_world, 89.0, 0, 320, 180)
-
-    expected_length = np.pi * cross_section.PLANET_RADIUS_KM * np.cos(np.radians(89.0))
-    assert metadata["latitude_deg"] == 89.0
-    assert metadata["longitude_index"] == 0
-    assert metadata["arc_length_km"] == pytest.approx(expected_length)
+    assert points[len(points) // 2] == pytest.approx([0.0, 1.0, 0.0])
 
 
 def test_section_sampling_keeps_categorical_crust_values_discrete(section_world):
@@ -119,7 +94,7 @@ def test_render_keeps_sampled_crust_and_lithosphere_above_schematic_asthenospher
         "volcano_active_years_remaining": np.zeros(3),
         "moho_thermal_lag_c": np.zeros(3),
     }
-    monkeypatch.setattr(cross_section, "_latitude_samples", lambda *_: (sample_xyz, tangent, distances))
+    monkeypatch.setattr(cross_section, "_great_circle_samples", lambda *_: (sample_xyz, tangent, distances))
     monkeypatch.setattr(cross_section, "_sample_fields", lambda *_: (fields, np.zeros(3, dtype=bool), sample_xyz))
     monkeypatch.setattr(cross_section, "_biome_colors", lambda *_: np.zeros((3, 3)))
     monkeypatch.setattr(cross_section.orogeny, "moho_temperature_c", lambda hc, hm, lag: np.zeros_like(hc))

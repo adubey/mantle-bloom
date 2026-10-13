@@ -26,8 +26,8 @@ test("requests the selected cross-section frame with its dimensions and abort si
   assert.equal(url.origin, "http://localhost:8123");
   assert.equal(url.pathname, "/world/cross-section");
   assert.deepEqual(Object.fromEntries(url.searchParams), {
-    latitude_deg: "73",
-    longitude_index: "119",
+    plane_angle_deg: "73",
+    position_index: "119",
     width: "1100",
     height: "611",
   });
@@ -43,7 +43,7 @@ test("preserves the backend status when section rendering is unavailable", async
   );
 });
 
-test("selects nearby arc-center longitudes and wraps around the latitude line", () => {
+test("selects only nearby prefetch frames and wraps around the great circle", () => {
   assert.deepEqual(nearbyCrossSectionPositions(119, 120, 8), [118, 0, 117, 1, 116, 2, 115, 3]);
   assert.deepEqual(nearbyCrossSectionPositions(4, 8, 20), [3, 5, 2, 6, 1, 7, 0]);
   const remainingFrames = nearbyCrossSectionPositions(37, 120, 119);

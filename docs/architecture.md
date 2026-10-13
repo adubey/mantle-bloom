@@ -48,8 +48,8 @@ Browser then fetches, for whichever projection/map view/resolution/rotation is s
     is the map's current view orientation, driven by a long-press-and-drag gesture on the
     canvas -- client-local view state, not simulation state, so it's sent fresh with every
     render call rather than stored server-side. The shallow mantle cross-section has its own
-    `GET /world/cross-section` request path for latitude, longitude arc center, and output size;
-    `cross_section.py` samples the existing surface columns along a node-density-scaled latitude arc
+    `GET /world/cross-section` request path for plane angle, arc position, and output size;
+    `cross_section.py` samples the existing surface columns along a node-density-scaled corridor
     and renders a shallow PNG. It draws stored crust/lithosphere thicknesses, an illustrative
     crustal geotherm, and supported surface vents and magma-source markers. Surface-sampled
     mantle-flow directions are projected into the schematic asthenosphere; deeper mantle flow
