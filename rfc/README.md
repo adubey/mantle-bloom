@@ -33,7 +33,9 @@ RFC 0004 defers a collisional formation path to a future RFC on mantle depletion
 
 ## Writing and reviewing
 
-RFCs are written with the [`rfc-authoring`](../.agents/skills/rfc-authoring/SKILL.md) skill.
+Use [`start-rfc`](../.agents/skills/start-rfc/SKILL.md) to set up a new RFC workstream and
+plan its transition into one or more implementation issues. RFCs are written with the
+[`rfc-authoring`](../.agents/skills/rfc-authoring/SKILL.md) skill.
 It sets the sections (problem, solutions, design, provisional touchpoints, assumptions and
 uncertainty, acceptance and falsification criteria, references), the citation format, and
 how sources are checked. They are reviewed with
