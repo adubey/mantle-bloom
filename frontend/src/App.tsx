@@ -1922,7 +1922,7 @@ export default function App() {
           />
           <p style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>
             {mapView === "crossSection"
-              ? "Adjust plane orientation and arc center in the locator. The section image is a schematic placeholder until sampled world fields are connected."
+              ? "Adjust plane orientation and arc center in the locator. The section follows sampled world fields; nearby arc positions are prepared in the background."
               : mapView === "plateInspector"
               ? "Click a plate to select it. Tab / Shift+Tab cycles plates. Press and hold, then drag to rotate."
               : mapView === "riverInspector"

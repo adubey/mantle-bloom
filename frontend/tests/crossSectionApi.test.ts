@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { requestCrossSection } from "../src/crossSectionApi.js";
+import { nearbyCrossSectionPositions } from "../src/crossSectionFrames.js";
 
 test("requests the selected cross-section frame with its dimensions and abort signal", async () => {
   const controller = new AbortController();
@@ -40,4 +41,9 @@ test("preserves the backend status when section rendering is unavailable", async
       new Response("section rendering is not implemented", { status: 501, statusText: "Not Implemented" })),
     /501 Not Implemented/,
   );
+});
+
+test("selects only nearby prefetch frames and wraps around the great circle", () => {
+  assert.deepEqual(nearbyCrossSectionPositions(119, 120, 8), [118, 0, 117, 1, 116, 2, 115, 3]);
+  assert.deepEqual(nearbyCrossSectionPositions(4, 8, 20), [3, 5, 2, 6, 1, 7, 0]);
 });

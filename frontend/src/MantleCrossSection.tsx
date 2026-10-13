@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { fetchCrossSection } from "./api";
+import { nearbyCrossSectionPositions } from "./crossSectionFrames";
 
 const PLANET_RADIUS_KM = 6_371;
 const ARC_LENGTH_KM = 3_000;
@@ -9,6 +10,7 @@ const VERTICAL_EXAGGERATION = 2;
 const SECTION_STYLE_VERSION = 1;
 const MAX_CACHED_SECTION_FRAMES = 9;
 const PREFETCH_CONCURRENCY = 3;
+const PREFETCHED_FRAME_COUNT = MAX_CACHED_SECTION_FRAMES;
 
 interface FrameKey {
   worldRevision: number;
@@ -412,8 +414,9 @@ export default function MantleCrossSection({
         setLoading(false);
         setPrefetchProgress(1);
 
-        const positions = Array.from({ length: ARC_POSITION_COUNT }, (_, index) => index)
-          .filter((index) => index !== arcPosition);
+        const positions = nearbyCrossSectionPositions(
+          arcPosition, ARC_POSITION_COUNT, PREFETCHED_FRAME_COUNT - 1,
+        );
         let nextPosition = 0;
         let completed = 1;
         const worker = async () => {
@@ -494,9 +497,9 @@ export default function MantleCrossSection({
           )}
         </div>
         {loadMessage && <div role="status" style={{ color: "#d6bb85", fontSize: 10 }}>{loadMessage}</div>}
-        {!loadMessage && prefetchProgress !== null && prefetchProgress < ARC_POSITION_COUNT && (
+        {!loadMessage && prefetchProgress !== null && prefetchProgress < PREFETCHED_FRAME_COUNT && (
           <div role="status" style={{ color: "#9daac0", fontSize: 10 }}>
-            Caching arc positions {prefetchProgress}/{ARC_POSITION_COUNT}
+            Preparing nearby arc positions {prefetchProgress}/{PREFETCHED_FRAME_COUNT}
           </div>
         )}
         <div style={{ color: "#8f9bb0", fontSize: 10, display: "flex", flexWrap: "wrap", gap: 4 }}>
