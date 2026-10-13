@@ -1,4 +1,7 @@
 import { asBlob, asJson, expandColumnarStatsHistory, type ColumnarStatsHistory } from "./apiResponse";
+import { requestCrossSection, type CrossSectionResponse } from "./crossSectionApi";
+
+export type { CrossSectionResponse } from "./crossSectionApi";
 
 // Overridable at build/dev time via VITE_API_BASE (see bin/restart.sh's --backend-port), so a
 // non-default backend port stays wired up correctly instead of silently pointing at :8000.
@@ -12,11 +15,13 @@ export const API_BASE = API_ROOT;
 
 export type Projection = "behrmann" | "eckert4";
 
-// The "kind of map" requested from /world/render -- the server now bakes this choice
+// The kind of view requested from /world/render -- the server now bakes this choice
 // directly into the returned image (fill color rule, whether boundaries/poles/velocity
 // arrows or raw per-plate node dots are drawn), rather than the frontend deciding how to
-// draw raw coordinate data it fetched.
+// draw raw coordinate data it fetched. `crossSection` is served by its own
+// /world/cross-section endpoint and remains omitted from /world/render.
 export type MapView =
+  | "crossSection"
   | "elevation"
   | "platesDetail"
   | "speckle"
@@ -696,6 +701,18 @@ export function renderWorld(
   if (showMountains) params.set("show_mountains", "true");
   if (showPlainsPlateaus) params.set("show_plains_plateaus", "true");
   return fetch(`${API_BASE}/world/render?${params}`).then(asJson<RenderResponse>);
+}
+
+// Fetch one rendered frame from the shallow mantle cross-section route. The output size is
+// fixed for a panel layout so cached frames for the same world/plane/position are identical.
+export function fetchCrossSection(
+  planeAngleDeg: number,
+  positionIndex: number,
+  width: number,
+  height: number,
+  signal?: AbortSignal,
+): Promise<CrossSectionResponse> {
+  return requestCrossSection(API_BASE, planeAngleDeg, positionIndex, width, height, signal);
 }
 
 export function fetchPlates(): Promise<PlatesResponse> {

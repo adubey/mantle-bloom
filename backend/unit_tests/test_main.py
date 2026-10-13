@@ -181,6 +181,23 @@ def test_render_before_generate_returns_404(client):
     assert resp.status_code == 404
 
 
+def test_cross_section_route_renders_image_and_keeps_request_validation(client, monkeypatch):
+    assert client.get("/world/cross-section").status_code == 404
+
+    main._state["world"] = object()
+    monkeypatch.setattr(
+        main.cross_section_view,
+        "render_png_base64",
+        lambda *args: ("cG5n", {"image_base64": "cG5n", "world_revision": "revision"}),
+    )
+    response = client.get("/world/cross-section")
+    assert response.status_code == 200
+    assert response.json()["image_base64"] == "cG5n"
+    assert response.json()["world_revision"] == "revision"
+    assert client.get("/world/cross-section", params={"position_index": 120}).status_code == 400
+    assert client.get("/world/cross-section", params={"width": main.MAX_RENDER_DIMENSION_PX + 1}).status_code == 400
+
+
 def test_step_before_generate_returns_404(client):
     resp = _post_step(client, json={"years": 1_000_000})
     assert resp.status_code == 404

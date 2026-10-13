@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import type { MapView, WorldSummary } from "./api";
 import { exportHexGrid, loadWorld, saveWorld } from "./api";
+import ModalShell from "./ModalShell";
 
 // Matching backend app/geodesic.py's FREQUENCY_CHOICES/tile_count (10*frequency**2 + 2).
 const HEX_FREQUENCY_OPTIONS: { frequency: number; label: string }[] = [
@@ -83,28 +84,7 @@ export default function FileModal({
   }), [runAction, hexFrequency, seed]);
 
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: "fixed", inset: 0, background: "rgba(0, 0, 0, 0.6)", zIndex: 100,
-        display: "flex", alignItems: "center", justifyContent: "center",
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: 380, maxHeight: "85vh", overflowY: "auto", padding: 20, background: "#151a2e",
-          border: "1px solid #333", borderRadius: 8, color: "#e6e8ef", fontSize: 13,
-          boxShadow: "0 8px 32px rgba(0, 0, 0, 0.6)",
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <span style={{ fontSize: 16, fontWeight: 600 }}>File</span>
-          <button type="button" onClick={onClose} style={{ background: "none", border: "none", color: "#8b8fa3", cursor: "pointer", fontSize: 16 }}>
-            ✕
-          </button>
-        </div>
-
+    <ModalShell title="File" onClose={onClose}>
         {error && <div style={{ color: "#ff8080", fontSize: 11, marginBottom: 10 }}>{error}</div>}
 
         <fieldset style={{ border: "1px solid #333", borderRadius: 6, padding: 8, marginBottom: 12 }}>
@@ -164,7 +144,6 @@ export default function FileModal({
             {busy === "export" ? "Exporting..." : "Export Hex Grid"}
           </button>
         </fieldset>
-      </div>
-    </div>
+    </ModalShell>
   );
 }
