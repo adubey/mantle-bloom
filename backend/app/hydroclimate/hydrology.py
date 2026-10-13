@@ -138,7 +138,7 @@ CHANNEL_PREFERENCE_THRESHOLD_M = 5.0
 
 # Threshold above which a node's lake_depth counts as "a visible lake" -- used both for
 # rendering (render_image.py, coastline.py) and for excluding flooded nodes from is_river/
-# group_rivers below. Lake growth/evaporation tuning itself (LAKE_FILL_RATE and friends) now
+# group_rivers below. The lake water balance itself (`lakes.LakeClimate`, `lakes.balanced_level`)
 # lives in lakes.py, alongside the Lake tree that actually computes it -- see this module's own
 # docstring and lakes.py's own module docstring for why.
 LAKE_MIN_VISIBLE_DEPTH_M = 1.0
@@ -304,8 +304,8 @@ class HydrologyFields:
     is_ocean: np.ndarray
     neighbor_idx: np.ndarray  # (N, FLOW_NEIGHBOR_COUNT)
     flow_target: np.ndarray  # (N,) int, index into these same arrays; -1 = sink or ocean
-    flow_accum: np.ndarray  # (N,) legacy stacked-mm/yr routing, retained for lake silt
-    water_deposited: np.ndarray  # (N,) legacy water settled here, retained for lake silt
+    flow_accum: np.ndarray  # (N,) legacy stacked-mm/yr routing, fallback for caches without discharge_m3_s
+    water_deposited: np.ndarray  # (N,) legacy water settled here, same fallback
     filled_elevation: np.ndarray  # (N,) minimal-bottleneck elevation to reach open ocean
     spill_target: np.ndarray  # (N,) one-hop basin-escape neighbor index; -1 = none/ocean
     is_river: np.ndarray  # (N,) bool -- top RIVER_FLOW_PERCENTILE of land discharge_m3_s
@@ -460,6 +460,19 @@ def _build_neighbor_graph(points: np.ndarray, world: "World | None" = None) -> n
     return neighbor_idx[:, 1:]  # column 0 is always the point itself, at distance 0
 
 
+def _below_sea_components(below: np.ndarray, neighbor_idx: np.ndarray) -> np.ndarray:
+    """Connected-component label per node over the `neighbor_idx` edges joining two
+    below-sea-level nodes. Shared by `connected_ocean_mask` and
+    `force_earth_strait_connections`, which must agree on the components."""
+    n, k = neighbor_idx.shape
+    rows = np.repeat(np.arange(n), k)
+    cols = neighbor_idx.ravel()
+    keep = below[rows] & below[cols]
+    graph = coo_matrix((np.ones(keep.sum()), (rows[keep], cols[keep])), shape=(n, n))
+    _, labels = connected_components(graph, directed=False)
+    return labels
+
+
 def connected_ocean_mask(
     points: np.ndarray,
     elevation: np.ndarray,
@@ -492,12 +505,7 @@ def connected_ocean_mask(
             return below
         neighbor_idx = _build_neighbor_graph(points)
 
-    k = neighbor_idx.shape[1]
-    rows = np.repeat(np.arange(n), k)
-    cols = neighbor_idx.ravel()
-    keep = below[rows] & below[cols]
-    graph = coo_matrix((np.ones(keep.sum()), (rows[keep], cols[keep])), shape=(n, n))
-    _, labels = connected_components(graph, directed=False)
+    labels = _below_sea_components(below, neighbor_idx)
 
     below_idx = np.nonzero(below)[0]
     below_labels = labels[below_idx]
@@ -545,12 +553,7 @@ def force_earth_strait_connections(
     below = elevation <= sea_level_m
     if n == 0 or not np.any(below):
         return is_ocean
-    k = neighbor_idx.shape[1]
-    rows = np.repeat(np.arange(n), k)
-    cols = neighbor_idx.ravel()
-    keep = below[rows] & below[cols]
-    graph = coo_matrix((np.ones(keep.sum()), (rows[keep], cols[keep])), shape=(n, n))
-    _, labels = connected_components(graph, directed=False)
+    labels = _below_sea_components(below, neighbor_idx)
 
     tree = cKDTree(points)
     for (lon_a, lat_a), (lon_b, lat_b) in _FORCED_EARTH_STRAITS_LONLAT:
@@ -787,8 +790,9 @@ def river_transit_loss_fraction(temperature_c: np.ndarray, excluded: np.ndarray)
 # `flow_accum`/`water_deposited` are the legacy routing: stacked mm/yr of liquid
 # precipitation, melt and breach surge, with step-scaled evaporation. Step 3 moved erosion,
 # width, speed, Inspector flow values and the geology river-mouth boost to physical discharge
-# (erosion also gets separately-routed `breach_surge_accum`). The legacy fields now only serve
-# lake silt (#363), so the surge stays here until that consumer is reviewed or moved.
+# (erosion also gets separately-routed `breach_surge_accum`), and lake silt reads the physical
+# lake inflow (#363). No live consumer reads the legacy fields now: they remain only as the
+# fallback for hand-built fixtures and caches without `discharge_m3_s`.
 SECONDS_PER_YEAR = 3.15576e7
 # A reference cell area maps physical catchment discharge back to the old stacked-rainfall
 # scale at the default node density. Keeping the old scalar calibration on this fixed area
@@ -1226,8 +1230,8 @@ def compute_hydrology(
     # step's spill routing (immediately below -- see compute_spill_routing's own docstring for
     # why lakes.py's own hierarchy, not a separate independently-computed basin-spill pass, is
     # now the single source of truth for where a lake's overflow goes) and, later, this same
-    # step's lake water-balance resolution (`lakes.resolve_lakes`, once water_deposited is
-    # known) -- the exact same `forest` object threaded through both, rather than paying for a
+    # step's lake water-balance resolution (`lakes.resolve_lakes`, once this step's physical water
+    # is routed) -- the exact same `forest` object threaded through both, rather than paying for a
     # second, redundant `build_lake_hierarchy` call and risking the two disagreeing.
     #
     # With breaching on, the hierarchy's boundary edges use notched passage elevations, not
@@ -1352,8 +1356,9 @@ def compute_hydrology(
         temperature_at_nodes, years, is_frozen | is_ocean | should_spill | is_rim_breach
     )
 
-    # The surge stays in this legacy routing on purpose (issue #355 "Water units"): lake silt
-    # still reads `water_deposited` (#363); river visibility now uses the physical routing.
+    # No live consumer reads this legacy routing any more (issue #355 "Water units"): erosion,
+    # geology and river visibility use the physical routing, and lake silt reads the physical
+    # lake inflow (#363). It's kept as the fallback for caches without `discharge_m3_s`.
     breach_surge = lake_breach_source + rim_breach_source
     water_source = liquid_precip + melt + breach_surge
     flow_accum, water_deposited, breach_surge_accum = route_downstream(
@@ -1412,7 +1417,7 @@ def compute_hydrology(
         ice=ice,
     )
     # Resolves the *same* forest built early (above, for spill routing) against this step's
-    # actual water_deposited -- not a second lakes.step_lakes call, which would rebuild the
+    # routed physical water -- not a second lakes.step_lakes call, which would rebuild the
     # hierarchy from scratch a second time and risk it disagreeing with what spill routing just
     # used (see lakes.resolve_lakes's own docstring).
     # A spilling lake's sink passes its water on, so its inflow is the flow through the sink,
@@ -1431,7 +1436,7 @@ def compute_hydrology(
         evaporation_m_per_yr=evaporation_mm / 1000.0,
     )
     fields.lake_depth, fields.silt_deposited, fields.is_sea, fields.lake_events = lakes.resolve_lakes(
-        forest, elevation, lake_depth_adjusted, water_deposited, years, lake_frozen, hypsometry, lake_climate
+        forest, elevation, lake_depth_adjusted, years, lake_frozen, lake_climate, hypsometry
     )
     fields.lake_forest = forest
     fields.hypsometry = hypsometry

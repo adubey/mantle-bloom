@@ -1,42 +1,24 @@
 import { useEffect, useRef } from "react";
-import type { KeyboardEvent } from "react";
-import type { LakeAtResponse, LakeSummary, Projection, Segment } from "./api";
+import type { LakeAtResponse, LakeSummary, Segment } from "./api";
 import { fetchLakeAt } from "./api";
+import InspectorCanvas from "./InspectorCanvas";
+import type { InspectorViewProps } from "./InspectorCanvas";
 import type { Mat3, Vec3 } from "./rotation";
-import { getRenderTransform, latLonToXyz, matApply, matTranspose, project, toPixels, unproject, wrapLongitudeNear, xyzToLatLon } from "./rotation";
-import { useRotationDrag } from "./rotationDrag";
+import { beginInspectorFrame, strokeCoastline, strokeSegments } from "./inspectorDrawing";
+import { cycleId } from "./screenProjector";
 
-interface Props {
+interface Props extends InspectorViewProps {
   lakes: LakeSummary[];
   coastlineSegments: Segment[];
-  width: number;
-  height: number;
-  displayWidth: number;
-  displayHeight: number;
-  projection: Projection;
-  // The currently *committed* view rotation -- same rotation state MapCanvas/PlateInspector/
-  // RiverInspector share, so switching between views preserves orientation.
-  rotation: Mat3;
   // Whatever's currently displayed -- either one of `lakes` (selectedBasin.is_lake) or a dry
   // basin returned by a land click (not itself a member of `lakes` -- see api.ts's
   // LakeAtResponse). `null` means nothing selected yet.
   selectedBasin: LakeSummary | null;
   onSelect: (kind: LakeAtResponse["kind"], basin: LakeSummary | null) => void;
-  onRotationPreview: (latDeg: number, lonDeg: number) => void;
-  onRotationCommitted: (rotation: Mat3) => void;
-  // Inert rotate-drag + click while a background animation holds the world lock (see App.tsx).
-  interactionDisabled?: boolean;
 }
 
-const BACKGROUND = "#0b1020";
-// Matches backend render_image.py's COASTLINE_COLOR_RGB/COASTLINE_HALO_RGB -- same
-// dark-halo-plus-light-line stroke RiverInspector.tsx uses for the same reason: this view has
-// no filled backdrop, so without a coastline there's no land/ocean cue at all.
-const COASTLINE_RGB = "235, 235, 235";
-const COASTLINE_HALO_RGB = "15, 15, 15";
-
 // Lake water -- close to render_image.py's own LAKE_COLOR_RGB in hue, brightened for
-// visibility as scattered dots against BACKGROUND rather than a filled hypsometric wash.
+// visibility as scattered dots against INSPECTOR_BACKGROUND rather than a filled hypsometric wash.
 const LAKE_RGB = "90, 170, 255";
 const LAKE_ALPHA = 0.16; // other (non-selected) lakes -- "less visible"
 const SELECTED_LAKE_ALPHA = 0.9;
@@ -69,76 +51,29 @@ const OUTFLOW_RIVER_RGB = "77, 216, 230";
 // just another ring. Reuses the same long-press-drag rotate gesture as the other inspectors, plus
 // click-to-select and Tab/Shift+Tab to cycle through `lakes` specifically (a dry basin has no
 // enumerable identity to cycle through -- see this module's own Tab handler).
-export default function LakeInspector({
-  lakes, coastlineSegments, width, height, displayWidth, displayHeight, projection, rotation,
-  selectedBasin, onSelect, onRotationPreview, onRotationCommitted, interactionDisabled,
-}: Props) {
+export default function LakeInspector({ lakes, coastlineSegments, selectedBasin, onSelect, ...view }: Props) {
+  const { width, height, projection, rotation } = view;
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
 
   const drawLakes = (previewRotation: Mat3) => {
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext("2d");
-    if (!canvas || !ctx) return;
-    ctx.fillStyle = BACKGROUND;
-    ctx.fillRect(0, 0, width, height);
-
-    const transform = getRenderTransform(projection, width, height);
-    const pixelScale = width / 1100;
-    const lineWidth = Math.max(1, pixelScale);
+    const frame = beginInspectorFrame(canvasRef.current, projection, previewRotation, width, height);
+    if (!frame) return;
+    const { ctx, projector, pixelScale, lineWidth } = frame;
     const pointRadius = POINT_RADIUS_PX * pixelScale;
     const pointSize = pointRadius * 2;
 
-    const toScreen = (p: Vec3): [number, number] => {
-      const r = matApply(previewRotation, p);
-      const lat = Math.asin(Math.min(1, Math.max(-1, r[2])));
-      const lon = Math.atan2(r[1], r[0]);
-      const [x, y] = project(projection, lat, lon);
-      return toPixels(transform, x, y);
-    };
-
-    // Projects one coastline edge (two *true* world points a real, short 3D hop apart),
-    // unwrapping the second point's longitude relative to the first's own (rotated) longitude
-    // -- same technique RiverInspector.tsx's own projectSegment uses, and for the same reason:
-    // independently projecting each endpoint with plain toScreen (as this used to) can bow a
-    // short edge all the way across the map at the antimeridian seam once the view is rotated,
-    // drawing a spurious line clear across the whole canvas.
-    const projectSegment = (a: Vec3, b: Vec3): [[number, number], [number, number]] => {
-      const ra = matApply(previewRotation, a);
-      const latA = Math.asin(Math.min(1, Math.max(-1, ra[2])));
-      const lonA = Math.atan2(ra[1], ra[0]);
-      const rb = matApply(previewRotation, b);
-      const latB = Math.asin(Math.min(1, Math.max(-1, rb[2])));
-      const lonB = wrapLongitudeNear(Math.atan2(rb[1], rb[0]), lonA);
-      const [xA, yA] = project(projection, latA, lonA);
-      const [xB, yB] = project(projection, latB, lonB);
-      return [toPixels(transform, xA, yA), toPixels(transform, xB, yB)];
-    };
-
-    const strokeSegments = (segments: [Vec3, Vec3][], color: string, width: number) => {
-      ctx.strokeStyle = color;
-      ctx.lineWidth = width;
-      for (const [a, b] of segments) {
-        const [[x1, y1], [x2, y2]] = projectSegment(a, b);
-        ctx.beginPath();
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(x2, y2);
-        ctx.stroke();
-      }
-    };
-    strokeSegments(coastlineSegments, `rgba(${COASTLINE_HALO_RGB}, 1.0)`, lineWidth * 2.6);
-    strokeSegments(coastlineSegments, `rgba(${COASTLINE_RGB}, 1.0)`, lineWidth * 1.1);
+    strokeCoastline(ctx, projector, coastlineSegments, lineWidth);
 
     const drawPoints = (points: Vec3[], color: string) => {
       ctx.fillStyle = color;
       for (const p of points) {
-        const [px, py] = toScreen(p);
+        const [px, py] = projector.point(p);
         ctx.fillRect(px - pointRadius, py - pointRadius, pointSize, pointSize);
       }
     };
 
     const drawRing = (p: Vec3, color: string) => {
-      const [px, py] = toScreen(p);
+      const [px, py] = projector.point(p);
       const r = MARKER_RADIUS_PX * pixelScale;
       ctx.strokeStyle = color;
       ctx.lineWidth = lineWidth * 2;
@@ -164,7 +99,7 @@ export default function LakeInspector({
       // the basin's actual live outflow reads as a real river leaving the lake, not just an
       // outlet marker with no channel drawn at all.
       if (selectedBasin.outflow_river) {
-        strokeSegments(selectedBasin.outflow_river.segments, `rgba(${OUTFLOW_RIVER_RGB}, 0.95)`, lineWidth * 2.5);
+        strokeSegments(ctx, projector, selectedBasin.outflow_river.segments, `rgba(${OUTFLOW_RIVER_RGB}, 0.95)`, lineWidth * 2.5);
       }
       for (const river of selectedBasin.inflow_rivers) {
         drawRing(river.mouth_xyz, INFLOW_RING_COLOR);
@@ -179,62 +114,16 @@ export default function LakeInspector({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lakes, coastlineSegments, selectedBasin, projection, rotation, width, height]);
 
-  const handleClick = (backingX: number, backingY: number) => {
-    const transform = getRenderTransform(projection, width, height);
-    const x = (backingX - transform.offsetX) / transform.scale;
-    const y = -(backingY - transform.offsetY) / transform.scale;
-    const latLon = unproject(projection, x, y);
-    if (!latLon) return; // clicked outside the sphere's projected silhouette
-    const displayXyz = latLonToXyz(latLon[0], latLon[1]); // in the *display* (rotated) frame
-    const trueXyz = matApply(matTranspose(rotation), displayXyz); // transpose == inverse for a rotation matrix
-    const [trueLat, trueLon] = xyzToLatLon(trueXyz);
-    fetchLakeAt((trueLat * 180) / Math.PI, (trueLon * 180) / Math.PI)
-      .then(({ kind, basin }) => {
-        onSelect(kind, basin);
-        containerRef.current?.focus();
-      })
-      .catch(() => {
-        // A click that races a generate/step (no world, or a stale lake list) -- ignored,
-        // matching how PlateInspector/RiverInspector's own click handlers fail silently for
-        // the same reason.
-      });
-  };
+  const pickBasin = (latDeg: number, lonDeg: number) =>
+    fetchLakeAt(latDeg, lonDeg).then(({ kind, basin }) => onSelect(kind, basin));
 
-  useRotationDrag({
-    elementRef: canvasRef,
-    width, height, displayWidth, displayHeight, projection, rotation,
-    onFrame: drawLakes,
-    onRotationPreview,
-    onRotationCommitted,
-    onClick: handleClick,
-    disabled: interactionDisabled,
-  });
-
-  useEffect(() => {
-    containerRef.current?.focus();
-  }, []);
-
-  const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== "Tab") return;
-    e.preventDefault();
-    if (lakes.length === 0) return;
-    const ids = lakes.map((l) => l.lake_id as number).sort((a, b) => a - b);
+  // Cycles through `lakes` only: a dry basin has no enumerable identity to cycle through.
+  const cycleLake = (backwards: boolean) => {
     const currentId = selectedBasin && selectedBasin.is_lake ? selectedBasin.lake_id : null;
-    const currentIndex = currentId == null ? -1 : ids.indexOf(currentId);
-    const delta = e.shiftKey ? -1 : 1;
-    const nextIndex = currentIndex === -1 ? (e.shiftKey ? ids.length - 1 : 0) : (currentIndex + delta + ids.length) % ids.length;
-    const nextLake = lakes.find((l) => l.lake_id === ids[nextIndex]) ?? null;
-    onSelect("lake", nextLake);
+    const next = cycleId(lakes.map((l) => l.lake_id as number), currentId, backwards);
+    if (next == null) return;
+    onSelect("lake", lakes.find((l) => l.lake_id === next) ?? null);
   };
 
-  return (
-    <div ref={containerRef} tabIndex={0} onKeyDown={handleKeyDown} style={{ outline: "none", display: "inline-block" }}>
-      <canvas
-        ref={canvasRef}
-        width={width}
-        height={height}
-        style={{ borderRadius: 8, width: displayWidth, height: displayHeight }}
-      />
-    </div>
-  );
+  return <InspectorCanvas {...view} canvasRef={canvasRef} onFrame={drawLakes} onPick={pickBasin} onCycle={cycleLake} />;
 }

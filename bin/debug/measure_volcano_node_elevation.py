@@ -32,12 +32,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from sweep_lib import SWEEP_SEEDS  # noqa: E402
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-BACKEND_DIR = REPO_ROOT / "backend"
-if str(BACKEND_DIR) not in sys.path:
-    sys.path.insert(0, str(BACKEND_DIR))
+from sweep_lib import NODE_DENSITY, STEP_YEARS, SWEEP_SEEDS  # noqa: E402
 
 import numpy as np  # noqa: E402
 
@@ -45,8 +40,6 @@ from app import lithosphere, plates as plates_mod  # noqa: E402
 from app.elevation_lines import line_spacing_rad  # noqa: E402
 from app.world import generate_world, step_world  # noqa: E402
 
-NODE_DENSITY = 1.0
-STEP_YEARS = 10_000_000
 CHECKPOINTS = (30_000_000, 60_000_000, 90_000_000, 120_000_000)
 
 

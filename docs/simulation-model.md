@@ -3313,8 +3313,8 @@ thousand land nodes, a real chunk of a step's total cost), so `erosion.py` compu
 `World.hydrology_cache`, rather than paying for it twice.
 
 **Water units** (issue #355). Physical discharge and erosion-only breach forcing now drive the
-river model; the legacy route remains for lake silt while river presentation uses physical
-discharge and physical flow-edge length.
+river model, river presentation uses physical discharge and physical flow-edge length, and
+lake silt reads the physical lake inflow (#363). The legacy route is only a fallback now.
 Three kinds of water/forcing move along `flow_target`:
 
 - **Physical water**, in m^3/yr: area-weighted Budyko runoff of liquid precipitation plus
@@ -3338,9 +3338,8 @@ Three kinds of water/forcing move along `flow_target`:
 
 `flow_accum` and `water_deposited` come from the older routing: stacked mm/yr of liquid
 precipitation, melt and breach surge, with in-transit evaporation that scales with step
-length. They grow with node density as well as with rainfall. River erosion, width, speed,
-geology and river visibility no longer consume them; the breach surge remains in this route
-for lake silt:
+length. They grow with node density as well as with rainfall. Every consumer has moved off
+them:
 
 | Consumer | Reads | Moves in |
 |---|---|---|
@@ -3349,8 +3348,10 @@ for lake silt:
 | Geology's river-mouth resource boost | physical discharge at ocean-mouth nodes | #355 step 3 |
 | River selection and server-rendered styling | physical discharge | #355 step 4 |
 | River network visibility | physical flow-edge length | #355 step 4 |
-| Lake silt | `water_deposited` | #363 |
+| Lake silt | physical lake inflow (`LakeClimate.inflow_m3_per_yr`) | #363 |
 
+No live consumer reads `flow_accum` or `water_deposited` any more; they remain only as the
+fallback for hand-built fixtures and caches without `discharge_m3_s`.
 The fixed reference cell area maps physical discharge back onto the old accumulated-mm/yr
 scale at the default node density, making a fixed catchment independent of mesh density.
 Because Budyko runoff is smaller than the old raw-precipitation source, the old numeric
@@ -3359,7 +3360,7 @@ calibrated `RIVER_EROSION_COEFFICIENT` from 100 to 190 and `WIDTH_GROWTH_COEFFIC
 50 to 75 against young and mature density-4 replays; the measured changes and the decision
 to leave glacier coefficients alone are in [issue #355's analysis](../analysis/issue355/README.md).
 The breach surge uses the same reference scale for erosion but never contributes to reported
-discharge, channel-width growth, deposition or geology.
+discharge, channel-width growth, deposition, geology or lake silt.
 
 **The core algorithms**, all operating on the k-NN graph:
 
@@ -3426,8 +3427,9 @@ discharge, channel-width growth, deposition or geology.
   inside one step, so each step a lake sits at its balanced level: where its flooded area
   evaporates exactly its inflow, capped at its rim. A lake whose inflow exceeds what it can
   evaporate at the rim fills and spills. Its size is set by its climate, as for real closed
-  basins such as the Dead Sea or the Great Basin lakes. Without a `LakeClimate` (direct
-  `step_lakes` calls), the original model-unit fill and evaporation constants apply.
+  basins such as the Dead Sea or the Great Basin lakes. Every lake resolves this way: the
+  original model-unit fill and evaporation constants, kept only for direct `step_lakes`
+  calls in tests, were removed (#358 item 5).
 - **Flow direction** (`_compute_flow_direction`): among each node's k nearest neighbors
   strictly below its own elevation (a downhill candidate), prefers whichever one already has
   the deepest established channel (`channel_depth > CHANNEL_PREFERENCE_THRESHOLD_M`),
@@ -3508,13 +3510,11 @@ water balance top-down, rather than paying for a second, redundant rebuild that 
 from the one spill routing already used. `lakes.step_lakes` -- `build_lake_hierarchy` +
 `resolve_lakes` in one call -- still exists for any caller (tests, mainly) that just wants
 "lakes for this terrain, resolved" without needing to reuse the tree for anything else.
-`resolve_lakes` resolves every lake's own water balance top-down: evaporate `prev_level`'s depth (same
-`LAKE_EVAPORATION_RATE_PER_MYR`/`LAKE_EVAPORATION_BASELINE_M_PER_MYR` constants and tuning
-rationale the old per-node design already used), grow from this step's own inflow (the sum of
-`route_downstream`'s `water_deposited` over every one of the lake's own members, since more
-than one can be a true sink once several originally separate basins have merged), spread as a
-level rise over the lake's own member count (the same area proxy `_lake_component_sizes`/
-`LAKE_BREACH_EROSION_COEFFICIENT` already use), clipped to `[floor_elevation, max_depth]`.
+`resolve_lakes` resolves every lake's own water balance top-down: each lake sits at its
+balanced level (see the `LakeClimate` bullet above), where evaporation over its flooded area
+equals its real-unit inflow summed over every one of its own members (more than one can be a
+true sink once several originally separate basins have merged), clipped to
+`[dry level, max_depth]` and its lake-vs-sea tier ceiling.
 Tracking a lake's level as one scalar shared by every member, rather than a per-node depth, is
 what removes the old design's threshold-crossing failure mode entirely. Merge/split
 transitions fall out of comparing this against each lake's own `min_depth`: a still-separate
@@ -3530,8 +3530,13 @@ exact shape shifting from ordinary terrain churn even when nothing physical abou
 changed.
 
 **Lakes accumulate silt.** `silt_depth` (a persistent per-node field, carried exactly like `lake_depth`) is a
-small, ~100x-slower-than-water-growth fraction of the same inflow, settling permanently
-(monotonically -- silt never erodes back away) on a lake's own bed. `erosion.py` folds each
+small volume fraction (`SILT_ACCUMULATION_COEFFICIENT`, m^3 of silt per m^3 of water) of the
+same real inflow that sets the lake's level, including the flow through a spilling lake's
+sink, settling permanently (monotonically -- silt never erodes back away) on a lake's own bed.
+Because it's sized in m^3/yr, a catchment silts the same at any node density, and the breach
+surge never reaches it (#363). The coefficient keeps the total silt laid down under the
+earlier model-unit rule, which read `water_deposited`, on a reference replay
+(`analysis/issue363/`). That old rule gave a spilling lake almost no silt beyond the surge. `erosion.py` folds each
 step's `silt_deposited` straight into real terrain `elevation` (like every other deposition
 pathway), so `build_lake_hierarchy` builds every hierarchy from bare `elevation` -- last
 step's fill is already baked into it, no separate `elevation + silt_depth` effective floor
@@ -3834,8 +3839,7 @@ atmospheric humidity, which for architectural reasons can't be the literal same-
 this module evaporates, since climate.py runs *before* this module each step).
 
 - **Accumulation and melt rates**: `GLACIER_ACCUMULATION_RATE` converts frozen
-  precipitation into metres of ice per Myr, the same stylized-units-to-meters role
-  `LAKE_FILL_RATE` plays for lakes. The same rate, as `RIVER_WATER_TO_ICE`, converts the
+  precipitation into metres of ice per Myr. The same rate, as `RIVER_WATER_TO_ICE`, converts the
   physical water a river settles when it freezes solid at a cold sink (not added 1:1 the way
   a standing frozen lake's own `lake_depth` is).
   `GLACIER_MELT_RATE_M_PER_MYR`, scaled by the seasonal positive degrees over
@@ -4074,8 +4078,8 @@ list, not an ordered polyline -- a network can branch), dim for every river and 
 thicker for the selected one, mirroring Plate Inspector's dim/bright split. Each segment is
 projected with the same "unwrap the second point's longitude relative to the first's own"
 technique `render_image.py`'s `_draw_rivers` already uses server-side (`_project_offset`),
-the two-point analogue of Plate Inspector's `projectLoop` (which unwraps a whole loop relative
-to its own center) -- needed because a naive independent projection of both endpoints can bow
+the two-point analogue of `ScreenProjector.loop` (`screenProjector.ts`, which unwraps a whole
+loop relative to its own center) -- needed because a naive independent projection of both endpoints can bow
 a short edge all the way across the map at the antimeridian seam. **The selected river's mouth
 draws a ring** (`ctx.arc`, a new drawing primitive Plate Inspector doesn't need at all),
 colored by `mouth_type` (`ocean`/`lake`/`other` each a distinct hue) so the endpoint
@@ -4198,7 +4202,7 @@ a scar -- because a real fault is only tens of km long and its whole trace can p
 few pixels at world scale, so the line alone wouldn't register. The selected fault draws
 bright and thick with both endpoints ringed (the same `ctx.arc` primitive the River / Lake
 inspectors use). Same per-edge antimeridian
-longitude-unwrap as `RiverInspector.projectSegment`. Reuses the `coastline_segments` already
+longitude-unwrap as the River Inspector (`ScreenProjector.segment`). Reuses the `coastline_segments` already
 fetched for the River / Lake inspectors -- this view has no other land/ocean cue.
 
 **Fault systems** (`fault_systems` in the same `/world/faults` payload -- see

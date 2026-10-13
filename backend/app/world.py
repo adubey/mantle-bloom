@@ -639,7 +639,17 @@ def _build_land_kdtree(world: World) -> cKDTree | None:
     return cKDTree(land_points, balanced_tree=False, compact_nodes=False)
 
 
-def generate_world(
+def generate_world(seed: int, **options) -> World:
+    """Generate a world, taking `generate_world_progress`'s options (see its docstring for
+    what each one means) and returning the finished World without the progress reports."""
+    world = None
+    for message in generate_world_progress(seed, **options):
+        if message[0] == "done":
+            world = message[1]
+    return world
+
+
+def generate_world_progress(
     seed: int,
     num_plates: int | None = None,
     continental_fraction: float | None = None,
@@ -654,8 +664,18 @@ def generate_world(
     voronoi_points: int | None = None,
     sketch: worldsketch.SketchMasks | None = None,
     premade_world_id: str | None = None,
-) -> World:
-    """`num_plates` is optional -- see lithosphere_plate.generate_plates for why: the world
+):
+    """Generate a world, yielding `("progress", fraction)` at each of its three natural phase
+    boundaries -- plate/site generation, mantle-center fitting, then the `finish_generation`
+    bootstrap -- before a final `("done", world)` carrying the finished World, same
+    progress/done contract as render_image.stream_animation_mp4. `generate_world` just drains
+    this to completion and returns the `done` payload. Necessarily coarser-grained than
+    step_world_progress's per-plate resolution: unlike a step's shift()/deform() loops,
+    nothing here naturally subdivides further without reaching into
+    lithosphere_plate.generate_plates itself, so the three phases are treated as
+    equal-weight thirds rather than a measured cost split.
+
+    `num_plates` is optional -- see lithosphere_plate.generate_plates for why: the world
     tiles itself into a plausible number of plates rather than requiring the caller to pick
     one. `continental_fraction`/`land_fraction` are the UI's generation sliders -- see
     lithosphere_plate.generate_plates. `axial_tilt_deg` is the UI's third generation slider
@@ -693,55 +713,6 @@ def generate_world(
     motion, for `"earth"`/`"pangaea"` specifically -- see real_plates.py's
     `fit_mantle_centers`. `"got"` has no real-world motion to fit to and keeps the ordinary
     random centers."""
-    world = None
-    for message in generate_world_progress(
-        seed,
-        num_plates=num_plates,
-        continental_fraction=continental_fraction,
-        land_fraction=land_fraction,
-        num_mantle_centers=num_mantle_centers,
-        axial_tilt_deg=axial_tilt_deg,
-        node_density=node_density,
-        initial_soil_maturity=initial_soil_maturity,
-        climate_density=climate_density,
-        fluid_density=fluid_density,
-        extra_sites_per_plate=extra_sites_per_plate,
-        voronoi_points=voronoi_points,
-        sketch=sketch,
-        premade_world_id=premade_world_id,
-    ):
-        if message[0] == "done":
-            world = message[1]
-    return world
-
-
-def generate_world_progress(
-    seed: int,
-    num_plates: int | None = None,
-    continental_fraction: float | None = None,
-    land_fraction: float | None = None,
-    num_mantle_centers: int = DEFAULT_MANTLE_CENTERS,
-    axial_tilt_deg: float | None = None,
-    node_density: float = 1.0,
-    initial_soil_maturity: float | None = None,
-    climate_density: float = climate.DEFAULT_CLIMATE_DENSITY,
-    fluid_density: float = 1.0,
-    extra_sites_per_plate: int = lithosphere_plate.EXTRA_SITES_PER_PLATE,
-    voronoi_points: int | None = None,
-    sketch: worldsketch.SketchMasks | None = None,
-    premade_world_id: str | None = None,
-):
-    """Generator form of `generate_world`, driving the exact same work but yielding
-    `("progress", fraction)` at each of its three natural phase boundaries -- plate/site
-    generation, mantle-center fitting, then the `finish_generation` bootstrap -- before a
-    final `("done", world)` carrying the finished World, same progress/done contract as
-    render_image.stream_animation_mp4. `generate_world` itself just drains this to
-    completion and returns the `done` payload -- see that function's own docstring for what
-    every parameter means, unchanged here. Necessarily coarser-grained than
-    step_world_progress's per-plate resolution: unlike a step's shift()/deform() loops,
-    nothing here naturally subdivides further without reaching into
-    lithosphere_plate.generate_plates itself, so the three phases are treated as
-    equal-weight thirds rather than a measured cost split."""
     plates = generate_plates(
         seed,
         num_plates,
