@@ -150,7 +150,6 @@ def render_png_base64(world, plane_angle_deg: float, position_index: int, width:
     lag = sampled["moho_thermal_lag_c"].astype(float)
     volcano = sampled["is_volcano"].astype(bool)
     active_vent = volcano & (sampled["volcano_active_years_remaining"] > 0.0)
-    dormant_vent = volcano & ~active_vent
     sea_level = float(world.sea_level_m)
     land_colors = _biome_colors(world, sample_xyz, elev)
     moho_temp = orogeny.moho_temperature_c(hc, hm, lag)
