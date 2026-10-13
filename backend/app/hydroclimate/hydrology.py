@@ -138,7 +138,7 @@ CHANNEL_PREFERENCE_THRESHOLD_M = 5.0
 
 # Threshold above which a node's lake_depth counts as "a visible lake" -- used both for
 # rendering (render_image.py, coastline.py) and for excluding flooded nodes from is_river/
-# group_rivers below. Lake growth/evaporation tuning itself (LAKE_FILL_RATE and friends) now
+# group_rivers below. The lake water balance itself (`lakes.LakeClimate`, `lakes.balanced_level`)
 # lives in lakes.py, alongside the Lake tree that actually computes it -- see this module's own
 # docstring and lakes.py's own module docstring for why.
 LAKE_MIN_VISIBLE_DEPTH_M = 1.0
@@ -1354,7 +1354,7 @@ def compute_hydrology(
         evaporation_m_per_yr=evaporation_mm / 1000.0,
     )
     fields.lake_depth, fields.silt_deposited, fields.is_sea, fields.lake_events = lakes.resolve_lakes(
-        forest, elevation, lake_depth_adjusted, water_deposited, years, lake_frozen, hypsometry, lake_climate
+        forest, elevation, lake_depth_adjusted, water_deposited, years, lake_frozen, lake_climate, hypsometry
     )
     fields.lake_forest = forest
     fields.hypsometry = hypsometry

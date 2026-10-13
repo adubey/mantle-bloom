@@ -3411,8 +3411,9 @@ Taking the surge out of the older routing before then would change all of them.
   inside one step, so each step a lake sits at its balanced level: where its flooded area
   evaporates exactly its inflow, capped at its rim. A lake whose inflow exceeds what it can
   evaporate at the rim fills and spills. Its size is set by its climate, as for real closed
-  basins such as the Dead Sea or the Great Basin lakes. Without a `LakeClimate` (direct
-  `step_lakes` calls), the original model-unit fill and evaporation constants apply.
+  basins such as the Dead Sea or the Great Basin lakes. Every lake resolves this way: the
+  original model-unit fill and evaporation constants, kept only for direct `step_lakes`
+  calls in tests, were removed (#358 item 5).
 - **Flow direction** (`_compute_flow_direction`): among each node's k nearest neighbors
   strictly below its own elevation (a downhill candidate), prefers whichever one already has
   the deepest established channel (`channel_depth > CHANNEL_PREFERENCE_THRESHOLD_M`),
@@ -3493,13 +3494,11 @@ water balance top-down, rather than paying for a second, redundant rebuild that 
 from the one spill routing already used. `lakes.step_lakes` -- `build_lake_hierarchy` +
 `resolve_lakes` in one call -- still exists for any caller (tests, mainly) that just wants
 "lakes for this terrain, resolved" without needing to reuse the tree for anything else.
-`resolve_lakes` resolves every lake's own water balance top-down: evaporate `prev_level`'s depth (same
-`LAKE_EVAPORATION_RATE_PER_MYR`/`LAKE_EVAPORATION_BASELINE_M_PER_MYR` constants and tuning
-rationale the old per-node design already used), grow from this step's own inflow (the sum of
-`route_downstream`'s `water_deposited` over every one of the lake's own members, since more
-than one can be a true sink once several originally separate basins have merged), spread as a
-level rise over the lake's own member count (the same area proxy `_lake_component_sizes`/
-`LAKE_BREACH_EROSION_COEFFICIENT` already use), clipped to `[floor_elevation, max_depth]`.
+`resolve_lakes` resolves every lake's own water balance top-down: each lake sits at its
+balanced level (see the `LakeClimate` bullet above), where evaporation over its flooded area
+equals its real-unit inflow summed over every one of its own members (more than one can be a
+true sink once several originally separate basins have merged), clipped to
+`[dry level, max_depth]` and its lake-vs-sea tier ceiling.
 Tracking a lake's level as one scalar shared by every member, rather than a per-node depth, is
 what removes the old design's threshold-crossing failure mode entirely. Merge/split
 transitions fall out of comparing this against each lake's own `min_depth`: a still-separate
@@ -3818,8 +3817,7 @@ atmospheric humidity, which for architectural reasons can't be the literal same-
 this module evaporates, since climate.py runs *before* this module each step).
 
 - **Accumulation and melt rates**: `GLACIER_ACCUMULATION_RATE` converts frozen
-  precipitation into metres of ice per Myr, the same stylized-units-to-meters role
-  `LAKE_FILL_RATE` plays for lakes. The same rate, as `RIVER_WATER_TO_ICE`, converts the
+  precipitation into metres of ice per Myr. The same rate, as `RIVER_WATER_TO_ICE`, converts the
   physical water a river settles when it freezes solid at a cold sink (not added 1:1 the way
   a standing frozen lake's own `lake_depth` is).
   `GLACIER_MELT_RATE_M_PER_MYR`, scaled by the seasonal positive degrees over

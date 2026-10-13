@@ -76,22 +76,9 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-# Lake growth/evaporation -- moved here from hydrology.py (formerly `update_lakes`'s own
-# constants) unchanged in value and meaning; see hydrology.py's module docstring for the
-# original tuning rationale (evaporation rescaled from a much finer-substep-suited rate down to
-# this codebase's own actual step granularity). `LAKE_FILL_RATE` scales how much of a step's
-# routed inflow becomes standing water; growth is spread over a lake's own member count as an
-# area proxy (the same implicit "node count as area" convention `_lake_component_sizes` and
-# hydrology.LAKE_BREACH_EROSION_COEFFICIENT already rely on) rather than piling the whole
-# inflow onto one point, since a lake's water level is now tracked as a single scalar shared by
-# every member, not a per-node depth.
-LAKE_FILL_RATE = 0.12
-LAKE_EVAPORATION_RATE_PER_MYR = 0.3
-LAKE_EVAPORATION_BASELINE_M_PER_MYR = 0.5
-
-# How much of a lake's own inflow settles as silt on its bed each step, in the same "spread
-# over member count" units LAKE_FILL_RATE uses for water depth -- deliberately ~100x smaller:
-# siltation is a slow, permanent process compared to a lake's water level, which rises and
+# How much of a lake's own inflow settles as silt on its bed each step. It was set at 1/100 of
+# the retired model-unit lake fill rate (0.12, issue #358 item 5), in the same "spread over
+# member count" units, so silt rises ~100x slower than that balance raised water: siltation is a slow, permanent process compared to a lake's water level, which rises and
 # falls with ordinary season-to-season-equivalent inflow/evaporation swings every step. At this
 # rate a small, low-inflow lake plausibly silts in entirely over the tens-of-Myr span a real
 # small lake actually survives; a large, actively-flowing lake's own inflow is spread over far
@@ -150,7 +137,7 @@ LAKE_EVAPORATION_BASELINE_M_PER_MYR = 0.5
 # basin-spill pass, `_compute_basin_spill`, was removed because it could drift out of sync with
 # this module's own hierarchy). Issue #144 is closed on that basis: item #1 measured (above),
 # item #2 decided (no pre-fill pass), item #3's tooling is `app.hydroclimate.lake_hierarchy_diagnostics`.
-SILT_ACCUMULATION_COEFFICIENT = LAKE_FILL_RATE / 100.0
+SILT_ACCUMULATION_COEFFICIENT = 0.0012
 
 # Same value elevation_lines.py/mantle.py each already redefine locally rather than import --
 # following that precedent here too rather than pulling in plates.py (a much heavier module,
@@ -706,7 +693,6 @@ def iter_all_lakes(roots: list[Lake]):
 
 def _water_balance(
     lake: Lake,
-    prev_level: float,
     elevation: np.ndarray,
     water_deposited: np.ndarray,
     years_myr: float,
@@ -715,29 +701,22 @@ def _water_balance(
     tier_max_depth: float,
     is_sea: bool,
     out_lake_is_sea: np.ndarray,
+    climate: LakeClimate,
     hypsometry: CellHypsometry | None = None,
-    climate: LakeClimate | None = None,
 ) -> float:
-    """With `climate` (real-unit runoff and evaporation, issue #297), the new level is the
-    lake's balanced level (`balanced_level`): where its evaporation equals its inflow, capped
-    as below. Without it, the original model-unit balance below applies.
-
-    This lake's new water elevation, a single scalar shared by every member. Last step's
-    stored volume is evaporated (same retention constant, with the baseline loss taken over
-    the wet area). This step's inflow is added as a volume: the sum of `water_deposited`
-    (route_downstream's per-node settled-water output) over every one of this lake's own
-    members, since more than one of them can be a true sink once several originally separate
-    basins are merged into one lake. The new level is the one that holds that volume over the
-    lake's partly flooded cells (`CellHypsometry`, issue #297). Inflow therefore spreads over the
-    area actually under water, and the level rises more slowly as the lake widens. Clipped to
-    `[dry level, max_depth]` (the real geological rim; unbounded above for a closed/
-    endorheic basin, `max_depth is None`), and *also* to `tier_max_depth` (`_classify_tier`'s
-    lake-vs-sea depth ceiling, always finite) regardless of what the real rim allows -- see that
-    function's own docstring for why an unbounded-by-tier basin is the actual bug being fixed
-    here. Capping a composite (already-merged) lake's own rise this way is what lets it fall
-    back below its own `min_depth` and split on a later `_resolve` pass, using the split
-    mechanism that already exists -- a depth ceiling doubles as the fix for lakes that should
-    never have stayed merged this large in the first place.
+    """This lake's new water elevation, a single scalar shared by every member: its balanced
+    level (`balanced_level`, issue #297), where its evaporation over its partly flooded cells
+    (`CellHypsometry`) equals its real-unit inflow from `climate`, summed over every one of its
+    own members, since more than one of them can be a true sink once several originally
+    separate basins are merged into one lake. Clipped to `[dry level, max_depth]` (the real
+    geological rim; unbounded above for a closed/endorheic basin, `max_depth is None`), and
+    *also* to `tier_max_depth` (`_classify_tier`'s lake-vs-sea depth ceiling, always finite)
+    regardless of what the real rim allows -- see that function's own docstring for why an
+    unbounded-by-tier basin is the actual bug being fixed here. Capping a composite
+    (already-merged) lake's own rise this way is what lets it fall back below its own
+    `min_depth` and split on a later `_resolve` pass, using the split mechanism that already
+    exists -- a depth ceiling doubles as the fix for lakes that should never have stayed merged
+    this large in the first place.
 
     The same inflow that grows standing water also drops a small amount of sediment
     (`SILT_ACCUMULATION_COEFFICIENT`, ~100x smaller -- see that constant's own comment) onto the
@@ -763,9 +742,9 @@ def _water_balance(
     into their neighbors)."""
     hyps = hypsometry if hypsometry is not None else CellHypsometry.whole_cells(elevation)
     members = lake.members
-    # Model-unit inflow. It sizes this step's silt in both paths below, and the level only in
-    # the path without `climate`. With `climate` the level is set in real units, so silt and
-    # level use different units, which matters when tuning silt against lake size.
+    # Model-unit inflow. It sizes this step's silt, while `climate` sets the level in real
+    # units, so silt and level use different units, which matters when tuning silt against
+    # lake size.
     inflow = float(water_deposited[members].sum())
 
     rim_cap_depth = (lake.max_depth - lake.floor_elevation) if lake.max_depth is not None else None
@@ -774,26 +753,7 @@ def _water_balance(
     # A lake whose outlet is cut to its floor and leads lower holds no water at all, not even
     # in the low ground inside its floor cell (see Lake.drains_at_floor).
     cap_level = dry_level if lake.drains_at_floor else max(lake.floor_elevation + cap_depth, dry_level)
-    if climate is not None:
-        new_level = balanced_level(lake, hyps, climate, dry_level, cap_level)
-    else:
-        # The balance is in volume (issue #297): last step's water, less evaporation over its
-        # wet area, plus this step's inflow. The new level is whatever level holds that volume
-        # over the lake's partly flooded cells (CellHypsometry), so the level rises more
-        # slowly as the lake spreads over more area.
-        retention = np.exp(-LAKE_EVAPORATION_RATE_PER_MYR * years_myr)
-        baseline_loss = LAKE_EVAPORATION_BASELINE_M_PER_MYR * years_myr
-        carried_m3 = max(
-            0.0,
-            hyps.volume(prev_level, members) * retention - baseline_loss * hyps.wet_area(prev_level, members),
-        )
-        target_m3 = carried_m3 + LAKE_FILL_RATE * inflow * years_myr * hyps.reference_area_m2
-        if target_m3 <= 0.0:
-            new_level = dry_level
-        elif target_m3 >= hyps.volume(cap_level, members):
-            new_level = cap_level
-        else:
-            new_level = hyps.level_for_volume(target_m3, members, dry_level, cap_level)
+    new_level = balanced_level(lake, hyps, climate, dry_level, cap_level)
 
     wet_fraction = hyps.wet_fraction(new_level, members)
     is_wet = wet_fraction > 0.0
@@ -956,8 +916,8 @@ def _resolve(
     out_lake_is_sea: np.ndarray,
     node_area_km2: float,
     events: list[LakeEvent],
+    climate: LakeClimate,
     hypsometry: CellHypsometry | None = None,
-    climate: LakeClimate | None = None,
 ) -> float:
     """Resolves one lake (and, for a parent, implicitly its whole subtree) into this step's
     actual water elevation, writing every member's own `out_lake_depth` exactly once, and
@@ -1049,8 +1009,8 @@ def _resolve(
         node_is_frozen = bool(is_frozen[node.members].any())
         is_sea, tier_max_depth = _classify_tier(node.members, prev_lake_depth, node_area_km2)
         new_level = _water_balance(
-            node, prev_level, elevation, water_deposited, years_myr, node_is_frozen,
-            out_silt_deposited, tier_max_depth, is_sea, out_lake_is_sea, hyps, climate,
+            node, elevation, water_deposited, years_myr, node_is_frozen,
+            out_silt_deposited, tier_max_depth, is_sea, out_lake_is_sea, climate, hyps,
         )
         if node.children and new_level < node.min_depth:
             events.append(LakeEvent(kind="split", node_count=len(node.members), elevation_m=node.min_depth, basin_count=len(node.children)))
@@ -1096,8 +1056,8 @@ def resolve_lakes(
     water_deposited: np.ndarray,
     years: float,
     is_frozen: np.ndarray,
+    climate: LakeClimate,
     hypsometry: CellHypsometry | None = None,
-    climate: LakeClimate | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[LakeEvent]]:
     """The back half of `step_lakes` -- everything after `build_lake_hierarchy` -- pulled out
     on its own so `compute_hydrology` can build the hierarchy once, early (before flow routing,
@@ -1119,8 +1079,8 @@ def resolve_lakes(
 
     `hypsometry` gives each cell's real area and sub-cell relief, for partial-cell flooding
     (see `CellHypsometry`). Without it every cell is an equal share of the sphere and floods
-    all at once. `climate`, when given, resolves each lake at its real-unit balanced level
-    (see `LakeClimate`). `water_deposited` then only sizes this step's silt."""
+    all at once. `climate` resolves each lake at its real-unit balanced level (see
+    `LakeClimate`). `water_deposited` only sizes this step's silt."""
     n = len(elevation)
     lake_depth = np.zeros(n)
     silt_deposited = np.zeros(n)
@@ -1134,7 +1094,7 @@ def resolve_lakes(
     for root in forest:
         _resolve(
             root, elevation, prev_lake_depth, water_deposited, years_myr, is_frozen,
-            lake_depth, silt_deposited, lake_is_sea, node_area_km2, events, hypsometry, climate,
+            lake_depth, silt_deposited, lake_is_sea, node_area_km2, events, climate, hypsometry,
         )
     return lake_depth, silt_deposited, lake_is_sea, events
 
@@ -1147,6 +1107,8 @@ def step_lakes(
     water_deposited: np.ndarray,
     years: float,
     is_frozen: np.ndarray,
+    climate: LakeClimate,
+    hypsometry: CellHypsometry | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[Lake], list[LakeEvent]]:
     """The full per-step lake update, for a caller that doesn't need to reuse the depression
     hierarchy for anything else (`compute_hydrology` itself no longer calls this directly --
@@ -1173,6 +1135,6 @@ def step_lakes(
     calls `world.log_event` directly, keeping it testable without a `World`)."""
     forest = build_lake_hierarchy(elevation, is_ocean, neighbor_idx)
     lake_depth, silt_deposited, lake_is_sea, events = resolve_lakes(
-        forest, elevation, prev_lake_depth, water_deposited, years, is_frozen
+        forest, elevation, prev_lake_depth, water_deposited, years, is_frozen, climate, hypsometry
     )
     return lake_depth, silt_deposited, lake_is_sea, forest, events
