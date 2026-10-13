@@ -1,4 +1,7 @@
 import { asBlob, asJson, expandColumnarStatsHistory, type ColumnarStatsHistory } from "./apiResponse";
+import { requestCrossSection, type CrossSectionResponse } from "./crossSectionApi";
+
+export type { CrossSectionResponse } from "./crossSectionApi";
 
 // Overridable at build/dev time via VITE_API_BASE (see bin/restart.sh's --backend-port), so a
 // non-default backend port stays wired up correctly instead of silently pointing at :8000.
@@ -12,11 +15,13 @@ export const API_BASE = API_ROOT;
 
 export type Projection = "behrmann" | "eckert4";
 
-// The "kind of map" requested from /world/render -- the server now bakes this choice
+// The kind of view requested from /world/render -- the server now bakes this choice
 // directly into the returned image (fill color rule, whether boundaries/poles/velocity
 // arrows or raw per-plate node dots are drawn), rather than the frontend deciding how to
-// draw raw coordinate data it fetched.
+// draw raw coordinate data it fetched. `crossSection` is served by its own
+// /world/cross-section endpoint and remains omitted from /world/render.
 export type MapView =
+  | "crossSection"
   | "elevation"
   | "platesDetail"
   | "speckle"
@@ -120,6 +125,7 @@ export interface PlatesResponse {
 export interface RiverSummary {
   river_id: number;
   num_nodes: number;
+  length_m: number; // summed geodesic length of flow edges, in meters
   // Each entry is one flow edge (a node and its downstream flow_target) as a pair of world-
   // space points -- a flat edge list, not an ordered polyline, since a river network can
   // branch (see PlateInspector.tsx's segment-based river rendering for the same shape used
@@ -127,7 +133,8 @@ export interface RiverSummary {
   segments: Segment[];
   mouth_xyz: [number, number, number];
   mouth_type: "ocean" | "lake" | "other";
-  flow_rate: number;
+  flow_rate: number; // physical discharge at the mouth, m^3/s
+  // A stylized, unitless comparison value from hydrology.compute_river_speed.
   speed: number;
   num_tributaries: number;
 }
@@ -242,8 +249,9 @@ export interface RiversResponse {
 // Inspector's own map mode is for). Contrast OutflowRiver below, which *does* need a full path.
 export interface InflowRiver {
   mouth_xyz: [number, number, number];
-  flow_rate: number;
+  flow_rate: number; // physical discharge at the mouth, m^3/s
   num_nodes: number;
+  length_m: number; // summed geodesic length of flow edges
 }
 
 // The river actually carrying a lake's current spill outward (see LakeSummary.outflow_river
@@ -255,8 +263,9 @@ export interface OutflowRiver {
   segments: Segment[];
   mouth_xyz: [number, number, number];
   mouth_type: "ocean" | "lake" | "other";
-  flow_rate: number;
+  flow_rate: number; // physical discharge at the mouth, m^3/s
   num_nodes: number;
+  length_m: number; // summed geodesic length of flow edges
 }
 
 // Lake Inspector data -- same "raw JSON, client renders itself" philosophy as PlatesResponse/
@@ -692,6 +701,18 @@ export function renderWorld(
   if (showMountains) params.set("show_mountains", "true");
   if (showPlainsPlateaus) params.set("show_plains_plateaus", "true");
   return fetch(`${API_BASE}/world/render?${params}`).then(asJson<RenderResponse>);
+}
+
+// Fetch one rendered frame from the shallow mantle cross-section route. The output size is
+// fixed for a panel layout so cached frames for the same world/plane/position are identical.
+export function fetchCrossSection(
+  planeAngleDeg: number,
+  positionIndex: number,
+  width: number,
+  height: number,
+  signal?: AbortSignal,
+): Promise<CrossSectionResponse> {
+  return requestCrossSection(API_BASE, planeAngleDeg, positionIndex, width, height, signal);
 }
 
 export function fetchPlates(): Promise<PlatesResponse> {

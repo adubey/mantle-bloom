@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from scipy.spatial import cKDTree
 
 from . import (
+    cross_section as cross_section_view,
     debug_worlds,
     faults,
     geodesic,
@@ -390,6 +391,7 @@ def _river_summary(fields: hydrology.HydrologyFields, river: hydrology.RiverInfo
     return {
         "river_id": river_id,
         "num_nodes": int(len(river.member_idx)),
+        "length_m": river.length_m,
         "segments": segments,
         "mouth_xyz": _round_coords(fields.points[river.mouth_idx]),
         "mouth_type": river.mouth_type,
@@ -539,6 +541,7 @@ def _lake_basin_summary(
             "mouth_xyz": _round_coords(fields.points[river.mouth_idx]),
             "flow_rate": river.flow_rate,
             "num_nodes": int(len(river.member_idx)),
+            "length_m": river.length_m,
         }
         for river in rivers
         if river.mouth_idx in member_set
@@ -818,6 +821,12 @@ async def load_world(request: Request) -> dict:
         raise HTTPException(status_code=400, detail=f"invalid or incompatible world file: {exc}") from exc
     except Exception as exc:
         raise HTTPException(status_code=400, detail="invalid or incompatible world file") from exc
+    # Physical discharge is derived routing state. Saves from before #355 may carry a cached
+    # HydrologyFields without it; discard that cache so River/Lake Inspector APIs don't label
+    # legacy stacked-mm/yr values as m^3/s. The next simulated step rebuilds the cache.
+    if world.hydrology_cache is not None and getattr(world.hydrology_cache, "discharge_m3_s", None) is None:
+        world.hydrology_cache = None
+        world.hydrology_cache_step = None
     _state["world"] = world
     return _summary(world)
 
@@ -875,6 +884,35 @@ def render(
         "elapsed_years": world.elapsed_years,
         "image_base64": image_base64,
     }
+
+
+@app.get("/world/cross-section")
+def cross_section(
+    plane_angle_deg: float = 0.0,
+    position_index: int = 0,
+    width: int = 1100,
+    height: int = 611,
+) -> dict:
+    """Render one surface-sampled section for the shallow mantle view (#360).
+
+    The image uses existing per-column crust/lithosphere thicknesses and an illustrative
+    geotherm; the mantle below modeled lithosphere is schematic. `404` if no world exists.
+    """
+    with _world_lock:
+        world = _require_world()
+        if not 0.0 <= plane_angle_deg <= 180.0:
+            raise HTTPException(status_code=400, detail="plane_angle_deg must be in [0, 180]")
+        if not 0 <= position_index < 120:
+            raise HTTPException(status_code=400, detail="position_index must be in [0, 119]")
+        if not (1 <= width <= MAX_RENDER_DIMENSION_PX and 1 <= height <= MAX_RENDER_DIMENSION_PX):
+            raise HTTPException(status_code=400, detail=f"width/height must be in [1, {MAX_RENDER_DIMENSION_PX}]")
+        try:
+            _, result = cross_section_view.render_png_base64(
+                world, plane_angle_deg, position_index, width, height
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return result
 
 
 @app.post("/world/animate")

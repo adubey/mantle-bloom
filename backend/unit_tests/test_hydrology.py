@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from app import geometry
 from app.elevation_lines import line_spacing_rad
-from app.hydroclimate import breaching, hydrology
+from app.hydroclimate import breaching, erosion, hydrology
 from app.plates import collect_all_accounting_areas_m2
 from app.world import World, generate_world, step_world
 
@@ -39,7 +39,7 @@ def _river_inspector_fields():
     # through compute_hydrology (small enough to hit its FLOW_NEIGHBOR_COUNT bail-out path
     # anyway). Three separate is_river-classified networks, one per mouth_type:
     #   Network A -- a Y-confluence: 0 and 1 (two headwaters) both flow into 2, which flows
-    #   into 3 (the mouth, highest flow_accum in the group), which flows onward into ocean
+    #   into 3 (the mouth, highest fallback discharge in the group), which flows onward into ocean
     #   node 4. mouth_type "ocean".
     #   Network B -- a single lone node 5, flowing into node 7, a real lake (lake_depth above
     #   the visible threshold). Node 7 itself is deliberately *not* is_river -- exactly the real
@@ -581,6 +581,40 @@ def test_discharge_from_fixed_rainfall_does_not_depend_on_step_length():
     assert np.max(long.flow_accum[land]) < np.max(short.flow_accum[land])
 
 
+def test_fixed_catchment_has_the_same_outlet_discharge_at_two_node_densities():
+    # Split the same 10,000 km^2 rainy catchment into 4 or 64 accounting cells, the
+    # fourfold linear-density change from density 1 to 4 (issue #355 step 5). Routing
+    # area-weighted runoff must give the same outlet discharge and river forcing.
+    catchment_area_m2 = 1e10
+    runoff_m = breaching.runoff_mm(np.array([800.0]), breaching.open_water_evaporation_mm(np.array([15.0])))[0] / 1000.0
+    outflows = []
+    for density in (1, 4):
+        source_count = 4 * density**2
+        outlet, ocean = source_count, source_count + 1
+        elevation = np.concatenate((np.full(source_count, 2.0), [1.0, 0.0]))
+        is_ocean = np.arange(source_count + 2) == ocean
+        target = np.concatenate((np.full(source_count, outlet), [ocean, -1]))
+        source = np.concatenate((np.full(source_count, runoff_m * catchment_area_m2 / source_count), [0.0, 0.0]))
+        through, settled = hydrology.route_downstream(elevation, is_ocean, target, source)
+        assert settled[ocean] == pytest.approx(runoff_m * catchment_area_m2)
+        outflows.append(through[outlet] / hydrology.SECONDS_PER_YEAR)
+
+    assert outflows[0] == pytest.approx(outflows[1], rel=1e-12)
+    assert outflows[0] == pytest.approx(runoff_m * catchment_area_m2 / hydrology.SECONDS_PER_YEAR)
+    assert hydrology.discharge_m3_s_to_flow_accum_mm_yr(np.array(outflows))[0] == pytest.approx(
+        hydrology.discharge_m3_s_to_flow_accum_mm_yr(np.array(outflows))[1]
+    )
+    assert hydrology.compute_river_speed(np.array([0.01, 0.01]), np.array(outflows))[0] == pytest.approx(
+        hydrology.compute_river_speed(np.array([0.01, 0.01]), np.array(outflows))[1]
+    )
+    river = erosion._river_erosion_amount(
+        np.array(outflows), np.zeros(2), np.array([0.01, 0.01]), np.zeros(2), 1.0, 1.0,
+    )
+    width = erosion._channel_width_growth(np.array(outflows), 1.0)
+    assert river[0] > 0.0 and river[0] == pytest.approx(river[1])
+    assert width[0] > 0.0 and width[0] == pytest.approx(width[1])
+
+
 def test_compute_flow_direction_prefers_an_existing_channel_over_the_literal_steepest_neighbor():
     # Node 0's two downhill candidates: node 1 (elevation 20, steeper, no channel) and node 2
     # (elevation 25, less steep, but already has a real established channel).
@@ -769,10 +803,55 @@ def test_group_rivers_groups_confluence_and_finds_max_flow_mouth():
 
     network_a = next(r for r in rivers if len(r.member_idx) == 4)
     assert sorted(network_a.member_idx.tolist()) == [0, 1, 2, 3]
-    assert network_a.mouth_idx == 3  # highest flow_accum (40) in the group
-    assert network_a.flow_rate == 40.0
+    assert network_a.mouth_idx == 3  # highest fallback discharge (converted from flow_accum)
+    assert network_a.flow_rate == pytest.approx(
+        float(hydrology.flow_accum_mm_yr_to_discharge_m3_s(40.0))
+    )
     # Two headwaters (0 and 1) merging into one mainstem -- one tributary joins it.
     assert network_a.num_tributaries == 1
+
+
+def test_river_selection_stays_connected_through_positive_downstream_discharge():
+    # Transit evaporation can reduce discharge below the percentile cutoff along a real river.
+    # Once selected upstream, its positive-flow path remains connected to the mouth.
+    selected = hydrology._extend_river_mask_downstream(
+        np.array([True, False, False, False, False]),
+        np.array([1, 2, 3, 4, -1]),
+        np.array([10.0, 0.5, 0.01, 0.0, 0.0]),
+        np.zeros(5, dtype=bool),
+        np.zeros(5, dtype=bool),
+    )
+    assert selected.tolist() == [True, True, True, False, False]
+
+    # Multiple selected headwaters may share a mainstem; walking it once must still retain the
+    # whole shared path without revisiting it for every tributary.
+    confluence = hydrology._extend_river_mask_downstream(
+        np.array([True, True, False, False, False]),
+        np.array([2, 2, 3, 4, -1]),
+        np.array([10.0, 5.0, 0.5, 0.01, 0.0]),
+        np.zeros(5, dtype=bool),
+        np.zeros(5, dtype=bool),
+    )
+    assert confluence.tolist() == [True, True, True, True, False]
+
+
+def test_river_selection_stops_downstream_extension_at_lakes_and_oceans():
+    flow_target = np.array([1, 2, 3, 4, -1])
+    discharge = np.ones(5)
+    is_ocean = np.zeros(5, dtype=bool)
+    is_lake = np.zeros(5, dtype=bool)
+    is_lake[2] = True
+    lake_path = hydrology._extend_river_mask_downstream(
+        np.array([True, False, False, False, False]), flow_target, discharge, is_ocean, is_lake
+    )
+    assert lake_path.tolist() == [True, True, False, False, False]
+
+    ocean = np.zeros(5, dtype=bool)
+    ocean[2] = True
+    ocean_path = hydrology._extend_river_mask_downstream(
+        np.array([True, False, False, False, False]), flow_target, discharge, ocean, np.zeros(5, dtype=bool)
+    )
+    assert ocean_path.tolist() == [True, True, False, False, False]
 
 
 def test_group_rivers_classifies_mouth_type_ocean_lake_and_other():
@@ -972,6 +1051,27 @@ def test_route_downstream_applies_loss_and_retention_on_cycle_nodes():
     # Without loss, the cycle still conserves everything it received.
     _, kept = hydrology.route_downstream(elevation, is_ocean, flow_target, source, retain_fraction=retain)
     assert np.isclose(kept.sum(), source.sum())
+
+
+def test_physical_water_accounts_for_transit_loss_lake_retention_and_ocean_arrival():
+    # Three land nodes drain through a lake (node 1) to the ocean. The yearly source volume
+    # must end in atmospheric loss, lake retention or ocean arrival exactly once (#355).
+    elevation = np.array([30.0, 20.0, 10.0, 0.0])
+    is_ocean = np.array([False, False, False, True])
+    target = np.array([1, 2, 3, -1])
+    source_m3_per_yr = np.array([10.0, 5.0, 2.0, 0.0])
+    loss = np.array([0.1, 0.2, 0.0, 0.0])
+    lake_retention = np.array([0.0, 0.25, 0.0, 0.0])
+    through, settled = hydrology.route_downstream(
+        elevation, is_ocean, target, source_m3_per_yr,
+        retain_fraction=lake_retention, loss_fraction=loss,
+    )
+    evaporated = through[0] * loss[0] / (1.0 - loss[0]) + (
+        through[1] + settled[1]
+    ) * loss[1] / (1.0 - loss[1])
+    assert settled[1] == pytest.approx(2.8)
+    assert settled[3] == pytest.approx(10.4)
+    assert source_m3_per_yr.sum() == pytest.approx(evaporated + settled.sum())
 
 
 def test_ice_ledger_closes_across_steps_with_frozen_river_ice_a_step_late():

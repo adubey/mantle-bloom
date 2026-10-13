@@ -252,6 +252,11 @@ def test_a_saturated_marine_body_calves_rather_than_melting():
     assert ice.ledger.overflow_m3 == 0.0
     ledger = ice.ledger
     assert float(np.dot(melt, area)) == pytest.approx(ledger.meltwater_m3)
+    # #355 step 5: the hydrology handoff is a yearly liquid-water rate. Calving leaves
+    # directly for the ocean, even when it occurs in the same step as melt.
+    routed_melt_m3 = hydrology.meltwater_m3_per_yr(melt, area, 1e6).sum() * 1e6
+    assert routed_melt_m3 == pytest.approx(ledger.meltwater_m3)
+    assert routed_melt_m3 < ledger.meltwater_m3 + ledger.calved_m3
     assert ice.bodies[0].saturated
 
 

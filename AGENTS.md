@@ -59,6 +59,15 @@ Run from the repo root (or worktree root).
   a unit or stress test run.
 - **Reviews:** when a PR's author reports its tests passing, don't rerun them. Run targeted
   checks they couldn't have covered instead.
+- **Merging is the user's job.** Open the PR and stop: never run `gh pr merge`. `main` only
+  takes changes through a PR with the `backend` and `frontend` checks green, and refuses
+  force pushes and deletion, for everyone. Every branch outside `claude/*` and `codex/*` is
+  the user's: don't push to, rebase, force-push or delete it. Force-push (with
+  `--force-with-lease`) only your own agent branch.
+- **Never discard work you didn't create.** Don't run `git reset --hard`, `git checkout --`,
+  `git restore`, `git clean`, `git stash`, `git branch -D`, `git worktree remove --force` or
+  `rm -rf` against anything but your own worktree and scratch files. The user's checkout
+  may hold uncommitted work that exists nowhere else.
 - Skills for these workflows, shared by Claude Code and Codex, are in `.agents/skills/`
   (`.claude/skills` links there): `start-issue`, `replay-ab`, `pre-push-check`.
 

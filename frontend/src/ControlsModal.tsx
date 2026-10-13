@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { TuningKey, TuningMultipliers } from "./api";
+import ModalShell from "./ModalShell";
 
 interface Props {
   seaLevelM: number;
@@ -181,44 +182,7 @@ export default function ControlsModal({
   );
 
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0, 0, 0, 0.6)",
-        zIndex: 100,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: 340,
-          maxHeight: "85vh",
-          overflowY: "auto",
-          padding: 20,
-          background: "#151a2e",
-          border: "1px solid #333",
-          borderRadius: 8,
-          color: "#e6e8ef",
-          fontSize: 13,
-          boxShadow: "0 8px 32px rgba(0, 0, 0, 0.6)",
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <span style={{ fontSize: 16, fontWeight: 600 }}>Controls</span>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{ background: "none", border: "none", color: "#8b8fa3", cursor: "pointer", fontSize: 16 }}
-          >
-            ✕
-          </button>
-        </div>
-
+    <ModalShell title="Controls" onClose={onClose} width={340}>
         <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
           {TABS.map(({ key, label }) => (
             <button
@@ -394,7 +358,6 @@ export default function ControlsModal({
             </div>
           </div>
         )}
-      </div>
-    </div>
+    </ModalShell>
   );
 }
