@@ -141,6 +141,13 @@ def polar_zonal_filter(field: np.ndarray, lat_deg: np.ndarray) -> np.ndarray:
     return _polar_zonal_filter_kernel(field, strength)
 
 
+@njit(cache=True, inline="always")
+def _wrapped_neighbours(k: int, n: int) -> tuple[int, int]:
+    """Indices before and after `k` on an axis of length `n` that wraps around. Every stencil
+    kernel below wraps rows as well as columns."""
+    return (n - 1 if k == 0 else k - 1), (0 if k == n - 1 else k + 1)
+
+
 @njit(**_NUMBA_JIT_KWARGS)
 def _gradient_m_kernel(field: np.ndarray, dx_m: np.ndarray, dy_m: float) -> tuple[np.ndarray, np.ndarray]:
     height, width = field.shape
@@ -148,12 +155,10 @@ def _gradient_m_kernel(field: np.ndarray, dx_m: np.ndarray, dy_m: float) -> tupl
     gy = np.empty_like(field)
     inv_2dy = 1.0 / (2.0 * dy_m)
     for i in prange(height):
-        im1 = height - 1 if i == 0 else i - 1
-        ip1 = 0 if i == height - 1 else i + 1
+        im1, ip1 = _wrapped_neighbours(i, height)
         inv_2dx = 1.0 / (2.0 * dx_m[i])
         for j in range(width):
-            jm1 = width - 1 if j == 0 else j - 1
-            jp1 = 0 if j == width - 1 else j + 1
+            jm1, jp1 = _wrapped_neighbours(j, width)
             gx[i, j] = (field[i, jp1] - field[i, jm1]) * inv_2dx
             gy[i, j] = (field[im1, j] - field[ip1, j]) * inv_2dy
     return gx, gy
@@ -173,12 +178,10 @@ def _laplacian_m_kernel(field: np.ndarray, dx_m: np.ndarray, dy_m: float) -> np.
     out = np.empty_like(field)
     inv_dy2 = 1.0 / (dy_m * dy_m)
     for i in prange(height):
-        im1 = height - 1 if i == 0 else i - 1
-        ip1 = 0 if i == height - 1 else i + 1
+        im1, ip1 = _wrapped_neighbours(i, height)
         inv_dx2 = 1.0 / (dx_m[i] * dx_m[i])
         for j in range(width):
-            jm1 = width - 1 if j == 0 else j - 1
-            jp1 = 0 if j == width - 1 else j + 1
+            jm1, jp1 = _wrapped_neighbours(j, width)
             d2x = (field[i, jp1] + field[i, jm1] - 2.0 * field[i, j]) * inv_dx2
             d2y = (field[ip1, j] + field[im1, j] - 2.0 * field[i, j]) * inv_dy2
             out[i, j] = d2x + d2y
@@ -198,12 +201,10 @@ def _divergence_m_kernel(u: np.ndarray, v: np.ndarray, dx_m: np.ndarray, dy_m: f
     out = np.empty_like(u)
     inv_2dy = 1.0 / (2.0 * dy_m)
     for i in prange(height):
-        im1 = height - 1 if i == 0 else i - 1
-        ip1 = 0 if i == height - 1 else i + 1
+        im1, ip1 = _wrapped_neighbours(i, height)
         inv_2dx = 1.0 / (2.0 * dx_m[i])
         for j in range(width):
-            jm1 = width - 1 if j == 0 else j - 1
-            jp1 = 0 if j == width - 1 else j + 1
+            jm1, jp1 = _wrapped_neighbours(j, width)
             dudx = (u[i, jp1] - u[i, jm1]) * inv_2dx
             dvdy = (v[im1, j] - v[ip1, j]) * inv_2dy
             out[i, j] = dudx + dvdy
@@ -328,11 +329,9 @@ def _grid_noise_filter_kernel(field: np.ndarray, weight: float) -> np.ndarray:
     height, width = field.shape
     out = np.empty_like(field)
     for i in prange(height):
-        im1 = height - 1 if i == 0 else i - 1
-        ip1 = 0 if i == height - 1 else i + 1
+        im1, ip1 = _wrapped_neighbours(i, height)
         for j in range(width):
-            jm1 = width - 1 if j == 0 else j - 1
-            jp1 = 0 if j == width - 1 else j + 1
+            jm1, jp1 = _wrapped_neighbours(j, width)
             neighbor_avg = 0.25 * (field[i, jp1] + field[i, jm1] + field[ip1, j] + field[im1, j])
             out[i, j] = field[i, j] + weight * (neighbor_avg - field[i, j])
     return out

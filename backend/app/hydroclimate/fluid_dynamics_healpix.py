@@ -111,19 +111,8 @@ def _laplacian_kernel(
 ) -> np.ndarray:
     npix = field.shape[0]
     n_neighbours = neighbours.shape[1]
-    gx = np.empty(npix, dtype=np.float64)
-    gy = np.empty(npix, dtype=np.float64)
-    for i in prange(npix):
-        fi = field[i]
-        atb_x = 0.0
-        atb_y = 0.0
-        for k in range(n_neighbours):
-            if neighbour_valid[i, k]:
-                d = field[neighbours[i, k]] - fi
-                atb_x += neighbour_dx_m[i, k] * d
-                atb_y += neighbour_dy_m[i, k] * d
-        gx[i] = gradient_inv[i, 0, 0] * atb_x + gradient_inv[i, 0, 1] * atb_y
-        gy[i] = gradient_inv[i, 1, 0] * atb_x + gradient_inv[i, 1, 1] * atb_y
+    # The Laplacian is the divergence of the least-squares gradient, so take that gradient first.
+    gx, gy = _gradient_kernel(field, neighbours, neighbour_valid, neighbour_dx_m, neighbour_dy_m, gradient_inv)
 
     out = np.empty(npix, dtype=np.float64)
     for i in prange(npix):
