@@ -4074,8 +4074,8 @@ list, not an ordered polyline -- a network can branch), dim for every river and 
 thicker for the selected one, mirroring Plate Inspector's dim/bright split. Each segment is
 projected with the same "unwrap the second point's longitude relative to the first's own"
 technique `render_image.py`'s `_draw_rivers` already uses server-side (`_project_offset`),
-the two-point analogue of Plate Inspector's `projectLoop` (which unwraps a whole loop relative
-to its own center) -- needed because a naive independent projection of both endpoints can bow
+the two-point analogue of `ScreenProjector.loop` (`screenProjector.ts`, which unwraps a whole
+loop relative to its own center) -- needed because a naive independent projection of both endpoints can bow
 a short edge all the way across the map at the antimeridian seam. **The selected river's mouth
 draws a ring** (`ctx.arc`, a new drawing primitive Plate Inspector doesn't need at all),
 colored by `mouth_type` (`ocean`/`lake`/`other` each a distinct hue) so the endpoint
@@ -4198,7 +4198,7 @@ a scar -- because a real fault is only tens of km long and its whole trace can p
 few pixels at world scale, so the line alone wouldn't register. The selected fault draws
 bright and thick with both endpoints ringed (the same `ctx.arc` primitive the River / Lake
 inspectors use). Same per-edge antimeridian
-longitude-unwrap as `RiverInspector.projectSegment`. Reuses the `coastline_segments` already
+longitude-unwrap as the River Inspector (`ScreenProjector.segment`). Reuses the `coastline_segments` already
 fetched for the River / Lake inspectors -- this view has no other land/ocean cue.
 
 **Fault systems** (`fault_systems` in the same `/world/faults` payload -- see

@@ -28,7 +28,6 @@ Seeds run in parallel. Runs against any backend, so the same script gives a `mai
 
 from __future__ import annotations
 
-import argparse
 import copy
 import json
 import sys
@@ -37,6 +36,7 @@ from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import numpy as np
+from seed_run_lib import seed_run_parser
 
 LEDGER_KEYS = (
     "surface_continental_derived_m3",
@@ -216,12 +216,7 @@ def _compare(base_path: Path, branch_path: Path) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--backend", type=Path, default=Path(__file__).resolve().parents[2] / "backend")
-    parser.add_argument("--seeds", type=int, nargs="+", default=[1])
-    parser.add_argument("--steps", type=int, default=20)
-    parser.add_argument("--years", type=float, default=1_000_000.0)
-    parser.add_argument("--every", type=int, default=10, help="snapshot every Nth step")
+    parser = seed_run_parser(__doc__)
     parser.add_argument("--workers", type=int, default=3)
     parser.add_argument("--out", type=Path, help="JSON-lines output")
     parser.add_argument("--compare", type=Path, nargs=2, metavar=("BASE", "BRANCH"), help="compare two --out files")

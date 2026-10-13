@@ -460,6 +460,19 @@ def _build_neighbor_graph(points: np.ndarray, world: "World | None" = None) -> n
     return neighbor_idx[:, 1:]  # column 0 is always the point itself, at distance 0
 
 
+def _below_sea_components(below: np.ndarray, neighbor_idx: np.ndarray) -> np.ndarray:
+    """Connected-component label per node over the `neighbor_idx` edges joining two
+    below-sea-level nodes. Shared by `connected_ocean_mask` and
+    `force_earth_strait_connections`, which must agree on the components."""
+    n, k = neighbor_idx.shape
+    rows = np.repeat(np.arange(n), k)
+    cols = neighbor_idx.ravel()
+    keep = below[rows] & below[cols]
+    graph = coo_matrix((np.ones(keep.sum()), (rows[keep], cols[keep])), shape=(n, n))
+    _, labels = connected_components(graph, directed=False)
+    return labels
+
+
 def connected_ocean_mask(
     points: np.ndarray,
     elevation: np.ndarray,
@@ -492,12 +505,7 @@ def connected_ocean_mask(
             return below
         neighbor_idx = _build_neighbor_graph(points)
 
-    k = neighbor_idx.shape[1]
-    rows = np.repeat(np.arange(n), k)
-    cols = neighbor_idx.ravel()
-    keep = below[rows] & below[cols]
-    graph = coo_matrix((np.ones(keep.sum()), (rows[keep], cols[keep])), shape=(n, n))
-    _, labels = connected_components(graph, directed=False)
+    labels = _below_sea_components(below, neighbor_idx)
 
     below_idx = np.nonzero(below)[0]
     below_labels = labels[below_idx]
@@ -545,12 +553,7 @@ def force_earth_strait_connections(
     below = elevation <= sea_level_m
     if n == 0 or not np.any(below):
         return is_ocean
-    k = neighbor_idx.shape[1]
-    rows = np.repeat(np.arange(n), k)
-    cols = neighbor_idx.ravel()
-    keep = below[rows] & below[cols]
-    graph = coo_matrix((np.ones(keep.sum()), (rows[keep], cols[keep])), shape=(n, n))
-    _, labels = connected_components(graph, directed=False)
+    labels = _below_sea_components(below, neighbor_idx)
 
     tree = cKDTree(points)
     for (lon_a, lat_a), (lon_b, lat_b) in _FORCED_EARTH_STRAITS_LONLAT:

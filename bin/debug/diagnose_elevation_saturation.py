@@ -31,10 +31,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from sweep_lib import (  # noqa: E402
-    CHECKPOINT_YEARS,
-    NODE_DENSITY,
+    add_seed_grid_args,
+    parse_seed_grid,
     STEP_YEARS,
-    SWEEP_SEEDS,
     _apply_rotation_rate_overrides,
     BASELINE_AVG_RATE_CM_YR,
     BASELINE_MAX_RATE_CM_YR,
@@ -152,18 +151,14 @@ def _seed_report(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--seeds", default=",".join(str(s) for s in SWEEP_SEEDS))
-    parser.add_argument(
-        "--checkpoints", default=",".join(str(y // 1_000_000) for y in CHECKPOINT_YEARS), help="Myr, comma-separated"
-    )
-    parser.add_argument("--node-density", type=float, default=NODE_DENSITY)
+    add_seed_grid_args(parser)
     parser.add_argument("--collision-uplift-multiplier", type=float, default=1.0)
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--out", type=Path, default=Path(__file__).resolve().parent / "results" / "elevation_saturation.jsonl")
     args = parser.parse_args()
 
-    seeds = [int(s) for s in args.seeds.split(",")]
-    checkpoint_years = tuple(int(float(m) * 1_000_000) for m in args.checkpoints.split(","))
+    seeds, checkpoint_years = parse_seed_grid(args)
+    checkpoint_years = tuple(checkpoint_years)
     node_density = args.node_density
     collision_uplift_multiplier = args.collision_uplift_multiplier
 

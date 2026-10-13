@@ -474,6 +474,39 @@ def _soft_cascade(soft_condlist: list[np.ndarray], choicelist: list[int], n_clas
 # ---------------------------------------------------------------------------------------
 
 
+# The Köppen classes in the order classify_koppen's cascade tries them, matching the
+# conditions `_koppen_conditions` builds.
+_KOPPEN_CASCADE_CODES = tuple(
+    koppen_index(code)
+    for code in (
+        "BWh", "BWk", "BSh", "BSk",
+        "EF", "ET",
+        "Af", "Am", "Aw", "As",
+        "Csa", "Csb", "Csc",
+        "Cwa", "Cwb", "Cwc",
+        "Cfa", "Cfb", "Cfc",
+        "Dsa", "Dsb", "Dsc", "Dsd",
+        "Dwa", "Dwb", "Dwc", "Dwd",
+        "Dfa", "Dfb", "Dfc", "Dfd",
+    )
+)
+
+
+def _koppen_conditions(head: list, thirds: list[dict], very_cold_d, both, negate) -> list:
+    """The cascade's conditions in `_KOPPEN_CASCADE_CODES` order, shared by the hard and the
+    soft classifier. `head` holds the B/E/A conditions; `thirds` holds the a/b/c (hot / warm /
+    cool summer) splits of Cs, Cw, Cf, Ds, Dw, Df. Dc splits further into Dc and Dd on
+    `very_cold_d`. `both` and `negate` are the logic: `&` and `~` on boolean masks, `*` and
+    `1 - x` on soft memberships."""
+    c_thirds, d_thirds = thirds[:3], thirds[3:]
+    conditions = list(head)
+    for t in c_thirds:
+        conditions += [t["a"], t["b"], t["c"]]
+    for t in d_thirds:
+        conditions += [t["a"], t["b"], both(t["c"], negate(very_cold_d)), both(t["c"], very_cold_d)]
+    return conditions
+
+
 def classify_koppen(
     t_annual: np.ndarray,
     precip_mm: np.ndarray,
@@ -555,35 +588,17 @@ def classify_koppen(
     d_s, d_w = is_d & summer_dry, is_d & winter_dry & ~summer_dry
     d_f = is_d & ~d_s & ~d_w
 
-    cs, cw, cf = third(c_s), third(c_w), third(c_f)
-    ds, dw, df = third(d_s), third(d_w), third(d_f)
-
     # B (aridity) is assigned before E/A/C/D -- a cold-enough desert is still BWk, not EF
     # (Peel et al. 2007's own precedence).
-    condlist = [
-        is_bw & is_hot, is_bw, is_b & is_hot, is_b,
-        is_ef, is_e,
-        af, am, aw, a_s,
-        cs["a"], cs["b"], cs["c"],
-        cw["a"], cw["b"], cw["c"],
-        cf["a"], cf["b"], cf["c"],
-        ds["a"], ds["b"], ds["c"] & ~very_cold_d, ds["c"] & very_cold_d,
-        dw["a"], dw["b"], dw["c"] & ~very_cold_d, dw["c"] & very_cold_d,
-        df["a"], df["b"], df["c"] & ~very_cold_d, df["c"] & very_cold_d,
-    ]
-    choicelist = [
-        koppen_index("BWh"), koppen_index("BWk"), koppen_index("BSh"), koppen_index("BSk"),
-        koppen_index("EF"), koppen_index("ET"),
-        koppen_index("Af"), koppen_index("Am"), koppen_index("Aw"), koppen_index("As"),
-        koppen_index("Csa"), koppen_index("Csb"), koppen_index("Csc"),
-        koppen_index("Cwa"), koppen_index("Cwb"), koppen_index("Cwc"),
-        koppen_index("Cfa"), koppen_index("Cfb"), koppen_index("Cfc"),
-        koppen_index("Dsa"), koppen_index("Dsb"), koppen_index("Dsc"), koppen_index("Dsd"),
-        koppen_index("Dwa"), koppen_index("Dwb"), koppen_index("Dwc"), koppen_index("Dwd"),
-        koppen_index("Dfa"), koppen_index("Dfb"), koppen_index("Dfc"), koppen_index("Dfd"),
-    ]
+    condlist = _koppen_conditions(
+        [is_bw & is_hot, is_bw, is_b & is_hot, is_b, is_ef, is_e, af, am, aw, a_s],
+        [third(split) for split in (c_s, c_w, c_f, d_s, d_w, d_f)],
+        very_cold_d,
+        both=np.logical_and,
+        negate=np.logical_not,
+    )
     # Default: anything the bands above didn't catch is a cold maritime remainder -> Cfc.
-    return np.select(condlist, choicelist, default=koppen_index("Cfc")).astype(np.int64)
+    return np.select(condlist, list(_KOPPEN_CASCADE_CODES), default=koppen_index("Cfc")).astype(np.int64)
 
 
 def classify_koppen_soft(
@@ -674,32 +689,14 @@ def classify_koppen_soft(
     d_w = is_d * (1.0 - summer_dry) * winter_dry
     d_f = is_d * (1.0 - summer_dry) * (1.0 - winter_dry)
 
-    cs, cw, cf = third(c_s), third(c_w), third(c_f)
-    ds, dw, df = third(d_s), third(d_w), third(d_f)
-
-    soft_condlist = [
-        is_bw * is_hot, is_bw, is_b * is_hot, is_b,
-        is_ef, is_e,
-        af, am, aw, a_s,
-        cs["a"], cs["b"], cs["c"],
-        cw["a"], cw["b"], cw["c"],
-        cf["a"], cf["b"], cf["c"],
-        ds["a"], ds["b"], ds["c"] * (1.0 - very_cold_d), ds["c"] * very_cold_d,
-        dw["a"], dw["b"], dw["c"] * (1.0 - very_cold_d), dw["c"] * very_cold_d,
-        df["a"], df["b"], df["c"] * (1.0 - very_cold_d), df["c"] * very_cold_d,
-    ]
-    choicelist = [
-        koppen_index("BWh"), koppen_index("BWk"), koppen_index("BSh"), koppen_index("BSk"),
-        koppen_index("EF"), koppen_index("ET"),
-        koppen_index("Af"), koppen_index("Am"), koppen_index("Aw"), koppen_index("As"),
-        koppen_index("Csa"), koppen_index("Csb"), koppen_index("Csc"),
-        koppen_index("Cwa"), koppen_index("Cwb"), koppen_index("Cwc"),
-        koppen_index("Cfa"), koppen_index("Cfb"), koppen_index("Cfc"),
-        koppen_index("Dsa"), koppen_index("Dsb"), koppen_index("Dsc"), koppen_index("Dsd"),
-        koppen_index("Dwa"), koppen_index("Dwb"), koppen_index("Dwc"), koppen_index("Dwd"),
-        koppen_index("Dfa"), koppen_index("Dfb"), koppen_index("Dfc"), koppen_index("Dfd"),
-    ]
-    return _soft_cascade(soft_condlist, choicelist, len(BIOME_NAMES), koppen_index("Cfc"))
+    soft_condlist = _koppen_conditions(
+        [is_bw * is_hot, is_bw, is_b * is_hot, is_b, is_ef, is_e, af, am, aw, a_s],
+        [third(split) for split in (c_s, c_w, c_f, d_s, d_w, d_f)],
+        very_cold_d,
+        both=np.multiply,
+        negate=lambda x: 1.0 - x,
+    )
+    return _soft_cascade(soft_condlist, list(_KOPPEN_CASCADE_CODES), len(BIOME_NAMES), koppen_index("Cfc"))
 
 
 # ---------------------------------------------------------------------------------------
