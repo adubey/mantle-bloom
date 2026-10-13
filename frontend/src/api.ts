@@ -1,4 +1,7 @@
 import { asBlob, asJson, expandColumnarStatsHistory, type ColumnarStatsHistory } from "./apiResponse";
+import { requestCrossSection, type CrossSectionResponse } from "./crossSectionApi";
+
+export type { CrossSectionResponse } from "./crossSectionApi";
 
 // Overridable at build/dev time via VITE_API_BASE (see bin/restart.sh's --backend-port), so a
 // non-default backend port stays wired up correctly instead of silently pointing at :8000.
@@ -66,11 +69,6 @@ export interface RenderResponse {
   elapsed_years: number;
   // Raw PNG bytes, base64-encoded -- decode via `data:image/png;base64,${image_base64}`.
   // See backend app/render_image.py for how it's drawn.
-  image_base64: string;
-}
-
-export interface CrossSectionResponse {
-  // Raw PNG bytes, base64-encoded, following the /world/render image response convention.
   image_base64: string;
 }
 
@@ -710,13 +708,7 @@ export function fetchCrossSection(
   height: number,
   signal?: AbortSignal,
 ): Promise<CrossSectionResponse> {
-  const params = new URLSearchParams({
-    plane_angle_deg: String(planeAngleDeg),
-    position_index: String(positionIndex),
-    width: String(width),
-    height: String(height),
-  });
-  return fetch(`${API_BASE}/world/cross-section?${params}`, { signal }).then(asJson<CrossSectionResponse>);
+  return requestCrossSection(API_BASE, planeAngleDeg, positionIndex, width, height, signal);
 }
 
 export function fetchPlates(): Promise<PlatesResponse> {
