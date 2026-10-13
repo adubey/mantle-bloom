@@ -356,7 +356,7 @@ def _plate_summary(plate: plates.Plate, world: World, overlaps: dict[int, list[d
         "speed_cm_per_yr": round(mantle.rad_per_yr_to_cm_per_yr(rate_rad), 3),
         "at_max_rate": bool(rate_rad >= mantle.MAX_PLATE_RATE - 1e-12),
         "euler_pole": euler_pole,
-        "age_steps": plate.age_steps,
+        "age_years": plate.age_years,
         # Median height of the plate's own nodes and the share of them at/below sea level --
         # a continental plate reading mostly-submerged is a red flag for over-stretching.
         "median_elevation_m": round(float(np.median(node_elevation)), 1) if len(node_elevation) else None,

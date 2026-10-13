@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import pickle
 
+import numpy as np
+
 from .world import World
 
 
@@ -121,11 +123,27 @@ def load_world_bytes(data: bytes) -> World:
             convert_world_to_quad(world)
         except ValueError as exc:
             raise CorruptSaveError(f"line-backed save can't be converted: {exc}") from exc
+    _migrate_plate_ages(world)
     _backfill_added_fields(world)
     _drop_retired_state(world)
     _drop_derived_caches(world)
     _backfill_water_budget(world)
     return world
+
+
+def _migrate_plate_ages(world: World) -> None:
+    """A quad plate saved before #358 (surface format version 1) counted its age in steps.
+    Convert it to years with the world's own mean step length (see
+    `legacy_conversion.legacy_age_years`)."""
+    from .legacy_conversion import legacy_age_years
+
+    for plate in world.plates:
+        age_steps = plate.__dict__.pop("_age_steps", None)
+        if age_steps is None:
+            continue
+        if isinstance(age_steps, bool) or not isinstance(age_steps, (int, np.integer)) or age_steps < 0:
+            raise CorruptSaveError(f"plate {plate.plate_id!r}: age must be a non-negative step count")
+        plate.set_age_years(legacy_age_years(int(age_steps), world))
 
 
 def _backfill_added_fields(world: World) -> None:

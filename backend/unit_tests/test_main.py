@@ -708,7 +708,7 @@ def test_plates_endpoint_reports_motion_shape_and_overlap_diagnostics(client):
         # the reported speed.
         assert entry["at_max_rate"] == (entry["speed_cm_per_yr"] >= mantle.rad_per_yr_to_cm_per_yr(mantle.MAX_PLATE_RATE) - 1e-9)
         assert 0.0 <= entry["submerged_fraction"] <= 1.0
-        assert entry["age_steps"] >= 0
+        assert entry["age_years"] >= 0.0
         # A plate never overlaps itself. (Overlap is read by containment of cell centres, so it
         # can be one-sided where two lattices meet: A's centre inside B, but no centre of B's
         # inside A.)

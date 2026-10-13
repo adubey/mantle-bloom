@@ -338,6 +338,31 @@ def _plate_motion_state(state: dict) -> tuple[np.ndarray, np.ndarray, int, float
     return frame.copy(), omega.copy(), int(age_steps), internal_stress, crust_type
 
 
+# Step length assumed for a save that counted plate age in steps (before #358) when the
+# world's own clock can't give it: a save from before `World.steps_taken` existed reads 0
+# steps taken. The UI's shortest step, so a converted plate errs young and an old split
+# cooldown isn't cut short.
+FALLBACK_YEARS_PER_STEP = 10_000.0
+
+
+def legacy_years_per_step(world: "World") -> float:
+    """The mean step length of `world` so far, or `FALLBACK_YEARS_PER_STEP` when its clock
+    can't say."""
+    steps = int(getattr(world, "steps_taken", 0))
+    elapsed = float(getattr(world, "elapsed_years", 0.0))
+    if steps > 0 and np.isfinite(elapsed) and elapsed > 0.0:
+        return elapsed / steps
+    return FALLBACK_YEARS_PER_STEP
+
+
+def legacy_age_years(age_steps: int, world: "World") -> float:
+    """A plate age counted in steps (before #358), in years. Capped at the world's elapsed
+    time: no plate is older than its world, which also bounds the fallback step length on a
+    save that predates `steps_taken`."""
+    elapsed = float(getattr(world, "elapsed_years", 0.0))
+    return min(age_steps * legacy_years_per_step(world), max(elapsed, 0.0))
+
+
 @dataclass
 class ConversionReport:
     """What a conversion kept and changed. Volumes are m^3 (field value x area); fractions
@@ -450,7 +475,7 @@ def convert_world_to_quad(world: "World", *, coverage_samples: int = COVERAGE_SA
                 keys[k],
                 fields=fields,
                 omega=plate.omega.copy(),
-                age_steps=plate.age_steps,
+                age_years=legacy_age_years(plate.age_steps, world),
                 internal_stress=plate.internal_stress,
             )
         )

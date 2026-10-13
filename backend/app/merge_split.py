@@ -123,7 +123,7 @@ FORCED_MERGE_SUSTAINED_YEARS = 30_000_000
 # clearing both physics gates only to have plate.split() reject the cut on size, and true
 # rift-splits essentially never happening while merges/consumption ran unchecked (reported:
 # "the number of plates is decreasing over time"). 600 still means each half is a genuinely
-# plate-sized fragment, not a near-continent; SPLIT_MIN_AGE_STEPS is what actually blocks the
+# plate-sized fragment, not a near-continent; SPLIT_MIN_AGE_YEARS is what actually blocks the
 # freshly-split-daughter sliver cascade.
 SPLIT_MIN_NODES = 700
 # A single rigid rotation essentially never fits a wide footprint's flow samples exactly
@@ -146,7 +146,9 @@ SPLIT_MIN_POLE_SEPARATION = mantle.cm_per_yr_to_rad_per_yr(4.0)
 # Raised 15 -> 20 (2026) alongside the more permissive split gates below -- it also spaces
 # out the otherwise-synchronized first rift of every freshly-generated plate (they all clear
 # their cooldown on the same step).
-SPLIT_MIN_AGE_STEPS = 20
+# Counted in years since #358: 20 steps at the UI's default 100 kyr step. As a step count the
+# cooldown ran from 200 kyr to 200 Myr depending on the chosen step length.
+SPLIT_MIN_AGE_YEARS = 2_000_000.0
 
 # A plate's own sheer size independently raises its odds of rifting, on top of (not instead
 # of) the mantle-flow-fit criteria above -- a bigger footprint is both more likely to
@@ -378,9 +380,9 @@ def _accrete_stranded_terrane(
     if not touching:
         return None
     receiver = max(touching, key=lambda entry: entry[:2])[2]
-    age = receiver.age_steps
+    age = receiver.age_years
     _fuse_plates(world, receiver, fragment, "terrane_accretion")
-    receiver.set_age_steps(age)
+    receiver.set_age_years(age)
     contacts.invalidate(receiver)
     return receiver
 
@@ -729,7 +731,7 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
     min_nodes = max(1, round(SPLIT_MIN_NODES * world.node_density))
     if plate.node_count() < min_nodes:
         return None
-    if plate.age_steps < SPLIT_MIN_AGE_STEPS:
+    if plate.age_years < SPLIT_MIN_AGE_YEARS:
         return None
 
     points, _ = plate.all_points_and_elevation()
@@ -803,7 +805,7 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
     plate_b.set_omega(mantle.clamp_rate(pole_b))
     # A completed rift fully releases the accumulated breakup pressure that drove it -- both
     # daughters start fresh, the same "topology event resets accumulated state" precedent
-    # reset_age already sets for age_steps.
+    # reset_age already sets for age_years.
     plate_a.set_internal_stress(0.0)
     plate_b.set_internal_stress(0.0)
     return plate_a, plate_b
@@ -927,7 +929,7 @@ def apply_topology_changes(world: "World", years: float) -> list[str]:
     logged here -- see update_collision_progress."""
     events: list[str] = []
     for plate in world.plates:
-        plate.age_one_step()
+        plate.advance_age(years)
 
     consumed = [p for p in world.plates if p.node_count() == 0]
     for p in consumed:

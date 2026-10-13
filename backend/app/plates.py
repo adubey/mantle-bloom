@@ -239,14 +239,14 @@ class Plate(PlateSurface, abc.ABC):
         frame: np.ndarray,
         crust_type: str,
         omega: np.ndarray | None = None,
-        age_steps: int = 0,
+        age_years: float = 0.0,
         internal_stress: float = 0.0,
     ) -> None:
         self._plate_id = plate_id
         self._frame = frame
         self._crust_type = crust_type
         self._omega = omega if omega is not None else np.zeros(3)
-        self._age_steps = age_steps
+        self._age_years = age_years
         # Accumulated breakup pressure -- see merge_split.accumulate_plate_stress (background,
         # size-driven accumulation plus an overlap-driven top-up biased toward whichever plate
         # in an overlapping pair is the larger one) and maybe_split_plate (folds this into the
@@ -298,11 +298,12 @@ class Plate(PlateSurface, abc.ABC):
         return self._omega
 
     @property
-    def age_steps(self) -> int:
-        """Steps since this plate was created (by generation, merge, or split). Gates split
+    def age_years(self) -> float:
+        """Years since this plate was created (by generation, merge, or split). Gates split
         eligibility in merge_split.py so a plate can't fragment repeatedly in quick
-        succession -- see the note there on why that runaway is a real failure mode."""
-        return self._age_steps
+        succession -- see the note there on why that runaway is a real failure mode. Counted
+        in years, not steps, so the cooldown doesn't depend on the step length (#358)."""
+        return self._age_years
 
     @property
     def seed_world(self) -> np.ndarray:
@@ -350,14 +351,14 @@ class Plate(PlateSurface, abc.ABC):
     def geometry_revision(self) -> int:
         return self._geometry_revision
 
-    def age_one_step(self) -> None:
-        self._age_steps += 1
+    def advance_age(self, years: float) -> None:
+        self._age_years += years
 
     def reset_age(self) -> None:
-        self._age_steps = 0
+        self._age_years = 0.0
 
-    def set_age_steps(self, age_steps: int) -> None:
-        self._age_steps = age_steps
+    def set_age_years(self, age_years: float) -> None:
+        self._age_years = age_years
 
     @property
     def internal_stress(self) -> float:

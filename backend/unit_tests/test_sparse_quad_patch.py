@@ -496,7 +496,7 @@ def test_split_partitions_cells_and_fields_without_resampling():
         keys,
         fields={"elevation": values},
         omega=np.array([1.0, 2.0, 3.0]),
-        age_steps=9,
+        age_years=9e5,
         internal_stress=4.0,
     )
 
@@ -505,7 +505,7 @@ def test_split_partitions_cells_and_fields_without_resampling():
     assert result is not None
     left, right = result
     assert (left.plate_id, right.plate_id) == (7, 12)
-    assert (left.age_steps, right.age_steps) == (0, 0)
+    assert (left.age_years, right.age_years) == (0.0, 0.0)
     assert (left.internal_stress, right.internal_stress) == (4.0, 0.0)
     np.testing.assert_allclose(left.omega, plate.omega)
     np.testing.assert_allclose(right.omega, plate.omega)

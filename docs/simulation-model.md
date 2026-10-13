@@ -988,7 +988,7 @@ routine per-step motion.
   still clear the thresholds on the very next step, recursively re-splitting into dozens of
   thin near-parallel slivers within a handful of steps (visually, this looked exactly like
   elevation "banding," since each sliver rotates almost identically to its neighbors).
-  `SPLIT_MIN_AGE_STEPS` (a per-plate step counter, reset to 0 on creation by generation,
+  `SPLIT_MIN_AGE_YEARS` (2 Myr of per-plate age, reset to 0 on creation by generation,
   split, or merge) requires a plate to exist for a while before it's split-eligible again,
   and `SPLIT_MIN_NODES` keeps the check off small fragments entirely.
 
@@ -999,7 +999,8 @@ routine per-step motion.
   monotonically as oceanic plates subducted. The gates were loosened
   (`SPLIT_RMS_RESIDUAL_THRESHOLD` 9->6 cm/yr, `SPLIT_MIN_POLE_SEPARATION` 6->4,
   `SPLIT_MIN_NODES` 1200->700, `SPLIT_SIZE_CERTAIN_RIFT_RAD` pi->2.2 rad,
-  `SPLIT_MIN_AGE_STEPS` 15->20), and -- like the collision merge -- `apply_topology_changes`
+  `SPLIT_MIN_AGE_STEPS` 15->20, since #358 `SPLIT_MIN_AGE_YEARS` = 2 Myr, the same 20 steps
+  at the default 100 kyr step but no longer scaled by the chosen step length), and -- like the collision merge -- `apply_topology_changes`
   now performs **at most one split per step**, so a freshly-generated world (every plate
   clearing its identical cooldown on the same step) staggers its rifts over time instead of
   shattering all at once. A 200-step reproduction goes from 12 plates decaying to 9, to a

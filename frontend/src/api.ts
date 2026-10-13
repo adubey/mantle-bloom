@@ -101,7 +101,7 @@ export interface PlateSummary {
   speed_cm_per_yr: number;
   at_max_rate: boolean;
   euler_pole: { lat_deg: number; lon_deg: number } | null;
-  age_steps: number;
+  age_years: number;
   median_elevation_m: number | null;
   submerged_fraction: number;
   overlaps: PlateOverlap[];

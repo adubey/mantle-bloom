@@ -419,7 +419,7 @@ has been generated yet.
       "speed_cm_per_yr": 4.12,
       "at_max_rate": false,
       "euler_pole": { "lat_deg": 22.0, "lon_deg": -138.0 },
-      "age_steps": 43,
+      "age_years": 4300000.0,
       "median_elevation_m": 210.0,
       "submerged_fraction": 0.22,
       "overlaps": [{ "plate_id": 6, "fraction": 0.058, "since_years": 178000000.0 }],
@@ -454,8 +454,8 @@ has been generated yet.
 - `speed_cm_per_yr` is `|Plate.omega|` as a surface speed at the planet's radius;
   `at_max_rate` is `true` when the plate is pinned at `mantle.MAX_PLATE_RATE` (15 cm/yr).
   `euler_pole` is the rotation axis in lat/lon degrees (`null` for a stationary plate).
-  `age_steps` is how many `step_world` calls since the plate was created (generation, split,
-  or merge). These come straight from the dynamic torque solve (`torque.py`).
+  `age_years` is the simulated time since the plate was created (generation, split, or
+  merge). These come straight from the dynamic torque solve (`torque.py`).
 - `median_elevation_m` / `submerged_fraction` summarise the plate's own node elevations
   against `world.sea_level_m`. A continental plate reading mostly submerged is a red flag for
   over-stretching (see [GitHub issue #119](https://github.com/adubey/mantle-bloom/issues/119)).

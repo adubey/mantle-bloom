@@ -625,7 +625,7 @@ all four currently require `?deb` to reach, same as the views above.
 ##### Plate Inspector diagnostic fields
 
 Per plate, alongside the geometry: `speed_cm_per_yr` + `at_max_rate` (railed at
-`mantle.MAX_PLATE_RATE`, shown red), `euler_pole` (lat/lon), `age_steps`,
+`mantle.MAX_PLATE_RATE`, shown red), `euler_pole` (lat/lon), `age_years`,
 `median_elevation_m` + `submerged_fraction` (red when a continental plate is >50% under
 water), `overlaps` (which other plates this one's territory sits on top of, by what fraction
 of its own nodes, and `since_years` -- the earliest `elapsed_years` any still-overlapping node
