@@ -46,14 +46,22 @@ For each load-bearing citation, open the paper (abstract or full text) and check
   compose (resistance × weakening × taper). Look for unbounded proxies feeding a `1 − k·s`
   form.
 - **Timestep:** try a step longer than every duration in the design. Nothing should
-  deliver more than its total.
+  deliver more than its total, nonlinear rates should be integrated over the step, and
+  random events should be keyed independently of the step partition.
 - **Conservation vs. validity:** a design can conserve every ledger and still put material
   somewhere implausible. Ask for physical checks (distance limits, contiguity,
   thickness distributions) alongside ledger closure.
+- **Accounting:** quantities summed are disjoint; each volume has one owner; every new
+  tracer has a lifecycle through all writers of its parent field; ledger reservoirs are
+  disjoint.
+- **Scale checks:** redo the key arithmetic (volume over area, isostatic relief, rate ×
+  band width × units). Do the stated inputs actually produce the stated outcome?
 - **Side effects:** a change aimed at one sink can move others (plate counts, overlaps,
   split frequency). The acceptance criteria should watch for that.
-- **Code:** the touchpoints named exist (or are marked new); save compatibility is
-  handled; the runtime estimate is plausible.
+- **Code:** trace the control flow the design relies on, and check that the touchpoints
+  named exist (or are marked new). Check the step order between the writers the design
+  touches; that save compatibility is handled; and that the runtime estimate covers the
+  whole path, not just its cheapest part.
 - **Knobs:** literature-constrained values are kept apart from calibration assumptions,
   and the latter have sensitivity runs.
 
@@ -68,4 +76,5 @@ For each load-bearing citation, open the paper (abstract or full text) and check
 Review the PR with `gh`: one inline comment per concern, anchored at the line it concerns,
 and a summary comment for cross-cutting issues. Each comment states the problem, why it
 matters, and a concrete change, with a link to the source when the science is at issue.
-Mark the review "comment" or "request changes"; approval and merging are the user's.
+Mark the review "comment" or "request changes"; approval and merging are the project
+owner's. On a later pass, say so if a previous comment was wrong, and withdraw it.

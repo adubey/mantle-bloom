@@ -12,7 +12,7 @@ Continental crust in the model leaves the surface much faster than it is made, a
 continents drain away. The continental-material ledger (`continental_ledger.py`) books
 every source and sink.
 
-In the run behind RFCs 0001–0006, the ledger shows the imbalance from the first step. The
+In the run behind RFCs 0001–0007, the ledger shows the imbalance from the first step. The
 run is seed 456862899, 19.2 Gyr, saved locally as
 `mantle-bloom-seed456862899-19191800000y.mbworld`; the file is on the author's machine and
 **not available for download**. Numbers come from `bin/debug/ledger_history.py` on that
@@ -28,8 +28,8 @@ save.
 | 12,000–19,200 | 0.4 | 0.3 | 0.8 | 0.7 | 128 | 72% |
 
 The world started with 7.9 × 10⁹ km³ of continental material, almost exactly Earth's
-8.0 × 10⁹ km³ [[Clift & Vannucchi, 2004]](#ref-clift2004), so its fluxes compare directly
-with Earth's.
+8.0 × 10⁹ km³ [[Clift & Vannucchi, 2004]](#ref-clift2004), so its fluxes are on the same
+scale as Earth's.
 
 The run is a stress test of the model's long-term behaviour, not a calibration interval.
 The first Gyr's fluxes are compared with Earth's below only because that is when the
@@ -129,8 +129,9 @@ budget still fails once the rest is in.
 
 ## Design
 
-**Units.** Ledger accounts are m³ and reports are km³/yr. Sediment thickness is metres of
-`continental_material_m` and `mobile_cover_continental_m` on a cell.
+**Units.** Ledger accounts are m³ and reports are km³/yr. Sediment thicknesses are metres
+of rock-equivalent crust, since every sediment field is a share of Hc; Earth figures given
+in mass are converted at 2.65 t/m³.
 
 **Channel split (1).** In `quad_tectonics._retreat`, the `subducted` set is booked in one
 call today. Book three ways instead:
@@ -151,7 +152,7 @@ sub-accounts, and the balance uses the parent only.
 | D | The part of E deposited on oceanic hosts | the same paths, split by host type | — |
 | T | Trench delivery: continental material on oceanic cells consumed at trenches | `quad_tectonics._retreat` | — |
 | S | Sediment subducted: T minus offscraped | `sediment_subducted_m3` | 1.65 km³/yr [[Clift et al., 2009]](#ref-clift2009) (Cenozoic, global) |
-| A | Offscraped and accreted | RFC 0005 (3) | median 17% of T [[Clift & Vannucchi, 2004]](#ref-clift2004) (modern margins) |
+| A | Offscraped and accreted | solution 3 | median 17% of T [[Clift & Vannucchi, 2004]](#ref-clift2004) (modern margins) |
 | P | Net preservation: change in the live inventory | `continental_ledger.inventories` | ~0 over the Phanerozoic [[Clift et al., 2009]](#ref-clift2009) |
 
 E, D and the stored marine inventory are recorded per step in a world-level diagnostic
@@ -178,21 +179,50 @@ Before this candidate is chosen, the RFC must be revised with:
   slope, so sediment runs out until the gradient is too low to carry it, regardless of
   host.
 
-**Offscraping (3).** For trench cells on an oceanic plate in the accretionary class:
-- `OFFSCRAPE_FRACTION` × the cell's continental material (and its mobile cover) moves to
-  the overriding plate's nearest node, through `inputs.neighbor_node_index` as in
-  `torque.contact_craton_m`;
-- there it adds to Hc and `continental_material_m`, and to the mobile cover as
-  `accreted_m3` in the mobile-cover ledger;
-- the rest subducts as now.
+**Offscraping (3).** The model's sediment fields overlap: `mobile_cover_m` is a share of
+Hc, and `mobile_cover_continental_m` is a share of both it and `continental_material_m`.
+So the transfer is written over disjoint parts, and each physical volume moves once.
 
-This is a cross-plate write. It reuses the upper-plate placement in `crust_transfer.py`
-(#320) rather than adding a second path.
+For a consumed trench cell on an oceanic plate (oceanic-coded) in the accretionary class,
+with f = `OFFSCRAPE_FRACTION`, the parts are:
+- L = `mobile_cover_m`: all loose cover, of which Lc = `mobile_cover_continental_m` is
+  continental;
+- C = `continental_material_m − Lc`: consolidated continental sediment.
 
-**Runtime.** The split and the flux diagnostic are O(cells) sums over masks already built,
-negligible. Shelf retention reweights receivers the spreading paths already query: O(sources ×
-neighbours), with no new tree query. Offscraping is O(trench cells).
-Budget: under 3% of step time in total.
+This is the same disjoint column RFC 0002 uses for classification
+(`torque.contact_trench_sediment_m`).
+
+**Decision: offscraped sediment becomes consolidated prism crust on the upper plate.** An
+accretionary prism is deformed, dewatered sediment, not loose cover, and this matches what
+`mobile_cover.accreted_m3` already means: cover metamorphosed into accreted crust, a sink
+of the *cover* inventory only. The alternative, keeping it as loose cover on the receiver,
+would be a conservative cover transfer with no sink; it's rejected because prisms aren't
+loose. Concretely, before the cell is removed:
+
+| Quantity | Donor (trench cell) | Receivers (upper plate) |
+|---|---|---|
+| Hc volume | − f·(L + C) | + f·(L + C), spread by the placement |
+| `continental_material_m` volume | − f·(Lc + C) | + f·(Lc + C), in the same proportions |
+| `mobile_cover_m`, `mobile_cover_continental_m` | − f·L, − f·Lc | unchanged |
+| Mobile-cover ledger | f·L booked once to `accreted_m3` | — |
+| Continental ledger | nothing: the material stays live | — |
+
+The cell's remainder is then consumed as now: its continental material books to
+`sediment_subducted_m3`, and its cover to the mobile-cover `subducted_m3`.
+
+The receivers come from the upper-plate placement in `crust_transfer.py` (#320), exposed
+as a function rather than duplicated. Each receiver gets Hc and continental material in
+the same proportion, so the material never exceeds Hc anywhere. On an oceanic upper plate
+(an ocean–ocean front, RFC 0006), the receivers are oceanic-coded cells, and the material
+stays continental material on oceanic hosts until it docks or subducts.
+
+**Runtime.**
+- The split and the flux diagnostics are O(cells) sums over masks already built,
+  negligible.
+- Accommodation-limited routing, if chosen, reweights receivers the spreading paths
+  already query: O(sources × neighbours), with no new tree query.
+- Offscraping is O(trench cells).
+- Budget: under 3% of step time in total.
 
 **Save compatibility.** New ledger keys are backfilled at 0.0 by
 `continental_ledger.ensure_initialized`. No new per-node field: the flux diagnostic isn't
@@ -207,8 +237,8 @@ pickled. Old saves keep their history in `deeply_subducted_m3`.
 | `ocean_deposition_multiplier` (existing live knob) | 1.0 | — | Unchanged; not a substitute for 2, since below 1.0 it books the sediment it declines to a sink |
 
 Tune on seeds 7, 11 and 2024 to 1 Gyr, plus a regenerated seed 456862899 to 3 Gyr; run the
-replays one at a time. Report G, E, D, T, S, A and P, juvenile additions and total sinks, and genuine continental
-area and land fraction. The `replay-ab` skill does the
+replays one at a time. Report G, E, D, T, S, A and P, juvenile additions and total sinks,
+and genuine continental area and land fraction. The `replay-ab` skill does the
 before/after against a detached `origin/main` worktree.
 
 ## Detailed design (provisional touchpoints)
@@ -226,14 +256,23 @@ before/after against a detached `origin/main` worktree.
   and river-mouth settling dominates.
 - `backend/app/crust_transfer.py`: expose the upper-plate placement as a function callable
   for offscraped trench sediment.
-- `backend/app/hydroclimate/mobile_cover.py`: book offscraped cover as `accreted_m3`.
+- `backend/app/hydroclimate/mobile_cover.py`: book offscraped cover once as
+  `accreted_m3`, the existing sink.
 - `backend/app/stats.py`: G, E, D, T, S, A and P in the stats row.
 - `bin/debug/ledger_history.py`: print the new channels when present.
 - Tests:
   - `test_continental_ledger.py`: the sub-accounts sum to the parent, and an old ledger
     loads.
-  - `test_quad_tectonics.py`: the three-way split on a synthetic trench; offscraping moves
-    exactly `OFFSCRAPE_FRACTION` and the ledgers close.
+  - `test_quad_tectonics.py`:
+    - the three-way split on a synthetic trench;
+    - a cross-plate offscrape case: a trench cell with known L, Lc and C, consumed under a
+      continental upper plate. Check that:
+      - the donor loses exactly f·(L + C) of Hc and f·(Lc + C) of material;
+      - the receivers gain exactly that, cell by cell, with material ≤ Hc everywhere;
+      - the mobile-cover ledger books f·L once to `accreted_m3` and the remainder to
+        `subducted_m3`;
+      - the continental ledger books only the remainder, to `sediment_subducted_m3`;
+      - both ledgers close.
   - `test_erosion.py`: the E/D split sums to E and matches the host masks. If routing
     changes, the total is conserved.
 - Docs: `docs/simulation-model.md` ("Erosion", "Quad-surface deformation"),

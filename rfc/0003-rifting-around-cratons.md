@@ -20,11 +20,12 @@ wherever the flow puts it, straight through a craton if one is there. Then:
   the same way (`CRATON_STRETCH_RESISTANCE`, 0.75), in `quad_tectonics._allocate_stretch`.
   Over many steps the boundary still eats through the craton.
 - **If the rift fails** (45% of attempts), `apply_failed_rift` (`sparse_quad_patch.py`)
-  thins a tapered band 2.5 cells wide by up to `FAILED_RIFT_THINNING_FRACTION` = 10%. It
+  thins a tapered band reaching `FAILED_RIFT_BAND_MULT` = 2.5 cells either side of the cut
+  by up to `FAILED_RIFT_THINNING_FRACTION` = 10%. It
   applies **no craton resistance at all**: the craton thins in proportion
   (`cratons.thin_with_column`) and books to `rifted_m3`.
 
-In the run behind RFCs 0001–0006, rifting was the second-largest craton sink. The run is
+In the run behind RFCs 0001–0007, rifting was the second-largest craton sink. The run is
 seed 456862899, 19.2 Gyr, saved locally as `mantle-bloom-seed456862899-19191800000y.mbworld`;
 the file is on the author's machine and **not available for download**. Numbers come from
 `bin/debug/ledger_history.py` on that save.
@@ -55,16 +56,17 @@ failed rifts), so it doesn't say which path matters most either.
 - Rifting through a craton needs the craton to be weakened first, by heating or melt
   metasomatism [[Foley, 2008]](#ref-foley2008).
 
-On the user's question of proto-cratons: young collision belts are the opposite of
-rift-resistant. They are the weak zones breakup follows. Rift resistance should come with
-maturity, which RFC 0004 handles. A newly formed belt shouldn't get it.
+Should proto-cratons resist rifting too? Mostly not: young collision belts are the
+opposite of rift-resistant, since they are the weak zones breakup follows. Rift resistance
+should come with maturity, once a column becomes craton (RFC 0004). A newly formed belt
+shouldn't get it.
 
 1. **Steer the split cut onto weak lithosphere.** Among great circles close to the
    flow-derived cut, choose the one that crosses the least lithospheric strength, as long
    as it still separates the two velocity regimes. Strength combines craton strength with a
-   lithosphere-thickness term, so thin belts and old sutures are preferred, after
-   [[Audet & Bürgmann, 2011]](#ref-audet2011). This removes most rifts through cratons at
-   their source, at a cost of a few dot products per split.
+   lithosphere-thickness term, so thin lithosphere is preferred, as breakup prefers it at
+   old orogens [[Audet & Bürgmann, 2011]](#ref-audet2011). This removes most rifts through
+   cratons at their source, for tens of ms per split attempt (Design).
 2. **Give failed rifts the same craton resistance as active ones.** Scale
    `apply_failed_rift`'s thinning by `1 − CRATON_RIFT_RESISTANCE × strength`, matching
    `deform_columns`. This is a consistency fix.
@@ -99,7 +101,8 @@ and solution 2 only the third.
 - `c = cratons.strength(craton_crust_m)`, already in [0, 1] (full at 25 km of craton);
 - `k = clip((Hm / REFERENCE_HM_CONTINENTAL_M − 1) / (KEEL_FULL_RATIO − 1), 0, 1)`, rising
   from 0 at the 100 km reference to 1 at `KEEL_FULL_RATIO` × reference;
-- RFC 0007's plume heat, once it exists, multiplies S by `1 − PLUME_CRATON_WEAKENING`.
+- RFC 0007's plume heat, once it exists, multiplies S by `1 − PLUME_CRATON_WEAKENING` on
+  heated cells (`plume_heat_myr > 0`).
 
 Taking the maximum rather than the sum means a cratonic, thick-keeled column scores 1, not
 2. S is used **only** to rank candidate cuts; it never enters a thinning factor.
@@ -115,10 +118,12 @@ Taking the maximum rather than the sum means a cratonic, thick-keeled column sco
   if all of these hold:
   - it puts at most `SPLIT_CUT_MAX_MISFIT` of the plate's area on the other side from the
     velocity clustering;
-  - its two halves' best-fit Euler poles (`mantle.fit_euler_pole` on
-    `mantle.flow_at`) are still at least `SPLIT_MIN_POLE_SEPARATION` apart, the gate
-    `maybe_split_plate` already applies;
-  - the area-weighted RMS residual of the two halves' fits is at most
+  - its two halves' best-fit Euler poles are still at least `pole_separation_threshold`
+    apart. That is the *relaxed* threshold `maybe_split_plate` already computes,
+    `SPLIT_MIN_POLE_SEPARATION × (1 − relax)`, passed in so steered and unsteered cuts
+    face the same gate;
+  - the RMS residual of the two halves' fits, per node and unweighted as
+    `merge_split._fit_residual_rms` computes it, is at most
     `1 + SPLIT_CUT_MAX_RESIDUAL_INCREASE` times that of n₀'s halves.
 
   Minimising strength alone could steer the cut into a different tectonic configuration;
@@ -132,16 +137,42 @@ with the new halves.
 **Thinning factors, bounded.** Wherever craton resistance meets a thinning factor, the
 factor is clamped:
 - `resisted = clip(CRATON_RIFT_RESISTANCE × cratons.strength(craton), 0, 1)`, and with RFC
-  0007, `× (1 − PLUME_CRATON_WEAKENING × heat)`, still clipped to [0, 1];
+  0007, `× (1 − PLUME_CRATON_WEAKENING × heated)`, with heated = 1 while
+  `plume_heat_myr > 0` and 0 otherwise, still clipped to [0, 1];
 - failed rift (2): `factor = clip(1 − FAILED_RIFT_THINNING_FRACTION × taper × (1 −
   resisted), 0, 1)`;
 - the same clamp in `deform_columns`, where `1 − resisted` scales the thinning delta.
 
 Units are unchanged: a fraction of Hc and Hm.
 
+**Batched fits.** Refitting each candidate's halves with `mantle.fit_euler_pole` builds an
+N × 3 least-squares system per half. A synthetic check (in review) of 64 candidates at 10⁵
+nodes put that at ~0.4 s per attempt, against ~10 ms for scoring. So the fits are batched
+through moments instead:
+- For unit positions p and flow velocities v, the least-squares pole for any half H of
+  the nodes solves `M_H ω = b_H`, with `M_H = Σ_H (I − p pᵀ)` and `b_H = Σ_H p × v`.
+- Its residual sum of squares is `Σ_H |v|² − ω · b_H`. Both identities were checked
+  numerically against `fit_euler_pole` and `_fit_residual_rms` (agreement to ~1e-14).
+- These are sums of per-node moments (6 of `p pᵀ`, 3 of `p × v`, 1 of `|v|²`, 1 count).
+- One product of the N × 11 moment matrix with an N × K side-indicator matrix gives every
+  candidate's half-A sums. Half B is the total minus half A.
+- A 3 × 3 solve per half then gives the poles, separations and RMS residuals for all K
+  candidates.
+- *Rank handling:* a half whose `M_H` has smallest eigenvalue below
+  `SPLIT_FIT_MIN_EIGENVALUE × count` (a tiny or near-degenerate half) makes the candidate
+  inadmissible rather than producing an ill-conditioned pole.
+- A unit test checks the batched poles and residuals against `fit_euler_pole` and
+  `_fit_residual_rms` to 1e-9 relative.
+
 **Runtime.** Splits are attempted at most once per plate per step, and only after
-`SPLIT_MIN_AGE_STEPS`. With 64 candidates × ~10⁵ nodes, scoring is one 64 × N matrix
-product, about 10 ms per attempt and nothing on steps without one.
+`SPLIT_MIN_AGE_STEPS`.
+- At 64 candidates × ~10⁵ nodes, scoring and the batched moments are each one N × K
+  product: ~7 × 10⁷ multiply-adds, tens of ms. Side indicators are built in chunks of 16
+  candidates to keep memory near 13 MB.
+- The budget is under 100 ms per attempt at 10⁵ nodes, nothing on steps without one, and
+  under 2% of step time overall.
+- The whole path (scoring, indicators, moments, solves) is profiled before merging, not
+  just the score.
 
 **Save compatibility.** No new state; only behaviour changes.
 
@@ -153,6 +184,7 @@ product, about 10 ms per attempt and nothing on steps without one.
 | `SPLIT_CUT_CANDIDATES` | 64 | Resolution of the cone search (about 4.5° spacing at 20°) | Fixed |
 | `SPLIT_CUT_MAX_MISFIT` | 10% of plate area | Design choice: keeps the cut faithful to the flow regimes | Sweep 5–20% |
 | `SPLIT_CUT_MAX_RESIDUAL_INCREASE` | 0.10 | Design choice: a steered cut may fit the flow at most 10% worse | Sweep 0.05–0.25 |
+| `SPLIT_FIT_MIN_EIGENVALUE` | 1e-3 | Numerical: rejects halves too small or too narrow to constrain a pole | Fixed |
 | `KEEL_FULL_RATIO` | 2.0 (a 200 km keel) | Cratonic keels reach ~200–250 km [[Pearson et al., 2021]](#ref-pearson2021) | Fixed |
 | `CRATON_RIFT_RESISTANCE`, `CRATON_STRETCH_RESISTANCE` | 0.75 (unchanged) | #274 | Raise only if solution 3 is needed |
 
@@ -169,36 +201,45 @@ the flow keeps as much control of breakup as possible.
 
 - `backend/app/merge_split.py`
   - New `_steer_cut_off_strong_lithosphere(points, areas, strength, velocities, mask_a,
-    cut_normal, band_sin)`, returning `(mask_a, cut_normal)`, with the admissibility tests
-    (misfit, pole separation, residual).
-  - The failed-rift branch books `rifted_failed_m3` (phase 1).
-  - `maybe_split_plate` calls it after `_refine_split_cut`, with strength from the plate's
-    `craton_crust_m` and `mantle_lithosphere_thickness_m`.
+    cut_normal, band_sin, pole_separation_threshold)`, returning `(mask_a, cut_normal)`,
+    with the admissibility tests (misfit, pole separation, residual).
+  - New `_batched_half_fits(points, velocities, normals)`: the moment-based poles and RMS
+    residuals for every candidate's two halves.
+  - `maybe_split_plate` calls the steering after `_refine_split_cut`. It passes strength
+    from the plate's `craton_crust_m` and `mantle_lithosphere_thickness_m`, and its relaxed
+    `pole_separation_threshold`.
+  - The failed-rift branch passes the steered normal to `apply_failed_rift`, and books
+    `rifted_failed_m3` (phase 1).
   - New constants `SPLIT_CUT_MAX_TILT_DEG`, `SPLIT_CUT_CANDIDATES`,
-    `SPLIT_CUT_MAX_MISFIT`, `SPLIT_CUT_MAX_RESIDUAL_INCREASE` and `KEEL_FULL_RATIO`, with
-    comments citing this RFC.
-  - The failed-rift branch passes the same steered normal to `apply_failed_rift`.
+    `SPLIT_CUT_MAX_MISFIT`, `SPLIT_CUT_MAX_RESIDUAL_INCREASE`, `SPLIT_FIT_MIN_EIGENVALUE`
+    and `KEEL_FULL_RATIO`, with comments citing this RFC.
 - `backend/app/sparse_quad_patch.py`, `apply_failed_rift`: scale `factor` by craton
   strength (read `craton_crust_m`), for both Hc and Hm, clamped to [0, 1].
 - `backend/app/lithosphere_plate.py`, `deform_columns`: clamp `resisted` and book
   `rifted_divergent_m3`.
 - `backend/app/quad_tectonics.py`, `_allocate_stretch`: book `rifted_stretch_m3`.
 - `backend/app/cratons.py`: the three `rifted_*` sub-accounts, as diagnostics outside the
-  balance (their sum is `rifted_m3`).
-- `backend/app/cratons.py`: update the Resistance paragraph of the module docstring.
+  balance (their sum is `rifted_m3`); update the Resistance paragraph of the module
+  docstring.
 - Tests:
-  - `backend/unit_tests/test_merge_split.py`: a synthetic plate whose flow-derived cut
-    crosses a craton patch gets a steered cut that misses it when a candidate within the
-    tilt does. With no craton, the cut is unchanged. When every candidate fails an
-    admissibility test (misfit, pole separation or residual), n₀ is kept. A candidate
-    that would merge the two flow regimes into one half is rejected even when it scores
-    lowest.
-  - S stays in [0, 1] for craton plus keel, and every thinning factor stays in [0, 1] for
-    full-strength craton, zero strength and full plume weakening (property test over a
-    grid of inputs).
+  - `backend/unit_tests/test_merge_split.py`:
+    - a synthetic plate whose flow-derived cut crosses a craton patch gets a steered cut
+      that misses it, when a candidate within the tilt does;
+    - with no craton, the cut is unchanged;
+    - when every candidate fails an admissibility test (misfit, pole separation or
+      residual), n₀ is kept;
+    - a candidate that would merge the two flow regimes into one half is rejected even
+      when it scores lowest;
+    - `_batched_half_fits` matches `mantle.fit_euler_pole` and `_fit_residual_rms` per
+      candidate to 1e-9 relative, and rejects a degenerate half;
+    - with `relax` near 1 (a large, stressed plate), the steered cut is checked against
+      the relaxed pole threshold, not the base constant;
+    - S stays in [0, 1] for craton plus keel, and every thinning factor stays in [0, 1]
+      for full-strength craton, zero strength and full plume weakening (a property test
+      over a grid of inputs).
   - `backend/unit_tests/test_sparse_quad_patch.py`, next to the existing
-    `apply_failed_rift` tests: a full-strength craton in the band thins by 25% of the non-cratonic amount,
-    and `rifted_m3` books exactly the craton lost.
+    `apply_failed_rift` tests: a full-strength craton in the band thins by 25% of the
+    non-cratonic amount, and `rifted_m3` books exactly the craton lost.
 - Docs: `docs/simulation-model.md`, the split description in "Merge and split" and the
   Cratons section ("Resistance").
 
@@ -232,6 +273,8 @@ the flow keeps as much control of breakup as possible.
       flow.
 - [ ] Failed rifts thin cratonic columns by `1 − resisted` of the normal amount, with
       every factor in [0, 1] (unit tests).
+- [ ] A split attempt at 10⁵ nodes, full path, takes under 100 ms; step time changes by
+      less than 2% at density 4.
 - [ ] Ledgers balance; replays with the same seed are deterministic.
 - [ ] Unit tests above pass; affected tests, ruff and `bin/quality_check.sh` are green.
 

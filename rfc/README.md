@@ -13,19 +13,23 @@ implemented through ordinary issues and PRs (see [AGENTS.md](../AGENTS.md)), eac
 | [0001](0001-merge-cap-craton-loss.md) | Plate merges must not destroy cratons | Draft |
 | [0002](0002-craton-trench-attrition.md) | Cratons are rarely subducted: margin-dependent attrition | Draft |
 | [0003](0003-rifting-around-cratons.md) | Rifts go around cratons | Draft |
-| [0004](0004-proto-cratons.md) | Proto-cratons stabilised by collision | Draft |
+| [0004](0004-proto-cratons.md) | Proto-cratons: restarting craton formation | Draft |
 | [0005](0005-continental-recycling-balance.md) | Balance continental recycling at trenches | Draft |
 | [0006](0006-intra-oceanic-arcs.md) | Intra-oceanic arcs: new continent from the ocean | Draft |
 | [0007](0007-mantle-plumes-and-plateaus.md) | Mantle plumes: oceanic plateaus, flood basalts and hotspot tracks | Draft |
 
-RFCs 0001-0007 come from one investigation: a 19.2 Gyr run (seed 456862899) that lost
+RFCs 0001–0007 come from one investigation: a 19.2 Gyr run (seed 456862899) that lost
 almost all of its continental crust and all of its cratons. The run is used as a stress
-test of the model's long-term behaviour, not as a calibration interval. They are numbered by how
-directly they act on that loss, not by priority. The suggested implementation order:
+test of the model's long-term behaviour, not as a calibration interval. The RFCs are
+numbered by how directly they act on that loss, not by priority. The suggested
+implementation order:
 1. 0001;
 2. 0002, together with 0005's measurement phase;
-3. 0003, 0006 and 0004;
-4. 0007, the largest. RFC 0003's plume weakening depends on it.
+3. 0003 and 0004;
+4. 0006 and 0007. They share `terranes.py` (docking, buoyant-crust tracers and ledger),
+   which whichever lands first builds. RFC 0003's plume weakening also depends on 0007.
+
+RFC 0004 defers a collisional formation path to a future RFC on mantle depletion.
 
 ## Writing and reviewing
 
@@ -39,7 +43,7 @@ how sources are checked. They are reviewed with
 ## Lifecycle
 
 1. **Draft:** opened as a PR that adds the RFC; revised in place as review comes in.
-2. **Accepted:** the user merges it. Any diagnosis gate the RFC sets (a measurement that
+2. **Accepted:** the project owner merges it. Any diagnosis gate the RFC sets (a measurement that
    decides between fixes) is run next, and the RFC is updated with the result.
 3. **Implemented:** the accepted design is split into issues and PRs that cite the RFC.
    The status is updated when the last one lands. From then on the code and `docs/` are

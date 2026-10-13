@@ -1,9 +1,10 @@
-# RFC 0004: Proto-cratons stabilised by collision
+# RFC 0004: Proto-cratons: restarting craton formation
 
 - **Status:** Draft
 - **Date:** 2026-10-13
-- **Related:** #274 (craton formation); RFCs [0001](0001-merge-cap-craton-loss.md),
-  [0003](0003-rifting-around-cratons.md), [0006](0006-intra-oceanic-arcs.md)
+- **Related:** #274 (craton formation), #314 (interior shortening); RFCs
+  [0001](0001-merge-cap-craton-loss.md), [0003](0003-rifting-around-cratons.md),
+  [0006](0006-intra-oceanic-arcs.md)
 
 ## Problem
 
@@ -17,7 +18,7 @@ Today a craton forms in one way only (`cratons.update`). A column must:
 Its whole Hc then becomes cratonic. In practice only the deep interiors of large
 continents ever qualify, and those are mostly craton already.
 
-In the run behind RFCs 0001–0006, **craton formation stopped for good at about 500 Myr**.
+In the run behind RFCs 0001–0007, **craton formation stopped for good at about 500 Myr**.
 The run is seed 456862899, 19.2 Gyr, saved locally as
 `mantle-bloom-seed456862899-19191800000y.mbworld`; the file is on the author's machine and
 **not available for download**. Numbers come from `bin/debug/ledger_history.py` on that
@@ -31,7 +32,11 @@ save.
 
 With no source, every craton sink in RFCs 0001–0003 is a one-way drain.
 
-The user's proposal is a *proto-craton* stage: crust that can mature into craton, with
+Separately, "quiet" today means only the Hc window plus distance from margins. Interior
+shortening (#314), intraplate faults and failed rifts can all deform a column that passes
+both tests, so a column can count as quiet while it is being deformed.
+
+The project owner proposed a *proto-craton* stage: crust that can mature into craton, with
 continental collisions as a main route.
 
 The run is a stress test of the model's long-term behaviour, not a calibration interval:
@@ -47,52 +52,72 @@ it shows that formation shuts off. It doesn't give a formation rate to fit.
 - Those keels formed mostly in the Archean, by high-degree melting of a hotter mantle
   [[Herzberg & Rudnick, 2012]](#ref-herzberg2012). Lithospheric mantle formed later is
   progressively less depleted [[Griffin et al., 2009]](#ref-griffin2009).
-- How keels became thick and stable is debated. In the thermo-mechanical models of
-  [[Capitanio et al., 2020]](#ref-capitanio2020), melt-depleted lithosphere differentiates
-  thermochemically and strengthens under compression, and strain migrates away from it
-  into weaker surroundings. Thickening is part of that, but so are depletion, cooling and
-  the resulting strength contrast. [[Lee et al., 2011]](#ref-lee2011) review thickening
-  and stacking among the ways cratonic mantle is built.
+- How keels became thick and stable is debated, and two modelled mechanisms bracket it:
+  - **In extension.** [[Capitanio et al., 2020]](#ref-capitanio2020) model large-scale
+    decompression melting of a hot early mantle beneath *stretching* lithosphere. Melt
+    extraction leaves depleted mantle at depth. Being dehydrated and stiffer, it resists
+    deformation, forcing strain to migrate and the depleted mantle to cool into the
+    lithosphere during long-lived, diffuse extension.
+  - **In compression.** [[Wang et al., 2018]](#ref-wang2018) start from *previously
+    depleted* mantle and model tectonic shortening followed by gravitational
+    self-thickening. The root stabilises because its compositional buoyancy, rapid cooling
+    after shortening, and secular cooling of the mantle prevent it from collapsing.
+  - Both require depletion. Neither makes a craton out of thickening alone.
+    [[Lee et al., 2011]](#ref-lee2011) review these and other ways cratonic mantle is built
+    and destroyed.
 - Continents also grow outward: accretionary and collisional belts weld onto older cores
   and become part of the stable shield once they stop deforming
   [[Cawood et al., 2009]](#ref-cawood2009). Laurentia's Proterozoic belts around its
   Archean nuclei are the classic case.
 
-So the proposal is sound, with two caveats:
+So the proposal is sound, with three caveats:
 - A freshly thickened orogen is hot and weak. It collapses, delaminates or rifts before it
   cools, so stabilisation follows the *end* of collision, not the collision itself.
 - After the Archean, new cratons should be rarer and less depleted
   [[Griffin et al., 2009]](#ref-griffin2009).
+- Collision makes a craton only from mantle that is already depleted. The model doesn't
+  track depletion, and its proxies would be wrong in sign (see 2).
 
 1. **Welded growth.** A quiet genuine-continental column within `CRATON_WELD_REACH_KM` of
    existing craton keeps a formation clock running even when it is closer than 500 km to
    the plate edge. It needs only `CRATON_WELD_MARGIN_KM` of interior. Cratons then grow at
-   their edges by absorbing the belts welded onto them.
-2. **Collisional keel (a hypothesis, gated).** A quiet genuine-continental column with a
-   thick, *depleted* mantle root also qualifies, wherever it is.
-   - Hm thickness alone is not evidence of a cratonic keel: real keels are also cold,
-     melt-depleted, buoyant and strong. In the model, Hm thickens under any convergent
-     shortening (`rheology.apply_convergent_deformation`) and doesn't relax back, so a
+   their edges by absorbing the belts welded onto them
+   [[Cawood et al., 2009]](#ref-cawood2009).
+2. **Collisional keel (path C): deferred to a follow-up RFC.** A collision far from any craton
+   should be able to seed a new one, but only by shortening already-depleted mantle
+   [[Wang et al., 2018]](#ref-wang2018). That needs a model of the lithospheric mantle's
+   depletion, which the model lacks, and simple proxies get it wrong:
+   - Hm thickness alone isn't a keel. Hm thickens under any convergent shortening
+     (`rheology.apply_convergent_deformation`) and doesn't relax back, so a
      thickness-only rule would cratonise ordinary collision belts.
-   - The model has no mantle-depletion state, so this path needs a new tracer
-     (Design), and a validation phase showing that columns which pass it are former
-     collision belts that have stopped deforming. Until both exist, path C stays off.
+   - Counting juvenile crust as melt extracted from the column's own root is wrong in
+     *reservoir and sign*. Arc magma comes largely from the mantle wedge, and plume and rift
+     magma from upwelling mantle below the existing lid. Melt passing through a root can
+     refertilise, hydrate and weaken it rather than deplete it
+     [[Lee et al., 2011]](#ref-lee2011) [[Foley, 2008]](#ref-foley2008).
+
+   The follow-up RFC must model, with transport and removal rules:
+   - melt extracted from the resident lithospheric mantle (depletes it);
+   - melt delivered from elsewhere and passing through (refertilises it);
+   - depleted residue incorporated into the lithosphere from below, as in the extension
+     mechanism.
+
+   This RFC delivers paths A and B and the quiescence signal. It leaves path C off and
+   undesigned.
 3. **Name the stage.** A *proto-craton* is a non-cratonic column whose formation clock is
-   running on any of the three paths (interior, welded, keel). It gets no extra mechanical
-   resistance: young belts are weak (see RFC 0003). It is reported in stats and shown in
-   the existing `craton` debug view, so formation can be watched.
-4. **Secular decline (optional).** Scale the cratonic share given at formation by
+   running on path A or B. It gets no extra mechanical resistance: young belts are weak
+   (see RFC 0003). It is reported in stats and shown in the existing `craton` debug view,
+   so formation can be watched.
+4. **A quiescence signal that sees every deforming writer.** A column's clock runs only
+   while no tectonic process has disturbed it (Design).
+5. **Secular decline (optional).** Scale the cratonic share given at formation by
    `CRATON_FORMATION_DEPLETION`, to mimic less-depleted post-Archean keels. The model
    seeds its starting cratons 2.5 Gyr old, so the simulated era is post-Archean.
 
-**Recommendation:**
-- Now: 1 and 3, plus an explicit quiescence test (Design) for every path. Path 1 alone
-  restarts formation on the margins of existing cratons.
-- Next: path 2 is the route by which collisions far from any craton seed new ones, which
-  is what the user asked for. It goes ahead only once its depletion tracer exists and the
-  validation phase passes.
-- Leave 4 at 1.0 (off) until a run shows cratons ratcheting up to most of the continental
-  area.
+**Recommendation:** 1, 3 and 4 now. Path 1 alone restarts formation on the margins of
+existing cratons, and 4 stops any path from cratonising a column that is being deformed.
+2 waits for its own RFC. Leave 5 at 1.0 (off) until a run shows cratons ratcheting up to
+most of the continental area.
 
 ## Design
 
@@ -104,109 +129,126 @@ So the proposal is sound, with two caveats:
   field.
 
 **Formation rule.** `quiet` currently means `host & (Hc ≤ CRATON_HOST_MAX_HC_M) &
-(interior ≥ hops(500 km))`. It becomes `host & (Hc ≤ CRATON_HOST_MAX_HC_M) & (A | B | C)`:
+(interior ≥ hops(500 km))`. It becomes
+`host & (Hc ≤ CRATON_HOST_MAX_HC_M) & undisturbed & (A | B)`:
 
 - **A (interior):** `interior ≥ hops(CRATON_FORMATION_MARGIN_KM)`, as today.
 - **B (welded):** `interior ≥ hops(CRATON_WELD_MARGIN_KM)` and
   `hops_to_craton ≤ hops(CRATON_WELD_REACH_KM)`. Here `hops_to_craton` is
   `quad_tectonics.hop_distance(plate, craton > 0, max_hops)`.
-- **C (keel), off until validated:** `interior ≥ hops(CRATON_WELD_MARGIN_KM)` and
-  `Hm ≥ PROTO_CRATON_MIN_HM_M` and `mantle_melt_extracted_m / Hm ≥ PROTO_CRATON_MIN_DEPLETION`.
 
-**Quiescence, for every path.** Today "quiet" means only the Hc window plus distance from
-margins. Intraplate shortening (#314) can deform a column that passes both. A column is
-quiet only if its tectonic Hc change this step, from convergent, divergent and transform
-deformation in `deform_columns`, is below `PROTO_CRATON_MAX_STRAIN_M_PER_MYR` in
-magnitude. `deform_columns` exposes that change as step-scoped scratch, which is not
-pickled. A non-quiet step resets the clock to 0, as leaving the window does now.
+The interior test still excludes plate edges and non-genuine cells, so an active margin
+never qualifies. The 200 Myr clock and the Hc window are unchanged: a belt must relax back
+to ≤ 50 km of crust and stay quiet for 200 Myr, so stabilisation follows the end of the
+orogeny. On formation the craton is `CRATON_FORMATION_DEPLETION × Hc`, 1.0 by default.
 
-**Depletion tracer (prerequisite for C).** `mantle_melt_extracted_m` is a per-node
-thickness (m): the melt extracted from the column's mantle so far.
-- It grows by the juvenile crust the model books on the column (arc magmatism, rift
-  magmatism, RFC 0007 plume heads), since that crust is the extracted melt.
-- It is EXTENSIVE, like Hc and `craton_crust_m`, so remaps conserve it.
-- The depletion proxy is `mantle_melt_extracted_m / Hm`, dimensionless. Thickening Hm
-  without melting *lowers* it, so a belt that only thickened reads as undepleted.
-
-**Validation phase (gate for C).** On the tuning seeds, record every column that would
-pass C, and check:
-1. at least 80% have a collisional history (an `ELEV_CHANGE_COLLISION` stamp or a suture
-   within 500 km in the last 500 Myr);
-2. none was deforming in the 200 Myr before it passed;
-3. thick Hm without depletion does not pass.
-
-If any of the three fails, C stays off and the RFC is revised.
-
-The interior test for all three paths still excludes plate edges and non-genuine cells, so
-an active margin never qualifies. The 200 Myr clock and the Hc window are unchanged: a belt
-must relax back to ≤ 50 km of crust and stay quiet for 200 Myr, so stabilisation follows
-the end of the orogeny. On formation the craton is
-`CRATON_FORMATION_DEPLETION × Hc`, 1.0 by default.
+**Quiescence (4).** A step-scoped Hc delta from `deform_columns` isn't enough. In
+`world.step_world_progress`, faults (`faults.update_faults`) and topology changes, which
+include failed rifts and splits, run after the deform loop and before `cratons.update`.
+And transform deformation writes elevation, not Hc. So the signal is a persistent per-node
+field, set where deformation happens:
+- **The field.** `tectonic_disturbance_myr` is a COUNTDOWN surface field. COUNTDOWN
+  remaps take the maximum when cells combine in `quad_merge`, so a merged cell is
+  disturbed if any part of it was. The refinement and coarsening remaps in
+  `sparse_quad_patch` must be checked to do the same, and a test covers it. Cells grown at an edge get their source's value through
+  `insert_cells`' field inheritance.
+- **Marking.** Each writer that deforms a column calls one helper,
+  `cratons.mark_disturbed(plate, mask)`. It sets the field to
+  `PROTO_CRATON_DISTURBANCE_HOLD_MYR`, which is at least one maximum step, so the mark
+  survives to the step's `cratons.update`. The writers:
+  - `lithosphere_plate.deform_columns`: convergent, divergent and arc thickening or
+    thinning with |ΔHc| above `PROTO_CRATON_MAX_STRAIN_M_PER_MYR × years`, and every
+    transform-band cell with pressure-ridge uplift;
+  - `faults.update_faults`: every cell a fault's relief moved;
+  - `sparse_quad_patch.apply_failed_rift`: the whole thinning band;
+  - `merge_split.maybe_split_plate`: cells within the failed-rift band of a successful
+    split's cut;
+  - `quad_tectonics`: suture-accretion receivers (`_accrete_onto_survivors`), stretch
+    donors (`_allocate_stretch`) and ceiling-overflow receivers;
+  - `crust_transfer`: upper-plate receivers;
+  - `quad_merge`: stacked cells and overflow receivers;
+  - `orogeny.relax_orogens`: cells whose Hc it changes by more than the strain threshold.
+- **Clock.** In `cratons.update`, a column with `tectonic_disturbance_myr > 0` is not
+  quiet, so its clock resets to 0, as leaving the window does now. The countdown then
+  decreases by the step length.
+- **Audit for missed writers.** A writer-agnostic check catches writers missing from the
+  list. In debug runs, `world.step_world_progress` snapshots each cell's Hc and elevation
+  before the deform loop, and compares them, matched by cell key, after the topology and
+  gap-fill phase. That is after every tectonic writer and before erosion and volcanism,
+  so no surface change needs subtracting. Cells whose keys changed through remap are
+  skipped. Any cell with a large change and no disturbance mark is counted and reported.
+  The acceptance runs require that count to be 0.
 
 **Runtime.** Path B adds one bounded BFS per plate per step, out to
 `hops(CRATON_WELD_REACH_KM)` = 8 hops at density 4. That is the same kind and size of work
-as the interior BFS `cratons.update` already does. Path C and the quiescence test are vector comparisons. The depletion tracer is one more
-field update where juvenile crust is already booked.
-Expected cost: under 1% of step time. Acceptance requires measuring it.
+as the interior BFS `cratons.update` already does. Marking is a masked write in each
+writer, and the countdown one vector update per plate. The debug-only audit keeps one
+Hc/elevation snapshot per plate. Expected cost: under 1% of step time, which acceptance
+requires measuring.
 
-**Save compatibility.** Paths A and B add no pickled state. Path C's
-`mantle_melt_extracted_m` is a new surface field, backfilled at 0 for old saves
-(undepleted), so C can't fire on old
-mantle until melting has depleted it.
-Proto-craton status is derived each step. The new stats keys are additive.
+**Save compatibility.** `tectonic_disturbance_myr` is a new COUNTDOWN surface field,
+backfilled at 0 for old saves (undisturbed). Old saves' clocks keep running, as they do
+today. Proto-craton status is derived each step. The new stats keys are additive.
 
 **Knobs.**
 
 | Knob | Start | Source | Tuning |
 |---|---|---|---|
-| `CRATON_WELD_REACH_KM` | 500 km | One belt width: orogens welded onto shields are a few hundred km wide [[Cawood et al., 2009]](#ref-cawood2009) | Sweep 250–1,000 km |
-| `CRATON_WELD_MARGIN_KM` | 250 km | Half the interior margin: keeps active margins and their arcs out | Sweep 125–500 km |
-| `PROTO_CRATON_MIN_HM_M` (path C) | 150,000 m (1.5 × the 100 km reference) | Toward the 200–250 km depth of cratonic keels [[Pearson et al., 2021]](#ref-pearson2021) | Calibration assumption; set in the validation phase |
-| `PROTO_CRATON_MIN_DEPLETION` (path C) | 0.2 | Calibration assumption: cratonic mantle is the residue of high-degree melting [[Herzberg & Rudnick, 2012]](#ref-herzberg2012), but the model's tracer is a proxy and can't be matched to a melt fraction directly | Set in the validation phase from the tracer's distribution |
+| `CRATON_WELD_REACH_KM` | 500 km | One belt width: orogens welded onto shields are a few hundred km wide [[Cawood et al., 2009]](#ref-cawood2009) | Calibration assumption; sweep 250–1,000 km |
+| `CRATON_WELD_MARGIN_KM` | 250 km | Design choice: half the interior margin keeps active margins and their arcs out | Sweep 125–500 km |
 | `PROTO_CRATON_MAX_STRAIN_M_PER_MYR` | 50 m/Myr of tectonic Hc change | Design choice: about 1% of a column's crust per 10 Myr, well below active orogens (hundreds of m/Myr) | Sweep 20–200 |
-| `CRATON_FORMATION_DEPLETION` | 1.0 | Off; see solution 4 | Lower only if the ratchet criterion fails |
+| `PROTO_CRATON_DISTURBANCE_HOLD_MYR` | 10 Myr | Numerical: at least the longest step the UI offers, so a mark always reaches `cratons.update` | Fixed |
+| `CRATON_FORMATION_DEPLETION` | 1.0 | Off; see solution 5 | Lower only if the ratchet criterion fails |
 | `CRATON_FORMATION_MYR` | 200 Myr (unchanged) | #274 | Unchanged |
 
 Tune with `bin/debug/compare_cratons.py` on seeds 7, 11 and 2024 to 2 Gyr (formation needs
 time to show), plus a regenerated seed 456862899 to 3 Gyr; run the replays one at a time.
-Report `formed_m3` per Gyr by path (A, B, C), craton share of genuine continental area,
-and proto-craton area.
+Report `formed_m3` per Gyr by path (A, B), craton share of genuine continental area,
+proto-craton area, and how often each writer marks cells.
 
 ## Detailed design (provisional touchpoints)
 
 - `backend/app/cratons.py`
   - New constants as above, with comments citing this RFC.
-  - `update`: compute paths A, B and (behind a flag) C, plus the quiescence test, combine
-    them into `quiet`, and apply `CRATON_FORMATION_DEPLETION` at formation.
+  - `update`: compute paths A and B, require `tectonic_disturbance_myr == 0`, combine them
+    into `quiet`, count the countdown down, and apply `CRATON_FORMATION_DEPLETION` at
+    formation.
+  - New `mark_disturbed(plate, mask)`.
   - Book `formed_m3` as now, plus per-path diagnostic counters kept on the ledger as
-    `formed_interior_m3`, `formed_welded_m3` and `formed_keel_m3`. These are
-    sub-accounts of `formed_m3`, outside the balance.
+    `formed_interior_m3` and `formed_welded_m3`. These are sub-accounts of `formed_m3`,
+    outside the balance.
   - New `proto_craton_mask(plate)`, shared by `update`, `diagnostics` and rendering.
-  - `diagnostics`: add `proto_craton_area_m2` and the per-path formed volumes.
+  - `diagnostics`: add `proto_craton_area_m2`, the per-path formed volumes, and the
+    debug audit's unmarked-change count.
   - Update the module docstring's Formation paragraph.
-- `backend/app/lithosphere_plate.py`, `deform_columns`: expose the per-node tectonic Hc
-  change as step-scoped scratch for the quiescence test. For path C, add to
-  `mantle_melt_extracted_m` where arc or rift juvenile crust is booked.
-- `backend/app/surface_fields.py` (path C): register `mantle_melt_extracted_m` (new,
-  EXTENSIVE).
-- `bin/debug/validate_keel_path.py` (new, path C): the validation phase's three checks
-  on a replay.
+- `backend/app/surface_fields.py`: register `tectonic_disturbance_myr` (new, COUNTDOWN).
+- Writers calling `mark_disturbed`: `lithosphere_plate.deform_columns`,
+  `faults.update_faults`, `sparse_quad_patch.apply_failed_rift`,
+  `merge_split.maybe_split_plate`, `quad_tectonics` (`_accrete_onto_survivors`,
+  `_allocate_stretch`, ceiling-overflow placement), `crust_transfer`, `quad_merge`, and
+  `orogeny.relax_orogens`.
+- `backend/app/world.py`: in debug runs, snapshot Hc and elevation by cell key before the
+  deform loop, and run the audit after topology and gap fill.
 - `backend/app/stats.py`: `proto_craton_area_km2` in the stats row.
 - `backend/app/render_image.py`: the `craton` debug view (`_render_craton_view`) already
   colours quiet interiors by their clock's progress. It takes its mask from
-  `proto_craton_mask`, so welded and keel proto-cratons show too.
-  `frontend/src/legendData.ts`'s `craton` legend relabels "Quiet interior near
+  `proto_craton_mask`, so welded proto-cratons show too, and disturbed cells show as not
+  forming. `frontend/src/legendData.ts`'s `craton` legend relabels "Quiet interior near
   cratonising" as "Proto-craton near cratonising".
 - `bin/debug/compare_cratons.py` and `bin/debug/ledger_history.py`: report per-path
   formation.
-- Tests (`backend/unit_tests/test_cratons.py`):
+- Tests (`backend/unit_tests/test_cratons.py` unless noted):
   - a quiet belt 300 km from the edge, next to a craton, forms after 200 Myr (path B), and
     the same belt with no craton nearby does not;
-  - a thick-Hm column that is still deforming (tectonic Hc change above the threshold)
-    never forms, on any path;
-  - with C enabled, a thick-Hm column with zero depletion does not form, and the same
-    column depleted does;
+  - **near-complete clock, failed rift:** a non-cratonic column at 35 km with its clock at
+    199.9 Myr is thinned 10% by `apply_failed_rift` in the same step, stays inside the
+    28–50 km window, and does *not* cratonise; its clock resets;
+  - the same for a fault's relief, a transform pressure ridge (elevation only), a merge's
+    stacking and an orogenic-flow change;
+  - a disturbed cell merged with undisturbed ones stays disturbed (COUNTDOWN max);
   - an active margin never forms;
+  - each writer in the list marks the cells it deforms (a contract test per writer, in
+    that writer's test module);
   - ledger balance is unchanged by the sub-accounts.
 - Docs: `docs/simulation-model.md`, the Cratons section ("Formation"), and the render-view
   description if the craton view changes.
@@ -216,14 +258,14 @@ and proto-craton area.
 - **Formation may not be the bottleneck.** Formation stopped, but losses (RFCs 0001–0003)
   dominate. Formation is complementary, not a cure.
 - **Welded growth is an analogy.** Laurentia-style growth is observed over Gyr, but the
-  weld reach, margin and 200 Myr clock are model choices, not measurements.
-- **Path C rests on proxies.** Hm thickness and a melt-extraction tracer stand in for
-  temperature, composition and strength, none of which the model represents. The
-  validation phase tests the proxies against collisional history; it can't test them
-  against the real properties.
+  weld reach, margin and 200 Myr clock are model choices, not measurements. Path B also
+  ignores depletion: it assumes belts welded to a craton inherit its stability, which is
+  only partly true geologically.
+- **The writer list may be incomplete.** The audit is there to catch what the list
+  misses; the acceptance criteria require it to report nothing.
 - **Secular change is ignored.** Post-Archean keels are less depleted
   [[Griffin et al., 2009]](#ref-griffin2009), so the simulated era should form fewer and
-  weaker cratons. Knob 4 is available but off.
+  weaker cratons. Knob 5 is available but off.
 - **The ratchet band is a design target.** 30–65% of continental area as craton is the
   range the #274 seeding was calibrated to (shields plus platforms), not a measured Earth
   value for every epoch.
@@ -234,14 +276,12 @@ and proto-craton area.
       in every 500 Myr window in which genuine continental area is at least 25% of its
       initial value. Today it stops after 500 Myr.
 - [ ] Path B contributes in at least two of the four runs.
-- [ ] No column forms craton while deforming (unit test, plus a replay check that no
-      formation happens within 200 Myr of a tectonic stamp above the strain threshold).
+- [ ] No column forms craton while being deformed: the unit tests above, plus the debug
+      audit reporting zero unmarked tectonic changes on the acceptance runs.
 - [ ] No ratchet: craton share of genuine continental area stays between 30% and 65% at
       every 500 Myr checkpoint (it starts at 35%).
-- [ ] **Path C** is enabled only after the depletion tracer lands and the validation
-      phase's three checks pass, with results in `analysis/`.
 - [ ] Step time changes by less than 2% at density 4.
-- [ ] Unit tests above pass; ledgers balance; affected tests, ruff and
+- [ ] Unit tests above pass; ledgers balance; old saves load; affected tests, ruff and
       `bin/quality_check.sh` are green.
 
 ## Falsification criteria
@@ -251,10 +291,12 @@ and proto-craton area.
   survival. Deprioritise this RFC behind 0001–0003.
 - **Welded growth is a ratchet.** If path B pushes the craton share above 65% on most
   seeds at any reasonable weld reach (250–1,000 km), welding everything near a craton is
-  too generous. Restrict B to collisional belts, which needs the same history test as C.
-- **The keel proxy doesn't track collisions.** If the validation phase finds that columns
-  passing C are mostly not former collision belts (for example, artefacts of merge
-  stacking, RFC 0001), the proxy is measuring the wrong thing. Drop path C.
+  too generous. Restrict B to belts with a collisional history (an
+  `ELEV_CHANGE_COLLISION` stamp or a suture within the reach), or drop it.
+- **Quiescence starves formation.** If, with the disturbance signal, almost no column
+  stays undisturbed for 200 Myr (path A's formation drops by more than 90% against
+  `origin/main`), the model deforms continental interiors far more than the clock
+  assumes. Investigate the dominant marking writer before tuning the threshold.
 
 ## References
 
@@ -265,6 +307,9 @@ and proto-craton area.
   Mooney, W. D., & Windley, B. F. (2009). Accretionary orogens through Earth history.
   *Geological Society, London, Special Publications*, 318, 1–36.
   [doi:10.1144/SP318.1](https://doi.org/10.1144/SP318.1)
+- <a id="ref-foley2008"></a>Foley, S. F. (2008). Rejuvenation and erosion of the cratonic
+  lithosphere. *Nature Geoscience*, 1, 503–510.
+  [doi:10.1038/ngeo261](https://doi.org/10.1038/ngeo261)
 - <a id="ref-griffin2009"></a>Griffin, W. L., O'Reilly, S. Y., Afonso, J. C., & Begg,
   G. C. (2009). The composition and evolution of lithospheric mantle: A re-evaluation and
   its tectonic implications. *Journal of Petrology*, 50, 1185–1204.
@@ -282,3 +327,7 @@ and proto-craton area.
   L. H., van Hunen, J., Szilas, K., Chacko, T., & Kelemen, P. B. (2021). Deep continental
   roots and cratons. *Nature*, 596, 199–210.
   [doi:10.1038/s41586-021-03600-5](https://doi.org/10.1038/s41586-021-03600-5)
+- <a id="ref-wang2018"></a>Wang, H., van Hunen, J., & Pearson, D. G. (2018). Making
+  Archean cratonic roots by lateral compression: A two-stage thickening and stabilization
+  model. *Tectonophysics*, 746, 562–571.
+  [doi:10.1016/j.tecto.2016.12.001](https://doi.org/10.1016/j.tecto.2016.12.001)

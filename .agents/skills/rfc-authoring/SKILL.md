@@ -24,18 +24,28 @@ implementation issues while drafting.
   degenerate states (no continents, no cratons) as geology.
 - Say what the evidence does *not* show. A ledger account that lumps several code paths
   can't attribute a loss to one of them.
+- **Read the code before hypothesising about it.** Trace the control flow of every
+  function a hypothesis or fix depends on: what it already searches, clips or books, and
+  which writers run between it and where the effect is measured. A fix that repeats
+  something the code already does can't help.
+- **Reproduction needs every input.** A replay or captured call needs everything the real
+  call used (third-party geometry, not just positions), plus the original step schedule
+  and controls. A seed alone doesn't reproduce a particular event, because topology and
+  per-step random streams depend on step length.
 
 ## 2. Find and check the literature
 
 - Ground each proposed mechanism in whatever literature the problem calls for: geology,
   geodynamics, climatology, hydrology, ecology, biology, numerical methods, or another
   field.
-- **Verify every reference:** run `check_citations.py --crossref` from this skill's
-  directory. It checks that every DOI resolves and prints title, authors and year to
-  compare against the citation.
+- **Verify every reference:** run
+  `python3 .agents/skills/rfc-authoring/check_citations.py --crossref`. It checks that
+  every DOI resolves and prints title, authors and year to compare against the citation.
 - **Verify every number you quote in the paper's own text** (the abstract, or the full
   text when the abstract doesn't have it), not from a search summary or memory. If you
-  can't confirm a figure, don't use it, or label it unverified.
+  can't confirm a figure, don't use it, or label it unverified. Check the paper's
+  *mechanism* the same way. A paper on cratons formed in extension doesn't support
+  cratons formed in compression.
 - Respect each source's scope.
   - Published fluxes are usually process-specific, global, and focused on the Cenozoic or
     Phanerozoic. Use them as **sanity checks** with that scope stated, not as targets for
@@ -46,6 +56,9 @@ implementation issues while drafting.
   - Keep **gross production** (what a process makes), **net preservation** (what
     survives) and **model-ledger fluxes** (what an account books) distinct. Never compare
     one kind against another.
+  - Match definitions before comparing numbers: a total thickness isn't an excess over the
+    model's reference, and a porous sediment column isn't a rock-equivalent volume.
+    Convert explicitly.
 
 ## 3. Structure
 
@@ -63,9 +76,25 @@ in this order:
      literature where one exists.
    - **Bounds:** every factor applied to a physical field stays in its valid range (a
      fraction in [0, 1]; a thickness ≥ 0), and composed factors are clamped.
-   - **Timestep robustness:** results don't depend on the step length. An event shorter
-     than a step integrates over the overlap of its interval with the step, and never
-     delivers more than its total.
+   - **Timestep robustness:** results don't depend on the step length.
+     - An event shorter than a step integrates over the overlap of its interval with the
+       step, and never delivers more than its total.
+     - A rate that is nonlinear in a quantity changing during the step is integrated
+       along that quantity's path, not evaluated at the end and multiplied by the step.
+     - Random events are keyed by event index or continuous time, not by step, so the same
+       seed gives the same events under any step partition.
+     - Test with steps longer than every duration in the design, comparing accumulated
+       results, not just final states.
+   - **Conservation and ownership:**
+     - Sum only disjoint quantities: check which fields are shares of which (for example,
+       mobile cover inside Hc) before adding them.
+     - Give each physical volume one owner, so two code paths don't both add it.
+     - A new tracer that is a share of another field needs its whole lifecycle: every
+       writer of the parent field (erosion, thinning, resets, caps, transfers, merges)
+       must update it or be caught by an audit. Registering it as EXTENSIVE covers only
+       remaps.
+     - A ledger's reservoirs must be disjoint; count repeatable events outside the
+       balance.
    - **Diagnosis gates:** if the cause isn't confirmed, a measurement phase comes first. Say
      what will be measured and which outcome leads to which fix. Fixes that depend on it
      are chosen only after the gate, and the RFC is updated with the result.

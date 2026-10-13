@@ -28,9 +28,12 @@ same table.
 | 6,922 My | 34 M km³ | 15% |
 | whole run | 518 M km³ | 19% of all craton destruction |
 
-The single 10 Myr sample at 3,052 My took more than a quarter of the world's cratons. The
-same event booked 339 M km³ of continental material to `collision_subducted_m3`, and
-genuine continental area fell from 61 to 45 M km².
+The single 10 Myr step ending at 3,051.8 My took more than a quarter of the world's
+cratons. The same step booked 339 M km³ of continental material to
+`collision_subducted_m3`, the account the merge uses for continental material left above
+its column (`merge_split._fuse_plates`). The suture path also books its unplaceable
+remainder there, so the save can't separate the two; the gate will. Genuine continental
+area also fell from 61 to 45 M km².
 
 Two things are wrong:
 
@@ -42,15 +45,26 @@ Two things are wrong:
    (`torque.CRATON_COLLISION_FRICTION_GAIN`) exists for exactly that reason. A merge that
    finds craton on craton means the overlap built up before the merge.
 
-We don't yet know why the overflow couldn't be placed. A merged plate with ~50 M km² of
-continental cells at ~35 km has ~2.4 billion km³ of room under the cap, seven times the
-overflow. The candidate explanations:
+**What the current placement already does.** `quad_merge._place_stacking_overflow` passes
+the overflow to `quad_tectonics._place_suture_crust`. That function's far-field stage walks
+the whole adjacency graph and then calls `fill(eligible)`, which takes every remaining
+eligible cell on the plate, connected or not. Placement is therefore already global. Volume
+goes unplaced only when *every eligible cell* is at the cap.
 
-- **H1:** the overflow lands only within the hop reach of the stacked area, and the cells
-  there were already near the cap.
-- **H2:** the `eligible` mask passed to `_place_suture_crust` is narrower than intended.
-- **H3:** the placement succeeded but left craton on cells the audit clips for another
-  reason (a crust-type vote, or a new cell held to the cap).
+A merged plate with ~50 M km² of continental cells at ~35 km has ~2.4 billion km³ of room,
+seven times the overflow. If the 339 M km³ was mostly the merge's clip, continental
+material went unplaced along with the craton, which would mean the Hc overflow itself found
+no room, not just the craton riding on it. The candidate explanations:
+
+- **H1: eligible capacity really was exhausted.** The numbers above make this unlikely
+  unless the eligible set was small, which is H2.
+- **H2: `eligible` is narrower than intended.** It is the merged plate's continental cells,
+  resolved from the post-merge `crust_type_code`, or all cells when none are
+  continental. A vote or an `INHERIT` resolution could shrink it.
+- **H3: placement succeeded, and a later writer in the same audit window clipped the
+  craton.**
+- **H4: the craton isn't carried with the Hc it rides on.** `craton_moving` and the
+  `_carry_material` shares leave craton above some column.
 
 The run is a stress test of the model's long-term behaviour, not a calibration interval.
 Its numbers show *that* a merge can remove a quarter of the cratons in one step. They
@@ -58,28 +72,36 @@ don't say how much craton a merge should cost; geologically, the answer is close
 
 ## Proposed solutions
 
-**What happens in nature.** Collisions between continents that both carry cratons
-(India–Asia is the modern case) thicken crust to about 70 km. The thickened crust then
-escapes laterally along strike-slip faults [[Tapponnier et al., 1982]](#ref-tapponnier1982).
-The dense non-cratonic lower crust and mantle root delaminate and sink
-[[Kay & Kay, 1993]](#ref-kay1993). Cratonic lithosphere is buoyant and stiff
-[[Jordan, 1978]](#ref-jordan1978) [[Sleep, 2005]](#ref-sleep2005), and collisional stacking
-is one of the ways cratonic mantle is *assembled* rather than destroyed
-[[Lee et al., 2011]](#ref-lee2011) [[Capitanio et al., 2020]](#ref-capitanio2020). Nothing
-in that picture removes tens of percent of a craton in one event.
+**What happens in nature.**
+- Collisions between continents that both carry cratons (India–Asia is the modern case)
+  thicken crust to about 70 km. The thickened crust then escapes laterally along
+  strike-slip faults [[Tapponnier et al., 1982]](#ref-tapponnier1982).
+- The dense non-cratonic lower crust and mantle root delaminate and sink
+  [[Kay & Kay, 1993]](#ref-kay1993).
+- Cratonic lithosphere is buoyant and stiff [[Jordan, 1978]](#ref-jordan1978)
+  [[Sleep, 2005]](#ref-sleep2005). Thickening by lateral compression is one proposed way
+  cratonic roots are *built*, not destroyed [[Lee et al., 2011]](#ref-lee2011)
+  [[Wang et al., 2018]](#ref-wang2018).
 
-1. **Give the merge's overflow the suture's outlets.** `quad_merge._place_stacking_overflow`
-   calls `_place_suture_crust` with `strike=None` and `root_capacity=None`, which skips
-   two of its five stages: tectonic escape and root delamination. Passing the merged
-   plate's root capacity lets non-cratonic roots shed to make room, which matches
-   [[Kay & Kay, 1993]](#ref-kay1993). Passing a strike (the overlap's long axis) enables
-   lateral escape, which matches [[Tapponnier et al., 1982]](#ref-tapponnier1982).
-2. **A bounded fallback placement.** If the staged placement still leaves craton unplaced,
-   run a second pass over the merged plate's continental cells with room, nearest first, but
-   only within `MERGE_FALLBACK_MAX_KM` of the stacked area and only onto cells connected to
-   it through continental crust. Conserving volume isn't enough: crust dropped on a far
-   corner of the plate would close the ledger and still be geologically wrong. Whatever
-   the bounded pass can't place is clipped and booked (solution 4).
+Nothing in that picture removes tens of percent of a craton in one event.
+
+1. **Give the merge's overflow the suture's outlets.** `_place_stacking_overflow` calls
+   `_place_suture_crust` with `strike=None` and `root_capacity=None`, which skips two of
+   its five stages: tectonic escape and root delamination.
+   - Passing the merged plate's root capacity lets non-cratonic roots shed to make room,
+     which matches [[Kay & Kay, 1993]](#ref-kay1993).
+   - Passing a strike (the overlap's long axis) enables lateral escape, which matches
+     [[Tapponnier et al., 1982]](#ref-tapponnier1982).
+
+   Both add room near the front, so the far-field stage has less to place.
+2. **Bound the placement itself.** Today's global `fill(eligible)` can drop crust anywhere
+   on the plate: it conserves volume, but it isn't physically plausible. Restrict the
+   *primary* call's `eligible` to continental cells within `MERGE_PLACEMENT_MAX_KM` of the
+   stacked area and connected to it through continental cells. A second pass can't help:
+   the first call already searched everything eligible.
+
+   This makes placement more honest, not more generous, and on its own it may *increase*
+   what is clipped. It belongs with solution 3.
 3. **Stop craton-on-craton overlap from building.** Measure the overlapping craton volume
    per plate pair. When the overlap is craton on craton, the brake has failed upstream.
    Either the forced merge (`FORCED_MERGE_OVERLAP_FRACTION`, 30% for 30 Myr) should fire
@@ -88,17 +110,21 @@ in that picture removes tens of percent of a craton in one event.
 4. **Book honestly.** Merge clips go to a new craton account `merge_capped_m3`, kept apart
    from `delaminated_m3`, so the ledger says what happened.
 
-**Recommendation:** a diagnosis gate first. No fix is chosen until the 3,052 My event has
-been reproduced and its cause established (see Design). Solution 4 (honest booking) is
-safe whatever the cause and can land with the diagnosis. The rest follow from the gate's
-outcome:
+**Recommendation:** a diagnosis gate first. No fix is chosen until the 3,052 My event, or
+another merge with the same signature, has been reproduced and its cause established (see
+Design). Solution 4 is safe whatever the cause and can land with the diagnosis. The rest
+follow from the gate:
 
 | Gate outcome | Fix |
 |---|---|
-| H1: no room within reach of the stacked area | 1, then 2 if 1 is not enough |
-| H2: `eligible` narrower than intended | Fix the mask; re-measure before adding 1 or 2 |
-| H3: placement succeeded, a later step clipped the craton | Fix that step; 1 and 2 not needed |
-| Deep craton-on-craton overlap existed before the merge, whatever H1–H3 says | 3 as the primary fix, since the stacking itself is unphysical |
+| H1: eligible capacity exhausted | 3, with 1 to add room near the front |
+| H2: `eligible` narrower than intended | Fix the mask, then re-measure |
+| H3: a later writer clipped placed craton | Fix that writer |
+| H4: craton not carried with its Hc | Fix the carry |
+| Deep craton-on-craton overlap existed before the merge, whatever else the gate finds | 3 as the primary fix, since the stacking itself is unphysical |
+
+Solution 2 is a validity fix that goes with whichever row applies. It's measured with
+solution 3 in place, since alone it would raise the booked loss.
 
 ## Design
 
@@ -106,21 +132,43 @@ outcome:
 M km³). The cap is `SUTURE_ACCRETION_MAX_HC_M` = 84,000 m, and room per cell is
 `(cap − Hc) × area`. No per-step or per-node factors are added.
 
-**Diagnosis gate (before any fix but 4).** `bin/debug/probe_craton_clips.py` already replays a world between two
-times and captures the inputs of the first fusion that leaves craton outside its column, as
-`(keep, absorb, other_points)`.
-- Regenerate seed 456862899 with the generation settings stored in the save, and step to
-  3,040 My. Write a snapshot there with `--snapshot`.
-- Probe to 3,060 My with `--capture`.
-- Replay the captured merge alone, printing per-stage placement volumes, the eligible cell
-  count and area, and the room under the cap within reach of the front.
+**Diagnosis gate (before any fix but 4).**
 
-- Also record, for the two plates in the 30 Myr before the merge: their overlap area,
-  the craton volume in the overlap, and whether the craton brake was active.
+*Capturing the merge.* `bin/debug/probe_craton_clips.py` replays a world between two times
+and captures the first fusion that leaves craton outside its column. Today it pickles
+`(keep, absorb, other_points)`. But `_fuse_plates` calls
+`keep.merge_with(absorb, other_points, others)`, and `quad_merge._on_other_plates` uses
+the third plates' actual cell footprints to reject cells. The capture must also hold deep
+copies of `others`; without them, replaying the tuple can admit cells the real merge
+rejected.
+
+*Reproducing the schedule.* Seed plus generation settings is not enough to reproduce a
+particular merge: topology and the per-step random streams depend on the number and
+length of steps, and on the run's controls.
+- **Step schedule.** The save's `stats_history` timestamps are spaced 0.1 Myr apart 218
+  times (to 21.8 My), then 10 Myr apart. That suggests one sample per step, which the
+  replay must confirm. The event is in the step ending at 3,051.8 My.
+- **Controls.** The replay uses the tuning multipliers and simulation flags stored in the
+  save, its node density, and its climate setting, since erosion moves crust.
+- **Code version.** The run used post-#340 code (its ledger has `audit_clipped_m3` from
+  t = 0), but the exact commit is unknown.
+
+If the replay doesn't reproduce a merge at 3,051.8 My, the gate uses the first merge in
+the replay with the same signature: craton booked by a merge above 1% of live craton,
+together with continental material clipped above its column. The run had three more
+(602, 6,022 and 6,922 My).
+
+*Measuring.* Replay the captured merge alone, printing:
+- the overflow volume, the eligible cell count and area, and the room under the cap
+  among eligible cells;
+- per-stage placement volumes, from `_place_suture_crust`'s `stages`;
+- where craton ends up above a column after placement and after the audit;
+- for the two plates in the 30 Myr before the merge, their overlap area, the craton
+  volume in the overlap, and whether the craton brake was active.
 
 The first leg is about 3 Gyr of stepping. Its wall time must be measured; replays are
 RAM-heavy, so run them one at a time. The gate passes when the findings, and the fix the
-table above selects, are written up in `analysis/` and this RFC is updated with them.
+table selects, are written up in `analysis/` and this RFC is updated with them.
 
 **Merge placement (solutions 1 and 2):**
 - Root capacity comes from `orogeny.plate_delamination_capacity_m3(keep, continental,
@@ -133,22 +181,24 @@ table above selects, are written up in `analysis/` and this RFC is updated with 
 - Strike is the principal axis of the stacked cells' positions: the eigenvector with the
   largest eigenvalue of their 3×3 covariance, projected onto the tangent plane at their
   centroid.
-- The fallback pass (2) reuses `_place_suture_crust`'s far-field stage, with `front` set to
-  the cells still holding unplaced craton, and `eligible` set to the continental cells
-  within `MERGE_FALLBACK_MAX_KM` of the stacked area that are connected to it through
-  continental cells.
+- The bounded `eligible` (solution 2) is computed once, before the single call: continental
+  cells within `MERGE_PLACEMENT_MAX_KM` (great-circle distance) of any stacked cell and in
+  the same continental connected component.
 - Physical checks on every placement, besides ledger closure:
   - no cell above the 84 km cap;
+  - no crust or craton placed on a cell outside the bounded set;
   - placed thickness non-increasing with hop distance from the stacked area (beyond the
     belt's water-fill stage);
-  - no craton placed on a cell more than `MERGE_FALLBACK_MAX_KM` away;
   - the merged plate's craton forms no more connected components than the two plates'
     cratons had before the merge.
 
-**Runtime.** Merges happen tens of times per Gyr, not every step. The added cost is one
-extra `_place_suture_crust` call per merge: a sparse BFS over the merged plate's adjacency,
-O(cells × hops), about 10⁵ cells at density 4. That is under a second per merge and nothing
-per ordinary step.
+**Runtime.** Merges happen tens of times per Gyr, not every step.
+- The bounded mask is one great-circle distance test and one connected-components pass
+  over the merged plate: O(cells), about 10⁵ at density 4.
+- Strike is a 3×3 eigenproblem.
+- Root capacity is the vector computation the suture path already does.
+
+Together, well under a second per merge, and nothing per ordinary step.
 
 **Save compatibility.** No new per-node field. `merge_capped_m3` is a new key in
 `World.craton_ledger`, and `cratons.ensure_ledger` already backfills missing keys at 0.0 on
@@ -156,7 +206,7 @@ load. Old saves keep their historical merge losses in `delaminated_m3`; they can
 after the fact, and the docs will say so.
 
 **Knobs.** One new knob:
-- `MERGE_FALLBACK_MAX_KM`, starting at 1,000 km. That is the scale over which the Tibetan
+- `MERGE_PLACEMENT_MAX_KM`, starting at 1,000 km. That is the scale over which the Tibetan
   plateau and the blocks extruded from it spread the India–Asia collision's crust
   [[Tapponnier et al., 1982]](#ref-tapponnier1982). It is a calibration assumption, with
   sensitivity runs at 500 and 2,000 km.
@@ -174,8 +224,8 @@ without changing merge counts by more than 10%.
 
 - `backend/app/quad_merge.py`
   - `_place_stacking_overflow`: pass `root_capacity` and `strike` to
-    `quad_tectonics._place_suture_crust`; add the fallback far-field pass for craton still
-    unplaced; return the shed volume per cell for booking.
+    `quad_tectonics._place_suture_crust`, with the bounded `eligible` mask; return the shed
+    volume per cell for booking.
   - The physical checks in Design, as a debug-mode assertion after each placement.
   - `_transfer` (which calls `_place_stacking_overflow`) and `merge_with` in
     `sparse_quad_patch.py`: thread the step length through, so root capacity can be
@@ -189,13 +239,22 @@ without changing merge counts by more than 10%.
   comment citing this RFC.
 - `backend/app/stats.py` and the frontend ledger display, if it lists craton accounts by
   name: show the new account.
-- `bin/debug/probe_craton_clips.py`: print the per-stage placement breakdown for a captured
-  merge.
+- `bin/debug/probe_craton_clips.py`
+  - Capture `others` (deep copies) with the merge.
+  - Accept a step schedule (the 0.1 Myr then 10 Myr pattern, or one read from a save's
+    `stats_history`) and the save's controls.
+  - Print the per-stage placement breakdown for a captured merge.
 - Tests:
-  - `backend/unit_tests/test_quad_merge.py`: two plates whose overlap stacks 2 × 40 km of
-    craton over a patch, with room elsewhere on the merged plate. After the merge, live
-    craton plus `collision_reworked_m3` equals the craton before, and `merge_capped_m3` is
-    0. A second case with no room anywhere books exactly the excess to `merge_capped_m3`.
+  - `backend/unit_tests/test_quad_merge.py`:
+    - Two plates whose overlap stacks 2 × 40 km of craton over a patch, with room within
+      `MERGE_PLACEMENT_MAX_KM`: after the merge, live craton plus `collision_reworked_m3`
+      equals the craton before, and `merge_capped_m3` is 0.
+    - The same with room only beyond `MERGE_PLACEMENT_MAX_KM`, or on a disconnected
+      continental fragment: nothing lands there, and exactly the excess is booked to
+      `merge_capped_m3`.
+    - A third plate whose footprint covers candidate cells: those cells are never
+      activated, in a direct merge and in a replay of a captured tuple that includes
+      `others`.
   - `backend/unit_tests/test_cratons.py`: the ledger balances with the new account, and a
     save without the key loads.
 - Docs: `docs/simulation-model.md`, the Cratons section and the merge section of "Merge and
@@ -203,29 +262,31 @@ without changing merge counts by more than 10%.
 
 ## Assumptions and uncertainty
 
-- **The cause is unknown.** H1–H3 are hypotheses. The gate may find a fourth, and the
-  fix table is written so that each outcome leads somewhere.
-- **One event, one seed.** The evidence is a single run. The 602, 6,022 and 6,922 My
-  events suggest the mechanism recurs, but how often it fires across seeds is unmeasured;
-  the acceptance runs measure it.
+- **The cause is unknown.** H1–H4 are hypotheses, and the gate may find another. The fix
+  table is written so that each outcome leads somewhere.
+- **The event may not replay exactly.** The code version and the per-step random streams
+  are only partly recoverable. The gate allows a substitute merge with the same signature.
+- **One event, one seed.** The 602, 6,022 and 6,922 My events suggest the mechanism
+  recurs, but how often it fires across seeds is unmeasured; the acceptance runs measure
+  it.
 - **Escape and root shedding are borrowed.** Both come from the suture path, calibrated for
   ordinary collision belts. Whether they suit a craton-on-craton merge is untested.
-  `MERGE_FALLBACK_MAX_KM` comes from one modern collision.
+  `MERGE_PLACEMENT_MAX_KM` comes from one modern collision.
 - **The model stacks; the Earth doesn't.** Real cratons don't overlap, so no published
-  figure says where a stacked craton's overflow "should" go. The physical checks above
-  bound the answer; they don't validate it.
+  figure says where a stacked craton's overflow "should" go. The physical checks bound the
+  answer; they don't validate it.
 
 ## Acceptance criteria
 
-- [ ] **Gate:** the 3,052 My event is reproduced, its cause established, and the fix the
-      decision table selects is written up in `analysis/` with the per-stage numbers
-      before any fix other than solution 4 is implemented.
+- [ ] **Gate:** the 3,052 My event (or a substitute with the same signature) is reproduced
+      with the full merge inputs, its cause established, and the fix the decision table
+      selects is written up in `analysis/` with the per-stage numbers, before any fix
+      other than solution 4 is implemented.
 - [ ] On a 3.5 Gyr replay of seed 456862899 and 500 Myr runs of seeds 7, 11 and 2024
       (`bin/debug/compare_cratons.py`), merges book less than 1% of the initial craton
       volume in total, and no single merge books more than 0.5% of the live craton.
-- [ ] Every merge placement passes the physical checks in Design (cap, distance,
-      monotone thickness, craton component count), checked by an assertion in debug
-      runs.
+- [ ] Every merge placement passes the physical checks in Design (cap, bounded set,
+      monotone thickness, craton component count), checked by an assertion in debug runs.
 - [ ] The craton ledger balance error stays within 1e-9 of the live volume
       (`cratons.balance_error_m3`), and the continental-material ledger still closes
       (`continental_ledger.assert_closed`).
@@ -236,7 +297,7 @@ without changing merge counts by more than 10%.
 ## Falsification criteria
 
 - **The merge isn't the cause.** If the reproduced event shows the craton was removed by a
-  writer other than the merge's stacking (it was outside its column before the merge, or
+  writer other than the merge's placement (it was outside its column before the merge, or
   was clipped on cells the merge never touched), the RFC's premise is wrong. Re-scope it
   to that writer.
 - **The loss moves instead of stopping.** If, with the fix, craton destroyed per Gyr on
@@ -244,14 +305,11 @@ without changing merge counts by more than 10%.
   moved to another sink and the merge was a symptom. The likely upstream cause is craton
   overlap (solution 3); revise toward it.
 - **No plausible room.** If the bounded placement can't hold the overflow in more than half
-  of the craton-carrying merges, stacking is the problem, not placement. Switch to
-  solution 3 as the primary fix.
+  of the craton-carrying merges, stacking is the problem, not placement. Solution 3
+  becomes the only fix that matters.
 
 ## References
 
-- <a id="ref-capitanio2020"></a>Capitanio, F. A., Nebel, O., & Cawood, P. A. (2020).
-  Thermochemical lithosphere differentiation and the origin of cratonic mantle. *Nature*,
-  588, 89–94. [doi:10.1038/s41586-020-2976-3](https://doi.org/10.1038/s41586-020-2976-3)
 - <a id="ref-jordan1978"></a>Jordan, T. H. (1978). Composition and development of the
   continental tectosphere. *Nature*, 274, 544–548.
   [doi:10.1038/274544a0](https://doi.org/10.1038/274544a0)
@@ -268,3 +326,7 @@ without changing merge counts by more than 10%.
   & Cobbold, P. (1982). Propagating extrusion tectonics in Asia: New insights from simple
   experiments with plasticine. *Geology*, 10, 611–616.
   [doi:10.1130/0091-7613(1982)10<611:PETIAN>2.0.CO;2](https://doi.org/10.1130/0091-7613(1982)10%3C611:PETIAN%3E2.0.CO;2)
+- <a id="ref-wang2018"></a>Wang, H., van Hunen, J., & Pearson, D. G. (2018). Making
+  Archean cratonic roots by lateral compression: A two-stage thickening and stabilization
+  model. *Tectonophysics*, 746, 562–571.
+  [doi:10.1016/j.tecto.2016.12.001](https://doi.org/10.1016/j.tecto.2016.12.001)

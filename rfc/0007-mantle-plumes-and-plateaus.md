@@ -3,9 +3,9 @@
 - **Status:** Draft
 - **Date:** 2026-10-13
 - **Related:** #205 (magma transport); RFCs [0003](0003-rifting-around-cratons.md)
-  (plume weakening of cratons), [0004](0004-proto-cratons.md),
+  (plume weakening of cratons), [0004](0004-proto-cratons.md) (depletion follow-up),
   [0005](0005-continental-recycling-balance.md), [0006](0006-intra-oceanic-arcs.md)
-  (terranes, `crust_formed_years`)
+  (shared docking, buoyant-crust tracers and ledger)
 
 ## Problem
 
@@ -28,7 +28,7 @@ spawning yet". Four Earth processes are therefore missing:
    [[Foley, 2008]](#ref-foley2008) [[Koptev et al., 2015]](#ref-koptev2015). RFC 0003
    leaves this out because there is nothing in the model to do the weakening.
 
-The run behind RFCs 0001–0006 shows the cost of item 1. The run is seed 456862899, 19.2
+The run behind RFCs 0001–0007 shows the cost of item 1. The run is seed 456862899, 19.2
 Gyr, saved locally as `mantle-bloom-seed456862899-19191800000y.mbworld`; the file is on
 the author's machine and **not available for download**. Once its continents were gone,
 juvenile continental additions fell to 0.4 km³/yr
@@ -106,52 +106,74 @@ continent. It doesn't say how much plumes should add.
 
 ## Design
 
-**State.** Plumes live in a world-level list `World.mantle_plumes`. Each `MantlePlume` is a
-small dataclass:
+**Conventions shared with RFC 0006.**
+- *Excess crust.* On oceanic-coded cells, E = Hc − `REFERENCE_HC_OCEANIC_M` (11 km). The
+  literature gives total crustal thicknesses over a normal oceanic crust of 6–7 km
+  [[Kerr & Mahoney, 2007]](#ref-kerr2007), so totals are converted to excess by
+  subtracting 6.5 km.
+- *Buoyant crust.* "Buoyant crust" is the plume-built `plateau_crust_m` plus RFC 0006's
+  `arc_crust_m`. Both are tracked shares of Hc with one shared lifecycle and ledger
+  (below).
 
-| Field | Units | Meaning |
-|---|---|---|
-| `plume_id` | int | Stable id for events and the UI |
-| `position` | unit vector, world frame | Fixed, like `mantle.ConvectionCenter.position`; plates move over it |
-| `born_years` | yr | When the plume started |
-| `head_volume_m3` | m³ | Head volume still to emplace (0 for a tail-only plume) |
-| `head_end_years` | yr | When the head stage ends |
-| `head_radius_km` | km | Head footprint radius |
-| `tail_flux_m3_per_yr` | m³/yr | Tail volume flux |
-| `tail_end_years` | yr | When the plume dies |
+**State.**
+- `World.mantle_plumes`: a list of `MantlePlume` dataclasses.
 
-Three per-node surface fields are added:
-- `plateau_crust_m` (EXTENSIVE, m): the plume-built share of Hc on oceanic hosts. Remaps
-  conserve its volume, like `craton_crust_m`.
-- `plateau_formed_years` (HISTORY, yr): when that crust was emplaced, for the age-dependent
-  docking probability.
-- `plume_heat_myr` (COUNTDOWN, Myr): time left on plume weakening.
+  | Field | Units | Meaning |
+  |---|---|---|
+  | `plume_id` | int | The event index k (below); stable id for events and the UI |
+  | `position` | unit vector, world frame | Fixed, like `mantle.ConvectionCenter.position`; plates move over it |
+  | `born_years` | yr | The event's arrival time |
+  | `head_volume_m3`, `head_remaining_m3` | m³ | Head volume, and the part not yet emplaced (0 for a tail-only plume) |
+  | `head_end_years` | yr | `born_years + PLUME_HEAD_DURATION_MYR` |
+  | `tail_flux_m3_per_yr`, `tail_end_years` | m³/yr, yr | Tail volume flux, and when the plume dies |
 
-**Spawning.** Each step draws events from a Poisson process, with a deterministic generator
-keyed on `(seed, elapsed_years, "plume")` as other step RNGs are:
-- head plumes at `PLUME_HEAD_RATE_PER_MYR`;
-- tail-only plumes at `PLUME_TAIL_ONLY_RATE_PER_MYR`.
+- `World.plume_stream`: the next event index and its arrival time, per stream (head,
+  tail-only).
+- `World.buoyant_crust_ledger`: one ledger shared with RFC 0006.
+- Three new per-node surface fields:
+  - `plateau_crust_m` (EXTENSIVE, m): the plume-built share of Hc.
+  - `buoyant_crust_time_m_yr` (EXTENSIVE, m·yr): Σ thickness × emplacement time over the
+    cell's buoyant crust. The cell's volume-weighted emplacement time is this divided by
+    `plateau_crust_m + arc_crust_m`. It is conserved by remaps, unlike a HISTORY date,
+    which keeps only the oldest contributor.
+  - `plume_heat_myr` (COUNTDOWN, Myr): time left on plume weakening.
 
-Positions are drawn from a density proportional to
+**An event stream independent of step length.** Each event's draws are keyed by its
+*index*, not by the step it falls in, so ten 1 Myr steps and one 10 Myr step produce the
+same plumes:
+- *Arrivals.* Arrivals of stream s form a continuous-time process at a ceiling rate
+  λ_max,s. Event k arrives at t_k = t_(k−1) + g_k, where g_k is exponentially distributed
+  with mean 1/λ_max,s, drawn from a generator keyed on `(seed, "plume", s, k)`.
+- *Thinning.* Event k is kept if `u_k < λ_s(t_k) / λ_max,s`, with u_k from the same
+  generator. Here λ_s(t) = base rate × `plume_multiplier` × modulation(t). The modulation
+  is 1 for the stationary default. For the Cox variant it is a deterministic function of
+  t, built from a seed-keyed log-normal noise series with correlation time
+  `PLUME_RATE_CORRELATION_MYR` and clipped to at most `PLUME_RATE_MODULATION_MAX`, since
+  thinning needs a finite ceiling. λ_max,s is the base rate × the knob's upper bound ×
+  that maximum.
+- *Attributes.* Position, volume and tail flux come from the same generator.
+- *Each step [t₀, t₁]* consumes every event with t_k ≤ t₁, born at t_k, and stores the
+  next index and arrival time in `World.plume_stream`.
+
+Kept events at `plume_multiplier` m are a subset of those at any larger multiplier, so
+changing the knob doesn't reshuffle the rest of the run.
+
+*Placement.* Positions are drawn from a density proportional to
 `Σ_upwelling strength × exp(−(d/falloff)²)` over the upwelling convection centres, plus a
 uniform floor `PLUME_UNIFORM_SHARE`. Plumes thus favour the mantle's upwellings, as LIPs
 favour the margins of deep low-velocity regions [[Burke & Torsvik, 2004]](#ref-burke2004),
 without being tied to them.
-- Head volume is drawn log-uniformly in [`PLUME_HEAD_VOLUME_MIN_KM3`,
-  `PLUME_HEAD_VOLUME_MAX_KM3`].
-- Tail flux is drawn log-uniformly in [`PLUME_TAIL_FLUX_MIN_KM3_PER_YR`,
-  `PLUME_TAIL_FLUX_MAX_KM3_PER_YR`].
-- Every head plume also gets a tail, after its head stage.
-- Each event's birth time is drawn uniformly within the step, so a step of any length
-  places events at their own times (see Timestep integration).
+
+*Sizes.* Head volume is drawn log-uniformly in [`PLUME_HEAD_VOLUME_MIN_KM3`,
+`PLUME_HEAD_VOLUME_MAX_KM3`], and tail flux log-uniformly in
+[`PLUME_TAIL_FLUX_MIN_KM3_PER_YR`, `PLUME_TAIL_FLUX_MAX_KM3_PER_YR`]. Every head plume gets
+a tail after its head stage.
 
 The rate and the volume distribution are **calibration assumptions** anchored to the LIP
 record's order of magnitude, not values it establishes (see the knob table). Three
 sensitivity variants are run:
 - **Rate:** 0.05, 0.1 and 0.2 heads per Myr.
-- **Clustering:** a doubly stochastic (Cox) process whose rate is modulated by slow
-  log-normal noise (correlation time `PLUME_RATE_CORRELATION_MYR`), against the
-  stationary default.
+- **Clustering:** the Cox variant, against the stationary default.
 - **Volumes:** log-uniform (default), log-normal with the same median and range, and a
   power law, to show how much the size distribution's tail matters.
 
@@ -166,150 +188,216 @@ where `remaining` is the stage's undelivered volume, which then decreases by `de
 - A 10 Myr step containing a whole 3 Myr head delivers exactly V. A head that starts late
   in one step and ends in the next splits V between them.
 - Total delivery can never exceed V, whatever the step lengths.
-- The heat countdown uses the same overlap.
 - Plumes whose tail has ended are dropped at the end of the step.
 
-The UI offers steps up to 10 Myr, longer than a head, so this is required, not optional.
+With the index-keyed event stream, the same seed gives the same events and the same
+delivered volumes under any step partition, except where plate positions differ between
+partitions (which changes *where* the volume lands, not how much).
 
-**Head stage.** The head delivers `head_volume_m3` over its interval, per the
-integration above. It is spread over the cells under the head
-footprint with weights `w = exp(−(d / head_radius_km)²)` in great-circle distance d,
-normalised by `Σ w·A`, so the volume placed is exact.
-- **Oceanic host cells.** Hc and `plateau_crust_m` grow by the cell's share. Elevation
-  follows by isostasy (`lithosphere.isostatic_elevation`, as `cratons.attrite` uses), which
-  gives the 2–3 km plateau relief. `plateau_formed_years` is stamped. The crust stays
-  oceanic-coded, since plateaus are mafic, not continental.
-- **Continental host cells.** Hc grows by the share and is booked as juvenile continental
+**Head footprint: relief consistent with volume.** Spreading a median head over the 2,000–
+2,500 km flood-basalt area [[Campbell & Griffiths, 1990]](#ref-campbell1990) would be
+inconsistent with plateau relief.
+- *The problem.* The median log-uniform head (V ≈ 7.1 M km³) over a Gaussian of radius
+  1,100 km (∫ w dA ≈ 2.4 M km²) adds only ~2.9 km of crust at the centre. The model's
+  water-loaded oceanic isostasy turns that into ~0.46 km of relief, against the 2–3 km
+  plateaus stand above the abyssal floor [[Kerr & Mahoney, 2007]](#ref-kerr2007).
+- *The fix.* The footprint depends on where the head lands, judged at the host cell under
+  the plume centre at `born_years`.
+- **Oceanic: a plateau.** The area is set by volume:
+  `A = clip(V / PLATEAU_MEAN_EXCESS_M, PLATEAU_AREA_MIN_KM2, PLATEAU_AREA_MAX_KM2)`.
+  Weights are flat-topped, `w = exp(−(d/r)⁴)`, with r chosen so the kernel's own integral
+  ∫ w dA equals A, i.e. `r = sqrt(A / (π Γ(3/2)))` ≈ `sqrt(A / 2.78)`. The peak excess is
+  then exactly V/A, and the volume placed is exact after normalising over the cells.
+  - In the model's isostasy, each km of excess oceanic crust raises the surface by
+    ~155 m. `PLATEAU_MEAN_EXCESS_M` = 15 km therefore gives ~2.3 km of relief, inside the
+    2–3 km range.
+  - With the area bounds (0.1 to 2 M km², [[Bryan et al., 2010]](#ref-bryan2010)
+    [[Kerr & Mahoney, 2007]](#ref-kerr2007)), a 1 M km³ head covers 0.1 M km² at ~10 km
+    excess (~1.6 km relief). The median 7.1 M km³ head covers 0.47 M km² (radius ~410 km)
+    at 15 km peak (~2.3 km). A 50 M km³ head is capped at 2 M km² and averages 25 km excess
+    (~3.9 km); that overshoots Ontong Java's relief, whose crust is ≥ 30 km total
+    (≥ 23.5 km excess).
+- **Continental: flood basalt** over the Gaussian of radius `PLUME_HEAD_RADIUS_KM`
+  (1,100 km), matching the 2,000–2,500 km eruptive area. Crust added on a continent
+  includes lava and underplated intrusions; the median head adds ~2.9 km at the centre.
+- Cells under a footprint get their share on their own host type: oceanic-coded cells
+  gain Hc and `plateau_crust_m`, continental-coded cells gain Hc and juvenile continental
+  material.
+- **Heat** (weakening) always uses the broad head radius, since the plume head heats a
+  wide region whatever erupts.
+
+An isolated-head scale check is the first acceptance item and is run before any tuning
+replay.
+
+**Head and tail emplacement.**
+- *Oceanic host cells:* Hc and `plateau_crust_m` grow by the cell's share, and
+  `buoyant_crust_time_m_yr` by share × emplacement time. Elevation follows by isostasy
+  (`lithosphere.isostatic_elevation`, as `cratons.attrite` uses).
+- *Continental host cells:* Hc grows by the share and is booked as juvenile continental
   material through `continental_ledger.add_material_thickness` (sub-account
-  `juvenile_flood_basalt_m3`). Mobile cover under the lava is sealed, as
-  `volcanism.apply_volcanic_activity` seals it.
-- **All covered cells.** `plume_heat_myr` is set to `PLUME_HEAT_MYR`, and covered cells
-  near the centre are made volcanoes (`is_volcano`, `volcano_active_years_remaining`), so
-  the existing eruption lifecycle draws the surface.
-- A plate whose continental cells take a head gets `PLUME_HEAD_STRESS` added to its
-  `internal_stress`, the breakup pressure `merge_split.maybe_split_plate` reads. This
-  follows plume-driven breakup [[White & McKenzie, 1989]](#ref-white1989).
-- One event is logged per head: plate, volume, and oceanic or continental.
-
-**Tail stage.** Until `tail_end_years`, the tail delivers `tail_flux × years` to the cells
-within `PLUME_TAIL_RADIUS_KM`, with the same Gaussian weights.
-- On oceanic hosts it goes to Hc and `plateau_crust_m` (seamounts and aseismic ridges); on
-  continental hosts it is booked as juvenile.
-- The cell nearest the plume is made a volcano, so the track is a chain of volcanoes left
-  behind as the plate moves: a hotspot track with an age progression, for free.
+  `juvenile_flood_basalt_m3` for heads, `juvenile_hotspot_m3` for tails). Mobile cover
+  under the lava is sealed, as `volcanism.apply_volcanic_activity` seals it.
+- *Tails* deliver to the cells within `PLUME_TAIL_RADIUS_KM` with the same flat-topped
+  weights: a volcanic edifice on whatever cell is over the plume, left behind as the plate
+  moves, which is a hotspot track.
+- *Stamps.* Every cell that gains crust is stamped `ELEV_CHANGE_VOLCANO`.
+- **One volume owner.** `plumes.py` owns all plume volume. It does **not** set
+  `is_volcano` on plume cells. `volcanism.apply_volcanic_activity` adds Hc on every
+  eruption (`lithosphere.back_elevation_gain_fields`) and books juvenile on continental
+  hosts, so marking plume cells as volcanoes would add an unbudgeted second magma source,
+  and on oceanic hosts it would also miss `plateau_crust_m`. Plume relief and tracks come
+  from the plume's own budget alone. (Mineral deposits, which `volcanism.py` grows per
+  eruption, are not grown on plume cells; out of scope.)
+- *Breakup stress.* A plate whose continental cells take a head gets `PLUME_HEAD_STRESS`
+  added to its `internal_stress`, the breakup pressure `merge_split.maybe_split_plate`
+  reads, after plume-driven breakup [[White & McKenzie, 1989]](#ref-white1989).
+- *Events.* One event is logged per head: plate, volume, and oceanic or continental.
 
 **Weakening (for RFC 0003).** While `plume_heat_myr > 0`, craton strength in the rift
 paths (`lithosphere_plate.deform_columns`'s divergent thinning,
 `quad_tectonics._allocate_stretch`, failed rifts) is multiplied by
-`1 − PLUME_CRATON_WEAKENING`. In RFC 0003's split-cut score, heated cells count as weak,
-so cuts are drawn toward plume-heated lithosphere and cratons rift where a plume has
-weakened them, after [[Foley, 2008]](#ref-foley2008) and
-[[Koptev et al., 2015]](#ref-koptev2015). Erosion, attrition and the collision brake are
-unchanged.
+`1 − PLUME_CRATON_WEAKENING`, with the product clamped to [0, 1] as RFC 0003 requires. In
+RFC 0003's split-cut score, heated cells count as weak, so cuts are drawn toward
+plume-heated lithosphere and cratons rift where a plume has weakened them, after
+[[Foley, 2008]](#ref-foley2008) and [[Koptev et al., 2015]](#ref-koptev2015). Erosion,
+attrition and the collision brake are unchanged.
 
-**Docking: probabilistic and partial.** Thickness and youth make a plateau (or, from RFC
-0006, an arc) *more likely* to resist subduction [[Cloos, 1993]](#ref-cloos1993)
-[[Kerr & Mahoney, 2007]](#ref-kerr2007). They don't guarantee it, and even a plateau that
-resists loses part of itself: only Ontong Java's lower-crustal edge has gone down the
-Solomon trench [[Mann & Taira, 2004]](#ref-mann2004). The rule is therefore a
-probability, applied per *patch*, not per cell, so a plateau isn't shredded cell by cell:
-- **Patches.** At each step's retreat, the consumable oceanic cells carrying plateau or
-  arc crust are grouped into connected patches. Each patch's thickness H is its
-  area-weighted mean buoyant crust (`plateau_crust_m + arc_crust_m`, m), and its age is
-  its area-weighted mean time since emplacement.
-- **Threshold with age.** The thickness needed to resist rises as the patch ages and
-  cools:
-  `H₅₀(age) = H_young + (H_old − H_young) × (1 − exp(−age / τ_cool))`.
-- **Probability.** `P = σ((H − H₅₀(age)) / ΔH)`, with σ the logistic function, so P is in
-  [0, 1].
-- **The draw.** One deterministic draw per patch, keyed on (seed, plate, patch's lowest
-  cell key, encounter epoch), decides once per encounter; the result is kept until the
-  patch leaves the trench.
+**Docking: probabilistic and partial.** Thick, young buoyant crust is *more likely* to
+resist subduction [[Cloos, 1993]](#ref-cloos1993) [[Kerr & Mahoney, 2007]](#ref-kerr2007),
+but it isn't guaranteed. And even a plateau that resists loses part of itself: Ontong
+Java's lower-crustal edge has gone down the Solomon trench [[Mann & Taira, 2004]](#ref-mann2004).
+- **Patches.** At each step's retreat, consumable oceanic-coded cells with buoyant crust
+  are grouped into connected patches. Each patch has an area-weighted mean excess E (the
+  whole column's excess, not the tracer, so it matches how the literature measures
+  thickness) and a volume-weighted buoyant-crust age, from `buoyant_crust_time_m_yr`.
+- **Threshold with age.** In excess terms, the thickness needed to resist rises as the
+  patch ages and cools:
+  `E₅₀(age) = E_young + (E_old − E_young) × (1 − exp(−age / τ_cool))`.
+  - *E_young* = 5 km: the young Caribbean plateau resisted with 8–15 km total crust, which
+    is 1.5–8.5 km excess.
+  - *E_old* = 15 km: old plateaus with Caribbean thickness would subduct, while Ontong Java
+    (≥ 30 km total, ≥ 23.5 km excess) resisted 100 Myr after forming
+    [[Kerr & Mahoney, 2007]](#ref-kerr2007).
+- **Probability.** `P = σ((E − E₅₀(age)) / ΔE)`, with σ the logistic function, so P is in
+  [0, 1]. For example:
+  - an Ontong-Java-like patch (E = 23.5 km, 100 Myr old) gets P ≈ 0.95;
+  - an old Caribbean-like one (E = 5 km) gets P ≈ 0.04;
+  - an active arc, whose crust is young, docks readily.
+- **The draw.** One deterministic draw per patch, keyed on (seed, plate, the patch's
+  lowest cell key, encounter start time), decides once per encounter; the result is kept
+  until the patch leaves the trench.
 - **Dock.** A docking patch goes through the existing terrane path in `_retreat` (#253,
-  #305, #321), losing `PLATEAU_DOCK_LOWER_CRUST_LOSS` of its buoyant crust down the
-  trench.
+  #305, #321), losing `DOCK_LOWER_CRUST_LOSS` of its buoyant crust down the trench.
 - **Subduct.** A patch that doesn't dock subducts whole.
+- **Shared.** This lives in a new shared module, `terranes.py`, used by RFC 0006 too.
 
-This function lives in a new shared module, `terranes.py`, used by RFC 0006 as well.
+**Preservation as continent.** Buoyant crust becomes continental material in one of two
+ways:
+- arcs mature in place (RFC 0006);
+- plateau crust converts when docked onto continental-coded receiving cells, which
+  include RFC 0006's matured arcs, so the first continent doesn't have to predate the
+  plateau.
 
-**Gross, docked and preserved.** A plume ledger, `World.plume_ledger`, books:
-- `emplaced_oceanic_m3` and `emplaced_continental_m3`: gross production;
-- `docked_m3` and `subducted_m3`: fate at trenches;
-- `preserved_continental_m3`: what becomes continental material.
+On conversion, `PLATEAU_PRESERVED_FRACTION` of the plateau crust becomes continental
+material, booked once as juvenile (`juvenile_plateau_m3`). The rest founders and is
+removed from Hc, as for arcs, and the tracer is cleared. Plateau crust docked onto another
+oceanic-coded host stays live buoyant crust there.
 
-When a docked patch lands on a continental plate, `PLATEAU_PRESERVED_FRACTION` of its
-plateau crust is recoded continental and booked as juvenile (`juvenile_plateau_m3`). The
-rest stays as non-continental crust in the column. Plateau crust is basaltic, but mass
-balances count accreted plateaus as continental growth
+Plateau crust is basaltic, but mass balances count accreted plateaus as continental growth
 [[Clift et al., 2009]](#ref-clift2009). Hence a default near 1, with a lower sensitivity
-case. Flood basalt on continents is booked at emplacement and counted in
-`emplaced_continental_m3`.
+case.
+
+**Tracer lifecycle and a disjoint ledger.** Registering a field as EXTENSIVE only
+conserves it through refinement and coarsening remaps. Every other Hc writer has to update
+the buoyant-crust tracers (`plateau_crust_m`, `arc_crust_m`, and the age moment, which
+scales with them) explicitly, or they drift above Hc or vanish without a booking.
+`terranes.py` holds one lifecycle for them:
+
+| Writer | Effect on the tracers | Ledger account |
+|---|---|---|
+| Plume emplacement, arc growth | + the added Hc | `emplaced_m3` (by source) |
+| Order-preserving thinning: divergent deformation, stretch donors, failed rifts | Scaled by the Hc ratio, like `cratons.thin_with_column` | `thinned_m3` |
+| Rift melt-through reset | Cleared | `reset_m3` |
+| Transfers: `crust_transfer.ConsumedColumn`, `_accrete_onto_survivors`, merge overflow (`_carry_material`) | Carried with the Hc they ride on; `ConsumedColumn` gains the tracer volumes and age moment | none: they stay live |
+| Consumption at a trench, including docking's lower-crust loss | Removed | `subducted_m3` |
+| Conversion: arc maturation, plateau docking onto continental-coded cells | Cleared after converting | `converted_m3`, `foundered_m3` |
+| Everything else (erosion, column caps, crust-type changes) | A phase audit, like `cratons.PhaseAudit`, holds the tracers to `0 ≤ plateau + arc ≤ E` on oceanic-coded cells and to 0 on continental-coded ones | `clipped_m3`, with the phase recorded (erosion's share is "eroded") |
+
+- *Balance:* `emplaced = live + thinned + reset + subducted + converted + foundered +
+  clipped`, plus a signed `unattributed_m3` that should stay ~0.
+- `docked_m3` counts docking *events* and sits outside the balance, because docked crust
+  stays live and can dock again on a later host.
+- The ledger lives in `World.buoyant_crust_ledger`, keyed by source (`arc`,
+  `plume_head`, `plume_tail`).
 
 **Roots.** Ontong Java is underlain by a mantle root over 300 km thick
-[[Kerr & Mahoney, 2007]](#ref-kerr2007). Plume heads add their emplaced volume to RFC
-0004's `mantle_melt_extracted_m` tracer, so plateau roots read as depleted. Whether they
-can then cratonise is for RFC 0004's validation phase, not this RFC.
+[[Kerr & Mahoney, 2007]](#ref-kerr2007). Plume residue incorporated into the lithosphere
+is one of the reservoirs RFC 0004's deferred depletion RFC must model. This RFC adds no
+depletion tracer.
 
 **Global scale check.** These are gross figures; preservation is smaller and is measured,
 not assumed.
 - At one head per 10 Myr with volumes log-uniform in [1, 50] M km³ (mean ≈ 12.5 M km³),
   heads emplace about 1.25 km³/yr on long-run average.
-- With ~25 active tails at a mean of ~0.06 km³/yr, tails emplace about 1.5 km³/yr, mostly
+- With ~25 active tails at a mean of ~0.075 km³/yr, tails emplace about 1.9 km³/yr, mostly
   on the ocean floor.
 - [[Clift et al., 2009]](#ref-clift2009)'s ~1.1 km³/yr is a *preserved* (accreted) figure
-  from a Cenozoic budget. It is the right comparison for `preserved_continental_m3`, not
-  for emplacement. Over the long run, preserved plateau crust should be a fraction of
-  emplaced, and the acceptance range below reflects that.
+  from a Cenozoic budget. It is the right comparison for `converted_m3`, not for
+  emplacement.
 
-**Runtime.** Each active plume tests the cells of each plate it might touch: a dot product
-against its position, after a bounding-cap test per plate. With ≤ 50 plumes and ~1.3 × 10⁵
-nodes at density 4, that is ~6 × 10⁶ multiply-adds per step, a few ms. Head emplacement
-happens a few steps per 10 Myr.
+**Runtime.**
+- Each active plume tests the cells of each plate it might touch: a dot product against
+  its position, after a bounding-cap test per plate. With ≤ 50 plumes and ~1.3 × 10⁵ nodes
+  at density 4, that is ~6 × 10⁶ multiply-adds per step, a few ms.
+- Patch grouping is a connected-components pass over consumable buoyant cells.
+- The phase audits are O(cells) per phase.
+- Budget: under 3% of step time.
 
 **Save compatibility.**
-- `World.mantle_plumes` is a `default_factory` list, backfilled in
-  `persistence._backfill_added_fields`. An old save starts with no plumes and spawns them
-  from its next step.
-- The three surface fields are registered in `surface_fields.py` with defaults (0, sentinel,
-  0), which the registry backfills.
+- `World.mantle_plumes`, `World.plume_stream` and `World.buoyant_crust_ledger` are
+  `default_factory` fields, backfilled in `persistence._backfill_added_fields`. An old save
+  starts with no plumes and a fresh stream from its current time.
+- The three surface fields are registered in `surface_fields.py` with defaults (0, 0, 0),
+  which the registry backfills.
 - `MantlePlume` gets defaults on every field, so later additions stay loadable (see
   `docs/save-compatibility.md`).
-- `World.plume_ledger` is a `default_factory` dict, backfilled the same way.
 
-**Live knob.** `plume_multiplier` joins `World.TUNING_MULTIPLIER_FIELDS` (default 1.0) and
-scales spawn rates. At 0, no plume ever spawns, which reproduces `origin/main`. Debug and
-sketch worlds can turn plumes off that way.
+**Live knob.** `plume_multiplier` joins `World.TUNING_MULTIPLIER_FIELDS` (default 1.0,
+bounded by the stream's ceiling) and scales acceptance. At 0, no plume ever spawns, which
+reproduces `origin/main`. Debug and sketch worlds can turn plumes off that way.
 
 **Knobs.**
 
 | Knob | Start | Source | Tuning |
 |---|---|---|---|
-| `PLUME_HEAD_RATE_PER_MYR` | 0.1 | **Calibration assumption** anchored to the LIP record's average of one per ~10–20 Myr [[Bryan et al., 2010]](#ref-bryan2010), which is incomplete and not stationary | Sensitivity at 0.05 and 0.2; clustered (Cox) variant |
-| `PLUME_RATE_CORRELATION_MYR` (Cox variant) | 100 Myr | Design choice | Sensitivity case only |
+| `PLUME_HEAD_RATE_PER_MYR` | 0.1 | **Calibration assumption** anchored to the LIP record's average of one per ~10–20 Myr [[Bryan et al., 2010]](#ref-bryan2010), which is incomplete and not stationary | Sensitivity at 0.05 and 0.2; Cox variant |
+| `PLUME_RATE_CORRELATION_MYR`, `PLUME_RATE_MODULATION_MAX` (Cox variant) | 100 Myr, 3 | Design choices | Sensitivity case only |
 | `PLUME_HEAD_VOLUME_MIN_KM3`, `_MAX_KM3`, log-uniform | 1 × 10⁶, 5 × 10⁷ | **Calibration assumption**: the range spans ≥ 1 M km³ typical [[Bryan et al., 2010]](#ref-bryan2010) to Ontong Java's 44–57 M km³ [[Gladczenko et al., 1997]](#ref-gladczenko1997); the distribution's shape is not established | Log-normal and power-law sensitivity cases |
-| `PLUME_HEAD_RADIUS_KM` | 1,100 km | Heads 2,000–2,500 km across [[Campbell & Griffiths, 1990]](#ref-campbell1990) | Fixed |
 | `PLUME_HEAD_DURATION_MYR` | 3 Myr | Pulses of ~1–5 Myr [[Bryan & Ernst, 2008]](#ref-bryan2008) | Fixed. Any step length works, by interval-overlap integration |
+| `PLUME_HEAD_RADIUS_KM` (continental heads and heat) | 1,100 km | Heads 2,000–2,500 km across [[Campbell & Griffiths, 1990]](#ref-campbell1990) | Fixed |
+| `PLATEAU_MEAN_EXCESS_M` | 15,000 m | Derived: the model's isostasy turns it into ~2.3 km of relief, inside the 2–3 km plateaus stand above the floor [[Kerr & Mahoney, 2007]](#ref-kerr2007) | Re-derive if the isostasy changes |
+| `PLATEAU_AREA_MIN_KM2`, `_MAX_KM2` | 1 × 10⁵, 2 × 10⁶ | LIPs cover > 0.1 M km² [[Bryan et al., 2010]](#ref-bryan2010); plateaus up to 2 M km² [[Kerr & Mahoney, 2007]](#ref-kerr2007) | Fixed |
 | `PLUME_TAIL_FLUX_MIN/MAX_KM3_PER_YR` | 0.01, 0.25 | Hawaii, the strongest hotspot, peaks near 0.25 [[Van Ark & Lin, 2004]](#ref-vanark2004) | Fixed |
 | `PLUME_TAIL_LIFETIME_MYR` | 80 Myr | Length of the Hawaiian–Emperor record [[Van Ark & Lin, 2004]](#ref-vanark2004) | Sweep 40–120 |
 | `PLUME_TAIL_RADIUS_KM` | 150 km | A volcanic edifice and its apron; at least two cells at density 1 | Fixed |
 | `PLUME_TAIL_ONLY_RATE_PER_MYR` | 0.3 | Sets ~25 active hotspots with the lifetime above; Earth has ~49, 7 deep [[Courtillot et al., 2003]](#ref-courtillot2003) | Tune so 20–50 hotspots are active |
 | `PLUME_UNIFORM_SHARE` | 0.3 | Not every plume sits on an upwelling [[Burke & Torsvik, 2004]](#ref-burke2004) | Fixed |
-| H_old, `DOCK_H_OLD_M` | 25,000 m | Between the Caribbean (8–15 km, resisted only when young) and Ontong Java (≥ 30 km, resisted after 100 Myr) [[Kerr & Mahoney, 2007]](#ref-kerr2007) | Calibration assumption; sensitivity 20–30 km |
-| H_young, `DOCK_H_YOUNG_M` | 10,000 m | The young Caribbean case [[Kerr & Mahoney, 2007]](#ref-kerr2007) | Calibration assumption; sensitivity 8–15 km |
+| E_young, `DOCK_E_YOUNG_M` | 5,000 m excess | The young Caribbean plateau, 8–15 km total [[Kerr & Mahoney, 2007]](#ref-kerr2007), converted | Calibration assumption; sensitivity 2–8 km |
+| E_old, `DOCK_E_OLD_M` | 15,000 m excess | Between old Caribbean-like crust and Ontong Java's ≥ 23.5 km excess [[Kerr & Mahoney, 2007]](#ref-kerr2007) | Calibration assumption; sensitivity 12–20 km |
 | τ_cool, `DOCK_COOLING_MYR` | 20 Myr | Design choice: "a few Myr" is young and 100 Myr old in [[Kerr & Mahoney, 2007]](#ref-kerr2007) | Sensitivity 10–40 Myr |
-| ΔH, `DOCK_WIDTH_M` | 3,000 m | Design choice: the spread of outcomes for similar plateaus | Sensitivity 1,500–6,000 m |
-| `PLATEAU_DOCK_LOWER_CRUST_LOSS` | 0.2 | Design choice: Ontong Java lost lower crust at its edge [[Mann & Taira, 2004]](#ref-mann2004); no fraction is given | Sensitivity 0–0.4 |
+| ΔE, `DOCK_WIDTH_M` | 3,000 m | Design choice: the spread of outcomes for similar plateaus | Sensitivity 1,500–6,000 m |
+| `DOCK_LOWER_CRUST_LOSS` | 0.2 | Design choice: Ontong Java lost lower crust at its edge [[Mann & Taira, 2004]](#ref-mann2004); no fraction is given | Sensitivity 0–0.4 |
 | `PLATEAU_PRESERVED_FRACTION` | 0.9 | Calibration assumption: budgets count accreted plateaus as continental growth [[Clift et al., 2009]](#ref-clift2009), though they are mafic | Sensitivity at 0.5 |
 | `PLUME_HEAT_MYR` | 20 Myr | The order of thermal re-equilibration of heated lithosphere; no direct constraint | Tune with RFC 0003: craton rifting should cluster on plume-heated cells |
 | `PLUME_CRATON_WEAKENING` | 0.75 | Cancels `CRATON_RIFT_RESISTANCE` at full heat | Sweep 0.5–1.0 |
 | `PLUME_HEAD_STRESS` | in `internal_stress` units | Breakup often follows a continental plume head [[White & McKenzie, 1989]](#ref-white1989); no rate is given | Tune to a design target: about half of continental plume heads followed by a split of their plate within 20 Myr |
 
 Tune on seeds 7, 11 and 2024 to 1 Gyr, plus a regenerated seed 456862899 to 3 Gyr; run the
-replays one at a time. Report:
+replays one at a time, after the isolated-head scale check passes. Report:
 - LIP count and volumes per Gyr, with the oceanic/continental split;
 - active hotspot count;
-- plateau crust docked versus subducted;
-- juvenile continental by source (flood basalt, docked plateau, tail);
+- every buoyant-crust ledger account, by source;
+- juvenile continental by source (flood basalt, converted plateau, tail);
 - craton rifted volume inside versus outside plume-heated cells;
 - step time.
 
@@ -317,72 +405,102 @@ replays one at a time. Report:
 
 - `backend/app/plumes.py` (new):
   - `MantlePlume`;
-  - `spawn(world, years)`;
-  - `apply(world, years)` (head, tail and heat, per plate);
-  - the plume ledger and its bookings;
+  - the index-keyed event stream, with thinning and the Cox modulation;
+  - `apply(world, years)` (head, tail and heat, per plate, by interval overlap);
+  - the footprint kernels;
   - `diagnostics(world)`;
   - constants with citations.
 - `backend/app/terranes.py` (new, shared with RFC 0006): patch grouping,
-  `docking_probability(thickness, age)`, the deterministic per-encounter draw, and the
-  partial lower-crust loss.
-- `backend/app/world.py`: the `mantle_plumes` and `plume_ledger` fields and `plume_multiplier` knob; call
-  `plumes.spawn` then `plumes.apply` in `step_world_progress` after topology changes and
-  before `volcanism.apply_volcanic_activity`, so new volcanoes roll the same step.
-- `backend/app/persistence.py`: backfill `mantle_plumes` and `plume_ledger`.
-- `backend/app/surface_fields.py`: register `plateau_crust_m`, `plateau_formed_years` and
-  `plume_heat_myr`.
+  `docking_probability(excess, age)`, the per-encounter draw, partial loss, conversion,
+  the tracer lifecycle helpers (`thin_tracers`, `clear_tracers`, `carry_tracers`), the
+  phase audit for tracers, and the buoyant-crust ledger.
+- `backend/app/world.py`: the `mantle_plumes`, `plume_stream` and `buoyant_crust_ledger`
+  fields and the `plume_multiplier` knob; call `plumes.apply` in `step_world_progress`
+  after topology changes. Bracket the existing phases with the tracer audit, as the craton
+  audit is.
+- `backend/app/persistence.py`: backfill the three world fields.
+- `backend/app/surface_fields.py`: register `plateau_crust_m`, `buoyant_crust_time_m_yr`
+  and `plume_heat_myr`.
 - `backend/app/quad_tectonics.py`
   - `_retreat`: patches that `terranes` docks join the `terrane` donors, minus their
-    lower-crust loss; the rest subduct.
-  - At the point docked crust lands on a continental upper plate (`_accrete_onto_survivors`
-    and `crust_transfer`): recode it and book `juvenile_plateau_m3`.
-  - `_allocate_stretch`: plume weakening on craton strength.
-- `backend/app/lithosphere_plate.py`, `deform_columns`: plume weakening on
-  `CRATON_RIFT_RESISTANCE`.
-- `backend/app/sparse_quad_patch.py`, `apply_failed_rift`: the same weakening (with RFC
-  0003's resistance).
+    lower-crust loss; the rest subduct, booked.
+  - `_accrete_onto_survivors` and the conversion on continental-coded receivers.
+  - `_allocate_stretch`: thin tracers with donors; plume weakening on craton strength.
+- `backend/app/crust_transfer.py`: `ConsumedColumn` gains the tracer volumes and age
+  moment, and the placement carries them.
+- `backend/app/quad_merge.py`: carry the tracers with merge overflow.
+- `backend/app/lithosphere_plate.py`, `deform_columns`: thin tracers under divergence;
+  clear them on melt-through; apply plume weakening to `CRATON_RIFT_RESISTANCE`.
+- `backend/app/sparse_quad_patch.py`, `apply_failed_rift`: thin tracers; apply the same
+  weakening, with RFC 0003's clamp.
 - `backend/app/merge_split.py`: RFC 0003's strength proxy counts heated cells as weak; add
   the head stress to `internal_stress`.
+- `backend/app/hydroclimate/volcanism.py`: unchanged. Its untouched eruption path is part
+  of the volume-ownership contract, covered by a test.
 - `backend/app/continental_ledger.py`: sub-accounts `juvenile_flood_basalt_m3`,
   `juvenile_plateau_m3` and `juvenile_hotspot_m3` under `juvenile_additions_m3`.
 - `backend/app/elevation_lines.py`: correct the "no hotspot spawning yet" comment.
 - `backend/app/render_image.py`: a `plumes` debug view (plume positions, head footprints,
   tail age, plateau crust thickness), added to `DEBUG_VIEWS`; `frontend/src/api.ts` view
   union and `legendData.ts` legend.
-- `backend/app/stats.py`: active plumes, LIP events, plateau area and volume.
-- `backend/app/main.py`: `GET /world/plumes` listing live plumes for the Plate Inspector or
-  a future panel. Optional; the debug view alone meets the criteria.
+- `backend/app/stats.py`: active plumes, LIP events, buoyant-crust ledger and areas.
+- `backend/app/main.py`: `GET /world/plumes` listing live plumes, optional; the debug
+  view alone meets the criteria.
 - Tests:
-  - `backend/unit_tests/test_plumes.py` (new): spawn counts match the rate over many draws,
-    deterministically; for random step sequences, including steps longer than the head
-    (10 Myr against 3 Myr), total head and tail delivery equals the scheduled volume and
-    never exceeds it; a plate moving over a fixed tail leaves volcanoes in a line parallel
-    to its motion; docking probability is in [0, 1], rises with thickness and falls with
-    age; a patch's draw is stable across steps within one encounter; a docked patch loses
-    exactly its lower-crust share; weakening halves effective craton resistance at 0.5;
-    `plume_multiplier = 0` changes nothing.
-  - `test_persistence.py`: an old save loads with no plumes and default fields.
+  - `backend/unit_tests/test_plumes.py` (new):
+    - **isolated-head scale check:** a median head on a reference oceanic plate yields
+      2.0–2.6 km of peak relief and the configured area; a minimum and a maximum head stay
+      within 1.2–4.5 km;
+    - the event stream yields identical events (indices, times, positions, volumes) for
+      ten 1 Myr steps and one 10 Myr step, and for any random partition;
+    - over random step partitions, including steps longer than the head, total head and
+      tail delivery equals the scheduled volume and never exceeds it;
+    - kept events at multiplier 0.5 are a subset of those at 1.0;
+    - a plate moving over a fixed tail leaves a line of crust maxima parallel to its
+      motion, getting younger toward the plume;
+    - **one volume owner:** with plumes and the eruption lifecycle both on, no plume cell
+      becomes `is_volcano`, and the step's total Hc change equals plume delivery plus
+      non-plume eruptions, exactly;
+    - weakening halves effective craton resistance at 0.5, clamped;
+    - `plume_multiplier = 0` changes nothing.
+  - `backend/unit_tests/test_terranes.py` (new):
+    - docking probability is in [0, 1], rises with excess and falls with age, and matches
+      the example values above;
+    - a patch's draw is stable across steps within one encounter;
+    - a docked patch loses exactly its lower-crust share;
+    - **tracer lifecycle:** each writer in the table, applied to a synthetic plate
+      (erosion, divergent thinning, a failed rift, melt-through, a column cap, a
+      `crust_transfer` consumption, a merge overflow, two successive dockings on oceanic
+      hosts, then conversion on a continental one), keeps `0 ≤ tracers ≤ E` and books
+      exactly what it removes, and the buoyant-crust ledger closes at every stage;
+    - `docked_m3` counts both dockings while the balance stays exact.
+  - `test_persistence.py`: an old save loads with no plumes, an empty ledger and default
+    fields.
   - `test_continental_ledger.py`: the juvenile sub-accounts sum correctly.
 - Docs:
   - `docs/simulation-model.md`: a new "Mantle plumes (`plumes.py`)" section; update the
     Volcanism, Cratons (Resistance) and Known simplifications sections.
-  - `docs/architecture.md` (module map), `docs/api-reference.md` (view, endpoint, stats
-    keys) and `docs/save-compatibility.md` (new fields).
+  - `docs/architecture.md` (module map, including `terranes.py`), `docs/api-reference.md`
+    (view, endpoint, stats keys) and `docs/save-compatibility.md` (new fields).
 
 ## Assumptions and uncertainty
 
 - **The arrival process is assumed.** The LIP record is incomplete and clustered; the
-  stationary Poisson default is a simplification, and the rate and volume distribution are
-  calibration assumptions (see the knob table). The sensitivity variants show how much the
-  results depend on them.
+  stationary default is a simplification, and the rate and volume distribution are
+  calibration assumptions. The sensitivity variants show how much the results depend on
+  them.
 - **Fixed plumes.** Real hotspots drift slowly relative to each other
   [[Courtillot et al., 2003]](#ref-courtillot2003). A fixed mantle frame is a
   simplification, matching the model's fixed convection centres.
 - **Placement is an analogy.** Biasing plumes toward upwellings stands in for the
   deep-mantle structure [[Burke & Torsvik, 2004]](#ref-burke2004) that the model doesn't
   have.
+- **The plateau footprint is derived from the isostasy, not observed.** Tying area to
+  volume through one mean excess thickness reproduces typical relief, but real plateaus
+  vary in thickness (Caribbean versus Ontong Java). Very large heads overshoot.
 - **Docking is uncertain.** The age-dependent threshold, its width and the lower-crust
-  loss are shaped by a few well-studied plateaus; the probabilistic form admits that.
+  loss are shaped by a few well-studied plateaus, and the conversion from total to excess
+  thickness is approximate. The probabilistic form admits that.
 - **Plateau crust is mafic.** Counting most of it as continental once docked follows mass
   balances, not composition. `PLATEAU_PRESERVED_FRACTION` exposes the choice.
 - **Weakening has no direct constraint.** `PLUME_HEAT_MYR` and the strength reduction are
@@ -390,24 +508,26 @@ replays one at a time. Report:
 
 ## Acceptance criteria
 
+- [ ] **Isolated-head scale check (before tuning):** the unit test above passes. A median
+      head on reference oceanic lithosphere gives 2.0–2.6 km of peak relief.
 - [ ] Over 1 Gyr on each of seeds 7, 11 and 2024: plume-head counts consistent with the
       configured rate (Poisson 95% interval), a volume distribution matching the
       configured one, and 20–50 active hotspots at every 100 Myr checkpoint.
-- [ ] Timestep robustness: for the same seed, 1 Myr and 10 Myr steps emplace the same
-      total plume volume over 100 Myr within 1%, and no stage ever delivers more than its
-      volume (unit test plus replay).
-- [ ] Hotspot tracks: on a pinned-motion test world, volcanoes created by one tail lie
-      within 20° of the plate's motion direction at the plume and get younger toward it.
-- [ ] Plateaus reach 2–3 km above the surrounding abyssal floor in the median head.
-- [ ] The plume ledger closes: `emplaced_oceanic_m3` = live plateau crust + docked +
-      subducted (including docking's lower-crust loss), and preserved ≤ docked +
-      `emplaced_continental_m3`.
-- [ ] Gross emplacement, docking and preservation are reported separately. Long-run
-      `preserved_continental_m3` is 0.3–1.5 km³/yr on the tuning seeds at the starting
+- [ ] Timestep robustness:
+  - [ ] the event stream is identical across step partitions (unit test);
+  - [ ] for a shared predetermined schedule, total delivered volume is identical within
+        1e-9 relative for 1 Myr and 10 Myr steps;
+  - [ ] on full replays, totals agree within 2% (positions differ).
+- [ ] Hotspot tracks: on a pinned-motion test world, one tail's crust maxima lie within 20°
+      of the plate's motion direction at the plume and get younger toward it.
+- [ ] The buoyant-crust ledger closes on every acceptance run, with `unattributed_m3`
+      below 1e-6 of emplaced volume, and the tracer invariants hold at every step.
+- [ ] Gross emplacement, docking events and conversion are reported separately. Long-run
+      `converted_m3` from plateaus is 0.3–1.5 km³/yr on the tuning seeds at the starting
       knobs. That is a sanity range around ~1.1 km³/yr of Cenozoic plateau accretion
       [[Clift et al., 2009]](#ref-clift2009), not a fit.
 - [ ] The sensitivity runs (rate, clustering, volume distribution, docking knobs) are
-      reported, with the spread of preserved continental material each produces.
+      reported, with the spread of converted continental material each produces.
 - [ ] With RFC 0003 in place, at least half of the craton volume lost to rifting is lost in
       plume-heated cells.
 - [ ] Step time changes by less than 3% at density 4; save size by less than 3%.
@@ -422,7 +542,7 @@ replays one at a time. Report:
   emplaced oceanic plateau crust ever docks, plateaus in the model meet trenches too old
   or too thin. They can't be a crustal source here; drop the docking part and keep plumes
   only for tracks and weakening.
-- **The source is all in the knobs.** If preserved continental material varies by more
+- **The source is all in the knobs.** If converted continental material varies by more
   than a factor of five across the rate and volume sensitivity cases, the model's crust
   budget would be set by unconstrained assumptions. Don't merge plateau preservation until
   a better constraint exists.
