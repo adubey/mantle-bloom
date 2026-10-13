@@ -112,17 +112,30 @@ def test_render_keeps_sampled_crust_and_lithosphere_above_schematic_asthenospher
 
     image_base64, _ = cross_section.render_png_base64(world, 0.0, 0, 800, 500)
     image = Image.open(io.BytesIO(base64.b64decode(image_base64))).convert("RGB")
-    margin_top, margin_bottom = 38, 55
-    vertical_scale = (500 - margin_top - margin_bottom) / (
-        cross_section.SECTION_DEPTH_KM + cross_section.RELIEF_ALLOWANCE_KM + 10.0
+    margin_x, margin_top = 20, 38
+    arc_width = (800 - 2 * margin_x) * (690.0 / 820.0)
+    horizontal_scale = arc_width / (
+        2.0 * cross_section.PLANET_RADIUS_KM
+        * np.sin(cross_section.ARC_LENGTH_KM / (2.0 * cross_section.PLANET_RADIUS_KM))
     )
-    lower_limit_y = 500 - margin_bottom - cross_section.RELIEF_ALLOWANCE_KM * 0.5 * vertical_scale
-    surface_y = round(lower_limit_y - cross_section.SECTION_DEPTH_KM * vertical_scale)
-    sample_x = 800 // 2 - 15  # Clear of the center depth-tick labels.
+    vertical_scale = cross_section.VERTICAL_EXAGGERATION * horizontal_scale
+    surface_y = margin_top + round(500 * 0.08)
+    sample_x = 800 // 2
 
     assert image.getpixel((sample_x, surface_y + 10)) == cross_section.CRUST_OCEANIC
     assert image.getpixel((sample_x, surface_y + round(70 * vertical_scale))) == cross_section.MANTLE_LITHOSPHERE
     assert image.getpixel((sample_x, surface_y + round(250 * vertical_scale))) == cross_section.ASTHENOSPHERE
+    assert image.getpixel((sample_x, surface_y - 2)) == (14, 20, 34)
+    arc_half_angle = cross_section.ARC_LENGTH_KM / (2.0 * cross_section.PLANET_RADIUS_KM)
+    edge_x = int(np.ceil(800 / 2 + arc_width / 2))
+    edge_surface_y = surface_y + round(
+        cross_section.VERTICAL_EXAGGERATION
+        * cross_section.PLANET_RADIUS_KM
+        * (1.0 - np.cos(arc_half_angle))
+        * horizontal_scale
+    )
+    assert image.getpixel((edge_x, edge_surface_y + 2)) == cross_section.CRUST_OCEANIC
+    assert image.getpixel((40, surface_y + 20)) == (14, 20, 34)
 
 
 def test_sampling_empty_world_reports_no_active_surface_nodes():

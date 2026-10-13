@@ -26,10 +26,6 @@ ARC_LENGTH_KM = 3000.0
 ARC_POSITION_COUNT = 120
 SECTION_DEPTH_KM = 350.0
 VERTICAL_EXAGGERATION = 2.0
-# Fixed allowance for surface relief around sea level. This keeps the physical depth scale
-# identical as the selected arc moves across regions with different topography.
-RELIEF_ALLOWANCE_KM = 80.0
-
 CRUST_CONTINENTAL = (201, 143, 130)
 CRUST_OCEANIC = (82, 103, 121)
 MANTLE_LITHOSPHERE = (66, 90, 90)
@@ -157,23 +153,28 @@ def render_png_base64(world, plane_angle_deg: float, position_index: int, width:
 
     margin_x = max(16, round(width * 0.025))
     margin_top, margin_bottom = max(30, round(height * 0.075)), max(45, round(height * 0.11))
-    draw_height = max(1, height - margin_top - margin_bottom)
-    vertical_scale = draw_height / (SECTION_DEPTH_KM + RELIEF_ALLOWANCE_KM + 10.0)
-    depth_scale = vertical_scale / 1000.0
-    lower_limit_y = height - margin_bottom - RELIEF_ALLOWANCE_KM * 0.5 * vertical_scale
+    # Match the step-1 schematic's geometry: the 3,000 km arc occupies 690/820 of
+    # the frame, and radial depth is exaggerated twice using the same pixel/km scale.
+    # This keeps server frames comparable to the placeholder at any rendered size (#360).
+    arc_width = (width - 2 * margin_x) * (690.0 / 820.0)
+    half_arc_angle = ARC_LENGTH_KM / (2.0 * PLANET_RADIUS_KM)
+    horizontal_scale = arc_width / (2.0 * PLANET_RADIUS_KM * np.sin(half_arc_angle))
+    vertical_scale = VERTICAL_EXAGGERATION * horizontal_scale
+    surface_center_y = margin_top + round(height * 0.08)
+    arc_angles = distances / PLANET_RADIUS_KM
+    x_samples = width / 2.0 + PLANET_RADIUS_KM * np.sin(arc_angles) * horizontal_scale
     surface_y = (
-        lower_limit_y
-        - SECTION_DEPTH_KM * vertical_scale
-        - (elev - sea_level) / 1000.0 * VERTICAL_EXAGGERATION * vertical_scale
+        surface_center_y
+        + VERTICAL_EXAGGERATION * PLANET_RADIUS_KM * (1.0 - np.cos(arc_angles)) * horizontal_scale
+        - (elev - sea_level) / 1000.0 * vertical_scale
     )
-    x_samples = margin_x + (distances + ARC_LENGTH_KM / 2.0) / ARC_LENGTH_KM * (width - 2 * margin_x)
     x_pixel = np.arange(width)
     nearest = np.clip(np.searchsorted(x_samples, x_pixel, side="right") - 1, 0, len(x_samples) - 1)
 
     image = Image.new("RGB", (width, height), (14, 20, 34))
     draw = ImageDraw.Draw(image)
-    # The schematic mantle remains underneath all sampled columns; Hc and Hm mask it locally.
-    draw.rectangle((0, margin_top, width - 1, height - margin_bottom), fill=ASTHENOSPHERE)
+    # Draw the schematic mantle only inside the curved section window; filling the whole
+    # plotting rectangle made the frame read as an asthenosphere block (#360).
     points_for_parcels = sample_xyz
     marker_by_sample = dict(_parcel_markers(world, points_for_parcels, spacing_km))
     melt_eligible = continental & (moho_temp >= orogeny.MELT_ONSET_MOHO_C)
@@ -182,17 +183,25 @@ def render_png_base64(world, plane_angle_deg: float, position_index: int, width:
     flow_along = np.sum(flow * tangent[line_samples], axis=1)
     flow_max = max(float(np.max(np.abs(flow_along), initial=0.0)), 1e-15)
 
-    for x in range(margin_x, width - margin_x):
+    for x in range(
+        max(margin_x, int(x_samples[0])),
+        min(width - margin_x, int(np.ceil(x_samples[-1])) + 1),
+    ):
         i = int(nearest[x])
         x0, x1 = x, min(x + 1, width - margin_x)
         top = float(surface_y[i])
-        bottom = top + SECTION_DEPTH_KM * vertical_scale
+        local_depth_scale = vertical_scale * np.cos(arc_angles[i])
+        depth_scale = local_depth_scale / 1000.0
+        bottom = top + SECTION_DEPTH_KM * local_depth_scale
         seabed = float(elev[i])
-        sea_y = lower_limit_y - SECTION_DEPTH_KM * vertical_scale
+        sea_y = (
+            surface_center_y
+            + VERTICAL_EXAGGERATION * PLANET_RADIUS_KM * (1.0 - np.cos(arc_angles[i])) * horizontal_scale
+        )
         hcm = min(float(hc[i]) / 1000.0, SECTION_DEPTH_KM)
         hml = min((float(hc[i]) + float(hm[i])) / 1000.0, SECTION_DEPTH_KM)
-        crust_end = top + hcm * vertical_scale
-        lith_end = top + hml * vertical_scale
+        crust_end = top + hcm * local_depth_scale
+        lith_end = top + hml * local_depth_scale
         base_color = tuple(np.clip(land_colors[i], 0, 255).astype(int)) if continental[i] else CRUST_OCEANIC
         # Ocean fill lies above the sampled seafloor, with shallow shelves visibly lighter.
         if seabed < sea_level:
@@ -209,7 +218,7 @@ def render_png_base64(world, plane_angle_deg: float, position_index: int, width:
         draw.rectangle((x0, round(top), x1, min(round(crust_end), height - margin_bottom)), fill=base_color)
         # Lower-crust thermal shading is intentionally subtle and is not itself melt.
         if hcm > 0.0:
-            lower_start = round(top + hcm * depth_scale * 0.5)
+            lower_start = round(top + hcm * local_depth_scale * 0.5)
             lower_end = min(round(crust_end), height - margin_bottom)
             tint = float(np.clip((mid_crust_temp[i] - 250.0) / 700.0, 0.0, 1.0) * 0.16)
             if lower_end > lower_start:
@@ -220,7 +229,7 @@ def render_png_base64(world, plane_angle_deg: float, position_index: int, width:
         draw.rectangle((x0, round(crust_end), x1, min(round(lith_end), height - margin_bottom)), fill=MANTLE_LITHOSPHERE)
         draw.rectangle((x0, round(lith_end), x1, round(bottom)), fill=ASTHENOSPHERE)
         if melt_eligible[i] and hcm > 0:
-            hatch_top = max(round(crust_end - 8.0 * vertical_scale), round(top))
+            hatch_top = max(round(crust_end - 8.0 * local_depth_scale), round(top))
             hatch_bottom = min(round(crust_end), height - margin_bottom)
             if hatch_bottom > hatch_top and x % 7 == 0:
                 draw.line((x0, hatch_top, x1, hatch_bottom), fill=(255, 210, 120), width=1)
