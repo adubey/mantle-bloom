@@ -30,7 +30,9 @@ def client():
     generates its own. Teardown also fails a test that leaves `_world_lock` held (releasing
     it first, so the leak doesn't cascade into every later test as a 503 or a hang)."""
     _reset_app_state()
-    yield TestClient(app)
+    # A loopback client on a loopback host: the local no-login path, so these tests exercise
+    # the routes rather than the auth guard (test_auth.py covers that, #372).
+    yield TestClient(app, base_url="http://localhost", client=("127.0.0.1", 50000))
     _reset_app_state()
     if main._world_lock.locked():
         main._world_lock.release()

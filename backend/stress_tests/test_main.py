@@ -15,7 +15,9 @@ def client():
     `client` fixture, which this mirrors, for why the module globals need resetting (#334)."""
     main._state["world"] = None
     main._animation_stop_event.clear()
-    yield TestClient(app)
+    # A loopback client on a loopback host: the local no-login path, so these tests exercise
+    # the routes rather than the auth guard (test_auth.py covers that, #372).
+    yield TestClient(app, base_url="http://localhost", client=("127.0.0.1", 50000))
     main._state["world"] = None
     main._animation_stop_event.clear()
     if main._world_lock.locked():

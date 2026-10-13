@@ -4,6 +4,25 @@ Routes over a single in-memory world (see
 [architecture.md#world-state](architecture.md#world-state)) -- no world id, one world at a
 time.
 
+Every `/world/*` route requires the admin: a GitHub session for the configured owner, or a
+request made on the server's own machine. Anyone else gets `401`. Cross-site writes get
+`403`. See [architecture.md#access-control](architecture.md#access-control).
+
+## Login routes
+
+- `GET /login`: the sign-in page. It redirects to `/` when the request is already the admin.
+  `?error=denied|state|github|forbidden|unconfigured` shows a fixed message for a failed
+  attempt.
+- `GET /auth/github`: starts GitHub OAuth (with PKCE). It sets a short-lived signed `state`
+  cookie and redirects to GitHub.
+- `GET /auth/github/callback`: checks `state`, exchanges the code and fetches the GitHub
+  user. If the user ID is the configured owner, it sets the session cookie and redirects to
+  `/`. Otherwise it redirects to `/login?error=...` without a session.
+- `POST /logout`: clears the session cookie and redirects (`303`) to `/view`.
+- `GET /auth/session`: `{"admin": bool, "local": bool, "login": str | null,
+  "login_available": bool}`. `local` means the no-login local rule applied. `login` is the
+  GitHub login of a real session.
+
 ## `POST /world/generate`
 
 Request body:

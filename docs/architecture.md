@@ -145,6 +145,42 @@ Tab/Shift+Tab). The event console is the one other exception: it just displays w
 `events` the last `generate`/`step` response carried, which is already the full current log
 -- see api-reference.md).
 
+<a id="access-control"></a>
+## Access control (`backend/app/auth.py`)
+
+The full app is single-owner (#372). `auth.AuthMiddleware` sits inside the CORS middleware
+and checks every request before routing:
+
+- `GET /` from someone who isn't the admin redirects to `/view`, the logged-out page (the
+  frontend's `main.tsx` renders `Viewer.tsx` there and `App.tsx` everywhere else).
+- Every `/world/*` route answers `401` to anyone who isn't the admin, including direct API
+  calls.
+- Any non-GET request whose `Origin` is another site (or `Sec-Fetch-Site: cross-site` when
+  there's no `Origin`) is refused with `403`. This is the CSRF guard. The Vite dev origin
+  counts as same-site.
+
+A request is the admin when it carries a valid session cookie, or when it was made on this
+machine. A session cookie (`mb_session`) is an HMAC-signed `{uid, login, exp}` that
+`/auth/github/callback` sets only when GitHub's numeric user ID matches the configured owner.
+It's `Secure`, `HttpOnly` and `SameSite=Lax`, lasts 14 days, and isn't stored server-side.
+A request counts as made on this machine when the client is loopback, `Host` is loopback,
+and there are no `Forwarded`/`X-Forwarded-*`/`X-Real-IP` headers. That covers
+`bin/restart.sh` and the desktop build, so neither needs login. The OAuth flow uses PKCE and
+a signed, short-lived `state` cookie.
+
+Configuration is read from the environment on every request:
+
+| Variable | Meaning |
+|---|---|
+| `MANTLE_BLOOM_GITHUB_CLIENT_ID`, `MANTLE_BLOOM_GITHUB_CLIENT_SECRET` | The GitHub OAuth app. Its callback URL is `<public URL>/auth/github/callback`. |
+| `MANTLE_BLOOM_GITHUB_OWNER_ID` | The one GitHub user ID allowed in (`gh api user -q .id`). |
+| `MANTLE_BLOOM_SESSION_SECRET` | At least 32 bytes, used to sign cookies. Rotating it signs everyone out. |
+| `MANTLE_BLOOM_PUBLIC_URL` | Optional. The `https://` origin to build the OAuth callback from, needed behind a TLS-terminating proxy. |
+| `MANTLE_BLOOM_LOCAL_NO_LOGIN` | `0` turns off the local no-login rule. Set it behind a same-host proxy that rewrites `Host` to loopback and adds no forwarding headers. |
+
+Missing any of the first four leaves login unconfigured, and the guard fails closed: remote
+requests never get admin access, and `/login` says login isn't configured.
+
 <a id="world-state"></a>
 ## World state (`backend/app/world.py`)
 
@@ -359,6 +395,8 @@ hydroclimate/atmosphere_cfd.py      the atmospheric wind solver: a genuine time-
                      are diagnostic in climate.py, not CFD-solved -- the shallow-water ocean
                      solver was retired (see simulation-model.md#ocean-atmospheric-fluid-dynamics)
 main.py              FastAPI routes
+auth.py              single-owner GitHub login: the request guard, OAuth routes and signed
+                     session cookies (see #access-control above)
 render_image.py      renders /world/render's requested view/resolution to a PNG server-side
                      (see simulation-model.md#render-image and simulation-model.md#climate),
                      plus /world/animate's streamed H.264/MP4 rendering (stream_animation_mp4)
