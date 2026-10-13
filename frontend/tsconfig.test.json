@@ -11,5 +11,5 @@
     "outDir": ".test-dist",
     "rootDir": "."
   },
-  "include": ["tests/**/*.test.ts", "src/apiResponse.ts", "src/crossSectionApi.ts"]
+  "include": ["tests/**/*.test.ts", "src/apiResponse.ts", "src/crossSectionApi.ts", "src/crossSectionLocator.ts"]
 }

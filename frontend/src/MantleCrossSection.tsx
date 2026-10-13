@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { fetchCrossSection } from "./api";
 import { advanceCrossSectionPosition, nearbyCrossSectionPositions } from "./crossSectionFrames";
+import { projectGreatCirclePoint } from "./crossSectionLocator";
 
 const PLANET_RADIUS_KM = 6_371;
 const ARC_LENGTH_KM = 3_000;
@@ -135,12 +136,7 @@ interface CurveSegment {
 }
 
 function globePoint(planeAngleDeg: number, arcAngle: number, cx: number, cy: number, radius: number): ProjectedPoint {
-  const planeAngle = (planeAngleDeg * Math.PI) / 180;
-  return {
-    x: cx + radius * Math.cos(planeAngle) * Math.cos(arcAngle),
-    y: cy - radius * Math.sin(arcAngle),
-    depth: Math.sin(planeAngle) * Math.cos(arcAngle),
-  };
+  return projectGreatCirclePoint(planeAngleDeg, arcAngle, cx, cy, radius);
 }
 
 function projectedCurveSegments(
@@ -556,7 +552,7 @@ export default function MantleCrossSection({
         <h3 style={{ margin: "1px 0 0", fontSize: 13, fontWeight: 600 }}>Globe locator</h3>
         <GlobeLocator planeAngleDeg={planeAngleDeg} arcPosition={arcPosition} />
         <div style={{ color: "#aeb8ca", fontSize: 10, textAlign: "center", marginTop: -3 }}>
-          <div style={{ color: "#91a0b8" }}>Slow axis: rotate the whole plane toward the poles</div>
+          <div style={{ color: "#91a0b8" }}>Slow axis: tilt the great circle from equator toward the poles</div>
           <div style={{ color: "#61ded0" }}>Fast axis: move the highlighted arc center along the plane</div>
         </div>
 

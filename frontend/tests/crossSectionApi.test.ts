@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { requestCrossSection } from "../src/crossSectionApi.js";
 import { advanceCrossSectionPosition, nearbyCrossSectionPositions } from "../src/crossSectionFrames.js";
+import { projectGreatCirclePoint } from "../src/crossSectionLocator.js";
 
 test("requests the selected cross-section frame with its dimensions and abort signal", async () => {
   const controller = new AbortController();
@@ -55,4 +56,18 @@ test("selects only nearby prefetch frames and wraps around the great circle", ()
 test("fast arc keyboard steps wrap across two positions", () => {
   assert.equal(advanceCrossSectionPosition(0, 120, -1, 2), 118);
   assert.equal(advanceCrossSectionPosition(119, 120, 1, 2), 1);
+});
+
+test("locator shows the equator horizontally and oblique planes tilted", () => {
+  const equator = projectGreatCirclePoint(0, Math.PI / 2, 130, 130, 106);
+  assert.ok(Math.abs(equator.x - 130) < 1e-10);
+  assert.ok(equator.y > 130);
+
+  const meridian = projectGreatCirclePoint(90, 0, 130, 130, 106);
+  assert.ok(Math.abs(meridian.x - 130) < 1e-10);
+  assert.ok(meridian.y < 130);
+
+  const oblique = projectGreatCirclePoint(45, 0, 130, 130, 106);
+  assert.ok(oblique.x > 130);
+  assert.ok(oblique.y < 130);
 });
