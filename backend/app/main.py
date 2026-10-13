@@ -391,6 +391,7 @@ def _river_summary(fields: hydrology.HydrologyFields, river: hydrology.RiverInfo
     return {
         "river_id": river_id,
         "num_nodes": int(len(river.member_idx)),
+        "length_m": river.length_m,
         "segments": segments,
         "mouth_xyz": _round_coords(fields.points[river.mouth_idx]),
         "mouth_type": river.mouth_type,
@@ -540,6 +541,7 @@ def _lake_basin_summary(
             "mouth_xyz": _round_coords(fields.points[river.mouth_idx]),
             "flow_rate": river.flow_rate,
             "num_nodes": int(len(river.member_idx)),
+            "length_m": river.length_m,
         }
         for river in rivers
         if river.mouth_idx in member_set
@@ -819,6 +821,12 @@ async def load_world(request: Request) -> dict:
         raise HTTPException(status_code=400, detail=f"invalid or incompatible world file: {exc}") from exc
     except Exception as exc:
         raise HTTPException(status_code=400, detail="invalid or incompatible world file") from exc
+    # Physical discharge is derived routing state. Saves from before #355 may carry a cached
+    # HydrologyFields without it; discard that cache so River/Lake Inspector APIs don't label
+    # legacy stacked-mm/yr values as m^3/s. The next simulated step rebuilds the cache.
+    if world.hydrology_cache is not None and getattr(world.hydrology_cache, "discharge_m3_s", None) is None:
+        world.hydrology_cache = None
+        world.hydrology_cache_step = None
     _state["world"] = world
     return _summary(world)
 

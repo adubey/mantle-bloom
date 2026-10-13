@@ -11,6 +11,7 @@ import MapCanvas from "./MapCanvas";
 import MantleCrossSection from "./MantleCrossSection";
 import SketchEditor from "./SketchEditor";
 import PlateInspector from "./PlateInspector";
+import type { InspectorViewProps } from "./InspectorCanvas";
 import RiverInspector from "./RiverInspector";
 import { isVisibleRiver } from "./riverVisibility";
 import LakeInspector from "./LakeInspector";
@@ -26,6 +27,7 @@ import SaveAnimationModal from "./SaveAnimationModal";
 import Legend from "./Legend";
 import MeasureOverlay from "./MeasureOverlay";
 import ProgressBar from "./ProgressBar";
+import ProbePopup from "./ProbePopup";
 import { PREMADE_WORLDS } from "./premadeWorlds";
 import { CRATON_LEGEND_LABEL, faultKindForLegendLabel, highlightTargetFor } from "./legendData";
 import { centerOfRotation, IDENTITY_ROTATION, rotationForCenter } from "./rotation";
@@ -1148,6 +1150,19 @@ export default function App() {
     };
   }, [playing]);
 
+  // The view props every client-drawn inspector takes (see InspectorCanvas.tsx).
+  const inspectorView: InspectorViewProps = {
+    width: RENDER_WIDTH,
+    height: RENDER_HEIGHT,
+    displayWidth: DISPLAY_WIDTH,
+    displayHeight: DISPLAY_HEIGHT,
+    projection,
+    rotation,
+    onRotationPreview: (latDeg, lonDeg) => setCenterLatLon({ lat: latDeg, lon: lonDeg }),
+    onRotationCommitted: (newRotation) => setRotation(newRotation),
+    interactionDisabled: animating,
+  };
+
   return (
     <div style={{ fontFamily: "system-ui, sans-serif", color: "#e6e8ef", padding: 24 }}>
       <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
@@ -1525,8 +1540,8 @@ export default function App() {
                 <div style={{ opacity: 0.9 }}>
                   <div>id: {selectedRiver.river_id}</div>
                   <div>ends at: {selectedRiver.mouth_type}</div>
-                  <div>flow rate: {selectedRiver.flow_rate.toFixed(1)}</div>
-                  <div>speed: {selectedRiver.speed.toFixed(2)}</div>
+                  <div>flow rate: {selectedRiver.flow_rate.toFixed(1)} m³/s</div>
+                  <div>speed (model): {selectedRiver.speed.toFixed(2)}</div>
                   <div>tributaries: {selectedRiver.num_tributaries}</div>
                   <div>nodes: {selectedRiver.num_nodes}</div>
                 </div>
@@ -1561,7 +1576,7 @@ export default function App() {
                   </div>
                   {selectedBasin.inflow_rivers.map((r, i) => (
                     <div key={i} style={{ paddingLeft: 8, opacity: 0.8 }}>
-                      - flow {r.flow_rate.toFixed(1)}, {r.num_nodes} nodes
+                      - flow {r.flow_rate.toFixed(1)} m³/s, {r.num_nodes} nodes
                     </div>
                   ))}
                   <div style={{ marginTop: 6 }}>
@@ -1575,7 +1590,7 @@ export default function App() {
                   {selectedBasin.outflow_river && (
                     <div style={{ paddingLeft: 8, opacity: 0.8 }}>
                       - ends at {selectedBasin.outflow_river.mouth_type}, flow{" "}
-                      {selectedBasin.outflow_river.flow_rate.toFixed(1)}, {selectedBasin.outflow_river.num_nodes} nodes
+                      {selectedBasin.outflow_river.flow_rate.toFixed(1)} m³/s, {selectedBasin.outflow_river.num_nodes} nodes
                     </div>
                   )}
                 </div>
@@ -1618,56 +1633,33 @@ export default function App() {
             />
           ) : mapView === "plateInspector" ? (
             <PlateInspector
+              {...inspectorView}
               plates={platesData}
-              width={RENDER_WIDTH}
-              height={RENDER_HEIGHT}
-              displayWidth={DISPLAY_WIDTH}
-              displayHeight={DISPLAY_HEIGHT}
-              projection={projection}
-              rotation={rotation}
               selectedPlateId={selectedPlateId}
               onSelectPlate={setSelectedPlateId}
-              onRotationPreview={(latDeg, lonDeg) => setCenterLatLon({ lat: latDeg, lon: lonDeg })}
-              onRotationCommitted={(newRotation) => setRotation(newRotation)}
-              interactionDisabled={animating}
             />
           ) : mapView === "riverInspector" ? (
             <RiverInspector
+              {...inspectorView}
               rivers={visibleRivers}
               coastlineSegments={coastlineSegments}
-              width={RENDER_WIDTH}
-              height={RENDER_HEIGHT}
-              displayWidth={DISPLAY_WIDTH}
-              displayHeight={DISPLAY_HEIGHT}
-              projection={projection}
-              rotation={rotation}
               selectedRiverId={selectedRiverId}
               onSelectRiver={setSelectedRiverId}
-              onRotationPreview={(latDeg, lonDeg) => setCenterLatLon({ lat: latDeg, lon: lonDeg })}
-              onRotationCommitted={(newRotation) => setRotation(newRotation)}
-              interactionDisabled={animating}
             />
           ) : mapView === "lakeInspector" ? (
             <LakeInspector
+              {...inspectorView}
               lakes={lakesData}
               coastlineSegments={coastlineSegments}
-              width={RENDER_WIDTH}
-              height={RENDER_HEIGHT}
-              displayWidth={DISPLAY_WIDTH}
-              displayHeight={DISPLAY_HEIGHT}
-              projection={projection}
-              rotation={rotation}
               selectedBasin={selectedBasin}
               onSelect={(kind, basin) => {
                 setSelectedBasinKind(kind);
                 setSelectedBasin(basin);
               }}
-              onRotationPreview={(latDeg, lonDeg) => setCenterLatLon({ lat: latDeg, lon: lonDeg })}
-              onRotationCommitted={(newRotation) => setRotation(newRotation)}
-              interactionDisabled={animating}
             />
           ) : mapView === "platesAndFaults" ? (
             <PlatesAndFaults
+              {...inspectorView}
               plates={platesData}
               faults={faultsData}
               faultSystems={faultSystemsData}
@@ -1681,17 +1673,8 @@ export default function App() {
               layers={platesLayers}
               highlightCratons={highlightCratons}
               highlightedFaultKind={highlightedBiome ? faultKindForLegendLabel(highlightedBiome) : null}
-              width={RENDER_WIDTH}
-              height={RENDER_HEIGHT}
-              displayWidth={DISPLAY_WIDTH}
-              displayHeight={DISPLAY_HEIGHT}
-              projection={projection}
-              rotation={rotation}
               selectedPlateId={selectedPlateId}
               onSelectPlate={setSelectedPlateId}
-              onRotationPreview={(latDeg, lonDeg) => setCenterLatLon({ lat: latDeg, lon: lonDeg })}
-              onRotationCommitted={(newRotation) => setRotation(newRotation)}
-              interactionDisabled={animating}
             />
           ) : (
             <div style={{ display: "inline-block" }}>
@@ -1723,38 +1706,18 @@ export default function App() {
             </div>
           )}
           {mapView !== "crossSection" && probe && (
-            <div
-              style={{
-                position: "absolute",
-                left: Math.max(4, Math.min(probe.displayX + 12, DISPLAY_WIDTH - 186)),
-                top: Math.max(4, Math.min(probe.displayY + 12, DISPLAY_HEIGHT - 150)),
-                width: 174,
-                background: "#151a2e",
-                border: "1px solid #333",
-                borderRadius: 6,
-                padding: "8px 10px",
-                fontSize: 11,
-                lineHeight: 1.6,
-                boxShadow: "0 2px 10px rgba(0, 0, 0, 0.5)",
-                zIndex: 10,
-              }}
+            <ProbePopup
+              displayX={probe.displayX}
+              displayY={probe.displayY}
+              title={formatLatLon(probe.latDeg, probe.lonDeg)}
+              status={probe.status}
+              width={174}
+              maxHeight={150}
+              mapWidth={DISPLAY_WIDTH}
+              mapHeight={DISPLAY_HEIGHT}
+              onClose={() => handleProbe(null)}
             >
-              <button
-                type="button"
-                title="Close"
-                onClick={() => handleProbe(null)}
-                style={{
-                  position: "absolute", top: 3, right: 4, width: 18, height: 18, padding: 0,
-                  border: "none", background: "transparent", color: "#999", cursor: "pointer",
-                  fontSize: 14, lineHeight: "18px",
-                }}
-              >
-                ×
-              </button>
-              <div style={{ opacity: 0.6, marginBottom: 4 }}>{formatLatLon(probe.latDeg, probe.lonDeg)}</div>
-              {probe.status === "loading" && <div style={{ opacity: 0.7 }}>Sampling…</div>}
-              {probe.status === "error" && <div style={{ color: "#ff8080" }}>Couldn’t sample this point.</div>}
-              {probe.status === "ok" && probe.sample && (
+              {probe.sample && (
                 <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", columnGap: 8, rowGap: 1 }}>
                   <span style={{ opacity: 0.55 }}>Elevation</span>
                   <span>{Math.round(probe.sample.elevation_m).toLocaleString()} m</span>
@@ -1768,41 +1731,21 @@ export default function App() {
                   <span>{probe.sample.plate_id ?? "—"}</span>
                 </div>
               )}
-            </div>
+            </ProbePopup>
           )}
           {nodeProbe && (
-            <div
-              style={{
-                position: "absolute",
-                left: Math.max(4, Math.min(nodeProbe.displayX + 12, DISPLAY_WIDTH - 200)),
-                top: Math.max(4, Math.min(nodeProbe.displayY + 12, DISPLAY_HEIGHT - 170)),
-                width: 188,
-                background: "#151a2e",
-                border: "1px solid #333",
-                borderRadius: 6,
-                padding: "8px 10px",
-                fontSize: 11,
-                lineHeight: 1.6,
-                boxShadow: "0 2px 10px rgba(0, 0, 0, 0.5)",
-                zIndex: 10,
-              }}
+            <ProbePopup
+              displayX={nodeProbe.displayX}
+              displayY={nodeProbe.displayY}
+              title={formatLatLon(nodeProbe.latDeg, nodeProbe.lonDeg)}
+              status={nodeProbe.status}
+              width={188}
+              maxHeight={170}
+              mapWidth={DISPLAY_WIDTH}
+              mapHeight={DISPLAY_HEIGHT}
+              onClose={() => handleNodeProbe(null)}
             >
-              <button
-                type="button"
-                title="Close"
-                onClick={() => handleNodeProbe(null)}
-                style={{
-                  position: "absolute", top: 3, right: 4, width: 18, height: 18, padding: 0,
-                  border: "none", background: "transparent", color: "#999", cursor: "pointer",
-                  fontSize: 14, lineHeight: "18px",
-                }}
-              >
-                ×
-              </button>
-              <div style={{ opacity: 0.6, marginBottom: 4 }}>{formatLatLon(nodeProbe.latDeg, nodeProbe.lonDeg)}</div>
-              {nodeProbe.status === "loading" && <div style={{ opacity: 0.7 }}>Sampling…</div>}
-              {nodeProbe.status === "error" && <div style={{ color: "#ff8080" }}>Couldn’t sample this point.</div>}
-              {nodeProbe.status === "ok" && nodeProbe.result && (
+              {nodeProbe.result && (
                 <div>
                   {nodeProbe.result.node && (
                     <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", columnGap: 8, rowGap: 1 }}>
@@ -1845,41 +1788,21 @@ export default function App() {
                   )}
                 </div>
               )}
-            </div>
+            </ProbePopup>
           )}
           {pointProbe && (
-            <div
-              style={{
-                position: "absolute",
-                left: Math.max(4, Math.min(pointProbe.displayX + 12, DISPLAY_WIDTH - 200)),
-                top: Math.max(4, Math.min(pointProbe.displayY + 12, DISPLAY_HEIGHT - 190)),
-                width: 188,
-                background: "#151a2e",
-                border: "1px solid #333",
-                borderRadius: 6,
-                padding: "8px 10px",
-                fontSize: 11,
-                lineHeight: 1.6,
-                boxShadow: "0 2px 10px rgba(0, 0, 0, 0.5)",
-                zIndex: 10,
-              }}
+            <ProbePopup
+              displayX={pointProbe.displayX}
+              displayY={pointProbe.displayY}
+              title={formatLatLon(pointProbe.latDeg, pointProbe.lonDeg)}
+              status={pointProbe.status}
+              width={188}
+              maxHeight={190}
+              mapWidth={DISPLAY_WIDTH}
+              mapHeight={DISPLAY_HEIGHT}
+              onClose={() => handlePointProbe(null)}
             >
-              <button
-                type="button"
-                title="Close"
-                onClick={() => handlePointProbe(null)}
-                style={{
-                  position: "absolute", top: 3, right: 4, width: 18, height: 18, padding: 0,
-                  border: "none", background: "transparent", color: "#999", cursor: "pointer",
-                  fontSize: 14, lineHeight: "18px",
-                }}
-              >
-                ×
-              </button>
-              <div style={{ opacity: 0.6, marginBottom: 4 }}>{formatLatLon(pointProbe.latDeg, pointProbe.lonDeg)}</div>
-              {pointProbe.status === "loading" && <div style={{ opacity: 0.7 }}>Sampling…</div>}
-              {pointProbe.status === "error" && <div style={{ color: "#ff8080" }}>Couldn’t sample this point.</div>}
-              {pointProbe.status === "ok" && pointProbe.result && (
+              {pointProbe.result && (
                 <div>
                   <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", columnGap: 8, rowGap: 1 }}>
                     <span style={{ opacity: 0.55 }}>Plate</span>
@@ -1893,7 +1816,7 @@ export default function App() {
                   </div>
                 </div>
               )}
-            </div>
+            </ProbePopup>
           )}
           <MeasureOverlay
             projection={projection}

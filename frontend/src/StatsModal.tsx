@@ -481,15 +481,20 @@ function entryYFormat(selected: TabEntry): (v: number) => string {
   return selected.kind === "metric" ? selected.metric.yFormat : selected.group.yFormat;
 }
 
-function MetricTab({ entries, history, current }: { entries: TabEntry[]; history: WorldStats[]; current: WorldStats }) {
-  const [viewMode, setViewMode] = useState<"table" | "graph">("graph");
+// The selected entry of a tab's dropdown and the chart inputs derived from it -- shared by
+// MetricTab and SimulationTab, whose graph modes are the same dropdown+chart.
+function useEntryChart(entries: TabEntry[], history: WorldStats[]) {
   const [selectedKey, setSelectedKey] = useState(entryKey(entries[0]));
   const selected = entries.find((e) => entryKey(e) === selectedKey) ?? entries[0];
-
   const chartData = useMemo(() => entryChartData(selected, history), [history, selected]);
   const chartSeries = useMemo(() => entryChartSeries(selected), [selected]);
   const chartBands = useMemo(() => entryChartBands(selected), [selected]);
-  const yFormat = entryYFormat(selected);
+  return { selected, selectedKey, setSelectedKey, chartData, chartSeries, chartBands, yFormat: entryYFormat(selected) };
+}
+
+function MetricTab({ entries, history, current }: { entries: TabEntry[]; history: WorldStats[]; current: WorldStats }) {
+  const [viewMode, setViewMode] = useState<"table" | "graph">("graph");
+  const { selectedKey, setSelectedKey, chartData, chartSeries, chartBands, yFormat } = useEntryChart(entries, history);
 
   return (
     <>
@@ -624,13 +629,7 @@ function BiomeTab({ history, current }: { history: WorldStats[]; current: WorldS
 // so it still needs a dedicated historyStats summary over `history` instead.
 function SimulationTab({ history, current }: { history: WorldStats[]; current: WorldStats }) {
   const [viewMode, setViewMode] = useState<"table" | "graph">("graph");
-  const [selectedKey, setSelectedKey] = useState(entryKey(SIMULATION_ENTRIES[0]));
-  const selected = SIMULATION_ENTRIES.find((e) => entryKey(e) === selectedKey) ?? SIMULATION_ENTRIES[0];
-
-  const chartData = useMemo(() => entryChartData(selected, history), [history, selected]);
-  const chartSeries = useMemo(() => entryChartSeries(selected), [selected]);
-  const chartBands = useMemo(() => entryChartBands(selected), [selected]);
-  const yFormat = entryYFormat(selected);
+  const { selectedKey, setSelectedKey, chartData, chartSeries, chartBands, yFormat } = useEntryChart(SIMULATION_ENTRIES, history);
 
   return (
     <>

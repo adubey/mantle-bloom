@@ -962,24 +962,7 @@ def _spawn_one_or_set(
     seed_world: np.ndarray, seed_dist_rad: float, seed_weight: float,
     nn_omega: np.ndarray, nn_point: np.ndarray,
 ) -> None:
-    seed_world = seed_world / np.linalg.norm(seed_world)
-    closing = float(
-        boundary.closing_rate(seed_world[None], np.asarray(plate.omega, dtype=float), nn_omega[None], nn_point[None])[0]
-    )
-    kind = _regime_from_closing(closing)
-
-    # Local tangent-plane axes at the seed: t_perp points toward the boundary (the local
-    # shortening / extension direction), t_par runs along it.
-    toward = nn_point - seed_world
-    t_perp = toward - np.dot(toward, seed_world) * seed_world
-    n = np.linalg.norm(t_perp)
-    if n < 1e-9:
-        east, _ = geometry.local_tangent_basis(seed_world)
-        t_perp = east
-    else:
-        t_perp = t_perp / n
-    t_par = np.cross(seed_world, t_perp)
-    t_par = t_par / max(np.linalg.norm(t_par), 1e-12)
+    seed_world, _closing, kind, t_perp, t_par = _seed_frame(plate, seed_world, nn_omega, nn_point)
 
     if kind == _KIND_STRIKE_SLIP:
         sign = 1.0 if rng.random() < 0.5 else -1.0

@@ -505,6 +505,7 @@ runs once). `404` if no world has been generated yet.
     {
       "river_id": 0,
       "num_nodes": 42,
+      "length_m": 2625000.0,
       "segments": [[[0.98, 0.12, -0.05], [0.97, 0.13, -0.05]], ["..."]],
       "mouth_xyz": [0.91, 0.28, -0.04],
       "mouth_type": "ocean",
@@ -517,23 +518,23 @@ runs once). `404` if no world has been generated yet.
 }
 ```
 
+- `length_m` is the summed geodesic length of these flow edges, in meters. River visibility
+  uses this physical measure instead of a node-count cutoff, which would move with mesh density.
 - `segments` is a flat list of flow edges (a node and its own `flow_target`), each a pair of
   world-space points -- not an ordered polyline, since a river network can branch. Every
   coordinate in this response is rounded to 6 decimal places before serializing, same as
   `/world/plates`.
-- `mouth_xyz` is the network's own highest-`flow_accum` node (flow only accumulates downhill,
-  so nothing else in the network can out-flow it) -- what the River Inspector draws a ring
-  around for the selected river.
+- `mouth_xyz` is the network's downstream-most member, the location the River Inspector marks
+  for the selected river.
 - `mouth_type` is `"ocean"` or `"lake"` (based on what the mouth's own `flow_target` empties
   into, not the mouth itself -- see
   [simulation-model.md#river-inspector](simulation-model.md#river-inspector)), or `"other"`
   (a true dead-end sink, `flow_target == -1` -- a basin `lakes.step_lakes` is already growing
   into a real lake node by node every step, so this flips to `"lake"` on its own once that
   basin's water crosses `LAKE_MIN_VISIBLE_DEPTH_M`).
-- `flow_rate` is `flow_accum` at the mouth; `speed` is `hydrology.compute_river_speed`
-  evaluated there. Both are stylized, unitless quantities -- meaningful only relative to other
-  rivers in the same world, not real physical units (see
-  [simulation-model.md#hydrology](simulation-model.md#hydrology)).
+- `flow_rate` is physical discharge at the river mouth in m^3/s, from
+  `HydrologyFields.discharge_m3_s`. `speed` is the stylized, unitless
+  `hydrology.compute_river_speed` value evaluated there.
 - `num_tributaries` counts separate headwater branches feeding the network -- see
   [simulation-model.md#river-inspector](simulation-model.md#river-inspector) for the exact
   definition (an original one; no precedent to port).
@@ -586,13 +587,14 @@ been generated yet.
       "outlet_elevation_m": 1902.8,
       "water_elevation_m": 1902.8,
       "is_spilling": true,
-      "inflow_rivers": [{ "mouth_xyz": [0.36, -0.10, -0.93], "flow_rate": 812.4, "num_nodes": 9 }],
+      "inflow_rivers": [{ "mouth_xyz": [0.36, -0.10, -0.93], "flow_rate": 812.4, "num_nodes": 9, "length_m": 562500.0 }],
       "outflow_river": {
         "segments": [[[0.37, -0.09, -0.93], [0.38, -0.08, -0.92]], ["..."]],
         "mouth_xyz": [0.44, 0.02, -0.90],
         "mouth_type": "ocean",
         "flow_rate": 4108.2,
-        "num_nodes": 14
+        "num_nodes": 14,
+        "length_m": 875000.0
       }
     }
   ],
@@ -618,11 +620,13 @@ been generated yet.
   it's actively overflowing its own outlet.
 - `inflow_rivers` is every `RiverInfo` (see `/world/rivers`) whose own mouth lands somewhere in
   this basin, as a small inline summary rather than a full `RiverSummary` -- the River
-  Inspector's own map mode is what draws a river's full path.
+  Inspector's own map mode is what draws a river's full path. Each `flow_rate` is physical
+  discharge in m^3/s; `length_m` is its summed geodesic flow-edge length.
 - `outflow_river` is, unlike an inflow, found by which river network (if any) owns the node
   just *outside* the rim on the far side (`Lake.outlet_target_idx`) -- the same full shape
   `/world/rivers` returns (minus `river_id`/`speed`/`num_tributaries`, meaningless outside that
-  view's own ranked list), since the Lake Inspector draws this one's whole path. `null` when
+  view's own ranked list), since the Lake Inspector draws this one's whole path. Its
+  `flow_rate` is physical discharge in m^3/s. `null` when
   there's no live outflow to show: a closed/endorheic basin with no known spill, a resolved rim
   that isn't currently `is_spilling`, or a spilling rim whose flow hasn't yet cleared
   `hydrology.RIVER_FLOW_PERCENTILE` to register as its own river network yet.
