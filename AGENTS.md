@@ -69,7 +69,8 @@ Run from the repo root (or worktree root).
   `rm -rf` against anything but your own worktree and scratch files. The user's checkout
   may hold uncommitted work that exists nowhere else.
 - Skills for these workflows, shared by Claude Code and Codex, are in `.agents/skills/`
-  (`.claude/skills` links there): `start-issue`, `replay-ab`, `pre-push-check`.
+  (`.claude/skills` links there): `start-issue`, `replay-ab`, `pre-push-check`,
+  `rfc-authoring`, `rfc-review`.
 
 ## Conventions
 
@@ -86,6 +87,10 @@ Run from the repo root (or worktree root).
 - **Investigations:** diagnostic scripts go in `bin/debug/` (checked in, with a usage
   docstring). Findings go in `analysis/issue<N>/README.md`, with only compact JSON checked
   in. Saves and full replay outputs stay out of the repo.
+- **RFCs:** a model change that is large, uncertain or rests on the science starts as an RFC
+  in `rfc/NNNN-slug.md` ([rfc/README.md](rfc/README.md) has the index and lifecycle). Write
+  and revise RFCs with the `rfc-authoring` skill, and review them with `rfc-review`. Open
+  implementation issues only after an RFC is accepted and its diagnosis gates have passed.
 - **Commits:** imperative subject that says what changed in model terms (e.g. "Transfer
   consumed lower-plate crust to the upper plate"), with the issue number when useful.
 - **PRs:** a `## Summary` that explains what changed and why, with replay numbers in a
