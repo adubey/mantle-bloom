@@ -1450,7 +1450,7 @@ export default function App() {
                   <div>id: {selectedPlate.plate_id}</div>
                   <div>crust: {selectedPlate.crust_type}</div>
                   <div>points: {selectedPlate.num_points}</div>
-                  <div>age: {selectedPlate.age_steps} steps</div>
+                  <div>age: {(selectedPlate.age_years / 1e6).toFixed(2)} Myr</div>
                   <div style={{ color: selectedPlate.at_max_rate ? "#e06c4b" : undefined }}>
                     speed: {selectedPlate.speed_cm_per_yr.toFixed(2)} cm/yr{selectedPlate.at_max_rate ? " (railed at MAX)" : ""}
                   </div>

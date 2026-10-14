@@ -52,7 +52,11 @@ from .surface_fields import SURFACE_FIELDS, RemapClass
 # Bumped whenever the pickled state of a `PlateWithSparseQuadPatch` changes shape. A save
 # carrying a newer version than this code understands is rejected on load rather than
 # half-restored (see `__setstate__`).
-QUAD_SURFACE_FORMAT_VERSION = 1
+# - Version 2 (#358) replaced `_age_steps` with `_age_years`. A version 1 plate loads with its
+#   `_age_steps` in place; `persistence.load_world_bytes` converts it to years, since only the
+#   world knows how long its steps were.
+QUAD_SURFACE_FORMAT_VERSION = 2
+LEGACY_QUAD_SURFACE_FORMAT_VERSIONS = (1,)
 
 PLANET_RADIUS_M = PLANET_RADIUS_KM * 1000.0
 
@@ -335,10 +339,10 @@ class PlateWithSparseQuadPatch(Plate):
         cell_keys: np.ndarray,
         fields: Mapping[str, np.ndarray] | None = None,
         omega: np.ndarray | None = None,
-        age_steps: int = 0,
+        age_years: float = 0.0,
         internal_stress: float = 0.0,
     ) -> None:
-        super().__init__(plate_id, frame, crust_type, omega=omega, age_steps=age_steps, internal_stress=internal_stress)
+        super().__init__(plate_id, frame, crust_type, omega=omega, age_years=age_years, internal_stress=internal_stress)
         if cells_per_edge < 1 or cells_per_edge > _INDEX_MASK:
             raise ValueError(f"cells_per_edge must be in [1, {_INDEX_MASK}], got {cells_per_edge}")
         keys = np.asarray(cell_keys, dtype=np.int64).reshape(-1)
@@ -1070,7 +1074,7 @@ class PlateWithSparseQuadPatch(Plate):
                     cell_keys=self._keys[mask],
                     fields=fragment_fields,
                     omega=self._omega.copy(),
-                    age_steps=self._age_steps if k == 0 else 0,
+                    age_years=self._age_years if k == 0 else 0.0,
                     internal_stress=self._internal_stress if k == 0 else 0.0,
                 )
             )
@@ -1160,10 +1164,10 @@ class PlateWithSparseQuadPatch(Plate):
         from .persistence import UnsupportedSaveVersionError
 
         version = state.get("_surface_format_version")
-        if version != QUAD_SURFACE_FORMAT_VERSION:
+        if version != QUAD_SURFACE_FORMAT_VERSION and version not in LEGACY_QUAD_SURFACE_FORMAT_VERSIONS:
             raise UnsupportedSaveVersionError(
                 f"unsupported sparse quad surface format version {version!r}; "
-                f"this build reads version {QUAD_SURFACE_FORMAT_VERSION}"
+                f"this build reads versions 1-{QUAD_SURFACE_FORMAT_VERSION}"
             )
         state = dict(state)
         del state["_surface_format_version"]

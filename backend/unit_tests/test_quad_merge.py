@@ -385,7 +385,7 @@ def test_merge_conserves_angular_momentum_against_the_merged_plates_own_inertia(
     quad_merge.merge(keep, absorb, np.zeros((0, 3)))
 
     assert np.allclose(quad_merge._inertia(keep) @ keep.omega, momentum, rtol=1e-12, atol=0.0)
-    assert keep.age_steps == 0
+    assert keep.age_years == 0.0
 
 
 def test_crust_removed_at_the_suture_cap_leaves_with_the_absorbed_plates_momentum():
@@ -564,7 +564,7 @@ def _islet_world(crust_type="continental", touching=True, material=None):
     lithosphere.sync_plate_elevation(parent)
     gap = 1 * SPACING if touching else 3.0
     neighbour = _cap(2, ROTATED, _direction(ISLET_ANGLE + ISLET_RADIUS + gap + RADIUS), crust_type="oceanic")
-    neighbour.set_age_steps(17)
+    neighbour.set_age_years(1.7e6)
     world = _world(parent, neighbour)
     continental_ledger.ensure_initialized(world)
     return world, parent, neighbour
@@ -586,7 +586,7 @@ def test_a_stranded_continental_fragment_accretes_onto_the_plate_it_touches():
     assert world.next_plate_id == 3  # no tiny plate spawned
     receiver = world.plates[1]
     assert receiver.node_count() > neighbour_cells
-    assert receiver.age_steps == 17  # a terrane this small doesn't reset the split cooldown
+    assert receiver.age_years == 1.7e6  # a terrane this small doesn't reset the split cooldown
     assert len(events) == 1 and "stranded fragment" in events[0] and "onto plate 2" in events[0]
     assert world.continental_material_ledger["topology_removed_m3"] == 0.0
     assert world.mobile_cover_ledger.get("stranded_m3", 0.0) == 0.0

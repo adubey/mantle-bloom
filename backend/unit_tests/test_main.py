@@ -711,7 +711,7 @@ def test_plates_endpoint_reports_motion_shape_and_overlap_diagnostics(client):
         # the reported speed.
         assert entry["at_max_rate"] == (entry["speed_cm_per_yr"] >= mantle.rad_per_yr_to_cm_per_yr(mantle.MAX_PLATE_RATE) - 1e-9)
         assert 0.0 <= entry["submerged_fraction"] <= 1.0
-        assert entry["age_steps"] >= 0
+        assert entry["age_years"] >= 0.0
         # A plate never overlaps itself. (Overlap is read by containment of cell centres, so it
         # can be one-sided where two lattices meet: A's centre inside B, but no centre of B's
         # inside A.)
@@ -1207,12 +1207,13 @@ def test_animate_progress_carries_a_live_stats_snapshot(client):
     _post_generate(client, json={"seed": 9, "num_plates": 6})
     resp = client.post(
         "/world/animate",
-        json={"projection": "eckert4", "view": "elevation", "width": 64, "height": 64, "step_years": 1_000_000, "num_frames": 3},
+        json={"projection": "eckert4", "view": "elevation", "width": 64, "height": 64, "step_years": 100_000, "num_frames": 3},
     )
     assert resp.status_code == 200
 
+    # Steps well inside merge_split.SPLIT_MIN_AGE_YEARS, so no plate can rift mid-recording.
     progress = [json.loads(line) for line in resp.text.splitlines() if line.strip() and json.loads(line)["type"] == "progress"]
-    assert [m["stats"]["elapsed_years"] for m in progress] == [0.0, 1_000_000.0, 2_000_000.0]
+    assert [m["stats"]["elapsed_years"] for m in progress] == [0.0, 100_000.0, 200_000.0]
     assert all(m["stats"]["plate_count"] == 6 for m in progress)
 
 

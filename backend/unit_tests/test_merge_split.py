@@ -402,6 +402,26 @@ def _engineered_split_world():
     return world, plate
 
 
+def test_split_cooldown_counts_years_not_steps(monkeypatch):
+    """#358: the cooldown is a span of time, so a plate one year short of it can't split
+    however many steps that took, and one long step can carry it past."""
+    monkeypatch.setattr(merge_split, "RIFT_SUCCESS_PROBABILITY", 1.0)
+    world, plate = _engineered_split_world()
+    plate.set_age_years(merge_split.SPLIT_MIN_AGE_YEARS - 1.0)
+    assert merge_split.maybe_split_plate(world, plate) is None
+    assert world.next_plate_id == 1
+
+    plate.advance_age(1.0)
+    assert merge_split.maybe_split_plate(world, plate) is not None
+
+
+def test_apply_topology_changes_ages_plates_by_the_step_length():
+    world = _converging_pair_world()
+    merge_split.apply_topology_changes(world, 250_000)
+    merge_split.apply_topology_changes(world, 750_000)
+    assert [p.age_years for p in world.plates] == [1_000_000, 1_000_000]
+
+
 def test_maybe_split_plate_with_failed_outcome_returns_none_and_resets_cooldown(monkeypatch):
     """A rift that clears every split gate but loses the outcome roll
     (`RIFT_SUCCESS_PROBABILITY`) leaves the plate whole -- no daughter, no plate id consumed
@@ -414,7 +434,7 @@ def test_maybe_split_plate_with_failed_outcome_returns_none_and_resets_cooldown(
 
     assert result is None
     assert world.next_plate_id == 1  # no id consumed
-    assert plate.age_steps == 0  # cooldown reset
+    assert plate.age_years == 0.0  # cooldown reset
     assert plate.node_count() == nodes_before  # still one plate, nothing removed
 
 
@@ -554,7 +574,7 @@ def _split_eligible_plate(plate_id: int, seed_xyz, rows=range(1)):
     2 * SPLIT_MIN_NODES, so each half of a split still clears the threshold -- past its split
     cooldown."""
     plate = _test_plate(plate_id, seed_xyz, "continental", np.linspace(-0.5, 0.5, 4 * merge_split.SPLIT_MIN_NODES), 0.0, rows=rows)
-    plate.set_age_steps(merge_split.SPLIT_MIN_AGE_STEPS)
+    plate.set_age_years(merge_split.SPLIT_MIN_AGE_YEARS)
     return plate
 
 

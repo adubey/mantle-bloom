@@ -2,7 +2,7 @@ import pickle
 
 import numpy as np
 import pytest
-from app import persistence
+from app import legacy_conversion, persistence, sparse_quad_patch
 from app.elevation_lines import line_spacing_rad
 from app.world import generate_world, step_world
 
@@ -296,3 +296,66 @@ def test_a_line_save_the_converter_refuses_is_a_corrupt_save():
     world.plates[0].lines[0].__dict__["_future_field"] = np.zeros(len(world.plates[0].lines[0]))
     with pytest.raises(persistence.CorruptSaveError, match="_future_field"):
         persistence.load_world_bytes(_line_pickle(world))
+
+
+def _quad_v1_save(world, age_steps, monkeypatch) -> bytes:
+    """`world` saved by a build from before #358, whose quad plates counted age in steps."""
+    for plate in world.plates:
+        del plate.__dict__["_age_years"]
+        plate.__dict__["_age_steps"] = age_steps
+    monkeypatch.setattr(sparse_quad_patch, "QUAD_SURFACE_FORMAT_VERSION", 1)
+    data = persistence.save_world_bytes(world)
+    monkeypatch.undo()
+    return data
+
+
+def test_a_quad_plate_age_in_steps_loads_as_years_at_the_worlds_step_length(monkeypatch):
+    world = generate_world(seed=3, num_plates=4)
+    world.elapsed_years, world.steps_taken = 3_000_000.0, 10
+
+    loaded = persistence.load_world_bytes(_quad_v1_save(world, 4, monkeypatch))
+    assert [p.age_years for p in loaded.plates] == [1_200_000.0] * len(world.plates)
+    assert all("_age_steps" not in p.__dict__ for p in loaded.plates)
+    resaved = persistence.load_world_bytes(persistence.save_world_bytes(loaded))
+    assert [p.age_years for p in resaved.plates] == [1_200_000.0] * len(world.plates)
+
+
+def test_a_step_age_without_a_step_count_assumes_the_fallback_step_capped_at_world_age(monkeypatch):
+    """A save from before `steps_taken` existed reads 0 steps, so its step length is unknown."""
+    world = generate_world(seed=3, num_plates=4)
+    world.elapsed_years, world.steps_taken = 1_000_000.0, 0
+    loaded = persistence.load_world_bytes(_quad_v1_save(world, 4, monkeypatch))
+    assert loaded.plates[0].age_years == 4 * legacy_conversion.FALLBACK_YEARS_PER_STEP
+
+    world = generate_world(seed=3, num_plates=4)
+    world.elapsed_years, world.steps_taken = 1_000_000.0, 0
+    loaded = persistence.load_world_bytes(_quad_v1_save(world, 500, monkeypatch))
+    assert loaded.plates[0].age_years == 1_000_000.0
+
+
+@pytest.mark.parametrize("age_steps", [-1, 2.5, None])
+def test_an_invalid_step_age_in_an_old_quad_save_is_refused(age_steps, monkeypatch):
+    world = generate_world(seed=3, num_plates=4)
+    with pytest.raises(persistence.CorruptSaveError, match="age"):
+        persistence.load_world_bytes(_quad_v1_save(world, age_steps, monkeypatch))
+
+
+def test_an_old_quad_plate_with_no_age_is_refused(monkeypatch):
+    world = generate_world(seed=3, num_plates=4)
+    for plate in world.plates:
+        del plate.__dict__["_age_years"]
+    monkeypatch.setattr(sparse_quad_patch, "QUAD_SURFACE_FORMAT_VERSION", 1)
+    data = persistence.save_world_bytes(world)
+    monkeypatch.undo()
+    with pytest.raises(persistence.CorruptSaveError, match="no age"):
+        persistence.load_world_bytes(data)
+
+
+def test_a_line_save_converts_plate_age_from_steps_to_years():
+    world = _line_world()
+    world.elapsed_years, world.steps_taken = 2_000_000.0, 20
+    for plate in world.plates:
+        plate.__dict__["_age_steps"] = 7
+
+    loaded = persistence.load_world_bytes(_line_pickle(world))
+    assert [p.age_years for p in loaded.plates] == [700_000.0] * len(loaded.plates)

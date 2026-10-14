@@ -504,7 +504,7 @@ def test_node_components_empty_input():
 def test_defragment_splits_a_severed_plate_and_keeps_identity_on_the_largest():
     from app.world import World
 
-    plate = _lobed_plate([(0, 10), (30, 6)], plate_id=7, omega=np.array([0.1, 0.2, 0.3]), age_steps=9)
+    plate = _lobed_plate([(0, 10), (30, 6)], plate_id=7, omega=np.array([0.1, 0.2, 0.3]), age_years=9e5)
     before = plate.node_count()
     world = World(seed=0, plates=[plate], mantle_centers=[])
 
@@ -519,9 +519,9 @@ def test_defragment_splits_a_severed_plate_and_keeps_identity_on_the_largest():
     # The identity-keeper carries this plate's own omega and age; the fresh fragment shares
     # the omega (it was co-moving, which is why nothing split it off) but resets age to 0.
     assert np.allclose(replacements[0].omega, [0.1, 0.2, 0.3])
-    assert replacements[0].age_steps == 9
+    assert replacements[0].age_years == 9e5
     assert np.allclose(replacements[1].omega, [0.1, 0.2, 0.3])
-    assert replacements[1].age_steps == 0
+    assert replacements[1].age_years == 0.0
     for p in replacements:
         pts, _ = p.all_points_and_elevation()
         assert len(np.unique(node_components(pts, _DEFRAG_CONNECT_RAD))) == 1
