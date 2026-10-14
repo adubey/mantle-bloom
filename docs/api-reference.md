@@ -23,6 +23,26 @@ request made on the server's own machine. Anyone else gets `401`. Cross-site wri
   "login_available": bool}`. `local` means the no-login local rule applied. `login` is the
   GitHub login of a real session.
 
+## Public viewer routes
+
+Open to anyone, for the logged-out `/view` page (#373). See
+[architecture.md#public-viewer](architecture.md#public-viewer).
+
+- `GET /public/world`: `{"world": {"revision", "seed", "elapsed_years"} | null,
+  "steps_remaining": int | null, "step_limit": 30, "step_years": 100000}`. `world` is null
+  before one exists. `steps_remaining` is null (unlimited) for the admin.
+- `GET /public/render?view=elevation|biome&width=&height=`: like `/world/render`, but always
+  Eckert IV at the default orientation, with width and height at most 2400. It returns
+  `{"revision", "seed", "elapsed_years", "image_base64"}`. `400` for any other view or size,
+  `404` before a world exists, `503` if the owner holds the world for more than 10 s.
+- `POST /public/step` with `{"revision": str}`, the revision the viewer is showing: advances
+  the world by 100 kyr and returns `{"world": {...}, "computed": bool, "steps_remaining"}`.
+  Only a request that runs the step (`computed: true`) uses up allowance, and the response then
+  sets the updated `mb_guest` cookie. When `revision` is stale, or another guest's step is
+  already running, the request gets the resulting world without computing. `429` when a
+  computation is needed but the allowance is spent, `503` while the owner is using the world,
+  `404` before a world exists.
+
 ## `POST /world/generate`
 
 Request body:

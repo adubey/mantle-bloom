@@ -29,6 +29,7 @@ from . import (
     persistence,
     plates,
     projections,
+    public_view,
     render_image,
     stats,
     worldsketch,
@@ -1722,6 +1723,97 @@ def export_hexgrid(req: ExportHexGridRequest) -> dict:
 
 
 # --- Static frontend -----------------------------------------------------------------------
+# The logged-out viewer's routes (#373): read-only renders plus an allowance-limited step,
+# answering to anyone. AuthMiddleware only guards /world/*, so these are the whole of what an
+# anonymous client can do to the world. See public_view.py.
+_guest_steps = public_view.GuestStepCoordinator()
+
+
+class PublicStepRequest(BaseModel):
+    # The revision (public_view.world_revision) the viewer is looking at.
+    revision: str
+
+
+def _guest_allowance(request: Request) -> tuple[auth.AuthConfig, int | None]:
+    """(config, steps left). None means unlimited: the owner viewing /view isn't charged."""
+    config = auth.load_config()
+    if auth.is_admin(request, config):
+        return config, None
+    return config, max(0, public_view.GUEST_STEP_LIMIT - public_view.steps_used(request, config))
+
+
+@app.get("/public/world")
+def public_world(request: Request) -> dict:
+    """What the viewer shows: the current world's revision and age (`world` is null before
+    one exists), and this browser's remaining step allowance."""
+    _, remaining = _guest_allowance(request)
+    world = _state["world"]
+    return {
+        "world": None if world is None else public_view.public_summary(world),
+        "steps_remaining": remaining,
+        "step_limit": public_view.GUEST_STEP_LIMIT,
+        "step_years": public_view.GUEST_STEP_YEARS,
+    }
+
+
+@app.get("/public/render")
+def public_render(view: str = "elevation", width: int = 1100, height: int = 611) -> dict:
+    """/world/render restricted to the viewer's fixed choices: Eckert IV, the default
+    orientation, and the biome or elevation view. `503` if the owner holds the world for
+    longer than public_view.GUEST_LOCK_WAIT_S."""
+    world = _require_world()
+    if view not in public_view.GUEST_VIEWS:
+        raise HTTPException(status_code=400, detail=f"unknown view {view!r}; choices are {public_view.GUEST_VIEWS}")
+    limit = public_view.GUEST_MAX_RENDER_PX
+    if not (1 <= width <= limit and 1 <= height <= limit):
+        raise HTTPException(status_code=400, detail=f"width/height must be in [1, {limit}]")
+    if not _world_lock.acquire(timeout=public_view.GUEST_LOCK_WAIT_S):
+        raise HTTPException(status_code=503, detail="the world is busy; try again shortly")
+    try:
+        image_base64 = render_image.render_png_base64(
+            world, public_view.GUEST_PROJECTION, view, width, height, _parse_view_rotation(None), False, False
+        )
+        summary = public_view.public_summary(world)
+    finally:
+        _world_lock.release()
+    return {**summary, "image_base64": image_base64}
+
+
+def _run_guest_step(world: World) -> None:
+    for _ in step_world_progress(world, public_view.GUEST_STEP_YEARS):
+        pass
+
+
+@app.post("/public/step")
+def public_step(req: PublicStepRequest, request: Request, response: Response) -> dict:
+    """Advances the shared world by public_view.GUEST_STEP_YEARS, charging this browser's
+    allowance only if this request is the one that computes it. `computed` says whether it
+    did; a stale `revision`, or a step another viewer already has running, is answered with
+    the resulting world for free. `429` when a computation is needed and the allowance is
+    spent, `503` if the owner is using the world, `404` before any world exists."""
+    _require_world()
+    config, remaining = _guest_allowance(request)
+    outcome = _guest_steps.request_step(
+        req.revision,
+        may_compute=remaining is None or remaining > 0,
+        current_world=_require_world,
+        world_lock=_world_lock,
+        compute=_run_guest_step,
+    )
+    if outcome.status == "exhausted":
+        raise HTTPException(status_code=429, detail="step allowance used up")
+    if outcome.status == "busy":
+        raise HTTPException(status_code=503, detail="the world is busy; try again shortly")
+    if outcome.status == "computed" and remaining is not None:
+        remaining -= 1
+        public_view.set_steps_used(response, public_view.GUEST_STEP_LIMIT - remaining, config)
+    return {
+        "world": public_view.public_summary(_require_world()),
+        "computed": outcome.status == "computed",
+        "steps_remaining": remaining,
+    }
+
+
 # In the packaged single-process app there is no separate Vite server: FastAPI serves the
 # built React bundle itself, from the same origin as the API (so api.ts's API_BASE is ""). The
 # dev workflow (bin/restart.sh) is unaffected -- it runs its own frontend server and never
