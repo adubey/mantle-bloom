@@ -1,8 +1,8 @@
 # RFC 0007: Mantle plumes: oceanic plateaus, flood basalts and hotspot tracks
 
 - **Status:** Draft
-- **Date:** 2026-10-13
-- **Related:** #205 (magma transport); RFCs [0003](0003-rifting-around-cratons.md)
+- **Date:** 2026-10-13 (re-baselined 2026-10-14 on the year-based split pace, #403)
+- **Related:** #205 (magma transport), #358 (split cooldown in years), #403 (re-baseline); RFCs [0003](0003-rifting-around-cratons.md)
   (plume weakening of cratons), [0004](0004-proto-cratons.md) (depletion follow-up),
   [0005](0005-continental-recycling-balance.md), [0006](0006-intra-oceanic-arcs.md)
   (shared docking, buoyant-crust tracers and ledger)
@@ -30,10 +30,17 @@ spawning yet". Four Earth processes are therefore missing:
 
 The run behind RFCs 0001–0007 shows the cost of item 1. The run is seed 456862899, 19.2
 Gyr, saved locally as `mantle-bloom-seed456862899-19191800000y.mbworld`; the file is on
-the author's machine and **not available for download**. Once its continents were gone,
-juvenile continental additions fell to 0.4 km³/yr
+the author's machine and **not available for download**. It predates #358: it ran post-#340
+code (exact commit unknown) with the split cooldown counted in steps, 200 Myr for most of
+the run. Once its continents were gone, juvenile continental additions fell to 0.4 km³/yr
 (`bin/debug/ledger_history.py`). On Earth, plateau accretion alone would add about three
 times that.
+
+On the current model (origin/main 2562f63, 5 Myr steps; `analysis/issue403/`), a regenerated
+seed 456862899 loses 85% of its continental material in the first Gyr, and its juvenile
+additions settle at 1.1–1.7 km³/yr after 500 Myr, all of it on the remaining continental
+hosts. That is about what plateau accretion alone adds on Earth, from a world with 2%
+land.
 
 The run is a stress test of the model's long-term behaviour, not a calibration interval:
 it shows that the model has no source of new crust that doesn't depend on existing

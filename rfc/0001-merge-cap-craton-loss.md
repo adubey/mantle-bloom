@@ -1,9 +1,9 @@
 # RFC 0001: Plate merges must not destroy cratons
 
 - **Status:** Draft
-- **Date:** 2026-10-13
+- **Date:** 2026-10-13 (re-baselined 2026-10-14 on the year-based split pace, #403)
 - **Related:** #274 (cratons), #340 (craton partition rules), #276 (suture accretion),
-  #290 (staged suture placement); RFCs [0002](0002-craton-trench-attrition.md),
+  #290 (staged suture placement), #358 (split cooldown in years), #403 (re-baseline); RFCs [0002](0002-craton-trench-attrition.md),
   [0004](0004-proto-cratons.md), [0008](0008-craton-collision-jamming.md) (fusion at jam
   onset)
 
@@ -21,6 +21,11 @@ and **not available for download**. The numbers below come from the save's
 `World.stats_history` via `bin/debug/ledger_history.py`, so anyone with a save can make the
 same table.
 
+The save predates #358. It ran post-#340 code (exact commit unknown) and counted the split
+cooldown in steps: 2 Myr during its 0.1 Myr steps, then **200 Myr** at 10 Myr steps for the
+rest of the run. It split and merged far less often than the model does now. Its figures are
+kept as the record of how the problem was found; the current ones follow the table.
+
 | When | Craton booked to `delaminated_m3` | Share of live craton |
 |---|---|---|
 | 602 My | 42 M km³ | 2% |
@@ -35,6 +40,22 @@ cratons. The same step booked 339 M km³ of continental material to
 its column (`merge_split._fuse_plates`). The suture path also books its unplaceable
 remainder there, so the save can't separate the two; the gate will. Genuine continental
 area also fell from 61 to 45 M km².
+
+**On the current model** (origin/main 2562f63, 5 Myr steps; `analysis/issue403/`), merges are
+frequent and the merge cap is the largest craton sink while continents are large:
+
+| Run | Merges per Gyr | `delaminated_m3`, % of start craton | Steps booking > 1% of live craton | Largest step, % of live craton |
+|---|---|---|---|---|
+| Seed 7, 1 Gyr | 55 | 54% | 20 | 17% (365 My) |
+| Seed 11, 1 Gyr | 27 | 18% | 7 | 13% (565 My) |
+| Seed 2024, 1 Gyr | 36 | 31% | 5 | 14% (715 My) |
+| Seed 456862899, 3 Gyr | 12, 1, 2 | 28% (all before 420 My) | 6 | 14% (125 My) |
+
+A step can hold more than one merge, so the step figures bound a single merge's loss from
+above. RFC 0008's gate (`analysis/rfc0008/`) found that craton lost in fusions equals each
+tuning seed's `delaminated_m3`, and that the cratons the fused pairs stack sum to 53–90% of
+the starting craton. The "deep craton-on-craton overlap" row of the gate table below already
+applies on every tuning seed.
 
 Two things are wrong:
 
@@ -171,6 +192,10 @@ the replay with the same signature: craton booked by a merge above 1% of live cr
 together with continental material clipped above its column. The run had three more
 (602, 6,022 and 6,922 My).
 
+Since #358 the signature is common on runs anyone can regenerate (table in Problem), so the
+gate can start there instead of the save: seed 7 at 5 Myr steps books 17% of its live
+craton in the step ending at 365 My, after 365 Myr of stepping rather than 3 Gyr.
+
 *Measuring.* Replay the captured merge alone, printing:
 - the overflow volume, the eligible cell count and area, and the room under the cap
   among eligible cells;
@@ -277,9 +302,9 @@ If solution 3 is needed, it is built and tuned in RFC 0008 (`CRATON_LOCK_MYR`).
   table is written so that each outcome leads somewhere.
 - **The event may not replay exactly.** The code version and the per-step random streams
   are only partly recoverable. The gate allows a substitute merge with the same signature.
-- **One event, one seed.** The 602, 6,022 and 6,922 My events suggest the mechanism
-  recurs, but how often it fires across seeds is unmeasured; the acceptance runs measure
-  it.
+- **One event, one seed, at the old split pace.** The save's events were measured with a
+  200 Myr split cooldown. On the current model the mechanism recurs on every seed measured
+  (Problem), so it is no longer a single-seed observation.
 - **Escape and root shedding are borrowed.** Both come from the suture path, calibrated for
   ordinary collision belts. Whether they suit a craton-on-craton merge is untested.
   `MERGE_PLACEMENT_MAX_KM` comes from one modern collision.
@@ -293,9 +318,12 @@ If solution 3 is needed, it is built and tuned in RFC 0008 (`CRATON_LOCK_MYR`).
       with the full merge inputs, its cause established, and the fix the decision table
       selects is written up in `analysis/` with the per-stage numbers, before any fix
       other than solution 4 is implemented.
-- [ ] On a 3.5 Gyr replay of seed 456862899 and 500 Myr runs of seeds 7, 11 and 2024
-      (`bin/debug/compare_cratons.py`), merges book less than 1% of the initial craton
-      volume in total, and no single merge books more than 0.5% of the live craton.
+- [ ] On a regenerated seed 456862899 to 3 Gyr and 500 Myr runs of seeds 7, 11 and 2024
+      (`bin/debug/compare_cratons.py`, 5 Myr steps), merges book less than 1% of the
+      initial craton volume in total, and no single merge books more than 0.5% of the live
+      craton. On origin/main 2562f63, `delaminated_m3` books 43%, 7.3% and 0.9% of the
+      start craton by 500 Myr on the tuning seeds and 28% on seed 456862899. Over 1 Gyr
+      (3 Gyr for 456862899), 6–22 steps per run book more than 0.5% of the live craton.
 - [ ] Every merge placement passes the physical checks in Design (cap, bounded set,
       monotone thickness, craton component count), checked by an assertion in debug runs.
 - [ ] The craton ledger balance error stays within 1e-9 of the live volume
@@ -303,7 +331,9 @@ If solution 3 is needed, it is built and tuned in RFC 0008 (`CRATON_LOCK_MYR`).
       (`continental_ledger.assert_closed`).
 - [ ] Merge counts and plate counts on those seeds change by less than 10%, measured
       before RFC 0008's fusion lands. 0008 raises merge counts by design and has its own
-      bounds.
+      bounds. The baseline (origin/main 2562f63): 37, 16 and 25 merges and 55, 53 and 50
+      plates at 500 Myr on seeds 7, 11 and 2024; 15 merges and 58 plates at 3 Gyr on seed
+      456862899.
 - [ ] The unit tests above pass; affected tests, ruff and `bin/quality_check.sh` are green.
 - [ ] Saves from before the change load, with `merge_capped_m3` = 0.
 

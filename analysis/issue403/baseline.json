@@ -1,0 +1,2022 @@
+{
+ "baseline": "origin/main 2562f63",
+ "seeds": {
+  "7": {
+   "myr": 1000.0,
+   "events_total": {
+    "failed_rift": 84,
+    "split": 115,
+    "merged": 55,
+    "craton": 20
+   },
+   "events_per_gyr": [
+    {
+     "gyr": 0,
+     "split": 115,
+     "merged": 55,
+     "failed_rift": 84
+    }
+   ],
+   "plate_count": {
+    "start": 20,
+    "end": 51,
+    "min": 20,
+    "max": 60,
+    "mean": 45.9091
+   },
+   "plate_count_by_checkpoint": {
+    "0": 20,
+    "100": 27,
+    "200": 36,
+    "300": 47,
+    "400": 52,
+    "500": 55,
+    "600": 60,
+    "700": 51,
+    "800": 51,
+    "900": 55,
+    "1000": 51
+   },
+   "craton_balance_error_km3": 1.2383,
+   "genuine_continental_area_mkm2": {
+    "0": 260.2169,
+    "100": 168.1432,
+    "200": 95.2243,
+    "300": 75.8496,
+    "400": 63.6403,
+    "500": 54.2405,
+    "600": 48.3484,
+    "700": 40.0969,
+    "800": 29.519,
+    "900": 24.6022,
+    "1000": 23.4626
+   },
+   "land_fraction_node": {
+    "0": 0.4528,
+    "100": 0.3422,
+    "200": 0.224,
+    "300": 0.1953,
+    "400": 0.1626,
+    "500": 0.1438,
+    "600": 0.1258,
+    "700": 0.1153,
+    "800": 0.0861,
+    "900": 0.0647,
+    "1000": 0.06
+   },
+   "rift_cuts": {
+    "split_cuts": 115.0,
+    "split_cuts_through_craton": 45.0,
+    "split_band_area_m2": 336033426338276.4,
+    "split_band_craton_area_m2": 85101340165193.83,
+    "failed_rift_cuts": 84.0,
+    "failed_rift_cuts_through_craton": 34.0,
+    "failed_rift_band_area_m2": 242866335095794.84,
+    "failed_rift_band_craton_area_m2": 67060136406576.39
+   },
+   "samples": 201,
+   "initial_continental_mkm3": 11955.4164,
+   "continental_sinks_per_window": [
+    {
+     "window_myr": [
+      0.0,
+      100.0
+     ],
+     "inventory_mkm3": [
+      11955.4164,
+      10913.8588
+     ],
+     "deeply_subducted_km3_per_yr": 11.6648,
+     "rift_thinned_km3_per_yr": 2.7283,
+     "collision_subducted_km3_per_yr": 5.7642,
+     "collision_lower_crust_subducted_km3_per_yr": 1.0735,
+     "delaminated_lower_crust_km3_per_yr": 1.3728,
+     "overloaded_root_delaminated_km3_per_yr": 0.0077,
+     "topology_removed_km3_per_yr": 0.0
+    },
+    {
+     "window_myr": [
+      100.0,
+      500.0
+     ],
+     "inventory_mkm3": [
+      10913.8588,
+      3666.8983
+     ],
+     "deeply_subducted_km3_per_yr": 12.2669,
+     "rift_thinned_km3_per_yr": 2.0309,
+     "collision_subducted_km3_per_yr": 13.0638,
+     "collision_lower_crust_subducted_km3_per_yr": 0.1937,
+     "delaminated_lower_crust_km3_per_yr": 0.2839,
+     "overloaded_root_delaminated_km3_per_yr": 0.0152,
+     "topology_removed_km3_per_yr": 0.0
+    },
+    {
+     "window_myr": [
+      500.0,
+      1000.0
+     ],
+     "inventory_mkm3": [
+      3666.8983,
+      1676.9467
+     ],
+     "deeply_subducted_km3_per_yr": 6.4488,
+     "rift_thinned_km3_per_yr": 0.9958,
+     "collision_subducted_km3_per_yr": 2.3461,
+     "collision_lower_crust_subducted_km3_per_yr": 0.0332,
+     "delaminated_lower_crust_km3_per_yr": 0.0025,
+     "overloaded_root_delaminated_km3_per_yr": 0.0029,
+     "topology_removed_km3_per_yr": 0.0
+    }
+   ],
+   "sample_spacing_myr": 5.0,
+   "delaminated_samples_over_share_of_live": {
+    "0.1%": 27,
+    "0.5%": 22,
+    "1.0%": 20
+   },
+   "delaminated_largest_sample": {
+    "myr": 365.0,
+    "mkm3": 387.96,
+    "share_of_live": 0.1665
+   },
+   "formed_per_window": [
+    {
+     "window_myr": [
+      0.0,
+      500.0
+     ],
+     "formed_mkm3": 33.8733
+    },
+    {
+     "window_myr": [
+      500.0,
+      1000.0
+     ],
+     "formed_mkm3": 0.0
+    }
+   ],
+   "craton_share_at_checkpoints": [
+    {
+     "myr": 0.0,
+     "craton_share_of_genuine_continental": 0.3989
+    },
+    {
+     "myr": 500.0,
+     "craton_share_of_genuine_continental": 0.8698
+    },
+    {
+     "myr": 1000.0,
+     "craton_share_of_genuine_continental": 0.9729
+    }
+   ],
+   "craton_loss_per_gyr": [
+    {
+     "gyr": 0,
+     "start_volume_mkm3": 4098.0197,
+     "rifted_m3": 0.1311,
+     "subducted_m3": 0.0585,
+     "delaminated_m3": 0.5409,
+     "collision_reworked_m3": 0.0125,
+     "eroded_m3": 0.0974,
+     "total": 0.8404,
+     "rifted_divergent_m3": 0.0317,
+     "rifted_stretch_m3": 0.0904,
+     "rifted_failed_m3": 0.009
+    }
+   ],
+   "craton_checkpoints": [
+    {
+     "myr": 0.0,
+     "craton_volume_mkm3": 4098.0197,
+     "craton_area_mkm2": 103.7959,
+     "genuine_continental_area_mkm2": 260.2169,
+     "land_fraction": 0.4532,
+     "craton_rifted_m3_mkm3": 0.0,
+     "craton_subducted_m3_mkm3": 0.0,
+     "craton_delaminated_m3_mkm3": 0.0,
+     "craton_collision_reworked_m3_mkm3": 0.0,
+     "craton_eroded_m3_mkm3": 0.0,
+     "craton_formed_m3_mkm3": 0.0
+    },
+    {
+     "myr": 100.0,
+     "craton_volume_mkm3": 3948.3075,
+     "craton_area_mkm2": 103.1113,
+     "genuine_continental_area_mkm2": 168.1432,
+     "land_fraction": 0.3195,
+     "craton_rifted_m3_mkm3": 50.8737,
+     "craton_subducted_m3_mkm3": 13.6325,
+     "craton_delaminated_m3_mkm3": 44.9785,
+     "craton_collision_reworked_m3_mkm3": 14.9131,
+     "craton_eroded_m3_mkm3": 25.6811,
+     "craton_formed_m3_mkm3": 0.0
+    },
+    {
+     "myr": 200.0,
+     "craton_volume_mkm3": 3114.049,
+     "craton_area_mkm2": 75.4349,
+     "genuine_continental_area_mkm2": 95.2243,
+     "land_fraction": 0.2055,
+     "craton_rifted_m3_mkm3": 154.4795,
+     "craton_subducted_m3_mkm3": 52.3495,
+     "craton_delaminated_m3_mkm3": 679.6128,
+     "craton_collision_reworked_m3_mkm3": 27.3246,
+     "craton_eroded_m3_mkm3": 98.3566,
+     "craton_formed_m3_mkm3": 29.0951
+    },
+    {
+     "myr": 500.0,
+     "craton_volume_mkm3": 1544.0875,
+     "craton_area_mkm2": 47.1805,
+     "genuine_continental_area_mkm2": 54.2405,
+     "land_fraction": 0.1387,
+     "craton_rifted_m3_mkm3": 359.1793,
+     "craton_subducted_m3_mkm3": 143.3425,
+     "craton_delaminated_m3_mkm3": 1751.9854,
+     "craton_collision_reworked_m3_mkm3": 41.2282,
+     "craton_eroded_m3_mkm3": 285.7774,
+     "craton_formed_m3_mkm3": 33.8733
+    },
+    {
+     "myr": 1000.0,
+     "craton_volume_mkm3": 679.3763,
+     "craton_area_mkm2": 22.8279,
+     "genuine_continental_area_mkm2": 23.4626,
+     "land_fraction": 0.0552,
+     "craton_rifted_m3_mkm3": 539.6486,
+     "craton_subducted_m3_mkm3": 241.3923,
+     "craton_delaminated_m3_mkm3": 2216.5222,
+     "craton_collision_reworked_m3_mkm3": 51.2758,
+     "craton_eroded_m3_mkm3": 400.7987,
+     "craton_formed_m3_mkm3": 33.8733
+    }
+   ],
+   "craton_largest_jumps": {
+    "rifted_m3": [
+     {
+      "myr": 100.0,
+      "mkm3": 10.9836,
+      "share_of_live": 0.0027
+     },
+     {
+      "myr": 365.0,
+      "mkm3": 10.4004,
+      "share_of_live": 0.0045
+     },
+     {
+      "myr": 95.0,
+      "mkm3": 9.8284,
+      "share_of_live": 0.0024
+     },
+     {
+      "myr": 275.0,
+      "mkm3": 9.4739,
+      "share_of_live": 0.0038
+     },
+     {
+      "myr": 595.0,
+      "mkm3": 9.0703,
+      "share_of_live": 0.0065
+     }
+    ],
+    "subducted_m3": [
+     {
+      "myr": 420.0,
+      "mkm3": 3.0257,
+      "share_of_live": 0.0017
+     },
+     {
+      "myr": 245.0,
+      "mkm3": 2.9347,
+      "share_of_live": 0.001
+     },
+     {
+      "myr": 465.0,
+      "mkm3": 2.7064,
+      "share_of_live": 0.0017
+     },
+     {
+      "myr": 470.0,
+      "mkm3": 2.6473,
+      "share_of_live": 0.0017
+     },
+     {
+      "myr": 520.0,
+      "mkm3": 2.5964,
+      "share_of_live": 0.0018
+     }
+    ],
+    "delaminated_m3": [
+     {
+      "myr": 365.0,
+      "mkm3": 387.96,
+      "share_of_live": 0.1665
+     },
+     {
+      "myr": 120.0,
+      "mkm3": 300.9169,
+      "share_of_live": 0.0774
+     },
+     {
+      "myr": 270.0,
+      "mkm3": 298.2489,
+      "share_of_live": 0.1067
+     },
+     {
+      "myr": 155.0,
+      "mkm3": 245.526,
+      "share_of_live": 0.0703
+     },
+     {
+      "myr": 235.0,
+      "mkm3": 126.0774,
+      "share_of_live": 0.0422
+     }
+    ],
+    "collision_reworked_m3": [
+     {
+      "myr": 80.0,
+      "mkm3": 2.4154,
+      "share_of_live": 0.0006
+     },
+     {
+      "myr": 100.0,
+      "mkm3": 1.7428,
+      "share_of_live": 0.0004
+     },
+     {
+      "myr": 95.0,
+      "mkm3": 1.5209,
+      "share_of_live": 0.0004
+     },
+     {
+      "myr": 115.0,
+      "mkm3": 1.1512,
+      "share_of_live": 0.0003
+     },
+     {
+      "myr": 70.0,
+      "mkm3": 1.1149,
+      "share_of_live": 0.0003
+     }
+    ],
+    "eroded_m3": [
+     {
+      "myr": 235.0,
+      "mkm3": 6.9754,
+      "share_of_live": 0.0023
+     },
+     {
+      "myr": 230.0,
+      "mkm3": 6.8077,
+      "share_of_live": 0.0023
+     },
+     {
+      "myr": 155.0,
+      "mkm3": 5.9771,
+      "share_of_live": 0.0017
+     },
+     {
+      "myr": 190.0,
+      "mkm3": 5.9324,
+      "share_of_live": 0.0019
+     },
+     {
+      "myr": 405.0,
+      "mkm3": 5.8494,
+      "share_of_live": 0.0031
+     }
+    ],
+    "formed_m3": [
+     {
+      "myr": 200.0,
+      "mkm3": 29.0951,
+      "share_of_live": 0.0094
+     },
+     {
+      "myr": 315.0,
+      "mkm3": 3.2816,
+      "share_of_live": 0.0014
+     },
+     {
+      "myr": 325.0,
+      "mkm3": 0.828,
+      "share_of_live": 0.0003
+     },
+     {
+      "myr": 355.0,
+      "mkm3": 0.6686,
+      "share_of_live": 0.0003
+     }
+    ]
+   },
+   "continental_fluxes": [
+    {
+     "window_myr": [
+      0.0,
+      100.0
+     ],
+     "juvenile_km3_per_yr": 10.7042,
+     "returns_km3_per_yr": 1.5349,
+     "sinks_km3_per_yr": 22.6114,
+     "deeply_subducted_km3_per_yr": 11.6648,
+     "mean_inventory_mkm3": 11716.9892,
+     "on_oceanic_hosts_fraction": 0.0475
+    },
+    {
+     "window_myr": [
+      100.0,
+      500.0
+     ],
+     "juvenile_km3_per_yr": 8.2507,
+     "returns_km3_per_yr": 1.4939,
+     "sinks_km3_per_yr": 27.8543,
+     "deeply_subducted_km3_per_yr": 12.2669,
+     "mean_inventory_mkm3": 6070.1558,
+     "on_oceanic_hosts_fraction": 0.1549
+    },
+    {
+     "window_myr": [
+      500.0,
+      1000.0
+     ],
+     "juvenile_km3_per_yr": 4.9614,
+     "returns_km3_per_yr": 0.8999,
+     "sinks_km3_per_yr": 9.8294,
+     "deeply_subducted_km3_per_yr": 6.4488,
+     "mean_inventory_mkm3": 2528.2751,
+     "on_oceanic_hosts_fraction": 0.1648
+    }
+   ]
+  },
+  "11": {
+   "myr": 1000.0,
+   "events_total": {
+    "failed_rift": 80,
+    "split": 109,
+    "merged": 27,
+    "craton": 7
+   },
+   "events_per_gyr": [
+    {
+     "gyr": 0,
+     "split": 109,
+     "merged": 27,
+     "failed_rift": 80
+    }
+   ],
+   "plate_count": {
+    "start": 9,
+    "end": 57,
+    "min": 9,
+    "max": 57,
+    "mean": 43.3636
+   },
+   "plate_count_by_checkpoint": {
+    "0": 9,
+    "100": 24,
+    "200": 36,
+    "300": 40,
+    "400": 45,
+    "500": 53,
+    "600": 53,
+    "700": 51,
+    "800": 52,
+    "900": 57,
+    "1000": 57
+   },
+   "craton_balance_error_km3": 0.0,
+   "genuine_continental_area_mkm2": {
+    "0": 161.5669,
+    "100": 126.5346,
+    "200": 90.8174,
+    "300": 73.9951,
+    "400": 62.2638,
+    "500": 54.5417,
+    "600": 40.7606,
+    "700": 36.7024,
+    "800": 30.9468,
+    "900": 29.4143,
+    "1000": 26.9077
+   },
+   "land_fraction_node": {
+    "0": 0.2762,
+    "100": 0.2159,
+    "200": 0.182,
+    "300": 0.1597,
+    "400": 0.1465,
+    "500": 0.1251,
+    "600": 0.0877,
+    "700": 0.0889,
+    "800": 0.073,
+    "900": 0.0694,
+    "1000": 0.0698
+   },
+   "rift_cuts": {
+    "split_cuts": 109.0,
+    "split_cuts_through_craton": 26.0,
+    "split_band_area_m2": 327532661154448.8,
+    "split_band_craton_area_m2": 46856742646769.59,
+    "failed_rift_cuts": 80.0,
+    "failed_rift_cuts_through_craton": 16.0,
+    "failed_rift_band_area_m2": 235346199803090.0,
+    "failed_rift_band_craton_area_m2": 29094900751307.016
+   },
+   "samples": 201,
+   "initial_continental_mkm3": 6917.4094,
+   "continental_sinks_per_window": [
+    {
+     "window_myr": [
+      0.0,
+      100.0
+     ],
+     "inventory_mkm3": [
+      6917.4094,
+      6420.4234
+     ],
+     "deeply_subducted_km3_per_yr": 15.6199,
+     "rift_thinned_km3_per_yr": 1.0403,
+     "collision_subducted_km3_per_yr": 0.0124,
+     "collision_lower_crust_subducted_km3_per_yr": 0.0817,
+     "delaminated_lower_crust_km3_per_yr": 0.0,
+     "overloaded_root_delaminated_km3_per_yr": 0.0,
+     "topology_removed_km3_per_yr": 0.0
+    },
+    {
+     "window_myr": [
+      100.0,
+      500.0
+     ],
+     "inventory_mkm3": [
+      6420.4234,
+      3834.7067
+     ],
+     "deeply_subducted_km3_per_yr": 12.576,
+     "rift_thinned_km3_per_yr": 0.9661,
+     "collision_subducted_km3_per_yr": 1.3857,
+     "collision_lower_crust_subducted_km3_per_yr": 0.0702,
+     "delaminated_lower_crust_km3_per_yr": 0.0272,
+     "overloaded_root_delaminated_km3_per_yr": 0.0023,
+     "topology_removed_km3_per_yr": 0.0
+    },
+    {
+     "window_myr": [
+      500.0,
+      1000.0
+     ],
+     "inventory_mkm3": [
+      3834.7067,
+      1865.668
+     ],
+     "deeply_subducted_km3_per_yr": 7.3888,
+     "rift_thinned_km3_per_yr": 0.5703,
+     "collision_subducted_km3_per_yr": 1.0299,
+     "collision_lower_crust_subducted_km3_per_yr": 0.0069,
+     "delaminated_lower_crust_km3_per_yr": 0.0002,
+     "overloaded_root_delaminated_km3_per_yr": 0.0,
+     "topology_removed_km3_per_yr": 0.0
+    }
+   ],
+   "sample_spacing_myr": 5.0,
+   "delaminated_samples_over_share_of_live": {
+    "0.1%": 7,
+    "0.5%": 7,
+    "1.0%": 7
+   },
+   "delaminated_largest_sample": {
+    "myr": 565.0,
+    "mkm3": 280.8671,
+    "share_of_live": 0.1253
+   },
+   "formed_per_window": [
+    {
+     "window_myr": [
+      0.0,
+      500.0
+     ],
+     "formed_mkm3": 161.6027
+    },
+    {
+     "window_myr": [
+      500.0,
+      1000.0
+     ],
+     "formed_mkm3": 0.0
+    }
+   ],
+   "craton_share_at_checkpoints": [
+    {
+     "myr": 0.0,
+     "craton_share_of_genuine_continental": 0.5068
+    },
+    {
+     "myr": 500.0,
+     "craton_share_of_genuine_continental": 0.9173
+    },
+    {
+     "myr": 1000.0,
+     "craton_share_of_genuine_continental": 0.9441
+    }
+   ],
+   "craton_loss_per_gyr": [
+    {
+     "gyr": 0,
+     "start_volume_mkm3": 3169.6233,
+     "rifted_m3": 0.0896,
+     "subducted_m3": 0.1442,
+     "delaminated_m3": 0.1842,
+     "collision_reworked_m3": 0.0211,
+     "eroded_m3": 0.2076,
+     "total": 0.6468,
+     "rifted_divergent_m3": 0.0275,
+     "rifted_stretch_m3": 0.0562,
+     "rifted_failed_m3": 0.006
+    }
+   ],
+   "craton_checkpoints": [
+    {
+     "myr": 0.0,
+     "craton_volume_mkm3": 3169.6233,
+     "craton_area_mkm2": 81.8799,
+     "genuine_continental_area_mkm2": 161.5669,
+     "land_fraction": 0.277,
+     "craton_rifted_m3_mkm3": 0.0,
+     "craton_subducted_m3_mkm3": 0.0,
+     "craton_delaminated_m3_mkm3": 0.0,
+     "craton_collision_reworked_m3_mkm3": 0.0,
+     "craton_eroded_m3_mkm3": 0.0,
+     "craton_formed_m3_mkm3": 0.0
+    },
+    {
+     "myr": 100.0,
+     "craton_volume_mkm3": 3103.3569,
+     "craton_area_mkm2": 78.3126,
+     "genuine_continental_area_mkm2": 126.5346,
+     "land_fraction": 0.2076,
+     "craton_rifted_m3_mkm3": 10.9855,
+     "craton_subducted_m3_mkm3": 23.0846,
+     "craton_delaminated_m3_mkm3": 0.0,
+     "craton_collision_reworked_m3_mkm3": 10.0423,
+     "craton_eroded_m3_mkm3": 22.8224,
+     "craton_formed_m3_mkm3": 0.0
+    },
+    {
+     "myr": 200.0,
+     "craton_volume_mkm3": 2965.4669,
+     "craton_area_mkm2": 69.8018,
+     "genuine_continental_area_mkm2": 90.8174,
+     "land_fraction": 0.1743,
+     "craton_rifted_m3_mkm3": 61.8233,
+     "craton_subducted_m3_mkm3": 98.833,
+     "craton_delaminated_m3_mkm3": 65.1966,
+     "craton_collision_reworked_m3_mkm3": 22.1037,
+     "craton_eroded_m3_mkm3": 88.0144,
+     "craton_formed_m3_mkm3": 129.0545
+    },
+    {
+     "myr": 500.0,
+     "craton_volume_mkm3": 2323.3765,
+     "craton_area_mkm2": 50.0316,
+     "genuine_continental_area_mkm2": 54.5417,
+     "land_fraction": 0.118,
+     "craton_rifted_m3_mkm3": 174.7763,
+     "craton_subducted_m3_mkm3": 250.0917,
+     "craton_delaminated_m3_mkm3": 231.427,
+     "craton_collision_reworked_m3_mkm3": 38.52,
+     "craton_eroded_m3_mkm3": 314.4903,
+     "craton_formed_m3_mkm3": 161.6027
+    },
+    {
+     "myr": 1000.0,
+     "craton_volume_mkm3": 1283.3339,
+     "craton_area_mkm2": 25.4032,
+     "genuine_continental_area_mkm2": 26.9077,
+     "land_fraction": 0.0695,
+     "craton_rifted_m3_mkm3": 284.4073,
+     "craton_subducted_m3_mkm3": 458.3168,
+     "craton_delaminated_m3_mkm3": 583.7688,
+     "craton_collision_reworked_m3_mkm3": 67.1108,
+     "craton_eroded_m3_mkm3": 660.7732,
+     "craton_formed_m3_mkm3": 161.6027
+    }
+   ],
+   "craton_largest_jumps": {
+    "rifted_m3": [
+     {
+      "myr": 150.0,
+      "mkm3": 5.3798,
+      "share_of_live": 0.0018
+     },
+     {
+      "myr": 185.0,
+      "mkm3": 4.8788,
+      "share_of_live": 0.0017
+     },
+     {
+      "myr": 570.0,
+      "mkm3": 4.6839,
+      "share_of_live": 0.0024
+     },
+     {
+      "myr": 595.0,
+      "mkm3": 4.126,
+      "share_of_live": 0.0022
+     },
+     {
+      "myr": 130.0,
+      "mkm3": 3.9771,
+      "share_of_live": 0.0013
+     }
+    ],
+    "subducted_m3": [
+     {
+      "myr": 165.0,
+      "mkm3": 5.1282,
+      "share_of_live": 0.0017
+     },
+     {
+      "myr": 185.0,
+      "mkm3": 5.0824,
+      "share_of_live": 0.0018
+     },
+     {
+      "myr": 160.0,
+      "mkm3": 4.9733,
+      "share_of_live": 0.0017
+     },
+     {
+      "myr": 205.0,
+      "mkm3": 4.7784,
+      "share_of_live": 0.0016
+     },
+     {
+      "myr": 195.0,
+      "mkm3": 4.4292,
+      "share_of_live": 0.0015
+     }
+    ],
+    "delaminated_m3": [
+     {
+      "myr": 565.0,
+      "mkm3": 280.8671,
+      "share_of_live": 0.1253
+     },
+     {
+      "myr": 390.0,
+      "mkm3": 95.5452,
+      "share_of_live": 0.0359
+     },
+     {
+      "myr": 150.0,
+      "mkm3": 65.1966,
+      "share_of_live": 0.0215
+     },
+     {
+      "myr": 795.0,
+      "mkm3": 43.8429,
+      "share_of_live": 0.0289
+     },
+     {
+      "myr": 415.0,
+      "mkm3": 41.3285,
+      "share_of_live": 0.0163
+     }
+    ],
+    "collision_reworked_m3": [
+     {
+      "myr": 650.0,
+      "mkm3": 1.2502,
+      "share_of_live": 0.0007
+     },
+     {
+      "myr": 75.0,
+      "mkm3": 1.1833,
+      "share_of_live": 0.0004
+     },
+     {
+      "myr": 100.0,
+      "mkm3": 1.1439,
+      "share_of_live": 0.0004
+     },
+     {
+      "myr": 80.0,
+      "mkm3": 1.1256,
+      "share_of_live": 0.0004
+     },
+     {
+      "myr": 655.0,
+      "mkm3": 1.1088,
+      "share_of_live": 0.0006
+     }
+    ],
+    "eroded_m3": [
+     {
+      "myr": 645.0,
+      "mkm3": 10.8812,
+      "share_of_live": 0.0061
+     },
+     {
+      "myr": 640.0,
+      "mkm3": 8.9331,
+      "share_of_live": 0.005
+     },
+     {
+      "myr": 585.0,
+      "mkm3": 8.7264,
+      "share_of_live": 0.0045
+     },
+     {
+      "myr": 665.0,
+      "mkm3": 8.4834,
+      "share_of_live": 0.0049
+     },
+     {
+      "myr": 620.0,
+      "mkm3": 8.3965,
+      "share_of_live": 0.0046
+     }
+    ],
+    "formed_m3": [
+     {
+      "myr": 200.0,
+      "mkm3": 129.0545,
+      "share_of_live": 0.0453
+     },
+     {
+      "myr": 225.0,
+      "mkm3": 11.0832,
+      "share_of_live": 0.0038
+     },
+     {
+      "myr": 230.0,
+      "mkm3": 5.429,
+      "share_of_live": 0.0019
+     },
+     {
+      "myr": 220.0,
+      "mkm3": 4.5469,
+      "share_of_live": 0.0016
+     },
+     {
+      "myr": 470.0,
+      "mkm3": 4.4638,
+      "share_of_live": 0.0019
+     }
+    ]
+   },
+   "continental_fluxes": [
+    {
+     "window_myr": [
+      0.0,
+      100.0
+     ],
+     "juvenile_km3_per_yr": 10.3552,
+     "returns_km3_per_yr": 1.4239,
+     "sinks_km3_per_yr": 16.7543,
+     "deeply_subducted_km3_per_yr": 15.6199,
+     "mean_inventory_mkm3": 6712.5716,
+     "on_oceanic_hosts_fraction": 0.0574
+    },
+    {
+     "window_myr": [
+      100.0,
+      500.0
+     ],
+     "juvenile_km3_per_yr": 7.2636,
+     "returns_km3_per_yr": 1.2796,
+     "sinks_km3_per_yr": 15.0276,
+     "deeply_subducted_km3_per_yr": 12.576,
+     "mean_inventory_mkm3": 5019.1372,
+     "on_oceanic_hosts_fraction": 0.1082
+    },
+    {
+     "window_myr": [
+      500.0,
+      1000.0
+     ],
+     "juvenile_km3_per_yr": 4.2168,
+     "returns_km3_per_yr": 0.8475,
+     "sinks_km3_per_yr": 8.9961,
+     "deeply_subducted_km3_per_yr": 7.3888,
+     "mean_inventory_mkm3": 2511.105,
+     "on_oceanic_hosts_fraction": 0.1151
+    }
+   ]
+  },
+  "2024": {
+   "myr": 1000.0,
+   "events_total": {
+    "failed_rift": 85,
+    "split": 104,
+    "merged": 36,
+    "craton": 5
+   },
+   "events_per_gyr": [
+    {
+     "gyr": 0,
+     "split": 104,
+     "merged": 36,
+     "failed_rift": 85
+    }
+   ],
+   "plate_count": {
+    "start": 11,
+    "end": 60,
+    "min": 11,
+    "max": 61,
+    "mean": 44.4545
+   },
+   "plate_count_by_checkpoint": {
+    "0": 11,
+    "100": 21,
+    "200": 30,
+    "300": 42,
+    "400": 48,
+    "500": 50,
+    "600": 51,
+    "700": 57,
+    "800": 61,
+    "900": 58,
+    "1000": 60
+   },
+   "craton_balance_error_km3": -0.8653,
+   "genuine_continental_area_mkm2": {
+    "0": 123.3614,
+    "100": 119.2189,
+    "200": 111.3523,
+    "300": 97.9155,
+    "400": 68.3825,
+    "500": 64.0763,
+    "600": 55.1023,
+    "700": 38.753,
+    "800": 29.6215,
+    "900": 25.7588,
+    "1000": 23.5488
+   },
+   "land_fraction_node": {
+    "0": 0.1738,
+    "100": 0.1996,
+    "200": 0.2051,
+    "300": 0.1915,
+    "400": 0.1439,
+    "500": 0.1401,
+    "600": 0.1234,
+    "700": 0.086,
+    "800": 0.0747,
+    "900": 0.0638,
+    "1000": 0.0612
+   },
+   "rift_cuts": {
+    "split_cuts": 104.0,
+    "split_cuts_through_craton": 31.0,
+    "split_band_area_m2": 304786347333389.75,
+    "split_band_craton_area_m2": 50015639168082.414,
+    "failed_rift_cuts": 85.0,
+    "failed_rift_cuts_through_craton": 31.0,
+    "failed_rift_band_area_m2": 261241877556121.53,
+    "failed_rift_band_craton_area_m2": 50254653433772.78
+   },
+   "samples": 201,
+   "initial_continental_mkm3": 6521.9851,
+   "continental_sinks_per_window": [
+    {
+     "window_myr": [
+      0.0,
+      100.0
+     ],
+     "inventory_mkm3": [
+      6521.9851,
+      6287.5851
+     ],
+     "deeply_subducted_km3_per_yr": 8.3349,
+     "rift_thinned_km3_per_yr": 1.3089,
+     "collision_subducted_km3_per_yr": 0.0,
+     "collision_lower_crust_subducted_km3_per_yr": 0.1776,
+     "delaminated_lower_crust_km3_per_yr": 0.0,
+     "overloaded_root_delaminated_km3_per_yr": 0.0,
+     "topology_removed_km3_per_yr": 0.0
+    },
+    {
+     "window_myr": [
+      100.0,
+      500.0
+     ],
+     "inventory_mkm3": [
+      6287.5851,
+      4586.515
+     ],
+     "deeply_subducted_km3_per_yr": 6.4357,
+     "rift_thinned_km3_per_yr": 1.3745,
+     "collision_subducted_km3_per_yr": 2.1307,
+     "collision_lower_crust_subducted_km3_per_yr": 0.178,
+     "delaminated_lower_crust_km3_per_yr": 0.0395,
+     "overloaded_root_delaminated_km3_per_yr": 0.0,
+     "topology_removed_km3_per_yr": 0.0
+    },
+    {
+     "window_myr": [
+      500.0,
+      1000.0
+     ],
+     "inventory_mkm3": [
+      4586.515,
+      1641.8278
+     ],
+     "deeply_subducted_km3_per_yr": 6.3705,
+     "rift_thinned_km3_per_yr": 0.8051,
+     "collision_subducted_km3_per_yr": 2.463,
+     "collision_lower_crust_subducted_km3_per_yr": 0.0264,
+     "delaminated_lower_crust_km3_per_yr": 0.0042,
+     "overloaded_root_delaminated_km3_per_yr": 0.0007,
+     "topology_removed_km3_per_yr": 0.0
+    }
+   ],
+   "sample_spacing_myr": 5.0,
+   "delaminated_samples_over_share_of_live": {
+    "0.1%": 7,
+    "0.5%": 6,
+    "1.0%": 5
+   },
+   "delaminated_largest_sample": {
+    "myr": 715.0,
+    "mkm3": 157.4799,
+    "share_of_live": 0.1406
+   },
+   "formed_per_window": [
+    {
+     "window_myr": [
+      0.0,
+      500.0
+     ],
+     "formed_mkm3": 167.2713
+    },
+    {
+     "window_myr": [
+      500.0,
+      1000.0
+     ],
+     "formed_mkm3": 0.0
+    }
+   ],
+   "craton_share_at_checkpoints": [
+    {
+     "myr": 0.0,
+     "craton_share_of_genuine_continental": 0.3755
+    },
+    {
+     "myr": 500.0,
+     "craton_share_of_genuine_continental": 0.8523
+    },
+    {
+     "myr": 1000.0,
+     "craton_share_of_genuine_continental": 0.9544
+    }
+   ],
+   "craton_loss_per_gyr": [
+    {
+     "gyr": 0,
+     "start_volume_mkm3": 1723.8079,
+     "rifted_m3": 0.1561,
+     "subducted_m3": 0.0927,
+     "delaminated_m3": 0.3088,
+     "collision_reworked_m3": 0.0128,
+     "eroded_m3": 0.1015,
+     "total": 0.6719,
+     "rifted_divergent_m3": 0.0362,
+     "rifted_stretch_m3": 0.1065,
+     "rifted_failed_m3": 0.0134
+    }
+   ],
+   "craton_checkpoints": [
+    {
+     "myr": 0.0,
+     "craton_volume_mkm3": 1723.8079,
+     "craton_area_mkm2": 46.3282,
+     "genuine_continental_area_mkm2": 123.3614,
+     "land_fraction": 0.1759,
+     "craton_rifted_m3_mkm3": 0.0,
+     "craton_subducted_m3_mkm3": 0.0,
+     "craton_delaminated_m3_mkm3": 0.0,
+     "craton_collision_reworked_m3_mkm3": 0.0,
+     "craton_eroded_m3_mkm3": 0.0,
+     "craton_formed_m3_mkm3": 0.0
+    },
+    {
+     "myr": 100.0,
+     "craton_volume_mkm3": 1707.371,
+     "craton_area_mkm2": 47.0783,
+     "genuine_continental_area_mkm2": 119.2189,
+     "land_fraction": 0.202,
+     "craton_rifted_m3_mkm3": 6.893,
+     "craton_subducted_m3_mkm3": 4.0322,
+     "craton_delaminated_m3_mkm3": 0.0,
+     "craton_collision_reworked_m3_mkm3": 0.4591,
+     "craton_eroded_m3_mkm3": 4.9773,
+     "craton_formed_m3_mkm3": 0.0
+    },
+    {
+     "myr": 200.0,
+     "craton_volume_mkm3": 1766.7532,
+     "craton_area_mkm2": 62.545,
+     "genuine_continental_area_mkm2": 111.3523,
+     "land_fraction": 0.2105,
+     "craton_rifted_m3_mkm3": 29.1466,
+     "craton_subducted_m3_mkm3": 25.0835,
+     "craton_delaminated_m3_mkm3": 0.0,
+     "craton_collision_reworked_m3_mkm3": 11.2869,
+     "craton_eroded_m3_mkm3": 16.3668,
+     "craton_formed_m3_mkm3": 125.1076
+    },
+    {
+     "myr": 500.0,
+     "craton_volume_mkm3": 1607.0669,
+     "craton_area_mkm2": 54.6096,
+     "genuine_continental_area_mkm2": 64.0763,
+     "land_fraction": 0.1153,
+     "craton_rifted_m3_mkm3": 155.6783,
+     "craton_subducted_m3_mkm3": 51.4987,
+     "craton_delaminated_m3_mkm3": 15.6047,
+     "craton_collision_reworked_m3_mkm3": 15.3021,
+     "craton_eroded_m3_mkm3": 48.0399,
+     "craton_formed_m3_mkm3": 167.2713
+    },
+    {
+     "myr": 1000.0,
+     "craton_volume_mkm3": 735.5347,
+     "craton_area_mkm2": 22.4747,
+     "genuine_continental_area_mkm2": 23.5488,
+     "land_fraction": 0.0584,
+     "craton_rifted_m3_mkm3": 269.1908,
+     "craton_subducted_m3_mkm3": 160.466,
+     "craton_delaminated_m3_mkm3": 532.2973,
+     "craton_collision_reworked_m3_mkm3": 22.0346,
+     "craton_eroded_m3_mkm3": 175.2478,
+     "craton_formed_m3_mkm3": 167.2713
+    }
+   ],
+   "craton_largest_jumps": {
+    "rifted_m3": [
+     {
+      "myr": 380.0,
+      "mkm3": 8.5202,
+      "share_of_live": 0.005
+     },
+     {
+      "myr": 715.0,
+      "mkm3": 6.035,
+      "share_of_live": 0.0054
+     },
+     {
+      "myr": 395.0,
+      "mkm3": 5.9887,
+      "share_of_live": 0.0035
+     },
+     {
+      "myr": 345.0,
+      "mkm3": 4.9984,
+      "share_of_live": 0.0029
+     },
+     {
+      "myr": 335.0,
+      "mkm3": 4.8551,
+      "share_of_live": 0.0028
+     }
+    ],
+    "subducted_m3": [
+     {
+      "myr": 840.0,
+      "mkm3": 2.7213,
+      "share_of_live": 0.0033
+     },
+     {
+      "myr": 820.0,
+      "mkm3": 2.5518,
+      "share_of_live": 0.003
+     },
+     {
+      "myr": 830.0,
+      "mkm3": 2.478,
+      "share_of_live": 0.0029
+     },
+     {
+      "myr": 805.0,
+      "mkm3": 2.4453,
+      "share_of_live": 0.0028
+     },
+     {
+      "myr": 835.0,
+      "mkm3": 2.4072,
+      "share_of_live": 0.0029
+     }
+    ],
+    "delaminated_m3": [
+     {
+      "myr": 715.0,
+      "mkm3": 157.4799,
+      "share_of_live": 0.1406
+     },
+     {
+      "myr": 515.0,
+      "mkm3": 145.8809,
+      "share_of_live": 0.0912
+     },
+     {
+      "myr": 610.0,
+      "mkm3": 126.916,
+      "share_of_live": 0.0916
+     },
+     {
+      "myr": 660.0,
+      "mkm3": 62.7321,
+      "share_of_live": 0.0511
+     },
+     {
+      "myr": 970.0,
+      "mkm3": 20.8146,
+      "share_of_live": 0.0271
+     }
+    ],
+    "collision_reworked_m3": [
+     {
+      "myr": 175.0,
+      "mkm3": 1.0826,
+      "share_of_live": 0.0007
+     },
+     {
+      "myr": 170.0,
+      "mkm3": 1.0638,
+      "share_of_live": 0.0006
+     },
+     {
+      "myr": 130.0,
+      "mkm3": 1.0326,
+      "share_of_live": 0.0006
+     },
+     {
+      "myr": 180.0,
+      "mkm3": 0.9971,
+      "share_of_live": 0.0006
+     },
+     {
+      "myr": 160.0,
+      "mkm3": 0.9804,
+      "share_of_live": 0.0006
+     }
+    ],
+    "eroded_m3": [
+     {
+      "myr": 835.0,
+      "mkm3": 3.4962,
+      "share_of_live": 0.0042
+     },
+     {
+      "myr": 830.0,
+      "mkm3": 3.4105,
+      "share_of_live": 0.004
+     },
+     {
+      "myr": 825.0,
+      "mkm3": 3.3486,
+      "share_of_live": 0.0039
+     },
+     {
+      "myr": 840.0,
+      "mkm3": 3.1763,
+      "share_of_live": 0.0038
+     },
+     {
+      "myr": 845.0,
+      "mkm3": 3.0922,
+      "share_of_live": 0.0037
+     }
+    ],
+    "formed_m3": [
+     {
+      "myr": 200.0,
+      "mkm3": 125.1076,
+      "share_of_live": 0.0761
+     },
+     {
+      "myr": 205.0,
+      "mkm3": 12.3328,
+      "share_of_live": 0.007
+     },
+     {
+      "myr": 210.0,
+      "mkm3": 4.4647,
+      "share_of_live": 0.0025
+     },
+     {
+      "myr": 225.0,
+      "mkm3": 3.156,
+      "share_of_live": 0.0018
+     },
+     {
+      "myr": 235.0,
+      "mkm3": 2.9754,
+      "share_of_live": 0.0017
+     }
+    ]
+   },
+   "continental_fluxes": [
+    {
+     "window_myr": [
+      0.0,
+      100.0
+     ],
+     "juvenile_km3_per_yr": 6.7608,
+     "returns_km3_per_yr": 0.7198,
+     "sinks_km3_per_yr": 9.8213,
+     "deeply_subducted_km3_per_yr": 8.3349,
+     "mean_inventory_mkm3": 6434.4835,
+     "on_oceanic_hosts_fraction": 0.0198
+    },
+    {
+     "window_myr": [
+      100.0,
+      500.0
+     ],
+     "juvenile_km3_per_yr": 4.9454,
+     "returns_km3_per_yr": 0.9535,
+     "sinks_km3_per_yr": 10.1584,
+     "deeply_subducted_km3_per_yr": 6.4357,
+     "mean_inventory_mkm3": 5625.6259,
+     "on_oceanic_hosts_fraction": 0.1174
+    },
+    {
+     "window_myr": [
+      500.0,
+      1000.0
+     ],
+     "juvenile_km3_per_yr": 3.1408,
+     "returns_km3_per_yr": 0.639,
+     "sinks_km3_per_yr": 9.6699,
+     "deeply_subducted_km3_per_yr": 6.3705,
+     "mean_inventory_mkm3": 2609.7856,
+     "on_oceanic_hosts_fraction": 0.2123
+    }
+   ]
+  },
+  "456862899": {
+   "myr": 3000.0,
+   "events_total": {
+    "split": 261,
+    "failed_rift": 231,
+    "merged": 15,
+    "craton": 6
+   },
+   "events_per_gyr": [
+    {
+     "gyr": 0,
+     "split": 104,
+     "merged": 12,
+     "failed_rift": 94
+    },
+    {
+     "gyr": 1,
+     "split": 77,
+     "merged": 1,
+     "failed_rift": 79
+    },
+    {
+     "gyr": 2,
+     "split": 80,
+     "merged": 2,
+     "failed_rift": 58
+    }
+   ],
+   "plate_count": {
+    "start": 9,
+    "end": 58,
+    "min": 9,
+    "max": 68,
+    "mean": 53.0645
+   },
+   "plate_count_by_checkpoint": {
+    "0": 9,
+    "100": 27,
+    "200": 40,
+    "300": 45,
+    "400": 52,
+    "500": 52,
+    "600": 51,
+    "700": 53,
+    "800": 51,
+    "900": 54,
+    "1000": 56,
+    "1100": 58,
+    "1200": 64,
+    "1300": 61,
+    "1400": 63,
+    "1500": 59,
+    "1600": 58,
+    "1700": 64,
+    "1800": 68,
+    "1900": 60,
+    "2000": 61,
+    "2100": 56,
+    "2200": 50,
+    "2300": 53,
+    "2400": 59,
+    "2500": 56,
+    "2600": 57,
+    "2700": 48,
+    "2800": 51,
+    "2900": 51,
+    "3000": 58
+   },
+   "craton_balance_error_km3": -0.0883,
+   "genuine_continental_area_mkm2": {
+    "0": 82.3269,
+    "100": 55.9377,
+    "200": 40.4086,
+    "300": 28.9899,
+    "400": 20.3881,
+    "500": 16.4687,
+    "600": 15.1421,
+    "700": 13.013,
+    "800": 10.8351,
+    "900": 10.7153,
+    "1000": 10.4013,
+    "1100": 10.1325,
+    "1200": 8.8076,
+    "1300": 8.9701,
+    "1400": 9.3536,
+    "1500": 9.2017,
+    "1600": 8.8737,
+    "1700": 8.7224,
+    "1800": 7.4242,
+    "1900": 6.8933,
+    "2000": 6.4288,
+    "2100": 6.4078,
+    "2200": 6.3877,
+    "2300": 6.4241,
+    "2400": 5.3842,
+    "2500": 4.4812,
+    "2600": 3.8266,
+    "2700": 3.0435,
+    "2800": 3.1891,
+    "2900": 2.7885,
+    "3000": 2.7151
+   },
+   "land_fraction_node": {
+    "0": 0.1481,
+    "100": 0.1074,
+    "200": 0.0876,
+    "300": 0.0565,
+    "400": 0.0457,
+    "500": 0.0372,
+    "600": 0.0319,
+    "700": 0.0298,
+    "800": 0.0231,
+    "900": 0.0198,
+    "1000": 0.0194,
+    "1100": 0.0202,
+    "1200": 0.0188,
+    "1300": 0.0177,
+    "1400": 0.0169,
+    "1500": 0.0187,
+    "1600": 0.0232,
+    "1700": 0.0247,
+    "1800": 0.0248,
+    "1900": 0.0251,
+    "2000": 0.0247,
+    "2100": 0.0179,
+    "2200": 0.02,
+    "2300": 0.0148,
+    "2400": 0.0109,
+    "2500": 0.0088,
+    "2600": 0.0075,
+    "2700": 0.0049,
+    "2800": 0.0068,
+    "2900": 0.0051,
+    "3000": 0.0055
+   },
+   "rift_cuts": {
+    "split_cuts": 261.0,
+    "split_cuts_through_craton": 21.0,
+    "split_band_area_m2": 724463338797539.2,
+    "split_band_craton_area_m2": 26862512760898.383,
+    "failed_rift_cuts": 231.0,
+    "failed_rift_cuts_through_craton": 12.0,
+    "failed_rift_band_area_m2": 630025122653969.2,
+    "failed_rift_band_craton_area_m2": 18272902674220.29
+   },
+   "samples": 601,
+   "initial_continental_mkm3": 3864.204,
+   "continental_sinks_per_window": [
+    {
+     "window_myr": [
+      0.0,
+      100.0
+     ],
+     "inventory_mkm3": [
+      3864.204,
+      3430.7255
+     ],
+     "deeply_subducted_km3_per_yr": 10.3152,
+     "rift_thinned_km3_per_yr": 1.0131,
+     "collision_subducted_km3_per_yr": 0.9093,
+     "collision_lower_crust_subducted_km3_per_yr": 0.0331,
+     "delaminated_lower_crust_km3_per_yr": 0.0,
+     "overloaded_root_delaminated_km3_per_yr": 0.0,
+     "topology_removed_km3_per_yr": 0.0
+    },
+    {
+     "window_myr": [
+      100.0,
+      500.0
+     ],
+     "inventory_mkm3": [
+      3430.7255,
+      996.6285
+     ],
+     "deeply_subducted_km3_per_yr": 7.5882,
+     "rift_thinned_km3_per_yr": 0.6689,
+     "collision_subducted_km3_per_yr": 1.7984,
+     "collision_lower_crust_subducted_km3_per_yr": 0.0351,
+     "delaminated_lower_crust_km3_per_yr": 0.0276,
+     "overloaded_root_delaminated_km3_per_yr": 0.0002,
+     "topology_removed_km3_per_yr": 0.0
+    },
+    {
+     "window_myr": [
+      500.0,
+      1000.0
+     ],
+     "inventory_mkm3": [
+      996.6285,
+      566.3976
+     ],
+     "deeply_subducted_km3_per_yr": 2.8662,
+     "rift_thinned_km3_per_yr": 0.1507,
+     "collision_subducted_km3_per_yr": 0.0,
+     "collision_lower_crust_subducted_km3_per_yr": 0.001,
+     "delaminated_lower_crust_km3_per_yr": 0.0015,
+     "overloaded_root_delaminated_km3_per_yr": 0.0,
+     "topology_removed_km3_per_yr": 0.0
+    },
+    {
+     "window_myr": [
+      1000.0,
+      2000.0
+     ],
+     "inventory_mkm3": [
+      566.3976,
+      435.3547
+     ],
+     "deeply_subducted_km3_per_yr": 1.7326,
+     "rift_thinned_km3_per_yr": 0.1363,
+     "collision_subducted_km3_per_yr": 0.0001,
+     "collision_lower_crust_subducted_km3_per_yr": 0.0012,
+     "delaminated_lower_crust_km3_per_yr": 0.0003,
+     "overloaded_root_delaminated_km3_per_yr": 0.0,
+     "topology_removed_km3_per_yr": 0.0
+    },
+    {
+     "window_myr": [
+      2000.0,
+      3000.0
+     ],
+     "inventory_mkm3": [
+      435.3547,
+      190.3795
+     ],
+     "deeply_subducted_km3_per_yr": 1.4266,
+     "rift_thinned_km3_per_yr": 0.1233,
+     "collision_subducted_km3_per_yr": 0.0009,
+     "collision_lower_crust_subducted_km3_per_yr": 0.002,
+     "delaminated_lower_crust_km3_per_yr": 0.0007,
+     "overloaded_root_delaminated_km3_per_yr": 0.0,
+     "topology_removed_km3_per_yr": 0.0
+    }
+   ],
+   "sample_spacing_myr": 5.0,
+   "delaminated_samples_over_share_of_live": {
+    "0.1%": 6,
+    "0.5%": 6,
+    "1.0%": 6
+   },
+   "delaminated_largest_sample": {
+    "myr": 125.0,
+    "mkm3": 180.9993,
+    "share_of_live": 0.1374
+   },
+   "formed_per_window": [
+    {
+     "window_myr": [
+      0.0,
+      500.0
+     ],
+     "formed_mkm3": 0.7217
+    },
+    {
+     "window_myr": [
+      500.0,
+      1000.0
+     ],
+     "formed_mkm3": 0.0
+    },
+    {
+     "window_myr": [
+      1000.0,
+      1500.0
+     ],
+     "formed_mkm3": 0.0
+    },
+    {
+     "window_myr": [
+      1500.0,
+      2000.0
+     ],
+     "formed_mkm3": 0.0
+    },
+    {
+     "window_myr": [
+      2000.0,
+      2500.0
+     ],
+     "formed_mkm3": 0.0
+    },
+    {
+     "window_myr": [
+      2500.0,
+      3000.0
+     ],
+     "formed_mkm3": 0.0
+    }
+   ],
+   "craton_share_at_checkpoints": [
+    {
+     "myr": 0.0,
+     "craton_share_of_genuine_continental": 0.4472
+    },
+    {
+     "myr": 500.0,
+     "craton_share_of_genuine_continental": 0.8941
+    },
+    {
+     "myr": 1000.0,
+     "craton_share_of_genuine_continental": 0.9311
+    },
+    {
+     "myr": 1500.0,
+     "craton_share_of_genuine_continental": 0.8995
+    },
+    {
+     "myr": 2000.0,
+     "craton_share_of_genuine_continental": 0.8783
+    },
+    {
+     "myr": 2500.0,
+     "craton_share_of_genuine_continental": 0.8041
+    },
+    {
+     "myr": 3000.0,
+     "craton_share_of_genuine_continental": 1.0502
+    }
+   ],
+   "craton_loss_per_gyr": [
+    {
+     "gyr": 0,
+     "start_volume_mkm3": 1448.9811,
+     "rifted_m3": 0.0903,
+     "subducted_m3": 0.1544,
+     "delaminated_m3": 0.2765,
+     "collision_reworked_m3": 0.0181,
+     "eroded_m3": 0.2134,
+     "total": 0.7527,
+     "rifted_divergent_m3": 0.0285,
+     "rifted_stretch_m3": 0.0553,
+     "rifted_failed_m3": 0.0066
+    },
+    {
+     "gyr": 1,
+     "start_volume_mkm3": 355.4185,
+     "rifted_m3": 0.0714,
+     "subducted_m3": 0.2169,
+     "delaminated_m3": 0.0,
+     "collision_reworked_m3": 0.0093,
+     "eroded_m3": 0.0376,
+     "total": 0.3352,
+     "rifted_divergent_m3": 0.0247,
+     "rifted_stretch_m3": 0.0467,
+     "rifted_failed_m3": 0.0
+    },
+    {
+     "gyr": 2,
+     "start_volume_mkm3": 238.5967,
+     "rifted_m3": 0.1176,
+     "subducted_m3": 0.3277,
+     "delaminated_m3": 0.0,
+     "collision_reworked_m3": 0.0205,
+     "eroded_m3": 0.0994,
+     "total": 0.5652,
+     "rifted_divergent_m3": 0.0559,
+     "rifted_stretch_m3": 0.0617,
+     "rifted_failed_m3": 0.0
+    }
+   ],
+   "craton_checkpoints": [
+    {
+     "myr": 0.0,
+     "craton_volume_mkm3": 1448.9811,
+     "craton_area_mkm2": 36.8185,
+     "genuine_continental_area_mkm2": 82.3269,
+     "land_fraction": 0.1458,
+     "craton_rifted_m3_mkm3": 0.0,
+     "craton_subducted_m3_mkm3": 0.0,
+     "craton_delaminated_m3_mkm3": 0.0,
+     "craton_collision_reworked_m3_mkm3": 0.0,
+     "craton_eroded_m3_mkm3": 0.0,
+     "craton_formed_m3_mkm3": 0.0
+    },
+    {
+     "myr": 100.0,
+     "craton_volume_mkm3": 1335.1457,
+     "craton_area_mkm2": 26.3184,
+     "genuine_continental_area_mkm2": 55.9377,
+     "land_fraction": 0.0893,
+     "craton_rifted_m3_mkm3": 12.0712,
+     "craton_subducted_m3_mkm3": 12.419,
+     "craton_delaminated_m3_mkm3": 57.4998,
+     "craton_collision_reworked_m3_mkm3": 12.0268,
+     "craton_eroded_m3_mkm3": 18.2242,
+     "craton_formed_m3_mkm3": 0.0
+    },
+    {
+     "myr": 200.0,
+     "craton_volume_mkm3": 1039.5233,
+     "craton_area_mkm2": 21.345,
+     "genuine_continental_area_mkm2": 40.4086,
+     "land_fraction": 0.0812,
+     "craton_rifted_m3_mkm3": 36.0036,
+     "craton_subducted_m3_mkm3": 41.8696,
+     "craton_delaminated_m3_mkm3": 238.4991,
+     "craton_collision_reworked_m3_mkm3": 14.2314,
+     "craton_eroded_m3_mkm3": 76.208,
+     "craton_formed_m3_mkm3": 0.0
+    },
+    {
+     "myr": 500.0,
+     "craton_volume_mkm3": 611.0756,
+     "craton_area_mkm2": 14.7253,
+     "genuine_continental_area_mkm2": 16.4687,
+     "land_fraction": 0.0365,
+     "craton_rifted_m3_mkm3": 99.591,
+     "craton_subducted_m3_mkm3": 126.3306,
+     "craton_delaminated_m3_mkm3": 400.6622,
+     "craton_collision_reworked_m3_mkm3": 19.7317,
+     "craton_eroded_m3_mkm3": 188.4784,
+     "craton_formed_m3_mkm3": 0.7217
+    },
+    {
+     "myr": 1000.0,
+     "craton_volume_mkm3": 355.4185,
+     "craton_area_mkm2": 9.6842,
+     "genuine_continental_area_mkm2": 10.4013,
+     "land_fraction": 0.0153,
+     "craton_rifted_m3_mkm3": 131.3189,
+     "craton_subducted_m3_mkm3": 223.9142,
+     "craton_delaminated_m3_mkm3": 400.6622,
+     "craton_collision_reworked_m3_mkm3": 26.2555,
+     "craton_eroded_m3_mkm3": 309.2674,
+     "craton_formed_m3_mkm3": 0.7217
+    },
+    {
+     "myr": 2000.0,
+     "craton_volume_mkm3": 238.5967,
+     "craton_area_mkm2": 5.6464,
+     "genuine_continental_area_mkm2": 6.4288,
+     "land_fraction": 0.0267,
+     "craton_rifted_m3_mkm3": 156.6969,
+     "craton_subducted_m3_mkm3": 301.0068,
+     "craton_delaminated_m3_mkm3": 400.6622,
+     "craton_collision_reworked_m3_mkm3": 29.5486,
+     "craton_eroded_m3_mkm3": 322.8013,
+     "craton_formed_m3_mkm3": 0.7217
+    },
+    {
+     "myr": 3000.0,
+     "craton_volume_mkm3": 103.5442,
+     "craton_area_mkm2": 2.8514,
+     "genuine_continental_area_mkm2": 2.7151,
+     "land_fraction": 0.0072,
+     "craton_rifted_m3_mkm3": 184.8796,
+     "craton_subducted_m3_mkm3": 379.3184,
+     "craton_delaminated_m3_mkm3": 400.6622,
+     "craton_collision_reworked_m3_mkm3": 34.477,
+     "craton_eroded_m3_mkm3": 346.5071,
+     "craton_formed_m3_mkm3": 0.7217
+    }
+   ],
+   "craton_largest_jumps": {
+    "rifted_m3": [
+     {
+      "myr": 285.0,
+      "mkm3": 8.1656,
+      "share_of_live": 0.0085
+     },
+     {
+      "myr": 370.0,
+      "mkm3": 5.7003,
+      "share_of_live": 0.0064
+     },
+     {
+      "myr": 235.0,
+      "mkm3": 4.203,
+      "share_of_live": 0.0042
+     },
+     {
+      "myr": 420.0,
+      "mkm3": 3.7895,
+      "share_of_live": 0.005
+     },
+     {
+      "myr": 125.0,
+      "mkm3": 3.2665,
+      "share_of_live": 0.0025
+     }
+    ],
+    "subducted_m3": [
+     {
+      "myr": 315.0,
+      "mkm3": 2.5236,
+      "share_of_live": 0.0027
+     },
+     {
+      "myr": 645.0,
+      "mkm3": 2.4865,
+      "share_of_live": 0.0051
+     },
+     {
+      "myr": 635.0,
+      "mkm3": 2.4708,
+      "share_of_live": 0.0049
+     },
+     {
+      "myr": 630.0,
+      "mkm3": 2.465,
+      "share_of_live": 0.0049
+     },
+     {
+      "myr": 605.0,
+      "mkm3": 2.4037,
+      "share_of_live": 0.0045
+     }
+    ],
+    "delaminated_m3": [
+     {
+      "myr": 125.0,
+      "mkm3": 180.9993,
+      "share_of_live": 0.1374
+     },
+     {
+      "myr": 370.0,
+      "mkm3": 76.4778,
+      "share_of_live": 0.0862
+     },
+     {
+      "myr": 420.0,
+      "mkm3": 61.7464,
+      "share_of_live": 0.0813
+     },
+     {
+      "myr": 100.0,
+      "mkm3": 32.4408,
+      "share_of_live": 0.0236
+     },
+     {
+      "myr": 60.0,
+      "mkm3": 25.0591,
+      "share_of_live": 0.0175
+     }
+    ],
+    "collision_reworked_m3": [
+     {
+      "myr": 75.0,
+      "mkm3": 1.4493,
+      "share_of_live": 0.001
+     },
+     {
+      "myr": 80.0,
+      "mkm3": 1.3849,
+      "share_of_live": 0.001
+     },
+     {
+      "myr": 50.0,
+      "mkm3": 1.2124,
+      "share_of_live": 0.0008
+     },
+     {
+      "myr": 95.0,
+      "mkm3": 0.9041,
+      "share_of_live": 0.0007
+     },
+     {
+      "myr": 60.0,
+      "mkm3": 0.9032,
+      "share_of_live": 0.0006
+     }
+    ],
+    "eroded_m3": [
+     {
+      "myr": 445.0,
+      "mkm3": 5.9989,
+      "share_of_live": 0.009
+     },
+     {
+      "myr": 455.0,
+      "mkm3": 5.5345,
+      "share_of_live": 0.0085
+     },
+     {
+      "myr": 450.0,
+      "mkm3": 5.4636,
+      "share_of_live": 0.0083
+     },
+     {
+      "myr": 440.0,
+      "mkm3": 5.0528,
+      "share_of_live": 0.0075
+     },
+     {
+      "myr": 415.0,
+      "mkm3": 4.884,
+      "share_of_live": 0.0064
+     }
+    ],
+    "formed_m3": [
+     {
+      "myr": 255.0,
+      "mkm3": 0.7217,
+      "share_of_live": 0.0007
+     }
+    ]
+   },
+   "continental_fluxes": [
+    {
+     "window_myr": [
+      0.0,
+      100.0
+     ],
+     "juvenile_km3_per_yr": 6.9563,
+     "returns_km3_per_yr": 0.9917,
+     "sinks_km3_per_yr": 12.2708,
+     "deeply_subducted_km3_per_yr": 10.3152,
+     "mean_inventory_mkm3": 3701.7073,
+     "on_oceanic_hosts_fraction": 0.0432
+    },
+    {
+     "window_myr": [
+      100.0,
+      500.0
+     ],
+     "juvenile_km3_per_yr": 3.4186,
+     "returns_km3_per_yr": 0.6357,
+     "sinks_km3_per_yr": 10.1183,
+     "deeply_subducted_km3_per_yr": 7.5882,
+     "mean_inventory_mkm3": 2131.692,
+     "on_oceanic_hosts_fraction": 0.1049
+    },
+    {
+     "window_myr": [
+      500.0,
+      1000.0
+     ],
+     "juvenile_km3_per_yr": 1.6702,
+     "returns_km3_per_yr": 0.4925,
+     "sinks_km3_per_yr": 3.0195,
+     "deeply_subducted_km3_per_yr": 2.8662,
+     "mean_inventory_mkm3": 732.8428,
+     "on_oceanic_hosts_fraction": 0.0565
+    },
+    {
+     "window_myr": [
+      1000.0,
+      2000.0
+     ],
+     "juvenile_km3_per_yr": 1.3398,
+     "returns_km3_per_yr": 0.397,
+     "sinks_km3_per_yr": 1.8704,
+     "deeply_subducted_km3_per_yr": 1.7326,
+     "mean_inventory_mkm3": 502.5488,
+     "on_oceanic_hosts_fraction": 0.1021
+    },
+    {
+     "window_myr": [
+      2000.0,
+      3000.0
+     ],
+     "juvenile_km3_per_yr": 1.0743,
+     "returns_km3_per_yr": 0.2347,
+     "sinks_km3_per_yr": 1.5537,
+     "deeply_subducted_km3_per_yr": 1.4266,
+     "mean_inventory_mkm3": 297.346,
+     "on_oceanic_hosts_fraction": 0.079
+    }
+   ]
+  }
+ }
+}

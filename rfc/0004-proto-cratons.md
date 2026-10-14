@@ -1,8 +1,9 @@
 # RFC 0004: Proto-cratons: restarting craton formation
 
 - **Status:** Draft
-- **Date:** 2026-10-13
-- **Related:** #274 (craton formation), #314 (interior shortening); RFCs
+- **Date:** 2026-10-13 (re-baselined 2026-10-14 on the year-based split pace, #403)
+- **Related:** #274 (craton formation), #314 (interior shortening), #358 (split cooldown in years), #403 (re-baseline),
+  #411 (criteria to revisit); RFCs
   [0001](0001-merge-cap-craton-loss.md), [0003](0003-rifting-around-cratons.md),
   [0006](0006-intra-oceanic-arcs.md)
 
@@ -22,13 +23,28 @@ In the run behind RFCs 0001–0007, **craton formation stopped for good at about
 The run is seed 456862899, 19.2 Gyr, saved locally as
 `mantle-bloom-seed456862899-19191800000y.mbworld`; the file is on the author's machine and
 **not available for download**. Numbers come from `bin/debug/ledger_history.py` on that
-save.
+save. The save predates #358: it ran post-#340 code (exact commit unknown) with the split
+cooldown counted in steps, 200 Myr for most of the run.
 
 - `formed_m3` reached 357 M km³ by 500 Myr (201 M km³ of it in one sample at 202 My, the
   first time the 200 Myr clock completed). It then stayed at exactly that value for the
   remaining 18.7 Gyr.
 - By 500 Myr cratons made up 73% of genuine continental area, and 80–88% for most of the
   rest of the run. The non-cratonic crust that remained was all near margins.
+
+**On the current model** (origin/main 2562f63, 5 Myr steps; `analysis/issue403/`),
+formation still stops, sooner:
+
+| Run | `formed_m3`, 0–500 Myr | After 500 Myr | Craton share of genuine continental area: start / 500 Myr / 1 Gyr |
+|---|---|---|---|
+| Seed 7 | 34 M km³ (last at 355 My) | 0 | 40% / 87% / 97% |
+| Seed 11 | 162 M km³ | 0 | 51% / 92% / 94% |
+| Seed 2024 | 167 M km³ | 0 | 38% / 85% / 95% |
+| Seed 456862899 (3 Gyr) | 0.7 M km³ (once, at 255 My) | 0 | 45% / 89% / 93% |
+
+The craton share rises because non-cratonic continental crust disappears faster than
+craton, not because craton forms: genuine continental area falls to 9–19% of its start by
+1 Gyr on every run.
 
 With no source, every craton sink in RFCs 0001–0003 is a one-way drain.
 
@@ -117,7 +133,13 @@ So the proposal is sound, with three caveats:
 **Recommendation:** 1, 3 and 4 now. Path 1 alone restarts formation on the margins of
 existing cratons, and 4 stops any path from cratonising a column that is being deformed.
 2 waits for its own RFC. Leave 5 at 1.0 (off) until a run shows cratons ratcheting up to
-most of the continental area.
+most of the continental area *through formation*.
+
+**After the re-baseline (#403).** Origin/main already shows a craton share of 85–97% by
+0.5–1 Gyr with formation stopped, so a high share alone no longer says formation ratchets.
+The trigger for 5, the no-ratchet acceptance criterion and the formation criterion's 25%
+area condition need revisiting before this RFC is accepted (#411). The
+recommendation itself (1, 3 and 4) is unchanged.
 
 ## Design
 
@@ -272,14 +294,19 @@ proto-craton area, and how often each writer marks cells.
 
 ## Acceptance criteria
 
-- [ ] On seeds 7, 11 and 2024 to 2 Gyr, and seed 456862899 to 3 Gyr, `formed_m3` increases
-      in every 500 Myr window in which genuine continental area is at least 25% of its
-      initial value. Today it stops after 500 Myr.
+- [ ] On seeds 7, 11 and 2024 to 2 Gyr, and a regenerated seed 456862899 to 3 Gyr,
+      `formed_m3` increases in every 500 Myr window in which genuine continental area is at
+      least 25% of its initial value. On origin/main 2562f63 it stops before 500 Myr on all
+      four runs. Area falls below 25% of its start by 400–800 Myr on every run, so as
+      written this tests only the first one or two windows (#411).
 - [ ] Path B contributes in at least two of the four runs.
 - [ ] No column forms craton while being deformed: the unit tests above, plus the debug
       audit reporting zero unmarked tectonic changes on the acceptance runs.
 - [ ] No ratchet: craton share of genuine continental area stays between 30% and 65% at
-      every 500 Myr checkpoint (it starts at 35%).
+      every 500 Myr checkpoint. It starts at 38–51% on origin/main 2562f63 (35% in the
+      pre-#358 save) and is already 85–92% at 500 Myr, with no formation, so this fails
+      before any change; it needs a reformulation that separates formation from loss
+      (#411).
 - [ ] Step time changes by less than 2% at density 4.
 - [ ] Unit tests above pass; ledgers balance; old saves load; affected tests, ruff and
       `bin/quality_check.sh` are green.
@@ -288,7 +315,8 @@ proto-craton area, and how often each writer marks cells.
 
 - **Formation doesn't matter.** If restarting formation (paths A and B) changes craton
   volume at 3 Gyr on seed 456862899 by less than 10%, formation isn't what limits craton
-  survival. Deprioritise this RFC behind 0001–0003.
+  survival. Deprioritise this RFC behind 0001–0003. On origin/main 2562f63 that volume is
+  103 M km³, 7% of the seed's starting craton.
 - **Welded growth is a ratchet.** If path B pushes the craton share above 65% on most
   seeds at any reasonable weld reach (250–1,000 km), welding everything near a craton is
   too generous. Restrict B to belts with a collisional history (an
