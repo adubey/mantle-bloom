@@ -267,6 +267,14 @@ Two long-run corrections (2026-09):
   plate-geometry investigations kept hitting. With the drag term, oceanic speed
   self-regulates (median ~4-5 cm/yr, a few genuinely fast plates near the cap) instead of
   everything sitting on the clamp. `backend/unit_tests/test_torque.py` pins both.
+- **Continental collisions resist with a real force** (`contact_drag_pa_s_per_m`, RFC 0008,
+  #399). At contested continent-continent nodes a drag coefficient in Pa·s/m joins the
+  implicit `K`, sized so a fully braked contact at 4 cm/yr resists with
+  `CONTACT_RESISTANCE_N_PER_M` (5 × 10¹² N/m of trench, the Himalaya–Tibet force of Copley et
+  al. 2010) across the `BOUNDARY_FORCE_REACH_MULTIPLIER`-spacing band, at any node density.
+  Each node is braked by `g = max(relief factor, craton strength)`, in [0, 1]. The earlier
+  reference stress (5 × 10⁷) multiplied the relative velocity in m/s, so it resisted with
+  about 10⁻⁷ of basal drag's traction and slowed nothing.
 
 <a id="boundary-evolution"></a>
 ## Plate motion: shift and deform (`plates.py`'s `Plate.shift`/`Plate.deform`)
@@ -1040,15 +1048,14 @@ routine per-step motion.
   this plate's own near-boundary band currently classified contested (not the whole plate --
   a huge plate's boundary is a small fraction of its own node count, which would dilute this
   to near-zero for exactly the large-plate case that matters) -- a deeper, wider overlap
-  crumples faster, on top of the existing distance-decay shape within the belt. Symmetrically,
-  in `torque.shift_plate`, `collision_friction_torque`'s resistive stress
-  (`COLLISION_FRICTION_REFERENCE_PA`) is scaled by `1 + OVERLAP_FRICTION_SEVERITY_GAIN *
-  overlap_severity` (the same band-normalized fraction) -- a deep pile-up brakes both plates
-  several times harder than a light graze, not just proportionally more from summing over more
-  contested nodes. Each contested node's relief (`COLLISION_RELIEF_FRICTION_GAIN`) scales it
-  further, and so does the contact's craton, `1 + CRATON_COLLISION_FRICTION_GAIN *
-  cratons.strength` of the weaker side: the lesser of the node's own craton and that at its
-  neighbour's nearest node (`torque.contact_craton_m`, #340). Collision resistance is one
+  crumples faster, on top of the existing distance-decay shape within the belt. For the
+  slowdown, in `torque.shift_plate`, the contact drag (`torque.contact_drag_pa_s_per_m`, RFC 0008) brakes
+  each contested node by the larger of its relief factor (full at
+  `COLLISION_RELIEF_FRICTION_SCALE_M` of relief) and the contact's craton strength,
+  `cratons.strength` of the weaker side: the lesser of the node's own craton and that at its
+  neighbour's nearest node (`torque.contact_craton_m`, #340). A deeper overlap brakes harder
+  only because more contested nodes sum to a bigger torque; the separate severity gain went
+  with #399. Collision resistance is one
   force across the contact, and it is the weak side's deformation that sets it (Copley et
   al. 2010; Clark 2012), so craton against craton brakes both plates fully, while a craton
   pushing into weak crust adds nothing beyond the relief term.
@@ -1234,7 +1241,7 @@ loading never changes plate state.
 - never flows, melts or delaminates (`orogeny.py`); an orogen ponds against it;
 - is never consumed whole by boundary retreat (`cratons.retreat_allowed`). At a collision
   front it jams: the weaker crust around it takes the shortening, and craton against craton
-  holds, braking both plates (`torque.CRATON_COLLISION_FRICTION_GAIN`), until the plates
+  holds, braking both plates (`torque.contact_drag_pa_s_per_m`), until the plates
   merge. At a trench its exposed edge wears back by subduction erosion, removing
   crust and craton together (`cratons.attrite`), and the cell retreats once no craton is
   left (#340). Each exposed craton cell (one with an open side) in the trench's retreating

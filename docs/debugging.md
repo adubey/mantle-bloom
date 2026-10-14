@@ -602,7 +602,7 @@ RFC #403 audit uses `bin/debug/rebaseline_rfcs.py` when per-merge and attrition 
 needed alongside those saved histories.
 `bin/debug/probe_craton_contacts.py` replays a seed and records, per plate contact and step,
 where cratons jam retreat (the frozen `run_eligible` candidates on polarized fronts), closing
-rates, collision-time drops and fusions, the buoyant share of slab pull, contact forces, and
+rates, collision-time drops and fusions, the buoyant share of slab pull, contact forces, plate count and speed, and
 the craton lost within reach of each contact (RFC 0008's gate).
 
 #### Plate Inspector, Rivers, Lake Inspector, Plates & Faults

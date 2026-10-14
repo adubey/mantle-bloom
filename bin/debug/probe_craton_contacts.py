@@ -25,9 +25,12 @@ no saved state changes. Every step, for every pair of plates in contact (any cru
   as a check on the per-cell sums;
 - **buoyant pull**: the share of slab-pull torque magnitude (`torque.slab_pull_torque`, as
   applied) from continental-coded or cratonic subducting nodes;
-- **contact force**: per unit trench length, today's collision brake as applied
-  (`torque.collision_drag_coefficients`), and the force RFC 0008's contact drag would apply,
-  `CONTACT_RESISTANCE_N_PER_M x j x v / v_ref`, with j the jammed nodes' mean jam factor.
+- **plates**: plate count, area-weighted mean surface speed, and the largest plate's share
+  of the surface (RFC 0008's bounds on slowing);
+- **contact force**: per unit trench length, the collision brake as applied
+  (`torque.contact_drag_pa_s_per_m` at the contested nodes, #399), and the force RFC 0008's
+  jam drag (solution 1) would apply, `CONTACT_RESISTANCE_N_PER_M x j x v / v_ref`, with j the
+  jammed nodes' mean jam factor.
 
 The summary reports, per seed: J (craton destruction within reach of a jammed contact whose
 pair didn't fuse within 50 Myr, as a share of all destruction), dropped collision time on
@@ -66,10 +69,7 @@ CM_PER_YR = 0.01 / torque.SECONDS_PER_YEAR  # m/s
 TRANSFORM_CM = 1.0
 EDGE_SPACINGS = 1.5
 FUSION_WINDOW_MYR = 50.0
-# RFC 0008's proposed contact drag: Copley et al. (2010)'s Himalaya-Tibet resistance at the
-# post-collision India-Asia rate, and its jam thresholds from Cloos (1993).
-CONTACT_RESISTANCE_N_PER_M = 5e12
-V_REF_CM = 4.0
+# RFC 0008's jam thresholds from Cloos (1993), until solution 1 puts them in torque.
 JAM_MIN_CRUST_M = 15_000.0
 JAM_FULL_CRUST_M = 30_000.0
 
@@ -160,24 +160,15 @@ class Probe:
         self.pull["cratonic"] += float(torque_mag[cratonic].sum())
         self.pull["plates"].append(round(buoyant / total, 4) if total > 0.0 else 0.0)
 
-    def on_collision_drag(self, plate, inputs, mask, overlap_severity, craton_m) -> None:
-        """Today's brake per node, `collision_drag_coefficients`' reference stress times the
-        node's area and real relative speed, summed per neighbour."""
+    def on_collision_drag(self, plate, inputs, mask, craton_m) -> None:
+        """The brake as applied per node, `torque.contact_drag_pa_s_per_m` times the node's
+        area and real relative speed, summed per neighbour."""
         if not np.any(mask):
             return
-        rho_c = lithosphere.node_crust_density(inputs.own_crust_type_codes[mask], plate.crust_type)
-        elevation = lithosphere.isostatic_elevation(inputs.own_hc[mask], inputs.own_hm[mask], rho_c)
-        relief = np.clip((elevation - torque.CONTINENTAL_REFERENCE_ELEVATION_M) / torque.COLLISION_RELIEF_FRICTION_SCALE_M, 0.0, 1.0)
-        craton = cratons.strength(craton_m[mask]) if craton_m is not None else 0.0
-        stress = (
-            torque.COLLISION_FRICTION_REFERENCE_PA
-            * (1.0 + torque.OVERLAP_FRICTION_SEVERITY_GAIN * overlap_severity)
-            * (1.0 + torque.COLLISION_RELIEF_FRICTION_GAIN * relief)
-            * (1.0 + torque.CRATON_COLLISION_FRICTION_GAIN * craton)
-        )
+        coefficient = torque.contact_drag_pa_s_per_m(plate, inputs, mask, self.spacing, craton_m)
         pts = inputs.own_points[mask]
         relative = np.cross(plate.omega - inputs.neighbor_omega[mask], pts) * R / torque.SECONDS_PER_YEAR
-        force = stress * plate.accounting_areas_m2(self.spacing)[mask] * np.linalg.norm(relative, axis=1)
+        force = coefficient * plate.accounting_areas_m2(self.spacing)[mask] * np.linalg.norm(relative, axis=1)
         owners = inputs.neighbor_plate_id[mask]
         for other in np.unique(owners):
             self.brake[_pair(plate.plate_id, int(other))].append(float(force[owners == other].sum()))
@@ -235,7 +226,24 @@ class Probe:
                     "nodes": plate.node_count(),
                 }
         self._build_pairs(sides, cratons_by_plate)
+        self.record["plates"] = self._plate_stats(plates)
         self.snapshot = self._snapshot()
+
+    def _plate_stats(self, plates: list) -> dict:
+        """Plate count, area-weighted mean surface speed and the largest plate's share of the
+        surface, at the omegas the plates moved with last step: RFC 0008's bounds on slowing."""
+        areas = [float(plate.accounting_areas_m2(self.spacing).sum()) for plate in plates]
+        moving = 0.0
+        for plate, area in zip(plates, areas):
+            points, _ = plate.all_points_and_elevation()
+            speed = np.linalg.norm(np.cross(plate.omega, points), axis=1) * R * 100.0  # cm/yr
+            moving += float(np.dot(speed, plate.accounting_areas_m2(self.spacing)))
+        total = sum(areas)
+        return {
+            "n": len(plates),
+            "speed_cm": round(moving / total, 4) if total else 0.0,
+            "largest": round(max(areas) / total, 4) if total else 0.0,
+        }
 
     def _build_pairs(self, sides: dict, cratons_by_plate: dict) -> None:
         points, owners = [], []
@@ -277,7 +285,7 @@ class Probe:
             if length_m > 0.0 and brake:
                 row["brake_n_per_m"] = float(np.mean(brake)) / length_m
             if jammed:
-                row["proposed_n_per_m"] = CONTACT_RESISTANCE_N_PER_M * j_mean * max(close, 0.0) / V_REF_CM
+                row["proposed_n_per_m"] = torque.CONTACT_RESISTANCE_N_PER_M * j_mean * max(close, 0.0) / torque.CONTACT_RESISTANCE_REF_CM_PER_YR
             self.record["pairs"][_key(pair)] = row
             self.contact_pairs.append(pair)
             points.append(contact_pts)
@@ -429,9 +437,9 @@ def install(probe: Probe) -> None:
         probe.on_slab_pull(plate, inputs, mask)
         return slab_pull_torque(plate, inputs, mask, spacing_rad)
 
-    def tapped_collision_drag_coefficients(plate, inputs, mask, spacing_rad, overlap_severity=0.0, craton_m=None):
-        probe.on_collision_drag(plate, inputs, mask, overlap_severity, craton_m)
-        return collision_drag_coefficients(plate, inputs, mask, spacing_rad, overlap_severity, craton_m)
+    def tapped_collision_drag_coefficients(plate, inputs, mask, spacing_rad, craton_m=None):
+        probe.on_collision_drag(plate, inputs, mask, craton_m)
+        return collision_drag_coefficients(plate, inputs, mask, spacing_rad, craton_m)
 
     def tapped_update_collision_progress(world, years):
         before = dict(world.collision_progress)
@@ -554,6 +562,18 @@ def _progress_and_pull(rows: list[dict]) -> dict:
     return out
 
 
+def _plate_means(rows: list[dict]) -> dict:
+    stats = [row["plates"] for row in rows if "plates" in row]
+    if not stats:
+        return {}
+    return {
+        "count_mean": round(float(np.mean([s["n"] for s in stats])), 2),
+        "speed_cm_per_yr_mean": round(float(np.mean([s["speed_cm"] for s in stats])), 3),
+        "largest_share_mean": round(float(np.mean([s["largest"] for s in stats])), 4),
+        "largest_share_max": round(float(np.max([s["largest"] for s in stats])), 4),
+    }
+
+
 def summarize_seed(path: Path) -> dict:
     lines = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
     header, rows = lines[0], [r for r in lines[1:] if "myr" in r]
@@ -590,8 +610,9 @@ def summarize_seed(path: Path) -> dict:
         "plate_steps_buoyant_pull_over_10pct": round(float(np.mean(np.array(plate_shares) > 0.1)), 4) if plate_shares else None,
         "closing_cm_per_yr": {k: (round(v, 3) if v is not None else None) for k, v in rates.items()},
         "jammed_share_of_collision_length": round(contacts["jammed_len"] / contacts["collision_len"], 4) if contacts["collision_len"] else None,
-        "brake_today_n_per_m_at_jams": {"p50": pct(brake, 50), "p90": pct(brake, 90)},
+        "brake_n_per_m_at_jams": {"p10": pct(brake, 10), "p50": pct(brake, 50), "p90": pct(brake, 90)},
         "proposed_n_per_m_at_jams": {"p10": pct(proposed, 10), "p50": pct(proposed, 50), "p90": pct(proposed, 90)},
+        "plates": _plate_means(rows),
         "fusions": {
             "roll": sum(f["kind"] == "roll" for f in fusions),
             "forced": sum(f["kind"] == "forced" for f in fusions),
@@ -614,7 +635,8 @@ def summarize(paths: list[Path], json_out: Path | None) -> None:
             f"jammed share of collision length {s['jammed_share_of_collision_length']}\n"
             f"  closing cm/yr, continental pairs: craton {rates['cc_craton']} / clear {rates['cc_clear']}; "
             f"all: craton {rates['all_craton']} / clear {rates['all_clear']}\n"
-            f"  brake today at jams {s['brake_today_n_per_m_at_jams']}; proposed {s['proposed_n_per_m_at_jams']}; fusions {s['fusions']}"
+            f"  brake at jams {s['brake_n_per_m_at_jams']}; proposed {s['proposed_n_per_m_at_jams']}; fusions {s['fusions']}\n"
+            f"  plates {s['plates']}"
         )
     if json_out:
         json_out.parent.mkdir(parents=True, exist_ok=True)
