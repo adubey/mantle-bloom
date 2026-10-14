@@ -230,6 +230,32 @@ These are the baseline for the acceptance criteria and select the variants:
 | Buoyant-pull share under 1% on every seed | 1 still, for the keel fix; its resistance is not tuned |
 | J under 5% on every seed | Build as above; record that fusion isn't a craton-survival lever and drop its loss acceptance criterion |
 
+**Gate result (2026-10-14, #395).** Seeds 7, 11 and 2024 to 1 Gyr on origin/main 3b9d9c1
+([analysis/rfc0008](../analysis/rfc0008/README.md#phase-1-gate-issue-395)):
+
+| | Seed 7 | Seed 11 | Seed 2024 |
+|---|---|---|---|
+| J | 22% | 57% | 40% |
+| Jammed share of continental collision length | 44% | 56% | 37% |
+| Collision-time drops on jammed pairs (of all drops) | 28 of 106 | 22 of 54 | 53 of 111 |
+| Buoyant share of slab pull | 6.4% | 4.5% | 4.0% |
+| Closing rate at converging continental contacts, craton in reach / clear (cm/yr) | 1.70 / 1.59 | 1.84 / 1.12 | 1.48 / 1.61 |
+| Craton lost in fusions, % of start craton | 54% | 18% | 31% |
+
+- Build 0, 1, 5 and 6. Solution 1's resistance is tuned: the buoyant-pull share is above 1%
+  on every seed. The loss criterion stays: J is above 5% on every seed, and jams cover far
+  more than 5% of collision length, so the "jams are rare" falsification isn't met.
+- Solution 2 is decided after 0 and 1, as the table says. On the baseline, craton contacts
+  don't close more slowly (the brake is inert: a median 2.5–7.8 × 10⁴ N/m at jammed contacts).
+- Craton lost in fusions equals each seed's `delaminated_m3` share. So the merge cap is
+  almost the whole delamination sink, which answers the question RFC 0001's gate asks. 91
+  of 101 fusions were of a pair jammed at the time, and the craton-on-craton overlap they
+  fused sums to 53–90% of the starting craton. That is the baseline for the 75% overlap
+  criterion. It also means solution 6 must not land before RFC 0001's placement fix.
+- At the contacts' own closing rates (about 1.5 cm/yr) the contact drag gives a median of
+  0.8–0.9 × 10¹² N/m at jammed contacts, just under the 10¹²–10¹³ acceptance band (p90
+  1.8–2.2 × 10¹²). The force criterion is read after 0 and 1, at the slowed rates.
+
 **Slowing: buoyant columns (solution 1).** For each node in `subducting_boundary_mask`, a
 net buoyancy per unit area:
 
