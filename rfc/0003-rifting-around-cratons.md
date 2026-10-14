@@ -98,9 +98,8 @@ and 12–18% craton-crossing cut share remain below as historical evidence, not 
 basis for that decision. The gate outcome does not set the resistance values for solution
 3; the implementation still has to tune them to the remaining loss.
 
-Phase 1b has run (Design, "Phase 1b outcome"): F = 17% on the three-seed mean with 2 in
-place, the "rift cuts aren't the path" case. So 1 is not built, and the RFC is to be revised
-toward boundary migration or 3.
+Phase 1b has run (Design, "Phase 1b outcome"): F = 42% on the three-seed mean on current
+main, with 2 in place. So 1 is built together with 3.
 
 4 comes with RFC 0007.
 
