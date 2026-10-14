@@ -1,10 +1,11 @@
-# RFC 0002: Cratons are rarely subducted: margin-dependent attrition
+# RFC 0002: Cratons resist sinking: margin-dependent attrition and collision sinks
 
 - **Status:** Draft
-- **Date:** 2026-10-13
+- **Date:** 2026-10-13 (revised 2026-10-14 to cover collision sinks)
 - **Related:** #340 (attrition at trenches), #177 (margin retreat budget), #320 (crust
-  transfer); RFCs [0001](0001-merge-cap-craton-loss.md),
-  [0005](0005-continental-recycling-balance.md)
+  transfer), #321 and #331 (terrane docking), #299 (fault shear conservation); RFCs
+  [0001](0001-merge-cap-craton-loss.md), [0005](0005-continental-recycling-balance.md),
+  [0008](0008-craton-collision-jamming.md) (buoyant columns resist subduction)
 
 ## Problem
 
@@ -47,6 +48,36 @@ The ledger also lumps three paths into `subducted_m3`:
 - the lost share at polarized collision fronts (`crust_transfer`, #320).
 
 Until they are split, we can't say for certain how much is attrition.
+
+**The collision sink.** A second account, `collision_reworked_m3`, books craton that "stays
+on the surface as ordinary continental crust" (`cratons.py`). For the craton inventory that
+is destruction: the crust survives, its craton status doesn't. Three sites book it:
+- `crust_transfer._book`: the kept share of a consumed column at a polarized collision
+  front (#320), and of a docking terrane (#321);
+- `quad_tectonics._accrete_onto_survivors`: suture crust thrust onto the surviving cells;
+- the phase audit after `faults.update_faults` (`world.py`), which clips any craton left above
+  its column and books it here.
+
+Reading the code narrows this down, but needs the split to confirm:
+- The first two take their volume from cells that boundary retreat removed. Retreat never
+  removes a cell that still holds craton (`cratons.retreat_allowed`), so they should book
+  almost nothing.
+- Fault relief (`faults._apply_plate_fault_relief`) moves Hc from donor to receiver cells, and
+  moves continental material with it, but not craton. A cratonic donor's craton is left above
+  its thinned column, and the audit clips it. That is craton destroyed by faulting with no
+  collision involved, booked under a collision name. It also contradicts the rule that
+  cratonic crust doesn't flow (`cratons.py`, `orogeny.py`).
+
+On seeds 7, 11 and 2024 to 1 Gyr (origin/main at 1b4f686; RFC 0008's evidence table,
+`analysis/rfc0008/`), `collision_reworked_m3` took 1.2%, 2.1% and 1.3% of the starting
+craton. `subducted_m3` took 5.9%, 14% and 9.3%. The collision sink is small next to
+subduction, but it is a conservation error where the fault audit is its source, so it is
+fixed whatever its size.
+
+**Cratonic terranes on oceanic plates.** Retreat can't remove their craton cells, and
+attrition skips terrane cells (the `trench` mask in `_retreat`), so such a terrane jams at
+the trench. It is resolved by docking it as cells (#331). The plate dynamics of the jam,
+slab pull from a buoyant column, are RFC 0008's.
 
 The run is a stress test of the model's long-term behaviour, not a calibration interval. It
 shows that attrition, applied without regard to margin type, removes cratons on a Gyr
@@ -98,12 +129,23 @@ destroyed, the root is removed by refertilisation, heating and delamination
    `1 − CRATON_ATTRITION_RESISTANCE × strength`, as erosion, rifting and stretching already
    do. It is simple, but has no physical basis for any particular value, so it's listed
    only as the fallback.
+5. **Faults move craton with the crust, and cratons don't donate.** In
+   `faults._apply_plate_fault_relief`, scale each donor's give by
+   `1 − strength(craton)`: cratonic crust doesn't flow, as in `orogeny.relax_orogens`. Carry
+   the craton share of whatever a donor does give to its receivers, the way continental
+   material already goes (#276). The fault audit then has nothing to clip. What it still
+   clips books to a new account, `faulted_m3`, not `collision_reworked_m3`.
+6. **Cratonic terranes dock intact.** Docking a terrane by handing its cells to the
+   overriding plate (#331) keeps its craton as craton. This RFC depends on #331 rather than
+   duplicating it.
 
 **Recommendation:** 1 as a diagnosis gate, then 2(b), with 2(a) and 2(c) as sensitivity
-cases.
+cases, and 5 as a conservation fix whatever the gate finds.
 - Solution 1 decides whether attrition is the problem at all. If `cratons.attrite` turns
   out to be a minor part of `subducted_m3`, the RFC re-scopes (see Falsification
-  criteria).
+  criteria). It also splits `collision_reworked_m3` by site, which sizes solution 5.
+- Solution 5 fixes a writer that breaks a stated rule. It's worth doing at any size, and
+  first if the fault audit turns out to dominate `collision_reworked_m3`.
 - Solution 2 is centred on the literature's thresholds, uses fields the model already
   carries, and gives RFC 0005 the classification it needs.
 - Re-measure after 2. If the attrition share is still above target, add 3. It is the more
@@ -123,6 +165,53 @@ cases.
 **Phase 1: channel split (gate).** Land the ledger split alone, and run the tuning
 seeds. Proceed to phase 2 only if `attrited_m3` is the largest part of what used to be
 `subducted_m3`. Otherwise revise the RFC toward whichever channel dominates.
+
+The split also covers the collision sink:
+- the fault audit books to new `faulted_m3`;
+- `collision_reworked_m3` gains diagnostic sub-accounts by site, outside the balance like
+  RFC 0003's rift paths: `reworked_transfer_m3`, `reworked_docking_m3` and
+  `reworked_suture_m3`.
+
+If the transfer and suture sites book more than 0.1% of the initial craton per Gyr, craton
+is reaching retreating cells by a route `retreat_allowed` doesn't cover; find it before
+phase 2.
+
+**Fault conservation (solution 5).** `faults._apply_plate_fault_relief` requests each
+donor's debit as a rate times `years_myr` (`debit`, capped at the minimum crust), then
+balances donors against receivers' headroom. Solution 5 changes the debit, carries craton
+and its provenance, and integrates the resistance over the step.
+
+- *Resisted debit, integrated.* A donor's craton leaves with its crust in proportion, so
+  its craton share ρ = craton / Hc is constant while it gives. Its strength is then
+  s = min(ρ × Hc / `CRATON_FULL_STRENGTH_HC_M`, 1), and it falls as the donor thins, so
+  applying the starting resistance to the whole step depends on the step length. With r
+  the unresisted debit rate (`debit / years_myr`, in m/Myr), the donor follows
+  `dHc/dt = −r (1 − s)`. For s < 1 that has the exact solution
+
+  `Hc(t) = [1 − (1 − a × Hc₀) × exp(a r t)] / a`, with a = ρ / `CRATON_FULL_STRENGTH_HC_M`
+
+  and the resisted debit over the step is `Hc₀ − Hc(years_myr)`.
+  - It is floored at the minimum crust, as `debit` is today.
+  - With no craton (a = 0) it reduces to `r × years_myr`, today's debit.
+  - A full-strength donor (s = 1) gives nothing, and stays at s = 1.
+  - Example: r = 2,000 m/Myr, Hc = 35,000 m, craton = 12,500 m over 10 Myr. The starting
+    resistance applied once gives 10,000 m; ten 1 Myr steps give ~11,389 m; the exact
+    solution gives ~11,575 m for any partition.
+- *Balancing.* The donor–receiver volume balance (`amount`) is then applied as today. When
+  receiver headroom binds, the scaled-down debit depends on the partition just as today's
+  does. This changes nothing about that.
+- *Craton carry.* The craton a donor gives is `ρ × taken`. It is split among receivers in
+  proportion to the Hc they get and capped at each receiver's new Hc. Units are metres of
+  thickness per cell, balanced in volume with cell areas, as `continental_material_m`
+  already is.
+- *Provenance.* `craton_formed_years` is a HISTORY field (`surface_fields.py`), and
+  `cratons.update` only dates craton newly forming on cells with none, so a carry has to set
+  it:
+  - a receiver that gains craton takes the oldest date among the donors that gave craton,
+    unless its own valid date is older;
+  - a donor left with no craton is reset to `CRATON_UNFORMED_YEARS`;
+  - `stable_continental_myr` is left alone. The carried craton is already formed, and the
+    formation clock only matters for crust not yet cratonic.
 
 **Phase 2: margin-dependent rate.**
 - *Segments.* Trench nodes on the overriding (craton-bearing) plate are grouped into
@@ -255,6 +344,12 @@ are backfilled at 0.0 by `cratons.ensure_ledger`. A pre-change save keeps its hi
   `collision_lost_m3` instead of `subducted_m3`.
 - `backend/app/stats.py` and `cratons.diagnostics`: report the new accounts and the
   accretionary fraction of trench length.
+- `backend/app/faults.py`, `_apply_plate_fault_relief`: the integrated resisted debit, the
+  craton carry and its `craton_formed_years` provenance (solution 5).
+- `backend/app/world.py`: the post-fault audit settles to `faulted_m3`.
+- `backend/app/cratons.py`: `faulted_m3` in `CRATON_SINK_ACCOUNTS`; the `reworked_*`
+  diagnostic sub-accounts, booked from `crust_transfer._book` (by caller: front or terrane)
+  and `quad_tectonics._accrete_onto_survivors`.
 - `bin/debug/compare_cratons.py`: report the new accounts per Gyr.
 - Tests:
   - `backend/unit_tests/test_cratons.py`:
@@ -269,6 +364,14 @@ are backfilled at 0.0 by `cratons.ensure_ledger`. A pre-change save keeps its hi
   - `backend/unit_tests/test_torque.py`: `contact_trench_sediment_m` reads the neighbour's
     nearest node; a cell with 600 m of continental loose cover and no other sediment
     reads 600 m; continental-coded cells read 0.
+  - `backend/unit_tests/test_faults.py`:
+    - a fault across a full-strength craton moves no Hc out of it;
+    - across a half-strength one, the craton it moves arrives on the receivers, live craton is
+      unchanged, and the audit clips nothing;
+    - the transferred volume is the same, to 1e-9 relative, for one 10 Myr step and ten
+      1 Myr steps under constant forcing with no caps binding (the 11,575 m example);
+    - an ordinary receiver takes the donor's `craton_formed_years`; a receiver with an older
+      date keeps it; an exhausted donor is reset to `CRATON_UNFORMED_YEARS`.
 - Docs: `docs/simulation-model.md`, Cratons ("Resistance" and the destruction ledger), and
   the boundary-retreat description in "Quad-surface deformation".
 
@@ -294,8 +397,11 @@ are backfilled at 0.0 by `cratons.ensure_ledger`. A pre-change save keeps its hi
 
 - [ ] **Gate (phase 1):** the ledger split lands, and on a 1 Gyr replay `subducted_m3` is
       below 0.1% of the initial craton volume, with `attrited_m3` and
-      `collision_lost_m3` accounting for the rest. A note in `analysis/` records each
-      channel's share before phase 2 starts.
+      `collision_lost_m3` accounting for the rest. `collision_reworked_m3` is split into
+      `faulted_m3` and the `reworked_*` sites. A note in `analysis/` records each channel's
+      share before phase 2 starts.
+- [ ] With solution 5, `faulted_m3` is below 0.1% of the initial craton per Gyr on seeds 7,
+      11 and 2024.
 - [ ] Craton loss to attrition is at most **3% of live craton per Gyr** over the first
       3 Gyr on seed 456862899 (6–18% today), and on average across seeds 7, 11 and 2024,
       for variant (b) at the starting knobs.

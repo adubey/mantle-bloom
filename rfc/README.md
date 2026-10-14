@@ -11,12 +11,13 @@ implemented through ordinary issues and PRs (see [AGENTS.md](../AGENTS.md)), eac
 | RFC | Title | Status |
 |---|---|---|
 | [0001](0001-merge-cap-craton-loss.md) | Plate merges must not destroy cratons | Draft |
-| [0002](0002-craton-trench-attrition.md) | Cratons are rarely subducted: margin-dependent attrition | Draft |
+| [0002](0002-craton-trench-attrition.md) | Cratons resist sinking: margin-dependent attrition and collision sinks | Draft |
 | [0003](0003-rifting-around-cratons.md) | Rifts go around cratons | Accepted |
 | [0004](0004-proto-cratons.md) | Proto-cratons: restarting craton formation | Draft |
 | [0005](0005-continental-recycling-balance.md) | Balance continental recycling at trenches | Draft |
 | [0006](0006-intra-oceanic-arcs.md) | Intra-oceanic arcs: new continent from the ocean | Draft |
 | [0007](0007-mantle-plumes-and-plateaus.md) | Mantle plumes: oceanic plateaus, flood basalts and hotspot tracks | Draft |
+| [0008](0008-craton-collision-jamming.md) | Cratons jam collisions: braking and fusion | Draft |
 
 RFCs 0001–0007 come from one investigation: a 19.2 Gyr run (seed 456862899) that lost
 almost all of its continental crust and all of its cratons. The run is used as a stress
@@ -28,6 +29,10 @@ implementation order:
 3. 0003 and 0004;
 4. 0006 and 0007. They share `terranes.py` (docking, buoyant-crust tracers and ledger),
    which whichever lands first builds. RFC 0003's plume weakening also depends on 0007.
+
+RFC 0008 came later, from the same craton work. Its gate can run at any time. Its fusion
+lands with or after 0001's merge placement, since it makes craton-bearing merges more
+frequent.
 
 RFC 0004 defers a collisional formation path to a future RFC on mantle depletion.
 

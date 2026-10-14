@@ -1,0 +1,111 @@
+{
+ "baseline": "origin/main 1b4f686",
+ "command": "bin/debug/compare_cratons.py --seeds 7,11,2024 --variants on --years 1e9 --every 100e6 --workers 1",
+ "seeds": {
+  "7": {
+   "start_craton_km3": 4098019740,
+   "end_craton_km3": 679376267,
+   "formed_km3": 33873252,
+   "sink_share_of_start": {
+    "subducted": 0.0589,
+    "delaminated": 0.5409,
+    "rifted": 0.1317,
+    "eroded": 0.0978,
+    "collision_reworked": 0.0125,
+    "topology_removed": 0.0,
+    "audit_clipped": 0.0,
+    "unattributed": 0.0007
+   },
+   "delaminated_share_per_100myr": [
+    0.011,
+    0.155,
+    0.119,
+    0.103,
+    0.039,
+    0.013,
+    0.037,
+    0.029,
+    0.014,
+    0.02
+   ],
+   "events": {
+    "failed_rift": 84,
+    "split": 115,
+    "merged": 55,
+    "craton": 20
+   },
+   "plates_end": 51,
+   "balance_error_km3": 1.238
+  },
+  "11": {
+   "start_craton_km3": 3169623315,
+   "end_craton_km3": 1283333924,
+   "formed_km3": 161602693,
+   "sink_share_of_start": {
+    "subducted": 0.1446,
+    "delaminated": 0.1842,
+    "rifted": 0.0897,
+    "eroded": 0.2085,
+    "collision_reworked": 0.0212,
+    "topology_removed": 0.0,
+    "audit_clipped": 0.0,
+    "unattributed": -0.002
+   },
+   "delaminated_share_per_100myr": [
+    0.0,
+    0.021,
+    0.0,
+    0.039,
+    0.013,
+    0.089,
+    0.009,
+    0.014,
+    0.0,
+    0.0
+   ],
+   "events": {
+    "failed_rift": 80,
+    "split": 109,
+    "merged": 27,
+    "craton": 7
+   },
+   "plates_end": 57,
+   "balance_error_km3": 0.0
+  },
+  "2024": {
+   "start_craton_km3": 1723807860,
+   "end_craton_km3": 735534695,
+   "formed_km3": 167271308,
+   "sink_share_of_start": {
+    "subducted": 0.0931,
+    "delaminated": 0.3088,
+    "rifted": 0.1562,
+    "eroded": 0.1017,
+    "collision_reworked": 0.0128,
+    "topology_removed": 0.0,
+    "audit_clipped": 0.0,
+    "unattributed": -0.0021
+   },
+   "delaminated_share_per_100myr": [
+    0.0,
+    0.0,
+    0.0,
+    0.009,
+    0.0,
+    0.085,
+    0.112,
+    0.091,
+    0.0,
+    0.012
+   ],
+   "events": {
+    "failed_rift": 85,
+    "split": 104,
+    "merged": 36,
+    "craton": 5
+   },
+   "plates_end": 60,
+   "balance_error_km3": -0.865
+  }
+ }
+}
