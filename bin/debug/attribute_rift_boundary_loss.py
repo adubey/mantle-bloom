@@ -203,10 +203,6 @@ def summarize(paths: list[Path]) -> dict:
         rifted = ledger["rifted_m3"]
         band = row["booked_km3"]["band"]
         boundary = sum(sum(band[p].values()) for p in PATHS)
-        failed = ledger["rifted_failed_m3"]
-        # Solution 2 (#385) cuts failed-rift loss by about 75%; estimate F on main + #385.
-        failed_385 = 0.25 * failed
-        through = sum(band[p]["through"] for p in PATHS)
         entry = {
             "myr": row["myr"],
             "rifted_share_of_start_craton": round(rifted / row["start_craton_km3"], 4),
@@ -214,7 +210,7 @@ def summarize(paths: list[Path]) -> dict:
             "path_share_of_rifted": {
                 "divergent": round(ledger["rifted_divergent_m3"] / rifted, 3),
                 "stretch": round(ledger["rifted_stretch_m3"] / rifted, 3),
-                "failed": round(failed / rifted, 3),
+                "failed": round(ledger["rifted_failed_m3"] / rifted, 3),
             },
             "booking_vs_ledger": {
                 p: round(sum(band[p].values()) / ledger[f"rifted_{p}_m3"], 6) if ledger[f"rifted_{p}_m3"] else None for p in PATHS
@@ -230,7 +226,6 @@ def summarize(paths: list[Path]) -> dict:
             "splits_marked": row["splits_marked"]["band"],
             "splits_marked_wide": row["splits_marked"]["wide"],
             "F": {scheme: round(_f(row, scheme), 3) for scheme in SCHEMES},
-            "F_with_385_estimate": round((failed_385 + through) / (rifted - failed + failed_385), 3),
         }
         result[str(row["seed"])] = entry
     return result
