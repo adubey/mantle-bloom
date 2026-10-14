@@ -48,11 +48,13 @@ Run from the repo root (or worktree root).
 
 ## Workflow
 
-- **One worktree per issue, branched off `origin/main`.** Name the branch
-  `<agent>/issue-<N>-<slug>`, where `<agent>` is `claude` or `codex`. The primary checkout's
-  local `main` lags `origin`: don't use it as a base or baseline, and don't pull or reset it.
-  Run `./bin/setup.sh` in each new worktree. Each worktree has its own `backend/.venv`, so
-  don't symlink one from another tree.
+- **One issue branch per issue, branched off `origin/main`.** Name it
+  `<agent>/issue-<N>-<slug>`, where `<agent>` is `claude` or `codex`. For an RFC-linked
+  issue, reuse that RFC's worktree directory and create the issue branch there; follow
+  `start-rfc` if the RFC worktree needs to be set up in the current machine or framework.
+  The primary checkout's local `main` lags `origin`: don't use it as a base or baseline,
+  and don't pull or reset it. Run `./bin/setup.sh` in each new worktree. Each worktree has
+  its own `backend/.venv`, so don't symlink one from another tree.
 - **Ports:** never use 8000 or 5173 (the user's own instance). Pick free ports for each
   worktree so issues can run side by side.
 - **Before/after comparisons** use a detached `origin/main` worktree. Never use
@@ -71,8 +73,8 @@ Run from the repo root (or worktree root).
   `rm -rf` against anything but your own worktree and scratch files. The user's checkout
   may hold uncommitted work that exists nowhere else.
 - Skills for these workflows, shared by Claude Code and Codex, are in `.agents/skills/`
-  (`.claude/skills` links there): `start-issue`, `replay-ab`, `pre-push-check`,
-  `rfc-authoring`, `rfc-review`.
+  (`.claude/skills` links there): `start-issue`, `start-rfc`, `replay-ab`,
+  `pre-push-check`, `rfc-authoring`, `rfc-review`.
 
 ## Conventions
 

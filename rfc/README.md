@@ -33,7 +33,9 @@ RFC 0004 defers a collisional formation path to a future RFC on mantle depletion
 
 ## Writing and reviewing
 
-RFCs are written with the [`rfc-authoring`](../.agents/skills/rfc-authoring/SKILL.md) skill.
+Use [`start-rfc`](../.agents/skills/start-rfc/SKILL.md) to set up a new RFC workstream and
+plan its transition into one or more implementation issues. RFCs are written with the
+[`rfc-authoring`](../.agents/skills/rfc-authoring/SKILL.md) skill.
 It sets the sections (problem, solutions, design, provisional touchpoints, assumptions and
 uncertainty, acceptance and falsification criteria, references), the citation format, and
 how sources are checked. They are reviewed with
@@ -45,8 +47,11 @@ how sources are checked. They are reviewed with
 1. **Draft:** opened as a PR that adds the RFC; revised in place as review comes in.
 2. **Accepted:** the project owner merges it. Any diagnosis gate the RFC sets (a measurement that
    decides between fixes) is run next, and the RFC is updated with the result.
-3. **Implemented:** the accepted design is split into issues and PRs that cite the RFC.
-   The status is updated when the last one lands. From then on the code and `docs/` are
-   the source of truth, and the RFC stays as the record of why.
+3. **Implemented:** the accepted design is split into issues and PRs that cite the RFC. The
+   issues use the RFC worktree directory and keep one issue branch and PR per issue (see
+   [`start-rfc`](../.agents/skills/start-rfc/SKILL.md) and
+   [`start-issue`](../.agents/skills/start-issue/SKILL.md)). The status is updated when the
+   last one lands. From then on the code and `docs/` are the source of truth, and the RFC
+   stays as the record of why.
 4. **Rejected or Superseded:** kept, with the reason, or a link to what replaced it. This
    includes an RFC whose falsification criteria were met.
