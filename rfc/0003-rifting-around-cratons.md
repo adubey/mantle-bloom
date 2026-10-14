@@ -92,14 +92,11 @@ shouldn't get it.
 
 **Recommendation:** retain solution 2, implemented in #385, and build solution 1 only
 together with solution 3. Phase 1b has already measured F at the current 2 Myr cooldown
-(#388, open PR #392): F = 38.9–46.5%, mean 42.5%, selects its existing 25% ≤ F < 50% branch.
+(#388, PR #392): F = 38.9–46.5%, mean 42.5%, selects its existing 25% ≤ F < 50% branch.
 Steering alone cannot meet the 2%/Gyr target. Phase 1's older 83–90% divergent/stretch share
 and 12–18% craton-crossing cut share remain below as historical evidence, not the current
 basis for that decision. The gate outcome does not set the resistance values for solution
 3; the implementation still has to tune them to the remaining loss.
-
-Phase 1b has run (Design, "Phase 1b outcome"): F = 42% on the three-seed mean on current
-main, with 2 in place. So 1 is built together with 3.
 
 4 comes with RFC 0007.
 
@@ -175,12 +172,11 @@ or #385 trajectories are not its control:
   - F < 25%: the "rift cuts aren't the path" falsification case holds. Don't build 1;
     revise this RFC toward boundary migration or solution 3.
 
-**Phase 1b outcome (#388, open PR #392; post-#358).** The replay-only
+**Phase 1b outcome (#388, PR #392; post-#358).** The replay-only
 `bin/debug/attribute_rift_boundary_loss.py` probe ran seeds 7, 11 and 2024 to 1 Gyr on
 baseline `8878cd2`, default density and controls, with 5 Myr steps, one run at a time.
-That baseline includes #358 and #385. Evidence and the probe are published at PR head
-`33c3d19` in [analysis/issue388](https://github.com/adubey/mantle-bloom/tree/33c3d19a919c98b820384a2cb8ea2323edf70f47/analysis/issue388);
-they are pending merge in [PR #392](https://github.com/adubey/mantle-bloom/pull/392).
+That baseline includes #358 and #385. The numbers are in
+[analysis/issue388](../analysis/issue388/README.md).
 This supersedes the pre-#358 phase 1b result (F = 17% on the three-seed mean).
 
 | Seed | Rifted, % of start craton per Gyr | Divergent / stretch / failed share | Splits through craton | Boundary loss marked through | F | F, twice-wide band |
@@ -425,8 +421,8 @@ the flow keeps as much control of breakup as possible.
 - [x] **Gate (phase 1b):** F, the share of `rifted_m3` from craton-crossing cuts, is
       reported per seed in `analysis/` at the current 2 Myr cooldown, with an exact
       baseline commit and the same 5 Myr step schedule. This RFC is updated with the
-      branch it selects before solution 1 is implemented (#388, published in open PR
-      #392: `8878cd2`, F = 38.9–46.5%, mean 42.5%; build 1 together with 3).
+      branch it selects before solution 1 is implemented (#388, PR #392:
+      `8878cd2`, F = 38.9–46.5%, mean 42.5%; build 1 together with 3).
 - [ ] Craton loss to rifting is at most **2% of live craton per Gyr** over the first 3 Gyr
       on seed 456862899, and on average across seeds 7, 11 and 2024. Compare with
       `2562f63` at 5 Myr steps, using live volume at each window start. The current
