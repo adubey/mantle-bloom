@@ -188,6 +188,28 @@ Configuration is read from the environment on every request:
 Missing any of the first four leaves login unconfigured, and the guard fails closed: remote
 requests never get admin access, and `/login` says login isn't configured.
 
+<a id="public-viewer"></a>
+### The public viewer (`backend/app/public_view.py`)
+
+Logged-out visitors land on `/view` (#373), which shows the shared world in the Eckert IV
+projection, in the biome or elevation view only, and can step it by a fixed 100 kyr. It
+reaches the world only through `/public/world`, `/public/render` and `/public/step` (see
+api-reference.md). Those routes accept no projection, rotation, step size or other setting,
+so creating, saving, loading, animating and reconfiguring a world all stay behind the
+`/world/*` guard above.
+
+Each browser may trigger at most 30 step computations. The count is kept in an HMAC-signed
+`mb_guest` cookie, so it can't be edited down, though clearing the cookie resets it (a usage
+limit, not abuse protection). It's signed with `MANTLE_BLOOM_SESSION_SECRET`, or, when that's
+unset, a per-process secret that a restart replaces. The admin is never charged.
+
+Only a request that runs the simulation is charged. A step request names the world revision
+(seed and elapsed years) that its viewer is looking at. If the world has already moved past
+that revision, the request gets the current world for free. If another guest's step is
+running, the request waits for it and then gets that result for free. At most one guest step
+runs at a time, and a guest never queues behind the owner: guest steps get `503` while the
+owner holds the world, and guest renders get `503` after waiting 10 s.
+
 <a id="world-state"></a>
 ## World state (`backend/app/world.py`)
 
@@ -404,6 +426,9 @@ hydroclimate/atmosphere_cfd.py      the atmospheric wind solver: a genuine time-
 main.py              FastAPI routes
 auth.py              single-owner GitHub login: the request guard, OAuth routes and signed
                      session cookies (see #access-control above)
+public_view.py       the logged-out viewer's step allowance cookie and the coordinator
+                     that shares one guest step among concurrent requests (see
+                     #public-viewer above)
 render_image.py      renders /world/render's requested view/resolution to a PNG server-side
                      (see simulation-model.md#render-image and simulation-model.md#climate),
                      plus /world/animate's streamed H.264/MP4 rendering (stream_animation_mp4)
