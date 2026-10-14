@@ -1,8 +1,8 @@
 # RFC 0003: Rifts go around cratons
 
-- **Status:** Draft
+- **Status:** Accepted (2026-10-13)
 - **Date:** 2026-10-13
-- **Related:** #274 (craton rift and stretch resistance), #340; RFCs
+- **Related:** #274 (craton rift and stretch resistance), #340, #378 (phase 1 gate); RFCs
   [0002](0002-craton-trench-attrition.md), [0004](0004-proto-cratons.md)
 
 ## Problem
@@ -80,19 +80,69 @@ shouldn't get it.
    cut score.
 
 **Recommendation:** first a gate that splits `rifted_m3` by path, so the fix targets the
-path that matters. Then 1 and 2 together. Re-measure, and use 3 only if steady loss
-remains above target. 4 comes with RFC 0007.
+path that matters. That gate has run (Design, "Phase 1 outcome"): stretch donation and
+divergent thinning take 83–90% of craton rifting, failed rifts 10–17%, and only 12–18% of
+cuts cross craton. So:
+- do 2 now. It is a consistency fix, but it acts on at most 10–17% of the sink;
+- run a second gate (phase 1b) to measure how much of the divergent and stretch loss
+  happens on boundaries a craton-crossing cut created. Only that share is what 1 can remove;
+- build 1 only if phase 1b says that share is large. Otherwise, 3 or a fix for boundary
+  migration is the main lever.
+
+4 comes with RFC 0007.
 
 ## Design
 
 **Phase 1: split the rifting sink (gate).** Book `rifted_m3` in three sub-accounts:
 - `rifted_divergent_m3`, from `lithosphere_plate.deform_columns`;
-- `rifted_stretch_m3`, from `quad_tectonics._allocate_stretch`'s donors;
+- `rifted_stretch_m3`, from the stretch donors in `quad_tectonics._open_rift` (their shares
+  come from `_allocate_stretch`);
 - `rifted_failed_m3`, from the failed-rift branch in `merge_split.maybe_split_plate`.
 
 Record, per split and per failed rift, the craton area inside the cut's band. Run the
 tuning seeds. The results decide the order of work: solution 1 helps the first two paths,
 and solution 2 only the third.
+
+**Phase 1 outcome (#378, PR #380).** The sub-accounts above, plus per-outcome counts of
+cuts, cuts with craton in the failed-rift band, and the band's total and cratonic area.
+They are diagnostics outside the balance and don't change the model. Seeds 7, 11 and 2024
+ran to 1 Gyr at default density with `bin/debug/compare_cratons.py`; the numbers are in
+`analysis/issue378/`.
+
+| Seed | Rifted, % of start craton per Gyr | Divergent | Stretch | Failed | Splits / failed rifts with craton in band |
+|---|---|---|---|---|---|
+| 7 | 4.0% | 32% | 51% | 17% | 5 of 33 / 4 of 29 |
+| 11 | 4.3% | 28% | 58% | 14% | 6 of 37 / 5 of 31 |
+| 2024 | 10.7% | 41% | 50% | 10% | 4 of 32 / 5 of 28 |
+
+Path columns are shares of `rifted_m3`.
+- Stretch donation is the largest path, then divergent thinning. Failed rifts cost 0.4–1.0%
+  of live craton per Gyr, so removing them entirely would leave 3.4–9.7%/Gyr.
+- Reaching 2%/Gyr means cutting rifting loss by about half on seeds 7 and 11, by 81% on seed
+  2024, and by 68% on the three-seed mean (6.3%/Gyr).
+- Only 12–18% of cuts have craton in their band, and craton is 4–18% of the band area.
+- What phase 1 can't say is how much divergent and stretch loss comes from boundaries those
+  craton-crossing cuts created. A craton can also reach a divergent boundary without a cut:
+  cratons are seeded 875 km and form 500 km inside their plate's margin, so one reaches a
+  boundary only if the margin is consumed or a convergent boundary later turns divergent.
+  That is the falsification case "rift cuts aren't the path", and phase 1 neither confirms
+  nor rules it out.
+
+**Phase 1b: attribute boundary loss to its origin (gate).** Before solution 1:
+- At each split, mark the nodes in the cut's band of both daughters with whether the band
+  held craton. Over the next 1 Gyr, book their divergent and stretch craton loss by that
+  mark: cut through craton, cut clear of craton, or never in a cut band.
+- Do this in a replay-only probe in `bin/debug/`, so no saved state changes. It can carry
+  the mark as a surface field that exists only in the probe's process.
+- Run it on seeds 7, 11 and 2024 to 1 Gyr.
+- Let F be the share of `rifted_m3` that solution 1 could remove: all failed-rift loss
+  (a failed rift loses craton only if its cut crosses one), plus divergent and stretch loss
+  on nodes marked "cut through craton".
+  - F ≥ 50%: build solution 1 with 2, as designed below.
+  - 25% ≤ F < 50%: steering can't reach the target alone. Build 1 only together with 3,
+    and size 3 to the remainder.
+  - F < 25%: the "rift cuts aren't the path" falsification case holds. Don't build 1;
+    revise this RFC toward boundary migration or solution 3.
 
 **Strength proxy (a cut score only).** Per node, dimensionless and bounded to [0, 1]:
 
@@ -217,7 +267,7 @@ the flow keeps as much control of breakup as possible.
   strength (read `craton_crust_m`), for both Hc and Hm, clamped to [0, 1].
 - `backend/app/lithosphere_plate.py`, `deform_columns`: clamp `resisted` and book
   `rifted_divergent_m3`.
-- `backend/app/quad_tectonics.py`, `_allocate_stretch`: book `rifted_stretch_m3`.
+- `backend/app/quad_tectonics.py`, `_open_rift`: book `rifted_stretch_m3` (done, #378).
 - `backend/app/cratons.py`: the three `rifted_*` sub-accounts, as diagnostics outside the
   balance (their sum is `rifted_m3`); update the Resistance paragraph of the module
   docstring.
@@ -245,7 +295,11 @@ the flow keeps as much control of breakup as possible.
 
 ## Assumptions and uncertainty
 
-- **Which path matters is unmeasured.** The phase 1 gate settles it.
+- **Which path matters is measured, but not where its loss comes from.** Phase 1 found
+  stretch and divergent loss dominant. Whether they run on boundaries born from
+  craton-crossing cuts is unmeasured until phase 1b.
+- **Three seeds to 1 Gyr.** Seed 2024 rifts 2.5× more than the others with a similar share
+  of craton-crossing cuts, so the spread between seeds is wide.
 - **Keel thickness stands in for lithospheric strength.** Real strength depends on
   temperature, composition and water content as well as thickness. The proxy is used only
   to *rank* cuts, which limits the damage if it's wrong.
@@ -260,9 +314,12 @@ the flow keeps as much control of breakup as possible.
 
 ## Acceptance criteria
 
-- [ ] **Gate (phase 1):** `rifted_m3` is split into its three paths, and on the tuning
+- [x] **Gate (phase 1):** `rifted_m3` is split into its three paths, and on the tuning
       seeds each path's share and the craton area in cut bands are reported in
-      `analysis/`, before solutions 1 and 2 are implemented.
+      `analysis/`, before solutions 1 and 2 are implemented (#378).
+- [ ] **Gate (phase 1b):** F, the share of `rifted_m3` from craton-crossing cuts, is
+      reported per seed in `analysis/`, and this RFC is updated with the branch it selects,
+      before solution 1 is implemented.
 - [ ] Craton loss to rifting is at most **2% of live craton per Gyr** over the first 3 Gyr
       on seed 456862899 (4–6% today), and on average across seeds 7, 11 and 2024. This
       is a model design target, not a measured Earth rate.
@@ -280,10 +337,10 @@ the flow keeps as much control of breakup as possible.
 
 ## Falsification criteria
 
-- **Rift cuts aren't the path.** If phase 1 shows most craton rifting is stretch donation
-  along boundaries that formed elsewhere and later migrated onto cratons, not cuts or
-  failed rifts, steering the cut won't help. Revise toward boundary migration, or toward
-  solution 3.
+- **Rift cuts aren't the path.** If phase 1b shows most craton rifting is stretch donation
+  or divergent thinning along boundaries that formed elsewhere and later migrated onto
+  cratons (F < 25%), steering the cut won't help. Revise toward boundary migration, or
+  toward solution 3. Phase 1 already found these two paths at 83–90% of the sink.
 - **No admissible alternative.** If, in most splits that cross craton, no candidate within
   the tilt cone passes the admissibility tests, the flow field puts regime boundaries
   through cratons. The fix belongs in the mantle model, not the cut.
