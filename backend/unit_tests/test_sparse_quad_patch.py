@@ -581,3 +581,30 @@ def test_failed_rift_thins_only_the_cut_band_and_preserves_topology():
     assert np.any(thinned)
     assert np.any(~thinned)
     assert np.all(plate.collect("elev_change_reason")[thinned] == ELEV_CHANGE_RIFT)
+
+
+def test_a_full_strength_craton_resists_a_failed_rift_like_a_divergent_one():
+    """RFC 0003 solution 2: a failed rift thins a full-strength craton column (Hc and Hm) by
+    1 - CRATON_RIFT_RESISTANCE of what it takes from the same column without craton."""
+    from app import cratons
+
+    def thinning(craton_m):
+        keys = pack_cell_keys(np.zeros(5, dtype=int), np.arange(4, 9), np.full(5, 5))
+        plate = PlateWithSparseQuadPatch(
+            7, np.eye(3), "continental", N, keys,
+            fields={
+                "elevation": np.full(5, 1000.0),
+                "crustal_thickness_m": np.full(5, 35_000.0),
+                "mantle_lithosphere_thickness_m": np.full(5, 100_000.0),
+                "craton_crust_m": np.full(5, craton_m),
+            },
+        )
+        plate.apply_failed_rift(np.array([0.0, 1.0, 0.0]), spacing_rad=0.1)
+        return 35_000.0 - plate.collect("crustal_thickness_m"), 100_000.0 - plate.collect("mantle_lithosphere_thickness_m")
+
+    plain_hc, plain_hm = thinning(0.0)
+    craton_hc, craton_hm = thinning(cratons.CRATON_FULL_STRENGTH_HC_M)
+
+    assert np.any(plain_hc > 0.0)
+    np.testing.assert_allclose(craton_hc, (1.0 - cratons.CRATON_RIFT_RESISTANCE) * plain_hc, rtol=1e-12)
+    np.testing.assert_allclose(craton_hm, (1.0 - cratons.CRATON_RIFT_RESISTANCE) * plain_hm, rtol=1e-12)

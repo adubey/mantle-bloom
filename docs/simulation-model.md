@@ -971,7 +971,8 @@ routine per-step motion.
   `Plate.apply_failed_rift` books a one-off thinning
   (`FAILED_RIFT_THINNING_FRACTION`, 10%) of `Hc`/`Hm` in a band
   (`FAILED_RIFT_BAND_MULT` node spacings) around the would-be cut great circle -- tapering to
-  zero at the band edge, with the isostatic subsidence booked as an `elevation` delta -- and
+  zero at the band edge, cut by craton rift resistance as divergent thinning is, with the
+  isostatic subsidence booked as an `elevation` delta -- and
   the plate's split cooldown resets (`reset_age`). A *successful* rift, by contrast, puts
   that whole zone through sustained `apply_divergent_deformation` thinning on both daughters
   and ends in decompression melting -> oceanic crust + permanently drowned passive margins,
@@ -1224,7 +1225,9 @@ loading never changes plate state.
   erosion would otherwise remove, scaled at the source so the routed sediment budget stays
   conservative (`erosion.py`);
 - keeps `1 - CRATON_RIFT_RESISTANCE` of divergent thinning, so it melts through to oceanic
-  crust only when that slower thinning crosses the rift threshold (`deform_columns`);
+  crust only when that slower thinning crosses the rift threshold (`deform_columns`), and the
+  same share of a failed rift's thinning (`apply_failed_rift`, RFC 0003). Both use
+  `cratons.rift_resistance`, clamped to [0, 1];
 - donates only `1 - CRATON_STRETCH_RESISTANCE` of its share of a rift's stretched footprint,
   with fresh magmatic crust filling the rest (`quad_tectonics._allocate_stretch`);
 - never flows, melts or delaminates (`orogeny.py`); an orogen ponds against it;

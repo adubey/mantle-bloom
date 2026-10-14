@@ -469,6 +469,21 @@ def test_an_old_ledger_gains_the_rift_diagnostics_on_load():
     assert loaded.craton_ledger["rifted_m3"] == 1.0
 
 
+@pytest.mark.parametrize("resistance", [0.0, 0.75, 1.0, 1.5])
+def test_rift_thinning_factors_stay_in_unit_range(monkeypatch, resistance):
+    # RFC 0003: resistance is clamped, so no strength or tuned constant can make a failed
+    # rift thicken a column or thin it past zero.
+    from app.merge_split import FAILED_RIFT_THINNING_FRACTION
+
+    monkeypatch.setattr(cratons, "CRATON_RIFT_RESISTANCE", resistance)
+    craton = np.linspace(0.0, 2.0 * cratons.CRATON_FULL_STRENGTH_HC_M, 41)
+    resisted = cratons.rift_resistance(craton)
+    assert np.all((resisted >= 0.0) & (resisted <= 1.0))
+    for taper in np.linspace(0.0, 1.0, 11):
+        factor = np.clip(1.0 - FAILED_RIFT_THINNING_FRACTION * taper * (1.0 - resisted), 0.0, 1.0)
+        assert np.all((factor >= 1.0 - FAILED_RIFT_THINNING_FRACTION) & (factor <= 1.0))
+
+
 def test_record_rejects_negative_or_unknown_entries():
     world = _world(_cap(1))
     with pytest.raises(ValueError):

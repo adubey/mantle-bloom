@@ -1098,8 +1098,9 @@ class PlateWithSparseQuadPatch(Plate):
         return result[0], result[1]
 
     def apply_failed_rift(self, cut_normal: np.ndarray, spacing_rad: float) -> None:
-        """Thin a tapered band around an aborted rift without changing quad topology."""
-        from . import lithosphere, rheology
+        """Thin a tapered band around an aborted rift without changing quad topology. A craton
+        resists it as it resists divergent thinning (RFC 0003)."""
+        from . import cratons, lithosphere, rheology
         from .merge_split import FAILED_RIFT_BAND_MULT, FAILED_RIFT_THINNING_FRACTION
 
         cut_normal = np.asarray(cut_normal, dtype=float)
@@ -1124,7 +1125,8 @@ class PlateWithSparseQuadPatch(Plate):
         density = lithosphere.node_crust_density(self.collect("crust_type_code"), self.crust_type)
         before = lithosphere.isostatic_elevation(hc, hm, density)
         taper = np.clip(1.0 - distance / band_sin, 0.0, 1.0)
-        factor = 1.0 - FAILED_RIFT_THINNING_FRACTION * taper
+        resisted = cratons.rift_resistance(self.collect("craton_crust_m"))
+        factor = np.clip(1.0 - FAILED_RIFT_THINNING_FRACTION * taper * (1.0 - resisted), 0.0, 1.0)
         hc[in_band] = np.maximum(
             hc[in_band] * factor[in_band], lithosphere.MIN_CRUSTAL_THICKNESS_M
         )
