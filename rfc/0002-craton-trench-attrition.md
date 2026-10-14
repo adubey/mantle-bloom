@@ -176,13 +176,42 @@ If the transfer and suture sites book more than 0.1% of the initial craton per G
 is reaching retreating cells by a route `retreat_allowed` doesn't cover; find it before
 phase 2.
 
-**Fault conservation (solution 5).** For each fault's donor set, the give becomes
-`taken × (1 − strength(craton_donor))`, with strength in [0, 1], so the factor is in [0, 1]
-and Hc stays ≥ 0 as today. The craton a donor gives is `craton × taken / Hc_donor` (a share
-of its Hc, so ≤ its craton), split among receivers in proportion to the Hc they get, and
-capped at each receiver's new Hc. Units are metres of thickness per cell, balanced in volume
-with cell areas, as `continental_material_m` already is. Fault strain is applied per step, as
-today. The change makes no rate nonlinear in time, so step-length robustness is unchanged.
+**Fault conservation (solution 5).** `faults._apply_plate_fault_relief` requests each
+donor's debit as a rate times `years_myr` (`debit`, capped at the minimum crust), then
+balances donors against receivers' headroom. Solution 5 changes the debit, carries craton
+and its provenance, and integrates the resistance over the step.
+
+- *Resisted debit, integrated.* A donor's craton leaves with its crust in proportion, so
+  its craton share ρ = craton / Hc is constant while it gives. Its strength is then
+  s = min(ρ × Hc / `CRATON_FULL_STRENGTH_HC_M`, 1), and it falls as the donor thins, so
+  applying the starting resistance to the whole step depends on the step length. With r
+  the unresisted debit rate (`debit / years_myr`, in m/Myr), the donor follows
+  `dHc/dt = −r (1 − s)`. For s < 1 that has the exact solution
+
+  `Hc(t) = [1 − (1 − a × Hc₀) × exp(a r t)] / a`, with a = ρ / `CRATON_FULL_STRENGTH_HC_M`
+
+  and the resisted debit over the step is `Hc₀ − Hc(years_myr)`.
+  - It is floored at the minimum crust, as `debit` is today.
+  - With no craton (a = 0) it reduces to `r × years_myr`, today's debit.
+  - A full-strength donor (s = 1) gives nothing, and stays at s = 1.
+  - Example: r = 2,000 m/Myr, Hc = 35,000 m, craton = 12,500 m over 10 Myr. The starting
+    resistance applied once gives 10,000 m; ten 1 Myr steps give ~11,389 m; the exact
+    solution gives ~11,575 m for any partition.
+- *Balancing.* The donor–receiver volume balance (`amount`) is then applied as today. When
+  receiver headroom binds, the scaled-down debit depends on the partition just as today's
+  does. This changes nothing about that.
+- *Craton carry.* The craton a donor gives is `ρ × taken`. It is split among receivers in
+  proportion to the Hc they get and capped at each receiver's new Hc. Units are metres of
+  thickness per cell, balanced in volume with cell areas, as `continental_material_m`
+  already is.
+- *Provenance.* `craton_formed_years` is a HISTORY field (`surface_fields.py`), and
+  `cratons.update` only dates craton newly forming on cells with none, so a carry has to set
+  it:
+  - a receiver that gains craton takes the oldest date among the donors that gave craton,
+    unless its own valid date is older;
+  - a donor left with no craton is reset to `CRATON_UNFORMED_YEARS`;
+  - `stable_continental_myr` is left alone. The carried craton is already formed, and the
+    formation clock only matters for crust not yet cratonic.
 
 **Phase 2: margin-dependent rate.**
 - *Segments.* Trench nodes on the overriding (craton-bearing) plate are grouped into
@@ -315,8 +344,8 @@ are backfilled at 0.0 by `cratons.ensure_ledger`. A pre-change save keeps its hi
   `collision_lost_m3` instead of `subducted_m3`.
 - `backend/app/stats.py` and `cratons.diagnostics`: report the new accounts and the
   accretionary fraction of trench length.
-- `backend/app/faults.py`, `_apply_plate_fault_relief`: resisted give and the craton carry
-  (solution 5).
+- `backend/app/faults.py`, `_apply_plate_fault_relief`: the integrated resisted debit, the
+  craton carry and its `craton_formed_years` provenance (solution 5).
 - `backend/app/world.py`: the post-fault audit settles to `faulted_m3`.
 - `backend/app/cratons.py`: `faulted_m3` in `CRATON_SINK_ACCOUNTS`; the `reworked_*`
   diagnostic sub-accounts, booked from `crust_transfer._book` (by caller: front or terrane)
@@ -335,9 +364,14 @@ are backfilled at 0.0 by `cratons.ensure_ledger`. A pre-change save keeps its hi
   - `backend/unit_tests/test_torque.py`: `contact_trench_sediment_m` reads the neighbour's
     nearest node; a cell with 600 m of continental loose cover and no other sediment
     reads 600 m; continental-coded cells read 0.
-  - `backend/unit_tests/test_faults.py`: a fault across a full-strength craton moves no Hc
-    out of it; across a half-strength one, the craton it moves arrives on the receivers, and
-    live craton is unchanged; the audit clips nothing.
+  - `backend/unit_tests/test_faults.py`:
+    - a fault across a full-strength craton moves no Hc out of it;
+    - across a half-strength one, the craton it moves arrives on the receivers, live craton is
+      unchanged, and the audit clips nothing;
+    - the transferred volume is the same, to 1e-9 relative, for one 10 Myr step and ten
+      1 Myr steps under constant forcing with no caps binding (the 11,575 m example);
+    - an ordinary receiver takes the donor's `craton_formed_years`; a receiver with an older
+      date keeps it; an exhausted donor is reset to `CRATON_UNFORMED_YEARS`.
 - Docs: `docs/simulation-model.md`, Cratons ("Resistance" and the destruction ledger), and
   the boundary-retreat description in "Quad-surface deformation".
 

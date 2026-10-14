@@ -23,7 +23,14 @@ continent-continent nodes by the craton strength of the *weaker* side
   resistance;
 - nothing brakes before contact, however close the craton is;
 - a craton reaching a trench, rather than another continent, never brakes. The collision
-  mask needs a continental plate with a continental neighbour.
+  mask needs a continental plate with a continental neighbour;
+- **the brake is inert anyway.** `collision_drag_coefficients` puts
+  `COLLISION_FRICTION_REFERENCE_PA` (5 × 10⁷) where `basal_drag_coefficients` puts
+  μ/d_s = 5 × 10¹⁴ Pa·s/m: the coefficient multiplies the physical relative velocity in m/s.
+  At 4 cm/yr (1.27 × 10⁻⁹ m/s) that is 0.063 Pa of traction, and the overlap, relief and
+  craton gains raise it by at most 3 × 4 × 4 = 48×. Basal drag at the same slip rate is
+  6 × 10⁵ Pa. Collision friction, craton gain included, is about 10⁷ times too weak per unit
+  area to matter.
 
 **Cratons pull plates into trenches.** Slab pull (`slab_pull_torque`) acts on an oceanic
 plate's converging boundary nodes and scales with each node's own Hm, at the mantle
@@ -118,11 +125,17 @@ resistance of the collision zone, not to cratons specifically. A craton is the e
 the thickest, most buoyant column, and one that never subducts.
 
 **Slowing.**
+0. **Make contact resistance dimensionally real (required).** Replace the collision
+   brake's reference stress with a drag coefficient in Pa·s/m, sized so that a fully jammed
+   contact at the post-collision India–Asia convergence rate resists with
+   [[Copley et al., 2010]](#ref-copley2010)'s Himalaya–Tibet force, ~5 × 10¹² N/m of trench.
+   Without this, neither solution below can slow anything. It also switches on the existing
+   relief term for every continental collision, which today does nothing.
 1. **Buoyant columns resist subduction (recommended).** Slab pull per node scales with the
    column's net negative buoyancy, not its Hm alone. A cratonic keel is taken as neutrally
    buoyant [[Jordan, 1978]](#ref-jordan1978), so it adds no pull. Continental crust thicker
    than the jam threshold [[Cloos, 1993]](#ref-cloos1993) stops pulling, and adds a
-   resistance in the same implicit drag form as collision friction. The plate slows as its
+   resistance through solution 0's contact drag. The plate slows as its
    buoyant margin, and then its craton, reaches the trench. This is the mechanism the
    literature supports, and it fixes the cratonic-keel pull, which is backwards today.
 2. **A proximity brake (recommended, behind the gate).** At collision contacts, the craton
@@ -136,8 +149,9 @@ the thickest, most buoyant column, and one that never subducts.
      a narrower weak belt to take the shortening.
    - It risks double counting the relief term. It is built only if the gate shows contacts
      where a craton indents weak crust without slowing.
-3. **Raise `CRATON_COLLISION_FRICTION_GAIN`.** Cheap, but it acts only craton on craton, at
-   contact. It misses trenches and approach, so it doesn't do what is asked.
+3. **Raise `CRATON_COLLISION_FRICTION_GAIN`.** It multiplies an inert coefficient, so on
+   its own it does nothing. Even after solution 0, it acts only craton on craton, at
+   contact, and misses trenches and approach.
 4. **Basal drag under keels.** A thick keel adds drag on the asthenosphere. Contested:
    tectosphere sped plates up in some configurations (the `torque.py` comment on
    `CRATON_COLLISION_FRICTION_GAIN`). It also slows a cratonic plate everywhere, not near a
@@ -161,8 +175,8 @@ the thickest, most buoyant column, and one that never subducts.
    craton intact), which this RFC depends on rather than duplicates. Solution 1 slows the
    carrier as the terrane arrives.
 
-**Recommendation:** a measurement gate, then 1, 5 and 6, with 2 if the gate shows unbraked
-craton indentation. Fusion at jam onset is also what RFC 0001's solution 3 asked for ("stop
+**Recommendation:** a measurement gate, then 0, 1, 5 and 6, with 2 if the gate shows
+unbraked craton indentation. Fusion at jam onset is also what RFC 0001's solution 3 asked for ("stop
 craton-on-craton overlap from building"). This RFC takes that over. RFC 0001's placement fix
 and honest booking must land first or with it, since more fusions will carry cratons.
 
@@ -177,8 +191,17 @@ seeds 7, 11 and 2024 to 1 Gyr at 5 Myr steps, one at a time. Each step, for ever
 plates in contact (any crust type), it records:
 - **contact:** length, normal closing rate, and craton area within `CRATON_BRAKE_REACH_KM`
   of the contact on each side (the "approach" zone);
-- **jam:** a contact node is jammed when it is shrinkable in `BoundaryContext` and cratonic,
-  so `retreat_allowed` blocks it, or when both sides at the node are cratonic;
+- **jam:** a contact node is jammed when it is a retreat candidate that holds craton, so
+  `retreat_allowed` blocks it, or when both sides at the node are cratonic. A retreat
+  candidate is read *before* the no-craton gate:
+  - on an active polarized front, the frozen lower-plate eligibility after the run-size gate
+    (`collision_polarity` computes it as `eligible`, then stores only
+    `retreatable = eligible & retreat_allowed`). The prepass keeps it as a new mask field,
+    `run_eligible`. `BoundaryContext.shrinkable` can't be used here: on a front where some
+    lower cells can retreat, it is replaced by the craton-filtered `retreatable`, so a
+    cratonic lower cell facing ordinary crust would satisfy neither clause;
+  - elsewhere, `BoundaryContext.shrinkable`, which `_retreat` filters by
+    `retreat_allowed` only afterwards;
 - **merge state:** `collision_progress` before and after the step; whether it was dropped
   while the pair was still in contact and jammed; merge rolls and outcomes; overlap fraction
   and the craton-on-craton overlap volume;
@@ -186,7 +209,9 @@ plates in contact (any crust type), it records:
   within `CRATON_BRAKE_REACH_KM` of each contact. It is booked to the pair, with the sinks
   booked that step (the per-node booking method of `bin/debug/attribute_rift_boundary_loss.py`);
 - **buoyant pull:** per oceanic plate, the share of slab-pull torque magnitude from
-  continental-coded or cratonic subducting nodes.
+  continental-coded or cratonic subducting nodes;
+- **contact force:** at each jammed contact, the resisting force per unit trench length
+  the brake would apply, in N/m, to check against Copley's scale.
 
 It reports, per seed:
 - J, the share of all craton destruction within reach of a jammed contact whose pair didn't
@@ -218,20 +243,59 @@ net buoyancy per unit area:
   ρ_a = `RHO_ASTHENOSPHERE` (3,250).
 
 Slab pull per node becomes `max(B, 0) × SUBDUCTION_LSINK_M × ds`, the same form as today. For
-ocean floor (Hc_cont = 0, s = 0) it is unchanged. A buoyant node (B < 0) pulls nothing and
-joins a **jam mask**. Its resistance enters `collision_drag_coefficients`' implicit
-`b − K ω` form, so it brakes relative motion and can't push the plate backwards. Its reference
-stress is `COLLISION_FRICTION_REFERENCE_PA × j`, with
+ocean floor (Hc_cont = 0, s = 0) it is unchanged. A buoyant node (B < 0) pulls nothing.
+
+*Jam mask.* Its own test, independent of the slab-pull activation threshold. A node is in
+the jam mask when it is continental-coded, on the side being forced down, in the boundary
+band of a neighbour (`dist_to_neighbor ≤ reach_rad`), and the contact isn't diverging:
+normal closing rate ≥ −`TRANSFORM_RATE_THRESHOLD`. "Forced down" means a node of an
+oceanic plate (a terrane or craton riding ocean floor), or a lower-plate node of a polarized
+continental front (`collision_polarity`'s `lower` mask). The upper plate is never in the
+mask; it feels the equal and opposite force (below). `subducting_boundary_mask` needs closing above
++1 cm/yr, so a jam mask derived from it would drop the resistance (and slab drag) as soon
+as the brake slowed the contact below 1 cm/yr. Driving forces would then speed it back up,
+and the contact would flicker. A band that runs through zero keeps the resistance while the
+contact stalls, and the drag form below vanishes with the relative velocity, so it can't
+hold a contact that is pulling apart. The jam factor is
 
 `j = clip((Hc_cont − JAM_MIN_CRUST_M) / (JAM_FULL_CRUST_M − JAM_MIN_CRUST_M), 0, 1)`
 
-so a column at 15 km of continental crust starts to jam and one at 30 km jams fully. Composed
-with the existing gains, every factor is a clipped [0, 1] multiplier on a positive stress.
+so a column at 15 km of continental crust starts to jam and one at 30 km jams fully. Both
+plates at the contact feel it: the neighbour's band nodes read j at their nearest node on
+the jammed side (through `neighbor_node_index`, as `contact_craton_m` does), so the force
+is equal and opposite.
+
+**Contact drag (solution 0).** Collision friction and the jam resistance share one
+coefficient in `collision_drag_coefficients`' implicit `b − K ω` form, now in Pa·s/m:
+
+`η = CONTACT_RESISTANCE_N_PER_M / (W × v_ref)`, per node `c_i = η × g_i × A_i × R² / SECONDS_PER_YEAR`
+
+- `CONTACT_RESISTANCE_N_PER_M` = 5 × 10¹² N/m, the Himalaya–Tibet resistance
+  [[Copley et al., 2010]](#ref-copley2010).
+- v_ref = 4 cm/yr (1.27 × 10⁻⁹ m/s), India–Asia convergence after the slowdown
+  [[Copley et al., 2010]](#ref-copley2010).
+- W = `BOUNDARY_FORCE_REACH_MULTIPLIER` × spacing × R, the band width the term acts over:
+  375 km at density 1. Computed from the world's spacing, so the force per trench length
+  doesn't change with node density.
+- g_i = clip(max(j, relief_factor, c), 0, 1) per node, with c the craton factor (today's
+  weaker-side strength, or solution 2's proximity factor). A contact with no buoyant
+  lower-side crust, no relief and no craton resists with nothing until relief builds. That
+  matches Copley, whose resistance comes from mountain building. One bounded factor replaces the
+  three multiplicative gains, which were tuned against an inert coefficient. The overlap
+  severity term is dropped: the torque already sums over more nodes for a wider contact.
+
+At density 1, η ≈ 1.05 × 10¹⁶ Pa·s/m, about 21 times basal drag's μ/d_s, but over a 375 km band
+rather than the whole plate. Integrated across the band, a fully jammed contact (g = 1)
+resists with `η × W × v` = 5 × 10¹² N/m at 4 cm/yr, twice the ridge push Copley estimates
+(~2.5 × 10¹² N/m), and in proportion at other rates. Being linear in velocity, it slows a
+driven plate toward the speed where driving and resistance balance. It doesn't reverse it,
+which the implicit solve guarantees.
 
 *Scale check.* For the reference continental column (Hc = 35 km, Hm = 100 km, s = 0),
 B = 9.8 × (50 × 10⁵ − 550 × 3.5 × 10⁴) ≈ −1.4 × 10⁸ Pa: buoyant, as Cloos finds. For ocean
-floor at reference (Hm = 40 km), B ≈ +2 × 10⁷ Pa, today's pull. The resulting brake is
-compared with Copley's 5–6 × 10¹² N/m collision resistance in the acceptance runs.
+floor at reference (Hm = 40 km), B ≈ +2 × 10⁷ Pa, today's pull. The gate probe reports the
+contact force per trench length at jammed contacts, which must sit at 10¹²–10¹³ N/m at
+convergence rates of a few cm/yr.
 
 *Polarity.* The jam mask applies on the plate in `subducting_boundary_mask`, which today is
 only oceanic plates. A continental plate's lower-plate side at a polarized front
@@ -249,27 +313,46 @@ contact node, against each plate's cratonic cells (`cKDTree` on the craton subse
 per plate per step).
 
 **Fusion: keeping collision time (solution 5).** A pair is *jammed* when at least
-`MERGE_MIN_CONTACT_NODES` of its contact nodes are jammed (the gate's definition), and it isn't
-diverging: mean normal closing rate ≥ −`TRANSFORM_RATE_THRESHOLD`. `update_collision_progress`
+`MERGE_MIN_CONTACT_NODES` of its contact nodes are jammed (the gate's definition, including
+the `run_eligible` candidates on polarized fronts), and it isn't diverging: mean normal
+closing rate ≥ −`TRANSFORM_RATE_THRESHOLD`. `update_collision_progress`
 keeps (and keeps accumulating) a jammed pair's progress, even when fewer than 4 nodes close
 faster than the threshold. Progress is dropped only when the pair is neither colliding nor
 jammed.
 
 **Fusion: locking (solution 6).** For a jammed pair, `f` is the jammed share of the contact
 length, in [0, 1]. The pair fuses as a Poisson process with rate `λ = f / CRATON_LOCK_MYR`.
-To make it step-robust:
-- at jam onset, draw a threshold E ~ Exp(1) from
-  `np.random.default_rng((seed, pair, round(onset_years), LOCK_SEED_TAG))`. It is keyed by
-  continuous time, not by step;
-- accumulate the hazard `H += f × years / CRATON_LOCK_MYR` each step, with f from that step's
-  contact;
-- the pair fuses on the first step where H ≥ E. Fusion goes through
-  `_merge_plates_with_craton_audit`, ahead of the ordinary roll, and the existing limit of
-  one fusion per step applies (a queued fusion goes the next step);
-- with f constant, the fusion time is E × `CRATON_LOCK_MYR` / f, whatever the step length,
-  to within one step. The ordinary roll (`update_collision_progress`) is keyed by
-  `round(elapsed_years)` and fires once per step, so its probability per Myr *does* depend
-  on step length. That is out of scope here and noted for #313.
+Three things keep it step-robust.
+
+- **Episodes, not steps, key the draw.** A jam *episode* starts when a pair becomes jammed and
+  ends only after it has been unjammed for `CRATON_JAM_GAP_MYR` (5 Myr), so brief
+  flickers don't start new episodes. Each pair counts its episodes, and episode k draws its
+  threshold E ~ Exp(1) from `np.random.default_rng((seed, pair, k, LOCK_SEED_TAG))`. Nothing
+  in the key depends on when the onset was detected, so a jam first seen at 2 Myr under one
+  schedule and 5 Myr under another draws the same E. Keying by `round(onset_years)` would
+  give unrelated thresholds.
+- **Hazard only over the jammed interval.** Within a step from t₀ to t₁, f is taken as linear
+  between its values at the step's start and end (f₀ = 0 if the pair wasn't jammed at t₀). So
+  the step adds `ΔH = (f₀ + f₁) / 2 × years / CRATON_LOCK_MYR`. An onset inside the step is
+  credited only for the part of the step after it, as linear interpolation places it,
+  rather than the whole step.
+- **Fusion times, and fusion in time order.** A pair whose H crosses E during the step has
+  a fusion time t* in [t₀, t₁], from inverting the linear hazard. Every pair that locks in
+  the step is fused in order of t*, through `_merge_plates_with_craton_audit`, before the
+  ordinary roll. Locks are *not* limited to one per step. Before each fusion, the pair is
+  revalidated: plate ids that an earlier fusion absorbed map to the survivor, and a pair
+  that has become one plate is dropped. The ordinary roll and the forced merge keep their
+  one-per-step limit.
+
+With these, a fusion time agrees across step partitions to within one step: E ×
+`CRATON_LOCK_MYR` / f for constant f, with independent locks resolving in the same order. What
+can still differ is everything downstream. Positions, contacts and later jams evolve at step
+resolution, so lock *counts* over a long run agree only statistically. The acceptance
+tolerance is set for that.
+
+The ordinary roll (`update_collision_progress`) is keyed by `round(elapsed_years)` and fires
+once per step, so its probability per Myr depends on step length. That is out of scope here,
+and noted for #313.
 
 **Conservation.** Nothing here moves crust, craton or material. Slowing changes ω only.
 Fusion uses the existing merge path, whose losses RFC 0001 fixes and books. Ledgers are
@@ -285,8 +368,8 @@ unchanged.
 
 Under 2% of step time at density 4, to be profiled.
 
-**Save compatibility.** One new `World` field, `craton_jams`: `{pair: (onset_years, hazard,
-threshold)}`. It is backfilled as `{}` on load, per `docs/save-compatibility.md`. An old
+**Save compatibility.** One new `World` field, `craton_jams`: `{pair: (episode_index, hazard,
+threshold, f_last, unjammed_since_years)}`. It is backfilled as `{}` on load, per `docs/save-compatibility.md`. An old
 save's jammed pairs start their hazard on the first step after loading. No new per-node field.
 
 **Knobs.**
@@ -297,8 +380,11 @@ save's jammed pairs start their hazard on the first step after loading. No new p
 | `JAM_FULL_CRUST_M` | 30,000 m | 30 km continental crust on 100 km lithosphere resists subduction [[Cloos, 1993]](#ref-cloos1993) | Sensitivity at 25 and 35 km |
 | Keel neutrality (factor `1 − s`) | full at s = 1 | Isopycnic tectosphere [[Jordan, 1978]](#ref-jordan1978) | Sensitivity with `1 − 0.5 s` |
 | `CRATON_BRAKE_REACH_KM` (solution 2) | 500 km | Design choice: `CRATON_FORMATION_MARGIN_KM`, how far inside a margin cratons form | Sweep 250–1,000 km |
+| `CONTACT_RESISTANCE_N_PER_M` | 5 × 10¹² N/m | Himalaya–Tibet resisting force [[Copley et al., 2010]](#ref-copley2010) | Sensitivity at 2.5 and 10 × 10¹² |
+| v_ref | 4 cm/yr | Post-collision India–Asia convergence [[Copley et al., 2010]](#ref-copley2010) | Fixed (it trades off with the force) |
+| `CRATON_JAM_GAP_MYR` | 5 Myr | Design choice: one tuning step, so a jam isn't split by a single unjammed step | Sensitivity at 2 and 10 Myr |
 | `CRATON_LOCK_MYR` | 20 Myr | Calibration assumption: breakoff and suturing within tens of Myr of a buoyant block's arrival [[Davies & von Blanckenburg, 1995]](#ref-davies1995) | Sweep 10–50 Myr |
-| `CRATON_COLLISION_FRICTION_GAIN` | 3.0 (unchanged) | #340 | Retune only if solution 2 is built |
+| `COLLISION_FRICTION_REFERENCE_PA`, the three friction gains | Retired | Replaced by `CONTACT_RESISTANCE_N_PER_M` and g | — |
 
 Tune with the gate probe and `bin/debug/compare_cratons.py` on seeds 7, 11 and 2024 to 1 Gyr,
 plus a regenerated seed 456862899 to 3 Gyr, one at a time. Watch:
@@ -313,19 +399,25 @@ plus a regenerated seed 456862899 to 3 Gyr, one at a time. Watch:
     `craton_crust_m` in `BoundaryForceInputs`, new).
   - New `jam_mask(plate, inputs, subducting)` and `jam_factor(...)`: buoyant subducting
     nodes and j.
-  - `collision_drag_coefficients`: accept the jam mask and factors; for solution 2, take c
-    from new `craton_proximity(plate, neighbours, inputs)` in place of `contact_craton_m`.
+  - `collision_drag_coefficients`: the Pa·s/m coefficient η and the bounded factor g
+    (solution 0); accept the jam mask and j; for solution 2, take c from new
+    `craton_proximity(plate, neighbours, inputs)` in place of `contact_craton_m`.
+  - New jam test independent of `subducting_boundary_mask`; the neighbour-side read of j.
   - `shift_plate`: wire both.
-  - New constants `JAM_MIN_CRUST_M`, `JAM_FULL_CRUST_M`, `CRATON_BRAKE_REACH_KM`, with
-    comments citing this RFC.
+  - New constants `JAM_MIN_CRUST_M`, `JAM_FULL_CRUST_M`, `CRATON_BRAKE_REACH_KM`,
+    `CONTACT_RESISTANCE_N_PER_M`, `CONTACT_RESISTANCE_REF_CM_PER_YR`, with comments citing
+    this RFC; retire `COLLISION_FRICTION_REFERENCE_PA` and the three gains.
+- `backend/app/collision_polarity.py`: keep `run_eligible` (the run-qualified lower-plate
+  eligibility before the no-craton gate) on the frozen masks.
 - `backend/app/merge_split.py`
   - `find_continental_collision_pairs`: also return jammed pairs with their jammed share f
     (new jam test, reusing the contact query).
   - `update_collision_progress`: keep progress for jammed pairs.
-  - New `update_craton_jams(world, years, jammed)`: onset, hazard, thresholds; returns pairs
-    ready to lock.
-  - `apply_topology_changes`: lock ready pairs before the ordinary roll.
-  - New constants `CRATON_LOCK_MYR`, `_LOCK_SEED_TAG`.
+  - New `update_craton_jams(world, years, jammed)`: episodes, interpolated hazard,
+    thresholds; returns the pairs that lock this step with their t*.
+  - `apply_topology_changes`: fuse locking pairs in t* order, revalidating each, before the
+    ordinary roll.
+  - New constants `CRATON_LOCK_MYR`, `CRATON_JAM_GAP_MYR`, `_LOCK_SEED_TAG`.
 - `backend/app/world.py`: `craton_jams` field; `backend/app/persistence.py` backfill if needed.
 - `bin/debug/probe_craton_contacts.py` (new): the gate probe.
 - `bin/debug/compare_cratons.py`: report merges by kind (roll, lock, forced) and closing rates
@@ -336,13 +428,25 @@ plus a regenerated seed 456862899 to 3 Gyr, one at a time. Watch:
     - a continental node at 35 km pulls nothing and brakes; at 10 km it pulls (reduced) and
       doesn't brake;
     - a full-strength cratonic keel adds no pull;
-    - j and c stay in [0, 1] over a grid of inputs;
-    - the jam brake never reverses the relative velocity in one implicit step.
+    - j, c and g stay in [0, 1] over a grid of inputs;
+    - the jam brake never reverses the relative velocity in one implicit step;
+    - a fully jammed straight contact at 4 cm/yr resists with 5 × 10¹² N/m per unit trench
+      length, within 1%, at densities 1 and 4;
+    - a driven contact slowing through 1 cm/yr keeps its jam resistance: across the
+      threshold, the resisting torque is continuous and the contact doesn't speed back up.
   - `backend/unit_tests/test_merge_split.py`:
     - a jammed pair keeps its progress when closing stalls; a separating pair loses it;
-    - with f = 1, fusion happens at E × `CRATON_LOCK_MYR`: the same step-rounded time for one
-      10 Myr step, ten 1 Myr steps, and 5 Myr steps;
+    - a mixed polarized front, where a cratonic lower-plate cell faces ordinary crust and
+      other lower cells can retreat, counts that cell as jammed;
+    - with f = 1, fusion happens at E × `CRATON_LOCK_MYR` to within one step, for one 10 Myr
+      step, ten 1 Myr steps, and 5 Myr steps;
+    - an onset inside a step draws the same E, and credits only the jammed part of the step,
+      under 1, 2 and 5 Myr steps;
+    - three disjoint pairs that all lock within one 10 Myr step all fuse in that step, in t*
+      order, and a pair made stale by an earlier fusion is revalidated or dropped;
     - a lock ignores the size gate; a non-jammed pair still rolls as today.
+  - `backend/unit_tests/test_collision_polarity.py`: `run_eligible` holds the cratonic
+    lower-plate candidates that `retreatable` excludes.
   - `backend/unit_tests/test_persistence.py`: a save without `craton_jams` loads.
 - Docs: `docs/simulation-model.md` (plate motion forces, "Merge and split", Cratons);
   `docs/debugging.md` (the probe).
@@ -363,6 +467,10 @@ plus a regenerated seed 456862899 to 3 Gyr, one at a time. Watch:
 - **The lock time is a guess.** Nothing published gives a mean time from craton contact to
   plate fusion, and the model's "merge" (two plates moving as one) is coarser than suturing.
   The sweep bounds it.
+- **Turning the brake on changes every collision.** Solution 0 makes collision friction
+  real for all continental collisions, not only cratonic ones. Plate speeds near collisions
+  will drop on every seed, so the acceptance runs bound mean plate speed. Copley's force is
+  one modern collision, and v_ref trades off against it.
 - **The proximity brake is a design choice**, not a published mechanism, and it may double
   count the relief term. It's gated, and falsifiable (below).
 - **Fusion raises plate-size variance.** Locks bypass the supercontinent size gate, so large
@@ -385,8 +493,11 @@ plus a regenerated seed 456862899 to 3 Gyr, one at a time. Watch:
   - [ ] the time-averaged largest plate stays under 40% of the surface, and mean plate count
         changes by less than 25%.
 - [ ] Ledgers balance (craton within 1e-9 of live volume; continental material closes).
-- [ ] Fusion times are step-robust: the unit test above, plus a 1 Gyr replay of one seed at
-      2 Myr and 5 Myr steps where lock counts agree within 20%.
+- [ ] Fusion times are step-robust (the unit tests above). On a 1 Gyr replay of one seed at
+      2 Myr and 5 Myr steps, lock counts agree within 20%; downstream topology diverges at
+      step resolution, so exact agreement isn't expected.
+- [ ] The resisting force at jammed contacts, from the probe, is 10¹²–10¹³ N/m of trench at
+      the contacts' convergence rates.
 - [ ] Step time at density 4 changes by less than 2%.
 - [ ] Unit tests above pass; affected tests, ruff and `bin/quality_check.sh` are green; saves
       from before the change load.
