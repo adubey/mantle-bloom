@@ -697,7 +697,7 @@ def _busy_world() -> World:
 def _frame_signature(world: World):
     frame = world.collision_polarity_frame
     masks = {
-        pid: tuple(np.flatnonzero(getattr(m, name)).tolist() for name in ("lower", "upper", "retreat_eligible", "retreatable", "override"))
+        pid: tuple(np.flatnonzero(getattr(m, name)).tolist() for name in ("lower", "upper", "retreat_eligible", "run_eligible", "retreatable", "override"))
         + (m.front_id.tolist(),)
         for pid, m in frame.masks.items()
     }
@@ -832,6 +832,26 @@ def test_collision_front_falls_back_to_bilateral_retreat_when_lower_is_cratonic(
 
     assert np.any(context.shrinkable & context.contested)
     assert not np.any(context.suture_hm_subduct)
+
+
+def test_run_eligible_keeps_the_cratonic_lower_candidates_retreatable_excludes():
+    # RFC 0008's gate counts a cratonic lower-plate cell facing ordinary crust as jammed, on a
+    # front where other lower cells can still retreat (#395).
+    world, lower, upper, _ = _front_with_lower_a()
+    _move(upper, _column(20), _column(19))
+    cp.observe_contacts(world, STEP_YEARS)
+    eligible = world.collision_polarity_frame.masks[lower.plate_id].retreatable.copy()
+    assert np.count_nonzero(eligible) >= 4
+    cratonic = np.zeros(lower.node_count(), dtype=bool)
+    cratonic[np.flatnonzero(eligible)[: np.count_nonzero(eligible) // 2]] = True
+    lower.set_fields_on_plate(craton_crust_m=np.where(cratonic, lower.collect("crustal_thickness_m"), 0.0))
+
+    cp.observe_contacts(world, STEP_YEARS)
+
+    masks = world.collision_polarity_frame.masks[lower.plate_id]
+    np.testing.assert_array_equal(masks.run_eligible, eligible)
+    np.testing.assert_array_equal(masks.retreatable, eligible & ~cratonic)
+    assert np.any(masks.retreatable)
 
 
 def test_continental_terrane_on_oceanic_carrier_can_be_frozen_lower_donor():
