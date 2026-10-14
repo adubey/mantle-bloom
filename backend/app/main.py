@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import threading
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import numpy as np
@@ -19,6 +20,7 @@ from scipy.spatial import cKDTree
 
 from . import (
     auth,
+    checkpoint,
     cross_section as cross_section_view,
     debug_worlds,
     faults,
@@ -31,6 +33,7 @@ from . import (
     projections,
     public_view,
     render_image,
+    run_control,
     stats,
     worldsketch,
 )
@@ -55,7 +58,16 @@ MAX_RENDER_DIMENSION_PX = 4000
 # this cap, but the cap still applies underneath so a forgotten run can't loop forever.
 MAX_ANIMATION_FRAMES = 480
 
-app = FastAPI(title="mantle-bloom")
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    _restore_checkpoint()
+    yield
+    _runner.close()
+
+
+app = FastAPI(title="mantle-bloom", lifespan=_lifespan)
 
 # FRONTEND_PORT lets bin/restart.sh --frontend-port point CORS at a non-default frontend
 # port; 5174 stays allowed alongside it since that's Vite dev's own fallback when its primary
@@ -272,13 +284,20 @@ def _parse_view_rotation(rotation: str | None) -> np.ndarray:
     return np.array(values, dtype=float).reshape(3, 3)
 
 
-def _world_changed() -> None:
+def _world_changed(completed: bool = True) -> None:
     """Publish a new revision of the shared world to viewers. Call it after every change to the
     world, before releasing `_world_lock`: a viewer's render takes the lock and caches what it
     draws under the revision it reads there, so a change published after the release could
-    leave the new world cached under the old revision."""
+    leave the new world cached under the old revision.
+
+    A completed change is also checkpointed (#375), under the same lock so nothing mutates the
+    world mid-pickle. `completed=False` is for a step that raised partway: viewers still see
+    what it left, but a restart goes back to the last whole step rather than resuming from a
+    half-stepped world."""
     _public_renders.clear()
     _world_feed.publish(_state["world"])
+    if completed:
+        _checkpoint_world()
 
 
 def _set_world(world: World) -> None:
@@ -792,9 +811,11 @@ def step(req: StepRequest) -> StreamingResponse:
 
     def _stream():
         progress = step_world_progress(world, req.years)
+        completed = False
         try:
             for fraction in progress:
                 yield json.dumps({"type": "progress", "fraction": fraction}) + "\n"
+            completed = True
             yield json.dumps({"type": "done", **_summary(world)}) + "\n"
         except GeneratorExit:
             # The client disconnected mid-stream (see /world/generate's own comment on this
@@ -809,12 +830,13 @@ def step(req: StepRequest) -> StreamingResponse:
             # `_state` here -- just let the step finish.
             for _ in progress:
                 pass
+            completed = True
             raise
         except Exception as exc:  # noqa: BLE001 -- status is already 200, so surface it as a data line
             yield json.dumps({"type": "error", "detail": f"{type(exc).__name__}: {exc}"}) + "\n"
         finally:
             # Even a failed step has changed the world partway.
-            _world_changed()
+            _world_changed(completed)
             _world_lock.release()
 
     return StreamingResponse(_stream(), media_type="application/x-ndjson")
@@ -997,6 +1019,7 @@ def animate(req: AnimateRequest) -> StreamingResponse:
     _animation_stop_event.clear()
 
     def _stream():
+        completed = False
         try:
             for message in render_image.stream_animation_mp4(
                 world, req.projection, req.view, req.width, req.height, view_rotation,
@@ -1005,6 +1028,9 @@ def animate(req: AnimateRequest) -> StreamingResponse:
             ):
                 if message[0] == "progress":
                     _, frame, total, frame_png, elapsed_years = message
+                    # Each frame ends on a whole step. Saved now, a run that ends badly later
+                    # (a disconnect, a failed step or encoder) still keeps the frames before it.
+                    _checkpoint_world()
                     yield json.dumps({
                         "type": "progress",
                         "frame": frame,
@@ -1022,6 +1048,7 @@ def animate(req: AnimateRequest) -> StreamingResponse:
                         "stats": world.stats_history[-1] if world.stats_history else None,
                     }) + "\n"
                 else:
+                    completed = True
                     _, mp4_bytes, stopped_early = message
                     yield json.dumps({
                         "type": "done",
@@ -1035,7 +1062,7 @@ def animate(req: AnimateRequest) -> StreamingResponse:
         finally:
             # Published once at the end: viewers can't render while the animation holds the
             # world anyway, and meanwhile keep their cached frame of the revision before it.
-            _world_changed()
+            _world_changed(completed)
             _world_lock.release()
 
     return StreamingResponse(_stream(), media_type="application/x-ndjson")
@@ -1831,11 +1858,13 @@ def public_render(view: str = "elevation", width: int = 1100, height: int = 611)
 
 
 def _run_guest_step() -> None:
+    completed = False
     try:
         for _ in step_world_progress(_require_world(), public_view.GUEST_STEP_YEARS):
             pass
+        completed = True
     finally:
-        _world_changed()
+        _world_changed(completed)
 
 
 @app.post("/public/step")
@@ -1866,6 +1895,133 @@ def public_step(req: PublicStepRequest, request: Request, response: Response) ->
         "computed": outcome.status == "computed",
         "steps_remaining": remaining,
     }
+
+
+# --- Run status and checkpoint (#375) --------------------------------------------------------
+# The owner's Play/Stop is a server-side status, stepped by a background thread
+# (run_control.py), and the world and that status are checkpointed to persistent storage when
+# one is configured (checkpoint.py), so a hosted instance that sleeps or restarts resumes them.
+_checkpoint_store: checkpoint.CheckpointStore | None = None
+
+
+def _checkpoint_world() -> None:
+    """Write the current world to the checkpoint; the caller holds `_world_lock`. A failed write
+    is logged rather than raised: the world in memory is fine, and the next change retries."""
+    world = _state["world"]
+    if _checkpoint_store is None or world is None:
+        return
+    try:
+        _checkpoint_store.save_world(world)
+    except Exception:  # noqa: BLE001 -- e.g. a full or unmounted volume mustn't fail the step
+        _logger.exception("checkpoint: couldn't save the world")
+        return
+    _runner.retry_unsaved_status()
+
+
+def _save_run_status(status: checkpoint.RunStatus) -> None:
+    if _checkpoint_store is not None:
+        _checkpoint_store.save_status(status)
+
+
+def _run_step_once(step_years: float, should_step) -> bool:
+    """One step of the run loop. Waits for the world rather than refusing like POST /world/step:
+    the owner's own step or animation just delays the run."""
+    with _world_lock:
+        world = _state["world"]
+        if world is None:
+            return False
+        if not should_step():
+            return True
+        completed = False
+        try:
+            for _ in step_world_progress(world, step_years):
+                pass
+            completed = True
+        finally:
+            _world_changed(completed)
+    return True
+
+
+_runner = run_control.WorldRunner(_run_step_once, _save_run_status, on_change=_world_feed.wake)
+
+
+def _restore_checkpoint() -> None:
+    """At startup: load the checkpointed world and run status, if checkpointing is configured,
+    and resume running if it was. The world is restored exactly as saved; the time the server
+    spent asleep isn't simulated."""
+    global _checkpoint_store
+    store = checkpoint.CheckpointStore.from_env()
+    if store is None:
+        _logger.info("checkpoint: %s isn't set; the world won't survive a restart", checkpoint.CHECKPOINT_DIR_ENV)
+        return
+    try:
+        world, status = store.load()
+    except OSError:
+        _logger.exception("checkpoint: can't use %s; running without checkpoints", store.directory)
+        return
+    _checkpoint_store = store
+    if world is not None:
+        with _world_lock:
+            _state["world"] = world
+            # Already the checkpointed state; no need to write it straight back.
+            _world_changed(completed=False)
+    _runner.set_status(status, persist=False)
+
+
+class RunRequest(BaseModel):
+    running: bool
+    # The UI's "Years per step". Omitted: keep the current one.
+    step_years: float | None = None
+
+
+def _run_summary() -> dict:
+    # The version first: anything that changes after it's read moves it again, so a poller
+    # can't miss a change by having seen a newer status under an older version.
+    run_version = _runner.version()
+    status = _runner.status()
+    return {
+        "running": status.running,
+        "step_years": status.step_years,
+        "stepping": _runner.stepping(),
+        "error": _runner.error(),
+        "run_version": run_version,
+        "world": _world_feed.summary(),
+    }
+
+
+@app.get("/world/run")
+async def get_run(after: str | None = None, run_version: int | None = None) -> dict:
+    """The run status (`running`, `step_years`, `stepping`: a step is under way, which can
+    still be true just after Stop, and `error`: why the run last stopped on its own, or null),
+    its `run_version`, and the world's current revision. With `after`, a long poll like
+    /public/world's that also answers when the run state moves past `run_version`: the full
+    app follows the running world with it, and sees Stop pressed in another tab."""
+    if after is not None:
+        changed = None if run_version is None else (lambda: _runner.version() != run_version)
+        await _world_feed.wait_past(after, public_view.GUEST_POLL_WAIT_S, changed)
+    return _run_summary()
+
+
+@app.post("/world/run")
+def set_run(req: RunRequest) -> dict:
+    """Play (`running: true`) or Stop. While running, the server steps the world by `step_years`
+    after each run_control.RUN_INTERVAL_S pause, whether or not anyone is watching, and the
+    status survives a restart when checkpointing is configured. Stop takes effect before the
+    next step; a step already under way finishes. `400` for a non-positive `step_years`, `404`
+    to start without a world, `500` if the status took effect but couldn't be saved (it's
+    retried with the next world checkpoint)."""
+    current = _runner.status()
+    step_years = current.step_years if req.step_years is None else req.step_years
+    if not checkpoint.valid_step_years(step_years):
+        raise HTTPException(status_code=400, detail="step_years must be a positive number")
+    if req.running:
+        _require_world()
+    try:
+        _runner.set_status(checkpoint.RunStatus(running=req.running, step_years=float(step_years)))
+    except run_control.StatusNotSaved as exc:
+        # In effect now, but a restart would go back to the saved status (#375 review).
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return _run_summary()
 
 
 # In the packaged single-process app there is no separate Vite server: FastAPI serves the

@@ -221,6 +221,45 @@ running, the request waits for it and then gets that result for free. At most on
 runs at a time, and a guest never queues behind the owner: guest steps get `503` while the
 owner holds the world, and guest renders get `503` after waiting 10 s.
 
+<a id="run-and-checkpoint"></a>
+## Running and checkpointing (`backend/app/run_control.py`, `backend/app/checkpoint.py`)
+
+Play and Stop in the full app set a run status on the server (`POST /world/run`, behind the
+`/world/*` guard, #375). While it's running, a background thread (`WorldRunner`) steps the
+world by the chosen "Years per step", pausing 0.4 s between steps so renders and viewers get
+the world lock. It keeps going with no tab open. A step that raises stops the run, and
+`GET /world/run` reports why; an automatic stop never overrides a newer Play or Stop. The
+full app follows a running world by long-polling `GET /world/run?after=<revision>&run_version=<n>`
+and refreshing whenever the revision moves. It keeps following after Stop until the server
+reports no step under way, so the last step still reaches the map, and a run-state change
+(Stop from another tab) wakes the poll through `WorldFeed.wake`. `POST
+/world/step` and animations still work alongside it; the run just waits its turn for the lock.
+
+When `MANTLE_BLOOM_CHECKPOINT_DIR` (or, failing that, Railway's `RAILWAY_VOLUME_MOUNT_PATH`)
+names a directory, the world and the run status are checkpointed there, so a hosted instance
+that sleeps or restarts comes back where it was. Unset, as in a local run, nothing is saved.
+
+- `world.mbworld` is an ordinary save (see [save-compatibility.md](save-compatibility.md)),
+  rewritten after every *completed* change: `_world_changed()` writes it under the world lock
+  for generate, load, controls, and every whole step (owner, guest or run loop). An animation
+  writes it after each frame, so one that ends badly keeps the frames it finished. A
+  step that raises partway still publishes what it left to viewers, but isn't checkpointed,
+  so a restart returns to the last whole step. Pickling a default world takes about 30 ms and
+  writes about 60 MB.
+- `run_status.json` holds `running` and `step_years`, rewritten on every Play/Stop and when a
+  run stops on its own. If that write fails, `POST /world/run` answers `500` and the status
+  is written again with the next world checkpoint.
+- Each file is written to a temporary file in the same directory, fsynced, and renamed over
+  the old one, so a process killed mid-write leaves the previous checkpoint whole; leftover
+  temporaries are deleted at startup. Nothing relies on a pre-sleep or shutdown hook.
+- At startup (the app's lifespan) the world is restored exactly as saved, with no catch-up
+  for the time spent asleep, and the run resumes if it was running. An unreadable world file
+  is renamed to `world.mbworld.invalid-<time>` and the server starts with no world, stopped;
+  an unreadable status file means stopped. Each case is logged.
+
+Checkpoints assume one process owns the directory: keep the service at one replica while it
+uses the volume.
+
 <a id="world-state"></a>
 ## World state (`backend/app/world.py`)
 
@@ -437,6 +476,10 @@ hydroclimate/atmosphere_cfd.py      the atmospheric wind solver: a genuine time-
 main.py              FastAPI routes
 auth.py              single-owner GitHub login: the request guard, OAuth routes and signed
                      session cookies (see #access-control above)
+run_control.py       the run/stopped status and the background thread that steps a running
+                     world (see #run-and-checkpoint above)
+checkpoint.py        atomic world and run-status checkpoints on persistent storage, and
+                     restoring them at startup (see #run-and-checkpoint above)
 public_view.py       the logged-out viewer's step allowance cookie, the coordinator
                      that shares one guest step among concurrent requests, and the
                      world revision feed and render cache viewers follow (see

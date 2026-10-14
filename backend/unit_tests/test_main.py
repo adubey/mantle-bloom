@@ -1512,3 +1512,162 @@ def test_controls_tuning_multipliers_round_trip_and_validate(client):
 
     assert client.post("/world/controls", json={"volcanism_multiplier": -0.5}).status_code == 400
     assert world.volcanism_multiplier == 1.0  # rejected write did not land
+
+
+# --- Run status and checkpoint (#375) -------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def saved_world() -> bytes:
+    from app.world import generate_world
+
+    return persistence.save_world_bytes(generate_world(seed=5, num_plates=2, node_density=0.5))
+
+
+@pytest.fixture
+def store(client, tmp_path, monkeypatch):
+    """Checkpointing into tmp_path, and a fake step that only advances the clock. Teardown
+    stops the run loop and waits out any step it has under way."""
+    from app import checkpoint
+
+    monkeypatch.setenv(checkpoint.CHECKPOINT_DIR_ENV, str(tmp_path))
+    monkeypatch.setattr(main, "_checkpoint_store", None)
+
+    def fake_step(world, years):
+        world.elapsed_years += years
+        yield 1.0
+
+    monkeypatch.setattr(main, "step_world_progress", fake_step)
+    yield checkpoint.CheckpointStore(tmp_path)
+    main._runner.set_status(checkpoint.RunStatus(), persist=False)
+    with main._world_lock:
+        pass
+
+
+def _checkpoint(store, saved_world, running, step_years=1_000.0):
+    from app.checkpoint import RunStatus
+
+    world = persistence.load_world_bytes(saved_world)
+    world.elapsed_years = 123_000.0
+    store.save_world(world)
+    store.save_status(RunStatus(running=running, step_years=step_years))
+
+
+def _saved_elapsed(store) -> float:
+    return persistence.load_world_bytes(store.world_path.read_bytes()).elapsed_years
+
+
+def test_restart_restores_a_stopped_world_at_the_same_point_and_stays_stopped(client, store, saved_world):
+    _checkpoint(store, saved_world, running=False)
+    main._restore_checkpoint()
+
+    assert client.get("/world/summary").json()["elapsed_years"] == 123_000.0
+    assert client.get("/world/run").json()["running"] is False
+    time.sleep(0.05)
+    assert main._state["world"].elapsed_years == 123_000.0
+
+
+def test_restart_resumes_a_running_world_from_the_same_point(client, store, saved_world):
+    _checkpoint(store, saved_world, running=True, step_years=500.0)
+    main._restore_checkpoint()
+
+    run = client.get("/world/run").json()
+    assert (run["running"], run["step_years"]) == (True, 500.0)
+    # Resumes from the saved point: no catch-up for time spent asleep, then 500 years a step.
+    assert _wait_until(lambda: main._state["world"].elapsed_years >= 123_500.0)
+    assert (main._state["world"].elapsed_years - 123_000.0) % 500.0 == 0
+    # Each completed step is checkpointed.
+    assert _wait_until(lambda: _saved_elapsed(store) >= 123_500.0)
+
+
+def test_play_and_stop_save_the_run_status(client, store, saved_world):
+    main._restore_checkpoint()  # nothing saved yet: no world, stopped
+    assert client.post("/world/run", json={"running": True, "step_years": 10.0}).status_code == 404
+    client.post("/world/load", content=saved_world)
+
+    assert client.post("/world/run", json={"running": True, "step_years": 10.0}).json()["running"] is True
+    assert json.loads(store.status_path.read_text())["running"] is True
+    start = persistence.load_world_bytes(saved_world).elapsed_years
+    assert _wait_until(lambda: main._state["world"].elapsed_years > start)
+
+    body = client.post("/world/run", json={"running": False}).json()
+    assert (body["running"], body["step_years"]) == (False, 10.0)
+    assert json.loads(store.status_path.read_text()) == {"version": 1, "running": False, "step_years": 10.0}
+
+
+def test_run_rejects_a_bad_step_size(client, store):
+    assert client.post("/world/run", json={"running": False, "step_years": 0}).status_code == 400
+
+
+def test_a_failed_step_does_not_overwrite_the_checkpoint(client, store, saved_world, monkeypatch):
+    _checkpoint(store, saved_world, running=False)
+    main._restore_checkpoint()
+
+    def failing_step(world, years):
+        world.elapsed_years += years
+        yield 0.5
+        raise RuntimeError("degenerate geometry")
+
+    monkeypatch.setattr(main, "step_world_progress", failing_step)
+    lines = client.post("/world/step", json={"years": 1_000.0}).text.splitlines()
+    assert json.loads(lines[-1])["type"] == "error"
+    assert main._state["world"].elapsed_years == 124_000.0
+    assert _saved_elapsed(store) == 123_000.0
+
+
+def test_run_poll_wakes_when_another_tab_stops_the_run(client, store, saved_world):
+    _checkpoint(store, saved_world, running=False)
+    main._restore_checkpoint()
+    client.post("/world/run", json={"running": True, "step_years": 10.0})
+    result = {}
+
+    def follow():
+        # Like the full app: poll past whatever was last seen until the run has stopped.
+        run = client.get("/world/run").json()
+        while run["running"]:
+            run = client.get("/world/run", params={"after": run["world"]["revision"], "run_version": run["run_version"]}).json()
+        result.update(run)
+
+    poller = threading.Thread(target=follow)
+    started = time.monotonic()
+    poller.start()
+    time.sleep(0.05)
+    client.post("/world/run", json={"running": False})
+    poller.join(10)
+
+    # Without the wake, the last poll would sit out the 25 s timeout: a stopped run publishes
+    # no new revision.
+    assert time.monotonic() - started < 5
+    assert result["running"] is False
+
+
+def test_a_status_that_cannot_be_saved_is_reported(client, store, saved_world, monkeypatch):
+    _checkpoint(store, saved_world, running=False)
+    main._restore_checkpoint()
+
+    def fails(status):
+        raise OSError("volume gone")
+
+    monkeypatch.setattr(main._checkpoint_store, "save_status", fails)
+    resp = client.post("/world/run", json={"running": False, "step_years": 20.0})
+    assert resp.status_code == 500
+    assert client.get("/world/run").json()["step_years"] == 20.0
+    monkeypatch.undo()
+    monkeypatch.setattr(main, "_checkpoint_store", None)
+
+
+def test_an_animation_that_fails_keeps_the_frames_it_finished(client, store, saved_world, monkeypatch):
+    _checkpoint(store, saved_world, running=False)
+    main._restore_checkpoint()
+
+    def frames(world, *args, **kwargs):
+        world.elapsed_years += 1_000.0
+        yield ("progress", 1, 3, b"png", world.elapsed_years)
+        world.elapsed_years += 500.0  # a step that fails halfway
+        raise RuntimeError("encoder died")
+
+    monkeypatch.setattr(main.render_image, "stream_animation_mp4", frames)
+    lines = client.post("/world/animate", json={"step_years": 1_000.0, "num_frames": 3}).text.splitlines()
+
+    assert json.loads(lines[-1])["type"] == "error"
+    assert _saved_elapsed(store) == 124_000.0

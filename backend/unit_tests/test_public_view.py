@@ -71,6 +71,8 @@ def test_world_is_null_before_one_exists(guest):
         ("post", "/world/animate"),
         ("post", "/world/animate/stop"),
         ("post", "/world/controls"),
+        ("get", "/world/run"),
+        ("post", "/world/run"),
     ],
 )
 def test_guest_cannot_create_save_load_or_run_the_world(guest, steps, method, path):
@@ -295,6 +297,25 @@ def test_wait_past_times_out_and_returns_at_once_for_a_stale_revision():
     stale = feed.revision()
     feed.publish(None)
     asyncio.run(asyncio.wait_for(feed.wait_past(stale, 60.0), 1.0))
+
+
+def test_wake_ends_a_wait_whose_condition_changed():
+    feed = public_view.WorldFeed()
+    seen = feed.revision()
+    flag = []
+
+    async def scenario():
+        waiter = asyncio.ensure_future(feed.wait_past(seen, 5.0, changed=lambda: bool(flag)))
+        await asyncio.sleep(0.01)
+        assert not waiter.done()
+        flag.append(True)
+        threading.Thread(target=feed.wake).start()
+        await asyncio.wait_for(waiter, 2.0)
+        # Already changed: returns without waiting.
+        await asyncio.wait_for(feed.wait_past(seen, 5.0, changed=lambda: bool(flag)), 0.5)
+
+    asyncio.run(scenario())
+    assert feed.revision() == seen
 
 
 def test_render_cache_serves_only_the_current_revision():

@@ -476,7 +476,7 @@ function worldSummaryFrom(msg: Record<string, unknown>): WorldSummary {
   };
 }
 
-// Shared by generateWorld/stepWorld below -- both stream newline-delimited JSON progress the
+// Used by generateWorld below, which streams newline-delimited JSON progress the
 // same shape /world/animate does (see AnimateProgress/animateWorld's own comment for that
 // established contract): a `{type: "progress", fraction}` line (0 to 1) per phase/plate
 // checkpoint (surfaced via `onProgress`), then a final `{type: "done", ...WorldSummary
@@ -673,29 +673,39 @@ export function updateControls(controls: {
   }).then(asJson<ControlsState>);
 }
 
-// The backend rejects an overlapping /world/step with 503 (see backend app/main.py's
-// _world_lock) rather than queueing it, since a step already in flight can take seconds on a
-// large world. Retry on a short delay until the in-flight step finishes and the lock frees up
-// -- any other error (network failure, 404 for no world, etc.) still propagates immediately.
-const STEP_RETRY_DELAY_MS = 300;
+// Play/Stop (backend app/run_control.py, #375): the server steps the world itself while
+// `running`, and keeps that status across a restart. `error` says why a run stopped on its own.
+// `stepping` can outlast Stop: a step under way finishes, and the world moves once more.
+export interface RunState {
+  running: boolean;
+  step_years: number;
+  stepping: boolean;
+  error: string | null;
+  run_version: number;
+  world: { revision: string; seed: number; elapsed_years: number } | null;
+}
 
-// `onProgress`, if given, is called with a fraction (0 to 1) as the backend's
-// step_world_progress passes each per-plate shift()/deform() checkpoint (see backend
-// app/main.py's /world/step for the NDJSON contract this reads, same shape as
-// animateWorld's own).
-export async function stepWorld(years: number, onProgress?: (fraction: number) => void): Promise<WorldSummary> {
-  for (;;) {
-    const resp = await fetch(`${API_BASE}/world/step`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ years }),
-    });
-    if (resp.status === 503) {
-      await new Promise((resolve) => setTimeout(resolve, STEP_RETRY_DELAY_MS));
-      continue;
-    }
-    return readProgressStream(resp, onProgress);
-  }
+// A refusal that retrying won't fix, such as an expired session (401).
+export class RunStateRefused extends Error {}
+
+// With `after` (the revision on screen) and `runVersion` (the last run_version seen), a long
+// poll: the server answers once the world or the run state moves on, or after ~25 s.
+export async function fetchRunState(after?: string, runVersion?: number, signal?: AbortSignal): Promise<RunState> {
+  const params = new URLSearchParams();
+  if (after !== undefined) params.set("after", after);
+  if (runVersion !== undefined) params.set("run_version", String(runVersion));
+  const query = params.size ? `?${params}` : "";
+  const resp = await fetch(`${API_BASE}/world/run${query}`, { signal });
+  if (resp.status >= 400 && resp.status < 500) throw new RunStateRefused(`${resp.status} ${await resp.text()}`);
+  return asJson<RunState>(resp);
+}
+
+export function setRunState(running: boolean, stepYears?: number): Promise<RunState> {
+  return fetch(`${API_BASE}/world/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ running, step_years: stepYears }),
+  }).then(asJson<RunState>);
 }
 
 // width/height are the actual pixel dimensions of the returned image -- pass a higher
@@ -929,11 +939,11 @@ const ANIMATE_IDLE_TIMEOUT_MS = 3 * 60 * 1000;
 // progress, starting from the world's current state (frame 0). Each subsequent frame costs
 // `stepsPerFrame` real simulation steps of `stepYears` each -- only the last of which gets
 // rendered -- encoded as an H.264/MP4 video. **This permanently advances the world** by up to
-// `(numFrames - 1) * stepsPerFrame * stepYears` years, the same as calling stepWorld that
-// many times -- not a side-effect-free preview (see backend app/main.py's /world/animate,
+// `(numFrames - 1) * stepsPerFrame * stepYears` years, the same as that many
+// /world/step calls -- not a side-effect-free preview (see backend app/main.py's /world/animate,
 // and render_image.stream_animation_mp4's docstring for why a coarser render cadence still
 // simulates every step rather than taking one bigger step). The caller should run the same
-// post-step refresh sequence it runs after stepWorld.
+// refresh it runs when a running world advances (App.tsx's handleWorldAdvanced).
 //
 // The endpoint streams newline-delimited JSON: one `{type: "progress", frame, total,
 // image_base64}` per frame (surfaced via `onProgress` -- the image lets the caller paint the

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./index.css";
 import {
-  animateWorld, fetchDebugScenarios, fetchEarthquakes, fetchElevationPointAt, fetchFaults, fetchLakes, fetchNodeAt, fetchPlates, fetchPointSample, fetchRivers, fetchStats, fetchStatsHistory, fetchVolcanoes, fetchWorldSummary, generateDebugWorld, generateWorld, renderWorld, stepWorld, stopAnimation, updateControls,
-  TUNING_MULTIPLIER_KEYS,
+  animateWorld, fetchDebugScenarios, fetchEarthquakes, fetchElevationPointAt, fetchFaults, fetchLakes, fetchNodeAt, fetchPlates, fetchPointSample, fetchRivers, fetchRunState, fetchStats, fetchStatsHistory, fetchVolcanoes, fetchWorldSummary, generateDebugWorld, generateWorld, renderWorld, setRunState, stopAnimation, updateControls,
+  RunStateRefused, TUNING_MULTIPLIER_KEYS,
 } from "./api";
 import type {
   AnimateResponse, DebugScenario, EarthquakeSummary, ElevationPointResponse, FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, NodeAtResponse, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, TuningKey, TuningMultipliers, VolcanoSummary, WorldStats, WorldSummary,
@@ -55,7 +55,8 @@ const RENDER_SCALE = 2;
 const RENDER_WIDTH = DISPLAY_WIDTH * RENDER_SCALE;
 const RENDER_HEIGHT = DISPLAY_HEIGHT * RENDER_SCALE;
 const STEP_YEARS_OPTIONS = [10_000, 100_000, 1_000_000, 10_000_000];
-const PLAY_INTERVAL_MS = 400;
+// After a failed long poll of the run status, wait this long before asking again.
+const RUN_POLL_RETRY_MS = 2000;
 // Percent, matching backend app/plates.py's DEFAULT_CONTINENTAL_FRACTION/DEFAULT_LAND_FRACTION.
 const DEFAULT_CONTINENTAL_PERCENT = 70;
 const DEFAULT_LAND_PERCENT = 29;
@@ -315,8 +316,8 @@ export default function App() {
   const [crossSectionArcPosition, setCrossSectionArcPosition] = useState(0);
   // Local cache epoch: advance it after every operation that can change sampled section data.
   const [crossSectionWorldRevision, setCrossSectionWorldRevision] = useState(0);
-  // handleStep's own closure over `mapView` is captured when the step *starts*, so if the map
-  // mode changes while that step is still in flight, its post-step refresh would otherwise
+  // A callback's closure over `mapView` is captured when its work *starts*, so if the map
+  // mode changes while (say) a load is still in flight, its follow-up refresh would otherwise
   // render the world's new (stepped) state back in the old, now-stale map mode -- overwriting
   // whatever the mode change's own refresh (the effect below) just showed. This ref always
   // holds the current value, so the post-step refresh renders whatever mode is selected by the
@@ -580,15 +581,15 @@ export default function App() {
   // out of this DOM node rather than a ref threaded through four separate components.
   const mapWrapperRef = useRef<HTMLDivElement>(null);
   const [playing, setPlaying] = useState(false);
+  // Stop was pressed, and the server's last step may still be landing (see handleStopRun).
+  const [stopping, setStopping] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [stepping, setStepping] = useState(false);
-  // Real percent-complete for the `busy`/`stepping` progress bars below, fed by
-  // generateWorld's/stepWorld's `onProgress` (see api.ts and issue #195) -- `undefined`
+  // Real percent-complete for the `busy` progress bar below, fed by
+  // generateWorld's `onProgress` (see api.ts and issue #195) -- `undefined`
   // until that run's first NDJSON progress line arrives (ProgressBar falls back to its old
   // indeterminate animation for that brief window), and reset to `undefined` again once the
   // run ends so a stale 100% doesn't flash before the bar disappears on the next one.
   const [genProgress, setGenProgress] = useState<number | undefined>(undefined);
-  const [stepProgress, setStepProgress] = useState<number | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   // Background animation (recording) -- see AnimationModal.tsx and handleStartAnimation
   // below. `animation` is non-null only while a run is in flight -- it holds the live frame
@@ -611,7 +612,7 @@ export default function App() {
 
   // Two refresh() calls can be in flight at once -- e.g. changing map mode while a step is
   // in flight fires one from the mode-change effect below (for the pre-step world) and
-  // another from handleStep's own post-step Promise.all (for the post-step world) -- and
+  // another from handleWorldAdvanced's own Promise.all (for the post-step world) -- and
   // nothing guarantees they resolve in the order they were issued (server thread-pool
   // scheduling, retries, network jitter). Without a guard, whichever response happens to
   // land last wins even if it's the stale one, which is what let the map mode visibly revert
@@ -877,31 +878,6 @@ export default function App() {
     pushControls({ debugDiagnostics: v });
   }, [pushControls]);
 
-  const handleStep = useCallback(async () => {
-    if (!summary) return;
-    setStepping(true);
-    setStepProgress(undefined);
-    setError(null);
-    try {
-      const s = await stepWorld(stepYears, setStepProgress);
-      setSummary(s);
-      setCrossSectionWorldRevision((revision) => revision + 1);
-      setSelectedRiverId(null); // rivers are regrouped fresh every step -- a stale id could point at an unrelated network
-      setSelectedBasin(null); // lakes are regrouped fresh every step too -- same reasoning
-      setSelectedBasinKind(null);
-      // mapViewRef.current, not mapView -- see the ref's own comment above.
-      await Promise.all([
-        refresh(projection, mapViewRef.current, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), recordStats(),
-      ]);
-    } catch (e) {
-      setError(String(e));
-      setPlaying(false);
-    } finally {
-      setStepping(false);
-      setStepProgress(undefined);
-    }
-  }, [summary, stepYears, projection, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats]);
-
   // FileModal's "Load World" -- a loaded world fully replaces the current one, same as a
   // fresh Generate (see handleGenerate above), plus syncing every live Controls value
   // (seaLevelM/solarMultiplier/simulatePlateMovement/simulateClimateBiomes) to the *loaded*
@@ -949,16 +925,19 @@ export default function App() {
     }
   }, [projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats]);
 
-  // Post-animation refresh -- an animation run already advanced the world for real (see
-  // api.ts's animateWorld), so this just runs the same post-step refresh handleStep does.
+  // Post-step refresh -- after an animation run (see api.ts's animateWorld) or each step of
+  // the server's run (see handlePlay), both of which already advanced the world for real.
   const handleWorldAdvanced = useCallback(async (s: WorldSummary) => {
     setSummary(s);
     setCrossSectionWorldRevision((revision) => revision + 1);
     setSelectedRiverId(null);
     setSelectedBasin(null);
     setSelectedBasinKind(null);
-    await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), recordStats()]);
-  }, [projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats]);
+    // mapViewRef.current, not mapView -- see the ref's own comment above.
+    await Promise.all([
+      refresh(projection, mapViewRef.current, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), recordStats(),
+    ]);
+  }, [projection, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats]);
 
   // The Record toolbar button's AnimationModal -- run the whole recording in the background.
   // Each streamed frame's PNG is painted straight onto the main map (the run holds the server
@@ -1124,32 +1103,96 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const stepRef = useRef(handleStep);
-  stepRef.current = handleStep;
+  // Play and Stop set the server's run status (#375): the server steps the world itself, so
+  // it keeps running with this tab closed, and across a server restart. This tab follows it
+  // with a long poll, refreshing the map whenever the world moves on.
+  const handlePlay = useCallback(async () => {
+    setError(null);
+    try {
+      setPlaying((await setRunState(true, stepYears)).running);
+    } catch (e) {
+      setError(String(e));
+    }
+  }, [stepYears]);
 
-  // Self-scheduling rather than setInterval: each step must finish before the next is
-  // scheduled, so a slow step (larger worlds take longer -- a step that also lands on a
-  // regularize/gap-fill or reassignment interval, or triggers a merge/split, can take
-  // noticeably longer than a routine one) can never overlap with the next tick. A
-  // fixed-cadence setInterval would keep firing regardless of whether the previous request
-  // had returned.
+  // Leaves `playing` to the follow loop below, which ends it once the server is idle: a step
+  // under way when Stop is pressed still finishes, and should still reach the map.
+  const handleStopRun = useCallback(async () => {
+    setStopping(true);
+    try {
+      await setRunState(false);
+    } catch (e) {
+      // A 500 means stopped but not saved; anything else may not have stopped at all. Either
+      // way the follow loop reports what the server is actually doing.
+      setError(String(e));
+      setStopping(false);
+    }
+  }, []);
+
+  // A change of step size while running takes effect on the server's next step.
+  const handleStepYearsChange = useCallback((years: number) => {
+    setStepYears(years);
+    if (playing) setRunState(true, years).catch((e) => setError(String(e)));
+  }, [playing]);
+
+  // The world revision this tab last showed while following a run.
+  const shownRevisionRef = useRef<string | undefined>(undefined);
+  const worldAdvancedRef = useRef(handleWorldAdvanced);
+  worldAdvancedRef.current = handleWorldAdvanced;
+
+  // Polls the run state until the server is idle (stopped, with no step under way), showing
+  // each new revision. `shownRevisionRef` carries the revision on screen from one run to the
+  // next, so a world that moved in between is shown when the next run starts.
   useEffect(() => {
     if (!playing) return;
-    let cancelled = false;
-    let timeoutId: ReturnType<typeof setTimeout>;
-    const tick = () => {
-      timeoutId = setTimeout(async () => {
-        if (cancelled) return;
-        await stepRef.current();
-        if (!cancelled) tick();
-      }, PLAY_INTERVAL_MS);
+    const controller = new AbortController();
+    const finish = (message: string | null) => {
+      if (message) setError(message);
+      setPlaying(false);
+      setStopping(false);
     };
-    tick();
-    return () => {
-      cancelled = true;
-      clearTimeout(timeoutId);
-    };
+    (async () => {
+      let runVersion: number | undefined;
+      while (!controller.signal.aborted) {
+        try {
+          // The first request answers at once, with the run_version later ones wait past.
+          const after = runVersion === undefined ? undefined : shownRevisionRef.current;
+          const run = await fetchRunState(after, runVersion, controller.signal);
+          runVersion = run.run_version;
+          const revision = run.world?.revision;
+          if (revision !== shownRevisionRef.current) {
+            const hadOne = shownRevisionRef.current !== undefined;
+            shownRevisionRef.current = revision;
+            if (hadOne && revision !== undefined) {
+              const s = await fetchWorldSummary();
+              await worldAdvancedRef.current(s);
+            }
+          }
+          if (!run.running && !run.stepping) return finish(run.error);
+        } catch (e) {
+          if (controller.signal.aborted) return;
+          if (e instanceof RunStateRefused) return finish(String(e));
+          await new Promise((resolve) => setTimeout(resolve, RUN_POLL_RETRY_MS));
+        }
+      }
+    })();
+    return () => controller.abort();
   }, [playing]);
+
+  // A run the server already has going (started from another tab, or resumed after a
+  // restart) shows as playing.
+  useEffect(() => {
+    fetchRunState()
+      .then((run) => {
+        shownRevisionRef.current = run.world?.revision;
+        if (!run.running) return;
+        if (STEP_YEARS_OPTIONS.includes(run.step_years)) setStepYears(run.step_years);
+        setPlaying(true);
+      })
+      .catch(() => {
+        // best-effort: without it, Play still shows the run's state once pressed
+      });
+  }, []);
 
   // The view props every client-drawn inspector takes (see InspectorCanvas.tsx).
   const inspectorView: InspectorViewProps = {
@@ -1206,7 +1249,7 @@ export default function App() {
               Years per step
               <select
                 value={stepYears}
-                onChange={(e) => setStepYears(Number(e.target.value))}
+                onChange={(e) => handleStepYearsChange(Number(e.target.value))}
                 style={{ width: "100%", fontSize: 12 }}
               >
                 {STEP_YEARS_OPTIONS.map((y) => (
@@ -1216,9 +1259,9 @@ export default function App() {
                 ))}
               </select>
             </label>
-            {/* Play / Stop / Record -- the classic tape-deck order. Play advances the world
-                continuously (one step every PLAY_INTERVAL_MS, sized by "Years per step"
-                above) until Stop is pressed; Record opens AnimationModal to configure and
+            {/* Play / Stop / Record -- the classic tape-deck order. Play has the server advance
+                the world continuously (a step of "Years per step" at a time, see handlePlay)
+                until Stop is pressed; Record opens AnimationModal to configure and
                 start a video recording, which Stop also ends (cleanly -- see
                 handleStopAnimation). Stop is only enabled while one of the two is running.
                 Ending a recording, whether by Stop or by running its course, resolves
@@ -1231,22 +1274,22 @@ export default function App() {
                 progress, since it has no fixed total to show a fraction of. */}
             <div style={{ display: "flex", gap: 6 }}>
               <button
-                onClick={() => setPlaying(true)}
-                disabled={busy || stepping || !summary || animating || playing}
+                onClick={handlePlay}
+                disabled={busy || !summary || animating || playing}
                 title="Play"
                 aria-label="Play"
                 // Green while clickable, same "color signals affordance" treatment as Record's
                 // red (below) -- both go back to the default (undefined) color once disabled.
                 style={{
                   flex: 1, fontSize: 15, lineHeight: 1, padding: "4px 0",
-                  color: busy || stepping || !summary || animating || playing ? undefined : "#27c93f",
+                  color: busy || !summary || animating || playing ? undefined : "#27c93f",
                 }}
               >
                 ▶
               </button>
               <button
-                onClick={() => (animating ? handleStopAnimation() : setPlaying(false))}
-                disabled={!playing && !animating}
+                onClick={() => (animating ? handleStopAnimation() : handleStopRun())}
+                disabled={(!playing && !animating) || stopping}
                 title="Stop"
                 aria-label="Stop"
                 style={{ flex: 1, fontSize: 15, lineHeight: 1, padding: "4px 0" }}
@@ -1271,7 +1314,6 @@ export default function App() {
                 ⏺
               </button>
             </div>
-            {stepping && <ProgressBar label="Stepping world" style={{ marginTop: 6 }} fraction={stepProgress} />}
           </fieldset>
 
           <fieldset style={{ border: "1px solid #333", borderRadius: 6, padding: 8, fontSize: 12 }}>

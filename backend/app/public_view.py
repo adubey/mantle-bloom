@@ -101,18 +101,23 @@ class WorldFeed:
                 "revision": revision, "seed": world.seed, "elapsed_years": float(world.elapsed_years)
             }
             waiters, self._waiters = self._waiters, []
-        for loop, future in waiters:
-            try:
-                loop.call_soon_threadsafe(_resolve, future)
-            except RuntimeError:
-                pass  # That request's event loop has closed; there's no one left to wake.
+        _wake_all(waiters)
 
-    async def wait_past(self, seen: str, timeout_s: float) -> None:
-        """Return once the revision differs from `seen`, or after `timeout_s`."""
+    def wake(self) -> None:
+        """Wake every waiting request without changing the revision, for a change to something
+        a `wait_past` caller's `changed` checks (the run status, #375)."""
+        with self._mutex:
+            waiters, self._waiters = self._waiters, []
+        _wake_all(waiters)
+
+    async def wait_past(self, seen: str, timeout_s: float, changed: Callable[[], bool] | None = None) -> None:
+        """Return once the revision differs from `seen` or `changed()` is true, or after
+        `timeout_s`. Whatever `changed` reads must be updated before the `wake` that announces
+        it: both run under the same mutex, so no update falls between the check and the wait."""
         loop = asyncio.get_running_loop()
         future = loop.create_future()
         with self._mutex:
-            if self._revision() != seen:
+            if self._revision() != seen or (changed is not None and changed()):
                 return
             self._waiters.append((loop, future))
         try:
@@ -123,6 +128,14 @@ class WorldFeed:
             with self._mutex:
                 if (loop, future) in self._waiters:
                     self._waiters.remove((loop, future))
+
+
+def _wake_all(waiters: list[tuple[asyncio.AbstractEventLoop, asyncio.Future]]) -> None:
+    for loop, future in waiters:
+        try:
+            loop.call_soon_threadsafe(_resolve, future)
+        except RuntimeError:
+            pass  # That request's event loop has closed; there's no one left to wake.
 
 
 def _resolve(future: asyncio.Future) -> None:
