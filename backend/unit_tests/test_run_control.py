@@ -110,6 +110,16 @@ def test_shutdown_ends_the_loop_but_keeps_the_saved_status_running(harness):
     assert harness.saved == [RunStatus(running=True)]
 
 
+def test_a_closed_runner_runs_again_when_started_again(harness):
+    # The app's lifespan closes the runner on exit, and can start again in the same process
+    # (every `with TestClient(app)` does).
+    harness.runner.set_status(RunStatus(running=True))
+    harness.wait_for_steps(1)
+    harness.runner.close()
+    harness.runner.set_status(RunStatus(running=True))
+    harness.wait_for_steps(harness.steps + 2)
+
+
 def test_a_failed_status_save_keeps_the_status_in_memory():
     def failing_save(status):
         raise OSError("volume gone")

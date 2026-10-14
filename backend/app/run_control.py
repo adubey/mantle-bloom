@@ -44,7 +44,10 @@ class WorldRunner:
         self._status_mutex = threading.Lock()
         self._status = RunStatus()
         self._error: str | None = None
-        self._closed = False
+        # Bumped by close(). A loop exits once its generation is out of date, so a later
+        # start (the app's lifespan can run more than once in a process, as tests do) gets a
+        # fresh loop rather than a runner that's closed for good.
+        self._generation = 0
         self._thread: threading.Thread | None = None
 
     def status(self) -> RunStatus:
@@ -63,7 +66,7 @@ class WorldRunner:
             with self._cond:
                 self._status = status
                 self._error = None
-                if status.running and not self._closed:
+                if status.running:
                     self._ensure_thread()
                 self._cond.notify_all()
             if persist:
@@ -74,30 +77,33 @@ class WorldRunner:
         it. Doesn't wait out a step in progress beyond `timeout_s`: the checkpoint written
         before that step is intact either way."""
         with self._cond:
-            self._closed = True
+            self._generation += 1
             self._cond.notify_all()
-            thread = self._thread
+            thread, self._thread = self._thread, None
         if thread is not None:
             thread.join(timeout_s)
 
-    def _wants_step(self) -> bool:
-        with self._cond:
-            return self._status.running and not self._closed
-
     def _ensure_thread(self) -> None:
         if self._thread is None or not self._thread.is_alive():
-            self._thread = threading.Thread(target=self._loop, name="world-runner", daemon=True)
+            self._thread = threading.Thread(target=self._loop, args=(self._generation,), name="world-runner", daemon=True)
             self._thread.start()
 
-    def _loop(self) -> None:
+    def _loop(self, generation: int) -> None:
+        def closed() -> bool:
+            return self._generation != generation
+
+        def wants_step() -> bool:
+            with self._cond:
+                return self._status.running and not closed()
+
         while True:
             with self._cond:
-                self._cond.wait_for(lambda: self._closed or self._status.running)
-                if self._closed:
+                self._cond.wait_for(lambda: closed() or self._status.running)
+                if closed():
                     return
                 step_years = self._status.step_years
             try:
-                stepped = self._step_once(step_years, self._wants_step)
+                stepped = self._step_once(step_years, wants_step)
             except Exception as exc:  # noqa: BLE001 - a failing step stops the run rather than the thread
                 _logger.exception("run: the step failed; stopping")
                 self._stop_on_its_own(f"step failed: {type(exc).__name__}: {exc}")
@@ -107,7 +113,7 @@ class WorldRunner:
                 self._stop_on_its_own("there's no world to run")
                 continue
             with self._cond:
-                self._cond.wait_for(lambda: self._closed or not self._status.running, self._interval_s)
+                self._cond.wait_for(lambda: closed() or not self._status.running, self._interval_s)
 
     def _stop_on_its_own(self, reason: str) -> None:
         with self._status_mutex:
