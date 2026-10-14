@@ -4,7 +4,8 @@
 - **Date:** 2026-10-13
 - **Related:** #274 (cratons), #340 (craton partition rules), #276 (suture accretion),
   #290 (staged suture placement); RFCs [0002](0002-craton-trench-attrition.md),
-  [0004](0004-proto-cratons.md)
+  [0004](0004-proto-cratons.md), [0008](0008-craton-collision-jamming.md) (fusion at jam
+  onset)
 
 ## Problem
 
@@ -107,6 +108,12 @@ Nothing in that picture removes tens of percent of a craton in one event.
    Either the forced merge (`FORCED_MERGE_OVERLAP_FRACTION`, 30% for 30 Myr) should fire
    *before* the overlap is that deep for craton pairs, or retreat of the non-cratonic crust
    between them should take it.
+
+   **Moved to [RFC 0008](0008-craton-collision-jamming.md).** It fuses a craton-jammed pair
+   at a hazard rate from jam onset, and stops a stalled jam from resetting its collision
+   time, so craton pairs fuse before deep overlap builds. This RFC keeps the measurement
+   (the gate records the craton-on-craton overlap before each merge). 0008's acceptance
+   criteria include a 75% drop in that overlap at fusion.
 4. **Book honestly.** Merge clips go to a new craton account `merge_capped_m3`, kept apart
    from `delaminated_m3`, so the ledger says what happened.
 
@@ -124,7 +131,13 @@ follow from the gate:
 | Deep craton-on-craton overlap existed before the merge, whatever else the gate finds | 3 as the primary fix, since the stacking itself is unphysical |
 
 Solution 2 is a validity fix that goes with whichever row applies. It's measured with
-solution 3 in place, since alone it would raise the booked loss.
+solution 3 in place, since alone it would raise the booked loss. Where the table selects 3,
+it means RFC 0008's fusion.
+
+**Ordering with RFC 0008.** 0008 makes craton-bearing pairs fuse more often and sooner.
+Every extra fusion goes through this RFC's merge placement, so solutions 1, 2 and 4 must land
+before 0008's fusion, or with it. With 0008 in place, merges carry less stacked craton, but
+there are more of them.
 
 ## Design
 
@@ -216,9 +229,7 @@ Two existing constants gain a second use in the merge, and neither is retuned he
   root shedding.
 - `SUTURE_ESCAPE_MAX_ANGLE_DEG`: the escape cone.
 
-If solution 3 is needed, its threshold (the overlap's craton volume per pair, in m³) is
-tuned on the replays below: low enough that no merge finds craton on craton above it,
-without changing merge counts by more than 10%.
+If solution 3 is needed, it is built and tuned in RFC 0008 (`CRATON_LOCK_MYR`).
 
 ## Detailed design (provisional touchpoints)
 
@@ -233,8 +244,8 @@ without changing merge counts by more than 10%.
     the suture path uses: `delaminated_lower_crust_m3` and orogeny's
     `restite_delaminated_m3`).
 - `backend/app/merge_split.py`: `_merge_plates_with_craton_audit` settles to
-  `merge_capped_m3` instead of `delaminated_m3`. For solution 3, record the craton-on-craton
-  overlap volume in `update_overlap_tracking`.
+  `merge_capped_m3` instead of `delaminated_m3`. Record the craton-on-craton overlap volume
+  in `update_overlap_tracking`, as the measurement RFC 0008 builds on.
 - `backend/app/cratons.py`: add `merge_capped_m3` to `CRATON_SINK_ACCOUNTS`, with a
   comment citing this RFC.
 - `backend/app/stats.py` and the frontend ledger display, if it lists craton accounts by
@@ -290,7 +301,9 @@ without changing merge counts by more than 10%.
 - [ ] The craton ledger balance error stays within 1e-9 of the live volume
       (`cratons.balance_error_m3`), and the continental-material ledger still closes
       (`continental_ledger.assert_closed`).
-- [ ] Merge counts and plate counts on those seeds change by less than 10%.
+- [ ] Merge counts and plate counts on those seeds change by less than 10%, measured
+      before RFC 0008's fusion lands. 0008 raises merge counts by design and has its own
+      bounds.
 - [ ] The unit tests above pass; affected tests, ruff and `bin/quality_check.sh` are green.
 - [ ] Saves from before the change load, with `merge_capped_m3` = 0.
 
@@ -303,7 +316,7 @@ without changing merge counts by more than 10%.
 - **The loss moves instead of stopping.** If, with the fix, craton destroyed per Gyr on
   the acceptance runs falls by less than half of what merges booked before, the losses have
   moved to another sink and the merge was a symptom. The likely upstream cause is craton
-  overlap (solution 3); revise toward it.
+  overlap (solution 3, now RFC 0008's fusion); prioritise that.
 - **No plausible room.** If the bounded placement can't hold the overflow in more than half
   of the craton-carrying merges, stacking is the problem, not placement. Solution 3
   becomes the only fix that matters.
