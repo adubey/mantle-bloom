@@ -89,3 +89,38 @@ Definitions are the RFC's (see the probe's docstring):
 | Closing rate at craton contacts within 10% of craton-free, after 1 | Not yet measurable: 1 not built. Baseline shows no braking | Re-measure after 0 and 1 |
 | Buoyant-pull share under 1% on every seed | No: 4.0–6.4% | 1, with its resistance tuned |
 | J under 5% on every seed | No: 22–57% | Keep the loss criterion |
+
+# Solution 0: contact drag (issue #399)
+
+Collision drag in Pa·s/m, sized to 5 × 10¹² N/m of trench at 4 cm/yr, with each contested
+node braked by max(relief factor, craton strength). Same probe and seeds, origin/main 22a2f3c
+against the branch, both with the probe's plate statistics. Per-seed summaries are in
+[solution0.json](solution0.json).
+
+| Seed 7 / 11 / 2024 | origin/main | Solution 0 |
+|---|---|---|
+| Brake at jammed contacts, median (N/m) | 7.8 × 10⁴ / 4.9 × 10⁴ / 2.5 × 10⁴ | 3.0 × 10¹¹ / 1.4 × 10¹¹ / 1.2 × 10¹¹ |
+| Closing rate, continental contacts with craton in reach (cm/yr) | 1.70 / 1.84 / 1.48 | 1.51 / 1.81 / 1.52 |
+| Mean plate speed, area-weighted (cm/yr) | 3.65 / 3.35 / 3.33 | 3.33 / 3.13 / 3.21 |
+| Mean plate count | 46.7 / 44.1 / 44.6 | 44.8 / 46.6 / 43.4 |
+| Largest plate, mean / max share of surface | 6.6 / 18% · 7.1 / 31% · 7.7 / 22% | 6.6 / 18% · 6.8 / 31% · 7.6 / 22% |
+| Collision-time drops: all (jammed pairs) | 106 (28) / 54 (22) / 111 (53) | 188 (128) / 67 (57) / 87 (59) |
+| Fusions, roll + forced | 55 / 27 / 36 | 45 / 15 / 24 |
+| Craton-on-craton overlap at fusion, % of start | 90% / 75% / 53% | 52% / 32% / 18% |
+| Craton lost in fusions, % of start | 54% / 18% / 31% | 39% / 4% / 12% |
+| Craton left at 1 Gyr, % of start | 17% / 40% / 43% | 37% / 52% / 75% |
+
+- **The brake is real now, but light.** Its median at jammed contacts rose about 10⁶-fold,
+  to 1.2–3.0 × 10¹¹ N/m, still under the RFC's 10¹²–10¹³ band. g comes only from relief and
+  craton-on-craton contacts. The jam factor j, which covers buoyant crust at the trench,
+  arrives with solution 1.
+- **Plates slow a little.** Mean plate speed falls 3–9%, far from the 30% falsification
+  limit. Plate count moves under 6%, and the largest plate is unchanged. Closing at contacts
+  with craton in reach changes by −12%, −2% and +3%, short of the RFC's 25% (a target for the
+  RFC as a whole).
+- **Craton survives mostly through fewer fusions.** Craton left at 1 Gyr rises from 17–43% to
+  37–75% of the start, and nearly all of the gain is the fusion (`delaminated_m3`) sink.
+  Destruction outside fusions moves −7%, +11% and −30%. Fusions are fewer because braked pairs
+  stall: collision time is dropped on jammed pairs 2.6–4.6 times as often on seeds 7 and 11.
+  Solution 5 keeps that time, so part of this gain will come back as fusions. Craton loss
+  should be read again after 5 and RFC 0001's placement fix.

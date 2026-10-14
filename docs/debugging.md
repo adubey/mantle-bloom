@@ -598,7 +598,7 @@ reports rifting by path per Gyr and the share of split and failed-rift cuts thro
 (RFC 0003); `bin/debug/ledger_history.py` reads the same paths from a save's stats history.
 `bin/debug/probe_craton_contacts.py` replays a seed and records, per plate contact and step,
 where cratons jam retreat (the frozen `run_eligible` candidates on polarized fronts), closing
-rates, collision-time drops and fusions, the buoyant share of slab pull, contact forces, and
+rates, collision-time drops and fusions, the buoyant share of slab pull, contact forces, plate count and speed, and
 the craton lost within reach of each contact (RFC 0008's gate).
 
 #### Plate Inspector, Rivers, Lake Inspector, Plates & Faults
