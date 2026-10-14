@@ -260,6 +260,11 @@ that sleeps or restarts comes back where it was. Unset, as in a local run, nothi
 Checkpoints assume one process owns the directory: keep the service at one replica while it
 uses the volume.
 
+The hosted instance (#376) is the root `Dockerfile` on Railway, configured by
+`.railway/railway.ts`: one uvicorn process serving the built frontend and the API, with the
+volume at `/data` and `GET /healthz` as the deploy health check. See
+[HOSTING.md](HOSTING.md).
+
 <a id="world-state"></a>
 ## World state (`backend/app/world.py`)
 

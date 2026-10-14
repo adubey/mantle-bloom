@@ -4,8 +4,10 @@ import gc
 import io
 import json
 import math
+import re
 import threading
 import time
+from pathlib import Path
 import av
 import pytest
 from fastapi.testclient import TestClient
@@ -1671,3 +1673,34 @@ def test_an_animation_that_fails_keeps_the_frames_it_finished(client, store, sav
 
     assert json.loads(lines[-1])["type"] == "error"
     assert _saved_elapsed(store) == 124_000.0
+
+
+@pytest.fixture
+def mounted_frontend(tmp_path):
+    """A stand-in `vite build` output mounted on the real app, as the Railway image does
+    (#376). mount_frontend adds a catch-all route, so the app's routes are put back after."""
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "index.html").write_text("<!doctype html><title>bundle</title>")
+    (tmp_path / "assets" / "index-abc.js").write_text("console.log(1)")
+    routes = list(app.router.routes)
+    main.mount_frontend(app, tmp_path)
+    yield TestClient(app, base_url="https://mantle.example.com", follow_redirects=False)
+    app.router.routes[:] = routes
+
+
+def test_mounted_frontend_serves_spa_routes_and_keeps_the_backend_ones(mounted_frontend):
+    for path in ("/view", "/view/some/deep/link"):
+        resp = mounted_frontend.get(path)
+        assert resp.status_code == 200 and "<title>bundle</title>" in resp.text, path
+    assert mounted_frontend.get("/assets/index-abc.js").text == "console.log(1)"
+    # Registered before the catch-all, so the bundle doesn't shadow them.
+    assert "<title>bundle</title>" not in mounted_frontend.get("/login").text
+    assert mounted_frontend.get("/healthz").json() == {"status": "ok"}
+    assert mounted_frontend.get("/world/summary").status_code == 401
+    assert mounted_frontend.get("/").headers["location"].endswith("/view")
+
+
+def test_railway_health_check_path_is_served(client):
+    config = (Path(__file__).resolve().parents[2] / ".railway" / "railway.ts").read_text()
+    path = re.search(r'healthcheckPath: "([^"]+)"', config).group(1)
+    assert client.get(path).status_code == 200

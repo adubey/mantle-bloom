@@ -2024,9 +2024,17 @@ def set_run(req: RunRequest) -> dict:
     return _run_summary()
 
 
-# In the packaged single-process app there is no separate Vite server: FastAPI serves the
-# built React bundle itself, from the same origin as the API (so api.ts's API_BASE is ""). The
-# dev workflow (bin/restart.sh) is unaffected -- it runs its own frontend server and never
+@app.get("/healthz", include_in_schema=False)
+def healthz() -> dict:
+    """Liveness for Railway's deploy health check (railway.toml, #376). Public and lock-free:
+    a step or render holding the world lock mustn't fail a deploy. It can't answer before the
+    lifespan's checkpoint restore finishes, so a 200 also means the saved world is loaded."""
+    return {"status": "ok"}
+
+
+# In the packaged single-process app and the Railway image (Dockerfile, #376) there is no
+# separate Vite server: FastAPI serves the built React bundle itself, from the same origin as
+# the API (so api.ts's API_BASE is ""). The dev workflow (bin/restart.sh) is unaffected -- it runs its own frontend server and never
 # sets MANTLE_BLOOM_FRONTEND_DIST.
 
 

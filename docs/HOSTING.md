@@ -1,13 +1,168 @@
-# Publishing mantle-bloom as a public website
+# Hosting mantle-bloom
+
+Part 1 is how the public site runs today: one Railway service (#376). Part 2 is the original
+plan for publishing the site, kept for its marketing, ads and feature research.
+
+# Part 1: the Railway deployment
+
+## What runs
+
+One Railway service builds the root `Dockerfile` and runs one uvicorn process. That process
+serves the built frontend and the API from the same origin, as the desktop build does:
+
+| Path | Who | What |
+|---|---|---|
+| `/` | The owner | The full app. Logged-out visitors are redirected to `/view`. |
+| `/view` | Anyone | The public viewer (#373), served by the SPA fallback. |
+| `/login` | Anyone | GitHub sign-in (#372), rendered by the backend. |
+| `/world/*` | The owner | The full API. `401` without the owner's session. |
+| `/public/*` | Anyone | The viewer's API, with a 30-step allowance per browser. |
+| `/healthz` | Railway | Health check. It answers once the checkpoint is restored. |
+
+The files involved:
+
+- `Dockerfile` has two stages. The first builds `frontend/dist` with Node 20. The second
+  installs `backend/requirements-runtime.txt` at the `backend/constraints.txt` pins (no test or
+  lint tools) on Python 3.14, then runs `uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
+- `.dockerignore` is an allowlist, so saves, `analysis/` and local venvs never reach the build.
+- `.railway/railway.ts` is the service definition, in Railway's Infrastructure as Code. It
+  sets the Dockerfile build, the health check, one replica, the volume at `/data`, sleeping
+  and the restart policy. `.railway/package.json` pins the SDK it imports. Railway has
+  deprecated `railway.toml` and `railway.json`, and a new service can't use them.
+
+The image sets `MANTLE_BLOOM_LOCAL_NO_LOGIN=0`. Every request reaches the container through
+Railway's proxy, so none of them should get the no-login rule for local requests.
+
+## Setting it up
+
+1. **Create a GitHub OAuth app** (GitHub > Settings > Developer settings > OAuth Apps).
+   Use the service's public URL as the homepage, and `<public URL>/auth/github/callback` as
+   the callback URL. If you don't know the domain yet, finish step 4 first and fill these in
+   afterwards.
+2. **Install the Railway CLI** (5.42.1 or newer, for Infrastructure as Code) and log in:
+   `railway login`. Then create the project and link this checkout to it: `railway init`,
+   or `railway link` for an existing project.
+3. **Create the service and its volume.** From the repo root:
+
+   ```bash
+   (cd .railway && npm ci)   # the SDK that railway.ts imports
+   railway config plan       # preview
+   railway config apply      # creates the service, the /data volume and the deploy settings
+   ```
+
+   To change the deploy settings later, edit `.railway/railway.ts` and plan and apply again.
+   Pushes don't apply it.
+4. **Give the service a domain:** `railway domain`, or Settings > Networking in the dashboard.
+   Railway-generated domains aren't part of `railway.ts`.
+5. **Set the variables.** `railway.ts` marks them `preserve()`, so apply never overwrites them,
+   and they never live in the repo:
+
+   ```bash
+   railway variables \
+     --set MANTLE_BLOOM_GITHUB_CLIENT_ID=<client id> \
+     --set MANTLE_BLOOM_GITHUB_CLIENT_SECRET=<client secret> \
+     --set MANTLE_BLOOM_GITHUB_OWNER_ID=$(gh api user -q .id) \
+     --set MANTLE_BLOOM_SESSION_SECRET=$(openssl rand -base64 48) \
+     --set MANTLE_BLOOM_PUBLIC_URL=https://<domain>
+   ```
+
+6. **Deploy.** The service follows `main` on GitHub, so every merge deploys it. `railway up`
+   deploys the local tree instead. Then check that `/healthz` answers, that `/view` loads,
+   and that `/login` signs you in and takes you to `/`. Generate a world there. Press Play if
+   it should keep running.
+
+If you'd rather use the dashboard than `railway.ts`, configure the same settings by hand.
+Builder: Dockerfile. Healthcheck path: `/healthz`, with a 300 s timeout. Replicas: 1. Volume
+mounted at `/data`. Serverless: on. Restart policy: on failure. Don't do both: a service can't
+be managed by Infrastructure as Code and by hand at the same time.
+
+## Variables
+
+| Variable | Set by | Meaning |
+|---|---|---|
+| `MANTLE_BLOOM_GITHUB_CLIENT_ID`, `MANTLE_BLOOM_GITHUB_CLIENT_SECRET` | You | The GitHub OAuth app from step 1. |
+| `MANTLE_BLOOM_GITHUB_OWNER_ID` | You | The numeric GitHub user ID allowed into `/` (`gh api user -q .id`). |
+| `MANTLE_BLOOM_SESSION_SECRET` | You | At least 32 bytes. It signs the owner's session and the viewers' step-allowance cookies. Rotating it signs you out and resets every allowance. |
+| `MANTLE_BLOOM_PUBLIC_URL` | You | `https://<domain>`, with no trailing slash. The OAuth callback is built from it: Railway terminates TLS, so the app itself sees `http://`. |
+| `PORT` | Railway | The port uvicorn binds to. |
+| `RAILWAY_VOLUME_MOUNT_PATH` | Railway | `/data`. `checkpoint.py` keeps the world there. |
+| `MANTLE_BLOOM_FRONTEND_DIST`, `MANTLE_BLOOM_LOCAL_NO_LOGIN` | The image | The built frontend, and the local no-login rule turned off. |
+
+If any of the first four is missing, login is unconfigured and the server fails closed.
+Nobody gets into `/`, and `/login` says so. `/view` still works. See
+[architecture.md#access-control](architecture.md#access-control).
+
+## Storage
+
+The volume at `/data` holds the checkpoint (#375, see
+[architecture.md#run-and-checkpoint](architecture.md#run-and-checkpoint)):
+
+- `world.mbworld` is an ordinary save: about 30 MB for a default world, 60 MB for a large
+  one. It's rewritten after every completed step, generate, load and controls change. While
+  it's being replaced, a second copy briefly exists on the volume, so allow twice the world's
+  size. Railway's default volume (0.5 GB on the Free and Trial plans, 5 GB on Hobby) is
+  plenty.
+- `run_status.json` records whether you pressed Play or Stop, and the years per step.
+
+`checkpoint.py` takes the directory from `RAILWAY_VOLUME_MOUNT_PATH`, so the code doesn't
+hard-code `/data`. `railway.ts` mounts the volume at `/data` and sets it as the
+`requiredMountPath`, so a deploy without a volume there fails instead of running without
+checkpoints. On first boot the log says `checkpoint: no saved world in /data`. That's
+expected until you generate a world. The same message on a later boot means the volume is
+missing or mounted at another path.
+
+The container runs as root because Railway mounts volumes owned by root. If you add a `USER`
+line to the Dockerfile, also set `RAILWAY_RUN_UID=0`, or checkpoints will fail to write.
+
+To take a copy of the hosted world, sign in and use **Save World** (`GET /world/save`). The
+file is the same format as the checkpoint.
+
+## One replica
+
+Keep the service at one replica (`numReplicas: 1` in `railway.ts`). The world lives in one
+process's memory, and the checkpoint assumes one writer. Railway can't attach a volume to
+more than one replica anyway. For the same reason uvicorn runs a single worker, so don't add
+`--workers`.
+
+Railway also won't run two deployments that share a volume at once, so every deploy has a
+short outage. The old process gets SIGTERM, uvicorn closes any open long polls within 5 s,
+and the new one restores the checkpoint before `/healthz` answers. A step that was under way
+when the old process stopped is lost. The world comes back at the last completed step.
+
+## Sleeping and waking
+
+`railway.ts` turns on sleeping (Railway's Serverless setting). A service sleeps 5 to 10
+minutes after it last sent any network traffic:
+
+- **An open page keeps it awake.** `/view` and `/` long-poll the server (`/public/world` and
+  `/world/run`, held open up to 25 s), and every answer is outbound traffic.
+- **A running world doesn't.** A world left on Play with nobody watching sends nothing, so
+  the service sleeps and the simulation pauses. Nothing runs before sleep: the checkpoint
+  from the last completed step is already on the volume.
+- **The next request wakes it.** The process starts, restores the world from the checkpoint,
+  and resumes stepping if the saved status was Play. It doesn't simulate the time it spent
+  asleep, so "elapsed years" reflects the steps actually computed. Railway warns that the
+  first request to a sleeping service may get a `502`; reloading the page fixes it. Locally,
+  importing the app takes about 1.5 s and restoring a default world 0.1 s, and numba
+  compiles its kernels on the first step, adding about a second.
+
+To keep a world running without visitors, turn sleeping off (`sleepApplication: false`).
+That bills for the CPU it uses while running.
+
+---
+
+# Part 2: the original publishing plan
+
+> Written before #372–#376, when mantle-bloom was a localhost-only tool. §1–§3 describe that
+> starting point and the options considered. The site now runs on Railway (§3.3, Option C) as
+> Part 1 describes, with GitHub login for the owner, a public viewer and a checkpointed shared
+> world in place of the multi-session design §3.6 sketches. §4–§6 (marketing, ads, features)
+> still apply.
 
 A plan for taking mantle-bloom from a single-user localhost dev tool to a public site,
 assuming **low traffic (< 1,000 monthly active users)**. Covers hosting, a low-cost
 marketing plan, banner-ad integration and ad-network analysis, and a feature backlog
 drawn from what worldbuilding communities actually ask for.
-
-> Status: planning document. Nothing here is built yet. Order of work is roughly the
-> order of the sections: make it safe to host (§3.4) → host it (§3) → market it (§4) →
-> monetize if it's worth it (§5) → grow it (§6).
 
 ---
 

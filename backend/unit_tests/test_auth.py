@@ -120,6 +120,11 @@ def test_view_and_login_stay_public(remote):
     }
 
 
+def test_health_check_stays_public(remote):
+    # Railway's deploy health check carries no session (#376).
+    assert remote.get("/healthz").status_code == 200
+
+
 def test_unconfigured_server_fails_closed(monkeypatch, remote):
     for name in ("CLIENT_ID", "CLIENT_SECRET", "OWNER_ID"):
         monkeypatch.delenv(f"MANTLE_BLOOM_GITHUB_{name}", raising=False)

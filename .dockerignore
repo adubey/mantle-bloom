@@ -1,0 +1,12 @@
+# Allowlist of what the Dockerfile copies: everything else (analysis/, saves, venvs,
+# node_modules, .git) stays out of the build context.
+*
+!backend/app/
+!backend/requirements-runtime.txt
+!backend/constraints.txt
+!frontend/
+frontend/node_modules/
+frontend/dist/
+frontend/.test-dist/
+**/__pycache__/
+**/.DS_Store

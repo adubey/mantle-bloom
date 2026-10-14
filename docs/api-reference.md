@@ -8,6 +8,12 @@ Every `/world/*` route requires the admin: a GitHub session for the configured o
 request made on the server's own machine. Anyone else gets `401`. Cross-site writes get
 `403`. See [architecture.md#access-control](architecture.md#access-control).
 
+## `GET /healthz`
+
+`{"status": "ok"}`, open to anyone, and doesn't wait for the world lock. It's Railway's deploy
+health check (#376, see [HOSTING.md](HOSTING.md)). It can't answer before startup has
+restored the checkpoint.
+
 ## Login routes
 
 - `GET /login`: the sign-in page. It redirects to `/` when the request is already the admin.
