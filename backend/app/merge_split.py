@@ -779,12 +779,16 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
     # (seed, elapsed_years, plate). The split_result is discarded (next_plate_id never
     # incremented), the failed-rift thinning is booked, and the plate's cooldown resets.
     outcome_rng = np.random.default_rng((world.seed, round(world.elapsed_years), plate.plate_id, _RIFT_OUTCOME_SEED_TAG))
-    if outcome_rng.random() >= RIFT_SUCCESS_PROBABILITY:
+    failed = outcome_rng.random() >= RIFT_SUCCESS_PROBABILITY
+    # RFC 0003 phase 1: how often a cut crosses craton, in the band a failed rift thins.
+    band_sin = float(np.sin(FAILED_RIFT_BAND_MULT * line_spacing_rad(world.node_density)))
+    cratons.record_rift_cut(world, plate, points, cut_normal, band_sin, "failed_rift" if failed else "split")
+    if failed:
         if world.debug_diagnostics:
             before = phase_budget.snapshot(plate, line_spacing_rad(world.node_density))
         hc_before = plate.collect("crustal_thickness_m")
         plate.apply_failed_rift(cut_normal, line_spacing_rad(world.node_density))
-        cratons.thin_with_column(world, plate, hc_before, "rifted_m3")
+        cratons.thin_with_column(world, plate, hc_before, "rifted_failed_m3")
         mobile_cover.thin_with_column(world, plate, hc_before, "rift_thinned_m3")
         continental_ledger.thin_with_column(world, plate, hc_before, "rift_thinned_m3")
         if world.debug_diagnostics:
