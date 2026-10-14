@@ -793,7 +793,7 @@ def deform_columns(
         infl = fault_influence[divergent]
         # A craton resists the thinning itself (cratons.CRATON_RIFT_RESISTANCE), so it only
         # melts through once its own, slower thinning crosses the rift threshold.
-        resisted = cratons.strength(craton[divergent]) * cratons.CRATON_RIFT_RESISTANCE
+        resisted = cratons.rift_resistance(craton[divergent])
         old_hc = hc[divergent]
         hc[divergent] = old_hc + infl * (1.0 - resisted) * (new_hc - old_hc)
         hm[divergent] = hm[divergent] + infl * (1.0 - resisted) * (new_hm - hm[divergent])

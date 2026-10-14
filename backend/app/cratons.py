@@ -23,7 +23,8 @@ cratons that already exist, dated CRATON_SEED_AGE_YEARS before the start.
 
 Resistance. Strength rises linearly with cratonic thickness up to CRATON_FULL_STRENGTH_HC_M.
 It scales back erosional Hc removal (erosion.py), divergent thinning
-(lithosphere_plate.deform_columns), collisional shortening (a craton passes it on to weaker
+(lithosphere_plate.deform_columns) and failed-rift thinning (apply_failed_rift, RFC 0003)
+alike (`rift_resistance`), collisional shortening (a craton passes it on to weaker
 ground instead of thickening -- shortening.py), how much of a rift's stretched footprint a craton donates
 (quad_tectonics._allocate_stretch), and how hard a collision front it jams brakes the plates
 (torque.collision_drag_coefficients). Cratonic crust doesn't flow, melt or delaminate
@@ -79,7 +80,7 @@ CRATON_SEED_AGE_YEARS = 2.5e9
 CRATON_FULL_STRENGTH_HC_M = 25_000.0
 # Fraction of erosional Hc removal a full-strength craton column resists.
 CRATON_EROSION_RESISTANCE = 0.75
-# Fraction of divergent thinning a full-strength craton column resists.
+# Fraction of divergent and failed-rift thinning a full-strength craton column resists.
 CRATON_RIFT_RESISTANCE = 0.75
 # Fraction of its share of a rift's stretched footprint a full-strength craton donor
 # withholds -- the rest of that footprint is fresh magmatic crust instead.
@@ -138,6 +139,12 @@ CRATON_EVENT_FRACTION = 0.01
 def strength(craton_crust_m: np.ndarray) -> np.ndarray:
     """0..1 resistance per node, linear in cratonic thickness."""
     return np.clip(np.asarray(craton_crust_m, dtype=float) / CRATON_FULL_STRENGTH_HC_M, 0.0, 1.0)
+
+
+def rift_resistance(craton_crust_m: np.ndarray) -> np.ndarray:
+    """0..1 share of rift thinning (divergent or failed) a column resists, clamped so a
+    tuned CRATON_RIFT_RESISTANCE can't push a thinning factor out of [0, 1] (RFC 0003)."""
+    return np.clip(CRATON_RIFT_RESISTANCE * strength(craton_crust_m), 0.0, 1.0)
 
 
 def _hops(km: float, spacing_rad: float) -> int:

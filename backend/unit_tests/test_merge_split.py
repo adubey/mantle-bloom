@@ -460,14 +460,18 @@ def test_a_failed_rift_thins_continental_material_with_its_column(monkeypatch):
     assert abs(continental_ledger.balance_error_m3(world)) <= 1e-9 * continental_ledger.surface_volume_m3(world)
 
 
-def test_a_failed_rift_books_its_craton_loss_and_cut_to_the_failed_rift_path(monkeypatch):
-    """RFC 0003 phase 1: a failed rift's craton thinning is booked to `rifted_failed_m3` as
-    well as `rifted_m3`, and its cut is counted with the craton area inside its band."""
+def test_a_failed_rift_resists_a_craton_and_books_its_loss_and_cut_to_the_failed_rift_path(monkeypatch):
+    """RFC 0003: a failed rift thins full-strength craton columns by at most a quarter of the
+    plain amount (solution 2), books exactly the craton lost to `rifted_failed_m3` as well as
+    `rifted_m3`, and counts its cut with the craton area inside its band (phase 1)."""
     from app import cratons
 
     monkeypatch.setattr(merge_split, "RIFT_SUCCESS_PROBABILITY", 0.0)
     world, plate = _engineered_split_world()
-    plate.set_fields_on_plate(craton_crust_m=np.minimum(plate.collect("crustal_thickness_m"), 20_000.0))
+    hc_before = plate.collect("crustal_thickness_m")
+    craton = np.minimum(hc_before, cratons.CRATON_FULL_STRENGTH_HC_M)
+    plate.set_fields_on_plate(craton_crust_m=craton)
+    full = craton >= cratons.CRATON_FULL_STRENGTH_HC_M
     cratons.ensure_ledger(world)
     before = cratons.plate_volume_m3(world, plate)
 
@@ -480,6 +484,9 @@ def test_a_failed_rift_books_its_craton_loss_and_cut_to_the_failed_rift_path(mon
     assert ledger["rifted_m3"] == ledger["rifted_failed_m3"]
     assert (ledger["failed_rift_cuts"], ledger["failed_rift_cuts_through_craton"], ledger["split_cuts"]) == (1.0, 1.0, 0.0)
     assert 0.0 < ledger["failed_rift_band_craton_area_m2"] == ledger["failed_rift_band_area_m2"]
+    thinned = 1.0 - plate.collect("crustal_thickness_m") / hc_before
+    assert np.any(full & (thinned > 0.0))
+    assert np.all(thinned[full] <= (1.0 - cratons.CRATON_RIFT_RESISTANCE) * merge_split.FAILED_RIFT_THINNING_FRACTION + 1e-12)
 
 
 def test_a_split_counts_its_cut_and_whether_the_band_holds_craton(monkeypatch):
