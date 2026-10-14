@@ -21,13 +21,32 @@ implemented through ordinary issues and PRs (see [AGENTS.md](../AGENTS.md)), eac
 
 RFCs 0001–0007 come from one investigation: a 19.2 Gyr run (seed 456862899) that lost
 almost all of its continental crust and all of its cratons. The run is used as a stress
-test of the model's long-term behaviour, not as a calibration interval. The RFCs are
-numbered by how directly they act on that loss, not by priority. The suggested
-implementation order:
-1. 0001;
-2. 0002, together with 0005's measurement phase;
-3. 0003 and 0004;
-4. 0006 and 0007. They share `terranes.py` (docking, buoyant-crust tracers and ledger),
+test of the model's long-term behaviour, not as a calibration interval. Its generating
+commit is unrecorded (first published at `d795a09`); it predates #358 and used a 200 Myr
+split cooldown for most of its 10 Myr-step history. The current evidence is the #403
+refresh on `2562f63`, with 5 Myr steps and the year-based 2 Myr cooldown; see
+[`analysis/issue403/`](../analysis/issue403/README.md). Each RFC preserves the old figures
+as historical evidence and identifies the new comparator.
+
+The RFCs are numbered by how directly they act on that loss, not by priority. The
+refreshed implementation order (subject to each RFC's acceptance and diagnosis gates):
+1. 0001's merge-placement diagnosis and selected fix first. Frequent mergers make
+   `delaminated_m3` a leading craton sink on the new baseline; #395 and #403 attribute
+   that account to fusions. Run 0005's broadened sink-ranking measurement alongside it:
+   continental collision-placement loss can rival deep subduction
+   ([#408](https://github.com/adubey/mantle-bloom/issues/408)).
+2. 0002 after resolving attrition contact ownership
+   ([#405](https://github.com/adubey/mantle-bloom/issues/405)), and 0003's selected
+   combination of cut steering and stronger resistance. RFC 0003's phase 1b is already
+   on the year-based pace (#388, PR #392); #389 tracks its implementation.
+3. Revisit 0004's source and craton-share gates after sink repairs. Its share band already
+   fails without welded growth as continental area disappears
+   ([#409](https://github.com/adubey/mantle-bloom/issues/409)). Do not tune a source to
+   that denominator collapse.
+4. 0006 and 0007, after separating their proposed production from existing elevation-driven
+   continental resets ([#406](https://github.com/adubey/mantle-bloom/issues/406),
+   [#407](https://github.com/adubey/mantle-bloom/issues/407)). They share `terranes.py`
+   (docking, buoyant-crust tracers and ledger),
    which whichever lands first builds. RFC 0003's plume weakening also depends on 0007.
 
 RFC 0008 came later, from the same craton work. Its gate can run at any time. Its fusion

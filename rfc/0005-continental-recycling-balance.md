@@ -1,24 +1,32 @@
 # RFC 0005: Balance continental recycling at trenches
 
 - **Status:** Draft
-- **Date:** 2026-10-13
+- **Date:** 2026-10-13; evidence refreshed 2026-10-14 (#403)
 - **Related:** #120 (land fraction decline), #177 (margin retreat budget), #276 and #320
-  (collision sinks), #297 (mobile cover); RFCs [0002](0002-craton-trench-attrition.md),
+  (collision sinks), #297 (mobile cover),
+  [#408](https://github.com/adubey/mantle-bloom/issues/408) (current sink-ranking diagnosis); RFCs [0002](0002-craton-trench-attrition.md),
   [0006](0006-intra-oceanic-arcs.md)
 
 ## Problem
 
-Continental crust in the model leaves the surface much faster than it is made, and the
-continents drain away. The continental-material ledger (`continental_ledger.py`) books
-every source and sink.
+The historical investigation found continental crust leaving the surface faster than it
+was made. The continental-material ledger (`continental_ledger.py`) books sources and
+sinks; the current-main refresh below checks which parts of that diagnosis still hold.
 
-In the run behind RFCs 0001–0007, the ledger shows the imbalance from the first step. The
-run is seed 456862899, 19.2 Gyr, saved locally as
+**Historical evidence, pre-#358.** In the run behind RFCs 0001–0007, the ledger showed
+the imbalance from the first step. The run is seed 456862899, 19.2 Gyr, saved locally as
 `mantle-bloom-seed456862899-19191800000y.mbworld`; the file is on the author's machine and
 **not available for download**. Numbers come from `bin/debug/ledger_history.py` on that
-save.
+save. These numbers were first recorded in `d795a09` (2026-10-13); that is the RFC
+publication commit, not a verified generating commit. #403 records the original schedule:
+0.1 Myr steps through 21.8 Myr (218 steps), then 10 Myr steps. The generating commit,
+node density and controls remain unknown, so the seed and schedule alone cannot reproduce
+this trajectory. Under the old 20-step cooldown, that meant 2 Myr initially and 200 Myr
+for most of the run. #358 (`7afecfd`, merged at `1b4f686`) replaced it with a physical
+2 Myr cooldown. The published values below are retained without recomputing the private
+save; they are historical pre-#358 evidence, not the current-main baseline.
 
-| Window (Myr) | Juvenile (km³/yr) | Remelted returns (km³/yr) | All sinks (km³/yr) | of which `deeply_subducted` | Mean inventory (M km³) | Share on oceanic hosts at window end |
+| Historical window (Myr) | Juvenile (km³/yr) | Remelted returns (km³/yr) | All sinks (km³/yr) | of which `deeply_subducted` | Mean inventory (M km³) | Share on oceanic hosts at window end |
 |---|---|---|---|---|---|---|
 | 0–100 | 7.3 | 0.7 | 11.3 | 10.1 | 7,851 | 6% |
 | 100–500 | 2.6 | 1.1 | 8.5 | 7.7 | 6,460 | 18% |
@@ -27,13 +35,70 @@ save.
 | 2,000–4,000 | 2.1 | 1.1 | 3.5 | 3.1 | 1,378 | 35% |
 | 12,000–19,200 | 0.4 | 0.3 | 0.8 | 0.7 | 128 | 72% |
 
-The world started with 7.9 × 10⁹ km³ of continental material, almost exactly Earth's
-8.0 × 10⁹ km³ [[Clift & Vannucchi, 2004]](#ref-clift2004), so its fluxes are on the same
+The historical world started with 7.9 × 10⁹ km³ of continental material, almost exactly
+Earth's 8.0 × 10⁹ km³ [[Clift & Vannucchi, 2004]](#ref-clift2004), so its fluxes are on the same
 scale as Earth's.
 
-The run is a stress test of the model's long-term behaviour, not a calibration interval.
-The first Gyr's fluxes are compared with Earth's below only because that is when the
+The historical run is a stress test of the model's long-term behaviour, not a calibration
+interval. The first Gyr's fluxes are compared with Earth's below only because that is when the
 model's continents are Earth-sized. Later windows describe a degenerate world.
+
+**Current-main baseline, post-#358 (`2562f63`, #403).** The fresh experiments use
+`world.generate_world(seed)` with all other arguments default, density 1, 5 Myr steps,
+100 Myr checkpoints and no control overrides. The split cooldown is a physical 2 Myr.
+[The reproducibility record](../analysis/issue403/README.md) gives commands, controls,
+checksums and definitions; [tuning.json](../analysis/issue403/tuning.json) contains the
+serial tuning-seed results. These are new generated worlds, separate from the historical
+save. Rates below are terminal ledger fluxes, not gross geological production.
+
+| Current 0–1 Gyr seed | Initial → final inventory (M km³) | Juvenile (km³/yr) | Returns (km³/yr) | All sinks (km³/yr) | `deeply_subducted` (km³/yr) | `collision_subducted` (km³/yr) | Inventory change |
+|---|---|---|---|---|---|---|---|
+| 7 | 11,955 → 1,677 | 6.85 | 1.20 | 18.32 | 9.30 | 6.97 | −86.0% |
+| 11 | 6,917 → 1,866 | 6.05 | 1.08 | 12.19 | 10.29 | 1.07 | −73.0% |
+| 2024 | 6,522 → 1,642 | 4.22 | 0.77 | 9.88 | 6.59 | 2.08 | −74.8% |
+
+The tuning seeds lose 73.0–86.0% in their first Gyr, with total sinks of 9.88–18.32
+km³/yr. Deep subduction supplies 51–84% of full-Gyr sinks, with channel shares differing
+between seeds and intervals. For seed 7, the matched historical-style windows are:
+
+| Current window (Myr) | Juvenile (km³/yr) | Returns (km³/yr) | All sinks (km³/yr) | `deeply_subducted` (km³/yr) | `collision_subducted` (km³/yr) | Mean inventory (M km³) | Oceanic-host share at end |
+|---|---|---|---|---|---|---|---|
+| 0–100 | 10.70 | 1.53 | 22.61 | 11.66 | 5.76 | 11,717 | 4.7% |
+| 100–500 | 8.25 | 1.49 | 27.86 | 12.27 | 13.06 | 6,070 | 15.5% |
+| 500–1,000 | 4.96 | 0.90 | 9.83 | 6.45 | 2.35 | 2,528 | 16.5% |
+
+The historical claim that nearly all excess loss is `deeply_subducted_m3` does not carry
+forward: that account is 44–52% of total sinks in seed 7's first 500 Myr, and
+`collision_subducted_m3` is the largest account at 100–500 Myr. Seed 11 instead has
+`deeply_subducted_m3` as 84% of its full-Gyr sinks, so the diagnosis must retain seed and
+interval differences. Even removing all deep subduction on seed 7 in its first 100 Myr
+would leave 10.95 km³/yr of other sinks, above the proposed 3–7 km³/yr sanity band while
+the inventory is above 5 × 10⁹ km³. Sediment cannot be selected as the sole budget fix.
+The refreshed gate first ranks every terminal sink, then measures the mechanisms that
+matter. [#408](https://github.com/adubey/mantle-bloom/issues/408) tracks that revision and
+diagnosis; the proposed routing, offscraping and return designs remain unchanged.
+
+The regenerated 3 Gyr seed 456862899 loses 95.07% of its initial continental inventory.
+Terminal flux falls from 6.784 km³/yr in the first Gyr to 1.870 and 1.554 km³/yr in the
+next two as inventory and area collapse. Deep subduction is 5.500, 1.733 and 1.427
+km³/yr; this one seed does not change the sink-ranking gate, and its −9.119 M km³ balance
+residual remains separate from physical fluxes. Full rates are in
+[the #403 evidence](../analysis/issue403/README.md).
+
+The direct `cratons.attrite` tap bounds its continental contribution: the code removes
+the per-cell minimum of craton loss and available continental material from the tracer.
+Its returned craton volume therefore gives only an **upper bound** on continental attrition, at most
+0.241, 0.458 and 0.160 km³/yr on seeds 7, 11 and 2024 over 0–1 Gyr (2.6%, 4.5% and
+2.4% of each seed's deep-subduction flux). These are physical fluxes, not craton sink
+shares of the starting inventory. Do not subtract them as exact continental losses. The sediment versus
+margin split is still needed to explain the remaining deep account.
+
+The continental balance residuals at 1 Gyr are −12.11 M km³ on seed 7 (−0.101% of
+initial inventory), +5.99 M km³ on seed 11 (+0.087%), and +3.32 M km³ on seed 2024
+(+0.051%). They are recorded separately from sink fluxes; this baseline does not meet a
+claim of exact ledger closure. The aggregate account and oceanic-host inventory also
+cannot split sediment, margin consumption and attrition or supply G/E/D/T/S/A. Those
+parts of the gate remain unpassed.
 
 **Earth's budget.** For the Cenozoic, [[Clift et al., 2009]](#ref-clift2009) estimate these
 sinks:
@@ -59,22 +124,27 @@ number must also be kept apart:
 - **model-ledger fluxes**: what an account books in a step.
 
 The comparison here is ledger sinks against Earth's recycling estimates: both are
-material leaving the continental inventory, so they are comparable, with that caveat. The
-model's new crust, 2.6–4.3 km³/yr after the first 100 Myr, is within Earth's range for arc
-production. Its sinks, 8–11 km³/yr, are about twice Earth's recycling estimate, and nearly
-all of the excess is `deeply_subducted_m3`.
+material leaving the continental inventory, so they are comparable, with that caveat.
+The historical juvenile total, 2.6–4.3 km³/yr after the first 100 Myr, includes arc, rift
+and eruptive additions; its numerical overlap with Earth's arc-production range is not
+a like-for-like validation. Historical sinks of 8–11 km³/yr were about twice Earth's
+recycling estimate, and the original diagnosis located nearly all the excess in
+`deeply_subducted_m3`. The refreshed account ranking above revises that diagnosis.
 
-That account mixes several channels:
+The `deeply_subducted_m3` account still mixes several channels:
 - continental material, mostly sediment, on oceanic plates consumed at trenches
   (`quad_tectonics._retreat`);
 - continental margins consumed under an oceanic neighbour, which on continental plates is
   capped 1:1 by arc production (#177);
 - craton attrition (`cratons.attrite`; RFC 0002).
 
-Because the #177 cap holds margin consumption to arc output, **the prime suspect is
-sediment**: continental material eroded onto ocean floor and carried into trenches. The
-share of continental material sitting on oceanic hosts rose from 0 to 30% in the first Gyr,
-which supports that. But the ledger can't confirm it until the channels are split.
+Because the #177 cap holds margin consumption to arc output, the historical investigation
+made **sediment its prime suspect**: continental material eroded onto ocean floor and
+carried into trenches. The historical share of continental material sitting on oceanic hosts rose from 0 to 30%
+in the first Gyr, which supported that hypothesis. But the ledger can't confirm it until
+the channels are split. The current sink ranking above also requires measuring the
+collision remainder rather than treating the deep-subduction account as the whole
+excess.
 
 ## Proposed solutions
 
@@ -95,7 +165,11 @@ which supports that. But the ledger can't confirm it until the channels are spli
   can relaminate to the base of the overriding crust
   [[Hacker et al., 2011]](#ref-hacker2011).
 
-1. **Measure the channels (required first).** Split `deeply_subducted_m3` into:
+1. **Measure the channels (required first).** Rank all terminal continental sink accounts
+   on the pinned current-main baseline before selecting the mechanisms to diagnose
+   ([#408](https://github.com/adubey/mantle-bloom/issues/408)). In particular, distinguish
+   collision-placement remainders (`collision_subducted_m3`) from trench losses. Then
+   split `deeply_subducted_m3` into:
    - `sediment_subducted_m3`: material on oceanic hosts, consumed at a trench;
    - `margin_subducted_m3`: continental hosts consumed under an oceanic neighbour, the
      #177 channel;
@@ -122,10 +196,14 @@ which supports that. But the ledger can't confirm it until the channels are spli
    [[Hacker et al., 2011]](#ref-hacker2011). It has a large effect and is hard to
    constrain, so it is kept as a last resort.
 
-**Recommendation:** 1 as a diagnosis gate, then the branch of 2 that the measurement
-points to. Do 3 alongside RFC 0002, which needs the same contact classification; it only
-moves a median 17% of trench sediment, but it is cheap and grounded. Do 4 only if the
-budget still fails once the rest is in.
+**Recommendation:** 1 as a diagnosis gate, starting with the broadened sink ranking in
+[#408](https://github.com/adubey/mantle-bloom/issues/408). Select the branch of 2 only if
+the relevant trench mechanism explains the measured excess; a dominant collision
+remainder instead needs its own placement diagnosis before a recycling fix is chosen. If the gate supports offscraping, do 3 alongside RFC 0002, which needs the
+same contact classification; it only moves a median 17% of trench sediment, but it is cheap
+and grounded. Do 4 only if the budget still fails once the rest is in. The #403 refresh
+does not add collision-placement attribution or the missing channel and G/E/D/T/S/A
+measurements, so it does not select a fix under 2–4 or pass the diagnosis gate.
 
 ## Design
 
@@ -134,7 +212,7 @@ of rock-equivalent crust, since every sediment field is a share of Hc; Earth fig
 in mass are converted at 2.65 t/m³.
 
 **Channel split (1).** In `quad_tectonics._retreat`, the `subducted` set is booked in one
-call today. Book three ways instead:
+call at the refreshed baseline. Book three ways instead:
 - cells with `~continental` (oceanic hosts) → `sediment_subducted_m3`;
 - continental cells on a continental plate → `margin_subducted_m3`;
 - attrition as RFC 0002 books it.
@@ -239,9 +317,21 @@ pickled. Old saves keep their history in `deeply_subducted_m3`.
 Tune on seeds 7, 11 and 2024 to 1 Gyr, plus a regenerated seed 456862899 to 3 Gyr; run the
 replays one at a time. Report G, E, D, T, S, A and P, juvenile additions and total sinks,
 and genuine continental area and land fraction. The `replay-ab` skill does the
-before/after against a detached `origin/main` worktree.
+before/after against a detached current-main worktree at an explicitly recorded commit,
+with matching density, controls and step schedule. Regenerating seed 456862899 is a new
+run, not a replay of the historical save.
 
 ## Detailed design (provisional touchpoints)
+
+**Checked against current main, `2562f63` (2026-10-14).** `_retreat` still books all
+consumed non-donor continental material to `deeply_subducted_m3`, and `cratons.attrite`
+books another contribution to that account. Continental-coded terranes on oceanic plates
+already enter the donor/accretion path; the proposed sediment channel concerns the
+remaining oceanic-coded floor. `crust_transfer.transfer_column` already partitions and
+places a consumed collision column through `quad_tectonics._place_on_overrider`; expose
+that placement without reapplying the collision partition to offscraped sediment. The
+marine-spreading functions and mobile-cover account below still exist. Every new channel
+and G/E/D/T/S/A diagnostic below is proposed, not present in this baseline.
 
 - `backend/app/continental_ledger.py`: add `sediment_subducted_m3`, `margin_subducted_m3`
   and `craton_attrited_m3` as documented sub-accounts of `deeply_subducted_m3`, outside
@@ -293,26 +383,33 @@ before/after against a detached `origin/main` worktree.
 
 ## Acceptance criteria
 
-- [ ] **Gate:** channel split and flux diagnostics are in place, and a written measurement
-      (in `analysis/`) of G, E, D, T, S, A and P on the tuning seeds names the dominant
-      excess, before any fix under 2–4 is chosen.
+- [ ] **Gate ([#408](https://github.com/adubey/mantle-bloom/issues/408)):** a written
+      current-main measurement ranks every terminal continental sink by interval and
+      attributes the dominant excess, including collision-placement remainders. The
+      deep-subduction channel split and G, E, D, T, S, A and P diagnostics are in place
+      where needed to distinguish erosion, export and consumption. No fix under 2–4 is
+      selected from the historical sediment hypothesis alone.
 - [ ] With the chosen fixes, over the first 2 Gyr on seed 456862899 and the 1 Gyr runs of
       seeds 7, 11 and 2024 (sanity ranges from scoped Earth estimates, not fits):
   - [ ] total continental sinks are 3–7 km³/yr while the inventory is above 5 × 10⁹ km³
-        (Earth's recycling estimate ≈ 4.9; 8–11 today);
+        (Earth's recycling estimate ≈ 4.9; 8–11 in the historical pre-#358 run);
   - [ ] S, `sediment_subducted_m3`, is at most 2.5 km³/yr (Earth 1.65);
-  - [ ] P, the continental inventory, changes by less than 15% per Gyr (−47% in the first
-        Gyr today).
-- [ ] Juvenile additions are unchanged within 10%: this RFC is about sinks, not sources.
+  - [ ] P, the continental inventory, changes by less than 15% per Gyr. The historical
+        pre-#358 run lost 47% in its first Gyr; use the refreshed per-seed inventory
+        changes in Problem as the baseline for new comparisons.
+- [ ] Juvenile additions are unchanged within 10% of each matched, pinned current-main
+      run: this RFC is about sinks, not sources.
 - [ ] Both ledgers close; step time changes by less than 3%.
 - [ ] Unit tests above pass; affected tests, ruff and `bin/quality_check.sh` are green.
 - [ ] Saves from before the change load.
 
 ## Falsification criteria
 
-- **Sediment isn't the sink.** If S is under a third of `deeply_subducted_m3` on the tuning
-  seeds, the prime suspect is wrong. Re-scope to the dominant channel: margin
-  consumption (the #177 cap) or attrition (RFC 0002).
+- **Sediment isn't the dominant sink.** If another terminal account explains the dominant
+  excess, or S is under a third of `deeply_subducted_m3` on the tuning seeds, the
+  historical prime suspect is wrong. Re-scope the diagnosis to the measured channel:
+  collision-placement remainder, margin consumption (the #177 cap), attrition (RFC 0002),
+  or another account. Do not choose a sediment-only fix for that result.
 - **The budget isn't the cause of the decline.** If S and the other sinks are brought
   within the sanity ranges and P still falls by more than 15% per Gyr, the loss is not at
   trenches. Look for the unledgered change (`balance_error_m3`) or a source that's too

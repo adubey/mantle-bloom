@@ -1,14 +1,16 @@
 # RFC 0004: Proto-cratons: restarting craton formation
 
 - **Status:** Draft
-- **Date:** 2026-10-13
-- **Related:** #274 (craton formation), #314 (interior shortening); RFCs
+- **Date:** 2026-10-13; baseline audit 2026-10-14 (#403)
+- **Related:** #274 (craton formation), #314 (interior shortening), #403 (baseline audit),
+  [#409](https://github.com/adubey/mantle-bloom/issues/409) (formation and ratchet diagnosis); RFCs
   [0001](0001-merge-cap-craton-loss.md), [0003](0003-rifting-around-cratons.md),
   [0006](0006-intra-oceanic-arcs.md)
 
 ## Problem
 
-Today a craton forms in one way only (`cratons.update`). A column must:
+At the audited baseline `2562f63`, a craton forms in one way only (`cratons.update`).
+A column must:
 - be genuine continental crust, with Hc in [`CRATON_HOST_MIN_HC_M`,
   `CRATON_HOST_MAX_HC_M`] = [28 km, 50 km];
 - sit at least `CRATON_FORMATION_MARGIN_KM` = 500 km inside its plate's edge and any
@@ -18,11 +20,15 @@ Today a craton forms in one way only (`cratons.update`). A column must:
 Its whole Hc then becomes cratonic. In practice only the deep interiors of large
 continents ever qualify, and those are mostly craton already.
 
-In the run behind RFCs 0001–0007, **craton formation stopped for good at about 500 Myr**.
+**Historical save evidence (pre-#358).** In the run behind RFCs 0001–0007,
+**craton formation stopped for good at about 500 Myr**.
 The run is seed 456862899, 19.2 Gyr, saved locally as
 `mantle-bloom-seed456862899-19191800000y.mbworld`; the file is on the author's machine and
 **not available for download**. Numbers come from `bin/debug/ledger_history.py` on that
-save.
+save. Its generating commit and controls were not recorded; the numbers were first
+checked in at `d795a09`, before #358. The schedule reported in #403 was 0.1 Myr steps to
+21.8 Myr, then 10 Myr, so its split cooldown was 2 Myr initially and **200 Myr for most
+of the run**. This is historical evidence rather than a reproducible current baseline.
 
 - `formed_m3` reached 357 M km³ by 500 Myr (201 M km³ of it in one sample at 202 My, the
   first time the 200 Myr clock completed). It then stayed at exactly that value for the
@@ -30,7 +36,42 @@ save.
 - By 500 Myr cratons made up 73% of genuine continental area, and 80–88% for most of the
   rest of the run. The non-cratonic crust that remained was all near margins.
 
-With no source, every craton sink in RFCs 0001–0003 is a one-way drain.
+With no source after 500 Myr in that historical run, every craton sink in RFCs 0001–0003
+is a one-way drain.
+
+**Current-baseline audit (#403; revision tracked in #409).** Fresh replays at
+`2562f63`, default density and controls, 5 Myr steps to 1 Gyr, are recorded in
+[analysis/issue403](../analysis/issue403/README.md) and
+[tuning.json](../analysis/issue403/tuning.json), including the full commit and controls.
+Formation still shuts off on every tuning seed: each has no positive `formed_m3` increment
+between 500 Myr and 1 Gyr. Last-positive times below come from the 5 Myr stats samples.
+
+| Seed | Formed by 500 Myr (M km³) | Last positive formation (Myr) | Craton share at 0 / 500 / 1,000 Myr | Genuine area at 500 / 1,000 Myr, % of initial |
+|---|---|---|---|---|
+| 7 | 33.873 | 355 | 39.9% / 87.0% / 97.3% | 20.8% / 9.0% |
+| 11 | 161.603 | 470 | 50.7% / 91.7% / 94.4% | 33.8% / 16.7% |
+| 2024 | 167.271 | 335 | 37.6% / 85.2% / 95.4% | 51.9% / 19.1% |
+
+All three exceed the original 30–65% craton-area band by 500 Myr with no welded-growth
+path. High craton share therefore does not identify excessive formation: it accompanies
+loss of genuine continental area, which falls below 25% of initial on every seed by
+1 Gyr. The original universal 35% starting figure is replaced by the measured 37.6–50.7%
+range. Formation shutdown remains a current observation, but the timing is seed-dependent
+and these runs do not establish that adding a source is the primary remedy.
+
+#409 must resolve the formation diagnosis, the ratio's denominator and the
+acceptance/falsification measures before a new source is selected or tuned. In particular,
+the existing acceptance window conditioned on at least 25% of initial genuine area loses
+coverage as continents collapse, and the 65% share threshold is already breached without
+welding. The proposed mechanisms below remain the design record; #403 does not redesign
+them.
+
+The regenerated 3 Gyr seed 456862899 reinforces the denominator concern: genuine
+continental area falls from 82.33 to 2.72 M km², formation's last positive sample is at
+255 Myr, and craton area reaches 105.0% of genuine continental area at 3 Gyr. The share
+above 100% reflects craton area divided by a collapsing area measure; it is not evidence
+for super-unity craton production. #409 should retain this as a stress result while
+revising the share gate.
 
 Separately, "quiet" today means only the Hc window plus distance from margins. Interior
 shortening (#314), intraplate faults and failed rifts can all deform a column that passes
@@ -40,7 +81,9 @@ The project owner proposed a *proto-craton* stage: crust that can mature into cr
 continental collisions as a main route.
 
 The run is a stress test of the model's long-term behaviour, not a calibration interval:
-it shows that formation shuts off. It doesn't give a formation rate to fit.
+it shows that formation shut off in that trajectory. It does not establish a shutoff time
+or a formation rate for the current 2 Myr split cooldown. More frequent topology changes
+can change which cells remain interior long enough to form.
 
 ## Proposed solutions
 
@@ -114,10 +157,16 @@ So the proposal is sound, with three caveats:
    `CRATON_FORMATION_DEPLETION`, to mimic less-depleted post-Archean keels. The model
    seeds its starting cratons 2.5 Gyr old, so the simulated era is post-Archean.
 
-**Recommendation:** 1, 3 and 4 now. Path 1 alone restarts formation on the margins of
-existing cratons, and 4 stops any path from cratonising a column that is being deformed.
-2 waits for its own RFC. Leave 5 at 1.0 (off) until a run shows cratons ratcheting up to
-most of the continental area.
+**Original recommendation:** 1, 3 and 4. Path 1 would restart formation on the margins
+of existing cratons, and 4 would stop any path from cratonising a column that is being
+deformed. 2 waits for its own RFC. Leave 5 at 1.0 (off).
+
+**Recommendation audit (#403):** revisit that priority and its ratchet test in
+[#409](https://github.com/adubey/mantle-bloom/issues/409) before selecting or tuning a
+formation source. The current model already exceeds the proposed share band with path B
+off, so the original instruction to lower depletion when the band fails cannot distinguish
+excessive formation from continental loss. The quiescence concern remains a separate code
+finding; these replays do not measure missed disturbance writers.
 
 ## Design
 
@@ -202,14 +251,17 @@ today. Proto-craton status is derived each step. The new stats keys are additive
 | `CRATON_FORMATION_MYR` | 200 Myr (unchanged) | #274 | Unchanged |
 
 Tune with `bin/debug/compare_cratons.py` on seeds 7, 11 and 2024 to 2 Gyr (formation needs
-time to show), plus a regenerated seed 456862899 to 3 Gyr; run the replays one at a time.
+time to show), plus a regenerated seed 456862899 to 3 Gyr. Use default density and
+controls and 5 Myr steps on an exact pinned baseline and the implementation variant; run
+the replays one at a time.
 Report `formed_m3` per Gyr by path (A, B), craton share of genuine continental area,
 proto-craton area, and how often each writer marks cells.
 
 ## Detailed design (provisional touchpoints)
 
 - `backend/app/cratons.py`
-  - New constants as above, with comments citing this RFC.
+  - New weld, disturbance and depletion constants as above, with comments citing this
+    RFC; retain the existing `CRATON_FORMATION_MYR`.
   - `update`: compute paths A and B, require `tectonic_disturbance_myr == 0`, combine them
     into `quiet`, count the countdown down, and apply `CRATON_FORMATION_DEPLETION` at
     formation.
@@ -231,10 +283,10 @@ proto-craton area, and how often each writer marks cells.
   deform loop, and run the audit after topology and gap fill.
 - `backend/app/stats.py`: `proto_craton_area_km2` in the stats row.
 - `backend/app/render_image.py`: the `craton` debug view (`_render_craton_view`) already
-  colours quiet interiors by their clock's progress. It takes its mask from
-  `proto_craton_mask`, so welded proto-cratons show too, and disturbed cells show as not
-  forming. `frontend/src/legendData.ts`'s `craton` legend relabels "Quiet interior near
-  cratonising" as "Proto-craton near cratonising".
+  colours interiors using `stable_continental_myr` through the existing `craton_colors`.
+  It would use the new `proto_craton_mask`, so welded proto-cratons show too, and disturbed
+  cells show as not forming. `frontend/src/legendData.ts`'s `craton` legend relabels
+  "Quiet interior near cratonising" as "Proto-craton near cratonising".
 - `bin/debug/compare_cratons.py` and `bin/debug/ledger_history.py`: report per-path
   formation.
 - Tests (`backend/unit_tests/test_cratons.py` unless noted):
@@ -255,8 +307,11 @@ proto-craton area, and how often each writer marks cells.
 
 ## Assumptions and uncertainty
 
-- **Formation may not be the bottleneck.** Formation stopped, but losses (RFCs 0001–0003)
-  dominate. Formation is complementary, not a cure.
+- **Formation may not be the bottleneck.** Formation stopped in the pre-#358 save, but
+  losses (RFCs 0001–0003) dominated it. At `2562f63`, formation also stops by 470 Myr
+  on the tuning seeds, while genuine continental area falls below 20% of initial by
+  1 Gyr. #409 must distinguish formation starvation from the effects of those losses.
+  Formation is complementary, not a cure.
 - **Welded growth is an analogy.** Laurentia-style growth is observed over Gyr, but the
   weld reach, margin and 200 Myr clock are model choices, not measurements. Path B also
   ignores depletion: it assumes belts welded to a craton inherit its stability, which is
@@ -266,20 +321,27 @@ proto-craton area, and how often each writer marks cells.
 - **Secular change is ignored.** Post-Archean keels are less depleted
   [[Griffin et al., 2009]](#ref-griffin2009), so the simulated era should form fewer and
   weaker cratons. Knob 5 is available but off.
-- **The ratchet band is a design target.** 30–65% of continental area as craton is the
-  range the #274 seeding was calibrated to (shields plus platforms), not a measured Earth
-  value for every epoch.
+- **The original ratchet band needs revision (#409).** The 30–65% range was a design
+  target derived from #274 seeding assumptions (shields plus platforms), not a measured
+  Earth value for every epoch. Current main exceeds it without path B; the ratio alone
+  cannot attribute a high share to formation.
 
 ## Acceptance criteria
 
 - [ ] On seeds 7, 11 and 2024 to 2 Gyr, and seed 456862899 to 3 Gyr, `formed_m3` increases
       in every 500 Myr window in which genuine continental area is at least 25% of its
-      initial value. Today it stops after 500 Myr.
+      initial value. Compare against the pinned current baseline, not the historical
+      save's 500 Myr shutoff; the `2562f63` tuning baseline has no formation in the
+      500–1,000 Myr window on any seed. The window qualification and metric are pending
+      review in #409.
 - [ ] Path B contributes in at least two of the four runs.
 - [ ] No column forms craton while being deformed: the unit tests above, plus the debug
       audit reporting zero unmarked tectonic changes on the acceptance runs.
-- [ ] No ratchet: craton share of genuine continental area stays between 30% and 65% at
-      every 500 Myr checkpoint (it starts at 35%).
+- [ ] Original no-ratchet target, pending revision in #409: craton share of genuine
+      continental area stays between 30% and 65% at every 500 Myr checkpoint. The
+      current baseline already exceeds the upper bound with no path B; its starting
+      share is seed-dependent: 39.9%, 50.7% and 37.6% on seeds 7, 11 and 2024 at
+      `2562f63`.
 - [ ] Step time changes by less than 2% at density 4.
 - [ ] Unit tests above pass; ledgers balance; old saves load; affected tests, ruff and
       `bin/quality_check.sh` are green.
@@ -292,11 +354,14 @@ proto-craton area, and how often each writer marks cells.
 - **Welded growth is a ratchet.** If path B pushes the craton share above 65% on most
   seeds at any reasonable weld reach (250–1,000 km), welding everything near a craton is
   too generous. Restrict B to belts with a collisional history (an
-  `ELEV_CHANGE_COLLISION` stamp or a suture within the reach), or drop it.
+  `ELEV_CHANGE_COLLISION` stamp or a suture within the reach), or drop it. The raw
+  share threshold is already breached without B at the current baseline, so #409 must
+  make this test distinguish additional formation from loss of non-cratonic area before
+  it can select those alternatives.
 - **Quiescence starves formation.** If, with the disturbance signal, almost no column
   stays undisturbed for 200 Myr (path A's formation drops by more than 90% against
-  `origin/main`), the model deforms continental interiors far more than the clock
-  assumes. Investigate the dominant marking writer before tuning the threshold.
+  the pinned current baseline on the same seeds and 5 Myr schedule), the model deforms
+  continental interiors far more than the clock assumes. Investigate the dominant marking writer before tuning the threshold.
 
 ## References
 

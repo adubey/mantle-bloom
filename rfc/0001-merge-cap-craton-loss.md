@@ -1,11 +1,11 @@
 # RFC 0001: Plate merges must not destroy cratons
 
 - **Status:** Draft
-- **Date:** 2026-10-13
+- **Date:** 2026-10-13 (evidence rebased 2026-10-14 for #403)
 - **Related:** #274 (cratons), #340 (craton partition rules), #276 (suture accretion),
   #290 (staged suture placement); RFCs [0002](0002-craton-trench-attrition.md),
   [0004](0004-proto-cratons.md), [0008](0008-craton-collision-jamming.md) (fusion at jam
-  onset)
+  onset); #403 (post-#358 baseline audit)
 
 ## Problem
 
@@ -14,12 +14,23 @@ suture cap (`SUTURE_ACCRETION_MAX_HC_M`, 84 km) is overflow, and the merge tries
 it over the merged plate. Cratonic crust in that overflow which finds no room is clipped,
 and the craton audit around the merge books the clip as `delaminated_m3`.
 
-In the run that prompted this RFC, plate merges destroyed cratons in a few large events
-rather than through steady wear. The run is seed 456862899, about 19.2 Gyr, saved locally
+This violates design principles 6 (account for material), 7 (preserve cratonic crust and
+name its loss path), and 9 (attribute losses before choosing a fix). The gate must expose
+the writer and destination; the acceptance runs must bound both individual merge losses
+and the cumulative merge sink.
+
+**Historical save evidence (pre-#358; simulation commit unknown).** In the run that
+prompted this RFC, plate merges destroyed cratons in a few large events rather than through
+steady wear. The run is seed 456862899, about 19.2 Gyr, saved locally
 as `mantle-bloom-seed456862899-19191800000y.mbworld`; that file is on the author's machine
 and **not available for download**. The numbers below come from the save's
 `World.stats_history` via `bin/debug/ledger_history.py`, so anyone with a save can make the
-same table.
+same table. These observations were first recorded in commit `d795a09`; that is the
+documentation provenance, not a recovered simulation baseline. The save is post-#340
+(its ledger has `audit_clipped_m3` from t = 0) and pre-#358. Its 20-step split cooldown
+was **200 Myr during the mostly 10 Myr schedule**, rather than the post-#358 2 Myr
+cooldown. All values in the table and the event/room estimates below describe that
+historical run, not current `origin/main`.
 
 | When | Craton booked to `delaminated_m3` | Share of live craton |
 |---|---|---|
@@ -46,11 +57,14 @@ Two things are wrong:
    (`torque.CRATON_COLLISION_FRICTION_GAIN`) exists for exactly that reason. A merge that
    finds craton on craton means the overlap built up before the merge.
 
-**What the current placement already does.** `quad_merge._place_stacking_overflow` passes
+**Current code check (`2562f63`, post-#358).** `quad_merge._place_stacking_overflow` passes
 the overflow to `quad_tectonics._place_suture_crust`. That function's far-field stage walks
 the whole adjacency graph and then calls `fill(eligible)`, which takes every remaining
 eligible cell on the plate, connected or not. Placement is therefore already global. Volume
-goes unplaced only when *every eligible cell* is at the cap.
+goes unplaced only when *every eligible cell* is at the cap. The call still passes
+`strike=None` and `root_capacity=None`, and returns unplaced material and craton to the
+overflowing cells for the merge and phase audit to book. The 2 Myr cooldown changes how
+often this path runs; it does not identify H1–H4.
 
 A merged plate with ~50 M km² of continental cells at ~35 km has ~2.4 billion km³ of room,
 seven times the overflow. If the 339 M km³ was mostly the merge's clip, continental
@@ -70,6 +84,39 @@ no room, not just the craton riding on it. The candidate explanations:
 The run is a stress test of the model's long-term behaviour, not a calibration interval.
 Its numbers show *that* a merge can remove a quarter of the cratons in one step. They
 don't say how much craton a merge should cost; geologically, the answer is close to none.
+
+**Earlier post-#358 attribution (#395).** The RFC 0008 contact probe on model baseline
+`3b9d9c1` plus diagnostic instrumentation, at 5 Myr steps and the 2 Myr cooldown,
+attributed fusion losses of 54%, 18% and 31% of starting craton on seeds 7, 11 and 2024
+to 1 Gyr. Those losses matched each seed's `delaminated_m3` account; see
+[`analysis/rfc0008/README.md`](../analysis/rfc0008/README.md) and its `gate.json`.
+This confirms that fusion still carries a large sink after #358. It does not measure
+eligible room or per-stage placement, so H1–H4 and the placement gate remain open.
+
+**Fresh post-#358 baseline (#403, `2562f63`).** Generated worlds use the default
+controls and node density 1, climate enabled, 5 Myr steps, and the 2 Myr cooldown.
+`bin/debug/rebaseline_rfcs.py` wraps `compare_cratons.run_job` with a read-only tap on
+each `_merge_plates_with_craton_audit` call. The method and controls are recorded in
+[`analysis/issue403/README.md`](../analysis/issue403/README.md); compact measurements
+are in [`tuning.json`](../analysis/issue403/tuning.json).
+
+| Seed, interval | Merge loss, M km³ | Share of starting craton | Largest merge, share of pre-merge live craton | Merges / splits |
+|---|---|---|---|---|
+| 7, 0–1 Gyr | 2,216.52 | 54.09% | 16.66% at 365 Myr | 55 / 115 |
+| 11, 0–1 Gyr | 583.77 | 18.42% | 12.54% at 565 Myr | 27 / 109 |
+| 2024, 0–1 Gyr | 532.30 | 30.88% | 14.08% at 715 Myr | 36 / 104 |
+
+Merges losing more than 1 km³ number 27, 7 and 9, respectively; their summed losses
+equal `delaminated_m3` on every seed. The largest merge on each seed lost 387.96,
+280.87 and 157.48 M km³, respectively. Plate counts rose from 20 to 51, 9 to 57 and
+11 to 60. These are present substitute events for the historical discovery, but the
+tap has not captured their full placement inputs. The recommendation remains
+diagnosis first, then the H1–H4 decision table; the per-stage placement gate is not
+passed by these measurements. On regenerated seed 456862899, the first Gyr has 12
+merges and six losses above 1 km³; the largest removes 181.00 M km³ (13.77% of live
+craton) at 125 Myr. No merge-attributed loss occurs in the second or third Gyr. This
+adds a substitute capture candidate but still lacks the placement inputs required by
+H1–H4; the full window table is in [the #403 evidence](../analysis/issue403/README.md).
 
 ## Proposed solutions
 
@@ -95,7 +142,7 @@ Nothing in that picture removes tens of percent of a craton in one event.
      [[Tapponnier et al., 1982]](#ref-tapponnier1982).
 
    Both add room near the front, so the far-field stage has less to place.
-2. **Bound the placement itself.** Today's global `fill(eligible)` can drop crust anywhere
+2. **Bound the placement itself.** The baseline's global `fill(eligible)` (`2562f63`) can drop crust anywhere
    on the plate: it conserves volume, but it isn't physically plausible. Restrict the
    *primary* call's `eligible` to continental cells within `MERGE_PLACEMENT_MAX_KM` of the
    stacked area and connected to it through continental cells. A second pass can't help:
@@ -117,9 +164,12 @@ Nothing in that picture removes tens of percent of a craton in one event.
 4. **Book honestly.** Merge clips go to a new craton account `merge_capped_m3`, kept apart
    from `delaminated_m3`, so the ledger says what happened.
 
-**Recommendation:** a diagnosis gate first. No fix is chosen until the 3,052 My event, or
-another merge with the same signature, has been reproduced and its cause established (see
-Design). Solution 4 is safe whatever the cause and can land with the diagnosis. The rest
+**Recommendation:** the placement diagnosis gate still comes first. The post-#358 probe
+confirms fusion attribution, but no placement fix is chosen until a merge with the
+historical event's signature has been captured with full inputs and its cause established
+(see Design). Reproducing the historical 3,052 My event is optional because its exact
+simulation commit is unknown. Solution 4 is safe whatever the cause and can land with the
+diagnosis. The rest
 follow from the gate:
 
 | Gate outcome | Fix |
@@ -163,8 +213,11 @@ length of steps, and on the run's controls.
   replay must confirm. The event is in the step ending at 3,051.8 My.
 - **Controls.** The replay uses the tuning multipliers and simulation flags stored in the
   save, its node density, and its climate setting, since erosion moves crust.
-- **Code version.** The run used post-#340 code (its ledger has `audit_clipped_m3` from
-  t = 0), but the exact commit is unknown.
+- **Code version and cooldown.** The historical run used post-#340, pre-#358 code, but
+  its exact simulation commit is unknown (evidence recorded in `d795a09`). Reproducing
+  that history requires the old 20-step cooldown: 2 Myr in the initial 0.1 Myr steps,
+  then 200 Myr in the 10 Myr steps. A fresh run on the post-#358 2 Myr cooldown is a
+  substitute-event search, not a replay of that save's topology history.
 
 If the replay doesn't reproduce a merge at 3,051.8 My, the gate uses the first merge in
 the replay with the same signature: craton booked by a merge above 1% of live craton,
@@ -179,8 +232,9 @@ together with continental material clipped above its column. The run had three m
 - for the two plates in the 30 Myr before the merge, their overlap area, the craton
   volume in the overlap, and whether the craton brake was active.
 
-The first leg is about 3 Gyr of stepping. Its wall time must be measured; replays are
-RAM-heavy, so run them one at a time. The gate passes when the findings, and the fix the
+The historical event needs about 3 Gyr of stepping; the fresh seed-7 substitute is at
+365 Myr. Measure wall time for whichever capture is selected. Replays are RAM-heavy,
+so run them one at a time. The gate passes when the findings, and the fix the
 table selects, are written up in `analysis/` and this RFC is updated with them.
 
 **Merge placement (solutions 1 and 2):**
@@ -205,7 +259,8 @@ table selects, are written up in `analysis/` and this RFC is updated with them.
   - the merged plate's craton forms no more connected components than the two plates'
     cratons had before the merge.
 
-**Runtime.** Merges happen tens of times per Gyr, not every step.
+**Runtime estimate (not measured).** This work runs on merges, not every step; the
+post-#358 replay records how often that path executes.
 - The bounded mask is one great-circle distance test and one connected-components pass
   over the merged plate: O(cells), about 10⁵ at density 4.
 - Strike is a 3×3 eigenproblem.
@@ -289,21 +344,24 @@ If solution 3 is needed, it is built and tuned in RFC 0008 (`CRATON_LOCK_MYR`).
 
 ## Acceptance criteria
 
-- [ ] **Gate:** the 3,052 My event (or a substitute with the same signature) is reproduced
+- [ ] **Gate:** a post-#358 merge with the historical signature is reproduced
       with the full merge inputs, its cause established, and the fix the decision table
       selects is written up in `analysis/` with the per-stage numbers, before any fix
-      other than solution 4 is implemented.
+      other than solution 4 is implemented. #395's fusion attribution is partial
+      evidence; it does not satisfy this placement gate.
 - [ ] On a 3.5 Gyr replay of seed 456862899 and 500 Myr runs of seeds 7, 11 and 2024
       (`bin/debug/compare_cratons.py`), merges book less than 1% of the initial craton
       volume in total, and no single merge books more than 0.5% of the live craton.
+      Use the #403 controls and 5 Myr steps. Its 3 Gyr stress baseline must be extended
+      to 3.5 Gyr on pinned `2562f63` before claiming the longer criterion.
 - [ ] Every merge placement passes the physical checks in Design (cap, bounded set,
       monotone thickness, craton component count), checked by an assertion in debug runs.
 - [ ] The craton ledger balance error stays within 1e-9 of the live volume
       (`cratons.balance_error_m3`), and the continental-material ledger still closes
       (`continental_ledger.assert_closed`).
 - [ ] Merge counts and plate counts on those seeds change by less than 10%, measured
-      before RFC 0008's fusion lands. 0008 raises merge counts by design and has its own
-      bounds.
+      against pinned `2562f63` at matched elapsed times, before RFC 0008's fusion lands.
+      0008 raises merge counts by design and has its own bounds.
 - [ ] The unit tests above pass; affected tests, ruff and `bin/quality_check.sh` are green.
 - [ ] Saves from before the change load, with `merge_capped_m3` = 0.
 
