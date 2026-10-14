@@ -1,9 +1,10 @@
 # RFC 0005: Balance continental recycling at trenches
 
 - **Status:** Draft
-- **Date:** 2026-10-13
+- **Date:** 2026-10-13 (re-baselined 2026-10-14 on the year-based split pace, #403)
 - **Related:** #120 (land fraction decline), #177 (margin retreat budget), #276 and #320
-  (collision sinks), #297 (mobile cover); RFCs [0002](0002-craton-trench-attrition.md),
+  (collision sinks), #297 (mobile cover), #358 (split cooldown in years), #403 (re-baseline),
+  #412 (gate scope); RFCs [0002](0002-craton-trench-attrition.md),
   [0006](0006-intra-oceanic-arcs.md)
 
 ## Problem
@@ -16,7 +17,8 @@ In the run behind RFCs 0001–0007, the ledger shows the imbalance from the firs
 run is seed 456862899, 19.2 Gyr, saved locally as
 `mantle-bloom-seed456862899-19191800000y.mbworld`; the file is on the author's machine and
 **not available for download**. Numbers come from `bin/debug/ledger_history.py` on that
-save.
+save. The save predates #358: it ran post-#340 code (exact commit unknown) with the split
+cooldown counted in steps, 200 Myr for most of the run.
 
 | Window (Myr) | Juvenile (km³/yr) | Remelted returns (km³/yr) | All sinks (km³/yr) | of which `deeply_subducted` | Mean inventory (M km³) | Share on oceanic hosts at window end |
 |---|---|---|---|---|---|---|
@@ -30,6 +32,26 @@ save.
 The world started with 7.9 × 10⁹ km³ of continental material, almost exactly Earth's
 8.0 × 10⁹ km³ [[Clift & Vannucchi, 2004]](#ref-clift2004), so its fluxes are on the same
 scale as Earth's.
+
+**On the current model** (origin/main 2562f63, 5 Myr steps; `analysis/issue403/`), the drain
+is two to three times faster. Fluxes in km³/yr:
+
+| Run | Start inventory (10⁹ km³) | Window (Myr) | Juvenile | All sinks | `deeply_subducted` | `collision_subducted` | Inventory change |
+|---|---|---|---|---|---|---|---|
+| Seed 7 | 12.0 | 0–100 / 100–500 / 500–1,000 | 10.7 / 8.3 / 5.0 | 22.6 / 27.9 / 9.8 | 11.7 / 12.3 / 6.4 | 5.8 / 13.1 / 2.3 | −86% in 1 Gyr |
+| Seed 11 | 6.9 | same | 10.4 / 7.3 / 4.2 | 16.8 / 15.0 / 9.0 | 15.6 / 12.6 / 7.4 | 0.0 / 1.4 / 1.0 | −73% |
+| Seed 2024 | 6.5 | same | 6.8 / 4.9 / 3.1 | 9.8 / 10.2 / 9.7 | 8.3 / 6.4 / 6.4 | 0.0 / 2.1 / 2.5 | −75% |
+| Seed 456862899 | 3.9 | same | 7.0 / 3.4 / 1.7 | 12.3 / 10.1 / 3.0 | 10.3 / 7.6 / 2.9 | 0.9 / 1.8 / 0.0 | −85% |
+
+- The regenerated seed 456862899 isn't the save's world: generation has changed, and it
+  starts with half the save's continental material. The tuning seeds start at 6.5–12.0 ×
+  10⁹ km³.
+- Sinks are 9.8–28 km³/yr while continents are large, 2–6 times Earth's recycling estimate
+  below (the save: about twice).
+- `deeply_subducted_m3` is still most of it (44–95% per window), but
+  `collision_subducted_m3`, where merges and sutures book their unplaced remainder, is 47%
+  of seed 7's sinks over 100–500 Myr and 21–26% of seed 2024's after 100 Myr. That account
+  is outside this RFC's channel split; RFC 0001 is about the same merges.
 
 The run is a stress test of the model's long-term behaviour, not a calibration interval.
 The first Gyr's fluxes are compared with Earth's below only because that is when the
@@ -59,10 +81,12 @@ number must also be kept apart:
 - **model-ledger fluxes**: what an account books in a step.
 
 The comparison here is ledger sinks against Earth's recycling estimates: both are
-material leaving the continental inventory, so they are comparable, with that caveat. The
-model's new crust, 2.6–4.3 km³/yr after the first 100 Myr, is within Earth's range for arc
-production. Its sinks, 8–11 km³/yr, are about twice Earth's recycling estimate, and nearly
-all of the excess is `deeply_subducted_m3`.
+material leaving the continental inventory, so they are comparable, with that caveat. In the
+pre-#358 save, the model's new crust, 2.6–4.3 km³/yr after the first 100 Myr, is within
+Earth's range for arc production. Its sinks, 8–11 km³/yr, are about twice Earth's recycling
+estimate, and nearly all of the excess is `deeply_subducted_m3`. On origin/main 2562f63,
+juvenile additions are 3–11 km³/yr and the sinks 2–6 times Earth's, with
+`collision_subducted_m3` a second large channel on two of the four runs.
 
 That account mixes several channels:
 - continental material, mostly sediment, on oceanic plates consumed at trenches
@@ -121,6 +145,12 @@ which supports that. But the ledger can't confirm it until the channels are spli
    `remelted_relaminated_returns_m3` on the overriding arc band, after
    [[Hacker et al., 2011]](#ref-hacker2011). It has a large effect and is hard to
    constrain, so it is kept as a last resort.
+
+**After the re-baseline (#403).** `collision_subducted_m3` is up to 47% of the sinks on
+one tuning seed, so the gate's measurement should report it beside the three channels of
+1, and the gate should say whether it or `deeply_subducted_m3` is the dominant excess
+before a branch of 2 is chosen. If it is, the fix is RFC 0001's merge placement, not this
+RFC's (#412).
 
 **Recommendation:** 1 as a diagnosis gate, then the branch of 2 that the measurement
 points to. Do 3 alongside RFC 0002, which needs the same contact classification; it only
@@ -299,10 +329,14 @@ before/after against a detached `origin/main` worktree.
 - [ ] With the chosen fixes, over the first 2 Gyr on seed 456862899 and the 1 Gyr runs of
       seeds 7, 11 and 2024 (sanity ranges from scoped Earth estimates, not fits):
   - [ ] total continental sinks are 3–7 km³/yr while the inventory is above 5 × 10⁹ km³
-        (Earth's recycling estimate ≈ 4.9; 8–11 today);
+        (Earth's recycling estimate ≈ 4.9). On origin/main 2562f63 they are 9.8–28
+        km³/yr on the tuning seeds (8–11 in the pre-#358 save). The regenerated seed
+        456862899 starts at 3.9 × 10⁹ km³, so this criterion never applies to it, and it
+        applies to seeds 11 and 2024 only for their first few hundred Myr (#412);
   - [ ] S, `sediment_subducted_m3`, is at most 2.5 km³/yr (Earth 1.65);
-  - [ ] P, the continental inventory, changes by less than 15% per Gyr (−47% in the first
-        Gyr today).
+  - [ ] P, the continental inventory, changes by less than 15% per Gyr. On origin/main
+        2562f63 it is −73% to −86% in the first Gyr on all four runs (−47% in the pre-#358
+        save).
 - [ ] Juvenile additions are unchanged within 10%: this RFC is about sinks, not sources.
 - [ ] Both ledgers close; step time changes by less than 3%.
 - [ ] Unit tests above pass; affected tests, ruff and `bin/quality_check.sh` are green.

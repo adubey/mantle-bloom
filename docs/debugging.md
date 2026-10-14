@@ -596,6 +596,10 @@ shows when cratons were lost. A step whose losses to one mechanism exceed
 `bin/debug/compare_cratons.py` runs long multi-seed comparisons with cratons on and off, and
 reports rifting by path per Gyr and the share of split and failed-rift cuts through craton
 (RFC 0003); `bin/debug/ledger_history.py` reads the same paths from a save's stats history.
+`compare_cratons.py --save-dir` also writes each run's final world, and
+`bin/debug/rebaseline_summary.py` combines those saves with the checkpoint rows into the
+compact per-Gyr baseline the RFCs quote: sinks, merge-sized craton losses, formation,
+topology events and continental fluxes (#403).
 `bin/debug/probe_craton_contacts.py` replays a seed and records, per plate contact and step,
 where cratons jam retreat (the frozen `run_eligible` candidates on polarized fronts), closing
 rates, collision-time drops and fusions, the buoyant share of slab pull, contact forces, and

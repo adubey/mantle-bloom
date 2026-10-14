@@ -1,8 +1,8 @@
 # RFC 0003: Rifts go around cratons
 
 - **Status:** Accepted (2026-10-13)
-- **Date:** 2026-10-13
-- **Related:** #389 (tracking), #274 (craton rift and stretch resistance), #340, #378 (phase 1 gate); RFCs
+- **Date:** 2026-10-13 (re-baselined 2026-10-14 on the year-based split pace, #403)
+- **Related:** #389 (tracking), #274 (craton rift and stretch resistance), #340, #378 (phase 1 gate), #358 (split cooldown in years), #403 (re-baseline); RFCs
   [0002](0002-craton-trench-attrition.md), [0004](0004-proto-cratons.md)
 
 ## Problem
@@ -28,11 +28,20 @@ wherever the flow puts it, straight through a craton if one is there. Then:
 In the run behind RFCs 0001–0007, rifting was the second-largest craton sink. The run is
 seed 456862899, 19.2 Gyr, saved locally as `mantle-bloom-seed456862899-19191800000y.mbworld`;
 the file is on the author's machine and **not available for download**. Numbers come from
-`bin/debug/ledger_history.py` on that save.
+`bin/debug/ledger_history.py` on that save. The save predates #358: it ran post-#340 code
+(exact commit unknown) with the split cooldown counted in steps, 200 Myr for most of the
+run, so it split far less often than the model does now.
 
 - `rifted_m3` totalled 555 M km³, **21%** of all craton destruction.
 - It took 6%, 4%, 6%, 5% and 10% of the live craton per Gyr over the first five Gyr.
 - It was steady: no single 10 Myr sample took more than 1% of the live craton.
+
+On the current model (origin/main 2562f63, 5 Myr steps; `analysis/issue403/`), plates split
+104–115 times per Gyr, and rifting takes more:
+- 13%, 9.0% and 16% of the start craton over 1 Gyr on seeds 7, 11 and 2024;
+- 9.0%, 7.1% and 12% of the live craton in each of the first three Gyr on a regenerated
+  seed 456862899;
+- still steady: no single 5 Myr step takes more than 0.9% of the live craton.
 
 The run is a stress test of the model's long-term behaviour, not a calibration interval. It
 shows that rifting wears cratons down steadily. It doesn't say how often cratons should
@@ -103,8 +112,10 @@ Record, per split and per failed rift, the craton area inside the cut's band. Ru
 tuning seeds. The results decide the order of work: solution 1 helps the first two paths,
 and solution 2 only the third.
 
-**Phase 1 outcome (#378, PR #380).** The sub-accounts above, plus per-outcome counts of
-cuts, cuts with craton in the failed-rift band, and the band's total and cratonic area.
+**Phase 1 outcome (#378, PR #380).** Measured on eefaa55, before #358 and #385, so at a
+third of today's split pace (32–37 splits per Gyr). The sub-accounts above, plus
+per-outcome counts of cuts, cuts with craton in the failed-rift band, and the band's total
+and cratonic area.
 They are diagnostics outside the balance and don't change the model. Seeds 7, 11 and 2024
 ran to 1 Gyr at default density with `bin/debug/compare_cratons.py`; the numbers are in
 `analysis/issue378/`.
@@ -214,8 +225,8 @@ through moments instead:
 - A unit test checks the batched poles and residuals against `fit_euler_pole` and
   `_fit_residual_rms` to 1e-9 relative.
 
-**Runtime.** Splits are attempted at most once per plate per step, and only after
-`SPLIT_MIN_AGE_STEPS`.
+**Runtime.** Splits are attempted at most once per plate per step, and only once the plate
+is `SPLIT_MIN_AGE_YEARS` (2 Myr) old (#358).
 - At 64 candidates × ~10⁵ nodes, scoring and the batched moments are each one N × K
   product: ~7 × 10⁷ multiply-adds, tens of ms. Side indicators are built in chunks of 16
   candidates to keep memory near 13 MB.
@@ -298,8 +309,10 @@ the flow keeps as much control of breakup as possible.
 - **Which path matters is measured, but not where its loss comes from.** Phase 1 found
   stretch and divergent loss dominant. Whether they run on boundaries born from
   craton-crossing cuts is unmeasured until phase 1b.
-- **Three seeds to 1 Gyr.** Seed 2024 rifts 2.5× more than the others with a similar share
-  of craton-crossing cuts, so the spread between seeds is wide.
+- **Three seeds to 1 Gyr.** Before #358, seed 2024 rifted 2.5× more than the others with a
+  similar share of craton-crossing cuts. On origin/main 2562f63 the spread is narrower:
+  9.0–16% of the start craton, seed 2024 1.2–1.7× the others, with 24–39% of split cuts
+  crossing craton.
 - **Keel thickness stands in for lithospheric strength.** Real strength depends on
   temperature, composition and water content as well as thickness. The proxy is used only
   to *rank* cuts, which limits the damage if it's wrong.
@@ -321,8 +334,10 @@ the flow keeps as much control of breakup as possible.
       reported per seed in `analysis/`, and this RFC is updated with the branch it selects,
       before solution 1 is implemented.
 - [ ] Craton loss to rifting is at most **2% of live craton per Gyr** over the first 3 Gyr
-      on seed 456862899 (4–6% today), and on average across seeds 7, 11 and 2024. This
-      is a model design target, not a measured Earth rate.
+      on a regenerated seed 456862899, and on average across seeds 7, 11 and 2024. This
+      is a model design target, not a measured Earth rate. On origin/main 2562f63 it is
+      9.0%, 7.1% and 12% per Gyr on seed 456862899, and 12.6% on the tuning-seed mean; the
+      pre-#358 save ran at 4–6%.
 - [ ] The share of split cuts whose band crosses craton drops by at least 75% against
       `origin/main` on the same seeds.
 - [ ] Splits per Gyr and mean plate count change by less than 10%, and the mean fit

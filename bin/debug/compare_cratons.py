@@ -12,6 +12,10 @@ Usage:
     backend/.venv/bin/python bin/debug/compare_cratons.py --seeds 7,11,2024 --years 500e6 \
         --out /tmp/cratons.jsonl --workers 6
     backend/.venv/bin/python bin/debug/compare_cratons.py --summarize /tmp/cratons.jsonl
+
+`--save-dir` also writes each job's final world as `seed<S>-<variant>-<Myr>myr.mbworld`, so
+`ledger_history.py` can read its whole `stats_history` (#403 regenerates seed 456862899 this
+way).
 """
 
 from __future__ import annotations
@@ -29,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 import numpy as np  # noqa: E402
 
 from app import cratons  # noqa: E402
+from app import persistence  # noqa: E402
 from app import world as world_mod  # noqa: E402
 from app.elevation_lines import effective_is_continental_from_codes, line_spacing_rad  # noqa: E402
 
@@ -74,7 +79,9 @@ def _snapshot(world, events_seen: dict[str, int]) -> dict:
 _DEFAULTS = {name: getattr(cratons, name) for name in dir(cratons) if name.startswith("CRATON_") and isinstance(getattr(cratons, name), float)}
 
 
-def run_job(seed: int, variant: str, years: float, every: float, step: float, overrides: dict[str, float]) -> list[dict]:
+def run_job(
+    seed: int, variant: str, years: float, every: float, step: float, overrides: dict[str, float], save_dir: Path | None = None
+) -> list[dict]:
     # Pool workers are reused across jobs: always reset, then apply overrides / disable for "off".
     for name, value in _DEFAULTS.items():
         setattr(cratons, name, value)
@@ -103,6 +110,9 @@ def run_job(seed: int, variant: str, years: float, every: float, step: float, ov
             rows.append(row)
             print(json.dumps({k: row[k] for k in ("seed", "variant", "myr", "genuine_continental_area_km2", "craton_continental_fraction")}), flush=True)
             next_checkpoint += every
+    if save_dir is not None:
+        name = f"seed{seed}-{variant}-{round(world.elapsed_years / 1e6)}myr.mbworld"
+        (save_dir / name).write_bytes(persistence.save_world_bytes(world))
     return rows
 
 
@@ -179,6 +189,7 @@ def main() -> None:
     parser.add_argument("--set", action="append", default=[], metavar="CRATON_NAME=VALUE", help="override a cratons.py constant")
     parser.add_argument("--out", type=Path)
     parser.add_argument("--summarize", type=Path)
+    parser.add_argument("--save-dir", type=Path, help="write each job's final world here as an .mbworld")
     args = parser.parse_args()
     if args.summarize:
         summarize(args.summarize)
@@ -191,7 +202,7 @@ def main() -> None:
         parser.error(f"unknown cratons constant(s): {unknown}")
     jobs = [(int(seed), variant) for seed in args.seeds.split(",") for variant in args.variants.split(",")]
     with ProcessPoolExecutor(max_workers=args.workers) as pool, args.out.open("a") as out:
-        futures = {pool.submit(run_job, seed, variant, args.years, args.every, args.step, overrides): (seed, variant) for seed, variant in jobs}
+        futures = {pool.submit(run_job, seed, variant, args.years, args.every, args.step, overrides, args.save_dir): (seed, variant) for seed, variant in jobs}
         for future in as_completed(futures):
             for row in future.result():
                 out.write(json.dumps(row) + "\n")

@@ -1,9 +1,10 @@
 # RFC 0006: Intra-oceanic arcs: new continent from the ocean
 
 - **Status:** Draft
-- **Date:** 2026-10-13
+- **Date:** 2026-10-13 (re-baselined 2026-10-14 on the year-based split pace, #403)
 - **Related:** #120 (arc magmatism vs. land decline), #311 (terrane keels), #318
-  (collision polarity fronts), #321 (terrane docking); RFCs
+  (collision polarity fronts), #321 (terrane docking), #358 (split cooldown in years), #403
+  (re-baseline); RFCs
   [0004](0004-proto-cratons.md), [0005](0005-continental-recycling-balance.md),
   [0007](0007-mantle-plumes-and-plateaus.md) (shared docking and buoyant-crust tracers)
 
@@ -24,12 +25,23 @@ production shrinks with them, and a world that loses its continents can't make n
 The run behind RFCs 0001–0007 shows the end state. The run is seed 456862899, 19.2 Gyr,
 saved locally as `mantle-bloom-seed456862899-19191800000y.mbworld`; the file is on the
 author's machine and **not available for download**. Numbers come from
-`bin/debug/ledger_history.py` on that save.
+`bin/debug/ledger_history.py` on that save. The save predates #358: it ran post-#340 code
+(exact commit unknown) with the split cooldown counted in steps, 200 Myr for most of the run.
 
 - Juvenile additions fell with the inventory, from 2–4 km³/yr while continents were
   Earth-sized to 0.4 km³/yr over the last 7 Gyr.
 - By then continental material was down to about 130 M km³, 1.6% of its start, and land
   covered about 2% of the planet.
+
+On the current model (origin/main 2562f63, 5 Myr steps; `analysis/issue403/`) the world gets
+there within the first Gyr, not over 12:
+- On a regenerated seed 456862899, continental material falls from 3.9 × 10⁹ km³ to
+  0.57 × 10⁹ (15%) by 1 Gyr and 0.19 × 10⁹ (5%) by 3 Gyr; land covers 1.9% of the planet at
+  1 Gyr and 0.5% at 3 Gyr. Juvenile additions fall from 7.0 km³/yr in the first 100 Myr to
+  1.1–1.7 km³/yr after 500 Myr.
+- On seeds 7, 11 and 2024, continental material falls 73–86% in 1 Gyr, and land from
+  17–45% to 6–7%. Juvenile additions fall from 6.8–10.7 km³/yr in the first 100 Myr to
+  3.1–5.0 over 500–1,000 Myr.
 
 The run is a stress test of the model's long-term behaviour, not a calibration interval:
 it shows that the model has no route back from a continent-free state. It does not say how
@@ -343,13 +355,15 @@ replays one at a time. Report:
       With no continental plates, the continental-arc machinery can't fire. Over 500 Myr,
       recoded continental area appears and grows, and every juvenile addition comes from
       `juvenile_oceanic_arc_m3`.
-- [ ] Combined with RFC 0005, the continental inventory on seed 456862899 changes by less
-      than 15% per Gyr over the first 3 Gyr, and never falls below 50% of its initial value
-      over 5 Gyr.
+- [ ] Combined with RFC 0005, the continental inventory on a regenerated seed 456862899
+      changes by less than 15% per Gyr over the first 3 Gyr, and never falls below 50% of
+      its initial value over 5 Gyr. On origin/main 2562f63 it falls 85% in the first Gyr
+      and is at 5% of its start by 3 Gyr.
 - [ ] Ocean–ocean polarity flips less than once per front per 50 Myr, and the fallback
       tier decides less than 30% of fronts.
 - [ ] Plate overlap area fraction and plate count change by less than 15% against
-      `origin/main`.
+      `origin/main`. On 2562f63 the mean plate count is 46, 43 and 44 over 1 Gyr on seeds
+      7, 11 and 2024 (15.5–18.6 before #358).
 - [ ] Integrated arc volume per km of contact is within 5% of P at densities 1 and 4 (unit
       test).
 - [ ] Step time changes by less than 3%; save size by less than 3%.

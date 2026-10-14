@@ -22,11 +22,28 @@ implemented through ordinary issues and PRs (see [AGENTS.md](../AGENTS.md)), eac
 RFCs 0001–0007 come from one investigation: a 19.2 Gyr run (seed 456862899) that lost
 almost all of its continental crust and all of its cratons. The run is used as a stress
 test of the model's long-term behaviour, not as a calibration interval. The RFCs are
-numbered by how directly they act on that loss, not by priority. The suggested
-implementation order:
-1. 0001;
-2. 0002, together with 0005's measurement phase;
-3. 0003 and 0004;
+numbered by how directly they act on that loss, not by priority.
+
+That run predates #358, which counts the split cooldown in years. At its 10 Myr steps the
+cooldown was 200 Myr, so it split and merged far less than the model does now. #403
+re-baselined every RFC on origin/main 2562f63 (`analysis/issue403/`): each keeps the save's
+figures as the record and quotes the current ones beside them. On the current model, over
+the first Gyr on seeds 7, 11 and 2024 and a regenerated seed 456862899, the craton sinks
+rank:
+- `delaminated_m3`, the merge cap (RFC 0001): 18–54% of the starting craton, the largest on
+  three of the four runs;
+- `eroded_m3`: 10–21%, which no RFC addresses yet (#413);
+- `rifted_m3` (RFC 0003): 9–16%;
+- `subducted_m3` (RFC 0002): 6–15%, but the largest sink (22–33% per Gyr) once merges stop.
+
+The continental inventory falls 73–86% in the first Gyr on every run.
+
+The suggested implementation order:
+1. 0001, with RFC 0008's fusion (see below). The merge cap is now the largest craton sink,
+   so this comes first even more clearly;
+2. 0002 and 0003, together with 0005's measurement phase. Rifting now takes as much craton
+   as subduction in the first Gyr, and 0003 is already under way (#389);
+3. 0004, once its acceptance criteria are revisited (#411);
 4. 0006 and 0007. They share `terranes.py` (docking, buoyant-crust tracers and ledger),
    which whichever lands first builds. RFC 0003's plume weakening also depends on 0007.
 

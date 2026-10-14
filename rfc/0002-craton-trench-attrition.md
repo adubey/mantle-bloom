@@ -1,9 +1,10 @@
 # RFC 0002: Cratons resist sinking: margin-dependent attrition and collision sinks
 
 - **Status:** Draft
-- **Date:** 2026-10-13 (revised 2026-10-14 to cover collision sinks)
+- **Date:** 2026-10-13 (revised 2026-10-14 to cover collision sinks, and re-baselined on the
+  year-based split pace, #403)
 - **Related:** #340 (attrition at trenches), #177 (margin retreat budget), #320 (crust
-  transfer), #321 and #331 (terrane docking), #299 (fault shear conservation); RFCs
+  transfer), #321 and #331 (terrane docking), #299 (fault shear conservation), #358 (split cooldown in years), #403 (re-baseline); RFCs
   [0001](0001-merge-cap-craton-loss.md), [0005](0005-continental-recycling-balance.md),
   [0008](0008-craton-collision-jamming.md) (buoyant columns resist subduction)
 
@@ -26,7 +27,9 @@ in 1–2 Gyr.
 The run behind RFCs 0001–0007 shows it. The run is seed 456862899, 19.2 Gyr, saved locally
 as `mantle-bloom-seed456862899-19191800000y.mbworld`; the file is on the author's machine
 and **not available for download**. Numbers come from `bin/debug/ledger_history.py` on that
-save.
+save. The save predates #358: it ran post-#340 code (exact commit unknown) with the split
+cooldown counted in steps, 200 Myr for most of the run, so it split and merged far less than
+the model does now.
 
 - `subducted_m3` was the largest craton sink: 1,128 M km³, **42%** of all craton
   destruction.
@@ -34,6 +37,20 @@ save.
   craton.
 - Per Gyr, it took 6%, 18%, 7%, 12% and 10% of the live craton in the first five Gyr. Later
   windows ran at 20–77%, as the cratons shrank and had more edge per unit volume.
+
+**On the current model** (origin/main 2562f63, 5 Myr steps; `analysis/issue403/`):
+
+| Run | `subducted_m3` per Gyr, % of live craton | Rank among craton sinks |
+|---|---|---|
+| Seed 7, 0–1 Gyr | 5.9% | 4th, after `delaminated` (54%), `rifted` (13%) and `eroded` (9.7%) |
+| Seed 11, 0–1 Gyr | 14% | 3rd, after `eroded` (21%) and `delaminated` (18%) |
+| Seed 2024, 0–1 Gyr | 9.3% | 4th, after `delaminated` (31%), `rifted` (16%) and `eroded` (10%) |
+| Seed 456862899, Gyr 0 / 1 / 2 | 15% / 22% / 33% | 3rd in Gyr 0 (after `delaminated` 28% and `eroded` 21%); **1st** in Gyr 1 and 2 |
+
+It is still steady: no single step on seed 456862899 takes more than about 0.5% of the
+live craton. Over the first Gyr, while continents are large, merges (RFC 0001) and erosion
+outweigh it. Once merges stop (1–2 per Gyr on seed 456862899 after the first Gyr), it is the
+largest sink, as in the save.
 
 Geologically this is backwards. Archean cratons have survived for billions of years
 [[Pearson et al., 2021]](#ref-pearson2021). Craton destruction is rare: the eastern
@@ -68,8 +85,8 @@ Reading the code narrows this down, but needs the split to confirm:
   collision involved, booked under a collision name. It also contradicts the rule that
   cratonic crust doesn't flow (`cratons.py`, `orogeny.py`).
 
-On seeds 7, 11 and 2024 to 1 Gyr (origin/main at 1b4f686; RFC 0008's evidence table,
-`analysis/rfc0008/`), `collision_reworked_m3` took 1.2%, 2.1% and 1.3% of the starting
+On seeds 7, 11 and 2024 to 1 Gyr (origin/main at 1b4f686, reproduced exactly at 2562f63;
+RFC 0008's evidence table, `analysis/rfc0008/`), `collision_reworked_m3` took 1.2%, 2.1% and 1.3% of the starting
 craton. `subducted_m3` took 5.9%, 14% and 9.3%. The collision sink is small next to
 subduction, but it is a conservation error where the fault audit is its source, so it is
 fixed whatever its size.
@@ -150,6 +167,12 @@ cases, and 5 as a conservation fix whatever the gate finds.
   carries, and gives RFC 0005 the classification it needs.
 - Re-measure after 2. If the attrition share is still above target, add 3. It is the more
   physical answer, but it changes how cratons die and needs its own calibration.
+
+**After the re-baseline (#403).** The recommendation stands. `subducted_m3` is no longer the
+largest sink in the first Gyr (Problem), so this RFC follows RFC 0001 in the implementation
+order. It is still the sink that takes over once merges stop, and it runs at 6–33% per Gyr
+against a 3% target, so the case for it holds. `eroded_m3`, 10–21% of the craton in the
+first Gyr, isn't addressed by this RFC or any other (#413).
 
 ## Design
 
@@ -403,8 +426,11 @@ are backfilled at 0.0 by `cratons.ensure_ledger`. A pre-change save keeps its hi
 - [ ] With solution 5, `faulted_m3` is below 0.1% of the initial craton per Gyr on seeds 7,
       11 and 2024.
 - [ ] Craton loss to attrition is at most **3% of live craton per Gyr** over the first
-      3 Gyr on seed 456862899 (6–18% today), and on average across seeds 7, 11 and 2024,
-      for variant (b) at the starting knobs.
+      3 Gyr on a regenerated seed 456862899, and on average across seeds 7, 11 and 2024,
+      for variant (b) at the starting knobs. On origin/main 2562f63, `subducted_m3` (an
+      upper bound on attrition until phase 1 splits it) is 15%, 22% and 33% per Gyr on
+      seed 456862899, and 9.9% on the tuning-seed mean (5.9%, 14%, 9.3%). The pre-#358
+      save ran at 6–18%.
 - [ ] The sensitivity runs (variants a and c; logistic widths and averaging window at ½×
       and 2×) are reported, and the 3%-per-Gyr result holds for most of them.
 - [ ] Each regime (p < 0.5, p ≥ 0.5) covers at least 20% of trench contact length,
