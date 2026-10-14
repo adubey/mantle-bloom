@@ -15,6 +15,12 @@ each issue still gets its own branch and reviewable PR.
 - Read `rfc/README.md`, the relevant RFCs, and any linked issues or PRs. Check whether this
   is a new proposal, a draft under review, an accepted RFC awaiting diagnosis or issues, or
   an RFC whose implementation is already underway.
+- **Confirm acceptance before working on an existing RFC.** If the user asks to start work on
+  an RFC whose status is Draft, and hasn't said they accept it, ask whether they accept the
+  RFC (as written, or with changes) before running its gates or opening issues. An RFC PR
+  merged as a draft doesn't count as acceptance. If they accept, set its status to Accepted
+  in the RFC header and the `rfc/README.md` index, with the date. If not, treat it as a draft
+  under review (section 3).
 - For a new proposal, choose the next `NNNN` by checking the index and existing filenames.
   Do not reuse a number or create a second RFC for a question an existing RFC already
   covers; extend or supersede the existing RFC when that fits.
@@ -75,5 +81,5 @@ each issue still gets its own branch and reviewable PR.
   have landed.
 
 Keep issue creation and RFC acceptance aligned with the lifecycle in `rfc/README.md`: the
-project owner accepts an RFC by merging its RFC PR, and the RFC remains the record of the
-decision after implementation.
+project owner accepts an RFC by merging its RFC PR, or by saying so for an RFC already merged
+as a draft, and the RFC remains the record of the decision after implementation.
