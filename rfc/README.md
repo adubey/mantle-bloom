@@ -12,7 +12,7 @@ implemented through ordinary issues and PRs (see [AGENTS.md](../AGENTS.md)), eac
 |---|---|---|
 | [0001](0001-merge-cap-craton-loss.md) | Plate merges must not destroy cratons | Draft |
 | [0002](0002-craton-trench-attrition.md) | Cratons are rarely subducted: margin-dependent attrition | Draft |
-| [0003](0003-rifting-around-cratons.md) | Rifts go around cratons | Draft |
+| [0003](0003-rifting-around-cratons.md) | Rifts go around cratons | Accepted |
 | [0004](0004-proto-cratons.md) | Proto-cratons: restarting craton formation | Draft |
 | [0005](0005-continental-recycling-balance.md) | Balance continental recycling at trenches | Draft |
 | [0006](0006-intra-oceanic-arcs.md) | Intra-oceanic arcs: new continent from the ocean | Draft |
