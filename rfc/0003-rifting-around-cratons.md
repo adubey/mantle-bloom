@@ -2,7 +2,7 @@
 
 - **Status:** Accepted (2026-10-13)
 - **Date:** 2026-10-13
-- **Related:** #274 (craton rift and stretch resistance), #340, #378 (phase 1 gate); RFCs
+- **Related:** #389 (tracking), #274 (craton rift and stretch resistance), #340, #378 (phase 1 gate); RFCs
   [0002](0002-craton-trench-attrition.md), [0004](0004-proto-cratons.md)
 
 ## Problem
