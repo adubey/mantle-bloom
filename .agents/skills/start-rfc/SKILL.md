@@ -1,13 +1,14 @@
 ---
 name: start-rfc
-description: Set up and scope a Mantle Bloom RFC workstream, from proposal through implementation planning. Use when starting a model proposal that may lead to several implementation issues; use start-issue for an individual issue.
+description: Set up a local Mantle Bloom RFC worktree and coordinate its proposal with linked implementation issues. Use when starting or continuing an RFC workstream.
 ---
 
 # Start work on an RFC
 
 An RFC is the parent decision for a model change. It may be implemented through several
 issues, but those issues start only after the RFC is accepted and any diagnosis gates have
-passed. Keep the proposal and each implementation issue in its own workstream.
+passed. The RFC worktree is the shared local workspace for its proposal and linked issues;
+each issue still gets its own branch and reviewable PR.
 
 ## 1. Identify the RFC and its state
 
@@ -22,9 +23,23 @@ passed. Keep the proposal and each implementation issue in its own workstream.
 
 ## 2. Set up the RFC worktree
 
-- Continue in a worktree already created for this RFC or its PR, and confirm its branch and
-  base. Otherwise, branch from `origin/main` in a new worktree; the primary checkout's
-  local `main` may lag behind `origin`.
+- Worktrees are local to a machine and its agentic framework. Check whether the RFC worktree
+  is accessible in the current environment; don't assume a Claude Code worktree is also
+  available to Codex, or vice versa. If it isn't available here, set up a local RFC
+  worktree from the canonical state that is accessible through Git: use the RFC PR branch
+  to continue a draft, and `origin/main` for a new or accepted RFC. Unpushed work in another
+  environment is not available through its worktree alone.
+- For an RFC PR branch available on `origin`, fetch it and create a local worktree that
+  tracks it:
+
+  ```bash
+  git fetch origin
+  git worktree add --track ../mantle-bloom-rfc-<NNNN> origin/<rfc-branch>
+  ```
+
+- For a new RFC, or an accepted RFC whose content is already on `origin/main`, create a
+  local RFC worktree from `origin/main`; the primary checkout's local `main` may lag behind
+  `origin`.
 
   ```bash
   git fetch origin
@@ -32,8 +47,9 @@ passed. Keep the proposal and each implementation issue in its own workstream.
   ```
 
   `<agent>` is `claude` or `codex`. For an RFC already in review, continue its existing
-  branch rather than creating a competing one. Never put the later implementation issues
-  on the RFC branch.
+  branch rather than creating a competing one. Once accepted, linked implementation issues
+  use this RFC worktree directory but create their own branches from `origin/main` with
+  `start-issue`; they do not go on the RFC branch.
 - Run `./bin/setup.sh` in a new worktree. Each worktree needs its own `backend/.venv`; do
   not symlink one from another tree.
 - Pick free, non-user ports only if running the app. Ports 8000 and 5173 belong to the
@@ -52,7 +68,8 @@ passed. Keep the proposal and each implementation issue in its own workstream.
 - **Accepted and ready to implement:** break the accepted design into the necessary
   dependency-ordered issues. Each issue should cite the RFC, name its own deliverable and
   acceptance checks, and avoid duplicating work assigned to another issue. Start each
-  issue using `start-issue`, with its own branch from `origin/main`.
+  issue using `start-issue`; it will reuse this RFC worktree and create an issue branch from
+  `origin/main`.
 - **Implementation underway:** use the existing RFC-to-issue links to identify remaining
   work. Update the RFC status to Implemented only after all of its implementation issues
   have landed.
