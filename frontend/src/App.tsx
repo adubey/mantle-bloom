@@ -27,6 +27,7 @@ import SaveAnimationModal from "./SaveAnimationModal";
 import Legend from "./Legend";
 import MeasureOverlay from "./MeasureOverlay";
 import ProgressBar from "./ProgressBar";
+import AdminSession from "./AdminSession";
 import ProbePopup from "./ProbePopup";
 import { PREMADE_WORLDS } from "./premadeWorlds";
 import { CRATON_LEGEND_LABEL, faultKindForLegendLabel, highlightTargetFor } from "./legendData";
@@ -1171,6 +1172,7 @@ export default function App() {
           <p style={{ opacity: 0.7, marginTop: 0, marginBottom: 16 }}>
             Physical World Builder
           </p>
+          <AdminSession />
 
           <button
             onClick={() => setShowGenerateDialog(true)}

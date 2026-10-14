@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from scipy.spatial import cKDTree
 
 from . import (
+    auth,
     cross_section as cross_section_view,
     debug_worlds,
     faults,
@@ -59,9 +60,14 @@ app = FastAPI(title="mantle-bloom")
 # port; 5174 stays allowed alongside it since that's Vite dev's own fallback when its primary
 # port is taken.
 _frontend_port = os.environ.get("FRONTEND_PORT", "5173")
+_frontend_origins = frozenset({f"http://localhost:{_frontend_port}", "http://localhost:5174"})
+# Added before CORSMiddleware so CORS stays outermost and its headers reach the auth guard's
+# 401/403 refusals too (#372). The Vite dev origin counts as same-site for the CSRF check.
+app.add_middleware(auth.AuthMiddleware, extra_origins=_frontend_origins)
+app.include_router(auth.router)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=list({f"http://localhost:{_frontend_port}", "http://localhost:5174"}),
+    allow_origins=list(_frontend_origins),
     allow_methods=["*"],
     allow_headers=["*"],
 )
