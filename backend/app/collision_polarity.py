@@ -189,6 +189,10 @@ class PlateCollisionMasks:
     node_keys: np.ndarray  # exact sparse-cell identity/order captured by the prepass
     continental: np.ndarray  # effective node type frozen with the contact snapshot
     retreat_eligible: np.ndarray  # lower & contested: what may be consumed
+    # Eligibility after the run-size gate, before the no-craton gate: the lower-plate retreat
+    # candidates, cratonic ones included, so a probe can count where a craton jams a front
+    # (RFC 0008's gate, #395).
+    run_eligible: np.ndarray
     retreatable: np.ndarray  # frozen eligibility after the run-size gate and the no-craton gate (#340)
     override: np.ndarray  # upper & contested: what overrides rather than retreats
 
@@ -431,6 +435,7 @@ def observe_contacts(world: "World", years: float) -> PolarityFrame:
             node_keys=c.plate.cell_keys.copy(),
             continental=c.continental.copy(),
             retreat_eligible=np.zeros(len(c.points), dtype=bool),
+            run_eligible=np.zeros(len(c.points), dtype=bool),
             retreatable=np.zeros(len(c.points), dtype=bool),
             override=np.zeros(len(c.points), dtype=bool),
         )
@@ -469,6 +474,7 @@ def observe_contacts(world: "World", years: float) -> PolarityFrame:
             )
         from . import cratons
 
+        m.run_eligible = eligible
         m.retreatable = eligible & cratons.retreat_allowed(plate)
         m.override = m.upper & contested
     frame = PolarityFrame(elapsed_years=now, masks=masks, polarity=polarity)
