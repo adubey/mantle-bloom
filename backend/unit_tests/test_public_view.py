@@ -1,4 +1,6 @@
+import asyncio
 import threading
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -29,9 +31,9 @@ def steps(monkeypatch):
         yield 1.0
 
     monkeypatch.setattr(main, "step_world_progress", fake_step)
-    main._state["world"] = world
+    main._set_world(world)
     yield ran
-    main._state["world"] = None
+    main._set_world(None)
     assert not main._world_lock.locked()
 
 
@@ -53,7 +55,7 @@ def _step(client, revision=None):
 
 
 def test_world_is_null_before_one_exists(guest):
-    main._state["world"] = None
+    main._set_world(None)
     body = guest.get("/public/world").json()
     assert body["world"] is None
     assert body["steps_remaining"] == public_view.GUEST_STEP_LIMIT
@@ -164,23 +166,34 @@ def test_render_gives_up_while_owner_holds_the_world(guest, steps, monkeypatch):
         main._world_lock.release()
 
 
+def _bumping(world, feed, extra=None):
+    """A guest compute that advances `world` and publishes it, as main._run_guest_step does."""
+    def compute():
+        if extra is not None:
+            extra()
+        world.elapsed_years += 1
+        feed.publish(world)
+    return compute
+
+
 def test_concurrent_requests_share_one_computation():
     world = SimpleNamespace(seed=1, elapsed_years=0.0)
+    feed = public_view.WorldFeed()
+    feed.publish(world)
     lock = threading.Lock()
     coordinator = public_view.GuestStepCoordinator()
     started, release = threading.Event(), threading.Event()
     computed = []
 
-    def compute(w):
+    def hold():
         computed.append(1)
         started.set()
         release.wait(5)
-        w.elapsed_years += 1
+
+    seen = feed.revision()
 
     def request(results):
-        results.append(coordinator.request_step(
-            public_view.world_revision(world), True, lambda: world, lock, compute
-        ).status)
+        results.append(coordinator.request_step(seen, True, feed.revision, lock, _bumping(world, feed, hold)).status)
 
     first, second = [], []
     t1 = threading.Thread(target=request, args=(first,))
@@ -196,24 +209,219 @@ def test_concurrent_requests_share_one_computation():
 
 
 def test_waiting_on_a_stuck_step_gives_up_as_busy():
-    world = SimpleNamespace(seed=1, elapsed_years=0.0)
+    feed = public_view.WorldFeed()
     coordinator = public_view.GuestStepCoordinator()
     coordinator._inflight = threading.Event()
     outcome = coordinator.request_step(
-        public_view.world_revision(world), True, lambda: world, threading.Lock(), lambda w: None, inflight_wait_s=0.01
+        feed.revision(), True, feed.revision, threading.Lock(), lambda: None, inflight_wait_s=0.01
     )
     assert outcome.status == "busy"
 
 
 def test_failed_step_releases_the_world_and_charges_nothing():
-    world = SimpleNamespace(seed=1, elapsed_years=0.0)
+    feed = public_view.WorldFeed()
     lock = threading.Lock()
     coordinator = public_view.GuestStepCoordinator()
 
-    def boom(w):
+    def boom():
         raise RuntimeError("degenerate geometry")
 
     with pytest.raises(RuntimeError):
-        coordinator.request_step(public_view.world_revision(world), True, lambda: world, lock, boom)
+        coordinator.request_step(feed.revision(), True, feed.revision, lock, boom)
     assert not lock.locked()
     assert coordinator._inflight is None
+
+
+def test_world_changed_after_the_revision_check_is_not_charged():
+    # The owner changes the world between the coordinator's revision check and its taking the
+    # world lock: the guest asked to step a world they haven't seen, so nothing is computed.
+    world = SimpleNamespace(seed=1, elapsed_years=0.0)
+    feed = public_view.WorldFeed()
+    feed.publish(world)
+    seen = feed.revision()
+
+    class OwnerSlipsIn:
+        def acquire(self, *_args, **_kwargs):
+            feed.publish(world)
+            return True
+
+        def release(self):
+            self.released = True
+
+    lock = OwnerSlipsIn()
+    outcome = public_view.GuestStepCoordinator().request_step(seen, True, feed.revision, lock, pytest.fail)
+    assert outcome.status == "shared"
+    assert lock.released
+
+
+# --- Revisions, viewer updates and the render cache (#374) -----------------------------------
+
+
+def test_revision_moves_on_every_publish_and_differs_across_processes():
+    feed, other = public_view.WorldFeed(), public_view.WorldFeed()
+    world = SimpleNamespace(seed=3, elapsed_years=5.0)
+    feed.publish(world)
+    other.publish(world)
+    first = feed.revision()
+    assert first != other.revision()
+    assert feed.summary() == {"revision": first, "seed": 3, "elapsed_years": 5.0}
+    # Same seed and age (e.g. reloading the same save) is still a new revision.
+    feed.publish(world)
+    assert feed.revision() != first
+    feed.publish(None)
+    assert feed.summary() is None
+
+
+def test_wait_past_returns_when_another_thread_publishes():
+    feed = public_view.WorldFeed()
+    seen = feed.revision()
+
+    async def wait():
+        loop = asyncio.get_running_loop()
+        loop.call_later(0.05, lambda: threading.Thread(target=feed.publish, args=(None,)).start())
+        start = time.monotonic()
+        await feed.wait_past(seen, 5.0)
+        return time.monotonic() - start
+
+    assert asyncio.run(wait()) < 1.0
+    assert feed.revision() != seen
+    assert feed._waiters == []
+
+
+def test_wait_past_times_out_and_returns_at_once_for_a_stale_revision():
+    feed = public_view.WorldFeed()
+    asyncio.run(feed.wait_past(feed.revision(), 0.01))
+    assert feed._waiters == []
+    stale = feed.revision()
+    feed.publish(None)
+    asyncio.run(asyncio.wait_for(feed.wait_past(stale, 60.0), 1.0))
+
+
+def test_render_cache_serves_only_the_current_revision():
+    cache = public_view.RenderCache(max_entries=2)
+    cache.put("r1", ("biome",), {"image_base64": "a"})
+    assert cache.get("r1", ("biome",)) == {"image_base64": "a"}
+    assert cache.get("r2", ("biome",)) is None
+    cache.put("r2", ("elevation",), {"image_base64": "b"})
+    assert cache.get("r1", ("biome",)) is None
+    cache.put("r2", ("biome",), {"image_base64": "c"})
+    cache.put("r2", ("biome", 2), {"image_base64": "d"})
+    assert cache.get("r2", ("elevation",)) is None  # oldest evicted past the cap
+    cache.clear()
+    assert cache.get("r2", ("biome",)) is None
+
+
+def test_viewers_share_one_render_per_revision(guest, steps, monkeypatch):
+    calls = []
+    monkeypatch.setattr(main.render_image, "render_png_base64", lambda *args: calls.append(args) or f"png{len(calls)}")
+    first = guest.get("/public/render", params={"view": "biome"}).json()
+    other = TestClient(app, base_url="https://testserver").get("/public/render", params={"view": "biome"}).json()
+    assert other == first
+    assert len(calls) == 1
+    assert guest.get("/public/render", params={"view": "elevation"}).json()["image_base64"] == "png2"
+    _step(guest)
+    after = guest.get("/public/render", params={"view": "biome"}).json()
+    assert after["image_base64"] == "png3"
+    assert after["revision"] == _revision(guest) != first["revision"]
+    assert after["elapsed_years"] == public_view.GUEST_STEP_YEARS
+
+
+def test_cached_render_is_served_while_the_owner_holds_the_world(guest, steps, monkeypatch):
+    monkeypatch.setattr(main.render_image, "render_png_base64", lambda *args: "png")
+    monkeypatch.setattr(public_view, "GUEST_LOCK_WAIT_S", 0.01)
+    guest.get("/public/render")
+    main._world_lock.acquire()
+    try:
+        assert guest.get("/public/render").json()["image_base64"] == "png"
+    finally:
+        main._world_lock.release()
+
+
+class _AnyWorld(SimpleNamespace):
+    """Answers 0 for any attribute the owner's routes read that a test didn't set."""
+
+    def __getattr__(self, name):
+        return 0
+
+
+@pytest.mark.parametrize("change", ["controls", "load"])
+def test_owner_changes_invalidate_viewer_renders(steps, monkeypatch, change):
+    monkeypatch.setattr(main.render_image, "render_png_base64", lambda *args: "png")
+    monkeypatch.setattr(main, "_summary", lambda world: {})
+    main._set_world(_AnyWorld(seed=7, elapsed_years=0.0))
+    client = _local()
+    before = client.get("/public/render").json()["revision"]
+    if change == "controls":
+        monkeypatch.setattr(main.climate, "compute_climate", lambda *args: None)
+        assert client.post("/world/controls", json={"solar_multiplier": 1.1}).status_code == 200
+    else:
+        monkeypatch.setattr(main.persistence, "load_world_bytes", lambda body: _AnyWorld(
+            seed=7, elapsed_years=0.0, hydrology_cache=None))
+        assert client.post("/world/load", content=b"save").status_code == 200
+    assert client.get("/public/render").json()["revision"] != before
+
+
+def test_load_while_the_world_is_busy_is_refused(steps, monkeypatch):
+    monkeypatch.setattr(main.persistence, "load_world_bytes", lambda body: _AnyWorld(
+        seed=8, elapsed_years=0.0, hydrology_cache=None))
+    before = _revision(_local())
+    main._world_lock.acquire()
+    try:
+        assert _local().post("/world/load", content=b"save").status_code == 503
+    finally:
+        main._world_lock.release()
+    assert _revision(_local()) == before
+
+
+def test_viewer_long_poll_wakes_on_another_viewers_step(guest, steps):
+    revision = _revision(guest)
+    result = {}
+    poller = threading.Thread(target=lambda: result.update(guest.get("/public/world", params={"after": revision}).json()))
+    poller.start()
+    time.sleep(0.05)
+    assert poller.is_alive()
+    stepped = _step(TestClient(app, base_url="https://testserver"), revision).json()
+    poller.join(5)
+    assert result["world"] == stepped["world"]
+    assert result["steps_remaining"] == public_view.GUEST_STEP_LIMIT
+    assert len(steps) == 1
+
+
+def test_viewer_long_poll_answers_the_current_world_on_timeout(guest, steps, monkeypatch):
+    monkeypatch.setattr(public_view, "GUEST_POLL_WAIT_S", 0.01)
+    revision = _revision(guest)
+    assert guest.get("/public/world", params={"after": revision}).json()["world"]["revision"] == revision
+
+
+def test_duplicate_concurrent_step_requests_run_the_step_once(guest, steps, monkeypatch):
+    started, release = threading.Event(), threading.Event()
+
+    def slow_step(w, years):
+        steps.append(years)
+        started.set()
+        release.wait(5)
+        w.elapsed_years += years
+        yield 1.0
+
+    monkeypatch.setattr(main, "step_world_progress", slow_step)
+    revision = _revision(guest)
+    results = []
+
+    def request():
+        results.append(_step(TestClient(app, base_url="https://testserver"), revision).json())
+
+    threads = [threading.Thread(target=request) for _ in range(3)]
+    threads[0].start()
+    assert started.wait(5)
+    for t in threads[1:]:
+        t.start()
+    time.sleep(0.05)
+    release.set()
+    for t in threads:
+        t.join(5)
+    assert len(steps) == 1
+    assert sorted(r["computed"] for r in results) == [False, False, True]
+    assert len({r["world"]["revision"] for r in results}) == 1
+    # A later request against the new revision is a new step.
+    assert _step(guest, results[0]["world"]["revision"]).json()["computed"] is True
+    assert len(steps) == 2

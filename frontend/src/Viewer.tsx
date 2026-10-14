@@ -28,6 +28,7 @@ const VIEWS: { id: PublicView; label: string }[] = [
   { id: "biome", label: "Biome" },
 ];
 const noop = () => {};
+const POLL_RETRY_MS = 5000;
 
 function useDisplayWidth(): number {
   const measure = () => Math.min(MAX_DISPLAY_WIDTH, window.innerWidth - 2 * PAGE_GUTTER);
@@ -88,10 +89,38 @@ export default function Viewer() {
   const displayHeight = Math.round(displayWidth * ASPECT);
   const mapWrapperRef = useRef<HTMLDivElement>(null);
   const revision = state?.world?.revision ?? null;
+  const loaded = state !== null;
 
   useEffect(() => {
     fetchPublicState().then(setState, (err) => setError(String(err)));
   }, []);
+
+  // Follow the shared world: a long poll that answers when anyone (another viewer, or the
+  // owner) changes it, so this page re-renders without stepping itself (#374). Restarted on
+  // every revision change, including this viewer's own steps.
+  useEffect(() => {
+    if (!loaded) return;
+    const seen = revision ?? "";
+    const controller = new AbortController();
+    let timer: number | undefined;
+    const poll = () => {
+      fetchPublicState(seen, controller.signal).then(
+        (next) => {
+          if ((next.world?.revision ?? "") === seen) poll();
+          else setState(next);
+        },
+        () => {
+          // Back off on errors (server restarting, network blip) rather than spinning.
+          if (!controller.signal.aborted) timer = window.setTimeout(poll, POLL_RETRY_MS);
+        },
+      );
+    };
+    poll();
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [loaded, revision]);
 
   useEffect(() => {
     if (revision === null) return;
@@ -116,7 +145,7 @@ export default function Viewer() {
     try {
       const result = await stepPublicWorld(revision);
       setState((s) => s && { ...s, world: result.world, steps_remaining: result.steps_remaining });
-      if (!result.computed) setNotice("Someone else had already moved the world on, so you're caught up for free.");
+      if (!result.computed) setNotice("The world had already changed, so you're caught up to it for free.");
     } catch (err) {
       if (err instanceof PublicStepRefused && err.status === 429) {
         setState((s) => s && { ...s, steps_remaining: 0 });
