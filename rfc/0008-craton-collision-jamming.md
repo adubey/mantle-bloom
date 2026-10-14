@@ -1,8 +1,8 @@
 # RFC 0008: Cratons jam collisions: braking and fusion
 
-- **Status:** Draft
+- **Status:** Accepted (2026-10-14)
 - **Date:** 2026-10-14
-- **Related:** #274 (cratons), #340 (craton partition rules, the craton brake), #318 and #315
+- **Related:** #396 (tracking), #395 (phase 1 gate), #274 (cratons), #340 (craton partition rules, the craton brake), #318 and #315
   (collision polarity), #331 (dock terranes as cells); RFCs
   [0001](0001-merge-cap-craton-loss.md) (merges must not destroy cratons),
   [0002](0002-craton-trench-attrition.md) (cratons resist sinking),
