@@ -95,6 +95,17 @@ def test_writes_left_by_a_killed_process_are_removed_at_startup(tmp_path, world,
     assert "cut off" in caplog.text
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root can write to a read-only directory")
+def test_an_unwritable_directory_fails_at_startup(tmp_path):
+    # Rather than at the first checkpoint, after the deploy's health check has passed (#376).
+    tmp_path.chmod(0o500)
+    try:
+        with pytest.raises(PermissionError):
+            CheckpointStore(tmp_path).load()
+    finally:
+        tmp_path.chmod(0o700)
+
+
 def test_directory_comes_from_the_env_or_the_railway_volume(monkeypatch, tmp_path):
     monkeypatch.delenv(checkpoint.CHECKPOINT_DIR_ENV, raising=False)
     monkeypatch.delenv(checkpoint.RAILWAY_VOLUME_ENV, raising=False)

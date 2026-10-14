@@ -17,7 +17,7 @@ serves the built frontend and the API from the same origin, as the desktop build
 | `/login` | Anyone | GitHub sign-in (#372), rendered by the backend. |
 | `/world/*` | The owner | The full API. `401` without the owner's session. |
 | `/public/*` | Anyone | The viewer's API, with a 30-step allowance per browser. |
-| `/healthz` | Railway | Health check. It answers once the checkpoint is restored. |
+| `/healthz` | Railway | Health check. It answers once the checkpoint is restored, and fails if the volume can't hold one. |
 
 The files involved:
 
@@ -107,7 +107,9 @@ The volume at `/data` holds the checkpoint (#375, see
 `checkpoint.py` takes the directory from `RAILWAY_VOLUME_MOUNT_PATH`, so the code doesn't
 hard-code `/data`. `railway.ts` mounts the volume at `/data` and sets it as the
 `requiredMountPath`, so a deploy without a volume there fails instead of running without
-checkpoints. On first boot the log says `checkpoint: no saved world in /data`. That's
+checkpoints. A volume that's there but can't be written fails the deploy too: startup checks
+that it can write to the directory, and `/healthz` answers `503` with the reason if not. On
+first boot the log says `checkpoint: no saved world in /data`. That's
 expected until you generate a world. The same message on a later boot means the volume is
 missing or mounted at another path.
 

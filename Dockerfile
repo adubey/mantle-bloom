@@ -1,6 +1,6 @@
 # The hosted app (#376): one container serving the built frontend and the FastAPI backend from
-# one origin, as the desktop build does. Railway builds it from railway.toml; see
-# docs/HOSTING.md for the variables and volume it needs.
+# one origin, as the desktop build does. Railway builds it as .railway/railway.ts configures;
+# see docs/HOSTING.md for the variables and volume it needs.
 
 # Node 20 matches CI's frontend job (.github/workflows/test.yml).
 FROM node:20-slim AS frontend

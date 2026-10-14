@@ -27,7 +27,10 @@ export default defineRailway(() => {
       sleepApplication: true,
       restartPolicyType: "ON_FAILURE",
       restartPolicyMaxRetries: 5,
-      // Time for uvicorn's 5 s graceful shutdown (Dockerfile) before the old deploy is killed.
+      // SIGTERM to SIGKILL. uvicorn closes viewers' long polls within 5 s (Dockerfile), then
+      // waits 1 s for the run loop (run_control.WorldRunner.close). A step still under way
+      // after that is cut off: the world restarts from the step before, whose checkpoint is
+      // intact, and the cut-off write's temporary file is removed at startup.
       drainingSeconds: 10,
     },
     volumeMounts: { [CHECKPOINT_MOUNT]: checkpoint },

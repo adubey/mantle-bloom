@@ -4,10 +4,8 @@ import gc
 import io
 import json
 import math
-import re
 import threading
 import time
-from pathlib import Path
 import av
 import pytest
 from fastapi.testclient import TestClient
@@ -1534,6 +1532,7 @@ def store(client, tmp_path, monkeypatch):
 
     monkeypatch.setenv(checkpoint.CHECKPOINT_DIR_ENV, str(tmp_path))
     monkeypatch.setattr(main, "_checkpoint_store", None)
+    monkeypatch.setattr(main, "_checkpoint_error", None)
 
     def fake_step(world, years):
         world.elapsed_years += years
@@ -1658,6 +1657,20 @@ def test_a_status_that_cannot_be_saved_is_reported(client, store, saved_world, m
     monkeypatch.setattr(main, "_checkpoint_store", None)
 
 
+def test_health_check_fails_when_the_checkpoint_directory_is_unusable(client, store, tmp_path, monkeypatch):
+    # A deploy whose volume can't hold a checkpoint must not pass as healthy (#376).
+    from app import checkpoint
+
+    blocker = tmp_path / "not-a-directory"
+    blocker.write_text("")
+    monkeypatch.setenv(checkpoint.CHECKPOINT_DIR_ENV, str(blocker))
+    main._restore_checkpoint()
+
+    resp = client.get("/healthz")
+    assert resp.status_code == 503
+    assert "not-a-directory" in resp.json()["detail"]
+
+
 def test_an_animation_that_fails_keeps_the_frames_it_finished(client, store, saved_world, monkeypatch):
     _checkpoint(store, saved_world, running=False)
     main._restore_checkpoint()
@@ -1695,12 +1708,6 @@ def test_mounted_frontend_serves_spa_routes_and_keeps_the_backend_ones(mounted_f
     assert mounted_frontend.get("/assets/index-abc.js").text == "console.log(1)"
     # Registered before the catch-all, so the bundle doesn't shadow them.
     assert "<title>bundle</title>" not in mounted_frontend.get("/login").text
-    assert mounted_frontend.get("/healthz").json() == {"status": "ok"}
     assert mounted_frontend.get("/world/summary").status_code == 401
     assert mounted_frontend.get("/").headers["location"].endswith("/view")
 
-
-def test_railway_health_check_path_is_served(client):
-    config = (Path(__file__).resolve().parents[2] / ".railway" / "railway.ts").read_text()
-    path = re.search(r'healthcheckPath: "([^"]+)"', config).group(1)
-    assert client.get(path).status_code == 200

@@ -1902,6 +1902,8 @@ def public_step(req: PublicStepRequest, request: Request, response: Response) ->
 # (run_control.py), and the world and that status are checkpointed to persistent storage when
 # one is configured (checkpoint.py), so a hosted instance that sleeps or restarts resumes them.
 _checkpoint_store: checkpoint.CheckpointStore | None = None
+# Why a configured checkpoint directory couldn't be used at startup, for /healthz to report.
+_checkpoint_error: str | None = None
 
 
 def _checkpoint_world() -> None:
@@ -1949,17 +1951,18 @@ def _restore_checkpoint() -> None:
     """At startup: load the checkpointed world and run status, if checkpointing is configured,
     and resume running if it was. The world is restored exactly as saved; the time the server
     spent asleep isn't simulated."""
-    global _checkpoint_store
+    global _checkpoint_store, _checkpoint_error
     store = checkpoint.CheckpointStore.from_env()
     if store is None:
         _logger.info("checkpoint: %s isn't set; the world won't survive a restart", checkpoint.CHECKPOINT_DIR_ENV)
         return
     try:
         world, status = store.load()
-    except OSError:
+    except OSError as exc:
         _logger.exception("checkpoint: can't use %s; running without checkpoints", store.directory)
+        _checkpoint_error = f"can't use checkpoint directory {store.directory}: {exc}"
         return
-    _checkpoint_store = store
+    _checkpoint_store, _checkpoint_error = store, None
     if world is not None:
         with _world_lock:
             _state["world"] = world
@@ -2026,16 +2029,20 @@ def set_run(req: RunRequest) -> dict:
 
 @app.get("/healthz", include_in_schema=False)
 def healthz() -> dict:
-    """Liveness for Railway's deploy health check (railway.toml, #376). Public and lock-free:
-    a step or render holding the world lock mustn't fail a deploy. It can't answer before the
-    lifespan's checkpoint restore finishes, so a 200 also means the saved world is loaded."""
+    """Railway's deploy health check (.railway/railway.ts, #376). Public and lock-free: a step
+    or render holding the world lock mustn't fail a deploy. It can't answer before the
+    lifespan's checkpoint restore finishes. `503` when a checkpoint directory is configured
+    but couldn't be used, so a deploy whose volume can't be written fails instead of running
+    a world that the next sleep would lose."""
+    if _checkpoint_error is not None:
+        raise HTTPException(status_code=503, detail=_checkpoint_error)
     return {"status": "ok"}
 
 
 # In the packaged single-process app and the Railway image (Dockerfile, #376) there is no
 # separate Vite server: FastAPI serves the built React bundle itself, from the same origin as
-# the API (so api.ts's API_BASE is ""). The dev workflow (bin/restart.sh) is unaffected -- it runs its own frontend server and never
-# sets MANTLE_BLOOM_FRONTEND_DIST.
+# the API (so api.ts's API_BASE is ""). The dev workflow (bin/restart.sh) is unaffected -- it
+# runs its own frontend server and never sets MANTLE_BLOOM_FRONTEND_DIST.
 
 
 def mount_frontend(app: FastAPI, dist_dir: str | os.PathLike[str]) -> None:
