@@ -1,0 +1,66 @@
+{
+ "origin_main": {
+  "7": {
+   "rifted_km3": 165813156,
+   "rifted_pct_start_per_gyr": 4.05,
+   "craton_volume_end_km3": 3110243146,
+   "splits": 33,
+   "failed_rifts": 29,
+   "plates_end": 18,
+   "mean_plates": 17.5,
+   "rifted_failed_km3": 27900681
+  },
+  "11": {
+   "rifted_km3": 137954757,
+   "rifted_pct_start_per_gyr": 4.35,
+   "craton_volume_end_km3": 1351785278,
+   "splits": 37,
+   "failed_rifts": 31,
+   "plates_end": 28,
+   "mean_plates": 17.2,
+   "rifted_failed_km3": 19550535
+  },
+  "2024": {
+   "rifted_km3": 184615631,
+   "rifted_pct_start_per_gyr": 10.71,
+   "craton_volume_end_km3": 1416795993,
+   "splits": 32,
+   "failed_rifts": 28,
+   "plates_end": 26,
+   "mean_plates": 18.6,
+   "rifted_failed_km3": 17681546
+  }
+ },
+ "branch": {
+  "7": {
+   "rifted_km3": 139332280,
+   "rifted_pct_start_per_gyr": 3.4,
+   "craton_volume_end_km3": 3049684967,
+   "splits": 33,
+   "failed_rifts": 27,
+   "plates_end": 17,
+   "mean_plates": 17.5,
+   "rifted_failed_km3": null
+  },
+  "11": {
+   "rifted_km3": 170871014,
+   "rifted_pct_start_per_gyr": 5.39,
+   "craton_volume_end_km3": 1395627826,
+   "splits": 28,
+   "failed_rifts": 29,
+   "plates_end": 27,
+   "mean_plates": 18.1,
+   "rifted_failed_km3": null
+  },
+  "2024": {
+   "rifted_km3": 148939942,
+   "rifted_pct_start_per_gyr": 8.64,
+   "craton_volume_end_km3": 1566798196,
+   "splits": 32,
+   "failed_rifts": 26,
+   "plates_end": 20,
+   "mean_plates": 15.5,
+   "rifted_failed_km3": null
+  }
+ }
+}
