@@ -1,39 +1,91 @@
 # RFC 0006: Intra-oceanic arcs: new continent from the ocean
 
 - **Status:** Draft
-- **Date:** 2026-10-13
+- **Date:** 2026-10-13; evidence refreshed 2026-10-14 (#403)
 - **Related:** #120 (arc magmatism vs. land decline), #311 (terrane keels), #318
-  (collision polarity fronts), #321 (terrane docking); RFCs
+  (collision polarity fronts), #321 (terrane docking),
+  [#406](https://github.com/adubey/mantle-bloom/issues/406) (source-attribution diagnosis); RFCs
   [0004](0004-proto-cratons.md), [0005](0005-continental-recycling-balance.md),
   [0007](0007-mantle-plumes-and-plateaus.md) (shared docking and buoyant-crust tracers)
 
 ## Problem
 
-In the model, new continental crust can only form where continental crust already is:
+The model has no intra-oceanic arc source:
 - Arc magmatism needs a *continental* plate facing a converging oceanic one
   (`lithosphere_plate.continental_arc_band` returns nothing for an oceanic plate).
-- Rift melts, volcanic eruptions and arc cell growth book juvenile continental material
-  only on continental hosts.
-- Where two oceanic plates converge, both sides' contested nodes simply subduct
-  (`boundary_context`: an oceanic plate's `shrinkable` is all of `contested`). There is no
-  overriding plate and no arc.
+- Volcanic eruptions and arc cell growth book juvenile continental material on
+  continental-coded hosts.
+- Where two oceanic plates converge, both sides' contested oceanic-coded floor nodes
+  subduct (`boundary_context`: an oceanic plate's `shrinkable` is all of `contested`).
+  There is no ocean–ocean overriding plate and no arc.
 
-Production therefore scales with the length of continental margin. As continents shrink,
-production shrinks with them, and a world that loses its continents can't make new ones.
+**Current-code qualification (#403).** Continental sources are not strictly restricted to
+pre-existing continental codes. `_erupt_melted_nodes` resets a melted column to continental
+crust whenever its *pre-melt elevation* is above 0 m, and `deform_columns` and
+`quad_tectonics._open_rift` book the resulting juvenile material. An exposed oceanic-coded
+column can therefore become continental through an existing elevation rule. Continental
+arc production depends on continental margin, but a continent-free state has not been
+shown to be absorbing. The source-attribution gate below must distinguish that existing
+route from the proposed oceanic-arc maturation route.
 
-The run behind RFCs 0001–0007 shows the end state. The run is seed 456862899, 19.2 Gyr,
-saved locally as `mantle-bloom-seed456862899-19191800000y.mbworld`; the file is on the
-author's machine and **not available for download**. Numbers come from
-`bin/debug/ledger_history.py` on that save.
+**Historical evidence, pre-#358.** The run behind RFCs 0001–0007 showed an end state.
+The run is seed 456862899, 19.2 Gyr, saved locally as
+`mantle-bloom-seed456862899-19191800000y.mbworld`; the file is on the author's machine and
+**not available for download**. Numbers come from
+`bin/debug/ledger_history.py` on that save. They were first recorded in RFC publication
+commit `d795a09` (2026-10-13); the generating commit, density and controls remain unknown.
+#403 records 0.1 Myr steps through 21.8 Myr (218 steps), then 10 Myr steps: the old 20-step
+cooldown was 2 Myr initially and 200 Myr for most of the run. This save predates #358
+(`7afecfd`, merged at `1b4f686`), which changed the cooldown to a physical 2 Myr. The
+published values below are preserved without recomputing the private save. It cannot
+serve as the current-main baseline or be reproduced from its seed and schedule alone.
 
 - Juvenile additions fell with the inventory, from 2–4 km³/yr while continents were
   Earth-sized to 0.4 km³/yr over the last 7 Gyr.
 - By then continental material was down to about 130 M km³, 1.6% of its start, and land
   covered about 2% of the planet.
 
-The run is a stress test of the model's long-term behaviour, not a calibration interval:
-it shows that the model has no route back from a continent-free state. It does not say how
-fast continents should regrow.
+The historical run is a stress test of long-term behaviour, not a calibration interval.
+It motivates checking recovery from a continent-free state. The current code trace above
+identifies the missing oceanic-arc mechanism; the old end state neither rules out the
+elevation-driven route nor measures disappearance or recovery on current main.
+
+**Current-main baseline, post-#358 (`2562f63`, #403).**
+[The fresh evidence](../analysis/issue403/README.md) regenerates default quad worlds at
+density 1, with 5 Myr steps, 100 Myr checkpoints, a physical 2 Myr split cooldown and no
+control overrides; [tuning.json](../analysis/issue403/tuning.json) records the inputs and
+ledger checkpoints. The current first-Gyr results are:
+
+| Seed | Continental inventory (M km³) | Inventory change | Genuine continental area (M km²) | Land fraction | Juvenile additions (km³/yr) |
+|---|---|---|---|---|---|
+| 7 | 11,955 → 1,677 | −86.0% | 260.22 → 23.46 | 45.32% → 5.52% | 6.85 |
+| 11 | 6,917 → 1,866 | −73.0% | 161.57 → 26.91 | 27.70% → 6.95% | 6.05 |
+| 2024 | 6,522 → 1,642 | −74.8% | 123.36 → 23.55 | 17.59% → 5.84% | 4.22 |
+
+Land fraction is area-weighted from the climate grid; the raw node land fraction also in
+the JSON uses another definition. The historical run's 47% first-Gyr inventory loss is
+preserved in RFC 0005, but these different experiments do not measure #358's causal effect.
+
+Juvenile additions at 0–100 Myr are 10.70, 10.36 and 6.76 km³/yr on seeds 7, 11 and
+2024; by 500–1,000 Myr they are 4.96, 4.22 and 3.14 as the inventories shrink. These are
+aggregate ledger additions, not measured arc production. The refresh confirms rapid
+loss on these current baselines, but neither a continent-free state nor its recovery is tested. No oceanic-arc
+maturation or docking has been implemented or measured, and the source-attribution gate
+in [#406](https://github.com/adubey/mantle-bloom/issues/406) remains open.
+
+The existing `stats.plate_overlap_area_fraction` sums each plate's accounting area on
+nodes whose `cover_count > 0`, then divides by sphere area (`stats._overlap_once_totals`).
+It includes each overlapping plate's represented area, rather than deduplicating the
+overlap footprint, and is distinct from raw node overlap. The matched baseline is:
+
+| Seed | Plate count, 0 → 1 Gyr | Overlap area fraction, 0 → 1 Gyr | Overlap fraction, mean of 11 checkpoints |
+|---|---|---|---|
+| 7 | 20 → 51 | 0.010900 → 0.189386 | 0.142557 |
+| 11 | 9 → 57 | 0.007869 → 0.114516 | 0.147621 |
+| 2024 | 11 → 60 | 0.009024 → 0.125223 | 0.142188 |
+
+The final column is a sample mean at 0, 100, …, 1,000 Myr, not a continuous-time integral.
+The full checkpoint series in the JSON supports comparisons at matching physical times.
 
 A related scaling issue: the continental arc band is `BOUNDARY_FORCE_REACH_MULTIPLIER` (3)
 cells wide, 375 km at density 1 and 188 km at density 4, while
@@ -101,7 +153,15 @@ km of margin, so it doesn't inherit that.
 
 **Recommendation:** 1. It is the process the literature says carries continental growth
 when continents are small, and it reuses machinery the model already has: polarity front
-records, terranes, docking, the juvenile ledger.
+records, terranes, docking, the juvenile ledger. The #403 refresh retains that mechanism
+recommendation because the source is still absent in current code. It does not establish
+a need to tune oceanic-arc production to offset the private pre-#358 run's loss rate;
+RFC 0005's unpassed sink diagnosis and this RFC's source-attribution gate remain separate
+requirements. Measure the existing elevation-driven route before using a stripped world
+as evidence that oceanic arcs are the missing route back.
+[#406](https://github.com/adubey/mantle-bloom/issues/406) tracks that diagnosis; the arc
+design and knobs remain proposed and unchanged. No oceanic-arc output has been measured
+in this refresh.
 
 ## Design
 
@@ -114,8 +174,8 @@ Literature totals are converted by subtracting 6.5 km:
 - the 36 km arc stability limit is E ≈ 29.5 km, a model Hc of ≈ 40.5 km.
 
 **Polarity: persistent front records.** `collision_polarity` keeps `CollisionFront`
-records today for continental contacts only. Each record holds a pair's frozen lower
-plate, the evidence that decided it, a lineage through topology changes (`end_topology`,
+records at the refreshed baseline for continental contacts only. Each record holds a
+pair's frozen lower plate, the evidence that decided it, a lineage through topology changes (`end_topology`,
 `note_lineage`), and an expiry (`FRONT_EXPIRY_YEARS`, 5 Myr). Decisions are made in the
 step's prepass and frozen for the step, so both plates read the same answer.
 
@@ -214,9 +274,9 @@ and goes through one shared lifecycle (RFC 0007, Design):
 **Global scale check.** Gross production: at 60 km³/Myr/km, 10,000 km of active
 intra-oceanic arc makes 0.6 km³/yr of arc crust. Preservation is smaller: at f = 0.5, at
 most 0.3 km³/yr of continental material, less whatever subducts before maturing. That is a
-different quantity from the 2–4 km³/yr of continental-arc juvenile additions the ledger
-books today, which are booked at production. The acceptance criteria keep production,
-docking and preservation apart.
+different quantity from the historical pre-#358 run's 2–4 km³/yr of juvenile additions,
+which were booked at production; the ledger did not attribute all of them to arc
+magmatism. The acceptance criteria keep production, docking and preservation apart.
 
 **Runtime.**
 - The band and thickening reuse this step's boundary search (`inputs.dist_to_neighbor`,
@@ -251,7 +311,8 @@ docking and preservation apart.
 | Docking rule | — | RFC 0007 | RFC 0007 |
 
 Tune on seeds 7, 11 and 2024 to 1 Gyr, plus a regenerated seed 456862899 to 3 Gyr; run the
-replays one at a time. Report:
+replays one at a time. Record the generating commit, density, controls and full step
+schedule; a regenerated seed 456862899 is a new run, not the historical save. Report:
 - arc crust made (gross), matured, foundered, docked and subducted, kept separate;
 - each polarity tier's share, and polarity flips per front;
 - arc length by type, and recoded continental area on oceanic plates;
@@ -259,6 +320,19 @@ replays one at a time. Report:
   overlaps grow.
 
 ## Detailed design (provisional touchpoints)
+
+**Checked against current main, `2562f63` (2026-10-14).**
+`lithosphere_plate.continental_arc_band` still requires a continental owning plate;
+`boundary_context` sets oceanic-plate `shrinkable = contested` before applying the existing
+continental-front masks. `collision_polarity._detect_fronts` still requires continental
+codes on both contact sides, so #395's preserved `run_eligible` mask is not an ocean–ocean
+polarity implementation. The 11 km reference, three-spacing arc band, and 450 m/Myr
+continental-arc rate are unchanged. `crust_formed_years`, `arc_crust_m`, oceanic-front
+state, the oceanic rate helper and `terranes.py` below are all new. The existing
+`ConsumedColumn`/transfer path remains the place to carry their volumes. The existing
+`_erupt_melted_nodes` elevation rule must be included in the source-attribution diagnosis;
+its result is continental-coded before the juvenile booking, even when its input was
+oceanic-coded.
 
 - `backend/app/surface_fields.py`: register `crust_formed_years` (HISTORY, sentinel) and
   `arc_crust_m` (EXTENSIVE), with comments citing this RFC. The shared
@@ -281,8 +355,8 @@ replays one at a time. Report:
     `arc_band` / `arc_intensity` for oceanic plates.
   - `deform_columns`: per-segment arc thickening of Hc and `arc_crust_m`, then maturation
     and recoding.
-- `backend/app/rheology.py`: `oceanic_arc_rate_m_per_myr(productivity, contact_length_km,
-  band_areas_km2, intensity)` and constants, with citations.
+- `backend/app/rheology.py`: new `oceanic_arc_rate_m_per_myr(productivity,
+  contact_length_km, band_areas_km2, intensity)` and new constants, with citations.
 - `backend/app/terranes.py` (new, shared with RFC 0007): docking, the Hc-share tracer
   lifecycle, and the buoyant-crust ledger.
 - `backend/app/continental_ledger.py`: a diagnostic sub-account `juvenile_oceanic_arc_m3`
@@ -333,6 +407,13 @@ replays one at a time. Report:
 
 ## Acceptance criteria
 
+- [ ] **Source-attribution gate ([#406](https://github.com/adubey/mantle-bloom/issues/406),
+      raised by #403):** run the stripped world below on the matched,
+      pinned current-main baseline first. Record continental recoding and juvenile volume
+      from `_erupt_melted_nodes` (both column and `_open_rift` callers), with prior effective
+      crust type and elevation. Establish which existing routes can create continent before
+      attributing recovery to intra-oceanic arcs. The aggregate juvenile account cannot
+      pass this gate by itself.
 - [ ] On seeds 7, 11 and 2024 to 1 Gyr, gross arc production, matured, foundered, docked
       and subducted arc crust are each reported, and the buoyant-crust ledger closes.
       Matured continental material from intra-oceanic arcs is 0.05–0.5 km³/yr at the
@@ -341,15 +422,19 @@ replays one at a time. Report:
 - [ ] **Stripped world.** A test world with every plate's `crust_type` set to oceanic,
       every cell oceanic-coded, and all continental material and craton removed at t = 0.
       With no continental plates, the continental-arc machinery can't fire. Over 500 Myr,
-      recoded continental area appears and grows, and every juvenile addition comes from
-      `juvenile_oceanic_arc_m3`.
+      arc-derived recoded continental area appears and grows. Report
+      `juvenile_oceanic_arc_m3` separately from the existing elevation-driven reset
+      source measured by the gate; do not require every juvenile addition to be from
+      oceanic arcs.
 - [ ] Combined with RFC 0005, the continental inventory on seed 456862899 changes by less
       than 15% per Gyr over the first 3 Gyr, and never falls below 50% of its initial value
       over 5 Gyr.
 - [ ] Ocean–ocean polarity flips less than once per front per 50 Myr, and the fallback
       tier decides less than 30% of fronts.
-- [ ] Plate overlap area fraction and plate count change by less than 15% against
-      `origin/main`.
+- [ ] `stats.plate_overlap_area_fraction` and plate count change by less than 15%
+      against the matched, pinned current-main run at the same physical checkpoints
+      (same density, controls and step schedule). Use the current area-fraction and
+      count baselines above, not raw node overlap or the historical pre-#358 save.
 - [ ] Integrated arc volume per km of contact is within 5% of P at densities 1 and 4 (unit
       test).
 - [ ] Step time changes by less than 3%; save size by less than 3%.
@@ -366,8 +451,10 @@ replays one at a time. Report:
   50 Myr even with the front records, the front matching or lineage is wrong, and the
   polarity design needs rework.
 - **The stripped world doesn't recover.** If, with intra-oceanic arcs, the stripped test
-  world gains no continental area in 500 Myr, the premise that arcs are the missing route
-  back is wrong for this model. Look to RFC 0007 or to continent seeding instead.
+  world gains no arc-derived continental area in 500 Myr, the proposed maturation route
+  fails for this model. If the baseline already recovers through elevation-driven resets,
+  revise the claim that arcs are required for recovery; assess their geological role
+  separately from that premise.
 
 ## References
 

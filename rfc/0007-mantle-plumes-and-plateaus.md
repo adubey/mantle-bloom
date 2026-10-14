@@ -1,8 +1,9 @@
 # RFC 0007: Mantle plumes: oceanic plateaus, flood basalts and hotspot tracks
 
 - **Status:** Draft
-- **Date:** 2026-10-13
-- **Related:** #205 (magma transport); RFCs [0003](0003-rifting-around-cratons.md)
+- **Date:** 2026-10-13; evidence refreshed 2026-10-14 (#403)
+- **Related:** #205 (magma transport),
+  [#407](https://github.com/adubey/mantle-bloom/issues/407) (source attribution and breakup baseline); RFCs [0003](0003-rifting-around-cratons.md)
   (plume weakening of cratons), [0004](0004-proto-cratons.md) (depletion follow-up),
   [0005](0005-continental-recycling-balance.md), [0006](0006-intra-oceanic-arcs.md)
   (shared docking, buoyant-crust tracers and ledger)
@@ -18,8 +19,8 @@ spawning yet". Four Earth processes are therefore missing:
 1. **Oceanic plateaus.** Earth's largest volcanic provinces, such as Ontong Java, form when
    a plume head reaches oceanic lithosphere. They are thick enough to resist subduction,
    dock onto continents as terranes, and add about 1.1 km³/yr of crust to the continents
-   [[Clift et al., 2009]](#ref-clift2009). The model has no such source, so RFC 0006's
-   intra-oceanic arcs are its only route to new continent from the ocean.
+   [[Clift et al., 2009]](#ref-clift2009). The model has no plume-plateau source. RFC 0006 proposes intra-oceanic arcs as another
+   oceanic source; the existing elevation-driven reset below is a separate model route.
 2. **Continental flood basalts**, such as the Deccan and Siberian Traps: large, short-lived
    additions of crust to existing continents.
 3. **Hotspot tracks**, such as the Hawaiian–Emperor chain: age-progressive volcanic chains
@@ -28,16 +29,43 @@ spawning yet". Four Earth processes are therefore missing:
    [[Foley, 2008]](#ref-foley2008) [[Koptev et al., 2015]](#ref-koptev2015). RFC 0003
    leaves this out because there is nothing in the model to do the weakening.
 
-The run behind RFCs 0001–0007 shows the cost of item 1. The run is seed 456862899, 19.2
-Gyr, saved locally as `mantle-bloom-seed456862899-19191800000y.mbworld`; the file is on
-the author's machine and **not available for download**. Once its continents were gone,
+**Historical evidence, pre-#358.** The run behind RFCs 0001–0007 motivated item 1. The
+run is seed 456862899, 19.2 Gyr, saved locally as
+`mantle-bloom-seed456862899-19191800000y.mbworld`; the file is on the author's machine and
+**not available for download**. Once its continents had almost disappeared,
 juvenile continental additions fell to 0.4 km³/yr
-(`bin/debug/ledger_history.py`). On Earth, plateau accretion alone would add about three
-times that.
+(`bin/debug/ledger_history.py`). This claim was first recorded in RFC publication
+commit `d795a09` (2026-10-13); the generating commit, density and controls remain unknown.
+#403 records 0.1 Myr steps through 21.8 Myr (218 steps), then 10 Myr steps. The old 20-step
+cooldown therefore lasted 2 Myr initially and 200 Myr for most of the run. The save
+predates #358 (`7afecfd`, merged at `1b4f686`), which made the cooldown a physical 2 Myr.
+The published late flux is preserved without recomputing the private save and is not
+a current-main baseline. Earth's estimated plateau accretion is about three times that
+historical flux, but the quantities have different process scopes and do not calibrate plume production.
 
-The run is a stress test of the model's long-term behaviour, not a calibration interval:
-it shows that the model has no source of new crust that doesn't depend on existing
-continent. It doesn't say how much plumes should add.
+The historical run is a stress test of long-term behaviour, not a calibration interval.
+The absence of plume emplacement is a current code finding. A broader claim that there
+is no route to continent without existing continental crust needs qualification:
+`lithosphere_plate._erupt_melted_nodes` recodes any column melting through above 0 m as
+continental, including an exposed oceanic-coded one, and its callers book juvenile
+material. This existing route also matters if a proposed plume plateau later melts
+through. Neither the old end state nor the current-main refresh below measures that
+route or says how much plumes should add.
+
+**Current-main baseline, post-#358 (`2562f63`, #403).**
+[The fresh evidence](../analysis/issue403/README.md) regenerates default quad worlds at
+density 1, using 5 Myr steps, 100 Myr checkpoints, a physical 2 Myr split cooldown and no
+control overrides. [Tuning results](../analysis/issue403/tuning.json) record the inputs
+and ledger checkpoints; [RFC 0005](0005-continental-recycling-balance.md) reports the
+continental fluxes. Seeds 7, 11 and 2024 lose 86.0%, 73.0% and 74.8% of continental
+inventory in 1 Gyr, while juvenile additions average 6.85, 6.05 and 4.22 km³/yr. On seed 7
+they fall from 10.70 at 0–100 Myr to 4.96 at 500–1,000 Myr. The old 0.4 km³/yr end-state rate
+covers a different late interval under the pre-#358 schedule; neither it nor the new
+early-window rates calibrate a plume source. The current code contains no plume
+population, plateau tracer or buoyant-crust ledger, so this refresh supplies no plume production, docking or preservation measurement.
+The missing plume mechanism remains a design motivation; the magnitude of preserved
+plume growth stays subject to the isolated-head and source-attribution gates, sensitivity
+runs and falsification criteria.
 
 ## Proposed solutions
 
@@ -102,7 +130,16 @@ continent. It doesn't say how much plumes should add.
    and there are only ~8 of them. Rejected as the plume model, but used below to place
    plumes, by analogy with [[Burke & Torsvik, 2004]](#ref-burke2004).
 
-**Recommendation:** 1.
+**Recommendation:** 1 remains the proposed mechanism after #403's current-code check.
+The isolated-head scale gate still comes before tuning, and the refreshed continental
+budget does not select plume rate, plateau preservation or head stress to close a loss
+measured in the pre-#358 save. Those calibration assumptions retain their sensitivity
+runs and falsification criteria. Before interpreting plume-driven continental growth,
+the source-attribution gate below must distinguish direct plume emplacement and plateau
+docking from the existing elevation-driven reset route.
+[#407](https://github.com/adubey/mantle-bloom/issues/407) tracks that diagnosis alongside
+RFC 0006's [#406](https://github.com/adubey/mantle-bloom/issues/406). The plume and docking
+design stay unchanged, and this refresh measures no plume output.
 
 ## Design
 
@@ -226,8 +263,8 @@ inconsistent with plateau relief.
 - **Heat** (weakening) always uses the broad head radius, since the plume head heats a
   wide region whatever erupts.
 
-An isolated-head scale check is the first acceptance item and is run before any tuning
-replay.
+The isolated-head scale check and the source-attribution gate are both required before
+any tuning replay.
 
 **Head and tail emplacement.**
 - *Oceanic host cells:* Hc and `plateau_crust_m` grow by the cell's share, and
@@ -318,7 +355,7 @@ scales with them) explicitly, or they drift above Hc or vanish without a booking
 | Plume emplacement, arc growth | + the added Hc | `emplaced_m3` (by source) |
 | Order-preserving thinning: divergent deformation, stretch donors, failed rifts | Scaled by the Hc ratio, like `cratons.thin_with_column` | `thinned_m3` |
 | Rift melt-through reset | Cleared | `reset_m3` |
-| Transfers: `crust_transfer.ConsumedColumn`, `_accrete_onto_survivors`, merge overflow (`_carry_material`) | Carried with the Hc they ride on; `ConsumedColumn` gains the tracer volumes and age moment | none: they stay live |
+| Transfers: `crust_transfer.ConsumedColumn`, `_accrete_onto_survivors`, merge overflow (`quad_merge._place_stacking_overflow` → `quad_tectonics._carry_material`) | Carried with the Hc they ride on; `ConsumedColumn` gains the tracer volumes and age moment | none: they stay live |
 | Consumption at a trench, including docking's lower-crust loss | Removed | `subducted_m3` |
 | Conversion: arc maturation, plateau docking onto continental-coded cells | Cleared after converting | `converted_m3`, `foundered_m3` |
 | Everything else (erosion, column caps, crust-type changes) | A phase audit, like `cratons.PhaseAudit`, holds the tracers to `0 ≤ plateau + arc ≤ E` on oceanic-coded cells and to 0 on continental-coded ones | `clipped_m3`, with the phase recorded (erosion's share is "eroded") |
@@ -362,9 +399,10 @@ not assumed.
 - `MantlePlume` gets defaults on every field, so later additions stay loadable (see
   `docs/save-compatibility.md`).
 
-**Live knob.** `plume_multiplier` joins `World.TUNING_MULTIPLIER_FIELDS` (default 1.0,
+**Live knob.** `plume_multiplier` joins `world.TUNING_MULTIPLIER_FIELDS` (default 1.0,
 bounded by the stream's ceiling) and scales acceptance. At 0, no plume ever spawns, which
-reproduces `origin/main`. Debug and sketch worlds can turn plumes off that way.
+reproduces a matched, pinned current-main run without plume code. Debug and sketch
+worlds can turn plumes off that way.
 
 **Knobs.**
 
@@ -390,10 +428,21 @@ reproduces `origin/main`. Debug and sketch worlds can turn plumes off that way.
 | `PLATEAU_PRESERVED_FRACTION` | 0.9 | Calibration assumption: budgets count accreted plateaus as continental growth [[Clift et al., 2009]](#ref-clift2009), though they are mafic | Sensitivity at 0.5 |
 | `PLUME_HEAT_MYR` | 20 Myr | The order of thermal re-equilibration of heated lithosphere; no direct constraint | Tune with RFC 0003: craton rifting should cluster on plume-heated cells |
 | `PLUME_CRATON_WEAKENING` | 0.75 | Cancels `CRATON_RIFT_RESISTANCE` at full heat | Sweep 0.5–1.0 |
-| `PLUME_HEAD_STRESS` | in `internal_stress` units | Breakup often follows a continental plume head [[White & McKenzie, 1989]](#ref-white1989); no rate is given | Tune to a design target: about half of continental plume heads followed by a split of their plate within 20 Myr |
+| `PLUME_HEAD_STRESS` | in `internal_stress` units | Breakup often follows a continental plume head [[White & McKenzie, 1989]](#ref-white1989); no rate is given | Provisional design target: about half of continental plume heads followed by a split of their plate within 20 Myr; report matched plume-off/background incidence before stress tuning |
+
+**Breakup calibration after #358.** The #403 tuning worlds record 115, 109 and 104 splits
+per Gyr on seeds 7, 11 and 2024, respectively. These whole-world counts do not measure the
+conditional 20 Myr split incidence at a head's host. A split within 20 Myr of a head can
+also occur under the current 2 Myr cooldown without plume stress. Before the half-of-heads target supports
+stress tuning, report it beside matched plume-off/background split incidence at the same
+scheduled head times and host plates, with the same step schedule and controls. The half
+fraction remains a provisional design choice, and this refresh sets no new stress value.
+[#407](https://github.com/adubey/mantle-bloom/issues/407) includes that baseline comparison.
 
 Tune on seeds 7, 11 and 2024 to 1 Gyr, plus a regenerated seed 456862899 to 3 Gyr; run the
-replays one at a time, after the isolated-head scale check passes. Report:
+replays one at a time, after the isolated-head scale check passes. Record the generating
+commit, density, controls and full step schedule; a regenerated seed 456862899 is a new
+run, not the historical save. Report:
 - LIP count and volumes per Gyr, with the oceanic/continental split;
 - active hotspot count;
 - every buoyant-crust ledger account, by source;
@@ -402,6 +451,19 @@ replays one at a time, after the isolated-head scale check passes. Report:
 - step time.
 
 ## Detailed design (provisional touchpoints)
+
+**Checked against current main, `2562f63` (2026-10-14).** `mantle.ConvectionCenter` is
+still tangential forcing without a plume source; `world.step_world_progress` has the
+existing topology, erosion and eruption phases, and no plume pass. `plumes.py`,
+`terranes.py`, the three world fields, three surface fields and the knob below are new.
+The eruption writer remains `volcanism.apply_volcanic_activity`, so its independent Hc
+and juvenile bookings still require the one-owner contract. Merge overflow is handled
+by `quad_merge._place_stacking_overflow`, which calls `quad_tectonics._carry_material`;
+those existing writers, not a new merge path, must carry the tracers. #358's 2 Myr split
+cooldown is now part of the breakup-stress tuning baseline. The existing
+`_erupt_melted_nodes` elevation-based recoding and juvenile booking in both column and
+stretch-rift callers are additional source-attribution touchpoints; they are not plume
+emplacement or plateau docking.
 
 - `backend/app/plumes.py` (new):
   - `MantlePlume`;
@@ -508,6 +570,13 @@ replays one at a time, after the isolated-head scale check passes. Report:
 
 ## Acceptance criteria
 
+- [ ] **Source-attribution gate ([#407](https://github.com/adubey/mantle-bloom/issues/407),
+      before tuning):** record the current-main
+      elevation-driven reset route on the stripped baseline shared with RFC 0006 and on
+      an exposed oceanic-column example. With plume code, distinguish direct plume
+      juvenile volume, docked plateau conversion, and any juvenile volume the existing
+      `_erupt_melted_nodes` path makes after plume uplift. Report the latter separately;
+      aggregate juvenile growth does not establish plume emplacement or docking.
 - [ ] **Isolated-head scale check (before tuning):** the unit test above passes. A median
       head on reference oceanic lithosphere gives 2.0–2.6 km of peak relief.
 - [ ] Over 1 Gyr on each of seeds 7, 11 and 2024: plume-head counts consistent with the
@@ -530,9 +599,14 @@ replays one at a time, after the isolated-head scale check passes. Report:
       reported, with the spread of converted continental material each produces.
 - [ ] With RFC 0003 in place, at least half of the craton volume lost to rifting is lost in
       plume-heated cells.
+- [ ] Before tuning `PLUME_HEAD_STRESS`, report the fraction of continental heads followed
+      by a split within 20 Myr beside matched plume-off/background incidence under the
+      physical 2 Myr cooldown. The half-of-heads target remains a provisional design
+      choice, not evidence that a later split was caused by a plume.
 - [ ] Step time changes by less than 3% at density 4; save size by less than 3%.
-- [ ] `plume_multiplier = 0` gives step results identical to `origin/main` on a 10-step
-      replay.
+- [ ] `plume_multiplier = 0` gives step results identical to a matched, pinned
+      current-main run without plume code on a 10-step replay; record both commits,
+      density, controls and step schedule.
 - [ ] Ledgers close; old saves load; affected tests, ruff and `bin/quality_check.sh` are
       green.
 

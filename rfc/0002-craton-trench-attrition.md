@@ -1,11 +1,13 @@
 # RFC 0002: Cratons resist sinking: margin-dependent attrition and collision sinks
 
 - **Status:** Draft
-- **Date:** 2026-10-13 (revised 2026-10-14 to cover collision sinks)
+- **Date:** 2026-10-13 (revised 2026-10-14 for collision sinks and #403's baseline audit)
 - **Related:** #340 (attrition at trenches), #177 (margin retreat budget), #320 (crust
   transfer), #321 and #331 (terrane docking), #299 (fault shear conservation); RFCs
   [0001](0001-merge-cap-craton-loss.md), [0005](0005-continental-recycling-balance.md),
-  [0008](0008-craton-collision-jamming.md) (buoyant columns resist subduction)
+  [0008](0008-craton-collision-jamming.md) (buoyant columns resist subduction);
+  #403 (post-#358 baseline audit), [#405](https://github.com/adubey/mantle-bloom/issues/405)
+  (contact ownership diagnosis before margin classification)
 
 ## Problem
 
@@ -15,18 +17,30 @@ wears back at a trench instead (`cratons.attrite`): each exposed craton cell los
 cross-section a non-accreting margin loses to subduction erosion
 [[Scholl & von Huene, 2007]](#ref-scholl2007).
 
-A column of Hc = 35 km under a 40 km²/Myr loss retreats at 40/35 ≈ **1.1 km/Myr**, at
-any node density. That is a realistic rate for an *erosive* margin: the Mariana forearc
+A column of Hc = 35 km under an uncapped 40 km²/Myr loss retreats at 40/35 ≈
+**1.1 km/Myr**, at any node density. This is a scale calculation, not a replay result.
+That is a realistic rate for an *erosive* margin: the Mariana forearc
 retreats about 1 km/Myr and northern Chile about 3 km/Myr
 [[Clift & Vannucchi, 2004]](#ref-clift2004). The problem is that the model applies it at
 every trench a craton edge touches, for as long as it touches it. A craton edge parked at
-a trench retreats **about 1,100 km per Gyr**, and a craton 1,000–2,000 km across is gone
-in 1–2 Gyr.
+a trench at that uncapped rate retreats **about 1,100 km per Gyr**, and a craton
+1,000–2,000 km across is gone in 1–2 Gyr if continuously exposed. The #177 budget can
+reduce the realised rate on continental hosts.
 
-The run behind RFCs 0001–0007 shows it. The run is seed 456862899, 19.2 Gyr, saved locally
+Design principles 6 (material accounting), 7 (explicit craton loss paths), and 9
+(source attribution before intervention) govern this RFC. The channel split tests whether
+the problem is margin attrition; the fault fix must conserve craton with the crust it moves.
+
+**Historical save evidence (pre-#358; simulation commit unknown).** The run behind RFCs
+0001–0007 is seed 456862899, 19.2 Gyr, saved locally
 as `mantle-bloom-seed456862899-19191800000y.mbworld`; the file is on the author's machine
 and **not available for download**. Numbers come from `bin/debug/ledger_history.py` on that
-save.
+save. The numbers were first recorded in commit `d795a09`, the documentation provenance;
+the exact simulation baseline was not recorded. The save is post-#340 and pre-#358,
+with 218 initial 0.1 Myr steps then mostly 10 Myr steps. Its 20-step split cooldown was
+therefore mostly **200 Myr**, rather than the post-#358 2 Myr cooldown. The sink amounts
+and per-Gyr percentages immediately below are historical observations, not present-day
+calibration or acceptance baselines.
 
 - `subducted_m3` was the largest craton sink: 1,128 M km³, **42%** of all craton
   destruction.
@@ -35,17 +49,24 @@ save.
 - Per Gyr, it took 6%, 18%, 7%, 12% and 10% of the live craton in the first five Gyr. Later
   windows ran at 20–77%, as the cratons shrank and had more edge per unit volume.
 
+These are the originally reported values. #403 corrects `ledger_history.py` to include a
+Gyr window's endpoint and normalize by its measured physical duration; the unavailable
+historical save has not been recomputed with that correction. Its per-Gyr percentages
+remain provenance, not current thresholds or comparators.
+
 Geologically this is backwards. Archean cratons have survived for billions of years
 [[Pearson et al., 2021]](#ref-pearson2021). Craton destruction is rare: the eastern
 North China Craton is the textbook case, and it lost its *mantle root* under more than 100
 Myr of Pacific subduction while its crust stayed at the surface
 [[Zhu et al., 2012]](#ref-zhu2012).
 
-The ledger also lumps three paths into `subducted_m3`:
+**Current writer check (`2562f63`, post-#358).** The ledger lumps four paths into
+`subducted_m3`:
 - `cratons.attrite`, edge wear at trenches;
 - the craton on cells `quad_tectonics._retreat` removes down a trench, which should be ~0
   because `cratons.retreat_allowed` keeps craton cells from retreating;
-- the lost share at polarized collision fronts (`crust_transfer`, #320).
+- the lost share at polarized collision fronts (`crust_transfer`, #320);
+- the terminal unplaced share at `quad_tectonics._accrete_onto_survivors` suture placement.
 
 Until they are split, we can't say for certain how much is attrition.
 
@@ -68,21 +89,64 @@ Reading the code narrows this down, but needs the split to confirm:
   collision involved, booked under a collision name. It also contradicts the rule that
   cratonic crust doesn't flow (`cratons.py`, `orogeny.py`).
 
-On seeds 7, 11 and 2024 to 1 Gyr (origin/main at 1b4f686; RFC 0008's evidence table,
-`analysis/rfc0008/`), `collision_reworked_m3` took 1.2%, 2.1% and 1.3% of the starting
-craton. `subducted_m3` took 5.9%, 14% and 9.3%. The collision sink is small next to
+**Earlier post-#358 check (`1b4f686`, 5 Myr steps).** On seeds 7, 11 and 2024 to 1 Gyr
+(RFC 0008's evidence table, `analysis/rfc0008/`), `collision_reworked_m3` took 1.2%,
+2.1% and 1.3% of the starting craton. `subducted_m3` took 5.9%, 14% and 9.3%. The collision sink is small next to
 subduction, but it is a conservation error where the fault audit is its source, so it is
 fixed whatever its size.
 
+This check already used the 2 Myr cooldown. It must not be grouped with the pre-#358
+tuning runs, where the old 20-step cooldown was **100 Myr at 5 Myr steps**. Those runs
+had different plate histories and cannot supply a current relative acceptance baseline.
+
+**Fresh post-#358 baseline (#403, `2562f63`).** `bin/debug/rebaseline_rfcs.py` uses
+`compare_cratons.run_job` with default controls, node density 1, climate enabled,
+5 Myr steps, and the 2 Myr cooldown. The read-only `attrite` tap measures its returned
+craton loss directly; it does not infer attribution from the ledger name. See
+[`analysis/issue403/README.md`](../analysis/issue403/README.md) and
+[`tuning.json`](../analysis/issue403/tuning.json). Rates below divide the interval's
+loss by its starting live craton volume and physical duration.
+
+| Seed, interval | Attrition, M km³ | Attrition, % of window-start live craton/Gyr | Share of `subducted_m3` from `attrite` | Collision reworked, % of start | Genuine continental area at end, M km² |
+|---|---|---|---|---|---|
+| 7, 0–1 Gyr | 241.39 | 5.89% | 100% | 1.25% | 23.46 |
+| 11, 0–1 Gyr | 458.32 | 14.46% | 100% | 2.12% | 26.91 |
+| 2024, 0–1 Gyr | 160.47 | 9.31% | 100% | 1.28% | 23.55 |
+
+All three seeds support the attrition premise: the direct tap equals `subducted_m3`
+on each interval. The unweighted mean is **9.89% of window-start live craton/Gyr**,
+above the 3%-per-Gyr design target. The other three writers therefore have no net
+contribution to that account on these runs. This resolves attribution of that sink on
+the tuning seeds, but does not complete the persistent ledger split, attribute the
+collision-reworked sink by site, or resolve contact ownership. Phase 2 remains behind
+those parts of the gate; #405 tracks the ownership revision.
+
+The regenerated 3 Gyr seed 456862899 also has a direct `attrite` tap equal to
+`subducted_m3` in each window: 15.45%, 21.69% and 32.82% of window-start live craton
+per Gyr. This shows the sink persists as the inventory declines; it does not establish
+that the measured margin is the overriding forearc assumed by phase 2. The time-window
+rates and remaining sinks are in [the #403 evidence](../analysis/issue403/README.md).
+
+**Contact ownership needs a gate too.** On `2562f63`, `_retreat` calls `attrite` on the
+craton-bearing plate's `ctx.shrinkable & ~(ctx.accrete | terrane)` edge. A continental
+host is the retreating margin under an oceanic neighbour, capped by the #177 arc budget;
+it is not the overriding forearc described by the subduction-erosion literature. The
+phase-2 design below assumes the latter. The revised gate is tracked by
+[#405](https://github.com/adubey/mantle-bloom/issues/405). Before implementing it, the diagnosis must
+record host type and contact polarity and resolve which plate owns the loss and the
+sediment input. A channel total alone cannot validate that mechanism.
+
 **Cratonic terranes on oceanic plates.** Retreat can't remove their craton cells, and
 attrition skips terrane cells (the `trench` mask in `_retreat`), so such a terrane jams at
-the trench. It is resolved by docking it as cells (#331). The plate dynamics of the jam,
-slab pull from a buoyant column, are RFC 0008's.
+the trench. The proposed intact-cell docking resolution depends on #331; it is not
+implemented on `2562f63`. The plate dynamics of the jam, slab pull from a buoyant column,
+are RFC 0008's.
 
-The run is a stress test of the model's long-term behaviour, not a calibration interval. It
-shows that attrition, applied without regard to margin type, removes cratons on a Gyr
-timescale. It does not give a rate to fit, and its late windows, when only small craton
-fragments were left, say more about fragment geometry than about attrition.
+The historical run is a stress test of the model's long-term behaviour, not a calibration
+interval. It shows a persistent `subducted_m3` sink on a Gyr timescale; its unsplit ledger
+does not establish how much was attrition. It does not give a rate to fit, and its late
+windows, when only small craton fragments were left, say more about fragment geometry
+than about an Earth-like margin rate.
 
 ## Proposed solutions
 
@@ -106,7 +170,8 @@ destroyed, the root is removed by refertilisation, heating and delamination
 [[Zhu et al., 2012]](#ref-zhu2012). Wholesale removal of the crust is not how it goes.
 
 1. **Split the ledger first.** Add `attrited_m3` (from `cratons.attrite`) and
-   `collision_lost_m3` (crust_transfer's lost and unplaced shares) to the craton ledger.
+   `collision_lost_m3` (crust_transfer's lost/unplaced shares and the suture terminal
+   remainder, reported separately by writer) to the craton ledger.
    `subducted_m3` keeps only what `_retreat` takes down a trench, and an assertion or
    diagnostic flags it as non-zero. Record attrition separately for continental and
    oceanic host plates, since only the continental case is capped by the #177 arc budget.
@@ -124,7 +189,8 @@ destroyed, the root is removed by refertilisation, heating and delamination
    first thins the mantle lithosphere (Hm) of the exposed cells toward the continental
    reference. Only once the keel is gone does the cell lose cratonic status
    (`decratonised_m3`); its crust stays continental. This matches the North China history
-   [[Zhu et al., 2012]](#ref-zhu2012) and keeps continental crust that today vanishes.
+   [[Zhu et al., 2012]](#ref-zhu2012) and keeps continental crust removed by the present
+   `attrite` call (`2562f63`).
 4. **A plain resistance factor.** Scale attrition by
    `1 − CRATON_ATTRITION_RESISTANCE × strength`, as erosion, rifting and stretching already
    do. It is simple, but has no physical basis for any particular value, so it's listed
@@ -139,8 +205,11 @@ destroyed, the root is removed by refertilisation, heating and delamination
    overriding plate (#331) keeps its craton as craton. This RFC depends on #331 rather than
    duplicating it.
 
-**Recommendation:** 1 as a diagnosis gate, then 2(b), with 2(a) and 2(c) as sensitivity
-cases, and 5 as a conservation fix whatever the gate finds.
+**Recommendation after the #403 code audit:** 1 as a diagnosis gate, including contact
+ownership, then conditionally 2(b), with 2(a) and 2(c) as sensitivity cases, and 5 as a
+conservation fix whatever the gate finds. Phase 2 remains provisional until
+[#405](https://github.com/adubey/mantle-bloom/issues/405) resolves the ownership mismatch
+above; #403 does not redesign that mechanism.
 - Solution 1 decides whether attrition is the problem at all. If `cratons.attrite` turns
   out to be a minor part of `subducted_m3`, the RFC re-scopes (see Falsification
   criteria). It also splits `collision_reworked_m3` by site, which sizes solution 5.
@@ -164,7 +233,10 @@ cases, and 5 as a conservation fix whatever the gate finds.
 
 **Phase 1: channel split (gate).** Land the ledger split alone, and run the tuning
 seeds. Proceed to phase 2 only if `attrited_m3` is the largest part of what used to be
-`subducted_m3`. Otherwise revise the RFC toward whichever channel dominates.
+`subducted_m3` and the contact-ownership diagnosis establishes which plate supplies the
+forearc loss and sediment inputs. Otherwise revise the RFC toward whichever channel or
+contact mechanism dominates. Report each source writer, including the suture's terminal
+unplaced share, so no residual of the old account is silently called attrition.
 
 The split also covers the collision sink:
 - the fault audit books to new `faulted_m3`;
@@ -191,14 +263,14 @@ and its provenance, and integrates the resistance over the step.
   `Hc(t) = [1 − (1 − a × Hc₀) × exp(a r t)] / a`, with a = ρ / `CRATON_FULL_STRENGTH_HC_M`
 
   and the resisted debit over the step is `Hc₀ − Hc(years_myr)`.
-  - It is floored at the minimum crust, as `debit` is today.
-  - With no craton (a = 0) it reduces to `r × years_myr`, today's debit.
+  - It is floored at the minimum crust, as `debit` is on `2562f63`.
+  - With no craton (a = 0) it reduces to `r × years_myr`, the baseline debit.
   - A full-strength donor (s = 1) gives nothing, and stays at s = 1.
   - Example: r = 2,000 m/Myr, Hc = 35,000 m, craton = 12,500 m over 10 Myr. The starting
     resistance applied once gives 10,000 m; ten 1 Myr steps give ~11,389 m; the exact
     solution gives ~11,575 m for any partition.
-- *Balancing.* The donor–receiver volume balance (`amount`) is then applied as today. When
-  receiver headroom binds, the scaled-down debit depends on the partition just as today's
+- *Balancing.* The donor–receiver volume balance (`amount`) is then applied as on `2562f63`. When
+  receiver headroom binds, the scaled-down debit depends on the partition just as the baseline's
   does. This changes nothing about that.
 - *Craton carry.* The craton a donor gives is `ρ × taken`. It is split among receivers in
   proportion to the Hc they get and capped at each receiver's new Hc. Units are metres of
@@ -213,7 +285,7 @@ and its provenance, and integrates the resistance over the step.
   - `stable_continental_myr` is left alone. The carried craton is already formed, and the
     formation clock only matters for crust not yet cratonic.
 
-**Phase 2: margin-dependent rate.**
+**Phase 2: margin-dependent rate (provisional pending the ownership gate).**
 - *Segments.* Trench nodes on the overriding (craton-bearing) plate are grouped into
   segments: connected runs of trench cells facing the same neighbour plate, cut into
   pieces no longer than `MARGIN_SEGMENT_KM`.
@@ -243,7 +315,7 @@ and its provenance, and integrates the resistance over the step.
 - *Erosive probability (b).*
   `p = σ((v̄ − v₀)/Δv) × σ((h₀ − h̄)/Δh)`, with σ the logistic function, v₀ = 6 cm/yr and
   h₀ = 1,000 m. p is in [0, 1] by construction.
-- *Rate.* `rate = R_acc + (R_ero − R_acc) × p`, in km²/Myr. R_ero = 40 is today's
+- *Rate.* `rate = R_acc + (R_ero − R_acc) × p`, in km²/Myr. R_ero = 40 is the `2562f63`
   `CRATON_ATTRITION_KM2_PER_MYR`; R_acc is the accretionary floor.
 - *Integrating the rate over the step.* The rate is nonlinear in the averaged inputs, and
   they change during a step, so `rate(x̄(t₁)) × years` depends on step length.
@@ -254,7 +326,7 @@ and its provenance, and integrates the resistance over the step.
     trajectory above, by `MARGIN_RATE_QUADRATURE_POINTS`-point Gauss–Legendre quadrature.
     The integrand is smooth (logistics of exponentials), so 8 points are ample for steps
     up to 10 Myr.
-  - The loss is then capped by the cell's craton, as `attrite` does today.
+  - The loss is then capped by the cell's craton, as `attrite` does on `2562f63`.
 - *Variant (a):* `p ∈ {0, 1}` from the averaged inputs.
 - *Variant (c):* each segment draws its regime from p, deterministically per
   (seed, segment, epoch), and keeps it for at least `MARGIN_REGIME_MIN_DWELL_MYR`. Epochs
@@ -304,7 +376,7 @@ How tuning works:
   model's trench sediment or convergence rates are off, and RFC 0005 should look at that
   before these thresholds move.
 
-**Runtime.** The inputs read three fields per trench node from a neighbour, with indices
+**Runtime estimate (not measured).** The inputs read three fields per trench node from a neighbour, with indices
 already computed for the step. Segmenting is a connected-components pass over trench
 cells. The quadrature evaluates the rate at 8 times per node. All are O(trench nodes),
 about 1 ms per plate. Variant 3 adds an O(trench nodes) Hm update. There's no new search.
@@ -331,17 +403,21 @@ are backfilled at 0.0 by `cratons.ensure_ledger`. A pre-change save keeps its hi
   - Update the module docstring's Destruction paragraph.
 - `backend/app/quad_tectonics.py`, `_retreat`: compute the per-node rate for the `trench`
   set before calling `cratons.attrite`, and update the time-averaged fields; split the
-  attrition booking by host plate type. The #177 budget logic is unchanged.
+  attrition booking by host plate type and contact polarity. The phase-1 probe must
+  establish whether this retreating-margin call is the valid owner of phase 2's proposed
+  forearc loss. The #177 budget logic is unchanged during diagnosis.
 - `backend/app/torque.py`: add a `contact_trench_sediment_m(plate, neighbours, inputs)`
   next to `contact_craton_m`. It reads `mobile_cover_m`, `mobile_cover_continental_m` and
   `continental_material_m` at the nearest neighbour node, on oceanic-coded cells only, and
   returns the disjoint rock-equivalent column. Reused by RFC 0005.
 - `backend/app/surface_fields.py`: register `trench_sediment_avg_m` and
   `trench_convergence_avg_cm_per_yr` (new).
-- `backend/app/lithosphere_plate.py`: expose the closing rate in the `BoundaryContext` if
-  `_retreat` doesn't already have it.
+- `backend/app/lithosphere_plate.py`: `BoundaryContext.closing_rate` already exposes the
+  normal closing rate to `_retreat`; reuse it rather than adding a second calculation.
 - `backend/app/crust_transfer.py`: book the lost and unplaced craton shares to
   `collision_lost_m3` instead of `subducted_m3`.
+- `backend/app/quad_tectonics.py`, `_accrete_onto_survivors`: book the terminal unplaced
+  craton share to `collision_lost_m3` too, and report its writer separately from transfer.
 - `backend/app/stats.py` and `cratons.diagnostics`: report the new accounts and the
   accretionary fraction of trench length.
 - `backend/app/faults.py`, `_apply_plate_fault_relief`: the integrated resisted debit, the
@@ -377,8 +453,11 @@ are backfilled at 0.0 by `cratons.ensure_ledger`. A pre-change save keeps its hi
 
 ## Assumptions and uncertainty
 
-- **Attrition may not be the main path.** `subducted_m3` lumps three paths. Phase 1
+- **Attrition may not be the main path.** `subducted_m3` lumps four paths. Phase 1
   decides.
+- **Contact ownership is unresolved.** The present attrition call wears a retreating
+  craton margin, whereas phase 2's literature describes the overriding forearc. Phase 1
+  must resolve that mismatch before sediment/convergence classification is calibrated.
 - **The classification is a tendency.** The thresholds come from a compilation of modern
   margins, classified by net behaviour over ≥ 10 Myr. The logistic widths, segment length
   and averaging window are calibration assumptions. Sensitivity runs and variants (a) and
@@ -399,17 +478,21 @@ are backfilled at 0.0 by `cratons.ensure_ledger`. A pre-change save keeps its hi
       below 0.1% of the initial craton volume, with `attrited_m3` and
       `collision_lost_m3` accounting for the rest. `collision_reworked_m3` is split into
       `faulted_m3` and the `reworked_*` sites. A note in `analysis/` records each channel's
-      share before phase 2 starts.
+      share, all four source writers, and the host/contact ownership diagnosis before
+      phase 2 starts. The unsplit #403 replay cannot satisfy this gate.
 - [ ] With solution 5, `faulted_m3` is below 0.1% of the initial craton per Gyr on seeds 7,
       11 and 2024.
 - [ ] Craton loss to attrition is at most **3% of live craton per Gyr** over the first
-      3 Gyr on seed 456862899 (6–18% today), and on average across seeds 7, 11 and 2024,
-      for variant (b) at the starting knobs.
+      3 Gyr on a regenerated seed 456862899, and on average across seeds 7, 11 and 2024,
+      for variant (b) at the starting knobs. Measure each non-overlapping Gyr window
+      with inclusive endpoints, divided by that window's starting live volume and its
+      physical duration, as in the corrected `ledger_history.py`.
 - [ ] The sensitivity runs (variants a and c; logistic widths and averaging window at ½×
       and 2×) are reported, and the 3%-per-Gyr result holds for most of them.
 - [ ] Each regime (p < 0.5, p ≥ 0.5) covers at least 20% of trench contact length,
       averaged over a run.
-- [ ] Genuine continental area at 1 Gyr is no lower than on `origin/main` for each seed.
+- [ ] Genuine continental area at 1 Gyr is no lower than the pinned `2562f63` baseline
+      for each seed, with the same controls and 5 Myr steps recorded in #403's JSON.
 - [ ] Ledgers balance (craton within 1e-9 of live volume; continental material closes).
 - [ ] Step time on a density-4 world changes by less than 2% (`docs/profiling.md` method).
 - [ ] Unit tests above pass; affected tests, ruff and `bin/quality_check.sh` are green.

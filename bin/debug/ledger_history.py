@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Craton and continental-material budgets over a saved world's whole run (rfc/0001-0006).
+"""Craton and continental-material budgets over a saved world's whole run (rfc/0001-0007).
 
 Reads `World.stats_history` (one row per stats sample, ~10 Myr apart on long runs), so it
 needs no replay: the save alone says when cratons and continental crust were lost, through
@@ -32,7 +32,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
 from app import persistence  # noqa: E402
 
-CRATON_SINKS = ("rifted_m3", "subducted_m3", "delaminated_m3", "collision_reworked_m3", "eroded_m3")
+CRATON_SINKS = (
+    "rifted_m3", "subducted_m3", "delaminated_m3", "collision_reworked_m3", "eroded_m3",
+    "topology_removed_m3", "audit_clipped_m3", "unattributed_m3",
+)
 # rifted_m3 by path (RFC 0003); zero in saves from before the split.
 RIFT_PATHS = ("rifted_divergent_m3", "rifted_stretch_m3", "rifted_failed_m3")
 CONTINENTAL_SINKS = (
@@ -43,6 +46,8 @@ CONTINENTAL_SINKS = (
     "delaminated_lower_crust_m3",
     "overloaded_root_delaminated_m3",
     "topology_removed_m3",
+    "numerical_unplaced_m3",
+    "discarded_marine_sediment_m3",
 )
 CHECKPOINTS_MYR = (0, 100, 200, 500, 1000, 2000, 3000, 4000, 6000, 8000, 10000, 15000, 20000)
 FLUX_WINDOWS_MYR = ((0, 100), (100, 500), (500, 1000), (1000, 2000), (2000, 4000), (4000, 8000), (8000, 12000), (12000, 20000))
@@ -74,13 +79,17 @@ def summarize(history: list[dict]) -> dict:
 
     per_gyr = []
     for start in range(0, int(t[-1] // 1000) + 1):
-        i, j = _index(t, start * 1000), _index(t, (start + 1) * 1000) - 1
+        # Include the endpoint: subtracting one silently dropped the last sample's
+        # loss, including potentially a large merge, from every Gyr (#403).
+        i, j = _index(t, start * 1000), _index(t, (start + 1) * 1000)
         # Once the cratons are nearly gone, per-window shares are noise.
         if j <= i or volume[i] <= 1e-3 * volume[0]:
             continue
-        shares = {key: (craton[key][j] - craton[key][i]) / volume[i] for key in CRATON_SINKS}
-        paths = {key: (craton[key][j] - craton[key][i]) / volume[i] for key in RIFT_PATHS}
-        per_gyr.append({"gyr": start, "start_volume_mkm3": volume[i] / MKM3, **shares, "total": sum(shares.values()), **paths})
+        duration_gyr = (t[j] - t[i]) / 1000
+        shares = {key: (craton[key][j] - craton[key][i]) / volume[i] / duration_gyr for key in CRATON_SINKS}
+        paths = {key: (craton[key][j] - craton[key][i]) / volume[i] / duration_gyr for key in RIFT_PATHS}
+        per_gyr.append({"gyr": start, "window_myr": [float(t[i]), float(t[j])], "start_volume_mkm3": volume[i] / MKM3,
+                        **shares, "total": sum(shares.values()), **paths})
 
     jumps = {}
     for key in (*CRATON_SINKS, "formed_m3"):
@@ -99,7 +108,7 @@ def summarize(history: list[dict]) -> dict:
             continue
 
         def rate(key: str, i: int = i, j: int = j, years: float = years) -> float:
-            return (material[j][key] - material[i][key]) / 1e9 / years
+            return (material[j].get(key, 0.0) - material[i].get(key, 0.0)) / 1e9 / years
 
         fluxes.append({
             "window_myr": [float(t[i]), float(t[j])],
@@ -122,9 +131,10 @@ def _print(summary: dict) -> None:
             f"{row['myr']:7.0f} {row['craton_volume_mkm3']:8.0f} {row['craton_area_mkm2']:8.1f} {row['genuine_continental_area_mkm2']:9.1f} "
             f"{row['land_fraction']:6.3f} " + " ".join(f"{row[f'craton_{k}_mkm3']:9.0f}" for k in (*CRATON_SINKS, "formed_m3"))
         )
-    print("\ncraton destruction per Gyr, share of the volume at the window start")
+    print("\ncraton destruction per Gyr, share of the volume at the measured window start (unattributed is signed)")
     for row in summary["craton_loss_per_gyr"]:
-        print(f"{row['gyr']:3d}-{row['gyr'] + 1:<3d} V0={row['start_volume_mkm3']:7.0f} Mkm3 " + " ".join(f"{k.removesuffix('_m3')[:9]}={row[k]:4.0%}" for k in CRATON_SINKS) + f"  total={row['total']:.0%}"
+        lo, hi = row["window_myr"]
+        print(f"{lo / 1000:5g}-{hi / 1000:<5g} Gyr V0={row['start_volume_mkm3']:7.0f} Mkm3 " + " ".join(f"{k.removesuffix('_m3')[:9]}={row[k]:4.0%}" for k in CRATON_SINKS) + f"  total={row['total']:.0%}"
               + "  rifted by path: " + " ".join(f"{k.removeprefix('rifted_').removesuffix('_m3')}={row[k]:4.1%}" for k in RIFT_PATHS))
     print("\nlargest single-sample craton ledger jumps")
     for key, rows in summary["craton_largest_jumps"].items():

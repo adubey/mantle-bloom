@@ -1,13 +1,17 @@
 # RFC 0003: Rifts go around cratons
 
 - **Status:** Accepted (2026-10-13)
-- **Date:** 2026-10-13
-- **Related:** #389 (tracking), #274 (craton rift and stretch resistance), #340, #378 (phase 1 gate); RFCs
+- **Date:** 2026-10-13; baseline audit 2026-10-14 (#403)
+- **Related:** #389 (tracking), #274 (craton rift and stretch resistance), #340,
+  #378 (phase 1 gate), #385 (failed-rift resistance), #388 (phase 1b, PR #392),
+  #403 (baseline audit); RFCs
   [0002](0002-craton-trench-attrition.md), [0004](0004-proto-cratons.md)
 
 ## Problem
 
-A plate splits when one rigid rotation explains its mantle flow poorly
+At the audited baseline `2562f63`, a plate becomes eligible to split after
+`SPLIT_MIN_AGE_YEARS` = 2 Myr since its creation or last failed rift, and splits when
+one rigid rotation explains its mantle flow poorly
 (`merge_split.maybe_split_plate`). The velocity field is clustered into two regimes, and
 the plate is cut along the great circle equidistant from the two clusters' centroids
 (`_refine_split_cut`). Nothing in that choice looks at the lithosphere: the cut goes
@@ -21,14 +25,21 @@ wherever the flow puts it, straight through a craton if one is there. Then:
   Over many steps the boundary still eats through the craton.
 - **If the rift fails** (45% of attempts), `apply_failed_rift` (`sparse_quad_patch.py`)
   thins a tapered band reaching `FAILED_RIFT_BAND_MULT` = 2.5 cells either side of the cut
-  by up to `FAILED_RIFT_THINNING_FRACTION` = 10%. It
-  applies **no craton resistance at all**: the craton thins in proportion
-  (`cratons.thin_with_column`) and books to `rifted_m3`.
+  by up to `FAILED_RIFT_THINNING_FRACTION` = 10%. Since #385, it applies the same
+  `cratons.rift_resistance` as divergent thinning: at full strength the maximum is 2.5%.
+  The craton thins in proportion (`cratons.thin_with_column`) and books to
+  `rifted_failed_m3` and `rifted_m3`. The original RFC identified missing resistance here;
+  that consistency fix is already implemented.
 
-In the run behind RFCs 0001–0007, rifting was the second-largest craton sink. The run is
+**Historical save evidence (pre-#358).** In the run behind RFCs 0001–0007, rifting was
+the second-largest craton sink. The run is
 seed 456862899, 19.2 Gyr, saved locally as `mantle-bloom-seed456862899-19191800000y.mbworld`;
 the file is on the author's machine and **not available for download**. Numbers come from
-`bin/debug/ledger_history.py` on that save.
+`bin/debug/ledger_history.py` on that save. Its generating commit and controls were not
+recorded; these numbers were first checked in at `d795a09`, before #358. The schedule
+reported in #403 was 0.1 Myr steps to 21.8 Myr, then 10 Myr: the old cooldown was 2 Myr
+initially and **200 Myr for most of the run**. That historical save cannot supply a
+reproducible baseline for the current 2 Myr cooldown.
 
 - `rifted_m3` totalled 555 M km³, **21%** of all craton destruction.
 - It took 6%, 4%, 6%, 5% and 10% of the live craton per Gyr over the first five Gyr.
@@ -67,7 +78,7 @@ shouldn't get it.
    lithosphere-thickness term, so thin lithosphere is preferred, as breakup prefers it at
    old orogens [[Audet & Bürgmann, 2011]](#ref-audet2011). This removes most rifts through
    cratons at their source, for tens of ms per split attempt (Design).
-2. **Give failed rifts the same craton resistance as active ones.** Scale
+2. **Give failed rifts the same craton resistance as active ones (implemented, #385).** Scale
    `apply_failed_rift`'s thinning by `1 − CRATON_RIFT_RESISTANCE × strength`, matching
    `deform_columns`. This is a consistency fix.
 3. **Raise rift resistance.** Raise `CRATON_RIFT_RESISTANCE` and
@@ -79,15 +90,13 @@ shouldn't get it.
    field that cancels craton rift resistance and makes heated cells weak in this RFC's
    cut score.
 
-**Recommendation:** first a gate that splits `rifted_m3` by path, so the fix targets the
-path that matters. That gate has run (Design, "Phase 1 outcome"): stretch donation and
-divergent thinning take 83–90% of craton rifting, failed rifts 10–17%, and only 12–18% of
-cuts cross craton. So:
-- do 2 now. It is a consistency fix, but it acts on at most 10–17% of the sink;
-- run a second gate (phase 1b) to measure how much of the divergent and stretch loss
-  happens on boundaries a craton-crossing cut created. Only that share is what 1 can remove;
-- build 1 only if phase 1b says that share is large. Otherwise, 3 or a fix for boundary
-  migration is the main lever.
+**Recommendation:** retain solution 2, implemented in #385, and build solution 1 only
+together with solution 3. Phase 1b has already measured F at the current 2 Myr cooldown
+(#388, open PR #392): F = 38.9–46.5%, mean 42.5%, selects its existing 25% ≤ F < 50% branch.
+Steering alone cannot meet the 2%/Gyr target. Phase 1's older 83–90% divergent/stretch share
+and 12–18% craton-crossing cut share remain below as historical evidence, not the current
+basis for that decision. The gate outcome does not set the resistance values for solution
+3; the implementation still has to tune them to the remaining loss.
 
 4 comes with RFC 0007.
 
@@ -103,11 +112,15 @@ Record, per split and per failed rift, the craton area inside the cut's band. Ru
 tuning seeds. The results decide the order of work: solution 1 helps the first two paths,
 and solution 2 only the third.
 
-**Phase 1 outcome (#378, PR #380).** The sub-accounts above, plus per-outcome counts of
+**Historical phase 1 outcome (#378, PR #380; pre-#358 and pre-#385).** The sub-accounts
+above, plus per-outcome counts of
 cuts, cuts with craton in the failed-rift band, and the band's total and cratonic area.
 They are diagnostics outside the balance and don't change the model. Seeds 7, 11 and 2024
-ran to 1 Gyr at default density with `bin/debug/compare_cratons.py`; the numbers are in
-`analysis/issue378/`.
+ran to 1 Gyr at default density with `bin/debug/compare_cratons.py`, 5 Myr steps, all
+default controls, on diagnostic commit `112dcd7` (results recorded at `eefaa55`, model
+base `dfb9248`). The numbers are in `analysis/issue378/`. The then-current 20-step
+cooldown was 100 Myr at that schedule; #358 later replaced it with 2 Myr. The table and
+its deductions below describe that historical baseline only.
 
 | Seed | Rifted, % of start craton per Gyr | Divergent | Stretch | Failed | Splits / failed rifts with craton in band |
 |---|---|---|---|---|---|
@@ -128,13 +141,28 @@ Path columns are shares of `rifted_m3`.
   That is the falsification case "rift cuts aren't the path", and phase 1 neither confirms
   nor rules it out.
 
-**Phase 1b: attribute boundary loss to its origin (gate).** Before solution 1:
+**Historical solution 2 outcome (#385, PR #387; pre-#358).**
+`analysis/issue385/replay_1gyr.json` compares the phase 1 baseline `112dcd7` with
+failed-rift resistance at `bf69b4e` (results recorded at `0ac33cb`), using the same seeds,
+default density and controls, and 5 Myr steps to 1 Gyr. Rifting loss as a share of starting
+craton changed from 4.05% to 3.40% on seed 7, 4.35% to 5.39% on seed 11, and 10.71% to
+8.64% on seed 2024; the three-seed mean changed from 6.37% to 5.81%. Different plate
+histories mix the direct resistance effect with trajectory divergence. This is the record
+of the landed consistency fix, not its expected effect under today's split pace.
+
+**Phase 1b: attribute boundary loss to its origin (gate, measured in #388).** The gate
+design below has run on the current 2 Myr cooldown (outcome follows). Historical phase 1
+or #385 trajectories are not its control:
+
 - At each split, mark the nodes in the cut's band of both daughters with whether the band
   held craton. Over the next 1 Gyr, book their divergent and stretch craton loss by that
   mark: cut through craton, cut clear of craton, or never in a cut band.
 - Do this in a replay-only probe in `bin/debug/`, so no saved state changes. It can carry
   the mark as a surface field that exists only in the probe's process.
-- Run it on seeds 7, 11 and 2024 to 1 Gyr.
+- Run it on seeds 7, 11 and 2024 to 1 Gyr at default density and controls, with 5 Myr
+  steps, and pin the exact baseline commit. Report the three rifting paths, split and
+  failed-rift counts, craton in cut bands, and mean plate count alongside F. Keep the
+  attribution probe separate from any implementation change.
 - Let F be the share of `rifted_m3` that solution 1 could remove: all failed-rift loss
   (a failed rift loses craton only if its cut crosses one), plus divergent and stretch loss
   on nodes marked "cut through craton".
@@ -143,6 +171,68 @@ Path columns are shares of `rifted_m3`.
     and size 3 to the remainder.
   - F < 25%: the "rift cuts aren't the path" falsification case holds. Don't build 1;
     revise this RFC toward boundary migration or solution 3.
+
+**Phase 1b outcome (#388, open PR #392; post-#358).** The replay-only
+`bin/debug/attribute_rift_boundary_loss.py` probe ran seeds 7, 11 and 2024 to 1 Gyr on
+baseline `8878cd2`, default density and controls, with 5 Myr steps, one run at a time.
+That baseline includes #358 and #385. Evidence and the probe are published at PR head
+`33c3d19` in [analysis/issue388](https://github.com/adubey/mantle-bloom/tree/33c3d19a919c98b820384a2cb8ea2323edf70f47/analysis/issue388);
+they are pending merge in [PR #392](https://github.com/adubey/mantle-bloom/pull/392).
+This supersedes the pre-#358 phase 1b result (F = 17% on the three-seed mean).
+
+| Seed | Rifted, % of start craton per Gyr | Divergent / stretch / failed share | Splits through craton | Boundary loss marked through | F | F, twice-wide band |
+|---|---|---|---|---|---|---|
+| 7 | 13.2% | 24% / 69% / 7% | 45 of 115 | 34% | 38.9% | 49.5% |
+| 11 | 9.0% | 31% / 63% / 7% | 26 of 109 | 38% | 42.2% | 57.8% |
+| 2024 | 15.6% | 23% / 68% / 9% | 31 of 104 | 41% | 46.5% | 63.8% |
+| Mean | 12.6% | | | | 42.5% | 57.0% |
+
+"Boundary loss" is divergent plus stretch; F adds failed-rift loss to its through-marked
+share and divides by all rifting loss. Means are unweighted, calculated from the
+compact JSON's per-seed F values. The marks are intensive
+fractions that follow remaps; later cuts overwrite earlier marks. Per-node bookings match
+the ledger path accounts (ratio 1.000000), and each model baseline's rifting totals and
+split counts match its own uninstrumented replays.
+
+At 5 Myr steps the current cooldown permits 104–115 splits/Gyr, versus 28–33 after #385
+but before #358. Most boundary loss (58–65%) remains on nodes no cut marked; the twice-wide
+band moves 12–19 percentage points into the through share, and clear cuts account for only
+0.2–0.3% of boundary loss. F is an upper bound: steering cannot necessarily avoid every
+craton, and a diverted boundary may still cause loss.
+
+**Branch selected: 25% ≤ F < 50%.** Build solution 1 together with solution 3 and size 3
+to the remainder. The maximum mean reduction attributed to steering is 5.4 percentage
+points/Gyr of the 12.6%/Gyr starting-volume rate, while reaching 2%/Gyr needs 10.6 points.
+The twice-wide result crosses 50% on two seeds, so retain band width as an uncertainty in
+steering's sensitivity runs. For provenance, the same probe on `649e5ad` (after #385,
+before #358) gave F = 11–26%, mean 17%; on `9251382` (before #385 and #358), F = 18–37%,
+mean 29%. Those historical comparisons are in the same compact JSON and do not select
+the current branch.
+
+**Fresh baseline audit (#403).** `bin/debug/rebaseline_rfcs.py` ran the same tuning seeds
+at `2562f63`, with default density and controls, 5 Myr steps to 1 Gyr and 100 Myr
+checkpoints. [tuning.json](../analysis/issue403/tuning.json) records the full commit and
+controls. Rifting totals, path shares and cut counts reproduce phase 1b's `8878cd2`
+baseline. The attribution probe was not rerun; this audit leaves its selected 1+3 branch
+unchanged. #388 / PR #392 and tracking issue #389 already carry that decision, so #403
+does not open a duplicate RFC 0003 follow-up.
+
+| Seed | Rifted, % of window-start live craton per Gyr | Divergent / stretch / failed share | Splits / failed rifts with craton in band | Mean plate count |
+|---|---|---|---|---|
+| 7 | 13.17% | 24.18% / 68.97% / 6.85% | 45 of 115 / 34 of 84 | 45.9 |
+| 11 | 8.97% | 30.65% / 62.68% / 6.66% | 26 of 109 / 16 of 80 | 43.4 |
+| 2024 | 15.62% | 23.18% / 68.22% / 8.59% | 31 of 104 / 31 of 85 | 44.5 |
+
+Path columns are shares of `rifted_m3`; plate means average the eleven checkpoints from
+0 through 1 Gyr. The unweighted mean rifting rate is 12.59%/Gyr, so the existing 2%/Gyr
+design target needs an 84% reduction on this first-Gyr metric. It is no longer sized
+against the historical 4–6%/Gyr. Current split-cut crossing shares are 39.1%, 23.9% and
+29.8%, the controls for the 75% relative reduction criterion below.
+
+On the regenerated 3 Gyr seed 456862899, rift loss is 9.06%, 7.14% and 11.81% of
+window-start live craton per Gyr. It remains above the proposed 2% target in every
+window. This single trajectory is a stress comparison, not another estimate of the
+three-seed mean; it does not rerun the selected steering attribution probe.
 
 **Strength proxy (a cut score only).** Per node, dimensionless and bounded to [0, 1]:
 
@@ -184,8 +274,8 @@ Taking the maximum rather than the sum means a cratonic, thick-keeled column sco
 The cut then goes through `Plate.split` exactly as now, and the min-size gate is re-checked
 with the new halves.
 
-**Thinning factors, bounded.** Wherever craton resistance meets a thinning factor, the
-factor is clamped:
+**Thinning factors, bounded (implemented by #385).** Wherever craton resistance meets
+a thinning factor, the factor is clamped:
 - `resisted = clip(CRATON_RIFT_RESISTANCE × cratons.strength(craton), 0, 1)`, and with RFC
   0007, `× (1 − PLUME_CRATON_WEAKENING × heated)`, with heated = 1 while
   `plume_heat_myr > 0` and 0 otherwise, still clipped to [0, 1];
@@ -196,13 +286,16 @@ factor is clamped:
 Units are unchanged: a fraction of Hc and Hm.
 
 **Batched fits.** Refitting each candidate's halves with `mantle.fit_euler_pole` builds an
-N × 3 least-squares system per half. A synthetic check (in review) of 64 candidates at 10⁵
-nodes put that at ~0.4 s per attempt, against ~10 ms for scoring. So the fits are batched
-through moments instead:
+N × 3 least-squares system per half. A synthetic review check, first recorded at
+`70c6211` without a preserved benchmark script or machine specification, put 64
+candidates at 10⁵ nodes at ~0.4 s per attempt, against ~10 ms for scoring. Treat that as
+historical motivation, not current runtime evidence. The proposed fits are batched through
+moments instead:
 - For unit positions p and flow velocities v, the least-squares pole for any half H of
   the nodes solves `M_H ω = b_H`, with `M_H = Σ_H (I − p pᵀ)` and `b_H = Σ_H p × v`.
 - Its residual sum of squares is `Σ_H |v|² − ω · b_H`. Both identities were checked
-  numerically against `fit_euler_pole` and `_fit_residual_rms` (agreement to ~1e-14).
+  numerically against `fit_euler_pole` and `_fit_residual_rms` in the same historical
+  review check recorded at `70c6211` (agreement to ~1e-14; raw output not preserved).
 - These are sums of per-node moments (6 of `p pᵀ`, 3 of `p × v`, 1 of `|v|²`, 1 count).
 - One product of the N × 11 moment matrix with an N × K side-indicator matrix gives every
   candidate's half-A sums. Half B is the total minus half A.
@@ -214,8 +307,9 @@ through moments instead:
 - A unit test checks the batched poles and residuals against `fit_euler_pole` and
   `_fit_residual_rms` to 1e-9 relative.
 
-**Runtime.** Splits are attempted at most once per plate per step, and only after
-`SPLIT_MIN_AGE_STEPS`.
+**Runtime.** Splits are attempted at most once per plate per step, and only once
+`plate.age_years ≥ SPLIT_MIN_AGE_YEARS` = 2 Myr. At 5 Myr steps a new plate can become
+eligible on the next step; the historical 100 Myr cooldown is not the cost baseline.
 - At 64 candidates × ~10⁵ nodes, scoring and the batched moments are each one N × K
   product: ~7 × 10⁷ multiply-adds, tens of ms. Side indicators are built in chunks of 16
   candidates to keep memory near 13 MB.
@@ -236,10 +330,12 @@ through moments instead:
 | `SPLIT_CUT_MAX_RESIDUAL_INCREASE` | 0.10 | Design choice: a steered cut may fit the flow at most 10% worse | Sweep 0.05–0.25 |
 | `SPLIT_FIT_MIN_EIGENVALUE` | 1e-3 | Numerical: rejects halves too small or too narrow to constrain a pole | Fixed |
 | `KEEL_FULL_RATIO` | 2.0 (a 200 km keel) | Cratonic keels reach ~200–250 km [[Pearson et al., 2021]](#ref-pearson2021) | Fixed |
-| `CRATON_RIFT_RESISTANCE`, `CRATON_STRETCH_RESISTANCE` | 0.75 (unchanged) | #274 | Raise only if solution 3 is needed |
+| `CRATON_RIFT_RESISTANCE`, `CRATON_STRETCH_RESISTANCE` | 0.75 baseline | #274 | Phase 1b selects solution 3 with 1; tune upward to the remaining loss |
 
 Tune with `bin/debug/compare_cratons.py` on seeds 7, 11 and 2024 to 1 Gyr, plus a
-regenerated seed 456862899 to 3 Gyr; run the replays one at a time. Watch:
+regenerated seed 456862899 to 3 Gyr; use default density and controls, 5 Myr steps, and
+the same pinned current baseline and schedule for both variants. Run the replays one at a
+time. Watch:
 - `rifted_m3` per Gyr;
 - splits and failed rifts per Gyr, and plate count;
 - the fraction of split cuts whose band holds craton.
@@ -258,18 +354,21 @@ the flow keeps as much control of breakup as possible.
   - `maybe_split_plate` calls the steering after `_refine_split_cut`. It passes strength
     from the plate's `craton_crust_m` and `mantle_lithosphere_thickness_m`, and its relaxed
     `pole_separation_threshold`.
-  - The failed-rift branch passes the steered normal to `apply_failed_rift`, and books
-    `rifted_failed_m3` (phase 1).
+  - The failed-rift branch would pass the steered normal to `apply_failed_rift`. It
+    already books `rifted_failed_m3` (phase 1, #378).
   - New constants `SPLIT_CUT_MAX_TILT_DEG`, `SPLIT_CUT_CANDIDATES`,
     `SPLIT_CUT_MAX_MISFIT`, `SPLIT_CUT_MAX_RESIDUAL_INCREASE`, `SPLIT_FIT_MIN_EIGENVALUE`
     and `KEEL_FULL_RATIO`, with comments citing this RFC.
-- `backend/app/sparse_quad_patch.py`, `apply_failed_rift`: scale `factor` by craton
-  strength (read `craton_crust_m`), for both Hc and Hm, clamped to [0, 1].
-- `backend/app/lithosphere_plate.py`, `deform_columns`: clamp `resisted` and book
-  `rifted_divergent_m3`.
+- Existing solution 2 touchpoints (done, #385):
+  `backend/app/cratons.py::rift_resistance` clamps resistance to [0, 1];
+  `backend/app/sparse_quad_patch.py::apply_failed_rift` uses it for both Hc and Hm;
+  `backend/app/lithosphere_plate.py::deform_columns` uses it for divergent thinning and
+  already books `rifted_divergent_m3` (#378). Plume weakening would extend that shared
+  helper when RFC 0007 exists.
 - `backend/app/quad_tectonics.py`, `_open_rift`: book `rifted_stretch_m3` (done, #378).
 - `backend/app/cratons.py`: the three `rifted_*` sub-accounts, as diagnostics outside the
-  balance (their sum is `rifted_m3`); update the Resistance paragraph of the module
+  balance (their sum is `rifted_m3` on fresh runs; on older saves compare increments
+  since the sub-accounts were introduced); update the Resistance paragraph of the module
   docstring.
 - Tests:
   - `backend/unit_tests/test_merge_split.py`:
@@ -295,11 +394,14 @@ the flow keeps as much control of breakup as possible.
 
 ## Assumptions and uncertainty
 
-- **Which path matters is measured, but not where its loss comes from.** Phase 1 found
-  stretch and divergent loss dominant. Whether they run on boundaries born from
-  craton-crossing cuts is unmeasured until phase 1b.
-- **Three seeds to 1 Gyr.** Seed 2024 rifts 2.5× more than the others with a similar share
-  of craton-crossing cuts, so the spread between seeds is wide.
+- **Where boundary loss comes from is partly measured.** Phase 1b on `8878cd2` found
+  34–41% of divergent and stretch loss on through-marked nodes, and 58–65% on nodes no
+  cut marked. Initial boundaries, sutures later turned divergent, boundary migration and
+  loss spreading beyond the band remain mixed in that unmarked share.
+- **Three seeds to 1 Gyr.** At `2562f63`, rifting spans 8.97–15.62% of starting craton
+  per Gyr, a factor of 1.74 between extremes, while 23.9–39.1% of successful cuts cross
+  craton. The old phase 1 factor of 2.5 does not describe current seed spread. Three
+  trajectories still do not establish the full distribution.
 - **Keel thickness stands in for lithospheric strength.** Real strength depends on
   temperature, composition and water content as well as thickness. The proxy is used only
   to *rank* cuts, which limits the damage if it's wrong.
@@ -316,22 +418,31 @@ the flow keeps as much control of breakup as possible.
 
 - [x] **Gate (phase 1):** `rifted_m3` is split into its three paths, and on the tuning
       seeds each path's share and the craton area in cut bands are reported in
-      `analysis/`, before solutions 1 and 2 are implemented (#378).
-- [ ] **Gate (phase 1b):** F, the share of `rifted_m3` from craton-crossing cuts, is
-      reported per seed in `analysis/`, and this RFC is updated with the branch it selects,
-      before solution 1 is implemented.
+      `analysis/` (#378, historical baseline `112dcd7`; solution 2 later landed in #385).
+- [x] **Gate (phase 1b):** F, the share of `rifted_m3` from craton-crossing cuts, is
+      reported per seed in `analysis/` at the current 2 Myr cooldown, with an exact
+      baseline commit and the same 5 Myr step schedule. This RFC is updated with the
+      branch it selects before solution 1 is implemented (#388, published in open PR
+      #392: `8878cd2`, F = 38.9–46.5%, mean 42.5%; build 1 together with 3).
 - [ ] Craton loss to rifting is at most **2% of live craton per Gyr** over the first 3 Gyr
-      on seed 456862899 (4–6% today), and on average across seeds 7, 11 and 2024. This
-      is a model design target, not a measured Earth rate.
+      on seed 456862899, and on average across seeds 7, 11 and 2024. Compare with
+      `2562f63` at 5 Myr steps, using live volume at each window start. The current
+      tuning-seed first-Gyr rates are 13.17%, 8.97% and 15.62%, mean 12.59%. This is
+      a model design target, not a measured Earth rate.
 - [ ] The share of split cuts whose band crosses craton drops by at least 75% against
-      `origin/main` on the same seeds.
-- [ ] Splits per Gyr and mean plate count change by less than 10%, and the mean fit
-      residual of post-split plates rises by less than 10%. Breakup still follows the
-      flow.
-- [ ] Failed rifts thin cratonic columns by `1 − resisted` of the normal amount, with
-      every factor in [0, 1] (unit tests).
+      `2562f63` on the same seeds and 5 Myr step schedule (45/115, 26/109 and 31/104
+      successful cuts on seeds 7, 11 and 2024).
+- [ ] Splits per Gyr and mean plate count change by less than 10% against `2562f63`
+      on the same schedule: 115 / 109 / 104 splits and 45.9 / 43.4 / 44.5 mean plates
+      for seeds 7 / 11 / 2024 over 0–1 Gyr. Use the same checkpoint averaging in both
+      variants. The mean fit residual of post-split plates rises by less than 10%
+      (measure it in the implementation A/B; #403 did not collect it). Breakup still
+      follows the flow.
+- [x] Failed rifts thin cratonic columns by `1 − resisted` of the normal amount, with
+      every factor in [0, 1] (implemented and tested in #385).
 - [ ] A split attempt at 10⁵ nodes, full path, takes under 100 ms; step time changes by
-      less than 2% at density 4.
+      less than 2% at density 4 against the pinned current baseline on the same
+      hardware and step schedule; historical synthetic timings do not verify it.
 - [ ] Ledgers balance; replays with the same seed are deterministic.
 - [ ] Unit tests above pass; affected tests, ruff and `bin/quality_check.sh` are green.
 
@@ -340,7 +451,9 @@ the flow keeps as much control of breakup as possible.
 - **Rift cuts aren't the path.** If phase 1b shows most craton rifting is stretch donation
   or divergent thinning along boundaries that formed elsewhere and later migrated onto
   cratons (F < 25%), steering the cut won't help. Revise toward boundary migration, or
-  toward solution 3. Phase 1 already found these two paths at 83–90% of the sink.
+  toward solution 3. The pre-#358 phase 1 found these two paths at 83–90% of the sink;
+  current phase 1b at `8878cd2` did not select this falsification branch
+  (F = 38.9–46.5%).
 - **No admissible alternative.** If, in most splits that cross craton, no candidate within
   the tilt cone passes the admissibility tests, the flow field puts regime boundaries
   through cratons. The fix belongs in the mantle model, not the cut.
