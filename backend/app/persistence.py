@@ -138,9 +138,13 @@ def _migrate_plate_ages(world: World) -> None:
     from .legacy_conversion import legacy_age_years
 
     for plate in world.plates:
-        age_steps = plate.__dict__.pop("_age_steps", None)
-        if age_steps is None:
+        state = plate.__dict__
+        if "_age_years" in state:
             continue
+        # Without either age the plate would load and then fail on its first `age_years` read.
+        if "_age_steps" not in state:
+            raise CorruptSaveError(f"plate {plate.plate_id!r}: no age in years or steps")
+        age_steps = state.pop("_age_steps")
         if isinstance(age_steps, bool) or not isinstance(age_steps, (int, np.integer)) or age_steps < 0:
             raise CorruptSaveError(f"plate {plate.plate_id!r}: age must be a non-negative step count")
         plate.set_age_years(legacy_age_years(int(age_steps), world))

@@ -333,10 +333,22 @@ def test_a_step_age_without_a_step_count_assumes_the_fallback_step_capped_at_wor
     assert loaded.plates[0].age_years == 1_000_000.0
 
 
-def test_a_negative_step_age_in_an_old_quad_save_is_refused(monkeypatch):
+@pytest.mark.parametrize("age_steps", [-1, 2.5, None])
+def test_an_invalid_step_age_in_an_old_quad_save_is_refused(age_steps, monkeypatch):
     world = generate_world(seed=3, num_plates=4)
     with pytest.raises(persistence.CorruptSaveError, match="age"):
-        persistence.load_world_bytes(_quad_v1_save(world, -1, monkeypatch))
+        persistence.load_world_bytes(_quad_v1_save(world, age_steps, monkeypatch))
+
+
+def test_an_old_quad_plate_with_no_age_is_refused(monkeypatch):
+    world = generate_world(seed=3, num_plates=4)
+    for plate in world.plates:
+        del plate.__dict__["_age_years"]
+    monkeypatch.setattr(sparse_quad_patch, "QUAD_SURFACE_FORMAT_VERSION", 1)
+    data = persistence.save_world_bytes(world)
+    monkeypatch.undo()
+    with pytest.raises(persistence.CorruptSaveError, match="no age"):
+        persistence.load_world_bytes(data)
 
 
 def test_a_line_save_converts_plate_age_from_steps_to_years():
