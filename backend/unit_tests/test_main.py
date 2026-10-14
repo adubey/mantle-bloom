@@ -1613,3 +1613,61 @@ def test_a_failed_step_does_not_overwrite_the_checkpoint(client, store, saved_wo
     assert json.loads(lines[-1])["type"] == "error"
     assert main._state["world"].elapsed_years == 124_000.0
     assert _saved_elapsed(store) == 123_000.0
+
+
+def test_run_poll_wakes_when_another_tab_stops_the_run(client, store, saved_world):
+    _checkpoint(store, saved_world, running=False)
+    main._restore_checkpoint()
+    client.post("/world/run", json={"running": True, "step_years": 10.0})
+    result = {}
+
+    def follow():
+        # Like the full app: poll past whatever was last seen until the run has stopped.
+        run = client.get("/world/run").json()
+        while run["running"]:
+            run = client.get("/world/run", params={"after": run["world"]["revision"], "run_version": run["run_version"]}).json()
+        result.update(run)
+
+    poller = threading.Thread(target=follow)
+    started = time.monotonic()
+    poller.start()
+    time.sleep(0.05)
+    client.post("/world/run", json={"running": False})
+    poller.join(10)
+
+    # Without the wake, the last poll would sit out the 25 s timeout: a stopped run publishes
+    # no new revision.
+    assert time.monotonic() - started < 5
+    assert result["running"] is False
+
+
+def test_a_status_that_cannot_be_saved_is_reported(client, store, saved_world, monkeypatch):
+    _checkpoint(store, saved_world, running=False)
+    main._restore_checkpoint()
+
+    def fails(status):
+        raise OSError("volume gone")
+
+    monkeypatch.setattr(main._checkpoint_store, "save_status", fails)
+    resp = client.post("/world/run", json={"running": False, "step_years": 20.0})
+    assert resp.status_code == 500
+    assert client.get("/world/run").json()["step_years"] == 20.0
+    monkeypatch.undo()
+    monkeypatch.setattr(main, "_checkpoint_store", None)
+
+
+def test_an_animation_that_fails_keeps_the_frames_it_finished(client, store, saved_world, monkeypatch):
+    _checkpoint(store, saved_world, running=False)
+    main._restore_checkpoint()
+
+    def frames(world, *args, **kwargs):
+        world.elapsed_years += 1_000.0
+        yield ("progress", 1, 3, b"png", world.elapsed_years)
+        world.elapsed_years += 500.0  # a step that fails halfway
+        raise RuntimeError("encoder died")
+
+    monkeypatch.setattr(main.render_image, "stream_animation_mp4", frames)
+    lines = client.post("/world/animate", json={"step_years": 1_000.0, "num_frames": 3}).text.splitlines()
+
+    assert json.loads(lines[-1])["type"] == "error"
+    assert _saved_elapsed(store) == 124_000.0

@@ -675,18 +675,29 @@ export function updateControls(controls: {
 
 // Play/Stop (backend app/run_control.py, #375): the server steps the world itself while
 // `running`, and keeps that status across a restart. `error` says why a run stopped on its own.
+// `stepping` can outlast Stop: a step under way finishes, and the world moves once more.
 export interface RunState {
   running: boolean;
   step_years: number;
+  stepping: boolean;
   error: string | null;
+  run_version: number;
   world: { revision: string; seed: number; elapsed_years: number } | null;
 }
 
-// With `after` (the revision on screen), a long poll: the server answers once the world moves
-// past it, or after ~25 s.
-export function fetchRunState(after?: string, signal?: AbortSignal): Promise<RunState> {
-  const query = after === undefined ? "" : `?${new URLSearchParams({ after })}`;
-  return fetch(`${API_BASE}/world/run${query}`, { signal }).then(asJson<RunState>);
+// A refusal that retrying won't fix, such as an expired session (401).
+export class RunStateRefused extends Error {}
+
+// With `after` (the revision on screen) and `runVersion` (the last run_version seen), a long
+// poll: the server answers once the world or the run state moves on, or after ~25 s.
+export async function fetchRunState(after?: string, runVersion?: number, signal?: AbortSignal): Promise<RunState> {
+  const params = new URLSearchParams();
+  if (after !== undefined) params.set("after", after);
+  if (runVersion !== undefined) params.set("run_version", String(runVersion));
+  const query = params.size ? `?${params}` : "";
+  const resp = await fetch(`${API_BASE}/world/run${query}`, { signal });
+  if (resp.status >= 400 && resp.status < 500) throw new RunStateRefused(`${resp.status} ${await resp.text()}`);
+  return asJson<RunState>(resp);
 }
 
 export function setRunState(running: boolean, stepYears?: number): Promise<RunState> {

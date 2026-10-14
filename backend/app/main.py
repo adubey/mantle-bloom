@@ -1028,6 +1028,9 @@ def animate(req: AnimateRequest) -> StreamingResponse:
             ):
                 if message[0] == "progress":
                     _, frame, total, frame_png, elapsed_years = message
+                    # Each frame ends on a whole step. Saved now, a run that ends badly later
+                    # (a disconnect, a failed step or encoder) still keeps the frames before it.
+                    _checkpoint_world()
                     yield json.dumps({
                         "type": "progress",
                         "frame": frame,
@@ -1911,6 +1914,8 @@ def _checkpoint_world() -> None:
         _checkpoint_store.save_world(world)
     except Exception:  # noqa: BLE001 -- e.g. a full or unmounted volume mustn't fail the step
         _logger.exception("checkpoint: couldn't save the world")
+        return
+    _runner.retry_unsaved_status()
 
 
 def _save_run_status(status: checkpoint.RunStatus) -> None:
@@ -1937,7 +1942,7 @@ def _run_step_once(step_years: float, should_step) -> bool:
     return True
 
 
-_runner = run_control.WorldRunner(_run_step_once, _save_run_status)
+_runner = run_control.WorldRunner(_run_step_once, _save_run_status, on_change=_world_feed.wake)
 
 
 def _restore_checkpoint() -> None:
@@ -1970,22 +1975,30 @@ class RunRequest(BaseModel):
 
 
 def _run_summary() -> dict:
+    # The version first: anything that changes after it's read moves it again, so a poller
+    # can't miss a change by having seen a newer status under an older version.
+    run_version = _runner.version()
     status = _runner.status()
     return {
         "running": status.running,
         "step_years": status.step_years,
+        "stepping": _runner.stepping(),
         "error": _runner.error(),
+        "run_version": run_version,
         "world": _world_feed.summary(),
     }
 
 
 @app.get("/world/run")
-async def get_run(after: str | None = None) -> dict:
-    """The run status (`running`, `step_years`, and `error`: why the run last stopped on its
-    own, or null) and the world's current revision. With `after`, a long poll like
-    /public/world's: the full app follows the running world with it."""
+async def get_run(after: str | None = None, run_version: int | None = None) -> dict:
+    """The run status (`running`, `step_years`, `stepping`: a step is under way, which can
+    still be true just after Stop, and `error`: why the run last stopped on its own, or null),
+    its `run_version`, and the world's current revision. With `after`, a long poll like
+    /public/world's that also answers when the run state moves past `run_version`: the full
+    app follows the running world with it, and sees Stop pressed in another tab."""
     if after is not None:
-        await _world_feed.wait_past(after, public_view.GUEST_POLL_WAIT_S)
+        changed = None if run_version is None else (lambda: _runner.version() != run_version)
+        await _world_feed.wait_past(after, public_view.GUEST_POLL_WAIT_S, changed)
     return _run_summary()
 
 
@@ -1995,14 +2008,19 @@ def set_run(req: RunRequest) -> dict:
     after each run_control.RUN_INTERVAL_S pause, whether or not anyone is watching, and the
     status survives a restart when checkpointing is configured. Stop takes effect before the
     next step; a step already under way finishes. `400` for a non-positive `step_years`, `404`
-    to start without a world."""
+    to start without a world, `500` if the status took effect but couldn't be saved (it's
+    retried with the next world checkpoint)."""
     current = _runner.status()
     step_years = current.step_years if req.step_years is None else req.step_years
     if not checkpoint.valid_step_years(step_years):
         raise HTTPException(status_code=400, detail="step_years must be a positive number")
     if req.running:
         _require_world()
-    _runner.set_status(checkpoint.RunStatus(running=req.running, step_years=float(step_years)))
+    try:
+        _runner.set_status(checkpoint.RunStatus(running=req.running, step_years=float(step_years)))
+    except run_control.StatusNotSaved as exc:
+        # In effect now, but a restart would go back to the saved status (#375 review).
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     return _run_summary()
 
 

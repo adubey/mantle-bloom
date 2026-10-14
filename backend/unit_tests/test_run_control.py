@@ -2,7 +2,7 @@ import threading
 
 import pytest
 from app.checkpoint import RunStatus
-from app.run_control import WorldRunner
+from app.run_control import StatusNotSaved, WorldRunner
 
 
 class _Harness:
@@ -120,11 +120,71 @@ def test_a_closed_runner_runs_again_when_started_again(harness):
     harness.wait_for_steps(harness.steps + 2)
 
 
-def test_a_failed_status_save_keeps_the_status_in_memory():
-    def failing_save(status):
-        raise OSError("volume gone")
+def test_a_failed_status_save_is_reported_and_retried():
+    attempts = []
 
-    runner = WorldRunner(lambda years, should_step: True, failing_save, interval_s=0.001)
-    runner.set_status(RunStatus(running=True))
-    assert runner.status().running
+    def flaky_save(status):
+        attempts.append(status)
+        if len(attempts) == 1:
+            raise OSError("volume gone")
+
+    runner = WorldRunner(lambda years, should_step: True, flaky_save, interval_s=0.001)
+    with pytest.raises(StatusNotSaved):
+        runner.set_status(RunStatus(running=False, step_years=7.0))
+    assert runner.status() == RunStatus(running=False, step_years=7.0)
+    runner.retry_unsaved_status()
+    runner.retry_unsaved_status()  # nothing left to save
+    assert attempts == [RunStatus(False, 7.0), RunStatus(False, 7.0)]
+
+
+def test_a_failed_step_does_not_override_a_newer_play():
+    started, release = threading.Event(), threading.Event()
+    calls = []
+
+    def step_once(step_years, should_step):
+        calls.append(step_years)
+        if len(calls) == 1:
+            started.set()
+            release.wait(5)
+            raise RuntimeError("boom")
+        return True
+
+    runner = WorldRunner(step_once, interval_s=0.001)
+    runner.set_status(RunStatus(running=True, step_years=1.0))
+    assert started.wait(5)
+    runner.set_status(RunStatus(running=True, step_years=2.0))
+    release.set()
+    for _ in range(500):
+        if 2.0 in calls:
+            break
+        threading.Event().wait(0.01)
     runner.close()
+
+    assert runner.status() == RunStatus(running=True, step_years=2.0)
+    assert runner.error() is None
+
+
+def test_stepping_outlasts_stop_and_the_last_step_moves_the_version():
+    started, release = threading.Event(), threading.Event()
+    woken = []
+
+    def step_once(step_years, should_step):
+        started.set()
+        release.wait(5)
+        return True
+
+    runner = WorldRunner(step_once, on_change=lambda: woken.append(runner.version()), interval_s=0.001)
+    runner.set_status(RunStatus(running=True))
+    assert started.wait(5)
+    before = runner.version()
+    runner.set_status(RunStatus(running=False))
+    assert runner.stepping() and runner.version() > before
+    release.set()
+    for _ in range(500):
+        if not runner.stepping():
+            break
+        threading.Event().wait(0.01)
+    runner.close()
+
+    assert not runner.stepping()
+    assert woken == sorted(woken) and woken[-1] == runner.version()

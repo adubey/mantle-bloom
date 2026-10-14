@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./index.css";
 import {
   animateWorld, fetchDebugScenarios, fetchEarthquakes, fetchElevationPointAt, fetchFaults, fetchLakes, fetchNodeAt, fetchPlates, fetchPointSample, fetchRivers, fetchRunState, fetchStats, fetchStatsHistory, fetchVolcanoes, fetchWorldSummary, generateDebugWorld, generateWorld, renderWorld, setRunState, stopAnimation, updateControls,
-  TUNING_MULTIPLIER_KEYS,
+  RunStateRefused, TUNING_MULTIPLIER_KEYS,
 } from "./api";
 import type {
   AnimateResponse, DebugScenario, EarthquakeSummary, ElevationPointResponse, FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, NodeAtResponse, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, TuningKey, TuningMultipliers, VolcanoSummary, WorldStats, WorldSummary,
@@ -581,6 +581,8 @@ export default function App() {
   // out of this DOM node rather than a ref threaded through four separate components.
   const mapWrapperRef = useRef<HTMLDivElement>(null);
   const [playing, setPlaying] = useState(false);
+  // Stop was pressed, and the server's last step may still be landing (see handleStopRun).
+  const [stopping, setStopping] = useState(false);
   const [busy, setBusy] = useState(false);
   // Real percent-complete for the `busy` progress bar below, fed by
   // generateWorld's `onProgress` (see api.ts and issue #195) -- `undefined`
@@ -931,8 +933,11 @@ export default function App() {
     setSelectedRiverId(null);
     setSelectedBasin(null);
     setSelectedBasinKind(null);
-    await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), recordStats()]);
-  }, [projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats]);
+    // mapViewRef.current, not mapView -- see the ref's own comment above.
+    await Promise.all([
+      refresh(projection, mapViewRef.current, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), recordStats(),
+    ]);
+  }, [projection, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats]);
 
   // The Record toolbar button's AnimationModal -- run the whole recording in the background.
   // Each streamed frame's PNG is painted straight onto the main map (the run holds the server
@@ -1110,11 +1115,17 @@ export default function App() {
     }
   }, [stepYears]);
 
+  // Leaves `playing` to the follow loop below, which ends it once the server is idle: a step
+  // under way when Stop is pressed still finishes, and should still reach the map.
   const handleStopRun = useCallback(async () => {
+    setStopping(true);
     try {
-      setPlaying((await setRunState(false)).running);
+      await setRunState(false);
     } catch (e) {
+      // A 500 means stopped but not saved; anything else may not have stopped at all. Either
+      // way the follow loop reports what the server is actually doing.
       setError(String(e));
+      setStopping(false);
     }
   }, []);
 
@@ -1124,28 +1135,43 @@ export default function App() {
     if (playing) setRunState(true, years).catch((e) => setError(String(e)));
   }, [playing]);
 
+  // The world revision this tab last showed while following a run.
+  const shownRevisionRef = useRef<string | undefined>(undefined);
   const worldAdvancedRef = useRef(handleWorldAdvanced);
   worldAdvancedRef.current = handleWorldAdvanced;
 
+  // Polls the run state until the server is idle (stopped, with no step under way), showing
+  // each new revision. `shownRevisionRef` carries the revision on screen from one run to the
+  // next, so a world that moved in between is shown when the next run starts.
   useEffect(() => {
     if (!playing) return;
     const controller = new AbortController();
+    const finish = (message: string | null) => {
+      if (message) setError(message);
+      setPlaying(false);
+      setStopping(false);
+    };
     (async () => {
-      let revision: string | undefined;
+      let runVersion: number | undefined;
       while (!controller.signal.aborted) {
         try {
-          const run = await fetchRunState(revision, controller.signal);
-          if (revision !== undefined && run.world && run.world.revision !== revision) {
-            await worldAdvancedRef.current(await fetchWorldSummary());
+          // The first request answers at once, with the run_version later ones wait past.
+          const after = runVersion === undefined ? undefined : shownRevisionRef.current;
+          const run = await fetchRunState(after, runVersion, controller.signal);
+          runVersion = run.run_version;
+          const revision = run.world?.revision;
+          if (revision !== shownRevisionRef.current) {
+            const hadOne = shownRevisionRef.current !== undefined;
+            shownRevisionRef.current = revision;
+            if (hadOne && revision !== undefined) {
+              const s = await fetchWorldSummary();
+              await worldAdvancedRef.current(s);
+            }
           }
-          revision = run.world?.revision;
-          if (!run.running) {
-            if (run.error) setError(run.error);
-            setPlaying(false);
-            return;
-          }
-        } catch {
+          if (!run.running && !run.stepping) return finish(run.error);
+        } catch (e) {
           if (controller.signal.aborted) return;
+          if (e instanceof RunStateRefused) return finish(String(e));
           await new Promise((resolve) => setTimeout(resolve, RUN_POLL_RETRY_MS));
         }
       }
@@ -1158,6 +1184,7 @@ export default function App() {
   useEffect(() => {
     fetchRunState()
       .then((run) => {
+        shownRevisionRef.current = run.world?.revision;
         if (!run.running) return;
         if (STEP_YEARS_OPTIONS.includes(run.step_years)) setStepYears(run.step_years);
         setPlaying(true);
@@ -1262,7 +1289,7 @@ export default function App() {
               </button>
               <button
                 onClick={() => (animating ? handleStopAnimation() : handleStopRun())}
-                disabled={!playing && !animating}
+                disabled={(!playing && !animating) || stopping}
                 title="Stop"
                 aria-label="Stop"
                 style={{ flex: 1, fontSize: 15, lineHeight: 1, padding: "4px 0" }}
