@@ -1,0 +1,105 @@
+import json
+import os
+
+import pytest
+from app import checkpoint, persistence
+from app.checkpoint import CheckpointStore, RunStatus
+from app.world import generate_world
+
+
+@pytest.fixture(scope="module")
+def world():
+    return generate_world(seed=5, num_plates=2, node_density=0.5)
+
+
+def test_world_and_status_round_trip(tmp_path, world):
+    store = CheckpointStore(tmp_path)
+    store.save_world(world)
+    store.save_status(RunStatus(running=True, step_years=250_000.0))
+
+    loaded, status = CheckpointStore(tmp_path).load()
+
+    assert loaded is not world
+    assert (loaded.seed, loaded.elapsed_years, len(loaded.plates)) == (world.seed, world.elapsed_years, len(world.plates))
+    assert status == RunStatus(running=True, step_years=250_000.0)
+    # An ordinary save, so the owner can download it and open it like any other.
+    assert persistence.load_world_bytes(store.world_path.read_bytes()).seed == world.seed
+
+
+def test_no_checkpoint_starts_empty_and_stopped(tmp_path, caplog):
+    assert CheckpointStore(tmp_path / "new").load() == (None, RunStatus())
+    assert "no saved world" in caplog.text
+
+
+def test_unreadable_world_is_set_aside_and_a_running_status_stays_stopped(tmp_path, caplog):
+    store = CheckpointStore(tmp_path)
+    store.world_path.write_bytes(b"not a save")
+    store.save_status(RunStatus(running=True, step_years=1_000.0))
+
+    loaded, status = store.load()
+
+    assert loaded is None
+    assert status == RunStatus(running=False, step_years=1_000.0)
+    assert store.load()[1] == status
+    assert not store.world_path.exists()
+    assert [p.read_bytes() for p in tmp_path.glob("world.mbworld.invalid-*")] == [b"not a save"]
+    assert "can't load" in caplog.text and "staying stopped" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "contents",
+    ["{", json.dumps({"version": 1, "running": "yes", "step_years": 1.0}),
+     json.dumps({"version": 1, "running": True, "step_years": -5}),
+     json.dumps({"version": 99, "running": True, "step_years": 1.0})],
+)
+def test_unreadable_status_stays_stopped(tmp_path, world, caplog, contents):
+    store = CheckpointStore(tmp_path)
+    store.save_world(world)
+    store.status_path.write_text(contents)
+
+    loaded, status = store.load()
+
+    assert loaded is not None
+    assert status == RunStatus()
+    assert "can't read" in caplog.text
+
+
+def test_a_write_cut_off_partway_leaves_the_previous_checkpoint(tmp_path, world, monkeypatch):
+    store = CheckpointStore(tmp_path)
+    store.save_world(world)
+    before = store.world_path.read_bytes()
+    world.elapsed_years += 1.0
+
+    def dies(fd):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(os, "fsync", dies)
+    with pytest.raises(OSError):
+        store.save_world(world)
+    monkeypatch.undo()
+    world.elapsed_years -= 1.0
+
+    assert store.world_path.read_bytes() == before
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["world.mbworld"]
+
+
+def test_writes_left_by_a_killed_process_are_removed_at_startup(tmp_path, world, caplog):
+    store = CheckpointStore(tmp_path)
+    store.save_world(world)
+    (tmp_path / ".checkpoint-abc123").write_bytes(b"half a world")
+
+    loaded, _ = store.load()
+
+    assert loaded.seed == world.seed
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["world.mbworld"]
+    assert "cut off" in caplog.text
+
+
+def test_directory_comes_from_the_env_or_the_railway_volume(monkeypatch, tmp_path):
+    monkeypatch.delenv(checkpoint.CHECKPOINT_DIR_ENV, raising=False)
+    monkeypatch.delenv(checkpoint.RAILWAY_VOLUME_ENV, raising=False)
+    assert CheckpointStore.from_env() is None
+    monkeypatch.setenv(checkpoint.RAILWAY_VOLUME_ENV, str(tmp_path / "volume"))
+    assert CheckpointStore.from_env().directory == tmp_path / "volume"
+    monkeypatch.setenv(checkpoint.CHECKPOINT_DIR_ENV, str(tmp_path / "explicit"))
+    assert CheckpointStore.from_env().directory == tmp_path / "explicit"

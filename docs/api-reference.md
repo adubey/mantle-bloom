@@ -168,6 +168,32 @@ real-time increment (one simulated day) regardless of `years`, see
 shape as `/world/generate`, with `events` reflecting anything logged up through this step.
 `404` if no world has been generated yet.
 
+## `POST /world/run`, `GET /world/run`
+
+Play and Stop (#375, see [architecture.md#run-and-checkpoint](architecture.md#run-and-checkpoint)).
+
+```json
+{ "running": true, "step_years": 100000 }
+```
+
+`running: true` has the server step the world by `step_years` repeatedly, pausing 0.4 s
+between steps, until a `running: false` request (or a failed step) stops it. Omit
+`step_years` to keep the current size; changing it while running applies from the next step.
+Stop takes effect before the next step; a step already under way finishes. The status
+survives a restart when checkpointing is configured. `400` for a `step_years` that isn't a
+positive number, `404` for `running: true` with no world.
+
+Both return:
+
+```json
+{ "running": true, "step_years": 100000.0, "error": null,
+  "world": { "revision": "3f9a1c2e-12", "seed": 0, "elapsed_years": 1200000.0 } }
+```
+
+`error` says why the run last stopped on its own (a step raised, or there was no world), and
+clears on the next `POST`. `world` is `null` before one exists. `GET /world/run?after=<revision>`
+is a long poll like `/public/world`'s: it answers when the revision changes, or after 25 s.
+
 ## `GET /world/save`
 
 The "File > Save World" download -- the *entire* current world (every plate surface, mantle

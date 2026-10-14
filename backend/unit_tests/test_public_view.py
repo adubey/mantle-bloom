@@ -71,6 +71,8 @@ def test_world_is_null_before_one_exists(guest):
         ("post", "/world/animate"),
         ("post", "/world/animate/stop"),
         ("post", "/world/controls"),
+        ("get", "/world/run"),
+        ("post", "/world/run"),
     ],
 )
 def test_guest_cannot_create_save_load_or_run_the_world(guest, steps, method, path):
