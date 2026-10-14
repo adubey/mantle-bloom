@@ -48,7 +48,8 @@ how sources are checked. They are reviewed with
 2. **Accepted:** the project owner merges it, or, for an RFC already merged as a draft,
    says they accept it; the status is then set to Accepted. Any diagnosis gate the RFC sets (a measurement that
    decides between fixes) is run next, and the RFC is updated with the result.
-3. **Implemented:** the accepted design is split into issues and PRs that cite the RFC. The
+3. **Implemented:** the accepted design is split into issues and PRs that cite the RFC,
+   listed on the RFC's tracking issue, opened when it is accepted. The
    issues use the RFC worktree directory and keep one issue branch and PR per issue (see
    [`start-rfc`](../.agents/skills/start-rfc/SKILL.md) and
    [`start-issue`](../.agents/skills/start-issue/SKILL.md)). The status is updated when the

@@ -19,8 +19,13 @@ each issue still gets its own branch and reviewable PR.
   an RFC whose status is Draft, and hasn't said they accept it, ask whether they accept the
   RFC (as written, or with changes) before running its gates or opening issues. An RFC PR
   merged as a draft doesn't count as acceptance. If they accept, set its status to Accepted
-  in the RFC header and the `rfc/README.md` index, with the date. If not, treat it as a draft
-  under review (section 3).
+  in the RFC header and the `rfc/README.md` index, with the date, and open its tracking
+  issue (below). If not, treat it as a draft under review (section 3).
+- **Open a tracking issue when an RFC is accepted.** Title it `RFC NNNN: <title>
+  (tracking)`. Its body is a checklist, in dependency order, of every diagnosis gate and
+  solution the RFC plans, each marked with the gate result it depends on, then the
+  acceptance runs and setting the status to Implemented. Link the tracking issue from the
+  RFC's **Related** line. Before opening it, check that the RFC doesn't already have one.
 - For a new proposal, choose the next `NNNN` by checking the index and existing filenames.
   Do not reuse a number or create a second RFC for a question an existing RFC already
   covers; extend or supersede the existing RFC when that fits.
@@ -73,12 +78,14 @@ each issue still gets its own branch and reviewable PR.
   the RFC, and select the design the gate supports before opening implementation issues.
 - **Accepted and ready to implement:** break the accepted design into the necessary
   dependency-ordered issues. Each issue should cite the RFC, name its own deliverable and
-  acceptance checks, and avoid duplicating work assigned to another issue. Start each
+  acceptance checks, and avoid duplicating work assigned to another issue. Add each one to
+  the tracking issue's checklist, with its PR once open. Start each
   issue using `start-issue`; it will reuse this RFC worktree and create an issue branch from
   `origin/main`.
-- **Implementation underway:** use the existing RFC-to-issue links to identify remaining
-  work. Update the RFC status to Implemented only after all of its implementation issues
-  have landed.
+- **Implementation underway:** use the tracking issue to identify remaining work, and tick
+  items off as their PRs merge or their gates report. When a gate result rules a planned
+  step out, strike it there with the reason. Update the RFC status to Implemented only
+  after all of its implementation issues have landed, then close the tracking issue.
 
 Keep issue creation and RFC acceptance aligned with the lifecycle in `rfc/README.md`: the
 project owner accepts an RFC by merging its RFC PR, or by saying so for an RFC already merged
