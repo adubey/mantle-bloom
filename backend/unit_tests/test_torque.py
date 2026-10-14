@@ -2,7 +2,8 @@ import numpy as np
 import pytest
 
 from app import geometry
-from app import lithosphere, mantle, torque
+from app import cratons, lithosphere, mantle, torque
+from app.elevation_lines import line_spacing_rad
 
 
 def test_basal_drag_vanishes_when_plate_matches_mantle_flow():
@@ -395,107 +396,94 @@ def test_merge_omega_conserves_angular_momentum():
     assert np.dot(geometry.normalize(l_before[None, :])[0], geometry.normalize(l_after[None, :])[0]) > 0.999
 
 
-def test_collision_friction_torque_brakes_harder_for_a_more_severe_overlap():
-    """`overlap_severity` (see OVERLAP_FRICTION_SEVERITY_GAIN) is a deliberate *extra* brake on
-    top of what more contested nodes already sum to -- confirmed here by holding the
-    contested-node geometry/velocity fixed and only varying the severity argument."""
-    n = 5
-    own_points = np.tile(np.array([1.0, 0.0, 0.0]), (n, 1))
-    collision_mask = np.ones(n, dtype=bool)
-    # A neighbour spinning the opposite way -> real relative motion at the contested nodes,
-    # so the resistive torque is nonzero to begin with.
+def _contact_band(spacing_rad: float, rows: int, hc: float = 70_000.0, hm: float = 200_000.0, omega=(0.0, 0.0, 0.0)):
+    """A straight north-south contact on the equator: `rows` nodes along it, one per spacing,
+    and BOUNDARY_FORCE_REACH_MULTIPLIER nodes across the band. The neighbour is still, so the
+    plate's omega about z is the relative motion, normal to the contact. Hc/Hm default to 2x
+    reference, past COLLISION_RELIEF_FRICTION_SCALE_M of relief, so g = 1."""
+    across = int(torque.BOUNDARY_FORCE_REACH_MULTIPLIER)
+    lat = (np.arange(rows) - (rows - 1) / 2) * spacing_rad
+    lon = np.arange(across) * spacing_rad
+    lat_grid, lon_grid = (g.ravel() for g in np.meshgrid(lat, lon, indexing="ij"))
+    points = np.column_stack([np.cos(lat_grid) * np.cos(lon_grid), np.cos(lat_grid) * np.sin(lon_grid), np.sin(lat_grid)])
+    n = len(points)
     inputs = torque.BoundaryForceInputs(
-        own_points=own_points,
-        own_hc=np.full(n, 35_000.0),
-        own_hm=np.full(n, 100_000.0),
+        own_points=points,
+        own_hc=np.full(n, hc),
+        own_hm=np.full(n, hm),
         own_crust_type_codes=np.zeros(n, dtype=np.int8),
         dist_to_neighbor=np.full(n, 0.001),
         direction_to_neighbor=np.tile(np.array([0.0, 1.0, 0.0]), (n, 1)),
         neighbor_is_oceanic=np.zeros(n, dtype=bool),
-        neighbor_omega=np.tile(np.array([0.0, 0.0, -0.02]), (n, 1)),
+        neighbor_omega=np.zeros((n, 3)),
     )
 
     class FakePlate:
         crust_type = "continental"
-        omega = np.array([0.0, 0.0, 0.02])
 
-        def accounting_areas_m2(self, spacing_rad):
-            return np.full(n, lithosphere.node_area_m2(spacing_rad))
+        def __init__(self):
+            self.omega = np.array(omega, dtype=float)
 
-    plate = FakePlate()
-    light = torque.collision_friction_torque(plate, inputs, collision_mask, spacing_rad=0.02, overlap_severity=0.0)
-    severe = torque.collision_friction_torque(plate, inputs, collision_mask, spacing_rad=0.02, overlap_severity=1.0)
+        def accounting_areas_m2(self, spacing):
+            return np.full(n, lithosphere.node_area_m2(spacing))
 
-    assert np.linalg.norm(severe) > np.linalg.norm(light)
-    # Same geometry/velocities throughout -- the resistive force still opposes relative
-    # motion, it's just scaled up, not redirected.
-    assert np.dot(geometry.normalize(severe[None, :])[0], geometry.normalize(light[None, :])[0]) > 0.999
+    return FakePlate(), inputs, np.ones(n, dtype=bool)
 
 
-def test_collision_friction_torque_brakes_harder_for_a_taller_orogen():
-    """GitHub issue #176: an already-thickened collision zone (Hc/Hm well past reference) must
-    brake harder than one still at reference thickness, holding overlap_severity and the
-    contested-node geometry/velocity fixed -- this is what makes the brake self-limiting as a
-    collision's relief grows, not just its overlap severity."""
-    n = 5
-    own_points = np.tile(np.array([1.0, 0.0, 0.0]), (n, 1))
-    collision_mask = np.ones(n, dtype=bool)
-    base_kwargs = dict(
-        own_points=own_points,
-        own_crust_type_codes=np.zeros(n, dtype=np.int8),
-        dist_to_neighbor=np.full(n, 0.001),
-        direction_to_neighbor=np.tile(np.array([0.0, 1.0, 0.0]), (n, 1)),
-        neighbor_is_oceanic=np.zeros(n, dtype=bool),
-        neighbor_omega=np.tile(np.array([0.0, 0.0, -0.02]), (n, 1)),
+@pytest.mark.parametrize("density", [1.0, 4.0])
+def test_fully_braked_contact_resists_with_the_himalaya_tibet_force_per_trench_length(density):
+    """RFC 0008 (#399): a fully braked contact at the reference 4 cm/yr resists with
+    CONTACT_RESISTANCE_N_PER_M per metre of trench (Copley et al. 2010), whatever the node
+    density, because the coefficient is spread over the band's physical width."""
+    spacing = line_spacing_rad(density)
+    rows = 5
+    rate = mantle.cm_per_yr_to_rad_per_yr(torque.CONTACT_RESISTANCE_REF_CM_PER_YR)
+    plate, inputs, mask = _contact_band(spacing, rows, omega=(0.0, 0.0, rate))
+
+    tau = torque.collision_friction_torque(plate, inputs, mask, spacing)
+
+    trench_m = rows * spacing * lithosphere.PLANET_RADIUS_M
+    # Torque about z over the lever arm R: the summed resisting force, opposing the motion.
+    force_per_m = -tau[2] / lithosphere.PLANET_RADIUS_M / trench_m
+    assert force_per_m == pytest.approx(torque.CONTACT_RESISTANCE_N_PER_M, rel=0.01)
+
+
+def test_contact_drag_factor_is_the_larger_of_relief_and_craton_and_stays_bounded():
+    """One bounded factor g = max(relief, craton strength) in [0, 1] replaces the multiplicative
+    gains (RFC 0008, #399): flat crust without craton doesn't brake, and no combination of relief
+    and craton brakes harder than a full Tibet-height or cratonic contact."""
+    spacing = line_spacing_rad(1.0)
+    full = torque.CONTACT_RESISTANCE_N_PER_M / (
+        torque.BOUNDARY_FORCE_REACH_MULTIPLIER * spacing * lithosphere.PLANET_RADIUS_M * torque.CONTACT_RESISTANCE_REF_CM_PER_YR * 0.01 / torque.SECONDS_PER_YEAR
     )
-    # Reference-thickness crust: zero relief above CONTINENTAL_REFERENCE_ELEVATION_M.
-    flat_inputs = torque.BoundaryForceInputs(own_hc=np.full(n, 35_000.0), own_hm=np.full(n, 100_000.0), **base_kwargs)
-    # 2x reference Hc/Hm -- a genuinely tall, Tibetan-Plateau-scale orogen.
-    tall_inputs = torque.BoundaryForceInputs(own_hc=np.full(n, 70_000.0), own_hm=np.full(n, 200_000.0), **base_kwargs)
+    for hc, hm in ((35_000.0, 100_000.0), (50_000.0, 140_000.0), (70_000.0, 200_000.0), (84_000.0, 240_000.0)):
+        for craton in (0.0, 10_000.0, 35_000.0, 80_000.0):
+            plate, inputs, mask = _contact_band(spacing, 2, hc=hc, hm=hm)
+            craton_m = np.full(len(mask), craton)
+            g = torque.contact_drag_pa_s_per_m(plate, inputs, mask, spacing, craton_m) / full
+            relief_only = torque.contact_drag_pa_s_per_m(plate, inputs, mask, spacing) / full
+            assert np.all((g >= 0.0) & (g <= 1.0 + 1e-12))
+            np.testing.assert_allclose(g, np.maximum(relief_only, cratons.strength(craton_m)))
 
-    class FakePlate:
-        crust_type = "continental"
-        omega = np.array([0.0, 0.0, 0.02])
-
-        def accounting_areas_m2(self, spacing_rad):
-            return np.full(n, lithosphere.node_area_m2(spacing_rad))
-
-    plate = FakePlate()
-    flat = torque.collision_friction_torque(plate, flat_inputs, collision_mask, spacing_rad=0.02, overlap_severity=0.0)
-    tall = torque.collision_friction_torque(plate, tall_inputs, collision_mask, spacing_rad=0.02, overlap_severity=0.0)
-
-    assert np.linalg.norm(tall) > np.linalg.norm(flat)
-    assert np.dot(geometry.normalize(tall[None, :])[0], geometry.normalize(flat[None, :])[0]) > 0.999
+    flat, inputs, mask = _contact_band(spacing, 2, hc=35_000.0, hm=100_000.0)
+    assert np.all(torque.contact_drag_pa_s_per_m(flat, inputs, mask, spacing, np.zeros(len(mask))) == 0.0)
+    assert np.all(torque.contact_drag_pa_s_per_m(flat, inputs, mask, spacing, np.full(len(mask), 80_000.0)) == pytest.approx(full))
 
 
-def test_collision_friction_torque_brakes_harder_against_a_craton():
-    """Issue #340: retreat never consumes a craton, so a contested cratonic node brakes the
-    collision harder than ordinary crust of the same thickness and relief does."""
-    n = 5
-    collision_mask = np.ones(n, dtype=bool)
-    inputs = torque.BoundaryForceInputs(
-        own_points=np.tile(np.array([1.0, 0.0, 0.0]), (n, 1)),
-        own_hc=np.full(n, 35_000.0),
-        own_hm=np.full(n, 100_000.0),
-        own_crust_type_codes=np.zeros(n, dtype=np.int8),
-        dist_to_neighbor=np.full(n, 0.001),
-        direction_to_neighbor=np.tile(np.array([0.0, 1.0, 0.0]), (n, 1)),
-        neighbor_is_oceanic=np.zeros(n, dtype=bool),
-        neighbor_omega=np.tile(np.array([0.0, 0.0, -0.02]), (n, 1)),
-    )
-
-    class FakePlate:
-        crust_type = "continental"
-        omega = np.array([0.0, 0.0, 0.02])
-
-        def accounting_areas_m2(self, spacing_rad):
-            return np.full(n, lithosphere.node_area_m2(spacing_rad))
-
-    plate = FakePlate()
-    plain = torque.collision_friction_torque(plate, inputs, collision_mask, spacing_rad=0.02, craton_m=np.zeros(n))
-    jammed = torque.collision_friction_torque(plate, inputs, collision_mask, spacing_rad=0.02, craton_m=np.full(n, 35_000.0))
-
-    assert np.linalg.norm(jammed) == pytest.approx((1.0 + torque.CRATON_COLLISION_FRICTION_GAIN) * np.linalg.norm(plain))
+def test_contact_drag_slows_but_never_reverses_a_plate_in_one_step():
+    """The drag is implicit and linear in the relative velocity, so even a long step against a
+    fully braked contact leaves the plate moving the same way, only slower (RFC 0008, #399)."""
+    spacing = line_spacing_rad(1.0)
+    rate = mantle.cm_per_yr_to_rad_per_yr(4.0)
+    plate, inputs, mask = _contact_band(spacing, 5, omega=(0.0, 0.0, rate))
+    # A tiny plate (the band alone), so the contact drag dominates its inertia.
+    rho = np.full(len(mask), lithosphere.RHO_CONTINENTAL_CRUST)
+    inertia = lithosphere.moment_of_inertia_tensor(inputs.own_points, inputs.own_hc, inputs.own_hm, rho, spacing)
+    b, k = torque.collision_drag_coefficients(plate, inputs, mask, spacing)
+    for years in (1e3, 1e6, 5e6, 1e8):
+        new_omega = torque.integrate_omega(plate, np.zeros(3), b, k, inertia, years)
+        assert 0.0 <= new_omega[2] < rate
+        assert np.dot(new_omega, plate.omega) >= 0.0
 
 
 def test_contact_craton_is_the_weaker_side_so_both_plates_brake_alike():

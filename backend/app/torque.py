@@ -56,21 +56,17 @@ ABYSSAL_PLAIN_REFERENCE_ELEVATION_M = float(
     )[0]
 )
 
-# Collision friction: not a literal stress solve (see rheology.py), a reference stress scale
-# applied to the [0, 1] collision intensity `rheology.py` already reports, opposing local
-# relative motion at continent-continent contested nodes -- 50 MPa is a plausible
-# lithospheric differential-stress magnitude.
-COLLISION_FRICTION_REFERENCE_PA = 5e7
-
-# A pair that's barely grazing (a handful of contested nodes out of thousands) shouldn't brake
-# as hard as one where most of this plate's own boundary band is currently overlapping a
-# neighbour -- real collisional resistance scales with how much of the margin is actually
-# jammed, not just a fixed per-node stress. `overlap_severity` (collision_mask's own fraction
-# of this plate's boundary-band nodes, see shift_plate) scales the reference stress up to
-# 1 + this factor at severity 1.0 (the whole band contested) -- a deep, sustained pile-up
-# brakes several times harder than a light graze, on top of the torque already summing over
-# more nodes.
-OVERLAP_FRICTION_SEVERITY_GAIN = 2.0
+# Contact drag (RFC 0008 solution 0, #399): collision resistance as a force per unit trench
+# length. Copley, Avouac & Royer (2010) balance India's motion after the collision against
+# ~5e12 N/m from the thickening Himalaya-Tibet, at ~4 cm/yr of convergence. The drag is linear
+# in the relative velocity and spread over the boundary band (BOUNDARY_FORCE_REACH_MULTIPLIER
+# spacings wide), so a fully braked contact (factor 1, see `contact_drag_pa_s_per_m`) at the
+# reference rate resists with CONTACT_RESISTANCE_N_PER_M whatever the node density. It
+# replaces a 5e7 reference *stress* that multiplied the velocity in m/s, as basal drag's
+# mu/d_s (5e14 Pa*s/m) does: about 1e7 times too weak to slow anything. The RFC 0008 gate
+# (#395) measured a median 2.5-7.8e4 N/m at jammed contacts.
+CONTACT_RESISTANCE_N_PER_M = 5e12
+CONTACT_RESISTANCE_REF_CM_PER_YR = 4.0
 
 # Reference (baseline) continental column elevation -- REFERENCE_HC/HM_CONTINENTAL_M's own
 # isostatic_elevation, i.e. plates.BASE_CONTINENTAL_M (200m) recomputed from first principles
@@ -84,37 +80,31 @@ CONTINENTAL_REFERENCE_ELEVATION_M = float(
 
 # GitHub issue #176: `collision_uplift_multiplier` pumps up land volume/ice-cap coverage by
 # making *existing* orogens taller rather than reclaiming new land area, because nothing in the
-# model resists further shortening once a belt is already very tall -- `collision_friction_
-# torque` above only ever brakes on overlap severity, blind to how much relief a node already
-# carries. Real thickened orogenic crust resists further shortening more than fresh crust does
-# (already near its own strength limit and gravitationally spreading under its own weight --
-# the same physical argument behind Hc's own hard `lithosphere.MAX_CRUSTAL_THICKNESS_M`
-# ceiling), so scaling collision friction up with a node's own current relief closes that gap
-# directly at the velocity/momentum level -- upstream of `apply_convergent_deformation`'s
-# thickening rate, itself driven by `closing_rate` (rheology.py) -- rather than tapering the
-# thickening term after the fact. `COLLISION_RELIEF_FRICTION_SCALE_M` (relief above
-# `CONTINENTAL_REFERENCE_ELEVATION_M` at which the extra brake saturates) sits at roughly the
-# Tibetan Plateau's own mean-elevation scale (isostatic_elevation at 2x reference Hc/Hm computes
-# to ~4.4km, ~4.4km relief above the 200m baseline) -- well below `MAX_CRUSTAL_THICKNESS_M`'s
-# hard cap (2.4x reference), so this brake bites *before* a collision zone ever reaches the
-# ceiling, not only once it's already there.
-COLLISION_RELIEF_FRICTION_GAIN = 3.0
+# model resists further shortening once a belt is already very tall. Real thickened orogenic
+# crust resists further shortening more than fresh crust does (already near its own strength
+# limit and gravitationally spreading under its own weight -- the same physical argument
+# behind Hc's own hard `lithosphere.MAX_CRUSTAL_THICKNESS_M` ceiling), and Copley's resistance
+# *is* the thickened plateau's. So a node's contact drag rises with its relief, at the velocity
+# level, upstream of `apply_convergent_deformation`'s thickening rate. Full resistance at
+# `COLLISION_RELIEF_FRICTION_SCALE_M` of relief above `CONTINENTAL_REFERENCE_ELEVATION_M`,
+# roughly the Tibetan Plateau's mean-elevation scale (isostatic_elevation at 2x reference
+# Hc/Hm computes to ~4.4km, ~4.4km relief above the 200m baseline) -- well below
+# `MAX_CRUSTAL_THICKNESS_M`'s hard cap (2.4x reference), so the brake bites *before* a
+# collision zone reaches the ceiling.
 COLLISION_RELIEF_FRICTION_SCALE_M = 4000.0
 # Where craton meets craton, no weak crust is left to crumple, so convergence has to slow or go
-# elsewhere (#340). Retreat never consumes craton (cratons.retreat_allowed), so a contested node
-# scales the reference stress by up to 1 + this factor, as much as a Tibet-height plateau does,
-# times the *weaker* side's craton strength (cratons.strength): its own, or the craton at the
-# neighbour's nearest node. Collision resistance is one force across the contact, equal and
-# opposite on both plates (Copley, Avouac & Royer 2010; Warners-Ruckstuhl et al. 2013), and
-# it is the weak side's deformation that sets it: India, a cratonic indenter, is resisted by
-# Tibet's thickening and the strong mantle under it (Clark 2012), not by its own strength. A
-# craton pushing into weak crust therefore adds nothing here; the weak side's retreat and the
-# relief term carry that resistance.
-# Uncalibrated (#313). The brake acts only at a contact; a keel adds no basal drag here. That
-# leaves out a contested effect rather than settling it: Stoddard & Abbott (1996) found
-# tectosphere sped plates up in the configurations they tested, which argues against a simple
-# basal-drag slowdown but doesn't show keels never slow plates.
-CRATON_COLLISION_FRICTION_GAIN = 3.0
+# elsewhere (#340). Retreat never consumes craton (cratons.retreat_allowed), so a contested
+# node resists as hard as a Tibet-height plateau does, in proportion to the *weaker* side's
+# craton strength (cratons.strength): its own, or the craton at the neighbour's nearest node.
+# Collision resistance is one force across the contact, equal and opposite on both plates
+# (Copley, Avouac & Royer 2010; Warners-Ruckstuhl et al. 2013), and it is the weak side's
+# deformation that sets it: India, a cratonic indenter, is resisted by Tibet's thickening and
+# the strong mantle under it (Clark 2012), not by its own strength. A craton pushing into weak
+# crust therefore adds nothing here; the weak side's retreat and the relief term carry that
+# resistance. The brake acts only at a contact; a keel adds no basal drag here. That leaves
+# out a contested effect rather than settling it: Stoddard & Abbott (1996) found tectosphere
+# sped plates up in the configurations they tested, which argues against a simple basal-drag
+# slowdown but doesn't show keels never slow plates.
 
 # Boundary-line integrals (slab-pull/ridge-push) treat each contributing node as owning one
 # `spacing_rad * PLANET_RADIUS_M`-long stretch of the boundary -- consistent with how deform()
@@ -445,56 +435,61 @@ def basal_drag_torque(plate, world, spacing_rad: float) -> np.ndarray:
     return b - k @ plate.omega
 
 
-def collision_drag_coefficients(
+def contact_drag_pa_s_per_m(
     plate,
     inputs: BoundaryForceInputs,
     collision_mask: np.ndarray,
     spacing_rad: float,
-    overlap_severity: float = 0.0,
     craton_m: np.ndarray | None = None,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Resistive drag at continent-continent contested nodes (`collision_mask`), in
-    `basal_drag_coefficients`' own affine `tau(omega) = b - K @ omega` form -- keeps two
-    head-on continents from accelerating straight through each other indefinitely.
-    `overlap_severity` (see OVERLAP_FRICTION_SEVERITY_GAIN) scales the reference stress up for
-    a deeper/wider overlap, on top of the torque already summing over more nodes for a bigger
-    contested band. Each node's own current relief (see COLLISION_RELIEF_FRICTION_GAIN) scales
-    it up further still -- an already-tall orogen resists further shortening more than fresh
-    crust does -- and so does the contact's craton (`craton_m`, per node the weaker side's
-    `craton_crust_m`; see CRATON_COLLISION_FRICTION_GAIN), which retreat never consumes.
+) -> np.ndarray:
+    """Per contested node (`collision_mask`), the contact drag coefficient `eta * g` in Pa*s/m:
+    the traction per unit relative velocity, as `basal_drag_coefficients`' mu/d_s is.
 
-    GitHub issue #176: this used to be a standalone torque (`force = -reference_pa * area *
-    min(speed, 1.0) * relative_dir`, folded into `shift_plate`'s `explicit_torque`) -- at every
-    real plate speed `mantle.MAX_PLATE_RATE` allows (many orders of magnitude under the 1 m/s
-    cap, which never actually binds), `min(speed, 1.0) * relative_dir` reduces to `relative`
-    itself, so that formula was *already* affine in omega (`relative = v_self - v_neighbor`,
-    linear in `plate.omega`) -- it was just computed as if it weren't and handed to
-    `integrate_omega` as an explicit forcing term. `integrate_omega`'s own docstring already
-    flags the consequence: the implicit basal-drag term is stiff enough to swamp *any* purely
-    explicit torque, collision friction included, so raising the relief/severity gain there
-    barely moved a #176 sweep's land-volume runaway (confirmed: a 4x reference-stress boost
-    changed 120 My land volume by <1%). Splitting this into the same `(b, K)` form
-    `basal_drag_coefficients`/`slab_drag_coefficient_matrix` already use lets `shift_plate` fold
-    it into `drag_k` instead, so it competes with basal drag on equal footing in the implicit
-    solve rather than getting divided away by it first."""
-    n = len(inputs.own_points)
-    if not np.any(collision_mask) or n == 0:
-        return np.zeros(3), np.zeros((3, 3))
-    own_points = inputs.own_points[collision_mask]
-    neighbor_omega = inputs.neighbor_omega[collision_mask]
+    `eta = CONTACT_RESISTANCE_N_PER_M / (W * v_ref)`, with W the boundary band's width
+    (`BOUNDARY_FORCE_REACH_MULTIPLIER` spacings), so a band of g = 1 at v_ref resists with
+    CONTACT_RESISTANCE_N_PER_M per unit trench length (RFC 0008). g is the larger of the node's
+    relief factor (COLLISION_RELIEF_FRICTION_SCALE_M) and the contact's craton strength
+    (`craton_m`, per node the weaker side's `craton_crust_m`), so it stays in [0, 1]: one bounded
+    factor in place of the multiplicative overlap, relief and craton gains tuned against the old
+    inert coefficient. A contact with neither relief nor craton resists with nothing until
+    relief builds, as Copley's resistance comes from mountain building."""
     rho_c = lithosphere.node_crust_density(inputs.own_crust_type_codes[collision_mask], plate.crust_type)
     elevation = lithosphere.isostatic_elevation(inputs.own_hc[collision_mask], inputs.own_hm[collision_mask], rho_c)
     relief = np.clip(elevation - CONTINENTAL_REFERENCE_ELEVATION_M, 0.0, None)
     relief_factor = np.clip(relief / COLLISION_RELIEF_FRICTION_SCALE_M, 0.0, 1.0)
     craton_factor = cratons.strength(craton_m[collision_mask]) if craton_m is not None else 0.0
-    reference_pa = (
-        COLLISION_FRICTION_REFERENCE_PA
-        * (1.0 + OVERLAP_FRICTION_SEVERITY_GAIN * overlap_severity)
-        * (1.0 + COLLISION_RELIEF_FRICTION_GAIN * relief_factor)
-        * (1.0 + CRATON_COLLISION_FRICTION_GAIN * craton_factor)
-    )  # (k,) -- one coefficient per contested node, varying with each node's relief and craton.
+    factor = np.clip(np.maximum(relief_factor, craton_factor), 0.0, 1.0)
+    band_width_m = BOUNDARY_FORCE_REACH_MULTIPLIER * spacing_rad * lithosphere.PLANET_RADIUS_M
+    v_ref_m_per_s = CONTACT_RESISTANCE_REF_CM_PER_YR * 0.01 / SECONDS_PER_YEAR
+    return CONTACT_RESISTANCE_N_PER_M / (band_width_m * v_ref_m_per_s) * factor
+
+
+def collision_drag_coefficients(
+    plate,
+    inputs: BoundaryForceInputs,
+    collision_mask: np.ndarray,
+    spacing_rad: float,
+    craton_m: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Resistive drag at continent-continent contested nodes (`collision_mask`), in
+    `basal_drag_coefficients`' own affine `tau(omega) = b - K @ omega` form, with each node's
+    coefficient from `contact_drag_pa_s_per_m`.
+
+    GitHub issue #176: this used to be a standalone torque handed to `integrate_omega` as an
+    explicit forcing term, though it was already affine in omega (`relative = v_self -
+    v_neighbor`, linear in `plate.omega`). The implicit basal-drag term is stiff enough to swamp
+    *any* purely explicit torque, so raising its gains barely moved a #176 sweep. In the same
+    `(b, K)` form `basal_drag_coefficients`/`slab_drag_coefficient_matrix` use, `shift_plate`
+    folds it into `drag_k`, where it competes with basal drag on equal footing. Being implicit
+    and linear in the relative velocity, it slows a driven plate toward the speed where driving
+    and resistance balance but never reverses it in one step."""
+    n = len(inputs.own_points)
+    if not np.any(collision_mask) or n == 0:
+        return np.zeros(3), np.zeros((3, 3))
+    own_points = inputs.own_points[collision_mask]
+    neighbor_omega = inputs.neighbor_omega[collision_mask]
     area_m2 = plate.accounting_areas_m2(spacing_rad)[collision_mask]
-    c = reference_pa * area_m2 * lithosphere.PLANET_RADIUS_M**2 / SECONDS_PER_YEAR
+    c = contact_drag_pa_s_per_m(plate, inputs, collision_mask, spacing_rad, craton_m) * area_m2 * lithosphere.PLANET_RADIUS_M**2 / SECONDS_PER_YEAR
     raw_neighbor = np.cross(neighbor_omega, own_points)  # rad/yr-equivalent, not yet real m/s -- see basal_drag_coefficients
     b = np.einsum("n,ni->i", c, np.cross(own_points, raw_neighbor))
     k = np.einsum("n,nij->ij", c, np.eye(3)[None, :, :] - np.einsum("ni,nj->nij", own_points, own_points))
@@ -506,14 +501,13 @@ def collision_friction_torque(
     inputs: BoundaryForceInputs,
     collision_mask: np.ndarray,
     spacing_rad: float,
-    overlap_severity: float = 0.0,
     craton_m: np.ndarray | None = None,
 ) -> np.ndarray:
     """`collision_drag_coefficients` evaluated at the plate's current `omega` (`b - K @ omega`)
     -- a standalone entry point for tests / callers that just want the resistive torque, same
     role `slab_drag_torque`/`basal_drag_torque` play for their own `(b, K)` splits; `shift_plate`
     itself uses the split form for implicit integration."""
-    b, k = collision_drag_coefficients(plate, inputs, collision_mask, spacing_rad, overlap_severity, craton_m)
+    b, k = collision_drag_coefficients(plate, inputs, collision_mask, spacing_rad, craton_m)
     return b - k @ plate.omega
 
 
@@ -671,7 +665,7 @@ def apply_omega_and_rotate(plate, old_points: np.ndarray, omega: np.ndarray, yea
 def contact_craton_m(plate, neighbours: list, inputs: BoundaryForceInputs) -> np.ndarray:
     """Per node of `plate`, the craton of the weaker side of its contact: the lesser of its own
     `craton_crust_m` and that at its nearest neighbour node (`inputs.neighbor_node_index`),
-    so both plates at one contact are braked alike (CRATON_COLLISION_FRICTION_GAIN). Zero
+    so both plates at one contact are braked alike (`contact_drag_pa_s_per_m`). Zero
     where there is no neighbour."""
     own = plate.collect("craton_crust_m")
     other = np.zeros(len(own))
@@ -705,16 +699,6 @@ def shift_plate(plate, world, other_plates: list, years: float) -> float:
         inputs.own_points, inputs.own_hc, inputs.own_hm, rho_c, spacing_rad, area_m2=plate.accounting_areas_m2(spacing_rad)
     )
 
-    # A deeper/wider overlap should brake a collision harder, not just proportionally more
-    # (more contested nodes already sum to a bigger torque) -- see collision_drag_coefficients'
-    # own OVERLAP_FRICTION_SEVERITY_GAIN comment. Normalized against the near-boundary *band*
-    # (not the whole plate -- a huge plate's boundary is a small fraction of its own node
-    # count, which would dilute this to near-zero for exactly the large-plate case that
-    # matters) so it reads as "how much of the active margin is jammed," not "how much of the
-    # plate."
-    band = inputs.dist_to_neighbor <= reach_rad
-    overlap_severity = float(collision_mask.sum()) / max(1, int(band.sum()))
-
     explicit_torque = slab_pull_torque(plate, inputs, subducting, spacing_rad) + ridge_push_torque(
         plate, inputs, divergent, spacing_rad
     )
@@ -723,9 +707,7 @@ def shift_plate(plate, world, other_plates: list, years: float) -> float:
     # Collision resistance is folded into the same implicit (b, K) drag terms as basal/slab
     # drag, not explicit_torque -- see collision_drag_coefficients' own docstring for why an
     # explicit collision torque here structurally can't compete with basal drag's stiffness.
-    collision_b, collision_k = collision_drag_coefficients(
-        plate, inputs, collision_mask, spacing_rad, overlap_severity, contact_craton_m(plate, neighbours, inputs)
-    )
+    collision_b, collision_k = collision_drag_coefficients(plate, inputs, collision_mask, spacing_rad, contact_craton_m(plate, neighbours, inputs))
     drag_b = drag_b + collision_b
     drag_k = drag_k + collision_k
     new_omega = integrate_omega(plate, explicit_torque, drag_b, drag_k, inertia, years)
