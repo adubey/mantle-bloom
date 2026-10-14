@@ -5,10 +5,8 @@ self-contained executable** that a non-developer can double-click. The backend s
 built frontend from its own origin, picks a free port, and opens a browser at it.
 
 This is a **local single-user app**, not a deployment. For putting mantle-bloom on the
-public internet see [HOSTING.md](HOSTING.md) instead — the security blockers there
-(pickle RCE in `/world/load`, single in-memory world, localhost CORS) do **not** matter
-when the whole thing runs on one person's machine, which is the only thing this build
-targets.
+public internet see [HOSTING.md](HOSTING.md) instead, which runs the same single-origin
+setup in a Docker image on Railway, behind GitHub login (#376).
 
 ## How it works
 

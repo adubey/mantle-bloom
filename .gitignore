@@ -15,3 +15,6 @@ frontend/dist/
 # bin/debug/run_sweep.py's own raw/aggregated output -- regenerable, not source; findings go
 # into the tracking GitHub issue instead of the repo.
 /bin/debug/results/
+
+# .railway/package.json installs the Railway IaC SDK here, for typechecking railway.ts.
+.railway/node_modules/

@@ -255,10 +255,17 @@ that sleeps or restarts comes back where it was. Unset, as in a local run, nothi
 - At startup (the app's lifespan) the world is restored exactly as saved, with no catch-up
   for the time spent asleep, and the run resumes if it was running. An unreadable world file
   is renamed to `world.mbworld.invalid-<time>` and the server starts with no world, stopped;
-  an unreadable status file means stopped. Each case is logged.
+  an unreadable status file means stopped. Each case is logged. A directory that can't be
+  created or written means no checkpointing at all, and `GET /healthz` answers `503`, so a
+  hosted deploy with a broken volume fails its health check (#376).
 
 Checkpoints assume one process owns the directory: keep the service at one replica while it
 uses the volume.
+
+The hosted instance (#376) is the root `Dockerfile` on Railway, configured by
+`.railway/railway.ts`: one uvicorn process serving the built frontend and the API, with the
+volume at `/data` and `GET /healthz` as the deploy health check. See
+[HOSTING.md](HOSTING.md).
 
 <a id="world-state"></a>
 ## World state (`backend/app/world.py`)

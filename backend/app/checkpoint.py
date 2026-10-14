@@ -99,8 +99,13 @@ class CheckpointStore:
         """The checkpointed world (None if there isn't a usable one) and run status. Never
         raises for a missing or unreadable checkpoint: the server must still start, so it logs
         why and starts without that part. An unreadable world file is renamed aside rather
-        than left to be overwritten by the next checkpoint, so it can still be examined."""
+        than left to be overwritten by the next checkpoint, so it can still be examined.
+
+        Raises OSError if the directory can't be created or written: a volume that can't hold
+        a checkpoint must fail the deploy's health check (#376), not the first step's write."""
         self.directory.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryFile(prefix=_TEMP_PREFIX, dir=self.directory):
+            pass
         self._remove_partial_writes()
         world = self._load_world()
         status = self._load_status()

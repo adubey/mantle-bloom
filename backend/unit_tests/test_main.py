@@ -1532,6 +1532,7 @@ def store(client, tmp_path, monkeypatch):
 
     monkeypatch.setenv(checkpoint.CHECKPOINT_DIR_ENV, str(tmp_path))
     monkeypatch.setattr(main, "_checkpoint_store", None)
+    monkeypatch.setattr(main, "_checkpoint_error", None)
 
     def fake_step(world, years):
         world.elapsed_years += years
@@ -1656,6 +1657,20 @@ def test_a_status_that_cannot_be_saved_is_reported(client, store, saved_world, m
     monkeypatch.setattr(main, "_checkpoint_store", None)
 
 
+def test_health_check_fails_when_the_checkpoint_directory_is_unusable(client, store, tmp_path, monkeypatch):
+    # A deploy whose volume can't hold a checkpoint must not pass as healthy (#376).
+    from app import checkpoint
+
+    blocker = tmp_path / "not-a-directory"
+    blocker.write_text("")
+    monkeypatch.setenv(checkpoint.CHECKPOINT_DIR_ENV, str(blocker))
+    main._restore_checkpoint()
+
+    resp = client.get("/healthz")
+    assert resp.status_code == 503
+    assert "not-a-directory" in resp.json()["detail"]
+
+
 def test_an_animation_that_fails_keeps_the_frames_it_finished(client, store, saved_world, monkeypatch):
     _checkpoint(store, saved_world, running=False)
     main._restore_checkpoint()
@@ -1671,3 +1686,28 @@ def test_an_animation_that_fails_keeps_the_frames_it_finished(client, store, sav
 
     assert json.loads(lines[-1])["type"] == "error"
     assert _saved_elapsed(store) == 124_000.0
+
+
+@pytest.fixture
+def mounted_frontend(tmp_path):
+    """A stand-in `vite build` output mounted on the real app, as the Railway image does
+    (#376). mount_frontend adds a catch-all route, so the app's routes are put back after."""
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "index.html").write_text("<!doctype html><title>bundle</title>")
+    (tmp_path / "assets" / "index-abc.js").write_text("console.log(1)")
+    routes = list(app.router.routes)
+    main.mount_frontend(app, tmp_path)
+    yield TestClient(app, base_url="https://mantle.example.com", follow_redirects=False)
+    app.router.routes[:] = routes
+
+
+def test_mounted_frontend_serves_spa_routes_and_keeps_the_backend_ones(mounted_frontend):
+    for path in ("/view", "/view/some/deep/link"):
+        resp = mounted_frontend.get(path)
+        assert resp.status_code == 200 and "<title>bundle</title>" in resp.text, path
+    assert mounted_frontend.get("/assets/index-abc.js").text == "console.log(1)"
+    # Registered before the catch-all, so the bundle doesn't shadow them.
+    assert "<title>bundle</title>" not in mounted_frontend.get("/login").text
+    assert mounted_frontend.get("/world/summary").status_code == 401
+    assert mounted_frontend.get("/").headers["location"].endswith("/view")
+

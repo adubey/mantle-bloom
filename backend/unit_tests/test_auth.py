@@ -1,5 +1,7 @@
+import re
 import time
 import urllib.parse
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -118,6 +120,14 @@ def test_view_and_login_stay_public(remote):
     assert remote.get("/auth/session").json() == {
         "admin": False, "local": False, "login": None, "login_available": True,
     }
+
+
+def test_railway_health_check_is_public(remote):
+    # Railway's deploy health check (.railway/railway.ts) carries no session (#376).
+    config = (Path(__file__).resolve().parents[2] / ".railway" / "railway.ts").read_text()
+    match = re.search(r'healthcheckPath:\s*"([^"]+)"', config)
+    assert match, "no healthcheckPath in .railway/railway.ts"
+    assert remote.get(match.group(1)).json() == {"status": "ok"}
 
 
 def test_unconfigured_server_fails_closed(monkeypatch, remote):
