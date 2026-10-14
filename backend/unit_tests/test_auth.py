@@ -93,6 +93,19 @@ def test_logged_out_root_redirects_to_view(remote):
     assert resp.headers["location"] == "/view"
 
 
+@pytest.mark.parametrize("method", ["HEAD", "PUT", "DELETE", "PATCH"])
+def test_world_routes_reject_every_method(remote, method):
+    assert remote.request(method, "/world/summary").status_code == 401
+
+
+def test_prefixed_app_still_guards_world_routes():
+    """Under a root_path the router strips the prefix, so the guard must too (PR #377 review)."""
+    client = TestClient(app, base_url="https://testserver", root_path="/mb", follow_redirects=False)
+    assert client.get("/mb/world/summary").status_code == 401
+    assert client.post("/mb/world/animate/stop", headers={"Origin": "https://testserver"}).status_code == 401
+    assert client.get("/mb/").headers["location"] == "/mb/view"
+
+
 def test_world_routes_reject_unauthenticated_requests(remote):
     assert remote.get("/world/summary").status_code == 401
     assert remote.post("/world/step", json={"years": 1}).status_code == 401
@@ -250,3 +263,18 @@ def test_dev_frontend_origin_may_write_locally():
         resp = client.post("/world/animate/stop", headers={"Origin": f"http://localhost:{main._frontend_port}"})
         assert resp.status_code == 200
         assert client.post("/world/animate/stop", headers={"Origin": "https://evil.example"}).status_code == 403
+
+
+def test_public_url_origin_may_write_behind_a_host_rewriting_proxy(monkeypatch, remote):
+    """A proxy that sends Host: 127.0.0.1:<port> still lets the owner's own pages write."""
+    _sign_in(remote, monkeypatch)
+    origin = {"Origin": "https://mantle.example.com"}
+    assert remote.post("/world/animate/stop", headers=origin).status_code == 403
+    monkeypatch.setenv("MANTLE_BLOOM_PUBLIC_URL", "https://mantle.example.com/")
+    assert remote.post("/world/animate/stop", headers=origin).status_code == 200
+
+
+def test_dev_frontend_origin_may_not_write_remotely(monkeypatch, remote):
+    _sign_in(remote, monkeypatch)
+    dev = {"Origin": f"http://localhost:{main._frontend_port}"}
+    assert remote.post("/world/animate/stop", headers=dev).status_code == 403

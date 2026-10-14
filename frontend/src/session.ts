@@ -15,7 +15,9 @@ export function useSession(): Session | null {
   const [session, setSession] = useState<Session | null>(null);
   useEffect(() => {
     let cancelled = false;
-    fetch(`${API_BASE}/auth/session`, { credentials: "include" })
+    // No `credentials: "include"`: production is same-origin, so the cookie goes anyway, and the
+    // dev frontend is local (no cookie needed) and its CORS setup doesn't allow credentials.
+    fetch(`${API_BASE}/auth/session`)
       .then((resp) => asJson<Session>(resp))
       .then((s) => {
         if (!cancelled) setSession(s);

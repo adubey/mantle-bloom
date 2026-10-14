@@ -159,8 +159,12 @@ and checks every request before routing:
 - Every `/world/*` route answers `401` to anyone who isn't the admin, including direct API
   calls.
 - Any non-GET request whose `Origin` is another site (or `Sec-Fetch-Site: cross-site` when
-  there's no `Origin`) is refused with `403`. This is the CSRF guard. The Vite dev origin
-  counts as same-site.
+  there's no `Origin`) is refused with `403`. This is the CSRF guard. Same-site means the
+  request's own `Host` or the origin of `MANTLE_BLOOM_PUBLIC_URL`, so a proxy that rewrites
+  `Host` still works. The Vite dev origin counts as same-site only for local requests.
+
+The guard matches paths the way the router does, with any `root_path` prefix stripped, so
+serving the app under a prefix doesn't open `/<prefix>/world/*`.
 
 A request is the admin when it carries a valid session cookie, or when it was made on this
 machine. A session cookie (`mb_session`) is an HMAC-signed `{uid, login, exp}` that
@@ -178,7 +182,7 @@ Configuration is read from the environment on every request:
 | `MANTLE_BLOOM_GITHUB_CLIENT_ID`, `MANTLE_BLOOM_GITHUB_CLIENT_SECRET` | The GitHub OAuth app. Its callback URL is `<public URL>/auth/github/callback`. |
 | `MANTLE_BLOOM_GITHUB_OWNER_ID` | The one GitHub user ID allowed in (`gh api user -q .id`). |
 | `MANTLE_BLOOM_SESSION_SECRET` | At least 32 bytes, used to sign cookies. Rotating it signs everyone out. |
-| `MANTLE_BLOOM_PUBLIC_URL` | Optional. The `https://` origin to build the OAuth callback from, needed behind a TLS-terminating proxy. |
+| `MANTLE_BLOOM_PUBLIC_URL` | Optional. The public `https://` URL. The OAuth callback is built from it, and its origin is trusted for writes. Needed behind a TLS-terminating or `Host`-rewriting proxy. |
 | `MANTLE_BLOOM_LOCAL_NO_LOGIN` | `0` turns off the local no-login rule. Set it behind a same-host proxy that rewrites `Host` to loopback and adds no forwarding headers. |
 
 Missing any of the first four leaves login unconfigured, and the guard fails closed: remote

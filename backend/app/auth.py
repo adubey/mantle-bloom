@@ -179,19 +179,40 @@ def is_admin(request: Request, config: AuthConfig) -> bool:
     return is_local_request(request, config) or session_user(request, config) is not None
 
 
-def is_cross_site_write(request: Request, extra_origins: frozenset[str]) -> bool:
+def _origin_of(url: str) -> str:
+    parts = urllib.parse.urlsplit(url)
+    return f"{parts.scheme}://{parts.netloc}"
+
+
+def is_cross_site_write(request: Request, config: AuthConfig, extra_origins: frozenset[str]) -> bool:
     """Whether a state-changing request came from another site's page. Browsers attach
     `Origin` to every POST, so a write without one is a non-browser client (curl, a script),
     which can't ride a victim's cookie anyway. `Sec-Fetch-Site` covers older browsers that
-    omit `Origin` on same-origin posts."""
+    omit `Origin` on same-origin posts.
+
+    Same-site means the `Host` the request arrived with, or `MANTLE_BLOOM_PUBLIC_URL` for a
+    proxy that rewrites `Host`. The dev frontend's origins count only for local requests, so
+    a page on the owner's own localhost can't post to a remote deployment (PR #377 review)."""
     if request.method in _SAFE_METHODS:
         return False
     origin = request.headers.get("origin")
     if origin is None:
         return request.headers.get("sec-fetch-site") == "cross-site"
-    if origin in extra_origins:
+    if config.public_url and origin == _origin_of(config.public_url):
+        return False
+    if origin in extra_origins and is_local_request(request, config):
         return False
     return urllib.parse.urlsplit(origin).netloc != request.headers.get("host")
+
+
+def _route_path(scope) -> tuple[str, str]:
+    """(root_path, the path the router matches). Starlette keeps root_path inside
+    scope["path"] (uvicorn --root-path, a mount) and strips it when routing, so the guard must
+    strip it too or /<prefix>/world/... slips past (PR #377 review)."""
+    path, root = scope["path"], scope.get("root_path", "")
+    if root and (path == root or path.startswith(root + "/")):
+        return root, path[len(root):] or "/"
+    return root, path
 
 
 def _is_world_route(path: str) -> bool:
@@ -200,11 +221,11 @@ def _is_world_route(path: str) -> bool:
 
 def gate(request: Request, config: AuthConfig, extra_origins: frozenset[str]) -> Response | None:
     """The response that refuses `request`, or None to let it through."""
-    if is_cross_site_write(request, extra_origins):
+    if is_cross_site_write(request, config, extra_origins):
         return JSONResponse({"detail": "Cross-site request refused"}, status_code=403)
-    path = request.url.path
+    root, path = _route_path(request.scope)
     if path == "/" and request.method in ("GET", "HEAD") and not is_admin(request, config):
-        return RedirectResponse("/view", status_code=302)
+        return RedirectResponse(f"{root}/view", status_code=302)
     if _is_world_route(path) and not is_admin(request, config):
         return JSONResponse({"detail": "Login required"}, status_code=401)
     return None
