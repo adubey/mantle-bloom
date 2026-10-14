@@ -98,6 +98,9 @@ and 12–18% craton-crossing cut share remain below as historical evidence, not 
 basis for that decision. The gate outcome does not set the resistance values for solution
 3; the implementation still has to tune them to the remaining loss.
 
+Phase 1b has run (Design, "Phase 1b outcome"): F = 29% on the three-seed mean, so 1 is built
+only together with 3.
+
 4 comes with RFC 0007.
 
 ## Design

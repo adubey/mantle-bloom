@@ -605,6 +605,10 @@ where cratons jam retreat (the frozen `run_eligible` candidates on polarized fro
 rates, collision-time drops and fusions, the buoyant share of slab pull, contact forces, and
 the craton lost within reach of each contact (RFC 0008's gate).
 
+`bin/debug/attribute_rift_boundary_loss.py` replays a seed with probe-only node marks on each
+split cut's band, and books later divergent and stretch craton loss by whether the cut that
+made the boundary crossed craton (RFC 0003 phase 1b).
+
 #### Plate Inspector, Rivers, Lake Inspector, Plates & Faults
 
 The remaining four entries in the "Debug >" group are documented as their own feature views,

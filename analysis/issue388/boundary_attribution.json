@@ -1,0 +1,173 @@
+{
+ "7": {
+  "myr": 1000.0,
+  "rifted_share_of_start_craton": 0.0405,
+  "rifted_km3": 165813156,
+  "path_share_of_rifted": {
+   "divergent": 0.32,
+   "stretch": 0.512,
+   "failed": 0.168
+  },
+  "booking_vs_ledger": {
+   "divergent": 1.0,
+   "stretch": 1.0
+  },
+  "boundary_loss_share_by_mark": {
+   "band": {
+    "through": 0.245,
+    "clear": 0.0,
+    "never": 0.755
+   },
+   "ever": {
+    "through": 0.245,
+    "clear": -0.0,
+    "never": 0.755
+   },
+   "wide": {
+    "through": 0.341,
+    "clear": 0.0,
+    "never": 0.659
+   }
+  },
+  "boundary_loss_by_path_and_mark": {
+   "divergent": {
+    "through": 0.096,
+    "clear": 0.0,
+    "never": 0.904
+   },
+   "stretch": {
+    "through": 0.338,
+    "clear": 0.0,
+    "never": 0.662
+   }
+  },
+  "splits_marked": {
+   "through": 5,
+   "clear": 28
+  },
+  "splits_marked_wide": {
+   "through": 6,
+   "clear": 27
+  },
+  "F": {
+   "band": 0.372,
+   "ever": 0.372,
+   "wide": 0.452
+  },
+  "F_with_385_estimate": 0.281
+ },
+ "11": {
+  "myr": 1000.0,
+  "rifted_share_of_start_craton": 0.0435,
+  "rifted_km3": 137954757,
+  "path_share_of_rifted": {
+   "divergent": 0.283,
+   "stretch": 0.575,
+   "failed": 0.142
+  },
+  "booking_vs_ledger": {
+   "divergent": 1.0,
+   "stretch": 1.0
+  },
+  "boundary_loss_share_by_mark": {
+   "band": {
+    "through": 0.219,
+    "clear": 0.0,
+    "never": 0.781
+   },
+   "ever": {
+    "through": 0.219,
+    "clear": -0.0,
+    "never": 0.781
+   },
+   "wide": {
+    "through": 0.268,
+    "clear": 0.0,
+    "never": 0.732
+   }
+  },
+  "boundary_loss_by_path_and_mark": {
+   "divergent": {
+    "through": 0.168,
+    "clear": 0.0,
+    "never": 0.832
+   },
+   "stretch": {
+    "through": 0.245,
+    "clear": 0.0,
+    "never": 0.755
+   }
+  },
+  "splits_marked": {
+   "through": 6,
+   "clear": 31
+  },
+  "splits_marked_wide": {
+   "through": 6,
+   "clear": 31
+  },
+  "F": {
+   "band": 0.33,
+   "ever": 0.33,
+   "wide": 0.372
+  },
+  "F_with_385_estimate": 0.25
+ },
+ "2024": {
+  "myr": 1000.0,
+  "rifted_share_of_start_craton": 0.1071,
+  "rifted_km3": 184615631,
+  "path_share_of_rifted": {
+   "divergent": 0.407,
+   "stretch": 0.497,
+   "failed": 0.096
+  },
+  "booking_vs_ledger": {
+   "divergent": 1.0,
+   "stretch": 1.0
+  },
+  "boundary_loss_share_by_mark": {
+   "band": {
+    "through": 0.088,
+    "clear": 0.0,
+    "never": 0.912
+   },
+   "ever": {
+    "through": 0.088,
+    "clear": 0.0,
+    "never": 0.912
+   },
+   "wide": {
+    "through": 0.16,
+    "clear": 0.0,
+    "never": 0.84
+   }
+  },
+  "boundary_loss_by_path_and_mark": {
+   "divergent": {
+    "through": 0.074,
+    "clear": 0.0,
+    "never": 0.926
+   },
+   "stretch": {
+    "through": 0.099,
+    "clear": 0.0,
+    "never": 0.901
+   }
+  },
+  "splits_marked": {
+   "through": 4,
+   "clear": 28
+  },
+  "splits_marked_wide": {
+   "through": 4,
+   "clear": 28
+  },
+  "F": {
+   "band": 0.175,
+   "ever": 0.175,
+   "wide": 0.24
+  },
+  "F_with_385_estimate": 0.111
+ }
+}
