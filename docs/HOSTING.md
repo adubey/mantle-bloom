@@ -97,8 +97,8 @@ Nobody gets into `/`, and `/login` says so. `/view` still works. See
 The volume at `/data` holds the checkpoint (#375, see
 [architecture.md#run-and-checkpoint](architecture.md#run-and-checkpoint)):
 
-- `world.mbworld` is an ordinary save: about 30 MB for a default world, 60 MB for a large
-  one. It's rewritten after every completed step, generate, load and controls change. While
+- `world.mbworld` is an ordinary save, 30 to 60 MB depending on the world's settings. It's
+  rewritten after every completed step, generate, load and controls change. While
   it's being replaced, a second copy briefly exists on the volume, so allow twice the world's
   size. Railway's default volume (0.5 GB on the Free and Trial plans, 5 GB on Hobby) is
   plenty.
@@ -134,8 +134,9 @@ when the old process stopped is lost. The world comes back at the last completed
 `railway.ts` turns on sleeping (Railway's Serverless setting). A service sleeps 5 to 10
 minutes after it last sent any network traffic:
 
-- **An open page keeps it awake.** `/view` and `/` long-poll the server (`/public/world` and
-  `/world/run`, held open up to 25 s), and every answer is outbound traffic.
+- **An open viewer keeps it awake.** `/view` long-polls `/public/world`, held open up to
+  25 s, and so does the full app while it follows a running world (`/world/run`). Every
+  answer is outbound traffic.
 - **A running world doesn't.** A world left on Play with nobody watching sends nothing, so
   the service sleeps and the simulation pauses. Nothing runs before sleep: the checkpoint
   from the last completed step is already on the volume.
