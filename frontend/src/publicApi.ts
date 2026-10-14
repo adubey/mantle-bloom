@@ -38,8 +38,11 @@ export class PublicStepRefused extends Error {
   }
 }
 
-export function fetchPublicState(): Promise<PublicState> {
-  return fetch(`${API_BASE}/public/world`).then(asJson<PublicState>);
+// With `after` (the revision on screen), the server holds the request until the shared world
+// moves past it or ~25 s pass, so every viewer follows other viewers' steps (#374).
+export function fetchPublicState(after?: string, signal?: AbortSignal): Promise<PublicState> {
+  const query = after === undefined ? "" : `?${new URLSearchParams({ after })}`;
+  return fetch(`${API_BASE}/public/world${query}`, { signal }).then(asJson<PublicState>);
 }
 
 export function renderPublicWorld(view: PublicView, width: number, height: number): Promise<PublicWorld & { image_base64: string }> {

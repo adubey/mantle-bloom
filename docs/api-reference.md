@@ -30,11 +30,17 @@ Open to anyone, for the logged-out `/view` page (#373). See
 
 - `GET /public/world`: `{"world": {"revision", "seed", "elapsed_years"} | null,
   "steps_remaining": int | null, "step_limit": 30, "step_years": 100000}`. `world` is null
-  before one exists. `steps_remaining` is null (unlimited) for the admin.
+  before one exists. `steps_remaining` is null (unlimited) for the admin. `revision` is an
+  opaque string that changes whenever the world does (#374).
+- `GET /public/world?after=<revision>`: the same response, but held open until the world's
+  revision differs from `after`, or for at most 25 s (then answered with the unchanged
+  world). Viewers poll this to pick up steps that other viewers or the owner take.
 - `GET /public/render?view=elevation|biome&width=&height=`: like `/world/render`, but always
   Eckert IV at the default orientation, with width and height at most 2400. It returns
-  `{"revision", "seed", "elapsed_years", "image_base64"}`. `400` for any other view or size,
-  `404` before a world exists, `503` if the owner holds the world for more than 10 s.
+  `{"revision", "seed", "elapsed_years", "image_base64"}`. Each view and size is rendered once
+  per revision and then served from a cache, even while the owner holds the world. `400` for
+  any other view or size, `404` before a world exists, `503` if a render is needed and the
+  owner holds the world for more than 10 s.
 - `POST /public/step` with `{"revision": str}`, the revision the viewer is showing: advances
   the world by 100 kyr and returns `{"world": {...}, "computed": bool, "steps_remaining"}`.
   Only a request that runs the step (`computed: true`) uses up allowance, and the response then
@@ -194,6 +200,9 @@ was never converted, and stays with the world through later saves.
 readable save (corrupt, truncated, or not a mantle-bloom file) or are in a format version
 newer than this build reads (the save envelope or one of its sparse-quad plates). Nothing
 falls back to a partial load.
+
+`503` while a generation, step or animation is in progress, so a running step can't keep
+changing a world that has already been replaced.
 
 ## `POST /world/controls`
 

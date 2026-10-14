@@ -94,6 +94,11 @@ _state: dict[str, World | None] = {"world": None}
 # cheap, to fail every time it lands during a step (see the render route's own docstring).
 _world_lock = threading.Lock()
 
+# The shared world's published revision and the viewers' render cache (#374, see
+# public_view.py). Every change to the world goes through `_world_changed` or `_set_world`.
+_world_feed = public_view.WorldFeed()
+_public_renders = public_view.RenderCache()
+
 # Set by POST /world/animate/stop, checked once per frame inside stream_animation_mp4 (see
 # animate() below): lets the frontend's "Stop" button end an in-progress animation *cleanly*
 # -- the stream finishes its current frame, flushes the encoder, and still returns the video
@@ -265,6 +270,21 @@ def _parse_view_rotation(rotation: str | None) -> np.ndarray:
     if not all(np.isfinite(values)):
         raise HTTPException(status_code=400, detail="rotation values must be finite")
     return np.array(values, dtype=float).reshape(3, 3)
+
+
+def _world_changed() -> None:
+    """Publish a new revision of the shared world to viewers. Call it after every change to the
+    world, before releasing `_world_lock`: a viewer's render takes the lock and caches what it
+    draws under the revision it reads there, so a change published after the release could
+    leave the new world cached under the old revision."""
+    _public_renders.clear()
+    _world_feed.publish(_state["world"])
+
+
+def _set_world(world: World) -> None:
+    """Replace the shared world; the caller holds `_world_lock`."""
+    _state["world"] = world
+    _world_changed()
 
 
 def _require_world() -> World:
@@ -678,7 +698,7 @@ def generate(req: GenerateRequest) -> StreamingResponse:
                     yield json.dumps({"type": "progress", "fraction": message[1]}) + "\n"
                 else:
                     world = message[1]
-            _state["world"] = world
+            _set_world(world)
             yield json.dumps({"type": "done", **_summary(world)}) + "\n"
         except GeneratorExit:
             # The client disconnected mid-stream -- Starlette closes a sync generator behind
@@ -696,7 +716,7 @@ def generate(req: GenerateRequest) -> StreamingResponse:
             # to send progress/done lines to.
             world = _drain_progress(progress) or world
             if world is not None:
-                _state["world"] = world
+                _set_world(world)
             raise
         except Exception as exc:  # noqa: BLE001 -- status is already 200, so surface it as a data line
             yield json.dumps({"type": "error", "detail": f"{type(exc).__name__}: {exc}"}) + "\n"
@@ -726,7 +746,7 @@ def generate_debug(req: GenerateDebugRequest) -> dict:
         )
     with _world_lock:
         world = debug_worlds.generate_debug_world(req.scenario, req.seed)
-        _state["world"] = world
+        _set_world(world)
     return _summary(world)
 
 
@@ -793,6 +813,8 @@ def step(req: StepRequest) -> StreamingResponse:
         except Exception as exc:  # noqa: BLE001 -- status is already 200, so surface it as a data line
             yield json.dumps({"type": "error", "detail": f"{type(exc).__name__}: {exc}"}) + "\n"
         finally:
+            # Even a failed step has changed the world partway.
+            _world_changed()
             _world_lock.release()
 
     return StreamingResponse(_stream(), media_type="application/x-ndjson")
@@ -820,7 +842,8 @@ async def load_world(request: Request) -> dict:
     sparse quads on load, one way -- see docs/save-compatibility.md; the summary's
     `surface_conversion` then reports what changed. `400` with the reason if the
     bytes are corrupt or in a save format this build doesn't read; any other failure is
-    still a `400`, without detail."""
+    still a `400`, without detail. `503` while a generation, step, or animation is in
+    progress."""
     body = await request.body()
     try:
         world = persistence.load_world_bytes(body)
@@ -834,7 +857,13 @@ async def load_world(request: Request) -> dict:
     if world.hydrology_cache is not None and getattr(world.hydrology_cache, "discharge_m3_s", None) is None:
         world.hydrology_cache = None
         world.hydrology_cache_step = None
-    _state["world"] = world
+    # Under the lock, so a step can't still be mutating the world viewers are told replaced it.
+    if not _world_lock.acquire(blocking=False):
+        raise HTTPException(status_code=503, detail="a generation, step, or animation is already in progress")
+    try:
+        _set_world(world)
+    finally:
+        _world_lock.release()
     return _summary(world)
 
 
@@ -1004,6 +1033,9 @@ def animate(req: AnimateRequest) -> StreamingResponse:
         except Exception as exc:  # noqa: BLE001 -- status is already 200, so surface it as a data line
             yield json.dumps({"type": "error", "detail": f"{type(exc).__name__}: {exc}"}) + "\n"
         finally:
+            # Published once at the end: viewers can't render while the animation holds the
+            # world anyway, and meanwhile keep their cached frame of the revision before it.
+            _world_changed()
             _world_lock.release()
 
     return StreamingResponse(_stream(), media_type="application/x-ndjson")
@@ -1086,6 +1118,8 @@ def set_controls(req: ControlsRequest) -> dict:
         for name, value in tuning_updates.items():
             setattr(world, name, float(value))
         world.climate_cache = climate.compute_climate(world, *climate.grid_dimensions(world.climate_density))
+        # Sea level and climate change what the viewer's renders show.
+        _world_changed()
     return {
         "sea_level_m": world.sea_level_m,
         "solar_multiplier": world.solar_multiplier,
@@ -1730,7 +1764,7 @@ _guest_steps = public_view.GuestStepCoordinator()
 
 
 class PublicStepRequest(BaseModel):
-    # The revision (public_view.world_revision) the viewer is looking at.
+    # The revision (`/public/world`'s `world.revision`) the viewer is looking at.
     revision: str
 
 
@@ -1743,13 +1777,19 @@ def _guest_allowance(request: Request) -> tuple[auth.AuthConfig, int | None]:
 
 
 @app.get("/public/world")
-def public_world(request: Request) -> dict:
+async def public_world(request: Request, after: str | None = None) -> dict:
     """What the viewer shows: the current world's revision and age (`world` is null before
-    one exists), and this browser's remaining step allowance."""
+    one exists), and this browser's remaining step allowance.
+
+    With `after`, a long poll (#374): while `after` is still the current revision, wait up to
+    public_view.GUEST_POLL_WAIT_S for the world to change before answering. This is how every
+    viewer follows steps that others (or the owner) take without computing anything itself.
+    Async, so a waiting viewer holds no worker thread."""
+    if after is not None:
+        await _world_feed.wait_past(after, public_view.GUEST_POLL_WAIT_S)
     _, remaining = _guest_allowance(request)
-    world = _state["world"]
     return {
-        "world": None if world is None else public_view.public_summary(world),
+        "world": _world_feed.summary(),
         "steps_remaining": remaining,
         "step_limit": public_view.GUEST_STEP_LIMIT,
         "step_years": public_view.GUEST_STEP_YEARS,
@@ -1759,29 +1799,43 @@ def public_world(request: Request) -> dict:
 @app.get("/public/render")
 def public_render(view: str = "elevation", width: int = 1100, height: int = 611) -> dict:
     """/world/render restricted to the viewer's fixed choices: Eckert IV, the default
-    orientation, and the biome or elevation view. `503` if the owner holds the world for
-    longer than public_view.GUEST_LOCK_WAIT_S."""
-    world = _require_world()
+    orientation, and the biome or elevation view. Each (view, size) is rendered once per world
+    revision and then served from public_view.RenderCache without touching the world. `503`
+    if the owner holds the world for longer than public_view.GUEST_LOCK_WAIT_S."""
+    _require_world()
     if view not in public_view.GUEST_VIEWS:
         raise HTTPException(status_code=400, detail=f"unknown view {view!r}; choices are {public_view.GUEST_VIEWS}")
     limit = public_view.GUEST_MAX_RENDER_PX
     if not (1 <= width <= limit and 1 <= height <= limit):
         raise HTTPException(status_code=400, detail=f"width/height must be in [1, {limit}]")
+    key = (view, width, height)
+    cached = _public_renders.get(_world_feed.revision(), key)
+    if cached is not None:
+        return cached
     if not _world_lock.acquire(timeout=public_view.GUEST_LOCK_WAIT_S):
         raise HTTPException(status_code=503, detail="the world is busy; try again shortly")
     try:
-        image_base64 = render_image.render_png_base64(
-            world, public_view.GUEST_PROJECTION, view, width, height, _parse_view_rotation(None), False, False
-        )
-        summary = public_view.public_summary(world)
+        # Look again: viewers that arrive together after a step queue on the lock, and only
+        # the first of them needs to render.
+        revision = _world_feed.revision()
+        entry = _public_renders.get(revision, key)
+        if entry is None:
+            image_base64 = render_image.render_png_base64(
+                _require_world(), public_view.GUEST_PROJECTION, view, width, height, _parse_view_rotation(None), False, False
+            )
+            entry = {**_world_feed.summary(), "image_base64": image_base64}
+            _public_renders.put(revision, key, entry)
     finally:
         _world_lock.release()
-    return {**summary, "image_base64": image_base64}
+    return entry
 
 
-def _run_guest_step(world: World) -> None:
-    for _ in step_world_progress(world, public_view.GUEST_STEP_YEARS):
-        pass
+def _run_guest_step() -> None:
+    try:
+        for _ in step_world_progress(_require_world(), public_view.GUEST_STEP_YEARS):
+            pass
+    finally:
+        _world_changed()
 
 
 @app.post("/public/step")
@@ -1796,7 +1850,7 @@ def public_step(req: PublicStepRequest, request: Request, response: Response) ->
     outcome = _guest_steps.request_step(
         req.revision,
         may_compute=remaining is None or remaining > 0,
-        current_world=_require_world,
+        current_revision=_world_feed.revision,
         world_lock=_world_lock,
         compute=_run_guest_step,
     )
@@ -1808,7 +1862,7 @@ def public_step(req: PublicStepRequest, request: Request, response: Response) ->
         remaining -= 1
         public_view.set_steps_used(response, public_view.GUEST_STEP_LIMIT - remaining, config)
     return {
-        "world": public_view.public_summary(_require_world()),
+        "world": _world_feed.summary(),
         "computed": outcome.status == "computed",
         "steps_remaining": remaining,
     }

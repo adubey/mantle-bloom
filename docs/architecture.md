@@ -203,6 +203,17 @@ Each browser may trigger at most 30 step computations. The count is kept in an H
 limit, not abuse protection). It's signed with `MANTLE_BLOOM_SESSION_SECRET`, or, when that's
 unset, a per-process secret that a restart replaces. The admin is never charged.
 
+Viewers share one world, so they share the work of following it too (#374). Every change to
+the world (generate, load, step, animation, controls, a guest step) publishes a new revision
+through `WorldFeed`, a counter behind a per-process epoch, together with a summary snapshot
+taken under the world lock. Viewers long-poll `/public/world?after=<revision>` and re-render
+when it changes, so one viewer's step updates every page without anyone else computing.
+Concurrent guest steps against the same revision run the simulation once, and the others get
+its result for free. `/public/render` caches each (view, size) per revision in `RenderCache`,
+so the first viewer after a change renders it and the rest are served without the world lock.
+Any route that changes the world must call `main._world_changed()` (or `_set_world`) before
+it releases `_world_lock`, or viewers keep seeing, and the cache keeps serving, the old world.
+
 Only a request that runs the simulation is charged. A step request names the world revision
 (seed and elapsed years) that its viewer is looking at. If the world has already moved past
 that revision, the request gets the current world for free. If another guest's step is
@@ -426,8 +437,9 @@ hydroclimate/atmosphere_cfd.py      the atmospheric wind solver: a genuine time-
 main.py              FastAPI routes
 auth.py              single-owner GitHub login: the request guard, OAuth routes and signed
                      session cookies (see #access-control above)
-public_view.py       the logged-out viewer's step allowance cookie and the coordinator
-                     that shares one guest step among concurrent requests (see
+public_view.py       the logged-out viewer's step allowance cookie, the coordinator
+                     that shares one guest step among concurrent requests, and the
+                     world revision feed and render cache viewers follow (see
                      #public-viewer above)
 render_image.py      renders /world/render's requested view/resolution to a PNG server-side
                      (see simulation-model.md#render-image and simulation-model.md#climate),
