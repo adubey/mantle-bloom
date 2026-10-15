@@ -462,10 +462,11 @@ only as new collisions and rifts mark them. No new pickled state on `World`.
 - [ ] **Gate G2**: compare a same-seed current-layout control with two independently re-tiled
       mixed runs on seeds 7, 11 and 2024, all to 500 Myr. Ledgers balance in every run. For
       continental area at 500 Myr, active plate count and overlap area at each 100 Myr
-      checkpoint, and cumulative split/merge counts, fail a metric when the mean mixed-vs-control
-      difference exceeds twice the mixed-vs-mixed spread on at least two seeds. Define spread
-      as the absolute difference between the two mixed runs, with a floor of one plate, one
-      split/merge event, or one percentage point of surface area as appropriate. Diagnose and
+      checkpoint, and cumulative split/merge counts, fail a metric when the absolute difference between the mean mixed result and its control
+      exceeds twice the larger of the mixed-vs-mixed spread and the metric's noise floor, on
+      at least two seeds. Define spread as the absolute difference between the two mixed runs;
+      the floor is one plate, one split/merge event, or one percentage point of surface area
+      as appropriate. Diagnose and
       rerun before choosing the architecture; update this RFC with the outcome.
 - [ ] **Gate G3** (cratons-first replays) run and reported, and this RFC and RFC 0010
       updated with the branch it selects.
