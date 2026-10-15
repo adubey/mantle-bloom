@@ -3,6 +3,8 @@
 Part 1 is how the public site runs today: one Railway service (#376). Part 2 is the original
 plan for publishing the site, kept for its marketing, ads and feature research.
 
+For local development and localhost GitHub sign-in, see [local-hosting.md](local-hosting.md).
+
 # Part 1: the Railway deployment
 
 ## What runs

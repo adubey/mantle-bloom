@@ -334,9 +334,9 @@ router = APIRouter()
 
 
 @router.get("/login", include_in_schema=False)
-def login_page(request: Request, error: str | None = None) -> Response:
+def login_page(request: Request, error: str | None = None, demo: bool = False) -> Response:
     config = load_config()
-    if is_admin(request, config):
+    if is_admin(request, config) and not demo:
         return RedirectResponse("/", status_code=303)
     if not config.login_configured:
         error = "unconfigured"
