@@ -12,8 +12,8 @@ implemented through ordinary issues and PRs (see [AGENTS.md](../AGENTS.md)), eac
 |---|---|---|
 | [0001](0001-merge-cap-craton-loss.md) | Plate merges must not destroy cratons | Draft |
 | [0002](0002-craton-trench-attrition.md) | Cratons resist sinking: margin-dependent attrition and collision sinks | Draft |
-| [0003](0003-rifting-around-cratons.md) | Rifts go around cratons | Accepted |
-| [0004](0004-proto-cratons.md) | Proto-cratons: restarting craton formation | Draft |
+| [0003](0003-rifting-around-cratons.md) | Rifts go around cratons | Withdrawn (superseded by 0009, 0010) |
+| [0004](0004-proto-cratons.md) | Proto-cratons: restarting craton formation | Withdrawn (superseded by 0009) |
 | [0005](0005-continental-recycling-balance.md) | Balance continental recycling at trenches | Draft |
 | [0006](0006-intra-oceanic-arcs.md) | Intra-oceanic arcs: new continent from the ocean | Draft |
 | [0007](0007-mantle-plumes-and-plateaus.md) | Mantle plumes: oceanic plateaus, flood basalts and hotspot tracks | Draft |
@@ -36,20 +36,16 @@ refreshed implementation order (subject to each RFC's acceptance and diagnosis g
    continental collision-placement loss can rival deep subduction
    ([#408](https://github.com/adubey/mantle-bloom/issues/408)).
 2. 0002 after resolving attrition contact ownership
-   ([#405](https://github.com/adubey/mantle-bloom/issues/405)), and 0003's selected
-   combination of cut steering and stronger resistance. RFC 0003's phase 1b is already
-   on the year-based pace (#388, PR #392); #389 tracks its implementation.
-3. 0004 only after the sink repairs, and only once the baseline passes its evaluation gate:
-   a qualifying window after 500 Myr on at least two runs. `2562f63` has one. Most of its
-   formation is a 200 Myr generation pulse, and its share rises through loss of
-   non-cratonic crust, not formation
-   ([#409](https://github.com/adubey/mantle-bloom/issues/409),
-   [`analysis/issue409/`](../analysis/issue409/README.md)).
+   ([#405](https://github.com/adubey/mantle-bloom/issues/405)).
+3. 0009's gate G1, a replay-only probe that can run at any time; it decides whether 0009's
+   craton mosaic and 0010's strength-following cut are built. They replace 0003, whose cut
+   steering couldn't avoid cratons (PR #418), and 0004. If G1 finds belts don't outlast
+   the sinks, 0009 waits for 0001, 0002 and 0005.
 4. 0006 and 0007, after separating their proposed production from existing elevation-driven
    continental resets ([#406](https://github.com/adubey/mantle-bloom/issues/406),
    [#407](https://github.com/adubey/mantle-bloom/issues/407)). They share `terranes.py`
    (docking, buoyant-crust tracers and ledger),
-   which whichever lands first builds. RFC 0003's plume weakening also depends on 0007.
+   which whichever lands first builds. RFC 0010's plume weakening also depends on 0007.
 
 RFC 0008 came later, from the same craton work. Its gate can run at any time. Its fusion
 lands with or after 0001's merge placement, since it makes craton-bearing merges more
@@ -65,7 +61,8 @@ plan its transition into one or more implementation issues. RFCs are written wit
 It sets the sections (problem, solutions, design, provisional touchpoints, assumptions and
 uncertainty, acceptance and falsification criteria, references), the citation format, and
 how sources are checked. They are reviewed with
-[`rfc-review`](../.agents/skills/rfc-review/SKILL.md).
+[`rfc-review`](../.agents/skills/rfc-review/SKILL.md), and completed or withdrawn with
+[`complete-rfc`](../.agents/skills/complete-rfc/SKILL.md).
 `.agents/skills/rfc-authoring/check_citations.py` checks citations and DOIs.
 
 ## Lifecycle
@@ -79,7 +76,11 @@ how sources are checked. They are reviewed with
    issues use the RFC worktree directory and keep one issue branch and PR per issue (see
    [`start-rfc`](../.agents/skills/start-rfc/SKILL.md) and
    [`start-issue`](../.agents/skills/start-issue/SKILL.md)). The status is updated when the
-   last one lands. From then on the code and `docs/` are the source of truth, and the RFC
-   stays as the record of why.
-4. **Rejected or Superseded:** kept, with the reason, or a link to what replaced it. This
-   includes an RFC whose falsification criteria were met.
+   last one lands and the acceptance criteria are met, with
+   [`complete-rfc`](../.agents/skills/complete-rfc/SKILL.md). From then on the code and
+   `docs/` are the source of truth, and the RFC stays as the record of why.
+4. **Withdrawn:** the project stops pursuing it before it is implemented, because its
+   falsification criteria were met, a later RFC supersedes it, or the project owner
+   declines it. A draft or an accepted RFC can be withdrawn. It is kept, with "(withdrawn)"
+   in its title and an Outcome section giving the reason, what landed and stays, and a link
+   to any superseding RFC. Use [`complete-rfc`](../.agents/skills/complete-rfc/SKILL.md).

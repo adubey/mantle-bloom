@@ -6,7 +6,7 @@
   (collision polarity), #331 (dock terranes as cells); RFCs
   [0001](0001-merge-cap-craton-loss.md) (merges must not destroy cratons),
   [0002](0002-craton-trench-attrition.md) (cratons resist sinking),
-  [0003](0003-rifting-around-cratons.md)
+  [0010](0010-rifts-follow-weak-lithosphere.md) (rifting; supersedes 0003)
 
 ## Problem
 
@@ -533,7 +533,7 @@ plus a regenerated seed 456862899 to 3 Gyr, one at a time. Watch:
 - **Jams are rare.** If the gate finds jammed contacts on under 5% of collision contact
   length on every seed, cratons rarely reach boundaries in the model, and the effects can't
   matter for craton survival. Build them as decided, but drop the loss criterion, and look
-  for the loss elsewhere (RFCs 0002, 0003).
+  for the loss elsewhere (RFCs 0002, 0010).
 - **Slowing stalls the world.** If mean plate speed drops by more than 30%, or plates freeze
   at most contacts, even at the knobs' gentlest settings, the brake double counts. Drop
   solution 2 first; then lower j's reference stress.

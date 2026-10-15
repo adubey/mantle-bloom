@@ -1,11 +1,54 @@
-# RFC 0003: Rifts go around cratons
+# RFC 0003 (withdrawn): Rifts go around cratons
 
-- **Status:** Accepted (2026-10-13)
-- **Date:** 2026-10-13; baseline audit 2026-10-14 (#403)
+- **Status:** Withdrawn (2026-10-15); superseded by [RFC 0009](0009-craton-mosaic.md) and
+  [RFC 0010](0010-rifts-follow-weak-lithosphere.md) (PR #421)
+- **Date:** 2026-10-13; baseline audit 2026-10-14 (#403); withdrawn 2026-10-15
 - **Related:** #389 (tracking), #274 (craton rift and stretch resistance), #340,
   #378 (phase 1 gate), #385 (failed-rift resistance), #388 (phase 1b, PR #392),
   #403 (baseline audit); RFCs
   [0002](0002-craton-trench-attrition.md), [0004](0004-proto-cratons.md)
+
+## Outcome
+
+**Withdrawn on 2026-10-15, superseded by RFCs 0009 and 0010.** Solution 1 met this RFC's
+falsification criterion "no admissible alternative", and a follow-up probe showed that the
+cause lies in how the model defines cratons, not in the shape of the cut.
+
+- **Solution 1, measured** (PR #418, origin/main `02d35b9`, seeds 7, 11 and 2024 to
+  1 Gyr; `analysis/issue389/` on that PR):
+  - of 158 flow cuts crossing craton, 19 (12%) had a craton-free candidate passing the
+    admissibility tests within 20° and 10% misfit, and at most 30 (19%) anywhere in the
+    sweep ranges;
+  - the share of splits crossing craton fell 13–21%, against the 75% criterion;
+  - mean rifting loss fell 22%, but by less with a wider scoring band, and within the
+    ±2-point scatter between variants. PR #418's model change was not merged.
+- **Why it failed.** A minimum cut through a strength graph, free to bend around
+  cratons, does no better: 10% of craton-crossing cuts at a 1,000 km corridor, at most 12%
+  at any corridor ([analysis/rfc0010](../analysis/rfc0010/README.md), PR #421).
+  Seeding and formation by distance from the plate edge make each continent's interior one
+  craton, so no route through a continent avoids it. This RFC read the falsification as
+  "the flow puts regime boundaries through cratons", but that isn't established: RFC
+  0009's gate G1 tests it on a mosaic of cratonic cores.
+- **What landed and stays:**
+  - #378's rifting path sub-accounts and per-cut craton counters, diagnostics outside the
+    balance (`cratons.CRATON_RIFT_PATH_ACCOUNTS`, `record_rift_cut`; documented in
+    `docs/simulation-model.md`, Cratons);
+  - #385's failed-rift craton resistance (`cratons.rift_resistance` in
+    `apply_failed_rift`), a consistency fix that stands on its own.
+
+  RFC 0010 now owns both.
+- **What carries over to RFC 0010:**
+  - the phase 1 and 1b evidence (#378, #388);
+  - the strength proxy (craton strength and keel);
+  - the admissibility tests on size, pole separation and residual, without the area
+    misfit cap;
+  - solution 3 (raised resistance) as the fallback, sized after the new cut;
+  - RFC 0007's plume weakening hook;
+  - the 2%/Gyr design target.
+- **What doesn't carry over:** tilting a great circle, and the 75% cut-share criterion
+  pinned to `2562f63`.
+- **Still open:** whether the flow's regime boundaries sit under cratons even on a mosaic
+  (RFC 0009, G1).
 
 ## Problem
 
