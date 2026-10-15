@@ -314,6 +314,8 @@ export default function App() {
   // of the map projection/rotation state, and retain their values when switching views.
   const [crossSectionPlaneAngleDeg, setCrossSectionPlaneAngleDeg] = useState(0);
   const [crossSectionArcPosition, setCrossSectionArcPosition] = useState(0);
+  const [crossSectionShowBoundaries, setCrossSectionShowBoundaries] = useState(false);
+  const [crossSectionShowFaults, setCrossSectionShowFaults] = useState(false);
   // Local cache epoch: advance it after every operation that can change sampled section data.
   const [crossSectionWorldRevision, setCrossSectionWorldRevision] = useState(0);
   // A callback's closure over `mapView` is captured when its work *starts*, so if the map
@@ -1672,6 +1674,12 @@ export default function App() {
               worldRevision={crossSectionWorldRevision}
               planeAngleDeg={crossSectionPlaneAngleDeg}
               arcPosition={crossSectionArcPosition}
+              showBoundaries={crossSectionShowBoundaries}
+              showFaults={crossSectionShowFaults}
+              onLayerToggle={(layer, enabled) => {
+                if (layer === "boundaries") setCrossSectionShowBoundaries(enabled);
+                else setCrossSectionShowFaults(enabled);
+              }}
               onPlaneAngleChange={setCrossSectionPlaneAngleDeg}
               onArcPositionChange={setCrossSectionArcPosition}
             />

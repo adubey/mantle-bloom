@@ -11,6 +11,8 @@ export function crossSectionUrl(
   positionIndex: number,
   width: number,
   height: number,
+  showBoundaries = false,
+  showFaults = false,
 ): string {
   const params = new URLSearchParams({
     plane_angle_deg: String(planeAngleDeg),
@@ -18,6 +20,8 @@ export function crossSectionUrl(
     width: String(width),
     height: String(height),
   });
+  if (showBoundaries) params.set("show_boundaries", "true");
+  if (showFaults) params.set("show_faults", "true");
   return `${apiBase}/world/cross-section?${params}`;
 }
 
@@ -29,7 +33,9 @@ export function requestCrossSection(
   height: number,
   signal?: AbortSignal,
   fetcher: typeof fetch = fetch,
+  showBoundaries = false,
+  showFaults = false,
 ): Promise<CrossSectionResponse> {
-  return fetcher(crossSectionUrl(apiBase, planeAngleDeg, positionIndex, width, height), { signal })
+  return fetcher(crossSectionUrl(apiBase, planeAngleDeg, positionIndex, width, height, showBoundaries, showFaults), { signal })
     .then(asJson<CrossSectionResponse>);
 }

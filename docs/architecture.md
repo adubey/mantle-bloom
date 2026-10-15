@@ -24,10 +24,9 @@
   [simulation-model.md#fault-inspector](simulation-model.md#fault-inspector)). Those four
   share `InspectorCanvas.tsx` (the focusable canvas, rotate-drag, click-to-select and
   Tab/Shift+Tab cycling), and with `MapCanvas.tsx` they share `screenProjector.ts`, which
-  projects true world points through the live view rotation. The shallow
-  mantle cross-section preview (`MantleCrossSection.tsx`) also draws its locator and schematic
-  shell slice client-side; it has no sampled world data yet. The detailed data-backed rendering
-  remains server-side.
+  projects true world points through the live view rotation. The mantle cross-section
+  (`MantleCrossSection.tsx`) draws a terrain-textured globe locator and controls; its selected
+  slice and optional boundary/fault markers are sampled and rendered by `cross_section.py`.
 
 ## Request flow
 
@@ -53,7 +52,8 @@ Browser then fetches, for whichever projection/map view/resolution/rotation is s
     render call rather than stored server-side. The shallow mantle cross-section has its own
     `GET /world/cross-section` request path for plane angle, arc position, and output size;
     `cross_section.py` samples the existing surface columns along a node-density-scaled corridor
-    and renders a shallow PNG. It draws stored crust/lithosphere thicknesses, an illustrative
+    and renders a shallow PNG with optional plate-boundary and fault markers. It draws stored
+    crust/lithosphere thicknesses, an illustrative
     crustal geotherm, and supported surface vents and magma-source markers. Surface-sampled
     mantle-flow directions are projected into the schematic asthenosphere; deeper mantle flow
     remains unresolved. The frontend renders the shared legend over either placeholder or PNG.
