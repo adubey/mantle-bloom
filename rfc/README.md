@@ -39,10 +39,12 @@ refreshed implementation order (subject to each RFC's acceptance and diagnosis g
    ([#405](https://github.com/adubey/mantle-bloom/issues/405)), and 0003's selected
    combination of cut steering and stronger resistance. RFC 0003's phase 1b is already
    on the year-based pace (#388, PR #392); #389 tracks its implementation.
-3. Revisit 0004's source and craton-share gates after sink repairs. Its share band already
-   fails without welded growth as continental area disappears
-   ([#409](https://github.com/adubey/mantle-bloom/issues/409)). Do not tune a source to
-   that denominator collapse.
+3. 0004 only after the sink repairs, and only once the baseline passes its evaluation gate:
+   a qualifying window after 500 Myr on at least two runs. `2562f63` has one. Most of its
+   formation is a 200 Myr generation pulse, and its share rises through loss of
+   non-cratonic crust, not formation
+   ([#409](https://github.com/adubey/mantle-bloom/issues/409),
+   [`analysis/issue409/`](../analysis/issue409/README.md)).
 4. 0006 and 0007, after separating their proposed production from existing elevation-driven
    continental resets ([#406](https://github.com/adubey/mantle-bloom/issues/406),
    [#407](https://github.com/adubey/mantle-bloom/issues/407)). They share `terranes.py`

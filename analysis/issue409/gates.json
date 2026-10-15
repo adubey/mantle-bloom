@@ -1,0 +1,925 @@
+{
+ "issue": 409,
+ "source": [
+  "analysis/issue403/tuning.json",
+  "analysis/issue403/long.json"
+ ],
+ "baseline_commit": "2562f6381b5777b021f68a958a196bf99d0d25aa",
+ "window_myr": 500.0,
+ "genuine_floor": 0.25,
+ "non_cratonic_floor": 0.1,
+ "runs": [
+  {
+   "seed": 7,
+   "formation": {
+    "pulse_at_200_myr_mkm3": 29.09506589253059,
+    "post_pulse_mkm3": 4.778186426484865,
+    "total_mkm3": 33.87325231901546,
+    "last_positive_sample_myr": 355.0,
+    "positive_samples": 4
+   },
+   "conversion_by_500_myr": {
+    "myr": 500.0,
+    "non_cratonic_lost_mkm2": 149.36096007586698,
+    "converted_max_mkm2": 1.2097590113934091,
+    "craton_area_retained": 0.4545507731036846,
+    "non_cratonic_retained": 0.045134823234022375
+   },
+   "windows": [
+    {
+     "window_myr": [
+      0.0,
+      500.0
+     ],
+     "genuine_start_frac": 1.0,
+     "genuine_min_frac": 0.20844354561955644,
+     "non_cratonic_start_mkm2": 156.42099398968134,
+     "non_cratonic_start_frac": 1.0,
+     "qualifies_genuine_at_start": true,
+     "qualifies_genuine_throughout": false,
+     "qualifies_non_cratonic_at_start": true,
+     "post_pulse_formed_mkm3": 4.778186426484865
+    },
+    {
+     "window_myr": [
+      500.0,
+      1000.0
+     ],
+     "genuine_start_frac": 0.20844354561955644,
+     "genuine_min_frac": 0.0901654611434316,
+     "non_cratonic_start_mkm2": 7.060033913814344,
+     "non_cratonic_start_frac": 0.045134823234022375,
+     "qualifies_genuine_at_start": false,
+     "qualifies_genuine_throughout": false,
+     "qualifies_non_cratonic_at_start": false,
+     "post_pulse_formed_mkm3": 0.0
+    }
+   ],
+   "checkpoints": [
+    {
+     "myr": 0.0,
+     "genuine_mkm2": 260.2168594905334,
+     "craton_mkm2": 103.79586550085206,
+     "non_cratonic_mkm2": 156.42099398968134,
+     "craton_share": 0.39888216967981704,
+     "craton_mkm3": 4098.019740434967,
+     "formed_mkm3": 0.0,
+     "continental_inventory_mkm3": 11955.41636881583
+    },
+    {
+     "myr": 100.0,
+     "genuine_mkm2": 168.1431683111909,
+     "craton_mkm2": 103.11130281126309,
+     "non_cratonic_mkm2": 65.0318654999278,
+     "craton_share": 0.6132351605295665,
+     "craton_mkm3": 3948.307517612135,
+     "formed_mkm3": 0.0,
+     "continental_inventory_mkm3": 10913.858766730542
+    },
+    {
+     "myr": 200.0,
+     "genuine_mkm2": 95.22426062239678,
+     "craton_mkm2": 75.43494227381427,
+     "non_cratonic_mkm2": 19.789318348582512,
+     "craton_share": 0.7921819689726418,
+     "craton_mkm3": 3114.0489541582288,
+     "formed_mkm3": 29.09506589253059,
+     "continental_inventory_mkm3": 7366.1892395960585
+    },
+    {
+     "myr": 300.0,
+     "genuine_mkm2": 75.84961630003532,
+     "craton_mkm2": 59.497590862116816,
+     "non_cratonic_mkm2": 16.352025437918506,
+     "craton_share": 0.7844151857903215,
+     "craton_mkm3": 2432.701419308542,
+     "formed_mkm3": 29.09506589253059,
+     "continental_inventory_mkm3": 5510.597940521652
+    },
+    {
+     "myr": 400.0,
+     "genuine_mkm2": 63.640297242128376,
+     "craton_mkm2": 52.83497173573515,
+     "non_cratonic_mkm2": 10.805325506393224,
+     "craton_share": 0.8302125229666534,
+     "craton_mkm3": 1869.097433850709,
+     "formed_mkm3": 33.87325231901546,
+     "continental_inventory_mkm3": 4575.771405347195
+    },
+    {
+     "myr": 500.0,
+     "genuine_mkm2": 54.24052482219271,
+     "craton_mkm2": 47.18049090837837,
+     "non_cratonic_mkm2": 7.060033913814344,
+     "craton_share": 0.8698383922914089,
+     "craton_mkm3": 1544.0875151866362,
+     "formed_mkm3": 33.87325231901546,
+     "continental_inventory_mkm3": 3666.8983347454546
+    },
+    {
+     "myr": 600.0,
+     "genuine_mkm2": 48.34839875510366,
+     "craton_mkm2": 41.40117791662722,
+     "non_cratonic_mkm2": 6.94722083847644,
+     "craton_share": 0.8563091846398926,
+     "craton_mkm3": 1376.1601133094514,
+     "formed_mkm3": 33.87325231901546,
+     "continental_inventory_mkm3": 3313.390536838961
+    },
+    {
+     "myr": 700.0,
+     "genuine_mkm2": 40.09687016476091,
+     "craton_mkm2": 35.212807287006356,
+     "non_cratonic_mkm2": 4.884062877754552,
+     "craton_share": 0.8781934136583334,
+     "craton_mkm3": 1157.177996713582,
+     "formed_mkm3": 33.87325231901546,
+     "continental_inventory_mkm3": 2918.1696685082434
+    },
+    {
+     "myr": 800.0,
+     "genuine_mkm2": 29.51895107512859,
+     "craton_mkm2": 27.945998584097914,
+     "non_cratonic_mkm2": 1.5729524910306765,
+     "craton_share": 0.9467138081218617,
+     "craton_mkm3": 940.8760982555123,
+     "formed_mkm3": 33.87325231901546,
+     "continental_inventory_mkm3": 2118.0032094702374
+    },
+    {
+     "myr": 900.0,
+     "genuine_mkm2": 24.602156688135555,
+     "craton_mkm2": 23.71435231876991,
+     "non_cratonic_mkm2": 0.887804369365643,
+     "craton_share": 0.9639135551968179,
+     "craton_mkm3": 821.0829595843695,
+     "formed_mkm3": 33.87325231901546,
+     "continental_inventory_mkm3": 1811.3530799106256
+    },
+    {
+     "myr": 1000.0,
+     "genuine_mkm2": 23.46257313325949,
+     "craton_mkm2": 22.827883434118718,
+     "non_cratonic_mkm2": 0.6346896991407718,
+     "craton_share": 0.9729488451443093,
+     "craton_mkm3": 679.3762672868459,
+     "formed_mkm3": 33.87325231901546,
+     "continental_inventory_mkm3": 1676.9466757228533
+    }
+   ],
+   "generation_band": {
+    "quiet_unseeded_mkm3": 1750.4489997548897,
+    "quiet_unseeded_mkm2": 45.80592122296188,
+    "max_clock_myr": 0.0
+   }
+  },
+  {
+   "seed": 11,
+   "formation": {
+    "pulse_at_200_myr_mkm3": 129.05451513061396,
+    "post_pulse_mkm3": 32.548178022622665,
+    "total_mkm3": 161.60269315323663,
+    "last_positive_sample_myr": 470.0,
+    "positive_samples": 11
+   },
+   "conversion_by_500_myr": {
+    "myr": 500.0,
+    "non_cratonic_lost_mkm2": 75.1768226354717,
+    "converted_max_mkm2": 5.771524755472737,
+    "craton_area_retained": 0.6110360971753112,
+    "non_cratonic_retained": 0.056598686886517396
+   },
+   "windows": [
+    {
+     "window_myr": [
+      0.0,
+      500.0
+     ],
+     "genuine_start_frac": 1.0,
+     "genuine_min_frac": 0.33757995128758855,
+     "non_cratonic_start_mkm2": 79.6870023292289,
+     "non_cratonic_start_frac": 1.0,
+     "qualifies_genuine_at_start": true,
+     "qualifies_genuine_throughout": true,
+     "qualifies_non_cratonic_at_start": true,
+     "post_pulse_formed_mkm3": 32.548178022622665
+    },
+    {
+     "window_myr": [
+      500.0,
+      1000.0
+     ],
+     "genuine_start_frac": 0.33757995128758855,
+     "genuine_min_frac": 0.16654213643783677,
+     "non_cratonic_start_mkm2": 4.510179693757209,
+     "non_cratonic_start_frac": 0.056598686886517396,
+     "qualifies_genuine_at_start": true,
+     "qualifies_genuine_throughout": false,
+     "qualifies_non_cratonic_at_start": false,
+     "post_pulse_formed_mkm3": 0.0
+    }
+   ],
+   "checkpoints": [
+    {
+     "myr": 0.0,
+     "genuine_mkm2": 161.5668759671434,
+     "craton_mkm2": 81.8798736379145,
+     "non_cratonic_mkm2": 79.6870023292289,
+     "craton_share": 0.5067862651164077,
+     "craton_mkm3": 3169.623314825075,
+     "formed_mkm3": 0.0,
+     "continental_inventory_mkm3": 6917.409393487105
+    },
+    {
+     "myr": 100.0,
+     "genuine_mkm2": 126.53458791263826,
+     "craton_mkm2": 78.31256005449013,
+     "non_cratonic_mkm2": 48.222027858148124,
+     "craton_share": 0.6189023993072829,
+     "craton_mkm3": 3103.3568592489232,
+     "formed_mkm3": 0.0,
+     "continental_inventory_mkm3": 6420.423353757043
+    },
+    {
+     "myr": 200.0,
+     "genuine_mkm2": 90.81744159140422,
+     "craton_mkm2": 69.80176746180572,
+     "non_cratonic_mkm2": 21.015674129598494,
+     "craton_share": 0.7685942946493705,
+     "craton_mkm3": 2965.4668785951235,
+     "formed_mkm3": 129.05451513061396,
+     "continental_inventory_mkm3": 5687.234164515057
+    },
+    {
+     "myr": 300.0,
+     "genuine_mkm2": 73.99507199781971,
+     "craton_mkm2": 65.01457373709943,
+     "non_cratonic_mkm2": 8.980498260720282,
+     "craton_share": 0.8786338330614112,
+     "craton_mkm3": 2825.6841849969005,
+     "formed_mkm3": 154.95582835701086,
+     "continental_inventory_mkm3": 5004.610600059141
+    },
+    {
+     "myr": 400.0,
+     "genuine_mkm2": 62.263817221208406,
+     "craton_mkm2": 57.71237526418019,
+     "non_cratonic_mkm2": 4.551441957028217,
+     "craton_share": 0.9269006919242031,
+     "craton_mkm3": 2541.566180355089,
+     "formed_mkm3": 154.95582835701086,
+     "continental_inventory_mkm3": 4270.273971943913
+    },
+    {
+     "myr": 500.0,
+     "genuine_mkm2": 54.54173811867613,
+     "craton_mkm2": 50.03155842491892,
+     "non_cratonic_mkm2": 4.510179693757209,
+     "craton_share": 0.9173077380859479,
+     "craton_mkm3": 2323.3764534364627,
+     "formed_mkm3": 161.60269315323663,
+     "continental_inventory_mkm3": 3834.7066597625662
+    },
+    {
+     "myr": 600.0,
+     "genuine_mkm2": 40.76057123874504,
+     "craton_mkm2": 38.8614473004033,
+     "non_cratonic_mkm2": 1.899123938341738,
+     "craton_share": 0.9534078183738377,
+     "craton_mkm3": 1875.8055161657965,
+     "formed_mkm3": 161.60269315323663,
+     "continental_inventory_mkm3": 2896.4117008895587
+    },
+    {
+     "myr": 700.0,
+     "genuine_mkm2": 36.70243122900778,
+     "craton_mkm2": 34.536320322093545,
+     "non_cratonic_mkm2": 2.166110906914234,
+     "craton_share": 0.9409818141637917,
+     "craton_mkm3": 1632.3199465919797,
+     "formed_mkm3": 161.60269315323663,
+     "continental_inventory_mkm3": 2610.5274194009903
+    },
+    {
+     "myr": 800.0,
+     "genuine_mkm2": 30.94677402585428,
+     "craton_mkm2": 29.76473158652106,
+     "non_cratonic_mkm2": 1.1820424393332196,
+     "craton_share": 0.9618040174932065,
+     "craton_mkm3": 1464.2492179663093,
+     "formed_mkm3": 161.60269315323663,
+     "continental_inventory_mkm3": 2175.657619445786
+    },
+    {
+     "myr": 900.0,
+     "genuine_mkm2": 29.414260642793053,
+     "craton_mkm2": 27.248823529932498,
+     "non_cratonic_mkm2": 2.1654371128605554,
+     "craton_share": 0.9263813855749212,
+     "craton_mkm3": 1369.6391387834385,
+     "formed_mkm3": 161.60269315323663,
+     "continental_inventory_mkm3": 2007.9520552547126
+    },
+    {
+     "myr": 1000.0,
+     "genuine_mkm2": 26.90769270115505,
+     "craton_mkm2": 25.403161965449133,
+     "non_cratonic_mkm2": 1.5045307357059166,
+     "craton_share": 0.9440854794792074,
+     "craton_mkm3": 1283.3339236332924,
+     "formed_mkm3": 161.60269315323663,
+     "continental_inventory_mkm3": 1865.6679722339934
+    }
+   ],
+   "generation_band": {
+    "quiet_unseeded_mkm3": 1097.5799456586597,
+    "quiet_unseeded_mkm2": 29.56928783094649,
+    "max_clock_myr": 0.0
+   }
+  },
+  {
+   "seed": 2024,
+   "formation": {
+    "pulse_at_200_myr_mkm3": 125.10759168843774,
+    "post_pulse_mkm3": 42.16371650542598,
+    "total_mkm3": 167.27130819386372,
+    "last_positive_sample_myr": 335.0,
+    "positive_samples": 20
+   },
+   "conversion_by_500_myr": {
+    "myr": 500.0,
+    "non_cratonic_lost_mkm2": 67.56655089064188,
+    "converted_max_mkm2": 5.97397529263799,
+    "craton_area_retained": 1.1787564698530926,
+    "non_cratonic_retained": 0.12289143493925965
+   },
+   "windows": [
+    {
+     "window_myr": [
+      0.0,
+      500.0
+     ],
+     "genuine_start_frac": 1.0,
+     "genuine_min_frac": 0.5194195443909886,
+     "non_cratonic_start_mkm2": 77.03328137716093,
+     "non_cratonic_start_frac": 1.0,
+     "qualifies_genuine_at_start": true,
+     "qualifies_genuine_throughout": true,
+     "qualifies_non_cratonic_at_start": true,
+     "post_pulse_formed_mkm3": 42.16371650542598
+    },
+    {
+     "window_myr": [
+      500.0,
+      1000.0
+     ],
+     "genuine_start_frac": 0.5194195443909886,
+     "genuine_min_frac": 0.1908924036629372,
+     "non_cratonic_start_mkm2": 9.466730486519054,
+     "non_cratonic_start_frac": 0.12289143493925965,
+     "qualifies_genuine_at_start": true,
+     "qualifies_genuine_throughout": false,
+     "qualifies_non_cratonic_at_start": true,
+     "post_pulse_formed_mkm3": 0.0
+    }
+   ],
+   "checkpoints": [
+    {
+     "myr": 0.0,
+     "genuine_mkm2": 123.36143357027568,
+     "craton_mkm2": 46.32815219311474,
+     "non_cratonic_mkm2": 77.03328137716093,
+     "craton_share": 0.37554810164169217,
+     "craton_mkm3": 1723.8078604804164,
+     "formed_mkm3": 0.0,
+     "continental_inventory_mkm3": 6521.985093487785
+    },
+    {
+     "myr": 100.0,
+     "genuine_mkm2": 119.21891018305439,
+     "craton_mkm2": 47.078308376644756,
+     "non_cratonic_mkm2": 72.14060180640963,
+     "craton_share": 0.3948896052174816,
+     "craton_mkm3": 1707.371009411076,
+     "formed_mkm3": 0.0,
+     "continental_inventory_mkm3": 6287.585104460704
+    },
+    {
+     "myr": 200.0,
+     "genuine_mkm2": 111.35229299939402,
+     "craton_mkm2": 62.54504245318924,
+     "non_cratonic_mkm2": 48.807250546204784,
+     "craton_share": 0.5616861653089588,
+     "craton_mkm3": 1766.753245370706,
+     "formed_mkm3": 125.10759168843774,
+     "continental_inventory_mkm3": 6138.090227252993
+    },
+    {
+     "myr": 300.0,
+     "genuine_mkm2": 97.91549890858631,
+     "craton_mkm2": 66.62210606202967,
+     "non_cratonic_mkm2": 31.293392846556642,
+     "craton_share": 0.6804040913300959,
+     "craton_mkm3": 1763.7145689781137,
+     "formed_mkm3": 163.78547509787958,
+     "continental_inventory_mkm3": 5950.802596857592
+    },
+    {
+     "myr": 400.0,
+     "genuine_mkm2": 68.38245419995549,
+     "craton_mkm2": 57.868674472007314,
+     "non_cratonic_mkm2": 10.513779727948176,
+     "craton_share": 0.8462503305715661,
+     "craton_mkm3": 1662.4540776171034,
+     "formed_mkm3": 167.27130819386372,
+     "continental_inventory_mkm3": 4963.5342348646745
+    },
+    {
+     "myr": 500.0,
+     "genuine_mkm2": 64.0763396204918,
+     "craton_mkm2": 54.60960913397274,
+     "non_cratonic_mkm2": 9.466730486519054,
+     "craton_share": 0.8522585631047569,
+     "craton_mkm3": 1607.0669493187988,
+     "formed_mkm3": 167.27130819386372,
+     "continental_inventory_mkm3": 4586.515044453192
+    },
+    {
+     "myr": 600.0,
+     "genuine_mkm2": 55.10234318285604,
+     "craton_mkm2": 44.76157492891192,
+     "non_cratonic_mkm2": 10.34076825394412,
+     "craton_share": 0.8123352355519893,
+     "craton_mkm3": 1387.2496385255413,
+     "formed_mkm3": 167.27130819386372,
+     "continental_inventory_mkm3": 3666.1575048249642
+    },
+    {
+     "myr": 700.0,
+     "genuine_mkm2": 38.75301159822864,
+     "craton_mkm2": 35.03396149613672,
+     "non_cratonic_mkm2": 3.71905010209192,
+     "craton_share": 0.9040319720013215,
+     "craton_mkm3": 1128.8971133050272,
+     "formed_mkm3": 167.27130819386372,
+     "continental_inventory_mkm3": 2632.9998616758508
+    },
+    {
+     "myr": 800.0,
+     "genuine_mkm2": 29.62146997841198,
+     "craton_mkm2": 27.4055904805767,
+     "non_cratonic_mkm2": 2.2158794978352816,
+     "craton_share": 0.9251934661092037,
+     "craton_mkm3": 877.9800533306371,
+     "formed_mkm3": 167.27130819386372,
+     "continental_inventory_mkm3": 2082.677442345759
+    },
+    {
+     "myr": 900.0,
+     "genuine_mkm2": 25.758793554426497,
+     "craton_mkm2": 23.460988462433516,
+     "non_cratonic_mkm2": 2.2978050919929807,
+     "craton_share": 0.9107953139521895,
+     "craton_mkm3": 788.9780089163212,
+     "formed_mkm3": 167.27130819386372,
+     "continental_inventory_mkm3": 1853.6526119514206
+    },
+    {
+     "myr": 1000.0,
+     "genuine_mkm2": 23.548760573535677,
+     "craton_mkm2": 22.474721451547545,
+     "non_cratonic_mkm2": 1.0740391219881325,
+     "craton_share": 0.9543908428371747,
+     "craton_mkm3": 735.5346952190881,
+     "formed_mkm3": 167.27130819386372,
+     "continental_inventory_mkm3": 1641.8278091831319
+    }
+   ],
+   "generation_band": {
+    "quiet_unseeded_mkm3": 892.3311868125411,
+    "quiet_unseeded_mkm2": 25.01627415785442,
+    "max_clock_myr": 0.0
+   }
+  },
+  {
+   "seed": 456862899,
+   "formation": {
+    "pulse_at_200_myr_mkm3": 0,
+    "post_pulse_mkm3": 0.7216751970948198,
+    "total_mkm3": 0.7216751970948198,
+    "last_positive_sample_myr": 255.0,
+    "positive_samples": 1
+   },
+   "conversion_by_500_myr": {
+    "myr": 500.0,
+    "non_cratonic_lost_mkm2": 43.76496392876509,
+    "converted_max_mkm2": 0.02577411418195785,
+    "craton_area_retained": 0.3999420032128017,
+    "non_cratonic_retained": 0.03830985211478417
+   },
+   "windows": [
+    {
+     "window_myr": [
+      0.0,
+      500.0
+     ],
+     "genuine_start_frac": 1.0,
+     "genuine_min_frac": 0.20004027159645446,
+     "non_cratonic_start_mkm2": 45.50838336547952,
+     "non_cratonic_start_frac": 1.0,
+     "qualifies_genuine_at_start": true,
+     "qualifies_genuine_throughout": false,
+     "qualifies_non_cratonic_at_start": true,
+     "post_pulse_formed_mkm3": 0.7216751970948198
+    },
+    {
+     "window_myr": [
+      500.0,
+      1000.0
+     ],
+     "genuine_start_frac": 0.20004027159645446,
+     "genuine_min_frac": 0.12634118662121602,
+     "non_cratonic_start_mkm2": 1.743419436714424,
+     "non_cratonic_start_frac": 0.03830985211478417,
+     "qualifies_genuine_at_start": false,
+     "qualifies_genuine_throughout": false,
+     "qualifies_non_cratonic_at_start": false,
+     "post_pulse_formed_mkm3": 0.0
+    },
+    {
+     "window_myr": [
+      1000.0,
+      1500.0
+     ],
+     "genuine_start_frac": 0.12634118662121602,
+     "genuine_min_frac": 0.1069832487101009,
+     "non_cratonic_start_mkm2": 0.7170634275661296,
+     "non_cratonic_start_frac": 0.015756732596000314,
+     "qualifies_genuine_at_start": false,
+     "qualifies_genuine_throughout": false,
+     "qualifies_non_cratonic_at_start": false,
+     "post_pulse_formed_mkm3": 0.0
+    },
+    {
+     "window_myr": [
+      1500.0,
+      2000.0
+     ],
+     "genuine_start_frac": 0.11177075426282412,
+     "genuine_min_frac": 0.07808877033895252,
+     "non_cratonic_start_mkm2": 0.9245960557619792,
+     "non_cratonic_start_frac": 0.02031704902229802,
+     "qualifies_genuine_at_start": false,
+     "qualifies_genuine_throughout": false,
+     "qualifies_non_cratonic_at_start": false,
+     "post_pulse_formed_mkm3": 0.0
+    },
+    {
+     "window_myr": [
+      2000.0,
+      2500.0
+     ],
+     "genuine_start_frac": 0.07808877033895252,
+     "genuine_min_frac": 0.0544319448665268,
+     "non_cratonic_start_mkm2": 0.7824240490232146,
+     "non_cratonic_start_frac": 0.017192965145334606,
+     "qualifies_genuine_at_start": false,
+     "qualifies_genuine_throughout": false,
+     "qualifies_non_cratonic_at_start": false,
+     "post_pulse_formed_mkm3": 0.0
+    },
+    {
+     "window_myr": [
+      2500.0,
+      3000.0
+     ],
+     "genuine_start_frac": 0.0544319448665268,
+     "genuine_min_frac": 0.03297902039881548,
+     "non_cratonic_start_mkm2": 0.8777761803468933,
+     "non_cratonic_start_frac": 0.019288230331045604,
+     "qualifies_genuine_at_start": false,
+     "qualifies_genuine_throughout": false,
+     "qualifies_non_cratonic_at_start": false,
+     "post_pulse_formed_mkm3": 0.0
+    }
+   ],
+   "checkpoints": [
+    {
+     "myr": 0.0,
+     "genuine_mkm2": 82.32692351578298,
+     "craton_mkm2": 36.81854015030346,
+     "non_cratonic_mkm2": 45.50838336547952,
+     "craton_share": 0.44722356402938995,
+     "craton_mkm3": 1448.9810797248101,
+     "formed_mkm3": 0.0,
+     "continental_inventory_mkm3": 3864.20396553522
+    },
+    {
+     "myr": 100.0,
+     "genuine_mkm2": 55.93766623858976,
+     "craton_mkm2": 26.31844812463226,
+     "non_cratonic_mkm2": 29.619218113957505,
+     "craton_share": 0.47049599839179435,
+     "craton_mkm3": 1335.1456743758806,
+     "formed_mkm3": 0.0,
+     "continental_inventory_mkm3": 3430.7254811679973
+    },
+    {
+     "myr": 200.0,
+     "genuine_mkm2": 40.40860061284522,
+     "craton_mkm2": 21.34501746124346,
+     "non_cratonic_mkm2": 19.063583151601758,
+     "craton_share": 0.5282295634473974,
+     "craton_mkm3": 1039.5232525414947,
+     "formed_mkm3": 0.0,
+     "continental_inventory_mkm3": 2807.261485429084
+    },
+    {
+     "myr": 300.0,
+     "genuine_mkm2": 28.989870442430696,
+     "craton_mkm2": 25.694067753490064,
+     "non_cratonic_mkm2": 3.2958026889406327,
+     "craton_share": 0.8863119207281185,
+     "craton_mkm3": 935.5566584128984,
+     "formed_mkm3": 0.7216751970948198,
+     "continental_inventory_mkm3": 2210.4905569509865
+    },
+    {
+     "myr": 400.0,
+     "genuine_mkm2": 20.388053280330443,
+     "craton_mkm2": 18.29662374809905,
+     "non_cratonic_mkm2": 2.091429532231391,
+     "craton_share": 0.8974188705770592,
+     "craton_mkm3": 777.9152071666144,
+     "formed_mkm3": 0.7216751970948198,
+     "continental_inventory_mkm3": 1436.9746643705378
+    },
+    {
+     "myr": 500.0,
+     "genuine_mkm2": 16.46870013979776,
+     "craton_mkm2": 14.725280703083337,
+     "non_cratonic_mkm2": 1.743419436714424,
+     "craton_share": 0.8941373987069369,
+     "craton_mkm3": 611.075631381532,
+     "formed_mkm3": 0.7216751970948198,
+     "continental_inventory_mkm3": 996.6284526471495
+    },
+    {
+     "myr": 600.0,
+     "genuine_mkm2": 15.142125115073624,
+     "craton_mkm2": 13.922808006916023,
+     "non_cratonic_mkm2": 1.2193171081576004,
+     "craton_share": 0.9194751662074302,
+     "craton_mkm3": 538.5902898700858,
+     "formed_mkm3": 0.7216751970948198,
+     "continental_inventory_mkm3": 885.3203954743493
+    },
+    {
+     "myr": 700.0,
+     "genuine_mkm2": 13.012977585934001,
+     "craton_mkm2": 13.080859179166053,
+     "non_cratonic_mkm2": -0.06788159323205178,
+     "craton_share": 1.0052164535582868,
+     "craton_mkm3": 447.72488849026337,
+     "formed_mkm3": 0.7216751970948198,
+     "continental_inventory_mkm3": 748.9101336887055
+    },
+    {
+     "myr": 800.0,
+     "genuine_mkm2": 10.835089603815028,
+     "craton_mkm2": 11.062208323189948,
+     "non_cratonic_mkm2": -0.22711871937491956,
+     "craton_share": 1.0209614066592443,
+     "craton_mkm3": 406.06395240284894,
+     "formed_mkm3": 0.7216751970948198,
+     "continental_inventory_mkm3": 694.0488762558815
+    },
+    {
+     "myr": 900.0,
+     "genuine_mkm2": 10.715311296255607,
+     "craton_mkm2": 10.080130075775362,
+     "non_cratonic_mkm2": 0.635181220480245,
+     "craton_share": 0.9407220935613689,
+     "craton_mkm3": 370.7299681880134,
+     "formed_mkm3": 0.7216751970948198,
+     "continental_inventory_mkm3": 621.6336611028615
+    },
+    {
+     "myr": 1000.0,
+     "genuine_mkm2": 10.401281207858114,
+     "craton_mkm2": 9.684217780291984,
+     "non_cratonic_mkm2": 0.7170634275661296,
+     "craton_share": 0.9310600864223927,
+     "craton_mkm3": 355.4184836977846,
+     "formed_mkm3": 0.7216751970948198,
+     "continental_inventory_mkm3": 566.3975644317051
+    },
+    {
+     "myr": 1100.0,
+     "genuine_mkm2": 10.132477287765742,
+     "craton_mkm2": 9.10858669335525,
+     "non_cratonic_mkm2": 1.0238905944104921,
+     "craton_share": 0.8989496284737032,
+     "craton_mkm3": 337.66138851841436,
+     "formed_mkm3": 0.7216751970948198,
+     "continental_inventory_mkm3": 553.9181711770723
+    },
+    {
+     "myr": 1200.0,
+     "genuine_mkm2": 8.807601734026465,
+     "craton_mkm2": 8.386752672865612,
+     "non_cratonic_mkm2": 0.42084906116085286,
+     "craton_share": 0.9522175191533715,
+     "craton_mkm3": 317.49670397675834,
+     "formed_mkm3": 0.7216751970948198,
+     "continental_inventory_mkm3": 511.25734041116556
+    },
+    {
+     "myr": 1300.0,
+     "genuine_mkm2": 8.970105815850383,
+     "craton_mkm2": 8.773709959116225,
+     "non_cratonic_mkm2": 0.19639585673415816,
+     "craton_share": 0.9781055139408587,
+     "craton_mkm3": 303.58556761519975,
+     "formed_mkm3": 0.7216751970948198,
+     "continental_inventory_mkm3": 507.3778398311164
+    },
+    {
+     "myr": 1400.0,
+     "genuine_mkm2": 9.353560422309496,
+     "craton_mkm2": 8.877924544082457,
+     "non_cratonic_mkm2": 0.47563587822703823,
+     "craton_share": 0.9491492162607317,
+     "craton_mkm3": 295.09105729923243,
+     "formed_mkm3": 0.7216751970948198,
+     "continental_inventory_mkm3": 501.05467224154626
+    },
+    {
+     "myr": 1500.0,
+     "genuine_mkm2": 9.201742337496896,
+     "craton_mkm2": 8.277146281734916,
+     "non_cratonic_mkm2": 0.9245960557619792,
+     "craton_share": 0.8995194581797546,
+     "craton_mkm3": 289.7489979858933,
+     "formed_mkm3": 0.7216751970948198,
+     "continental_inventory_mkm3": 486.8795785393433
+    },
+    {
+     "myr": 1600.0,
+     "genuine_mkm2": 8.873739411875334,
+     "craton_mkm2": 7.223700529767789,
+     "non_cratonic_mkm2": 1.6500388821075456,
+     "craton_share": 0.8140537145028881,
+     "craton_mkm3": 275.21697834718157,
+     "formed_mkm3": 0.7216751970948198,
+     "continental_inventory_mkm3": 543.0586620471373
+    },
+    {
+     "myr": 1700.0,
+     "genuine_mkm2": 8.722365951663157,
+     "craton_mkm2": 6.560530037161116,
+     "non_cratonic_mkm2": 2.161835914502041,
+     "craton_share": 0.7521502850852263,
+     "craton_mkm3": 270.0509557967886,
+     "formed_mkm3": 0.7216751970948198,
+     "continental_inventory_mkm3": 521.0940858618605
+    },
+    {
+     "myr": 1800.0,
+     "genuine_mkm2": 7.424201530967271,
+     "craton_mkm2": 6.0420211421103485,
+     "non_cratonic_mkm2": 1.3821803888569226,
+     "craton_share": 0.8138277384993289,
+     "craton_mkm3": 254.04148974534937,
+     "formed_mkm3": 0.7216751970948198,
+     "continental_inventory_mkm3": 493.6467773483913
+    },
+    {
+     "myr": 1900.0,
+     "genuine_mkm2": 6.893259997039802,
+     "craton_mkm2": 5.679161186734005,
+     "non_cratonic_mkm2": 1.2140988103057975,
+     "craton_share": 0.8238716063477698,
+     "craton_mkm3": 243.50889081928258,
+     "formed_mkm3": 0.7216751970948198,
+     "continental_inventory_mkm3": 434.0653630560558
+    },
+    {
+     "myr": 2000.0,
+     "genuine_mkm2": 6.428808223136486,
+     "craton_mkm2": 5.646384174113272,
+     "non_cratonic_mkm2": 0.7824240490232146,
+     "craton_share": 0.87829407537662,
+     "craton_mkm3": 238.5966824603274,
+     "formed_mkm3": 0.7216751970948198,
+     "continental_inventory_mkm3": 435.3546811586518
+    },
+    {
+     "myr": 2100.0,
+     "genuine_mkm2": 6.407755893455861,
+     "craton_mkm2": 5.463561283232832,
+     "non_cratonic_mkm2": 0.944194610223029,
+     "craton_share": 0.8526481617086381,
+     "craton_mkm3": 220.81677284796524,
+     "formed_mkm3": 0.7216751970948198,
+     "continental_inventory_mkm3": 421.74609190859286
+    },
+    {
+     "myr": 2200.0,
+     "genuine_mkm2": 6.387707096735958,
+     "craton_mkm2": 5.55188693108679,
+     "non_cratonic_mkm2": 0.8358201656491673,
+     "craton_share": 0.8691517702688245,
+     "craton_mkm3": 211.25599850181905,
+     "formed_mkm3": 0.7216751970948198,
+     "continental_inventory_mkm3": 432.28366815709825
+    },
+    {
+     "myr": 2300.0,
+     "genuine_mkm2": 6.4240578587267505,
+     "craton_mkm2": 5.456056586089357,
+     "non_cratonic_mkm2": 0.9680012726373937,
+     "craton_share": 0.8493162275426249,
+     "craton_mkm3": 200.4669717723128,
+     "formed_mkm3": 0.7216751970948198,
+     "continental_inventory_mkm3": 368.2350355218247
+    },
+    {
+     "myr": 2400.0,
+     "genuine_mkm2": 5.384173409096725,
+     "craton_mkm2": 4.450099015901066,
+     "non_cratonic_mkm2": 0.934074393195659,
+     "craton_share": 0.8265148013959743,
+     "craton_mkm3": 182.70727046372866,
+     "formed_mkm3": 0.7216751970948198,
+     "continental_inventory_mkm3": 356.0352608670069
+    },
+    {
+     "myr": 2500.0,
+     "genuine_mkm2": 4.481214561841868,
+     "craton_mkm2": 3.6034383814949744,
+     "non_cratonic_mkm2": 0.8777761803468933,
+     "craton_share": 0.8041209211847891,
+     "craton_mkm3": 167.46038583965543,
+     "formed_mkm3": 0.7216751970948198,
+     "continental_inventory_mkm3": 267.3944043714414
+    },
+    {
+     "myr": 2600.0,
+     "genuine_mkm2": 3.8266149703442833,
+     "craton_mkm2": 3.1657637496533693,
+     "non_cratonic_mkm2": 0.6608512206909141,
+     "craton_share": 0.8273013549018085,
+     "craton_mkm3": 153.11534911976375,
+     "formed_mkm3": 0.7216751970948198,
+     "continental_inventory_mkm3": 242.52784634096946
+    },
+    {
+     "myr": 2700.0,
+     "genuine_mkm2": 3.043536239408832,
+     "craton_mkm2": 2.748491917604149,
+     "non_cratonic_mkm2": 0.29504432180468276,
+     "craton_share": 0.9030587124331428,
+     "craton_mkm3": 131.22241217235356,
+     "formed_mkm3": 0.7216751970948198,
+     "continental_inventory_mkm3": 203.78489440250647
+    },
+    {
+     "myr": 2800.0,
+     "genuine_mkm2": 3.1890597647339884,
+     "craton_mkm2": 2.733926678683144,
+     "non_cratonic_mkm2": 0.45513308605084424,
+     "craton_share": 0.8572829863259686,
+     "craton_mkm3": 123.99599569511103,
+     "formed_mkm3": 0.7216751970948198,
+     "continental_inventory_mkm3": 228.4272178891431
+    },
+    {
+     "myr": 2900.0,
+     "genuine_mkm2": 2.7884625775361815,
+     "craton_mkm2": 2.748867165619039,
+     "non_cratonic_mkm2": 0.03959541191714244,
+     "craton_share": 0.9858002713623906,
+     "craton_mkm3": 115.99210997961463,
+     "formed_mkm3": 0.7216751970948198,
+     "continental_inventory_mkm3": 199.83078337200942
+    },
+    {
+     "myr": 3000.0,
+     "genuine_mkm2": 2.7150612899987285,
+     "craton_mkm2": 2.8514471754211637,
+     "non_cratonic_mkm2": -0.13638588542243513,
+     "craton_share": 1.0502330779510687,
+     "craton_mkm3": 103.54416344159799,
+     "formed_mkm3": 0.7216751970948198,
+     "continental_inventory_mkm3": 190.37953552188705
+    }
+   ],
+   "generation_band": {
+    "quiet_unseeded_mkm3": 439.13306023483096,
+    "quiet_unseeded_mkm2": 11.281514522326045,
+    "max_clock_myr": 0.0
+   }
+  }
+ ]
+}
