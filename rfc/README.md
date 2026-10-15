@@ -65,7 +65,8 @@ plan its transition into one or more implementation issues. RFCs are written wit
 It sets the sections (problem, solutions, design, provisional touchpoints, assumptions and
 uncertainty, acceptance and falsification criteria, references), the citation format, and
 how sources are checked. They are reviewed with
-[`rfc-review`](../.agents/skills/rfc-review/SKILL.md).
+[`rfc-review`](../.agents/skills/rfc-review/SKILL.md), and completed or withdrawn with
+[`complete-rfc`](../.agents/skills/complete-rfc/SKILL.md).
 `.agents/skills/rfc-authoring/check_citations.py` checks citations and DOIs.
 
 ## Lifecycle
@@ -79,7 +80,11 @@ how sources are checked. They are reviewed with
    issues use the RFC worktree directory and keep one issue branch and PR per issue (see
    [`start-rfc`](../.agents/skills/start-rfc/SKILL.md) and
    [`start-issue`](../.agents/skills/start-issue/SKILL.md)). The status is updated when the
-   last one lands. From then on the code and `docs/` are the source of truth, and the RFC
-   stays as the record of why.
-4. **Rejected or Superseded:** kept, with the reason, or a link to what replaced it. This
-   includes an RFC whose falsification criteria were met.
+   last one lands and the acceptance criteria are met, with
+   [`complete-rfc`](../.agents/skills/complete-rfc/SKILL.md). From then on the code and
+   `docs/` are the source of truth, and the RFC stays as the record of why.
+4. **Withdrawn:** the project stops pursuing it before it is implemented, because its
+   falsification criteria were met, a later RFC supersedes it, or the project owner
+   declines it. A draft or an accepted RFC can be withdrawn. It is kept, with "(withdrawn)"
+   in its title and an Outcome section giving the reason, what landed and stays, and a link
+   to any superseding RFC. Use [`complete-rfc`](../.agents/skills/complete-rfc/SKILL.md).

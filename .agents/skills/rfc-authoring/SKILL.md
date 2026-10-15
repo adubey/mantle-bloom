@@ -65,7 +65,7 @@ implementation issues while drafting.
 `rfc/NNNN-short-slug.md`, numbered in order of creation, in Markdown, with these sections
 in this order:
 
-1. **Header:** title; status (Draft, Accepted, Implemented, Rejected, Superseded by NNNN);
+1. **Header:** title; status (Draft, Accepted, Implemented, or Withdrawn with any superseding RFC; see `complete-rfc`);
    date; related issues and RFCs.
 2. **Problem:** what goes wrong, in general terms, with the evidence (section 1 above).
 3. **Proposed solutions:** what happens in nature, with citations; then one or more

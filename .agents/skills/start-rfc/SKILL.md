@@ -84,8 +84,10 @@ each issue still gets its own branch and reviewable PR.
   `origin/main`.
 - **Implementation underway:** use the tracking issue to identify remaining work, and tick
   items off as their PRs merge or their gates report. When a gate result rules a planned
-  step out, strike it there with the reason. Update the RFC status to Implemented only
-  after all of its implementation issues have landed, then close the tracking issue.
+  step out, strike it there with the reason. When all of its implementation issues have
+  landed, close it out as Implemented with `complete-rfc`.
+- **Falsified, superseded or no longer wanted:** report the evidence to the project owner.
+  Once they decide to withdraw it, use `complete-rfc`.
 
 Keep issue creation and RFC acceptance aligned with the lifecycle in `rfc/README.md`: the
 project owner accepts an RFC by merging its RFC PR, or by saying so for an RFC already merged
