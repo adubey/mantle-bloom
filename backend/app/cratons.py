@@ -103,12 +103,17 @@ CRATON_SOURCE_ACCOUNTS = ("initial_m3", "formed_m3")
 # cleanup. "audit_clipped" is craton a catch-all phase audit (the deform phase, the end of
 # the step) had to clip to its column because some writer thinned the column below it
 # without booking it: kept apart from any mechanism so the real sinks can be read (#340).
+# "merge_capped" is craton stacked past the suture cap in a plate merge that the overflow
+# placement couldn't place (RFC 0001, #441). Merges booked it to "delaminated" before then,
+# which read as root foundering (forbidden for cratons, #340); nothing books "delaminated"
+# now, and it is kept so older saves' historical merge losses still balance.
 # "unattributed" is signed and should stay ~0 -- anything there escaped every instrumented
 # site.
 CRATON_SINK_ACCOUNTS = (
     "rifted_m3",
     "subducted_m3",
     "delaminated_m3",
+    "merge_capped_m3",
     "collision_reworked_m3",
     "eroded_m3",
     "topology_removed_m3",

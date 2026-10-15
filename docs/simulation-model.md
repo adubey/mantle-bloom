@@ -925,7 +925,9 @@ routine per-step motion.
   deform](#boundary-evolution) for why ordinary per-step evolution no longer uses it), they're
   fused: keep one plate's `frame` and lattice, and remap the absorbed plate's cells onto it
   by exact cell area (`quad_merge.py`), stacking crust where the two overlap (capped at the
-  suture ceiling). The boundary between them becomes ordinary interior territory. A remapped
+  suture ceiling). Cratonic crust in the overflow that finds no room is clipped and booked to
+  the craton ledger's `merge_capped_m3` (RFC 0001, #441). The boundary between them becomes
+  ordinary interior territory. A remapped
   cell is dropped if any part of it lies in a third plate's cell, or its centre is nearer a
   third plate's node than either fusing plate's, so the merged plate doesn't grow into its
   neighbours (#344). The dropped cells' volume is spread over the cells that are kept, and
@@ -1286,7 +1288,8 @@ loading never changes plate state.
 |---|---|
 | `rifted_m3` | divergent thinning, rift stretching, decompression melting, failed rifts |
 | `subducted_m3` | subduction erosion of a craton's edge at a trench (`cratons.attrite`); on quad plates, suture crust with no outlet anywhere |
-| `delaminated_m3` | craton stacked past the suture cap in a merge that the overflow placement couldn't place |
+| `merge_capped_m3` | craton stacked past the suture cap in a merge that the overflow placement couldn't place (RFC 0001, #441) |
+| `delaminated_m3` | nothing since #441; saves from before it hold their merge-cap losses here, which can't be split out after the fact |
 | `collision_reworked_m3` | craton reworked by fault relief; suture accretion and crust transfer still book here any craton a front hands them, though retreat no longer consumes craton cells (#340) |
 | `eroded_m3` | erosional unroofing below the craton's top |
 | `topology_removed_m3` | a plate or stranded fragment removed outright |

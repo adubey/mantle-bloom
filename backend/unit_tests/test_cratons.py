@@ -469,6 +469,19 @@ def test_an_old_ledger_gains_the_rift_diagnostics_on_load():
     assert loaded.craton_ledger["rifted_m3"] == 1.0
 
 
+def test_a_save_from_before_merge_capped_loads_with_it_at_zero_and_balanced():
+    # #441: older saves hold their merge losses in delaminated_m3 and lack the new account.
+    world = _world(_cap(1))
+    cratons.ensure_initialized(world)
+    del world.craton_ledger["merge_capped_m3"]
+    world.craton_ledger["delaminated_m3"] = 0.0
+
+    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+
+    assert loaded.craton_ledger["merge_capped_m3"] == 0.0
+    assert abs(cratons.balance_error_m3(loaded)) <= 1e-9 * max(loaded.craton_ledger["initial_m3"], 1.0)
+
+
 @pytest.mark.parametrize("resistance", [0.0, 0.75, 1.0, 1.5])
 def test_rift_thinning_factors_stay_in_unit_range(monkeypatch, resistance):
     # RFC 0003: resistance is clamped, so no strength or tuned constant can make a failed

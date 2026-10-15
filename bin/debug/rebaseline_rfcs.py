@@ -88,6 +88,13 @@ def _history_fields(history: list[dict], rows: list[dict]) -> None:
         row["land_fraction_area_weighted"] = saved["land_fraction"]
 
 
+def _merge_booked_m3(world) -> float:
+    """Craton a merge's cap has booked: `delaminated_m3` before #441, `merge_capped_m3` after,
+    so the tap measures either backend."""
+    ledger = world.craton_ledger
+    return ledger.get("delaminated_m3", 0.0) + ledger.get("merge_capped_m3", 0.0)
+
+
 def _measure(seed: int, years: float, save_dir: Path) -> dict:
     original_snapshot = compare_cratons._snapshot
     original_merge = merge_split._merge_plates_with_craton_audit
@@ -97,10 +104,10 @@ def _measure(seed: int, years: float, save_dir: Path) -> dict:
     captured = {}
 
     def merge(world, keep: int, absorb: int) -> None:
-        before = world.craton_ledger.get("delaminated_m3", 0.0)
+        before = _merge_booked_m3(world)
         live = cratons.live_volume_m3(world)
         original_merge(world, keep, absorb)
-        loss = world.craton_ledger.get("delaminated_m3", 0.0) - before
+        loss = _merge_booked_m3(world) - before
         merges.append({"myr": world.elapsed_years / 1e6, "pair": [keep, absorb],
                        "craton_lost_km3": loss / 1e9,
                        "share_of_live": loss / live if live else 0.0})
