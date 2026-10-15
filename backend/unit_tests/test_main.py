@@ -191,7 +191,7 @@ def test_cross_section_route_renders_image_and_keeps_request_validation(client, 
     monkeypatch.setattr(
         main.cross_section_view,
         "render_png_base64",
-        lambda *args: ("cG5n", {"image_base64": "cG5n", "world_revision": "revision"}),
+        lambda *args, **kwargs: ("cG5n", {"image_base64": "cG5n", "world_revision": "revision"}),
     )
     response = client.get("/world/cross-section")
     assert response.status_code == 200

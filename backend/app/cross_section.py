@@ -135,6 +135,20 @@ def _parcel_markers(world, sample_xyz: np.ndarray, spacing_km: float) -> list[tu
     return [(int(i), float(np.clip(v / max_volume, 0.0, 1.0))) for i, v, d in zip(nearest, volumes, distance_km) if d <= corridor_km]
 
 
+def _boundary_sample_indices(world, sample_xyz: np.ndarray, node_xyz: np.ndarray) -> np.ndarray:
+    world_plates = getattr(world, "plates", ())
+    active_plates = [plate for plate in world_plates if plate.node_count()]
+    if not active_plates:
+        return np.zeros(0, dtype=int)
+    plate_ids = np.concatenate([
+        np.full(plate.node_count(), plate.plate_id, dtype=np.int64)
+        for plate in active_plates
+    ])
+    _, nearest_nodes = plates.cached_node_position_tree(world, node_xyz).query(sample_xyz, k=1)
+    sampled_plate_ids = plate_ids[nearest_nodes]
+    return np.flatnonzero(sampled_plate_ids[1:] != sampled_plate_ids[:-1]) + 1
+
+
 def render_png_base64(
     world, plane_angle_deg: float, position_index: int, width: int, height: int,
     *, show_boundaries: bool = False, show_faults: bool = False,
@@ -143,12 +157,11 @@ def render_png_base64(
     spacing_km = line_spacing_rad(world.node_density) * PLANET_RADIUS_KM
     sample_xyz, tangent, distances = _great_circle_samples(plane_angle_deg, position_index, spacing_km)
     sampled, continental, node_xyz = _sample_fields(world, sample_xyz)
-    plate_ids = np.concatenate([
-        np.full(plate.node_count(), plate.plate_id, dtype=np.int64)
-        for plate in world.plates if plate.node_count()
-    ])
-    _, nearest_nodes = plates.cached_node_position_tree(world, node_xyz).query(sample_xyz, k=1)
-    sampled_plate_ids = plate_ids[nearest_nodes]
+    world_plates = getattr(world, "plates", ())
+    boundary_samples = (
+        _boundary_sample_indices(world, sample_xyz, node_xyz)
+        if show_boundaries else np.zeros(0, dtype=int)
+    )
     elev = sampled["elevation"].astype(float)
     hc = np.maximum(sampled["crustal_thickness_m"].astype(float), 0.0)
     hm = np.maximum(sampled["mantle_lithosphere_thickness_m"].astype(float), 0.0)
@@ -187,13 +200,9 @@ def render_png_base64(
     # plotting rectangle made the frame read as an asthenosphere block (#360).
     points_for_parcels = sample_xyz
     marker_by_sample = dict(_parcel_markers(world, points_for_parcels, spacing_km))
-    boundary_samples = (
-        np.flatnonzero(sampled_plate_ids[1:] != sampled_plate_ids[:-1]) + 1
-        if show_boundaries else np.zeros(0, dtype=int)
-    )
     fault_samples: set[int] = set()
     if show_faults:
-        by_id = {plate.plate_id: plate for plate in world.plates}
+        by_id = {plate.plate_id: plate for plate in world_plates}
         sample_tree = cKDTree(sample_xyz)
         for fault in (*getattr(world, "faults", ()), *getattr(world, "boundary_faults", ())):
             plate = by_id.get(fault.plate_id)
