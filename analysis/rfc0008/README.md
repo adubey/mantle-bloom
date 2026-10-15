@@ -124,3 +124,51 @@ against the branch, both with the probe's plate statistics. Per-seed summaries a
   stall: collision time is dropped on jammed pairs 2.6–4.6 times as often on seeds 7 and 11.
   Solution 5 keeps that time, so part of this gain will come back as fusions. Craton loss
   should be read again after 5 and RFC 0001's placement fix.
+
+# Solution 1: buoyant columns (issue #400)
+
+Slab pull per subducting node scales with its column's net negative buoyancy (a full-strength
+cratonic keel is neutral), and continental crust forced down at a contact that isn't
+diverging jams the contact drag with j (15 km → 0, 30 km → 1). Same probe and seeds, at
+5 Myr steps to 1 Gyr. The baseline is solution 0's replays ([solution0.json](solution0.json)):
+no model code changed on origin/main between them and this branch. Per-seed summaries are in
+[solution1.json](solution1.json).
+
+| Seed 7 / 11 / 2024 | Solution 0 (origin/main) | Solution 1 |
+|---|---|---|
+| Buoyant share of slab pull | 5.4% / 5.3% / 4.7% | 0.01% / 0.01% / 0.01% |
+| Brake at jammed contacts, median (N/m) | 3.0 × 10¹¹ / 1.4 × 10¹¹ / 1.2 × 10¹¹ | 3.4 × 10¹¹ / 2.4 × 10¹¹ / 1.7 × 10¹¹ |
+| Brake at jammed contacts, p90 (N/m) | 7.7 × 10¹¹ / 2.8 × 10¹¹ / 3.0 × 10¹¹ | 9.2 × 10¹¹ / 9.3 × 10¹¹ / 4.6 × 10¹¹ |
+| Closing rate, continental contacts, craton in reach / clear (cm/yr) | 1.51 / 1.61 · 1.81 / 1.60 · 1.52 / 1.37 | 1.50 / 1.27 · 1.41 / 1.28 · 1.20 / 1.23 |
+| Closing rate, all contacts, craton in reach / clear (cm/yr) | 1.42 / 1.50 · 1.46 / 1.47 · 1.46 / 1.48 | 1.36 / 1.45 · 1.41 / 1.45 · 1.34 / 1.47 |
+| Mean plate speed, area-weighted (cm/yr) | 3.33 / 3.13 / 3.21 | 3.00 / 2.92 / 2.98 |
+| Mean plate count | 44.8 / 46.6 / 43.4 | 46.3 / 43.8 / 43.0 |
+| Largest plate, mean / max share of surface | 6.6 / 18% · 6.8 / 31% · 7.6 / 22% | 6.7 / 19% · 6.7 / 31% · 6.5 / 22% |
+| Collision-time drops: all (jammed pairs) | 188 (128) / 67 (57) / 87 (59) | 231 (168) / 43 (26) / 54 (22) |
+| Fusions, roll + forced | 45 / 15 / 24 | 36 / 11 / 11 |
+| Craton-on-craton overlap at fusion, % of start | 52% / 32% / 18% | 43% / 31% / 20% |
+| Craton lost in fusions, % of start | 39% / 4% / 12% | 42% / 2% / 2% |
+| Craton destroyed outside fusions, % of start | 29% / 52% / 26% | 24% / 43% / 20% |
+| Craton left at 1 Gyr, % of start | 37% / 52% / 75% | 38% / 67% / 95% |
+| J | 34% / 82% / 58% | 31% / 82% / 79% |
+
+- **The keel fix works.** Buoyant columns supplied 4.7–5.4% of slab pull; they now supply
+  0.01% (thin continental crust on a thick root, which still sinks).
+- **Plates slow further, within bounds.** Mean plate speed falls another 7–10% (11–18% against
+  the pre-solution-0 baseline of 3.65 / 3.35 / 3.33 cm/yr), under the RFC's 30%
+  falsification limit. Plate count moves under 6% and the largest plate is unchanged.
+- **The brake at the probe's craton-jammed contacts rises 1.1–1.7× at the median** and 1.2–3.3×
+  at p90, still under the 10¹²–10¹³ N/m band. The jam acts where thick continental crust is
+  forced down; the probe's "jammed" contacts are where craton blocks retreat, and many of
+  those have a thin-crusted or upper-plate side with j = 0.
+- **Solution 2's trigger is met.** Craton contacts don't close more slowly than craton-free
+  ones: continental pairs with craton in reach close +18%, +10% and −2% against clear pairs,
+  and all pairs −6%, −3% and −9%, within 10% on every seed by the all-pairs measure. Closing
+  falls at contacts of both kinds, not specifically near cratons. By the RFC's table this
+  selects solution 2 (the proximity brake).
+- **Craton survives better on seeds 11 and 2024** (67% and 95% left, from 52% and 75%), with
+  fewer fusions and less loss outside them. Seed 7 is flat (38%), and its collision-time drops
+  on jammed pairs rise from 128 to 168, which solution 5 addresses.
+- **Cost.** `contact_jam_factor` (including `forced_down_mask`) took 0.28% of a 100 Myr seed 7
+  run at density 1 under cProfile; the buoyancy and drag changes 0.04%. Not measured at
+  density 4.

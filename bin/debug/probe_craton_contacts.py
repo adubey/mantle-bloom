@@ -23,14 +23,15 @@ no saved state changes. Every step, for every pair of plates in contact (any cru
   nearest contact within reach. Fusion losses are booked to the fused pair; other topology
   losses (splits, failed rifts, removals) to no contact. The step's ledger sinks ride along
   as a check on the per-cell sums;
-- **buoyant pull**: the share of slab-pull torque magnitude (`torque.slab_pull_torque`, as
-  applied) from continental-coded or cratonic subducting nodes;
+- **buoyant pull**: the share of slab-pull torque magnitude (`torque.slab_pull_force_n`, as
+  applied, so after solution 1's buoyancy, #400) from continental-coded or cratonic
+  subducting nodes;
 - **plates**: plate count, area-weighted mean surface speed, and the largest plate's share
   of the surface (RFC 0008's bounds on slowing);
 - **contact force**: per unit trench length, the collision brake as applied
-  (`torque.contact_drag_pa_s_per_m` at the contested nodes, #399), and the force RFC 0008's
-  jam drag (solution 1) would apply, `CONTACT_RESISTANCE_N_PER_M x j x v / v_ref`, with j the
-  jammed nodes' mean jam factor.
+  (`torque.contact_drag_pa_s_per_m` wherever it is non-zero: contested nodes, #399, and
+  jammed contacts, #400), and the gate's estimate of a jam drag at the probe's craton-jammed
+  contacts, `CONTACT_RESISTANCE_N_PER_M x j x v / v_ref`, with j those nodes' mean jam factor.
 
 The summary reports, per seed: J (craton destruction within reach of a jammed contact whose
 pair didn't fuse within 50 Myr, as a share of all destruction), dropped collision time on
@@ -69,9 +70,6 @@ CM_PER_YR = 0.01 / torque.SECONDS_PER_YEAR  # m/s
 TRANSFORM_CM = 1.0
 EDGE_SPACINGS = 1.5
 FUSION_WINDOW_MYR = 50.0
-# RFC 0008's jam thresholds from Cloos (1993), until solution 1 puts them in torque.
-JAM_MIN_CRUST_M = 15_000.0
-JAM_FULL_CRUST_M = 30_000.0
 
 
 def _pair(a: int, b: int) -> tuple[int, int]:
@@ -114,10 +112,6 @@ def retreat_candidates(world, plate, others: list, contested: np.ndarray) -> np.
     return (shrinkable & ~nodes) | (masks.run_eligible & masks.lower & nodes & masks.continental)
 
 
-def jam_factor(hc: np.ndarray) -> np.ndarray:
-    return np.clip((hc - JAM_MIN_CRUST_M) / (JAM_FULL_CRUST_M - JAM_MIN_CRUST_M), 0.0, 1.0)
-
-
 class Probe:
     def __init__(self, world, reach_km: float) -> None:
         self.world = world
@@ -147,9 +141,8 @@ class Probe:
     def on_slab_pull(self, plate, inputs, mask) -> None:
         if not np.any(mask):
             return
-        hm = inputs.own_hm[mask]
         pts = inputs.own_points[mask]
-        force = (lithosphere.RHO_LITHOSPHERE_MANTLE - lithosphere.RHO_ASTHENOSPHERE) * lithosphere.GRAVITY_M_S2 * hm * torque.SUBDUCTION_LSINK_M * self.ds_m
+        force = torque.slab_pull_force_n(plate, inputs, mask, self.spacing)
         torque_mag = np.linalg.norm(np.cross(pts * R, force[:, None] * inputs.direction_to_neighbor[mask]), axis=1)
         continental = effective_is_continental_from_codes(inputs.own_crust_type_codes[mask], plate.crust_type == "continental")
         cratonic = plate.collect("craton_crust_m")[mask] > 0.0
@@ -160,12 +153,14 @@ class Probe:
         self.pull["cratonic"] += float(torque_mag[cratonic].sum())
         self.pull["plates"].append(round(buoyant / total, 4) if total > 0.0 else 0.0)
 
-    def on_collision_drag(self, plate, inputs, mask, craton_m) -> None:
-        """The brake as applied per node, `torque.contact_drag_pa_s_per_m` times the node's
-        area and real relative speed, summed per neighbour."""
+    def on_collision_drag(self, plate, inputs, collision_mask, craton_m, jam) -> None:
+        """The brake as applied per node, `torque.contact_drag_pa_s_per_m` (with the jam, #400)
+        times the node's area and real relative speed, summed per neighbour."""
+        coefficient = torque.contact_drag_pa_s_per_m(plate, inputs, collision_mask, self.spacing, craton_m, jam)
+        mask = coefficient > 0.0
         if not np.any(mask):
             return
-        coefficient = torque.contact_drag_pa_s_per_m(plate, inputs, mask, self.spacing, craton_m)
+        coefficient = coefficient[mask]
         pts = inputs.own_points[mask]
         relative = np.cross(plate.omega - inputs.neighbor_omega[mask], pts) * R / torque.SECONDS_PER_YEAR
         force = coefficient * plate.accounting_areas_m2(self.spacing)[mask] * np.linalg.norm(relative, axis=1)
@@ -222,7 +217,7 @@ class Probe:
                     "contested": int((mine & contested).sum()),
                     "continental": float(continental[mine].mean()),
                     "jam": int((mine & jammed).sum()),
-                    "jam_j": float(jam_factor(hc_cont[mine & jammed]).sum()),
+                    "jam_j": float(torque.jam_factor(hc_cont[mine & jammed]).sum()),
                     "nodes": plate.node_count(),
                 }
         self._build_pairs(sides, cratons_by_plate)
@@ -437,9 +432,9 @@ def install(probe: Probe) -> None:
         probe.on_slab_pull(plate, inputs, mask)
         return slab_pull_torque(plate, inputs, mask, spacing_rad)
 
-    def tapped_collision_drag_coefficients(plate, inputs, mask, spacing_rad, craton_m=None):
-        probe.on_collision_drag(plate, inputs, mask, craton_m)
-        return collision_drag_coefficients(plate, inputs, mask, spacing_rad, craton_m)
+    def tapped_collision_drag_coefficients(plate, inputs, mask, spacing_rad, craton_m=None, jam=None):
+        probe.on_collision_drag(plate, inputs, mask, craton_m, jam)
+        return collision_drag_coefficients(plate, inputs, mask, spacing_rad, craton_m, jam)
 
     def tapped_update_collision_progress(world, years):
         before = dict(world.collision_progress)

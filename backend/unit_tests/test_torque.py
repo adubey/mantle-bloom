@@ -1,9 +1,17 @@
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 
 from app import geometry
 from app import cratons, lithosphere, mantle, torque
-from app.elevation_lines import line_spacing_rad
+from app.elevation_lines import CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC, line_spacing_rad
+
+
+class _OceanicPlate:
+    """Only slab pull's crust-code resolution reads the plate: inherited codes are oceanic."""
+
+    crust_type = "oceanic"
 
 
 def test_basal_drag_vanishes_when_plate_matches_mantle_flow():
@@ -86,8 +94,8 @@ def test_slab_pull_is_zero_without_a_subducting_node():
         neighbor_is_oceanic=np.zeros(n, dtype=bool),
         neighbor_omega=np.zeros((n, 3)),
     )
-    assert np.allclose(torque.slab_pull_torque(None, inputs, np.zeros(n, dtype=bool), spacing_rad=0.02), 0.0)
-    assert not np.allclose(torque.slab_pull_torque(None, inputs, np.ones(n, dtype=bool), spacing_rad=0.02), 0.0)
+    assert np.allclose(torque.slab_pull_torque(_OceanicPlate(), inputs, np.zeros(n, dtype=bool), spacing_rad=0.02), 0.0)
+    assert not np.allclose(torque.slab_pull_torque(_OceanicPlate(), inputs, np.ones(n, dtype=bool), spacing_rad=0.02), 0.0)
 
 
 def test_slab_pull_points_toward_subduction_direction():
@@ -349,7 +357,7 @@ def test_slab_drag_keeps_a_subducting_plate_off_the_clamp():
     inertia = lithosphere.moment_of_inertia_tensor(
         points, inputs.own_hc, inputs.own_hm, lithosphere.RHO_OCEANIC_CRUST, 0.02
     )
-    pull = torque.slab_pull_torque(None, inputs, subducting, spacing_rad=0.02)
+    pull = torque.slab_pull_torque(_OceanicPlate(), inputs, subducting, spacing_rad=0.02)
 
     class FakePlate:
         omega = np.zeros(3)
@@ -506,3 +514,191 @@ def test_contact_craton_is_the_weaker_side_so_both_plates_brake_alike():
     )
 
     np.testing.assert_array_equal(torque.contact_craton_m(a, [b, c], inputs), [20_000.0, 0.0, 0.0, 0.0])
+
+
+def _jam_band(spacing_rad: float, rows: int, hc: float, hm: float = 100_000.0, rate_cm_per_yr: float = 0.0, craton: float = 0.0):
+    """`_contact_band`, but on an oceanic plate whose band is a continental-coded terrane
+    (RFC 0008, #400): forced down, so in the jam mask while the contact isn't diverging."""
+    rate = mantle.cm_per_yr_to_rad_per_yr(rate_cm_per_yr)
+    plate, inputs, mask = _contact_band(spacing_rad, rows, hc=hc, hm=hm, omega=(0.0, 0.0, rate))
+    n = len(mask)
+    plate.crust_type = "oceanic"
+    inputs.own_crust_type_codes = np.full(n, CRUST_TYPE_CONTINENTAL, dtype=np.int8)
+    inputs.own_craton_m = np.full(n, craton)
+    return plate, inputs, mask
+
+
+def _pull_per_node(plate, inputs, spacing):
+    return torque.slab_pull_force_n(plate, inputs, np.ones(len(inputs.own_points), dtype=bool), spacing)
+
+
+def test_ocean_floor_pulls_exactly_as_before_buoyancy():
+    # RFC 0008 (#400): with no continental crust and no craton, B is the mantle term alone.
+    spacing = line_spacing_rad(1.0)
+    plate, inputs, _ = _contact_band(spacing, 2, hc=lithosphere.REFERENCE_HC_OCEANIC_M, hm=lithosphere.REFERENCE_HM_OCEANIC_M)
+    plate.crust_type = "oceanic"
+    expected = (
+        (lithosphere.RHO_LITHOSPHERE_MANTLE - lithosphere.RHO_ASTHENOSPHERE)
+        * lithosphere.GRAVITY_M_S2
+        * lithosphere.REFERENCE_HM_OCEANIC_M
+        * torque.SUBDUCTION_LSINK_M
+        * spacing
+        * lithosphere.PLANET_RADIUS_M
+    )
+    np.testing.assert_allclose(_pull_per_node(plate, inputs, spacing), expected, rtol=1e-12)
+
+
+def test_thick_continental_crust_pulls_nothing_and_brakes_while_thin_crust_pulls_without_braking():
+    """Cloos (1993): continental crust past ~15 km makes the column buoyant enough to jam the
+    trench. A 35 km terrane on 100 km of mantle lithosphere pulls nothing and jams fully; a 10 km
+    one on a thick 150 km root still sinks, more weakly than bare ocean floor, and doesn't jam."""
+    spacing = line_spacing_rad(1.0)
+    reach = torque.BOUNDARY_FORCE_REACH_MULTIPLIER * spacing
+    thick, inputs, _ = _jam_band(spacing, 2, hc=35_000.0, rate_cm_per_yr=3.0)
+    assert np.all(_pull_per_node(thick, inputs, spacing) == 0.0)
+    np.testing.assert_allclose(torque.contact_jam_factor(thick, None, [], inputs, reach), 1.0)
+
+    thin, inputs, _ = _jam_band(spacing, 2, hc=10_000.0, hm=150_000.0, rate_cm_per_yr=3.0)
+    bare, bare_inputs, _ = _jam_band(spacing, 2, hc=0.0, hm=150_000.0, rate_cm_per_yr=3.0)
+    pull = _pull_per_node(thin, inputs, spacing)
+    assert np.all((pull > 0.0) & (pull < _pull_per_node(bare, bare_inputs, spacing)))
+    assert np.all(torque.contact_jam_factor(thin, None, [], inputs, reach) == 0.0)
+
+
+def test_full_strength_cratonic_keel_adds_no_pull():
+    # Jordan (1978): a depleted keel is neutrally buoyant, so a thicker one doesn't pull harder.
+    hm = np.array([100_000.0, 250_000.0])
+    full = np.full(2, cratons.CRATON_FULL_STRENGTH_HC_M)
+    keel = torque.column_buoyancy_pa(np.zeros(2), hm, full)
+    np.testing.assert_allclose(keel, 0.0)
+    half = torque.column_buoyancy_pa(np.zeros(2), hm, full / 2)
+    plain = torque.column_buoyancy_pa(np.zeros(2), hm, np.zeros(2))
+    np.testing.assert_allclose(half, plain / 2)
+
+
+def test_jam_and_contact_drag_factors_stay_bounded():
+    spacing = line_spacing_rad(1.0)
+    hc = np.linspace(-5_000.0, 90_000.0, 200)
+    j = torque.jam_factor(hc)
+    assert np.all((j >= 0.0) & (j <= 1.0))
+    assert np.all(j[hc <= torque.JAM_MIN_CRUST_M] == 0.0) and np.all(j[hc >= torque.JAM_FULL_CRUST_M] == 1.0)
+    full = torque.contact_drag_pa_s_per_m(*_contact_band(spacing, 1)[:3], spacing)[0]
+    rng = np.random.default_rng(400)
+    for hc_band, hm_band in ((35_000.0, 100_000.0), (70_000.0, 200_000.0)):
+        plate, inputs, mask = _contact_band(spacing, 4, hc=hc_band, hm=hm_band)
+        mask = rng.random(len(mask)) < 0.5
+        g = torque.contact_drag_pa_s_per_m(plate, inputs, mask, spacing, rng.uniform(0, 80_000.0, len(mask)), rng.uniform(0, 1, len(mask))) / full
+        assert np.all((g >= 0.0) & (g <= 1.0 + 1e-12))
+
+
+@pytest.mark.parametrize("density", [1.0, 4.0])
+def test_fully_jammed_contact_resists_with_the_himalaya_tibet_force_per_trench_length(density):
+    # RFC 0008 (#400): j = 1 brakes as hard as solution 0's full brake, with no relief or craton.
+    spacing = line_spacing_rad(density)
+    rows = 5
+    plate, inputs, _ = _jam_band(spacing, rows, hc=35_000.0, rate_cm_per_yr=torque.CONTACT_RESISTANCE_REF_CM_PER_YR)
+    reach = torque.BOUNDARY_FORCE_REACH_MULTIPLIER * spacing
+    jam = torque.contact_jam_factor(plate, None, [], inputs, reach)
+    tau = torque.collision_friction_torque(plate, inputs, np.zeros(len(jam), dtype=bool), spacing, jam=jam)
+    force_per_m = -tau[2] / lithosphere.PLANET_RADIUS_M / (rows * spacing * lithosphere.PLANET_RADIUS_M)
+    assert force_per_m == pytest.approx(torque.CONTACT_RESISTANCE_N_PER_M, rel=0.01)
+
+
+def test_jam_brake_slows_but_never_reverses_a_plate_in_one_step():
+    spacing = line_spacing_rad(1.0)
+    plate, inputs, _ = _jam_band(spacing, 5, hc=35_000.0, rate_cm_per_yr=4.0)
+    jam = torque.contact_jam_factor(plate, None, [], inputs, torque.BOUNDARY_FORCE_REACH_MULTIPLIER * spacing)
+    rho = np.full(len(jam), lithosphere.RHO_CONTINENTAL_CRUST)
+    inertia = lithosphere.moment_of_inertia_tensor(inputs.own_points, inputs.own_hc, inputs.own_hm, rho, spacing)
+    b, k = torque.collision_drag_coefficients(plate, inputs, np.zeros(len(jam), dtype=bool), spacing, jam=jam)
+    for years in (1e3, 1e6, 5e6, 1e8):
+        new_omega = torque.integrate_omega(plate, np.zeros(3), b, k, inertia, years)
+        assert 0.0 <= new_omega[2] < plate.omega[2]
+
+
+def test_jam_holds_through_a_stalled_contact_and_releases_only_when_it_diverges():
+    """The jam mask runs through zero closing (#400): slab pull's 1 cm/yr activation threshold
+    would drop the brake as soon as it slowed the contact, and the contact would speed back up.
+    Across that threshold the jam stays on and the resisting torque is continuous."""
+    spacing = line_spacing_rad(1.0)
+    reach = torque.BOUNDARY_FORCE_REACH_MULTIPLIER * spacing
+    for rate, jammed in ((3.0, True), (1.01, True), (0.99, True), (0.0, True), (-0.99, True), (-1.01, False), (-3.0, False)):
+        plate, inputs, _ = _jam_band(spacing, 2, hc=35_000.0, rate_cm_per_yr=rate)
+        assert np.all(torque.contact_jam_factor(plate, None, [], inputs, reach) == (1.0 if jammed else 0.0))
+    no_collision = np.zeros(len(inputs.own_points), dtype=bool)
+
+    def resisting(rate):
+        plate, inputs, _ = _jam_band(spacing, 2, hc=35_000.0, rate_cm_per_yr=rate)
+        jam = torque.contact_jam_factor(plate, None, [], inputs, reach)
+        return -torque.collision_friction_torque(plate, inputs, no_collision, spacing, jam=jam)[2], torque.subducting_boundary_mask(plate, inputs, reach)
+
+    (above, subducting_above), (below, subducting_below) = resisting(1.01), resisting(0.99)
+    assert subducting_above.all() and not subducting_below.any()
+    assert below == pytest.approx(above * 0.99 / 1.01, rel=1e-9)
+
+    # A plate driven past 1 cm/yr settles on the speed where driving and the jam balance,
+    # below the threshold, and stays there rather than speeding back up.
+    plate, inputs, _ = _jam_band(spacing, 5, hc=35_000.0, rate_cm_per_yr=3.0)
+    rho = np.full(len(inputs.own_points), lithosphere.RHO_CONTINENTAL_CRUST)
+    inertia = lithosphere.moment_of_inertia_tensor(inputs.own_points, inputs.own_hc, inputs.own_hm, rho, spacing)
+    jam = torque.contact_jam_factor(plate, None, [], inputs, reach)
+    _, k = torque.collision_drag_coefficients(plate, inputs, no_collision, spacing, jam=jam)
+    target = mantle.cm_per_yr_to_rad_per_yr(0.5)
+    driving = np.array([0.0, 0.0, k[2, 2] * target])
+    rates = []
+    for _ in range(20):
+        jam = torque.contact_jam_factor(plate, None, [], inputs, reach)
+        b, k = torque.collision_drag_coefficients(plate, inputs, no_collision, spacing, jam=jam)
+        plate.omega = torque.integrate_omega(plate, driving, b, k, inertia, 1e6)
+        rates.append(plate.omega[2])
+    assert all(later <= earlier + 1e-30 for earlier, later in zip(rates, rates[1:]))
+    assert rates[-1] == pytest.approx(target, rel=1e-6)
+
+
+class _JamPlate:
+    def __init__(self, plate_id, crust_type, hc, codes, cell_keys=None):
+        self.plate_id, self.crust_type = plate_id, crust_type
+        self.fields = {"crustal_thickness_m": np.asarray(hc, dtype=float), "crust_type_code": np.asarray(codes, dtype=np.int8)}
+        self.cell_keys = np.asarray(cell_keys if cell_keys is not None else np.arange(len(hc)), dtype=np.int64)
+
+    def collect(self, name):
+        return self.fields[name]
+
+
+def _frame(**lower_keys):
+    """A polarity frame whose plate `p<id>` has lower-plate cells `lower_keys["p<id>"]`."""
+    masks = {}
+    for name, keys in lower_keys.items():
+        keys = np.asarray(keys, dtype=np.int64)
+        masks[int(name[1:])] = SimpleNamespace(node_keys=np.concatenate([keys, keys + 1000]), lower=np.arange(2 * len(keys)) < len(keys))
+    return SimpleNamespace(collision_polarity_frame=SimpleNamespace(masks=masks))
+
+
+def test_forced_down_side_is_any_oceanic_node_or_last_frozen_lower_plate_cell():
+    # Plates shift before the prepass, so a continental plate's lower side is the last frame's,
+    # matched by cell key: a lost cell drops out, a new one isn't lower until the next prepass.
+    ocean = _JamPlate(1, "oceanic", [0.0] * 3, [0] * 3)
+    np.testing.assert_array_equal(torque.forced_down_mask(ocean, None, 3), [True] * 3)
+    land = _JamPlate(2, "continental", [35_000.0] * 4, [0] * 4, cell_keys=[11, 12, 1010, 10])
+    np.testing.assert_array_equal(torque.forced_down_mask(land, _frame(p2=[10, 11, 99]), 4), [True, False, False, True])
+    np.testing.assert_array_equal(torque.forced_down_mask(land, None, 4), [False] * 4)
+    np.testing.assert_array_equal(torque.forced_down_mask(land, _frame(p3=[10]), 4), [False] * 4)
+
+
+def test_both_sides_of_a_jammed_contact_feel_the_lower_sides_jam():
+    """One resistance across the contact, equal and opposite (#400): the upper plate is never in
+    the jam mask, but reads j at the lower plate's nearest node; the lower plate reads its own."""
+    spacing = line_spacing_rad(1.0)
+    reach = torque.BOUNDARY_FORCE_REACH_MULTIPLIER * spacing
+    # Upper: a still continental plate at the contact, its nodes facing a continental front.
+    upper, inputs, _ = _contact_band(spacing, 1)
+    upper.plate_id = 1
+    n = len(inputs.own_points)
+    inputs.neighbor_plate_id = np.full(n, 2)
+    inputs.neighbor_node_index = np.arange(n)
+    inputs.neighbor_omega = np.tile([0.0, 0.0, -mantle.cm_per_yr_to_rad_per_yr(2.0)], (n, 1))  # neighbour closing on it
+    lower = _JamPlate(2, "continental", [35_000.0, 22_500.0, 35_000.0][:n], [CRUST_TYPE_CONTINENTAL, CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC][:n])
+
+    np.testing.assert_allclose(torque.contact_jam_factor(upper, _frame(p2=[0, 1, 2]), [lower], inputs, reach), [1.0, 0.5, 0.0][:n])
+    # No polarized front, so nothing is forced down: a plain continental contact doesn't jam.
+    assert np.all(torque.contact_jam_factor(upper, None, [lower], inputs, reach) == 0.0)
