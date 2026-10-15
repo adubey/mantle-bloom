@@ -1,7 +1,7 @@
 # RFC 0009: Cratons first: continents built from cratonic cores, plates placed around them
 
-- **Status:** Draft (revised after gate G1; the first version, "Cratons as a mosaic", was
-  accepted 2026-10-15 in PR #428)
+  **Status:** Draft (revised after gate G1; the first version, "Cratons as a mosaic", was
+  accepted 2026 10-15 in PR #428)
 - **Date:** 2026-10-15, revised 2026-10-15
 - **Related:** #427 (tracking), #426 (gate G1), #274 (cratons), #389 (RFC 0003 tracking),
   #409 (formation and ratchet diagnosis), #411; PRs #418 (RFC 0003 solution 1) and #430
@@ -430,10 +430,10 @@ only as new collisions and rifts mark them. No new pickled state on `World`.
 - [x] **Gate G1** run and reported per seed in `analysis/`, with its pinned commit (#426):
       neither building branch; this revision follows.
 - [ ] **Gate G2** (mixed plates) run and reported, with the call-site audit; ledgers balance;
-      continental area stays within 10% of the unmixed run; active plate count and overlap
-      area at each 100 Myr checkpoint, and cumulative splits and merges through 500 Myr, each
-      stay within 20% of the same-seed unmixed run. If not, diagnose and rerun before choosing
-      the architecture; update this RFC with the outcome.
+      continental area stays within 10% of the unmixed run; active plate count at each 100 Myr
+      checkpoint and cumulative split and merge totals through 500 Myr stay within 20% of the
+      same-seed unmixed run; overlap area differs by no more than 5 percentage points at each
+      checkpoint. If not, diagnose and rerun before choosing the architecture; update this RFC.
 - [ ] **Gate G3** (cratons-first replays) run and reported, and this RFC and RFC 0010
       updated with the branch it selects.
 - [ ] Layout at t = 0, over seeds 7, 11, 2024 and 17 more: continental edge within 300 km of
