@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from scipy.spatial import cKDTree
@@ -78,6 +78,15 @@ _frontend_origins = frozenset({f"http://localhost:{_frontend_port}", "http://loc
 # 401/403 refusals too (#372). The Vite dev origin counts as same-site for the CSRF check.
 app.add_middleware(auth.AuthMiddleware, extra_origins=_frontend_origins)
 app.include_router(auth.router)
+
+
+@app.get("/demo/", include_in_schema=False)
+@app.get("/demo", include_in_schema=False)
+def demo_login_page() -> RedirectResponse:
+    """Show the login page in a local demo, even though local use skips authentication."""
+    return RedirectResponse("/login?demo=true", status_code=302)
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=list(_frontend_origins),
@@ -1800,16 +1809,18 @@ class PublicStepRequest(BaseModel):
     revision: str
 
 
-def _guest_allowance(request: Request) -> tuple[auth.AuthConfig, int | None]:
-    """(config, steps left). None means unlimited: the owner viewing /view isn't charged."""
+def _guest_allowance(request: Request, guest_demo: bool = False) -> tuple[auth.AuthConfig, int | None]:
+    """(config, steps left). None means unlimited: the owner viewing /view isn't charged.
+
+    The local viewer demo opts into the guest allowance so the guest UI can be previewed."""
     config = auth.load_config()
-    if auth.is_admin(request, config):
+    if auth.is_admin(request, config) and not guest_demo:
         return config, None
     return config, max(0, public_view.GUEST_STEP_LIMIT - public_view.steps_used(request, config))
 
 
 @app.get("/public/world")
-async def public_world(request: Request, after: str | None = None) -> dict:
+async def public_world(request: Request, after: str | None = None, guest_demo: bool = False) -> dict:
     """What the viewer shows: the current world's revision and age (`world` is null before
     one exists), and this browser's remaining step allowance.
 
@@ -1819,7 +1830,7 @@ async def public_world(request: Request, after: str | None = None) -> dict:
     Async, so a waiting viewer holds no worker thread."""
     if after is not None:
         await _world_feed.wait_past(after, public_view.GUEST_POLL_WAIT_S)
-    _, remaining = _guest_allowance(request)
+    _, remaining = _guest_allowance(request, guest_demo)
     return {
         "world": _world_feed.summary(),
         "steps_remaining": remaining,
@@ -1831,7 +1842,7 @@ async def public_world(request: Request, after: str | None = None) -> dict:
 @app.get("/public/render")
 def public_render(view: str = "elevation", width: int = 1100, height: int = 611) -> dict:
     """/world/render restricted to the viewer's fixed choices: Eckert IV, the default
-    orientation, and the biome or elevation view. Each (view, size) is rendered once per world
+    orientation, and the viewer's supported views. Each (view, size) is rendered once per world
     revision and then served from public_view.RenderCache without touching the world. `503`
     if the owner holds the world for longer than public_view.GUEST_LOCK_WAIT_S."""
     _require_world()
@@ -1873,14 +1884,14 @@ def _run_guest_step() -> None:
 
 
 @app.post("/public/step")
-def public_step(req: PublicStepRequest, request: Request, response: Response) -> dict:
+def public_step(req: PublicStepRequest, request: Request, response: Response, guest_demo: bool = False) -> dict:
     """Advances the shared world by public_view.GUEST_STEP_YEARS, charging this browser's
     allowance only if this request is the one that computes it. `computed` says whether it
     did; a stale `revision`, or a step another viewer already has running, is answered with
     the resulting world for free. `429` when a computation is needed and the allowance is
     spent, `503` if the owner is using the world, `404` before any world exists."""
     _require_world()
-    config, remaining = _guest_allowance(request)
+    config, remaining = _guest_allowance(request, guest_demo)
     outcome = _guest_steps.request_step(
         req.revision,
         may_compute=remaining is None or remaining > 0,

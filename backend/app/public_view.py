@@ -1,7 +1,7 @@
 """The logged-out viewer's world access and its per-cookie step allowance (#373).
 
 Anyone can open `/view` and look at the shared world, but only through the narrow `/public/*`
-routes in main.py: a biome or elevation render in the Eckert IV projection, and a fixed-size
+routes in main.py: a map render in the Eckert IV projection, and a fixed-size
 step. Everything that creates, saves, loads or reconfigures a world stays behind the admin
 guard (auth.py).
 
@@ -38,7 +38,7 @@ GUEST_STEP_LIMIT = 30
 # The full app's default "Years per step".
 GUEST_STEP_YEARS = 100_000.0
 GUEST_PROJECTION = "eckert4"
-GUEST_VIEWS = ("elevation", "biome")
+GUEST_VIEWS = ("elevation", "biome", "combined")
 # The viewer renders at 2x its 1100x611 display size; a little headroom past that, but well
 # under the admin cap, since a guest render holds the world lock.
 GUEST_MAX_RENDER_PX = 2400
@@ -51,8 +51,8 @@ GUEST_INFLIGHT_WAIT_S = 300.0
 # How long GET /public/world?after=... holds a viewer's request open waiting for a new
 # revision. Kept under the idle timeout of common proxies, so the request ends on our terms.
 GUEST_POLL_WAIT_S = 25.0
-# Renders kept for the current revision. The viewer only asks for two (biome and elevation at
-# one size); the cap stops a client cycling through sizes from holding many large PNGs.
+# Renders kept for the current revision. The viewer asks for one combined render size; the cap
+# stops a client cycling through sizes from holding many large PNGs.
 GUEST_RENDER_CACHE_ENTRIES = 6
 
 GUEST_COOKIE = "mb_guest"

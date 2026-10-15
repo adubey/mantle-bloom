@@ -195,6 +195,38 @@ export default function ScaleBar({ projection, width, height, displayWidth, disp
           <div>press &apos;space&apos; to rotate</div>
         </div>
       )}
+      {isDropped && dropped && (
+        <button
+          type="button"
+          aria-label="Return scale to legend"
+          title="Return scale to legend"
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={() => {
+            setDropped(null);
+            setOrientation("horizontal");
+          }}
+          style={{
+            position: "fixed",
+            left: dropped.left + (vertical ? svgWidth : lengthPx) + 5,
+            top: dropped.top,
+            zIndex: 21,
+            display: "grid",
+            placeItems: "center",
+            width: 24,
+            height: 24,
+            padding: 0,
+            border: "1px solid #4b5060",
+            borderRadius: 4,
+            background: "rgba(16, 20, 34, 0.92)",
+            color: STROKE,
+            cursor: "pointer",
+          }}
+        >
+          <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+            <path d="M10 9V5L3 12l7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11Z" />
+          </svg>
+        </button>
+      )}
       <button
         ref={barRef}
         type="button"

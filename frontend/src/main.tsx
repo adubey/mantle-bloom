@@ -5,8 +5,9 @@ import App from './App.tsx'
 import Viewer from './Viewer.tsx'
 
 // The server serves this same bundle at every non-API path (backend/app/main.py's
-// mount_frontend); /view is the logged-out page, everything else the full app (#372).
-const isViewer = window.location.pathname.replace(/\/+$/, '') === '/view'
+// mount_frontend); /view is the logged-out page, with /demo/view for a local preview.
+const viewerPath = window.location.pathname.replace(/\/+$/, '')
+const isViewer = viewerPath === '/view' || viewerPath === '/demo/view'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
