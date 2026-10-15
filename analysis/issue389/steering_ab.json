@@ -1,0 +1,490 @@
+{
+ "note": "steered: timings from the census-free run, gate_census from an identical-trajectory rerun with census taps (band x2: census in its 5-spacing scoring band)",
+ "step_years": 5000000.0,
+ "years": 1000000000.0,
+ "generation": "world.generate_world(seed), defaults",
+ "variants": {
+  "main": {
+   "model_commit": "02d35b9782758146af192efd7231c2fe950b0739",
+   "overrides": {},
+   "runs": {
+    "7": {
+     "rifted_pct_of_start_per_gyr": 9.607,
+     "paths_pct": {
+      "divergent": 1.339,
+      "stretch": 7.459,
+      "failed": 0.81
+     },
+     "rift_cuts": {
+      "split_cuts": 107,
+      "split_cuts_through_craton": 39,
+      "failed_rift_cuts": 90,
+      "failed_rift_cuts_through_craton": 27
+     },
+     "split_band_craton_area_fraction": 0.2561,
+     "mean_plate_count": 43.55,
+     "post_split_residual_cm_per_yr": 1.9647,
+     "craton_balance_error_km3": 3.072e-06,
+     "wall_s": 819.3,
+     "split_attempt_s": 3.97,
+     "steer": {
+      "steer_calls": 0,
+      "steer_s": 0.0,
+      "steer_s_max": 0.0,
+      "steer_max_nodes": 0,
+      "steer_needed": 0,
+      "steered": 0
+     },
+     "gate_census": null,
+     "save_sha256": "88752fe3ca1e4a18e8a90b267dd03940dc0441bf5bf9eebb5d0de2c283bff427"
+    },
+    "11": {
+     "rifted_pct_of_start_per_gyr": 8.062,
+     "paths_pct": {
+      "divergent": 1.945,
+      "stretch": 5.703,
+      "failed": 0.414
+     },
+     "rift_cuts": {
+      "split_cuts": 95,
+      "split_cuts_through_craton": 24,
+      "failed_rift_cuts": 86,
+      "failed_rift_cuts_through_craton": 17
+     },
+     "split_band_craton_area_fraction": 0.1167,
+     "mean_plate_count": 45.45,
+     "post_split_residual_cm_per_yr": 1.512,
+     "craton_balance_error_km3": 0.0,
+     "wall_s": 844.9,
+     "split_attempt_s": 3.91,
+     "steer": {
+      "steer_calls": 0,
+      "steer_s": 0.0,
+      "steer_s_max": 0.0,
+      "steer_max_nodes": 0,
+      "steer_needed": 0,
+      "steered": 0
+     },
+     "gate_census": null,
+     "save_sha256": "397035379b21ccb2878b51f1533c483e1ab0e8fca14f0a00e070a16385e32584"
+    },
+    "2024": {
+     "rifted_pct_of_start_per_gyr": 7.969,
+     "paths_pct": {
+      "divergent": 1.282,
+      "stretch": 5.869,
+      "failed": 0.818
+     },
+     "rift_cuts": {
+      "split_cuts": 103,
+      "split_cuts_through_craton": 29,
+      "failed_rift_cuts": 93,
+      "failed_rift_cuts_through_craton": 27
+     },
+     "split_band_craton_area_fraction": 0.093,
+     "mean_plate_count": 42.82,
+     "post_split_residual_cm_per_yr": 1.6266,
+     "craton_balance_error_km3": 2.56e-07,
+     "wall_s": 776.4,
+     "split_attempt_s": 3.73,
+     "steer": {
+      "steer_calls": 0,
+      "steer_s": 0.0,
+      "steer_s_max": 0.0,
+      "steer_max_nodes": 0,
+      "steer_needed": 0,
+      "steered": 0
+     },
+     "gate_census": null,
+     "save_sha256": "909651b508cb1cd9275dce69e24c3f4158775633ba4c3cdbd7bc8c122a081770"
+    }
+   }
+  },
+  "steered": {
+   "model_commit": "168b060ab85bbd8b97425e8b29dc9a45f468a589",
+   "overrides": {},
+   "runs": {
+    "7": {
+     "rifted_pct_of_start_per_gyr": 8.173,
+     "paths_pct": {
+      "divergent": 1.138,
+      "stretch": 6.407,
+      "failed": 0.628
+     },
+     "rift_cuts": {
+      "split_cuts": 110,
+      "split_cuts_through_craton": 34,
+      "failed_rift_cuts": 96,
+      "failed_rift_cuts_through_craton": 24
+     },
+     "split_band_craton_area_fraction": 0.1882,
+     "mean_plate_count": 47.09,
+     "post_split_residual_cm_per_yr": 1.8296,
+     "craton_balance_error_km3": 0.0,
+     "wall_s": 766.6,
+     "split_attempt_s": 3.59,
+     "steer": {
+      "steer_calls": 2241,
+      "steer_s": 0.2926,
+      "steer_s_max": 0.0014,
+      "steer_max_nodes": 6194,
+      "steer_needed": 530,
+      "steered": 70
+     },
+     "gate_census": {
+      "cuts": 206,
+      "n0_through_craton": 62,
+      "chosen_through_craton": 58,
+      "tilt10_craton_free_candidate": 9,
+      "tilt10_craton_free_passes_valid_and_size": 4,
+      "tilt10_craton_free_passes_separation": 9,
+      "tilt10_craton_free_passes_residual": 9,
+      "tilt10_misfit0.05_craton_free_admissible": 1,
+      "tilt10_misfit0.1_craton_free_admissible": 3,
+      "tilt10_misfit0.2_craton_free_admissible": 4,
+      "tilt20_craton_free_candidate": 14,
+      "tilt20_craton_free_passes_valid_and_size": 8,
+      "tilt20_craton_free_passes_separation": 14,
+      "tilt20_craton_free_passes_residual": 13,
+      "tilt20_misfit0.05_craton_free_admissible": 1,
+      "tilt20_misfit0.1_craton_free_admissible": 4,
+      "tilt20_misfit0.2_craton_free_admissible": 6,
+      "tilt30_craton_free_candidate": 24,
+      "tilt30_craton_free_passes_valid_and_size": 9,
+      "tilt30_craton_free_passes_separation": 23,
+      "tilt30_craton_free_passes_residual": 17,
+      "tilt30_misfit0.05_craton_free_admissible": 1,
+      "tilt30_misfit0.1_craton_free_admissible": 1,
+      "tilt30_misfit0.2_craton_free_admissible": 6,
+      "tilt45_craton_free_candidate": 46,
+      "tilt45_craton_free_passes_valid_and_size": 9,
+      "tilt45_craton_free_passes_separation": 45,
+      "tilt45_craton_free_passes_residual": 18,
+      "tilt45_misfit0.05_craton_free_admissible": 0,
+      "tilt45_misfit0.1_craton_free_admissible": 1,
+      "tilt45_misfit0.2_craton_free_admissible": 6
+     },
+     "save_sha256": "eac08f725ecd187cd783dbd4271799ab92da9f3aef165d72b31ce11ee85ad75a"
+    },
+    "11": {
+     "rifted_pct_of_start_per_gyr": 6.674,
+     "paths_pct": {
+      "divergent": 1.628,
+      "stretch": 4.723,
+      "failed": 0.323
+     },
+     "rift_cuts": {
+      "split_cuts": 100,
+      "split_cuts_through_craton": 20,
+      "failed_rift_cuts": 94,
+      "failed_rift_cuts_through_craton": 15
+     },
+     "split_band_craton_area_fraction": 0.0925,
+     "mean_plate_count": 43.09,
+     "post_split_residual_cm_per_yr": 1.6454,
+     "craton_balance_error_km3": 4.096e-06,
+     "wall_s": 748.2,
+     "split_attempt_s": 3.95,
+     "steer": {
+      "steer_calls": 2417,
+      "steer_s": 0.342,
+      "steer_s_max": 0.0012,
+      "steer_max_nodes": 3354,
+      "steer_needed": 635,
+      "steered": 42
+     },
+     "gate_census": {
+      "cuts": 194,
+      "n0_through_craton": 42,
+      "chosen_through_craton": 35,
+      "tilt10_craton_free_candidate": 8,
+      "tilt10_craton_free_passes_valid_and_size": 5,
+      "tilt10_craton_free_passes_separation": 8,
+      "tilt10_craton_free_passes_residual": 8,
+      "tilt10_misfit0.05_craton_free_admissible": 4,
+      "tilt10_misfit0.1_craton_free_admissible": 5,
+      "tilt10_misfit0.2_craton_free_admissible": 5,
+      "tilt20_craton_free_candidate": 20,
+      "tilt20_craton_free_passes_valid_and_size": 13,
+      "tilt20_craton_free_passes_separation": 20,
+      "tilt20_craton_free_passes_residual": 17,
+      "tilt20_misfit0.05_craton_free_admissible": 3,
+      "tilt20_misfit0.1_craton_free_admissible": 7,
+      "tilt20_misfit0.2_craton_free_admissible": 9,
+      "tilt30_craton_free_candidate": 37,
+      "tilt30_craton_free_passes_valid_and_size": 19,
+      "tilt30_craton_free_passes_separation": 37,
+      "tilt30_craton_free_passes_residual": 24,
+      "tilt30_misfit0.05_craton_free_admissible": 4,
+      "tilt30_misfit0.1_craton_free_admissible": 8,
+      "tilt30_misfit0.2_craton_free_admissible": 10,
+      "tilt45_craton_free_candidate": 40,
+      "tilt45_craton_free_passes_valid_and_size": 19,
+      "tilt45_craton_free_passes_separation": 40,
+      "tilt45_craton_free_passes_residual": 27,
+      "tilt45_misfit0.05_craton_free_admissible": 3,
+      "tilt45_misfit0.1_craton_free_admissible": 8,
+      "tilt45_misfit0.2_craton_free_admissible": 11
+     },
+     "save_sha256": "d0f9f676dfee3ab27c719a8515ccc42048fc2745171ddd941183db5046afce12"
+    },
+    "2024": {
+     "rifted_pct_of_start_per_gyr": 5.26,
+     "paths_pct": {
+      "divergent": 1.303,
+      "stretch": 3.436,
+      "failed": 0.521
+     },
+     "rift_cuts": {
+      "split_cuts": 94,
+      "split_cuts_through_craton": 23,
+      "failed_rift_cuts": 91,
+      "failed_rift_cuts_through_craton": 28
+     },
+     "split_band_craton_area_fraction": 0.0677,
+     "mean_plate_count": 42.0,
+     "post_split_residual_cm_per_yr": 1.7337,
+     "craton_balance_error_km3": -0.020096,
+     "wall_s": 794.3,
+     "split_attempt_s": 3.99,
+     "steer": {
+      "steer_calls": 2355,
+      "steer_s": 0.2453,
+      "steer_s_max": 0.006,
+      "steer_max_nodes": 1389,
+      "steer_needed": 361,
+      "steered": 60
+     },
+     "gate_census": {
+      "cuts": 185,
+      "n0_through_craton": 54,
+      "chosen_through_craton": 51,
+      "tilt10_craton_free_candidate": 15,
+      "tilt10_craton_free_passes_valid_and_size": 12,
+      "tilt10_craton_free_passes_separation": 15,
+      "tilt10_craton_free_passes_residual": 15,
+      "tilt10_misfit0.05_craton_free_admissible": 6,
+      "tilt10_misfit0.1_craton_free_admissible": 9,
+      "tilt10_misfit0.2_craton_free_admissible": 12,
+      "tilt20_craton_free_candidate": 30,
+      "tilt20_craton_free_passes_valid_and_size": 17,
+      "tilt20_craton_free_passes_separation": 30,
+      "tilt20_craton_free_passes_residual": 22,
+      "tilt20_misfit0.05_craton_free_admissible": 5,
+      "tilt20_misfit0.1_craton_free_admissible": 8,
+      "tilt20_misfit0.2_craton_free_admissible": 12,
+      "tilt30_craton_free_candidate": 40,
+      "tilt30_craton_free_passes_valid_and_size": 21,
+      "tilt30_craton_free_passes_separation": 40,
+      "tilt30_craton_free_passes_residual": 26,
+      "tilt30_misfit0.05_craton_free_admissible": 6,
+      "tilt30_misfit0.1_craton_free_admissible": 8,
+      "tilt30_misfit0.2_craton_free_admissible": 14,
+      "tilt45_craton_free_candidate": 53,
+      "tilt45_craton_free_passes_valid_and_size": 18,
+      "tilt45_craton_free_passes_separation": 53,
+      "tilt45_craton_free_passes_residual": 27,
+      "tilt45_misfit0.05_craton_free_admissible": 5,
+      "tilt45_misfit0.1_craton_free_admissible": 8,
+      "tilt45_misfit0.2_craton_free_admissible": 13
+     },
+     "save_sha256": "2943845638dce0519f26c844a0a21e453b1d28145262e6b590c03e6b303c8c2b"
+    }
+   }
+  },
+  "steered_band2x": {
+   "model_commit": "168b060ab85bbd8b97425e8b29dc9a45f468a589",
+   "overrides": {
+    "SPLIT_CUT_BAND_MULT": 5.0
+   },
+   "runs": {
+    "7": {
+     "rifted_pct_of_start_per_gyr": 10.11,
+     "paths_pct": {
+      "divergent": 1.334,
+      "stretch": 8.32,
+      "failed": 0.456
+     },
+     "rift_cuts": {
+      "split_cuts": 107,
+      "split_cuts_through_craton": 35,
+      "failed_rift_cuts": 67,
+      "failed_rift_cuts_through_craton": 16
+     },
+     "split_band_craton_area_fraction": 0.2012,
+     "mean_plate_count": 48.73,
+     "post_split_residual_cm_per_yr": 1.9489,
+     "craton_balance_error_km3": 0.0,
+     "wall_s": 843.2,
+     "split_attempt_s": 5.36,
+     "steer": {
+      "steer_calls": 2534,
+      "steer_s": 0.4082,
+      "steer_s_max": 0.0045,
+      "steer_max_nodes": 3027,
+      "steer_needed": 699,
+      "steered": 68
+     },
+     "gate_census": {
+      "cuts": 174,
+      "n0_through_craton": 58,
+      "chosen_through_craton": 55,
+      "tilt10_craton_free_candidate": 8,
+      "tilt10_craton_free_passes_valid_and_size": 7,
+      "tilt10_craton_free_passes_separation": 8,
+      "tilt10_craton_free_passes_residual": 8,
+      "tilt10_misfit0.05_craton_free_admissible": 1,
+      "tilt10_misfit0.1_craton_free_admissible": 5,
+      "tilt10_misfit0.2_craton_free_admissible": 7,
+      "tilt20_craton_free_candidate": 10,
+      "tilt20_craton_free_passes_valid_and_size": 9,
+      "tilt20_craton_free_passes_separation": 10,
+      "tilt20_craton_free_passes_residual": 10,
+      "tilt20_misfit0.05_craton_free_admissible": 1,
+      "tilt20_misfit0.1_craton_free_admissible": 4,
+      "tilt20_misfit0.2_craton_free_admissible": 8,
+      "tilt30_craton_free_candidate": 21,
+      "tilt30_craton_free_passes_valid_and_size": 10,
+      "tilt30_craton_free_passes_separation": 20,
+      "tilt30_craton_free_passes_residual": 12,
+      "tilt30_misfit0.05_craton_free_admissible": 1,
+      "tilt30_misfit0.1_craton_free_admissible": 5,
+      "tilt30_misfit0.2_craton_free_admissible": 8,
+      "tilt45_craton_free_candidate": 44,
+      "tilt45_craton_free_passes_valid_and_size": 9,
+      "tilt45_craton_free_passes_separation": 39,
+      "tilt45_craton_free_passes_residual": 15,
+      "tilt45_misfit0.05_craton_free_admissible": 1,
+      "tilt45_misfit0.1_craton_free_admissible": 1,
+      "tilt45_misfit0.2_craton_free_admissible": 4
+     },
+     "save_sha256": "8e8e7f8768181bf70b562aa965a590e2019f745581674e9932edcc3e519f6fd9"
+    },
+    "11": {
+     "rifted_pct_of_start_per_gyr": 5.691,
+     "paths_pct": {
+      "divergent": 1.163,
+      "stretch": 3.852,
+      "failed": 0.677
+     },
+     "rift_cuts": {
+      "split_cuts": 98,
+      "split_cuts_through_craton": 20,
+      "failed_rift_cuts": 78,
+      "failed_rift_cuts_through_craton": 21
+     },
+     "split_band_craton_area_fraction": 0.0903,
+     "mean_plate_count": 43.82,
+     "post_split_residual_cm_per_yr": 1.5132,
+     "craton_balance_error_km3": -5.12e-07,
+     "wall_s": 818.4,
+     "split_attempt_s": 6.01,
+     "steer": {
+      "steer_calls": 2639,
+      "steer_s": 0.4848,
+      "steer_s_max": 0.0017,
+      "steer_max_nodes": 1080,
+      "steer_needed": 871,
+      "steered": 58
+     },
+     "gate_census": {
+      "cuts": 176,
+      "n0_through_craton": 50,
+      "chosen_through_craton": 42,
+      "tilt10_craton_free_candidate": 15,
+      "tilt10_craton_free_passes_valid_and_size": 7,
+      "tilt10_craton_free_passes_separation": 15,
+      "tilt10_craton_free_passes_residual": 15,
+      "tilt10_misfit0.05_craton_free_admissible": 4,
+      "tilt10_misfit0.1_craton_free_admissible": 6,
+      "tilt10_misfit0.2_craton_free_admissible": 7,
+      "tilt20_craton_free_candidate": 23,
+      "tilt20_craton_free_passes_valid_and_size": 11,
+      "tilt20_craton_free_passes_separation": 23,
+      "tilt20_craton_free_passes_residual": 19,
+      "tilt20_misfit0.05_craton_free_admissible": 4,
+      "tilt20_misfit0.1_craton_free_admissible": 8,
+      "tilt20_misfit0.2_craton_free_admissible": 8,
+      "tilt30_craton_free_candidate": 37,
+      "tilt30_craton_free_passes_valid_and_size": 13,
+      "tilt30_craton_free_passes_separation": 37,
+      "tilt30_craton_free_passes_residual": 21,
+      "tilt30_misfit0.05_craton_free_admissible": 4,
+      "tilt30_misfit0.1_craton_free_admissible": 8,
+      "tilt30_misfit0.2_craton_free_admissible": 10,
+      "tilt45_craton_free_candidate": 50,
+      "tilt45_craton_free_passes_valid_and_size": 14,
+      "tilt45_craton_free_passes_separation": 50,
+      "tilt45_craton_free_passes_residual": 27,
+      "tilt45_misfit0.05_craton_free_admissible": 4,
+      "tilt45_misfit0.1_craton_free_admissible": 6,
+      "tilt45_misfit0.2_craton_free_admissible": 8
+     },
+     "save_sha256": "d311adcbb6e584f4319d11fb10dea24b964b562f1602cadf0a1abfb85562c1f9"
+    },
+    "2024": {
+     "rifted_pct_of_start_per_gyr": 7.215,
+     "paths_pct": {
+      "divergent": 1.605,
+      "stretch": 5.058,
+      "failed": 0.552
+     },
+     "rift_cuts": {
+      "split_cuts": 95,
+      "split_cuts_through_craton": 21,
+      "failed_rift_cuts": 94,
+      "failed_rift_cuts_through_craton": 19
+     },
+     "split_band_craton_area_fraction": 0.0573,
+     "mean_plate_count": 44.36,
+     "post_split_residual_cm_per_yr": 1.7316,
+     "craton_balance_error_km3": 0.009029888,
+     "wall_s": 802.0,
+     "split_attempt_s": 5.36,
+     "steer": {
+      "steer_calls": 2490,
+      "steer_s": 0.3823,
+      "steer_s_max": 0.0026,
+      "steer_max_nodes": 1419,
+      "steer_needed": 629,
+      "steered": 52
+     },
+     "gate_census": {
+      "cuts": 189,
+      "n0_through_craton": 45,
+      "chosen_through_craton": 46,
+      "tilt10_craton_free_candidate": 11,
+      "tilt10_craton_free_passes_valid_and_size": 3,
+      "tilt10_craton_free_passes_separation": 11,
+      "tilt10_craton_free_passes_residual": 7,
+      "tilt10_misfit0.05_craton_free_admissible": 0,
+      "tilt10_misfit0.1_craton_free_admissible": 1,
+      "tilt10_misfit0.2_craton_free_admissible": 3,
+      "tilt20_craton_free_candidate": 22,
+      "tilt20_craton_free_passes_valid_and_size": 7,
+      "tilt20_craton_free_passes_separation": 22,
+      "tilt20_craton_free_passes_residual": 14,
+      "tilt20_misfit0.05_craton_free_admissible": 0,
+      "tilt20_misfit0.1_craton_free_admissible": 1,
+      "tilt20_misfit0.2_craton_free_admissible": 3,
+      "tilt30_craton_free_candidate": 31,
+      "tilt30_craton_free_passes_valid_and_size": 6,
+      "tilt30_craton_free_passes_separation": 31,
+      "tilt30_craton_free_passes_residual": 17,
+      "tilt30_misfit0.05_craton_free_admissible": 0,
+      "tilt30_misfit0.1_craton_free_admissible": 0,
+      "tilt30_misfit0.2_craton_free_admissible": 1,
+      "tilt45_craton_free_candidate": 41,
+      "tilt45_craton_free_passes_valid_and_size": 7,
+      "tilt45_craton_free_passes_separation": 40,
+      "tilt45_craton_free_passes_residual": 20,
+      "tilt45_misfit0.05_craton_free_admissible": 0,
+      "tilt45_misfit0.1_craton_free_admissible": 0,
+      "tilt45_misfit0.2_craton_free_admissible": 2
+     },
+     "save_sha256": "2964c84163a24be3e25422b6b131653efc6d3d598dde6d6ee08b93c1c496bda2"
+    }
+   }
+  }
+ }
+}

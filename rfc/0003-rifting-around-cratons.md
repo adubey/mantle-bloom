@@ -233,6 +233,18 @@ window-start live craton per Gyr. It remains above the proposed 2% target in eve
 window. This single trajectory is a stress comparison, not another estimate of the
 three-seed mean; it does not rerun the selected steering attribution probe.
 
+**Solution 1 outcome (#389): no admissible alternative.** Steering as designed below was
+A/B'd against origin/main `02d35b9` (after #410, which already lowers rifting to 9.61%,
+8.06% and 7.97%, mean 8.55%) on the tuning seeds, 5 Myr steps to 1 Gyr; numbers are in
+[analysis/issue389](../analysis/issue389/README.md). Split cuts crossing craton fell only
+13–21% relative (criterion: 75%). A gate census found that, of 158 flow cuts crossing craton,
+19 had an admissible craton-free alternative at 20° and 10% misfit, and at most 30 anywhere in
+the tilt and misfit sweep ranges. Within 20°, 59% had no craton-free candidate at all; wider
+cones find one but fail the misfit and size tests. That is the "no admissible alternative"
+falsification case below. Mean rifting fell 22% (6.70%), and 10% with a doubled scoring band,
+but per-seed scatter between variants is as large. Splits, plate count and post-split
+residual stayed within their 10% limits. Whether to keep steering is open in #389.
+
 **Strength proxy (a cut score only).** Per node, dimensionless and bounded to [0, 1]:
 
 `S = clip(max(c, k), 0, 1)`, where

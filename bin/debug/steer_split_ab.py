@@ -8,14 +8,16 @@ Wraps rebaseline_rfcs._measure (default generated quad worlds, cratons on, 5 Myr
 - time spent in maybe_split_plate, and per call in the steering (branch only), with how
   often a cut whose band held strength (steer_needed) was steered.
 `--set NAME=VALUE` overrides a merge_split constant (e.g. SPLIT_CUT_BAND_MULT=5.0 for the
-band-width sensitivity run). Run the baseline by pointing PYTHONPATH at an origin/main
-worktree's backend. Saves are scratch artifacts; only compact JSON belongs in analysis/.
+band-width sensitivity run). compare_cratons puts its own tree's backend first on sys.path,
+so run the baseline from a copy of this script inside an origin/main worktree's bin/debug;
+the output records which app it imported. Saves are scratch artifacts; only compact JSON belongs in analysis/.
 
 Usage:
     PYTHONPATH=backend backend/.venv/bin/python bin/debug/steer_split_ab.py \
         --out /tmp/branch.json --save-dir /tmp/issue389
-    PYTHONPATH=../mantle-bloom-origin-main/backend ../mantle-bloom-origin-main/backend/.venv/bin/python \
-        bin/debug/steer_split_ab.py --out /tmp/main.json --save-dir /tmp/issue389-main
+    cp bin/debug/steer_split_ab.py ../mantle-bloom-origin-main/bin/debug/
+    (cd ../mantle-bloom-origin-main && PYTHONPATH=backend backend/.venv/bin/python \
+        bin/debug/steer_split_ab.py --out /tmp/main.json --save-dir /tmp/issue389-main)
     PYTHONPATH=backend backend/.venv/bin/python bin/debug/steer_split_ab.py --seeds 456862899 \
         --years 3e9 --out /tmp/long.json --save-dir /tmp/issue389
 """
@@ -38,9 +40,18 @@ def _taps() -> tuple[dict, list]:
              "steer_calls": 0, "steer_s": 0.0, "steer_s_max": 0.0, "steer_max_nodes": 0, "steer_needed": 0, "steered": 0}
     originals = [("maybe_split_plate", merge_split.maybe_split_plate)]
 
+    census: dict[str, int] = {}
+    pending: list[dict] = []
+    stats["gate_census"] = census
+
     def maybe_split_plate(world, plate):
+        pending.clear()
+        cuts_before = _cut_count(world)
         started = time.perf_counter()
         result = originals[0][1](world, plate)
+        if pending and _cut_count(world) > cuts_before:
+            for key, value in pending[0].items():
+                census[key] = census.get(key, 0) + int(value)
         stats["split_attempt_s"] += time.perf_counter() - started
         stats["split_attempts"] += 1
         for daughter in result or ():
@@ -65,10 +76,66 @@ def _taps() -> tuple[dict, list]:
             if elapsed > stats["steer_s_max"]:
                 stats["steer_s_max"], stats["steer_max_nodes"] = elapsed, len(points)
             stats["steered"] += result[1] is not cut_normal
+            pending.append(_gate_census(points, *args, result[1], last_craton[0]))
             return result
 
         merge_split._steer_cut_off_strong_lithosphere = tapped_steer
+        last_craton = [None]
+        cut_strength = merge_split._cut_strength
+        originals.append(("_cut_strength", cut_strength))
+
+        def tapped_cut_strength(craton_crust_m, hm):
+            last_craton[0] = np.asarray(craton_crust_m, dtype=float)
+            return cut_strength(craton_crust_m, hm)
+
+        merge_split._cut_strength = tapped_cut_strength
     return stats, originals
+
+
+# RFC 0003's sweep ranges for SPLIT_CUT_MAX_TILT_DEG and SPLIT_CUT_MAX_MISFIT, plus 45 deg.
+CENSUS_TILTS_DEG = (10.0, 20.0, 30.0, 45.0)
+CENSUS_MISFITS = (0.05, 0.1, 0.2)
+
+
+def _cut_count(world) -> float:
+    ledger = getattr(world, "craton_ledger", {})
+    return ledger.get("split_cuts", 0.0) + ledger.get("failed_rift_cuts", 0.0)
+
+
+def _gate_census(points, areas, strength, velocities, mask_a, cut_normal, band_sin, threshold, min_nodes, chosen, craton) -> dict:
+    """For a cut that went ahead: did its flow-derived band hold craton, and did the chosen
+    cut miss it. For each census tilt: did a craton-free candidate exist in the cone, which
+    gates did those candidates pass, and was one admissible at each census misfit. Recomputes
+    the steering's own arrays, read-only, on this run's trajectory."""
+    def through(normal):
+        return bool(np.any(craton[np.abs(points @ normal) < band_sin] > 0.0))
+
+    row = {"cuts": 1, "n0_through_craton": through(cut_normal), "chosen_through_craton": through(chosen)}
+    if not row["n0_through_craton"]:
+        return row
+    default_tilt = merge_split.SPLIT_CUT_MAX_TILT_DEG
+    for tilt in CENSUS_TILTS_DEG:
+        merge_split.SPLIT_CUT_MAX_TILT_DEG = tilt
+        try:
+            normals = merge_split._candidate_cut_normals(cut_normal)
+        finally:
+            merge_split.SPLIT_CUT_MAX_TILT_DEG = default_tilt
+        craton_scores, misfit = merge_split._cut_scores(points, areas, (craton > 0.0).astype(float), mask_a, normals, band_sin)
+        fits = merge_split._batched_half_fits(points, velocities, normals)
+        free = craton_scores == 0.0
+        gates = {
+            "valid_and_size": fits["valid"] & (np.minimum(fits["count_a"], fits["count_b"]) >= min_nodes),
+            "separation": np.linalg.norm(fits["pole_a"] - fits["pole_b"], axis=1) >= threshold,
+            "residual": fits["rms"] <= (1.0 + merge_split.SPLIT_CUT_MAX_RESIDUAL_INCREASE) * fits["rms"][0],
+        }
+        others = np.logical_and.reduce(list(gates.values()))
+        tag = f"tilt{tilt:g}"
+        row[f"{tag}_craton_free_candidate"] = bool(free.any())
+        for name, ok in gates.items():
+            row[f"{tag}_craton_free_passes_{name}"] = bool((free & ok).any())
+        for max_misfit in CENSUS_MISFITS:
+            row[f"{tag}_misfit{max_misfit:g}_craton_free_admissible"] = bool((free & others & (misfit <= max_misfit)).any())
+    return row
 
 
 def _measure(seed: int, years: float, save_dir: Path) -> dict:
@@ -119,7 +186,7 @@ def main() -> None:
     app_root = Path(merge_split.__file__).resolve().parents[2]
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=app_root, text=True).strip()
     dirty = bool(subprocess.check_output(["git", "status", "--porcelain", "--", "backend/app"], cwd=app_root, text=True))
-    result = {"model_commit": commit, "model_dirty": dirty, "overrides": overrides,
+    result = {"app_path": str(Path(merge_split.__file__).resolve()), "model_commit": commit, "model_dirty": dirty, "overrides": overrides,
               "step_years": 5e6, "every_years": 100e6, "years": args.years, "runs": []}
     for seed in map(int, args.seeds.split(",")):
         result["runs"].append(_measure(seed, args.years, args.save_dir))
