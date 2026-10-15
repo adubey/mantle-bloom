@@ -215,8 +215,7 @@ boundaries and the mixed runs' are not. After that the two lose continent at the
 the same rule applied to the 100→500 Myr change passes on every seed. The extra crust the
 control loses is mostly booked to deep subduction at trenches. Re-tiling moves continental
 margins inside plates, the effect RFC 0009 wants, and the gate can't tell that apart from a
-runtime defect. Choosing between this reading and the RFC's single-type fallback is the
-project owner's decision (see "Decision" below).
+runtime defect. The project owner accepted this reading (see "Decision" below).
 
 ## Method
 
@@ -310,6 +309,9 @@ already, most likely strike-slip shear (#299), so it doesn't separate the layout
   100 Myr agrees within noise anyway, while 22–53% of the control's plates are mixed too.
 
 ## Decision
+
+**Accepted by the project owner on 2026-10-15 (option 1 below):** the cratons-first
+generator goes ahead on mixed plates, and the 22 call sites are fixed in #447 before G3.
 
 The rule as written compares two layouts that differ in margin exposure by design, so a
 failure on continental area can't separate "mixed plates are mishandled" from "passive
