@@ -18,7 +18,7 @@ implemented through ordinary issues and PRs (see [AGENTS.md](../AGENTS.md)), eac
 | [0006](0006-intra-oceanic-arcs.md) | Intra-oceanic arcs: new continent from the ocean | Draft |
 | [0007](0007-mantle-plumes-and-plateaus.md) | Mantle plumes: oceanic plateaus, flood basalts and hotspot tracks | Draft |
 | [0008](0008-craton-collision-jamming.md) | Cratons jam collisions: braking and fusion | Accepted |
-| [0009](0009-craton-mosaic.md) | Cratons as a mosaic: discrete cores and lasting weak belts | Draft |
+| [0009](0009-craton-mosaic.md) | Cratons first: continents built from cratonic cores, plates placed around them | Draft (revised after G1) |
 | [0010](0010-rifts-follow-weak-lithosphere.md) | Rifts follow weak lithosphere | Draft |
 
 RFCs 0001–0007 come from one investigation: a 19.2 Gyr run (seed 456862899) that lost
@@ -39,10 +39,11 @@ refreshed implementation order (subject to each RFC's acceptance and diagnosis g
    ([#408](https://github.com/adubey/mantle-bloom/issues/408)).
 2. 0002 after resolving attrition contact ownership
    ([#405](https://github.com/adubey/mantle-bloom/issues/405)).
-3. 0009's gate G1, a replay-only probe that can run at any time; it decides whether 0009's
-   craton mosaic and 0010's strength-following cut are built. They replace 0003, whose cut
-   steering couldn't avoid cratons (PR #418), and 0004. If G1 finds belts don't outlast
-   the sinks, 0009 waits for 0001, 0002 and 0005.
+3. 0009's gates. G1 (done, #426) found a mosaic inside today's plates doesn't give rifts a
+   way around, so 0009 now generates cratons first and places plates around them. Its gate
+   G2 (do mixed plates work?) can run at any time; G3 then decides whether 0010's
+   strength-following cut is built. They replace 0003, whose cut steering couldn't avoid
+   cratons (PR #418), and 0004.
 4. 0006 and 0007, after separating their proposed production from existing elevation-driven
    continental resets ([#406](https://github.com/adubey/mantle-bloom/issues/406),
    [#407](https://github.com/adubey/mantle-bloom/issues/407)). They share `terranes.py`
@@ -59,8 +60,10 @@ mantle depletion.
 RFCs 0009 and 0010 replace RFC 0003, whose cut steering couldn't avoid cratons (PR #418),
 and RFC 0004. An offline probe ([`analysis/rfc0010/`](../analysis/rfc0010/README.md))
 found that even a cut free to bend rarely misses a craton, because each continent's
-interior is one craton. 0009 makes cratons a mosaic of cores and lasting weak belts; its
-gate G1 also decides whether 0010's strength-following cut is built.
+interior is one craton. That is because generation makes plates first, each wholly
+continental or oceanic, and puts a craton in the middle of each continental plate. 0009
+reverses the order: cratonic cores first, continents assembled around them with lasting weak
+belts, then plates placed around them; its gate G3 decides whether 0010's cut is built.
 
 ## Writing and reviewing
 

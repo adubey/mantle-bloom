@@ -139,3 +139,63 @@ proportionally longer.
   the band at today's `FAILED_RIFT_BAND_MULT`.
 - How much rifting loss a mosaic saves after the split (#388). As in RFC 0010's probe, stretch
   donation and divergent thinning aren't followed.
+
+# Layout: cratons follow plates (RFC 0009 revision)
+
+G1's failure prompted mapping the worlds. Generation makes plates first, each wholly
+continental or oceanic, and then puts a craton in the middle of each continental plate.
+Earth works the other way round. This section is the evidence for RFC 0009's revision
+(cratons first, plates placed around them).
+
+## Figures
+
+| | |
+|---|---|
+| ![Earth](earth_plates_cratons.jpg) | **Earth.** Red: the 16 major plates the model bundles (NNR-MORVEL56, `backend/app/data/plate_owner_grid.npz`). Orange and pink: shield and platform (cratons). USGS world geologic provinces, public domain. |
+| ![Seed 7, t = 0](sim_seed7_0myr.png) | **Seed 7, t = 0, today's rules.** Brown craton, tan continental crust, blue oceanic crust, black plate boundaries. |
+| ![Seed 7, t = 0, mosaic](sim_seed7_0myr_mosaic.png) | **Seed 7, t = 0, G1's mosaic** (teal belts). Cores are still framed by each plate's edges. |
+| ![Seed 7, 500 Myr](sim_seed7_500myr.png) | **Seed 7, 500 Myr, today's rules.** Darker where plates overlap. |
+
+```bash
+# Earth: download the USGS map first (see the script's docstring).
+PYTHONPATH=backend backend/.venv/bin/python bin/debug/render_earth_cratons.py \
+    --provinces provinces.jpg --out analysis/rfc0009/earth_plates_cratons.jpg
+PYTHONPATH=backend backend/.venv/bin/python bin/debug/render_craton_map.py --seed 7 --out sim_seed7_0myr.png
+PYTHONPATH=backend backend/.venv/bin/python bin/debug/render_craton_map.py --seed 7 --mosaic --out sim_seed7_0myr_mosaic.png
+PYTHONPATH=backend backend/.venv/bin/python bin/debug/render_craton_map.py --seed 7 --years 5e8 \
+    --save-world seed7-500myr.mbworld --out sim_seed7_500myr.png
+```
+
+The simulation maps are on a plain lat/lon grid (origin/main `02d5145`). Where plates
+overlap, the nearest cell alternates between them, so the script draws each pixel's
+majority plate over a 9-pixel window and shades overlap. The Earth map's projection isn't
+documented. It fits a Mercator projection to within 8 pixels at six coastline landmarks.
+
+## Measures
+
+`bin/debug/measure_plate_layout.py` on a quarter-degree grid ([plate_layout.json](plate_layout.json)).
+For Earth it uses the 16 major plates and the real coastline: land stands in for continental
+crust (leaving out the drowned shelves).
+
+| | Earth | Seed 7 | Seed 11 | Seed 2024 | Seed 7 at 500 Myr |
+|---|---|---|---|---|---|
+| Continent edge within 300 km of a plate boundary | 28% | 100% | 100% | 100% | 64%* |
+| Plates with mixed crust (5–95% continental) | 69% | 0% | 0% | 0% | 31% |
+| Boundary length with continent on both sides | 17% | 33% | 20% | 27% | 28%* |
+| Continental share of the surface | 29% (land) | 63% | 40% | 49% | 16% |
+| Craton area within 500 km of a plate boundary | – | 0% | 0% | 0% | 89%* |
+
+\* Inflated by the overlap zones, where the nearest cell's plate flips from pixel to pixel.
+The 500 Myr row is from the saved world above, which isn't checked in.
+
+- **At t = 0 every continental edge is a plate boundary, and no plate is mixed.** On Earth,
+  most continental margins are passive, inside a plate, and most plates carry both continent
+  and ocean. The premade "earth" world can't represent that either: it splits each real plate
+  into land and ocean sub-plates (65 in all), because a generated plate has one crust type.
+- **Cratons are placed by the tiling.** No craton lies within 500 km of a plate boundary,
+  because seeding measures 875 km in from each plate's edge.
+- **The runtime does make mixed plates.** By 500 Myr, 31% of seed 7's plates are mixed, as
+  oceans open inside continental plates.
+- **Earth's continents aren't free of plate boundaries.** 17% of Earth's boundary length has
+  land on both sides: the Alpine–Himalayan belt, Siberia, the Middle East and East Africa.
+  These run along young orogens and rifts, not through the old cratons.

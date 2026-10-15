@@ -1,63 +1,130 @@
-# RFC 0009: Cratons as a mosaic: discrete cores and lasting weak belts
+# RFC 0009: Cratons first: continents built from cratonic cores, plates placed around them
 
-- **Status:** Draft
-- **Date:** 2026-10-15
-- **Related:** #274 (cratons), #389 (RFC 0003 tracking), #409 (formation and ratchet
-  diagnosis), #411; PR #418 (RFC 0003 solution 1); RFCs
-  [0003](0003-rifting-around-cratons.md) and [0004](0004-proto-cratons.md) (both
-  superseded by this RFC and [0010](0010-rifts-follow-weak-lithosphere.md)),
+- **Status:** Draft (revised after gate G1; the first version, "Cratons as a mosaic", was
+  accepted 2026-10-15 in PR #428)
+- **Date:** 2026-10-15, revised 2026-10-15
+- **Related:** #427 (tracking), #426 (gate G1), #274 (cratons), #389 (RFC 0003 tracking),
+  #409 (formation and ratchet diagnosis), #411; PRs #418 (RFC 0003 solution 1) and #430
+  (G1); RFCs [0003](0003-rifting-around-cratons.md) and [0004](0004-proto-cratons.md)
+  (both superseded by this RFC and [0010](0010-rifts-follow-weak-lithosphere.md)),
   [0007](0007-mantle-plumes-and-plateaus.md), [0008](0008-craton-collision-jamming.md)
+
+## Revision note
+
+The first version proposed seeding each continent's interior as a mosaic of cratonic cores
+and belts, inside today's plates. Its gate G1 failed (Design, [analysis/rfc0009](../analysis/rfc0009/README.md)):
+belts gave rifts a clear line slightly more often, but the band a rift thins still crossed
+craton, and belts were gone within a few hundred Myr. Mapping the worlds showed why the
+layout itself is the problem: generation makes plates first, makes each plate wholly
+continental or oceanic, and only then puts a craton in the middle of each continental plate.
+This revision reverses the order: cratonic cores first, continents built around them, plates
+placed last. The mosaic's cores and belts become the first step of that order, and its belt
+marks stay.
 
 ## Problem
 
-The model defines a craton by distance from its plate's edge, so every large continent's
-interior is a single craton with no internal structure.
+Generation decides where plates are first, and everything else follows from the plate
+tiling. On Earth it is the other way round: cratons are the oldest parts of the continents,
+continents were assembled around them, and today's plates are younger and cut across that
+assembly.
 
-**How cratons are made today** (`cratons.py`, origin/main `1227c36`):
-- **Seeding** (`seed_initial_cratons`): at generation, every genuine continental column with
-  Hc in [28 km, 50 km] that lies at least `CRATON_SEED_MARGIN_KM` = 875 km inside its plate
-  and any non-genuine cell becomes craton, dated 2.5 Gyr old.
-- **Formation** (`update`): any column meeting the same Hc window at least
-  `CRATON_FORMATION_MARGIN_KM` = 500 km inside, and staying so for `CRATON_FORMATION_MYR` =
-  200 Myr, becomes craton.
+![Earth: 16 major plates (red) over USGS geologic provinces](../analysis/rfc0009/earth_plates_cratons.jpg)
 
-Nothing else decides where a craton is. Three consequences follow.
+*Figure 1. Earth. Red: the 16 major plates the model bundles (NNR-MORVEL56 outlines bundled in
+`backend/app/data/plate_owner_grid.npz`) [[Argus et al., 2011]](#ref-argus2011). Orange
+and pink: shield and platform, the cratons; teal: orogens. USGS world geologic provinces
+map, public domain; boundaries placed by a Mercator fit to six landmarks
+(`bin/debug/render_earth_cratons.py`).*
 
-1. **One craton per continent.** Seeding fills each continent's deep interior with one
-   contiguous craton. At `2562f63`, cratons start at 37.6–50.7% of genuine continental area
-   on seeds 7, 11 and 2024 (#403). On seed 7 at origin/main, craton covers 104 M km², 20% of
-   the planet's surface, at t = 0 (16% and 9% on seeds 11 and 2024). Its largest plate
-   (92 M km²) carries 54 M km² (`bin/debug/prototype_mincut_split.py --coverage-only`,
-   recorded in [analysis/rfc0010](../analysis/rfc0010/README.md)).
-2. **Welds and scars heal into craton.** A collision suture or a failed-rift band is only
+![Seed 7 at t = 0: plates and cratons](../analysis/rfc0009/sim_seed7_0myr.png)
+
+*Figure 2. Seed 7 at t = 0 on origin/main `02d5145`. Brown: craton; tan: continental crust;
+blue: oceanic crust; black: plate boundaries (`bin/debug/render_craton_map.py`).*
+
+**How a world is made today** (`lithosphere_plate.generate_plates`, random path, and
+`cratons.seed_initial_cratons`):
+1. **Plates.** `build_plate_tiling` scatters 8–20 plate sites, plus two extra sites per
+   plate merged into lumpier outlines, and takes their Voronoi cells.
+2. **Crust type per plate.** Each plate is continental with probability `CONTINENTAL_FRACTION`
+   = 0.4 (or a share of plates set by the UI's `continental_fraction`), and *all* of its
+   crust is that type. A continent is a union of continental plates. Hc, Hm and the initial
+   bathymetry (`hydroclimate/bathymetry.py`) are set from the plate's type.
+3. **Cratons.** Seeding makes every genuine continental column at least
+   `CRATON_SEED_MARGIN_KM` = 875 km inside its plate a craton. Formation (`update`) later adds
+   columns 500 km inside that stay quiet for 200 Myr.
+
+**Measured layout** (`bin/debug/measure_plate_layout.py`, quarter-degree grid; numbers in
+[plate_layout.json](../analysis/rfc0009/plate_layout.json)). Earth uses its 16 major
+plates and its coastline, the inputs the premade "earth" world is built from, with land as
+the proxy for continental crust:
+
+| | Earth | Seed 7 | Seed 11 | Seed 2024 |
+|---|---|---|---|---|
+| Continent edge within 300 km of a plate boundary | 28% | 100% | 100% | 100% |
+| Plates whose crust is mixed (5–95% continental) | 69% (74% of area) | 0% | 0% | 0% |
+| Boundary length with continent on both sides | 17% | 33% | 20% | 27% |
+| Continental share of the surface | 29% (land) | 63% | 40% | 49% |
+| Craton area within 500 km of a plate boundary | – | 0% | 0% | 0% |
+
+Four consequences follow.
+
+1. **Every continental edge is a plate boundary, and no plate is mixed.** On Earth most
+   continental margins are passive margins inside a plate, and most plates carry both
+   continent and ocean. The model's generator can't make either. Even the premade "earth"
+   world has to cut each real plate into land and ocean sub-plates
+   (`real_plates.build_exact_earth_plates`), 65 of them, because a generated plate has one
+   crust type.
+2. **The plate tiling places and shapes every craton.** Each continental plate gets one
+   craton in its middle, 875 km from every edge, so the number, size and shape of cratons
+   are set by Voronoi cells drawn without regard to them. At t = 0 on seed 7, cratons start
+   as 23 connected pieces (8 over 1 M km²); the largest plate (92 M km²) carries 54 M km² of
+   craton. Cratons start at 37.6–50.7% of genuine continental area on seeds 7, 11 and 2024
+   (#403).
+3. **Welds and scars heal into craton.** A collision suture or a failed-rift band is only
    excluded from formation while its Hc is outside the window or it is near an edge. Once
    it has been quiet inside the window for 200 Myr, formation converts it like any other
    interior. The model keeps no record of where continents were joined or stretched.
-3. **Continents become all craton.** Cratons take 85–92% of genuine continental area by
+4. **Continents become all craton.** Cratons take 85–92% of genuine continental area by
    500 Myr and 94–97% by 1 Gyr (#403). #409 showed this is survival bias, not formation:
    at least 91% of the non-cratonic host lost was destroyed or thinned away, not converted.
-   The remainder sits near margins.
 
-**Why it matters: rifting.** A plate splits along a cut placed by the mantle flow. RFC
-0003 tried to steer that cut off cratons, first by tilting the great circle (PR #418), then,
-in an offline probe, by letting it bend around strong lithosphere along a graph minimum cut
-(see [RFC 0010](0010-rifts-follow-weak-lithosphere.md) and
-[analysis/rfc0010](../analysis/rfc0010/README.md)). Both mostly fail for the same reason:
-a tilted great circle found an admissible craton-free cut for 12% of craton-crossing cuts,
-and a bent minimum cut for 10% at a 1,000 km corridor and at most 12% at any corridor up
-to 2,500 km. Wide corridors find craton-free routes only by slicing a coastal sliver off
-the plate. On craton-crossing cuts the median plate is 34% craton, and craton fills a
-median 44% of the cut's band. There is no route through a continent that avoids its craton, because the
-craton *is* the continent's interior. Steering can't help until interiors have seams.
+![Seed 7 at 500 Myr](../analysis/rfc0009/sim_seed7_500myr.png)
+
+*Figure 3. Seed 7 at 500 Myr, today's rules. Most continental crust is gone; craton has
+gathered into one mass straddling the map's edges, partly stacked on overlapping plates
+(darker). Grey patches are oceanic areas where two plates' cells interleave.*
+
+**Why it matters: rifting.** A plate splits along a cut placed by the mantle flow. RFC 0003
+tried to steer that cut off cratons, first by tilting the great circle (PR #418), then, in
+an offline probe, by letting it bend around strong lithosphere along a graph minimum cut
+([RFC 0010](0010-rifts-follow-weak-lithosphere.md),
+[analysis/rfc0010](../analysis/rfc0010/README.md)). Both mostly fail: a craton-free
+admissible cut exists for 10–12% of craton-crossing cuts. On those cuts the median plate is
+34% craton, and craton fills a median 44% of the cut's band. A cut that divides a
+continental plate into two viable halves has to cross its interior, and its interior *is*
+its craton. G1 then gave each interior seams (Figure 4), and that wasn't enough either: a
+rift can follow a 300 km belt, but the ±312 km band it thins still covers the cores on both
+sides. On Earth, continents broke up along the belts that had joined them
+[[Wilson, 1966]](#ref-wilson1966) [[Vauchez et al., 1997]](#ref-vauchez1997), between
+cratons rather than through them.
+
+![Seed 7 at t = 0 with G1's mosaic](../analysis/rfc0009/sim_seed7_0myr_mosaic.png)
+
+*Figure 4. Seed 7 at t = 0 with the first version's mosaic seeding (teal: belts). The cores
+are still confined to each plate's interior, framed by the plate's edges.*
 
 **Why it matters: formation.** RFC 0004 found formation shutting off by 335–470 Myr, and
 #409 traced 75–86% of each run's formation to one generation pulse: seeding uses an 875 km
-margin and formation a 500 km one, so the band between matures together at 200 Myr. The
-interior-distance rule is the cause in both cases.
+margin and formation a 500 km one, so the band between matures together at 200 Myr.
 
-What this evidence does *not* show: whether a different craton layout would survive the
-model's sinks (RFCs 0001, 0002, 0005, 0008), or whether flow-placed cuts would then miss
-cratons. The diagnosis gate below measures the second.
+What this evidence does *not* show:
+- Whether a cratons-first layout survives the model's sinks (RFCs 0001, 0002, 0005, 0008),
+  or whether the model's own merges and splits re-impose "a plate is a continent". At
+  500 Myr on seed 7, 31% of plates are mixed, so the runtime does make mixed plates (an
+  ocean opening inside a continental plate) and runs with them.
+- Earth's figures use land, not continental crust, and only the 16 major plates. Earth
+  also has continental plate boundaries (17% of boundary length), along young orogens and
+  rifts, so the target is not zero.
 
 ## Proposed solutions
 
@@ -67,254 +134,327 @@ cratons. The diagnosis gate below measures the second.
   [[Jordan, 1978]](#ref-jordan1978). Most keels formed in the Archean, by high-degree
   melting of a hotter mantle [[Herzberg & Rudnick, 2012]](#ref-herzberg2012); later
   lithospheric mantle is progressively less depleted [[Griffin et al., 2009]](#ref-griffin2009).
-- Cratons are discrete. The late Archean record survives as roughly 35 separate cratonic
-  pieces [[Bleeker, 2003]](#ref-bleeker2003). Continents are assembled from such pieces:
+- Cratons are discrete and older than the continents they sit in. The late Archean record
+  survives as roughly 35 separate cratonic pieces [[Bleeker, 2003]](#ref-bleeker2003).
   Laurentia, the North American craton, was built in the Early Proterozoic by joining older
   provinces along orogenic belts [[Hoffman, 1988]](#ref-hoffman1988). Accretionary and
   collisional belts weld onto older cores [[Cawood et al., 2009]](#ref-cawood2009).
 - The architecture persists at depth. Africa's lithosphere maps into domains of ancient,
   highly depleted mantle and zones of younger or strongly modified mantle
   [[Begg et al., 2009]](#ref-begg2009).
-- Belts stay weak. Rifts run parallel to old orogenic belts, which is explained by a
-  mechanical anisotropy frozen into the lithospheric mantle when continents were assembled
-  [[Vauchez et al., 1997]](#ref-vauchez1997) [[Tommasi & Vauchez, 2001]](#ref-tommasi2001),
-  or by those belts' thinner lithosphere [[Audet & Bürgmann, 2011]](#ref-audet2011). In
-  numerical models, structures frozen into the mantle lithosphere by earlier suturing act as
-  latent plate boundaries that later forcing reactivates
-  [[Heron et al., 2016]](#ref-heron2016). The Atlantic reopened along the
-  Caledonian–Appalachian suture [[Wilson, 1966]](#ref-wilson1966).
+- Belts stay weak, and plates break along them. Rifts run parallel to old orogenic belts,
+  explained by a mechanical anisotropy frozen into the lithospheric mantle when continents
+  were assembled [[Vauchez et al., 1997]](#ref-vauchez1997)
+  [[Tommasi & Vauchez, 2001]](#ref-tommasi2001), or by those belts' thinner lithosphere
+  [[Audet & Bürgmann, 2011]](#ref-audet2011). Structures frozen into the mantle lithosphere
+  by earlier suturing act as latent plate boundaries [[Heron et al., 2016]](#ref-heron2016).
+  The Atlantic reopened along the Caledonian–Appalachian suture
+  [[Wilson, 1966]](#ref-wilson1966); its margins now lie inside the North American,
+  Eurasian and African plates (Figure 1).
 
-So a continent should be a mosaic: several cratonic cores, separated and surrounded by
-belts that stay weaker than the cores for a long time.
+So a world should start as continents assembled from several cratonic cores joined by
+belts, and plates should be laid over that assembly: boundaries mostly in the ocean, crossing
+continents along belts, and never through a core.
 
-1. **Seed a mosaic.** At generation, partition each continent's eligible interior into
-   discrete cratonic cores separated by belts, instead of one interior-distance blob.
-   - Deterministic per seed; changes only generation.
-   - Also removes #409's generation pulse, if seeding and formation use the same margin.
-2. **Mark belts, and keep them.** A new per-node field records where crust was welded or
-   stretched: the inter-core belts at generation, then collision sutures and rift bands as
-   they happen. A marked column never becomes craton. RFC 0010 uses the same field as a
-   low-strength path for rifts.
-3. **Welded growth (from RFC 0004, path B).** Quiet columns next to a craton keep a
-   formation clock even near the plate edge, so cores grow at their rims. Belt marks still
-   exclude columns, so cores grow without closing their seams.
-4. **Quiescence signal (from RFC 0004).** A formation clock runs only while nothing deforms
-   the column. Sound, but a large change touching every tectonic writer; it doesn't
-   affect where cratons are, only when they form.
-5. **Craton identity.** A per-node core id, so two cores that collide stay two cores and
-   their join is a seam by construction. More state; belt marks (2) give most of the same
-   effect.
-6. **Depletion-based formation (RFC 0004's deferred path C).** Form cratons only from
-   depleted mantle. Still needs a depletion model the code doesn't have; stays deferred.
+1. **Cratons first (recommended).** Generation in three steps: place cratonic cores, build
+   continents around them (cores, belts between them, younger margins around them), then
+   partition the sphere into plates whose boundaries avoid cores and prefer ocean and belts.
+   Plates carry mixed crust.
+   - Fixes the layout at its source: craton count, size and spacing become knobs, not
+     side effects of the tiling; passive margins and mixed plates appear from the start.
+   - Removes #409's generation pulse, as seeding no longer uses an interior margin.
+   - Largest change: a new generator for random worlds, per-node crust type at
+     generation, and every place that assumes a plate has one crust type (gate G2).
+2. **Mixed plates, plates still first.** Draw continents from noise independently of the
+   plate tiling, seed cratons (a mosaic) in their interiors, and keep today's random
+   Voronoi plates. Plates become mixed, but boundaries cross cores at random; nothing keeps
+   them on belts.
+3. **Mosaic inside today's plates** (the accepted first version). Falsified as a fix by G1;
+   its cores and belts survive as step one of solution 1.
+4. **Belt marks** (from the first version). A per-node field records where crust was welded
+   or stretched: belts at generation, then collision sutures and rift bands as they
+   happen. A marked column never becomes craton; RFC 0010 uses it as a low-strength path.
+   Needed with any of 1–3.
+5. **Supercontinent start.** Solution 1 with one continent: all cores assembled into a
+   supercontinent the model then rifts. Covered by solution 1's continent-count knob.
+6. **Later options**, unchanged from the first version: welded growth at core rims (RFC 0004
+   path B), a quiescence signal for formation, a per-node core identity, and
+   depletion-based formation (RFC 0004 path C, which needs a depletion model).
 
-**Recommendation:** 1 and 2 together, gated by the diagnosis below. Keep 3 and 4 as later
-options once the mosaic survives; leave 5 and 6 out.
+**Recommendation:** 1 and 4, through gates G2 and G3 below. Leave 2 as the fallback if G2
+finds mixed plates can't be supported; 5 is a setting of 1; 6 stays deferred.
 
 ## Design
 
-**Diagnosis gate G1: does a mosaic give rifts a way around?** A replay-only probe,
-`bin/debug/probe_craton_mosaic.py` (new), reseeds generation as a mosaic (solution 1, with
-the starting knob values below) and sets `CRATON_FORMATION_MYR` to infinity in-process, so
-the seeded layout is the only craton for the run. No saved state changes. On seeds 7, 11
-and 2024, 5 Myr steps to 1 Gyr, default density and controls, one at a time, it runs the
-min-cut probe of RFC 0010 on every cut. Over the flow cuts whose band crosses craton, at a
-1,000 km corridor and with all of RFC 0010's admissibility gates (size, pole separation,
-residual, connectivity), it reports two branch measures:
-- **L, line clearance:** the share of those cuts with an admissible minimum cut whose line
-  touches no craton (no craton node at either end of a cut link). This says whether a
-  route between the cores exists.
-- **B, band exposure:** craton area in the operational band (`FAILED_RIFT_BAND_MULT` = 2.5
-  spacings either side, the band a failed rift thins and `record_rift_cut` books), summed
-  over those cuts, using the minimum cut where it is admissible and the flow cut where it
-  isn't, divided by the same sum for the flow cuts. This says how much craton a rift would
-  still act on.
+**Gate G1 (done): does a mosaic inside today's plates give rifts a way around?**
+`bin/debug/probe_craton_mosaic.py` reseeded generation as a mosaic (1,500 km core spacing,
+300 km belts, the 500 km formation margin) with formation off, and evaluated RFC 0010's
+minimum cut on every cut at a 1,000 km corridor, with belts at zero strength. Over the
+craton-crossing flow cuts it reported **L**, the share with an admissible minimum cut whose
+line touches no craton, and **B**, craton area in the failed-rift band (±2.5 spacings) using
+the minimum cut where admissible, over the same for the flow cuts. Building branches, fixed
+beforehand: L ≥ 50% and B ≤ 0.50 (build RFC 0010's cut); L ≥ 20% and B ≤ 0.75 (build it with
+its resistance fallback); otherwise don't build it. Belts below a third of their t = 0 area
+by 500 Myr meant waiting for the sink RFCs.
 
-Both are needed. A 300 km belt is narrower than the 625 km band, so a cut can run along a
-belt with a clear line while its band still thins craton on both sides; line clearance
-alone doesn't show that the craton a rift acts on falls.
-
-It also reports belt area, as a share of genuine continental area, at each 100 Myr
-checkpoint, and the same L and B on today's layout as a control
-([analysis/rfc0010](../analysis/rfc0010/README.md)).
-
-Outcomes, fixed before G1 runs:
-- **L ≥ 50% and B ≤ 0.50:** build 1 and 2 here, and RFC 0010's minimum cut.
-- **L ≥ 20% and B ≤ 0.75**, but not the branch above: build 1 and 2; RFC 0010 builds its
-  minimum cut together with its resistance fallback, sized to the remaining loss.
-- **Otherwise:** the falsification case "the flow puts regime boundaries through cratons"
-  holds even for a mosaic (Falsification). Don't build RFC 0010's cut; take the question
-  to the mantle model.
-
-B bounds what failed rifts and the booked exposure see. Stretch donation and divergent
-thinning along a new boundary act after the split and can reach beyond the band (#388), and
-the probe doesn't follow them; RFC 0010's acceptance runs measure that loss directly.
-
-Report also how fast belts disappear. If belt area falls below a third of its starting
-value by 500 Myr, the mosaic won't outlast the model's sinks, and this RFC waits for the
-sink repairs (RFCs 0001, 0002, 0005).
-
-**Gate result (2026-10-15, #426).** Seeds 7, 11 and 2024 to 1 Gyr on origin/main `02d5145`,
-formation off ([analysis/rfc0009](../analysis/rfc0009/README.md)). The minimum cut uses RFC
-0010's strength, with belts at `RIFT_BELT_STRENGTH` = 0:
+Result (2026-10-15, #426, seeds 7, 11 and 2024 to 1 Gyr on origin/main `02d5145`;
+[analysis/rfc0009](../analysis/rfc0009/README.md)):
 
 | | Seed 7 | Seed 11 | Seed 2024 | Pooled |
 |---|---|---|---|---|
 | L / B, mosaic at the starting knobs | 9% / 0.94 | 37% / 0.83 | 33% / 0.98 | 24% / 0.91 |
 | L / B, today's layout (formation off) | 14% / 0.80 | 21% / 0.69 | 9% / 0.77 | 15% / 0.77 |
-| L / B, mosaic with 600 km belts (sweep, not the gate) | 29% / 0.90 | 42% / 0.75 | 41% / 0.75 | 38% / 0.81 |
+| L / B, mosaic with 600 km belts (sweep) | 29% / 0.90 | 42% / 0.75 | 41% / 0.75 | 38% / 0.81 |
 | Belt area at 500 Myr, of t = 0 | 5% | 19% | 34% | |
 
-- **Neither building branch.** L clears 20% pooled, but B is 0.91, against the 0.75 that
-  branch needs, and no seed passes on its own. By the rule above, RFC 0010's minimum cut
-  isn't built.
-- **Belts don't outlast the sinks.** They fall below a third of their starting area by
-  500 Myr on two seeds, so this RFC waits for RFCs 0001, 0002 and 0005. The "mosaic doesn't
-  last" falsification (every seed under a third) is narrowly missed on seed 2024.
-- **The cut does follow belts**, and a clear line is more common than on today's layout. B
-  stays high because the ±312 km failed-rift band is wider than a 300 km belt: a cut down a
-  belt still has cores on both sides of its band. Belts are also lost to remaps: a merge of
-  a belt cell with a craton cell keeps both the mark and the craton (9 M km² on seed 7 by
-  500 Myr).
-- The t = 0 seeding criteria hold: every interior with two or more nuclei has two or more
-  cores, and belts are 17% of the seeded interior.
+Neither building branch: RFC 0010's cut isn't built on this layout. The cut does follow
+belts, but B stays high because the band is wider than a belt, and belts were also lost when
+merges blended them onto craton cells. This revision changes the layout rather than the cut;
+G3 repeats G1's measures on it.
 
-Whether to withdraw this RFC, revise it (wider or band-scaled belts, after the sink
-repairs), or keep it waiting is the project owner's decision.
+**Generation, cratons first (solution 1).** A new module, `continent_layout.py` (new), runs
+for random worlds (no sketch, no premade world) before any plate exists. It works on a
+global lattice of points at the world's node spacing and returns per-point continent,
+core and belt masks, and a plate label.
 
-**Mosaic seeding (1).** For each plate, take the columns seeding uses today, but with the
-formation margin, so the two agree and the 200 Myr pulse disappears:
-`host & (Hc ≤ CRATON_HOST_MAX_HC_M) & (interior ≥ hops(CRATON_FORMATION_MARGIN_KM))`.
-- Place core nuclei on these columns by Poisson-disc sampling with minimum separation
-  `CRATON_CORE_SPACING_KM`, from the world's generation RNG.
-- Assign each eligible column to its nearest nucleus by graph hops
-  (`quad_tectonics.hop_distance` from each nucleus; a multi-source BFS), giving a discrete
-  Voronoi partition of the interior.
-- Columns within `CRATON_BELT_WIDTH_KM / 2` of a partition boundary are belts. The rest
-  become craton as today (the whole Hc, dated `CRATON_SEED_AGE_YEARS`).
-- An interior too small for two nuclei gets one core, so small continents keep a single
-  craton, as now.
+1. **Continents.** Draw `n_c` continent centres by Poisson-disc sampling with minimum
+   separation `CONTINENT_SPACING_KM`, `n_c` from `CONTINENT_COUNT_RANGE`. Split the target
+   continental area, `continental_fraction` × 4πR², between them in random proportions
+   (Dirichlet, `CONTINENT_SIZE_CONCENTRATION`).
+2. **Cores.** Within each continent's share, place core nuclei `CRATON_CORE_SPACING_KM` apart
+   around its centre until their cores reach `CRATON_SHARE_OF_CONTINENT` of the continent's
+   area. Each core is the set of lattice points within `CRATON_CORE_RADIUS_KM` of its
+   nucleus, by a distance perturbed with the existing relief noise
+   (`terrain_noise`), so cores are irregular.
+3. **Belts.** Grow each continent outward from its cores by a noise-perturbed distance until
+   it reaches its area (the quantile threshold `plates._land_noise_threshold` already uses for land).
+   Points between two cores of the same continent within `CRATON_BELT_WIDTH_KM` of the line
+   where their distances are equal become belts; the remaining continental points are
+   margin: younger, non-cratonic crust.
+4. **Plates.** Place `num_plates` sites (8–20 as today) by Poisson-disc sampling, none inside
+   a core, and grow all plates at once over the lattice graph by multi-source Dijkstra.
+   Entering a point costs its distance times `PLATE_COST_OCEAN` (1), `PLATE_COST_BELT` (1)
+   or `PLATE_COST_MARGIN`; a core is contracted to one graph node, so a whole core joins the
+   first plate to reach it. Plate boundaries form where fronts meet: in cheap ground (ocean
+   and belts), and never inside a core. `PLATE_COST_MARGIN` sets how often a boundary crosses
+   a continent's margin rather than going around it, and is tuned to Earth's 28% of
+   continental edge near a boundary.
+5. **Plates are built from the labels.** Each plate is made with
+   `PlateWithSparseQuadPatch.from_lattice`, owning the points labelled with it (replacing
+   `build_plate_tiling`'s nearest-site test). Its nominal `crust_type` is the type of the
+   majority of its area; points of the other type get an explicit `crust_type_code`
+   (`CRUST_TYPE_CONTINENTAL` or `CRUST_TYPE_OCEANIC`), the per-node mechanism the runtime
+   already uses. Hc, Hm and the initial bathymetry come from each point's type, not the
+   plate's. Land and sea within continents use today's relief noise and `land_fraction`.
+6. **Cratons.** `seed_initial_cratons` takes the core mask from generation (whole Hc,
+   dated `CRATON_SEED_AGE_YEARS`), not an interior distance. Belts are marked (below).
+   Worlds that start without generation's masks (a sketch, a premade world, or an old
+   save's first step) keep today's interior rule.
 
-**Belt marks (2).** `belt_formed_years` (new surface field) holds the time a column last
+Sketch-drawn and premade worlds keep plates first: their geography comes from a drawing or
+from data. A later change could seed the premade Earth's cratons from data like Figure 1's.
+
+**Gate G2: do mixed plates work?** The runtime already makes mixed plates (31% of plates on
+seed 7 by 500 Myr), but generation would make most plates mixed from the start, and about
+60 call sites read the plate-level `crust_type` (`lithosphere_plate`, `quad_tectonics`,
+`hm_ledger`, `quad_merge`, `torque`, `merge_split` and others). Before building the
+generator:
+- Audit each call site: per-node codes needed, plate-level legitimately, or generation
+  only. Record the list in the issue.
+- Probe: `bin/debug/probe_mixed_plates.py` (new) generates seeds 7, 11 and 2024 as today,
+  then re-labels them with an independent random plate tiling over the same crust (most
+  plates mixed), and replays both to 500 Myr.
+- Outcome: if the mixed run's ledgers balance and its genuine continental area at 500 Myr is
+  within 10% of the unmixed run's on every seed, build solution 1 with the audit's fixes. If
+  not, fix the failing call sites first, as their own issue, and rerun G2. If that can't be
+  done, fall back to single-type plates placed around cratons (step 4 with continents never
+  split, `PLATE_COST_MARGIN` = ∞), which keeps the craton layout but not mixed plates.
+
+**Gate G3: does the cratons-first layout keep cratons whole?** After the generator and belt
+marks are built (behind a flag), `probe_craton_mosaic.py` gains `--layout cratons-first` and
+repeats G1's measures with formation off, on seeds 7, 11 and 2024 to 1 Gyr. It also reports
+the share of all cuts whose band crosses craton (today 25%: 135 of 542 cuts, analysis/rfc0010),
+belt survival, and `measure_plate_layout.py`'s layout measures at each 100 Myr checkpoint.
+Outcomes, fixed now:
+- The share of cuts crossing craton falls to half of today's or less on every seed: the
+  layout fixes rifting at its source; RFC 0010's cut is not needed for cratons.
+- Otherwise, G1's branches decide RFC 0010: L ≥ 50% and B ≤ 0.50, or L ≥ 20% and B ≤ 0.75
+  with its resistance fallback; neither means the flow puts boundaries under cratons
+  (Falsification).
+- Belts below a third of their t = 0 area by 500 Myr on two seeds: the sinks, not the
+  layout, decide belt life; finish the sink RFCs (0001, 0002, 0005) before tuning belts.
+
+**Belt marks (4).** `belt_formed_years` (new surface field) holds the time a column last
 became a belt, with a "never" sentinel. Writers:
-- seeding: belts get `−CRATON_BELT_SEED_AGE_YEARS` (Proterozoic welds, younger than their
+- generation: belts get `−CRATON_BELT_SEED_AGE_YEARS` (Proterozoic welds, younger than their
   cores);
 - collision welds: suture-accretion receivers (`quad_tectonics._accrete_onto_survivors`),
   upper-plate receivers in `crust_transfer`, and stacked cells in `quad_merge`;
 - rifting: a failed rift's thinned band (`sparse_quad_patch.apply_failed_rift`) and the band
   along a successful split's cut (`merge_split.maybe_split_plate`).
 
-`cratons.update` excludes marked columns from `quiet`. `CRATON_BELT_HEAL_MYR` (default
-infinite) could later let old belts heal; the Assumptions section says why it starts off.
+`cratons.update` excludes marked columns from `quiet`. G1 found that a remap keeping a mark
+from any contributor (HISTORY) blends belts onto craton cells: 9 M km² on seed 7 by 500 Myr.
+The remap is majority by area instead: a merged cell is a belt only if most of its area was,
+keeping the latest date among those. `CRATON_BELT_HEAL_MYR` (default infinite) could later
+let old belts heal.
 
-The remap rule must keep a mark when any contributing cell has one and keep its latest
-date. `craton_formed_years` is a HISTORY field that keeps the *oldest* contributor, so the
-implementation checks whether HISTORY can be parameterised or a max-date class is needed,
-and tests merge, refine and coarsen remaps.
+**Units.** Distances in km, converted to lattice hops or chord lengths at the world's node
+spacing; areas in km² of the sphere; times in years, like `craton_formed_years`. Belt marks
+change no thickness.
 
-**Units.** Distances in km, converted to hops with `cratons._hops`; times in years, like
-`craton_formed_years`. The mark changes no thickness; it gates formation only.
+**Bounds.** Area targets are clamped: `continental_fraction` to [0.05, 0.9], and cores to at
+most `CRATON_SHARE_OF_CONTINENT` ≤ 0.7 of their continent, so every continent keeps some
+non-cratonic crust. A continent too small for one core gets none.
 
-**Runtime.** Seeding adds a multi-source BFS per plate at generation. Marking is a masked
-write in each writer. `update` adds one mask. Expected well under 1% of step time;
-acceptance measures it.
+**Runtime.** Generation adds one Dijkstra over the lattice (about 31,000 points at density
+1, 124,000 at density 4; `scipy.sparse.csgraph.dijkstra` with `min_only`) and a few distance
+fields: well under a second, against 0.9 s (density 1) and 1.8 s (density 4) for today's
+whole generation on seed 7. Per step, belt marks add masked
+writes and one mask in `update`: well under 1%.
 
-**Save compatibility.** `belt_formed_years` is a new surface field, backfilled with the
-"never" sentinel. Old saves keep their existing one-blob cratons: seeding runs only at
-generation (and on the first load of a pre-craton save, as now). Their belts appear only as
-new collisions and rifts mark them.
+**Save compatibility.** Generation-only, apart from `belt_formed_years`, a new surface field
+backfilled with the "never" sentinel. Old saves keep their plates and cratons, and get belts
+only as new collisions and rifts mark them. No new pickled state on `World`.
 
 **Knobs.**
 
 | Knob | Start | Source | Tuning |
 |---|---|---|---|
-| `CRATON_CORE_SPACING_KM` | 1,500 km | Design choice: about 35 Archean cratons survive [[Bleeker, 2003]](#ref-bleeker2003), so cores of order 1,000–2,000 km | G1 and acceptance runs; sweep 1,000–2,500 km |
-| `CRATON_BELT_WIDTH_KM` | 300 km | Orogens welded onto shields are a few hundred km wide [[Cawood et al., 2009]](#ref-cawood2009) | Sweep 200–600 km; at least two node spacings at density 1 (250 km) |
+| `continental_fraction` (existing, now an area share) | 0.5 (random worlds), 0.7 (UI) | Today's mean starting area, 51% on seeds 7, 11 and 2024 (40–63%); the UI default kept as a share | UI copy says "of the surface" |
+| `CONTINENT_COUNT_RANGE` | 2–6 | Design choice | Layout measures over 20 seeds |
+| `CONTINENT_SPACING_KM` | 4,000 km | Design choice | Same |
+| `CONTINENT_SIZE_CONCENTRATION` | 2 | Design choice: unequal continents | Same |
+| `CRATON_SHARE_OF_CONTINENT` | 0.4 | Today's 37.6–50.7% at t = 0 (#403) | Fixed to today's mean, so craton calibrations carry over |
+| `CRATON_CORE_SPACING_KM` | 1,500 km | Design choice: about 35 Archean cratons survive [[Bleeker, 2003]](#ref-bleeker2003) | G3; sweep 1,000–2,500 km |
+| `CRATON_CORE_RADIUS_KM` | 600 km | Design choice: about 1,200 km across, cores up to Superior-province size | With spacing |
+| `CRATON_BELT_WIDTH_KM` | 300 km | Orogens welded onto shields are a few hundred km wide [[Cawood et al., 2009]](#ref-cawood2009) | G3; sweep 200–600 km |
+| `PLATE_COST_MARGIN` | 3 | Design choice | Continental edge within 300 km of a boundary: 15–50% (Earth 28%) |
+| `PLATE_COST_OCEAN`, `PLATE_COST_BELT` | 1, 1 | Design choice: the cheap ground | Fixed |
 | `CRATON_BELT_SEED_AGE_YEARS` | 1.8 Gyr | Design choice: Proterozoic assembly, as for Laurentia [[Hoffman, 1988]](#ref-hoffman1988) | Fixed; provenance only |
 | `CRATON_BELT_HEAL_MYR` | infinite | Design choice (Assumptions) | Unchanged in this RFC |
-| `CRATON_SEED_MARGIN_KM` | retired | Replaced by `CRATON_FORMATION_MARGIN_KM`, removing the generation pulse (#409) | — |
+| `CRATON_SEED_MARGIN_KM` | 875 km | Today's | Kept only for worlds seeded without generation's masks |
 
 ## Detailed design (provisional touchpoints)
 
+- `backend/app/continent_layout.py` (new): continents, cores, belts and the plate
+  partition, returning per-lattice-point masks and labels.
+- `backend/app/lithosphere_plate.py`
+  - `generate_plates`: the random path calls `continent_layout` and builds plates from its
+    labels; per-node Hc and Hm by crust type; `crust_type_code` stamped on minority-type
+    nodes. `build_plate_tiling` stays for sketch and premade worlds.
+- `backend/app/plates.py`: `CONTINENTAL_FRACTION` and `DEFAULT_CONTINENTAL_FRACTION` become
+  area shares; `MIN_OCEANIC_PLATES` stays for the sketch path.
+- `backend/app/hydroclimate/bathymetry.py`: `_gather_columns` reads per-node crust type.
 - `backend/app/cratons.py`
-  - `seed_initial_cratons`: mosaic seeding; new constants above, with comments citing this
-    RFC.
-  - `update`: exclude columns with a belt mark from `quiet`.
+  - `seed_initial_cratons`: takes generation's core mask when there is one; constants
+    above, with comments citing this RFC.
+  - `update`: exclude belt-marked columns from `quiet`.
   - New `mark_belt(world, plate, mask)`, shared by the writers.
-  - `diagnostics`: `belt_area_m2` and the number of cores (connected cratonic components
-    per plate).
-  - Module docstring: Formation and a new Belts paragraph.
-- `backend/app/surface_fields.py`: `belt_formed_years` (new), with its remap class.
+  - `diagnostics`: `belt_area_m2` and the number of cores (connected cratonic components).
+  - Module docstring: Seeding, Formation and a new Belts paragraph.
+- `backend/app/surface_fields.py`: `belt_formed_years` (new), with a majority-by-area remap
+  (a new remap class, or a parameterised CATEGORICAL; the implementation checks which).
 - Writers calling `mark_belt`: `quad_tectonics._accrete_onto_survivors`,
   `crust_transfer.transfer_column`, `quad_merge._transfer`,
   `sparse_quad_patch.apply_failed_rift`, `merge_split.maybe_split_plate`.
+- G2's call-site fixes: whichever of the ~60 plate-level `crust_type` reads the audit marks.
 - `backend/app/stats.py`: `belt_area_km2` in the stats row.
-- `backend/app/render_image.py`: show belts in the `craton` debug view, with
-  `frontend/src/legendData.ts`'s `craton` legend.
-- `bin/debug/probe_craton_mosaic.py` (new, G1) and `bin/debug/compare_cratons.py` (belt
-  area per checkpoint).
-- Tests (`backend/unit_tests/test_cratons.py` unless noted):
-  - mosaic seeding on a synthetic continent gives several cores separated by belts of the
-    configured width, and the same cores for the same seed;
-  - a small interior gets a single core;
-  - a marked column in the Hc window, 1,000 km inside, quiet for 300 Myr, doesn't form;
-  - each writer marks the cells it welds or stretches (a contract test in each writer's
-    test module);
-  - a merged or coarsened cell keeps a contributor's mark and its latest date;
-  - old saves load with no belts and unchanged cratons (`test_persistence.py`).
-- Docs: `docs/simulation-model.md`, Cratons (seeding, formation, belts).
+- `backend/app/render_image.py`: belts in the `craton` debug view, with
+  `frontend/src/legendData.ts`'s `craton` legend; the Generate World dialog's continental
+  slider copy in `frontend/src/App.tsx`.
+- `bin/debug/`: `probe_mixed_plates.py` (new, G2); `probe_craton_mosaic.py --layout
+  cratons-first` (G3); `measure_plate_layout.py`, `render_craton_map.py` and
+  `render_earth_cratons.py` (new with this revision) for the layout measures and figures.
+- Tests:
+  - `test_continent_layout.py` (new): every core lies in one plate; belts separate the
+    cores of a continent at the configured width; continental and craton areas hit their
+    targets within 5%; the same seed gives the same layout; a continent too small for a
+    core gets none.
+  - `test_plates.py` (which tests `generate_plates`) and `test_bathymetry.py`: generated
+    plates carry mixed crust with the right codes, Hc and Hm; sketch and premade generation
+    are unchanged.
+  - `test_cratons.py`: a belt-marked column in the Hc window, 1,000 km inside, quiet for
+    300 Myr, doesn't form; each writer marks the cells it welds or stretches (a contract
+    test in each writer's test module); a merged cell is a belt only if most of its area
+    was.
+  - `test_persistence.py`: old saves load with no belts and unchanged cratons.
+- Docs: `docs/simulation-model.md` (world generation, cratons: seeding, formation, belts);
+  `docs/architecture.md` (the new module); `docs/api-reference.md` (`continental_fraction`).
 
 ## Assumptions and uncertainty
 
-- **The gate uses no formation.** G1 freezes the seeded layout to isolate the geometry. The
-  implementation keeps formation (excluding belts), which can fill non-belt interior
-  between cores; the acceptance runs measure whether seams survive that.
-- **Belts may not survive the sinks.** #409 found 87–96% of non-cratonic host gone by
-  500 Myr. Interior belts are farther from margins than most host, but they are host, and
-  the same sinks act on them. G1 reports belt survival; if it is short, the sink RFCs come
-  first.
-- **Belts never heal here.** Geologically, welded belts join the stable shield
+- **Mixed plates are the main risk.** Much of the model was calibrated on plates of one crust
+  type. The runtime already runs with mixed plates, but not with most plates mixed from
+  t = 0. G2 measures this before the generator is built.
+- **Every calibration since #403 used plates-first worlds.** Continental area, craton
+  share and their trajectories will move. `continental_fraction` and
+  `CRATON_SHARE_OF_CONTINENT` are set to keep the starting totals; the acceptance runs
+  re-baseline the rest.
+- **Layout knobs are design choices.** Bleeker's count constrains how many Archean pieces
+  survive, not the size of the model's cores; the continent and plate-cost knobs are tuned
+  to the layout measures, not to physics.
+- **The Earth comparison is coarse.** Land stands in for continental crust, which leaves out
+  the drowned shelves, and only the 16 major plates are used.
+- **Belts may not survive the sinks.** G1 found 66–95% of belt area gone by 500 Myr inside
+  today's plates. Belts placed away from plate edges may last longer; G3 measures it.
+- **Belts never heal here.** Welded belts join the stable shield
   [[Cawood et al., 2009]](#ref-cawood2009), yet remain weaker and reactivate
-  [[Heron et al., 2016]](#ref-heron2016) [[Vauchez et al., 1997]](#ref-vauchez1997).
-  The model has one craton state, so a belt is either craton or not. Keeping belts
-  non-cratonic keeps them weak for rifting, at the cost of leaving them exposed to
-  erosion and collision sinks that cratons resist.
-- **Core spacing and belt width are design choices.** Bleeker's count constrains how many
-  Archean pieces survive, not the size of the model's cores; the sweeps report how the
-  results depend on both.
-- **The model still has no depletion.** Mosaic seeding places cores geometrically, not
-  where a depleted keel would be.
+  [[Heron et al., 2016]](#ref-heron2016) [[Vauchez et al., 1997]](#ref-vauchez1997). The
+  model has one craton state, so a belt is either craton or not; keeping belts non-cratonic
+  keeps them weak for rifting at the cost of exposing them to the sinks cratons resist.
+- **The model still has no depletion.** Cores are placed geometrically, not where a depleted
+  keel would be.
 
 ## Acceptance criteria
 
-- [x] **Gate G1** is run and reported per seed in `analysis/`, with its pinned commit, and
-      this RFC is updated with the branch it selects.
-- [ ] At t = 0 on seeds 7, 11 and 2024, every interior large enough for two nuclei has at
-      least two cores, and belts are 10–30% of the seeded interior area at the starting
-      knobs.
+- [x] **Gate G1** run and reported per seed in `analysis/`, with its pinned commit (#426):
+      neither building branch; this revision follows.
+- [ ] **Gate G2** (mixed plates) run and reported, with the call-site audit, and this RFC
+      updated with its outcome.
+- [ ] **Gate G3** (cratons-first replays) run and reported, and this RFC and RFC 0010
+      updated with the branch it selects.
+- [ ] Layout at t = 0, over seeds 7, 11, 2024 and 17 more: continental edge within 300 km of
+      a plate boundary 15–50% (Earth 28%); mixed plates ≥ 50% (Earth 69%); boundary length
+      with continent on both sides ≤ 25% (Earth 17%); no core crossed by a plate boundary;
+      every continent with room for two cores has at least two; belts 10–30% of continental
+      area; craton 35–50% of continental area; continental area within 0.05 of
+      `continental_fraction`.
+- [ ] The layout lasts: at 500 Myr, mixed plates ≥ 30% and continental edge within 300 km
+      of a boundary ≤ 70% on every seed (today 31% and 64% on seed 7).
 - [ ] No generation pulse: formation in the step that first reaches 200 Myr is under 10%
       of the matched baseline's on each seed.
 - [ ] Belt area at 1 Gyr is at least a third of its t = 0 value on at least two of the
       three seeds.
 - [ ] No marked column ever forms craton (unit tests, and a debug-run audit counting
       formation on marked columns, which must be 0).
-- [ ] Step time changes by less than 2% at density 4; generation time by less than 5%.
-- [ ] Ledgers balance; old saves load; unit tests above pass; affected tests, ruff and
-      `bin/quality_check.sh` are green.
+- [ ] Generation time under 2 s at density 1; step time changes by less than 2% at
+      density 4.
+- [ ] Ledgers balance; old saves load; sketch and premade worlds generate as before; unit
+      tests above pass; affected tests, ruff and `bin/quality_check.sh` are green.
 
 ## Falsification criteria
 
-- **The flow puts regime boundaries through cratons.** If G1 falls in neither building
-  branch on a mosaic (L < 20%, or B > 0.75), the cut's geometry was never the obstacle: the flow's regime boundaries sit under cratons. Don't
-  build RFC 0010's minimum cut; investigate why the mantle flow localises beneath cratons.
-- **The mosaic doesn't last.** If belts lose more than two thirds of their area by 500 Myr
-  on every seed even without formation, the mosaic only delays the one-blob state. Wait for
-  the sink RFCs (0001, 0002, 0005), then rerun G1.
+- **The model re-imposes "a plate is a continent".** If by 500 Myr cratons-first worlds are
+  back to today's layout (continental edge near a boundary above 90%, mixed plates under
+  10%) on every seed, generation alone can't fix the layout: the splits and merges (RFC 0001,
+  `merge_split`) are what tie plates to continents; take the RFC there.
+- **The flow puts regime boundaries through cratons.** If G3 neither halves the share of
+  cuts crossing craton nor reaches a building branch for RFC 0010, the layout was not the
+  obstacle; don't build RFC 0010's cut; investigate why the mantle flow localises beneath
+  cratons.
+- **Mixed plates can't be supported.** If G2 fails and its call sites can't be fixed, fall
+  back to single-type plates placed around cratons (Design, G2).
 - **Belts become the new sink.** If marked belts lose crust so fast that continental area
-  at 1 Gyr falls by more than 10% against the matched baseline, keeping belts
-  non-cratonic is too costly; give belts partial craton resistance instead.
+  at 1 Gyr falls by more than 10% against the matched baseline, give belts partial craton
+  resistance instead of none.
 
 ## References
 
+- <a id="ref-argus2011"></a>Argus, D. F., Gordon, R. G., & DeMets, C. (2011). Geologically
+  current motion of 56 plates relative to the no-net-rotation reference frame.
+  *Geochemistry, Geophysics, Geosystems*, 12, Q11001.
+  [doi:10.1029/2011GC003751](https://doi.org/10.1029/2011GC003751)
 - <a id="ref-audet2011"></a>Audet, P., & Bürgmann, R. (2011). Dominant role of tectonic
   inheritance in supercontinent cycles. *Nature Geoscience*, 4, 184–187.
   [doi:10.1038/ngeo1080](https://doi.org/10.1038/ngeo1080)
