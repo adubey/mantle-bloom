@@ -1141,6 +1141,7 @@ def _reset_world_caches(world: "World") -> None:
         "node_hillshade_cache",
         "collision_polarity_frame",
         "boundary_search_cache",
+        "craton_trees",
     ):
         if hasattr(world, name):
             setattr(world, name, None)

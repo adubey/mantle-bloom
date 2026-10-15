@@ -272,7 +272,7 @@ Two long-run corrections (2026-09):
   implicit `K`, sized so a fully braked contact at 4 cm/yr resists with
   `CONTACT_RESISTANCE_N_PER_M` (5 × 10¹² N/m of trench, the Himalaya–Tibet force of Copley et
   al. 2010) across the `BOUNDARY_FORCE_REACH_MULTIPLIER`-spacing band, at any node density.
-  Each node is braked by `g = max(relief factor, craton strength)`, in [0, 1]. The earlier
+  Each node is braked by `g = max(relief factor, craton factor)`, in [0, 1]. The earlier
   reference stress (5 × 10⁷) multiplied the relative velocity in m/s, so it resisted with
   about 10⁻⁷ of basal drag's traction and slowed nothing.
 - **Buoyant columns don't pull, and jam the contact** (RFC 0008 solution 1, #400). Each
@@ -286,8 +286,17 @@ Two long-run corrections (2026-09):
   frozen polarized front, `forced_down_mask`), in the band of a contact closing at ≥ −1 cm/yr
   (`jam_mask`), jams with `j = clip((Hc − 15 km) / (30 km − 15 km), 0, 1)` (Cloos 1993).
   j joins the contact drag's factor, `g = max(j, relief, craton)`, and the neighbour reads it
-  at its nearest node (`contact_jam_factor`), so both plates feel one resistance. The band
+  at its nearest node (`jam_contact`), so both plates feel one resistance. The band
   runs through zero closing so a contact the brake has stalled stays braked.
+- **Cratons near a contact brake it** (RFC 0008 solution 2, #423). At contested and jam
+  contact nodes, the craton factor is `c = max over cratonic cells within
+  CRATON_BRAKE_REACH_KM (500 km) of s × exp(−d / R)`, on either plate at the contact
+  (`craton_proximity`, the strongest of the 8 nearest cratonic cells). A craton approaching a
+  front slows it before it arrives, and a craton indenting weak crust brakes both plates. It
+  replaces the weaker side's craton at the contact node (#340), which braked only craton
+  against craton, at contact. The reach is a design choice (`CRATON_FORMATION_MARGIN_KM`), not
+  a published mechanism, and the brake can double count the relief term. Each plate's
+  cratonic cells are treed once per shift pass (`World.craton_trees`, `torque.CratonTrees`).
 
 <a id="boundary-evolution"></a>
 ## Plate motion: shift and deform (`plates.py`'s `Plate.shift`/`Plate.deform`)
@@ -1064,14 +1073,16 @@ routine per-step motion.
   crumples faster, on top of the existing distance-decay shape within the belt. For the
   slowdown, in `torque.shift_plate`, the contact drag (`torque.contact_drag_pa_s_per_m`, RFC 0008) brakes
   each contested node by the larger of its relief factor (full at
-  `COLLISION_RELIEF_FRICTION_SCALE_M` of relief) and the contact's craton strength,
-  `cratons.strength` of the weaker side: the lesser of the node's own craton and that at its
-  neighbour's nearest node (`torque.contact_craton_m`, #340). A deeper overlap brakes harder
-  only because more contested nodes sum to a bigger torque; the separate severity gain went
-  with #399. Collision resistance is one
-  force across the contact, and it is the weak side's deformation that sets it (Copley et
-  al. 2010; Clark 2012), so craton against craton brakes both plates fully, while a craton
-  pushing into weak crust adds nothing beyond the relief term. Thick continental crust on the
+  `COLLISION_RELIEF_FRICTION_SCALE_M` of relief) and the contact's craton factor: the
+  strength of the strongest craton within `CRATON_BRAKE_REACH_KM` on either side, decaying
+  with its distance from the node (`torque.craton_proximity`, RFC 0008 solution 2, #423). A
+  deeper overlap brakes harder only because more contested nodes sum to a bigger torque; the
+  separate severity gain went with #399. Retreat never consumes craton (#340), so a craton
+  close behind a front leaves only a narrow weak belt to take the shortening: craton against
+  craton, a craton indenting weak crust and a craton approaching a front all brake both
+  plates. Before #423 only the weaker side's craton at the contact node counted, following
+  the argument that the weak side's deformation sets the resistance (Copley et al. 2010;
+  Clark 2012), which the relief term still carries. Thick continental crust on the
   lower plate of a polarized front also brakes both plates, through the jam factor (#400,
   under the torque engine in "Mantle flow").
 - **Defragmentation.** `deform()` only ever adds or removes cells at the plate's boundary,

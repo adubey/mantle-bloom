@@ -603,7 +603,8 @@ needed alongside those saved histories.
 `bin/debug/probe_craton_contacts.py` replays a seed and records, per plate contact and step,
 where cratons jam retreat (the frozen `run_eligible` candidates on polarized fronts), closing
 rates, collision-time drops and fusions, the buoyant share of slab pull, contact forces, plate count and speed, and
-the craton lost within reach of each contact (RFC 0008's gate).
+the craton lost within reach of each contact (RFC 0008's gate). `--brake-reach-km` overrides
+`torque.CRATON_BRAKE_REACH_KM` for a sensitivity run (#423).
 
 `bin/debug/attribute_rift_boundary_loss.py` replays a seed with probe-only node marks on each
 split cut's band, and books later divergent and stretch craton loss by whether the cut that

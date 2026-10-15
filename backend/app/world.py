@@ -315,6 +315,9 @@ class World:
     # prepass shares with deform() (`torque.BoundarySearchCache`), and the (parent, child)
     # plate-id pairs topology changes record (`collision_polarity.note_lineage`).
     boundary_search_cache: object | None = None
+    # Step-scoped scratch for the shift pass: each plate's cratonic-cell k-d tree for the
+    # craton proximity brake (`torque.CratonTrees`, RFC 0008, #423).
+    craton_trees: object | None = None
     topology_lineage: list | None = None
     # Step-scoped scratch for the deform pass: the roots each upper plate may still shed
     # this step under crust transfer (`crust_transfer.root_capacity`), by plate id.
@@ -897,10 +900,12 @@ def step_world_progress(world: World, years: float):  # noqa: C901
     craton_live_before = cratons.live_volume_m3(world)
     if world.simulate_plate_movement:
         distances = {}
+        world.craton_trees = torque.CratonTrees()
         for plate in world.plates:
             distances[plate.plate_id] = plate.shift(world, years)
             done_units += 1
             yield done_units / total_units
+        world.craton_trees = None
         # Collision polarity prepass (issue #318): every plate has moved and none has deformed,
         # so record subduction evidence and freeze each continental front's lower/upper plate
         # now, independent of the deform order below. Its boundary searches stay cached for

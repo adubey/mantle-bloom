@@ -26,8 +26,8 @@ It scales back erosional Hc removal (erosion.py), divergent thinning
 (lithosphere_plate.deform_columns) and failed-rift thinning (apply_failed_rift, RFC 0003)
 alike (`rift_resistance`), collisional shortening (a craton passes it on to weaker
 ground instead of thickening -- shortening.py), how much of a rift's stretched footprint a craton donates
-(quad_tectonics._allocate_stretch), and how hard a collision front it jams brakes the plates
-(torque.collision_drag_coefficients). Cratonic crust doesn't flow, melt or delaminate
+(quad_tectonics._allocate_stretch), and how hard a collision front it jams or approaches brakes the plates
+(torque.craton_proximity). Cratonic crust doesn't flow, melt or delaminate
 (orogeny.py), and boundary retreat never consumes a craton cell whole (`retreat_allowed`): at
 a collision front it jams, so the weaker crust around it takes the shortening, and at a trench
 its edge wears back by subduction erosion first (`attrite`, #340).

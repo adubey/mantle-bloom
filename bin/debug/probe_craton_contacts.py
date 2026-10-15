@@ -29,8 +29,8 @@ no saved state changes. Every step, for every pair of plates in contact (any cru
 - **plates**: plate count, area-weighted mean surface speed, and the largest plate's share
   of the surface (RFC 0008's bounds on slowing);
 - **contact force**: per unit trench length, the collision brake as applied
-  (`torque.contact_drag_pa_s_per_m` wherever it is non-zero: contested nodes, #399, and
-  jammed contacts, #400), and the gate's estimate of a jam drag at the probe's craton-jammed
+  (`torque.contact_drag_pa_s_per_m` wherever it is non-zero: contested nodes, #399, jammed
+  contacts, #400, and contacts with craton in brake reach, #423), and the gate's estimate of a jam drag at the probe's craton-jammed
   contacts, `CONTACT_RESISTANCE_N_PER_M x j x v / v_ref`, with j those nodes' mean jam factor.
 
 The summary reports, per seed: J (craton destruction within reach of a jammed contact whose
@@ -153,10 +153,10 @@ class Probe:
         self.pull["cratonic"] += float(torque_mag[cratonic].sum())
         self.pull["plates"].append(round(buoyant / total, 4) if total > 0.0 else 0.0)
 
-    def on_collision_drag(self, plate, inputs, collision_mask, craton_m, jam) -> None:
+    def on_collision_drag(self, plate, inputs, collision_mask, craton, jam) -> None:
         """The brake as applied per node, `torque.contact_drag_pa_s_per_m` (with the jam, #400)
         times the node's area and real relative speed, summed per neighbour."""
-        coefficient = torque.contact_drag_pa_s_per_m(plate, inputs, collision_mask, self.spacing, craton_m, jam)
+        coefficient = torque.contact_drag_pa_s_per_m(plate, inputs, collision_mask, self.spacing, craton, jam)
         mask = coefficient > 0.0
         if not np.any(mask):
             return
@@ -432,9 +432,9 @@ def install(probe: Probe) -> None:
         probe.on_slab_pull(plate, inputs, mask)
         return slab_pull_torque(plate, inputs, mask, spacing_rad)
 
-    def tapped_collision_drag_coefficients(plate, inputs, mask, spacing_rad, craton_m=None, jam=None):
-        probe.on_collision_drag(plate, inputs, mask, craton_m, jam)
-        return collision_drag_coefficients(plate, inputs, mask, spacing_rad, craton_m, jam)
+    def tapped_collision_drag_coefficients(plate, inputs, mask, spacing_rad, craton=None, jam=None):
+        probe.on_collision_drag(plate, inputs, mask, craton, jam)
+        return collision_drag_coefficients(plate, inputs, mask, spacing_rad, craton, jam)
 
     def tapped_update_collision_progress(world, years):
         before = dict(world.collision_progress)
@@ -644,6 +644,9 @@ def main() -> None:
     parser.add_argument("--years", type=float, default=1e9)
     parser.add_argument("--step", type=float, default=5e6)
     parser.add_argument("--reach-km", type=float, default=500.0)
+    parser.add_argument(
+        "--brake-reach-km", type=float, help="override torque.CRATON_BRAKE_REACH_KM for this replay (RFC 0008 solution 2's sweep, #423)"
+    )
     parser.add_argument("--out", type=Path)
     parser.add_argument("--summarize", type=Path, nargs="+")
     parser.add_argument("--json", type=Path, help="with --summarize: write the per-seed summary here")
@@ -653,6 +656,8 @@ def main() -> None:
         return
     if args.out is None:
         parser.error("--out is required unless --summarize is given")
+    if args.brake_reach_km is not None:
+        torque.CRATON_BRAKE_REACH_KM = args.brake_reach_km
     run(args.seed, args.years, args.step, args.reach_km, args.out)
 
 

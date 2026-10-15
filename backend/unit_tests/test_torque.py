@@ -457,7 +457,7 @@ def test_fully_braked_contact_resists_with_the_himalaya_tibet_force_per_trench_l
 
 
 def test_contact_drag_factor_is_the_larger_of_relief_and_craton_and_stays_bounded():
-    """One bounded factor g = max(relief, craton strength) in [0, 1] replaces the multiplicative
+    """One bounded factor g = max(relief, craton factor) in [0, 1] replaces the multiplicative
     gains (RFC 0008, #399): flat crust without craton doesn't brake, and no combination of relief
     and craton brakes harder than a full Tibet-height or cratonic contact."""
     spacing = line_spacing_rad(1.0)
@@ -465,17 +465,17 @@ def test_contact_drag_factor_is_the_larger_of_relief_and_craton_and_stays_bounde
         torque.BOUNDARY_FORCE_REACH_MULTIPLIER * spacing * lithosphere.PLANET_RADIUS_M * torque.CONTACT_RESISTANCE_REF_CM_PER_YR * 0.01 / torque.SECONDS_PER_YEAR
     )
     for hc, hm in ((35_000.0, 100_000.0), (50_000.0, 140_000.0), (70_000.0, 200_000.0), (84_000.0, 240_000.0)):
-        for craton in (0.0, 10_000.0, 35_000.0, 80_000.0):
+        for craton in (0.0, 0.3, 0.7, 1.0):
             plate, inputs, mask = _contact_band(spacing, 2, hc=hc, hm=hm)
-            craton_m = np.full(len(mask), craton)
-            g = torque.contact_drag_pa_s_per_m(plate, inputs, mask, spacing, craton_m) / full
+            c = np.full(len(mask), craton)
+            g = torque.contact_drag_pa_s_per_m(plate, inputs, mask, spacing, c) / full
             relief_only = torque.contact_drag_pa_s_per_m(plate, inputs, mask, spacing) / full
             assert np.all((g >= 0.0) & (g <= 1.0 + 1e-12))
-            np.testing.assert_allclose(g, np.maximum(relief_only, cratons.strength(craton_m)))
+            np.testing.assert_allclose(g, np.maximum(relief_only, c))
 
     flat, inputs, mask = _contact_band(spacing, 2, hc=35_000.0, hm=100_000.0)
     assert np.all(torque.contact_drag_pa_s_per_m(flat, inputs, mask, spacing, np.zeros(len(mask))) == 0.0)
-    assert np.all(torque.contact_drag_pa_s_per_m(flat, inputs, mask, spacing, np.full(len(mask), 80_000.0)) == pytest.approx(full))
+    assert np.all(torque.contact_drag_pa_s_per_m(flat, inputs, mask, spacing, np.ones(len(mask))) == pytest.approx(full))
 
 
 def test_contact_drag_slows_but_never_reverses_a_plate_in_one_step():
@@ -494,26 +494,119 @@ def test_contact_drag_slows_but_never_reverses_a_plate_in_one_step():
         assert np.dot(new_omega, plate.omega) >= 0.0
 
 
-def test_contact_craton_is_the_weaker_side_so_both_plates_brake_alike():
-    # #340: collision resistance is one force across a contact, set by the weaker side.
-    class FakePlate:
-        def __init__(self, plate_id, craton):
-            self.plate_id, self.craton = plate_id, np.asarray(craton, dtype=float)
+class _CratonPlate:
+    """Cells on the equator at longitudes `lon_km` (km along the surface), with `craton_crust_m`
+    `craton`."""
 
-        def collect(self, name):
-            assert name == "craton_crust_m"
-            return self.craton
+    def __init__(self, plate_id, lon_km, craton):
+        self.plate_id = plate_id
+        lon = np.asarray(lon_km, dtype=float) * 1000.0 / lithosphere.PLANET_RADIUS_M
+        self.points = np.column_stack([np.cos(lon), np.sin(lon), np.zeros(len(lon))])
+        self.craton = np.asarray(craton, dtype=float)
+        self.node_tree = object()
 
-    a = FakePlate(1, [30_000.0, 30_000.0, 0.0, 30_000.0])
-    b = FakePlate(2, [20_000.0, 0.0])
-    c = FakePlate(3, [5_000.0])
-    inputs = torque.BoundaryForceInputs(
-        own_points=np.zeros((4, 3)), own_hc=np.zeros(4), own_hm=np.zeros(4), own_crust_type_codes=np.zeros(4, dtype=np.int8),
-        dist_to_neighbor=np.zeros(4), direction_to_neighbor=np.zeros((4, 3)), neighbor_is_oceanic=np.zeros(4, dtype=bool),
-        neighbor_omega=np.zeros((4, 3)), neighbor_plate_id=np.array([2, 2, 3, -1]), neighbor_node_index=np.array([0, 1, 0, -1]),
+    def collect(self, name):
+        assert name == "craton_crust_m"
+        return self.craton
+
+    def all_points_and_elevation(self):
+        return self.points, np.zeros(len(self.points))
+
+    def get_node_kdtree(self):
+        return self.node_tree
+
+
+def _proximity_inputs(own, neighbour_id):
+    n = len(own.points)
+    return torque.BoundaryForceInputs(
+        own_points=own.points, own_hc=np.zeros(n), own_hm=np.zeros(n), own_crust_type_codes=np.zeros(n, dtype=np.int8),
+        dist_to_neighbor=np.zeros(n), direction_to_neighbor=np.zeros((n, 3)), neighbor_is_oceanic=np.zeros(n, dtype=bool),
+        neighbor_omega=np.zeros((n, 3)), neighbor_plate_id=np.full(n, neighbour_id), neighbor_node_index=np.zeros(n, dtype=np.int64),
     )
 
-    np.testing.assert_array_equal(torque.contact_craton_m(a, [b, c], inputs), [20_000.0, 0.0, 0.0, 0.0])
+
+def test_craton_proximity_is_strength_decaying_with_distance_and_zero_past_reach():
+    """RFC 0008 solution 2 (#423): c = s * exp(-d / R) for the craton nearest a contact node, 0
+    past R = CRATON_BRAKE_REACH_KM, only at the nodes asked about."""
+    reach = torque.CRATON_BRAKE_REACH_KM
+    full = cratons.CRATON_FULL_STRENGTH_HC_M
+    distances = np.array([0.0, 0.25, 0.5, 0.99, 1.01, 3.0]) * reach
+    own = _CratonPlate(1, np.concatenate([[0.0], distances]), np.concatenate([[full], np.zeros(len(distances))]))
+    inputs = _proximity_inputs(own, -1)
+    nodes = np.ones(len(own.points), dtype=bool)
+    c = torque.craton_proximity(own, [], inputs, nodes)
+    expected = np.where(distances <= reach, np.exp(-distances / reach), 0.0)
+    np.testing.assert_allclose(c[1:], expected, atol=1e-9)
+    assert np.all((c >= 0.0) & (c <= 1.0))
+
+    half = _CratonPlate(1, [0.0, 0.25 * reach], [full / 2, 0.0])
+    np.testing.assert_allclose(torque.craton_proximity(half, [], _proximity_inputs(half, -1), np.ones(2, dtype=bool)), 0.5 * np.exp([0.0, -0.25]))
+    np.testing.assert_array_equal(torque.craton_proximity(own, [], inputs, np.zeros(len(nodes), dtype=bool)), 0.0)
+
+
+def test_craton_proximity_takes_the_strongest_craton_in_reach():
+    # A weak craton at the contact doesn't hide a full-strength one a little further in.
+    full = cratons.CRATON_FULL_STRENGTH_HC_M
+    reach = torque.CRATON_BRAKE_REACH_KM
+    plate = _CratonPlate(1, [0.0, 10.0, 0.4 * reach], [0.0, 0.1 * full, full])
+    c = torque.craton_proximity(plate, [], _proximity_inputs(plate, -1), np.array([True, False, False]))
+    assert c[0] == pytest.approx(np.exp(-0.4), rel=1e-6)
+
+
+def test_a_craton_on_either_side_brakes_the_contact():
+    """A craton behind the front on the neighbour's side brakes this plate's contact node, and one
+    on this side brakes the neighbour's, so a craton indenting weak crust brakes both plates alike
+    (#423). The weaker-side rule it replaces gave zero to both."""
+    full = cratons.CRATON_FULL_STRENGTH_HC_M
+    weak = _CratonPlate(1, [0.0, -50.0], [0.0, 0.0])
+    strong = _CratonPlate(2, [10.0, 200.0], [0.0, full])
+    weak_c = torque.craton_proximity(weak, [strong], _proximity_inputs(weak, 2), np.array([True, False]))
+    strong_c = torque.craton_proximity(strong, [weak], _proximity_inputs(strong, 1), np.array([True, False]))
+    assert weak_c[0] == pytest.approx(np.exp(-200.0 / torque.CRATON_BRAKE_REACH_KM), rel=1e-6)
+    assert strong_c[0] == pytest.approx(np.exp(-190.0 / torque.CRATON_BRAKE_REACH_KM), rel=1e-6)
+    assert weak_c[1] == 0.0 and strong_c[1] == 0.0
+
+
+def test_craton_trees_are_reused_until_the_plate_moves():
+    plate = _CratonPlate(1, [0.0, 100.0], [0.0, cratons.CRATON_FULL_STRENGTH_HC_M])
+    trees = torque.CratonTrees()
+    first = trees.get(plate)[0]
+    assert trees.get(plate)[0] is first
+    plate.node_tree = object()  # a rotation drops the plate's node tree
+    assert trees.get(plate)[0] is not first
+    assert torque.CratonTrees().get(_CratonPlate(2, [0.0], [0.0]))[0] is None
+
+
+def test_a_craton_near_a_jammed_contact_brakes_both_sides_and_never_reverses_a_plate():
+    """The proximity factor reaches jam contacts as well as contested ones (#423): the upper
+    plate of a jammed front reads the lower plate's contact, and the brake it adds slows a
+    driven plate in one implicit step without reversing it."""
+    spacing = line_spacing_rad(1.0)
+    reach = torque.BOUNDARY_FORCE_REACH_MULTIPLIER * spacing
+    upper, inputs, _ = _contact_band(spacing, 1)
+    upper.plate_id = 1
+    n = len(inputs.own_points)
+    inputs.neighbor_plate_id = np.full(n, 2)
+    inputs.neighbor_node_index = np.arange(n)
+    inputs.neighbor_omega = np.tile([0.0, 0.0, -mantle.cm_per_yr_to_rad_per_yr(2.0)], (n, 1))
+    # Thin continental crust forced down: a jam contact with j = 0.
+    lower = _JamPlate(2, "continental", [10_000.0] * n, [CRUST_TYPE_CONTINENTAL] * n)
+    jammed, jam = torque.jam_contact(upper, _frame(p2=list(range(n))), [lower], inputs, reach)
+    assert jammed.all() and np.all(jam == 0.0)
+    assert not torque.jam_contact(upper, None, [lower], inputs, reach)[0].any()
+
+    c = np.ones(n)  # a full-strength craton at the contact
+    no_collision = np.zeros(n, dtype=bool)
+    rho = np.full(n, lithosphere.RHO_CONTINENTAL_CRUST)
+    inertia = lithosphere.moment_of_inertia_tensor(inputs.own_points, inputs.own_hc, inputs.own_hm, rho, spacing)
+    upper.omega = np.array([0.0, 0.0, mantle.cm_per_yr_to_rad_per_yr(4.0)])
+    b, k = torque.collision_drag_coefficients(upper, inputs, no_collision, spacing, c, jam)
+    assert np.any(k != 0.0)
+    # The drag relaxes the relative motion toward zero; it never reverses it.
+    relative = upper.omega[2] - inputs.neighbor_omega[0, 2]
+    for years in (1e3, 1e6, 1e8):
+        new_relative = torque.integrate_omega(upper, np.zeros(3), b, k, inertia, years)[2] - inputs.neighbor_omega[0, 2]
+        assert -1e-12 * relative <= new_relative < relative
 
 
 def _jam_band(spacing_rad: float, rows: int, hc: float, hm: float = 100_000.0, rate_cm_per_yr: float = 0.0, craton: float = 0.0):
@@ -587,7 +680,7 @@ def test_jam_and_contact_drag_factors_stay_bounded():
     for hc_band, hm_band in ((35_000.0, 100_000.0), (70_000.0, 200_000.0)):
         plate, inputs, mask = _contact_band(spacing, 4, hc=hc_band, hm=hm_band)
         mask = rng.random(len(mask)) < 0.5
-        g = torque.contact_drag_pa_s_per_m(plate, inputs, mask, spacing, rng.uniform(0, 80_000.0, len(mask)), rng.uniform(0, 1, len(mask))) / full
+        g = torque.contact_drag_pa_s_per_m(plate, inputs, mask, spacing, rng.uniform(0, 1, len(mask)), rng.uniform(0, 1, len(mask))) / full
         assert np.all((g >= 0.0) & (g <= 1.0 + 1e-12))
 
 

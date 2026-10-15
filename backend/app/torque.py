@@ -20,6 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+from scipy.spatial import cKDTree
 
 from . import cratons, geometry, mantle
 from .boundary import TRANSFORM_RATE_THRESHOLD
@@ -92,19 +93,25 @@ CONTINENTAL_REFERENCE_ELEVATION_M = float(
 # `MAX_CRUSTAL_THICKNESS_M`'s hard cap (2.4x reference), so the brake bites *before* a
 # collision zone reaches the ceiling.
 COLLISION_RELIEF_FRICTION_SCALE_M = 4000.0
-# Where craton meets craton, no weak crust is left to crumple, so convergence has to slow or go
-# elsewhere (#340). Retreat never consumes craton (cratons.retreat_allowed), so a contested
-# node resists as hard as a Tibet-height plateau does, in proportion to the *weaker* side's
-# craton strength (cratons.strength): its own, or the craton at the neighbour's nearest node.
-# Collision resistance is one force across the contact, equal and opposite on both plates
-# (Copley, Avouac & Royer 2010; Warners-Ruckstuhl et al. 2013), and it is the weak side's
-# deformation that sets it: India, a cratonic indenter, is resisted by Tibet's thickening and
-# the strong mantle under it (Clark 2012), not by its own strength. A craton pushing into weak
-# crust therefore adds nothing here; the weak side's retreat and the relief term carry that
-# resistance. The brake acts only at a contact; a keel adds no basal drag here. That leaves
-# out a contested effect rather than settling it: Stoddard & Abbott (1996) found tectosphere
-# sped plates up in the configurations they tested, which argues against a simple basal-drag
+# Craton proximity brake (RFC 0008 solution 2, #423). Retreat never consumes craton
+# (cratons.retreat_allowed, #340), so a contact with a craton close behind it on either side
+# has only a narrow weak belt left to take the shortening, and resists as hard as a
+# Tibet-height plateau in proportion to that craton's strength, decaying with its distance
+# from the contact (`craton_proximity`). This replaces the weaker side's craton at the contact
+# node (#340), which only braked craton against craton, and only once they touched: after
+# solutions 0 and 1, contacts with craton in reach closed within 10% of craton-free ones on
+# every gate seed. It is a design choice, not a published mechanism. Copley, Avouac & Royer
+# (2010) and Clark (2012) put collision resistance in the weak side's deformation, which the
+# relief term carries, so the two can double count; the RFC's speed bound watches for that.
+# CRATON_BRAKE_REACH_KM starts at CRATON_FORMATION_MARGIN_KM, how far inside a margin cratons
+# form. The brake acts only at a contact; a keel adds no basal drag here. That leaves out a
+# contested effect rather than settling it: Stoddard & Abbott (1996) found tectosphere sped
+# plates up in the configurations they tested, which argues against a simple basal-drag
 # slowdown but doesn't show keels never slow plates.
+CRATON_BRAKE_REACH_KM = 500.0
+# Cratonic cells read per contact node: the strongest of these within reach stands in for the
+# strongest of all of them, since strength varies only over a craton's edge.
+CRATON_BRAKE_NEAREST_CELLS = 8
 
 # Buoyant columns (RFC 0008 solution 1, #400). Continental crust thicker than ~15 km makes the
 # lithosphere buoyant enough to jam a subduction zone, and 30 km of it on 100 km of lithosphere
@@ -537,7 +544,7 @@ def contact_drag_pa_s_per_m(
     inputs: BoundaryForceInputs,
     collision_mask: np.ndarray,
     spacing_rad: float,
-    craton_m: np.ndarray | None = None,
+    craton: np.ndarray | None = None,
     jam: np.ndarray | None = None,
 ) -> np.ndarray:
     """Per node of the plate, the contact drag coefficient `eta * g` in Pa*s/m: the traction
@@ -546,22 +553,23 @@ def contact_drag_pa_s_per_m(
     `eta = CONTACT_RESISTANCE_N_PER_M / (W * v_ref)`, with W the boundary band's width
     (`BOUNDARY_FORCE_REACH_MULTIPLIER` spacings), so a band of g = 1 at v_ref resists with
     CONTACT_RESISTANCE_N_PER_M per unit trench length (RFC 0008). g is the largest of the
-    contact's jam factor (`jam`, from `contact_jam_factor`, #400) and, at contested nodes
-    (`collision_mask`), the node's relief factor (COLLISION_RELIEF_FRICTION_SCALE_M) and the
-    contact's craton strength (`craton_m`, per node the weaker side's `craton_crust_m`), so it
-    stays in [0, 1]: one bounded factor in place of the multiplicative overlap, relief and
-    craton gains tuned against the old inert coefficient. A contact with no buoyant crust
-    forced down, no relief and no craton resists with nothing until relief builds, as
-    Copley's resistance comes from mountain building."""
+    contact's jam factor (`jam`, from `jam_contact`, #400), its craton proximity factor
+    (`craton`, from `craton_proximity`, #423) and, at contested nodes (`collision_mask`), the
+    node's relief factor (COLLISION_RELIEF_FRICTION_SCALE_M), so it stays in [0, 1]: one
+    bounded factor in place of the multiplicative overlap, relief and craton gains tuned against
+    the old inert coefficient. A contact with no buoyant crust forced down, no craton nearby and
+    no relief resists with nothing until relief builds, as Copley's resistance comes from
+    mountain building."""
     n = len(inputs.own_points)
     factor = np.zeros(n) if jam is None else np.asarray(jam, dtype=float).copy()
+    if craton is not None:
+        factor = np.maximum(factor, craton)
     if np.any(collision_mask):
         rho_c = lithosphere.node_crust_density(inputs.own_crust_type_codes[collision_mask], plate.crust_type)
         elevation = lithosphere.isostatic_elevation(inputs.own_hc[collision_mask], inputs.own_hm[collision_mask], rho_c)
         relief = np.clip(elevation - CONTINENTAL_REFERENCE_ELEVATION_M, 0.0, None)
         relief_factor = np.clip(relief / COLLISION_RELIEF_FRICTION_SCALE_M, 0.0, 1.0)
-        craton_factor = cratons.strength(craton_m[collision_mask]) if craton_m is not None else 0.0
-        factor[collision_mask] = np.maximum(factor[collision_mask], np.maximum(relief_factor, craton_factor))
+        factor[collision_mask] = np.maximum(factor[collision_mask], relief_factor)
     factor = np.clip(factor, 0.0, 1.0)
     band_width_m = BOUNDARY_FORCE_REACH_MULTIPLIER * spacing_rad * lithosphere.PLANET_RADIUS_M
     v_ref_m_per_s = CONTACT_RESISTANCE_REF_CM_PER_YR * 0.01 / SECONDS_PER_YEAR
@@ -573,7 +581,7 @@ def collision_drag_coefficients(
     inputs: BoundaryForceInputs,
     collision_mask: np.ndarray,
     spacing_rad: float,
-    craton_m: np.ndarray | None = None,
+    craton: np.ndarray | None = None,
     jam: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Resistive drag at continent-continent contested nodes (`collision_mask`) and jammed
@@ -590,7 +598,7 @@ def collision_drag_coefficients(
     and resistance balance but never reverses it in one step."""
     if len(inputs.own_points) == 0:
         return np.zeros(3), np.zeros((3, 3))
-    coefficient = contact_drag_pa_s_per_m(plate, inputs, collision_mask, spacing_rad, craton_m, jam)
+    coefficient = contact_drag_pa_s_per_m(plate, inputs, collision_mask, spacing_rad, craton, jam)
     drag = coefficient > 0.0
     if not np.any(drag):
         return np.zeros(3), np.zeros((3, 3))
@@ -609,14 +617,14 @@ def collision_friction_torque(
     inputs: BoundaryForceInputs,
     collision_mask: np.ndarray,
     spacing_rad: float,
-    craton_m: np.ndarray | None = None,
+    craton: np.ndarray | None = None,
     jam: np.ndarray | None = None,
 ) -> np.ndarray:
     """`collision_drag_coefficients` evaluated at the plate's current `omega` (`b - K @ omega`)
     -- a standalone entry point for tests / callers that just want the resistive torque, same
     role `slab_drag_torque`/`basal_drag_torque` play for their own `(b, K)` splits; `shift_plate`
     itself uses the split form for implicit integration."""
-    b, k = collision_drag_coefficients(plate, inputs, collision_mask, spacing_rad, craton_m, jam)
+    b, k = collision_drag_coefficients(plate, inputs, collision_mask, spacing_rad, craton, jam)
     return b - k @ plate.omega
 
 
@@ -771,29 +779,83 @@ def apply_omega_and_rotate(plate, old_points: np.ndarray, omega: np.ndarray, yea
     return float(geometry.angular_distance(old_points, new_points).max())
 
 
-def contact_craton_m(plate, neighbours: list, inputs: BoundaryForceInputs) -> np.ndarray:
-    """Per node of `plate`, the craton of the weaker side of its contact: the lesser of its own
-    `craton_crust_m` and that at its nearest neighbour node (`inputs.neighbor_node_index`),
-    so both plates at one contact are braked alike (`contact_drag_pa_s_per_m`). Zero
-    where there is no neighbour."""
-    own = plate.collect("craton_crust_m")
-    other = np.zeros(len(own))
+class CratonTrees:
+    """Per plate, a k-d tree over its cratonic cells and their strengths, for
+    `craton_proximity` (RFC 0008, #423). Step-scoped scratch on `World.craton_trees` for the
+    shift pass, so each plate's tree is built once rather than once per neighbour that reads
+    it. Plates shift one after another, so an entry is reused only while the plate's node
+    k-d tree (`Plate.get_node_kdtree`, dropped on every rotation) is the one it was built
+    from; nothing changes a plate's craton during the pass."""
+
+    def __init__(self) -> None:
+        self._trees: dict[int, tuple] = {}
+
+    def get(self, plate) -> tuple[cKDTree | None, np.ndarray]:
+        node_tree = plate.get_node_kdtree()
+        entry = self._trees.get(plate.plate_id)
+        if entry is not None and node_tree is not None and entry[0] is node_tree:
+            return entry[1], entry[2]
+        tree, strength = craton_tree(plate)
+        self._trees[plate.plate_id] = (node_tree, tree, strength)
+        return tree, strength
+
+
+def craton_tree(plate) -> tuple[cKDTree | None, np.ndarray]:
+    """A k-d tree over `plate`'s cratonic cells and their `cratons.strength`; None if it has
+    none."""
+    strength = cratons.strength(plate.collect("craton_crust_m"))
+    cratonic = strength > 0.0
+    if not np.any(cratonic):
+        return None, np.zeros(0)
+    return cKDTree(plate.all_points_and_elevation()[0][cratonic]), strength[cratonic]
+
+
+def _proximity(tree: cKDTree | None, strength: np.ndarray, points: np.ndarray, reach_rad: float) -> np.ndarray:
+    """Per point, the strongest `s * exp(-d / R)` over the nearest cratonic cells within
+    R = `reach_rad` (CRATON_BRAKE_NEAREST_CELLS of them); 0 with none in reach."""
+    out = np.zeros(len(points))
+    if tree is None or len(points) == 0:
+        return out
+    k = min(CRATON_BRAKE_NEAREST_CELLS, len(strength))
+    chord, idx = tree.query(points, k=k, distance_upper_bound=2.0 * np.sin(reach_rad / 2.0))
+    chord, idx = chord.reshape(len(points), k), idx.reshape(len(points), k)
+    found = np.isfinite(chord)
+    angle = 2.0 * np.arcsin(np.clip(np.where(found, chord, 0.0) / 2.0, 0.0, 1.0))
+    value = np.where(found, strength[np.minimum(idx, len(strength) - 1)] * np.exp(-angle / reach_rad), 0.0)
+    return value.max(axis=1)
+
+
+def craton_proximity(plate, neighbours: list, inputs: BoundaryForceInputs, nodes: np.ndarray, trees: CratonTrees | None = None) -> np.ndarray:
+    """Per node of `plate`, the craton factor c in [0, 1] of the contact braking it (RFC 0008
+    solution 2, #423): at `nodes`, the strongest `s * exp(-d / R)` over cratonic cells within
+    R = CRATON_BRAKE_REACH_KM on either side, this plate or the neighbour owning the node's
+    nearest node (`inputs.neighbor_plate_id`); 0 elsewhere. A craton approaching a front so
+    brakes it before it arrives, and a craton indenting weak crust brakes too. Both plates at a
+    contact read both sides' craton at nearly the same place, so they brake alike."""
+    reach_rad = CRATON_BRAKE_REACH_KM * 1000.0 / lithosphere.PLANET_RADIUS_M
+    out = np.zeros(len(inputs.own_points))
+    if not np.any(nodes):
+        return out
+    tree_of = trees.get if trees is not None else craton_tree
+    out[nodes] = _proximity(*tree_of(plate), inputs.own_points[nodes], reach_rad)
     for neighbour in neighbours:
-        mine = inputs.neighbor_plate_id == neighbour.plate_id
+        mine = nodes & (inputs.neighbor_plate_id == neighbour.plate_id)
         if np.any(mine):
-            other[mine] = neighbour.collect("craton_crust_m")[inputs.neighbor_node_index[mine]]
-    return np.minimum(own, other)
+            out[mine] = np.maximum(out[mine], _proximity(*tree_of(neighbour), inputs.own_points[mine], reach_rad))
+    return out
 
 
-def contact_jam_factor(plate, world, neighbours: list, inputs: BoundaryForceInputs, reach_rad: float) -> np.ndarray:
-    """Per node of `plate`, the jam factor j of its contact (RFC 0008, #400): its own where it
-    is in the jam mask (`jam_mask`), or that of the neighbour's nearest node
-    (`inputs.neighbor_node_index`, as `contact_craton_m` reads) where that node is
-    continental-coded and forced down, whichever is larger. Both plates at a jammed contact so
-    feel one resistance, equal and opposite: the upper plate is never in the jam mask itself,
-    but reads the lower plate's j across the contact."""
+def jam_contact(plate, world, neighbours: list, inputs: BoundaryForceInputs, reach_rad: float) -> tuple[np.ndarray, np.ndarray]:
+    """Per node of `plate`, whether it is at a jam contact, and that contact's jam factor j
+    (RFC 0008, #400). A node is at one when it is in the jam mask (`jam_mask`), or when the
+    neighbour's nearest node (`inputs.neighbor_node_index`) is continental-coded and forced
+    down across a contact that isn't diverging; j is the larger of its own and that node's.
+    Both plates at a jammed contact so feel one resistance, equal and opposite: the upper plate
+    is never in the jam mask itself, but reads the lower plate's j across the contact."""
     n = len(inputs.own_points)
-    own = np.where(jam_mask(plate, inputs, forced_down_mask(plate, world, n), reach_rad), jam_factor(continental_crust_m(plate, inputs)), 0.0)
+    own_mask = jam_mask(plate, inputs, forced_down_mask(plate, world, n), reach_rad)
+    own = np.where(own_mask, jam_factor(continental_crust_m(plate, inputs)), 0.0)
+    other_down = np.zeros(n, dtype=bool)
     other = np.zeros(n)
     for neighbour in neighbours:
         mine = inputs.neighbor_plate_id == neighbour.plate_id
@@ -802,10 +864,16 @@ def contact_jam_factor(plate, world, neighbours: list, inputs: BoundaryForceInpu
         idx = inputs.neighbor_node_index[mine]
         codes = neighbour.collect("crust_type_code")
         continental = effective_is_continental_from_codes(codes[idx], neighbour.crust_type == "continental")
-        down = forced_down_mask(neighbour, world, len(codes))[idx]
-        hc = neighbour.collect("crustal_thickness_m")[idx]
-        other[mine] = np.where(continental & down, jam_factor(hc), 0.0)
-    return np.maximum(own, np.where(_jam_contact(plate, inputs, reach_rad), other, 0.0))
+        down = continental & forced_down_mask(neighbour, world, len(codes))[idx]
+        other_down[mine] = down
+        other[mine] = np.where(down, jam_factor(neighbour.collect("crustal_thickness_m")[idx]), 0.0)
+    across = _jam_contact(plate, inputs, reach_rad) & other_down
+    return own_mask | across, np.maximum(own, np.where(across, other, 0.0))
+
+
+def contact_jam_factor(plate, world, neighbours: list, inputs: BoundaryForceInputs, reach_rad: float) -> np.ndarray:
+    """`jam_contact`'s jam factor j alone."""
+    return jam_contact(plate, world, neighbours, inputs, reach_rad)[1]
 
 
 def shift_plate(plate, world, other_plates: list, years: float) -> float:
@@ -839,10 +907,9 @@ def shift_plate(plate, world, other_plates: list, years: float) -> float:
     # Collision resistance is folded into the same implicit (b, K) drag terms as basal/slab
     # drag, not explicit_torque -- see collision_drag_coefficients' own docstring for why an
     # explicit collision torque here structurally can't compete with basal drag's stiffness.
-    jam = contact_jam_factor(plate, world, neighbours, inputs, reach_rad)
-    collision_b, collision_k = collision_drag_coefficients(
-        plate, inputs, collision_mask, spacing_rad, contact_craton_m(plate, neighbours, inputs), jam
-    )
+    jammed, jam = jam_contact(plate, world, neighbours, inputs, reach_rad)
+    craton = craton_proximity(plate, neighbours, inputs, collision_mask | jammed, getattr(world, "craton_trees", None))
+    collision_b, collision_k = collision_drag_coefficients(plate, inputs, collision_mask, spacing_rad, craton, jam)
     drag_b = drag_b + collision_b
     drag_k = drag_k + collision_k
     new_omega = integrate_omega(plate, explicit_torque, drag_b, drag_k, inertia, years)
