@@ -287,7 +287,7 @@ simpler, matching the v1 "elevation view only" scope. A `World` holds:
   dataclass default is a class attribute, so worlds pickled before this field existed still
   load, reading 0.
 - `collision_progress: dict[(int, int), float]` -- sustained-collision tracking for
-  merge_split.py, pair of plate ids -> accumulated convergent years (see
+  merge_split.py, pair of plate ids -> accumulated convergent (or craton-jammed, #401) years (see
   [simulation-model.md#merge-and-split](simulation-model.md#merge-and-split)).
 - `axial_tilt_deg` -- a fixed generation-time property like `seed`, read by `climate.py`'s
   insolation calculation on every future render (see

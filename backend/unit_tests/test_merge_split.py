@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from scipy.spatial import cKDTree
 
-from app import geometry, mantle, merge_split
+from app import collision_polarity, geometry, mantle, merge_split
 from app import plates as plates_mod
 from app.elevation_lines import line_spacing_rad
 from app.plates import node_components
@@ -181,6 +181,95 @@ def test_collision_progress_resets_if_convergence_stops(monkeypatch):
         p.set_omega(np.zeros(3))
     merge_split.apply_topology_changes(world, 10_000_000)
     assert (0, 1) not in world.collision_progress
+
+
+def _cratonic_pair_world():
+    world = _converging_pair_world()
+    for p in world.plates:
+        p.set_fields_on_plate(craton_crust_m=p.collect("crustal_thickness_m"))
+    return world
+
+
+def _topology_step(world, years=10_000_000):
+    # The prepass that freezes this step's contacts, then topology, as world.step_world runs them.
+    collision_polarity.observe_contacts(world, years)
+    world.elapsed_years += years
+    merge_split.apply_topology_changes(world, years)
+
+
+def test_jammed_pair_keeps_collision_time_when_closing_stalls(monkeypatch):
+    # RFC 0008 solution 5 (#401): a craton jam braking the contact below the closing threshold
+    # must not reset the clock that would fuse it; separating still does.
+    monkeypatch.setattr(merge_split, "_merge_probability", lambda world, pair: 0.0)
+    world = _cratonic_pair_world()
+    _topology_step(world)
+    assert world.collision_progress[(0, 1)] == 10_000_000
+
+    for p in world.plates:
+        p.set_omega(np.zeros(3))
+    _topology_step(world)
+    assert merge_split.find_continental_collision_pairs(world) == []
+    assert merge_split.find_jammed_pairs(world)[(0, 1)] > 0.0
+    assert world.collision_progress[(0, 1)] == 20_000_000
+
+    keep_omega, absorb_omega = _converging_omega_pair()
+    world.plates[0].set_omega(-keep_omega)
+    world.plates[1].set_omega(-absorb_omega)
+    _topology_step(world)
+    assert (0, 1) not in merge_split.find_jammed_pairs(world)
+    assert (0, 1) not in world.collision_progress
+
+
+def test_jammed_pair_rolls_for_merge_while_stalled(monkeypatch):
+    monkeypatch.setattr(merge_split, "MERGE_SIZE_UNLIKELY_FRACTION", 1e9)
+    world = _cratonic_pair_world()
+    for p in world.plates:
+        p.set_omega(np.zeros(3))
+    world.collision_progress[(0, 1)] = merge_split._collision_threshold_years(world.seed, (0, 1)) + 1
+    _topology_step(world)
+    assert len(world.plates) == 1
+
+
+def test_jammed_pair_is_dropped_when_a_plate_vanishes_after_the_prepass():
+    # The jam map is the prepass's; topology removes defunct plates after it. A pair whose
+    # plate is gone must not be kept, or its merge roll looks up a missing plate (#435 review).
+    world = _cratonic_pair_world()
+    for p in world.plates:
+        p.set_omega(np.zeros(3))
+    collision_polarity.observe_contacts(world, 10_000_000)
+    assert (0, 1) in merge_split.find_jammed_pairs(world)
+    world.collision_progress[(0, 1)] = merge_split._collision_threshold_years(world.seed, (0, 1)) + 1
+    world.plates = [p for p in world.plates if p.plate_id != 1]
+
+    merge_split.update_collision_progress(world, 10_000_000)
+
+    assert world.collision_progress == {}
+
+
+def test_a_jam_alone_does_not_start_collision_time():
+    world = _cratonic_pair_world()
+    for p in world.plates:
+        p.set_omega(np.zeros(3))
+    _topology_step(world)
+    assert (0, 1) in merge_split.find_jammed_pairs(world)
+    assert world.collision_progress == {}
+
+
+def test_find_jammed_pairs_needs_enough_jammed_nodes_both_sides_and_no_divergence():
+    from types import SimpleNamespace
+
+    PairContact = collision_polarity.PairContact
+    n = merge_split.MERGE_MIN_CONTACT_NODES
+    diverging = -2.0 * merge_split.TRANSFORM_RATE_THRESHOLD
+    contacts = {
+        (0, 1): PairContact(sides=2, nodes=4 * n, jammed=n, edge=2, edge_closing_rad_per_yr=0.0),
+        (0, 2): PairContact(sides=2, nodes=4 * n, jammed=n - 1),
+        (0, 3): PairContact(sides=1, nodes=4 * n, jammed=n),
+        (0, 4): PairContact(sides=2, nodes=4 * n, jammed=n, edge=2, edge_closing_rad_per_yr=2 * diverging),
+    }
+    world = SimpleNamespace(collision_polarity_frame=SimpleNamespace(contacts=contacts))
+    assert merge_split.find_jammed_pairs(world) == {(0, 1): 0.25}
+    assert merge_split.find_jammed_pairs(SimpleNamespace(collision_polarity_frame=None)) == {}
 
 
 def test_apply_topology_changes_merges_at_most_one_pair_per_call(monkeypatch):

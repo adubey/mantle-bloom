@@ -215,3 +215,43 @@ closing with craton in reach 1.40 / 1.38 / 1.35 cm/yr, craton left 37% / 54% / 5
 - **Decision (owner, 2026-10-15): drop solution 2.** Extending c to the whole converging band
   would be a different design with its own speed risk (solutions 0 and 1 already cost 11–18%
   of mean speed, against the 30% limit), and is not pursued.
+
+# Solution 5: jammed pairs keep their collision time (issue #401)
+
+The collision-polarity prepass counts each plate pair's craton-jammed contact nodes with the
+gate's definition, which the probe now shares (`collision_polarity.retreat_candidates`). A pair
+with at least 4 jammed nodes whose edge isn't diverging (mean closing ≥ −1 cm/yr) is jammed
+(`merge_split.find_jammed_pairs`). A tracked jammed pair keeps accumulating, and rolling, its
+collision time when the jam has braked it below the closing threshold. Separating or diverging
+still drops it, and a jam alone doesn't start tracking a pair. Same probe and seeds, 5 Myr steps
+to 1 Gyr. The baseline is solution 1's replays ([solution1.json](solution1.json)): between them
+and this branch, origin/main changed only routes (`main.py`, `auth.py`, `public_view.py`).
+Per-seed summaries are in [solution5.json](solution5.json).
+
+| Seed 7 / 11 / 2024 | Solution 1 (origin/main) | Solution 5 |
+|---|---|---|
+| Collision-time drops: all (jammed pairs) | 231 (168) / 43 (26) / 54 (22) | 110 (0) / 17 (0) / 36 (0) |
+| Collision time dropped on jammed pairs (Myr) | 1,690 / 190 / 245 | 0 / 0 / 0 |
+| Fusions, roll + forced | 24 + 12 / 3 + 8 / 5 + 6 | 61 + 1 / 19 + 3 / 15 + 2 |
+| Craton-on-craton overlap at fusion, % of start | 43% / 31% / 20% | 59% / 42% / 8% |
+| Craton lost in fusions, % of start | 42% / 2% / 2% | 32% / 2% / 3% |
+| Craton destroyed outside fusions, % of start | 24% / 43% / 20% | 32% / 42% / 21% |
+| Craton left at 1 Gyr, % of start | 38% / 67% / 95% | 40% / 66% / 94% |
+| J | 31% / 82% / 79% | 36% / 78% / 60% |
+| Mean plate speed, area-weighted (cm/yr) | 3.00 / 2.92 / 2.98 | 3.06 / 2.93 / 2.89 |
+| Mean plate count | 46.3 / 43.8 / 43.0 | 42.4 / 42.1 / 41.4 |
+| Largest plate, mean / max share of surface | 6.7 / 19% · 6.7 / 31% · 6.5 / 22% | 7.0 / 18% · 7.5 / 31% · 7.5 / 22% |
+| Wall time to 1 Gyr, with the probe (s) | — | 702 / 719 / 700 |
+
+- **The acceptance criterion holds.** No jammed pair has its collision time dropped while
+  still in contact and jammed, on any seed. Drops of any kind fall by a third to a half.
+- **Fusions roughly double**, and roll fusions now come before the overlap backstop has to
+  force them: forced fusions fall from 12 / 8 / 6 to 1 / 3 / 2. Plate count falls 3–8%, inside
+  the RFC's 25% bound, and the largest plate's peak share doesn't change.
+- **Craton survival doesn't move** (+2, −1, −1 points). Seed 7 loses less in fusions and more
+  elsewhere. Keeping the clock lets jammed pairs roll; it doesn't fuse them at jam onset, so the
+  craton-on-craton overlap at fusion rises on seeds 7 and 11. Fusing early is solution 6's job
+  (the lock), and the overlap loss is RFC 0001's placement fix; RFC 0008 lands solution 6 with
+  or after that fix.
+- **Cost.** The prepass's jam count (`collision_polarity._pair_contacts`) took 0.18% of step
+  time over 30 steps of seed 7 at density 1. Not measured at density 4.

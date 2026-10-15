@@ -953,7 +953,16 @@ routine per-step motion.
   don't all resolve in lockstep) -- tracked in `World.collision_progress` (pair -> years
   accumulated so far) and advanced by `update_collision_progress` every step. A pair that
   stops being close-and-converging before reaching its threshold has its progress dropped
-  entirely, not paused -- the collision didn't sustain. And even once one or more pairs
+  entirely, not paused -- the collision didn't sustain -- unless a craton jams it (RFC 0008
+  solution 5, #401). The collision-polarity prepass counts each pair's jammed contact nodes
+  (`PolarityFrame.contacts`): a contact node holding craton that retreat would consume
+  (`collision_polarity.retreat_candidates`, read before `cratons.retreat_allowed` vetoes it)
+  or that faces craton on the other plate. A pair with at least `MERGE_MIN_CONTACT_NODES`
+  of them whose edge isn't diverging (mean closing ≥ −1 cm/yr) is jammed
+  (`find_jammed_pairs`), and a tracked jammed pair keeps accumulating and rolling even when
+  the jam has braked it below the closing threshold. Only separating or diverging drops it;
+  a jam alone doesn't start tracking a pair. Before this, 26–48% of drops were of jammed
+  pairs (#395). And even once one or more pairs
   *are* ready, `apply_topology_changes` merges at most one per step -- multiple simultaneous
   ready pairs don't all resolve in the same call, matching how every other change in this
   model happens incrementally rather than in a batch. Confirmed directly: scanning random
