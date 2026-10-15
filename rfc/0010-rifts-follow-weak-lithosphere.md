@@ -89,36 +89,44 @@ strength decides *where* the break runs.
 5. **Plume weakening (RFC 0007).** Heated lithosphere counts as weak in the cut cost and
    in craton resistance. Lands with RFC 0007, through this RFC's strength function.
 
-**Recommendation:** 1, built only if RFC 0009's gate G1 finds craton-free routes for at
-least 20% of craton-crossing cuts on a mosaic. Size 4 afterwards. 2 is the follow-up; 5
+**Recommendation:** 1, built only if RFC 0009's gate G1 selects a building branch on a
+mosaic (line clearance L ≥ 20% and band exposure B ≤ 0.75). Size 4 afterwards. 2 is the follow-up; 5
 comes with RFC 0007.
 
 ## Design
 
 **Gate.** This RFC uses RFC 0009's G1, which runs this RFC's probe on a mosaic-seeded
-world. If G1 selects its ≥ 50% branch, build 1 and measure before tuning 4. If 20–50%,
-build 1 and tune 4 to the remaining loss in the same acceptance runs. Below 20%, the
+world, with branches fixed in RFC 0009 on two measures: L, the share of craton-crossing
+cuts with an admissible minimum cut whose line touches no craton, and B, the craton area
+left in the operational band. If G1 selects L ≥ 50% and B ≤ 0.50, build 1 and measure
+before tuning 4. If L ≥ 20% and B ≤ 0.75, build 1 and tune 4 to the remaining loss in the
+same acceptance runs. Otherwise, the
 falsification case "the flow puts regime boundaries through cratons" holds: don't build 1.
 
 **Probe evidence (no model change).** `bin/debug/prototype_mincut_split.py` taps
 `cratons.record_rift_cut`, so it sees every cut that goes ahead without changing the
-trajectory, and computes the minimum cut for it.
-It ran seeds 7, 11 and 2024 to 1 Gyr at origin/main `1227c36` (5 Myr steps, default
-density and controls, one at a time); [analysis/rfc0010](../analysis/rfc0010/README.md)
-has the method and [mincut_probe.json](../analysis/rfc0010/mincut_probe.json) the numbers.
-Of 542 cuts, 135 crossed craton. Floor 0.05:
+trajectory, and computes the minimum cut for it. It ran seeds 7, 11 and 2024 to 1 Gyr on
+a model identical to origin/main `1227c36` (5 Myr steps, default density and controls, one
+at a time); [analysis/rfc0010](../analysis/rfc0010/README.md) has the method and
+[mincut_probe.json](../analysis/rfc0010/mincut_probe.json) the numbers.
+Of 542 cuts, 135 crossed craton. Floor 0.05; L counts admissible cuts whose line touches
+no craton, and B is the craton left in the operational band (the minimum cut where
+admissible, else the flow cut) over the flow cuts', pooled:
 
-| Corridor | Craton-free and admissible | Craton in band, vs flow cut | Median residual ratio | Median length ratio |
-|---|---|---|---|---|
-| 500 km | 7 of 135 | 0.77–0.83 | 1.001–1.004 | 0.90 |
-| 1,000 km | 13 | 0.48–0.66 | 1.007–1.016 | 0.84 |
-| 1,500 km | 16 | 0.32–0.56 | 1.015–1.028 | 0.79 |
-| 2,500 km | 13 | 0.14–0.36 | 1.065–1.093 | 0.65 |
+| Corridor | Band craton-free, admissible | L | B | Median residual ratio | Median length ratio |
+|---|---|---|---|---|---|
+| 500 km | 7 of 135 | 26 (19%) | 0.85 | 1.001–1.004 | 0.87–0.89 |
+| 1,000 km | 13 | 23 (17%) | 0.73 | 1.007–1.016 | 0.80–0.83 |
+| 1,500 km | 16 | 29 (21%) | 0.69 | 1.015–1.028 | 0.75–0.78 |
+| 2,500 km | 13 | 21 (16%) | 0.78 | 1.065–1.093 | 0.62–0.64 |
 
 - The minimum cut follows the flow at least as well as the great circle: within 1,000 km
-  the residual rises about 1%, and the boundary is 16% shorter.
-- It halves the craton it crosses at 1,000 km, but rarely clears it: the size gate rejects
-  most craton-free routes, which cut off coastal slivers.
+  the residual rises about 1%, and the boundary (summed chord length of cut links) is
+  17–20% shorter.
+- It trims the craton in the operational band by about a quarter at 1,000 km, but rarely
+  clears it: the size gate rejects most craton-free routes, which cut off coastal slivers.
+- On today's layout it falls outside both of G1's building branches, as it should: this is
+  G1's control.
 - It costs at most 22 ms per cut, 33 ms with the fits.
 
 **Strength.** Per node, dimensionless, in [0, 1]:
@@ -229,10 +237,13 @@ baseline that includes RFC 0009.
 
 ## Acceptance criteria
 
-- [ ] **Gate:** RFC 0009's G1 selects a branch that builds this RFC (≥ 20%).
-- [ ] The share of successful splits whose cut line (the nodes on cut links) touches craton
-      falls by at least 50% against the matched baseline on seeds 7, 11 and 2024 over
-      1 Gyr.
+- [ ] **Gate:** RFC 0009's G1 selects a branch that builds this RFC (L ≥ 20% and
+      B ≤ 0.75).
+- [ ] Against the matched baseline on seeds 7, 11 and 2024 over 1 Gyr, both fall by at
+      least 50%: the share of successful splits whose cut line (the nodes on cut links)
+      touches craton, and the craton area in the bands of splits and failed rifts (the
+      `split_band_craton_area_m2` and `failed_rift_band_craton_area_m2` counters
+      `cratons.record_rift_cut` books).
 - [ ] Craton loss to rifting, with solution 4 sized as needed, is at most 2% of live craton
       per Gyr on average across seeds 7, 11 and 2024, and in each of the first three Gyr on
       seed 456862899 (a design target, not an Earth rate).
@@ -245,8 +256,8 @@ baseline that includes RFC 0009.
 
 ## Falsification criteria
 
-- **The flow puts regime boundaries through cratons.** If G1 finds craton-free admissible
-  routes for under 20% of craton-crossing cuts even on a mosaic, the line was never the
+- **The flow puts regime boundaries through cratons.** If G1 falls in neither building
+  branch even on a mosaic (L < 20%, or B > 0.75), the line was never the
   problem. Don't build 1; investigate why the flow's regime boundaries sit under cratons.
 - **Curved cuts change the tectonics.** If splits per Gyr, plate counts or residuals move
   past the limits above at the smallest corridor that helps, fall back to solution 4.
