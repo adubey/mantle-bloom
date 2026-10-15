@@ -153,6 +153,34 @@ Report also how fast belts disappear. If belt area falls below a third of its st
 value by 500 Myr, the mosaic won't outlast the model's sinks, and this RFC waits for the
 sink repairs (RFCs 0001, 0002, 0005).
 
+**Gate result (2026-10-15, #426).** Seeds 7, 11 and 2024 to 1 Gyr on origin/main `02d5145`,
+formation off ([analysis/rfc0009](../analysis/rfc0009/README.md)). The minimum cut uses RFC
+0010's strength, with belts at `RIFT_BELT_STRENGTH` = 0:
+
+| | Seed 7 | Seed 11 | Seed 2024 | Pooled |
+|---|---|---|---|---|
+| L / B, mosaic at the starting knobs | 9% / 0.94 | 37% / 0.83 | 33% / 0.98 | 24% / 0.91 |
+| L / B, today's layout (formation off) | 14% / 0.80 | 21% / 0.69 | 9% / 0.77 | 15% / 0.77 |
+| L / B, mosaic with 600 km belts (sweep, not the gate) | 29% / 0.90 | 42% / 0.75 | 41% / 0.75 | 38% / 0.81 |
+| Belt area at 500 Myr, of t = 0 | 5% | 19% | 34% | |
+
+- **Neither building branch.** L clears 20% pooled, but B is 0.91, against the 0.75 that
+  branch needs, and no seed passes on its own. By the rule above, RFC 0010's minimum cut
+  isn't built.
+- **Belts don't outlast the sinks.** They fall below a third of their starting area by
+  500 Myr on two seeds, so this RFC waits for RFCs 0001, 0002 and 0005. The "mosaic doesn't
+  last" falsification (every seed under a third) is narrowly missed on seed 2024.
+- **The cut does follow belts**, and a clear line is more common than on today's layout. B
+  stays high because the ±312 km failed-rift band is wider than a 300 km belt: a cut down a
+  belt still has cores on both sides of its band. Belts are also lost to remaps: a merge of
+  a belt cell with a craton cell keeps both the mark and the craton (9 M km² on seed 7 by
+  500 Myr).
+- The t = 0 seeding criteria hold: every interior with two or more nuclei has two or more
+  cores, and belts are 17% of the seeded interior.
+
+Whether to withdraw this RFC, revise it (wider or band-scaled belts, after the sink
+repairs), or keep it waiting is the project owner's decision.
+
 **Mosaic seeding (1).** For each plate, take the columns seeding uses today, but with the
 formation margin, so the two agree and the 200 Myr pulse disappears:
 `host & (Hc ≤ CRATON_HOST_MAX_HC_M) & (interior ≥ hops(CRATON_FORMATION_MARGIN_KM))`.
@@ -258,7 +286,7 @@ new collisions and rifts mark them.
 
 ## Acceptance criteria
 
-- [ ] **Gate G1** is run and reported per seed in `analysis/`, with its pinned commit, and
+- [x] **Gate G1** is run and reported per seed in `analysis/`, with its pinned commit, and
       this RFC is updated with the branch it selects.
 - [ ] At t = 0 on seeds 7, 11 and 2024, every interior large enough for two nuclei has at
       least two cores, and belts are 10–30% of the seeded interior area at the starting
