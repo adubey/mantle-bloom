@@ -172,3 +172,46 @@ no model code changed on origin/main between them and this branch. Per-seed summ
 - **Cost.** `contact_jam_factor` (including `forced_down_mask`) took 0.28% of a 100 Myr seed 7
   run at density 1 under cProfile; the buoyancy and drag changes 0.04%. Not measured at
   density 4.
+
+# Solution 2: proximity brake (issue #423, dropped)
+
+Built as the RFC specifies (PR #432, kept for history, not merged): at contested and
+jam-contact nodes, the contact drag's craton factor became the strongest `s × exp(−d / R)` over
+cratonic cells within `CRATON_BRAKE_REACH_KM` (500 km) on either plate, in place of the weaker
+side's craton at the contact node. Same probe and seeds, 5 Myr steps to 1 Gyr. The baseline is
+solution 1's replays ([solution1.json](solution1.json)): between them and this branch,
+origin/main changed only `main.py` (routes). Per-seed summaries, the reach sweep and the tap
+below are in [solution2.json](solution2.json).
+
+| Seed 7 / 11 / 2024 | Solution 1 (origin/main) | Solution 2, 500 km |
+|---|---|---|
+| Closing rate, all contacts, craton in reach / clear (cm/yr) | 1.36/1.45 · 1.41/1.45 · 1.34/1.47 | 1.38/1.48 · 1.43/1.42 · 1.32/1.47 |
+| Closing rate, continental contacts, craton in reach / clear (cm/yr) | 1.50/1.27 · 1.41/1.28 · 1.20/1.23 | 1.45/1.40 · 1.43/1.11 · 1.18/1.17 |
+| Mean plate speed, area-weighted (cm/yr) | 3.00 / 2.92 / 2.98 | 2.91 / 2.86 / 2.99 |
+| Mean plate count | 46.3 / 43.8 / 43.0 | 48.0 / 43.3 / 43.2 |
+| Largest plate, max share of surface | 19% / 31% / 22% | 18% / 31% / 22% |
+| Brake at jammed contacts, median (N/m) | 3.4 / 2.4 / 1.7 × 10¹¹ | 3.7 / 2.4 / 2.1 × 10¹¹ |
+| Fusions, roll + forced | 36 / 11 / 11 | 26 / 12 / 10 |
+| Craton-on-craton overlap at fusion, % of start | 43% / 31% / 20% | 53% / 25% / 12% |
+| Craton left at 1 Gyr, % of start | 38% / 67% / 95% | 54% / 68% / 103% |
+
+Reach sweep on seed 7 (250 / 500 / 1,000 km): mean speed 2.97 / 2.91 / 2.92 cm/yr, all-contact
+closing with craton in reach 1.40 / 1.38 / 1.35 cm/yr, craton left 37% / 54% / 58%.
+
+- **Craton contacts don't slow.** All pairs with craton in reach close −7%, +1% and −10%
+  against clear pairs, as after solution 1 (−6%, −3%, −9%). Mean plate speed moves 0 to −3%.
+- **The craton gains are noise, not the brake.** Seed 7's craton left swings from 37% to 58%
+  across reaches whose brake and speed barely differ; seeds 11 and 2024 move by a few points.
+- **Why: the proximity factor is covered by relief and the jam.** `bin/debug/tap_craton_brake_factor.py`
+  (on the PR #432 branch) tapped every brake call over 300 Myr of seed 7:
+  - the brake acts on 24% of boundary-band nodes (the contested and jam-contact nodes);
+  - mean g at those nodes is already 0.95 without c;
+  - c exceeds `max(j, relief)` at 4% of them, and raises the summed g by 1.5%.
+
+  Contact nodes near a craton are already thickened or jammed, so `max(j, relief, c)` rarely
+  changes. The brake is limited by where it acts, not how hard. Before contact there are no
+  contested nodes, so a proximity factor on them can't brake an approaching craton. This is
+  the double counting the RFC flagged.
+- **Decision (owner, 2026-10-15): drop solution 2.** Extending c to the whole converging band
+  would be a different design with its own speed risk (solutions 0 and 1 already cost 11–18%
+  of mean speed, against the 30% limit), and is not pursued.
