@@ -275,6 +275,19 @@ Two long-run corrections (2026-09):
   Each node is braked by `g = max(relief factor, craton strength)`, in [0, 1]. The earlier
   reference stress (5 × 10⁷) multiplied the relative velocity in m/s, so it resisted with
   about 10⁻⁷ of basal drag's traction and slowed nothing.
+- **Buoyant columns don't pull, and jam the contact** (RFC 0008 solution 1, #400). Each
+  subducting node pulls with its column's net negative buoyancy (`column_buoyancy_pa`),
+  `g [(ρ_m − ρ_a) Hm (1 − s) − (ρ_a − ρ_cc) Hc_cont]`, with Hc_cont its crust where
+  continental-coded and s its craton strength: continental crust holds the column up, a
+  full-strength cratonic keel is neutral (Jordan 1978), and ocean floor pulls as before. A
+  buoyant node pulls nothing; before, a terrane or craton was dragged into the trench at
+  full strength, and a keel pulled harder than ocean floor. Separately, a continental-coded
+  node on the side forced down (any node of an oceanic plate, or the lower plate of the last
+  frozen polarized front, `forced_down_mask`), in the band of a contact closing at ≥ −1 cm/yr
+  (`jam_mask`), jams with `j = clip((Hc − 15 km) / (30 km − 15 km), 0, 1)` (Cloos 1993).
+  j joins the contact drag's factor, `g = max(j, relief, craton)`, and the neighbour reads it
+  at its nearest node (`contact_jam_factor`), so both plates feel one resistance. The band
+  runs through zero closing so a contact the brake has stalled stays braked.
 
 <a id="boundary-evolution"></a>
 ## Plate motion: shift and deform (`plates.py`'s `Plate.shift`/`Plate.deform`)
@@ -1058,7 +1071,9 @@ routine per-step motion.
   with #399. Collision resistance is one
   force across the contact, and it is the weak side's deformation that sets it (Copley et
   al. 2010; Clark 2012), so craton against craton brakes both plates fully, while a craton
-  pushing into weak crust adds nothing beyond the relief term.
+  pushing into weak crust adds nothing beyond the relief term. Thick continental crust on the
+  lower plate of a polarized front also brakes both plates, through the jam factor (#400,
+  under the torque engine in "Mantle flow").
 - **Defragmentation.** `deform()` only ever adds or removes cells at the plate's boundary,
   so subduction or transform shear can carve one plate's cells into two (or more) fully
   disconnected landmasses, still carried as a single `Plate`, or strand a few cells far
