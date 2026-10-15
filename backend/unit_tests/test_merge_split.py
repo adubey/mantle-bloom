@@ -30,12 +30,12 @@ def _converging_omega_pair(rate_cm_per_yr=5.0):
     return np.array([0.0, 0.0, rate]), np.array([0.0, 0.0, -rate])
 
 
-def _converging_pair_world(seed=123):
+def _converging_pair_world(seed=123, keep_type="continental"):
     # See test_find_continental_collision_pairs_detects_close_and_converging_plates for why
     # these offsets are fractions of MERGE_CONTACT_DISTANCE_RAD rather than hardcoded angles.
     d = merge_split.MERGE_CONTACT_DISTANCE_RAD
     # Two rows each, so the contact band holds more than MERGE_MIN_CONTACT_NODES nodes.
-    keep = _test_plate(0, [1.0, 0.0, 0.0], "continental", np.linspace(-d, 0.0, 6), np.zeros(6), rows=range(2))
+    keep = _test_plate(0, [1.0, 0.0, 0.0], keep_type, np.linspace(-d, 0.0, 6), np.zeros(6), rows=range(2))
     seed_absorb = geometry.rotate_vectors(
         np.array([1.0, 0.0, 0.0])[None, :], axis=np.array([0.0, 0.0, 1.0]), angle=d * 0.3
     )[0]
@@ -1035,3 +1035,28 @@ def test_forced_merge_yields_to_a_ready_closing_rate_merge_the_same_step(monkeyp
     events = merge_split.apply_topology_changes(world, 1_000_000.0)
 
     assert sum(("merged into" in e or "fused into" in e) for e in events) == 1
+
+
+def _mixed_pair_world(keep_type: str, keep_codes):
+    """`_converging_pair_world`, with keep of nominal `keep_type` and its nodes' crust codes set
+    by `keep_codes(longitude / d)`."""
+    world = _converging_pair_world(keep_type=keep_type)
+    keep = world.plates[0]
+    points = keep.all_points_and_elevation()[0]
+    keep.set_fields_on_plate(crust_type_code=keep_codes(np.arctan2(points[:, 1], points[:, 0]) / merge_split.MERGE_CONTACT_DISTANCE_RAD))
+    return world
+
+
+def test_continental_collision_pairs_follow_each_nodes_crust_not_the_majority_type():
+    """#447: a continent riding a mostly oceanic plate collides and can fuse; a continental
+    plate whose contact is its own ocean floor doesn't."""
+    from app.elevation_lines import CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC
+
+    def terrane_at_contact(x):
+        return np.where(x > -0.5, CRUST_TYPE_CONTINENTAL, 0).astype(np.int8)
+
+    def ocean_at_contact(x):
+        return np.where(x < -0.9, 0, CRUST_TYPE_OCEANIC).astype(np.int8)
+
+    assert (0, 1) in merge_split.find_continental_collision_pairs(_mixed_pair_world("oceanic", terrane_at_contact))
+    assert merge_split.find_continental_collision_pairs(_mixed_pair_world("continental", ocean_at_contact)) == []
