@@ -10,7 +10,7 @@ implemented through ordinary issues and PRs (see [AGENTS.md](../AGENTS.md)), eac
 
 | RFC | Title | Status |
 |---|---|---|
-| [0001](0001-merge-cap-craton-loss.md) | Plate merges must not destroy cratons | Draft |
+| [0001](0001-merge-cap-craton-loss.md) | Plate merges must not destroy cratons | Accepted |
 | [0002](0002-craton-trench-attrition.md) | Cratons resist sinking: margin-dependent attrition and collision sinks | Draft |
 | [0003](0003-rifting-around-cratons.md) | Rifts go around cratons | Withdrawn (superseded by 0009, 0010) |
 | [0004](0004-proto-cratons.md) | Proto-cratons: restarting craton formation | Withdrawn (superseded by 0009) |
