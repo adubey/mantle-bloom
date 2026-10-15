@@ -57,7 +57,8 @@ RFC 0008 came later, from the same craton work. Its gate can run at any time. It
 lands with or after 0001's merge placement, since it makes craton-bearing merges more
 frequent.
 
-RFC 0004 defers a collisional formation path to a future RFC on mantle depletion.
+RFC 0009 keeps RFC 0004's deferral of a collisional formation path to a future RFC on
+mantle depletion.
 
 RFCs 0009 and 0010 replace RFC 0003, whose cut steering couldn't avoid cratons (PR #418),
 and RFC 0004. An offline probe ([`analysis/rfc0010/`](../analysis/rfc0010/README.md))
