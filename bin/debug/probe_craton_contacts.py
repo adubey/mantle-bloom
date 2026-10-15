@@ -10,7 +10,8 @@ no saved state changes. Every step, for every pair of plates in contact (any cru
 - **jam**: a contact node is jammed when it is a retreat candidate holding craton, so
   `cratons.retreat_allowed` blocks it, or when it and the neighbour's nearest node are both
   cratonic. The candidates are read before the no-craton gate: on an active polarized front
-  the frozen `run_eligible` lower-plate cells, elsewhere `boundary_context`'s `shrinkable`.
+  the frozen `run_eligible` lower-plate cells, elsewhere `boundary_context`'s `shrinkable`
+  (`collision_polarity.retreat_candidates`, shared with the model's jam test, #401).
   A pair is jammed when at least `MERGE_MIN_CONTACT_NODES` of its nodes are and it isn't
   diverging (closing >= -1 cm/yr); f is its jammed share of contact nodes;
 - **merge state**: `collision_progress` before and after `update_collision_progress`, the
@@ -60,15 +61,13 @@ from scipy.spatial import cKDTree
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
-from app import collision_polarity, cratons, lithosphere, merge_split, quad_tectonics, torque  # noqa: E402
+from app import collision_polarity, cratons, lithosphere, merge_split, torque  # noqa: E402
 from app import world as world_mod  # noqa: E402
 from app.elevation_lines import effective_is_continental_from_codes, line_spacing_rad  # noqa: E402
-from app.lithosphere_plate import CONTINENTAL_CONTESTED_RETREAT_MIN_RUN  # noqa: E402
 
 R = lithosphere.PLANET_RADIUS_M
 CM_PER_YR = 0.01 / torque.SECONDS_PER_YEAR  # m/s
 TRANSFORM_CM = 1.0
-EDGE_SPACINGS = 1.5
 FUSION_WINDOW_MYR = 50.0
 
 
@@ -78,38 +77,6 @@ def _pair(a: int, b: int) -> tuple[int, int]:
 
 def _key(pair: tuple[int, int]) -> str:
     return f"{pair[0]}-{pair[1]}"
-
-
-def retreat_candidates(world, plate, others: list, contested: np.ndarray) -> np.ndarray:
-    """`boundary_context`'s `shrinkable` before `_retreat`'s no-craton filter, with the
-    craton-free `retreatable` of an active polarized front replaced by its `run_eligible`."""
-    if plate.crust_type != "continental":
-        shrinkable = contested.copy()
-    else:
-        shrinkable = quad_tectonics.components_of_at_least(plate, contested, CONTINENTAL_CONTESTED_RETREAT_MIN_RUN)
-    frame = world.collision_polarity_frame
-    masks = frame.masks.get(plate.plate_id) if frame is not None else None
-    if masks is None or len(masks.front_id) != len(contested) or not np.array_equal(masks.node_keys, plate.cell_keys):
-        return shrinkable
-    live = {p.plate_id for p in others}
-    active = []
-    for front_id, (lower_id, upper_id) in frame.polarity.items():
-        if plate.plate_id not in (lower_id, upper_id):
-            continue
-        other_id = upper_id if lower_id == plate.plate_id else lower_id
-        other = frame.masks.get(other_id)
-        if other_id not in live or other is None:
-            continue
-        own_front, other_front = masks.front_id == front_id, other.front_id == front_id
-        if not np.any(own_front & masks.continental) or not np.any(other_front & other.continental):
-            continue
-        lower = masks if lower_id == plate.plate_id else other
-        if np.any(lower.retreatable & (lower.front_id == front_id) & lower.continental):
-            active.append(front_id)
-    if not active:
-        return shrinkable
-    nodes = np.isin(masks.front_id, active)
-    return (shrinkable & ~nodes) | (masks.run_eligible & masks.lower & nodes & masks.continental)
 
 
 class Probe:
@@ -200,9 +167,9 @@ class Probe:
                 mine = inputs.neighbor_plate_id == neighbour.plate_id
                 if np.any(mine):
                     other_craton[mine] = neighbour.collect("craton_crust_m")[inputs.neighbor_node_index[mine]]
-            candidate = retreat_candidates(world, plate, neighbours, contested)
+            candidate = collision_polarity.retreat_candidates(world.collision_polarity_frame, plate, contested)
             jammed = contact & (((candidate & (craton > 0.0))) | ((craton > 0.0) & (other_craton > 0.0)))
-            edge = inputs.dist_to_neighbor <= EDGE_SPACINGS * self.spacing
+            edge = inputs.dist_to_neighbor <= collision_polarity.CONTACT_EDGE_SPACINGS * self.spacing
             hc_cont = np.where(continental, inputs.own_hc, 0.0)
             for neighbour in neighbours:
                 mine = contact & (inputs.neighbor_plate_id == neighbour.plate_id)

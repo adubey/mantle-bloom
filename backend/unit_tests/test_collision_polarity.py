@@ -854,6 +854,30 @@ def test_run_eligible_keeps_the_cratonic_lower_candidates_retreatable_excludes()
     assert np.any(masks.retreatable)
 
 
+def test_cratonic_lower_cell_facing_ordinary_crust_counts_as_jammed_on_a_mixed_front():
+    # RFC 0008 (#401): on a front where other lower cells can still retreat, boundary_context's
+    # shrinkable is craton-filtered, so the jam test reads run_eligible instead.
+    world, lower, upper, _ = _front_with_lower_a()
+    _move(upper, _column(20), _column(19))
+    cp.observe_contacts(world, STEP_YEARS)
+    eligible = world.collision_polarity_frame.masks[lower.plate_id].retreatable.copy()
+    cratonic = np.zeros(lower.node_count(), dtype=bool)
+    cratonic[np.flatnonzero(eligible)[: np.count_nonzero(eligible) // 2]] = True
+    lower.set_fields_on_plate(craton_crust_m=np.where(cratonic, lower.collect("crustal_thickness_m"), 0.0))
+
+    frame = cp.observe_contacts(world, STEP_YEARS)
+
+    context = boundary_context(
+        world,
+        lower,
+        [upper],
+        STEP_YEARS,
+        lambda mask: quad_tectonics.components_of_at_least(lower, mask, CONTINENTAL_CONTESTED_RETREAT_MIN_RUN),
+    )
+    assert np.any(context.shrinkable) and not np.any(context.shrinkable & cratonic)
+    assert frame.contacts[(lower.plate_id, upper.plate_id)].jammed == np.count_nonzero(cratonic)
+
+
 def test_continental_terrane_on_oceanic_carrier_can_be_frozen_lower_donor():
     lower = _plate(1, _block((10, 20), (0, 50)), "oceanic")
     codes = np.full(lower.node_count(), CRUST_TYPE_CONTINENTAL, dtype=np.uint8)

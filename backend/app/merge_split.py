@@ -461,6 +461,27 @@ def find_continental_collision_pairs(world: "World") -> list[tuple[int, int]]:
     return pairs
 
 
+def find_jammed_pairs(world: "World") -> dict[tuple[int, int], float]:
+    """Plate pairs a craton jams this step (RFC 0008, #401), with f, the jammed share of their
+    contact nodes. A pair is jammed when at least MERGE_MIN_CONTACT_NODES of its contact nodes
+    are (`collision_polarity._pair_contacts`), both plates reach the contact, and its edge
+    isn't diverging: mean closing >= -TRANSFORM_RATE_THRESHOLD. A band through zero, as in
+    `torque.jam_mask`: the jam brakes a contact below +1 cm/yr, so it can't need the closing
+    `find_continental_collision_pairs` does. Read from this step's prepass frame; empty when
+    it hasn't run (a loaded save before its first step)."""
+    frame = world.collision_polarity_frame
+    if frame is None:
+        return {}
+    jammed = {}
+    for pair, contact in frame.contacts.items():
+        if contact.sides < 2 or contact.jammed < MERGE_MIN_CONTACT_NODES:
+            continue
+        closing = contact.edge_closing_rad_per_yr / contact.edge if contact.edge else 0.0
+        if closing >= -TRANSFORM_RATE_THRESHOLD:
+            jammed[pair] = contact.jammed / contact.nodes
+    return jammed
+
+
 def _collision_threshold_years(seed: int, pair: tuple[int, int]) -> float:
     """How long `pair` needs to stay continuously close-and-converging before it's eligible to
     roll for a merge (see _merge_probability for the roll itself) -- deterministic per (world
@@ -503,7 +524,12 @@ def update_collision_progress(world: "World", years: float) -> list[tuple[int, i
     re-rolled fresh, with a freshly recomputed size, on every subsequent step it stays close-
     and-converging) rather than losing credit toward a future attempt. A pair that stops being
     close-and-converging before reaching its threshold has its progress dropped entirely --
-    the collision didn't sustain, so it doesn't get partial credit toward a future one.
+    the collision didn't sustain, so it doesn't get partial credit toward a future one --
+    unless a craton jams it (`find_jammed_pairs`): a tracked jammed pair keeps accumulating,
+    and rolling, as if still converging (RFC 0008 solution 5, #401). The jam brakes a contact
+    below the closing threshold, and dropping its time then reset the clock that would fuse
+    it: 26-48% of drops were of jammed pairs, 270-955 Myr per seed to 1 Gyr (#395). A jam
+    doesn't start tracking a pair; only separating or diverging drops it.
 
     A collision *starting* isn't logged to the UI's event console (see
     apply_topology_changes) -- plates.py's tiling has every neighbor pair already touching
@@ -512,6 +538,9 @@ def update_collision_progress(world: "World", years: float) -> list[tuple[int, i
     a plate disappearing) are worth surfacing there."""
     current_pairs = find_continental_collision_pairs(world)
     current_set = set(current_pairs)
+    jammed = find_jammed_pairs(world)
+    current_pairs += [pair for pair in world.collision_progress if pair in jammed and pair not in current_set]
+    current_set.update(current_pairs)
 
     ready = []
     for pair in current_pairs:

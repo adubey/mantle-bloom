@@ -329,10 +329,10 @@ def subducting_boundary_mask(plate, inputs: BoundaryForceInputs, reach_rad: floa
     if plate.crust_type != "oceanic" or n == 0:
         return np.zeros(n, dtype=bool)
     band = inputs.dist_to_neighbor <= reach_rad
-    return band & (_closing_rad_per_yr(plate, inputs) > TRANSFORM_RATE_THRESHOLD)
+    return band & (closing_rad_per_yr(plate, inputs) > TRANSFORM_RATE_THRESHOLD)
 
 
-def _closing_rad_per_yr(plate, inputs: BoundaryForceInputs) -> np.ndarray:
+def closing_rad_per_yr(plate, inputs: BoundaryForceInputs) -> np.ndarray:
     """Per node, the closing rate toward the nearest neighbour in rad/yr, the unit
     `TRANSFORM_RATE_THRESHOLD` is in (positive = converging)."""
     v_self = np.cross(plate.omega, inputs.own_points)
@@ -380,7 +380,7 @@ def jam_mask(plate, inputs: BoundaryForceInputs, forced_down: np.ndarray, reach_
 
 
 def _jam_contact(plate, inputs: BoundaryForceInputs, reach_rad: float) -> np.ndarray:
-    return (inputs.dist_to_neighbor <= reach_rad) & (_closing_rad_per_yr(plate, inputs) >= -TRANSFORM_RATE_THRESHOLD)
+    return (inputs.dist_to_neighbor <= reach_rad) & (closing_rad_per_yr(plate, inputs) >= -TRANSFORM_RATE_THRESHOLD)
 
 
 def continental_crust_m(plate, inputs: BoundaryForceInputs) -> np.ndarray:

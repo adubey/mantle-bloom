@@ -118,6 +118,9 @@ FALLBACK_SPEED_TIE_M_PER_S = 0.001 / torque.SECONDS_PER_YEAR
 # Topology reconciliation: a stored point stays with a descendant plate whose nearest node is
 # within this many spacings of it.
 REHOME_SPACINGS = 2.0
+# A contact's closing rate is averaged over nodes this close to the other plate: its leading
+# edge, not the whole boundary-force band (RFC 0008's gate probe, #395).
+CONTACT_EDGE_SPACINGS = 1.5
 
 
 @dataclass
@@ -205,6 +208,20 @@ class PolarityFrame:
     masks: dict[int, PlateCollisionMasks]
     # front id -> (lower plate id, upper plate id), for fronts in contact this step.
     polarity: dict[int, tuple[int, int]]
+    # Sorted plate pair -> its contact this step, for RFC 0008's jam test (`PairContact`).
+    contacts: dict[tuple[int, int], "PairContact"] = field(default_factory=dict)
+
+
+@dataclass
+class PairContact:
+    """One plate pair's contact at the prepass, summed over both sides (RFC 0008, #401).
+    `merge_split.find_jammed_pairs` judges it."""
+
+    sides: int = 0  # plates that reach the other within the boundary-force band: 1 is a sliver
+    nodes: int = 0  # band or contested nodes facing the other plate
+    jammed: int = 0  # of those, nodes a craton jams (see `_pair_contacts`)
+    edge: int = 0  # nodes within CONTACT_EDGE_SPACINGS of the other plate
+    edge_closing_rad_per_yr: float = 0.0  # summed over the edge nodes; positive = converging
 
 
 @dataclass
@@ -478,12 +495,84 @@ def observe_contacts(world: "World", years: float) -> PolarityFrame:
         m.retreatable = eligible & cratons.retreat_allowed(plate)
         m.override = m.upper & contested
     frame = PolarityFrame(elapsed_years=now, masks=masks, polarity=polarity)
+    frame.contacts = _pair_contacts(frame, contacts, by_id, spacing_rad, reach_rad)
     world.collision_polarity_frame = frame
     stats["prepass_calls"] += 1
     stats["prepass_searches"] += cache.searches - searches_before
     stats["prepass_seconds"] += time.perf_counter() - start
     cache.prepass_mark = (cache.searches, cache.reused)
     return frame
+
+
+def retreat_candidates(frame: PolarityFrame, plate, contested: np.ndarray) -> np.ndarray:
+    """`plate`'s nodes that `boundary_context` would let retreat this step, before `_retreat`'s
+    no-craton filter (`cratons.retreat_allowed`): its `shrinkable`, with an active polarized
+    front's craton-free `retreatable` replaced by `run_eligible`. On such a front
+    `shrinkable` is already craton-filtered, so a cratonic lower cell facing ordinary crust
+    would otherwise never count as jammed (RFC 0008, #395)."""
+    from .quad_tectonics import components_of_at_least
+
+    if plate.crust_type != "continental":
+        shrinkable = contested.copy()
+    else:
+        shrinkable = components_of_at_least(plate, contested, CONTINENTAL_CONTESTED_RETREAT_MIN_RUN)
+    masks = frame.masks[plate.plate_id]
+    active = [
+        front_id
+        for front_id, (lower_id, upper_id) in frame.polarity.items()
+        if plate.plate_id in (lower_id, upper_id) and _front_retreats(frame, front_id, lower_id, upper_id)
+    ]
+    if not active:
+        return shrinkable
+    nodes = np.isin(masks.front_id, active)
+    return (shrinkable & ~nodes) | (masks.run_eligible & masks.lower & nodes & masks.continental)
+
+
+def _front_retreats(frame: PolarityFrame, front_id: int, lower_id: int, upper_id: int) -> bool:
+    """Whether `boundary_context` treats the front as polarized: continental on the upper side,
+    with some continental lower cell free to retreat. Otherwise it falls back to bilateral
+    retreat."""
+    lower, upper = frame.masks.get(lower_id), frame.masks.get(upper_id)
+    if lower is None or upper is None:
+        return False
+    on_lower, on_upper = lower.front_id == front_id, upper.front_id == front_id
+    return bool(np.any(on_upper & upper.continental) and np.any(lower.retreatable & on_lower & lower.continental))
+
+
+def _pair_contacts(
+    frame: PolarityFrame, contacts: dict[int, _Contact], by_id: dict, spacing_rad: float, reach_rad: float
+) -> dict[tuple[int, int], PairContact]:
+    """Every plate pair's contact this step, with RFC 0008's jammed nodes (#395, #401). A
+    contact node (in the boundary-force band, or contested) is jammed when it holds craton
+    and either retreat would consume it, which `cratons.retreat_allowed` forbids, or the
+    neighbour's nearest node holds craton too. Read here because this is where the step's
+    retreat is decided: after the shift, before any plate deforms."""
+    out: dict[tuple[int, int], PairContact] = defaultdict(PairContact)
+    for pid, c in contacts.items():
+        inputs = c.inputs
+        owner = inputs.neighbor_plate_id
+        contact = ((inputs.dist_to_neighbor <= reach_rad) | c.contested) & (owner >= 0)
+        if not np.any(contact):
+            continue
+        other_ids = np.unique(owner[contact])
+        other_craton = np.zeros(len(owner), dtype=bool)
+        for other_id in other_ids:
+            mine = owner == other_id
+            other_craton[mine] = by_id[int(other_id)].collect("craton_crust_m")[inputs.neighbor_node_index[mine]] > 0.0
+        candidate = retreat_candidates(frame, c.plate, c.contested)
+        jammed = contact & (inputs.own_craton_m > 0.0) & (candidate | other_craton)
+        edge = contact & (inputs.dist_to_neighbor <= CONTACT_EDGE_SPACINGS * spacing_rad)
+        closing = torque.closing_rad_per_yr(c.plate, inputs)
+        for other_id in other_ids:
+            mine = contact & (owner == other_id)
+            pair = (pid, int(other_id)) if pid < other_id else (int(other_id), pid)
+            record = out[pair]
+            record.sides += 1
+            record.nodes += int(np.count_nonzero(mine))
+            record.jammed += int(np.count_nonzero(mine & jammed))
+            record.edge += int(np.count_nonzero(mine & edge))
+            record.edge_closing_rad_per_yr += float(closing[mine & edge].sum())
+    return dict(out)
 
 
 def finish_deform_pass(world: "World") -> None:
