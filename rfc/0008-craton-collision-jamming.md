@@ -138,11 +138,11 @@ the thickest, most buoyant column, and one that never subducts.
    resistance through solution 0's contact drag. The plate slows as its
    buoyant margin, and then its craton, reaches the trench. This is the mechanism the
    literature supports, and it fixes the cratonic-keel pull, which is backwards today.
-2. **A proximity brake (recommended, behind the gate).** At collision contacts, the craton
-   factor of the brake reads craton within `CRATON_BRAKE_REACH_KM` of the contact on
-   *either* side, weighted by distance. That replaces the weaker side's craton at the contact
-   node. A craton approaching a front then slows it before it arrives, and a craton
-   indenting weak crust brakes too.
+2. **A proximity brake (recommended, behind the gate; dropped after measurement, #423).** At
+   collision contacts, the craton factor of the brake reads craton within
+   `CRATON_BRAKE_REACH_KM` of the contact on *either* side, weighted by distance. That
+   replaces the weaker side's craton at the contact node. A craton approaching a front then
+   slows it before it arrives, and a craton indenting weak crust brakes too.
    - It departs from the reasoning in `torque.py` that collision resistance is set by the
      weak side's deformation [[Copley et al., 2010]](#ref-copley2010), which the relief term
      already carries. Its basis is a design choice: a strong block close to the front leaves
@@ -245,8 +245,9 @@ These are the baseline for the acceptance criteria and select the variants:
 - Build 0, 1, 5 and 6. Solution 1's resistance is tuned: the buoyant-pull share is above 1%
   on every seed. The loss criterion stays: J is above 5% on every seed, and jams cover far
   more than 5% of collision length, so the "jams are rare" falsification isn't met.
-- Solution 2 is decided after 0 and 1, as the table says. On the baseline, craton contacts
-  don't close more slowly (the brake is inert: a median 2.5–7.8 × 10⁴ N/m at jammed contacts).
+- Solution 2 is decided after 0 and 1, as the table says ("Solution 2 result", below). On the
+  baseline, craton contacts don't close more slowly (the brake is inert: a median
+  2.5–7.8 × 10⁴ N/m at jammed contacts).
 - Craton lost in fusions equals each seed's `delaminated_m3` share. So the merge cap is
   almost the whole delamination sink, which answers the question RFC 0001's gate asks. 91
   of 101 fusions were of a pair jammed at the time, and the craton-on-craton overlap they
@@ -255,6 +256,23 @@ These are the baseline for the acceptance criteria and select the variants:
 - At the contacts' own closing rates (about 1.5 cm/yr) the contact drag gives a median of
   0.8–0.9 × 10¹² N/m at jammed contacts, just under the 10¹²–10¹³ acceptance band (p90
   1.8–2.2 × 10¹²). The force criterion is read after 0 and 1, at the slowed rates.
+
+**Solution 2 result (2026-10-15, #423): dropped.** After solution 1, contacts with craton in
+reach closed within 10% of craton-free ones on every seed (−6%, −3%, −9%), so the gate
+selected solution 2. It was built as designed below (PR #432, kept for history) and replayed on
+seeds 7, 11 and 2024 to 1 Gyr ([analysis/rfc0008](../analysis/rfc0008/README.md#solution-2-proximity-brake-issue-423-dropped)):
+
+- craton contacts still close within 10% of clear ones (−7%, +1%, −10%), and mean plate speed
+  moves 0 to −3%; a 250 / 1,000 km reach on seed 7 changes neither;
+- c is almost entirely covered by the relief and jam terms. Over 300 Myr of seed 7 the brake
+  acts on 24% of boundary-band nodes, where mean g is already 0.95; c exceeds `max(j, relief)`
+  at 4% of them and raises the summed g by 1.5%. The brake is limited by where it acts, not
+  how hard, and before contact there are no contested nodes for c to act on.
+
+That is the double counting this RFC flagged (Assumptions; Falsification, "drop solution 2
+first"). The owner dropped solution 2. The brake keeps today's weaker-side craton factor
+(`contact_craton_m`). The closing-rate acceptance criterion now rests on solutions 0, 1, 5 and 6,
+and is read at the finish runs.
 
 **Slowing: buoyant columns (solution 1).** For each node in `subducting_boundary_mask`, a
 net buoyancy per unit area:
@@ -328,7 +346,7 @@ only oceanic plates. A continental plate's lower-plate side at a polarized front
 (`collision_polarity`) already gets the collision brake. Extending slab pull to continental
 plates' oceanic margins is out of scope (Assumptions).
 
-**Slowing: proximity brake (solution 2, if the gate selects it).** For each contested node in
+**Slowing: proximity brake (solution 2; dropped, #423).** For each contested node in
 the collision mask, and each jam-mask node:
 
 `c = max(own, other)`, where `own = max over own cratonic cells within R of s × exp(−d / R)`
@@ -405,7 +423,7 @@ save's jammed pairs start their hazard on the first step after loading. No new p
 | `JAM_MIN_CRUST_M` | 15,000 m | Crust > ~15 km jams subduction [[Cloos, 1993]](#ref-cloos1993) | Fixed |
 | `JAM_FULL_CRUST_M` | 30,000 m | 30 km continental crust on 100 km lithosphere resists subduction [[Cloos, 1993]](#ref-cloos1993) | Sensitivity at 25 and 35 km |
 | Keel neutrality (factor `1 − s`) | full at s = 1 | Isopycnic tectosphere [[Jordan, 1978]](#ref-jordan1978) | Sensitivity with `1 − 0.5 s` |
-| `CRATON_BRAKE_REACH_KM` (solution 2) | 500 km | Design choice: `CRATON_FORMATION_MARGIN_KM`, how far inside a margin cratons form | Sweep 250–1,000 km |
+| `CRATON_BRAKE_REACH_KM` (solution 2) | 500 km | Design choice: `CRATON_FORMATION_MARGIN_KM`, how far inside a margin cratons form | Dropped with solution 2 (#423); 250–1,000 km measured |
 | `CONTACT_RESISTANCE_N_PER_M` | 5 × 10¹² N/m | Himalaya–Tibet resisting force [[Copley et al., 2010]](#ref-copley2010) | Sensitivity at 2.5 and 10 × 10¹² |
 | v_ref | 4 cm/yr | Post-collision India–Asia convergence [[Copley et al., 2010]](#ref-copley2010) | Fixed (it trades off with the force) |
 | `CRATON_JAM_GAP_MYR` | 5 Myr | Design choice: one tuning step, so a jam isn't split by a single unjammed step | Sensitivity at 2 and 10 Myr |
@@ -497,8 +515,9 @@ plus a regenerated seed 456862899 to 3 Gyr, one at a time. Watch:
   real for all continental collisions, not only cratonic ones. Plate speeds near collisions
   will drop on every seed, so the acceptance runs bound mean plate speed. Copley's force is
   one modern collision, and v_ref trades off against it.
-- **The proximity brake is a design choice**, not a published mechanism, and it may double
-  count the relief term. It's gated, and falsifiable (below).
+- **The proximity brake was a design choice**, not a published mechanism, and it risked double
+  counting the relief term. Measured, it did: relief and the jam covered it, and it was dropped
+  (#423).
 - **Fusion raises plate-size variance.** Locks bypass the supercontinent size gate, so large
   plates may grow faster. The acceptance runs watch it.
 
