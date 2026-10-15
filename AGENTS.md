@@ -100,3 +100,5 @@ Run from the repo root (or worktree root).
 - **PRs:** a `## Summary` that explains what changed and why, with replay numbers in a
   table when the model moved, then `Closes #<N>`. Add a `## Review fixes` section when
   addressing review comments.
+- **Links in chats:** when mentioning a PR or another chat in a chat message, include a
+  clickable link to it rather than plain text.
