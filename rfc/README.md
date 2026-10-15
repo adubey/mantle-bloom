@@ -18,7 +18,7 @@ implemented through ordinary issues and PRs (see [AGENTS.md](../AGENTS.md)), eac
 | [0006](0006-intra-oceanic-arcs.md) | Intra-oceanic arcs: new continent from the ocean | Draft |
 | [0007](0007-mantle-plumes-and-plateaus.md) | Mantle plumes: oceanic plateaus, flood basalts and hotspot tracks | Draft |
 | [0008](0008-craton-collision-jamming.md) | Cratons jam collisions: braking and fusion | Accepted |
-| [0009](0009-craton-mosaic.md) | Cratons as a mosaic: discrete cores and lasting weak belts | Draft |
+| [0009](0009-craton-mosaic.md) | Cratons as a mosaic: discrete cores and lasting weak belts | Accepted |
 | [0010](0010-rifts-follow-weak-lithosphere.md) | Rifts follow weak lithosphere | Draft |
 
 RFCs 0001–0007 come from one investigation: a 19.2 Gyr run (seed 456862899) that lost

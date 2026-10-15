@@ -1,8 +1,8 @@
 # RFC 0009: Cratons as a mosaic: discrete cores and lasting weak belts
 
-- **Status:** Draft
+- **Status:** Accepted (2026-10-15)
 - **Date:** 2026-10-15
-- **Related:** #274 (cratons), #389 (RFC 0003 tracking), #409 (formation and ratchet
+- **Related:** #427 (tracking), #426 (gate G1), #274 (cratons), #389 (RFC 0003 tracking), #409 (formation and ratchet
   diagnosis), #411; PR #418 (RFC 0003 solution 1); RFCs
   [0003](0003-rifting-around-cratons.md) and [0004](0004-proto-cratons.md) (both
   superseded by this RFC and [0010](0010-rifts-follow-weak-lithosphere.md)),
