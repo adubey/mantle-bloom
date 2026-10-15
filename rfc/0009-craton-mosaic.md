@@ -273,11 +273,12 @@ generator:
   plates mixed), and replays both to 500 Myr.
 - The probe also records active plate count and overlap area at each 100 Myr checkpoint,
   plus cumulative successful splits and merges. On every seed, G2 passes only if ledgers
-  balance, genuine continental area at 500 Myr stays within 10% of the unmixed run, and each
-  of those four measures stays within 20% of its same-seed unmixed value (for split and
-  merge counts, compare cumulative totals through 500 Myr). The 20% bound is a design
-  threshold, not a literature constraint. If any check fails, fix the responsible call sites
-  or diagnose the changed runtime behavior and rerun G2 before choosing the architecture.
+  balance, genuine continental area at 500 Myr stays within 10% of the unmixed run, active
+  plate count at each checkpoint and cumulative split and merge totals through 500 Myr stay
+  within 20% of the same-seed unmixed run, and overlap area differs by no more than 5
+  percentage points of surface area at each checkpoint. These are design thresholds, not
+  literature constraints. If any check fails, fix the responsible call sites or diagnose the
+  changed runtime behavior and rerun G2 before choosing the architecture.
 - If mixed plates still fail after that work, use a defined single-type fallback rather than
   an infinite traversal cost: assign one continental plate to each connected continent,
   then partition each connected ocean component among the remaining oceanic plates. Reserve
