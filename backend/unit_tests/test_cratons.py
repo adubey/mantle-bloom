@@ -247,7 +247,7 @@ def test_rift_stretch_draws_less_from_a_craton_and_books_its_thinning(monkeypatc
 def _retreat_ctx(plate, shrinkable, accrete):
     n = plate.node_count()
     return SimpleNamespace(
-        shrinkable=shrinkable, accrete=accrete, spacing_rad=SPACING,
+        shrinkable=shrinkable, accrete=accrete, terrane=np.zeros(n, dtype=bool), spacing_rad=SPACING,
         oceanic_override_retreat_budget_hc=np.full(1, np.inf), own_points=plate.all_points_and_elevation()[0],
         inputs=SimpleNamespace(neighbor_plate_id=np.full(n, -1), direction_to_neighbor=np.zeros((n, 3))), neighbours=[],
         suture_upper_plate_id=np.full(n, -1), suture_hm_subduct=np.zeros(n, dtype=bool),
@@ -355,7 +355,7 @@ def test_a_relocated_terrane_keeps_its_craton_and_material_on_its_new_footprint_
     craton_before = _volume(plate, "craton_crust_m")
     material_before = _volume(plate, "continental_material_m")
 
-    quad_tectonics._accrete_onto_survivors(plate, donors, ~donors, world)
+    quad_tectonics._accrete_onto_survivors(plate, donors, ~donors, world, terranes=donors)
 
     survivors = ~donors
     terrane = (plate.collect("crust_type_code") == CRUST_TYPE_CONTINENTAL) & survivors

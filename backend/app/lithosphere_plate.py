@@ -321,6 +321,9 @@ class BoundaryContext:
     contested: np.ndarray
     shrinkable: np.ndarray
     accrete: np.ndarray
+    # Continental cells dragged in behind their own plate's slab (torque.down_going_side): a
+    # terrane is conserved as a suture donor rather than subducting (issues #253, #447).
+    terrane: np.ndarray
     closing_rate: np.ndarray
     arc_band: np.ndarray
     arc_intensity: np.ndarray
@@ -338,13 +341,18 @@ class BoundaryContext:
 
 
 def continental_arc_band(plate: Plate, inputs: torque.BoundaryForceInputs, closing_rate: np.ndarray) -> np.ndarray:
-    """A continental plate's own nodes within reach of a converging *oceanic* neighbour plate
-    -- the arc band `boundary_context` thickens and grows arc crust on. A model cue, not an
-    observed slab: it follows continental ownership, an oceanic neighbour and positive
-    closing, with no independent test of which way the slab dips."""
-    if plate.crust_type != "continental":
-        return np.zeros(len(inputs.own_points), dtype=bool)
-    return inputs.neighbor_is_oceanic & np.isfinite(inputs.dist_to_neighbor) & (closing_rate > rheology.ARC_MIN_CONVERGENCE_M_PER_S)
+    """A plate's own continental-coded nodes within reach of a converging *oceanic* neighbour
+    node -- the arc band `boundary_context` thickens and grows arc crust on. A model cue, not
+    an observed slab: it follows continental crust, an oceanic neighbour and positive
+    closing, with no independent test of which way the slab dips. Each node's own crust
+    decides, not its plate's majority type, so a continental margin on a mostly oceanic plate
+    grows an arc too (RFC 0009, #447)."""
+    return (
+        torque.own_is_continental(plate, inputs)
+        & inputs.neighbor_is_oceanic
+        & np.isfinite(inputs.dist_to_neighbor)
+        & (closing_rate > rheology.ARC_MIN_CONVERGENCE_M_PER_S)
+    )
 
 
 def boundary_context(
@@ -367,17 +375,18 @@ def boundary_context(
     count area, not nodes."""
     own_points, _ = plate.all_points_and_elevation()
     hc_all = plate.collect("crustal_thickness_m")
+    continental = effective_is_continental_from_codes(plate.collect("crust_type_code"), plate.crust_type == "continental")
 
     # Volume-budget growth gate -- see CONTINENTAL_AREA_BUDGET_MULT. Continental crust
     # only: oceanic footprint is already bounded by subduction. Over budget -> this step
     # grows no new areal crust, but still retreats / thins / thickens toward the budget.
-    suppress_growth = False
-    if plate.crust_type == "continental":
-        genuine = hc_all >= CONTINENTAL_BUDGET_HC_FRACTION * lithosphere.REFERENCE_HC_CONTINENTAL_M
-        if np.ndim(node_weight) == 0:
-            suppress_growth = len(own_points) > CONTINENTAL_AREA_BUDGET_MULT * int(np.count_nonzero(genuine))
-        else:
-            suppress_growth = float(np.sum(node_weight)) > CONTINENTAL_AREA_BUDGET_MULT * float(np.sum(node_weight[genuine]))
+    # The plate's continental-coded area against its genuine part: its ocean floor is no part
+    # of the continent's budget (RFC 0009, #447).
+    weight = np.broadcast_to(node_weight, hc_all.shape)
+    genuine = continental & (hc_all >= CONTINENTAL_BUDGET_HC_FRACTION * lithosphere.REFERENCE_HC_CONTINENTAL_M)
+    suppress_growth = bool(np.any(continental)) and float(np.sum(weight[continental])) > CONTINENTAL_AREA_BUDGET_MULT * float(
+        np.sum(weight[genuine])
+    )
 
     spacing_rad = line_spacing_rad(world.node_density)
     reach_rad = torque.BOUNDARY_FORCE_REACH_MULTIPLIER * spacing_rad
@@ -421,11 +430,9 @@ def boundary_context(
     # column's volume thrust onto the plate's own leading edge -- see
     # SUTURE_ACCRETION_SPREAD_NODES). Envelope fuzz (a lone contested node) still can't
     # nibble a stable margin. See CONTINENTAL_CONTESTED_RETREAT_MIN_RUN for the ratchet /
-    # frozen-overlap this breaks.
-    if plate.crust_type != "continental":
-        shrinkable = contested
-    else:
-        shrinkable = continental_retreat_runs(contested)
+    # frozen-overlap this breaks. Each node follows its own crust's rule, not the plate's
+    # majority type (RFC 0009, #447).
+    shrinkable = (contested & ~continental) | continental_retreat_runs(contested & continental)
 
     # Apply frozen continental-collision fronts independently. The prepass stores each
     # side's retreatability in its original node order, before any plate can deform.
@@ -485,16 +492,13 @@ def boundary_context(
 
     # Continental suture retreat conserves the consumed column's volume by accreting it
     # onto this plate's own leading edge; a retreat where the overriding neighbour is
-    # *oceanic* does not -- that column subducts and is lost. Oceanic self-plates never
-    # accrete.
-    if plate.crust_type == "continental":
-        accrete = shrinkable & ~inputs.neighbor_is_oceanic
-    else:
-        accrete = np.zeros_like(shrinkable)
+    # *oceanic* does not -- that column subducts and is lost. Oceanic crust never accretes.
+    accrete = shrinkable & continental & ~inputs.neighbor_is_oceanic
     # A polarized front's lower-plate cell is a suture donor whatever its nearest neighbour
     # is: at a triple junction that can be an oceanic third plate, and the cell must still
     # transfer to its frozen upper plate rather than subduct or spend the #177 budget.
     accrete |= suture_hm_subduct
+    terrane = continental & torque.down_going_side(plate, inputs, reach_rad)
 
     # Continental arc band: this plate's own nodes within `reach_rad` of a *converging
     # oceanic* neighbour -- the volcanic arc + accreted forearc / underplated wedge sits
@@ -504,9 +508,7 @@ def boundary_context(
     # Feeds both the magmatic Hc thickening and the arc-crust growth seed. See
     # ARC_MARGIN_SEED_HC_M.
     arc_band = continental_arc_band(plate, inputs, closing_rate)
-    arc_intensity = np.zeros(len(own_points))
-    if plate.crust_type == "continental":
-        arc_intensity = np.where(arc_band, np.clip(1.0 - 0.7 * (inputs.dist_to_neighbor / reach_rad), 0.3, 1.0), 0.0)
+    arc_intensity = np.where(arc_band, np.clip(1.0 - 0.7 * (inputs.dist_to_neighbor / reach_rad), 0.3, 1.0), 0.0)
 
     years_myr = years / 1_000_000.0
 
@@ -515,7 +517,7 @@ def boundary_context(
     # whole plate, computed once here (mirrors the per-node calculation in
     # `deform_columns`) into a shared budget the oceanic-override retreats spend down in place.
     oceanic_override_retreat_budget_hc = np.zeros(1)
-    if plate.crust_type == "continental" and np.any(arc_band):
+    if np.any(arc_band):
         hm_all = plate.collect("mantle_lithosphere_thickness_m")
         grown_hc, _ = rheology.apply_arc_magmatic_thickening(
             hc_all[arc_band], hm_all[arc_band], closing_rate[arc_band], years_myr, arc_intensity[arc_band],
@@ -544,7 +546,7 @@ def boundary_context(
 
     fault_noise = (
         SphereNoise(np.random.default_rng((world.seed, plate.plate_id, 9001)), octaves=3, base_freq=9.0)
-        if plate.crust_type == "continental"
+        if np.any(continental)
         else None
     )
 
@@ -560,6 +562,7 @@ def boundary_context(
         contested=contested,
         shrinkable=shrinkable,
         accrete=accrete,
+        terrane=terrane,
         closing_rate=closing_rate,
         arc_band=arc_band,
         arc_intensity=arc_intensity,
@@ -672,7 +675,9 @@ def deform_columns(
     # would have predicted, because erosion's own contribution was still baked into
     # the *un-clipped* portion of `elevation` between tectonic uplift events -- the
     # fix is this delta, not forcing elevation back to a bare isostasy readout).
-    rho_c = lithosphere.crust_density(plate.crust_type)
+    # Each node floats at its own crust's density (RFC 0009, #447), not the plate's nominal one.
+    rho_c = lithosphere.node_crust_density(codes0, plate.crust_type)
+    continental0 = effective_is_continental_from_codes(codes0, plate.crust_type == "continental")
     elevation_before = lithosphere.isostatic_elevation(hc, hm, rho_c)
 
     # The band that plastically thickens: the whole converging band at
@@ -691,7 +696,7 @@ def deform_columns(
     if np.any(thicken):
         fault_factor = (
             np.where(
-                ctx.fault_noise.sample(local_xyz()) < -0.15,
+                continental0 & (ctx.fault_noise.sample(local_xyz()) < -0.15),
                 rheology.REVERSE_FAULT_VALLEY_UPLIFT_FACTOR,
                 1.0,
             )
@@ -767,9 +772,8 @@ def deform_columns(
         hc[arc_band], hm[arc_band] = rheology.apply_arc_magmatic_thickening(
             hc[arc_band], hm[arc_band], closing_rate[arc_band], years_myr, arc_intensity[arc_band]
         )
-        continental_arc = effective_is_continental_from_codes(codes0, plate.crust_type == "continental")
         juvenile = np.where(
-            arc_band & continental_arc, np.maximum(hc - hc_before_arc, 0.0), 0.0
+            arc_band & continental0, np.maximum(hc - hc_before_arc, 0.0), 0.0
         )
         continental_material += juvenile
         continental_ledger.record(
@@ -836,9 +840,8 @@ def deform_columns(
             )
             hc[magmatic_band] = new_hc_mag
             hm[magmatic_band] = new_hm_mag
-            continental_now = effective_is_continental_from_codes(codes0, plate.crust_type == "continental")
             juvenile = np.where(
-                magmatic_band & continental_now,
+                magmatic_band & continental0,
                 np.maximum(hc - hc_before_rift_magmatism, 0.0),
                 0.0,
             )
@@ -856,9 +859,9 @@ def deform_columns(
 
     prior_age = fields["divergent_age_myr"]
     new_age = np.where(divergent, prior_age + years_myr, 0.0)
-    if plate.crust_type == "oceanic":
-        oceanic_now = ~effective_is_continental_from_codes(codes0, False)
-        hm = rheology.relax_oceanic_mantle_lithosphere(hm, oceanic_now, years_myr)
+    # Ocean floor cools wherever it is, including on a mostly continental plate (#447).
+    if not np.all(continental0):
+        hm = rheology.relax_oceanic_mantle_lithosphere(hm, ~continental0, years_myr)
         if world.debug_diagnostics:
             phase_budget.record(world, plate, "oceanic_cooling_relaxation", checkpoint_hc, checkpoint_hm, codes0, hc, hm, codes0, **budget_areas)
             checkpoint_hc, checkpoint_hm = hc.copy(), hm.copy()
@@ -929,15 +932,14 @@ def deform_columns(
 
     new_elevation = rheology.clip_elevation_bounds(elevation - debt_relief + (elevation_after - elevation_before) + transform_uplift)
     if np.any(melting):
-        # The delta above used this plate's single nominal `rho_c` for both
-        # `elevation_before`/`elevation_after` -- fine for every ordinary node, whose
-        # crust_type_code is still CRUST_TYPE_INHERIT, but wrong for a node that just
-        # melted into the *other* type (e.g. a continental plate's drowned margin
-        # melting through to real oceanic crust): its fresh Hc/Hm reference column
-        # should float at the density of what it actually is now, not the plate's own
-        # nominal density. This is a brand-new column with no prior erosion history to
-        # preserve (same "hard reset, not a delta" character the Hc/Hm reset above
-        # already has), so read it exactly rather than folding it into the delta.
+        # The delta above used each node's crust density *before* this step for both
+        # `elevation_before`/`elevation_after` -- right for every node whose type didn't
+        # change, but wrong for a node that just melted into the *other* type (e.g. a
+        # continental plate's drowned margin melting through to real oceanic crust): its
+        # fresh Hc/Hm reference column should float at the density of what it actually is
+        # now. This is a brand-new column with no prior erosion history to preserve (same
+        # "hard reset, not a delta" character the Hc/Hm reset above already has), so read it
+        # exactly rather than folding it into the delta.
         melt_rho_c = lithosphere.node_crust_density(crust_type_code[melting], plate.crust_type)
         new_elevation[melting] = rheology.clip_elevation_bounds(lithosphere.isostatic_elevation(hc[melting], hm[melting], melt_rho_c))
 
@@ -952,12 +954,10 @@ def deform_columns(
     # fault families along every boundary in the elevReason view.
     reason = fields["elev_change_reason"].copy()
     moved = np.abs(new_elevation - elevation) >= ELEV_CHANGE_MIN_DELTA_M
-    if plate.crust_type == "continental":
-        reason[convergent & moved & ~neighbor_oceanic] = ELEV_CHANGE_COLLISION
-        reason[convergent & moved & neighbor_oceanic] = ELEV_CHANGE_SUBDUCTION_ARC
-        reason[arc_band & moved] = ELEV_CHANGE_SUBDUCTION_ARC
-    else:
-        reason[convergent & moved] = ELEV_CHANGE_TRENCH
+    reason[convergent & moved & continental0 & ~neighbor_oceanic] = ELEV_CHANGE_COLLISION
+    reason[convergent & moved & continental0 & neighbor_oceanic] = ELEV_CHANGE_SUBDUCTION_ARC
+    reason[arc_band & moved] = ELEV_CHANGE_SUBDUCTION_ARC
+    reason[convergent & moved & ~continental0] = ELEV_CHANGE_TRENCH
     reason[divergent & moved] = ELEV_CHANGE_RIFT
     # Gated on transform_uplift itself, not just band membership -- issue #189
     # follow-up's debt-decay term can move a transform-band node's elevation on its own

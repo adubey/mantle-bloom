@@ -268,15 +268,13 @@ def _shortening_accommodation(
 ):
     """`deform_columns`' `accommodate` hook: carry the convergent band's demanded strain into
     the plate's continental interior with `shortening.ring_cascade`, book it, and return the
-    strain each cell takes up. A continental plate routes through all of its cells; an oceanic
-    plate only through its continental terranes, its oceanic cells taking up their own demand
-    in place. None for an oceanic plate with no continental crust."""
+    strain each cell takes up. Shortening routes through the plate's continental cells only;
+    its oceanic cells take up their own demand in place, whatever the plate's majority type
+    (RFC 0009, #447). None for a plate with no continental crust."""
     codes = plate.collect("crust_type_code")
     host = effective_is_continental_from_codes(codes, plate.crust_type == "continental")
     if not np.any(host):
         return None
-    if plate.crust_type == "continental":
-        host = np.ones(len(host), dtype=bool)
 
     def accommodate(strain: np.ndarray, hc: np.ndarray, hm: np.ndarray) -> np.ndarray:
         demand = shortening.demand_m2(strain, areas, spacing_rad)
@@ -440,22 +438,25 @@ def _retreat(
     has_probe = probes >= 0
     safe_probes = np.where(has_probe, probes, 0)
     budget_hc = ctx.oceanic_override_retreat_budget_hc
+    codes = plate.collect("crust_type_code")
+    continental = effective_is_continental_from_codes(codes, plate.crust_type == "continental")
+    # A continental terrane (`ctx.terrane`, dragged in behind its own plate's slab) keeps being
+    # continental: it retreats as a suture donor, its crust conserved, rather than subducting
+    # (issue #253). Any other
+    # continental cell overridden by an oceanic neighbour is a margin under that neighbour,
+    # held to the #177 budget below. Before #447 the plate's majority type chose the rule for
+    # all its continental cells.
+    terrane = ctx.terrane
     # Boundary retreat never consumes a craton cell whole (cratons.retreat_allowed, #340). At a
     # collision front it jams; at a trench its exposed edge wears back by subduction erosion
     # first, and the cell retreats once no craton is left.
     if years > 0.0 and np.any(ctx.shrinkable & (plate.collect("craton_crust_m") > 0.0)):
-        codes = plate.collect("crust_type_code")
-        terrane = (
-            effective_is_continental_from_codes(codes, False) if plate.crust_type == "oceanic" else np.zeros(n, dtype=bool)
-        )
         trench = ctx.shrinkable & ~(ctx.accrete | terrane) & np.any(np.all(~has_probe, axis=2), axis=1)
         # A continental margin under an oceanic neighbour subducts only as much as this
         # step's arc magmatism creates (#177), and attrition is part of that.
         node_area = lithosphere.node_area_m2(ctx.spacing_rad)
-        cap = max(float(budget_hc[0]), 0.0) * node_area if plate.crust_type == "continental" else None
-        worn = cratons.attrite(world, plate, trench, years, cap)
-        if plate.crust_type == "continental":
-            budget_hc[0] -= worn / node_area
+        worn = cratons.attrite(world, plate, trench, years, max(float(budget_hc[0]), 0.0) * node_area)
+        budget_hc[0] -= worn / node_area
     retreatable = ctx.shrinkable & cratons.retreat_allowed(plate)
     if not np.any(retreatable):
         return survivors
@@ -470,16 +471,15 @@ def _retreat(
         exposed = np.flatnonzero(retreatable & ~removed & np.any(np.all(open_half, axis=2), axis=1))
         take = np.zeros(n, dtype=bool)
         take[exposed[:remaining]] = True
-        if plate.crust_type == "continental":
-            # Issue #177: a continental passive margin overridden by an oceanic neighbour may
-            # only subduct as much volume as this step's arc magmatism creates (see
-            # lithosphere_plate.OCEANIC_OVERRIDE_RETREAT_BUDGET_MULTIPLIER).
-            override = np.flatnonzero(take & ~ctx.accrete)
-            cost = np.cumsum(hc[override] * weights[override])
-            allowed = cost <= max(float(budget_hc[0]), 0.0)
-            take[override[~allowed]] = False
-            if np.any(allowed):
-                budget_hc[0] -= float(cost[allowed][-1])
+        # Issue #177: a continental passive margin overridden by an oceanic neighbour may
+        # only subduct as much volume as this step's arc magmatism creates (see
+        # lithosphere_plate.OCEANIC_OVERRIDE_RETREAT_BUDGET_MULTIPLIER).
+        override = np.flatnonzero(take & continental & ~(ctx.accrete | terrane))
+        cost = np.cumsum(hc[override] * weights[override])
+        allowed = cost <= max(float(budget_hc[0]), 0.0)
+        take[override[~allowed]] = False
+        if np.any(allowed):
+            budget_hc[0] -= float(cost[allowed][-1])
         chosen = np.flatnonzero(take)
         if not len(chosen):
             break
@@ -487,19 +487,13 @@ def _retreat(
         remaining -= len(chosen)
         if remaining <= 0:
             break
-    if plate.crust_type == "oceanic" and remaining > 0:
-        removed |= _carve_interior(plate, retreatable & ~removed, ~has_probe | removed[safe_probes], remaining)
+    if remaining > 0 and not np.all(continental):
+        removed |= _carve_interior(plate, retreatable & ~removed & ~continental, ~has_probe | removed[safe_probes], remaining)
     if not np.any(removed):
         return survivors
 
     own_points = ctx.own_points
     world.record_removed_points(own_points[removed], plate.plate_id)
-    codes = plate.collect("crust_type_code")
-    continental = effective_is_continental_from_codes(codes, plate.crust_type == "continental")
-    # A continental terrane keeps being continental even when it rides an oceanic plate.
-    # Treat those cells like the explicit continent-continent suture donors instead of
-    # subducting them with their nominal owning plate (issue #253).
-    terrane = continental if plate.crust_type == "oceanic" else np.zeros_like(continental)
     # Oceanic floor going under a neighbour is the subduction history a later continental
     # collision inherits its polarity from (issue #318).
     collision_polarity.record_consumption(
@@ -533,6 +527,7 @@ def _retreat(
             plate, donors, ~removed, world, convergence_xyz=ctx.inputs.direction_to_neighbor, years=years,
             overriders=ctx.neighbours, hm_subduct_mask=ctx.suture_hm_subduct,
             upper_plate_ids=ctx.suture_upper_plate_id, neighbour_plate_ids=ctx.inputs.neighbor_plate_id,
+            terranes=terrane,
         )
     plate.remove_cells(removed)
     return ~removed
@@ -544,8 +539,8 @@ def _carve_interior(plate: "PlateWithSparseQuadPatch", retreatable: np.ndarray, 
 
     Eligibility. A patch is an edge-connected component of `retreatable` cells (contested by
     a neighbour overriding this plate somewhere other than its edge) with at least
-    `INTERIOR_SUBDUCTION_MIN_CELLS` cells. Oceanic plates only; the
-    caller never passes a continental plate, since carving a continent's middle would sever
+    `INTERIOR_SUBDUCTION_MIN_CELLS` cells. Oceanic cells only, on any plate (#447); the
+    caller never passes a continental cell, since carving a continent's middle would sever
     it into a spurious defragmentation plate.
 
     Reachability. A patch is left to the peel when any of its cells has a wholly open side.
@@ -591,6 +586,7 @@ def _accrete_onto_survivors(
     hm_subduct_mask: np.ndarray | None = None,
     upper_plate_ids: np.ndarray | None = None,
     neighbour_plate_ids: np.ndarray | None = None,
+    terranes: np.ndarray | None = None,
 ) -> None:
     """Thrust each continental suture's consumed Hc/Hm volume onto the surviving cells within
     `SUTURE_ACCRETION_SPREAD_NODES` hops behind it, as a uniform thickening. Each edge-connected run of donor cells is one suture
@@ -703,7 +699,8 @@ def _accrete_onto_survivors(
             )
             needs_new_footprint = hc_room < hc_volume * (1.0 - 1e-12) or hm_room < hm_volume * (1.0 - 1e-12)
             if (
-                plate.crust_type == "oceanic"
+                terranes is not None
+                and np.any(terranes[front])
                 and donor_type
                 and needs_new_footprint
                 and np.any(survivors & ~continental)
@@ -1490,13 +1487,14 @@ def _advance(
     eligible = (~ctx.contested & (inputs.dist_to_neighbor > extend_threshold_rad))[survivors]
     if not np.any(eligible):
         return
+    # Active margin: a continental arc-band cell, or one still stamped by a recent
+    # subduction-arc step, within ARC_MARGIN_END_SCAN_NODES hops -- the per-cell version of the
+    # line engine's end scan. Continental cells only, on any plate (#447).
+    continental = effective_is_continental_from_codes(plate.collect("crust_type_code"), plate.crust_type == "continental")
     arc_source = np.zeros(plate.node_count(), dtype=bool)
-    if plate.crust_type == "continental":
-        # Active margin: an arc-band cell, or one still stamped by a recent subduction-arc
-        # step, within ARC_MARGIN_END_SCAN_NODES hops -- the per-cell version of the line
-        # engine's end scan.
-        signal = ctx.arc_band[survivors] | (plate.collect("elev_change_reason") == ELEV_CHANGE_SUBDUCTION_ARC)
-        arc_source = hop_distance(plate, signal, ARC_MARGIN_END_SCAN_NODES - 1) < ARC_MARGIN_END_SCAN_NODES
+    if np.any(continental):
+        signal = continental & (ctx.arc_band[survivors] | (plate.collect("elev_change_reason") == ELEV_CHANGE_SUBDUCTION_ARC))
+        arc_source = continental & (hop_distance(plate, signal, ARC_MARGIN_END_SCAN_NODES - 1) < ARC_MARGIN_END_SCAN_NODES)
     grow_frontier(plate, world, eligible, arc_source, neighbours, spacing_rad, MAX_ADVANCE_LAYERS_PER_STEP, max_cells)
 
 
@@ -1642,7 +1640,11 @@ def _new_cell_fields(
         fields["elevation"][ordinary] = lithosphere.isostatic_elevation(hc, np.full(len(hc), hm0), lithosphere.RHO_OCEANIC_CRUST)
         fields["elev_change_reason"][ordinary] = ELEV_CHANGE_NEW_CRUST
     if np.any(arc):
-        density = lithosphere.crust_density(plate.crust_type)
+        # Arc crust is continental on any plate (#447): typed explicitly where the plate's own
+        # type would read it as oceanic.
+        density = lithosphere.RHO_CONTINENTAL_CRUST
+        if plate.crust_type != "continental":
+            fields["crust_type_code"][arc] = CRUST_TYPE_CONTINENTAL
         fields["crustal_thickness_m"][arc] = ARC_MARGIN_SEED_HC_M
         fields["mantle_lithosphere_thickness_m"][arc] = ARC_MARGIN_SEED_HM_M
         fields["elevation"][arc] = lithosphere.isostatic_elevation(np.array([ARC_MARGIN_SEED_HC_M]), np.array([ARC_MARGIN_SEED_HM_M]), density)[0]
