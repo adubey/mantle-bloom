@@ -1,6 +1,6 @@
 # RFC 0009: Cratons first: continents built from cratonic cores, plates placed around them
 
-- **Status:** Draft (revised after gate G1; first version, “Cratons as a mosaic,” accepted 2026-10-15 in PR #428)
+- **Status:** Accepted 2026-10-15 (revised after gate G1; first version, “Cratons as a mosaic,” accepted 2026-10-15 in PR #428)
 - **Date:** 2026-10-15 (revised 2026-10-15)
 - **Related:** #427 (tracking), #426 (gate G1), #274 (cratons), #389 (RFC 0003 tracking),
   #409 (formation and ratchet diagnosis), #411; PRs #418 (RFC 0003 solution 1) and #430
