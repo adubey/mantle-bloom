@@ -1,7 +1,7 @@
 # RFC 0004: Proto-cratons: restarting craton formation
 
 - **Status:** Draft
-- **Date:** 2026-10-13; baseline audit 2026-10-14 (#403)
+- **Date:** 2026-10-13; baseline audit 2026-10-14 (#403); gate revision 2026-10-14 (#409)
 - **Related:** #274 (craton formation), #314 (interior shortening), #403 (baseline audit),
   [#409](https://github.com/adubey/mantle-bloom/issues/409) (formation and ratchet diagnosis); RFCs
   [0001](0001-merge-cap-craton-loss.md), [0003](0003-rifting-around-cratons.md),
@@ -39,7 +39,7 @@ of the run**. This is historical evidence rather than a reproducible current bas
 With no source after 500 Myr in that historical run, every craton sink in RFCs 0001–0003
 is a one-way drain.
 
-**Current-baseline audit (#403; revision tracked in #409).** Fresh replays at
+**Current-baseline audit (#403; diagnosed in #409).** Fresh replays at
 `2562f63`, default density and controls, 5 Myr steps to 1 Gyr, are recorded in
 [analysis/issue403](../analysis/issue403/README.md) and
 [tuning.json](../analysis/issue403/tuning.json), including the full commit and controls.
@@ -59,19 +59,42 @@ loss of genuine continental area, which falls below 25% of initial on every seed
 range. Formation shutdown remains a current observation, but the timing is seed-dependent
 and these runs do not establish that adding a source is the primary remedy.
 
-#409 must resolve the formation diagnosis, the ratio's denominator and the
-acceptance/falsification measures before a new source is selected or tuned. In particular,
-the existing acceptance window conditioned on at least 25% of initial genuine area loses
-coverage as continents collapse, and the 65% share threshold is already breached without
-welding. The proposed mechanisms below remain the design record; #403 does not redesign
-them.
-
 The regenerated 3 Gyr seed 456862899 reinforces the denominator concern: genuine
 continental area falls from 82.33 to 2.72 M km², formation's last positive sample is at
-255 Myr, and craton area reaches 105.0% of genuine continental area at 3 Gyr. The share
-above 100% reflects craton area divided by a collapsing area measure; it is not evidence
-for super-unity craton production. #409 should retain this as a stress result while
-revising the share gate.
+255 Myr, and craton area reaches 105.0% of genuine continental area at 3 Gyr. That share
+exceeds 100% only because the numerator counts every cratonic cell, while the denominator
+excludes cells thinned below 28 km. With cratonic area restricted to the genuine set, the
+share is 93.6% (#409). It is not evidence for super-unity craton production.
+
+**Formation and denominator diagnosis (#409).** The same runs, decomposed in
+[analysis/issue409](../analysis/issue409/README.md) with `bin/debug/rfc0004_gates.py`, give
+three results. That analysis adds replays at `2562f63` that match #403's trajectories and
+record the cratonic area inside the genuine set.
+
+- **Most current formation is a generation transient.** Seeding cratonises quiet host only
+  875 km (`CRATON_SEED_MARGIN_KM`) inside, but formation accepts host 500 km inside, and
+  the band between starts with its clock at 0. On seeds 7, 11 and 2024, the part of that
+  band still quiet at 200 Myr forms in that single sample: 29.1, 129.1 and 125.1 M km³,
+  which is 75–86% of each run's formation. Seed 456862899 has no pulse. Post-pulse
+  formation is 4.8, 32.5, 42.2 and 0.72 M km³, 0.05–2.4% of initial craton volume.
+- **The share rises through survival bias.** By 500 Myr cratons keep 39–117% of their
+  area inside the genuine set, while non-cratonic genuine area (host) keeps 4.5–12.8%.
+  Formation converts each column's whole Hc, so formed volume over the 28 km host floor
+  bounds the host area it can have converted. That bound is 0.1–8.9% of each run's net
+  host loss. Host gained in the meantime only adds to the remainder, so at least 91% of
+  the loss was destruction or thinning out of the genuine set.
+- **Almost no window can test a source.** At the start of every 500 Myr window after the
+  first, host is at most 7.0% of its initial value, except seed 2024's 500–1,000 Myr
+  window (9.84 M km², 12.8%). Its baseline formation is zero. The original
+  25%-of-genuine-area qualifier is ambiguous between window start and window throughout,
+  and it can admit a window (seed 11's 500–1,000 Myr) with only 5.59 M km² of host left.
+  On this baseline the 1–2 Gyr windows of the proposed 2 Gyr runs have no host to test.
+
+So on `2562f63` the missing-source premise is testable on one window of one seed. Whether
+a source matters depends first on whether non-cratonic crust survives long enough to form
+anything. The Design's evaluation gate replaces the share band and the genuine-area
+qualifier with matched-baseline measures of host, conversion and post-pulse formation. The
+proposed mechanisms below remain the design record.
 
 Separately, "quiet" today means only the Hc window plus distance from margins. Interior
 shortening (#314), intraplate faults and failed rifts can all deform a column that passes
@@ -161,14 +184,58 @@ So the proposal is sound, with three caveats:
 of existing cratons, and 4 would stop any path from cratonising a column that is being
 deformed. 2 waits for its own RFC. Leave 5 at 1.0 (off).
 
-**Recommendation audit (#403):** revisit that priority and its ratchet test in
-[#409](https://github.com/adubey/mantle-bloom/issues/409) before selecting or tuning a
-formation source. The current model already exceeds the proposed share band with path B
-off, so the original instruction to lower depletion when the band fails cannot distinguish
-excessive formation from continental loss. The quiescence concern remains a separate code
-finding; these replays do not measure missed disturbance writers.
+**Revised priority (#409):** keep 1, 3 and 4 as the design, but don't implement or tune
+them on the current baseline. The sink repairs come first: RFC 0001's merge placement, RFC
+0005's sink ranking ([#408](https://github.com/adubey/mantle-bloom/issues/408)) and RFC
+0002. On `2562f63` they decide whether any host survives for a source to act on, and the
+evaluation gate (Design) has one usable window. Rerun the gate on the baseline those
+repairs produce. Implementation starts only when that baseline passes it. Lowering
+depletion when the share band fails is withdrawn: the band can't tell excessive formation
+from continental loss. The quiescence concern remains a separate code finding; these
+replays don't measure missed disturbance writers.
 
 ## Design
+
+**Evaluation gate (#409).** Every replay measure of this RFC compares a variant with a
+**matched baseline**: the pinned commit the variant branches from, the same seeds,
+`world.generate_world(seed)` defaults and controls, default density and 5 Myr steps, run
+one at a time. Matched runs diverge chaotically once any cell differs, so comparisons use
+ledger flows (formed volume and area) booked by each arm. They don't use end-state stocks
+or raw shares, which mix a mechanism's effect with trajectory noise and with sink losses.
+
+- **Host.** Non-cratonic genuine area: genuine continental area minus the cratonic area
+  inside it (the new `craton_genuine_area_m2`; measured for #409 by
+  `bin/debug/craton_genuine_area.py`). This is the pool any formation path draws on.
+  Subtracting all craton area instead gives an error that moves either way between
+  checkpoints, so the gate never uses it.
+- **Qualifying window.** A 500 Myr window whose start has non-cratonic genuine area of at
+  least `PROTO_CRATON_GATE_HOST_FRACTION` = 10% of its initial value, **on the baseline
+  arm**. Using the baseline keeps a variant from disqualifying its own windows by
+  converting host. Measured at `2562f63`, any floor in (7.0%, 12.8%] selects the same
+  windows.
+- **Generation pulse.** Formation booked in the step in which elapsed time first reaches
+  `CRATON_FORMATION_MYR`. It matures host that generation left unseeded with clocks at 0.
+  It is reported per path and excluded from acceptance, because it isn't a recurring
+  source. It is included in the conversion test, because a large path B pulse would be
+  over-generous welding.
+- **Post-pulse formation.** `formed_m3` and the new formed-area counters, per path, per
+  qualifying window, both arms.
+- **Conversion.** The area formation takes from the host pool, including the pulse:
+  formed area in a window over the window-start non-cratonic genuine area of the same arm.
+  Host lost to everything else is the remainder of that arm's host change, reported
+  beside it, so source and sink are separate numbers.
+- **Evaluable baseline.** The gate can judge a restart only on a baseline that offers a
+  qualifying window starting at or after 500 Myr, after current formation has stopped, on
+  at least two of the four runs. `2562f63` has one (seed 2024, 500–1,000 Myr). Until a
+  baseline passes, don't tune paths A or B.
+- **Reported, not gated:** the craton share with a genuine-restricted numerator, live
+  craton and continental inventories at each window end, and the historical save's
+  500 Myr shutoff, which is pre-#358 evidence and not a calibration target.
+
+`bin/debug/rfc0004_gates.py` computes host, the pulse, post-pulse formation, the
+conversion bound and qualification from a run's checkpoint JSON, with
+`bin/debug/craton_genuine_area.py` supplying the genuine-restricted cratonic area. It must be extended to
+read the per-path area counters and pair the two arms.
 
 **Quantities and units.**
 - Hc, Hm and craton thicknesses in metres.
@@ -247,15 +314,17 @@ today. Proto-craton status is derived each step. The new stats keys are additive
 | `CRATON_WELD_MARGIN_KM` | 250 km | Design choice: half the interior margin keeps active margins and their arcs out | Sweep 125–500 km |
 | `PROTO_CRATON_MAX_STRAIN_M_PER_MYR` | 50 m/Myr of tectonic Hc change | Design choice: about 1% of a column's crust per 10 Myr, well below active orogens (hundreds of m/Myr) | Sweep 20–200 |
 | `PROTO_CRATON_DISTURBANCE_HOLD_MYR` | 10 Myr | Numerical: at least the longest step the UI offers, so a mark always reaches `cratons.update` | Fixed |
-| `CRATON_FORMATION_DEPLETION` | 1.0 | Off; see solution 5 | Lower only if the ratchet criterion fails |
+| `CRATON_FORMATION_DEPLETION` | 1.0 | Off; see solution 5 | Unchanged by these replays; the conversion test restricts path B instead |
+| `PROTO_CRATON_GATE_HOST_FRACTION` | 10% of initial non-cratonic genuine area | Design choice (#409): at `2562f63` it separates windows with ≥ 12.8% of host from those with ≤ 7.0% | Evaluation-only, not model state; report qualification at 5% and 20% too |
+| Conversion cap (ratchet test) | One third of window-start host per 500 Myr window | Design choice (#409): the original 65% ceiling, held on a fixed denominator from the measured starting shares (37.6–50.7%), allows converting 29–44% of initial non-cratonic area | Evaluation-only; report 1/4 and 1/2 too |
 | `CRATON_FORMATION_MYR` | 200 Myr (unchanged) | #274 | Unchanged |
 
-Tune with `bin/debug/compare_cratons.py` on seeds 7, 11 and 2024 to 2 Gyr (formation needs
-time to show), plus a regenerated seed 456862899 to 3 Gyr. Use default density and
-controls and 5 Myr steps on an exact pinned baseline and the implementation variant; run
-the replays one at a time.
-Report `formed_m3` per Gyr by path (A, B), craton share of genuine continental area,
-proto-craton area, and how often each writer marks cells.
+Tune with `bin/debug/compare_cratons.py` on seeds 7, 11 and 2024 to 2 Gyr, plus a
+regenerated seed 456862899 to 3 Gyr, as matched pairs under the evaluation gate, and only
+on a baseline that passes it. Report, per qualifying window and arm: post-pulse formed
+volume and area by path, the pulse by path, conversion, host change, proto-craton area,
+and how often each writer marks cells. Windows that don't qualify are reported, not
+gated.
 
 ## Detailed design (provisional touchpoints)
 
@@ -267,11 +336,13 @@ proto-craton area, and how often each writer marks cells.
     formation.
   - New `mark_disturbed(plate, mask)`.
   - Book `formed_m3` as now, plus per-path diagnostic counters kept on the ledger as
-    `formed_interior_m3` and `formed_welded_m3`. These are sub-accounts of `formed_m3`,
-    outside the balance.
+    `formed_interior_m3` and `formed_welded_m3`, and their areas
+    `formed_interior_area_m2` and `formed_welded_area_m2` (new, #409). These are
+    sub-accounts and counters outside the balance.
   - New `proto_craton_mask(plate)`, shared by `update`, `diagnostics` and rendering.
-  - `diagnostics`: add `proto_craton_area_m2`, the per-path formed volumes, and the
-    debug audit's unmarked-change count.
+  - `diagnostics`: add `proto_craton_area_m2`, the per-path formed volumes and areas,
+    `craton_genuine_area_m2` (new: cratonic area inside the genuine set, the share
+    numerator the gate uses), and the debug audit's unmarked-change count.
   - Update the module docstring's Formation paragraph.
 - `backend/app/surface_fields.py`: register `tectonic_disturbance_myr` (new, COUNTDOWN).
 - Writers calling `mark_disturbed`: `lithosphere_plate.deform_columns`,
@@ -288,7 +359,9 @@ proto-craton area, and how often each writer marks cells.
   cells show as not forming. `frontend/src/legendData.ts`'s `craton` legend relabels
   "Quiet interior near cratonising" as "Proto-craton near cratonising".
 - `bin/debug/compare_cratons.py` and `bin/debug/ledger_history.py`: report per-path
-  formation.
+  formation, and record `craton_genuine_area_m2` at each checkpoint.
+- `bin/debug/rfc0004_gates.py` (added in #409): read the per-path area counters and report
+  a matched baseline/variant pair per the evaluation gate.
 - Tests (`backend/unit_tests/test_cratons.py` unless noted):
   - a quiet belt 300 km from the edge, next to a craton, forms after 200 Myr (path B), and
     the same belt with no craton nearby does not;
@@ -308,10 +381,11 @@ proto-craton area, and how often each writer marks cells.
 ## Assumptions and uncertainty
 
 - **Formation may not be the bottleneck.** Formation stopped in the pre-#358 save, but
-  losses (RFCs 0001–0003) dominated it. At `2562f63`, formation also stops by 470 Myr
-  on the tuning seeds, while genuine continental area falls below 20% of initial by
-  1 Gyr. #409 must distinguish formation starvation from the effects of those losses.
-  Formation is complementary, not a cure.
+  losses (RFCs 0001–0003) dominated it. At `2562f63`, post-pulse formation stops by
+  470 Myr, and by 500 Myr 87.2–95.5% of the host is gone, at least 91% of it through loss,
+  not conversion (#409). The shutoff may be host starvation, not a missing
+  path. The evaluation gate defers that question to a baseline with host left. Formation
+  is complementary, not a cure.
 - **Welded growth is an analogy.** Laurentia-style growth is observed over Gyr, but the
   weld reach, margin and 200 Myr clock are model choices, not measurements. Path B also
   ignores depletion: it assumes belts welded to a craton inherit its stability, which is
@@ -321,47 +395,64 @@ proto-craton area, and how often each writer marks cells.
 - **Secular change is ignored.** Post-Archean keels are less depleted
   [[Griffin et al., 2009]](#ref-griffin2009), so the simulated era should form fewer and
   weaker cratons. Knob 5 is available but off.
-- **The original ratchet band needs revision (#409).** The 30–65% range was a design
-  target derived from #274 seeding assumptions (shields plus platforms), not a measured
-  Earth value for every epoch. Current main exceeds it without path B; the ratio alone
-  cannot attribute a high share to formation.
+- **The share band is retired as a gate (#409).** The 30–65% range was a design target
+  from #274's seeding assumptions (shields plus platforms), not a measured Earth value for
+  every epoch. Current main exceeds it without path B through survival bias. The
+  conversion cap that replaces it is also a design choice, carried over from that band,
+  not a measurement.
+- **Gate thresholds are evaluation choices.** The 10% host floor and the one-third
+  conversion cap are set from one baseline's measurements. Re-check that they still
+  separate windows cleanly on the post-repair baseline before judging a variant.
+- **The generation pulse is an initial-condition artefact.** Seeding and formation use
+  different margins (875 km and 500 km). Aligning them is a #274 seeding question outside
+  this RFC. The gate only keeps the pulse out of acceptance.
 
 ## Acceptance criteria
 
-- [ ] On seeds 7, 11 and 2024 to 2 Gyr, and seed 456862899 to 3 Gyr, `formed_m3` increases
-      in every 500 Myr window in which genuine continental area is at least 25% of its
-      initial value. Compare against the pinned current baseline, not the historical
-      save's 500 Myr shutoff; the `2562f63` tuning baseline has no formation in the
-      500–1,000 Myr window on any seed. The window qualification and metric are pending
-      review in #409.
-- [ ] Path B contributes in at least two of the four runs.
+- [ ] **Evaluation gate first.** The pinned baseline offers a qualifying window starting
+      at or after 500 Myr on at least two of seeds 7, 11 and 2024 (to 2 Gyr) and
+      456862899 (to 3 Gyr). `2562f63` fails it (only seed 2024's 500–1,000 Myr window).
+      Rerun `bin/debug/rfc0004_gates.py` after the sink repairs; no tuning before it passes.
+- [ ] In every qualifying window, the variant's post-pulse formed volume is positive and
+      exceeds the matched baseline's. This includes every qualifying window starting at
+      or after 500 Myr, where the baseline forms nothing at `2562f63`.
+- [ ] Path B contributes post-pulse formation in at least two of the four runs.
 - [ ] No column forms craton while being deformed: the unit tests above, plus the debug
       audit reporting zero unmarked tectonic changes on the acceptance runs.
-- [ ] Original no-ratchet target, pending revision in #409: craton share of genuine
-      continental area stays between 30% and 65% at every 500 Myr checkpoint. The
-      current baseline already exceeds the upper bound with no path B; its starting
-      share is seed-dependent: 39.9%, 50.7% and 37.6% on seeds 7, 11 and 2024 at
-      `2562f63`.
+- [ ] No ratchet: in every qualifying window, the variant's conversion exceeds the matched
+      baseline's by at most one third of the window-start host. Include the generation
+      pulse. The craton share is reported for both arms, with the genuine-restricted
+      numerator, and not gated.
 - [ ] Step time changes by less than 2% at density 4.
 - [ ] Unit tests above pass; ledgers balance; old saves load; affected tests, ruff and
       `bin/quality_check.sh` are green.
 
 ## Falsification criteria
 
-- **Formation doesn't matter.** If restarting formation (paths A and B) changes craton
-  volume at 3 Gyr on seed 456862899 by less than 10%, formation isn't what limits craton
-  survival. Deprioritise this RFC behind 0001–0003.
-- **Welded growth is a ratchet.** If path B pushes the craton share above 65% on most
-  seeds at any reasonable weld reach (250–1,000 km), welding everything near a craton is
-  too generous. Restrict B to belts with a collisional history (an
-  `ELEV_CHANGE_COLLISION` stamp or a suture within the reach), or drop it. The raw
-  share threshold is already breached without B at the current baseline, so #409 must
-  make this test distinguish additional formation from loss of non-cratonic area before
-  it can select those alternatives.
-- **Quiescence starves formation.** If, with the disturbance signal, almost no column
-  stays undisturbed for 200 Myr (path A's formation drops by more than 90% against
-  the pinned current baseline on the same seeds and 5 Myr schedule), the model deforms
-  continental interiors far more than the clock assumes. Investigate the dominant marking writer before tuning the threshold.
+All three are judged on an evaluable baseline (Design, evaluation gate) and only on
+qualifying windows. On a baseline that fails the gate they can't be judged: collapse would
+make every source look irrelevant.
+
+- **Formation doesn't matter.** If, in every qualifying window starting at or after
+  500 Myr, paths A and B together add less post-pulse formed volume than 10% of the
+  matched baseline's window-start live craton volume, formation isn't what limits craton
+  survival. Deprioritise this RFC behind 0001–0003. This replaces the 3 Gyr end-state
+  comparison on seed 456862899. That run has no qualifying window after its first at
+  `2562f63`, and an end-state stock difference between diverged trajectories isn't
+  attributable to formation.
+- **Welded growth is a ratchet.** If path B's conversion, pulse included, breaks the
+  one-third cap on most seeds at any reasonable weld reach (250–1,000 km), welding
+  everything near a craton is too generous. Restrict B to belts with a collisional
+  history (an `ELEV_CHANGE_COLLISION` stamp or a suture within the reach), or drop it.
+  Host loss through sinks doesn't count toward conversion, so baseline survival bias
+  can't trigger this.
+- **Quiescence starves formation.** If, with the disturbance signal, path A's post-pulse
+  formation drops by more than 90% against the matched baseline, almost no column stays
+  undisturbed for 200 Myr, and the model deforms continental interiors far more than the
+  clock assumes. Report the pulse separately. Judge this only on runs whose baseline
+  post-pulse formation is at least 1 M km³ (seeds 7, 11 and 2024 at `2562f63`, not
+  456862899's single 0.72 M km³ sample). Investigate the dominant marking writer before
+  tuning the threshold.
 
 ## References
 
