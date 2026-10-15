@@ -587,7 +587,11 @@ subduction, delamination, collisional reworking, erosion, topology removal), and
 `cratons.balance_error_m3` checks it against the live volume. `audit_clipped_m3` is craton a
 catch-all phase audit had to clip to its column, kept apart from the real mechanisms (#340);
 `bin/debug/split_craton_rework.py` replays a save and splits every account by the site that
-booked it, and `bin/debug/probe_craton_clips.py` finds the writer behind a one-off audit clip.
+booked it, and `bin/debug/probe_craton_clips.py` finds the writer behind a one-off audit clip. Its
+`--capture-dir` saves the world before every collision merge that destroys more than
+`--min-share` of the live craton, and `bin/debug/measure_merge_placement.py` replays one such
+merge and splits its loss by cause: room under the cap, the eligible mask, the craton carried
+with the overflow, and the absorbed crust on third plates (RFC 0001, #440).
 `unattributed_m3` should stay
 near zero; anything there escaped every instrumented site. Every stats snapshot carries the
 ledger (`craton_ledger_km3`), so the Stats window's *Craton destroyed (cumulative)* series

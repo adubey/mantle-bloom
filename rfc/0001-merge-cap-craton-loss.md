@@ -238,6 +238,36 @@ The historical event needs about 3 Gyr of stepping; the fresh seed-7 substitute 
 so run them one at a time. The gate passes when the findings, and the fix the
 table selects, are written up in `analysis/` and this RFC is updated with them.
 
+**Gate outcome (#440, 2026-10-15; [`analysis/rfc0001/`](../analysis/rfc0001/README.md)).**
+Seeds 7, 11, 2024 and 456862899 ran to 1 Gyr on `788e654`, which is after RFC 0008's #399–#401,
+with the #403 controls. Merges cost 21.0%, 6.0%, 2.7% and 12.2% of starting craton, against
+54%, 18% and 31% on `2562f63`. The run captured the 15 merges with the signature (1.0–12.1%
+of live craton each, 1,155 of 1,275 M km³ of merge loss), and every replay reproduced its
+booked loss exactly.
+- **H1 holds** for 97.5% of the loss (14 events). The overflow (207–798 M km³) exceeded all
+  the room under the cap on the eligible cells (69–286 M km³). The colliding continents
+  already averaged 41–84 km of Hc, not ~35 km, so the room estimate in Problem doesn't hold.
+- **H4 holds** for the other 2.5% (seed 11, 195 Myr). It is also present in 10 of 15 events.
+  `quad_merge._transfer`'s `extensive` restores each field by its own ratio, which leaves
+  new cells with up to 63 M km³ more craton than crust. `_carry_material` then places craton
+  in proportion to Hc gain, whatever that gain is.
+- **H2 is minor:** thick crust outside the mask has 4–129 M km³ of room per event, never
+  enough for the unplaced volume. **H3 does not hold:** no excess is found away from the front
+  or the receivers.
+- **Deep craton-on-craton overlap** preceded 13 of 15 merges (up to 290 M km³). Every pair
+  was jammed throughout the previous 30 Myr.
+- **A source outside H1–H4:** 70% of the overflow arises on the merge's *new* cells. The
+  absorbed plate's crust on third plates (7–44% of its area, 4,153 M km³ of Hc across the
+  events) is never activated (#344), so `extensive` packs it into the new territory past the
+  cap.
+
+Selected by the table: **3 (RFC 0008's fusion at jam onset, #402) as the primary fix, and
+fixing the carry (H4).** The "no plausible room" falsification criterion is met for solution
+2: even unbounded placement couldn't hold the overflow in 14 of 15 merges. Solution 1 adds
+at most 10% of the overflow through root shedding. Both are deferred until fusion and the
+carry fix are measured. The third-plate compression needs a new solution, which is an
+amendment to this RFC.
+
 **Merge placement (solutions 1 and 2):**
 - Root capacity comes from `orogeny.plate_delamination_capacity_m3(keep, continental,
   years)`, the call the suture path makes. It sheds only non-cratonic roots, restite first
@@ -345,11 +375,13 @@ If solution 3 is needed, it is built and tuned in RFC 0008 (`CRATON_LOCK_MYR`).
 
 ## Acceptance criteria
 
-- [ ] **Gate:** a post-#358 merge with the historical signature is reproduced
+- [x] **Gate:** a post-#358 merge with the historical signature is reproduced
       with the full merge inputs, its cause established, and the fix the decision table
       selects is written up in `analysis/` with the per-stage numbers, before any fix
       other than solution 4 is implemented. #395's fusion attribution is partial
-      evidence; it does not satisfy this placement gate.
+      evidence; it does not satisfy this placement gate. *Done in #440: 15 merges captured
+      and reproduced; H1 and H4, with prior craton-on-craton overlap; see the gate outcome
+      in Design.*
 - [ ] On a 3.5 Gyr replay of seed 456862899 and 500 Myr runs of seeds 7, 11 and 2024
       (`bin/debug/compare_cratons.py`), merges book less than 1% of the initial craton
       volume in total, and no single merge books more than 0.5% of the live craton.
