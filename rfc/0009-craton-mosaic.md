@@ -233,9 +233,9 @@ core and belt masks, and a plate label.
    (Dirichlet, `CONTINENT_SIZE_CONCENTRATION`).
 2. **Cores.** Within each continent's share, place core nuclei at least
    `CRATON_CORE_SPACING_KM` apart until the perturbed, overlap-resolved core area reaches
-   `CRATON_SHARE_OF_CONTINENT` of the continent's area. A core is the set of lattice points within `CRATON_CORE_RADIUS_KM` of a nucleus, with the
-   distance perturbed by `terrain_noise` to make its outline irregular; points claimed by
-   overlapping cores go to the nearest nucleus.
+   `CRATON_SHARE_OF_CONTINENT` of the continent's area. A core is the set of lattice points within `CRATON_CORE_RADIUS_KM` of a nucleus. Perturb
+   the distance with `terrain_noise` to make its outline irregular; assign points claimed by
+   overlapping cores to the nearest nucleus.
 3. **Belts.** Grow each continent outward from its cores by a noise-perturbed distance to its
    target area. The existing `plates._land_noise_threshold` is keyed to plate sites, so it
    cannot be reused unchanged: compute the threshold over the per-point continental mask.
@@ -258,10 +258,11 @@ core and belt masks, and a plate label.
    Dijkstra area, and above `SPLIT_MIN_NODES * node_density`; if the initial partition
    violates the floor or no valid refinement exists, resample the sites. A move is allowed
    only if every point remains assigned exactly once, the plate count stays fixed, and no
-   core is divided. Preserve connectivity by requiring the donor label's same-label neighbors in the lattice
-   1-ring to remain connected after removal; the destination must already be adjacent. This
-   local simple-point check avoids a full graph traversal. Sweep in stable node order until a full
-   sweep lowers no cost, or stop after 20 sweeps; break ties by plate ID. This is a
+   core is divided. Preserve connectivity with a local simple-point check: after removing
+   the point, its same-label neighbors in the lattice 1-ring must remain connected; the
+   destination label must already be adjacent. This avoids a full graph traversal. Sweep in
+   stable node order until a full sweep lowers no cost, or stop after 20 sweeps; break ties
+   by plate ID. This is a
    constrained local optimization, so it may reach a local minimum; G3 measures whether the
    resulting layout meets the Earth comparison.
 5. **Plates are built from the labels.** Each plate is made with
@@ -290,23 +291,26 @@ generator:
   two independently re-tiled mixed runs over the same starting crust, using separate
   tiling RNG streams, for seeds 7, 11 and 2024 to 500 Myr.
 - The probe records genuine continental area at 500 Myr, active plate count and overlap area
-  at each 100 Myr checkpoint, and cumulative successful splits and merges. For each metric, compare the absolute difference between the mean of the two mixed runs and
-  the control with the absolute difference between the two mixed runs (the mixed-vs-mixed
+  at each 100 Myr checkpoint, and cumulative successful splits and merges. For each metric, compare the absolute difference
+  between the mean of the two mixed runs and the control with the absolute difference between
+  the two mixed runs (the mixed-vs-mixed
   spread). Use the larger of that spread and a floor in the metric's units: one plate for
   active plate count, one event for cumulative split/merge counts, or one percentage point
-  of surface area for area and overlap metrics. Ledgers must balance in every run. G2 fails on a metric
-  if its mixed-vs-control difference exceeds twice the mixed-vs-mixed spread on at least two
-  seeds. If it fails, audit/fix the responsible call sites or diagnose the changed runtime
-  behavior, then rerun G2 before choosing the architecture.
+  of surface area for area and overlap metrics. Ledgers must balance in every run. G2 fails
+  on a metric if its absolute mixed-vs-control difference exceeds twice that noise floor on
+  at least two seeds. If it fails, audit or fix the responsible call sites, or diagnose the
+  changed runtime behavior, then rerun G2 before choosing the architecture.
 - If mixed plates still fail after that work, use a defined single-type fallback rather than
   an infinite traversal cost: assign one continental plate to each connected continent,
-  then partition each connected ocean component among the remaining oceanic plates. Reserve
-  at least one oceanic plate for each ocean component and distribute any remaining plates
-  among them. Every point must be assigned exactly once and every plate connected. At the
-  defaults, 2–6 continents and 8–20 plates leave at least two ocean plates; the component
-  budget is a guard for unusual fragmented masks. Under this fallback, the mixed-plate and
-  land-edge acceptance targets do not apply; core integrity, belt survival and the G3 rift
-  measures still apply. If the plate count cannot cover the components, G2 remains unresolved.
+  then partition each connected ocean component among the remaining oceanic plates. Reserve at least one oceanic plate for each
+  ocean component and distribute any remaining plates among them. Every point must be
+  assigned exactly once and every plate connected. At the defaults,
+  `CONTINENT_COUNT_RANGE` is 2–6 and `MIN_AUTO_PLATES` is 8, so continent count alone leaves
+  at least two oceanic plates; the ocean is normally one connected component, and the
+  component-capacity guard should not bind. Under this fallback, the mixed-plate and
+  land-edge acceptance targets do not apply; each core must stay wholly in one connected
+  plate, and belt survival and the G3 rift measures still apply. If an unusual mask has
+  more required components than the plate budget can cover, G2 remains unresolved.
 
 **Gate G3: does the cratons-first layout keep cratons whole?** After the generator and belt
 marks are built (behind a flag), `probe_craton_mosaic.py` gains `--layout cratons-first` and
