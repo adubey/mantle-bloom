@@ -199,3 +199,128 @@ The 500 Myr row is from the saved world above, which isn't checked in.
 - **Earth's continents aren't free of plate boundaries.** 17% of Earth's boundary length has
   land on both sides: the Alpine–Himalayan belt, Siberia, the Middle East and East Africa.
   These run along young orogens and rifts, not through the old cratons.
+
+# RFC 0009 gate G2: do mixed plates work? (#438)
+
+The cratons-first generator makes most plates mixed (continental and oceanic crust) from
+t = 0. Gate G2 asks whether the runtime handles that before the generator is built. Its
+metrics and decision rule were fixed in the RFC before this run.
+
+**Outcome: fails as written, on one metric, and the diagnosis points at the layout, not at
+mixed plates.** Genuine continental area at 500 Myr is 3.9–4.5 points of the sphere higher
+in the mixed runs than in the control on seeds 11 and 2024 (noise floors 1.8 and 1.2). Plate
+count, overlap, merges and splits pass, and the ledgers behave the same as in the control.
+The gap opens in the first 100 Myr, while the control's continents are still edged by plate
+boundaries and the mixed runs' are not. After that the two lose continent at the same rate:
+the same rule applied to the 100→500 Myr change passes on every seed. The extra crust the
+control loses is mostly booked to deep subduction at trenches. Re-tiling moves continental
+margins inside plates, the effect RFC 0009 wants, and the gate can't tell that apart from a
+runtime defect. Choosing between this reading and the RFC's single-type fallback is the
+project owner's decision (see "Decision" below).
+
+## Method
+
+`bin/debug/probe_mixed_plates.py` runs fresh worlds on origin/main `652c2c0` (the probe adds
+only the script), with every default: 5 Myr steps to 500 Myr and 100 Myr checkpoints. It runs
+one world at a time and saves nothing. Per seed (7, 11 and 2024):
+
+- **control**: `generate_world(seed)`, today's single-type plates.
+- **mixed A and B**: the same finished world, re-tiled. Each draws a new
+  `build_plate_tiling`, with the same plate count, from its own RNG stream, keyed on
+  (seed, 438, run). Each new plate's cells copy every surface field from the nearest control
+  node, so the crust, the seeded cratons and the ledger tracer are the same. A plate's nominal
+  `crust_type` is the type covering the majority of its area. Its minority-type cells carry an
+  explicit `crust_type_code`, as the RFC's generator will build them. The world then runs
+  `finish_generation`, with the copied craton volume booked as `initial_m3`.
+- **Metrics** (RFC, Design, G2):
+  - genuine continental area (Hc ≥ `CRATON_HOST_MIN_HC_M`, `compare_cratons`' measure) and
+    plate overlap (`stats`), as percentages of the sphere;
+  - active plates;
+  - cumulative merges and splits, from the logged events;
+  - continental-material and craton ledger balance errors.
+- **Diagnostics:** the share of plates mixed by continental area (5–95%), each
+  continental-material ledger account, and `measure_plate_layout`'s share of continent edge
+  within 300 km of a plate boundary.
+- **Decision rule:** noise floor = max(|mixed A − mixed B|, floor), with floors of 1 plate,
+  1 event or 1 percentage point. A metric fails when |mean(mixed) − control| > 2 × noise
+  floor on at least two seeds. Plate count and overlap are judged at each checkpoint, the
+  others at 500 Myr.
+
+```bash
+PYTHONPATH=backend:bin/debug backend/.venv/bin/python bin/debug/probe_mixed_plates.py --out $S/g2.json
+PYTHONPATH=backend:bin/debug backend/.venv/bin/python bin/debug/probe_mixed_plates.py --summarize $S/g2.json
+```
+
+Each run took 290–440 s, and generation with re-tiling 1.4–4.2 s. Rerunning gave identical
+numbers. Compact results are in [g2.json](g2.json).
+
+## Results
+
+At t = 0 the re-tiled runs have 60–100% of plates mixed (the control has none). Genuine
+continental area matches the control to within 0.06 points, and craton area to within
+0.3 M km².
+
+### The gate (500 Myr)
+
+| Metric | Seed 7: control / A / B | Seed 11 | Seed 2024 | Seeds failing |
+|---|---|---|---|---|
+| **Genuine continental area, % of sphere** | 17.6 / 17.3 / 21.1 | **15.8 / 19.5 / 21.2** | **14.6 / 19.1 / 18.0** | **2 (fails)** |
+| Merges | 24 / 29 / 21 | 6 / 8 / 7 | 7 / 2 / 4 | 0 |
+| Splits | 52 / 59 / 51 | 56 / 44 / 52 | 58 / 51 / 41 | 0 |
+| Active plates at 500 Myr | 48 / 49 / 47 | 50 / 45 / 53 | 50 / 54 / 52 | 0 |
+| Overlap at 500 Myr, % of sphere | 23.9 / 16.2 / 14.9 | 17.4 / 17.7 / 15.1 | 19.4 / 14.0 / 9.8 | 1 |
+
+Active plates and overlap at 100–400 Myr fail on at most one seed each (see
+`summary.metrics` in g2.json). Seed 11's failing gap is 4.5 points against a 1.8 floor, and
+seed 2024's is 3.9 against 1.2. On seed 7 the two mixed runs differ by 3.7 points.
+
+**Ledgers.** The craton ledger closes to 1e-15 in every run. The continental-material ledger
+drifts by up to 1.9e-3 of its initial volume, in the control as much as in the mixed runs
+(1.9e-3 on seed 2024's control, at most 1.0e-3 in a mixed run). The drift is on origin/main
+already, most likely strike-slip shear (#299), so it doesn't separate the layouts.
+
+### Diagnosis: the starting layout, not the runtime
+
+| | Seed 7: control / A / B | Seed 11 | Seed 2024 |
+|---|---|---|---|
+| Continent edge within 300 km of a boundary, t = 0 | 100 / 26 / 20% | 100 / 18 / 14% | 100 / 15 / 14% |
+| Same, 100 Myr | 71 / 59 / 65% | 91 / 49 / 67% | 80 / 49 / 52% |
+| Genuine area change 0→100 Myr, points | −12.9 / −10.1 / −10.2 | −7.0 / −3.2 / −3.2 | −0.6 / +1.1 / +1.8 |
+| Genuine area change 100→500 Myr, points | −20.6 / −23.5 / −19.8 | −8.9 / −9.0 / −7.3 | −9.0 / −6.1 / −8.0 |
+| Deeply subducted by 500 Myr, M km³ | 3,890 / 2,904 / 4,386 | 5,611 / 3,538 / 3,015 | 2,537 / 1,180 / 2,040 |
+| Juvenile additions by 500 Myr, M km³ | 2,536 / 1,478 / 2,005 | 3,350 / 1,902 / 2,051 | 1,926 / 977 / 1,395 |
+
+- **Most of the gap opens in the first 100 Myr.** Re-tiling leaves only 14–26% of the
+  continent's edge near a boundary, so most margins start passive. The runtime makes the
+  control's plates mixed too (24–48% by 100 Myr), and by 500 Myr the two layouts expose
+  their continents about equally (59–85%).
+- **After 100 Myr the loss rates agree.** The RFC's rule applied to the 100→500 Myr change
+  in genuine area passes on all three seeds: |mean mixed − control| is 1.0, 0.7 and 1.9
+  points against noise floors of 3.7, 1.7 and 1.9.
+- **The control's extra loss goes to the trench sink.** `deeply_subducted_m3`, the
+  continental margin consumed at trenches, is the largest account in every run. It is
+  2,000–2,600 M km³ larger in seed 11's control than in its mixed runs, and 500–1,400
+  larger on seed 2024. That is offset in part by more arc crust (juvenile additions), which
+  also needs an active margin.
+- **The call sites can't be ruled out.** The audit (posted on #438) lists 22 runtime
+  reads that apply a plate's majority type to all its nodes. Several of them suppress arcs or
+  change the retreat rule on a mixed plate's minority margin (`torque.py:308`'s
+  plate-level `neighbor_is_oceanic`, `lithosphere_plate.continental_arc_band`). They
+  probably add to the lower juvenile additions in the mixed runs. The loss rate after
+  100 Myr agrees within noise anyway, while 22–53% of the control's plates are mixed too.
+
+## Decision
+
+The rule as written compares two layouts that differ in margin exposure by design, so a
+failure on continental area can't separate "mixed plates are mishandled" from "passive
+margins lose less crust". Rerunning without changes gives the same numbers. The options for
+the project owner:
+
+1. **Accept the diagnosis.** Record G2 as failing on continental area, attributed to the
+   starting layout, with the 100→500 Myr comparison passing. Proceed with the cratons-first
+   generator on mixed plates, and fix the per-node call sites (at least the boundary
+   classification in `torque.py:308` and the arc band) as the tracking issue's "call-site
+   fixes" step.
+2. **Fix the call sites first and rerun G2.** This is the RFC's literal route. It is
+   unlikely to close the gap, since the gap comes from exposure.
+3. **Use the single-type fallback** (RFC, Design, G2).

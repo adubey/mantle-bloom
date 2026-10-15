@@ -312,6 +312,18 @@ generator:
   plate, and belt survival and the G3 rift measures still apply. If an unusual mask has
   more required components than the plate budget can cover, G2 remains unresolved.
 
+**G2 result (#438, [analysis/rfc0009](../analysis/rfc0009/README.md#rfc-0009-gate-g2-do-mixed-plates-work-438)):
+fails as written on one metric; the diagnosis points at the starting layout.** At 500 Myr,
+genuine continental area is 3.9–4.5 points of the sphere higher in the mixed runs on seeds 11
+and 2024 (noise floors 1.8 and 1.2). Plate count, overlap, merges and splits pass, the craton
+ledger closes in every run, and the continental-material ledger drifts as much in the
+control as in the mixed runs (≤ 1.9e-3, already on main). The gap opens in the first
+100 Myr. Re-tiling leaves 14–26% of the continent's edge near a boundary, against 100% in the
+control, and the control loses more margin to trench subduction. From 100 to 500 Myr the
+rule passes on every seed. The audit found 22 runtime sites that apply a plate's majority
+type to all its nodes (posted on #438). Pending the owner's choice: accept the diagnosis and
+fix those sites as their own step, fix them and rerun G2, or take the single-type fallback.
+
 **Gate G3: does the cratons-first layout keep cratons whole?** After the generator and belt
 marks are built (behind a flag), `probe_craton_mosaic.py` gains `--layout cratons-first` and
 runs both that layout and today's layout as a matched control, formation off, on seeds 7, 11
@@ -472,6 +484,9 @@ only as new collisions and rifts mark them. No new pickled state on `World`.
       the floor is one plate, one split/merge event, or one percentage point of surface area
       as appropriate. Diagnose and
       rerun before choosing the architecture; update this RFC with the outcome.
+      *Run (#438): fails as written on 500 Myr continental area (seeds 11 and 2024),
+      attributed to the starting layout's lower margin exposure; 100→500 Myr passes.
+      Architecture decision pending.*
 - [ ] **Gate G3** (cratons-first replays) run and reported, and this RFC and RFC 0010
       updated with the branch it selects.
 - [ ] **Solution 1 layout at t = 0**, over seeds 7, 11, 2024 and 17 more: land edge within
