@@ -230,6 +230,22 @@ def test_jammed_pair_rolls_for_merge_while_stalled(monkeypatch):
     assert len(world.plates) == 1
 
 
+def test_jammed_pair_is_dropped_when_a_plate_vanishes_after_the_prepass():
+    # The jam map is the prepass's; topology removes defunct plates after it. A pair whose
+    # plate is gone must not be kept, or its merge roll looks up a missing plate (#435 review).
+    world = _cratonic_pair_world()
+    for p in world.plates:
+        p.set_omega(np.zeros(3))
+    collision_polarity.observe_contacts(world, 10_000_000)
+    assert (0, 1) in merge_split.find_jammed_pairs(world)
+    world.collision_progress[(0, 1)] = merge_split._collision_threshold_years(world.seed, (0, 1)) + 1
+    world.plates = [p for p in world.plates if p.plate_id != 1]
+
+    merge_split.update_collision_progress(world, 10_000_000)
+
+    assert world.collision_progress == {}
+
+
 def test_a_jam_alone_does_not_start_collision_time():
     world = _cratonic_pair_world()
     for p in world.plates:

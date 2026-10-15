@@ -538,8 +538,15 @@ def update_collision_progress(world: "World", years: float) -> list[tuple[int, i
     a plate disappearing) are worth surfacing there."""
     current_pairs = find_continental_collision_pairs(world)
     current_set = set(current_pairs)
+    # The jam map is the prepass's, and topology has removed defunct plates since: keep only
+    # pairs of continental plates still live, the ones find_continental_collision_pairs sees.
     jammed = find_jammed_pairs(world)
-    current_pairs += [pair for pair in world.collision_progress if pair in jammed and pair not in current_set]
+    live = {p.plate_id for p in world.plates if p.crust_type == "continental" and p.node_count() > 0}
+    current_pairs += [
+        pair
+        for pair in world.collision_progress
+        if pair in jammed and pair not in current_set and pair[0] in live and pair[1] in live
+    ]
     current_set.update(current_pairs)
 
     ready = []
