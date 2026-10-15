@@ -232,13 +232,20 @@ core and belt masks, and a plate label.
    where their distances are equal become belts; the remaining continental points are
    margin: younger, non-cratonic crust.
 4. **Plates.** Place `num_plates` sites (8–20 as today) by Poisson-disc sampling, none inside
-   a core, and grow all plates at once over the lattice graph by multi-source Dijkstra.
-   Entering a point costs its distance times `PLATE_COST_OCEAN` (1), `PLATE_COST_BELT` (1)
-   or `PLATE_COST_MARGIN`; a core is contracted to one graph node, so a whole core joins the
-   first plate to reach it. Plate boundaries form where fronts meet: in cheap ground (ocean
-   and belts), and never inside a core. `PLATE_COST_MARGIN` sets how often a boundary crosses
-   a continent's margin rather than going around it, and is tuned to Earth's 28% of
-   continental edge near a boundary.
+   a core. First, assign every point to its nearest site by uniform geodesic multi-source
+   Dijkstra; contract each core to one graph node. This gives a complete, connected initial
+   partition, but does not choose boundaries by their local cost. Then refine the labels by
+   moving boundary points between adjacent plates to reduce
+   `J = sum(length(link) * mean(cost(endpoint_1), cost(endpoint_2)))` over links whose
+   endpoints have different labels. `cost` is `PLATE_COST_OCEAN` (1), `PLATE_COST_BELT` (1),
+   or `PLATE_COST_MARGIN` (3). A move is allowed only if every plate stays connected, every
+   point remains assigned exactly once, the plate count stays fixed, and no contracted core
+   is divided. Sweep in stable node order until a full sweep lowers no cost; break ties by
+   plate ID. This is a constrained local optimization, so it may reach a local minimum; G3
+   measures whether the resulting layout meets the Earth comparison. Here the cost applies
+   directly to boundary links: a larger `PLATE_COST_MARGIN` penalizes boundaries crossing
+   margins, while ocean and belts are cheaper. Tune it to Earth's 28% of continental edge
+   near a boundary.
 5. **Plates are built from the labels.** Each plate is made with
    `PlateWithSparseQuadPatch.from_lattice`, owning the points labelled with it (replacing
    `build_plate_tiling`'s nearest-site test). Its nominal `crust_type` is the type of the
@@ -264,11 +271,20 @@ generator:
 - Probe: `bin/debug/probe_mixed_plates.py` (new) generates seeds 7, 11 and 2024 as today,
   then re-labels them with an independent random plate tiling over the same crust (most
   plates mixed), and replays both to 500 Myr.
-- Outcome: if the mixed run's ledgers balance and its genuine continental area at 500 Myr is
-  within 10% of the unmixed run's on every seed, build solution 1 with the audit's fixes. If
-  not, fix the failing call sites first, as their own issue, and rerun G2. If that can't be
-  done, fall back to single-type plates placed around cratons (step 4 with continents never
-  split, `PLATE_COST_MARGIN` = ∞), which keeps the craton layout but not mixed plates.
+- The probe also records active plate count and overlap area at each 100 Myr checkpoint,
+  plus cumulative successful splits and merges. On every seed, G2 passes only if ledgers
+  balance, genuine continental area at 500 Myr stays within 10% of the unmixed run, and each
+  of those four measures stays within 20% of its same-seed unmixed value (for split and
+  merge counts, compare cumulative totals through 500 Myr). The 20% bound is a design
+  threshold, not a literature constraint. If any check fails, fix the responsible call sites
+  or diagnose the changed runtime behavior and rerun G2 before choosing the architecture.
+- If mixed plates still fail after that work, use a defined single-type fallback rather than
+  an infinite traversal cost: assign one continental plate to each connected continent,
+  then partition each connected ocean component among the remaining oceanic plates. Reserve
+  at least one oceanic plate for each ocean component and distribute any remaining plates
+  among them. Every point must be assigned exactly once and every plate connected. If the
+  requested plate count cannot cover those components, G2 remains unresolved; do not claim
+  this fallback passed.
 
 **Gate G3: does the cratons-first layout keep cratons whole?** After the generator and belt
 marks are built (behind a flag), `probe_craton_mosaic.py` gains `--layout cratons-first` and
@@ -307,11 +323,12 @@ change no thickness.
 most `CRATON_SHARE_OF_CONTINENT` ≤ 0.7 of their continent, so every continent keeps some
 non-cratonic crust. A continent too small for one core gets none.
 
-**Runtime.** Generation adds one Dijkstra over the lattice (about 31,000 points at density
-1, 124,000 at density 4; `scipy.sparse.csgraph.dijkstra` with `min_only`) and a few distance
-fields: well under a second, against 0.9 s (density 1) and 1.8 s (density 4) for today's
-whole generation on seed 7. Per step, belt marks add masked
-writes and one mask in `update`: well under 1%.
+**Runtime.** Generation uses one multi-source Dijkstra over the lattice (about 31,000
+points at density 1, 124,000 at density 4; `scipy.sparse.csgraph.dijkstra` with `min_only`),
+then a constrained boundary-refinement pass. The refinement cost is not measured yet; G3
+benchmarks the full path at both densities, and acceptance requires generation under 2 s at
+density 1. Today's whole generation on seed 7 takes 0.9 s (density 1) and 1.8 s (density 4).
+Per step, belt marks add masked writes and one mask in `update`; well under 1%.
 
 **Save compatibility.** Generation-only, apart from `belt_formed_years`, a new surface field
 backfilled with the "never" sentinel. Old saves keep their plates and cratons, and get belts
@@ -329,8 +346,8 @@ only as new collisions and rifts mark them. No new pickled state on `World`.
 | `CRATON_CORE_SPACING_KM` | 1,500 km | Design choice: about 35 Archean cratons survive [[Bleeker, 2003]](#ref-bleeker2003) | G3; sweep 1,000–2,500 km |
 | `CRATON_CORE_RADIUS_KM` | 600 km | Design choice: about 1,200 km across, cores up to Superior-province size | With spacing |
 | `CRATON_BELT_WIDTH_KM` | 300 km | Orogens welded onto shields are a few hundred km wide [[Cawood et al., 2009]](#ref-cawood2009) | G3; sweep 200–600 km |
-| `PLATE_COST_MARGIN` | 3 | Design choice | Continental edge within 300 km of a boundary: 15–50% (Earth 28%) |
-| `PLATE_COST_OCEAN`, `PLATE_COST_BELT` | 1, 1 | Design choice: the cheap ground | Fixed |
+| `PLATE_COST_MARGIN` | 3 | Design choice: boundary-link penalty | Continental edge within 300 km of a boundary: 15–50% (Earth 28%) |
+| `PLATE_COST_OCEAN`, `PLATE_COST_BELT` | 1, 1 | Design choice: boundary-link penalty for ocean and belts | Fixed |
 | `CRATON_BELT_SEED_AGE_YEARS` | 1.8 Gyr | Design choice: Proterozoic assembly, as for Laurentia [[Hoffman, 1988]](#ref-hoffman1988) | Fixed; provenance only |
 | `CRATON_BELT_HEAL_MYR` | infinite | Design choice (Assumptions) | Unchanged in this RFC |
 | `CRATON_SEED_MARGIN_KM` | 875 km | Today's | Kept only for worlds seeded without generation's masks |
@@ -338,7 +355,8 @@ only as new collisions and rifts mark them. No new pickled state on `World`.
 ## Detailed design (provisional touchpoints)
 
 - `backend/app/continent_layout.py` (new): continents, cores, belts and the plate
-  partition, returning per-lattice-point masks and labels.
+  partition, returning per-lattice-point masks and labels; initialize labels with Dijkstra,
+  then refine boundaries against the weighted interface objective.
 - `backend/app/lithosphere_plate.py`
   - `generate_plates`: the random path calls `continent_layout` and builds plates from its
     labels; per-node Hc and Hm by crust type; `crust_type_code` stamped on minority-type
@@ -367,10 +385,11 @@ only as new collisions and rifts mark them. No new pickled state on `World`.
   cratons-first` (G3); `measure_plate_layout.py`, `render_craton_map.py` and
   `render_earth_cratons.py` (new with this revision) for the layout measures and figures.
 - Tests:
-  - `test_continent_layout.py` (new): every core lies in one plate; belts separate the
-    cores of a continent at the configured width; continental and craton areas hit their
-    targets within 5%; the same seed gives the same layout; a continent too small for a
-    core gets none.
+  - `test_continent_layout.py` (new): every point has one owner; every plate is connected;
+    refinement never divides a core and never increases the boundary objective; belts
+    separate the cores of a continent at the configured width; continental and craton areas
+    hit their targets within 5%; the same seed gives the same layout; a continent too small
+    for a core gets none.
   - `test_plates.py` (which tests `generate_plates`) and `test_bathymetry.py`: generated
     plates carry mixed crust with the right codes, Hc and Hm; sketch and premade generation
     are unchanged.
@@ -410,8 +429,11 @@ only as new collisions and rifts mark them. No new pickled state on `World`.
 
 - [x] **Gate G1** run and reported per seed in `analysis/`, with its pinned commit (#426):
       neither building branch; this revision follows.
-- [ ] **Gate G2** (mixed plates) run and reported, with the call-site audit, and this RFC
-      updated with its outcome.
+- [ ] **Gate G2** (mixed plates) run and reported, with the call-site audit; ledgers balance;
+      continental area stays within 10% of the unmixed run; active plate count and overlap
+      area at each 100 Myr checkpoint, and cumulative splits and merges through 500 Myr, each
+      stay within 20% of the same-seed unmixed run. If not, diagnose and rerun before choosing
+      the architecture; update this RFC with the outcome.
 - [ ] **Gate G3** (cratons-first replays) run and reported, and this RFC and RFC 0010
       updated with the branch it selects.
 - [ ] Layout at t = 0, over seeds 7, 11, 2024 and 17 more: continental edge within 300 km of
@@ -443,8 +465,10 @@ only as new collisions and rifts mark them. No new pickled state on `World`.
   cuts crossing craton nor reaches a building branch for RFC 0010, the layout was not the
   obstacle; don't build RFC 0010's cut; investigate why the mantle flow localises beneath
   cratons.
-- **Mixed plates can't be supported.** If G2 fails and its call sites can't be fixed, fall
-  back to single-type plates placed around cratons (Design, G2).
+- **Mixed plates can't be supported.** If G2 fails after its call-site and runtime-behavior
+  diagnosis, use the connected-component single-type fallback in Design, G2. If the plate
+  budget cannot cover all continent and ocean components, the fallback is unavailable and
+  this RFC's generation choice remains unresolved.
 - **Belts become the new sink.** If marked belts lose crust so fast that continental area
   at 1 Gyr falls by more than 10% against the matched baseline, give belts partial craton
   resistance instead of none.
