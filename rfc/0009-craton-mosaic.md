@@ -117,24 +117,37 @@ options once the mosaic survives; leave 5 and 6 out.
 the starting knob values below) and sets `CRATON_FORMATION_MYR` to infinity in-process, so
 the seeded layout is the only craton for the run. No saved state changes. On seeds 7, 11
 and 2024, 5 Myr steps to 1 Gyr, default density and controls, one at a time, it runs the
-min-cut probe of RFC 0010 on every cut and reports:
-- the share of craton-crossing flow cuts whose minimum-cut boundary touches no craton node
-  (corridor 1,000 km, all of RFC 0010's admissibility gates). This counts craton on the cut
-  line itself, the nodes on cut links, not in the ±2.5-spacing band the RFC 0010 probe
-  used: a 300 km belt is narrower than that 625 km band, so a cut along a belt always has
-  craton in its band. The probe gains the line measure for G1, and reports the band
-  measure beside it;
-- craton area in cut bands, flow cut against minimum cut;
-- belt area, as a share of genuine continental area, at each 100 Myr checkpoint.
+min-cut probe of RFC 0010 on every cut. Over the flow cuts whose band crosses craton, at a
+1,000 km corridor and with all of RFC 0010's admissibility gates (size, pole separation,
+residual, connectivity), it reports two branch measures:
+- **L, line clearance:** the share of those cuts with an admissible minimum cut whose line
+  touches no craton (no craton node at either end of a cut link). This says whether a
+  route between the cores exists.
+- **B, band exposure:** craton area in the operational band (`FAILED_RIFT_BAND_MULT` = 2.5
+  spacings either side, the band a failed rift thins and `record_rift_cut` books), summed
+  over those cuts, using the minimum cut where it is admissible and the flow cut where it
+  isn't, divided by the same sum for the flow cuts. This says how much craton a rift would
+  still act on.
 
-Outcomes:
-- **≥ 50%** of craton-crossing cuts find a craton-free admissible route: build 1 and 2 here,
-  and RFC 0010's minimum cut.
-- **20–50%:** build 1 and 2; RFC 0010 decides whether its minimum cut is worth building
-  alone or needs its resistance fallback.
-- **< 20%:** the falsification case "the flow puts regime boundaries through cratons"
+Both are needed. A 300 km belt is narrower than the 625 km band, so a cut can run along a
+belt with a clear line while its band still thins craton on both sides; line clearance
+alone doesn't show that the craton a rift acts on falls.
+
+It also reports belt area, as a share of genuine continental area, at each 100 Myr
+checkpoint, and the same L and B on today's layout as a control
+([analysis/rfc0010](../analysis/rfc0010/README.md)).
+
+Outcomes, fixed before G1 runs:
+- **L ≥ 50% and B ≤ 0.50:** build 1 and 2 here, and RFC 0010's minimum cut.
+- **L ≥ 20% and B ≤ 0.75**, but not the branch above: build 1 and 2; RFC 0010 builds its
+  minimum cut together with its resistance fallback, sized to the remaining loss.
+- **Otherwise:** the falsification case "the flow puts regime boundaries through cratons"
   holds even for a mosaic (Falsification). Don't build RFC 0010's cut; take the question
   to the mantle model.
+
+B bounds what failed rifts and the booked exposure see. Stretch donation and divergent
+thinning along a new boundary act after the split and can reach beyond the band (#388), and
+the probe doesn't follow them; RFC 0010's acceptance runs measure that loss directly.
 
 Report also how fast belts disappear. If belt area falls below a third of its starting
 value by 500 Myr, the mosaic won't outlast the model's sinks, and this RFC waits for the
@@ -262,9 +275,8 @@ new collisions and rifts mark them.
 
 ## Falsification criteria
 
-- **The flow puts regime boundaries through cratons.** If G1 finds fewer than 20% of
-  craton-crossing cuts with a craton-free admissible minimum cut on a mosaic, the cut's
-  geometry was never the obstacle: the flow's regime boundaries sit under cratons. Don't
+- **The flow puts regime boundaries through cratons.** If G1 falls in neither building
+  branch on a mosaic (L < 20%, or B > 0.75), the cut's geometry was never the obstacle: the flow's regime boundaries sit under cratons. Don't
   build RFC 0010's minimum cut; investigate why the mantle flow localises beneath cratons.
 - **The mosaic doesn't last.** If belts lose more than two thirds of their area by 500 Myr
   on every seed even without formation, the mosaic only delays the one-blob state. Wait for

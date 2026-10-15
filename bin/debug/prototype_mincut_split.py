@@ -17,13 +17,17 @@ strength, keel term), so the cut prefers thin, non-cratonic lithosphere, and the
 makes it prefer a short boundary too. W bounds how far the rift may wander from the flow's
 line, as the tilt cone did for #418.
 
-Each min cut is checked against #418's gates where they still mean something: both halves
-at least SPLIT_MIN_NODES, poles at least the relaxed pole separation apart, and an RMS fit
-residual within SPLIT_CUT_MAX_RESIDUAL_INCREASE (10%) of the flow cut's. #418's area
-misfit gate is reported, not applied: it only caps how far the cut moves, and the corridor
-does that job here. "Through craton" uses the same band as the phase 1 cut counts
-(FAILED_RIFT_BAND_MULT spacings), measured from the boundary's nodes so a bent cut and the
-great circle are judged alike.
+Each min cut is admissible if both halves are at least SPLIT_MIN_NODES, their poles at
+least the relaxed pole separation apart, their RMS fit residual within 10% of the flow
+cut's, and each half's largest connected component at least 99% of it (RFC 0010's gates).
+#418's area misfit gate is reported, not applied: it only caps how far the cut moves, and
+the corridor does that job here. Craton exposure is measured two ways:
+- "through craton": any craton node in the band the phase 1 cut counts and a failed rift
+  use (FAILED_RIFT_BAND_MULT spacings), measured from the boundary's nodes so a bent cut and
+  the great circle are judged alike; and the craton area in that band, pooled with the flow
+  cut kept wherever no minimum cut is admissible (the operational exposure);
+- "line through craton": a craton node at either end of a link the cut crosses.
+Boundary length is the summed chord length of the crossed links.
 
 Usage:
     PYTHONPATH=backend backend/.venv/bin/python bin/debug/prototype_mincut_split.py \
@@ -119,8 +123,8 @@ def _boundary_band(points, i, j, mask, band_chord) -> np.ndarray:
     return np.isfinite(dist)
 
 
-def _halves(points, velocities, mask, n_edges_crossing) -> dict:
-    out = {"count_min": int(min(mask.sum(), (~mask).sum())), "crossing_edges": int(n_edges_crossing)}
+def _halves(points, velocities, mask, crossing_length) -> dict:
+    out = {"count_min": int(min(mask.sum(), (~mask).sum())), "crossing_length": float(crossing_length)}
     if out["count_min"] < 3:
         return {**out, "pole_sep": 0.0, "rms": np.inf}
     rss, poles = 0.0, []
@@ -167,12 +171,14 @@ def _evaluate(world, plate, points, cut_normal, kind) -> dict:  # noqa: C901 - o
     proj = points @ cut_normal
     flow_mask = proj > 0.0
     flow_band = _boundary_band(points, i, j, flow_mask, band_chord)
-    flow_fit = _halves(points, velocities, flow_mask, int((flow_mask[i] != flow_mask[j]).sum()))
+    flow_crossing = flow_mask[i] != flow_mask[j]
+    flow_fit = _halves(points, velocities, flow_mask, length[flow_crossing].sum())
     row = {
         "kind": kind, "myr": world.elapsed_years / 1e6, "plate": plate.plate_id, "nodes": n,
         "plate_area_mkm2": float(areas.sum() / 1e12),
         "plate_craton_area_mkm2": float(areas[craton].sum() / 1e12),
         "flow": {"through_craton": bool(craton[flow_band].any()),
+                 "line_through_craton": bool(craton[np.concatenate([i[flow_crossing], j[flow_crossing]])].any()),
                  "through_craton_greatcircle": bool(craton[np.abs(proj) < np.sin(merge_split.FAILED_RIFT_BAND_MULT * spacing)].any()),
                  "band_area_mkm2": float(areas[flow_band].sum() / 1e12),
                  "band_craton_area_mkm2": float(areas[flow_band & craton].sum() / 1e12),
@@ -192,7 +198,8 @@ def _evaluate(world, plate, points, cut_normal, kind) -> dict:  # noqa: C901 - o
             mask = _min_cut(n, i, j, length, strength, floor, spacing, source_set, sink_set)
             cut_s = time.perf_counter() - t0
             band = _boundary_band(points, i, j, mask, band_chord)
-            fit = _halves(points, velocities, mask, int((mask[i] != mask[j]).sum()))
+            crossing = mask[i] != mask[j]
+            fit = _halves(points, velocities, mask, length[crossing].sum())
             comp = _components(n, i, j, mask)
             v = {
                 "through_craton": bool(craton[band].any()),
@@ -200,7 +207,10 @@ def _evaluate(world, plate, points, cut_normal, kind) -> dict:  # noqa: C901 - o
                 "band_strength_area_mkm2": float((strength * areas)[band].sum() / 1e12),
                 "misfit": float(areas[mask != flow_mask].sum() / areas.sum()),
                 "residual_ratio": fit["rms"] / flow_fit["rms"] if flow_fit["rms"] > 0 else np.inf,
-                "length_ratio": fit["crossing_edges"] / max(flow_fit["crossing_edges"], 1),
+                # Summed chord length of the links each cut crosses: the quantity the cut cost
+                # weights, so the ratio compares boundary lengths, not link counts (#421 review).
+                "length_ratio": fit["crossing_length"] / flow_fit["crossing_length"] if flow_fit["crossing_length"] > 0 else np.inf,
+                "line_through_craton": bool(craton[np.concatenate([i[crossing], j[crossing]])].any()),
                 "largest_component_share": comp,
                 "size_ok": fit["count_min"] >= min_nodes,
                 "poles_ok": fit["pole_sep"] >= threshold,
@@ -208,7 +218,7 @@ def _evaluate(world, plate, points, cut_normal, kind) -> dict:  # noqa: C901 - o
             }
             v["residual_ok"] = v["residual_ratio"] <= RESIDUAL_LIMIT
             v["connected"] = min(comp) >= 0.99
-            v["admissible"] = v["size_ok"] and v["poles_ok"] and v["residual_ok"]
+            v["admissible"] = v["size_ok"] and v["poles_ok"] and v["residual_ok"] and v["connected"]
             row["variants"][tag] = v
     row["eval_s"] = time.perf_counter() - started
     return row
@@ -217,6 +227,7 @@ def _evaluate(world, plate, points, cut_normal, kind) -> dict:  # noqa: C901 - o
 def _summarize(rows: list[dict]) -> dict:
     through = [r for r in rows if r["flow"]["through_craton"]]
     out = {"cuts": len(rows), "flow_through_craton": len(through),
+           "flow_line_through_craton": sum(r["flow"]["line_through_craton"] for r in rows),
            "flow_through_craton_greatcircle": sum(r["flow"]["through_craton_greatcircle"] for r in rows),
            "eval_s_mean": float(np.mean([r["eval_s"] for r in rows])) if rows else None, "variants": {}}
     flow_craton = sum(r["flow"]["band_craton_area_mkm2"] for r in rows)
@@ -227,7 +238,14 @@ def _summarize(rows: list[dict]) -> dict:
             "evaluated_through": len(vs),
             "craton_free": sum(not v["through_craton"] for _, v in vs),
             "craton_free_admissible": sum(not v["through_craton"] and v["admissible"] for _, v in vs),
-            "craton_free_admissible_connected": sum(not v["through_craton"] and v["admissible"] and v["connected"] for _, v in vs),
+            "line_craton_free": sum(not v["line_through_craton"] for _, v in vs),
+            "line_craton_free_admissible": sum(not v["line_through_craton"] and v["admissible"] for _, v in vs),
+            "fails_connected": sum(not v["connected"] for _, v in vs),
+            # Pooled over craton-crossing cuts: the craton a rift's operational band would
+            # thin, minimum cut over flow cut, keeping the flow cut where none is admissible.
+            "band_craton_area_vs_flow_through_admissible": (
+                sum(v["band_craton_area_mkm2"] if v["admissible"] else r["flow"]["band_craton_area_mkm2"] for r, v in vs)
+                / max(sum(r["flow"]["band_craton_area_mkm2"] for r, _ in vs), 1e-300)) if vs else None,
             "fails_size": sum(not v["size_ok"] for _, v in vs),
             "fails_poles": sum(not v["poles_ok"] for _, v in vs),
             "fails_residual": sum(not v["residual_ok"] for _, v in vs),
