@@ -369,7 +369,7 @@ function GlobeLocator({ planeAngleDeg, arcPosition, worldRevision }: { planeAngl
       source.src = dataUrl;
     }).catch(() => setTextureUrl(null));
     return () => { cancelled = true; };
-  }, [worldRevision, planeAngleDeg, arcPosition]);
+  }, [worldRevision, planeAngleDeg, arcPosition, centerAngle]);
 
   return (
     <svg
