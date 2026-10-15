@@ -12,8 +12,8 @@ implemented through ordinary issues and PRs (see [AGENTS.md](../AGENTS.md)), eac
 |---|---|---|
 | [0001](0001-merge-cap-craton-loss.md) | Plate merges must not destroy cratons | Draft |
 | [0002](0002-craton-trench-attrition.md) | Cratons resist sinking: margin-dependent attrition and collision sinks | Draft |
-| [0003](0003-rifting-around-cratons.md) | Rifts go around cratons | Accepted |
-| [0004](0004-proto-cratons.md) | Proto-cratons: restarting craton formation | Draft |
+| [0003](0003-rifting-around-cratons.md) | Rifts go around cratons | Withdrawn (superseded by 0009, 0010) |
+| [0004](0004-proto-cratons.md) | Proto-cratons: restarting craton formation | Withdrawn (superseded by 0009) |
 | [0005](0005-continental-recycling-balance.md) | Balance continental recycling at trenches | Draft |
 | [0006](0006-intra-oceanic-arcs.md) | Intra-oceanic arcs: new continent from the ocean | Draft |
 | [0007](0007-mantle-plumes-and-plateaus.md) | Mantle plumes: oceanic plateaus, flood basalts and hotspot tracks | Draft |
@@ -36,20 +36,16 @@ refreshed implementation order (subject to each RFC's acceptance and diagnosis g
    continental collision-placement loss can rival deep subduction
    ([#408](https://github.com/adubey/mantle-bloom/issues/408)).
 2. 0002 after resolving attrition contact ownership
-   ([#405](https://github.com/adubey/mantle-bloom/issues/405)), and 0003's selected
-   combination of cut steering and stronger resistance. RFC 0003's phase 1b is already
-   on the year-based pace (#388, PR #392); #389 tracks its implementation.
-3. 0004 only after the sink repairs, and only once the baseline passes its evaluation gate:
-   a qualifying window after 500 Myr on at least two runs. `2562f63` has one. Most of its
-   formation is a 200 Myr generation pulse, and its share rises through loss of
-   non-cratonic crust, not formation
-   ([#409](https://github.com/adubey/mantle-bloom/issues/409),
-   [`analysis/issue409/`](../analysis/issue409/README.md)).
+   ([#405](https://github.com/adubey/mantle-bloom/issues/405)).
+3. 0009's gate G1, a replay-only probe that can run at any time; it decides whether 0009's
+   craton mosaic and 0010's strength-following cut are built. They replace 0003, whose cut
+   steering couldn't avoid cratons (PR #418), and 0004. If G1 finds belts don't outlast
+   the sinks, 0009 waits for 0001, 0002 and 0005.
 4. 0006 and 0007, after separating their proposed production from existing elevation-driven
    continental resets ([#406](https://github.com/adubey/mantle-bloom/issues/406),
    [#407](https://github.com/adubey/mantle-bloom/issues/407)). They share `terranes.py`
    (docking, buoyant-crust tracers and ledger),
-   which whichever lands first builds. RFC 0003's plume weakening also depends on 0007.
+   which whichever lands first builds. RFC 0010's plume weakening also depends on 0007.
 
 RFC 0008 came later, from the same craton work. Its gate can run at any time. Its fusion
 lands with or after 0001's merge placement, since it makes craton-bearing merges more

@@ -4,7 +4,7 @@
 - **Date:** 2026-10-13 (evidence rebased 2026-10-14 for #403)
 - **Related:** #274 (cratons), #340 (craton partition rules), #276 (suture accretion),
   #290 (staged suture placement); RFCs [0002](0002-craton-trench-attrition.md),
-  [0004](0004-proto-cratons.md), [0008](0008-craton-collision-jamming.md) (fusion at jam
+  [0009](0009-craton-mosaic.md) (cratons; supersedes 0004), [0008](0008-craton-collision-jamming.md) (fusion at jam
   onset); #403 (post-#358 baseline audit)
 
 ## Problem

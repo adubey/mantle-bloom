@@ -5,7 +5,7 @@
 - **Related:** #120 (arc magmatism vs. land decline), #311 (terrane keels), #318
   (collision polarity fronts), #321 (terrane docking),
   [#406](https://github.com/adubey/mantle-bloom/issues/406) (source-attribution diagnosis); RFCs
-  [0004](0004-proto-cratons.md), [0005](0005-continental-recycling-balance.md),
+  [0009](0009-craton-mosaic.md) (cratons; supersedes 0004), [0005](0005-continental-recycling-balance.md),
   [0007](0007-mantle-plumes-and-plateaus.md) (shared docking and buoyant-crust tracers)
 
 ## Problem

@@ -1,11 +1,41 @@
-# RFC 0004: Proto-cratons: restarting craton formation
+# RFC 0004 (withdrawn): Proto-cratons: restarting craton formation
 
-- **Status:** Draft
-- **Date:** 2026-10-13; baseline audit 2026-10-14 (#403); gate revision 2026-10-14 (#409)
+- **Status:** Withdrawn (2026-10-15); superseded by [RFC 0009](0009-craton-mosaic.md) (PR #421)
+- **Date:** 2026-10-13; baseline audit 2026-10-14 (#403); gate revision 2026-10-14 (#409);
+  withdrawn 2026-10-15
 - **Related:** #274 (craton formation), #314 (interior shortening), #403 (baseline audit),
   [#409](https://github.com/adubey/mantle-bloom/issues/409) (formation and ratchet diagnosis); RFCs
   [0001](0001-merge-cap-craton-loss.md), [0003](0003-rifting-around-cratons.md),
   [0006](0006-intra-oceanic-arcs.md)
+
+## Outcome
+
+**Withdrawn on 2026-10-15 by the project owner, superseded by RFC 0009.** This RFC asked how
+to restart craton formation. The evidence since points at the rule that defines cratons:
+distance from the plate edge.
+
+- **Evidence.** #409 found:
+  - 75–86% of formation on seeds 7, 11 and 2024 is one generation pulse, caused by
+    seeding and formation using different margins (875 and 500 km);
+  - the craton share rises through loss of non-cratonic crust: at least 91% of the host
+    lost by 500 Myr was destroyed or thinned, not converted;
+  - this RFC's evaluation gate had one usable window on `2562f63`.
+
+  RFC 0003's follow-up probe ([analysis/rfc0010](../analysis/rfc0010/README.md), PR #421)
+  showed the same rule makes each continent's interior one craton. Splits then can't avoid
+  cratons, and sutures and rift scars heal into craton after 200 quiet Myr.
+- **What landed and stays.** No model change. #409's diagnostics stay:
+  `bin/debug/rfc0004_gates.py`, `bin/debug/craton_genuine_area.py` and
+  `analysis/issue409/`.
+- **What carries over to RFC 0009:**
+  - the #403 and #409 evidence;
+  - aligning the seeding and formation margins, which removes the generation pulse;
+  - welded growth (path B) and the quiescence signal, as later options;
+  - the matched-baseline method of the evaluation gate;
+  - the deferral of collisional formation (path C) to a future depletion RFC.
+- **What doesn't carry over:** the proto-craton naming and display, and the 10% host floor
+  and one-third conversion cap, which were set from `2562f63`.
+- **Closed:** #411 (revisit this RFC's criteria) is moot.
 
 ## Problem
 

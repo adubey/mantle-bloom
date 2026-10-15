@@ -3,8 +3,9 @@
 - **Status:** Draft
 - **Date:** 2026-10-13; evidence refreshed 2026-10-14 (#403)
 - **Related:** #205 (magma transport),
-  [#407](https://github.com/adubey/mantle-bloom/issues/407) (source attribution and breakup baseline); RFCs [0003](0003-rifting-around-cratons.md)
-  (plume weakening of cratons), [0004](0004-proto-cratons.md) (depletion follow-up),
+  [#407](https://github.com/adubey/mantle-bloom/issues/407) (source attribution and breakup baseline); RFCs [0010](0010-rifts-follow-weak-lithosphere.md)
+  (plume weakening of cratons; supersedes 0003), [0009](0009-craton-mosaic.md) (cratons;
+  supersedes 0004, keeps its depletion follow-up deferred),
   [0005](0005-continental-recycling-balance.md), [0006](0006-intra-oceanic-arcs.md)
   (shared docking, buoyant-crust tracers and ledger)
 
@@ -26,7 +27,7 @@ spawning yet". Four Earth processes are therefore missing:
 3. **Hotspot tracks**, such as the Hawaiian–Emperor chain: age-progressive volcanic chains
    that record plate motion over a fixed source.
 4. **Plume-weakened lithosphere.** Cratons rift only after heating or melt weakens them
-   [[Foley, 2008]](#ref-foley2008) [[Koptev et al., 2015]](#ref-koptev2015). RFC 0003
+   [[Foley, 2008]](#ref-foley2008) [[Koptev et al., 2015]](#ref-koptev2015). RFC 0010
    leaves this out because there is nothing in the model to do the weakening.
 
 **Historical evidence, pre-#358.** The run behind RFCs 0001–0007 motivated item 1. The
@@ -290,11 +291,11 @@ any tuning replay.
   reads, after plume-driven breakup [[White & McKenzie, 1989]](#ref-white1989).
 - *Events.* One event is logged per head: plate, volume, and oceanic or continental.
 
-**Weakening (for RFC 0003).** While `plume_heat_myr > 0`, craton strength in the rift
+**Weakening (for RFC 0010).** While `plume_heat_myr > 0`, craton strength in the rift
 paths (`lithosphere_plate.deform_columns`'s divergent thinning,
 `quad_tectonics._allocate_stretch`, failed rifts) is multiplied by
-`1 − PLUME_CRATON_WEAKENING`, with the product clamped to [0, 1] as RFC 0003 requires. In
-RFC 0003's split-cut score, heated cells count as weak, so cuts are drawn toward
+`1 − PLUME_CRATON_WEAKENING`, with the product clamped to [0, 1] as `cratons.rift_resistance`
+already clamps it (#385). In RFC 0010's cut strength, heated cells count as weak, so cuts are drawn toward
 plume-heated lithosphere and cratons rift where a plume has weakened them, after
 [[Foley, 2008]](#ref-foley2008) and [[Koptev et al., 2015]](#ref-koptev2015). Erosion,
 attrition and the collision brake are unchanged.
@@ -369,7 +370,7 @@ scales with them) explicitly, or they drift above Hc or vanish without a booking
 
 **Roots.** Ontong Java is underlain by a mantle root over 300 km thick
 [[Kerr & Mahoney, 2007]](#ref-kerr2007). Plume residue incorporated into the lithosphere
-is one of the reservoirs RFC 0004's deferred depletion RFC must model. This RFC adds no
+is one of the reservoirs the deferred depletion RFC (from RFC 0004, now RFC 0009) must model. This RFC adds no
 depletion tracer.
 
 **Global scale check.** These are gross figures; preservation is smaller and is measured,
@@ -426,7 +427,7 @@ worlds can turn plumes off that way.
 | ΔE, `DOCK_WIDTH_M` | 3,000 m | Design choice: the spread of outcomes for similar plateaus | Sensitivity 1,500–6,000 m |
 | `DOCK_LOWER_CRUST_LOSS` | 0.2 | Design choice: Ontong Java lost lower crust at its edge [[Mann & Taira, 2004]](#ref-mann2004); no fraction is given | Sensitivity 0–0.4 |
 | `PLATEAU_PRESERVED_FRACTION` | 0.9 | Calibration assumption: budgets count accreted plateaus as continental growth [[Clift et al., 2009]](#ref-clift2009), though they are mafic | Sensitivity at 0.5 |
-| `PLUME_HEAT_MYR` | 20 Myr | The order of thermal re-equilibration of heated lithosphere; no direct constraint | Tune with RFC 0003: craton rifting should cluster on plume-heated cells |
+| `PLUME_HEAT_MYR` | 20 Myr | The order of thermal re-equilibration of heated lithosphere; no direct constraint | Tune with RFC 0010: craton rifting should cluster on plume-heated cells |
 | `PLUME_CRATON_WEAKENING` | 0.75 | Cancels `CRATON_RIFT_RESISTANCE` at full heat | Sweep 0.5–1.0 |
 | `PLUME_HEAD_STRESS` | in `internal_stress` units | Breakup often follows a continental plume head [[White & McKenzie, 1989]](#ref-white1989); no rate is given | Provisional design target: about half of continental plume heads followed by a split of their plate within 20 Myr; report matched plume-off/background incidence before stress tuning |
 
@@ -494,8 +495,8 @@ emplacement or plateau docking.
 - `backend/app/lithosphere_plate.py`, `deform_columns`: thin tracers under divergence;
   clear them on melt-through; apply plume weakening to `CRATON_RIFT_RESISTANCE`.
 - `backend/app/sparse_quad_patch.py`, `apply_failed_rift`: thin tracers; apply the same
-  weakening, with RFC 0003's clamp.
-- `backend/app/merge_split.py`: RFC 0003's strength proxy counts heated cells as weak; add
+  weakening, with `cratons.rift_resistance`'s clamp.
+- `backend/app/merge_split.py`: RFC 0010's cut strength counts heated cells as weak; add
   the head stress to `internal_stress`.
 - `backend/app/hydroclimate/volcanism.py`: unchanged. Its untouched eruption path is part
   of the volume-ownership contract, covered by a test.
@@ -597,7 +598,7 @@ emplacement or plateau docking.
       [[Clift et al., 2009]](#ref-clift2009), not a fit.
 - [ ] The sensitivity runs (rate, clustering, volume distribution, docking knobs) are
       reported, with the spread of converted continental material each produces.
-- [ ] With RFC 0003 in place, at least half of the craton volume lost to rifting is lost in
+- [ ] With RFC 0010 in place, at least half of the craton volume lost to rifting is lost in
       plume-heated cells.
 - [ ] Before tuning `PLUME_HEAD_STRESS`, report the fraction of continental heads followed
       by a split within 20 Myr beside matched plume-off/background incidence under the
@@ -620,7 +621,7 @@ emplacement or plateau docking.
   than a factor of five across the rate and volume sensitivity cases, the model's crust
   budget would be set by unconstrained assumptions. Don't merge plateau preservation until
   a better constraint exists.
-- **Weakening doesn't localise.** If, with RFC 0003, craton rifting doesn't concentrate in
+- **Weakening doesn't localise.** If, with RFC 0010, craton rifting doesn't concentrate in
   plume-heated cells at any `PLUME_HEAT_MYR` from 5 to 50 Myr, the weakening mechanism
   isn't what drives craton rifting in the model. Remove it.
 
