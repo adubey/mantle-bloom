@@ -18,6 +18,8 @@ implemented through ordinary issues and PRs (see [AGENTS.md](../AGENTS.md)), eac
 | [0006](0006-intra-oceanic-arcs.md) | Intra-oceanic arcs: new continent from the ocean | Draft |
 | [0007](0007-mantle-plumes-and-plateaus.md) | Mantle plumes: oceanic plateaus, flood basalts and hotspot tracks | Draft |
 | [0008](0008-craton-collision-jamming.md) | Cratons jam collisions: braking and fusion | Accepted |
+| [0009](0009-craton-mosaic.md) | Cratons as a mosaic: discrete cores and lasting weak belts | Draft |
+| [0010](0010-rifts-follow-weak-lithosphere.md) | Rifts follow weak lithosphere | Draft |
 
 RFCs 0001–0007 come from one investigation: a 19.2 Gyr run (seed 456862899) that lost
 almost all of its continental crust and all of its cratons. The run is used as a stress
@@ -51,7 +53,14 @@ RFC 0008 came later, from the same craton work. Its gate can run at any time. It
 lands with or after 0001's merge placement, since it makes craton-bearing merges more
 frequent.
 
-RFC 0004 defers a collisional formation path to a future RFC on mantle depletion.
+RFC 0009 keeps RFC 0004's deferral of a collisional formation path to a future RFC on
+mantle depletion.
+
+RFCs 0009 and 0010 replace RFC 0003, whose cut steering couldn't avoid cratons (PR #418),
+and RFC 0004. An offline probe ([`analysis/rfc0010/`](../analysis/rfc0010/README.md))
+found that even a cut free to bend rarely misses a craton, because each continent's
+interior is one craton. 0009 makes cratons a mosaic of cores and lasting weak belts; its
+gate G1 also decides whether 0010's strength-following cut is built.
 
 ## Writing and reviewing
 

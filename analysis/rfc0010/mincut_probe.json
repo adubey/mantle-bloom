@@ -1,0 +1,504 @@
+{
+ "model_commit": "1227c36f7412606f48f5982127f663c1db181703",
+ "years": 1000000000.0,
+ "corridors_km": [
+  500.0,
+  1000.0,
+  1500.0,
+  2500.0
+ ],
+ "floors": [
+  0.05,
+  0.25
+ ],
+ "step_years": 5000000.0,
+ "density": "default",
+ "script": "bin/debug/prototype_mincut_split.py",
+ "runs": [
+  {
+   "seed": 7,
+   "wall_s": 813,
+   "summary": {
+    "cuts": 190,
+    "flow_through_craton": 69,
+    "flow_through_craton_greatcircle": 69,
+    "eval_s_mean": 0.032975406595505775,
+    "variants": {
+     "w500_f0.05": {
+      "evaluated_through": 69,
+      "craton_free": 1,
+      "craton_free_admissible": 1,
+      "craton_free_admissible_connected": 1,
+      "fails_size": 8,
+      "fails_poles": 3,
+      "fails_residual": 0,
+      "admissible_all_cuts": 136,
+      "band_craton_area_vs_flow": 0.830338468046727,
+      "median_residual_ratio": 1.0040028638202108,
+      "median_misfit": 0.04427818587783079,
+      "median_length_ratio": 0.9,
+      "max_cut_s": 0.015044291969388723
+     },
+     "w500_f0.25": {
+      "evaluated_through": 69,
+      "craton_free": 2,
+      "craton_free_admissible": 2,
+      "craton_free_admissible_connected": 2,
+      "fails_size": 10,
+      "fails_poles": 2,
+      "fails_residual": 0,
+      "admissible_all_cuts": 131,
+      "band_craton_area_vs_flow": 0.8261571159280028,
+      "median_residual_ratio": 1.0047530692379179,
+      "median_misfit": 0.04524807314432802,
+      "median_length_ratio": 0.8919117647058824,
+      "max_cut_s": 0.006941374856978655
+     },
+     "w1000_f0.05": {
+      "evaluated_through": 69,
+      "craton_free": 9,
+      "craton_free_admissible": 5,
+      "craton_free_admissible_connected": 5,
+      "fails_size": 21,
+      "fails_poles": 3,
+      "fails_residual": 1,
+      "admissible_all_cuts": 88,
+      "band_craton_area_vs_flow": 0.6608728404190752,
+      "median_residual_ratio": 1.0161084253163017,
+      "median_misfit": 0.08658936849263404,
+      "median_length_ratio": 0.8375258799171843,
+      "max_cut_s": 0.006563917035236955
+     },
+     "w1000_f0.25": {
+      "evaluated_through": 69,
+      "craton_free": 7,
+      "craton_free_admissible": 3,
+      "craton_free_admissible_connected": 3,
+      "fails_size": 21,
+      "fails_poles": 3,
+      "fails_residual": 1,
+      "admissible_all_cuts": 88,
+      "band_craton_area_vs_flow": 0.6660113884135358,
+      "median_residual_ratio": 1.01600797058668,
+      "median_misfit": 0.08456663509753012,
+      "median_length_ratio": 0.8312261995430312,
+      "max_cut_s": 0.007041874807327986
+     },
+     "w1500_f0.05": {
+      "evaluated_through": 69,
+      "craton_free": 14,
+      "craton_free_admissible": 9,
+      "craton_free_admissible_connected": 9,
+      "fails_size": 24,
+      "fails_poles": 5,
+      "fails_residual": 9,
+      "admissible_all_cuts": 65,
+      "band_craton_area_vs_flow": 0.5598193674387476,
+      "median_residual_ratio": 1.0282955373627956,
+      "median_misfit": 0.1305899584239697,
+      "median_length_ratio": 0.7800744109136006,
+      "max_cut_s": 0.013128458056598902
+     },
+     "w1500_f0.25": {
+      "evaluated_through": 69,
+      "craton_free": 13,
+      "craton_free_admissible": 7,
+      "craton_free_admissible_connected": 7,
+      "fails_size": 26,
+      "fails_poles": 4,
+      "fails_residual": 9,
+      "admissible_all_cuts": 64,
+      "band_craton_area_vs_flow": 0.5468506237061501,
+      "median_residual_ratio": 1.0307974489654144,
+      "median_misfit": 0.1297650476140924,
+      "median_length_ratio": 0.7784237726098191,
+      "max_cut_s": 0.010406292043626308
+     },
+     "w2500_f0.05": {
+      "evaluated_through": 69,
+      "craton_free": 21,
+      "craton_free_admissible": 6,
+      "craton_free_admissible_connected": 6,
+      "fails_size": 42,
+      "fails_poles": 2,
+      "fails_residual": 19,
+      "admissible_all_cuts": 34,
+      "band_craton_area_vs_flow": 0.34335361559807753,
+      "median_residual_ratio": 1.0926855363874626,
+      "median_misfit": 0.28498897569690174,
+      "median_length_ratio": 0.6407008495145632,
+      "max_cut_s": 0.021744624944403768
+     },
+     "w2500_f0.25": {
+      "evaluated_through": 69,
+      "craton_free": 20,
+      "craton_free_admissible": 5,
+      "craton_free_admissible_connected": 5,
+      "fails_size": 47,
+      "fails_poles": 2,
+      "fails_residual": 17,
+      "admissible_all_cuts": 32,
+      "band_craton_area_vs_flow": 0.3567506702172429,
+      "median_residual_ratio": 1.0889139727871353,
+      "median_misfit": 0.28731771782938376,
+      "median_length_ratio": 0.6324054536601201,
+      "max_cut_s": 0.020397417014464736
+     }
+    }
+   }
+  },
+  {
+   "seed": 11,
+   "wall_s": 730,
+   "summary": {
+    "cuts": 180,
+    "flow_through_craton": 40,
+    "flow_through_craton_greatcircle": 39,
+    "eval_s_mean": 0.034331135381944475,
+    "variants": {
+     "w500_f0.05": {
+      "evaluated_through": 40,
+      "craton_free": 2,
+      "craton_free_admissible": 2,
+      "craton_free_admissible_connected": 2,
+      "fails_size": 6,
+      "fails_poles": 0,
+      "fails_residual": 0,
+      "admissible_all_cuts": 132,
+      "band_craton_area_vs_flow": 0.771562464773262,
+      "median_residual_ratio": 1.0038156399260478,
+      "median_misfit": 0.04378040779026583,
+      "median_length_ratio": 0.9033888888888889,
+      "max_cut_s": 0.0068025419022887945
+     },
+     "w500_f0.25": {
+      "evaluated_through": 40,
+      "craton_free": 4,
+      "craton_free_admissible": 4,
+      "craton_free_admissible_connected": 4,
+      "fails_size": 7,
+      "fails_poles": 0,
+      "fails_residual": 0,
+      "admissible_all_cuts": 130,
+      "band_craton_area_vs_flow": 0.7724338214621429,
+      "median_residual_ratio": 1.003493455110681,
+      "median_misfit": 0.04435110220618782,
+      "median_length_ratio": 0.9033888888888889,
+      "max_cut_s": 0.008443833095952868
+     },
+     "w1000_f0.05": {
+      "evaluated_through": 40,
+      "craton_free": 9,
+      "craton_free_admissible": 6,
+      "craton_free_admissible_connected": 6,
+      "fails_size": 13,
+      "fails_poles": 0,
+      "fails_residual": 2,
+      "admissible_all_cuts": 92,
+      "band_craton_area_vs_flow": 0.47745597937028594,
+      "median_residual_ratio": 1.011593923280239,
+      "median_misfit": 0.09031512467888517,
+      "median_length_ratio": 0.8441169631438206,
+      "max_cut_s": 0.0105899169575423
+     },
+     "w1000_f0.25": {
+      "evaluated_through": 40,
+      "craton_free": 8,
+      "craton_free_admissible": 6,
+      "craton_free_admissible_connected": 6,
+      "fails_size": 12,
+      "fails_poles": 0,
+      "fails_residual": 2,
+      "admissible_all_cuts": 94,
+      "band_craton_area_vs_flow": 0.4909196502268663,
+      "median_residual_ratio": 1.0116792939491415,
+      "median_misfit": 0.0878312452461868,
+      "median_length_ratio": 0.843183779119931,
+      "max_cut_s": 0.01250708312727511
+     },
+     "w1500_f0.05": {
+      "evaluated_through": 40,
+      "craton_free": 12,
+      "craton_free_admissible": 5,
+      "craton_free_admissible_connected": 5,
+      "fails_size": 16,
+      "fails_poles": 0,
+      "fails_residual": 6,
+      "admissible_all_cuts": 74,
+      "band_craton_area_vs_flow": 0.3214304348570672,
+      "median_residual_ratio": 1.0186385916427718,
+      "median_misfit": 0.12907747895035493,
+      "median_length_ratio": 0.8048780487804879,
+      "max_cut_s": 0.01605962496250868
+     },
+     "w1500_f0.25": {
+      "evaluated_through": 40,
+      "craton_free": 12,
+      "craton_free_admissible": 5,
+      "craton_free_admissible_connected": 5,
+      "fails_size": 16,
+      "fails_poles": 0,
+      "fails_residual": 6,
+      "admissible_all_cuts": 75,
+      "band_craton_area_vs_flow": 0.3207898448585865,
+      "median_residual_ratio": 1.0187662920681957,
+      "median_misfit": 0.13007323689652206,
+      "median_length_ratio": 0.8048780487804879,
+      "max_cut_s": 0.01654895907267928
+     },
+     "w2500_f0.05": {
+      "evaluated_through": 40,
+      "craton_free": 20,
+      "craton_free_admissible": 5,
+      "craton_free_admissible_connected": 5,
+      "fails_size": 30,
+      "fails_poles": 0,
+      "fails_residual": 17,
+      "admissible_all_cuts": 38,
+      "band_craton_area_vs_flow": 0.1441361711434797,
+      "median_residual_ratio": 1.0645369694569935,
+      "median_misfit": 0.2974685546823659,
+      "median_length_ratio": 0.6562899106002554,
+      "max_cut_s": 0.019874625140801072
+     },
+     "w2500_f0.25": {
+      "evaluated_through": 40,
+      "craton_free": 19,
+      "craton_free_admissible": 6,
+      "craton_free_admissible_connected": 6,
+      "fails_size": 29,
+      "fails_poles": 0,
+      "fails_residual": 16,
+      "admissible_all_cuts": 39,
+      "band_craton_area_vs_flow": 0.14730514255797267,
+      "median_residual_ratio": 1.0634801790517652,
+      "median_misfit": 0.296902651197515,
+      "median_length_ratio": 0.6562899106002554,
+      "max_cut_s": 0.02085049985907972
+     }
+    }
+   }
+  },
+  {
+   "seed": 2024,
+   "wall_s": 735,
+   "summary": {
+    "cuts": 172,
+    "flow_through_craton": 26,
+    "flow_through_craton_greatcircle": 25,
+    "eval_s_mean": 0.03246082603216691,
+    "variants": {
+     "w500_f0.05": {
+      "evaluated_through": 26,
+      "craton_free": 5,
+      "craton_free_admissible": 4,
+      "craton_free_admissible_connected": 4,
+      "fails_size": 7,
+      "fails_poles": 0,
+      "fails_residual": 0,
+      "admissible_all_cuts": 112,
+      "band_craton_area_vs_flow": 0.8226794395705291,
+      "median_residual_ratio": 1.0007847313976483,
+      "median_misfit": 0.041816282301360266,
+      "median_length_ratio": 0.9069264069264069,
+      "max_cut_s": 0.003996249986812472
+     },
+     "w500_f0.25": {
+      "evaluated_through": 26,
+      "craton_free": 3,
+      "craton_free_admissible": 2,
+      "craton_free_admissible_connected": 2,
+      "fails_size": 7,
+      "fails_poles": 0,
+      "fails_residual": 0,
+      "admissible_all_cuts": 112,
+      "band_craton_area_vs_flow": 0.826265381103765,
+      "median_residual_ratio": 1.0013594245950233,
+      "median_misfit": 0.04362538216398076,
+      "median_length_ratio": 0.9053221288515406,
+      "max_cut_s": 0.0038629169575870037
+     },
+     "w1000_f0.05": {
+      "evaluated_through": 26,
+      "craton_free": 5,
+      "craton_free_admissible": 2,
+      "craton_free_admissible_connected": 2,
+      "fails_size": 13,
+      "fails_poles": 0,
+      "fails_residual": 2,
+      "admissible_all_cuts": 70,
+      "band_craton_area_vs_flow": 0.5991426310019705,
+      "median_residual_ratio": 1.0065968149933888,
+      "median_misfit": 0.09034698813572609,
+      "median_length_ratio": 0.8437100893997446,
+      "max_cut_s": 0.006062750006094575
+     },
+     "w1000_f0.25": {
+      "evaluated_through": 26,
+      "craton_free": 3,
+      "craton_free_admissible": 0,
+      "craton_free_admissible_connected": 0,
+      "fails_size": 13,
+      "fails_poles": 0,
+      "fails_residual": 2,
+      "admissible_all_cuts": 69,
+      "band_craton_area_vs_flow": 0.6376438462786364,
+      "median_residual_ratio": 1.0065022901637732,
+      "median_misfit": 0.09081643385082874,
+      "median_length_ratio": 0.8421596056488143,
+      "max_cut_s": 0.00634504109621048
+     },
+     "w1500_f0.05": {
+      "evaluated_through": 26,
+      "craton_free": 4,
+      "craton_free_admissible": 2,
+      "craton_free_admissible_connected": 2,
+      "fails_size": 14,
+      "fails_poles": 0,
+      "fails_residual": 2,
+      "admissible_all_cuts": 46,
+      "band_craton_area_vs_flow": 0.44063986695126095,
+      "median_residual_ratio": 1.0151785529239958,
+      "median_misfit": 0.15842728529302366,
+      "median_length_ratio": 0.7906077802450859,
+      "max_cut_s": 0.007439583074301481
+     },
+     "w1500_f0.25": {
+      "evaluated_through": 26,
+      "craton_free": 2,
+      "craton_free_admissible": 0,
+      "craton_free_admissible_connected": 0,
+      "fails_size": 15,
+      "fails_poles": 0,
+      "fails_residual": 2,
+      "admissible_all_cuts": 45,
+      "band_craton_area_vs_flow": 0.45314724346567015,
+      "median_residual_ratio": 1.012302854272747,
+      "median_misfit": 0.15403638287241112,
+      "median_length_ratio": 0.7906077802450859,
+      "max_cut_s": 0.00792112504132092
+     },
+     "w2500_f0.05": {
+      "evaluated_through": 26,
+      "craton_free": 10,
+      "craton_free_admissible": 2,
+      "craton_free_admissible_connected": 2,
+      "fails_size": 19,
+      "fails_poles": 0,
+      "fails_residual": 15,
+      "admissible_all_cuts": 25,
+      "band_craton_area_vs_flow": 0.2470010012757433,
+      "median_residual_ratio": 1.085781993589865,
+      "median_misfit": 0.29789953528392005,
+      "median_length_ratio": 0.6641025641025641,
+      "max_cut_s": 0.012879624962806702
+     },
+     "w2500_f0.25": {
+      "evaluated_through": 26,
+      "craton_free": 9,
+      "craton_free_admissible": 0,
+      "craton_free_admissible_connected": 0,
+      "fails_size": 19,
+      "fails_poles": 0,
+      "fails_residual": 15,
+      "admissible_all_cuts": 26,
+      "band_craton_area_vs_flow": 0.25361954713785545,
+      "median_residual_ratio": 1.0817142237218076,
+      "median_misfit": 0.29784855214406925,
+      "median_length_ratio": 0.6641025641025641,
+      "max_cut_s": 0.014353957958519459
+     }
+    }
+   }
+  }
+ ],
+ "coverage_t0": [
+  {
+   "seed": 7,
+   "plates": 20,
+   "surface_mkm2": 510.17249070987185,
+   "craton_mkm2": 103.79586550085205,
+   "craton_share_of_surface": 0.20345249379563143,
+   "largest_plates_area_craton_mkm2": [
+    [
+     91.81082663886137,
+     53.789452271597725
+    ],
+    [
+     56.96728760900603,
+     0.0
+    ],
+    [
+     48.723173970638435,
+     22.36566444877507
+    ],
+    [
+     46.55820982170473,
+     5.739885597633072
+    ],
+    [
+     42.28798737732591,
+     0.0
+    ]
+   ]
+  },
+  {
+   "seed": 11,
+   "plates": 9,
+   "surface_mkm2": 510.2267892815416,
+   "craton_mkm2": 81.8798736379145,
+   "craton_share_of_surface": 0.16047740996353962,
+   "largest_plates_area_craton_mkm2": [
+    [
+     156.2619566653714,
+     0.0
+    ],
+    [
+     82.75313940349885,
+     0.0
+    ],
+    [
+     54.803062392681966,
+     29.604924085145505
+    ],
+    [
+     49.298327521292066,
+     17.206307271898584
+    ],
+    [
+     45.13491559371134,
+     19.43395654135354
+    ]
+   ]
+  },
+  {
+   "seed": 2024,
+   "plates": 11,
+   "surface_mkm2": 509.97545350764807,
+   "craton_mkm2": 46.32815219311474,
+   "craton_share_of_surface": 0.09084388645466435,
+   "largest_plates_area_craton_mkm2": [
+    [
+     108.21211873672583,
+     0.0
+    ],
+    [
+     63.19782145183459,
+     0.0
+    ],
+    [
+     53.760860207012016,
+     0.0
+    ],
+    [
+     53.105722208827366,
+     3.433246960456869
+    ],
+    [
+     48.84441876557422,
+     19.42493055505174
+    ]
+   ]
+  }
+ ]
+}
