@@ -970,6 +970,24 @@ routine per-step motion.
   equidistant from the two clusters' centroids (`P . (centroid_a - centroid_b) == 0` is
   exactly that circle's plane) and every node partitioned by which side it falls on.
 
+  **Rifts go around cratons** ([RFC 0003](../rfc/0003-rifting-around-cratons.md) solution 1,
+  #389). Real rifts localise in weak lithosphere and split around strong blocks (the East
+  African Rift around the Tanzania craton), but the flow-derived cut ignores the lithosphere.
+  Once that cut has cleared the pole-separation gate, `_steer_cut_off_strong_lithosphere`
+  tries `SPLIT_CUT_CANDIDATES` (64) normals on a deterministic Fibonacci spiral within
+  `SPLIT_CUT_MAX_TILT_DEG` (20°) of it. Each is scored by the area-weighted strength in its
+  `FAILED_RIFT_BAND_MULT` band, where a node's strength is the larger of craton strength and a
+  keel term rising from 0 at 100 km of `Hm` to 1 at `KEEL_FULL_RATIO` × 100 km. Strength only
+  ranks cuts; it never enters a thinning factor. The lowest-scoring candidate wins if it
+  still separates the same flow regimes: at most `SPLIT_CUT_MAX_MISFIT` (10%) of the plate's
+  area changes side, both halves keep `SPLIT_MIN_NODES` and a well-constrained pole
+  (`SPLIT_FIT_MIN_EIGENVALUE`), the poles still clear the same relaxed separation threshold,
+  and the halves' RMS fit residual rises by at most `SPLIT_CUT_MAX_RESIDUAL_INCREASE` (10%).
+  Otherwise, or on a tie, the flow-derived cut stands. All candidates' half-fits come from
+  one product of per-node moments (`p pᵀ`, `p × v`, `|v|²`, count) with the side
+  indicators (`_batched_half_fits`), about 25 ms per attempt at 10⁵ nodes. Splits and failed
+  rifts both use the steered cut, so it is what `record_rift_cut` counts.
+
   **Rifts fail.** Even a plate that clears every gate -- flow-fit, pole separation, size, and
   a viable great-circle cut with both halves above the node floor -- only actually *breaks
   up* with `RIFT_SUCCESS_PROBABILITY` (0.55). Otherwise the rift arrests: continental
@@ -1238,6 +1256,8 @@ loading never changes plate state.
   `cratons.rift_resistance`, clamped to [0, 1];
 - donates only `1 - CRATON_STRETCH_RESISTANCE` of its share of a rift's stretched footprint,
   with fresh magmatic crust filling the rest (`quad_tectonics._allocate_stretch`);
+- deflects a plate split's cut, which tilts up to 20° onto weaker lithosphere when the
+  flow regimes still allow it ([Merge and split](#merge-and-split), RFC 0003 solution 1);
 - never flows, melts or delaminates (`orogeny.py`); an orogen ponds against it;
 - is never consumed whole by boundary retreat (`cratons.retreat_allowed`). At a collision
   front it jams: the weaker crust around it takes the shortening, and craton against craton

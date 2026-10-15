@@ -44,6 +44,7 @@ from . import (
     plates as plates_mod,
 )
 from .hydroclimate import mobile_cover
+from .lithosphere import REFERENCE_HM_CONTINENTAL_M
 from .boundary import MERGE_THRESHOLD_RAD, TRANSFORM_RATE_THRESHOLD, closing_rate
 from .elevation_lines import (
     DEFRAG_CONNECT_RADIUS_MULT,
@@ -237,6 +238,32 @@ _RIFT_OUTCOME_SEED_TAG = 71  # np.random.default_rng tuple slot, distinct from o
 # inflicts. See PlateWithSparseQuadPatch.apply_failed_rift.
 FAILED_RIFT_THINNING_FRACTION = 0.10
 FAILED_RIFT_BAND_MULT = 2.5
+
+# RFC 0003 solution 1 (#389): rifts localise in weak lithosphere and go around cratons (the
+# East African Rift splits around the Tanzania craton), but the flow-derived cut ignores the
+# lithosphere and went through a craton in 24-39% of splits. maybe_split_plate tilts the cut
+# by up to SPLIT_CUT_MAX_TILT_DEG (~2,200 km of movement, more than most cratons are wide)
+# onto the candidate whose FAILED_RIFT_BAND_MULT band crosses the least strength, as long as
+# it still separates the same two flow regimes: at most SPLIT_CUT_MAX_MISFIT of the plate's
+# area changes side, the halves' poles still clear the relaxed pole-separation gate, and
+# their fit residual rises by at most SPLIT_CUT_MAX_RESIDUAL_INCREASE.
+SPLIT_CUT_MAX_TILT_DEG = 20.0
+SPLIT_CUT_CANDIDATES = 64  # ~4.5 deg spacing across the 20 deg cone
+SPLIT_CUT_MAX_MISFIT = 0.10
+SPLIT_CUT_MAX_RESIDUAL_INCREASE = 0.10
+# A half whose normal matrix has a smallest eigenvalue below this times its node count is
+# too small or too narrow to constrain a pole; that candidate is inadmissible.
+SPLIT_FIT_MIN_EIGENVALUE = 1e-3
+# Cut strength also rises with lithosphere thickness, from 0 at the 100 km continental
+# reference to 1 at a 200 km keel (cratonic keels reach ~200-250 km, Pearson et al. 2021),
+# so the cut prefers thin lithosphere, as breakup does at old orogens (Audet & Burgmann 2011).
+KEEL_FULL_RATIO = 2.0
+# Band a candidate cut is scored over: the band a failed rift thins. Phase 1b found boundary
+# loss reaching past it (F rose from 42% to 57% with a twice-wide band, #388), so the
+# sensitivity runs widen it; the cut counts in record_rift_cut keep FAILED_RIFT_BAND_MULT.
+SPLIT_CUT_BAND_MULT = FAILED_RIFT_BAND_MULT
+# Candidates per side-indicator block: keeps the N x block matrices near 13 MB at 10^5 nodes.
+_SPLIT_CUT_CHUNK = 16
 
 # Defragmentation (see defragment_plates / Plate.defragment). Ordinary deform() only adds
 # and removes cells at the boundary, so subduction/transform can sever a plate's cells into
@@ -721,6 +748,133 @@ def _refine_split_cut(points: np.ndarray, mask_a: np.ndarray) -> tuple[np.ndarra
     return mask_a, cut_normal
 
 
+def _cut_strength(craton_crust_m: np.ndarray, hm: np.ndarray) -> np.ndarray:
+    """RFC 0003 per-node lithospheric strength in [0, 1], used only to rank candidate cuts:
+    the larger of craton strength and a keel-thickness term (a cratonic, thick-keeled column
+    scores 1, not 2)."""
+    keel = np.clip((np.asarray(hm, dtype=float) / REFERENCE_HM_CONTINENTAL_M - 1.0) / (KEEL_FULL_RATIO - 1.0), 0.0, 1.0)
+    return np.clip(np.maximum(cratons.strength(craton_crust_m), keel), 0.0, 1.0)
+
+
+def _candidate_cut_normals(cut_normal: np.ndarray) -> np.ndarray:
+    """`cut_normal` itself, then SPLIT_CUT_CANDIDATES normals on a Fibonacci spiral filling
+    the SPLIT_CUT_MAX_TILT_DEG cone around it, in order of increasing tilt. Deterministic, so
+    replays don't depend on an RNG."""
+    n0 = geometry.normalize(cut_normal)
+    helper = np.zeros(3)
+    helper[int(np.argmin(np.abs(n0)))] = 1.0
+    u = geometry.normalize(np.cross(n0, helper))
+    w = np.cross(n0, u)
+    i = np.arange(SPLIT_CUT_CANDIDATES, dtype=float)
+    cos_tilt = 1.0 - (1.0 - np.cos(np.radians(SPLIT_CUT_MAX_TILT_DEG))) * (i + 0.5) / SPLIT_CUT_CANDIDATES
+    sin_tilt = np.sqrt(1.0 - cos_tilt**2)
+    azimuth = i * np.pi * (3.0 - np.sqrt(5.0))
+    tilted = cos_tilt[:, None] * n0 + sin_tilt[:, None] * (np.cos(azimuth)[:, None] * u + np.sin(azimuth)[:, None] * w)
+    return np.vstack([n0, tilted])
+
+
+def _fit_moments(points: np.ndarray, velocities: np.ndarray) -> np.ndarray:
+    """Per-node moments whose sums over any set H give its least-squares Euler pole and
+    residual: the 6 entries of p p^T, p x v, |v|^2 and a count (N x 11)."""
+    p = np.asarray(points, dtype=float)
+    v = np.asarray(velocities, dtype=float)
+    return np.column_stack(
+        [p * p, p[:, 0] * p[:, 1], p[:, 0] * p[:, 2], p[:, 1] * p[:, 2], np.cross(p, v), np.sum(v * v, axis=1), np.ones(len(p))]
+    )
+
+
+def _fits_from_moments(sums: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """(poles, residual sums of squares, valid) for each row of summed `_fit_moments`. The
+    pole solves M w = b with M = sum(|p|^2 I - p p^T) and b = sum(p x v), which are
+    `mantle.fit_euler_pole`'s normal equations; its RSS is sum|v|^2 - w.b. A near-singular M
+    (see SPLIT_FIT_MIN_EIGENVALUE) is invalid, with a zero pole."""
+    xx, yy, zz, xy, xz, yz = sums[:, :6].T
+    outer = np.stack([np.stack([xx, xy, xz], -1), np.stack([xy, yy, yz], -1), np.stack([xz, yz, zz], -1)], -2)
+    matrix = (xx + yy + zz)[:, None, None] * np.eye(3) - outer
+    count = sums[:, 10]
+    valid = (count > 0) & (np.linalg.eigvalsh(matrix)[:, 0] >= SPLIT_FIT_MIN_EIGENVALUE * count)
+    b = sums[:, 6:9]
+    poles = np.zeros_like(b)
+    if valid.any():
+        poles[valid] = np.linalg.solve(matrix[valid], b[valid][..., None])[..., 0]
+    rss = np.maximum(sums[:, 9] - np.sum(poles * b, axis=1), 0.0)
+    return poles, rss, valid
+
+
+def _batched_half_fits(points: np.ndarray, velocities: np.ndarray, normals: np.ndarray) -> dict[str, np.ndarray]:
+    """Both halves' best-fit poles, their node counts and the combined per-node RMS residual
+    (as `_fit_residual_rms` would compute over the two fits) for the cut through each of
+    `normals` (K x 3), from one product of the N x 11 moments with the side indicators.
+    Half "a" is the side with p . n > 0, as in `_refine_split_cut` and `Plate.split`."""
+    moments = _fit_moments(points, velocities)
+    sums_a = np.empty((len(normals), moments.shape[1]))
+    for start in range(0, len(normals), _SPLIT_CUT_CHUNK):
+        side = (points @ normals[start : start + _SPLIT_CUT_CHUNK].T > 0.0).astype(float)
+        sums_a[start : start + _SPLIT_CUT_CHUNK] = side.T @ moments
+    sums_b = moments.sum(axis=0) - sums_a
+    poles_a, rss_a, valid_a = _fits_from_moments(sums_a)
+    poles_b, rss_b, valid_b = _fits_from_moments(sums_b)
+    return {
+        "pole_a": poles_a,
+        "pole_b": poles_b,
+        "count_a": sums_a[:, 10],
+        "count_b": sums_b[:, 10],
+        "rms": np.sqrt((rss_a + rss_b) / max(len(points), 1)),
+        "valid": valid_a & valid_b,
+    }
+
+
+def _cut_scores(points: np.ndarray, areas: np.ndarray, strength: np.ndarray, mask_a: np.ndarray, normals: np.ndarray, band_sin: float) -> tuple[np.ndarray, np.ndarray]:
+    """Area-weighted strength in each cut's FAILED_RIFT_BAND_MULT band, and the share of plate
+    area each cut puts on the other side from `mask_a`."""
+    weighted = strength * areas
+    scores = np.empty(len(normals))
+    misfit = np.empty(len(normals))
+    for start in range(0, len(normals), _SPLIT_CUT_CHUNK):
+        proj = points @ normals[start : start + _SPLIT_CUT_CHUNK].T
+        scores[start : start + _SPLIT_CUT_CHUNK] = weighted @ (np.abs(proj) < band_sin)
+        misfit[start : start + _SPLIT_CUT_CHUNK] = areas @ ((proj > 0.0) != mask_a[:, None])
+    return scores, misfit / max(float(areas.sum()), 1e-300)
+
+
+def _steer_cut_off_strong_lithosphere(
+    points: np.ndarray,
+    areas: np.ndarray,
+    strength: np.ndarray,
+    velocities: np.ndarray,
+    mask_a: np.ndarray,
+    cut_normal: np.ndarray,
+    band_sin: float,
+    pole_separation_threshold: float,
+    min_nodes: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """RFC 0003 solution 1: among cuts within SPLIT_CUT_MAX_TILT_DEG of the flow-derived
+    `cut_normal`, return (mask_a, cut_normal) for the admissible one whose band crosses the
+    least strength (see the constants' comment for the admissibility tests). Ties, or no
+    admissible improvement, keep the flow-derived cut."""
+    n0_score = float((strength * areas)[np.abs(points @ cut_normal) < band_sin].sum())
+    if n0_score <= 0.0 or np.linalg.norm(cut_normal) < 0.5:
+        return mask_a, cut_normal
+    normals = _candidate_cut_normals(cut_normal)
+    scores, misfit = _cut_scores(points, areas, strength, mask_a, normals, band_sin)
+    if scores[1:].min() >= scores[0]:
+        return mask_a, cut_normal
+    fits = _batched_half_fits(points, velocities, normals)
+    if not fits["valid"][0]:
+        return mask_a, cut_normal
+    admissible = (
+        fits["valid"]
+        & (misfit <= SPLIT_CUT_MAX_MISFIT)
+        & (np.minimum(fits["count_a"], fits["count_b"]) >= min_nodes)
+        & (np.linalg.norm(fits["pole_a"] - fits["pole_b"], axis=1) >= pole_separation_threshold)
+        & (fits["rms"] <= (1.0 + SPLIT_CUT_MAX_RESIDUAL_INCREASE) * fits["rms"][0])
+    )
+    best = int(np.argmin(np.where(admissible, scores, np.inf)))
+    if not admissible[best] or scores[best] >= scores[0]:
+        return mask_a, cut_normal
+    return points @ normals[best] > 0.0, normals[best]
+
+
 def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | None:
     """If a single rigid rotation poorly explains the mantle flow across this plate's
     footprint, cluster the flow into two regimes and, if they're genuinely different, cut
@@ -769,6 +923,19 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
     if np.linalg.norm(pole_a - pole_b) < pole_separation_threshold:
         return None
 
+    # RFC 0003 solution 1 (#389): only a cut that would split or fail-rift anyway is steered,
+    # so steering moves where plates break, not how often.
+    spacing_rad = line_spacing_rad(world.node_density)
+    strength = _cut_strength(plate.collect("craton_crust_m"), plate.collect("mantle_lithosphere_thickness_m"))
+    steer_band_sin = float(np.sin(SPLIT_CUT_BAND_MULT * spacing_rad))
+    steered_mask, steered_normal = _steer_cut_off_strong_lithosphere(
+        points, plate.accounting_areas_m2(spacing_rad), strength, velocities, mask_a, cut_normal, steer_band_sin, pole_separation_threshold, min_nodes
+    )
+    if steered_normal is not cut_normal:
+        cut_normal = steered_normal
+        pole_a = mantle.fit_euler_pole(points[steered_mask], velocities[steered_mask])
+        pole_b = mantle.fit_euler_pole(points[~steered_mask], velocities[~steered_mask])
+
     # Peek at next_plate_id without consuming it yet -- plate.split returns None (no id
     # actually used) if either resulting half would be too small, and a rejected split
     # shouldn't burn an id.
@@ -783,7 +950,7 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
     outcome_rng = np.random.default_rng((world.seed, round(world.elapsed_years), plate.plate_id, _RIFT_OUTCOME_SEED_TAG))
     failed = outcome_rng.random() >= RIFT_SUCCESS_PROBABILITY
     # RFC 0003 phase 1: how often a cut crosses craton, in the band a failed rift thins.
-    band_sin = float(np.sin(FAILED_RIFT_BAND_MULT * line_spacing_rad(world.node_density)))
+    band_sin = float(np.sin(FAILED_RIFT_BAND_MULT * spacing_rad))
     cratons.record_rift_cut(world, plate, points, cut_normal, band_sin, "failed_rift" if failed else "split")
     if failed:
         if world.debug_diagnostics:

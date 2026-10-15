@@ -946,3 +946,169 @@ def test_forced_merge_yields_to_a_ready_closing_rate_merge_the_same_step(monkeyp
     events = merge_split.apply_topology_changes(world, 1_000_000.0)
 
     assert sum(("merged into" in e or "fused into" in e) for e in events) == 1
+
+
+# --- RFC 0003 solution 1: steer the split cut off strong lithosphere (#389) ---------------
+
+_STEER_BAND_SIN = float(np.sin(0.03))
+
+
+def _two_regime_cap(delta_rate=None, craton_radius=0.06, seed=0):
+    """A 40 x 60 node cap whose flow is one rigid rotation for theta < 0 and another for
+    theta >= 0, plus noise of the same size as their difference so a moderately tilted cut
+    still fits nearly as well. The flow-derived cut is theta = 0, through a craton disc at
+    the cap centre."""
+    frame = geometry.plate_frame_from_seed(np.array([1.0, 0.0, 0.0]))
+    phi, theta = np.meshgrid(np.linspace(-0.4, 0.4, 40), np.linspace(-0.6, 0.6, 60), indexing="ij")
+    phi, theta = phi.ravel(), theta.ravel()
+    points = geometry.to_world(frame, geometry.local_xyz(phi, theta))
+    rate = mantle.cm_per_yr_to_rad_per_yr(5.0)
+    delta = rate if delta_rate is None else delta_rate
+    omega_a = np.array([0.0, 0.0, rate])
+    omega_b = omega_a + np.array([0.0, delta, 0.0])
+    west = theta < 0.0
+    velocities = np.where(west[:, None], np.cross(omega_a, points), np.cross(omega_b, points))
+    velocities = velocities + np.random.default_rng(seed).normal(scale=delta / np.sqrt(3.0), size=velocities.shape)
+    centre = geometry.to_world(frame, geometry.local_xyz(np.array([0.0]), np.array([0.0]))[0])
+    craton = np.where(np.arccos(np.clip(points @ centre, -1.0, 1.0)) < craton_radius, 25_000.0, 0.0)
+    strength = merge_split._cut_strength(craton, np.full(len(points), 100_000.0))
+    mask_a, cut_normal = merge_split._refine_split_cut(points, west)
+    return points, velocities, strength, mask_a, cut_normal
+
+
+def _steer(points, velocities, strength, mask_a, cut_normal, threshold=0.0):
+    return merge_split._steer_cut_off_strong_lithosphere(
+        points, np.ones(len(points)), strength, velocities, mask_a, cut_normal, _STEER_BAND_SIN, threshold, 100
+    )
+
+
+def _band_strength(points, strength, normal):
+    return float(strength[np.abs(points @ normal) < _STEER_BAND_SIN].sum())
+
+
+def test_a_flow_cut_through_a_craton_is_steered_to_one_that_misses_it():
+    points, velocities, strength, mask_a, cut_normal = _two_regime_cap()
+    assert _band_strength(points, strength, cut_normal) > 0.0
+
+    steered_mask, steered_normal = _steer(points, velocities, strength, mask_a, cut_normal)
+
+    assert _band_strength(points, strength, steered_normal) == 0.0
+    assert np.degrees(np.arccos(steered_normal @ cut_normal)) <= merge_split.SPLIT_CUT_MAX_TILT_DEG + 1e-9
+    assert np.mean(steered_mask != mask_a) <= merge_split.SPLIT_CUT_MAX_MISFIT
+    np.testing.assert_array_equal(steered_mask, points @ steered_normal > 0.0)
+
+
+def test_a_flow_cut_clear_of_strong_lithosphere_is_unchanged():
+    points, velocities, _, mask_a, cut_normal = _two_regime_cap()
+    steered_mask, steered_normal = _steer(points, velocities, np.zeros(len(points)), mask_a, cut_normal)
+    assert steered_normal is cut_normal
+    assert steered_mask is mask_a
+
+
+@pytest.mark.parametrize(
+    "constant, value",
+    [("SPLIT_CUT_MAX_MISFIT", 0.0), ("SPLIT_CUT_MAX_RESIDUAL_INCREASE", -0.5), ("SPLIT_FIT_MIN_EIGENVALUE", 10.0)],
+)
+def test_the_flow_cut_is_kept_when_no_candidate_is_admissible(monkeypatch, constant, value):
+    points, velocities, strength, mask_a, cut_normal = _two_regime_cap()
+    monkeypatch.setattr(merge_split, constant, value)
+    assert _steer(points, velocities, strength, mask_a, cut_normal)[1] is cut_normal
+
+
+def test_the_flow_cut_is_kept_when_no_candidate_clears_the_pole_separation_gate():
+    points, velocities, strength, mask_a, cut_normal = _two_regime_cap()
+    assert _steer(points, velocities, strength, mask_a, cut_normal, threshold=np.inf)[1] is cut_normal
+
+
+def test_a_cut_that_merges_the_flow_regimes_is_rejected_even_when_it_scores_lowest(monkeypatch):
+    """Widen the cone to 90 degrees and make everything strong except the band of the
+    perpendicular cut, which puts half of each regime on either side: its halves fit the same
+    pole, so the pole-separation gate must reject it however weak its band is."""
+    points, velocities, _, mask_a, cut_normal = _two_regime_cap()
+    monkeypatch.setattr(merge_split, "SPLIT_CUT_MAX_TILT_DEG", 90.0)
+    monkeypatch.setattr(merge_split, "SPLIT_CUT_MAX_MISFIT", 1.0)
+    monkeypatch.setattr(merge_split, "SPLIT_CUT_MAX_RESIDUAL_INCREASE", 1e9)
+    frame = geometry.plate_frame_from_seed(np.array([1.0, 0.0, 0.0]))
+    centre = geometry.to_world(frame, geometry.local_xyz(np.array([0.0]), np.array([0.0]))[0])
+    perpendicular = geometry.normalize(np.cross(centre, cut_normal))
+    strength = np.where(np.abs(points @ perpendicular) < 0.05, 0.0, 1.0)
+    threshold = 0.5 * mantle.cm_per_yr_to_rad_per_yr(5.0)
+
+    steered_mask, steered_normal = _steer(points, velocities, strength, mask_a, cut_normal, threshold)
+
+    assert abs(steered_normal @ perpendicular) < 0.5
+    pole_a = mantle.fit_euler_pole(points[steered_mask], velocities[steered_mask])
+    pole_b = mantle.fit_euler_pole(points[~steered_mask], velocities[~steered_mask])
+    assert np.linalg.norm(pole_a - pole_b) >= threshold
+
+
+def test_the_steered_cut_faces_the_relaxed_pole_separation_threshold():
+    """A large, stressed plate (relax near 1) splits on weak pole separation; the steered cut
+    must face the same relaxed gate, not the base constant."""
+    delta = 0.5 * merge_split.SPLIT_MIN_POLE_SEPARATION
+    points, velocities, strength, mask_a, cut_normal = _two_regime_cap(delta_rate=delta)
+    base = merge_split.SPLIT_MIN_POLE_SEPARATION
+    relaxed = base * (1.0 - 0.9)
+    assert _steer(points, velocities, strength, mask_a, cut_normal, base)[1] is cut_normal
+    assert _steer(points, velocities, strength, mask_a, cut_normal, relaxed)[1] is not cut_normal
+
+
+def test_batched_half_fits_match_fit_euler_pole_and_fit_residual_rms():
+    points, velocities, _, _, cut_normal = _two_regime_cap()
+    normals = merge_split._candidate_cut_normals(cut_normal)
+    fits = merge_split._batched_half_fits(points, velocities, normals)
+    assert fits["valid"].all()
+    for k in range(0, len(normals), 7):
+        side = points @ normals[k] > 0.0
+        pole_a = mantle.fit_euler_pole(points[side], velocities[side])
+        pole_b = mantle.fit_euler_pole(points[~side], velocities[~side])
+        np.testing.assert_allclose(fits["pole_a"][k], pole_a, rtol=1e-9, atol=1e-9 * np.linalg.norm(pole_a))
+        np.testing.assert_allclose(fits["pole_b"][k], pole_b, rtol=1e-9, atol=1e-9 * np.linalg.norm(pole_b))
+        rss = side.sum() * merge_split._fit_residual_rms(points[side], velocities[side], pole_a) ** 2
+        rss += (~side).sum() * merge_split._fit_residual_rms(points[~side], velocities[~side], pole_b) ** 2
+        assert fits["rms"][k] == pytest.approx(np.sqrt(rss / len(points)), rel=1e-9)
+        assert (fits["count_a"][k], fits["count_b"][k]) == (side.sum(), (~side).sum())
+
+
+def test_batched_half_fits_reject_a_degenerate_half():
+    """A half with a single node can't constrain its pole: invalid, with a zero pole."""
+    points, velocities, _, _, _ = _two_regime_cap()
+    moments = merge_split._fit_moments(points, velocities)
+    poles, _, valid = merge_split._fits_from_moments(np.vstack([moments[:1], moments.sum(axis=0)]))
+    assert list(valid) == [False, True]
+    assert np.all(poles[0] == 0.0)
+
+
+def test_cut_strength_stays_in_unit_interval_for_craton_and_keel():
+    craton, hm = np.meshgrid(np.linspace(-1e4, 1e5, 23), np.linspace(0.0, 5e5, 31))
+    strength = merge_split._cut_strength(craton.ravel(), hm.ravel())
+    assert np.all((strength >= 0.0) & (strength <= 1.0))
+    assert merge_split._cut_strength(np.array([25_000.0]), np.array([200_000.0]))[0] == 1.0
+    assert merge_split._cut_strength(np.array([0.0]), np.array([100_000.0]))[0] == 0.0
+    assert merge_split._cut_strength(np.array([0.0]), np.array([150_000.0]))[0] == pytest.approx(0.5)
+
+
+def test_maybe_split_plate_cuts_and_records_the_steered_normal(monkeypatch):
+    from app import cratons
+
+    monkeypatch.setattr(merge_split, "RIFT_SUCCESS_PROBABILITY", 1.0)
+    world, plate = _engineered_split_world()
+    cratons.ensure_ledger(world)
+    seen = {}
+    steer = merge_split._steer_cut_off_strong_lithosphere
+
+    def spy(points, areas, strength, velocities, mask_a, cut_normal, band_sin, threshold, min_nodes):
+        seen["threshold"] = threshold
+        tilted = geometry.normalize(cut_normal + 0.01 * np.cross(cut_normal, points.mean(axis=0)))
+        seen["normal"] = tilted
+        steer(points, areas, strength, velocities, mask_a, cut_normal, band_sin, threshold, min_nodes)
+        return points @ tilted > 0.0, tilted
+
+    split_normals = []
+    split = type(plate).split
+    monkeypatch.setattr(merge_split, "_steer_cut_off_strong_lithosphere", spy)
+    monkeypatch.setattr(type(plate), "split", lambda self, new_id, normal, min_nodes: split_normals.append(normal) or split(self, new_id, normal, min_nodes))
+
+    assert merge_split.maybe_split_plate(world, plate) is not None
+    assert split_normals[0] is seen["normal"]
+    assert seen["threshold"] <= merge_split.SPLIT_MIN_POLE_SEPARATION
