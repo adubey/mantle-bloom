@@ -13,8 +13,9 @@ import io
 
 import numpy as np
 from PIL import Image, ImageDraw
+from scipy.spatial import cKDTree
 
-from . import geometry, mantle, orogeny, plates
+from . import faults, geometry, mantle, orogeny, plates
 from .elevation_lines import (
     CRUST_TYPE_CONTINENTAL,
     CRUST_TYPE_INHERIT,
@@ -134,11 +135,33 @@ def _parcel_markers(world, sample_xyz: np.ndarray, spacing_km: float) -> list[tu
     return [(int(i), float(np.clip(v / max_volume, 0.0, 1.0))) for i, v, d in zip(nearest, volumes, distance_km) if d <= corridor_km]
 
 
-def render_png_base64(world, plane_angle_deg: float, position_index: int, width: int, height: int) -> tuple[str, dict]:
+def _boundary_sample_indices(world, sample_xyz: np.ndarray, node_xyz: np.ndarray) -> np.ndarray:
+    world_plates = getattr(world, "plates", ())
+    active_plates = [plate for plate in world_plates if plate.node_count()]
+    if not active_plates:
+        return np.zeros(0, dtype=int)
+    plate_ids = np.concatenate([
+        np.full(plate.node_count(), plate.plate_id, dtype=np.int64)
+        for plate in active_plates
+    ])
+    _, nearest_nodes = plates.cached_node_position_tree(world, node_xyz).query(sample_xyz, k=1)
+    sampled_plate_ids = plate_ids[nearest_nodes]
+    return np.flatnonzero(sampled_plate_ids[1:] != sampled_plate_ids[:-1]) + 1
+
+
+def render_png_base64(
+    world, plane_angle_deg: float, position_index: int, width: int, height: int,
+    *, show_boundaries: bool = False, show_faults: bool = False,
+) -> tuple[str, dict]:
     """Render the selected arc from current surface columns and return PNG plus metadata."""
     spacing_km = line_spacing_rad(world.node_density) * PLANET_RADIUS_KM
     sample_xyz, tangent, distances = _great_circle_samples(plane_angle_deg, position_index, spacing_km)
-    sampled, continental, _ = _sample_fields(world, sample_xyz)
+    sampled, continental, node_xyz = _sample_fields(world, sample_xyz)
+    world_plates = getattr(world, "plates", ())
+    boundary_samples = (
+        _boundary_sample_indices(world, sample_xyz, node_xyz)
+        if show_boundaries else np.zeros(0, dtype=int)
+    )
     elev = sampled["elevation"].astype(float)
     hc = np.maximum(sampled["crustal_thickness_m"].astype(float), 0.0)
     hm = np.maximum(sampled["mantle_lithosphere_thickness_m"].astype(float), 0.0)
@@ -177,6 +200,24 @@ def render_png_base64(world, plane_angle_deg: float, position_index: int, width:
     # plotting rectangle made the frame read as an asthenosphere block (#360).
     points_for_parcels = sample_xyz
     marker_by_sample = dict(_parcel_markers(world, points_for_parcels, spacing_km))
+    fault_samples: set[int] = set()
+    if show_faults:
+        by_id = {plate.plate_id: plate for plate in world_plates}
+        sample_tree = cKDTree(sample_xyz)
+        for fault in (*getattr(world, "faults", ()), *getattr(world, "boundary_faults", ())):
+            plate = by_id.get(fault.plate_id)
+            if plate is None:
+                continue
+            trace = getattr(fault, "world_polyline", None)
+            if trace is None or len(trace) == 0:
+                trace = faults.fault_world_points(fault, plate)
+            if len(trace) == 0:
+                continue
+            distances_to_arc, indices = sample_tree.query(trace, k=1)
+            close = np.flatnonzero(
+                distances_to_arc <= max(spacing_km * 1.5 / PLANET_RADIUS_KM, 1e-6)
+            )
+            fault_samples.update(int(indices[index]) for index in close)
     melt_eligible = continental & (moho_temp >= orogeny.MELT_ONSET_MOHO_C)
     line_samples = np.linspace(0, len(sample_xyz) - 1, min(24, len(sample_xyz)), dtype=int)
     flow = mantle.flow_at(sample_xyz[line_samples], world.mantle_centers)
@@ -234,6 +275,16 @@ def render_png_base64(world, plane_angle_deg: float, position_index: int, width:
             draw.line((x0, moho_band, x1, moho_band), fill=_mix(base_color, (245, 152, 77), moho_tint))
         draw.rectangle((x0, round(crust_end), x1, min(round(lith_end), height - margin_bottom)), fill=MANTLE_LITHOSPHERE)
         draw.rectangle((x0, round(lith_end), x1, round(bottom)), fill=ASTHENOSPHERE)
+        if i in boundary_samples:
+            draw.line(
+                (x, round(top), x, min(round(lith_end), height - margin_bottom)),
+                fill=(88, 190, 255), width=2,
+            )
+        if i in fault_samples:
+            draw.line(
+                (x, round(top), x, min(round(top + 16 * local_depth_scale), height - margin_bottom)),
+                fill=(255, 125, 87), width=2,
+            )
         if melt_eligible[i] and hcm > 0:
             hatch_top = max(round(crust_end - 8.0 * local_depth_scale), round(top))
             hatch_bottom = min(round(crust_end), height - margin_bottom)

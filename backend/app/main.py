@@ -960,6 +960,8 @@ def cross_section(
     position_index: int = 0,
     width: int = 1100,
     height: int = 611,
+    show_boundaries: bool = False,
+    show_faults: bool = False,
 ) -> dict:
     """Render one surface-sampled section for the shallow mantle view (#360).
 
@@ -968,15 +970,16 @@ def cross_section(
     """
     with _world_lock:
         world = _require_world()
-        if not 0.0 <= plane_angle_deg <= 180.0:
-            raise HTTPException(status_code=400, detail="plane_angle_deg must be in [0, 180]")
+        if not -90.0 <= plane_angle_deg <= 90.0:
+            raise HTTPException(status_code=400, detail="plane_angle_deg must be in [-90, 90]")
         if not 0 <= position_index < 120:
             raise HTTPException(status_code=400, detail="position_index must be in [0, 119]")
         if not (1 <= width <= MAX_RENDER_DIMENSION_PX and 1 <= height <= MAX_RENDER_DIMENSION_PX):
             raise HTTPException(status_code=400, detail=f"width/height must be in [1, {MAX_RENDER_DIMENSION_PX}]")
         try:
             _, result = cross_section_view.render_png_base64(
-                world, plane_angle_deg, position_index, width, height
+                world, plane_angle_deg, position_index, width, height,
+                show_boundaries=show_boundaries, show_faults=show_faults,
             )
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc

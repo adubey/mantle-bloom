@@ -741,8 +741,10 @@ export function fetchCrossSection(
   width: number,
   height: number,
   signal?: AbortSignal,
+  showBoundaries = false,
+  showFaults = false,
 ): Promise<CrossSectionResponse> {
-  return requestCrossSection(API_BASE, planeAngleDeg, positionIndex, width, height, signal);
+  return requestCrossSection(API_BASE, planeAngleDeg, positionIndex, width, height, signal, fetch, showBoundaries, showFaults);
 }
 
 export function fetchPlates(): Promise<PlatesResponse> {
