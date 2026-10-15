@@ -251,6 +251,9 @@ booked loss exactly.
   `quad_merge._transfer`'s `extensive` restores each field by its own ratio, which leaves
   new cells with up to 63 M km³ more craton than crust. `_carry_material` then places craton
   in proportion to Hc gain, whatever that gain is.
+  The H4 carry fix (issue #443) assigns craton volume on newly activated cells in proportion
+  to their remapped Hc. This keeps the remap conservative while enforcing that craton remains
+  part of its host column; the merge regression checks both properties.
 - **H2 is minor:** thick crust outside the mask has 4–129 M km³ of room per event, never
   enough for the unplaced volume. **H3 does not hold:** no excess is found away from the front
   or the receivers.

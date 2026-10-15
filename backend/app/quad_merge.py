@@ -277,6 +277,29 @@ def _transfer(
         orphan_volume = summed(values, sub_area, orphan) / target_area
         return orphan_volume, added + np.where(is_new, 0.0, orphan_volume)
 
+    # A craton is a share of Hc, not an independent extensive layer. Independent restoring
+    # ratios can concentrate a patchy craton field onto new cells more strongly than Hc,
+    # leaving craton above its host column after a merge (#443, H4). Keep its volume assigned
+    # to new cells, but distribute it over those cells in proportion to the Hc remap.
+    hc_new_values, _ = extensive(absorb_fields["crustal_thickness_m"][source])
+
+    def extensive_craton(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        if not np.any(is_new):
+            return extensive(values)
+        _, added = extensive(values)
+        volume = summed(values, sub_area)
+        owed = float(np.sum(volume[is_new])) + float(np.sum((values * sub_area)[orphan]))
+        hc_volume = float(np.dot(hc_new_values[is_new], target_area[is_new]))
+        new_values = np.divide(
+            owed * hc_new_values,
+            hc_volume,
+            out=np.zeros(n),
+            where=hc_volume > 0.0,
+        )
+        return new_values, added
+
+    extensive_remappers = {"craton_crust_m": extensive_craton}
+
     # Existing cells that take in absorbed sub-cells (the suture) combine both plates' values
     # by each field's remap class, with the survivor's own value weighted by its cell area;
     # a new cell is the same combination with no survivor share.
@@ -297,7 +320,7 @@ def _transfer(
         merged = own.copy()
         values = absorb_fields[name][source]
         if spec.remap_class == RemapClass.EXTENSIVE:
-            new_values, added = extensive(values)
+            new_values, added = extensive_remappers.get(name, extensive)(values)
             merged[is_new] = new_values[is_new]
             merged[~is_new] += added[~is_new]
         elif name in ("channel_depth", "breach_notch_depth_m") or spec.remap_class == RemapClass.COUNTDOWN:

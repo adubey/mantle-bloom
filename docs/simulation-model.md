@@ -925,9 +925,12 @@ routine per-step motion.
   deform](#boundary-evolution) for why ordinary per-step evolution no longer uses it), they're
   fused: keep one plate's `frame` and lattice, and remap the absorbed plate's cells onto it
   by exact cell area (`quad_merge.py`), stacking crust where the two overlap (capped at the
-  suture ceiling). Cratonic crust in the overflow that finds no room is clipped and booked to
-  the craton ledger's `merge_capped_m3` (RFC 0001, #441). The boundary between them becomes
-  ordinary interior territory. A remapped
+  suture ceiling). On newly activated cells, craton keeps its area-integrated volume but is
+  distributed in proportion to the remapped Hc, so it remains a share of its host column
+  rather than becoming an independent layer during the merge (issue #443). Cratonic crust in
+  the overflow that finds no room is clipped and booked to the craton ledger's
+  `merge_capped_m3` (RFC 0001, #441). The boundary between them becomes ordinary interior
+  territory. A remapped
   cell is dropped if any part of it lies in a third plate's cell, or its centre is nearer a
   third plate's node than either fusing plate's, so the merged plate doesn't grow into its
   neighbours (#344). The dropped cells' volume is spread over the cells that are kept, and
@@ -1238,7 +1241,9 @@ ground down to small remnants over a few hundred Myr.
 
 - `craton_crust_m` -- the cratonic share of the column's crust, at most Hc. It is
   `EXTENSIVE`, so merge, partition, defragmentation, relatticing and legacy conversion
-  conserve its volume the same way they conserve Hc. Crust added later (sediment, accreted
+  conserve its volume. During merge, newly activated cells distribute this volume in
+  proportion to their remapped Hc, preserving both the volume and the `craton_crust_m <= Hc`
+  invariant (issue #443). Crust added later (sediment, accreted
   belts, arc magmatism) is ordinary continental crust.
 - `craton_formed_years` -- provenance: when the craton stabilised. It is negative for cratons
   seeded at generation, and `HISTORY`-remapped, so a merged cell keeps its oldest date.
