@@ -2,17 +2,21 @@
 """RFC 0004 formation and craton-share gates, from #403's checked-in replay JSON (issue #409).
 
 Needs no replay or save: reads `analysis/issue403/tuning.json` and `long.json` (seeds 7, 11,
-2024 to 1 Gyr and seed 456862899 to 3 Gyr at `2562f63`) and reports, per run:
+2024 to 1 Gyr and seed 456862899 to 3 Gyr at `2562f63`), plus the cratonic area inside the
+genuine set at each of their checkpoints, from `analysis/issue409/craton_genuine_area.jsonl`
+(a replay of the same runs by `craton_genuine_area.py`, checked here against #403's genuine
+and total craton areas). It reports, per run:
 
 - formation timing: the single-sample pulse at CRATON_FORMATION_MYR, when quiet interior
   that generation left unseeded (between CRATON_FORMATION_MARGIN_KM and
   CRATON_SEED_MARGIN_KM in) matures together, and formation after it;
-- absolute inventories at each 100 Myr checkpoint: genuine continental area, craton area,
-  the non-cratonic remainder (genuine minus craton area; negative when craton cells have
-  thinned out of the genuine set, so the remainder is a lower bound), craton volume and
-  cumulative `formed_m3`;
+- absolute inventories at each 100 Myr checkpoint: genuine continental area, craton area
+  (all of it, and the part inside the genuine set), non-cratonic genuine area (the host),
+  craton volume and cumulative `formed_m3`;
 - an upper bound on the area that formation converted (formed volume over the 28 km host
-  floor) against the loss of non-cratonic area, to separate conversion from destruction;
+  floor) against the net loss of host. Host gained in the meantime only adds to the loss,
+  so the share of the net loss that the bound can't explain is a floor on non-formation
+  loss;
 - for each 500 Myr window, the original qualifier (genuine area >= 25% of initial, tested
   at the window start and throughout) and the revised one (non-cratonic genuine area at
   the window start >= 10% of its initial value), plus post-pulse formation in the window.
@@ -34,6 +38,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCES = (ROOT / "analysis/issue403/tuning.json", ROOT / "analysis/issue403/long.json")
+GENUINE_CRATON = ROOT / "analysis/issue409/craton_genuine_area.jsonl"
+# The replay must reproduce #403's trajectory: genuine and total craton areas agree to this.
+MATCH_RTOL = 1e-6
 # Mirrors cratons.CRATON_FORMATION_MYR and CRATON_HOST_MIN_HC_M at 2562f63; kept literal so
 # the script reads the published JSON without importing a model that may have moved since.
 PULSE_MYR = 200.0
@@ -43,14 +50,19 @@ GENUINE_FLOOR = 0.25
 NON_CRATONIC_FLOOR = 0.10
 
 
-def _checkpoint(row: dict) -> dict:
+def _checkpoint(row: dict, replay: dict) -> dict:
     genuine = row["genuine_continental_area_km2"] / 1e6
     craton = row["craton_area_km2"] / 1e6
+    for key in ("genuine_continental_area_km2", "craton_area_km2"):
+        if abs(replay[key] - row[key]) > MATCH_RTOL * max(row[key], 1.0):
+            raise SystemExit(f"replay diverges from #403 at {row['myr']} Myr: {key} {replay[key]} != {row[key]}")
+    craton_genuine = replay["craton_genuine_area_km2"] / 1e6
     return {
         "myr": row["myr"],
         "genuine_mkm2": genuine,
         "craton_mkm2": craton,
-        "non_cratonic_mkm2": genuine - craton,
+        "craton_genuine_mkm2": craton_genuine,
+        "non_cratonic_mkm2": genuine - craton_genuine,
         "craton_share": row["craton_continental_fraction"],
         "craton_mkm3": row["craton_volume_km3"] / 1e6,
         "formed_mkm3": row["craton_ledger_km3"]["formed_m3"] / 1e6,
@@ -102,12 +114,13 @@ def _conversion(points: list[dict], myr: float) -> dict:
         "non_cratonic_lost_mkm2": first["non_cratonic_mkm2"] - last["non_cratonic_mkm2"],
         "converted_max_mkm2": last["formed_mkm3"] / HOST_MIN_HC_KM,
         "craton_area_retained": last["craton_mkm2"] / first["craton_mkm2"],
+        "craton_genuine_area_retained": last["craton_genuine_mkm2"] / first["craton_genuine_mkm2"],
         "non_cratonic_retained": last["non_cratonic_mkm2"] / first["non_cratonic_mkm2"],
     }
 
 
-def summarise(run: dict) -> dict:
-    points = [_checkpoint(row) for row in run["checkpoints"]]
+def summarise(run: dict, replay: list[dict]) -> dict:
+    points = [_checkpoint(row, rep) for row, rep in zip(run["checkpoints"], replay, strict=True)]
     pulse = _pulse_mkm3(run)
     total = points[-1]["formed_mkm3"]
     return {
@@ -159,7 +172,8 @@ def _print(result: dict) -> None:
                   f" M km^3, clocks <= {g['max_clock_myr']:.0f} Myr; pulse is"
                   f" {f['pulse_at_200_myr_mkm3'] / g['quiet_unseeded_mkm3']:.1%} of it")
         print(f"  by 500 Myr: non-cratonic lost {c['non_cratonic_lost_mkm2']:.2f} M km^2, formation converted"
-              f" <= {c['converted_max_mkm2']:.2f}; retained craton {c['craton_area_retained']:.1%},"
+              f" <= {c['converted_max_mkm2']:.2f} ({c['converted_max_mkm2'] / c['non_cratonic_lost_mkm2']:.1%});"
+              f" retained craton {c['craton_area_retained']:.1%} (in genuine {c['craton_genuine_area_retained']:.1%}),"
               f" non-cratonic {c['non_cratonic_retained']:.1%}")
         for w in run["windows"]:
             print(f"  {w['window_myr'][0]:5.0f}-{w['window_myr'][1]:5.0f}: genuine start {w['genuine_start_frac']:6.1%}"
@@ -176,16 +190,18 @@ def main() -> None:
     args = parser.parse_args()
     runs = []
     baseline = None
+    lines = GENUINE_CRATON.read_text().splitlines()
+    replays = {run["seed"]: run["checkpoints"] for run in map(json.loads, filter(None, lines))}
     for path in SOURCES:
         data = json.loads(path.read_text())
         baseline = data["baseline_commit"]
-        runs.extend(summarise(run) for run in data["runs"])
+        runs.extend(summarise(run, replays[run["seed"]]) for run in data["runs"])
     if args.generation:
         for run in runs:
             run["generation_band"] = generation_band(run["seed"])
     result = {
         "issue": 409,
-        "source": [str(p.relative_to(ROOT)) for p in SOURCES],
+        "source": [str(p.relative_to(ROOT)) for p in (*SOURCES, GENUINE_CRATON)],
         "baseline_commit": baseline,
         "window_myr": WINDOW_MYR,
         "genuine_floor": GENUINE_FLOOR,

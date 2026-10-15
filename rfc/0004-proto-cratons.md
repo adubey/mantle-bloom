@@ -62,13 +62,14 @@ and these runs do not establish that adding a source is the primary remedy.
 The regenerated 3 Gyr seed 456862899 reinforces the denominator concern: genuine
 continental area falls from 82.33 to 2.72 M km², formation's last positive sample is at
 255 Myr, and craton area reaches 105.0% of genuine continental area at 3 Gyr. That share
-exceeds 100% partly because the numerator counts every cratonic cell while the
-denominator excludes cells thinned below 28 km. It is not evidence for super-unity craton
-production.
+exceeds 100% only because the numerator counts every cratonic cell, while the denominator
+excludes cells thinned below 28 km. With cratonic area restricted to the genuine set, the
+share is 93.6% (#409). It is not evidence for super-unity craton production.
 
 **Formation and denominator diagnosis (#409).** The same runs, decomposed in
 [analysis/issue409](../analysis/issue409/README.md) with `bin/debug/rfc0004_gates.py`, give
-three results.
+three results. That analysis adds replays at `2562f63` that match #403's trajectories and
+record the cratonic area inside the genuine set.
 
 - **Most current formation is a generation transient.** Seeding cratonises quiet host only
   875 km (`CRATON_SEED_MARGIN_KM`) inside, but formation accepts host 500 km inside, and
@@ -76,17 +77,17 @@ three results.
   band still quiet at 200 Myr forms in that single sample: 29.1, 129.1 and 125.1 M km³,
   which is 75–86% of each run's formation. Seed 456862899 has no pulse. Post-pulse
   formation is 4.8, 32.5, 42.2 and 0.72 M km³, 0.05–2.4% of initial craton volume.
-- **The share rises through survival bias.** By 500 Myr cratons keep 40–118% of their
-  starting area, while the non-cratonic remainder of genuine area keeps 3.8–12.3%.
+- **The share rises through survival bias.** By 500 Myr cratons keep 39–117% of their
+  area inside the genuine set, while non-cratonic genuine area (host) keeps 4.5–12.8%.
   Formation converts each column's whole Hc, so formed volume over the 28 km host floor
-  bounds the area it can have taken from the non-cratonic pool. That bound is 0.1–8.8% of
-  the non-cratonic area lost: at least 91% was destroyed or thinned out of the genuine
-  set.
+  bounds the host area it can have converted. That bound is 0.1–8.9% of each run's net
+  host loss. Host gained in the meantime only adds to the remainder, so at least 91% of
+  the loss was destruction or thinning out of the genuine set.
 - **Almost no window can test a source.** At the start of every 500 Myr window after the
-  first, non-cratonic area is at most 5.7% of its initial value, except seed 2024's
-  500–1,000 Myr window (9.47 M km², 12.3%). Its baseline formation is zero. The original
+  first, host is at most 7.0% of its initial value, except seed 2024's 500–1,000 Myr
+  window (9.84 M km², 12.8%). Its baseline formation is zero. The original
   25%-of-genuine-area qualifier is ambiguous between window start and window throughout,
-  and it can admit a window (seed 11's 500–1,000 Myr) with only 4.51 M km² of host left.
+  and it can admit a window (seed 11's 500–1,000 Myr) with only 5.59 M km² of host left.
   On this baseline the 1–2 Gyr windows of the proposed 2 Gyr runs have no host to test.
 
 So on `2562f63` the missing-source premise is testable on one window of one seed. Whether
@@ -203,12 +204,14 @@ ledger flows (formed volume and area) booked by each arm. They don't use end-sta
 or raw shares, which mix a mechanism's effect with trajectory noise and with sink losses.
 
 - **Host.** Non-cratonic genuine area: genuine continental area minus the cratonic area
-  inside it (the new `craton_genuine_area_m2`; #403 data subtract all craton area, a lower
-  bound). This is the pool any formation path draws on.
+  inside it (the new `craton_genuine_area_m2`; measured for #409 by
+  `bin/debug/craton_genuine_area.py`). This is the pool any formation path draws on.
+  Subtracting all craton area instead gives an error that moves either way between
+  checkpoints, so the gate never uses it.
 - **Qualifying window.** A 500 Myr window whose start has non-cratonic genuine area of at
   least `PROTO_CRATON_GATE_HOST_FRACTION` = 10% of its initial value, **on the baseline
   arm**. Using the baseline keeps a variant from disqualifying its own windows by
-  converting host. Measured at `2562f63`, any floor in (5.7%, 12.3%] selects the same
+  converting host. Measured at `2562f63`, any floor in (7.0%, 12.8%] selects the same
   windows.
 - **Generation pulse.** Formation booked in the step in which elapsed time first reaches
   `CRATON_FORMATION_MYR`. It matures host that generation left unseeded with clocks at 0.
@@ -230,7 +233,8 @@ or raw shares, which mix a mechanism's effect with trajectory noise and with sin
   500 Myr shutoff, which is pre-#358 evidence and not a calibration target.
 
 `bin/debug/rfc0004_gates.py` computes host, the pulse, post-pulse formation, the
-conversion bound and qualification from a run's checkpoint JSON. It must be extended to
+conversion bound and qualification from a run's checkpoint JSON, with
+`bin/debug/craton_genuine_area.py` supplying the genuine-restricted cratonic area. It must be extended to
 read the per-path area counters and pair the two arms.
 
 **Quantities and units.**
@@ -311,7 +315,7 @@ today. Proto-craton status is derived each step. The new stats keys are additive
 | `PROTO_CRATON_MAX_STRAIN_M_PER_MYR` | 50 m/Myr of tectonic Hc change | Design choice: about 1% of a column's crust per 10 Myr, well below active orogens (hundreds of m/Myr) | Sweep 20–200 |
 | `PROTO_CRATON_DISTURBANCE_HOLD_MYR` | 10 Myr | Numerical: at least the longest step the UI offers, so a mark always reaches `cratons.update` | Fixed |
 | `CRATON_FORMATION_DEPLETION` | 1.0 | Off; see solution 5 | Unchanged by these replays; the conversion test restricts path B instead |
-| `PROTO_CRATON_GATE_HOST_FRACTION` | 10% of initial non-cratonic genuine area | Design choice (#409): at `2562f63` it separates windows with ≥ 12.3% of host from those with ≤ 5.7% | Evaluation-only, not model state; report qualification at 5% and 20% too |
+| `PROTO_CRATON_GATE_HOST_FRACTION` | 10% of initial non-cratonic genuine area | Design choice (#409): at `2562f63` it separates windows with ≥ 12.8% of host from those with ≤ 7.0% | Evaluation-only, not model state; report qualification at 5% and 20% too |
 | Conversion cap (ratchet test) | One third of window-start host per 500 Myr window | Design choice (#409): the original 65% ceiling, held on a fixed denominator from the measured starting shares (37.6–50.7%), allows converting 29–44% of initial non-cratonic area | Evaluation-only; report 1/4 and 1/2 too |
 | `CRATON_FORMATION_MYR` | 200 Myr (unchanged) | #274 | Unchanged |
 
@@ -378,8 +382,8 @@ gated.
 
 - **Formation may not be the bottleneck.** Formation stopped in the pre-#358 save, but
   losses (RFCs 0001–0003) dominated it. At `2562f63`, post-pulse formation stops by
-  470 Myr, and by 500 Myr 87.7–96.2% of the non-cratonic host is gone, at least 91% of it
-  through loss, not conversion (#409). The shutoff may be host starvation, not a missing
+  470 Myr, and by 500 Myr 87.2–95.5% of the host is gone, at least 91% of it through loss,
+  not conversion (#409). The shutoff may be host starvation, not a missing
   path. The evaluation gate defers that question to a baseline with host left. Formation
   is complementary, not a cure.
 - **Welded growth is an analogy.** Laurentia-style growth is observed over Gyr, but the
