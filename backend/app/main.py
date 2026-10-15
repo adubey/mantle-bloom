@@ -95,8 +95,9 @@ _state: dict[str, World | None] = {"world": None}
 # threads, which the default `workqueue` threading layer is not safe against and crashes the
 # interpreter outright. So every route that runs the simulation compute path or mutates
 # shared World state holds this one lock: step / animate / generate / controls / stats /
-# render. The read-mostly inspector routes (plates, rivers, lakes, *_at) touch neither a
-# Numba kernel nor a shared-array write and are left lock-free.
+# render. The /world/plates inspector also holds it because overlap masks and per-node fields
+# must come from one stable topology. The other read-mostly inspector routes (rivers, lakes,
+# *_at) touch neither a Numba kernel nor a shared-array write and are left lock-free.
 #
 # Long-running writes where an overlap means a genuine conflict (step, animate) reject with a
 # 503 rather than blocking -- the second request would otherwise silently hang for as long as
@@ -1169,9 +1170,13 @@ def list_plates() -> dict:
     `rotation` param): the client applies its current view rotation only at draw time, same
     philosophy as climate/render-grid geometry (see docs/simulation-model.md#rotating-the-view).
     `404` if no world has been generated yet."""
-    world = _require_world()
-    overlaps = _plate_overlaps(world)
-    return {"elapsed_years": world.elapsed_years, "plates": [_plate_summary(p, world, overlaps) for p in world.plates]}
+    with _world_lock:
+        world = _require_world()
+        overlaps = _plate_overlaps(world)
+        return {
+            "elapsed_years": world.elapsed_years,
+            "plates": [_plate_summary(p, world, overlaps) for p in world.plates],
+        }
 
 
 @app.get("/world/stats")
