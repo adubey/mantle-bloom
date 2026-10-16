@@ -622,19 +622,19 @@ not here:
   plate's nodes and outline client-side and reports the same motion / shape / overlap numbers
   the CLI plate dump does -- see [Plate Inspector diagnostic fields](#plate-inspector-fields)
   below for the field walkthrough, and
-  [simulation-model.md#plate-inspector](simulation-model.md#plate-inspector) for the panel
+  [simulation-model/rendering-and-inspectors.md#plate-inspector](simulation-model/rendering-and-inspectors.md#plate-inspector) for the panel
   layout and bounding-ellipse fit.
 - **Rivers** and **Lake Inspector** (`GET /world/rivers` / `GET /world/lakes`,
   `RiverInspector.tsx` / `LakeInspector.tsx`) render flow networks and lake basins from raw
   JSON -- see
-  [simulation-model.md#river-inspector](simulation-model.md#river-inspector) and
-  [simulation-model.md#lake-inspector](simulation-model.md#lake-inspector).
+  [simulation-model/hydrology.md#river-inspector](simulation-model/hydrology.md#river-inspector) and
+  [simulation-model/hydrology.md#lake-inspector](simulation-model/hydrology.md#lake-inspector).
 - **Plates & Faults** (`GET /world/faults`, `GET /world/earthquakes`,
   `frontend/src/PlatesAndFaults.tsx`) merges plate outlines with the fault-trace and
   earthquake overlays. Its Overlays panel also toggles faults, cratons and a translucent
   ocean/lake layer (cratons show through it), and clicking the legend's Cratons row isolates
   the cratons the way a fault-type row isolates that regime -- see
-  [simulation-model.md#fault-inspector](simulation-model.md#fault-inspector).
+  [simulation-model/rendering-and-inspectors.md#fault-inspector](simulation-model/rendering-and-inspectors.md#fault-inspector).
 
 All four are primarily inspection/feature tools rather than pathology-hunting diagnostics, but
 all four currently require `?deb` to reach, same as the views above.
