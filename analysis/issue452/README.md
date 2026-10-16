@@ -19,10 +19,10 @@ Most of what fails is G2 and G5, not the deciding rows:
 
 ## Method
 
-**Model.** The runs use commit `de9d647`: origin/main with the H4 carry fix (#450) and RFC
-0009's per-node crust rules (#451), plus this branch's probe, which changes no model code.
-A first pass on `840c5ad`, before both, is in this file's history (`gate.json` at
-`de9d647`); "first pass" below compares against it.
+**Model.** The runs use commit `de9d647`: origin/main `6579830`, with the H4 carry fix
+(#450) and RFC 0009's per-node crust rules (#451), plus the probe, which changes no model
+code. A first pass on `840c5ad`, before both, merged in PR #453 (this file and `gate.json`
+at `8915070`); "first pass" below compares against it.
 
 Each world is `world.generate_world(seed)` with every other argument at its default, as in
 #403: density 1, climate on, 1 Gyr. Each seed ran at 5 Myr steps, tapped and untapped, and
