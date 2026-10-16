@@ -2,7 +2,8 @@
 
 - **Status:** Draft
 - **Date:** 2026-10-16
-- **Related:** #449 (exploration), #452 (measurement gate; PRs #453, #457); #443 (RFC 0001
+- **Related:** #449 (exploration), #452 (measurement gate; PRs #453, #457), gate G-R
+  ([analysis/rfc0011](../analysis/rfc0011/README.md)); #443 (RFC 0001
   tracking), #396 (RFC 0008 tracking), #402 (lock and fuse, held for this RFC); #314
   (shortening cascade), #340 (craton partition rules), #315 (slab pull), #310 (Hm cap);
   RFCs [0001](0001-merge-cap-craton-loss.md) (merges must not destroy cratons),
@@ -93,11 +94,11 @@ method.
   spread evenly over the contact's edge and its mean closing held at zero. It says how much
   force a contact would need, not how the plates evolve once the force is applied. Stopping
   one contact passes load to the plates' other boundaries.
-- **Why craton blocks is still lumped.** The gate's craton class covers two different
-  contacts: a cratonic retreat candidate facing weaker crust (an indenter), and craton on
-  both sides. Gate G-R below separates them.
-- **Whether jammed pairs converge toward matching motion** wasn't measured over time. G-R
-  measures it.
+- **It doesn't come from indenters.** #452's craton class lumped two contacts together. Gate
+  G-R (below) separated them: craton on both sides makes almost all the blocked growth, and a
+  craton indenting weaker crust about 1%.
+- **Jammed pairs don't come to matching motion by themselves.** G-R found their relative
+  rotation barely changes over a jam.
 - **The numbers depend on step size.** The 5 Myr step coarsens the overlap to about one cell
   and thickens the bands' Hm.
 
@@ -161,12 +162,15 @@ alone that stops collisions.
    RFC's merge criterion is falsified.
 
 **Merging.** Under solution 1, a held contact stops closing, but the plates may still slide or
-rotate relative to each other. A pair merges when its contact is held and the two plates'
-rotations match: relative rotation |ω_a − ω_b| below a threshold for a sustained time. That
-replaces the timer, the size roll and the 30% backstop for continental pairs.
+rotate relative to each other. Gate G-R found jammed pairs do exactly that: their relative
+rotation barely changes over a jam. So the held contact also resists sliding, up to a
+friction bound. A pair merges when its contact is held and the two plates' rotations match:
+relative rotation |ω_a − ω_b| below a threshold for a sustained time. That replaces the
+timer, the size roll and the 30% backstop for continental pairs.
 
-**Recommendation:** gate G-R, then solution 1 with solution 4 as its yield branch, and merging
-on matched rotation. This supersedes RFC 0008's solution 6 (#402), and takes over RFC 0001's
+**Recommendation:** solution 1, with a friction-bounded tangential term and with solution 4 as
+its yield branch, and merging on matched rotation. Gate G-R has run and set the yield rule and
+the tangential term. This supersedes RFC 0008's solution 6 (#402), and takes over RFC 0001's
 solution 3 ("stop craton-on-craton overlap from building"). RFC 0001's solutions 1 and 2,
 already disqualified by its gate, are left to that RFC to withdraw.
 
@@ -188,12 +192,36 @@ episodes of at least 3 steps by their relative rotation at the start against at 
 
 | Outcome | Design consequence |
 |---|---|
-| Craton on both sides makes most of the blocked growth | The yield force uses the stronger side's craton (both are strong). |
-| Craton veto makes most of it | The veto contact should yield at the weak side's strength (Copley's resistance is the weak side's deformation): `F_y` from the weaker side's craton strength, and on yield the weak upper plate takes the shortening. |
+| Craton on both sides makes most of the blocked growth | The yield strength rises with the craton on both sides: `s` is the lesser of the two sides' craton strengths, as `torque.contact_craton_m` reads it. |
+| Craton veto makes most of it | The veto contact yields at the weak side's strength (Copley's resistance is the weak side's deformation), and on yield the weak upper plate takes the shortening. |
 | Relative rotation falls by half or more in most jams | The contact force and the existing drag bring rotations together; the merge criterion needs nothing more. |
 | Relative rotation doesn't fall in most jams | Add a tangential (sliding) resistance, bounded by friction times the normal force, to the contact solve, so held pairs can come to matched motion. |
 
-**Result:** *pending (runs in progress).*
+**Result (2026-10-16): craton on both sides, and rotations don't converge.** The runs used
+the four seeds at 2 Myr steps, on `6579830` with this branch's probe, pooled. They reproduce
+#452's 2 Myr merge counts exactly.
+
+| Measure | Craton on both sides | Craton veto (indenter) | Cap | Deformable |
+|---|---|---|---|---|
+| Share of D's net growth, all pairs | 73% | 1% | ≈ 0 | 27% |
+| … continental pairs | 84% | 1% | ≈ 0 | 16% |
+| … in the 30 Myr before merges | 97% | ≈ 0 | ≈ 0 | 5% |
+| Closing pair-steps where it dominates | 6,035 | 105 | 93 | — |
+| Stall force p50 (10¹² N/m); share ≤ 10¹³ N/m | 2.0; 94% | 11.6; 50% | 1.4; 91% | — |
+
+Jammed episodes of at least 3 steps (493 in all) end with a median 95% of the relative
+rotation they started with (p10 34%, p90 242%):
+- **Halved in only 17%** of episodes.
+- **Grew in 45%.**
+- **Pairs that later merged** ended at a median 85% of their starting rotation.
+
+The relative rotation at jam onset is a median 0.22°/Myr.
+
+So:
+- **The yield rule follows row 1.** Indenters are rare and resist more (median
+  1.2 × 10¹³ N/m), so they stay in the blocked classes with the same rule.
+- **The contact solve gets a tangential resistance (row 4).** Phase 4 can't rely on rotations
+  matching by themselves.
 
 ### Phase 1: one contact force per pair
 
@@ -233,8 +261,8 @@ Gauss–Seidel over the contacts converges in tens of sweeps for tens of contact
 forces then go back into the phase 1 solve. It is solved with the implicit (end-of-step) ω,
 as `integrate_omega` treats drag, so a held contact stops closing whatever the step length.
 
-**Yield strength.** `F_y = F_0 + s (F_c − F_0)`, with `s` the contact's craton strength
-(`cratons.strength`) per G-R's outcome:
+**Yield strength.** `F_y = F_0 + s (F_c − F_0)`, with `s` the lesser of the two sides'
+craton strengths (`cratons.strength` of `torque.contact_craton_m`), per G-R:
 - `F_0` = 5 × 10¹² N/m: the resistance of a deforming continental collision zone, Copley's
   Himalaya–Tibet force.
 - `F_c` = 1.5 × 10¹³ N/m: above the ~10¹³ N/m upper limit of available tectonic stress
@@ -243,6 +271,13 @@ as `integrate_omega` treats drag, so a held contact stops closing whatever the s
 - **Scale check against the gate:** 81% of craton-blocked contact-steps need ≤ 5 × 10¹² N/m
   and 98% ≤ 2 × 10¹³ N/m. With these values, fewer than 10% of craton-blocked contacts
   should yield.
+
+**Tangential resistance (from G-R).** Each held contact also carries a tangential force
+`t_c` along the contact. It opposes the blocked edge's mean sliding velocity, and is bounded
+by Coulomb friction: `|t_c| ≤ μ f_c`. It enters the same complementarity solve, one more
+unknown per contact. A held pair can then stop sliding as well as closing, which phase 4's
+merge criterion needs. μ is a design choice: an effective friction for a mature plate
+contact, tuned on the relative rotation at merges.
 
 **What the force does not do.**
 - It doesn't act at deformable contacts. There retreat and the cascade take up the
@@ -327,7 +362,7 @@ Acceptance compares 2 and 5 Myr runs of the same seeds.
 | `CRATON_CONTACT_YIELD_N_PER_M` (`F_c`) | 1.5 × 10¹³ N/m | Above [[Porth, 2000]](#ref-porth2000)'s 10¹³ N/m limit; design choice | Sensitivity at 10¹³ and 3 × 10¹³. Metric: share of craton-blocked contacts yielding, mean plate speed. |
 | `MERGE_MATCHED_ROTATION_DEG_PER_MYR` | 0.05 °/Myr (~0.5 cm/yr at the surface) | Design choice, below the gate's 0.13 °/Myr at capped merges | Calibrated on the four seeds: merge count within the acceptance band. |
 | `MERGE_HOLD_MYR` | 20 Myr | Design choice (RFC 0008's `CRATON_LOCK_MYR`) | Sensitivity at 10 and 40 Myr. |
-| Tangential friction (if G-R calls for it) | coefficient 0.1 | Design choice | Only if G-R says so; tuned on relative rotation at merges. |
+| `CONTACT_FRICTION` (μ) | 0.1 | Design choice (G-R: rotations don't converge without it) | Sensitivity at 0.05 and 0.3. Metric: share of held pairs reaching `MERGE_MATCHED_ROTATION_DEG_PER_MYR` within 50 Myr. |
 
 ## Detailed design (provisional touchpoints)
 
@@ -384,8 +419,10 @@ Acceptance compares 2 and 5 Myr runs of the same seeds.
   other boundaries and on basal drag. Plates may slow, splits may change (26% of splits were
   of jammed plates at 2 Myr), and new contacts may jam. The acceptance bounds speed and
   plate count; the falsification criteria say what a collapse would mean.
-- **Matching rotation may not be reachable without tangential resistance.** G-R decides
-  before phase 4 is built.
+- **Friction on the contact is a stand-in.** G-R showed that jammed pairs keep their relative
+  rotation (median 95% after a jam). The Coulomb term makes matched motion reachable, but μ
+  has no measured value for a plate-scale contact in this model. Phase 4's falsification
+  criterion covers it not being enough.
 - **Step size.** The gate's numbers move with step size. Acceptance runs at 2 Myr, with 5 Myr
   checked for the same verdicts.
 
@@ -395,8 +432,9 @@ All runs use the four seeds 326494039, 748935664, 580014012 and 111065103, `gene
 defaults, 1 Gyr, at 2 Myr steps unless stated, measured with `probe_collision_budget.py`
 against pinned `6579830`.
 
-- [ ] **Gate G-R** run and recorded in this RFC, with the phase 2 strength rule and the phase 4
-  tangential term chosen from it.
+- [x] **Gate G-R** run and recorded in this RFC (2026-10-16). Craton on both sides makes the
+  blocked growth, so `s` is the lesser side's craton strength. Rotations don't converge, so
+  the contact solve gets a Coulomb tangential term.
 - [ ] **Phase 1.** The two sides' contact forces differ by < 1% at every contact. Mean plate
   speed and plate count within 10% of baseline. Closing rates at deformable contacts within
   10%.
@@ -435,7 +473,7 @@ against pinned `6579830`.
   contact-steps sit at `F_y` with `F_c` ≤ 3 × 10¹³ N/m. Then this model's drive at contacts
   is above anything lithosphere can resist, and solution 4 (absorb the overlap) becomes the
   main path, not the yield branch.
-- **Held pairs never come to matched rotation,** even with G-R's tangential term. Then the
+- **Held pairs never come to matched rotation,** even with the tangential term at μ ≤ 0.3. Then the
   phase 4 criterion is unreachable: fall back to RFC 0008's #402 (lock and fuse) for merging,
   and keep phases 1–3.
 
