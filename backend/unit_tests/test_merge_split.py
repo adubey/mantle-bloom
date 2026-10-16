@@ -613,9 +613,8 @@ def test_a_split_counts_its_cut_and_whether_the_band_holds_craton(monkeypatch):
     assert ledger["split_band_craton_area_m2"] == 0.0
 
 
-def test_a_merge_books_craton_its_cap_clips_to_merge_capped_not_delaminated(monkeypatch):
-    """RFC 0001 solution 4 (#441): craton the merge leaves above its column is the merge cap's
-    loss, booked to its own account rather than read as root delamination."""
+def test_a_merge_books_column_clips_and_unplaceable_craton_to_merge_capped(monkeypatch):
+    """RFC 0001 (#441, #443): cap clips and remap volume without capacity are merge losses."""
     from app import cratons
 
     world, plate = _engineered_split_world()
@@ -624,19 +623,24 @@ def test_a_merge_books_craton_its_cap_clips_to_merge_capped_not_delaminated(monk
     cratons.ensure_ledger(world)
     world.craton_ledger["initial_m3"] = cratons.live_volume_m3(world)
     capped = np.arange(plate.node_count()) < 5
+    unplaced_cells = (np.arange(plate.node_count()) >= 5) & (np.arange(plate.node_count()) < 10)
 
     def merge_that_caps(w, keep, absorb):
-        # Stands in for a merge whose overflow found no room: the column ends below its craton.
+        # Stand in for a merge with both cap loss and craton that had no host-column headroom.
         thinned = plate.collect("crustal_thickness_m")
         thinned[capped] *= 0.5
-        plate.set_fields_on_plate(crustal_thickness_m=thinned)
+        craton = plate.collect("craton_crust_m")
+        craton[unplaced_cells] *= 0.9
+        plate.set_fields_on_plate(crustal_thickness_m=thinned, craton_crust_m=craton)
 
     monkeypatch.setattr(merge_split, "merge_plates", merge_that_caps)
     merge_split._merge_plates_with_craton_audit(world, plate.plate_id, plate.plate_id)
 
     ledger = world.craton_ledger
     clipped = float(0.5 * hc[capped] @ plate.node_areas_m2()[capped])
-    assert ledger["merge_capped_m3"] == pytest.approx(clipped, rel=1e-9)
+    unplaced = float(0.1 * hc[unplaced_cells] @ plate.node_areas_m2()[unplaced_cells])
+    assert ledger["merge_capped_m3"] == pytest.approx(clipped + unplaced, rel=1e-9)
+    assert ledger["unattributed_m3"] == 0.0
     assert ledger["delaminated_m3"] == 0.0
     assert abs(cratons.balance_error_m3(world)) <= 1e-9 * ledger["initial_m3"]
 
