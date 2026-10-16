@@ -462,8 +462,7 @@ topology, test a merge only after solved relative rate is below ε along the con
 duration τ; the diagnostic must report sensitivity to ε and τ. These thresholds and
 constitutive choices are not fixed by this RFC. If rifting or transform motion requires
 incompatible or meaningless shared fields, keep a narrower mechanical interface and document
-the process-specific
-extension.
+the process-specific extension.
 
 No full implementation plan is selected until G1–G3 are recorded. RFC 0011 can proceed as a
 process-specific change if its own gates justify it; its implementation should not assume
