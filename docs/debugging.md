@@ -608,6 +608,11 @@ needed alongside those saved histories.
 where cratons jam retreat (the frozen `run_eligible` candidates on polarized fronts), closing
 rates, collision-time drops and fusions, the buoyant share of slab pull, contact forces, plate count and speed, and
 the craton lost within reach of each contact (RFC 0008's gate).
+`bin/debug/probe_collision_budget.py` builds on it for the collision-resolution gate (#452):
+per contact pair and step, the overlap and its double-counted volume by whether craton or the
+Hc cap blocks it, the force that would stall the pair (re-solved jointly from both plates'
+shift systems), the gravitational push of the contact band's own columns, the contact's volume
+budget, and, at each merge, the absorbed crust over third plates.
 
 `bin/debug/attribute_rift_boundary_loss.py` replays a seed with probe-only node marks on each
 split cut's band, and books later divergent and stretch craton loss by whether the cut that
