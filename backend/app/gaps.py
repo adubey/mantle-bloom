@@ -38,14 +38,14 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import geometry, mantle, quad_tectonics
+from . import geometry, lithosphere, mantle, quad_tectonics
 from .elevation_lines import (
     COVERAGE_RADIUS_MULT as _SHARED_COVERAGE_RADIUS_MULT,
     effective_is_continental_from_codes,
     iter_local_lattice,
     line_spacing_rad,
 )
-from .lithosphere_plate import new_plate
+from .lithosphere_plate import continental_growth_over_budget, new_plate
 from .plates import Plate, _contested_by_any, node_components
 
 if TYPE_CHECKING:
@@ -289,13 +289,21 @@ def _grow_adjacent_into_gap(
     plate has the nearest node, and each plate grows into its own share through
     `quad_tectonics.fill_gap`. `radius_rad` bounds how deep the walk may go; it defaults to
     the cluster's own bounding radius, and pooled seams pass their largest one."""
-    distances = np.stack([p.get_node_kdtree().query(cluster_points)[0] for p in adjacent])
+    nominal_area_m2 = lithosphere.node_area_m2(spacing_rad)
+    eligible = [
+        plate
+        for plate in adjacent
+        if not continental_growth_over_budget(plate, plate.node_areas_m2() / nominal_area_m2)
+    ]
+    if not eligible:
+        return {}
+    distances = np.stack([p.get_node_kdtree().query(cluster_points)[0] for p in eligible])
     owner = np.argmin(distances, axis=0)
     if radius_rad is None:
         _, radius_rad = geometry.bounding_sphere(cluster_points)
     max_layers = max(MIN_FILL_LAYERS, int(np.ceil(2.0 * radius_rad / spacing_rad)) + 1)
     added: dict[int, int] = {}
-    for k, plate in enumerate(adjacent):
+    for k, plate in enumerate(eligible):
         points = cluster_points[owner == k]
         others = [p for p in world.plates if p.plate_id != plate.plate_id]
         n = quad_tectonics.fill_gap(world, plate, points, others, spacing_rad, max_layers)

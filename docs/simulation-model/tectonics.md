@@ -166,8 +166,9 @@ deltas.
   `lithosphere_plate.boundary_context` measures a plate's *genuine* continental
   area -- continental cells with `crustal_thickness_m` at least `CONTINENTAL_BUDGET_HC_FRACTION`
   (0.6) of the continental reference -- and once the plate's continental-coded area exceeds
-  `CONTINENTAL_AREA_BUDGET_MULT` (1.8) times that, suppresses all areal growth for the step.
-  The plate's ocean floor doesn't count against it (#447).
+  `CONTINENTAL_AREA_BUDGET_MULT` (1.8) times that, suppresses all areal growth for the step,
+  including boundary advance and whole-sphere gap filling. The plate's ocean floor doesn't
+  count against it (#447).
   Retreat, divergent thinning and convergent thickening keep running, so an over-budget plate
   thins / drowns / crumples back toward its crustal volume rather than merely freezing at its
   current size. A real craton sits near reference Hc across its whole area, far below the
