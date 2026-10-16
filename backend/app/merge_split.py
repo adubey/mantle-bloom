@@ -954,11 +954,12 @@ def update_overlap_tracking(world: "World", years: float) -> None:
 
 
 def _merge_plates_with_craton_audit(world: "World", id_keep: int, id_absorb: int) -> None:
-    """`merge_plates`, booking any cratonic crust the suture cap shaved off a stacked column to
-    `merge_capped_m3` (RFC 0001, #441): it is the merge's cap, not root delamination."""
+    """`merge_plates`, booking craton clipped to the host column or unplaceable in the merge
+    remap to `merge_capped_m3` (RFC 0001, #441, #443): these are merge-capacity losses, not
+    root delamination."""
     audit = cratons.PhaseAudit(world)
     merge_plates(world, id_keep, id_absorb)
-    audit.settle("merge_capped_m3")
+    audit.settle("merge_capped_m3", residual_account="merge_capped_m3")
 
 
 def apply_topology_changes(world: "World", years: float) -> list[str]:
