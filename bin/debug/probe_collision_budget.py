@@ -86,11 +86,15 @@ KM3 = 1e9
 CAP_M = SUTURE_ACCRETION_MAX_HC_M
 CAP_TOL_M = 50.0
 COMPENSATION_DEPTH_M = 400_000.0  # below sea level, under every column's lithosphere
-CLASSES = ("craton", "cap", "deform")
-CRATON, CAP, DEFORM = 0, 1, 2
+# "craton" is a retreat veto (a cratonic candidate facing non-cratonic crust: an indenter);
+# "craton_both" is craton on both sides of the contact (RFC 0011's split of #452's class).
+CLASSES = ("craton", "cap", "deform", "craton_both")
+CRATON, CAP, DEFORM, CRATON_BOTH = 0, 1, 2, 3
+N_CLASSES = len(CLASSES)
 OROGENY_ACCOUNTS = ("no_outlet_subducted_m3", "ceiling_overflow_no_outlet_m3", "suture_donated_m3")
 BUDGET_ACCOUNTS = OROGENY_ACCOUNTS + ("collision_subducted_m3",)
 PRE_MERGE_WINDOW_MYR = 30.0
+JAM_EPISODE_MIN_STEPS = 3
 STRENGTH_N_PER_M = (1e12, 1e13)  # published integrated lithospheric strength (#452 G3)
 
 
@@ -302,9 +306,10 @@ class PlateRead:
 
     def _classify(self, world, spacing: float) -> None:
         candidate = collision_polarity.retreat_candidates(world.collision_polarity_frame, self.plate, self.contested)
-        craton = (self.craton > 0.0) & (candidate | (self.other_craton > 0.0))
+        both = (self.craton > 0.0) & (self.other_craton > 0.0)
+        veto = (self.craton > 0.0) & candidate & ~both
         cap = (self.hc >= CAP_M - CAP_TOL_M) | (self.other_hc >= CAP_M - CAP_TOL_M)
-        self.cls = np.where(craton, CRATON, np.where(cap, CAP, DEFORM))
+        self.cls = np.where(both, CRATON_BOTH, np.where(veto, CRATON, np.where(cap, CAP, DEFORM)))
         points = self.inputs.own_points
         free = ~self.contested
         self.depth = np.zeros(len(points))
@@ -330,9 +335,9 @@ def _side_overlap(side: PlateRead, other_id: int, years: float, length_m: float)
     return {
         "ov": ov,
         "area": float(side.areas[ov].sum()),
-        "d_cls": [float(side.d[ov & (side.cls == k)].sum()) for k in range(3)],
+        "d_cls": [float(side.d[ov & (side.cls == k)].sum()) for k in range(N_CLASSES)],
         "depth": side.depth[ov],
-        "edge_cls": [int((edge & (side.cls == k)).sum()) for k in range(3)],
+        "edge_cls": [int((edge & (side.cls == k)).sum()) for k in range(N_CLASSES)],
         "in": float(driven.sum()),
         "nodes": {(side.plate.plate_id, int(k)): (float(d), int(c)) for k, d, c in zip(side.keys[ov], side.d[ov], side.cls[ov])},
         "band_keys": side.keys[side.band & (side.owner == other_id)],
@@ -344,7 +349,7 @@ def _side_overlap(side: PlateRead, other_id: int, years: float, length_m: float)
 def _growth_by_class(now: dict, before: dict) -> list[float]:
     """D's change since the last prepass, node by node, to each node's class (a node gone
     since is booked to the class it had)."""
-    out = [0.0, 0.0, 0.0]
+    out = [0.0] * N_CLASSES
     for key, (d, cls) in now.items():
         out[cls] += d - before.get(key, (0.0, cls))[0]
     for key, (d, cls) in before.items():
@@ -426,6 +431,7 @@ class Probe:
         weights = d_cls if sum(d_cls) > 0.0 else edge_cls
         row = {
             "jammed": contact_row["jammed"],
+            "rel_rot": round(float(np.linalg.norm(np.asarray(ra.plate.omega) - np.asarray(rb.plate.omega))) * 180.0 / np.pi * 1e6, 4),
             "cc": contact_row["cc"],
             "len_km": contact_row["len_km"],
             "close_cm": contact_row["close_cm"],
@@ -744,6 +750,46 @@ def _merge_windows(rows: list[dict]) -> dict[str, float]:
     return out
 
 
+def _classes(values: list[float]) -> np.ndarray:
+    """A per-class list as an array of N_CLASSES; runs from before the craton split (#452's
+    first pass) have three classes."""
+    return np.array(list(values) + [0.0] * (N_CLASSES - len(values)))
+
+
+def _jam_rotation(rows: list[dict]) -> dict:
+    """Over every jammed episode of at least JAM_EPISODE_MIN_STEPS steps: the pair's relative
+    rotation |w_a - w_b| at its first and last step, and whether it fell (RFC 0011's question:
+    do jammed pairs converge toward matching motion?)."""
+    series: dict[str, list[tuple[float, dict]]] = defaultdict(list)
+    for row in rows:
+        for key, pair in row["pairs"].items():
+            series[key].append((row["myr"], pair))
+    merged = set(_merge_windows(rows))
+    start, end, ratio, ratio_merged = [], [], [], []
+    for key, steps in series.items():
+        run: list[dict] = []
+        for _, pair in steps + [(None, {"jammed": False})]:
+            if pair["jammed"] and "rel_rot" in pair:
+                run.append(pair)
+                continue
+            if len(run) >= JAM_EPISODE_MIN_STEPS and run[0]["rel_rot"] > 0.0:
+                start.append(run[0]["rel_rot"])
+                end.append(run[-1]["rel_rot"])
+                ratio.append(run[-1]["rel_rot"] / run[0]["rel_rot"])
+                if key in merged:
+                    ratio_merged.append(ratio[-1])
+            run = []
+    return {
+        "episodes": len(ratio),
+        "rel_rot_start_deg_per_myr": _pct(start),
+        "rel_rot_end_deg_per_myr": _pct(end),
+        "end_over_start": _pct(ratio),
+        "share_halved": _share(sum(r <= 0.5 for r in ratio), len(ratio)),
+        "share_grew": _share(sum(r > 1.0 for r in ratio), len(ratio)),
+        "end_over_start_pairs_that_merged": _pct(ratio_merged),
+    }
+
+
 def _g1(rows: list[dict], cell_km: float) -> dict:
     """G1 over every pair in scope, and over continental pairs alone."""
     out = {"all": _g1_shares(rows, False), "cc": _g1_shares(rows, True)}
@@ -758,12 +804,12 @@ def _g1(rows: list[dict], cell_km: float) -> dict:
 def _g1_shares(rows: list[dict], cc_only: bool) -> dict:
     """Shares of D's growth by node class: all pair-steps, and the 30 Myr before each merge."""
     merged = _merge_windows(rows)
-    net, gross, window = np.zeros(3), np.zeros(3), np.zeros(3)
+    net, gross, window = np.zeros(N_CLASSES), np.zeros(N_CLASSES), np.zeros(N_CLASSES)
     for row in rows:
         for key, pair in row["pairs"].items():
             if cc_only and not pair["cc"]:
                 continue
-            growth = np.array(pair["dD_cls"])
+            growth = _classes(pair["dD_cls"])
             net += growth
             gross += np.clip(growth, 0.0, None)
             t = merged.get(key)
@@ -773,7 +819,8 @@ def _g1_shares(rows: list[dict], cc_only: bool) -> dict:
     for name, v in (("net", net), ("gross", gross), ("pre_merge_30myr", window)):
         total = float(v.sum())
         out[name] = {"total_km3": round(total, 1), **{c: _share(float(v[i]), total) for i, c in enumerate(CLASSES)}}
-        out[name]["blocked"] = _share(float(v[CRATON] + v[CAP]), total)
+        out[name]["blocked"] = _share(float(v[CRATON] + v[CAP] + v[CRATON_BOTH]), total)
+        out[name]["craton_any"] = _share(float(v[CRATON] + v[CRATON_BOTH]), total)
     return out
 
 
@@ -812,10 +859,10 @@ def _g3(rows: list[dict], step_myr: float) -> dict:
     fast their overlap grows."""
     out = {}
     lo, hi = STRENGTH_N_PER_M
-    for cls in ("craton", "cap"):
-        steps = _pair_steps(rows, (cls,))
+    for name, cls in (("craton", ("craton",)), ("craton_both", ("craton_both",)), ("craton_any", ("craton", "craton_both")), ("cap", ("cap",))):
+        steps = _pair_steps(rows, cls)
         stall = [p["stall"] for p in steps]
-        out[cls] = {
+        out[name] = {
             "pair_steps_closing": len(steps),
             "stall_n_per_m": _pct(stall),
             "share_below_1e13": _share(sum(s <= hi for s in stall), len(stall)),
@@ -929,7 +976,7 @@ def summarize_seed(path: Path) -> dict:
         "end_craton_km3": round(tail.get("end_craton_m3", float("nan")) / KM3, 1),
         "merges": len(merges), "merges_booking_merge_capped": sum(m["merge_capped_km3"] > 0.0 for m in merges),
         "G1": _g1(rows, header.get("cell_km", 100.0)), "G2": _g2(rows), "G3": _g3(rows, header["step_myr"]), "G4": _g4(rows, contacts),
-        "checks": _checks(rows, merges),
+        "checks": _checks(rows, merges), "jam_rotation": _jam_rotation(rows),
         "craton_ledger_km3": {k: round(v / KM3, 1) for k, v in tail.get("ledger", {}).items() if v},
         # Per-merge rows only for merges that lost craton to the cap, to keep the JSON compact.
         "merge_events": [m for m in merges if m["merge_capped_km3"] > 0.0],
@@ -952,7 +999,7 @@ def summarize_pooled(paths: list[Path]) -> dict:
         rows.extend(tagged)
         merges.extend(_merges(tagged))
     return {"seeds": seeds, "step_myr": step, "G1": _g1(rows, _load(paths[0])[0].get("cell_km", 100.0)), "G2": _g2(rows),
-            "G3": _g3(rows, step), "checks": _checks(rows, merges), "merges": _merge_digest(merges)}
+            "G3": _g3(rows, step), "checks": _checks(rows, merges), "jam_rotation": _jam_rotation(rows), "merges": _merge_digest(merges)}
 
 
 def _merge_digest(merges: list[dict]) -> dict:
