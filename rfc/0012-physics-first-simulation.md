@@ -316,14 +316,23 @@ active-set or bounded solve handles contacts at yield. This is a scale-appropria
 avoid order-dependent motion; neighbor gathering is already a larger cost than this solve.
 The solve changes current motion behavior and must be replayed and compared.
 
-In block form, solve `(K_basal + K_contacts) Ω = τ_slab + τ_ridge + τ_other`, where Ω stacks
-the 3-vector angular velocities, each shared-contact block contributes equal-and-opposite
-terms to the two plates, and `K` contains velocity-dependent resistance. More generally, write
-`K Ω = b + τ_explicit` when a process supplies its own drag matrix and explicit torque.
-For a yielded contact, the contact force is an unknown constrained to its physical capacity;
-the active set determines whether normal contact remains closed and whether tangential motion
-sticks or slips, and is coupled to the plate solve. The contact response may include a static
-normal force at zero relative slip; it is not reducible to a velocity-dependent drag term.
+In block form, let `Ω` stack the plates' 3-vector angular velocities, `K_drag` contain
+velocity-dependent resistance, and `q_contact` contain shared-contact forces per unit length
+(N/m). A geometry map `B` integrates each segment force and its lever arm into equal-and-
+opposite plate torques. The solve is `K_drag Ω = τ_driving + B q_contact`; `τ_driving`
+contains explicit torques such as slab pull and ridge push. Solve this balance together with
+each process's contact and yield constraints. For a closed collision, the normal component of
+`q_contact` may be nonzero even at zero relative slip, and is bounded by the segment's
+capacity. Tangential resistance follows its own process law. A yielded contact's active set
+determines whether normal contact remains closed and whether tangential motion sticks or
+slips. Thus static contact force is an unknown load in the balance, not a velocity-dependent
+drag coefficient.
+
+The limiting cases must also be defined. With no driving torque and no physical resistance,
+the quasi-static convention is zero plate motion. If a nonzero net torque remains with no
+physical resistance or contact/deformation response able to balance it, the system has no
+bounded quasi-static solution: report the residual torque rather than inventing a rate through
+numerical regularization. A dynamic/inertial fallback would be a separate, validated model.
 
 The balance is quasi-static at geological timesteps. For an illustrative plate with density
 3300 kg/m³, 100 km thickness, 100 km drag length, and viscosity 5×10¹⁹ Pa·s, the inertial
@@ -423,14 +432,22 @@ can be retired without changing them.
 collision is the initial candidate) to compare current behavior with a contact response inside
 the simultaneous quasi-static motion solve, on matched synthetic contacts and replayed worlds.
 Include limiting cases for no load, no resistance, symmetric action/reaction, a yielded
-contact, and a Tibet-like collision. Copley et al. estimate Himalayan–Tibetan mountain-building
+contact, and a Tibet-like collision. In the zero-load/no-resistance case, the solved rate is
+zero. If net torque remains with no physical resistance or contact/deformation response able
+to balance it, report the residual instead of inventing a rate. In a synthetic free two-plate
+case, zero-slip compression must change both plates' solved motion while the contact load stays
+equal and opposite and within capacity. Copley et al. estimate Himalayan–Tibetan mountain-building
 resistance of roughly 5–6×10¹² N/m and ridge-push force around 2.5×10¹² N/m for the Indian
 plate force balance; these are regional Cenozoic sanity checks, not universal targets
 [[Copley et al., 2010]](#ref-copley2010). Compare column GPE contrasts for both ridge push and
 collision resistance using one consistently defined ΔGPE per unit boundary length (N/m),
-with layer densities and thicknesses stated. Report force/torque response, local and mean
-relative motion, yield/deformation allocation, material-ledger closure, step-size sensitivity,
-and runtime. A pilot that only reproduces a geometric event count does not pass.
+with layer densities and thicknesses stated, then integrate along a geometry-defined ridge
+segment or collision belt before comparing with the regional force estimates. Treat that
+comparison as a magnitude sanity check, not calibration of a single column. Report
+force/torque response, local and mean relative motion, yield/deformation allocation,
+material-ledger closure, step-size sensitivity, and runtime. A pilot that only reproduces a
+geometric event count does not pass. At node density 4, median total step time must increase
+by no more than 10% over the matched baseline.
 
 **Gate G3: transferability.** Exercise the contract against at least one divergent/rifting and
 one transform case before declaring it the general tectonic interface. For rifting, calculate
@@ -438,13 +455,14 @@ net tensile force across a candidate cut from boundary loads and basal traction,
 a rift only when it exceeds the cut's vertically integrated strength (including temperature
 and crustal thickness), following the integrated-strength framing of Kusznir & Park (1987)
 [[Kusznir & Park, 1987]](#ref-kusznir-park1987). Compare extension localization and
-widening/stall behavior with the force-balance framing of Buck (1991)
-[[Buck, 1991]](#ref-buck1991). For a transform, compare
-solved tangential rate with a bounded shear resistance and check equal-and-opposite load.
-Merge only after solved relative rate is below ε along the contact for duration τ; the
-diagnostic must report sensitivity to ε and τ. These thresholds and constitutive choices are
-not fixed by this RFC. If rifting or transform motion requires incompatible or meaningless
-shared fields, keep a narrower mechanical interface and document the process-specific
+widening/localization as the force needed to continue extension changes, following Buck's
+force-balance framing [[Buck, 1991]](#ref-buck1991). For a transform, compare solved
+tangential rate with a bounded shear resistance and check equal-and-opposite load. For
+topology, test a merge only after solved relative rate is below ε along the contact for
+duration τ; the diagnostic must report sensitivity to ε and τ. These thresholds and
+constitutive choices are not fixed by this RFC. If rifting or transform motion requires
+incompatible or meaningless shared fields, keep a narrower mechanical interface and document
+the process-specific
 extension.
 
 No full implementation plan is selected until G1–G3 are recorded. RFC 0011 can proceed as a
@@ -455,7 +473,10 @@ that this RFC has already proven the shared interface.
 
 The candidate motion system costs O(S) to assemble active segment blocks and O((3P)^3) for a
 dense direct solve; at P=20–30 this is at most a 90×90 solve. It should be negligible
-beside current boundary gathering and deformation. Profiling at commit `f68fa46` recorded
+beside current boundary gathering and deformation. The G2 design target is no more than a 10%
+increase in median total step time at node density 4, measured against the same saved or
+generated world on the same hardware. Include gathering, segment construction, the solve, and
+deformation. Profiling at commit `f68fa46` recorded
 about 1.4 s/step in plate shift plus deformation and about 0.5 s cumulative in gathering at
 node density 4, Python 3.14; G2 must re-profile the current branch with the exact seed, world,
 and profiler because these are historical measurements, not a promise about current hardware.
@@ -479,9 +500,11 @@ layers would require auditing every writer and dividing each thickness change be
 layers. Every new extensive layer field must be updated by every writer of its parent thickness
 and covered by remap, split, merge, transfer, cap, and old-save defaults. That lifecycle spans
 `sparse_quad_patch`, `quad_merge`, and `legacy_conversion`, as well as topology and persistence.
-A seafloor-age CLOCK
-instead needs explicit ridge initialization, advection with oceanic material, remapping, and
-old-save defaults. Report lifecycle and save-size growth separately from step runtime.
+A seafloor-age clock instead needs explicit ridge initialization, advection with oceanic
+material, remapping, and old-save defaults. The G2 contact pilot adds no persistent per-node
+state, so it should add no encoded save size. If the separate age pilot is selected, its
+encoded save-size growth has a 5% design cap across representative saved worlds. Report
+lifecycle and save-size growth separately from step runtime.
 
 The relevant current fields are not interchangeable with all proposed chemistry:
 
@@ -576,16 +599,22 @@ this pilot.
       design principle and measurable outcome; each retired rule is checked against accepted
       geology metrics.
 - [ ] **G2:** compare the simultaneous quasi-static contact pilot against current behavior on
-      synthetic no-load, no-resistance, symmetric-action/reaction, zero-slip compressive
-      contact, yield, and Tibet-like cases. A zero-slip compressive load must be able to alter
-      both plates' solved motion while remaining equal and opposite and within capacity;
-      plus matched replays. Force/torque units close dimensionally, shared loads are equal and
-      opposite, contact load never exceeds its stated capacity, deformation budgets and
-      material ledgers close to rounding, and the pilot stays within the runtime budget.
-      A synthetic Tibet-like column's ΔGPE should test against the order of Copley et al.'s
-      5–6×10¹² N/m mountain-building resistance, and an oceanic ridge column against the order
-      of 2.5×10¹² N/m ridge push. These are regional Indian-plate sanity ranges, not universal
-      force targets.
+      synthetic no-load/no-resistance, unbalanced-torque/no-resistance, symmetric-action/
+      reaction, zero-slip compressive contact, yield, and Tibet-like cases, plus matched
+      replays. The no-load/no-resistance case solves to zero motion; an unbalanced torque with
+      no physical balancing response reports a residual instead of an arbitrary rate. In a
+      symmetric free two-plate case, zero-slip compression changes both plates' solved motion
+      while the contact load remains equal and opposite and within capacity. Force/torque units
+      close dimensionally, shared loads are equal and opposite, contact load never exceeds its
+      stated capacity, deformation budgets and
+      material ledgers close to rounding, and median total step time at density 4 increases by
+      no more than 10% over the matched baseline.
+      A geometry-specified Himalaya–Tibet belt's integrated ΔGPE should be compared with the
+      order of Copley et al.'s 5–6×10¹² N/m mountain-building resistance. Compare ridge-push
+      ΔGPE integrated along a stated oceanic ridge segment with the order of 2.5×10¹² N/m.
+      These are regional Indian-plate magnitude checks, not universal targets or calibration
+      values; vary geometry and layer densities. Do not tune a single column to match either
+      regional estimate.
 - [ ] The pilot's accumulated force response, mean plate rate, relative contact motion,
       deformation, Hc/Hm distributions, land fraction, and material ledgers agree within 10%
       across 0.1, 1, and 2 Myr steps, except for discrete topology events. For these, report
@@ -594,14 +623,17 @@ this pilot.
       580014012, and 111065103, at the same endpoints and node density. Do not use 5 Myr as
       an acceptance step: the issue #452 step-size check fails at that step.
 - [ ] **G3** reports whether the same interface can express a rift and a transform response;
-      any process-specific extension is documented with a physical reason.
+      any process-specific extension is documented with a physical reason. Rifting diagnostics
+      compare whether extension widens or stays localized as the force needed to continue
+      extension changes; Buck (1991) supports that widening/localization relationship, not a
+      universal rift-stall rule.
 - [ ] Any pilot that consumes material properties identifies the upper-crust, lower-crust,
       and lithospheric-mantle derived state it reads. Any composition fractions are bounded
       and material transfers conserve layer budgets. Temperature and any optional fluid state
-      have an explicit update cadence and timestep-sensitivity result. The first pilot adds at
-      most one persistent per-node field (oceanic seafloor age); report encoded save-size growth
-      and lifecycle cost separately from runtime. Existing saves load with a documented age
-      fallback.
+      have an explicit update cadence and timestep-sensitivity result. The G2 contact pilot
+      adds no persistent per-node state and no encoded save-size growth. If a later age pilot
+      adds one seafloor-age field, its encoded save-size growth stays below 5% across
+      representative saved worlds, with lifecycle cost reported separately from runtime.
 - [ ] Any implementation selected by the gates has equation-level tests, save compatibility
       for new persistent state, updated simulation docs, and measured runtime at density 4.
 - [ ] No process is accepted solely because software tests pass; its force law and outcome
@@ -612,10 +644,11 @@ this pilot.
 - **Interfaces erase process physics.** If G3 requires collision, rift, and transform laws to
   share quantities that have no physical meaning for one of them, reject the universal
   contract and retain only shared geometry/unit conventions.
-- **Aggregation changes threshold outcomes.** If the reduced segment model changes which
-  contacts yield, where rifts localize, or which transform segments slip compared with a
-  node-resolved reference beyond the acceptance tolerance, refine the sufficient statistics
-  or abandon that aggregation.
+- **Aggregation changes threshold outcomes.** If the reduced segment model changes integrated
+  force or torque by more than 10%, or changes the yield/lock/slip classification along more
+  than 10% of active boundary length compared with a node-resolved reference, refine the
+  sufficient statistics or abandon that aggregation. G1 must report the reference resolution
+  and measurement method; these thresholds are design choices.
 - **Rigid interiors fail at the target scale.** If validation shows distributed intraplate
   deformation controls the target outcome, add a deformable plate-region model for that
   question rather than tuning boundary forces to compensate.
