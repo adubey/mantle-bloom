@@ -1,0 +1,36 @@
+{
+  "seed": 11,
+  "generation_step_years": 5000000,
+  "capture_myr": 195.0,
+  "pair": [4, 38],
+  "capture_sha256": "77aaed689e073bf7bcd032f4edb11b2660f1b2dbd5365a99d5cd60b6bf9c7d05",
+  "baseline_commit": "840c5ad3e996cf3ecc50f928eb967ad4a99fc5a0",
+  "branch_commit": "26b1db9",
+  "baseline": {
+    "craton_moving_mkm3": 67.387914,
+    "craton_above_uncapped_mkm3": 62.773952,
+    "craton_above_hc_after_placement_mkm3": 28.596894,
+    "merge_capped_mkm3": 28.596894,
+    "final_craton_area_km2": 16478815.737,
+    "final_craton_mkm3": 884.940755,
+    "final_continental_area_km2": 33114140.805,
+    "final_oceanic_area_km2": 13048486.663,
+    "overflow_placed_share": 1.0,
+    "replay_wall_s": 1.320
+  },
+  "branch": {
+    "craton_moving_mkm3": 0.0,
+    "craton_above_uncapped_mkm3": 0.0,
+    "craton_above_hc_after_placement_mkm3": 0.0,
+    "merge_capped_mkm3": 14.184624,
+    "final_craton_area_km2": 16478815.737,
+    "final_craton_mkm3": 899.353026,
+    "final_continental_area_km2": 33114140.805,
+    "final_oceanic_area_km2": 13048486.663,
+    "overflow_placed_share": 1.0,
+    "replay_wall_s": 1.315
+  },
+  "probe_wall_s": 110,
+  "peak_rss_recorded": false,
+  "serial": true
+}
