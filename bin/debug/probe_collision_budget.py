@@ -975,13 +975,13 @@ def _merge_digest(merges: list[dict]) -> dict:
     }
 
 
-def summarize(paths: list[Path], json_out: Path | None, pool: list[Path] | None = None) -> None:
+def summarize(paths: list[Path], json_out: Path | None, pools: list[list[Path]] | None = None) -> None:
     seeds = [summarize_seed(path) for path in paths]
     for s in seeds:
         print(json.dumps({k: v for k, v in s.items() if k != "merge_events"}, indent=1))
     out = {"seeds": seeds}
-    if pool:
-        out["pooled"] = summarize_pooled(pool)
+    if pools:
+        out["pooled"] = [summarize_pooled(pool) for pool in pools]
         print(json.dumps(out["pooled"], indent=1))
     if json_out:
         json_out.parent.mkdir(parents=True, exist_ok=True)
@@ -1000,7 +1000,7 @@ def main() -> None:
     parser.add_argument("--untapped", action="store_true", help="no taps: only the end craton volume")
     parser.add_argument("--summarize", type=Path, nargs="+")
     parser.add_argument("--json", type=Path, help="with --summarize: write the per-seed summary here")
-    parser.add_argument("--pool", type=Path, nargs="+", help="with --summarize: also pool these runs' pair-steps")
+    parser.add_argument("--pool", type=Path, nargs="+", action="append", help="with --summarize: also pool these runs' pair-steps (repeatable)")
     args = parser.parse_args()
     if args.summarize:
         summarize(args.summarize, args.json, args.pool)

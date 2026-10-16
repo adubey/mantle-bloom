@@ -3,884 +3,482 @@
   {
    "seed": 326494039,
    "step_myr": 5.0,
-   "commit": "840c5ad3e996cf3ecc50f928eb967ad4a99fc5a0",
+   "commit": "de9d64721b16390209ae0b54df0fbf31d1697f16",
    "myr": 995.0,
    "start_craton_km3": 2763167297.7,
-   "end_craton_km3": 1522384920.6,
-   "merges": 40,
-   "merges_booking_merge_capped": 14,
+   "end_craton_km3": 2484495222.1,
+   "merges": 47,
+   "merges_booking_merge_capped": 5,
    "G1": {
     "all": {
      "net": {
-      "total_km3": 24552016565.0,
-      "craton": 0.7455,
-      "cap": 0.0093,
-      "deform": 0.2452,
-      "blocked": 0.7548
+      "total_km3": 14100915859.6,
+      "craton": 0.6238,
+      "cap": 0.0006,
+      "deform": 0.3757,
+      "blocked": 0.6243
      },
      "gross": {
-      "total_km3": 39406523718.5,
-      "craton": 0.6259,
-      "cap": 0.0306,
-      "deform": 0.3435,
-      "blocked": 0.6565
+      "total_km3": 25966956307.2,
+      "craton": 0.4772,
+      "cap": 0.0113,
+      "deform": 0.5115,
+      "blocked": 0.4885
      },
      "pre_merge_30myr": {
-      "total_km3": 3925608001.1,
-      "craton": 0.8411,
-      "cap": 0.0117,
-      "deform": 0.1472,
-      "blocked": 0.8528
+      "total_km3": 2433634896.4,
+      "craton": 0.9196,
+      "cap": -0.0016,
+      "deform": 0.082,
+      "blocked": 0.918
      }
     },
     "cc": {
      "net": {
-      "total_km3": 20093493005.9,
-      "craton": 0.8638,
-      "cap": 0.0096,
-      "deform": 0.1266,
-      "blocked": 0.8734
+      "total_km3": 9483569700.0,
+      "craton": 0.8056,
+      "cap": 0.0011,
+      "deform": 0.1933,
+      "blocked": 0.8067
      },
      "gross": {
-      "total_km3": 27224699306.8,
-      "craton": 0.7762,
-      "cap": 0.0346,
-      "deform": 0.1893,
-      "blocked": 0.8107
+      "total_km3": 14833215152.0,
+      "craton": 0.6698,
+      "cap": 0.0165,
+      "deform": 0.3138,
+      "blocked": 0.6862
      },
      "pre_merge_30myr": {
-      "total_km3": 3757818480.9,
-      "craton": 0.866,
-      "cap": 0.0097,
-      "deform": 0.1243,
-      "blocked": 0.8757
+      "total_km3": 2256030195.3,
+      "craton": 0.9374,
+      "cap": 0.0006,
+      "deform": 0.0621,
+      "blocked": 0.9379
      }
     },
     "depth_mean_cells": {
-     "p10": 0.978,
-     "p50": 1.41,
-     "p90": 3.06
+     "p10": 0.99,
+     "p50": 1.21,
+     "p90": 2.08
     },
     "depth_max_cells": {
      "p10": 1.07,
-     "p50": 3.24,
-     "p90": 8.94
+     "p50": 2.38,
+     "p90": 6.25
     },
     "depth_mean_km": {
-     "p10": 122.0,
-     "p50": 177.0,
-     "p90": 383.0
+     "p10": 124.0,
+     "p50": 151.0,
+     "p90": 260.0
     },
     "cell_km": 125.0
    },
    "G2": {
-    "pair_steps_closing": 2349,
-    "jammed_pair_steps": 1187,
+    "pair_steps_closing": 3469,
+    "jammed_pair_steps": 1439,
     "stall_n_per_m": {
-     "p10": 966000000000.0,
-     "p50": 6560000000000.0,
-     "p90": 19100000000000.0
+     "p10": 1250000000000.0,
+     "p50": 7610000000000.0,
+     "p90": 18200000000000.0
     },
     "h_star_km": {
      "p10": 35.0,
-     "p50": 52.6,
-     "p90": 77.3
+     "p50": 58.5,
+     "p90": 78.8
     },
-    "share_h_star_below_cap": 0.7535,
-    "share_push_exceeds_stall": 0.2588,
+    "share_h_star_below_cap": 0.6408,
+    "share_push_exceeds_stall": 0.1351,
     "close_now_cm": {
-     "p10": 0.224,
-     "p50": 0.903,
-     "p90": 2.0
+     "p10": 0.178,
+     "p50": 0.889,
+     "p90": 1.98
     },
     "close_with_push_cm": {
      "p10": 0.0,
-     "p50": 0.548,
-     "p90": 1.77
+     "p50": 0.898,
+     "p90": 2.29
     },
-    "share_stopped_by_push": 0.2625,
+    "share_stopped_by_push": 0.1354,
     "band_hc_km": {
-     "p10": 20.4,
+     "p10": 20.1,
      "p50": 42.7,
-     "p90": 66.3
+     "p90": 65.2
     },
     "band_hm_km": {
-     "p10": 20.8,
-     "p50": 62.9,
-     "p90": 138.0
+     "p10": 23.4,
+     "p50": 91.8,
+     "p90": 181.0
     },
-    "share_band_clipped": 0.0709,
+    "share_band_clipped": 0.0374,
     "slab_pull_share_of_stall": {
-     "p10": 0.0,
-     "p50": 0.857,
-     "p90": 1.12
+     "p10": -0.17,
+     "p50": 0.9,
+     "p90": 1.11
     },
     "tibet_like": {
-     "n": 197,
+     "n": 262,
      "push": {
-      "p10": -4350000000000.0,
-      "p50": 4490000000000.0,
-      "p90": 11100000000000.0
+      "p10": -7410000000000.0,
+      "p50": -939000000000.0,
+      "p90": 10600000000000.0
      },
      "stall": {
-      "p10": 1000000000000.0,
-      "p50": 7240000000000.0,
-      "p90": 22300000000000.0
+      "p10": 1460000000000.0,
+      "p50": 8550000000000.0,
+      "p90": 19800000000000.0
      },
      "push_airy": {
-      "p10": 7220000000000.0,
-      "p50": 8380000000000.0,
-      "p90": 9720000000000.0
+      "p10": 7280000000000.0,
+      "p50": 8180000000000.0,
+      "p90": 9690000000000.0
      }
     }
    },
    "G3": {
     "craton": {
-     "pair_steps_closing": 1090,
+     "pair_steps_closing": 684,
      "stall_n_per_m": {
-      "p10": 725000000000.0,
-      "p50": 2950000000000.0,
-      "p90": 13900000000000.0
+      "p10": 758000000000.0,
+      "p50": 3680000000000.0,
+      "p90": 10900000000000.0
      },
-     "share_below_1e13": 0.833,
-     "share_in_1e12_1e13": 0.6826,
-     "share_below_1e12": 0.1505,
+     "share_below_1e13": 0.8845,
+     "share_in_1e12_1e13": 0.7456,
+     "share_below_1e12": 0.1389,
      "D_growth_km3_per_myr": {
-      "p10": -1310000.0,
-      "p50": 1410000.0,
-      "p90": 9500000.0
+      "p10": -503000.0,
+      "p50": 1440000.0,
+      "p90": 5670000.0
      },
      "overlap_km2": {
-      "p10": 151000.0,
-      "p50": 855000.0,
-      "p90": 2070000.0
+      "p10": 155000.0,
+      "p50": 607000.0,
+      "p90": 1480000.0
      }
     },
     "cap": {
-     "pair_steps_closing": 5,
+     "pair_steps_closing": 37,
      "stall_n_per_m": {
-      "p10": 1010000000000.0,
-      "p50": 1810000000000.0,
-      "p90": 14600000000000.0
+      "p10": 409000000000.0,
+      "p50": 1550000000000.0,
+      "p90": 3800000000000.0
      },
-     "share_below_1e13": 0.8,
-     "share_in_1e12_1e13": 0.6,
-     "share_below_1e12": 0.2,
+     "share_below_1e13": 1.0,
+     "share_in_1e12_1e13": 0.5946,
+     "share_below_1e12": 0.4054,
      "D_growth_km3_per_myr": {
-      "p10": -3390000.0,
-      "p50": -709000.0,
-      "p90": -19500.0
+      "p10": -1420000.0,
+      "p50": 357000.0,
+      "p90": 1100000.0
      },
      "overlap_km2": {
-      "p10": 39200.0,
-      "p50": 66800.0,
-      "p90": 201000.0
+      "p10": 32700.0,
+      "p50": 76400.0,
+      "p90": 144000.0
      }
     }
    },
    "G4": {
-    "D_change_over_deform": -46572037184.2,
-    "D_growth": 24552016565.0,
-    "D_growth_over_shift": 53003621070.4,
-    "consumed_D": 25495322631.0,
+    "D_change_over_deform": -52651401310.9,
+    "D_growth": 14100915859.6,
+    "D_growth_over_shift": 54575223336.5,
+    "consumed_D": 28256495784.6,
     "contact_ceiling_overflow_no_outlet_m3": 0.0,
-    "contact_collision_subducted_m3": 22018972.7,
-    "contact_no_outlet_subducted_m3": 29318485.9,
-    "contact_suture_donated_m3": 6735073360.4,
-    "craton_loss_near_contacts_excl_fusion": 766306019.6,
-    "in": 150813106415.3,
-    "merge_capped": 645619067.3,
-    "merge_hc_lost": 1995442277.6,
-    "merge_material_clipped": 1725894588.9,
-    "thicken": 8932742391.4,
+    "contact_collision_subducted_m3": 0.0,
+    "contact_no_outlet_subducted_m3": 0.0,
+    "contact_suture_donated_m3": 5615927946.7,
+    "craton_loss_near_contacts_excl_fusion": 516431187.0,
+    "in": 119894360195.8,
+    "merge_capped": 58125098.0,
+    "merge_hc_lost": 346269042.5,
+    "merge_material_clipped": 242919937.7,
+    "thicken": 8907380387.8,
     "world_ceiling_overflow_no_outlet_m3": 0.0,
-    "world_collision_subducted_m3": 1752206146.5,
-    "world_craton_sinks_m3": 1398433082.6,
-    "world_merge_capped_m3": 645619067.3,
-    "world_no_outlet_subducted_m3": 29318485.9,
-    "world_suture_donated_m3": 8404013384.4,
-    "premerge_cap_hc_over_merge_hc": 0.0147,
-    "premerge_craton_near_contacts_over_merge_capped": 1.1869,
-    "share_of_in_left_as_overlap": 0.1628,
-    "share_of_shift_growth_left_as_overlap": 0.4632,
-    "share_of_shift_growth_consumed": 0.481
+    "world_collision_subducted_m3": 242919937.7,
+    "world_craton_sinks_m3": 616670455.4,
+    "world_merge_capped_m3": 58125098.0,
+    "world_no_outlet_subducted_m3": 0.0,
+    "world_suture_donated_m3": 7893334268.8,
+    "premerge_cap_hc_over_merge_hc": 0.0,
+    "premerge_craton_near_contacts_over_merge_capped": 8.8848,
+    "share_of_in_left_as_overlap": 0.1176,
+    "share_of_shift_growth_left_as_overlap": 0.2584,
+    "share_of_shift_growth_consumed": 0.5178
    },
    "checks": {
     "pair_drag_mismatch_at_jams": {
-     "p10": 0.08,
-     "p50": 0.413,
-     "p90": 0.901
+     "p10": 0.0585,
+     "p50": 0.308,
+     "p90": 0.904
     },
-    "splits": 113,
-    "splits_of_jammed_plates": 56,
-    "splits_of_overlapping_plates": 61,
+    "splits": 108,
+    "splits_of_jammed_plates": 61,
+    "splits_of_overlapping_plates": 80,
     "merge_rel_rotation_deg_per_myr": {
-     "p10": 0.105,
-     "p50": 0.195,
-     "p90": 0.352
+     "p10": 0.0825,
+     "p50": 0.262,
+     "p90": 0.614
     },
     "third_plate_hc_km3": {
-     "third_cont": 4743515386.9,
-     "third_ocean": 690544777.2
+     "third_cont": 1576687561.5,
+     "third_ocean": 393352757.9
     },
-    "third_plate_ocean_share": 0.1271,
+    "third_plate_ocean_share": 0.1997,
     "close_joint_vs_now_cm_abs_err": {
      "p10": 0.0,
-     "p50": 0.001,
-     "p90": 0.025
+     "p50": 0.003,
+     "p90": 0.028
     }
    },
    "craton_ledger_km3": {
-    "formed_m3": 159264904.4,
-    "rifted_m3": 342459733.8,
-    "subducted_m3": 135690173.1,
-    "merge_capped_m3": 645619067.3,
-    "collision_reworked_m3": 72490582.5,
-    "eroded_m3": 207067224.3,
-    "unattributed_m3": -3279501.1,
-    "rifted_divergent_m3": 22986378.9,
-    "rifted_stretch_m3": 294676549.4,
-    "rifted_failed_m3": 24796805.5,
+    "formed_m3": 339580988.0,
+    "rifted_m3": 326616199.4,
+    "subducted_m3": 31646953.9,
+    "merge_capped_m3": 58125098.0,
+    "collision_reworked_m3": 63755917.4,
+    "eroded_m3": 139062279.5,
+    "unattributed_m3": -953384.6,
+    "rifted_divergent_m3": 24057635.7,
+    "rifted_stretch_m3": 273273841.7,
+    "rifted_failed_m3": 29284722.1,
     "split_cuts": 0.0,
     "split_cuts_through_craton": 0.0,
-    "split_band_area_m2": 326844.2,
-    "split_band_craton_area_m2": 73854.4,
+    "split_band_area_m2": 310773.1,
+    "split_band_craton_area_m2": 74256.4,
     "failed_rift_cuts": 0.0,
     "failed_rift_cuts_through_craton": 0.0,
-    "failed_rift_band_area_m2": 213688.1,
-    "failed_rift_band_craton_area_m2": 43733.3,
+    "failed_rift_band_area_m2": 259593.2,
+    "failed_rift_band_craton_area_m2": 44111.2,
     "initial_m3": 2763167297.7
    },
    "merge_events": [
     {
-     "myr": 140.0,
-     "keep": 16,
-     "absorb": 32,
-     "rel_deg_per_myr": 0.1956,
-     "hc_lost_km3": 136968969.9,
-     "merge_capped_km3": 23239635.79,
-     "material_clipped_km3": 123958932.72,
-     "third_cont": {
-      "km2": 5587418.6,
-      "hc_km3": 397419219.5,
-      "age_myr_max": 135.0,
-      "age_myr_mean": 24.6
-     },
-     "on_keep": {
-      "km2": 1213537.5,
-      "hc_km3": 91120694.0,
-      "age_myr_max": 90.0,
-      "age_myr_mean": 25.7
-     },
-     "pair": "16-32",
-     "close_cm": 0.474,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 110.0,
-      "jammed_myr": 30.0,
-      "ov_km2": [
-       1713426.9,
-       1525764.9
-      ],
-      "D_km3": [
-       232671851.6,
-       216644857.96
-      ],
-      "craton_ov_km3": [
-       0.0,
-       0.0
-      ]
-     }
-    },
-    {
-     "myr": 275.0,
-     "keep": 3,
-     "absorb": 4,
-     "rel_deg_per_myr": 0.2456,
-     "hc_lost_km3": 277031377.6,
-     "merge_capped_km3": 79157727.92,
-     "material_clipped_km3": 265379690.51,
-     "third_ocean": {
-      "km2": 532549.4,
-      "hc_km3": 28651412.4,
-      "age_myr_max": 80.0,
-      "age_myr_mean": 30.7
-     },
-     "third_cont": {
-      "km2": 3834883.6,
-      "hc_km3": 322043462.9,
-      "age_myr_max": 120.0,
-      "age_myr_mean": 56.4
-     },
-     "pair": "3-4",
-     "close_cm": -0.032,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 230.0,
-      "jammed_myr": 45.0,
-      "ov_km2": [
-       186865.2,
-       363682.7
-      ],
-      "D_km3": [
-       24920185.33,
-       60599059.89
-      ],
-      "craton_ov_km3": [
-       3984519.9,
-       17446302.8
-      ]
-     }
-    },
-    {
-     "myr": 315.0,
-     "keep": 3,
-     "absorb": 64,
-     "rel_deg_per_myr": 0.3232,
-     "hc_lost_km3": 130370941.6,
-     "merge_capped_km3": 19079865.48,
-     "material_clipped_km3": 102749204.32,
-     "on_keep": {
-      "km2": 319567.9,
-      "hc_km3": 26553333.3,
-      "age_myr_max": 145.0,
-      "age_myr_mean": 102.7
-     },
-     "third_cont": {
-      "km2": 3460819.4,
-      "hc_km3": 266338895.7,
-      "age_myr_max": 120.0,
-      "age_myr_mean": 17.5
-     },
-     "third_ocean": {
-      "km2": 648369.0,
-      "hc_km3": 13135605.2,
-      "age_myr_max": 50.0,
-      "age_myr_mean": 18.8
-     },
-     "pair": "3-64",
-     "close_cm": -0.075,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 305.0,
-      "jammed_myr": 10.0,
-      "ov_km2": [
-       89767.3,
-       148180.4
-      ],
-      "D_km3": [
-       14935811.9,
-       24824906.3
-      ],
-      "craton_ov_km3": [
-       4013475.5,
-       10900162.7
-      ]
-     }
-    },
-    {
-     "myr": 320.0,
-     "keep": 3,
-     "absorb": 14,
-     "rel_deg_per_myr": 0.2124,
-     "hc_lost_km3": 305508951.0,
-     "merge_capped_km3": 55421455.45,
-     "material_clipped_km3": 266745532.6,
-     "third_cont": {
-      "km2": 2385663.9,
-      "hc_km3": 197907019.5,
-      "age_myr_max": 90.0,
-      "age_myr_mean": 24.2
-     },
-     "third_ocean": {
-      "km2": 332335.6,
-      "hc_km3": 9040593.3,
-      "age_myr_max": 90.0,
-      "age_myr_mean": 29.7
-     },
-     "on_keep": {
-      "km2": 1537350.0,
-      "hc_km3": 123962612.4,
-      "age_myr_max": 155.0,
-      "age_myr_mean": 13.1
-     },
-     "pair": "3-14",
-     "close_cm": 0.456,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 230.0,
-      "jammed_myr": 90.0,
-      "ov_km2": [
-       563850.1,
-       1458362.7
-      ],
-      "D_km3": [
-       79590423.77,
-       231245199.19
-      ],
-      "craton_ov_km3": [
-       5497912.0,
-       41890271.3
-      ]
-     }
-    },
-    {
-     "myr": 375.0,
-     "keep": 68,
-     "absorb": 71,
-     "rel_deg_per_myr": 0.052,
-     "hc_lost_km3": 48814980.2,
-     "merge_capped_km3": 8542894.38,
-     "material_clipped_km3": 45003625.8,
-     "third_cont": {
-      "km2": 1268017.4,
-      "hc_km3": 106513367.8,
-      "age_myr_max": 145.0,
-      "age_myr_mean": 49.7
-     },
-     "third_ocean": {
-      "km2": 29722.1,
-      "hc_km3": 2496658.2,
-      "age_myr_max": 40.0,
-      "age_myr_mean": 27.5
-     },
-     "on_keep": {
-      "km2": 635001.6,
-      "hc_km3": 53340089.3,
-      "age_myr_max": 55.0,
-      "age_myr_mean": 35.0
-     },
-     "pair": "68-71",
-     "close_cm": 0.088,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 360.0,
-      "jammed_myr": 15.0,
-      "ov_km2": [
-       787000.0,
-       833801.6
-      ],
-      "D_km3": [
-       128002021.11,
-       135988405.82
-      ],
-      "craton_ov_km3": [
-       23263419.1,
-       33021183.4
-      ]
-     }
-    },
-    {
      "myr": 410.0,
-     "keep": 3,
-     "absorb": 51,
-     "rel_deg_per_myr": 0.1662,
-     "hc_lost_km3": 254493561.4,
-     "merge_capped_km3": 61073546.42,
-     "material_clipped_km3": 139366147.36,
-     "third_cont": {
-      "km2": 3193847.4,
-      "hc_km3": 232678295.6,
-      "age_myr_max": 90.0,
-      "age_myr_mean": 47.9
+     "keep": 61,
+     "absorb": 67,
+     "rel_deg_per_myr": 0.0565,
+     "hc_lost_km3": 22909860.8,
+     "merge_capped_km3": 2742579.39,
+     "material_clipped_km3": 3664872.86,
+     "on_keep": {
+      "km2": 794422.5,
+      "hc_km3": 64937135.6,
+      "age_myr_max": 40.0,
+      "age_myr_mean": 24.0
      },
      "third_ocean": {
-      "km2": 2835673.6,
-      "hc_km3": 114978551.7,
-      "age_myr_max": 110.0,
-      "age_myr_mean": 31.2
+      "km2": 1086531.5,
+      "hc_km3": 11310467.8,
+      "age_myr_max": 10.0,
+      "age_myr_mean": 2.7
      },
-     "on_keep": {
-      "km2": 2934866.7,
-      "hc_km3": 234301660.7,
-      "age_myr_max": 70.0,
-      "age_myr_mean": 40.0
+     "third_cont": {
+      "km2": 236668.4,
+      "hc_km3": 19093250.3,
+      "age_myr_max": 85.0,
+      "age_myr_mean": 36.4
      },
-     "pair": "3-51",
-     "close_cm": 0.118,
+     "pair": "61-67",
+     "close_cm": 0.005,
      "jammed": true,
      "jam_episode": {
-      "onset_myr": 230.0,
-      "jammed_myr": 180.0,
+      "onset_myr": 370.0,
+      "jammed_myr": 40.0,
       "ov_km2": [
-       410189.2,
-       2833751.6
+       511357.7,
+       792504.6
       ],
       "D_km3": [
-       34264128.61,
-       459410314.72
+       42022535.32,
+       128394356.33
       ],
       "craton_ov_km3": [
-       1427991.7,
-       215268769.1
+       11302664.0,
+       41269469.1
       ]
      }
     },
     {
-     "myr": 480.0,
-     "keep": 68,
-     "absorb": 84,
-     "rel_deg_per_myr": 0.2197,
-     "hc_lost_km3": 234294741.4,
-     "merge_capped_km3": 117344119.31,
-     "material_clipped_km3": 213652524.17,
+     "myr": 565.0,
+     "keep": 5,
+     "absorb": 76,
+     "rel_deg_per_myr": 0.0806,
+     "hc_lost_km3": 47700394.5,
+     "merge_capped_km3": 1029109.56,
+     "material_clipped_km3": 23709100.13,
      "third_ocean": {
-      "km2": 201496.5,
-      "hc_km3": 7797347.3,
-      "age_myr_max": 50.0,
-      "age_myr_mean": 9.0
-     },
-     "third_cont": {
-      "km2": 4444950.6,
-      "hc_km3": 359453446.0,
-      "age_myr_max": 250.0,
-      "age_myr_mean": 73.0
-     },
-     "on_keep": {
-      "km2": 703368.0,
-      "hc_km3": 55850159.6,
+      "km2": 747879.5,
+      "hc_km3": 32733248.9,
       "age_myr_max": 40.0,
       "age_myr_mean": 22.1
      },
-     "pair": "68-84",
-     "close_cm": 0.306,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 455.0,
-      "jammed_myr": 25.0,
-      "ov_km2": [
-       548234.3,
-       1015965.6
-      ],
-      "D_km3": [
-       88613983.65,
-       164576991.8
-      ],
-      "craton_ov_km3": [
-       65479205.0,
-       126635871.9
-      ]
-     }
-    },
-    {
-     "myr": 510.0,
-     "keep": 3,
-     "absorb": 81,
-     "rel_deg_per_myr": 0.2214,
-     "hc_lost_km3": 308714966.6,
-     "merge_capped_km3": 150095070.2,
-     "material_clipped_km3": 260742981.43,
-     "third_ocean": {
-      "km2": 2004707.9,
-      "hc_km3": 72560244.3,
-      "age_myr_max": 75.0,
-      "age_myr_mean": 17.3
+     "on_keep": {
+      "km2": 2242324.0,
+      "hc_km3": 176142229.0,
+      "age_myr_max": 145.0,
+      "age_myr_mean": 41.7
      },
      "third_cont": {
-      "km2": 2627655.4,
-      "hc_km3": 211203102.9,
-      "age_myr_max": 180.0,
-      "age_myr_mean": 61.8
+      "km2": 873849.5,
+      "hc_km3": 54108998.9,
+      "age_myr_max": 130.0,
+      "age_myr_mean": 24.1
      },
-     "on_keep": {
-      "km2": 1188447.7,
-      "hc_km3": 88591758.6,
-      "age_myr_max": 85.0,
-      "age_myr_mean": 22.9
-     },
-     "pair": "3-81",
-     "close_cm": 0.261,
+     "pair": "5-76",
+     "close_cm": 0.119,
      "jammed": true,
      "jam_episode": {
-      "onset_myr": 425.0,
-      "jammed_myr": 85.0,
+      "onset_myr": 445.0,
+      "jammed_myr": 120.0,
       "ov_km2": [
-       255253.4,
-       1270366.2
+       507516.4,
+       2307322.4
       ],
       "D_km3": [
-       42718501.81,
-       199847493.94
+       42631765.13,
+       352021264.41
       ],
       "craton_ov_km3": [
-       22147101.1,
-       51402019.1
+       0.0,
+       82677470.5
       ]
      }
     },
     {
      "myr": 630.0,
-     "keep": 107,
-     "absorb": 112,
-     "rel_deg_per_myr": 0.1291,
-     "hc_lost_km3": 64963014.5,
-     "merge_capped_km3": 27558011.09,
-     "material_clipped_km3": 35444399.8,
-     "third_ocean": {
-      "km2": 300054.9,
-      "hc_km3": 14664617.7,
-      "age_myr_max": 20.0,
-      "age_myr_mean": 7.8
-     },
-     "third_cont": {
-      "km2": 2032751.4,
-      "hc_km3": 168609908.6,
-      "age_myr_max": 80.0,
-      "age_myr_mean": 17.5
-     },
-     "on_keep": {
-      "km2": 1244541.3,
-      "hc_km3": 101364378.0,
-      "age_myr_max": 80.0,
-      "age_myr_mean": 29.3
-     },
-     "pair": "107-112",
-     "close_cm": 0.148,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 610.0,
-      "jammed_myr": 20.0,
-      "ov_km2": [
-       926922.7,
-       1252773.4
-      ],
-      "D_km3": [
-       137601212.94,
-       189163801.39
-      ],
-      "craton_ov_km3": [
-       74978624.5,
-       97170029.5
-      ]
-     }
-    },
-    {
-     "myr": 635.0,
-     "keep": 3,
-     "absorb": 107,
-     "rel_deg_per_myr": 0.2833,
-     "hc_lost_km3": 3139807.2,
-     "merge_capped_km3": 610748.65,
-     "material_clipped_km3": 16495.24,
-     "third_cont": {
-      "km2": 1490209.6,
-      "hc_km3": 114061970.6,
-      "age_myr_max": 85.0,
-      "age_myr_mean": 17.6
-     },
-     "third_ocean": {
-      "km2": 197442.7,
-      "hc_km3": 13537129.8,
-      "age_myr_max": 25.0,
-      "age_myr_mean": 7.6
-     },
-     "on_keep": {
-      "km2": 628795.7,
-      "hc_km3": 47822690.3,
-      "age_myr_max": 30.0,
-      "age_myr_mean": 7.6
-     },
-     "pair": "3-107",
-     "close_cm": 1.061,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 590.0,
-      "jammed_myr": 45.0,
-      "ov_km2": [
-       378810.8,
-       807358.0
-      ],
-      "D_km3": [
-       54662951.32,
-       114970780.92
-      ],
-      "craton_ov_km3": [
-       30263968.2,
-       33908812.4
-      ]
-     }
-    },
-    {
-     "myr": 735.0,
-     "keep": 3,
-     "absorb": 117,
-     "rel_deg_per_myr": 0.0482,
-     "hc_lost_km3": 179826867.2,
-     "merge_capped_km3": 74369797.68,
-     "material_clipped_km3": 90627588.67,
-     "third_cont": {
-      "km2": 2116264.1,
-      "hc_km3": 148170563.6,
-      "age_myr_max": 130.0,
-      "age_myr_mean": 44.1
-     },
-     "on_keep": {
-      "km2": 3088311.9,
-      "hc_km3": 235430466.9,
-      "age_myr_max": 95.0,
-      "age_myr_mean": 57.3
-     },
-     "third_ocean": {
-      "km2": 17535.9,
-      "hc_km3": 1165416.6,
-      "age_myr_max": 60.0,
-      "age_myr_mean": 60.0
-     },
-     "pair": "3-117",
-     "close_cm": 0.092,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 645.0,
-      "jammed_myr": 90.0,
-      "ov_km2": [
-       837022.0,
-       3020678.9
-      ],
-      "D_km3": [
-       135997893.68,
-       465990687.03
-      ],
-      "craton_ov_km3": [
-       115293552.6,
-       284643869.8
-      ]
-     }
-    },
-    {
-     "myr": 835.0,
-     "keep": 3,
-     "absorb": 135,
-     "rel_deg_per_myr": 0.1054,
-     "hc_lost_km3": 30958780.3,
-     "merge_capped_km3": 20606699.49,
-     "material_clipped_km3": 19823111.78,
-     "third_cont": {
-      "km2": 762569.4,
-      "hc_km3": 49403945.7,
-      "age_myr_max": 85.0,
-      "age_myr_mean": 25.8
-     },
-     "third_ocean": {
-      "km2": 47037.7,
-      "hc_km3": 958537.8,
-      "age_myr_max": 10.0,
-      "age_myr_mean": 3.4
-     },
-     "on_keep": {
-      "km2": 1970775.0,
-      "hc_km3": 154790921.3,
-      "age_myr_max": 65.0,
-      "age_myr_mean": 31.7
-     },
-     "pair": "3-135",
-     "close_cm": 0.186,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 785.0,
-      "jammed_myr": 50.0,
-      "ov_km2": [
-       1203710.3,
-       1956903.3
-      ],
-      "D_km3": [
-       118435344.97,
-       312058949.15
-      ],
-      "craton_ov_km3": [
-       83739275.7,
-       207539349.6
-      ]
-     }
-    },
-    {
-     "myr": 935.0,
-     "keep": 3,
-     "absorb": 153,
-     "rel_deg_per_myr": 0.209,
-     "hc_lost_km3": 20355318.7,
-     "merge_capped_km3": 8047502.04,
-     "material_clipped_km3": 1989676.04,
-     "third_cont": {
-      "km2": 924006.0,
-      "hc_km3": 63120226.6,
-      "age_myr_max": 20.0,
-      "age_myr_mean": 11.1
-     },
-     "third_ocean": {
-      "km2": 1927226.6,
-      "hc_km3": 105643280.2,
-      "age_myr_max": 90.0,
-      "age_myr_mean": 29.8
-     },
-     "on_keep": {
-      "km2": 2189118.6,
-      "hc_km3": 171071963.4,
-      "age_myr_max": 65.0,
-      "age_myr_mean": 39.3
-     },
-     "pair": "3-153",
-     "close_cm": 0.15,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 915.0,
-      "jammed_myr": 20.0,
-      "ov_km2": [
-       1989529.6,
-       2256966.8
-      ],
-      "D_km3": [
-       300155075.14,
-       335476106.32
-      ],
-      "craton_ov_km3": [
-       206152821.2,
-       228203358.9
-      ]
-     }
-    },
-    {
-     "myr": 955.0,
      "keep": 91,
-     "absorb": 108,
-     "rel_deg_per_myr": 0.265,
-     "hc_lost_km3": 0.0,
-     "merge_capped_km3": 471993.37,
-     "material_clipped_km3": 65253145.57,
+     "absorb": 93,
+     "rel_deg_per_myr": 0.0834,
+     "hc_lost_km3": 226557370.4,
+     "merge_capped_km3": 42085272.69,
+     "material_clipped_km3": 188552859.86,
      "third_cont": {
-      "km2": 2174861.4,
-      "hc_km3": 160451837.2,
-      "age_myr_max": 115.0,
-      "age_myr_mean": 49.3
+      "km2": 1727650.1,
+      "hc_km3": 136900240.5,
+      "age_myr_max": 100.0,
+      "age_myr_mean": 28.7
      },
      "third_ocean": {
-      "km2": 79496.5,
-      "hc_km3": 4227648.8,
-      "age_myr_max": 105.0,
-      "age_myr_mean": 22.2
+      "km2": 516940.3,
+      "hc_km3": 26055135.3,
+      "age_myr_max": 55.0,
+      "age_myr_mean": 30.3
      },
      "on_keep": {
-      "km2": 248411.8,
-      "hc_km3": 15083736.4,
-      "age_myr_max": 75.0,
-      "age_myr_mean": 12.6
+      "km2": 1990267.4,
+      "hc_km3": 163955633.8,
+      "age_myr_max": 70.0,
+      "age_myr_mean": 34.3
      },
-     "pair": "91-108",
-     "close_cm": 0.232,
+     "pair": "91-93",
+     "close_cm": 0.101,
      "jammed": true,
      "jam_episode": {
-      "onset_myr": 880.0,
-      "jammed_myr": 75.0,
+      "onset_myr": 575.0,
+      "jammed_myr": 55.0,
       "ov_km2": [
-       60418.0,
-       306547.1
+       447207.4,
+       2094703.7
       ],
       "D_km3": [
-       5868022.56,
-       34275875.07
+       71187514.8,
+       345622050.75
       ],
       "craton_ov_km3": [
-       0.0,
-       1877530.4
+       28114622.2,
+       159172817.0
+      ]
+     }
+    },
+    {
+     "myr": 670.0,
+     "keep": 5,
+     "absorb": 104,
+     "rel_deg_per_myr": 0.0835,
+     "hc_lost_km3": 24003148.5,
+     "merge_capped_km3": 2607929.83,
+     "material_clipped_km3": 13227982.72,
+     "third_cont": {
+      "km2": 1217848.8,
+      "hc_km3": 98667347.5,
+      "age_myr_max": 105.0,
+      "age_myr_mean": 23.9
+     },
+     "third_ocean": {
+      "km2": 15138.5,
+      "hc_km3": 373898.3,
+      "age_myr_max": 0.0,
+      "age_myr_mean": 0.0
+     },
+     "on_keep": {
+      "km2": 1241181.4,
+      "hc_km3": 99046337.0,
+      "age_myr_max": 100.0,
+      "age_myr_mean": 59.8
+     },
+     "pair": "5-104",
+     "close_cm": -0.142,
+     "jammed": true,
+     "jam_episode": {
+      "onset_myr": 640.0,
+      "jammed_myr": 30.0,
+      "ov_km2": [
+       1333805.7,
+       1139717.6
+      ],
+      "D_km3": [
+       215053536.9,
+       178365989.35
+      ],
+      "craton_ov_km3": [
+       97823037.7,
+       84832895.1
+      ]
+     }
+    },
+    {
+     "myr": 965.0,
+     "keep": 5,
+     "absorb": 142,
+     "rel_deg_per_myr": 0.5553,
+     "hc_lost_km3": 25098268.3,
+     "merge_capped_km3": 9660206.54,
+     "material_clipped_km3": 11449735.08,
+     "third_cont": {
+      "km2": 741454.3,
+      "hc_km3": 54522182.7,
+      "age_myr_max": 55.0,
+      "age_myr_mean": 14.7
+     },
+     "third_ocean": {
+      "km2": 107419.5,
+      "hc_km3": 4355752.9,
+      "age_myr_max": 25.0,
+      "age_myr_mean": 4.5
+     },
+     "on_keep": {
+      "km2": 761955.7,
+      "hc_km3": 63478086.3,
+      "age_myr_max": 60.0,
+      "age_myr_mean": 35.9
+     },
+     "pair": "5-142",
+     "close_cm": 0.144,
+     "jammed": true,
+     "jam_episode": {
+      "onset_myr": 905.0,
+      "jammed_myr": 60.0,
+      "ov_km2": [
+       113394.9,
+       777537.5
+      ],
+      "D_km3": [
+       18701280.62,
+       128702484.67
+      ],
+      "craton_ov_km3": [
+       18595742.9,
+       112096479.0
       ]
      }
     }
@@ -889,157 +487,157 @@
   {
    "seed": 748935664,
    "step_myr": 5.0,
-   "commit": "840c5ad3e996cf3ecc50f928eb967ad4a99fc5a0",
+   "commit": "de9d64721b16390209ae0b54df0fbf31d1697f16",
    "myr": 995.0,
    "start_craton_km3": 1638961854.2,
-   "end_craton_km3": 666138994.8,
+   "end_craton_km3": 1372243920.2,
    "merges": 21,
-   "merges_booking_merge_capped": 5,
+   "merges_booking_merge_capped": 1,
    "G1": {
     "all": {
      "net": {
-      "total_km3": 14429059795.0,
-      "craton": 0.5493,
-      "cap": -0.0141,
-      "deform": 0.4648,
-      "blocked": 0.5352
+      "total_km3": 8440139326.3,
+      "craton": 0.5653,
+      "cap": 0.0005,
+      "deform": 0.4342,
+      "blocked": 0.5658
      },
      "gross": {
-      "total_km3": 23521966394.7,
-      "craton": 0.4821,
-      "cap": 0.0085,
-      "deform": 0.5094,
-      "blocked": 0.4906
+      "total_km3": 14758765394.9,
+      "craton": 0.4444,
+      "cap": 0.004,
+      "deform": 0.5516,
+      "blocked": 0.4484
      },
      "pre_merge_30myr": {
-      "total_km3": 2795658604.3,
-      "craton": 0.8098,
-      "cap": -0.0065,
-      "deform": 0.1967,
-      "blocked": 0.8033
+      "total_km3": 1114342102.1,
+      "craton": 0.7806,
+      "cap": 0.0043,
+      "deform": 0.2151,
+      "blocked": 0.7849
      }
     },
     "cc": {
      "net": {
-      "total_km3": 7557989824.1,
-      "craton": 0.8173,
-      "cap": -0.0145,
-      "deform": 0.1972,
-      "blocked": 0.8028
+      "total_km3": 5010862098.3,
+      "craton": 0.8156,
+      "cap": 0.0018,
+      "deform": 0.1827,
+      "blocked": 0.8173
      },
      "gross": {
-      "total_km3": 10014010473.7,
-      "craton": 0.7431,
-      "cap": 0.0064,
-      "deform": 0.2505,
-      "blocked": 0.7495
+      "total_km3": 7105806004.1,
+      "craton": 0.6642,
+      "cap": 0.0048,
+      "deform": 0.331,
+      "blocked": 0.669
      },
      "pre_merge_30myr": {
-      "total_km3": 2790650771.4,
-      "craton": 0.8092,
-      "cap": -0.0054,
-      "deform": 0.1962,
-      "blocked": 0.8038
+      "total_km3": 1152257694.2,
+      "craton": 0.7701,
+      "cap": 0.0042,
+      "deform": 0.2257,
+      "blocked": 0.7743
      }
     },
     "depth_mean_cells": {
-     "p10": 1.05,
-     "p50": 1.66,
-     "p90": 3.39
+     "p10": 0.996,
+     "p50": 1.28,
+     "p90": 2.51
     },
     "depth_max_cells": {
-     "p10": 1.51,
-     "p50": 4.43,
-     "p90": 9.75
+     "p10": 1.08,
+     "p50": 3.0,
+     "p90": 7.32
     },
     "depth_mean_km": {
-     "p10": 131.0,
-     "p50": 207.0,
-     "p90": 424.0
+     "p10": 124.0,
+     "p50": 160.0,
+     "p90": 313.0
     },
     "cell_km": 125.0
    },
    "G2": {
-    "pair_steps_closing": 1395,
-    "jammed_pair_steps": 788,
+    "pair_steps_closing": 1596,
+    "jammed_pair_steps": 705,
     "stall_n_per_m": {
-     "p10": 1290000000000.0,
-     "p50": 5260000000000.0,
-     "p90": 18700000000000.0
+     "p10": 1690000000000.0,
+     "p50": 8520000000000.0,
+     "p90": 23400000000000.0
     },
     "h_star_km": {
-     "p10": 35.0,
-     "p50": 56.1,
-     "p90": 77.2
+     "p10": 39.9,
+     "p50": 65.1,
+     "p90": 80.6
     },
-    "share_h_star_below_cap": 0.6905,
-    "share_push_exceeds_stall": 0.183,
+    "share_h_star_below_cap": 0.4781,
+    "share_push_exceeds_stall": 0.0576,
     "close_now_cm": {
-     "p10": 0.248,
-     "p50": 0.921,
-     "p90": 1.98
+     "p10": 0.22,
+     "p50": 0.904,
+     "p90": 1.85
     },
     "close_with_push_cm": {
-     "p10": 0.0,
-     "p50": 0.769,
-     "p90": 2.33
+     "p10": 0.133,
+     "p50": 1.04,
+     "p90": 2.24
     },
-    "share_stopped_by_push": 0.1822,
+    "share_stopped_by_push": 0.0556,
     "band_hc_km": {
-     "p10": 22.7,
-     "p50": 44.6,
-     "p90": 69.4
+     "p10": 24.6,
+     "p50": 51.4,
+     "p90": 67.0
     },
     "band_hm_km": {
-     "p10": 24.2,
-     "p50": 90.0,
-     "p90": 184.0
+     "p10": 36.5,
+     "p50": 121.0,
+     "p90": 200.0
     },
-    "share_band_clipped": 0.0798,
+    "share_band_clipped": 0.0377,
     "slab_pull_share_of_stall": {
-     "p10": 0.0,
-     "p50": 0.803,
-     "p90": 1.3
+     "p10": -0.15,
+     "p50": 0.806,
+     "p90": 1.06
     },
     "tibet_like": {
-     "n": 155,
+     "n": 157,
      "push": {
-      "p10": -7520000000000.0,
-      "p50": -512000000000.0,
-      "p90": 11700000000000.0
+      "p10": -7910000000000.0,
+      "p50": -3660000000000.0,
+      "p90": 6090000000000.0
      },
      "stall": {
-      "p10": 1150000000000.0,
-      "p50": 5920000000000.0,
-      "p90": 18500000000000.0
+      "p10": 1550000000000.0,
+      "p50": 8770000000000.0,
+      "p90": 21300000000000.0
      },
      "push_airy": {
-      "p10": 7230000000000.0,
-      "p50": 8400000000000.0,
-      "p90": 9740000000000.0
+      "p10": 7150000000000.0,
+      "p50": 8000000000000.0,
+      "p90": 9480000000000.0
      }
     }
    },
    "G3": {
     "craton": {
-     "pair_steps_closing": 399,
+     "pair_steps_closing": 366,
      "stall_n_per_m": {
-      "p10": 568000000000.0,
-      "p50": 1620000000000.0,
-      "p90": 6150000000000.0
+      "p10": 486000000000.0,
+      "p50": 2220000000000.0,
+      "p90": 9440000000000.0
      },
-     "share_below_1e13": 0.9398,
-     "share_in_1e12_1e13": 0.6591,
-     "share_below_1e12": 0.2807,
+     "share_below_1e13": 0.9071,
+     "share_in_1e12_1e13": 0.6803,
+     "share_below_1e12": 0.2268,
      "D_growth_km3_per_myr": {
-      "p10": -1080000.0,
-      "p50": 2220000.0,
-      "p90": 9210000.0
+      "p10": -913000.0,
+      "p50": 1410000.0,
+      "p90": 6950000.0
      },
      "overlap_km2": {
-      "p10": 202000.0,
-      "p50": 1060000.0,
-      "p90": 2010000.0
+      "p10": 259000.0,
+      "p50": 858000.0,
+      "p90": 1970000.0
      }
     },
     "cap": {
@@ -1053,300 +651,122 @@
     }
    },
    "G4": {
-    "D_change_over_deform": -37628605522.0,
-    "D_growth": 14429059795.0,
-    "D_growth_over_shift": 39203610329.4,
-    "consumed_D": 20252769790.0,
+    "D_change_over_deform": -31318462768.9,
+    "D_growth": 8440139326.3,
+    "D_growth_over_shift": 32501263671.7,
+    "consumed_D": 16679330860.0,
     "contact_ceiling_overflow_no_outlet_m3": 0.0,
     "contact_collision_subducted_m3": 0.0,
     "contact_no_outlet_subducted_m3": 0.0,
-    "contact_suture_donated_m3": 2009191870.5,
-    "craton_loss_near_contacts_excl_fusion": 707283539.5,
-    "in": 117510946086.5,
-    "merge_capped": 301480910.9,
-    "merge_hc_lost": 687217516.2,
-    "merge_material_clipped": 618398197.2,
-    "thicken": 4720611105.7,
+    "contact_suture_donated_m3": 3046427825.1,
+    "craton_loss_near_contacts_excl_fusion": 315192013.0,
+    "in": 73952898022.8,
+    "merge_capped": 5805132.5,
+    "merge_hc_lost": 52875602.9,
+    "merge_material_clipped": 37128438.5,
+    "thicken": 4762987206.8,
     "world_ceiling_overflow_no_outlet_m3": 0.0,
-    "world_collision_subducted_m3": 618398197.2,
-    "world_craton_sinks_m3": 1014378647.3,
-    "world_merge_capped_m3": 301480910.8,
+    "world_collision_subducted_m3": 37128438.5,
+    "world_craton_sinks_m3": 346316855.5,
+    "world_merge_capped_m3": 5805132.6,
     "world_no_outlet_subducted_m3": 0.0,
-    "world_suture_donated_m3": 2706419341.6,
+    "world_suture_donated_m3": 3888878000.8,
     "premerge_cap_hc_over_merge_hc": 0.0,
-    "premerge_craton_near_contacts_over_merge_capped": 2.346,
-    "share_of_in_left_as_overlap": 0.1228,
-    "share_of_shift_growth_left_as_overlap": 0.3681,
-    "share_of_shift_growth_consumed": 0.5166
+    "premerge_craton_near_contacts_over_merge_capped": 54.2954,
+    "share_of_in_left_as_overlap": 0.1141,
+    "share_of_shift_growth_left_as_overlap": 0.2597,
+    "share_of_shift_growth_consumed": 0.5132
    },
    "checks": {
     "pair_drag_mismatch_at_jams": {
-     "p10": 0.128,
-     "p50": 0.583,
-     "p90": 1.0
+     "p10": 0.0595,
+     "p50": 0.29,
+     "p90": 0.989
     },
-    "splits": 99,
-    "splits_of_jammed_plates": 22,
-    "splits_of_overlapping_plates": 35,
+    "splits": 108,
+    "splits_of_jammed_plates": 25,
+    "splits_of_overlapping_plates": 43,
     "merge_rel_rotation_deg_per_myr": {
-     "p10": 0.0976,
-     "p50": 0.13,
-     "p90": 0.263
+     "p10": 0.0589,
+     "p50": 0.243,
+     "p90": 0.417
     },
     "third_plate_hc_km3": {
-     "third_cont": 1217860236.2,
-     "third_ocean": 1587658607.3
+     "third_cont": 744367970.4,
+     "third_ocean": 477511906.0
     },
-    "third_plate_ocean_share": 0.5659,
+    "third_plate_ocean_share": 0.3908,
     "close_joint_vs_now_cm_abs_err": {
      "p10": 0.0,
-     "p50": 0.0,
-     "p90": 0.014
+     "p50": 0.003,
+     "p90": 0.027
     }
    },
    "craton_ledger_km3": {
-    "formed_m3": 44254854.2,
-    "rifted_m3": 125189121.6,
-    "subducted_m3": 204385005.9,
-    "merge_capped_m3": 301480910.8,
-    "collision_reworked_m3": 53910253.1,
-    "eroded_m3": 340306928.8,
-    "unattributed_m3": -8194506.7,
-    "rifted_divergent_m3": 20459127.4,
-    "rifted_stretch_m3": 88818579.1,
-    "rifted_failed_m3": 15911415.1,
+    "formed_m3": 81456068.1,
+    "rifted_m3": 109796615.2,
+    "subducted_m3": 39993098.6,
+    "merge_capped_m3": 5805132.6,
+    "collision_reworked_m3": 69826306.2,
+    "eroded_m3": 121540963.6,
+    "unattributed_m3": 1211885.8,
+    "rifted_divergent_m3": 8570582.4,
+    "rifted_stretch_m3": 84252669.1,
+    "rifted_failed_m3": 16973363.8,
     "split_cuts": 0.0,
     "split_cuts_through_craton": 0.0,
-    "split_band_area_m2": 303899.4,
-    "split_band_craton_area_m2": 39358.4,
+    "split_band_area_m2": 328838.3,
+    "split_band_craton_area_m2": 36409.2,
     "failed_rift_cuts": 0.0,
     "failed_rift_cuts_through_craton": 0.0,
-    "failed_rift_band_area_m2": 204474.9,
-    "failed_rift_band_craton_area_m2": 28698.7,
+    "failed_rift_band_area_m2": 332465.2,
+    "failed_rift_band_craton_area_m2": 26409.8,
     "initial_m3": 1638961854.2
    },
    "merge_events": [
     {
-     "myr": 95.0,
+     "myr": 980.0,
      "keep": 4,
-     "absorb": 20,
-     "rel_deg_per_myr": 0.1979,
-     "hc_lost_km3": 0.0,
-     "merge_capped_km3": 19137.66,
-     "material_clipped_km3": 0.0,
+     "absorb": 149,
+     "rel_deg_per_myr": 0.2649,
+     "hc_lost_km3": 52875602.9,
+     "merge_capped_km3": 5805132.55,
+     "material_clipped_km3": 31738828.2,
      "third_ocean": {
-      "km2": 2810918.5,
-      "hc_km3": 120433687.6,
-      "age_myr_max": 85.0,
-      "age_myr_mean": 20.1
+      "km2": 191861.6,
+      "hc_km3": 8033035.1,
+      "age_myr_max": 45.0,
+      "age_myr_mean": 9.8
      },
      "on_keep": {
-      "km2": 1560669.1,
-      "hc_km3": 58481118.1,
-      "age_myr_max": 60.0,
-      "age_myr_mean": 26.3
+      "km2": 1925359.4,
+      "hc_km3": 152273358.4,
+      "age_myr_max": 40.0,
+      "age_myr_mean": 22.8
      },
      "third_cont": {
-      "km2": 2454728.5,
-      "hc_km3": 103443344.9,
-      "age_myr_max": 60.0,
-      "age_myr_mean": 20.6
-     },
-     "pair": "4-20",
-     "close_cm": 0.192,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 65.0,
-      "jammed_myr": 30.0,
-      "ov_km2": [
-       1762768.9,
-       1668513.9
-      ],
-      "D_km3": [
-       126446596.85,
-       134189117.71
-      ],
-      "craton_ov_km3": [
-       16039745.2,
-       17397202.6
-      ]
-     }
-    },
-    {
-     "myr": 340.0,
-     "keep": 4,
-     "absorb": 53,
-     "rel_deg_per_myr": 0.0976,
-     "hc_lost_km3": 84545228.5,
-     "merge_capped_km3": 14430794.1,
-     "material_clipped_km3": 73372221.09,
-     "third_ocean": {
-      "km2": 91018.2,
-      "hc_km3": 1183285.4,
-      "age_myr_max": 15.0,
-      "age_myr_mean": 4.2
-     },
-     "on_keep": {
-      "km2": 1096343.4,
-      "hc_km3": 91294943.9,
+      "km2": 906561.2,
+      "hc_km3": 74289014.3,
       "age_myr_max": 35.0,
-      "age_myr_mean": 21.4
+      "age_myr_mean": 20.3
      },
-     "third_cont": {
-      "km2": 2391336.9,
-      "hc_km3": 184580349.1,
-      "age_myr_max": 35.0,
-      "age_myr_mean": 19.6
-     },
-     "pair": "4-53",
-     "close_cm": 0.36,
+     "pair": "4-149",
+     "close_cm": 0.186,
      "jammed": true,
      "jam_episode": {
-      "onset_myr": 300.0,
-      "jammed_myr": 40.0,
+      "onset_myr": 945.0,
+      "jammed_myr": 35.0,
       "ov_km2": [
-       107671.9,
-       909740.0
+       571609.8,
+       1843842.9
       ],
       "D_km3": [
-       12573286.04,
-       149566447.69
+       92303588.98,
+       283882099.66
       ],
       "craton_ov_km3": [
-       0.0,
-       26612649.1
-      ]
-     }
-    },
-    {
-     "myr": 435.0,
-     "keep": 61,
-     "absorb": 67,
-     "rel_deg_per_myr": 0.1093,
-     "hc_lost_km3": 190994650.2,
-     "merge_capped_km3": 82913108.95,
-     "material_clipped_km3": 158639373.81,
-     "third_ocean": {
-      "km2": 1194820.6,
-      "hc_km3": 62672119.7,
-      "age_myr_max": 130.0,
-      "age_myr_mean": 37.1
-     },
-     "third_cont": {
-      "km2": 2831445.7,
-      "hc_km3": 211684956.4,
-      "age_myr_max": 145.0,
-      "age_myr_mean": 54.6
-     },
-     "on_keep": {
-      "km2": 1855477.2,
-      "hc_km3": 150476435.3,
-      "age_myr_max": 150.0,
-      "age_myr_mean": 65.8
-     },
-     "pair": "61-67",
-     "close_cm": 0.115,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 350.0,
-      "jammed_myr": 85.0,
-      "ov_km2": [
-       1076262.9,
-       2067891.9
-      ],
-      "D_km3": [
-       166581397.28,
-       330346802.7
-      ],
-      "craton_ov_km3": [
-       46387744.7,
-       159309432.5
-      ]
-     }
-    },
-    {
-     "myr": 565.0,
-     "keep": 61,
-     "absorb": 91,
-     "rel_deg_per_myr": 0.1326,
-     "hc_lost_km3": 171302604.6,
-     "merge_capped_km3": 118340194.48,
-     "material_clipped_km3": 155265060.38,
-     "third_ocean": {
-      "km2": 2981671.4,
-      "hc_km3": 201996120.4,
-      "age_myr_max": 120.0,
-      "age_myr_mean": 21.8
-     },
-     "third_cont": {
-      "km2": 1099057.9,
-      "hc_km3": 81693600.1,
-      "age_myr_max": 275.0,
-      "age_myr_mean": 48.8
-     },
-     "on_keep": {
-      "km2": 1313958.7,
-      "hc_km3": 104567068.1,
-      "age_myr_max": 65.0,
-      "age_myr_mean": 27.3
-     },
-     "pair": "61-91",
-     "close_cm": 0.086,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 525.0,
-      "jammed_myr": 40.0,
-      "ov_km2": [
-       443897.6,
-       1448105.0
-      ],
-      "D_km3": [
-       70384414.29,
-       227558743.2
-      ],
-      "craton_ov_km3": [
-       56071311.8,
-       159642701.4
-      ]
-     }
-    },
-    {
-     "myr": 590.0,
-     "keep": 4,
-     "absorb": 61,
-     "rel_deg_per_myr": 0.0867,
-     "hc_lost_km3": 240375032.9,
-     "merge_capped_km3": 85777675.66,
-     "material_clipped_km3": 187262511.51,
-     "third_ocean": {
-      "km2": 4341861.9,
-      "hc_km3": 313378944.8,
-      "age_myr_max": 20.0,
-      "age_myr_mean": 8.2
-     },
-     "on_keep": {
-      "km2": 1819300.1,
-      "hc_km3": 141563591.9,
-      "age_myr_max": 270.0,
-      "age_myr_mean": 58.7
-     },
-     "pair": "4-61",
-     "close_cm": 0.157,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 290.0,
-      "jammed_myr": 300.0,
-      "ov_km2": [
-       965536.1,
-       2025577.0
-      ],
-      "D_km3": [
-       120673281.75,
-       308863957.39
-      ],
-      "craton_ov_km3": [
-       24327151.0,
-       22606673.4
+       45635633.0,
+       131603007.0
       ]
      }
     }
@@ -1355,522 +775,338 @@
   {
    "seed": 580014012,
    "step_myr": 5.0,
-   "commit": "840c5ad3e996cf3ecc50f928eb967ad4a99fc5a0",
+   "commit": "de9d64721b16390209ae0b54df0fbf31d1697f16",
    "myr": 995.0,
    "start_craton_km3": 3268363049.9,
-   "end_craton_km3": 1742009519.4,
-   "merges": 30,
-   "merges_booking_merge_capped": 6,
+   "end_craton_km3": 3025307639.2,
+   "merges": 34,
+   "merges_booking_merge_capped": 2,
    "G1": {
     "all": {
      "net": {
-      "total_km3": 20773732153.8,
-      "craton": 0.6379,
-      "cap": -0.0011,
-      "deform": 0.3632,
-      "blocked": 0.6368
+      "total_km3": 10138937283.2,
+      "craton": 0.5746,
+      "cap": -0.0051,
+      "deform": 0.4305,
+      "blocked": 0.5695
      },
      "gross": {
-      "total_km3": 41403307444.7,
-      "craton": 0.4887,
-      "cap": 0.0148,
-      "deform": 0.4965,
-      "blocked": 0.5035
+      "total_km3": 22659060837.9,
+      "craton": 0.3834,
+      "cap": 0.0111,
+      "deform": 0.6055,
+      "blocked": 0.3945
      },
      "pre_merge_30myr": {
-      "total_km3": 1809721817.1,
-      "craton": 0.8084,
-      "cap": 0.0039,
-      "deform": 0.1877,
-      "blocked": 0.8123
+      "total_km3": 685862259.4,
+      "craton": 0.9402,
+      "cap": -0.0097,
+      "deform": 0.0695,
+      "blocked": 0.9305
      }
     },
     "cc": {
      "net": {
-      "total_km3": 13757052988.9,
-      "craton": 0.8463,
-      "cap": 0.0016,
-      "deform": 0.1521,
-      "blocked": 0.8479
+      "total_km3": 6699790395.0,
+      "craton": 0.7532,
+      "cap": -0.0082,
+      "deform": 0.255,
+      "blocked": 0.745
      },
      "gross": {
-      "total_km3": 22192864781.1,
-      "craton": 0.7079,
-      "cap": 0.0183,
-      "deform": 0.2737,
-      "blocked": 0.7263
+      "total_km3": 13026129541.1,
+      "craton": 0.5285,
+      "cap": 0.0172,
+      "deform": 0.4544,
+      "blocked": 0.5456
      },
      "pre_merge_30myr": {
-      "total_km3": 1769611325.5,
-      "craton": 0.8233,
-      "cap": 0.004,
-      "deform": 0.1727,
-      "blocked": 0.8273
+      "total_km3": 647250414.3,
+      "craton": 0.9577,
+      "cap": -0.0103,
+      "deform": 0.0526,
+      "blocked": 0.9474
      }
     },
     "depth_mean_cells": {
-     "p10": 0.989,
-     "p50": 1.47,
-     "p90": 3.78
+     "p10": 0.957,
+     "p50": 1.1,
+     "p90": 1.94
     },
     "depth_max_cells": {
-     "p10": 1.08,
-     "p50": 3.71,
-     "p90": 10.8
+     "p10": 1.04,
+     "p50": 2.11,
+     "p90": 5.49
     },
     "depth_mean_km": {
-     "p10": 124.0,
-     "p50": 184.0,
-     "p90": 473.0
+     "p10": 120.0,
+     "p50": 138.0,
+     "p90": 242.0
     },
     "cell_km": 125.0
    },
    "G2": {
-    "pair_steps_closing": 4142,
-    "jammed_pair_steps": 2013,
+    "pair_steps_closing": 4124,
+    "jammed_pair_steps": 1375,
     "stall_n_per_m": {
-     "p10": 354000000000.0,
-     "p50": 3110000000000.0,
-     "p90": 14200000000000.0
+     "p10": 610000000000.0,
+     "p50": 4930000000000.0,
+     "p90": 14800000000000.0
     },
     "h_star_km": {
      "p10": 35.0,
-     "p50": 52.8,
-     "p90": 74.7
+     "p50": 53.8,
+     "p90": 77.1
     },
-    "share_h_star_below_cap": 0.7804,
-    "share_push_exceeds_stall": 0.1704,
+    "share_h_star_below_cap": 0.7163,
+    "share_push_exceeds_stall": 0.1259,
     "close_now_cm": {
-     "p10": 0.184,
-     "p50": 0.67,
-     "p90": 1.65
+     "p10": 0.126,
+     "p50": 0.657,
+     "p90": 1.71
     },
     "close_with_push_cm": {
      "p10": 0.0,
-     "p50": 0.723,
-     "p90": 2.77
+     "p50": 0.784,
+     "p90": 2.17
     },
-    "share_stopped_by_push": 0.1706,
+    "share_stopped_by_push": 0.1254,
     "band_hc_km": {
-     "p10": 21.4,
-     "p50": 39.8,
-     "p90": 64.0
+     "p10": 18.5,
+     "p50": 37.1,
+     "p90": 62.8
     },
     "band_hm_km": {
-     "p10": 28.8,
-     "p50": 101.0,
-     "p90": 174.0
+     "p10": 30.3,
+     "p50": 93.8,
+     "p90": 189.0
     },
-    "share_band_clipped": 0.053,
+    "share_band_clipped": 0.0156,
     "slab_pull_share_of_stall": {
-     "p10": 0.0,
-     "p50": 0.851,
-     "p90": 1.17
+     "p10": -0.576,
+     "p50": 0.797,
+     "p90": 1.07
     },
     "tibet_like": {
-     "n": 276,
+     "n": 250,
      "push": {
-      "p10": -7690000000000.0,
-      "p50": -770000000000.0,
-      "p90": 10400000000000.0
+      "p10": -7890000000000.0,
+      "p50": -2900000000000.0,
+      "p90": 917000000000.0
      },
      "stall": {
-      "p10": 592000000000.0,
-      "p50": 4100000000000.0,
-      "p90": 11500000000000.0
+      "p10": 733000000000.0,
+      "p50": 3450000000000.0,
+      "p90": 12600000000000.0
      },
      "push_airy": {
-      "p10": 7310000000000.0,
-      "p50": 8450000000000.0,
-      "p90": 9720000000000.0
+      "p10": 7320000000000.0,
+      "p50": 8130000000000.0,
+      "p90": 9410000000000.0
      }
     }
    },
    "G3": {
     "craton": {
-     "pair_steps_closing": 1260,
+     "pair_steps_closing": 614,
      "stall_n_per_m": {
-      "p10": 133000000000.0,
-      "p50": 982000000000.0,
-      "p90": 5780000000000.0
+      "p10": 401000000000.0,
+      "p50": 2070000000000.0,
+      "p90": 7890000000000.0
      },
-     "share_below_1e13": 0.9302,
-     "share_in_1e12_1e13": 0.423,
-     "share_below_1e12": 0.5071,
+     "share_below_1e13": 0.9316,
+     "share_in_1e12_1e13": 0.6661,
+     "share_below_1e12": 0.2655,
      "D_growth_km3_per_myr": {
-      "p10": -1060000.0,
-      "p50": 548000.0,
-      "p90": 5570000.0
+      "p10": -514000.0,
+      "p50": 965000.0,
+      "p90": 4200000.0
      },
      "overlap_km2": {
-      "p10": 138000.0,
-      "p50": 608000.0,
-      "p90": 1950000.0
+      "p10": 153000.0,
+      "p50": 564000.0,
+      "p90": 1820000.0
      }
     },
     "cap": {
-     "pair_steps_closing": 15,
+     "pair_steps_closing": 3,
      "stall_n_per_m": {
-      "p10": 260000000000.0,
-      "p50": 1420000000000.0,
-      "p90": 2400000000000.0
+      "p10": 8100000000000.0,
+      "p50": 8560000000000.0,
+      "p90": 11200000000000.0
      },
-     "share_below_1e13": 0.9333,
-     "share_in_1e12_1e13": 0.6,
-     "share_below_1e12": 0.3333,
+     "share_below_1e13": 0.6667,
+     "share_in_1e12_1e13": 0.6667,
+     "share_below_1e12": 0.0,
      "D_growth_km3_per_myr": {
-      "p10": -988000.0,
-      "p50": 372000.0,
-      "p90": 1370000.0
+      "p10": -1640000.0,
+      "p50": -1180000.0,
+      "p90": -1060000.0
      },
      "overlap_km2": {
-      "p10": 47400.0,
-      "p50": 150000.0,
-      "p90": 247000.0
+      "p10": 9960.0,
+      "p50": 22600.0,
+      "p90": 75800.0
      }
     }
    },
    "G4": {
-    "D_change_over_deform": -69065032935.6,
-    "D_growth": 20773732153.8,
-    "D_growth_over_shift": 71409733186.5,
-    "consumed_D": 38374685500.1,
+    "D_change_over_deform": -54505133128.4,
+    "D_growth": 10138937283.2,
+    "D_growth_over_shift": 56291853865.4,
+    "consumed_D": 29331396094.8,
     "contact_ceiling_overflow_no_outlet_m3": 0.0,
-    "contact_collision_subducted_m3": 27553224.1,
-    "contact_no_outlet_subducted_m3": 40308147.4,
-    "contact_suture_donated_m3": 8092473649.3,
-    "craton_loss_near_contacts_excl_fusion": 1077166511.4,
-    "in": 212557737982.9,
-    "merge_capped": 797113158.3,
-    "merge_hc_lost": 1333375195.2,
-    "merge_material_clipped": 1231716837.2,
-    "thicken": 13534242730.9,
+    "contact_collision_subducted_m3": 0.0,
+    "contact_no_outlet_subducted_m3": 0.0,
+    "contact_suture_donated_m3": 8979583276.9,
+    "craton_loss_near_contacts_excl_fusion": 632941270.3,
+    "in": 119639568644.3,
+    "merge_capped": 97279930.5,
+    "merge_hc_lost": 14046960.3,
+    "merge_material_clipped": 11250998.4,
+    "thicken": 11788675255.2,
     "world_ceiling_overflow_no_outlet_m3": 0.0,
-    "world_collision_subducted_m3": 1260090990.5,
-    "world_craton_sinks_m3": 1888280385.7,
-    "world_merge_capped_m3": 797113158.3,
-    "world_no_outlet_subducted_m3": 40313907.9,
-    "world_suture_donated_m3": 11408022789.3,
-    "premerge_cap_hc_over_merge_hc": 0.0302,
-    "premerge_craton_near_contacts_over_merge_capped": 1.3513,
-    "share_of_in_left_as_overlap": 0.0977,
-    "share_of_shift_growth_left_as_overlap": 0.2909,
-    "share_of_shift_growth_consumed": 0.5374
+    "world_collision_subducted_m3": 12296451.2,
+    "world_craton_sinks_m3": 794763574.8,
+    "world_merge_capped_m3": 97279930.5,
+    "world_no_outlet_subducted_m3": 0.0,
+    "world_suture_donated_m3": 12027899184.2,
+    "premerge_cap_hc_over_merge_hc": 0.0,
+    "premerge_craton_near_contacts_over_merge_capped": 6.5064,
+    "share_of_in_left_as_overlap": 0.0847,
+    "share_of_shift_growth_left_as_overlap": 0.1801,
+    "share_of_shift_growth_consumed": 0.5211
    },
    "checks": {
     "pair_drag_mismatch_at_jams": {
-     "p10": 0.16,
-     "p50": 0.625,
-     "p90": 0.969
+     "p10": 0.0568,
+     "p50": 0.288,
+     "p90": 0.873
     },
-    "splits": 106,
-    "splits_of_jammed_plates": 59,
-    "splits_of_overlapping_plates": 76,
+    "splits": 81,
+    "splits_of_jammed_plates": 44,
+    "splits_of_overlapping_plates": 69,
     "merge_rel_rotation_deg_per_myr": {
-     "p10": 0.0723,
-     "p50": 0.113,
-     "p90": 0.402
+     "p10": 0.0729,
+     "p50": 0.268,
+     "p90": 0.465
     },
     "third_plate_hc_km3": {
-     "third_cont": 3070792726.6,
-     "third_ocean": 1424389107.4
+     "third_cont": 1390800777.4,
+     "third_ocean": 205141232.5
     },
-    "third_plate_ocean_share": 0.3169,
+    "third_plate_ocean_share": 0.1285,
     "close_joint_vs_now_cm_abs_err": {
      "p10": 0.0,
-     "p50": 0.0,
-     "p90": 0.02
+     "p50": 0.003,
+     "p90": 0.026
     }
    },
    "craton_ledger_km3": {
-    "formed_m3": 364947080.7,
-    "rifted_m3": 277112945.8,
-    "subducted_m3": 368121738.0,
-    "merge_capped_m3": 797113158.3,
-    "collision_reworked_m3": 121475763.6,
-    "eroded_m3": 330487681.1,
-    "unattributed_m3": -3010675.6,
-    "rifted_divergent_m3": 21061633.2,
-    "rifted_stretch_m3": 213468617.9,
-    "rifted_failed_m3": 42582694.7,
+    "formed_m3": 553570035.0,
+    "rifted_m3": 277162061.7,
+    "subducted_m3": 26744374.1,
+    "merge_capped_m3": 97279930.5,
+    "collision_reworked_m3": 131514743.2,
+    "eroded_m3": 265254621.7,
+    "unattributed_m3": -1330285.5,
+    "rifted_divergent_m3": 14427476.9,
+    "rifted_stretch_m3": 235498191.7,
+    "rifted_failed_m3": 27236393.1,
     "split_cuts": 0.0,
     "split_cuts_through_craton": 0.0,
-    "split_band_area_m2": 327313.9,
-    "split_band_craton_area_m2": 65392.1,
+    "split_band_area_m2": 241664.6,
+    "split_band_craton_area_m2": 49375.9,
     "failed_rift_cuts": 0.0,
     "failed_rift_cuts_through_craton": 0.0,
-    "failed_rift_band_area_m2": 284714.1,
-    "failed_rift_band_craton_area_m2": 71774.1,
+    "failed_rift_band_area_m2": 168512.0,
+    "failed_rift_band_craton_area_m2": 48626.1,
     "initial_m3": 3268363049.9
    },
    "merge_events": [
     {
-     "myr": 345.0,
+     "myr": 385.0,
      "keep": 3,
-     "absorb": 46,
-     "rel_deg_per_myr": 0.0905,
-     "hc_lost_km3": 145942300.7,
-     "merge_capped_km3": 53113476.2,
-     "material_clipped_km3": 137858406.79,
+     "absorb": 10,
+     "rel_deg_per_myr": 0.0618,
+     "hc_lost_km3": 0.0,
+     "merge_capped_km3": 89013232.58,
+     "material_clipped_km3": 514741.34,
      "on_keep": {
-      "km2": 2324553.2,
-      "hc_km3": 183530453.8,
-      "age_myr_max": 95.0,
-      "age_myr_mean": 52.3
+      "km2": 1850285.8,
+      "hc_km3": 110207367.4,
+      "age_myr_max": 170.0,
+      "age_myr_mean": 98.4
      },
      "third_cont": {
-      "km2": 2573572.5,
-      "hc_km3": 215293194.5,
-      "age_myr_max": 125.0,
-      "age_myr_mean": 45.6
-     },
-     "pair": "3-46",
-     "close_cm": 0.076,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 250.0,
-      "jammed_myr": 95.0,
-      "ov_km2": [
-       232750.7,
-       2286555.4
-      ],
-      "D_km3": [
-       31555365.43,
-       359036726.35
-      ],
-      "craton_ov_km3": [
-       10573213.9,
-       94028804.8
-      ]
-     }
-    },
-    {
-     "myr": 510.0,
-     "keep": 64,
-     "absorb": 70,
-     "rel_deg_per_myr": 0.2249,
-     "hc_lost_km3": 217244560.1,
-     "merge_capped_km3": 125552074.12,
-     "material_clipped_km3": 200241905.59,
-     "third_cont": {
-      "km2": 5544940.8,
-      "hc_km3": 427106042.4,
-      "age_myr_max": 160.0,
-      "age_myr_mean": 78.4
-     },
-     "third_ocean": {
-      "km2": 1962061.5,
-      "hc_km3": 95000571.2,
-      "age_myr_max": 110.0,
-      "age_myr_mean": 34.9
-     },
-     "on_keep": {
-      "km2": 2219932.0,
-      "hc_km3": 161860621.4,
-      "age_myr_max": 125.0,
-      "age_myr_mean": 90.5
-     },
-     "pair": "64-70",
-     "close_cm": 0.019,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 420.0,
-      "jammed_myr": 90.0,
-      "ov_km2": [
-       2638512.1,
-       2010423.0
-      ],
-      "D_km3": [
-       412978857.58,
-       297566017.22
-      ],
-      "craton_ov_km3": [
-       260062982.8,
-       198691104.1
-      ]
-     }
-    },
-    {
-     "myr": 585.0,
-     "keep": 3,
-     "absorb": 62,
-     "rel_deg_per_myr": 0.0559,
-     "hc_lost_km3": 80124794.3,
-     "merge_capped_km3": 52395086.31,
-     "material_clipped_km3": 72353579.83,
-     "on_keep": {
-      "km2": 646590.7,
-      "hc_km3": 54239960.9,
-      "age_myr_max": 230.0,
-      "age_myr_mean": 76.3
-     },
-     "third_cont": {
-      "km2": 2598904.8,
-      "hc_km3": 209560534.0,
-      "age_myr_max": 140.0,
-      "age_myr_mean": 60.4
-     },
-     "third_ocean": {
-      "km2": 79859.6,
-      "hc_km3": 4336658.0,
+      "km2": 4296390.4,
+      "hc_km3": 288497207.6,
       "age_myr_max": 175.0,
-      "age_myr_mean": 49.1
+      "age_myr_mean": 71.3
      },
-     "pair": "3-62",
-     "close_cm": -0.038,
+     "pair": "3-10",
+     "close_cm": 0.104,
      "jammed": true,
      "jam_episode": {
-      "onset_myr": 425.0,
-      "jammed_myr": 160.0,
+      "onset_myr": 95.0,
+      "jammed_myr": 290.0,
       "ov_km2": [
-       377496.7,
-       646483.9
+       637129.2,
+       1786941.7
       ],
       "D_km3": [
-       25591782.18,
-       107558820.23
+       70865592.33,
+       212842192.27
       ],
       "craton_ov_km3": [
        0.0,
-       95779740.3
+       147431782.5
       ]
      }
     },
     {
-     "myr": 825.0,
-     "keep": 3,
-     "absorb": 89,
-     "rel_deg_per_myr": 0.0469,
-     "hc_lost_km3": 461773889.4,
-     "merge_capped_km3": 316110256.85,
-     "material_clipped_km3": 445390773.52,
-     "on_keep": {
-      "km2": 1033527.8,
-      "hc_km3": 57075444.3,
-      "age_myr_max": 180.0,
-      "age_myr_mean": 59.4
-     },
+     "myr": 640.0,
+     "keep": 43,
+     "absorb": 79,
+     "rel_deg_per_myr": 0.0723,
+     "hc_lost_km3": 14046960.3,
+     "merge_capped_km3": 8266697.94,
+     "material_clipped_km3": 10279071.79,
      "third_cont": {
-      "km2": 1289090.0,
-      "hc_km3": 86508707.6,
-      "age_myr_max": 140.0,
-      "age_myr_mean": 36.9
-     },
-     "third_ocean": {
-      "km2": 7303981.6,
-      "hc_km3": 392696464.1,
-      "age_myr_max": 175.0,
-      "age_myr_mean": 87.8
-     },
-     "pair": "3-89",
-     "close_cm": 0.026,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 730.0,
-      "jammed_myr": 95.0,
-      "ov_km2": [
-       243455.8,
-       560684.6
-      ],
-      "D_km3": [
-       11196308.73,
-       73747438.8
-      ],
-      "craton_ov_km3": [
-       0.0,
-       57841542.7
-      ]
-     }
-    },
-    {
-     "myr": 895.0,
-     "keep": 64,
-     "absorb": 124,
-     "rel_deg_per_myr": 0.0943,
-     "hc_lost_km3": 124689787.8,
-     "merge_capped_km3": 67585242.41,
-     "material_clipped_km3": 94992905.79,
-     "third_cont": {
-      "km2": 3697017.3,
-      "hc_km3": 267978484.3,
-      "age_myr_max": 120.0,
-      "age_myr_mean": 43.2
+      "km2": 1065697.1,
+      "hc_km3": 64128964.9,
+      "age_myr_max": 210.0,
+      "age_myr_mean": 31.0
      },
      "on_keep": {
-      "km2": 1407105.3,
-      "hc_km3": 107049053.7,
-      "age_myr_max": 45.0,
-      "age_myr_mean": 26.6
+      "km2": 2617997.8,
+      "hc_km3": 207799282.1,
+      "age_myr_max": 75.0,
+      "age_myr_mean": 39.3
      },
      "third_ocean": {
-      "km2": 440029.4,
-      "hc_km3": 15040109.3,
-      "age_myr_max": 65.0,
-      "age_myr_mean": 47.9
+      "km2": 16853.0,
+      "hc_km3": 973979.0,
+      "age_myr_max": 0.0,
+      "age_myr_mean": 0.0
      },
-     "pair": "64-124",
-     "close_cm": 0.101,
+     "pair": "43-79",
+     "close_cm": 0.115,
      "jammed": true,
      "jam_episode": {
-      "onset_myr": 850.0,
-      "jammed_myr": 45.0,
+      "onset_myr": 575.0,
+      "jammed_myr": 65.0,
       "ov_km2": [
-       479680.6,
-       1390497.9
+       435859.8,
+       2669628.8
       ],
       "D_km3": [
-       71582441.62,
-       204899857.22
+       64004022.51,
+       415093748.47
       ],
       "craton_ov_km3": [
-       37418768.6,
-       114473846.6
-      ]
-     }
-    },
-    {
-     "myr": 970.0,
-     "keep": 3,
-     "absorb": 121,
-     "rel_deg_per_myr": 0.4375,
-     "hc_lost_km3": 303599862.9,
-     "merge_capped_km3": 182357022.41,
-     "material_clipped_km3": 260278107.1,
-     "on_keep": {
-      "km2": 1439741.9,
-      "hc_km3": 91758356.5,
-      "age_myr_max": 250.0,
-      "age_myr_mean": 52.1
-     },
-     "third_cont": {
-      "km2": 4163733.9,
-      "hc_km3": 280677056.8,
-      "age_myr_max": 85.0,
-      "age_myr_mean": 37.7
-     },
-     "third_ocean": {
-      "km2": 5536318.1,
-      "hc_km3": 169759187.6,
-      "age_myr_max": 140.0,
-      "age_myr_mean": 29.3
-     },
-     "pair": "3-121",
-     "close_cm": 0.194,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 830.0,
-      "jammed_myr": 140.0,
-      "ov_km2": [
-       438638.1,
-       1543087.2
-      ],
-      "D_km3": [
-       60699191.2,
-       187364737.67
-      ],
-      "craton_ov_km3": [
-       33147800.1,
-       100918657.5
+       35647256.0,
+       313923247.1
       ]
      }
     }
@@ -1879,2917 +1115,2321 @@
   {
    "seed": 111065103,
    "step_myr": 5.0,
-   "commit": "840c5ad3e996cf3ecc50f928eb967ad4a99fc5a0",
+   "commit": "de9d64721b16390209ae0b54df0fbf31d1697f16",
    "myr": 995.0,
    "start_craton_km3": 3232121613.4,
-   "end_craton_km3": 2278630295.1,
-   "merges": 41,
-   "merges_booking_merge_capped": 8,
-   "G1": {
-    "all": {
-     "net": {
-      "total_km3": 27991460623.1,
-      "craton": 0.6693,
-      "cap": 0.0104,
-      "deform": 0.3202,
-      "blocked": 0.6798
-     },
-     "gross": {
-      "total_km3": 52134685770.4,
-      "craton": 0.5041,
-      "cap": 0.0289,
-      "deform": 0.467,
-      "blocked": 0.533
-     },
-     "pre_merge_30myr": {
-      "total_km3": 3338651865.3,
-      "craton": 0.8597,
-      "cap": -0.0001,
-      "deform": 0.1404,
-      "blocked": 0.8596
-     }
-    },
-    "cc": {
-     "net": {
-      "total_km3": 20436795600.6,
-      "craton": 0.8568,
-      "cap": 0.0166,
-      "deform": 0.1266,
-      "blocked": 0.8734
-     },
-     "gross": {
-      "total_km3": 28116337388.4,
-      "craton": 0.7319,
-      "cap": 0.0398,
-      "deform": 0.2283,
-      "blocked": 0.7717
-     },
-     "pre_merge_30myr": {
-      "total_km3": 3322500147.3,
-      "craton": 0.8677,
-      "cap": 0.0055,
-      "deform": 0.1269,
-      "blocked": 0.8731
-     }
-    },
-    "depth_mean_cells": {
-     "p10": 0.983,
-     "p50": 1.36,
-     "p90": 3.05
-    },
-    "depth_max_cells": {
-     "p10": 1.07,
-     "p50": 3.09,
-     "p90": 9.08
-    },
-    "depth_mean_km": {
-     "p10": 123.0,
-     "p50": 169.0,
-     "p90": 382.0
-    },
-    "cell_km": 125.0
-   },
-   "G2": {
-    "pair_steps_closing": 4675,
-    "jammed_pair_steps": 2198,
-    "stall_n_per_m": {
-     "p10": 586000000000.0,
-     "p50": 4960000000000.0,
-     "p90": 17200000000000.0
-    },
-    "h_star_km": {
-     "p10": 35.0,
-     "p50": 50.6,
-     "p90": 75.6
-    },
-    "share_h_star_below_cap": 0.7436,
-    "share_push_exceeds_stall": 0.2423,
-    "close_now_cm": {
-     "p10": 0.212,
-     "p50": 0.899,
-     "p90": 1.88
-    },
-    "close_with_push_cm": {
-     "p10": 0.0,
-     "p50": 0.593,
-     "p90": 2.02
-    },
-    "share_stopped_by_push": 0.2437,
-    "band_hc_km": {
-     "p10": 21.2,
-     "p50": 42.5,
-     "p90": 64.5
-    },
-    "band_hm_km": {
-     "p10": 25.5,
-     "p50": 87.3,
-     "p90": 166.0
-    },
-    "share_band_clipped": 0.0381,
-    "slab_pull_share_of_stall": {
-     "p10": 0.0,
-     "p50": 0.868,
-     "p90": 1.18
-    },
-    "tibet_like": {
-     "n": 302,
-     "push": {
-      "p10": -5550000000000.0,
-      "p50": 3290000000000.0,
-      "p90": 9790000000000.0
-     },
-     "stall": {
-      "p10": 675000000000.0,
-      "p50": 5650000000000.0,
-      "p90": 16800000000000.0
-     },
-     "push_airy": {
-      "p10": 7370000000000.0,
-      "p50": 8340000000000.0,
-      "p90": 9680000000000.0
-     }
-    }
-   },
-   "G3": {
-    "craton": {
-     "pair_steps_closing": 1477,
-     "stall_n_per_m": {
-      "p10": 229000000000.0,
-      "p50": 2100000000000.0,
-      "p90": 11100000000000.0
-     },
-     "share_below_1e13": 0.8842,
-     "share_in_1e12_1e13": 0.5586,
-     "share_below_1e12": 0.3257,
-     "D_growth_km3_per_myr": {
-      "p10": -914000.0,
-      "p50": 782000.0,
-      "p90": 6360000.0
-     },
-     "overlap_km2": {
-      "p10": 103000.0,
-      "p50": 614000.0,
-      "p90": 1880000.0
-     }
-    },
-    "cap": {
-     "pair_steps_closing": 19,
-     "stall_n_per_m": {
-      "p10": 141000000000.0,
-      "p50": 990000000000.0,
-      "p90": 4990000000000.0
-     },
-     "share_below_1e13": 1.0,
-     "share_in_1e12_1e13": 0.4737,
-     "share_below_1e12": 0.5263,
-     "D_growth_km3_per_myr": {
-      "p10": -1910000.0,
-      "p50": -297000.0,
-      "p90": 1700000.0
-     },
-     "overlap_km2": {
-      "p10": 25900.0,
-      "p50": 116000.0,
-      "p90": 347000.0
-     }
-    }
-   },
-   "G4": {
-    "D_change_over_deform": -86459119137.4,
-    "D_growth": 27991460623.1,
-    "D_growth_over_shift": 90881887308.8,
-    "consumed_D": 46907665962.6,
-    "contact_ceiling_overflow_no_outlet_m3": 0.0,
-    "contact_collision_subducted_m3": 45081732.7,
-    "contact_no_outlet_subducted_m3": 58957342.7,
-    "contact_suture_donated_m3": 10835400205.1,
-    "craton_loss_near_contacts_excl_fusion": 961975560.7,
-    "in": 251037561687.6,
-    "merge_capped": 327502539.0,
-    "merge_hc_lost": 2158305265.2,
-    "merge_material_clipped": 1588389587.1,
-    "thicken": 15912941602.0,
-    "world_ceiling_overflow_no_outlet_m3": 0.0,
-    "world_collision_subducted_m3": 1633557105.9,
-    "world_craton_sinks_m3": 1281227901.9,
-    "world_merge_capped_m3": 327502539.0,
-    "world_no_outlet_subducted_m3": 58957342.7,
-    "world_suture_donated_m3": 13646729341.6,
-    "premerge_cap_hc_over_merge_hc": 0.0273,
-    "premerge_craton_near_contacts_over_merge_capped": 2.9373,
-    "share_of_in_left_as_overlap": 0.1115,
-    "share_of_shift_growth_left_as_overlap": 0.308,
-    "share_of_shift_growth_consumed": 0.5161
-   },
-   "checks": {
-    "pair_drag_mismatch_at_jams": {
-     "p10": 0.102,
-     "p50": 0.475,
-     "p90": 0.917
-    },
-    "splits": 101,
-    "splits_of_jammed_plates": 63,
-    "splits_of_overlapping_plates": 83,
-    "merge_rel_rotation_deg_per_myr": {
-     "p10": 0.0832,
-     "p50": 0.169,
-     "p90": 0.427
-    },
-    "third_plate_hc_km3": {
-     "third_cont": 4649718436.3,
-     "third_ocean": 765933543.5
-    },
-    "third_plate_ocean_share": 0.1414,
-    "close_joint_vs_now_cm_abs_err": {
-     "p10": 0.0,
-     "p50": 0.001,
-     "p90": 0.022
-    }
-   },
-   "craton_ledger_km3": {
-    "formed_m3": 332440773.8,
-    "rifted_m3": 402438461.6,
-    "subducted_m3": 240068764.5,
-    "merge_capped_m3": 327502539.0,
-    "collision_reworked_m3": 113983541.6,
-    "eroded_m3": 191921102.2,
-    "unattributed_m3": 10017683.1,
-    "rifted_divergent_m3": 39712106.4,
-    "rifted_stretch_m3": 319001621.2,
-    "rifted_failed_m3": 43724734.0,
-    "split_cuts": 0.0,
-    "split_cuts_through_craton": 0.0,
-    "split_band_area_m2": 310408.7,
-    "split_band_craton_area_m2": 73926.1,
-    "failed_rift_cuts": 0.0,
-    "failed_rift_cuts_through_craton": 0.0,
-    "failed_rift_band_area_m2": 350184.2,
-    "failed_rift_band_craton_area_m2": 88381.4,
-    "initial_m3": 3232121613.4
-   },
-   "merge_events": [
-    {
-     "myr": 325.0,
-     "keep": 61,
-     "absorb": 62,
-     "rel_deg_per_myr": 0.1102,
-     "hc_lost_km3": 473658690.3,
-     "merge_capped_km3": 64725932.94,
-     "material_clipped_km3": 369225229.85,
-     "third_cont": {
-      "km2": 6308643.1,
-      "hc_km3": 439601526.1,
-      "age_myr_max": 190.0,
-      "age_myr_mean": 45.0
-     },
-     "on_keep": {
-      "km2": 1730684.0,
-      "hc_km3": 138763801.6,
-      "age_myr_max": 25.0,
-      "age_myr_mean": 16.5
-     },
-     "pair": "61-62",
-     "close_cm": 0.278,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 300.0,
-      "jammed_myr": 25.0,
-      "ov_km2": [
-       812684.8,
-       2167446.2
-      ],
-      "D_km3": [
-       134312598.31,
-       345034907.37
-      ],
-      "craton_ov_km3": [
-       52503422.9,
-       90446039.6
-      ]
-     }
-    },
-    {
-     "myr": 380.0,
-     "keep": 60,
-     "absorb": 61,
-     "rel_deg_per_myr": 0.1108,
-     "hc_lost_km3": 535748714.5,
-     "merge_capped_km3": 60337638.14,
-     "material_clipped_km3": 449457066.17,
-     "third_cont": {
-      "km2": 6117978.0,
-      "hc_km3": 468167829.7,
-      "age_myr_max": 105.0,
-      "age_myr_mean": 30.8
-     },
-     "on_keep": {
-      "km2": 2324325.9,
-      "hc_km3": 185411237.8,
-      "age_myr_max": 105.0,
-      "age_myr_mean": 32.4
-     },
-     "third_ocean": {
-      "km2": 170021.6,
-      "hc_km3": 4659611.5,
-      "age_myr_max": 15.0,
-      "age_myr_mean": 4.2
-     },
-     "pair": "60-61",
-     "close_cm": 0.168,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 295.0,
-      "jammed_myr": 85.0,
-      "ov_km2": [
-       1632338.5,
-       2332379.2
-      ],
-      "D_km3": [
-       257732472.54,
-       363646471.02
-      ],
-      "craton_ov_km3": [
-       11645817.5,
-       8976909.0
-      ]
-     }
-    },
-    {
-     "myr": 440.0,
-     "keep": 21,
-     "absorb": 60,
-     "rel_deg_per_myr": 0.419,
-     "hc_lost_km3": 397094100.1,
-     "merge_capped_km3": 45648364.48,
-     "material_clipped_km3": 330522590.52,
-     "third_cont": {
-      "km2": 5878483.1,
-      "hc_km3": 456260629.3,
-      "age_myr_max": 55.0,
-      "age_myr_mean": 27.6
-     },
-     "third_ocean": {
-      "km2": 295109.6,
-      "hc_km3": 12458109.5,
-      "age_myr_max": 40.0,
-      "age_myr_mean": 12.6
-     },
-     "on_keep": {
-      "km2": 464329.9,
-      "hc_km3": 34570568.0,
-      "age_myr_max": 35.0,
-      "age_myr_mean": 11.6
-     },
-     "pair": "21-60",
-     "close_cm": 0.292,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 385.0,
-      "jammed_myr": 55.0,
-      "ov_km2": [
-       1341700.1,
-       825820.3
-      ],
-      "D_km3": [
-       139224678.75,
-       128956687.08
-      ],
-      "craton_ov_km3": [
-       2688870.6,
-       24850551.6
-      ]
-     }
-    },
-    {
-     "myr": 615.0,
-     "keep": 39,
-     "absorb": 87,
-     "rel_deg_per_myr": 0.462,
-     "hc_lost_km3": 99294719.0,
-     "merge_capped_km3": 29842145.96,
-     "material_clipped_km3": 80165808.41,
-     "third_cont": {
-      "km2": 5665951.6,
-      "hc_km3": 418323395.5,
-      "age_myr_max": 215.0,
-      "age_myr_mean": 70.3
-     },
-     "on_keep": {
-      "km2": 131242.3,
-      "hc_km3": 9831793.6,
-      "age_myr_max": 25.0,
-      "age_myr_mean": 9.1
-     },
-     "third_ocean": {
-      "km2": 58364.0,
-      "hc_km3": 4163511.3,
-      "age_myr_max": 0.0,
-      "age_myr_mean": 0.0
-     },
-     "pair": "39-87",
-     "close_cm": 1.467,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 580.0,
-      "jammed_myr": 35.0,
-      "ov_km2": [
-       209948.0,
-       512840.6
-      ],
-      "D_km3": [
-       19094098.3,
-       63391818.89
-      ],
-      "craton_ov_km3": [
-       0.0,
-       1555358.7
-      ]
-     }
-    },
-    {
-     "myr": 665.0,
-     "keep": 99,
-     "absorb": 103,
-     "rel_deg_per_myr": 0.0567,
-     "hc_lost_km3": 190949736.1,
-     "merge_capped_km3": 13260949.57,
-     "material_clipped_km3": 123735196.17,
-     "third_cont": {
-      "km2": 2559951.1,
-      "hc_km3": 198258049.8,
-      "age_myr_max": 50.0,
-      "age_myr_mean": 22.1
-     },
-     "third_ocean": {
-      "km2": 542738.0,
-      "hc_km3": 33109642.2,
-      "age_myr_max": 45.0,
-      "age_myr_mean": 14.7
-     },
-     "on_keep": {
-      "km2": 1829556.7,
-      "hc_km3": 147319097.0,
-      "age_myr_max": 75.0,
-      "age_myr_mean": 33.9
-     },
-     "pair": "99-103",
-     "close_cm": 0.168,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 635.0,
-      "jammed_myr": 30.0,
-      "ov_km2": [
-       1557795.7,
-       2057110.4
-      ],
-      "D_km3": [
-       245438094.15,
-       327972523.2
-      ],
-      "craton_ov_km3": [
-       60750418.5,
-       72386663.2
-      ]
-     }
-    },
-    {
-     "myr": 690.0,
-     "keep": 101,
-     "absorb": 106,
-     "rel_deg_per_myr": 0.1557,
-     "hc_lost_km3": 82399416.0,
-     "merge_capped_km3": 15994088.53,
-     "material_clipped_km3": 56563528.14,
-     "third_ocean": {
-      "km2": 247286.7,
-      "hc_km3": 11983228.9,
-      "age_myr_max": 65.0,
-      "age_myr_mean": 16.1
-     },
-     "third_cont": {
-      "km2": 2627779.5,
-      "hc_km3": 208516057.8,
-      "age_myr_max": 190.0,
-      "age_myr_mean": 115.3
-     },
-     "on_keep": {
-      "km2": 598035.8,
-      "hc_km3": 47629879.0,
-      "age_myr_max": 70.0,
-      "age_myr_mean": 27.2
-     },
-     "pair": "101-106",
-     "close_cm": 0.506,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 640.0,
-      "jammed_myr": 50.0,
-      "ov_km2": [
-       125123.7,
-       636976.2
-      ],
-      "D_km3": [
-       18274588.08,
-       90971227.31
-      ],
-      "craton_ov_km3": [
-       3992323.3,
-       15424877.7
-      ]
-     }
-    },
-    {
-     "myr": 775.0,
-     "keep": 54,
-     "absorb": 119,
-     "rel_deg_per_myr": 0.0792,
-     "hc_lost_km3": 161423122.1,
-     "merge_capped_km3": 20031244.03,
-     "material_clipped_km3": 94063189.44,
-     "on_keep": {
-      "km2": 3250900.3,
-      "hc_km3": 254525701.4,
-      "age_myr_max": 90.0,
-      "age_myr_mean": 46.8
-     },
-     "third_cont": {
-      "km2": 577474.2,
-      "hc_km3": 35234895.9,
-      "age_myr_max": 25.0,
-      "age_myr_mean": 10.0
-     },
-     "third_ocean": {
-      "km2": 1598728.4,
-      "hc_km3": 77258086.4,
-      "age_myr_max": 60.0,
-      "age_myr_mean": 16.5
-     },
-     "pair": "54-119",
-     "close_cm": 0.048,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 730.0,
-      "jammed_myr": 45.0,
-      "ov_km2": [
-       1633214.9,
-       3383581.1
-      ],
-      "D_km3": [
-       260932959.8,
-       540864940.86
-      ],
-      "craton_ov_km3": [
-       52582877.5,
-       108765965.9
-      ]
-     }
-    },
-    {
-     "myr": 990.0,
-     "keep": 142,
-     "absorb": 147,
-     "rel_deg_per_myr": 0.2077,
-     "hc_lost_km3": 217736767.1,
-     "merge_capped_km3": 77662175.37,
-     "material_clipped_km3": 66996036.63,
-     "third_ocean": {
-      "km2": 157391.1,
-      "hc_km3": 8864102.6,
-      "age_myr_max": 65.0,
-      "age_myr_mean": 8.9
-     },
-     "third_cont": {
-      "km2": 3062805.2,
-      "hc_km3": 241444987.1,
-      "age_myr_max": 160.0,
-      "age_myr_mean": 25.2
-     },
-     "on_keep": {
-      "km2": 691060.2,
-      "hc_km3": 52955711.3,
-      "age_myr_max": 20.0,
-      "age_myr_mean": 10.1
-     },
-     "pair": "142-147",
-     "close_cm": 0.281,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 975.0,
-      "jammed_myr": 15.0,
-      "ov_km2": [
-       702676.2,
-       820600.1
-      ],
-      "D_km3": [
-       96502977.0,
-       119006982.6
-      ],
-      "craton_ov_km3": [
-       14383553.0,
-       33632239.8
-      ]
-     }
-    }
-   ]
-  },
-  {
-   "seed": 281892019,
-   "step_myr": 5.0,
-   "commit": "840c5ad3e996cf3ecc50f928eb967ad4a99fc5a0",
-   "myr": 995.0,
-   "start_craton_km3": 449871739.9,
-   "end_craton_km3": 211686193.0,
-   "merges": 0,
-   "merges_booking_merge_capped": 0,
-   "G1": {
-    "all": {
-     "net": {
-      "total_km3": 825103704.4,
-      "craton": 0.2312,
-      "cap": 0.0048,
-      "deform": 0.764,
-      "blocked": 0.236
-     },
-     "gross": {
-      "total_km3": 5584811918.1,
-      "craton": 0.3553,
-      "cap": 0.0019,
-      "deform": 0.6428,
-      "blocked": 0.3572
-     },
-     "pre_merge_30myr": {
-      "total_km3": 0.0,
-      "craton": null,
-      "cap": null,
-      "deform": null,
-      "blocked": null
-     }
-    },
-    "cc": {
-     "net": {
-      "total_km3": 0.0,
-      "craton": null,
-      "cap": null,
-      "deform": null,
-      "blocked": null
-     },
-     "gross": {
-      "total_km3": 0.0,
-      "craton": null,
-      "cap": null,
-      "deform": null,
-      "blocked": null
-     },
-     "pre_merge_30myr": {
-      "total_km3": 0.0,
-      "craton": null,
-      "cap": null,
-      "deform": null,
-      "blocked": null
-     }
-    },
-    "depth_mean_cells": {
-     "p10": 1.01,
-     "p50": 1.46,
-     "p90": 4.45
-    },
-    "depth_max_cells": {
-     "p10": 1.07,
-     "p50": 3.21,
-     "p90": 12.4
-    },
-    "depth_mean_km": {
-     "p10": 126.0,
-     "p50": 183.0,
-     "p90": 557.0
-    },
-    "cell_km": 125.0
-   },
-   "G2": {
-    "pair_steps_closing": 915,
-    "jammed_pair_steps": 542,
-    "stall_n_per_m": {
-     "p10": 490000000000.0,
-     "p50": 2520000000000.0,
-     "p90": 14800000000000.0
-    },
-    "h_star_km": {
-     "p10": 35.0,
-     "p50": 45.5,
-     "p90": 70.8
-    },
-    "share_h_star_below_cap": 0.7764,
-    "share_push_exceeds_stall": 0.1464,
-    "close_now_cm": {
-     "p10": 0.216,
-     "p50": 0.816,
-     "p90": 1.82
-    },
-    "close_with_push_cm": {
-     "p10": 0.0,
-     "p50": 0.679,
-     "p90": 2.58
-    },
-    "share_stopped_by_push": 0.1442,
-    "band_hc_km": {
-     "p10": 21.0,
-     "p50": 35.5,
-     "p90": 61.7
-    },
-    "band_hm_km": {
-     "p10": 36.7,
-     "p50": 92.3,
-     "p90": 210.0
-    },
-    "share_band_clipped": 0.0,
-    "slab_pull_share_of_stall": {
-     "p10": 0.149,
-     "p50": 0.855,
-     "p90": 1.31
-    },
-    "tibet_like": {
-     "n": 55,
-     "push": {
-      "p10": -9650000000000.0,
-      "p50": -8440000000000.0,
-      "p90": -2750000000000.0
-     },
-     "stall": {
-      "p10": 756000000000.0,
-      "p50": 10000000000000.0,
-      "p90": 23100000000000.0
-     },
-     "push_airy": {
-      "p10": 7200000000000.0,
-      "p50": 8190000000000.0,
-      "p90": 9070000000000.0
-     }
-    }
-   },
-   "G3": {
-    "craton": {
-     "pair_steps_closing": 136,
-     "stall_n_per_m": {
-      "p10": 735000000000.0,
-      "p50": 3490000000000.0,
-      "p90": 22800000000000.0
-     },
-     "share_below_1e13": 0.7426,
-     "share_in_1e12_1e13": 0.5882,
-     "share_below_1e12": 0.1544,
-     "D_growth_km3_per_myr": {
-      "p10": -1770000.0,
-      "p50": -24600.0,
-      "p90": 1510000.0
-     },
-     "overlap_km2": {
-      "p10": 70500.0,
-      "p50": 296000.0,
-      "p90": 2130000.0
-     }
-    },
-    "cap": {
-     "pair_steps_closing": 0,
-     "stall_n_per_m": null,
-     "share_below_1e13": null,
-     "share_in_1e12_1e13": null,
-     "share_below_1e12": null,
-     "D_growth_km3_per_myr": null,
-     "overlap_km2": null
-    }
-   },
-   "G4": {
-    "D_change_over_deform": -16536683582.8,
-    "D_growth": 825103704.4,
-    "D_growth_over_shift": 15539850909.5,
-    "consumed_D": 9208287594.7,
-    "contact_ceiling_overflow_no_outlet_m3": 0.0,
-    "contact_collision_subducted_m3": 0.0,
-    "contact_no_outlet_subducted_m3": 0.0,
-    "contact_suture_donated_m3": 430501007.0,
-    "craton_loss_near_contacts_excl_fusion": 310932021.2,
-    "in": 52833376396.3,
-    "thicken": 2221973835.9,
-    "world_ceiling_overflow_no_outlet_m3": 0.0,
-    "world_collision_subducted_m3": 29497.4,
-    "world_craton_sinks_m3": 312493047.0,
-    "world_merge_capped_m3": 0.0,
-    "world_no_outlet_subducted_m3": 0.0,
-    "world_suture_donated_m3": 754915789.4,
-    "premerge_cap_hc_over_merge_hc": null,
-    "premerge_craton_near_contacts_over_merge_capped": null,
-    "share_of_in_left_as_overlap": 0.0156,
-    "share_of_shift_growth_left_as_overlap": 0.0531,
-    "share_of_shift_growth_consumed": 0.5926
-   },
-   "checks": {
-    "pair_drag_mismatch_at_jams": {
-     "p10": 0.162,
-     "p50": 0.603,
-     "p90": 0.91
-    },
-    "splits": 95,
-    "splits_of_jammed_plates": 10,
-    "splits_of_overlapping_plates": 16,
-    "merge_rel_rotation_deg_per_myr": null,
-    "third_plate_hc_km3": {
-     "third_cont": 0,
-     "third_ocean": 0
-    },
-    "third_plate_ocean_share": null,
-    "close_joint_vs_now_cm_abs_err": {
-     "p10": 0.0,
-     "p50": 0.0,
-     "p90": 0.015
-    }
-   },
-   "craton_ledger_km3": {
-    "formed_m3": 74388040.0,
-    "rifted_m3": 34179677.4,
-    "subducted_m3": 186779146.9,
-    "collision_reworked_m3": 16415990.0,
-    "eroded_m3": 73135874.6,
-    "unattributed_m3": 2062898.1,
-    "rifted_divergent_m3": 10876603.0,
-    "rifted_stretch_m3": 21210753.9,
-    "rifted_failed_m3": 2092320.4,
-    "split_cuts": 0.0,
-    "split_cuts_through_craton": 0.0,
-    "split_band_area_m2": 295692.9,
-    "split_band_craton_area_m2": 2398.7,
-    "failed_rift_cuts": 0.0,
-    "failed_rift_cuts_through_craton": 0.0,
-    "failed_rift_band_area_m2": 230140.0,
-    "failed_rift_band_craton_area_m2": 4134.0,
-    "initial_m3": 449871739.9
-   },
-   "merge_events": []
-  },
-  {
-   "seed": 713688258,
-   "step_myr": 5.0,
-   "commit": "840c5ad3e996cf3ecc50f928eb967ad4a99fc5a0",
-   "myr": 995.0,
-   "start_craton_km3": 1528054442.7,
-   "end_craton_km3": 1405667548.8,
-   "merges": 6,
-   "merges_booking_merge_capped": 0,
-   "G1": {
-    "all": {
-     "net": {
-      "total_km3": 5847136239.7,
-      "craton": 0.3555,
-      "cap": -0.0142,
-      "deform": 0.6587,
-      "blocked": 0.3413
-     },
-     "gross": {
-      "total_km3": 21511888617.4,
-      "craton": 0.284,
-      "cap": 0.0216,
-      "deform": 0.6945,
-      "blocked": 0.3055
-     },
-     "pre_merge_30myr": {
-      "total_km3": 316416898.4,
-      "craton": 0.8147,
-      "cap": 0.0039,
-      "deform": 0.1814,
-      "blocked": 0.8186
-     }
-    },
-    "cc": {
-     "net": {
-      "total_km3": 1739415391.4,
-      "craton": 0.8049,
-      "cap": -0.0319,
-      "deform": 0.227,
-      "blocked": 0.773
-     },
-     "gross": {
-      "total_km3": 5308222250.2,
-      "craton": 0.4254,
-      "cap": 0.0707,
-      "deform": 0.5039,
-      "blocked": 0.4961
-     },
-     "pre_merge_30myr": {
-      "total_km3": 316416898.4,
-      "craton": 0.8147,
-      "cap": 0.0039,
-      "deform": 0.1814,
-      "blocked": 0.8186
-     }
-    },
-    "depth_mean_cells": {
-     "p10": 0.998,
-     "p50": 1.32,
-     "p90": 3.27
-    },
-    "depth_max_cells": {
-     "p10": 1.07,
-     "p50": 2.97,
-     "p90": 9.29
-    },
-    "depth_mean_km": {
-     "p10": 125.0,
-     "p50": 166.0,
-     "p90": 408.0
-    },
-    "cell_km": 125.0
-   },
-   "G2": {
-    "pair_steps_closing": 4282,
-    "jammed_pair_steps": 1711,
-    "stall_n_per_m": {
-     "p10": 273000000000.0,
-     "p50": 2500000000000.0,
-     "p90": 13300000000000.0
-    },
-    "h_star_km": {
-     "p10": 35.0,
-     "p50": 47.2,
-     "p90": 73.4
-    },
-    "share_h_star_below_cap": 0.8148,
-    "share_push_exceeds_stall": 0.2089,
-    "close_now_cm": {
-     "p10": 0.174,
-     "p50": 0.671,
-     "p90": 1.7
-    },
-    "close_with_push_cm": {
-     "p10": 0.0,
-     "p50": 0.633,
-     "p90": 2.41
-    },
-    "share_stopped_by_push": 0.2104,
-    "band_hc_km": {
-     "p10": 20.3,
-     "p50": 37.7,
-     "p90": 62.8
-    },
-    "band_hm_km": {
-     "p10": 31.7,
-     "p50": 88.9,
-     "p90": 171.0
-    },
-    "share_band_clipped": 0.0084,
-    "slab_pull_share_of_stall": {
-     "p10": 0.0,
-     "p50": 0.821,
-     "p90": 1.15
-    },
-    "tibet_like": {
-     "n": 211,
-     "push": {
-      "p10": -7190000000000.0,
-      "p50": -3420000000000.0,
-      "p90": 2350000000000.0
-     },
-     "stall": {
-      "p10": 536000000000.0,
-      "p50": 5340000000000.0,
-      "p90": 15000000000000.0
-     },
-     "push_airy": {
-      "p10": 7280000000000.0,
-      "p50": 8580000000000.0,
-      "p90": 9780000000000.0
-     }
-    }
-   },
-   "G3": {
-    "craton": {
-     "pair_steps_closing": 657,
-     "stall_n_per_m": {
-      "p10": 122000000000.0,
-      "p50": 529000000000.0,
-      "p90": 3420000000000.0
-     },
-     "share_below_1e13": 0.9604,
-     "share_in_1e12_1e13": 0.3059,
-     "share_below_1e12": 0.6545,
-     "D_growth_km3_per_myr": {
-      "p10": -707000.0,
-      "p50": 273000.0,
-      "p90": 1720000.0
-     },
-     "overlap_km2": {
-      "p10": 106000.0,
-      "p50": 535000.0,
-      "p90": 1870000.0
-     }
-    },
-    "cap": {
-     "pair_steps_closing": 43,
-     "stall_n_per_m": {
-      "p10": 151000000000.0,
-      "p50": 792000000000.0,
-      "p90": 5810000000000.0
-     },
-     "share_below_1e13": 0.9767,
-     "share_in_1e12_1e13": 0.3488,
-     "share_below_1e12": 0.6279,
-     "D_growth_km3_per_myr": {
-      "p10": -1600000.0,
-      "p50": -26800.0,
-      "p90": 1830000.0
-     },
-     "overlap_km2": {
-      "p10": 26500.0,
-      "p50": 173000.0,
-      "p90": 305000.0
-     }
-    }
-   },
-   "G4": {
-    "D_change_over_deform": -60430216362.7,
-    "D_growth": 5847136239.7,
-    "D_growth_over_shift": 58786278314.9,
-    "consumed_D": 33040088991.3,
-    "contact_ceiling_overflow_no_outlet_m3": 0.0,
-    "contact_collision_subducted_m3": 171275.8,
-    "contact_no_outlet_subducted_m3": 18382562.5,
-    "contact_suture_donated_m3": 6180972653.9,
-    "craton_loss_near_contacts_excl_fusion": 642240366.0,
-    "in": 162795739296.7,
-    "merge_capped": 0.0,
-    "merge_hc_lost": 0.0,
-    "merge_material_clipped": 0.0,
-    "thicken": 11712195964.0,
-    "world_ceiling_overflow_no_outlet_m3": 0.0,
-    "world_collision_subducted_m3": 14421795.9,
-    "world_craton_sinks_m3": 631584977.9,
-    "world_merge_capped_m3": 0.0,
-    "world_no_outlet_subducted_m3": 18382562.5,
-    "world_suture_donated_m3": 8710674410.2,
-    "premerge_cap_hc_over_merge_hc": null,
-    "premerge_craton_near_contacts_over_merge_capped": null,
-    "share_of_in_left_as_overlap": 0.0359,
-    "share_of_shift_growth_left_as_overlap": 0.0995,
-    "share_of_shift_growth_consumed": 0.562
-   },
-   "checks": {
-    "pair_drag_mismatch_at_jams": {
-     "p10": 0.104,
-     "p50": 0.516,
-     "p90": 0.956
-    },
-    "splits": 70,
-    "splits_of_jammed_plates": 38,
-    "splits_of_overlapping_plates": 53,
-    "merge_rel_rotation_deg_per_myr": {
-     "p10": 0.101,
-     "p50": 0.19,
-     "p90": 0.376
-    },
-    "third_plate_hc_km3": {
-     "third_cont": 39748748.0,
-     "third_ocean": 180404370.7
-    },
-    "third_plate_ocean_share": 0.8194,
-    "close_joint_vs_now_cm_abs_err": {
-     "p10": 0.0,
-     "p50": 0.0,
-     "p90": 0.023
-    }
-   },
-   "craton_ledger_km3": {
-    "formed_m3": 509419112.4,
-    "rifted_m3": 145709236.4,
-    "subducted_m3": 308192139.7,
-    "merge_capped_m3": 0.0,
-    "collision_reworked_m3": 100432916.2,
-    "eroded_m3": 86333950.0,
-    "unattributed_m3": -8862236.0,
-    "rifted_divergent_m3": 22175603.7,
-    "rifted_stretch_m3": 105319159.4,
-    "rifted_failed_m3": 18214473.2,
-    "split_cuts": 0.0,
-    "split_cuts_through_craton": 0.0,
-    "split_band_area_m2": 206724.7,
-    "split_band_craton_area_m2": 22289.4,
-    "failed_rift_cuts": 0.0,
-    "failed_rift_cuts_through_craton": 0.0,
-    "failed_rift_band_area_m2": 268211.8,
-    "failed_rift_band_craton_area_m2": 40802.2,
-    "initial_m3": 1528054442.7
-   },
-   "merge_events": []
-  },
-  {
-   "seed": 885010827,
-   "step_myr": 5.0,
-   "commit": "840c5ad3e996cf3ecc50f928eb967ad4a99fc5a0",
-   "myr": 995.0,
-   "start_craton_km3": 1843523546.9,
-   "end_craton_km3": 1407640481.9,
-   "merges": 19,
+   "end_craton_km3": 3076559363.7,
+   "merges": 47,
    "merges_booking_merge_capped": 1,
    "G1": {
     "all": {
      "net": {
-      "total_km3": 8746022642.3,
-      "craton": 0.5466,
-      "cap": -0.0059,
-      "deform": 0.4592,
-      "blocked": 0.5408
+      "total_km3": 12747265656.9,
+      "craton": 0.483,
+      "cap": 0.0052,
+      "deform": 0.5118,
+      "blocked": 0.4882
      },
      "gross": {
-      "total_km3": 21244916337.2,
-      "craton": 0.3796,
-      "cap": 0.0255,
-      "deform": 0.5949,
-      "blocked": 0.4051
+      "total_km3": 28160878891.1,
+      "craton": 0.3273,
+      "cap": 0.016,
+      "deform": 0.6567,
+      "blocked": 0.3433
      },
      "pre_merge_30myr": {
-      "total_km3": 1059550031.7,
-      "craton": 0.8333,
-      "cap": 0.0188,
-      "deform": 0.1479,
-      "blocked": 0.8521
+      "total_km3": 2401963644.5,
+      "craton": 0.848,
+      "cap": 0.006,
+      "deform": 0.146,
+      "blocked": 0.854
      }
     },
     "cc": {
      "net": {
-      "total_km3": 4969658285.6,
-      "craton": 0.7553,
-      "cap": -0.0049,
-      "deform": 0.2496,
-      "blocked": 0.7504
+      "total_km3": 6037523247.1,
+      "craton": 0.7714,
+      "cap": 0.011,
+      "deform": 0.2175,
+      "blocked": 0.7825
      },
      "gross": {
-      "total_km3": 8659573256.5,
-      "craton": 0.5351,
-      "cap": 0.0439,
-      "deform": 0.421,
-      "blocked": 0.579
+      "total_km3": 11212696184.0,
+      "craton": 0.516,
+      "cap": 0.033,
+      "deform": 0.4509,
+      "blocked": 0.5491
      },
      "pre_merge_30myr": {
-      "total_km3": 1021897719.6,
-      "craton": 0.8452,
-      "cap": 0.0116,
-      "deform": 0.1432,
-      "blocked": 0.8568
+      "total_km3": 1996932878.2,
+      "craton": 0.8885,
+      "cap": 0.0079,
+      "deform": 0.1035,
+      "blocked": 0.8965
      }
     },
     "depth_mean_cells": {
-     "p10": 0.97,
-     "p50": 1.2,
-     "p90": 2.77
+     "p10": 0.979,
+     "p50": 1.14,
+     "p90": 1.93
     },
     "depth_max_cells": {
      "p10": 1.06,
-     "p50": 2.32,
-     "p90": 7.66
+     "p50": 2.14,
+     "p90": 5.46
     },
     "depth_mean_km": {
-     "p10": 121.0,
-     "p50": 150.0,
-     "p90": 346.0
+     "p10": 122.0,
+     "p50": 142.0,
+     "p90": 242.0
     },
     "cell_km": 125.0
    },
    "G2": {
-    "pair_steps_closing": 3134,
-    "jammed_pair_steps": 1185,
+    "pair_steps_closing": 5700,
+    "jammed_pair_steps": 1982,
     "stall_n_per_m": {
-     "p10": 391000000000.0,
-     "p50": 2660000000000.0,
-     "p90": 13100000000000.0
+     "p10": 1040000000000.0,
+     "p50": 6330000000000.0,
+     "p90": 16700000000000.0
     },
     "h_star_km": {
      "p10": 35.0,
-     "p50": 47.5,
-     "p90": 72.2
+     "p50": 54.7,
+     "p90": 77.3
     },
-    "share_h_star_below_cap": 0.8533,
-    "share_push_exceeds_stall": 0.2781,
+    "share_h_star_below_cap": 0.6845,
+    "share_push_exceeds_stall": 0.1455,
     "close_now_cm": {
-     "p10": 0.157,
-     "p50": 0.619,
-     "p90": 1.61
+     "p10": 0.166,
+     "p50": 0.791,
+     "p90": 1.76
     },
     "close_with_push_cm": {
      "p10": 0.0,
-     "p50": 0.502,
-     "p90": 2.03
+     "p50": 0.814,
+     "p90": 2.01
     },
-    "share_stopped_by_push": 0.2824,
+    "share_stopped_by_push": 0.1477,
     "band_hc_km": {
-     "p10": 21.2,
-     "p50": 41.3,
-     "p90": 63.7
+     "p10": 17.5,
+     "p50": 39.9,
+     "p90": 61.8
     },
     "band_hm_km": {
-     "p10": 22.9,
-     "p50": 92.1,
-     "p90": 149.0
+     "p10": 24.9,
+     "p50": 86.1,
+     "p90": 174.0
     },
-    "share_band_clipped": 0.0382,
+    "share_band_clipped": 0.03,
     "slab_pull_share_of_stall": {
-     "p10": 0.0,
-     "p50": 0.571,
-     "p90": 1.14
+     "p10": -0.292,
+     "p50": 0.851,
+     "p90": 1.11
     },
     "tibet_like": {
-     "n": 218,
+     "n": 351,
      "push": {
-      "p10": -6100000000000.0,
-      "p50": -664000000000.0,
-      "p90": 8190000000000.0
+      "p10": -7390000000000.0,
+      "p50": 1650000000000.0,
+      "p90": 7830000000000.0
      },
      "stall": {
-      "p10": 499000000000.0,
-      "p50": 3000000000000.0,
-      "p90": 10500000000000.0
+      "p10": 1550000000000.0,
+      "p50": 6980000000000.0,
+      "p90": 14300000000000.0
      },
      "push_airy": {
       "p10": 7240000000000.0,
-      "p50": 8260000000000.0,
+      "p50": 8280000000000.0,
       "p90": 9490000000000.0
      }
     }
    },
    "G3": {
     "craton": {
-     "pair_steps_closing": 592,
+     "pair_steps_closing": 449,
      "stall_n_per_m": {
-      "p10": 282000000000.0,
-      "p50": 1130000000000.0,
-      "p90": 7440000000000.0
+      "p10": 452000000000.0,
+      "p50": 2900000000000.0,
+      "p90": 10700000000000.0
      },
-     "share_below_1e13": 0.9307,
-     "share_in_1e12_1e13": 0.4848,
-     "share_below_1e12": 0.4459,
+     "share_below_1e13": 0.882,
+     "share_in_1e12_1e13": 0.6837,
+     "share_below_1e12": 0.1982,
      "D_growth_km3_per_myr": {
-      "p10": -1040000.0,
-      "p50": 511000.0,
-      "p90": 3560000.0
+      "p10": -651000.0,
+      "p50": 1160000.0,
+      "p90": 6500000.0
      },
      "overlap_km2": {
-      "p10": 109000.0,
-      "p50": 556000.0,
-      "p90": 1660000.0
+      "p10": 185000.0,
+      "p50": 750000.0,
+      "p90": 1590000.0
      }
     },
     "cap": {
-     "pair_steps_closing": 42,
+     "pair_steps_closing": 4,
      "stall_n_per_m": {
-      "p10": 578000000000.0,
-      "p50": 1220000000000.0,
-      "p90": 5880000000000.0
+      "p10": 8650000000000.0,
+      "p50": 34900000000000.0,
+      "p90": 71200000000000.0
      },
-     "share_below_1e13": 0.9286,
-     "share_in_1e12_1e13": 0.619,
-     "share_below_1e12": 0.3095,
+     "share_below_1e13": 0.25,
+     "share_in_1e12_1e13": 0.25,
+     "share_below_1e12": 0.0,
      "D_growth_km3_per_myr": {
-      "p10": -1410000.0,
-      "p50": 282000.0,
-      "p90": 1630000.0
+      "p10": -655000.0,
+      "p50": 20600.0,
+      "p90": 437000.0
      },
      "overlap_km2": {
-      "p10": 32700.0,
-      "p50": 195000.0,
-      "p90": 365000.0
+      "p10": 15600.0,
+      "p50": 16900.0,
+      "p90": 54800.0
      }
     }
    },
    "G4": {
-    "D_change_over_deform": -48889583204.6,
-    "D_growth": 8746022642.3,
-    "D_growth_over_shift": 49132730178.8,
-    "consumed_D": 26497909752.8,
+    "D_change_over_deform": -78857743753.7,
+    "D_growth": 12747265656.9,
+    "D_growth_over_shift": 79507319079.4,
+    "consumed_D": 42071879937.5,
     "contact_ceiling_overflow_no_outlet_m3": 0.0,
-    "contact_collision_subducted_m3": 1417459.6,
-    "contact_no_outlet_subducted_m3": 12276305.4,
-    "contact_suture_donated_m3": 5388842455.6,
-    "craton_loss_near_contacts_excl_fusion": 490644759.1,
-    "in": 135351273542.5,
-    "merge_capped": 30098.4,
-    "merge_hc_lost": 0.0,
-    "merge_material_clipped": 25382832.7,
-    "thicken": 9446218499.0,
+    "contact_collision_subducted_m3": 0.0,
+    "contact_no_outlet_subducted_m3": 0.0,
+    "contact_suture_donated_m3": 8866576675.2,
+    "craton_loss_near_contacts_excl_fusion": 564327846.7,
+    "in": 166981286910.6,
+    "merge_capped": 4559906.7,
+    "merge_hc_lost": 415804258.4,
+    "merge_material_clipped": 270518769.5,
+    "thicken": 13455032011.1,
     "world_ceiling_overflow_no_outlet_m3": 0.0,
-    "world_collision_subducted_m3": 28418095.6,
-    "world_craton_sinks_m3": 492310907.3,
-    "world_merge_capped_m3": 30098.4,
-    "world_no_outlet_subducted_m3": 21271015.1,
-    "world_suture_donated_m3": 10132964560.8,
-    "premerge_cap_hc_over_merge_hc": null,
-    "premerge_craton_near_contacts_over_merge_capped": 16301.3623,
-    "share_of_in_left_as_overlap": 0.0646,
-    "share_of_shift_growth_left_as_overlap": 0.178,
-    "share_of_shift_growth_consumed": 0.5393
+    "world_collision_subducted_m3": 270726298.4,
+    "world_craton_sinks_m3": 638306486.6,
+    "world_merge_capped_m3": 4559906.7,
+    "world_no_outlet_subducted_m3": 0.0,
+    "world_suture_donated_m3": 11026692053.5,
+    "premerge_cap_hc_over_merge_hc": 0.0,
+    "premerge_craton_near_contacts_over_merge_capped": 123.7586,
+    "share_of_in_left_as_overlap": 0.0763,
+    "share_of_shift_growth_left_as_overlap": 0.1603,
+    "share_of_shift_growth_consumed": 0.5292
    },
    "checks": {
     "pair_drag_mismatch_at_jams": {
-     "p10": 0.0772,
-     "p50": 0.421,
-     "p90": 0.909
+     "p10": 0.0525,
+     "p50": 0.294,
+     "p90": 0.9
     },
-    "splits": 98,
-    "splits_of_jammed_plates": 23,
-    "splits_of_overlapping_plates": 40,
+    "splits": 93,
+    "splits_of_jammed_plates": 53,
+    "splits_of_overlapping_plates": 81,
     "merge_rel_rotation_deg_per_myr": {
-     "p10": 0.0566,
-     "p50": 0.141,
-     "p90": 0.236
+     "p10": 0.14,
+     "p50": 0.363,
+     "p90": 0.615
     },
     "third_plate_hc_km3": {
-     "third_cont": 614219731.8,
-     "third_ocean": 499144269.0
+     "third_cont": 1113629765.2,
+     "third_ocean": 637031230.6
     },
-    "third_plate_ocean_share": 0.4483,
+    "third_plate_ocean_share": 0.3639,
     "close_joint_vs_now_cm_abs_err": {
      "p10": 0.0,
-     "p50": 0.001,
-     "p90": 0.0238
+     "p50": 0.003,
+     "p90": 0.027
     }
    },
    "craton_ledger_km3": {
-    "formed_m3": 62538522.4,
-    "rifted_m3": 169430864.9,
-    "subducted_m3": 154955461.6,
-    "merge_capped_m3": 30098.4,
-    "collision_reworked_m3": 36984891.8,
-    "eroded_m3": 136784723.7,
-    "unattributed_m3": 235545.9,
-    "rifted_divergent_m3": 20500180.3,
-    "rifted_stretch_m3": 136117718.7,
-    "rifted_failed_m3": 12812966.0,
+    "formed_m3": 485214691.3,
+    "rifted_m3": 321585651.2,
+    "subducted_m3": 47121078.9,
+    "merge_capped_m3": 4559906.7,
+    "collision_reworked_m3": 96869409.5,
+    "eroded_m3": 175731755.0,
+    "unattributed_m3": -5090860.3,
+    "rifted_divergent_m3": 32435975.7,
+    "rifted_stretch_m3": 263797262.2,
+    "rifted_failed_m3": 25352413.3,
     "split_cuts": 0.0,
     "split_cuts_through_craton": 0.0,
-    "split_band_area_m2": 296706.4,
-    "split_band_craton_area_m2": 36269.6,
+    "split_band_area_m2": 288343.1,
+    "split_band_craton_area_m2": 70276.7,
     "failed_rift_cuts": 0.0,
     "failed_rift_cuts_through_craton": 0.0,
-    "failed_rift_band_area_m2": 249702.4,
-    "failed_rift_band_craton_area_m2": 25374.9,
-    "initial_m3": 1843523546.9
+    "failed_rift_band_area_m2": 195967.7,
+    "failed_rift_band_craton_area_m2": 47635.6,
+    "initial_m3": 3232121613.4
    },
    "merge_events": [
     {
-     "myr": 245.0,
-     "keep": 7,
-     "absorb": 32,
-     "rel_deg_per_myr": 0.0986,
-     "hc_lost_km3": -0.0,
-     "merge_capped_km3": 30098.39,
-     "material_clipped_km3": 2822440.21,
-     "on_keep": {
-      "km2": 693156.6,
-      "hc_km3": 35666987.2,
-      "age_myr_max": 80.0,
-      "age_myr_mean": 36.4
-     },
+     "myr": 780.0,
+     "keep": 97,
+     "absorb": 112,
+     "rel_deg_per_myr": 0.1021,
+     "hc_lost_km3": 35203643.1,
+     "merge_capped_km3": 4559906.68,
+     "material_clipped_km3": 21518754.13,
      "third_cont": {
-      "km2": 701375.0,
-      "hc_km3": 45638854.6,
-      "age_myr_max": 0.0,
-      "age_myr_mean": 0.0
+      "km2": 510623.0,
+      "hc_km3": 38356045.2,
+      "age_myr_max": 20.0,
+      "age_myr_mean": 4.3
      },
-     "pair": "7-32",
-     "close_cm": 0.099,
+     "on_keep": {
+      "km2": 1593225.2,
+      "hc_km3": 128239885.8,
+      "age_myr_max": 30.0,
+      "age_myr_mean": 13.5
+     },
+     "third_ocean": {
+      "km2": 508950.9,
+      "hc_km3": 34121103.4,
+      "age_myr_max": 20.0,
+      "age_myr_mean": 9.3
+     },
+     "pair": "97-112",
+     "close_cm": 0.31,
      "jammed": true,
      "jam_episode": {
-      "onset_myr": 195.0,
-      "jammed_myr": 50.0,
+      "onset_myr": 760.0,
+      "jammed_myr": 20.0,
       "ov_km2": [
-       491766.4,
-       772432.8
+       808337.2,
+       1618679.3
       ],
       "D_km3": [
-       30724215.88,
-       75008270.65
+       112340596.87,
+       241115172.6
       ],
       "craton_ov_km3": [
-       3705688.2,
-       21135718.4
+       16513200.3,
+       87125807.1
       ]
      }
     }
    ]
   },
   {
-   "seed": 96733506,
-   "step_myr": 5.0,
-   "commit": "840c5ad3e996cf3ecc50f928eb967ad4a99fc5a0",
-   "myr": 995.0,
-   "start_craton_km3": 98974280.2,
-   "end_craton_km3": 106883810.9,
-   "merges": 8,
-   "merges_booking_merge_capped": 0,
+   "seed": 326494039,
+   "step_myr": 2.0,
+   "commit": "de9d64721b16390209ae0b54df0fbf31d1697f16",
+   "myr": 998.0,
+   "start_craton_km3": 2763167297.7,
+   "end_craton_km3": 2523456007.2,
+   "merges": 29,
+   "merges_booking_merge_capped": 4,
    "G1": {
     "all": {
      "net": {
-      "total_km3": 3196211197.4,
-      "craton": 0.306,
-      "cap": 0.007,
-      "deform": 0.687,
-      "blocked": 0.313
+      "total_km3": 9085251404.4,
+      "craton": 0.7606,
+      "cap": -0.0136,
+      "deform": 0.2531,
+      "blocked": 0.7469
      },
      "gross": {
-      "total_km3": 6843614830.0,
-      "craton": 0.2304,
-      "cap": 0.0257,
-      "deform": 0.7439,
-      "blocked": 0.2561
+      "total_km3": 21850236010.9,
+      "craton": 0.4093,
+      "cap": 0.0217,
+      "deform": 0.569,
+      "blocked": 0.431
      },
      "pre_merge_30myr": {
-      "total_km3": 371111704.9,
-      "craton": 0.751,
-      "cap": 0.066,
-      "deform": 0.183,
-      "blocked": 0.817
+      "total_km3": 1351403351.2,
+      "craton": 0.9957,
+      "cap": 0.0031,
+      "deform": 0.0012,
+      "blocked": 0.9988
      }
     },
     "cc": {
      "net": {
-      "total_km3": 1779536772.2,
-      "craton": 0.4479,
-      "cap": 0.0157,
-      "deform": 0.5364,
-      "blocked": 0.4636
+      "total_km3": 8195458592.1,
+      "craton": 0.8504,
+      "cap": -0.0148,
+      "deform": 0.1644,
+      "blocked": 0.8356
      },
      "gross": {
-      "total_km3": 3359340446.2,
-      "craton": 0.3114,
-      "cap": 0.0421,
-      "deform": 0.6465,
-      "blocked": 0.3535
+      "total_km3": 15979967462.4,
+      "craton": 0.5385,
+      "cap": 0.0283,
+      "deform": 0.4332,
+      "blocked": 0.5668
      },
      "pre_merge_30myr": {
-      "total_km3": 344585578.4,
-      "craton": 0.7796,
-      "cap": 0.0833,
-      "deform": 0.137,
-      "blocked": 0.863
+      "total_km3": 1322125064.1,
+      "craton": 0.9935,
+      "cap": 0.0032,
+      "deform": 0.0034,
+      "blocked": 0.9966
      }
     },
     "depth_mean_cells": {
-     "p10": 0.999,
-     "p50": 1.27,
-     "p90": 2.65
+     "p10": 0.934,
+     "p50": 1.04,
+     "p90": 1.38
     },
     "depth_max_cells": {
-     "p10": 1.08,
-     "p50": 2.77,
-     "p90": 7.85
+     "p10": 1.03,
+     "p50": 1.36,
+     "p90": 3.3
     },
     "depth_mean_km": {
-     "p10": 125.0,
-     "p50": 159.0,
-     "p90": 331.0
+     "p10": 117.0,
+     "p50": 130.0,
+     "p90": 172.0
     },
     "cell_km": 125.0
    },
    "G2": {
-    "pair_steps_closing": 989,
-    "jammed_pair_steps": 390,
+    "pair_steps_closing": 8267,
+    "jammed_pair_steps": 1103,
     "stall_n_per_m": {
-     "p10": 419000000000.0,
-     "p50": 2300000000000.0,
-     "p90": 13700000000000.0
+     "p10": 785000000000.0,
+     "p50": 5250000000000.0,
+     "p90": 13000000000000.0
     },
     "h_star_km": {
      "p10": 35.0,
-     "p50": 52.7,
-     "p90": 73.1
+     "p50": 51.9,
+     "p90": 74.4
     },
-    "share_h_star_below_cap": 0.7898,
-    "share_push_exceeds_stall": 0.2467,
+    "share_h_star_below_cap": 0.9071,
+    "share_push_exceeds_stall": 0.242,
     "close_now_cm": {
-     "p10": 0.156,
-     "p50": 0.722,
-     "p90": 1.83
+     "p10": 0.147,
+     "p50": 0.864,
+     "p90": 2.33
     },
     "close_with_push_cm": {
      "p10": 0.0,
-     "p50": 0.776,
-     "p90": 2.56
+     "p50": 0.557,
+     "p90": 2.05
     },
-    "share_stopped_by_push": 0.2447,
+    "share_stopped_by_push": 0.242,
     "band_hc_km": {
-     "p10": 24.4,
-     "p50": 49.0,
-     "p90": 67.5
+     "p10": 15.1,
+     "p50": 31.4,
+     "p90": 61.8
     },
     "band_hm_km": {
-     "p10": 38.9,
-     "p50": 110.0,
-     "p90": 179.0
+     "p10": 10.5,
+     "p50": 44.6,
+     "p90": 120.0
     },
-    "share_band_clipped": 0.0244,
+    "share_band_clipped": 0.0161,
     "slab_pull_share_of_stall": {
-     "p10": 0.0,
-     "p50": 0.507,
-     "p90": 1.02
+     "p10": -0.519,
+     "p50": 0.793,
+     "p90": 1.09
     },
     "tibet_like": {
-     "n": 115,
+     "n": 468,
      "push": {
-      "p10": -4340000000000.0,
-      "p50": 1080000000000.0,
-      "p90": 4820000000000.0
+      "p10": -2030000000000.0,
+      "p50": 2080000000000.0,
+      "p90": 6160000000000.0
      },
      "stall": {
-      "p10": 281000000000.0,
-      "p50": 1400000000000.0,
-      "p90": 14900000000000.0
+      "p10": 362000000000.0,
+      "p50": 3180000000000.0,
+      "p90": 11300000000000.0
      },
      "push_airy": {
-      "p10": 7210000000000.0,
-      "p50": 7760000000000.0,
-      "p90": 9300000000000.0
+      "p10": 7360000000000.0,
+      "p50": 8360000000000.0,
+      "p90": 9760000000000.0
      }
     }
    },
    "G3": {
     "craton": {
-     "pair_steps_closing": 85,
+     "pair_steps_closing": 1853,
      "stall_n_per_m": {
-      "p10": 150000000000.0,
-      "p50": 1120000000000.0,
-      "p90": 4690000000000.0
+      "p10": 692000000000.0,
+      "p50": 2530000000000.0,
+      "p90": 8630000000000.0
      },
-     "share_below_1e13": 0.9882,
-     "share_in_1e12_1e13": 0.5176,
-     "share_below_1e12": 0.4706,
+     "share_below_1e13": 0.9201,
+     "share_in_1e12_1e13": 0.7539,
+     "share_below_1e12": 0.1662,
      "D_growth_km3_per_myr": {
-      "p10": -1540000.0,
-      "p50": 347000.0,
-      "p90": 2380000.0
+      "p10": -1020000.0,
+      "p50": 1100000.0,
+      "p90": 4740000.0
      },
      "overlap_km2": {
-      "p10": 126000.0,
-      "p50": 381000.0,
-      "p90": 1550000.0
+      "p10": 92900.0,
+      "p50": 407000.0,
+      "p90": 1070000.0
      }
     },
     "cap": {
-     "pair_steps_closing": 1,
+     "pair_steps_closing": 56,
      "stall_n_per_m": {
-      "p10": 127000000000.0,
-      "p50": 127000000000.0,
-      "p90": 127000000000.0
+      "p10": 534000000000.0,
+      "p50": 1730000000000.0,
+      "p90": 5750000000000.0
+     },
+     "share_below_1e13": 0.9464,
+     "share_in_1e12_1e13": 0.5893,
+     "share_below_1e12": 0.3571,
+     "D_growth_km3_per_myr": {
+      "p10": -3020000.0,
+      "p50": -28200.0,
+      "p90": 2810000.0
+     },
+     "overlap_km2": {
+      "p10": 64200.0,
+      "p50": 131000.0,
+      "p90": 170000.0
+     }
+    }
+   },
+   "G4": {
+    "D_change_over_deform": -40811588860.3,
+    "D_growth": 9085251404.4,
+    "D_growth_over_shift": 45820115400.4,
+    "consumed_D": 22754057939.6,
+    "contact_ceiling_overflow_no_outlet_m3": 0.0,
+    "contact_collision_subducted_m3": 0.0,
+    "contact_no_outlet_subducted_m3": 0.0,
+    "contact_suture_donated_m3": 5789135942.6,
+    "craton_loss_near_contacts_excl_fusion": 592603471.4,
+    "in": 68946288782.7,
+    "merge_capped": 128258253.9,
+    "merge_hc_lost": 219900592.7,
+    "merge_material_clipped": 198875888.5,
+    "thicken": 8170543964.8,
+    "world_ceiling_overflow_no_outlet_m3": 0.0,
+    "world_collision_subducted_m3": 198885397.7,
+    "world_craton_sinks_m3": 801849346.3,
+    "world_merge_capped_m3": 128258253.9,
+    "world_no_outlet_subducted_m3": 0.0,
+    "world_suture_donated_m3": 7027537220.0,
+    "premerge_cap_hc_over_merge_hc": 0.0,
+    "premerge_craton_near_contacts_over_merge_capped": 4.6204,
+    "share_of_in_left_as_overlap": 0.1318,
+    "share_of_shift_growth_left_as_overlap": 0.1983,
+    "share_of_shift_growth_consumed": 0.4966
+   },
+   "checks": {
+    "pair_drag_mismatch_at_jams": {
+     "p10": 0.0465,
+     "p50": 0.23,
+     "p90": 0.749
+    },
+    "splits": 85,
+    "splits_of_jammed_plates": 24,
+    "splits_of_overlapping_plates": 56,
+    "merge_rel_rotation_deg_per_myr": {
+     "p10": 0.0802,
+     "p50": 0.146,
+     "p90": 0.399
+    },
+    "third_plate_hc_km3": {
+     "third_cont": 2050320775.7,
+     "third_ocean": 17120587.0
+    },
+    "third_plate_ocean_share": 0.0083,
+    "close_joint_vs_now_cm_abs_err": {
+     "p10": 0.0,
+     "p50": 0.002,
+     "p90": 0.017
+    }
+   },
+   "craton_ledger_km3": {
+    "formed_m3": 562878986.0,
+    "rifted_m3": 326219136.7,
+    "subducted_m3": 876985.7,
+    "merge_capped_m3": 128258253.9,
+    "collision_reworked_m3": 79151642.4,
+    "eroded_m3": 268610164.4,
+    "unattributed_m3": -525906.7,
+    "rifted_divergent_m3": 23117098.7,
+    "rifted_stretch_m3": 279587493.6,
+    "rifted_failed_m3": 23514544.4,
+    "split_cuts": 0.0,
+    "split_cuts_through_craton": 0.0,
+    "split_band_area_m2": 249887.7,
+    "split_band_craton_area_m2": 51588.4,
+    "failed_rift_cuts": 0.0,
+    "failed_rift_cuts_through_craton": 0.0,
+    "failed_rift_band_area_m2": 189800.2,
+    "failed_rift_band_craton_area_m2": 40227.6,
+    "initial_m3": 2763167297.7
+   },
+   "merge_events": [
+    {
+     "myr": 438.0,
+     "keep": 13,
+     "absorb": 68,
+     "rel_deg_per_myr": 0.0947,
+     "hc_lost_km3": 25055630.7,
+     "merge_capped_km3": 3358075.02,
+     "material_clipped_km3": 11092532.52,
+     "third_cont": {
+      "km2": 1542604.9,
+      "hc_km3": 116184391.0,
+      "age_myr_max": 32.0,
+      "age_myr_mean": 11.7
+     },
+     "on_keep": {
+      "km2": 416209.9,
+      "hc_km3": 34541197.8,
+      "age_myr_max": 30.0,
+      "age_myr_mean": 14.5
+     },
+     "pair": "13-68",
+     "close_cm": 0.451,
+     "jammed": true,
+     "jam_episode": {
+      "onset_myr": 412.0,
+      "jammed_myr": 26.0,
+      "ov_km2": [
+       0.0,
+       386737.9
+      ],
+      "D_km3": [
+       0.0,
+       64362697.15
+      ],
+      "craton_ov_km3": [
+       0.0,
+       63587156.7
+      ]
+     }
+    },
+    {
+     "myr": 500.0,
+     "keep": 14,
+     "absorb": 70,
+     "rel_deg_per_myr": 0.1167,
+     "hc_lost_km3": 62779010.6,
+     "merge_capped_km3": 37770345.75,
+     "material_clipped_km3": 61653775.65,
+     "third_cont": {
+      "km2": 497108.5,
+      "hc_km3": 40008548.6,
+      "age_myr_max": 56.0,
+      "age_myr_mean": 31.6
+     },
+     "on_keep": {
+      "km2": 349717.1,
+      "hc_km3": 28603679.9,
+      "age_myr_max": 52.0,
+      "age_myr_mean": 33.9
+     },
+     "pair": "14-70",
+     "close_cm": -0.031,
+     "jammed": true,
+     "jam_episode": {
+      "onset_myr": 472.0,
+      "jammed_myr": 28.0,
+      "ov_km2": [
+       404537.5,
+       455367.7
+      ],
+      "D_km3": [
+       64732603.78,
+       75385988.93
+      ],
+      "craton_ov_km3": [
+       28930525.7,
+       34643711.2
+      ]
+     }
+    },
+    {
+     "myr": 844.0,
+     "keep": 0,
+     "absorb": 101,
+     "rel_deg_per_myr": 0.419,
+     "hc_lost_km3": -0.0,
+     "merge_capped_km3": 76525187.49,
+     "material_clipped_km3": 19634920.57,
+     "on_keep": {
+      "km2": 140324.3,
+      "hc_km3": 11079236.4,
+      "age_myr_max": 64.0,
+      "age_myr_mean": 54.3
+     },
+     "third_cont": {
+      "km2": 3366859.2,
+      "hc_km3": 235734084.9,
+      "age_myr_max": 178.0,
+      "age_myr_mean": 52.6
+     },
+     "pair": "0-101",
+     "close_cm": -0.386,
+     "jammed": true,
+     "jam_episode": {
+      "onset_myr": 836.0,
+      "jammed_myr": 8.0,
+      "ov_km2": [
+       61249.1,
+       69890.2
+      ],
+      "D_km3": [
+       8852946.85,
+       10319995.04
+      ],
+      "craton_ov_km3": [
+       5352828.8,
+       6060413.9
+      ]
+     }
+    },
+    {
+     "myr": 872.0,
+     "keep": 0,
+     "absorb": 10,
+     "rel_deg_per_myr": 0.1357,
+     "hc_lost_km3": 132065951.4,
+     "merge_capped_km3": 10604645.67,
+     "material_clipped_km3": 102071447.51,
+     "on_keep": {
+      "km2": 766078.5,
+      "hc_km3": 56701842.2,
+      "age_myr_max": 26.0,
+      "age_myr_mean": 7.8
+     },
+     "third_cont": {
+      "km2": 1859837.9,
+      "hc_km3": 138063595.3,
+      "age_myr_max": 92.0,
+      "age_myr_mean": 25.9
+     },
+     "pair": "0-10",
+     "close_cm": 0.569,
+     "jammed": true,
+     "jam_episode": {
+      "onset_myr": 638.0,
+      "jammed_myr": 234.0,
+      "ov_km2": [
+       188815.1,
+       846180.3
+      ],
+      "D_km3": [
+       17718907.53,
+       119396390.75
+      ],
+      "craton_ov_km3": [
+       0.0,
+       48650300.0
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "seed": 748935664,
+   "step_myr": 2.0,
+   "commit": "de9d64721b16390209ae0b54df0fbf31d1697f16",
+   "myr": 998.0,
+   "start_craton_km3": 1638961854.2,
+   "end_craton_km3": 1480366510.6,
+   "merges": 24,
+   "merges_booking_merge_capped": 0,
+   "G1": {
+    "all": {
+     "net": {
+      "total_km3": 6401934132.1,
+      "craton": 0.7695,
+      "cap": 0.0012,
+      "deform": 0.2293,
+      "blocked": 0.7707
+     },
+     "gross": {
+      "total_km3": 13405893133.4,
+      "craton": 0.4534,
+      "cap": 0.0032,
+      "deform": 0.5434,
+      "blocked": 0.4566
+     },
+     "pre_merge_30myr": {
+      "total_km3": 1022101264.0,
+      "craton": 0.9132,
+      "cap": 0.0004,
+      "deform": 0.0864,
+      "blocked": 0.9136
+     }
+    },
+    "cc": {
+     "net": {
+      "total_km3": 5734856272.0,
+      "craton": 0.8371,
+      "cap": 0.0014,
+      "deform": 0.1615,
+      "blocked": 0.8385
+     },
+     "gross": {
+      "total_km3": 9997263489.0,
+      "craton": 0.5783,
+      "cap": 0.0043,
+      "deform": 0.4174,
+      "blocked": 0.5826
+     },
+     "pre_merge_30myr": {
+      "total_km3": 1023811810.7,
+      "craton": 0.9081,
+      "cap": 0.0004,
+      "deform": 0.0915,
+      "blocked": 0.9085
+     }
+    },
+    "depth_mean_cells": {
+     "p10": 0.92,
+     "p50": 1.01,
+     "p90": 1.55
+    },
+    "depth_max_cells": {
+     "p10": 1.0,
+     "p50": 1.27,
+     "p90": 3.89
+    },
+    "depth_mean_km": {
+     "p10": 115.0,
+     "p50": 126.0,
+     "p90": 193.0
+    },
+    "cell_km": 125.0
+   },
+   "G2": {
+    "pair_steps_closing": 4768,
+    "jammed_pair_steps": 523,
+    "stall_n_per_m": {
+     "p10": 704000000000.0,
+     "p50": 5390000000000.0,
+     "p90": 14600000000000.0
+    },
+    "h_star_km": {
+     "p10": 35.0,
+     "p50": 57.6,
+     "p90": 76.1
+    },
+    "share_h_star_below_cap": 0.8447,
+    "share_push_exceeds_stall": 0.142,
+    "close_now_cm": {
+     "p10": 0.112,
+     "p50": 0.835,
+     "p90": 2.14
+    },
+    "close_with_push_cm": {
+     "p10": 0.0,
+     "p50": 0.73,
+     "p90": 2.02
+    },
+    "share_stopped_by_push": 0.1401,
+    "band_hc_km": {
+     "p10": 18.3,
+     "p50": 36.9,
+     "p90": 59.1
+    },
+    "band_hm_km": {
+     "p10": 13.8,
+     "p50": 73.7,
+     "p90": 150.0
+    },
+    "share_band_clipped": 0.0028,
+    "slab_pull_share_of_stall": {
+     "p10": -0.796,
+     "p50": 0.685,
+     "p90": 1.05
+    },
+    "tibet_like": {
+     "n": 190,
+     "push": {
+      "p10": -3840000000000.0,
+      "p50": -754000000000.0,
+      "p90": 2130000000000.0
+     },
+     "stall": {
+      "p10": 210000000000.0,
+      "p50": 1260000000000.0,
+      "p90": 10700000000000.0
+     },
+     "push_airy": {
+      "p10": 7140000000000.0,
+      "p50": 7940000000000.0,
+      "p90": 9570000000000.0
+     }
+    }
+   },
+   "G3": {
+    "craton": {
+     "pair_steps_closing": 1255,
+     "stall_n_per_m": {
+      "p10": 320000000000.0,
+      "p50": 1740000000000.0,
+      "p90": 6710000000000.0
+     },
+     "share_below_1e13": 0.9331,
+     "share_in_1e12_1e13": 0.6279,
+     "share_below_1e12": 0.3052,
+     "D_growth_km3_per_myr": {
+      "p10": -1030000.0,
+      "p50": 1030000.0,
+      "p90": 4750000.0
+     },
+     "overlap_km2": {
+      "p10": 91100.0,
+      "p50": 461000.0,
+      "p90": 2100000.0
+     }
+    },
+    "cap": {
+     "pair_steps_closing": 4,
+     "stall_n_per_m": {
+      "p10": 181000000000.0,
+      "p50": 427000000000.0,
+      "p90": 730000000000.0
      },
      "share_below_1e13": 1.0,
      "share_in_1e12_1e13": 0.0,
      "share_below_1e12": 1.0,
      "D_growth_km3_per_myr": {
-      "p10": -658000.0,
-      "p50": -658000.0,
-      "p90": -658000.0
+      "p10": -2080000.0,
+      "p50": -414000.0,
+      "p90": 13300.0
      },
      "overlap_km2": {
-      "p10": 31700.0,
-      "p50": 31700.0,
-      "p90": 31700.0
+      "p10": 10100.0,
+      "p50": 26900.0,
+      "p90": 48800.0
      }
     }
    },
    "G4": {
-    "D_change_over_deform": -16528086779.7,
-    "D_growth": 3196211197.4,
-    "D_growth_over_shift": 16265621855.4,
-    "consumed_D": 8986855974.3,
+    "D_change_over_deform": -22777729490.3,
+    "D_growth": 6401934132.1,
+    "D_growth_over_shift": 26382408494.1,
+    "consumed_D": 12654165338.0,
     "contact_ceiling_overflow_no_outlet_m3": 0.0,
     "contact_collision_subducted_m3": 0.0,
     "contact_no_outlet_subducted_m3": 0.0,
-    "contact_suture_donated_m3": 2515001925.1,
-    "craton_loss_near_contacts_excl_fusion": 44513812.2,
-    "in": 36591025982.8,
+    "contact_suture_donated_m3": 3147860917.9,
+    "craton_loss_near_contacts_excl_fusion": 297738332.2,
+    "in": 43049424513.5,
     "merge_capped": 0.0,
     "merge_hc_lost": 0.0,
-    "merge_material_clipped": 23481304.7,
-    "thicken": 3659054360.2,
+    "merge_material_clipped": 20361669.1,
+    "thicken": 4820582970.5,
     "world_ceiling_overflow_no_outlet_m3": 0.0,
-    "world_collision_subducted_m3": 23481304.6,
-    "world_craton_sinks_m3": 42986594.8,
+    "world_collision_subducted_m3": 20361669.1,
+    "world_craton_sinks_m3": 346303261.0,
     "world_merge_capped_m3": 0.0,
     "world_no_outlet_subducted_m3": 0.0,
-    "world_suture_donated_m3": 4190184149.9,
+    "world_suture_donated_m3": 3802252241.7,
     "premerge_cap_hc_over_merge_hc": null,
     "premerge_craton_near_contacts_over_merge_capped": null,
-    "share_of_in_left_as_overlap": 0.0873,
-    "share_of_shift_growth_left_as_overlap": 0.1965,
-    "share_of_shift_growth_consumed": 0.5525
+    "share_of_in_left_as_overlap": 0.1487,
+    "share_of_shift_growth_left_as_overlap": 0.2427,
+    "share_of_shift_growth_consumed": 0.4796
    },
    "checks": {
     "pair_drag_mismatch_at_jams": {
-     "p10": 0.112,
-     "p50": 0.505,
-     "p90": 0.92
+     "p10": 0.0377,
+     "p50": 0.208,
+     "p90": 0.789
     },
-    "splits": 94,
-    "splits_of_jammed_plates": 7,
-    "splits_of_overlapping_plates": 15,
+    "splits": 106,
+    "splits_of_jammed_plates": 23,
+    "splits_of_overlapping_plates": 35,
     "merge_rel_rotation_deg_per_myr": {
-     "p10": 0.147,
-     "p50": 0.285,
-     "p90": 0.409
+     "p10": 0.0758,
+     "p50": 0.171,
+     "p90": 0.451
     },
     "third_plate_hc_km3": {
-     "third_cont": 187459783.5,
-     "third_ocean": 171161202.1
+     "third_cont": 833108863.9,
+     "third_ocean": 15018451.4
     },
-    "third_plate_ocean_share": 0.4773,
+    "third_plate_ocean_share": 0.0177,
     "close_joint_vs_now_cm_abs_err": {
      "p10": 0.0,
-     "p50": 0.001,
-     "p90": 0.025
+     "p50": 0.002,
+     "p90": 0.022
     }
    },
    "craton_ledger_km3": {
-    "formed_m3": 51263705.6,
-    "rifted_m3": 16927183.8,
-    "subducted_m3": 15486417.7,
-    "collision_reworked_m3": 801990.3,
-    "eroded_m3": 8983371.3,
-    "unattributed_m3": 1155211.8,
-    "rifted_divergent_m3": 1611725.1,
-    "rifted_stretch_m3": 15315458.7,
+    "formed_m3": 188048601.8,
+    "rifted_m3": 134890452.5,
+    "subducted_m3": 623538.1,
+    "collision_reworked_m3": 58343316.7,
+    "eroded_m3": 146076889.8,
+    "topology_removed_m3": 6678443.4,
+    "unattributed_m3": 31304.8,
+    "rifted_divergent_m3": 6717874.3,
+    "rifted_stretch_m3": 111864752.5,
+    "rifted_failed_m3": 16307825.7,
     "split_cuts": 0.0,
     "split_cuts_through_craton": 0.0,
-    "split_band_area_m2": 276483.5,
-    "split_band_craton_area_m2": 4872.3,
+    "split_band_area_m2": 337467.9,
+    "split_band_craton_area_m2": 50876.6,
     "failed_rift_cuts": 0.0,
-    "failed_rift_band_area_m2": 192726.4,
-    "initial_m3": 98974280.2
+    "failed_rift_cuts_through_craton": 0.0,
+    "failed_rift_band_area_m2": 244492.6,
+    "failed_rift_band_craton_area_m2": 31467.2,
+    "initial_m3": 1638961854.2
    },
    "merge_events": []
   },
   {
-   "seed": 326494039,
+   "seed": 580014012,
    "step_myr": 2.0,
-   "commit": "840c5ad3e996cf3ecc50f928eb967ad4a99fc5a0",
+   "commit": "de9d64721b16390209ae0b54df0fbf31d1697f16",
    "myr": 998.0,
-   "start_craton_km3": 2763167297.7,
-   "end_craton_km3": 1382174380.9,
-   "merges": 36,
-   "merges_booking_merge_capped": 17,
+   "start_craton_km3": 3268363049.9,
+   "end_craton_km3": 3244602100.0,
+   "merges": 18,
+   "merges_booking_merge_capped": 3,
    "G1": {
     "all": {
      "net": {
-      "total_km3": 19211205353.0,
-      "craton": 0.825,
-      "cap": 0.0085,
-      "deform": 0.1665,
-      "blocked": 0.8335
+      "total_km3": 7751765323.5,
+      "craton": 0.7337,
+      "cap": 0.0027,
+      "deform": 0.2636,
+      "blocked": 0.7364
      },
      "gross": {
-      "total_km3": 39190297056.5,
-      "craton": 0.6098,
-      "cap": 0.0565,
-      "deform": 0.3337,
-      "blocked": 0.6663
+      "total_km3": 25290476001.1,
+      "craton": 0.3409,
+      "cap": 0.0062,
+      "deform": 0.6529,
+      "blocked": 0.3471
      },
      "pre_merge_30myr": {
-      "total_km3": 2881500360.1,
-      "craton": 0.8949,
-      "cap": 0.0307,
-      "deform": 0.0744,
-      "blocked": 0.9256
+      "total_km3": 488266376.3,
+      "craton": 1.0205,
+      "cap": -0.0161,
+      "deform": -0.0044,
+      "blocked": 1.0044
      }
     },
     "cc": {
      "net": {
-      "total_km3": 17079385299.2,
-      "craton": 0.8813,
-      "cap": 0.0076,
-      "deform": 0.111,
-      "blocked": 0.889
+      "total_km3": 6599611347.1,
+      "craton": 0.8557,
+      "cap": 0.0031,
+      "deform": 0.1413,
+      "blocked": 0.8587
      },
      "gross": {
-      "total_km3": 29670646155.4,
-      "craton": 0.7199,
-      "cap": 0.0591,
-      "deform": 0.221,
-      "blocked": 0.779
+      "total_km3": 18087096227.5,
+      "craton": 0.4492,
+      "cap": 0.0083,
+      "deform": 0.5426,
+      "blocked": 0.4574
      },
      "pre_merge_30myr": {
-      "total_km3": 2850850617.1,
-      "craton": 0.8923,
-      "cap": 0.0348,
-      "deform": 0.0729,
-      "blocked": 0.9271
+      "total_km3": 488266376.3,
+      "craton": 1.0205,
+      "cap": -0.0161,
+      "deform": -0.0044,
+      "blocked": 1.0044
      }
     },
     "depth_mean_cells": {
-     "p10": 0.954,
-     "p50": 1.06,
-     "p90": 2.83
+     "p10": 0.923,
+     "p50": 1.01,
+     "p90": 1.3
     },
     "depth_max_cells": {
-     "p10": 1.04,
-     "p50": 1.59,
-     "p90": 8.22
+     "p10": 1.0,
+     "p50": 1.35,
+     "p90": 3.21
     },
     "depth_mean_km": {
-     "p10": 119.0,
-     "p50": 133.0,
-     "p90": 353.0
+     "p10": 115.0,
+     "p50": 126.0,
+     "p90": 163.0
     },
     "cell_km": 125.0
    },
    "G2": {
-    "pair_steps_closing": 6357,
-    "jammed_pair_steps": 1316,
+    "pair_steps_closing": 12969,
+    "jammed_pair_steps": 1391,
     "stall_n_per_m": {
-     "p10": 1130000000000.0,
-     "p50": 6900000000000.0,
-     "p90": 19100000000000.0
+     "p10": 549000000000.0,
+     "p50": 3780000000000.0,
+     "p90": 13500000000000.0
     },
     "h_star_km": {
      "p10": 35.0,
-     "p50": 57.1,
-     "p90": 77.3
+     "p50": 46.7,
+     "p90": 72.4
     },
-    "share_h_star_below_cap": 0.7446,
-    "share_push_exceeds_stall": 0.2582,
+    "share_h_star_below_cap": 0.8651,
+    "share_push_exceeds_stall": 0.2043,
     "close_now_cm": {
-     "p10": 0.385,
-     "p50": 1.54,
-     "p90": 3.32
+     "p10": 0.111,
+     "p50": 0.687,
+     "p90": 2.03
     },
     "close_with_push_cm": {
      "p10": 0.0,
-     "p50": 0.897,
-     "p90": 3.38
+     "p50": 0.541,
+     "p90": 2.16
     },
-    "share_stopped_by_push": 0.2591,
+    "share_stopped_by_push": 0.204,
     "band_hc_km": {
-     "p10": 22.6,
-     "p50": 50.4,
-     "p90": 72.0
+     "p10": 13.9,
+     "p50": 29.7,
+     "p90": 56.4
     },
     "band_hm_km": {
-     "p10": 14.4,
-     "p50": 62.2,
-     "p90": 173.0
+     "p10": 17.9,
+     "p50": 62.3,
+     "p90": 129.0
     },
-    "share_band_clipped": 0.0839,
+    "share_band_clipped": 0.0071,
     "slab_pull_share_of_stall": {
-     "p10": 0.0,
-     "p50": 0.847,
-     "p90": 1.1
+     "p10": -0.687,
+     "p50": 0.742,
+     "p90": 1.06
     },
     "tibet_like": {
-     "n": 826,
+     "n": 369,
      "push": {
-      "p10": -5180000000000.0,
-      "p50": 3470000000000.0,
-      "p90": 11400000000000.0
+      "p10": -2260000000000.0,
+      "p50": 278000000000.0,
+      "p90": 5460000000000.0
      },
      "stall": {
-      "p10": 1270000000000.0,
-      "p50": 5750000000000.0,
-      "p90": 19200000000000.0
+      "p10": 916000000000.0,
+      "p50": 3100000000000.0,
+      "p90": 19500000000000.0
      },
      "push_airy": {
-      "p10": 7380000000000.0,
-      "p50": 8470000000000.0,
-      "p90": 9800000000000.0
+      "p10": 7190000000000.0,
+      "p50": 8080000000000.0,
+      "p90": 9490000000000.0
      }
     }
    },
    "G3": {
     "craton": {
-     "pair_steps_closing": 3149,
+     "pair_steps_closing": 1826,
      "stall_n_per_m": {
-      "p10": 829000000000.0,
-      "p50": 3310000000000.0,
-      "p90": 16500000000000.0
+      "p10": 339000000000.0,
+      "p50": 1400000000000.0,
+      "p90": 6580000000000.0
      },
-     "share_below_1e13": 0.8136,
-     "share_in_1e12_1e13": 0.6885,
-     "share_below_1e12": 0.1251,
+     "share_below_1e13": 0.9348,
+     "share_in_1e12_1e13": 0.5936,
+     "share_below_1e12": 0.3412,
      "D_growth_km3_per_myr": {
-      "p10": -2370000.0,
-      "p50": 1170000.0,
-      "p90": 7110000.0
+      "p10": -969000.0,
+      "p50": 894000.0,
+      "p90": 3950000.0
      },
      "overlap_km2": {
-      "p10": 67400.0,
-      "p50": 569000.0,
-      "p90": 1550000.0
+      "p10": 104000.0,
+      "p50": 480000.0,
+      "p90": 1720000.0
      }
     },
     "cap": {
-     "pair_steps_closing": 101,
+     "pair_steps_closing": 10,
      "stall_n_per_m": {
-      "p10": 515000000000.0,
-      "p50": 4360000000000.0,
-      "p90": 27700000000000.0
+      "p10": 209000000000.0,
+      "p50": 8780000000000.0,
+      "p90": 88200000000000.0
      },
-     "share_below_1e13": 0.6238,
-     "share_in_1e12_1e13": 0.4752,
-     "share_below_1e12": 0.1485,
+     "share_below_1e13": 0.5,
+     "share_in_1e12_1e13": 0.3,
+     "share_below_1e12": 0.2,
      "D_growth_km3_per_myr": {
-      "p10": -6170000.0,
-      "p50": -49900.0,
-      "p90": 7500000.0
+      "p10": -1990000.0,
+      "p50": -5830.0,
+      "p90": 1150000.0
      },
      "overlap_km2": {
-      "p10": 34300.0,
-      "p50": 144000.0,
-      "p90": 446000.0
+      "p10": 14300.0,
+      "p50": 31000.0,
+      "p90": 54000.0
      }
     }
    },
    "G4": {
-    "D_change_over_deform": -53591195170.7,
-    "D_growth": 19211205353.0,
-    "D_growth_over_shift": 62194313214.4,
-    "consumed_D": 29471407102.7,
+    "D_change_over_deform": -53180758682.4,
+    "D_growth": 7751765323.5,
+    "D_growth_over_shift": 56483452877.9,
+    "consumed_D": 29567942557.1,
     "contact_ceiling_overflow_no_outlet_m3": 0.0,
-    "contact_collision_subducted_m3": 20319804.8,
-    "contact_no_outlet_subducted_m3": 93316788.3,
-    "contact_suture_donated_m3": 9309224287.4,
-    "craton_loss_near_contacts_excl_fusion": 796268548.3,
-    "in": 106726035355.6,
-    "merge_capped": 781690635.7,
-    "merge_hc_lost": 2241734150.2,
-    "merge_material_clipped": 1807660720.6,
-    "thicken": 10489142125.4,
+    "contact_collision_subducted_m3": 0.0,
+    "contact_no_outlet_subducted_m3": 0.0,
+    "contact_suture_donated_m3": 8191235060.4,
+    "craton_loss_near_contacts_excl_fusion": 590533054.9,
+    "in": 88348214307.3,
+    "merge_capped": 241105392.9,
+    "merge_hc_lost": 216520712.4,
+    "merge_material_clipped": 198086826.7,
+    "thicken": 11873822633.3,
     "world_ceiling_overflow_no_outlet_m3": 0.0,
-    "world_collision_subducted_m3": 1827983970.8,
-    "world_craton_sinks_m3": 1637184168.3,
-    "world_merge_capped_m3": 781690635.7,
-    "world_no_outlet_subducted_m3": 93316788.4,
-    "world_suture_donated_m3": 11909347624.1,
-    "premerge_cap_hc_over_merge_hc": 0.0416,
-    "premerge_craton_near_contacts_over_merge_capped": 1.0186,
-    "share_of_in_left_as_overlap": 0.18,
-    "share_of_shift_growth_left_as_overlap": 0.3089,
-    "share_of_shift_growth_consumed": 0.4739
+    "world_collision_subducted_m3": 198138437.5,
+    "world_craton_sinks_m3": 918534129.4,
+    "world_merge_capped_m3": 241105392.9,
+    "world_no_outlet_subducted_m3": 0.0,
+    "world_suture_donated_m3": 10316322923.6,
+    "premerge_cap_hc_over_merge_hc": 0.0,
+    "premerge_craton_near_contacts_over_merge_capped": 2.4493,
+    "share_of_in_left_as_overlap": 0.0877,
+    "share_of_shift_growth_left_as_overlap": 0.1372,
+    "share_of_shift_growth_consumed": 0.5235
    },
    "checks": {
     "pair_drag_mismatch_at_jams": {
-     "p10": 0.0796,
-     "p50": 0.394,
-     "p90": 0.836
+     "p10": 0.0535,
+     "p50": 0.28,
+     "p90": 0.84
     },
-    "splits": 102,
-    "splits_of_jammed_plates": 35,
-    "splits_of_overlapping_plates": 56,
+    "splits": 70,
+    "splits_of_jammed_plates": 22,
+    "splits_of_overlapping_plates": 54,
     "merge_rel_rotation_deg_per_myr": {
-     "p10": 0.106,
-     "p50": 0.215,
-     "p90": 0.4
+     "p10": 0.0781,
+     "p50": 0.135,
+     "p90": 0.537
     },
     "third_plate_hc_km3": {
-     "third_cont": 4301398565.9,
-     "third_ocean": 113589225.3
+     "third_cont": 1529463105.3,
+     "third_ocean": 13737772.5
     },
-    "third_plate_ocean_share": 0.0257,
+    "third_plate_ocean_share": 0.0089,
     "close_joint_vs_now_cm_abs_err": {
      "p10": 0.0,
-     "p50": 0.001,
-     "p90": 0.015
+     "p50": 0.002,
+     "p90": 0.02
     }
    },
    "craton_ledger_km3": {
-    "formed_m3": 256681676.4,
-    "rifted_m3": 381435450.0,
-    "subducted_m3": 145001007.0,
-    "merge_capped_m3": 781690635.7,
-    "collision_reworked_m3": 51596881.3,
-    "eroded_m3": 278051024.6,
-    "unattributed_m3": -100405.3,
-    "rifted_divergent_m3": 21628458.3,
-    "rifted_stretch_m3": 330676349.0,
-    "rifted_failed_m3": 29130642.7,
+    "formed_m3": 895624302.7,
+    "rifted_m3": 259527485.7,
+    "subducted_m3": 1549763.6,
+    "merge_capped_m3": 241105392.9,
+    "collision_reworked_m3": 102734409.7,
+    "eroded_m3": 313766303.8,
+    "unattributed_m3": 701897.1,
+    "rifted_divergent_m3": 13713087.7,
+    "rifted_stretch_m3": 223333202.8,
+    "rifted_failed_m3": 22481195.2,
     "split_cuts": 0.0,
     "split_cuts_through_craton": 0.0,
-    "split_band_area_m2": 318656.2,
-    "split_band_craton_area_m2": 62232.2,
+    "split_band_area_m2": 224437.6,
+    "split_band_craton_area_m2": 49541.5,
     "failed_rift_cuts": 0.0,
     "failed_rift_cuts_through_craton": 0.0,
-    "failed_rift_band_area_m2": 200376.2,
-    "failed_rift_band_craton_area_m2": 52719.2,
-    "initial_m3": 2763167297.7
+    "failed_rift_band_area_m2": 164242.5,
+    "failed_rift_band_craton_area_m2": 34142.4,
+    "initial_m3": 3268363049.9
    },
    "merge_events": [
     {
-     "myr": 144.0,
-     "keep": 4,
-     "absorb": 29,
-     "rel_deg_per_myr": 0.2535,
-     "hc_lost_km3": 128275319.5,
-     "merge_capped_km3": 29936382.75,
-     "material_clipped_km3": 128900951.41,
-     "on_keep": {
-      "km2": 2002531.8,
-      "hc_km3": 158816157.0,
-      "age_myr_max": 38.0,
-      "age_myr_mean": 22.1
-     },
+     "myr": 454.0,
+     "keep": 14,
+     "absorb": 17,
+     "rel_deg_per_myr": 0.192,
+     "hc_lost_km3": 216520712.4,
+     "merge_capped_km3": 208781871.98,
+     "material_clipped_km3": 197984991.48,
      "third_ocean": {
-      "km2": 63525.4,
-      "hc_km3": 658371.8,
-      "age_myr_max": 16.0,
-      "age_myr_mean": 8.1
-     },
-     "third_cont": {
-      "km2": 1331386.6,
-      "hc_km3": 87718673.1,
-      "age_myr_max": 74.0,
-      "age_myr_mean": 17.0
-     },
-     "pair": "4-29",
-     "close_cm": 0.412,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 112.0,
-      "jammed_myr": 32.0,
-      "ov_km2": [
-       1050583.9,
-       2140768.6
-      ],
-      "D_km3": [
-       134127110.42,
-       346664758.84
-      ],
-      "craton_ov_km3": [
-       35763813.8,
-       118194924.7
-      ]
-     }
-    },
-    {
-     "myr": 256.0,
-     "keep": 10,
-     "absorb": 35,
-     "rel_deg_per_myr": 0.1418,
-     "hc_lost_km3": 265840178.7,
-     "merge_capped_km3": 38297815.83,
-     "material_clipped_km3": 222516045.29,
-     "third_cont": {
-      "km2": 2562740.1,
-      "hc_km3": 205948276.6,
-      "age_myr_max": 92.0,
-      "age_myr_mean": 30.3
-     },
-     "third_ocean": {
-      "km2": 130173.6,
-      "hc_km3": 5523578.8,
-      "age_myr_max": 2.0,
-      "age_myr_mean": 0.2
-     },
-     "on_keep": {
-      "km2": 1502672.0,
-      "hc_km3": 118664517.6,
-      "age_myr_max": 40.0,
-      "age_myr_mean": 13.0
-     },
-     "pair": "10-35",
-     "close_cm": 0.365,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 154.0,
-      "jammed_myr": 102.0,
-      "ov_km2": [
-       106027.4,
-       1574947.5
-      ],
-      "D_km3": [
-       16473720.77,
-       254795162.15
-      ],
-      "craton_ov_km3": [
-       7457257.6,
-       54053400.3
-      ]
-     }
-    },
-    {
-     "myr": 294.0,
-     "keep": 4,
-     "absorb": 39,
-     "rel_deg_per_myr": 0.3558,
-     "hc_lost_km3": 137298967.1,
-     "merge_capped_km3": 20981757.81,
-     "material_clipped_km3": 109521210.32,
-     "third_ocean": {
-      "km2": 93238.3,
-      "hc_km3": 3702122.3,
-      "age_myr_max": 14.0,
-      "age_myr_mean": 4.9
-     },
-     "third_cont": {
-      "km2": 1752285.9,
-      "hc_km3": 146675686.2,
-      "age_myr_max": 60.0,
-      "age_myr_mean": 20.2
-     },
-     "on_keep": {
-      "km2": 655254.4,
-      "hc_km3": 51350844.5,
-      "age_myr_max": 68.0,
-      "age_myr_mean": 17.6
-     },
-     "pair": "4-39",
-     "close_cm": -0.042,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 216.0,
-      "jammed_myr": 78.0,
-      "ov_km2": [
-       71139.5,
-       533506.8
-      ],
-      "D_km3": [
-       7765597.05,
-       85967371.44
-      ],
-      "craton_ov_km3": [
-       0.0,
-       29765785.8
-      ]
-     }
-    },
-    {
-     "myr": 298.0,
-     "keep": 3,
-     "absorb": 10,
-     "rel_deg_per_myr": 0.1471,
-     "hc_lost_km3": 126672319.3,
-     "merge_capped_km3": 20839470.79,
-     "material_clipped_km3": 100969910.97,
-     "on_keep": {
-      "km2": 1423057.5,
-      "hc_km3": 111541758.4,
-      "age_myr_max": 48.0,
-      "age_myr_mean": 24.1
-     },
-     "third_cont": {
-      "km2": 2945808.3,
-      "hc_km3": 220961545.3,
-      "age_myr_max": 64.0,
-      "age_myr_mean": 20.1
-     },
-     "third_ocean": {
-      "km2": 136040.7,
-      "hc_km3": 3302568.0,
-      "age_myr_max": 28.0,
-      "age_myr_mean": 6.8
-     },
-     "pair": "3-10",
-     "close_cm": 0.21,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 250.0,
-      "jammed_myr": 48.0,
-      "ov_km2": [
-       192802.1,
-       1245120.5
-      ],
-      "D_km3": [
-       22510382.93,
-       201765414.55
-      ],
-      "craton_ov_km3": [
-       0.0,
-       13677144.0
-      ]
-     }
-    },
-    {
-     "myr": 326.0,
-     "keep": 3,
-     "absorb": 55,
-     "rel_deg_per_myr": 0.1097,
-     "hc_lost_km3": 152698679.7,
-     "merge_capped_km3": 136950122.19,
-     "material_clipped_km3": 158222584.02,
-     "on_keep": {
-      "km2": 635214.0,
-      "hc_km3": 53204455.5,
-      "age_myr_max": 24.0,
-      "age_myr_mean": 16.0
-     },
-     "third_ocean": {
-      "km2": 104672.3,
-      "hc_km3": 5174936.6,
-      "age_myr_max": 20.0,
-      "age_myr_mean": 5.0
-     },
-     "third_cont": {
-      "km2": 2132736.3,
-      "hc_km3": 168905715.2,
-      "age_myr_max": 24.0,
-      "age_myr_mean": 12.1
-     },
-     "pair": "3-55",
-     "close_cm": -0.563,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 302.0,
-      "jammed_myr": 24.0,
-      "ov_km2": [
-       231006.4,
-       532815.0
-      ],
-      "D_km3": [
-       38279655.5,
-       89264469.71
-      ],
-      "craton_ov_km3": [
-       38112956.9,
-       105042282.7
-      ]
-     }
-    },
-    {
-     "myr": 348.0,
-     "keep": 60,
-     "absorb": 64,
-     "rel_deg_per_myr": 0.4072,
-     "hc_lost_km3": 107472636.5,
-     "merge_capped_km3": 27957392.09,
-     "material_clipped_km3": 64616871.19,
-     "third_ocean": {
-      "km2": 228570.4,
-      "hc_km3": 12482417.2,
-      "age_myr_max": 32.0,
-      "age_myr_mean": 9.9
-     },
-     "third_cont": {
-      "km2": 4644021.5,
-      "hc_km3": 376060292.7,
-      "age_myr_max": 90.0,
-      "age_myr_mean": 21.8
-     },
-     "on_keep": {
-      "km2": 562689.6,
-      "hc_km3": 46371590.3,
-      "age_myr_max": 46.0,
-      "age_myr_mean": 17.2
-     },
-     "pair": "60-64",
-     "close_cm": 0.254,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 330.0,
-      "jammed_myr": 18.0,
-      "ov_km2": [
-       561040.0,
-       887696.7
-      ],
-      "D_km3": [
-       85928936.52,
-       135320753.22
-      ],
-      "craton_ov_km3": [
-       55812919.0,
-       87950474.2
-      ]
-     }
-    },
-    {
-     "myr": 394.0,
-     "keep": 53,
-     "absorb": 60,
-     "rel_deg_per_myr": 0.1453,
-     "hc_lost_km3": 222953538.0,
-     "merge_capped_km3": 64858609.9,
-     "material_clipped_km3": 188984375.94,
-     "third_cont": {
-      "km2": 4077053.5,
-      "hc_km3": 308960142.9,
-      "age_myr_max": 134.0,
-      "age_myr_mean": 37.3
-     },
-     "third_ocean": {
-      "km2": 190537.1,
-      "hc_km3": 12428865.5,
-      "age_myr_max": 44.0,
-      "age_myr_mean": 13.4
-     },
-     "on_keep": {
-      "km2": 916777.4,
-      "hc_km3": 75364699.6,
-      "age_myr_max": 44.0,
-      "age_myr_mean": 20.2
-     },
-     "pair": "53-60",
-     "close_cm": 0.139,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 350.0,
-      "jammed_myr": 44.0,
-      "ov_km2": [
-       89394.5,
-       1214685.2
-      ],
-      "D_km3": [
-       9993250.29,
-       193451810.22
-      ],
-      "craton_ov_km3": [
-       0.0,
-       143830450.8
-      ]
-     }
-    },
-    {
-     "myr": 440.0,
-     "keep": 53,
-     "absorb": 74,
-     "rel_deg_per_myr": 0.1219,
-     "hc_lost_km3": 169537.2,
-     "merge_capped_km3": 37509.66,
-     "material_clipped_km3": 1536.3,
-     "third_cont": {
-      "km2": 1282305.1,
-      "hc_km3": 94309910.1,
-      "age_myr_max": 36.0,
-      "age_myr_mean": 15.1
-     },
-     "on_keep": {
-      "km2": 463034.4,
-      "hc_km3": 37980864.9,
-      "age_myr_max": 40.0,
-      "age_myr_mean": 21.3
-     },
-     "pair": "53-74",
-     "close_cm": 0.191,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 408.0,
-      "jammed_myr": 32.0,
-      "ov_km2": [
-       71277.8,
-       334869.5
-      ],
-      "D_km3": [
-       11249424.26,
-       55235605.95
-      ],
-      "craton_ov_km3": [
-       9771798.6,
-       47017594.4
-      ]
-     }
-    },
-    {
-     "myr": 484.0,
-     "keep": 53,
-     "absorb": 72,
-     "rel_deg_per_myr": 0.2872,
-     "hc_lost_km3": 92838548.1,
-     "merge_capped_km3": 54309103.29,
-     "material_clipped_km3": 81997249.52,
-     "third_ocean": {
-      "km2": 57903.1,
-      "hc_km3": 929083.5,
+      "km2": 15250.5,
+      "hc_km3": 957207.5,
       "age_myr_max": 0.0,
       "age_myr_mean": 0.0
      },
      "third_cont": {
-      "km2": 3192057.0,
-      "hc_km3": 224408134.2,
-      "age_myr_max": 168.0,
-      "age_myr_mean": 38.5
+      "km2": 3425788.8,
+      "hc_km3": 249075205.5,
+      "age_myr_max": 394.0,
+      "age_myr_mean": 70.6
      },
      "on_keep": {
-      "km2": 1286717.0,
-      "hc_km3": 102026169.9,
-      "age_myr_max": 84.0,
-      "age_myr_mean": 41.0
-     },
-     "pair": "53-72",
-     "close_cm": -0.007,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 404.0,
-      "jammed_myr": 80.0,
-      "ov_km2": [
-       506546.8,
-       923079.4
-      ],
-      "D_km3": [
-       83544845.08,
-       146537965.27
-      ],
-      "craton_ov_km3": [
-       76762646.7,
-       106432906.2
-      ]
-     }
-    },
-    {
-     "myr": 528.0,
-     "keep": 53,
-     "absorb": 85,
-     "rel_deg_per_myr": 0.261,
-     "hc_lost_km3": 428570740.7,
-     "merge_capped_km3": 215928250.62,
-     "material_clipped_km3": 332886762.7,
-     "third_ocean": {
-      "km2": 36205.5,
-      "hc_km3": 1679899.2,
-      "age_myr_max": 0.0,
-      "age_myr_mean": 0.0
-     },
-     "third_cont": {
-      "km2": 4800454.8,
-      "hc_km3": 385989341.0,
-      "age_myr_max": 230.0,
-      "age_myr_mean": 62.8
-     },
-     "on_keep": {
-      "km2": 796911.7,
-      "hc_km3": 65927290.9,
-      "age_myr_max": 128.0,
-      "age_myr_mean": 54.9
-     },
-     "pair": "53-85",
-     "close_cm": 0.065,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 464.0,
-      "jammed_myr": 64.0,
-      "ov_km2": [
-       396088.4,
-       1075453.7
-      ],
-      "D_km3": [
-       62657715.81,
-       175878646.95
-      ],
-      "craton_ov_km3": [
-       78411105.7,
-       164848988.4
-      ]
-     }
-    },
-    {
-     "myr": 584.0,
-     "keep": 3,
-     "absorb": 91,
-     "rel_deg_per_myr": 0.077,
-     "hc_lost_km3": 4481361.5,
-     "merge_capped_km3": 3170733.67,
-     "material_clipped_km3": 4067447.61,
-     "on_keep": {
-      "km2": 661964.5,
-      "hc_km3": 48273767.7,
-      "age_myr_max": 212.0,
-      "age_myr_mean": 86.7
-     },
-     "third_cont": {
-      "km2": 1329118.5,
-      "hc_km3": 88754515.0,
+      "km2": 552145.5,
+      "hc_km3": 44089331.5,
       "age_myr_max": 76.0,
-      "age_myr_mean": 18.2
+      "age_myr_mean": 30.2
      },
-     "third_ocean": {
-      "km2": 65257.5,
-      "hc_km3": 2278385.0,
-      "age_myr_max": 66.0,
-      "age_myr_mean": 27.6
-     },
-     "pair": "3-91",
-     "close_cm": 0.136,
+     "pair": "14-17",
+     "close_cm": 0.213,
      "jammed": true,
      "jam_episode": {
-      "onset_myr": 534.0,
+      "onset_myr": 368.0,
+      "jammed_myr": 86.0,
+      "ov_km2": [
+       123349.1,
+       547731.9
+      ],
+      "D_km3": [
+       16531552.35,
+       89357627.87
+      ],
+      "craton_ov_km3": [
+       0.0,
+       34471962.7
+      ]
+     }
+    },
+    {
+     "myr": 662.0,
+     "keep": 3,
+     "absorb": 57,
+     "rel_deg_per_myr": 0.1388,
+     "hc_lost_km3": -0.0,
+     "merge_capped_km3": 11530571.44,
+     "material_clipped_km3": 0.0,
+     "on_keep": {
+      "km2": 896423.3,
+      "hc_km3": 73016086.4,
+      "age_myr_max": 66.0,
+      "age_myr_mean": 37.4
+     },
+     "third_cont": {
+      "km2": 1236987.4,
+      "hc_km3": 94246117.9,
+      "age_myr_max": 150.0,
+      "age_myr_mean": 24.8
+     },
+     "third_ocean": {
+      "km2": 14591.5,
+      "hc_km3": 1221720.6,
+      "age_myr_max": 28.0,
+      "age_myr_mean": 28.0
+     },
+     "pair": "3-57",
+     "close_cm": 0.044,
+     "jammed": true,
+     "jam_episode": {
+      "onset_myr": 606.0,
+      "jammed_myr": 56.0,
+      "ov_km2": [
+       0.0,
+       844884.6
+      ],
+      "D_km3": [
+       0.0,
+       137676523.74
+      ],
+      "craton_ov_km3": [
+       0.0,
+       95209076.2
+      ]
+     }
+    },
+    {
+     "myr": 748.0,
+     "keep": 8,
+     "absorb": 60,
+     "rel_deg_per_myr": 0.2677,
+     "hc_lost_km3": 0.0,
+     "merge_capped_km3": 20792949.48,
+     "material_clipped_km3": 0.0,
+     "third_cont": {
+      "km2": 1487523.5,
+      "hc_km3": 102140673.6,
+      "age_myr_max": 76.0,
+      "age_myr_mean": 37.5
+     },
+     "third_ocean": {
+      "km2": 13963.5,
+      "hc_km3": 934190.3,
+      "age_myr_max": 76.0,
+      "age_myr_mean": 76.0
+     },
+     "on_keep": {
+      "km2": 1327328.8,
+      "hc_km3": 101236946.8,
+      "age_myr_max": 152.0,
+      "age_myr_mean": 40.4
+     },
+     "pair": "8-60",
+     "close_cm": 0.164,
+     "jammed": true,
+     "jam_episode": {
+      "onset_myr": 666.0,
+      "jammed_myr": 82.0,
+      "ov_km2": [
+       89325.8,
+       1348844.7
+      ],
+      "D_km3": [
+       10933442.95,
+       186406213.38
+      ],
+      "craton_ov_km3": [
+       3811484.2,
+       103933948.1
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "seed": 111065103,
+   "step_myr": 2.0,
+   "commit": "de9d64721b16390209ae0b54df0fbf31d1697f16",
+   "myr": 998.0,
+   "start_craton_km3": 3232121613.4,
+   "end_craton_km3": 3827573034.7,
+   "merges": 26,
+   "merges_booking_merge_capped": 5,
+   "G1": {
+    "all": {
+     "net": {
+      "total_km3": 7127283589.1,
+      "craton": 0.6733,
+      "cap": -0.008,
+      "deform": 0.3346,
+      "blocked": 0.6654
+     },
+     "gross": {
+      "total_km3": 25754250174.8,
+      "craton": 0.2777,
+      "cap": 0.0107,
+      "deform": 0.7116,
+      "blocked": 0.2884
+     },
+     "pre_merge_30myr": {
+      "total_km3": 1210187779.4,
+      "craton": 0.9138,
+      "cap": -0.0019,
+      "deform": 0.0881,
+      "blocked": 0.9119
+     }
+    },
+    "cc": {
+     "net": {
+      "total_km3": 5580822710.1,
+      "craton": 0.8345,
+      "cap": -0.0091,
+      "deform": 0.1745,
+      "blocked": 0.8255
+     },
+     "gross": {
+      "total_km3": 14648144037.1,
+      "craton": 0.4561,
+      "cap": 0.0173,
+      "deform": 0.5265,
+      "blocked": 0.4735
+     },
+     "pre_merge_30myr": {
+      "total_km3": 1147015919.0,
+      "craton": 0.924,
+      "cap": -0.002,
+      "deform": 0.078,
+      "blocked": 0.922
+     }
+    },
+    "depth_mean_cells": {
+     "p10": 0.938,
+     "p50": 1.03,
+     "p90": 1.22
+    },
+    "depth_max_cells": {
+     "p10": 1.02,
+     "p50": 1.16,
+     "p90": 2.67
+    },
+    "depth_mean_km": {
+     "p10": 117.0,
+     "p50": 128.0,
+     "p90": 152.0
+    },
+    "cell_km": 125.0
+   },
+   "G2": {
+    "pair_steps_closing": 15181,
+    "jammed_pair_steps": 1356,
+    "stall_n_per_m": {
+     "p10": 851000000000.0,
+     "p50": 5340000000000.0,
+     "p90": 13600000000000.0
+    },
+    "h_star_km": {
+     "p10": 35.0,
+     "p50": 49.6,
+     "p90": 71.6
+    },
+    "share_h_star_below_cap": 0.9018,
+    "share_push_exceeds_stall": 0.222,
+    "close_now_cm": {
+     "p10": 0.169,
+     "p50": 1.03,
+     "p90": 2.38
+    },
+    "close_with_push_cm": {
+     "p10": 0.0,
+     "p50": 0.691,
+     "p90": 2.08
+    },
+    "share_stopped_by_push": 0.2218,
+    "band_hc_km": {
+     "p10": 13.8,
+     "p50": 27.1,
+     "p90": 55.3
+    },
+    "band_hm_km": {
+     "p10": 10.2,
+     "p50": 35.9,
+     "p90": 105.0
+    },
+    "share_band_clipped": 0.0111,
+    "slab_pull_share_of_stall": {
+     "p10": -0.368,
+     "p50": 0.868,
+     "p90": 1.13
+    },
+    "tibet_like": {
+     "n": 564,
+     "push": {
+      "p10": -189000000000.0,
+      "p50": 3200000000000.0,
+      "p90": 6010000000000.0
+     },
+     "stall": {
+      "p10": 331000000000.0,
+      "p50": 1810000000000.0,
+      "p90": 10900000000000.0
+     },
+     "push_airy": {
+      "p10": 7190000000000.0,
+      "p50": 7960000000000.0,
+      "p90": 9140000000000.0
+     }
+    }
+   },
+   "G3": {
+    "craton": {
+     "pair_steps_closing": 1338,
+     "stall_n_per_m": {
+      "p10": 470000000000.0,
+      "p50": 2870000000000.0,
+      "p90": 8000000000000.0
+     },
+     "share_below_1e13": 0.9305,
+     "share_in_1e12_1e13": 0.7317,
+     "share_below_1e12": 0.1988,
+     "D_growth_km3_per_myr": {
+      "p10": -1240000.0,
+      "p50": 740000.0,
+      "p90": 5420000.0
+     },
+     "overlap_km2": {
+      "p10": 89700.0,
+      "p50": 365000.0,
+      "p90": 1080000.0
+     }
+    },
+    "cap": {
+     "pair_steps_closing": 22,
+     "stall_n_per_m": {
+      "p10": 494000000000.0,
+      "p50": 765000000000.0,
+      "p90": 2050000000000.0
+     },
+     "share_below_1e13": 1.0,
+     "share_in_1e12_1e13": 0.4545,
+     "share_below_1e12": 0.5455,
+     "D_growth_km3_per_myr": {
+      "p10": -5160000.0,
+      "p50": -34700.0,
+      "p90": 2140000.0
+     },
+     "overlap_km2": {
+      "p10": 55600.0,
+      "p50": 102000.0,
+      "p90": 154000.0
+     }
+    }
+   },
+   "G4": {
+    "D_change_over_deform": -67325717649.7,
+    "D_growth": 7127283589.1,
+    "D_growth_over_shift": 69550461456.9,
+    "consumed_D": 37201251218.5,
+    "contact_ceiling_overflow_no_outlet_m3": 0.0,
+    "contact_collision_subducted_m3": 0.0,
+    "contact_no_outlet_subducted_m3": 0.0,
+    "contact_suture_donated_m3": 7567104816.9,
+    "craton_loss_near_contacts_excl_fusion": 405779476.7,
+    "in": 102867423604.5,
+    "merge_capped": 24662430.7,
+    "merge_hc_lost": 246312189.3,
+    "merge_material_clipped": 183939988.2,
+    "thicken": 12478724936.3,
+    "world_ceiling_overflow_no_outlet_m3": 0.0,
+    "world_collision_subducted_m3": 184521545.5,
+    "world_craton_sinks_m3": 576701363.1,
+    "world_merge_capped_m3": 24662430.7,
+    "world_no_outlet_subducted_m3": 0.0,
+    "world_suture_donated_m3": 8696976043.7,
+    "premerge_cap_hc_over_merge_hc": 0.0,
+    "premerge_craton_near_contacts_over_merge_capped": 16.4533,
+    "share_of_in_left_as_overlap": 0.0693,
+    "share_of_shift_growth_left_as_overlap": 0.1025,
+    "share_of_shift_growth_consumed": 0.5349
+   },
+   "checks": {
+    "pair_drag_mismatch_at_jams": {
+     "p10": 0.0417,
+     "p50": 0.284,
+     "p90": 0.81
+    },
+    "splits": 74,
+    "splits_of_jammed_plates": 17,
+    "splits_of_overlapping_plates": 66,
+    "merge_rel_rotation_deg_per_myr": {
+     "p10": 0.0718,
+     "p50": 0.174,
+     "p90": 0.524
+    },
+    "third_plate_hc_km3": {
+     "third_cont": 900025848.5,
+     "third_ocean": 20486791.5
+    },
+    "third_plate_ocean_share": 0.0223,
+    "close_joint_vs_now_cm_abs_err": {
+     "p10": 0.0,
+     "p50": 0.002,
+     "p90": 0.02
+    }
+   },
+   "craton_ledger_km3": {
+    "formed_m3": 1173060598.6,
+    "rifted_m3": 245267017.9,
+    "subducted_m3": 351269.3,
+    "merge_capped_m3": 24662430.7,
+    "collision_reworked_m3": 57256756.3,
+    "eroded_m3": 250108309.9,
+    "unattributed_m3": -36606.8,
+    "rifted_divergent_m3": 24366251.3,
+    "rifted_stretch_m3": 198478403.4,
+    "rifted_failed_m3": 22422363.2,
+    "split_cuts": 0.0,
+    "split_cuts_through_craton": 0.0,
+    "split_band_area_m2": 225409.8,
+    "split_band_craton_area_m2": 54583.8,
+    "failed_rift_cuts": 0.0,
+    "failed_rift_cuts_through_craton": 0.0,
+    "failed_rift_band_area_m2": 194626.3,
+    "failed_rift_band_craton_area_m2": 47352.5,
+    "initial_m3": 3232121613.4
+   },
+   "merge_events": [
+    {
+     "myr": 346.0,
+     "keep": 10,
+     "absorb": 39,
+     "rel_deg_per_myr": 0.1101,
+     "hc_lost_km3": 26676287.5,
+     "merge_capped_km3": 91673.64,
+     "material_clipped_km3": 21169260.83,
+     "third_cont": {
+      "km2": 231542.2,
+      "hc_km3": 18064936.4,
+      "age_myr_max": 40.0,
+      "age_myr_mean": 11.9
+     },
+     "third_ocean": {
+      "km2": 132313.7,
+      "hc_km3": 8246455.4,
+      "age_myr_max": 8.0,
+      "age_myr_mean": 1.7
+     },
+     "on_keep": {
+      "km2": 1489897.1,
+      "hc_km3": 120988228.8,
+      "age_myr_max": 140.0,
+      "age_myr_mean": 53.8
+     },
+     "pair": "10-39",
+     "close_cm": 0.085,
+     "jammed": true,
+     "jam_episode": {
+      "onset_myr": 184.0,
+      "jammed_myr": 162.0,
+      "ov_km2": [
+       90420.0,
+       1520548.9
+      ],
+      "D_km3": [
+       12446323.7,
+       233210719.64
+      ],
+      "craton_ov_km3": [
+       0.0,
+       99422725.8
+      ]
+     }
+    },
+    {
+     "myr": 396.0,
+     "keep": 4,
+     "absorb": 54,
+     "rel_deg_per_myr": 0.0961,
+     "hc_lost_km3": 113609699.0,
+     "merge_capped_km3": 15096804.94,
+     "material_clipped_km3": 85580732.38,
+     "third_ocean": {
+      "km2": 32340.3,
+      "hc_km3": 608144.1,
+      "age_myr_max": 0.0,
+      "age_myr_mean": 0.0
+     },
+     "third_cont": {
+      "km2": 550769.4,
+      "hc_km3": 33432521.2,
+      "age_myr_max": 24.0,
+      "age_myr_mean": 7.9
+     },
+     "on_keep": {
+      "km2": 1570668.8,
+      "hc_km3": 126823758.5,
+      "age_myr_max": 46.0,
+      "age_myr_mean": 23.4
+     },
+     "pair": "4-54",
+     "close_cm": 0.123,
+     "jammed": true,
+     "jam_episode": {
+      "onset_myr": 346.0,
       "jammed_myr": 50.0,
       "ov_km2": [
-       543092.8,
-       625480.0
+       0.0,
+       1550738.0
       ],
       "D_km3": [
-       86583822.57,
-       93621551.99
-      ],
-      "craton_ov_km3": [
-       73410320.7,
-       76927888.1
-      ]
-     }
-    },
-    {
-     "myr": 636.0,
-     "keep": 4,
-     "absorb": 82,
-     "rel_deg_per_myr": 0.1457,
-     "hc_lost_km3": 93265548.2,
-     "merge_capped_km3": 17508329.88,
-     "material_clipped_km3": 82866464.52,
-     "third_cont": {
-      "km2": 1934881.1,
-      "hc_km3": 147606291.1,
-      "age_myr_max": 250.0,
-      "age_myr_mean": 131.9
-     },
-     "on_keep": {
-      "km2": 477525.3,
-      "hc_km3": 39139376.4,
-      "age_myr_max": 160.0,
-      "age_myr_mean": 75.5
-     },
-     "third_ocean": {
-      "km2": 14821.3,
-      "hc_km3": 1190771.6,
-      "age_myr_max": 14.0,
-      "age_myr_mean": 14.0
-     },
-     "pair": "4-82",
-     "close_cm": 0.188,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 514.0,
-      "jammed_myr": 122.0,
-      "ov_km2": [
-       243416.8,
-       582016.1
-      ],
-      "D_km3": [
-       5134601.76,
-       93335317.18
+       0.0,
+       248945332.73
       ],
       "craton_ov_km3": [
        0.0,
-       12798683.4
+       96380881.2
       ]
      }
     },
     {
-     "myr": 644.0,
-     "keep": 4,
-     "absorb": 53,
-     "rel_deg_per_myr": 0.3258,
-     "hc_lost_km3": 183190069.5,
-     "merge_capped_km3": 53815339.21,
-     "material_clipped_km3": 148544263.23,
-     "third_ocean": {
-      "km2": 101913.0,
-      "hc_km3": 4704281.7,
-      "age_myr_max": 66.0,
-      "age_myr_mean": 11.7
-     },
+     "myr": 600.0,
+     "keep": 26,
+     "absorb": 76,
+     "rel_deg_per_myr": 0.1022,
+     "hc_lost_km3": 30833160.1,
+     "merge_capped_km3": 37449.61,
+     "material_clipped_km3": 25169549.68,
      "third_cont": {
-      "km2": 3178988.2,
-      "hc_km3": 201206961.2,
-      "age_myr_max": 288.0,
-      "age_myr_mean": 51.7
+      "km2": 1749604.1,
+      "hc_km3": 128156150.4,
+      "age_myr_max": 200.0,
+      "age_myr_mean": 22.5
      },
      "on_keep": {
-      "km2": 1350177.4,
-      "hc_km3": 88387991.4,
-      "age_myr_max": 244.0,
-      "age_myr_mean": 29.5
+      "km2": 1097307.6,
+      "hc_km3": 85763594.2,
+      "age_myr_max": 200.0,
+      "age_myr_mean": 55.3
      },
-     "pair": "4-53",
-     "close_cm": 0.323,
+     "third_ocean": {
+      "km2": 13466.8,
+      "hc_km3": 883577.6,
+      "age_myr_max": 8.0,
+      "age_myr_mean": 8.0
+     },
+     "pair": "26-76",
+     "close_cm": 0.014,
      "jammed": true,
      "jam_episode": {
-      "onset_myr": 498.0,
-      "jammed_myr": 146.0,
+      "onset_myr": 580.0,
+      "jammed_myr": 20.0,
       "ov_km2": [
-       32659.7,
-       1743403.3
+       1195432.7,
+       1248086.8
       ],
       "D_km3": [
-       4971484.89,
-       248718797.23
+       186281906.21,
+       188183213.61
       ],
       "craton_ov_km3": [
-       508495.9,
-       79458428.5
+       66414150.7,
+       75357869.2
       ]
      }
     },
     {
-     "myr": 684.0,
-     "keep": 4,
-     "absorb": 116,
-     "rel_deg_per_myr": 0.1364,
-     "hc_lost_km3": 35262499.4,
-     "merge_capped_km3": 15160374.26,
-     "material_clipped_km3": 25117151.48,
+     "myr": 700.0,
+     "keep": 17,
+     "absorb": 86,
+     "rel_deg_per_myr": 0.0824,
+     "hc_lost_km3": 39746728.0,
+     "merge_capped_km3": 1504685.62,
+     "material_clipped_km3": 26555601.18,
+     "third_cont": {
+      "km2": 800517.0,
+      "hc_km3": 60947846.7,
+      "age_myr_max": 98.0,
+      "age_myr_mean": 9.3
+     },
      "third_ocean": {
-      "km2": 49293.0,
-      "hc_km3": 898475.4,
+      "km2": 28505.1,
+      "hc_km3": 1115012.6,
       "age_myr_max": 0.0,
       "age_myr_mean": 0.0
      },
-     "third_cont": {
-      "km2": 865922.6,
-      "hc_km3": 63569374.0,
-      "age_myr_max": 34.0,
-      "age_myr_mean": 17.0
-     },
      "on_keep": {
-      "km2": 1034337.8,
-      "hc_km3": 76037131.1,
-      "age_myr_max": 26.0,
-      "age_myr_mean": 8.9
+      "km2": 965064.7,
+      "hc_km3": 78665903.3,
+      "age_myr_max": 192.0,
+      "age_myr_mean": 55.1
      },
-     "pair": "4-116",
-     "close_cm": 0.335,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 670.0,
-      "jammed_myr": 14.0,
-      "ov_km2": [
-       498702.0,
-       1044369.9
-      ],
-      "D_km3": [
-       76026868.71,
-       158943705.34
-      ],
-      "craton_ov_km3": [
-       34329796.6,
-       80755248.5
-      ]
-     }
-    },
-    {
-     "myr": 798.0,
-     "keep": 79,
-     "absorb": 121,
-     "rel_deg_per_myr": 0.2908,
-     "hc_lost_km3": 106480589.4,
-     "merge_capped_km3": 36088259.83,
-     "material_clipped_km3": 45294898.96,
-     "third_ocean": {
-      "km2": 62976.1,
-      "hc_km3": 3021179.6,
-      "age_myr_max": 56.0,
-      "age_myr_mean": 14.2
-     },
-     "third_cont": {
-      "km2": 1948058.9,
-      "hc_km3": 137872683.5,
-      "age_myr_max": 212.0,
-      "age_myr_mean": 68.3
-     },
-     "on_keep": {
-      "km2": 1004953.4,
-      "hc_km3": 67351475.8,
-      "age_myr_max": 70.0,
-      "age_myr_mean": 28.9
-     },
-     "pair": "79-121",
-     "close_cm": 0.343,
+     "pair": "17-86",
+     "close_cm": 0.173,
      "jammed": true,
      "jam_episode": {
       "onset_myr": 692.0,
-      "jammed_myr": 106.0,
+      "jammed_myr": 8.0,
       "ov_km2": [
-       320263.9,
-       1215620.0
+       804221.1,
+       950365.6
       ],
       "D_km3": [
-       46298197.7,
-       167122950.33
+       119566148.77,
+       141708930.56
       ],
       "craton_ov_km3": [
-       400591.7,
-       29624036.6
+       43091598.9,
+       52739399.9
       ]
      }
     },
     {
-     "myr": 924.0,
-     "keep": 79,
-     "absorb": 104,
-     "rel_deg_per_myr": 0.0614,
-     "hc_lost_km3": 70764944.6,
-     "merge_capped_km3": 23205318.86,
-     "material_clipped_km3": 45975497.83,
+     "myr": 868.0,
+     "keep": 91,
+     "absorb": 43,
+     "rel_deg_per_myr": 0.2424,
+     "hc_lost_km3": 0.0,
+     "merge_capped_km3": 7931816.86,
+     "material_clipped_km3": 0.0,
      "third_cont": {
-      "km2": 282908.0,
-      "hc_km3": 22425751.7,
-      "age_myr_max": 22.0,
-      "age_myr_mean": 6.6
-     },
-     "third_ocean": {
-      "km2": 66021.0,
-      "hc_km3": 3298483.7,
-      "age_myr_max": 38.0,
-      "age_myr_mean": 10.2
+      "km2": 634693.3,
+      "hc_km3": 41993335.1,
+      "age_myr_max": 64.0,
+      "age_myr_mean": 28.4
      },
      "on_keep": {
-      "km2": 2114505.8,
-      "hc_km3": 157596867.0,
-      "age_myr_max": 328.0,
-      "age_myr_mean": 113.7
+      "km2": 462921.3,
+      "hc_km3": 28871005.8,
+      "age_myr_max": 170.0,
+      "age_myr_mean": 74.4
      },
-     "pair": "79-104",
-     "close_cm": 0.072,
+     "pair": "43-91",
+     "close_cm": 0.01,
      "jammed": true,
      "jam_episode": {
-      "onset_myr": 590.0,
-      "jammed_myr": 334.0,
+      "onset_myr": 734.0,
+      "jammed_myr": 134.0,
       "ov_km2": [
-       238830.7,
-       2141249.7
+       90445.3,
+       600763.9
       ],
       "D_km3": [
-       18526155.35,
-       323276545.51
+       11693378.75,
+       78739567.23
       ],
       "craton_ov_km3": [
        0.0,
-       136413884.7
-      ]
-     }
-    },
-    {
-     "myr": 948.0,
-     "keep": 4,
-     "absorb": 79,
-     "rel_deg_per_myr": 0.1747,
-     "hc_lost_km3": 85498672.8,
-     "merge_capped_km3": 22645865.1,
-     "material_clipped_km3": 47907421.81,
-     "third_ocean": {
-      "km2": 109809.9,
-      "hc_km3": 4658425.5,
-      "age_myr_max": 26.0,
-      "age_myr_mean": 8.7
-     },
-     "third_cont": {
-      "km2": 1538898.9,
-      "hc_km3": 114851356.8,
-      "age_myr_max": 254.0,
-      "age_myr_mean": 93.7
-     },
-     "on_keep": {
-      "km2": 2540067.8,
-      "hc_km3": 206941203.6,
-      "age_myr_max": 254.0,
-      "age_myr_mean": 86.5
-     },
-     "pair": "4-79",
-     "close_cm": 0.049,
-     "jammed": true,
-     "jam_episode": {
-      "onset_myr": 752.0,
-      "jammed_myr": 196.0,
-      "ov_km2": [
-       31579.4,
-       3241527.2
-      ],
-      "D_km3": [
-       4850189.76,
-       498324984.1
-      ],
-      "craton_ov_km3": [
-       318104.7,
-       203099740.7
+       34933494.8
       ]
      }
     }
    ]
   }
  ],
- "pooled": {
-  "seeds": [
-   326494039,
-   748935664,
-   580014012,
-   111065103
-  ],
-  "step_myr": 5.0,
-  "G1": {
-   "all": {
-    "net": {
-     "total_km3": 87746269137.0,
-     "craton": 0.6635,
-     "cap": 0.0034,
-     "deform": 0.3332,
-     "blocked": 0.6668
+ "pooled": [
+  {
+   "seeds": [
+    326494039,
+    748935664,
+    580014012,
+    111065103
+   ],
+   "step_myr": 5.0,
+   "G1": {
+    "all": {
+     "net": {
+      "total_km3": 45427258126.0,
+      "craton": 0.5624,
+      "cap": 0.0006,
+      "deform": 0.437,
+      "blocked": 0.563
+     },
+     "gross": {
+      "total_km3": 91545661431.1,
+      "craton": 0.4026,
+      "cap": 0.0115,
+      "deform": 0.5859,
+      "blocked": 0.4141
+     },
+     "pre_merge_30myr": {
+      "total_km3": 6635802902.5,
+      "craton": 0.8725,
+      "cap": 0.0013,
+      "deform": 0.1262,
+      "blocked": 0.8738
+     }
     },
-    "gross": {
-     "total_km3": 156466483328.3,
-     "craton": 0.5274,
-     "cap": 0.0225,
-     "deform": 0.4501,
-     "blocked": 0.5499
+    "cc": {
+     "net": {
+      "total_km3": 27231745440.4,
+      "craton": 0.787,
+      "cap": 0.0012,
+      "deform": 0.2119,
+      "blocked": 0.7881
+     },
+     "gross": {
+      "total_km3": 46177846881.1,
+      "craton": 0.5917,
+      "cap": 0.0189,
+      "deform": 0.3894,
+      "blocked": 0.6106
+     },
+     "pre_merge_30myr": {
+      "total_km3": 6052471182.1,
+      "craton": 0.8916,
+      "cap": 0.0025,
+      "deform": 0.1059,
+      "blocked": 0.8941
+     }
     },
-    "pre_merge_30myr": {
-     "total_km3": 11869640287.7,
-     "craton": 0.834,
-     "cap": 0.0029,
-     "deform": 0.1631,
-     "blocked": 0.8369
-    }
-   },
-   "cc": {
-    "net": {
-     "total_km3": 61845331419.6,
-     "craton": 0.8519,
-     "cap": 0.0072,
-     "deform": 0.1409,
-     "blocked": 0.8591
+    "depth_mean_cells": {
+     "p10": 0.975,
+     "p50": 1.15,
+     "p90": 2.05
     },
-    "gross": {
-     "total_km3": 87547911950.0,
-     "craton": 0.7409,
-     "cap": 0.0289,
-     "deform": 0.2302,
-     "blocked": 0.7698
+    "depth_max_cells": {
+     "p10": 1.06,
+     "p50": 2.16,
+     "p90": 5.93
     },
-    "pre_merge_30myr": {
-     "total_km3": 11640580725.1,
-     "craton": 0.8464,
-     "cap": 0.004,
-     "deform": 0.1496,
-     "blocked": 0.8504
-    }
-   },
-   "depth_mean_cells": {
-    "p10": 0.987,
-    "p50": 1.43,
-    "p90": 3.31
-   },
-   "depth_max_cells": {
-    "p10": 1.08,
-    "p50": 3.36,
-    "p90": 9.63
-   },
-   "depth_mean_km": {
-    "p10": 123.0,
-    "p50": 179.0,
-    "p90": 414.0
-   },
-   "cell_km": 125.0
-  },
-  "G2": {
-   "pair_steps_closing": 12561,
-   "jammed_pair_steps": 6186,
-   "stall_n_per_m": {
-    "p10": 546000000000.0,
-    "p50": 4630000000000.0,
-    "p90": 17200000000000.0
-   },
-   "h_star_km": {
-    "p10": 35.0,
-    "p50": 52.3,
-    "p90": 75.7
-   },
-   "share_h_star_below_cap": 0.7519,
-   "share_push_exceeds_stall": 0.2145,
-   "close_now_cm": {
-    "p10": 0.202,
-    "p50": 0.818,
-    "p90": 1.85
-   },
-   "close_with_push_cm": {
-    "p10": 0.0,
-    "p50": 0.65,
-    "p90": 2.22
-   },
-   "share_stopped_by_push": 0.2157,
-   "band_hc_km": {
-    "p10": 21.3,
-    "p50": 41.6,
-    "p90": 65.3
-   },
-   "band_hm_km": {
-    "p10": 24.8,
-    "p50": 90.8,
-    "p90": 170.0
-   },
-   "share_band_clipped": 0.0537,
-   "slab_pull_share_of_stall": {
-    "p10": 0.0,
-    "p50": 0.854,
-    "p90": 1.18
-   },
-   "tibet_like": {
-    "n": 930,
-    "push": {
-     "p10": -6580000000000.0,
-     "p50": 1310000000000.0,
-     "p90": 10800000000000.0
+    "depth_mean_km": {
+     "p10": 122.0,
+     "p50": 144.0,
+     "p90": 256.0
     },
-    "stall": {
-     "p10": 715000000000.0,
-     "p50": 5380000000000.0,
-     "p90": 17100000000000.0
-    },
-    "push_airy": {
-     "p10": 7300000000000.0,
-     "p50": 8380000000000.0,
-     "p90": 9720000000000.0
-    }
-   }
-  },
-  "G3": {
-   "craton": {
-    "pair_steps_closing": 4226,
+    "cell_km": 125.0
+   },
+   "G2": {
+    "pair_steps_closing": 14889,
+    "jammed_pair_steps": 5501,
     "stall_n_per_m": {
-     "p10": 245000000000.0,
-     "p50": 1780000000000.0,
-     "p90": 10800000000000.0
+     "p10": 944000000000.0,
+     "p50": 6480000000000.0,
+     "p90": 17300000000000.0
     },
-    "share_below_1e13": 0.89,
-    "share_in_1e12_1e13": 0.5596,
-    "share_below_1e12": 0.3303,
-    "D_growth_km3_per_myr": {
-     "p10": -1080000.0,
-     "p50": 912000.0,
-     "p90": 7180000.0
+    "h_star_km": {
+     "p10": 35.0,
+     "p50": 56.3,
+     "p90": 78.0
     },
-    "overlap_km2": {
-     "p10": 132000.0,
-     "p50": 700000.0,
-     "p90": 1980000.0
+    "share_h_star_below_cap": 0.6617,
+    "share_push_exceeds_stall": 0.1283,
+    "close_now_cm": {
+     "p10": 0.157,
+     "p50": 0.794,
+     "p90": 1.82
+    },
+    "close_with_push_cm": {
+     "p10": 0.0,
+     "p50": 0.848,
+     "p90": 2.15
+    },
+    "share_stopped_by_push": 0.1289,
+    "band_hc_km": {
+     "p10": 18.7,
+     "p50": 41.0,
+     "p90": 63.9
+    },
+    "band_hm_km": {
+     "p10": 26.8,
+     "p50": 93.2,
+     "p90": 185.0
+    },
+    "share_band_clipped": 0.0285,
+    "slab_pull_share_of_stall": {
+     "p10": -0.333,
+     "p50": 0.847,
+     "p90": 1.1
+    },
+    "tibet_like": {
+     "n": 1020,
+     "push": {
+      "p10": -7530000000000.0,
+      "p50": -1600000000000.0,
+      "p90": 7570000000000.0
+     },
+     "stall": {
+      "p10": 1180000000000.0,
+      "p50": 7170000000000.0,
+      "p90": 15900000000000.0
+     },
+     "push_airy": {
+      "p10": 7260000000000.0,
+      "p50": 8170000000000.0,
+      "p90": 9530000000000.0
+     }
     }
    },
-   "cap": {
-    "pair_steps_closing": 39,
+   "G3": {
+    "craton": {
+     "pair_steps_closing": 2113,
+     "stall_n_per_m": {
+      "p10": 521000000000.0,
+      "p50": 2760000000000.0,
+      "p90": 9750000000000.0
+     },
+     "share_below_1e13": 0.9016,
+     "share_in_1e12_1e13": 0.6981,
+     "share_below_1e12": 0.2035,
+     "D_growth_km3_per_myr": {
+      "p10": -595000.0,
+      "p50": 1210000.0,
+      "p90": 5810000.0
+     },
+     "overlap_km2": {
+      "p10": 169000.0,
+      "p50": 671000.0,
+      "p90": 1710000.0
+     }
+    },
+    "cap": {
+     "pair_steps_closing": 44,
+     "stall_n_per_m": {
+      "p10": 460000000000.0,
+      "p50": 1860000000000.0,
+      "p90": 8700000000000.0
+     },
+     "share_below_1e13": 0.9091,
+     "share_in_1e12_1e13": 0.5682,
+     "share_below_1e12": 0.3409,
+     "D_growth_km3_per_myr": {
+      "p10": -1540000.0,
+      "p50": 253000.0,
+      "p90": 969000.0
+     },
+     "overlap_km2": {
+      "p10": 18800.0,
+      "p50": 68800.0,
+      "p90": 137000.0
+     }
+    }
+   },
+   "checks": {
+    "pair_drag_mismatch_at_jams": {
+     "p10": 0.0564,
+     "p50": 0.295,
+     "p90": 0.905
+    },
+    "splits": 390,
+    "splits_of_jammed_plates": 183,
+    "splits_of_overlapping_plates": 273,
+    "merge_rel_rotation_deg_per_myr": {
+     "p10": 0.083,
+     "p50": 0.27,
+     "p90": 0.596
+    },
+    "third_plate_hc_km3": {
+     "third_cont": 4825486074.5,
+     "third_ocean": 1713037127.0
+    },
+    "third_plate_ocean_share": 0.262,
+    "close_joint_vs_now_cm_abs_err": {
+     "p10": 0.0,
+     "p50": 0.003,
+     "p90": 0.027
+    }
+   },
+   "merges": {
+    "n": 149,
+    "capped": 9,
+    "capped_jammed_at_merge": 9,
+    "capped_jammed_myr": {
+     "p10": 28.0,
+     "p50": 55.0,
+     "p90": 154.0
+    },
+    "capped_D_at_jam_onset_over_at_merge": 0.3189,
+    "capped_craton_ov_at_jam_onset_over_at_merge": 0.2186,
+    "capped_rel_rotation_deg_per_myr": {
+     "p10": 0.0607,
+     "p50": 0.0834,
+     "p90": 0.323
+    },
+    "capped_close_cm": {
+     "p10": -0.0244,
+     "p50": 0.115,
+     "p90": 0.211
+    },
+    "capped_third_ocean_age_myr_mean": {
+     "p10": 0.0,
+     "p50": 6.9,
+     "p90": 24.6
+    },
+    "capped_third_cont_age_myr_mean": {
+     "p10": 12.6,
+     "p50": 24.1,
+     "p90": 43.4
+    },
+    "capped_on_keep_age_myr_mean": {
+     "p10": 20.9,
+     "p50": 35.9,
+     "p90": 67.5
+    }
+   }
+  },
+  {
+   "seeds": [
+    326494039,
+    748935664,
+    580014012,
+    111065103
+   ],
+   "step_myr": 2.0,
+   "G1": {
+    "all": {
+     "net": {
+      "total_km3": 30366234449.1,
+      "craton": 0.7351,
+      "cap": -0.005,
+      "deform": 0.2699,
+      "blocked": 0.7301
+     },
+     "gross": {
+      "total_km3": 86300855320.2,
+      "craton": 0.3568,
+      "cap": 0.011,
+      "deform": 0.6322,
+      "blocked": 0.3678
+     },
+     "pre_merge_30myr": {
+      "total_km3": 4071958770.8,
+      "craton": 0.9536,
+      "cap": -0.0013,
+      "deform": 0.0477,
+      "blocked": 0.9523
+     }
+    },
+    "cc": {
+     "net": {
+      "total_km3": 26110748921.4,
+      "craton": 0.8454,
+      "cap": -0.0055,
+      "deform": 0.1601,
+      "blocked": 0.8399
+     },
+     "gross": {
+      "total_km3": 58712471216.0,
+      "craton": 0.4972,
+      "cap": 0.0153,
+      "deform": 0.4875,
+      "blocked": 0.5125
+     },
+     "pre_merge_30myr": {
+      "total_km3": 3981219170.1,
+      "craton": 0.9548,
+      "cap": -0.0014,
+      "deform": 0.0466,
+      "blocked": 0.9534
+     }
+    },
+    "depth_mean_cells": {
+     "p10": 0.93,
+     "p50": 1.02,
+     "p90": 1.3
+    },
+    "depth_max_cells": {
+     "p10": 1.01,
+     "p50": 1.31,
+     "p90": 3.17
+    },
+    "depth_mean_km": {
+     "p10": 116.0,
+     "p50": 128.0,
+     "p90": 163.0
+    },
+    "cell_km": 125.0
+   },
+   "G2": {
+    "pair_steps_closing": 41185,
+    "jammed_pair_steps": 4373,
     "stall_n_per_m": {
-     "p10": 189000000000.0,
-     "p50": 1440000000000.0,
-     "p90": 8050000000000.0
+     "p10": 691000000000.0,
+     "p50": 4870000000000.0,
+     "p90": 13600000000000.0
     },
-    "share_below_1e13": 0.9487,
-    "share_in_1e12_1e13": 0.5385,
-    "share_below_1e12": 0.4103,
-    "D_growth_km3_per_myr": {
-     "p10": -2870000.0,
-     "p50": -297000.0,
-     "p90": 1620000.0
+    "h_star_km": {
+     "p10": 35.0,
+     "p50": 50.0,
+     "p90": 73.2
     },
-    "overlap_km2": {
-     "p10": 42100.0,
-     "p50": 116000.0,
-     "p90": 281000.0
+    "share_h_star_below_cap": 0.8846,
+    "share_push_exceeds_stall": 0.2111,
+    "close_now_cm": {
+     "p10": 0.136,
+     "p50": 0.86,
+     "p90": 2.23
+    },
+    "close_with_push_cm": {
+     "p10": 0.0,
+     "p50": 0.621,
+     "p90": 2.09
+    },
+    "share_stopped_by_push": 0.2107,
+    "band_hc_km": {
+     "p10": 14.4,
+     "p50": 29.9,
+     "p90": 57.6
+    },
+    "band_hm_km": {
+     "p10": 12.0,
+     "p50": 48.8,
+     "p90": 122.0
+    },
+    "share_band_clipped": 0.0099,
+    "slab_pull_share_of_stall": {
+     "p10": -0.538,
+     "p50": 0.807,
+     "p90": 1.09
+    },
+    "tibet_like": {
+     "n": 1591,
+     "push": {
+      "p10": -2080000000000.0,
+      "p50": 1720000000000.0,
+      "p90": 5750000000000.0
+     },
+     "stall": {
+      "p10": 359000000000.0,
+      "p50": 2450000000000.0,
+      "p90": 12400000000000.0
+     },
+     "push_airy": {
+      "p10": 7210000000000.0,
+      "p50": 8110000000000.0,
+      "p90": 9490000000000.0
+     }
     }
-   }
-  },
-  "checks": {
-   "pair_drag_mismatch_at_jams": {
-    "p10": 0.109,
-    "p50": 0.508,
-    "p90": 0.939
    },
-   "splits": 419,
-   "splits_of_jammed_plates": 200,
-   "splits_of_overlapping_plates": 255,
-   "merge_rel_rotation_deg_per_myr": {
-    "p10": 0.0837,
-    "p50": 0.156,
-    "p90": 0.386
+   "G3": {
+    "craton": {
+     "pair_steps_closing": 6272,
+     "stall_n_per_m": {
+      "p10": 430000000000.0,
+      "p50": 1980000000000.0,
+      "p90": 7780000000000.0
+     },
+     "share_below_1e13": 0.9292,
+     "share_in_1e12_1e13": 0.6773,
+     "share_below_1e12": 0.2519,
+     "D_growth_km3_per_myr": {
+      "p10": -1070000.0,
+      "p50": 965000.0,
+      "p90": 4670000.0
+     },
+     "overlap_km2": {
+      "p10": 92100.0,
+      "p50": 431000.0,
+      "p90": 1440000.0
+     }
+    },
+    "cap": {
+     "pair_steps_closing": 92,
+     "stall_n_per_m": {
+      "p10": 424000000000.0,
+      "p50": 1450000000000.0,
+      "p90": 6820000000000.0
+     },
+     "share_below_1e13": 0.913,
+     "share_in_1e12_1e13": 0.5,
+     "share_below_1e12": 0.413,
+     "D_growth_km3_per_myr": {
+      "p10": -3390000.0,
+      "p50": -24600.0,
+      "p90": 2190000.0
+     },
+     "overlap_km2": {
+      "p10": 38000.0,
+      "p50": 113000.0,
+      "p90": 165000.0
+     }
+    }
    },
-   "third_plate_hc_km3": {
-    "third_cont": 13681886786.0,
-    "third_ocean": 4468526035.4
+   "checks": {
+    "pair_drag_mismatch_at_jams": {
+     "p10": 0.0452,
+     "p50": 0.253,
+     "p90": 0.805
+    },
+    "splits": 335,
+    "splits_of_jammed_plates": 86,
+    "splits_of_overlapping_plates": 211,
+    "merge_rel_rotation_deg_per_myr": {
+     "p10": 0.0747,
+     "p50": 0.155,
+     "p90": 0.519
+    },
+    "third_plate_hc_km3": {
+     "third_cont": 5312918593.4,
+     "third_ocean": 66363602.4
+    },
+    "third_plate_ocean_share": 0.0123,
+    "close_joint_vs_now_cm_abs_err": {
+     "p10": 0.0,
+     "p50": 0.002,
+     "p90": 0.019
+    }
    },
-   "third_plate_ocean_share": 0.2462,
-   "close_joint_vs_now_cm_abs_err": {
-    "p10": 0.0,
-    "p50": 0.0,
-    "p90": 0.022
-   }
-  },
-  "merges": {
-   "n": 132,
-   "capped": 33,
-   "capped_jammed_at_merge": 33,
-   "capped_jammed_myr": {
-    "p10": 20.0,
-    "p50": 45.0,
-    "p90": 131.0
-   },
-   "capped_D_at_jam_onset_over_at_merge": 0.5038,
-   "capped_craton_ov_at_jam_onset_over_at_merge": 0.479,
-   "capped_rel_rotation_deg_per_myr": {
-    "p10": 0.0561,
-    "p50": 0.156,
-    "p90": 0.315
-   },
-   "capped_close_cm": {
-    "p10": 0.0204,
-    "p50": 0.168,
-    "p90": 0.47
-   },
-   "capped_third_ocean_age_myr_mean": {
-    "p10": 4.2,
-    "p50": 19.5,
-    "p90": 48.0
-   },
-   "capped_third_cont_age_myr_mean": {
-    "p10": 17.5,
-    "p50": 40.5,
-    "p90": 69.5
-   },
-   "capped_on_keep_age_myr_mean": {
-    "p10": 11.7,
-    "p50": 30.5,
-    "p90": 65.2
+   "merges": {
+    "n": 97,
+    "capped": 12,
+    "capped_jammed_at_merge": 12,
+    "capped_jammed_myr": {
+     "p10": 9.2,
+     "p50": 53.0,
+     "p90": 159.0
+    },
+    "capped_D_at_jam_onset_over_at_merge": 0.2852,
+    "capped_craton_ov_at_jam_onset_over_at_merge": 0.198,
+    "capped_rel_rotation_deg_per_myr": {
+     "p10": 0.0948,
+     "p50": 0.126,
+     "p90": 0.265
+    },
+    "capped_close_cm": {
+     "p10": -0.0269,
+     "p50": 0.104,
+     "p90": 0.427
+    },
+    "capped_third_ocean_age_myr_mean": {
+     "p10": 0.0,
+     "p50": 1.7,
+     "p90": 47.2
+    },
+    "capped_third_cont_age_myr_mean": {
+     "p10": 9.54,
+     "p50": 25.4,
+     "p90": 51.1
+    },
+    "capped_on_keep_age_myr_mean": {
+     "p10": 15.4,
+     "p50": 38.9,
+     "p90": 55.3
+    }
    }
   }
- }
+ ]
 }
