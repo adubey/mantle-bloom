@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 620" role="img" aria-labelledby="title desc">
+  <title id="title">Conceptual plate-scale force and deformation map</title>
+  <desc id="desc">A central plate interior moves as a rigid plate in the reduced model. Ridge push and slab pull are shown at example margins, basal traction is distributed beneath the plate, and a separate contact segment transmits equal-and-opposite load. Deformation is localized near active boundaries. These drivers are schematic and need not coexist in one configuration.</desc>
+  <defs>
+    <marker id="ridgeArrow" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto"><path d="M0 0 L11 5.5 L0 11 z" fill="#2d7d57"/></marker>
+    <marker id="slabArrow" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto"><path d="M0 0 L11 5.5 L0 11 z" fill="#a95b31"/></marker>
+    <marker id="dragArrow" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto"><path d="M0 0 L11 5.5 L0 11 z" fill="#426f9d"/></marker>
+    <marker id="contactArrow" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto"><path d="M0 0 L11 5.5 L0 11 z" fill="#8a54a1"/></marker>
+    <marker id="motionArrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0 0 L12 6 L0 12 z" fill="#17212b"/></marker>
+  </defs>
+  <rect width="1000" height="620" fill="#fff"/>
+  <text x="38" y="42" font-family="Arial, sans-serif" font-size="23" font-weight="700" fill="#17212b">Plate-scale loads combine; deformation stays process-local</text>
+
+  <path d="M260 155 C350 110, 630 110, 725 165 L735 360 C650 410, 360 412, 255 355 Z" fill="#e5edf1" stroke="#4c6878" stroke-width="4"/>
+  <text x="405" y="242" font-family="Arial, sans-serif" font-size="23" font-weight="700" fill="#283d48">Plate interior</text>
+  <text x="385" y="271" font-family="Arial, sans-serif" font-size="16" fill="#344b57">rigid-rotation approximation</text>
+  <path d="M400 320 C400 280 450 260 495 272" fill="none" stroke="#17212b" stroke-width="5" marker-end="url(#motionArrow)"/>
+  <text x="415" y="349" font-family="Arial, sans-serif" font-size="15" font-weight="700" fill="#17212b">solved angular motion</text>
+
+  <path d="M248 160 L248 350" stroke="#2d7d57" stroke-width="8"/>
+  <path d="M214 174 L267 164 L235 192 Z M214 220 L267 210 L235 238 Z M214 266 L267 256 L235 284 Z M214 312 L267 302 L235 330 Z" fill="#2d7d57"/>
+  <line x1="285" y1="252" x2="398" y2="252" stroke="#2d7d57" stroke-width="7" marker-end="url(#ridgeArrow)"/>
+  <text x="42" y="176" font-family="Arial, sans-serif" font-size="17" font-weight="700" fill="#236346">ridge push</text>
+  <text x="42" y="199" font-family="Arial, sans-serif" font-size="14" fill="#35463d">example margin load</text>
+  <line x1="180" y1="210" x2="246" y2="230" stroke="#236346" stroke-width="2"/>
+  <text x="201" y="385" font-family="Arial, sans-serif" font-size="14" fill="#236346">ridge / rift</text>
+
+  <path d="M732 160 L732 260 L800 328 L873 350" fill="none" stroke="#a95b31" stroke-width="10"/>
+  <line x1="842" y1="346" x2="735" y2="274" stroke="#a95b31" stroke-width="7" marker-end="url(#slabArrow)"/>
+  <text x="805" y="157" font-family="Arial, sans-serif" font-size="17" font-weight="700" fill="#874724">slab pull</text>
+  <text x="805" y="180" font-family="Arial, sans-serif" font-size="14" fill="#563a2a">on attached plate</text>
+  <rect x="716" y="145" width="32" height="235" fill="#f0c7b5" opacity="0.72"/>
+  <text x="755" y="391" font-family="Arial, sans-serif" font-size="14" fill="#823c26">deforming boundary</text>
+
+  <path d="M300 445 C390 425 605 425 700 445" fill="none" stroke="#a9c8d5" stroke-width="26"/>
+  <line x1="365" y1="445" x2="435" y2="445" stroke="#426f9d" stroke-width="5" marker-end="url(#dragArrow)"/>
+  <line x1="535" y1="445" x2="465" y2="445" stroke="#426f9d" stroke-width="5" marker-end="url(#dragArrow)"/>
+  <text x="367" y="487" font-family="Arial, sans-serif" font-size="16" font-weight="700" fill="#355f84">distributed basal traction</text>
+  <text x="389" y="508" font-family="Arial, sans-serif" font-size="13" fill="#405564">opposes or drives relative motion, depending on the law</text>
+
+  <path d="M742 180 L926 180 L926 255 L755 255 Z" fill="#f0e9f2" stroke="#8a54a1" stroke-width="3"/>
+  <text x="790" y="222" font-family="Arial, sans-serif" font-size="16" font-weight="700" fill="#60406e">Adjacent plate</text>
+  <line x1="758" y1="241" x2="705" y2="241" stroke="#8a54a1" stroke-width="6" marker-end="url(#contactArrow)"/>
+  <line x1="762" y1="266" x2="815" y2="266" stroke="#8a54a1" stroke-width="6" marker-end="url(#contactArrow)"/>
+  <text x="781" y="291" font-family="Arial, sans-serif" font-size="14" font-weight="700" fill="#704485">shared contact load</text>
+  <text x="777" y="311" font-family="Arial, sans-serif" font-size="12" fill="#604c67">equal and opposite on each plate</text>
+
+  <rect x="43" y="538" width="914" height="52" rx="7" fill="#f7f8f9" stroke="#d1d7db"/>
+  <text x="61" y="561" font-family="Arial, sans-serif" font-size="14" font-weight="700" fill="#303a40">Interpretation:</text>
+  <text x="157" y="561" font-family="Arial, sans-serif" font-size="14" fill="#303a40">the solve combines each load and its moment arm; local boundary motion then feeds deformation.</text>
+  <text x="61" y="580" font-family="Arial, sans-serif" font-size="12" fill="#59636a">Different margin examples are shown for clarity and need not coexist. Arrows and geometry are schematic, not to scale.</text>
+</svg>

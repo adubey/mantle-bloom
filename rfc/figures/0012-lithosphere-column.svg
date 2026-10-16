@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 560" role="img" aria-labelledby="title desc">
+  <title id="title">Conceptual three-layer lithosphere column</title>
+  <desc id="desc">A cross-section with upper crust, lower crust, lithospheric mantle and asthenosphere. A dashed magma path rises through the mantle and branches into an intrusion; magma is not shown as a persistent fourth layer.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#a43c27"/>
+    </marker>
+    <pattern id="sediment" width="12" height="12" patternUnits="userSpaceOnUse">
+      <path d="M0 3 H12 M0 9 H12" stroke="#8a6735" stroke-width="1.5"/>
+    </pattern>
+    <pattern id="mafic" width="14" height="14" patternUnits="userSpaceOnUse">
+      <circle cx="4" cy="4" r="1.4" fill="#465c72"/><circle cx="11" cy="11" r="1.4" fill="#465c72"/>
+    </pattern>
+  </defs>
+  <rect width="1000" height="560" fill="#ffffff"/>
+  <text x="38" y="42" font-family="Arial, sans-serif" font-size="23" font-weight="700" fill="#17212b">Derived lithosphere column (conceptual; not to scale)</text>
+  <path d="M48 126 C180 112, 260 138, 365 120 S570 132, 690 117" fill="none" stroke="#374b59" stroke-width="5"/>
+  <text x="52" y="105" font-family="Arial, sans-serif" font-size="16" fill="#374b59">surface</text>
+
+  <path d="M50 128 C180 114, 260 140, 365 122 S570 134, 690 119 L690 184 C560 197, 470 179, 360 198 S160 183, 50 197 Z" fill="#d8c08c" stroke="#8b7448" stroke-width="2"/>
+  <path d="M50 128 C180 114, 260 140, 365 122 S570 134, 690 119 L690 151 C560 165, 470 146, 360 166 S160 151, 50 165 Z" fill="url(#sediment)" opacity="0.8"/>
+  <text x="82" y="173" font-family="Arial, sans-serif" font-size="19" font-weight="700" fill="#2c2b26">Upper crust</text>
+  <text x="82" y="194" font-family="Arial, sans-serif" font-size="14" fill="#2c2b26">sediment + felsic / mafic fractions</text>
+
+  <path d="M50 197 C160 183, 250 205, 360 198 S560 197, 690 184 L690 270 C560 281, 470 263, 360 280 S160 264, 50 278 Z" fill="#c99a68" stroke="#8b6344" stroke-width="2"/>
+  <path d="M50 197 C160 183, 250 205, 360 198 S560 197, 690 184 L690 270 C560 281, 470 263, 360 280 S160 264, 50 278 Z" fill="url(#mafic)" opacity="0.38"/>
+  <text x="82" y="235" font-family="Arial, sans-serif" font-size="19" font-weight="700" fill="#2c2b26">Lower crust</text>
+  <text x="82" y="258" font-family="Arial, sans-serif" font-size="14" fill="#2c2b26">felsic / mafic fractions</text>
+
+  <path d="M50 278 C160 264, 250 286, 360 280 S560 281, 690 270 L690 405 C560 417, 470 398, 360 416 S160 401, 50 414 Z" fill="#667d8c" stroke="#334d5c" stroke-width="2"/>
+  <path d="M50 278 C160 264, 250 286, 360 280 S560 281, 690 270 L690 405 C560 417, 470 398, 360 416 S160 401, 50 414 Z" fill="url(#mafic)" opacity="0.62"/>
+  <text x="82" y="333" font-family="Arial, sans-serif" font-size="19" font-weight="700" fill="#ffffff">Lithospheric mantle</text>
+  <text x="82" y="357" font-family="Arial, sans-serif" font-size="14" fill="#ffffff">fertile to melt-depleted (coarse index)</text>
+
+  <path d="M50 414 C160 401, 250 425, 360 416 S560 417, 690 405 L690 500 L50 500 Z" fill="#d6e4e8" stroke="#718f99" stroke-width="2"/>
+  <text x="82" y="463" font-family="Arial, sans-serif" font-size="19" font-weight="700" fill="#263f48">Asthenosphere</text>
+  <text x="82" y="485" font-family="Arial, sans-serif" font-size="14" fill="#263f48">underlying mechanical / thermal medium</text>
+
+  <path d="M520 390 C530 340, 535 300, 548 260 C556 231, 570 218, 598 206" fill="none" stroke="#a43c27" stroke-width="8" stroke-dasharray="12 8" marker-end="url(#arrow)"/>
+  <path d="M546 278 C575 276, 592 286, 620 282" fill="none" stroke="#a43c27" stroke-width="8" stroke-dasharray="12 8"/>
+  <text x="706" y="214" font-family="Arial, sans-serif" font-size="16" font-weight="700" fill="#8b2f20">Optional melt pathway</text>
+  <text x="706" y="237" font-family="Arial, sans-serif" font-size="14" fill="#52332e">transported melt or intrusion</text>
+  <path d="M700 230 L625 263" fill="none" stroke="#a43c27" stroke-width="2"/>
+  <rect x="706" y="279" width="245" height="106" rx="8" fill="#fff8f3" stroke="#bb755e" stroke-width="2"/>
+  <text x="724" y="307" font-family="Arial, sans-serif" font-size="15" font-weight="700" fill="#6d3021">Not a default fourth layer</text>
+  <text x="724" y="331" font-family="Arial, sans-serif" font-size="14" fill="#3e3633">Persist a reservoir only if melt</text>
+  <text x="724" y="352" font-family="Arial, sans-serif" font-size="14" fill="#3e3633">survives between steps; solidified</text>
+  <text x="724" y="373" font-family="Arial, sans-serif" font-size="14" fill="#3e3633">magma joins its receiving layer.</text>
+
+  <path d="M715 125 V414 M707 125 H723 M707 414 H723" fill="none" stroke="#344c5a" stroke-width="2"/>
+  <text x="738" y="147" font-family="Arial, sans-serif" font-size="14" fill="#344c5a">Three modeled layers</text>
+  <text x="738" y="169" font-family="Arial, sans-serif" font-size="14" fill="#344c5a">thicknesses + coarse state</text>
+</svg>

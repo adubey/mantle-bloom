@@ -112,6 +112,24 @@ a candidate collision pilot, not as a blanket template: first express its contac
 terms of the interface below, then test whether the same interface can describe rift and
 transform resistance without forcing those processes into collision-specific rules.
 
+The proposed timestep loop is shown below. This is a conceptual data-flow diagram: process
+laws remain distinct, while updated deformation and geometry feed the next motion solve.
+
+```mermaid
+flowchart LR
+    A[Pre-step plate, layer, and boundary state]
+    B[Process-specific force responses]
+    C[Aggregate loads and solve all plate motion]
+    D[Compute relative boundary motion]
+    E[Boundary deformation and material transfer]
+    F[Topology and geometry update]
+    A --> B --> C --> D --> E --> F
+    F -->|next timestep| A
+```
+
+*Figure 1. Conceptual physics-first timestep loop; it does not imply that every process uses
+the same force law or that deformation is solved simultaneously with plate motion.*
+
 ## Design
 
 ### Model boundary and state
@@ -151,6 +169,15 @@ independently evolving layer thicknesses only if a diagnosis shows that the deri
 cannot represent a material transfer or force response. Do not separately store boundary
 positions when they can be derived from thicknesses. The asthenosphere is the underlying
 mechanical/thermal medium, not a fourth plate layer.
+
+The sketch shows the proposed derived view and an optional melt pathway; it is not to scale
+and does not imply that melt is a persistent layer.
+
+![Conceptual lithosphere cross-section with upper crust, lower crust, lithospheric mantle, underlying asthenosphere, and an optional magma pathway.](figures/0012-lithosphere-column.svg)
+
+*Figure 2. Conceptual three-layer lithosphere column. Layer composition and thermal state are
+coarse process inputs; the optional magma pathway is a flux or reservoir only when a process
+requires it.*
 
 Keep composition compact and specific to each layer rather than using one global rock-type
 enum:
@@ -198,6 +225,16 @@ or fluid-state variable with its own generation, drainage, transfer, and timeste
 not infer it from the resource-map deposits.
 
 ### Process response interface
+
+The contact sketch separates compressive normal load from tangential shear and shows where
+yielded relative motion can be assigned to deformation. Arrow sizes are schematic; loads need
+not have equal magnitude across different boundaries.
+
+![Conceptual contact between two plates showing equal-and-opposite normal compression, separate tangential shear, and deformation after yield.](figures/0012-contact-response.svg)
+
+*Figure 3. Conceptual contact response. A closed contact can transmit normal compression at
+zero slip; the shared load acts equal and opposite, and bounded strength limits the load
+available before deformation accommodates further relative motion.*
 
 Each mechanical process consumes the shared segment state and returns a response in physical
 units. The initial contract should express:
@@ -304,6 +341,16 @@ the simulation naturally feeds changed thickness, material, and geometry back in
 quasi-static motion solve. Do not impose a global nonlinear solve for those slower processes.
 
 ### Efficient aggregation and approximation
+
+Plate-scale loads contribute to a net angular motion, while deformation remains localized to
+process-active boundaries. The schematic below shows representative contributors, not their
+relative magnitudes or a universal plate configuration.
+
+![Conceptual plate-scale force schematic showing ridge push, slab pull, basal traction, contact load, angular motion, and localized boundary deformation.](figures/0012-plate-forces.svg)
+
+*Figure 4. Conceptual plate-scale force and deformation map. The solver combines loads and
+their moment arms to determine plate motion; boundary processes use the resulting local
+relative motion to calculate deformation.*
 
 The motion solve needs integrated force and torque, not every sub-grid stress value. Boundary
 segments can aggregate node-scale information when the aggregation preserves the quantities
