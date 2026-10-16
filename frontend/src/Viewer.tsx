@@ -18,6 +18,7 @@ import { useSession } from "./session";
 // everything else is the full app at /, and the server enforces the API split.
 
 const REPO_URL = "https://github.com/adubey/mantle-bloom";
+const COFFEE_URL = "https://buymeacoffee.com/mantlebloom";
 const MAX_DISPLAY_WIDTH = 1100;
 // The Eckert IV map's aspect, same as the full app's 1100x611 frame.
 const ASPECT = 611 / 1100;
@@ -189,6 +190,7 @@ export default function Viewer() {
         {state?.world && <span style={{ opacity: 0.7 }}>{formatMyr(state.world.elapsed_years)} elapsed</span>}
         <span style={{ flex: 1 }} />
         <a href={REPO_URL}><GitHubIcon />GitHub</a>
+        <a href={COFFEE_URL} target="_blank" rel="noreferrer">☕ Buy me a coffee</a>
         <AccountLink />
       </header>
       {state && !state.world && <p>No world has been generated yet. Check back later.</p>}
