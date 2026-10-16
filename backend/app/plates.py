@@ -750,6 +750,12 @@ def collect_all_points(plate_list: list[Plate]) -> tuple[np.ndarray, np.ndarray,
 OVERLAP_TOLERANCE_MULT = 0.5
 
 
+def node_is_continental(plate: Plate) -> np.ndarray:
+    """Per node, whether its own crust is continental (`crust_type_code`, with INHERIT read as
+    the plate's nominal type)."""
+    return elevation_lines.effective_is_continental_from_codes(plate.collect("crust_type_code"), plate.crust_type == "continental")
+
+
 def compute_node_overlap(plate_list: list[Plate]) -> dict[int, dict]:
     """Per plate (keyed by plate_id, only plates with nodes), a genuine territory overlap
     read against every *other* plate:
@@ -762,9 +768,12 @@ def compute_node_overlap(plate_list: list[Plate]) -> dict[int, dict]:
     - `cover_count`: int array aligned like `overlap_mask` -- how many *other* plates this
       node sits on (`overlap_mask` is `cover_count > 0`). Whole-world area sums divide by
       `1 + cover_count` to count overlapped ground once (issue #289).
-    - `continental_cover_count`: the same, counting only other plates whose `crust_type` is
-      continental -- the denominator for a continental-plates-only sum, where an oceanic
-      plate on top duplicates nothing.
+    - `continental_cover_count`: the same, counting only other plates whose crust at that
+      spot is continental (the covering plate's nearest node's own crust, #447) -- the
+      denominator for a continental-crust-only sum, where ocean floor on top duplicates
+      nothing.
+    - `continental_by_partner`: {other_plate_id: count of this plate's own continental nodes
+      on top of that plate's continental crust}.
 
     Containment, not node proximity: the same test deform's contested classification uses.
     Two cell lattices in different frames never line up node for node, so a proximity
@@ -778,6 +787,7 @@ def compute_node_overlap(plate_list: list[Plate]) -> dict[int, dict]:
             "by_partner": {},
             "cover_count": np.zeros(p.node_count(), dtype=np.int64),
             "continental_cover_count": np.zeros(p.node_count(), dtype=np.int64),
+            "continental_by_partner": {},
         }
         for p in active
     }
@@ -792,6 +802,7 @@ def _contained_node_overlap(active: list[Plate], result: dict[int, dict]) -> Non
     buried wholly inside another -- the superimposed case the forced merge exists for -- is
     still tested."""
     clouds = [p.all_points_and_elevation()[0] for p in active]
+    continental = [node_is_continental(p) for p in active]
     caps = [geometry.bounding_sphere(c) for c in clouds]
     # Cell centres sit up to a cell's half-diagonal inside the territory's edge, so each cap is
     # padded by one of its plate's largest cells before a pair is ruled out.
@@ -806,11 +817,20 @@ def _contained_node_overlap(active: list[Plate], result: dict[int, dict]) -> Non
                 continue
             inside = other.contains_batch(clouds[i])
             if np.any(inside):
-                result[plate.plate_id]["overlap_mask"] |= inside
-                result[plate.plate_id]["cover_count"] += inside
-                if other.crust_type == "continental":
-                    result[plate.plate_id]["continental_cover_count"] += inside
-                result[plate.plate_id]["by_partner"][other.plate_id] = int(np.count_nonzero(inside))
+                entry = result[plate.plate_id]
+                entry["overlap_mask"] |= inside
+                entry["cover_count"] += inside
+                entry["by_partner"][other.plate_id] = int(np.count_nonzero(inside))
+                # The crust on top is the covering plate's nearest node's, not its plate's
+                # majority type (#447).
+                covered = np.zeros(len(inside), dtype=bool)
+                if np.any(continental[j]):
+                    under = np.flatnonzero(inside)
+                    covered[under] = continental[j][other.get_node_kdtree().query(clouds[i][under])[1]]
+                entry["continental_cover_count"] += covered
+                both = int(np.count_nonzero(covered & continental[i]))
+                if both:
+                    entry["continental_by_partner"][other.plate_id] = both
 
 
 def _collect_all(plate_list: list[Plate], field_name: str) -> np.ndarray:

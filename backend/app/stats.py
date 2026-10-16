@@ -110,6 +110,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from . import cratons, crust_transfer, lithosphere, orogeny
+from . import plates as plates_mod
 from .hydroclimate import biomes, climate, hydrology
 from .elevation_lines import PLANET_RADIUS_KM, line_spacing_rad
 from .world import World
@@ -247,9 +248,10 @@ def _overlap_once_totals(world: World) -> dict[str, float]:
         represented += float(area_m2.sum())
         overlapped += float(area_m2[weights[plate.plate_id] < 1.0].sum())
         land_area += float(once_m2[elevation > world.sea_level_m].sum())
-        if plate.crust_type == "continental":
-            continental_once_m2 = area_m2 * continental_weights[plate.plate_id]
-            continental_volume += float(np.dot(plate.collect("crustal_thickness_m"), continental_once_m2))
+        # Continental crust node by node, on any plate (#447).
+        continental = plates_mod.node_is_continental(plate)
+        continental_once_m2 = np.where(continental, area_m2 * continental_weights[plate.plate_id], 0.0)
+        continental_volume += float(np.dot(plate.collect("crustal_thickness_m"), continental_once_m2))
     return {
         "total_land_area_dedup_km2": land_area / 1.0e6,
         "total_continental_crust_volume_dedup_km3": continental_volume / 1.0e9,
@@ -279,8 +281,8 @@ def _total_land_area_and_continental_volume(world: World) -> tuple[float, float,
         is_land = elevation > world.sea_level_m
         land_nodes += int(np.count_nonzero(is_land))
         land_area += float(np.sum(area_m2[is_land]))
-        if plate.crust_type == "continental":
-            continental_volume += float(np.dot(plate.collect("crustal_thickness_m"), area_m2))
+        continental = plates_mod.node_is_continental(plate)
+        continental_volume += float(np.dot(plate.collect("crustal_thickness_m"), np.where(continental, area_m2, 0.0)))
     return land_area, continental_volume, land_nodes
 
 

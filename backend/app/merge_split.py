@@ -412,8 +412,15 @@ def find_continental_collision_pairs(world: "World") -> list[tuple[int, int]]:
     # doesn't duplicate boundary.py's own MERGE_THRESHOLD_RAD derivation.
     merge_contact_distance_rad = MERGE_THRESHOLD_RAD * (line_spacing_rad(world.node_density) / TARGET_LINE_SPACING_RAD)
 
-    continental = [p for p in world.plates if p.crust_type == "continental" and p.node_count() > 0]
-    points = {p.plate_id: p.all_points_and_elevation()[0] for p in continental}
+    # Each plate's continental nodes, whatever its majority type (RFC 0009, #447): a continent
+    # on a mostly oceanic plate collides, and a continental plate's ocean floor doesn't.
+    points = {}
+    for p in world.plates:
+        if p.node_count() > 0:
+            mask = plates_mod.node_is_continental(p)
+            if np.any(mask):
+                points[p.plate_id] = p.all_points_and_elevation()[0][mask]
+    continental = [p for p in world.plates if p.plate_id in points]
     spheres = {pid: geometry.bounding_sphere(pts) for pid, pts in points.items()}
     trees: dict[int, cKDTree] = {}
 
@@ -541,7 +548,7 @@ def update_collision_progress(world: "World", years: float) -> list[tuple[int, i
     # The jam map is the prepass's, and topology has removed defunct plates since: keep only
     # pairs of continental plates still live, the ones find_continental_collision_pairs sees.
     jammed = find_jammed_pairs(world)
-    live = {p.plate_id for p in world.plates if p.crust_type == "continental" and p.node_count() > 0}
+    live = {p.plate_id for p in world.plates if p.node_count() > 0 and np.any(plates_mod.node_is_continental(p))}
     current_pairs += [
         pair
         for pair in world.collision_progress
@@ -569,22 +576,21 @@ def update_collision_progress(world: "World", years: float) -> list[tuple[int, i
 
 
 def _deep_continental_overlap_fractions(world: "World", overlap: dict[int, dict]) -> dict[tuple[int, int], float]:
-    """For every pair of continental plates whose node clouds currently interpenetrate, the
-    fraction of the *more-covered* plate's own nodes sitting on the other -- keyed by sorted
-    (id, id). `overlap` is a `plates.compute_node_overlap` result (the same node-cloud read
-    behind the Plate Inspector / `overlapAge` view), so "40% of plate 61 is on plate 0" here
-    is the same number the UI shows."""
-    continental = {p.plate_id: p for p in world.plates if p.crust_type == "continental" and p.node_count() > 0}
+    """For every pair of plates whose continental crust currently interpenetrates, the fraction
+    of the *more-covered* plate's own continental nodes sitting on the other's continental
+    crust -- keyed by sorted (id, id). `overlap` is a `plates.compute_node_overlap` result (the
+    same node-cloud read behind the Plate Inspector / `overlapAge` view). Continental crust
+    node by node, not plates by majority type (RFC 0009, #447); for wholly continental plates
+    it is the share of the plate the UI shows."""
+    continental_nodes = {
+        p.plate_id: int(np.count_nonzero(plates_mod.node_is_continental(p))) for p in world.plates if p.node_count() > 0
+    }
 
     fractions: dict[tuple[int, int], float] = {}
     for pid_a, info_a in overlap.items():
-        if pid_a not in continental:
-            continue
-        for pid_b, count_a_on_b in info_a["by_partner"].items():
-            if pid_b not in continental:
-                continue
+        for pid_b, count_a_on_b in info_a.get("continental_by_partner", {}).items():
             pair = (pid_a, pid_b) if pid_a < pid_b else (pid_b, pid_a)
-            frac = count_a_on_b / max(1, continental[pid_a].node_count())
+            frac = count_a_on_b / max(1, continental_nodes.get(pid_a, 0))
             fractions[pair] = max(fractions.get(pair, 0.0), frac)
     return fractions
 
@@ -655,7 +661,7 @@ def pop_ready_forced_merge(world: "World") -> tuple[int, int] | None:
     from `world.overlap_progress` and returned, or `None`. At most one per step, same as every
     other topology change. A pair whose plate has since vanished (subducted, defragmented) is
     silently dropped."""
-    live = {p.plate_id: p for p in world.plates if p.crust_type == "continental" and p.node_count() > 0}
+    live = {p.plate_id: p for p in world.plates if p.node_count() > 0 and np.any(plates_mod.node_is_continental(p))}
     ready = [
         pair
         for pair, acc in world.overlap_progress.items()
