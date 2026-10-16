@@ -215,6 +215,14 @@ units. The initial contract should express:
    complementarity or active-set condition within the simultaneous motion solve, so remaining
    motion is available to deformation. This borrows a numerical contact technique, not a
    geological constitutive law [[Stewart & Trinkle, 1996]](#ref-stewart-trinkle1996).
+   Distinguish normal compression from tangential shear resistance: a closed contact can
+   transmit a nonzero compressive load even at zero relative slip, while frictional or viscous
+   shear resistance responds to tangential motion (and may have its own static strength).
+   The equal-and-opposite contact load can therefore change either plate's solved motion,
+   including that of the smaller plate, subject to its other loads and the contact's capacity.
+   Plate size or mass alone does not determine which plate moves; the net force/torque balance
+   does. A contact law based only on velocity-dependent drag cannot represent a sustained
+   compressive push at zero slip.
 4. **Material response:** the rate or budget of thinning, thickening, subduction, accretion,
    slip, or transfer that follows from the solved motion. This is applied by the responsible
    deformation process and booked to existing or explicitly new ledgers.
@@ -276,8 +284,9 @@ the 3-vector angular velocities, each shared-contact block contributes equal-and
 terms to the two plates, and `K` contains velocity-dependent resistance. More generally, write
 `K Ω = b + τ_explicit` when a process supplies its own drag matrix and explicit torque.
 For a yielded contact, the contact force is an unknown constrained to its physical capacity;
-the active set determines whether relative motion is locked or slips and is coupled to the
-plate solve.
+the active set determines whether normal contact remains closed and whether tangential motion
+sticks or slips, and is coupled to the plate solve. The contact response may include a static
+normal force at zero relative slip; it is not reducible to a velocity-dependent drag term.
 
 The balance is quasi-static at geological timesteps. For an illustrative plate with density
 3300 kg/m³, 100 km thickness, 100 km drag length, and viscosity 5×10¹⁹ Pa·s, the inertial
@@ -519,7 +528,9 @@ this pilot.
       design principle and measurable outcome; each retired rule is checked against accepted
       geology metrics.
 - [ ] **G2:** compare the simultaneous quasi-static contact pilot against current behavior on
-      synthetic no-load, no-resistance, symmetric-action/reaction, yield, and Tibet-like cases,
+      synthetic no-load, no-resistance, symmetric-action/reaction, zero-slip compressive
+      contact, yield, and Tibet-like cases. A zero-slip compressive load must be able to alter
+      both plates' solved motion while remaining equal and opposite and within capacity;
       plus matched replays. Force/torque units close dimensionally, shared loads are equal and
       opposite, contact load never exceeds its stated capacity, deformation budgets and
       material ledgers close to rounding, and the pilot stays within the runtime budget.
