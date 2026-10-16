@@ -33,7 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 from app import persistence  # noqa: E402
 
 CRATON_SINKS = (
-    "rifted_m3", "subducted_m3", "delaminated_m3", "collision_reworked_m3", "eroded_m3",
+    "rifted_m3", "subducted_m3", "delaminated_m3", "merge_capped_m3", "collision_reworked_m3", "eroded_m3",
     "topology_removed_m3", "audit_clipped_m3", "unattributed_m3",
 )
 # rifted_m3 by path (RFC 0003); zero in saves from before the split.

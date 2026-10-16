@@ -613,6 +613,34 @@ def test_a_split_counts_its_cut_and_whether_the_band_holds_craton(monkeypatch):
     assert ledger["split_band_craton_area_m2"] == 0.0
 
 
+def test_a_merge_books_craton_its_cap_clips_to_merge_capped_not_delaminated(monkeypatch):
+    """RFC 0001 solution 4 (#441): craton the merge leaves above its column is the merge cap's
+    loss, booked to its own account rather than read as root delamination."""
+    from app import cratons
+
+    world, plate = _engineered_split_world()
+    hc = plate.collect("crustal_thickness_m")
+    plate.set_fields_on_plate(craton_crust_m=hc.copy())
+    cratons.ensure_ledger(world)
+    world.craton_ledger["initial_m3"] = cratons.live_volume_m3(world)
+    capped = np.arange(plate.node_count()) < 5
+
+    def merge_that_caps(w, keep, absorb):
+        # Stands in for a merge whose overflow found no room: the column ends below its craton.
+        thinned = plate.collect("crustal_thickness_m")
+        thinned[capped] *= 0.5
+        plate.set_fields_on_plate(crustal_thickness_m=thinned)
+
+    monkeypatch.setattr(merge_split, "merge_plates", merge_that_caps)
+    merge_split._merge_plates_with_craton_audit(world, plate.plate_id, plate.plate_id)
+
+    ledger = world.craton_ledger
+    clipped = float(0.5 * hc[capped] @ plate.node_areas_m2()[capped])
+    assert ledger["merge_capped_m3"] == pytest.approx(clipped, rel=1e-9)
+    assert ledger["delaminated_m3"] == 0.0
+    assert abs(cratons.balance_error_m3(world)) <= 1e-9 * ledger["initial_m3"]
+
+
 def test_maybe_split_plate_splits_under_engineered_flow_divergence(monkeypatch):
     monkeypatch.setattr(merge_split, "RIFT_SUCCESS_PROBABILITY", 1.0)  # this test pins the *cut*, not the outcome roll
     seed_xyz = np.array([1.0, 0.0, 0.0])
