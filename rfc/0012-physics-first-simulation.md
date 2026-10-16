@@ -342,15 +342,16 @@ quasi-static motion solve. Do not impose a global nonlinear solve for those slow
 
 ### Efficient aggregation and approximation
 
-Plate-scale loads contribute to a net angular motion, while deformation remains localized to
-process-active boundaries. The schematic below shows representative contributors, not their
-relative magnitudes or a universal plate configuration.
+Some processes push or pull on a plate; drag from the mantle below can also affect it. The
+model combines these effects to estimate how the plate interior moves. Deformation is worked
+out near active boundaries. The sketch uses familiar examples; it is not one real plate
+configuration, and the forces shown need not all act at once.
 
-![Conceptual plate-scale force schematic showing ridge push, slab pull, basal traction, contact load, angular motion, and localized boundary deformation.](figures/0012-plate-forces.svg)
+![Conceptual plate-scale sketch showing ridge push, slab pull, drag from the mantle below, a push between neighboring plates, and deformation near plate boundaries.](figures/0012-plate-forces.svg)
 
-*Figure 4. Conceptual plate-scale force and deformation map. The solver combines loads and
-their moment arms to determine plate motion; boundary processes use the resulting local
-relative motion to calculate deformation.*
+*Figure 4. Forces can push, pull, or resist a plate's motion. The model combines them to
+estimate how the plate interior moves, then uses motion at active boundaries to estimate
+where crust shortens, stretches, or slides. Arrows are examples and are not to scale.*
 
 The motion solve needs integrated force and torque, not every sub-grid stress value. Boundary
 segments can aggregate node-scale information when the aggregation preserves the quantities
