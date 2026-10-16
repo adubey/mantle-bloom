@@ -312,6 +312,20 @@ generator:
   plate, and belt survival and the G3 rift measures still apply. If an unusual mask has
   more required components than the plate budget can cover, G2 remains unresolved.
 
+**G2 result (#438, [analysis/rfc0009](../analysis/rfc0009/README.md#rfc-0009-gate-g2-do-mixed-plates-work-438)):
+fails as written on one metric; the diagnosis points at the starting layout.** At 500 Myr,
+genuine continental area is 3.9–4.5 points of the sphere higher in the mixed runs on seeds 11
+and 2024 (noise floors 1.8 and 1.2). Plate count, overlap, merges and splits pass, the craton
+ledger closes in every run, and the continental-material ledger drifts as much in the
+control as in the mixed runs (≤ 1.9e-3, already on main). The gap opens in the first
+100 Myr. Re-tiling leaves 14–26% of the continent's edge near a boundary, against 100% in the
+control, and the control loses more margin to trench subduction. From 100 to 500 Myr the
+rule passes on every seed. The audit found 22 runtime sites that apply a plate's majority
+type to all its nodes (posted on #438). **Decision (owner, 2026-10-15): the diagnosis is
+accepted.** The cratons-first generator goes ahead on mixed plates, not the single-type
+fallback. The 22 sites are fixed as their own step (#447), which G3 depends on, and G3's
+control is remeasured after it lands.
+
 **Gate G3: does the cratons-first layout keep cratons whole?** After the generator and belt
 marks are built (behind a flag), `probe_craton_mosaic.py` gains `--layout cratons-first` and
 runs both that layout and today's layout as a matched control, formation off, on seeds 7, 11
@@ -463,7 +477,7 @@ only as new collisions and rifts mark them. No new pickled state on `World`.
 
 - [x] **Gate G1** run and reported per seed in `analysis/`, with its pinned commit (#426):
       neither building branch; this revision follows.
-- [ ] **Gate G2**: compare a same-seed current-layout control with two independently re-tiled
+- [x] **Gate G2**: compare a same-seed current-layout control with two independently re-tiled
       mixed runs on seeds 7, 11 and 2024, all to 500 Myr. Ledgers balance in every run. For
       continental area at 500 Myr, active plate count and overlap area at each 100 Myr
       checkpoint, and cumulative split/merge counts, fail a metric when the absolute difference between the mean mixed result and its control
@@ -472,6 +486,9 @@ only as new collisions and rifts mark them. No new pickled state on `World`.
       the floor is one plate, one split/merge event, or one percentage point of surface area
       as appropriate. Diagnose and
       rerun before choosing the architecture; update this RFC with the outcome.
+      *Run (#438): fails as written on 500 Myr continental area (seeds 11 and 2024),
+      attributed to the starting layout's lower margin exposure; 100→500 Myr passes.
+      Diagnosis accepted 2026-10-15: mixed plates, with the call sites fixed in #447.*
 - [ ] **Gate G3** (cratons-first replays) run and reported, and this RFC and RFC 0010
       updated with the branch it selects.
 - [ ] **Solution 1 layout at t = 0**, over seeds 7, 11, 2024 and 17 more: land edge within
