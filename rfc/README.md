@@ -20,6 +20,7 @@ implemented through ordinary issues and PRs (see [AGENTS.md](../AGENTS.md)), eac
 | [0008](0008-craton-collision-jamming.md) | Cratons jam collisions: braking and fusion | Accepted |
 | [0009](0009-craton-mosaic.md) | Cratons first: continents built from cratonic cores, plates placed around them | Accepted (revised after G1) |
 | [0010](0010-rifts-follow-weak-lithosphere.md) | Rifts follow weak lithosphere | Draft |
+| [0011](0011-contact-strength.md) | Collisions are held by lithospheric strength | Draft |
 
 RFCs 0001–0007 come from one investigation: a 19.2 Gyr run (seed 456862899) that lost
 almost all of its continental crust and all of its cratons. The run is used as a stress
@@ -49,6 +50,11 @@ refreshed implementation order (subject to each RFC's acceptance and diagnosis g
    [#407](https://github.com/adubey/mantle-bloom/issues/407)). They share `terranes.py`
    (docking, buoyant-crust tracers and ledger),
    which whichever lands first builds. RFC 0010's plume weakening also depends on 0007.
+
+RFC 0011 comes from RFC 0001's merge gate (#448) and the collision gate (#452): the overlap
+that merges clip builds at contacts craton blocks. It holds those contacts with a force bounded
+by lithospheric strength, and merges pairs once their motion matches. It supersedes RFC 0008's
+solution 6 (#402).
 
 RFC 0008 came later, from the same craton work. Its gate can run at any time. Its fusion
 lands with or after 0001's merge placement, since it makes craton-bearing merges more

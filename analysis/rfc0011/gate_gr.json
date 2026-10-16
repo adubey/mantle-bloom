@@ -1,0 +1,972 @@
+{
+ "seeds": [
+  {
+   "seed": 326494039,
+   "step_myr": 2.0,
+   "commit": "0ba223a2f8d35a85115930383aa82d9e92be0999",
+   "merges": 29,
+   "G1": {
+    "all": {
+     "net": {
+      "total_km3": 9085251404.5,
+      "craton": 0.0147,
+      "cap": -0.0136,
+      "deform": 0.2531,
+      "craton_both": 0.7458,
+      "blocked": 0.7469,
+      "craton_any": 0.7606
+     },
+     "gross": {
+      "total_km3": 22186896938.4,
+      "craton": 0.0513,
+      "cap": 0.0214,
+      "deform": 0.5604,
+      "craton_both": 0.3669,
+      "blocked": 0.4396,
+      "craton_any": 0.4182
+     },
+     "pre_merge_30myr": {
+      "total_km3": 1351403351.3,
+      "craton": -0.0093,
+      "cap": 0.0031,
+      "deform": 0.0012,
+      "craton_both": 1.0051,
+      "blocked": 0.9988,
+      "craton_any": 0.9957
+     }
+    },
+    "cc": {
+     "net": {
+      "total_km3": 8195458592.2,
+      "craton": 0.0154,
+      "cap": -0.0148,
+      "deform": 0.1644,
+      "craton_both": 0.835,
+      "blocked": 0.8356,
+      "craton_any": 0.8504
+     },
+     "gross": {
+      "total_km3": 16308547957.4,
+      "craton": 0.0603,
+      "cap": 0.0277,
+      "deform": 0.4245,
+      "craton_both": 0.4874,
+      "blocked": 0.5755,
+      "craton_any": 0.5478
+     },
+     "pre_merge_30myr": {
+      "total_km3": 1322125064.2,
+      "craton": -0.007,
+      "cap": 0.0032,
+      "deform": 0.0034,
+      "craton_both": 1.0005,
+      "blocked": 0.9966,
+      "craton_any": 0.9935
+     }
+    },
+    "depth_mean_cells": {
+     "p10": 0.934,
+     "p50": 1.04,
+     "p90": 1.38
+    },
+    "depth_max_cells": {
+     "p10": 1.03,
+     "p50": 1.36,
+     "p90": 3.3
+    },
+    "depth_mean_km": {
+     "p10": 117.0,
+     "p50": 130.0,
+     "p90": 172.0
+    },
+    "cell_km": 125.0
+   },
+   "G3": {
+    "craton": {
+     "pair_steps_closing": 35,
+     "stall_n_per_m": {
+      "p10": 264000000000.0,
+      "p50": 1280000000000.0,
+      "p90": 42100000000000.0
+     },
+     "share_below_1e13": 0.6857,
+     "share_in_1e12_1e13": 0.2571,
+     "share_below_1e12": 0.4286,
+     "D_growth_km3_per_myr": {
+      "p10": -1070000.0,
+      "p50": 56400.0,
+      "p90": 1030000.0
+     },
+     "overlap_km2": {
+      "p10": 22100.0,
+      "p50": 51900.0,
+      "p90": 130000.0
+     }
+    },
+    "craton_both": {
+     "pair_steps_closing": 1780,
+     "stall_n_per_m": {
+      "p10": 705000000000.0,
+      "p50": 2530000000000.0,
+      "p90": 8300000000000.0
+     },
+     "share_below_1e13": 0.9264,
+     "share_in_1e12_1e13": 0.764,
+     "share_below_1e12": 0.1624,
+     "D_growth_km3_per_myr": {
+      "p10": -1010000.0,
+      "p50": 1150000.0,
+      "p90": 4760000.0
+     },
+     "overlap_km2": {
+      "p10": 105000.0,
+      "p50": 420000.0,
+      "p90": 1080000.0
+     }
+    },
+    "craton_any": {
+     "pair_steps_closing": 1815,
+     "stall_n_per_m": {
+      "p10": 680000000000.0,
+      "p50": 2520000000000.0,
+      "p90": 8560000000000.0
+     },
+     "share_below_1e13": 0.9218,
+     "share_in_1e12_1e13": 0.7543,
+     "share_below_1e12": 0.1675,
+     "D_growth_km3_per_myr": {
+      "p10": -1010000.0,
+      "p50": 1110000.0,
+      "p90": 4740000.0
+     },
+     "overlap_km2": {
+      "p10": 96100.0,
+      "p50": 413000.0,
+      "p90": 1080000.0
+     }
+    },
+    "cap": {
+     "pair_steps_closing": 56,
+     "stall_n_per_m": {
+      "p10": 534000000000.0,
+      "p50": 1730000000000.0,
+      "p90": 5750000000000.0
+     },
+     "share_below_1e13": 0.9464,
+     "share_in_1e12_1e13": 0.5893,
+     "share_below_1e12": 0.3571,
+     "D_growth_km3_per_myr": {
+      "p10": -3020000.0,
+      "p50": -28200.0,
+      "p90": 2810000.0
+     },
+     "overlap_km2": {
+      "p10": 64200.0,
+      "p50": 131000.0,
+      "p90": 170000.0
+     }
+    }
+   },
+   "jam_rotation": {
+    "episodes": 146,
+    "rel_rot_start_deg_per_myr": {
+     "p10": 0.0809,
+     "p50": 0.211,
+     "p90": 0.418
+    },
+    "rel_rot_end_deg_per_myr": {
+     "p10": 0.0672,
+     "p50": 0.166,
+     "p90": 0.425
+    },
+    "end_over_start": {
+     "p10": 0.292,
+     "p50": 0.868,
+     "p90": 2.19
+    },
+    "share_halved": 0.1918,
+    "share_grew": 0.411,
+    "end_over_start_pairs_that_merged": {
+     "p10": 0.286,
+     "p50": 0.838,
+     "p90": 1.83
+    }
+   }
+  },
+  {
+   "seed": 748935664,
+   "step_myr": 2.0,
+   "commit": "9af6fdf1fabf814a72fa6dad4f382444622a70d1",
+   "merges": 24,
+   "G1": {
+    "all": {
+     "net": {
+      "total_km3": 6401934131.9,
+      "craton": 0.0042,
+      "cap": 0.0012,
+      "deform": 0.2293,
+      "craton_both": 0.7652,
+      "blocked": 0.7707,
+      "craton_any": 0.7695
+     },
+     "gross": {
+      "total_km3": 13635652002.9,
+      "craton": 0.0421,
+      "cap": 0.0031,
+      "deform": 0.5342,
+      "craton_both": 0.4206,
+      "blocked": 0.4658,
+      "craton_any": 0.4626
+     },
+     "pre_merge_30myr": {
+      "total_km3": 1022101264.0,
+      "craton": -0.0229,
+      "cap": 0.0004,
+      "deform": 0.0864,
+      "craton_both": 0.9361,
+      "blocked": 0.9136,
+      "craton_any": 0.9132
+     }
+    },
+    "cc": {
+     "net": {
+      "total_km3": 5734856271.9,
+      "craton": -0.0008,
+      "cap": 0.0014,
+      "deform": 0.1615,
+      "craton_both": 0.8379,
+      "blocked": 0.8385,
+      "craton_any": 0.8371
+     },
+     "gross": {
+      "total_km3": 10214987450.3,
+      "craton": 0.0391,
+      "cap": 0.0042,
+      "deform": 0.4085,
+      "craton_both": 0.5482,
+      "blocked": 0.5915,
+      "craton_any": 0.5873
+     },
+     "pre_merge_30myr": {
+      "total_km3": 1023811810.7,
+      "craton": -0.0231,
+      "cap": 0.0004,
+      "deform": 0.0915,
+      "craton_both": 0.9312,
+      "blocked": 0.9085,
+      "craton_any": 0.9081
+     }
+    },
+    "depth_mean_cells": {
+     "p10": 0.92,
+     "p50": 1.01,
+     "p90": 1.55
+    },
+    "depth_max_cells": {
+     "p10": 1.0,
+     "p50": 1.27,
+     "p90": 3.89
+    },
+    "depth_mean_km": {
+     "p10": 115.0,
+     "p50": 126.0,
+     "p90": 193.0
+    },
+    "cell_km": 125.0
+   },
+   "G3": {
+    "craton": {
+     "pair_steps_closing": 5,
+     "stall_n_per_m": {
+      "p10": 3520000000000.0,
+      "p50": 16200000000000.0,
+      "p90": 44300000000000.0
+     },
+     "share_below_1e13": 0.4,
+     "share_in_1e12_1e13": 0.4,
+     "share_below_1e12": 0.0,
+     "D_growth_km3_per_myr": {
+      "p10": -827000.0,
+      "p50": 458000.0,
+      "p90": 1060000.0
+     },
+     "overlap_km2": {
+      "p10": 12100.0,
+      "p50": 26000.0,
+      "p90": 57100.0
+     }
+    },
+    "craton_both": {
+     "pair_steps_closing": 1230,
+     "stall_n_per_m": {
+      "p10": 317000000000.0,
+      "p50": 1720000000000.0,
+      "p90": 6530000000000.0
+     },
+     "share_below_1e13": 0.935,
+     "share_in_1e12_1e13": 0.6244,
+     "share_below_1e12": 0.3106,
+     "D_growth_km3_per_myr": {
+      "p10": -1040000.0,
+      "p50": 1040000.0,
+      "p90": 4790000.0
+     },
+     "overlap_km2": {
+      "p10": 96200.0,
+      "p50": 470000.0,
+      "p90": 2120000.0
+     }
+    },
+    "craton_any": {
+     "pair_steps_closing": 1235,
+     "stall_n_per_m": {
+      "p10": 317000000000.0,
+      "p50": 1730000000000.0,
+      "p90": 6610000000000.0
+     },
+     "share_below_1e13": 0.9328,
+     "share_in_1e12_1e13": 0.6235,
+     "share_below_1e12": 0.3093,
+     "D_growth_km3_per_myr": {
+      "p10": -1030000.0,
+      "p50": 1030000.0,
+      "p90": 4770000.0
+     },
+     "overlap_km2": {
+      "p10": 91100.0,
+      "p50": 466000.0,
+      "p90": 2120000.0
+     }
+    },
+    "cap": {
+     "pair_steps_closing": 4,
+     "stall_n_per_m": {
+      "p10": 181000000000.0,
+      "p50": 427000000000.0,
+      "p90": 730000000000.0
+     },
+     "share_below_1e13": 1.0,
+     "share_in_1e12_1e13": 0.0,
+     "share_below_1e12": 1.0,
+     "D_growth_km3_per_myr": {
+      "p10": -2080000.0,
+      "p50": -414000.0,
+      "p90": 13300.0
+     },
+     "overlap_km2": {
+      "p10": 10100.0,
+      "p50": 26900.0,
+      "p90": 48800.0
+     }
+    }
+   },
+   "jam_rotation": {
+    "episodes": 75,
+    "rel_rot_start_deg_per_myr": {
+     "p10": 0.0825,
+     "p50": 0.201,
+     "p90": 0.387
+    },
+    "rel_rot_end_deg_per_myr": {
+     "p10": 0.0758,
+     "p50": 0.183,
+     "p90": 0.44
+    },
+    "end_over_start": {
+     "p10": 0.324,
+     "p50": 0.905,
+     "p90": 2.92
+    },
+    "share_halved": 0.1467,
+    "share_grew": 0.4533,
+    "end_over_start_pairs_that_merged": {
+     "p10": 0.288,
+     "p50": 0.841,
+     "p90": 3.39
+    }
+   }
+  },
+  {
+   "seed": 580014012,
+   "step_myr": 2.0,
+   "commit": "9af6fdf1fabf814a72fa6dad4f382444622a70d1",
+   "merges": 18,
+   "G1": {
+    "all": {
+     "net": {
+      "total_km3": 7751765323.6,
+      "craton": 0.0062,
+      "cap": 0.0027,
+      "deform": 0.2636,
+      "craton_both": 0.7275,
+      "blocked": 0.7364,
+      "craton_any": 0.7337
+     },
+     "gross": {
+      "total_km3": 25494965890.6,
+      "craton": 0.0524,
+      "cap": 0.0062,
+      "deform": 0.6477,
+      "craton_both": 0.2938,
+      "blocked": 0.3523,
+      "craton_any": 0.3462
+     },
+     "pre_merge_30myr": {
+      "total_km3": 488266376.4,
+      "craton": 0.0096,
+      "cap": -0.0161,
+      "deform": -0.0044,
+      "craton_both": 1.0109,
+      "blocked": 1.0044,
+      "craton_any": 1.0205
+     }
+    },
+    "cc": {
+     "net": {
+      "total_km3": 6599611347.2,
+      "craton": 0.0009,
+      "cap": 0.0031,
+      "deform": 0.1413,
+      "craton_both": 0.8548,
+      "blocked": 0.8587,
+      "craton_any": 0.8557
+     },
+     "gross": {
+      "total_km3": 18287152105.5,
+      "craton": 0.0465,
+      "cap": 0.0082,
+      "deform": 0.5367,
+      "craton_both": 0.4087,
+      "blocked": 0.4633,
+      "craton_any": 0.4552
+     },
+     "pre_merge_30myr": {
+      "total_km3": 488266376.4,
+      "craton": 0.0096,
+      "cap": -0.0161,
+      "deform": -0.0044,
+      "craton_both": 1.0109,
+      "blocked": 1.0044,
+      "craton_any": 1.0205
+     }
+    },
+    "depth_mean_cells": {
+     "p10": 0.923,
+     "p50": 1.01,
+     "p90": 1.3
+    },
+    "depth_max_cells": {
+     "p10": 1.0,
+     "p50": 1.35,
+     "p90": 3.21
+    },
+    "depth_mean_km": {
+     "p10": 115.0,
+     "p50": 126.0,
+     "p90": 163.0
+    },
+    "cell_km": 125.0
+   },
+   "G3": {
+    "craton": {
+     "pair_steps_closing": 34,
+     "stall_n_per_m": {
+      "p10": 1310000000000.0,
+      "p50": 15800000000000.0,
+      "p90": 75600000000000.0
+     },
+     "share_below_1e13": 0.3529,
+     "share_in_1e12_1e13": 0.2647,
+     "share_below_1e12": 0.0882,
+     "D_growth_km3_per_myr": {
+      "p10": -3290000.0,
+      "p50": -10900.0,
+      "p90": 1120000.0
+     },
+     "overlap_km2": {
+      "p10": 15500.0,
+      "p50": 40700.0,
+      "p90": 80800.0
+     }
+    },
+    "craton_both": {
+     "pair_steps_closing": 1774,
+     "stall_n_per_m": {
+      "p10": 335000000000.0,
+      "p50": 1370000000000.0,
+      "p90": 5750000000000.0
+     },
+     "share_below_1e13": 0.9453,
+     "share_in_1e12_1e13": 0.5986,
+     "share_below_1e12": 0.3467,
+     "D_growth_km3_per_myr": {
+      "p10": -920000.0,
+      "p50": 936000.0,
+      "p90": 4010000.0
+     },
+     "overlap_km2": {
+      "p10": 130000.0,
+      "p50": 504000.0,
+      "p90": 1730000.0
+     }
+    },
+    "craton_any": {
+     "pair_steps_closing": 1808,
+     "stall_n_per_m": {
+      "p10": 336000000000.0,
+      "p50": 1400000000000.0,
+      "p90": 6610000000000.0
+     },
+     "share_below_1e13": 0.9342,
+     "share_in_1e12_1e13": 0.5924,
+     "share_below_1e12": 0.3418,
+     "D_growth_km3_per_myr": {
+      "p10": -953000.0,
+      "p50": 894000.0,
+      "p90": 3960000.0
+     },
+     "overlap_km2": {
+      "p10": 104000.0,
+      "p50": 485000.0,
+      "p90": 1730000.0
+     }
+    },
+    "cap": {
+     "pair_steps_closing": 10,
+     "stall_n_per_m": {
+      "p10": 209000000000.0,
+      "p50": 8780000000000.0,
+      "p90": 88200000000000.0
+     },
+     "share_below_1e13": 0.5,
+     "share_in_1e12_1e13": 0.3,
+     "share_below_1e12": 0.2,
+     "D_growth_km3_per_myr": {
+      "p10": -1990000.0,
+      "p50": -5830.0,
+      "p90": 1150000.0
+     },
+     "overlap_km2": {
+      "p10": 14300.0,
+      "p50": 31000.0,
+      "p90": 54000.0
+     }
+    }
+   },
+   "jam_rotation": {
+    "episodes": 125,
+    "rel_rot_start_deg_per_myr": {
+     "p10": 0.0895,
+     "p50": 0.198,
+     "p90": 0.461
+    },
+    "rel_rot_end_deg_per_myr": {
+     "p10": 0.0719,
+     "p50": 0.21,
+     "p90": 0.548
+    },
+    "end_over_start": {
+     "p10": 0.342,
+     "p50": 1.0,
+     "p90": 2.56
+    },
+    "share_halved": 0.152,
+    "share_grew": 0.496,
+    "end_over_start_pairs_that_merged": {
+     "p10": 0.369,
+     "p50": 0.916,
+     "p90": 2.51
+    }
+   }
+  },
+  {
+   "seed": 111065103,
+   "step_myr": 2.0,
+   "commit": "9af6fdf1fabf814a72fa6dad4f382444622a70d1",
+   "merges": 26,
+   "G1": {
+    "all": {
+     "net": {
+      "total_km3": 7127283589.0,
+      "craton": 0.0125,
+      "cap": -0.008,
+      "deform": 0.3346,
+      "craton_both": 0.6609,
+      "blocked": 0.6654,
+      "craton_any": 0.6733
+     },
+     "gross": {
+      "total_km3": 26111999713.7,
+      "craton": 0.0528,
+      "cap": 0.0106,
+      "deform": 0.7018,
+      "craton_both": 0.2347,
+      "blocked": 0.2982,
+      "craton_any": 0.2876
+     },
+     "pre_merge_30myr": {
+      "total_km3": 1210187779.4,
+      "craton": -0.0139,
+      "cap": -0.0019,
+      "deform": 0.0881,
+      "craton_both": 0.9277,
+      "blocked": 0.9119,
+      "craton_any": 0.9138
+     }
+    },
+    "cc": {
+     "net": {
+      "total_km3": 5580822710.1,
+      "craton": 0.0091,
+      "cap": -0.0091,
+      "deform": 0.1745,
+      "craton_both": 0.8254,
+      "blocked": 0.8255,
+      "craton_any": 0.8345
+     },
+     "gross": {
+      "total_km3": 14983728693.3,
+      "craton": 0.0686,
+      "cap": 0.017,
+      "deform": 0.5147,
+      "craton_both": 0.3997,
+      "blocked": 0.4853,
+      "craton_any": 0.4683
+     },
+     "pre_merge_30myr": {
+      "total_km3": 1147015919.0,
+      "craton": -0.0135,
+      "cap": -0.002,
+      "deform": 0.078,
+      "craton_both": 0.9375,
+      "blocked": 0.922,
+      "craton_any": 0.924
+     }
+    },
+    "depth_mean_cells": {
+     "p10": 0.938,
+     "p50": 1.03,
+     "p90": 1.22
+    },
+    "depth_max_cells": {
+     "p10": 1.02,
+     "p50": 1.16,
+     "p90": 2.67
+    },
+    "depth_mean_km": {
+     "p10": 117.0,
+     "p50": 128.0,
+     "p90": 152.0
+    },
+    "cell_km": 125.0
+   },
+   "G3": {
+    "craton": {
+     "pair_steps_closing": 31,
+     "stall_n_per_m": {
+      "p10": 1000000000000.0,
+      "p50": 13100000000000.0,
+      "p90": 39300000000000.0
+     },
+     "share_below_1e13": 0.4516,
+     "share_in_1e12_1e13": 0.3548,
+     "share_below_1e12": 0.0968,
+     "D_growth_km3_per_myr": {
+      "p10": -3030000.0,
+      "p50": 27100.0,
+      "p90": 772000.0
+     },
+     "overlap_km2": {
+      "p10": 14600.0,
+      "p50": 35900.0,
+      "p90": 137000.0
+     }
+    },
+    "craton_both": {
+     "pair_steps_closing": 1251,
+     "stall_n_per_m": {
+      "p10": 511000000000.0,
+      "p50": 2870000000000.0,
+      "p90": 7470000000000.0
+     },
+     "share_below_1e13": 0.9408,
+     "share_in_1e12_1e13": 0.7498,
+     "share_below_1e12": 0.191,
+     "D_growth_km3_per_myr": {
+      "p10": -1120000.0,
+      "p50": 818000.0,
+      "p90": 5490000.0
+     },
+     "overlap_km2": {
+      "p10": 108000.0,
+      "p50": 395000.0,
+      "p90": 1110000.0
+     }
+    },
+    "craton_any": {
+     "pair_steps_closing": 1282,
+     "stall_n_per_m": {
+      "p10": 514000000000.0,
+      "p50": 2890000000000.0,
+      "p90": 8120000000000.0
+     },
+     "share_below_1e13": 0.929,
+     "share_in_1e12_1e13": 0.7402,
+     "share_below_1e12": 0.1888,
+     "D_growth_km3_per_myr": {
+      "p10": -1180000.0,
+      "p50": 762000.0,
+      "p90": 5430000.0
+     },
+     "overlap_km2": {
+      "p10": 89800.0,
+      "p50": 378000.0,
+      "p90": 1100000.0
+     }
+    },
+    "cap": {
+     "pair_steps_closing": 23,
+     "stall_n_per_m": {
+      "p10": 452000000000.0,
+      "p50": 744000000000.0,
+      "p90": 2000000000000.0
+     },
+     "share_below_1e13": 1.0,
+     "share_in_1e12_1e13": 0.4348,
+     "share_below_1e12": 0.5652,
+     "D_growth_km3_per_myr": {
+      "p10": -5080000.0,
+      "p50": -29500.0,
+      "p90": 2120000.0
+     },
+     "overlap_km2": {
+      "p10": 58300.0,
+      "p50": 105000.0,
+      "p90": 154000.0
+     }
+    }
+   },
+   "jam_rotation": {
+    "episodes": 147,
+    "rel_rot_start_deg_per_myr": {
+     "p10": 0.12,
+     "p50": 0.289,
+     "p90": 0.542
+    },
+    "rel_rot_end_deg_per_myr": {
+     "p10": 0.107,
+     "p50": 0.255,
+     "p90": 0.583
+    },
+    "end_over_start": {
+     "p10": 0.387,
+     "p50": 0.944,
+     "p90": 2.14
+    },
+    "share_halved": 0.1837,
+    "share_grew": 0.4354,
+    "end_over_start_pairs_that_merged": {
+     "p10": 0.293,
+     "p50": 0.864,
+     "p90": 1.79
+    }
+   }
+  }
+ ],
+ "pooled": {
+  "seeds": [
+   326494039,
+   748935664,
+   580014012,
+   111065103
+  ],
+  "step_myr": 2.0,
+  "G1": {
+   "all": {
+    "net": {
+     "total_km3": 30366234449.1,
+     "craton": 0.0098,
+     "cap": -0.005,
+     "deform": 0.2699,
+     "craton_both": 0.7253,
+     "blocked": 0.7301,
+     "craton_any": 0.7351
+    },
+    "gross": {
+     "total_km3": 87429514545.6,
+     "craton": 0.0506,
+     "cap": 0.0109,
+     "deform": 0.624,
+     "craton_both": 0.3145,
+     "blocked": 0.376,
+     "craton_any": 0.3651
+    },
+    "pre_merge_30myr": {
+     "total_km3": 4071958771.1,
+     "craton": -0.0118,
+     "cap": -0.0013,
+     "deform": 0.0477,
+     "craton_both": 0.9655,
+     "blocked": 0.9523,
+     "craton_any": 0.9536
+    }
+   },
+   "cc": {
+    "net": {
+     "total_km3": 26110748921.4,
+     "craton": 0.0068,
+     "cap": -0.0055,
+     "deform": 0.1601,
+     "craton_both": 0.8386,
+     "blocked": 0.8399,
+     "craton_any": 0.8454
+    },
+    "gross": {
+     "total_km3": 59794416206.5,
+     "craton": 0.0545,
+     "cap": 0.015,
+     "deform": 0.4787,
+     "craton_both": 0.4518,
+     "blocked": 0.5213,
+     "craton_any": 0.5063
+    },
+    "pre_merge_30myr": {
+     "total_km3": 3981219170.3,
+     "craton": -0.011,
+     "cap": -0.0014,
+     "deform": 0.0466,
+     "craton_both": 0.9658,
+     "blocked": 0.9534,
+     "craton_any": 0.9548
+    }
+   },
+   "depth_mean_cells": {
+    "p10": 0.93,
+    "p50": 1.02,
+    "p90": 1.3
+   },
+   "depth_max_cells": {
+    "p10": 1.01,
+    "p50": 1.31,
+    "p90": 3.17
+   },
+   "depth_mean_km": {
+    "p10": 116.0,
+    "p50": 128.0,
+    "p90": 163.0
+   },
+   "cell_km": 125.0
+  },
+  "G3": {
+   "craton": {
+    "pair_steps_closing": 105,
+    "stall_n_per_m": {
+     "p10": 564000000000.0,
+     "p50": 11600000000000.0,
+     "p90": 58300000000000.0
+    },
+    "share_below_1e13": 0.4952,
+    "share_in_1e12_1e13": 0.2952,
+    "share_below_1e12": 0.2,
+    "D_growth_km3_per_myr": {
+     "p10": -2800000.0,
+     "p50": 16000.0,
+     "p90": 1060000.0
+    },
+    "overlap_km2": {
+     "p10": 15500.0,
+     "p50": 43500.0,
+     "p90": 127000.0
+    }
+   },
+   "craton_both": {
+    "pair_steps_closing": 6035,
+    "stall_n_per_m": {
+     "p10": 432000000000.0,
+     "p50": 1970000000000.0,
+     "p90": 7410000000000.0
+    },
+    "share_below_1e13": 0.9367,
+    "share_in_1e12_1e13": 0.684,
+    "share_below_1e12": 0.2527,
+    "D_growth_km3_per_myr": {
+     "p10": -1020000.0,
+     "p50": 1010000.0,
+     "p90": 4730000.0
+    },
+    "overlap_km2": {
+     "p10": 108000.0,
+     "p50": 446000.0,
+     "p90": 1480000.0
+    }
+   },
+   "craton_any": {
+    "pair_steps_closing": 6140,
+    "stall_n_per_m": {
+     "p10": 434000000000.0,
+     "p50": 1980000000000.0,
+     "p90": 7800000000000.0
+    },
+    "share_below_1e13": 0.9292,
+    "share_in_1e12_1e13": 0.6774,
+    "share_below_1e12": 0.2518,
+    "D_growth_km3_per_myr": {
+     "p10": -1050000.0,
+     "p50": 976000.0,
+     "p90": 4670000.0
+    },
+    "overlap_km2": {
+     "p10": 94400.0,
+     "p50": 439000.0,
+     "p90": 1460000.0
+    }
+   },
+   "cap": {
+    "pair_steps_closing": 93,
+    "stall_n_per_m": {
+     "p10": 398000000000.0,
+     "p50": 1370000000000.0,
+     "p90": 6790000000000.0
+    },
+    "share_below_1e13": 0.914,
+    "share_in_1e12_1e13": 0.4946,
+    "share_below_1e12": 0.4194,
+    "D_growth_km3_per_myr": {
+     "p10": -3360000.0,
+     "p50": -19600.0,
+     "p90": 2190000.0
+    },
+    "overlap_km2": {
+     "p10": 38100.0,
+     "p50": 114000.0,
+     "p90": 165000.0
+    }
+   }
+  },
+  "jam_rotation": {
+   "episodes": 493,
+   "rel_rot_start_deg_per_myr": {
+    "p10": 0.0907,
+    "p50": 0.224,
+    "p90": 0.478
+   },
+   "rel_rot_end_deg_per_myr": {
+    "p10": 0.0758,
+    "p50": 0.21,
+    "p90": 0.519
+   },
+   "end_over_start": {
+    "p10": 0.34,
+    "p50": 0.949,
+    "p90": 2.42
+   },
+   "share_halved": 0.1724,
+   "share_grew": 0.4462,
+   "end_over_start_pairs_that_merged": {
+    "p10": 0.282,
+    "p50": 0.852,
+    "p90": 2.46
+   }
+  }
+ }
+}
