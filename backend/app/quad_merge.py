@@ -200,6 +200,55 @@ def _explicit_codes(codes: np.ndarray, crust_type: str) -> np.ndarray:
     return np.where(codes == CRUST_TYPE_INHERIT, inherited, codes).astype(codes.dtype)
 
 
+def _place_craton_on_new_cells(
+    values: np.ndarray,
+    hc: np.ndarray,
+    sub_area: np.ndarray,
+    target: np.ndarray,
+    orphan: np.ndarray,
+    is_new: np.ndarray,
+    mapped_area: np.ndarray,
+    target_area: np.ndarray,
+    hc_new_values: np.ndarray,
+    added: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Keep craton local on new cells; use host-column headroom for any orphaned share."""
+    n = len(target_area)
+    mapped = ~orphan
+    hc_volume = np.bincount(target[mapped], weights=(hc * sub_area)[mapped], minlength=n)
+    hc_mean = np.divide(hc_volume, mapped_area, out=np.zeros(n), where=mapped_area > 0.0)
+    hc_placed = float(np.dot(hc_mean[is_new], target_area[is_new]))
+    hc_owed = float(np.sum(hc_volume[is_new])) + float(np.sum((hc * sub_area)[orphan]))
+    hc_ratio = hc_owed / hc_placed if hc_placed > 0.0 else 0.0
+
+    craton_volume = np.bincount(target[mapped], weights=(values * sub_area)[mapped], minlength=n)
+    craton_mean = np.divide(
+        craton_volume, mapped_area, out=np.zeros(n), where=mapped_area > 0.0
+    )
+    host_hc = np.clip(
+        hc_new_values,
+        lithosphere.MIN_CRUSTAL_THICKNESS_M,
+        SUTURE_ACCRETION_MAX_HC_M,
+    )
+    new_values = np.minimum(craton_mean * hc_ratio, host_hc)
+    owed = float(np.sum(craton_volume[is_new])) + float(np.sum((values * sub_area)[orphan]))
+    placed = float(np.dot(new_values[is_new], target_area[is_new]))
+    if placed > owed and placed > 0.0:
+        # Hc can need a larger coverage correction than this patchy craton field. Keep the
+        # local pattern, but don't create craton volume when that correction over-restores it.
+        new_values[is_new] *= owed / placed
+        placed = owed
+    leftover = max(owed - placed, 0.0)
+
+    supported = is_new & (craton_mean > 0.0)
+    headroom = np.maximum(host_hc - new_values, 0.0)
+    capacity = float(np.dot(headroom[supported], target_area[supported]))
+    if leftover > 0.0 and capacity > 0.0:
+        fill = min(leftover / capacity, 1.0)
+        new_values[supported] += fill * headroom[supported]
+    return new_values, added
+
+
 def _transfer(
     keep: "PlateWithSparseQuadPatch",
     absorb: "PlateWithSparseQuadPatch",
@@ -277,6 +326,34 @@ def _transfer(
         orphan_volume = summed(values, sub_area, orphan) / target_area
         return orphan_volume, added + np.where(is_new, 0.0, orphan_volume)
 
+    # A craton is a share of Hc, not an independent extensive layer. Independent restoring
+    # ratios can concentrate a patchy craton field onto new cells more strongly than Hc,
+    # leaving craton above its host column after a merge (#443, H4). Preserve its local pattern
+    # with Hc's restoring ratio; only use remaining Hc headroom on cells that already received
+    # craton. The merge audit books volume that cannot fit there to merge_capped_m3.
+
+    hc_source = absorb_fields["crustal_thickness_m"][source]
+
+    def extensive_craton(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        new_values, added = extensive(values)
+        if not np.any(is_new):
+            return new_values, added
+        hc_new_values, _ = extensive(hc_source)
+        return _place_craton_on_new_cells(
+            values,
+            hc_source,
+            sub_area,
+            target,
+            orphan,
+            is_new,
+            mapped_area,
+            target_area,
+            hc_new_values,
+            added,
+        )
+
+    extensive_remappers = {"craton_crust_m": extensive_craton}
+
     # Existing cells that take in absorbed sub-cells (the suture) combine both plates' values
     # by each field's remap class, with the survivor's own value weighted by its cell area;
     # a new cell is the same combination with no survivor share.
@@ -297,7 +374,7 @@ def _transfer(
         merged = own.copy()
         values = absorb_fields[name][source]
         if spec.remap_class == RemapClass.EXTENSIVE:
-            new_values, added = extensive(values)
+            new_values, added = extensive_remappers.get(name, extensive)(values)
             merged[is_new] = new_values[is_new]
             merged[~is_new] += added[~is_new]
         elif name in ("channel_depth", "breach_notch_depth_m") or spec.remap_class == RemapClass.COUNTDOWN:

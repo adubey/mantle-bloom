@@ -7,9 +7,15 @@ import numpy as np
 import pytest
 
 from app import continental_ledger, geometry, lithosphere, merge_split, quad_merge
-from app.elevation_lines import CRUST_TYPE_INHERIT, CRUST_TYPE_OCEANIC, line_spacing_rad
+from app.elevation_lines import (
+    CRUST_TYPE_CONTINENTAL,
+    CRUST_TYPE_INHERIT,
+    CRUST_TYPE_OCEANIC,
+    line_spacing_rad,
+)
 from app.lithosphere_plate import SUTURE_ACCRETION_MAX_HC_M
 from app.sparse_quad_patch import PLANET_RADIUS_M, PlateWithSparseQuadPatch, unpack_cell_keys
+from app.surface_fields import CRATON_UNFORMED_YEARS
 from app.world import World
 
 DENSITY = 0.5
@@ -208,6 +214,42 @@ def test_craton_stacked_on_craton_past_the_cap_goes_with_the_overflow():
     assert _volume([keep], "craton_crust_m") == pytest.approx(craton_before, rel=1e-9)
     assert np.all(craton <= hc + 1e-6)
     assert keep.collect("craton_formed_years").min() == -2e9
+
+
+def test_patchy_craton_is_carried_with_hc_onto_new_cells():
+    # Issue #443 (H4): preserve the source patch on new cells while using Hc's restoring ratio;
+    # orphan craton may use only the Hc headroom of cells that already received craton.
+    keep = _cap(1, np.eye(3), _direction(0.0))
+    absorb = _cap(2, ROTATED, _direction(2 * RADIUS + 0.5 * SPACING))
+    hc = absorb.collect("crustal_thickness_m")
+    points = absorb.all_points_and_elevation()[0]
+    patch_limit = np.quantile(points[:, 1], 0.55)
+    patch = points[:, 1] > patch_limit
+    absorb.set_fields_on_plate(
+        craton_crust_m=np.where(patch, hc, 0.0),
+        craton_formed_years=np.where(patch, -2e9, CRATON_UNFORMED_YEARS),
+        crust_type_code=np.where(patch, CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC),
+    )
+    craton_before = _volume([absorb], "craton_crust_m")
+    old_keys = set(map(int, keep.cell_keys))
+
+    quad_merge.merge(keep, absorb, np.zeros((0, 3)))
+
+    new = np.array([int(key) not in old_keys for key in keep.cell_keys])
+    craton = keep.collect("craton_crust_m")
+    merged_hc = keep.collect("crustal_thickness_m")
+    formed = keep.collect("craton_formed_years")
+    codes = keep.collect("crust_type_code")
+    merged_points = keep.all_points_and_elevation()[0]
+    away_from_patch = new & (merged_points[:, 1] < patch_limit - 2.0 * SPACING)
+
+    assert np.any(new & (craton > 0.0))
+    assert np.any(away_from_patch)
+    assert np.all(craton[away_from_patch] == 0.0)
+    assert np.all(codes[away_from_patch] == CRUST_TYPE_OCEANIC)
+    assert np.all(formed[craton > 0.0] != CRATON_UNFORMED_YEARS)
+    assert np.all(craton[new] <= merged_hc[new] + 1e-6)
+    assert _volume([keep], "craton_crust_m") == pytest.approx(craton_before, rel=1e-9)
 
 
 def test_a_craton_column_stays_continental_under_a_thicker_oceanic_pile():

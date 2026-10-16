@@ -248,8 +248,10 @@ Two long-run corrections (2026-09):
   full-strength cratonic keel is neutral (Jordan 1978), and ocean floor pulls as before. A
   buoyant node pulls nothing; before, a terrane or craton was dragged into the trench at
   full strength, and a keel pulled harder than ocean floor. Separately, a continental-coded
-  node on the side forced down (any node of an oceanic plate, or the lower plate of the last
-  frozen polarized front, `forced_down_mask`), in the band of a contact closing at ≥ −1 cm/yr
+  node on the side forced down (behind its own plate's slab at that contact,
+  `slab_attached_continent`, or on the lower plate of the last frozen polarized front,
+  `forced_down_mask`; see [Per-node crust type](tectonics.md#per-node-crust-type)), in the band of a
+  contact closing at ≥ −1 cm/yr
   (`jam_mask`), jams with `j = clip((Hc − 15 km) / (30 km − 15 km), 0, 1)` (Cloos 1993).
   j joins the contact drag's factor, `g = max(j, relief, craton)`, and the neighbour reads it
   at its nearest node (`contact_jam_factor`), so both plates feel one resistance. The band

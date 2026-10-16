@@ -12,13 +12,14 @@ happen, in each plate's own local frame, so they ride with the plate:
 - `consumption`: oceanic-coded cells a plate actually lost to retreat under a neighbour
   (`record_consumption`, called from `quad_tectonics._retreat`). The plate that lost them
   gets `lower`, the neighbour that overrode them gets `upper` at the same place.
-- `slab`: an oceanic plate's `torque.subducting_boundary_mask` nodes, which feel slab pull
-  toward a converging neighbour. `lower` on the oceanic plate, `upper` on the neighbour's
+- `slab`: a plate's `torque.subducting_boundary_mask` nodes (its down-going side), which feel
+  slab pull toward a converging neighbour. `lower` on that plate, `upper` on the neighbour's
   nearest nodes.
-- `arc`: a continental plate's arc band (`lithosphere_plate.continental_arc_band`). `upper`
-  on the arc's plate, `lower` on the oceanic neighbour. This is a model cue, not an
-  observation: the arc band follows continental ownership, an oceanic neighbour and positive
-  closing, with no test of which way a slab dips.
+- `arc`: a plate's arc band, continental nodes facing converging ocean floor
+  (`lithosphere_plate.continental_arc_band`). `upper` on the arc's plate, `lower` on the
+  oceanic neighbour. This is a model cue, not an observation: the arc band follows
+  continental crust, an oceanic neighbour and positive closing, with no test of which way a
+  slab dips.
 
 Each bin keeps its source, role, the neighbour at observation, when it was first and last
 seen, and a count of node observations. Bins not seen for `EVIDENCE_LOOKBACK_YEARS` expire.
@@ -482,14 +483,9 @@ def observe_contacts(world: "World", years: float) -> PolarityFrame:
         contested = contacts[pid].contested
         m.retreat_eligible = m.lower & contested
         plate = by_id[pid]
-        eligible = m.retreat_eligible.copy()
-        if plate.crust_type == "continental":
-            from .quad_tectonics import components_of_at_least
-
-            eligible = components_of_at_least(
-                plate, eligible, CONTINENTAL_CONTESTED_RETREAT_MIN_RUN
-            )
         from . import cratons
+
+        eligible = _retreat_runs(plate, m.retreat_eligible, m.continental)
 
         m.run_eligible = eligible
         m.retreatable = eligible & cratons.retreat_allowed(plate)
@@ -510,13 +506,8 @@ def retreat_candidates(frame: PolarityFrame, plate, contested: np.ndarray) -> np
     front's craton-free `retreatable` replaced by `run_eligible`. On such a front
     `shrinkable` is already craton-filtered, so a cratonic lower cell facing ordinary crust
     would otherwise never count as jammed (RFC 0008, #395)."""
-    from .quad_tectonics import components_of_at_least
-
-    if plate.crust_type != "continental":
-        shrinkable = contested.copy()
-    else:
-        shrinkable = components_of_at_least(plate, contested, CONTINENTAL_CONTESTED_RETREAT_MIN_RUN)
     masks = frame.masks[plate.plate_id]
+    shrinkable = _retreat_runs(plate, contested, masks.continental)
     active = [
         front_id
         for front_id, (lower_id, upper_id) in frame.polarity.items()
@@ -526,6 +517,14 @@ def retreat_candidates(frame: PolarityFrame, plate, contested: np.ndarray) -> np
         return shrinkable
     nodes = np.isin(masks.front_id, active)
     return (shrinkable & ~nodes) | (masks.run_eligible & masks.lower & nodes & masks.continental)
+
+
+def _retreat_runs(plate, contested: np.ndarray, continental: np.ndarray) -> np.ndarray:
+    """`boundary_context`'s retreat rule, node by node (RFC 0009, #447): any contested oceanic
+    node, and contested continental nodes in runs of `CONTINENTAL_CONTESTED_RETREAT_MIN_RUN`."""
+    from .quad_tectonics import components_of_at_least
+
+    return (contested & ~continental) | components_of_at_least(plate, contested & continental, CONTINENTAL_CONTESTED_RETREAT_MIN_RUN)
 
 
 def _front_retreats(frame: PolarityFrame, front_id: int, lower_id: int, upper_id: int) -> bool:

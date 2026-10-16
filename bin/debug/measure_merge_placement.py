@@ -218,9 +218,24 @@ def _pre_merge(world, keep, absorb) -> dict:
             "continental_hc_mean_km": float(hc[continental] @ areas[continental]) / max(float(areas[continental].sum()), 1.0) / 1e3,
             "area_at_70km_plus_km2": float(areas[hc >= 70_000.0].sum()) / KM2,
             "craton_mkm3": cratons.plate_volume_m3(world, plate) / MKM3,
+            "craton_area_km2": float(areas[plate.collect("craton_crust_m") > 0.0].sum()) / KM2,
             "craton_outside_column_mkm3": float((above + off) @ areas) / MKM3,
         }
     return out
+
+
+def _merged_inventory(world, plate) -> dict:
+    """Area, craton volume and crust type after the merge audit settles the merged plate."""
+    areas = plate.node_areas_m2()
+    craton = plate.collect("craton_crust_m")
+    continental = _continental(plate.collect("crust_type_code"), plate)
+    return {
+        "area_km2": float(areas.sum()) / KM2,
+        "continental_area_km2": float(areas[continental].sum()) / KM2,
+        "oceanic_area_km2": float(areas[~continental].sum()) / KM2,
+        "craton_area_km2": float(areas[craton > 0.0].sum()) / KM2,
+        "craton_mkm3": cratons.plate_volume_m3(world, plate) / MKM3,
+    }
 
 
 def _history(path: Path | None, myr: float, pair: tuple[int, int], span: float) -> list[dict]:
@@ -253,6 +268,8 @@ def measure(path: Path, contacts: Path | None, span: float) -> dict:
     started = time.time()
     merge_split._merge_plates_with_craton_audit(world, capture["keep"], capture["absorb"])
     result["replay_wall_s"] = time.time() - started
+    merged = next(p for p in world.plates if p.plate_id == capture["keep"])
+    result["after_audit_inventory"] = _merged_inventory(world, merged)
     booked = {k: (world.craton_ledger[k] - sinks.get(k, 0.0)) / MKM3 for k in cratons.CRATON_SINK_ACCOUNTS
               if abs(world.craton_ledger[k] - sinks.get(k, 0.0)) > 1e9}
     result.update(taps.record)

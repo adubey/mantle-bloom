@@ -102,3 +102,23 @@ def test_stepping_a_world_keeps_land_bounded_and_populates_overlap_onset():
     # Some transient envelope overlap always exists, and it must now carry an onset year.
     assert np.any(onset > 0.0)
     assert np.all(onset[onset > 0.0] <= world.elapsed_years)
+
+
+def test_continental_cover_reads_the_covering_nodes_own_crust():
+    # #447: a continental plate's ocean floor on top duplicates no continental crust, and a
+    # terrane on an oceanic plate does.
+    from app.elevation_lines import CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC
+
+    world = _overlapping_world()
+    world.plates[1].set_fields_on_plate(crust_type_code=np.full(10, CRUST_TYPE_OCEANIC, dtype=np.int8))
+    np.testing.assert_array_equal(compute_node_overlap(world.plates)[0]["continental_cover_count"], [0] * 10)
+
+    terrane = _plate(2, filler_column=0, crust_type="oceanic")
+    terrane.set_fields_on_plate(crust_type_code=np.full(10, CRUST_TYPE_CONTINENTAL, dtype=np.int8))
+    world.plates.append(terrane)
+    overlap = compute_node_overlap(world.plates)
+
+    np.testing.assert_array_equal(overlap[0]["continental_cover_count"], [1] * 8 + [0, 0])
+    assert overlap[0]["continental_by_partner"] == {2: 8}
+    assert overlap[1]["continental_by_partner"] == {}
+    assert overlap[2]["continental_by_partner"] == {0: 8}

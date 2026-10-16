@@ -517,15 +517,20 @@ def test_contact_craton_is_the_weaker_side_so_both_plates_brake_alike():
 
 
 def _jam_band(spacing_rad: float, rows: int, hc: float, hm: float = 100_000.0, rate_cm_per_yr: float = 0.0, craton: float = 0.0):
-    """`_contact_band`, but on an oceanic plate whose band is a continental-coded terrane
-    (RFC 0008, #400): forced down, so in the jam mask while the contact isn't diverging."""
+    """`_contact_band`, but on an oceanic plate whose middle `rows` rows are a continental-coded
+    terrane (RFC 0008, #400), with a row of its ocean floor at each end of the same contact: the
+    slab that drags the terrane down (#447). The terrane is so forced down, and in the jam mask
+    while the contact isn't diverging. Returns the terrane mask."""
     rate = mantle.cm_per_yr_to_rad_per_yr(rate_cm_per_yr)
-    plate, inputs, mask = _contact_band(spacing_rad, rows, hc=hc, hm=hm, omega=(0.0, 0.0, rate))
-    n = len(mask)
+    plate, inputs, _ = _contact_band(spacing_rad, rows + 2, hc=hc, hm=hm, omega=(0.0, 0.0, rate))
+    n = len(inputs.own_points)
+    row = np.arange(n) // int(torque.BOUNDARY_FORCE_REACH_MULTIPLIER)
+    terrane = (row >= 1) & (row <= rows)
     plate.crust_type = "oceanic"
-    inputs.own_crust_type_codes = np.full(n, CRUST_TYPE_CONTINENTAL, dtype=np.int8)
-    inputs.own_craton_m = np.full(n, craton)
-    return plate, inputs, mask
+    inputs.own_crust_type_codes = np.where(terrane, CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC).astype(np.int8)
+    inputs.own_craton_m = np.where(terrane, craton, 0.0)
+    inputs.neighbor_plate_id = np.full(n, 2)
+    return plate, inputs, terrane
 
 
 def _pull_per_node(plate, inputs, spacing):
@@ -554,14 +559,14 @@ def test_thick_continental_crust_pulls_nothing_and_brakes_while_thin_crust_pulls
     one on a thick 150 km root still sinks, more weakly than bare ocean floor, and doesn't jam."""
     spacing = line_spacing_rad(1.0)
     reach = torque.BOUNDARY_FORCE_REACH_MULTIPLIER * spacing
-    thick, inputs, _ = _jam_band(spacing, 2, hc=35_000.0, rate_cm_per_yr=3.0)
-    assert np.all(_pull_per_node(thick, inputs, spacing) == 0.0)
-    np.testing.assert_allclose(torque.contact_jam_factor(thick, None, [], inputs, reach), 1.0)
+    thick, inputs, terrane = _jam_band(spacing, 2, hc=35_000.0, rate_cm_per_yr=3.0)
+    assert np.all(_pull_per_node(thick, inputs, spacing)[terrane] == 0.0)
+    np.testing.assert_allclose(torque.contact_jam_factor(thick, None, [], inputs, reach)[terrane], 1.0)
 
     thin, inputs, _ = _jam_band(spacing, 2, hc=10_000.0, hm=150_000.0, rate_cm_per_yr=3.0)
     bare, bare_inputs, _ = _jam_band(spacing, 2, hc=0.0, hm=150_000.0, rate_cm_per_yr=3.0)
-    pull = _pull_per_node(thin, inputs, spacing)
-    assert np.all((pull > 0.0) & (pull < _pull_per_node(bare, bare_inputs, spacing)))
+    pull = _pull_per_node(thin, inputs, spacing)[terrane]
+    assert np.all((pull > 0.0) & (pull < _pull_per_node(bare, bare_inputs, spacing)[terrane]))
     assert np.all(torque.contact_jam_factor(thin, None, [], inputs, reach) == 0.0)
 
 
@@ -623,8 +628,8 @@ def test_jam_holds_through_a_stalled_contact_and_releases_only_when_it_diverges(
     spacing = line_spacing_rad(1.0)
     reach = torque.BOUNDARY_FORCE_REACH_MULTIPLIER * spacing
     for rate, jammed in ((3.0, True), (1.01, True), (0.99, True), (0.0, True), (-0.99, True), (-1.01, False), (-3.0, False)):
-        plate, inputs, _ = _jam_band(spacing, 2, hc=35_000.0, rate_cm_per_yr=rate)
-        assert np.all(torque.contact_jam_factor(plate, None, [], inputs, reach) == (1.0 if jammed else 0.0))
+        plate, inputs, terrane = _jam_band(spacing, 2, hc=35_000.0, rate_cm_per_yr=rate)
+        assert np.all(torque.contact_jam_factor(plate, None, [], inputs, reach) == np.where(terrane & jammed, 1.0, 0.0))
     no_collision = np.zeros(len(inputs.own_points), dtype=bool)
 
     def resisting(rate):
@@ -674,15 +679,116 @@ def _frame(**lower_keys):
     return SimpleNamespace(collision_polarity_frame=SimpleNamespace(masks=masks))
 
 
-def test_forced_down_side_is_any_oceanic_node_or_last_frozen_lower_plate_cell():
-    # Plates shift before the prepass, so a continental plate's lower side is the last frame's,
-    # matched by cell key: a lost cell drops out, a new one isn't lower until the next prepass.
-    ocean = _JamPlate(1, "oceanic", [0.0] * 3, [0] * 3)
-    np.testing.assert_array_equal(torque.forced_down_mask(ocean, None, 3), [True] * 3)
+def test_lower_plate_side_is_the_last_frozen_lower_plate_cell():
+    # Plates shift before the prepass, so a plate's lower side is the last frame's, matched by
+    # cell key: a lost cell drops out, a new one isn't lower until the next prepass.
     land = _JamPlate(2, "continental", [35_000.0] * 4, [0] * 4, cell_keys=[11, 12, 1010, 10])
-    np.testing.assert_array_equal(torque.forced_down_mask(land, _frame(p2=[10, 11, 99]), 4), [True, False, False, True])
-    np.testing.assert_array_equal(torque.forced_down_mask(land, None, 4), [False] * 4)
-    np.testing.assert_array_equal(torque.forced_down_mask(land, _frame(p3=[10]), 4), [False] * 4)
+    np.testing.assert_array_equal(torque.lower_plate_mask(land, _frame(p2=[10, 11, 99]), 4), [True, False, False, True])
+    np.testing.assert_array_equal(torque.lower_plate_mask(land, None, 4), [False] * 4)
+    np.testing.assert_array_equal(torque.lower_plate_mask(land, _frame(p3=[10]), 4), [False] * 4)
+
+
+def _mixed_contact(plate_type: str, codes, neighbour_ids, rate_cm_per_yr: float = 2.0):
+    """One node per entry on a still neighbour's contact, closing at `rate_cm_per_yr`: a plate
+    of nominal `plate_type` whose nodes carry `codes`, each facing plate `neighbour_ids[i]`."""
+    n = len(codes)
+    plate, inputs, _ = _contact_band(line_spacing_rad(1.0), n, omega=(0.0, 0.0, mantle.cm_per_yr_to_rad_per_yr(rate_cm_per_yr)))
+    keep = np.arange(n) * int(torque.BOUNDARY_FORCE_REACH_MULTIPLIER)  # the node on the contact, per row
+    for name in ("own_points", "own_hc", "own_hm", "dist_to_neighbor", "direction_to_neighbor", "neighbor_is_oceanic", "neighbor_omega"):
+        setattr(inputs, name, getattr(inputs, name)[keep])
+    inputs.own_crust_type_codes = np.asarray(codes, dtype=np.int8)
+    inputs.own_craton_m = np.zeros(n)
+    inputs.neighbor_plate_id = np.asarray(neighbour_ids, dtype=np.int64)
+    inputs.neighbor_node_index = np.zeros(n, dtype=np.int64)
+    plate.crust_type = plate_type
+    return plate, inputs
+
+
+def test_down_going_crust_follows_each_nodes_crust_and_its_plates_slab_not_the_majority_type():
+    """#447: oceanic nodes go down on any plate; a continental node goes down only behind its
+    own plate's slab at that contact (an oceanic node facing the same neighbour). Before, an
+    oceanic-majority plate went down everywhere and a continental-majority one nowhere."""
+    reach = torque.BOUNDARY_FORCE_REACH_MULTIPLIER * line_spacing_rad(1.0)
+    c, o, inherit = CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC, 0
+    # A continent with its own ocean floor facing plate 2 and a stretch of plain margin facing
+    # plate 3: the ocean floor and the continent behind it at plate 2 go down, not the margin.
+    plate, inputs = _mixed_contact("continental", [o, inherit, inherit], [2, 2, 3])
+    np.testing.assert_array_equal(torque.down_going_crust(plate, inputs, reach), [True, True, False])
+    np.testing.assert_array_equal(torque.slab_attached_continent(plate, inputs, reach), [False, True, False])
+    np.testing.assert_array_equal(torque.subducting_boundary_mask(plate, inputs, reach), [True, True, False])
+    # A terrane on ocean floor goes down where the plate subducts under that neighbour, not
+    # where the terrane alone faces it.
+    plate, inputs = _mixed_contact("oceanic", [inherit, c, c], [2, 2, 3])
+    np.testing.assert_array_equal(torque.down_going_crust(plate, inputs, reach), [True, True, False])
+    # Single-type plates: as before, all or nothing.
+    plate, inputs = _mixed_contact("oceanic", [inherit] * 3, [2, 2, 3])
+    assert torque.down_going_crust(plate, inputs, reach).all()
+    plate, inputs = _mixed_contact("continental", [inherit] * 3, [2, 2, 3])
+    assert not torque.down_going_crust(plate, inputs, reach).any()
+    assert not torque.subducting_boundary_mask(plate, inputs, reach).any()
+    # A diverging contact holds no slab, so the continent behind it isn't dragged down.
+    plate, inputs = _mixed_contact("continental", [o, inherit, inherit], [2, 2, 3], rate_cm_per_yr=-3.0)
+    np.testing.assert_array_equal(torque.down_going_crust(plate, inputs, reach), [True, False, False])
+
+
+def test_a_continent_behind_its_own_subducting_ocean_floor_jams_without_a_polarized_front():
+    # India (#447): before, only a polarized front could put a continental-majority plate's
+    # continent on the down side, so it didn't jam until the prepass had seen the front.
+    reach = torque.BOUNDARY_FORCE_REACH_MULTIPLIER * line_spacing_rad(1.0)
+    plate, inputs = _mixed_contact("continental", [CRUST_TYPE_OCEANIC, 0, 0], [2, 2, 3])
+    inputs.own_hc = np.full(3, 35_000.0)
+    plate.plate_id, plate.cell_keys = 1, np.arange(3)
+    np.testing.assert_array_equal(torque.contact_jam_factor(plate, None, [], inputs, reach), [0.0, 1.0, 0.0])
+
+
+def test_contact_drag_acts_on_continent_continent_nodes_whatever_either_plates_majority_type():
+    plate, inputs = _mixed_contact("oceanic", [0, CRUST_TYPE_CONTINENTAL, CRUST_TYPE_CONTINENTAL], [2, 2, 2])
+    inputs.neighbor_is_oceanic = np.array([False, False, True])
+    contested = np.ones(3, dtype=bool)
+    np.testing.assert_array_equal(torque.continental_contact_mask(plate, inputs, contested), [False, True, False])
+    plate.crust_type = "continental"
+    inputs.own_crust_type_codes = np.zeros(3, dtype=np.int8)
+    np.testing.assert_array_equal(torque.continental_contact_mask(plate, inputs, contested), [True, True, False])
+
+
+def test_the_neighbour_side_of_a_contact_is_its_nearest_nodes_own_crust():
+    """#447: an ocean margin on a continental-majority neighbour reads as oceanic, and a
+    continent on an oceanic-majority neighbour as continental."""
+    from scipy.spatial import cKDTree
+
+    class Neighbour:
+        def __init__(self, plate_id, crust_type, points, codes):
+            self.plate_id, self.crust_type, self.omega = plate_id, crust_type, np.zeros(3)
+            self._tree, self._codes = cKDTree(points), np.asarray(codes, dtype=np.int8)
+
+        def get_node_kdtree(self):
+            return self._tree
+
+        def collect(self, name):
+            assert name == "crust_type_code"
+            return self._codes
+
+    class Own:
+        crust_type, omega = "continental", np.zeros(3)
+
+        def __init__(self, points):
+            self._points = points
+
+        def all_points_and_elevation(self):
+            return self._points, np.zeros(len(self._points))
+
+        def collect(self, name):
+            return np.zeros(len(self._points), dtype=np.int8 if name == "crust_type_code" else float)
+
+    spacing = line_spacing_rad(1.0)
+    lat = np.array([0.0, 10.0, 20.0, 30.0]) * spacing
+    own = np.column_stack([np.cos(lat), np.zeros(4), np.sin(lat)])
+    across = np.column_stack([np.cos(lat) * np.cos(spacing), np.cos(lat) * np.sin(spacing), np.sin(lat)])
+    land = Neighbour(2, "continental", across[:2], [CRUST_TYPE_OCEANIC, 0])
+    sea = Neighbour(3, "oceanic", across[2:], [CRUST_TYPE_CONTINENTAL, 0])
+    inputs = torque.gather_boundary_force_inputs(Own(own), [land, sea], spacing, 3 * spacing)
+    np.testing.assert_array_equal(inputs.neighbor_plate_id, [2, 2, 3, 3])
+    np.testing.assert_array_equal(inputs.neighbor_is_oceanic, [True, False, False, True])
 
 
 def test_both_sides_of_a_jammed_contact_feel_the_lower_sides_jam():
@@ -697,8 +803,15 @@ def test_both_sides_of_a_jammed_contact_feel_the_lower_sides_jam():
     inputs.neighbor_plate_id = np.full(n, 2)
     inputs.neighbor_node_index = np.arange(n)
     inputs.neighbor_omega = np.tile([0.0, 0.0, -mantle.cm_per_yr_to_rad_per_yr(2.0)], (n, 1))  # neighbour closing on it
-    lower = _JamPlate(2, "continental", [35_000.0, 22_500.0, 35_000.0][:n], [CRUST_TYPE_CONTINENTAL, CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC][:n])
+    lower = _JamPlate(2, "continental", [35_000.0, 22_500.0, 35_000.0], [CRUST_TYPE_CONTINENTAL] * 3)
+    inputs.neighbor_is_oceanic = np.zeros(n, dtype=bool)
 
-    np.testing.assert_allclose(torque.contact_jam_factor(upper, _frame(p2=[0, 1, 2]), [lower], inputs, reach), [1.0, 0.5, 0.0][:n])
-    # No polarized front, so nothing is forced down: a plain continental contact doesn't jam.
+    np.testing.assert_allclose(torque.contact_jam_factor(upper, _frame(p2=[0, 1, 2]), [lower], inputs, reach), [1.0, 0.5, 1.0])
+    # No polarized front and no slab of the neighbour's at the contact, so nothing is forced
+    # down: a plain continental contact doesn't jam.
     assert np.all(torque.contact_jam_factor(upper, None, [lower], inputs, reach) == 0.0)
+    # The neighbour's ocean floor reaching the contact is a slab: its continent behind it is
+    # forced down and jams, front or not (#447); the ocean floor itself doesn't.
+    lower.fields["crust_type_code"][2] = CRUST_TYPE_OCEANIC
+    inputs.neighbor_is_oceanic[2] = True
+    np.testing.assert_allclose(torque.contact_jam_factor(upper, None, [lower], inputs, reach), [1.0, 0.5, 0.0])

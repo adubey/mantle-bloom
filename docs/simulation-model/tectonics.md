@@ -70,16 +70,16 @@ deltas.
   is spread into the plate's interior by the shortening cascade (`shortening.py`, issue #314),
   and part of the core band's strain leaves as lateral magma parcels (issue #205). The result
   is a broad crumple zone, matching how wide a real collision belt is (e.g. the
-  Himalaya/Tibetan Plateau). On a continental plate it is stamped `ELEV_CHANGE_COLLISION`
-  (continental neighbour) or `ELEV_CHANGE_SUBDUCTION_ARC` (oceanic neighbour); on an oceanic
-  plate, `ELEV_CHANGE_TRENCH`, and its contested cells subduct (see retreat below).
+  Himalaya/Tibetan Plateau). Continental crust is stamped `ELEV_CHANGE_COLLISION`
+  (continental neighbour node) or `ELEV_CHANGE_SUBDUCTION_ARC` (oceanic neighbour node);
+  oceanic crust `ELEV_CHANGE_TRENCH`, and its contested cells subduct (see retreat below).
 
   **Reverse faults: mountain ranges aren't uniformly smooth.** Real shortening in a collision
   belt isn't spread evenly across the whole zone -- fold-thrust belts partition it into
   discrete thrust sheets (fast-rising ridges) separated by footwall synclines/intermontane
   basins that keep rising far more slowly (the north-south rift valleys cutting across the
   Tibetan Plateau's overall convergent uplift; Basin-and-Range-style extension nested inside
-  the Anatolian collision zone). On a continental plate the convergent strain rate is
+  the Anatolian collision zone). In continental crust the convergent strain rate is
   multiplied by a `fault_factor` -- 1.0 almost everywhere, dropping to
   `rheology.REVERSE_FAULT_VALLEY_UPLIFT_FACTOR` (0.15) where a smooth, deterministic noise
   field (`BoundaryContext.fault_noise`) falls below -0.15. Those nodes still thicken, just far
@@ -89,9 +89,9 @@ deltas.
   grid](foundations.md#why-not-a-grid)). The elevation-line surface applied the same factor to elevation
   directly; there, with the seismic-erosion addition below, it cut the share of land pegged at
   `MAX_ELEVATION_M` from roughly 9% to under 2% on a 60 Myr seed run.
-- **Continental arc** (continental plate, converging oceanic neighbour) -> on top of the
+- **Continental arc** (continental crust, converging oceanic neighbour node) -> on top of the
   shortening, `rheology.apply_arc_magmatic_thickening` adds juvenile Hc across the whole
-  `arc_band` -- every node within `reach_rad` of the converging oceanic neighbour, weighted
+  `arc_band` -- every continental node within `reach_rad` of the converging oceanic neighbour, weighted
   1 at the contact and fading to 0.3 at the band edge. Not gated by `fault_influence`: a
   volcanic arc is a broad magmatic swath. See the continental arc magmatism note below.
 - **Transform** -> a modest direct elevation delta, `TRANSFORM_UPLIFT_RATE_M_PER_MYR`
@@ -152,7 +152,7 @@ deltas.
   never gave ground while its trailing edge kept growing tiled itself with ever more drowned
   accreted-margin crust, and the dry-land fraction drifted down under a fixed sea level.
 
-  **Interior subduction** is oceanic-only: an oceanic plate also removes contested patches
+  **Interior subduction** is oceanic-only: a plate also removes contested ocean-floor patches
   stranded in its interior (a neighbour rotated bodily over them faster than its edge could
   retreat), leaving a hole the peel continues from. A continent's middle is never carved,
   since cutting it would sever the landmass into a spurious defragmentation plate. Before
@@ -163,15 +163,16 @@ deltas.
   continental plate sheared into a much larger envelope by a far-off Euler pole would
   otherwise tile unbounded drowned passive margin outward (a plate reaching ~16% of the whole
   planet, 70%+ of its own area below sea level, was a real long-run symptom).
-  `lithosphere_plate.boundary_context` measures a continental plate's *genuine* continental
-  area -- cells with `crustal_thickness_m` at least `CONTINENTAL_BUDGET_HC_FRACTION` (0.6) of
-  the continental reference -- and once the plate's total area exceeds
+  `lithosphere_plate.boundary_context` measures a plate's *genuine* continental
+  area -- continental cells with `crustal_thickness_m` at least `CONTINENTAL_BUDGET_HC_FRACTION`
+  (0.6) of the continental reference -- and once the plate's continental-coded area exceeds
   `CONTINENTAL_AREA_BUDGET_MULT` (1.8) times that, suppresses all areal growth for the step.
+  The plate's ocean floor doesn't count against it (#447).
   Retreat, divergent thinning and convergent thickening keep running, so an over-budget plate
   thins / drowns / crumples back toward its crustal volume rather than merely freezing at its
   current size. A real craton sits near reference Hc across its whole area, far below the
   cap; the >1 multiplier is the realistic continental-shelf + accreted-terrane allowance.
-  Oceanic plates are exempt -- their footprint is already bounded by subduction.
+  Ocean floor is exempt -- its footprint is already bounded by subduction.
 
   Mass conservation lives here: material is only created where new cells open and destroyed
   where cells are genuinely overridden -- there's no grid-resampling step that can lose or
@@ -261,8 +262,8 @@ to add more past the ceiling loses nothing that existed a moment ago.
 vanish at its strength limit. A first fix thrust the *entire* clipped-off Hc onto the
 surrounding crust in one instant, every step -- its own runaway ([GitHub issue
 #145](https://github.com/adubey/mantle-bloom/issues/145): by 48 Myr into a real save, over half
-of all continental land was pinned at the Hc ceiling). Two mechanisms now handle it. On a
-continental plate, the convergent band's shortening is carried into the plate's interior by
+of all continental land was pinned at the Hc ceiling). Two mechanisms now handle it. In
+continental crust, the convergent band's shortening is carried into the plate's continental interior by
 the shortening cascade (`shortening.py`, [GitHub issue
 #314](https://github.com/adubey/mantle-bloom/issues/314)), which keeps every column under the
 caps and leaves what the plate can't absorb in the boundary overlap for retreat and suture
@@ -355,14 +356,14 @@ shrink along its own axis alone:
   delaminate; see [Orogenic relief before delamination](#orogenic-relief).
   The issue #177 retreat budget is spent in area-weighted Hc.
 
-  An oceanic plate also subducts contested patches the peel can't reach (`_carve_interior`).
+  A plate also subducts contested ocean-floor patches the peel can't reach (`_carve_interior`).
   A patch qualifies when it is an edge-connected component of at least
   `INTERIOR_SUBDUCTION_MIN_CELLS` retreatable cells and none of its
   cells has a wholly open side; touching open ground only through half a side doesn't count.
   It is removed whole, which opens a hole in the plate. The carve shares the step's cell cap
   with the peel: a patch larger than what is left is carved partway, as a connected
   breadth-first prefix, so the hole gives next step's peel an edge to continue from.
-  Continental plates are never carved, since cutting a continent's middle would sever it
+  Continental cells are never carved, since cutting a continent's middle would sever it
   into a spurious defragmentation plate.
 - **Advance.** Each uncontested boundary cell with open ground in front of it activates the same-level empty cell across each exposed side,
   for up to `MAX_CLAIM_ROWS_PER_STEP` layers. A candidate cell must not lie inside any
@@ -631,16 +632,19 @@ routine per-step motion.
   `world.plates` (`remove_defunct_plates`, run every step): every cell removed (fully
   subducted), or too few left to form a real 2D hull (`Plate.has_negligible_territory`,
   `OUTLINE_MIN_NODES_FOR_HULL`).
-- **Continental collision merge.** If two continental plates have at least
+- **Continental collision merge.** If two plates' continental crust has at least
   `MERGE_MIN_CONTACT_NODES` node pairs within `MERGE_CONTACT_DISTANCE_RAD` of each other
   *and* a real closing rate at those points (`boundary.closing_rate` -- the one place this
   velocity-based check still runs; see [Plate motion: shift and
   deform](#boundary-evolution) for why ordinary per-step evolution no longer uses it), they're
   fused: keep one plate's `frame` and lattice, and remap the absorbed plate's cells onto it
   by exact cell area (`quad_merge.py`), stacking crust where the two overlap (capped at the
-  suture ceiling). Cratonic crust in the overflow that finds no room is clipped and booked to
-  the craton ledger's `merge_capped_m3` (RFC 0001, #441). The boundary between them becomes
-  ordinary interior territory. A remapped
+  suture ceiling). On newly activated cells, craton follows the local mapped pattern under
+  Hc's restoring ratio. Orphan volume uses only the Hc headroom of new cells that already
+  carry craton; the merge audit books any remainder to `merge_capped_m3` (issue #443). This
+  keeps craton on its host column without spreading it onto unrelated cells. Cratonic crust
+  in the overflow that finds no room is also booked to `merge_capped_m3` (RFC 0001, #441).
+  The boundary between them becomes ordinary interior territory. A remapped
   cell is dropped if any part of it lies in a third plate's cell, or its centre is nearer a
   third plate's node than either fusing plate's, so the merged plate doesn't grow into its
   neighbours (#344). The dropped cells' volume is spread over the cells that are kept, and
@@ -934,6 +938,28 @@ its own nodes' effective type, falling back to the parent/nominal type unchanged
 still `CRUST_TYPE_INHERIT` (the common case, a total no-op). A `merge_plates` fusion is left
 alone -- it keeps one of the two existing plates' identity rather than creating a new one.
 
+**Boundary physics follows each node's crust, not its plate's majority type** (RFC 0009,
+#447). Once plates carry both kinds of crust, a rule chosen by `crust_type` gives the minority
+nodes the other kind's physics, so every boundary decision reads node codes instead:
+
+- The neighbour side of a contact is the nearest neighbour *node's* crust
+  (`torque.gather_boundary_force_inputs`' `neighbor_is_oceanic`).
+- Ocean floor goes down on any plate. Continental crust goes down where its own plate has a
+  slab at that contact -- an oceanic node of the plate facing the same neighbour, at a contact
+  that isn't diverging (`torque.slab_attached_continent`) -- or on a polarized front's lower plate.
+  That covers a terrane riding ocean floor and a continent behind its own subducting ocean
+  (India): both are dragged into the slab pull band, buoyancy cuts their pull, and they jam.
+  A terrane retreating there is a suture donor, its crust conserved rather than subducted
+  (#253); any other continental cell overridden by ocean is held to the #177 arc budget.
+- Contact drag, arcs and arc-margin growth, the shortening cascade's host cells, the retreat
+  run rule, suture accretion, fault noise, oceanic Hm cooling, interior carving and each
+  node's isostatic density are all read per node. Collision and forced merges pair plates by
+  their continental nodes. The continental volume statistics and `continental_cover_count`
+  read the covering node's own crust.
+
+A single-type plate gives the same result at every one of these sites as the plate-level rule
+did.
+
 A debug render view, `"crustType"` (`render_image.py`, see `DEBUG_VIEWS`), colours every node
 by its effective type, with the rare "anomaly" nodes -- an explicit code that actually
 disagrees with the plate it sits on -- in bright highlight colours distinct from the ordinary
@@ -951,7 +977,9 @@ ground down to small remnants over a few hundred Myr.
 
 - `craton_crust_m` -- the cratonic share of the column's crust, at most Hc. It is
   `EXTENSIVE`, so merge, partition, defragmentation, relatticing and legacy conversion
-  conserve its volume the same way they conserve Hc. Crust added later (sediment, accreted
+  conserve its volume. During merge, newly activated cells preserve its local pattern under
+  Hc's restoring ratio; orphan volume is placed only on supported cells with Hc headroom, and
+  the merge audit books any remainder (issue #443). Crust added later (sediment, accreted
   belts, arc magmatism) is ordinary continental crust.
 - `craton_formed_years` -- provenance: when the craton stabilised. It is negative for cratons
   seeded at generation, and `HISTORY`-remapped, so a merged cell keeps its oldest date.
@@ -986,7 +1014,7 @@ loading never changes plate state.
   left (#340). Each exposed craton cell (one with an open side) in the trench's retreating
   set loses `CRATON_ATTRITION_KM2_PER_MYR` x step / sqrt(cell area) of thickness: the
   margin length is approximated by one edge per cell, however many sides are open, and the
-  loss is linear in the step. On a continental plate it is charged to the same arc-magmatism
+  loss is linear in the step. It is charged to the same arc-magmatism
   budget that caps the margin's whole-cell retreat (#177), scaled down alike when it would
   exceed it. The rate is the nonaccreting-margin value (~40 km^3 per Myr per
   km, Scholl & von Huene); accreting margins erode more slowly (~12 km^3/Myr/km) and aren't
