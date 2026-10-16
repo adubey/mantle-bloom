@@ -46,6 +46,28 @@ stated model boundaries and scales (principle 1), efficient approximations (prin
 timestep robustness (principle 3), explicit units and conservation (principles 5–6), and
 verification separated from validation (principle 9).
 
+The first diagnosis is to identify the rules that currently stand in for forces or material
+response. G1 will extend and verify this inventory against the named code paths before
+changing them:
+
+| Current proxy or rule | Current implementation | Physical quantity or behavior it stands in for | Physical replacement to evaluate | Supplied by interface? |
+|---|---|---|---|---|
+| Plate rates are clamped to 0.5–15 cm/yr | `mantle.py:clamp_rate` | A lower bound invents motion without a driving load; the upper bound may hide an unresolved force balance | Solve quasi-static force balance; let an unforced plate stop and measure whether the upper cap binds. | Yes for loads and motion; a numerical safety cap remains outside it. |
+| Continental contacts accumulate a deterministic 0–100 Myr timer, then roll a probability scaled by 0.85 and adjusted for plate size and speed; deep overlap can force a merge after 30 Myr | `merge_split.py` | Whether a contact is mechanically locked and has become a persistent suture | Use solved relative motion and contact resistance; test sustained near-zero relative rate across the contact as a topology trigger. | Partial: contact response and relative rate, yes; suture duration is topology memory. |
+| Splitting uses velocity-fit residuals, a dimensionless internal-stress proxy, and a 0.55 chance; failed rifts may thin into an aulacogen | `merge_split.py` | Whether extension can overcome the integrated strength of a cut, and whether extension remains localized | Compare tensile force per length across a candidate cut with vertically integrated strength; retain stochastic nucleation only if it represents a stated event process. | Partial: force and strength, yes; cut selection and topology remain process-specific. |
+| Closing rate is converted to stress with `EFFECTIVE_LITHOSPHERE_VISCOSITY_PA_S_PER_M = 1e17`; yield excess drives thickening at `PLASTIC_THICKENING_RATE_PER_MYR_PER_YIELD_EXCESS = 0.06` | `rheology.py` | Contact stress, yield capacity, shortening, and the resulting material budget | Define yield-limited force response and deformation budget in physical units; compare shortening/thickening with material and ledger conservation. | Yes for force/yield response; deformation law remains process-specific. |
+| Collision drag uses `CONTACT_RESISTANCE_N_PER_M = 5e12`, a relief factor saturating at `COLLISION_RELIEF_FRICTION_SCALE_M`, and craton/jam factors | `torque.py` | Boundary resistance, including strength contrasts and gravitational-potential-energy (GPE) differences | Derive resistance and driving loads from contact capacity and column properties; test whether relief/GPE can replace overlapping multipliers. | Partial: segment load, yes; ΔGPE requires the column model and reference level. |
+| Crustal and mantle-lithosphere thickness have hard upper caps | `lithosphere.py`, `rheology.py` | A finite orogen thickness and a stopping balance between tectonic force and gravitational resistance | Test whether force balance and GPE contrast produce an emergent thickening limit; retain a safety cap only if it does not set geological outcomes. | Partial: load feedback, yes; layer budgets and caps remain material-process rules. |
+| Oceanic mantle lithosphere relaxes toward a reference thickness at a fixed rate without seafloor age | `rheology.py:relax_oceanic_mantle_lithosphere` | Thermal cooling and lithosphere thickening away from a ridge | Carry seafloor age and use a cheap age-dependent cooling/thickness relation before a full thermal solve. | Partial: age and column state, yes; cooling law is a thermal-process response. |
+| Plate shifts run sequentially, so later force gathers can see earlier plates already rotated; `deform()` also shuffles plate order to decide contested boundary ownership | `world.py:step_world_progress`, `torque.py:shift_plate` | A simultaneous plate-scale force balance and one deterministic owner per shared contact | Assemble from one pre-step snapshot, solve all plate rates together, then apply rotations together and assign each shared contact's deformation once. | Yes for motion; ownership is a deformation/topology contract. |
+| Merge angular velocity is blended by angular momentum, then rate-clamped | `torque.py:merge_omega`, `merge_split.py` | Post-merger kinematic continuity | Remove the rate floor from the merged state; recompute its motion from the new plate's loads. | Yes for the next motion state; merge material/topology remains separate. |
+| Faults are spawned from distance-decaying rates, lognormal lengths, and sampled slip | `faults.py` | Fault initiation and slip from stress exceeding material strength | Compare fault/rift criteria with aggregated local stress and strength; retain distributions only as calibrated nucleation approximations. | Partial: segment stress and strength, yes; distributed intraplate initiation may need an extension. |
+
+The table is an inventory of hypotheses, not a declaration that every listed rule is wrong.
+G1 must record which rule controls a measured outcome, which rule already has the needed
+feedback, and which can be removed without moving accepted geological metrics. Count retired
+proxies and rules as a diagnostic result, not as a success metric by itself.
+
 ## Proposed solutions
 
 **What happens in nature.** Plate interiors are often approximated as rigid blocks separated
@@ -56,7 +78,18 @@ response depends on strength and rheology; that response can localize near bound
 than requiring every plate interior to deform equally [[Mulyukova et al., 2019]](#ref-mulyukova2019).
 These observations support a reduced model with rigid plate interiors and process-specific
 boundary mechanics, while leaving open which forces and constitutive laws are adequate for
-Mantle Bloom's scales.
+Mantle Bloom's scales. Thin-shell models provide a precedent for reducing a 3-D lithosphere
+to a 2-D shell with vertically integrated strength and isostasy, while retaining fault
+elements and checking local equilibrium against whole-plate torque balance
+[[Kong & Bird, 1995]](#ref-kong-bird1995). Block models also estimate plate rotations and
+fault slip/coupling together using a linear estimator
+[[Meade & Loveless, 2009]](#ref-meade-loveless2009). These are precedents for reduced,
+simultaneous coupling, not direct prescriptions for Mantle Bloom's constitutive laws.
+Continuously closing plate reconstructions show a complementary geometric strategy in which
+shared moving margins keep plate polygons closed, a possible future direction for topology
+and ownership rather than a force law [[Gurnis et al., 2012]](#ref-gurnis2012). Geological
+plate-speed changes have also been interpreted through evolving boundary forces and mantle
+tractions, including orogenic resistance [[Iaffaldano & Bunge, 2015]](#ref-iaffaldano-bunge2015).
 
 1. **Continue with process-specific algorithms and add feedback case by case.** This has low
    up-front cost and fits the existing code. But each new mechanism risks inventing its own
@@ -95,7 +128,7 @@ state should be limited to what its processes need, for example:
 - geometry: endpoints or representative position, normal and tangent directions, and segment
   length in metres;
 - both sides' material state: upper-crust, lower-crust, and mantle-lithosphere thickness,
-  their compact composition and representative temperature, plus process-relevant strength
+  available composition proxies and representative temperature, plus process-relevant strength
   or buoyancy derived from those properties;
 - kinematics: relative normal closing/opening rate and relative tangential slip rate, in
   metres per year;
@@ -108,12 +141,16 @@ its lifecycle through remapping, splitting, merging, and old-save loading.
 
 #### Minimal layered lithosphere state
 
-The first physics-first material model should expose three persistent layers per represented
-column: **upper crust, lower crust, and lithospheric mantle**. Their thicknesses define their
-boundary depths; do not separately store boundary positions when they can be derived from the
-thicknesses. Existing total crust and mantle-lithosphere thickness fields must remain
-consistent with the layer sum or become derived values if this state is adopted. The
-asthenosphere is the underlying mechanical/thermal medium, not a fourth plate layer.
+The process interface should expose a three-layer column view: **upper crust, lower crust,
+and lithospheric mantle**. At the start, this is a derived view, not three new persistent
+arrays. `crustal_thickness_m` (Hc) remains authoritative for total crust; the upper/lower
+boundary is estimated using a documented partition or existing proxy and is not independently
+evolved. `mantle_lithosphere_thickness_m` (Hm) remains authoritative for mantle lithosphere.
+The interface reports those representative thicknesses and boundaries to each process. Add
+independently evolving layer thicknesses only if a diagnosis shows that the derived partition
+cannot represent a material transfer or force response. Do not separately store boundary
+positions when they can be derived from thicknesses. The asthenosphere is the underlying
+mechanical/thermal medium, not a fourth plate layer.
 
 Keep composition compact and specific to each layer rather than using one global rock-type
 enum:
@@ -124,22 +161,26 @@ enum:
 - Lithospheric mantle: a bounded depletion index from fertile to strongly melt-depleted.
 
 These are proposed coarse mixture variables, not a claim that sedimentary, felsic, mafic, and
-depleted are mutually exclusive rock classes. Fractions are mass fractions and must be
-bounded in [0, 1], with transfer and mixing preserving material mass. A typed process boundary
-may distinguish upper-crust, lower-crust, and mantle composition variants, but runtime
-per-node state remains dense numerical arrays; do not allocate a Python object union for each
-cell. Any variant-specific methods belong to the concrete type or shared process protocol,
-not to the union alias itself.
+depleted are mutually exclusive rock classes. They are not all stored in the first pilot.
+Fractions, if added after diagnosis, are mass fractions bounded in [0, 1], with transfer and
+mixing preserving material mass. A typed process boundary may distinguish upper-crust,
+lower-crust, and mantle composition variants, but runtime per-node state remains dense
+numerical arrays; do not allocate a Python object union for each cell. Any variant-specific
+methods belong to the concrete type or shared process protocol, not to the union alias itself.
 
 Use a coarse thermal state rather than a fine vertical temperature mesh in the first
-implementation. The provisional minimum is a crustal and a lithospheric-mantle thermal state;
-derive upper- and lower-crust representative temperatures from a stated vertical profile.
-Processes sample representative temperatures for strength and melt response. Thermal updates
-may run less often than mechanical steps if timestep comparisons show that lag is acceptable.
-Temperature is persistent only if the chosen thermal scheme evolves it; otherwise it is
-derived from an explicit thermal-age or geotherm proxy. Water content, damage, and metamorphic
-progress are not default fields: add them only when a process needs their history and cannot
-derive the response from existing composition, temperature, and pressure state.
+implementation. Initially reuse `moho_thermal_lag_c` for crustal thermal memory where its
+semantics fit, and derive representative layer temperatures from a stated geotherm or thermal
+age. An oceanic seafloor-age clock is the highest-value candidate for new thermal state:
+initialize it where oceanic crust is created at a ridge and advect/remap it with that material.
+Cooling-plate observations show oceanic bathymetry and heat flow vary approximately with the
+square root of seafloor age over the young-to-intermediate plate interval
+[[Parsons & Sclater, 1977]](#ref-parsons-sclater1977). Age-dependent Hm, ridge push, and slab
+buoyancy can therefore be tested with an analytic profile before adding crust and mantle
+temperature arrays. The existing `divergent_age_myr` resets when a node leaves the ridge band
+and cannot serve as this age. Water content, damage, and metamorphic progress are not default
+fields: add them only when a process needs their history and cannot derive the response from
+existing composition, temperature, and pressure state.
 
 Melt generation and transport are process fluxes during a step, not automatically a permanent
 fourth layer. Persist a melt reservoir only if melt survives between steps. Once magma
@@ -169,7 +210,11 @@ units. The initial contract should express:
    process may instead return a bounded nonlinear response or an admissible range.
 3. **Capacity and yield:** the force or stress a segment can sustain, and what deformation
    takes up excess motion after yield. A geometric label such as “blocked” may identify a
-   model condition, but it is not itself a constitutive law.
+   model condition, but it is not itself a constitutive law. Contact force must be bounded by
+   the segment's capacity independent of timestep; formulate yielded contact as a
+   complementarity or active-set condition within the simultaneous motion solve, so remaining
+   motion is available to deformation. This borrows a numerical contact technique, not a
+   geological constitutive law [[Stewart & Trinkle, 1996]](#ref-stewart-trinkle1996).
 4. **Material response:** the rate or budget of thinning, thickening, subduction, accretion,
    slip, or transfer that follows from the solved motion. This is applied by the responsible
    deformation process and booked to existing or explicitly new ledgers.
@@ -184,12 +229,12 @@ and composable.
 ### Timestep coupling
 
 Coupling across successive timesteps is a first-class option. The step itself is an iteration:
-motion changes relative boundary rates; deformation changes thickness, strength and geometry;
-those changed fields alter the loads on the next step. A process does not need to be solved
-simultaneously with every other process if this lagged feedback is accurate and stable at the
-chosen timestep.
+the simultaneous motion solve changes relative boundary rates; deformation changes thickness,
+strength and geometry; those changed fields alter the loads on the next step. A process does
+not need to be solved simultaneously with every other process if this lagged feedback is
+accurate and stable at the chosen timestep.
 
-The provisional **staggered step** is:
+The provisional **staggered process step with simultaneous plate motion** is:
 
 1. Read a consistent pre-step state and construct/reuse boundary geometry and process
    classifications.
@@ -197,10 +242,13 @@ The provisional **staggered step** is:
    segments it owns. For a response that depends on the unknown motion, evaluate it from the
    previous/current relative rate or use a bounded linearization.
 3. Aggregate those loads and update plate angular motion. Compute all plates from the same
-   pre-step snapshot, then apply their rotations together so plate iteration order does not
-   determine which neighbor's motion is used.
+   pre-step snapshot by solving the coupled quasi-static system. Each shared boundary load is
+   assembled once and applied equal-and-opposite to its two plates. Then apply all rotations
+   together so plate iteration order cannot affect either forces or motion.
 4. From the resulting relative normal and tangential rates, let boundary processes calculate
-   their deformation and material budgets. Apply those updates and close their ledgers.
+   their deformation and material budgets. Give each shared segment one owner for deformation
+   and material transfer; do not let a random plate order decide who consumes a shared
+   boundary. Apply those updates and close their ledgers.
 5. Update topology (rift splits, collision merges, consumed plates) and rebuild only the
    interfaces invalidated by that change. The next timestep sees the changed geometry,
    material state, and resistance.
@@ -210,12 +258,41 @@ that step's deformation. It is acceptable when the lagged response converges to 
 large-scale behavior as the step is refined, and when it does not skip a relevant threshold.
 The process interface must state which values are sampled at step start, which are updated
 after motion, and which feedback arrives on the next step.
+This is first-order operator splitting. If G2 identifies a material lag error that affects
+accepted metrics, compare a symmetric second-order split (motion/deformation half-steps)
+before introducing substeps everywhere [[Strang, 1968]](#ref-strang1968).
 
-Use a **local inner solve, substep, or fully coupled solve only where needed**: for example,
-when a stiff drag causes explicit overshoot, when a yield threshold changes within one step,
-or when lagged action/reaction produces an order-dependent or timestep-sensitive result. Do
-not impose a global nonlinear solve on processes whose slower feedback is adequately captured
-between steps. The choice is made by G2/G3 measurements, not by a blanket coupling rule.
+Plate motion is the exception to the staggered process updates above: its default is a
+**simultaneous quasi-static solve** of all plate angular velocities from loads evaluated on the
+same pre-step state. With P plates there are 3P unknowns; at the current scale of roughly
+20–30 plates this is a dense system of at most 90 unknowns. Linear basal and boundary drags
+contribute to its matrix, while explicit drivers contribute to its right-hand side. A small
+active-set or bounded solve handles contacts at yield. This is a scale-appropriate way to
+avoid order-dependent motion; neighbor gathering is already a larger cost than this solve.
+The solve changes current motion behavior and must be replayed and compared.
+
+In block form, solve `(K_basal + K_contacts) Ω = τ_slab + τ_ridge + τ_other`, where Ω stacks
+the 3-vector angular velocities, each shared-contact block contributes equal-and-opposite
+terms to the two plates, and `K` contains velocity-dependent resistance. More generally, write
+`K Ω = b + τ_explicit` when a process supplies its own drag matrix and explicit torque.
+For a yielded contact, the contact force is an unknown constrained to its physical capacity;
+the active set determines whether relative motion is locked or slips and is coupled to the
+plate solve.
+
+The balance is quasi-static at geological timesteps. For an illustrative plate with density
+3300 kg/m³, 100 km thickness, 100 km drag length, and viscosity 5×10¹⁹ Pa·s, the inertial
+relaxation estimate τ ≈ ρ h d / μ is about 7×10⁻⁷ s. Even a 100 kyr step is over 10¹⁷ such
+relaxation times. These are scale assumptions, not calibrated Mantle Bloom constants; G1
+should replace them with the solver's actual drag and plate scales. Inertia is not a useful
+geological state at these step lengths. A nearly unconstrained system may need numerical
+regularization, but the regularizer must be reported and must not create a minimum plate
+speed. The angular-momentum blend in `merge_omega` therefore has no role in the quasi-static
+motion law; after a merge, recompute motion from the new plate's loads.
+
+Deformation, thermal response, and topology remain staggered unless G2/G3 demonstrates that
+their threshold or conservation behavior requires a local inner solve or substeps. Iterating
+the simulation naturally feeds changed thickness, material, and geometry back into the next
+quasi-static motion solve. Do not impose a global nonlinear solve for those slower processes.
 
 ### Efficient aggregation and approximation
 
@@ -237,6 +314,16 @@ nonlinear law may need several segment classes or an active-set solve; it must n
 to a single average unless a comparison shows that the average preserves its outcome. Refine
 only the segments whose force, yield, or deformation varies enough to change the answer.
 
+The same isostatic-column GPE difference, ΔGPE (N/m), is a candidate representation of both
+ridge push and gravitational resistance to collision. Compute the difference in vertically
+integrated gravitational potential energy per unit area for the two columns, using their layer
+thicknesses, densities, and a declared compensation/reference level; project the resulting
+normal load onto the boundary. This is a common way to understand the support and force balance
+of mountain belts [[Molnar & Lyon-Caen, 1988]](#ref-molnar-lyon-caen1988). It could
+replace the current relief-based ridge expression and some separate contact relief factors,
+while making an orogen's stopping height emerge from the balance rather than a thickness cap.
+It is a hypothesis to test in G2, not an assumption that the existing `relief` is already GPE.
+
 Use real units at interfaces: metres, square metres, cubic metres, years, N, N/m, Pa, N·m,
 and m/yr. A dimensionless approximation is allowed inside a process, but it must map to the
 interface's physical response with stated bounds and a scale check.
@@ -245,12 +332,18 @@ interface's physical response with stated bounds and a scale check.
 
 - Rates integrate over elapsed years, not per-step multipliers. A yielded deformation budget
   is rate × duration, subject to available material and capacity.
+- A yielded contact load is bounded by its strength in the motion solve for any accepted
+  timestep; excess relative motion is assigned to deformation. `mantle.clamp_rate`'s minimum
+  rate is not a driving force and should be removed from the physical update. Measure whether
+  the 15 cm/yr maximum binds; do not preserve it as a geological outcome if it merely clips a
+  force-balance solution.
 - A staggered/explicit response is acceptable if its error stays bounded as the timestep is
   refined. Processes with stiff drag, an intra-step yield transition, or another demonstrated
   instability use a local implicit/bounded solve or substeps; a global coupled solve is not
   assumed.
-- Compare the same initial worlds at 2 and 5 Myr steps, and at node densities 1 and 4 where
-  the interface aggregation is resolution-sensitive. Compare accumulated force response,
+- Compare the same initial worlds at 0.1, 1, and 2 Myr steps, and at node densities 1 and 4
+  where interface aggregation is resolution-sensitive. Five Myr is excluded because the
+  step-size check for issue #452 fails there. Compare accumulated force response,
   relative motion, deformation, and ledgers, not just final maps. Record whether any mismatch
   comes from timestep lag, spatial aggregation, or the process law.
 - Deterministic seed runs must remain reproducible. Any stochastic nucleation or weakening
@@ -258,25 +351,44 @@ interface's physical response with stated bounds and a scale check.
 
 ### Diagnosis gates
 
-**Gate G1: process/interface inventory.** Before implementing a common interface, inventory
+**Gate G1: process/interface inventory and rule audit.** Start with the table in Problem and
+verify each value, unit, spatial support, and writer in the current code. Inventory
 convergence, subduction, rifting, transform motion, basal drag, ridge push, merge/split, and
-deformation. For each, record its current inputs, outputs, units, spatial support, state it
-changes, feedback to plate motion, material owner, and cost. Identify which gaps actually
-change an accepted geological metric. If a process already has the needed feedback, document
-that and do not duplicate it.
+deformation. For each, record inputs, outputs, physical units, spatial support, state changed,
+plate-motion feedback, material owner, and measured cost. Also audit the segment-length
+normalization of slab pull and ridge push: loads integrated per boundary metre must be
+invariant to boundary-band width, node density, and repeated rows within 10% in synthetic
+constant-boundary cases. Check whether each candidate replacement is already supplied by
+another process. Identify the rules that control accepted geological metrics and count which
+can be retired without changing them.
 
 **Gate G2: reduced coupled pilot.** Use one candidate contact process (RFC 0011's blocked
-collision is the initial candidate) to compare its current implementation with a process
-response interface on matched synthetic contacts and replayed worlds. Start with a staggered
-update. Report force/torque response, local and mean relative motion, yield/deformation
-allocation, material ledger closure, timestep sensitivity, and runtime. Compare with a local
-inner solve on cases where the lagged update might be stiff. A pilot that only reproduces a
-geometric event count does not pass.
+collision is the initial candidate) to compare current behavior with a contact response inside
+the simultaneous quasi-static motion solve, on matched synthetic contacts and replayed worlds.
+Include limiting cases for no load, no resistance, symmetric action/reaction, a yielded
+contact, and a Tibet-like collision. Copley et al. estimate Himalayan–Tibetan mountain-building
+resistance of roughly 5–6×10¹² N/m and ridge-push force around 2.5×10¹² N/m for the Indian
+plate force balance; these are regional Cenozoic sanity checks, not universal targets
+[[Copley et al., 2010]](#ref-copley2010). Compare column GPE contrasts for both ridge push and
+collision resistance using one consistently defined ΔGPE per unit boundary length (N/m),
+with layer densities and thicknesses stated. Report force/torque response, local and mean
+relative motion, yield/deformation allocation, material-ledger closure, step-size sensitivity,
+and runtime. A pilot that only reproduces a geometric event count does not pass.
 
 **Gate G3: transferability.** Exercise the contract against at least one divergent/rifting and
-one transform case before declaring it the general tectonic interface. If either requires
-incompatible or meaningless shared fields, keep a narrower mechanical interface and document
-process-specific extensions rather than forcing a universal API.
+one transform case before declaring it the general tectonic interface. For rifting, calculate
+net tensile force across a candidate cut from boundary loads and basal traction, then initiate
+a rift only when it exceeds the cut's vertically integrated strength (including temperature
+and crustal thickness), following the integrated-strength framing of Kusznir & Park (1987)
+[[Kusznir & Park, 1987]](#ref-kusznir-park1987). Compare extension localization and
+widening/stall behavior with the force-balance framing of Buck (1991)
+[[Buck, 1991]](#ref-buck1991). For a transform, compare
+solved tangential rate with a bounded shear resistance and check equal-and-opposite load.
+Merge only after solved relative rate is below ε along the contact for duration τ; the
+diagnostic must report sensitivity to ε and τ. These thresholds and constitutive choices are
+not fixed by this RFC. If rifting or transform motion requires incompatible or meaningless
+shared fields, keep a narrower mechanical interface and document the process-specific
+extension.
 
 No full implementation plan is selected until G1–G3 are recorded. RFC 0011 can proceed as a
 process-specific change if its own gates justify it; its implementation should not assume
@@ -284,24 +396,66 @@ that this RFC has already proven the shared interface.
 
 ### Cost and saves
 
-The default cost is process responses over active boundary segments plus the current plate
-motion solve. A local or global coupled solve adds work only for cases where the staggered
-update fails its timestep or conservation checks. Work should scale with plates and active
-segments, not with a fine global volume mesh. The pilot must measure its actual cost against
-the current motion/deformation step at density 4. A general interface must add no more than
-10% to median tectonic-step runtime on the acceptance worlds, unless a measured geological
-improvement justifies a revised budget.
+The candidate motion system costs O(S) to assemble active segment blocks and O((3P)^3) for a
+dense direct solve; at P=20–30 this is at most a 90×90 solve. It should be negligible
+beside current boundary gathering and deformation. Profiling at commit `f68fa46` recorded
+about 1.4 s/step in plate shift plus deformation and about 0.5 s cumulative in gathering at
+node density 4, Python 3.14; G2 must re-profile the current branch with the exact seed, world,
+and profiler because these are historical measurements, not a promise about current hardware.
+Reuse `BoundarySearchCache` and the existing shift-time gather; do not add another full
+neighbor search. Substeps multiply deformation/gather work, not just the small motion solve.
+An analytic thermal-age profile is cheap; explicit diffusion or a full temperature mesh is
+not part of the first pilot.
+
+Runtime and persistent state have separate budgets. The first pilot adds no per-node layer
+arrays. Derive upper/lower crust thickness from Hc and a fixed, documented partition, account
+for `mobile_cover_m` and `restite_m` as existing shares rather than additional volumes, and use
+Hm directly; only add independent thickness state after
+a process shows that the partition must evolve independently. Existing `moho_thermal_lag_c`
+is the crustal thermal-memory field; use it where applicable. The first new thermal pilot may
+add one oceanic seafloor-age clock, initialized at ridge creation and carried with the oceanic
+material. Do not use `divergent_age_myr`, which measures recent divergence and resets after
+leaving the ridge band. Add at most that one persistent per-node field in the pilot; any
+additional state requires a measured save-size/remapping cost and explicit RFC revision.
+About two dozen backend modules currently touch Hc, so assigning independent upper/lower
+layers would require auditing every writer and dividing each thickness change between the
+layers. Every new extensive layer field must be updated by every writer of its parent thickness
+and covered by remap, split, merge, transfer, cap, and old-save defaults. That lifecycle spans
+`sparse_quad_patch`, `quad_merge`, and `legacy_conversion`, as well as topology and persistence.
+A seafloor-age CLOCK
+instead needs explicit ridge initialization, advection with oceanic material, remapping, and
+old-save defaults. Report lifecycle and save-size growth separately from step runtime.
+
+The relevant current fields are not interchangeable with all proposed chemistry:
+
+| Proposed quantity | Existing owner/representation | Initial action |
+|---|---|---|
+| Total crust thickness | `crustal_thickness_m` (Hc) | Keep authoritative; derive upper/lower thickness partition for the pilot. |
+| Lithospheric mantle thickness | `mantle_lithosphere_thickness_m` (Hm) | Keep authoritative; do not duplicate it as a layer array. |
+| Surface sediment/regolith | `mobile_cover_m`, a share of Hc; `silt_depth` is geomorphic silt | Treat mobile cover as unconsolidated surface material, not lithified upper-crust sediment. Do not add a sediment fraction until burial/lithification is modeled. |
+| Continental-derived material in surface cover | `mobile_cover_continental_m`, a share of `continental_material_m` | Keep as provenance for loose cover; it is not a second lithified sediment or felsic fraction. |
+| Continental-derived provenance | `continental_material_m` | Reuse as provenance only; it is not a felsic chemical fraction. |
+| Craton state | `craton_crust_m`, an extensive share of Hc | Reuse as crustal craton tracer; its use as a proxy for keel buoyancy/strength must be explicit and tested. It is not a mantle-depletion field. |
+| Crustal thermal memory | `moho_thermal_lag_c` | Reuse for Moho/anatexis thermal lag; it is not two independent crust/mantle temperatures. |
+| Refractory residue | `restite_m`, a share of Hc | Reuse as crustal anatexis restite; do not interpret it as depleted mantle. |
+| Oceanic thermal age | `divergent_age_myr` | Add a distinct clock only if the pilot needs it; `divergent_age_myr` resets and is not seafloor age. |
+| Mantle depletion / layer-specific felsic and mafic fractions | No direct existing field | Defer. Add only if a measured force, yield, or melt response cannot be represented by existing proxies. |
 
 The interface itself should be derived/cacheable state and not serialized. Any new persistent
 constitutive memory needs a default for old saves and tests covering its remap and topology
-lifecycle. Existing surface material fields and ledgers remain authoritative.
+lifecycle. Existing surface material fields and ledgers remain authoritative. Six to eight
+new per-node arrays would add serialization and remapping work across sparse refinement,
+coarsening, merging, legacy conversion, and every Hc/Hm writer, and are explicitly outside
+this pilot.
 
 ## Detailed design (provisional touchpoints)
 
 - `backend/app/torque.py`: current per-plate force gathering, torque/inertia calculation,
-  implicit drag integration, and `shift_plate`; likely separate load assembly, motion update,
-  and rigid rotation while preserving current force terms. A coupled solve is conditional on
-  the gates, not a required replacement.
+  implicit drag integration, and `shift_plate`; candidate location for assembling shared
+  segment loads, solving simultaneous quasi-static plate motion, and then applying rigid
+  rotations while preserving or replacing force terms based on G1/G2.
+- `backend/app/mantle.py`: `MIN_PLATE_RATE`, `MAX_PLATE_RATE`, and `clamp_rate`; evaluate
+  removal of the motion floor and whether the upper safety cap binds in the force-balance pilot.
 - `backend/app/world.py`: current step ordering and invalidation points; provisional location
   for the prepare → solve → deform → topology orchestration.
 - `backend/app/quad_tectonics.py` and `backend/app/rheology.py`: boundary kinematics and
@@ -332,13 +486,19 @@ lifecycle. Existing surface material fields and ledgers remain authoritative.
   lithospheric mantle do not capture all stratigraphic or mantle compositional layering.
   Fractions, depletion, and coarse thermal states stand in for heterogeneous materials; their
   effect on force, yield, and melt response must be measured before adding more rock classes.
+- **Craton strength currently uses a crustal tracer as a mantle-keel proxy.** `craton_crust_m`
+  is an extensive share of Hc; the current craton-strength path uses it to estimate keel
+  buoyancy/strength in column buoyancy. It is not mantle depletion. Keep that proxy explicit
+  until an independently owned mantle composition or depletion state is justified by a
+  measured force or rheology outcome.
 - **Sedimentary resources are not geomechanical state.** Surface coal and oil/gas inventories
   do not specify burial, lithification, pore pressure, or source-rock maturity. A future
   sediment weakening law needs an independently defined and conserved fluid/pressure state.
-- **Force balance may be quasi-static or inertial at the chosen timestep.** Plate inertia is
-  often negligible in geological torque balances [[Forsyth & Uyeda, 1975]](#ref-forsyth1975),
-  while the current solver integrates angular acceleration. G1/G2 must distinguish a numerical
-  stabilizer from a physical inertia term before choosing a general solve.
+- **Quasi-static balance is a scale hypothesis for this model.** Plate inertia is often
+  negligible in geological torque balances [[Forsyth & Uyeda, 1975]](#ref-forsyth1975), and
+  the illustrative relaxation estimate is far shorter than the timestep. G1/G2 must replace
+  the illustrative scales with the solver's actual drag and plate dimensions, and distinguish
+  a numerical regularizer from a physical inertia term.
 - **Averages can erase localization.** Segment aggregation is safe only when it preserves
   force/moment and the distribution needed by nonlinear yield laws. G2 and G3 explicitly test
   segment-level outcomes.
@@ -351,24 +511,38 @@ lifecycle. Existing surface material fields and ledgers remain authoritative.
 
 ## Acceptance criteria
 
-- [ ] **G1** records the process inventory, physical quantities, ownership, feedback paths,
-      and runtime for convergence, divergence/rifting, transform motion, and plate driving
-      forces. Each identified gap is tied to a named design principle and a measurable
-      geological or mechanical outcome.
-- [ ] **G2** reports a staggered pilot on synthetic limiting cases and matched replay worlds;
-      force and torque are dimensionally consistent, pair forces are equal and opposite,
-      deformation budgets and material ledgers close to rounding, and the pilot stays within
-      the runtime budget above.
-- [ ] The pilot's accumulated response and key metrics agree within 10% between 2 and 5 Myr
-      steps, except for explicitly quantized topology events whose event-time difference is
-      reported and bounded. If the staggered update fails, a local solve/substep is measured
-      before considering global coupling.
+- [ ] **G1 first:** verify the Problem inventory against code; record force, torque, traction,
+      units, ownership, feedback, current costs and rule replacement for convergence,
+      subduction, rifting, transform motion, basal drag, ridge push, topology, and deformation.
+      The proposed boundary-load normalization varies by no more than 10% across node density,
+      band width, and repeated-row synthetic cases. Each retained proxy is tied to a named
+      design principle and measurable outcome; each retired rule is checked against accepted
+      geology metrics.
+- [ ] **G2:** compare the simultaneous quasi-static contact pilot against current behavior on
+      synthetic no-load, no-resistance, symmetric-action/reaction, yield, and Tibet-like cases,
+      plus matched replays. Force/torque units close dimensionally, shared loads are equal and
+      opposite, contact load never exceeds its stated capacity, deformation budgets and
+      material ledgers close to rounding, and the pilot stays within the runtime budget.
+      A synthetic Tibet-like column's ΔGPE should test against the order of Copley et al.'s
+      5–6×10¹² N/m mountain-building resistance, and an oceanic ridge column against the order
+      of 2.5×10¹² N/m ridge push. These are regional Indian-plate sanity ranges, not universal
+      force targets.
+- [ ] The pilot's accumulated force response, mean plate rate, relative contact motion,
+      deformation, Hc/Hm distributions, land fraction, and material ledgers agree within 10%
+      across 0.1, 1, and 2 Myr steps, except for discrete topology events. For these, report
+      event-time differences and whether their ordering changes. Use `bin/debug/compare_physics_first_steps.py`
+      (new candidate diagnostic) on generated worlds with seeds 326494039, 748935664,
+      580014012, and 111065103, at the same endpoints and node density. Do not use 5 Myr as
+      an acceptance step: the issue #452 step-size check fails at that step.
 - [ ] **G3** reports whether the same interface can express a rift and a transform response;
       any process-specific extension is documented with a physical reason.
 - [ ] Any pilot that consumes material properties identifies the upper-crust, lower-crust,
-      and lithospheric-mantle state it reads; its composition fractions are bounded and its
-      material transfers conserve the layer budgets. Temperature and any optional fluid state
-      have an explicit update cadence and timestep-sensitivity result.
+      and lithospheric-mantle derived state it reads. Any composition fractions are bounded
+      and material transfers conserve layer budgets. Temperature and any optional fluid state
+      have an explicit update cadence and timestep-sensitivity result. The first pilot adds at
+      most one persistent per-node field (oceanic seafloor age); report encoded save-size growth
+      and lifecycle cost separately from runtime. Existing saves load with a documented age
+      fallback.
 - [ ] Any implementation selected by the gates has equation-level tests, save compatibility
       for new persistent state, updated simulation docs, and measured runtime at density 4.
 - [ ] No process is accepted solely because software tests pass; its force law and outcome
@@ -414,3 +588,44 @@ lifecycle. Existing surface material fields and ledgers remain authoritative.
   poroelastic response of sandstones to deviatoric stress change. *Journal of Geophysical
   Research: Solid Earth*, 107(B12), 2353.
   [doi:10.1029/2001JB001460](https://doi.org/10.1029/2001JB001460)
+- <a id="ref-kong-bird1995"></a>Kong, X., & Bird, P. (1995). SHELLS: A thin-shell program
+  for modeling neotectonics of regional or global lithosphere with faults. *Journal of
+  Geophysical Research: Solid Earth*, 100(B11), 22129–22131.
+  [doi:10.1029/95JB02435](https://doi.org/10.1029/95JB02435)
+- <a id="ref-meade-loveless2009"></a>Meade, B. J., & Loveless, J. P. (2009). Block
+  modeling with connected fault-network geometries and a linear elastic coupling estimator
+  in spherical coordinates. *Bulletin of the Seismological Society of America*, 99(6),
+  3124–3139. [doi:10.1785/0120090088](https://doi.org/10.1785/0120090088)
+- <a id="ref-copley2010"></a>Copley, A., Avouac, J.-P., & Royer, J.-Y. (2010). India-Asia
+  collision and the Cenozoic slowdown of the Indian plate: Implications for the forces driving
+  plate motions. *Journal of Geophysical Research: Solid Earth*, 115, B03410.
+  [doi:10.1029/2009JB006634](https://doi.org/10.1029/2009JB006634)
+- <a id="ref-buck1991"></a>Buck, W. R. (1991). Modes of continental lithospheric extension.
+  *Journal of Geophysical Research: Solid Earth*, 96(B12), 20161–20178.
+  [doi:10.1029/91JB01485](https://doi.org/10.1029/91JB01485)
+- <a id="ref-stewart-trinkle1996"></a>Stewart, D. E., & Trinkle, J. C. (1996). An implicit
+  time-stepping scheme for rigid body dynamics with inelastic collisions and Coulomb friction.
+  *International Journal for Numerical Methods in Engineering*, 39(15), 2673–2691.
+  [doi:10.1002/(SICI)1097-0207(19960815)39:15<2673::AID-NME972>3.0.CO;2-I](https://doi.org/10.1002/%28SICI%291097-0207%2819960815%2939%3A15%3C2673%3A%3AAID-NME972%3E3.0.CO%3B2-I)
+- <a id="ref-parsons-sclater1977"></a>Parsons, B., & Sclater, J. G. (1977). An analysis
+  of the variation of ocean floor bathymetry and heat flow with age. *Journal of Geophysical
+  Research*, 82(5), 803–827. [doi:10.1029/JB082i005p00803](https://doi.org/10.1029/JB082i005p00803)
+- <a id="ref-molnar-lyon-caen1988"></a>Molnar, P., & Lyon-Caen, H. (1988). Some simple
+  physical aspects of the support, structure, and evolution of mountain belts. *Processes in
+  Continental Lithospheric Deformation*, Geological Society of America Special Paper 218,
+  179–207. [doi:10.1130/SPE218-P179](https://doi.org/10.1130/SPE218-P179)
+- <a id="ref-kusznir-park1987"></a>Kusznir, N. J., & Park, R. G. (1987). The extensional
+  strength of the continental lithosphere: its dependence on geothermal gradient, and crustal
+  composition and thickness. *Geological Society, London, Special Publications*, 28(1),
+  35–52. [doi:10.1144/GSL.SP.1987.028.01.04](https://doi.org/10.1144/GSL.SP.1987.028.01.04)
+- <a id="ref-gurnis2012"></a>Gurnis, M., Turner, M., Zahirovic, S., DiCaprio, L., Spasojevic,
+  S., Müller, R. D., Boyden, J., Seton, M., Manea, V. C., & Bower, D. J. (2012). Plate
+  tectonic reconstructions with continuously closing plates. *Computers & Geosciences*, 38(1),
+  35–42. [doi:10.1016/j.cageo.2011.04.014](https://doi.org/10.1016/j.cageo.2011.04.014)
+- <a id="ref-iaffaldano-bunge2015"></a>Iaffaldano, G., & Bunge, H.-P. (2015). Rapid plate
+  motion variations through geological time: Observations serving geodynamic interpretation.
+  *Annual Review of Earth and Planetary Sciences*, 43, 571–592.
+  [doi:10.1146/annurev-earth-060614-105117](https://doi.org/10.1146/annurev-earth-060614-105117)
+- <a id="ref-strang1968"></a>Strang, G. (1968). On the construction and comparison of
+  difference schemes. *SIAM Journal on Numerical Analysis*, 5(3), 506–517.
+  [doi:10.1137/0705041](https://doi.org/10.1137/0705041)
