@@ -2,6 +2,7 @@ import numpy as np
 from app import debug_worlds, geometry, lithosphere
 from app.hydroclimate import erosion
 from app import lithosphere_plate, merge_split
+from app.elevation_lines import effective_is_continental_from_codes
 from app.sparse_quad_patch import PlateWithSparseQuadPatch
 from app.world import generate_world, step_world
 
@@ -126,7 +127,14 @@ def test_step_world_events_are_timestamped_with_post_step_elapsed_years():
 
 
 def _continental_node_count(world) -> int:
-    return sum(plate.node_count() for plate in world.plates if plate.crust_type == "continental")
+    return sum(
+        int(
+            effective_is_continental_from_codes(
+                plate.collect("crust_type_code"), plate.crust_type == "continental"
+            ).sum()
+        )
+        for plate in world.plates
+    )
 
 
 def test_continental_volume_budget_bounds_the_boundary_ratchet(monkeypatch):
@@ -136,6 +144,11 @@ def test_continental_volume_budget_bounds_the_boundary_ratchet(monkeypatch):
     volume-budget growth gate (lithosphere_plate.CONTINENTAL_AREA_BUDGET_MULT) suppresses
     areal growth once a plate has outrun its crustal volume. Same seed / step schedule with
     the gate effectively disabled must grow the continental node count meaningfully more.
+
+    This enforces design principle 6 (account for material through every process): gap filling
+    must obey the same continental footprint budget as boundary advance. The observable checks
+    are that an over-budget plate cannot grow through gap fill and the ungated run has more than
+    1% additional continental-coded area over 120 Myr.
 
     GitHub issue #162: seed 60461418 (used here previously) drives this scenario into heavy
     plate fragmentation around step 35-45, which is chaotic enough in its floating-point
@@ -165,14 +178,29 @@ def test_continental_volume_budget_bounds_the_boundary_ratchet(monkeypatch):
 
     # The gate does bite -- the ungated ratchet grows the continental lattice substantially
     # more over the same 120 My.
-    assert ungated > gated + 0.04
+    # Mixed crust typing (#447) lets boundary retreat remove more of the continental-coded
+    # footprint in this trajectory; with gap fill subject to the same budget, the sustained
+    # ungated advantage is about 2% rather than the pre-mixed-plate 4% margin.
+    assert ungated > gated + 0.01
     # ... and the gated run's own growth stays modest rather than running away.
     assert gated < 0.15
 
 
 def _continental_hc_hm(world):
-    hc = np.concatenate([p.collect("crustal_thickness_m") for p in world.plates if p.crust_type == "continental"])
-    hm = np.concatenate([p.collect("mantle_lithosphere_thickness_m") for p in world.plates if p.crust_type == "continental"])
+    continental_columns = []
+    for plate in world.plates:
+        continental = effective_is_continental_from_codes(
+            plate.collect("crust_type_code"), plate.crust_type == "continental"
+        )
+        if np.any(continental):
+            continental_columns.append(
+                (plate.collect("crustal_thickness_m")[continental],
+                 plate.collect("mantle_lithosphere_thickness_m")[continental])
+            )
+    if not continental_columns:
+        return np.array([]), np.array([])
+    hc = np.concatenate([columns[0] for columns in continental_columns])
+    hm = np.concatenate([columns[1] for columns in continental_columns])
     return hc, hm
 
 

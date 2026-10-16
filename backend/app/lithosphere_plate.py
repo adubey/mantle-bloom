@@ -447,16 +447,8 @@ def boundary_context(
     hc_all = plate.collect("crustal_thickness_m")
     continental = effective_is_continental_from_codes(plate.collect("crust_type_code"), plate.crust_type == "continental")
 
-    # Volume-budget growth gate -- see CONTINENTAL_AREA_BUDGET_MULT. Continental crust
-    # only: oceanic footprint is already bounded by subduction. Over budget -> this step
-    # grows no new areal crust, but still retreats / thins / thickens toward the budget.
-    # The plate's continental-coded area against its genuine part: its ocean floor is no part
-    # of the continent's budget (RFC 0009, #447).
     weight = np.broadcast_to(node_weight, hc_all.shape)
-    genuine = continental & (hc_all >= CONTINENTAL_BUDGET_HC_FRACTION * lithosphere.REFERENCE_HC_CONTINENTAL_M)
-    suppress_growth = bool(np.any(continental)) and float(np.sum(weight[continental])) > CONTINENTAL_AREA_BUDGET_MULT * float(
-        np.sum(weight[genuine])
-    )
+    suppress_growth = continental_growth_over_budget(plate, weight)
 
     spacing_rad = line_spacing_rad(world.node_density)
     reach_rad = torque.BOUNDARY_FORCE_REACH_MULTIPLIER * spacing_rad
@@ -593,6 +585,23 @@ def boundary_context(
         orogen_contested_strength=orogen_contested_strength,
         fault_noise=fault_noise,
     )
+
+
+def continental_growth_over_budget(plate: Plate, node_weight: np.ndarray | float = 1.0) -> bool:
+    """Whether this plate's continental footprint exceeds its supported Hc area.
+
+    `node_weight` is each node's footprint in nominal-node units. Reused by boundary advance
+    and whole-sphere gap filling so neither areal-growth path can bypass the continental
+    volume budget (RFC 0009, #447).
+    """
+    codes = plate.collect("crust_type_code")
+    continental = effective_is_continental_from_codes(codes, plate.crust_type == "continental")
+    if not np.any(continental):
+        return False
+    hc = plate.collect("crustal_thickness_m")
+    weight = np.broadcast_to(node_weight, hc.shape)
+    genuine = continental & (hc >= CONTINENTAL_BUDGET_HC_FRACTION * lithosphere.REFERENCE_HC_CONTINENTAL_M)
+    return float(np.sum(weight[continental])) > CONTINENTAL_AREA_BUDGET_MULT * float(np.sum(weight[genuine]))
 
 
 # The per-node fields `deform_columns` reads and returns.

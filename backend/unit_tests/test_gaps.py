@@ -5,7 +5,7 @@ spawning a brand-new plate only when nothing is adjacent."""
 import numpy as np
 from scipy.spatial import cKDTree
 
-from app import gaps, geometry
+from app import gaps, geometry, lithosphere_plate
 from app.elevation_lines import effective_is_continental_from_codes, line_spacing_rad
 from app.lithosphere_plate import generate_plates, new_plate
 from app.world import World
@@ -198,6 +198,19 @@ def test_fill_gaps_by_growing_neighbours_grows_existing_adjacent_plates_not_a_ne
     coverage_radius_rad = gaps.COVERAGE_RADIUS_MULT * line_spacing_rad(world.node_density)
     dist, _ = tree.query(removed_points)
     assert np.mean(dist < coverage_radius_rad) > 0.9  # near-full replacement, not a sliver
+
+
+def test_gap_fill_does_not_grow_an_over_budget_continental_plate(monkeypatch):
+    world, spacing_rad = _lone_continental_island()
+    plate = world.plates[0]
+    points, _ = plate.all_points_and_elevation()
+    monkeypatch.setattr(lithosphere_plate, "CONTINENTAL_AREA_BUDGET_MULT", 0.0)
+    gap_point = np.array([[np.sin(0.42), 0.0, np.cos(0.42)]])
+
+    grown = gaps._grow_adjacent_into_gap(world, gap_point, [plate], spacing_rad)
+
+    assert grown == {}
+    assert plate.node_count() == len(points)
 
 
 def test_fill_gaps_by_growing_neighbours_falls_back_to_spawning_when_nothing_is_adjacent(monkeypatch):
