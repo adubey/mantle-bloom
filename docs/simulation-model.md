@@ -283,7 +283,7 @@ Two long-run corrections (2026-09):
   buoyant node pulls nothing; before, a terrane or craton was dragged into the trench at
   full strength, and a keel pulled harder than ocean floor. Separately, a continental-coded
   node on the side forced down (behind its own plate's slab at that contact,
-  `down_going_side`, or on the lower plate of the last frozen polarized front,
+  `slab_attached_continent`, or on the lower plate of the last frozen polarized front,
   `forced_down_mask`; see [Per-node crust type](#per-node-crust-type)), in the band of a
   contact closing at ≥ −1 cm/yr
   (`jam_mask`), jams with `j = clip((Hc − 15 km) / (30 km − 15 km), 0, 1)` (Cloos 1993).
@@ -1230,7 +1230,7 @@ nodes the other kind's physics, so every boundary decision reads node codes inst
   (`torque.gather_boundary_force_inputs`' `neighbor_is_oceanic`).
 - Ocean floor goes down on any plate. Continental crust goes down where its own plate has a
   slab at that contact -- an oceanic node of the plate facing the same neighbour, at a contact
-  that isn't diverging (`torque.down_going_side`) -- or on a polarized front's lower plate.
+  that isn't diverging (`torque.slab_attached_continent`) -- or on a polarized front's lower plate.
   That covers a terrane riding ocean floor and a continent behind its own subducting ocean
   (India): both are dragged into the slab pull band, buoyancy cuts their pull, and they jam.
   A terrane retreating there is a suture donor, its crust conserved rather than subducted

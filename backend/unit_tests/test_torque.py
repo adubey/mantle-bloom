@@ -704,7 +704,7 @@ def _mixed_contact(plate_type: str, codes, neighbour_ids, rate_cm_per_yr: float 
     return plate, inputs
 
 
-def test_the_down_going_side_follows_each_nodes_crust_and_its_plates_slab_not_the_majority_type():
+def test_down_going_crust_follows_each_nodes_crust_and_its_plates_slab_not_the_majority_type():
     """#447: oceanic nodes go down on any plate; a continental node goes down only behind its
     own plate's slab at that contact (an oceanic node facing the same neighbour). Before, an
     oceanic-majority plate went down everywhere and a continental-majority one nowhere."""
@@ -713,21 +713,22 @@ def test_the_down_going_side_follows_each_nodes_crust_and_its_plates_slab_not_th
     # A continent with its own ocean floor facing plate 2 and a stretch of plain margin facing
     # plate 3: the ocean floor and the continent behind it at plate 2 go down, not the margin.
     plate, inputs = _mixed_contact("continental", [o, inherit, inherit], [2, 2, 3])
-    np.testing.assert_array_equal(torque.down_going_side(plate, inputs, reach), [True, True, False])
+    np.testing.assert_array_equal(torque.down_going_crust(plate, inputs, reach), [True, True, False])
+    np.testing.assert_array_equal(torque.slab_attached_continent(plate, inputs, reach), [False, True, False])
     np.testing.assert_array_equal(torque.subducting_boundary_mask(plate, inputs, reach), [True, True, False])
     # A terrane on ocean floor goes down where the plate subducts under that neighbour, not
     # where the terrane alone faces it.
     plate, inputs = _mixed_contact("oceanic", [inherit, c, c], [2, 2, 3])
-    np.testing.assert_array_equal(torque.down_going_side(plate, inputs, reach), [True, True, False])
+    np.testing.assert_array_equal(torque.down_going_crust(plate, inputs, reach), [True, True, False])
     # Single-type plates: as before, all or nothing.
     plate, inputs = _mixed_contact("oceanic", [inherit] * 3, [2, 2, 3])
-    assert torque.down_going_side(plate, inputs, reach).all()
+    assert torque.down_going_crust(plate, inputs, reach).all()
     plate, inputs = _mixed_contact("continental", [inherit] * 3, [2, 2, 3])
-    assert not torque.down_going_side(plate, inputs, reach).any()
+    assert not torque.down_going_crust(plate, inputs, reach).any()
     assert not torque.subducting_boundary_mask(plate, inputs, reach).any()
     # A diverging contact holds no slab, so the continent behind it isn't dragged down.
     plate, inputs = _mixed_contact("continental", [o, inherit, inherit], [2, 2, 3], rate_cm_per_yr=-3.0)
-    np.testing.assert_array_equal(torque.down_going_side(plate, inputs, reach), [True, False, False])
+    np.testing.assert_array_equal(torque.down_going_crust(plate, inputs, reach), [True, False, False])
 
 
 def test_a_continent_behind_its_own_subducting_ocean_floor_jams_without_a_polarized_front():

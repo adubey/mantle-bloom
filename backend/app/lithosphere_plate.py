@@ -9,7 +9,7 @@ that quad_tectonics.py drives.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, NamedTuple
 
 import numpy as np
 from scipy.spatial import cKDTree
@@ -321,7 +321,7 @@ class BoundaryContext:
     contested: np.ndarray
     shrinkable: np.ndarray
     accrete: np.ndarray
-    # Continental cells dragged in behind their own plate's slab (torque.down_going_side): a
+    # Continental cells dragged in behind their own plate's slab (torque.slab_attached_continent): a
     # terrane is conserved as a suture donor rather than subducting (issues #253, #447).
     terrane: np.ndarray
     closing_rate: np.ndarray
@@ -353,6 +353,76 @@ def continental_arc_band(plate: Plate, inputs: torque.BoundaryForceInputs, closi
         & np.isfinite(inputs.dist_to_neighbor)
         & (closing_rate > rheology.ARC_MIN_CONVERGENCE_M_PER_S)
     )
+
+
+class FrontRetreat(NamedTuple):
+    """`boundary_context`'s retreat masks after the frozen polarized fronts are applied."""
+
+    shrinkable: np.ndarray  # what may retreat this step
+    suture_hm_subduct: np.ndarray  # lower-plate front cells retreating as suture donors
+    # Per node, the frozen upper plate of the front a `suture_hm_subduct` node belongs to; -1
+    # elsewhere. Its crust transfers there (crust_transfer.py).
+    suture_upper_plate_id: np.ndarray
+
+
+def _frozen_front_retreat(world, plate: Plate, other_plates: list, shrinkable: np.ndarray) -> FrontRetreat:
+    """Apply this step's frozen continental-collision fronts (collision_polarity) to
+    `shrinkable`: on each active front only the lower plate's retreatable continental cells
+    retreat, as suture donors bound for the upper plate. The prepass stored each side's
+    retreatability in its node order before any plate could deform; a plate whose cells have
+    changed since then, or that the frame doesn't know, keeps `shrinkable` as it is."""
+    n = len(shrinkable)
+    unchanged = FrontRetreat(shrinkable, np.zeros(n, dtype=bool), np.full(n, -1, dtype=np.int64))
+    frame = getattr(world, "collision_polarity_frame", None)
+    masks = getattr(frame, "masks", {}).get(plate.plate_id) if frame is not None else None
+    if (
+        masks is None
+        or len(masks.front_id) != n
+        or not np.array_equal(masks.node_keys, plate.cell_keys)
+        or len(masks.retreatable) != n
+        or len(masks.continental) != n
+    ):
+        return unchanged
+    active_fronts = _active_fronts(frame, plate, masks, other_plates)
+    if not active_fronts:
+        return unchanged
+    collision_nodes = np.isin(masks.front_id, active_fronts)
+    selected = masks.retreatable & masks.lower & collision_nodes & masks.continental
+    upper_plate_id = np.full(n, -1, dtype=np.int64)
+    for front_id in active_fronts:
+        upper_plate_id[selected & (masks.front_id == front_id)] = frame.polarity[front_id][1]
+    return FrontRetreat((shrinkable & ~collision_nodes) | selected, selected, upper_plate_id)
+
+
+def _active_fronts(frame, plate: Plate, masks, other_plates: list) -> list[int]:
+    """The polarized fronts `plate` is on that retreat one-sidedly this step: both sides still
+    present and continental at the front, and some lower-plate continental cell free to
+    retreat."""
+    active: list[int] = []
+    plate_by_id = {p.plate_id: p for p in [plate, *other_plates]}
+    for front_id, pair in frame.polarity.items():
+        if plate.plate_id not in pair:
+            continue
+        counterpart = pair[1] if pair[0] == plate.plate_id else pair[0]
+        other_masks = getattr(frame, "masks", {}).get(counterpart)
+        if (
+            plate_by_id.get(counterpart) is None
+            or other_masks is None
+            or len(other_masks.front_id) != len(other_masks.retreatable)
+            or len(other_masks.front_id) != len(other_masks.continental)
+            or len(other_masks.front_id) != len(other_masks.node_keys)
+        ):
+            continue
+        own_front = masks.front_id == front_id
+        other_front = other_masks.front_id == front_id
+        if not np.any(own_front & masks.continental) or not np.any(other_front & other_masks.continental):
+            continue
+        lower_masks = masks if pair[0] == plate.plate_id else other_masks
+        # If every lower-plate candidate is too small or still cratonic, preserve the
+        # ordinary bilateral retreat for this front so overlap cannot become permanent.
+        if np.any(lower_masks.retreatable & (lower_masks.front_id == front_id) & lower_masks.continental):
+            active.append(front_id)
+    return active
 
 
 def boundary_context(
@@ -434,61 +504,9 @@ def boundary_context(
     # majority type (RFC 0009, #447).
     shrinkable = (contested & ~continental) | continental_retreat_runs(contested & continental)
 
-    # Apply frozen continental-collision fronts independently. The prepass stores each
-    # side's retreatability in its original node order, before any plate can deform.
-    suture_hm_subduct = np.zeros(len(own_points), dtype=bool)
-    suture_upper_plate_id = np.full(len(own_points), -1, dtype=np.int64)
-    frame = getattr(world, "collision_polarity_frame", None)
-    masks = getattr(frame, "masks", {}).get(plate.plate_id) if frame is not None else None
-    if (
-        masks is not None
-        and len(masks.front_id) == len(own_points)
-        and np.array_equal(masks.node_keys, plate.cell_keys)
-        and len(masks.retreatable) == len(own_points)
-        and len(masks.continental) == len(own_points)
-    ):
-        active_fronts: list[int] = []
-        plate_by_id = {p.plate_id: p for p in [plate, *other_plates]}
-        for front_id, pair in frame.polarity.items():
-            if plate.plate_id not in pair:
-                continue
-            counterpart = pair[1] if pair[0] == plate.plate_id else pair[0]
-            other = plate_by_id.get(counterpart)
-            other_masks = getattr(frame, "masks", {}).get(counterpart)
-            if (
-                other is None
-                or other_masks is None
-                or len(other_masks.front_id) != len(other_masks.retreatable)
-                or len(other_masks.front_id) != len(other_masks.continental)
-                or len(other_masks.front_id) != len(other_masks.node_keys)
-            ):
-                continue
-            own_front = masks.front_id == front_id
-            other_front = other_masks.front_id == front_id
-            if not np.any(own_front) or not np.any(other_front):
-                continue
-            own_cont = masks.continental
-            other_cont = other_masks.continental
-            if not np.any(own_front & own_cont) or not np.any(other_front & other_cont):
-                continue
-            lower_id = pair[0]
-            lower_masks = masks if lower_id == plate.plate_id else other_masks
-            lower_front = lower_masks.front_id == front_id
-            lower_cont = own_cont if lower_id == plate.plate_id else other_cont
-            lower_can_retreat = bool(np.any(lower_masks.retreatable & lower_front & lower_cont))
-            # If every lower-plate candidate is too small or still cratonic, preserve the
-            # ordinary bilateral retreat for this front so overlap cannot become permanent.
-            if lower_can_retreat:
-                active_fronts.append(front_id)
-        if active_fronts:
-            collision_nodes = np.isin(masks.front_id, active_fronts)
-            active_lower = masks.lower & collision_nodes
-            own_cont = masks.continental
-            selected = masks.retreatable & active_lower & own_cont
-            shrinkable = (shrinkable & ~collision_nodes) | selected
-            suture_hm_subduct = selected & own_cont
-            for front_id in active_fronts:
-                suture_upper_plate_id[suture_hm_subduct & (masks.front_id == front_id)] = frame.polarity[front_id][1]
+    # Frozen continental-collision fronts override the rule above where they apply.
+    fronts = _frozen_front_retreat(world, plate, other_plates, shrinkable)
+    shrinkable, suture_hm_subduct, suture_upper_plate_id = fronts.shrinkable, fronts.suture_hm_subduct, fronts.suture_upper_plate_id
 
     # Continental suture retreat conserves the consumed column's volume by accreting it
     # onto this plate's own leading edge; a retreat where the overriding neighbour is
@@ -498,7 +516,7 @@ def boundary_context(
     # is: at a triple junction that can be an oceanic third plate, and the cell must still
     # transfer to its frozen upper plate rather than subduct or spend the #177 budget.
     accrete |= suture_hm_subduct
-    terrane = continental & torque.down_going_side(plate, inputs, reach_rad)
+    terrane = torque.slab_attached_continent(plate, inputs, reach_rad)
 
     # Continental arc band: this plate's own nodes within `reach_rad` of a *converging
     # oceanic* neighbour -- the volcanic arc + accreted forearc / underplated wedge sits

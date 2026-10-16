@@ -320,37 +320,45 @@ def gather_boundary_force_inputs(
 
 
 def subducting_boundary_mask(plate, inputs: BoundaryForceInputs, reach_rad: float) -> np.ndarray:
-    """This plate's own boundary-band nodes that are genuinely subducting: the node is on the
-    down-going side of its contact (`down_going_side`), within `reach_rad` of a neighbour, *and*
+    """This plate's own boundary-band nodes that are genuinely subducting: the node's crust goes
+    down (`down_going_crust`), it is within `reach_rad` of a neighbour, *and*
     the two plates are actually converging there (`closing_rate` past the same
     `TRANSFORM_RATE_THRESHOLD` `merge_split` uses). The convergence check is what this used to
     be missing: slab pull was applied to the plate's *entire* near-neighbour band, ridge and
     transform stretches included, so a plate spreading at three of its four edges still felt a
     full-perimeter pull and railed at MAX_PLATE_RATE. A ridge does not pull a slab down."""
     band = inputs.dist_to_neighbor <= reach_rad
-    return band & (closing_rad_per_yr(plate, inputs) > TRANSFORM_RATE_THRESHOLD) & down_going_side(plate, inputs, reach_rad)
+    return band & (closing_rad_per_yr(plate, inputs) > TRANSFORM_RATE_THRESHOLD) & down_going_crust(plate, inputs, reach_rad)
 
 
 def own_is_continental(plate, inputs: BoundaryForceInputs) -> np.ndarray:
     return effective_is_continental_from_codes(inputs.own_crust_type_codes, plate.crust_type == "continental")
 
 
-def down_going_side(plate, inputs: BoundaryForceInputs, reach_rad: float) -> np.ndarray:
-    """Per node, whether it is on the side of its contact that goes down (RFC 0009, #447). Only
-    oceanic lithosphere is dense enough to descend, so every oceanic-coded node is (the same
-    asymmetry `deform()`'s trench-vs-uplift branch draws). A continental-coded node is when its
-    plate has a slab at that contact: some oceanic-coded node of the plate in the band facing
-    the same neighbour plate, at a contact that isn't diverging. The slab drags the continent
-    in behind it, a terrane riding ocean floor or a continent behind its own ocean (India), and
-    the continent's buoyancy then cuts the pull and jams the trench (`column_buoyancy_pa`,
-    `jam_mask`). Not diverging rather than converging past +1 cm/yr, for the reason
-    `jam_mask` gives: a jam that slows the contact must not detach the continent from its slab.
+def down_going_crust(plate, inputs: BoundaryForceInputs, reach_rad: float) -> np.ndarray:
+    """Per node, whether its crust goes down when it converges on a neighbour (RFC 0009, #447):
+    every oceanic-coded node, since only oceanic lithosphere is dense enough to descend (the
+    same asymmetry `deform()`'s trench-vs-uplift branch draws), and the continental nodes
+    `slab_attached_continent` finds. A classification of crust, not a contact mask: it holds
+    interior ocean floor too, and callers add the boundary band and closing they need
+    (`subducting_boundary_mask`, `jam_mask`).
 
     Before #447 the plate's majority type decided for every node: all of an oceanic-majority
     plate went down, at any contact, and none of a continental-majority plate did. A
     single-type plate gives the same answer as before."""
-    oceanic = ~own_is_continental(plate, inputs)
-    return oceanic | _faces_slab_neighbour(inputs, oceanic & _jam_contact(plate, inputs, reach_rad))
+    return ~own_is_continental(plate, inputs) | slab_attached_continent(plate, inputs, reach_rad)
+
+
+def slab_attached_continent(plate, inputs: BoundaryForceInputs, reach_rad: float) -> np.ndarray:
+    """Per node, whether it is continental crust attached to its own plate's slab at its
+    contact: some oceanic-coded node of the plate is in the band facing the same neighbour
+    plate, at a contact that isn't diverging. The slab drags the continent in behind it, a
+    terrane riding ocean floor or a continent behind its own ocean (India), and the
+    continent's buoyancy then cuts the pull and jams the trench (`column_buoyancy_pa`,
+    `jam_mask`). Not diverging rather than converging past +1 cm/yr, for the reason `jam_mask`
+    gives: a jam that slows the contact must not detach the continent from its slab."""
+    continental = own_is_continental(plate, inputs)
+    return continental & _faces_slab_neighbour(inputs, ~continental & _jam_contact(plate, inputs, reach_rad))
 
 
 def _faces_slab_neighbour(inputs: BoundaryForceInputs, slab: np.ndarray) -> np.ndarray:
@@ -374,10 +382,11 @@ def jam_factor(hc_cont: np.ndarray) -> np.ndarray:
 
 
 def forced_down_mask(plate, world, inputs: BoundaryForceInputs, reach_rad: float) -> np.ndarray:
-    """Per node of `plate`, whether it is on the side forced down at a contact: the down-going
-    side of its contact (`down_going_side`: an oceanic node, or a continental one behind its
-    plate's own slab), and the lower-plate nodes of polarized fronts (`lower_plate_mask`)."""
-    return down_going_side(plate, inputs, reach_rad) | lower_plate_mask(plate, world, len(inputs.own_points))
+    """Per node of `plate`, whether it is on the side forced down at a contact: crust that goes
+    down (`down_going_crust`: an oceanic node, or a continental one behind its plate's own
+    slab), and the lower-plate nodes of polarized fronts (`lower_plate_mask`). Like
+    `down_going_crust`, not a contact mask: `jam_mask` adds the contact."""
+    return down_going_crust(plate, inputs, reach_rad) | lower_plate_mask(plate, world, len(inputs.own_points))
 
 
 def lower_plate_mask(plate, world, n: int) -> np.ndarray:
@@ -831,7 +840,7 @@ def contact_jam_factor(plate, world, neighbours: list, inputs: BoundaryForceInpu
 
     The neighbour's node is forced down where it is a lower-plate cell, or where the neighbour
     has a slab under this plate: an oceanic-coded nearest node of it at a contact with this
-    plate that isn't diverging, the mirror of `down_going_side` read from this side (#447)."""
+    plate that isn't diverging, the mirror of `slab_attached_continent` read from this side (#447)."""
     n = len(inputs.own_points)
     own = np.where(jam_mask(plate, inputs, forced_down_mask(plate, world, inputs, reach_rad), reach_rad), jam_factor(continental_crust_m(plate, inputs)), 0.0)
     other = np.zeros(n)

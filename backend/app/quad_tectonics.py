@@ -38,7 +38,7 @@ updates, melting, provenance) live in `lithosphere_plate.boundary_context` and
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 import numpy as np
 from scipy.sparse import csr_matrix
@@ -419,6 +419,32 @@ def _book_shed_roots(
         orogeny.record(world, "restite_delaminated_m3", float(shed_restite @ areas))
 
 
+class RetreatDisposition(NamedTuple):
+    """What happens to a cell if it retreats this step, decided once per `_retreat`. In order
+    of precedence:
+
+    1. `donor`: a suture donor, its crust conserved -- accreted onto the plate's own survivors,
+       relocated as a terrane, or handed to a polarized front's upper plate
+       (`_accrete_onto_survivors`). Continental crust behind a continental neighbour or a
+       frozen front (`ctx.accrete`), and terranes dragged in behind their own plate's slab
+       (`ctx.terrane`, issues #253, #447).
+    2. `budgeted`: any other continental cell, a margin under an oceanic neighbour. It
+       subducts only as much as this step's arc magmatism creates (#177), whole cells and
+       craton attrition alike.
+    3. Everything else, ocean floor, subducts freely.
+
+    Both 2 and 3 are booked as deep subduction. Before #447 the plate's majority type chose
+    among these for all its continental cells."""
+
+    donor: np.ndarray
+    budgeted: np.ndarray
+
+
+def _retreat_disposition(ctx, continental: np.ndarray) -> RetreatDisposition:
+    donor = ctx.accrete | ctx.terrane
+    return RetreatDisposition(donor=donor, budgeted=continental & ~donor)
+
+
 def _retreat(
     plate: "PlateWithSparseQuadPatch",
     world: "World",
@@ -440,18 +466,12 @@ def _retreat(
     budget_hc = ctx.oceanic_override_retreat_budget_hc
     codes = plate.collect("crust_type_code")
     continental = effective_is_continental_from_codes(codes, plate.crust_type == "continental")
-    # A continental terrane (`ctx.terrane`, dragged in behind its own plate's slab) keeps being
-    # continental: it retreats as a suture donor, its crust conserved, rather than subducting
-    # (issue #253). Any other
-    # continental cell overridden by an oceanic neighbour is a margin under that neighbour,
-    # held to the #177 budget below. Before #447 the plate's majority type chose the rule for
-    # all its continental cells.
-    terrane = ctx.terrane
+    fate = _retreat_disposition(ctx, continental)
     # Boundary retreat never consumes a craton cell whole (cratons.retreat_allowed, #340). At a
     # collision front it jams; at a trench its exposed edge wears back by subduction erosion
     # first, and the cell retreats once no craton is left.
     if years > 0.0 and np.any(ctx.shrinkable & (plate.collect("craton_crust_m") > 0.0)):
-        trench = ctx.shrinkable & ~(ctx.accrete | terrane) & np.any(np.all(~has_probe, axis=2), axis=1)
+        trench = ctx.shrinkable & ~fate.donor & np.any(np.all(~has_probe, axis=2), axis=1)
         # A continental margin under an oceanic neighbour subducts only as much as this
         # step's arc magmatism creates (#177), and attrition is part of that.
         node_area = lithosphere.node_area_m2(ctx.spacing_rad)
@@ -474,7 +494,7 @@ def _retreat(
         # Issue #177: a continental passive margin overridden by an oceanic neighbour may
         # only subduct as much volume as this step's arc magmatism creates (see
         # lithosphere_plate.OCEANIC_OVERRIDE_RETREAT_BUDGET_MULTIPLIER).
-        override = np.flatnonzero(take & continental & ~(ctx.accrete | terrane))
+        override = np.flatnonzero(take & fate.budgeted)
         cost = np.cumsum(hc[override] * weights[override])
         allowed = cost <= max(float(budget_hc[0]), 0.0)
         take[override[~allowed]] = False
@@ -499,7 +519,7 @@ def _retreat(
     collision_polarity.record_consumption(
         world, plate, own_points[removed], ~continental[removed], ctx.inputs.neighbor_plate_id[removed], ctx.neighbours
     )
-    donors = removed & (ctx.accrete | terrane)
+    donors = removed & fate.donor
     # Everything else removed goes down the trench: its craton and its continental-derived
     # material leave the surface as deep subduction.
     subducted = removed & ~donors
@@ -527,7 +547,7 @@ def _retreat(
             plate, donors, ~removed, world, convergence_xyz=ctx.inputs.direction_to_neighbor, years=years,
             overriders=ctx.neighbours, hm_subduct_mask=ctx.suture_hm_subduct,
             upper_plate_ids=ctx.suture_upper_plate_id, neighbour_plate_ids=ctx.inputs.neighbor_plate_id,
-            terranes=terrane,
+            terranes=ctx.terrane,
         )
     plate.remove_cells(removed)
     return ~removed
