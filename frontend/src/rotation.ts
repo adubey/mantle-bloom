@@ -3,7 +3,7 @@
 // and (b) draw a cheap wireframe graticule preview while dragging, without needing a round
 // trip to the server for every mouse move (the real detailed map -- elevation fill, plate
 // boundaries, climate heatmaps -- is far too slow to re-render at that rate; see
-// docs/simulation-model.md#rotating-the-view). The final committed rotation is sent to
+// docs/simulation-model/rendering-and-inspectors.md#rotating-the-view). The final committed rotation is sent to
 // `/world/render`'s `rotation` query param (see api.ts's renderWorld) for the real render.
 
 import type { Projection } from "./api";
@@ -330,7 +330,7 @@ export interface RenderTransform {
 }
 
 // The whole sphere's projected bounding box is identical regardless of view rotation (see
-// docs/simulation-model.md#rotating-the-view) -- rotation only permutes which physical point
+// docs/simulation-model/rendering-and-inspectors.md#rotating-the-view) -- rotation only permutes which physical point
 // lands at which lat/lon, never changes the set of lat/lon values a full sphere covers. So
 // this only needs `projection`/`width`/`height` as inputs, and is cheap enough (a few
 // thousand points, computed once, memoized below) to just compute directly rather than

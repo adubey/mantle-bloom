@@ -13,15 +13,15 @@
   client-side views are `rotation.ts` — a
   small, dependency-free port of just enough backend geometry/projection math to drive the
   "rotate the planet" drag gesture and preview it live client-side (see
-  [simulation-model.md#rotating-the-view](simulation-model.md#rotating-the-view)) — and the
+  [simulation-model/rendering-and-inspectors.md#rotating-the-view](simulation-model/rendering-and-inspectors.md#rotating-the-view)) — and the
   Plate Inspector (`PlateInspector.tsx`), River Inspector (`RiverInspector.tsx`), Lake
   Inspector (`LakeInspector.tsx`), and Plates & Faults (`PlatesAndFaults.tsx`) views,
   which each render and drive their whole interaction
   client-side from raw JSON rather than a baked PNG (see
-  [simulation-model.md#plate-inspector](simulation-model.md#plate-inspector),
-  [simulation-model.md#river-inspector](simulation-model.md#river-inspector),
-  [simulation-model.md#lake-inspector](simulation-model.md#lake-inspector), and
-  [simulation-model.md#fault-inspector](simulation-model.md#fault-inspector)). Those four
+  [simulation-model/rendering-and-inspectors.md#plate-inspector](simulation-model/rendering-and-inspectors.md#plate-inspector),
+  [simulation-model/hydrology.md#river-inspector](simulation-model/hydrology.md#river-inspector),
+  [simulation-model/hydrology.md#lake-inspector](simulation-model/hydrology.md#lake-inspector), and
+  [simulation-model/rendering-and-inspectors.md#fault-inspector](simulation-model/rendering-and-inspectors.md#fault-inspector)). Those four
   share `InspectorCanvas.tsx` (the focusable canvas, rotate-drag, click-to-select and
   Tab/Shift+Tab cycling), and with `MapCanvas.tsx` they share `screenProjector.ts`, which
   projects true world points through the live view rotation. The mantle cross-section
@@ -38,7 +38,7 @@ Browser (App.tsx)
 FastAPI (main.py)
   │  world.generate_world(seed, continental_fraction, land_fraction) -- builds the plate
   │  mosaic (total plate count is chosen automatically from the seed; the two fractions are
-  │  the UI's generation sliders -- see simulation-model.md#initial-plate-generation),
+  │  the UI's generation sliders -- see simulation-model/foundations.md#initial-plate-generation),
   │  stores it as the single in-memory World (see below)
   ▼
   { seed, elapsed_years, num_plates, events }
@@ -46,7 +46,7 @@ FastAPI (main.py)
 Browser then fetches, for whichever projection/map view/resolution/rotation is selected:
   GET /world/render?projection=...&view=...&width=...&height=...&rotation=...
   → a PNG, base64-encoded, rendered entirely server-side -- see api-reference below and
-    simulation-model.md#render-image. `rotation` (see simulation-model.md#rotating-the-view)
+    simulation-model/rendering-and-inspectors.md#render-image. `rotation` (see simulation-model/rendering-and-inspectors.md#rotating-the-view)
     is the map's current view orientation, driven by a long-press-and-drag gesture on the
     canvas -- client-local view state, not simulation state, so it's sent fresh with every
     render call rather than stored server-side. The shallow mantle cross-section has its own
@@ -66,26 +66,26 @@ Time-stepping:
     in a freshly randomized order each turn) -- collision/subduction uplift or trench elevation where a plate's
     rotated territory now overlaps a neighbor's, rift fill (or, occasionally, a fresh
     volcano) where it opens unclaimed space, transform uplift where it's merely close --
-    see simulation-model.md#boundary-evolution. Then topology changes (at most one collision
+    see simulation-model/tectonics.md#boundary-evolution. Then topology changes (at most one collision
     merge per step, only after a sustained 50-100
-    Myr collision -- see simulation-model.md#merge-and-split), erode elevation and route
+    Myr collision -- see simulation-model/tectonics.md#merge-and-split), erode elevation and route
     rivers/lakes/glaciers from the world's current climate (every step -- see
-    simulation-model.md#erosion, simulation-model.md#hydrology, and
-    simulation-model.md#glaciation), and roll each active volcano's own eruption chance (every
-    step -- see simulation-model.md#volcanism). (Submerged crust's depth is set directly by
+    simulation-model/surface-processes.md#erosion, simulation-model/hydrology.md#hydrology, and
+    simulation-model/hydrology.md#glaciation), and roll each active volcano's own eruption chance (every
+    step -- see simulation-model/tectonics.md#volcanism). (Submerged crust's depth is set directly by
     isostasy, not a per-step relaxation; `bathymetry.py` now only grades continent/ocean
-    margins once, at generation -- see simulation-model.md#bathymetry.) Boundary advance into
+    margins once, at generation -- see simulation-model/surface-processes.md#bathymetry.) Boundary advance into
     open ground happens inside every `deform()` call; whatever it leaves uncovered is filled
-    by `gaps.py` every step (see simulation-model.md#gap-filling)
+    by `gaps.py` every step (see simulation-model/tectonics.md#gap-filling)
   → browser re-fetches /world/render, and appends any new `events` to the console
 
 Every POST /world/step call also advances the atmospheric wind solve -- not a separate
-mode/endpoint (see simulation-model.md#mode-toggle):
+mode/endpoint (see simulation-model/climate.md#mode-toggle):
   → world.py's step_world → _advance_fluid_dynamics(world, node_cloud), gated on
     World.simulate_climate_biomes the same way erosion/hydrology already are:
     atmosphere_cfd.step_atmosphere_cfd(world, state, seconds): a genuine time-integrated
     shallow-water solve (real Coriolis/pressure-gradient physics, CFL-stable substepping --
-    see simulation-model.md#ocean-atmospheric-fluid-dynamics), a fixed real-time increment per
+    see simulation-model/climate.md#ocean-atmospheric-fluid-dynamics), a fixed real-time increment per
     tectonics step (one simulated day) regardless of the tectonic `years` requested, against
     terrain refreshed from the world's *current* elevation/climate each step (refresh_forcing)
   → browser re-fetches /world/render as usual (wind/temperature draw off this state; the
@@ -96,7 +96,7 @@ When the "Plate Inspector" or "Plates & Faults" map view is active, the browser 
 (also on every generate/step, but never on a projection/rotation-only change) fetches:
   GET /world/plates
   → every plate's outline + metadata as JSON, not a PNG -- see api-reference.md and
-    simulation-model.md#plate-inspector. Clicking a plate sends its unprojected true
+    simulation-model/rendering-and-inspectors.md#plate-inspector. Clicking a plate sends its unprojected true
     lat/lon to GET /world/plate_at, a nearest-node lookup answering "which plate is here."
   "Plates & Faults" also fetches GET /world/faults, GET /world/earthquakes and
     GET /world/volcanoes (fault traces + fault systems, recent earthquake epicentres, and
@@ -110,9 +110,9 @@ When the "Plate Inspector" or "Plates & Faults" map view is active, the browser 
 When the "River Inspector" map view is active, the browser instead fetches (same cadence):
   GET /world/rivers
   → every distinct river network's flow-edge segments + mouth metadata, plus the current
-    coastline (coastline_segments -- see simulation-model.md#coastline, the same segments
+    coastline (coastline_segments -- see simulation-model/hydrology.md#coastline, the same segments
     drawn server-side into the temperature/humidity/precipitation renders below), as JSON,
-    not a PNG -- see api-reference.md and simulation-model.md#river-inspector. Grouped fresh
+    not a PNG -- see api-reference.md and simulation-model/hydrology.md#river-inspector. Grouped fresh
     from world.hydrology_cache/climate_cache on every call (no persistent river identity
     across steps -- see hydrology.group_rivers), empty before the first step. Clicking a
     river sends its unprojected true lat/lon to GET /world/river_at, the same nearest-node
@@ -122,13 +122,13 @@ When the "Lake Inspector" map view is active, the browser instead fetches (same 
   GET /world/lakes
   → every currently-visible lake's basin info (floor, outlet, current water level, inflowing
     rivers), as JSON, not a PNG -- see api-reference.md and
-    simulation-model.md#lake-inspector. Regrouped fresh from world.hydrology_cache on every
+    simulation-model/hydrology.md#lake-inspector. Regrouped fresh from world.hydrology_cache on every
     call, same non-persistent-identity contract as river_id, empty before the first step.
     Clicking anywhere on land -- not just a visible lake -- sends its unprojected true lat/lon
     to GET /world/lake_at, which always resolves to something informative: a lake, a dry but
     real basin, "drains straight to the ocean, no basin here," or open ocean.
 
-GET /world/faults (see faults.py / simulation-model.md#faults) returns every intraplate
+GET /world/faults (see faults.py / simulation-model/tectonics.md#faults) returns every intraplate
 fault as a true-frame trace polyline + type/motion/age metadata plus the fault systems and
 the shared coastline_segments, as JSON not a PNG -- see api-reference.md. It backs the
 "Plates & Faults" view (above). GET /world/fault_at is a nearest-trace hit-test (currently
@@ -141,7 +141,7 @@ returned PNG onto the canvas (`MapCanvas.tsx`). That component also owns the rot
 long-press-and-drag interaction that previews a cheap wireframe graticule client-side (via
 `rotation.ts`) while dragging, then commits the real rotation and lets the usual
 `/world/render` re-fetch replace it with the actual detailed frame (see
-simulation-model.md#rotating-the-view); that gesture itself was later extracted into
+simulation-model/rendering-and-inspectors.md#rotating-the-view); that gesture itself was later extracted into
 `rotationDrag.ts`'s `useRotationDrag` hook so `PlateInspector.tsx` could reuse it for a
 completely different kind of content (translucent plate ellipses, click-to-select,
 Tab/Shift+Tab). The event console is the one other exception: it just displays whatever
@@ -275,7 +275,7 @@ simpler, matching the v1 "elevation view only" scope. A `World` holds:
 
 - `plates: list[Plate]` -- see below.
 - `mantle_centers` -- the convection-cell flow field (see
-  [simulation-model.md#mantle-flow](simulation-model.md#mantle-flow)), fixed for the life of
+  [simulation-model/foundations.md#mantle-flow](simulation-model/foundations.md#mantle-flow)), fixed for the life of
   the world.
 - `elapsed_years`, `next_plate_id` (a monotonically increasing counter so a plate created by
   a split never collides with an existing id, even after other plates have been removed).
@@ -283,15 +283,15 @@ simpler, matching the v1 "elevation view only" scope. A `World` holds:
   the thing it gates is about accumulated topology drift, not elapsed time). Drives the
   cadence of `merge_split.py`'s geometric plate defragmentation pass
   (`DEFRAG_INTERVAL_STEPS`, see
-  [simulation-model.md#merge-and-split](simulation-model.md#merge-and-split)). A plain-int
+  [simulation-model/tectonics.md#merge-and-split](simulation-model/tectonics.md#merge-and-split)). A plain-int
   dataclass default is a class attribute, so worlds pickled before this field existed still
   load, reading 0.
 - `collision_progress: dict[(int, int), float]` -- sustained-collision tracking for
   merge_split.py, pair of plate ids -> accumulated convergent (or craton-jammed, #401) years (see
-  [simulation-model.md#merge-and-split](simulation-model.md#merge-and-split)).
+  [simulation-model/tectonics.md#merge-and-split](simulation-model/tectonics.md#merge-and-split)).
 - `axial_tilt_deg` -- a fixed generation-time property like `seed`, read by `climate.py`'s
   insolation calculation on every future render (see
-  [simulation-model.md#climate](simulation-model.md#climate)).
+  [simulation-model/climate.md#climate](simulation-model/climate.md#climate)).
 - `sea_level_m`/`solar_multiplier` -- live-adjustable via `POST /world/controls` (the UI's
   "Controls" window, unlike every other generation-time property here), read fresh by
   `climate.py`/`hydrology.py`/`bathymetry.py`/`render_image.py` on every call rather than
@@ -310,15 +310,15 @@ simpler, matching the v1 "elevation view only" scope. A `World` holds:
 - `climate_cache`/`hydrology_cache` -- this step's climate/flow-routing snapshot, populated
   by `erosion.py` (which needs a fresh one every step regardless) and reused by
   `/world/stats`, a climate map render, and river/lake rendering so they don't each trigger
-  their own recomputation the same turn (see simulation-model.md#climate and
-  simulation-model.md#hydrology). Up to one step stale by design, not a bug.
+  their own recomputation the same turn (see simulation-model/climate.md#climate and
+  simulation-model/hydrology.md#hydrology). Up to one step stale by design, not a bug.
 - `atmosphere_cfd_state` -- the always-on atmospheric wind solver state
   (`atmosphere_cfd.AtmosphereCFDState`), populated once by `generate_world` and never `None`
   again for the rest of that world's life -- not a mode to switch into (see
-  simulation-model.md#mode-toggle). Genuinely prognostic (wind + air temperature evolving
+  simulation-model/climate.md#mode-toggle). Genuinely prognostic (wind + air temperature evolving
   continuously, step to step) rather than recomputed fresh like `climate_cache` above. Ocean
   currents and precipitation are diagnostic in climate.py, not CFD state -- see
-  simulation-model.md#ocean-atmospheric-fluid-dynamics.
+  simulation-model/climate.md#ocean-atmospheric-fluid-dynamics.
 
 Each `Plate` (`backend/app/plates.py`) is:
 
@@ -330,12 +330,12 @@ Each `Plate` (`backend/app/plates.py`) is:
   lattice in the plate's own local frame (`PlateWithSparseQuadPatch`,
   `backend/app/sparse_quad_patch.py`), one terrain node per cell at its centre. This is the
   central data structure; see
-  [simulation-model.md#plate-local-frames](simulation-model.md#plate-local-frames). Every
+  [simulation-model/foundations.md#plate-local-frames](simulation-model/foundations.md#plate-local-frames). Every
   per-node field in `surface_fields.SURFACE_FIELDS` -- `elevation`, crustal and
   mantle-lithosphere thickness, `channel_depth`/`channel_width`/`lake_depth`/`silt_depth`/
-  `glacier_depth` (persistent, land-only -- see simulation-model.md#hydrology and
-  simulation-model.md#glaciation), `is_volcano`/`volcano_active_years_remaining`
-  (persistent -- see simulation-model.md#volcanism) and the provenance fields -- is one
+  `glacier_depth` (persistent, land-only -- see simulation-model/hydrology.md#hydrology and
+  simulation-model/hydrology.md#glaciation), `is_volcano`/`volcano_active_years_remaining`
+  (persistent -- see simulation-model/tectonics.md#volcanism) and the provenance fields -- is one
   parallel array over the plate's cells, so it rotates with the plate for free, no advection
   scheme needed. Read fields with `Plate.collect` / `Plate.surface_nodes` and write them with
   `Plate.set_fields_on_plate`; a cell edit (insert, remove, refine, merge) carries every
@@ -346,7 +346,7 @@ A plate has no separately-tracked boundary polygon at all -- an earlier version 
 "Plates" map view's outline overlay, and it visibly drifted out of sync with the real
 territory after enough stepping. `Plate.outline_world()` replaces it: the outline is traced
 live from the plate's boundary cells, cached per topology/geometry revision, so it can never
-be stale (see [simulation-model.md#boundary-evolution](simulation-model.md#boundary-evolution)).
+be stale (see [simulation-model/tectonics.md#boundary-evolution](simulation-model/tectonics.md#boundary-evolution)).
 
 ## The simulation pipeline, module by module
 
@@ -355,7 +355,7 @@ geometry.py       unit-vector <-> lat/lon conversion, Rodrigues-formula rotation
                    plate-local coordinate frames, local tangent bases + azimuthal-equidistant
                    projection (for the Plate Inspector's bounding-ellipse fit)
 ellipse.py         minimum-volume enclosing ellipse (Khachiyan's algorithm), sphere-agnostic
-                   pure 2D math -- see simulation-model.md#plate-inspector
+                   pure 2D math -- see simulation-model/rendering-and-inspectors.md#plate-inspector
 projections.py     Behrmann and Eckert IV map projections, vectorized
 noise.py           cheap smooth sphere noise (sum of sinusoids) for initial terrain texture
 elevation_lines.py  terrain-node constants and codes (planet radius, node density/spacing --
@@ -401,7 +401,7 @@ hydroclimate/volcanism.py          every-step eruption lifecycle for existing vo
                      countdown, per-step eruption roll, elevation/mineral_deposit_m growth) --
                      volcanic-field *creation* now happens inline inside `deform()`'s own
                      overstretched-rift handling, not a separate periodic detection pass (see
-                     simulation-model.md#volcanism)
+                     simulation-model/tectonics.md#volcanism)
 faults.py            every-step intraplate fault-line lifecycle (stress-weighted Poisson
                      spawn near boundaries, Andersonian regime pick, sub-parallel fault
                      sets, per-regime relief within ~45 km of the trace, lock-up into
@@ -410,10 +410,10 @@ faults.py            every-step intraplate fault-line lifecycle (stress-weighted
                      trace) -- an *additive* layer that never touches deform()'s own
                      boundary classification; re-homed across merges/splits by
                      reconcile_faults from world.step_world; backs the "Plates & Faults" map
-                     view (GET /world/faults, /world/fault_at) -- see simulation-model.md#faults
+                     view (GET /world/faults, /world/fault_at) -- see simulation-model/tectonics.md#faults
 worldsketch.py       parses a drawn/loaded coastline image (Generate World's "Human-made" tab)
                      into land/mountain/river masks + plate seed sites -- see
-                     simulation-model.md#worldsketch. Consumed by lithosphere_plate.py's
+                     simulation-model/foundations.md#worldsketch. Consumed by lithosphere_plate.py's
                      generate_plates (its `sketch` param), not part of the per-step pipeline
 world.py             World/Plate orchestration: generate_world, step_world
 hydroclimate/        climate, hydrology, and surface-process package: atmospheric and
@@ -421,13 +421,13 @@ hydroclimate/        climate, hydrology, and surface-process package: atmospheri
                      bathymetry, surface cover, volcanism, and their shared numerics
 hydroclimate/climate.py           temperature/wind/currents/humidity/precipitation, computed fresh on
                      their own fixed equirectangular grid -- every render, and now every
-                     step too, to drive erosion.py (see simulation-model.md#climate)
+                     step too, to drive erosion.py (see simulation-model/climate.md#climate)
 hydroclimate/erosion.py           every-step rain/river/weathering/glacier erosion + downstream sediment
                      deposition + glacier flattening + coastal planation/infill feedback
                      (near-sea-level wave-cut planation + sheltered-shelf silting, emergent
                      barrier islands), elevation deltas driven by climate.py's
                      current fields and hydrology.py's flow routing/glacier state (see
-                     simulation-model.md#erosion) -- the weather-influences-geology half of
+                     simulation-model/surface-processes.md#erosion) -- the weather-influences-geology half of
                      the coupling; climate.py's own elevation-reading mechanics (lapse rate,
                      mountain wind deflection, orographic rain shadow) are the other half
 hydroclimate/hydrology.py         every-step flow routing over the geology node cloud (a k-nearest-
@@ -435,25 +435,25 @@ hydroclimate/hydrology.py         every-step flow routing over the geology node 
                      descent flow direction, downstream flow accumulation, glacier
                      mass balance and shape (via ice_sheet.py) -- feeds erosion.py's river/glacier erosion and
                      deposition and the rendered river/lake/glacier overlay (see
-                     simulation-model.md#hydrology and simulation-model.md#glaciation); also
+                     simulation-model/hydrology.md#hydrology and simulation-model/hydrology.md#glaciation); also
                      groups the flat is_river mask into distinct drainage networks
                      (group_rivers) and answers the River Inspector's click hit-test
                      (river_at), on demand rather than every step (see
-                     simulation-model.md#river-inspector)
+                     simulation-model/hydrology.md#river-inspector)
 hydroclimate/ice_sheet.py         every-step glacier solve, called from hydrology.compute_hydrology:
                      groups ice into bodies, conserves each body's volume with a backward-
                      Euler update of its extent, shapes it with a plastic ice-sheet profile
                      (an ordered-upwind numba sweep on the k-NN graph), books an ice ledger,
                      and diagnoses balance flux and the basal sliding speed erosion.py's
-                     glacial abrasion reads (see simulation-model.md#glaciation)
+                     glacial abrasion reads (see simulation-model/hydrology.md#glaciation)
 hydroclimate/lakes.py              every-step lake growth/evaporation/merge/split/silt, an explicit n-ary
                      tree of Lake objects built from a depression-hierarchy pass over
                      hydroclimate/hydrology.py's own k-NN graph -- called from hydrology.compute_hydrology,
                      projects back down into the same flat lake_depth array every other
-                     consumer already reads (see simulation-model.md#lakes-are-an-explicit-tree);
+                     consumer already reads (see simulation-model/hydrology.md#lakes-are-an-explicit-tree);
                      also rebuilt fresh, on demand, by main.py to answer the Lake Inspector's
                      GET /world/lakes and GET /world/lake_at (see
-                     simulation-model.md#lake-inspector)
+                     simulation-model/hydrology.md#lake-inspector)
 hydroclimate/stranded_basins.py   diagnostic-only: finds endorheic below-sea-level basins with no ocean
                      drainage (the "land-locked coastal pit") in lakes.py's forest, and
                      tracks how long each has persisted across steps (world.stranded_basin_
@@ -465,21 +465,21 @@ hydroclimate/bathymetry.py        the shelf-width constant geology.py keys off, 
                      continental interiors toward abyssal depth by distance from land and
                      grades every continent/ocean plate margin into a slope, so the seabed
                      reads as real relief rather than a bright shelf and hard cliffs (see
-                     simulation-model.md#bathymetry)
+                     simulation-model/surface-processes.md#bathymetry)
 hydroclimate/coastline.py          traces the land/ocean and lake boundary as line segments over
                      hydroclimate/climate.py's own grid, on demand (not every step) -- drawn into the
                      temperature/humidity/precipitation renders and sent as JSON alongside
-                     GET /world/rivers and GET /world/lakes (see simulation-model.md#coastline)
+                     GET /world/rivers and GET /world/lakes (see simulation-model/hydrology.md#coastline)
 hydroclimate/fluid_dynamics.py      shared numerical primitives for atmosphere_cfd.py: real physical-unit
                      gradients/Laplacians/divergence, real Coriolis parameter, CFL-stable
                      substep sizing, semi-Lagrangian advection (see
-                     simulation-model.md#ocean-atmospheric-fluid-dynamics)
+                     simulation-model/climate.md#ocean-atmospheric-fluid-dynamics)
 hydroclimate/atmosphere_cfd.py      the atmospheric wind solver: a genuine time-integrated (not diagnostic)
                      shallow-water simulation of wind + air temperature -- prognostic state
                      (World.atmosphere_cfd_state) that persists/evolves step to step, plus a
                      sustained latitude-banded wind forcing. Ocean currents and precipitation
                      are diagnostic in climate.py, not CFD-solved -- the shallow-water ocean
-                     solver was retired (see simulation-model.md#ocean-atmospheric-fluid-dynamics)
+                     solver was retired (see simulation-model/climate.md#ocean-atmospheric-fluid-dynamics)
 main.py              FastAPI routes
 auth.py              single-owner GitHub login: the request guard, OAuth routes and signed
                      session cookies (see #access-control above)
@@ -492,7 +492,7 @@ public_view.py       the logged-out viewer's step allowance cookie, the coordina
                      world revision feed and render cache viewers follow (see
                      #public-viewer above)
 render_image.py      renders /world/render's requested view/resolution to a PNG server-side
-                     (see simulation-model.md#render-image and simulation-model.md#climate),
+                     (see simulation-model/rendering-and-inspectors.md#render-image and simulation-model/climate.md#climate),
                      plus /world/animate's streamed H.264/MP4 rendering (stream_animation_mp4)
                      and the "speckle" coastal-dither debug overlay (see docs/debugging.md)
 persistence.py       whole-World save/load to a single versioned pickle envelope (File >

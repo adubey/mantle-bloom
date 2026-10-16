@@ -5,7 +5,7 @@ import type { Mat3 } from "./rotation";
 import { centerOfRotation, getPixelsPerRadian, rotationForCenter, wrapPanLatLon } from "./rotation";
 
 // The long-press-then-drag "rotate the planet" gesture (see
-// docs/simulation-model.md#rotating-the-view), extracted out of MapCanvas.tsx so
+// docs/simulation-model/rendering-and-inspectors.md#rotating-the-view), extracted out of MapCanvas.tsx so
 // PlateInspector.tsx can reuse the exact same interaction instead of duplicating this
 // state machine -- both need "drag to pan the view," they just draw completely different
 // content while doing it (a PNG + graticule wireframe vs. translucent plate ellipses).

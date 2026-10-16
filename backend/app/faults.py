@@ -82,7 +82,7 @@ if TYPE_CHECKING:
 # replayed session spawns the identical faults. Arbitrary int, distinct from every other tag.
 _FAULT_SEED_TAG = 7331
 
-# --- Spawn model (see the real-world table in docs/simulation-model.md#faults) ---
+# --- Spawn model (see the real-world table in docs/simulation-model/tectonics.md#faults) ---
 # Expected new fault *systems* per Myr over the whole sphere at full boundary stress; the
 # per-plate roll scales this by the plate's area fraction and its mean stress weight, so the
 # realised rate is far lower (most of a plate is low-stress interior). Tunable -- raise it to
@@ -596,7 +596,7 @@ def generate_boundary_faults(world: "World") -> None:
     """Rebuild `world.boundary_faults` from scratch: walk every plate's outline, classify
     each stretch by the local closing rate against the nearest other plate (convergent ->
     reverse, divergent -> normal, transform -> strike-slip), and lay a fault family along
-    each run. See the BOUNDARY_FAULT_* constants and `docs/simulation-model.md#faults`."""
+    each run. See the BOUNDARY_FAULT_* constants and `docs/simulation-model/tectonics.md#faults`."""
     world.boundary_faults = []
     if len(world.plates) < 2:
         return

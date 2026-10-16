@@ -2,7 +2,7 @@
 gradients/Laplacians/divergence on climate.py's own fixed equirectangular grid, real Coriolis
 parameter, CFL-stable substep sizing, and semi-Lagrangian advection -- the low-level array
 math both shallow-water solvers share, factored out once rather than duplicated (see
-docs/simulation-model.md#ocean-atmospheric-fluid-dynamics for why both solvers exist and how
+docs/simulation-model/climate.md#ocean-atmospheric-fluid-dynamics for why both solvers exist and how
 they use this).
 
 **Why not climate.py's own `_centered_gradient`/`_smooth_field`.** Those compute *raw*

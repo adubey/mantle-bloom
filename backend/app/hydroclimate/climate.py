@@ -1,7 +1,7 @@
 """Climate: temperature, wind, ocean currents (with swells), humidity, and precipitation.
 
 Unlike elevation (Lagrangian, carried by each plate's own rotating frame -- see
-docs/simulation-model.md#why-not-a-grid) and unlike the render grid (`render_image.py`'s
+docs/simulation-model/foundations.md#why-not-a-grid) and unlike the render grid (`render_image.py`'s
 `_render_grid_arrays`, a *ragged* lat/lon sweep with variable row width, immediately
 flattened to 1D), climate lives on a third, genuinely fixed-shape equirectangular array grid
 -- `lat: (H,)`, `lon: (W,)`, every field `(H, W)`. This is a deliberate choice: the specific
@@ -39,11 +39,11 @@ too: `compute_wind` for `wind_u`/`wind_v` and `compute_air_temperature_diagnosti
 closer match to the CFD's near-radiative-equilibrium temperature than the maritime-moderation
 `compute_air_temperature` used at bootstrap) for `air_temperature_c`, every call, ignoring
 the frozen CFD state. The user-facing "ABL wind model" -- see `World.wind_model` and
-docs/simulation-model.md#wind-model. Everything downstream is unchanged; it just runs on the
+docs/simulation-model/climate.md#wind-model. Everything downstream is unchanged; it just runs on the
 diagnostic wind instead of the solved one.
 
 **Computed every step, not just on render.** erosion.py needs a live climate snapshot every
-step (see docs/simulation-model.md#erosion) and always calls `compute_climate` directly, so
+step (see docs/simulation-model/surface-processes.md#erosion) and always calls `compute_climate` directly, so
 that computation happens whether or not a climate view is currently being rendered. To avoid
 also recomputing it a second and third time that same turn -- once more for a climate map
 render, once more for `/world/stats` -- erosion.py stores its result on `World.climate_cache`,
@@ -1602,7 +1602,7 @@ def compute_climate(
     # one-time cold-start bootstrap during generate_world, before atmosphere_cfd_state exists
     # yet (see World.atmosphere_cfd_state's docstring), and World.wind_model == "diagnostic",
     # the user-selectable ABL wind model that skips the CFD solve entirely for a large speedup
-    # (see World.wind_model and docs/simulation-model.md#wind-model). elevation_factor isn't
+    # (see World.wind_model and docs/simulation-model/climate.md#wind-model). elevation_factor isn't
     # purely a function of elevation (see compute_wind's own body) -- it also depends on the
     # wind field via _mountain_wake_factor, so it's recomputed from whichever wind source is
     # in play, keeping compute_humidity's "respond to terrain-driven slowdown" behavior
