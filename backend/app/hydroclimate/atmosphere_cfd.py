@@ -45,7 +45,7 @@ VISCOSITY_M2_S = 6.0e4
 # scale, which the downstream humidity-advection tuning in climate.py assumes) while still
 # leaving Coriolis, the pressure-gradient/thermal term, and orographic deflection free to
 # reshape the flow away from a pure zonal band -- tuned against a 60-step run (see
-# docs/simulation-model.md#atmosphere-cfd).
+# docs/simulation-model/climate.md#atmosphere-cfd).
 WIND_FORCING_RELAXATION_PER_S = 1.0e-4
 
 MOUNTAIN_OBSTACLE_ELEVATION_M = 2000.0

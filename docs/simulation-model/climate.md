@@ -53,6 +53,22 @@ real-world smoothing radius shrinks proportionally at a higher density -- a deli
 smaller-scope simplification, not rescaled. This grid is never stored on `World` and never
 touches `world.plates`.
 
+**Conceptual diagram — plate-local nodes are resampled onto separate render and climate grids; the climate grid also feeds diagnostic fields back to nodes.**
+
+```mermaid
+flowchart LR
+    P[Rotating plate-local node lattices] -->|nearest-node resample| R[Ragged render grid]
+    P -->|nearest-node resample| C[Fixed 2° climate grid]
+    C -->|climate fields sampled at node coordinates| N[Persistent node fields]
+    R --> V[Map image]
+    C --> V
+```
+
+The three grids have different jobs and shapes: plate lattices own persistent terrain, the
+ragged render grid samples that terrain for map output, and the regular climate grid supports
+finite-difference and wraparound operations. The arrows show resampling direction, not
+shared storage.
+
 **Terrain-derived; wind/currents/temperature CFD-sourced, humidity/precipitation diagnostic.**
 Elevation/is_ocean are resampled from scratch on every call, from whatever the *current* plate
 elevation/crust_type happens to be (the same `cKDTree` nearest-neighbor sampling

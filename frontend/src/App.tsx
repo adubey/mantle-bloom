@@ -94,7 +94,7 @@ function climateDensityForDetail(detail: number): number {
 // world.py's World.fluid_density) -- same shape as DETAIL_CHOICES but capped at its own top
 // choice, "High" (value 2, unrelated to -- and unchanged by -- the "High" now atop
 // DETAIL_CHOICES above; the two dials' labels aren't on a shared scale): the atmospheric wind
-// solver runs every step (see docs/simulation-model.md#ocean-atmospheric-fluid-dynamics), so
+// solver runs every step (see docs/simulation-model/climate.md#ocean-atmospheric-fluid-dynamics), so
 // there's no "only pay for Standard (or finer) when you opt in" case left to justify offering
 // this dial anything past that, matching backend app/climate.py's own FLUID_DENSITY_CHOICES.
 const FLUID_DETAIL_CHOICES: { value: number; label: string }[] = [
@@ -327,7 +327,7 @@ export default function App() {
   const mapViewRef = useRef(mapView);
   mapViewRef.current = mapView;
   // The map's current view orientation (see rotation.ts and
-  // docs/simulation-model.md#rotating-the-view) -- lives entirely here, like
+  // docs/simulation-model/rendering-and-inspectors.md#rotating-the-view) -- lives entirely here, like
   // projection/mapView, sent fresh with every render call rather than stored server-side
   // (it's client-local view state, not simulation state). centerLatLon is derived display
   // state: it tracks `rotation` normally, but during an active drag MapCanvas overrides it

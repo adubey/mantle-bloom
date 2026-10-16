@@ -192,6 +192,25 @@ discharge, channel-width growth, deposition, geology or lake silt.
   *later* in this same order.
 
 <a id="lakes-are-an-explicit-tree"></a>
+
+**Conceptual diagram — catchment floors join at a saddle; a size-limited depth tier can leave the merged lake surface below that saddle, preserving separate child lakes.**
+
+```mermaid
+graph TD
+    A["Catchment A<br/>minimum floor"] --> M["Merge tree<br/>saddle elevation"]
+    B["Catchment B<br/>minimum floor"] --> M
+    M --> P["Parent basin<br/>combined catchment"]
+    P --> C[Size-based depth cap]
+    C --> S[Lake surface below saddle]
+    S --> K[Child lakes stay separate]
+    M --> O[Spill / downstream basin]
+```
+
+The merge tree records nested catchments, floor minima and saddle elevations. Lake depth tiers
+cap depth by basin size; a capped surface below the saddle does not inundate the higher
+catchment, so child lakes remain separate. The sketch shows topology, not a numeric elevation
+profile.
+
 **Lakes are an explicit object tree (`lakes.py`, not `hydrology.py`)**, replacing an earlier
 flat per-node flood-fill design (`update_lakes`/`_flood_fill_lake_extent`, since removed).
 That design fixed a real bug of its own (letting every previously-wet node, not just the

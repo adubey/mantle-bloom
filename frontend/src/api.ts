@@ -712,7 +712,7 @@ export function setRunState(running: boolean, stepYears?: number): Promise<RunSt
 // resolution than the canvas's displayed CSS size for a sharper (retina-style) render; the
 // server scales line widths/dot/pole sizes to match (see render_image.py's pixel_scale).
 // `rotation` is the map's current view orientation (see rotation.ts and
-// docs/simulation-model.md#rotating-the-view) -- a flattened row-major 3x3 matrix, default
+// docs/simulation-model/rendering-and-inspectors.md#rotating-the-view) -- a flattened row-major 3x3 matrix, default
 // identity (center at lat=0/lon=0) when omitted, matching backend main.py's own default.
 // `showMountains`/`showPlainsPlateaus` are the Elevation view's own legend toggles (see
 // Legend.tsx/App.tsx) -- both meaningless outside `view === "elevation"`, and left off the

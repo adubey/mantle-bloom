@@ -645,7 +645,7 @@ def _rotate(world_pts: np.ndarray, view_rotation: np.ndarray) -> np.ndarray:
     rotation). This is a pure render-time transform: it only ever runs on positions
     immediately before they're projected to pixels, never on anything climate.py uses for
     actual physics (insolation, Coriolis, latitude-banded wind/currents all key off the
-    true, un-rotated planetary frame -- see docs/simulation-model.md#rotating-the-view)."""
+    true, un-rotated planetary frame -- see docs/simulation-model/rendering-and-inspectors.md#rotating-the-view)."""
     return world_pts @ view_rotation.T
 
 
@@ -925,7 +925,7 @@ def _render_grid_arrays(
     """A uniform lat/lon grid covering the whole sphere (GRID_SPACING_RAD, independent of
     any plate's own line spacing), each cell assigned its nearest elevation node's elevation,
     owning plate, lake_depth, glacier_depth, is_volcano, is_sea, and hillshade -- see
-    docs/simulation-model.md#render-image. Returns flat concatenated (projected_xy, elevation,
+    docs/simulation-model/rendering-and-inspectors.md#render-image. Returns flat concatenated (projected_xy, elevation,
     plate_id, lake_depth, glacier_depth, is_volcano, is_sea, cell_half_width, cell_half_height,
     hillshade) arrays, or None for an empty world. channel_depth/channel_width aren't among
     them -- their only consumer here used to be the flat channel-darken effect
@@ -2589,7 +2589,7 @@ def render_png(  # noqa: C901
     Mirrors what MapCanvas.tsx used to compute client-side from raw coordinate JSON -- this
     is now the only place that drawing logic lives. `view_rotation` (default identity, i.e.
     today's behavior exactly, center at lat=0/lon=0) is a pure render-time transform -- see
-    _rotate's docstring and docs/simulation-model.md#rotating-the-view.
+    _rotate's docstring and docs/simulation-model/rendering-and-inspectors.md#rotating-the-view.
 
     `show_mountains`/`show_plains_plateaus` are the Elevation view's own legend toggles (see
     _classify_terrain_relief) -- silently ignored on every other view, both default `False`

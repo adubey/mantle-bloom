@@ -1,20 +1,24 @@
 # Simulation Model
 
-This page is the map to the model documentation. Each topic page contains the full
-description and links to related implementation details.
+Use this page to find the model topic and implementation area you need. The topic pages
+are the source for detailed descriptions; this index is navigation only. When changing
+behavior, update the matching topic page so people and coding agents can check the same
+current model description.
 
-## Topics
+## Topics and implementation map
 
-- [Foundations and generation](simulation-model/foundations.md)
-- [Tectonics and lithosphere](simulation-model/tectonics.md)
-- [Climate and atmospheric flow](simulation-model/climate.md)
-- [Surface processes and resources](simulation-model/surface-processes.md)
-- [Hydrology and glaciation](simulation-model/hydrology.md)
-- [Rendering and inspectors](simulation-model/rendering-and-inspectors.md)
+| Topic | Start here for | Main implementation areas |
+|---|---|---|
+| [Foundations and generation](simulation-model/foundations.md) | Sphere geometry, plate-local coordinates, initial and sketch-driven worlds, mantle flow | `geometry.py`, `plates.py` generation, `worldsketch.py`, `mantle.py` |
+| [Tectonics and lithosphere](simulation-model/tectonics.md) | Plate motion, boundary deformation, crust and mantle columns, faults, volcanism | `plates.py`, `quad_tectonics.py`, `lithosphere_plate.py`, `rheology.py`, `orogeny.py`, `merge_split.py`, `gaps.py`, `cratons.py`, `faults.py`, `volcanism.py` |
+| [Climate and atmospheric flow](simulation-model/climate.md) | Climate fields, biomes, atmospheric solver and grid transfers | `hydroclimate/climate.py`, `fluid_dynamics.py`, `atmosphere_cfd.py`, `biomes.py` |
+| [Surface processes and resources](simulation-model/surface-processes.md) | Erosion, isostasy, bathymetry, sea level, tuning and geology | `hydroclimate/erosion.py`, `bathymetry.py`, `eustasy.py`, `geology.py`, `lithosphere.py` |
+| [Hydrology and glaciation](simulation-model/hydrology.md) | Flow routing, rivers, lakes, lake hierarchy, glaciers and coastlines | `hydroclimate/hydrology.py`, `lakes.py`, `ice_sheet.py`, `coastline.py` |
+| [Rendering and inspectors](simulation-model/rendering-and-inspectors.md) | Map projections, image generation, view rotation, plate and fault inspection | `projections.py`, `render_image.py`, backend routes in `main.py`, frontend map and inspector components |
 
-## Section links
+## Older section links
 
-These links preserve the section anchors used by existing references.
+These anchors keep older links working; use the topic links above for new references.
 
 <a id="why-not-a-grid"></a>
 [Why not a grid](simulation-model/foundations.md#why-not-a-grid)
@@ -102,73 +106,3 @@ These links preserve the section anchors used by existing references.
 [Coastline (coastline.py)](simulation-model/hydrology.md#coastline)
 <a id="known-simplifications"></a>
 [Known simplifications](simulation-model/foundations.md#known-simplifications)
-<a id="initial-plate-generation-platespy"></a>
-[Initial plate generation (plates.py)](simulation-model/foundations.md#initial-plate-generation-platespy)
-<a id="human-made-worlds-sketch-driven-generation-worldsketchpy"></a>
-[Human-made worlds (sketch-driven generation) (worldsketch.py)](simulation-model/foundations.md#human-made-worlds-sketch-driven-generation-worldsketchpy)
-<a id="mantle-flow-mantlepy"></a>
-[Mantle flow (mantle.py)](simulation-model/foundations.md#mantle-flow-mantlepy)
-<a id="plate-motion-shift-and-deform-platespys-plateshiftplatedeform"></a>
-[Plate motion: shift and deform (plates.py's Plate.shift/Plate.deform)](simulation-model/tectonics.md#plate-motion-shift-and-deform-platespys-plateshiftplatedeform)
-<a id="quad-surface-deformation-quadtectonicspy"></a>
-[Quad-surface deformation (quad_tectonics.py)](simulation-model/tectonics.md#quad-surface-deformation-quadtectonicspy)
-<a id="orogenic-relief-before-delamination-orogenypy"></a>
-[Orogenic relief before delamination (orogeny.py)](simulation-model/tectonics.md#orogenic-relief-before-delamination-orogenypy)
-<a id="merge-and-split-mergesplitpy"></a>
-[Merge and split (merge_split.py)](simulation-model/tectonics.md#merge-and-split-mergesplitpy)
-<a id="whole-sphere-coverage-local-thinning-then-melting-plus-a-whole-sphere-fallback-gapspy"></a>
-[Whole-sphere coverage: local thinning-then-melting, plus a whole-sphere fallback (gaps.py)](simulation-model/tectonics.md#whole-sphere-coverage-local-thinning-then-melting-plus-a-whole-sphere-fallback-gapspy)
-<a id="cratons-cratonspy"></a>
-[Cratons (cratons.py)](simulation-model/tectonics.md#cratons-cratonspy)
-<a id="volcanism-volcanismpy-plus-lithosphereplatedeformcolumns"></a>
-[Volcanism (volcanism.py, plus lithosphere_plate.deform_columns)](simulation-model/tectonics.md#volcanism-volcanismpy-plus-lithosphereplatedeformcolumns)
-<a id="faults-intraplate-faultspy"></a>
-[Faults (intraplate) (faults.py)](simulation-model/tectonics.md#faults-intraplate-faultspy)
-<a id="projections-projectionspy"></a>
-[Projections (projections.py)](simulation-model/rendering-and-inspectors.md#projections-projectionspy)
-<a id="render-image-renderimagepy"></a>
-[Render image (render_image.py)](simulation-model/rendering-and-inspectors.md#render-image-renderimagepy)
-<a id="climate-climatepy"></a>
-[Climate (climate.py)](simulation-model/climate.md#climate-climatepy)
-<a id="biomes-biomespy"></a>
-[Biomes (biomes.py)](simulation-model/climate.md#biomes-biomespy)
-<a id="atmospheric-wind-solver-fluiddynamicspy-atmospherecfdpy"></a>
-[Atmospheric wind solver (fluid_dynamics.py, atmosphere_cfd.py)](simulation-model/climate.md#atmospheric-wind-solver-fluiddynamicspy-atmospherecfdpy)
-<a id="always-on-not-a-mode"></a>
-[Always-on, not a mode](simulation-model/climate.md#always-on-not-a-mode)
-<a id="wind-model-diagnostic-default-vs-cfd"></a>
-[Wind model: "diagnostic" (default) vs "cfd"](simulation-model/climate.md#wind-model-diagnostic-default-vs-cfd)
-<a id="the-shallow-water-formulation"></a>
-[The shallow-water formulation](simulation-model/climate.md#the-shallow-water-formulation)
-<a id="the-pole-problem-and-why-both-solvers-need-it-solved"></a>
-[The pole problem, and why both solvers need it solved](simulation-model/climate.md#the-pole-problem-and-why-both-solvers-need-it-solved)
-<a id="ocean-currents-retired-cfd-now-diagnostic-in-climatepy"></a>
-[Ocean currents (retired CFD; now diagnostic in climate.py)](simulation-model/climate.md#ocean-currents-retired-cfd-now-diagnostic-in-climatepy)
-<a id="atmospheric-fluid-dynamics-atmospherecfdpy"></a>
-[Atmospheric Fluid Dynamics (atmosphere_cfd.py)](simulation-model/climate.md#atmospheric-fluid-dynamics-atmospherecfdpy)
-<a id="performance-and-grid-resolution"></a>
-[Performance and grid resolution](simulation-model/climate.md#performance-and-grid-resolution)
-<a id="rendering"></a>
-[Rendering](simulation-model/climate.md#rendering)
-<a id="erosion-erosionpy"></a>
-[Erosion (erosion.py)](simulation-model/surface-processes.md#erosion-erosionpy)
-<a id="bathymetry-bathymetrypy"></a>
-[Bathymetry (bathymetry.py)](simulation-model/surface-processes.md#bathymetry-bathymetrypy)
-<a id="eustatic-sea-level-eustasypy"></a>
-[Eustatic sea level (eustasy.py)](simulation-model/surface-processes.md#eustatic-sea-level-eustasypy)
-<a id="live-tuning-knobs-worldtuningmultiplierfields"></a>
-[Live tuning knobs (world.TUNING_MULTIPLIER_FIELDS)](simulation-model/surface-processes.md#live-tuning-knobs-worldtuningmultiplierfields)
-<a id="effect-sizes"></a>
-[Effect sizes](simulation-model/surface-processes.md#effect-sizes)
-<a id="resources-and-soil-geologypy-plus-volcanismpys-own-eruption-roll"></a>
-[Resources and soil (geology.py, plus volcanism.py's own eruption roll)](simulation-model/surface-processes.md#resources-and-soil-geologypy-plus-volcanismpys-own-eruption-roll)
-<a id="hydrology-rivers-and-lakes-hydrologypy"></a>
-[Hydrology: rivers and lakes (hydrology.py)](simulation-model/hydrology.md#hydrology-rivers-and-lakes-hydrologypy)
-<a id="lake-vs-sea-tiers-a-depth-ceiling-by-size-2026-09-10"></a>
-[Lake vs. sea tiers: a depth ceiling by size (2026-09-10)](simulation-model/hydrology.md#lake-vs-sea-tiers-a-depth-ceiling-by-size-2026-09-10)
-<a id="glaciation-hydrologypy"></a>
-[Glaciation (hydrology.py)](simulation-model/hydrology.md#glaciation-hydrologypy)
-<a id="plates-faults-view"></a>
-[Plates & Faults view](simulation-model/rendering-and-inspectors.md#plates-faults-view)
-<a id="coastline-coastlinepy"></a>
-[Coastline (coastline.py)](simulation-model/hydrology.md#coastline-coastlinepy)

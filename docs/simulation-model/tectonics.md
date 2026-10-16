@@ -340,6 +340,21 @@ a fast, decisive convergence merges more readily than a slow oblique graze.
 <a id="quad-deformation"></a>
 ## Quad-surface deformation (`quad_tectonics.py`)
 
+**Conceptual diagram — boundary cells retreat or advance while deformation cuts or fills their surface; exact masks depend on local overlap and boundary class.**
+
+```mermaid
+flowchart LR
+    O[Cell overlaps another plate] --> R[Retreat contested cell]
+    R --> C[Carve or lower exposed surface]
+    U[Unclaimed neighboring space] --> A[Advance boundary cell]
+    A --> F[Fill or seed new surface]
+    C --> S[Reconcile cell surface and node columns]
+    F --> S
+```
+
+This is a process sketch, not a geometric map. See the boundary-class rules below for which
+columns and cells each operation changes.
+
 Each plate's `deform()` (issue #228) classifies its boundary and updates every node's column
 through `lithosphere_plate.boundary_context` and `deform_columns` (above), once per plate, then
 changes its territory with two operations on the cell graph. They replaced the retired line

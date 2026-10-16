@@ -293,7 +293,7 @@ deposition, plus glacial flattening and lake silt) is the rock added to or strip
 lithospheric column, so it is applied to `crustal_thickness_m` in full and to `elevation`
 only by the resulting Airy response -- `isostatic_elevation(Hc + delta, Hm) -
 isostatic_elevation(Hc, Hm)`, the same delta idiom `deform()` uses for tectonic Hc/Hm
-changes (see [Bathymetry](#isostasy)). An unloaded crustal root rebounds and a sediment pile
+changes (see [Isostasy](#isostasy)). An unloaded crustal root rebounds and a sediment pile
 subsides under its own weight, so only ~1/6 of subaerial erosion and ~1/4 of submarine
 erosion shows up as a surface elevation change; the rest is isostatic. Without this,
 coastal + submarine erosion exporting continental crust to the deep ocean planed every
@@ -394,8 +394,33 @@ term reads a `world.*_multiplier` scale (default `1.0`) at the point it is forme
 <a id="isostasy"></a>
 ## Bathymetry (`bathymetry.py`)
 
+### Isostasy
+
+**Conceptual diagram — Hc and Hm set the unloaded surface elevation and Moho thermal proxy; thermal lag adjusts current Moho temperature, while ice load adds a temporary downward deflection.**
+
+```mermaid
+flowchart TB
+    HC[Crust thickness Hc] --> A[Airy isostasy]
+    HM[Mantle lithosphere Hm] --> A
+    D[Crust density] --> A
+    A --> Z[Equilibrium elevation]
+    Z --> E[Cached surface elevation]
+    HC --> G[Steady Moho geotherm]
+    HM --> G
+    G --> T[Moho temperature]
+    TL[Stored thermal lag] --> T
+    I[Ice load] --> L[Load deflection]
+    Z --> L
+    L --> E
+```
+
+Each node stores crustal thickness `Hc` and mantle-lithosphere thickness `Hm`; the
+`lithosphere.isostatic_elevation(Hc, Hm, rho_c)` Airy calculation derives the unloaded
+surface elevation. `elevation` is a cache synchronized from those columns after changes.
+Ice load contributes a separate deflection and does not replace the unloaded column state.
+
 Submerged crust's own depth is set directly by Airy isostasy on its lithospheric column
-(`lithosphere.isostatic_elevation`, see [Bathymetry](#isostasy)) -- thin oceanic crust floats
+(`lithosphere.isostatic_elevation`, see [Isostasy](#isostasy)) -- thin oceanic crust floats
 low (abyssal plain), thick continental crust floats near sea level, and rifting that thins a
 column subsides it. Nothing relaxes elevation toward a separate shelf/deep-water target
 during the simulation any more (an earlier v1 module did; isostasy superseded it).

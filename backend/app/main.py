@@ -272,7 +272,7 @@ NODE_CLOUD_RESAMPLE_MODE_CHOICES = healpix_grid.NODE_CLOUD_RESAMPLE_MODE_CHOICES
 
 
 def _parse_view_rotation(rotation: str | None) -> np.ndarray:
-    """The map's current view orientation (see docs/simulation-model.md#rotating-the-view),
+    """The map's current view orientation (see docs/simulation-model/rendering-and-inspectors.md#rotating-the-view),
     a row-major 3x3 rotation matrix as 9 comma-separated floats -- default identity (today's
     behavior, center at lat=0/lon=0) when omitted. This is purely a render-time transform;
     it's never stored on `World` (see world.py) since it's client-local view state, not
@@ -424,7 +424,7 @@ def _plate_summary(plate: plates.Plate, world: World, overlaps: dict[int, list[d
         "num_points": plate.node_count(),
         "outline": _round_coords(outline),
         # Every node's own position (not just the outline loop) -- lets the client plot each
-        # point individually (see docs/simulation-model.md#plate-inspector), highlighted for
+        # point individually (see docs/simulation-model/rendering-and-inspectors.md#plate-inspector), highlighted for
         # the selected plate and dimmed for every other one.
         "points": _round_coords(node_points),
         "bounding_ellipse": None
@@ -1180,7 +1180,7 @@ def list_plates() -> dict:
     "Plate Inspector" map mode -- unlike /world/render, the client renders this itself
     interactively rather than receiving a baked PNG. Un-rotated/true-frame throughout (no
     `rotation` param): the client applies its current view rotation only at draw time, same
-    philosophy as climate/render-grid geometry (see docs/simulation-model.md#rotating-the-view).
+    philosophy as climate/render-grid geometry (see docs/simulation-model/rendering-and-inspectors.md#rotating-the-view).
     `404` if no world has been generated yet."""
     with _world_lock:
         world = _require_world()
@@ -1618,7 +1618,7 @@ def list_rivers() -> dict:
     """Every distinct river network's path + endpoint metadata, plus the current coastline, as
     JSON, for the "River Inspector" map mode -- same philosophy as /world/plates: the client
     renders and drives this itself rather than receiving a baked PNG (see
-    docs/simulation-model.md#hydrology and #river-inspector). Rivers are grouped fresh from
+    docs/simulation-model/hydrology.md#hydrology and docs/simulation-model/hydrology.md#river-inspector). Rivers are grouped fresh from
     the current world.hydrology_cache (see hydrology.group_rivers) on every call rather than
     persisted -- hydrology_cache itself is already at most one step stale by design (see
     World.hydrology_cache), and grouping it is cheap. `coastline_segments` is computed the

@@ -32,6 +32,22 @@ six faces, each an `n x n` grid whose cell edges are great-circle arcs, face 0 c
 seed. One terrain node sits at each active cell's centre, carrying every surface field
 (`surface_fields.SURFACE_FIELDS`) for that cell's exact footprint.
 
+**Conceptual diagram — each plate rotates its own cube-sphere lattice; overlaying those independently rotated lattices can create seams, overlaps and containment conflicts at plate boundaries.**
+
+```mermaid
+flowchart LR
+    LA[Plate A local cube-sphere lattice] --> RA[Rotate with Plate A]
+    LB[Plate B local cube-sphere lattice] --> RB[Rotate with Plate B]
+    RA --> O[Overlay on the shared sphere]
+    RB --> O
+    O --> S[Boundary seams and double coverage]
+    O --> C[Containment checks and cell deformation]
+```
+
+Each lattice stays internally aligned with its own plate. The seam appears only when the
+independent cell sets are compared in world coordinates; boundary evolution reconciles those
+sets rather than forcing both plates onto one shared grid.
+
 - **Rotating a plate is exact.** Advancing `frame` by composing the incremental rotation
   from the plate's current Euler pole/rate ([Rodrigues'
   formula](https://en.wikipedia.org/wiki/Rodrigues%27_rotation_formula),

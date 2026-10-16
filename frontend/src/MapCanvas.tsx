@@ -24,7 +24,7 @@ interface Props {
   rotation: Mat3;
   // Fired continuously while the user drags (long-press then move) with the map center's
   // live lat/lon under the *in-progress* rotation -- needed because the real legend is baked
-  // server-side into the PNG and can't update mid-drag (see docs/simulation-model.md#rotating-the-view).
+  // server-side into the PNG and can't update mid-drag (see docs/simulation-model/rendering-and-inspectors.md#rotating-the-view).
   onRotationPreview: (latDeg: number, lonDeg: number) => void;
   onRotationCommitted: (rotation: Mat3) => void;
   // Legend-click-to-highlight (Biome and Combined views -- see Legend.tsx/App.tsx): when set,

@@ -74,7 +74,7 @@ Run from the repo root (or worktree root).
   may hold uncommitted work that exists nowhere else.
 - Skills for these workflows, shared by Claude Code and Codex, are in `.agents/skills/`
   (`.claude/skills` links there): `start-issue`, `start-rfc`, `replay-ab`,
-  `pre-push-check`, `rfc-authoring`, `rfc-review`, `complete-rfc`.
+  `pre-push-check`, `rfc-authoring`, `rfc-review`, `complete-rfc`, `documentation`.
 
 ## Conventions
 
@@ -87,7 +87,9 @@ Run from the repo root (or worktree root).
   saves loading. See [docs/save-compatibility.md](docs/save-compatibility.md) and
   `unit_tests/test_persistence.py`.
 - **Docs:** when you add a module, route or model behaviour, update `docs/architecture.md`,
-  `docs/api-reference.md` or `docs/simulation-model.md` in the same PR.
+  `docs/api-reference.md` or the relevant `docs/simulation-model/<topic>.md` page in the same
+  PR. `docs/simulation-model.md` is navigation only; use its module map to choose a topic.
+  Use the [`documentation` skill](.agents/skills/documentation/SKILL.md) for documentation edits.
 - **Investigations:** diagnostic scripts go in `bin/debug/` (checked in, with a usage
   docstring). Findings go in `analysis/issue<N>/README.md`, with only compact JSON checked
   in. Saves and full replay outputs stay out of the repo.
