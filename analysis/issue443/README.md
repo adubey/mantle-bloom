@@ -5,6 +5,14 @@ this comparison regenerates that merge from seed 11 on `origin/main`, then repla
 pre-merge capture on `origin/main` and the issue branch. This is a fresh generated capture, not
 the lost artifact.
 
+The old remap violated Principle 7, **Preserve cratonic crust; make its loss path explicit**:
+it moved craton onto cells with no source craton, where the oceanic-to-continental guard could
+change their type. It also violated Principle 6, **Account for material through every
+process**, because craton could exceed Hc and then be clipped without following the supported
+craton footprint. The checks are local support and formed-date provenance, no type change on
+unsupported oceanic cells, `craton_crust_m <= Hc`, and a named merge-ledger sink for volume
+that cannot fit.
+
 ## Method
 
 - Generator: `world.generate_world(11)` with defaults, 5 Myr steps, through 200 Myr.
