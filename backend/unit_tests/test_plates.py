@@ -1,5 +1,7 @@
+import functools
+
 import numpy as np
-from app import geometry
+from app import cratons, geometry, lithosphere
 from app.elevation_lines import (
     CRUST_TYPE_CONTINENTAL,
     CRUST_TYPE_INHERIT,
@@ -7,7 +9,7 @@ from app.elevation_lines import (
     NODE_DENSITY_CHOICES,
     line_spacing_rad,
 )
-from app.lithosphere_plate import build_plate_tiling, generate_plates
+from app.lithosphere_plate import build_plate_tiling, cratons_first_layout, generate_plates
 from app.plates import (
     ELLIPSE_OUTLINE_POINTS,
     MIN_OCEANIC_PLATES,
@@ -21,10 +23,12 @@ from app.plates import (
     collect_all_soil_organic_content,
     nearest_plate_id,
     node_components,
+    node_is_continental,
     plate_bounding_ellipse,
 )
 from app.sparse_quad_patch import cells_per_face_edge, unpack_cell_keys
 from app.world import generate_world, step_world
+from app.worldsketch import SKETCH_GRID_H, SKETCH_GRID_W, SketchMasks
 
 from .quad_fixtures import lobed_plate
 
@@ -682,3 +686,89 @@ def test_cached_node_healpix_index_shares_grid_and_index_across_world_callers():
 
     third = cached_node_healpix_index(world, all_points)
     assert third is not first
+
+
+# --- Cratons-first generation (RFC 0009, #462) -------------------------------------------
+
+
+@functools.lru_cache(maxsize=1)
+def _cratons_first(seed: int = 7):
+    return generate_plates(seed, land_fraction=0.29, cratons_first=True)
+
+
+def _cell_signature(plates_list):
+    return [(p.crust_type, p.cell_keys.tobytes(), p.collect("crustal_thickness_m").tobytes()) for p in plates_list]
+
+
+def test_cratons_first_plates_carry_mixed_crust_with_per_node_codes_hc_and_hm():
+    plates = _cratons_first()
+    layout = cratons_first_layout(7, land_fraction=0.29).layout
+    assert len(plates) == layout.num_plates
+    mixed = 0
+    for plate in plates:
+        codes = plate.collect("crust_type_code")
+        continental = node_is_continental(plate)
+        points = plate.all_points_and_elevation()[0]
+        assert np.array_equal(continental, layout.is_continental[layout.nearest(points)])
+        own = continental == (plate.crust_type == "continental")
+        # The plate's own type inherits; the other type is explicit.
+        assert np.all(codes[own] == CRUST_TYPE_INHERIT)
+        assert np.all(codes[~own] == np.where(continental[~own], CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC))
+        areas = plate.node_areas_m2()
+        assert areas[own].sum() >= areas[~own].sum()
+        mixed += bool(np.any(~own))
+    assert mixed > len(plates) // 2
+    continental = np.concatenate([node_is_continental(p) for p in plates])
+    hc = np.concatenate([p.collect("crustal_thickness_m") for p in plates])
+    hm = np.concatenate([p.collect("mantle_lithosphere_thickness_m") for p in plates])
+    for crust_type, mask in (("continental", continental), ("oceanic", ~continental)):
+        hc0, hm0 = lithosphere.reference_thickness(crust_type)
+        # Margin grading moves some columns; the typical column keeps its own type's reference.
+        assert np.median(hm[mask]) == hm0
+        assert abs(np.median(hc[mask]) - hc0) < 0.25 * hc0
+
+
+def test_cratons_first_land_fraction_reads_the_continental_mask():
+    assert abs(_measured_land_fraction(_cratons_first()) - 0.29) < 0.02
+
+
+def test_cratons_first_seeds_each_core_as_a_whole_genuine_column():
+    layout = cratons_first_layout(7, land_fraction=0.29).layout
+    for plate in _cratons_first():
+        core = layout.is_core[layout.nearest(plate.all_points_and_elevation()[0])]
+        craton = plate.collect("craton_crust_m")
+        hc = plate.collect("crustal_thickness_m")
+        assert np.array_equal(craton > 0.0, core)
+        np.testing.assert_array_equal(craton[core], hc[core])
+        assert np.all(hc[core] >= cratons.CRATON_HOST_MIN_HC_M)
+        assert np.all(plate.collect("craton_formed_years")[core] == -cratons.CRATON_SEED_AGE_YEARS)
+
+
+def test_cratons_first_is_off_by_default():
+    a = generate_plates(seed=5, num_plates=8)
+    b = generate_plates(seed=5, num_plates=8, cratons_first=False)
+    assert _cell_signature(a) == _cell_signature(b)
+    assert all(np.all(p.collect("crust_type_code") == CRUST_TYPE_INHERIT) for p in a)
+
+
+def test_cratons_first_leaves_sketch_and_premade_generation_unchanged():
+    land = np.zeros((SKETCH_GRID_H, SKETCH_GRID_W), dtype=bool)
+    land[SKETCH_GRID_H // 3 : SKETCH_GRID_H // 2, SKETCH_GRID_W // 3 : SKETCH_GRID_W // 2] = True
+    masks = SketchMasks(land=land, mountain=np.zeros_like(land), river=np.zeros_like(land))
+    for options in (dict(sketch=masks), dict(sketch=masks, premade_world_id="got")):
+        off = generate_plates(seed=6, num_plates=8, continental_fraction=0.5, node_density=0.5, cratons_first=False, **options)
+        on = generate_plates(seed=6, num_plates=8, continental_fraction=0.5, node_density=0.5, cratons_first=True, **options)
+        assert _cell_signature(on) == _cell_signature(off)
+
+
+def test_cratons_first_land_mask_is_the_generated_land():
+    """The partition sees land before any plate exists (#462): its mask must be the land the
+    plates are then built with."""
+    layout = cratons_first_layout(7, land_fraction=0.29).layout
+    plates_list = _cratons_first()
+    land = np.concatenate([p.collect("elevation") > 0.0 for p in plates_list])
+    predicted = np.concatenate([layout.land[layout.nearest(p.all_points_and_elevation()[0])] for p in plates_list])
+    areas = np.concatenate([p.node_areas_m2() for p in plates_list])
+    # The cells that disagree are mostly single cells along a coastline, where a plate's own
+    # lattice and the layout's don't line up.
+    assert areas[land != predicted].sum() / areas.sum() < 0.02

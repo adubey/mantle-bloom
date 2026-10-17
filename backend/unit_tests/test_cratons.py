@@ -107,6 +107,25 @@ def test_a_seeded_world_is_never_reseeded():
     assert _volume(plate, "craton_crust_m") == 0.0
 
 
+def test_generated_cores_are_booked_and_the_interior_rule_is_skipped():
+    """A cratons-first world's generation seeds its cores (RFC 0009, #462): first-step
+    seeding books them as the initial volume and adds no deep interior of its own."""
+    plate = _cap(1)
+    core = plate.all_points_and_elevation()[0][:, 1] > 0.0
+    cratons.seed_cores(plate, core)
+    world = _world(plate)
+
+    cratons.ensure_initialized(world)
+
+    craton = plate.collect("craton_crust_m")
+    assert np.array_equal(craton > 0.0, core)
+    np.testing.assert_array_equal(craton[core], plate.collect("crustal_thickness_m")[core])
+    assert np.all(plate.collect("craton_formed_years")[core] == -cratons.CRATON_SEED_AGE_YEARS)
+    assert np.all(plate.collect("craton_formed_years")[~core] == CRATON_UNFORMED_YEARS)
+    assert world.craton_ledger["initial_m3"] == pytest.approx(_volume(plate, "craton_crust_m"))
+    assert cratons.balance_error_m3(world) == pytest.approx(0.0, abs=1e-9 * world.craton_ledger["initial_m3"])
+
+
 def test_thin_or_thick_crust_is_never_seeded():
     plate = _cap(1)
     world = _world(plate)

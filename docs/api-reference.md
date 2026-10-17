@@ -85,7 +85,10 @@ or pass an explicit count to override it. `continental_fraction` and `land_fract
 UI's two generation sliders (0 to 1, defaulting in the frontend to
 `plates.DEFAULT_CONTINENTAL_FRACTION = 0.70` and `plates.DEFAULT_LAND_FRACTION = 0.29`);
 both optional, each falling back to its own default behavior when omitted (an independent
-per-plate coin flip for crust type, a fixed elevation floor for land) -- see
+per-plate coin flip for crust type, a fixed elevation floor for land). `continental_fraction`
+is a share of plates on today's plates-first worlds and a share of the surface on
+cratons-first ones (`plates.CONTINENTAL_AREA_FRACTION = 0.5` when omitted), a layout the
+route doesn't select yet -- see
 [simulation-model/foundations.md#initial-plate-generation](simulation-model/foundations.md#initial-plate-generation).
 `axial_tilt_deg` is the UI's third generation slider (degrees), defaulting to
 `world.DEFAULT_AXIAL_TILT_DEG = 23.5` (Earth's real tilt) -- doesn't affect plate generation,

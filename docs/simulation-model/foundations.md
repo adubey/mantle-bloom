@@ -89,7 +89,8 @@ land" sliders, both 0 to 1 (percent in the UI), defaulting to
 `DEFAULT_CONTINENTAL_FRACTION = 0.70` and `DEFAULT_LAND_FRACTION = 0.29`, plus a "point
 density" choice (`NODE_DENSITY_CHOICES = (0.5, 1.0, 2.0, 4.0)`, see below).
 
-- `continental_fraction`: when given, `round(continental_fraction * num_plates)` plates
+- `continental_fraction`: on a [cratons-first](#cratons-first-layout) world, the
+  continental share of the surface. Otherwise, when given, `round(continental_fraction * num_plates)` plates
   (`rng.choice`, without replacement) are made continental instead of the usual independent
   `CONTINENTAL_FRACTION = 0.4` coin flip per plate, and `num_plates` is bumped up if needed
   so there's still room for at least `MIN_OCEANIC_PLATES` of real ocean floor regardless of
@@ -155,6 +156,80 @@ unrelated to sampling resolution (e.g. a real ~400km-wide collision belt) are de
 are. 4x density comes with a real, continuous performance cost, not just a one-time
 generation cost -- several times slower per step -- which the UI surfaces as a short note when
 4x is selected.
+
+<a id="cratons-first-layout"></a>
+### Cratons-first layout (`continent_layout.py`, `plate_partition.py`)
+
+Behind a flag, a random world (no sketch, no premade world) is laid out cratons first instead
+([RFC 0009](../../rfc/0009-craton-mosaic.md), #462). It is off by default
+(`continent_layout.CRATONS_FIRST_DEFAULT = False`) until the RFC's gate G3 decides whether it
+replaces the tiling above; `generate_plates(..., cratons_first=True)` or
+`world.generate_world(..., cratons_first=True)` turns it on. Sketch and premade worlds always
+keep plates first, since their geography comes from a drawing or from data.
+
+`lithosphere_plate.cratons_first_layout` builds the layout before any plate exists, on a
+whole-sphere cell lattice at the world's node spacing (`layout_lattice.lattice`). Steps 1-3
+are `continent_layout.build_geography`; the relief fields are drawn next and give the land
+mask (continental crust whose relief sample clears the land threshold); steps 4-5 are
+`plate_partition.partition_plates`, which reads that mask:
+
+1. **Continents.** 2-6 centres (`CONTINENT_COUNT_RANGE`), Poisson-disc sampled
+   `CONTINENT_SPACING_KM = 4000` apart. `continental_fraction` is a share of the surface here,
+   clamped to 0.05-0.9 and defaulting to `plates.CONTINENTAL_AREA_FRACTION = 0.5`; a
+   Dirichlet draw (`CONTINENT_SIZE_CONCENTRATION = 2`) splits that area between continents.
+2. **Cratons.** Nuclei chain out from each continent's centre. Each new nucleus starts a new
+   craton with probability `CRATON_CLUSTER_CONCENTRATION / (that + n)` (8, n the continent's
+   nuclei so far); otherwise it joins an existing craton below `CRATON_MAX_AREA_KM2` (18 M km²),
+   chosen in proportion to its nuclei, 0.8-1.3 of that craton's reach from one of its nuclei
+   (`NUCLEUS_JOIN_STEP_RANGE`), so the disks overlap into one composite craton (a Chinese
+   restaurant process, #470). Each craton draws a size scale from `CRATON_SIZE_SCALE_RANGE`
+   (0.5-1) and reaches its scale times `CRATON_CORE_RADIUS_KM = 1000` from its nuclei, the
+   distance perturbed by up to `CRATON_CORE_OUTLINE_NOISE_KM`, nearest nucleus winning. A new
+   craton is placed `CRATON_CORE_SPACING_KM = 1500` times the two cratons' mean scale from
+   other cratons' nuclei, growing outward from the assembly's edge. Points within
+   `CRATON_BELT_WIDTH_KM / 2` (200 km) of the line halfway between two cratons are left out,
+   so cratons are at least 400 km apart. Nuclei are added until the cratons can cover
+   `CRATON_SHARE_OF_CONTINENT = 0.4` of the continent (at least two cratons when that share
+   exceeds one 1,000 km disk; scales grow together if the continent runs out of room), then the
+   radius is trimmed to hit the share. A continent smaller than one disk (about 3.1 M km²)
+   gets no craton.
+3. **Belts and margins.** Belt is each continent's non-craton points in the closure of its
+   cratons (dilated, then eroded, by `BELT_CLOSURE_KM = 800`, over the whole sphere), or in the
+   lens between two of them (distances to the two nearest summing to at most
+   `BELT_LENS_BELT_WIDTHS = 2` belt widths), so the whole gap between neighbouring cratons is
+   belt. The continent contains its cratons and belts, then grows from them until it reaches
+   its area, in order of growth time: distance to the cratons plus
+   `CONTINENT_CENTRE_PULL = 1` times the distance to the continent's centre, over a growth
+   speed `exp(CONTINENT_GROWTH_SPEED_SIGMA × noise)` that varies smoothly at continent scale,
+   plus outline noise. Cratons on a continent's far side, or where it grows slowly, end up near
+   its coast. Continental points that aren't craton or belt are margin.
+4. **Plates.** `num_plates` sites (8-20, as above) are Poisson-disc sampled outside the
+   cores, and each takes the points nearest it by path length over the 8-connected lattice
+   (multi-source `scipy.sparse.csgraph.dijkstra`). Each core then goes whole to the plate
+   holding most of its area. The sites are redrawn if a plate is disconnected or below
+   `merge_split.SPLIT_MIN_NODES * node_density` cells. Of `PARTITION_CANDIDATES = 8` valid
+   draws, the one with the lowest `J` (below) is kept.
+5. **Boundary refinement.** A boundary point moves to an adjacent plate while that lowers
+   `J`, the summed length of plate-crossing links times the mean `PLATE_COST_*` of their two
+   ends (ocean and belt 1, margin and core 3), plus `PLATE_COST_LAND_LINK = 10` per unit
+   length where both ends are land. Each plate stays within 75-125% of its
+   starting area and above the cell floor, cores never move, and a move must pass a
+   simple-point check: the point's same-plate edge neighbours stay connected through its
+   1-ring. Sweeps run in node order until one lowers nothing, or 20.
+
+The land cost acts mainly through the choice between candidate partitions: refinement alone
+stops at a local minimum, since a straight boundary across a continent's interior can't
+move off it one cell at a time.
+
+`lithosphere_plate._generate_cratons_first` then builds each plate from the points labelled
+with it (`PlateWithSparseQuadPatch.from_lattice`, a cell joining the plate of its nearest
+lattice point). A plate's nominal `crust_type` is the type of most of its area, and its
+other-type cells carry an explicit `crust_type_code`. Hc, Hm and relief come from each cell's
+own type, and `land_fraction`'s noise threshold is taken over the continental mask
+(`plates.land_noise_threshold_for_mask`). After the bathymetry pass, every core column is
+raised to at least `cratons.CRATON_HOST_MIN_HC_M` and seeded as craton
+([cratons](tectonics.md#cratons)). The layout measures over 40 seeds are in
+[analysis/issue462](../../analysis/issue462/README.md).
 
 <a id="worldsketch"></a>
 ## Human-made worlds (sketch-driven generation) (`worldsketch.py`)

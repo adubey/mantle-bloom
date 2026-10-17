@@ -231,7 +231,9 @@ core and belt masks, and a plate label.
    separation `CONTINENT_SPACING_KM`, `n_c` from `CONTINENT_COUNT_RANGE`. Split the target
    continental area, `continental_fraction` × 4πR², between them in random proportions
    (Dirichlet, `CONTINENT_SIZE_CONCENTRATION`).
-2. **Cores.** Within each continent's share, place core nuclei at least
+2. **Cores.** *Revised in #470:* nuclei now cluster into composite cratons and continents grow
+   unevenly from them, so some cratons sit at a coast; see the knobs below and
+   [analysis/issue470](../analysis/issue470/README.md). Within each continent's share, place core nuclei at least
    `CRATON_CORE_SPACING_KM` apart until the perturbed, overlap-resolved core area reaches
    `CRATON_SHARE_OF_CONTINENT` of the continent's area. A core is the set of lattice points within `CRATON_CORE_RADIUS_KM` of a nucleus. Perturb
    the distance with `terrain_noise` to make its outline irregular; assign points claimed by
@@ -265,6 +267,22 @@ core and belt masks, and a plate label.
    by plate ID. This is a
    constrained local optimization, so it may reach a local minimum; G3 measures whether the
    resulting layout meets the Earth comparison.
+
+   *Revised in #462.* The objective as written doesn't see land, and on 40 seeds the layout
+   left 21-35% of boundary length with land on both sides (10 of 40 within the 25% target),
+   almost all of it splitting continents' interiors more than 300 km from any coast (15-29%
+   of boundary length, against Earth's 5.7%; Earth's 17% is mostly coast-adjacent). Raising
+   `PLATE_COST_MARGIN` to 20, refining for 200 sweeps, retuning the continent knobs, unequal
+   plate sizes and a cheaper Dijkstra path over continents didn't meet all three boundary
+   targets together. The refinement reaches a local minimum: a straight boundary across a
+   continent's interior can't move off it one cell at a time. Two changes do, together: J
+   adds `PLATE_COST_LAND_LINK` per unit length on a link with land at both ends, read from
+   the land mask (so generation computes relief and land before the partition), and
+   `PARTITION_CANDIDATES` valid starting partitions are drawn and the lowest-J one kept, a
+   non-local choice the land cost can act through. At 10 and 8, land on both sides is
+   18-29% (36 of 40 seeds within 25%), and the land, land-edge and mixed-plate targets pass
+   together on 33 of 40 (10 before). Interior splits remain 13-22% of boundary length
+   ([analysis/issue462](../analysis/issue462/README.md)).
 5. **Plates are built from the labels.** Each plate is made with
    `PlateWithSparseQuadPatch.from_lattice`, owning the points labelled with it (replacing
    `build_plate_tiling`'s nearest-site test). Its nominal `crust_type` is the type of the
@@ -386,18 +404,24 @@ only as new collisions and rifts mark them. No new pickled state on `World`.
 | `CRATON_SHARE_OF_CONTINENT` | 0.4 | Today's 37.6–50.7% at t = 0 (#403) | Fixed to today's mean, so craton calibrations carry over |
 | `CRATON_CORE_SPACING_KM` | 1,500 km | Design choice: minimum separation; not a direct count of geological cratons | G3; sweep 1,000–2,500 km |
 | `CRATON_CORE_RADIUS_KM` | 1,000 km | Design choice: about 3.1 M km² per full disk; roughly 33 disks at the 102 M km² starting target, before clipping and overlap | G3; sweep with spacing |
-| `CRATON_BELT_WIDTH_KM` | 300 km | Orogens welded onto shields are a few hundred km wide [[Cawood et al., 2009]](#ref-cawood2009) | G3; sweep 200–600 km |
+| `CRATON_BELT_WIDTH_KM` | 300 km; 400 km with composite cratons (#470) | Orogens welded onto shields are a few hundred km wide [[Cawood et al., 2009]](#ref-cawood2009) | G3; sweep 200–600 km. At 300–350 km with composite cratons, belts fell to 9–10% of continental area |
+| `CRATON_CLUSTER_CONCENTRATION` (#470) | 8 | Design choice: a new nucleus starts a new craton with probability α / (α + n), else joins one below `CRATON_MAX_AREA_KM2` (Chinese restaurant process) | Craton count and size spread over 40 seeds: 20–55 cratons, a median 2 per world of 10 M km² or more |
+| `CRATON_SIZE_SCALE_RANGE`, `CRATON_MAX_AREA_KM2` (#470) | 0.5–1, 18 M km² | Design choice: per-craton reach, and a cap on growth by joining | Smallest cratons (5th percentile 0.51 M km², 30% under 1 M km²) and the largest (23 M km²) over 40 seeds |
+| `CONTINENT_CENTRE_PULL`, `CONTINENT_GROWTH_SPEED_SIGMA` (#470) | 1, 1 | Design choice: uneven continental growth, so some cratons sit at a coast | Share of cratons within 300 km of the continental edge: 11–49% over 40 seeds (0% before) |
 | `PLATE_COST_MARGIN` | 3 | Design choice: boundary-link penalty | Land edge within 300 km of a boundary: 15–50% (Earth coastline 28%); crust edge reported separately |
 | `PLATE_COST_OCEAN`, `PLATE_COST_BELT` | 1, 1 | Design choice: boundary-link penalty for ocean and belts | Fixed |
+| `PLATE_COST_LAND_LINK` (#462) | 10 | Design choice: penalty on a boundary link with land at both ends | Land on both sides ≤ 25% together with the land-edge and mixed-plate targets, 40 seeds: 33 of 40 at 10, 30 at 5 |
+| `PARTITION_CANDIDATES` (#462) | 8 | Design choice: starting partitions drawn, lowest J kept | Same; 16 did no better |
 | `CRATON_BELT_SEED_AGE_YEARS` | 1.8 Gyr | Design choice: Proterozoic assembly, as for Laurentia [[Hoffman, 1988]](#ref-hoffman1988) | Fixed; provenance only |
 | `CRATON_BELT_HEAL_MYR` | infinite | Design choice (Assumptions) | Unchanged in this RFC |
 | `CRATON_SEED_MARGIN_KM` | 875 km | Today's | Kept only for worlds seeded without generation's masks |
 
 ## Detailed design (provisional touchpoints)
 
-- `backend/app/continent_layout.py` (new): continents, cores, belts and the plate
-  partition, returning per-lattice-point masks and labels; initialize labels with Dijkstra,
-  then refine boundaries against the weighted interface objective.
+- `backend/app/continent_layout.py` (new): continents, cores and belts, per lattice point;
+  `backend/app/plate_partition.py` (new, #462 review) the plate partition over them,
+  initialized with Dijkstra and refined against the weighted interface objective;
+  `backend/app/layout_lattice.py` (new) the whole-sphere lattice both use.
 - `backend/app/lithosphere_plate.py`
   - `generate_plates`: the random path calls `continent_layout` and builds plates from its
     labels; per-node Hc and Hm by crust type; `crust_type_code` stamped on minority-type
@@ -497,7 +521,10 @@ only as new collisions and rifts mark them. No new pickled state on `World`.
       crossed by a plate boundary; every continent with room for two cores has at least two;
       belts 10–30% of continental area; craton 35–50% of continental area; continental area
       within 0.05 of `continental_fraction`. Report continental-crust edge and crust-mixed
-      shares separately; Earth has no like-for-like values for those measures. Under the
+      shares separately; Earth has no like-for-like values for those measures.
+      *Measured (#462, 40 seeds, `land_fraction` 0.29): every target but three on every
+      seed; land on both sides on 36, mixed by land on 36, land edge on 40; the three
+      together on 33. Owner decision pending on whether that meets this criterion.* Under the
       single-type fallback, waive the land-edge and mixed-by-land targets; require one plate
       per continent, one type per plate, complete connected assignment, intact cores and the
       G3 rift/belt checks.
