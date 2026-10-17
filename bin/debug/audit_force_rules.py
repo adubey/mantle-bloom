@@ -79,7 +79,6 @@ class Tap:
         self.order = []
         self.band_rows = []
         self._merge_path = None
-        self._last_split_gate = None
 
     # -- rate clamp -----------------------------------------------------------------------
     def install(self) -> None:
