@@ -1,9 +1,9 @@
 # RFC 0012: Physics-first simulation
 
-- **Status:** Draft
+- **Status:** Accepted (2026-10-16)
 - **Date:** 2026-10-16
-- **Related:** RFCs [0009](0009-craton-mosaic.md) (cratons-first layout),
-  [0010](0010-rifts-follow-weak-lithosphere.md) (rift routing), and
+- **Related:** #464 (tracking), #465 (gate G1); RFCs [0009](0009-craton-mosaic.md)
+  (cratons-first layout), [0010](0010-rifts-follow-weak-lithosphere.md) (rift routing), and
   [0011](https://github.com/adubey/mantle-bloom/blob/claude/rfc-0011-contact-strength/rfc/0011-contact-strength.md)
   (collision resistance); design principles 1–5 and 8–9
 
