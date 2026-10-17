@@ -664,6 +664,7 @@ def generate_world_progress(
     voronoi_points: int | None = None,
     sketch: worldsketch.SketchMasks | None = None,
     premade_world_id: str | None = None,
+    cratons_first: bool | None = None,
 ):
     """Generate a world, yielding `("progress", fraction)` at each of its three natural phase
     boundaries -- plate/site generation, mantle-center fitting, then the `finish_generation`
@@ -712,7 +713,8 @@ def generate_world_progress(
     ones fit to reproduce known (or, for Pangaea, directionally-approximated) real plate
     motion, for `"earth"`/`"pangaea"` specifically -- see real_plates.py's
     `fit_mantle_centers`. `"got"` has no real-world motion to fit to and keeps the ordinary
-    random centers."""
+    random centers. `cratons_first` lays a random world out cratons first (RFC 0009; see
+    lithosphere_plate.generate_plates), defaulting to continent_layout.CRATONS_FIRST_DEFAULT."""
     plates = generate_plates(
         seed,
         num_plates,
@@ -723,6 +725,7 @@ def generate_world_progress(
         voronoi_points=voronoi_points,
         sketch=sketch,
         premade_world_id=premade_world_id,
+        cratons_first=cratons_first,
     )
     yield ("progress", 1 / 3)
 

@@ -4,7 +4,8 @@
 Four things only, on an equirectangular grid: oceanic crust, continental crust, craton, and
 plate boundaries (black, where the majority plate changes between neighbouring pixels).
 Where plates overlap, the colours are shaded darker. With --mosaic the world is seeded as RFC 0009's mosaic (probe_craton_mosaic's
-seeding, formation off), and belts are drawn too. Elevation, climate and the app's
+seeding, formation off), and belts are drawn too. With --cratons-first the world is generated
+with RFC 0009's cratons-first layout (#462). Elevation, climate and the app's
 renderer are left out on purpose: the question is only where the cratons sit relative to
 the plates.
 
@@ -15,6 +16,8 @@ Usage:
         --seed 7 --years 5e8 --out /tmp/seed7-500myr.png
     PYTHONPATH=backend backend/.venv/bin/python bin/debug/render_craton_map.py \
         --seed 7 --mosaic --out /tmp/seed7-mosaic.png
+    PYTHONPATH=backend backend/.venv/bin/python bin/debug/render_craton_map.py \
+        --seed 7 --cratons-first --land-fraction 0.29 --out /tmp/seed7-cratons-first.png
     PYTHONPATH=backend backend/.venv/bin/python bin/debug/render_craton_map.py \
         --load world.mbworld --out /tmp/saved.png
     PYTHONPATH=backend backend/.venv/bin/python bin/debug/render_craton_map.py \
@@ -102,6 +105,8 @@ def main() -> None:
     parser.add_argument("--load", type=Path, help="render a saved .mbworld instead of generating one")
     parser.add_argument("--years", type=float, default=0.0, help="step this long (5 Myr steps) before drawing")
     parser.add_argument("--mosaic", action="store_true", help="seed RFC 0009's mosaic, formation off, and draw belts")
+    parser.add_argument("--cratons-first", action="store_true", help="generate with RFC 0009's cratons-first layout")
+    parser.add_argument("--land-fraction", type=float, help="the Generate World dialog's land slider (0-1)")
     parser.add_argument("--save-world", type=Path, help="also save the stepped world, to redraw it with --load")
     parser.add_argument("--width", type=int, default=1600)
     parser.add_argument("--out", type=Path, required=True)
@@ -122,13 +127,13 @@ def main() -> None:
     if args.load is not None:
         world = persistence.load_world_bytes(args.load.read_bytes())
     else:
-        world = world_mod.generate_world(args.seed)
+        world = world_mod.generate_world(args.seed, land_fraction=args.land_fraction, cratons_first=args.cratons_first)
     cratons.ensure_initialized(world)
     while world.elapsed_years < args.years - 1.0:
         world_mod.step_world(world, min(5e6, args.years - world.elapsed_years))
     if args.save_world is not None:
         args.save_world.write_bytes(persistence.save_world_bytes(world))
-    layout = "mosaic seeding, formation off" if args.mosaic else "default craton rules"
+    layout = "mosaic seeding, formation off" if args.mosaic else "cratons-first layout" if args.cratons_first else "default craton rules"
     source = args.load.name if args.load is not None else f"seed {args.seed}"
     title = f"{source}, {world.elapsed_years / 1e6:.0f} Myr, {layout}. Brown craton, tan continent, blue ocean" + (", teal belt" if args.mosaic else "") + ", black plate boundaries, darker where plates overlap"
     render(world, args.out, args.width, belt_field, title)

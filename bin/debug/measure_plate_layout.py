@@ -8,10 +8,17 @@ takes its nearest node), it reports:
   for generated worlds also the share with continental crust on both sides;
 - how much of the continent's edge (continental crust next to oceanic) lies within
   EDGE_NEAR_KM of a plate boundary: on Earth most continental margins are passive, inside
-  a plate;
+  a plate; and the same for the land edge (the coastline);
 - how mixed plates are: the share of plates, and of plate area, whose continental share is
-  5-95%;
-- for cratons, the share of craton area within 500 and 1,000 km of a plate boundary.
+  5-95%; and the share of plates mixed by land;
+- for cratons, the share of craton area within 500 and 1,000 km of a plate boundary, and
+  the share of boundary length with craton on both sides (a core crossed by a boundary).
+
+`--cratons-first` generates the seeds with RFC 0009's cratons-first layout (#462) and adds
+the layout's own measures: core, belt and margin shares of continental area, cores per
+continent and whether each had room for two, and the generation time. `--land-fraction`
+passes the Generate World dialog's land slider (the UI default is 0.29; omitted, as
+`generate_world(seed)` does).
 
 `--earth` measures Earth itself: the 16 real plates of `data/plate_owner_grid.npz`
 (NNR-MORVEL56 outlines) against the real coastline (`data/real_land_mask.npz`), the inputs
@@ -25,16 +32,19 @@ Usage:
         --seeds 7,11,2024 --earth --out /tmp/layout.json
     PYTHONPATH=backend backend/.venv/bin/python bin/debug/measure_plate_layout.py \
         --seeds "" --load seed7-500myr.mbworld --out /tmp/layout-500.json
+    PYTHONPATH=backend backend/.venv/bin/python bin/debug/measure_plate_layout.py \
+        --seeds 7,11,2024 --cratons-first --land-fraction 0.29 --out /tmp/layout-cf.json
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import time
 from pathlib import Path
 
 import numpy as np
-from app import cratons, persistence
+from app import cratons, lithosphere_plate, persistence
 from app import world as world_mod
 from app.elevation_lines import PLANET_RADIUS_KM, effective_is_continental_from_codes
 from scipy.ndimage import distance_transform_edt
@@ -116,24 +126,31 @@ def _measure(fields, label: str) -> dict:
         out[f"boundary_{name}_one_share"] = one / total
     boundary = ew | ns
     dist_km = _distance_km(boundary, lat, step_km)
-    cont_edge_ew = cont ^ np.roll(cont, -1, axis=1)
-    cont_edge_ns = np.zeros_like(cont)
-    cont_edge_ns[:-1] = cont[:-1] ^ cont[1:]
     near = dist_km <= EDGE_NEAR_KM
-    edge_total = float(ew_len[cont_edge_ew].sum() + ns_len[cont_edge_ns].sum())
-    edge_near = float(ew_len[cont_edge_ew & near].sum() + ns_len[cont_edge_ns & near].sum())
-    out["continent_edge_km"] = edge_total
-    out["continent_edge_on_boundary_share"] = edge_near / edge_total if edge_total else None
+    for name, field in (("continent", cont), ("land", land)):
+        edge_ew = field ^ np.roll(field, -1, axis=1)
+        edge_ns = np.zeros_like(field)
+        edge_ns[:-1] = field[:-1] ^ field[1:]
+        edge_total = float(ew_len[edge_ew].sum() + ns_len[edge_ns].sum())
+        edge_near = float(ew_len[edge_ew & near].sum() + ns_len[edge_ns & near].sum())
+        out[f"{name}_edge_km"] = edge_total
+        out[f"{name}_edge_on_boundary_share"] = edge_near / edge_total if edge_total else None
     area = np.cos(lat)[:, None] * np.ones((1, w))
-    shares = np.array([cont[plate == p].mean() for p in range(plate.max() + 1)])
     plate_area = np.array([area[plate == p].sum() for p in range(plate.max() + 1)])
-    mixed = (shares > MIXED_RANGE[0]) & (shares < MIXED_RANGE[1])
-    out["mixed_plate_share"] = float(mixed.mean())
-    out["mixed_plate_area_share"] = float(plate_area[mixed].sum() / plate_area.sum())
+    for suffix, field in (("", cont), ("_by_land", land)):
+        shares = np.array([field[plate == p].mean() for p in range(plate.max() + 1)])
+        mixed = (shares > MIXED_RANGE[0]) & (shares < MIXED_RANGE[1])
+        out[f"mixed_plate_share{suffix}"] = float(mixed.mean())
+        out[f"mixed_plate_area_share{suffix}"] = float(plate_area[mixed].sum() / plate_area.sum())
     out["land_area_share"] = float(area[land].sum() / area.sum())
     out["continental_area_share"] = float(area[cont].sum() / area.sum())
     if craton.any():
         c_area = area[craton].sum()
+        both_ew = craton & np.roll(craton, -1, axis=1)
+        both_ns = np.zeros_like(craton)
+        both_ns[:-1] = craton[:-1] & craton[1:]
+        out["boundary_craton_both_share"] = float(ew_len[ew & both_ew].sum() + ns_len[ns & both_ns].sum()) / total
+        out["craton_share_of_continent"] = float(c_area / area[cont].sum())
         for km in NEAR_KM:
             out[f"craton_within_{km:g}km_share"] = float(area[craton & (dist_km <= km)].sum() / c_area)
     return out
@@ -144,13 +161,21 @@ def main() -> None:
     parser.add_argument("--seeds", default="7,11,2024")
     parser.add_argument("--load", type=Path, action="append", default=[], help="also measure a saved .mbworld (repeatable)")
     parser.add_argument("--earth", action="store_true", help="also measure the real plates and coastline")
+    parser.add_argument("--cratons-first", action="store_true", help="generate the seeds with RFC 0009's cratons-first layout")
+    parser.add_argument("--land-fraction", type=float, help="the Generate World dialog's land slider (0-1)")
+    parser.add_argument("--density", type=float, default=1.0)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     rows = []
     for seed in map(int, args.seeds.split(",")) if args.seeds else ():
-        world = world_mod.generate_world(seed)
+        started = time.perf_counter()
+        world = world_mod.generate_world(seed, land_fraction=args.land_fraction, node_density=args.density, cratons_first=args.cratons_first)
+        generation_s = time.perf_counter() - started
         cratons.ensure_initialized(world)
-        rows.append(_measure(_grid(world), f"seed {seed}"))
+        rows.append({**_measure(_grid(world), f"seed {seed}"), "generation_s": generation_s})
+        if args.cratons_first:
+            layout, _ = lithosphere_plate.cratons_first_layout(seed, node_density=args.density)
+            rows[-1]["layout"] = layout.diagnostics()
         print(json.dumps(rows[-1]), flush=True)
     for path in args.load:
         world = persistence.load_world_bytes(path.read_bytes())

@@ -24,20 +24,24 @@ from .elevation_lines import (
     ELEV_CHANGE_TRENCH,
     ELEV_CHANGE_VOLCANO,
     CRUST_TYPE_CONTINENTAL,
+    CRUST_TYPE_INHERIT,
     CRUST_TYPE_OCEANIC,
     effective_is_continental_from_codes,
     line_spacing_rad,
 )
 from .noise import SphereNoise
 from .plates import (
+    CONTINENTAL_AREA_FRACTION,
     CONTINENTAL_FRACTION,
     MIN_AUTO_PLATES,
     MAX_AUTO_PLATES,
     MIN_OCEANIC_PLATES,
     Plate,
     _land_noise_threshold,
+    land_noise_threshold_for_mask,
 )
 from . import (
+    continent_layout,
     continental_ledger,
     cratons,
     lithosphere,
@@ -1090,6 +1094,16 @@ def _continental_sealevel_noise_offset() -> float:
     return (hc_sealevel - hc0) / _HC_NOISE_AMPLITUDE_CONTINENTAL_M
 
 
+def _continental_hc(relief: terrain_noise.ContinentalRelief, world_pts: np.ndarray, land_threshold: float) -> np.ndarray:
+    """Generation Hc of continental crust at `world_pts`: the reference column plus the relief
+    field's land/sea-deciding `sample()` about `land_threshold`, and its land-gated uplift."""
+    hc0, _ = lithosphere.reference_thickness("continental")
+    amp = _HC_NOISE_AMPLITUDE_CONTINENTAL_M
+    s = relief.sample(world_pts)
+    gate = np.clip((s - land_threshold - _UPLIFT_SEA_MARGIN) / _UPLIFT_SEA_RAMP, 0.0, 1.0)
+    return hc0 + amp * (s - land_threshold) + amp * gate * relief.uplift(world_pts)
+
+
 # Each plate is seeded with one "primary" site plus this many "extra" sites, and the plate's
 # territory is the *union* of its own sites' Voronoi cells rather than a single cell. Merging
 # a handful of adjacent cells per plate is what turns the old one-cell-per-plate tiling (every
@@ -1175,6 +1189,7 @@ def generate_plates(  # noqa: C901
     voronoi_points: int | None = None,
     sketch: worldsketch.SketchMasks | None = None,
     premade_world_id: str | None = None,
+    cratons_first: bool | None = None,
 ) -> list[Plate]:
     """`plates.generate_plates`'s own seed-placement/Voronoi-tiling algorithm, extended so
     each plate owns the union of several adjacent Voronoi cells (see `build_plate_tiling` and
@@ -1229,7 +1244,18 @@ def generate_plates(  # noqa: C901
     `sketch` is still required alongside it and still decides land/sea/mountain/river in each
     continental plate's `hc_at` exactly as it does for "Human-made". `"got"` has no real-plate
     analog, so its site placement falls through to the ordinary sketch-driven path, same as
-    "Human-made"."""
+    "Human-made".
+
+    `cratons_first` (default `continent_layout.CRATONS_FIRST_DEFAULT`) builds a random world
+    -- no sketch, no premade world -- cratons first instead (`_generate_cratons_first`, RFC
+    0009): `continental_fraction` is then a share of the surface, and `extra_sites_per_plate`
+    and `voronoi_points` don't apply."""
+    if cratons_first is None:
+        cratons_first = continent_layout.CRATONS_FIRST_DEFAULT
+    if cratons_first and sketch is None and premade_world_id is None:
+        layout, rng = cratons_first_layout(seed, num_plates, continental_fraction, node_density)
+        return _generate_cratons_first(rng, layout, land_fraction, node_density)
+
     rng = np.random.default_rng(seed)
     if num_plates is None:
         num_plates = int(rng.integers(MIN_AUTO_PLATES, MAX_AUTO_PLATES + 1))
@@ -1390,10 +1416,8 @@ def generate_plates(  # noqa: C901
             else:
                 _lt = 0.0 if land_threshold is None else land_threshold
 
-                def hc_at(world_pts: np.ndarray, _hc0: float = hc0, _amp: float = hc_amp, _lt: float = _lt) -> np.ndarray:
-                    s = relief.sample(world_pts)
-                    gate = np.clip((s - _lt - _UPLIFT_SEA_MARGIN) / _UPLIFT_SEA_RAMP, 0.0, 1.0)
-                    return _hc0 + _amp * (s - _lt) + _amp * gate * relief.uplift(world_pts)
+                def hc_at(world_pts: np.ndarray, _lt: float = _lt) -> np.ndarray:
+                    return _continental_hc(relief, world_pts, _lt)
         else:
 
             def hc_at(world_pts: np.ndarray, _hc0: float = hc0, _amp: float = hc_amp) -> np.ndarray:
@@ -1415,6 +1439,97 @@ def generate_plates(  # noqa: C901
     # boundary is a vertical cliff. Drown the offshore continental interiors and grade the
     # boundary steps into slopes -- see bathymetry.shape_initial_bathymetry.
     bathymetry.shape_initial_bathymetry(plates)
+    return plates
+
+
+def cratons_first_layout(
+    seed: int, num_plates: int | None = None, continental_fraction: float | None = None, node_density: float = 1.0
+) -> tuple[continent_layout.ContinentLayout, np.random.Generator]:
+    """The `continent_layout` a cratons-first `generate_plates(seed, ...)` builds its plates
+    from, and the seed's RNG as it leaves the layout (the relief fields draw from it next)."""
+    rng = np.random.default_rng(seed)
+    if num_plates is None:
+        num_plates = int(rng.integers(MIN_AUTO_PLATES, MAX_AUTO_PLATES + 1))
+    fraction = CONTINENTAL_AREA_FRACTION if continental_fraction is None else continental_fraction
+    return continent_layout.build_layout(rng, line_spacing_rad(node_density), num_plates, fraction, node_density), rng
+
+
+def _generate_cratons_first(
+    rng: np.random.Generator, layout: continent_layout.ContinentLayout, land_fraction: float | None, node_density: float
+) -> list[Plate]:
+    """A random world laid out cratons first (RFC 0009, #462): `layout` (see
+    `cratons_first_layout`) places the cratonic cores, the continents around them and the
+    plates over both, and each plate is built from the lattice points labelled with it. A plate's nominal `crust_type` is the type
+    of most of its area; its other-type cells carry an explicit `crust_type_code`. Hc, Hm and
+    relief come from each cell's own type, land and sea within the continents from the usual
+    relief noise, with `land_fraction`'s threshold taken over the continental mask. The cores
+    are seeded as cratons once the bathymetry is shaped, so each takes its column's final Hc,
+    floored at the craton host minimum."""
+    spacing_rad = line_spacing_rad(node_density)
+    relief = terrain_noise.ContinentalRelief(
+        rng,
+        orogenic_units=_OROGENIC_RELIEF_UNITS,
+        plateau_units=_PLATEAU_UPLIFT_UNITS,
+        plateau_relief_units=_PLATEAU_RELIEF_UNITS,
+    )
+    ocean_relief = terrain_noise.OceanicRelief(rng)
+
+    land_threshold = None
+    if land_fraction is not None:
+        land_threshold = land_noise_threshold_for_mask(
+            lambda pts: layout.is_continental[layout.nearest(pts)],
+            relief,
+            max(0.0, min(land_fraction, 1.0)),
+            _continental_sealevel_noise_offset(),
+        )
+    land_threshold = 0.0 if land_threshold is None else land_threshold
+
+    hc0_oceanic, hm0_oceanic = lithosphere.reference_thickness("oceanic")
+    _, hm0_continental = lithosphere.reference_thickness("continental")
+    plates: list[Plate] = []
+    cores: list[np.ndarray] = []
+    for i in range(layout.num_plates):
+        frame = geometry.plate_frame_from_seed(layout.sites[i])
+
+        cells = PlateWithSparseQuadPatch.from_lattice(i, frame, "oceanic", spacing_rad, lambda pts, _i=i: layout.plate_mask(_i, pts))
+        world_pts = cells.all_points_and_elevation()[0]
+        source = layout.nearest(world_pts)
+        continental = layout.is_continental[source]
+        areas = cells.node_areas_m2()
+        majority = "continental" if areas[continental].sum() > areas[~continental].sum() else "oceanic"
+        hc = np.empty(len(world_pts))
+        hc[continental] = _continental_hc(relief, world_pts[continental], land_threshold)
+        hc[~continental] = hc0_oceanic + _HC_NOISE_AMPLITUDE_OCEANIC_M * ocean_relief.sample(world_pts[~continental])
+        minority = continental != (majority == "continental")
+        codes = np.where(minority, np.where(continental, CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC), CRUST_TYPE_INHERIT).astype(np.int8)
+        plate = PlateWithSparseQuadPatch(
+            i,
+            frame,
+            majority,
+            cells.cells_per_edge,
+            cells.cell_keys,
+            fields={
+                # Upper-clipped like generate_plates' own Hc (issue #161).
+                "crustal_thickness_m": np.clip(hc, lithosphere.MIN_CRUSTAL_THICKNESS_M, lithosphere.MAX_CRUSTAL_THICKNESS_M),
+                "mantle_lithosphere_thickness_m": np.where(continental, hm0_continental, hm0_oceanic),
+                "crust_type_code": codes,
+            },
+        )
+        lithosphere.sync_plate_elevation(plate)
+        plates.append(plate)
+        cores.append(layout.is_core[source])
+
+    bathymetry.shape_initial_bathymetry(plates)
+    for plate, core in zip(plates, cores):
+        # A craton is genuine continental crust (the formation rule's host window). Where the
+        # relief noise or offshore subsidence thinned a core below it, the core is a drowned
+        # platform at full host thickness instead: a thinned shelf seeded as craton took
+        # 26-31% of core area on seeds 7, 11 and 2024 at land_fraction 0.29 (#462).
+        hc = plate.collect("crustal_thickness_m")
+        if np.any(core & (hc < cratons.CRATON_HOST_MIN_HC_M)):
+            plate.set_fields_on_plate(crustal_thickness_m=np.where(core, np.maximum(hc, cratons.CRATON_HOST_MIN_HC_M), hc))
+            lithosphere.sync_plate_elevation(plate)
+        cratons.seed_cores(plate, core)
     return plates
 
 

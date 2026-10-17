@@ -374,8 +374,13 @@ sparse_quad_patch.py
                    and the only one. Its row/column intervals are derived topology caches used
                    by cell-native algorithms; they do not expose row ends through the shared
                    surface API.
+continent_layout.py
+                   cratons-first layout for random worlds, behind a flag (RFC 0009): cratonic
+                   cores, the continents around them, belts and margins, then a plate
+                   partition over a whole-sphere lattice
 lithosphere_plate.py
-                   plate generation (nearest-seed tiling, reference Hc/Hm, composite relief)
+                   plate generation (nearest-seed tiling or a continent_layout partition,
+                   reference Hc/Hm, composite relief)
                    and the per-node column physics -- boundary classification context,
                    elevation/Hc/Hm deltas, decompression melting and rift volcanism
 quad_tectonics.py  the tectonic engine, `deform()`: boundary retreat and advance on the cell
