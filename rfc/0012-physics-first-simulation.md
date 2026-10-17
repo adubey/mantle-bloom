@@ -54,13 +54,13 @@ changing them:
 |---|---|---|---|---|
 | Plate rates are clamped to 0.5–15 cm/yr | `mantle.py:clamp_rate` | A lower bound invents motion without a driving load; the upper bound may hide an unresolved force balance | Solve quasi-static force balance; let an unforced plate stop and measure whether the upper cap binds. | Yes for loads and motion; a numerical safety cap remains outside it. |
 | Continental contacts accumulate a deterministic 0–100 Myr timer, then roll a probability scaled by 0.85 and adjusted for plate size and speed; deep overlap can force a merge after 30 Myr | `merge_split.py` | Whether a contact is mechanically locked and has become a persistent suture | Use solved relative motion and contact resistance; test sustained near-zero relative rate across the contact as a topology trigger. | Partial: contact response and relative rate, yes; suture duration is topology memory. |
-| Splitting uses velocity-fit residuals, a dimensionless internal-stress proxy, and a 0.55 chance; failed rifts may thin into an aulacogen | `merge_split.py` | Whether extension can overcome the integrated strength of a cut, and whether extension remains localized | Compare tensile force per length across a candidate cut with vertically integrated strength; retain stochastic nucleation only if it represents a stated event process. | Partial: force and strength, yes; cut selection and topology remain process-specific. |
+| Splitting uses the residual of the prescribed mantle flow (`mantle.flow_at`) against the plate's rigid rotation, relaxed by plate size or by `internal_stress` (an accumulator of plate radius and overlap, with no force in it), then geometric gates and a 0.55 chance; failed rifts may thin into an aulacogen | `merge_split.py` | Whether extension can overcome the integrated strength of a cut, and whether extension remains localized | Compare tensile force per length across a candidate cut with vertically integrated strength; retain stochastic nucleation only if it represents a stated event process. | Partial: force and strength, yes; cut selection and topology remain process-specific. |
 | Closing rate is converted to stress with `EFFECTIVE_LITHOSPHERE_VISCOSITY_PA_S_PER_M = 1e17`; yield excess drives thickening at `PLASTIC_THICKENING_RATE_PER_MYR_PER_YIELD_EXCESS = 0.06` | `rheology.py` | Contact stress, yield capacity, shortening, and the resulting material budget | Define yield-limited force response and deformation budget in physical units; compare shortening/thickening with material and ledger conservation. | Yes for force/yield response; deformation law remains process-specific. |
 | Collision drag uses `CONTACT_RESISTANCE_N_PER_M = 5e12`, a relief factor saturating at `COLLISION_RELIEF_FRICTION_SCALE_M`, and craton/jam factors | `torque.py` | Boundary resistance, including strength contrasts and gravitational-potential-energy (GPE) differences | Derive resistance and driving loads from contact capacity and column properties; test whether relief/GPE can replace overlapping multipliers. | Partial: segment load, yes; ΔGPE requires the column model and reference level. |
 | Crustal and mantle-lithosphere thickness have hard upper caps | `lithosphere.py`, `rheology.py` | A finite orogen thickness and a stopping balance between tectonic force and gravitational resistance | Test whether force balance and GPE contrast produce an emergent thickening limit; retain a safety cap only if it does not set geological outcomes. | Partial: load feedback, yes; layer budgets and caps remain material-process rules. |
 | Oceanic mantle lithosphere relaxes toward a reference thickness at a fixed rate without seafloor age | `rheology.py:relax_oceanic_mantle_lithosphere` | Thermal cooling and lithosphere thickening away from a ridge | Carry seafloor age and use a cheap age-dependent cooling/thickness relation before a full thermal solve. | Partial: age and column state, yes; cooling law is a thermal-process response. |
 | Plate shifts run sequentially, so later force gathers can see earlier plates already rotated; `deform()` also shuffles plate order to decide contested boundary ownership | `world.py:step_world_progress`, `torque.py:shift_plate` | A simultaneous plate-scale force balance and one deterministic owner per shared contact | Assemble from one pre-step snapshot, solve all plate rates together, then apply rotations together and assign each shared contact's deformation once. | Yes for motion; ownership is a deformation/topology contract. |
-| Merge angular velocity is blended by angular momentum, then rate-clamped | `torque.py:merge_omega`, `merge_split.py` | Post-merger kinematic continuity | Remove the rate floor from the merged state; recompute its motion from the new plate's loads. | Yes for the next motion state; merge material/topology remains separate. |
+| Merge angular velocity is blended by angular momentum, then rate-clamped | `quad_merge.py:merge` (`torque.merge_omega` is called only by tests) | Post-merger kinematic continuity | Remove the rate floor from the merged state; recompute its motion from the new plate's loads. | Yes for the next motion state; merge material/topology remains separate. |
 | Faults are spawned from distance-decaying rates, lognormal lengths, and sampled slip | `faults.py` | Fault initiation and slip from stress exceeding material strength | Compare fault/rift criteria with aggregated local stress and strength; retain distributions only as calibrated nucleation approximations. | Partial: segment stress and strength, yes; distributed intraplate initiation may need an extension. |
 
 The table is an inventory of hypotheses, not a declaration that every listed rule is wrong.
@@ -427,6 +427,32 @@ invariant to boundary-band width, node density, and repeated rows within 10% in 
 constant-boundary cases. Check whether each candidate replacement is already supplied by
 another process. Identify the rules that control accepted geological metrics and count which
 can be retired without changing them.
+
+*G1 result (2026-10-16, #465, [analysis/rfc0012](../analysis/rfc0012/README.md)).* On
+`dd3c620`, four seeds at 2 Myr steps to 500 Myr:
+
+- **Normalization fails.** Slab pull, slab drag and ridge push give each band node one spacing
+  of boundary, so their load per metre is the band's row count times the stated value:
+  2.5–2.9× in synthetic cases, 100% higher with repeated rows, 500–600% across band widths
+  1.5–6 spacings, and about 2.8× in generated worlds (2.6–3.0 rows). Contact drag's
+  nominal-width division leaves 20–100% spreads. A per-metre normalization (#468) is now a
+  prerequisite of G2.
+- **The motion solve is already quasi-static.** The slowest relaxation time is ≤ 2×10⁻⁶ s, and
+  each step's ω matches K⁻¹(τ + b) to 5×10⁻¹². Inertia, and the ω that merges and splits
+  assign, carry nothing into the next step. These are the only rules G1 lists as retirable;
+  G2 checks them against accepted metrics before removal.
+- **Shift order moves ω** by a median 9–18% and at worst 45–446% per checkpoint.
+- **The rate clamp binds:** the cap on 0.5–2.7% of plate-steps (≥ 1% on three seeds; unclipped
+  99th percentile up to 26 cm/yr) and the floor on 0.6–2.6%. G2 reports the force balance the
+  cap hides.
+- **Split and merge triggers decide outcomes.** The stress accumulator sets the split
+  threshold's relaxation in 75–88% of attempts past the residual gate; the 0.55 roll fails
+  39–47% of attempts that clear every gate. Fusions happen at slow, not locked, contacts
+  (median |closing| about 0.5–0.9 cm/yr, 6 of 41 opening), which bounds G3's ε.
+- **Yield** is a 1.49 cm/yr closing-rate threshold passed by 74–87% of convergent node-steps;
+  the rate law never saturates. Hc/Hm caps hold 0.6–4% of continental nodes on average.
+- **Cost:** at density 4 a step takes a median 4.97 s; shift 0.32 s and deform 1.03 s, of which
+  neighbour gathering is 0.38 s; the per-plate 3×3 solves are negligible.
 
 **Gate G2: reduced coupled pilot.** Use one candidate contact process (RFC 0011's blocked
 collision is the initial candidate) to compare current behavior with a contact response inside
