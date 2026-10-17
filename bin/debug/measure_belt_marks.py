@@ -7,7 +7,8 @@ on default worlds, and step time at density 4.
 craton area and volume, cumulative formed volume, genuine continental area, the craton and
 continental-material ledger balances, and the formation audit -- craton volume and cells that
 formed this run on columns marked as belt, which must stay 0. `bench` times --steps steps at
---density after --warmup steps, --repeats times. Each row records which backend ran
+--density after --warmup steps, --repeats times, and the share of that time spent in the
+code belt marks add (`BeltTimer`). Each row records which backend ran
 (`model_file`): the script puts its own tree's backend first on sys.path, so a baseline run
 must use a copy of this file inside the baseline worktree.
 
@@ -112,7 +113,39 @@ def run(args) -> None:
             out.flush()
 
 
+class BeltTimer:
+    """Wall time spent in the code belt marks add (`mark_belt`, `seed_belts`, `belt_mask`,
+    `core_count`, `majority_history`), wherever it is called from. A share of the same steps' time, so it
+    holds when the machine's speed changes between runs, as whole-step A/B timings don't."""
+
+    def __init__(self) -> None:
+        self.seconds = 0.0
+        if not HAS_BELTS:
+            return
+        from app import legacy_conversion, quad_merge, sparse_quad_patch, surface_fields
+
+        for module, name in (
+            (cratons, "mark_belt"), (cratons, "seed_belts"), (cratons, "belt_mask"), (cratons, "core_count"), (surface_fields, "majority_history"),
+        ):
+            wrapped = self._timed(getattr(module, name))
+            setattr(module, name, wrapped)
+            if name == "majority_history":
+                for user in (legacy_conversion, quad_merge, sparse_quad_patch):
+                    setattr(user, name, wrapped)
+
+    def _timed(self, function):
+        def timed(*args, **kwargs):
+            started = time.perf_counter()
+            try:
+                return function(*args, **kwargs)
+            finally:
+                self.seconds += time.perf_counter() - started
+
+        return timed
+
+
 def bench(args) -> None:
+    timer = BeltTimer()
     with open(args.out, "a") as out:
         for repeat in range(args.repeats):
             world = world_mod.generate_world(args.seed, node_density=args.density)
@@ -120,6 +153,7 @@ def bench(args) -> None:
             for _ in range(args.warmup):
                 world_mod.step_world(world, args.step)
             times = []
+            timer.seconds = 0.0
             for _ in range(args.steps):
                 started = time.perf_counter()
                 world_mod.step_world(world, args.step)
@@ -127,6 +161,7 @@ def bench(args) -> None:
             row = {
                 "seed": args.seed, "density": args.density, "repeat": repeat, "step_s": times,
                 "median_step_s": float(np.median(times)), "model_file": cratons.__file__,
+                "belt_share_of_step_time": timer.seconds / sum(times),
                 "max_rss_mb": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2**20,
             }
             out.write(json.dumps(row) + "\n")
@@ -144,6 +179,9 @@ def summarize(args) -> None:
         if "median_step_s" in rows[0]:
             medians = [r["median_step_s"] for r in rows]
             print(f"  median step {np.median(medians):.3f} s over repeats {', '.join(f'{m:.3f}' for m in medians)}")
+            shares = [r["belt_share_of_step_time"] for r in rows if "belt_share_of_step_time" in r]
+            if shares:
+                print(f"  belt-mark code {', '.join(f'{x:.3%}' for x in shares)} of step time")
             continue
         for row in rows:
             if round(row["myr"]) % 100 == 0:

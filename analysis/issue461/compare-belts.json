@@ -1,0 +1,803 @@
+{
+ "main_commit": "2c6f668",
+ "checkpoints": {
+  "7": {
+   "0": {
+    "main": {
+     "belt_area_km2": 0.0,
+     "craton_area_km2": 103795865.501,
+     "craton_volume_km3": 4098019740.435,
+     "formed_km3": 0.0,
+     "genuine_continental_area_km2": 260216859.491,
+     "craton_balance_error_km3": 0.0,
+     "continental_balance_error_km3": 0.0,
+     "formed_on_belt_cells": 0,
+     "core_count": null
+    },
+    "branch": {
+     "belt_area_km2": 0.0,
+     "craton_area_km2": 103795865.501,
+     "craton_volume_km3": 4098019740.435,
+     "formed_km3": 0.0,
+     "genuine_continental_area_km2": 260216859.491,
+     "craton_balance_error_km3": 0.0,
+     "continental_balance_error_km3": 0.0,
+     "formed_on_belt_cells": 0,
+     "core_count": 23.0
+    }
+   },
+   "100": {
+    "main": {
+     "belt_area_km2": 0.0,
+     "craton_area_km2": 105977032.606,
+     "craton_volume_km3": 4049660576.029,
+     "formed_km3": 0.0,
+     "genuine_continental_area_km2": 214399509.121,
+     "craton_balance_error_km3": 0.0,
+     "continental_balance_error_km3": 270586.088,
+     "formed_on_belt_cells": 0,
+     "core_count": null
+    },
+    "branch": {
+     "belt_area_km2": 56904014.35,
+     "craton_area_km2": 105977032.606,
+     "craton_volume_km3": 4049660576.029,
+     "formed_km3": 0.0,
+     "genuine_continental_area_km2": 214399509.121,
+     "craton_balance_error_km3": 0.0,
+     "continental_balance_error_km3": 270586.088,
+     "formed_on_belt_cells": 0,
+     "core_count": 35.0
+    }
+   },
+   "200": {
+    "main": {
+     "belt_area_km2": 0.0,
+     "craton_area_km2": 121241157.807,
+     "craton_volume_km3": 4146254167.332,
+     "formed_km3": 203133826.6,
+     "genuine_continental_area_km2": 190619308.036,
+     "craton_balance_error_km3": -0.0,
+     "continental_balance_error_km3": -1706845.807,
+     "formed_on_belt_cells": 0,
+     "core_count": null
+    },
+    "branch": {
+     "belt_area_km2": 77739980.364,
+     "craton_area_km2": 120565968.75,
+     "craton_volume_km3": 4122330084.522,
+     "formed_km3": 179209743.79,
+     "genuine_continental_area_km2": 190619308.036,
+     "craton_balance_error_km3": -0.0,
+     "continental_balance_error_km3": -1706845.807,
+     "formed_on_belt_cells": 0,
+     "core_count": 36.0
+    }
+   },
+   "300": {
+    "main": {
+     "belt_area_km2": 0.0,
+     "craton_area_km2": 117477271.363,
+     "craton_volume_km3": 4119198182.431,
+     "formed_km3": 258282898.341,
+     "genuine_continental_area_km2": 176130996.029,
+     "craton_balance_error_km3": 0.0,
+     "continental_balance_error_km3": -719644.544,
+     "formed_on_belt_cells": 0,
+     "core_count": null
+    },
+    "branch": {
+     "belt_area_km2": 78404591.554,
+     "craton_area_km2": 118388690.69,
+     "craton_volume_km3": 4072700738.821,
+     "formed_km3": 227882260.685,
+     "genuine_continental_area_km2": 174414543.579,
+     "craton_balance_error_km3": -0.0,
+     "continental_balance_error_km3": -1132577.892,
+     "formed_on_belt_cells": 0,
+     "core_count": 32.0
+    }
+   },
+   "400": {
+    "main": {
+     "belt_area_km2": 0.0,
+     "craton_area_km2": 117537947.655,
+     "craton_volume_km3": 4074627147.233,
+     "formed_km3": 280483444.262,
+     "genuine_continental_area_km2": 165591708.868,
+     "craton_balance_error_km3": 0.0,
+     "continental_balance_error_km3": -2963205.879,
+     "formed_on_belt_cells": 0,
+     "core_count": null
+    },
+    "branch": {
+     "belt_area_km2": 76293865.37,
+     "craton_area_km2": 115391513.936,
+     "craton_volume_km3": 3977841327.182,
+     "formed_km3": 235803687.75,
+     "genuine_continental_area_km2": 163594717.053,
+     "craton_balance_error_km3": -0.0,
+     "continental_balance_error_km3": -1985749.481,
+     "formed_on_belt_cells": 0,
+     "core_count": 35.0
+    }
+   },
+   "500": {
+    "main": {
+     "belt_area_km2": 0.0,
+     "craton_area_km2": 118229729.689,
+     "craton_volume_km3": 4026840400.862,
+     "formed_km3": 298022175.52,
+     "genuine_continental_area_km2": 158445890.955,
+     "craton_balance_error_km3": 0.0,
+     "continental_balance_error_km3": -2964790.715,
+     "formed_on_belt_cells": 0,
+     "core_count": null
+    },
+    "branch": {
+     "belt_area_km2": 64788820.845,
+     "craton_area_km2": 116980841.975,
+     "craton_volume_km3": 3887938321.211,
+     "formed_km3": 245417646.152,
+     "genuine_continental_area_km2": 150385915.663,
+     "craton_balance_error_km3": -0.0,
+     "continental_balance_error_km3": -4075838.886,
+     "formed_on_belt_cells": 0,
+     "core_count": 48.0
+    }
+   },
+   "600": {
+    "main": {
+     "belt_area_km2": 0.0,
+     "craton_area_km2": 119401693.021,
+     "craton_volume_km3": 3926370676.444,
+     "formed_km3": 304984384.661,
+     "genuine_continental_area_km2": 149952138.907,
+     "craton_balance_error_km3": 0.0,
+     "continental_balance_error_km3": -5280707.01,
+     "formed_on_belt_cells": 0,
+     "core_count": null
+    },
+    "branch": {
+     "belt_area_km2": 59113388.767,
+     "craton_area_km2": 111910749.622,
+     "craton_volume_km3": 3793706008.081,
+     "formed_km3": 248548119.165,
+     "genuine_continental_area_km2": 140860480.802,
+     "craton_balance_error_km3": -0.0,
+     "continental_balance_error_km3": -4728247.652,
+     "formed_on_belt_cells": 0,
+     "core_count": 38.0
+    }
+   },
+   "700": {
+    "main": {
+     "belt_area_km2": 0.0,
+     "craton_area_km2": 106324380.639,
+     "craton_volume_km3": 3839324528.398,
+     "formed_km3": 317028201.987,
+     "genuine_continental_area_km2": 133119739.113,
+     "craton_balance_error_km3": 0.0,
+     "continental_balance_error_km3": -4636452.749,
+     "formed_on_belt_cells": 0,
+     "core_count": null
+    },
+    "branch": {
+     "belt_area_km2": 50940264.071,
+     "craton_area_km2": 109738696.146,
+     "craton_volume_km3": 3731055709.757,
+     "formed_km3": 249755510.88,
+     "genuine_continental_area_km2": 127633449.958,
+     "craton_balance_error_km3": -0.0,
+     "continental_balance_error_km3": -5118850.793,
+     "formed_on_belt_cells": 0,
+     "core_count": 34.0
+    }
+   },
+   "800": {
+    "main": {
+     "belt_area_km2": 0.0,
+     "craton_area_km2": 100332539.819,
+     "craton_volume_km3": 3699211999.819,
+     "formed_km3": 323447010.135,
+     "genuine_continental_area_km2": 119522922.797,
+     "craton_balance_error_km3": 0.0,
+     "continental_balance_error_km3": -3129358.644,
+     "formed_on_belt_cells": 0,
+     "core_count": null
+    },
+    "branch": {
+     "belt_area_km2": 48024410.991,
+     "craton_area_km2": 100595342.665,
+     "craton_volume_km3": 3622389420.701,
+     "formed_km3": 251277382.641,
+     "genuine_continental_area_km2": 118191944.859,
+     "craton_balance_error_km3": -0.0,
+     "continental_balance_error_km3": -3011262.902,
+     "formed_on_belt_cells": 0,
+     "core_count": 41.0
+    }
+   },
+   "900": {
+    "main": {
+     "belt_area_km2": 0.0,
+     "craton_area_km2": 95972794.274,
+     "craton_volume_km3": 3585267720.734,
+     "formed_km3": 327941309.231,
+     "genuine_continental_area_km2": 110168418.756,
+     "craton_balance_error_km3": 0.0,
+     "continental_balance_error_km3": -6003159.77,
+     "formed_on_belt_cells": 0,
+     "core_count": null
+    },
+    "branch": {
+     "belt_area_km2": 42232914.487,
+     "craton_area_km2": 94998268.807,
+     "craton_volume_km3": 3479969678.608,
+     "formed_km3": 251277382.641,
+     "genuine_continental_area_km2": 106978562.974,
+     "craton_balance_error_km3": -0.0,
+     "continental_balance_error_km3": -3492643.307,
+     "formed_on_belt_cells": 0,
+     "core_count": 36.0
+    }
+   },
+   "1000": {
+    "main": {
+     "belt_area_km2": 0.0,
+     "craton_area_km2": 90240749.166,
+     "craton_volume_km3": 3480395782.786,
+     "formed_km3": 331285900.05,
+     "genuine_continental_area_km2": 100882542.375,
+     "craton_balance_error_km3": 0.0,
+     "continental_balance_error_km3": -5627544.978,
+     "formed_on_belt_cells": 0,
+     "core_count": null
+    },
+    "branch": {
+     "belt_area_km2": 38205821.038,
+     "craton_area_km2": 91130856.416,
+     "craton_volume_km3": 3346109890.045,
+     "formed_km3": 251277382.641,
+     "genuine_continental_area_km2": 98959066.227,
+     "craton_balance_error_km3": -0.0,
+     "continental_balance_error_km3": -3947267.264,
+     "formed_on_belt_cells": 0,
+     "core_count": 33.0
+    }
+   }
+  },
+  "11": {
+   "0": {
+    "main": {
+     "belt_area_km2": 0.0,
+     "craton_area_km2": 81879873.638,
+     "craton_volume_km3": 3169623314.825,
+     "formed_km3": 0.0,
+     "genuine_continental_area_km2": 161566875.967,
+     "craton_balance_error_km3": 0.0,
+     "continental_balance_error_km3": 0.0,
+     "formed_on_belt_cells": 0,
+     "core_count": null
+    },
+    "branch": {
+     "belt_area_km2": 0.0,
+     "craton_area_km2": 81879873.638,
+     "craton_volume_km3": 3169623314.825,
+     "formed_km3": 0.0,
+     "genuine_continental_area_km2": 161566875.967,
+     "craton_balance_error_km3": 0.0,
+     "continental_balance_error_km3": 0.0,
+     "formed_on_belt_cells": 0,
+     "core_count": 10.0
+    }
+   },
+   "100": {
+    "main": {
+     "belt_area_km2": 0.0,
+     "craton_area_km2": 79144216.53,
+     "craton_volume_km3": 3095163816.971,
+     "formed_km3": 0.0,
+     "genuine_continental_area_km2": 134699440.058,
+     "craton_balance_error_km3": -0.0,
+     "continental_balance_error_km3": 1252367.603,
+     "formed_on_belt_cells": 0,
+     "core_count": null
+    },
+    "branch": {
+     "belt_area_km2": 25352246.339,
+     "craton_area_km2": 79144216.53,
+     "craton_volume_km3": 3095163816.971,
+     "formed_km3": 0.0,
+     "genuine_continental_area_km2": 134699440.058,
+     "craton_balance_error_km3": -0.0,
+     "continental_balance_error_km3": 1252367.603,
+     "formed_on_belt_cells": 0,
+     "core_count": 18.0
+    }
+   },
+   "200": {
+    "main": {
+     "belt_area_km2": 0.0,
+     "craton_area_km2": 85172483.178,
+     "craton_volume_km3": 3336721829.593,
+     "formed_km3": 348092872.059,
+     "genuine_continental_area_km2": 121998432.857,
+     "craton_balance_error_km3": -0.0,
+     "continental_balance_error_km3": 938772.986,
+     "formed_on_belt_cells": 0,
+     "core_count": null
+    },
+    "branch": {
+     "belt_area_km2": 37657427.711,
+     "craton_area_km2": 84175513.194,
+     "craton_volume_km3": 3302089074.365,
+     "formed_km3": 313460116.831,
+     "genuine_continental_area_km2": 121998432.857,
+     "craton_balance_error_km3": -0.0,
+     "continental_balance_error_km3": 938772.986,
+     "formed_on_belt_cells": 0,
+     "core_count": 24.0
+    }
+   },
+   "300": {
+    "main": {
+     "belt_area_km2": 0.0,
+     "craton_area_km2": 87789963.735,
+     "craton_volume_km3": 3337236002.546,
+     "formed_km3": 429829778.064,
+     "genuine_continental_area_km2": 119634049.228,
+     "craton_balance_error_km3": -0.0,
+     "continental_balance_error_km3": -410337.056,
+     "formed_on_belt_cells": 0,
+     "core_count": null
+    },
+    "branch": {
+     "belt_area_km2": 46346911.572,
+     "craton_area_km2": 86669864.27,
+     "craton_volume_km3": 3282378913.743,
+     "formed_km3": 374924399.79,
+     "genuine_continental_area_km2": 120329395.705,
+     "craton_balance_error_km3": -0.0,
+     "continental_balance_error_km3": -2824731.797,
+     "formed_on_belt_cells": 0,
+     "core_count": 21.0
+    }
+   },
+   "400": {
+    "main": {
+     "belt_area_km2": 0.0,
+     "craton_area_km2": 87369829.093,
+     "craton_volume_km3": 3266182257.51,
+     "formed_km3": 435540310.281,
+     "genuine_continental_area_km2": 117129767.944,
+     "craton_balance_error_km3": -0.0,
+     "continental_balance_error_km3": -1933649.506,
+     "formed_on_belt_cells": 0,
+     "core_count": null
+    },
+    "branch": {
+     "belt_area_km2": 43514818.85,
+     "craton_area_km2": 86151916.918,
+     "craton_volume_km3": 3235137795.286,
+     "formed_km3": 383671116.46,
+     "genuine_continental_area_km2": 116218817.661,
+     "craton_balance_error_km3": -0.0,
+     "continental_balance_error_km3": -1871430.124,
+     "formed_on_belt_cells": 0,
+     "core_count": 24.0
+    }
+   },
+   "500": {
+    "main": {
+     "belt_area_km2": 0.0,
+     "craton_area_km2": 83882791.141,
+     "craton_volume_km3": 3194316018.41,
+     "formed_km3": 443415636.185,
+     "genuine_continental_area_km2": 107194616.927,
+     "craton_balance_error_km3": 0.0,
+     "continental_balance_error_km3": -1981298.01,
+     "formed_on_belt_cells": 0,
+     "core_count": null
+    },
+    "branch": {
+     "belt_area_km2": 35690583.052,
+     "craton_area_km2": 87431775.905,
+     "craton_volume_km3": 3192459440.37,
+     "formed_km3": 392785441.903,
+     "genuine_continental_area_km2": 111748310.998,
+     "craton_balance_error_km3": -0.0,
+     "continental_balance_error_km3": -2493615.255,
+     "formed_on_belt_cells": 0,
+     "core_count": 23.0
+    }
+   },
+   "600": {
+    "main": {
+     "belt_area_km2": 0.0,
+     "craton_area_km2": 84235154.331,
+     "craton_volume_km3": 3136712365.578,
+     "formed_km3": 445112350.539,
+     "genuine_continental_area_km2": 102505872.08,
+     "craton_balance_error_km3": -0.0,
+     "continental_balance_error_km3": -1935415.526,
+     "formed_on_belt_cells": 0,
+     "core_count": null
+    },
+    "branch": {
+     "belt_area_km2": 33783358.161,
+     "craton_area_km2": 83038455.255,
+     "craton_volume_km3": 3122091347.944,
+     "formed_km3": 393435591.162,
+     "genuine_continental_area_km2": 103200695.988,
+     "craton_balance_error_km3": -0.0,
+     "continental_balance_error_km3": -3946735.085,
+     "formed_on_belt_cells": 0,
+     "core_count": 31.0
+    }
+   },
+   "700": {
+    "main": {
+     "belt_area_km2": 0.0,
+     "craton_area_km2": 81906861.158,
+     "craton_volume_km3": 3093885476.736,
+     "formed_km3": 469209245.902,
+     "genuine_continental_area_km2": 95752319.47,
+     "craton_balance_error_km3": -0.0,
+     "continental_balance_error_km3": -2146563.65,
+     "formed_on_belt_cells": 0,
+     "core_count": null
+    },
+    "branch": {
+     "belt_area_km2": 31773110.583,
+     "craton_area_km2": 83087861.657,
+     "craton_volume_km3": 3061382076.927,
+     "formed_km3": 404728410.525,
+     "genuine_continental_area_km2": 98338711.871,
+     "craton_balance_error_km3": -0.0,
+     "continental_balance_error_km3": -7163006.274,
+     "formed_on_belt_cells": 0,
+     "core_count": 33.0
+    }
+   },
+   "800": {
+    "main": {
+     "belt_area_km2": 0.0,
+     "craton_area_km2": 74650692.942,
+     "craton_volume_km3": 3027795974.89,
+     "formed_km3": 478638042.725,
+     "genuine_continental_area_km2": 85792310.592,
+     "craton_balance_error_km3": 0.0,
+     "continental_balance_error_km3": -7994310.188,
+     "formed_on_belt_cells": 0,
+     "core_count": null
+    },
+    "branch": {
+     "belt_area_km2": 35188674.871,
+     "craton_area_km2": 78421215.626,
+     "craton_volume_km3": 2966653963.786,
+     "formed_km3": 408708842.195,
+     "genuine_continental_area_km2": 93112747.93,
+     "craton_balance_error_km3": -0.0,
+     "continental_balance_error_km3": -10750896.339,
+     "formed_on_belt_cells": 0,
+     "core_count": 35.0
+    }
+   },
+   "900": {
+    "main": {
+     "belt_area_km2": 0.0,
+     "craton_area_km2": 72083116.82,
+     "craton_volume_km3": 2942694952.06,
+     "formed_km3": 481414738.104,
+     "genuine_continental_area_km2": 80234046.363,
+     "craton_balance_error_km3": -0.0,
+     "continental_balance_error_km3": -9080493.586,
+     "formed_on_belt_cells": 0,
+     "core_count": null
+    },
+    "branch": {
+     "belt_area_km2": 33864126.535,
+     "craton_area_km2": 78029119.732,
+     "craton_volume_km3": 2916107522.718,
+     "formed_km3": 409937354.465,
+     "genuine_continental_area_km2": 92590862.237,
+     "craton_balance_error_km3": -0.0,
+     "continental_balance_error_km3": -10530267.475,
+     "formed_on_belt_cells": 0,
+     "core_count": 36.0
+    }
+   },
+   "1000": {
+    "main": {
+     "belt_area_km2": 0.0,
+     "craton_area_km2": 71653985.866,
+     "craton_volume_km3": 2870581078.289,
+     "formed_km3": 482041904.371,
+     "genuine_continental_area_km2": 79498521.053,
+     "craton_balance_error_km3": -0.0,
+     "continental_balance_error_km3": -9564629.363,
+     "formed_on_belt_cells": 0,
+     "core_count": null
+    },
+    "branch": {
+     "belt_area_km2": 33487476.422,
+     "craton_area_km2": 77444718.082,
+     "craton_volume_km3": 2836674662.886,
+     "formed_km3": 411935886.574,
+     "genuine_continental_area_km2": 91204178.28,
+     "craton_balance_error_km3": -0.0,
+     "continental_balance_error_km3": -13497725.509,
+     "formed_on_belt_cells": 0,
+     "core_count": 39.0
+    }
+   }
+  },
+  "2024": {
+   "0": {
+    "main": {
+     "belt_area_km2": 0.0,
+     "craton_area_km2": 46328152.193,
+     "craton_volume_km3": 1723807860.48,
+     "formed_km3": 0.0,
+     "genuine_continental_area_km2": 123361433.57,
+     "craton_balance_error_km3": -0.0,
+     "continental_balance_error_km3": 0.0,
+     "formed_on_belt_cells": 0,
+     "core_count": null
+    },
+    "branch": {
+     "belt_area_km2": 0.0,
+     "craton_area_km2": 46328152.193,
+     "craton_volume_km3": 1723807860.48,
+     "formed_km3": 0.0,
+     "genuine_continental_area_km2": 123361433.57,
+     "craton_balance_error_km3": -0.0,
+     "continental_balance_error_km3": 0.0,
+     "formed_on_belt_cells": 0,
+     "core_count": 12.0
+    }
+   },
+   "100": {
+    "main": {
+     "belt_area_km2": 0.0,
+     "craton_area_km2": 46863531.714,
+     "craton_volume_km3": 1710520005.56,
+     "formed_km3": 0.0,
+     "genuine_continental_area_km2": 120441261.342,
+     "craton_balance_error_km3": -0.0,
+     "continental_balance_error_km3": 1451650.976,
+     "formed_on_belt_cells": 0,
+     "core_count": null
+    },
+    "branch": {
+     "belt_area_km2": 36612122.225,
+     "craton_area_km2": 46863531.714,
+     "craton_volume_km3": 1710520005.56,
+     "formed_km3": 0.0,
+     "genuine_continental_area_km2": 120441261.342,
+     "craton_balance_error_km3": -0.0,
+     "continental_balance_error_km3": 1451650.976,
+     "formed_on_belt_cells": 0,
+     "core_count": 15.0
+    }
+   },
+   "200": {
+    "main": {
+     "belt_area_km2": 0.0,
+     "craton_area_km2": 56174636.003,
+     "craton_volume_km3": 2000336210.206,
+     "formed_km3": 326515901.21,
+     "genuine_continental_area_km2": 121364476.776,
+     "craton_balance_error_km3": 0.0,
+     "continental_balance_error_km3": -511354.352,
+     "formed_on_belt_cells": 0,
+     "core_count": null
+    },
+    "branch": {
+     "belt_area_km2": 48366676.297,
+     "craton_area_km2": 55974233.605,
+     "craton_volume_km3": 1993410806.724,
+     "formed_km3": 319590497.729,
+     "genuine_continental_area_km2": 121364476.776,
+     "craton_balance_error_km3": 0.0,
+     "continental_balance_error_km3": -511354.352,
+     "formed_on_belt_cells": 0,
+     "core_count": 21.0
+    }
+   },
+   "300": {
+    "main": {
+     "belt_area_km2": 0.0,
+     "craton_area_km2": 59236549.845,
+     "craton_volume_km3": 2062651380.853,
+     "formed_km3": 430154889.644,
+     "genuine_continental_area_km2": 119648728.086,
+     "craton_balance_error_km3": 0.0,
+     "continental_balance_error_km3": -508963.626,
+     "formed_on_belt_cells": 0,
+     "core_count": null
+    },
+    "branch": {
+     "belt_area_km2": 50105803.403,
+     "craton_area_km2": 59800219.506,
+     "craton_volume_km3": 2036239797.245,
+     "formed_km3": 401771026.309,
+     "genuine_continental_area_km2": 119173390.99,
+     "craton_balance_error_km3": 0.0,
+     "continental_balance_error_km3": 2053248.244,
+     "formed_on_belt_cells": 0,
+     "core_count": 22.0
+    }
+   },
+   "400": {
+    "main": {
+     "belt_area_km2": 0.0,
+     "craton_area_km2": 61765339.237,
+     "craton_volume_km3": 2095254687.748,
+     "formed_km3": 522107939.549,
+     "genuine_continental_area_km2": 118248589.992,
+     "craton_balance_error_km3": 0.0,
+     "continental_balance_error_km3": 203050.898,
+     "formed_on_belt_cells": 0,
+     "core_count": null
+    },
+    "branch": {
+     "belt_area_km2": 56381744.641,
+     "craton_area_km2": 61360760.411,
+     "craton_volume_km3": 2039051007.809,
+     "formed_km3": 456443380.614,
+     "genuine_continental_area_km2": 115878322.142,
+     "craton_balance_error_km3": 0.0,
+     "continental_balance_error_km3": 4404301.747,
+     "formed_on_belt_cells": 0,
+     "core_count": 41.0
+    }
+   },
+   "500": {
+    "main": {
+     "belt_area_km2": 0.0,
+     "craton_area_km2": 64202378.53,
+     "craton_volume_km3": 2095605998.617,
+     "formed_km3": 568561703.794,
+     "genuine_continental_area_km2": 116267421.333,
+     "craton_balance_error_km3": 0.0,
+     "continental_balance_error_km3": -1302386.131,
+     "formed_on_belt_cells": 0,
+     "core_count": null
+    },
+    "branch": {
+     "belt_area_km2": 56961807.745,
+     "craton_area_km2": 63771778.532,
+     "craton_volume_km3": 2033900882.6,
+     "formed_km3": 496996045.894,
+     "genuine_continental_area_km2": 117126429.043,
+     "craton_balance_error_km3": -0.0,
+     "continental_balance_error_km3": 3026513.813,
+     "formed_on_belt_cells": 0,
+     "core_count": 39.0
+    }
+   },
+   "600": {
+    "main": {
+     "belt_area_km2": 0.0,
+     "craton_area_km2": 66437253.515,
+     "craton_volume_km3": 2129388042.134,
+     "formed_km3": 646078658.845,
+     "genuine_continental_area_km2": 113652747.764,
+     "craton_balance_error_km3": 0.0,
+     "continental_balance_error_km3": -2383874.104,
+     "formed_on_belt_cells": 0,
+     "core_count": null
+    },
+    "branch": {
+     "belt_area_km2": 57654127.157,
+     "craton_area_km2": 64748656.281,
+     "craton_volume_km3": 2052365654.48,
+     "formed_km3": 544772959.364,
+     "genuine_continental_area_km2": 114383820.091,
+     "craton_balance_error_km3": 0.0,
+     "continental_balance_error_km3": 2158335.573,
+     "formed_on_belt_cells": 0,
+     "core_count": 42.0
+    }
+   },
+   "700": {
+    "main": {
+     "belt_area_km2": 0.0,
+     "craton_area_km2": 67843360.971,
+     "craton_volume_km3": 2193515118.361,
+     "formed_km3": 749524079.429,
+     "genuine_continental_area_km2": 107323892.212,
+     "craton_balance_error_km3": 0.0,
+     "continental_balance_error_km3": -3155653.757,
+     "formed_on_belt_cells": 0,
+     "core_count": null
+    },
+    "branch": {
+     "belt_area_km2": 56870175.892,
+     "craton_area_km2": 68607937.728,
+     "craton_volume_km3": 2064885044.647,
+     "formed_km3": 592820892.406,
+     "genuine_continental_area_km2": 111406323.371,
+     "craton_balance_error_km3": 0.0,
+     "continental_balance_error_km3": -808097.608,
+     "formed_on_belt_cells": 0,
+     "core_count": 37.0
+    }
+   },
+   "800": {
+    "main": {
+     "belt_area_km2": 0.0,
+     "craton_area_km2": 68534598.525,
+     "craton_volume_km3": 2231408263.419,
+     "formed_km3": 832821345.303,
+     "genuine_continental_area_km2": 104588570.531,
+     "craton_balance_error_km3": 0.0,
+     "continental_balance_error_km3": -3688562.263,
+     "formed_on_belt_cells": 0,
+     "core_count": null
+    },
+    "branch": {
+     "belt_area_km2": 52751444.172,
+     "craton_area_km2": 69586653.149,
+     "craton_volume_km3": 2087624072.67,
+     "formed_km3": 635014291.449,
+     "genuine_continental_area_km2": 111625166.253,
+     "craton_balance_error_km3": 0.0,
+     "continental_balance_error_km3": -1787649.247,
+     "formed_on_belt_cells": 0,
+     "core_count": 37.0
+    }
+   },
+   "900": {
+    "main": {
+     "belt_area_km2": 0.0,
+     "craton_area_km2": 67554431.472,
+     "craton_volume_km3": 2236327276.375,
+     "formed_km3": 883459413.989,
+     "genuine_continental_area_km2": 99763564.426,
+     "craton_balance_error_km3": 0.0,
+     "continental_balance_error_km3": -3954767.565,
+     "formed_on_belt_cells": 0,
+     "core_count": null
+    },
+    "branch": {
+     "belt_area_km2": 49713195.944,
+     "craton_area_km2": 69040854.267,
+     "craton_volume_km3": 2061485294.098,
+     "formed_km3": 647309094.338,
+     "genuine_continental_area_km2": 107327898.072,
+     "craton_balance_error_km3": 0.0,
+     "continental_balance_error_km3": -1253212.381,
+     "formed_on_belt_cells": 0,
+     "core_count": 43.0
+    }
+   },
+   "1000": {
+    "main": {
+     "belt_area_km2": 0.0,
+     "craton_area_km2": 69489772.158,
+     "craton_volume_km3": 2226494379.774,
+     "formed_km3": 905333592.843,
+     "genuine_continental_area_km2": 94028971.361,
+     "craton_balance_error_km3": 0.0,
+     "continental_balance_error_km3": -1673739.451,
+     "formed_on_belt_cells": 0,
+     "core_count": null
+    },
+    "branch": {
+     "belt_area_km2": 49712805.516,
+     "craton_area_km2": 70341044.032,
+     "craton_volume_km3": 2036475905.345,
+     "formed_km3": 653752011.145,
+     "genuine_continental_area_km2": 104249553.276,
+     "craton_balance_error_km3": 0.0,
+     "continental_balance_error_km3": -1758714.495,
+     "formed_on_belt_cells": 0,
+     "core_count": 42.0
+    }
+   }
+  }
+ }
+}
