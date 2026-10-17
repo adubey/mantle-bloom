@@ -231,7 +231,9 @@ core and belt masks, and a plate label.
    separation `CONTINENT_SPACING_KM`, `n_c` from `CONTINENT_COUNT_RANGE`. Split the target
    continental area, `continental_fraction` × 4πR², between them in random proportions
    (Dirichlet, `CONTINENT_SIZE_CONCENTRATION`).
-2. **Cores.** Within each continent's share, place core nuclei at least
+2. **Cores.** *Revised in #470:* nuclei now cluster into composite cratons and continents grow
+   unevenly from them, so some cratons sit at a coast; see the knobs below and
+   [analysis/issue470](../analysis/issue470/README.md). Within each continent's share, place core nuclei at least
    `CRATON_CORE_SPACING_KM` apart until the perturbed, overlap-resolved core area reaches
    `CRATON_SHARE_OF_CONTINENT` of the continent's area. A core is the set of lattice points within `CRATON_CORE_RADIUS_KM` of a nucleus. Perturb
    the distance with `terrain_noise` to make its outline irregular; assign points claimed by
@@ -402,7 +404,10 @@ only as new collisions and rifts mark them. No new pickled state on `World`.
 | `CRATON_SHARE_OF_CONTINENT` | 0.4 | Today's 37.6–50.7% at t = 0 (#403) | Fixed to today's mean, so craton calibrations carry over |
 | `CRATON_CORE_SPACING_KM` | 1,500 km | Design choice: minimum separation; not a direct count of geological cratons | G3; sweep 1,000–2,500 km |
 | `CRATON_CORE_RADIUS_KM` | 1,000 km | Design choice: about 3.1 M km² per full disk; roughly 33 disks at the 102 M km² starting target, before clipping and overlap | G3; sweep with spacing |
-| `CRATON_BELT_WIDTH_KM` | 300 km | Orogens welded onto shields are a few hundred km wide [[Cawood et al., 2009]](#ref-cawood2009) | G3; sweep 200–600 km |
+| `CRATON_BELT_WIDTH_KM` | 300 km; 400 km with composite cratons (#470) | Orogens welded onto shields are a few hundred km wide [[Cawood et al., 2009]](#ref-cawood2009) | G3; sweep 200–600 km. At 300–350 km with composite cratons, belts fell to 9–10% of continental area |
+| `CRATON_CLUSTER_CONCENTRATION` (#470) | 8 | Design choice: a new nucleus starts a new craton with probability α / (α + n), else joins one below `CRATON_MAX_AREA_KM2` (Chinese restaurant process) | Craton count and size spread over 40 seeds: 20–55 cratons, a median 2 per world of 10 M km² or more |
+| `CRATON_SIZE_SCALE_RANGE`, `CRATON_MAX_AREA_KM2` (#470) | 0.5–1, 18 M km² | Design choice: per-craton reach, and a cap on growth by joining | Smallest cratons (5th percentile 0.51 M km², 30% under 1 M km²) and the largest (23 M km²) over 40 seeds |
+| `CONTINENT_CENTRE_PULL`, `CONTINENT_GROWTH_SPEED_SIGMA` (#470) | 1, 1 | Design choice: uneven continental growth, so some cratons sit at a coast | Share of cratons within 300 km of the continental edge: 11–49% over 40 seeds (0% before) |
 | `PLATE_COST_MARGIN` | 3 | Design choice: boundary-link penalty | Land edge within 300 km of a boundary: 15–50% (Earth coastline 28%); crust edge reported separately |
 | `PLATE_COST_OCEAN`, `PLATE_COST_BELT` | 1, 1 | Design choice: boundary-link penalty for ocean and belts | Fixed |
 | `PLATE_COST_LAND_LINK` (#462) | 10 | Design choice: penalty on a boundary link with land at both ends | Land on both sides ≤ 25% together with the land-edge and mixed-plate targets, 40 seeds: 33 of 40 at 10, 30 at 5 |
