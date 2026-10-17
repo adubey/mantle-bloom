@@ -460,6 +460,8 @@ def _transfer(
     elevation = out["elevation"]
     elevation[changed] = rheology.clip_elevation_bounds(lithosphere.isostatic_elevation(hc, hm, density) + residual)[changed]
     out["elevation"] = elevation
+    # After the overflow placement, which can carry craton onto cells the vote marked.
+    cratons.keep_belts_off_cratons(out)
     keep.set_fields_on_plate(**out)
 
     # The mass the caps removed (negative where a floor added some), as an inertia tensor at

@@ -849,6 +849,10 @@ class PlateWithSparseQuadPatch(Plate):
             valid = values != spec.sentinel
             return spec.sentinel if not np.any(valid) else float(np.min(values[valid]))
         if spec.remap_class == RemapClass.MAJORITY_HISTORY:
+            # The coarse cell keeps any craton its children had, and a craton cell is not a
+            # belt (cratons.keep_belts_off_cratons).
+            if np.any(all_fields.get("craton_crust_m", np.zeros(len(values))) > 0.0):
+                return spec.sentinel
             return float(majority_history(np.zeros(len(values), dtype=np.int64), values, areas, 1, spec.sentinel)[0])
         return float(np.average(values, weights=areas))
 

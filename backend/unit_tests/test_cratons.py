@@ -226,6 +226,45 @@ def test_a_coarsened_cell_is_a_belt_only_if_most_of_its_area_was(marked_children
     assert plate.collect("belt_formed_years")[int(np.flatnonzero(plate.cell_keys == parent)[0])] == expected
 
 
+def test_a_coarsened_cell_holding_craton_is_never_a_belt():
+    plate = _plate(1, _block((10, 12), (10, 11)))
+    parent = plate.cell_keys[0]
+    children = plate.refine_cells(np.array([parent]))[int(parent)]
+    child = np.flatnonzero(np.isin(plate.cell_keys, children))
+    belt = plate.collect("belt_formed_years")
+    belt[child[:3]] = 2.0e8
+    craton = np.zeros(plate.node_count())
+    craton[child[3]] = 10_000.0
+    plate.set_fields_on_plate(belt_formed_years=belt, craton_crust_m=craton)
+
+    plate.coarsen_cells(np.array([parent]))
+
+    at = int(np.flatnonzero(plate.cell_keys == parent)[0])
+    assert plate.collect("craton_crust_m")[at] > 0.0
+    assert plate.collect("belt_formed_years")[at] == BELT_UNMARKED_YEARS
+
+
+def test_a_belt_retyped_oceanic_leaves_the_belt_area_and_loses_its_mark(monkeypatch):
+    """#474 review: belts are continental crust. A marked cell retyped oceanic drops out of
+    `craton_belt_area_m2` at once, and `update` clears its mark, so turning continental again
+    doesn't bring the old mark back."""
+    plate = _plate(1, _block((10, 14), (10, 11)))
+    world = _unseeded(monkeypatch, plate)
+    cratons.mark_belt(world, plate, np.ones(4, dtype=bool))
+    areas = plate.node_areas_m2()
+    codes = plate.collect("crust_type_code")
+    codes[0] = CRUST_TYPE_OCEANIC
+    plate.set_fields_on_plate(crust_type_code=codes)
+
+    assert cratons.diagnostics(world)["craton_belt_area_m2"] == pytest.approx(float(areas[1:].sum()))
+    cratons.update(world, 1e6)
+    codes[0] = CRUST_TYPE_CONTINENTAL
+    plate.set_fields_on_plate(crust_type_code=codes)
+
+    np.testing.assert_array_equal(cratons.belt_mask(plate, world.elapsed_years), [False, True, True, True])
+    assert cratons.diagnostics(world)["craton_belt_area_m2"] == pytest.approx(float(areas[1:].sum()))
+
+
 def test_diagnostics_report_belt_area_and_connected_cores():
     plate = _plate(1, _block((10, 16), (10, 11)))
     world = _world(plate)

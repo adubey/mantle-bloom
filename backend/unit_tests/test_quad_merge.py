@@ -763,3 +763,26 @@ def test_a_suture_cell_stays_a_belt_only_if_most_of_its_area_was(own, absorbed, 
     belt = keep.collect("belt_formed_years")
     assert np.all(belt[stacked] == (BELT_UNMARKED_YEARS if expected is None else expected))
     assert np.all(belt[~stacked] == (BELT_UNMARKED_YEARS if own is None else own))
+
+
+def test_a_cratonic_receiver_is_never_left_a_belt_by_the_merge_vote():
+    """A stacked cell that keeps craton is not a belt, even when every contributor carried a
+    mark: belts and cores stay disjoint (#474 review)."""
+    from app.surface_fields import BELT_UNMARKED_YEARS
+
+    keep, absorb, stacked = _overlapping_pair()
+    cratonic = stacked & (np.arange(keep.node_count()) % 2 == 0)
+    keep.set_fields_on_plate(
+        craton_crust_m=np.where(cratonic, 10_000.0, 0.0),
+        craton_formed_years=np.where(cratonic, -2.0e9, CRATON_UNFORMED_YEARS),
+        belt_formed_years=np.full(keep.node_count(), 1.0e8),
+    )
+    absorb.set_fields_on_plate(belt_formed_years=np.full(absorb.node_count(), 3.0e8))
+
+    quad_merge.merge(keep, absorb, np.zeros((0, 3)))
+
+    belt = keep.collect("belt_formed_years")
+    craton = keep.collect("craton_crust_m") > 0.0
+    assert np.any(craton & stacked) and np.any(~craton & stacked)
+    assert np.all(belt[craton] == BELT_UNMARKED_YEARS)
+    assert np.all(belt[stacked & ~craton] == 3.0e8)

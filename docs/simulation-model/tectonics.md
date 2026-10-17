@@ -1002,7 +1002,9 @@ ground down to small remnants over a few hundred Myr.
 - `belt_formed_years` -- when the column last became a belt (below), or
   `surface_fields.BELT_UNMARKED_YEARS` if it never has. It is `MAJORITY_HISTORY`-remapped
   (`surface_fields.majority_history`): a merged, coarsened or converted cell is a belt only
-  if more than half its area was, and keeps the latest date among those.
+  if more than half its area was, and keeps the latest date among those. A cell that holds
+  craton after the remap is never a belt (`cratons.keep_belts_off_cratons`), so belts and
+  cores stay disjoint.
 
 **Formation.** A column counts as quiet when it is genuine continental crust (Hc within
 `CRATON_HOST_MIN_HC_M`..`CRATON_HOST_MAX_HC_M`, so neither a drowned shelf nor an active orogen)
@@ -1033,7 +1035,9 @@ continental cells in `mask` that hold no craton at `world.elapsed_years`:
 - the band along a successful split's cut on both daughters, `FAILED_RIFT_BAND_MULT`
   spacings wide (`merge_split.maybe_split_plate`).
 
-Readers go through `cratons.belt_mask`, so belts could heal after `CRATON_BELT_HEAL_MYR`; it
+Belts are continental crust: `cratons.update` clears the mark of any cell retyped oceanic
+(`clear_oceanic_belts`), and the belt area counts continental cells only. Readers go through
+`cratons.belt_mask`, so belts could heal after `CRATON_BELT_HEAL_MYR`; it
 is infinite, and belts never heal. A [cratons-first](foundations.md#cratons-first-layout)
 world starts with its generated belts marked (`cratons.seed_belts`), dated
 `CRATON_BELT_SEED_AGE_YEARS` (1.8 Gyr) before the start: Proterozoic welds, younger than the

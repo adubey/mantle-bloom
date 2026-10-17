@@ -180,10 +180,12 @@ def _hops(km: float, spacing_rad: float) -> int:
     return max(1, round(km / (spacing_rad * PLANET_RADIUS_KM)))
 
 
+def _continental(plate: "Plate") -> np.ndarray:
+    return effective_is_continental_from_codes(plate.collect("crust_type_code"), plate.crust_type == "continental")
+
+
 def _genuine_continental(plate: "Plate") -> np.ndarray:
-    hc = plate.collect("crustal_thickness_m")
-    continental = effective_is_continental_from_codes(plate.collect("crust_type_code"), plate.crust_type == "continental")
-    return continental & (hc >= CRATON_HOST_MIN_HC_M)
+    return _continental(plate) & (plate.collect("crustal_thickness_m") >= CRATON_HOST_MIN_HC_M)
 
 
 def _interior_hops(plate: "Plate", host: np.ndarray, max_hops: int) -> np.ndarray | None:
@@ -417,13 +419,20 @@ def mark_belt(world: "World", plate: "Plate", mask: np.ndarray) -> None:
     mask = np.asarray(mask, dtype=bool)
     if plate.node_count() == 0 or not np.any(mask):
         return
-    continental = effective_is_continental_from_codes(plate.collect("crust_type_code"), plate.crust_type == "continental")
-    mask = mask & continental & (plate.collect("craton_crust_m") <= 0.0)
+    mask = mask & _continental(plate) & (plate.collect("craton_crust_m") <= 0.0)
     if not np.any(mask):
         return
     formed = plate.collect("belt_formed_years")
     formed[mask] = world.elapsed_years
     plate.set_fields_on_plate(belt_formed_years=formed)
+
+
+def keep_belts_off_cratons(fields: dict[str, np.ndarray]) -> None:
+    """In place on a remap's output `fields`: a cell holding craton is not a belt, whatever
+    the majority vote gave it. Belts and cores stay disjoint, as `mark_belt` keeps them, so a
+    mark can't linger under a craton and block re-formation once that craton is lost."""
+    if "belt_formed_years" in fields and "craton_crust_m" in fields:
+        fields["belt_formed_years"][fields["craton_crust_m"] > 0.0] = BELT_UNMARKED_YEARS
 
 
 def belt_mask(plate: "Plate", elapsed_years: float) -> np.ndarray:
@@ -433,15 +442,30 @@ def belt_mask(plate: "Plate", elapsed_years: float) -> np.ndarray:
     return (formed != BELT_UNMARKED_YEARS) & (elapsed_years - formed < CRATON_BELT_HEAL_MYR * 1e6)
 
 
+def clear_oceanic_belts(plate: "Plate") -> None:
+    """Unmark every belt cell whose crust is no longer continental. Writers retype crust in
+    many places; the end-of-step `update` clears the marks they leave on oceanic cells, so a
+    cell that becomes continental again is a belt only if a writer marks it anew."""
+    if plate.node_count() == 0:
+        return
+    formed = plate.collect("belt_formed_years")
+    stale = (formed != BELT_UNMARKED_YEARS) & ~_continental(plate)
+    if np.any(stale):
+        formed[stale] = BELT_UNMARKED_YEARS
+        plate.set_fields_on_plate(belt_formed_years=formed)
+
+
 def update(world: "World", years: float) -> None:
     """End-of-step craton pass: advance every quiet column's formation clock, cratonise the
     ones that reach CRATON_FORMATION_MYR, and drop the provenance stamp of any cell whose
-    craton is gone. A belt column is never quiet (RFC 0009)."""
+    craton is gone. A belt column is never quiet (RFC 0009), and a cell retyped oceanic stops
+    being a belt: belts are continental crust (`clear_oceanic_belts`)."""
     ensure_initialized(world)
     years_myr = years / 1e6
     spacing_rad = line_spacing_rad(world.node_density)
     hops = _hops(CRATON_FORMATION_MARGIN_KM, spacing_rad)
     for plate in world.plates:
+        clear_oceanic_belts(plate)
         host = _genuine_continental(plate)
         interior = _interior_hops(plate, host, hops)
         if interior is None:
@@ -555,7 +579,8 @@ def diagnostics(world: "World") -> dict[str, float]:
         area += float(areas[craton > 0.0].sum())
         continental_area += float(areas[_genuine_continental(plate)].sum())
         volume += float(np.dot(craton, areas))
-        belt_area += float(areas[belt_mask(plate, world.elapsed_years)].sum())
+        # Only belts on continental crust: a marked cell retyped oceanic mid-step is no belt.
+        belt_area += float(areas[belt_mask(plate, world.elapsed_years) & _continental(plate)].sum())
         cores += core_count(plate)
     keys = CRATON_ACCOUNTS + CRATON_RIFT_PATH_ACCOUNTS + CRATON_RIFT_CUT_COUNTERS
     result = {f"craton_{key}": float(world.craton_ledger.get(key, 0.0)) for key in keys}

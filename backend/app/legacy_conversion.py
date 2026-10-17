@@ -76,7 +76,7 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
-from . import geometry, lithosphere, rheology
+from . import cratons, geometry, lithosphere, rheology
 from .elevation_lines import (
     CRUST_TYPE_CONTINENTAL,
     CRUST_TYPE_INHERIT,
@@ -838,6 +838,7 @@ def _cell_fields(
             spec = SURFACE_FIELDS[name]
             point_feature = spec.remap_class in (RemapClass.BOOLEAN_PROVENANCE, RemapClass.COUNTDOWN)
             out[name][empty] = spec.default if point_feature else values[nearest]
+    cratons.keep_belts_off_cratons(out)
 
     # Conserve every extensive field per plate, as quad_merge does: one ratio restores the
     # volume of the nodes the cells took in (the mean transfer alone gains or loses where an
@@ -961,6 +962,7 @@ def _stack_foreign(
         # only on continental hosts (#340, as in quad_merge).
         keeps_craton = receiving & (fields["craton_crust_m"] > 0.0)
         fields["crust_type_code"][keeps_craton] = CRUST_TYPE_INHERIT if own_code == CRUST_TYPE_CONTINENTAL else CRUST_TYPE_CONTINENTAL
+        cratons.keep_belts_off_cratons(fields)
 
         # Elevation: isostasy from the stacked column, plus both sides' non-isostatic residual
         # blended by area, as quad_merge does at a suture.
