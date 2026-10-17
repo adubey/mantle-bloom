@@ -47,6 +47,7 @@ from . import (
     lithosphere,
     magma_transport,
     phase_budget,
+    plate_partition,
     rheology,
     shortening,
     terrain_noise,
@@ -1253,8 +1254,7 @@ def generate_plates(  # noqa: C901
     if cratons_first is None:
         cratons_first = continent_layout.CRATONS_FIRST_DEFAULT
     if cratons_first and sketch is None and premade_world_id is None:
-        layout, rng = cratons_first_layout(seed, num_plates, continental_fraction, node_density)
-        return _generate_cratons_first(rng, layout, land_fraction, node_density)
+        return _generate_cratons_first(cratons_first_layout(seed, num_plates, continental_fraction, land_fraction, node_density), node_density)
 
     rng = np.random.default_rng(seed)
     if num_plates is None:
@@ -1442,30 +1442,32 @@ def generate_plates(  # noqa: C901
     return plates
 
 
+class CratonsFirstSetup(NamedTuple):
+    """What a cratons-first `generate_plates` builds its plates from: the layout, the relief
+    fields the layout's land mask was read from, and the land threshold (`sample()` units)."""
+
+    layout: continent_layout.ContinentLayout
+    relief: terrain_noise.ContinentalRelief
+    ocean_relief: terrain_noise.OceanicRelief
+    land_threshold: float
+
+
 def cratons_first_layout(
-    seed: int, num_plates: int | None = None, continental_fraction: float | None = None, node_density: float = 1.0
-) -> tuple[continent_layout.ContinentLayout, np.random.Generator]:
-    """The `continent_layout` a cratons-first `generate_plates(seed, ...)` builds its plates
-    from, and the seed's RNG as it leaves the layout (the relief fields draw from it next)."""
+    seed: int,
+    num_plates: int | None = None,
+    continental_fraction: float | None = None,
+    land_fraction: float | None = None,
+    node_density: float = 1.0,
+) -> CratonsFirstSetup:
+    """The layout a cratons-first `generate_plates(seed, ...)` builds its plates from, in
+    generation order: the continents (`continent_layout.build_geography`), then the relief
+    fields and the land they put above sea level, then the plates over both
+    (`plate_partition.partition_plates`), so the partition can see the land (#462)."""
     rng = np.random.default_rng(seed)
     if num_plates is None:
         num_plates = int(rng.integers(MIN_AUTO_PLATES, MAX_AUTO_PLATES + 1))
     fraction = CONTINENTAL_AREA_FRACTION if continental_fraction is None else continental_fraction
-    return continent_layout.build_layout(rng, line_spacing_rad(node_density), num_plates, fraction, node_density), rng
-
-
-def _generate_cratons_first(
-    rng: np.random.Generator, layout: continent_layout.ContinentLayout, land_fraction: float | None, node_density: float
-) -> list[Plate]:
-    """A random world laid out cratons first (RFC 0009, #462): `layout` (see
-    `cratons_first_layout`) places the cratonic cores, the continents around them and the
-    plates over both, and each plate is built from the lattice points labelled with it. A plate's nominal `crust_type` is the type
-    of most of its area; its other-type cells carry an explicit `crust_type_code`. Hc, Hm and
-    relief come from each cell's own type, land and sea within the continents from the usual
-    relief noise, with `land_fraction`'s threshold taken over the continental mask. The cores
-    are seeded as cratons once the bathymetry is shaped, so each takes its column's final Hc,
-    floored at the craton host minimum."""
-    spacing_rad = line_spacing_rad(node_density)
+    geography = continent_layout.build_geography(rng, line_spacing_rad(node_density), fraction)
     relief = terrain_noise.ContinentalRelief(
         rng,
         orogenic_units=_OROGENIC_RELIEF_UNITS,
@@ -1477,13 +1479,34 @@ def _generate_cratons_first(
     land_threshold = None
     if land_fraction is not None:
         land_threshold = land_noise_threshold_for_mask(
-            lambda pts: layout.is_continental[layout.nearest(pts)],
+            lambda pts: geography.is_continental[geography.nearest(pts)],
             relief,
             max(0.0, min(land_fraction, 1.0)),
             _continental_sealevel_noise_offset(),
         )
     land_threshold = 0.0 if land_threshold is None else land_threshold
+    # Continental crust is land where its relief sample clears the threshold by the
+    # reference column's sea-level offset (see _land_noise_threshold); the uplift term and
+    # the bathymetry pass never move a coastline.
+    lat = geography.lattice
+    land = geography.is_continental & (relief.sample(lat.xyz) - land_threshold > _continental_sealevel_noise_offset())
+    partition = plate_partition.partition_plates(
+        rng, lat, num_plates, geography.continent, geography.core, geography.belt, node_density, land
+    )
+    return CratonsFirstSetup(continent_layout.ContinentLayout.from_parts(geography, partition, land), relief, ocean_relief, land_threshold)
 
+
+def _generate_cratons_first(setup: CratonsFirstSetup, node_density: float) -> list[Plate]:
+    """A random world laid out cratons first (RFC 0009, #462): `setup.layout` (see
+    `cratons_first_layout`) places the cratonic cores, the continents around them and the
+    plates over both, and each plate is built from the lattice points labelled with it. A
+    plate's nominal `crust_type` is the type of most of its area; its other-type cells carry
+    an explicit `crust_type_code`. Hc, Hm and relief come from each cell's own type, land and
+    sea within the continents from the usual relief noise, with `land_fraction`'s threshold
+    taken over the continental mask. The cores are seeded as cratons once the bathymetry is
+    shaped, so each takes its column's final Hc, floored at the craton host minimum."""
+    layout, relief, ocean_relief, land_threshold = setup
+    spacing_rad = line_spacing_rad(node_density)
     hc0_oceanic, hm0_oceanic = lithosphere.reference_thickness("oceanic")
     _, hm0_continental = lithosphere.reference_thickness("continental")
     plates: list[Plate] = []

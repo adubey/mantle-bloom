@@ -158,7 +158,7 @@ generation cost -- several times slower per step -- which the UI surfaces as a s
 4x is selected.
 
 <a id="cratons-first-layout"></a>
-### Cratons-first layout (`continent_layout.py`)
+### Cratons-first layout (`continent_layout.py`, `plate_partition.py`)
 
 Behind a flag, a random world (no sketch, no premade world) is laid out cratons first instead
 ([RFC 0009](../../rfc/0009-craton-mosaic.md), #462). It is off by default
@@ -167,8 +167,11 @@ replaces the tiling above; `generate_plates(..., cratons_first=True)` or
 `world.generate_world(..., cratons_first=True)` turns it on. Sketch and premade worlds always
 keep plates first, since their geography comes from a drawing or from data.
 
-`continent_layout.build_layout` works on a whole-sphere cell lattice at the world's node
-spacing (`continent_layout.lattice`), before any plate exists:
+`lithosphere_plate.cratons_first_layout` builds the layout before any plate exists, on a
+whole-sphere cell lattice at the world's node spacing (`layout_lattice.lattice`). Steps 1-3
+are `continent_layout.build_geography`; the relief fields are drawn next and give the land
+mask (continental crust whose relief sample clears the land threshold); steps 4-5 are
+`plate_partition.partition_plates`, which reads that mask:
 
 1. **Continents.** 2-6 centres (`CONTINENT_COUNT_RANGE`), Poisson-disc sampled
    `CONTINENT_SPACING_KM = 4000` apart. `continental_fraction` is a share of the surface here,
@@ -191,13 +194,19 @@ spacing (`continent_layout.lattice`), before any plate exists:
    cores, and each takes the points nearest it by path length over the 8-connected lattice
    (multi-source `scipy.sparse.csgraph.dijkstra`). Each core then goes whole to the plate
    holding most of its area. The sites are redrawn if a plate is disconnected or below
-   `merge_split.SPLIT_MIN_NODES * node_density` cells.
+   `merge_split.SPLIT_MIN_NODES * node_density` cells. Of `PARTITION_CANDIDATES = 8` valid
+   draws, the one with the lowest `J` (below) is kept.
 5. **Boundary refinement.** A boundary point moves to an adjacent plate while that lowers
    `J`, the summed length of plate-crossing links times the mean `PLATE_COST_*` of their two
-   ends (ocean and belt 1, margin and core 3). Each plate stays within 75-125% of its
+   ends (ocean and belt 1, margin and core 3), plus `PLATE_COST_LAND_LINK = 10` per unit
+   length where both ends are land. Each plate stays within 75-125% of its
    starting area and above the cell floor, cores never move, and a move must pass a
    simple-point check: the point's same-plate edge neighbours stay connected through its
    1-ring. Sweeps run in node order until one lowers nothing, or 20.
+
+The land cost acts mainly through the choice between candidate partitions: refinement alone
+stops at a local minimum, since a straight boundary across a continent's interior can't
+move off it one cell at a time.
 
 `lithosphere_plate._generate_cratons_first` then builds each plate from the points labelled
 with it (`PlateWithSparseQuadPatch.from_lattice`, a cell joining the plate of its nearest
@@ -206,7 +215,7 @@ other-type cells carry an explicit `crust_type_code`. Hc, Hm and relief come fro
 own type, and `land_fraction`'s noise threshold is taken over the continental mask
 (`plates.land_noise_threshold_for_mask`). After the bathymetry pass, every core column is
 raised to at least `cratons.CRATON_HOST_MIN_HC_M` and seeded as craton
-([cratons](tectonics.md#cratons)). The layout measures over 20 seeds are in
+([cratons](tectonics.md#cratons)). The layout measures over 40 seeds are in
 [analysis/issue462](../../analysis/issue462/README.md).
 
 <a id="worldsketch"></a>

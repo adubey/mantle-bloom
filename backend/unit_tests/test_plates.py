@@ -702,7 +702,7 @@ def _cell_signature(plates_list):
 
 def test_cratons_first_plates_carry_mixed_crust_with_per_node_codes_hc_and_hm():
     plates = _cratons_first()
-    layout, _ = cratons_first_layout(7)
+    layout = cratons_first_layout(7, land_fraction=0.29).layout
     assert len(plates) == layout.num_plates
     mixed = 0
     for plate in plates:
@@ -733,7 +733,7 @@ def test_cratons_first_land_fraction_reads_the_continental_mask():
 
 
 def test_cratons_first_seeds_each_core_as_a_whole_genuine_column():
-    layout, _ = cratons_first_layout(7)
+    layout = cratons_first_layout(7, land_fraction=0.29).layout
     for plate in _cratons_first():
         core = layout.is_core[layout.nearest(plate.all_points_and_elevation()[0])]
         craton = plate.collect("craton_crust_m")
@@ -759,3 +759,14 @@ def test_cratons_first_leaves_sketch_and_premade_generation_unchanged():
         off = generate_plates(seed=6, num_plates=8, continental_fraction=0.5, node_density=0.5, cratons_first=False, **options)
         on = generate_plates(seed=6, num_plates=8, continental_fraction=0.5, node_density=0.5, cratons_first=True, **options)
         assert _cell_signature(on) == _cell_signature(off)
+
+
+def test_cratons_first_land_mask_is_the_generated_land():
+    """The partition sees land before any plate exists (#462): its mask must be the land the
+    plates are then built with."""
+    layout = cratons_first_layout(7, land_fraction=0.29).layout
+    plates_list = _cratons_first()
+    land = np.concatenate([p.collect("elevation") > 0.0 for p in plates_list])
+    predicted = np.concatenate([layout.land[layout.nearest(p.all_points_and_elevation()[0])] for p in plates_list])
+    areas = np.concatenate([p.node_areas_m2() for p in plates_list])
+    assert areas[land != predicted].sum() / areas.sum() < 0.01

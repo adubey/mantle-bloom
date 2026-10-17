@@ -6,7 +6,7 @@ then a plate boundary, and the tiling alone set each craton's place, size and sh
 Earth the order runs the other way: cratons are the oldest parts of the continents, the
 continents were assembled around them along orogenic belts, and today's plates are younger
 and cut across that assembly. This module lays a world out in that order, before any plate
-exists, on a whole-sphere lattice at the world's node spacing (`Lattice`):
+exists, on a whole-sphere lattice at the world's node spacing (`layout_lattice.Lattice`):
 
 1. **Continents.** `CONTINENT_COUNT_RANGE` centres, Poisson-disc sampled
    `CONTINENT_SPACING_KM` apart, split the continental area (`continental_fraction` of the
@@ -23,16 +23,8 @@ exists, on a whole-sphere lattice at the world's node spacing (`Lattice`):
    (dilated, then eroded, by `BELT_CLOSURE_KM`) is the core-and-belt interior: everything in
    it that isn't core is belt, so the whole gap between neighbouring cores is belt and no
    unmarked gap is left to form craton later. Continental points outside it are margin.
-4. **Plates.** `num_plates` sites, Poisson-disc sampled outside the cores, take every point
-   by multi-source Dijkstra over the 8-connected lattice (path length through cores, not
-   around them). Each core then goes whole to the plate holding most of its area. Sites are
-   resampled if a plate is disconnected or under the node floor.
-5. **Boundary refinement.** Boundary points move between adjacent plates while that lowers
-   `J`, the length of plate-crossing links weighted by the mean `PLATE_COST_*` of their
-   endpoints (ocean and belt cheap, margin and core dear). Each plate stays within
-   `PLATE_AREA_BAND` of its starting area and above the node floor, cores never move, and a
-   local simple-point check keeps every plate connected. Sweeps run in node order until one
-   lowers nothing, or `REFINE_MAX_SWEEPS`.
+4. **Plates** are laid over the result by `plate_partition`, on the same
+   `layout_lattice.Lattice`. `ContinentLayout` holds both stages' per-point output.
 
 `lithosphere_plate.generate_plates` builds mixed-crust plates from the result, behind
 `CRATONS_FIRST_DEFAULT` until RFC 0009's gate G3 decides whether it becomes the default.
@@ -41,17 +33,15 @@ exists, on a whole-sphere lattice at the world's node spacing (`Lattice`):
 from __future__ import annotations
 
 import functools
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 
 import numpy as np
-from numba import njit
-from scipy.sparse import coo_matrix, csr_matrix
-from scipy.sparse.csgraph import connected_components, dijkstra
 from scipy.spatial import cKDTree
 
 from .elevation_lines import PLANET_RADIUS_KM
+from .layout_lattice import Lattice, arc_km, cap_area_km2, lattice, poisson_disc
 from .noise import SphereNoise
-from .sparse_quad_patch import PlateWithSparseQuadPatch
+from .plate_partition import PlatePartition
 
 # Off until RFC 0009's gate G3 picks the layout: main's random worlds stay plates-first.
 CRATONS_FIRST_DEFAULT = False
@@ -97,126 +87,24 @@ BELT_CLOSURE_KM = 800.0
 # to ~1,250 km over its three octaves, the scale of a core's or continent's outline.
 OUTLINE_NOISE_BASE_FREQ = 8.0
 
-# --- Plates ------------------------------------------------------------------------------
-
-# Boundary-link costs: a plate boundary through ocean or along a belt is cheap; through a
-# continental margin or along a core's edge it costs PLATE_COST_MARGIN. Ocean and belt are
-# fixed at 1; the margin cost is tuned to the land-edge measure (RFC 0009, Knobs).
-PLATE_COST_OCEAN = 1.0
-PLATE_COST_BELT = 1.0
-PLATE_COST_MARGIN = 3.0
-PLATE_COST_CORE = PLATE_COST_MARGIN
-# Refinement keeps each plate within this share of its starting (Dijkstra) area.
-PLATE_AREA_BAND = (0.75, 1.25)
-REFINE_MAX_SWEEPS = 20
-# Plate sites are at least this fraction of the mean site spacing, sqrt(4 pi / n), apart.
-PLATE_SITE_SPACING_FRACTION = 0.6
-PLATE_SITE_MAX_TRIES = 5000
-MAX_PARTITION_ATTEMPTS = 50
-
-
-def _arc_km(chord: np.ndarray) -> np.ndarray:
-    return 2.0 * np.arcsin(np.clip(chord / 2.0, 0.0, 1.0)) * PLANET_RADIUS_KM
-
-
-def _cap_area_km2(radius_km: float) -> float:
-    return 2.0 * np.pi * PLANET_RADIUS_KM**2 * (1.0 - np.cos(radius_km / PLANET_RADIUS_KM))
-
-
-@dataclass(frozen=True)
-class Lattice:
-    """The whole sphere's cells at one node spacing, in the identity frame.
-
-    `adj_offsets`/`adj_neighbours` are the 4-connected (edge-sharing) CSR adjacency and
-    `adj_length_km` each link's centre-to-centre length; `ring_offsets`/`ring_neighbours`
-    add the diagonal neighbours (the 8-connected 1-ring), with `ring_length_km`."""
-
-    xyz: np.ndarray
-    area_km2: np.ndarray
-    adj_offsets: np.ndarray
-    adj_neighbours: np.ndarray
-    adj_length_km: np.ndarray
-    ring_offsets: np.ndarray
-    ring_neighbours: np.ndarray
-    ring_length_km: np.ndarray
-
-    @property
-    def size(self) -> int:
-        return len(self.xyz)
-
-    @functools.cached_property
-    def tree(self) -> cKDTree:
-        return cKDTree(self.xyz)
-
-    def graph(self, ring: bool = False) -> csr_matrix:
-        offsets, neighbours, lengths = (
-            (self.ring_offsets, self.ring_neighbours, self.ring_length_km) if ring else (self.adj_offsets, self.adj_neighbours, self.adj_length_km)
-        )
-        return csr_matrix((lengths, neighbours, offsets), shape=(self.size, self.size))
-
-
-@functools.lru_cache(maxsize=4)
-def lattice(spacing_rad: float) -> Lattice:
-    """The `Lattice` at `spacing_rad`, cached: one full-sphere cell patch per node density."""
-    patch = PlateWithSparseQuadPatch.from_lattice(0, np.eye(3), "oceanic", spacing_rad, lambda pts: np.ones(len(pts), dtype=bool))
-    xyz = patch.surface_nodes().world_xyz.copy()
-    n = len(xyz)
-    adjacency = patch.adjacency()
-    offsets, neighbours = np.asarray(adjacency.offsets), np.asarray(adjacency.neighbours)
-    rows = np.repeat(np.arange(n), np.diff(offsets))
-    a4 = coo_matrix((np.ones(len(rows)), (rows, neighbours)), shape=(n, n)).tocsr()
-    # A diagonal neighbour is two edge hops away by two different paths; a straight two-hop
-    # neighbour is reached by only one.
-    two_hop = (a4 @ a4).tocoo()
-    diagonal = (two_hop.data >= 2) & (two_hop.row != two_hop.col)
-    d_rows, d_cols = two_hop.row[diagonal], two_hop.col[diagonal]
-    keep = ~np.asarray(a4[d_rows, d_cols]).ravel().astype(bool)
-    ring = coo_matrix(
-        (np.ones(len(rows) + int(keep.sum())), (np.concatenate([rows, d_rows[keep]]), np.concatenate([neighbours, d_cols[keep]]))), shape=(n, n)
-    ).tocsr()
-    ring.sort_indices()
-    ring_rows = np.repeat(np.arange(n), np.diff(ring.indptr))
-
-    def lengths(r: np.ndarray, c: np.ndarray) -> np.ndarray:
-        return _arc_km(np.linalg.norm(xyz[r] - xyz[c], axis=1))
-
-    arrays = dict(
-        xyz=xyz,
-        area_km2=patch.node_areas_m2() / 1e6,
-        adj_offsets=offsets.astype(np.int64),
-        adj_neighbours=neighbours.astype(np.int64),
-        adj_length_km=lengths(rows, neighbours),
-        ring_offsets=ring.indptr.astype(np.int64),
-        ring_neighbours=ring.indices.astype(np.int64),
-        ring_length_km=lengths(ring_rows, ring.indices),
-    )
-    for values in arrays.values():
-        values.flags.writeable = False
-    return Lattice(**arrays)
+# Continent centres are drawn by dart throwing; this bounds the draws.
+CONTINENT_CENTRE_MAX_TRIES = 5000
 
 
 @dataclass
-class ContinentLayout:
+class ContinentGeography:
     """Per lattice point: `continent` (-1 for ocean), `core` (core id, -1 outside cores),
-    `belt` and `margin` masks, `plate` (0..num_plates-1) and `initial_plate`, the partition
-    before boundary refinement. `sites` are the plate sites,
-    `nuclei` the core nuclei (`nucleus_continent` names each one's continent), and
-    `continent_area_km2` each continent's target area. `refine_costs` is J after each
-    refinement sweep, first entry the starting partition."""
+    and `belt` and `margin` masks. `nuclei` are the core nuclei (`nucleus_continent` names
+    each one's continent), and `continent_area_km2` each continent's target area."""
 
     lattice: Lattice
     continent: np.ndarray
     core: np.ndarray
     belt: np.ndarray
     margin: np.ndarray
-    plate: np.ndarray
-    initial_plate: np.ndarray
-    sites: np.ndarray
     nuclei: np.ndarray
     nucleus_continent: np.ndarray
     continent_area_km2: np.ndarray
-    refine_costs: list[float]
-    partition_attempts: int
 
     @property
     def is_continental(self) -> np.ndarray:
@@ -226,13 +114,39 @@ class ContinentLayout:
     def is_core(self) -> np.ndarray:
         return self.core >= 0
 
-    @property
-    def num_plates(self) -> int:
-        return len(self.sites)
-
     def nearest(self, points_xyz: np.ndarray) -> np.ndarray:
         """Index of the lattice point nearest each of `points_xyz`."""
         return self.lattice.tree.query(points_xyz, workers=-1)[1]
+
+
+@dataclass
+class ContinentLayout(ContinentGeography):
+    """A `ContinentGeography` with the plates laid over it (`plate_partition.PlatePartition`'s
+    fields) and `land`, the generator's land mask per lattice point."""
+
+    plate: np.ndarray
+    initial_plate: np.ndarray
+    sites: np.ndarray
+    refine_costs: list[float]
+    partition_attempts: int
+    land: np.ndarray
+
+    @classmethod
+    def from_parts(cls, geography: ContinentGeography, partition: PlatePartition, land: np.ndarray) -> "ContinentLayout":
+        own = {f.name: getattr(geography, f.name) for f in fields(ContinentGeography)}
+        return cls(
+            **own,
+            plate=partition.plate,
+            initial_plate=partition.initial_plate,
+            sites=partition.sites,
+            refine_costs=partition.refine_costs,
+            partition_attempts=partition.attempts,
+            land=land,
+        )
+
+    @property
+    def num_plates(self) -> int:
+        return len(self.sites)
 
     def plate_mask(self, plate_id: int, points_xyz: np.ndarray) -> np.ndarray:
         """Whether each of `points_xyz` falls in plate `plate_id`: its nearest lattice point
@@ -256,7 +170,7 @@ class ContinentLayout:
         area = self.lattice.area_km2
         continental = float(area[self.is_continental].sum())
         per_continent = []
-        disk = _cap_area_km2(CRATON_CORE_RADIUS_KM)
+        disk = cap_area_km2(CRATON_CORE_RADIUS_KM)
         for k, target in enumerate(self.continent_area_km2):
             in_k = self.continent == k
             per_continent.append(
@@ -279,23 +193,6 @@ class ContinentLayout:
 
 
 # --- Sampling helpers --------------------------------------------------------------------
-
-
-def _poisson_disc(
-    rng: np.random.Generator, count: int, min_sep_rad: float, candidates: np.ndarray, weights: np.ndarray, max_tries: int
-) -> np.ndarray:
-    """Up to `count` of `candidates` (unit vectors), drawn by `weights` and kept when at
-    least `min_sep_rad` from every point already kept -- dart throwing."""
-    p = weights / weights.sum()
-    kept: list[np.ndarray] = []
-    min_dot = np.cos(min_sep_rad)
-    for _ in range(max_tries):
-        if len(kept) == count:
-            break
-        candidate = candidates[rng.choice(len(candidates), p=p)]
-        if not kept or float(np.max(np.asarray(kept) @ candidate)) < min_dot:
-            kept.append(candidate)
-    return np.asarray(kept).reshape(-1, 3)
 
 
 def _step_from(point: np.ndarray, distance_rad: float, bearing: float) -> np.ndarray:
@@ -363,9 +260,11 @@ def _place_nuclei(rng: np.random.Generator, field: _NucleusDistances, centres: n
     owners: list[int] = []
     spacing_rad = CRATON_CORE_SPACING_KM / PLANET_RADIUS_KM
     min_dot = np.cos(spacing_rad)
-    disk = _cap_area_km2(CRATON_CORE_RADIUS_KM)
+    disk = cap_area_km2(CRATON_CORE_RADIUS_KM)
 
-    def accept(candidate: np.ndarray, k: int) -> bool:
+    def add_and_check_cover(candidate: np.ndarray, k: int) -> bool:
+        """Add `candidate` as a nucleus of continent `k` -- always, whatever this returns --
+        and say whether `k`'s cores can now cover its target, i.e. whether to stop adding."""
         nuclei.append(candidate)
         owners.append(k)
         field.add(candidate)
@@ -376,7 +275,7 @@ def _place_nuclei(rng: np.random.Generator, field: _NucleusDistances, centres: n
     for k, target in enumerate(core_targets):
         if target <= 0.0:
             continue
-        if accept(centres[k], k):
+        if add_and_check_cover(centres[k], k):
             continue
         for _ in range(NUCLEUS_MAX_TRIES):
             mine = [i for i, o in enumerate(owners) if o == k]
@@ -387,7 +286,7 @@ def _place_nuclei(rng: np.random.Generator, field: _NucleusDistances, centres: n
                 continue
             if int(np.argmax(centres @ candidate)) != k:
                 continue
-            if accept(candidate, k):
+            if add_and_check_cover(candidate, k):
                 break
     return np.asarray(nuclei).reshape(-1, 3), np.asarray(owners, dtype=np.int64)
 
@@ -412,7 +311,7 @@ def _continents(lat: Lattice, centres: np.ndarray, areas: np.ndarray, core: np.n
     for k in range(n_c):
         in_core = (core >= 0) & (owners[np.maximum(core, 0)] == k)
         if np.any(in_core):
-            distance[:, k] = _arc_km(cKDTree(lat.xyz[in_core]).query(lat.xyz, workers=-1)[0])
+            distance[:, k] = arc_km(cKDTree(lat.xyz[in_core]).query(lat.xyz, workers=-1)[0])
         else:
             distance[:, k] = np.arccos(np.clip(lat.xyz @ centres[k], -1.0, 1.0)) * PLANET_RADIUS_KM
     perturbed = distance + outline_noise_km[:, None]
@@ -441,232 +340,13 @@ def _belts(lat: Lattice, continent: np.ndarray, core: np.ndarray, distance_to_co
         candidates = np.flatnonzero(dilated & ~has_core)
         if len(candidates) == 0:
             continue
-        gap = _arc_km(cKDTree(lat.xyz[outside]).query(lat.xyz[candidates], workers=-1)[0])
+        gap = arc_km(cKDTree(lat.xyz[outside]).query(lat.xyz[candidates], workers=-1)[0])
         belt[candidates[gap > BELT_CLOSURE_KM]] = True
     return belt
 
 
-# --- 4-5: plates -------------------------------------------------------------------------
-
-
-def _node_floor(node_density: float) -> int:
-    from .merge_split import SPLIT_MIN_NODES
-
-    return int(np.ceil(SPLIT_MIN_NODES * node_density))
-
-
-def _label_components(lat: Lattice, labels: np.ndarray) -> int:
-    """Connected components of the 4-connected lattice with links cut between labels."""
-    rows = np.repeat(np.arange(lat.size), np.diff(lat.adj_offsets))
-    same = labels[rows] == labels[lat.adj_neighbours]
-    graph = coo_matrix((np.ones(int(same.sum())), (rows[same], lat.adj_neighbours[same])), shape=(lat.size, lat.size))
-    return int(connected_components(graph, directed=False)[0])
-
-
-def _initial_partition(lat: Lattice, site_index: np.ndarray, core: np.ndarray) -> np.ndarray:
-    """Nearest site by path length over the 8-connected lattice, then each core whole to the
-    plate holding most of its area (lowest plate id on a tie)."""
-    _, _, sources = dijkstra(lat.graph(ring=True), directed=False, indices=site_index, min_only=True, return_predecessors=True)
-    plate_of_site = np.full(lat.size, -1, dtype=np.int64)
-    plate_of_site[site_index] = np.arange(len(site_index))
-    labels = plate_of_site[sources]
-    for core_id in np.unique(core[core >= 0]):
-        members = core == core_id
-        shares = np.bincount(labels[members], weights=lat.area_km2[members], minlength=len(site_index))
-        labels[members] = int(np.argmax(shares))
-    return labels
-
-
-def point_costs(continent: np.ndarray, core: np.ndarray, belt: np.ndarray) -> np.ndarray:
-    """`PLATE_COST_*` per lattice point."""
-    cost = np.full(len(continent), PLATE_COST_OCEAN)
-    cost[continent >= 0] = PLATE_COST_MARGIN
-    cost[belt] = PLATE_COST_BELT
-    cost[core >= 0] = PLATE_COST_CORE
-    return cost
-
-
-def boundary_cost(lat: Lattice, labels: np.ndarray, cost: np.ndarray) -> float:
-    """J: the length of every plate-crossing link times the mean cost of its endpoints."""
-    rows = np.repeat(np.arange(lat.size), np.diff(lat.adj_offsets))
-    crossing = labels[rows] != labels[lat.adj_neighbours]
-    weights = lat.adj_length_km * 0.5 * (cost[rows] + cost[lat.adj_neighbours])
-    # Each link appears once from each end.
-    return 0.5 * float(weights[crossing].sum())
-
-
-@njit(cache=True)
-def _is_simple(p, label, labels, adj_offsets, adj_neighbours, ring_offsets, ring_neighbours):  # pragma: no cover - numba
-    """Whether `p`'s `label` edge neighbours stay connected through its 1-ring once `p`
-    leaves, moving only along edge links between same-label ring points."""
-    ring = ring_neighbours[ring_offsets[p] : ring_offsets[p + 1]]
-    members = np.empty(len(ring), dtype=np.int64)
-    m = 0
-    for q in ring:
-        if labels[q] == label:
-            members[m] = q
-            m += 1
-    if m == 0:
-        return True
-    seen = np.zeros(m, dtype=np.bool_)
-    stack = np.empty(m, dtype=np.int64)
-    # Start the search from an edge neighbour of p with the label.
-    start = -1
-    for idx in range(m):
-        q = members[idx]
-        for e in range(adj_offsets[p], adj_offsets[p + 1]):
-            if adj_neighbours[e] == q:
-                start = idx
-                break
-        if start >= 0:
-            break
-    if start < 0:
-        return True
-    seen[start] = True
-    stack[0] = start
-    top = 1
-    while top > 0:
-        top -= 1
-        q = members[stack[top]]
-        for e in range(adj_offsets[q], adj_offsets[q + 1]):
-            r = adj_neighbours[e]
-            for idx in range(m):
-                if not seen[idx] and members[idx] == r:
-                    seen[idx] = True
-                    stack[top] = idx
-                    top += 1
-    for e in range(adj_offsets[p], adj_offsets[p + 1]):
-        q = adj_neighbours[e]
-        if labels[q] != label:
-            continue
-        for idx in range(m):
-            if members[idx] == q and not seen[idx]:
-                return False
-    return True
-
-
-@njit(cache=True)
-def _refine(
-    labels, frozen, cost, area, adj_offsets, adj_neighbours, adj_length, ring_offsets, ring_neighbours, area_lo, area_hi, node_floor, max_sweeps, j_start
-):  # pragma: no cover - numba
-    """Greedy boundary sweeps lowering J; returns J after each sweep (see the module docstring)."""
-    n_plates = len(area_lo)
-    plate_area = np.zeros(n_plates)
-    plate_nodes = np.zeros(n_plates, dtype=np.int64)
-    for p in range(len(labels)):
-        plate_area[labels[p]] += area[p]
-        plate_nodes[labels[p]] += 1
-    history = [j_start]
-    j = j_start
-    candidates = np.empty(8, dtype=np.int64)
-    gains = np.empty(8)
-    for _ in range(max_sweeps):
-        moved = False
-        for p in range(len(labels)):
-            if frozen[p]:
-                continue
-            a = labels[p]
-            # Candidate destination labels among p's edge neighbours, with each move's change
-            # in J: links to `a` start crossing, links to `b` stop.
-            n_cand = 0
-            to_a = 0.0
-            for e in range(adj_offsets[p], adj_offsets[p + 1]):
-                q = adj_neighbours[e]
-                c = adj_length[e] * 0.5 * (cost[p] + cost[q])
-                if labels[q] == a:
-                    to_a += c
-                    continue
-                found = -1
-                for k in range(n_cand):
-                    if candidates[k] == labels[q]:
-                        found = k
-                if found < 0:
-                    candidates[n_cand] = labels[q]
-                    gains[n_cand] = 0.0
-                    found = n_cand
-                    n_cand += 1
-                gains[found] += c
-            if n_cand == 0:
-                continue
-            if plate_area[a] - area[p] < area_lo[a] or plate_nodes[a] - 1 < node_floor:
-                continue
-            # Best move first (largest drop, then lowest plate id).
-            best = -1
-            best_delta = -1e-9
-            for k in range(n_cand):
-                b = candidates[k]
-                delta = to_a - gains[k]
-                if plate_area[b] + area[p] > area_hi[b]:
-                    continue
-                if delta < best_delta or (best >= 0 and delta == best_delta and b < candidates[best]):
-                    best = k
-                    best_delta = delta
-            if best < 0:
-                continue
-            if not _is_simple(p, a, labels, adj_offsets, adj_neighbours, ring_offsets, ring_neighbours):
-                continue
-            b = candidates[best]
-            labels[p] = b
-            plate_area[a] -= area[p]
-            plate_area[b] += area[p]
-            plate_nodes[a] -= 1
-            plate_nodes[b] += 1
-            j += best_delta
-            moved = True
-        history.append(j)
-        if not moved:
-            break
-    return history
-
-
-def refine_boundaries(lat: Lattice, labels: np.ndarray, cost: np.ndarray, frozen: np.ndarray, node_floor: int) -> tuple[np.ndarray, list[float]]:
-    """Step 5: `labels` after the boundary sweeps, and J before and after each sweep."""
-    labels = labels.astype(np.int64).copy()
-    n_plates = int(labels.max()) + 1
-    start_area = np.bincount(labels, weights=lat.area_km2, minlength=n_plates)
-    history = _refine(
-        labels,
-        frozen.astype(np.bool_),
-        cost.astype(np.float64),
-        lat.area_km2.astype(np.float64),
-        lat.adj_offsets,
-        lat.adj_neighbours,
-        lat.adj_length_km,
-        lat.ring_offsets,
-        lat.ring_neighbours,
-        PLATE_AREA_BAND[0] * start_area,
-        PLATE_AREA_BAND[1] * start_area,
-        node_floor,
-        REFINE_MAX_SWEEPS,
-        boundary_cost(lat, labels, cost),
-    )
-    return labels, list(history)
-
-
-def _plate_sites(rng: np.random.Generator, lat: Lattice, num_plates: int, core: np.ndarray) -> np.ndarray:
-    """Lattice indices of `num_plates` Poisson-disc sites outside every core."""
-    open_points = np.flatnonzero(core < 0)
-    sep = PLATE_SITE_SPACING_FRACTION * np.sqrt(4.0 * np.pi / num_plates)
-    while True:
-        sites = _poisson_disc(rng, num_plates, sep, lat.xyz[open_points], lat.area_km2[open_points], PLATE_SITE_MAX_TRIES)
-        if len(sites) == num_plates:
-            return open_points[cKDTree(lat.xyz[open_points]).query(sites)[1]]
-        sep *= 0.9
-
-
-def _partition(rng: np.random.Generator, lat: Lattice, num_plates: int, core: np.ndarray, node_floor: int) -> tuple[np.ndarray, np.ndarray, int]:
-    """Step 4: (labels, site lattice indices, attempts used)."""
-    for attempt in range(1, MAX_PARTITION_ATTEMPTS + 1):
-        site_index = _plate_sites(rng, lat, num_plates, core)
-        labels = _initial_partition(lat, site_index, core)
-        counts = np.bincount(labels, minlength=num_plates)
-        if counts.min() >= node_floor and _label_components(lat, labels) == num_plates:
-            return labels, site_index, attempt
-    raise RuntimeError(f"no valid {num_plates}-plate partition in {MAX_PARTITION_ATTEMPTS} attempts")
-
-
-def build_layout(rng: np.random.Generator, spacing_rad: float, num_plates: int, continental_fraction: float, node_density: float = 1.0) -> ContinentLayout:
-    """The cratons-first layout (see the module docstring), deterministic in `rng`."""
+def build_geography(rng: np.random.Generator, spacing_rad: float, continental_fraction: float) -> ContinentGeography:
+    """Continents, cores, belts and margins (see the module docstring), deterministic in `rng`."""
     lat = lattice(spacing_rad)
     continental_fraction = float(np.clip(continental_fraction, *CONTINENTAL_FRACTION_BOUNDS))
     share = min(CRATON_SHARE_OF_CONTINENT, CRATON_SHARE_MAX)
@@ -675,10 +355,10 @@ def build_layout(rng: np.random.Generator, spacing_rad: float, num_plates: int, 
     outline_noise_km = CONTINENT_OUTLINE_NOISE_KM * SphereNoise(rng, base_freq=OUTLINE_NOISE_BASE_FREQ).sample(lat.xyz)
 
     n_c = int(rng.integers(CONTINENT_COUNT_RANGE[0], CONTINENT_COUNT_RANGE[1] + 1))
-    centres = _poisson_disc(rng, n_c, CONTINENT_SPACING_KM / PLANET_RADIUS_KM, lat.xyz, lat.area_km2, PLATE_SITE_MAX_TRIES)
+    centres = poisson_disc(rng, n_c, CONTINENT_SPACING_KM / PLANET_RADIUS_KM, lat.xyz, lat.area_km2, CONTINENT_CENTRE_MAX_TRIES)
     total_area = continental_fraction * float(lat.area_km2.sum())
     areas = total_area * rng.dirichlet(np.full(len(centres), CONTINENT_SIZE_CONCENTRATION))
-    disk = _cap_area_km2(CRATON_CORE_RADIUS_KM)
+    disk = cap_area_km2(CRATON_CORE_RADIUS_KM)
     core_targets = np.where(areas >= disk, share * areas, 0.0)
 
     field = _NucleusDistances(lat, core_noise_km)
@@ -686,23 +366,13 @@ def build_layout(rng: np.random.Generator, spacing_rad: float, num_plates: int, 
     core = _cores(field, owners, core_targets)
     continent, distance_to_cores = _continents(lat, centres, areas, core, owners, outline_noise_km)
     belt = _belts(lat, continent, core, distance_to_cores)
-    margin = (continent >= 0) & (core < 0) & ~belt
-
-    floor = _node_floor(node_density)
-    initial, site_index, attempts = _partition(rng, lat, num_plates, core, floor)
-    labels, history = refine_boundaries(lat, initial, point_costs(continent, core, belt), core >= 0, floor)
-    return ContinentLayout(
+    return ContinentGeography(
         lattice=lat,
         continent=continent,
         core=core,
         belt=belt,
-        margin=margin,
-        plate=labels,
-        initial_plate=initial,
-        sites=lat.xyz[site_index],
+        margin=(continent >= 0) & (core < 0) & ~belt,
         nuclei=nuclei,
         nucleus_continent=owners,
         continent_area_km2=areas,
-        refine_costs=history,
-        partition_attempts=attempts,
     )

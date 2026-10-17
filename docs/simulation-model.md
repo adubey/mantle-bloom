@@ -9,7 +9,7 @@ current model description.
 
 | Topic | Start here for | Main implementation areas |
 |---|---|---|
-| [Foundations and generation](simulation-model/foundations.md) | Sphere geometry, plate-local coordinates, initial and sketch-driven worlds, mantle flow | `geometry.py`, `plates.py` generation, `continent_layout.py`, `worldsketch.py`, `mantle.py` |
+| [Foundations and generation](simulation-model/foundations.md) | Sphere geometry, plate-local coordinates, initial and sketch-driven worlds, mantle flow | `geometry.py`, `plates.py` generation, `continent_layout.py`, `plate_partition.py`, `layout_lattice.py`, `worldsketch.py`, `mantle.py` |
 | [Tectonics and lithosphere](simulation-model/tectonics.md) | Plate motion, boundary deformation, crust and mantle columns, faults, volcanism | `plates.py`, `quad_tectonics.py`, `lithosphere_plate.py`, `rheology.py`, `orogeny.py`, `merge_split.py`, `gaps.py`, `cratons.py`, `faults.py`, `volcanism.py` |
 | [Climate and atmospheric flow](simulation-model/climate.md) | Climate fields, biomes, atmospheric solver and grid transfers | `hydroclimate/climate.py`, `fluid_dynamics.py`, `atmosphere_cfd.py`, `biomes.py` |
 | [Surface processes and resources](simulation-model/surface-processes.md) | Erosion, isostasy, bathymetry, sea level, tuning and geology | `hydroclimate/erosion.py`, `bathymetry.py`, `eustasy.py`, `geology.py`, `lithosphere.py` |
@@ -27,7 +27,7 @@ These anchors keep older links working; use the topic links above for new refere
 <a id="initial-plate-generation"></a>
 [Initial plate generation (plates.py)](simulation-model/foundations.md#initial-plate-generation)
 <a id="cratons-first-layout"></a>
-[Cratons-first layout (continent_layout.py)](simulation-model/foundations.md#cratons-first-layout)
+[Cratons-first layout (continent_layout.py, plate_partition.py)](simulation-model/foundations.md#cratons-first-layout)
 <a id="worldsketch"></a>
 [Human-made worlds (sketch-driven generation) (worldsketch.py)](simulation-model/foundations.md#worldsketch)
 <a id="mantle-flow"></a>

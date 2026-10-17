@@ -12,7 +12,10 @@ takes its nearest node), it reports:
 - how mixed plates are: the share of plates, and of plate area, whose continental share is
   5-95%; and the share of plates mixed by land;
 - for cratons, the share of craton area within 500 and 1,000 km of a plate boundary, and
-  the share of boundary length with craton on both sides (a core crossed by a boundary).
+  the share of boundary length with craton on both sides (a core crossed by a boundary);
+- boundary length with land on both sides, split into a continent's interior (more than
+  EDGE_NEAR_KM from any coastline) and coast-adjacent, and for a cratons-first world the
+  part along a belt.
 
 `--cratons-first` generates the seeds with RFC 0009's cratons-first layout (#462) and adds
 the layout's own measures: core, belt and margin shares of continental area, cores per
@@ -57,6 +60,21 @@ NEAR_KM = (500.0, 1000.0)
 EDGE_NEAR_KM = 300.0
 
 
+def _grid_xyz():
+    """(rows, columns, each row's latitude, every pixel centre as a unit vector)."""
+    h, w = int(180 / GRID_DEG), int(360 / GRID_DEG)
+    lat = np.radians(90.0 - (np.arange(h) + 0.5) * GRID_DEG)
+    lon = np.radians(-180.0 + (np.arange(w) + 0.5) * GRID_DEG)
+    lon2, lat2 = np.meshgrid(lon, lat)
+    return h, w, lat, np.stack([np.cos(lat2) * np.cos(lon2), np.cos(lat2) * np.sin(lon2), np.sin(lat2)], axis=-1).reshape(-1, 3)
+
+
+def _layout_belt_grid(layout) -> np.ndarray:
+    """A cratons-first layout's belt mask on the measuring grid."""
+    h, w, _, xyz = _grid_xyz()
+    return layout.belt[layout.nearest(xyz)].reshape(h, w)
+
+
 def _grid(world):
     """Per pixel: plate index, land, continental crust, craton."""
     points, plate, land, cont, craton = [], [], [], [], []
@@ -68,11 +86,7 @@ def _grid(world):
         cont.append(effective_is_continental_from_codes(p.collect("crust_type_code"), p.crust_type == "continental"))
         craton.append(p.collect("craton_crust_m") > 0.0)
     points = np.concatenate(points)
-    h, w = int(180 / GRID_DEG), int(360 / GRID_DEG)
-    lat = np.radians(90.0 - (np.arange(h) + 0.5) * GRID_DEG)
-    lon = np.radians(-180.0 + (np.arange(w) + 0.5) * GRID_DEG)
-    lon2, lat2 = np.meshgrid(lon, lat)
-    xyz = np.stack([np.cos(lat2) * np.cos(lon2), np.cos(lat2) * np.sin(lon2), np.sin(lat2)], axis=-1).reshape(-1, 3)
+    h, w, lat, xyz = _grid_xyz()
     _, idx = cKDTree(points).query(xyz, workers=-1)
     fields = [np.concatenate(f)[idx].reshape(h, w) for f in (plate, land, cont, craton)]
     return (*fields, lat)
@@ -99,7 +113,29 @@ def _earth_grid():
     return plate, land, land, np.zeros_like(land), lat
 
 
-def _measure(fields, label: str) -> dict:
+def _land_both_breakdown(land, ew, ns, ew_len, ns_len, lat, step_km, total, belt) -> dict:
+    """Land-on-both-sides boundary length, as shares of all boundary length, split by
+    whether it lies more than EDGE_NEAR_KM from any coastline (a continent's interior split)
+    or within it (coast-adjacent), and, given a belt grid, whether either side is belt."""
+    both_ew = ew & land & np.roll(land, -1, axis=1)
+    both_ns = np.zeros_like(ns)
+    both_ns[:-1] = ns[:-1] & land[:-1] & land[1:]
+    coast = (land ^ np.roll(land, -1, axis=1)) | np.vstack([land[:-1] ^ land[1:], np.zeros((1, land.shape[1]), dtype=bool)])
+    interior = _distance_km(coast, lat, step_km) > EDGE_NEAR_KM
+    out = {
+        "boundary_land_both_interior_share": float(ew_len[both_ew & interior].sum() + ns_len[both_ns & interior].sum()) / total,
+        "boundary_land_both_coastal_share": float(ew_len[both_ew & ~interior].sum() + ns_len[both_ns & ~interior].sum()) / total,
+    }
+    if belt is not None:
+        along_ew = belt | np.roll(belt, -1, axis=1)
+        along_ns = belt | np.vstack([belt[1:], np.zeros((1, belt.shape[1]), dtype=bool)])
+        out["boundary_land_both_belt_share"] = float(ew_len[both_ew & along_ew].sum() + ns_len[both_ns & along_ns].sum()) / total
+    return out
+
+
+def _measure(fields, label: str, belt: np.ndarray | None = None) -> dict:
+    """The layout measures (see the module docstring); `belt`, a cratons-first layout's belt
+    mask on the grid, adds the share of land-on-both-sides boundary that runs along a belt."""
     plate, land, cont, craton, lat = fields
     h, w = plate.shape
     step_km = np.radians(GRID_DEG) * PLANET_RADIUS_KM
@@ -124,6 +160,7 @@ def _measure(fields, label: str) -> dict:
         one = float(ew_len[ew & one_ew].sum() + ns_len[ns & one_ns].sum())
         out[f"boundary_{name}_both_share"] = both / total
         out[f"boundary_{name}_one_share"] = one / total
+    out.update(_land_both_breakdown(land, ew, ns, ew_len, ns_len, lat, step_km, total, belt))
     boundary = ew | ns
     dist_km = _distance_km(boundary, lat, step_km)
     near = dist_km <= EDGE_NEAR_KM
@@ -172,9 +209,10 @@ def main() -> None:
         world = world_mod.generate_world(seed, land_fraction=args.land_fraction, node_density=args.density, cratons_first=args.cratons_first)
         generation_s = time.perf_counter() - started
         cratons.ensure_initialized(world)
-        rows.append({**_measure(_grid(world), f"seed {seed}"), "generation_s": generation_s})
-        if args.cratons_first:
-            layout, _ = lithosphere_plate.cratons_first_layout(seed, node_density=args.density)
+        layout = lithosphere_plate.cratons_first_layout(seed, land_fraction=args.land_fraction, node_density=args.density).layout if args.cratons_first else None
+        belt = None if layout is None else _layout_belt_grid(layout)
+        rows.append({**_measure(_grid(world), f"seed {seed}", belt), "generation_s": generation_s})
+        if layout is not None:
             rows[-1]["layout"] = layout.diagnostics()
         print(json.dumps(rows[-1]), flush=True)
     for path in args.load:
