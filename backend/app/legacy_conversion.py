@@ -95,7 +95,7 @@ from .sparse_quad_patch import (
     pack_cell_keys,
     unpack_cell_keys,
 )
-from .surface_fields import SURFACE_FIELDS, RemapClass
+from .surface_fields import SURFACE_FIELDS, RemapClass, majority_history
 
 if TYPE_CHECKING:
     from .world import World
@@ -807,6 +807,8 @@ def _cell_fields(
             set_ = values != spec.sentinel
             np.minimum.at(earliest, cell[set_], values[set_])
             out[name] = np.where(np.isfinite(earliest), earliest, spec.sentinel)
+        elif spec.remap_class == RemapClass.MAJORITY_HISTORY:
+            out[name] = majority_history(cell, values, weight, count, spec.sentinel)
         elif spec.remap_class == RemapClass.BOOLEAN_PROVENANCE:
             out[name] = np.bincount(cell, weights=values.astype(float), minlength=count) > 0.0
         elif spec.remap_class == RemapClass.CATEGORICAL:
@@ -930,6 +932,9 @@ def _stack_foreign(
                 fields[name] = own[name] + np.bincount(cell, weights=values * node_area, minlength=count) / area
                 if name in _CAPS:
                     fields[name] = _spread_overflow(quad, fields[name], own[name], _CAPS[name][1])
+            elif spec.remap_class == RemapClass.MAJORITY_HISTORY:
+                voted = majority_history(cell, values, node_area, count, spec.sentinel, own[name], area)
+                fields[name] = np.where(receiving, voted, own[name])
             elif spec.remap_class == RemapClass.BOOLEAN_PROVENANCE:
                 fields[name] = own[name] | (np.bincount(cell, weights=values.astype(float), minlength=count) > 0.0)
             elif name == "channel_depth" or spec.remap_class == RemapClass.COUNTDOWN:

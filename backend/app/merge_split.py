@@ -715,7 +715,7 @@ def _fuse_plates(world: "World", keep: Plate, absorb: Plate, phase: str) -> None
         # out of the volumes.
         pair = [phase_budget.snapshot(keep, spacing_rad), phase_budget.snapshot(absorb, spacing_rad)]
         before = phase_budget.Snapshot(*(np.concatenate(parts) for parts in zip(*pair)))
-    keep.merge_with(absorb, other_points, others)
+    keep.merge_with(absorb, other_points, others, world)
     collision_polarity.note_lineage(world, absorb.plate_id, keep.plate_id)
     # Continental material stacked past the suture cap that the merge couldn't place leaves
     # with the crust that carried it, booked as collision subduction (issue #276).
@@ -831,7 +831,7 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
         if world.debug_diagnostics:
             before = phase_budget.snapshot(plate, line_spacing_rad(world.node_density))
         hc_before = plate.collect("crustal_thickness_m")
-        plate.apply_failed_rift(cut_normal, line_spacing_rad(world.node_density))
+        plate.apply_failed_rift(cut_normal, line_spacing_rad(world.node_density), world)
         cratons.thin_with_column(world, plate, hc_before, "rifted_failed_m3")
         mobile_cover.thin_with_column(world, plate, hc_before, "rift_thinned_m3")
         continental_ledger.thin_with_column(world, plate, hc_before, "rift_thinned_m3")
@@ -847,6 +847,10 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
     world.next_plate_id += 1
 
     plate_a, plate_b = split_result
+    # The crust along the cut was stretched to breaking: both margins are belt (RFC 0009),
+    # over the band a failed rift would have thinned.
+    for daughter in (plate_a, plate_b):
+        cratons.mark_belt(world, daughter, np.abs(daughter.all_points_and_elevation()[0] @ cut_normal) < band_sin)
     plate_a.set_omega(mantle.clamp_rate(pole_a))
     plate_b.set_omega(mantle.clamp_rate(pole_b))
     # A completed rift fully releases the accumulated breakup pressure that drove it -- both

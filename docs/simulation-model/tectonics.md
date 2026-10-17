@@ -988,7 +988,7 @@ Cratons are old, buoyant, mechanically strong continental cores that come throug
 tectonic cycles intact (GitHub issue #274). Without them, continents that keep colliding are
 ground down to small remnants over a few hundred Myr.
 
-**State.** Three per-node surface fields hold all craton state:
+**State.** Four per-node surface fields hold all craton state:
 
 - `craton_crust_m` -- the cratonic share of the column's crust, at most Hc. It is
   `EXTENSIVE`, so merge, partition, defragmentation, relatticing and legacy conversion
@@ -999,17 +999,48 @@ ground down to small remnants over a few hundred Myr.
 - `craton_formed_years` -- provenance: when the craton stabilised. It is negative for cratons
   seeded at generation, and `HISTORY`-remapped, so a merged cell keeps its oldest date.
 - `stable_continental_myr` -- the formation clock.
+- `belt_formed_years` -- when the column last became a belt (below), or
+  `surface_fields.BELT_UNMARKED_YEARS` if it never has. It is `MAJORITY_HISTORY`-remapped
+  (`surface_fields.majority_history`): a merged, coarsened or converted cell is a belt only
+  if more than half its area was, and keeps the latest date among those.
 
 **Formation.** A column counts as quiet when it is genuine continental crust (Hc within
 `CRATON_HOST_MIN_HC_M`..`CRATON_HOST_MAX_HC_M`, so neither a drowned shelf nor an active orogen)
-and at least `CRATON_FORMATION_MARGIN_KM` from its plate's edge or any non-genuine cell. Its
-clock runs only while it stays quiet. After `CRATON_FORMATION_MYR` its whole Hc becomes
+and at least `CRATON_FORMATION_MARGIN_KM` from its plate's edge or any non-genuine cell, and is
+not a belt. Its clock runs only while it stays quiet. After `CRATON_FORMATION_MYR` its whole Hc becomes
 cratonic. A [cratons-first](foundations.md#cratons-first-layout) world starts with its
 generated cores as cratons (`cratons.seed_cores`: whole Hc, floored at
 `CRATON_HOST_MIN_HC_M`), and first-step seeding only books them. Every other world gets its
 interiors at least `CRATON_SEED_MARGIN_KM` from a margin seeded instead. Both kinds of seeded
 craton predate the run (dated `CRATON_SEED_AGE_YEARS` before it). A save from before cratons existed is seeded on its first step:
 loading never changes plate state.
+
+**Belts.** Crust welded in a collision or stretched by a rift is a belt and never forms
+craton, however long it stays quiet (RFC 0009). Welded orogens and old rift zones stay weaker
+than the shields they join and are what later rifts reactivate (Vauchez et al., 1997; Heron et
+al., 2016); without the mark, sutures and rift bands between cratons harden into craton and
+the cores merge. Every writer calls `cratons.mark_belt(world, plate, mask)`, which dates the
+continental cells in `mask` that hold no craton at `world.elapsed_years`:
+
+- suture-accretion receivers, including a foreland spill and a relocated terrane's new
+  footprint (`quad_tectonics._accrete_onto_survivors`);
+- cells of an overriding plate that take a front's crust, thrust up or underthrust
+  (`quad_tectonics.settle_received_crust`, which carries `crust_transfer.transfer_column` and
+  hand-offs to other overriders);
+- a merge's stacked suture cells and the cells its stacking overflow is placed on
+  (`quad_merge.merge`);
+- a failed rift's thinned band (`apply_failed_rift`);
+- the band along a successful split's cut on both daughters, `FAILED_RIFT_BAND_MULT`
+  spacings wide (`merge_split.maybe_split_plate`).
+
+Readers go through `cratons.belt_mask`, so belts could heal after `CRATON_BELT_HEAL_MYR`; it
+is infinite, and belts never heal. A [cratons-first](foundations.md#cratons-first-layout)
+world starts with its generated belts marked (`cratons.seed_belts`), dated
+`CRATON_BELT_SEED_AGE_YEARS` (1.8 Gyr) before the start: Proterozoic welds, younger than the
+cores they join. `cratons.diagnostics` reports
+`craton_belt_area_m2` and `craton_core_count` (edge-connected craton components, summed
+over plates); stats rows carry `belt_area_km2`, and the `craton` debug view draws belts in
+teal. A save from before belt marks loads with no belts and its cratons unchanged.
 
 **Resistance.** Strength rises linearly with cratonic thickness, reaching 1 at
 `CRATON_FULL_STRENGTH_HC_M`. At full strength a craton:

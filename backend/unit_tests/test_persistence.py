@@ -359,3 +359,21 @@ def test_a_line_save_converts_plate_age_from_steps_to_years():
 
     loaded = persistence.load_world_bytes(_line_pickle(world))
     assert [p.age_years for p in loaded.plates] == [700_000.0] * len(loaded.plates)
+
+
+def test_a_save_from_before_belt_marks_loads_with_no_belts_and_unchanged_cratons():
+    """RFC 0009: a save without the `belt_formed_years` array loads with the "never" default
+    everywhere and its cratons as they were; belts come only from later collisions and rifts."""
+    from app.surface_fields import BELT_UNMARKED_YEARS
+
+    world = generate_world(5, node_density=0.25)
+    assert any(np.any(p.collect("craton_crust_m") > 0.0) for p in world.plates)
+    for plate in world.plates:
+        plate._fields.pop("belt_formed_years", None)
+
+    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+
+    for old, new in zip(world.plates, loaded.plates):
+        assert np.all(new.collect("belt_formed_years") == BELT_UNMARKED_YEARS)
+        np.testing.assert_array_equal(new.collect("craton_crust_m"), old.collect("craton_crust_m"))
+        np.testing.assert_array_equal(new.collect("craton_formed_years"), old.collect("craton_formed_years"))

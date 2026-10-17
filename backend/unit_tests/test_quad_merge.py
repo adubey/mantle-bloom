@@ -440,7 +440,7 @@ def test_crust_removed_at_the_suture_cap_leaves_with_the_absorbed_plates_momentu
     absorb.set_omega(np.array([2e-9, 0.0, 0.0]))
     momentum = _momentum(keep, absorb)
     probe_keep, probe_absorb = copy.deepcopy(keep), copy.deepcopy(absorb)
-    lost = quad_merge._transfer(probe_keep, probe_absorb, np.zeros((0, 3)))
+    lost, _ = quad_merge._transfer(probe_keep, probe_absorb, np.zeros((0, 3)))
     assert np.linalg.norm(lost) > 0.0
 
     quad_merge.merge(keep, absorb, np.zeros((0, 3)))
@@ -728,3 +728,38 @@ def test_overflow_craton_keeps_the_date_of_the_front_it_came_from():
     assert np.any(received[: n // 2]) and np.any(received[n // 2 :])
     assert np.all(out["craton_formed_years"][: n // 2][received[: n // 2]] == -3e9)
     assert np.all(out["craton_formed_years"][n // 2 :][received[n // 2 :]] == -1e9)
+
+
+def test_a_merge_marks_exactly_its_stacked_cells_as_belt():
+    """RFC 0009: the suture's stacked columns are welded crust; the survivor's other cells
+    are not, and a merge without a world marks nothing."""
+    from app import cratons
+
+    keep, absorb, stacked = _overlapping_pair()
+    world = _world(keep, absorb)
+    world.elapsed_years = 4.0e8
+
+    merge_split.merge_plates(world, 1, 2)
+
+    np.testing.assert_array_equal(cratons.belt_mask(keep, world.elapsed_years), stacked)
+    assert np.all(keep.collect("belt_formed_years")[stacked] == 4.0e8)
+    keep, absorb, _ = _overlapping_pair()
+    quad_merge.merge(keep, absorb, np.zeros((0, 3)))
+    assert not np.any(cratons.belt_mask(keep, 4.0e8))
+
+
+@pytest.mark.parametrize("own, absorbed, expected", [(None, 5.0e8, None), (1.0e8, 5.0e8, 5.0e8), (1.0e8, None, None)])
+def test_a_suture_cell_stays_a_belt_only_if_most_of_its_area_was(own, absorbed, expected):
+    """The majority-by-area remap: each stacked cell here is half survivor, half absorbed, so
+    it is a belt only when both halves are, with the later date."""
+    from app.surface_fields import BELT_UNMARKED_YEARS
+
+    keep, absorb, stacked = _overlapping_pair()
+    for plate, date in ((keep, own), (absorb, absorbed)):
+        plate.set_fields_on_plate(belt_formed_years=np.full(plate.node_count(), BELT_UNMARKED_YEARS if date is None else date))
+
+    quad_merge.merge(keep, absorb, np.zeros((0, 3)))
+
+    belt = keep.collect("belt_formed_years")
+    assert np.all(belt[stacked] == (BELT_UNMARKED_YEARS if expected is None else expected))
+    assert np.all(belt[~stacked] == (BELT_UNMARKED_YEARS if own is None else own))

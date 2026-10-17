@@ -47,7 +47,7 @@ from .elevation_lines import (
     install_point_field_accessors,
 )
 from .plates import NEIGHBOUR_DISTANCE_RAD, Plate, SurfaceAdjacency, SurfaceNodes, _plates_within
-from .surface_fields import SURFACE_FIELDS, RemapClass
+from .surface_fields import SURFACE_FIELDS, RemapClass, majority_history
 
 # Bumped whenever the pickled state of a `PlateWithSparseQuadPatch` changes shape. A save
 # carrying a newer version than this code understands is rejected on load rather than
@@ -848,6 +848,8 @@ class PlateWithSparseQuadPatch(Plate):
         if spec.remap_class in (RemapClass.HISTORY, RemapClass.WRITE_ONCE_HISTORY):
             valid = values != spec.sentinel
             return spec.sentinel if not np.any(valid) else float(np.min(values[valid]))
+        if spec.remap_class == RemapClass.MAJORITY_HISTORY:
+            return float(majority_history(np.zeros(len(values), dtype=np.int64), values, areas, 1, spec.sentinel)[0])
         return float(np.average(values, weights=areas))
 
     def coarsen_cells(self, parent_ids: np.ndarray) -> dict[int, int]:
@@ -1011,14 +1013,18 @@ class PlateWithSparseQuadPatch(Plate):
         quad_tectonics.deform(self, world, other_plates, years, max_distance)
 
     def merge_with(
-        self, other: "PlateWithSparseQuadPatch", other_points_xyz: np.ndarray, other_plates: Sequence["PlateWithSparseQuadPatch"] = ()
+        self,
+        other: "PlateWithSparseQuadPatch",
+        other_points_xyz: np.ndarray,
+        other_plates: Sequence["PlateWithSparseQuadPatch"] = (),
+        world=None,
     ) -> None:
         """Absorb `other` onto this plate's lattice by exact-area remap, keeping clear of
-        `other_points_xyz` (every other plate's nodes) and `other_plates`' cells -- see
-        quad_merge.py."""
+        `other_points_xyz` (every other plate's nodes) and `other_plates`' cells; with
+        `world`, the suture is marked as belt -- see quad_merge.py."""
         from . import quad_merge
 
-        quad_merge.merge(self, other, other_points_xyz, other_plates)
+        quad_merge.merge(self, other, other_points_xyz, other_plates, world)
 
     def _crust_type_for_mask(self, mask: np.ndarray) -> str:
         """Nominal crust type for a newly partitioned patch.
@@ -1101,9 +1107,10 @@ class PlateWithSparseQuadPatch(Plate):
         result[1].reset_age()
         return result[0], result[1]
 
-    def apply_failed_rift(self, cut_normal: np.ndarray, spacing_rad: float) -> None:
+    def apply_failed_rift(self, cut_normal: np.ndarray, spacing_rad: float, world=None) -> None:
         """Thin a tapered band around an aborted rift without changing quad topology. A craton
-        resists it as it resists divergent thinning (RFC 0003)."""
+        resists it as it resists divergent thinning (RFC 0003). With `world`, the thinned band
+        is marked as belt (RFC 0009)."""
         from . import cratons, lithosphere, rheology
         from .merge_split import FAILED_RIFT_BAND_MULT, FAILED_RIFT_THINNING_FRACTION
 
@@ -1148,6 +1155,8 @@ class PlateWithSparseQuadPatch(Plate):
             mantle_lithosphere_thickness_m=hm,
             elev_change_reason=reason,
         )
+        if world is not None:
+            cratons.mark_belt(world, self, in_band)
 
     # --- Persistence -----------------------------------------------------------------------
 

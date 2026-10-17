@@ -580,7 +580,8 @@ both plate ownership and per-node fields needn't build the k-d tree twice).
 cratons that predate the run, seeded at generation. Orange marks cratons that formed during
 it. Both fade toward grey as a column's cratonic share thins. Ordinary continental crust is
 grey, warming to amber as its formation clock (`stable_continental_myr`) approaches
-`CRATON_FORMATION_MYR`. Oceanic crust is dark blue.
+`CRATON_FORMATION_MYR`. Teal marks belts, welded or rifted crust that never forms craton
+(`cratons.belt_mask`, RFC 0009). Oceanic crust is dark blue.
 
 Destruction is recorded in `World.craton_ledger`, one account per mechanism (rifting,
 subduction, delamination, collisional reworking, erosion, topology removal), and
