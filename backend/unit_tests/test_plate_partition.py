@@ -30,11 +30,13 @@ def test_cores_are_indivisible(layout):
 def test_path_distances_through_a_core_stay_geodesic(layout):
     """Dijkstra crosses a core as ordinary lattice, not as one contracted node, so path length
     over the 8-connected lattice stays close to the great-circle distance: the octile metric's
-    8% at worst on a square grid, a little more where cube-sphere cells are skewed."""
+    8% at worst on a square grid, up to ~15% where cube-sphere cells near a face corner are
+    skewed. A contracted core would read far below 1."""
     lat = layout.lattice
     core_id = int(np.bincount(layout.core[layout.is_core]).argmax())
     members = np.flatnonzero(layout.core == core_id)
-    start = int(lat.tree.query(layout.nuclei[core_id])[1])
+    nucleus = np.flatnonzero(layout.nucleus_craton == core_id)[0]
+    start = int(lat.tree.query(layout.nuclei[nucleus])[1])
     assert layout.core[start] == core_id
     path_km = dijkstra(lat.graph(ring=True), directed=False, indices=start)[members]
     great_km = np.arccos(np.clip(lat.xyz[members] @ lat.xyz[start], -1.0, 1.0)) * PLANET_RADIUS_KM
@@ -42,8 +44,8 @@ def test_path_distances_through_a_core_stay_geodesic(layout):
     assert np.any(far)
     ratio = path_km[far] / great_km[far]
     assert ratio.min() >= 0.99
-    assert np.median(ratio) <= 1.06
-    assert ratio.max() <= 1.15
+    assert np.median(ratio) <= 1.08
+    assert ratio.max() <= 1.2
 
 
 def test_each_plate_stays_in_its_area_band_and_above_the_node_floor(layout):

@@ -21,16 +21,18 @@ def test_belts_separate_the_cores_with_no_unmarked_gap(layout):
     a, b = layout.core[rows], layout.core[cols]
     # No link joins two different cores.
     assert not np.any((a >= 0) & (b >= 0) & (a != b))
-    # Along the arc between neighbouring nuclei of one continent, everything is core or belt.
+    # Along the arc between neighbouring nuclei of two cratons of one continent, everything
+    # is craton or belt.
     spacing_rad = cl.CRATON_CORE_SPACING_KM / PLANET_RADIUS_KM
     checked = 0
     for i in range(len(layout.nuclei)):
         for j in range(i + 1, len(layout.nuclei)):
-            if layout.nucleus_continent[i] != layout.nucleus_continent[j]:
+            ci, cj = layout.nucleus_craton[i], layout.nucleus_craton[j]
+            if ci == cj or layout.nucleus_continent[i] != layout.nucleus_continent[j]:
                 continue
             if np.arccos(np.clip(layout.nuclei[i] @ layout.nuclei[j], -1, 1)) > 1.3 * spacing_rad:
                 continue
-            if not (np.any(layout.core == i) and np.any(layout.core == j)):
+            if not (np.any(layout.core == ci) and np.any(layout.core == cj)):
                 continue
             t = np.linspace(0.0, 1.0, 50)[:, None]
             arc = (1 - t) * layout.nuclei[i] + t * layout.nuclei[j]
@@ -82,3 +84,44 @@ def test_a_continent_too_small_for_a_core_gets_none():
         assert not np.any(small.is_core & (small.continent == k))
         assert np.any(small.continent == k)
 
+
+
+def test_some_nuclei_join_an_existing_craton(layout):
+    """Cratons are composites (#470): some cratons have several overlapping nuclei, and no
+    craton id is shared across continents."""
+    counts = np.bincount(layout.nucleus_craton)
+    assert counts.max() > 1
+    assert np.sum(counts == 1) > 0
+    for craton in np.unique(layout.nucleus_craton):
+        assert len(np.unique(layout.nucleus_continent[layout.nucleus_craton == craton])) == 1
+    # A joining nucleus overlaps its craton, so its nucleus point lies inside it.
+    joined = np.flatnonzero(counts[layout.nucleus_craton] > 1)
+    inside = layout.core[layout.nearest(layout.nuclei[joined])] == layout.nucleus_craton[joined]
+    assert inside.mean() > 0.8
+
+
+def test_without_clustering_every_nucleus_is_its_own_craton(monkeypatch):
+    monkeypatch.setattr(cl, "CRATON_CLUSTER_CONCENTRATION", 1e12)
+    layout = cratons_first_layout(7, land_fraction=0.29).layout
+    assert len(np.unique(layout.nucleus_craton)) == len(layout.nucleus_craton)
+
+
+def test_some_cratons_reach_a_continental_edge(layout, monkeypatch):
+    """Variable growth and the centre pull leave some cratons near their continent's edge
+    (#470); with neither, the even margin keeps every craton inside."""
+    assert layout.craton_diagnostics()["cratons_near_edge_share"] > 0.1
+    monkeypatch.setattr(cl, "CONTINENT_CENTRE_PULL", 0.0)
+    monkeypatch.setattr(cl, "CONTINENT_GROWTH_SPEED_SIGMA", 0.0)
+    even = cratons_first_layout(7, land_fraction=0.29).layout
+    assert even.craton_diagnostics()["cratons_near_edge_share"] < layout.craton_diagnostics()["cratons_near_edge_share"]
+
+
+def test_craton_sizes_spread_below_one_disk_and_stop_near_the_cap(layout):
+    """Size scales let a craton no nucleus joins stay well under one core disk, and joining
+    stops at CRATON_MAX_AREA_KM2 (#470 review); the final trim can leave a craton a little
+    over it."""
+    area = layout.lattice.area_km2
+    sizes = np.array([area[layout.core == c].sum() for c in np.unique(layout.core[layout.is_core])])
+    disk = cap_area_km2(cl.CRATON_CORE_RADIUS_KM)
+    assert sizes.min() < 0.5 * disk
+    assert sizes.max() < 1.5 * cl.CRATON_MAX_AREA_KM2
