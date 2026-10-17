@@ -199,6 +199,20 @@ finally has its own gentle pressure-ridge uplift term, `TRANSFORM_UPLIFT_RATE_M_
 Geometric `contested` is kept, folded into `convergent`, and is still the *only* trigger for
 node deletion / continental retreat -- those must stay overlap-driven.
 
+**Boundary loads use one line measure per neighbour front node (#468).** Slab pull, sunk-slab
+drag, ridge push and contact drag are boundary processes: each sampled node contributes only
+its share of the along-front length, `ds / rows_for_front_node`, where `ds` is
+`line_spacing_rad(node_density) * PLANET_RADIUS_M` and the front node is identified by the
+nearest neighbour's `(plate_id, node_index)`. The same weight is used by the four equations;
+contact traction converts its share of force per metre back to a per-node coefficient using
+that node's accounting area. Thus widening the band or repeating rows does not multiply the
+load on a represented front segment. The force functions cache the weights on the per-step
+`BoundaryForceInputs`; basal drag remains an area integral over the whole plate. The
+synthetic normalization probe is `bin/debug/probe_boundary_load_normalization.py`, and the
+equation checks are in `backend/unit_tests/test_torque.py`. The discretization still assigns
+one `ds` to each distinct represented neighbour front node, so the represented length can
+differ slightly from the geometric boundary span at coarse density or near the band edge.
+
 **Deep interpenetration is classified too (torque engine, 2026).** The polygon-containment
 test used to run only on nodes within `reach_rad` (~3 spacings) of a neighbour node, so a
 plate that had slid *deep* over another had its deep-interior overlapping nodes classified

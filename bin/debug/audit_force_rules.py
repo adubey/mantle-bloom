@@ -44,6 +44,7 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import os
 import resource
 import subprocess
 import sys
@@ -53,9 +54,11 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
+SOURCE_ROOT = Path(os.environ.get("MB_SOURCE_ROOT", Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(SOURCE_ROOT / "backend"))
 
 from app import lithosphere, mantle, merge_split, plates, rheology, shortening, torque  # noqa: E402
+from app import stats  # noqa: E402
 from app import world as world_mod  # noqa: E402
 from app.elevation_lines import line_spacing_rad  # noqa: E402
 
@@ -314,6 +317,17 @@ def summarize(tap: Tap) -> dict:
     merges_by = Counter(m["path"] for m in tap.merges)
     yc = tap.yield_counts
     last_cap = tap.caps[-1] if tap.caps else {}
+    continental_hc, continental_hm = [], []
+    for plate in tap.world.plates:
+        continental = plates.node_is_continental(plate)
+        continental_hc.extend(plate.collect("crustal_thickness_m")[continental])
+        continental_hm.extend(plate.collect("mantle_lithosphere_thickness_m")[continental])
+
+    def percentiles(values):
+        if not values:
+            return None
+        return {str(p): float(np.percentile(values, p)) for p in (10, 50, 90, 99)}
+
     return {
         "clamp": {
             caller: {**c, "floor_share": c["floor"] / c["calls"], "cap_share": c["cap"] / c["calls"]} for caller, c in tap.clamp.items()
@@ -343,6 +357,12 @@ def summarize(tap: Tap) -> dict:
         },
         "order": tap.order,
         "band_rows": tap.band_rows,
+        "final_state": {
+            "land_fraction": float(stats.compute_stats(tap.world)["land_fraction"]),
+            "continental_hc_m_p10_p50_p90_p99": percentiles(continental_hc),
+            "continental_hm_m_p10_p50_p90_p99": percentiles(continental_hm),
+            "continental_nodes": len(continental_hc),
+        },
     }
 
 
@@ -438,9 +458,9 @@ def main() -> None:
     ap.add_argument("--out", type=Path, required=True)
     args = ap.parse_args()
 
-    commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
+    commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=SOURCE_ROOT, capture_output=True, text=True).stdout.strip()
     body = run_profile(args) if args.profile else run_audit(args)
-    result = {"issue": 465, "commit": commit, "args": {k: str(v) if isinstance(v, Path) else v for k, v in vars(args).items()}, **body}
+    result = {"issue": 468, "source_issue": 465, "commit": commit, "args": {k: str(v) if isinstance(v, Path) else v for k, v in vars(args).items()}, **body}
     result["max_rss_mb"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2**20
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(result, indent=1) + "\n")
