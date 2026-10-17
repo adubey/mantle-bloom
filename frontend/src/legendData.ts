@@ -740,6 +740,7 @@ export function legendFor(view: MapView): LegendSpec | null {
           { kind: "square", color: "rgb(150, 34, 40)", label: "Craton (predates the run)" },
           { kind: "square", color: "rgb(232, 112, 38)", label: "Craton (formed during the run)" },
           { kind: "square", color: "rgb(214, 186, 96)", label: "Quiet interior near cratonising" },
+          { kind: "square", color: "rgb(40, 150, 140)", label: "Belt: welded or rifted crust, never cratonises" },
           { kind: "square", color: "rgb(128, 126, 118)", label: "Other continental crust" },
           { kind: "square", color: "rgb(24, 38, 72)", label: "Oceanic crust" },
           COASTLINE_SYMBOL,

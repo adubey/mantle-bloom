@@ -1511,6 +1511,7 @@ def _generate_cratons_first(setup: CratonsFirstSetup, node_density: float) -> li
     _, hm0_continental = lithosphere.reference_thickness("continental")
     plates: list[Plate] = []
     cores: list[np.ndarray] = []
+    belts: list[np.ndarray] = []
     for i in range(layout.num_plates):
         frame = geometry.plate_frame_from_seed(layout.sites[i])
 
@@ -1541,9 +1542,10 @@ def _generate_cratons_first(setup: CratonsFirstSetup, node_density: float) -> li
         lithosphere.sync_plate_elevation(plate)
         plates.append(plate)
         cores.append(layout.is_core[source])
+        belts.append(layout.belt[source])
 
     bathymetry.shape_initial_bathymetry(plates)
-    for plate, core in zip(plates, cores):
+    for plate, core, belt in zip(plates, cores, belts):
         # A craton is genuine continental crust (the formation rule's host window). Where the
         # relief noise or offshore subsidence thinned a core below it, the core is a drowned
         # platform at full host thickness instead: a thinned shelf seeded as craton took
@@ -1553,6 +1555,7 @@ def _generate_cratons_first(setup: CratonsFirstSetup, node_density: float) -> li
             plate.set_fields_on_plate(crustal_thickness_m=np.where(core, np.maximum(hc, cratons.CRATON_HOST_MIN_HC_M), hc))
             lithosphere.sync_plate_elevation(plate)
         cratons.seed_cores(plate, core)
+        cratons.seed_belts(plate, belt)
     return plates
 
 

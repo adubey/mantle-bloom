@@ -11,7 +11,7 @@ from app import continental_ledger, cratons, lithosphere, persistence, quad_merg
 from app import world as world_mod
 from app.elevation_lines import CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC, line_spacing_rad
 from app.lithosphere_plate import deform_columns
-from app.surface_fields import CRATON_UNFORMED_YEARS
+from app.surface_fields import BELT_UNMARKED_YEARS, CRATON_UNFORMED_YEARS
 from app.sparse_quad_patch import PlateWithSparseQuadPatch, cells_per_face_edge, pack_cell_keys
 from app.world import World
 
@@ -160,6 +160,121 @@ def test_leaving_the_host_window_resets_the_formation_clock(monkeypatch):
     cratons.update(world, 1e6)
 
     assert np.all(plate.collect("stable_continental_myr") == 0.0)
+
+
+def _quiet_centre_forms(monkeypatch, marked: bool) -> bool:
+    """Whether a cap's centre column -- in the Hc window, at least 1,000 km inside -- forms
+    craton over 300 Myr of quiet, with or without a belt mark."""
+    plate = _cap(1)
+    world = _unseeded(monkeypatch, plate)
+    centre = np.zeros(plate.node_count(), dtype=bool)
+    centre[int(np.argmax(plate.all_points_and_elevation()[0] @ np.array([1.0, 0.0, 0.0])))] = True
+    inside_km = cratons._interior_hops(plate, cratons._genuine_continental(plate), 20)[centre][0] * SPACING * 6371.0
+    assert inside_km >= 1_000.0
+    if marked:
+        cratons.mark_belt(world, plate, centre)
+    for _ in range(30):
+        world.elapsed_years += 10e6
+        cratons.update(world, 10e6)
+    return bool(plate.collect("craton_crust_m")[centre][0] > 0.0)
+
+
+def test_a_belt_never_forms_craton_however_long_it_stays_quiet(monkeypatch):
+    """RFC 0009: welded and rifted crust never cratonises; the same column unmarked does."""
+    assert _quiet_centre_forms(monkeypatch, marked=False)
+    assert not _quiet_centre_forms(monkeypatch, marked=True)
+
+
+def test_mark_belt_dates_only_continental_cells_without_craton(monkeypatch):
+    keys = _block((10, 14), (10, 11))
+    plate = _plate(1, keys)
+    codes = plate.collect("crust_type_code")
+    codes[0] = CRUST_TYPE_OCEANIC
+    plate.set_fields_on_plate(crust_type_code=codes)
+    _set_craton(plate, np.arange(len(keys)) == 1)
+    world = _unseeded(monkeypatch, plate)
+    world.elapsed_years = 7.0e8
+
+    cratons.mark_belt(world, plate, np.ones(len(keys), dtype=bool))
+
+    np.testing.assert_array_equal(plate.collect("belt_formed_years"), [BELT_UNMARKED_YEARS, BELT_UNMARKED_YEARS, 7.0e8, 7.0e8])
+    np.testing.assert_array_equal(cratons.belt_mask(plate, world.elapsed_years), [False, False, True, True])
+
+
+def test_belts_heal_only_after_the_heal_time(monkeypatch):
+    plate = _plate(1, _block((10, 12), (10, 11)))
+    world = _unseeded(monkeypatch, plate)
+    cratons.mark_belt(world, plate, np.ones(2, dtype=bool))
+    assert np.all(cratons.belt_mask(plate, 4.0e9))  # never, by default
+
+    monkeypatch.setattr(cratons, "CRATON_BELT_HEAL_MYR", 100.0)
+    assert np.all(cratons.belt_mask(plate, 99.0e6)) and not np.any(cratons.belt_mask(plate, 100.0e6))
+
+
+@pytest.mark.parametrize("marked_children, expected", [(1, BELT_UNMARKED_YEARS), (3, 3.0e8)])
+def test_a_coarsened_cell_is_a_belt_only_if_most_of_its_area_was(marked_children, expected):
+    plate = _plate(1, _block((10, 12), (10, 11)))
+    parent = plate.cell_keys[0]
+    children = plate.refine_cells(np.array([parent]))[int(parent)]
+    child = np.flatnonzero(np.isin(plate.cell_keys, children))
+    belt = plate.collect("belt_formed_years")
+    belt[child[:marked_children]] = np.array([3.0e8, 1.0e8, 2.0e8])[:marked_children]
+    plate.set_fields_on_plate(belt_formed_years=belt)
+
+    plate.coarsen_cells(np.array([parent]))
+
+    assert plate.collect("belt_formed_years")[int(np.flatnonzero(plate.cell_keys == parent)[0])] == expected
+
+
+def test_a_coarsened_cell_holding_craton_is_never_a_belt():
+    plate = _plate(1, _block((10, 12), (10, 11)))
+    parent = plate.cell_keys[0]
+    children = plate.refine_cells(np.array([parent]))[int(parent)]
+    child = np.flatnonzero(np.isin(plate.cell_keys, children))
+    belt = plate.collect("belt_formed_years")
+    belt[child[:3]] = 2.0e8
+    craton = np.zeros(plate.node_count())
+    craton[child[3]] = 10_000.0
+    plate.set_fields_on_plate(belt_formed_years=belt, craton_crust_m=craton)
+
+    plate.coarsen_cells(np.array([parent]))
+
+    at = int(np.flatnonzero(plate.cell_keys == parent)[0])
+    assert plate.collect("craton_crust_m")[at] > 0.0
+    assert plate.collect("belt_formed_years")[at] == BELT_UNMARKED_YEARS
+
+
+def test_a_belt_retyped_oceanic_leaves_the_belt_area_and_loses_its_mark(monkeypatch):
+    """#474 review: belts are continental crust. A marked cell retyped oceanic drops out of
+    `craton_belt_area_m2` at once, and `update` clears its mark, so turning continental again
+    doesn't bring the old mark back."""
+    plate = _plate(1, _block((10, 14), (10, 11)))
+    world = _unseeded(monkeypatch, plate)
+    cratons.mark_belt(world, plate, np.ones(4, dtype=bool))
+    areas = plate.node_areas_m2()
+    codes = plate.collect("crust_type_code")
+    codes[0] = CRUST_TYPE_OCEANIC
+    plate.set_fields_on_plate(crust_type_code=codes)
+
+    assert cratons.diagnostics(world)["craton_belt_area_m2"] == pytest.approx(float(areas[1:].sum()))
+    cratons.update(world, 1e6)
+    codes[0] = CRUST_TYPE_CONTINENTAL
+    plate.set_fields_on_plate(crust_type_code=codes)
+
+    np.testing.assert_array_equal(cratons.belt_mask(plate, world.elapsed_years), [False, True, True, True])
+    assert cratons.diagnostics(world)["craton_belt_area_m2"] == pytest.approx(float(areas[1:].sum()))
+
+
+def test_diagnostics_report_belt_area_and_connected_cores():
+    plate = _plate(1, _block((10, 16), (10, 11)))
+    world = _world(plate)
+    _set_craton(plate, np.isin(np.arange(6), [0, 1, 4]))
+    cratons.mark_belt(world, plate, np.isin(np.arange(6), [2, 3]))
+
+    result = cratons.diagnostics(world)
+
+    assert result["craton_core_count"] == 2.0
+    assert result["craton_belt_area_m2"] == pytest.approx(float(plate.node_areas_m2()[2:4].sum()))
 
 
 # --- Resistance and ledgered destruction --------------------------------------------------

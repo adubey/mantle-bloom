@@ -744,6 +744,16 @@ def test_cratons_first_seeds_each_core_as_a_whole_genuine_column():
         assert np.all(plate.collect("craton_formed_years")[core] == -cratons.CRATON_SEED_AGE_YEARS)
 
 
+def test_cratons_first_marks_its_generated_belts_and_nothing_else():
+    """RFC 0009: generation's belts are Proterozoic welds, dated CRATON_BELT_SEED_AGE_YEARS
+    before the start, and never form craton (cratons.update)."""
+    layout = cratons_first_layout(7, land_fraction=0.29).layout
+    for plate in _cratons_first():
+        belt = layout.belt[layout.nearest(plate.all_points_and_elevation()[0])]
+        np.testing.assert_array_equal(cratons.belt_mask(plate, 0.0), belt)
+        assert np.all(plate.collect("belt_formed_years")[belt] == -cratons.CRATON_BELT_SEED_AGE_YEARS)
+
+
 def test_cratons_first_is_off_by_default():
     a = generate_plates(seed=5, num_plates=8)
     b = generate_plates(seed=5, num_plates=8, cratons_first=False)

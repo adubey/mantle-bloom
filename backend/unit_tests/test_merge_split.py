@@ -1092,3 +1092,38 @@ def test_continental_collision_pairs_follow_each_nodes_crust_not_the_majority_ty
 
     assert (0, 1) in merge_split.find_continental_collision_pairs(_mixed_pair_world("oceanic", terrane_at_contact))
     assert merge_split.find_continental_collision_pairs(_mixed_pair_world("continental", ocean_at_contact)) == []
+
+
+def test_a_failed_rift_from_the_split_path_marks_its_thinned_band(monkeypatch):
+    from app import cratons
+
+    monkeypatch.setattr(merge_split, "RIFT_SUCCESS_PROBABILITY", 0.0)
+    world, plate = _engineered_split_world()
+    hc_before = plate.collect("crustal_thickness_m")
+
+    assert merge_split.maybe_split_plate(world, plate) is None
+
+    thinned = plate.collect("crustal_thickness_m") < hc_before
+    assert np.any(thinned)
+    np.testing.assert_array_equal(cratons.belt_mask(plate, world.elapsed_years), thinned)
+
+
+def test_a_split_marks_the_band_along_its_cut_on_both_daughters(monkeypatch):
+    """RFC 0009: both new margins are stretched crust, over the band a failed rift would
+    have thinned; the rest of each daughter stays unmarked."""
+    from app import cratons
+
+    monkeypatch.setattr(merge_split, "RIFT_SUCCESS_PROBABILITY", 1.0)
+    world, plate = _engineered_split_world()
+    cuts = []
+    split = plate.split
+    monkeypatch.setattr(plate, "split", lambda plate_id, cut_normal, min_nodes: cuts.append(cut_normal) or split(plate_id, cut_normal, min_nodes))
+
+    daughters = merge_split.maybe_split_plate(world, plate)
+
+    assert daughters is not None
+    band_sin = np.sin(merge_split.FAILED_RIFT_BAND_MULT * line_spacing_rad(world.node_density))
+    for daughter in daughters:
+        band = np.abs(daughter.all_points_and_elevation()[0] @ cuts[0]) < band_sin
+        assert np.any(band) and not np.all(band)
+        np.testing.assert_array_equal(cratons.belt_mask(daughter, world.elapsed_years), band)

@@ -2304,20 +2304,26 @@ def _render_crust_type_view(world: World, projection: str, width: int, height: i
 # Craton debug view (see _render_craton_view). Oceanic crust is dark; ordinary continental crust
 # is grey, warming toward amber as its craton formation clock runs (a proto-craton); cratons are
 # deep red if seeded at generation, orange if they formed during the run, faded toward grey as
-# their cratonic share of the column thins.
+# their cratonic share of the column thins. Belts -- welded or rifted crust that never forms
+# craton (cratons.belt_mask, RFC 0009) -- are teal.
 CRATON_VIEW_OCEANIC_RGB = np.array((24, 38, 72), dtype=float)
 CRATON_VIEW_CONTINENTAL_RGB = np.array((128, 126, 118), dtype=float)
 CRATON_VIEW_PROTO_RGB = np.array((214, 186, 96), dtype=float)
 CRATON_VIEW_SEEDED_RGB = np.array((150, 34, 40), dtype=float)
 CRATON_VIEW_FORMED_RGB = np.array((232, 112, 38), dtype=float)
+CRATON_VIEW_BELT_RGB = np.array((40, 150, 140), dtype=float)
 # Open ocean on the "waterLayer" overlay (lakes/seas keep LAKE_COLOR_RGB / SEA_COLOR_RGB).
 WATER_LAYER_OCEAN_RGB = (40, 90, 170)
 
 
-def craton_colors(continental: np.ndarray, craton_m: np.ndarray, formed_years: np.ndarray, stable_myr: np.ndarray) -> np.ndarray:
+def craton_colors(
+    continental: np.ndarray, craton_m: np.ndarray, formed_years: np.ndarray, stable_myr: np.ndarray, belt: np.ndarray | None = None
+) -> np.ndarray:
     """Per-node craton view colour -- see the CRATON_VIEW_* constants."""
     proto = np.clip(stable_myr / cratons.CRATON_FORMATION_MYR, 0.0, 1.0)[:, None]
     colors = CRATON_VIEW_CONTINENTAL_RGB + proto * (CRATON_VIEW_PROTO_RGB - CRATON_VIEW_CONTINENTAL_RGB)
+    if belt is not None:
+        colors = np.where(belt[:, None], CRATON_VIEW_BELT_RGB, colors)
     craton_rgb = np.where((formed_years < 0.0)[:, None], CRATON_VIEW_SEEDED_RGB, CRATON_VIEW_FORMED_RGB)
     share = (0.35 + 0.65 * cratons.strength(craton_m))[:, None]
     colors = np.where((craton_m > 0.0)[:, None], CRATON_VIEW_CONTINENTAL_RGB + share * (craton_rgb - CRATON_VIEW_CONTINENTAL_RGB), colors)
@@ -2341,8 +2347,13 @@ def _render_craton_view(world: World, projection: str, width: int, height: int, 
             name: np.concatenate([p.collect(name) for p in live])
             for name in ("craton_crust_m", "craton_formed_years", "stable_continental_myr")
         }
+        belt = np.concatenate([cratons.belt_mask(p, world.elapsed_years) for p in live])
         return craton_colors(
-            continental[idx], fields["craton_crust_m"][idx], fields["craton_formed_years"][idx], fields["stable_continental_myr"][idx]
+            continental[idx],
+            fields["craton_crust_m"][idx],
+            fields["craton_formed_years"][idx],
+            fields["stable_continental_myr"][idx],
+            belt[idx],
         )
 
     return _render_resampled_view(world, projection, width, height, view_rotation, cell_colors)

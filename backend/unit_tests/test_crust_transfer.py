@@ -552,3 +552,22 @@ def test_a_stale_root_allowance_never_sheds_an_upper_plates_craton():
     shed = world.orogenic_relief_budget["delamination_completed_m3"]
     assert 0.0 < shed <= non_cratonic * (1.0 + 1e-9)
     np.testing.assert_array_equal(upper.collect("craton_crust_m"), craton_before)
+
+
+def test_the_upper_plate_cells_that_take_the_crust_are_marked_as_belt():
+    """RFC 0009: crust thrust up or underthrust onto the upper plate welds it there; exactly
+    those cells become belt, and the lower plate's survivors take nothing."""
+    lower = _lower()
+    upper = _plate(2, _block((20, 40), (10, 40)))
+    world = _world(lower, upper)
+    world.elapsed_years = 2.0e8
+    donors, ids = _front(lower, 2)
+    hc_before = upper.collect("crustal_thickness_m")
+
+    _consume(world, lower, donors, ids)
+
+    received = upper.collect("crustal_thickness_m") > hc_before
+    assert np.any(received) and not np.all(received)
+    np.testing.assert_array_equal(cratons.belt_mask(upper, world.elapsed_years), received)
+    assert np.all(upper.collect("belt_formed_years")[received] == 2.0e8)
+    assert not np.any(cratons.belt_mask(lower, world.elapsed_years))

@@ -15,6 +15,9 @@ class RemapClass(str, Enum):
     CLOCK = "clock"
     HISTORY = "history"
     WRITE_ONCE_HISTORY = "write_once_history"
+    # A dated mark a merged or coarsened cell keeps only if most of its area carried one,
+    # with the latest date among those (`majority_history`; RFC 0009 belts).
+    MAJORITY_HISTORY = "majority_history"
     DERIVED = "derived"
 
 
@@ -35,6 +38,9 @@ def _field(dtype, default, remap_class, *, sentinel=None, coupled_to=()):
 # legitimately forms with that date. Finite, so the surface audits' finiteness checks hold, and
 # far beyond any reachable simulation year.
 CRATON_UNFORMED_YEARS = 1.0e18
+# `belt_formed_years`' "never a belt" sentinel (RFC 0009). Below any real date, generated
+# belts' negative ones included, and finite for the same reason as CRATON_UNFORMED_YEARS.
+BELT_UNMARKED_YEARS = -1.0e18
 
 # `channel_reference_elevation_m`'s "no record yet" value. It's finite for the same reason as
 # CRATON_UNFORMED_YEARS. Erosion treats it, and any area-weighted blend that includes it, as no
@@ -80,6 +86,11 @@ SURFACE_FIELDS: dict[str, SurfaceField] = {
     "craton_crust_m": _field(float, 0.0, RemapClass.EXTENSIVE),
     "craton_formed_years": _field(float, CRATON_UNFORMED_YEARS, RemapClass.HISTORY, sentinel=CRATON_UNFORMED_YEARS),
     "stable_continental_myr": _field(float, 0.0, RemapClass.CLOCK),
+    # When the column last became a belt -- welded in a collision or stretched by a rift --
+    # so it never forms craton (cratons.mark_belt, RFC 0009). Majority by area, not HISTORY:
+    # keeping any contributor's mark spread belts onto craton cells in G1 (9 M km^2 on seed 7
+    # by 500 Myr).
+    "belt_formed_years": _field(float, BELT_UNMARKED_YEARS, RemapClass.MAJORITY_HISTORY, sentinel=BELT_UNMARKED_YEARS),
     # The (<= 0) isostatic depression the current ice load has applied to `elevation` (see
     # lithosphere.ice_load_deflection). It records what is baked into `elevation`, so it
     # remaps the way `elevation` does rather than the way `glacier_depth` does.
@@ -104,3 +115,37 @@ SURFACE_FIELDS: dict[str, SurfaceField] = {
     "mobile_cover_m": _field(float, 0.0, RemapClass.EXTENSIVE),
     "mobile_cover_continental_m": _field(float, 0.0, RemapClass.EXTENSIVE),
 }
+
+
+def majority_history(
+    cell: np.ndarray,
+    values: np.ndarray,
+    weights: np.ndarray,
+    count: int,
+    sentinel: float,
+    own: np.ndarray | None = None,
+    own_weights: np.ndarray | None = None,
+) -> np.ndarray:
+    """The MAJORITY_HISTORY remap: per output cell (0..`count`-1), the latest of the marked
+    `values` (those not `sentinel`) mapped to it by `cell`, if the marked contributors hold
+    more than half its total weight (area); otherwise `sentinel`. `own` and `own_weights`
+    are an existing cell's own value and weight, voting alongside what it takes in (a merge
+    suture)."""
+    cell = np.asarray(cell, dtype=np.int64)
+    values = np.asarray(values, dtype=float)
+    weights = np.asarray(weights, dtype=float)
+    marked = values != sentinel
+    total = np.bincount(cell, weights=weights, minlength=count)
+    marked_weight = np.bincount(cell[marked], weights=weights[marked], minlength=count)
+    latest = np.full(count, -np.inf)
+    np.maximum.at(latest, cell[marked], values[marked])
+    if own is not None:
+        own = np.asarray(own, dtype=float)
+        own_weights = np.asarray(own_weights, dtype=float)
+        own_marked = own != sentinel
+        total = total + own_weights
+        marked_weight = marked_weight + np.where(own_marked, own_weights, 0.0)
+        latest = np.where(own_marked, np.maximum(latest, own), latest)
+    # Relative tolerance: equal areas summed from sub-cells differ in the last ulp, and an
+    # even split is not "most".
+    return np.where(marked_weight > 0.5 * total * (1.0 + 1e-9), latest, sentinel)

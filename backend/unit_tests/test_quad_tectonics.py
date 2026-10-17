@@ -1744,3 +1744,27 @@ def test_a_continental_margin_on_an_oceanic_plate_grows_continental_arc_crust():
     np.testing.assert_array_equal(a.collect("elev_change_reason")[grown_beyond_margin], ELEV_CHANGE_SUBDUCTION_ARC)
     # The ocean floor's own edge grows ordinary fresh crust, not arc.
     assert not np.any(a.collect("elev_change_reason")[i_after < 10] == ELEV_CHANGE_SUBDUCTION_ARC)
+
+
+def test_suture_accretion_marks_exactly_the_continental_cells_it_welds_onto():
+    """RFC 0009: the survivors a suture's crust lands on are belt, dated now; the rest of the
+    plate, and every cell when no world is given, stays unmarked."""
+    from app import cratons
+
+    def accrete(with_world: bool):
+        keys = _block((10, 30), (20, 21))
+        a = _plate(1, keys, "continental")
+        donors = np.zeros(len(keys), dtype=bool)
+        donors[0] = True
+        world = _world(a)
+        world.elapsed_years = 3.0e8
+        hc_before = a.collect("crustal_thickness_m")
+        quad_tectonics._accrete_onto_survivors(a, donors, ~donors, world if with_world else None)
+        return a, ~donors & (a.collect("crustal_thickness_m") > hc_before), world
+
+    a, welded, world = accrete(True)
+    assert np.any(welded) and not np.all(welded[1:])
+    np.testing.assert_array_equal(cratons.belt_mask(a, world.elapsed_years), welded)
+    assert np.all(a.collect("belt_formed_years")[welded] == 3.0e8)
+    a, _, world = accrete(False)
+    assert not np.any(cratons.belt_mask(a, world.elapsed_years))

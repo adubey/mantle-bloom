@@ -350,6 +350,8 @@ export interface WorldStats {
   craton_area_km2?: number;
   craton_continental_fraction?: number;
   craton_volume_km3?: number;
+  // Welded and rifted crust that never forms craton (RFC 0009). Absent before belt marks.
+  belt_area_km2?: number;
   // Cumulative cratonic volume destroyed, every mechanism together; craton_ledger_km3 has
   // the per-mechanism split.
   craton_destroyed_km3?: number;
