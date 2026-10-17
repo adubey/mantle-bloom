@@ -19,6 +19,8 @@ from app import (
 from app.hydroclimate import volcanism
 from app.elevation_lines import CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC, line_spacing_rad
 from app.lithosphere_plate import (
+    CONTINENTAL_AREA_BUDGET_MULT,
+    CONTINENTAL_BUDGET_HC_FRACTION,
     CONTINENTAL_CONTESTED_RETREAT_MIN_RUN,
     EXTEND_THRESHOLD_MULTIPLIER,
     SUTURE_ACCRETION_MAX_HC_M,
@@ -1571,6 +1573,22 @@ def test_growth_gate_weighs_a_continent_against_its_own_area_not_its_plates_ocea
     a = _plate(1, keys, "continental", crust_type_code=np.where(ocean, CRUST_TYPE_OCEANIC, 0).astype(np.int8), crustal_thickness_m=hc)
     _, ctx = _context(a, [])
     assert not ctx.suppress_growth
+
+
+def test_growth_gate_suppresses_growth_when_continental_area_exceeds_its_crust_budget():
+    # Three thin continental cells contribute footprint without enough crustal volume to
+    # count as genuine continent; the remaining cell carries reference continental crust.
+    # Their area ratio is 4:1, above the production budget multiplier (1.8).
+    keys = _block((10, 14), (20, 21))
+    hc = np.full(len(keys), lithosphere.MIN_CRUSTAL_THICKNESS_M)
+    hc[0] = lithosphere.REFERENCE_HC_CONTINENTAL_M
+    plate = _plate(1, keys, "continental", crustal_thickness_m=hc)
+
+    _, ctx = _context(plate, [])
+
+    assert CONTINENTAL_BUDGET_HC_FRACTION * lithosphere.REFERENCE_HC_CONTINENTAL_M > hc[1]
+    assert CONTINENTAL_AREA_BUDGET_MULT == pytest.approx(1.8)
+    assert ctx.suppress_growth
 
 
 def test_contested_ocean_floor_on_a_continental_plate_retreats_cell_by_cell_and_does_not_accrete():
