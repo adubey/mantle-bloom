@@ -5,7 +5,10 @@ plates-first layout, density 1) for seeds 7, 11 and 2024 and steps it to 1 Gyr i
 with a row every 100 Myr. Two runs:
 
 - **main**: `origin/main` at `2c6f668` (#471 merged).
-- **belts**: this branch at that commit plus the belt marks.
+- **belts**: this branch at that commit plus the belt marks, after the PR #474 review fixes
+  (no belt on a cell holding craton; a cell retyped oceanic loses its mark, and belt area counts
+  continental cells only). Every measure but belt area is identical at every checkpoint to the
+  run before those fixes, which counted oceanic-retyped cells as belt.
 
 ```bash
 backend/.venv/bin/python bin/debug/measure_belt_marks.py run --seeds 7,11,2024 \
@@ -25,8 +28,8 @@ checkpoint, both runs); the full JSONL is not checked in.
 | Formed volume (cumulative) | 331 / 251 M km³ (−24%) | 482 / 412 M km³ (−15%) | 905 / 654 M km³ (−28%) |
 | Craton area | 90.2 / 91.1 M km² | 71.7 / 77.4 M km² | 69.5 / 70.3 M km² |
 | Genuine continental area | 100.9 / 99.0 M km² | 79.5 / 91.2 M km² | 94.0 / 104.2 M km² |
-| Belt area | — / 38.2 M km² (39% of continental) | — / 33.5 M km² (37%) | — / 49.7 M km² (48%) |
-| Peak belt area | 78.4 M km² at 300 Myr (45%) | 46.3 M km² at 300 Myr (39%) | 57.7 M km² at 600 Myr (50%) |
+| Belt area | — / 19.2 M km² (19% of continental) | — / 26.9 M km² (30%) | — / 43.4 M km² (42%) |
+| Peak belt area | 67.4 M km² at 200 Myr (35%) | 43.6 M km² at 300 Myr (36%) | 53.7 M km² at 600 Myr (47%) |
 | Formation on marked columns | — / 0 | — / 0 | — / 0 |
 | Craton ledger balance | ≤ 3e-6 / ≤ 1e-5 km³ | ≤ 1e-6 / ≤ 1e-5 km³ | ≤ 2e-6 / ≤ 1e-6 km³ |
 | Continental-material balance | −5.6 / −3.9 M km³ | −9.6 / −13.5 M km³ | −1.7 / −1.8 M km³ |
@@ -50,13 +53,14 @@ on seeds 11 and 2024. The gap grows with time on two seeds and changes sign acro
 Run-to-run noise is about ±2% at 43 Myr (#315) and is not measured at 1 Gyr. This is evidence
 of trajectory divergence, not a demonstrated effect on continental area.
 
-**Belts are large.** At 1 Gyr, belts cover 37–48% of genuine continental area, above the
-10–30% that RFC 0009 targets for the generated layout at t = 0. Most new marks come from crust
+**Belts are large on one seed.** At 1 Gyr, belts cover 19%, 30% and 42% of genuine continental
+area, against the 10–30% that RFC 0009 targets for the generated layout at t = 0; they peak at
+35–47%. Most new marks come from crust
 landing on upper plates at collision fronts. On seed 7 over the first 20 Myr, the new belt area
 by writer was: underthrust 10.1 M km², upper-plate thrust-up 8.0 M km², failed rifts 7.8 M km²,
 suture accretion 7.5 M km², merge stacking 1.2 M km², split cuts 0.65 M km². RFC 0009 expects
 G1's risk to be belts that are lost too fast; here they persist. Belt area peaks at 200–600 Myr
-and falls by a quarter to a half by 1 Gyr, as continents shrink.
+and falls by a fifth to over a half by 1 Gyr, as continents shrink.
 
 **Ledgers.** The craton ledger closes to round-off in both runs. The continental-material
 balance error is of the same size on `main` (−1.7 to −9.6 M km³ at 1 Gyr), so it predates this

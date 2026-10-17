@@ -39,7 +39,7 @@
      "core_count": null
     },
     "branch": {
-     "belt_area_km2": 56904014.35,
+     "belt_area_km2": 54095707.085,
      "craton_area_km2": 105977032.606,
      "craton_volume_km3": 4049660576.029,
      "formed_km3": 0.0,
@@ -63,7 +63,7 @@
      "core_count": null
     },
     "branch": {
-     "belt_area_km2": 77739980.364,
+     "belt_area_km2": 67369355.356,
      "craton_area_km2": 120565968.75,
      "craton_volume_km3": 4122330084.522,
      "formed_km3": 179209743.79,
@@ -87,7 +87,7 @@
      "core_count": null
     },
     "branch": {
-     "belt_area_km2": 78404591.554,
+     "belt_area_km2": 62837919.727,
      "craton_area_km2": 118388690.69,
      "craton_volume_km3": 4072700738.821,
      "formed_km3": 227882260.685,
@@ -111,7 +111,7 @@
      "core_count": null
     },
     "branch": {
-     "belt_area_km2": 76293865.37,
+     "belt_area_km2": 59359791.314,
      "craton_area_km2": 115391513.936,
      "craton_volume_km3": 3977841327.182,
      "formed_km3": 235803687.75,
@@ -135,7 +135,7 @@
      "core_count": null
     },
     "branch": {
-     "belt_area_km2": 64788820.845,
+     "belt_area_km2": 40791925.844,
      "craton_area_km2": 116980841.975,
      "craton_volume_km3": 3887938321.211,
      "formed_km3": 245417646.152,
@@ -159,7 +159,7 @@
      "core_count": null
     },
     "branch": {
-     "belt_area_km2": 59113388.767,
+     "belt_area_km2": 35541827.447,
      "craton_area_km2": 111910749.622,
      "craton_volume_km3": 3793706008.081,
      "formed_km3": 248548119.165,
@@ -183,7 +183,7 @@
      "core_count": null
     },
     "branch": {
-     "belt_area_km2": 50940264.071,
+     "belt_area_km2": 26191829.048,
      "craton_area_km2": 109738696.146,
      "craton_volume_km3": 3731055709.757,
      "formed_km3": 249755510.88,
@@ -207,7 +207,7 @@
      "core_count": null
     },
     "branch": {
-     "belt_area_km2": 48024410.991,
+     "belt_area_km2": 26217767.836,
      "craton_area_km2": 100595342.665,
      "craton_volume_km3": 3622389420.701,
      "formed_km3": 251277382.641,
@@ -231,7 +231,7 @@
      "core_count": null
     },
     "branch": {
-     "belt_area_km2": 42232914.487,
+     "belt_area_km2": 22539279.244,
      "craton_area_km2": 94998268.807,
      "craton_volume_km3": 3479969678.608,
      "formed_km3": 251277382.641,
@@ -255,7 +255,7 @@
      "core_count": null
     },
     "branch": {
-     "belt_area_km2": 38205821.038,
+     "belt_area_km2": 19224356.341,
      "craton_area_km2": 91130856.416,
      "craton_volume_km3": 3346109890.045,
      "formed_km3": 251277382.641,
@@ -305,7 +305,7 @@
      "core_count": null
     },
     "branch": {
-     "belt_area_km2": 25352246.339,
+     "belt_area_km2": 25139388.844,
      "craton_area_km2": 79144216.53,
      "craton_volume_km3": 3095163816.971,
      "formed_km3": 0.0,
@@ -329,7 +329,7 @@
      "core_count": null
     },
     "branch": {
-     "belt_area_km2": 37657427.711,
+     "belt_area_km2": 36767909.721,
      "craton_area_km2": 84175513.194,
      "craton_volume_km3": 3302089074.365,
      "formed_km3": 313460116.831,
@@ -353,7 +353,7 @@
      "core_count": null
     },
     "branch": {
-     "belt_area_km2": 46346911.572,
+     "belt_area_km2": 43588833.76,
      "craton_area_km2": 86669864.27,
      "craton_volume_km3": 3282378913.743,
      "formed_km3": 374924399.79,
@@ -377,7 +377,7 @@
      "core_count": null
     },
     "branch": {
-     "belt_area_km2": 43514818.85,
+     "belt_area_km2": 39696358.45,
      "craton_area_km2": 86151916.918,
      "craton_volume_km3": 3235137795.286,
      "formed_km3": 383671116.46,
@@ -401,7 +401,7 @@
      "core_count": null
     },
     "branch": {
-     "belt_area_km2": 35690583.052,
+     "belt_area_km2": 30971833.739,
      "craton_area_km2": 87431775.905,
      "craton_volume_km3": 3192459440.37,
      "formed_km3": 392785441.903,
@@ -425,7 +425,7 @@
      "core_count": null
     },
     "branch": {
-     "belt_area_km2": 33783358.161,
+     "belt_area_km2": 28768572.732,
      "craton_area_km2": 83038455.255,
      "craton_volume_km3": 3122091347.944,
      "formed_km3": 393435591.162,
@@ -449,7 +449,7 @@
      "core_count": null
     },
     "branch": {
-     "belt_area_km2": 31773110.583,
+     "belt_area_km2": 26287198.758,
      "craton_area_km2": 83087861.657,
      "craton_volume_km3": 3061382076.927,
      "formed_km3": 404728410.525,
@@ -473,7 +473,7 @@
      "core_count": null
     },
     "branch": {
-     "belt_area_km2": 35188674.871,
+     "belt_area_km2": 29103733.079,
      "craton_area_km2": 78421215.626,
      "craton_volume_km3": 2966653963.786,
      "formed_km3": 408708842.195,
@@ -497,7 +497,7 @@
      "core_count": null
     },
     "branch": {
-     "belt_area_km2": 33864126.535,
+     "belt_area_km2": 27732707.801,
      "craton_area_km2": 78029119.732,
      "craton_volume_km3": 2916107522.718,
      "formed_km3": 409937354.465,
@@ -521,7 +521,7 @@
      "core_count": null
     },
     "branch": {
-     "belt_area_km2": 33487476.422,
+     "belt_area_km2": 26936167.114,
      "craton_area_km2": 77444718.082,
      "craton_volume_km3": 2836674662.886,
      "formed_km3": 411935886.574,
@@ -571,7 +571,7 @@
      "core_count": null
     },
     "branch": {
-     "belt_area_km2": 36612122.225,
+     "belt_area_km2": 36317104.0,
      "craton_area_km2": 46863531.714,
      "craton_volume_km3": 1710520005.56,
      "formed_km3": 0.0,
@@ -595,7 +595,7 @@
      "core_count": null
     },
     "branch": {
-     "belt_area_km2": 48366676.297,
+     "belt_area_km2": 47848954.445,
      "craton_area_km2": 55974233.605,
      "craton_volume_km3": 1993410806.724,
      "formed_km3": 319590497.729,
@@ -619,7 +619,7 @@
      "core_count": null
     },
     "branch": {
-     "belt_area_km2": 50105803.403,
+     "belt_area_km2": 47703421.353,
      "craton_area_km2": 59800219.506,
      "craton_volume_km3": 2036239797.245,
      "formed_km3": 401771026.309,
@@ -643,7 +643,7 @@
      "core_count": null
     },
     "branch": {
-     "belt_area_km2": 56381744.641,
+     "belt_area_km2": 52914265.089,
      "craton_area_km2": 61360760.411,
      "craton_volume_km3": 2039051007.809,
      "formed_km3": 456443380.614,
@@ -667,7 +667,7 @@
      "core_count": null
     },
     "branch": {
-     "belt_area_km2": 56961807.745,
+     "belt_area_km2": 52736988.857,
      "craton_area_km2": 63771778.532,
      "craton_volume_km3": 2033900882.6,
      "formed_km3": 496996045.894,
@@ -691,7 +691,7 @@
      "core_count": null
     },
     "branch": {
-     "belt_area_km2": 57654127.157,
+     "belt_area_km2": 53687371.698,
      "craton_area_km2": 64748656.281,
      "craton_volume_km3": 2052365654.48,
      "formed_km3": 544772959.364,
@@ -715,7 +715,7 @@
      "core_count": null
     },
     "branch": {
-     "belt_area_km2": 56870175.892,
+     "belt_area_km2": 51069291.392,
      "craton_area_km2": 68607937.728,
      "craton_volume_km3": 2064885044.647,
      "formed_km3": 592820892.406,
@@ -739,7 +739,7 @@
      "core_count": null
     },
     "branch": {
-     "belt_area_km2": 52751444.172,
+     "belt_area_km2": 46776254.397,
      "craton_area_km2": 69586653.149,
      "craton_volume_km3": 2087624072.67,
      "formed_km3": 635014291.449,
@@ -763,7 +763,7 @@
      "core_count": null
     },
     "branch": {
-     "belt_area_km2": 49713195.944,
+     "belt_area_km2": 43752029.367,
      "craton_area_km2": 69040854.267,
      "craton_volume_km3": 2061485294.098,
      "formed_km3": 647309094.338,
@@ -787,7 +787,7 @@
      "core_count": null
     },
     "branch": {
-     "belt_area_km2": 49712805.516,
+     "belt_area_km2": 43408469.049,
      "craton_area_km2": 70341044.032,
      "craton_volume_km3": 2036475905.345,
      "formed_km3": 653752011.145,
