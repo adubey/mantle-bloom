@@ -1,0 +1,588 @@
+{
+ "issue": 465,
+ "commit": "dd3c620",
+ "args": {
+  "seed": 326494039,
+  "myr": 500.0,
+  "step_myr": 2.0,
+  "density": 1.0,
+  "order_myr": [
+   100.0,
+   300.0,
+   500.0
+  ],
+  "order_shuffles": 3,
+  "profile": false,
+  "profile_steps": 5,
+  "out": "analysis/rfc0012/rules_326494039.json"
+ },
+ "seconds": 699.6466802500654,
+ "clamp": {
+  "torque.integrate_omega": {
+   "calls": 9245,
+   "floor": 58,
+   "cap": 173,
+   "floor_share": 0.0062736614386154676,
+   "cap_share": 0.01871281773931855
+  },
+  "merge_split.maybe_split_plate": {
+   "calls": 94,
+   "floor": 1,
+   "cap": 0,
+   "floor_share": 0.010638297872340425,
+   "cap_share": 0.0
+  },
+  "quad_merge.merge": {
+   "calls": 158,
+   "floor": 4,
+   "cap": 0,
+   "floor_share": 0.02531645569620253,
+   "cap_share": 0.0
+  }
+ },
+ "solve": {
+  "calls": 9245,
+  "singular_k": 0,
+  "relax_s_median": 6.179437150355561e-08,
+  "relax_s_max": 8.824943458196047e-07,
+  "step_over_relax_min": 7.151909844972731e+19,
+  "qs_rel_diff_max": 2.4027367727021703e-12,
+  "rate_cm_yr_pctl_5_50_95_99": [
+   0.9403409344662416,
+   3.7932642064632285,
+   8.30714874559327,
+   24.04867696829905
+  ]
+ },
+ "merges": {
+  "by_path": {
+   "timer_roll": 13,
+   "forced_overlap": 1
+  },
+  "failed_roll_pair_steps": 4,
+  "events": [
+   {
+    "myr": 94.0,
+    "path": "timer_roll",
+    "relative_omega_cm_yr": 1.5251744718926508,
+    "band_nodes": 145,
+    "closing_mean_cm_yr": 0.8163875191791607,
+    "closing_abs_median_cm_yr": 1.0362653784831413,
+    "threshold_myr": 58.69323892885475
+   },
+   {
+    "myr": 130.0,
+    "path": "timer_roll",
+    "relative_omega_cm_yr": 0.9743484939978875,
+    "band_nodes": 250,
+    "closing_mean_cm_yr": 0.22929910560633496,
+    "closing_abs_median_cm_yr": 0.32752895402441534,
+    "threshold_myr": 62.62714032203033
+   },
+   {
+    "myr": 146.0,
+    "path": "timer_roll",
+    "relative_omega_cm_yr": 3.122245619657883,
+    "band_nodes": 131,
+    "closing_mean_cm_yr": 0.3768878726930089,
+    "closing_abs_median_cm_yr": 0.5076443854272485,
+    "threshold_myr": 5.883737797508282
+   },
+   {
+    "myr": 164.0,
+    "path": "timer_roll",
+    "relative_omega_cm_yr": 1.6266680039138577,
+    "band_nodes": 181,
+    "closing_mean_cm_yr": 0.1892226279163904,
+    "closing_abs_median_cm_yr": 0.34602400697048435,
+    "threshold_myr": 32.19267613468099
+   },
+   {
+    "myr": 200.0,
+    "path": "timer_roll",
+    "relative_omega_cm_yr": 2.2702130156046723,
+    "band_nodes": 76,
+    "closing_mean_cm_yr": 0.7085795570822351,
+    "closing_abs_median_cm_yr": 1.19798610506764,
+    "threshold_myr": 1.0129323937196122
+   },
+   {
+    "myr": 230.0,
+    "path": "timer_roll",
+    "relative_omega_cm_yr": 5.883720113725708,
+    "band_nodes": 82,
+    "closing_mean_cm_yr": -1.0978169417929784,
+    "closing_abs_median_cm_yr": 1.7327223071793127,
+    "threshold_myr": 9.18295426472293
+   },
+   {
+    "myr": 248.0,
+    "path": "timer_roll",
+    "relative_omega_cm_yr": 2.891566711377039,
+    "band_nodes": 105,
+    "closing_mean_cm_yr": 0.3543585892274817,
+    "closing_abs_median_cm_yr": 0.4861720885641735,
+    "threshold_myr": 10.217137668455523
+   },
+   {
+    "myr": 264.0,
+    "path": "forced_overlap",
+    "relative_omega_cm_yr": 6.983451835076654,
+    "band_nodes": 145,
+    "closing_mean_cm_yr": -2.9521419654253167,
+    "closing_abs_median_cm_yr": 3.144228716807389,
+    "overlap_myr": 30.0
+   },
+   {
+    "myr": 322.0,
+    "path": "timer_roll",
+    "relative_omega_cm_yr": 3.560122192829505,
+    "band_nodes": 56,
+    "closing_mean_cm_yr": -0.5563825210640208,
+    "closing_abs_median_cm_yr": 1.0161724239596621,
+    "threshold_myr": 55.37794173399487
+   },
+   {
+    "myr": 356.0,
+    "path": "timer_roll",
+    "relative_omega_cm_yr": 2.1228964436685778,
+    "band_nodes": 130,
+    "closing_mean_cm_yr": 0.29141643483936625,
+    "closing_abs_median_cm_yr": 0.8598419749550359,
+    "threshold_myr": 53.41477643563982
+   },
+   {
+    "myr": 366.0,
+    "path": "timer_roll",
+    "relative_omega_cm_yr": 4.200519602840776,
+    "band_nodes": 90,
+    "closing_mean_cm_yr": 1.1812004321061442,
+    "closing_abs_median_cm_yr": 1.2287131458909755,
+    "threshold_myr": 0.9862732561945808
+   },
+   {
+    "myr": 368.0,
+    "path": "timer_roll",
+    "relative_omega_cm_yr": 1.596640177763515,
+    "band_nodes": 130,
+    "closing_mean_cm_yr": 0.9858815206244904,
+    "closing_abs_median_cm_yr": 1.302909458239029,
+    "threshold_myr": 3.9212944343602785
+   },
+   {
+    "myr": 406.0,
+    "path": "timer_roll",
+    "relative_omega_cm_yr": 1.6718299641884697,
+    "band_nodes": 53,
+    "closing_mean_cm_yr": 0.1974084510045601,
+    "closing_abs_median_cm_yr": 0.5116434530867328,
+    "threshold_myr": 26.376913312688878
+   },
+   {
+    "myr": 440.0,
+    "path": "timer_roll",
+    "relative_omega_cm_yr": 1.0534407792746439,
+    "band_nodes": 69,
+    "closing_mean_cm_yr": 0.5513002434886911,
+    "closing_abs_median_cm_yr": 0.8407943081998838,
+    "threshold_myr": 23.072216765399233
+   }
+  ]
+ },
+ "splits": {
+  "by_gate": {
+   "residual": 2607,
+   "size": 3031,
+   "failed_roll": 33,
+   "geometric_gate": 2149,
+   "split": 47,
+   "age": 10
+  },
+  "relaxed_by": {
+   "size": 498,
+   "stress": 1711,
+   "certain": 20
+  }
+ },
+ "yield": {
+  "convergent": 1235300,
+  "past_yield": 1016116,
+  "near_saturation": 0,
+  "past_yield_share": 0.822566178256294,
+  "near_saturation_share": 0.0,
+  "cascade": {
+   "demand_m2": 41304478883720.08,
+   "absorbed_m2": 38177844671799.32,
+   "decay_m2": 1548996327887.6436,
+   "unrouted_m2": 1577637884033.1882
+  }
+ },
+ "caps": {
+  "series": [
+   {
+    "myr": 0.0,
+    "continental_nodes": 12491,
+    "hc_at_cap": 0,
+    "hm_at_cap": 0
+   },
+   {
+    "myr": 10.0,
+    "continental_nodes": 12553,
+    "hc_at_cap": 0,
+    "hm_at_cap": 0
+   },
+   {
+    "myr": 20.0,
+    "continental_nodes": 12511,
+    "hc_at_cap": 4,
+    "hm_at_cap": 0
+   },
+   {
+    "myr": 30.0,
+    "continental_nodes": 12453,
+    "hc_at_cap": 19,
+    "hm_at_cap": 0
+   },
+   {
+    "myr": 40.0,
+    "continental_nodes": 12356,
+    "hc_at_cap": 17,
+    "hm_at_cap": 0
+   },
+   {
+    "myr": 50.0,
+    "continental_nodes": 12148,
+    "hc_at_cap": 13,
+    "hm_at_cap": 0
+   },
+   {
+    "myr": 60.0,
+    "continental_nodes": 11938,
+    "hc_at_cap": 52,
+    "hm_at_cap": 15
+   },
+   {
+    "myr": 70.0,
+    "continental_nodes": 11722,
+    "hc_at_cap": 101,
+    "hm_at_cap": 35
+   },
+   {
+    "myr": 80.0,
+    "continental_nodes": 11489,
+    "hc_at_cap": 95,
+    "hm_at_cap": 87
+   },
+   {
+    "myr": 90.0,
+    "continental_nodes": 11366,
+    "hc_at_cap": 156,
+    "hm_at_cap": 135
+   },
+   {
+    "myr": 100.0,
+    "continental_nodes": 11301,
+    "hc_at_cap": 145,
+    "hm_at_cap": 143
+   },
+   {
+    "myr": 110.0,
+    "continental_nodes": 11190,
+    "hc_at_cap": 140,
+    "hm_at_cap": 138
+   },
+   {
+    "myr": 120.0,
+    "continental_nodes": 11139,
+    "hc_at_cap": 153,
+    "hm_at_cap": 139
+   },
+   {
+    "myr": 130.0,
+    "continental_nodes": 10901,
+    "hc_at_cap": 214,
+    "hm_at_cap": 126
+   },
+   {
+    "myr": 140.0,
+    "continental_nodes": 10849,
+    "hc_at_cap": 166,
+    "hm_at_cap": 146
+   },
+   {
+    "myr": 150.0,
+    "continental_nodes": 10812,
+    "hc_at_cap": 120,
+    "hm_at_cap": 133
+   },
+   {
+    "myr": 160.0,
+    "continental_nodes": 10819,
+    "hc_at_cap": 181,
+    "hm_at_cap": 161
+   },
+   {
+    "myr": 170.0,
+    "continental_nodes": 10800,
+    "hc_at_cap": 322,
+    "hm_at_cap": 158
+   },
+   {
+    "myr": 180.0,
+    "continental_nodes": 10756,
+    "hc_at_cap": 359,
+    "hm_at_cap": 145
+   },
+   {
+    "myr": 190.0,
+    "continental_nodes": 10708,
+    "hc_at_cap": 381,
+    "hm_at_cap": 169
+   },
+   {
+    "myr": 200.0,
+    "continental_nodes": 10495,
+    "hc_at_cap": 707,
+    "hm_at_cap": 245
+   },
+   {
+    "myr": 210.0,
+    "continental_nodes": 10421,
+    "hc_at_cap": 544,
+    "hm_at_cap": 270
+   },
+   {
+    "myr": 220.0,
+    "continental_nodes": 10310,
+    "hc_at_cap": 471,
+    "hm_at_cap": 287
+   },
+   {
+    "myr": 230.0,
+    "continental_nodes": 10199,
+    "hc_at_cap": 368,
+    "hm_at_cap": 286
+   },
+   {
+    "myr": 240.0,
+    "continental_nodes": 10125,
+    "hc_at_cap": 360,
+    "hm_at_cap": 284
+   },
+   {
+    "myr": 250.0,
+    "continental_nodes": 10148,
+    "hc_at_cap": 403,
+    "hm_at_cap": 272
+   },
+   {
+    "myr": 260.0,
+    "continental_nodes": 10157,
+    "hc_at_cap": 325,
+    "hm_at_cap": 271
+   },
+   {
+    "myr": 270.0,
+    "continental_nodes": 10154,
+    "hc_at_cap": 356,
+    "hm_at_cap": 292
+   },
+   {
+    "myr": 280.0,
+    "continental_nodes": 10176,
+    "hc_at_cap": 373,
+    "hm_at_cap": 307
+   },
+   {
+    "myr": 290.0,
+    "continental_nodes": 10142,
+    "hc_at_cap": 455,
+    "hm_at_cap": 333
+   },
+   {
+    "myr": 300.0,
+    "continental_nodes": 10071,
+    "hc_at_cap": 621,
+    "hm_at_cap": 371
+   },
+   {
+    "myr": 310.0,
+    "continental_nodes": 10014,
+    "hc_at_cap": 631,
+    "hm_at_cap": 357
+   },
+   {
+    "myr": 320.0,
+    "continental_nodes": 9978,
+    "hc_at_cap": 606,
+    "hm_at_cap": 358
+   },
+   {
+    "myr": 330.0,
+    "continental_nodes": 9850,
+    "hc_at_cap": 705,
+    "hm_at_cap": 355
+   },
+   {
+    "myr": 340.0,
+    "continental_nodes": 9793,
+    "hc_at_cap": 755,
+    "hm_at_cap": 414
+   },
+   {
+    "myr": 350.0,
+    "continental_nodes": 9731,
+    "hc_at_cap": 636,
+    "hm_at_cap": 436
+   },
+   {
+    "myr": 360.0,
+    "continental_nodes": 9396,
+    "hc_at_cap": 716,
+    "hm_at_cap": 507
+   },
+   {
+    "myr": 370.0,
+    "continental_nodes": 9256,
+    "hc_at_cap": 834,
+    "hm_at_cap": 490
+   },
+   {
+    "myr": 380.0,
+    "continental_nodes": 9200,
+    "hc_at_cap": 538,
+    "hm_at_cap": 504
+   },
+   {
+    "myr": 390.0,
+    "continental_nodes": 9147,
+    "hc_at_cap": 560,
+    "hm_at_cap": 528
+   },
+   {
+    "myr": 400.0,
+    "continental_nodes": 9133,
+    "hc_at_cap": 472,
+    "hm_at_cap": 526
+   },
+   {
+    "myr": 410.0,
+    "continental_nodes": 8944,
+    "hc_at_cap": 828,
+    "hm_at_cap": 432
+   },
+   {
+    "myr": 420.0,
+    "continental_nodes": 8928,
+    "hc_at_cap": 549,
+    "hm_at_cap": 417
+   },
+   {
+    "myr": 430.0,
+    "continental_nodes": 8908,
+    "hc_at_cap": 373,
+    "hm_at_cap": 419
+   },
+   {
+    "myr": 440.0,
+    "continental_nodes": 8744,
+    "hc_at_cap": 1140,
+    "hm_at_cap": 481
+   },
+   {
+    "myr": 450.0,
+    "continental_nodes": 8734,
+    "hc_at_cap": 636,
+    "hm_at_cap": 463
+   },
+   {
+    "myr": 460.0,
+    "continental_nodes": 8692,
+    "hc_at_cap": 524,
+    "hm_at_cap": 482
+   },
+   {
+    "myr": 470.0,
+    "continental_nodes": 8629,
+    "hc_at_cap": 422,
+    "hm_at_cap": 509
+   },
+   {
+    "myr": 480.0,
+    "continental_nodes": 8582,
+    "hc_at_cap": 343,
+    "hm_at_cap": 512
+   },
+   {
+    "myr": 490.0,
+    "continental_nodes": 8542,
+    "hc_at_cap": 285,
+    "hm_at_cap": 520
+   },
+   {
+    "myr": 500.0,
+    "continental_nodes": 8487,
+    "hc_at_cap": 396,
+    "hm_at_cap": 531
+   }
+  ],
+  "hc_at_cap_share_mean": 0.03981340849372806,
+  "hm_at_cap_share_mean": 0.029250342622319774,
+  "last": {
+   "myr": 500.0,
+   "continental_nodes": 8487,
+   "hc_at_cap": 396,
+   "hm_at_cap": 531
+  }
+ },
+ "order": [
+  {
+   "myr": 100.0,
+   "plates": 30,
+   "median_rel": 0.13197759235887535,
+   "max_rel": 0.4546242520552583
+  },
+  {
+   "myr": 300.0,
+   "plates": 39,
+   "median_rel": 0.08822364013939055,
+   "max_rel": 1.914188962567282
+  },
+  {
+   "myr": 500.0,
+   "plates": 41,
+   "median_rel": 0.1487039411341366,
+   "max_rel": 1.8472208490002582
+  }
+ ],
+ "band_rows": [
+  {
+   "myr": 100.0,
+   "subducting_nodes": 3853,
+   "subducting_front_nodes": 1353,
+   "divergent_nodes": 4186,
+   "divergent_front_nodes": 1521,
+   "subducting_rows": 2.8477457501847745,
+   "divergent_rows": 2.752136752136752
+  },
+  {
+   "myr": 300.0,
+   "subducting_nodes": 4555,
+   "subducting_front_nodes": 1615,
+   "divergent_nodes": 4589,
+   "divergent_front_nodes": 1693,
+   "subducting_rows": 2.820433436532508,
+   "divergent_rows": 2.7105729474305966
+  },
+  {
+   "myr": 500.0,
+   "subducting_nodes": 4461,
+   "subducting_front_nodes": 1562,
+   "divergent_nodes": 4718,
+   "divergent_front_nodes": 1733,
+   "subducting_rows": 2.85595390524968,
+   "divergent_rows": 2.7224466243508365
+  }
+ ],
+ "max_rss_mb": 630.421875
+}
