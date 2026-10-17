@@ -36,8 +36,8 @@ their shear resistance is not an explicit term in the plate torque solve.
 These are not arguments for replacing every process with a fine-grid continuum solve. Away
 from boundaries, treating plates as rigid is a useful approximation; strong, broad interiors
 and localized weak boundaries are central features of plate tectonics, though diffuse and
-deforming plate regions show the approximation has limits [[Gordon, 1998]](#ref-gordon1998)
-[[Mulyukova et al., 2019]](#ref-mulyukova2019). The design problem is to pass each process
+deforming plate regions show the approximation has limits [[Gordon, 1998]](#gordon-1998)
+[[Mulyukova et al., 2019]](#mulyukova-bercovici-2019). The design problem is to pass each process
 enough information to calculate its physically relevant response, aggregate that response at
 the scale needed by the global motion solve, and retain the invariants that matter.
 
@@ -73,23 +73,23 @@ proxies and rules as a diagnostic result, not as a success metric by itself.
 **What happens in nature.** Plate interiors are often approximated as rigid blocks separated
 by deforming boundaries. Their angular motion can be studied through a torque balance of
 driving and resisting forces, including forces from slabs, ridges, the mantle, and plate
-boundaries [[Forsyth & Uyeda, 1975]](#ref-forsyth1975). Where the lithosphere deforms, its
+boundaries [[Forsyth & Uyeda, 1975]](#forsyth-uyeda-1975). Where the lithosphere deforms, its
 response depends on strength and rheology; that response can localize near boundaries rather
-than requiring every plate interior to deform equally [[Mulyukova et al., 2019]](#ref-mulyukova2019).
+than requiring every plate interior to deform equally [[Mulyukova et al., 2019]](#mulyukova-bercovici-2019).
 These observations support a reduced model with rigid plate interiors and process-specific
 boundary mechanics, while leaving open which forces and constitutive laws are adequate for
 Mantle Bloom's scales. Thin-shell models provide a precedent for reducing a 3-D lithosphere
 to a 2-D shell with vertically integrated strength and isostasy, while retaining fault
 elements and checking local equilibrium against whole-plate torque balance
-[[Kong & Bird, 1995]](#ref-kong-bird1995). Block models also estimate plate rotations and
+[[Kong & Bird, 1995]](#kong-bird-1995). Block models also estimate plate rotations and
 fault slip/coupling together using a linear estimator
-[[Meade & Loveless, 2009]](#ref-meade-loveless2009). These are precedents for reduced,
+[[Meade & Loveless, 2009]](#meade-loveless-2009). These are precedents for reduced,
 simultaneous coupling, not direct prescriptions for Mantle Bloom's constitutive laws.
 Continuously closing plate reconstructions show a complementary geometric strategy in which
 shared moving margins keep plate polygons closed, a possible future direction for topology
-and ownership rather than a force law [[Gurnis et al., 2012]](#ref-gurnis2012). Geological
+and ownership rather than a force law [[Gurnis et al., 2012]](#gurnis-et-al-2012). Geological
 plate-speed changes have also been interpreted through evolving boundary forces and mantle
-tractions, including orogenic resistance [[Iaffaldano & Bunge, 2015]](#ref-iaffaldano-bunge2015).
+tractions, including orogenic resistance [[Iaffaldano & Bunge, 2015]](#iaffaldano-bunge-2015).
 
 1. **Continue with process-specific algorithms and add feedback case by case.** This has low
    up-front cost and fits the existing code. But each new mechanism risks inventing its own
@@ -202,7 +202,7 @@ age. An oceanic seafloor-age clock is the highest-value candidate for new therma
 initialize it where oceanic crust is created at a ridge and advect/remap it with that material.
 Cooling-plate observations show oceanic bathymetry and heat flow vary approximately with the
 square root of seafloor age over the young-to-intermediate plate interval
-[[Parsons & Sclater, 1977]](#ref-parsons-sclater1977). Age-dependent Hm, ridge push, and slab
+[[Parsons & Sclater, 1977]](#parsons-sclater-1977). Age-dependent Hm, ridge push, and slab
 buoyancy can therefore be tested with an analytic profile before adding crust and mantle
 temperature arrays. The existing `divergent_age_myr` resets when a node leaves the ridge band
 and cannot serve as this age. Water content, damage, and metamorphic progress are not default
@@ -219,7 +219,7 @@ The existing `coal_deposit_m` and `oil_gas_deposit_m` fields remain surface reso
 inventories, not buried sediment fractions, pore-fluid pressure, or lithology. They must not
 directly weaken a layer. Sedimentary material can have a different baseline rheology, and
 pore-fluid pressure can change effective stress and deformation response
-[[Lockner & Stanchits, 2002]](#ref-lockner2002). Hydrocarbon abundance alone is not a proxy
+[[Lockner & Stanchits, 2002]](#lockner-stanchits-2002). Hydrocarbon abundance alone is not a proxy
 for pore pressure or weakness. If sediment mechanics need this effect, add a coarse pressure
 or fluid-state variable with its own generation, drainage, transfer, and timestep rules; do
 not infer it from the resource-map deposits.
@@ -251,7 +251,7 @@ units. The initial contract should express:
    the segment's capacity independent of timestep; formulate yielded contact as a
    complementarity or active-set condition within the simultaneous motion solve, so remaining
    motion is available to deformation. This borrows a numerical contact technique, not a
-   geological constitutive law [[Stewart & Trinkle, 1996]](#ref-stewart-trinkle1996).
+   geological constitutive law [[Stewart & Trinkle, 1996]](#stewart-trinkle-1996).
    Distinguish normal compression from tangential shear resistance: a closed contact can
    transmit a nonzero compressive load even at zero relative slip, while frictional or viscous
    shear resistance responds to tangential motion (and may have its own static strength).
@@ -305,7 +305,7 @@ The process interface must state which values are sampled at step start, which a
 after motion, and which feedback arrives on the next step.
 This is first-order operator splitting. If G2 identifies a material lag error that affects
 accepted metrics, compare a symmetric second-order split (motion/deformation half-steps)
-before introducing substeps everywhere [[Strang, 1968]](#ref-strang1968).
+before introducing substeps everywhere [[Strang, 1968]](#strang-1968).
 
 Plate motion is the exception to the staggered process updates above: its default is a
 **simultaneous quasi-static solve** of all plate angular velocities from loads evaluated on the
@@ -385,7 +385,7 @@ ridge push and gravitational resistance to collision. Compute the difference in 
 integrated gravitational potential energy per unit area for the two columns, using their layer
 thicknesses, densities, and a declared compensation/reference level; project the resulting
 normal load onto the boundary. This is a common way to understand the support and force balance
-of mountain belts [[Molnar & Lyon-Caen, 1988]](#ref-molnar-lyon-caen1988). It could
+of mountain belts [[Molnar & Lyon-Caen, 1988]](#molnar-lyon-caen-1988). It could
 replace the current relief-based ridge expression and some separate contact relief factors,
 while making an orogen's stopping height emerge from the balance rather than a thickness cap.
 It is a hypothesis to test in G2, not an assumption that the existing `relief` is already GPE.
@@ -465,7 +465,7 @@ case, zero-slip compression must change both plates' solved motion while the con
 equal and opposite and within capacity. Copley et al. estimate Himalayan–Tibetan mountain-building
 resistance of roughly 5–6×10¹² N/m and ridge-push force around 2.5×10¹² N/m for the Indian
 plate force balance; these are regional Cenozoic sanity checks, not universal targets
-[[Copley et al., 2010]](#ref-copley2010). Compare column GPE contrasts for both ridge push and
+[[Copley et al., 2010]](#copley-avouac-royer-2010). Compare column GPE contrasts for both ridge push and
 collision resistance using one consistently defined ΔGPE per unit boundary length (N/m),
 with layer densities and thicknesses stated, then integrate along a geometry-defined ridge
 segment or collision belt before comparing with the regional force estimates. Treat that
@@ -480,9 +480,9 @@ one transform case before declaring it the general tectonic interface. For rifti
 net tensile force across a candidate cut from boundary loads and basal traction, then initiate
 a rift only when it exceeds the cut's vertically integrated strength (including temperature
 and crustal thickness), following the integrated-strength framing of Kusznir & Park (1987)
-[[Kusznir & Park, 1987]](#ref-kusznir-park1987). Compare extension localization and
+[[Kusznir & Park, 1987]](#kusznir-park-1987). Compare extension localization and
 widening/localization as the force needed to continue extension changes, following Buck's
-force-balance framing [[Buck, 1991]](#ref-buck1991). For a transform, compare solved
+force-balance framing [[Buck, 1991]](#buck-1991). For a transform, compare solved
 tangential rate with a bounded shear resistance and check equal-and-opposite load. For
 topology, test a merge only after solved relative rate is below ε along the contact for
 duration τ; the diagnostic must report sensitivity to ε and τ. These thresholds and
@@ -580,7 +580,7 @@ this pilot.
 ## Assumptions and uncertainty
 
 - **Rigid plate interiors remain useful at current scales.** Diffuse deformation exists and
-  plate rigidity is an approximation [[Gordon, 1998]](#ref-gordon1998). This RFC localizes the
+  plate rigidity is an approximation [[Gordon, 1998]](#gordon-1998). This RFC localizes the
   first mechanical coupling to boundary zones; G3 can show when that boundary model is too
   narrow.
 - **The correct process state is not yet known.** Crust type, thickness, keel strength,
@@ -600,7 +600,7 @@ this pilot.
   do not specify burial, lithification, pore pressure, or source-rock maturity. A future
   sediment weakening law needs an independently defined and conserved fluid/pressure state.
 - **Quasi-static balance is a scale hypothesis for this model.** Plate inertia is often
-  negligible in geological torque balances [[Forsyth & Uyeda, 1975]](#ref-forsyth1975), and
+  negligible in geological torque balances [[Forsyth & Uyeda, 1975]](#forsyth-uyeda-1975), and
   the illustrative relaxation estimate is far shorter than the timestep. G1/G2 must replace
   the illustrative scales with the solver's actual drag and plate dimensions, and distinguish
   a numerical regularizer from a physical inertia term.
@@ -690,59 +690,103 @@ this pilot.
 
 ## References
 
-- <a id="ref-forsyth1975"></a>Forsyth, D. W., & Uyeda, S. (1975). On the relative
+### Forsyth Uyeda 1975
+
+- Forsyth, D. W., & Uyeda, S. (1975). On the relative
   importance of the driving forces of plate motion. *Geophysical Journal of the Royal
   Astronomical Society*, 43(1), 163–200.
   [doi:10.1111/j.1365-246X.1975.tb00631.x](https://doi.org/10.1111/j.1365-246X.1975.tb00631.x)
-- <a id="ref-gordon1998"></a>Gordon, R. G. (1998). The plate tectonic approximation:
+
+### Gordon 1998
+
+- Gordon, R. G. (1998). The plate tectonic approximation:
   Plate nonrigidity, diffuse plate boundaries, and global plate reconstructions. *Annual
   Review of Earth and Planetary Sciences*, 26, 615–642.
   [doi:10.1146/annurev.earth.26.1.615](https://doi.org/10.1146/annurev.earth.26.1.615)
-- <a id="ref-mulyukova2019"></a>Mulyukova, E., & Bercovici, D. (2019). The generation of
+
+### Mulyukova Bercovici 2019
+
+- Mulyukova, E., & Bercovici, D. (2019). The generation of
   plate tectonics from grains to global scales: A brief review. *Tectonics*, 38(12),
   4058–4076. [doi:10.1029/2018TC005447](https://doi.org/10.1029/2018TC005447)
-- <a id="ref-lockner2002"></a>Lockner, D. A., & Stanchits, S. A. (2002). Undrained
+
+### Lockner Stanchits 2002
+
+- Lockner, D. A., & Stanchits, S. A. (2002). Undrained
   poroelastic response of sandstones to deviatoric stress change. *Journal of Geophysical
   Research: Solid Earth*, 107(B12), 2353.
   [doi:10.1029/2001JB001460](https://doi.org/10.1029/2001JB001460)
-- <a id="ref-kong-bird1995"></a>Kong, X., & Bird, P. (1995). SHELLS: A thin-shell program
+
+### Kong Bird 1995
+
+- Kong, X., & Bird, P. (1995). SHELLS: A thin-shell program
   for modeling neotectonics of regional or global lithosphere with faults. *Journal of
   Geophysical Research: Solid Earth*, 100(B11), 22129–22131.
   [doi:10.1029/95JB02435](https://doi.org/10.1029/95JB02435)
-- <a id="ref-meade-loveless2009"></a>Meade, B. J., & Loveless, J. P. (2009). Block
+
+### Meade Loveless 2009
+
+- Meade, B. J., & Loveless, J. P. (2009). Block
   modeling with connected fault-network geometries and a linear elastic coupling estimator
   in spherical coordinates. *Bulletin of the Seismological Society of America*, 99(6),
   3124–3139. [doi:10.1785/0120090088](https://doi.org/10.1785/0120090088)
-- <a id="ref-copley2010"></a>Copley, A., Avouac, J.-P., & Royer, J.-Y. (2010). India-Asia
+
+### Copley Avouac Royer 2010
+
+- Copley, A., Avouac, J.-P., & Royer, J.-Y. (2010). India-Asia
   collision and the Cenozoic slowdown of the Indian plate: Implications for the forces driving
   plate motions. *Journal of Geophysical Research: Solid Earth*, 115, B03410.
   [doi:10.1029/2009JB006634](https://doi.org/10.1029/2009JB006634)
-- <a id="ref-buck1991"></a>Buck, W. R. (1991). Modes of continental lithospheric extension.
+
+### Buck 1991
+
+- Buck, W. R. (1991). Modes of continental lithospheric extension.
   *Journal of Geophysical Research: Solid Earth*, 96(B12), 20161–20178.
   [doi:10.1029/91JB01485](https://doi.org/10.1029/91JB01485)
-- <a id="ref-stewart-trinkle1996"></a>Stewart, D. E., & Trinkle, J. C. (1996). An implicit
+
+### Stewart Trinkle 1996
+
+- Stewart, D. E., & Trinkle, J. C. (1996). An implicit
   time-stepping scheme for rigid body dynamics with inelastic collisions and Coulomb friction.
   *International Journal for Numerical Methods in Engineering*, 39(15), 2673–2691.
   [doi:10.1002/(SICI)1097-0207(19960815)39:15<2673::AID-NME972>3.0.CO;2-I](https://doi.org/10.1002/%28SICI%291097-0207%2819960815%2939%3A15%3C2673%3A%3AAID-NME972%3E3.0.CO%3B2-I)
-- <a id="ref-parsons-sclater1977"></a>Parsons, B., & Sclater, J. G. (1977). An analysis
+
+### Parsons Sclater 1977
+
+- Parsons, B., & Sclater, J. G. (1977). An analysis
   of the variation of ocean floor bathymetry and heat flow with age. *Journal of Geophysical
   Research*, 82(5), 803–827. [doi:10.1029/JB082i005p00803](https://doi.org/10.1029/JB082i005p00803)
-- <a id="ref-molnar-lyon-caen1988"></a>Molnar, P., & Lyon-Caen, H. (1988). Some simple
+
+### Molnar Lyon Caen 1988
+
+- Molnar, P., & Lyon-Caen, H. (1988). Some simple
   physical aspects of the support, structure, and evolution of mountain belts. *Processes in
   Continental Lithospheric Deformation*, Geological Society of America Special Paper 218,
   179–207. [doi:10.1130/SPE218-P179](https://doi.org/10.1130/SPE218-P179)
-- <a id="ref-kusznir-park1987"></a>Kusznir, N. J., & Park, R. G. (1987). The extensional
+
+### Kusznir Park 1987
+
+- Kusznir, N. J., & Park, R. G. (1987). The extensional
   strength of the continental lithosphere: its dependence on geothermal gradient, and crustal
   composition and thickness. *Geological Society, London, Special Publications*, 28(1),
   35–52. [doi:10.1144/GSL.SP.1987.028.01.04](https://doi.org/10.1144/GSL.SP.1987.028.01.04)
-- <a id="ref-gurnis2012"></a>Gurnis, M., Turner, M., Zahirovic, S., DiCaprio, L., Spasojevic,
+
+### Gurnis et al 2012
+
+- Gurnis, M., Turner, M., Zahirovic, S., DiCaprio, L., Spasojevic,
   S., Müller, R. D., Boyden, J., Seton, M., Manea, V. C., & Bower, D. J. (2012). Plate
   tectonic reconstructions with continuously closing plates. *Computers & Geosciences*, 38(1),
   35–42. [doi:10.1016/j.cageo.2011.04.014](https://doi.org/10.1016/j.cageo.2011.04.014)
-- <a id="ref-iaffaldano-bunge2015"></a>Iaffaldano, G., & Bunge, H.-P. (2015). Rapid plate
+
+### Iaffaldano Bunge 2015
+
+- Iaffaldano, G., & Bunge, H.-P. (2015). Rapid plate
   motion variations through geological time: Observations serving geodynamic interpretation.
   *Annual Review of Earth and Planetary Sciences*, 43, 571–592.
   [doi:10.1146/annurev-earth-060614-105117](https://doi.org/10.1146/annurev-earth-060614-105117)
-- <a id="ref-strang1968"></a>Strang, G. (1968). On the construction and comparison of
+
+### Strang 1968
+
+- Strang, G. (1968). On the construction and comparison of
   difference schemes. *SIAM Journal on Numerical Analysis*, 5(3), 506–517.
   [doi:10.1137/0705041](https://doi.org/10.1137/0705041)
