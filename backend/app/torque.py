@@ -452,7 +452,8 @@ def boundary_node_length_m(inputs: BoundaryForceInputs, spacing_rad: float) -> n
     front node's one along-boundary interval, rather than each contributing a full `ds`.
     This keeps line loads invariant to band width and repeated sampling (#468). Inputs
     without a valid neighbour-node identity retain the historical one-`ds` fallback for
-    standalone callers and small equation tests.
+    standalone callers and small equation tests. The result is memoized on `inputs` for
+    the requested spacing; a different spacing replaces the cached array.
     """
     if inputs.boundary_length_m is not None and inputs.boundary_length_spacing_rad == spacing_rad:
         return inputs.boundary_length_m
