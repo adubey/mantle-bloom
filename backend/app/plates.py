@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import abc
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Iterator, Mapping, Protocol
+from typing import TYPE_CHECKING, Callable, Iterator, Mapping, Protocol
 
 import numpy as np
 from scipy.sparse import coo_matrix
@@ -32,7 +32,11 @@ if TYPE_CHECKING:
     from . import terrain_noise
     from .world import World
 
+# Plates-first random worlds: the chance each plate is continental.
 CONTINENTAL_FRACTION = 0.4
+# Cratons-first random worlds (RFC 0009, continent_layout.py): the continental share of the
+# sphere's area, today's mean starting continental area (51% on seeds 7, 11 and 2024).
+CONTINENTAL_AREA_FRACTION = 0.5
 BASE_CONTINENTAL_M = 200.0
 BASE_OCEANIC_M = -3800.0
 # Widened from the original 1200/500 so a freshly generated world already shows real relief --
@@ -49,6 +53,7 @@ OCEANIC_NOISE_AMPLITUDE_M = 900.0
 MIN_AUTO_PLATES = 8
 MAX_AUTO_PLATES = 20
 # Both user-facing (UI sliders) -- see generate_plates' continental_fraction/land_fraction.
+# A share of plates on plates-first worlds and of the surface on cratons-first ones.
 DEFAULT_CONTINENTAL_FRACTION = 0.70
 DEFAULT_LAND_FRACTION = 0.29
 # However high the requested continental fraction, still leave room for real ocean floor.
@@ -1070,6 +1075,22 @@ def _land_noise_threshold(
     means `quantile(1 - target)` lands on the actual land/sea crossing, so the measured
     land fraction tracks the request instead of overshooting it. Default 0.0 keeps the
     old behaviour for a caller that adds the noise straight onto elevation."""
+    def is_continental_at(sample_pts: np.ndarray) -> np.ndarray:
+        _, nearest_idx = owner_tree.query(sample_pts)
+        return np.array([crust_types[i] == "continental" for i in nearest_idx])
+
+    return land_noise_threshold_for_mask(is_continental_at, noise, land_fraction, sealevel_noise_offset)
+
+
+def land_noise_threshold_for_mask(
+    is_continental_at: Callable[[np.ndarray], np.ndarray],
+    noise: "terrain_noise.ReliefField",
+    land_fraction: float,
+    sealevel_noise_offset: float = 0.0,
+) -> float | None:
+    """`_land_noise_threshold` against any per-point continental mask: `is_continental_at`
+    says whether each sample point is continental crust. A cratons-first world's continents
+    aren't keyed to plate sites, so it passes its lattice's continental mask (RFC 0009)."""
     sample_pts = np.concatenate(
         [
             world_pts
@@ -1077,8 +1098,7 @@ def _land_noise_threshold(
         ],
         axis=0,
     )
-    _, nearest_idx = owner_tree.query(sample_pts)
-    is_continental = np.array([crust_types[i] == "continental" for i in nearest_idx])
+    is_continental = np.asarray(is_continental_at(sample_pts), dtype=bool)
     continental_area_fraction = float(np.mean(is_continental))
     if continental_area_fraction <= 0.0:
         return None

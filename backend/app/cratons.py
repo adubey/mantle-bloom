@@ -17,9 +17,10 @@ State. Three per-node surface fields carry everything (see surface_fields.py):
 Formation rule. A column is quiet when it is genuine continental crust (Hc within
 [CRATON_HOST_MIN_HC_M, CRATON_HOST_MAX_HC_M] -- neither a drowned shelf nor an active orogen)
 at least CRATON_FORMATION_MARGIN_KM from its plate's edge or any non-genuine cell. Once the
-clock reaches CRATON_FORMATION_MYR its whole Hc becomes cratonic. World generation (and the
-first load of an older save) seeds the deep interiors -- CRATON_SEED_MARGIN_KM in -- as
-cratons that already exist, dated CRATON_SEED_AGE_YEARS before the start.
+clock reaches CRATON_FORMATION_MYR its whole Hc becomes cratonic. A cratons-first world
+(RFC 0009, continent_layout.py) starts with its generated cratonic cores; every other world
+(and the first load of an older save) seeds the deep interiors -- CRATON_SEED_MARGIN_KM in.
+Either way the starting cratons already exist, dated CRATON_SEED_AGE_YEARS before the start.
 
 Resistance. Strength rises linearly with cratonic thickness up to CRATON_FULL_STRENGTH_HC_M.
 It scales back erosional Hc removal (erosion.py), divergent thinning
@@ -68,9 +69,9 @@ CRATON_FORMATION_MARGIN_KM = 500.0
 # hundred Myr; long enough here that an ordinary collision belt has to stop deforming and
 # relax back into the host Hc window before it joins the craton.
 CRATON_FORMATION_MYR = 200.0
-# Generation seeding: the deep interiors of the starting continents. 875 km (seven default
-# cells) covers ~40-50% of genuine continental area on default worlds -- the order of
-# Earth's shields plus platforms.
+# Generation seeding without generated cores (plates-first, sketch and premade worlds): the
+# deep interiors of the starting continents. 875 km (seven default cells) covers ~40-50% of
+# genuine continental area on default worlds -- the order of Earth's shields plus platforms.
 CRATON_SEED_MARGIN_KM = 875.0
 CRATON_SEED_AGE_YEARS = 2.5e9
 
@@ -329,9 +330,30 @@ class PhaseAudit:
 # --- Seeding, formation, and the per-step update -----------------------------------------
 
 
+def seed_cores(plate: "Plate", core: np.ndarray, elapsed_years: float = 0.0) -> None:
+    """Make the whole Hc of each `core` column (a mask in node order) cratonic, dated
+    CRATON_SEED_AGE_YEARS before `elapsed_years` -- generation's cratonic cores on a
+    cratons-first world (RFC 0009, continent_layout.py)."""
+    if not np.any(core):
+        return
+    hc = plate.collect("crustal_thickness_m")
+    craton = plate.collect("craton_crust_m")
+    craton[core] = hc[core]
+    formed = plate.collect("craton_formed_years")
+    formed[core] = elapsed_years - CRATON_SEED_AGE_YEARS
+    stable = plate.collect("stable_continental_myr")
+    stable[core] = np.maximum(stable[core], CRATON_SEED_AGE_YEARS / 1e6)
+    plate.set_fields_on_plate(craton_crust_m=craton, craton_formed_years=formed, stable_continental_myr=stable)
+
+
 def seed_initial_cratons(world: "World") -> float:
-    """Mark the deep interiors of the world's genuine continents as pre-existing cratons.
-    Returns the seeded volume (m^3)."""
+    """The world's starting cratons; returns their volume (m^3). A cratons-first world's
+    generation has already seeded its cores (`seed_cores`), so they are only booked. Every
+    other world -- a sketch, a premade world, a plates-first random world or an old save's
+    first step -- gets the deep interiors of its genuine continents, CRATON_SEED_MARGIN_KM in."""
+    generated = live_volume_m3(world)
+    if generated > 0.0:
+        return generated
     spacing_rad = line_spacing_rad(world.node_density)
     hops = _hops(CRATON_SEED_MARGIN_KM, spacing_rad)
     seeded = 0.0

@@ -3,8 +3,9 @@ from scipy.spatial import cKDTree
 
 from app import lithosphere
 from app.hydroclimate import bathymetry
-from app.elevation_lines import line_spacing_rad
+from app.elevation_lines import CRUST_TYPE_INHERIT, CRUST_TYPE_OCEANIC, line_spacing_rad
 from app.lithosphere_plate import generate_plates
+from app.sparse_quad_patch import PlateWithSparseQuadPatch
 
 _GEN_KWARGS = dict(seed=7, num_plates=12, continental_fraction=0.5, land_fraction=0.2, node_density=1.0)
 
@@ -133,3 +134,17 @@ def test_crustal_thickness_inverse_round_trips():
     hc = lithosphere.crustal_thickness_for_submerged_elevation(target, hm, lithosphere.RHO_CONTINENTAL_CRUST)
     back = lithosphere.isostatic_elevation(hc, hm, lithosphere.RHO_CONTINENTAL_CRUST)
     assert np.allclose(back, target, atol=1e-6)
+
+
+def test_gather_columns_reads_each_nodes_own_crust_type():
+    """A cratons-first world's plates carry both crust types (RFC 0009, #462): a continental
+    plate's oceanic-coded nodes are oceanic here, not continental like their plate."""
+    spacing = line_spacing_rad(1.0)
+    plate = PlateWithSparseQuadPatch.from_lattice(0, np.eye(3), "continental", spacing, lambda pts: pts[:, 0] > 0.9)
+    oceanic = plate.all_points_and_elevation()[0][:, 1] > 0.0
+    plate.set_fields_on_plate(crust_type_code=np.where(oceanic, CRUST_TYPE_OCEANIC, CRUST_TYPE_INHERIT).astype(np.int8))
+
+    is_continental = bathymetry._gather_columns([plate])[3]
+
+    assert np.any(oceanic) and not np.all(oceanic)
+    assert np.array_equal(is_continental, ~oceanic)
