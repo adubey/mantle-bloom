@@ -177,19 +177,28 @@ mask (continental crust whose relief sample clears the land threshold); steps 4-
    `CONTINENT_SPACING_KM = 4000` apart. `continental_fraction` is a share of the surface here,
    clamped to 0.05-0.9 and defaulting to `plates.CONTINENTAL_AREA_FRACTION = 0.5`; a
    Dirichlet draw (`CONTINENT_SIZE_CONCENTRATION = 2`) splits that area between continents.
-2. **Cores.** Nuclei chain out from each continent's centre, each at least
-   `CRATON_CORE_SPACING_KM = 1500` from every other. A core takes the points within
-   `CRATON_CORE_RADIUS_KM = 1000` of its nucleus, the distance perturbed by up to
+2. **Cratons.** Nuclei chain out from each continent's centre. Each new nucleus starts a new
+   craton with probability `CRATON_CLUSTER_CONCENTRATION / (that + n)` (20, n the
+   continent's nuclei so far), placed at least `CRATON_CORE_SPACING_KM = 1500` from every
+   other craton's nuclei; otherwise it joins an existing craton, chosen in proportion to its
+   nuclei, 0.8-1.3 core radii from one of them (`NUCLEUS_JOIN_STEP_RANGE`), so the disks
+   overlap into one composite craton (a Chinese restaurant process, #470). A craton takes the
+   points within `CRATON_CORE_RADIUS_KM = 1000` of its nuclei, the distance perturbed by up to
    `CRATON_CORE_OUTLINE_NOISE_KM`, nearest nucleus winning. Points within
-   `CRATON_BELT_WIDTH_KM / 2` of the line halfway between two nuclei are left out, so cores
-   are at least 300 km apart. Nuclei are added until the cores can cover
-   `CRATON_SHARE_OF_CONTINENT = 0.4` of the continent (at least two when that share exceeds
-   one 1,000 km disk), then the radius is trimmed to hit the share. A continent smaller than
-   one disk (about 3.1 M km²) gets no core.
-3. **Belts and margins.** Each continent grows from its cores (from its centre if it has
-   none) by a noise-perturbed distance until it reaches its area. Belt is the closure of its
-   cores (dilated, then eroded, by `BELT_CLOSURE_KM = 800`) less the cores, so the whole gap
-   between neighbouring cores is belt. Continental points outside the closure are margin.
+   `CRATON_BELT_WIDTH_KM / 2` (250 km) of the line halfway between two cratons are left out,
+   so cratons are at least 500 km apart. Nuclei are added until the cratons can cover
+   `CRATON_SHARE_OF_CONTINENT = 0.4` of the continent (at least two cratons when that share
+   exceeds one 1,000 km disk), then the radius is trimmed to hit the share. A continent
+   smaller than one disk (about 3.1 M km²) gets no craton.
+3. **Belts and margins.** Each continent grows from its cratons (from its centre if it has
+   none) until it reaches its area, in order of growth time: distance to the cratons plus
+   `CONTINENT_CENTRE_PULL = 1` times the distance to the continent's centre, over a growth
+   speed `exp(CONTINENT_GROWTH_SPEED_SIGMA × noise)` that varies smoothly at continent scale,
+   plus outline noise. Cratons on a continent's far side, or where it grows slowly, end up
+   near its coast. Belt is the closure of its cratons (dilated, then eroded, by
+   `BELT_CLOSURE_KM = 800`, over the whole sphere so ocean beside a coastal craton doesn't
+   erode it) less the cratons, within the continent, so the whole gap between neighbouring
+   cratons is belt. Continental points outside the closure are margin.
 4. **Plates.** `num_plates` sites (8-20, as above) are Poisson-disc sampled outside the
    cores, and each takes the points nearest it by path length over the 8-connected lattice
    (multi-source `scipy.sparse.csgraph.dijkstra`). Each core then goes whole to the plate
