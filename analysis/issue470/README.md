@@ -11,29 +11,40 @@ targets, but its continents didn't look like Earth's:
 2. **Cratons looked like polka dots.** Every nucleus was its own craton, a noise-perturbed
    1,000 km disk at least 1,500 km from every other, so every world got 42-48 same-sized dots.
 
+A review of the first version asked for the small cratons to be smaller and for a few more
+large ones, with the largest kept about as they were.
+
 ## Changes (`backend/app/continent_layout.py`)
 
 - **Composite cratons, from a Chinese restaurant process.** Within a continent, each new
   nucleus starts a new craton with probability α / (α + n), where n is the continent's nuclei
-  so far (`CRATON_CLUSTER_CONCENTRATION` α = 20). Otherwise it joins an existing craton, chosen
-  in proportion to its nuclei, and is placed 0.8-1.3 core radii from one of that craton's
-  nuclei (`NUCLEUS_JOIN_STEP_RANGE`), so the two disks overlap into one irregular core. The
-  minimum spacing and the belt band now separate only different cratons, and a continent whose
-  core target exceeds one disk still gets at least two cratons.
+  so far (`CRATON_CLUSTER_CONCENTRATION` α = 8). Otherwise it joins an existing craton, chosen
+  in proportion to its nuclei, 0.8-1.3 of that craton's reach from one of its nuclei
+  (`NUCLEUS_JOIN_STEP_RANGE`), so the disks overlap into one irregular craton. A craton stops
+  taking joiners at `CRATON_MAX_AREA_KM2` (18 M km²), and a new craton grows outward from the
+  assembly's edge, picking its parent nucleus in proportion to its squared distance from the
+  continent's centre.
+- **Craton size scales.** Each craton draws a scale from `CRATON_SIZE_SCALE_RANGE` (0.5-1) and
+  reaches that scale times the 1,000 km core radius, so a craton nothing joins can be well
+  under one disk. Spacing scales with size: a new craton keeps the 1,500 km spacing times the
+  two cratons' mean scale from other cratons' nuclei, so small cratons pack closer and the gap
+  between neighbours stays about a belt wide. If a continent runs out of room before its
+  cratons cover the 40% share, its scales grow together, each capped at 1.
 - **Cratons at continental edges.** A continent grows outward in order of growth time: the
   distance to its cratons plus the distance to its centre (`CONTINENT_CENTRE_PULL` = 1), over a
   growth speed exp(σ × noise) that varies smoothly at continent scale
   (`CONTINENT_GROWTH_SPEED_SIGMA` σ = 1), plus the outline noise. Cratons on a continent's far
   side, or where it grows slowly, end up near the coast.
-- **Belt width 500 km** (`CRATON_BELT_WIDTH_KM`, the RFC's 200-600 km sweep range; it started
-  at 300). With fewer, larger cratons there is less gap between them: at 300-400 km, belts fell
-  to 7% of continental area on some seeds, under the RFC's 10-30%.
-- **Belts close over the whole sphere.** With cratons at the coast, ocean beside a craton used
-  to erode the closure and leave margin in the gap between two cratons. Ocean now dilates like
-  any other point, and only the continent's own points become belt.
-- **Shortfalls.** The centre pull can leave a continent's own region smaller than its area. The
-  shortfall now comes from unclaimed points in the continent's growth order. Joined nuclei add
-  less area each, so nucleus placement gets up to 1,000 tries (from 200).
+- **Belts.** Belt is a continent's non-craton points in the closure of its cratons, taken over
+  the whole sphere so ocean beside a coastal craton doesn't erode it, or in the lens between
+  two cratons (distances to the two nearest summing to at most two belt widths), which covers
+  the gap between two small cratons that a closing can't bridge. Belts are marked before the
+  continent grows and the continent always contains them, so no sea opens between two of its
+  cratons. The belt width is 400 km (`CRATON_BELT_WIDTH_KM`, in the RFC's 200-600 km sweep;
+  it started at 300): at 300-350 km, belts fell to 9-10% of continental area on some seeds.
+- **Shortfalls.** The centre pull can leave a continent's own region smaller than its area; the
+  shortfall comes from unclaimed points in its growth order. Nucleus placement gets up to
+  1,000 tries (from 200).
 
 ## Figures
 
@@ -50,57 +61,58 @@ All 40 seeds after the change:
 
 ![Seeds 20-39 after](after_sheet2.png)
 
-And before, as posted on #470: [seeds 7, 11, 2024 and 1-19](before_sheet1.png),
-[seeds 20-39](before_sheet2.png).
+Before, as posted on #470: [seeds 7, 11, 2024 and 1-19](before_sheet1.png),
+[seeds 20-39](before_sheet2.png). The first version of this change, before the size review:
+[seeds 7, 11, 2024 and 1-19](first_sheet1.png), [seeds 20-39](first_sheet2.png).
 
 ## Measures
 
 Over the same 40 seeds, `land_fraction` 0.29, density 1 (`measure_plate_layout.py
---cratons-first`; per-seed rows in [layout_t0.json](layout_t0.json)). The "before" craton
-measures use the same code with α → ∞, no centre pull or speed field, and a 300 km belt.
+--cratons-first`; per-seed rows in [layout_t0.json](layout_t0.json)).
 
-| Measure (min / median / max) | Before | After |
-|---|---|---|
-| Cratons per world | 42 / 45 / 48 | 22 / 39 / 47 |
-| Nuclei that joined an existing craton | 0% | 13 / 39 / 84% |
-| Craton-area coefficient of variation | 0.14 / 0.16 / 0.19 | 0.39 / 0.59 / 1.29 |
-| Cratons within 300 km of the continental-crust edge | 0 / 0 / 2% | 11 / 35 / 49% |
-| Belts, of continental area (RFC 10-30%) | 11 / 13 / 18% | 13 / 17 / 20% |
-| Craton, of continental area (RFC 35-50%) | 36 / 40 / 40% | 39 / 40 / 40% |
-| Continental area (RFC 0.5 ± 0.05) | 0.50 | 0.50 |
-| Continents with room for two cratons but fewer (RFC 0) | 0 | 0 |
-| Cores crossed by a plate boundary (RFC 0) | 0 | 0 |
+| Measure (min / median / max) | Before (#467) | First version | After |
+|---|---|---|---|
+| Cratons per world | 42 / 45 / 48 | 22 / 39 / 47 | 20 / 37 / 55 |
+| Craton area: 5th / 50th / 95th percentile, largest (M km²) | not measured | 1.3 / 2.1 / 6.3, 20.5-23.1 | 0.51 / 1.5 / 9.3, 23.4 |
+| Cratons under 1 M km² | not measured | 0% | 30% |
+| Cratons of 10 M km² or more per world, median (range) | not measured | 0 (0-3) | 2 (0-4) |
+| Craton-area coefficient of variation, median | 0.16 | 0.59 | 1.14 |
+| Cratons within 300 km of the continental-crust edge | 0 / 0 / 2% | 11 / 35 / 49% | 14 / 36 / 61% |
+| Belts, of continental area (RFC 10-30%) | 11 / 13 / 18% | 13 / 17 / 20% | 11 / 16 / 20% |
+| Craton, of continental area (RFC 35-50%) | 36 / 40 / 40% | 39 / 40 / 40% | 36 / 40 / 40% |
+| Continental area (RFC 0.5 ± 0.05) | 0.50 | 0.50 | 0.50 |
+| Continents with room for two cratons but fewer; cores crossed by a boundary (RFC 0) | 0; 0 | 0; 0 | 0; 0 |
 
-The plate-boundary targets move a little, because the boundaries now partition different
-continents:
+| Plate-boundary targets, seeds passing of 40 | Before (#467) | First version | After |
+|---|---|---|---|
+| Land edge within 300 km of a boundary, 15-50% | 40 | 39 | 40 |
+| Plates mixed by land ≥ 50% | 36 | 36 | 38 |
+| Boundary with land on both sides ≤ 25% | 36 | 34 | 38 |
+| All three | 33 | 29 | **36** |
 
-| Seeds passing, of 40 | Before (#467) | After |
-|---|---|---|
-| Land edge within 300 km of a boundary, 15-50% | 40 | 39 |
-| Plates mixed by land ≥ 50% | 36 | 36 |
-| Boundary with land on both sides ≤ 25% | 36 | 34 |
-| All three | 33 | 29 |
+Land on both sides is now 16 / 23 / 26%, its interior part 11 / 18 / 22%. The craton count and
+edge share have no Earth target: Bleeker (2003) counts about 35 Archean cratonic pieces, and
+this layout makes 20-55 cratons. The knobs are design choices, set by sweeps over these seeds:
 
-Land on both sides is 15 / 22 / 27% (before 18 / 23 / 29%), and its interior part 10 / 17 / 25%;
-which seeds lost a target and why isn't diagnosed. The craton count and edge share have no Earth target: Bleeker (2003) counts about
-35 Archean cratonic pieces, and this layout makes 22-47 cratons. The knobs (α, the join step,
-the centre pull, σ and the belt width) are design choices, set by this sweep over the 40 seeds:
+| Sweep (40 seeds) | Cratons per world | 5th pct / largest (M km²) | ≥ 10 M km² per world | Belts | Craton share |
+|---|---|---|---|---|---|
+| α 20, scale 1, 500 km belt (first version) | 22-47 | 1.3 / 20.5 | 0 | 13-21% | 39-40% |
+| α 20, scale 0.4-1, 500 km | 23-63 | 0.56 / 24.7 | 0 | 18-28% | 39-40% |
+| α 8, scale 0.4-1, no cap, 500 km | 13-49 | 0.56 / 48.4 | 2 | 9-23% | 37-40% |
+| α 8, scale 0.3-1, cap 18 M km², fixed spacing, 550 km | 21-52 | 0.49 / 22.0 | 2 | 10-20% | 36-40% |
+| α 8, scale 0.3-1, cap, size-aware spacing, 550 km | 22-63 | 0.09 / 21.8 | 2 | 16-32% | 33-40% |
+| α 8, scale 0.5-1, cap, size-aware spacing, 350 km | 20-51 | 0.56 / 19.1 | 1.5 | 10-17% | 36-40% |
+| **α 8, scale 0.5-1, cap, size-aware spacing, 400 km** | **20-55** | **0.51 / 23.4** | **2** | **11-20%** | **36-40%** |
+| α 8, scale 0.6-1, cap, size-aware spacing, 400 km | 21-56 | 0.67 / 18.8 | 1.5 | 11-20% | 39-40% |
 
-| α, join step, centre pull, σ, belt width | Cratons | Joined | Near an edge | Belts |
-|---|---|---|---|---|
-| ∞, –, 0, 0, 300 km (before) | 40 / 44.5 / 48 | 0% | 0 / 0 / 2% | 10 / 14 / 17% |
-| 2, 0.6-1.0, 0, 0, 300 km | 6 / 17 / 25 | 89% | 0% | 2 / 5 / 7% |
-| 10, 0.6-1.0, 0, 0, 300 km | 18 / 30 / 39 | 60% | 0% | 5 / 9 / 13% |
-| 20, 0.8-1.3, 0, 0, 300 km | 28 / 35 / 42 | 34% | 0% | 8 / 11 / 14% |
-| ∞, –, 1, 0, 300 km | 40 / 44.5 / 48 | 0% | 0 / 11 / 29% | 10 / 14 / 17% |
-| ∞, –, 1, 1, 300 km | 40 / 44.5 / 48 | 0% | 6 / 26 / 42% | 9 / 12 / 16% |
-| 20, 0.8-1.3, 1, 1, 400 km | 20 / 37 / 45 | 35% | 7 / 31 / 59% | 7 / 13 / 16% |
-| **20, 0.8-1.3, 1, 1, 500 km** | **22 / 38.5 / 47** | **39%** | **11 / 35 / 49%** | **13 / 17 / 20%** |
+Without the cap the largest craton doubled (48 M km²). With fixed spacing, small cratons left
+gaps of up to 1,350 km between them, and marking those as belt pushed belts to 42% of
+continental area; size-aware spacing keeps neighbouring gaps about a belt wide.
 
 ## Generation time
 
-`generate_world` at density 1: 1.0-1.6 s over the 40 seeds (#467: 0.93-1.32 s), under the
-RFC's 2 s.
+`generate_world` at density 1: 1.17-1.94 s over the 40 seeds (#467: 0.93-1.32 s), under the
+RFC's 2 s but close to it. Not profiled yet.
 
 ## Reproduce
 

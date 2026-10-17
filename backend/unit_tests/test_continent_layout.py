@@ -114,3 +114,14 @@ def test_some_cratons_reach_a_continental_edge(layout, monkeypatch):
     monkeypatch.setattr(cl, "CONTINENT_GROWTH_SPEED_SIGMA", 0.0)
     even = cratons_first_layout(7, land_fraction=0.29).layout
     assert even.craton_diagnostics()["cratons_near_edge_share"] < layout.craton_diagnostics()["cratons_near_edge_share"]
+
+
+def test_craton_sizes_spread_below_one_disk_and_stop_near_the_cap(layout):
+    """Size scales let a craton no nucleus joins stay well under one core disk, and joining
+    stops at CRATON_MAX_AREA_KM2 (#470 review); the final trim can leave a craton a little
+    over it."""
+    area = layout.lattice.area_km2
+    sizes = np.array([area[layout.core == c].sum() for c in np.unique(layout.core[layout.is_core])])
+    disk = cap_area_km2(cl.CRATON_CORE_RADIUS_KM)
+    assert sizes.min() < 0.5 * disk
+    assert sizes.max() < 1.5 * cl.CRATON_MAX_AREA_KM2

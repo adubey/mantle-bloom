@@ -85,38 +85,56 @@ CONTINENT_GROWTH_NOISE_BASE_FREQ = 3.0
 # keeps some non-cratonic crust.
 CRATON_SHARE_OF_CONTINENT = 0.4
 CRATON_SHARE_MAX = 0.7
-# Minimum nucleus separation -- not a count of geological cratons.
+# Minimum nucleus separation between two full-size cratons, scaled by their mean size scale
+# for smaller ones -- not a count of geological cratons.
 CRATON_CORE_SPACING_KM = 1500.0
 # About 3.1 M km^2 per full disk.
 CRATON_CORE_RADIUS_KM = 1000.0
-# Orogens welded onto shields are a few hundred km wide (Cawood et al., 2009). 500 km, in
+# Orogens welded onto shields are a few hundred km wide (Cawood et al., 2009). 400 km, in
 # the RFC's 200-600 km sweep, rather than its starting 300: with composite cratons (#470)
-# there are fewer, larger cores and so less gap between them, and at 300-400 km belts fell
-# to 7% of continental area on some seeds, under the RFC's 10-30%; at 500 km, 11-20%.
-CRATON_BELT_WIDTH_KM = 500.0
+# there are fewer, larger cores and so less gap between them, and at 300-350 km belts fell
+# to 9-10% of continental area on some seeds, under the RFC's 10-30%; at 400 km, 11-20%.
+CRATON_BELT_WIDTH_KM = 400.0
 # Noise amplitude on a point's distance to its nucleus, for irregular core outlines.
 CRATON_CORE_OUTLINE_NOISE_KM = 250.0
-# A nucleus that starts a new craton is placed this far (in multiples of the core spacing)
-# from an existing nucleus of the same continent, so a continent's cratons stay a connected
-# assembly.
+# A nucleus that starts a new craton is placed this far (in multiples of the core spacing,
+# scaled by the two cratons' mean size scale) from an existing nucleus of the same continent,
+# so a continent's cratons stay a connected assembly.
 NUCLEUS_STEP_RANGE = (1.0, 1.25)
 NUCLEUS_MAX_TRIES = 1000
 # Cratons are composites (#470): within a continent each new nucleus starts a new craton
 # with probability alpha / (alpha + n), n the continent's nuclei so far, and otherwise joins
 # an existing craton chosen in proportion to its nuclei (a Chinese restaurant process).
 # Design choice; tuned to the craton count and size spread over the layout seeds.
-# At 20, a median 39% of nuclei join an existing craton over 40 seeds, giving 22-47 cratons
-# per world and a craton-area coefficient of variation of 0.59 (0.17 with every nucleus its
-# own craton). At 2, 89% joined and belts fell to 5% of continental area.
-CRATON_CLUSTER_CONCENTRATION = 20.0
-# A joining nucleus is placed this far (in multiples of the core radius) from a nucleus of
-# its craton, so the two disks overlap and merge into one irregular core.
+# At 8, with the size scales below, a median 2 cratons per world reach 10 M km^2 (0 at 20,
+# #470's first value) and 20-55 cratons form over 40 seeds; at 5-6, belts fell to 5-7% of
+# continental area on some seeds. At 2 with every scale 1, 89% of nuclei joined.
+CRATON_CLUSTER_CONCENTRATION = 8.0
+# A joining nucleus is placed this far (in multiples of its craton's reach, the size scale
+# times the core radius) from a nucleus of its craton, so the two disks overlap and merge into
+# one irregular core.
 NUCLEUS_JOIN_STEP_RANGE = (0.8, 1.3)
+# Each craton draws a size scale from this range when it starts, and reaches its scale times
+# CRATON_CORE_RADIUS_KM from its nuclei, so a craton that no nucleus joins can be much smaller
+# than one disk. The top stays at 1: the largest cratons are composites of several nuclei.
+# 0.5-1 puts 30% of cratons under 1 M km^2 (5th percentile 0.51 M km^2, against 1.33 with
+# every scale 1) over 40 seeds (#470 review); at 0.3 with spacing scaled to size, half were
+# under 1 M km^2 and the smallest 0.09.
+CRATON_SIZE_SCALE_RANGE = (0.5, 1.0)
+# No nucleus joins a craton that already covers this much, so composites stop growing at
+# about the largest of #470's first layouts (20-23 M km^2 over 40 seeds); the trim to the
+# craton share can leave one a little larger (22 M km^2).
+CRATON_MAX_AREA_KM2 = 18e6
 # Closing radius for the core-and-belt interior: bridges gaps between cores up to twice
 # this wide, more than the widest gap the nucleus step and a trimmed core radius leave. At
 # 600 km belts were 9.7-16% of continental area over 20 seeds, under the RFC's 10-30%; at
 # 800 km, 10.8-18% (#462).
 BELT_CLOSURE_KM = 800.0
+# A point whose distances to its two nearest cratons sum to at most this many belt widths lies between them
+# and is belt: the gap a closing can't bridge between two small cratons far apart (#470
+# review). Twice the belt width: with size-aware spacing, neighbouring cratons' gap is about
+# a belt wide.
+BELT_LENS_BELT_WIDTHS = 2.0
 # The sinusoid noise's lowest frequency (cycles per radian): wavelengths of ~5,000 km down
 # to ~1,250 km over its three octaves, the scale of a core's or continent's outline.
 OUTLINE_NOISE_BASE_FREQ = 8.0
@@ -291,6 +309,8 @@ class _NucleusDistances:
         self.d1 = np.full(lat.size, np.inf)
         self.d2 = np.full(lat.size, np.inf)
         self.craton = np.zeros(lat.size, dtype=np.int64)
+        # Each craton's size scale (CRATON_SIZE_SCALE_RANGE), by craton id.
+        self.scale: list[float] = []
 
     def add(self, nucleus: np.ndarray, craton: int) -> None:
         d = np.arccos(np.clip(self.lat.xyz @ nucleus, -1.0, 1.0)) * PLANET_RADIUS_KM
@@ -310,9 +330,17 @@ class _NucleusDistances:
         clears_belt = (self.d2 - self.d1) / 2.0 >= CRATON_BELT_WIDTH_KM / 2.0
         return (craton_continent[self.craton] == k) & clears_belt & (self.perturbed <= CRATON_CORE_RADIUS_KM)
 
+    def craton_areas_km2(self, craton_continent: np.ndarray, k: int) -> np.ndarray:
+        """Area each craton could claim now (its eligible points), by craton id."""
+        eligible = self.eligible(craton_continent, k)
+        return np.bincount(self.craton[eligible], weights=self.lat.area_km2[eligible], minlength=len(craton_continent))
+
     @property
     def perturbed(self) -> np.ndarray:
-        return self.d1 + self.noise
+        """Distance to the nearest nucleus over its craton's size scale, plus the outline
+        noise: a craton claims points where this is within CRATON_CORE_RADIUS_KM."""
+        scale = np.asarray(self.scale, dtype=float)[self.craton] if self.scale else 1.0
+        return self.d1 / scale + self.noise
 
 
 def _place_nuclei(rng: np.random.Generator, field: _NucleusDistances, centres: np.ndarray, core_targets: np.ndarray):
@@ -324,15 +352,15 @@ def _place_nuclei(rng: np.random.Generator, field: _NucleusDistances, centres: n
     nucleus_craton: list[int] = []
     craton_continent: list[int] = []
     spacing_rad = CRATON_CORE_SPACING_KM / PLANET_RADIUS_KM
-    min_dot = np.cos(spacing_rad)
     disk = cap_area_km2(CRATON_CORE_RADIUS_KM)
 
-    def add_and_check_cover(candidate: np.ndarray, craton: int, k: int) -> bool:
-        """Add `candidate` as a nucleus of `craton` (a new one when it equals the craton
-        count) in continent `k` -- always, whatever this returns -- and say whether `k`'s
-        cratons can now cover its target, i.e. whether to stop adding."""
+    def add_and_check_cover(candidate: np.ndarray, craton: int, k: int, scale: float) -> bool:
+        """Add `candidate` as a nucleus of `craton` (a new one, of size scale `scale`, when it
+        equals the craton count) in continent `k` -- always, whatever this returns -- and say
+        whether `k`'s cratons can now cover its target, i.e. whether to stop adding."""
         if craton == len(craton_continent):
             craton_continent.append(k)
+            field.scale.append(scale)
         nuclei.append(candidate)
         nucleus_craton.append(craton)
         field.add(candidate, craton)
@@ -340,37 +368,70 @@ def _place_nuclei(rng: np.random.Generator, field: _NucleusDistances, centres: n
             return False
         return float(field.lat.area_km2[field.eligible(np.asarray(craton_continent), k)].sum()) >= core_targets[k]
 
-    def far_from_other_cratons(candidate: np.ndarray, craton: int) -> bool:
-        others = [n for n, c in zip(nuclei, nucleus_craton) if c != craton]
-        return not others or float(np.max(np.asarray(others) @ candidate)) < min_dot
+    def far_from_other_cratons(candidate: np.ndarray, craton: int, scale: float) -> bool:
+        """Whether `candidate`, of a craton with size scale `scale`, is at least the craton
+        spacing times the two cratons' mean scale from every other craton's nuclei: two
+        full-size cratons stay CRATON_CORE_SPACING_KM apart, and small ones pack closer, so
+        the gap between neighbours stays about a belt wide."""
+        others = [i for i, c in enumerate(nucleus_craton) if c != craton]
+        if not others:
+            return True
+        angles = np.arccos(np.clip(np.asarray([nuclei[i] for i in others]) @ candidate, -1.0, 1.0))
+        need = spacing_rad * 0.5 * (scale + np.asarray([field.scale[nucleus_craton[i]] for i in others]))
+        return bool(np.all(angles >= need))
 
     for k, target in enumerate(core_targets):
         if target <= 0.0:
             continue
-        if add_and_check_cover(centres[k], len(craton_continent), k):
+        if add_and_check_cover(centres[k], len(craton_continent), k, float(rng.uniform(*CRATON_SIZE_SCALE_RANGE))):
             continue
         for _ in range(NUCLEUS_MAX_TRIES):
             mine = [i for i, c in enumerate(nucleus_craton) if craton_continent[c] == k]
             cratons_k = sorted({nucleus_craton[i] for i in mine})
-            force_new = target > disk and len(cratons_k) < 2
+            sizes = np.array([sum(1 for i in mine if nucleus_craton[i] == c) for c in cratons_k], dtype=float)
+            sizes[field.craton_areas_km2(np.asarray(craton_continent), k)[cratons_k] >= CRATON_MAX_AREA_KM2] = 0.0
+            # A new craton when the draw says so, when the target needs a second craton, or
+            # when every craton is at the size cap.
+            force_new = (target > disk and len(cratons_k) < 2) or not np.any(sizes > 0.0)
             if force_new or rng.random() < CRATON_CLUSTER_CONCENTRATION / (CRATON_CLUSTER_CONCENTRATION + len(mine)):
                 craton = len(craton_continent)
-                parent = nuclei[mine[int(rng.integers(len(mine)))]]
-                step = rng.uniform(*NUCLEUS_STEP_RANGE) * spacing_rad
+                scale = float(rng.uniform(*CRATON_SIZE_SCALE_RANGE))
+                # From the assembly's edge outward: a nucleus deep inside a large composite
+                # has no room for a new craton beside it.
+                reach = np.arccos(np.clip(np.asarray([nuclei[i] for i in mine]) @ centres[k], -1.0, 1.0)) + 1e-3
+                pick = mine[int(rng.choice(len(mine), p=reach**2 / np.sum(reach**2)))]
+                parent = nuclei[pick]
+                mean_scale = 0.5 * (scale + field.scale[nucleus_craton[pick]])
+                step = rng.uniform(*NUCLEUS_STEP_RANGE) * spacing_rad * mean_scale
             else:
-                sizes = np.array([sum(1 for i in mine if nucleus_craton[i] == c) for c in cratons_k], dtype=float)
                 craton = cratons_k[int(rng.choice(len(cratons_k), p=sizes / sizes.sum()))]
+                scale = field.scale[craton]
                 members = [i for i in mine if nucleus_craton[i] == craton]
                 parent = nuclei[members[int(rng.integers(len(members)))]]
-                step = rng.uniform(*NUCLEUS_JOIN_STEP_RANGE) * CRATON_CORE_RADIUS_KM / PLANET_RADIUS_KM
+                # Within the craton's own reach, so its disks overlap however small it is.
+                step = rng.uniform(*NUCLEUS_JOIN_STEP_RANGE) * field.scale[craton] * CRATON_CORE_RADIUS_KM / PLANET_RADIUS_KM
             candidate = _step_from(parent, step, rng.uniform(0.0, 2.0 * np.pi))
-            if not far_from_other_cratons(candidate, craton):
+            if not far_from_other_cratons(candidate, craton, scale):
                 continue
             if int(np.argmax(centres @ candidate)) != k:
                 continue
-            if add_and_check_cover(candidate, craton, k):
+            if add_and_check_cover(candidate, craton, k, scale):
                 break
+        _inflate_to_cover(field, np.asarray(craton_continent), k, target)
     return np.asarray(nuclei).reshape(-1, 3), np.asarray(nucleus_craton, dtype=np.int64), np.asarray(craton_continent, dtype=np.int64)
+
+
+def _inflate_to_cover(field: _NucleusDistances, craton_continent: np.ndarray, k: int, target: float) -> None:
+    """When continent `k`'s nuclei ran out of room before its cratons could cover `target`
+    (a crowded continent of small cratons), grow its cratons' size scales together, each
+    capped at 1, until they can."""
+    mine = np.flatnonzero(craton_continent == k)
+    while float(field.lat.area_km2[field.eligible(craton_continent, k)].sum()) < target:
+        scales = np.asarray(field.scale)
+        if np.all(scales[mine] >= 1.0):
+            return
+        scales[mine] = np.minimum(scales[mine] * 1.1, 1.0)
+        field.scale = scales.tolist()
 
 
 def _cores(field: _NucleusDistances, craton_continent: np.ndarray, core_targets: np.ndarray) -> np.ndarray:
@@ -386,11 +447,18 @@ def _cores(field: _NucleusDistances, craton_continent: np.ndarray, core_targets:
 
 
 def _continents(
-    lat: Lattice, centres: np.ndarray, areas: np.ndarray, core: np.ndarray, owners: np.ndarray, outline_noise_km: np.ndarray, growth_speed: np.ndarray
+    lat: Lattice,
+    centres: np.ndarray,
+    areas: np.ndarray,
+    core: np.ndarray,
+    belt: np.ndarray,
+    owners: np.ndarray,
+    outline_noise_km: np.ndarray,
+    growth_speed: np.ndarray,
 ):
     """Continent id per point, -1 for ocean. A continent takes the points with the
-    smallest growth time, distance over `growth_speed`, plus the outline noise. `owners` is
-    each craton's continent."""
+    smallest growth time, distance over `growth_speed`, plus the outline noise, after its
+    cratons and belts (`belt`, continent id per point). `owners` is each craton's continent."""
     n_c = len(centres)
     distance = np.empty((lat.size, n_c))
     for k in range(n_c):
@@ -404,9 +472,9 @@ def _continents(
     owner = np.argmin(perturbed, axis=1)
     continent = np.full(lat.size, -1, dtype=np.int64)
     for k in range(n_c):
-        in_core = (core >= 0) & (owners[np.maximum(core, 0)] == k)
+        in_core = ((core >= 0) & (owners[np.maximum(core, 0)] == k)) | (belt == k)
         continent[in_core] = k
-        rest = np.flatnonzero((owner == k) & ~in_core)
+        rest = np.flatnonzero((owner == k) & ~in_core & (continent < 0))
         remaining = areas[k] - float(lat.area_km2[in_core].sum())
         if remaining > 0.0 and len(rest):
             continent[rest[_fill_to_area(perturbed[rest, k], lat.area_km2[rest], remaining)]] = k
@@ -420,21 +488,45 @@ def _continents(
     return continent
 
 
-def _belts(lat: Lattice, continent: np.ndarray, core: np.ndarray, craton_continent: np.ndarray) -> np.ndarray:
-    """The closure of each continent's cratons, less the cratons, within the continent. The
-    closing runs over the whole sphere, so ocean beside a craton at the coast (#470) dilates
-    too and can't erode the gap between two cratons."""
-    belt = np.zeros(lat.size, dtype=bool)
+def _belts(lat: Lattice, core: np.ndarray, craton_continent: np.ndarray) -> np.ndarray:
+    """Continent id of each belt point (-1 elsewhere): the non-craton points in the closure of
+    a continent's cratons, or in the lens between two of them. Computed before the continent
+    grows, which then always contains them, so no sea opens between two of its cratons (#470
+    review). The closing runs over the whole sphere; the lens -- points whose distances to the
+    two nearest cratons sum to at most BELT_LENS_BELT_WIDTHS belt widths -- covers the gap between two small
+    cratons far apart, which a closing can't bridge."""
+    belt = np.full(lat.size, -1, dtype=np.int64)
     has_core = core >= 0
-    for k in np.unique(continent[has_core]):
+    for k in np.unique(craton_continent):
         mine = has_core & (craton_continent[np.maximum(core, 0)] == k)
-        dilated = arc_km(cKDTree(lat.xyz[mine]).query(lat.xyz, workers=-1)[0]) <= BELT_CLOSURE_KM
-        candidates = np.flatnonzero(dilated & ~has_core & (continent == k))
-        if len(candidates) == 0 or np.all(dilated):
+        if not np.any(mine):
             continue
-        gap = arc_km(cKDTree(lat.xyz[~dilated]).query(lat.xyz[candidates], workers=-1)[0])
-        belt[candidates[gap > BELT_CLOSURE_KM]] = True
+        dilated = arc_km(cKDTree(lat.xyz[mine]).query(lat.xyz, workers=-1)[0]) <= BELT_CLOSURE_KM
+        candidates = np.flatnonzero(dilated & ~has_core & (belt < 0))
+        if len(candidates) == 0:
+            continue
+        inside = _lens(lat, core, np.unique(core[mine]), candidates)
+        if not np.all(dilated):
+            inside |= arc_km(cKDTree(lat.xyz[~dilated]).query(lat.xyz[candidates], workers=-1)[0]) > BELT_CLOSURE_KM
+        belt[candidates[inside]] = k
     return belt
+
+
+def _lens(lat: Lattice, core: np.ndarray, cratons: np.ndarray, points: np.ndarray) -> np.ndarray:
+    """Whether each of `points` lies between two of `cratons`: its distances to the nearest
+    two sum to at most BELT_LENS_BELT_WIDTHS belt widths."""
+    if len(cratons) < 2:
+        return np.zeros(len(points), dtype=bool)
+    lens_km = BELT_LENS_BELT_WIDTHS * CRATON_BELT_WIDTH_KM
+    bound = 2.0 * np.sin(lens_km / PLANET_RADIUS_KM / 2.0)
+    d1 = np.full(len(points), np.inf)
+    d2 = np.full(len(points), np.inf)
+    for craton in cratons:
+        chord = cKDTree(lat.xyz[core == craton]).query(lat.xyz[points], distance_upper_bound=bound, workers=-1)[0]
+        d = np.where(np.isfinite(chord), arc_km(np.where(np.isfinite(chord), chord, 0.0)), np.inf)
+        d2 = np.where(d < d1, d1, np.minimum(d2, d))
+        d1 = np.minimum(d1, d)
+    return d1 + d2 <= lens_km
 
 
 def build_geography(rng: np.random.Generator, spacing_rad: float, continental_fraction: float) -> ContinentGeography:
@@ -457,8 +549,9 @@ def build_geography(rng: np.random.Generator, spacing_rad: float, continental_fr
     field = _NucleusDistances(lat, core_noise_km)
     nuclei, nucleus_craton, craton_continent = _place_nuclei(rng, field, centres, core_targets)
     core = _cores(field, craton_continent, core_targets)
-    continent = _continents(lat, centres, areas, core, craton_continent, outline_noise_km, growth_speed)
-    belt = _belts(lat, continent, core, craton_continent)
+    belt_of = _belts(lat, core, craton_continent)
+    continent = _continents(lat, centres, areas, core, belt_of, craton_continent, outline_noise_km, growth_speed)
+    belt = (belt_of >= 0) & (belt_of == continent)
     return ContinentGeography(
         lattice=lat,
         continent=continent,

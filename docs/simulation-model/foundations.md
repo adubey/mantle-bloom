@@ -178,27 +178,31 @@ mask (continental crust whose relief sample clears the land threshold); steps 4-
    clamped to 0.05-0.9 and defaulting to `plates.CONTINENTAL_AREA_FRACTION = 0.5`; a
    Dirichlet draw (`CONTINENT_SIZE_CONCENTRATION = 2`) splits that area between continents.
 2. **Cratons.** Nuclei chain out from each continent's centre. Each new nucleus starts a new
-   craton with probability `CRATON_CLUSTER_CONCENTRATION / (that + n)` (20, n the
-   continent's nuclei so far), placed at least `CRATON_CORE_SPACING_KM = 1500` from every
-   other craton's nuclei; otherwise it joins an existing craton, chosen in proportion to its
-   nuclei, 0.8-1.3 core radii from one of them (`NUCLEUS_JOIN_STEP_RANGE`), so the disks
-   overlap into one composite craton (a Chinese restaurant process, #470). A craton takes the
-   points within `CRATON_CORE_RADIUS_KM = 1000` of its nuclei, the distance perturbed by up to
-   `CRATON_CORE_OUTLINE_NOISE_KM`, nearest nucleus winning. Points within
-   `CRATON_BELT_WIDTH_KM / 2` (250 km) of the line halfway between two cratons are left out,
-   so cratons are at least 500 km apart. Nuclei are added until the cratons can cover
+   craton with probability `CRATON_CLUSTER_CONCENTRATION / (that + n)` (8, n the continent's
+   nuclei so far); otherwise it joins an existing craton below `CRATON_MAX_AREA_KM2` (18 M km²),
+   chosen in proportion to its nuclei, 0.8-1.3 of that craton's reach from one of its nuclei
+   (`NUCLEUS_JOIN_STEP_RANGE`), so the disks overlap into one composite craton (a Chinese
+   restaurant process, #470). Each craton draws a size scale from `CRATON_SIZE_SCALE_RANGE`
+   (0.5-1) and reaches its scale times `CRATON_CORE_RADIUS_KM = 1000` from its nuclei, the
+   distance perturbed by up to `CRATON_CORE_OUTLINE_NOISE_KM`, nearest nucleus winning. A new
+   craton is placed `CRATON_CORE_SPACING_KM = 1500` times the two cratons' mean scale from
+   other cratons' nuclei, growing outward from the assembly's edge. Points within
+   `CRATON_BELT_WIDTH_KM / 2` (200 km) of the line halfway between two cratons are left out,
+   so cratons are at least 400 km apart. Nuclei are added until the cratons can cover
    `CRATON_SHARE_OF_CONTINENT = 0.4` of the continent (at least two cratons when that share
-   exceeds one 1,000 km disk), then the radius is trimmed to hit the share. A continent
-   smaller than one disk (about 3.1 M km²) gets no craton.
-3. **Belts and margins.** Each continent grows from its cratons (from its centre if it has
-   none) until it reaches its area, in order of growth time: distance to the cratons plus
+   exceeds one 1,000 km disk; scales grow together if the continent runs out of room), then the
+   radius is trimmed to hit the share. A continent smaller than one disk (about 3.1 M km²)
+   gets no craton.
+3. **Belts and margins.** Belt is each continent's non-craton points in the closure of its
+   cratons (dilated, then eroded, by `BELT_CLOSURE_KM = 800`, over the whole sphere), or in the
+   lens between two of them (distances to the two nearest summing to at most
+   `BELT_LENS_BELT_WIDTHS = 2` belt widths), so the whole gap between neighbouring cratons is
+   belt. The continent contains its cratons and belts, then grows from them until it reaches
+   its area, in order of growth time: distance to the cratons plus
    `CONTINENT_CENTRE_PULL = 1` times the distance to the continent's centre, over a growth
    speed `exp(CONTINENT_GROWTH_SPEED_SIGMA × noise)` that varies smoothly at continent scale,
-   plus outline noise. Cratons on a continent's far side, or where it grows slowly, end up
-   near its coast. Belt is the closure of its cratons (dilated, then eroded, by
-   `BELT_CLOSURE_KM = 800`, over the whole sphere so ocean beside a coastal craton doesn't
-   erode it) less the cratons, within the continent, so the whole gap between neighbouring
-   cratons is belt. Continental points outside the closure are margin.
+   plus outline noise. Cratons on a continent's far side, or where it grows slowly, end up near
+   its coast. Continental points that aren't craton or belt are margin.
 4. **Plates.** `num_plates` sites (8-20, as above) are Poisson-disc sampled outside the
    cores, and each takes the points nearest it by path length over the 8-connected lattice
    (multi-source `scipy.sparse.csgraph.dijkstra`). Each core then goes whole to the plate

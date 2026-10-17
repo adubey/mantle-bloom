@@ -35,7 +35,8 @@ def test_path_distances_through_a_core_stay_geodesic(layout):
     lat = layout.lattice
     core_id = int(np.bincount(layout.core[layout.is_core]).argmax())
     members = np.flatnonzero(layout.core == core_id)
-    start = int(lat.tree.query(layout.nuclei[core_id])[1])
+    nucleus = np.flatnonzero(layout.nucleus_craton == core_id)[0]
+    start = int(lat.tree.query(layout.nuclei[nucleus])[1])
     assert layout.core[start] == core_id
     path_km = dijkstra(lat.graph(ring=True), directed=False, indices=start)[members]
     great_km = np.arccos(np.clip(lat.xyz[members] @ lat.xyz[start], -1.0, 1.0)) * PLANET_RADIUS_KM
