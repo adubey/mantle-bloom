@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Boundary-load normalization (RFC 0012 gate G1, issue #465): are slab pull, ridge push, slab
+"""Boundary-load normalization (RFC 0012 G1/#465 and follow-up #468): are slab pull, ridge push, slab
 drag and contact drag the same force per metre of boundary whatever the node density, the
-boundary band's width, and how many rows sample it? No model change.
+boundary band's width, and how many rows sample it? Each case reports load per represented
+front-node length and the fraction of the geometric test span represented by that length.
 
 Builds two oceanic plates split along the 0/180 meridian great circle (`debug_worlds`'
 nearest-seed partition, seeds at (0, -10) and (0, 10)). The west plate rotates east about
@@ -25,11 +26,12 @@ gives:
   on the trench band (`contact_drag_pa_s_per_m` x node area x v), against
   `CONTACT_RESISTANCE_N_PER_M`.
 
-Boundary length is R x the latitude span counted, the same for every case. Sweeps: node
-density (`--densities`), `BOUNDARY_FORCE_REACH_MULTIPLIER` (`--reach-mults`, patched in this
-process, so contact drag's band-width division follows it as it would in the model), and
-repeated rows (every band node counted `--repeat` times, as an over-sampled boundary would
-be). Each density is built at `--offsets` east-seed offsets spread over one spacing, since
+The geometric comparison span is R x the counted latitude span. Each load is normalized by
+its represented front length (the sum of its shared per-front-node weights), and the output
+reports what fraction of that geometric span the sampled band represents. Sweeps: node
+density (`--densities`), `BOUNDARY_FORCE_REACH_MULTIPLIER` (`--reach-mults`), and repeated
+rows (every band node counted `--repeat` times, as an over-sampled boundary would be). Each
+density is built at `--offsets` east-seed offsets spread over one spacing, since
 how the two lattices line up sets how many rows fall in the band; a level's value is the mean
 over those alignments, and the alignment spread is reported alongside. Gate G1 passes a load
 if its spread (max/min - 1) across a sweep's levels is <= 10%.
@@ -108,7 +110,7 @@ class RepeatedPlate:
 def measure(west, east, density: float, reach_mult: float, repeat: int, args) -> dict:
     torque.BOUNDARY_FORCE_REACH_MULTIPLIER = reach_mult
     spacing = line_spacing_rad(density)
-    reach = reach_mult * spacing
+    reach = torque.boundary_force_reach_rad(spacing)
     inputs = torque.gather_boundary_force_inputs(west, [east], spacing, reach)
     _conv, divergent, _tr, _contested = torque.classify_boundary_nodes(west, [east], inputs, reach)
     subducting = torque.subducting_boundary_mask(west, inputs, reach)
@@ -125,8 +127,10 @@ def measure(west, east, density: float, reach_mult: float, repeat: int, args) ->
     div_k = tile(divergent & window & ~trench_side)
     band_k = tile((inputs.dist_to_neighbor <= reach) & window & trench_side)
     ds = spacing * R
+    boundary_lengths = torque.boundary_node_length_m(inputs_k, spacing)
 
-    pull = torque.slab_pull_force_n(plate_k, inputs_k, sub_k, spacing).sum() / length_m
+    pull_length_m = boundary_lengths[sub_k].sum()
+    pull = torque.slab_pull_force_n(plate_k, inputs_k, sub_k, spacing).sum() / pull_length_m
     buoyancy = torque.column_buoyancy_pa(np.zeros(1), np.array([lithosphere.REFERENCE_HM_OCEANIC_M]), np.zeros(1))[0]
     pull_ideal = buoyancy * torque.SUBDUCTION_LSINK_M
 
@@ -135,19 +139,22 @@ def measure(west, east, density: float, reach_mult: float, repeat: int, args) ->
     z = lithosphere.isostatic_elevation(inputs_k.own_hc[div_k], inputs_k.own_hm[div_k], rho_c)
     e_r = np.clip(z - torque.ABYSSAL_PLAIN_REFERENCE_ELEVATION_M, 0.0, None)
     push_scale = 0.5 * lithosphere.GRAVITY_M_S2 * (lithosphere.RHO_ASTHENOSPHERE - lithosphere.RHO_WATER)
-    push = (push_scale * e_r**2 * ds).sum() / length_m
-    push_ideal = push_scale * float(np.median(e_r)) ** 2 if len(e_r) else 0.0
+    ridge_length_m = boundary_lengths[div_k].sum()
+    push = (push_scale * e_r**2 * boundary_lengths[div_k]).sum() / ridge_length_m
+    push_ideal = push_scale * float(np.average(e_r**2, weights=boundary_lengths[div_k])) if len(e_r) else 0.0
 
     # Slab drag per node: (mu / d_s) Lsink ds, times the node's speed, summed per metre.
     v_m_s = np.linalg.norm(np.cross(west.omega, inputs_k.own_points[sub_k]), axis=1) * R / torque.SECONDS_PER_YEAR
     eta_slab = torque.SLAB_MANTLE_VISCOSITY_PA_S / torque.SHEAR_ZONE_THICKNESS_M
-    slab_drag = (eta_slab * torque.SUBDUCTION_LSINK_M * ds * v_m_s).sum() / length_m
-    slab_drag_ideal = eta_slab * torque.SUBDUCTION_LSINK_M * float(np.median(v_m_s)) if len(v_m_s) else 0.0
+    slab_drag = (eta_slab * torque.SUBDUCTION_LSINK_M * boundary_lengths[sub_k] * v_m_s).sum() / pull_length_m
+    slab_drag_ideal = (
+        eta_slab * torque.SUBDUCTION_LSINK_M * float(np.average(v_m_s, weights=boundary_lengths[sub_k])) if len(v_m_s) else 0.0
+    )
 
     v_ref = torque.CONTACT_RESISTANCE_REF_CM_PER_YR * 0.01 / torque.SECONDS_PER_YEAR
     jam = band_k.astype(float)
     coeff = torque.contact_drag_pa_s_per_m(plate_k, inputs_k, np.zeros(len(jam), dtype=bool), spacing, jam=jam)
-    contact = (coeff * plate_k.accounting_areas_m2(spacing) * v_ref).sum() / length_m
+    contact = (coeff * plate_k.accounting_areas_m2(spacing) * v_ref).sum() / boundary_lengths[band_k].sum()
 
     band_rows = (inputs.dist_to_neighbor[window & trench_side] <= reach).sum() * ds / length_m
     near = torque.gather_boundary_force_inputs(west, [east], spacing, np.inf).dist_to_neighbor
@@ -173,6 +180,11 @@ def measure(west, east, density: float, reach_mult: float, repeat: int, args) ->
         "contact_drag_ratio": float(contact / torque.CONTACT_RESISTANCE_N_PER_M),
         "slab_pull_n_per_m": float(pull),
         "ridge_push_n_per_m": float(push),
+        "represented_length_fraction": {
+            "slab_pull": float(pull_length_m / length_m),
+            "ridge_push": float(ridge_length_m / length_m),
+            "contact_drag": float(boundary_lengths[band_k].sum() / length_m),
+        },
     }
 
 

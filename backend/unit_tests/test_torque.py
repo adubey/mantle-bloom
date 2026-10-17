@@ -82,6 +82,62 @@ def test_subducting_mask_only_flags_a_converging_oceanic_boundary():
     assert not torque.subducting_boundary_mask(FakePlate("oceanic", -converging_omega), inputs, reach).any()
 
 
+@pytest.mark.parametrize("density", [1.0, 4.0])
+@pytest.mark.parametrize("band_rows", [1, 4])
+def test_boundary_load_equations_integrate_once_per_front_node(density, band_rows):
+    """RFC 0012 #468: line loads are invariant to density and the number of rows sampling
+    each front node. This checks the physical force per boundary metre for all four terms."""
+    spacing = line_spacing_rad(density)
+    ds = spacing * lithosphere.PLANET_RADIUS_M
+    front_count = 8
+    n = front_count * band_rows
+    points = np.tile(np.array([[1.0, 0.0, 0.0]]), (n, 1))
+    hm = 20_000.0
+    inputs = torque.BoundaryForceInputs(
+        own_points=points,
+        own_hc=np.full(n, lithosphere.REFERENCE_HC_OCEANIC_M),
+        own_hm=np.full(n, hm),
+        own_crust_type_codes=np.full(n, CRUST_TYPE_OCEANIC, dtype=np.int8),
+        dist_to_neighbor=np.full(n, spacing),
+        direction_to_neighbor=np.tile(np.array([[0.0, 1.0, 0.0]]), (n, 1)),
+        neighbor_is_oceanic=np.ones(n, dtype=bool),
+        neighbor_omega=np.zeros((n, 3)),
+        neighbor_plate_id=np.full(n, 2, dtype=np.int64),
+        neighbor_node_index=np.repeat(np.arange(front_count, dtype=np.int64), band_rows),
+        own_craton_m=np.zeros(n),
+    )
+
+    class FakePlate:
+        crust_type = "oceanic"
+        omega = np.zeros(3)
+
+        def accounting_areas_m2(self, spacing_rad):
+            return np.full(n, lithosphere.node_area_m2(spacing_rad))
+
+    plate = FakePlate()
+    full_band = np.ones(n, dtype=bool)
+    boundary_length = front_count * ds
+    column_buoyancy = torque.column_buoyancy_pa(np.zeros(n), inputs.own_hm, inputs.own_craton_m)[0]
+    pull_per_m = torque.slab_pull_force_n(plate, inputs, full_band, spacing).sum() / boundary_length
+    assert pull_per_m == pytest.approx(max(0.0, column_buoyancy) * torque.SUBDUCTION_LSINK_M)
+
+    drag_k = torque.slab_drag_coefficient_matrix(inputs, full_band, spacing)
+    slab_eta = torque.SLAB_MANTLE_VISCOSITY_PA_S / torque.SHEAR_ZONE_THICKNESS_M
+    expected_drag_k_per_m = slab_eta * torque.SUBDUCTION_LSINK_M * lithosphere.PLANET_RADIUS_M**2 / torque.SECONDS_PER_YEAR
+    assert drag_k[1, 1] / boundary_length == pytest.approx(expected_drag_k_per_m)
+
+    z = lithosphere.isostatic_elevation(inputs.own_hc[:1], inputs.own_hm[:1], lithosphere.RHO_OCEANIC_CRUST)[0]
+    relief = max(0.0, z - torque.ABYSSAL_PLAIN_REFERENCE_ELEVATION_M)
+    ridge_push_per_m = -torque.ridge_push_torque(plate, inputs, full_band, spacing)[2] / lithosphere.PLANET_RADIUS_M / boundary_length
+    expected_push = 0.5 * lithosphere.GRAVITY_M_S2 * (lithosphere.RHO_ASTHENOSPHERE - lithosphere.RHO_WATER) * relief**2
+    assert ridge_push_per_m == pytest.approx(expected_push)
+
+    v_ref = torque.CONTACT_RESISTANCE_REF_CM_PER_YR * 0.01 / torque.SECONDS_PER_YEAR
+    contact_coeff = torque.contact_drag_pa_s_per_m(plate, inputs, full_band, spacing, jam=full_band)
+    contact_per_m = (contact_coeff * plate.accounting_areas_m2(spacing) * v_ref).sum() / boundary_length
+    assert contact_per_m == pytest.approx(torque.CONTACT_RESISTANCE_N_PER_M)
+
+
 def test_slab_pull_is_zero_without_a_subducting_node():
     n = 10
     inputs = torque.BoundaryForceInputs(
@@ -424,6 +480,8 @@ def _contact_band(spacing_rad: float, rows: int, hc: float = 70_000.0, hm: float
         direction_to_neighbor=np.tile(np.array([0.0, 1.0, 0.0]), (n, 1)),
         neighbor_is_oceanic=np.zeros(n, dtype=bool),
         neighbor_omega=np.zeros((n, 3)),
+        neighbor_plate_id=np.full(n, 2, dtype=np.int64),
+        neighbor_node_index=np.repeat(np.arange(rows, dtype=np.int64), across),
     )
 
     class FakePlate:
@@ -442,7 +500,7 @@ def _contact_band(spacing_rad: float, rows: int, hc: float = 70_000.0, hm: float
 def test_fully_braked_contact_resists_with_the_himalaya_tibet_force_per_trench_length(density):
     """RFC 0008 (#399): a fully braked contact at the reference 4 cm/yr resists with
     CONTACT_RESISTANCE_N_PER_M per metre of trench (Copley et al. 2010), whatever the node
-    density, because the coefficient is spread over the band's physical width."""
+    density, because each front node's length is shared by the rows mapped to it."""
     spacing = line_spacing_rad(density)
     rows = 5
     rate = mantle.cm_per_yr_to_rad_per_yr(torque.CONTACT_RESISTANCE_REF_CM_PER_YR)
@@ -461,9 +519,10 @@ def test_contact_drag_factor_is_the_larger_of_relief_and_craton_and_stays_bounde
     gains (RFC 0008, #399): flat crust without craton doesn't brake, and no combination of relief
     and craton brakes harder than a full Tibet-height or cratonic contact."""
     spacing = line_spacing_rad(1.0)
-    full = torque.CONTACT_RESISTANCE_N_PER_M / (
-        torque.BOUNDARY_FORCE_REACH_MULTIPLIER * spacing * lithosphere.PLANET_RADIUS_M * torque.CONTACT_RESISTANCE_REF_CM_PER_YR * 0.01 / torque.SECONDS_PER_YEAR
-    )
+    reference_plate, reference_inputs, _ = _contact_band(spacing, 2)
+    full = torque.contact_drag_pa_s_per_m(
+        reference_plate, reference_inputs, np.ones(len(reference_inputs.own_points), dtype=bool), spacing
+    )[0]
     for hc, hm in ((35_000.0, 100_000.0), (50_000.0, 140_000.0), (70_000.0, 200_000.0), (84_000.0, 240_000.0)):
         for craton in (0.0, 10_000.0, 35_000.0, 80_000.0):
             plate, inputs, mask = _contact_band(spacing, 2, hc=hc, hm=hm)
@@ -549,6 +608,7 @@ def test_ocean_floor_pulls_exactly_as_before_buoyancy():
         * torque.SUBDUCTION_LSINK_M
         * spacing
         * lithosphere.PLANET_RADIUS_M
+        / int(torque.BOUNDARY_FORCE_REACH_MULTIPLIER)
     )
     np.testing.assert_allclose(_pull_per_node(plate, inputs, spacing), expected, rtol=1e-12)
 
