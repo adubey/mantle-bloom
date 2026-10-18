@@ -225,6 +225,8 @@ const SIMULATION_ENTRIES: TabEntry[] = [
   )),
   metricEntry(numMetric("craton_volume_km3", "Craton volume", (s) => s.craton_volume_km3 ?? null, 0, " km³")),
   metricEntry(numMetric("craton_destroyed_km3", "Craton destroyed (cumulative)", (s) => s.craton_destroyed_km3 ?? null, 0, " km³")),
+  // Belts (RFC 0009): welded and rifted crust that never forms craton.
+  metricEntry(numMetric("belt_area_km2", "Belt area", (s) => s.belt_area_km2 ?? null, 0, " km²")),
 ];
 
 interface HistoryStats {

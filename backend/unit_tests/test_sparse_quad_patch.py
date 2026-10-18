@@ -608,3 +608,26 @@ def test_a_full_strength_craton_resists_a_failed_rift_like_a_divergent_one():
     assert np.any(plain_hc > 0.0)
     np.testing.assert_allclose(craton_hc, (1.0 - cratons.CRATON_RIFT_RESISTANCE) * plain_hc, rtol=1e-12)
     np.testing.assert_allclose(craton_hm, (1.0 - cratons.CRATON_RIFT_RESISTANCE) * plain_hm, rtol=1e-12)
+
+
+def test_a_failed_rift_marks_exactly_its_thinned_band_as_belt():
+    """RFC 0009: the band an aborted rift stretches is belt, dated now; without a world the
+    thinning is the same and nothing is marked."""
+    from types import SimpleNamespace
+
+    from app import cratons
+
+    def rift(world):
+        keys = pack_cell_keys(np.zeros(5, dtype=int), np.arange(4, 9), np.full(5, 5))
+        plate = PlateWithSparseQuadPatch(
+            7, np.eye(3), "continental", N, keys,
+            fields={"crustal_thickness_m": np.full(5, 35_000.0), "mantle_lithosphere_thickness_m": np.full(5, 100_000.0)},
+        )
+        plate.apply_failed_rift(np.array([0.0, 1.0, 0.0]), spacing_rad=0.1, world=world)
+        return plate, plate.collect("crustal_thickness_m") < 35_000.0
+
+    plate, thinned = rift(SimpleNamespace(elapsed_years=6.0e8))
+    assert np.any(thinned) and not np.all(thinned)
+    np.testing.assert_array_equal(cratons.belt_mask(plate, 6.0e8), thinned)
+    plate, _ = rift(None)
+    assert not np.any(cratons.belt_mask(plate, 6.0e8))

@@ -226,6 +226,7 @@ def test_every_surface_field_is_handled_by_the_transfer():
         RemapClass.CLOCK,
         RemapClass.HISTORY,
         RemapClass.WRITE_ONCE_HISTORY,
+        RemapClass.MAJORITY_HISTORY,
     }
 
 

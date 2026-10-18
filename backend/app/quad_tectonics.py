@@ -659,6 +659,8 @@ def _accrete_onto_survivors(
     adjacency = _adjacency_matrix(plate)
     points = plate.surface_nodes().local_xyz
     changed = np.zeros(len(hc), dtype=bool)
+    # The cells the fronts' crust welds onto, marked as belt once the fields are written.
+    welded = np.zeros(len(hc), dtype=bool)
     elevation_before = elevation.copy()
     hc_before = hc.copy()
     hm_before = hm.copy()
@@ -744,6 +746,7 @@ def _accrete_onto_survivors(
                         material_volume, craton_volume,
                     )
                     terrane_cells = continental & ~was_continental
+                    welded |= terrane_cells
                     restite[terrane_cells] = restite_volume / float(areas[terrane_cells].sum())
                     # The oceanic columns the terrane displaced take their cover into the
                     # crust they were thickened into.
@@ -782,6 +785,7 @@ def _accrete_onto_survivors(
             # crust with them, in proportion to the column they left, and are restite first.
             _book_shed_roots(world, material, craton, restite, areas, hc_front_start, shed)
             changed |= filled
+            welded |= filled
             stuck = stages["no_outlet_subducted_m3"]
             spill_cells = survivors & ~continental
             if donor_type and stuck > 0.0 and np.any(spill_cells):
@@ -795,6 +799,7 @@ def _accrete_onto_survivors(
                     hc, areas, adjacency, points, front, spill_cells, stuck, SUTURE_ACCRETION_MAX_HC_M, None, None
                 )
                 changed |= spilled
+                welded |= spilled
                 left = spill_stages["no_outlet_subducted_m3"]
                 stages["foreland_spill_placed_m3"] = stuck - left
                 stages["no_outlet_subducted_m3"] = left
@@ -877,6 +882,8 @@ def _accrete_onto_survivors(
         restite_m=np.minimum(restite, hc),
         moho_thermal_lag_c=lag,
     )
+    if world is not None:
+        cratons.mark_belt(world, plate, welded)
 
 
 def _shed_provenance(material: np.ndarray, craton: np.ndarray, hc_before: np.ndarray, shed: np.ndarray) -> np.ndarray:
@@ -1269,7 +1276,7 @@ def _place_on_overrider(
             orogeny.record(world, account, stages[account])
     settle_received_crust(
         over, hc_before, hc, hc - hc_before + shed, changed, volume, material_volume, restite_volume,
-        material, restite, craton,
+        material, restite, craton, world=world,
     )
     return placed
 
@@ -1286,12 +1293,14 @@ def settle_received_crust(
     material: np.ndarray,
     restite: np.ndarray,
     craton: np.ndarray | None = None,
+    world: "World | None" = None,
 ) -> None:
     """Write crust a plate received (`hc`, from `hc_before`) back onto it: the donation's
     continental material and restite go with each cell's `gain` (thickness) in proportion,
     the `changed` cells' elevation follows their Hc change isostatically, and their Moho is
     buried under it. Mantle lithosphere is unchanged. `material`, `restite` and `craton` are
-    the plate's own fields as the caller left them (shed roots already taken out)."""
+    the plate's own fields as the caller left them (shed roots already taken out). With
+    `world`, the `changed` cells are welded crust and are marked as belt (RFC 0009)."""
     areas = over.node_areas_m2()
     hm = over.collect("mantle_lithosphere_thickness_m")
     codes = over.collect("crust_type_code")
@@ -1316,6 +1325,8 @@ def settle_received_crust(
     if craton is not None:
         fields["craton_crust_m"] = craton
     over.set_fields_on_plate(**fields)
+    if world is not None:
+        cratons.mark_belt(world, over, changed)
 
 
 def _place_suture_crust(

@@ -38,13 +38,14 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import geometry, lithosphere, mantle, rheology
+from . import cratons, geometry, lithosphere, mantle, rheology
 from .elevation_lines import CRUST_TYPE_CONTINENTAL, CRUST_TYPE_INHERIT, CRUST_TYPE_OCEANIC
 from .lithosphere_plate import SUTURE_ACCRETION_MAX_HC_M
-from .surface_fields import CRATON_UNFORMED_YEARS, SURFACE_FIELDS, RemapClass
+from .surface_fields import CRATON_UNFORMED_YEARS, SURFACE_FIELDS, RemapClass, majority_history
 
 if TYPE_CHECKING:
     from .sparse_quad_patch import PlateWithSparseQuadPatch
+    from .world import World
 
 # Sub-cells per absorbed-cell side for the frame remap. Conservation doesn't depend on it
 # (the sub-cell areas sum to each cell's exact area whatever the count); it sets how finely
@@ -72,11 +73,13 @@ def merge(
     absorb: "PlateWithSparseQuadPatch",
     other_points_xyz: np.ndarray,
     other_plates: Sequence["PlateWithSparseQuadPatch"] = (),
+    world: "World | None" = None,
 ) -> None:
     """Fuse `absorb` into `keep` in place: `keep`'s frame, cells, and cell IDs survive, and
     `absorb`'s territory and fields are remapped onto `keep`'s lattice by exact area (see the
     module docstring). `other_points_xyz` are every other live plate's nodes (world xyz),
-    which `keep` doesn't grow over; nor does it grow into any of `other_plates`' cells.
+    which `keep` doesn't grow over; nor does it grow into any of `other_plates`' cells. With
+    `world`, the cells the suture welds are marked as belt (RFC 0009).
 
     `omega` conserves angular momentum through the transfer: both plates' momentum before,
     solved against the merged plate's own inertia after -- the remap moves material to new
@@ -85,7 +88,9 @@ def merge(
     momentum with it; that is absorbed material, so it leaves moving with `absorb`."""
     momentum = lithosphere.angular_momentum(_inertia(keep), keep.omega) + lithosphere.angular_momentum(_inertia(absorb), absorb.omega)
     if absorb.node_count():
-        lost = _transfer(keep, absorb, np.asarray(other_points_xyz, dtype=float).reshape(-1, 3), other_plates)
+        lost, welded = _transfer(keep, absorb, np.asarray(other_points_xyz, dtype=float).reshape(-1, 3), other_plates)
+        if world is not None:
+            cratons.mark_belt(world, keep, welded)
         momentum = momentum - lithosphere.angular_momentum(lost, absorb.omega)
     keep.set_omega(mantle.clamp_rate(lithosphere.omega_from_angular_momentum(_inertia(keep), momentum)))
     keep.reset_age()
@@ -254,9 +259,10 @@ def _transfer(
     absorb: "PlateWithSparseQuadPatch",
     other_points_xyz: np.ndarray,
     other_plates: Sequence["PlateWithSparseQuadPatch"] = (),
-) -> np.ndarray:
-    """Remap `absorb` onto `keep` in place; returns the inertia tensor of the mass the caps
-    removed (zero when nothing was capped)."""
+) -> tuple[np.ndarray, np.ndarray]:
+    """Remap `absorb` onto `keep` in place. Returns the inertia tensor of the mass the caps
+    removed (zero when nothing was capped), and the welded cells: those stacked at the suture
+    and those the stacking overflow was placed on (`merge` marks them as belt)."""
     source, absorb_local, sub_area = subsample_cells(absorb, MERGE_REMAP_SUBSAMPLES)
     sub_world = geometry.to_world(absorb.frame, absorb_local)
     sub_local = geometry.to_local(keep.frame, sub_world)
@@ -386,6 +392,9 @@ def _transfer(
             valid = mapped & (values != spec.sentinel)
             np.minimum.at(earliest, target[valid], values[valid])
             merged[receiving] = np.where(np.isfinite(earliest), earliest, spec.sentinel)[receiving]
+        elif spec.remap_class == RemapClass.MAJORITY_HISTORY:
+            voted = majority_history(target[mapped], values[mapped], sub_area[mapped], n, spec.sentinel, own, own_weight)
+            merged[receiving] = voted[receiving]
         elif spec.remap_class == RemapClass.BOOLEAN_PROVENANCE:
             absorbed = summed(values.astype(float), np.ones(len(values))) > 0.0
             merged[receiving] = ((~is_new & own.astype(bool)) | absorbed)[receiving]
@@ -415,15 +424,7 @@ def _transfer(
             merged[is_new & (total <= 0.0)] = 0.0
         out[name] = merged
 
-    # A column holding craton stays continental, however much other crust the vote counts on
-    # it: craton lives only on continental hosts, so a thick oceanic-coded pile fused onto a
-    # craton would otherwise strip it (#340: 4.4 M km^3 in one terrane accretion on the
-    # seed 910211954 replay).
-    if "craton_crust_m" in out and "crust_type_code" in out:
-        codes = out["crust_type_code"]
-        oceanic = (codes == CRUST_TYPE_OCEANIC) | ((codes == CRUST_TYPE_INHERIT) & (keep.crust_type == "oceanic"))
-        relabel = (out["craton_crust_m"] > 0.0) & oceanic
-        codes[relabel] = CRUST_TYPE_INHERIT if keep.crust_type == "continental" else CRUST_TYPE_CONTINENTAL
+    _keep_craton_continental(keep, out)
 
     # Crust: the suture cap applies to stacked columns only, never lowers a column already
     # past it, and caps Hm the way `quad_tectonics._accrete_onto_survivors` does.
@@ -459,6 +460,8 @@ def _transfer(
     elevation = out["elevation"]
     elevation[changed] = rheology.clip_elevation_bounds(lithosphere.isostatic_elevation(hc, hm, density) + residual)[changed]
     out["elevation"] = elevation
+    # After the overflow placement, which can carry craton onto cells the vote marked.
+    cratons.keep_belts_off_cratons(out)
     keep.set_fields_on_plate(**out)
 
     # The mass the caps removed (negative where a floor added some), as an inertia tensor at
@@ -471,7 +474,20 @@ def _transfer(
         density,
         0.0,
         area_m2=target_area,
-    )
+    ), stacked | spread
+
+
+def _keep_craton_continental(keep: "PlateWithSparseQuadPatch", out: dict[str, np.ndarray]) -> None:
+    """In place on `out`: a column holding craton stays continental, however much other crust
+    the vote counts on it. Craton lives only on continental hosts, so a thick oceanic-coded
+    pile fused onto a craton would otherwise strip it (#340: 4.4 M km^3 in one terrane
+    accretion on the seed 910211954 replay)."""
+    if "craton_crust_m" not in out or "crust_type_code" not in out:
+        return
+    codes = out["crust_type_code"]
+    oceanic = (codes == CRUST_TYPE_OCEANIC) | ((codes == CRUST_TYPE_INHERIT) & (keep.crust_type == "oceanic"))
+    relabel = (out["craton_crust_m"] > 0.0) & oceanic
+    codes[relabel] = CRUST_TYPE_INHERIT if keep.crust_type == "continental" else CRUST_TYPE_CONTINENTAL
 
 
 def _place_stacking_overflow(
