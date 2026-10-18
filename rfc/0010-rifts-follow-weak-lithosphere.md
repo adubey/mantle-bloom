@@ -89,19 +89,25 @@ strength decides *where* the break runs.
 5. **Plume weakening (RFC 0007).** Heated lithosphere counts as weak in the cut cost and
    in craton resistance. Lands with RFC 0007, through this RFC's strength function.
 
-**Recommendation:** 1, built only if RFC 0009's gate G1 selects a building branch on a
-mosaic (line clearance L ≥ 20% and band exposure B ≤ 0.75). Size 4 afterwards. 2 is the follow-up; 5
-comes with RFC 0007.
+**Recommendation (updated after RFC 0009 G3, #472, 2026-10-18).** Proceed with 1, using
+solution 4 as the resistance fallback. The cratons-first layout does not halve cut-band
+craton share on any of the three seeds, but its pooled L = 27.6% and B = 0.732 pass the
+pre-registered fallback branch (L ≥ 20%, B ≤ 0.75). This selects the cut for implementation;
+it does not satisfy this RFC's later cut-performance acceptance criteria. Size solution 4
+after measuring the remaining loss. Solution 2 is the follow-up; solution 5 comes with RFC
+0007.
 
 ## Design
 
-**Gate.** This RFC uses RFC 0009's G1, which runs this RFC's probe on a mosaic-seeded
-world, with branches fixed in RFC 0009 on two measures: L, the share of craton-crossing
-cuts with an admissible minimum cut whose line touches no craton, and B, the craton area
-left in the operational band. If G1 selects L ≥ 50% and B ≤ 0.50, build 1 and measure
-before tuning 4. If L ≥ 20% and B ≤ 0.75, build 1 and tune 4 to the remaining loss in the
-same acceptance runs. Otherwise, the
-falsification case "the flow puts regime boundaries through cratons" holds: don't build 1.
+**Gate.** RFC 0009's G1 first measured this RFC's probe on a mosaic-seeded world and set
+the branches on two measures: L, the share of craton-crossing cuts with an admissible
+minimum cut whose line touches no craton, and B, the craton area left in the operational
+band. RFC 0009's G3 then repeated the measures on the cratons-first layout with a matched
+control. G3 selects 1 with the resistance fallback when pooled L ≥ 20% and B ≤ 0.75; it
+selects 1 without that fallback at L ≥ 50% and B ≤ 0.50. Otherwise, the falsification case
+"the flow puts regime boundaries through cratons" holds: don't build 1. The #472 result
+selects 1 with the resistance fallback; the acceptance runs below must still establish the
+cut's performance and size 4.
 
 **Probe evidence (no model change).** `bin/debug/prototype_mincut_split.py` taps
 `cratons.record_rift_cut`, so it sees every cut that goes ahead without changing the
@@ -237,8 +243,8 @@ baseline that includes RFC 0009.
 
 ## Acceptance criteria
 
-- [ ] **Gate:** RFC 0009's G1 selects a branch that builds this RFC (L ≥ 20% and
-      B ≤ 0.75).
+- [x] **Gate:** RFC 0009's G3 selects this RFC's cut with the resistance fallback
+      (pooled L = 27.6% and B = 0.732; see [analysis/rfc0009/g3.json](../analysis/rfc0009/g3.json)).
 - [ ] Against the matched baseline on seeds 7, 11 and 2024 over 1 Gyr, both fall by at
       least 50%: the share of successful splits whose cut line (the nodes on cut links)
       touches craton, and the craton area in the bands of splits and failed rifts (the
