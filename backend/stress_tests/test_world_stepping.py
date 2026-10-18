@@ -1,5 +1,5 @@
 import numpy as np
-from app import debug_worlds, geometry, lithosphere
+from app import debug_worlds, geometry, lithosphere, quad_tectonics
 from app.hydroclimate import erosion
 from app import merge_split
 from app.elevation_lines import effective_is_continental_from_codes
@@ -126,38 +126,68 @@ def test_step_world_events_are_timestamped_with_post_step_elapsed_years():
     assert len(world.events) <= 200  # MAX_EVENT_LOG_LENGTH
 
 
-def _continental_node_count(world) -> int:
-    return sum(plate.node_count() for plate in world.plates if plate.crust_type == "continental")
+def _continental_crust_area_m2(world) -> float:
+    area_m2 = 0.0
+    for plate in world.plates:
+        continental = effective_is_continental_from_codes(
+            plate.collect("crust_type_code"), plate.crust_type == "continental"
+        )
+        area_m2 += float(np.sum(plate.node_areas_m2()[continental]))
+    return area_m2
+
+
+def _continental_plate_footprint_area_m2(world) -> float:
+    return sum(
+        float(np.sum(plate.node_areas_m2()))
+        for plate in world.plates
+        if plate.crust_type == "continental"
+    )
 
 
 def test_continental_volume_budget_bounds_the_boundary_ratchet(monkeypatch):
     """The continental boundary ratchet (GitHub issue #119, "Continental ratchet: solution design")
     grows every continental margin at the oceanic reference column and never retreats a
-    leading row, so a continental plate's node pile climbs without limit over a long run. The
-    volume-budget growth gate suppresses areal growth once a plate has outrun its crustal
-    volume. The continent-layout change in #470 changed the generated continents: this seed
-    no longer crosses the production budget (1.8), so comparing it with an ungated run would
-    not exercise the gate. The production threshold is covered directly in test_quad_tectonics;
-    this long-run check keeps the production setting and bounds total continental growth.
+    leading row, so a continental plate's footprint can climb over a long run (#482). The
+    volume-budget gate bounds continental-coded area against genuine continental crust volume. It
+    excludes oceanic-coded cells even when they sit on a continental plate (#447), so whole-
+    plate footprint is a separate metric and may grow as oceanic crust is added. This run
+    verifies the production gate is active and that continental-coded area stays bounded;
+    the production threshold is covered directly in test_quad_tectonics.
 
     Seed 60461418 (used here previously) drives this scenario into heavy plate fragmentation
     around step 35-45. Seed 1 was checked across the full 60-step schedule and stays clear of
     that fragmentation crash."""
 
-    # The seed was picked for a trajectory with little fragmentation under the 20-step split
-    # cooldown, 40 Myr at this step length. Since #358 the cooldown is 2 Myr whatever the step,
-    # which lets plates here rift every step and swamps the gate's effect; keep the old pace.
+    # Keep the 20-step split cooldown (40 Myr at this step length) used to select a trajectory
+    # with little fragmentation; #358 changed the production cooldown to two million years.
     monkeypatch.setattr(merge_split, "SPLIT_MIN_AGE_YEARS", 20 * 2_000_000)
+
+    gate_suppressions = []
+    original_boundary_context = quad_tectonics.boundary_context
+
+    def track_growth_gate(*args, **kwargs):
+        context = original_boundary_context(*args, **kwargs)
+        gate_suppressions.append(context.suppress_growth)
+        return context
+
+    monkeypatch.setattr(quad_tectonics, "boundary_context", track_growth_gate)
 
     world = generate_world(seed=1, num_plates=14, continental_fraction=0.6, node_density=0.5)
     world.simulate_climate_biomes = False  # plate geometry only -- keeps the run quick
-    before = _continental_node_count(world)
+    before_continental_crust = _continental_crust_area_m2(world)
+    before_plate_footprint = _continental_plate_footprint_area_m2(world)
     for _ in range(60):
         step_world(world, years=2_000_000)
-    growth = _continental_node_count(world) / before - 1.0
+    continental_crust_growth = _continental_crust_area_m2(world) / before_continental_crust - 1.0
+    plate_footprint_growth = _continental_plate_footprint_area_m2(world) / before_plate_footprint - 1.0
 
-    # Continental node count stays bounded over the same 120 My rather than ratcheting upward.
-    assert growth < 0.15
+    assert any(gate_suppressions)  # exercise the production growth gate in this trajectory
+    # Continental-coded area stays bounded over 120 My. The whole continental-plate footprint
+    # is tracked separately because oceanic-coded growth is outside this continental budget.
+    assert continental_crust_growth < 0.15, (
+        f"continental-coded growth {continental_crust_growth:.1%}; "
+        f"continental-plate footprint growth {plate_footprint_growth:.1%}"
+    )
 
 
 def _continental_hc_hm(world):

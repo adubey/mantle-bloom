@@ -159,20 +159,19 @@ deltas.
   this, a continental lobe planted mid-plate on an oceanic plate left a frozen overlap that
   never healed (`seed 888151728` at 6.9 Myr, plates 9 and 1).
 
-  **A continental plate stops growing once its footprint outruns its crustal volume.** A
-  continental plate sheared into a much larger envelope by a far-off Euler pole would
-  otherwise tile unbounded drowned passive margin outward (a plate reaching ~16% of the whole
-  planet, 70%+ of its own area below sea level, was a real long-run symptom).
-  `lithosphere_plate.boundary_context` measures a plate's *genuine* continental
-  area -- continental cells with `crustal_thickness_m` at least `CONTINENTAL_BUDGET_HC_FRACTION`
-  (0.6) of the continental reference -- and once the plate's continental-coded area exceeds
-  `CONTINENTAL_AREA_BUDGET_MULT` (1.8) times that, suppresses all areal growth for the step.
-  The plate's ocean floor doesn't count against it (#447).
-  Retreat, divergent thinning and convergent thickening keep running, so an over-budget plate
-  thins / drowns / crumples back toward its crustal volume rather than merely freezing at its
-  current size. A real craton sits near reference Hc across its whole area, far below the
-  cap; the >1 multiplier is the realistic continental-shelf + accreted-terrane allowance.
-  Ocean floor is exempt -- its footprint is already bounded by subduction.
+  **The continental area budget suppresses growth of continental-coded area.** A continental
+  plate sheared into a much larger envelope by a far-off Euler pole can tile drowned passive
+  margin outward (a plate reaching ~16% of the whole planet, with 70%+ of its own area below
+  sea level, was a long-run symptom). `lithosphere_plate.boundary_context` compares the area
+  of continental-coded nodes with its *genuine* continental area: continental cells with
+  `crustal_thickness_m` at least `CONTINENTAL_BUDGET_HC_FRACTION` (0.6) of the continental
+  reference. Once continental-coded area exceeds `CONTINENTAL_AREA_BUDGET_MULT` (1.8) times
+  genuine area, it suppresses all areal growth for the step. Oceanic-coded cells do not count,
+  even on a continental plate (#447); ordinary boundary growth seeds oceanic-coded cells.
+  Therefore this gate does not bound a continental plate's total footprint. The long-run
+  stress check tracks both measures and asserts the area this gate controls.
+  Retreat, divergent thinning and convergent thickening keep running while growth is
+  suppressed. The >1 multiplier allows continental shelf and accreted-terrane area.
 
   Mass conservation lives here: material is only created where new cells open and destroyed
   where cells are genuinely overridden -- there's no grid-resampling step that can lose or
