@@ -378,8 +378,9 @@ layout_lattice.py  the whole-sphere cell lattice a cratons-first world is laid o
 continent_layout.py
                    cratons-first layout for random worlds, behind a flag (RFC 0009): cratonic
                    cores, the continents around them, belts and margins
-plate_partition.py the plates over a cratons-first layout: Dijkstra from Poisson-disc sites,
-                   a land-aware boundary cost, best-of-K candidates, boundary refinement
+plate_partition.py the plates over a cratons-first layout: polygon-seed Voronoi from craton
+                   cores and grouped point sites, a land-aware boundary cost, best-of-K
+                   candidates, boundary refinement
 lithosphere_plate.py
                    plate generation (nearest-seed tiling or a continent_layout partition,
                    reference Hc/Hm, composite relief)

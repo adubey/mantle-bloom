@@ -1,7 +1,7 @@
 # RFC 0009: Cratons first: continents built from cratonic cores, plates placed around them
 
 - **Status:** Accepted 2026-10-15 (revised after gate G1; first version, “Cratons as a mosaic,” accepted 2026-10-15 in PR #428)
-- **Date:** 2026-10-15 (revised 2026-10-15)
+- **Date:** 2026-10-15 (revised 2026-10-17)
 - **Related:** #427 (tracking), #426 (gate G1), #274 (cratons), #389 (RFC 0003 tracking),
   #409 (formation and ratchet diagnosis), #411; PRs #418 (RFC 0003 solution 1) and #430
   (G1); RFCs [0003](0003-rifting-around-cratons.md) and [0004](0004-proto-cratons.md)
@@ -19,6 +19,15 @@ continental or oceanic, and only then puts a craton in the middle of each contin
 This revision reverses the order: cratonic cores first, continents built around them, plates
 placed last. The mosaic's cores and belts become the first step of that order, and its belt
 marks stay.
+
+The plate seed mechanism was revised in #477 while keeping continent, craton, belt and land
+generation intact. Each craton core now contributes its full lattice-cell polygon as a
+Voronoi seed. 200 point seeds, sampled by cell area outside cratons, fill the remaining
+surface; the first `num_plates` points root plate groups, and other points and cratons join
+their nearest root. This replaces the point-site Dijkstra partition and whole-core
+post-assignment. The same connectivity, core-indivisibility, area, land-aware objective and
+G3 outcome criteria remain; the polygon-seed variant still needs the full G3 comparison
+before this mechanism is validated.
 
 ## Problem
 
@@ -247,17 +256,18 @@ core and belt masks, and a plate label.
    wider than that nominal band, so no unmarked inter-core gap can later form into craton.
    Continental points outside the core-and-belt interior are margin: younger, non-cratonic
    crust.
-4. **Plates.** Place `num_plates` sites (8–20 as today) by Poisson-disc sampling, none inside
-   a core. First, assign every point to its nearest site by uniform geodesic multi-source
-   Dijkstra; keep core nodes uncontracted while measuring path distance. Then assign each
-   whole core to the plate with the greatest area-weighted share of its initial Dijkstra
-   labels, choosing the lowest-cost connected owner on ties; if the resulting label is
-   disconnected, resample the sites. Refine the labels by moving boundary points between
-   adjacent plates to reduce
+4. **Plates.** Sample 200 point sites without replacement from non-core lattice cells,
+   weighted by cell area. The first `num_plates` sites root plate groups; each remaining point
+   and each core polygon inherit their nearest root's label. Each core is a polygon seed: all
+   lattice cells in it participate in nearest-seed distance, rather than using its centroid.
+   Each lattice cell takes the label of its nearest point or core-cell seed. If the partition
+   is disconnected or under the node floor, redraw the sites; from `PARTITION_CANDIDATES`
+   valid draws keep the one with the lowest J. Refine the labels
+   by moving boundary points between adjacent plates to reduce
    `J = sum(length(link) * mean(cost(endpoint_1), cost(endpoint_2)))` over links whose
-   endpoints have different labels. `cost` is `PLATE_COST_OCEAN` (1), `PLATE_COST_BELT` (1),
+   endpoints have different labels. `cost` is `PLATE_COST_OCEAN` (0), `PLATE_COST_BELT` (1),
    or `PLATE_COST_MARGIN` (3). Keep each plate's area within 75–125% of its initial
-   Dijkstra area, and above `SPLIT_MIN_NODES * node_density`; if the initial partition
+   Voronoi area, and above `SPLIT_MIN_NODES * node_density`; if the initial partition
    violates the floor or no valid refinement exists, resample the sites. A move is allowed
    only if every point remains assigned exactly once, the plate count stays fixed, and no
    core is divided. Preserve connectivity with a local simple-point check: after removing
@@ -382,11 +392,11 @@ change no thickness.
 most `CRATON_SHARE_OF_CONTINENT` ≤ 0.7 of their continent, so every continent keeps some
 non-cratonic crust. A continent too small for one core gets none.
 
-**Runtime.** Generation uses one multi-source Dijkstra over the lattice (about 31,000
-points at density 1, 124,000 at density 4; `scipy.sparse.csgraph.dijkstra` with `min_only`),
-then a constrained boundary-refinement pass. The refinement cost is not measured yet; G3
-benchmarks the full path at both densities, and acceptance requires generation under 2 s at
-density 1. Today's whole generation on seed 7 takes 0.9 s (density 1) and 1.8 s (density 4).
+**Runtime.** Plate seeding uses nearest-neighbor queries from the lattice to the combined
+point and craton-cell seed cloud (about 31,000 lattice points at density 1 and 124,000 at
+density 4), then the constrained boundary-refinement pass. The polygon-seed path has only
+been smoke-generated at density 0.5; measure generation at densities 1 and 4 as part of G3.
+Acceptance still requires whole-world generation under 2 s at density 1.
 Per step, belt marks add masked writes and one mask in `update`; well under 1%.
 
 **Save compatibility.** Generation-only, apart from `belt_formed_years`, a new surface field
@@ -409,7 +419,7 @@ only as new collisions and rifts mark them. No new pickled state on `World`.
 | `CRATON_SIZE_SCALE_RANGE`, `CRATON_MAX_AREA_KM2` (#470) | 0.5–1, 18 M km² | Design choice: per-craton reach, and a cap on growth by joining | Smallest cratons (5th percentile 0.51 M km², 30% under 1 M km²) and the largest (23 M km²) over 40 seeds |
 | `CONTINENT_CENTRE_PULL`, `CONTINENT_GROWTH_SPEED_SIGMA` (#470) | 1, 1 | Design choice: uneven continental growth, so some cratons sit at a coast | Share of cratons within 300 km of the continental edge: 11–49% over 40 seeds (0% before) |
 | `PLATE_COST_MARGIN` | 3 | Design choice: boundary-link penalty | Land edge within 300 km of a boundary: 15–50% (Earth coastline 28%); crust edge reported separately |
-| `PLATE_COST_OCEAN`, `PLATE_COST_BELT` | 1, 1 | Design choice: boundary-link penalty for ocean and belts | Fixed |
+| `PLATE_COST_OCEAN`, `PLATE_COST_BELT` | 0, 1 | Design choice: boundary-link penalty for ocean and belts | Fixed |
 | `PLATE_COST_LAND_LINK` (#462) | 10 | Design choice: penalty on a boundary link with land at both ends | Land on both sides ≤ 25% together with the land-edge and mixed-plate targets, 40 seeds: 33 of 40 at 10, 30 at 5 |
 | `PARTITION_CANDIDATES` (#462) | 8 | Design choice: starting partitions drawn, lowest J kept | Same; 16 did no better |
 | `CRATON_BELT_SEED_AGE_YEARS` | 1.8 Gyr | Design choice: Proterozoic assembly, as for Laurentia [[Hoffman, 1988]](#ref-hoffman1988) | Fixed; provenance only |
@@ -419,8 +429,9 @@ only as new collisions and rifts mark them. No new pickled state on `World`.
 ## Detailed design (provisional touchpoints)
 
 - `backend/app/continent_layout.py` (new): continents, cores and belts, per lattice point;
-  `backend/app/plate_partition.py` (new, #462 review) the plate partition over them,
-  initialized with Dijkstra and refined against the weighted interface objective;
+  `backend/app/plate_partition.py` (new, #462 review) the plate partition over them, seeded
+  by grouped craton-core polygons and point sites, then refined against the weighted interface
+  objective;
   `backend/app/layout_lattice.py` (new) the whole-sphere lattice both use.
 - `backend/app/lithosphere_plate.py`
   - `generate_plates`: the random path calls `continent_layout` and builds plates from its
@@ -453,7 +464,7 @@ only as new collisions and rifts mark them. No new pickled state on `World`.
   smooth plate ownership with the same 9-pixel majority filter as `render_craton_map.py`.
 - Tests:
   - `test_continent_layout.py` (new): every point has one owner; every plate is connected;
-    cores are indivisible and Dijkstra path distances through cores remain geodesic; each
+    cores are indivisible and each core cell participates in the polygon-seed distance; each
     plate stays within its area band and minimum node floor; refinement uses simple-point
     connectivity, never increases the boundary objective, and stops within 20 sweeps; belts
     separate the cores without unmarked inter-core gaps; land thresholds use the per-point

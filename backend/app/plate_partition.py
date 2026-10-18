@@ -3,11 +3,14 @@
 The second stage of a cratons-first layout, after `continent_layout` has placed the
 continents, cores and belts on the whole-sphere `layout_lattice.Lattice`:
 
-1. **Sites and the starting partition.** `num_plates` sites, Poisson-disc sampled outside
-   the cores, take every point by multi-source Dijkstra over the 8-connected lattice (path
-   length through cores, not around them). Each core then goes whole to the plate holding
-   most of its area. Sites are redrawn if a plate is disconnected or under the node floor,
-   and of `PARTITION_CANDIDATES` valid draws the one with the lowest J is kept.
+1. **Seeds and the starting partition.** 200 point sites are sampled without replacement
+   from non-craton lattice cells, weighted by cell area, so they are random and uniform over
+   the available surface. The first `num_plates` sites are plate roots; each remaining point
+   and each craton polygon seed inherits the label of its nearest root. Every craton core is
+   represented by all of its lattice cells in the Voronoi distance transform. Each lattice
+   cell belongs to the plate of its nearest point or polygon seed. Placements are redrawn if
+   a plate is disconnected or under the node floor; of `PARTITION_CANDIDATES` valid draws,
+   the one with the lowest J is kept.
 2. **Boundary refinement.** Boundary points move between adjacent plates while that lowers
    `J`, the length of plate-crossing links weighted by the mean `PLATE_COST_*` of their
    endpoints (ocean and belt cheap, margin and core dear), plus `PLATE_COST_LAND_LINK` where
@@ -32,15 +35,15 @@ from dataclasses import dataclass
 import numpy as np
 from numba import njit
 from scipy.sparse import coo_matrix
-from scipy.sparse.csgraph import connected_components, dijkstra
+from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
-from .layout_lattice import Lattice, poisson_disc
+from .layout_lattice import Lattice
 
-# Boundary-link costs: a plate boundary through ocean or along a belt is cheap; through a
-# continental margin or along a core's edge it costs PLATE_COST_MARGIN. Ocean and belt are
-# fixed at 1; the margin cost is tuned to the land-edge measure (RFC 0009, Knobs).
-PLATE_COST_OCEAN = 1.0
+# Boundary-link costs: an ocean link is free; a belt link costs 1; a continental margin or
+# craton-core link costs PLATE_COST_MARGIN. The margin cost is tuned to the land-edge measure
+# (RFC 0009, Knobs).
+PLATE_COST_OCEAN = 0.0
 PLATE_COST_BELT = 1.0
 PLATE_COST_MARGIN = 3.0
 PLATE_COST_CORE = PLATE_COST_MARGIN
@@ -51,13 +54,11 @@ PLATE_COST_CORE = PLATE_COST_MARGIN
 PLATE_COST_LAND_LINK = 10.0
 # Valid starting partitions drawn; the lowest-J one is kept. 16 did no better than 8.
 PARTITION_CANDIDATES = 8
-# Refinement keeps each plate within this share of its starting (Dijkstra) area.
+# Refinement keeps each plate within this share of its starting Voronoi area.
 PLATE_AREA_BAND = (0.75, 1.25)
 REFINE_MAX_SWEEPS = 20
-# Plate sites are at least this fraction of the mean site spacing, sqrt(4 pi / n), apart.
-PLATE_SITE_SPACING_FRACTION = 0.6
-PLATE_SITE_MAX_TRIES = 5000
 MAX_PARTITION_ATTEMPTS = 50
+POINT_SEED_COUNT = 200
 
 
 @dataclass
@@ -111,29 +112,52 @@ def label_components(lat: Lattice, labels: np.ndarray) -> int:
     return int(connected_components(graph, directed=False)[0])
 
 
-def _initial_partition(lat: Lattice, site_index: np.ndarray, core: np.ndarray) -> np.ndarray:
-    """Nearest site by path length over the 8-connected lattice, then each core whole to the plate holding
-    most of its area (lowest plate id on a tie)."""
-    _, _, sources = dijkstra(lat.graph(ring=True), directed=False, indices=site_index, min_only=True, return_predecessors=True)
-    plate_of_site = np.full(lat.size, -1, dtype=np.int64)
-    plate_of_site[site_index] = np.arange(len(site_index))
-    labels = plate_of_site[sources]
-    for core_id in np.unique(core[core >= 0]):
-        members = core == core_id
-        shares = np.bincount(labels[members], weights=lat.area_km2[members], minlength=len(site_index))
-        labels[members] = int(np.argmax(shares))
-    return labels
+def _polygon_seed_partition(
+    rng: np.random.Generator, lat: Lattice, num_plates: int, core: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Assign lattice cells to area-uniform point and craton-polygon Voronoi seeds.
 
+    Each core cell participates as a seed point in the distance transform, so a craton's
+    territory is measured from its whole polygon rather than its centroid. Point sites are
+    sampled from non-core cells in proportion to cell area. The first `num_plates` sites root
+    plate groups; every other point and each polygon seed inherits its nearest root's label.
+    """
+    open_indices = np.flatnonzero(core < 0)
+    probabilities = lat.area_km2[open_indices].astype(float)
+    probabilities /= probabilities.sum()
+    point_indices = rng.choice(open_indices, size=POINT_SEED_COUNT, replace=False, p=probabilities)
+    point_xyz = lat.xyz[point_indices]
+    primary_xyz = point_xyz[:num_plates]
+    point_owner = np.argmax(point_xyz @ primary_xyz.T, axis=1).astype(np.int64)
+    point_owner[:num_plates] = np.arange(num_plates)
 
-def _plate_sites(rng: np.random.Generator, lat: Lattice, num_plates: int, core: np.ndarray) -> np.ndarray:
-    """Lattice indices of `num_plates` Poisson-disc sites outside every core."""
-    open_points = np.flatnonzero(core < 0)
-    sep = PLATE_SITE_SPACING_FRACTION * np.sqrt(4.0 * np.pi / num_plates)
-    while True:
-        sites = poisson_disc(rng, num_plates, sep, lat.xyz[open_points], lat.area_km2[open_points], PLATE_SITE_MAX_TRIES)
-        if len(sites) == num_plates:
-            return open_points[cKDTree(lat.xyz[open_points]).query(sites)[1]]
-        sep *= 0.9
+    craton_ids = np.unique(core[core >= 0])
+    polygon_xyz = np.empty((len(craton_ids), 3), dtype=float)
+    polygon_sources = []
+    for i, craton_id in enumerate(craton_ids):
+        members = np.flatnonzero(core == craton_id)
+        polygon_xyz[i] = lat.xyz[members].mean(axis=0)
+        polygon_xyz[i] /= np.linalg.norm(polygon_xyz[i])
+        polygon_sources.append(lat.xyz[members])
+
+    polygon_owner = (
+        np.argmax(polygon_xyz @ primary_xyz.T, axis=1).astype(np.int64)
+        if len(polygon_xyz)
+        else np.zeros(0, dtype=np.int64)
+    )
+    if polygon_sources:
+        core_xyz = np.concatenate(polygon_sources)
+        core_owner = np.concatenate(
+            [polygon_owner[i] * np.ones(len(points), dtype=np.int64) for i, points in enumerate(polygon_sources)]
+        )
+    else:
+        core_xyz = np.zeros((0, 3), dtype=float)
+        core_owner = np.zeros(0, dtype=np.int64)
+
+    seed_xyz = np.concatenate([point_xyz, core_xyz])
+    seed_owner = np.concatenate([point_owner, core_owner])
+    _, nearest = cKDTree(seed_xyz).query(lat.xyz, workers=-1)
+    return seed_owner[nearest], primary_xyz
 
 
 @njit(cache=True)
@@ -303,14 +327,13 @@ def partition_plates(
     cost = point_costs(continent, core, belt)
     candidates: list[tuple[float, int, np.ndarray, np.ndarray]] = []
     for attempt in range(1, MAX_PARTITION_ATTEMPTS + 1):
-        site_index = _plate_sites(rng, lat, num_plates, core)
-        labels = _initial_partition(lat, site_index, core)
+        labels, sites = _polygon_seed_partition(rng, lat, num_plates, core)
         if np.bincount(labels, minlength=num_plates).min() >= floor and label_components(lat, labels) == num_plates:
-            candidates.append((boundary_cost(lat, labels, cost, land), attempt, labels, site_index))
+            candidates.append((boundary_cost(lat, labels, cost, land), attempt, labels, sites))
             if len(candidates) == PARTITION_CANDIDATES:
                 break
     if not candidates:
-        raise RuntimeError(f"no valid {num_plates}-plate partition in {MAX_PARTITION_ATTEMPTS} attempts")
-    _, attempts, initial, site_index = min(candidates, key=lambda c: (c[0], c[1]))
+        raise RuntimeError(f"no valid {num_plates}-plate polygon-seed partition in {MAX_PARTITION_ATTEMPTS} attempts")
+    _, attempts, initial, sites = min(candidates, key=lambda c: (c[0], c[1]))
     labels, history = refine_boundaries(lat, initial, cost, core >= 0, floor, land)
-    return PlatePartition(plate=labels, initial_plate=initial, sites=lat.xyz[site_index], refine_costs=history, attempts=attempts)
+    return PlatePartition(plate=labels, initial_plate=initial, sites=sites, refine_costs=history, attempts=attempts)

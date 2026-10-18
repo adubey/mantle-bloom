@@ -203,15 +203,19 @@ mask (continental crust whose relief sample clears the land threshold); steps 4-
    speed `exp(CONTINENT_GROWTH_SPEED_SIGMA × noise)` that varies smoothly at continent scale,
    plus outline noise. Cratons on a continent's far side, or where it grows slowly, end up near
    its coast. Continental points that aren't craton or belt are margin.
-4. **Plates.** `num_plates` sites (8-20, as above) are Poisson-disc sampled outside the
-   cores, and each takes the points nearest it by path length over the 8-connected lattice
-   (multi-source `scipy.sparse.csgraph.dijkstra`). Each core then goes whole to the plate
-   holding most of its area. The sites are redrawn if a plate is disconnected or below
-   `merge_split.SPLIT_MIN_NODES * node_density` cells. Of `PARTITION_CANDIDATES = 8` valid
-   draws, the one with the lowest `J` (below) is kept.
+4. **Plates.** Sample 200 point sites without replacement from non-core lattice cells, weighted
+   by cell area, so their distribution is uniform over the available surface. The first
+   `num_plates` sites are plate roots; each remaining point and each craton polygon inherits
+   the nearest root's label. Every craton core is also a polygon seed: all lattice cells in
+   that core participate in nearest-seed distance, so the seed is the whole polygon rather
+   than its centre. Each lattice cell takes the label of its nearest point or core-polygon
+   seed. This keeps the requested plate count while allowing several cratons to seed one
+   plate and point seeds to shape oceanic territory. Seed placements are redrawn if a plate
+   is disconnected or below `merge_split.SPLIT_MIN_NODES * node_density` cells. Of
+   `PARTITION_CANDIDATES = 8` valid draws, the one with the lowest `J` (below) is kept.
 5. **Boundary refinement.** A boundary point moves to an adjacent plate while that lowers
    `J`, the summed length of plate-crossing links times the mean `PLATE_COST_*` of their two
-   ends (ocean and belt 1, margin and core 3), plus `PLATE_COST_LAND_LINK = 10` per unit
+   ends (ocean 0, belt 1, margin and core 3), plus `PLATE_COST_LAND_LINK = 10` per unit
    length where both ends are land. Each plate stays within 75-125% of its
    starting area and above the cell floor, cores never move, and a move must pass a
    simple-point check: the point's same-plate edge neighbours stay connected through its
