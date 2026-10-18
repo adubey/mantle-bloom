@@ -1,10 +1,10 @@
 # RFC 0010: Rifts follow weak lithosphere
 
-- **Status:** Draft
+- **Status:** Accepted 2026-10-18
 - **Date:** 2026-10-15
-- **Related:** #389 (RFC 0003 tracking), #378, #385, #388 (RFC 0003 gates), PR #418 (RFC
+- **Related:** #481 (tracking), #480 (implementation), #472 / PR #479 (RFC 0009 G3), #389 (RFC 0003 tracking), #378, #385, #388 (RFC 0003 gates), PR #418 (RFC
   0003 solution 1); RFCs [0003](0003-rifting-around-cratons.md) (superseded by this RFC),
-  [0009](0009-craton-mosaic.md) (craton mosaic; its gate G1 gates this RFC),
+  [0009](0009-craton-mosaic.md) (cratons-first layout; its G3 gate selects this RFC),
   [0007](0007-mantle-plumes-and-plateaus.md) (plume weakening)
 
 ## Problem
