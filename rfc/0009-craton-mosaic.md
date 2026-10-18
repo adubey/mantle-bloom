@@ -347,10 +347,11 @@ control is remeasured after it lands.
 **Gate G3: does the cratons-first layout keep cratons whole?** After the generator and belt
 marks are built (behind a flag), `probe_craton_mosaic.py` gains `--layout cratons-first` and
 runs both that layout and today's layout as a matched control, formation off, on seeds 7, 11
-and 2024 to 1 Gyr with the same step schedule. The control cut-band counts from G1 are 63/157
-(seed 7), 33/168 (seed 11) and 22/169 (seed 2024); require the cratons-first share to be
-half or less of the corresponding per-seed control. It also reports belt survival and the
-smoothed layout measures at each 100 Myr checkpoint. Outcomes, fixed now:
+and 2024 to 1 Gyr with the same step schedule. G1's historical control cut-band counts were
+63/157 (seed 7), 33/168 (seed 11) and 22/169 (seed 2024); G3 remeasures the matched control
+on the same commit as the cratons-first run. Require the cratons-first cut-band craton share
+to be half or less of that per-seed control. It also reports belt area and smoothed layout
+measures at each 100 Myr checkpoint. Pre-registered outcomes:
 - The cut-band craton share falls to half of the matched control or less on every seed; the
   layout fixes rifting at its source, so RFC 0010's cut is not needed for cratons.
 - Otherwise, G1's branches decide RFC 0010: L ≥ 50% and B ≤ 0.50, or L ≥ 20% and B ≤ 0.75
@@ -358,6 +359,32 @@ smoothed layout measures at each 100 Myr checkpoint. Outcomes, fixed now:
   improvement in line routing or band exposure; do not attribute that result to flow alone.
 - Belts below a third of their t = 0 area by 500 Myr on two seeds: the sinks, not the
   layout, decide belt life; finish the sink RFCs (0001, 0002, 0005) before tuning belts.
+
+**Result (#472, 2026-10-18; commit `5339d0c`).** Both layouts ran with formation off, 2 Myr
+steps, and checkpoints every 100 Myr to 1 Gyr. The cut-band counter records craton-crossing
+rift cuts over all split and failed-rift attempts. Cratons-first reduces that share by only
+26% on seed 7, and increases it on seeds 11 and 2024, so it fails the pre-registered halving
+test on all three seeds. The fallback branch passes on pooled L/B; proceed with RFC 0010's
+minimum cut and resistance fallback. This selects the branch, but does not establish RFC
+0010's later acceptance criteria for the implemented cut.
+
+| | Seed 7 | Seed 11 | Seed 2024 | Pooled |
+|---|---:|---:|---:|---:|
+| Cut-band craton share, cratons-first | 32.4% | 35.3% | 30.6% | — |
+| Cut-band craton share, control | 43.9% | 32.5% | 13.6% | — |
+| Reduction vs control | 26% | −8% | −125% | — |
+| L / B, cratons-first | 28.6% / 0.825 | 23.3% / 0.798 | 31.6% / 0.573 | **27.6% / 0.732** |
+| Belt area / t = 0 at 500 Myr | 103% | 157% | 361% | — |
+| Belt area / t = 0 at 1 Gyr | 38% | 115% | 179% | — |
+
+The 500 Myr smoothed layout measures do not meet the relative targets on every seed: mixed
+plates by land exceed control only on seeds 7 and 2024, and land-edge share is lower only on
+seed 7. G3's belt measure uses the production belt marks, which are also written by rifts
+and collisions after t = 0; the ratios are belt area relative to initial area, not a tagged
+cohort survival fraction. All ledger balance errors were between −1,536 and 2,048 m³, within
+floating-point accounting roundoff. Per-seed checkpoint data and full method details are in
+[analysis/rfc0009/g3.json](../analysis/rfc0009/g3.json) and
+[analysis/rfc0009/README.md](../analysis/rfc0009/README.md).
 
 **Belt marks (4).** `belt_formed_years` (new surface field) holds the time a column last
 became a belt, with a "never" sentinel. Writers:
@@ -513,8 +540,9 @@ only as new collisions and rifts mark them. No new pickled state on `World`.
       *Run (#438): fails as written on 500 Myr continental area (seeds 11 and 2024),
       attributed to the starting layout's lower margin exposure; 100→500 Myr passes.
       Diagnosis accepted 2026-10-15: mixed plates, with the call sites fixed in #447.*
-- [ ] **Gate G3** (cratons-first replays) run and reported, and this RFC and RFC 0010
-      updated with the branch it selects.
+- [x] **Gate G3** (#472): cratons-first replays run and reported in
+      [analysis/rfc0009/g3.json](../analysis/rfc0009/g3.json); this RFC and RFC 0010 updated.
+      G3 selects RFC 0010's cut with its resistance fallback.
 - [ ] **Solution 1 layout at t = 0**, over seeds 7, 11, 2024 and 17 more: land edge within
       300 km of a plate boundary 15–50% (Earth coastline 28%); plates mixed by land share
       ≥ 50% (Earth 69%); boundary length with land on both sides ≤ 25% (Earth 17%); no core

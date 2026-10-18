@@ -1,0 +1,842 @@
+{
+  "gate": "G3",
+  "model_commit": "5339d0ca0ee29986852da1f1c33f750a2cb8a9a4",
+  "years": 1000000000.0,
+  "step_years": 2000000.0,
+  "checkpoint_every_years": 100000000.0,
+  "formation": "off",
+  "cratons_first_pooled_L_B": {
+    "through": 116,
+    "L": 0.275862,
+    "B": 0.7323
+  },
+  "control_pooled_L_B": {
+    "through": 59,
+    "L": 0.20339,
+    "B": 0.767004
+  },
+  "verdict": {
+    "cratons_first_standalone": "no-go",
+    "rfc0010_cut_with_resistance_fallback": "go",
+    "halving_gate_passes_every_seed": false,
+    "belt_one_third_at_500myr_on_two_seeds": true
+  },
+  "runs": [
+    {
+      "seed": 7,
+      "cut_band_craton_share": {
+        "cratons_first": 0.324074,
+        "control": 0.439306,
+        "reduction": 0.262305,
+        "halves_control": false
+      },
+      "rift_cut_counts": {
+        "cratons_first": 108,
+        "control": 173
+      },
+      "craton_crossing_cuts": {
+        "cratons_first": 35,
+        "control": 76
+      },
+      "L_B": {
+        "cratons_first": {
+          "L": 0.285714,
+          "B": 0.824757
+        },
+        "control": {
+          "L": 0.102564,
+          "B": 0.825236
+        }
+      },
+      "generation_s": {
+        "cratons_first": 1.868,
+        "control": 0.978
+      },
+      "wall_min": {
+        "cratons_first": 25.34,
+        "control": 30.66
+      },
+      "checkpoints": [
+        {
+          "myr": 0.0,
+          "cratons_first_belt_mkm2": 31.832,
+          "cratons_first_belt_vs_t0": 1.0,
+          "cratons_first_cut_band_craton_share": null,
+          "control_cut_band_craton_share": null,
+          "cratons_first_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.75,
+            "land_edge_on_boundary_share": 0.2296,
+            "land_area_share": 0.3493,
+            "continental_area_share": 0.4994
+          },
+          "control_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.45,
+            "land_edge_on_boundary_share": 0.5669,
+            "land_area_share": 0.4531,
+            "continental_area_share": 0.629
+          },
+          "cratons_first_ledger_balance_error_m3": 0.0,
+          "control_ledger_balance_error_m3": 0.0
+        },
+        {
+          "myr": 100.0,
+          "cratons_first_belt_mkm2": 46.982,
+          "cratons_first_belt_vs_t0": 1.4759,
+          "cratons_first_cut_band_craton_share": 0.375,
+          "control_cut_band_craton_share": 0.7778,
+          "cratons_first_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.76,
+            "land_edge_on_boundary_share": 0.454,
+            "land_area_share": 0.3718,
+            "continental_area_share": 0.4638
+          },
+          "control_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.4231,
+            "land_edge_on_boundary_share": 0.4908,
+            "land_area_share": 0.4214,
+            "continental_area_share": 0.5384
+          },
+          "cratons_first_ledger_balance_error_m3": 512.0,
+          "control_ledger_balance_error_m3": 0.0
+        },
+        {
+          "myr": 200.0,
+          "cratons_first_belt_mkm2": 51.057,
+          "cratons_first_belt_vs_t0": 1.604,
+          "cratons_first_cut_band_craton_share": 0.5,
+          "control_cut_band_craton_share": 0.7561,
+          "cratons_first_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.7586,
+            "land_edge_on_boundary_share": 0.505,
+            "land_area_share": 0.346,
+            "continental_area_share": 0.4035
+          },
+          "control_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.3871,
+            "land_edge_on_boundary_share": 0.4549,
+            "land_area_share": 0.3652,
+            "continental_area_share": 0.4447
+          },
+          "cratons_first_ledger_balance_error_m3": -512.0,
+          "control_ledger_balance_error_m3": 0.0
+        },
+        {
+          "myr": 300.0,
+          "cratons_first_belt_mkm2": 43.735,
+          "cratons_first_belt_vs_t0": 1.3739,
+          "cratons_first_cut_band_craton_share": 0.4651,
+          "control_cut_band_craton_share": 0.7,
+          "cratons_first_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.6944,
+            "land_edge_on_boundary_share": 0.461,
+            "land_area_share": 0.3287,
+            "continental_area_share": 0.3666
+          },
+          "control_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.3871,
+            "land_edge_on_boundary_share": 0.5187,
+            "land_area_share": 0.314,
+            "continental_area_share": 0.363
+          },
+          "cratons_first_ledger_balance_error_m3": -512.0,
+          "control_ledger_balance_error_m3": 0.0
+        },
+        {
+          "myr": 400.0,
+          "cratons_first_belt_mkm2": 38.677,
+          "cratons_first_belt_vs_t0": 1.215,
+          "cratons_first_cut_band_craton_share": 0.434,
+          "control_cut_band_craton_share": 0.5663,
+          "cratons_first_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.4211,
+            "land_edge_on_boundary_share": 0.4827,
+            "land_area_share": 0.3125,
+            "continental_area_share": 0.3303
+          },
+          "control_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.2903,
+            "land_edge_on_boundary_share": 0.662,
+            "land_area_share": 0.2781,
+            "continental_area_share": 0.3034
+          },
+          "cratons_first_ledger_balance_error_m3": -1536.0,
+          "control_ledger_balance_error_m3": 0.0
+        },
+        {
+          "myr": 500.0,
+          "cratons_first_belt_mkm2": 32.66,
+          "cratons_first_belt_vs_t0": 1.026,
+          "cratons_first_cut_band_craton_share": 0.4603,
+          "control_cut_band_craton_share": 0.5612,
+          "cratons_first_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.3171,
+            "land_edge_on_boundary_share": 0.6095,
+            "land_area_share": 0.2803,
+            "continental_area_share": 0.2939
+          },
+          "control_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.2973,
+            "land_edge_on_boundary_share": 0.6273,
+            "land_area_share": 0.2434,
+            "continental_area_share": 0.2591
+          },
+          "cratons_first_ledger_balance_error_m3": -1536.0,
+          "control_ledger_balance_error_m3": 1024.0
+        },
+        {
+          "myr": 600.0,
+          "cratons_first_belt_mkm2": 28.82,
+          "cratons_first_belt_vs_t0": 0.9054,
+          "cratons_first_cut_band_craton_share": 0.4054,
+          "control_cut_band_craton_share": 0.537,
+          "cratons_first_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.3265,
+            "land_edge_on_boundary_share": 0.6,
+            "land_area_share": 0.2488,
+            "continental_area_share": 0.2618
+          },
+          "control_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.1818,
+            "land_edge_on_boundary_share": 0.6835,
+            "land_area_share": 0.2184,
+            "continental_area_share": 0.2225
+          },
+          "cratons_first_ledger_balance_error_m3": -1536.0,
+          "control_ledger_balance_error_m3": 1024.0
+        },
+        {
+          "myr": 700.0,
+          "cratons_first_belt_mkm2": 23.865,
+          "cratons_first_belt_vs_t0": 0.7497,
+          "cratons_first_cut_band_craton_share": 0.3875,
+          "control_cut_band_craton_share": 0.5426,
+          "cratons_first_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.2826,
+            "land_edge_on_boundary_share": 0.5048,
+            "land_area_share": 0.2366,
+            "continental_area_share": 0.2489
+          },
+          "control_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.2647,
+            "land_edge_on_boundary_share": 0.6488,
+            "land_area_share": 0.1957,
+            "continental_area_share": 0.1921
+          },
+          "cratons_first_ledger_balance_error_m3": -1536.0,
+          "control_ledger_balance_error_m3": 1024.0
+        },
+        {
+          "myr": 800.0,
+          "cratons_first_belt_mkm2": 21.439,
+          "cratons_first_belt_vs_t0": 0.6735,
+          "cratons_first_cut_band_craton_share": 0.3483,
+          "control_cut_band_craton_share": 0.5068,
+          "cratons_first_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.3784,
+            "land_edge_on_boundary_share": 0.6739,
+            "land_area_share": 0.2256,
+            "continental_area_share": 0.2317
+          },
+          "control_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.2286,
+            "land_edge_on_boundary_share": 0.7769,
+            "land_area_share": 0.1688,
+            "continental_area_share": 0.1624
+          },
+          "cratons_first_ledger_balance_error_m3": -1536.0,
+          "control_ledger_balance_error_m3": 1024.0
+        },
+        {
+          "myr": 900.0,
+          "cratons_first_belt_mkm2": 18.67,
+          "cratons_first_belt_vs_t0": 0.5865,
+          "cratons_first_cut_band_craton_share": 0.3333,
+          "control_cut_band_craton_share": 0.4691,
+          "cratons_first_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.2683,
+            "land_edge_on_boundary_share": 0.6515,
+            "land_area_share": 0.204,
+            "continental_area_share": 0.2086
+          },
+          "control_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.1892,
+            "land_edge_on_boundary_share": 0.7595,
+            "land_area_share": 0.1531,
+            "continental_area_share": 0.1415
+          },
+          "cratons_first_ledger_balance_error_m3": -512.0,
+          "control_ledger_balance_error_m3": 1024.0
+        },
+        {
+          "myr": 1000.0,
+          "cratons_first_belt_mkm2": 12.192,
+          "cratons_first_belt_vs_t0": 0.383,
+          "cratons_first_cut_band_craton_share": 0.3241,
+          "control_cut_band_craton_share": 0.4393,
+          "cratons_first_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.1818,
+            "land_edge_on_boundary_share": 0.7452,
+            "land_area_share": 0.183,
+            "continental_area_share": 0.185
+          },
+          "control_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.2162,
+            "land_edge_on_boundary_share": 0.7354,
+            "land_area_share": 0.1454,
+            "continental_area_share": 0.1316
+          },
+          "cratons_first_ledger_balance_error_m3": -1536.0,
+          "control_ledger_balance_error_m3": 2048.0
+        }
+      ],
+      "final_ledger_balance_error_m3": {
+        "cratons_first": -1536.0,
+        "control": 2048.0
+      }
+    },
+    {
+      "seed": 11,
+      "cut_band_craton_share": {
+        "cratons_first": 0.352941,
+        "control": 0.325397,
+        "reduction": -0.084648,
+        "halves_control": false
+      },
+      "rift_cut_counts": {
+        "cratons_first": 119,
+        "control": 126
+      },
+      "craton_crossing_cuts": {
+        "cratons_first": 42,
+        "control": 41
+      },
+      "L_B": {
+        "cratons_first": {
+          "L": 0.232558,
+          "B": 0.798343
+        },
+        "control": {
+          "L": 0.195122,
+          "B": 0.787455
+        }
+      },
+      "generation_s": {
+        "cratons_first": 1.5,
+        "control": 0.953
+      },
+      "wall_min": {
+        "cratons_first": 24.98,
+        "control": 78.86
+      },
+      "checkpoints": [
+        {
+          "myr": 0.0,
+          "cratons_first_belt_mkm2": 27.43,
+          "cratons_first_belt_vs_t0": 1.0,
+          "cratons_first_cut_band_craton_share": null,
+          "control_cut_band_craton_share": null,
+          "cratons_first_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.5556,
+            "land_edge_on_boundary_share": 0.2813,
+            "land_area_share": 0.4344,
+            "continental_area_share": 0.4999
+          },
+          "control_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.5556,
+            "land_edge_on_boundary_share": 0.5385,
+            "land_area_share": 0.2769,
+            "continental_area_share": 0.4034
+          },
+          "cratons_first_ledger_balance_error_m3": 0.0,
+          "control_ledger_balance_error_m3": 0.0
+        },
+        {
+          "myr": 100.0,
+          "cratons_first_belt_mkm2": 52.825,
+          "cratons_first_belt_vs_t0": 1.9258,
+          "cratons_first_cut_band_craton_share": 0.3846,
+          "control_cut_band_craton_share": 0.5789,
+          "cratons_first_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.4444,
+            "land_edge_on_boundary_share": 0.4432,
+            "land_area_share": 0.4049,
+            "continental_area_share": 0.4563
+          },
+          "control_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.4,
+            "land_edge_on_boundary_share": 0.6043,
+            "land_area_share": 0.2814,
+            "continental_area_share": 0.4025
+          },
+          "cratons_first_ledger_balance_error_m3": 512.0,
+          "control_ledger_balance_error_m3": 512.0
+        },
+        {
+          "myr": 200.0,
+          "cratons_first_belt_mkm2": 47.876,
+          "cratons_first_belt_vs_t0": 1.7454,
+          "cratons_first_cut_band_craton_share": 0.5111,
+          "control_cut_band_craton_share": 0.4444,
+          "cratons_first_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.3333,
+            "land_edge_on_boundary_share": 0.3698,
+            "land_area_share": 0.3775,
+            "continental_area_share": 0.4216
+          },
+          "control_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.5,
+            "land_edge_on_boundary_share": 0.5127,
+            "land_area_share": 0.2715,
+            "continental_area_share": 0.3869
+          },
+          "cratons_first_ledger_balance_error_m3": 0.0,
+          "control_ledger_balance_error_m3": 512.0
+        },
+        {
+          "myr": 300.0,
+          "cratons_first_belt_mkm2": 46.679,
+          "cratons_first_belt_vs_t0": 1.7018,
+          "cratons_first_cut_band_craton_share": 0.541,
+          "control_cut_band_craton_share": 0.4821,
+          "cratons_first_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.4571,
+            "land_edge_on_boundary_share": 0.5313,
+            "land_area_share": 0.3536,
+            "continental_area_share": 0.3842
+          },
+          "control_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.4706,
+            "land_edge_on_boundary_share": 0.5368,
+            "land_area_share": 0.2675,
+            "continental_area_share": 0.3582
+          },
+          "cratons_first_ledger_balance_error_m3": 512.0,
+          "control_ledger_balance_error_m3": 512.0
+        },
+        {
+          "myr": 400.0,
+          "cratons_first_belt_mkm2": 42.71,
+          "cratons_first_belt_vs_t0": 1.557,
+          "cratons_first_cut_band_craton_share": 0.4937,
+          "control_cut_band_craton_share": 0.4648,
+          "cratons_first_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.3611,
+            "land_edge_on_boundary_share": 0.542,
+            "land_area_share": 0.331,
+            "continental_area_share": 0.3469
+          },
+          "control_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.3846,
+            "land_edge_on_boundary_share": 0.438,
+            "land_area_share": 0.2566,
+            "continental_area_share": 0.3367
+          },
+          "cratons_first_ledger_balance_error_m3": 0.0,
+          "control_ledger_balance_error_m3": 0.0
+        },
+        {
+          "myr": 500.0,
+          "cratons_first_belt_mkm2": 43.093,
+          "cratons_first_belt_vs_t0": 1.571,
+          "cratons_first_cut_band_craton_share": 0.4535,
+          "control_cut_band_craton_share": 0.4359,
+          "cratons_first_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.3684,
+            "land_edge_on_boundary_share": 0.577,
+            "land_area_share": 0.3254,
+            "continental_area_share": 0.341
+          },
+          "control_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.4,
+            "land_edge_on_boundary_share": 0.5058,
+            "land_area_share": 0.252,
+            "continental_area_share": 0.3143
+          },
+          "cratons_first_ledger_balance_error_m3": 1024.0,
+          "control_ledger_balance_error_m3": 0.0
+        },
+        {
+          "myr": 600.0,
+          "cratons_first_belt_mkm2": 40.916,
+          "cratons_first_belt_vs_t0": 1.4916,
+          "cratons_first_cut_band_craton_share": 0.4457,
+          "control_cut_band_craton_share": 0.3913,
+          "cratons_first_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.3902,
+            "land_edge_on_boundary_share": 0.475,
+            "land_area_share": 0.3174,
+            "continental_area_share": 0.3349
+          },
+          "control_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.3778,
+            "land_edge_on_boundary_share": 0.4769,
+            "land_area_share": 0.2421,
+            "continental_area_share": 0.308
+          },
+          "cratons_first_ledger_balance_error_m3": -512.0,
+          "control_ledger_balance_error_m3": -512.0
+        },
+        {
+          "myr": 700.0,
+          "cratons_first_belt_mkm2": 39.863,
+          "cratons_first_belt_vs_t0": 1.4533,
+          "cratons_first_cut_band_craton_share": 0.4141,
+          "control_cut_band_craton_share": 0.3711,
+          "cratons_first_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.375,
+            "land_edge_on_boundary_share": 0.4932,
+            "land_area_share": 0.315,
+            "continental_area_share": 0.3308
+          },
+          "control_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.3556,
+            "land_edge_on_boundary_share": 0.5062,
+            "land_area_share": 0.2364,
+            "continental_area_share": 0.2888
+          },
+          "cratons_first_ledger_balance_error_m3": -512.0,
+          "control_ledger_balance_error_m3": -512.0
+        },
+        {
+          "myr": 800.0,
+          "cratons_first_belt_mkm2": 35.749,
+          "cratons_first_belt_vs_t0": 1.3033,
+          "cratons_first_cut_band_craton_share": 0.3905,
+          "control_cut_band_craton_share": 0.3394,
+          "cratons_first_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.3571,
+            "land_edge_on_boundary_share": 0.5497,
+            "land_area_share": 0.3028,
+            "continental_area_share": 0.3164
+          },
+          "control_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.325,
+            "land_edge_on_boundary_share": 0.5347,
+            "land_area_share": 0.2354,
+            "continental_area_share": 0.2705
+          },
+          "cratons_first_ledger_balance_error_m3": -512.0,
+          "control_ledger_balance_error_m3": 0.0
+        },
+        {
+          "myr": 900.0,
+          "cratons_first_belt_mkm2": 35.902,
+          "cratons_first_belt_vs_t0": 1.3089,
+          "cratons_first_cut_band_craton_share": 0.3784,
+          "control_cut_band_craton_share": 0.339,
+          "cratons_first_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.3556,
+            "land_edge_on_boundary_share": 0.536,
+            "land_area_share": 0.2918,
+            "continental_area_share": 0.3043
+          },
+          "control_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.325,
+            "land_edge_on_boundary_share": 0.5577,
+            "land_area_share": 0.2273,
+            "continental_area_share": 0.2459
+          },
+          "cratons_first_ledger_balance_error_m3": 0.0,
+          "control_ledger_balance_error_m3": 0.0
+        },
+        {
+          "myr": 1000.0,
+          "cratons_first_belt_mkm2": 31.631,
+          "cratons_first_belt_vs_t0": 1.1531,
+          "cratons_first_cut_band_craton_share": 0.3529,
+          "control_cut_band_craton_share": 0.3254,
+          "cratons_first_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.3191,
+            "land_edge_on_boundary_share": 0.5214,
+            "land_area_share": 0.2768,
+            "continental_area_share": 0.2839
+          },
+          "control_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.3023,
+            "land_edge_on_boundary_share": 0.5843,
+            "land_area_share": 0.2084,
+            "continental_area_share": 0.2313
+          },
+          "cratons_first_ledger_balance_error_m3": 0.0,
+          "control_ledger_balance_error_m3": 0.0
+        }
+      ],
+      "final_ledger_balance_error_m3": {
+        "cratons_first": 0.0,
+        "control": 0.0
+      }
+    },
+    {
+      "seed": 2024,
+      "cut_band_craton_share": {
+        "cratons_first": 0.306452,
+        "control": 0.136364,
+        "reduction": -1.247312,
+        "halves_control": false
+      },
+      "rift_cut_counts": {
+        "cratons_first": 124,
+        "control": 132
+      },
+      "craton_crossing_cuts": {
+        "cratons_first": 38,
+        "control": 18
+      },
+      "L_B": {
+        "cratons_first": {
+          "L": 0.315789,
+          "B": 0.573208
+        },
+        "control": {
+          "L": 0.222222,
+          "B": 0.706208
+        }
+      },
+      "generation_s": {
+        "cratons_first": 1.217,
+        "control": 4.563
+      },
+      "wall_min": {
+        "cratons_first": 34.95,
+        "control": 97.11
+      },
+      "checkpoints": [
+        {
+          "myr": 0.0,
+          "cratons_first_belt_mkm2": 11.52,
+          "cratons_first_belt_vs_t0": 1.0,
+          "cratons_first_cut_band_craton_share": null,
+          "control_cut_band_craton_share": null,
+          "cratons_first_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.4545,
+            "land_edge_on_boundary_share": 0.2947,
+            "land_area_share": 0.11,
+            "continental_area_share": 0.4995
+          },
+          "control_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.4545,
+            "land_edge_on_boundary_share": 0.431,
+            "land_area_share": 0.1761,
+            "continental_area_share": 0.4917
+          },
+          "cratons_first_ledger_balance_error_m3": 0.0,
+          "control_ledger_balance_error_m3": -256.0
+        },
+        {
+          "myr": 100.0,
+          "cratons_first_belt_mkm2": 21.689,
+          "cratons_first_belt_vs_t0": 1.8826,
+          "cratons_first_cut_band_craton_share": 0.6818,
+          "control_cut_band_craton_share": 0.1304,
+          "cratons_first_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.4211,
+            "land_edge_on_boundary_share": 0.5008,
+            "land_area_share": 0.1317,
+            "continental_area_share": 0.474
+          },
+          "control_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.3913,
+            "land_edge_on_boundary_share": 0.4334,
+            "land_area_share": 0.219,
+            "continental_area_share": 0.4542
+          },
+          "cratons_first_ledger_balance_error_m3": 0.0,
+          "control_ledger_balance_error_m3": -256.0
+        },
+        {
+          "myr": 200.0,
+          "cratons_first_belt_mkm2": 28.635,
+          "cratons_first_belt_vs_t0": 2.4856,
+          "cratons_first_cut_band_craton_share": 0.6818,
+          "control_cut_band_craton_share": 0.2051,
+          "cratons_first_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.4615,
+            "land_edge_on_boundary_share": 0.584,
+            "land_area_share": 0.1493,
+            "continental_area_share": 0.4259
+          },
+          "control_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.4074,
+            "land_edge_on_boundary_share": 0.3897,
+            "land_area_share": 0.2331,
+            "continental_area_share": 0.4152
+          },
+          "cratons_first_ledger_balance_error_m3": -512.0,
+          "control_ledger_balance_error_m3": -512.0
+        },
+        {
+          "myr": 300.0,
+          "cratons_first_belt_mkm2": 34.005,
+          "cratons_first_belt_vs_t0": 2.9517,
+          "cratons_first_cut_band_craton_share": 0.625,
+          "control_cut_band_craton_share": 0.2203,
+          "cratons_first_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.4848,
+            "land_edge_on_boundary_share": 0.5792,
+            "land_area_share": 0.1726,
+            "continental_area_share": 0.387
+          },
+          "control_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.3611,
+            "land_edge_on_boundary_share": 0.4397,
+            "land_area_share": 0.2553,
+            "continental_area_share": 0.3611
+          },
+          "cratons_first_ledger_balance_error_m3": 0.0,
+          "control_ledger_balance_error_m3": -256.0
+        },
+        {
+          "myr": 400.0,
+          "cratons_first_belt_mkm2": 43.239,
+          "cratons_first_belt_vs_t0": 3.7532,
+          "cratons_first_cut_band_craton_share": 0.5373,
+          "control_cut_band_craton_share": 0.2192,
+          "cratons_first_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.4595,
+            "land_edge_on_boundary_share": 0.54,
+            "land_area_share": 0.1862,
+            "continental_area_share": 0.3595
+          },
+          "control_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.3333,
+            "land_edge_on_boundary_share": 0.5179,
+            "land_area_share": 0.2487,
+            "continental_area_share": 0.3127
+          },
+          "cratons_first_ledger_balance_error_m3": 0.0,
+          "control_ledger_balance_error_m3": -256.0
+        },
+        {
+          "myr": 500.0,
+          "cratons_first_belt_mkm2": 41.635,
+          "cratons_first_belt_vs_t0": 3.614,
+          "cratons_first_cut_band_craton_share": 0.5278,
+          "control_cut_band_craton_share": 0.1882,
+          "cratons_first_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.5128,
+            "land_edge_on_boundary_share": 0.5938,
+            "land_area_share": 0.2041,
+            "continental_area_share": 0.332
+          },
+          "control_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.2,
+            "land_edge_on_boundary_share": 0.5812,
+            "land_area_share": 0.2351,
+            "continental_area_share": 0.269
+          },
+          "cratons_first_ledger_balance_error_m3": 0.0,
+          "control_ledger_balance_error_m3": -512.0
+        },
+        {
+          "myr": 600.0,
+          "cratons_first_belt_mkm2": 36.498,
+          "cratons_first_belt_vs_t0": 3.1681,
+          "cratons_first_cut_band_craton_share": 0.4578,
+          "control_cut_band_craton_share": 0.1935,
+          "cratons_first_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.4773,
+            "land_edge_on_boundary_share": 0.6267,
+            "land_area_share": 0.2077,
+            "continental_area_share": 0.3041
+          },
+          "control_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.2174,
+            "land_edge_on_boundary_share": 0.5085,
+            "land_area_share": 0.1994,
+            "continental_area_share": 0.228
+          },
+          "cratons_first_ledger_balance_error_m3": 512.0,
+          "control_ledger_balance_error_m3": -512.0
+        },
+        {
+          "myr": 700.0,
+          "cratons_first_belt_mkm2": 34.347,
+          "cratons_first_belt_vs_t0": 2.9814,
+          "cratons_first_cut_band_craton_share": 0.4318,
+          "control_cut_band_craton_share": 0.1682,
+          "cratons_first_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.4,
+            "land_edge_on_boundary_share": 0.5944,
+            "land_area_share": 0.2102,
+            "continental_area_share": 0.2831
+          },
+          "control_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.2083,
+            "land_edge_on_boundary_share": 0.626,
+            "land_area_share": 0.1827,
+            "continental_area_share": 0.2028
+          },
+          "cratons_first_ledger_balance_error_m3": 512.0,
+          "control_ledger_balance_error_m3": -512.0
+        },
+        {
+          "myr": 800.0,
+          "cratons_first_belt_mkm2": 29.4,
+          "cratons_first_belt_vs_t0": 2.552,
+          "cratons_first_cut_band_craton_share": 0.3654,
+          "control_cut_band_craton_share": 0.1579,
+          "cratons_first_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.3922,
+            "land_edge_on_boundary_share": 0.6085,
+            "land_area_share": 0.2097,
+            "continental_area_share": 0.2627
+          },
+          "control_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.1875,
+            "land_edge_on_boundary_share": 0.6611,
+            "land_area_share": 0.172,
+            "continental_area_share": 0.1813
+          },
+          "cratons_first_ledger_balance_error_m3": 0.0,
+          "control_ledger_balance_error_m3": -512.0
+        },
+        {
+          "myr": 900.0,
+          "cratons_first_belt_mkm2": 26.179,
+          "cratons_first_belt_vs_t0": 2.2724,
+          "cratons_first_cut_band_craton_share": 0.3363,
+          "control_cut_band_craton_share": 0.15,
+          "cratons_first_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.3214,
+            "land_edge_on_boundary_share": 0.4985,
+            "land_area_share": 0.2004,
+            "continental_area_share": 0.2431
+          },
+          "control_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.2,
+            "land_edge_on_boundary_share": 0.7118,
+            "land_area_share": 0.1603,
+            "continental_area_share": 0.1637
+          },
+          "cratons_first_ledger_balance_error_m3": 512.0,
+          "control_ledger_balance_error_m3": -512.0
+        },
+        {
+          "myr": 1000.0,
+          "cratons_first_belt_mkm2": 20.617,
+          "cratons_first_belt_vs_t0": 1.7896,
+          "cratons_first_cut_band_craton_share": 0.3065,
+          "control_cut_band_craton_share": 0.1364,
+          "cratons_first_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.3019,
+            "land_edge_on_boundary_share": 0.5716,
+            "land_area_share": 0.1948,
+            "continental_area_share": 0.2271
+          },
+          "control_smoothed_layout": {
+            "mixed_plate_share_by_land": 0.1961,
+            "land_edge_on_boundary_share": 0.6872,
+            "land_area_share": 0.1494,
+            "continental_area_share": 0.1508
+          },
+          "cratons_first_ledger_balance_error_m3": -1024.0,
+          "control_ledger_balance_error_m3": -512.0
+        }
+      ],
+      "final_ledger_balance_error_m3": {
+        "cratons_first": -1024.0,
+        "control": -512.0
+      }
+    }
+  ]
+}

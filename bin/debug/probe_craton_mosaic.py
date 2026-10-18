@@ -1,15 +1,9 @@
 #!/usr/bin/env python3
-"""RFC 0009 gate G1: does a craton mosaic give rifts a way around? (#426)
+"""RFC 0009 gate G3: does the cratons-first layout keep cratons whole? (#472)
 
-Today each continent's interior is one craton, so RFC 0010's minimum cut can't route a rift
-around it (analysis/rfc0010). This probe reseeds generation as RFC 0009's mosaic, in-process
-only: per plate, the columns eligible for seeding with the formation margin
-(CRATON_FORMATION_MARGIN_KM) are split into cores around Poisson-disc nuclei
-CORE_SPACING_KM apart, by nearest nucleus in graph hops, and columns within BELT_WIDTH_KM / 2
-of a partition boundary become belts instead of craton. CRATON_FORMATION_MYR is set to
-infinity, so the seeded layout is the only craton for the run. Belts are tracked through
-every remap by a probe-only HISTORY surface field registered before the app loads; no saved
-state changes, and the probe never saves.
+The probe compares RFC 0009's production cratons-first generator with today's generator as a
+matched control. Craton formation is off, and both layouts use the same seed and step
+schedule. Belts are measured from the persistent `belt_formed_years` field.
 
 Every cut that goes ahead (split or failed rift) is evaluated with
 prototype_mincut_split's minimum cut at a 1,000 km corridor and floor 0.05, with RFC 0010's
@@ -22,8 +16,9 @@ Per 100 Myr checkpoint it reports belt area (belt-marked genuine continental col
 without craton) as a share of genuine continental area and of its t = 0 value, and craton
 cores (connected craton components per plate).
 
-`--layout blob` is the control: today's seeding (CRATON_SEED_MARGIN_KM), also with formation
-off, so the two layouts differ only in where the seeded craton is.
+`--layout blob` is the control: today's plate-first layout and craton seeding, with formation
+off. At each 100 Myr checkpoint the probe also records the ledger balance, cut counters and
+layout measures after the 9-pixel plate-majority filter used by `render_craton_map.py`.
 
 Usage:
     PYTHONPATH=backend backend/.venv/bin/python bin/debug/probe_craton_mosaic.py \
@@ -40,17 +35,6 @@ Usage:
 
 from __future__ import annotations
 
-from app import surface_fields
-
-# Registered before any module that reads the field registry is imported, so every plate
-# carries and remaps it. HISTORY keeps the oldest contributor's date, so a merged or coarsened
-# cell stays a belt when any of its contributors was one.
-BELT_FIELD = "probe_belt_formed_years"
-BELT_NEVER = surface_fields.CRATON_UNFORMED_YEARS
-surface_fields.SURFACE_FIELDS[BELT_FIELD] = surface_fields._field(
-    float, BELT_NEVER, surface_fields.RemapClass.HISTORY, sentinel=BELT_NEVER
-)
-
 import argparse  # noqa: E402
 import json  # noqa: E402
 import subprocess  # noqa: E402
@@ -58,17 +42,26 @@ import time  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 import compare_cratons  # noqa: E402
+import measure_plate_layout as layout_measure  # noqa: E402
 import numpy as np  # noqa: E402
 import prototype_mincut_split as mincut  # noqa: E402
 from app import cratons, merge_split, quad_tectonics  # noqa: E402
-from app import world as world_mod  # noqa: E402
+from app import surface_fields, world as world_mod  # noqa: E402
+from app.surface_fields import BELT_UNMARKED_YEARS  # noqa: E402
 from app.elevation_lines import PLANET_RADIUS_KM, line_spacing_rad  # noqa: E402
 from scipy.sparse.csgraph import connected_components, dijkstra  # noqa: E402
+from scipy.ndimage import uniform_filter  # noqa: E402
 
-# RFC 0009's starting knobs; --core-spacing-km and --belt-width-km sweep them.
+# Retained only for the older `--layout mosaic` diagnostic mode.
 CORE_SPACING_KM = 1500.0
 BELT_WIDTH_KM = 300.0
 BELT_SEED_AGE_YEARS = 1.8e9
+BELT_FIELD = "belt_formed_years"
+PROBE_BELT_FIELD = "probe_belt_formed_years"
+BELT_NEVER = BELT_UNMARKED_YEARS
+# Keep the legacy mosaic experiment isolated from production belt marks. Register the
+# probe-only field with identical transfer semantics so it follows nodes through tectonics.
+surface_fields.SURFACE_FIELDS[PROBE_BELT_FIELD] = surface_fields.SURFACE_FIELDS[BELT_FIELD]
 # The gate's corridor and RFC 0010's default floor.
 CORRIDOR_KM = 1000.0
 FLOOR = 0.05
@@ -153,9 +146,9 @@ def seed_mosaic(world) -> float:
         formed[core] = world.elapsed_years - cratons.CRATON_SEED_AGE_YEARS
         stable = plate.collect("stable_continental_myr")
         stable[core] = np.maximum(stable[core], cratons.CRATON_SEED_AGE_YEARS / 1e6)
-        marks = plate.collect(BELT_FIELD)
+        marks = plate.collect(PROBE_BELT_FIELD)
         marks[belt] = world.elapsed_years - BELT_SEED_AGE_YEARS
-        plate.set_fields_on_plate(craton_crust_m=craton, craton_formed_years=formed, stable_continental_myr=stable, **{BELT_FIELD: marks})
+        plate.set_fields_on_plate(craton_crust_m=craton, craton_formed_years=formed, stable_continental_myr=stable, **{PROBE_BELT_FIELD: marks})
         seeded += float(np.dot(hc[core], areas[core]))
         SEEDING.append({
             "plate": plate.plate_id, "interior_mkm2": float(areas[eligible].sum() / 1e12),
@@ -181,13 +174,13 @@ def _cores_per_piece(plate, eligible, core, adjacency) -> list[int]:
 _KEEL_STRENGTH = mincut._strength
 
 
-def _rift_strength(plate) -> np.ndarray:
+def _rift_strength(plate, belt_field: str = BELT_FIELD) -> np.ndarray:
     """RFC 0010's strength: craton or keel, but RIFT_BELT_STRENGTH on a belt."""
-    marked = plate.collect(BELT_FIELD) < 0.5 * BELT_NEVER
+    marked = plate.collect(belt_field) != BELT_NEVER
     return np.where(marked, RIFT_BELT_STRENGTH, _KEEL_STRENGTH(plate))
 
 
-def _layout_snapshot(world) -> dict:
+def _layout_snapshot(world, belt_field: str = BELT_FIELD) -> dict:
     """Belt and craton areas, and craton cores, across every plate."""
     spacing = line_spacing_rad(world.node_density)
     out = {"myr": world.elapsed_years / 1e6, "genuine_mkm2": 0.0, "craton_mkm2": 0.0, "belt_mkm2": 0.0,
@@ -198,7 +191,7 @@ def _layout_snapshot(world) -> dict:
         areas = plate.accounting_areas_m2(spacing)
         genuine = cratons._genuine_continental(plate)
         craton = plate.collect("craton_crust_m") > 0.0
-        marked = plate.collect(BELT_FIELD) < 0.5 * BELT_NEVER
+        marked = plate.collect(belt_field) != BELT_NEVER
         out["genuine_mkm2"] += float(areas[genuine].sum() / 1e12)
         out["craton_mkm2"] += float(areas[craton].sum() / 1e12)
         out["belt_mkm2"] += float(areas[marked & genuine & ~craton].sum() / 1e12)
@@ -213,6 +206,32 @@ def _layout_snapshot(world) -> dict:
             out["cores_over_1mkm2"] += int(np.count_nonzero(comp_area >= 1e12))
     out["belt_share_of_genuine"] = out["belt_mkm2"] / out["genuine_mkm2"] if out["genuine_mkm2"] else 0.0
     return out
+
+
+def _rift_cut_counts(world) -> dict:
+    ledger = world.craton_ledger
+    counts = {key: float(ledger.get(key, 0.0)) for key in cratons.CRATON_RIFT_CUT_COUNTERS}
+    total = sum(counts[f"{kind}_cuts"] for kind in cratons.CRATON_RIFT_CUT_KINDS)
+    through = sum(counts[f"{kind}_cuts_through_craton"] for kind in cratons.CRATON_RIFT_CUT_KINDS)
+    counts["all_cuts"] = total
+    counts["all_cuts_through_craton"] = through
+    counts["cut_band_craton_share"] = through / total if total else None
+    return counts
+
+
+def _smoothed_layout(world) -> dict:
+    plate, land, continent, craton, lat = layout_measure._grid(world)
+    labels = np.stack([
+        uniform_filter((plate == p).astype(np.float32), 9, mode="wrap")
+        for p in range(int(plate.max()) + 1)
+    ]).argmax(axis=0)
+    # The majority filter can erase a small plate entirely. Compact labels before passing the
+    # grid to measure_plate_layout, whose per-plate statistics expect contiguous live IDs.
+    labels = np.unique(labels, return_inverse=True)[1].reshape(labels.shape)
+    measured = layout_measure._measure((labels, land, continent, craton, lat), "current")
+    return {key: measured[key] for key in (
+        "mixed_plate_share_by_land", "land_edge_on_boundary_share", "land_area_share", "continental_area_share"
+    )}
 
 
 def _gate(rows: list[dict]) -> dict:
@@ -248,7 +267,9 @@ def _run(seed: int, layout: str, years: float, every: float, step: float) -> dic
         setattr(cratons, name, value)
     cratons.CRATON_FORMATION_MYR = float("inf")
     mincut.CORRIDORS_KM, mincut.FLOORS = (CORRIDOR_KM,), (FLOOR,)
-    mincut._strength = _rift_strength
+    belt_field = PROBE_BELT_FIELD if layout == "mosaic" else BELT_FIELD
+    original_strength = mincut._strength
+    mincut._strength = lambda plate: _rift_strength(plate, belt_field)
     original_seed, original_cut = cratons.seed_initial_cratons, cratons.record_rift_cut
     rows: list[dict] = []
 
@@ -262,25 +283,34 @@ def _run(seed: int, layout: str, years: float, every: float, step: float) -> dic
     cratons.record_rift_cut = tapped
     started = time.perf_counter()
     try:
-        world = world_mod.generate_world(seed)
+        world = world_mod.generate_world(seed, cratons_first=layout == "cratons-first")
         cratons.ensure_initialized(world)
         generation_s = time.perf_counter() - started
-        checkpoints = [_layout_snapshot(world)]
+        checkpoints = [{**_layout_snapshot(world, belt_field), "rift_cuts": _rift_cut_counts(world),
+                        "ledger_balance_error_m3": cratons.diagnostics(world)["craton_balance_error_m3"],
+                        "smoothed_layout": _smoothed_layout(world)}]
         next_checkpoint = every
         while world.elapsed_years < years - 1.0:
             world_mod.step_world(world, min(step, years - world.elapsed_years))
             if world.elapsed_years >= next_checkpoint - 1.0:
-                checkpoints.append({**_layout_snapshot(world), "gate_so_far": _gate(rows), "wall_s": time.perf_counter() - started})
+                checkpoints.append({**_layout_snapshot(world, belt_field), "gate_so_far": _gate(rows),
+                                    "rift_cuts": _rift_cut_counts(world),
+                                    "ledger_balance_error_m3": cratons.diagnostics(world)["craton_balance_error_m3"],
+                                    "smoothed_layout": _smoothed_layout(world),
+                                    "wall_s": time.perf_counter() - started})
                 print(json.dumps({"seed": seed, "layout": layout, **{k: checkpoints[-1][k] for k in ("myr", "belt_mkm2", "craton_mkm2", "cores")},
                                   **{k: checkpoints[-1]["gate_so_far"][k] for k in ("through", "L", "B")}}, default=float), flush=True)
                 next_checkpoint += every
     finally:
         cratons.seed_initial_cratons, cratons.record_rift_cut = original_seed, original_cut
+        mincut._strength = original_strength
     belt0 = checkpoints[0]["belt_mkm2"]
     for c in checkpoints:
         c["belt_vs_t0"] = c["belt_mkm2"] / belt0 if belt0 else None
     return {"seed": seed, "layout": layout, "generation_s": generation_s, "wall_s": time.perf_counter() - started,
-            "seeding": list(SEEDING), "gate": _gate(rows), "checkpoints": checkpoints, "cuts": rows}
+            "gate": _gate(rows), "rift_cuts": _rift_cut_counts(world),
+            "ledger_balance_error_m3": cratons.diagnostics(world)["craton_balance_error_m3"],
+            "checkpoints": checkpoints, "cuts": rows}
 
 
 def _pooled(runs: list[dict]) -> dict:
@@ -295,7 +325,7 @@ def main() -> None:
     global CORE_SPACING_KM, BELT_WIDTH_KM
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--seeds", default="7,11,2024")
-    parser.add_argument("--layout", choices=("mosaic", "blob"), default="mosaic")
+    parser.add_argument("--layout", choices=("cratons-first", "blob", "mosaic"), default="cratons-first")
     parser.add_argument("--years", type=float, default=1e9)
     parser.add_argument("--every", type=float, default=100e6)
     parser.add_argument("--step", type=float, default=5e6)
