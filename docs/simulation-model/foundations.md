@@ -164,8 +164,10 @@ Behind a flag, a random world (no sketch, no premade world) is laid out cratons 
 ([RFC 0009](../../rfc/0009-craton-mosaic.md), #462). It is off by default
 (`continent_layout.CRATONS_FIRST_DEFAULT = False`) until the RFC's gate G3 decides whether it
 replaces the tiling above; `generate_plates(..., cratons_first=True)` or
-`world.generate_world(..., cratons_first=True)` turns it on. Sketch and premade worlds always
-keep plates first, since their geography comes from a drawing or from data.
+`world.generate_world(..., cratons_first=True)` turns it on. The Generate World dialog's
+Random tab exposes this as the “Craton-first terrain” checkbox, and `POST /world/generate`
+accepts the `cratons_first` field. Sketch and premade worlds always keep plates first, since
+their geography comes from a drawing or from data.
 
 `lithosphere_plate.cratons_first_layout` builds the layout before any plate exists, on a
 whole-sphere cell lattice at the world's node spacing (`layout_lattice.lattice`). Steps 1-3

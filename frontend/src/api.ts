@@ -543,6 +543,8 @@ async function readProgressStream(resp: Response, onProgress?: (fraction: number
 // /world/generate for the NDJSON contract this reads, same shape as animateWorld's own).
 export interface GenerateWorldOptions {
   seed: number;
+  // Random-tab terrain layout; omitted follows the backend default. Sketches/premades ignore it.
+  cratonsFirst?: boolean;
   continentalFraction: number;
   landFraction: number;
   axialTiltDeg: number;
@@ -559,7 +561,7 @@ export interface GenerateWorldOptions {
 
 export function generateWorld(options: GenerateWorldOptions): Promise<WorldSummary> {
   const {
-    seed, continentalFraction, landFraction, axialTiltDeg, nodeDensity,
+    seed, cratonsFirst, continentalFraction, landFraction, axialTiltDeg, nodeDensity,
     initialSoilMaturity, climateDensity, fluidDensity, numPlates, voronoiPoints,
     sketchImageBase64 = null, premadeWorldId = null, onProgress,
   } = options;
@@ -568,6 +570,7 @@ export function generateWorld(options: GenerateWorldOptions): Promise<WorldSumma
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       seed,
+      cratons_first: cratonsFirst,
       num_plates: numPlates,
       voronoi_points: voronoiPoints,
       continental_fraction: continentalFraction,
