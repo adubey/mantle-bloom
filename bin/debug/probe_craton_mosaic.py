@@ -46,7 +46,7 @@ import measure_plate_layout as layout_measure  # noqa: E402
 import numpy as np  # noqa: E402
 import prototype_mincut_split as mincut  # noqa: E402
 from app import cratons, merge_split, quad_tectonics  # noqa: E402
-from app import world as world_mod  # noqa: E402
+from app import surface_fields, world as world_mod  # noqa: E402
 from app.surface_fields import BELT_UNMARKED_YEARS  # noqa: E402
 from app.elevation_lines import PLANET_RADIUS_KM, line_spacing_rad  # noqa: E402
 from scipy.sparse.csgraph import connected_components, dijkstra  # noqa: E402
@@ -57,7 +57,11 @@ CORE_SPACING_KM = 1500.0
 BELT_WIDTH_KM = 300.0
 BELT_SEED_AGE_YEARS = 1.8e9
 BELT_FIELD = "belt_formed_years"
+PROBE_BELT_FIELD = "probe_belt_formed_years"
 BELT_NEVER = BELT_UNMARKED_YEARS
+# Keep the legacy mosaic experiment isolated from production belt marks. Register the
+# probe-only field with identical transfer semantics so it follows nodes through tectonics.
+surface_fields.SURFACE_FIELDS[PROBE_BELT_FIELD] = surface_fields.SURFACE_FIELDS[BELT_FIELD]
 # The gate's corridor and RFC 0010's default floor.
 CORRIDOR_KM = 1000.0
 FLOOR = 0.05
@@ -142,9 +146,9 @@ def seed_mosaic(world) -> float:
         formed[core] = world.elapsed_years - cratons.CRATON_SEED_AGE_YEARS
         stable = plate.collect("stable_continental_myr")
         stable[core] = np.maximum(stable[core], cratons.CRATON_SEED_AGE_YEARS / 1e6)
-        marks = plate.collect(BELT_FIELD)
+        marks = plate.collect(PROBE_BELT_FIELD)
         marks[belt] = world.elapsed_years - BELT_SEED_AGE_YEARS
-        plate.set_fields_on_plate(craton_crust_m=craton, craton_formed_years=formed, stable_continental_myr=stable, **{BELT_FIELD: marks})
+        plate.set_fields_on_plate(craton_crust_m=craton, craton_formed_years=formed, stable_continental_myr=stable, **{PROBE_BELT_FIELD: marks})
         seeded += float(np.dot(hc[core], areas[core]))
         SEEDING.append({
             "plate": plate.plate_id, "interior_mkm2": float(areas[eligible].sum() / 1e12),
@@ -170,13 +174,13 @@ def _cores_per_piece(plate, eligible, core, adjacency) -> list[int]:
 _KEEL_STRENGTH = mincut._strength
 
 
-def _rift_strength(plate) -> np.ndarray:
+def _rift_strength(plate, belt_field: str = BELT_FIELD) -> np.ndarray:
     """RFC 0010's strength: craton or keel, but RIFT_BELT_STRENGTH on a belt."""
-    marked = plate.collect(BELT_FIELD) != BELT_NEVER
+    marked = plate.collect(belt_field) != BELT_NEVER
     return np.where(marked, RIFT_BELT_STRENGTH, _KEEL_STRENGTH(plate))
 
 
-def _layout_snapshot(world) -> dict:
+def _layout_snapshot(world, belt_field: str = BELT_FIELD) -> dict:
     """Belt and craton areas, and craton cores, across every plate."""
     spacing = line_spacing_rad(world.node_density)
     out = {"myr": world.elapsed_years / 1e6, "genuine_mkm2": 0.0, "craton_mkm2": 0.0, "belt_mkm2": 0.0,
@@ -187,7 +191,7 @@ def _layout_snapshot(world) -> dict:
         areas = plate.accounting_areas_m2(spacing)
         genuine = cratons._genuine_continental(plate)
         craton = plate.collect("craton_crust_m") > 0.0
-        marked = plate.collect(BELT_FIELD) != BELT_NEVER
+        marked = plate.collect(belt_field) != BELT_NEVER
         out["genuine_mkm2"] += float(areas[genuine].sum() / 1e12)
         out["craton_mkm2"] += float(areas[craton].sum() / 1e12)
         out["belt_mkm2"] += float(areas[marked & genuine & ~craton].sum() / 1e12)
@@ -263,7 +267,9 @@ def _run(seed: int, layout: str, years: float, every: float, step: float) -> dic
         setattr(cratons, name, value)
     cratons.CRATON_FORMATION_MYR = float("inf")
     mincut.CORRIDORS_KM, mincut.FLOORS = (CORRIDOR_KM,), (FLOOR,)
-    mincut._strength = _rift_strength
+    belt_field = PROBE_BELT_FIELD if layout == "mosaic" else BELT_FIELD
+    original_strength = mincut._strength
+    mincut._strength = lambda plate: _rift_strength(plate, belt_field)
     original_seed, original_cut = cratons.seed_initial_cratons, cratons.record_rift_cut
     rows: list[dict] = []
 
@@ -280,14 +286,14 @@ def _run(seed: int, layout: str, years: float, every: float, step: float) -> dic
         world = world_mod.generate_world(seed, cratons_first=layout == "cratons-first")
         cratons.ensure_initialized(world)
         generation_s = time.perf_counter() - started
-        checkpoints = [{**_layout_snapshot(world), "rift_cuts": _rift_cut_counts(world),
+        checkpoints = [{**_layout_snapshot(world, belt_field), "rift_cuts": _rift_cut_counts(world),
                         "ledger_balance_error_m3": cratons.diagnostics(world)["craton_balance_error_m3"],
                         "smoothed_layout": _smoothed_layout(world)}]
         next_checkpoint = every
         while world.elapsed_years < years - 1.0:
             world_mod.step_world(world, min(step, years - world.elapsed_years))
             if world.elapsed_years >= next_checkpoint - 1.0:
-                checkpoints.append({**_layout_snapshot(world), "gate_so_far": _gate(rows),
+                checkpoints.append({**_layout_snapshot(world, belt_field), "gate_so_far": _gate(rows),
                                     "rift_cuts": _rift_cut_counts(world),
                                     "ledger_balance_error_m3": cratons.diagnostics(world)["craton_balance_error_m3"],
                                     "smoothed_layout": _smoothed_layout(world),
@@ -297,6 +303,7 @@ def _run(seed: int, layout: str, years: float, every: float, step: float) -> dic
                 next_checkpoint += every
     finally:
         cratons.seed_initial_cratons, cratons.record_rift_cut = original_seed, original_cut
+        mincut._strength = original_strength
     belt0 = checkpoints[0]["belt_mkm2"]
     for c in checkpoints:
         c["belt_vs_t0"] = c["belt_mkm2"] / belt0 if belt0 else None
