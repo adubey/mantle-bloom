@@ -31,6 +31,8 @@ gap fill -- new territory has no history to carry).
 every step, from that step's real climate -- purely this-step derived quantities, cached on
 `World.hydrology_cache` only so a later same-turn caller (rendering) doesn't recompute them
 again, the same reuse pattern `climate.compute_climate_cached` already established.
+The cratons-first generator makes one zero-duration routing pass to populate that cache at
+generation; the first simulation step replaces it with routing from that step's climate.
 
 **Flow routing is computed once, not twice.** It would be simple enough to compute flow
 routing twice per step -- once in `hydrology.py` for the real river_flow/rendering fields,

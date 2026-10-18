@@ -287,6 +287,7 @@ export default function App() {
   }, []);
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [seed, setSeed] = useState(randomSeed());
+  const [cratonsFirst, setCratonsFirst] = useState(false);
   const [continentalPercent, setContinentalPercent] = useState(DEFAULT_CONTINENTAL_PERCENT);
   const [landPercent, setLandPercent] = useState(DEFAULT_LAND_PERCENT);
   const [axialTiltDeg, setAxialTiltDeg] = useState(DEFAULT_AXIAL_TILT_DEG);
@@ -748,6 +749,7 @@ export default function App() {
           ? await generateDebugWorld(debugScenario, seed)
           : await generateWorld({
               seed,
+              cratonsFirst: generateMode === "random" ? cratonsFirst : false,
               continentalFraction: continentalPercent / 100,
               landFraction: landPercent / 100,
               axialTiltDeg,
@@ -788,7 +790,7 @@ export default function App() {
       setGenProgress(undefined);
     }
   }, [
-    seed, continentalPercent, landPercent, axialTiltDeg, detail, fluidDensity, initialSoilMaturityPercent, autoPlates, numPlates, voronoiPoints,
+    seed, cratonsFirst, continentalPercent, landPercent, axialTiltDeg, detail, fluidDensity, initialSoilMaturityPercent, autoPlates, numPlates, voronoiPoints,
     generateMode, sketchImageDataUrl, premadeWorldId, debugScenario, projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats,
   ]);
 
@@ -2134,6 +2136,25 @@ export default function App() {
                 </div>
               )}
             </label>
+
+            {generateMode === "random" && (
+              <label style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 16 }}>
+                <input
+                  type="checkbox"
+                  checked={cratonsFirst}
+                  onChange={(e) => setCratonsFirst(e.target.checked)}
+                  disabled={busy}
+                  style={{ marginTop: 2 }}
+                />
+                <span>
+                  Craton-first terrain
+                  <span style={{ display: "block", fontSize: 11, color: "#999", marginTop: 3 }}>
+                    Build continents from cratons before assigning plates. Random worlds use
+                    the existing plate-first approach when unchecked.
+                  </span>
+                </span>
+              </label>
+            )}
 
             {generateMode !== "debug" && (
               <label style={{ display: "block", marginBottom: 16 }}>

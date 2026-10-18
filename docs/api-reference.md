@@ -63,6 +63,7 @@ Request body:
 ```json
 {
   "seed": 1,
+  "cratons_first": false,
   "surface": "quad",
   "num_plates": null,
   "continental_fraction": 0.7,
@@ -88,8 +89,12 @@ both optional, each falling back to its own default behavior when omitted (an in
 per-plate coin flip for crust type, a fixed elevation floor for land). `continental_fraction`
 is a share of plates on today's plates-first worlds and a share of the surface on
 cratons-first ones (`plates.CONTINENTAL_AREA_FRACTION = 0.5` when omitted), a layout the
-route doesn't select yet -- see
+selected by `cratons_first` -- see
 [simulation-model/foundations.md#initial-plate-generation](simulation-model/foundations.md#initial-plate-generation).
+`cratons_first` is the Random tab's optional terrain-generation choice. When true, continental
+cratons are laid out before plates and relief is generated from that layout; when false or
+omitted, generation uses the plate-first layout (omission follows
+`continent_layout.CRATONS_FIRST_DEFAULT`). Sketches and premade worlds ignore this choice.
 `axial_tilt_deg` is the UI's third generation slider (degrees), defaulting to
 `world.DEFAULT_AXIAL_TILT_DEG = 23.5` (Earth's real tilt) -- doesn't affect plate generation,
 only `climate.py`'s insolation on future renders (see

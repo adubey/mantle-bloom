@@ -888,17 +888,18 @@ def contact_jam_factor(plate, world, neighbours: list, inputs: BoundaryForceInpu
     return np.maximum(own, np.where(_jam_contact(plate, inputs, reach_rad), other, 0.0))
 
 
-def shift_plate(plate, world, other_plates: list, years: float) -> float:
-    """`Plate.shift`'s real (non-pinned) implementation: gather this step's
-    driving/resisting torques from the plate's *current* (pre-rotation) boundary
-    configuration, integrate omega, then rotate rigidly -- see `apply_omega_and_rotate` for
-    the shared tail with the pinned-omega override."""
+def predict_plate_motion(plate, world, other_plates: list, years: float) -> np.ndarray:
+    """Predict this plate's first-step angular velocity without changing its state.
+
+    Generation uses this read-only interface to build terrain from the *initial* tectonic
+    regime. The normal stepping path uses the same prediction and then applies it via
+    `apply_omega_and_rotate`; this function itself never sets omega or rotates geometry."""
     spacing_rad = line_spacing_rad(world.node_density)
     reach_rad = boundary_force_reach_rad(spacing_rad)
 
     old_points, _ = plate.all_points_and_elevation()
     if len(old_points) == 0:
-        return 0.0
+        return np.asarray(plate.omega, dtype=float).copy()
 
     neighbours = plate.get_neighbours(other_plates)
     inputs = gather_boundary_force_inputs(plate, neighbours, spacing_rad, reach_rad)
@@ -926,6 +927,17 @@ def shift_plate(plate, world, other_plates: list, years: float) -> float:
     drag_b = drag_b + collision_b
     drag_k = drag_k + collision_k
     new_omega = integrate_omega(plate, explicit_torque, drag_b, drag_k, inertia, years)
+    return np.asarray(new_omega, dtype=float)
+
+
+def shift_plate(plate, world, other_plates: list, years: float) -> float:
+    """`Plate.shift`'s real (non-pinned) implementation: predict omega from the plate's
+    current boundary configuration, then rotate rigidly -- see `apply_omega_and_rotate` for
+    the shared tail with the pinned-omega override."""
+    old_points, _ = plate.all_points_and_elevation()
+    if len(old_points) == 0:
+        return 0.0
+    new_omega = predict_plate_motion(plate, world, other_plates, years)
     return apply_omega_and_rotate(plate, old_points, new_omega, years)
 
 

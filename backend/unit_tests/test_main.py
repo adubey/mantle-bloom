@@ -179,6 +179,23 @@ def test_client_fixture_discards_state_left_by_an_earlier_test(request):
     assert client.get("/world/stats").status_code == 404
 
 
+def test_generate_forwards_cratons_first_choice(client, monkeypatch):
+    captured = {}
+
+    def fake_generate_world_progress(seed, **kwargs):
+        captured.update(kwargs)
+        yield ("world", object())
+
+    monkeypatch.setattr(main, "generate_world_progress", fake_generate_world_progress)
+    monkeypatch.setattr(main, "_set_world", lambda world: None)
+    monkeypatch.setattr(main, "_summary", lambda world: {"seed": 7})
+
+    response = _post_generate(client, json={"seed": 7, "cratons_first": True})
+
+    assert response.json()["seed"] == 7
+    assert captured["cratons_first"] is True
+
+
 def test_render_before_generate_returns_404(client):
     resp = client.get("/world/render")
     assert resp.status_code == 404

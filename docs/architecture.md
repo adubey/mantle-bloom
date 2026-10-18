@@ -378,13 +378,20 @@ layout_lattice.py  the whole-sphere cell lattice a cratons-first world is laid o
 continent_layout.py
                    cratons-first layout for random worlds, behind a flag (RFC 0009): cratonic
                    cores, the continents around them, belts and margins
-plate_partition.py the plates over a cratons-first layout: Dijkstra from Poisson-disc sites,
-                   a land-aware boundary cost, best-of-K candidates, boundary refinement
+plate_partition.py the plates over a cratons-first layout: polygon-seed Voronoi from craton
+                   cores and grouped point sites, a land-aware boundary cost, best-of-K
+                   candidates, boundary refinement
 lithosphere_plate.py
                    plate generation (nearest-seed tiling or a continent_layout partition,
                    reference Hc/Hm, composite relief)
                    and the per-node column physics -- boundary classification context,
                    elevation/Hc/Hm deltas, decompression melting and rift volcanism
+initial_terrain.py   cratons-first generation uses read-only first-step torque predictions for
+                     narrow, offset, rotated relief on straight land-land collision sections,
+                     then seeds cold-range ice and curved river channels from one initial
+                     climate/hydrology routing pass
+torque.py            slab-pull/ridge-push torque integration and read-only plate-motion
+                     prediction (`predict_plate_motion`) shared by generation and `shift()`
 quad_tectonics.py  the tectonic engine, `deform()`: boundary retreat and advance on the cell
                    graph, rift opening, interior subduction, gap filling
 mantle.py           cubed-sphere convection-cell flow field, per-plate Euler-pole

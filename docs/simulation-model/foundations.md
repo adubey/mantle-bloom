@@ -164,8 +164,10 @@ Behind a flag, a random world (no sketch, no premade world) is laid out cratons 
 ([RFC 0009](../../rfc/0009-craton-mosaic.md), #462). It is off by default
 (`continent_layout.CRATONS_FIRST_DEFAULT = False`) until the RFC's gate G3 decides whether it
 replaces the tiling above; `generate_plates(..., cratons_first=True)` or
-`world.generate_world(..., cratons_first=True)` turns it on. Sketch and premade worlds always
-keep plates first, since their geography comes from a drawing or from data.
+`world.generate_world(..., cratons_first=True)` turns it on. The Generate World dialog's
+Random tab exposes this as the “Craton-first terrain” checkbox, and `POST /world/generate`
+accepts the `cratons_first` field. Sketch and premade worlds always keep plates first, since
+their geography comes from a drawing or from data.
 
 `lithosphere_plate.cratons_first_layout` builds the layout before any plate exists, on a
 whole-sphere cell lattice at the world's node spacing (`layout_lattice.lattice`). Steps 1-3
@@ -203,15 +205,19 @@ mask (continental crust whose relief sample clears the land threshold); steps 4-
    speed `exp(CONTINENT_GROWTH_SPEED_SIGMA × noise)` that varies smoothly at continent scale,
    plus outline noise. Cratons on a continent's far side, or where it grows slowly, end up near
    its coast. Continental points that aren't craton or belt are margin.
-4. **Plates.** `num_plates` sites (8-20, as above) are Poisson-disc sampled outside the
-   cores, and each takes the points nearest it by path length over the 8-connected lattice
-   (multi-source `scipy.sparse.csgraph.dijkstra`). Each core then goes whole to the plate
-   holding most of its area. The sites are redrawn if a plate is disconnected or below
-   `merge_split.SPLIT_MIN_NODES * node_density` cells. Of `PARTITION_CANDIDATES = 8` valid
-   draws, the one with the lowest `J` (below) is kept.
+4. **Plates.** Sample 200 point sites without replacement from non-core lattice cells, weighted
+   by cell area, so their distribution is uniform over the available surface. The first
+   `num_plates` sites are plate roots; each remaining point and each craton polygon inherits
+   the nearest root's label. Every craton core is also a polygon seed: all lattice cells in
+   that core participate in nearest-seed distance, so the seed is the whole polygon rather
+   than its centre. Each lattice cell takes the label of its nearest point or core-polygon
+   seed. This keeps the requested plate count while allowing several cratons to seed one
+   plate and point seeds to shape oceanic territory. Seed placements are redrawn if a plate
+   is disconnected or below `merge_split.SPLIT_MIN_NODES * node_density` cells. Of
+   `PARTITION_CANDIDATES = 8` valid draws, the one with the lowest `J` (below) is kept.
 5. **Boundary refinement.** A boundary point moves to an adjacent plate while that lowers
    `J`, the summed length of plate-crossing links times the mean `PLATE_COST_*` of their two
-   ends (ocean and belt 1, margin and core 3), plus `PLATE_COST_LAND_LINK = 10` per unit
+   ends (ocean 0, belt 1, margin and core 3), plus `PLATE_COST_LAND_LINK = 10` per unit
    length where both ends are land. Each plate stays within 75-125% of its
    starting area and above the cell floor, cores never move, and a move must pass a
    simple-point check: the point's same-plate edge neighbours stay connected through its
@@ -230,6 +236,26 @@ own type, and `land_fraction`'s noise threshold is taken over the continental ma
 raised to at least `cratons.CRATON_HOST_MIN_HC_M` and seeded as craton
 ([cratons](tectonics.md#cratons)). The layout measures over 40 seeds are in
 [analysis/issue462](../../analysis/issue462/README.md).
+
+For cratons-first worlds, `world.generate_world` then asks
+`torque.predict_plate_motion` for each plate's first-step angular velocity without applying
+the rotation. `initial_terrain.apply_predicted_orogens` finds above-sea-level continental
+contacts that are converging, selects a relatively straight section up to 1,000 km long, then
+places a short ridge on the less-cratonic plate (sections with more than 100 km RMS bend are
+skipped). Its line is shifted inward by a half-normal
+offset (90 km standard deviation, capped at 200 km) and rotated 2-10 degrees. Relief falls
+off across a 65 km Gaussian width, peaks at up to 3.2 km, and is backed by crustal thickening;
+stronger craton roots suppress the peak. This is a generation-time geometric approximation,
+not a model of the evolving orogen. It follows design principle 7 by concentrating initial
+shortening relief in weaker crust while keeping ridges available for later river and glacier
+erosion. Generation keeps the plates at their original positions and elapsed time at zero.
+After the atmosphere bootstrap,
+`initial_terrain.initialize_river_channels` computes climate and one zero-duration hydrology
+routing pass; it persists channels on routed river nodes, with depth scaled from 20 to 120 m
+by discharge. Its initial river mask and channel fields omit routes that stay within 10 degrees
+of straight for more than 400 km. Cold land above 2,500 m receives a 150 m initial ice cap,
+leaving the rest of the relief available to later erosion. This generation-only initialization
+is implemented in `initial_terrain.py` (#477).
 
 <a id="worldsketch"></a>
 ## Human-made worlds (sketch-driven generation) (`worldsketch.py`)
