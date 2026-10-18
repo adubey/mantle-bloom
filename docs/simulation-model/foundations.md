@@ -235,6 +235,26 @@ raised to at least `cratons.CRATON_HOST_MIN_HC_M` and seeded as craton
 ([cratons](tectonics.md#cratons)). The layout measures over 40 seeds are in
 [analysis/issue462](../../analysis/issue462/README.md).
 
+For cratons-first worlds, `world.generate_world` then asks
+`torque.predict_plate_motion` for each plate's first-step angular velocity without applying
+the rotation. `initial_terrain.apply_predicted_orogens` finds above-sea-level continental
+contacts that are converging, selects a relatively straight section up to 1,000 km long, then
+places a short ridge on the less-cratonic plate (sections with more than 100 km RMS bend are
+skipped). Its line is shifted inward by a half-normal
+offset (90 km standard deviation, capped at 200 km) and rotated 2-10 degrees. Relief falls
+off across a 65 km Gaussian width, peaks at up to 3.2 km, and is backed by crustal thickening;
+stronger craton roots suppress the peak. This is a generation-time geometric approximation,
+not a model of the evolving orogen. It follows design principle 7 by concentrating initial
+shortening relief in weaker crust while keeping ridges available for later river and glacier
+erosion. Generation keeps the plates at their original positions and elapsed time at zero.
+After the atmosphere bootstrap,
+`initial_terrain.initialize_river_channels` computes climate and one zero-duration hydrology
+routing pass; it persists channels on routed river nodes, with depth scaled from 20 to 120 m
+by discharge. Its initial river mask and channel fields omit routes that stay within 10 degrees
+of straight for more than 400 km. Cold land above 2,500 m receives a 150 m initial ice cap,
+leaving the rest of the relief available to later erosion. This generation-only initialization
+is implemented in `initial_terrain.py` (#477).
+
 <a id="worldsketch"></a>
 ## Human-made worlds (sketch-driven generation) (`worldsketch.py`)
 

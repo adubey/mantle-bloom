@@ -715,6 +715,8 @@ def generate_world_progress(
     `fit_mantle_centers`. `"got"` has no real-world motion to fit to and keeps the ordinary
     random centers. `cratons_first` lays a random world out cratons first (RFC 0009; see
     lithosphere_plate.generate_plates), defaulting to continent_layout.CRATONS_FIRST_DEFAULT."""
+    if cratons_first is None:
+        cratons_first = lithosphere_plate.continent_layout.CRATONS_FIRST_DEFAULT
     plates = generate_plates(
         seed,
         num_plates,
@@ -761,13 +763,24 @@ def generate_world_progress(
     if initial_soil_maturity is not None:
         geology.seed_initial_soil(world.plates, seed, initial_soil_maturity)
 
+    # The cratons-first layout has explicit plate boundaries, so use the torque solver's
+    # read-only first-step prediction to seed modest convergent-belt relief. The prediction
+    # informs terrain only; plate positions and elapsed time remain at generation state.
+    if cratons_first:
+        from . import initial_terrain
+
+        initial_terrain.apply_predicted_orogens(world)
+
     n_continents = sum(1 for p in plates if p.crust_type == "continental")
-    finish_generation(world, f"World generated with {len(plates)} plates ({n_continents} continental).")
+    finish_generation(
+        world, f"World generated with {len(plates)} plates ({n_continents} continental).",
+        initialize_rivers=bool(cratons_first),
+    )
     yield ("progress", 1.0)
     yield ("done", world)
 
 
-def finish_generation(world: World, log_message: str) -> None:
+def finish_generation(world: World, log_message: str, initialize_rivers: bool = False) -> None:
     """Shared tail every world-generation path (`generate_world`, `debug_worlds.
     generate_debug_world`) runs once `world.plates` is populated: bootstrap the permanent
     atmosphere wind-solver state, snapshot the eustatic water budget from the flat starting
@@ -785,6 +798,14 @@ def finish_generation(world: World, log_message: str) -> None:
     # Snapshot the ocean water volume from the flat starting sea level -- from here on
     # step_world re-solves sea_level_m against this fixed budget every step (see eustasy.py).
     eustasy.initialize_water_budget(world)
+
+    if initialize_rivers:
+        # Seed first-step routing and river channels as part of generation, not as a later
+        # terrain mutation. The short hydrology interval also lets cold high ranges acquire
+        # initial ice while leaving most of their relief available for erosion.
+        from . import initial_terrain
+
+        initial_terrain.initialize_river_channels(world)
 
     # Seed the persistent continental-material tracer before the baseline stats/save state.
     # Later terrain work records transfers through continental_ledger's public API.

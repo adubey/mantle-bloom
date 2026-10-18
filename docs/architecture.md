@@ -386,6 +386,12 @@ lithosphere_plate.py
                    reference Hc/Hm, composite relief)
                    and the per-node column physics -- boundary classification context,
                    elevation/Hc/Hm deltas, decompression melting and rift volcanism
+initial_terrain.py   cratons-first generation uses read-only first-step torque predictions for
+                     narrow, offset, rotated relief on straight land-land collision sections,
+                     then seeds cold-range ice and curved river channels from one initial
+                     climate/hydrology routing pass
+torque.py            slab-pull/ridge-push torque integration and read-only plate-motion
+                     prediction (`predict_plate_motion`) shared by generation and `shift()`
 quad_tectonics.py  the tectonic engine, `deform()`: boundary retreat and advance on the cell
                    graph, rift opening, interior subduction, gap filling
 mantle.py           cubed-sphere convection-cell flow field, per-plate Euler-pole
