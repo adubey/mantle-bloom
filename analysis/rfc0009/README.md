@@ -326,3 +326,61 @@ the project owner:
 2. **Fix the call sites first and rerun G2.** This is the RFC's literal route. It is
    unlikely to close the gap, since the gap comes from exposure.
 3. **Use the single-type fallback** (RFC, Design, G2).
+
+# Gate G3: cratons-first rifting (#472)
+
+**Decision (2026-10-18): no-go for the cratons-first layout as a standalone rift fix;
+go to RFC 0010's minimum cut with the resistance fallback.** G3's primary requirement—cut-band
+craton share at most half the matched control on every seed—fails on all three seeds. The
+pooled cratons-first L/B (27.6% / 0.732) does pass the fallback branch (L ≥ 20%, B ≤ 0.75).
+This selects RFC 0010's implementation path; its separate cut-performance criteria remain
+open.
+
+## Method
+
+Replayed cratons-first and today's plate-first control on model commit `5339d0c`
+(`#468` and `#474` included), with craton formation off, seeds 7, 11 and 2024, 2 Myr steps,
+and 100 Myr checkpoints through 1 Gyr. The probe evaluated all rift cuts with RFC 0010's
+1,000 km corridor and 0.05 floor. `cut_band_craton_share` is the production
+`CRATON_RIFT_CUT_COUNTERS` share across split and failed-rift cuts. L and B use G1's
+craton-crossing flow cuts. Layout measures use the production measurement code after a 9-pixel
+plate-majority filter. Belts are measured from production `belt_formed_years` marks, including
+marks created after t = 0 by rifts and collisions. Ledgers were sampled at every checkpoint.
+
+```bash
+NUMBA_CACHE_DIR=/tmp/issue472-numba-cache PYTHONPYCACHEPREFIX=/tmp/issue472-pycache PYTHONPATH=backend \
+  backend/.venv/bin/python bin/debug/probe_craton_mosaic.py --layout cratons-first \
+  --seeds 7,11,2024 --years 1e9 --step 2e6 --every 100e6 --out /tmp/g3-cratons-first.json
+NUMBA_CACHE_DIR=/tmp/issue472-numba-cache PYTHONPYCACHEPREFIX=/tmp/issue472-pycache PYTHONPATH=backend \
+  backend/.venv/bin/python bin/debug/probe_craton_mosaic.py --layout blob \
+  --seeds 7,11,2024 --years 1e9 --step 2e6 --every 100e6 --out /tmp/g3-blob.json
+```
+
+The complete compact per-seed and per-checkpoint numbers are in [g3.json](g3.json). Full
+replay outputs stayed in `/tmp`.
+
+## Results
+
+| Seed | Cut-band share: cratons-first / control | Reduction | L / B: cratons-first | Belt area / t = 0 at 500 Myr / 1 Gyr |
+|---:|---:|---:|---:|---:|
+| 7 | 32.4% / 43.9% | 26% | 28.6% / 0.825 | 103% / 38% |
+| 11 | 35.3% / 32.5% | −8% | 23.3% / 0.798 | 157% / 115% |
+| 2024 | 30.6% / 13.6% | −125% | 31.6% / 0.573 | 361% / 179% |
+| **Pooled L / B** | — | — | **27.6% / 0.732** | — |
+
+The cut-band share is not halved on any seed. Seed 2024 has over twice the control share.
+The pooled cratons-first L/B clears the RFC's fallback thresholds; the strict L ≥ 50%,
+B ≤ 0.50 branch does not pass. Cratons-first belt area is above one third of t = 0 on all
+seeds at 500 Myr, so the preregistered two-seed sink wait is not triggered. The 1 Gyr ratios
+also exceed one third on all seeds, though they include newly formed production marks and
+are not a cohort survival measure.
+
+At 500 Myr, smoothed mixed-by-land share is 31.7% vs 29.7% on seed 7, 36.8% vs 40.0% on
+seed 11, and 51.3% vs 20.0% on seed 2024 (cratons-first vs control). Smoothed land-edge
+share is 60.9% vs 62.7%, 57.7% vs 50.6%, and 59.4% vs 58.1%, respectively. Thus the RFC's
+relative layout targets do not pass on every seed. They do not change G3's pre-registered
+rift branch selection.
+
+The craton ledger errors across checkpoints were between −1,536 and +2,048 m³, roundoff at
+planet scale. Generation took 1.2–1.9 s for cratons-first and 1.0–4.6 s for control; replay
+wall time varied from 25–35 min and 31–97 min, respectively.
