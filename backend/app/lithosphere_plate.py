@@ -129,23 +129,16 @@ UNBACKED_RELIEF_DECAY_PER_MYR = 0.05
 CONTINENTAL_CONTESTED_RETREAT_MIN_RUN = 3
 
 # Volume-budget growth gate (GitHub issue #119, "Continental ratchet: solution design",
-# mechanism 1). A lattice node's physical footprint is constant across the sphere by
-# construction (`lithosphere.node_area_m2`), so a plate's total area is just its node count
-# times that -- and its implied *mean* crustal thickness is `mean(crustal_thickness_m)`.
-# The continental boundary ratchet dilutes this: boundary advance seeds every new margin cell
-# at the *oceanic* reference column (`growth_seed_thickness`), so a shear-stretched
-# continental plate tiles unbounded drowned passive-margin outward -- node
-# count creeps ~+5-6% per 150 My and the plate interior isostatically oceanises into a
-# "giant 80%-drowned continent" (GitHub issue #119 items 2 / 5, and issue #120's land-fraction decline).
-#
-# The gate counts a plate's *genuine* continental nodes -- Hc at least
-# `CONTINENTAL_BUDGET_HC_FRACTION` of the continental reference -- and, once the plate's
-# total node count exceeds `CONTINENTAL_AREA_BUDGET_MULT` times that count, suppresses all
-# areal *growth* for the step (quad_tectonics.py's boundary advance). Retreat, divergent thinning and convergent thickening keep
-# running, so an over-budget plate thins / drowns / crumples back toward its crustal volume
-# rather than merely freezing. A real craton sits near reference Hc across its whole area,
-# nowhere near the cap; the >1 multiplier is the realistic shelf + accreted-terrane
-# allowance. Regime-independent and neighbour-independent.
+# mechanism 1). Compare each plate's continental-coded area with the area of its genuine
+# continental nodes: Hc at least `CONTINENTAL_BUDGET_HC_FRACTION` of the continental
+# reference. When the former exceeds `CONTINENTAL_AREA_BUDGET_MULT` times the latter, suppress
+# boundary advance for the step (quad_tectonics.py). Oceanic-coded nodes are excluded even
+# when they belong to a continental plate (#447); ordinary new boundary cells are oceanic, so
+# this gate bounds continental-coded area, not the whole footprint of a continental plate
+# (see #482 for the long-run metric diagnosis).
+# Retreat, divergent thinning and convergent thickening continue while growth is suppressed.
+# The >1 multiplier allows continental shelf and accreted-terrane area. The gate is
+# regime-independent and neighbour-independent.
 CONTINENTAL_BUDGET_HC_FRACTION = 0.6
 CONTINENTAL_AREA_BUDGET_MULT = 1.8
 
