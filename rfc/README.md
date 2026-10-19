@@ -75,7 +75,11 @@ damage-driven local cuts that may link into rift segments; see
 ## Writing and reviewing
 
 Use [`start-rfc`](../.agents/skills/start-rfc/SKILL.md) to set up a new RFC workstream and
-plan its transition into one or more implementation issues. RFCs are written with the
+plan its transition into one or more implementation issues. Use
+[`continue-rfc`](../.agents/skills/continue-rfc/SKILL.md) to resume an existing RFC or
+RFC-linked issue after a handoff, recover its evidence and worktree, and select the next
+action. Use [`project-management`](../.agents/skills/project-management/SKILL.md) for
+project board status transitions during RFC and issue work. RFCs are written with the
 [`rfc-authoring`](../.agents/skills/rfc-authoring/SKILL.md) skill.
 It sets the sections (problem, solutions, design, provisional touchpoints, assumptions and
 uncertainty, acceptance and falsification criteria, references), the citation format, and

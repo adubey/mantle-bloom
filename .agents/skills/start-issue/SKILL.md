@@ -10,14 +10,20 @@ description: Set up the branch, worktree, venv and ports for a Mantle Bloom issu
    listed under an RFC. Read the RFC's status and diagnosis gates in `rfc/` and
    `rfc/README.md`. If it is not accepted or its gates have not passed, resolve that RFC
    lifecycle step before implementing the issue.
+   When work begins, use [`project-management`](../project-management/SKILL.md) to set the
+   issue to `In Progress`; if a prerequisite blocks work, set it to `On Hold`.
 
-2. **Choose the worktree.** For an RFC-linked issue, use the local worktree for that RFC.
-   Follow `start-rfc` to locate it or set one up for the current machine and agentic
-   framework. Reuse its directory, but create a separate issue branch from `origin/main`
-   there so each issue remains independently reviewable. Don't switch branches in a dirty
-   worktree or one another task is using; set up another local RFC worktree for parallel
-   work. For an issue without an RFC, use a new issue worktree. The primary checkout's
-   local `main` may lag behind `origin`; never base work on it, and never pull or reset it.
+2. **Choose the worktree.** Inspect `git worktree list --porcelain` before creating or
+   reusing a tree. Its `worktree` field is the checkout root; match `branch` and `HEAD` to
+   the RFC. Resolve paths such as `analysis/issue<N>/README.md` beneath that root, not the
+   current directory. The listing doesn't identify an owning agent or prove the tree is
+   idle. Reuse the RFC worktree only when it is clean and explicitly designated for this
+   task; otherwise create an isolated issue worktree. For a linked issue, name that
+   worktree for both the RFC and issue. For an issue without an RFC, use a new issue
+   worktree. In either case, branch from `origin/main`, check that the branch name is
+   unused locally and remotely, and never switch branches in a tree another task may be
+   using. The primary checkout's local `main` may lag behind `origin`; never base work on
+   it, and never pull or reset it.
 
    ```bash
    git fetch origin
@@ -25,8 +31,16 @@ description: Set up the branch, worktree, venv and ports for a Mantle Bloom issu
    ```
 
    `<agent>` is `claude` or `codex`; `<slug>` is two to four words, e.g.
-   `claude/issue-320-crust-transfer`. For an RFC-linked issue, run the equivalent branch
-   creation from inside the RFC worktree, without adding a separate issue worktree:
+   `claude/issue-320-crust-transfer`. For a parallel RFC-linked issue, use an RFC-specific
+   path while creating the issue branch directly from `origin/main`:
+
+   ```bash
+   git worktree add -b <agent>/issue-<N>-<slug> \
+     ../mantle-bloom-rfc-<NNNN>-issue-<N> origin/main
+   ```
+
+   If the RFC worktree is explicitly designated for this task, it is clean, and no other
+   task is using it, create the issue branch there instead:
 
    ```bash
    git switch -c <agent>/issue-<N>-<slug> origin/main
@@ -58,3 +72,6 @@ description: Set up the branch, worktree, venv and ports for a Mantle Bloom issu
    ```
 
    See the `replay-ab` skill for running the comparison.
+
+At completion, use `project-management` to mark the issue `Done` only after the work is
+accepted and merged, then identify and advance the next eligible RFC step.

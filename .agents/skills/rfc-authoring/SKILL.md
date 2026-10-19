@@ -137,3 +137,7 @@ in this order:
 - Open a PR that adds the RFC, with a `## Summary` of the problem and the recommendation.
   When addressing review comments, revise the RFC in place and add a `## Review fixes`
   section to the PR body listing each comment and what changed.
+- Use [`project-management`](../project-management/SKILL.md) to add the RFC PR to project 2
+  if absent and set its status to `In Progress`. Once the RFC tracking issue exists, set it
+  to `In Progress` too; if both items are on the board, keep both active while RFC-level
+  work continues.

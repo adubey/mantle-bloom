@@ -5,8 +5,8 @@ description: Measure a mantle-bloom change by replaying a saved world (.mbworld)
 
 # Replay A/B against origin/main
 
-1. **Pick the save and horizon.** Use the ones the issue names. Saves live in `~/Downloads`
-   as `mantle-bloom-seed<seed>-<years>y.mbworld`. Record each save's SHA-256
+1. **Pick the save and horizon.** Use the ones the issue names. The local save is often
+   named `mantle-bloom-seed<seed>-<years>y.mbworld`. Record each save's SHA-256
    (`shasum -a 256`), since earlier analyses cite it. If the save isn't there, ask the user;
    don't swap in another one.
 
@@ -29,7 +29,7 @@ description: Measure a mantle-bloom change by replaying a saved world (.mbworld)
 
    ```bash
    PYTHONPATH=backend backend/.venv/bin/python bin/debug/attribute_hm_ratchet.py \
-     ~/Downloads/<save>.mbworld --myr 43.1 --checkpoint-myr 2.5 --out <scratch>/branch.json
+     <local-save> --myr 43.1 --checkpoint-myr 2.5 --out <scratch-output>
    ```
 
 5. **Allow for noise.** Run-to-run noise on continental area is about ±2% at 43 Myr (#315).
@@ -39,10 +39,14 @@ description: Measure a mantle-bloom change by replaying a saved world (.mbworld)
 6. **Write it up** in `analysis/issue<N>/README.md`, using
    [`analysis/issue320/README.md`](../../../analysis/issue320/README.md) as the model:
    - what was replayed: the save, its SHA, the steps, and the commit of each run;
-   - the exact commands;
+   - the command with local input and scratch paths replaced by neutral placeholders such
+     as `<local-save>` and `<scratch-output>`;
    - a table of measures per run at the end point;
    - what the numbers mean, including the noise caveat;
    - runtime and RSS, flagged when a run didn't run alone.
 
-   Check in a compact comparison JSON. Don't check in full replay outputs or saves. Put the
-   headline table in the PR description too.
+   Check in a compact comparison JSON. Don't check in full replay outputs or saves. Never
+   put a personal username, home directory, absolute machine path, or private mount path in
+   the report or PR. Keep the unredacted command in an ignored local-only handoff note only
+   when a same-machine agent needs it, and verify that note is ignored. Put the headline
+   table in the PR description too.

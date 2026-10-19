@@ -86,6 +86,9 @@ For each merged implementation PR, decide whether its change stays.
   go-ahead.
 - **Tracking issue:** the completion PR closes it (`Closes #N`). Tick or strike its
   checklist items first, with the reason for each strike.
+- Use [`project-management`](../project-management/SKILL.md) to set the RFC project item to
+  `Done` when implemented or `Depreciated` when withdrawn, and reconcile any open issue
+  statuses with the outcome.
 
 ## 6. Update dependents and the index
 

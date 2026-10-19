@@ -1,6 +1,6 @@
 ---
 name: start-rfc
-description: Set up a local Mantle Bloom RFC worktree and coordinate its proposal with linked implementation issues. Use when starting or continuing an RFC workstream.
+description: Set up a new Mantle Bloom RFC worktree and coordinate its proposal with linked implementation issues. Use when starting a new RFC workstream.
 ---
 
 # Start work on an RFC
@@ -8,7 +8,8 @@ description: Set up a local Mantle Bloom RFC worktree and coordinate its proposa
 An RFC is the parent decision for a model change. It may be implemented through several
 issues, but those issues start only after the RFC is accepted and any diagnosis gates have
 passed. The RFC worktree is the shared local workspace for its proposal and linked issues;
-each issue still gets its own branch and reviewable PR.
+each issue still gets its own branch and reviewable PR. For a cold handoff or an existing
+RFC workstream, use [`continue-rfc`](../continue-rfc/SKILL.md) to reconstruct state first.
 
 ## 1. Identify the RFC and its state
 
@@ -34,19 +35,18 @@ each issue still gets its own branch and reviewable PR.
 
 ## 2. Set up the RFC worktree
 
-- Worktrees are local to a machine and its agentic framework. Check whether the RFC worktree
-  is accessible in the current environment; don't assume a Claude Code worktree is also
-  available to Codex, or vice versa. If it isn't available here, set up a local RFC
-  worktree from the canonical state that is accessible through Git: use the RFC PR branch
-  to continue a draft, and `origin/main` for a new or accepted RFC. Unpushed work in another
+- Worktrees are local to a machine and its agentic framework. From this repository, run
+  `git worktree list --porcelain` before creating another tree. Each block's `worktree`
+  field is a checkout root; `branch` and `HEAD` identify its current ref and commit. Match
+  these to the RFC PR or expected run commit, then resolve a repo-relative file beneath
+  that root (for example `<worktree-root>/rfc/NNNN-slug.md`). Quote paths containing
+  spaces. The listing doesn't identify the agent that created a tree, prove that its files
+  are accessible, or show worktrees registered in another clone or host. Check access
+  read-only. If an existing draft's tree isn't reachable, follow
+  [`continue-rfc`](../continue-rfc/SKILL.md) for an isolated continuation branch; for a
+  new RFC or an accepted RFC on `origin/main`, create a new local branch there. Never
+  check out or push to another agent's shared RFC branch. Unpushed work in another
   environment is not available through its worktree alone.
-- For an RFC PR branch available on `origin`, fetch it and create a local worktree that
-  tracks it:
-
-  ```bash
-  git fetch origin
-  git worktree add --track ../mantle-bloom-rfc-<NNNN> origin/<rfc-branch>
-  ```
 
 - For a new RFC, or an accepted RFC whose content is already on `origin/main`, create a
   local RFC worktree from `origin/main`; the primary checkout's local `main` may lag behind
@@ -57,17 +57,43 @@ each issue still gets its own branch and reviewable PR.
   git worktree add -b <agent>/rfc-<NNNN>-<slug> ../mantle-bloom-rfc-<NNNN> origin/main
   ```
 
-  `<agent>` is `claude` or `codex`. For an RFC already in review, continue its existing
-  branch rather than creating a competing one. Once accepted, linked implementation issues
-  use this RFC worktree directory but create their own branches from `origin/main` with
-  `start-issue`; they do not go on the RFC branch.
+  `<agent>` is `claude` or `codex`. Once accepted, linked implementation issues use an
+  RFC worktree directory when it is available and designated for the task; parallel work
+  gets another RFC-specific worktree. Each issue uses its own branch from `origin/main`
+  with `start-issue`, never the RFC branch.
 - Run `./bin/setup.sh` in a new worktree. Each worktree needs its own `backend/.venv`; do
   not symlink one from another tree.
 - Pick free, non-user ports only if running the app. Ports 8000 and 5173 belong to the
   user's instance. If the RFC needs before/after replay numbers, follow `replay-ab` and use
   its detached `origin/main` baseline.
 
-## 3. Choose the next action from the RFC state
+## 3. Make run results survive a handoff
+
+- Before running a diagnosis gate, find the required inputs and check for existing results
+  in the RFC, linked issue/PR, and any referenced `analysis/` directory. On the same
+  machine, `git worktree list --porcelain` can reveal another registered worktree, and its
+  files may still be accessible even when another agent created it. Inspect relevant
+  worktrees read-only; don't change branches or clean up another task's files.
+- Write durable findings to `analysis/issue<N>/README.md` (for issue gates) or the RFC's
+  diagnosis-gate section. Include the command/script, input save name and SHA, seed if
+  applicable, step schedule and controls, commit for each compared run, the measured
+  values, and repo-relative paths to checked-in scripts or compact JSON. Keep only compact
+  JSON in the repository; full saves and replay outputs stay out of it. Never put a
+  personal username, home directory, absolute machine path, or private mount path in an
+  RFC, issue, PR, or checked-in analysis report. If another same-machine agent needs a
+  local output's location, put it in an ignored, local-only handoff note and verify the
+  note is ignored; identify the artifact in the durable report by a neutral basename or
+  run label and its checksum where useful. See `replay-ab` for report fields.
+- Treat temporary output paths as machine-local clues, not as the record of a result. If a
+  result is needed for a later decision, summarize the evidence and reproduction details
+  in the durable report before the current run context disappears. Don't copy large saves
+  or raw replay output into the repo, and don't publish personal filesystem paths.
+
+When RFC work starts or resumes, use [`project-management`](../project-management/SKILL.md)
+to put its project item in `In Progress`. Use the RFC tracking issue once it exists; before
+then use the RFC PR.
+
+## 4. Choose the next action from the RFC state
 
 - **New or draft RFC:** use `rfc-authoring` for evidence, literature, design, citations,
   acceptance criteria, and the RFC PR. Keep the RFC in `rfc/NNNN-slug.md` and update
@@ -80,8 +106,10 @@ each issue still gets its own branch and reviewable PR.
   dependency-ordered issues. Each issue should cite the RFC, name its own deliverable and
   acceptance checks, and avoid duplicating work assigned to another issue. Add each one to
   the tracking issue's checklist, with its PR once open. Start each
-  issue using `start-issue`; it will reuse this RFC worktree and create an issue branch from
-  `origin/main`.
+  issue using `start-issue`; it will reuse this RFC worktree only when it is clean and
+  designated for that task. Otherwise it will create an isolated RFC-specific issue
+  worktree and branch from `origin/main`. Add each new issue to project 2 in `Backlog` by
+  default; use `Ready` if it is urgent, following `project-management`.
 - **Implementation underway:** use the tracking issue to identify remaining work, and tick
   items off as their PRs merge or their gates report. When a gate result rules a planned
   step out, strike it there with the reason. When all of its implementation issues have
