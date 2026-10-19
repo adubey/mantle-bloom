@@ -17,10 +17,10 @@ description: Measure a Mantle Bloom change by replaying a saved world (.mbworld)
    a new one under `bin/debug/` with a usage docstring, only when nothing measures what you
    need.
 
-3. **Baseline = a detached `origin/main` worktree** (see the `start-issue` skill). Record
-   its commit. Never `git stash` to get a "before" run: the stash is shared by every
-   worktree, including the user's own. Never use the primary checkout either, because its
-   `main` lags `origin`.
+3. **Baseline = a task-specific detached `origin/main` worktree** (see `start-issue`).
+   Never share or reuse another task's baseline worktree. Record its commit. Never
+   `git stash` to get a "before" run: the stash is shared by every worktree, including the
+   user's own. Never use the primary checkout either, because its `main` lags `origin`.
 
 4. **Run the replay.** Follow the concurrency limits in `AGENTS.md`; never run replay work
    alongside a unit or stress test. A 43 Myr replay of the seed 997271774 save takes about

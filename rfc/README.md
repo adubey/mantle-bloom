@@ -75,15 +75,15 @@ damage-driven local cuts that may link into rift segments; see
 ## Writing and reviewing
 
 Use [`start-rfc`](../.agents/skills/start-rfc/SKILL.md) to begin or advance an RFC
-workstream, including acceptance, diagnosis gates, and implementation planning. Use
+workstream, including acceptance, diagnosis gates, implementation issues, and their PRs. Use
 [`continue-rfc`](../.agents/skills/continue-rfc/SKILL.md) to reconstruct the state, evidence
-and worktree after a handoff, then return to the RFC workflow. RFC content and numbering
-belong to [`rfc-authoring`](../.agents/skills/rfc-authoring/SKILL.md).
+and worktree after a handoff, then return to the RFC workflow.
 Use [`project-management`](../.agents/skills/project-management/SKILL.md) for project
-board status transitions during RFC and issue work.
-It sets the sections (problem, solutions, design, provisional touchpoints, assumptions and
-uncertainty, acceptance and falsification criteria, references), the citation format, and
-how sources are checked. They are reviewed with
+board status transitions during RFC and issue work. [`rfc-authoring`](../.agents/skills/rfc-authoring/SKILL.md)
+owns RFC content and numbering and defines its sections (problem, solutions, design,
+provisional touchpoints, assumptions and uncertainty, acceptance and falsification criteria,
+references), citation format, and source-checking procedure.
+RFC proposals are reviewed with
 [`rfc-review`](../.agents/skills/rfc-review/SKILL.md), and completed or withdrawn with
 [`complete-rfc`](../.agents/skills/complete-rfc/SKILL.md).
 `.agents/skills/rfc-authoring/check_citations.py` checks citations and DOIs.
@@ -91,14 +91,21 @@ how sources are checked. They are reviewed with
 ## Lifecycle
 
 1. **Draft:** opened as a PR that adds the RFC; revised in place as review comes in.
-2. **Accepted:** the project owner merges it, or, for an RFC already merged as a draft,
-   says they accept it; the status is then set to Accepted. Any diagnosis gate the RFC sets (a measurement that
-   decides between fixes) is run next, and the RFC is updated with the result.
-3. **Implemented:** the accepted design is split into issues and PRs that cite the RFC,
-   listed on the RFC's tracking issue, opened when it is accepted. Each issue has its own
-   worktree and branch from `origin/main`; the RFC proposal worktree remains separate (see
-   [`start-issue`](../.agents/skills/start-issue/SKILL.md)). The status is updated when the
-   last one lands and the acceptance criteria are met, with
+2. **Accepted:** the project owner accepts an RFC by merging its RFC PR. If it has already
+   been merged while still marked Draft, only the project owner's explicit confirmation
+   counts. Before gates or implementation, verify acceptance from GitHub or an explicit
+   owner statement. If neither is clear, ask the project owner; a generic request to start
+   work is not acceptance. Any agent may ask, but only the owner decides. Set the status to
+   Accepted and create or update the tracking issue immediately, listing diagnosis gates
+   and planned implementation steps. Run each gate next and record its result in the RFC.
+3. **Implemented:** implementation issues may be opened at acceptance when their scope is
+   independent of diagnosis-gate results. If a gate determines the implementation approach
+   or issue scope, wait for its result before opening those sub-issues. In either case,
+   implementation does not begin until required gates pass. Each implementation issue has
+   its own worktree and branch from `origin/main`; the RFC proposal worktree remains
+   separate (see [`start-issue`](../.agents/skills/start-issue/SKILL.md)). An RFC with
+   sub-issues may have multiple implementation PRs, one per issue. The status is updated
+   when the last one lands and the acceptance criteria are met, with
    [`complete-rfc`](../.agents/skills/complete-rfc/SKILL.md). From then on the code and
    `docs/` are the source of truth, and the RFC stays as the record of why.
 4. **Withdrawn:** the project stops pursuing it before it is implemented, because its

@@ -21,16 +21,21 @@ membership and its initial status.
 - An exploration tracker requested by `explore-problem` is a bounded investigation issue,
   even when the underlying scientific question is large or uncertain. It does not authorize
   model implementation or replace an RFC that may be needed for a resulting model change.
-- If this is an additional step for an RFC, confirm the RFC is accepted and its required
-  diagnosis gates have passed. If the work changes the RFC's design or plan, revise the
-  RFC first with [`rfc-authoring`](../rfc-authoring/SKILL.md). Create the issue as a child
-  of that RFC's tracking issue and update its checklist in dependency order.
+- If this is an implementation sub-issue, confirm the RFC is accepted. If a pending gate
+  determines the issue's scope or implementation approach, wait for its result before
+  creating the sub-issue; otherwise it may be created at acceptance. In all cases, do not
+  start implementation until required gates pass. If the work changes the RFC's design or
+  plan, revise the RFC first with [`rfc-authoring`](../rfc-authoring/SKILL.md). Create an
+  eligible issue as a child of that RFC's tracking issue and update its checklist in
+  dependency order.
 - If no RFC covers proposed implementation work, create a standalone issue only for small,
   bounded changes. For a large, uncertain or science-led model change that meets
   `AGENTS.md`'s RFC criteria, start an RFC instead of treating an issue as authorization to
   implement it.
-- If the RFC is still a draft or its gates are pending, do not create an implementation
-  sub-issue. Record the needed proposal or gate work in the RFC workflow first.
+- If the RFC is still a draft, do not create an implementation sub-issue. Record the needed
+  proposal or gate work in the RFC workflow first. A pending gate only delays issue
+  creation when its result determines that issue's approach or scope; implementation itself
+  remains blocked until required gates pass.
 
 ## 2. Write and create the issue
 

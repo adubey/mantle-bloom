@@ -59,8 +59,9 @@ Run from the repo root (or worktree root).
   `backend/.venv`, so don't symlink one from another tree.
 - **Ports:** never use 8000 or 5173 (the user's own instance). Pick free ports for each
   worktree so issues can run side by side.
-- **Before/after comparisons** use a detached `origin/main` worktree. Never use
-  `git stash`: the stash is shared by every worktree, including the user's.
+- **Before/after comparisons** use a task-specific detached `origin/main` worktree. Never
+  share or reuse another task's baseline worktree. Never use `git stash`: the stash is
+  shared by every worktree, including the user's.
 - **Replays are RAM-heavy** (0.6–2.7 GB each). Run at most two at once, and never alongside
   a unit or stress test run. Follow this limit for replay work regardless of the skill used.
 - **Reviews:** when a PR's author reports its tests passing, don't rerun them. Run targeted
@@ -102,10 +103,13 @@ Run from the repo root (or worktree root).
   docstring). Findings go in `analysis/issue<N>/README.md`, with only compact JSON checked
   in. Saves and full replay outputs stay out of the repo.
 - **RFCs:** a model change that is large, uncertain or rests on the science starts as an RFC
-  in `rfc/NNNN-slug.md` ([rfc/README.md](rfc/README.md) has the index and lifecycle). Write
-  and revise RFCs with the `rfc-authoring` skill, review them with `rfc-review`, and close
-  them out (implemented or withdrawn) with `complete-rfc`. Open
-  implementation issues only after an RFC is accepted and its diagnosis gates have passed.
+  in `rfc/NNNN-slug.md` ([rfc/README.md](rfc/README.md) has the index and lifecycle). Use
+  `rfc-authoring` for its content and `start-rfc` to advance acceptance, gates and
+  implementation PRs; review RFCs with `rfc-review`, and close them out (implemented or
+  withdrawn) with `complete-rfc`. Open
+  implementation issues after acceptance when their scope is independent of diagnosis
+  gates; wait for gate results first when they determine the issue scope or implementation
+  approach. Implementation must not begin until required gates pass.
 - **Commits:** imperative subject that says what changed in model terms (e.g. "Transfer
   consumed lower-plate crust to the upper plate"), with the issue number when useful.
 - **PRs:** a `## Summary` that explains what changed and why, with replay numbers in a

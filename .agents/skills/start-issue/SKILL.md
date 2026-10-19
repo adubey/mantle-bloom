@@ -55,14 +55,16 @@ description: Set up an isolated branch, worktree, venv and ports for a Mantle Bl
    ./bin/stop.sh --port <P> [--frontend-port <Q>]              # same ports to stop
    ```
 
-5. **If the work needs before/after numbers**, set up the baseline now. It's a detached
-   `origin/main` worktree, reused across issues:
+5. **If the work needs before/after numbers**, set up a baseline now. Use a task-specific,
+   detached `origin/main` worktree; never share or reuse another task's baseline tree:
 
    ```bash
-   git worktree add --detach ../mantle-bloom-origin-main origin/main \
-     || git -C ../mantle-bloom-origin-main checkout --detach origin/main
-   (cd ../mantle-bloom-origin-main && ./bin/setup.sh --backend-only)
+   git worktree add --detach ../mantle-bloom-issue-<N>-baseline origin/main
+   (cd ../mantle-bloom-issue-<N>-baseline && ./bin/setup.sh --backend-only)
    ```
+
+   If that path already exists, do not switch or reuse its worktree; choose another unique
+   path for this issue.
 
    See the `replay-ab` skill for running the comparison.
 

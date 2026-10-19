@@ -9,9 +9,10 @@ An RFC proposes; it doesn't commit to code. It records the evidence, alternative
 assumptions and uncertainty, rough costs, and *provisional* touchpoints in the source. This
 skill owns the document: for a new RFC, choose its next `NNNN` by checking the index and
 existing filenames, then write and validate the content. Use `start-rfc` to set up or
-advance the RFC workstream, including acceptance and implementation planning. Only after
-acceptance and any diagnosis gate has passed is the design broken into implementation
-issues. Don't open implementation issues while drafting.
+advance the RFC workstream, including acceptance, gate sequencing, and implementation
+planning. Open the RFC proposal PR from this skill; implementation work is proposed through
+one or more implementation PRs coordinated by `start-rfc`, generally one per sub-issue.
+Implementation does not begin until required diagnosis gates pass.
 
 ## 1. Gather the evidence
 
@@ -140,7 +141,9 @@ in this order:
 - Add the RFC to the index in `rfc/README.md`.
 - Run `check_citations.py --crossref` and `backend/.venv/bin/ruff check` (for any new
   `bin/debug/` script).
-- Open a PR that adds the RFC, with a `## Summary` of the problem and the recommendation.
+- Open the **RFC proposal PR** that adds the RFC, with a `## Summary` of the problem and
+  recommendation. This is separate from implementation PRs, which `start-rfc` coordinates
+  after acceptance and any required diagnosis gates.
   When addressing review comments, revise the RFC in place and add a `## Review fixes`
   section to the PR body listing each comment and what changed.
 - When RFC proposal work starts or resumes, follow
