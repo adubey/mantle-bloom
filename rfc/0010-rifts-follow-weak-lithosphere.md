@@ -156,8 +156,8 @@ sized against the craton-loss gate, and take plume weakening through RFC 0007.
   prerequisite, not an assumed by-product.
 - **Damage update.** Where the tensile load exceeds local yield, integrate the inelastic extension
   rate over the portion of the step in which it is positive:
-  `d epsilon_rift / dt = max(0, sigma_t - Y_t) / eta_rift`, with `eta_rift` in Pa·s. Keep
-  `epsilon_rift` stays in `[0, epsilon_fail]`; convert it to a bounded damage fraction
+  `d epsilon_rift / dt = max(0, sigma_t - Y_t) / eta_rift`, with `eta_rift` in Pa·s. Cap
+  `epsilon_rift` at `epsilon_fail` and convert it to a bounded damage fraction
   `D = clip(epsilon_rift / epsilon_fail, 0, 1)`. A provisional bounded softening form is
   `Y_t(D) = Y_t(0) * [1 - D * (1 - q_res)]`, where the residual-strength fraction `q_res` is in
   [0, 1]. Reaching `D = 1` marks local failure; this creates/extends a segment but does not split the
