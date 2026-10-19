@@ -148,17 +148,17 @@ sized against the craton-loss gate, and take plume weakening through RFC 0007.
 
 ### Mechanics (provisional)
 
-- **State and loading.** Add a bounded per-node cumulative irreversible extensional strain
-  `epsilon_rift` (dimensionless, initially zero). Obtain local tensile stress `sigma_t` in Pa and
-  local yield strength `Y_t` in Pa from a reduced-order load/strength calculation tied to RFC 0012.
-  The current torque balance drives whole-plate motion; its loads do not by themselves define
-  intraplate stress, so a spatial loading distribution is an explicit prerequisite, not an assumed
-  by-product.
+- **State and loading.** Add a per-node cumulative irreversible extensional strain
+  `epsilon_rift` (dimensionless, initially zero and capped at `epsilon_fail`). Obtain local tensile
+  stress `sigma_t` in Pa and local yield strength `Y_t` in Pa from a reduced-order load/strength
+  calculation tied to RFC 0012. The current torque balance drives whole-plate motion; its loads do
+  not by themselves define intraplate stress, so a spatial loading distribution is an explicit
+  prerequisite, not an assumed by-product.
 - **Damage update.** Where the tensile load exceeds local yield, integrate the inelastic extension
   rate over the portion of the step in which it is positive:
   `d epsilon_rift / dt = max(0, sigma_t - Y_t) / eta_rift`, with `eta_rift` in Pa·s. Keep
-  `epsilon_rift >= 0`; convert it to a bounded damage fraction `D = clip(epsilon_rift / epsilon_fail,
-  0, 1)`. A provisional bounded softening form is
+  `epsilon_rift` stays in `[0, epsilon_fail]`; convert it to a bounded damage fraction
+  `D = clip(epsilon_rift / epsilon_fail, 0, 1)`. A provisional bounded softening form is
   `Y_t(D) = Y_t(0) * [1 - D * (1 - q_res)]`, where the residual-strength fraction `q_res` is in
   [0, 1]. Reaching `D = 1` marks local failure; this creates/extends a segment but does not split the
   plate unless the failed links form a viable connected boundary. `epsilon_fail`, `eta_rift`,
