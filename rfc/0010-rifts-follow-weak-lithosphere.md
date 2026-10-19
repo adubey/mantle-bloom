@@ -2,8 +2,8 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-15
-- **Last revised:** 2026-10-18 after #480 routing diagnostics; revised to local rift segments
-- **Related:** #481 (tracking), #480 (min-cut diagnostic), #472 / PR #479 (RFC 0009 G3), #389 (RFC 0003 tracking), #378, #385, #388 (RFC 0003 gates), PR #418 (RFC
+- **Last revised:** 2026-10-18 after #480 routing diagnostics; revised local-cut design accepted and tracked in #487
+- **Related:** #487 (tracking), #481 (superseded tracker), #480 (min-cut diagnostic), #472 / PR #479 (RFC 0009 G3), #389 (RFC 0003 tracking), #378, #385, #388 (RFC 0003 gates), PR #418 (RFC
   0003 solution 1); RFCs [0003](0003-rifting-around-cratons.md) (superseded by RFC 0010),
   [0009](0009-craton-mosaic.md) (cratons-first layout; G3 initially selected the min-cut),
   [0007](0007-mantle-plumes-and-plateaus.md) (plume weakening),
