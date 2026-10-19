@@ -30,6 +30,7 @@ class ThinShellResult:
     failure_ratio: np.ndarray  # (N,), tensile resultant / integrated strength
     equilibrated_force_n: np.ndarray  # (N, 3), applied tangent force after rigid-mode removal
     rigid_rotation_force_n: np.ndarray  # (N, 3), removed rigid-rotation load component
+    fixed_node_mask: np.ndarray  # (N,), nodes constrained to zero tangent displacement
     triangles: np.ndarray  # (T, 3), convex-hull shell elements
     solver_stop_code: int
     equilibrium_residual_n: float
@@ -107,6 +108,7 @@ def solve_thin_shell(
     radius_m: float = lithosphere.PLANET_RADIUS_M,
     tolerance: float = 1e-9,
     max_iterations: int | None = None,
+    fixed_node_mask: np.ndarray | None = None,
 ) -> ThinShellResult:
     """Solve small-strain membrane equilibrium on a spherical node set.
 
@@ -114,6 +116,9 @@ def solve_thin_shell(
     by shell-normal pressure and is excluded from in-plane equilibrium. Rigid-rotation load
     is removed because plate-scale torque is handled by the existing motion solve. The
     remaining tangential load is transferred through linear triangular membrane elements.
+    By default all edges are free. `fixed_node_mask` optionally clamps selected nodes to zero
+    tangent displacement in the plate-motion frame; reactions at those nodes are supplied by
+    the constraint and are excluded from the free-node residual.
     `tensile_strength_resultant_n_per_m` is the supplied depth-integrated tensile capacity;
     each element uses plane-stress elasticity with local effective thickness and modulus.
 
@@ -129,8 +134,13 @@ def solve_thin_shell(
     thickness = np.broadcast_to(np.asarray(thickness_m, dtype=float), (n,)).copy()
     modulus = np.broadcast_to(np.asarray(young_modulus_pa, dtype=float), (n,)).copy()
     strength = np.asarray(tensile_strength_resultant_n_per_m, dtype=float)
+    fixed_nodes = np.zeros(n, dtype=bool) if fixed_node_mask is None else np.asarray(fixed_node_mask, dtype=bool)
     if points.shape != (n, 3) or force.shape != (n, 3) or areas.shape != (n,) or strength.shape != (n,):
         raise ValueError("points, forces, areas, and strength must have matching node counts")
+    if fixed_nodes.shape != (n,):
+        raise ValueError("fixed_node_mask must have one value per node")
+    if np.all(fixed_nodes):
+        raise ValueError("thin-shell solve requires at least one unconstrained node")
     if n < 4:
         raise ValueError("thin-shell solve requires at least four non-coplanar nodes")
     if (np.any(~np.isfinite(points)) or np.any(~np.isfinite(force)) or np.any(~np.isfinite(areas))
@@ -176,9 +186,13 @@ def solve_thin_shell(
         values.extend(stiffness.ravel().tolist())
         element_data.append((triangle, dofs, strain_matrix, constitutive, element_area, axis_x, axis_y))
     stiffness = coo_matrix((values, (rows, cols)), shape=(2 * n, 2 * n)).tocsr()
-    limit = max_iterations if max_iterations is not None else max(500, 4 * n)
-    solve = lsmr(stiffness, equilibrated_dofs, atol=tolerance, btol=tolerance, maxiter=limit)
-    displacement_dofs, stop_code = solve[0], int(solve[1])
+    limit = max_iterations if max_iterations is not None else max(1000, 20 * n)
+    free_dofs = ~np.repeat(fixed_nodes, 2)
+    reduced_stiffness = stiffness[free_dofs][:, free_dofs]
+    solve = lsmr(reduced_stiffness, equilibrated_dofs[free_dofs], atol=tolerance, btol=tolerance, maxiter=limit)
+    displacement_dofs = np.zeros(2 * n)
+    displacement_dofs[free_dofs] = solve[0]
+    stop_code = int(solve[1])
     if stop_code not in (0, 1, 2, 4, 5):
         raise RuntimeError(f"thin-shell equilibrium solver did not converge (stop code {stop_code})")
 
@@ -214,9 +228,10 @@ def solve_thin_shell(
         failure_ratio=failure_ratio,
         equilibrated_force_n=equilibrated_force_xyz,
         rigid_rotation_force_n=rigid_force_xyz,
+        fixed_node_mask=fixed_nodes,
         triangles=triangles,
         solver_stop_code=stop_code,
-        equilibrium_residual_n=float(np.linalg.norm(stiffness @ displacement_dofs - equilibrated_dofs)),
+        equilibrium_residual_n=float(np.linalg.norm((stiffness @ displacement_dofs - equilibrated_dofs)[free_dofs])),
     )
 
 

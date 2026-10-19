@@ -23,8 +23,18 @@ solver used `E = 70 GPa`, `H = 100 km`, and a uniform supplied capacity of `2e10
 
 Across these refinements the recovered mean varies by 0.0034% of the analytic load. This checks
 the manufactured linear membrane case and confirms that the partial-cap mesh excludes the convex
-hull's artificial underside. It does not establish accuracy for irregular plate outlines, other
-load distributions, alternative edge conditions or a natural lithosphere strength profile.
+hull's artificial underside. This grid series by itself does not establish accuracy for general
+plate outlines, other load distributions, alternative edge conditions or a natural lithosphere
+strength profile.
+
+An irregular convex cap with 67 nodes and 111 surface triangles was then loaded with the same
+manufactured uniaxial edge traction. With free edges its mean resultant was `9.988472e9 N/m`
+(0.1153% low). Clamping the six nodes on the western edge changed the mean to
+`9.706457e9 N/m` (2.82% below the free-edge result); both solves had relative free-node residuals
+below `2.3e-6`, and the clamped displacements were exactly zero. This confirms the solver responds
+to the selected boundary condition on an irregular convex patch. The clamped case has no separate
+closed-form benchmark, so this is a sensitivity check, not an accuracy claim. Nonconvex outlines,
+other edge placements and actual plate meshes remain untested.
 
 ## Source trace and units
 
@@ -32,7 +42,7 @@ load distributions, alternative edge conditions or a natural lithosphere strengt
 |---|---|---|
 | `torque.gather_boundary_force_inputs` | Per-own-node position, crust/mantle thickness, nearest-neighbor direction and distance, nearest neighbor plate/node, and neighbor angular velocity. | Geometry/material sampling only. It has no stress tensor, adjacency force, or load-transfer operator. Nearest-neighbor direction is not an intraplate tensile axis. |
 | `torque.gather_per_node_force_field` / `PerNodeForceField` | Per-node slab-pull, slab-drag, ridge-push, basal-drag and contact-drag force vectors (N); total external force and area-average applied traction (Pa). | Preserves the current spatial external forcing before torque aggregation. The vector sum reproduces the current torque terms, but `total_traction_pa` is not internal tensile stress. |
-| `thin_shell.solve_force_field` / `solve_thin_shell` | Nodal membrane stress resultants (N/m), maximum tensile principal resultant, supplied integrated strength (N/m), and failure ratio. | Solves a reduced linear elastic equilibrium on outward-facing convex-hull facets. A shallow-cap uniaxial manufactured solution recovers its analytic resultant within 0.16% over 3 × 3 through 9 × 9 nodes. Radial load is excluded and rigid rotation is removed. Irregular outlines, alternate edge conditions, constitutive and omitted-process sensitivity remain to be validated. |
+| `thin_shell.solve_force_field` / `solve_thin_shell` | Nodal membrane stress resultants (N/m), maximum tensile principal resultant, supplied integrated strength (N/m), and failure ratio. | Solves a reduced linear elastic equilibrium on outward-facing convex-hull facets. The shallow-cap manufactured load is recovered within 0.16% over 3 × 3 through 9 × 9 nodes. An irregular convex cap also passes; clamping its west edge changes the mean result by 2.82% with a small free-node residual. Radial load is excluded and rigid rotation is removed. Nonconvex outlines, other edge placements, constitutive and omitted-process sensitivity remain to be validated. |
 | `slab_pull_force_n` | A scalar force in N on selected subducting boundary nodes: positive column buoyancy (Pa) times sunk length and represented boundary length. | A boundary-local driving force; not interior traction. `slab_pull_torque` crosses it with the planet-radius lever arm and sums it. |
 | `ridge_push_force_vectors_n` / `ridge_push_torque` | Boundary-local force magnitude from isostatic relief, density contrast, gravity, and represented boundary length (N). | Direction is the local away-from-neighbor tangent; it is now retained as a vector for load transfer before moment aggregation. |
 | `basal_drag_force_vectors_n` / `basal_drag_coefficients` | Node-area-integrated basal drag. The underlying force per area has traction units (Pa), using mantle-flow and rigid-plate velocities. | Distributed basal force is retained node-wise and transferred by the diagnostic shell solve; it is not itself in-plane stress. |
@@ -45,9 +55,9 @@ The complete trace is in `backend/app/torque.py` (`gather_boundary_force_inputs`
 
 ## Gate disposition
 
-- **Current diagnostic interface:** spatial tensile resultants and comparison to supplied integrated strength are available. The manufactured shallow-cap refinement check passes; irregular geometry and boundary-condition sensitivity and a material strength provider are not established, so this is not ready for damage calibration.
+- **Current diagnostic interface:** spatial tensile resultants and comparison to supplied integrated strength are available. Manufactured shallow-cap refinement and one irregular convex outline/free-versus-clamped edge comparison pass. Nonconvex geometry, broader boundary sensitivity and a material strength provider are not established, so this is not ready for damage calibration.
 - **`internal_stress`:** retain only as a plate-scale eligibility/background signal if desired; it cannot trigger or weight local damage.
 - **No calibrated strength field:** do not assign `Y_t`, `eta_rift`, or failure-strain parameters from these diagnostics. Do not infer stress from applied traction, rigid rotation, flow-cluster residuals or `Plate.internal_stress`.
-- **Required next work:** derive a depth-integrated column strength field with explicit units and ownership; check irregular mesh/edge sensitivity and compare load/capacity on additional synthetic geometries and replay candidates. Otherwise revise/reject the local damage premise and specify a phenomenological rift rule with its model boundary and validation criteria.
+- **Required next work:** derive a depth-integrated column strength field with explicit units and ownership; check nonconvex/representative mesh and broader edge sensitivity, then compare load/capacity on additional synthetic geometries and replay candidates. Otherwise revise/reject the local damage premise and specify a phenomenological rift rule with its model boundary and validation criteria.
 
 The RFC now records this outcome and keeps the local-cut damage design conditional. Gate 1 is closed by the explicit baseline/exclusion decision recorded in `analysis/issue487/README.md`; the archived-stream provenance limitation remains documented.
