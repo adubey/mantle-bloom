@@ -48,6 +48,16 @@ or a runtime difference, caused the divergence. The second clean run reproduces 
 clean run bit-for-bit, but the archived event streams diverge from it within the first 3–6
 events. Counts and matching signature occurrences are tabulated in `gate1-summary.json`.
 
+## Gate 1 disposition (2026-10-19): closed
+
+Use the paired, provenance-recorded current runs as the repeatable baseline for subsequent
+comparison. Explicitly retire the older production and margin archives from calibration because
+their missing worktree/runtime provenance cannot be recovered and their event streams do not
+match the repeatable runs. Keep the historical archive comparison as a limitation; do not pool
+its counts or margins with the baseline. The paired baseline has 380 production cut rows
+across seeds 7/11/2024 (144/111/125), with each seed's tap count matching its production
+ledger count and all rows reproduced bit-for-bit in the second full run.
+
 Signature identity `(kind, elapsed Myr, plate ID, node count)` is not enough to align all
 events: among its 4, 6, and 4 matches to the archived margin streams, exact numeric/status
 margin values match on only 3, 1, and 1 events respectively. Most discrepancies are small,

@@ -1,0 +1,227 @@
+"""Reduced thin-shell membrane diagnostic for per-node tectonic loads.
+
+This is an offline diagnostic, not a production plate-motion or deformation solver. It
+projects applied loads onto the shell tangent plane, removes the part that can accelerate a
+rigid plate rotation, solves linear membrane equilibrium on a convex-hull triangular mesh,
+and reports depth-integrated stress resultants. A caller supplies the integrated tensile
+strength in N/m; this module does not invent a geotherm or a lithosphere strength law.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import numpy as np
+from scipy.sparse import coo_matrix
+from scipy.sparse.linalg import lsmr
+from scipy.spatial import ConvexHull
+
+from . import geometry, lithosphere
+
+
+@dataclass(frozen=True)
+class ThinShellResult:
+    """Nodal fields from a reduced membrane equilibrium solve."""
+
+    displacement_m: np.ndarray  # (N, 3), tangent displacement
+    stress_resultant_n_per_m: np.ndarray  # (N, 3): xx, yy, xy in each node's tangent basis
+    max_tensile_resultant_n_per_m: np.ndarray  # (N,), largest principal membrane resultant
+    tensile_strength_resultant_n_per_m: np.ndarray  # (N,), caller-supplied integrated strength
+    failure_ratio: np.ndarray  # (N,), tensile resultant / integrated strength
+    equilibrated_force_n: np.ndarray  # (N, 3), applied tangent force after rigid-mode removal
+    rigid_rotation_force_n: np.ndarray  # (N, 3), removed rigid-rotation load component
+    triangles: np.ndarray  # (T, 3), convex-hull shell elements
+    solver_stop_code: int
+    equilibrium_residual_n: float
+
+
+def _tangent_basis(points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Return stable orthonormal tangent axes at each unit-sphere point."""
+    reference = np.zeros_like(points)
+    use_z = np.abs(points[:, 2]) < 0.9
+    reference[use_z, 2] = 1.0
+    reference[~use_z, 0] = 1.0
+    first = geometry.normalize(np.cross(points, reference))
+    second = np.cross(points, first)
+    return first, second
+
+
+def _triangle_element(points_xyz: np.ndarray, triangle: np.ndarray, first: np.ndarray, second: np.ndarray,
+                      thickness_m: np.ndarray, young_modulus_pa: np.ndarray,
+                      poisson_ratio: float, radius_m: float) -> tuple[
+                          np.ndarray, np.ndarray, np.ndarray, float, np.ndarray, np.ndarray
+                      ]:
+    """Return global-node element stiffness, strain matrix, constitutive matrix and area."""
+    ids = triangle
+    radial = geometry.normalize(points_xyz[ids].sum(axis=0))
+    edge = points_xyz[ids[1]] - points_xyz[ids[0]]
+    axis_x = geometry.normalize(edge - np.dot(edge, radial) * radial)
+    axis_y = np.cross(radial, axis_x)
+    xy = np.column_stack((points_xyz[ids] @ axis_x, points_xyz[ids] @ axis_y)) * radius_m
+    x, y = xy[:, 0], xy[:, 1]
+    twice_area = (x[1] - x[0]) * (y[2] - y[0]) - (x[2] - x[0]) * (y[1] - y[0])
+    area = abs(twice_area) * 0.5
+    if area <= np.finfo(float).eps * radius_m**2:
+        raise ValueError("thin-shell mesh contains a degenerate triangle")
+    b = np.array([
+        [y[1] - y[2], 0.0, y[2] - y[0], 0.0, y[0] - y[1], 0.0],
+        [0.0, x[2] - x[1], 0.0, x[0] - x[2], 0.0, x[1] - x[0]],
+        [x[2] - x[1], y[1] - y[2], x[0] - x[2], y[2] - y[0], x[1] - x[0], y[0] - y[1]],
+    ]) / twice_area
+    e_h = float(np.mean(thickness_m[ids]))
+    e_pa = float(np.mean(young_modulus_pa[ids]))
+    scale = e_pa * e_h / (1.0 - poisson_ratio**2)
+    constitutive = scale * np.array([
+        [1.0, poisson_ratio, 0.0],
+        [poisson_ratio, 1.0, 0.0],
+        [0.0, 0.0, (1.0 - poisson_ratio) * 0.5],
+    ])
+    transform = np.zeros((6, 6))
+    for local, node in enumerate(ids):
+        transform[2 * local, 2 * local:2 * local + 2] = (np.dot(axis_x, first[node]), np.dot(axis_x, second[node]))
+        transform[2 * local + 1, 2 * local:2 * local + 2] = (np.dot(axis_y, first[node]), np.dot(axis_y, second[node]))
+    stiffness = area * transform.T @ b.T @ constitutive @ b @ transform
+    return stiffness, b @ transform, constitutive, area, axis_x, axis_y
+
+
+def solve_thin_shell(
+    points_xyz: np.ndarray,
+    areas_m2: np.ndarray,
+    applied_force_n: np.ndarray,
+    thickness_m: np.ndarray | float,
+    young_modulus_pa: np.ndarray | float,
+    tensile_strength_resultant_n_per_m: np.ndarray,
+    *,
+    poisson_ratio: float = 0.25,
+    radius_m: float = lithosphere.PLANET_RADIUS_M,
+    tolerance: float = 1e-9,
+    max_iterations: int | None = None,
+) -> ThinShellResult:
+    """Solve small-strain membrane equilibrium on a spherical node set.
+
+    `applied_force_n` is an external force vector per node. Its radial component is supported
+    by shell-normal pressure and is excluded from in-plane equilibrium. Rigid-rotation load
+    is removed because plate-scale torque is handled by the existing motion solve. The
+    remaining tangential load is transferred through linear triangular membrane elements.
+    `tensile_strength_resultant_n_per_m` is the supplied depth-integrated tensile capacity;
+    each element uses plane-stress elasticity with local effective thickness and modulus.
+
+    The convex hull defines a first-order mesh and is appropriate for sparse, approximately
+    convex plate patches. This is a screening diagnostic: it does not model faults, bending,
+    plasticity, changing topology, or a thermal strength envelope.
+    """
+    points = geometry.normalize(np.asarray(points_xyz, dtype=float))
+    areas = np.asarray(areas_m2, dtype=float)
+    force = np.asarray(applied_force_n, dtype=float)
+    n = len(points)
+    thickness = np.broadcast_to(np.asarray(thickness_m, dtype=float), (n,)).copy()
+    modulus = np.broadcast_to(np.asarray(young_modulus_pa, dtype=float), (n,)).copy()
+    strength = np.asarray(tensile_strength_resultant_n_per_m, dtype=float)
+    if points.shape != (n, 3) or force.shape != (n, 3) or areas.shape != (n,) or strength.shape != (n,):
+        raise ValueError("points, forces, areas, and strength must have matching node counts")
+    if n < 4:
+        raise ValueError("thin-shell solve requires at least four non-coplanar nodes")
+    if (np.any(~np.isfinite(points)) or np.any(~np.isfinite(force)) or np.any(~np.isfinite(areas))
+            or np.any(~np.isfinite(thickness)) or np.any(~np.isfinite(modulus))
+            or np.any(~np.isfinite(strength))):
+        raise ValueError("thin-shell inputs must be finite")
+    if np.any(areas <= 0.0) or np.any(thickness <= 0.0) or np.any(modulus <= 0.0) or np.any(strength <= 0.0):
+        raise ValueError("areas, thickness, elastic modulus, and tensile strength must be positive")
+    if not 0.0 <= poisson_ratio < 0.5 or radius_m <= 0.0 or tolerance <= 0.0:
+        raise ValueError("invalid Poisson ratio, radius, or solver tolerance")
+
+    triangles = np.asarray(ConvexHull(points).simplices, dtype=np.int64)
+    first, second = _tangent_basis(points)
+    tangent_force = force - np.sum(force * points, axis=1)[:, None] * points
+    force_dofs = np.column_stack((np.sum(tangent_force * first, axis=1), np.sum(tangent_force * second, axis=1))).ravel()
+
+    # Rigid rotations span the membrane stiffness nullspace. Remove their load component
+    # using node area as the force-distribution weight, so the remaining torque is zero.
+    rotation_modes = np.empty((2 * n, 3))
+    xyz_m = points * radius_m
+    for axis in range(3):
+        omega = np.eye(3)[axis]
+        velocity = np.cross(np.broadcast_to(omega, xyz_m.shape), xyz_m)
+        rotation_modes[:, axis] = np.column_stack((np.sum(velocity * first, axis=1), np.sum(velocity * second, axis=1))).ravel()
+    rotation_weights = np.repeat(areas, 2)
+    weighted_modes = rotation_modes * np.sqrt(rotation_weights)[:, None]
+    weighted_force = force_dofs / np.sqrt(rotation_weights)
+    rotation_coefficients, *_ = np.linalg.lstsq(weighted_modes, weighted_force, rcond=None)
+    rigid_dofs = rotation_weights * (rotation_modes @ rotation_coefficients)
+    equilibrated_dofs = force_dofs - rigid_dofs
+
+    rows: list[int] = []
+    cols: list[int] = []
+    values: list[float] = []
+    element_data = []
+    for triangle in triangles:
+        stiffness, strain_matrix, constitutive, element_area, axis_x, axis_y = _triangle_element(
+            points, triangle, first, second, thickness, modulus, poisson_ratio, radius_m
+        )
+        dofs = np.array([dof for node in triangle for dof in (2 * node, 2 * node + 1)])
+        rows.extend(np.repeat(dofs, 6).tolist())
+        cols.extend(np.tile(dofs, 6).tolist())
+        values.extend(stiffness.ravel().tolist())
+        element_data.append((triangle, dofs, strain_matrix, constitutive, element_area, axis_x, axis_y))
+    stiffness = coo_matrix((values, (rows, cols)), shape=(2 * n, 2 * n)).tocsr()
+    limit = max_iterations if max_iterations is not None else max(500, 4 * n)
+    solve = lsmr(stiffness, equilibrated_dofs, atol=tolerance, btol=tolerance, maxiter=limit)
+    displacement_dofs, stop_code = solve[0], int(solve[1])
+    if stop_code not in (0, 1, 2, 4, 5):
+        raise RuntimeError(f"thin-shell equilibrium solver did not converge (stop code {stop_code})")
+
+    nodal_stress = np.zeros((n, 3))
+    nodal_weight = np.zeros(n)
+    for triangle, dofs, strain_matrix, constitutive, element_area, axis_x, axis_y in element_data:
+        resultant = constitutive @ strain_matrix @ displacement_dofs[dofs]
+        stress_element = np.array([[resultant[0], resultant[2]], [resultant[2], resultant[1]]])
+        for node in triangle:
+            rotation = np.array([
+                [np.dot(first[node], axis_x), np.dot(first[node], axis_y)],
+                [np.dot(second[node], axis_x), np.dot(second[node], axis_y)],
+            ])
+            stress_node = rotation @ stress_element @ rotation.T
+            nodal_stress[node] += np.array([stress_node[0, 0], stress_node[1, 1], stress_node[0, 1]]) * element_area
+            nodal_weight[node] += element_area
+    nodal_stress /= np.maximum(nodal_weight[:, None], np.finfo(float).tiny)
+    mean = nodal_stress[:, :2].sum(axis=1) * 0.5
+    radius = np.sqrt(((nodal_stress[:, 0] - nodal_stress[:, 1]) * 0.5) ** 2 + nodal_stress[:, 2] ** 2)
+    max_tensile = np.maximum(mean + radius, 0.0)
+    failure_ratio = max_tensile / strength
+    displacement_xyz = displacement_dofs.reshape(n, 2, 1) * np.stack((first, second), axis=1)
+    displacement_xyz = displacement_xyz.sum(axis=1)
+    rigid_force = rigid_dofs.reshape(n, 2)
+    rigid_force_xyz = rigid_force[:, :1] * first + rigid_force[:, 1:] * second
+    equilibrated_force_xyz = equilibrated_dofs.reshape(n, 2)
+    equilibrated_force_xyz = equilibrated_force_xyz[:, :1] * first + equilibrated_force_xyz[:, 1:] * second
+    return ThinShellResult(
+        displacement_m=displacement_xyz,
+        stress_resultant_n_per_m=nodal_stress,
+        max_tensile_resultant_n_per_m=max_tensile,
+        tensile_strength_resultant_n_per_m=strength,
+        failure_ratio=failure_ratio,
+        equilibrated_force_n=equilibrated_force_xyz,
+        rigid_rotation_force_n=rigid_force_xyz,
+        triangles=triangles,
+        solver_stop_code=stop_code,
+        equilibrium_residual_n=float(np.linalg.norm(stiffness @ displacement_dofs - equilibrated_dofs)),
+    )
+
+
+def solve_force_field(
+    force_field,
+    thickness_m: np.ndarray | float,
+    young_modulus_pa: np.ndarray | float,
+    tensile_strength_resultant_n_per_m: np.ndarray,
+    **kwargs,
+) -> ThinShellResult:
+    """Transfer a `torque.PerNodeForceField` through the membrane equilibrium diagnostic."""
+    return solve_thin_shell(
+        points_xyz=force_field.points_xyz,
+        areas_m2=force_field.areas_m2,
+        applied_force_n=force_field.total_n,
+        thickness_m=thickness_m,
+        young_modulus_pa=young_modulus_pa,
+        tensile_strength_resultant_n_per_m=tensile_strength_resultant_n_per_m,
+        **kwargs,
+    )

@@ -128,9 +128,13 @@ loads, whose relative importance varies by setting [[Forsyth & Uyeda, 1975]](#re
    whole-plate cut.
 
 **Recommendation (revised after #480 evidence, 2026-10-18).** Treat solution 1 as failed for this
-problem. Replace it with solution 6. RFC 0012 supplies a plate-scale torque model, but not yet a
-validated local tensile-stress field; diagnosis gate 2 must establish that field or return with a
-revised, explicitly phenomenological alternative. The existing flow fit and plate-level
+problem. Replace it with solution 6. RFC 0012 supplies a plate-scale torque model. A new
+per-node source-force interface and reduced thin-shell diagnostic now transfer those loads into
+local membrane stress resultants, following the broad thin-shell precedent in Kong & Bird (1995).
+The solver compares those resultants with caller-supplied integrated tensile capacity, but no
+validated material strength profile currently supplies that input. Diagnosis gate 2 therefore
+remains open until the capacity derivation and mesh/boundary sensitivity are established, or the
+proposal is revised as an explicitly phenomenological alternative. The existing flow fit and plate-level
 `internal_stress` may remain candidate-event or background-eligibility signals, but they do not
 choose a complete cut or stand in for local loading. Keep solution 4 separately sized against the
 craton-loss gate, and take plume weakening through RFC 0007. The connected-boundary rule and
@@ -141,24 +145,32 @@ should start until those gates are resolved and the revised design is accepted.
 
 ### Diagnosis gates
 
-1. **Reconcile the diagnostic event stream before calibrating.** Re-run the recorded seeds and
-   compare event signatures, counts and admissibility margins from the production tap and shadow
-   calculator. The detailed margin reruns and the earlier production table have different event
-   totals despite nominally matching seed, layout, step and duration. Preserve each output; do not
-   combine denominators until the cause is understood. This does not rescue min-cut's observed
-   shortfall, but it is necessary for a reproducible baseline for the replacement.
-2. **Establish the local load available to damage — diagnosed 2026-10-19; current interface
-   insufficient.** The trace found per-node and boundary-local force terms, but no force-transfer
-   or equilibrium rule that turns them into intraplate tensile stress across an adjacency.
-   `predict_plate_motion` reduces their moments to one plate angular acceleration. The terms and
-   units, and the required next interface decision, are recorded in
-   [`analysis/issue487/gate2-load-diagnosis.md`](../analysis/issue487/gate2-load-diagnosis.md).
-   Therefore the current evidence cannot supply `sigma_t` or compare it with vertically integrated
-   strength; do not start constitutive calibration or infer local stress from rigid rotation, flow
-   clusters, or `Plate.internal_stress`. Before gate 3, either extend the force interface with a
-   physically stated spatial load-transfer/equilibrium rule and rerun this comparison, or revise the
+1. **Reconcile the diagnostic event stream before calibrating — closed 2026-10-19 by retiring
+   the archives from calibration.** Two provenance-recorded paired 1 Gyr runs on the same model
+   sources and runtime reproduced every production cut row for seeds 7, 11 and 2024; tap totals
+   matched the production ledger (144, 111 and 125). Use those paired runs as the repeatable
+   baseline. The older production and margin archives have unrecoverable runtime/worktree
+   provenance and diverge from that baseline within their first 3–6 events; explicitly exclude
+   them from calibration and keep their denominators separate. The archived discrepancy is not
+   explained or erased, but it no longer blocks use of the documented baseline. See
+   [`analysis/issue487/README.md`](../analysis/issue487/README.md).
+2. **Establish local loading and strength — membrane solver added 2026-10-19; physical capacity
+   and sensitivity result pending.** `torque.gather_per_node_force_field` preserves each force
+   source as a per-node vector in N. `thin_shell.solve_force_field` projects the combined loads
+   onto the shell tangent plane, removes the area-weighted rigid-rotation component handled by
+   plate motion, and solves small-strain triangular membrane equilibrium. It returns local
+   depth-integrated stress resultants and compares their maximum tensile principal value with an
+   explicit caller-supplied integrated tensile capacity, all in N/m. The elastic thickness and
+   modulus, free-edge boundary condition, convex-hull mesh and rigid-mode removal are documented
+   diagnostic assumptions, not calibrated production behavior. Tests cover equilibrium residual,
+   rigid-rotation removal and linear response on a synthetic shell. No geotherm or column strength
+   law supplies the capacity field yet, and mesh/boundary sensitivity remains untested; do not
+   start constitutive calibration or infer local stress from applied traction, rigid rotation,
+   flow clusters or `Plate.internal_stress`. Before gate 3, derive and sensitivity-test the
+   integrated capacity and verify the solver on additional synthetic geometries, or revise the
    proposal as a clearly labeled phenomenological rift model. `Plate.internal_stress` remains a
-   dimensionless plate-level eligibility signal and is not a local damage trigger.
+   dimensionless plate-level eligibility signal and is not a local damage trigger. See
+   [`analysis/issue487/gate2-load-diagnosis.md`](../analysis/issue487/gate2-load-diagnosis.md).
 3. **Calibrate accumulation and segment growth.** On synthetic plates and replayed candidate
    events, measure damage/strain accumulation, nucleation, tip propagation, arrest and linkage under
    timestep refinement. Select thresholds only after checking physical scale and sensitivity. If no
@@ -170,10 +182,12 @@ should start until those gates are resolved and the revised design is accepted.
 - **State and loading.** After diagnosis gate 2, store cumulative irreversible extensional strain
   (`epsilon_rift`, dimensionless) on the state element whose area and ownership are defined by the
   load discretization. Each local cut is an adjacency link between cells; a failed cell or link
-  becomes a short rift segment, not a plate partition. Obtain local tensile stress `sigma_t` in Pa
-  and local yield strength `Y_t` in Pa from a reduced-order load/strength calculation. The current
-  torque balance drives whole-plate motion; its loads do not by themselves define intraplate stress,
-  so a spatial loading distribution is an explicit prerequisite, not an assumed by-product.
+  becomes a short rift segment, not a plate partition. The thin-shell diagnostic returns tensile
+  membrane resultant `T_t` in N/m and compares it with an integrated yield capacity `Y_int` in
+  N/m. If the damage law remains in Pa, convert both through the same effective thickness,
+  `sigma_t = T_t / H_eff` and `Y_t = Y_int / H_eff`; otherwise formulate an integrated-viscosity
+  law with units. The capacity derivation and this coupling are pending Gate 2. The current torque
+  balance drives whole-plate motion; its loads do not by themselves define intraplate stress.
 - **Damage update.** Where the tensile load exceeds local yield, integrate the inelastic extension
   rate over the portion of the step in which it is positive:
   `d epsilon_rift / dt = max(0, sigma_t - Y_t) / eta_rift`, with `eta_rift` in Pa·s. Cap
@@ -237,7 +251,7 @@ its physical source or explicit design-choice status, and the sensitivity plan b
 
 | Knob | Start | Source | Tuning plan |
 |---|---|---|---|
-| Local tensile load and yield strength (`sigma_t`, `Y_t`) | Unsupported by current interface (gate 2, 2026-10-19) | Requires a force-interface extension with a stated spatial transfer rule, or explicit phenomenological revision | Re-run local load/strength comparison on synthetic plates before gate 3 |
+| Local tensile load and yield strength (`sigma_t`, `Y_t`) | Thin-shell tensile resultant available; capacity is explicit input only (gate 2, 2026-10-19) | Requires a validated integrated column-strength field and mesh/boundary sensitivity, or explicit phenomenological revision | Compare local tensile resultant to supplied capacity on synthetic and replayed candidate plates before gate 3 |
 | Failure strain (`epsilon_fail`) | Pending gate 3 | Calibration assumption | Sensitivity on controlled loads and candidate events |
 | Damage viscosity (`eta_rift`, Pa·s) | Pending gate 3 | Calibration assumption | Sweep strain rates and timestep partitions |
 | Residual strength (`q_res`, [0, 1]) | Pending gate 3 | Design choice | Sweep weak-belt/craton cases; check localization and runaway |
@@ -246,9 +260,11 @@ its physical source or explicit design-choice status, and the sensitivity plan b
 
 ## Detailed design (provisional touchpoints)
 
-- `backend/app/torque.py`: inspect `gather_boundary_force_inputs`, the node-wise force terms and
-  `predict_plate_motion`; add or aggregate a spatially resolved tensile load/strain-rate proxy only if
-  diagnosis gate 2 supports its units and ownership. A reduced-order load distributor may be new.
+- `backend/app/torque.py`: `gather_per_node_force_field` exposes existing source forces in N
+  before torque aggregation. `backend/app/thin_shell.py` supplies a reduced linear membrane
+  equilibrium and compares tensile resultants with a caller-supplied integrated capacity in N/m.
+  Its convex-hull mesh, free edge and elastic response are diagnostic assumptions; derive the
+  column strength field and check mesh/boundary sensitivity before damage calibration.
 - `backend/app/merge_split.py`: move rift-state advancement out of the all-at-once split decision;
   retain a split/topology check that runs only after local failed links form a viable connected
   boundary. Existing flow fit may remain a diagnostic or a candidate-event signal, not the rift path.
@@ -287,11 +303,12 @@ its physical source or explicit design-choice status, and the sensitivity plan b
 
 ## Acceptance criteria
 
-1. [ ] **Diagnosis gates first:** close gate 1 by resolving or retiring the archived event-stream
-       comparison; for gate 2, provide a spatial load/strength derivation with units through an
-       approved interface extension, or revise the proposal as phenomenological; only then set and
-       sensitivity-test constitutive parameters before full replays. The 2026-10-19 code trace
-       found the current interface insufficient (see `analysis/issue487/gate2-load-diagnosis.md`).
+1. [x] **Gate 1:** use the repeatable paired runs as the baseline and retire the provenance-
+       incomplete archives from calibration (2026-10-19; see `analysis/issue487/README.md`).
+   [ ] **Gate 2:** validate the thin-shell load transfer and provide a physical depth-integrated
+       tensile-capacity field with units through an approved interface, including mesh/boundary
+       sensitivity; or revise the proposal as phenomenological. Only then set and sensitivity-test
+       damage parameters before full replays (see `analysis/issue487/gate2-load-diagnosis.md`).
 2. [ ] In synthetic tests, damage is timestep-partition invariant, bounded, absent under compression
        or sub-yield loading, and advances only through adjacent cells with supported positive loading.
 3. [ ] Segments can nucleate independently, propagate, arrest and link; a transform/transfer zone

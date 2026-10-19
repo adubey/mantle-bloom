@@ -279,6 +279,21 @@ equation checks are in `backend/unit_tests/test_torque.py`. The discretization s
 one `ds` to each distinct represented neighbour front node, so the represented length can
 differ slightly from the geometric boundary span at coarse density or near the band edge.
 
+**Spatial load transfer for rift diagnosis (#487, 2026-10-19).**
+`torque.gather_per_node_force_field` returns each existing slab-pull, slab-drag, ridge-push,
+basal-drag and contact-drag contribution as a per-node vector in N, before plate torque
+aggregation. `PerNodeForceField.total_traction_pa` is the area-average applied external
+traction; it is not internal stress. `thin_shell.solve_force_field` projects those loads onto
+the spherical tangent plane, removes the area-weighted rigid-rotation component handled by
+plate motion, and solves a linear membrane equilibrium problem on a convex-hull triangular
+mesh. It returns nodal depth-integrated stress resultants in N/m, maximum tensile resultant,
+and the ratio to a caller-supplied depth-integrated tensile capacity in N/m. Elastic modulus,
+thickness and integrated capacity are explicit inputs; there is no inferred geotherm or
+strength profile. This is a read-only diagnostic with no persistent state, faults, bending,
+plastic yielding or topology changes. The source-force moments are checked against existing
+torque terms in `backend/unit_tests/test_torque.py`; synthetic equilibrium, rigid-rotation
+removal and linear load scaling are checked in `backend/unit_tests/test_thin_shell.py`.
+
 **Deep interpenetration is classified too (torque engine, 2026).** The polygon-containment
 test used to run only on nodes within `reach_rad` (~3 spacings) of a neighbour node, so a
 plate that had slid *deep* over another had its deep-interior overlapping nodes classified
