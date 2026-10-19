@@ -2,10 +2,10 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-15
-- **Last revised:** 2026-10-18 after #480 routing diagnostics
-- **Related:** #481 (tracking), #480 (implementation), #472 / PR #479 (RFC 0009 G3), #389 (RFC 0003 tracking), #378, #385, #388 (RFC 0003 gates), PR #418 (RFC
+- **Last revised:** 2026-10-18 after #480 routing diagnostics; revised to local rift segments
+- **Related:** #481 (tracking), #480 (min-cut diagnostic), #472 / PR #479 (RFC 0009 G3), #389 (RFC 0003 tracking), #378, #385, #388 (RFC 0003 gates), PR #418 (RFC
   0003 solution 1); RFCs [0003](0003-rifting-around-cratons.md) (superseded by RFC 0010),
-  [0009](0009-craton-mosaic.md) (cratons-first layout; its G3 gate selects RFC 0010),
+  [0009](0009-craton-mosaic.md) (cratons-first layout; G3 initially selected the min-cut),
   [0007](0007-mantle-plumes-and-plateaus.md) (plume weakening),
   [0012](0012-physics-first-simulation.md) (force-response interfaces)
 
@@ -30,6 +30,16 @@ The cut never looks at the lithosphere. On origin/main `02d35b9`, 25–36% of su
 splits cross craton on seeds 7, 11 and 2024 (PR #418); rifting takes 8.0–9.6% of the
 starting craton per Gyr, and stretch donation and divergent thinning along the new
 boundaries are most of that loss (#378, #388).
+
+The current split path also has `Plate.internal_stress`, a single dimensionless, per-plate
+accumulator based on plate radius and overlap. It relaxes the flow-fit and pole-separation
+gates; it is not a local stress field in Pa and does not locate or grow a rift. Likewise,
+`torque.BoundaryForceInputs` contains node-wise geometry and material values, but
+`torque.predict_plate_motion` integrates their force contributions into a whole-plate torque
+and one angular acceleration. Neither is, by itself, a local extensional load suitable for
+damage accumulation. The revised design must build or explicitly reject a defensible local
+loading field before choosing a constitutive law; it must not relabel either existing signal
+as local stress.
 
 **RFC 0003 tried to steer the cut and failed.**
 - **Tilting the great circle** (PR #418): of 158 flow cuts that crossed craton, a
@@ -70,13 +80,13 @@ orientation and strength [[Wilson, 1966]](#ref-wilson1966)
 of the East African Rift show how plume–lithosphere interaction can branch rifts around a cratonic
 keel [[Koptev et al., 2015]](#ref-koptev2015); cratonic survival and rejuvenation depend on
 coupled mantle/lithosphere behavior and heating or metasomatism
-[[Lenardic et al., 2003]](#ref-lenardic2003) [[Foley, 2008]](#ref-foley2008). Continental rifts
-also depend on interacting forces and evolving lithospheric strength. Rift systems commonly begin
+[[Lenardic et al., 2003]](#ref-lenardic2003) [[Foley, 2008]](#ref-foley2008). Continental rifts also
+depend on interacting forces and evolving lithospheric strength. Rift systems commonly begin
 as separate fault segments that propagate, interact and link; progressive thinning changes the
 force balance, and some rifts arrest before breakup [[Brune et al., 2023]](#ref-brune2023)
 [[Kolawole & Ajala, 2024]](#ref-kolawole2024). The Afar linkage observations show that transfer
 between rift tips can involve distributed extension and rift-perpendicular shear; a transform-like
-link is not necessarily a single strike-slip fault that slices a plate [[Pagli et al., 2018]](#ref-pagli2018).
+link is not necessarily a single strike-slip fault that slices a plate [[Pagli et al., 2019]](#ref-pagli2019).
 Plate motion and rifting are affected by slab, ridge, mantle and gravitational-potential-energy
 loads, whose relative importance varies by setting [[Forsyth & Uyeda, 1975]](#ref-forsyth1975)
 [[Brune et al., 2023]](#ref-brune2023).
@@ -107,21 +117,25 @@ loads, whose relative importance varies by setting [[Forsyth & Uyeda, 1975]](#re
 5. **Plume weakening (RFC 0007).** Heating and melt can weaken lithosphere and may influence
    initiation or propagation. Keep it coupled through RFC 0007; a plume is not required for every
    rift.
-6. **Incremental, damage-driven rift segments (new; recommended).** Use local extensional loading
-   and strength to accumulate irreversible strain/damage through time. Damage nucleates discrete
-   rift segments, their tips advance into adjacent material when local loading can sustain growth,
-   and nearby segments link through extensional and transfer/shear deformation. A plate splits only
-   after a damaged, sufficiently connected boundary separates it; before then it may continue,
-   migrate, or arrest. Transform motion transfers displacement between offset segments; it is not
-   an independent whole-plate cut.
+6. **Local cuts that may link into a rift (new; recommended).** Evaluate short cuts between
+   adjacent surface cells under local extensional loading. Repeated loading can damage and
+   weaken one segment, advance its tips into neighboring links, or let it arrest. Multiple
+   separated cuts can link through distributed extension and transfer/shear deformation. No
+   step searches for or applies a complete plate-wide separator. The plate splits only after
+   the accumulated local cuts form a connected, viable boundary with two material-retaining
+   sides and compatible divergence; until then the plate continues evolving as one plate.
+   Transform motion transfers displacement between offset segments; it is not an independent
+   whole-plate cut.
 
 **Recommendation (revised after #480 evidence, 2026-10-18).** Treat solution 1 as failed for this
-problem. Replace it with solution 6, developed with RFC 0012's process-specific force-response
-interfaces. The nucleate-and-propagate proposal anticipates local growth, but does not define the
-state and linkage rules needed for local damage accumulation. Retain existing plate-scale
-flow/force information as a possible source of loading, not as a command to draw a complete cut.
-Keep solution 4 separately
-sized against the craton-loss gate, and take plume weakening through RFC 0007.
+problem. Replace it with solution 6. RFC 0012 supplies a plate-scale torque model, but not yet a
+validated local tensile-stress field; diagnosis gate 2 must establish that field or return with a
+revised, explicitly phenomenological alternative. The existing flow fit and plate-level
+`internal_stress` may remain candidate-event or background-eligibility signals, but they do not
+choose a complete cut or stand in for local loading. Keep solution 4 separately sized against the
+craton-loss gate, and take plume weakening through RFC 0007. The connected-boundary rule and
+diagnosis gates are proposed here; constitutive values remain unsettled, so no implementation issue
+should start until those gates are resolved and the revised design is accepted.
 
 ## Design
 
@@ -133,13 +147,16 @@ sized against the craton-loss gate, and take plume weakening through RFC 0007.
    totals despite nominally matching seed, layout, step and duration. Preserve each output; do not
    combine denominators until the cause is understood. This does not rescue min-cut's observed
    shortfall, but it is necessary for a reproducible baseline for the replacement.
-2. **Establish the local load available to damage.** Trace RFC 0012's torque/process interfaces and
-   determine whether a spatially varying extensional traction or strain-rate field can be derived
-   from current loads without inventing one from rigid plate rotation. Record its direction and
-   magnitude in Pa (stress), N/m (vertically integrated force per boundary length), or s⁻¹ (strain
-   rate), and compare the integrated tensile load with vertically integrated lithosphere strength.
-   If the current force interface only yields whole-plate torque, extend that interface first; do not
-   use the min-cut's two flow clusters as a surrogate stress field.
+2. **Establish the local load available to damage.** Trace `torque.gather_boundary_force_inputs`,
+   the force terms, and `torque.predict_plate_motion`; determine whether their per-node inputs can
+   support a spatially varying extensional traction or strain-rate field after a physically justified load
+   distribution, without inferring stress from rigid rotation alone. Record direction and magnitude
+   in Pa (stress), N/m (vertically integrated force per boundary length), or s⁻¹ (strain rate), and
+   compare integrated tensile load with vertically integrated lithosphere strength. Separately
+   decide whether the existing dimensionless `Plate.internal_stress` only gates when local damage is
+   evaluated, or whether local damage supersedes that trigger. If the force interface only supports
+   whole-plate torque, extend it first; do not use the min-cut's two flow clusters as a surrogate
+   stress field.
 3. **Calibrate accumulation and segment growth.** On synthetic plates and replayed candidate
    events, measure damage/strain accumulation, nucleation, tip propagation, arrest and linkage under
    timestep refinement. Select thresholds only after checking physical scale and sensitivity. If no
@@ -148,12 +165,13 @@ sized against the craton-loss gate, and take plume weakening through RFC 0007.
 
 ### Mechanics (provisional)
 
-- **State and loading.** Add a per-node cumulative irreversible extensional strain
-  `epsilon_rift` (dimensionless, initially zero and capped at `epsilon_fail`). Obtain local tensile
-  stress `sigma_t` in Pa and local yield strength `Y_t` in Pa from a reduced-order load/strength
-  calculation tied to RFC 0012. The current torque balance drives whole-plate motion; its loads do
-  not by themselves define intraplate stress, so a spatial loading distribution is an explicit
-  prerequisite, not an assumed by-product.
+- **State and loading.** After diagnosis gate 2, store cumulative irreversible extensional strain
+  (`epsilon_rift`, dimensionless) on the state element whose area and ownership are defined by the
+  load discretization. Each local cut is an adjacency link between cells; a failed cell or link
+  becomes a short rift segment, not a plate partition. Obtain local tensile stress `sigma_t` in Pa
+  and local yield strength `Y_t` in Pa from a reduced-order load/strength calculation. The current
+  torque balance drives whole-plate motion; its loads do not by themselves define intraplate stress,
+  so a spatial loading distribution is an explicit prerequisite, not an assumed by-product.
 - **Damage update.** Where the tensile load exceeds local yield, integrate the inelastic extension
   rate over the portion of the step in which it is positive:
   `d epsilon_rift / dt = max(0, sigma_t - Y_t) / eta_rift`, with `eta_rift` in Pa·s. Cap
@@ -166,14 +184,17 @@ sized against the craton-loss gate, and take plume weakening through RFC 0007.
   with no approved numeric values yet. They must be set after diagnosis gate 3, with physical scale
   checks and sensitivity runs; no parameter should be selected to hit the craton-crossing percentage
   alone.
-- **Nucleation and growth.** Nucleate a finite segment when accumulated strain and local loading
-  satisfy the calibrated failure rule. Extend a segment tip only into adjacent cells where the local
-  tensile load can sustain damage; permit multiple segments and abandonment. Link overlapping or
-  interacting segments through distributed extension and transfer/shear zones. The graph identifies
+- **Local cuts, nucleation and growth.** Mark an adjacency link failed only when its neighboring
+  state has reached the calibrated damage/failure condition and its displacement can be
+  accommodated without creating an unowned gap. Nucleate a finite segment when accumulated strain
+  and local loading satisfy the calibrated failure rule. Extend a segment tip only into adjacent
+  cells where the local tensile load can sustain damage; permit multiple segments and abandonment.
+  Link overlapping or interacting segments through distributed extension and transfer/shear zones.
+  The graph identifies
   local adjacency and connectedness only; it does not search globally for the least-cost separator.
   Strike-slip/transform response transfers relative displacement between segments and may change tip
   loading, but cannot split the plate by itself.
-- **Rift completion.** Create a new plate only when damage/extension forms a connected, viable boundary
+- **Rift completion.** Create a new plate only when linked local cuts form a connected, viable boundary
   with two material-retaining sides and the required kinematic divergence. Until then, keep one plate
   and apply incremental thinning/opening through existing deformation and ledger paths. Failed or
   abandoned rifts retain their modeled damage/weakness unless a measured healing law removes it.
@@ -195,11 +216,12 @@ keyed to node/segment identity and continuous time, not step count. Validate wit
 the nucleation, propagation and healing durations, and compare accumulated strain, rift length and
 thinning, not only final topology.
 
-**Conservation and ownership.** Store damage as an intensive per-node state with an explicit lifecycle
-through split, merge, remap, node activation/deactivation and save/load. Default missing state in old
-saves to zero. Rift thinning and new crust continue through one existing material-budget owner per
-step; damage is a state variable, not an extra crust-volume reservoir. Check crust/mantle ledgers and
-spatial contiguity independently: conservation alone does not validate a plausible rift.
+**Conservation and ownership.** Store damage as an intensive state with an explicit lifecycle through
+split, merge, remap, node activation/deactivation and save/load. Default missing state in old saves
+to zero. A failed local cut does not itself duplicate or delete crust: thinning, opening and new crust
+continue through one existing material-budget owner per step. Damage is a state variable, not an
+extra crust-volume reservoir. Check crust/mantle ledgers and spatial contiguity independently:
+conservation alone does not validate a plausible rift.
 
 **Runtime and saves.** The added work is expected to scale as O(N + E) per step for N plate nodes and
 their E local-neighbor links, plus a connectedness check when segments change. No measured runtime is
@@ -211,13 +233,23 @@ saves retain all state needed to continue the same rift history deterministicall
 before the load diagnosis would be false precision. The diagnosis-gate revision must set each value,
 its physical source or explicit design-choice status, and the sensitivity plan before implementation.
 
+| Knob | Start | Source | Tuning plan |
+|---|---|---|---|
+| Local tensile load and yield strength (`sigma_t`, `Y_t`) | Pending gate 2 | Force/material diagnosis or explicit proxy | Check units and force balance on synthetic plates |
+| Failure strain (`epsilon_fail`) | Pending gate 3 | Calibration assumption | Sensitivity on controlled loads and candidate events |
+| Damage viscosity (`eta_rift`, Pa·s) | Pending gate 3 | Calibration assumption | Sweep strain rates and timestep partitions |
+| Residual strength (`q_res`, [0, 1]) | Pending gate 3 | Design choice | Sweep weak-belt/craton cases; check localization and runaway |
+| Healing time (Myr) | Pending gate 3 | Calibration assumption; may be omitted | Check arrested-segment persistence and reactivation |
+| Tip propagation/link thresholds | Pending gate 3 | Design choice; use km and Myr | Tune on synthetic linkage cases, then report named-seed outcomes |
+
 ## Detailed design (provisional touchpoints)
 
-- `backend/app/torque.py` and RFC 0012's force-response interfaces: provide or aggregate a spatially
-  resolved tensile load/strain-rate proxy; this may require a new reduced-order load distributor.
-- `backend/app/merge_split.py`: replace the whole-plate min-cut choice and success coin flip with
-  segment eligibility, state advancement and a connected-boundary completion check. Existing flow
-  fit may remain a diagnostic/kinematic consistency check, not the rift path.
+- `backend/app/torque.py`: inspect `gather_boundary_force_inputs`, the node-wise force terms and
+  `predict_plate_motion`; add or aggregate a spatially resolved tensile load/strain-rate proxy only if
+  diagnosis gate 2 supports its units and ownership. A reduced-order load distributor may be new.
+- `backend/app/merge_split.py`: move rift-state advancement out of the all-at-once split decision;
+  retain a split/topology check that runs only after local failed links form a viable connected
+  boundary. Existing flow fit may remain a diagnostic or a candidate-event signal, not the rift path.
 - `backend/app/faults.py`, `backend/app/quad_tectonics.py` and `backend/app/rheology.py`: reuse or
   extend local fault/extension response so segment damage, slip and thinning share one constitutive
   response and ownership path. Exact function names are to be confirmed after diagnosis gate 2.
@@ -234,8 +266,9 @@ its physical source or explicit design-choice status, and the sensitivity plan b
 
 ## Assumptions and uncertainty
 
-- **Local loading is the key unresolved interface.** Rigid plate rotation and whole-plate torque do
-  not uniquely specify intraplate stress. The replacement must derive a supported local load or stop
+- **Local loading is the key unresolved interface.** Node-wise force inputs are currently reduced
+  into a whole-plate torque; neither that torque nor dimensionless `Plate.internal_stress`
+  uniquely specifies intraplate stress. The replacement must derive a supported local load or stop
   and revise; it must not disguise the min-cut flow partition as mechanics.
 - **Damage proxies brittle/ductile weakening.** A single strain/damage scalar omits temperature,
   fluids, grain-scale rheology and depth-dependent faulting. It is an efficient model proxy, not a
@@ -293,7 +326,7 @@ its physical source or explicit design-choice status, and the sensitivity plan b
 
 ## References
 
-- <a id="ref-brune2023"></a>Brune, S., Kolawole, F., Olive, J.-A., & Stamps, D. S. (2023).
+- <a id="ref-brune2023"></a>Brune, S., Kolawole, F., Olive, J.-A., et al. (2023).
   Geodynamics of continental rift initiation and evolution. *Nature Reviews Earth & Environment*,
   4, 235–253. [doi:10.1038/s43017-023-00391-3](https://doi.org/10.1038/s43017-023-00391-3)
 - <a id="ref-forsyth1975"></a>Forsyth, D. W., & Uyeda, S. (1975). On the relative importance
@@ -302,7 +335,7 @@ its physical source or explicit design-choice status, and the sensitivity plan b
 - <a id="ref-kolawole2024"></a>Kolawole, F., & Ajala, R. (2024). Propagating rifts: the roles of
   crustal damage and ascending mantle fluids. *Solid Earth*, 15, 747–762.
   [doi:10.5194/se-15-747-2024](https://doi.org/10.5194/se-15-747-2024)
-- <a id="ref-pagli2018"></a>Pagli, C., Yun, S.-H., Ebinger, C., Keir, D., & Wang, H. (2018).
+- <a id="ref-pagli2019"></a>Pagli, C., Yun, S.-H., Ebinger, C., Keir, D., & Wang, H. (2019).
   Strike-slip tectonics during rift linkage. *Geology*, 47(1), 31–34.
   [doi:10.1130/G45345.1](https://doi.org/10.1130/G45345.1)
 - <a id="ref-audet2011"></a>Audet, P., & Bürgmann, R. (2011). Dominant role of tectonic
