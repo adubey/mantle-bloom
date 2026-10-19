@@ -135,6 +135,15 @@ several hundred meters deeper, without disturbing the land/sea split near sea le
 (`BASE_CONTINENTAL_M`, or the `land_fraction`-derived threshold when one is given, is
 untouched -- only how far the noise texture swings around whichever baseline is already used).
 
+After all plates are assembled, `initial_terrain.apply_lowland_spherical_relief` adds one
+world-seeded `SphereNoise` field to dry continental cells. Its three octaves use base
+frequency 40, approximately 1000/500/250 km wavelengths on Earth. The signed field is
+scaled by 225 m, smoothly fades in from sea level to 400 m elevation, stays at full strength
+through 1.4 km, and fades to zero by 5 km. The coast taper and land-preserving lower bound
+keep the initial coastline fixed; high mountains are unchanged. `back_elevation_gain_fields`
+backs the perturbation with crustal thickness. This is a generation-time texture, not a
+modeled tectonic process, and it does not change at later turns.
+
 **Elevation point density.** The UI's "point density" choice (`node_density`, 4x default,
 0.5x/1x/2x also available) scales `TARGET_LINE_SPACING_RAD` down via `plates.line_spacing_rad`
 (halved at 4x -- node count for a fixed area scales with the *square* of resolution, so 4x the

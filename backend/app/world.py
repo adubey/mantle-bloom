@@ -763,12 +763,16 @@ def generate_world_progress(
     if initial_soil_maturity is not None:
         geology.seed_initial_soil(world.plates, seed, initial_soil_maturity)
 
+    # Add one seed-stable spherical residual to low continental elevations before terrain
+    # diagnostics, rivers, and the baseline stats snapshot are initialized.
+    from . import initial_terrain
+
+    initial_terrain.apply_lowland_spherical_relief(world)
+
     # The cratons-first layout has explicit plate boundaries, so use the torque solver's
     # read-only first-step prediction to seed modest convergent-belt relief. The prediction
     # informs terrain only; plate positions and elapsed time remain at generation state.
     if cratons_first:
-        from . import initial_terrain
-
         initial_terrain.apply_predicted_orogens(world)
 
     n_continents = sum(1 for p in plates if p.crust_type == "continental")
