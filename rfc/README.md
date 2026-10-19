@@ -42,10 +42,12 @@ refreshed implementation order (subject to each RFC's acceptance and diagnosis g
 2. 0002 after resolving attrition contact ownership
    ([#405](https://github.com/adubey/mantle-bloom/issues/405)).
 3. 0009's gates. G1 (done, #426) found a mosaic inside today's plates doesn't give rifts a
-   way around, so 0009 now generates cratons first and places plates around them. Its gate
-   G2 (do mixed plates work?) can run at any time; G3 then decides whether 0010's
-   strength-following cut is built. They replace 0003, whose cut steering couldn't avoid
-   cratons (PR #418), and 0004.
+   way around, so 0009 now generates cratons first and places plates around them. G3 (#472)
+   initially selected RFC 0010's static minimum cut with a resistance fallback, but #480's
+   routing diagnostics missed the per-seed target. RFC 0010 now proposes local damage-driven
+   cuts that may link into a rift; its load and accumulation diagnosis gates must pass before
+   implementation issues are opened. RFCs 0009 and 0010 replace 0003, whose cut steering
+   couldn't avoid cratons (PR #418), and 0004.
 4. 0006 and 0007, after separating their proposed production from existing elevation-driven
    continental resets ([#406](https://github.com/adubey/mantle-bloom/issues/406),
    [#407](https://github.com/adubey/mantle-bloom/issues/407)). They share `terranes.py`
@@ -67,7 +69,8 @@ continents assembled around them with lasting weak belts, then plates placed aro
 G3 initially selected RFC 0010's min-cut with a resistance fallback, but the #480 1 Gyr
 same-state routing diagnostics showed the min-cut did not reach its per-seed 50% target.
 RFC 0010 is revised to reject a static whole-plate minimum cut and propose incremental,
-damage-driven rift segments; see [`analysis/issue480/`](../analysis/issue480/README.md).
+damage-driven local cuts that may link into rift segments; see
+[`analysis/issue480/`](../analysis/issue480/README.md).
 
 ## Writing and reviewing
 
