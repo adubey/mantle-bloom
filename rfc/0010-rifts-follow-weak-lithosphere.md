@@ -1,11 +1,13 @@
 # RFC 0010: Rifts follow weak lithosphere
 
-- **Status:** Accepted 2026-10-18
+- **Status:** Accepted
 - **Date:** 2026-10-15
+- **Last revised:** 2026-10-18 after #480 routing diagnostics
 - **Related:** #481 (tracking), #480 (implementation), #472 / PR #479 (RFC 0009 G3), #389 (RFC 0003 tracking), #378, #385, #388 (RFC 0003 gates), PR #418 (RFC
-  0003 solution 1); RFCs [0003](0003-rifting-around-cratons.md) (superseded by this RFC),
-  [0009](0009-craton-mosaic.md) (cratons-first layout; its G3 gate selects this RFC),
-  [0007](0007-mantle-plumes-and-plateaus.md) (plume weakening)
+  0003 solution 1); RFCs [0003](0003-rifting-around-cratons.md) (superseded by RFC 0010),
+  [0009](0009-craton-mosaic.md) (cratons-first layout; its G3 gate selects RFC 0010),
+  [0007](0007-mantle-plumes-and-plateaus.md) (plume weakening),
+  [0012](0012-physics-first-simulation.md) (force-response interfaces)
 
 ## Problem
 
@@ -34,252 +36,278 @@ boundaries are most of that loss (#378, #388).
   craton-free candidate passing the admissibility gates existed for 19 (12%) within 20°,
   and at most 30 (19%) anywhere in the sweep ranges. A great circle can only move as a
   whole, so missing a craton sweeps a large strip of plate to the other side.
-- **Letting the cut bend** (this RFC's probe, below): a minimum cut through a strength
+- **Letting the cut bend** (the RFC 0010 strength-graph probe): a minimum cut through a strength
   graph follows the flow as well as the great circle does, but still crosses craton in
   most cases. Of 135 craton-crossing cuts on the same seeds, 13 (10%) get a craton-free
   admissible minimum cut within a 1,000 km corridor, and at most 16 (12%) at any corridor
   up to 2,500 km. Wider corridors find craton-free routes only by slicing a coastal sliver
   off the plate, which the size gate rejects ([analysis/rfc0010](../analysis/rfc0010/README.md)).
 
-The bent cut fails for a different reason than the tilted one: craton fills each
-continent's interior, leaving no seam to follow. RFC 0009 addresses that. This RFC
-designs the cut that can use the seams once they exist.
+The bent cut initially failed for a different reason than the tilted one: craton fills each
+continent's interior, leaving no seam to follow. RFC 0009 addressed that layout problem by
+placing weak belts around cratonic cores. #480 then tested the strength-graph cut on the new
+layout; the static separator still missed its routing target. The remaining design question is
+how local damage accumulates and propagates, not how to find a cheaper whole-plate line.
 
-What this evidence doesn't show: whether minimum cuts would avoid cratons on a mosaic
-(RFC 0009's gate G1 measures it), or how much rifting loss that would remove.
+RFC 0009's G3 initially selected a min-cut prototype on pooled L/B thresholds, but this was a
+branch-selection gate, not proof that it met the per-seed acceptance target. In #480's 1 Gyr
+same-state diagnostic, cut-link crossings fell by only 11.8%, 20.0% and 28.6% for seeds 7, 11
+and 2024. The detailed admitted-only diagnostic gave B = 0.690, 0.747 and 0.643 (pooled 0.703),
+with 30 of 78 admitted routes line-clear but only 3 with no craton in the wider band. The margin
+instrumentation rerun has different event totals from the earlier production-probe aggregate;
+those denominators are not combined ([analysis/issue480](../analysis/issue480/README.md)). These
+same-state diagnostics do not test every possible edge cost or replace a full matched flow-only
+replay. They do show that the current static-cut strategy misses its line-routing target and does
+not represent local damage accumulation.
 
 ## Proposed solutions
 
-**What happens in nature.**
-- Rifts localise in weak lithosphere and go around strong blocks. The East African Rift
-  splits into two branches around the Tanzania craton; numerical models reproduce this from
-  a single plume beneath the craton, whose keel deflects melt and strain to its edges
-  [[Koptev et al., 2015]](#ref-koptev2015).
-- Breakup follows old orogenic belts. The Atlantic reopened along the
-  Caledonian–Appalachian suture [[Wilson, 1966]](#ref-wilson1966). Rifts run parallel to
-  pre-existing orogenic fabric, explained by mechanical anisotropy frozen into the
-  lithospheric mantle [[Vauchez et al., 1997]](#ref-vauchez1997)
-  [[Tommasi & Vauchez, 2001]](#ref-tommasi2001), or by those belts' thinner, weaker
-  lithosphere [[Audet & Bürgmann, 2011]](#ref-audet2011). Structures frozen into the
-  mantle lithosphere by earlier suturing behave as latent plate boundaries
-  [[Heron et al., 2016]](#ref-heron2016).
-- Cratons survive in part because weaker belts around them take the strain
-  [[Lenardic et al., 2003]](#ref-lenardic2003). Rifting through a craton needs it to be
-  weakened first, by heating or melt metasomatism [[Foley, 2008]](#ref-foley2008).
+**What happens in nature.** Continental rifts exploit inherited weaknesses, including ancient
+orogenic belts and lithospheric fabrics, though the structures that reactivate depend on their
+orientation and strength [[Wilson, 1966]](#ref-wilson1966)
+[[Vauchez et al., 1997]](#ref-vauchez1997) [[Tommasi & Vauchez, 2001]](#ref-tommasi2001)
+[[Audet & Bürgmann, 2011]](#ref-audet2011) [[Heron et al., 2016]](#ref-heron2016). Models
+of the East African Rift show how plume–lithosphere interaction can branch rifts around a cratonic
+keel [[Koptev et al., 2015]](#ref-koptev2015); cratonic survival and rejuvenation depend on
+coupled mantle/lithosphere behavior and heating or metasomatism
+[[Lenardic et al., 2003]](#ref-lenardic2003) [[Foley, 2008]](#ref-foley2008). Continental rifts
+also depend on interacting forces and evolving lithospheric strength. Rift systems commonly begin
+as separate fault segments that propagate, interact and link; progressive thinning changes the
+force balance, and some rifts arrest before breakup [[Brune et al., 2023]](#ref-brune2023)
+[[Kolawole & Ajala, 2024]](#ref-kolawole2024). The Afar linkage observations show that transfer
+between rift tips can involve distributed extension and rift-perpendicular shear; a transform-like
+link is not necessarily a single strike-slip fault that slices a plate [[Pagli et al., 2018]](#ref-pagli2018).
+Plate motion and rifting are affected by slab, ridge, mantle and gravitational-potential-energy
+loads, whose relative importance varies by setting [[Forsyth & Uyeda, 1975]](#ref-forsyth1975)
+[[Brune et al., 2023]](#ref-brune2023).
 
-So the flow decides *that* a plate breaks and which two parts separate; the lithosphere's
-strength decides *where* the break runs.
+1. **Minimum cut through a strength graph (rejected after #480).** It bends a whole-plate
+   separator toward weak links, but minimizes a static path cost; it does not accumulate strain,
+   model local failure or propagate rift tips. The 1 Gyr same-state diagnostics reduced cut-link
+   craton crossings by only 11.8%, 20.0% and 28.6% for seeds 7, 11 and 2024. In the detailed
+   admitted-only diagnostic, B was 0.690, 0.747 and 0.643 (pooled 0.703): a 29.7% reduction in
+   craton area in the measured band, not 50%. Only 30 of 78 admitted routes were line-clear and
+   only 3 had a craton-free band. These results reject min-cut as the model strategy for #480;
+   changing its edge weights would continue to tune a geometric proxy rather than the failure
+   process ([analysis/issue480](../analysis/issue480/README.md) and
+   [gate-margin summary](../analysis/issue480/mincut-gate-margins-1gyr.json)). The detailed
+   margin replay's event totals differ from the earlier production-probe table, so its counts are
+   kept as a separate diagnostic and must not be pooled with that table.
+2. **Nucleate and propagate (an incomplete local-growth proposal).** A rift begins where extension
+   overcomes local strength and advances through neighboring lithosphere; it can stall rather than
+   invoke a success coin flip. This proposal does not define persistent damage, a segment-linkage
+   rule or the local loading field, so it is not yet an implementable model.
+3. **Stress-field trigger (incomplete on its own).** Derive intraplate loading from the plate
+   force balance and compare tensile force with lithospheric strength. This supplies a physical
+   driver, but an instantaneous threshold still cannot represent accumulated damage, intermittent
+   activity or arrested segments.
+4. **Raise craton resistance (RFC 0003 solution 3).** This can reduce craton loss, but cannot
+   choose a geologically plausible rift path or express segment growth. Keep it as a separate
+   material-retention control, not as a substitute for a rift model.
+5. **Plume weakening (RFC 0007).** Heating and melt can weaken lithosphere and may influence
+   initiation or propagation. Keep it coupled through RFC 0007; a plume is not required for every
+   rift.
+6. **Incremental, damage-driven rift segments (new; recommended).** Use local extensional loading
+   and strength to accumulate irreversible strain/damage through time. Damage nucleates discrete
+   rift segments, their tips advance into adjacent material when local loading can sustain growth,
+   and nearby segments link through extensional and transfer/shear deformation. A plate splits only
+   after a damaged, sufficiently connected boundary separates it; before then it may continue,
+   migrate, or arrest. Transform motion transfers displacement between offset segments; it is not
+   an independent whole-plate cut.
 
-1. **Minimum cut through a strength graph (recommended).** Keep the trigger and the
-   two-regime clustering. Replace the great circle with the cheapest boundary between the
-   two regimes across the plate's node graph, where cutting a link costs its length times
-   the lithosphere's strength. The cut bends around strong blocks and follows weak ones,
-   and still separates the regimes by construction.
-2. **Nucleate and propagate.** A rift starts where tension over strength peaks and grows
-   through the weakest neighbours until it reaches the plate's edge (a split) or stalls (a
-   failed rift, replacing the success coin flip). Closer to how rifts form, and pairs with
-   RFC 0007's plumes (three-armed rifts over plume heads). A larger change to the split
-   timing and frequency; a follow-up once 1 works.
-3. **Stress-field trigger.** Compute intraplate stress from the mismatch between basal
-   drag and plate motion, and split where it exceeds strength. The most physical, and the
-   largest change: it moves *when* plates split, not only where. Out of scope.
-4. **Raise craton resistance (RFC 0003's solution 3).** Raise `CRATON_RIFT_RESISTANCE` and
-   `CRATON_STRETCH_RESISTANCE`. Cheap, but treats the symptom. Kept as the fallback, sized
-   to whatever loss remains after 1.
-5. **Plume weakening (RFC 0007).** Heated lithosphere counts as weak in the cut cost and
-   in craton resistance. Lands with RFC 0007, through this RFC's strength function.
-
-**Recommendation (updated after RFC 0009 G3, #472, 2026-10-18).** Proceed with 1, using
-solution 4 as the resistance fallback. The cratons-first layout does not halve cut-band
-craton share on any of the three seeds, but its pooled L = 27.6% and B = 0.732 pass the
-pre-registered fallback branch (L ≥ 20%, B ≤ 0.75). This selects the cut for implementation;
-it does not satisfy this RFC's later cut-performance acceptance criteria. Size solution 4
-after measuring the remaining loss. Solution 2 is the follow-up; solution 5 comes with RFC
-0007.
+**Recommendation (revised after #480 evidence, 2026-10-18).** Treat solution 1 as failed for this
+problem. Replace it with solution 6, developed with RFC 0012's process-specific force-response
+interfaces. The nucleate-and-propagate proposal anticipates local growth, but does not define the
+state and linkage rules needed for local damage accumulation. Retain existing plate-scale
+flow/force information as a possible source of loading, not as a command to draw a complete cut.
+Keep solution 4 separately
+sized against the craton-loss gate, and take plume weakening through RFC 0007.
 
 ## Design
 
-**Gate.** RFC 0009's G1 first measured this RFC's probe on a mosaic-seeded world and set
-the branches on two measures: L, the share of craton-crossing cuts with an admissible
-minimum cut whose line touches no craton, and B, the craton area left in the operational
-band. RFC 0009's G3 then repeated the measures on the cratons-first layout with a matched
-control. G3 selects 1 with the resistance fallback when pooled L ≥ 20% and B ≤ 0.75; it
-selects 1 without that fallback at L ≥ 50% and B ≤ 0.50. Otherwise, the falsification case
-"the flow puts regime boundaries through cratons" holds: don't build 1. The #472 result
-selects 1 with the resistance fallback; the acceptance runs below must still establish the
-cut's performance and size 4.
+### Diagnosis gates
 
-**Probe evidence (no model change).** `bin/debug/prototype_mincut_split.py` taps
-`cratons.record_rift_cut`, so it sees every cut that goes ahead without changing the
-trajectory, and computes the minimum cut for it. It ran seeds 7, 11 and 2024 to 1 Gyr on
-a model identical to origin/main `1227c36` (5 Myr steps, default density and controls, one
-at a time); [analysis/rfc0010](../analysis/rfc0010/README.md) has the method and
-[mincut_probe.json](../analysis/rfc0010/mincut_probe.json) the numbers.
-Of 542 cuts, 135 crossed craton. Floor 0.05; L counts admissible cuts whose line touches
-no craton, and B is the craton left in the operational band (the minimum cut where
-admissible, else the flow cut) over the flow cuts', pooled:
+1. **Reconcile the diagnostic event stream before calibrating.** Re-run the recorded seeds and
+   compare event signatures, counts and admissibility margins from the production tap and shadow
+   calculator. The detailed margin reruns and the earlier production table have different event
+   totals despite nominally matching seed, layout, step and duration. Preserve each output; do not
+   combine denominators until the cause is understood. This does not rescue min-cut's observed
+   shortfall, but it is necessary for a reproducible baseline for the replacement.
+2. **Establish the local load available to damage.** Trace RFC 0012's torque/process interfaces and
+   determine whether a spatially varying extensional traction or strain-rate field can be derived
+   from current loads without inventing one from rigid plate rotation. Record its direction and
+   magnitude in Pa (stress), N/m (vertically integrated force per boundary length), or s⁻¹ (strain
+   rate), and compare the integrated tensile load with vertically integrated lithosphere strength.
+   If the current force interface only yields whole-plate torque, extend that interface first; do not
+   use the min-cut's two flow clusters as a surrogate stress field.
+3. **Calibrate accumulation and segment growth.** On synthetic plates and replayed candidate
+   events, measure damage/strain accumulation, nucleation, tip propagation, arrest and linkage under
+   timestep refinement. Select thresholds only after checking physical scale and sensitivity. If no
+   local load can be supported from the model's forces and material state, revise the premise rather
+   than add a free-standing damage timer.
 
-| Corridor | Band craton-free, admissible | L | B | Median residual ratio | Median length ratio |
-|---|---|---|---|---|---|
-| 500 km | 7 of 135 | 26 (19%) | 0.85 | 1.001–1.004 | 0.87–0.89 |
-| 1,000 km | 13 | 23 (17%) | 0.73 | 1.007–1.016 | 0.80–0.83 |
-| 1,500 km | 16 | 29 (21%) | 0.69 | 1.015–1.028 | 0.75–0.78 |
-| 2,500 km | 13 | 21 (16%) | 0.78 | 1.065–1.093 | 0.62–0.64 |
+### Mechanics (provisional)
 
-- The minimum cut follows the flow at least as well as the great circle: within 1,000 km
-  the residual rises about 1%, and the boundary (summed chord length of cut links) is
-  17–20% shorter.
-- It trims the craton in the operational band by about a quarter at 1,000 km, but rarely
-  clears it: the size gate rejects most craton-free routes, which cut off coastal slivers.
-- On today's layout it falls outside both of G1's building branches, as it should: this is
-  G1's control.
-- It costs at most 22 ms per cut, 33 ms with the fits.
+- **State and loading.** Add a bounded per-node cumulative irreversible extensional strain
+  `epsilon_rift` (dimensionless, initially zero). Obtain local tensile stress `sigma_t` in Pa and
+  local yield strength `Y_t` in Pa from a reduced-order load/strength calculation tied to RFC 0012.
+  The current torque balance drives whole-plate motion; its loads do not by themselves define
+  intraplate stress, so a spatial loading distribution is an explicit prerequisite, not an assumed
+  by-product.
+- **Damage update.** Where the tensile load exceeds local yield, integrate the inelastic extension
+  rate over the portion of the step in which it is positive:
+  `d epsilon_rift / dt = max(0, sigma_t - Y_t) / eta_rift`, with `eta_rift` in Pa·s. Keep
+  `epsilon_rift >= 0`; convert it to a bounded damage fraction `D = clip(epsilon_rift / epsilon_fail,
+  0, 1)`. A provisional bounded softening form is
+  `Y_t(D) = Y_t(0) * [1 - D * (1 - q_res)]`, where the residual-strength fraction `q_res` is in
+  [0, 1]. Reaching `D = 1` marks local failure; this creates/extends a segment but does not split the
+  plate unless the failed links form a viable connected boundary. `epsilon_fail`, `eta_rift`,
+  `q_res`, any healing time, and whether this softening form is adequate are calibration assumptions
+  with no approved numeric values yet. They must be set after diagnosis gate 3, with physical scale
+  checks and sensitivity runs; no parameter should be selected to hit the craton-crossing percentage
+  alone.
+- **Nucleation and growth.** Nucleate a finite segment when accumulated strain and local loading
+  satisfy the calibrated failure rule. Extend a segment tip only into adjacent cells where the local
+  tensile load can sustain damage; permit multiple segments and abandonment. Link overlapping or
+  interacting segments through distributed extension and transfer/shear zones. The graph identifies
+  local adjacency and connectedness only; it does not search globally for the least-cost separator.
+  Strike-slip/transform response transfers relative displacement between segments and may change tip
+  loading, but cannot split the plate by itself.
+- **Rift completion.** Create a new plate only when damage/extension forms a connected, viable boundary
+  with two material-retaining sides and the required kinematic divergence. Until then, keep one plate
+  and apply incremental thinning/opening through existing deformation and ledger paths. Failed or
+  abandoned rifts retain their modeled damage/weakness unless a measured healing law removes it.
+  Do not apply the current whole-band one-shot thinning plus success coin flip to the same event.
+- **Crust type.** Permit a propagating spreading boundary to enter oceanic lithosphere when its local
+  loading and damage criteria allow it. Track continental, oceanic and mixed-crust segment length
+  separately so continental breakup is not inferred from a coastline crossing.
+- **Gravity and mantle coupling.** Use loads already represented in the plate torque model—slab pull,
+  ridge push and basal drag—as contributors only where a defensible spatial load distribution exists.
+  Include lithospheric gravitational-potential-energy gradients when column thickness/topography can
+  support a dimensionally consistent force. Mantle-flow vectors may assist or resist motion through
+  traction; they are not a prescribed rift line. Do not count the same load twice between plate torque
+  and segment stress.
 
-**Strength.** Per node, dimensionless, in [0, 1]:
-`S = clip(max(c, k, b), 0, 1)`, where
-- `c = cratons.strength(craton_crust_m)`;
-- `k = clip((Hm / REFERENCE_HM_CONTINENTAL_M − 1) / (KEEL_FULL_RATIO − 1), 0, 1)`, 0 at the
-  100 km reference and 1 at a 200 km keel;
-- with RFC 0009, a belt-marked column scores `RIFT_BELT_STRENGTH` (default 0) whatever its
-  keel, so old sutures and rifts are the cheapest path; and with RFC 0007, heated cells
-  are multiplied by `1 − PLUME_CRATON_WEAKENING`.
+**Units, bounds and timestep.** Stress and strength use Pa; strain is dimensionless; viscosity uses
+Pa·s; damage stays in [0, 1]; thickness stays nonnegative. Integrate `max(0, sigma_t - Y_t)` along
+its within-step trajectory rather than sampling only the step endpoint. Segment nucleation events are
+keyed to node/segment identity and continuous time, not step count. Validate with steps longer than
+the nucleation, propagation and healing durations, and compare accumulated strain, rift length and
+thinning, not only final topology.
 
-S ranks cuts only; it never enters a thinning factor.
+**Conservation and ownership.** Store damage as an intensive per-node state with an explicit lifecycle
+through split, merge, remap, node activation/deactivation and save/load. Default missing state in old
+saves to zero. Rift thinning and new crust continue through one existing material-budget owner per
+step; damage is a state variable, not an extra crust-volume reservoir. Check crust/mantle ledgers and
+spatial contiguity independently: conservation alone does not validate a plausible rift.
 
-**The cut.**
-1. Build the plate's node graph: each node's `RIFT_GRAPH_NEIGHBOURS` = 8 nearest
-   neighbours, dropping links longer than 2.5 spacings. A link of chord length ℓ between
-   nodes i and j costs `ℓ / spacing × (RIFT_COST_FLOOR + (S_i + S_j) / 2)`. The floor makes
-   the cut prefer a short path where strength is equal.
-2. Terminals: nodes on the flow cut's side A at least `RIFT_CORRIDOR_KM` from it are tied to
-   a source, nodes on side B the same distance away to a sink. The corridor bounds how far
-   the rift may wander from the flow's line, as the tilt cone did for RFC 0003.
-3. Solve the minimum s–t cut with `scipy.sparse.csgraph.maximum_flow` (integer
-   capacities), and take the source side as half A
-   [[Boykov & Kolmogorov, 2004]](#ref-boykov2004).
-4. Admissibility, as for RFC 0003: both halves at least `SPLIT_MIN_NODES`; poles at least
-   the relaxed `pole_separation_threshold` apart; RMS fit residual at most
-   `1 + RIFT_MAX_RESIDUAL_INCREASE` times the flow cut's; each half's largest connected
-   component holds at least `RIFT_MIN_CONNECTED_SHARE` of it. If any test fails, keep the
-   flow cut. RFC 0003's area misfit gate is dropped: it only capped how far the cut moved,
-   which the corridor now does.
+**Runtime and saves.** The added work is expected to scale as O(N + E) per step for N plate nodes and
+their E local-neighbor links, plus a connectedness check when segments change. No measured runtime is
+available before a prototype; benchmark at density 4 against the existing 2% step-time budget and do
+not extrapolate from min-cut's per-attempt runtime. Old saves load with zero damage/segment state. New
+saves retain all state needed to continue the same rift history deterministically.
 
-**Using a curved cut.**
-- `Plate.split` takes a node mask, through the existing `_plates_from_node_masks`.
-- `apply_failed_rift` and `cratons.record_rift_cut` take a per-node distance to the cut
-  instead of `|p · n|`: the distance to the nearest node on a cut link, from a KD-tree over
-  those nodes. The band and taper are unchanged.
-- With RFC 0009, the band of a successful split or failed rift is marked as a belt, so a
-  rift that formed once is cheaper to reopen.
-
-**Units and bounds.** Distances in km and chord radians; S and the floor are
-dimensionless; capacities are scaled to integers, so the scale changes no cut by more
-than rounding. No factor applied to a physical field changes.
-
-**Timestep robustness.** The cut is computed once per split attempt from the current state;
-attempts are already at most once per plate per step after the 2 Myr cooldown. No rate is
-integrated.
-
-**Runtime.** In the probe, a minimum cut takes at most about 12 ms on the largest plates at
-default density, and the whole evaluation (graph, cut, fits) about 30 ms per cut, on
-100–200 cuts per Gyr. Acceptance measures it at density 4.
-
-**Save compatibility.** No new state; behaviour only.
-
-**Knobs.**
-
-| Knob | Start | Source | Tuning |
-|---|---|---|---|
-| `RIFT_CORRIDOR_KM` | 1,000 km | Design choice: about a craton's width, so a cut can pass either side of one | Sweep 500–2,500 km with G1 and the acceptance runs |
-| `RIFT_COST_FLOOR` | 0.05 | Design choice: the probe found 0.05 and 0.25 give nearly the same cuts | Report 0.25 |
-| `RIFT_BELT_STRENGTH` | 0 | Design choice: belts are the weakest lithosphere [[Audet & Bürgmann, 2011]](#ref-audet2011) | Sweep 0–0.5 |
-| `RIFT_MAX_RESIDUAL_INCREASE` | 0.10 | As RFC 0003: a cut may fit the flow at most 10% worse | Sweep 0.05–0.25 |
-| `RIFT_MIN_CONNECTED_SHARE` | 0.99 | Numerical: each half is one piece, allowing a few stray nodes | Fixed |
-| `RIFT_GRAPH_NEIGHBOURS` | 8 | Numerical | Fixed |
-| `KEEL_FULL_RATIO` | 2.0 | Cratonic keels reach about 200–250 km [[Pearson et al., 2021]](#ref-pearson2021) | Fixed |
-| `CRATON_RIFT_RESISTANCE`, `CRATON_STRETCH_RESISTANCE` | 0.75 | #274 | Solution 4: tune to the loss left after 1 |
-
-Tune with `bin/debug/compare_cratons.py` on seeds 7, 11 and 2024 to 1 Gyr, plus seed
-456862899 to 3 Gyr, at default density, 5 Myr steps, one run at a time, against the matched
-baseline that includes RFC 0009.
+**Knobs.** No numeric starting values are approved for the new constitutive parameters; selecting them
+before the load diagnosis would be false precision. The diagnosis-gate revision must set each value,
+its physical source or explicit design-choice status, and the sensitivity plan before implementation.
 
 ## Detailed design (provisional touchpoints)
 
-- `backend/app/merge_split.py`
-  - New `_rift_strength(plate)` and `_strength_min_cut(points, strength, cut_normal,
-    spacing_rad, min_nodes, pole_separation_threshold, velocities)`, returning the half-A
-    mask and the per-node distance to the cut, or `None` to keep the flow cut.
-  - `maybe_split_plate`: call it after `_refine_split_cut`; pass the mask to `Plate.split`
-    and the distances to `apply_failed_rift` and `cratons.record_rift_cut`.
-  - New constants above, with comments citing this RFC.
-- `backend/app/plates.py` and `backend/app/sparse_quad_patch.py`: `split` accepts a node
-  mask (through `_plates_from_node_masks`); `apply_failed_rift` accepts per-node distances.
-- `backend/app/cratons.py`: `record_rift_cut` takes distances.
-- Tests:
-  - `backend/unit_tests/test_merge_split.py`:
-    - on a synthetic plate whose flow cut crosses a craton and a weak belt runs within the
-      corridor, the cut follows the belt;
-    - with uniform strength, the cut stays within a node spacing of the flow cut;
-    - a cut that would leave a half under `SPLIT_MIN_NODES`, or raise the residual over the
-      limit, falls back to the flow cut;
-    - both halves are connected;
-    - the result is identical for the same inputs (deterministic).
-  - `backend/unit_tests/test_sparse_quad_patch.py`: `split` by mask preserves every field;
-    `apply_failed_rift` with distances matches the normal-based version for a straight cut.
-- Docs: `docs/simulation-model.md`, "Merge and split".
+- `backend/app/torque.py` and RFC 0012's force-response interfaces: provide or aggregate a spatially
+  resolved tensile load/strain-rate proxy; this may require a new reduced-order load distributor.
+- `backend/app/merge_split.py`: replace the whole-plate min-cut choice and success coin flip with
+  segment eligibility, state advancement and a connected-boundary completion check. Existing flow
+  fit may remain a diagnostic/kinematic consistency check, not the rift path.
+- `backend/app/faults.py`, `backend/app/quad_tectonics.py` and `backend/app/rheology.py`: reuse or
+  extend local fault/extension response so segment damage, slip and thinning share one constitutive
+  response and ownership path. Exact function names are to be confirmed after diagnosis gate 2.
+- `backend/app/sparse_quad_patch.py` and `backend/app/plates.py`: persist/remap the new intensive
+  state with area-aware ownership; missing fields in old saves initialize to zero.
+- `backend/app/cratons.py`: retain separate line-crossing and band-exposure measures and add segment
+  growth, arrest, linkage, crust-type and damage diagnostics. Do not redefine B as the sole physical
+  success measure.
+- Tests: timestep-partition invariance; damage bounds and no damage under compression; localized
+  weakening; tip advance/arrest; segment linkage via distributed shear; oceanic propagation; split
+  only after a connected viable boundary; remap/save compatibility; ledger closure.
+- Docs: update `docs/simulation-model/tectonics.md` and the architecture module map when the model
+  design is accepted for implementation.
 
 ## Assumptions and uncertainty
 
-- **The flow chooses the regimes.** The cut assumes the flow's two-regime split is right
-  and only the line between them is free, within the corridor.
-- **Strength is a proxy.** Craton strength, keel thickness and belt marks stand in for
-  temperature, composition, water content and fabric. S only ranks cuts.
-- **The kNN graph approximates boundary length.** Link density varies a little with the
-  quad layout; the cost floor keeps cuts short but not exactly geodesic.
-- **Rifts as whole cuts.** A real rift propagates over Myr and may stall part-way. Solution
-  2 models that; this RFC still splits a plate in one step.
-- **Without RFC 0009 the cut gains little.** The probe shows the craton blob blocks every
-  route; this RFC's value depends on G1.
+- **Local loading is the key unresolved interface.** Rigid plate rotation and whole-plate torque do
+  not uniquely specify intraplate stress. The replacement must derive a supported local load or stop
+  and revise; it must not disguise the min-cut flow partition as mechanics.
+- **Damage proxies brittle/ductile weakening.** A single strain/damage scalar omits temperature,
+  fluids, grain-scale rheology and depth-dependent faulting. It is an efficient model proxy, not a
+  resolved fault-zone simulation.
+- **Segment linkage is not always a discrete transform.** Rift transfer may be distributed or
+  extension-dominated; the model must not force a strike-slip “scissor” at every offset.
+- **Craton avoidance is probabilistic geology, not an absolute rule.** Strong cratons should resist
+  extension, while sufficiently large loads or inherited weaknesses may still rupture them. The
+  acceptance target measures a comparative model behavior, not a universal geological law.
+- **Continental and oceanic rifting differ.** A boundary may propagate from continental extension
+  into oceanic crust, but the two modes need not share identical thresholds.
+- **The 1 Gyr replays are stress tests, not calibration intervals.** Tune constitutive assumptions on
+  shorter controlled cases, then use long runs to check side effects and budgets.
 
 ## Acceptance criteria
 
-- [x] **Gate:** RFC 0009's G3 selects this RFC's cut with the resistance fallback
-      (pooled L = 27.6% and B = 0.732; see [analysis/rfc0009/g3.json](../analysis/rfc0009/g3.json)).
-- [ ] Against the matched baseline on seeds 7, 11 and 2024 over 1 Gyr, both fall by at
-      least 50%: the share of successful splits whose cut line (the nodes on cut links)
-      touches craton, and the craton area in the bands of splits and failed rifts (the
-      `split_band_craton_area_m2` and `failed_rift_band_craton_area_m2` counters
-      `cratons.record_rift_cut` books).
-- [ ] Craton loss to rifting, with solution 4 sized as needed, is at most 2% of live craton
-      per Gyr on average across seeds 7, 11 and 2024, and in each of the first three Gyr on
-      seed 456862899 (a design target, not an Earth rate).
-- [ ] Splits per Gyr and mean plate count change by less than 10%; the mean fit residual
-      of post-split plates rises by less than 10%.
-- [ ] A cut attempt takes under 100 ms at 10⁵ nodes; step time changes by less than 2% at
-      density 4.
-- [ ] Ledgers balance; replays are deterministic; unit tests above pass; affected tests,
-      ruff and `bin/quality_check.sh` are green.
+1. [ ] **Diagnosis gates first:** reconcile the differing diagnostic event streams and publish a
+       repeatable, matched baseline; provide a spatial load/strength derivation with units; set and
+       sensitivity-test the constitutive parameters before full replays.
+2. [ ] In synthetic tests, damage is timestep-partition invariant, bounded, absent under compression
+       or sub-yield loading, and advances only through adjacent cells with supported positive loading.
+3. [ ] Segments can nucleate independently, propagate, arrest and link; a transform/transfer zone
+       transfers shear without making an instantaneous plate-wide split.
+4. [ ] A plate splits only after a connected viable rift boundary forms; split frequency and mean plate
+       count remain within 10% of the matched baseline unless the RFC is revised with a justified new
+       target.
+5. [ ] On seeds 7, 11 and 2024 over 1 Gyr, the successful split line-craton rate and band-craton
+       exposure each fall at least 50% against a matched old-algorithm replay, with continental,
+       oceanic and mixed crust reported separately. These are project acceptance targets, not claims
+       that natural rifts obey a universal 50% rule.
+6. [ ] Rifting-related craton loss is at most 2% of live craton per Gyr on average across seeds 7, 11
+       and 2024, and in each of the first three Gyr on seed 456862899, subject to matched replay and
+       ledger checks.
+7. [ ] Crust/mantle ledgers balance; old saves load; deterministic event identities and timestep tests
+       pass; runtime overhead is measured at density 4 and remains within the existing 2% step-time
+       budget or the RFC is revised with a measured trade-off.
 
 ## Falsification criteria
 
-- **The flow puts regime boundaries through cratons.** If G1 falls in neither building
-  branch even on a mosaic (L < 20%, or B > 0.75), the line was never the
-  problem. Don't build 1; investigate why the flow's regime boundaries sit under cratons.
-- **Curved cuts change the tectonics.** If splits per Gyr, plate counts or residuals move
-  past the limits above at the smallest corridor that helps, fall back to solution 4.
-- **Belts don't attract rifts.** If, with RFC 0009's belts, fewer than half of cuts that
-  could follow a belt within the corridor do so, the strength proxy is too weak a signal;
-  revisit `RIFT_BELT_STRENGTH` and the floor before tuning resistance.
+- **No defensible local loading field:** if current force/torque data cannot support a spatial
+  extensional load without an arbitrary flow-derived line, stop this design and extend the force
+  interface or retain a clearly labeled phenomenological rift model.
+- **Damage does not localize:** if weak inherited zones do not attract segments under controlled
+  loading, or damage spreads diffusely regardless of strength, revise the constitutive law; do not
+  tune only the craton-resistance parameter.
+- **Segments do not produce viable boundaries:** if propagation/linkage cannot produce a connected
+  separator without violating daughter size, fit or material budgets, reject the proposed topology
+  transition and revisit the segment model.
+- **No improvement against baseline:** if line-craton and band-craton measures miss the 50% target
+  on any named seed after the approved parameter sensitivity range, reject or revise the mechanism;
+  do not claim acceptance from improved B alone.
+- **Timestep dependence or runaway damage:** if event timing, final strain or rift geometry changes
+  materially under equivalent step partitions, or damage softening causes uncontrolled rupture, the
+  integration/constitutive law is falsified and must be revised.
 
 ## References
 
+- <a id="ref-brune2023"></a>Brune, S., Kolawole, F., Olive, J.-A., & Stamps, D. S. (2023).
+  Geodynamics of continental rift initiation and evolution. *Nature Reviews Earth & Environment*,
+  4, 235–253. [doi:10.1038/s43017-023-00391-3](https://doi.org/10.1038/s43017-023-00391-3)
+- <a id="ref-forsyth1975"></a>Forsyth, D. W., & Uyeda, S. (1975). On the relative importance
+  of the driving forces of plate motion. *Geophysical Journal of the Royal Astronomical Society*,
+  43(1), 163–200. [doi:10.1111/j.1365-246X.1975.tb00631.x](https://doi.org/10.1111/j.1365-246X.1975.tb00631.x)
+- <a id="ref-kolawole2024"></a>Kolawole, F., & Ajala, R. (2024). Propagating rifts: the roles of
+  crustal damage and ascending mantle fluids. *Solid Earth*, 15, 747–762.
+  [doi:10.5194/se-15-747-2024](https://doi.org/10.5194/se-15-747-2024)
+- <a id="ref-pagli2018"></a>Pagli, C., Yun, S.-H., Ebinger, C., Keir, D., & Wang, H. (2018).
+  Strike-slip tectonics during rift linkage. *Geology*, 47(1), 31–34.
+  [doi:10.1130/G45345.1](https://doi.org/10.1130/G45345.1)
 - <a id="ref-audet2011"></a>Audet, P., & Bürgmann, R. (2011). Dominant role of tectonic
   inheritance in supercontinent cycles. *Nature Geoscience*, 4, 184–187.
   [doi:10.1038/ngeo1080](https://doi.org/10.1038/ngeo1080)
-- <a id="ref-boykov2004"></a>Boykov, Y., & Kolmogorov, V. (2004). An experimental
-  comparison of min-cut/max-flow algorithms for energy minimization in vision. *IEEE
-  Transactions on Pattern Analysis and Machine Intelligence*, 26(9), 1124–1137.
-  [doi:10.1109/TPAMI.2004.60](https://doi.org/10.1109/TPAMI.2004.60)
 - <a id="ref-foley2008"></a>Foley, S. F. (2008). Rejuvenation and erosion of the cratonic
   lithosphere. *Nature Geoscience*, 1, 503–510.
   [doi:10.1038/ngeo261](https://doi.org/10.1038/ngeo261)
@@ -294,10 +322,6 @@ baseline that includes RFC 0009.
   coupled mantle convection and continental tectonics. *Journal of Geophysical Research:
   Solid Earth*, 108(B6), 2303.
   [doi:10.1029/2002JB001859](https://doi.org/10.1029/2002JB001859)
-- <a id="ref-pearson2021"></a>Pearson, D. G., Scott, J. M., Liu, J., Schaeffer, A., Wang,
-  L. H., van Hunen, J., Szilas, K., Chacko, T., & Kelemen, P. B. (2021). Deep continental
-  roots and cratons. *Nature*, 596, 199–210.
-  [doi:10.1038/s41586-021-03600-5](https://doi.org/10.1038/s41586-021-03600-5)
 - <a id="ref-tommasi2001"></a>Tommasi, A., & Vauchez, A. (2001). Continental rifting
   parallel to ancient collisional belts: An effect of the mechanical anisotropy of the
   lithospheric mantle. *Earth and Planetary Science Letters*, 185, 199–210.

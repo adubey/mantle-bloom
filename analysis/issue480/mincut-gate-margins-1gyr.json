@@ -1,0 +1,142 @@
+{
+  "purpose": "Admissibility margins and admitted-only craton exposure for the same-state min-cut shadow diagnostic; not production counters.",
+  "model_commit": "68f8bf3fd2c43c1470f23ac27e1b2567550e0714",
+  "layout": "cratons-first",
+  "years": 1000000000.0,
+  "step_years": 2000000.0,
+  "corridor_km": 1000,
+  "cost_floor": 0.05,
+  "eligibility": "flow cut's measured FAILED_RIFT_BAND_MULT band contains craton",
+  "source_files": [
+    "/tmp/issue480-gate-margins-seed7-1gyr.json",
+    "/tmp/issue480-gate-margins-seed11-1gyr.json",
+    "/tmp/issue480-gate-margins-seed2024-1gyr.json"
+  ],
+  "runs": [
+    {
+      "seed": 7,
+      "flow_band_craton_candidates": 64,
+      "admissible": 29,
+      "rejected": 35,
+      "overlapping_gate_fail_counts": {
+        "size_ok": 27,
+        "residual_ok": 9,
+        "poles_ok": 0,
+        "connected": 1
+      },
+      "size_fail_node_deficit": {
+        "min": 12,
+        "median": 72,
+        "max": 242,
+        "fraction_of_required_min_half_nodes": {
+          "min": 0.6542857142857142,
+          "median": 0.8971428571428571,
+          "max": 0.9828571428571429,
+          "within_5_percent": 4,
+          "below_75_percent": 1
+        }
+      },
+      "residual_fail_ratio": {
+        "min": 1.1042589631269148,
+        "median": 1.1239142737231305,
+        "max": 1.1753738523475181
+      },
+      "pole_separation_fraction_of_required": [],
+      "smallest_component_share_on_connectivity_failure": [
+        0.7264150943396226
+      ],
+      "admitted_line_clear": 13,
+      "admitted_zero_band_craton": 3,
+      "B_admitted": 0.6902533886240572
+    },
+    {
+      "seed": 11,
+      "flow_band_craton_candidates": 41,
+      "admissible": 29,
+      "rejected": 12,
+      "overlapping_gate_fail_counts": {
+        "size_ok": 11,
+        "residual_ok": 5,
+        "poles_ok": 1,
+        "connected": 0
+      },
+      "size_fail_node_deficit": {
+        "min": 9,
+        "median": 101,
+        "max": 287,
+        "fraction_of_required_min_half_nodes": {
+          "min": 0.59,
+          "median": 0.8557142857142858,
+          "max": 0.9871428571428571,
+          "within_5_percent": 1,
+          "below_75_percent": 3
+        }
+      },
+      "residual_fail_ratio": {
+        "min": 1.133692891726048,
+        "median": 1.1417074080421576,
+        "max": 1.1896353306924197
+      },
+      "pole_separation_fraction_of_required": [
+        0.9622667322400815
+      ],
+      "smallest_component_share_on_connectivity_failure": [],
+      "admitted_line_clear": 9,
+      "admitted_zero_band_craton": 0,
+      "B_admitted": 0.7472750843530797
+    },
+    {
+      "seed": 2024,
+      "flow_band_craton_candidates": 32,
+      "admissible": 20,
+      "rejected": 12,
+      "overlapping_gate_fail_counts": {
+        "size_ok": 6,
+        "residual_ok": 3,
+        "poles_ok": 4,
+        "connected": 0
+      },
+      "size_fail_node_deficit": {
+        "min": 7,
+        "median": 76.5,
+        "max": 120,
+        "fraction_of_required_min_half_nodes": {
+          "min": 0.8285714285714286,
+          "median": 0.8907142857142858,
+          "max": 0.99,
+          "within_5_percent": 2,
+          "below_75_percent": 0
+        }
+      },
+      "residual_fail_ratio": {
+        "min": 1.1013254516437534,
+        "median": 1.1176880009390846,
+        "max": 1.1213391754722526
+      },
+      "pole_separation_fraction_of_required": [
+        0.8617692446013392,
+        0.9797782682566212,
+        0.958607360715218,
+        0.9608333997436911
+      ],
+      "smallest_component_share_on_connectivity_failure": [],
+      "admitted_line_clear": 8,
+      "admitted_zero_band_craton": 0,
+      "B_admitted": 0.6426240288268756
+    }
+  ],
+  "pooled": {
+    "flow_band_craton_candidates": 137,
+    "admissible": 78,
+    "rejected": 59,
+    "overlapping_gate_fail_counts": {
+      "size_ok": 44,
+      "residual_ok": 17,
+      "poles_ok": 5,
+      "connected": 1
+    },
+    "admitted_line_clear": 30,
+    "admitted_zero_band_craton": 3,
+    "B_admitted": 0.7026428967927874
+  }
+}

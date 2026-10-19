@@ -1,0 +1,254 @@
+{
+  "branch_base_commit": "68f8bf3fd2c43c1470f23ac27e1b2567550e0714",
+  "years": 1000000000.0,
+  "step_years": 2000000.0,
+  "formation_myr": "disabled",
+  "corridor_km": 1000.0,
+  "cost_floor": 0.05,
+  "rfc0009_g3_baseline": {
+    "model_commit": "5339d0ca0ee29986852da1f1c33f750a2cb8a9a4",
+    "band_craton_share": {
+      "7": 0.324074,
+      "11": 0.352941,
+      "2024": 0.306452
+    }
+  },
+  "runs": [
+    {
+      "seed": 7,
+      "flow_line_crossings": 51,
+      "routed_line_crossings": 45,
+      "line_crossing_reduction": 0.11764705882352944,
+      "band_craton_share": 0.19776505351547136,
+      "split_line_crossings": 29,
+      "split_cuts": 76,
+      "split_band_craton_area_m2": 53924387488541.36,
+      "failed_rift_band_craton_area_m2": 36624355664300.88,
+      "ledger_balance_error_m3": -1536.0,
+      "wall_s": 1832.1530637082178
+    },
+    {
+      "seed": 11,
+      "flow_line_crossings": 60,
+      "routed_line_crossings": 48,
+      "line_crossing_reduction": 0.19999999999999996,
+      "band_craton_share": 0.1605044865915159,
+      "split_line_crossings": 17,
+      "split_cuts": 59,
+      "split_band_craton_area_m2": 31249476244942.633,
+      "failed_rift_band_craton_area_m2": 59025499447897.74,
+      "ledger_balance_error_m3": 1024.0,
+      "wall_s": 1732.6336943749338
+    },
+    {
+      "seed": 2024,
+      "flow_line_crossings": 42,
+      "routed_line_crossings": 30,
+      "line_crossing_reduction": 0.2857142857142857,
+      "band_craton_share": 0.11873147289935874,
+      "split_line_crossings": 18,
+      "split_cuts": 72,
+      "split_band_craton_area_m2": 23346584792650.777,
+      "failed_rift_band_craton_area_m2": 29222794862723.598,
+      "ledger_balance_error_m3": 1536.0,
+      "wall_s": 1607.5221464999486
+    }
+  ],
+  "short_sweeps": [
+    {
+      "seed": 7,
+      "years": 100000000.0,
+      "step_years": 5000000.0,
+      "corridor_km": 1500,
+      "cost_floor": 0.05,
+      "L": 0.5454545455,
+      "B": 0.9066630705
+    },
+    {
+      "seed": 7,
+      "years": 100000000.0,
+      "step_years": 5000000.0,
+      "corridor_km": 2500,
+      "cost_floor": 0.05,
+      "L": 0.2727272727,
+      "B": 0.903692533
+    },
+    {
+      "seed": 7,
+      "years": 100000000.0,
+      "step_years": 5000000.0,
+      "corridor_km": 1000,
+      "cost_floor": 0.25,
+      "L": 0.6153846154,
+      "B": 0.8656575122
+    }
+  ],
+  "rift_loss_baseline_seed456": {
+    "resistance": {
+      "CRATON_RIFT_RESISTANCE": 0.75,
+      "CRATON_STRETCH_RESISTANCE": 0.75
+    },
+    "years": 3000000000.0,
+    "step_years": 5000000.0,
+    "formation_myr": 200,
+    "loss_pct_live_per_gyr": [
+      11.84697624896847,
+      11.319314773415353,
+      9.826443770964303
+    ],
+    "path_loss_delta_m3_per_gyr": [
+      {
+        "rifted_divergent_m3": 5900000000000000.0,
+        "rifted_stretch_m3": 3.513e+17,
+        "rifted_failed_m3": 4.82e+16
+      },
+      {
+        "rifted_divergent_m3": 6000000000000000.0,
+        "rifted_stretch_m3": 1.705e+17,
+        "rifted_failed_m3": 2.45e+16
+      },
+      {
+        "rifted_divergent_m3": 5800000000000000.0,
+        "rifted_stretch_m3": 6.89e+16,
+        "rifted_failed_m3": 6000000000000000.0
+      }
+    ],
+    "ledger_balance_error_m3": 512.0,
+    "wall_min": 36.3762,
+    "peak_rss_mib": 1331.84
+  },
+  "tuned_resistance_candidate": {
+    "CRATON_RIFT_RESISTANCE": 0.99,
+    "CRATON_STRETCH_RESISTANCE": 0.99,
+    "verification": "3 Gyr replay completed; see rift_loss_candidate_099_seed456"
+  },
+  "rift_loss_candidate_097_seed456": {
+    "resistance": {
+      "CRATON_RIFT_RESISTANCE": 0.97,
+      "CRATON_STRETCH_RESISTANCE": 0.97
+    },
+    "windows": [
+      {
+        "gyr": 1,
+        "mean_loss_pct_live_per_gyr": 2.4493730264069216,
+        "range_pct": [
+          1.6079270561045846,
+          3.6122304457370378
+        ],
+        "rift_path_delta_m3": {
+          "rifted_divergent_m3": 1715701006290711.0,
+          "rifted_stretch_m3": 7.914900198821974e+16,
+          "rifted_failed_m3": 2961299799901681.0
+        }
+      },
+      {
+        "gyr": 2,
+        "mean_loss_pct_live_per_gyr": 2.0751832356801327,
+        "range_pct": [
+          1.0668054319474232,
+          3.0768743797819775
+        ],
+        "rift_path_delta_m3": {
+          "rifted_divergent_m3": 1461951684788752.5,
+          "rifted_stretch_m3": 2.46636762822096e+16,
+          "rifted_failed_m3": 1100415581738543.0
+        }
+      },
+      {
+        "gyr": 3,
+        "mean_loss_pct_live_per_gyr": 1.7876800502718826,
+        "range_pct": [
+          0.7861256921119009,
+          2.6094869403236176
+        ],
+        "rift_path_delta_m3": {
+          "rifted_divergent_m3": 1169772260716116.5,
+          "rifted_stretch_m3": 1.2463099009311088e+16,
+          "rifted_failed_m3": 0.0
+        }
+      }
+    ],
+    "ledger_balance_error_m3": 5632.0,
+    "wall_min": 37.18887828888449,
+    "peak_rss_mib": 1295.25
+  },
+  "rift_loss_candidate_099_seed456": {
+    "resistance": {
+      "CRATON_RIFT_RESISTANCE": 0.99,
+      "CRATON_STRETCH_RESISTANCE": 0.99
+    },
+    "years": 3000000000.0,
+    "step_years": 5000000.0,
+    "formation_myr": 200,
+    "loss_pct_live_per_gyr": [
+      1.6110095714579356,
+      1.1197890283062024,
+      0.9660818312528476
+    ],
+    "path_loss_delta_m3_per_gyr": [
+      {
+        "rifted_divergent_m3": 6028095731955855.0,
+        "rifted_stretch_m3": 3.578844462130496e+17,
+        "rifted_failed_m3": 2.8748810405922452e+16
+      },
+      {
+        "rifted_divergent_m3": 1.7425819587721608e+16,
+        "rifted_stretch_m3": 6.506121057925321e+17,
+        "rifted_failed_m3": 4.5255843522701576e+16
+      },
+      {
+        "rifted_divergent_m3": 2.5846068396343896e+16,
+        "rifted_stretch_m3": 7.68077396697882e+17,
+        "rifted_failed_m3": 4.8395168853910456e+16
+      }
+    ],
+    "ledger_balance_error_m3": 5120.0,
+    "wall_min": 37.55941613749989,
+    "peak_rss_mib": 1254.484375
+  },
+  "old_flow_cut_baseline_seed456": {
+    "description": "Pre-#480 behavior emulated by forcing the production min-cut helper to fall back to the flow-defined great-circle cut; same RFC 0009 cratons-first setup as candidate.",
+    "resistance": {
+      "CRATON_RIFT_RESISTANCE": 0.75,
+      "CRATON_STRETCH_RESISTANCE": 0.75
+    },
+    "years": 3000000000.0,
+    "step_years": 5000000.0,
+    "formation_myr": 200,
+    "loss_pct_live_per_gyr": [
+      10.520670213544566,
+      9.490812057540682,
+      6.555345939455942
+    ],
+    "ledger_balance_error_m3": 836983808.0,
+    "wall_min": 37.71746188541486,
+    "peak_rss_mib": 1256.640625
+  },
+  "rift_loss_comparisons_seed456": {
+    "same_trajectory_window_change_pct": [
+      -30.491472667489315,
+      -13.726442496570353
+    ],
+    "old_flow_075_vs_strength_cut_075_delta_pct_points": [
+      1.3263060354239045,
+      1.8285027158746718,
+      3.271097831508361
+    ],
+    "old_flow_075_vs_strength_cut_075_relative_change_pct": [
+      12.606668667518784,
+      19.266030185708733,
+      49.899698074207876
+    ],
+    "old_flow_075_vs_strength_cut_099_delta_pct_points": [
+      -8.90966064208663,
+      -8.371023029234479,
+      -5.5892641082030945
+    ],
+    "old_flow_075_vs_strength_cut_099_relative_reduction_pct": [
+      84.68719635956383,
+      88.2013359708614,
+      85.26268727576829
+    ],
+    "note": "Same seed and settings, but full trajectories diverge. Comparing old-flow/0.75 with routed/0.99 combines the cut algorithm and resistance change; routed/0.75 versus old-flow/0.75 is the closer routing-only comparison."
+  }
+}
