@@ -62,10 +62,12 @@ mantle depletion.
 RFCs 0009 and 0010 replace RFC 0003, whose cut steering couldn't avoid cratons (PR #418),
 and RFC 0004. An offline probe ([`analysis/rfc0010/`](../analysis/rfc0010/README.md))
 found that even a cut free to bend rarely misses a craton, because each continent's
-interior is one craton. That is because generation makes plates first, each wholly
-continental or oceanic, and puts a craton in the middle of each continental plate. 0009
-reverses the order: cratonic cores first, continents assembled around them with lasting weak
-belts, then plates placed around them; its gate G3 decides whether 0010's cut is built.
+interior is one craton. RFC 0009 reverses the generation order: cratonic cores first,
+continents assembled around them with lasting weak belts, then plates placed around them.
+G3 initially selected RFC 0010's min-cut with a resistance fallback, but the #480 1 Gyr
+same-state routing diagnostics showed the min-cut did not reach its per-seed 50% target.
+RFC 0010 is revised to reject a static whole-plate minimum cut and propose incremental,
+damage-driven rift segments; see [`analysis/issue480/`](../analysis/issue480/README.md).
 
 ## Writing and reviewing
 

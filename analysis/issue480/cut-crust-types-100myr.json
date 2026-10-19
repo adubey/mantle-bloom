@@ -1,0 +1,73 @@
+{
+  "model_commit": "68f8bf3fd2c43c1470f23ac27e1b2567550e0714",
+  "layout": "cratons-first",
+  "seed": 7,
+  "years": 100000000.0,
+  "step": 2000000.0,
+  "corridor_km": 1000.0,
+  "cost_floor": 0.05,
+  "selected_cut": "Production min-cut, with flow-cut fallback when the min-cut is inadmissible.",
+  "classification": "Each crossed graph link classified by the effective continental/oceanic class at its endpoints.",
+  "summary": {
+    "events": 16,
+    "events_on_mixed_crust_plates": 16,
+    "flow": {
+      "total_cut_length_km": 305812.5631373746,
+      "crust_classes": {
+        "continental_continental": {
+          "events_with_links": 14,
+          "cut_link_count": 1163,
+          "cut_length_km": 192671.38592198648,
+          "share_of_total_cut_length": 0.6300309704262747
+        },
+        "oceanic_oceanic": {
+          "events_with_links": 10,
+          "cut_link_count": 613,
+          "cut_length_km": 105169.15437007206,
+          "share_of_total_cut_length": 0.3439006994713584
+        },
+        "mixed": {
+          "events_with_links": 9,
+          "cut_link_count": 46,
+          "cut_length_km": 7972.022845316011,
+          "share_of_total_cut_length": 0.026068330102366935
+        }
+      }
+    },
+    "routed": {
+      "total_cut_length_km": 299937.5536326752,
+      "crust_classes": {
+        "continental_continental": {
+          "events_with_links": 14,
+          "cut_link_count": 1188,
+          "cut_length_km": 196569.61530242223,
+          "share_of_total_cut_length": 0.6553684689418895
+        },
+        "oceanic_oceanic": {
+          "events_with_links": 10,
+          "cut_link_count": 566,
+          "cut_length_km": 96664.28862791504,
+          "share_of_total_cut_length": 0.3222813797644592
+        },
+        "mixed": {
+          "events_with_links": 8,
+          "cut_link_count": 40,
+          "cut_length_km": 6703.649702337965,
+          "share_of_total_cut_length": 0.022350151293651376
+        }
+      }
+    },
+    "selected_lines_fully_oceanic_events": [
+      {
+        "myr": 2.0,
+        "kind": "split",
+        "plate": 6
+      },
+      {
+        "myr": 96.0,
+        "kind": "split",
+        "plate": 9
+      }
+    ]
+  }
+}
