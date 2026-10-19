@@ -289,16 +289,25 @@ plate motion, and solves a linear membrane equilibrium problem on a triangular m
 outward convex-hull facets by default and accepts explicit triangle connectivity to preserve
 nonconvex outlines. It returns nodal depth-integrated stress resultants in N/m, maximum tensile resultant,
 and the ratio to a caller-supplied depth-integrated tensile capacity in N/m. Elastic modulus,
-thickness and integrated capacity are explicit inputs; there is no inferred geotherm or
-strength profile. A manufactured uniaxial load on a shallow spherical cap recovers the analytic
+thickness and integrated capacity are explicit inputs. `orogeny.steady_moho_temperature_c`
+provides a coarse conductive Moho-temperature proxy, and `moho_temperature_c` applies its
+tectonic lag; neither supplies a vertical yield-strength profile or integrated tensile capacity.
+The boundary-local scalar Mohr-Coulomb proxy in `rheology.yield_excess` is not such a profile.
+A manufactured uniaxial load on a shallow spherical cap recovers the analytic
 resultant within 0.16% on 3 × 3, 5 × 5 and 9 × 9 node grids. An irregular convex cap recovers its
 analytic free-edge load within 0.12%; clamping its west edge shifts the mean resultant by 2.82%
 with a small equilibrium residual. An L-shaped concave mesh recovers its manufactured free-edge
 load within 0.16% at both 9 × 9 and 17 × 17 resolution, with less than 0.001% spread. On the finer
 mesh, west and south clamps shift the mean resultant by 16.5%; these are sensitivity checks, not
 accuracy benchmarks or evidence for a preferred physical boundary condition. Representative
-plate meshes, physically justified edge conditions, faults, bending, plastic yielding and topology
-changes remain outside this read-only diagnostic. The source-force moments are checked against
+generated-plate node sets were also checked with seed 7, 12 plates and node density 0.5. The
+largest hole-bearing oceanic plate (2390 nodes) and largest single-loop continental plate
+(1988 nodes) had 2.48% and 2.38% outside-territory centroids in their convex-hull meshes. Explicit
+territory-clipped meshes retained their two-loop and one-loop boundaries and recovered the
+controlled shallow-cap resultant within 0.09%. This preserves generated topology but maps the
+nodes to a shallow cap; it does not validate the solve on broad curved plates or production loads.
+Physically justified edge conditions, faults, bending, plastic yielding and topology changes
+remain outside this read-only diagnostic. The source-force moments are checked against
 existing torque terms in `backend/unit_tests/test_torque.py`; synthetic equilibrium, rigid-rotation
 removal, linear load scaling and mesh/edge cases are checked in `backend/unit_tests/test_thin_shell.py`.
 

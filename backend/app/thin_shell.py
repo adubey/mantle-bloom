@@ -202,9 +202,15 @@ def solve_thin_shell(
     limit = max_iterations if max_iterations is not None else max(1000, 20 * n)
     free_dofs = ~np.repeat(fixed_nodes, 2)
     reduced_stiffness = stiffness[free_dofs][:, free_dofs]
-    solve = lsmr(reduced_stiffness, equilibrated_dofs[free_dofs], atol=tolerance, btol=tolerance, maxiter=limit)
+    diagonal = reduced_stiffness.diagonal()
+    if np.any(diagonal <= 0.0):
+        raise ValueError("mesh contains unconstrained degrees of freedom with no element stiffness")
+    scaling = 1.0 / np.sqrt(diagonal)
+    scaled_stiffness = reduced_stiffness.multiply(scaling[:, None]).multiply(scaling[None, :]).tocsr()
+    scaled_force = equilibrated_dofs[free_dofs] * scaling
+    solve = lsmr(scaled_stiffness, scaled_force, atol=tolerance, btol=tolerance, maxiter=limit)
     displacement_dofs = np.zeros(2 * n)
-    displacement_dofs[free_dofs] = solve[0]
+    displacement_dofs[free_dofs] = scaling * solve[0]
     stop_code = int(solve[1])
     if stop_code not in (0, 1, 2, 4, 5):
         raise RuntimeError(f"thin-shell equilibrium solver did not converge (stop code {stop_code})")

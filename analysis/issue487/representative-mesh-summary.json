@@ -1,0 +1,47 @@
+{
+  "seed": 7,
+  "num_plates": 12,
+  "node_density": 0.5,
+  "mapping": "Generated cell-centre topology mapped to a shallow cap for manufactured-load testing",
+  "target_resultant_n_per_m": 10000000000.0,
+  "plates": [
+    {
+      "plate_id": 6,
+      "crust_type": "oceanic",
+      "node_count": 2390,
+      "actual_boundary_loops": 2,
+      "convex_hull_triangles": 4757,
+      "convex_hull_centroids_outside_plate": 118,
+      "convex_hull_outside_fraction": 0.024805549716207694,
+      "delaunay_candidate_triangles": 4765,
+      "triangles_rejected_by_territory_probes": 217,
+      "explicit_triangles": 4548,
+      "explicit_mesh_nodes": 2389,
+      "mesh_boundary_loops": 2,
+      "boundary_edges": 226,
+      "mean_resultant_n_per_m": 9991119711.189442,
+      "relative_error": -0.0008880288810558801,
+      "equilibrium_residual_over_load": 8.28856568579143e-05,
+      "solver_stop_code": 2
+    },
+    {
+      "plate_id": 8,
+      "crust_type": "continental",
+      "node_count": 1988,
+      "actual_boundary_loops": 1,
+      "convex_hull_triangles": 3956,
+      "convex_hull_centroids_outside_plate": 94,
+      "convex_hull_outside_fraction": 0.023761375126390292,
+      "delaunay_candidate_triangles": 3963,
+      "triangles_rejected_by_territory_probes": 214,
+      "explicit_triangles": 3749,
+      "explicit_mesh_nodes": 1987,
+      "mesh_boundary_loops": 1,
+      "boundary_edges": 223,
+      "mean_resultant_n_per_m": 9991270085.281277,
+      "relative_error": -0.0008729914718723641,
+      "equilibrium_residual_over_load": 2.1900592705858305e-05,
+      "solver_stop_code": 1
+    }
+  ]
+}
