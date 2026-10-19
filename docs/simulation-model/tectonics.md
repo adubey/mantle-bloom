@@ -285,18 +285,22 @@ basal-drag and contact-drag contribution as a per-node vector in N, before plate
 aggregation. `PerNodeForceField.total_traction_pa` is the area-average applied external
 traction; it is not internal stress. `thin_shell.solve_force_field` projects those loads onto
 the spherical tangent plane, removes the area-weighted rigid-rotation component handled by
-plate motion, and solves a linear membrane equilibrium problem on a convex-hull triangular
-mesh. It returns nodal depth-integrated stress resultants in N/m, maximum tensile resultant,
+plate motion, and solves a linear membrane equilibrium problem on a triangular mesh. It uses
+outward convex-hull facets by default and accepts explicit triangle connectivity to preserve
+nonconvex outlines. It returns nodal depth-integrated stress resultants in N/m, maximum tensile resultant,
 and the ratio to a caller-supplied depth-integrated tensile capacity in N/m. Elastic modulus,
 thickness and integrated capacity are explicit inputs; there is no inferred geotherm or
 strength profile. A manufactured uniaxial load on a shallow spherical cap recovers the analytic
 resultant within 0.16% on 3 × 3, 5 × 5 and 9 × 9 node grids. An irregular convex cap recovers its
 analytic free-edge load within 0.12%; clamping its west edge shifts the mean resultant by 2.82%
-with a small equilibrium residual. Nonconvex outlines and other edge placements remain
-unvalidated. This is a read-only diagnostic with no persistent state, faults, bending, plastic
-yielding or topology changes. The source-force moments are checked against existing torque
-terms in `backend/unit_tests/test_torque.py`; synthetic equilibrium, rigid-rotation removal,
-linear load scaling and mesh/edge cases are checked in `backend/unit_tests/test_thin_shell.py`.
+with a small equilibrium residual. An L-shaped concave mesh recovers its manufactured free-edge
+load within 0.16% at both 9 × 9 and 17 × 17 resolution, with less than 0.001% spread. On the finer
+mesh, west and south clamps shift the mean resultant by 16.5%; these are sensitivity checks, not
+accuracy benchmarks or evidence for a preferred physical boundary condition. Representative
+plate meshes, physically justified edge conditions, faults, bending, plastic yielding and topology
+changes remain outside this read-only diagnostic. The source-force moments are checked against
+existing torque terms in `backend/unit_tests/test_torque.py`; synthetic equilibrium, rigid-rotation
+removal, linear load scaling and mesh/edge cases are checked in `backend/unit_tests/test_thin_shell.py`.
 
 **Deep interpenetration is classified too (torque engine, 2026).** The polygon-containment
 test used to run only on nodes within `reach_rad` (~3 spacings) of a neighbour node, so a

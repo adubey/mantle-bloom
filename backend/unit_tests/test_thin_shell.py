@@ -96,6 +96,42 @@ def _irregular_cap_case(membrane_resultant_n_per_m):
     return points, triangles, force, clamped
 
 
+def _concave_cap_case(grid_size, membrane_resultant_n_per_m):
+    axis = np.linspace(-0.05, 0.05, grid_size)
+    midpoint = grid_size // 2
+    cells = [(i, j) for i in range(grid_size - 1) for j in range(grid_size - 1) if i < midpoint or j < midpoint]
+    node_keys = sorted({(i + di, j + dj) for i, j in cells for di, dj in ((0, 0), (1, 0), (1, 1), (0, 1))})
+    node_index = {key: index for index, key in enumerate(node_keys)}
+    triangles = []
+    for i, j in cells:
+        bottom_left, bottom_right = node_index[(i, j)], node_index[(i + 1, j)]
+        top_right, top_left = node_index[(i + 1, j + 1)], node_index[(i, j + 1)]
+        triangles.extend(((bottom_left, bottom_right, top_right), (bottom_left, top_right, top_left)))
+    xy = np.array([(axis[i], axis[j]) for i, j in node_keys])
+    points = np.column_stack((xy, np.sqrt(1.0 - np.sum(xy**2, axis=1))))
+    triangles = np.asarray(triangles, dtype=np.int64)
+    edge_directions = {}
+    edge_counts = Counter()
+    for triangle in triangles:
+        for first, second in ((triangle[0], triangle[1]), (triangle[1], triangle[2]), (triangle[2], triangle[0])):
+            edge = tuple(sorted((first, second)))
+            edge_counts[edge] += 1
+            edge_directions[edge] = (first, second)
+    xy_m = points[:, :2] * lithosphere.PLANET_RADIUS_M
+    force = np.zeros_like(points)
+    for edge, count in edge_counts.items():
+        if count != 1:
+            continue
+        first, second = edge_directions[edge]
+        edge_vector = xy_m[second] - xy_m[first]
+        length = np.linalg.norm(edge_vector)
+        outward_x = edge_vector[1] / length
+        nodal_force = membrane_resultant_n_per_m * outward_x * np.array([1.0, 0.0, 0.0]) * length * 0.5
+        force[first] += nodal_force
+        force[second] += nodal_force
+    return points, triangles, force, xy
+
+
 def test_thin_shell_transfers_tangential_load_to_stress_and_strength_ratio():
     points, force = _octahedral_shell()
     result = thin_shell.solve_force_field(
@@ -190,3 +226,57 @@ def test_thin_shell_handles_irregular_convex_outline_and_clamped_edge():
     assert np.all(clamped.displacement_m[clamped_nodes] == 0.0)
     assert free.equilibrium_residual_n < 1e-5 * np.linalg.norm(free.equilibrated_force_n)
     assert clamped.equilibrium_residual_n < 1e-5 * np.linalg.norm(clamped.equilibrated_force_n)
+
+
+def test_thin_shell_recovers_uniaxial_resultant_on_concave_mesh_refinements():
+    expected_resultant = 1e10
+    measured = []
+    fine_case = None
+    for grid_size in (9, 17):
+        points, triangles, force, xy = _concave_cap_case(grid_size, expected_resultant)
+        result = thin_shell.solve_thin_shell(
+            points,
+            np.full(len(points), 1e10),
+            force,
+            thickness_m=100_000.0,
+            young_modulus_pa=70e9,
+            tensile_strength_resultant_n_per_m=np.full(len(points), 2.0 * expected_resultant),
+            mesh_triangles=triangles,
+        )
+        mean_resultant = np.mean(result.max_tensile_resultant_n_per_m)
+        measured.append(mean_resultant)
+        assert np.array_equal(result.triangles, triangles)
+        assert np.isclose(mean_resultant, expected_resultant, rtol=5e-3)
+        assert result.equilibrium_residual_n < 1e-5 * np.linalg.norm(result.equilibrated_force_n)
+        if grid_size == 17:
+            fine_case = (points, triangles, force, xy)
+    assert (max(measured) - min(measured)) / expected_resultant < 1e-4
+
+    points, triangles, force, xy = fine_case
+    west_nodes = np.isclose(xy[:, 0], xy[:, 0].min())
+    south_nodes = np.isclose(xy[:, 1], xy[:, 1].min())
+    west = thin_shell.solve_thin_shell(
+        points,
+        np.full(len(points), 1e10),
+        force,
+        thickness_m=100_000.0,
+        young_modulus_pa=70e9,
+        tensile_strength_resultant_n_per_m=np.full(len(points), 2.0 * expected_resultant),
+        mesh_triangles=triangles,
+        fixed_node_mask=west_nodes,
+    )
+    south = thin_shell.solve_thin_shell(
+        points,
+        np.full(len(points), 1e10),
+        force,
+        thickness_m=100_000.0,
+        young_modulus_pa=70e9,
+        tensile_strength_resultant_n_per_m=np.full(len(points), 2.0 * expected_resultant),
+        mesh_triangles=triangles,
+        fixed_node_mask=south_nodes,
+    )
+    assert abs(np.mean(west.max_tensile_resultant_n_per_m) - np.mean(south.max_tensile_resultant_n_per_m)) > 0.15 * expected_resultant
+    assert np.all(west.displacement_m[west_nodes] == 0.0)
+    assert np.all(south.displacement_m[south_nodes] == 0.0)
+    assert west.equilibrium_residual_n < 1e-5 * np.linalg.norm(west.equilibrated_force_n)
+    assert south.equilibrium_residual_n < 1e-5 * np.linalg.norm(south.equilibrated_force_n)

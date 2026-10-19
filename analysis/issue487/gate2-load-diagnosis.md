@@ -33,8 +33,26 @@ manufactured uniaxial edge traction. With free edges its mean resultant was `9.9
 `9.706457e9 N/m` (2.82% below the free-edge result); both solves had relative free-node residuals
 below `2.3e-6`, and the clamped displacements were exactly zero. This confirms the solver responds
 to the selected boundary condition on an irregular convex patch. The clamped case has no separate
-closed-form benchmark, so this is a sensitivity check, not an accuracy claim. Nonconvex outlines,
-other edge placements and actual plate meshes remain untested.
+closed-form benchmark, so this is a sensitivity check, not an accuracy claim. That check did not
+cover nonconvex outlines, other edge placements or actual plate meshes.
+
+The solver now accepts explicit triangle connectivity, allowing the mesh to preserve a concave
+outline rather than filling it with the point-set convex hull. An L-shaped spherical patch was
+loaded with the same manufactured uniform uniaxial membrane resultant:
+
+| Grid | Nodes | Triangles | Free-edge mean resultant | Relative error | Residual / load norm |
+|---:|---:|---:|---:|---:|---:|
+| 9 × 9 | 65 | 96 | `9.984677e9 N/m` | −0.1532% | `1.96e-6` |
+| 17 × 17 | 225 | 384 | `9.984629e9 N/m` | −0.1537% | `1.67e-6` |
+
+The two free-edge means differ by 0.00048% of the analytic load. On the 17 × 17 mesh, clamping
+the western edge gave `1.002079e10 N/m` mean resultant and clamping the southern edge gave
+`8.374740e9 N/m`; the shift between those constrained cases was 16.5%. Relative free-node
+residuals were `1.76e-6` and `1.11e-6`, and constrained displacements were exactly zero. These
+clamped results have no separate closed-form benchmark, so they show sensitivity to constraint
+placement, not accuracy or a preferred physical boundary condition. The concave case validates
+explicit-mesh load transfer for one manufactured load; representative plate meshes, broader
+loads, and physically justified edge conditions remain open.
 
 ## Source trace and units
 
@@ -42,7 +60,7 @@ other edge placements and actual plate meshes remain untested.
 |---|---|---|
 | `torque.gather_boundary_force_inputs` | Per-own-node position, crust/mantle thickness, nearest-neighbor direction and distance, nearest neighbor plate/node, and neighbor angular velocity. | Geometry/material sampling only. It has no stress tensor, adjacency force, or load-transfer operator. Nearest-neighbor direction is not an intraplate tensile axis. |
 | `torque.gather_per_node_force_field` / `PerNodeForceField` | Per-node slab-pull, slab-drag, ridge-push, basal-drag and contact-drag force vectors (N); total external force and area-average applied traction (Pa). | Preserves the current spatial external forcing before torque aggregation. The vector sum reproduces the current torque terms, but `total_traction_pa` is not internal tensile stress. |
-| `thin_shell.solve_force_field` / `solve_thin_shell` | Nodal membrane stress resultants (N/m), maximum tensile principal resultant, supplied integrated strength (N/m), and failure ratio. | Solves a reduced linear elastic equilibrium on outward-facing convex-hull facets. The shallow-cap manufactured load is recovered within 0.16% over 3 × 3 through 9 × 9 nodes. An irregular convex cap also passes; clamping its west edge changes the mean result by 2.82% with a small free-node residual. Radial load is excluded and rigid rotation is removed. Nonconvex outlines, other edge placements, constitutive and omitted-process sensitivity remain to be validated. |
+| `thin_shell.solve_force_field` / `solve_thin_shell` | Nodal membrane stress resultants (N/m), maximum tensile principal resultant, supplied integrated strength (N/m), and failure ratio. | Solves reduced linear elastic equilibrium on outward-facing convex-hull facets by default, or caller-supplied triangles for explicit outlines. Shallow convex and L-shaped concave manufactured uniaxial loads are recovered within 0.16% over refinements. On the concave mesh, west versus south edge clamps shift the mean resultant by 16.5% with small free-node residuals; these are sensitivity checks, not accuracy benchmarks. Radial load is excluded and rigid rotation is removed. Representative plate meshes, physically justified boundary conditions, constitutive and omitted-process sensitivity, and a strength provider remain open. |
 | `slab_pull_force_n` | A scalar force in N on selected subducting boundary nodes: positive column buoyancy (Pa) times sunk length and represented boundary length. | A boundary-local driving force; not interior traction. `slab_pull_torque` crosses it with the planet-radius lever arm and sums it. |
 | `ridge_push_force_vectors_n` / `ridge_push_torque` | Boundary-local force magnitude from isostatic relief, density contrast, gravity, and represented boundary length (N). | Direction is the local away-from-neighbor tangent; it is now retained as a vector for load transfer before moment aggregation. |
 | `basal_drag_force_vectors_n` / `basal_drag_coefficients` | Node-area-integrated basal drag. The underlying force per area has traction units (Pa), using mantle-flow and rigid-plate velocities. | Distributed basal force is retained node-wise and transferred by the diagnostic shell solve; it is not itself in-plane stress. |
@@ -55,9 +73,9 @@ The complete trace is in `backend/app/torque.py` (`gather_boundary_force_inputs`
 
 ## Gate disposition
 
-- **Current diagnostic interface:** spatial tensile resultants and comparison to supplied integrated strength are available. Manufactured shallow-cap refinement and one irregular convex outline/free-versus-clamped edge comparison pass. Nonconvex geometry, broader boundary sensitivity and a material strength provider are not established, so this is not ready for damage calibration.
+- **Current diagnostic interface:** spatial tensile resultants and comparison to supplied integrated strength are available. Manufactured shallow-cap and L-shaped concave mesh refinement pass; west and south clamps on the concave patch show boundary-condition sensitivity. Representative plate meshes, physically justified boundary conditions and a material strength provider are not established, so this is not ready for damage calibration.
 - **`internal_stress`:** retain only as a plate-scale eligibility/background signal if desired; it cannot trigger or weight local damage.
 - **No calibrated strength field:** do not assign `Y_t`, `eta_rift`, or failure-strain parameters from these diagnostics. Do not infer stress from applied traction, rigid rotation, flow-cluster residuals or `Plate.internal_stress`.
-- **Required next work:** derive a depth-integrated column strength field with explicit units and ownership; check nonconvex/representative mesh and broader edge sensitivity, then compare load/capacity on additional synthetic geometries and replay candidates. Otherwise revise/reject the local damage premise and specify a phenomenological rift rule with its model boundary and validation criteria.
+- **Required next work:** validate additional manufactured loads and representative plate meshes; define physically justified boundary conditions; derive a depth-integrated column strength field with explicit units and ownership; then compare load/capacity on replay candidates. Otherwise revise/reject the local damage premise and specify a phenomenological rift rule with its model boundary and validation criteria.
 
 The RFC now records this outcome and keeps the local-cut damage design conditional. Gate 1 is closed by the explicit baseline/exclusion decision recorded in `analysis/issue487/README.md`; the archived-stream provenance limitation remains documented.

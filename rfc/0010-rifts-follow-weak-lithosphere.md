@@ -154,25 +154,30 @@ should start until those gates are resolved and the revised design is accepted.
    them from calibration and keep their denominators separate. The archived discrepancy is not
    explained or erased, but it no longer blocks use of the documented baseline. See
    [`analysis/issue487/README.md`](../analysis/issue487/README.md).
-2. **Establish local loading and strength — membrane solver added 2026-10-19; physical capacity
-   and sensitivity result pending.** `torque.gather_per_node_force_field` preserves each force
+2. **Establish local loading and strength — membrane solver added and synthetic geometry checks
+   expanded 2026-10-19; physical capacity and representative-boundary validation pending.**
+   `torque.gather_per_node_force_field` preserves each force
    source as a per-node vector in N. `thin_shell.solve_force_field` projects the combined loads
    onto the shell tangent plane, removes the area-weighted rigid-rotation component handled by
    plate motion, and solves small-strain triangular membrane equilibrium. It returns local
    depth-integrated stress resultants and compares their maximum tensile principal value with an
    explicit caller-supplied integrated tensile capacity, all in N/m. The elastic thickness and
-   modulus, free-edge boundary condition, convex-hull mesh and rigid-mode removal are documented
-   diagnostic assumptions, not calibrated production behavior. A manufactured uniaxial load on a
+   modulus, boundary conditions, default convex-hull mesh and rigid-mode removal are documented
+   diagnostic assumptions, not calibrated production behavior. Explicit mesh connectivity now
+   preserves concave outlines. A manufactured uniaxial load on a
    shallow cap recovers its analytic resultant within 0.16% across 3 × 3 to 9 × 9 node grids, with
    less than 0.004% spread in the recovered mean. An irregular convex cap also recovers the
    analytic free-edge load within 0.12%; clamping its west edge shifts the mean resultant by 2.82%
-   while retaining a small equilibrium residual. These remain synthetic diagnostics. No geotherm
-   or column strength law supplies the capacity field yet, and nonconvex/representative mesh and
-   broader edge sensitivity remain untested. Do not start constitutive calibration or infer
-   local stress from applied traction, rigid rotation, flow clusters or `Plate.internal_stress`.
-   Before gate 3, derive and sensitivity-test the
-   integrated capacity and verify the solver on additional synthetic geometries, or revise the
-   proposal as a clearly labeled phenomenological rift model. `Plate.internal_stress` remains a
+   with a small equilibrium residual. An L-shaped concave mesh recovers a manufactured uniaxial
+   free-edge load within 0.16% at 9 × 9 and 17 × 17 resolution, with less than 0.001% spread. On
+   the finer mesh, west and south clamps shift the mean resultant by 16.5%; these are sensitivity
+   checks and do not establish a preferred physical edge condition. These remain synthetic
+   diagnostics. No geotherm or column strength law supplies the capacity field yet, and
+   representative plate meshes and physically justified boundaries remain unvalidated. Do not
+   start constitutive calibration or infer local stress from applied traction, rigid rotation,
+   flow clusters or `Plate.internal_stress`. Before gate 3, derive and sensitivity-test the
+   integrated capacity and validate the solver on representative meshes and load distributions,
+   or revise the proposal as a clearly labeled phenomenological rift model. `Plate.internal_stress` remains a
    dimensionless plate-level eligibility signal and is not a local damage trigger. See
    [`analysis/issue487/gate2-load-diagnosis.md`](../analysis/issue487/gate2-load-diagnosis.md).
 3. **Calibrate accumulation and segment growth.** On synthetic plates and replayed candidate
@@ -310,8 +315,8 @@ its physical source or explicit design-choice status, and the sensitivity plan b
 1. [x] **Gate 1:** use the repeatable paired runs as the baseline and retire the provenance-
        incomplete archives from calibration (2026-10-19; see `analysis/issue487/README.md`).
    [ ] **Gate 2:** validate the thin-shell load transfer and provide a physical depth-integrated
-       tensile-capacity field with units through an approved interface, including nonconvex or
-       representative mesh and broader boundary sensitivity; or revise the proposal as
+       tensile-capacity field with units through an approved interface, including representative
+       mesh and physically justified boundary sensitivity; or revise the proposal as
        phenomenological. Only then set and sensitivity-test damage parameters before full replays
        (see `analysis/issue487/gate2-load-diagnosis.md`).
 2. [ ] In synthetic tests, damage is timestep-partition invariant, bounded, absent under compression

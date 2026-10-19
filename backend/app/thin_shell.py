@@ -2,9 +2,9 @@
 
 This is an offline diagnostic, not a production plate-motion or deformation solver. It
 projects applied loads onto the shell tangent plane, removes the part that can accelerate a
-rigid plate rotation, solves linear membrane equilibrium on a convex-hull triangular mesh,
-and reports depth-integrated stress resultants. A caller supplies the integrated tensile
-strength in N/m; this module does not invent a geotherm or a lithosphere strength law.
+rigid plate rotation, solves linear membrane equilibrium on a triangular mesh, and reports
+depth-integrated stress resultants. A caller supplies the integrated tensile strength in N/m;
+this module does not invent a geotherm or a lithosphere strength law.
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ class ThinShellResult:
     equilibrated_force_n: np.ndarray  # (N, 3), applied tangent force after rigid-mode removal
     rigid_rotation_force_n: np.ndarray  # (N, 3), removed rigid-rotation load component
     fixed_node_mask: np.ndarray  # (N,), nodes constrained to zero tangent displacement
-    triangles: np.ndarray  # (T, 3), convex-hull shell elements
+    triangles: np.ndarray  # (T, 3), shell elements
     solver_stop_code: int
     equilibrium_residual_n: float
 
@@ -109,6 +109,7 @@ def solve_thin_shell(
     tolerance: float = 1e-9,
     max_iterations: int | None = None,
     fixed_node_mask: np.ndarray | None = None,
+    mesh_triangles: np.ndarray | None = None,
 ) -> ThinShellResult:
     """Solve small-strain membrane equilibrium on a spherical node set.
 
@@ -122,10 +123,10 @@ def solve_thin_shell(
     `tensile_strength_resultant_n_per_m` is the supplied depth-integrated tensile capacity;
     each element uses plane-stress elasticity with local effective thickness and modulus.
 
-    Outward-facing convex-hull facets define a first-order mesh, which is appropriate for
-    sparse, approximately convex plate patches and excludes the hull's artificial underside
-    for a partial-sphere patch. This is a screening diagnostic: it does not model faults, bending,
-    plasticity, changing topology, or a thermal strength envelope.
+    By default, outward-facing convex-hull facets define a first-order mesh. Pass explicit
+    `mesh_triangles` to preserve a caller's plate outline, including concave boundaries. This is
+    a screening diagnostic: it does not model faults, bending, plasticity, changing topology,
+    or a thermal strength envelope.
     """
     points = geometry.normalize(np.asarray(points_xyz, dtype=float))
     areas = np.asarray(areas_m2, dtype=float)
@@ -152,7 +153,19 @@ def solve_thin_shell(
     if not 0.0 <= poisson_ratio < 0.5 or radius_m <= 0.0 or tolerance <= 0.0:
         raise ValueError("invalid Poisson ratio, radius, or solver tolerance")
 
-    triangles = _spherical_surface_triangles(points)
+    if mesh_triangles is None:
+        triangles = _spherical_surface_triangles(points)
+    else:
+        raw_triangles = np.asarray(mesh_triangles)
+        if raw_triangles.ndim != 2 or raw_triangles.shape[1] != 3 or len(raw_triangles) == 0:
+            raise ValueError("mesh_triangles must have shape (T, 3) with at least one element")
+        if not np.issubdtype(raw_triangles.dtype, np.integer):
+            raise ValueError("mesh_triangles must contain integer node indices")
+        triangles = raw_triangles.astype(np.int64, copy=False)
+        if np.any(triangles < 0) or np.any(triangles >= n):
+            raise ValueError("mesh_triangles contains an out-of-range node index")
+        if np.any(np.diff(np.sort(triangles, axis=1), axis=1) == 0):
+            raise ValueError("mesh_triangles cannot repeat a node within an element")
     first, second = _tangent_basis(points)
     tangent_force = force - np.sum(force * points, axis=1)[:, None] * points
     force_dofs = np.column_stack((np.sum(tangent_force * first, axis=1), np.sum(tangent_force * second, axis=1))).ravel()
