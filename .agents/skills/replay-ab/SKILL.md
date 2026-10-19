@@ -1,6 +1,6 @@
 ---
 name: replay-ab
-description: Measure a mantle-bloom change by replaying a saved world (.mbworld) on origin/main and on the branch, then writing it up under analysis/issue<N>/. Use when an issue or review asks for replay numbers, a before/after comparison, or whether a change moves land area, crust/mantle thickness, ledgers or runtime.
+description: Measure a mantle-bloom change by replaying a saved world (.mbworld) on origin/main and on the branch, then writing it up under analysis/issue-number/. Use when an issue or review asks for replay numbers, a before/after comparison, or whether a change moves land area, crust/mantle thickness, ledgers or runtime.
 ---
 
 # Replay A/B against origin/main

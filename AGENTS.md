@@ -74,8 +74,8 @@ Run from the repo root (or worktree root).
   `rm -rf` against anything but your own worktree and scratch files. The user's checkout
   may hold uncommitted work that exists nowhere else.
 - Skills for these workflows, shared by Claude Code and Codex, are in `.agents/skills/`
-  (`.claude/skills` links there): `create-issue`, `start-issue`, `start-rfc`, `continue-rfc`,
-  `project-management`, `replay-ab`,
+  (`.claude/skills` links there): `explore-problem`, `create-issue`, `start-issue`,
+  `start-rfc`, `continue-rfc`, `project-management`, `replay-ab`,
   `pre-push-check`, `rfc-authoring`, `rfc-review`, `complete-rfc`, `documentation`.
 
 ## Conventions
