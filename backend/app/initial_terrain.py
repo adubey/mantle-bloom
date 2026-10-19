@@ -10,7 +10,7 @@ from __future__ import annotations
 import numpy as np
 from typing import TYPE_CHECKING
 
-from . import geometry, lithosphere, rheology, torque
+from . import geometry, lithosphere, noise, rheology, torque
 from .elevation_lines import effective_is_continental_from_codes, line_spacing_rad
 from .hydroclimate import biomes, climate, hydrology
 from .plates import PLANET_RADIUS_KM, collect_all_elevation, gather_node_positions
@@ -34,6 +34,75 @@ OROGEN_MIN_BOUNDARY_SAMPLES = 6
 OROGEN_MAX_STRAIGHTNESS_RESIDUAL_KM = 100.0
 CHANNEL_LINEAR_LIMIT_KM = 400.0
 CHANNEL_TURN_LIMIT_DEG = 10.0
+LOWLAND_RELIEF_AMPLITUDE_M = 225.0
+LOWLAND_RELIEF_BASE_FREQUENCY = 40.0
+LOWLAND_RELIEF_OCTAVES = 3
+LOWLAND_RELIEF_COAST_FADE_M = 400.0
+LOWLAND_RELIEF_FULL_STRENGTH_TO_M = 1_400.0
+LOWLAND_RELIEF_FADE_TO_M = 5_000.0
+
+
+def apply_lowland_spherical_relief(world: "World") -> None:
+    """Add one deterministic, lowland-tapered spherical relief field to generated land.
+
+    The field is shared across plates and keyed independently from every other world RNG
+    stream. It changes only initially dry continental nodes, fades out at coasts and above
+    5 km, and is backed by crustal thickness through the isostatic helper.
+    """
+    relief_noise = noise.SphereNoise(
+        np.random.default_rng((world.seed, 0x4C4F5752)),
+        octaves=LOWLAND_RELIEF_OCTAVES,
+        base_freq=LOWLAND_RELIEF_BASE_FREQUENCY,
+    )
+    for plate in world.plates:
+        points, elevation = plate.all_points_and_elevation()
+        if not len(points):
+            continue
+        continental = effective_is_continental_from_codes(
+            plate.collect("crust_type_code"), plate.crust_type == "continental"
+        )
+        land = continental & (elevation > world.sea_level_m)
+        if not np.any(land):
+            continue
+
+        gain = _lowland_relief_gain(elevation, world.sea_level_m, relief_noise.sample(points), land)
+        changed = land & (gain != 0.0)
+        if not np.any(changed):
+            continue
+        hc, new_elevation = lithosphere.back_elevation_gain_fields(
+            elevation,
+            plate.collect("crustal_thickness_m"),
+            plate.collect("mantle_lithosphere_thickness_m"),
+            plate.collect("crust_type_code"),
+            plate.crust_type,
+            gain,
+            changed,
+        )
+        plate.set_fields_on_plate(crustal_thickness_m=hc, elevation=new_elevation)
+
+
+def _smoothstep(value: np.ndarray) -> np.ndarray:
+    """Cubic [0, 1] taper with zero slope at both ends."""
+    return value * value * (3.0 - 2.0 * value)
+
+
+def _lowland_relief_gain(
+    elevation: np.ndarray, sea_level_m: float, noise_sample: np.ndarray, eligible: np.ndarray
+) -> np.ndarray:
+    coast_fraction = np.clip((elevation - sea_level_m) / LOWLAND_RELIEF_COAST_FADE_M, 0.0, 1.0)
+    coast_taper = _smoothstep(coast_fraction)
+    highland_fraction = np.clip(
+        (elevation - LOWLAND_RELIEF_FULL_STRENGTH_TO_M)
+        / (LOWLAND_RELIEF_FADE_TO_M - LOWLAND_RELIEF_FULL_STRENGTH_TO_M),
+        0.0,
+        1.0,
+    )
+    highland_taper = 1.0 - _smoothstep(highland_fraction)
+    taper = np.clip(coast_taper * highland_taper, 0.0, 1.0)
+    gain = LOWLAND_RELIEF_AMPLITUDE_M * noise_sample * taper
+    # Keep every initially dry cell dry. The isostatic helper applies the corresponding
+    # crustal-thickness change and preserves any pre-existing elevation/isostasy offset.
+    return np.where(eligible, np.maximum(gain, sea_level_m + 1e-6 - elevation), 0.0)
 
 
 def apply_predicted_orogens(world: "World") -> None:
