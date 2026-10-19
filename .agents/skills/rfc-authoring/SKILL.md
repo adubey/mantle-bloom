@@ -1,15 +1,17 @@
 ---
 name: rfc-authoring
-description: Write or revise a mantle-bloom RFC (rfc/NNNN-slug.md) proposing a model change that is large, uncertain or rests on the science. Use when asked to write an RFC, turn an investigation into proposals, or address review comments on an RFC.
+description: Write or revise the scientific content of a Mantle Bloom RFC. Use when asked to author a proposal, turn investigation findings into an RFC, or address technical review comments; this skill also chooses the NNNN for a new RFC.
 ---
 
 # Write an RFC
 
-An RFC proposes; it doesn't commit to code. It records the evidence, the alternatives, the
-assumptions and uncertainty, rough costs, and *provisional* touchpoints in the source. It is
-reviewed (the `rfc-review` skill), revised, and accepted. Only after acceptance, and after
-any diagnosis gate it sets has passed, is it broken into implementation issues. Don't open
-implementation issues while drafting.
+An RFC proposes; it doesn't commit to code. It records the evidence, alternatives,
+assumptions and uncertainty, rough costs, and *provisional* touchpoints in the source. This
+skill owns the document: for a new RFC, choose its next `NNNN` by checking the index and
+existing filenames, then write and validate the content. Use `start-rfc` to set up or
+advance the RFC workstream, including acceptance and implementation planning. Only after
+acceptance and any diagnosis gate has passed is the design broken into implementation
+issues. Don't open implementation issues while drafting.
 
 ## 1. Gather the evidence
 

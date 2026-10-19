@@ -52,9 +52,10 @@ Run from the repo root (or worktree root).
   `<agent>/issue-<N>-<slug>`, where `<agent>` is `claude` or `codex`. RFCs are large
   decisions tracked by a parent issue with sub-issues; each sub-issue gets its own isolated
   issue worktree. Never switch the RFC proposal worktree to an issue branch. Use
-  `start-rfc` only for a new RFC and `continue-rfc` to resume an existing RFC. The primary
-  checkout's local `main` lags `origin`: don't use it as a base or baseline, and don't pull
-  or reset it. Run `./bin/setup.sh` in each new worktree. Each worktree has its own
+  `start-rfc` to begin or advance an RFC workstream, `continue-rfc` to reconstruct an RFC
+  handoff, and `rfc-authoring` to choose new RFC numbers and write proposal content. The
+  primary checkout's local `main` lags `origin`: don't use it as a base or baseline, and
+  don't pull or reset it. Run `./bin/setup.sh` in each new worktree. Each worktree has its own
   `backend/.venv`, so don't symlink one from another tree.
 - **Ports:** never use 8000 or 5173 (the user's own instance). Pick free ports for each
   worktree so issues can run side by side.

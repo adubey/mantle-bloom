@@ -98,27 +98,11 @@ revision use [`rfc-authoring`](../rfc-authoring/SKILL.md); for a review use
   and the relevant topic page. Read `docs/debugging.md` for saved-world diagnostics.
   Trace the current implementation before relying on an RFC's provisional touchpoints.
 
-## 4. Hand off to the workflow that owns the request
+## 4. Return to the RFC workflow
 
-- For a proposal change, use [`rfc-authoring`](../rfc-authoring/SKILL.md); for review,
-  use [`rfc-review`](../rfc-review/SKILL.md). Do not duplicate their procedures here.
-- If the requested gate or implementation requires acceptance and the RFC is still a
-  draft, confirm acceptance with the project owner before proceeding; `start-rfc` is only
-  for new RFCs.
-- For an accepted RFC gate, follow the gate recorded in the RFC, verify matching prior
-  evidence before rerunning it, and record the result in the RFC before dependent work.
-  If the investigation needs additional issue-sized work, follow
-  [Investigating additional work](../project-management/SKILL.md#investigating-additional-work),
-  then use [`create-issue`](../create-issue/SKILL.md) if it needs a new issue.
-- For an assigned implementation sub-issue, confirm it is in the tracking checklist and
-  follow [`start-issue`](../start-issue/SKILL.md), which owns issue scope and isolated
-  worktree setup. If accepted work has no sub-issue yet, define the dependency-ordered
-  breakdown in the tracking issue and use [`create-issue`](../create-issue/SKILL.md) for
-  each issue.
-- For an RFC outcome, use [`complete-rfc`](../complete-rfc/SKILL.md).
-
-When resuming RFC-level work, follow
-[Starting or resuming an RFC](../project-management/SKILL.md#starting-or-resuming-an-rfc)
-to update its project status. Before finishing, leave the RFC, index, analysis report and
-tracking checklist consistent with verified changes. Run the RFC citation check after
-edits; use `pre-push-check` before pushing a branch or opening/updating a PR.
+Once state, evidence and the requested deliverable are reconstructed, use
+[`start-rfc`](../start-rfc/SKILL.md) to begin or advance the RFC lifecycle. Use
+[`rfc-authoring`](../rfc-authoring/SKILL.md) for RFC content and its number when creating a
+new RFC, [`rfc-review`](../rfc-review/SKILL.md) for review, and
+[`start-issue`](../start-issue/SKILL.md) for an assigned implementation issue. This skill
+owns handoff reconstruction and recovery; those skills own the work they route to.
