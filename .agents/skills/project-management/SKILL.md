@@ -90,23 +90,11 @@ blocked item `On Hold` until the dependency is resolved.
 
 ### Creating an issue
 
-Before creating an issue, check the RFC tracking checklist and existing issues so work is
-not duplicated. Use the repository's usual issue format and include the finding, evidence,
-scope, acceptance checks and any dependency. When it is an RFC step, identify the RFC and
-tracking issue; create the issue as a child of the tracking issue. Add every new issue to
-project 2 and set it to `Backlog` by default. Use `Ready` only if the work is urgent and
-can start now. If the next eligible RFC issue is being started immediately, follow
-[Starting an issue](#starting-an-issue) to move it to `In Progress`.
-
-```bash
-gh issue create --title "<title>" --body-file <issue-body-file> \
-  --parent <tracking-issue-number>
-```
-
-Omit `--parent` when the issue is not a child of an RFC tracking issue. Add the created
-issue URL to project 2 with `item-add`, set its status using section 2, and update the RFC
-checklist when applicable. Issue creation is part of this project workflow; still follow
-the RFC requirement for changes that need a new RFC.
+Use [`create-issue`](../create-issue/SKILL.md) to decide whether the issue is standalone
+or an RFC sub-issue, prepare its scope and create it. Add every new issue to project 2 and
+set it to `Backlog` by default. Use `Ready` only if the work is urgent and can start now.
+If an eligible issue is being started immediately, follow [Starting an issue](#starting-an-issue)
+to move it to `In Progress`.
 
 ### Choosing not to pursue an issue
 
@@ -126,5 +114,5 @@ to settle child issues, then update their project statuses to match their dispos
 - `start-issue` follows [Starting an issue](#starting-an-issue) and
   [Completing an issue](#completing-an-issue).
 - `start-rfc` and `continue-rfc` follow [Starting or resuming an RFC](#starting-or-resuming-an-rfc)
-  and [Creating an issue](#creating-an-issue) when an investigation needs follow-up work.
+  and use [`create-issue`](../create-issue/SKILL.md) when follow-up work needs an issue.
 - `complete-rfc` follows [Completing an RFC](#completing-an-rfc).

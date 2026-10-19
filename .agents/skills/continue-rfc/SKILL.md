@@ -106,11 +106,13 @@ revision use [`rfc-authoring`](../rfc-authoring/SKILL.md); for a review use
 - For an accepted RFC gate, follow the gate recorded in the RFC, verify matching prior
   evidence before rerunning it, and record the result in the RFC before dependent work.
   If the investigation needs additional issue-sized work, follow
-  [Investigating additional work](../project-management/SKILL.md#investigating-additional-work).
+  [Investigating additional work](../project-management/SKILL.md#investigating-additional-work),
+  then use [`create-issue`](../create-issue/SKILL.md) if it needs a new issue.
 - For an assigned implementation sub-issue, confirm it is in the tracking checklist and
   follow [`start-issue`](../start-issue/SKILL.md), which owns issue scope and isolated
   worktree setup. If accepted work has no sub-issue yet, use [`start-rfc`](../start-rfc/SKILL.md)
-  to create dependency-ordered issues.
+  to plan the issue breakdown and [`create-issue`](../create-issue/SKILL.md) to create
+  each issue.
 - For an RFC outcome, use [`complete-rfc`](../complete-rfc/SKILL.md).
 
 When resuming RFC-level work, follow

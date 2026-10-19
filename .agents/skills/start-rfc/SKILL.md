@@ -102,12 +102,9 @@ to update its project status.
 - **Accepted with diagnosis gates:** run the specified measurements, record the outcome in
   the RFC, and select the design the gate supports before opening implementation issues.
 - **Accepted and ready to implement:** break the accepted design into the necessary
-  dependency-ordered issues. Each issue should cite the RFC, name its own deliverable and
-  acceptance checks, and avoid duplicating work assigned to another issue. Add each one to
-  the tracking issue's checklist, with its PR once open. Start each
-  issue using `start-issue`, which creates an isolated issue worktree and branch from
-  `origin/main`. Follow [Creating an issue](../project-management/SKILL.md#creating-an-issue)
-  to set its initial project status.
+  dependency-ordered issues with [`create-issue`](../create-issue/SKILL.md), which adds
+  each as a child of the tracking issue and updates its checklist. Start each issue using
+  `start-issue`, which creates an isolated issue worktree and branch from `origin/main`.
 - **Implementation underway:** use the tracking issue to identify remaining work, and tick
   items off as their PRs merge or their gates report. When a gate result rules a planned
   step out, strike it there with the reason. When all of its implementation issues have
