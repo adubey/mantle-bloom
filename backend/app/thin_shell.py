@@ -46,6 +46,17 @@ def _tangent_basis(points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return first, second
 
 
+def _spherical_surface_triangles(points: np.ndarray) -> np.ndarray:
+    """Keep outward-facing spherical facets and discard the convex-hull closure below a cap."""
+    hull = ConvexHull(points)
+    centroids = geometry.normalize(points[hull.simplices].mean(axis=1))
+    radial_alignment = np.sum(hull.equations[:, :3] * centroids, axis=1)
+    triangles = hull.simplices[radial_alignment > 0.5]
+    if len(triangles) == 0:
+        raise ValueError("node set has no outward-facing spherical hull facets")
+    return np.asarray(triangles, dtype=np.int64)
+
+
 def _triangle_element(points_xyz: np.ndarray, triangle: np.ndarray, first: np.ndarray, second: np.ndarray,
                       thickness_m: np.ndarray, young_modulus_pa: np.ndarray,
                       poisson_ratio: float, radius_m: float) -> tuple[
@@ -106,8 +117,9 @@ def solve_thin_shell(
     `tensile_strength_resultant_n_per_m` is the supplied depth-integrated tensile capacity;
     each element uses plane-stress elasticity with local effective thickness and modulus.
 
-    The convex hull defines a first-order mesh and is appropriate for sparse, approximately
-    convex plate patches. This is a screening diagnostic: it does not model faults, bending,
+    Outward-facing convex-hull facets define a first-order mesh, which is appropriate for
+    sparse, approximately convex plate patches and excludes the hull's artificial underside
+    for a partial-sphere patch. This is a screening diagnostic: it does not model faults, bending,
     plasticity, changing topology, or a thermal strength envelope.
     """
     points = geometry.normalize(np.asarray(points_xyz, dtype=float))
@@ -130,7 +142,7 @@ def solve_thin_shell(
     if not 0.0 <= poisson_ratio < 0.5 or radius_m <= 0.0 or tolerance <= 0.0:
         raise ValueError("invalid Poisson ratio, radius, or solver tolerance")
 
-    triangles = np.asarray(ConvexHull(points).simplices, dtype=np.int64)
+    triangles = _spherical_surface_triangles(points)
     first, second = _tangent_basis(points)
     tangent_force = force - np.sum(force * points, axis=1)[:, None] * points
     force_dofs = np.column_stack((np.sum(tangent_force * first, axis=1), np.sum(tangent_force * second, axis=1))).ravel()

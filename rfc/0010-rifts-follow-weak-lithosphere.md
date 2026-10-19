@@ -162,9 +162,11 @@ should start until those gates are resolved and the revised design is accepted.
    depth-integrated stress resultants and compares their maximum tensile principal value with an
    explicit caller-supplied integrated tensile capacity, all in N/m. The elastic thickness and
    modulus, free-edge boundary condition, convex-hull mesh and rigid-mode removal are documented
-   diagnostic assumptions, not calibrated production behavior. Tests cover equilibrium residual,
-   rigid-rotation removal and linear response on a synthetic shell. No geotherm or column strength
-   law supplies the capacity field yet, and mesh/boundary sensitivity remains untested; do not
+   diagnostic assumptions, not calibrated production behavior. A manufactured uniaxial load on a
+   shallow cap recovers its analytic resultant within 0.16% across 3 × 3 to 9 × 9 node grids, with
+   less than 0.004% spread in the recovered mean. This checks one linear membrane case only. No
+   geotherm or column strength law supplies the capacity field yet, and irregular-shape/edge
+   sensitivity remains untested; do not
    start constitutive calibration or infer local stress from applied traction, rigid rotation,
    flow clusters or `Plate.internal_stress`. Before gate 3, derive and sensitivity-test the
    integrated capacity and verify the solver on additional synthetic geometries, or revise the

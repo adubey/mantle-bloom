@@ -289,10 +289,13 @@ plate motion, and solves a linear membrane equilibrium problem on a convex-hull 
 mesh. It returns nodal depth-integrated stress resultants in N/m, maximum tensile resultant,
 and the ratio to a caller-supplied depth-integrated tensile capacity in N/m. Elastic modulus,
 thickness and integrated capacity are explicit inputs; there is no inferred geotherm or
-strength profile. This is a read-only diagnostic with no persistent state, faults, bending,
-plastic yielding or topology changes. The source-force moments are checked against existing
-torque terms in `backend/unit_tests/test_torque.py`; synthetic equilibrium, rigid-rotation
-removal and linear load scaling are checked in `backend/unit_tests/test_thin_shell.py`.
+strength profile. A manufactured uniaxial load on a shallow spherical cap recovers the analytic
+resultant within 0.16% on 3 × 3, 5 × 5 and 9 × 9 node grids; irregular outlines and alternative
+edge conditions remain unvalidated. This is a read-only diagnostic with no persistent state,
+faults, bending, plastic yielding or topology changes. The source-force moments are checked
+against existing torque terms in `backend/unit_tests/test_torque.py`; synthetic equilibrium,
+rigid-rotation removal, linear load scaling and cap-mesh refinement are checked in
+`backend/unit_tests/test_thin_shell.py`.
 
 **Deep interpenetration is classified too (torque engine, 2026).** The polygon-containment
 test used to run only on nodes within `reach_rad` (~3 spacings) of a neighbour node, so a
