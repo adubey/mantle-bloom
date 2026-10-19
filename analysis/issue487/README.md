@@ -25,8 +25,12 @@ can overlap when an event fails more than one gate.
 
 Two independent 100 Myr runs with the same fixed hash seed produced identical event rows.
 A clean 100 Myr run at archived model commit `68f8bf3` also produced the same rows as
-`origin/main` under the same settings. These are repeatable short-run baselines. The new
-full run records exact source and runtime provenance for a longer baseline.
+`origin/main` under the same settings. More importantly, a second full 1 Gyr run on the
+same source files and runtime reproduced every cut row from the first full run, for all
+three seeds. Its model commit differs because the issue branch was rebased to include the
+RFC tracker link, but its recorded source hashes are identical. The second run's compact
+provenance and results are in the `repeat_rerun` section of `gate1-summary.json`; raw output
+is `/tmp/issue487-gate1-rerun-2026-10-19.json`.
 
 ## Archived stream discrepancy
 
@@ -40,11 +44,18 @@ separate.
 
 The archived JSONs omit working-tree fingerprints and runtime/library versions. Their
 shared commit hash is not enough to determine whether uncommitted model or diagnostic code,
-or a runtime difference, caused the divergence. The archived mismatch cannot be attributed
-to a specific cause from the saved metadata. The current matched baseline is reproducible,
-but the historical stream discrepancy remains unresolved; diagnosis gate 1 should remain
-open until the old runs are either recovered with provenance or explicitly excluded from
-calibration.
+or a runtime difference, caused the divergence. The second clean run reproduces the first
+clean run bit-for-bit, but the archived event streams diverge from it within the first 3–6
+events. Counts and matching signature occurrences are tabulated in `gate1-summary.json`.
+
+Signature identity `(kind, elapsed Myr, plate ID, node count)` is not enough to align all
+events: among its 4, 6, and 4 matches to the archived margin streams, exact numeric/status
+margin values match on only 3, 1, and 1 events respectively. Most discrepancies are small,
+but one seed-2024 match has a 1,000 vs. 1,041 minimum-half-node count. The paired probe
+avoids this ambiguity for the current baseline by evaluating shadow margins on the exact
+production event before recording it. The archived mismatch still cannot be attributed to
+a specific cause from saved metadata; keep diagnosis gate 1 open until the old runs are
+recovered with provenance or explicitly excluded from calibration.
 
 ## Reproduction
 
