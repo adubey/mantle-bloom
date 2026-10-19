@@ -77,6 +77,51 @@ accuracy on the original curved plates, real production forces or alternative ed
 Compact measurements are saved in
 [`representative-mesh-summary.json`](representative-mesh-summary.json).
 
+### Original curved mesh and edge sensitivity
+
+The same explicit meshes were solved on their original spherical coordinates and cell areas.
+The load is a manufactured uniaxial edge-traction pattern defined in each plate's gnomonic
+tangent projection, then projected into the local spherical tangent plane at each edge. It is a
+controlled numerical probe, not a production torque field or an analytic stress benchmark. The
+projected spans are 3.39 × 2.28 rad for plate #6 and 2.13 × 2.33 rad for plate #8, so these are
+broad curved patches. Each clamp fixes only boundary nodes in a band 12% of the larger projected
+span wide at the named west/east/south/north extreme.
+
+| Plate | Free mean (`1e10 N/m`) | West change | East change | South change | North change | Residual / load across cases |
+|---|---:|---:|---:|---:|---:|---:|
+| #6, oceanic with hole | 1.3625 | −1.47% (17 nodes) | −0.58% (11) | −7.62% (35) | −23.52% (59) | `5.01e-5`–`8.50e-5` |
+| #8, continental, single loop | 1.3213 | −1.20% (25 nodes) | −1.54% (37) | −8.86% (26) | −7.20% (32) | `2.13e-5`–`5.27e-5` |
+
+The solver converges to a small free-node residual on both original curved meshes. Constraint
+placement changes the mean and upper-tail stress distribution, with the direction of the largest
+change depending on plate shape. These numbers show conditioning and boundary sensitivity; because
+this broad-plate traction has no closed-form curved-shell solution, the resultant's difference
+from `1e10 N/m` is not an accuracy error. The free edge remains the diagnostic default, not a
+physically selected boundary condition.
+
+### Explicit phenomenological capacity alternative
+
+The available state cannot support a physical depth-resolved capacity. As a testable design
+alternative, the diagnostic now evaluates a directly integrated threshold in N/m:
+
+`T_cap(i) = T_ref * (1 - lambda * w_i)`
+
+`T_ref` is a tunable reference capacity in N/m. `w_i` is a caller-specified weak-zone weight in
+`[0, 1]`; `lambda` is the maximum fractional weakening in `[0, 1)`. This is deliberately
+phenomenological: it assumes no depth profile and does not derive strength from the existing
+Moho-temperature or Mohr-Coulomb proxies. The probe uses `lambda = 0.5` and a synthetic band with
+`w_i = 1` when the projected x-coordinate is within 8% of the plate's x-span around its median,
+and 0 elsewhere. It sweeps `T_ref = 1e10`, `2e10`, and `4e10 N/m` against the free-edge curved
+mesh resultant.
+
+At `T_ref = 2e10 N/m`, the weak-band and background failure fractions are 98.1% versus 10.1% for
+plate #6, and 90.0% versus 2.5% for plate #8. Across the capacity sweep, failed-node counts
+decrease monotonically (2,387 -> 892 -> 0 for #6; 1,935 -> 587 -> 17 for #8). This validates the
+rule's units, threshold ordering and intended localization under the manufactured load. The band,
+thresholds and weakening are test inputs, not calibrated parameters or evidence that a natural rift
+will follow a weak belt. The alternative needs explicit acceptance and replay validation before
+it can replace the physical capacity requirement.
+
 ## Source trace and units
 
 | Path | Available quantity | Reduction / limitation for local rifting |
@@ -115,9 +160,9 @@ The complete trace is in `backend/app/torque.py` (`gather_boundary_force_inputs`
 
 ## Gate disposition
 
-- **Current diagnostic interface:** spatial tensile resultants and comparison to supplied integrated strength are available. Manufactured shallow-cap, L-shaped concave and two generated-topology shallow-cap cases pass; west and south clamps on the concave patch show boundary-condition sensitivity. Broad curved plate behavior, physically justified boundary conditions and a material strength provider are not established, so this is not ready for damage calibration.
+- **Current diagnostic interface:** spatial tensile resultants and comparison to supplied integrated strength are available. Manufactured shallow-cap, L-shaped concave, generated-topology shallow-cap and original curved-mesh load cases have been exercised. Original curved-mesh solves converge, and four clamp placements show up to 23.5% mean-resultant sensitivity. The direct-threshold phenomenological rule has a monotonic capacity and weak-band localization check, but it is a candidate design only. Physical edge conditions, curved-shell accuracy against an independent benchmark and acceptance/replay calibration of the alternative remain open, so Gate 2 is not closed.
 - **`internal_stress`:** retain only as a plate-scale eligibility/background signal if desired; it cannot trigger or weight local damage.
 - **No calibrated strength field:** do not assign `Y_t`, `eta_rift`, or failure-strain parameters from these diagnostics. Do not infer stress from applied traction, rigid rotation, flow-cluster residuals or `Plate.internal_stress`.
-- **Required next work:** validate additional manufactured loads on original curved meshes and broaden mesh/edge sensitivity; define physically justified boundary conditions; derive or explicitly replace the capacity criterion with a labeled phenomenological rule; then compare load/capacity on replay candidates. Gate 3 accumulation and segment-growth calibration remains downstream of those choices.
+- **Required next work:** validate the curved-shell formulation against an independent manufactured solution and broader mesh refinement; choose physically justified boundary conditions or approve the sensitivity-tested free-edge diagnostic; decide whether to adopt the labeled phenomenological capacity or continue toward a physical profile; then test the chosen load/capacity rule on replay candidates. Gate 3 accumulation and segment-growth calibration remains downstream of those choices.
 
 The RFC now records this outcome and keeps the local-cut damage design conditional. Gate 1 is closed by the explicit baseline/exclusion decision recorded in `analysis/issue487/README.md`; the archived-stream provenance limitation remains documented.

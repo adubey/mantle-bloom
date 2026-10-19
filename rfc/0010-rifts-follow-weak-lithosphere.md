@@ -154,8 +154,9 @@ should start until those gates are resolved and the revised design is accepted.
    them from calibration and keep their denominators separate. The archived discrepancy is not
    explained or erased, but it no longer blocks use of the documented baseline. See
    [`analysis/issue487/README.md`](../analysis/issue487/README.md).
-2. **Establish local loading and strength — membrane solver and generated-plate topology
-   validation added 2026-10-19; physical capacity and boundary validation pending.**
+2. **Establish local loading and strength — membrane solver, generated-plate topology and
+   original-curved-mesh sensitivity added 2026-10-19; capacity choice and independent curved-shell
+   benchmark pending.**
    `torque.gather_per_node_force_field` preserves each force
    source as a per-node vector in N. `thin_shell.solve_force_field` projects the combined loads
    onto the shell tangent plane, removes the area-weighted rigid-rotation component handled by
@@ -169,27 +170,36 @@ should start until those gates are resolved and the revised design is accepted.
    less than 0.004% spread in the recovered mean. An irregular convex cap also recovers the
    analytic free-edge load within 0.12%; clamping its west edge shifts the mean resultant by 2.82%
    with a small equilibrium residual. An L-shaped concave mesh recovers a manufactured uniaxial
-   free-edge load within 0.16% at 9 × 9 and 17 × 17 resolution, with less than 0.001% spread. A
+   free-edge load within 0.16% at 9 × 9 and 17 × 17 resolution, with less than 0.001% spread. On
+   that finer mesh, west and south clamps shift the mean resultant by 16.5%; these are sensitivity
+   checks and do not establish a preferred physical edge condition. A
    deterministic generated sample (seed 7, 12 plates, node density 0.5) selected its largest
    hole-bearing oceanic plate and largest single-loop continental plate. Their point-set hulls
    included 2.48% and 2.38% outside-territory triangle centroids, respectively. Explicit
    territory-clipped meshes retained two and one boundary loops, and recovered a controlled
    shallow-cap manufactured resultant within 0.09% for both. This tests actual generated node
-   distributions and topology after mapping to a shallow cap; it does not validate stress transfer
-   on the original broad curved plates or on production load distributions. On the finer mesh, west
-   and south clamps shift the mean resultant by 16.5%; these are sensitivity
-   checks and do not establish a preferred physical edge condition. These remain synthetic
-   diagnostics. `orogeny.steady_moho_temperature_c` and `moho_temperature_c` provide a coarse
+   distributions and topology after mapping to a shallow cap. The same two meshes were also solved
+   on their original broad curved coordinates under projected manufactured edge tractions; residuals
+   were below `8.5e-5` of load. Four localized clamp placements shifted mean resultants by up to
+   23.5% on the oceanic plate and 8.9% on the continental plate. These curved cases show numerical
+   convergence and boundary sensitivity, not accuracy against a curved-shell analytic solution or
+   production load distributions. A direct phenomenological capacity candidate,
+   `T_cap = T_ref * (1 - lambda * w)`, was swept on a prescribed weak band: increasing `T_ref`
+   monotonically reduced failed nodes, and at `2e10 N/m` the weak-band failure fraction exceeded
+   the background fraction for both plates. This verifies the candidate rule's response, not its
+   physical parameters or geological realism; it remains an unaccepted design alternative. These
+   remain synthetic diagnostics. `orogeny.steady_moho_temperature_c` and `moho_temperature_c` provide a coarse
    conductive Moho-temperature proxy, while `rheology.yield_excess` applies a boundary-local
    scalar Mohr-Coulomb proxy. Neither supplies a validated temperature-dependent vertical yield
-   envelope or integrated tensile capacity. Physical edge conditions and broad curved-mesh
-   sensitivity also remain unvalidated. Do not
+   envelope or integrated tensile capacity. The phenomenological alternative has only a synthetic
+   response check. Physical edge conditions and independent broad curved-mesh accuracy remain
+   unvalidated. Do not
    start constitutive calibration or infer local stress from applied traction, rigid rotation,
    flow clusters or `Plate.internal_stress`. Before gate 3, derive and sensitivity-test the
-   integrated capacity and validate the solver on original curved meshes, broader load
-   distributions
-   and justified edge conditions, or revise the proposal as a clearly labeled phenomenological
-   rift model. `Plate.internal_stress` remains a dimensionless plate-level eligibility signal and
+   integrated capacity and validate the solver against an independent curved-shell manufactured
+   solution and broader load distributions. Alternatively, explicitly accept and replay-test the
+   labeled phenomenological capacity rule and its boundary assumptions. `Plate.internal_stress`
+   remains a dimensionless plate-level eligibility signal and
    is not a local damage trigger. See
    [`analysis/issue487/gate2-load-diagnosis.md`](../analysis/issue487/gate2-load-diagnosis.md).
 3. **Calibrate accumulation and segment growth.** On synthetic plates and replayed candidate

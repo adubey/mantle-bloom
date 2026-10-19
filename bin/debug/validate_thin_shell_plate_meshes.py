@@ -8,10 +8,10 @@ Usage (from the repository root):
 
 The script selects the largest generated plate with an interior boundary loop and the
 largest one-loop plate. It clips a Delaunay triangulation of cell centres against exact plate
-containment probes, then maps each mesh to a shallow spherical patch with the same topology.
-Manufactured edge tractions test mesh transfer without treating a broad spherical patch's
-global direction field as an analytic uniform-stress solution. This is a mesh diagnostic,
-not a replay of production stresses or a material-strength calibration.
+containment probes. It tests a manufactured load on both the original curved mesh and a shallow
+cap mapped from the same topology, then sweeps four localized clamp placements. A final response
+sweep evaluates a parameterized phenomenological capacity; its reference threshold and weakness
+mask are design inputs, not calibrated or physical strength values.
 """
 
 from __future__ import annotations
@@ -141,6 +141,135 @@ def _manufactured_result(points: np.ndarray, areas_m2: np.ndarray, xy: np.ndarra
     }
 
 
+def _phenomenological_capacity_sweep(resultant: np.ndarray, xy: np.ndarray) -> list[dict]:
+    """Check threshold and prescribed weak-band behavior for an explicit capacity rule."""
+    x = xy[:, 0]
+    weak_band = np.abs(x - np.median(x)) <= 0.08 * float(np.ptp(x))
+    weakening_fraction = 0.5
+    cases = []
+    for reference_capacity in (1e10, 2e10, 4e10):
+        background = np.full(len(resultant), reference_capacity)
+        capacity = background * np.where(weak_band, 1.0 - weakening_fraction, 1.0)
+        failed = resultant >= capacity
+        weak_failed = int((failed & weak_band).sum())
+        strong_failed = int((failed & ~weak_band).sum())
+        cases.append(
+            {
+                "reference_capacity_n_per_m": reference_capacity,
+                "weakening_fraction": weakening_fraction,
+                "weak_band_fraction_of_nodes": float(weak_band.mean()),
+                "failed_nodes_total": weak_failed + strong_failed,
+                "failed_nodes_in_weak_band": weak_failed,
+                "failed_fraction_in_weak_band": weak_failed / int(weak_band.sum()),
+                "failed_nodes_outside_weak_band": strong_failed,
+                "failed_fraction_outside_weak_band": strong_failed / int((~weak_band).sum()),
+            }
+        )
+    failed_counts = [case["failed_nodes_total"] for case in cases]
+    if any(larger > smaller for smaller, larger in zip(failed_counts, failed_counts[1:])):
+        raise AssertionError("increasing reference capacity must not increase failed-node count")
+    middle = cases[1]
+    if middle["failed_fraction_in_weak_band"] <= middle["failed_fraction_outside_weak_band"]:
+        raise AssertionError("the prescribed weak band must fail more often than the background")
+    return cases
+
+
+def _curved_mesh_sensitivity(
+    points: np.ndarray, areas_m2: np.ndarray, triangles: np.ndarray
+) -> dict:
+    """Sweep free edges and four localized clamp bands on the original spherical mesh."""
+    center = geometry.normalize(points.mean(axis=0))
+    first, second = thin_shell._tangent_basis(center[None, :])
+    denominator = points @ center
+    if np.any(denominator <= 0.0):
+        raise ValueError("curved plate mesh does not fit in one tangent hemisphere")
+    xy = np.column_stack((points @ first[0] / denominator, points @ second[0] / denominator))
+    signed_area = (
+        (xy[triangles[:, 1], 0] - xy[triangles[:, 0], 0])
+        * (xy[triangles[:, 2], 1] - xy[triangles[:, 0], 1])
+        - (xy[triangles[:, 1], 1] - xy[triangles[:, 0], 1])
+        * (xy[triangles[:, 2], 0] - xy[triangles[:, 0], 0])
+    )
+    triangles = triangles.copy()
+    clockwise = signed_area < 0.0
+    triangles[clockwise, 1], triangles[clockwise, 2] = (
+        triangles[clockwise, 2].copy(),
+        triangles[clockwise, 1].copy(),
+    )
+    exterior, nonmanifold, loops = _boundary_edges(triangles)
+    if nonmanifold or loops == 0:
+        raise ValueError(f"curved explicit mesh has {nonmanifold} non-manifold edges and {loops} loops")
+
+    force = np.zeros_like(points)
+    boundary_nodes = np.unique(np.asarray(exterior, dtype=np.int64))
+    for start, end in exterior:
+        edge = (xy[end] - xy[start]) * lithosphere.PLANET_RADIUS_M
+        length = float(np.linalg.norm(edge))
+        projected_x_traction = edge[1] / length
+        midpoint = geometry.normalize(points[start] + points[end])
+        tangent_x = first[0] - np.dot(first[0], midpoint) * midpoint
+        tangent_x = geometry.normalize(tangent_x)
+        nodal_force = _TARGET_RESULTANT_N_PER_M * projected_x_traction * tangent_x * length * 0.5
+        force[start] += nodal_force
+        force[end] += nodal_force
+
+    span = np.ptp(xy, axis=0)
+    band_width = 0.12 * float(span.max())
+    cases = []
+    free_result = None
+    for direction in ("free", "west", "east", "south", "north"):
+        fixed = np.zeros(len(points), dtype=bool)
+        if direction == "west":
+            fixed = xy[:, 0] < xy[:, 0].min() + band_width
+        elif direction == "east":
+            fixed = xy[:, 0] > xy[:, 0].max() - band_width
+        elif direction == "south":
+            fixed = xy[:, 1] < xy[:, 1].min() + band_width
+        elif direction == "north":
+            fixed = xy[:, 1] > xy[:, 1].max() - band_width
+        if direction != "free":
+            fixed &= np.isin(np.arange(len(points)), boundary_nodes)
+        result = thin_shell.solve_thin_shell(
+            points,
+            areas_m2,
+            force,
+            thickness_m=100_000.0,
+            young_modulus_pa=70e9,
+            tensile_strength_resultant_n_per_m=np.full(len(points), 2.0 * _TARGET_RESULTANT_N_PER_M),
+            mesh_triangles=triangles,
+            fixed_node_mask=fixed,
+        )
+        if direction == "free":
+            free_result = result
+        resultant = result.max_tensile_resultant_n_per_m
+        if free_result is None:
+            raise RuntimeError("free-edge reference result was not computed")
+        free_mean = float(np.mean(free_result.max_tensile_resultant_n_per_m))
+        cases.append(
+            {
+                "edge_condition": direction,
+                "clamped_boundary_nodes": int(fixed.sum()),
+                "mean_resultant_n_per_m": float(np.mean(resultant)),
+                "mean_change_from_free_fraction": float(np.mean(resultant) / free_mean - 1.0),
+                "p95_resultant_n_per_m": float(np.quantile(resultant, 0.95)),
+                "max_resultant_n_per_m": float(np.max(resultant)),
+                "equilibrium_residual_over_load": result.equilibrium_residual_n
+                / float(np.linalg.norm(result.equilibrated_force_n)),
+                "solver_stop_code": result.solver_stop_code,
+            }
+        )
+    return {
+        "projected_span_radians": span.tolist(),
+        "mesh_boundary_loops": loops,
+        "boundary_edges": len(exterior),
+        "manufactured_resultant_n_per_m": _TARGET_RESULTANT_N_PER_M,
+        "capacity_sensitivity": _phenomenological_capacity_sweep(
+            free_result.max_tensile_resultant_n_per_m, xy
+        ),
+        "edge_cases": cases,
+    }
+
+
 def _validate_plate(plate) -> dict:
     """Measure hull spill and validate a shallow manufactured solve on the clipped mesh."""
     nodes = plate.surface_nodes()
@@ -153,6 +282,7 @@ def _validate_plate(plate) -> dict:
     remap = np.full(len(source_points), -1, dtype=np.int64)
     remap[used] = np.arange(len(used))
     triangles = remap[candidates]
+    curved = _curved_mesh_sensitivity(source_points[used], nodes.area_m2[used], triangles)
     points, areas, xy, triangles = _shallow_mesh(source_points[used], nodes.area_m2[used], triangles)
     manufactured = _manufactured_result(points, areas, xy, triangles)
     return {
@@ -167,6 +297,7 @@ def _validate_plate(plate) -> dict:
         "triangles_rejected_by_territory_probes": rejected,
         "explicit_triangles": len(triangles),
         "explicit_mesh_nodes": len(points),
+        "original_curved_mesh_sensitivity": curved,
         **manufactured,
     }
 
@@ -190,6 +321,13 @@ def run(seed: int, num_plates: int, node_density: float) -> dict:
         "node_density": node_density,
         "mapping": "Generated cell-centre topology mapped to a shallow cap for manufactured-load testing",
         "target_resultant_n_per_m": _TARGET_RESULTANT_N_PER_M,
+        "phenomenological_capacity_model": {
+            "formula": "T_cap = T_ref * (1 - weakening_fraction * weak_zone_weight)",
+            "weakening_fraction": 0.5,
+            "reference_capacity_sweep_n_per_m": [1e10, 2e10, 4e10],
+            "weak_zone_weight": "1 inside |projected_x - median(projected_x)| <= 0.08 * projected_x_span; otherwise 0",
+            "status": "synthetic response check; parameters are not calibrated or physical",
+        },
         "plates": [_validate_plate(plate) for plate in selected],
     }
 

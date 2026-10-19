@@ -304,10 +304,19 @@ generated-plate node sets were also checked with seed 7, 12 plates and node dens
 largest hole-bearing oceanic plate (2390 nodes) and largest single-loop continental plate
 (1988 nodes) had 2.48% and 2.38% outside-territory centroids in their convex-hull meshes. Explicit
 territory-clipped meshes retained their two-loop and one-loop boundaries and recovered the
-controlled shallow-cap resultant within 0.09%. This preserves generated topology but maps the
-nodes to a shallow cap; it does not validate the solve on broad curved plates or production loads.
-Physically justified edge conditions, faults, bending, plastic yielding and topology changes
-remain outside this read-only diagnostic. The source-force moments are checked against
+controlled shallow-cap resultant within 0.09%. This shallow-cap result tests topology only; the
+separate original-coordinate solve below probes the broad curved meshes under a controlled load.
+The same two meshes were also solved on their original broad curved coordinates under a projected
+manufactured edge traction. Free-node residuals stayed below `8.5e-5` of load; clamping boundary
+nodes in west/east/south/north bands changed the mean resultant by up to 23.5% on the oceanic plate
+and 8.9% on the continental plate. These are convergence and boundary-sensitivity checks, not
+accuracy against an analytic curved-shell solution or evidence for a preferred physical edge
+condition. An offline candidate capacity `T_cap = T_ref * (1 - lambda * w)` was also swept against
+the manufactured resultants, where `T_ref` is a caller-selected capacity and `w` is a prescribed
+weak-zone weight. It localized the threshold response as intended, but its inputs are uncalibrated
+design values and are not part of production deformation. Physically justified edge conditions,
+curved-shell accuracy, faults, bending, plastic yielding and topology changes remain outside this
+read-only diagnostic. The source-force moments are checked against
 existing torque terms in `backend/unit_tests/test_torque.py`; synthetic equilibrium, rigid-rotation
 removal, linear load scaling and mesh/edge cases are checked in `backend/unit_tests/test_thin_shell.py`.
 
