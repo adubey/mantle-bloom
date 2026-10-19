@@ -1,0 +1,171 @@
+{
+  "purpose": "RFC 0010 diagnosis gate 1: paired production-tap and shadow-calculator event baseline",
+  "model_commit": "fcaaf36e95463c078e6441fbee0125da4e275424",
+  "environment": {
+    "python": "3.14.6",
+    "numpy": "2.5.2",
+    "scipy": "1.18.0",
+    "numba": "0.67.0",
+    "pythonhashseed": "0"
+  },
+  "configuration": {
+    "layout": "cratons-first",
+    "years": 1000000000.0,
+    "step_years": 2000000.0,
+    "corridor_km": 1000.0,
+    "cost_floor": 0.05,
+    "seeds": [
+      7,
+      11,
+      2024
+    ]
+  },
+  "event_identity": [
+    "kind",
+    "myr",
+    "plate",
+    "nodes"
+  ],
+  "runs": [
+    {
+      "seed": 7,
+      "tap_rows": 144,
+      "production_ledger_all_cuts": 144.0,
+      "tap_matches_ledger_count": true,
+      "event_signature_sha256": "57b3d10bf439053bd01e8d9f703fe8ec2d794b67922eb5433f18970449108498",
+      "events_by_kind": {
+        "failed_rift": 70,
+        "split": 74
+      },
+      "flow_band_craton_candidates": 44,
+      "admissible": 17,
+      "line_clear_admissible": 6,
+      "L": 0.13636363636363635,
+      "B": 0.8971675738592929,
+      "overlapping_admissibility_fail_counts": {
+        "size": 17,
+        "poles": 2,
+        "residual": 12,
+        "connectivity": 0
+      },
+      "candidate_residual_ratio_min_median_max": [
+        0.8111727694385036,
+        1.015158767132444,
+        1.4974483589995338
+      ]
+    },
+    {
+      "seed": 11,
+      "tap_rows": 111,
+      "production_ledger_all_cuts": 111.0,
+      "tap_matches_ledger_count": true,
+      "event_signature_sha256": "668c73617467467c66096a959c733ca196a9cc064f513c473bc963fc93d58680",
+      "events_by_kind": {
+        "failed_rift": 54,
+        "split": 57
+      },
+      "flow_band_craton_candidates": 42,
+      "admissible": 31,
+      "line_clear_admissible": 12,
+      "L": 0.2857142857142857,
+      "B": 0.8100083380690632,
+      "overlapping_admissibility_fail_counts": {
+        "size": 11,
+        "poles": 0,
+        "residual": 0,
+        "connectivity": 0
+      },
+      "candidate_residual_ratio_min_median_max": [
+        0.8873886686343626,
+        1.0252321440540888,
+        1.0717109320821263
+      ]
+    },
+    {
+      "seed": 2024,
+      "tap_rows": 125,
+      "production_ledger_all_cuts": 125.0,
+      "tap_matches_ledger_count": true,
+      "event_signature_sha256": "cf7e183e0fa05c44e45df789fa013e06777e0ece0dd9f28d0051e814c1ecc154",
+      "events_by_kind": {
+        "failed_rift": 52,
+        "split": 73
+      },
+      "flow_band_craton_candidates": 44,
+      "admissible": 28,
+      "line_clear_admissible": 5,
+      "L": 0.11363636363636363,
+      "B": 0.8045980804012115,
+      "overlapping_admissibility_fail_counts": {
+        "size": 10,
+        "poles": 3,
+        "residual": 6,
+        "connectivity": 1
+      },
+      "candidate_residual_ratio_min_median_max": [
+        0.9652380867208376,
+        1.0127493686935747,
+        1.1213391754722526
+      ]
+    }
+  ],
+  "pooled": {
+    "through": 130,
+    "L": 0.17692307692307693,
+    "B": 0.8370682967628947
+  },
+  "archived_stream_comparison": [
+    {
+      "seed": 7,
+      "series": "production-probe",
+      "old_event_count": 125,
+      "current_event_count": 144,
+      "matching_signature_occurrences": 5,
+      "old_signature_sha256": "c6110c429ecd1f7dded48a61e8ff333b3cc1982d26f3fe3b01ba5b41574613ac"
+    },
+    {
+      "seed": 7,
+      "series": "margin-instrumented",
+      "old_event_count": 130,
+      "current_event_count": 144,
+      "matching_signature_occurrences": 4,
+      "old_signature_sha256": "cb8e4ab3169e3e9830c96d31e8603d3d9678f3abc3214235c711df72e852bf0d"
+    },
+    {
+      "seed": 11,
+      "series": "production-probe",
+      "old_event_count": 137,
+      "current_event_count": 111,
+      "matching_signature_occurrences": 6,
+      "old_signature_sha256": "5fcf1972cb279d6f19072a43580009862cd7397fe533b13d72b5e25098f906fc"
+    },
+    {
+      "seed": 11,
+      "series": "margin-instrumented",
+      "old_event_count": 116,
+      "current_event_count": 111,
+      "matching_signature_occurrences": 6,
+      "old_signature_sha256": "daa797fb85c608889d15269d5c5ddd59ef56905d70dd990104a4a0796221c79c"
+    },
+    {
+      "seed": 2024,
+      "series": "production-probe",
+      "old_event_count": 130,
+      "current_event_count": 125,
+      "matching_signature_occurrences": 3,
+      "old_signature_sha256": "7464e10e4bb67977aa58a987a2379d3e76633d2f863c651c207dc69d752b2678"
+    },
+    {
+      "seed": 2024,
+      "series": "margin-instrumented",
+      "old_event_count": 115,
+      "current_event_count": 125,
+      "matching_signature_occurrences": 4,
+      "old_signature_sha256": "a1a226932db58188e52db93ab2f2988244da05a39d0ee286c2f96be9cd98cd78"
+    }
+  ],
+  "limitations": [
+    "The archived JSONs record the same git commit but omit working-tree fingerprints and runtime/library versions; their divergent event streams cannot be attributed to a specific cause from available metadata.",
+    "The committed probe output retains residual_ratio and admissibility booleans, but not numeric min-half-node or pole-separation margins. Gate 1 remains open until those margins are captured for the repeatable stream."
+  ]
+}
