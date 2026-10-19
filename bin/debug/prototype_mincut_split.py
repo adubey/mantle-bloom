@@ -212,12 +212,20 @@ def _evaluate(world, plate, points, cut_normal, kind) -> dict:  # noqa: C901 - o
                 "length_ratio": fit["crossing_length"] / flow_fit["crossing_length"] if flow_fit["crossing_length"] > 0 else np.inf,
                 "line_through_craton": bool(craton[np.concatenate([i[crossing], j[crossing]])].any()),
                 "largest_component_share": comp,
+                "min_half_nodes": fit["count_min"],
+                "min_nodes_required": min_nodes,
+                "size_margin_nodes": fit["count_min"] - min_nodes,
+                "pole_separation": fit["pole_sep"],
+                "pole_separation_required": threshold,
+                "pole_margin": fit["pole_sep"] - threshold,
                 "size_ok": fit["count_min"] >= min_nodes,
                 "poles_ok": fit["pole_sep"] >= threshold,
                 "cut_s": cut_s,
             }
             v["residual_ok"] = v["residual_ratio"] <= RESIDUAL_LIMIT
+            v["residual_margin"] = RESIDUAL_LIMIT - v["residual_ratio"]
             v["connected"] = min(comp) >= 0.99
+            v["connectivity_margin"] = min(comp) - 0.99
             v["admissible"] = v["size_ok"] and v["poles_ok"] and v["residual_ok"] and v["connected"]
             row["variants"][tag] = v
     row["eval_s"] = time.perf_counter() - started

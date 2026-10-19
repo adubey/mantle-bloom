@@ -36,10 +36,14 @@ Usage:
 from __future__ import annotations
 
 import argparse  # noqa: E402
+import hashlib  # noqa: E402
 import json  # noqa: E402
+import os  # noqa: E402
+import platform  # noqa: E402
 import subprocess  # noqa: E402
 import time  # noqa: E402
 from pathlib import Path  # noqa: E402
+from importlib.metadata import version  # noqa: E402
 
 import compare_cratons  # noqa: E402
 import measure_plate_layout as layout_measure  # noqa: E402
@@ -255,6 +259,8 @@ def _gate(rows: list[dict]) -> dict:
 def _compact(row: dict) -> dict:
     v = row["variants"][TAG]
     keep = ("admissible", "line_through_craton", "through_craton", "band_craton_area_mkm2", "residual_ratio",
+            "min_half_nodes", "min_nodes_required", "size_margin_nodes", "pole_separation",
+            "pole_separation_required", "pole_margin", "residual_margin", "connectivity_margin",
             "size_ok", "poles_ok", "residual_ok", "connected") if "skipped" not in v else ("skipped",)
     return {"kind": row["kind"], "myr": row["myr"], "plate": row["plate"], "nodes": row["nodes"],
             "plate_area_mkm2": row["plate_area_mkm2"], "plate_craton_area_mkm2": row["plate_craton_area_mkm2"],
@@ -274,7 +280,9 @@ def _run(seed: int, layout: str, years: float, every: float, step: float) -> dic
     rows: list[dict] = []
 
     def tapped(world, plate, points, cut_normal, band_sin, kind):
-        rows.append(_compact(mincut._evaluate(world, plate, np.asarray(points, dtype=float), np.asarray(cut_normal, dtype=float), kind)))
+        row = _compact(mincut._evaluate(world, plate, np.asarray(points, dtype=float), np.asarray(cut_normal, dtype=float), kind))
+        row["event_index"] = len(rows)
+        rows.append(row)
         return original_cut(world, plate, points, cut_normal, band_sin, kind)
 
     SEEDING.clear()
@@ -336,9 +344,20 @@ def main() -> None:
     CORE_SPACING_KM, BELT_WIDTH_KM = args.core_spacing_km, args.belt_width_km
     app_root = Path(merge_split.__file__).resolve().parents[2]
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=app_root, text=True).strip()
+    source_paths = (
+        "bin/debug/probe_craton_mosaic.py", "bin/debug/prototype_mincut_split.py",
+        "backend/app/cratons.py", "backend/app/merge_split.py",
+    )
+    source_hashes = {
+        path: hashlib.sha256((app_root / path).read_bytes()).hexdigest() for path in source_paths
+    }
+    worktree_status = subprocess.check_output(["git", "status", "--porcelain"], cwd=app_root, text=True).splitlines()
     result = {"model_commit": commit, "layout": args.layout, "years": args.years, "step": args.step,
               "corridor_km": CORRIDOR_KM, "floor": FLOOR, "core_spacing_km": CORE_SPACING_KM,
-              "belt_width_km": BELT_WIDTH_KM, "runs": []}
+              "belt_width_km": BELT_WIDTH_KM,
+              "environment": {"python": platform.python_version(), "pythonhashseed": os.environ.get("PYTHONHASHSEED"),
+                              "numpy": np.__version__, "scipy": version("scipy"), "numba": version("numba")},
+              "worktree_status": worktree_status, "source_sha256": source_hashes, "runs": []}
     for seed in map(int, args.seeds.split(",")):
         result["runs"].append(_run(seed, args.layout, args.years, args.every, args.step))
         result["pooled"] = _pooled(result["runs"])
