@@ -7,7 +7,7 @@
 
 The source-force interface preserves each existing torque contribution as a per-node vector in N. `thin_shell.solve_force_field` transfers the combined tangent load through a linear triangular membrane equilibrium solve and returns local in-plane membrane stress resultants in N/m. It removes the area-weighted rigid-rotation load handled by plate motion; applied radial force is assigned to shell-normal support. The current convenience failure ratio compares the maximum positive principal resultant with a caller-supplied integrated tensile threshold in N/m. That ratio is only a numerical interface check: positive in-plane tension is not yet a physically consistent measure of normal-fault failure. Synthetic tests verify equilibrium residual, rigid-rotation removal and linear force scaling. Diagonal stiffness scaling lets the iterative solve handle generated plate meshes with thousands of nodes.
 
-This establishes a diagnostic load-transfer interface and validates generated plate topology in a controlled manufactured case, not a production stress field. The solver assumes outward convex-hull triangular elements by default, linear plane-stress elasticity, free edges and no faults, bending, plasticity or thermal strength envelope. A manufactured uniaxial load on one shallow spherical cap recovers its analytic resultant across three refinements; representative generated cell-centre meshes also recover it after topology-preserving mapping to a shallow cap. Original broad curved plates, physical boundary conditions, production load distributions and the strength provider remain unvalidated. Gate 2 therefore remains open; Gate 3 calibration must wait for those checks or a deliberate revision to a clearly labeled phenomenological rift model.
+This establishes a diagnostic load-transfer interface and validates generated plate topology in a controlled manufactured case, not a production stress field. The solver assumes outward convex-hull triangular elements by default, linear plane-stress elasticity, free edges and no faults, bending, plasticity or thermal strength envelope. A manufactured uniaxial load on one shallow spherical cap recovers its analytic resultant across three refinements; representative generated cell-centre meshes also recover it after topology-preserving mapping to a shallow cap. The standalone strength envelope now exists as a reproducible scenario diagnostic, but original broad curved plates still lack an independent shell benchmark, physical boundary conditions and production load distributions remain unsettled, and the strength assumptions are uncalibrated. Gate 2 therefore remains open; Gate 3 calibration must wait for those checks or a deliberate revision to a clearly labeled phenomenological rift model.
 
 ## Synthetic solver validation
 
@@ -149,12 +149,12 @@ capacity field:
 | `rheology.yield_excess(sigma_n_pa)` | Uses cohesion `2e7 Pa`, friction angle 30°, and a scalar effective-viscosity boundary-normal stress proxy. | Represents boundary-local Mohr-Coulomb yielding and deformation; it is not a tensile criterion or depth-integrated column strength. |
 | Per-node `Hc`, `Hm`, `crust_type_code`, craton/restite and thermal-lag fields | Preserve thickness, broad crust identity and a few tectonic/material tracers. | Do not specify vertical composition, temperature, water/pore pressure or strain-rate-dependent brittle and ductile strength. |
 
-A physical tensile capacity would require a stated failure criterion and a calibrated vertical yield
-envelope, then integration through the modeled column, `T_c = integral(sigma_yield(z) dz)`, in
-N/m. The existing Moho-temperature and boundary-yield proxies could inform a proposed model, but
-they cannot be multiplied by column thickness and labeled physical capacity without new
-constitutive assumptions and calibration. A phenomenological cohesion-times-thickness capacity
-would be a separate alternative and should be labeled and tested as such.
+A physical extensional capacity requires a stated failure criterion and a depth-integrated vertical
+yield envelope, in N/m. It is differential strength against normal-faulting extension, not intact
+rock tensile strength. The existing Moho-temperature and boundary-yield proxies cannot be
+multiplied by column thickness and labeled physical capacity without new constitutive assumptions
+and calibration. A phenomenological cohesion-times-thickness capacity would be a separate
+alternative and should be labeled and tested as such.
 
 
 ## Candidate physical capacity: extensional strength envelope
@@ -226,12 +226,42 @@ For each node, define depth `z` downward from the surface and evaluate the follo
    ratio `K0` is a missing input) before a physical failure ratio can be interpreted. Comparing
    positive tensile principal stress directly against `N_y` would mix failure modes.
 
+**Diagnostic result.** The standalone implementation is
+[`bin/debug/diagnose_gate2_column_envelope.py`](../../bin/debug/diagnose_gate2_column_envelope.py);
+its complete assumptions, reference profiles, parameter sources and 1,728 scenario results are in
+[`gate2-column-envelope.json`](gate2-column-envelope.json). Using a 0.125 km depth interval, the
+illustrative reference capacities are 23.79 TN/m for the 35 km crust + 100 km mantle-lid
+continental column, 0.489 TN/m for the 11 + 8 km young-ridge oceanic column, and 5.50 TN/m for
+the 11 + 40 km mature-reference oceanic column. These are outputs of assumed material states, not
+Earth-calibrated strength estimates. Across the explicit normal-faulting scenario sweeps, the
+unweighted p10/median/p90 capacities are 5.45/12.70/27.55 TN/m (continental),
+0.133/0.292/0.546 TN/m (young ridge), and 1.88/3.73/6.86 TN/m (mature oceanic). These percentiles
+summarize a designed grid, not probability distributions. At 0.25 km spacing, reference capacities
+shift by 0.12%, 0.92%, and 0.01%, respectively. In the continental sweep, median capacity changes
+from 7.04 TN/m at `K0=0.6` to 22.22 TN/m at `K0=1.0`; wet versus dry mantle changes it from 9.83
+to 16.31 TN/m, and the pore-pressure bracket changes it from 10.74 to 15.25 TN/m. Missing
+background stress and material state therefore dominate the interpretation.
+
+The diagnostic reconstructs a steady 1-D geotherm from current model constants; it does not use
+the stored Moho thermal lag as a transient depth profile. It applies one quartz-rich upper crust and
+one effective lower-crust law to continents, one effective mafic law to oceanic crust, dry/wet
+olivine endmembers to the mantle, a fixed pore-pressure ratio, and a normal-faulting Mohr-Coulomb
+branch with `K0` in [0.6, 1]. The laws are laboratory/geodynamic parameterizations extrapolated to
+geological strain rates. The mafic-granulite law is the central fit to reconstituted, nominally dry
+granulite with 0.16–0.28 wt% dissolved water; its reported fit uncertainties are not sampled, so
+this is not a water-free endmember. Semibrittle flow, localization, inherited faults, anisotropy,
+evolving fluids, compositional mixing, thermal transients and 3-D stress transfer are omitted. In
+particular, the dry-olivine creep inversion at the continental Moho exceeds its experimental regime
+by orders of magnitude; the minimum brittle/ductile branch controls the reported envelope, but that
+does not validate the extrapolation. See the script and JSON for full assumptions and per-case
+outputs.
+
 **Recommendation.** Keep the existing shell solver as a load-transfer diagnostic, but change the
 physical capacity interface to accept a depth-integrated *incremental extensional yield resultant*
 derived from the envelope above. Do not wire this strength into production or calibrate damage yet.
-First add a standalone column-envelope diagnostic with explicit geotherm, pore-pressure, rock-law,
-strain-rate and `K0` scenarios; report brittle and ductile branches, crossover depth, integrated
-capacity, and sensitivity ranges. Then update the shell output/comparison to match that stress
+The standalone column-envelope diagnostic now reports explicit geotherm, pore-pressure, rock-law,
+strain-rate and `K0` scenarios; brittle and ductile branches, crossover depth, integrated capacity,
+and sensitivity ranges. Next update the shell output/comparison to match that stress
 definition and validate it on original curved meshes. If state requirements make those scenarios
 too unconstrained to support replay choices, compare the envelope against the explicitly
 phenomenological weak-zone threshold as separate competing models.
@@ -254,9 +284,9 @@ The complete trace is in `backend/app/torque.py` (`gather_boundary_force_inputs`
 
 ## Gate disposition
 
-- **Current diagnostic interface:** spatial membrane resultants and comparison to a supplied threshold are available, but the current maximum-principal-tension threshold does not represent normal-fault failure. The candidate physical comparison is an integrated brittle–ductile extensional differential-strength envelope, conditioned on pore pressure, geotherm, strain rate, material scenario and background horizontal stress. No approved values or solver stress mapping exist yet. Manufactured shallow-cap, L-shaped concave, generated-topology shallow-cap and original curved-mesh load cases have been exercised. Original curved-mesh solves converge, and four clamp placements show up to 23.5% mean-resultant sensitivity. The direct-threshold phenomenological rule has a monotonic capacity and weak-band localization check, but it is a competing design only. Physical edge conditions, a strength-column diagnostic, stress-invariant matching, curved-shell accuracy against an independent benchmark and replay comparison remain open, so Gate 2 is not closed.
+- **Current diagnostic interface:** spatial membrane resultants and comparison to a supplied threshold are available, but the current maximum-principal-tension threshold does not represent normal-fault failure. The standalone integrated brittle–ductile extensional differential-strength diagnostic and scenario sweep now exist; no material state is selected and no solver stress mapping exists yet. Manufactured shallow-cap, L-shaped concave, generated-topology shallow-cap and original curved-mesh load cases have been exercised. Original curved-mesh solves converge, and four clamp placements show up to 23.5% mean-resultant sensitivity. The direct-threshold phenomenological rule has a monotonic capacity and weak-band localization check, but it is a competing design only. Physical edge conditions, stress-invariant matching, curved-shell accuracy against an independent benchmark and matched replay comparison remain open, so Gate 2 is not closed.
 - **`internal_stress`:** retain only as a plate-scale eligibility/background signal if desired; it cannot trigger or weight local damage.
 - **No calibrated strength field:** do not assign `Y_t`, `eta_rift`, or failure-strain parameters from these diagnostics. Do not infer stress from applied traction, rigid rotation, flow-cluster residuals or `Plate.internal_stress`.
-- **Required next work:** implement and sensitivity-test the column-envelope diagnostic; define background horizontal stress and map shell output to the same extensional differential-stress measure; validate the curved-shell formulation against an independent manufactured solution and broader mesh refinement; choose physically justified boundary conditions or approve the sensitivity-tested free-edge diagnostic; then compare the physical envelope with the labeled phenomenological alternative on matched replay candidates. Gate 3 accumulation and segment-growth calibration remains downstream of those choices.
+- **Required next work:** define background horizontal stress and map shell output to the same extensional differential-stress measure; validate the curved-shell formulation against an independent manufactured solution and broader mesh refinement; choose physically justified boundary conditions or approve the sensitivity-tested free-edge diagnostic; then compare the physical envelope with the labeled phenomenological alternative on matched replay candidates. Gate 3 accumulation and segment-growth calibration remains downstream of those choices.
 
 The RFC now records this outcome and keeps the local-cut damage design conditional. Gate 1 is closed by the explicit baseline/exclusion decision recorded in `analysis/issue487/README.md`; the archived-stream provenance limitation remains documented.

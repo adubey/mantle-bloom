@@ -80,3 +80,24 @@ PYTHONHASHSEED=0 PYTHONPATH=backend backend/.venv/bin/python \
 
 The full 446 KB output is intentionally left in `/tmp`; the compact statistics,
 fingerprints, and archived-series comparison are checked in as `gate1-summary.json`.
+
+## Gate 2 column-strength diagnostic
+
+The standalone [`diagnose_gate2_column_envelope.py`](../../bin/debug/diagnose_gate2_column_envelope.py)
+implements an illustrative depth-integrated normal-faulting strength envelope. Its input
+assumptions, material-law sources, reference profiles, full scenario grid, and numerical
+resolution comparison are documented in [`gate2-load-diagnosis.md`](gate2-load-diagnosis.md)
+and [`gate2-column-envelope.json`](gate2-column-envelope.json). At 0.125 km depth spacing,
+reference capacities are 23.79 TN/m (continental), 0.489 TN/m (young-ridge oceanic), and
+5.50 TN/m (mature oceanic). The scenario-grid p10/median/p90 values are 5.45/12.70/27.55,
+0.133/0.292/0.546, and 1.88/3.73/6.86 TN/m, respectively. These are not calibrated
+predictions; the integrated capacity is especially sensitive to the assumed background
+horizontal stress, pore pressure, mantle water state, and thermal profile. The diagnostic
+does not yet map to the shell solver's stress measure, and Gate 2 remains open.
+
+Reproduce with:
+
+```bash
+backend/.venv/bin/python bin/debug/diagnose_gate2_column_envelope.py \
+  --dz-km 0.125 --output analysis/issue487/gate2-column-envelope.json
+```

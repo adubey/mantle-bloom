@@ -135,9 +135,16 @@ Its current comparison with a caller-supplied integrated tensile capacity is not
 rift criterion: extensional lithosphere commonly fails by normal-fault frictional sliding at
 shallow depth and ductile creep at depth, rather than uniform intact-rock tensile rupture
 [[Brace & Kohlstedt, 1980]](#ref-brace1980) [[Kohlstedt et al., 1995]](#ref-kohlstedt1995).
-Diagnosis gate 2 therefore remains open until an integrated extensional differential-strength
-envelope is derived and matched to the shell stress measure, mesh/boundary sensitivity is
-established, or the proposal is revised as an explicitly phenomenological alternative. The
+The standalone column-envelope diagnostic uses published wet-quartzite, plagioclase,
+mafic-granulite and wet/dry olivine flow-law parameterizations, with an explicit frictional
+branch [[Byerlee, 1978]](#ref-byerlee1978) [[Chen & Gerya, 2016]](#ref-chen2016)
+[[Wang et al., 2012]](#ref-wang2012)
+[[Hirth & Kohlstedt, 2003]](#ref-hirth2003). Its scenario ranges are hypotheses to test, not a
+calibrated Earth strength field; the model lacks the local temperature, composition, fluid and
+stress state needed to choose among them.
+Diagnosis gate 2 therefore remains open until the scenario envelope is matched to the shell stress
+measure, independent curved-mesh accuracy and physical edge assumptions are established, and the
+physical and explicitly phenomenological alternatives are compared on matched replays. The
 existing flow fit and plate-level
 `internal_stress` may remain candidate-event or background-eligibility signals, but they do not
 choose a complete cut or stand in for local loading. Keep solution 4 separately sized against the
@@ -158,9 +165,9 @@ should start until those gates are resolved and the revised design is accepted.
    them from calibration and keep their denominators separate. The archived discrepancy is not
    explained or erased, but it no longer blocks use of the documented baseline. See
    [`analysis/issue487/README.md`](../analysis/issue487/README.md).
-2. **Establish local loading and strength — membrane solver, generated-plate topology and
-   original-curved-mesh sensitivity added 2026-10-19; physical strength model and independent
-   curved-shell benchmark pending.**
+2. **Establish local loading and strength — membrane solver, generated-plate topology,
+   original-curved-mesh sensitivity and a standalone physical strength scenario diagnostic added
+   2026-10-19; matching the shell stress invariant and independent curved-shell benchmark pending.**
    `torque.gather_per_node_force_field` preserves each force
    source as a per-node vector in N. `thin_shell.solve_force_field` projects the combined loads
    onto the shell tangent plane, removes the area-weighted rigid-rotation component handled by
@@ -169,7 +176,7 @@ should start until those gates are resolved and the revised design is accepted.
    with an explicit caller-supplied integrated threshold, all in N/m. This is a numerical interface,
    not yet a physical normal-faulting criterion: extension failure is usually governed by brittle
    frictional sliding at shallow depth and temperature/rate-dependent creep at depth. A candidate
-   column model calculates effective lithostatic pressure, a Mohr-Coulomb normal-fault differential
+   column diagnostic calculates effective lithostatic pressure, a Mohr-Coulomb normal-fault differential
    strength and a layer-specific ductile flow stress, then integrates the weaker branch through
    depth. The result is an extensional differential-strength resultant in N/m. It can only be
    compared with shell loading after the shell reports a matching extensional stress invariant and
@@ -312,7 +319,8 @@ its physical source or explicit design-choice status, and the sensitivity plan b
   before torque aggregation. `backend/app/thin_shell.py` supplies a reduced linear membrane
   equilibrium. It must expose an extensional differential-stress measure consistent with the
   proposed integrated brittle–ductile column capacity in N/m; the current max-tensile comparison is
-  only a diagnostic. A new column-envelope module is a proposed touchpoint, not yet implemented.
+  only a diagnostic. `bin/debug/diagnose_gate2_column_envelope.py` is a standalone scenario
+  diagnostic; a production column-envelope module remains a proposed touchpoint, not implemented.
   Its convex-hull mesh, free edge and elastic response remain diagnostic assumptions; check
   mesh/boundary sensitivity before damage calibration.
 - `backend/app/merge_split.py`: move rift-state advancement out of the all-at-once split decision;
@@ -361,13 +369,14 @@ its physical source or explicit design-choice status, and the sensitivity plan b
 
 1. [x] **Gate 1:** use the repeatable paired runs as the baseline and retire the provenance-
        incomplete archives from calibration (2026-10-19; see `analysis/issue487/README.md`).
-   [ ] **Gate 2:** validate thin-shell load transfer and define an extensional stress measure that
-       matches the selected failure mechanism. Derive and sensitivity-test an integrated brittle–
-       ductile differential-strength envelope, including explicit pore-pressure, thermal, rheology,
-       strain-rate and background-stress assumptions; validate representative meshes and boundary
-       sensitivity. Compare it with the labeled phenomenological alternative on matched replays, or
-       revise the RFC to select that alternative. Only then set and sensitivity-test damage
-       parameters before full replays (see `analysis/issue487/gate2-load-diagnosis.md`).
+   [ ] **Gate 2:** a standalone column-envelope hypothesis and thermal/fluid/rheology/strain-rate/
+       background-stress sweep are documented and reproducible, but remain uncalibrated. Define an
+       extensional shell stress measure that matches the envelope; validate thin-shell load transfer
+       against an independent curved-shell solution and broaden mesh and edge-condition sensitivity.
+       Compare this physical candidate with the labeled phenomenological alternative on matched
+       replays, or revise the RFC to select that alternative. Only then set and sensitivity-test
+       damage parameters before full replays (see `analysis/issue487/gate2-load-diagnosis.md` and
+       `analysis/issue487/gate2-column-envelope.json`).
 2. [ ] In synthetic tests, damage is timestep-partition invariant, bounded, absent under compression
        or sub-yield loading, and advances only through adjacent cells with supported positive loading.
 3. [ ] Segments can nucleate independently, propagate, arrest and link; a transform/transfer zone
@@ -418,6 +427,15 @@ its physical source or explicit design-choice status, and the sensitivity plan b
 - <a id="ref-hirth2003"></a>Hirth, G., & Kohlstedt, D. (2003). Rheology of the upper mantle and
   the mantle wedge: A view from the experimentalists. In *Inside the Subduction Factory* (pp.
   83–105). American Geophysical Union. [doi:10.1029/138GM06](https://doi.org/10.1029/138GM06)
+- <a id="ref-byerlee1978"></a>Byerlee, J. D. (1978). Friction of rocks. *Pure and Applied
+  Geophysics*, 116, 615–626. [doi:10.1007/BF00876528](https://doi.org/10.1007/BF00876528)
+- <a id="ref-chen2016"></a>Chen, L., & Gerya, T. V. (2016). The role of lateral lithospheric
+  strength heterogeneities in orogenic plateau growth: Insights from 3-D thermo-mechanical
+  modeling. *Journal of Geophysical Research: Solid Earth*, 121, 3118–3138.
+  [doi:10.1002/2016JB012872](https://doi.org/10.1002/2016JB012872)
+- <a id="ref-wang2012"></a>Wang, Y. F., Zhang, J. F., Jin, Z. M., & Green, H. W., II (2012).
+  Mafic granulite rheology: Implications for a weak continental lower crust. *Earth and Planetary
+  Science Letters*, 353–354, 99–107. [doi:10.1016/j.epsl.2012.08.004](https://doi.org/10.1016/j.epsl.2012.08.004)
 
 - <a id="ref-brune2023"></a>Brune, S., Kolawole, F., Olive, J.-A., et al. (2023).
   Geodynamics of continental rift initiation and evolution. *Nature Reviews Earth & Environment*,

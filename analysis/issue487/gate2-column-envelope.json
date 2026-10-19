@@ -1,0 +1,2338 @@
+{
+  "assumptions": [
+    "Steady 1-D conduction; one conductivity and crustal heat production are used through the column proxy.",
+    "One effective continental split uses 15 km quartz-rich upper crust and remaining feldspar or granulite lower crust.",
+    "The entire effective oceanic crust uses one An75 plagioclase-based mafic flow law.",
+    "Oceanic columns include the model's 8 km young-ridge and 40 km mature-reference lids; no ocean-age distribution is represented.",
+    "Wet mantle uses 1000 ppm H/Si; the world has no mantle water field.",
+    "Pore pressure is a fixed fraction of lithostatic pressure, not a solved fluid-pressure profile.",
+    "The vertical stress is the maximum principal compression; K0 defines initial horizontal stress.",
+    "Laboratory creep laws are extrapolated to 1e-16 to 1e-14 per second and ignore semibrittle, Peierls, diffusion-creep transitions, melt and damage feedback.",
+    "The mafic-granulite central flow-law fit is from reconstituted nominally dry rock containing 0.16-0.28 wt% dissolved water; its reported parameter uncertainties are not sampled."
+  ],
+  "diagnostic": "RFC 0010 Gate 2 column strength envelope; not production rheology",
+  "equations": {
+    "additional_brittle_stress_pa": "max(0, K0*sigma_v_eff - sigma_h_failure)",
+    "additional_ductile_stress_pa": "max(0, sigma_creep - abs(sigma_v_eff - K0*sigma_v_eff))",
+    "brittle_failure_horizontal_stress_pa": "((1 - sin(phi))*sigma_v_eff - 2*C*cos(phi))/(1 + sin(phi))",
+    "integrated_capacity_n_per_m": "integral(min(additional_brittle, additional_ductile), depth)",
+    "power_law_creep": "strain_rate = A*sigma^n*COH^r*exp(-(E + P*V)/(R*T))"
+  },
+  "integration_depth_step_km": 0.125,
+  "material_scenarios": {
+    "dry_olivine": {
+      "a_mpa_n_s": 110000.0,
+      "activation_j_mol": 530000.0,
+      "activation_volume_m3_mol": 1.5e-05,
+      "label": "dry olivine",
+      "n": 3.5,
+      "water_exponent": 0.0,
+      "water_ppm_h_si": 0.0
+    },
+    "mafic_granulite": {
+      "a_mpa_n_s": 0.01,
+      "activation_j_mol": 244000.0,
+      "activation_volume_m3_mol": 0.0,
+      "label": "mafic granulite",
+      "n": 3.2,
+      "water_exponent": 0.0,
+      "water_ppm_h_si": 0.0
+    },
+    "plagioclase_an75": {
+      "a_mpa_n_s": 0.0003311311214825911,
+      "activation_j_mol": 238000.0,
+      "activation_volume_m3_mol": 8e-06,
+      "label": "plagioclase An75",
+      "n": 3.2,
+      "water_exponent": 0.0,
+      "water_ppm_h_si": 0.0
+    },
+    "wet_olivine": {
+      "a_mpa_n_s": 20.0,
+      "activation_j_mol": 480000.0,
+      "activation_volume_m3_mol": 1.1e-05,
+      "label": "wet olivine",
+      "n": 3.5,
+      "water_exponent": 1.2,
+      "water_ppm_h_si": 1000.0
+    },
+    "wet_quartzite": {
+      "a_mpa_n_s": 0.0003235936569296281,
+      "activation_j_mol": 154000.0,
+      "activation_volume_m3_mol": 8e-06,
+      "label": "wet quartzite",
+      "n": 2.3,
+      "water_exponent": 0.0,
+      "water_ppm_h_si": 0.0
+    }
+  },
+  "parameter_sources": {
+    "brittle_friction": "Byerlee (1978), doi:10.1007/BF00876528",
+    "crust_and_dry_mantle_flow_laws": "Chen & Gerya (2016), doi:10.1002/2016JB012872; parameterizations based on Ranalli (1995)",
+    "mafic_granulite_flow_law": "Wang et al. (2012), doi:10.1016/j.epsl.2012.08.004",
+    "thickness_density_and_thermal_baseline": "backend/app/lithosphere.py and backend/app/orogeny.py",
+    "wet_dry_olivine_flow_laws": "Hirth & Kohlstedt (2003), doi:10.1029/138GM06"
+  },
+  "reference_cases": [
+    {
+      "crust_type": "continental",
+      "ductile_controlled_depth_fraction": 0.6393518518518518,
+      "first_brittle_ductile_crossover_depth_m": 12875.0,
+      "integrated_additional_strength_n_per_m": 23790145451033.45,
+      "integrated_brittle_only_n_per_m": 107824235953623.97,
+      "integrated_ductile_only_n_per_m": 1.407847000114907e+16,
+      "moho": {
+        "controlling_branch": "brittle",
+        "creep_law": "dry olivine",
+        "ductile_flow_stress_mpa": 115385.48670157125
+      },
+      "profile": {
+        "crust_thickness_m": 35000.0,
+        "lithosphere_base_pressure_gpa": 4.164345,
+        "lithosphere_base_temperature_c": 1330.0,
+        "mantle_lithosphere_thickness_m": 100000.0,
+        "moho_temperature_c": 479.25925925925935
+      },
+      "scenario": {
+        "base_temperature_c": 1330.0,
+        "cohesion_pa": 20000000.0,
+        "friction_angle_deg": 30.0,
+        "k0_horizontal_over_vertical": 1.0,
+        "lower_crust_law": "plagioclase_an75",
+        "mantle_law": "dry_olivine",
+        "pore_pressure_ratio": 0.42,
+        "strain_rate_s-1": 1e-15
+      }
+    },
+    {
+      "crust_type": "oceanic_young_ridge",
+      "ductile_controlled_depth_fraction": 0.6875,
+      "first_brittle_ductile_crossover_depth_m": 6000.0,
+      "integrated_additional_strength_n_per_m": 489330778898.3237,
+      "integrated_brittle_only_n_per_m": 2472889704584.1157,
+      "integrated_ductile_only_n_per_m": 1.907719557851757e+18,
+      "moho": {
+        "controlling_branch": "ductile",
+        "creep_law": "dry olivine",
+        "ductile_flow_stress_mpa": 69.38021090744493
+      },
+      "profile": {
+        "crust_thickness_m": 11000.0,
+        "lithosphere_base_pressure_gpa": 0.571923,
+        "lithosphere_base_temperature_c": 1330.0,
+        "mantle_lithosphere_thickness_m": 8000.0,
+        "moho_temperature_c": 781.3431578947367
+      },
+      "scenario": {
+        "base_temperature_c": 1330.0,
+        "cohesion_pa": 20000000.0,
+        "friction_angle_deg": 30.0,
+        "k0_horizontal_over_vertical": 1.0,
+        "lower_crust_law": "plagioclase_an75",
+        "mantle_law": "dry_olivine",
+        "pore_pressure_ratio": 0.42,
+        "strain_rate_s-1": 1e-15
+      }
+    },
+    {
+      "crust_type": "oceanic_mature",
+      "ductile_controlled_depth_fraction": 0.4791666666666667,
+      "first_brittle_ductile_crossover_depth_m": 26625.0,
+      "integrated_additional_strength_n_per_m": 5497391563338.658,
+      "integrated_brittle_only_n_per_m": 16697482689146.836,
+      "integrated_ductile_only_n_per_m": 4.620659930682001e+18,
+      "moho": {
+        "controlling_branch": "brittle",
+        "creep_law": "dry olivine",
+        "ductile_flow_stress_mpa": 101153269.35506989
+      },
+      "profile": {
+        "crust_thickness_m": 11000.0,
+        "lithosphere_base_pressure_gpa": 1.607859,
+        "lithosphere_base_temperature_c": 1329.9999999999995,
+        "mantle_lithosphere_thickness_m": 40000.0,
+        "moho_temperature_c": 307.992156862745
+      },
+      "scenario": {
+        "base_temperature_c": 1330.0,
+        "cohesion_pa": 20000000.0,
+        "friction_angle_deg": 30.0,
+        "k0_horizontal_over_vertical": 1.0,
+        "lower_crust_law": "plagioclase_an75",
+        "mantle_law": "dry_olivine",
+        "pore_pressure_ratio": 0.42,
+        "strain_rate_s-1": 1e-15
+      }
+    }
+  ],
+  "schema_version": 1,
+  "sensitivity": {
+    "summary_by_crust_type": {
+      "continental": {
+        "marginal_by_parameter": {
+          "base_temperature_c": {
+            "1250.0": {
+              "capacity_tn_per_m_p10_median_p90": [
+                6.994058950926217,
+                15.353844935208931,
+                32.24407254136181
+              ],
+              "case_count": 288,
+              "ductile_controlled_depth_fraction_median": 0.6680555555555556,
+              "strongest_case": {
+                "capacity_tn_per_m": 50.32361468035981,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 3.8111539478430703,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "mafic_granulite",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            },
+            "1330.0": {
+              "capacity_tn_per_m_p10_median_p90": [
+                5.660390761782705,
+                12.453900957537007,
+                26.85773524862611
+              ],
+              "case_count": 288,
+              "ductile_controlled_depth_fraction_median": 0.7097222222222223,
+              "strongest_case": {
+                "capacity_tn_per_m": 42.22708188122374,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1330.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 2.973350504315294,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1330.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "mafic_granulite",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            },
+            "1400.0": {
+              "capacity_tn_per_m_p10_median_p90": [
+                4.646745359596751,
+                10.330762991653785,
+                22.742240356778396
+              ],
+              "case_count": 288,
+              "ductile_controlled_depth_fraction_median": 0.7412037037037038,
+              "strongest_case": {
+                "capacity_tn_per_m": 36.3897274583424,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 2.371099754582254,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "mafic_granulite",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            }
+          },
+          "cohesion_pa": {
+            "1000000.0": {
+              "capacity_tn_per_m_p10_median_p90": [
+                5.131005862794471,
+                12.527680776675803,
+                27.177968368063276
+              ],
+              "case_count": 432,
+              "ductile_controlled_depth_fraction_median": 0.7078703703703704,
+              "strongest_case": {
+                "capacity_tn_per_m": 49.082915140985286,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 2.371099754582254,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "mafic_granulite",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            },
+            "20000000.0": {
+              "capacity_tn_per_m_p10_median_p90": [
+                5.837677235190888,
+                13.217601254991907,
+                28.17839163432942
+              ],
+              "case_count": 432,
+              "ductile_controlled_depth_fraction_median": 0.712037037037037,
+              "strongest_case": {
+                "capacity_tn_per_m": 50.32361468035981,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 2.902320711932426,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "mafic_granulite",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            }
+          },
+          "friction_angle_deg": {
+            "30.0": {
+              "capacity_tn_per_m_p10_median_p90": [
+                5.393953135737149,
+                12.657747097963105,
+                27.293770755849696
+              ],
+              "case_count": 432,
+              "ductile_controlled_depth_fraction_median": 0.7097222222222221,
+              "strongest_case": {
+                "capacity_tn_per_m": 49.667515470869944,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 2.371099754582254,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "mafic_granulite",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            },
+            "30.96375653207352": {
+              "capacity_tn_per_m_p10_median_p90": [
+                5.624234893315038,
+                12.996601306727236,
+                27.636943729164948
+              ],
+              "case_count": 432,
+              "ductile_controlled_depth_fraction_median": 0.711111111111111,
+              "strongest_case": {
+                "capacity_tn_per_m": 50.32361468035981,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 2.4689667419245116,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "mafic_granulite",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            }
+          },
+          "k0_horizontal_over_vertical": {
+            "0.6": {
+              "capacity_tn_per_m_p10_median_p90": [
+                3.965137883444676,
+                7.038266461601591,
+                11.642926450473102
+              ],
+              "case_count": 288,
+              "ductile_controlled_depth_fraction_median": 0.7101851851851851,
+              "strongest_case": {
+                "capacity_tn_per_m": 17.415612871479293,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 2.371099754582254,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "mafic_granulite",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            },
+            "0.8": {
+              "capacity_tn_per_m_p10_median_p90": [
+                7.339541037154303,
+                13.008008900306137,
+                20.9545153163065
+              ],
+              "case_count": 288,
+              "ductile_controlled_depth_fraction_median": 0.7101851851851851,
+              "strongest_case": {
+                "capacity_tn_per_m": 31.040756364319268,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 0.8,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 4.684692719987892,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.8,
+                  "lower_crust_law": "mafic_granulite",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            },
+            "1.0": {
+              "capacity_tn_per_m_p10_median_p90": [
+                13.286381643292627,
+                22.219461054119773,
+                34.73391253383479
+              ],
+              "case_count": 288,
+              "ductile_controlled_depth_fraction_median": 0.7101851851851851,
+              "strongest_case": {
+                "capacity_tn_per_m": 50.32361468035981,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 8.799439938598287,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "mafic_granulite",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            }
+          },
+          "lower_crust_law": {
+            "mafic_granulite": {
+              "capacity_tn_per_m_p10_median_p90": [
+                5.222225698172954,
+                12.28596544139977,
+                27.06165089704605
+              ],
+              "case_count": 432,
+              "ductile_controlled_depth_fraction_median": 0.7189814814814814,
+              "strongest_case": {
+                "capacity_tn_per_m": 48.13989567090515,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "mafic_granulite",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 2.371099754582254,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "mafic_granulite",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            },
+            "plagioclase_an75": {
+              "capacity_tn_per_m_p10_median_p90": [
+                5.68934370997702,
+                13.26159331254884,
+                28.418902147738205
+              ],
+              "case_count": 432,
+              "ductile_controlled_depth_fraction_median": 0.6962962962962963,
+              "strongest_case": {
+                "capacity_tn_per_m": 50.32361468035981,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 2.6262691308420707,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            }
+          },
+          "mantle_law": {
+            "dry_olivine": {
+              "capacity_tn_per_m_p10_median_p90": [
+                7.7445377942052245,
+                16.31490536118244,
+                33.070098970576176
+              ],
+              "case_count": 432,
+              "ductile_controlled_depth_fraction_median": 0.6680555555555556,
+              "strongest_case": {
+                "capacity_tn_per_m": 50.32361468035981,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 4.5342544883112135,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "mafic_granulite",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            },
+            "wet_olivine": {
+              "capacity_tn_per_m_p10_median_p90": [
+                4.444352142235404,
+                9.826625706817076,
+                20.732119691020735
+              ],
+              "case_count": 432,
+              "ductile_controlled_depth_fraction_median": 0.7467592592592592,
+              "strongest_case": {
+                "capacity_tn_per_m": 33.15202112000096,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 2.371099754582254,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "mafic_granulite",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            }
+          },
+          "pore_pressure_ratio": {
+            "0.0": {
+              "capacity_tn_per_m_p10_median_p90": [
+                6.5543759533369315,
+                15.249407199520434,
+                32.77351482250341
+              ],
+              "case_count": 432,
+              "ductile_controlled_depth_fraction_median": 0.7296296296296296,
+              "strongest_case": {
+                "capacity_tn_per_m": 50.32361468035981,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 3.021401794763001,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "mafic_granulite",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            },
+            "0.42": {
+              "capacity_tn_per_m_p10_median_p90": [
+                4.892293754146076,
+                10.74352754404812,
+                22.614695737123125
+              ],
+              "case_count": 432,
+              "ductile_controlled_depth_fraction_median": 0.6875,
+              "strongest_case": {
+                "capacity_tn_per_m": 33.98869653850829,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 2.371099754582254,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "mafic_granulite",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            }
+          },
+          "strain_rate_s-1": {
+            "1e-14": {
+              "capacity_tn_per_m_p10_median_p90": [
+                7.3270243437272455,
+                15.822592382380396,
+                32.61521491246195
+              ],
+              "case_count": 288,
+              "ductile_controlled_depth_fraction_median": 0.6523148148148148,
+              "strongest_case": {
+                "capacity_tn_per_m": 50.32361468035981,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 4.320770564399736,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "mafic_granulite",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-14
+                }
+              }
+            },
+            "1e-15": {
+              "capacity_tn_per_m_p10_median_p90": [
+                5.671511898895484,
+                12.632172706682153,
+                27.088331525477546
+              ],
+              "case_count": 288,
+              "ductile_controlled_depth_fraction_median": 0.7101851851851851,
+              "strongest_case": {
+                "capacity_tn_per_m": 42.04609732554097,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-15
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 3.2684165842157076,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "mafic_granulite",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-15
+                }
+              }
+            },
+            "1e-16": {
+              "capacity_tn_per_m_p10_median_p90": [
+                4.254803564127794,
+                10.175823394556572,
+                21.96623404355654
+              ],
+              "case_count": 288,
+              "ductile_controlled_depth_fraction_median": 0.7638888888888888,
+              "strongest_case": {
+                "capacity_tn_per_m": 34.663788652089764,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-16
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 2.371099754582254,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "mafic_granulite",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            }
+          }
+        },
+        "overall": {
+          "capacity_tn_per_m_p10_median_p90": [
+            5.445161796561965,
+            12.701155769861105,
+            27.554035787973984
+          ],
+          "case_count": 864,
+          "ductile_controlled_depth_fraction_median": 0.7101851851851851,
+          "strongest_case": {
+            "capacity_tn_per_m": 50.32361468035981,
+            "controlling_branch": "ductile",
+            "scenario": {
+              "base_temperature_c": 1250.0,
+              "cohesion_pa": 20000000.0,
+              "friction_angle_deg": 30.96375653207352,
+              "k0_horizontal_over_vertical": 1.0,
+              "lower_crust_law": "plagioclase_an75",
+              "mantle_law": "dry_olivine",
+              "pore_pressure_ratio": 0.0,
+              "strain_rate_s-1": 1e-14
+            }
+          },
+          "weakest_case": {
+            "capacity_tn_per_m": 2.371099754582254,
+            "controlling_branch": "ductile",
+            "scenario": {
+              "base_temperature_c": 1400.0,
+              "cohesion_pa": 1000000.0,
+              "friction_angle_deg": 30.0,
+              "k0_horizontal_over_vertical": 0.6,
+              "lower_crust_law": "mafic_granulite",
+              "mantle_law": "wet_olivine",
+              "pore_pressure_ratio": 0.42,
+              "strain_rate_s-1": 1e-16
+            }
+          }
+        }
+      },
+      "oceanic_mature": {
+        "marginal_by_parameter": {
+          "base_temperature_c": {
+            "1250.0": {
+              "capacity_tn_per_m_p10_median_p90": [
+                2.1319841807882622,
+                4.190615625242597,
+                7.4727924201720395
+              ],
+              "case_count": 144,
+              "ductile_controlled_depth_fraction_median": 0.49019607843137253,
+              "strongest_case": {
+                "capacity_tn_per_m": 10.506356704805404,
+                "controlling_branch": "brittle",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 1.3437063702554795,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            },
+            "1330.0": {
+              "capacity_tn_per_m_p10_median_p90": [
+                1.888761203643365,
+                3.729879946474831,
+                6.6076584422996145
+              ],
+              "case_count": 144,
+              "ductile_controlled_depth_fraction_median": 0.5208333333333334,
+              "strongest_case": {
+                "capacity_tn_per_m": 9.312267968681587,
+                "controlling_branch": "brittle",
+                "scenario": {
+                  "base_temperature_c": 1330.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 1.1890566352411036,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1330.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            },
+            "1400.0": {
+              "capacity_tn_per_m_p10_median_p90": [
+                1.7235217805179674,
+                3.378340693676671,
+                5.969751302664214
+              ],
+              "case_count": 144,
+              "ductile_controlled_depth_fraction_median": 0.5428921568627451,
+              "strongest_case": {
+                "capacity_tn_per_m": 8.43107734253289,
+                "controlling_branch": "brittle",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 1.0752488768086002,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            }
+          },
+          "cohesion_pa": {
+            "1000000.0": {
+              "capacity_tn_per_m_p10_median_p90": [
+                1.649672028112736,
+                3.3986529254859628,
+                6.491313206934469
+              ],
+              "case_count": 216,
+              "ductile_controlled_depth_fraction_median": 0.5183823529411765,
+              "strongest_case": {
+                "capacity_tn_per_m": 9.891827822231864,
+                "controlling_branch": "brittle",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 1.0752488768086002,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            },
+            "20000000.0": {
+              "capacity_tn_per_m_p10_median_p90": [
+                2.1915127197557793,
+                3.8871975543411272,
+                7.018601211196833
+              ],
+              "case_count": 216,
+              "ductile_controlled_depth_fraction_median": 0.5208333333333334,
+              "strongest_case": {
+                "capacity_tn_per_m": 10.506356704805404,
+                "controlling_branch": "brittle",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 1.5370247139156528,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            }
+          },
+          "friction_angle_deg": {
+            "30.0": {
+              "capacity_tn_per_m_p10_median_p90": [
+                1.8635336094265391,
+                3.713854589387392,
+                6.8294026069251546
+              ],
+              "case_count": 216,
+              "ductile_controlled_depth_fraction_median": 0.5196078431372549,
+              "strongest_case": {
+                "capacity_tn_per_m": 10.36328953967246,
+                "controlling_branch": "brittle",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 1.0752488768086002,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            },
+            "30.96375653207352": {
+              "capacity_tn_per_m_p10_median_p90": [
+                1.9306641622158467,
+                3.7881820025682504,
+                6.924010109775859
+              ],
+              "case_count": 216,
+              "ductile_controlled_depth_fraction_median": 0.5208333333333334,
+              "strongest_case": {
+                "capacity_tn_per_m": 10.506356704805404,
+                "controlling_branch": "brittle",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 1.122957296795341,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            }
+          },
+          "k0_horizontal_over_vertical": {
+            "0.6": {
+              "capacity_tn_per_m_p10_median_p90": [
+                1.488279444134743,
+                2.234710196989639,
+                3.248816965606736
+              ],
+              "case_count": 144,
+              "ductile_controlled_depth_fraction_median": 0.5208333333333334,
+              "strongest_case": {
+                "capacity_tn_per_m": 4.201198401318827,
+                "controlling_branch": "brittle",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 1.0752488768086002,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            },
+            "0.8": {
+              "capacity_tn_per_m_p10_median_p90": [
+                2.587420416217568,
+                3.805157185134752,
+                5.597369295085486
+              ],
+              "case_count": 144,
+              "ductile_controlled_depth_fraction_median": 0.5208333333333334,
+              "strongest_case": {
+                "capacity_tn_per_m": 6.9873008303966015,
+                "controlling_branch": "brittle",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 0.8,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 1.9387115386113107,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.8,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            },
+            "1.0": {
+              "capacity_tn_per_m_p10_median_p90": [
+                3.8589893480932287,
+                5.729333310630299,
+                8.44109468004936
+              ],
+              "case_count": 144,
+              "ductile_controlled_depth_fraction_median": 0.5208333333333334,
+              "strongest_case": {
+                "capacity_tn_per_m": 10.506356704805404,
+                "controlling_branch": "brittle",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 3.036498855498595,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            }
+          },
+          "mantle_law": {
+            "dry_olivine": {
+              "capacity_tn_per_m_p10_median_p90": [
+                2.1915127197557793,
+                4.190615625242597,
+                7.824884868622961
+              ],
+              "case_count": 216,
+              "ductile_controlled_depth_fraction_median": 0.4840686274509804,
+              "strongest_case": {
+                "capacity_tn_per_m": 10.506356704805404,
+                "controlling_branch": "brittle",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 1.4253061921228711,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            },
+            "wet_olivine": {
+              "capacity_tn_per_m_p10_median_p90": [
+                1.7031922749807966,
+                3.2368543303546273,
+                5.939054008002359
+              ],
+              "case_count": 216,
+              "ductile_controlled_depth_fraction_median": 0.5502450980392157,
+              "strongest_case": {
+                "capacity_tn_per_m": 8.043836546694262,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 1.0752488768086002,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            }
+          },
+          "pore_pressure_ratio": {
+            "0.0": {
+              "capacity_tn_per_m_p10_median_p90": [
+                2.4097058838672734,
+                4.669793782740988,
+                7.915575833813189
+              ],
+              "case_count": 216,
+              "ductile_controlled_depth_fraction_median": 0.5281862745098039,
+              "strongest_case": {
+                "capacity_tn_per_m": 10.506356704805404,
+                "controlling_branch": "brittle",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 1.688858548820745,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            },
+            "0.42": {
+              "capacity_tn_per_m_p10_median_p90": [
+                1.6101639801595722,
+                3.0477587530371113,
+                5.053795582210836
+              ],
+              "case_count": 216,
+              "ductile_controlled_depth_fraction_median": 0.508578431372549,
+              "strongest_case": {
+                "capacity_tn_per_m": 6.899185094798326,
+                "controlling_branch": "brittle",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 1.0752488768086002,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            }
+          },
+          "strain_rate_s-1": {
+            "1e-14": {
+              "capacity_tn_per_m_p10_median_p90": [
+                2.09816829488234,
+                4.120701264749186,
+                7.4727924201720395
+              ],
+              "case_count": 144,
+              "ductile_controlled_depth_fraction_median": 0.4950980392156863,
+              "strongest_case": {
+                "capacity_tn_per_m": 10.506356704805404,
+                "controlling_branch": "brittle",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 1.3198539256590531,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-14
+                }
+              }
+            },
+            "1e-15": {
+              "capacity_tn_per_m_p10_median_p90": [
+                1.8980672643051022,
+                3.729879946474831,
+                6.725388335700123
+              ],
+              "case_count": 144,
+              "ductile_controlled_depth_fraction_median": 0.5196078431372549,
+              "strongest_case": {
+                "capacity_tn_per_m": 9.528152078672917,
+                "controlling_branch": "brittle",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-15
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 1.1901401756005956,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-15
+                }
+              }
+            },
+            "1e-16": {
+              "capacity_tn_per_m_p10_median_p90": [
+                1.7319105996568158,
+                3.3891960000513484,
+                6.062677956787249
+              ],
+              "case_count": 144,
+              "ductile_controlled_depth_fraction_median": 0.5416666666666666,
+              "strongest_case": {
+                "capacity_tn_per_m": 8.65672472726268,
+                "controlling_branch": "brittle",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-16
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 1.0752488768086002,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            }
+          }
+        },
+        "overall": {
+          "capacity_tn_per_m_p10_median_p90": [
+            1.875072472495258,
+            3.729879946474831,
+            6.855795948692248
+          ],
+          "case_count": 432,
+          "ductile_controlled_depth_fraction_median": 0.5208333333333334,
+          "strongest_case": {
+            "capacity_tn_per_m": 10.506356704805404,
+            "controlling_branch": "brittle",
+            "scenario": {
+              "base_temperature_c": 1250.0,
+              "cohesion_pa": 20000000.0,
+              "friction_angle_deg": 30.96375653207352,
+              "k0_horizontal_over_vertical": 1.0,
+              "lower_crust_law": "plagioclase_an75",
+              "mantle_law": "dry_olivine",
+              "pore_pressure_ratio": 0.0,
+              "strain_rate_s-1": 1e-14
+            }
+          },
+          "weakest_case": {
+            "capacity_tn_per_m": 1.0752488768086002,
+            "controlling_branch": "ductile",
+            "scenario": {
+              "base_temperature_c": 1400.0,
+              "cohesion_pa": 1000000.0,
+              "friction_angle_deg": 30.0,
+              "k0_horizontal_over_vertical": 0.6,
+              "lower_crust_law": "plagioclase_an75",
+              "mantle_law": "wet_olivine",
+              "pore_pressure_ratio": 0.42,
+              "strain_rate_s-1": 1e-16
+            }
+          }
+        }
+      },
+      "oceanic_young_ridge": {
+        "marginal_by_parameter": {
+          "base_temperature_c": {
+            "1250.0": {
+              "capacity_tn_per_m_p10_median_p90": [
+                0.15797443294434368,
+                0.3443002002934571,
+                0.6291469924610914
+              ],
+              "case_count": 144,
+              "ductile_controlled_depth_fraction_median": 0.674342105263158,
+              "strongest_case": {
+                "capacity_tn_per_m": 1.0088290261115744,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 0.09015023711867984,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            },
+            "1330.0": {
+              "capacity_tn_per_m_p10_median_p90": [
+                0.13121318567855253,
+                0.28950220372893676,
+                0.5134919662093121
+              ],
+              "case_count": 144,
+              "ductile_controlled_depth_fraction_median": 0.6907894736842105,
+              "strongest_case": {
+                "capacity_tn_per_m": 0.786555898394396,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1330.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 0.08105442265220089,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1330.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            },
+            "1400.0": {
+              "capacity_tn_per_m_p10_median_p90": [
+                0.11352486154340949,
+                0.25962160936768003,
+                0.46450997591017035
+              ],
+              "case_count": 144,
+              "ductile_controlled_depth_fraction_median": 0.7039473684210527,
+              "strongest_case": {
+                "capacity_tn_per_m": 0.6710397220314916,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 0.074248386990856,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            }
+          },
+          "cohesion_pa": {
+            "1000000.0": {
+              "capacity_tn_per_m_p10_median_p90": [
+                0.10491247558481147,
+                0.22923656190856564,
+                0.47980078634729995
+              ],
+              "case_count": 216,
+              "ductile_controlled_depth_fraction_median": 0.6875,
+              "strongest_case": {
+                "capacity_tn_per_m": 0.8614717528036347,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 0.074248386990856,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            },
+            "20000000.0": {
+              "capacity_tn_per_m_p10_median_p90": [
+                0.22861312013487056,
+                0.35251017996429834,
+                0.6135321322695886
+              ],
+              "case_count": 216,
+              "ductile_controlled_depth_fraction_median": 0.694078947368421,
+              "strongest_case": {
+                "capacity_tn_per_m": 1.0088290261115744,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 0.19029703399648829,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            }
+          },
+          "friction_angle_deg": {
+            "30.0": {
+              "capacity_tn_per_m_p10_median_p90": [
+                0.1293561821719104,
+                0.2898607139618842,
+                0.5418216243684031
+              ],
+              "case_count": 216,
+              "ductile_controlled_depth_fraction_median": 0.6875,
+              "strongest_case": {
+                "capacity_tn_per_m": 1.003048087640349,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 0.074248386990856,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            },
+            "30.96375653207352": {
+              "capacity_tn_per_m_p10_median_p90": [
+                0.13436972710970577,
+                0.29250332117894673,
+                0.5464469713526489
+              ],
+              "case_count": 216,
+              "ductile_controlled_depth_fraction_median": 0.6907894736842105,
+              "strongest_case": {
+                "capacity_tn_per_m": 1.0088290261115744,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 0.07723958288638418,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            }
+          },
+          "k0_horizontal_over_vertical": {
+            "0.6": {
+              "capacity_tn_per_m_p10_median_p90": [
+                0.09400705258495931,
+                0.19081424673676087,
+                0.2861318529675454
+              ],
+              "case_count": 144,
+              "ductile_controlled_depth_fraction_median": 0.6875,
+              "strongest_case": {
+                "capacity_tn_per_m": 0.3895239362826886,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 0.074248386990856,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            },
+            "0.8": {
+              "capacity_tn_per_m_p10_median_p90": [
+                0.17302306021723032,
+                0.29114309831381235,
+                0.42074095270758877
+              ],
+              "case_count": 144,
+              "ductile_controlled_depth_fraction_median": 0.6875,
+              "strongest_case": {
+                "capacity_tn_per_m": 0.6128172794570893,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 0.8,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 0.1329101266351899,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.8,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            },
+            "1.0": {
+              "capacity_tn_per_m_p10_median_p90": [
+                0.30229837466589293,
+                0.4777768887216524,
+                0.6697731027320889
+              ],
+              "case_count": 144,
+              "ductile_controlled_depth_fraction_median": 0.6875,
+              "strongest_case": {
+                "capacity_tn_per_m": 1.0088290261115744,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 0.2227933585479256,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            }
+          },
+          "mantle_law": {
+            "dry_olivine": {
+              "capacity_tn_per_m_p10_median_p90": [
+                0.13394982491888105,
+                0.30658414832047,
+                0.6157471197785926
+              ],
+              "case_count": 216,
+              "ductile_controlled_depth_fraction_median": 0.6875,
+              "strongest_case": {
+                "capacity_tn_per_m": 1.0088290261115744,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 0.074248386990856,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            },
+            "wet_olivine": {
+              "capacity_tn_per_m_p10_median_p90": [
+                0.12970602436622877,
+                0.28512494425581775,
+                0.5117775683767778
+              ],
+              "case_count": 216,
+              "ductile_controlled_depth_fraction_median": 0.6875,
+              "strongest_case": {
+                "capacity_tn_per_m": 0.7728087598247146,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 0.074248386990856,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "wet_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            }
+          },
+          "pore_pressure_ratio": {
+            "0.0": {
+              "capacity_tn_per_m_p10_median_p90": [
+                0.15437409748382477,
+                0.33409656945770166,
+                0.6248215006253252
+              ],
+              "case_count": 216,
+              "ductile_controlled_depth_fraction_median": 0.6973684210526316,
+              "strongest_case": {
+                "capacity_tn_per_m": 1.0088290261115744,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 0.10898614777829681,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            },
+            "0.42": {
+              "capacity_tn_per_m_p10_median_p90": [
+                0.10491247558481147,
+                0.2630796531260193,
+                0.47793292283361377
+              ],
+              "case_count": 216,
+              "ductile_controlled_depth_fraction_median": 0.680921052631579,
+              "strongest_case": {
+                "capacity_tn_per_m": 0.7881449612548082,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 0.074248386990856,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            }
+          },
+          "strain_rate_s-1": {
+            "1e-14": {
+              "capacity_tn_per_m_p10_median_p90": [
+                0.1665586059808584,
+                0.3485233500905542,
+                0.6508540412001684
+              ],
+              "case_count": 144,
+              "ductile_controlled_depth_fraction_median": 0.6611842105263158,
+              "strongest_case": {
+                "capacity_tn_per_m": 1.0088290261115744,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-14
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 0.10341104157444467,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-14
+                }
+              }
+            },
+            "1e-15": {
+              "capacity_tn_per_m_p10_median_p90": [
+                0.13413420205008186,
+                0.29062909092723876,
+                0.5180664684308828
+              ],
+              "case_count": 144,
+              "ductile_controlled_depth_fraction_median": 0.6875,
+              "strongest_case": {
+                "capacity_tn_per_m": 0.7686857263312411,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-15
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 0.08756072092841842,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-15
+                }
+              }
+            },
+            "1e-16": {
+              "capacity_tn_per_m_p10_median_p90": [
+                0.11352486154340949,
+                0.24806120645736718,
+                0.4425204880272378
+              ],
+              "case_count": 144,
+              "ductile_controlled_depth_fraction_median": 0.7138157894736842,
+              "strongest_case": {
+                "capacity_tn_per_m": 0.6061643740282864,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1250.0,
+                  "cohesion_pa": 20000000.0,
+                  "friction_angle_deg": 30.96375653207352,
+                  "k0_horizontal_over_vertical": 1.0,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.0,
+                  "strain_rate_s-1": 1e-16
+                }
+              },
+              "weakest_case": {
+                "capacity_tn_per_m": 0.074248386990856,
+                "controlling_branch": "ductile",
+                "scenario": {
+                  "base_temperature_c": 1400.0,
+                  "cohesion_pa": 1000000.0,
+                  "friction_angle_deg": 30.0,
+                  "k0_horizontal_over_vertical": 0.6,
+                  "lower_crust_law": "plagioclase_an75",
+                  "mantle_law": "dry_olivine",
+                  "pore_pressure_ratio": 0.42,
+                  "strain_rate_s-1": 1e-16
+                }
+              }
+            }
+          }
+        },
+        "overall": {
+          "capacity_tn_per_m_p10_median_p90": [
+            0.1329162312126211,
+            0.291911475279167,
+            0.546228656540869
+          ],
+          "case_count": 432,
+          "ductile_controlled_depth_fraction_median": 0.6875,
+          "strongest_case": {
+            "capacity_tn_per_m": 1.0088290261115744,
+            "controlling_branch": "ductile",
+            "scenario": {
+              "base_temperature_c": 1250.0,
+              "cohesion_pa": 20000000.0,
+              "friction_angle_deg": 30.96375653207352,
+              "k0_horizontal_over_vertical": 1.0,
+              "lower_crust_law": "plagioclase_an75",
+              "mantle_law": "dry_olivine",
+              "pore_pressure_ratio": 0.0,
+              "strain_rate_s-1": 1e-14
+            }
+          },
+          "weakest_case": {
+            "capacity_tn_per_m": 0.074248386990856,
+            "controlling_branch": "ductile",
+            "scenario": {
+              "base_temperature_c": 1400.0,
+              "cohesion_pa": 1000000.0,
+              "friction_angle_deg": 30.0,
+              "k0_horizontal_over_vertical": 0.6,
+              "lower_crust_law": "plagioclase_an75",
+              "mantle_law": "dry_olivine",
+              "pore_pressure_ratio": 0.42,
+              "strain_rate_s-1": 1e-16
+            }
+          }
+        }
+      }
+    },
+    "sweep_values": {
+      "base_temperature_c": [
+        1250.0,
+        1330.0,
+        1400.0
+      ],
+      "cohesion_pa": [
+        1000000.0,
+        20000000.0
+      ],
+      "friction_angle_deg": [
+        30.96375653207352,
+        30.0
+      ],
+      "k0_horizontal_over_vertical": [
+        0.6,
+        0.8,
+        1.0
+      ],
+      "lower_crust_law": [
+        "plagioclase_an75",
+        "mafic_granulite"
+      ],
+      "mantle_law": [
+        "dry_olivine",
+        "wet_olivine"
+      ],
+      "pore_pressure_ratio": [
+        0.0,
+        0.42
+      ],
+      "strain_rate_s-1": [
+        1e-16,
+        1e-15,
+        1e-14
+      ]
+    }
+  }
+}
