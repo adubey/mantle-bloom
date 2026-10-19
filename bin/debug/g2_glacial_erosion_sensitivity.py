@@ -26,6 +26,7 @@ import numpy as np
 from app import cratons
 from app.elevation_lines import line_spacing_rad
 from app.world import generate_world, step_world
+from g2_replay_common import add_replay_arguments, prepare_replay_output, write_replay_summary
 
 
 def _weighted(values: np.ndarray, area: np.ndarray, mask: np.ndarray) -> float | None:
@@ -52,7 +53,6 @@ def _capture(world, elapsed_myr: float, step: int, cumulative_glacial_m3: float,
     hosts = []
     interiors = []
     cratons_live = []
-    node_ids = []
     stable_clocks = []
     hops = cratons._hops(cratons.CRATON_FORMATION_MARGIN_KM, spacing)
     for plate in world.plates:
@@ -72,7 +72,6 @@ def _capture(world, elapsed_myr: float, step: int, cumulative_glacial_m3: float,
         hosts.append(host)
         interiors.append(interior)
         cratons_live.append(plate.collect("craton_crust_m") > 0.0)
-        node_ids.append(plate.surface_nodes().node_ids)
         stable_clocks.append(plate.collect("stable_continental_myr"))
 
     if not areas:
@@ -85,7 +84,6 @@ def _capture(world, elapsed_myr: float, step: int, cumulative_glacial_m3: float,
     host = np.concatenate(hosts)
     interior = np.concatenate(interiors)
     live_craton = np.concatenate(cratons_live)
-    ids = np.concatenate(node_ids)
     stable = np.concatenate(stable_clocks)
     eligible = host & (hc <= cratons.CRATON_HOST_MAX_HC_M) & (interior >= hops)
     forming_pool = eligible & ~live_craton
@@ -205,33 +203,25 @@ def run(seed: int, multiplier: float, steps: int, step_myr: float,
                 )
     finally:
         cratons.update = original_update
-    summary = {
-        "done": True,
-        "seed": seed,
-        "glacier_erosion_multiplier": multiplier,
-        "steps": steps,
-        "step_myr": step_myr,
-        "elapsed_myr": steps * step_myr,
-        "runtime_min": (time.perf_counter() - started) / 60,
-        "checkpoints": len(rows),
-        "ledger": world.craton_ledger,
-    }
-    out.with_suffix(".summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
-    print(json.dumps(summary, sort_keys=True), flush=True)
+    write_replay_summary(
+        out,
+        seed=seed,
+        steps=steps,
+        step_myr=step_myr,
+        rows=rows,
+        started=started,
+        ledger=world.craton_ledger,
+        glacier_erosion_multiplier=multiplier,
+    )
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--multiplier", type=float, choices=(1.0, 2.0), required=True)
-    parser.add_argument("--steps", type=int, default=250)
-    parser.add_argument("--step-myr", type=float, default=1.0)
-    parser.add_argument("--snapshot-every", type=int, default=10)
-    parser.add_argument("--out", type=Path, required=True)
+    add_replay_arguments(parser, default_steps=250)
     args = parser.parse_args()
-    if args.steps < 1 or args.step_myr <= 0 or args.snapshot_every < 1:
-        parser.error("steps, step-myr, and snapshot-every must be positive")
-    args.out.parent.mkdir(parents=True, exist_ok=True)
+    prepare_replay_output(parser, args)
     run(args.seed, args.multiplier, args.steps, args.step_myr, args.snapshot_every, args.out)
 
 

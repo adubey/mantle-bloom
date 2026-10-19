@@ -24,6 +24,7 @@ import numpy as np
 from app import cratons
 from app.elevation_lines import line_spacing_rad
 from app.world import generate_world, step_world
+from g2_replay_common import add_replay_arguments, prepare_replay_output, write_replay_summary
 
 
 def _weighted_mean(values: np.ndarray, areas: np.ndarray, mask: np.ndarray) -> float | None:
@@ -128,33 +129,25 @@ def run(seed: int, threshold_myr: float, steps: int, step_myr: float,
         cratons.update = original_update
         cratons.CRATON_FORMATION_MYR = original_threshold
 
-    summary = {
-        "done": True,
-        "seed": seed,
-        "threshold_myr": threshold_myr,
-        "steps": steps,
-        "step_myr": step_myr,
-        "elapsed_myr": steps * step_myr,
-        "runtime_min": (time.perf_counter() - started) / 60,
-        "checkpoints": len(rows),
-        "ledger": world.craton_ledger,
-    }
-    out.with_suffix(".summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
-    print(json.dumps(summary, sort_keys=True), flush=True)
+    write_replay_summary(
+        out,
+        seed=seed,
+        steps=steps,
+        step_myr=step_myr,
+        rows=rows,
+        started=started,
+        ledger=world.craton_ledger,
+        threshold_myr=threshold_myr,
+    )
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--threshold-myr", type=float, choices=(100.0, 200.0, 300.0), required=True)
-    parser.add_argument("--steps", type=int, default=400)
-    parser.add_argument("--step-myr", type=float, default=1.0)
-    parser.add_argument("--snapshot-every", type=int, default=10)
-    parser.add_argument("--out", type=Path, required=True)
+    add_replay_arguments(parser, default_steps=400)
     args = parser.parse_args()
-    if args.steps < 1 or args.step_myr <= 0 or args.snapshot_every < 1:
-        parser.error("steps, step-myr, and snapshot-every must be positive")
-    args.out.parent.mkdir(parents=True, exist_ok=True)
+    prepare_replay_output(parser, args)
     run(args.seed, args.threshold_myr, args.steps, args.step_myr, args.snapshot_every, args.out)
 
 
