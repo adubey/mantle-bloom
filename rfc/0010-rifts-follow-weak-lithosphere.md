@@ -131,10 +131,14 @@ loads, whose relative importance varies by setting [[Forsyth & Uyeda, 1975]](#re
 problem. Replace it with solution 6. RFC 0012 supplies a plate-scale torque model. A new
 per-node source-force interface and reduced thin-shell diagnostic now transfer those loads into
 local membrane stress resultants, following the broad thin-shell precedent in Kong & Bird (1995).
-The solver compares those resultants with caller-supplied integrated tensile capacity, but no
-validated material strength profile currently supplies that input. Diagnosis gate 2 therefore
-remains open until the capacity derivation and mesh/boundary sensitivity are established, or the
-proposal is revised as an explicitly phenomenological alternative. The existing flow fit and plate-level
+Its current comparison with a caller-supplied integrated tensile capacity is not yet a physical
+rift criterion: extensional lithosphere commonly fails by normal-fault frictional sliding at
+shallow depth and ductile creep at depth, rather than uniform intact-rock tensile rupture
+[[Brace & Kohlstedt, 1980]](#ref-brace1980) [[Kohlstedt et al., 1995]](#ref-kohlstedt1995).
+Diagnosis gate 2 therefore remains open until an integrated extensional differential-strength
+envelope is derived and matched to the shell stress measure, mesh/boundary sensitivity is
+established, or the proposal is revised as an explicitly phenomenological alternative. The
+existing flow fit and plate-level
 `internal_stress` may remain candidate-event or background-eligibility signals, but they do not
 choose a complete cut or stand in for local loading. Keep solution 4 separately sized against the
 craton-loss gate, and take plume weakening through RFC 0007. The connected-boundary rule and
@@ -155,14 +159,25 @@ should start until those gates are resolved and the revised design is accepted.
    explained or erased, but it no longer blocks use of the documented baseline. See
    [`analysis/issue487/README.md`](../analysis/issue487/README.md).
 2. **Establish local loading and strength — membrane solver, generated-plate topology and
-   original-curved-mesh sensitivity added 2026-10-19; capacity choice and independent curved-shell
-   benchmark pending.**
+   original-curved-mesh sensitivity added 2026-10-19; physical strength model and independent
+   curved-shell benchmark pending.**
    `torque.gather_per_node_force_field` preserves each force
    source as a per-node vector in N. `thin_shell.solve_force_field` projects the combined loads
    onto the shell tangent plane, removes the area-weighted rigid-rotation component handled by
    plate motion, and solves small-strain triangular membrane equilibrium. It returns local
-   depth-integrated stress resultants and compares their maximum tensile principal value with an
-   explicit caller-supplied integrated tensile capacity, all in N/m. The elastic thickness and
+   depth-integrated stress resultants and currently compares their maximum tensile principal value
+   with an explicit caller-supplied integrated threshold, all in N/m. This is a numerical interface,
+   not yet a physical normal-faulting criterion: extension failure is usually governed by brittle
+   frictional sliding at shallow depth and temperature/rate-dependent creep at depth. A candidate
+   column model calculates effective lithostatic pressure, a Mohr-Coulomb normal-fault differential
+   strength and a layer-specific ductile flow stress, then integrates the weaker branch through
+   depth. The result is an extensional differential-strength resultant in N/m. It can only be
+   compared with shell loading after the shell reports a matching extensional stress invariant and
+   an assumed background horizontal stress. The candidate must bracket pore pressure, geotherm,
+   rock rheology, strain rate and background stress because the current state does not resolve them;
+   details and caveats are recorded in
+   [`analysis/issue487/gate2-load-diagnosis.md`](../analysis/issue487/gate2-load-diagnosis.md).
+   The elastic thickness and
    modulus, boundary conditions, default convex-hull mesh and rigid-mode removal are documented
    diagnostic assumptions, not calibrated production behavior. Explicit mesh connectivity now
    preserves concave outlines. A manufactured uniaxial load on a
@@ -191,7 +206,9 @@ should start until those gates are resolved and the revised design is accepted.
    remain synthetic diagnostics. `orogeny.steady_moho_temperature_c` and `moho_temperature_c` provide a coarse
    conductive Moho-temperature proxy, while `rheology.yield_excess` applies a boundary-local
    scalar Mohr-Coulomb proxy. Neither supplies a validated temperature-dependent vertical yield
-   envelope or integrated tensile capacity. The phenomenological alternative has only a synthetic
+   envelope or integrated extensional differential capacity. The current maximum-positive-tension
+   shell comparison is not interchangeable with a normal-fault differential-strength criterion.
+   The phenomenological alternative has only a synthetic
    response check. Physical edge conditions and independent broad curved-mesh accuracy remain
    unvalidated. Do not
    start constitutive calibration or infer local stress from applied traction, rigid rotation,
@@ -282,7 +299,7 @@ its physical source or explicit design-choice status, and the sensitivity plan b
 
 | Knob | Start | Source | Tuning plan |
 |---|---|---|---|
-| Local tensile load and yield strength (`sigma_t`, `Y_t`) | Thin-shell tensile resultant available; capacity is explicit input only (gate 2, 2026-10-19) | Requires a validated integrated column-strength field and mesh/boundary sensitivity, or explicit phenomenological revision | Compare local tensile resultant to supplied capacity on synthetic and replayed candidate plates before gate 3 |
+| Extensional load and yield strength | Shell membrane resultant available; current max-tension threshold is not a physical normal-fault criterion (gate 2, 2026-10-19) | Candidate integrated brittle–ductile differential-strength envelope; parameters and background stress are scenario assumptions until state supports them | Match load and yield definitions, sweep explicit material/thermal/fluid scenarios on synthetic and replayed candidate plates before gate 3 |
 | Failure strain (`epsilon_fail`) | Pending gate 3 | Calibration assumption | Sensitivity on controlled loads and candidate events |
 | Damage viscosity (`eta_rift`, Pa·s) | Pending gate 3 | Calibration assumption | Sweep strain rates and timestep partitions |
 | Residual strength (`q_res`, [0, 1]) | Pending gate 3 | Design choice | Sweep weak-belt/craton cases; check localization and runaway |
@@ -293,9 +310,11 @@ its physical source or explicit design-choice status, and the sensitivity plan b
 
 - `backend/app/torque.py`: `gather_per_node_force_field` exposes existing source forces in N
   before torque aggregation. `backend/app/thin_shell.py` supplies a reduced linear membrane
-  equilibrium and compares tensile resultants with a caller-supplied integrated capacity in N/m.
-  Its convex-hull mesh, free edge and elastic response are diagnostic assumptions; derive the
-  column strength field and check mesh/boundary sensitivity before damage calibration.
+  equilibrium. It must expose an extensional differential-stress measure consistent with the
+  proposed integrated brittle–ductile column capacity in N/m; the current max-tensile comparison is
+  only a diagnostic. A new column-envelope module is a proposed touchpoint, not yet implemented.
+  Its convex-hull mesh, free edge and elastic response remain diagnostic assumptions; check
+  mesh/boundary sensitivity before damage calibration.
 - `backend/app/merge_split.py`: move rift-state advancement out of the all-at-once split decision;
   retain a split/topology check that runs only after local failed links form a viable connected
   boundary. Existing flow fit may remain a diagnostic or a candidate-event signal, not the rift path.
@@ -315,6 +334,12 @@ its physical source or explicit design-choice status, and the sensitivity plan b
 
 ## Assumptions and uncertainty
 
+- **The strength model is an explicit physical hypothesis, not a resolved lithosphere.** A first
+  candidate combines frictional normal-fault failure with temperature- and strain-rate-dependent
+  creep, then integrates differential strength with depth. It omits fluid state, vertical
+  composition, inherited faults, anisotropy, grain-size evolution and 3-D load transfer. Existing
+  Moho temperature and boundary Mohr-Coulomb proxies do not fill those gaps. Weak/wet and strong/dry
+  brackets may show sensitivity but cannot identify the real material state.
 - **Local loading is the key unresolved interface.** Node-wise force inputs are currently reduced
   into a whole-plate torque; neither that torque nor dimensionless `Plate.internal_stress`
   uniquely specifies intraplate stress. The replacement must derive a supported local load or stop
@@ -336,11 +361,13 @@ its physical source or explicit design-choice status, and the sensitivity plan b
 
 1. [x] **Gate 1:** use the repeatable paired runs as the baseline and retire the provenance-
        incomplete archives from calibration (2026-10-19; see `analysis/issue487/README.md`).
-   [ ] **Gate 2:** validate the thin-shell load transfer and provide a physical depth-integrated
-       tensile-capacity field with units through an approved interface, including representative
-       mesh and physically justified boundary sensitivity; or revise the proposal as
-       phenomenological. Only then set and sensitivity-test damage parameters before full replays
-       (see `analysis/issue487/gate2-load-diagnosis.md`).
+   [ ] **Gate 2:** validate thin-shell load transfer and define an extensional stress measure that
+       matches the selected failure mechanism. Derive and sensitivity-test an integrated brittle–
+       ductile differential-strength envelope, including explicit pore-pressure, thermal, rheology,
+       strain-rate and background-stress assumptions; validate representative meshes and boundary
+       sensitivity. Compare it with the labeled phenomenological alternative on matched replays, or
+       revise the RFC to select that alternative. Only then set and sensitivity-test damage
+       parameters before full replays (see `analysis/issue487/gate2-load-diagnosis.md`).
 2. [ ] In synthetic tests, damage is timestep-partition invariant, bounded, absent under compression
        or sub-yield loading, and advances only through adjacent cells with supported positive loading.
 3. [ ] Segments can nucleate independently, propagate, arrest and link; a transform/transfer zone
@@ -380,6 +407,17 @@ its physical source or explicit design-choice status, and the sensitivity plan b
   integration/constitutive law is falsified and must be revised.
 
 ## References
+
+- <a id="ref-brace1980"></a>Brace, W. F., & Kohlstedt, D. L. (1980). Limits on lithospheric
+  stress imposed by laboratory experiments. *Journal of Geophysical Research: Solid Earth*,
+  85(B11), 6248–6252. [doi:10.1029/JB085iB11p06248](https://doi.org/10.1029/JB085iB11p06248)
+- <a id="ref-kohlstedt1995"></a>Kohlstedt, D. L., Evans, B., & Mackwell, S. J. (1995). Strength
+  of the lithosphere: Constraints imposed by laboratory experiments. *Journal of Geophysical
+  Research: Solid Earth*, 100(B9), 17587–17602.
+  [doi:10.1029/95JB01460](https://doi.org/10.1029/95JB01460)
+- <a id="ref-hirth2003"></a>Hirth, G., & Kohlstedt, D. (2003). Rheology of the upper mantle and
+  the mantle wedge: A view from the experimentalists. In *Inside the Subduction Factory* (pp.
+  83–105). American Geophysical Union. [doi:10.1029/138GM06](https://doi.org/10.1029/138GM06)
 
 - <a id="ref-brune2023"></a>Brune, S., Kolawole, F., Olive, J.-A., et al. (2023).
   Geodynamics of continental rift initiation and evolution. *Nature Reviews Earth & Environment*,
