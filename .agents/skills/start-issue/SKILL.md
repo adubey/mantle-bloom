@@ -13,11 +13,9 @@ description: Set up an isolated branch, worktree, venv and ports for a Mantle Bl
    When work begins, follow [Starting an issue](../project-management/SKILL.md#starting-an-issue)
    to update its project status.
 
-2. **Choose the worktree.** Inspect `git worktree list --porcelain` before creating an
-   issue worktree. Its `worktree` field is the checkout root; match `branch` and `HEAD` to
-   the RFC. Resolve paths such as `analysis/issue<N>/README.md` beneath that root, not the
-   current directory. The listing doesn't identify an owning agent or prove the tree is
-   idle; use it to locate RFC evidence, not to choose an issue checkout. RFCs are large
+2. **Choose the worktree.** Use the discovery procedure in
+   [`continue-rfc`](../continue-rfc/SKILL.md#find-rfc-and-evidence-worktrees) to locate RFC
+   evidence, not to choose an issue checkout. RFCs are large
    decisions tracked by a parent issue and sub-issues; every issue,
    including an RFC sub-issue, gets its own isolated issue worktree. Do not reuse or switch
    the RFC proposal worktree. Name an RFC-linked issue worktree for both the RFC and issue.
@@ -39,8 +37,10 @@ description: Set up an isolated branch, worktree, venv and ports for a Mantle Bl
      ../mantle-bloom-rfc-<NNNN>-issue-<N> origin/main
    ```
 
-   If your harness already created a worktree for you, confirm it has an issue-specific
-   branch based on `origin/main` and leaves the RFC proposal worktree untouched.
+   If Claude Code's EnterWorktree or another harness created a worktree, confirm it is an
+   issue-specific tree based on `origin/main` and leaves the RFC proposal tree untouched.
+   Rename its branch to `<agent>/issue-<N>-<slug>` if needed and if it is your own branch;
+   do not rename or repurpose a branch used by another task.
 
 3. **Install deps** in the worktree: `./bin/setup.sh`. It creates the worktree's own
    `backend/.venv`. Don't symlink another tree's venv.

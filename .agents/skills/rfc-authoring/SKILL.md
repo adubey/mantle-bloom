@@ -103,7 +103,11 @@ in this order:
    - **Knobs:** each with its starting value, the source of that value (a citation or
      "design choice"), and how it will be tuned: which seeds, which script, which metric.
      Separate literature-constrained values from calibration assumptions, and plan
-     sensitivity runs for the latter.
+     sensitivity runs for the latter. Keep tuning and sensitivity seeds separate from
+     held-out acceptance seeds; do not tune against held-out results. Only the project owner
+     may change an agreed diagnosis gate or acceptance criterion. If evidence suggests a
+     criterion is invalid, propose a revision in the RFC with the old criterion, proposed
+     change and reason, and get the owner's decision before using it for a rerun.
 5. **Detailed design (provisional touchpoints):** the source files and functions likely
    to change, plus their tests and docs. Check that every file, function and constant you
    name exists, and mark new ones as new.

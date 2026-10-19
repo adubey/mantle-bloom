@@ -95,9 +95,8 @@ how sources are checked. They are reviewed with
    says they accept it; the status is then set to Accepted. Any diagnosis gate the RFC sets (a measurement that
    decides between fixes) is run next, and the RFC is updated with the result.
 3. **Implemented:** the accepted design is split into issues and PRs that cite the RFC,
-   listed on the RFC's tracking issue, opened when it is accepted. The
-   issues use the RFC worktree directory and keep one issue branch and PR per issue (see
-   [`start-rfc`](../.agents/skills/start-rfc/SKILL.md) and
+   listed on the RFC's tracking issue, opened when it is accepted. Each issue has its own
+   worktree and branch from `origin/main`; the RFC proposal worktree remains separate (see
    [`start-issue`](../.agents/skills/start-issue/SKILL.md)). The status is updated when the
    last one lands and the acceptance criteria are met, with
    [`complete-rfc`](../.agents/skills/complete-rfc/SKILL.md). From then on the code and

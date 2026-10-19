@@ -10,10 +10,6 @@ science against its sources, the design against the code, and the plan against w
 go wrong. Read [rfc-authoring](../rfc-authoring/SKILL.md) first: it defines the sections
 and rules this review checks against.
 
-When review work starts, follow
-[Starting or resuming an RFC](../project-management/SKILL.md#starting-or-resuming-an-rfc)
-to update its project status.
-
 ## 1. Structure
 
 Run `python3 .agents/skills/rfc-authoring/check_citations.py <rfc> --crossref`. Then check

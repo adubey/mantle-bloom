@@ -83,8 +83,9 @@ For each merged implementation PR, decide whether its change stays.
   If a child remains open because its work is still needed, the RFC is not complete. Close
   children whose work has landed with reason `completed`; close any made obsolete by the
   outcome with reason `not planned` and a comment linking the RFC's Outcome.
-- **Withdrawn:** close the tracking issue and children made moot with reason `not planned`
-  and a comment linking the RFC's Outcome. Move relevant children to the superseding RFC's
+- **Withdrawn:** close the tracking issue with reason `not planned` and a comment linking
+  the RFC's Outcome. Keep open any child issue that is no longer pursued and set its project
+  status to `Depreciated`; do not close it as not planned. Move relevant children to the superseding RFC's
   tracking issue and plan. If still relevant but no RFC covers them, remove them as
   sub-issues of the withdrawn tracking issue and keep them as standalone issues. For an
   existing issue, use `gh issue edit <N> --parent <new-tracking-issue>` to move it or
@@ -119,8 +120,8 @@ For each merged implementation PR, decide whether its change stays.
 
 ## 7. Open the PR
 
-- One PR per completion, branched off `origin/main` (`claude/rfc-NNNN-complete` or
-  `claude/rfc-NNNN-withdraw`). Several RFCs withdrawn for the same reason can share one.
+- One PR per completion, branched off `origin/main` (`<agent>/rfc-NNNN-complete` or
+  `<agent>/rfc-NNNN-withdraw`). Several RFCs withdrawn for the same reason can share one.
 - `## Summary`: the outcome and its reason, the evidence, what stays, what carries over,
   and what was closed or moved. End with `Closes #<tracking issue>` for an implemented RFC;
   for a withdrawn RFC, link the tracking issue without an auto-close directive so it can be

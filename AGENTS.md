@@ -51,17 +51,17 @@ Run from the repo root (or worktree root).
 - **One issue branch and worktree per issue, branched off `origin/main`.** Name the branch
   `<agent>/issue-<N>-<slug>`, where `<agent>` is `claude` or `codex`. RFCs are large
   decisions tracked by a parent issue with sub-issues; each sub-issue gets its own isolated
-  issue worktree. Never switch the RFC proposal worktree to an issue branch. Follow
-  `start-rfc` if the RFC worktree needs to be set up in the current machine or framework.
-  The primary checkout's local `main` lags `origin`: don't use it as a base or baseline,
-  and don't pull or reset it. Run `./bin/setup.sh` in each new worktree. Each worktree has
-  its own `backend/.venv`, so don't symlink one from another tree.
+  issue worktree. Never switch the RFC proposal worktree to an issue branch. Use
+  `start-rfc` only for a new RFC and `continue-rfc` to resume an existing RFC. The primary
+  checkout's local `main` lags `origin`: don't use it as a base or baseline, and don't pull
+  or reset it. Run `./bin/setup.sh` in each new worktree. Each worktree has its own
+  `backend/.venv`, so don't symlink one from another tree.
 - **Ports:** never use 8000 or 5173 (the user's own instance). Pick free ports for each
   worktree so issues can run side by side.
 - **Before/after comparisons** use a detached `origin/main` worktree. Never use
   `git stash`: the stash is shared by every worktree, including the user's.
 - **Replays are RAM-heavy** (0.6–2.7 GB each). Run at most two at once, and never alongside
-  a unit or stress test run.
+  a unit or stress test run. Follow this limit for replay work regardless of the skill used.
 - **Reviews:** when a PR's author reports its tests passing, don't rerun them. Run targeted
   checks they couldn't have covered instead.
 - **Merging is the user's job.** Open the PR and stop: never run `gh pr merge`. `main` only
@@ -73,6 +73,11 @@ Run from the repo root (or worktree root).
   `git restore`, `git clean`, `git stash`, `git branch -D`, `git worktree remove --force` or
   `rm -rf` against anything but your own worktree and scratch files. The user's checkout
   may hold uncommitted work that exists nowhere else.
+- **Private local evidence handoffs:** use `analysis/.local-handoff/` for same-machine
+  paths and other private pointers. This directory is Git-ignored; verify with
+  `git check-ignore -q analysis/.local-handoff/<file>` before writing there. Never copy its
+  contents or personal paths into a commit, issue, PR, or checked-in report. Keep durable
+  run labels, checksums, commands, and findings in the appropriate analysis report or RFC.
 - Skills for these workflows, shared by Claude Code and Codex, are in `.agents/skills/`
   (`.claude/skills` links there): `explore-problem`, `create-issue`, `start-issue`,
   `start-rfc`, `continue-rfc`, `project-management`, `replay-ab`,

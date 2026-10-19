@@ -1,6 +1,6 @@
 ---
 name: project-management
-description: Keep Mantle Bloom RFCs and issues in GitHub Projects project 2 aligned with their work state. Use when starting, completing, blocking, deprioritizing or creating RFC and issue work.
+description: Update or inspect RFC and issue statuses in Mantle Bloom GitHub Projects project 2. Workflow skills link here for status how-tos instead of duplicating board procedures.
 ---
 
 # Manage the Mantle Bloom project board

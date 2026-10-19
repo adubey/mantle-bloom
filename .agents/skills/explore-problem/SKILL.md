@@ -1,6 +1,6 @@
 ---
 name: explore-problem
-description: Investigate a Mantle Bloom problem interactively, keep findings in an exploration issue, and recommend scientific hypotheses and next artifacts.
+description: Explore a Mantle Bloom problem interactively to find scientific hypotheses. Use before an RFC or small issue, or after an RFC or issue fails a gate or appears infeasible.
 ---
 
 # Explore a Mantle Bloom problem
@@ -55,11 +55,13 @@ and ask which artifacts to create before making them.
   failure and possible mechanisms, not to test a candidate implementation.
 - Share concise findings as they emerge. When evidence opens materially different avenues,
   explain the evidence, alternatives and a recommendation, then ask the user which direction
-  to explore. Continue independent investigation while waiting for input; don't interrupt
-  for routine choices.
+  to explore. Pause at decision points that materially affect the next investigation step;
+  don't continue down one of those avenues until the user responds.
 - The exploration phase finds and sharpens hypotheses. Inspect code, literature, existing
   runs, and observations, and use non-invasive diagnostics of the current model when they
-  help distinguish explanations. For each promising hypothesis, state its proposed
+  help distinguish explanations. Temporary scratch diagnostic probes may inspect the
+  current model, but must not implement or test a candidate model change or count as an
+  acceptance gate. For each promising hypothesis, state its proposed
   mechanism, which observations it explains, a discriminating prediction, and important
   uncertainties or alternative explanations. Do not prototype or test a candidate model
   implementation here; that belongs in an RFC investigation with a selected implementation
@@ -69,10 +71,10 @@ and ask which artifacts to create before making them.
   units, seeds, resolution and relevant uncertainty; use representative runs when stochastic
   or parameter-sensitive behavior matters. Follow `replay-ab` for its controlled before/after
   comparisons and avoid repeating matching prior runs.
-- Use `git worktree list --porcelain` to locate relevant registered worktrees and resolve
-  repository-relative files beneath each listed `worktree` root. Treat other worktrees as
-  read-only evidence unless the user explicitly directs otherwise. The listing does not
-  identify an owner or expose worktrees from another clone or host.
+- Use the worktree discovery and path-resolution procedure in
+  [`continue-rfc`](../continue-rfc/SKILL.md#find-rfc-and-evidence-worktrees) to locate
+  relevant registered trees. Treat other worktrees as read-only evidence unless the user
+  explicitly directs otherwise.
 - If relevant evidence or uncommitted work is in an inaccessible worktree, clone, or host,
   record it as a missing dependency, continue independent investigation, and ask the user
   for access or a durable handoff only when that evidence is needed to decide the next step.
@@ -90,12 +92,10 @@ and ask which artifacts to create before making them.
   develop or test an RFC, record how to regenerate it in the exploration issue and, once
   selected, in the RFC's diagnosis-gate record. Include the command or script, commit,
   neutral input/save label and checksum, seed, schedule, controls, and measured values as
-  applicable. Raw saves and large run outputs may remain ephemeral and can be removed when
-  the RFC is completed or withdrawn, once no active follow-up depends on them. Never remove
-  another task's files.
-- Never publish personal usernames, home-directory paths, absolute machine paths, private
-  mount paths, saves, or raw run output. If same-host recovery needs a local path, use an
-  ignored local-only handoff note and verify it is ignored.
+  applicable. Keep raw saves and large outputs outside Git. Do not delete saved `.mbworld`
+  files without the project owner's direction; never remove another task's files. Follow
+  the local-only evidence handoff procedure in
+  [`AGENTS.md`](../../../AGENTS.md#workflow).
 
 ## 3. Present outcomes and ask what to create
 

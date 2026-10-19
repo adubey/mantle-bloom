@@ -1,6 +1,6 @@
 ---
 name: continue-rfc
-description: Resume an existing Mantle Bloom RFC or an RFC-linked issue from a reduced-context handoff. Reconstruct its state, worktree, evidence and next action before changing anything.
+description: Resume, pick up, or continue work on an existing Mantle Bloom RFC or RFC-linked issue. Reconstruct its state, worktree, evidence and next action before changing anything.
 ---
 
 # Continue an RFC workstream
@@ -33,7 +33,10 @@ revision use [`rfc-authoring`](../rfc-authoring/SKILL.md); for a review use
   has one block per registered worktree: `worktree` gives its root path, `branch` gives
   the checked-out ref when attached, and `HEAD` gives its commit. Match the branch and
   commit to the RFC/PR or reported run; the output does not say which agent owns a tree.
-  If using the Codex app, also inspect attached worktrees/artifacts when available.
+  If using Codex, also inspect attached worktrees/artifacts when available. If using Claude
+  Code, inspect its `.claude/worktrees/` directory when present. These may expose trees
+  absent from the current checkout's listing; confirm each tree's repository, branch,
+  commit and dirty state before treating it as evidence.
 - A path in the output is the root of that checkout, not the location of a file inside it.
   Resolve repo-relative paths from that root: for example, for `analysis/issue<N>/README.md`,
   inspect `<worktree-root>/analysis/issue<N>/README.md`, or run
@@ -82,11 +85,9 @@ revision use [`rfc-authoring`](../rfc-authoring/SKILL.md); for a review use
   measured values and conclusion. Check referenced compact JSON and scripts against the
   current files. A save or raw replay output may be local and unavailable to download;
   don't treat an unverified filename or a run on a different commit as equivalent evidence.
-- Keep machine-specific paths private. Never copy a personal username, home-directory
-  path, absolute local path or private mount path into the RFC, issue, PR or checked-in
-  analysis. If same-machine recovery needs a location, use an ignored local-only handoff
-  note and verify it is ignored; use a neutral artifact basename/run label and checksum in
-  repository-facing records.
+- Keep machine-specific paths private. Use the local-only handoff procedure in
+  [`AGENTS.md`](../../../AGENTS.md#workflow); use a neutral artifact basename/run label and
+  checksum in repository-facing records.
 - If a usable raw output is found, identify its producing commit and inputs before using
   it. If required details are missing, reconstruct them from the command history or
   neighboring worktree/report where possible. Do not rerun a costly gate until checking
@@ -102,7 +103,8 @@ revision use [`rfc-authoring`](../rfc-authoring/SKILL.md); for a review use
 - For a proposal change, use [`rfc-authoring`](../rfc-authoring/SKILL.md); for review,
   use [`rfc-review`](../rfc-review/SKILL.md). Do not duplicate their procedures here.
 - If the requested gate or implementation requires acceptance and the RFC is still a
-  draft, follow the acceptance check in [`start-rfc`](../start-rfc/SKILL.md) first.
+  draft, confirm acceptance with the project owner before proceeding; `start-rfc` is only
+  for new RFCs.
 - For an accepted RFC gate, follow the gate recorded in the RFC, verify matching prior
   evidence before rerunning it, and record the result in the RFC before dependent work.
   If the investigation needs additional issue-sized work, follow
@@ -110,8 +112,8 @@ revision use [`rfc-authoring`](../rfc-authoring/SKILL.md); for a review use
   then use [`create-issue`](../create-issue/SKILL.md) if it needs a new issue.
 - For an assigned implementation sub-issue, confirm it is in the tracking checklist and
   follow [`start-issue`](../start-issue/SKILL.md), which owns issue scope and isolated
-  worktree setup. If accepted work has no sub-issue yet, use [`start-rfc`](../start-rfc/SKILL.md)
-  to plan the issue breakdown and [`create-issue`](../create-issue/SKILL.md) to create
+  worktree setup. If accepted work has no sub-issue yet, define the dependency-ordered
+  breakdown in the tracking issue and use [`create-issue`](../create-issue/SKILL.md) for
   each issue.
 - For an RFC outcome, use [`complete-rfc`](../complete-rfc/SKILL.md).
 
