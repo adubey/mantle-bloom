@@ -186,8 +186,303 @@ Applying the outcomes fixed in #465 before the runs:
   before anything is removed.
 - **Cap ≥ 1% of plate-steps** on three seeds: G2 reports what force balance it hides, and
   measures the floor's removal.
-- **G2's baseline.** The pilot replaces, for its contact class, `contact_drag_pa_s_per_m`'s
-  velocity-proportional drag and the sequential per-plate shift. It keeps basal drag (already
-  area-normalized), the rheology rate law and ring cascade (deformation, not load), and the
-  merge/split triggers (G3). Its order-dependence and clamp numbers are compared against
+- **G2's baseline.** The pilot replaces the sequential per-plate shift with one simultaneous
+  solve. It retains `contact_drag_pa_s_per_m` as a symmetric pairwise damper and adds a
+  bounded normal force for blocked edges. Basal drag (already area-normalized), the
+  rheology rate law and ring cascade (deformation, not load), and merge/split triggers (G3)
+  remain in the comparison. Its order-dependence and clamp numbers are compared against
   this audit's.
+
+## G2 pilot (preliminary; issue #476)
+
+The pilot assembles plate-local basal and slab drag into one `3P` system, then adds symmetric
+pair blocks for contact drag and a bounded normal-force column for each blocked edge carried
+by the preceding frozen polarity frame. The force cap follows RFC 0011's candidate values:
+5×10¹² N/m for deformable continental material, rising linearly to 1.5×10¹³ N/m with the
+weaker side's craton strength. No per-node state is added. Equation tests cover zero load,
+unbalanced torque, equal-and-opposite contact force, held compression, yield at capacity,
+and the column-GPE reference integral.
+
+**Early runtime check.** Same generated world and hardware, seed 326494039, node density 4,
+1 Myr steps, one warm-up step followed by five timed steps. The baseline is merged
+`origin/main` commit `2279d7e` (PR #473); the pilot is that commit plus the uncommitted G2
+working tree. Median full-step runtime was 4.379 s baseline and 4.684 s pilot (**+6.9%**),
+under the 10% target for this early-world sample. Timed baseline steps were 4.358, 4.379,
+5.433, 4.433 and 4.349 s; pilot steps were 4.414, 4.428, 5.479, 5.456 and 4.684 s.
+The command in each worktree generated the same seed and density, stepped once to warm up,
+then measured five complete `step_world` calls.
+
+**Initial force-balance sample.** `probe_physics_first_g2.py --seed 326494039 --steps 3
+--step-myr 2 --node-density 1` recorded 19 plates and no blocked edges in the first 6 Myr.
+The largest plate rate fell from 7.97 to 3.66 cm/yr over those steps. The relative torque
+residual was below 4×10⁻¹⁵ of the driving-torque norm each step. This sample does not exercise
+the bounded collision force.
+
+**Completed in this evidence set:** four-seed 2 Myr / 500 Myr matched runs, four-seed 0.1/1 Myr
+checks to 50 Myr, and geometry-defined ridge/collision ΔGPE scale checks. Still required before
+recording a G2 outcome are full-horizon 0.1/1 Myr comparisons, the late-world density-4 profile,
+and ledger/topology diagnosis across matched baselines. The corrected 500 Myr replay below
+exercises blocked contacts and yielding, but its large geological/topological drift means the
+candidate is not accepted. These remain pilot-development results, not a gate pass or a selected
+general implementation plan.
+
+## Extended G2 pilot (one seed, 500 Myr)
+
+Seed 326494039, density 1, 2 Myr steps, generated independently from the same origin/main
+commit `2279d7e` in each worktree. The baseline is the detached `origin/main` worktree; the
+pilot includes the uncommitted G2 changes. Both runs advanced 250 complete world steps. Raw
+JSON is under `/private/tmp/rfc0012-g2-baseline-500myr.json` and
+`/private/tmp/rfc0012-g2-corrected-500myr.json`; these replay outputs are intentionally not
+checked in.
+
+The first 500 Myr pilot had 2,782 blocked edges but zero contact force. Inspection found that
+the active-set solver rejected compliance smaller than machine epsilon, even though SI
+contact compliance (m/s per N/m) is naturally much smaller. The sign check now accepts any
+negative finite compliance, and an SI-scale equation test covers this case. The corrected
+50 Myr smoke replay recorded 25 blocked edges and 18 yielded contacts.
+
+| Metric at 500 Myr / across 250 steps | Baseline | G2 pilot |
+|---|---:|---:|
+| Median complete step | 2.588 s | 2.587 s |
+| Peak plate count | 39 | 46 |
+| Peak plate rate | 15.0 cm/yr (clamped) | 303.8 cm/yr |
+| Steps with peak rate above 15 cm/yr | 43 | 26 |
+| Steps containing yielded contacts | — | 233 |
+| Yielded contacts summed over steps | — | 1,382 |
+| Maximum contact force | — | 1.5×10¹³ N/m |
+| Maximum relative torque residual | — | 7.6×10⁻¹⁴ of driving torque |
+| Land fraction | 0.1436 | 0.2199 |
+| Area-weighted Hc | 18.11 km | 19.51 km |
+| Area-weighted Hm | 49.58 km | 55.10 km |
+
+The pilot ends with 13 more plates, 7.64 percentage points more land, and thicker mean Hc/Hm.
+Several material ledgers also move substantially: the pilot records 8.94×10¹⁷ m³ formed and
+no merge-capped or subducted volume, versus 3.35×10¹⁷, 9.76×10¹⁶ m³, and 3.79×10¹⁴ m³ in
+the baseline respectively. The simultaneous solve converged on all 250 steps (at most eight
+contact sweeps); the 303.8 cm/yr peak occurred at 384 Myr, so it is not a solver nonconvergence
+artifact. Runtime is within the 10% target for this one density-1 replay,
+but the extreme rate excursion and geological/topological drift mean the contact candidate
+is **not accepted**. This run proves the algebraic response engages; it does not show that
+the selected capacity or the remaining reduced physics produces an acceptable long-run
+history. The 50 Myr 0.1/1 Myr sensitivity check is recorded below; the full-horizon timestep
+comparisons and late-world density-4 profile remain open. The matched 2 Myr replay and regional
+column-GPE magnitude checks are recorded below.
+
+**Peak-rate attribution.** An instrumented replay to 386 Myr found the 303.8 cm/yr maximum
+on plate 18 at the 384 Myr motion solve. None of that step's 18 blocked contacts involved
+plate 18; the next-fastest plate was at 5.03 cm/yr. Plate 18's pre-motion area-weighted Hc
+was 11.85 km (maximum 15.18 km) and Hm was 29.35 km (maximum 31.40 km); no Hc nodes were at
+the numerical cap. Thus the peak is not a blocked-contact yield response or an over-thickened
+collision belt. It is a whole-plate torque-balance rate on a plate outside those blocked edges,
+exposed by removing the baseline's 15 cm/yr clamp. At the 2 Myr step size, that angular rate
+corresponds to about 6,076 km of surface arc at the maximum-speed latitude. An instrumented
+replay found that plate 18 was not born as a fragment: it was one of the 19 generated plates,
+initially 1,131 nodes and 18.75 million km². Subduction steadily consumed it; it had 156 nodes
+at 300 Myr, 31 at 370 Myr, 9 at 380 Myr, then four at 384 Myr. At the peak solve it was exactly
+a connected 2×2 block of level-0 cells on one cube-sphere face (each node had two edge-sharing
+neighbors), covering 61,133 km² (0.012% of the planet). It had zero nodes inside another plate's
+territory. Its two plates inside the 3-spacing force reach were 2 and 25; all four of its nodes
+were in reach, two convergent and subducting and two divergent. The slab-pull torque norm was
+1.67×10²⁴ N·m, ridge-push 1.58×10²¹ N·m, basal-flow 1.80×10²³ N·m, and assembled resistance
+1.49×10²⁴ N·m. These are vector norms and should not be added as scalars. The specific hypothesis
+that plate 18 was overlapped and therefore received no boundary load is falsified: it was not
+overlapped and its boundary loads were assembled. Plate 18 disappeared at the end of the
+following 386 Myr step, when the model logged that it had no land left and accreted its last
+crust onto plate 2. The more concerning failure is that this nearly consumed, 2×2 remnant was
+still treated as a freely moving rigid plate for one more motion solve after the 15 cm/yr clamp
+was removed; it did not need to be disconnected or overlapped to evade cleanup. Neighbor count
+here means plates within the solver's 3-spacing force reach, not polygon sides or a complete
+topological neighbor list. This replay has no pressure field, so local convergence stress cannot
+be inferred from absolute plate speed alone.
+
+## Four-seed matched G2 replay (2 Myr, 500 Myr)
+
+The G2 working-tree pilot was compared against the detached baseline at `2279d7e16c7d`
+(PR #473) on all four G1 seeds. Each run generated its initial world with
+`generate_world(seed=..., node_density=1)`, then advanced 250 complete steps of 2 Myr to
+500 Myr. Checkpoints were sampled every 50 Myr. Baseline and pilot ran sequentially, paired
+by seed, with a Numba cache under `/private/tmp` to keep the detached baseline read-only.
+The pilot is the uncommitted G2 worktree based at the same `2279d7e16c7d` commit; exact
+source hashes and run metadata are in [`g2_four_seed_2myr.json`](g2_four_seed_2myr.json).
+Full per-step outputs remain in `/private/tmp/rfc0012-g2-four-seed/`.
+
+Command shape from each target worktree (the probe script lives in the pilot worktree and
+imports `app` through that run's `PYTHONPATH`):
+
+```bash
+NUMBA_CACHE_DIR=/private/tmp/rfc0012-g2-four-seed-numba \
+PYTHONPATH=backend backend/.venv/bin/python \
+  /Users/adubey/.codex/worktrees/rfc0012-g2/Mantle\ Bloom/bin/debug/probe_physics_first_g2.py \
+  --seed <seed> --steps 250 --step-myr 2 --node-density 1 \
+  --snapshot-every 25 --out /private/tmp/rfc0012-g2-four-seed/<model>-seed<seed>-2myr.json
+```
+
+| Seed | Land at start | Baseline land at 500 Myr | Pilot land at 500 Myr | Change | Mean Hc km (base → pilot) | Mean Hm km (base → pilot) | Plates (base → pilot) |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 326494039 | 27.11% | 14.36% | 21.99% | +7.64 pp | 18.11 → 19.51 | 49.58 → 55.10 | 33 → 46 |
+| 748935664 | 12.14% | 8.80% | 13.58% | +4.78 pp | 14.32 → 14.28 | 45.38 → 48.32 | 46 → 45 |
+| 580014012 | 26.54% | 21.57% | 25.91% | +4.34 pp | 22.23 → 21.78 | 65.36 → 72.73 | 35 → 36 |
+| 111065103 | 40.90% | 25.44% | 32.64% | +7.20 pp | 22.21 → 25.03 | 56.74 → 64.31 | 40 → 39 |
+
+The land increase is positive on all four seeds, averaging **+5.99 percentage points**.
+The starting land fraction is identical within each matched pair. Mean mantle-lithosphere
+thickness rises in every pilot; mean crustal thickness rises on two seeds and is nearly
+unchanged or modestly lower on the other two.
+
+| Seed | Peak rate, base → pilot | Pilot plate at peak (Myr) | Nodes; area | Neighbors in force reach | Overlap nodes | Median step-time change |
+|---:|---:|---:|---:|---:|---:|---:|
+| 326494039 | 15.0 → 303.8 cm/yr | 18 (384) | 4; 61,133 km² | 2 | 0 | +10.0% |
+| 748935664 | 15.0 → 119.2 cm/yr | 11 (494) | 7; 111,108 km² | 2 | 0 | +36.2% |
+| 580014012 | 15.0 → 60.5 cm/yr | 33 (486) | 11; 162,663 km² | 4 | 0 | +57.9% |
+| 111065103 | 15.0 → 11.0 cm/yr | 8 (444) | 52; 713,943 km² | 4 | 0 | −19.4% |
+
+The three extreme pilot peaks occur on very small, non-overlapping plates, so the plate-18
+rate excursion is not unique to one seed. Their recorded force-reach neighbors and loaded
+boundary nodes show that the comparison did not reproduce the earlier overlap hypothesis.
+The other seed's maximum remains below 15 cm/yr. These data make remnant handling a recurring
+follow-up, while leaving its implementation for later as planned. The peak diagnostics do not
+by themselves establish how each small plate formed.
+
+All four pilot solves converged on all 250 steps and reached the 1.5×10¹³ N/m contact-force
+capacity; yielded-contact totals were 1,382, 393, 971 and 638 in seed order. The candidate's
+median step time changed by +10%, +36%, +58% and −19% at **density 1**. This is not the RFC's
+required density-4 runtime measurement, and the full-world medians include the effects of
+changed geology and climate as well as solver overhead.
+
+The land result is not yet an acceptance result. Pilot `formed_m3` is 1.4–2.7× baseline, while
+`subducted_m3` and `merge_capped_m3` are zero in every pilot; both were nonzero in every
+baseline. That topology and ledger drift needs explanation before attributing the extra land
+to a validated force response. The 50 Myr 0.1 and 1 Myr timestep checks and regional
+ridge/collision ΔGPE scale check are recorded below. Full-horizon small-step comparisons and
+density-4 runtime remain open G2 gates. These four-seed 500 Myr replays ran at 2 Myr only.
+
+## G2 regional column-GPE scale check
+
+Reproducible calculation: [`bin/debug/analyze_rfc0012_gpe.py`](../../bin/debug/analyze_rfc0012_gpe.py); compact inputs and outputs: [`g2_gpe_analysis.json`](g2_gpe_analysis.json). Run with `backend/.venv/bin/python bin/debug/analyze_rfc0012_gpe.py`. This is a first-order, geometry-defined magnitude screen, not a fitted column or a full thermal/isostatic inversion.
+
+For a ridge, I used the column thermal-buoyancy approximation
+`ΔGPE = ½ g Δρ H²`, plus the RFC's relief term `½ g (ρ_a − ρ_w) h²` (3,330 kg/m³ asthenosphere and 1,030 kg/m³ water). The selected ridge-to-old-flank depth difference is 3.32 km, consistent in scale with the age-depth trend in Parsons & Sclater (1977). Three explicit thermal scenarios span effective mantle density deficits of 35–65 kg/m³ over 90–120 km. Their force-per-length results are 1.51, 2.83, and 4.72 × 10¹² N/m. For the stated 1,000 km ridge segment, the corresponding net forces are 1.51, 2.83, and 4.72 × 10¹⁸ N; dividing by segment length returns the displayed N/m values. The middle scenario is near the Copley et al. (2010) order-of-magnitude ridge-push estimate of 2.5 × 10¹² N/m, while the low/high geometries bracket it.
+
+For collision, the reference column is 35 km of crust (20 km upper plus 15 km lower), 0.5 km surface elevation, and mantle to a common 125 km compensation depth. Tibet columns use 60, 65, and 70 km crust; their surface elevation is solved from equal areal mass (Airy compensation), yielding 3.58–4.16 km for the density cases. Upper/lower crust and mantle densities are separately stated in the JSON. The resulting Tibet-minus-India GPE contrasts are 4.00, 5.07, and 5.51 × 10¹² N/m. Thus the density/geometric sweep overlaps the Copley et al. 5–6 × 10¹² N/m reference in its central and high cases, with the low case below it. The 60–70 km Tibet crust range is consistent with receiver-function measurements that report roughly 65–70 km across parts of the plateau; it is not a claim of uniform Tibet structure.
+
+**Interpretation:** both checks land at the right order of magnitude without selecting a single column to force a match. This supports continuing G2 with a consistent column-GPE definition, but it does not validate the pilot's force assembly or demonstrate that the simulation's current relief proxy represents these loads. The ridge result is especially sensitive to effective thermal density deficit and anomaly depth (`H²`); the collision result depends on crustal thickness, density layering, compensation depth, and the Airy assumption. These remain explicit model assumptions for the next physical implementation/validation step.
+
+Primary references: Copley, Avouac & Royer (2010), [India–Asia collision and the Cenozoic slowdown of the Indian plate](https://doi.org/10.1029/2009JB006634); Parsons & Sclater (1977), [ocean-floor bathymetry and heat flow with age](https://doi.org/10.1029/JB082i005p00803); Molnar & Lyon-Caen (1988), [simple physical aspects of mountain-belt support and evolution](https://doi.org/10.1130/SPE218-p179); receiver-function crustal constraints, [Yue et al. (2012)](https://doi.org/10.1029/2011JB008545).
+
+## Four-seed timestep check (50 Myr)
+
+All four RFC seeds were generated at density 1 from the matched origin/main baseline commit `2279d7e16c7d` and run to 50 Myr at 1 Myr and 0.1 Myr steps. Each baseline/pilot pair used the same seed; the 16 replays ran in series, with one simulation process active at a time. All completed successfully. Per-step records and the run manifest are in `/private/tmp/rfc0012-g2-timestep-50myr/`; compact results are in [`g2_timestep_50myr.json`](g2_timestep_50myr.json). The pilot was the same uncommitted G2 working tree used for the 2 Myr / 500 Myr comparison.
+
+| Seed | Baseline land % (1 → 0.1 Myr) | Pilot land % (1 → 0.1 Myr) | Pilot − baseline land, pp (1 / 0.1 Myr) | Pilot peak rate cm/yr (1 → 0.1 Myr) | Pilot median step s (1 → 0.1 Myr) |
+|---:|---:|---:|---:|---:|---:|
+| 326494039 | 25.07 → 25.20 | 26.36 → 26.98 | +1.29 / +1.78 | 7.97 → 7.97 | 2.13 → 2.23 |
+| 748935664 | 12.40 → 12.27 | 12.55 → 11.98 | +0.16 / −0.29 | 7.47 → 7.61 | 2.04 → 2.12 |
+| 580014012 | 25.61 → 24.74 | 25.55 → 24.89 | −0.06 / +0.15 | 4.99 → 6.38 | 1.96 → 1.97 |
+| 111065103 | 36.10 → 36.13 | 37.88 → 37.83 | +1.78 / +1.69 | 9.37 → 9.37 | 2.31 → 2.35 |
+
+**Result:** at this 50 Myr horizon, baseline mean land changes by −0.21 percentage points from 1 to 0.1 Myr, and pilot mean land changes by −0.17 points. The pilot's mean land gain over baseline is similar at the two step sizes: +0.79 points at 1 Myr and +0.83 points at 0.1 Myr. Peak pilot rates remain 4.99–9.37 cm/yr, with no pilot step exceeding 15 cm/yr; the baseline's 15 cm/yr cap binds on seed 111065103 at both step sizes. Pilot solvers converged on every step, and their maximum relative torque residuals remain in the compact JSON.
+
+The median-of-seed median step time is 2.08 s for the pilot at 1 Myr and 2.17 s at 0.1 Myr; the corresponding baseline values are 1.95 s and 2.06 s. That is +7.0% and +5.5% for the pilot at density 1, below the 10% target in this early sample; it does not replace the required density-4 profile. Contact activity is accumulated over 50 steps per 1 Myr run and 500 per 0.1 Myr run, so compare rates per step rather than raw totals. Across seeds, pilot active blocked contacts average 1.23 per step at 1 Myr and 1.51 at 0.1 Myr; yielded contacts average 0.69 and 0.80 per step respectively. The maximum relative torque residual across pilot steps is 7.42×10⁻¹⁵; no pilot solve failed to converge, and the contact force reached but did not exceed the configured 1.5×10¹³ N/m cap.
+
+This is a useful early-horizon timestep check, not the full 500 Myr timestep-sensitivity gate. It shows stable land fraction and peak rates over 50 Myr, but it does not test the late remnant events seen in the 2 Myr / 500 Myr replay, nor the RFC's density-4 runtime target. The previously observed long-run topology and material-ledger drift also remains unresolved.
+
+## G2 matched glacial-erosion sensitivity replay (250 Myr)
+
+The 1 Myr G2 run was repeated with `glacier_erosion_multiplier` increased from 1 to 2,
+holding seed, G2 code, timestep, and craton-formation rule fixed. The multiplier scales
+glacial abrasion and the glacier-driven flattening pass; it does **not** change ice
+accumulation or melt rates, so this is an erosion-strength sensitivity test rather than a
+glacier mass-balance test. Four seeds were paired and run serially. The 200 Myr `formed_m3`
+increment captures the initial cohort pulse; `eligible_host` is measured just before it, at
+190 Myr. Detailed checkpoint traces are under `/private/tmp/g2-glacial-sensitivity/`, and
+compact matched values are in [`g2_glacial_erosion_sensitivity.json`](g2_glacial_erosion_sensitivity.json).
+
+| Seed | Applied glacier erosion by 200 Myr, 1× → 2× (M km³) | Craton formed at 200 Myr, 1× → 2× (M km³) | Craton formed by 250 Myr, 1× → 2× (M km³) |
+|---:|---:|---:|---:|
+| 326494039 | 8.47 → 17.79 | 737.44 → 736.81 | 791.25 → 772.85 |
+| 748935664 | 9.87 → 11.41 | 274.98 → 266.67 | 314.61 → 284.95 |
+| 580014012 | 54.03 → 117.77 | 644.21 → 698.98 | 702.63 → 738.76 |
+| 111065103 | 11.47 → 20.65 | 853.43 → 927.68 | 915.97 → 994.31 |
+| **Sum** | **83.84 → 167.63** | **2,510.06 → 2,630.14** | **2,724.46 → 2,790.87** |
+
+Doubling the control approximately doubled cumulative applied glacial erosion by 200 Myr
+across the four seeds. The formation response is mixed: it falls 0–3% on two seeds and rises
+about 9% on the other two. Across all four, the pulse is 4.8% larger at 2×, and cumulative
+formed craton by 250 Myr is 2.4% larger. The strongest erosion seed (580014012) does not form
+less craton at 2×: its pulse increases by 8.5%. In two seeds, the eligible host pool at 190 Myr
+also grows under 2×, while eligible-host mean Hc drops modestly in all four. Thus stronger
+glacial erosion affects the evolving host and topography, but it is not a consistent brake on
+the 200 Myr cohort pulse and does not explain the extra G2 craton with one directional effect.
+
+The local-relief proxy (neighbor elevation range) fell on three seeds and rose on one; the
+glaciated area above 2 km and the cumulative erosion carried by currently identified mountain
+nodes also changed by seed. These are cross-sectional summaries, not same-cell causal tracks;
+the optional lineage follows stable node IDs and cannot preserve history for nodes replaced by
+topology remaps. Seed 580014012 also repeatedly hit the 5 km ice-depth cap, with warnings
+reaching over 1,000 capped nodes and one reported shed event around 449,000 km³ in its 2× run.
+That cap behavior limits interpretation of the high-ice result.
+
+**Conclusion:** this replay does not support “glaciers are too weak” as the sole explanation
+for G2's extra early craton. It only tests erosion strength, not ice mass balance, and the
+formation rule still grants craton after a fixed 200 Myr in the geometric/Hc gate. A separate
+formation-gate/timer sensitivity remains necessary to distinguish the synchronized
+generation-time cohort from later geological evolution. The reproduction script is
+[`g2_glacial_erosion_sensitivity.py`](../../bin/debug/g2_glacial_erosion_sensitivity.py); the
+per-node erosion trace used a temporary instrumentation overlay, so its full historical
+traces remain in `/private/tmp` rather than the repository.
+
+## G2 craton-formation timer sensitivity (400 Myr)
+
+This matched replay varies only `CRATON_FORMATION_MYR` across 100, 200, and 300 Myr. The
+same four seeds, 1 Myr step, and G2 source were used; each run was serial. The existing host
+gate stayed fixed (genuine continental crust, Hc ≤ 50 km, at least 500 km inside the plate
+edge). Thus this tests how long a qualifying host must wait, not whether “quiet” should be
+defined using physical strain or deformation. The runtime timer override is in
+[`g2_formation_gate_sensitivity.py`](../../bin/debug/g2_formation_gate_sensitivity.py), and
+compact results are in [`g2_formation_gate_sensitivity.json`](g2_formation_gate_sensitivity.json).
+Full traces are in `/private/tmp/g2-formation-gate-sensitivity/`.
+
+| Seed | Cumulative formed at 400 Myr (M km³), 100 / 200 / 300 Myr timer | Live craton at 400 Myr (M km³), 100 / 200 / 300 Myr timer | Eligible uncratonized host area at 400 Myr (M km²), 100 / 200 / 300 Myr timer |
+|---:|---:|---:|---:|
+| 326494039 | 1,176 / 886 / 662 | 3,768 / 3,504 / 3,289 | 1.09 / 1.62 / 3.48 |
+| 748935664 | 472 / 362 / 280 | 2,004 / 1,900 / 1,828 | 1.92 / 2.97 / 6.16 |
+| 580014012 | 1,241 / 854 / 592 | 4,348 / 3,967 / 3,722 | 2.57 / 5.85 / 7.37 |
+| 111065103 | 1,675 / 1,131 / 796 | 4,742 / 4,219 / 3,903 | 4.67 / 9.06 / 12.82 |
+| **Sum** | **4,564 / 3,233 / 2,330** | **14,862 / 13,590 / 12,741** | **10.25 / 19.51 / 29.84** |
+
+All four seeds show a monotonic decrease in cumulative formation as the timer lengthens.
+Summed cumulative formation at 400 Myr falls 29% with a 200 Myr timer and 49% with a 300 Myr
+timer relative to 100 Myr. The summed live-craton stock falls less (9% and 14%), because the
+stock includes the starting craton and subsequent losses, while the cumulative `formed_m3`
+ledger records all formation events. Longer timers leave more qualifying but uncratonized
+area at the endpoint, as expected. In every run the first formation pulse occurs exactly at
+the selected timer threshold, directly confirming that the formation timer controls the
+cohort timing.
+
+**Interpretation:** the fixed 200 Myr waiting period is a substantial control on the amount
+of craton formed during the first 400 Myr. This supports the hypothesis that early
+timer-triggered formation contributes to the excess-craton result; it does not establish
+that 100 or 300 Myr is geologically preferable, nor that the current host gate represents
+low deformation. The next diagnostic should record the qualifying hosts' deformation/strain
+history and test a physically defined quiet gate against the current clock. Seed 580014012
+repeatedly hit the 5 km glacier-depth cap, with hundreds to over 1,000 affected nodes on some
+steps and reported ice shedding/clipping; this limits interpretation of its absolute result
+and remains an independent glacial-model concern.
+
+
+## Four-seed full-horizon timestep check (1 Myr, 500 Myr)
+
+The four G1 seeds were run to 500 Myr at 1 Myr steps using density 1, with each baseline/pilot pair run serially. The baseline is the detached `2279d7e16c7d` tree; the pilot is the same uncommitted G2 working tree used above. All eight replays completed successfully. Per-step outputs and run manifest are in `/private/tmp/rfc0012-g2-full-1myr/`; the compact matched data are in [`g2_timestep_500myr_1myr.json`](g2_timestep_500myr_1myr.json).
+
+| Seed | Baseline land at 500 Myr | Pilot land at 500 Myr | Pilot − baseline | Pilot peak rate | Pilot subducted (million km³) | Pilot formed (million km³) | Pilot merge-capped (million km³) |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 326494039 | 15.08% | 21.36% | +6.28 pp | 66.07 cm/yr | 0.0000 | 901.2 | 0.0000 |
+| 748935664 | 10.14% | 13.18% | +3.04 pp | 152.59 cm/yr | 0.4667 | 383.8 | 0.0000 |
+| 580014012 | 23.30% | 23.22% | -0.08 pp | 4.99 cm/yr | 0.0000 | 924.0 | 0.0000 |
+| 111065103 | 25.43% | 32.19% | +6.76 pp | 9.37 cm/yr | 0.0000 | 1255.6 | 0.0000 |
+
+Pilot land is higher in three seeds and effectively unchanged in one, with mean final change **+4.00 percentage points**. Compared with the 50 Myr check, the land response grows during the full horizon. This is not yet a successful G2 acceptance result: pilot peak rates still reach 152.6 cm/yr on seed 748935664 and 66.1 cm/yr on seed 326494039, while the baseline is clipped at 15 cm/yr. Pilot subduction is zero on three seeds (nonzero only on 748935664), and pilot merge-capped volume is zero on all four; baseline merge-capped volume is nonzero on three. Pilot formed volume is 1.2–1.9× baseline. These material-ledger/topology differences remain the main unresolved concern.
+
+The pilot peak rate varies sharply by seed: 326494039: 66.1, 748935664: 152.6, 580014012: 5.0, 111065103: 9.4 cm/yr. The smaller 1 Myr step avoids the 303.8 cm/yr event seen at 2 Myr for seed 326494039, but does not establish timestep convergence: seed 748935664 reaches 152.6 cm/yr. Full-horizon 0.1 Myr runs remain the next convergence check if needed.
+
+Seed 580014012 produced extensive 5 km glacier-cap and ice-shedding/clipping warnings in both baseline and pilot; the pilot warnings affected hundreds to over 1,000 nodes on some steps. Treat its climate and land-fraction result with caution. Density-4 runtime remains unmeasured; these density-1 runs had mean median step times of 2.763 s (baseline) and 2.790 s (pilot).

@@ -475,6 +475,32 @@ material-ledger closure, step-size sensitivity, and runtime. A pilot that only r
 geometric event count does not pass. At node density 4, median total step time must increase
 by no more than 10% over the matched baseline.
 
+*G2 diagnosis (2026-10-19; implementation and replay results: [analysis/rfc0012](../analysis/rfc0012/README.md)).*
+The reduced simultaneous contact pilot and its equation-level tests are implemented on the
+G2 branch. The ridge and collision column-GPE scale checks land within the expected regional
+orders of magnitude under the documented density/geometry sweeps. Four-seed generated-world
+replays show higher 500 Myr land fraction in three seeds and nearly unchanged land in one,
+but the pilot does not pass G2: its 1 Myr full-horizon peak rates reach 66.1 and 152.6 cm/yr
+on two seeds; subducted volume is zero in three seeds; merge-capped volume is zero in all
+four; and formed craton is 1.2–1.9× baseline. The 50 Myr 0.1/1 Myr comparison is relatively
+stable, but it does not establish full-horizon timestep robustness, and density-4 runtime
+has not been measured. Treat the higher land fraction as a diagnostic outcome, not
+validation. The force solve and column-GPE checks support continuing the reduced interface;
+the ledger/topology and long-run rate differences remain unresolved before G2 can be
+accepted.
+
+The four-seed formation-timer sensitivity keeps the G2 host gate fixed and varies only the
+200 Myr waiting period to 100 and 300 Myr. Cumulative formation at 400 Myr decreases
+monotonically for every seed (four-seed sum 4,564 → 3,233 → 2,330 million km³), with each
+run's first pulse at its selected threshold. This shows the timer strongly controls the
+early cohort and supports investigating formation timing as a contributor to the excess
+craton. It does not establish a preferred geological duration or validate the geometric/Hc
+host gate as a measure of low deformation. A physical quiet-gate diagnostic should measure
+host strain/deformation history before changing the rule. Seed 580014012 repeatedly reaches
+the 5 km glacier-depth cap; its absolute craton result remains climate-limited in
+interpretation. G2 remains open pending the listed force, ledger, topology, timestep, and
+runtime acceptance checks.
+
 **Gate G3: transferability.** Exercise the contract against at least one divergent/rifting and
 one transform case before declaring it the general tectonic interface. For rifting, calculate
 net tensile force across a candidate cut from boundary loads and basal traction, then initiate

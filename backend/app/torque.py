@@ -21,7 +21,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from . import cratons, geometry, mantle
+from . import cratons, geometry, mantle, plates as plate_geometry
 from .boundary import TRANSFORM_RATE_THRESHOLD
 from .elevation_lines import effective_is_continental_from_codes, line_spacing_rad
 from . import lithosphere
@@ -1065,6 +1065,355 @@ def shift_plate(plate, world, other_plates: list, years: float) -> float:
         return 0.0
     new_omega = predict_plate_motion(plate, world, other_plates, years)
     return apply_omega_and_rotate(plate, old_points, new_omega, years)
+
+
+def shift_plates_quasistatic(world, years: float, *, diagnostics: dict | None = None) -> dict[int, float]:
+    """Assemble one pre-step motion system, solve all live plates, then rotate them.
+
+    Basal and slab drag remain plate-local. Contact drag is assembled once per plate pair
+    from the mean of the two sides' discretized resistance matrices, then enters as the
+    symmetric block ``[[K, -K], [-K, K]]``. Frozen blocked edges also supply one shared
+    normal force each, bounded by the weaker side's lithospheric strength. The solve is
+    quasi-static: inertia and the per-plate rate clamp do not create motion or hide a
+    force-balance residual.
+    """
+    from .quasistatic import solve_quasistatic_contacts
+
+    spacing_rad = line_spacing_rad(world.node_density)
+    reach_rad = boundary_force_reach_rad(spacing_rad)
+    plates = sorted((p for p in world.plates if p.node_count() > 0), key=lambda p: p.plate_id)
+    count = len(plates)
+    if not count:
+        return {}
+    index_by_id = {p.plate_id: i for i, p in enumerate(plates)}
+    cache = world.boundary_search_cache
+    if cache is None:
+        cache = BoundarySearchCache()
+        world.boundary_search_cache = cache
+
+    dimension = 3 * count
+    drag = np.zeros((dimension, dimension), dtype=float)
+    driving = np.zeros(dimension, dtype=float)
+    old_points_by_id: dict[int, np.ndarray] = {}
+    inputs_by_id: dict[int, BoundaryForceInputs] = {}
+    pair_side_k: dict[tuple[int, int], list[np.ndarray]] = {}
+    boundary_inputs_by_id: dict[int, dict] = {}
+    driving_terms_by_id: dict[int, dict[str, np.ndarray]] = {}
+
+    for i, plate in enumerate(plates):
+        start = 3 * i
+        old_points, _ = plate.all_points_and_elevation()
+        old_points_by_id[plate.plate_id] = old_points
+        neighbours = cache.neighbours(plate, plates, reach_rad)
+        inputs = gather_boundary_force_inputs(plate, neighbours, spacing_rad, reach_rad, cache)
+        inputs_by_id[plate.plate_id] = inputs
+        convergent, divergent, transform, contested = classify_boundary_nodes(
+            plate, neighbours, inputs, reach_rad, cache
+        )
+        collision_mask = continental_contact_mask(plate, inputs, contested)
+        subducting = subducting_boundary_mask(plate, inputs, reach_rad)
+        basal_b, local_drag = basal_drag_coefficients(plate, world, spacing_rad)
+        local_drag += slab_drag_coefficient_matrix(inputs, subducting, spacing_rad)
+        drag[start : start + 3, start : start + 3] = local_drag
+        slab_pull = slab_pull_torque(plate, inputs, subducting, spacing_rad)
+        ridge_push = ridge_push_torque(plate, inputs, divergent, spacing_rad)
+        driving_terms_by_id[plate.plate_id] = {
+            "slab_pull_nm": slab_pull,
+            "ridge_push_nm": ridge_push,
+            "basal_flow_nm": basal_b,
+        }
+        driving[start : start + 3] = slab_pull + ridge_push + basal_b
+        boundary_inputs_by_id[plate.plate_id] = {
+            "neighbor_plate_ids": sorted(neighbor.plate_id for neighbor in neighbours),
+            "nearest_boundary_node_counts": {
+                str(neighbor.plate_id): int(
+                    np.count_nonzero(
+                        (inputs.neighbor_plate_id == neighbor.plate_id)
+                        & np.isfinite(inputs.dist_to_neighbor)
+                    )
+                )
+                for neighbor in neighbours
+            },
+            "in_reach_nodes": int(np.count_nonzero(np.isfinite(inputs.dist_to_neighbor))),
+            "convergent_nodes": int(np.count_nonzero(convergent)),
+            "divergent_nodes": int(np.count_nonzero(divergent)),
+            "transform_nodes": int(np.count_nonzero(transform)),
+            "contested_nodes": int(np.count_nonzero(contested)),
+            "continental_collision_nodes": int(np.count_nonzero(collision_mask)),
+            "subducting_nodes": int(np.count_nonzero(subducting)),
+        }
+
+        jam = contact_jam_factor(plate, world, neighbours, inputs, reach_rad)
+        craton_m = contact_craton_m(plate, neighbours, inputs)
+        for neighbour in neighbours:
+            pair = (min(plate.plate_id, neighbour.plate_id), max(plate.plate_id, neighbour.plate_id))
+            pair_mask = collision_mask & (inputs.neighbor_plate_id == neighbour.plate_id)
+            _b_side, k_side = collision_drag_coefficients(
+                plate, inputs, pair_mask, spacing_rad, craton_m, jam
+            )
+            pair_side_k.setdefault(pair, []).append(k_side)
+
+    for (plate_a, plate_b), side_matrices in pair_side_k.items():
+        if plate_a not in index_by_id or plate_b not in index_by_id:
+            continue
+        pair_drag = np.mean(side_matrices, axis=0)
+        a = slice(3 * index_by_id[plate_a], 3 * index_by_id[plate_a] + 3)
+        b = slice(3 * index_by_id[plate_b], 3 * index_by_id[plate_b] + 3)
+        drag[a, a] += pair_drag
+        drag[b, b] += pair_drag
+        drag[a, b] -= pair_drag
+        drag[b, a] -= pair_drag
+
+    contact_torque, contact_closing, contact_capacity, contact_pairs = _blocked_contact_response(
+        world, plates, inputs_by_id, index_by_id, spacing_rad
+    )
+
+    # Debug worlds can prescribe selected plate rates. Eliminate those degrees of freedom
+    # before solving so their neighbours feel the same fixed motion from this snapshot. Do
+    # this by partitioning the system: setting unit diagonal rows would be ill-conditioned
+    # beside physical drag entries many orders larger than one.
+    fixed_values: dict[int, float] = {}
+    for i, plate in enumerate(plates):
+        pinned = world.pinned_omegas.get(plate.plate_id)
+        if pinned is not None:
+            for axis, value in enumerate(np.asarray(pinned, dtype=float)):
+                fixed_values[3 * i + axis] = float(value)
+    fixed_indices = np.fromiter(fixed_values, dtype=int, count=len(fixed_values))
+    free_mask = np.ones(dimension, dtype=bool)
+    free_mask[fixed_indices] = False
+    free_indices = np.flatnonzero(free_mask)
+    omega_flat = np.zeros(dimension, dtype=float)
+    contact_force = np.zeros(len(contact_capacity), dtype=float)
+    solver_converged = True
+    solver_sweeps = 0
+    if fixed_values:
+        omega_flat[fixed_indices] = [fixed_values[int(i)] for i in fixed_indices]
+    if len(free_indices):
+        rhs = driving[free_indices].copy()
+        if len(fixed_indices):
+            rhs -= drag[np.ix_(free_indices, fixed_indices)] @ omega_flat[fixed_indices]
+            # Scripted diagnostic rates are fixed kinematics; hold contact complementarity
+            # out of this debug-only path rather than treating the fixed motion as a load.
+            result = solve_quasistatic_contacts(drag[np.ix_(free_indices, free_indices)], rhs)
+        else:
+            result = solve_quasistatic_contacts(
+                drag,
+                driving,
+                contact_torque,
+                contact_closing,
+                contact_capacity,
+            )
+        omega_flat[free_indices] = result.omega
+        solver_converged = result.converged
+        solver_sweeps = result.sweeps
+        if len(fixed_indices) == 0:
+            contact_force = result.contact_force_n_per_m
+    if diagnostics is not None:
+        overlap_by_plate = plate_geometry.compute_node_overlap(plates)
+        contact_rate = contact_closing @ omega_flat
+        residual = drag @ omega_flat - driving - contact_torque @ contact_force
+        speeds_cm_per_yr = np.linalg.norm(omega_flat.reshape(count, 3), axis=1) * lithosphere.PLANET_RADIUS_M * 100.0
+        yielded = (contact_force >= contact_capacity - np.maximum(1.0, contact_capacity * 1e-12)) & (
+            contact_rate > 1e-12
+        )
+        plate_rates = []
+        for plate, speed in zip(plates, speeds_cm_per_yr, strict=True):
+            area = plate.accounting_areas_m2(spacing_rad)
+            hc = plate.collect("crustal_thickness_m")
+            hm = plate.collect("mantle_lithosphere_thickness_m")
+            total_area = float(area.sum())
+            plate_rates.append(
+                {
+                    "plate_id": plate.plate_id,
+                    "rate_cm_per_yr": float(speed),
+                    "node_count": plate.node_count(),
+                    "accounted_area_km2": total_area / 1_000_000.0,
+                    "fraction_planet_area": total_area / (4.0 * np.pi * lithosphere.PLANET_RADIUS_M**2),
+                    "overlap_nodes": int(np.count_nonzero(overlap_by_plate[plate.plate_id]["overlap_mask"])),
+                    "overlap_partners": {
+                        str(partner): count
+                        for partner, count in overlap_by_plate[plate.plate_id]["by_partner"].items()
+                    },
+                    "mean_hc_km": float(np.sum(hc * area) / total_area / 1_000.0),
+                    "max_hc_km": float(hc.max(initial=0.0) / 1_000.0),
+                    "fraction_hc_at_cap": float(
+                        area[hc >= lithosphere.MAX_CRUSTAL_THICKNESS_M - 1.0].sum() / total_area
+                    ),
+                    "mean_hm_km": float(np.sum(hm * area) / total_area / 1_000.0),
+                    "max_hm_km": float(hm.max(initial=0.0) / 1_000.0),
+                    **boundary_inputs_by_id[plate.plate_id],
+                    "driving_torque_components_nm": {
+                        name: float(np.linalg.norm(value))
+                        for name, value in driving_terms_by_id[plate.plate_id].items()
+                    },
+                    "resistance_torque_nm": float(
+                        np.linalg.norm(
+                            (drag @ omega_flat)[
+                                3 * index_by_id[plate.plate_id] : 3 * index_by_id[plate.plate_id] + 3
+                            ]
+                        )
+                    ),
+                }
+            )
+        contact_rows = [
+            {
+                "lower_plate_id": pair[0],
+                "upper_plate_id": pair[1],
+                "force_n_per_m": float(force),
+                "capacity_n_per_m": float(capacity),
+                "closing_rate_m_per_s": float(rate),
+                "yielded": bool(is_yielded),
+            }
+            for pair, force, capacity, rate, is_yielded in zip(
+                contact_pairs, contact_force, contact_capacity, contact_rate, yielded, strict=True
+            )
+        ]
+        diagnostics.update(
+            {
+                "plates": count,
+                "blocked_contacts": len(contact_capacity),
+                "yielded_contacts": int(np.count_nonzero(yielded)),
+                "solver_converged": solver_converged,
+                "solver_sweeps": solver_sweeps,
+                "contact_force_max_n_per_m": float(contact_force.max()) if len(contact_force) else 0.0,
+                "contact_closing_max_m_per_s": float(contact_rate.max()) if len(contact_rate) else 0.0,
+                "driving_torque_norm_nm": float(np.linalg.norm(driving)),
+                "residual_torque_norm_nm": float(np.linalg.norm(residual)),
+                "max_plate_rate_cm_per_yr": float(speeds_cm_per_yr.max()) if len(speeds_cm_per_yr) else 0.0,
+                "median_plate_rate_cm_per_yr": float(np.median(speeds_cm_per_yr)) if len(speeds_cm_per_yr) else 0.0,
+                "plate_rates_cm_per_yr": plate_rates,
+                "blocked_contact_responses": contact_rows,
+            }
+        )
+    omegas = omega_flat.reshape(count, 3)
+    distances: dict[int, float] = {}
+    for i, plate in enumerate(plates):
+        distances[plate.plate_id] = apply_omega_and_rotate(
+            plate, old_points_by_id[plate.plate_id], omegas[i], years
+        )
+    return distances
+
+
+def _blocked_contact_response(world, plates, inputs_by_id, index_by_id, spacing_rad):
+    """Return torque, closing-rate and capacity maps for frozen blocked collision edges."""
+    from . import collision_polarity
+
+    frame = world.collision_polarity_frame
+    dimension = 3 * len(plates)
+    if frame is None or not frame.polarity:
+        return np.zeros((dimension, 0)), np.zeros((0, dimension)), np.zeros(0), []
+
+    by_id = {plate.plate_id: plate for plate in plates}
+    edge_reach = collision_polarity.CONTACT_EDGE_SPACINGS * spacing_rad
+    contact_columns = []
+    closing_rows = []
+    capacities = []
+    contact_pairs = []
+    # RFC 0011's G-R candidate values, exercised as hypotheses in G2 (#476).
+    resistance_unblocked_n_per_m = 5e12
+    resistance_full_craton_n_per_m = 1.5e13
+    radius = lithosphere.PLANET_RADIUS_M
+
+    for front_id, (lower_id, upper_id) in sorted(frame.polarity.items()):
+        if lower_id not in by_id or upper_id not in by_id:
+            continue
+        pair = (lower_id, upper_id)
+        side_geometry = {}
+        strengths = []
+        for plate_id, neighbour_id in (pair, pair[::-1]):
+            plate = by_id[plate_id]
+            inputs = inputs_by_id[plate_id]
+            masks = frame.masks.get(plate_id)
+            if masks is None:
+                continue
+            # The polarity frame is frozen before the previous deform pass. Remap its
+            # per-node decisions by stable cell key; cells created since then have no
+            # inherited blocked-front classification in this pilot.
+            previous_index = {int(key): i for i, key in enumerate(masks.node_keys)}
+            current_keys = plate.cell_keys
+            frame_index = np.fromiter(
+                (previous_index.get(int(key), -1) for key in current_keys),
+                dtype=np.int64,
+                count=len(current_keys),
+            )
+            mapped_front = np.full(len(current_keys), -1, dtype=np.int64)
+            mapped_retreat = np.zeros(len(current_keys), dtype=bool)
+            mapped = frame_index >= 0
+            mapped_front[mapped] = masks.front_id[frame_index[mapped]]
+            mapped_retreat[mapped] = masks.retreat_eligible[frame_index[mapped]]
+            neighbour = by_id[neighbour_id]
+            own_hc = inputs.own_hc
+            neighbour_idx = np.clip(inputs.neighbor_node_index, 0, max(0, neighbour.node_count() - 1))
+            other_hc = neighbour.collect("crustal_thickness_m")[neighbour_idx]
+            other_craton = neighbour.collect("craton_crust_m")[neighbour_idx]
+            own_craton = inputs.own_craton_m
+            blocked = (
+                (own_craton > 0.0) & (mapped_retreat | (other_craton > 0.0))
+            ) | (own_hc >= lithosphere.MAX_CRUSTAL_THICKNESS_M - 1.0) | (
+                other_hc >= lithosphere.MAX_CRUSTAL_THICKNESS_M - 1.0
+            )
+            use = (
+                (mapped_front == front_id)
+                & (inputs.neighbor_plate_id == neighbour_id)
+                & (inputs.dist_to_neighbor <= edge_reach)
+                & blocked
+            )
+            if not np.any(use):
+                continue
+            lengths = boundary_node_length_m(inputs, spacing_rad)[use]
+            total_length = float(lengths.sum())
+            if total_length <= 0.0:
+                continue
+            geometry = np.einsum(
+                "n,ni->i",
+                lengths,
+                np.cross(inputs.own_points[use], inputs.direction_to_neighbor[use]),
+            ) / total_length
+            side_geometry[plate_id] = (geometry, total_length)
+            side_strength = np.minimum(cratons.strength(own_craton[use]), cratons.strength(other_craton[use]))
+            strengths.append(float(np.average(side_strength, weights=lengths)))
+
+        if not side_geometry:
+            continue
+        geometry_candidates = []
+        length_candidates = []
+        if lower_id in side_geometry:
+            geometry_candidates.append(side_geometry[lower_id][0])
+            length_candidates.append(side_geometry[lower_id][1])
+        if upper_id in side_geometry:
+            geometry_candidates.append(-side_geometry[upper_id][0])
+            length_candidates.append(side_geometry[upper_id][1])
+        shared_geometry = np.mean(geometry_candidates, axis=0)
+        blocked_length = float(np.mean(length_candidates))
+        if blocked_length <= 0.0 or not strengths:
+            continue
+        strength = min(strengths)
+        capacity = resistance_unblocked_n_per_m + strength * (
+            resistance_full_craton_n_per_m - resistance_unblocked_n_per_m
+        )
+
+        torque_column = np.zeros(dimension, dtype=float)
+        closing_row = np.zeros(dimension, dtype=float)
+        lower_start = 3 * index_by_id[lower_id]
+        upper_start = 3 * index_by_id[upper_id]
+        # Positive q pushes the lower side away from the upper side. The pair receives the
+        # same force with opposite sign; the geometry is integrated over blocked edge length.
+        torque_column[lower_start : lower_start + 3] = -radius * blocked_length * shared_geometry
+        torque_column[upper_start : upper_start + 3] = radius * blocked_length * shared_geometry
+        closing_row[lower_start : lower_start + 3] = (
+            radius / SECONDS_PER_YEAR
+        ) * shared_geometry
+        closing_row[upper_start : upper_start + 3] = -(
+            radius / SECONDS_PER_YEAR
+        ) * shared_geometry
+        contact_columns.append(torque_column)
+        closing_rows.append(closing_row)
+        capacities.append(capacity)
+        contact_pairs.append(pair)
+
+    if not capacities:
+        return np.zeros((dimension, 0)), np.zeros((0, dimension)), np.zeros(0), []
+    return np.column_stack(contact_columns), np.vstack(closing_rows), np.asarray(capacities), contact_pairs
 
 
 def merge_omega(plate_a, inertia_a: np.ndarray, plate_b, inertia_b: np.ndarray) -> np.ndarray:

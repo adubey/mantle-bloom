@@ -66,9 +66,19 @@ overridden or compressed; open space can be filled as the plate edge advances. T
 geometric checks decide how the plate's cells change. A separate motion calculation helps
 distinguish convergence, spreading, and sliding near the boundary.
 
-The implementation uses two operations each step: `Plate.shift` rotates the plate, and
-`Plate.deform` updates its columns and territory. The detailed rules below describe how those
-operations work.
+The motion phase runs once for the whole world through
+`torque.shift_plates_quasistatic(world, years)`. It gathers each plate's force inputs from
+the same pre-step geometry, assembles a `3P × 3P` drag system, solves all angular rates, and
+then rotates every plate. Basal and slab drag contribute plate-local blocks. Contact drag
+contributes a symmetric pair block, so both sides receive equal-and-opposite resistance
+without reading a neighbour's newly updated rate. The blocked-collision pilot can apply a
+shared compressive load capped by candidate yield strength; closing beyond that capacity
+remains for the deformation pass. The bounded contact solver uses the minimum-norm rate when
+resistance leaves a free mode, reports unbalanced torque through diagnostics, and does not
+impose a minimum plate rate or clamp the solved rate.
+
+After all plates rotate, `Plate.deform` updates their columns and territories. The per-plate
+territory reconciliation still runs in a freshly randomized order each turn.
 
 The simulation no longer uses boundary velocity alone to decide how every node changes.
 Geometric overlap detects contested territory, while an open, unclaimed space indicates
@@ -82,20 +92,18 @@ implements them.
 
 ### Implementation details: plate motion and deformation
 
-Each plate runs two operations every step, in this order:
+`torque.shift_plates_quasistatic` assembles motion from the pre-step plate configuration,
+solves all angular rates simultaneously, and rotates each plate without resampling its carried
+nodes. The per-plate displacement bound `D` is the greatest angular distance any node moved
+during the batch. `Plate.deform` then reconciles each rotated footprint against the sphere
+minus every other live plate's territory. Deformation runs once per plate in a freshly
+randomized order every turn, as described below.
 
-1. **`shift(world, years)`** -- refit the plate's Euler pole from the mantle-flow field
-   (damped toward the new target, same fit-then-clamp as generation-time, see [Mantle
-   flow](foundations.md#mantle-flow-mantlepy)), then rotate rigidly by `years` at that rate: exact for every node
-   the plate carries, no resampling (see [Plate-local frames](foundations.md#plate-local-frames)). Returns
-   `D`, the greatest angular distance any of the plate's own nodes actually moved this
-   step -- a real, physically grounded bound on how much crust could plausibly have been
-   created, destroyed, or stretched this turn. Runs for every plate; order doesn't matter
-   here, since rotating one plate only ever touches its own `frame`.
-2. **`deform(world, other_plates, years, D)`** -- reconcile the plate's actual post-`shift`
-   footprint against the footprint it's entitled to occupy: the sphere minus every *other*
-   currently-live plate's own territory (its active cells). Runs once per plate, in a **freshly randomized order every turn** -- the reason
-   is explained below.
+The G2 contact pilot's blocked-edge classification comes from the preceding frozen
+`collision_polarity_frame`, remapped by stable cell key. A newly created cell has no inherited
+blocked-edge classification until a later frame. Its candidate force capacity is 5×10¹² N/m
+for deformable continental material, rising linearly to 1.5×10¹³ N/m with the weaker side's
+craton strength. These are pilot values, not universal collision strengths.
 
 A node is **contested** if it's now geometrically contained in some other live plate's
 territory (`Plate.contains_batch`, checked only for nodes a cheap bounding-sphere prefilter

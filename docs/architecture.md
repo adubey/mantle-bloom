@@ -62,8 +62,9 @@ Browser then fetches, for whichever projection/map view/resolution/rotation is s
 
 Time-stepping:
   POST /world/step  { years }
-  → world.step_world(world, years): every plate refits its Euler pole and rotates
-    (`Plate.shift`), then every plate reconciles its actual footprint against the
+  → world.step_world(world, years): `torque.shift_plates_quasistatic` assembles plate loads
+    from one pre-step snapshot, solves all angular velocities together, then rotates every
+    plate; after that every plate reconciles its actual footprint against the
     sphere minus every other live plate's own territory (`Plate.deform` -- quad_tectonics.py --
     in a freshly randomized order each turn) -- collision/subduction uplift or trench elevation where a plate's
     rotated territory now overlaps a neighbor's, rift fill (or, occasionally, a fresh

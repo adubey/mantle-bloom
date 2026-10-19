@@ -876,16 +876,16 @@ def _advance_fluid_dynamics(world: World, node_cloud: tuple[np.ndarray, list[Pla
     atmosphere_cfd.step_atmosphere_cfd(world, world.atmosphere_cfd_state, atmosphere_cfd.SECONDS_PER_TECTONIC_STEP)
 
 
-def step_world(world: World, years: float) -> None:
+def step_world(world: World, years: float, *, motion_diagnostics: list[dict] | None = None) -> None:
     """Advance the world by `years` -- thin wrapper draining step_world_progress to
     completion for callers that don't need its per-plate progress (every caller but main.py's
     streaming /world/step endpoint). See step_world_progress for what actually runs; this
     function's own former docstring, describing that same behavior, now lives there."""
-    for _ in step_world_progress(world, years):
+    for _ in step_world_progress(world, years, motion_diagnostics=motion_diagnostics):
         pass
 
 
-def step_world_progress(world: World, years: float):  # noqa: C901
+def step_world_progress(world: World, years: float, *, motion_diagnostics: list[dict] | None = None):  # noqa: C901
     """Generator form of step_world, advancing the world by `years` exactly as it did before
     this function existed, but yielding a fraction-complete float (0 to 1) after each
     per-plate `shift()`/`deform()` call -- main.py's /world/step endpoint streams these
@@ -944,16 +944,23 @@ def step_world_progress(world: World, years: float):  # noqa: C901
     craton_ledger_before = dict(world.craton_ledger)
     craton_live_before = cratons.live_volume_m3(world)
     if world.simulate_plate_movement:
-        distances = {}
-        for plate in world.plates:
-            distances[plate.plate_id] = plate.shift(world, years)
+        # RFC 0012 G2: assemble all plate torques and drag from one frozen pre-step snapshot,
+        # solve the coupled system, then apply every rotation. The per-plate progress units
+        # remain the same even though the solve/rotation batch is simultaneous.
+        motion_result = {}
+        distances = torque.shift_plates_quasistatic(
+            world,
+            years,
+            diagnostics=motion_result if motion_diagnostics is not None else None,
+        )
+        if motion_diagnostics is not None:
+            motion_diagnostics.append({"step": world.steps_taken, "elapsed_years": world.elapsed_years, **motion_result})
+        for _plate in world.plates:
             done_units += 1
             yield done_units / total_units
         # Collision polarity prepass (issue #318): every plate has moved and none has deformed,
         # so record subduction evidence and freeze each continental front's lower/upper plate
-        # now, independent of the deform order below. Its boundary searches stay cached for
-        # deform() -- see torque.BoundarySearchCache.
-        world.boundary_search_cache = torque.BoundarySearchCache()
+        # now, independent of the deform order below. It reuses the shift-time boundary cache.
         collision_polarity.observe_contacts(world, years)
         # Fail before any plate deforms, not at the first polarized front mid-pass.
         crust_transfer.partition(world)
