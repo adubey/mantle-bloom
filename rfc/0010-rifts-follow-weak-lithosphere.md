@@ -147,16 +147,18 @@ should start until those gates are resolved and the revised design is accepted.
    totals despite nominally matching seed, layout, step and duration. Preserve each output; do not
    combine denominators until the cause is understood. This does not rescue min-cut's observed
    shortfall, but it is necessary for a reproducible baseline for the replacement.
-2. **Establish the local load available to damage.** Trace `torque.gather_boundary_force_inputs`,
-   the force terms, and `torque.predict_plate_motion`; determine whether their per-node inputs can
-   support a spatially varying extensional traction or strain-rate field after a physically justified load
-   distribution, without inferring stress from rigid rotation alone. Record direction and magnitude
-   in Pa (stress), N/m (vertically integrated force per boundary length), or s⁻¹ (strain rate), and
-   compare integrated tensile load with vertically integrated lithosphere strength. Separately
-   decide whether the existing dimensionless `Plate.internal_stress` only gates when local damage is
-   evaluated, or whether local damage supersedes that trigger. If the force interface only supports
-   whole-plate torque, extend it first; do not use the min-cut's two flow clusters as a surrogate
-   stress field.
+2. **Establish the local load available to damage — diagnosed 2026-10-19; current interface
+   insufficient.** The trace found per-node and boundary-local force terms, but no force-transfer
+   or equilibrium rule that turns them into intraplate tensile stress across an adjacency.
+   `predict_plate_motion` reduces their moments to one plate angular acceleration. The terms and
+   units, and the required next interface decision, are recorded in
+   [`analysis/issue487/gate2-load-diagnosis.md`](../analysis/issue487/gate2-load-diagnosis.md).
+   Therefore the current evidence cannot supply `sigma_t` or compare it with vertically integrated
+   strength; do not start constitutive calibration or infer local stress from rigid rotation, flow
+   clusters, or `Plate.internal_stress`. Before gate 3, either extend the force interface with a
+   physically stated spatial load-transfer/equilibrium rule and rerun this comparison, or revise the
+   proposal as a clearly labeled phenomenological rift model. `Plate.internal_stress` remains a
+   dimensionless plate-level eligibility signal and is not a local damage trigger.
 3. **Calibrate accumulation and segment growth.** On synthetic plates and replayed candidate
    events, measure damage/strain accumulation, nucleation, tip propagation, arrest and linkage under
    timestep refinement. Select thresholds only after checking physical scale and sensitivity. If no
@@ -235,7 +237,7 @@ its physical source or explicit design-choice status, and the sensitivity plan b
 
 | Knob | Start | Source | Tuning plan |
 |---|---|---|---|
-| Local tensile load and yield strength (`sigma_t`, `Y_t`) | Pending gate 2 | Force/material diagnosis or explicit proxy | Check units and force balance on synthetic plates |
+| Local tensile load and yield strength (`sigma_t`, `Y_t`) | Unsupported by current interface (gate 2, 2026-10-19) | Requires a force-interface extension with a stated spatial transfer rule, or explicit phenomenological revision | Re-run local load/strength comparison on synthetic plates before gate 3 |
 | Failure strain (`epsilon_fail`) | Pending gate 3 | Calibration assumption | Sensitivity on controlled loads and candidate events |
 | Damage viscosity (`eta_rift`, Pa·s) | Pending gate 3 | Calibration assumption | Sweep strain rates and timestep partitions |
 | Residual strength (`q_res`, [0, 1]) | Pending gate 3 | Design choice | Sweep weak-belt/craton cases; check localization and runaway |
@@ -285,9 +287,11 @@ its physical source or explicit design-choice status, and the sensitivity plan b
 
 ## Acceptance criteria
 
-1. [ ] **Diagnosis gates first:** reconcile the differing diagnostic event streams and publish a
-       repeatable, matched baseline; provide a spatial load/strength derivation with units; set and
-       sensitivity-test the constitutive parameters before full replays.
+1. [ ] **Diagnosis gates first:** close gate 1 by resolving or retiring the archived event-stream
+       comparison; for gate 2, provide a spatial load/strength derivation with units through an
+       approved interface extension, or revise the proposal as phenomenological; only then set and
+       sensitivity-test constitutive parameters before full replays. The 2026-10-19 code trace
+       found the current interface insufficient (see `analysis/issue487/gate2-load-diagnosis.md`).
 2. [ ] In synthetic tests, damage is timestep-partition invariant, bounded, absent under compression
        or sub-yield loading, and advances only through adjacent cells with supported positive loading.
 3. [ ] Segments can nucleate independently, propagate, arrest and link; a transform/transfer zone
@@ -308,9 +312,11 @@ its physical source or explicit design-choice status, and the sensitivity plan b
 
 ## Falsification criteria
 
-- **No defensible local loading field:** if current force/torque data cannot support a spatial
-  extensional load without an arbitrary flow-derived line, stop this design and extend the force
-  interface or retain a clearly labeled phenomenological rift model.
+- **No defensible local loading field:** the 2026-10-19 trace found current force/torque data
+  insufficient to support a spatial extensional load without an added transfer/equilibrium rule.
+  Do not calibrate the damage law from these data. Extend the force interface and repeat the
+  diagnosis, or revise/reject the physical local-damage premise in favor of a clearly labeled
+  phenomenological rift model.
 - **Damage does not localize:** if weak inherited zones do not attract segments under controlled
   loading, or damage spreads diffusely regardless of strength, revise the constitutive law; do not
   tune only the craton-resistance parameter.
