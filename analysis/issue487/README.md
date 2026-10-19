@@ -1,59 +1,61 @@
 # RFC 0010 diagnosis gate 1: event-stream reconciliation
 
-## Result so far
+## Result
 
-A clean replay of the recorded seeds was run on `origin/main` commit
-`fcaaf36e95463c078e6441fbee0125da4e275424`, with cratons-first layout, craton formation
-off, 2 Myr steps to 1 Gyr, a 1,000 km corridor, cost floor 0.05, and
-`PYTHONHASHSEED=0`. The full event output remains in `/tmp/issue487-gate1-current-main-hash0.json`.
-The compact results and signature hashes are in [`gate1-summary.json`](gate1-summary.json).
+The gate-one probe now records a paired shadow-calculator result for every production
+rift-cut event, including the numeric size, pole-separation, residual and connectivity
+margins. A clean three-seed replay completed on branch commit
+`0118752d0ffe75060464204d5b94f81a60fe9a07` with cratons-first layout, craton formation
+off, 2 Myr steps through 1 Gyr, a 1,000 km corridor, cost floor 0.05, and
+`PYTHONHASHSEED=0`. Python and library versions, clean worktree status, and SHA256 hashes
+of the probe, shadow calculator and production source are recorded in
+[`gate1-summary.json`](gate1-summary.json).
 
-The probe taps `cratons.record_rift_cut`, evaluates the shadow min-cut for that same event,
-and then calls the original production recorder. Thus each output row pairs a production
-cut event with its shadow result. For seeds 7, 11 and 2024, the row counts (144, 111 and
-125) exactly equal the final production ledger cut counts. The output also retains candidate
-counts, admissibility decisions, line clearance, band exposure, and residual ratios.
+| Seed | Tap rows | Production `all_cuts` | Flow-through candidates | Admissible | Line-clear admissible |
+|---:|---:|---:|---:|---:|---:|
+| 7 | 144 | 144 | 44 | 17 | 6 |
+| 11 | 111 | 111 | 42 | 31 | 12 |
+| 2024 | 125 | 125 | 44 | 28 | 5 |
+| **Pooled** | **380** | **380** | **130** | **76** | **23** |
+
+Each seed's sequential tap rows exactly match its final production ledger cut count. The
+pooled through-craton rates are `L=0.177` and `B=0.837`. The gate margins are summarized
+over those 130 flow-through candidates in `gate1-summary.json`; individual failure counts
+can overlap when an event fails more than one gate.
 
 Two independent 100 Myr runs with the same fixed hash seed produced identical event rows.
-A clean 100 Myr run at the archived model commit `68f8bf3` also produced the same rows as
-current `origin/main` under the same settings. This is a repeatable short-run baseline.
+A clean 100 Myr run at archived model commit `68f8bf3` also produced the same rows as
+`origin/main` under the same settings. These are repeatable short-run baselines. The new
+full run records exact source and runtime provenance for a longer baseline.
 
-## Why the archived full runs are not combined
+## Archived stream discrepancy
 
 The archived production-probe and margin-instrumented series report the same git commit and
 nominal seed/layout/step/duration settings, but their event signatures differ substantially
 from each other and from the clean run. Signature identity is `(kind, elapsed Myr, plate ID,
-node count)`. Only 3–6 events per seed match either archived series in the new 1 Gyr run.
+node count)`. Only 3–6 events per seed match either archived series in the new full run.
 The production series has 125/137/130 events for seeds 7/11/2024; the margin series has
-130/116/115; the clean run has 144/111/125. Since these are different trajectories, their
-counts and denominators must remain separate.
+130/116/115; the clean run has 144/111/125. Keep these trajectories and denominators
+separate.
 
-The archived JSONs omit working-tree fingerprints and runtime/library versions. Their shared
-commit hash is not enough to determine whether uncommitted model or diagnostic code, or a
-runtime difference, caused the divergence. The current clean short run is repeatable, but the
-specific cause of the old full-run mismatch is not recoverable from the saved metadata.
+The archived JSONs omit working-tree fingerprints and runtime/library versions. Their
+shared commit hash is not enough to determine whether uncommitted model or diagnostic code,
+or a runtime difference, caused the divergence. The archived mismatch cannot be attributed
+to a specific cause from the saved metadata. The current matched baseline is reproducible,
+but the historical stream discrepancy remains unresolved; diagnosis gate 1 should remain
+open until the old runs are either recovered with provenance or explicitly excluded from
+calibration.
 
-## Remaining gate-1 work
+## Reproduction
 
-The first full run's compact per-event output records the residual ratio and pass/fail state
-for size, pole separation, residual and connectivity gates, but drops the numeric minimum-half
-node count and pole-separation margins. Those values are needed to compare the full detailed
-margin series on a matched event stream. Add them to the probe output and rerun the baseline
-before closing diagnosis gate 1. Until then, keep gate 1 open and do not use the archived
-series as a calibration denominator.
-
-The probe has now been extended to retain those four gate margins, assign a sequential event
-index, and record the Python/library versions, hash seed, working-tree status and hashes for
-the diagnostic and production cut sources. A 10 Myr smoke run produced four tap rows and four
-production-ledger cuts, with numeric size, pole, residual and connectivity margins on each
-row. The full three-seed replay with this enriched output is still required before the gate
-can close.
-
-Reproduction command for the current full run:
+Run from the repository root after `./bin/setup.sh`:
 
 ```bash
 PYTHONHASHSEED=0 PYTHONPATH=backend backend/.venv/bin/python \
   bin/debug/probe_craton_mosaic.py \
   --layout cratons-first --seeds 7,11,2024 --years 1e9 --step 2e6 \
-  --every 1e8 --out /tmp/issue487-gate1-current-main-hash0.json
+  --every 1e8 --out /tmp/issue487-gate1-current-main-instrumented.json
 ```
+
+The full 446 KB output is intentionally left in `/tmp`; the compact statistics,
+fingerprints, and archived-series comparison are checked in as `gate1-summary.json`.

@@ -1,12 +1,12 @@
 {
   "purpose": "RFC 0010 diagnosis gate 1: paired production-tap and shadow-calculator event baseline",
-  "model_commit": "fcaaf36e95463c078e6441fbee0125da4e275424",
+  "model_commit": "0118752d0ffe75060464204d5b94f81a60fe9a07",
   "environment": {
     "python": "3.14.6",
+    "pythonhashseed": "0",
     "numpy": "2.5.2",
     "scipy": "1.18.0",
-    "numba": "0.67.0",
-    "pythonhashseed": "0"
+    "numba": "0.67.0"
   },
   "configuration": {
     "layout": "cratons-first",
@@ -18,7 +18,9 @@
       7,
       11,
       2024
-    ]
+    ],
+    "core_spacing_km": 1500.0,
+    "belt_width_km": 300.0
   },
   "event_identity": [
     "kind",
@@ -52,7 +54,42 @@
         0.8111727694385036,
         1.015158767132444,
         1.4974483589995338
-      ]
+      ],
+      "production_ledger_cut_count": 144,
+      "flow_through_candidate_count": 44,
+      "event_index_range": [
+        0,
+        143
+      ],
+      "margin_ranges_among_flow_through": {
+        "size_margin_nodes": {
+          "min": -248,
+          "median": 67.0,
+          "max": 1454
+        },
+        "pole_margin": {
+          "min": -1.503452734041301e-10,
+          "median": 4.881553223408371e-09,
+          "max": 1.702125219237369e-08
+        },
+        "residual_margin": {
+          "min": -0.3974483589995337,
+          "median": 0.08484123286755607,
+          "max": 0.2888272305614965
+        },
+        "connectivity_margin": {
+          "min": 0.006363636363636349,
+          "median": 0.010000000000000009,
+          "max": 0.010000000000000009
+        }
+      },
+      "individual_gate_fail_counts_among_flow_through": {
+        "size_ok": 17,
+        "poles_ok": 2,
+        "residual_ok": 12,
+        "connected": 0
+      },
+      "multiple_gate_fail_count_among_flow_through": 4
     },
     {
       "seed": 11,
@@ -79,7 +116,42 @@
         0.8873886686343626,
         1.0252321440540888,
         1.0717109320821263
-      ]
+      ],
+      "production_ledger_cut_count": 111,
+      "flow_through_candidate_count": 42,
+      "event_index_range": [
+        0,
+        110
+      ],
+      "margin_ranges_among_flow_through": {
+        "size_margin_nodes": {
+          "min": -149,
+          "median": 529.0,
+          "max": 3100
+        },
+        "pole_margin": {
+          "min": 2.2368852327370842e-10,
+          "median": 3.1156515408075553e-09,
+          "max": 1.0789758117424675e-08
+        },
+        "residual_margin": {
+          "min": 0.028289067917873778,
+          "median": 0.07476785594591129,
+          "max": 0.21261133136563748
+        },
+        "connectivity_margin": {
+          "min": 0.009103942652329722,
+          "median": 0.010000000000000009,
+          "max": 0.010000000000000009
+        }
+      },
+      "individual_gate_fail_counts_among_flow_through": {
+        "size_ok": 11,
+        "poles_ok": 0,
+        "residual_ok": 0,
+        "connected": 0
+      },
+      "multiple_gate_fail_count_among_flow_through": 0
     },
     {
       "seed": 2024,
@@ -106,13 +178,73 @@
         0.9652380867208376,
         1.0127493686935747,
         1.1213391754722526
-      ]
+      ],
+      "production_ledger_cut_count": 125,
+      "flow_through_candidate_count": 44,
+      "event_index_range": [
+        0,
+        124
+      ],
+      "margin_ranges_among_flow_through": {
+        "size_margin_nodes": {
+          "min": -153,
+          "median": 491.5,
+          "max": 1572
+        },
+        "pole_margin": {
+          "min": -2.529493024519381e-10,
+          "median": 2.4661738638805137e-09,
+          "max": 9.051241017214861e-09
+        },
+        "residual_margin": {
+          "min": -0.021339175472252503,
+          "median": 0.08725063130642541,
+          "max": 0.13476191327916254
+        },
+        "connectivity_margin": {
+          "min": -0.008679950186799457,
+          "median": 0.010000000000000009,
+          "max": 0.010000000000000009
+        }
+      },
+      "individual_gate_fail_counts_among_flow_through": {
+        "size_ok": 10,
+        "poles_ok": 3,
+        "residual_ok": 6,
+        "connected": 1
+      },
+      "multiple_gate_fail_count_among_flow_through": 4
     }
   ],
   "pooled": {
     "through": 130,
     "L": 0.17692307692307693,
-    "B": 0.8370682967628947
+    "B": 0.8370682967628947,
+    "flow_through_candidates": 130,
+    "admissible": 76,
+    "line_clear_admissible": 23,
+    "margin_ranges_among_flow_through": {
+      "size_margin_nodes": {
+        "min": -248,
+        "median": 283.0,
+        "max": 3100
+      },
+      "pole_margin": {
+        "min": -2.529493024519381e-10,
+        "median": 3.0752761954390847e-09,
+        "max": 1.702125219237369e-08
+      },
+      "residual_margin": {
+        "min": -0.3974483589995337,
+        "median": 0.084858687214172,
+        "max": 0.2888272305614965
+      },
+      "connectivity_margin": {
+        "min": -0.008679950186799457,
+        "median": 0.010000000000000009,
+        "max": 0.010000000000000009
+      }
+    }
   },
   "archived_stream_comparison": [
     {
@@ -166,6 +298,20 @@
   ],
   "limitations": [
     "The archived JSONs record the same git commit but omit working-tree fingerprints and runtime/library versions; their divergent event streams cannot be attributed to a specific cause from available metadata.",
-    "The committed probe output retains residual_ratio and admissibility booleans, but not numeric min-half-node or pole-separation margins. Gate 1 remains open until those margins are captured for the repeatable stream."
-  ]
+    "Current gate-one baseline pairs each production event with the shadow calculator at that event, and tap row counts equal production ledger all_cuts counts for all three seeds. The archived full-run event streams remain unreconciled with this clean matched baseline.",
+    "Margin ranges are calculated across production events whose flow band passes through craton. Counts of individual gate failures overlap when one event fails multiple gates."
+  ],
+  "worktree_status": [],
+  "source_sha256": {
+    "bin/debug/probe_craton_mosaic.py": "7c2d065dd551a737613c464c618528ebc27a739f09586fdee5db3f560f080bc6",
+    "bin/debug/prototype_mincut_split.py": "cc15f1c76c86845f6c3a1269052d3e1ba279c74fbb0dcad6b84a96ee10fb24a0",
+    "backend/app/cratons.py": "bf47754e58679552d8114dfcad70c032f1e967ca70375f333a9a2a13d4ef8a48",
+    "backend/app/merge_split.py": "ffdd36f454c0d8de043f08cb4c063bcd7d2a89b2dfd261e71575e236d55e8c76"
+  },
+  "replay_wall_seconds": {
+    "7": 1851.9411307920236,
+    "11": 1772.4278212077916,
+    "2024": 2255.8918757089414
+  },
+  "run_provenance": "Clean issue-487 gate-one branch; source hashes cover probe, shadow calculator, and production recorder modules."
 }
