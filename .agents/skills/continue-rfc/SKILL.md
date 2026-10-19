@@ -18,14 +18,10 @@ revision use [`rfc-authoring`](../rfc-authoring/SKILL.md); for a review use
   links and index to identify it; don't guess from a similar title. For an assigned issue,
   follow `start-issue` for its comments, scope and implementation readiness rather than
   duplicating those issue checks here.
-- Record the RFC status, branch/PR, accepted decision, diagnosis gates and their outcomes,
-  tracking issue, dependent RFCs/issues, and the specific deliverable requested in this
-  chat. Check these against the current GitHub state when available; a stale RFC header or
-  handoff note may not reflect a merged change or gate result.
-- Decide whether the request is to refine the proposal, run a gate, implement a named
-  issue, review, or close out the RFC. Don't turn an assigned implementation issue into
-  an RFC redesign unless its evidence exposes a gap; report the gap and revise the RFC
-  before proceeding where the design no longer supports the issue.
+- Record the RFC status, branch/PR, accepted decision, diagnosis-gate results, tracking
+  issue, dependent RFCs/issues and the deliverable requested in this chat. Check these
+  against current GitHub state when available; stale RFC headers and handoff notes may not
+  reflect a merge or gate result.
 
 ## 2. Find RFC and evidence worktrees
 
@@ -101,37 +97,24 @@ revision use [`rfc-authoring`](../rfc-authoring/SKILL.md); for a review use
   and the relevant topic page. Read `docs/debugging.md` for saved-world diagnostics.
   Trace the current implementation before relying on an RFC's provisional touchpoints.
 
-## 4. Select the next step from the verified state
+## 4. Hand off to the workflow that owns the request
 
-- **Draft, asked to refine:** revise the same RFC and PR with `rfc-authoring`; keep it a
-  proposal and update its analysis links and index as needed. Do not open implementation
-  issues while it remains a draft.
-- **Draft, asked to implement or run accepted-only gates:** do not treat a merged draft as
-  accepted. The project owner must accept it (by merging its RFC PR, or explicitly saying
-  so for an RFC already merged as a draft) before implementation or accepted-only gates.
-  Continue any independent evidence review and make the needed proposal changes first.
-- **RFC under review:** address the actual review comments in the same RFC/PR. Use
-  `rfc-review` for a requested review, not as a substitute for authoring a revision.
-- **Accepted with a pending diagnosis gate:** reuse verified results if inputs, controls
-  and commits match. Otherwise run the gate described by the RFC, record its result, and
-  revise the RFC to state what the result selects or rules out before opening dependent
-  implementation issues. If the investigation exposes additional issue-sized work, use
-  `project-management` to link it to the covering RFC or create a new issue when no RFC
-  covers it; put ordinary new work in `Backlog` or urgent work in `Ready`.
-- **Accepted and ready to implement:** if a sub-issue is assigned, confirm it appears on
-  the tracking checklist and its scope matches the accepted design, then read and follow
-  [`start-issue`](../start-issue/SKILL.md), which owns issue worktree, branch and environment
-  setup. If no implementation issue exists, use `start-rfc` to create dependency-ordered
-  issues and update the tracking checklist.
-- **Implementation underway:** use the tracking issue and linked PRs to identify remaining
-  work. Update checklist items only when the corresponding gate or PR state is verified.
-  When the design is falsified or superseded, use `complete-rfc` after the project owner
-  decides to withdraw it.
-- **All implementation merged:** check acceptance criteria and tracking issue state, then
-  use `complete-rfc` to close it as Implemented.
+- For a proposal change, use [`rfc-authoring`](../rfc-authoring/SKILL.md); for review,
+  use [`rfc-review`](../rfc-review/SKILL.md). Do not duplicate their procedures here.
+- If the requested gate or implementation requires acceptance and the RFC is still a
+  draft, follow the acceptance check in [`start-rfc`](../start-rfc/SKILL.md) first.
+- For an accepted RFC gate, follow the gate recorded in the RFC, verify matching prior
+  evidence before rerunning it, and record the result in the RFC before dependent work.
+  If the investigation needs additional issue-sized work, follow
+  [Investigating additional work](../project-management/SKILL.md#investigating-additional-work).
+- For an assigned implementation sub-issue, confirm it is in the tracking checklist and
+  follow [`start-issue`](../start-issue/SKILL.md), which owns issue scope and isolated
+  worktree setup. If accepted work has no sub-issue yet, use [`start-rfc`](../start-rfc/SKILL.md)
+  to create dependency-ordered issues.
+- For an RFC outcome, use [`complete-rfc`](../complete-rfc/SKILL.md).
 
-Before finishing, leave the RFC, index, analysis report and tracking checklist consistent
-with any verified change. Run the RFC citation check after edits; use `pre-push-check`
-before pushing a branch or opening/updating a PR. Use
-[`project-management`](../project-management/SKILL.md) to set an active RFC item to
-`In Progress`; assigned issue status is handled by `start-issue`.
+When resuming RFC-level work, follow
+[Starting or resuming an RFC](../project-management/SKILL.md#starting-or-resuming-an-rfc)
+to update its project status. Before finishing, leave the RFC, index, analysis report and
+tracking checklist consistent with verified changes. Run the RFC citation check after
+edits; use `pre-push-check` before pushing a branch or opening/updating a PR.

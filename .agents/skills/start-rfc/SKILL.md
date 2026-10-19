@@ -7,9 +7,9 @@ description: Set up a new Mantle Bloom RFC worktree and coordinate its proposal 
 
 An RFC is the parent decision for a model change. It may be implemented through several
 issues, but those issues start only after the RFC is accepted and any diagnosis gates have
-passed. The RFC worktree is the shared local workspace for its proposal and linked issues;
-each issue still gets its own branch and reviewable PR. For a cold handoff or an existing
-RFC workstream, use [`continue-rfc`](../continue-rfc/SKILL.md) to reconstruct state first.
+passed. Keep proposal work in its RFC worktree; each implementation sub-issue gets its own
+isolated issue worktree, branch and reviewable PR. For a cold handoff or an existing RFC
+workstream, use [`continue-rfc`](../continue-rfc/SKILL.md) to reconstruct state first.
 
 ## 1. Identify the RFC and its state
 
@@ -57,10 +57,10 @@ RFC workstream, use [`continue-rfc`](../continue-rfc/SKILL.md) to reconstruct st
   git worktree add -b <agent>/rfc-<NNNN>-<slug> ../mantle-bloom-rfc-<NNNN> origin/main
   ```
 
-  `<agent>` is `claude` or `codex`. Once accepted, linked implementation issues use an
-  RFC worktree directory when it is available and designated for the task; parallel work
-  gets another RFC-specific worktree. Each issue uses its own branch from `origin/main`
-  with `start-issue`, never the RFC branch.
+  `<agent>` is `claude` or `codex`. Once accepted, create every implementation sub-issue
+  through the RFC tracking issue. Each sub-issue gets its own isolated worktree and branch
+  from `origin/main` with `start-issue`; never switch the RFC proposal worktree to an issue
+  branch.
 - Run `./bin/setup.sh` in a new worktree. Each worktree needs its own `backend/.venv`; do
   not symlink one from another tree.
 - Pick free, non-user ports only if running the app. Ports 8000 and 5173 belong to the
@@ -89,9 +89,8 @@ RFC workstream, use [`continue-rfc`](../continue-rfc/SKILL.md) to reconstruct st
   in the durable report before the current run context disappears. Don't copy large saves
   or raw replay output into the repo, and don't publish personal filesystem paths.
 
-When RFC work starts or resumes, use [`project-management`](../project-management/SKILL.md)
-to put its project item in `In Progress`. Use the RFC tracking issue once it exists; before
-then use the RFC PR.
+When RFC work starts or resumes, follow [Starting or resuming an RFC](../project-management/SKILL.md#starting-or-resuming-an-rfc)
+to update its project status.
 
 ## 4. Choose the next action from the RFC state
 
@@ -106,10 +105,9 @@ then use the RFC PR.
   dependency-ordered issues. Each issue should cite the RFC, name its own deliverable and
   acceptance checks, and avoid duplicating work assigned to another issue. Add each one to
   the tracking issue's checklist, with its PR once open. Start each
-  issue using `start-issue`; it will reuse this RFC worktree only when it is clean and
-  designated for that task. Otherwise it will create an isolated RFC-specific issue
-  worktree and branch from `origin/main`. Add each new issue to project 2 in `Backlog` by
-  default; use `Ready` if it is urgent, following `project-management`.
+  issue using `start-issue`, which creates an isolated issue worktree and branch from
+  `origin/main`. Follow [Creating an issue](../project-management/SKILL.md#creating-an-issue)
+  to set its initial project status.
 - **Implementation underway:** use the tracking issue to identify remaining work, and tick
   items off as their PRs merge or their gates report. When a gate result rules a planned
   step out, strike it there with the reason. When all of its implementation issues have

@@ -75,20 +75,35 @@ For each merged implementation PR, decide whether its change stays.
   change, with its own tests and replays.
 - Code comments citing the RFC stay: the RFC remains the record of why the code is there.
 
-## 5. Settle open work
+## 5. Settle the tracking issue and sub-issues
 
-- **Open issues:** close the ones the outcome makes moot with `gh issue close <N> --reason
-  "not planned"` and a comment linking the RFC's Outcome. Move the ones that still matter
-  into the superseding RFC, with a comment, and add them to its plan. Do this when the
-  completion PR merges, or before it if the owner has already decided.
+- Inspect the tracking issue's GitHub sub-issues as well as its checklist. Every checklist
+  step and every child issue must have a disposition before the RFC is complete.
+- **Implemented:** verify each child issue's work is merged or otherwise confirmed complete.
+  If a child remains open because its work is still needed, the RFC is not complete. Close
+  children whose work has landed with reason `completed`; close any made obsolete by the
+  outcome with reason `not planned` and a comment linking the RFC's Outcome.
+- **Withdrawn:** close the tracking issue and children made moot with reason `not planned`
+  and a comment linking the RFC's Outcome. Move relevant children to the superseding RFC's
+  tracking issue and plan. If still relevant but no RFC covers them, remove them as
+  sub-issues of the withdrawn tracking issue and keep them as standalone issues. For an
+  existing issue, use `gh issue edit <N> --parent <new-tracking-issue>` to move it or
+  `gh issue edit <N> --remove-parent` to make it standalone, then verify with
+  `gh issue view <N> --json parent`. Do not close work that remains needed; keep its
+  project status aligned with its disposition.
+- For either outcome, settle the child issues when the completion PR merges, or earlier if
+  the project owner has already confirmed the outcome. Do not close or push to another
+  agent's or the owner's PR without the owner's go-ahead.
 - **Open PRs:** comment with the outcome and what you recommend (close, or salvage its
   analysis). Don't close or push to another agent's or the owner's PR without the owner's
   go-ahead.
-- **Tracking issue:** the completion PR closes it (`Closes #N`). Tick or strike its
-  checklist items first, with the reason for each strike.
-- Use [`project-management`](../project-management/SKILL.md) to set the RFC project item to
-  `Done` when implemented or `Depreciated` when withdrawn, and reconcile any open issue
-  statuses with the outcome.
+- **Tracking issue:** for an implemented RFC, the completion PR closes it (`Closes #N`).
+  For a withdrawn RFC, close it with `gh issue close <N> --reason "not planned"` after the
+  completion PR merges; don't use `Closes #N`, which would mark it completed. Tick or
+  strike checklist items first, with the reason for each strike.
+- After the completion PR merges or the owner confirms the outcome, follow
+  [Completing an RFC](../project-management/SKILL.md#completing-an-rfc) to set both the RFC
+  PR and tracking issue's project status, and reconcile child issue statuses.
 
 ## 6. Update dependents and the index
 
@@ -107,6 +122,8 @@ For each merged implementation PR, decide whether its change stays.
 - One PR per completion, branched off `origin/main` (`claude/rfc-NNNN-complete` or
   `claude/rfc-NNNN-withdraw`). Several RFCs withdrawn for the same reason can share one.
 - `## Summary`: the outcome and its reason, the evidence, what stays, what carries over,
-  and what was closed or moved. End with `Closes #<tracking issue>`.
+  and what was closed or moved. End with `Closes #<tracking issue>` for an implemented RFC;
+  for a withdrawn RFC, link the tracking issue without an auto-close directive so it can be
+  closed with reason `not planned` after merge.
 - Run `python3 .agents/skills/rfc-authoring/check_citations.py rfc/NNNN-slug.md` on every
   RFC you edited.

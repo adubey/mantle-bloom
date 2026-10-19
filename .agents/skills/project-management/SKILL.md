@@ -56,45 +56,47 @@ gh project item-edit 2 --owner @me --url <issue-or-pr-url> \
 Verify the result with `gh project item-list 2 --owner @me --limit 500 --format json` and
 confirm the item URL and status. Don't infer success only from a successful command exit.
 
-## 3. Apply the lifecycle rules
+## 3. Lifecycle how-to
 
-- **Starting an issue:** move that issue to `In Progress` when work begins. If a required
-  prerequisite prevents work from starting, set it to `On Hold` instead and record the
-  dependency in the issue.
-- **Starting or resuming an RFC:** move its project item to `In Progress`. Use the RFC
-  tracking issue as the canonical item once it exists; before that, use the RFC PR. If
-  both the RFC PR and tracking issue are already project items, keep both `In Progress`
-  while RFC-level work continues. An active implementation issue also has its own item in
-  `In Progress`.
-- **Completing an issue:** mark it `Done` only after its acceptance criteria are met and
-  its implementation is merged or the project owner has otherwise confirmed completion.
-  An open PR or an agent finishing its local changes is not completion. If it belongs to
-  an RFC, inspect the tracking checklist in dependency order and tell the user the next
-  RFC step. If the next step has an issue and its prerequisites are met, move that issue
-  to `In Progress`; if it is blocked, move it to `On Hold`. If the next step is a gate
-  without an issue, tell the user what gate to run. If no issue exists for the next
-  implementation step, say one needs to be created.
-- **Investigation finds additional work:** check whether the work belongs under the current
-  RFC or another RFC. If so, add it to that RFC's tracking checklist and link the issue
-  there. If no RFC covers it and the change is ordinary issue-sized work, create an issue;
-  if it meets `AGENTS.md`'s RFC criteria for a large, uncertain or science-led model
-  change, start an RFC first. Add newly created issues to project 2. Set ordinary new work
-  to `Backlog`; set it to `Ready` only when it is urgent and can start now. If it blocks
-  another issue, put the blocked issue `On Hold` until the dependency is resolved.
-- **Choosing not to pursue an issue:** set the project item to `Depreciated` when the
-  decision is to stop without fixing the issue. Follow the relevant RFC or issue workflow
-  for any GitHub issue closure; changing a project status does not close the issue.
-- **A new issue:** add it to project 2 and set it to `Backlog` by default. The more specific
-  rules above take precedence when the issue is urgent (`Ready`) or is the next eligible
-  RFC step (`In Progress`).
+### Starting an issue
 
-## 4. Create an investigation issue
+When issue work begins, set its project item to `In Progress`. If a prerequisite prevents
+work from starting, use `On Hold` and record the dependency in the issue.
+
+### Starting or resuming an RFC
+
+Set the RFC project item to `In Progress`. Use the RFC tracking issue once it exists;
+before then, use the RFC PR. If both are project items, keep both `In Progress` while
+RFC-level work continues. An active implementation sub-issue has its own item in
+`In Progress`.
+
+### Completing an issue
+
+Set an issue to `Done` only after its acceptance criteria are met and its implementation is
+merged or the project owner has otherwise confirmed completion. An open PR or local work
+alone is not completion. If the issue belongs to an RFC, inspect its tracking checklist in
+dependency order and tell the user the next step. If the next step is an eligible issue,
+set it to `In Progress`; if blocked, set it to `On Hold`. If it is a gate, tell the user
+what gate to run; if no issue exists for the next implementation step, say one needs to be
+created.
+
+### Investigating additional work
+
+Check whether the work belongs under this RFC or another one. If so, add it to the tracking
+checklist and link the issue there. If no RFC covers it, create an issue for ordinary
+issue-sized work; for a large, uncertain or science-led model change that meets
+`AGENTS.md`'s RFC criteria, start an RFC first. An issue that blocks another issue puts the
+blocked item `On Hold` until the dependency is resolved.
+
+### Creating an issue
 
 Before creating an issue, check the RFC tracking checklist and existing issues so work is
 not duplicated. Use the repository's usual issue format and include the finding, evidence,
 scope, acceptance checks and any dependency. When it is an RFC step, identify the RFC and
-tracking issue; add it as a child of the tracking issue when appropriate. Create the GitHub
-issue, using `--parent <tracking-issue-number>` when it is a child step:
+tracking issue; create the issue as a child of the tracking issue. Add every new issue to
+project 2 and set it to `Backlog` by default. Use `Ready` only if the work is urgent and
+can start now. If the next eligible RFC issue is being started immediately, follow
+[Starting an issue](#starting-an-issue) to move it to `In Progress`.
 
 ```bash
 gh issue create --title "<title>" --body-file <issue-body-file> \
@@ -102,16 +104,27 @@ gh issue create --title "<title>" --body-file <issue-body-file> \
 ```
 
 Omit `--parent` when the issue is not a child of an RFC tracking issue. Add the created
-issue URL to project 2 with `item-add`, set its status according to section 3, and update
-the RFC checklist when applicable. For an investigation that needs an issue, issue
-creation is authorized by the project workflow; still follow the RFC requirement for
-changes that need a new RFC.
+issue URL to project 2 with `item-add`, set its status using section 2, and update the RFC
+checklist when applicable. Issue creation is part of this project workflow; still follow
+the RFC requirement for changes that need a new RFC.
 
-## 5. Connect the other workflow skills
+### Choosing not to pursue an issue
 
-- `start-issue` calls this skill when issue work starts and when a completed issue advances
-  the RFC checklist.
-- `start-rfc` and `continue-rfc` call this skill when RFC work starts or resumes, and when
-  they create a follow-up issue from an investigation.
-- `complete-rfc` calls this skill to set the RFC's project item to `Done` when implemented,
-  or `Depreciated` when withdrawn, and to settle any remaining active issue statuses.
+Set the project item to `Depreciated` when the decision is to stop without fixing it. The
+project status does not close the GitHub issue; follow its owning RFC or issue workflow for
+closure.
+
+### Completing an RFC
+
+After the completion PR merges or the project owner confirms the outcome, set the RFC PR
+and tracking issue to `Done` when implemented or `Depreciated` when withdrawn, if both are
+project items. Follow the [RFC completion workflow](../complete-rfc/SKILL.md#5-settle-the-tracking-issue-and-sub-issues)
+to settle child issues, then update their project statuses to match their disposition.
+
+## 4. Connect the other workflow skills
+
+- `start-issue` follows [Starting an issue](#starting-an-issue) and
+  [Completing an issue](#completing-an-issue).
+- `start-rfc` and `continue-rfc` follow [Starting or resuming an RFC](#starting-or-resuming-an-rfc)
+  and [Creating an issue](#creating-an-issue) when an investigation needs follow-up work.
+- `complete-rfc` follows [Completing an RFC](#completing-an-rfc).

@@ -48,9 +48,10 @@ Run from the repo root (or worktree root).
 
 ## Workflow
 
-- **One issue branch per issue, branched off `origin/main`.** Name it
-  `<agent>/issue-<N>-<slug>`, where `<agent>` is `claude` or `codex`. For an RFC-linked
-  issue, reuse that RFC's worktree directory and create the issue branch there; follow
+- **One issue branch and worktree per issue, branched off `origin/main`.** Name the branch
+  `<agent>/issue-<N>-<slug>`, where `<agent>` is `claude` or `codex`. RFCs are large
+  decisions tracked by a parent issue with sub-issues; each sub-issue gets its own isolated
+  issue worktree. Never switch the RFC proposal worktree to an issue branch. Follow
   `start-rfc` if the RFC worktree needs to be set up in the current machine or framework.
   The primary checkout's local `main` lags `origin`: don't use it as a base or baseline,
   and don't pull or reset it. Run `./bin/setup.sh` in each new worktree. Each worktree has
