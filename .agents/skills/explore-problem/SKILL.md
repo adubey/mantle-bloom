@@ -27,7 +27,7 @@ and ask which artifacts to create before making them.
 - After gathering initial evidence, present a few evidence-based avenues, alternatives and
   a recommendation. Ask which direction to investigate and request the user's approval
   before creating a new exploration issue; never reuse or reopen the issue or RFC that
-  prompted the exploration. Pause before creating the tracker until the user approves it.
+  prompted the exploration. Wait for approval before creating the tracker.
   If approved, use
   [`create-issue`](../create-issue/SKILL.md), link related RFCs or issues, and make it a
   child only when the investigation is an authorized step under an active accepted RFC.
@@ -61,12 +61,22 @@ and ask which artifacts to create before making them.
   worktree, isolated copy, or other disposable location that cannot overwrite another
   agent's work. Before running a probe, preregister its prediction, primary metric and
   expected direction and rough size, controls, decision threshold and seed(s) in the
-  relevant issue, preferably the approved exploration tracker. If no issue exists, use
-  `analysis/exploration-<slug>/README.md`. Keep the preregistration
-  and every probe outcome, including null results, together in that record. Follow steps
-  4–6 of [`replay-ab`](../replay-ab/SKILL.md) for run ordering and interpretation, and the
-  one-at-a-time limit in `AGENTS.md`. Probes must not tune a candidate fix, become a PR, or
-  count as acceptance evidence. For
+  relevant issue, preferably the approved exploration tracker. Put this record in a
+  durable location and publish it before the run: post it as an issue comment first, or,
+  if there is no issue, commit and push `analysis/exploration-<slug>/README.md` before
+  running. Keep the
+  preregistration and every probe outcome, including null results, together in that
+  record. Name relevant conservation, accounting or other model invariants as validity
+  checks; a probe that breaks one is invalid for evaluating its hypothesis. Follow
+  [Pre-register the comparison](../replay-ab/SKILL.md#4-pre-register-the-comparison),
+  [Run the replay](../replay-ab/SKILL.md#5-run-the-replay), and
+  [Interpret the comparison](../replay-ab/SKILL.md#6-interpret-the-comparison) in
+  `replay-ab` for run ordering and interpretation, and the
+  one-at-a-time limit in `AGENTS.md`. A causal probe asks whether a proposed mechanism
+  explains an observation and is judged against its preregistered prediction. A candidate
+  fix asks whether a particular implementation meets acceptance criteria; that belongs in
+  an RFC investigation with diagnosis gates. Exploration probes must not tune a candidate
+  fix, become a PR, or count as acceptance evidence. For
   each promising hypothesis, state its proposed
   mechanism, which observations it explains, a discriminating prediction, and important
   uncertainties or alternative explanations. Do not prototype or test a candidate model

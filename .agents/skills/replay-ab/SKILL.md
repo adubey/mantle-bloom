@@ -27,7 +27,8 @@ description: Measure a Mantle Bloom change by replaying a saved world (.mbworld)
 
 4. **Pre-register the comparison.** Before running any replay, record the expected direction
    and rough size, primary metric, decision threshold, controls, and seed(s) in the analysis
-   README. Estimate variability for each primary metric; the approximately ±2% variation in
+   README, and commit the preregistration before the run. Estimate variability for each
+   primary metric; the approximately ±2% variation in
    continental area at 43 Myr in #315 applies only to a comparable measurement. If the result
    is near measured variability, plan to replicate both baseline and branch runs and report
    each arm's spread.
@@ -37,10 +38,18 @@ description: Measure a Mantle Bloom change by replaying a saved world (.mbworld)
    in the background, and write outputs to a scratch directory, not the repo:
 
    ```bash
-   source backend/.venv/mantle-bloom-env.sh
-   PYTHONPATH=backend backend/.venv/bin/python bin/debug/attribute_hm_ratchet.py \
-     <local-save> --myr 43.1 --checkpoint-myr 2.5 --out <scratch-output>
+   (
+     source backend/.venv/mantle-bloom-env.sh
+     PYTHONPATH=backend backend/.venv/bin/python bin/debug/attribute_hm_ratchet.py \
+       "$MANTLE_BLOOM_SAVES_DIR/<save-name>" --myr 43.1 --checkpoint-myr 2.5 \
+       --out "<scratch-output>"
+   ) > "<scratch-output>.log" 2>&1 &
    ```
+
+   If the issue or user supplied a specific save path, substitute it for the
+   `$MANTLE_BLOOM_SAVES_DIR/<save-name>` argument. Keep environment setup and replay in
+   the same shell invocation; shell variables do not carry between separate agent tool
+   calls.
 
 6. **Interpret the comparison.** If the gap is near measured variability, run the planned
    replicates on both arms and report the spread of each. A gap within measured variability

@@ -85,25 +85,23 @@ For each merged implementation PR, decide whether its change stays.
 - **Implemented:** verify each child issue's work is merged or otherwise confirmed complete.
   If a child remains open because its work is still needed, the RFC is not complete. Close
   landed children through [Completing an issue](../project-management/SKILL.md#completing-an-issue).
-- **Withdrawn:** close the tracking issue through
-  [Choosing not to pursue an issue](../project-management/SKILL.md#choosing-not-to-pursue-an-issue)
-  with a comment linking the RFC's Outcome. Move relevant children to the superseding RFC's
-  tracking issue and plan. If still relevant but no RFC covers them, remove them as
+- **Withdrawn:** move relevant children to the superseding RFC's tracking issue and plan.
+  If still relevant but no RFC covers them, remove them as
   sub-issues of the withdrawn
   tracking issue and keep them as standalone issues. For an
   existing issue, use `gh issue edit <N> --parent <new-tracking-issue>` to move it or
   `gh issue edit <N> --remove-parent` to make it standalone, then verify with
   `gh issue view <N> --json parent`. Do not close work that remains needed.
-- For either outcome, settle the child issues when the completion PR merges, or earlier if
-  the project owner has already confirmed the outcome. Do not close or push to another
-  agent's or the owner's PR without the owner's go-ahead.
+- Settle child issues when the completion PR merges, or earlier if the project owner has
+  already confirmed the outcome. Do not close or push to another agent's or the owner's PR
+  without the owner's go-ahead.
 - **Open PRs:** comment with the outcome and what you recommend (close, or salvage its
   analysis).
 - **Tracking issue:** for an implemented RFC, the completion PR closes it (`Closes #N`).
-  For a withdrawn RFC, link the tracking issue without an auto-close directive so it can
-  be closed through the project-management procedure after the completion PR merges; don't
-  use `Closes #N`, which would mark it completed. Tick or strike checklist items first,
-  with the reason for each strike.
+  For a withdrawn RFC, link it without an auto-close directive. After the completion PR
+  merges, close it through [Choosing not to pursue an issue](../project-management/SKILL.md#choosing-not-to-pursue-an-issue)
+  with a comment linking the RFC's Outcome; don't use `Closes #N`, which would mark it
+  completed. Tick or strike checklist items first, with the reason for each strike.
 - After the completion PR merges or the owner confirms the outcome, follow
   [Completing an RFC](../project-management/SKILL.md#completing-an-rfc) to set both the RFC
   PR and tracking issue's project status, and reconcile child issue statuses.

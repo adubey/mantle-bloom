@@ -1,14 +1,15 @@
 ---
 name: project-management
-description: Update or inspect RFC and issue statuses in Mantle Bloom GitHub Projects project 2. Workflow skills link here for status how-tos instead of duplicating board procedures.
+description: Update or inspect issue open/closed state and RFC or issue statuses in Mantle Bloom GitHub Projects project 2. Workflow skills link here for project-status how-tos instead of duplicating board procedures.
 ---
 
 # Manage the Mantle Bloom project board
 
 The board is the user's GitHub Projects project 2. This skill is the canonical guide for
-issue and RFC lifecycle actions, including issue open/closed state and the board's existing
-single-select status field. Status guidance covers both issue state and board status. It does
-not merge PRs or alter the project schema or options.
+issue open/closed state and the board's existing single-select status field for issues and
+RFCs. RFC design, acceptance, diagnosis gates and implementation timing follow the canonical
+RFC lifecycle in [`rfc/README.md`](../../../rfc/README.md#lifecycle). This skill does not
+merge PRs or alter the project schema or options.
 
 ## 1. Verify access and the board schema
 
