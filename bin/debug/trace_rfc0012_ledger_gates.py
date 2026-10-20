@@ -10,7 +10,9 @@ save files. Run in series for the four RFC seeds, once against each worktree:
 
 Each JSONL row is one completed step. It includes ledger deltas and closure residuals,
 per-front subduction candidates/fates, merge inventories/capacity, per-plate quiet-clock
-eligibility/reset reasons, local boundary-rate/strain proxies, and erosion/unloading totals.
+eligibility/reset reasons, local boundary-rate/strain proxies, erosion/unloading totals, and
+per-cell donors for divergent, stretch-donation and failed-rift craton losses. Failed cuts also
+record their cut-band inventory, source-plate topology/motion state, and split-gate metrics.
 """
 
 from __future__ import annotations
@@ -23,7 +25,7 @@ import time
 
 import numpy as np
 
-from app import cratons, crust_transfer, lithosphere, merge_split, quad_tectonics
+from app import cratons, crust_transfer, geometry, lithosphere, merge_split, quad_tectonics
 from app.elevation_lines import effective_is_continental_from_codes, line_spacing_rad
 from app import world as world_module
 from rfc0012_trace_common import run_trace_cli, write_trace_summary
@@ -171,13 +173,120 @@ def _emit_divergent_rift_craton_event(
     })
 
 
+def _rift_cell_rows(surface, craton_before, area, mask, craton_after=None) -> list[dict]:
+    indices = np.flatnonzero(mask)
+    ids = surface.node_ids[indices]
+    after = craton_before if craton_after is None else craton_after
+    return [
+        {
+            "node_id": [int(ids[pos, 0]), int(ids[pos, 1])],
+            "local_xyz": np.round(surface.local_xyz[index], 9).tolist(),
+            "craton_before_m": float(craton_before[index]),
+            "craton_after_m": float(after[index]),
+            "area_m2": float(area[index]),
+            "loss_m3": float(max(craton_before[index] - after[index], 0.0) * area[index]),
+        }
+        for pos, index in enumerate(indices)
+    ]
+
+
+def _rifted_new_cell_rows(surface, indices, stretch_share) -> list[dict]:
+    return [
+        {
+            "node_id": [int(surface.node_ids[index, 0]), int(surface.node_ids[index, 1])],
+            "local_xyz": np.round(surface.local_xyz[index], 9).tolist(),
+            "stretch_share": float(share),
+        }
+        for index, share in zip(np.asarray(indices, dtype=int), np.asarray(stretch_share, dtype=float))
+    ]
+
+
+def _rift_plate_state(world, plate, surface, craton, include_neighbours: bool = False) -> dict:
+    _, radius_rad = geometry.bounding_sphere(surface.world_xyz)
+    size_relaxation = min(1.0, radius_rad / merge_split.SPLIT_SIZE_CERTAIN_RIFT_RAD)
+    stress_relaxation = min(1.0, plate.internal_stress / merge_split.STRESS_CERTAIN_RIFT)
+    relaxation = max(size_relaxation, stress_relaxation)
+    state = {
+        "plate_id": int(plate.plate_id),
+        "node_count": int(plate.node_count()),
+        "age_myr": float(plate.age_years / 1e6),
+        "internal_stress": float(plate.internal_stress),
+        "craton_inventory_m3": float(craton @ surface.area_m2),
+        "omega_rad_per_year": np.asarray(plate.omega, dtype=float).tolist(),
+        "frame": np.asarray(plate.frame, dtype=float).tolist(),
+        "topology_revision": int(plate.topology_revision),
+        "geometry_revision": int(plate.geometry_revision),
+        "split_gates": {
+            "minimum_nodes": int(max(1, round(merge_split.SPLIT_MIN_NODES * world.node_density))),
+            "radius_rad": float(radius_rad),
+            "size_relaxation": float(size_relaxation),
+            "stress_relaxation": float(stress_relaxation),
+            "combined_relaxation": float(relaxation),
+            "flow_residual_threshold_rad_per_year": float(
+                merge_split.SPLIT_RMS_RESIDUAL_THRESHOLD * (1.0 - relaxation)
+            ),
+            "pole_separation_threshold_rad_per_year": float(
+                merge_split.SPLIT_MIN_POLE_SEPARATION * (1.0 - relaxation)
+            ),
+        },
+    }
+    if include_neighbours:
+        state["neighbour_plates"] = [
+            {
+                "plate_id": int(other.plate_id),
+                "node_count": int(other.node_count()),
+                "age_myr": float(other.age_years / 1e6),
+                "omega_rad_per_year": np.asarray(other.omega, dtype=float).tolist(),
+            }
+            for other in plate.get_neighbours(world.plates)
+        ]
+    return state
+
+
 def _install_rift_event_traces(emit, runtime: dict):
     original_open_rift = quad_tectonics._open_rift
     original_maybe_split = merge_split.maybe_split_plate
+    original_record_cut = cratons.record_rift_cut
+    original_fit_residual = merge_split._fit_residual_rms
+    original_fit_pole = merge_split.mantle.fit_euler_pole
+
+    def traced_record_cut(current_world, plate, points, cut_normal, band_sin, kind):
+        active = runtime.get("active_split")
+        if active is not None and active["plate_id"] == plate.plate_id and kind == "failed_rift":
+            surface = plate.surface_nodes("craton_crust_m")
+            craton = np.asarray(surface.fields["craton_crust_m"], dtype=float)
+            mask = np.abs(np.asarray(points) @ np.asarray(cut_normal, dtype=float)) < band_sin
+            active["pre_operation"] = _rift_plate_state(
+                current_world, plate, surface, craton, include_neighbours=True
+            )
+            active["cut"] = {
+                "cut_normal_world": np.asarray(cut_normal, dtype=float).tolist(),
+                "band_sin": float(band_sin),
+                "band_cell_count": int(mask.sum()),
+                "band_craton_inventory_m3": float(craton[mask] @ surface.area_m2[mask]),
+                "band_cells": _rift_cell_rows(surface, craton, surface.area_m2, mask),
+            }
+        return original_record_cut(current_world, plate, points, cut_normal, band_sin, kind)
+
+    def traced_fit_residual(points, velocities, omega):
+        value = original_fit_residual(points, velocities, omega)
+        active = runtime.get("active_split")
+        if active is not None:
+            active["flow_fit_rms_rad_per_year"] = float(value)
+        return value
+
+    def traced_fit_pole(points, velocities):
+        pole = original_fit_pole(points, velocities)
+        active = runtime.get("active_split")
+        if active is not None:
+            active.setdefault("fitted_poles_rad_per_year", []).append(np.asarray(pole, dtype=float).tolist())
+        return pole
 
     def traced_open_rift(plate, current_world, rng_index, inserted_indices, rifted, stretch_share):
         craton_before = plate.collect("craton_crust_m")
         area = plate.accounting_areas_m2(line_spacing_rad(current_world.node_density))
+        surface = plate.surface_nodes()
+        pre_state = _rift_plate_state(current_world, plate, surface, craton_before)
         before_ledger = _ledgers(current_world)
         original_open_rift(plate, current_world, rng_index, inserted_indices, rifted, stretch_share)
         craton_after = plate.collect("craton_crust_m")
@@ -201,13 +310,24 @@ def _install_rift_event_traces(emit, runtime: dict):
                     np.asarray(stretch_share, dtype=float),
                     weights=area[np.asarray(rifted, dtype=int)],
                 )) if len(rifted) else 0.0,
+                "rift_context": {
+                    "plate_state_before": pre_state,
+                    "rifted_new_cells": _rifted_new_cell_rows(surface, rifted, stretch_share),
+                    "donor_cells": _rift_cell_rows(
+                        surface, craton_before, area, loss_by_cell > 0.0, craton_after
+                    ),
+                },
             })
 
     def traced_maybe_split(current_world, plate):
         before_ledger = _ledgers(current_world)
         craton_before = plate.collect("craton_crust_m")
         area = plate.accounting_areas_m2(line_spacing_rad(current_world.node_density))
-        result = original_maybe_split(current_world, plate)
+        runtime["active_split"] = {"plate_id": plate.plate_id}
+        try:
+            result = original_maybe_split(current_world, plate)
+        finally:
+            active = runtime.pop("active_split")
         ledger_delta = _delta(_ledgers(current_world), before_ledger).get("craton_ledger", {})
         failed_loss = float(ledger_delta.get("rifted_failed_m3", 0.0))
         if failed_loss > 0.0:
@@ -225,12 +345,32 @@ def _install_rift_event_traces(emit, runtime: dict):
                 "craton_loss_m3": failed_loss,
                 "cellwise_loss_m3": cellwise,
                 "ledger_vs_cellwise_residual_m3": failed_loss - cellwise,
+                "rift_context": {
+                    "plate_state_before": active.get("pre_operation"),
+                    "cut": active.get("cut"),
+                    "flow_fit_rms_rad_per_year": active.get("flow_fit_rms_rad_per_year"),
+                    "fitted_poles_rad_per_year": active.get("fitted_poles_rad_per_year", []),
+                    "fitted_pole_separation_rad_per_year": (
+                        float(np.linalg.norm(
+                            np.asarray(active["fitted_poles_rad_per_year"][0])
+                            - np.asarray(active["fitted_poles_rad_per_year"][1])
+                        )) if len(active.get("fitted_poles_rad_per_year", [])) == 2 else None
+                    ),
+                    "split_success_probability": float(merge_split.RIFT_SUCCESS_PROBABILITY),
+                    "split_outcome": "failed_rift",
+                    "donor_cells": _rift_cell_rows(
+                        plate.surface_nodes(), craton_before, area, loss_by_cell > 0.0, craton_after
+                    ),
+                },
             })
         return result
 
     quad_tectonics._open_rift = traced_open_rift
     merge_split.maybe_split_plate = traced_maybe_split
-    return original_open_rift, original_maybe_split
+    cratons.record_rift_cut = traced_record_cut
+    merge_split._fit_residual_rms = traced_fit_residual
+    merge_split.mantle.fit_euler_pole = traced_fit_pole
+    return original_open_rift, original_maybe_split, original_record_cut, original_fit_residual, original_fit_pole
 
 
 def _erosion_plate_trace(world, plate, area) -> dict | None:
@@ -275,7 +415,13 @@ def _install_traces(world, output: Path, model_root: Path, seed: int, step_myr: 
     original_retreat = quad_tectonics._retreat
     original_context = quad_tectonics.boundary_context
     original_deform_columns = quad_tectonics.deform_columns
-    original_open_rift, original_maybe_split = _install_rift_event_traces(emit, runtime)
+    (
+        original_open_rift,
+        original_maybe_split,
+        original_record_cut,
+        original_fit_residual,
+        original_fit_pole,
+    ) = _install_rift_event_traces(emit, runtime)
 
     def traced_deform_columns(
         current_world, plate, ctx, fields, local_xyz, node_area_m2, rng_index, years,
@@ -549,11 +695,15 @@ def _install_traces(world, output: Path, model_root: Path, seed: int, step_myr: 
         "restore": lambda: _restore(
             original_step, original_update, original_merge, original_book, original_retreat,
             original_context, original_deform_columns, original_open_rift, original_maybe_split,
+            original_record_cut, original_fit_residual, original_fit_pole,
         ),
     }
 
 
-def _restore(step, update, merge, book, retreat, context, deform_columns, open_rift, maybe_split):
+def _restore(
+    step, update, merge, book, retreat, context, deform_columns, open_rift, maybe_split,
+    record_cut, fit_residual, fit_pole,
+):
     world_module.step_world = step
     cratons.update = update
     merge_split._merge_plates_with_craton_audit = merge
@@ -563,6 +713,9 @@ def _restore(step, update, merge, book, retreat, context, deform_columns, open_r
     quad_tectonics.deform_columns = deform_columns
     quad_tectonics._open_rift = open_rift
     merge_split.maybe_split_plate = maybe_split
+    cratons.record_rift_cut = record_cut
+    merge_split._fit_residual_rms = fit_residual
+    merge_split.mantle.fit_euler_pole = fit_pole
 
 
 def _world_snapshot(world) -> dict:

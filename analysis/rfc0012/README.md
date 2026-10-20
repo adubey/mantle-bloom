@@ -631,9 +631,69 @@ plate IDs cannot be compared between independently evolved topologies or treated
 identities.
 
 This trace establishes where ledgered loss was applied and validates the amount, but not the
-causal chain from G2's force law to changed rift geometry or donor inventory. A further targeted
-diagnosis would need the pre-operation donor craton inventory and cell identities, plus the
-topology and motion state that selected the rift operation. The result does not indicate a
-ledger anomaly. The compact event audit is part of
+causal chain from G2's force law to changed rift geometry or donor inventory. The targeted
+seed-580 donor-cell trace below records that pre-operation inventory and the plate/cut state.
+The result does not indicate a ledger anomaly. The compact event audit is part of
 [`g2_craton_ledger_divergence.json`](g2_craton_ledger_divergence.json); full JSONL traces remain
-outside the repository under `/private/tmp/rfc0012-rift-attribution/`.
+outside the repository under `/private/tmp/rfc0012-rift-attribution/` and
+`/private/tmp/rfc0012-rift-donor-detail/`.
+
+## Seed 580014012 rift donor-cell and cut-state diagnostic
+
+To explain why failed-rift craton loss increased in this seed even though the number of failed
+cuts did not, the seed was replayed to 500 Myr at 1 Myr steps on baseline `2279d7e16c7d` and
+G2 pilot `d2d7d79c1f4a`. The pilot's simulation code is unchanged from the previously traced
+candidate; this revision adds instrumentation only. The trace records donor-cell identities,
+local coordinates, pre/post craton thickness and area for stretch donation and failed-rift
+thinning. Failed cuts also record the cut band inventory, cut normal, plate topology revision,
+plate size/age/stress/frame/rotation, neighboring plates, and observed split-flow residual and
+fitted-pole separation against their gate thresholds. The runtime tracer is
+[`trace_rfc0012_ledger_gates.py`](../../bin/debug/trace_rfc0012_ledger_gates.py); the summary
+tool is [`analyze_rfc0012_rift_donor_detail.py`](../../bin/debug/analyze_rfc0012_rift_donor_detail.py).
+The compact summary is [`g2_rift_donor_detail.json`](g2_rift_donor_detail.json), while full
+traces remain in `/private/tmp/rfc0012-rift-donor-detail/`.
+
+| Seed 580014012 measure | Baseline | G2 pilot |
+|---|---:|---:|
+| Failed-rift cuts | 16 | 16 |
+| Cuts entering a craton-bearing band | 4 (25%) | 12 (75%) |
+| Craton area fraction across failed-rift bands | 5.85% | 21.65% |
+| Craton volume in the craton-bearing cut bands | 114.61 million km³ | 446.37 million km³ |
+| Failed-rift craton loss | 1.421 million km³ | 5.562 million km³ |
+| Loss / craton volume in those cut bands | 1.240% | 1.246% |
+| Stretch-donation operations / donor-cell visits | 462 / 2,060 | 113 / 358 |
+| Stretch-donation craton loss | 32.887 million km³ | 5.263 million km³ |
+
+The failed-rift loss increase is explained by **greater craton exposure to the cut bands**, not
+by stronger thinning per unit of exposed craton. Across the four craton-bearing baseline cuts,
+the cut bands held 114.61 million km³ of craton; the twelve pilot cuts held 446.37 million km³
+(3.9× as much). Yet both runs removed about 1.24% of that band inventory. The area ledger tells
+the same story: the aggregate cut-band area is only 12% larger in the pilot, while its
+craton-bearing area is 4.1× larger. The total cut count is identical. G2's trajectory therefore
+placed a larger share of failed-rift cuts through craton-bearing plate geometry; the per-cut
+thinning response is nearly unchanged.
+
+The step-6 cuts are a useful matched point: both runs fail a cut on plate 10 at similar plate
+sizes (4,279 baseline and 4,266 pilot nodes) and lose similar craton volumes (0.575 and 0.562
+million km³). Later, the two top pilot losses occur at 43 Myr on plate 3 (2.053 million km³)
+and 60 Myr on plate 8 (1.353 million km³), where the cut bands contain 161.7 and 107.1 million
+km³ of craton. The pilot's twelve recorded cuts all passed the same split criteria; their
+flow-residual ratios range from 1.00 to 2.33 times threshold, and the fitted-pole separation
+ratios from 1.09 to 3.17 times threshold. These observations locate the difference in the
+selected cut exposure under diverged plate geometry and flow, but do not isolate whether it
+comes from the force law changing plate geometry, the split gate, or their interaction.
+
+Stretch donation moved in the opposite direction: the pilot had 75.5% fewer traced stretch
+operations and 82.6% fewer donor-cell visits, with an 84.0% lower craton loss. Mean loss per
+donor-cell visit is similar (about 0.0160 versus 0.0147 million km³), again pointing to how many
+donor cells participate rather than a changed per-cell loss rule. Event losses reconcile to
+the rift ledgers; the largest cellwise residual was 2 m³ in baseline and 0.5 m³ in pilot, and
+the endpoint craton balance error was −512 m³ in both.
+
+**Interpretation:** the extra failed-rift loss is not a ledger anomaly or a stronger local
+thinning response. It is associated with more of the failed cut band's area and craton
+inventory overlapping cratonic lithosphere in the G2 trajectory. A follow-up that separates
+the force-law effect from the split selector would trace all split cuts (including successful
+splits) and compare their cut-band craton exposure and gate metrics on each model trajectory.
+Seed 580014012 retains the known glacier-depth-cap warnings, which affect geological
+interpretation but not this closed rift ledger.
