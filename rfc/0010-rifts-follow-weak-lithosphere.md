@@ -149,9 +149,9 @@ An independent curved-sphere manufactured solution now validates that stress inv
 decreasing error through 17 × 33 nodes. Free in-plane displacement is selected as the boundary
 condition for the isolated single-plate diagnostic because its inputs provide no displacement
 anchor; clamps are sensitivity probes and real interplate continuity would require a coupled shell
-solve. Diagnosis gate 2 remains open until the physical and explicitly phenomenological alternatives
-are compared on matched replays. The
-existing flow fit and plate-level
+solve. Gate 2 remains open after the matched diagnostic replay: it compared physical and explicitly
+phenomenological capacities on the same Gate 1 loads, but did not validate the shell equilibrium or
+calibrate either capacity model. The existing flow fit and plate-level
 `internal_stress` may remain candidate-event or background-eligibility signals, but they do not
 choose a complete cut or stand in for local loading. Keep solution 4 separately sized against the
 craton-loss gate, and take plume weakening through RFC 0007. The connected-boundary rule and
@@ -171,9 +171,10 @@ should start until those gates are resolved and the revised design is accepted.
    them from calibration and keep their denominators separate. The archived discrepancy is not
    explained or erased, but it no longer blocks use of the documented baseline. See
    [`analysis/issue487/README.md`](../analysis/issue487/README.md).
-2. **Establish local loading and strength — incremental extensional measure, column scenario
-   diagnostic, curved-shell benchmark and isolated-plate edge policy added 2026-10-19; matched
-   physical-versus-phenomenological replay pending.**
+2. **Gate 2 — establish local loading and strength — incremental extensional measure, column
+   scenario diagnostic, curved-shell benchmark, curved-mesh checks and isolated-plate edge policy
+   added; matched physical-versus-phenomenological diagnostic replay completed 2026-10-19. Gate 2
+   remains open because this replay is not yet physically validated or calibrated.**
    `torque.gather_per_node_force_field` preserves each force
    source as a per-node vector in N. `thin_shell.solve_force_field` projects the combined loads
    onto the shell tangent plane, removes the area-weighted rigid-rotation component handled by
@@ -225,14 +226,18 @@ should start until those gates are resolved and the revised design is accepted.
    envelope or integrated extensional differential capacity. The current maximum-positive-tension
    shell comparison uses a positive principal stress increment paired with additional normal-fault
    capacity only under the stated `K0` and normal-faulting assumptions.
-   The phenomenological alternative has only a synthetic
-   response check. The integrated envelope, matching shell invariant, analytic curved-shell
-   benchmark and isolated-plate free-edge policy are now documented and reproducible. Natural
-   interplate continuity and production load distributions remain outside this single-plate solve.
-   Do not start constitutive calibration or infer local stress from applied traction, rigid rotation,
-   flow clusters or `Plate.internal_stress`. Next compare the physical envelope with the labeled
-   phenomenological capacity rule on matched replays, or revise the RFC if the physical scenario
-   spread cannot support that choice. `Plate.internal_stress`
+   The matched replay scored the physical envelope and the labeled phenomenological capacity rule
+   on 130 identical Gate 1 craton-crossing candidates (39,467 cut-band node samples); production
+   cut counts and ordered candidate signatures matched for all three seeds. The comparison showed
+   different spatial failure patterns, but 29/130 shell solves exceed a 1% equilibrium residual,
+   capacities remain uncalibrated, and the young-oceanic class is only an active-divergence proxy.
+   This is screening evidence, not a model selection. The integrated envelope, shell invariant,
+   analytic curved-shell benchmark, curved-mesh checks and isolated-plate free-edge policy are
+   documented and reproducible. Natural interplate continuity and production load distributions
+   remain outside this single-plate solve. Do not start constitutive calibration or infer local
+   stress from applied traction, rigid rotation, flow clusters or `Plate.internal_stress`. Next
+   improve equilibrium quality, settle edge sensitivity, and ground or explicitly label the model
+   assumptions before selecting and tuning a capacity law. `Plate.internal_stress`
    remains a dimensionless plate-level eligibility signal and
    is not a local damage trigger. See
    [`analysis/issue487/gate2-load-diagnosis.md`](../analysis/issue487/gate2-load-diagnosis.md).
@@ -250,7 +255,8 @@ should start until those gates are resolved and the revised design is accepted.
   becomes a short rift segment, not a plate partition. The thin-shell diagnostic returns tensile
   membrane stress increment `N_ext = max(0, lambda_max(Delta_N))` and compares it with the column's
   additional normal-fault strength resultant `N_cap`, both in N/m. The diagnostic pairing is
-  defined, but production use waits for Gate 2's matched replay choice. If the damage law remains
+  defined, but production use waits for Gate 2 validation and a justified capacity selection. If the
+  damage law remains
   in Pa, convert both through the same effective thickness, `sigma_ext = N_ext / H_eff` and
   `Y_t = N_cap / H_eff`; otherwise formulate an integrated-viscosity law with units. The current
   torque balance drives whole-plate motion; its loads do not by themselves define intraplate stress.
@@ -312,12 +318,12 @@ not extrapolate from min-cut's per-attempt runtime. Old saves load with zero dam
 saves retain all state needed to continue the same rift history deterministically.
 
 **Knobs.** No numeric starting values are approved for the new constitutive parameters; selecting them
-before the load diagnosis would be false precision. The diagnosis-gate revision must set each value,
-its physical source or explicit design-choice status, and the sensitivity plan before implementation.
+before validation would be false precision. The design revision must set each value, its physical
+source or explicit design-choice status, and the sensitivity plan before implementation.
 
 | Knob | Start | Source | Tuning plan |
 |---|---|---|---|
-| Extensional load and yield strength | Incremental largest positive principal membrane resultant paired with additional normal-fault capacity from explicit `K0` (gate 2 diagnostic, 2026-10-19) | Candidate integrated brittle–ductile differential-strength envelope; material and background state remain scenario assumptions | Compare the physical envelope and phenomenological threshold on matched candidate replays; retain scenario brackets |
+| Extensional load and yield strength | Incremental largest positive principal membrane resultant paired with additional normal-fault capacity from explicit `K0` (gate 2 diagnostic, 2026-10-19) | Candidate integrated brittle–ductile differential-strength envelope; material and background state remain scenario assumptions | Use the matched replay as screening evidence; improve equilibrium and edge validation, then retain scenario brackets and justify any selected threshold |
 | Failure strain (`epsilon_fail`) | Pending gate 3 | Calibration assumption | Sensitivity on controlled loads and candidate events |
 | Damage viscosity (`eta_rift`, Pa·s) | Pending gate 3 | Calibration assumption | Sweep strain rates and timestep partitions |
 | Residual strength (`q_res`, [0, 1]) | Pending gate 3 | Design choice | Sweep weak-belt/craton cases; check localization and runaway |
