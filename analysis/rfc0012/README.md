@@ -506,3 +506,48 @@ For all eight runs, deep-subduction events, merge-cap events, and formation even
 The quiet-gate trace records gate eligibility and reset categories at every plate step, plus aggregate absolute Hc/Hm changes in hosts that qualified as quiet. Across the four pilot runs, 425–1,499 of 12,944–17,158 plate-step samples had a local Hc or Hm change while the quiet-host mask applied. This indicates the current geometric/clock gate does not guarantee lithosphere stability. These are aggregate masked changes, not persistent cell identities through topology remaps; a future test of an endogenous strain-based quiet gate needs lineage-aware host histories. The trace also records glacier unloading area and maximum ice-deflection change. Seed 580014012 repeatedly hit the 5 km ice cap in both baseline and pilot, so its erosion/unloading diagnostics remain affected by the known glacier clipping limitation.
 
 Reproduce the runs with the manifest's recorded commands and commit roots. Keep the eight runs serial to limit memory use; use `/private/tmp/rfc0012-ledger-gates/` as the output directory. This trace pass supplies the recorded evidence for follow-up issues #493 (early craton/quiet-gate diagnosis) and #494 (high-rate stress, heating, and melt response); it does not implement either physical model change.
+
+## Four-seed G2 merge-opportunity diagnostic (1 Myr, 500 Myr)
+
+To explain the lower merge count in the ledger comparison, the same four seeds were traced
+serially on baseline `2279d7e16c7d` and the G2 pilot (`329fd2a5f03b`, containing model change
+`9e7f9e1`). The detector records each continental pair's filter stage, close-contact count,
+contact closing rates, timer progress and probability result; forced-overlap progress and the
+selected merge path are also recorded. The instrumented candidate detector was checked against
+the production detector on generated worlds, and the timer replay matched the production ready
+list on all eight runs. Per-step traces are in `/private/tmp/rfc0012-merge-opportunities/`;
+compact results are in [`g2_merge_opportunity_diagnostic.json`](g2_merge_opportunity_diagnostic.json).
+Reproduce with [`trace_rfc0012_merge_opportunities.py`](../../bin/debug/trace_rfc0012_merge_opportunities.py)
+and [`summarize_rfc0012_merge_opportunities.py`](../../bin/debug/summarize_rfc0012_merge_opportunities.py).
+
+| Measure across four seeds | Baseline | G2 pilot |
+|---|---:|---:|
+| Continental pair checks | 196,272 | 238,071 |
+| Checks with at least 3 close contact nodes | 16,805 (8.6%) | 12,665 (5.3%) |
+| Convergent collision candidates | 1,001 (0.51% of checks) | 78 (0.033% of checks) |
+| Collision pair-steps tracked by the persistence timer | 3,835 | 161 |
+| Timer-ready pair-steps | 77 | 3 |
+| Sustained-collision merges | 48 | 1 |
+| Forced deep-overlap merges | 6 | 1 |
+| Total merges | 54 | 2 |
+
+The loss is not explained by the broad-phase search pruning away more pairs: the pilot checks
+21% more continental pairs, and its bounding-sphere survivor fraction is similar (29.8% versus
+28.4%). The decline appears at close-node qualification and especially convergence. Among
+close-contact pair-steps with at least three close nodes, the share with at least three nodes closing faster than
+the 1 cm/yr transform threshold falls from 6.0% to 0.6%. For rejected close pairs, median
+maximum local closing speed falls from 0.58 to 0.26 cm/yr, and median relative plate rotation
+falls from 1.20 to 0.43 cm/yr. The rare pilot candidate pair-steps have a similar median maximum
+contact closing speed to baseline candidates (1.66 versus 1.46 cm/yr). The persistence timer
+therefore sees far fewer pair-steps and rarely reaches its threshold; it is not dropping a
+large pool of already-qualified pairs. Timer probability is a downstream effect too: only one
+pilot pair-step passed the roll, compared with 48 baseline passes.
+
+This supports the hypothesis that G2 collision resistance reduces sustained merge exposure,
+which is consistent with fewer merges and less merge-capped craton. It does not isolate the
+force law as the sole cause: the pilot's evolving topology and contact geometry also differ.
+Candidate qualification requires enough spatially close nodes **and** at least three of those
+nodes converging faster than 1 cm/yr, so a global plate peak speed is not itself a merge
+opportunity. The diagnostic found no timer-ready decision mismatches in any run. Seed
+580014012 again emitted the known 5 km glacier-cap warnings; they are unrelated to the pair
+detector but remain a caveat for geological outcomes.
