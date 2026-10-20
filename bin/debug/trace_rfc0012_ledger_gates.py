@@ -244,6 +244,25 @@ def _rift_plate_state(world, plate, surface, craton, include_neighbours: bool = 
     return state
 
 
+def _split_event_context(active: dict, outcome: str, daughter_plates: list[dict] | None = None) -> dict:
+    poles = active.get("fitted_poles_rad_per_year", [])
+    context = {
+        "plate_state_before": active.get("pre_operation"),
+        "cut": active.get("cut"),
+        "flow_fit_rms_rad_per_year": active.get("flow_fit_rms_rad_per_year"),
+        "fitted_poles_rad_per_year": poles,
+        "fitted_pole_separation_rad_per_year": (
+            float(np.linalg.norm(np.asarray(poles[0]) - np.asarray(poles[1])))
+            if len(poles) == 2 else None
+        ),
+        "split_success_probability": float(merge_split.RIFT_SUCCESS_PROBABILITY),
+        "split_outcome": outcome,
+    }
+    if daughter_plates is not None:
+        context["daughter_plates"] = daughter_plates
+    return context
+
+
 def _install_rift_event_traces(emit, runtime: dict):
     original_open_rift = quad_tectonics._open_rift
     original_maybe_split = merge_split.maybe_split_plate
@@ -352,18 +371,7 @@ def _install_rift_event_traces(emit, runtime: dict):
                 "cellwise_loss_m3": cellwise,
                 "ledger_vs_cellwise_residual_m3": failed_loss - cellwise,
                 "rift_context": {
-                    "plate_state_before": active.get("pre_operation"),
-                    "cut": active.get("cut"),
-                    "flow_fit_rms_rad_per_year": active.get("flow_fit_rms_rad_per_year"),
-                    "fitted_poles_rad_per_year": active.get("fitted_poles_rad_per_year", []),
-                    "fitted_pole_separation_rad_per_year": (
-                        float(np.linalg.norm(
-                            np.asarray(active["fitted_poles_rad_per_year"][0])
-                            - np.asarray(active["fitted_poles_rad_per_year"][1])
-                        )) if len(active.get("fitted_poles_rad_per_year", [])) == 2 else None
-                    ),
-                    "split_success_probability": float(merge_split.RIFT_SUCCESS_PROBABILITY),
-                    "split_outcome": "failed_rift",
+                    **_split_event_context(active, "failed_rift"),
                     "donor_cells": _rift_cell_rows(
                         plate.surface_nodes(), craton_before, area, loss_by_cell > 0.0, craton_after
                     ),
@@ -371,26 +379,16 @@ def _install_rift_event_traces(emit, runtime: dict):
             })
         elif result is not None and active.get("cut") is not None:
             daughters = list(result)
-            cut = active["cut"]
             emit("rift_split_cut", {
                 "step": runtime["step"],
                 "elapsed_myr": current_world.elapsed_years / 1e6,
                 "path": "successful_split",
                 "plate_id": int(plate.plate_id),
                 "rift_context": {
-                    "plate_state_before": active.get("pre_operation"),
-                    "cut": cut,
-                    "flow_fit_rms_rad_per_year": active.get("flow_fit_rms_rad_per_year"),
-                    "fitted_poles_rad_per_year": active.get("fitted_poles_rad_per_year", []),
-                    "fitted_pole_separation_rad_per_year": (
-                        float(np.linalg.norm(
-                            np.asarray(active["fitted_poles_rad_per_year"][0])
-                            - np.asarray(active["fitted_poles_rad_per_year"][1])
-                        )) if len(active.get("fitted_poles_rad_per_year", [])) == 2 else None
+                    **_split_event_context(
+                        active, "successful_split",
+                        [_plate_inventory(current_world, p) for p in daughters],
                     ),
-                    "split_success_probability": float(merge_split.RIFT_SUCCESS_PROBABILITY),
-                    "split_outcome": "successful_split",
-                    "daughter_plates": [_plate_inventory(current_world, p) for p in daughters],
                 },
             })
         return result

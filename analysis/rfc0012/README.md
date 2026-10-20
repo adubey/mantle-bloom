@@ -723,3 +723,31 @@ initialization, baseline commit `2279d7e16c7debe839bd04ab18ce0a8f895f8654`, and 
 `8618185b59c5a8b08e3fe85f230373b2184b3552`. Runs will be serial. The prior matched traces
 provide the failed-rift comparison; both arms will be replayed with the expanded successful-cut
 trace so capture semantics are identical.
+
+**Result:** the 500 Myr serial traces completed in 23.9 minutes baseline and 25.9 minutes G2.
+The G2 trace commit is `31778b15bbf54da62b801a447396a205ad92c5fb`; it only adds diagnostics and
+analysis, with no backend model changes since G2 commit `8618185b59c5a8b08e3fe85f230373b2184b3552`.
+Both arms closed the craton ledger to −512 m³ and the continental-material ledger to 0 m³.
+The successful-cut measurements are:
+
+| Measure | Baseline | G2 | G2 / baseline |
+|---|---:|---:|---:|
+| Successful split cuts | 32 | 26 | — |
+| Cuts with craton-bearing area | 14 (43.8%) | 15 (57.7%) | — |
+| Craton-bearing area / total cut-band area | 14.21% | 20.02% | 1.41× |
+| Craton volume in successful cut bands | 661.77 million km³ | 692.77 million km³ | 1.05× total |
+| Craton volume per successful cut | 20.68 million km³ | 26.65 million km³ | 1.29× |
+
+G2 successful cuts show a moderate increase in exposure, but neither primary measure reaches
+the preregistered 1.5× materiality screen; both fall in its intermediate range. The shift is
+smaller than the failed-cut exposure difference (5.85% versus 21.65% craton-bearing area, or
+3.70×). Thus craton exposure is somewhat higher across successful cuts too, while the strong
+exposure gap is concentrated in failed cuts. This supports an outcome-conditioned cut-exposure
+effect, but it still cannot say whether G2's force law changed plate trajectories, the split
+selector chose different cuts, or both. Successful-cut gate margins are broadly similar (mean
+flow-fit / threshold 1.11× baseline versus 1.21× G2; mean pole-separation / threshold 1.95× versus
+1.92×), so these observed events do not point to a large gate-margin shift as the explanation.
+
+The split-cut trace ledger totals match the successful event count and band areas in both runs.
+The compact event data are in [`g2_successful_split_exposure.json`](g2_successful_split_exposure.json);
+the full JSONL replays remain outside the repo under `/private/tmp/rfc0012-successful-split/`.

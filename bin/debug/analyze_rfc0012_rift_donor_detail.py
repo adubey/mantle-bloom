@@ -20,7 +20,27 @@ MKM3 = 1.0e15
 RIFT_PATHS = {"stretch_donation", "failed_rift_thinning"}
 
 
-def _read_trace(path: Path) -> tuple[dict, list[dict], list[dict]]:
+def _gate_metrics(context: dict, pre_state: dict) -> dict:
+    gate = pre_state.get("split_gates", {})
+    residual = context.get("flow_fit_rms_rad_per_year")
+    pole_gap = context.get("fitted_pole_separation_rad_per_year")
+    residual_threshold = gate.get("flow_residual_threshold_rad_per_year")
+    pole_threshold = gate.get("pole_separation_threshold_rad_per_year")
+    return {
+        "flow_fit_rms_rad_per_year": residual,
+        "flow_residual_threshold_rad_per_year": residual_threshold,
+        "flow_residual_over_threshold": (
+            residual / residual_threshold if residual is not None and residual_threshold else None
+        ),
+        "pole_separation_rad_per_year": pole_gap,
+        "pole_separation_threshold_rad_per_year": pole_threshold,
+        "pole_separation_over_threshold": (
+            pole_gap / pole_threshold if pole_gap is not None and pole_threshold else None
+        ),
+    }
+
+
+def _read_trace(path: Path) -> tuple[dict, list[dict], list[dict], list[dict]]:
     summary = None
     events = []
     cut_steps = []
@@ -124,27 +144,13 @@ def _summarize_model(path: Path) -> dict:
             },
         }
         if rift_path == "failed_rift_thinning":
-            gate = pre_state.get("split_gates", {})
-            residual = context.get("flow_fit_rms_rad_per_year")
-            pole_gap = context.get("fitted_pole_separation_rad_per_year")
             band_inventory = float(cut.get("band_craton_inventory_m3", 0.0))
             row["failed_cut"] = {
                 "cut_normal_world": cut.get("cut_normal_world"),
                 "band_cell_count": cut.get("band_cell_count", 0),
                 "band_craton_inventory_mkm3": band_inventory / MKM3,
                 "loss_fraction_of_band_inventory": volume / band_inventory if band_inventory else 0.0,
-                "flow_fit_rms_rad_per_year": residual,
-                "flow_residual_threshold_rad_per_year": gate.get("flow_residual_threshold_rad_per_year"),
-                "flow_residual_over_threshold": (
-                    residual / gate["flow_residual_threshold_rad_per_year"]
-                    if residual is not None and gate.get("flow_residual_threshold_rad_per_year") else None
-                ),
-                "pole_separation_rad_per_year": pole_gap,
-                "pole_separation_threshold_rad_per_year": gate.get("pole_separation_threshold_rad_per_year"),
-                "pole_separation_over_threshold": (
-                    pole_gap / gate["pole_separation_threshold_rad_per_year"]
-                    if pole_gap is not None and gate.get("pole_separation_threshold_rad_per_year") else None
-                ),
+                **_gate_metrics(context, pre_state),
             }
         else:
             row["stretch"] = {
@@ -174,9 +180,6 @@ def _summarize_model(path: Path) -> dict:
         band_area = float(cut.get("band_area_m2", 0.0))
         craton_area = float(cut.get("band_craton_area_m2", 0.0))
         band_inventory = float(cut.get("band_craton_inventory_m3", 0.0))
-        gate = pre_state.get("split_gates", {})
-        residual = context.get("flow_fit_rms_rad_per_year")
-        pole_gap = context.get("fitted_pole_separation_rad_per_year")
         successful_split_rows.append({
             "step": int(event["step"]),
             "elapsed_myr": float(event["elapsed_myr"]),
@@ -189,18 +192,7 @@ def _summarize_model(path: Path) -> dict:
             "band_craton_cell_count": int(cut.get("band_craton_cell_count", 0)),
             "band_craton_area_fraction": craton_area / band_area if band_area else 0.0,
             "band_craton_inventory_mkm3": band_inventory / MKM3,
-            "flow_fit_rms_rad_per_year": residual,
-            "flow_residual_threshold_rad_per_year": gate.get("flow_residual_threshold_rad_per_year"),
-            "flow_residual_over_threshold": (
-                residual / gate["flow_residual_threshold_rad_per_year"]
-                if residual is not None and gate.get("flow_residual_threshold_rad_per_year") else None
-            ),
-            "pole_separation_rad_per_year": pole_gap,
-            "pole_separation_threshold_rad_per_year": gate.get("pole_separation_threshold_rad_per_year"),
-            "pole_separation_over_threshold": (
-                pole_gap / gate["pole_separation_threshold_rad_per_year"]
-                if pole_gap is not None and gate.get("pole_separation_threshold_rad_per_year") else None
-            ),
+            **_gate_metrics(context, pre_state),
             "daughter_plates": [
                 {key: daughter.get(key) for key in ("plate_id", "nodes", "craton_m3")}
                 for daughter in context.get("daughter_plates", [])
