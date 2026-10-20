@@ -119,12 +119,12 @@ category:
    RFC or issue was already abandoned, preserve its history; propose separate follow-up work
    if the investigation identifies a viable new scope.
 
-For each proposed next step, name the artifact, its purpose, dependencies and the status
-prescribed by `project-management`. Ask which outcome artifacts the user wants created or
-revised. Apply established status transitions from that skill; ask for input only when a
-status is not covered or the user's preference is unclear. Do not infer approval to create
-or revise outcome artifacts from approval to investigate. Do not close an issue or withdraw
-an RFC without the user's direction.
+For each proposed next step, name the artifact, its purpose and dependencies. Ask which
+outcome artifacts the user wants created or revised. Do not infer approval to create or
+revise downstream artifacts from approval to investigate. For selected work, follow
+[`project-management`](../project-management/SKILL.md) for status updates; ask only if its
+guidance does not cover the case or the user's preference is unclear. Close an issue or
+withdraw an RFC only at the user's direction.
 
 ## 4. Carry out the user's choices
 
@@ -143,6 +143,7 @@ After the user selects artifacts:
   [Completing an issue](../project-management/SKILL.md#completing-an-issue) for the
   exploration tracking issue. Its deliverable is the findings summary; implementation does
   not need to be merged for the user to confirm the investigation is complete.
+
 Do not start implementation merely because an issue or RFC was created. Use
 [`start-issue`](../start-issue/SKILL.md) only when the user also wants implementation to
 begin.

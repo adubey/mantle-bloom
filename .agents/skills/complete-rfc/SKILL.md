@@ -93,8 +93,7 @@ For each merged implementation PR, decide whether its change stays.
   tracking issue and keep them as standalone issues. For an
   existing issue, use `gh issue edit <N> --parent <new-tracking-issue>` to move it or
   `gh issue edit <N> --remove-parent` to make it standalone, then verify with
-  `gh issue view <N> --json parent`. Do not close work that remains needed; keep its
-  project status aligned with its disposition.
+  `gh issue view <N> --json parent`. Do not close work that remains needed.
 - For either outcome, settle the child issues when the completion PR merges, or earlier if
   the project owner has already confirmed the outcome. Do not close or push to another
   agent's or the owner's PR without the owner's go-ahead.
