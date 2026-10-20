@@ -147,6 +147,92 @@ def _gate_snapshot(world, plate, years_myr: float) -> dict:
     }
 
 
+def _emit_divergent_rift_craton_event(
+    world, plate, fields, node_area_m2, result, ledger_delta, emit, step_number: int,
+) -> None:
+    ledger = ledger_delta.get("craton_ledger", {})
+    volume = float(ledger.get("rifted_divergent_m3", 0.0))
+    if volume <= 0.0:
+        return
+    before = np.asarray(fields["craton_crust_m"], dtype=float)
+    after = np.asarray(result["craton_crust_m"], dtype=float)
+    loss_by_cell = np.maximum(before - after, 0.0)
+    area = np.broadcast_to(np.asarray(node_area_m2, dtype=float), loss_by_cell.shape)
+    cellwise = float(loss_by_cell @ area)
+    emit("rift_craton", {
+        "step": step_number,
+        "elapsed_myr": world.elapsed_years / 1e6,
+        "path": "divergent_thinning",
+        "plate_id": int(plate.plate_id),
+        "affected_cells": int(np.count_nonzero(loss_by_cell > 0.0)),
+        "craton_loss_m3": volume,
+        "cellwise_loss_m3": cellwise,
+        "ledger_vs_cellwise_residual_m3": volume - cellwise,
+    })
+
+
+def _install_rift_event_traces(emit, runtime: dict):
+    original_open_rift = quad_tectonics._open_rift
+    original_maybe_split = merge_split.maybe_split_plate
+
+    def traced_open_rift(plate, current_world, rng_index, inserted_indices, rifted, stretch_share):
+        craton_before = plate.collect("craton_crust_m")
+        area = plate.accounting_areas_m2(line_spacing_rad(current_world.node_density))
+        before_ledger = _ledgers(current_world)
+        original_open_rift(plate, current_world, rng_index, inserted_indices, rifted, stretch_share)
+        craton_after = plate.collect("craton_crust_m")
+        ledger_delta = _delta(_ledgers(current_world), before_ledger).get("craton_ledger", {})
+        stretch_loss = float(ledger_delta.get("rifted_stretch_m3", 0.0))
+        if stretch_loss > 0.0:
+            loss_by_cell = np.maximum(craton_before - craton_after, 0.0)
+            cellwise = float(loss_by_cell @ area)
+            emit("rift_craton", {
+                "step": runtime["step"],
+                "elapsed_myr": current_world.elapsed_years / 1e6,
+                "path": "stretch_donation",
+                "plate_id": int(plate.plate_id),
+                "inserted_cells": int(len(inserted_indices)),
+                "rifted_cells": int(len(rifted)),
+                "affected_cells": int(np.count_nonzero(loss_by_cell > 0.0)),
+                "craton_loss_m3": stretch_loss,
+                "cellwise_loss_m3": cellwise,
+                "ledger_vs_cellwise_residual_m3": stretch_loss - cellwise,
+                "stretch_share_area_weighted_mean": float(np.average(
+                    np.asarray(stretch_share, dtype=float),
+                    weights=area[np.asarray(rifted, dtype=int)],
+                )) if len(rifted) else 0.0,
+            })
+
+    def traced_maybe_split(current_world, plate):
+        before_ledger = _ledgers(current_world)
+        craton_before = plate.collect("craton_crust_m")
+        area = plate.accounting_areas_m2(line_spacing_rad(current_world.node_density))
+        result = original_maybe_split(current_world, plate)
+        ledger_delta = _delta(_ledgers(current_world), before_ledger).get("craton_ledger", {})
+        failed_loss = float(ledger_delta.get("rifted_failed_m3", 0.0))
+        if failed_loss > 0.0:
+            craton_after = plate.collect("craton_crust_m")
+            loss_by_cell = np.maximum(craton_before - craton_after, 0.0)
+            cellwise = float(loss_by_cell @ area)
+            emit("rift_craton", {
+                "step": runtime["step"],
+                "elapsed_myr": current_world.elapsed_years / 1e6,
+                "path": "failed_rift_thinning",
+                "plate_id": int(plate.plate_id),
+                "failed_rift_cuts": int(ledger_delta.get("failed_rift_cuts", 0.0)),
+                "cuts_through_craton": int(ledger_delta.get("failed_rift_cuts_through_craton", 0.0)),
+                "affected_cells": int(np.count_nonzero(loss_by_cell > 0.0)),
+                "craton_loss_m3": failed_loss,
+                "cellwise_loss_m3": cellwise,
+                "ledger_vs_cellwise_residual_m3": failed_loss - cellwise,
+            })
+        return result
+
+    quad_tectonics._open_rift = traced_open_rift
+    merge_split.maybe_split_plate = traced_maybe_split
+    return original_open_rift, original_maybe_split
+
+
 def _erosion_plate_trace(world, plate, area) -> dict | None:
     result = getattr(world, "erosion_cache", None)
     if result is None:
@@ -189,11 +275,13 @@ def _install_traces(world, output: Path, model_root: Path, seed: int, step_myr: 
     original_retreat = quad_tectonics._retreat
     original_context = quad_tectonics.boundary_context
     original_deform_columns = quad_tectonics.deform_columns
+    original_open_rift, original_maybe_split = _install_rift_event_traces(emit, runtime)
 
     def traced_deform_columns(
         current_world, plate, ctx, fields, local_xyz, node_area_m2, rng_index, years,
         ceiling_overflow=None, strained=None, accommodate=None,
     ):
+        before_ledger = _ledgers(current_world)
         result = original_deform_columns(
             current_world, plate, ctx, fields, local_xyz, node_area_m2, rng_index, years,
             ceiling_overflow=ceiling_overflow, strained=strained, accommodate=accommodate,
@@ -234,6 +322,16 @@ def _install_traces(world, output: Path, model_root: Path, seed: int, step_myr: 
                 "quiet_host_hm_change_m": _weighted_stats(hm1 - hm0, area, quiet_host),
                 "process_note": "strain-only Hc/Hm deltas before arc/rift magma and thermal evolution; captures the physical quiet-gate history directly",
             })
+        _emit_divergent_rift_craton_event(
+            current_world,
+            plate,
+            fields,
+            node_area_m2,
+            result,
+            _delta(_ledgers(current_world), before_ledger),
+            emit,
+            runtime["step"],
+        )
         return result
 
     quad_tectonics.deform_columns = traced_deform_columns
@@ -450,12 +548,12 @@ def _install_traces(world, output: Path, model_root: Path, seed: int, step_myr: 
     return {
         "restore": lambda: _restore(
             original_step, original_update, original_merge, original_book, original_retreat,
-            original_context, original_deform_columns,
+            original_context, original_deform_columns, original_open_rift, original_maybe_split,
         ),
     }
 
 
-def _restore(step, update, merge, book, retreat, context, deform_columns):
+def _restore(step, update, merge, book, retreat, context, deform_columns, open_rift, maybe_split):
     world_module.step_world = step
     cratons.update = update
     merge_split._merge_plates_with_craton_audit = merge
@@ -463,6 +561,8 @@ def _restore(step, update, merge, book, retreat, context, deform_columns):
     quad_tectonics._retreat = retreat
     quad_tectonics.boundary_context = context
     quad_tectonics.deform_columns = deform_columns
+    quad_tectonics._open_rift = open_rift
+    merge_split.maybe_split_plate = maybe_split
 
 
 def _world_snapshot(world) -> dict:

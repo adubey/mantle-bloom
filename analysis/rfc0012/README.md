@@ -551,3 +551,89 @@ nodes converging faster than 1 cm/yr, so a global plate peak speed is not itself
 opportunity. The diagnostic found no timer-ready decision mismatches in any run. Seed
 580014012 again emitted the known 5 km glacier-cap warnings; they are unrelated to the pair
 detector but remain a caveat for geological outcomes.
+
+## Four-seed craton-ledger divergence and attribution
+
+This analysis uses the existing eight 1 Myr / 500 Myr event traces; it does not rerun the
+simulations. [`analyze_rfc0012_craton_ledger_divergence.py`](../../bin/debug/analyze_rfc0012_craton_ledger_divergence.py)
+reconstructs live craton at each step as initial inventory + cumulative formation − all declared
+craton sinks + the recorded balance error. The compact output has 25 Myr checkpoints, exact
+1 Myr threshold-crossing times, and a final attribution for every ledger account:
+[`g2_craton_ledger_divergence.json`](g2_craton_ledger_divergence.json). All values below are
+million km³.
+
+Across the four seeds, reconstructed pilot live craton exceeds baseline by **1,536.0 million
+km³** at 500 Myr. The largest source of that difference is **1,221.4 million km³ of additional
+formation** (about 80% of the net gap). Reduced rifting accounts for another **259.6 million
+km³** of retained craton, and reduced merge-cap loss for **99.2 million km³**. Smaller terms
+include 10.4 million km³ less erosion and 1.7 million km³ less craton subduction. These gains
+are partly offset by 42.4 million km³ more craton reworked into ordinary crust at collision
+zones. The residual after accounting for all sources and sinks is at floating-point scale.
+
+| Seed | Initial inventory Δ | Live craton Δ at 200 Myr | Live craton Δ at 500 Myr | Additional formation | Avoided rifting | Avoided merge cap |
+|---:|---:|---:|---:|---:|---:|---:|
+| 326494039 | +0.7 | +307.6 | +479.2 | +383.6 | +105.9 | +18.6 |
+| 748935664 | +0.7 | +79.1 | +186.8 | +141.0 | +47.3 | +8.0 |
+| 580014012 | −1.7 | +324.2 | +291.3 | +258.6 | +24.8 | 0.0 |
+| 111065103 | −13.6 | +348.7 | +578.7 | +438.2 | +81.6 | +72.7 |
+| **Sum** | **−13.9** | **+1,059.6** | **+1,536.0** | **+1,221.4** | **+259.6** | **+99.2** |
+
+The aggregate live-stock difference is only 17.3 million km³ at 175 Myr, then jumps to 1,059.6
+million km³ at 200 Myr. All four seeds record their first formation at exactly 200 Myr, and the
+pilot-minus-baseline formation difference at that checkpoint is already **1,033.5 million
+km³**. It grows to 1,221.4 million km³ by 500 Myr, while avoided rift loss and merge capping
+continue to widen the retained-stock difference. The 200 Myr pulse therefore explains most
+of when the trajectories separate; later source and sink differences explain how the gap
+continues to evolve.
+
+The reduction in `rifted_m3` is mainly the stretch path: pilot-minus-baseline rift-path ledger
+deltas sum to −11.3 million km³ for divergent thinning, −215.5 for stretch donation, and −32.7
+for failed rifts. This is a new material contributor alongside merge capping and needs physical
+interpretation; the merge-opportunity result alone cannot explain it. Importantly, the large
+drop in **total continental deep subduction** is not the same as craton subduction: craton
+subduction accounts for only 1.7 million km³ of the four-seed retained-stock difference.
+
+The runs are seed-matched, but their recorded starting `initial_m3` inventories are not
+identical: pilot minus baseline ranges from −13.6 to +0.7 million km³ (−13.9 summed). The
+attribution includes this term; it is under 1% of the aggregate final gap, though it is another
+reason to avoid treating these independently generated worlds as bit-for-bit paired controls.
+
+### Event-level checks for rifting and merge-cap losses
+
+The event audit reuses the same traces. For each merge, it compares the merge event's cap
+amount with the step ledger and checks that live craton falls by that amount. Across all runs,
+the sum of per-merge cap records matches the step-ledger `merge_capped_m3` exactly. Nine merges
+have material cap losses (above 0.001 million km³); they account for the full 99.2 million km³
+baseline-versus-pilot difference. The pilot has no positive merge-cap events. Per-event changes
+in live stock plus cap are at most 358 m³, rounding error against inventories around 10²¹ m³.
+The zero pilot merge-cap account is therefore a real absence of cap-producing merges, not a
+missing ledger write.
+
+The three rift-path accounts also reconcile to `rifted_m3` in every run. Across the four seeds,
+divergent thinning falls from 14.22 to 2.94 million km³, stretch donation from 288.63 to 73.09,
+and failed-rift thinning from 63.81 to 31.08. New event hooks attribute each loss to its
+operation and source plate, with affected-cell visits and a cellwise inventory cross-check.
+Event totals match each step ledger exactly; the maximum absolute cellwise residual is 32 m³.
+Across the runs, the hooks recorded 2,784 baseline versus 364 pilot divergent-thinning
+operations, 2,417 versus 1,059 stretch-donation operations, and 64 versus 49 failed-rift
+operations. These are operation records, not unique geological rift episodes; cell counts are
+visits across events, not unique cells.
+
+The per-seed attribution shows the aggregate reduction is not uniform across mechanisms.
+Failed-rift loss is lower in three pilot seeds, but increases from 1.42 to 5.56 million km³ in
+seed 580014012 despite fewer affected-cell visits overall across all runs. In that seed,
+failed-rift operations rise from 4 to 12, and the share of operations cutting through craton
+rises from 4/4 to 12/12. That is evidence that where cuts land matters as well as how often the
+operation runs. Stretch donation remains the largest change: the pilot has 73.09 versus 288.63
+million km³ across the four runs, with fewer operation records and affected-cell visits.
+Baseline plate 4 is the largest stretch-loss contributor in seeds 326494039 and 748935664, but
+plate IDs cannot be compared between independently evolved topologies or treated as persistent
+identities.
+
+This trace establishes where ledgered loss was applied and validates the amount, but not the
+causal chain from G2's force law to changed rift geometry or donor inventory. A further targeted
+diagnosis would need the pre-operation donor craton inventory and cell identities, plus the
+topology and motion state that selected the rift operation. The result does not indicate a
+ledger anomaly. The compact event audit is part of
+[`g2_craton_ledger_divergence.json`](g2_craton_ledger_divergence.json); full JSONL traces remain
+outside the repository under `/private/tmp/rfc0012-rift-attribution/`.
