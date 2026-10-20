@@ -15,7 +15,6 @@ eligibility/reset reasons, local boundary-rate/strain proxies, and erosion/unloa
 
 from __future__ import annotations
 
-import argparse
 from collections import Counter
 import json
 from pathlib import Path
@@ -27,6 +26,7 @@ import numpy as np
 from app import cratons, crust_transfer, lithosphere, merge_split, quad_tectonics
 from app.elevation_lines import effective_is_continental_from_codes, line_spacing_rad
 from app import world as world_module
+from rfc0012_trace_common import run_trace_cli, write_trace_summary
 
 
 SECONDS_PER_YEAR = 31_557_600.0
@@ -539,22 +539,11 @@ def run(seed: int, steps: int, step_myr: float, output: Path, model_root: Path) 
         "craton_balance_error_m3": cratons.balance_error_m3(world),
         "continental_material_balance_error_m3": _continental_balance(world),
     }
-    with output.open("a") as handle:
-        handle.write(json.dumps(summary, separators=(",", ":"), allow_nan=False) + "\n")
-    print(json.dumps(summary, sort_keys=True), flush=True)
+    write_trace_summary(output, summary)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--seed", type=int, required=True)
-    parser.add_argument("--steps", type=int, default=500)
-    parser.add_argument("--step-myr", type=float, default=1.0)
-    parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--model-root", type=Path, default=Path.cwd())
-    args = parser.parse_args()
-    if args.steps < 1 or args.step_myr <= 0:
-        parser.error("steps and step-myr must be positive")
-    run(args.seed, args.steps, args.step_myr, args.out, args.model_root.resolve())
+    run_trace_cli(__doc__, run)
 
 
 if __name__ == "__main__":

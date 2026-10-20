@@ -19,7 +19,6 @@ outputs belong in ``/private/tmp``; do not check them into the repository.
 
 from __future__ import annotations
 
-import argparse
 from collections import Counter
 import json
 from pathlib import Path
@@ -32,6 +31,7 @@ from scipy.spatial import cKDTree
 from app import geometry, merge_split, plates, world as world_module
 from app.boundary import MERGE_THRESHOLD_RAD, TRANSFORM_RATE_THRESHOLD, closing_rate
 from app.elevation_lines import TARGET_LINE_SPACING_RAD, line_spacing_rad
+from rfc0012_trace_common import run_trace_cli, write_trace_summary
 
 EARTH_RADIUS_M = 6_371_000.0
 SECONDS_PER_YEAR = 31_557_600.0
@@ -370,22 +370,11 @@ def run(seed: int, steps: int, step_myr: float, output: Path, model_root: Path) 
         "final_collision_progress_pairs": len(world.collision_progress),
         "final_overlap_progress_pairs": len(world.overlap_progress),
     }
-    with output.open("a") as handle:
-        handle.write(json.dumps(summary, separators=(",", ":"), allow_nan=False) + "\n")
-    print(json.dumps(summary, sort_keys=True), flush=True)
+    write_trace_summary(output, summary)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--seed", type=int, required=True)
-    parser.add_argument("--steps", type=int, default=500)
-    parser.add_argument("--step-myr", type=float, default=1.0)
-    parser.add_argument("--model-root", type=Path, default=Path.cwd())
-    parser.add_argument("--out", type=Path, required=True)
-    args = parser.parse_args()
-    if args.steps < 1 or args.step_myr <= 0:
-        parser.error("steps and step-myr must be positive")
-    run(args.seed, args.steps, args.step_myr, args.out, args.model_root.resolve())
+    run_trace_cli(__doc__, run)
 
 
 if __name__ == "__main__":
