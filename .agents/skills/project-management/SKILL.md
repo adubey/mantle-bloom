@@ -5,9 +5,10 @@ description: Update or inspect RFC and issue statuses in Mantle Bloom GitHub Pro
 
 # Manage the Mantle Bloom project board
 
-The board is the user's GitHub Projects project 2. Keep issue and RFC work visible using
-the board's existing single-select status field. This skill changes project item fields;
-it does not close GitHub issues, merge PRs or change project fields/options.
+The board is the user's GitHub Projects project 2. This skill is the canonical guide for
+issue and RFC lifecycle actions, including issue open/closed state and the board's existing
+single-select status field. Status guidance covers both issue state and board status. It does
+not merge PRs or alter the project schema or options.
 
 ## 1. Verify access and the board schema
 
@@ -76,8 +77,9 @@ RFC-level work continues. An active implementation sub-issue has its own item in
 
 Set an issue to `Done` only after its acceptance criteria are met and its implementation is
 merged or the project owner has otherwise confirmed completion. An open PR or local work
-alone is not completion. If the issue belongs to an RFC, inspect its tracking checklist in
-dependency order and tell the user the next step. If the next step is an eligible issue,
+alone is not completion. Close any issue that is still open with
+`gh issue close <N> --reason completed`; a merged PR may already have closed it. If the issue belongs to an RFC, inspect its tracking checklist in dependency order and
+tell the user the next step. If the next step is an eligible issue,
 set it to `In Progress` only when work on it starts immediately; otherwise set it to `Ready`.
 If blocked, set it to `On Hold`. If it is a gate, tell the user what gate to run; if no issue
 exists for the next implementation step, say one needs to be created.
@@ -101,8 +103,8 @@ to move it to `In Progress`; otherwise set it to `Ready` until work begins.
 ### Choosing not to pursue an issue
 
 When an issue will not be worked on any further without a fix, set its project status to
-`Deprecated` and close it with reason `not planned`. Preserve the issue and its discussion
-as the record of the decision.
+`Deprecated` and close it with `gh issue close <N> --reason "not planned"`. Preserve the
+issue and its discussion as the record of the decision.
 
 ### Completing an RFC
 

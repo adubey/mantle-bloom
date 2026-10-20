@@ -15,27 +15,20 @@ membership and its initial status.
 
 - Read `AGENTS.md`, the relevant issue comments, and the RFC index or RFC when applicable.
 - Check existing issues and RFC tracking checklists for duplicate or already-planned work.
-- An exploration requested by `explore-problem` always gets a new tracking issue, even
-  when it investigates an existing RFC or issue. Link the source item; do not reuse or
-  reopen it.
+- An exploration tracker, when requested, is a new issue linked to its source item; do not
+  reuse or reopen the issue or RFC that prompted the exploration.
 - An exploration tracker requested by `explore-problem` is a bounded investigation issue,
   even when the underlying scientific question is large or uncertain. It does not authorize
   model implementation or replace an RFC that may be needed for a resulting model change.
-- If this is an implementation sub-issue, confirm the RFC is accepted. If a pending gate
-  determines the issue's scope or implementation approach, wait for its result before
-  creating the sub-issue; otherwise it may be created at acceptance. In all cases, do not
-  start implementation until required gates pass. If the work changes the RFC's design or
-  plan, revise the RFC first with [`rfc-authoring`](../rfc-authoring/SKILL.md). Create an
-  eligible issue as a child of that RFC's tracking issue and update its checklist in
-  dependency order.
+- For an RFC implementation sub-issue, follow the acceptance, gate and issue-timing rules
+  in the [canonical RFC lifecycle](../../../rfc/README.md#lifecycle). If the work changes
+  the RFC's design or plan, revise the RFC first with
+  [`rfc-authoring`](../rfc-authoring/SKILL.md). Create an eligible issue as a child of that
+  RFC's tracking issue and update its checklist in dependency order.
 - If no RFC covers proposed implementation work, create a standalone issue only for small,
   bounded changes. For a large, uncertain or science-led model change that meets
   `AGENTS.md`'s RFC criteria, start an RFC instead of treating an issue as authorization to
   implement it.
-- If the RFC is still a draft, do not create an implementation sub-issue. Record the needed
-  proposal or gate work in the RFC workflow first. A pending gate only delays issue
-  creation when its result determines that issue's approach or scope; implementation itself
-  remains blocked until required gates pass.
 
 ## 2. Write and create the issue
 

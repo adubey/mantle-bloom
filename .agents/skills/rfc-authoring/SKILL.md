@@ -143,7 +143,7 @@ in this order:
   `bin/debug/` script).
 - Open the **RFC proposal PR** that adds the RFC, with a `## Summary` of the problem and
   recommendation. This is separate from implementation PRs, which `start-rfc` coordinates
-  after acceptance and any required diagnosis gates.
+  according to the [RFC lifecycle](../../../rfc/README.md#lifecycle).
   When addressing review comments, revise the RFC in place and add a `## Review fixes`
   section to the PR body listing each comment and what changed.
 - When RFC proposal work starts or resumes, follow

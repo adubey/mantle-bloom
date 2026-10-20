@@ -25,10 +25,10 @@ and ask which artifacts to create before making them.
   behavior appears to violate one, is consistent with one, or has insufficient evidence.
   Separately formulate causal hypotheses that could explain the observations.
 - After gathering initial evidence, present a few evidence-based avenues, alternatives and
-  a recommendation. Ask which direction to investigate and whether to create a new
-  exploration issue; never reuse or reopen the issue or RFC that prompted the exploration.
-  A tracker is especially useful when the investigation will span sessions. Do not create
-  it or update the project board before the user chooses. If approved, use
+  a recommendation. Ask which direction to investigate and request the user's approval
+  before creating a new exploration issue; never reuse or reopen the issue or RFC that
+  prompted the exploration. Pause before creating the tracker until the user approves it.
+  If approved, use
   [`create-issue`](../create-issue/SKILL.md), link related RFCs or issues, and make it a
   child only when the investigation is an authorized step under an active accepted RFC.
   Include a `## Exploration summary` section with this note: “Intermediate comments record
@@ -57,12 +57,16 @@ and ask which artifacts to create before making them.
 - The exploration phase finds and sharpens hypotheses. Inspect code, literature, existing
   runs, and observations. Clearly labelled, temporary scratch perturbations of the current
   model (for example, a knockout or parameter change) may test a causal hypothesis if they
-  help distinguish explanations. Follow steps 4–6 of [`replay-ab`](../replay-ab/SKILL.md)
-  for pre-registration, run ordering and interpretation; record every probe outcome, including
-  null results, in the exploration issue or another user-approved investigation artifact.
-  If no record was approved, ask before running a probe. Follow the one-at-a-time limit in
-  `AGENTS.md`. Probes must not tune a candidate fix, become a PR, or count as acceptance
-  evidence. For
+  help distinguish explanations. Make source changes only in a task-specific scratch
+  worktree, isolated copy, or other disposable location that cannot overwrite another
+  agent's work. Before running a probe, preregister its prediction, primary metric and
+  expected direction and rough size, controls, decision threshold and seed(s) in the
+  relevant issue, preferably the approved exploration tracker. If no issue exists, use
+  `analysis/exploration-<slug>/README.md`. Keep the preregistration
+  and every probe outcome, including null results, together in that record. Follow steps
+  4–6 of [`replay-ab`](../replay-ab/SKILL.md) for run ordering and interpretation, and the
+  one-at-a-time limit in `AGENTS.md`. Probes must not tune a candidate fix, become a PR, or
+  count as acceptance evidence. For
   each promising hypothesis, state its proposed
   mechanism, which observations it explains, a discriminating prediction, and important
   uncertainties or alternative explanations. Do not prototype or test a candidate model
@@ -80,8 +84,9 @@ and ask which artifacts to create before making them.
 - If relevant evidence or uncommitted work is in an inaccessible worktree, clone, or host,
   record it as a missing dependency, continue independent investigation, and ask the user
   for access or a durable handoff only when that evidence is needed to decide the next step.
-- Do not implement a model change or create outcome artifacts during exploration. If the user
-  approved an exploration tracker, use it as the investigation record: add comments with
+- Do not implement a model change or create downstream RFC or implementation artifacts
+  during exploration. If the user approved an exploration tracker, use it as the
+  investigation record: add comments with
   concise findings, evidence links, and changed hypotheses—not a transcript of the
   conversation. Keep its `## Exploration summary` pending until the evidence supports a useful handoff,
   then summarize findings, hypotheses, uncertainties, and recommended next steps. Update
@@ -107,13 +112,12 @@ list of next steps. Outcomes may be combined; do not force the investigation int
 category:
 
 1. One or more new RFCs for large, uncertain, or science-led model changes.
-2. One or more issues for small, bounded changes, either standalone or as sub-issues of an
-   accepted RFC after its diagnosis gates pass.
+2. One or more issues for small, bounded changes, either standalone or RFC sub-issues when
+   permitted by the [canonical RFC lifecycle](../../../rfc/README.md#lifecycle).
 3. A revision or reassessment of one or more existing RFCs.
 4. No viable path identified within the explored scope, with the reason and evidence. If an
-   issue is abandoned for this reason, set its project status to `Deprecated` and close it
-   with reason `not planned`. If an RFC or issue was already abandoned, preserve its history; propose
-   separate follow-up work if the investigation identifies a viable new scope.
+   RFC or issue was already abandoned, preserve its history; propose separate follow-up work
+   if the investigation identifies a viable new scope.
 
 For each proposed next step, name the artifact, its purpose, dependencies and the status
 prescribed by `project-management`. Ask which outcome artifacts the user wants created or
@@ -134,15 +138,11 @@ After the user selects artifacts:
   [`rfc-review`](../rfc-review/SKILL.md) when the selected work is a review.
 - For an RFC the user chooses to withdraw, follow [`complete-rfc`](../complete-rfc/SKILL.md).
   For an issue the user chooses to deprioritize or abandon, follow
-  [Choosing not to pursue an issue](../project-management/SKILL.md#choosing-not-to-pursue-an-issue)
-  to set its project status to `Deprecated` and close it with reason `not planned`.
+  [Choosing not to pursue an issue](../project-management/SKILL.md#choosing-not-to-pursue-an-issue).
 - If a tracker was created, when the user confirms its exploration summary is complete, follow
   [Completing an issue](../project-management/SKILL.md#completing-an-issue) for the
   exploration tracking issue. Its deliverable is the findings summary; implementation does
   not need to be merged for the user to confirm the investigation is complete.
-- Follow the relevant how-to in [`project-management`](../project-management/SKILL.md) and
-  verify each requested board update.
-
 Do not start implementation merely because an issue or RFC was created. Use
 [`start-issue`](../start-issue/SKILL.md) only when the user also wants implementation to
 begin.
