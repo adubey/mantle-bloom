@@ -1,94 +1,79 @@
 ---
 name: start-rfc
-description: Set up a local Mantle Bloom RFC worktree and coordinate its proposal with linked implementation issues. Use when starting or continuing an RFC workstream.
+description: "Start or advance a Mantle Bloom RFC workstream: set up its worktree, confirm owner acceptance, run diagnosis gates, plan implementation issues, and coordinate implementation PRs. Use rfc-authoring to choose the RFC number and write its scientific content."
 ---
 
-# Start work on an RFC
+# Start or advance an RFC workstream
 
-An RFC is the parent decision for a model change. It may be implemented through several
-issues, but those issues start only after the RFC is accepted and any diagnosis gates have
-passed. The RFC worktree is the shared local workspace for its proposal and linked issues;
-each issue still gets its own branch and reviewable PR.
+Use this skill when RFC work begins or advances, including starting a proposal, accepting
+a draft, running its diagnosis gates, or planning accepted implementation work. It owns
+workstream setup and lifecycle coordination, not the scientific prose. Use
+[`rfc-authoring`](../rfc-authoring/SKILL.md) to choose a new RFC's number and write or
+revise its content. When resuming RFC work from an earlier session, first use
+[`continue-rfc`](../continue-rfc/SKILL.md) to reconstruct state, then return here for the
+next lifecycle action. Use the lifecycle in [`rfc/README.md`](../../../rfc/README.md#lifecycle)
+as the canonical source for acceptance, diagnosis gates and implementation-issue timing.
 
-## 1. Identify the RFC and its state
+## 1. Establish the RFC workstream
 
-- Read `rfc/README.md`, the relevant RFCs, and any linked issues or PRs. Check whether this
-  is a new proposal, a draft under review, an accepted RFC awaiting diagnosis or issues, or
-  an RFC whose implementation is already underway.
-- **Confirm acceptance before working on an existing RFC.** If the user asks to start work on
-  an RFC whose status is Draft, and hasn't said they accept it, ask whether they accept the
-  RFC (as written, or with changes) before running its gates or opening issues. An RFC PR
-  merged as a draft doesn't count as acceptance. If they accept, set its status to Accepted
-  in the RFC header and the `rfc/README.md` index, with the date, and open its tracking
-  issue (below). If not, treat it as a draft under review (section 3).
-- **Open a tracking issue when an RFC is accepted.** Title it `RFC NNNN: <title>
-  (tracking)`. Its body is a checklist, in dependency order, of every diagnosis gate and
-  solution the RFC plans, each marked with the gate result it depends on, then the
-  acceptance runs and setting the status to Implemented. Link the tracking issue from the
-  RFC's **Related** line. Before opening it, check that the RFC doesn't already have one.
-- For a new proposal, choose the next `NNNN` by checking the index and existing filenames.
-  Do not reuse a number or create a second RFC for a question an existing RFC already
-  covers; extend or supersede the existing RFC when that fits.
-- Before proposing a model change, read `docs/architecture.md` and
-  `docs/simulation-model.md`. Read `docs/debugging.md` when investigating saved worlds.
+- Read `AGENTS.md`, `rfc/README.md`, the relevant RFC, tracking issue and PR. Verify current
+  GitHub and repository state rather than relying on a status line or conversation summary.
+- For a new proposal, ask [`rfc-authoring`](../rfc-authoring/SKILL.md) to choose the next
+  RFC number. Do not choose or duplicate the number here. Before opening another proposal,
+  check for an existing RFC covering the question.
+- For project-board status changes, follow the relevant how-to in
+  [`project-management`](../project-management/SKILL.md).
 
-## 2. Set up the RFC worktree
+## 2. Set up or recover the RFC worktree
 
-- Worktrees are local to a machine and its agentic framework. Check whether the RFC worktree
-  is accessible in the current environment; don't assume a Claude Code worktree is also
-  available to Codex, or vice versa. If it isn't available here, set up a local RFC
-  worktree from the canonical state that is accessible through Git: use the RFC PR branch
-  to continue a draft, and `origin/main` for a new or accepted RFC. Unpushed work in another
-  environment is not available through its worktree alone.
-- For an RFC PR branch available on `origin`, fetch it and create a local worktree that
-  tracks it:
-
-  ```bash
-  git fetch origin
-  git worktree add --track ../mantle-bloom-rfc-<NNNN> origin/<rfc-branch>
-  ```
-
-- For a new RFC, or an accepted RFC whose content is already on `origin/main`, create a
-  local RFC worktree from `origin/main`; the primary checkout's local `main` may lag behind
-  `origin`.
+- Use `git worktree list --porcelain` and the path-resolution guidance in
+  [`continue-rfc`](../continue-rfc/SKILL.md#find-rfc-and-evidence-worktrees) to discover
+  an accessible RFC worktree and evidence. Never switch branches or overwrite another
+  task's work.
+- For a new RFC, create its proposal worktree from `origin/main` after `rfc-authoring` has
+  selected the number. The primary checkout's local `main` may lag behind `origin`.
+- For an existing draft whose worktree is unavailable, follow the isolated continuation
+  branch procedure in [`continue-rfc`](../continue-rfc/SKILL.md#find-rfc-and-evidence-worktrees).
+  For an accepted RFC, use an isolated worktree from `origin/main` when code or RFC files
+  must be edited.
 
   ```bash
   git fetch origin
   git worktree add -b <agent>/rfc-<NNNN>-<slug> ../mantle-bloom-rfc-<NNNN> origin/main
   ```
 
-  `<agent>` is `claude` or `codex`. For an RFC already in review, continue its existing
-  branch rather than creating a competing one. Once accepted, linked implementation issues
-  use this RFC worktree directory but create their own branches from `origin/main` with
-  `start-issue`; they do not go on the RFC branch.
+  `<agent>` is `claude` or `codex`. Keep the proposal tree for RFC work. Each
+  implementation sub-issue gets its own isolated worktree and branch from `origin/main`
+  through [`start-issue`](../start-issue/SKILL.md); never switch the proposal worktree to
+  an issue branch.
 - Run `./bin/setup.sh` in a new worktree. Each worktree needs its own `backend/.venv`; do
   not symlink one from another tree.
-- Pick free, non-user ports only if running the app. Ports 8000 and 5173 belong to the
-  user's instance. If the RFC needs before/after replay numbers, follow `replay-ab` and use
-  its detached `origin/main` baseline.
+- Use `rfc-authoring` to write the proposal and open its RFC proposal PR. Pick free,
+  non-user ports only if running the app. For before/after replay numbers, follow
+  `replay-ab`.
 
-## 3. Choose the next action from the RFC state
+## 3. Advance RFC lifecycle
 
-- **New or draft RFC:** use `rfc-authoring` for evidence, literature, design, citations,
-  acceptance criteria, and the RFC PR. Keep the RFC in `rfc/NNNN-slug.md` and update
-  `rfc/README.md`. Do not open implementation issues while the RFC is a draft.
-- **Draft under review:** revise the same RFC and PR; use `rfc-review` when the task is to
-  review rather than author it.
-- **Accepted with diagnosis gates:** run the specified measurements, record the outcome in
-  the RFC, and select the design the gate supports before opening implementation issues.
-- **Accepted and ready to implement:** break the accepted design into the necessary
-  dependency-ordered issues. Each issue should cite the RFC, name its own deliverable and
-  acceptance checks, and avoid duplicating work assigned to another issue. Add each one to
-  the tracking issue's checklist, with its PR once open. Start each
-  issue using `start-issue`; it will reuse this RFC worktree and create an issue branch from
-  `origin/main`.
-- **Implementation underway:** use the tracking issue to identify remaining work, and tick
-  items off as their PRs merge or their gates report. When a gate result rules a planned
-  step out, strike it there with the reason. When all of its implementation issues have
-  landed, close it out as Implemented with `complete-rfc`.
-- **Falsified, superseded or no longer wanted:** report the evidence to the project owner.
-  Once they decide to withdraw it, use `complete-rfc`.
+- **Draft:** follow the [RFC lifecycle](../../../rfc/README.md#lifecycle) to verify owner
+  acceptance. Set the RFC status to Accepted and create or update its tracking issue with
+  diagnosis gates and planned implementation steps.
+- **Accepted with diagnosis gates:** run the specified gate, verify matching prior evidence
+  before an expensive rerun, and record the result in the RFC. If a result calls the gate or
+  acceptance criteria into question, propose a change and get the project owner's decision
+  before applying a revised criterion.
+- **Accepted: implementation planning:** follow the [RFC lifecycle](../../../rfc/README.md#lifecycle)
+  for issue timing and implementation eligibility. Create dependency-ordered sub-issues as
+  children of the tracking issue using [`create-issue`](../create-issue/SKILL.md). Start each
+  issue with [`start-issue`](../start-issue/SKILL.md), then open an
+  implementation PR for that issue. An RFC with sub-issues may therefore have multiple
+  implementation PRs, generally one per sub-issue. Update the tracking checklist as gates
+  and implementation steps finish.
+- **RFC content needs revision:** use [`rfc-authoring`](../rfc-authoring/SKILL.md). Use
+  [`rfc-review`](../rfc-review/SKILL.md) for review work and
+  [`complete-rfc`](../complete-rfc/SKILL.md) to implement or withdraw an RFC.
 
-Keep issue creation and RFC acceptance aligned with the lifecycle in `rfc/README.md`: the
-project owner accepts an RFC by merging its RFC PR, or by saying so for an RFC already merged
-as a draft, and the RFC remains the record of the decision after implementation.
+At each start or resumption, follow
+[Starting or resuming an RFC](../project-management/SKILL.md#starting-or-resuming-an-rfc)
+to update its project status. `rfc-authoring` opens the RFC proposal PR; this skill
+coordinates and can open implementation PRs through the issue workstreams. Do not restate
+board-status procedures here.

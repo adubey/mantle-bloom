@@ -1,15 +1,18 @@
 ---
 name: rfc-authoring
-description: Write or revise a mantle-bloom RFC (rfc/NNNN-slug.md) proposing a model change that is large, uncertain or rests on the science. Use when asked to write an RFC, turn an investigation into proposals, or address review comments on an RFC.
+description: Write or revise the scientific content of a Mantle Bloom RFC. Use when asked to author a proposal, turn investigation findings into an RFC, or address technical review comments; this skill also chooses the NNNN for a new RFC.
 ---
 
 # Write an RFC
 
-An RFC proposes; it doesn't commit to code. It records the evidence, the alternatives, the
-assumptions and uncertainty, rough costs, and *provisional* touchpoints in the source. It is
-reviewed (the `rfc-review` skill), revised, and accepted. Only after acceptance, and after
-any diagnosis gate it sets has passed, is it broken into implementation issues. Don't open
-implementation issues while drafting.
+An RFC proposes; it doesn't commit to code. It records the evidence, alternatives,
+assumptions and uncertainty, rough costs, and *provisional* touchpoints in the source. This
+skill owns the document: for a new RFC, choose its next `NNNN` by checking the index and
+existing filenames, then write and validate the content. Use `start-rfc` to set up or
+advance the RFC workstream, including acceptance, gate sequencing, and implementation
+planning. Open the RFC proposal PR from this skill; implementation work is proposed through
+one or more implementation PRs coordinated by `start-rfc`, generally one per sub-issue.
+Follow the [RFC lifecycle](../../../rfc/README.md#lifecycle) for issue timing and gates.
 
 ## 1. Gather the evidence
 
@@ -103,7 +106,11 @@ in this order:
    - **Knobs:** each with its starting value, the source of that value (a citation or
      "design choice"), and how it will be tuned: which seeds, which script, which metric.
      Separate literature-constrained values from calibration assumptions, and plan
-     sensitivity runs for the latter.
+     sensitivity runs for the latter. Keep tuning and sensitivity seeds separate from
+     held-out acceptance seeds; do not tune against held-out results. Only the project owner
+     may change an agreed diagnosis gate or acceptance criterion. If evidence suggests a
+     criterion is invalid, propose a revision in the RFC with the old criterion, proposed
+     change and reason, and get the owner's decision before using it for a rerun.
 5. **Detailed design (provisional touchpoints):** the source files and functions likely
    to change, plus their tests and docs. Check that every file, function and constant you
    name exists, and mark new ones as new.
@@ -134,6 +141,11 @@ in this order:
 - Add the RFC to the index in `rfc/README.md`.
 - Run `check_citations.py --crossref` and `backend/.venv/bin/ruff check` (for any new
   `bin/debug/` script).
-- Open a PR that adds the RFC, with a `## Summary` of the problem and the recommendation.
+- Open the **RFC proposal PR** that adds the RFC, with a `## Summary` of the problem and
+  recommendation. This is separate from implementation PRs, which `start-rfc` coordinates
+  according to the [RFC lifecycle](../../../rfc/README.md#lifecycle).
   When addressing review comments, revise the RFC in place and add a `## Review fixes`
   section to the PR body listing each comment and what changed.
+- When RFC proposal work starts or resumes, follow
+  [Starting or resuming an RFC](../project-management/SKILL.md#starting-or-resuming-an-rfc)
+  to update its project status.
