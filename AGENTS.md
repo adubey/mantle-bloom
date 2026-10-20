@@ -62,8 +62,9 @@ Run from the repo root (or worktree root).
 - **Before/after comparisons** use a task-specific detached `origin/main` worktree. Never
   share or reuse another task's baseline worktree. Never use `git stash`: the stash is
   shared by every worktree, including the user's.
-- **Replays are RAM-heavy** (0.6–2.7 GB each). Run one replay at a time, never alongside
-  another replay or a unit or stress test run. Follow this limit regardless of the skill used.
+- **Replays and scratch simulation probes are RAM-heavy** (0.6–2.7 GB each). Run only one
+  replay or probe at a time, never alongside another such run or a unit or stress test. Follow
+  this limit regardless of the skill used.
 - **Reviews:** when a PR's author reports its tests passing, don't rerun them. Run targeted
   checks they couldn't have covered instead.
 - **Merging is the user's job.** Open the PR and stop: never run `gh pr merge`. `main` only
@@ -75,11 +76,11 @@ Run from the repo root (or worktree root).
   `git restore`, `git clean`, `git stash`, `git branch -D`, `git worktree remove --force` or
   `rm -rf` against anything but your own worktree and scratch files. The user's checkout
   may hold uncommitted work that exists nowhere else.
-- **Private local evidence handoffs:** use the repository-root `analysis/.local-handoff/`
-  for same-machine paths and other private pointers. Resolve the root from
-  `dirname "$(git rev-parse --path-format=absolute --git-common-dir)"` so all worktrees
-  share the same ignored directory. Verify with
-  `git check-ignore -q analysis/.local-handoff/<file>` before writing there. Never copy its
+- **Private local evidence handoffs:** use a `mantle-bloom-handoff/` directory inside the
+  shared Git common directory for same-machine paths and other private pointers. Resolve it
+  with `handoff="$(cd "$(git rev-parse --git-common-dir)" && pwd)/mantle-bloom-handoff"`,
+  then create it with `mkdir -p "$handoff"`; this works with older Git versions and all
+  worktrees of the clone share it. Never copy its
   contents or personal paths into a commit, issue, PR, or checked-in report. Keep durable
   run labels, checksums, commands, and findings in the appropriate analysis report or RFC.
 - Skills for these workflows, shared by Claude Code and Codex, are in `.agents/skills/`

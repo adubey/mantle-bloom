@@ -78,7 +78,7 @@ Set an issue to `Done` only after its acceptance criteria are met and its implem
 merged or the project owner has otherwise confirmed completion. An open PR or local work
 alone is not completion. If the issue belongs to an RFC, inspect its tracking checklist in
 dependency order and tell the user the next step. If the next step is an eligible issue,
-set it to `In Progress` only when work on it starts immediately; otherwise leave it `Ready`.
+set it to `In Progress` only when work on it starts immediately; otherwise set it to `Ready`.
 If blocked, set it to `On Hold`. If it is a gate, tell the user what gate to run; if no issue
 exists for the next implementation step, say one needs to be created.
 
@@ -96,7 +96,7 @@ Use [`create-issue`](../create-issue/SKILL.md) to decide whether the issue is st
 or an RFC sub-issue, prepare its scope and create it. Add every new issue to project 2 and
 set it to `Backlog` by default. Use `Ready` only if the work is urgent and can start now.
 If an eligible issue is being started immediately, follow [Starting an issue](#starting-an-issue)
-to move it to `In Progress`; otherwise leave it `Ready` until work begins.
+to move it to `In Progress`; otherwise set it to `Ready` until work begins.
 
 ### Choosing not to pursue an issue
 

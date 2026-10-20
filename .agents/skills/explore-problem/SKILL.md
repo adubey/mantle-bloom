@@ -52,15 +52,18 @@ and ask which artifacts to create before making them.
   expensive failed gate until existing evidence and a meaningful change to the run are
   understood. The exploration goal is to find plausible, interesting hypotheses about the
   failure and possible mechanisms, not to test a candidate implementation.
-- Share concise findings as they emerge. When evidence opens materially different avenues,
-  explain the evidence, alternatives and a recommendation, then ask the user which direction
-  to explore. Pause at decision points that materially affect the next investigation step;
-  don't continue down one of those avenues until the user responds.
+- At each new material decision point, share concise findings, explain the alternatives and
+  recommendation, and ask which direction the user wants to explore. Pause until they choose.
 - The exploration phase finds and sharpens hypotheses. Inspect code, literature, existing
   runs, and observations. Clearly labelled, temporary scratch perturbations of the current
   model (for example, a knockout or parameter change) may test a causal hypothesis if they
-  help distinguish explanations. They must not tune a candidate fix, become a PR, or count
-  as acceptance evidence. For each promising hypothesis, state its proposed
+  help distinguish explanations. Follow steps 4–6 of [`replay-ab`](../replay-ab/SKILL.md)
+  for pre-registration, run ordering and interpretation; record every probe outcome, including
+  null results, in the exploration issue or another user-approved investigation artifact.
+  If no record was approved, ask before running a probe. Follow the one-at-a-time limit in
+  `AGENTS.md`. Probes must not tune a candidate fix, become a PR, or count as acceptance
+  evidence. For
+  each promising hypothesis, state its proposed
   mechanism, which observations it explains, a discriminating prediction, and important
   uncertainties or alternative explanations. Do not prototype or test a candidate model
   implementation here; that belongs in an RFC investigation with a selected implementation

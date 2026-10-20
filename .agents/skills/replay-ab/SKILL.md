@@ -5,12 +5,14 @@ description: Measure a Mantle Bloom change by replaying a saved world (.mbworld)
 
 # Replay A/B against origin/main
 
-1. **Pick the save and horizon.** Use the ones the issue names. The frontend Save feature
-   puts saves in `/Users/$USER/Downloads`; keep `$USER` literal in shared instructions and
-   never write a resolved personal path into a report, issue, PR, or commit. For local reads,
-   use `~/Downloads` or `MANTLE_BLOOM_SAVES_DIR`; do not broadly scan personal directories.
-   If the named save is missing, ask the user; don't substitute another save. Record each
-   save's SHA-256 (`shasum -a 256`), since earlier analyses cite it.
+1. **Pick the save and horizon.** Prefer an explicit local save path named by the issue or
+   user. Otherwise use `MANTLE_BLOOM_SAVES_DIR`; when unset, source the private
+   `backend/.venv/mantle-bloom-env.sh` created by `./bin/setup.sh`, which defaults to the
+   frontend Save location `/Users/$USER/Downloads`. Precedence is explicit path, existing
+   environment variable, then the setup default. Keep `$USER` literal in shared instructions
+   and never write a resolved personal path into a report, issue, PR or commit. Do not scan
+   other personal directories. If the named save is missing, ask the user; don't substitute
+   another save. Record each save's SHA-256 (`shasum -a 256`), since earlier analyses cite it.
 
 2. **Pick the replay script.** Reuse one from `bin/debug/` and read its docstring first.
    `attribute_hm_ratchet.py` is the general one: it reports checkpoints, Hc/Hm and crust
@@ -35,6 +37,7 @@ description: Measure a Mantle Bloom change by replaying a saved world (.mbworld)
    in the background, and write outputs to a scratch directory, not the repo:
 
    ```bash
+   source backend/.venv/mantle-bloom-env.sh
    PYTHONPATH=backend backend/.venv/bin/python bin/debug/attribute_hm_ratchet.py \
      <local-save> --myr 43.1 --checkpoint-myr 2.5 --out <scratch-output>
    ```

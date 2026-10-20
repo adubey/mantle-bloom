@@ -70,9 +70,9 @@ revision use [`rfc-authoring`](../rfc-authoring/SKILL.md); for a review use
 ## 3. Recover run information before repeating work
 
 - Follow references from the RFC and issue into `analysis/`, `bin/debug/`, and known local
-  artifact paths. Check the shared local handoff directory at the repository root's
-  `analysis/.local-handoff/` (the parent of the absolute Git common directory) for private
-  pointers. Search by the RFC/issue number, seed, save name or distinctive run
+  artifact paths. Resolve the shared local handoff directory with
+  `handoff="$(cd "$(git rev-parse --git-common-dir)" && pwd)/mantle-bloom-handoff"` and
+  check its private pointers. Search by the RFC/issue number, seed, save name or distinctive run
   label. On the same machine, another agent's worktree may still be registered or its
   temporary outputs may remain accessible; use `git worktree list --porcelain` and inspect
   only relevant paths. Do not scan broad temporary directories or assume a path exists on

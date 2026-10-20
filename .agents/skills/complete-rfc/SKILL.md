@@ -79,12 +79,12 @@ For each merged implementation PR, decide whether its change stays.
 
 - Inspect the tracking issue's GitHub sub-issues as well as its checklist. Every checklist
   step and every child issue must have a disposition before the RFC is complete.
+- For either outcome, close a child issue that will not be worked on further with reason
+  `not planned`, set its project status to `Deprecated`, and link the RFC's Outcome in a
+  comment. Leave it attached to the tracking issue as a historical record.
 - **Implemented:** verify each child issue's work is merged or otherwise confirmed complete.
   If a child remains open because its work is still needed, the RFC is not complete. Close
-  children whose work has landed with reason `completed`. Close any child no longer being
-  pursued with reason `not planned` and a comment linking the RFC's Outcome; set its project
-  status to `Deprecated`. Apply this rule whether the RFC is implemented or withdrawn; leave
-  closed children attached to the tracking issue as historical records.
+  children whose work has landed with reason `completed`.
 - **Withdrawn:** close the tracking issue with reason `not planned` and a comment linking
   the RFC's Outcome. Move relevant children to the superseding RFC's tracking issue and
   plan. If still relevant but no RFC covers them, remove them as sub-issues of the withdrawn

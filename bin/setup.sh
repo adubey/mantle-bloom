@@ -36,6 +36,17 @@ fi
 echo "Installing backend deps..."
 .venv/bin/python -m pip install -q -r requirements.txt -c constraints.txt
 
+# Persist a per-worktree save-directory default for tools that need frontend-saved worlds.
+# This file lives under the ignored venv so setup doesn't expose a personal path in Git.
+SAVE_ENV="$REPO_ROOT/backend/.venv/mantle-bloom-env.sh"
+if [ ! -f "$SAVE_ENV" ]; then
+  cat > "$SAVE_ENV" <<'EOF'
+# Frontend Save writes worlds to /Users/$USER/Downloads.
+# Resolve the home directory only when this local file is sourced; keep $USER literal in docs.
+export MANTLE_BLOOM_SAVES_DIR="${MANTLE_BLOOM_SAVES_DIR:-$HOME/Downloads}"
+EOF
+fi
+
 if [ "$frontend" = true ]; then
   cd "$REPO_ROOT/frontend"
   if [ ! -f node_modules/.package-lock.json ] || [ package-lock.json -nt node_modules/.package-lock.json ]; then
@@ -46,4 +57,5 @@ if [ "$frontend" = true ]; then
   fi
 fi
 
+echo 'Local saved-world lookup defaults to /Users/$USER/Downloads; set MANTLE_BLOOM_SAVES_DIR to override.'
 echo "Done. Tests: ./bin/affected_test.sh (or ./bin/unit_test.sh); app: ./bin/restart.sh"
