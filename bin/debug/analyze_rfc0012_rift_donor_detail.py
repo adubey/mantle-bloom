@@ -24,6 +24,7 @@ def _read_trace(path: Path) -> tuple[dict, list[dict], list[dict]]:
     summary = None
     events = []
     cut_steps = []
+    successful_split_events = []
     for line in path.open():
         row = json.loads(line)
         if row["kind"] == "summary":
@@ -48,13 +49,19 @@ def _read_trace(path: Path) -> tuple[dict, list[dict], list[dict]]:
                 and event.get("path") in RIFT_PATHS
                 and event.get("rift_context")
             )
+            successful_split_events.extend(
+                event
+                for event in row.get("events", [])
+                if event.get("kind") == "rift_split_cut"
+                and event.get("path") == "successful_split"
+            )
     if summary is None:
         raise ValueError(f"missing summary row: {path}")
-    return summary, events, cut_steps
+    return summary, events, cut_steps, successful_split_events
 
 
 def _summarize_model(path: Path) -> dict:
-    summary, events, cut_steps = _read_trace(path)
+    summary, events, cut_steps, successful_split_events = _read_trace(path)
     by_path = {}
     donor_cells = {}
     failed_rift_events = []
@@ -159,6 +166,46 @@ def _summarize_model(path: Path) -> dict:
             })
     for aggregate in by_path.values():
         aggregate["craton_loss_mkm3"] = round(aggregate["craton_loss_mkm3"], 9)
+    successful_split_rows = []
+    for event in successful_split_events:
+        context = event["rift_context"]
+        pre_state = context.get("plate_state_before", {})
+        cut = context.get("cut", {})
+        band_area = float(cut.get("band_area_m2", 0.0))
+        craton_area = float(cut.get("band_craton_area_m2", 0.0))
+        band_inventory = float(cut.get("band_craton_inventory_m3", 0.0))
+        gate = pre_state.get("split_gates", {})
+        residual = context.get("flow_fit_rms_rad_per_year")
+        pole_gap = context.get("fitted_pole_separation_rad_per_year")
+        successful_split_rows.append({
+            "step": int(event["step"]),
+            "elapsed_myr": float(event["elapsed_myr"]),
+            "plate_id": int(event["plate_id"]),
+            "plate_nodes": int(pre_state.get("node_count", 0)),
+            "plate_craton_inventory_mkm3": float(pre_state.get("craton_inventory_m3", 0.0)) / MKM3,
+            "band_cell_count": int(cut.get("band_cell_count", 0)),
+            "band_area_m2": band_area,
+            "band_craton_area_m2": craton_area,
+            "band_craton_cell_count": int(cut.get("band_craton_cell_count", 0)),
+            "band_craton_area_fraction": craton_area / band_area if band_area else 0.0,
+            "band_craton_inventory_mkm3": band_inventory / MKM3,
+            "flow_fit_rms_rad_per_year": residual,
+            "flow_residual_threshold_rad_per_year": gate.get("flow_residual_threshold_rad_per_year"),
+            "flow_residual_over_threshold": (
+                residual / gate["flow_residual_threshold_rad_per_year"]
+                if residual is not None and gate.get("flow_residual_threshold_rad_per_year") else None
+            ),
+            "pole_separation_rad_per_year": pole_gap,
+            "pole_separation_threshold_rad_per_year": gate.get("pole_separation_threshold_rad_per_year"),
+            "pole_separation_over_threshold": (
+                pole_gap / gate["pole_separation_threshold_rad_per_year"]
+                if pole_gap is not None and gate.get("pole_separation_threshold_rad_per_year") else None
+            ),
+            "daughter_plates": [
+                {key: daughter.get(key) for key in ("plate_id", "nodes", "craton_m3")}
+                for daughter in context.get("daughter_plates", [])
+            ],
+        })
     return {
         "model": path.name.split("-seed", 1)[0],
         "commit": summary["commit"],
@@ -170,6 +217,14 @@ def _summarize_model(path: Path) -> dict:
             )
         },
         "failed_rift_cut_steps": cut_steps,
+        "successful_split_ledger": {
+            key: float(summary["ledgers"]["craton_ledger"].get(key, 0.0))
+            for key in (
+                "split_cuts", "split_cuts_through_craton", "split_band_area_m2",
+                "split_band_craton_area_m2",
+            )
+        },
+        "successful_split_events": successful_split_rows,
         "by_path": by_path,
         "top_donor_cells": sorted(
             donor_cells.values(), key=lambda row: row["craton_loss_mkm3"], reverse=True

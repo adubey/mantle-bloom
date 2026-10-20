@@ -697,3 +697,29 @@ the force-law effect from the split selector would trace all split cuts (includi
 splits) and compare their cut-band craton exposure and gate metrics on each model trajectory.
 Seed 580014012 retains the known glacier-depth-cap warnings, which affect geological
 interpretation but not this closed rift ledger.
+
+### Successful split-cut exposure follow-up (pre-registered)
+
+**Question:** does the greater craton exposure in G2's failed-rift cuts also appear among
+successful split cuts, or is it specific to the failed-rift outcome? The trace will record each
+successful cut's pre-split band area, craton-bearing area and craton volume, plate inventory,
+split-gate margins, and daughter inventories. This is a trajectory diagnostic; it will not
+change the model or by itself accept/reject G2.
+
+**Expected direction:** unknown. If changed force-law trajectories alter cut selection or
+geometry generally, successful-cut exposure should also differ between baseline and G2. If the
+failed-rift exposure gap is mostly an outcome-specific sampling effect, successful cuts may not
+show the same gap.
+
+**Primary measures:** craton-bearing area fraction and craton volume in the successful-cut
+bands; report event count and per-cut distribution alongside aggregate means. A ratio of at least
+1.5× in either primary measure is treated as a material exposure difference for this diagnostic;
+within 20% is treated as broadly similar for this single-seed screen. These are descriptive
+screening cutoffs, not model acceptance criteria. Intermediate or mixed results remain
+inconclusive.
+
+**Controls:** seed `580014012`, node density 1.0, 1 Myr steps, 500 Myr horizon, same deterministic
+initialization, baseline commit `2279d7e16c7debe839bd04ab18ce0a8f895f8654`, and G2 commit
+`8618185b59c5a8b08e3fe85f230373b2184b3552`. Runs will be serial. The prior matched traces
+provide the failed-rift comparison; both arms will be replayed with the expanded successful-cut
+trace so capture semantics are identical.

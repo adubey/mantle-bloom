@@ -11,8 +11,9 @@ save files. Run in series for the four RFC seeds, once against each worktree:
 Each JSONL row is one completed step. It includes ledger deltas and closure residuals,
 per-front subduction candidates/fates, merge inventories/capacity, per-plate quiet-clock
 eligibility/reset reasons, local boundary-rate/strain proxies, erosion/unloading totals, and
-per-cell donors for divergent, stretch-donation and failed-rift craton losses. Failed cuts also
-record their cut-band inventory, source-plate topology/motion state, and split-gate metrics.
+per-cell donors for divergent, stretch-donation and failed-rift craton losses. Failed and
+successful split cuts also record cut-band craton exposure, source-plate topology/motion state,
+and split-gate metrics.
 """
 
 from __future__ import annotations
@@ -252,7 +253,7 @@ def _install_rift_event_traces(emit, runtime: dict):
 
     def traced_record_cut(current_world, plate, points, cut_normal, band_sin, kind):
         active = runtime.get("active_split")
-        if active is not None and active["plate_id"] == plate.plate_id and kind == "failed_rift":
+        if active is not None and active["plate_id"] == plate.plate_id:
             surface = plate.surface_nodes("craton_crust_m")
             craton = np.asarray(surface.fields["craton_crust_m"], dtype=float)
             mask = np.abs(np.asarray(points) @ np.asarray(cut_normal, dtype=float)) < band_sin
@@ -263,8 +264,13 @@ def _install_rift_event_traces(emit, runtime: dict):
                 "cut_normal_world": np.asarray(cut_normal, dtype=float).tolist(),
                 "band_sin": float(band_sin),
                 "band_cell_count": int(mask.sum()),
+                "band_area_m2": float(surface.area_m2[mask].sum()),
+                "band_craton_area_m2": float(surface.area_m2[mask & (craton > 0.0)].sum()),
                 "band_craton_inventory_m3": float(craton[mask] @ surface.area_m2[mask]),
-                "band_cells": _rift_cell_rows(surface, craton, surface.area_m2, mask),
+                "band_craton_cell_count": int((mask & (craton > 0.0)).sum()),
+                "band_craton_cells": _rift_cell_rows(
+                    surface, craton, surface.area_m2, mask & (craton > 0.0)
+                ),
             }
         return original_record_cut(current_world, plate, points, cut_normal, band_sin, kind)
 
@@ -361,6 +367,30 @@ def _install_rift_event_traces(emit, runtime: dict):
                     "donor_cells": _rift_cell_rows(
                         plate.surface_nodes(), craton_before, area, loss_by_cell > 0.0, craton_after
                     ),
+                },
+            })
+        elif result is not None and active.get("cut") is not None:
+            daughters = list(result)
+            cut = active["cut"]
+            emit("rift_split_cut", {
+                "step": runtime["step"],
+                "elapsed_myr": current_world.elapsed_years / 1e6,
+                "path": "successful_split",
+                "plate_id": int(plate.plate_id),
+                "rift_context": {
+                    "plate_state_before": active.get("pre_operation"),
+                    "cut": cut,
+                    "flow_fit_rms_rad_per_year": active.get("flow_fit_rms_rad_per_year"),
+                    "fitted_poles_rad_per_year": active.get("fitted_poles_rad_per_year", []),
+                    "fitted_pole_separation_rad_per_year": (
+                        float(np.linalg.norm(
+                            np.asarray(active["fitted_poles_rad_per_year"][0])
+                            - np.asarray(active["fitted_poles_rad_per_year"][1])
+                        )) if len(active.get("fitted_poles_rad_per_year", [])) == 2 else None
+                    ),
+                    "split_success_probability": float(merge_split.RIFT_SUCCESS_PROBABILITY),
+                    "split_outcome": "successful_split",
+                    "daughter_plates": [_plate_inventory(current_world, p) for p in daughters],
                 },
             })
         return result
