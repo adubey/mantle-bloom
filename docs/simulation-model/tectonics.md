@@ -298,8 +298,10 @@ vertical compression remains the major principal stress. Explicit names are
 fields remain compatibility aliases. Elastic modulus, thickness and integrated capacity are
 explicit inputs. The triangle mesh must be element-connected: the solver rejects disconnected
 components because each piece has additional rigid modes that the plate-wide rotation removal
-does not handle. Replay diagnostics skip such events rather than report their residual or capacity
-as valid. `orogeny.steady_moho_temperature_c`
+does not handle. The Gate 2 replay also checks the source plate's exact edge-sharing cell
+adjacency: it skips and reports plates with multiple cell components, and records when the
+triangulation merges source components. Those events have no modeled material path for transferring
+load between islands. `orogeny.steady_moho_temperature_c`
 provides a coarse conductive Moho-temperature proxy, and `moho_temperature_c` applies its
 tectonic lag; neither supplies a vertical yield-strength profile or integrated extensional
 capacity.

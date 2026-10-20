@@ -345,15 +345,41 @@ not remove those modes, so the least-squares residual can reflect mesh topology 
 transfer. The solver rejects such meshes, and the matched replay records the event as skipped
 instead of scoring its stress or capacity. This is a fail-closed guard, not a mesh repair.
 
-A partial seed 2024 replay through 460 Myr found four disconnected-mesh skips among 43
-craton-crossing events. Two were the known late plate 9 cases at 432 and 460 Myr. Their accepted
-triangle meshes had component node counts `[1844, 19, 19, 12]` and `[1773, 17, 12]`, respectively;
-these are the cases whose historical residuals were 55.52% and 51.47%. Of the other 39 solved
-events, 8 still exceeded 1%, with a maximum residual of 6.43%. This partial run does not update the
-historical full-replay count of 29/130. It did not record `plate.adjacency()`, so it establishes that
-the triangle meshes are disconnected but does not establish whether each source cell graph is
-connected. Gate 2 remains open pending exact source-versus-mesh connectivity comparison, a repair or
-explicit exclusion policy, and residual checks on valid meshes.
+A seed 2024 replay through 460 Myr compared exact edge-sharing `plate.adjacency()` with the
+accepted triangle mesh for the two late plate 9 events. Both source plates have seven cell
+components, so there is no single continuous source shell to repair into. The mappings are:
+
+| Time | Exact source component sizes | Mesh components and source mapping | Result |
+|---:|---|---|---|
+| 432 Myr | `1848, 20, 19, 14, 1, 1, 1` | `1844→1848`, `19→20`, `19→19`, `12→14`; the three singleton cells have no triangles | Mesh keeps the four substantial source regions separate, but leaves 8 cells out |
+| 460 Myr | `1760, 17, 17, 14, 1, 1, 1` | `1773→(1760+17)`, `17→17`, `12→14`; three singleton cells have no triangles | Delaunay clipping also bridges two source regions that exact edge adjacency says are separate |
+
+These are the historical 55.52% and 51.47% residual cases. At 432 Myr, the residual is not a
+least-squares fitting bug: the source shell consists of separate regions with no modeled material
+connection. At 460 Myr, the mesh additionally introduces a false connection between source
+components. Bridging those regions would invent a load path; solving each island independently
+would require an unsupported force/traction boundary condition. The replay now skips any event
+whose exact source adjacency has multiple components, records the mapping, and keeps the
+disconnected-element guard for a connected source whose clipped mesh is still split. This is an
+explicit exclusion from the shell/capacity diagnostic, not a repair or a claim about the physical
+plate. With the exact-source exclusion enabled, the partial seed 2024 replay through 460 Myr skips
+18 of 43 candidates and scores 25. Six of those 25 solves still exceed 1% residual; the maximum is
+6.43%. Those 25 events contain 7,241 cut-band samples. Their physical median-capacity failed
+fractions are 0.69% continental, 80.21% young-ridge oceanic and 9.70% mature oceanic. At the
+phenomenological 1x reference, 4.57% of all band samples fail (0.06% of marked-belt samples).
+These partial, single-seed values are not directly comparable to the historical 130-candidate
+aggregate. The compact source/mesh component data for the two late plate 9 cases is in
+[`gate2-connectivity-audit.json`](gate2-connectivity-audit.json). Gate 2 remains open pending a
+full matched-replay rerun with this exclusion rule and residual checks on the retained connected
+meshes.
+
+Reproduce the partial source-filtered replay with:
+
+```bash
+PYTHONHASHSEED=0 PYTHONPATH=backend backend/.venv/bin/python \
+  bin/debug/replay_gate2_capacity.py --seed 2024 --years 4.6e8 \
+  --out /tmp/issue487-g2-seed2024-source-filter.json
+```
 
 ## Gate disposition
 

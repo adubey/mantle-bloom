@@ -116,6 +116,15 @@ Gate 2 remains open pending improved equilibrium quality, calibrated source/capa
 and resolution of edge sensitivity. See also
 [`representative-mesh-summary.json`](representative-mesh-summary.json).
 
+A later exact-adjacency audit found seven source-cell components in each of the two late plate 9
+events that had 55.52% and 51.47% historical residuals. At 460 Myr the clipped mesh also joined a
+17-cell component to the largest component despite their separation in exact cell adjacency. A
+guarded partial seed 2024 replay through 460 Myr now skips 18 of 43 candidates with fragmented
+source plates; six of the 25 remaining solves exceed 1% residual (maximum 6.43%). Its capacity
+fractions are partial single-seed results and do not replace the original 130-event aggregate.
+Component detail is in [`gate2-connectivity-audit.json`](gate2-connectivity-audit.json), and the
+assumptions and disposition are in [`gate2-load-diagnosis.md`](gate2-load-diagnosis.md).
+
 Reproduce with:
 
 ```bash

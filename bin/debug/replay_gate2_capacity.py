@@ -25,6 +25,8 @@ import time
 from pathlib import Path
 
 import numpy as np
+from scipy.sparse import coo_matrix, csr_matrix
+from scipy.sparse.csgraph import connected_components
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "backend"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -70,6 +72,49 @@ def _event_force_field(world, plate):
     return torque.gather_per_node_force_field(
         plate, world, inputs, spacing, subducting, divergent, collision, craton_contact, jam
     )
+
+
+def _topology_audit(plate, node_count: int, triangles: np.ndarray) -> dict:
+    """Compare exact source-cell components with components present in accepted elements."""
+    adjacency = plate.adjacency()
+    source_graph = csr_matrix(
+        (np.ones(len(adjacency.neighbours)), adjacency.neighbours, adjacency.offsets),
+        shape=(node_count, node_count),
+    )
+    source_count, source_labels = connected_components(source_graph, directed=False)
+    edges = np.concatenate((triangles[:, [0, 1]], triangles[:, [1, 2]], triangles[:, [2, 0]]))
+    mesh_graph = coo_matrix(
+        (np.ones(2 * len(edges)),
+         (np.r_[edges[:, 0], edges[:, 1]], np.r_[edges[:, 1], edges[:, 0]])),
+        shape=(node_count, node_count),
+    ).tocsr()
+    _, mesh_labels = connected_components(mesh_graph, directed=False)
+    active = np.zeros(node_count, dtype=bool)
+    active[np.unique(triangles)] = True
+    source_components = []
+    for component_id in range(source_count):
+        nodes = source_labels == component_id
+        _, mesh_sizes = np.unique(mesh_labels[nodes & active], return_counts=True)
+        source_components.append({
+            "source_component_id": int(component_id),
+            "source_node_count": int(nodes.sum()),
+            "meshed_node_count": int((nodes & active).sum()),
+            "unmeshed_node_count": int((nodes & ~active).sum()),
+            "mesh_component_sizes": sorted((int(size) for size in mesh_sizes), reverse=True),
+        })
+    mesh_components = []
+    for component_id in np.unique(mesh_labels[active]):
+        nodes = (mesh_labels == component_id) & active
+        mesh_components.append({
+            "mesh_component_id": int(component_id),
+            "mesh_node_count": int(nodes.sum()),
+            "source_component_ids": [int(label) for label in np.unique(source_labels[nodes])],
+        })
+    return {
+        "source_component_count": int(source_count),
+        "source_components": source_components,
+        "mesh_components": mesh_components,
+    }
 
 
 def _capacity_scores(resultant: np.ndarray, band: np.ndarray, continental: np.ndarray,
@@ -169,6 +214,17 @@ def _score_event(world, plate, points, cut_normal, kind, capacities) -> dict | N
     candidate_triangles = np.asarray(nondegenerate, dtype=np.int64)
     if len(candidate_triangles) == 0:
         return {"skipped": "all clipped mesh triangles are degenerate", "plate": plate.plate_id, "myr": world.elapsed_years / 1e6}
+    topology_audit = _topology_audit(plate, len(source_points), candidate_triangles)
+    if topology_audit["source_component_count"] > 1:
+        return {
+            "skipped": "source plate adjacency has disconnected cell regions",
+            "plate": int(plate.plate_id),
+            "myr": float(world.elapsed_years / 1e6),
+            "mesh_method": mesh_method,
+            "mesh_node_count": int(len(np.unique(candidate_triangles))),
+            "mesh_triangle_count": int(len(candidate_triangles)),
+            "topology_audit": topology_audit,
+        }
     used = np.unique(candidate_triangles)
     remap = np.full(len(source_points), -1, dtype=np.int64)
     remap[used] = np.arange(len(used))
@@ -214,6 +270,7 @@ def _score_event(world, plate, points, cut_normal, kind, capacities) -> dict | N
             "mesh_node_count": int(len(used)),
             "mesh_triangle_count": int(len(triangles)),
             "mesh_method": mesh_method,
+            "topology_audit": topology_audit,
         }
     resultant = result.max_incremental_extensional_resultant_n_per_m
     scores = _capacity_scores(resultant, band, continental, young_oceanic, belt, capacities)
@@ -225,6 +282,7 @@ def _score_event(world, plate, points, cut_normal, kind, capacities) -> dict | N
         "node_count": int(len(source_points)),
         "mesh_node_count": int(len(used)),
         "mesh_method": mesh_method,
+        "topology_audit": topology_audit,
         "band_node_count": int(band.sum()),
         "band_craton_node_count": int(in_band_craton.sum()),
         "band_max_resultant_n_per_m": float(np.max(resultant[band])),

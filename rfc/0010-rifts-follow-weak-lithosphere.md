@@ -230,12 +230,16 @@ should start until those gates are resolved and the revised design is accepted.
    on 130 identical Gate 1 craton-crossing candidates (39,467 cut-band node samples); production
    cut counts and ordered candidate signatures matched for all three seeds. The comparison showed
    different spatial failure patterns, but 29/130 shell solves exceed a 1% equilibrium residual.
-   A partial seed 2024 rerun through 460 Myr found four disconnected-mesh skips among 43 events;
-   two were the known 432 and 460 Myr high-residual plate 9 cases. Eight of the other 39 solves
-   still exceed 1%, with a maximum of 6.43%. The rerun did not capture exact plate-cell adjacency,
-   so source-versus-mesh connectivity and a mesh repair remain open. Capacities remain uncalibrated,
-   and the young-oceanic class is only an active-divergence proxy. This is screening evidence, not a
-   model selection. The integrated envelope, shell invariant,
+   Exact `plate.adjacency()` checks on the 432 and 460 Myr plate 9 cases show seven source cell
+   components in each. At 432 Myr the mesh preserves the four substantial components but omits
+   some cells; at 460 Myr it also bridges a 17-cell source component into the main mesh. The replay
+   now excludes source-fragmented plates and records this mapping instead of assigning shell
+   stresses across unsupported paths. This is an explicit diagnostic exclusion, not a physical
+   repair. The partial seed 2024 run through 460 Myr skips 18/43 events; six of 25 remaining solves
+   exceed 1%, with a maximum of 6.43%. Its capacity comparison is also partial and single-seed. The
+   historical full replay's 29/130 count is still pending recomputation. Capacities remain
+   uncalibrated, and the young-oceanic class is only an active-divergence proxy. This is screening
+   evidence, not a model selection. The integrated envelope, shell invariant,
    analytic curved-shell benchmark, curved-mesh checks and isolated-plate free-edge policy are
    documented and reproducible. Natural interplate continuity and production load distributions
    remain outside this single-plate solve. Do not start constitutive calibration or infer local
@@ -396,10 +400,11 @@ source or explicit design-choice status, and the sensitivity plan before impleme
        phenomenological belt-weakening alternative on the same Gate 1 candidate loads; all ordered
        candidate signatures match. It is not a constitutive model selection: 29/130 shell solves
        exceed 1% equilibrium residual, the oceanic-age proxy is coarse, and capacities remain
-       uncalibrated. A guard rejects disconnected element meshes, whose extra rigid modes are not
-       handled by the plate-wide projection. A partial guarded replay skips four of 43 events by
-       460 Myr, including both known late high-residual cases; exact source-cell connectivity and
-       mesh repair remain open. Ground or explicitly
+       uncalibrated. A guard rejects disconnected element meshes, and replay skips source plates
+       with multiple exact cell components; a partial seed 2024 check confirmed both late plate 9
+       high-residual cases are fragmented, with a false Delaunay bridge in one. Recompute matched
+       replay residual and capacity results with this exclusion rule before model selection.
+       Ground or explicitly
        label constitutive assumptions before selecting/tuning damage parameters or running full
        production replays (see `analysis/issue487/gate2-load-diagnosis.md`,
        `analysis/issue487/gate2-column-envelope.json`, and
