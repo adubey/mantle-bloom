@@ -163,6 +163,36 @@ def test_thin_shell_transfers_tangential_load_to_stress_and_strength_ratio():
     assert np.allclose(doubled.failure_ratio, 2.0 * result.failure_ratio, rtol=1e-7, atol=1e-12)
 
 
+def test_thin_shell_exposes_normal_faulting_incremental_capacity_pairing():
+    points, force = _octahedral_shell()
+    capacity = np.full(len(points), 2e12)
+    result = thin_shell.solve_thin_shell(
+        points,
+        np.full(len(points), 1e12),
+        force,
+        thickness_m=100_000.0,
+        young_modulus_pa=70e9,
+        extensional_capacity_resultant_n_per_m=capacity,
+    )
+
+    assert np.array_equal(result.extensional_capacity_resultant_n_per_m, capacity)
+    assert np.array_equal(
+        result.max_incremental_extensional_resultant_n_per_m,
+        result.max_tensile_resultant_n_per_m,
+    )
+    assert np.array_equal(result.extensional_failure_ratio, result.failure_ratio)
+    with np.testing.assert_raises_regex(ValueError, "exactly one extensional capacity"):
+        thin_shell.solve_thin_shell(
+            points,
+            np.full(len(points), 1e12),
+            force,
+            thickness_m=100_000.0,
+            young_modulus_pa=70e9,
+            extensional_capacity_resultant_n_per_m=capacity,
+            tensile_strength_resultant_n_per_m=capacity,
+        )
+
+
 def test_thin_shell_removes_plate_scale_rigid_rotation_load():
     points, _ = _octahedral_shell()
     force = np.cross(np.broadcast_to([2e-4, -1e-4, 3e-4], points.shape), points * 6.371e6)

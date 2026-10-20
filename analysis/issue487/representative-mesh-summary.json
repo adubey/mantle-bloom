@@ -4,6 +4,49 @@
   "node_density": 0.5,
   "mapping": "Generated cell-centre topology mapped to a shallow cap for manufactured-load testing",
   "target_resultant_n_per_m": 10000000000.0,
+  "curved_shell_manufactured_benchmark": {
+    "analytic_solution": "uniform isotropic membrane resultant N on a sphere; normal pressure 2N/R is supported and omitted from in-plane solve",
+    "edge_condition": "free displacement with prescribed analytic conormal traction",
+    "mesh_refinement": [
+      {
+        "theta_nodes": 5,
+        "phi_nodes": 9,
+        "triangle_count": 64,
+        "analytic_isotropic_resultant_n_per_m": 10000000000.0,
+        "mean_resultant_n_per_m": 10294077726.274675,
+        "mean_relative_error": 0.029407772627467358,
+        "p95_absolute_relative_error": 0.06173067479458747,
+        "max_absolute_relative_error": 0.12968703417205774,
+        "equilibrium_residual_over_load": 4.200157551469724e-07,
+        "solver_stop_code": 1
+      },
+      {
+        "theta_nodes": 9,
+        "phi_nodes": 17,
+        "triangle_count": 256,
+        "analytic_isotropic_resultant_n_per_m": 10000000000.0,
+        "mean_resultant_n_per_m": 10146286247.733746,
+        "mean_relative_error": 0.01462862477337454,
+        "p95_absolute_relative_error": 0.03226762499034624,
+        "max_absolute_relative_error": 0.04239397546997248,
+        "equilibrium_residual_over_load": 3.0468850782797384e-06,
+        "solver_stop_code": 1
+      },
+      {
+        "theta_nodes": 17,
+        "phi_nodes": 33,
+        "triangle_count": 1024,
+        "analytic_isotropic_resultant_n_per_m": 10000000000.0,
+        "mean_resultant_n_per_m": 10118063475.769222,
+        "mean_relative_error": 0.011806347576921975,
+        "p95_absolute_relative_error": 0.027476107182864418,
+        "max_absolute_relative_error": 0.029103741129161476,
+        "equilibrium_residual_over_load": 8.647029927335289e-06,
+        "solver_stop_code": 1
+      }
+    ]
+  },
+  "boundary_condition_selection": "Free in-plane displacement with loads applied as nodal forces is the single-plate diagnostic baseline. Fixed-edge cases are sensitivity probes because no neighboring-plate displacement anchor exists in the input. Physical coupling requires solving neighboring plates together.",
   "phenomenological_capacity_model": {
     "formula": "T_cap = T_ref * (1 - weakening_fraction * weak_zone_weight)",
     "weakening_fraction": 0.5,
@@ -29,6 +72,7 @@
       "explicit_triangles": 4548,
       "explicit_mesh_nodes": 2389,
       "original_curved_mesh_sensitivity": {
+        "boundary_condition_policy": "Free-edge Neumann boundary is the diagnostic baseline because the single-plate input has no displacement anchor; clamps are sensitivity probes, not inferred physical plate boundaries. Coupled neighboring plates would require a multi-plate solve.",
         "projected_span_radians": [
           3.3855498116980973,
           2.2761140664626636
@@ -118,6 +162,36 @@
             "max_resultant_n_per_m": 31441769654.58001,
             "equilibrium_residual_over_load": 5.006827990533403e-05,
             "solver_stop_code": 2
+          },
+          {
+            "edge_condition": "west+east",
+            "clamped_boundary_nodes": 28,
+            "mean_resultant_n_per_m": 8375219715.549576,
+            "mean_change_from_free_fraction": -0.385323186009801,
+            "p95_resultant_n_per_m": 16600965273.102797,
+            "max_resultant_n_per_m": 30850744011.582985,
+            "equilibrium_residual_over_load": 5.006827936470464e-05,
+            "solver_stop_code": 2
+          },
+          {
+            "edge_condition": "south+north",
+            "clamped_boundary_nodes": 94,
+            "mean_resultant_n_per_m": 8236654324.935193,
+            "mean_change_from_free_fraction": -0.3954928216402577,
+            "p95_resultant_n_per_m": 14753188710.660791,
+            "max_resultant_n_per_m": 26865108198.444817,
+            "equilibrium_residual_over_load": 1.452617588548307e-05,
+            "solver_stop_code": 1
+          },
+          {
+            "edge_condition": "all_edges",
+            "clamped_boundary_nodes": 226,
+            "mean_resultant_n_per_m": 646939.1822989018,
+            "mean_change_from_free_fraction": -0.9999525196318513,
+            "p95_resultant_n_per_m": 1767818.5693509064,
+            "max_resultant_n_per_m": 3422623.018203701,
+            "equilibrium_residual_over_load": 1.1361366841222218e-09,
+            "solver_stop_code": 1
           }
         ]
       },
@@ -141,6 +215,7 @@
       "explicit_triangles": 3749,
       "explicit_mesh_nodes": 1987,
       "original_curved_mesh_sensitivity": {
+        "boundary_condition_policy": "Free-edge Neumann boundary is the diagnostic baseline because the single-plate input has no displacement anchor; clamps are sensitivity probes, not inferred physical plate boundaries. Coupled neighboring plates would require a multi-plate solve.",
         "projected_span_radians": [
           2.12843394790066,
           2.33119131761787
@@ -229,6 +304,36 @@
             "p95_resultant_n_per_m": 18346758155.671463,
             "max_resultant_n_per_m": 24217461672.946037,
             "equilibrium_residual_over_load": 2.5625321729825072e-05,
+            "solver_stop_code": 1
+          },
+          {
+            "edge_condition": "west+east",
+            "clamped_boundary_nodes": 62,
+            "mean_resultant_n_per_m": 7058919267.634559,
+            "mean_change_from_free_fraction": -0.4657446483105332,
+            "p95_resultant_n_per_m": 18813023953.00717,
+            "max_resultant_n_per_m": 24257576050.77688,
+            "equilibrium_residual_over_load": 1.1438176019599524e-05,
+            "solver_stop_code": 1
+          },
+          {
+            "edge_condition": "south+north",
+            "clamped_boundary_nodes": 58,
+            "mean_resultant_n_per_m": 11297883465.249233,
+            "mean_change_from_free_fraction": -0.14491801432714402,
+            "p95_resultant_n_per_m": 15160516885.1973,
+            "max_resultant_n_per_m": 21511926518.861866,
+            "equilibrium_residual_over_load": 1.9118159511422963e-05,
+            "solver_stop_code": 1
+          },
+          {
+            "edge_condition": "all_edges",
+            "clamped_boundary_nodes": 223,
+            "mean_resultant_n_per_m": 189023.73555140715,
+            "mean_change_from_free_fraction": -0.9999856937105404,
+            "p95_resultant_n_per_m": 516401.8814144804,
+            "max_resultant_n_per_m": 1021414.6974042787,
+            "equilibrium_residual_over_load": 2.715534321915999e-10,
             "solver_stop_code": 1
           }
         ]

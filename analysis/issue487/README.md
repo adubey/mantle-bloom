@@ -92,12 +92,28 @@ reference capacities are 23.79 TN/m (continental), 0.489 TN/m (young-ridge ocean
 5.50 TN/m (mature oceanic). The scenario-grid p10/median/p90 values are 5.45/12.70/27.55,
 0.133/0.292/0.546, and 1.88/3.73/6.86 TN/m, respectively. These are not calibrated
 predictions; the integrated capacity is especially sensitive to the assumed background
-horizontal stress, pore pressure, mantle water state, and thermal profile. The diagnostic
-does not yet map to the shell solver's stress measure, and Gate 2 remains open.
+horizontal stress, pore pressure, mantle water state, and thermal profile. The shell diagnostic
+now reports the largest positive principal stress increment against this additional capacity,
+both in N/m, under an explicit normal-faulting `K0` assumption. An independent curved-sphere
+benchmark recovers uniform isotropic tension to 1.18% mean error and 2.75% p95 error on a 17 × 33
+mesh. Free in-plane displacement is selected as the isolated-plate diagnostic baseline; paired
+clamps shift the mean by as much as 46.6%, and actual neighboring-plate coupling is outside the
+solver. Gate 2 remains open for matched replay comparison of the physical and phenomenological
+capacity choices. See the expanded evidence in
+[`representative-mesh-summary.json`](representative-mesh-summary.json).
 
 Reproduce with:
 
 ```bash
 backend/.venv/bin/python bin/debug/diagnose_gate2_column_envelope.py \
   --dz-km 0.125 --output analysis/issue487/gate2-column-envelope.json
+```
+
+Reproduce the curved-shell and original-mesh boundary checks with:
+
+```bash
+PYTHONHASHSEED=0 PYTHONPATH=backend backend/.venv/bin/python \
+  bin/debug/validate_thin_shell_plate_meshes.py \
+  --seed 7 --num-plates 12 --node-density 0.5 \
+  --out analysis/issue487/representative-mesh-summary.json
 ```

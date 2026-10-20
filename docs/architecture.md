@@ -446,7 +446,8 @@ synthetic_relief.py  optional cratons-first relief from a synthetic tectonic his
 torque.py            slab-pull/ridge-push torque integration and read-only plate-motion
                      prediction (`predict_plate_motion`) shared by generation and `shift()`
 thin_shell.py        offline thin-shell membrane equilibrium diagnostic that transfers
-                     `torque.PerNodeForceField` loads to local stress resultants for rift analysis
+                     `torque.PerNodeForceField` loads to incremental extensional resultants
+                     and compares them with integrated normal-fault capacity for rift analysis
 quad_tectonics.py  the tectonic engine, `deform()`: boundary retreat and advance on the cell
                    graph, rift opening, interior subduction, gap filling
 mantle.py           cubed-sphere convection-cell flow field, per-plate Euler-pole

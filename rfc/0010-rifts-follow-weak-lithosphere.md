@@ -131,9 +131,12 @@ loads, whose relative importance varies by setting [[Forsyth & Uyeda, 1975]](#re
 problem. Replace it with solution 6. RFC 0012 supplies a plate-scale torque model. A new
 per-node source-force interface and reduced thin-shell diagnostic now transfer those loads into
 local membrane stress resultants, following the broad thin-shell precedent in Kong & Bird (1995).
-Its current comparison with a caller-supplied integrated tensile capacity is not yet a physical
-rift criterion: extensional lithosphere commonly fails by normal-fault frictional sliding at
-shallow depth and ductile creep at depth, rather than uniform intact-rock tensile rupture
+The diagnostic now compares the largest positive principal *increment* of its in-plane membrane
+resultant with the column's integrated additional extensional strength from an assumed `K0`
+background. The pairing is a normal-faulting criterion only while vertical compression remains
+the major principal stress; it does not represent intact-rock tensile rupture or a prestressed,
+yielding shell. Extensional lithosphere commonly fails by normal-fault frictional sliding at
+shallow depth and ductile creep at depth
 [[Brace & Kohlstedt, 1980]](#ref-brace1980) [[Kohlstedt et al., 1995]](#ref-kohlstedt1995).
 The standalone column-envelope diagnostic uses published wet-quartzite, plagioclase,
 mafic-granulite and wet/dry olivine flow-law parameterizations, with an explicit frictional
@@ -142,9 +145,12 @@ branch [[Byerlee, 1978]](#ref-byerlee1978) [[Chen & Gerya, 2016]](#ref-chen2016)
 [[Hirth & Kohlstedt, 2003]](#ref-hirth2003). Its scenario ranges are hypotheses to test, not a
 calibrated Earth strength field; the model lacks the local temperature, composition, fluid and
 stress state needed to choose among them.
-Diagnosis gate 2 therefore remains open until the scenario envelope is matched to the shell stress
-measure, independent curved-mesh accuracy and physical edge assumptions are established, and the
-physical and explicitly phenomenological alternatives are compared on matched replays. The
+An independent curved-sphere manufactured solution now validates that stress invariant with
+decreasing error through 17 × 33 nodes. Free in-plane displacement is selected as the boundary
+condition for the isolated single-plate diagnostic because its inputs provide no displacement
+anchor; clamps are sensitivity probes and real interplate continuity would require a coupled shell
+solve. Diagnosis gate 2 remains open until the physical and explicitly phenomenological alternatives
+are compared on matched replays. The
 existing flow fit and plate-level
 `internal_stress` may remain candidate-event or background-eligibility signals, but they do not
 choose a complete cut or stand in for local loading. Keep solution 4 separately sized against the
@@ -165,22 +171,21 @@ should start until those gates are resolved and the revised design is accepted.
    them from calibration and keep their denominators separate. The archived discrepancy is not
    explained or erased, but it no longer blocks use of the documented baseline. See
    [`analysis/issue487/README.md`](../analysis/issue487/README.md).
-2. **Establish local loading and strength — membrane solver, generated-plate topology,
-   original-curved-mesh sensitivity and a standalone physical strength scenario diagnostic added
-   2026-10-19; matching the shell stress invariant and independent curved-shell benchmark pending.**
+2. **Establish local loading and strength — incremental extensional measure, column scenario
+   diagnostic, curved-shell benchmark and isolated-plate edge policy added 2026-10-19; matched
+   physical-versus-phenomenological replay pending.**
    `torque.gather_per_node_force_field` preserves each force
    source as a per-node vector in N. `thin_shell.solve_force_field` projects the combined loads
    onto the shell tangent plane, removes the area-weighted rigid-rotation component handled by
    plate motion, and solves small-strain triangular membrane equilibrium. It returns local
-   depth-integrated stress resultants and currently compares their maximum tensile principal value
-   with an explicit caller-supplied integrated threshold, all in N/m. This is a numerical interface,
-   not yet a physical normal-faulting criterion: extension failure is usually governed by brittle
+   incremental depth-integrated stress resultants and compares their maximum positive principal
+   increment with an explicit additional normal-fault capacity, all in N/m. This is a diagnostic
+   normal-faulting measure: extension failure is usually governed by brittle
    frictional sliding at shallow depth and temperature/rate-dependent creep at depth. A candidate
    column diagnostic calculates effective lithostatic pressure, a Mohr-Coulomb normal-fault differential
    strength and a layer-specific ductile flow stress, then integrates the weaker branch through
-   depth. The result is an extensional differential-strength resultant in N/m. It can only be
-   compared with shell loading after the shell reports a matching extensional stress invariant and
-   an assumed background horizontal stress. The candidate must bracket pore pressure, geotherm,
+   depth. The result is an extensional differential-strength resultant in N/m and is paired with the
+   shell increment using an assumed background horizontal stress. The candidate must bracket pore pressure, geotherm,
    rock rheology, strain rate and background stress because the current state does not resolve them;
    details and caveats are recorded in
    [`analysis/issue487/gate2-load-diagnosis.md`](../analysis/issue487/gate2-load-diagnosis.md).
@@ -204,8 +209,12 @@ should start until those gates are resolved and the revised design is accepted.
    on their original broad curved coordinates under projected manufactured edge tractions; residuals
    were below `8.5e-5` of load. Four localized clamp placements shifted mean resultants by up to
    23.5% on the oceanic plate and 8.9% on the continental plate. These curved cases show numerical
-   convergence and boundary sensitivity, not accuracy against a curved-shell analytic solution or
-   production load distributions. A direct phenomenological capacity candidate,
+   convergence and boundary sensitivity, not production load distributions. A separate
+   uniform-tension spherical-shell benchmark decreases mean error from 2.94% to 1.18%, with
+   fine-grid p95 absolute error 2.75%. Free displacement is selected for the isolated diagnostic;
+   paired clamps shift means by up to 46.6% and full-boundary clamps suppress the mean by about
+   100%, demonstrating why arbitrary anchors are not adopted. Actual edge continuity requires
+   coupled neighboring plates. A direct phenomenological capacity candidate,
    `T_cap = T_ref * (1 - lambda * w)`, was swept on a prescribed weak band: increasing `T_ref`
    monotonically reduced failed nodes, and at `2e10 N/m` the weak-band failure fraction exceeded
    the background fraction for both plates. This verifies the candidate rule's response, not its
@@ -214,15 +223,16 @@ should start until those gates are resolved and the revised design is accepted.
    conductive Moho-temperature proxy, while `rheology.yield_excess` applies a boundary-local
    scalar Mohr-Coulomb proxy. Neither supplies a validated temperature-dependent vertical yield
    envelope or integrated extensional differential capacity. The current maximum-positive-tension
-   shell comparison is not interchangeable with a normal-fault differential-strength criterion.
+   shell comparison uses a positive principal stress increment paired with additional normal-fault
+   capacity only under the stated `K0` and normal-faulting assumptions.
    The phenomenological alternative has only a synthetic
-   response check. Physical edge conditions and independent broad curved-mesh accuracy remain
-   unvalidated. Do not
-   start constitutive calibration or infer local stress from applied traction, rigid rotation,
-   flow clusters or `Plate.internal_stress`. Before gate 3, derive and sensitivity-test the
-   integrated capacity and validate the solver against an independent curved-shell manufactured
-   solution and broader load distributions. Alternatively, explicitly accept and replay-test the
-   labeled phenomenological capacity rule and its boundary assumptions. `Plate.internal_stress`
+   response check. The integrated envelope, matching shell invariant, analytic curved-shell
+   benchmark and isolated-plate free-edge policy are now documented and reproducible. Natural
+   interplate continuity and production load distributions remain outside this single-plate solve.
+   Do not start constitutive calibration or infer local stress from applied traction, rigid rotation,
+   flow clusters or `Plate.internal_stress`. Next compare the physical envelope with the labeled
+   phenomenological capacity rule on matched replays, or revise the RFC if the physical scenario
+   spread cannot support that choice. `Plate.internal_stress`
    remains a dimensionless plate-level eligibility signal and
    is not a local damage trigger. See
    [`analysis/issue487/gate2-load-diagnosis.md`](../analysis/issue487/gate2-load-diagnosis.md).
@@ -238,12 +248,13 @@ should start until those gates are resolved and the revised design is accepted.
   (`epsilon_rift`, dimensionless) on the state element whose area and ownership are defined by the
   load discretization. Each local cut is an adjacency link between cells; a failed cell or link
   becomes a short rift segment, not a plate partition. The thin-shell diagnostic returns tensile
-  membrane resultant `T_t` in N/m and compares it with an integrated yield capacity `Y_int` in
-  N/m. If the damage law remains in Pa, convert both through the same effective thickness,
-  `sigma_t = T_t / H_eff` and `Y_t = Y_int / H_eff`; otherwise formulate an integrated-viscosity
-  law with units. The capacity derivation and this coupling are pending Gate 2. The current torque
-  balance drives whole-plate motion; its loads do not by themselves define intraplate stress.
-- **Damage update.** Where the tensile load exceeds local yield, integrate the inelastic extension
+  membrane stress increment `N_ext = max(0, lambda_max(Delta_N))` and compares it with the column's
+  additional normal-fault strength resultant `N_cap`, both in N/m. The diagnostic pairing is
+  defined, but production use waits for Gate 2's matched replay choice. If the damage law remains
+  in Pa, convert both through the same effective thickness, `sigma_ext = N_ext / H_eff` and
+  `Y_t = N_cap / H_eff`; otherwise formulate an integrated-viscosity law with units. The current
+  torque balance drives whole-plate motion; its loads do not by themselves define intraplate stress.
+- **Damage update.** Where the extensional increment exceeds local yield, integrate the inelastic extension
   rate over the portion of the step in which it is positive:
   `d epsilon_rift / dt = max(0, sigma_t - Y_t) / eta_rift`, with `eta_rift` in Pa·s. Cap
   `epsilon_rift` at `epsilon_fail` and convert it to a bounded damage fraction
@@ -306,7 +317,7 @@ its physical source or explicit design-choice status, and the sensitivity plan b
 
 | Knob | Start | Source | Tuning plan |
 |---|---|---|---|
-| Extensional load and yield strength | Shell membrane resultant available; current max-tension threshold is not a physical normal-fault criterion (gate 2, 2026-10-19) | Candidate integrated brittle–ductile differential-strength envelope; parameters and background stress are scenario assumptions until state supports them | Match load and yield definitions, sweep explicit material/thermal/fluid scenarios on synthetic and replayed candidate plates before gate 3 |
+| Extensional load and yield strength | Incremental largest positive principal membrane resultant paired with additional normal-fault capacity from explicit `K0` (gate 2 diagnostic, 2026-10-19) | Candidate integrated brittle–ductile differential-strength envelope; material and background state remain scenario assumptions | Compare the physical envelope and phenomenological threshold on matched candidate replays; retain scenario brackets |
 | Failure strain (`epsilon_fail`) | Pending gate 3 | Calibration assumption | Sensitivity on controlled loads and candidate events |
 | Damage viscosity (`eta_rift`, Pa·s) | Pending gate 3 | Calibration assumption | Sweep strain rates and timestep partitions |
 | Residual strength (`q_res`, [0, 1]) | Pending gate 3 | Design choice | Sweep weak-belt/craton cases; check localization and runaway |
@@ -317,12 +328,12 @@ its physical source or explicit design-choice status, and the sensitivity plan b
 
 - `backend/app/torque.py`: `gather_per_node_force_field` exposes existing source forces in N
   before torque aggregation. `backend/app/thin_shell.py` supplies a reduced linear membrane
-  equilibrium. It must expose an extensional differential-stress measure consistent with the
-  proposed integrated brittle–ductile column capacity in N/m; the current max-tensile comparison is
-  only a diagnostic. `bin/debug/diagnose_gate2_column_envelope.py` is a standalone scenario
-  diagnostic; a production column-envelope module remains a proposed touchpoint, not implemented.
-  Its convex-hull mesh, free edge and elastic response remain diagnostic assumptions; check
-  mesh/boundary sensitivity before damage calibration.
+  equilibrium and exposes the largest positive principal stress increment for comparison with an
+  integrated additional normal-fault capacity in N/m. `bin/debug/diagnose_gate2_column_envelope.py`
+  is a standalone scenario diagnostic; a production column-envelope module remains a proposed
+  touchpoint, not implemented. Its spherical benchmark and free-edge single-plate baseline are
+  checked by `bin/debug/validate_thin_shell_plate_meshes.py`; coupled interplate boundaries and
+  nonlinear load redistribution remain outside this diagnostic.
 - `backend/app/merge_split.py`: move rift-state advancement out of the all-at-once split decision;
   retain a split/topology check that runs only after local failed links form a viable connected
   boundary. Existing flow fit may remain a diagnostic or a candidate-event signal, not the rift path.
@@ -369,12 +380,11 @@ its physical source or explicit design-choice status, and the sensitivity plan b
 
 1. [x] **Gate 1:** use the repeatable paired runs as the baseline and retire the provenance-
        incomplete archives from calibration (2026-10-19; see `analysis/issue487/README.md`).
-   [ ] **Gate 2:** a standalone column-envelope hypothesis and thermal/fluid/rheology/strain-rate/
-       background-stress sweep are documented and reproducible, but remain uncalibrated. Define an
-       extensional shell stress measure that matches the envelope; validate thin-shell load transfer
-       against an independent curved-shell solution and broaden mesh and edge-condition sensitivity.
-       Compare this physical candidate with the labeled phenomenological alternative on matched
-       replays, or revise the RFC to select that alternative. Only then set and sensitivity-test
+   [ ] **Gate 2:** the column-envelope scenarios, matching incremental shell stress measure,
+       independent curved-sphere benchmark and isolated-plate free-edge policy are documented and
+       reproducible; constitutive values remain uncalibrated. Compare the physical candidate with
+       the labeled phenomenological alternative on matched replays, or revise the RFC to select
+       that alternative. Only then set and sensitivity-test
        damage parameters before full replays (see `analysis/issue487/gate2-load-diagnosis.md` and
        `analysis/issue487/gate2-column-envelope.json`).
 2. [ ] In synthetic tests, damage is timestep-partition invariant, bounded, absent under compression

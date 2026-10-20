@@ -3,8 +3,8 @@
 This is an offline diagnostic, not a production plate-motion or deformation solver. It
 projects applied loads onto the shell tangent plane, removes the part that can accelerate a
 rigid plate rotation, solves linear membrane equilibrium on a triangular mesh, and reports
-depth-integrated stress resultants. A caller supplies the integrated tensile strength in N/m;
-this module does not invent a geotherm or a lithosphere strength law.
+incremental depth-integrated stress resultants. A caller supplies the column's additional
+extensional capacity in N/m; this module does not invent a geotherm or lithosphere strength law.
 """
 
 from __future__ import annotations
@@ -21,19 +21,34 @@ from . import geometry, lithosphere
 
 @dataclass(frozen=True)
 class ThinShellResult:
-    """Nodal fields from a reduced membrane equilibrium solve."""
+    """Nodal incremental extension and capacity fields from membrane equilibrium."""
 
     displacement_m: np.ndarray  # (N, 3), tangent displacement
     stress_resultant_n_per_m: np.ndarray  # (N, 3): xx, yy, xy in each node's tangent basis
-    max_tensile_resultant_n_per_m: np.ndarray  # (N,), largest principal membrane resultant
-    tensile_strength_resultant_n_per_m: np.ndarray  # (N,), caller-supplied integrated strength
-    failure_ratio: np.ndarray  # (N,), tensile resultant / integrated strength
+    max_tensile_resultant_n_per_m: np.ndarray  # (N,), compatibility alias for max extension increment
+    tensile_strength_resultant_n_per_m: np.ndarray  # (N,), compatibility alias for extensional capacity
+    failure_ratio: np.ndarray  # (N,), compatibility alias for extensional failure ratio
     equilibrated_force_n: np.ndarray  # (N, 3), applied tangent force after rigid-mode removal
     rigid_rotation_force_n: np.ndarray  # (N, 3), removed rigid-rotation load component
     fixed_node_mask: np.ndarray  # (N,), nodes constrained to zero tangent displacement
     triangles: np.ndarray  # (T, 3), shell elements
     solver_stop_code: int
     equilibrium_residual_n: float
+
+    @property
+    def max_incremental_extensional_resultant_n_per_m(self) -> np.ndarray:
+        """Largest positive principal stress increment, measured from zero load."""
+        return self.max_tensile_resultant_n_per_m
+
+    @property
+    def extensional_capacity_resultant_n_per_m(self) -> np.ndarray:
+        """Integrated additional strength to normal-fault yield for the chosen K0."""
+        return self.tensile_strength_resultant_n_per_m
+
+    @property
+    def extensional_failure_ratio(self) -> np.ndarray:
+        """Incremental extensional resultant divided by additional column strength."""
+        return self.failure_ratio
 
 
 def _tangent_basis(points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -102,8 +117,9 @@ def solve_thin_shell(
     applied_force_n: np.ndarray,
     thickness_m: np.ndarray | float,
     young_modulus_pa: np.ndarray | float,
-    tensile_strength_resultant_n_per_m: np.ndarray,
+    tensile_strength_resultant_n_per_m: np.ndarray | None = None,
     *,
+    extensional_capacity_resultant_n_per_m: np.ndarray | None = None,
     poisson_ratio: float = 0.25,
     radius_m: float = lithosphere.PLANET_RADIUS_M,
     tolerance: float = 1e-9,
@@ -120,8 +136,15 @@ def solve_thin_shell(
     By default all edges are free. `fixed_node_mask` optionally clamps selected nodes to zero
     tangent displacement in the plate-motion frame; reactions at those nodes are supplied by
     the constraint and are excluded from the free-node residual.
-    `tensile_strength_resultant_n_per_m` is the supplied depth-integrated tensile capacity;
-    each element uses plane-stress elasticity with local effective thickness and modulus.
+    The membrane tensor is the elastic stress increment from the zero-load reference, with
+    tension positive. Its largest positive principal value is the incremental extensional
+    resultant to compare with the column's integrated *additional* strength to normal-fault
+    yield. That capacity already incorporates the column's assumed background horizontal stress
+    (`K0`). This comparison assumes vertical compression remains the major principal stress and
+    does not represent a total prestressed lithosphere state. Supply the capacity as
+    `extensional_capacity_resultant_n_per_m`; the old `tensile_strength_resultant_n_per_m`
+    argument remains a compatibility alias. Each element uses plane-stress elasticity with
+    local effective thickness and modulus.
 
     By default, outward-facing convex-hull facets define a first-order mesh. Pass explicit
     `mesh_triangles` to preserve a caller's plate outline, including concave boundaries. This is
@@ -134,7 +157,14 @@ def solve_thin_shell(
     n = len(points)
     thickness = np.broadcast_to(np.asarray(thickness_m, dtype=float), (n,)).copy()
     modulus = np.broadcast_to(np.asarray(young_modulus_pa, dtype=float), (n,)).copy()
-    strength = np.asarray(tensile_strength_resultant_n_per_m, dtype=float)
+    if (tensile_strength_resultant_n_per_m is None) == (extensional_capacity_resultant_n_per_m is None):
+        raise ValueError("supply exactly one extensional capacity resultant")
+    capacity_input = (
+        extensional_capacity_resultant_n_per_m
+        if extensional_capacity_resultant_n_per_m is not None
+        else tensile_strength_resultant_n_per_m
+    )
+    strength = np.asarray(capacity_input, dtype=float)
     fixed_nodes = np.zeros(n, dtype=bool) if fixed_node_mask is None else np.asarray(fixed_node_mask, dtype=bool)
     if points.shape != (n, 3) or force.shape != (n, 3) or areas.shape != (n,) or strength.shape != (n,):
         raise ValueError("points, forces, areas, and strength must have matching node counts")
@@ -258,7 +288,9 @@ def solve_force_field(
     force_field,
     thickness_m: np.ndarray | float,
     young_modulus_pa: np.ndarray | float,
-    tensile_strength_resultant_n_per_m: np.ndarray,
+    tensile_strength_resultant_n_per_m: np.ndarray | None = None,
+    *,
+    extensional_capacity_resultant_n_per_m: np.ndarray | None = None,
     **kwargs,
 ) -> ThinShellResult:
     """Transfer a `torque.PerNodeForceField` through the membrane equilibrium diagnostic."""
@@ -269,5 +301,6 @@ def solve_force_field(
         thickness_m=thickness_m,
         young_modulus_pa=young_modulus_pa,
         tensile_strength_resultant_n_per_m=tensile_strength_resultant_n_per_m,
+        extensional_capacity_resultant_n_per_m=extensional_capacity_resultant_n_per_m,
         **kwargs,
     )

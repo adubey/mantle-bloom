@@ -287,11 +287,19 @@ traction; it is not internal stress. `thin_shell.solve_force_field` projects tho
 the spherical tangent plane, removes the area-weighted rigid-rotation component handled by
 plate motion, and solves a linear membrane equilibrium problem on a triangular mesh. It uses
 outward convex-hull facets by default and accepts explicit triangle connectivity to preserve
-nonconvex outlines. It returns nodal depth-integrated stress resultants in N/m, maximum tensile resultant,
-and the ratio to a caller-supplied depth-integrated tensile capacity in N/m. Elastic modulus,
-thickness and integrated capacity are explicit inputs. `orogeny.steady_moho_temperature_c`
+nonconvex outlines. It returns nodal incremental depth-integrated membrane stress resultants in N/m,
+the largest positive principal extensional increment, and its ratio to a caller-supplied
+depth-integrated *additional normal-fault strength* in N/m. The shell tensor is an elastic
+increment from a zero-load reference with tension positive. The column capacity is the additional
+horizontal extension to failure from an assumed background stress (`K0`); the comparison assumes
+vertical compression remains the major principal stress. Explicit names are
+`max_incremental_extensional_resultant_n_per_m`,
+`extensional_capacity_resultant_n_per_m`, and `extensional_failure_ratio`; old tensile-named
+fields remain compatibility aliases. Elastic modulus, thickness and integrated capacity are
+explicit inputs. `orogeny.steady_moho_temperature_c`
 provides a coarse conductive Moho-temperature proxy, and `moho_temperature_c` applies its
-tectonic lag; neither supplies a vertical yield-strength profile or integrated tensile capacity.
+tectonic lag; neither supplies a vertical yield-strength profile or integrated extensional
+capacity.
 The boundary-local scalar Mohr-Coulomb proxy in `rheology.yield_excess` is not such a profile.
 A manufactured uniaxial load on a shallow spherical cap recovers the analytic
 resultant within 0.16% on 3 × 3, 5 × 5 and 9 × 9 node grids. An irregular convex cap recovers its
@@ -309,14 +317,21 @@ separate original-coordinate solve below probes the broad curved meshes under a 
 The same two meshes were also solved on their original broad curved coordinates under a projected
 manufactured edge traction. Free-node residuals stayed below `8.5e-5` of load; clamping boundary
 nodes in west/east/south/north bands changed the mean resultant by up to 23.5% on the oceanic plate
-and 8.9% on the continental plate. These are convergence and boundary-sensitivity checks, not
-accuracy against an analytic curved-shell solution or evidence for a preferred physical edge
-condition. An offline candidate capacity `T_cap = T_ref * (1 - lambda * w)` was also swept against
+and 8.9% on the continental plate. A separate independent spherical-shell manufactured solution
+uses uniform isotropic membrane tension, its analytic conormal edge traction and normal pressure
+support. At 5 × 9, 9 × 17 and 17 × 33 nodes, mean extensional-resultant error decreases from 2.94%
+to 1.46% to 1.18%; the fine-grid p95 absolute error is 2.75% and equilibrium residual is
+`8.65e-6` of load. The single-plate diagnostic uses free in-plane displacement with supplied nodal
+loads as boundary loading. Fixed-edge cases are sensitivity probes because no neighbor displacement
+reference is available; paired clamps shift mean resultants by up to 46.6%, and clamping the full
+boundary suppresses them by about 100%. These constraints do not represent tectonic boundary
+conditions. Physically coupled plate edges require a multi-plate solve. An offline candidate
+capacity `T_cap = T_ref * (1 - lambda * w)` was also swept against
 the manufactured resultants, where `T_ref` is a caller-selected capacity and `w` is a prescribed
 weak-zone weight. It localized the threshold response as intended, but its inputs are uncalibrated
-design values and are not part of production deformation. Physically justified edge conditions,
-curved-shell accuracy, faults, bending, plastic yielding and topology changes remain outside this
-read-only diagnostic. The source-force moments are checked against
+design values and are not part of production deformation. Neighbor coupling, faults, bending,
+plastic yielding and topology changes remain outside this read-only diagnostic. The source-force
+moments are checked against
 existing torque terms in `backend/unit_tests/test_torque.py`; synthetic equilibrium, rigid-rotation
 removal, linear load scaling and mesh/edge cases are checked in `backend/unit_tests/test_thin_shell.py`.
 

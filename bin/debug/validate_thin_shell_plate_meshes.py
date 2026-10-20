@@ -9,7 +9,8 @@ Usage (from the repository root):
 The script selects the largest generated plate with an interior boundary loop and the
 largest one-loop plate. It clips a Delaunay triangulation of cell centres against exact plate
 containment probes. It tests a manufactured load on both the original curved mesh and a shallow
-cap mapped from the same topology, then sweeps four localized clamp placements. A final response
+cap mapped from the same topology, sweeps localized and paired clamp placements, and checks an
+independent curved-sphere solution with uniform isotropic membrane tension. A final response
 sweep evaluates a parameterized phenomenological capacity; its reference threshold and weakness
 mask are design inputs, not calibrated or physical strength values.
 """
@@ -127,10 +128,10 @@ def _manufactured_result(points: np.ndarray, areas_m2: np.ndarray, xy: np.ndarra
         force,
         thickness_m=100_000.0,
         young_modulus_pa=70e9,
-        tensile_strength_resultant_n_per_m=np.full(len(points), 2.0 * _TARGET_RESULTANT_N_PER_M),
+        extensional_capacity_resultant_n_per_m=np.full(len(points), 2.0 * _TARGET_RESULTANT_N_PER_M),
         mesh_triangles=triangles,
     )
-    mean = float(np.mean(result.max_tensile_resultant_n_per_m))
+    mean = float(np.mean(result.max_incremental_extensional_resultant_n_per_m))
     return {
         "mesh_boundary_loops": loops,
         "boundary_edges": len(exterior),
@@ -138,6 +139,120 @@ def _manufactured_result(points: np.ndarray, areas_m2: np.ndarray, xy: np.ndarra
         "relative_error": mean / _TARGET_RESULTANT_N_PER_M - 1.0,
         "equilibrium_residual_over_load": result.equilibrium_residual_n / float(np.linalg.norm(result.equilibrated_force_n)),
         "solver_stop_code": result.solver_stop_code,
+    }
+
+
+def _spherical_uniform_tension_case(theta_count: int, phi_count: int) -> dict:
+    """Check a spherical membrane with uniform isotropic tension and analytic edge traction."""
+    theta = np.linspace(0.12, 1.25, theta_count)
+    phi = np.linspace(-0.72, 0.72, phi_count)
+    theta_grid, phi_grid = np.meshgrid(theta, phi, indexing="ij")
+    points = np.column_stack(
+        (
+            np.sin(theta_grid.ravel()) * np.cos(phi_grid.ravel()),
+            np.sin(theta_grid.ravel()) * np.sin(phi_grid.ravel()),
+            np.cos(theta_grid.ravel()),
+        )
+    )
+    def node(i: int, j: int) -> int:
+        return i * phi_count + j
+    triangles = []
+    for i in range(theta_count - 1):
+        for j in range(phi_count - 1):
+            triangles.extend(
+                ((node(i, j), node(i + 1, j), node(i + 1, j + 1)),
+                 (node(i, j), node(i + 1, j + 1), node(i, j + 1)))
+            )
+    triangles = np.asarray(triangles, dtype=np.int64)
+    for index, triangle in enumerate(triangles):
+        normal = np.cross(points[triangle[1]] - points[triangle[0]], points[triangle[2]] - points[triangle[0]])
+        if np.dot(normal, points[triangle].mean(axis=0)) < 0.0:
+            triangles[index, 1], triangles[index, 2] = triangles[index, 2], triangles[index, 1]
+
+    edge_count: Counter[tuple[int, int]] = Counter()
+    edge_direction: dict[tuple[int, int], tuple[int, int]] = {}
+    for triangle in triangles:
+        for first, second in ((triangle[0], triangle[1]), (triangle[1], triangle[2]), (triangle[2], triangle[0])):
+            edge = tuple(sorted((int(first), int(second))))
+            edge_count[edge] += 1
+            edge_direction[edge] = (int(first), int(second))
+
+    force = np.zeros_like(points)
+    for edge, count in edge_count.items():
+        if count != 1:
+            continue
+        first, second = edge_direction[edge]
+        midpoint = geometry.normalize(points[first] + points[second])
+        edge_vector = points[second] - points[first]
+        tangent = geometry.normalize(edge_vector - np.dot(edge_vector, midpoint) * midpoint)
+        outward_conormal = geometry.normalize(np.cross(tangent, midpoint))
+        edge_angle = float(np.arccos(np.clip(np.dot(points[first], points[second]), -1.0, 1.0)))
+        edge_length = edge_angle * lithosphere.PLANET_RADIUS_M
+        nodal_force = _TARGET_RESULTANT_N_PER_M * outward_conormal * edge_length * 0.5
+        force[first] += nodal_force
+        force[second] += nodal_force
+
+    theta_width = np.full(theta_count, theta[1] - theta[0])
+    phi_width = np.full(phi_count, phi[1] - phi[0])
+    theta_width[[0, -1]] *= 0.5
+    phi_width[[0, -1]] *= 0.5
+    node_areas = (
+        lithosphere.PLANET_RADIUS_M**2
+        * np.sin(theta_grid)
+        * theta_width[:, None]
+        * phi_width[None, :]
+    ).ravel()
+    result = thin_shell.solve_thin_shell(
+        points,
+        node_areas,
+        force,
+        thickness_m=100_000.0,
+        young_modulus_pa=70e9,
+        extensional_capacity_resultant_n_per_m=np.full(
+            len(points), 2.0 * _TARGET_RESULTANT_N_PER_M
+        ),
+        mesh_triangles=triangles,
+        tolerance=1e-10,
+    )
+    normalized_error = (
+        result.max_incremental_extensional_resultant_n_per_m / _TARGET_RESULTANT_N_PER_M - 1.0
+    )
+    return {
+        "theta_nodes": theta_count,
+        "phi_nodes": phi_count,
+        "triangle_count": len(triangles),
+        "analytic_isotropic_resultant_n_per_m": _TARGET_RESULTANT_N_PER_M,
+        "mean_resultant_n_per_m": float(
+            np.mean(result.max_incremental_extensional_resultant_n_per_m)
+        ),
+        "mean_relative_error": float(np.mean(normalized_error)),
+        "p95_absolute_relative_error": float(np.quantile(np.abs(normalized_error), 0.95)),
+        "max_absolute_relative_error": float(np.max(np.abs(normalized_error))),
+        "equilibrium_residual_over_load": result.equilibrium_residual_n
+        / float(np.linalg.norm(result.equilibrated_force_n)),
+        "solver_stop_code": result.solver_stop_code,
+    }
+
+
+def _curved_sphere_manufactured_benchmark() -> dict:
+    """Refine a broad spherical patch against the uniform-tension membrane solution."""
+    cases = [
+        _spherical_uniform_tension_case(theta_count, phi_count)
+        for theta_count, phi_count in ((5, 9), (9, 17), (17, 33))
+    ]
+    if any(case["equilibrium_residual_over_load"] >= 1e-5 for case in cases):
+        raise AssertionError("curved-shell manufactured solve residual exceeds 1e-5 of load")
+    if any(
+        later["p95_absolute_relative_error"] >= earlier["p95_absolute_relative_error"]
+        for earlier, later in zip(cases, cases[1:])
+    ):
+        raise AssertionError("curved-shell stress error must decrease under mesh refinement")
+    if cases[-1]["p95_absolute_relative_error"] >= 0.03:
+        raise AssertionError("fine curved-shell p95 stress error must be below 3%")
+    return {
+        "analytic_solution": "uniform isotropic membrane resultant N on a sphere; normal pressure 2N/R is supported and omitted from in-plane solve",
+        "edge_condition": "free displacement with prescribed analytic conormal traction",
+        "mesh_refinement": cases,
     }
 
 
@@ -217,16 +332,22 @@ def _curved_mesh_sensitivity(
     band_width = 0.12 * float(span.max())
     cases = []
     free_result = None
-    for direction in ("free", "west", "east", "south", "north"):
+    edge_conditions = (
+        "free", "west", "east", "south", "north", "west+east", "south+north", "all_edges"
+    )
+    for direction in edge_conditions:
         fixed = np.zeros(len(points), dtype=bool)
-        if direction == "west":
-            fixed = xy[:, 0] < xy[:, 0].min() + band_width
-        elif direction == "east":
-            fixed = xy[:, 0] > xy[:, 0].max() - band_width
-        elif direction == "south":
-            fixed = xy[:, 1] < xy[:, 1].min() + band_width
-        elif direction == "north":
-            fixed = xy[:, 1] > xy[:, 1].max() - band_width
+        for edge in direction.split("+"):
+            if edge == "west":
+                fixed |= xy[:, 0] < xy[:, 0].min() + band_width
+            elif edge == "east":
+                fixed |= xy[:, 0] > xy[:, 0].max() - band_width
+            elif edge == "south":
+                fixed |= xy[:, 1] < xy[:, 1].min() + band_width
+            elif edge == "north":
+                fixed |= xy[:, 1] > xy[:, 1].max() - band_width
+            elif edge == "all_edges":
+                fixed |= np.isin(np.arange(len(points)), boundary_nodes)
         if direction != "free":
             fixed &= np.isin(np.arange(len(points)), boundary_nodes)
         result = thin_shell.solve_thin_shell(
@@ -235,16 +356,18 @@ def _curved_mesh_sensitivity(
             force,
             thickness_m=100_000.0,
             young_modulus_pa=70e9,
-            tensile_strength_resultant_n_per_m=np.full(len(points), 2.0 * _TARGET_RESULTANT_N_PER_M),
+            extensional_capacity_resultant_n_per_m=np.full(
+                len(points), 2.0 * _TARGET_RESULTANT_N_PER_M
+            ),
             mesh_triangles=triangles,
             fixed_node_mask=fixed,
         )
         if direction == "free":
             free_result = result
-        resultant = result.max_tensile_resultant_n_per_m
+        resultant = result.max_incremental_extensional_resultant_n_per_m
         if free_result is None:
             raise RuntimeError("free-edge reference result was not computed")
-        free_mean = float(np.mean(free_result.max_tensile_resultant_n_per_m))
+        free_mean = float(np.mean(free_result.max_incremental_extensional_resultant_n_per_m))
         cases.append(
             {
                 "edge_condition": direction,
@@ -259,12 +382,13 @@ def _curved_mesh_sensitivity(
             }
         )
     return {
+        "boundary_condition_policy": "Free-edge Neumann boundary is the diagnostic baseline because the single-plate input has no displacement anchor; clamps are sensitivity probes, not inferred physical plate boundaries. Coupled neighboring plates would require a multi-plate solve.",
         "projected_span_radians": span.tolist(),
         "mesh_boundary_loops": loops,
         "boundary_edges": len(exterior),
         "manufactured_resultant_n_per_m": _TARGET_RESULTANT_N_PER_M,
         "capacity_sensitivity": _phenomenological_capacity_sweep(
-            free_result.max_tensile_resultant_n_per_m, xy
+            free_result.max_incremental_extensional_resultant_n_per_m, xy
         ),
         "edge_cases": cases,
     }
@@ -321,6 +445,8 @@ def run(seed: int, num_plates: int, node_density: float) -> dict:
         "node_density": node_density,
         "mapping": "Generated cell-centre topology mapped to a shallow cap for manufactured-load testing",
         "target_resultant_n_per_m": _TARGET_RESULTANT_N_PER_M,
+        "curved_shell_manufactured_benchmark": _curved_sphere_manufactured_benchmark(),
+        "boundary_condition_selection": "Free in-plane displacement with loads applied as nodal forces is the single-plate diagnostic baseline. Fixed-edge cases are sensitivity probes because no neighboring-plate displacement anchor exists in the input. Physical coupling requires solving neighboring plates together.",
         "phenomenological_capacity_model": {
             "formula": "T_cap = T_ref * (1 - weakening_fraction * weak_zone_weight)",
             "weakening_fraction": 0.5,
