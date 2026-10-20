@@ -296,7 +296,10 @@ vertical compression remains the major principal stress. Explicit names are
 `max_incremental_extensional_resultant_n_per_m`,
 `extensional_capacity_resultant_n_per_m`, and `extensional_failure_ratio`; old tensile-named
 fields remain compatibility aliases. Elastic modulus, thickness and integrated capacity are
-explicit inputs. `orogeny.steady_moho_temperature_c`
+explicit inputs. The triangle mesh must be element-connected: the solver rejects disconnected
+components because each piece has additional rigid modes that the plate-wide rotation removal
+does not handle. Replay diagnostics skip such events rather than report their residual or capacity
+as valid. `orogeny.steady_moho_temperature_c`
 provides a coarse conductive Moho-temperature proxy, and `moho_temperature_c` applies its
 tectonic lag; neither supplies a vertical yield-strength profile or integrated extensional
 capacity.

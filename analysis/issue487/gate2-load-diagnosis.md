@@ -337,6 +337,24 @@ into measured geology.
 
 The complete trace is in `backend/app/torque.py` (`gather_boundary_force_inputs`, force terms, `gather_per_node_force_field`, `predict_plate_motion`, `integrate_omega`), `backend/app/thin_shell.py` (`solve_force_field`, `solve_thin_shell`), `backend/app/rheology.py` (`normal_closing_rate_m_per_s`, `plastic_strain_rate_per_myr`), and `backend/app/merge_split.py` (`accumulate_plate_stress`, `maybe_split_plate`). `test_spatial_force_field_preserves_each_existing_torque_term` verifies the vector adapter's moment; `test_thin_shell.py` checks synthetic equilibrium, rigid-mode removal and linearity. No production damage path consumes this diagnostic.
 
+## Mesh-connectivity safeguard
+
+The thin-shell solver now requires the triangle elements for one plate solve to form one connected
+mesh. A disconnected mesh has additional rigid modes; the plate-wide rigid-rotation projection does
+not remove those modes, so the least-squares residual can reflect mesh topology as well as load
+transfer. The solver rejects such meshes, and the matched replay records the event as skipped
+instead of scoring its stress or capacity. This is a fail-closed guard, not a mesh repair.
+
+A partial seed 2024 replay through 460 Myr found four disconnected-mesh skips among 43
+craton-crossing events. Two were the known late plate 9 cases at 432 and 460 Myr. Their accepted
+triangle meshes had component node counts `[1844, 19, 19, 12]` and `[1773, 17, 12]`, respectively;
+these are the cases whose historical residuals were 55.52% and 51.47%. Of the other 39 solved
+events, 8 still exceeded 1%, with a maximum residual of 6.43%. This partial run does not update the
+historical full-replay count of 29/130. It did not record `plate.adjacency()`, so it establishes that
+the triangle meshes are disconnected but does not establish whether each source cell graph is
+connected. Gate 2 remains open pending exact source-versus-mesh connectivity comparison, a repair or
+explicit exclusion policy, and residual checks on valid meshes.
+
 ## Gate disposition
 
 - **Current diagnostic interface:** `max(0, lambda_max(Delta_N))`, the largest positive principal shell stress increment, is paired with the column's additional normal-fault capacity from an assumed `K0` background; both are in N/m. The physical envelope remains an uncalibrated scenario family. A broad curved-sphere analytic benchmark converges to 1.18% mean error and 2.75% p95 error at 17 × 33 nodes. Free in-plane displacement is selected for the isolated-plate diagnostic because the input has no external displacement anchor. Single, paired and full-boundary clamps show substantial sensitivity and are not adopted as physical boundary conditions. The direct-threshold phenomenological rule has a monotonic capacity and weak-band localization check, but is a competing design only. Matched replay comparison and coupled interplate boundary behavior remain open, so Gate 2 is not closed.

@@ -196,12 +196,25 @@ def _score_event(world, plate, points, cut_normal, kind, capacities) -> dict | N
     )
     young_oceanic = divergent[used] & ~continental
     belt = plate.collect("belt_formed_years")[used] != surface_fields.BELT_UNMARKED_YEARS
-    result = thin_shell.solve_thin_shell(
-        source_points[used], field.areas_m2[used], field.total_n[used],
-        thickness_m=np.maximum(hc + hm, 1.0), young_modulus_pa=EFFECTIVE_MODULUS_PA,
-        extensional_capacity_resultant_n_per_m=np.full(len(used), 1e10),
-        mesh_triangles=triangles,
-    )
+    try:
+        result = thin_shell.solve_thin_shell(
+            source_points[used], field.areas_m2[used], field.total_n[used],
+            thickness_m=np.maximum(hc + hm, 1.0), young_modulus_pa=EFFECTIVE_MODULUS_PA,
+            extensional_capacity_resultant_n_per_m=np.full(len(used), 1e10),
+            mesh_triangles=triangles,
+        )
+    except ValueError as error:
+        if "disconnected element components" not in str(error):
+            raise
+        return {
+            "skipped": "thin-shell mesh is disconnected",
+            "mesh_error": str(error),
+            "plate": int(plate.plate_id),
+            "myr": float(world.elapsed_years / 1e6),
+            "mesh_node_count": int(len(used)),
+            "mesh_triangle_count": int(len(triangles)),
+            "mesh_method": mesh_method,
+        }
     resultant = result.max_incremental_extensional_resultant_n_per_m
     scores = _capacity_scores(resultant, band, continental, young_oceanic, belt, capacities)
     in_band_craton = band & (plate.collect("craton_crust_m")[used] > 0.0)

@@ -13,6 +13,7 @@ from dataclasses import dataclass
 
 import numpy as np
 from scipy.sparse import coo_matrix
+from scipy.sparse.csgraph import connected_components
 from scipy.sparse.linalg import lsmr
 from scipy.spatial import ConvexHull
 
@@ -71,6 +72,27 @@ def _spherical_surface_triangles(points: np.ndarray) -> np.ndarray:
     if len(triangles) == 0:
         raise ValueError("node set has no outward-facing spherical hull facets")
     return np.asarray(triangles, dtype=np.int64)
+
+
+def _mesh_component_sizes(node_count: int, triangles: np.ndarray) -> np.ndarray:
+    """Return element-connected node counts, including isolated mesh nodes."""
+    edges = np.concatenate((triangles[:, [0, 1]], triangles[:, [1, 2]], triangles[:, [2, 0]]))
+    graph = coo_matrix(
+        (np.ones(2 * len(edges)), (np.r_[edges[:, 0], edges[:, 1]], np.r_[edges[:, 1], edges[:, 0]])),
+        shape=(node_count, node_count),
+    ).tocsr()
+    _, labels = connected_components(graph, directed=False)
+    return np.sort(np.bincount(labels))[::-1]
+
+
+def _require_connected_mesh(node_count: int, triangles: np.ndarray) -> None:
+    """Reject a mesh whose extra rigid modes are not covered by the plate solve."""
+    component_sizes = _mesh_component_sizes(node_count, triangles)
+    if len(component_sizes) > 1:
+        raise ValueError(
+            "thin-shell mesh has disconnected element components "
+            f"with node counts {component_sizes.tolist()}"
+        )
 
 
 def _triangle_element(points_xyz: np.ndarray, triangle: np.ndarray, first: np.ndarray, second: np.ndarray,
@@ -148,8 +170,10 @@ def solve_thin_shell(
 
     By default, outward-facing convex-hull facets define a first-order mesh. Pass explicit
     `mesh_triangles` to preserve a caller's plate outline, including concave boundaries. This is
-    a screening diagnostic: it does not model faults, bending, plasticity, changing topology,
-    or a thermal strength envelope.
+    a screening diagnostic: a supplied mesh must be element-connected, and disconnected meshes
+    are rejected because each component adds rigid modes not handled by the plate-wide projection.
+    The solve does not model faults, bending, plasticity, changing topology, or a thermal strength
+    envelope.
     """
     points = geometry.normalize(np.asarray(points_xyz, dtype=float))
     areas = np.asarray(areas_m2, dtype=float)
@@ -196,6 +220,10 @@ def solve_thin_shell(
             raise ValueError("mesh_triangles contains an out-of-range node index")
         if np.any(np.diff(np.sort(triangles, axis=1), axis=1) == 0):
             raise ValueError("mesh_triangles cannot repeat a node within an element")
+    # A plate may have holes, but its membrane elements must form one connected shell.
+    # Clipping candidate triangles can sever narrow plate sections, leaving extra rigid
+    # modes that the plate-wide torque projection does not remove. Fail closed on that mesh.
+    _require_connected_mesh(n, triangles)
     first, second = _tangent_basis(points)
     tangent_force = force - np.sum(force * points, axis=1)[:, None] * points
     force_dofs = np.column_stack((np.sum(tangent_force * first, axis=1), np.sum(tangent_force * second, axis=1))).ravel()
