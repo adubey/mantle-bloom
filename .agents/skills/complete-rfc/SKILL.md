@@ -81,13 +81,14 @@ For each merged implementation PR, decide whether its change stays.
   step and every child issue must have a disposition before the RFC is complete.
 - **Implemented:** verify each child issue's work is merged or otherwise confirmed complete.
   If a child remains open because its work is still needed, the RFC is not complete. Close
-  children whose work has landed with reason `completed`; close any made obsolete by the
-  outcome with reason `not planned` and a comment linking the RFC's Outcome.
+  children whose work has landed with reason `completed`. Close any child no longer being
+  pursued with reason `not planned` and a comment linking the RFC's Outcome; set its project
+  status to `Deprecated`. Apply this rule whether the RFC is implemented or withdrawn; leave
+  closed children attached to the tracking issue as historical records.
 - **Withdrawn:** close the tracking issue with reason `not planned` and a comment linking
-  the RFC's Outcome. Keep open any child issue that is no longer pursued and set its project
-  status to `Depreciated`; do not close it as not planned. Move relevant children to the superseding RFC's
-  tracking issue and plan. If still relevant but no RFC covers them, remove them as
-  sub-issues of the withdrawn tracking issue and keep them as standalone issues. For an
+  the RFC's Outcome. Move relevant children to the superseding RFC's tracking issue and
+  plan. If still relevant but no RFC covers them, remove them as sub-issues of the withdrawn
+  tracking issue and keep them as standalone issues. For an
   existing issue, use `gh issue edit <N> --parent <new-tracking-issue>` to move it or
   `gh issue edit <N> --remove-parent` to make it standalone, then verify with
   `gh issue view <N> --json parent`. Do not close work that remains needed; keep its
@@ -96,8 +97,7 @@ For each merged implementation PR, decide whether its change stays.
   the project owner has already confirmed the outcome. Do not close or push to another
   agent's or the owner's PR without the owner's go-ahead.
 - **Open PRs:** comment with the outcome and what you recommend (close, or salvage its
-  analysis). Don't close or push to another agent's or the owner's PR without the owner's
-  go-ahead.
+  analysis).
 - **Tracking issue:** for an implemented RFC, the completion PR closes it (`Closes #N`).
   For a withdrawn RFC, close it with `gh issue close <N> --reason "not planned"` after the
   completion PR merges; don't use `Closes #N`, which would mark it completed. Tick or

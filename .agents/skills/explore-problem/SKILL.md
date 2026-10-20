@@ -24,21 +24,18 @@ and ask which artifacts to create before making them.
 - Assess the relevant design or modeling principles as criteria: identify whether the
   behavior appears to violate one, is consistent with one, or has insufficient evidence.
   Separately formulate causal hypotheses that could explain the observations.
-- Create a new exploration tracking issue early, after the initial framing, using
-  [`create-issue`](../create-issue/SKILL.md); never reuse or reopen the issue or RFC that
-  prompted the exploration. Link related RFCs or issues; make the new issue a child only
-  when the investigation is an authorized step under an active accepted RFC. In its
-  description, state the question and include a `## Exploration summary` section with this
-  note: “Intermediate comments record selected findings and may be disregarded. Read the
-  Exploration summary for the consolidated results.” Start the summary as pending. Let
-  [`create-issue`](../create-issue/SKILL.md) add it to project 2; because exploration starts
-  immediately, follow
-  [`project-management`](../project-management/SKILL.md#starting-an-issue) to set it to
-  `In Progress`. Follow the same guide for other transitions; ask the user only when the
-  requested status or appropriate transition is unclear.
 - After gathering initial evidence, present a few evidence-based avenues, alternatives and
-  a recommendation. Ask a focused question when the user's knowledge or preference could
-  materially change which avenue is useful.
+  a recommendation. Ask which direction to investigate and whether to create a new
+  exploration issue; never reuse or reopen the issue or RFC that prompted the exploration.
+  A tracker is especially useful when the investigation will span sessions. Do not create
+  it or update the project board before the user chooses. If approved, use
+  [`create-issue`](../create-issue/SKILL.md), link related RFCs or issues, and make it a
+  child only when the investigation is an authorized step under an active accepted RFC.
+  Include a `## Exploration summary` section with this note: “Intermediate comments record
+  selected findings and may be disregarded. Read the Exploration summary for the
+  consolidated results.” Start the summary as pending, then use
+  [`project-management`](../project-management/SKILL.md#starting-an-issue) to set its
+  initial status.
 
 ## 2. Investigate interactively
 
@@ -49,7 +46,9 @@ and ask which artifacts to create before making them.
   and available evidence. Treat failure as evidence about the tested design and conditions;
   distinguish that from evidence that the whole problem is infeasible. Check whether the
   result could instead reflect an invalid assumption, input or setup mismatch, measurement
-  problem, incomplete evidence, or criteria that need reconsideration. Do not rerun an
+  problem or incomplete evidence. If evidence suggests an agreed gate or acceptance criterion
+  needs to change, present the evidence and ask the project owner; do not change it yourself.
+  Do not rerun an
   expensive failed gate until existing evidence and a meaningful change to the run are
   understood. The exploration goal is to find plausible, interesting hypotheses about the
   failure and possible mechanisms, not to test a candidate implementation.
@@ -58,10 +57,10 @@ and ask which artifacts to create before making them.
   to explore. Pause at decision points that materially affect the next investigation step;
   don't continue down one of those avenues until the user responds.
 - The exploration phase finds and sharpens hypotheses. Inspect code, literature, existing
-  runs, and observations, and use non-invasive diagnostics of the current model when they
-  help distinguish explanations. Temporary scratch diagnostic probes may inspect the
-  current model, but must not implement or test a candidate model change or count as an
-  acceptance gate. For each promising hypothesis, state its proposed
+  runs, and observations. Clearly labelled, temporary scratch perturbations of the current
+  model (for example, a knockout or parameter change) may test a causal hypothesis if they
+  help distinguish explanations. They must not tune a candidate fix, become a PR, or count
+  as acceptance evidence. For each promising hypothesis, state its proposed
   mechanism, which observations it explains, a discriminating prediction, and important
   uncertainties or alternative explanations. Do not prototype or test a candidate model
   implementation here; that belongs in an RFC investigation with a selected implementation
@@ -78,10 +77,10 @@ and ask which artifacts to create before making them.
 - If relevant evidence or uncommitted work is in an inaccessible worktree, clone, or host,
   record it as a missing dependency, continue independent investigation, and ask the user
   for access or a durable handoff only when that evidence is needed to decide the next step.
-- Do not implement a model change or create outcome artifacts during exploration. The
-  exploration tracking issue is the exception: add comments containing concise, interesting
-  findings, evidence links, and changed hypotheses—not a transcript of the conversation.
-  Keep its `## Exploration summary` pending until the evidence supports a useful handoff,
+- Do not implement a model change or create outcome artifacts during exploration. If the user
+  approved an exploration tracker, use it as the investigation record: add comments with
+  concise findings, evidence links, and changed hypotheses—not a transcript of the
+  conversation. Keep its `## Exploration summary` pending until the evidence supports a useful handoff,
   then summarize findings, hypotheses, uncertainties, and recommended next steps. Update
   that summary when conclusions materially change or before ending the exploration. Keep
   the exploration issue as the investigation record; when the user selects a downstream
@@ -109,8 +108,8 @@ category:
    accepted RFC after its diagnosis gates pass.
 3. A revision or reassessment of one or more existing RFCs.
 4. No viable path identified within the explored scope, with the reason and evidence. If an
-   issue is abandoned for this reason, keep it open and set its project status to
-   `Depreciated`. If an RFC or issue was already abandoned, preserve its history; propose
+   issue is abandoned for this reason, set its project status to `Deprecated` and close it
+   with reason `not planned`. If an RFC or issue was already abandoned, preserve its history; propose
    separate follow-up work if the investigation identifies a viable new scope.
 
 For each proposed next step, name the artifact, its purpose, dependencies and the status
@@ -132,9 +131,9 @@ After the user selects artifacts:
   [`rfc-review`](../rfc-review/SKILL.md) when the selected work is a review.
 - For an RFC the user chooses to withdraw, follow [`complete-rfc`](../complete-rfc/SKILL.md).
   For an issue the user chooses to deprioritize or abandon, follow
-  [Choosing not to pursue an issue](../project-management/SKILL.md#choosing-not-to-pursue-an-issue);
-  keep the issue open with status `Depreciated`; a project status change does not close it.
-- When the user confirms the exploration summary is complete, follow
+  [Choosing not to pursue an issue](../project-management/SKILL.md#choosing-not-to-pursue-an-issue)
+  to set its project status to `Deprecated` and close it with reason `not planned`.
+- If a tracker was created, when the user confirms its exploration summary is complete, follow
   [Completing an issue](../project-management/SKILL.md#completing-an-issue) for the
   exploration tracking issue. Its deliverable is the findings summary; implementation does
   not need to be merged for the user to confirm the investigation is complete.

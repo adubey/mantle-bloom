@@ -11,11 +11,13 @@ it does not close GitHub issues, merge PRs or change project fields/options.
 
 ## 1. Verify access and the board schema
 
-- Check `gh auth status` before reading or changing project data. The token must be valid
+- At the start of a session that will read or change project data, check `gh auth status`.
+  The token must be valid
   and have the `project` scope. If it is invalid or lacks scope, stop project mutations and
   tell the user to reauthenticate or run `gh auth refresh -s project`; don't attempt a
   different account or silently skip the update.
-- Inspect the project's fields and current items:
+- Inspect the project's fields and current items once per session, and reuse the discovered
+  field and option IDs for later changes unless an error or ambiguity requires a refresh:
 
   ```bash
   gh project field-list 2 --owner @me --format json
@@ -25,8 +27,8 @@ it does not close GitHub issues, merge PRs or change project fields/options.
 - Find the existing single-select field used for the board columns and read its option
   names. Do not assume its name or capitalization. Match the requested state to an
   existing option, preserving the exact option spelling. The intended states are
-  `In Progress`, `Done`, `Ready`, `Depreciated`, `On Hold`, and `Backlog`. In particular,
-  do not silently change `Depreciated` to `Deprecated` or create a missing option. If the
+  `In Progress`, `Done`, `Ready`, `Deprecated`, `On Hold`, and `Backlog`. Use the exact
+  existing spelling `Deprecated`; do not create a missing option. If the
   field or option is missing or ambiguous, report that and ask before changing the board
   schema.
 - Check whether each issue or PR is already in the project. Add it only when absent; don't
@@ -76,9 +78,9 @@ Set an issue to `Done` only after its acceptance criteria are met and its implem
 merged or the project owner has otherwise confirmed completion. An open PR or local work
 alone is not completion. If the issue belongs to an RFC, inspect its tracking checklist in
 dependency order and tell the user the next step. If the next step is an eligible issue,
-set it to `In Progress`; if blocked, set it to `On Hold`. If it is a gate, tell the user
-what gate to run; if no issue exists for the next implementation step, say one needs to be
-created.
+set it to `In Progress` only when work on it starts immediately; otherwise leave it `Ready`.
+If blocked, set it to `On Hold`. If it is a gate, tell the user what gate to run; if no issue
+exists for the next implementation step, say one needs to be created.
 
 ### Investigating additional work
 
@@ -94,18 +96,18 @@ Use [`create-issue`](../create-issue/SKILL.md) to decide whether the issue is st
 or an RFC sub-issue, prepare its scope and create it. Add every new issue to project 2 and
 set it to `Backlog` by default. Use `Ready` only if the work is urgent and can start now.
 If an eligible issue is being started immediately, follow [Starting an issue](#starting-an-issue)
-to move it to `In Progress`.
+to move it to `In Progress`; otherwise leave it `Ready` until work begins.
 
 ### Choosing not to pursue an issue
 
-Set the project item to `Depreciated` when the decision is to stop without fixing it. The
-project status does not close the GitHub issue; follow its owning RFC or issue workflow for
-closure.
+When an issue will not be worked on any further without a fix, set its project status to
+`Deprecated` and close it with reason `not planned`. Preserve the issue and its discussion
+as the record of the decision.
 
 ### Completing an RFC
 
 After the completion PR merges or the project owner confirms the outcome, set the RFC PR
-and tracking issue to `Done` when implemented or `Depreciated` when withdrawn, if both are
+and tracking issue to `Done` when implemented or `Deprecated` when withdrawn, if both are
 project items. Follow the [RFC completion workflow](../complete-rfc/SKILL.md#5-settle-the-tracking-issue-and-sub-issues)
 to settle child issues, then update their project statuses to match their disposition.
 

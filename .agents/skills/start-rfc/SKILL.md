@@ -9,11 +9,10 @@ Use this skill when RFC work begins or advances, including starting a proposal, 
 a draft, running its diagnosis gates, or planning accepted implementation work. It owns
 workstream setup and lifecycle coordination, not the scientific prose. Use
 [`rfc-authoring`](../rfc-authoring/SKILL.md) to choose a new RFC's number and write or
-revise its content. If this is a reduced-context handoff, first use
+revise its content. When resuming RFC work from an earlier session, first use
 [`continue-rfc`](../continue-rfc/SKILL.md) to reconstruct state, then return here for the
-next lifecycle action. An RFC is the parent decision for a model change; implementation
-implementation work does not begin until the RFC is accepted and any required diagnosis
-gates pass.
+next lifecycle action. Use the lifecycle in [`rfc/README.md`](../../../rfc/README.md#lifecycle)
+as the canonical source for acceptance, diagnosis gates and implementation-issue timing.
 
 ## 1. Establish the RFC workstream
 
@@ -55,22 +54,17 @@ gates pass.
 
 ## 3. Advance RFC lifecycle
 
-- **Draft:** the project owner accepts an RFC by merging its RFC PR. If it has already
-  been merged while still marked Draft, only the project owner's explicit confirmation
-  counts. Before gates or implementation, verify acceptance from GitHub or an explicit
-  owner statement. If neither is clear, ask the project owner; a generic request to start
-  work is not acceptance. Any agent may ask, but only the owner decides. Set the status to
-  Accepted and create or update the tracking issue immediately, listing diagnosis gates
-  and planned implementation steps.
+- **Draft:** follow the [RFC lifecycle](../../../rfc/README.md#lifecycle) to verify owner
+  acceptance. Set the RFC status to Accepted and create or update its tracking issue with
+  diagnosis gates and planned implementation steps.
 - **Accepted with diagnosis gates:** run the specified gate, verify matching prior evidence
   before an expensive rerun, and record the result in the RFC. If a result calls the gate or
   acceptance criteria into question, propose a change and get the project owner's decision
   before applying a revised criterion.
-- **Accepted: implementation planning:** create dependency-ordered sub-issues as
-  children of the tracking issue using [`create-issue`](../create-issue/SKILL.md). Create
-  issues at acceptance when their scope is independent of gate results; otherwise wait for
-  the gate to determine the approach and scope. Do not begin implementation until required
-  gates pass. Start each issue with [`start-issue`](../start-issue/SKILL.md), then open an
+- **Accepted: implementation planning:** follow the [RFC lifecycle](../../../rfc/README.md#lifecycle)
+  for issue timing and implementation eligibility. Create dependency-ordered sub-issues as
+  children of the tracking issue using [`create-issue`](../create-issue/SKILL.md). Start each
+  issue with [`start-issue`](../start-issue/SKILL.md), then open an
   implementation PR for that issue. An RFC with sub-issues may therefore have multiple
   implementation PRs, generally one per sub-issue. Update the tracking checklist as gates
   and implementation steps finish.

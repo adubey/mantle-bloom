@@ -12,7 +12,7 @@ existing filenames, then write and validate the content. Use `start-rfc` to set 
 advance the RFC workstream, including acceptance, gate sequencing, and implementation
 planning. Open the RFC proposal PR from this skill; implementation work is proposed through
 one or more implementation PRs coordinated by `start-rfc`, generally one per sub-issue.
-Implementation does not begin until required diagnosis gates pass.
+Follow the [RFC lifecycle](../../../rfc/README.md#lifecycle) for issue timing and gates.
 
 ## 1. Gather the evidence
 

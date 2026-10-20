@@ -37,10 +37,10 @@ description: Set up an isolated branch, worktree, venv and ports for a Mantle Bl
      ../mantle-bloom-rfc-<NNNN>-issue-<N> origin/main
    ```
 
-   If Claude Code's EnterWorktree or another harness created a worktree, confirm it is an
-   issue-specific tree based on `origin/main` and leaves the RFC proposal tree untouched.
-   Rename its branch to `<agent>/issue-<N>-<slug>` if needed and if it is your own branch;
-   do not rename or repurpose a branch used by another task.
+   In this repository, create the issue worktree with the command above. Do not rely on a
+   harness-created worktree unless you have verified its base commit is `origin/main`; a
+   branch rename does not change its base. If it is based on another commit, create a fresh
+   issue worktree instead and leave the harness tree untouched.
 
 3. **Install deps** in the worktree: `./bin/setup.sh`. It creates the worktree's own
    `backend/.venv`. Don't symlink another tree's venv.
