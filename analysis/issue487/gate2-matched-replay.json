@@ -1,0 +1,237 @@
+{
+  "title": "Issue 487 Gate 2 matched capacity replay",
+  "date": "2026-10-19",
+  "purpose": "Diagnostic comparison only: score physical column envelopes and a labeled phenomenological belt-weakening alternative against identical Gate 1 craton-crossing candidate loads; neither capacity changes production behavior.",
+  "baseline": {
+    "commit": "0118752d0ffe75060464204d5b94f81a60fe9a07",
+    "gate1_raw_sha256": "2294f885b5ac0d3f9c92055acdf7a3267572e6fa34c8d34c78afa56b9c840e1d",
+    "seeds": [
+      7,
+      11,
+      2024
+    ],
+    "years": 1000000000.0,
+    "step_years": 2000000.0,
+    "layout": "cratons-first",
+    "craton_formation": "disabled to reproduce Gate 1 instrumented baseline",
+    "lowland_spherical_relief": "disabled during generation to reproduce Gate 1 baseline before PR #490"
+  },
+  "replay": {
+    "script": "bin/debug/replay_gate2_capacity.py",
+    "script_sha256": "12cdc283344974ef2ddfeb879278f45f39afe2502cd1d3c2f161942ce185727d",
+    "capacity_source": "analysis/issue487/gate2-column-envelope.json",
+    "capacity_source_sha256": "9c6e01368a5d0ab5ff93b3568ccae245285f6c9ccb8c370591e7bb454795ea8f",
+    "production_cut_counts_and_ordered_craton_crossing_signatures_match_gate1": true,
+    "seeds": [
+      {
+        "seed": 7,
+        "production_cuts": 144,
+        "gate1_production_cuts": 144,
+        "production_cut_count_matches": true,
+        "craton_crossing_candidates": 44,
+        "gate1_craton_crossing_candidates": 44,
+        "ordered_candidate_signatures_match": true,
+        "runtime_seconds": 1823.709
+      },
+      {
+        "seed": 11,
+        "production_cuts": 111,
+        "gate1_production_cuts": 111,
+        "production_cut_count_matches": true,
+        "craton_crossing_candidates": 42,
+        "gate1_craton_crossing_candidates": 42,
+        "ordered_candidate_signatures_match": true,
+        "runtime_seconds": 1709.36
+      },
+      {
+        "seed": 2024,
+        "production_cuts": 125,
+        "gate1_production_cuts": 125,
+        "production_cut_count_matches": true,
+        "craton_crossing_candidates": 44,
+        "gate1_craton_crossing_candidates": 44,
+        "ordered_candidate_signatures_match": true,
+        "runtime_seconds": 1642.611
+      }
+    ],
+    "scored_candidates": 130,
+    "cut_band_node_samples": 39467,
+    "mesh_paths": {
+      "clipped_gnomonic_delaunay": 127,
+      "spherical_hull_clipped_to_plate_outline": 3
+    }
+  },
+  "stress_measure": {
+    "quantity": "largest positive principal incremental membrane stress resultant",
+    "units": "N/m",
+    "effective_young_modulus_pa": 70000000000.0,
+    "band_median_of_event_band_medians_tn_per_m": 0.7601936445867911,
+    "median_of_event_band_p95_tn_per_m": 2.2016353865083595
+  },
+  "physical_column_capacity": {
+    "scenario_grid_failure_fraction_by_crust_type": {
+      "p10_capacity": {
+        "continental": {
+          "nodes": 29834,
+          "failed_fraction": 0.015988469531407118
+        },
+        "oceanic_young_ridge": {
+          "nodes": 712,
+          "failed_fraction": 0.8553370786516854
+        },
+        "oceanic_mature": {
+          "nodes": 8921,
+          "failed_fraction": 0.31678062997421813
+        },
+        "overall": {
+          "nodes": 39467,
+          "failed_fraction": 0.09912078445283401
+        }
+      },
+      "median_capacity": {
+        "continental": {
+          "nodes": 29834,
+          "failed_fraction": 0.006402091573372662
+        },
+        "oceanic_young_ridge": {
+          "nodes": 712,
+          "failed_fraction": 0.7443820224719101
+        },
+        "oceanic_mature": {
+          "nodes": 8921,
+          "failed_fraction": 0.02992938011433696
+        },
+        "overall": {
+          "nodes": 39467,
+          "failed_fraction": 0.02503357235158487
+        }
+      },
+      "p90_capacity": {
+        "continental": {
+          "nodes": 29834,
+          "failed_fraction": 0.0018770530267480056
+        },
+        "oceanic_young_ridge": {
+          "nodes": 712,
+          "failed_fraction": 0.5674157303370787
+        },
+        "oceanic_mature": {
+          "nodes": 8921,
+          "failed_fraction": 0.010200650151328327
+        },
+        "overall": {
+          "nodes": 39467,
+          "failed_fraction": 0.013961030734537715
+        }
+      }
+    },
+    "young_oceanic_proxy": "active divergent nodes; saved state has no oceanic crust-age field",
+    "capacity_scenarios": "p10/median/p90 marginal summaries at 1330 C from the checked-in column-envelope scenario grid"
+  },
+  "phenomenological_alternative": {
+    "weak_zone": "belt_formed_years marked nodes",
+    "weakening_lambda": 0.5,
+    "reference": "class-matched physical median capacity; diagnostic scale only, not an independent calibration",
+    "failure_fraction_by_reference_multiplier": [
+      {
+        "reference_multiplier_of_class_physical_median": 0.5,
+        "failed_fraction_all_cut_band_nodes": 0.112575062710619,
+        "failed_fraction_marked_belt_nodes": 0.06623831775700935,
+        "failed_fraction_outside_marked_belts": 0.12540848351506131,
+        "marked_belt_nodes": 8560,
+        "cut_band_nodes": 39467
+      },
+      {
+        "reference_multiplier_of_class_physical_median": 1.0,
+        "failed_fraction_all_cut_band_nodes": 0.025616337699850507,
+        "failed_fraction_marked_belt_nodes": 0.0032710280373831778,
+        "failed_fraction_outside_marked_belts": 0.03180509269744718,
+        "marked_belt_nodes": 8560,
+        "cut_band_nodes": 39467
+      },
+      {
+        "reference_multiplier_of_class_physical_median": 2.0,
+        "failed_fraction_all_cut_band_nodes": 0.012998201028707529,
+        "failed_fraction_marked_belt_nodes": 0.0005841121495327102,
+        "failed_fraction_outside_marked_belts": 0.01643640599217006,
+        "marked_belt_nodes": 8560,
+        "cut_band_nodes": 39467
+      }
+    ]
+  },
+  "solver_diagnostics": {
+    "lsmr_stop_code_counts": {
+      "1": 100,
+      "2": 30
+    },
+    "residual_over_load_quantiles": {
+      "p50": 0.00023067000560796818,
+      "p90": 0.11524769865935798,
+      "p95": 0.25749010882580986,
+      "max": 0.5551568948337754
+    },
+    "events_over_1_percent_residual": 29,
+    "events_over_5_percent_residual": 20,
+    "events_at_or_below_1_percent_residual": 101,
+    "samples_at_or_below_1_percent_residual": 31121,
+    "physical_failure_fraction_residual_at_or_below_1_percent": {
+      "p10_capacity": {
+        "continental": {
+          "nodes": 22949,
+          "failed_fraction": 0.01037082225805046
+        },
+        "oceanic_young_ridge": {
+          "nodes": 685,
+          "failed_fraction": 0.8525547445255475
+        },
+        "oceanic_mature": {
+          "nodes": 7487,
+          "failed_fraction": 0.34339521837852277
+        },
+        "overall": {
+          "nodes": 31121,
+          "failed_fraction": 0.10902605957392114
+        }
+      },
+      "median_capacity": {
+        "continental": {
+          "nodes": 22949,
+          "failed_fraction": 0.0022658939387337138
+        },
+        "oceanic_young_ridge": {
+          "nodes": 685,
+          "failed_fraction": 0.7445255474452555
+        },
+        "oceanic_mature": {
+          "nodes": 7487,
+          "failed_fraction": 0.0333912114331508
+        },
+        "overall": {
+          "nodes": 31121,
+          "failed_fraction": 0.02609170656469908
+        }
+      },
+      "p90_capacity": {
+        "continental": {
+          "nodes": 22949,
+          "failed_fraction": 0.0
+        },
+        "oceanic_young_ridge": {
+          "nodes": 685,
+          "failed_fraction": 0.5781021897810219
+        },
+        "oceanic_mature": {
+          "nodes": 7487,
+          "failed_fraction": 0.01135301188727127
+        },
+        "overall": {
+          "nodes": 31121,
+          "failed_fraction": 0.015455801548793419
+        }
+      }
+    },
+    "limitation": "29/130 events exceed 1% equilibrium residual; this replay cannot select or calibrate a constitutive capacity law."
+  },
+  "interpretation": "At class-median physical capacities, predicted failures are concentrated in oceanic columns, while the phenomenological belt-only weakening marks fewer failing nodes than outside the marked belt. Similar pooled rates hide different spatial predictions. Screening result only; shell equilibrium quality, constitutive calibration, load-transfer assumptions and edge sensitivity remain unresolved.",
+  "raw_outputs": "Full per-event outputs are temporary files /tmp/issue487-g2-seed{7,11,2024}.json and are intentionally not checked in."
+}

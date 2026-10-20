@@ -98,8 +98,22 @@ both in N/m, under an explicit normal-faulting `K0` assumption. An independent c
 benchmark recovers uniform isotropic tension to 1.18% mean error and 2.75% p95 error on a 17 × 33
 mesh. Free in-plane displacement is selected as the isolated-plate diagnostic baseline; paired
 clamps shift the mean by as much as 46.6%, and actual neighboring-plate coupling is outside the
-solver. Gate 2 remains open for matched replay comparison of the physical and phenomenological
-capacity choices. See the expanded evidence in
+solver. The matched replay has now scored both capacity choices on the same 130 Gate 1 craton-crossing
+candidate loads (39,467 cut-band node samples; all production cut counts and ordered candidate
+signatures matched on seeds 7, 11 and 2024). The physical envelope predicts median-capacity failure
+fractions of 0.64% in continental, 74.44% in young-ridge oceanic and 2.99% in mature oceanic
+samples. The phenomenological alternative uses marked belts with lambda=0.5 and a class-matched
+physical-median reference; at its 1x reference, 2.56% of all band nodes fail, with 0.33% inside
+marked belts versus 3.18% outside. Thus similar pooled rates hide different spatial predictions.
+
+This does not settle the model choice. The shell solve's residual/load ratio exceeds 1% in 29 of
+130 events (p50 0.023%, p90 11.52%, p95 25.75%, maximum 55.52%); conclusions are screening evidence, not
+constitutive calibration. The young-oceanic label is also only a proxy for active divergent nodes.
+The replay and a compact machine-readable result are in
+[`replay_gate2_capacity.py`](../../bin/debug/replay_gate2_capacity.py) and
+[`gate2-matched-replay.json`](gate2-matched-replay.json). Full per-event outputs remain in `/tmp`.
+Gate 2 remains open pending improved equilibrium quality, calibrated source/capacity assumptions,
+and resolution of edge sensitivity. See also
 [`representative-mesh-summary.json`](representative-mesh-summary.json).
 
 Reproduce with:

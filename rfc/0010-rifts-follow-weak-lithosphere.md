@@ -380,13 +380,17 @@ its physical source or explicit design-choice status, and the sensitivity plan b
 
 1. [x] **Gate 1:** use the repeatable paired runs as the baseline and retire the provenance-
        incomplete archives from calibration (2026-10-19; see `analysis/issue487/README.md`).
-   [ ] **Gate 2:** the column-envelope scenarios, matching incremental shell stress measure,
-       independent curved-sphere benchmark and isolated-plate free-edge policy are documented and
-       reproducible; constitutive values remain uncalibrated. Compare the physical candidate with
-       the labeled phenomenological alternative on matched replays, or revise the RFC to select
-       that alternative. Only then set and sensitivity-test
-       damage parameters before full replays (see `analysis/issue487/gate2-load-diagnosis.md` and
-       `analysis/issue487/gate2-column-envelope.json`).
+   [ ] **Gate 2:** column-envelope scenarios, the incremental shell stress measure, curved-sphere
+       benchmark, original curved-mesh checks and isolated-plate free-edge policy are documented.
+       A matched diagnostic replay now scores the physical column envelope and a labeled
+       phenomenological belt-weakening alternative on the same Gate 1 candidate loads; all ordered
+       candidate signatures match. It is not a constitutive model selection: 29/130 shell solves
+       exceed 1% equilibrium residual, the oceanic-age proxy is coarse, and capacities remain
+       uncalibrated. Improve equilibrium quality, settle edge sensitivity, and ground or explicitly
+       label constitutive assumptions before selecting/tuning damage parameters or running full
+       production replays (see `analysis/issue487/gate2-load-diagnosis.md`,
+       `analysis/issue487/gate2-column-envelope.json`, and
+       `analysis/issue487/gate2-matched-replay.json`).
 2. [ ] In synthetic tests, damage is timestep-partition invariant, bounded, absent under compression
        or sub-yield loading, and advances only through adjacent cells with supported positive loading.
 3. [ ] Segments can nucleate independently, propagate, arrest and link; a transform/transfer zone
