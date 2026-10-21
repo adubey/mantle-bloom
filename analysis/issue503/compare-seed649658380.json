@@ -1,0 +1,154 @@
+{
+ "issue": 503,
+ "save": "seed649658380-6.4Myr",
+ "save_sha256": "ebbfb5da073ae27b3baa20e53ef958cedd9153f4ce38ca549b742c561273f7b3",
+ "step_years": 100000,
+ "arms": {
+  "main": {
+   "commit": "f9d3d2f",
+   "mean_over_100_steps": {
+    "water_to_nowhere_m3_s": 53818.82,
+    "invisible_sink_inflow_m3_s": 32192.18,
+    "cycle_inflow_m3_s": 21626.64,
+    "flow_cycles": 1.48,
+    "ocean_discharge_m3_s": 629637.74,
+    "drawn_ends_off_water": 20.56,
+    "drawn_ends_total": 38.56,
+    "visible_networks_ocean": 21.68,
+    "visible_networks_lake": 2.06,
+    "visible_networks_other": 5.26,
+    "warm_ice_plugs": 2.83,
+    "frozen_river_ice_km3": 4005.22,
+    "snow_accumulation_km3": 4972.32,
+    "visible_lake_nodes": 1806.01
+   },
+   "window_means": {
+    "water_to_nowhere_m3_s": [
+     64609.3,
+     50006.9,
+     40643.3,
+     45594.1,
+     68240.6
+    ],
+    "ocean_discharge_m3_s": [
+     608459.2,
+     606009.7,
+     650366.1,
+     669217.1,
+     614136.6
+    ],
+    "drawn_ends_off_water": [
+     21.2,
+     19.6,
+     18.2,
+     19.6,
+     24.1
+    ],
+    "flow_cycles": [
+     2.2,
+     1.7,
+     1.6,
+     0.9,
+     0.9
+    ]
+   },
+   "glacier_volume_km3": [
+    3558650,
+    7825778,
+    7768512,
+    7948734,
+    8221224,
+    7916694
+   ],
+   "step_seconds_mean": 4.72,
+   "peak_rss_mb": 1938,
+   "ice_ledger_mean_km3_first_3_myr": {
+    "opening": 6177669,
+    "frozen_lake": 147479,
+    "accumulation": 4274,
+    "surface_melt": 10205,
+    "basal_melt": 57,
+    "calved": 3202,
+    "overflow": 0,
+    "closing": 6315958,
+    "frozen_river_ice": 3962,
+    "snow_melted": 28885,
+    "capped": 0,
+    "frozen_river_capped": 0
+   }
+  },
+  "fix": {
+   "commit": "b6a2a46",
+   "mean_over_100_steps": {
+    "water_to_nowhere_m3_s": 4939.43,
+    "invisible_sink_inflow_m3_s": 4939.43,
+    "cycle_inflow_m3_s": 0.0,
+    "flow_cycles": 0.0,
+    "ocean_discharge_m3_s": 714071.93,
+    "drawn_ends_off_water": 4.75,
+    "drawn_ends_total": 30.39,
+    "visible_networks_ocean": 22.92,
+    "visible_networks_lake": 2.72,
+    "visible_networks_other": 2.56,
+    "warm_ice_plugs": 1.66,
+    "frozen_river_ice_km3": 3921.04,
+    "snow_accumulation_km3": 5391.16,
+    "visible_lake_nodes": 1944.52
+   },
+   "window_means": {
+    "water_to_nowhere_m3_s": [
+     4615.9,
+     5353.5,
+     4387.9,
+     4451.7,
+     5888.0
+    ],
+    "ocean_discharge_m3_s": [
+     717150.5,
+     666996.2,
+     716327.4,
+     765935.6,
+     703949.9
+    ],
+    "drawn_ends_off_water": [
+     2.1,
+     4.0,
+     5.8,
+     5.6,
+     6.2
+    ],
+    "flow_cycles": [
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "glacier_volume_km3": [
+    3558650,
+    8023571,
+    8491263,
+    8840621,
+    9505343,
+    10588798
+   ],
+   "step_seconds_mean": 4.96,
+   "peak_rss_mb": 1999,
+   "ice_ledger_mean_km3_first_3_myr": {
+    "opening": 6414740,
+    "frozen_lake": 177580,
+    "accumulation": 4459,
+    "surface_melt": 10790,
+    "basal_melt": 58,
+    "calved": 5819,
+    "overflow": 0,
+    "closing": 6580111,
+    "frozen_river_ice": 2974,
+    "snow_melted": 28886,
+    "capped": 0,
+    "frozen_river_capped": 0
+   }
+  }
+ }
+}

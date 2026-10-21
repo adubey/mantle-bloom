@@ -12,7 +12,8 @@ Each step, from that step's hydrology, it measures:
   segments whose downstream node is neither drawn on, ocean, nor a visible lake;
 - length-visible river networks by mouth type (ocean / lake / other);
 - warm single-node ice plugs: isolated nodes with visible ice at >= 0C;
-- the ice ledger's frozen river ice and snow accumulation (km^3), and visible lake nodes.
+- the ice ledger's frozen river ice and snow accumulation (km^3), every other ice-ledger
+  term (`ice_<term>_km3`), and visible lake nodes.
 
 Per-step values are averaged over each checkpoint window, beside the end-of-window glacier
 volume, step runtime and peak RSS. `--backend` points at the backend to import, so the same
@@ -99,6 +100,7 @@ def main() -> None:
             "frozen_river_ice_km3": ledger.frozen_river_ice_m3 / 1e9,
             "snow_accumulation_km3": ledger.accumulation_m3 / 1e9,
             "visible_lake_nodes": int(lake.sum()),
+            **{f"ice_{key}_km3": value / 1e9 for key, value in vars(ledger).items() if key.endswith("_m3")},
         }
 
     def snapshot() -> dict:
