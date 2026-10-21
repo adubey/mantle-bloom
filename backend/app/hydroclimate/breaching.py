@@ -343,11 +343,9 @@ def breach_depressions(
         if water is not None and np.any(drains):
             draining = candidates[drains]
             # Every pit with a way out can pass its surplus on, not only this step's candidates.
-            routed = pits[np.isfinite(pit_cost)]
-            _, routed_rims = _walk_paths(routed, channel_passage, next_hop, max_cut)
             overflows = _overflows(
-                elevation, is_ocean, neighbor_idx, pits[draining], water,
-                _PitChain(routed, routed_rims, cost, next_hop),
+                elevation, is_ocean, neighbor_idx, pits[draining], rim_level[drains], water,
+                _PitChain(pits[np.isfinite(pit_cost)], channel_passage, next_hop),
             )
             endorheic_pits = pits[draining[~overflows]]
             breachable[draining[~overflows]] = False
@@ -420,12 +418,11 @@ def _walk_paths(
 
 @dataclass
 class _PitChain:
-    """Every pit with a path to the ocean, the highest passage on that path (its rim-level
-    lake's surface), and the least-cost graph that carries its overflow on."""
+    """Every pit with a path to the ocean, and the passages and least-cost graph its overflow
+    leaves by."""
 
     pits: np.ndarray
-    rim_level: np.ndarray
-    cost: np.ndarray
+    passage: np.ndarray
     next_hop: np.ndarray
 
 
@@ -434,18 +431,22 @@ def _overflows(
     is_ocean: np.ndarray,
     neighbor_idx: np.ndarray,
     pits: np.ndarray,
+    rim_level: np.ndarray,
     water: WaterBalance,
     chain: _PitChain,
 ) -> np.ndarray:
-    """Whether each of `pits` receives more water than a lake filled to its rim level would
-    evaporate, scaled by ENDORHEIC_DEMAND_FACTOR. Both sides are in m^3/yr.
+    """Whether each of `pits` receives more water than a lake filled to its `rim_level` (the
+    highest passage on its least-cost path) would evaporate, scaled by ENDORHEIC_DEMAND_FACTOR.
+    Both sides are in m^3/yr.
 
-    Runoff reaches a pit down steepest descent, which stops at the first pit on the way. A
-    pit upstream that overflows passes its surplus on along its least-cost path to the next
-    pit (issue #503): judged on its own catchment alone, a pit downstream of a chain of pits
-    never saw the river flowing through them, so a pit fed 4,600 m^3/s looked like a 2 m^3/s
-    endorheic basin and stayed closed. Pits are visited from the highest cost down, and surplus
-    only moves to a pit of strictly lower cost, so it can't circle."""
+    Runoff reaches a pit down steepest descent, which stops at the first pit on the way. A pit
+    upstream that overflows passes its surplus on (issue #503): judged on its own catchment
+    alone, a pit downstream of a chain of pits never saw the river flowing through them, so a
+    pit fed 4,600 m^3/s looked like a 2 m^3/s endorheic basin and stayed closed. A pit's surplus
+    is its inflow less the evaporation of a lake up to where its least-cost path leaves its
+    catchment, its own spill level; it goes to the pit that steepest descent from there reaches.
+    Pits are visited upstream first, in topological order of that pit-to-pit graph, so each
+    pit has all its surplus before passing its own on. A cycle of pits passes nothing on."""
     n = len(elevation)
     loss = np.zeros(n) if water.loss_fraction is None else np.asarray(water.loss_fraction, dtype=float)
     sink, carried = _routed_to_sinks(elevation, neighbor_idx, is_ocean, 1.0 - loss)
@@ -453,30 +454,56 @@ def _overflows(
     evaporation_mm = open_water_evaporation_mm(water.temperature_c)
     runoff_m3 = runoff_mm(water.precipitation_mm, evaporation_mm) / 1000.0 * area
     inflow = np.bincount(sink, weights=runoff_m3 * carried, minlength=n)
-    level = np.full(n, -np.inf)
-    level[chain.pits] = chain.rim_level
-    flooded = elevation < level[sink]
-    demand = ENDORHEIC_DEMAND_FACTOR * np.bincount(
-        sink[flooded], weights=(evaporation_mm / 1000.0 * area)[flooded], minlength=n
-    )
+    open_water_m3 = evaporation_mm / 1000.0 * area
 
-    cost = chain.cost.tolist()
+    def demand_at(pit_idx: np.ndarray, levels: np.ndarray) -> np.ndarray:
+        level = np.full(n, -np.inf)
+        level[pit_idx] = levels
+        flooded = elevation < level[sink]
+        return ENDORHEIC_DEMAND_FACTOR * np.bincount(sink[flooded], weights=open_water_m3[flooded], minlength=n)
+
+    spill_level, exit_node = _spill_exits(chain, sink)
+    spill_demand = demand_at(chain.pits, spill_level)
+    receiver = np.where(exit_node >= 0, sink[np.clip(exit_node, 0, None)], -1)
+    receiver = np.where((receiver >= 0) & ~is_ocean[np.clip(receiver, 0, None)], receiver, -1)
+
+    position = {int(p): i for i, p in enumerate(chain.pits.tolist())}
+    downstream = [position.get(int(r), -1) if r >= 0 else -1 for r in receiver.tolist()]
+    upstream_count = np.bincount([d for d in downstream if d >= 0], minlength=len(chain.pits)).tolist()
+    ready = [i for i, count in enumerate(upstream_count) if count == 0]
+    while ready:
+        i = ready.pop()
+        d = downstream[i]
+        pit = int(chain.pits[i])
+        surplus = inflow[pit] - spill_demand[pit]
+        if d >= 0:
+            if surplus > 0.0:
+                inflow[int(chain.pits[d])] += surplus * carried[exit_node[i]]
+            upstream_count[d] -= 1
+            if upstream_count[d] == 0:
+                ready.append(d)
+    return inflow[pits] > demand_at(pits, rim_level)[pits]
+
+
+def _spill_exits(chain: _PitChain, sink: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """For each pit: the highest passage on its least-cost path up to and including the first
+    node outside its own catchment (its spill level), and that node (-1 if the path never
+    leaves)."""
+    passage = chain.passage.tolist()
     next_hop = chain.next_hop.tolist()
     sink_list = sink.tolist()
-    ocean = is_ocean.tolist()
-    for pit in chain.pits[np.argsort(-chain.cost[chain.pits], kind="stable")].tolist():
-        surplus = inflow[pit] - demand[pit]
-        if surplus <= 0.0:
-            continue
+    levels, exits = [], []
+    for pit in chain.pits.tolist():
+        level = passage[pit]
         node = next_hop[pit]
         while node >= 0 and sink_list[node] == pit:
+            level = max(level, passage[node])
             node = next_hop[node]
-        if node < 0 or ocean[node]:
-            continue
-        downstream = sink_list[node]
-        if not ocean[downstream] and cost[downstream] < cost[pit]:
-            inflow[downstream] += surplus * carried[node]
-    return inflow[pits] > demand[pits]
+        if node >= 0:
+            level = max(level, passage[node])
+        levels.append(level)
+        exits.append(node)
+    return np.asarray(levels, dtype=float), np.asarray(exits, dtype=np.int64)
 
 
 def interface_pass_elevation(passage: np.ndarray, neighbor_idx: np.ndarray) -> np.ndarray:

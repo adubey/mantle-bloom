@@ -122,10 +122,12 @@ discharge, channel-width growth, deposition, geology or lake silt.
   - it would overflow: the water reaching it, routed with the same per-node river losses the
     lakes use, exceeds the evaporation of a lake filled to its rim (`ENDORHEIC_DEMAND_FACTOR`).
     Runoff comes from Fu's Budyko curve, and open-water evaporation rises with temperature.
-    Steepest descent carries runoff only to the first pit downhill, so each pit that
-    overflows passes its surplus along its least-cost path to the next pit, from the highest
-    cost down (`breaching._overflows`). A pit downstream of a chain of pits is judged on the
-    river flowing through them, not on its own catchment alone (issue #503).
+    Steepest descent carries runoff only to the first pit downhill, so each pit passes on its
+    surplus: its inflow less the evaporation of a lake up to its own spill level, where its
+    least-cost path leaves its catchment. The surplus goes to the pit that steepest descent
+    reaches from there, upstream pits first (`breaching._overflows`, `_spill_exits`). A pit
+    downstream of a chain of pits is judged on the river flowing through them, not on its own
+    catchment alone (issue #503).
 
   Other pits stay closed and are filled as lakes, so dry and arid basins stay real endorheic
   basins. The hierarchy's boundary edges use the notched passages
@@ -189,16 +191,23 @@ discharge, channel-width growth, deposition, geology or lake silt.
 - **Spilling within the step** (`_spill_within_step`, issue #503): the spill test above and
   `lakes.compute_spill_routing`'s choice of governing rim both read last step's water, but a
   100 kyr step's inflow fills most basins many times over. After routing the physical water,
-  every governing basin (`lakes.governing_bodies`) whose inflow, net of a rim-level lake's
-  open-water evaporation, fills its remaining room opens its outlet, and the water is routed
-  again. Basins whose spills run into each other form a `flow_target` cycle; they are united
-  at their lowest common ancestor in the hierarchy, which spills at its own rim if this step's
-  water fills it and otherwise holds the water as one lake. A cycle that runs through a
-  channel into a neighbouring catchment instead (channel-preferring flow can cross the
-  steepest-descent catchments the hierarchy is built on) sends that node down its steepest
-  descent. Repeats to a fixed point (`SPILL_WITHIN_STEP_MAX_ROUNDS`). Without it, a river
+  the governing basins (`lakes.governing_bodies`) are swept from the highest floor down. One
+  whose liquid inflow, net of a rim-level lake's evaporation (`lakes.lake_evaporation_m3_per_yr`,
+  the same rate, shallow-margin boost included, that `resolve_lakes` balances against), fills
+  its remaining room opens its outlet, and its inflow is passed on to the basin that outlet
+  drains into, so a chain of pits opens in one sweep. The water is then routed again. Basins
+  whose spills run into each other form a `flow_target` cycle; they are united at their lowest
+  common ancestor in the hierarchy, which spills at its own rim if this step's water fills it
+  and otherwise pools the water at its lowest sink. A cycle that runs through a channel into a
+  neighbouring catchment instead (channel-preferring flow can cross the steepest-descent
+  catchments the hierarchy is built on) sends that node down its steepest descent. Repeats to
+  a fixed point; reaching `SPILL_WITHIN_STEP_MAX_ROUNDS` logs a warning. Without it, a river
   crossing a chain of dry pits advanced one pit per step, and basins filling in the same step
-  spilled into each other indefinitely. A frozen sink still holds its water.
+  spilled into each other indefinitely. Water settling at a frozen sink becomes river ice and
+  never counts toward filling a basin. `lakes.resolve_lakes` still merges lakes on last step's
+  water, so for one step a lake that routing has united and spilled can be reported at the
+  saddle below its rim (#505); the breach surge still routes on the flow directions from before
+  this resolution (#506).
 - **Downstream accumulation** (`route_downstream`, public -- `erosion.py` reuses it
   directly): a single forward sweep over land nodes in elevation-descending order,
   accumulating a source quantity (precipitation, for `flow_accum`; eroded material, for
@@ -488,10 +497,11 @@ per drawn `is_river` node to its own `flow_target`. Which segments and how they 
 a `channel_width` past the small `RIVER_VISIBLE_MIN_WIDTH_M` creek floor is a candidate, not
 just the strongest few networks by mouth flow -- dropped along with the old node_density-scaled
 `RIVER_DRAW_MAX_NETWORKS_BY_NODE_DENSITY`/`RIVER_DRAW_MIN_FLOW_BY_NODE_DENSITY` network-rank
-cap. Downstream of a drawn segment, every `is_river` node is drawn too, to the river's mouth,
-at no less than the channel width upstream (`_extend_drawn_rivers_downstream`): a river's last
-cells before the coast are often new or reset cells whose channel is still narrower than the
-floor, and the line used to stop one to three nodes short of the sea (issue #503). Color and line width are driven by two different, deliberately decoupled measures of "how
+cap. Downstream of a drawn segment, `is_river` nodes below the width floor are drawn too, to
+the river's mouth, at the width of the drawn reach above them
+(`_extend_drawn_rivers_downstream`): a river's last cells before the coast are often new or
+reset cells whose channel is still narrower than the floor, and the line used to stop one to
+three nodes short of the sea (issue #503). A node drawn in its own right keeps its own width. Color and line width are driven by two different, deliberately decoupled measures of "how
 big":
 
 - **Color** is a *percentile rank* of `channel_width` among this same render's own currently-

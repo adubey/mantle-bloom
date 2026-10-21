@@ -2462,24 +2462,25 @@ def _river_network_is_visible(river: hydrology.RiverInfo) -> bool:
 
 
 def _extend_drawn_rivers_downstream(hydro, drawn: np.ndarray, channel_width: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Draws every river node downstream of a drawn one, all the way to its mouth, at no less
-    than the channel width upstream. A river's last nodes before the coast are often new or
-    reset cells whose channel hasn't grown past RIVER_VISIBLE_MIN_WIDTH_M yet, so the line used
-    to stop one to three nodes short of the sea, a river to nowhere (issue #503)."""
+    """Draws every river node downstream of a drawn one, all the way to its mouth. A river's
+    last nodes before the coast are often new or reset cells whose channel hasn't grown past
+    RIVER_VISIBLE_MIN_WIDTH_M yet, so the line used to stop one to three nodes short of the
+    sea, a river to nowhere (issue #503). Only nodes below that floor are filled in, and they
+    take the width of the drawn reach above them; a node drawn in its own right keeps its own
+    width, so a river that narrows downstream is still drawn narrowing."""
+    original = drawn
     drawn = drawn.copy()
     width = channel_width.astype(float).copy()
     flow_target = hydro.flow_target
     is_river = hydro.is_river
-    for source in np.flatnonzero(drawn)[np.argsort(-hydro.elevation[drawn], kind="stable")].tolist():
+    for source in np.flatnonzero(original).tolist():
         node = source
         while True:
             target = int(flow_target[node])
-            if target < 0 or not is_river[target] or flow_target[target] < 0:
-                break
-            if drawn[target] and width[target] >= width[node]:
+            if target < 0 or original[target] or drawn[target] or not is_river[target] or flow_target[target] < 0:
                 break
             drawn[target] = True
-            width[target] = max(width[target], width[node])
+            width[target] = width[node]
             node = target
     return drawn, width
 

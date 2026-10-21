@@ -82,6 +82,7 @@ not just the trickle of ordinary flow passing through that one point (see
 from __future__ import annotations
 
 import heapq
+import logging
 
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -113,6 +114,8 @@ from ..plates import (
 if TYPE_CHECKING:
     from ..world import World
     from .ice_sheet import IceStep
+
+_logger = logging.getLogger(__name__)
 
 # Same 8-neighbor D8 structure as a regular grid's adjacency -- the graph every algorithm
 # below runs on.
@@ -1071,6 +1074,7 @@ class SpillBasins:
     stored_m3: np.ndarray  # water already standing in each cell at the start of the step
     evaporation_m_per_yr: np.ndarray  # open-water evaporation per cell
     frozen: np.ndarray  # sinks whose water freezes where it settles
+    keep: np.ndarray | None = None  # share of passing water each node keeps (1 - transit loss); None keeps all
 
 
 def _spill_within_step(
@@ -1091,14 +1095,17 @@ def _spill_within_step(
     pit per step, and two basins that filled to their shared saddle in the same step each spilled
     into the other, so the water circled between them and reached neither the sea nor a lake.
 
-    Each round, a governing basin (`lakes.governing_bodies`) whose inflow this step, net of the
-    evaporation of a lake at its rim, fills its remaining room spills at its own outlet. Then the
-    basins on each flow cycle are united at their lowest common ancestor, which is re-tested the
-    same way: it spills at its own rim, or its sinks hold the water. `route(flow_target)`
-    re-routes after any change and returns `(through, settled)`. Repeats to a fixed point. A
-    cycle that instead runs through a channel into a neighbouring catchment (routing prefers an
-    established channel, while the hierarchy's catchments follow steepest descent) is broken by
-    sending that node down its steepest descent, the path the hierarchy drains it by.
+    Each round sweeps the governing basins (`lakes.governing_bodies`) from the highest floor
+    down. A basin whose liquid inflow this step, net of the evaporation of a lake at its rim
+    (`lakes.lake_evaporation_m3_per_yr`), fills its remaining room opens its outlet, and its
+    inflow is passed on to the basin that outlet drains into, so a chain of pits opens in one
+    sweep. Then the basins on each flow cycle are united at their lowest common ancestor, which
+    is re-tested the same way: it spills at its own rim, or its water pools at its lowest sink.
+    A cycle that instead runs through a channel into a neighbouring catchment (routing prefers
+    an established channel, while the hierarchy's catchments follow steepest descent) is broken
+    by sending that node down its steepest descent, the path the hierarchy drains it by.
+    `route(flow_target)` re-routes after any change and returns `(through, settled)`. Repeats to
+    a fixed point, at most SPILL_WITHIN_STEP_MAX_ROUNDS rounds; reaching the cap logs a warning.
 
     Returns `(flow_target, should_spill, filled_elevation, spill_target, through, settled)`."""
     resolver = _SpillResolver(basins, flow_target, should_spill, filled_elevation, spill_target, route, years)
@@ -1107,6 +1114,11 @@ def _spill_within_step(
         united = resolver.untangle_cycles()
         if not (opened or united):
             break
+    else:
+        _logger.warning(
+            "basin spills did not settle within %d rounds; some rivers may stop short of an outlet this step",
+            SPILL_WITHIN_STEP_MAX_ROUNDS,
+        )
     return (
         resolver.flow_target, resolver.should_spill, resolver.filled_elevation, resolver.spill_target,
         resolver.through, resolver.settled,
@@ -1124,11 +1136,14 @@ class _SpillResolver:
         self.spill_target = spill_target.copy()
         self.route = route
         self.years = years
+        n = len(flow_target)
+        self.keep = np.ones(n) if basins.keep is None else basins.keep
+        self.climate = lakes.LakeClimate(np.zeros(n), basins.evaporation_m_per_yr)
         self.through, self.settled = route(self.flow_target)
 
         self.parent: dict[int, "lakes.Lake | None"] = {}
         self.depth: dict[int, int] = {}
-        self.leaf_of_node = np.full(len(flow_target), -1, dtype=np.int64)
+        self.leaf_of_node = np.full(n, -1, dtype=np.int64)
         stack: list[tuple["lakes.Lake", "lakes.Lake | None", int]] = [(root, None, 0) for root in basins.forest]
         while stack:
             lake, up, level = stack.pop()
@@ -1144,35 +1159,56 @@ class _SpillResolver:
                 self.body_of_sink[sink] = body
 
         elevation = basins.hypsometry.elevation
-        lowest = basins.neighbor_idx[np.arange(len(elevation)), np.argmin(elevation[basins.neighbor_idx], axis=1)]
+        lowest = basins.neighbor_idx[np.arange(n), np.argmin(elevation[basins.neighbor_idx], axis=1)]
         self.steepest = np.where(elevation[lowest] < elevation, lowest, -1)
 
     def _reroute(self) -> None:
         self.through, self.settled = self.route(self.flow_target)
 
-    def _fills(self, body: "lakes.Lake", sinks: np.ndarray) -> bool:
+    def _liquid(self, sinks: np.ndarray) -> np.ndarray:
+        """The sinks whose water stays liquid; a frozen sink's water becomes river ice."""
+        return sinks[~self.basins.frozen[sinks]]
+
+    def _fills(self, body: "lakes.Lake", inflow_m3_per_yr: float) -> bool:
         if body.max_depth is None or body.outlet_target_idx < 0:
             return False
         hyp = self.basins.hypsometry
         members = body.members
-        rim = body.max_depth
-        room = hyp.volume(rim, members) - float(self.basins.stored_m3[members].sum())
-        evaporation = float(np.dot(self.basins.evaporation_m_per_yr[members], hyp.wet_fraction(rim, members) * hyp.area_m2[members]))
-        return (float(self.settled[sinks].sum()) - evaporation) * self.years >= room
+        room = hyp.volume(body.max_depth, members) - float(self.basins.stored_m3[members].sum())
+        evaporation = lakes.lake_evaporation_m3_per_yr(body.max_depth, members, hyp, self.climate)
+        return (inflow_m3_per_yr - evaporation) * self.years >= room
 
     def _open_outlet(self, body: "lakes.Lake", sinks: np.ndarray) -> None:
-        live = sinks[~self.basins.frozen[sinks]]
+        live = self._liquid(sinks)
         self.flow_target[live] = body.outlet_target_idx
         self.should_spill[live] = True
 
+    def _pass_on(self, start: int, amount: float, pending: np.ndarray) -> None:
+        """Adds `amount` (m^3/yr) to the sink where water entering the routing at `start` settles,
+        less the transit losses on the way."""
+        node, hops = start, 0
+        while hops <= len(self.flow_target):
+            amount *= self.keep[node]
+            target = int(self.flow_target[node])
+            if target < 0:
+                pending[node] += amount
+                return
+            node, hops = target, hops + 1
+
     def open_filled_basins(self) -> bool:
-        """Opens the outlet of every governing basin this step's water fills."""
+        """Opens the outlet of every governing basin this step's water fills, sweeping from the
+        highest floor down so water released upstream counts toward the basins below it."""
+        bodies = sorted({id(b): b for b in self.body_of_sink.values()}.values(), key=lambda b: -b.floor_elevation)
+        pending = np.zeros(len(self.flow_target))
         opened = False
-        for body in {id(b): b for b in self.body_of_sink.values()}.values():
-            sinks = lakes.leaf_sinks(body)
-            holding = (self.flow_target[sinks] < 0) & ~self.basins.frozen[sinks]
-            if np.any(holding) and self._fills(body, sinks):
-                self._open_outlet(body, sinks)
+        for body in bodies:
+            live = self._liquid(lakes.leaf_sinks(body))
+            if not np.any(self.flow_target[live] < 0):
+                continue
+            inflow = float(self.settled[live].sum() + pending[live].sum())
+            if self._fills(body, inflow):
+                self._open_outlet(body, live)
+                self._pass_on(body.outlet_target_idx, inflow, pending)
                 opened = True
         if opened:
             self._reroute()
@@ -1209,11 +1245,16 @@ class _SpillResolver:
             self.body_of_sink[sink] = ancestor
         self.filled_elevation[sinks] = ancestor.max_depth if ancestor.max_depth is not None else np.inf
         self.spill_target[sinks] = ancestor.outlet_target_idx
-        if self._fills(ancestor, sinks):
+        live = self._liquid(sinks)
+        if self._fills(ancestor, float(self.settled[live].sum())):
             self._open_outlet(ancestor, sinks)
-        else:
-            self.flow_target[sinks] = -1
-            self.should_spill[sinks] = False
+        elif len(live):
+            # One lake: its water pools at its lowest ground, not at every sink it covers.
+            lowest = int(live[np.argmin(self.basins.hypsometry.elevation[live])])
+            self.flow_target[live] = lowest
+            self.should_spill[live] = True
+            self.flow_target[lowest] = -1
+            self.should_spill[lowest] = False
         return True
 
     def _lowest_common_ancestor(self, bodies: list["lakes.Lake"]) -> "lakes.Lake | None":
@@ -1594,7 +1635,7 @@ def compute_hydrology(
     flow_target, should_spill, filled_elevation, spill_target, through_m3, settled_m3 = _spill_within_step(
         SpillBasins(
             forest, lakes.governing_bodies(forest, elevation, lake_depth_adjusted, hypsometry), hypsometry, neighbor_idx,
-            lake_depth_adjusted * areas, evaporation_mm / 1000.0, water_frozen,
+            lake_depth_adjusted * areas, evaporation_mm / 1000.0, water_frozen, keep=1.0 - transit_loss,
         ),
         flow_target, should_spill, filled_elevation, spill_target,
         lambda targets: route_downstream(elevation, is_ocean, targets, physical_source_m3, loss_fraction=transit_loss),

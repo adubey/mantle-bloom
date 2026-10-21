@@ -862,6 +862,13 @@ def test_rivers_to_draw_carries_a_drawn_river_to_its_mouth_past_a_narrow_coastal
     alpha = dict(zip(src_idx.tolist(), color_alpha.tolist()))
     assert alpha[2] >= alpha[1]  # not paler than the reach above it
 
+    # A reach drawn in its own right keeps its own width: the river narrowing to 1,000 m at
+    # its mouth is drawn narrowing, not at the 2,500 m width upstream.
+    world.hydrology_cache.channel_width[2] = 1000.0
+    src_idx, color_alpha, _ = render_image._rivers_to_draw(world)
+    alpha = dict(zip(src_idx.tolist(), color_alpha.tolist()))
+    assert alpha[2] < alpha[1]
+
     # A creek that never clears the floor anywhere is still left out.
     world.hydrology_cache.channel_width[:3] = 30.0
     assert len(render_image._rivers_to_draw(world)[0]) == 0

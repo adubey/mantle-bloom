@@ -184,6 +184,84 @@ def test_spill_within_step_carries_a_river_through_a_chain_of_dry_pits():
     assert through[1] == 0.0
 
 
+def test_spill_within_step_opens_a_40_pit_chain_in_one_sweep():
+    # Pits p_k (2k + 2) step down toward the sea, each spilling over rim r_k (2k + 1) into the
+    # pit below. Swept from the highest floor down, water released by each pit counts toward
+    # the next, so all 40 open at once instead of one per round (a 32-round cap left this
+    # chain stranded, #503).
+    pits = 40
+    n = 2 * pits + 2
+    elevation = np.empty(n)
+    elevation[0] = -10.0
+    for k in range(pits + 1):
+        elevation[2 * k + 1] = 10.0 * k + 5.0
+        if k < pits:
+            elevation[2 * k + 2] = 10.0 * k + 3.0
+    is_ocean = np.zeros(n, dtype=bool)
+    is_ocean[0] = True
+    flow_target = np.full(n, -1)
+    flow_target[1] = 0
+    chain = []
+    for k in range(pits):
+        pit, rim, upstream = 2 * k + 2, 2 * k + 1, 2 * k + 3
+        flow_target[upstream] = pit
+        chain.append(lakes.Lake(k, np.array([pit, upstream]), elevation[pit], elevation[pit], elevation[rim],
+                                outlet_node_idx=pit, sink_node_idx=pit, outlet_target_idx=rim))
+    source = np.zeros(n)
+    source[-1] = 1000.0
+
+    targets, _, _, _, through, _ = hydrology._spill_within_step(
+        _spill_basins(elevation, chain, chain), flow_target, np.zeros(n, dtype=bool), elevation.copy(),
+        np.full(n, -1), _route_for(elevation, is_ocean, source), years=1000.0,
+    )
+    assert all(targets[2 * k + 2] == 2 * k + 1 for k in range(pits))
+    assert through[1] == pytest.approx(1000.0)
+
+
+def test_spill_within_step_counts_shallow_margin_evaporation_against_a_fill():
+    # Pit node 2 has 2 m of sub-cell relief and its rim 1 m above its centre, so a lake at the
+    # rim floods 75% of it, and that shallow margin evaporates 30% faster (lakes.
+    # SHALLOW_EVAPORATION_BOOST): 806,250 m^3/yr in all, 750,000 without the boost. The river
+    # brings 778,000 m^3/yr, so the lake balances below the rim and the pit holds -- as
+    # lakes.resolve_lakes will also find (#503).
+    elevation = np.array([-10.0, 5.0, 3.0, 20.0])
+    is_ocean = np.array([True, False, False, False])
+    pit = lakes.Lake(0, np.array([2]), 3.0, 3.0, 4.0, outlet_node_idx=2, sink_node_idx=2, outlet_target_idx=1)
+    basins = hydrology.SpillBasins(
+        [pit], [pit], lakes.CellHypsometry(elevation, np.ones(4), np.array([0.0, 0.0, 2.0, 0.0]), 1.0),
+        np.stack([np.maximum(np.arange(4) - 1, 0), np.minimum(np.arange(4) + 1, 3)], axis=1),
+        np.zeros(4), np.array([0.0, 0.0, 1.0e6, 0.0]), np.zeros(4, dtype=bool),
+    )
+    source = np.array([0.0, 0.0, 0.0, 778_000.0])
+    targets, spilling, _, _, through, _ = hydrology._spill_within_step(
+        basins, np.array([-1, 0, -1, 2]), np.zeros(4, dtype=bool), elevation.copy(), np.full(4, -1),
+        _route_for(elevation, is_ocean, source), years=1.0e6,
+    )
+    assert targets[2] == -1 and not spilling[2]
+    assert through[1] == 0.0
+
+
+def test_spill_within_step_frozen_water_does_not_fill_a_warm_sink():
+    # One lake covers sink 2 (warm) and sink 4 (frozen). The river reaches only the frozen
+    # sink, where it settles as river ice, so no liquid water fills the lake and its warm sink
+    # stays closed (#503).
+    elevation = np.array([-10.0, 5.0, 2.0, 30.0, 3.0])
+    is_ocean = np.array([True, False, False, False, False])
+    warm = lakes.Lake(0, np.array([2]), 2.0, 2.0, 4.0, outlet_node_idx=2, sink_node_idx=2, outlet_target_idx=4)
+    frozen_pit = lakes.Lake(1, np.array([3, 4]), 3.0, 3.0, 4.0, outlet_node_idx=4, sink_node_idx=4, outlet_target_idx=2)
+    pair = lakes.Lake(2, np.array([2, 3, 4]), 2.0, 4.0, 5.0, children=[warm, frozen_pit], outlet_node_idx=2, outlet_target_idx=1)
+    frozen = np.array([False, False, False, False, True])
+    source = np.array([0.0, 0.0, 0.0, 1000.0, 0.0])
+
+    targets, spilling, _, _, through, _ = hydrology._spill_within_step(
+        _spill_basins(elevation, [pair], [pair], frozen=frozen), np.array([-1, 0, -1, 4, -1]), np.zeros(5, dtype=bool),
+        elevation.copy(), np.full(5, -1), _route_for(elevation, is_ocean, source), years=1000.0,
+    )
+    assert targets[2] == -1 and not spilling[2]
+    assert targets[4] == -1  # the frozen sink itself never routes on
+    assert through[1] == 0.0
+
+
 def test_spill_within_step_unites_sibling_basins_that_spill_into_each_other():
     # Sibling pits A (node 2) and B (node 3) both reached their shared saddle, so each spills
     # into the other and the water circles. United at their parent, the pair either spills once
@@ -211,8 +289,9 @@ def test_spill_within_step_unites_sibling_basins_that_spill_into_each_other():
 
     targets, now_spilling, _, _, through, settled = run(years=0.01)  # 2 m^3 < 5 m^3 of room
     assert hydrology.flow_cycles(targets) == []
-    assert targets[2] == -1 and targets[3] == -1 and not now_spilling[2:].any()
-    assert settled[2:].sum() == pytest.approx(200.0)
+    # Held as one lake, the water pools at its lowest sink (node 2), not split between both.
+    assert targets[3] == 2 and targets[2] == -1 and not now_spilling[2]
+    assert settled[2] == pytest.approx(200.0)
 
 
 def test_spill_within_step_sends_a_channel_back_down_the_catchment_it_belongs_to():
