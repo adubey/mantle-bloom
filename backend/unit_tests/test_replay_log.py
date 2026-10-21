@@ -159,7 +159,24 @@ def test_a_rate_limited_trigger_does_not_hold_back_another(tmp_path, world):
     world.plates = world.plates[:1]
     _run(log, world)
     log.flush()
-    assert [r["triggers"] for r in log.records()] == [["noisy", "rare"], ["noisy"]]
+    # "noisy" is still cooling down on the second step, so it stays out of that record.
+    assert [r["triggers"] for r in log.records()] == [["rare"], ["noisy"]]
+
+
+def test_another_trigger_firing_does_not_reset_a_cooldown(tmp_path, world):
+    # "noisy" fires every step and "other" every other step: "noisy" must still wait out its
+    # own window rather than ride along with "other" (PR #498 review).
+    log = ReplayLog(
+        tmp_path, min_steps_between=3,
+        triggers={"noisy": lambda outcome: {}, "other": lambda outcome: {} if log._steps % 2 == 0 else None},
+        step_progress=_fake_step(lambda w: None),
+    )
+    for _ in range(7):
+        _run(log, world)
+    log.flush()
+    noisy = [r["elapsed_years_before"] for r in log.records() if "noisy" in r["triggers"]]
+    gaps = [a - b for a, b in zip(noisy, noisy[1:])]
+    assert gaps and all(gap >= 3 * 1_000.0 for gap in gaps)
 
 
 def test_disk_cap_removes_the_oldest_records(tmp_path, world, saved_world):
@@ -343,6 +360,9 @@ def test_a_logged_crash_reproduces_only_with_the_same_exception(tmp_path, world,
     monkeypatch.setattr(replay_log, "step_world_progress", raises(RuntimeError("boom")))
     assert replay_log.replay(record["path"]).matches
     monkeypatch.setattr(replay_log, "step_world_progress", raises(KeyError("other")))
+    assert not replay_log.replay(record["path"]).matches
+    # Same type, different failure.
+    monkeypatch.setattr(replay_log, "step_world_progress", raises(RuntimeError("elsewhere")))
     assert not replay_log.replay(record["path"]).matches
 
 

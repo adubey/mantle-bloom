@@ -460,13 +460,17 @@ class ReplayLog:
                 values = {"trigger_failed": f"{type(exc).__name__}: {exc}"}
             if values is not None:
                 fired[name] = values
-        if not any(self._steps - self._last_fired.get(name, -self.min_steps_between) >= self.min_steps_between for name in fired):
-            if fired:
-                _logger.info("replay log: %s fired but is rate-limited", ", ".join(fired))
-            return {}
-        for name in fired:
+        # Each trigger has its own cooldown: one still cooling down is left out of the record
+        # (and its cooldown left alone) even when another trigger fires on the same step.
+        eligible = {
+            name: values for name, values in fired.items()
+            if self._steps - self._last_fired.get(name, -self.min_steps_between) >= self.min_steps_between
+        }
+        if len(eligible) < len(fired):
+            _logger.info("replay log: %s fired but is rate-limited", ", ".join(sorted(set(fired) - set(eligible))))
+        for name in eligible:
             self._last_fired[name] = self._steps
-        return fired
+        return eligible
 
     def _enqueue(self, world: World, snapshot: tuple, before_bytes: bytes, outcome: StepOutcome, fired: dict, seconds: float) -> None:
         seed, elapsed_before, steps_before = snapshot
@@ -637,9 +641,13 @@ def replay(record_dir: str | os.PathLike[str]) -> ReplayResult:
     expected = sidecar.get("fingerprint_after")
     after = sidecar.get("health_after")
     if expected is None or after is None or error is not None:
-        # A logged crash: the replay matches if it raises the same type of exception.
-        logged = sidecar["triggers"].get("step_exception", {}).get("type")
-        crashed = error is not None and expected is None and type(error).__name__ == logged
+        # A logged crash: the replay matches if it raises the same exception, by type and
+        # message. Steps are deterministic, so the message (values included) should recur.
+        logged = sidecar["triggers"].get("step_exception", {})
+        crashed = (
+            error is not None and expected is None
+            and (type(error).__name__, str(error)) == (logged.get("type"), logged.get("message"))
+        )
         return ReplayResult(world, sidecar, [] if crashed else ["<step outcome>"], crashed, crashed, error)
     actual = fingerprint(world)
     mismatched = sorted(name for name in set(expected) | set(actual) if expected.get(name) != actual.get(name))
