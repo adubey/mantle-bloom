@@ -358,7 +358,8 @@ backend/.venv/bin/python bin/debug/replay_logged_event.py \
 ```
 
 It loads `before.mbworld` (which carries the controls), runs the recorded step, and compares
-the fingerprint, plate count and craton ledger with the record. It prints `REPRODUCED` or lists
+the fingerprint, plate count and craton ledger with the record. A `step_exception` record
+reproduces when the replay raises the same exception type. It prints `REPRODUCED` or lists
 the world attributes that differ, and exits 1 on a mismatch. A mismatch usually means the code
 changed since the record was written: check out the record's `git` commit. It ends with a
 `probe_craton_clips.py` command for the same step, since `before.mbworld` is an ordinary save

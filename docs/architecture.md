@@ -293,11 +293,15 @@ flowchart LR
   raised) and returns the values that make it fire, or `None`. An RFC adds a signature with
   `replay_log.TRIGGERS["name"] = fn`; code inside a step can attach inputs that only exist there
   with `replay_log.annotate(key, value)`.
-- When a trigger fires, the record (`before.mbworld` plus `record.json`) is queued for a
-  background thread, so the 60 MB write happens off the world lock. A trigger that fired stays
-  quiet for `DEFAULT_MIN_STEPS_BETWEEN` (20) logged steps, and the oldest records are removed
-  once all of them pass `DEFAULT_MAX_BYTES` (2 GB). Each record is written to a temporary
-  directory and renamed into place.
+- When a trigger fires, the post-step fingerprint (about 0.1 s at node density 1) is taken
+  under the world lock, and the record (`before.mbworld` plus `record.json`) is queued for a
+  background thread, so the 60 MB write happens off the lock. At most `MAX_QUEUED_RECORDS` (3)
+  wait in memory; past that a record is dropped and logged. Shutdown waits up to 10 s for the
+  queue. A trigger that fired stays quiet for `DEFAULT_MIN_STEPS_BETWEEN` (20) logged steps,
+  and the oldest records are removed once all of them pass `DEFAULT_MAX_BYTES` (2 GB). Pruning
+  only touches directories named like a record and holding a `record.json`, so the log can
+  share a directory with other files. Each record is written to a temporary directory and
+  renamed into place.
 - `record.json` holds a per-attribute `fingerprint` of the world after the step instead of a
   second save. Every random stream a step draws is seeded from `(world.seed, elapsed_years, ...)`,
   so `replay_log.replay` reruns the step from `before.mbworld` and compares fingerprints.
@@ -305,7 +309,7 @@ flowchart LR
   mostly the pickle). Nothing is added to the pickled `World`, so saves are unaffected.
 
 Records surface in `GET /world/replay-logs`, in the summary's `replay_logs` (the `?deb` Event
-Console) and as a warning in the server log. See
+Console, cleared when a world is generated or loaded) and as a warning in the server log. See
 [debugging.md#replay-logs](debugging.md#replay-logs) for replaying one.
 
 <a id="world-state"></a>

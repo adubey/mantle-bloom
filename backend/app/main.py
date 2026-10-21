@@ -67,6 +67,9 @@ async def _lifespan(_app: FastAPI):
     _start_replay_log()
     yield
     _runner.close()
+    # The writer is a daemon thread: give a record of the last rare event time to land.
+    if _replay_log is not None and not _replay_log.flush(timeout_s=REPLAY_LOG_SHUTDOWN_FLUSH_S):
+        _logger.warning("replay log: shutting down with records still unwritten")
 
 
 app = FastAPI(title="mantle-bloom", lifespan=_lifespan)
@@ -318,6 +321,8 @@ def _world_changed(completed: bool = True) -> None:
 def _set_world(world: World) -> None:
     """Replace the shared world; the caller holds `_world_lock`."""
     _state["world"] = world
+    if _replay_log is not None:
+        _replay_log.clear_recent_events()
     _world_changed()
 
 
@@ -2004,6 +2009,8 @@ def _restore_checkpoint() -> None:
 # MANTLE_BLOOM_REPLAY_LOG_DIR is set, saves the pre-step world of any step whose health
 # metrics go askew (replay_log.py).
 _replay_log: replay_log.ReplayLog | None = None
+# How long shutdown waits for queued replay-log records (a 60 MB write each).
+REPLAY_LOG_SHUTDOWN_FLUSH_S = 10.0
 
 
 def _start_replay_log() -> None:

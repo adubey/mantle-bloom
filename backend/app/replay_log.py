@@ -38,6 +38,7 @@ import json
 import logging
 import os
 import queue
+import re
 import shutil
 import subprocess
 import tempfile
@@ -66,6 +67,10 @@ DEFAULT_MAX_BYTES = 2_000_000_000
 # A trigger that has fired stays quiet for this many logged steps: a world that stays askew
 # would otherwise write a record every step.
 DEFAULT_MIN_STEPS_BETWEEN = 20
+# Records waiting for the writer thread, each holding a whole pickled world in memory. Past
+# this, a record is dropped (and logged) rather than letting a slow or full disk grow the
+# server's memory without bound.
+MAX_QUEUED_RECORDS = 3
 # Messages kept for the ?deb Event Console (main.py's summary).
 MAX_RECENT_EVENTS = 50
 _TEMP_PREFIX = ".replay-log-"
@@ -238,15 +243,17 @@ TRIGGERS: dict[str, Trigger] = {
 
 # --- Annotations from inside a step ------------------------------------------------------------
 
-_active = threading.local()
+# The annotations of the logged step under way, or None. A plain global, not thread-local:
+# /world/step's StreamingResponse runs each chunk of the step on whichever threadpool worker is
+# free, and the world lock already keeps steps from overlapping.
+_active_annotations: dict | None = None
 
 
 def annotate(key: str, value: object) -> None:
     """Attach `value` (JSON-serializable) to the record of the step under way, if it's being
     logged; a no-op otherwise, so simulation code can call it unconditionally."""
-    annotations = getattr(_active, "annotations", None)
-    if annotations is not None:
-        annotations[key] = value
+    if _active_annotations is not None:
+        _active_annotations[key] = value
 
 
 # --- Fingerprint of a world --------------------------------------------------------------------
@@ -291,7 +298,13 @@ def _feed_container(h, value: object, seen: set[int]) -> None:
         for item in value:
             _feed(h, item, seen)
     elif isinstance(value, (set, frozenset)):
-        h.update(f"set:{sorted(repr(item) for item in value)!r};".encode())
+        # Order-free: sorted member digests. Not reprs, which carry an object's address.
+        digests = []
+        for item in value:
+            member = hashlib.sha256()
+            _feed(member, item, seen)
+            digests.append(member.hexdigest())
+        h.update(f"set:{sorted(digests)!r};".encode())
     else:
         _feed_object(h, value, seen)
 
@@ -358,6 +371,9 @@ def _git_state() -> dict | None:
     return {"commit": commit, "dirty": bool(status.strip())}
 
 
+_RECORD_NAME = re.compile(r"^\d{8}T\d{6}\.\d{6}Z-seed-?\d+-[\d.]+myr-[\w+]+$")
+
+
 def _record_name(seed: int, elapsed_years: float, fired: dict, now: float) -> str:
     stamp = datetime.fromtimestamp(now, timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
     return f"{stamp}-seed{seed}-{elapsed_years / 1e6:.2f}myr-{'+'.join(sorted(fired))}"
@@ -384,7 +400,7 @@ class ReplayLog:
         self._last_fired: dict[str, int] = {}
         self._recent: deque[dict] = deque(maxlen=MAX_RECENT_EVENTS)
         self._mutex = threading.Lock()
-        self._queue: queue.Queue[_PendingRecord] = queue.Queue()
+        self._queue: queue.Queue[_PendingRecord] = queue.Queue(maxsize=MAX_QUEUED_RECORDS)
         self._writer: threading.Thread | None = None
         self.directory.mkdir(parents=True, exist_ok=True)
         for leftover in self.directory.glob(f"{_TEMP_PREFIX}*"):
@@ -406,16 +422,17 @@ class ReplayLog:
             yield from self._step_progress(world, years)
             return
         snapshot = (world.seed, world.elapsed_years, world.steps_taken)
-        _active.annotations = annotations = {}
+        global _active_annotations
+        _active_annotations = annotations = {}
         started = time.monotonic()
         try:
             yield from self._step_progress(world, years)
         except Exception as exc:
-            _active.annotations = None
             outcome = StepOutcome(years, before, None, exc, annotations)
             self._after_step(world, snapshot, before_bytes, outcome, time.monotonic() - started)
             raise
-        _active.annotations = None
+        finally:
+            _active_annotations = None
         seconds = time.monotonic() - started
         try:
             outcome = StepOutcome(years, before, measure(world), None, annotations)
@@ -473,11 +490,14 @@ class ReplayLog:
             "annotations": outcome.annotations,
         }
         name = _record_name(seed, elapsed_before, fired, now)
-        message = f"Replay log: {', '.join(sorted(fired))} -> {name}"
+        try:
+            self._queue.put_nowait(_PendingRecord(name, before_bytes, sidecar))
+        except queue.Full:
+            _logger.error("replay log: %d records are still waiting to be written; dropping %s", MAX_QUEUED_RECORDS, name)
+            return
         _logger.warning("replay log: %s at %.2f Myr; writing %s", ", ".join(sorted(fired)), elapsed_before / 1e6, self.directory / name)
         with self._mutex:
-            self._recent.append({"elapsed_years": elapsed_before, "message": message})
-        self._queue.put(_PendingRecord(name, before_bytes, sidecar))
+            self._recent.append({"elapsed_years": elapsed_before, "message": f"Replay log: {', '.join(sorted(fired))} -> {name}"})
         self._ensure_writer()
 
     def _ensure_writer(self) -> None:
@@ -497,9 +517,26 @@ class ReplayLog:
             finally:
                 self._queue.task_done()
 
-    def flush(self) -> None:
-        """Wait for every queued record to be written."""
-        self._queue.join()
+    def flush(self, timeout_s: float | None = None) -> bool:
+        """Wait for every queued record to be written, at most `timeout_s`. False if some
+        are still pending."""
+        if timeout_s is None:
+            self._queue.join()
+            return True
+        deadline = time.monotonic() + timeout_s
+        with self._queue.all_tasks_done:
+            while self._queue.unfinished_tasks:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return False
+                self._queue.all_tasks_done.wait(remaining)
+        return True
+
+    def clear_recent_events(self) -> None:
+        """Forget this process's messages, when the shared world is replaced: they describe
+        the world they were logged in. The records stay on disk."""
+        with self._mutex:
+            self._recent.clear()
 
     def _write(self, pending: _PendingRecord) -> None:
         """Written into a temporary directory and renamed into place, so a reader never sees a
@@ -517,8 +554,13 @@ class ReplayLog:
             raise
 
     def _record_dirs(self) -> list[Path]:
-        """Oldest first: names start with a UTC timestamp."""
-        return sorted(p for p in self.directory.iterdir() if p.is_dir() and not p.name.startswith("."))
+        """Oldest first: names start with a UTC timestamp. Only directories this log wrote
+        (named like one, holding a record.json): the log may share a directory the user keeps
+        other things in, and pruning deletes what this returns."""
+        return sorted(
+            p for p in self.directory.iterdir()
+            if p.is_dir() and _RECORD_NAME.match(p.name) and (p / RECORD_FILE).is_file()
+        )
 
     def _prune(self) -> None:
         """Remove the oldest records until the rest fit in `max_bytes`; the newest always stays."""
@@ -595,8 +637,9 @@ def replay(record_dir: str | os.PathLike[str]) -> ReplayResult:
     expected = sidecar.get("fingerprint_after")
     after = sidecar.get("health_after")
     if expected is None or after is None or error is not None:
-        # A logged crash: the replay matches if it crashes too.
-        crashed = error is not None and expected is None
+        # A logged crash: the replay matches if it raises the same type of exception.
+        logged = sidecar["triggers"].get("step_exception", {}).get("type")
+        crashed = error is not None and expected is None and type(error).__name__ == logged
         return ReplayResult(world, sidecar, [] if crashed else ["<step outcome>"], crashed, crashed, error)
     actual = fingerprint(world)
     mismatched = sorted(name for name in set(expected) | set(actual) if expected.get(name) != actual.get(name))

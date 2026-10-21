@@ -285,3 +285,92 @@ def test_jump_thresholds():
     assert _fires("land_fraction_jump", _health(), _health(land_fraction=0.36))
     assert not _fires("plate_count_jump", _health(), _health(plate_count=8))
     assert _fires("plate_count_jump", _health(), _health(plate_count=13))
+
+
+# --- Review fixes (#498) -------------------------------------------------------------------
+
+
+def test_pruning_never_touches_directories_the_log_did_not_write(tmp_path, world):
+    # The log may share a directory with the user's own captures.
+    mine = tmp_path / "issue452"
+    mine.mkdir()
+    (mine / "capture.pkl").write_bytes(b"x" * 1000)
+    log = ReplayLog(tmp_path, max_bytes=1, min_steps_between=1, triggers={"always": lambda outcome: {}}, step_progress=_fake_step(lambda w: None))
+    _run(log, world)
+    _run(log, world)
+    log.flush()
+    assert (mine / "capture.pkl").exists()
+    assert len(log.records()) == 1
+
+
+def test_annotations_survive_a_step_driven_from_several_threads(tmp_path, world):
+    # /world/step's StreamingResponse runs each next() on whichever threadpool worker is free.
+    import threading
+
+    def two_part_step(world, years):
+        replay_log.annotate("first", 1)
+        yield 0.5
+        replay_log.annotate("second", 2)
+        world.elapsed_years += years
+        yield 1.0
+
+    log = ReplayLog(tmp_path, triggers={"always": lambda outcome: {}}, step_progress=two_part_step)
+    progress = log.step(world, 1_000.0)
+    for _ in range(3):
+        thread = threading.Thread(target=lambda: next(progress, None))
+        thread.start()
+        thread.join()
+    log.flush()
+    [record] = log.records()
+    sidecar = json.loads((tmp_path / record["name"] / replay_log.RECORD_FILE).read_text())
+    assert sidecar["annotations"] == {"first": 1, "second": 2}
+    assert replay_log._active_annotations is None
+
+
+def test_a_logged_crash_reproduces_only_with_the_same_exception(tmp_path, world, monkeypatch):
+    log = ReplayLog(tmp_path, step_progress=_fake_step(_raise))
+    with pytest.raises(RuntimeError):
+        _run(log, world)
+    log.flush()
+    [record] = log.records()
+
+    def raises(exc):
+        def step(world, years):
+            yield from ()
+            raise exc
+        return step
+
+    monkeypatch.setattr(replay_log, "step_world_progress", raises(RuntimeError("boom")))
+    assert replay_log.replay(record["path"]).matches
+    monkeypatch.setattr(replay_log, "step_world_progress", raises(KeyError("other")))
+    assert not replay_log.replay(record["path"]).matches
+
+
+def test_records_past_the_queue_bound_are_dropped(tmp_path, world, monkeypatch):
+    log = ReplayLog(tmp_path, min_steps_between=1, triggers={"always": lambda outcome: {}}, step_progress=_fake_step(lambda w: None))
+    # No writer: everything queued stays queued.
+    monkeypatch.setattr(log, "_ensure_writer", lambda: None)
+    for _ in range(replay_log.MAX_QUEUED_RECORDS + 2):
+        _run(log, world)
+    assert log._queue.qsize() == replay_log.MAX_QUEUED_RECORDS
+    assert len(log.recent_events()) == replay_log.MAX_QUEUED_RECORDS
+    assert not log.flush(timeout_s=0.01)
+
+
+class _Token:
+    """A plain object: its default repr carries its address."""
+
+    def __init__(self, value):
+        self.value = value
+
+    def __eq__(self, other):
+        return isinstance(other, _Token) and other.value == self.value
+
+    def __hash__(self):
+        return hash(self.value)
+
+
+def test_fingerprint_of_a_set_of_objects_survives_a_save_and_load(world):
+    vars(world)["token_set"] = {_Token(1), _Token(2), _Token(3)}
+    reloaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+    assert replay_log.fingerprint(reloaded)["token_set"] == replay_log.fingerprint(world)["token_set"]

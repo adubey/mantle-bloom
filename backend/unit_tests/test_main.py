@@ -1753,6 +1753,16 @@ def test_a_logged_step_is_listed_and_shown_in_the_summary(client, replay_logged)
     assert all("Replay log" not in e["message"] for e in done["events"])
 
 
+def test_a_new_world_clears_the_console_s_replay_log_messages(client, replay_logged):
+    _post_step(client, json={"years": 1_000.0})
+    replay_logged.flush()
+    assert client.get("/world/summary").json()["replay_logs"]
+    done = _post_generate(client, json={"seed": 5, "num_plates": 2, "node_density": 0.5}).json()
+    assert done["replay_logs"] == []
+    # The record itself stays on disk.
+    assert len(client.get("/world/replay-logs").json()["records"]) == 1
+
+
 def test_run_loop_and_animation_steps_are_logged(client, replay_logged):
     assert main._run_step_once(1_000.0, lambda: True)
     main._step_world(main._state["world"], 1_000.0)

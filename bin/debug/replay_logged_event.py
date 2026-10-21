@@ -61,7 +61,7 @@ def main() -> int:
     print("\nprobe the step:")
     print(
         f"  backend/.venv/bin/python bin/debug/probe_craton_clips.py {args.record / replay_log.BEFORE_FILE} "
-        f"--from-myr {before_myr:g} --to-myr {after_myr:g} --step-years {sidecar['step_years']:g}"
+        f"--from-myr {before_myr!r} --to-myr {after_myr!r} --step-years {sidecar['step_years']!r}"
     )
     return 0 if result.matches else 1
 
