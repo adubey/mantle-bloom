@@ -67,7 +67,7 @@ checkpoints in place of the single 100-step mean.
 
 ## Amendment: frozen lakes (committed before the second run)
 
-The first run's glacier guard failed (see Results above), and the owner chose to fix lake
+The first run's glacier guard failed (see *Results: first run* below), and the owner chose to fix lake
 freezing in this PR. A freezing lake now turns into ice at `hydrology.WATER_TO_ICE`, the rate
 frozen river water already used, instead of 1:1. That deliberately removes main's largest ice
 source (about 147,000 km³ per step, around 35× snowfall), so a "within ±10% of main" guard no
@@ -88,7 +88,7 @@ amendment).
 The secondary metrics and the step-time and RSS guards are unchanged from the original
 preregistration.
 
-## Results
+## Results: first run (fix `b6a2a46`, lakes still freezing 1:1)
 
 Both arms ran one after the other on the same machine, with nothing else running, from 6.4 to
 16.4 Myr. The compact numbers are in [`compare-seed649658380.json`](compare-seed649658380.json).
@@ -148,8 +148,68 @@ km³:
 - **Frozen river ice barely moved over 100 steps.** Most of it is rivers freezing on ground
   genuinely below 0 °C, which the fix leaves alone.
 
-## Decision needed
+The fix met its primary metric, but its glacier-volume guard failed because of the lake-to-ice
+unit mismatch tracked in #368, which the fix amplified but didn't introduce. The owner chose
+to fix lake freezing in this PR (see the amendment above).
 
-The fix meets its primary metric. Its glacier-volume guard fails because of the lake-to-ice unit
-mismatch tracked in #368, which the fix amplifies but doesn't introduce. The decision on how
-to proceed belongs to the project owner (see the PR).
+## Results: second run (fix2 `a1d5783`, frozen lakes at `WATER_TO_ICE`)
+
+Main reran identically to the first run, so the arms are deterministic. Both ran one after the
+other with nothing else running.
+
+| Mean over 100 steps, unless noted | main `f9d3d2f` | fix2 `a1d5783` | Prediction | Outcome |
+|---|---:|---:|---|---|
+| **Water reaching no outlet** | 53,819 m³/s | **6,104 m³/s (−89%)** | ≤ 50% of main | **met** |
+| Lake water frozen into the ice, per step | 67,505 km³ | 1.5 km³ | ≤ 1/1,000 of main | met |
+| Glacier volume at 16.4 Myr | 7.92 M km³ | 3.82 M km³ | below main, within 2.0–4.5 M km³ | met |
+| Sea level at 16.4 Myr | −183.2 m | −172.8 m | above main | met |
+| Glacier-ledger residual | 0 | 0 | closes | met |
+| Flow cycles per step | 1.5 | 0.0 | ≤ 0.1 | met |
+| Discharge into the ocean | 629,638 m³/s | 721,200 m³/s (+15%) | ≥ +5% | met |
+| Drawn river lines ending off the water | 20.6 | 4.3 (21%) | ≤ 50% | met |
+| Length-visible networks ending at `other` | 5.3 | 2.3 | lower | met |
+| Warm single-node ice plugs | 2.8 | 1.5 | lower | met |
+| Frozen river ice per step | 4,005 km³ | 3,909 km³ (98%) | ≤ 70% | **not met** |
+| Snow accumulation per step | 4,972 km³ | 2,212 km³ | | |
+| Visible lake nodes | 1,806 | 1,894 | reported | |
+| Step time / peak RSS | 4.6 s / 1,888 MB | 4.8 s / 1,979 MB | ≤ 1.5× / ≤ 1.2× | met |
+
+**Water reaching no outlet, by 2 Myr window:**
+
+| Window | main | fix2 |
+|---|---:|---:|
+| 1 | 64,609 m³/s | 4,716 m³/s |
+| 2 | 50,007 m³/s | 4,639 m³/s |
+| 3 | 40,643 m³/s | 4,971 m³/s |
+| 4 | 45,594 m³/s | 4,937 m³/s |
+| 5 | 68,241 m³/s | 11,259 m³/s |
+
+The last window is fix2's highest, still 84% below main's.
+
+**Glacier volume and sea level:**
+
+| Elapsed (Myr) | 6.4 | 8.4 | 10.4 | 12.4 | 14.4 | 16.4 |
+|---|---:|---:|---:|---:|---:|---:|
+| main glacier (M km³) | 3.56 | 7.83 | 7.77 | 7.95 | 8.22 | 7.92 |
+| fix2 glacier (M km³) | 3.56 | 3.61 | 3.65 | 3.69 | 3.76 | 3.82 |
+| main sea level (m) | −100.5 | −131.7 | −144.8 | −160.1 | −175.9 | −183.2 |
+| fix2 sea level (m) | −100.5 | −120.7 | −134.2 | −148.3 | −160.6 | −172.8 |
+
+### What it shows
+
+- **Rivers reach the sea or a lake.** Water reaching no outlet falls by 89%, and flow cycles are
+  gone. Discharge into the ocean rises 15%, and drawn river lines ending off the water fall
+  from 20.6 to 4.3 per step.
+- **The ice no longer doubles from frozen lakes.** On main, lake water freezing 1:1 doubles the
+  ice in the first 2 Myr. Under fix2, the ice grows 7% over 10 Myr from snow and frozen river
+  water against a smaller melt.
+- **The preregistered note was wrong about the ice's direction.** I described a slow shrink,
+  which assumed main's melt of about 11,500 km³ per step. Over the smaller ice area, melt is
+  about 3,200 km³ per step, and frozen river ice (about 3,900) plus snow (about 2,200) exceed
+  it. The prediction's bounds still held.
+- **Frozen river ice barely changes.** It is rivers freezing on ground genuinely below 0 °C,
+  which neither fix touches. Whether a large river should freeze solid at a below-zero annual
+  mean, or flow in the warm season, is left to #368.
+- **Sea level falls on both arms** (−72 m for fix2, −83 m for main over 10 Myr), so the trend
+  is not from this change; less water locked in ice softens it.
+- **Cost:** step time +4% and peak RSS +5%.
