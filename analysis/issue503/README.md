@@ -238,3 +238,45 @@ The last window is fix2's highest, still 84% below main's.
 - **Sea level falls on both arms** (−72 m for fix2, −83 m for main over 10 Myr), so the trend
   is not from this change; less water locked in ice softens it.
 - **Cost:** step time +4% and peak RSS +5%.
+
+## Results: third run (fix3 `f692507`, review fixes)
+
+This compares against the second run's main arm, which is deterministic. The script is
+unchanged. The fix3 run ran alone.
+
+| Mean over 100 steps, unless noted | main `f9d3d2f` | fix2 `a1d5783` | fix3 `f692507` | Prediction | Outcome |
+|---|---:|---:|---:|---|---|
+| **Water reaching no outlet** | 53,819 m³/s | 6,104 m³/s | **5,552 m³/s (−90%)** | ≤ 50% of main | **met** |
+| Flow cycles per step | 1.5 | 0.0 | 0.0 | ≤ 0.1 | met |
+| Discharge into the ocean | 629,638 m³/s | 721,200 m³/s | 722,559 m³/s (+15%) | ≥ +5% | met |
+| Drawn river lines ending off the water | 20.6 | 4.3 | 4.4 (21%) | ≤ 50% | met |
+| Length-visible networks ending at `other` | 5.3 | 2.3 | 2.5 | | |
+| Warm single-node ice plugs | 2.8 | 1.5 | 1.5 | | |
+| Frozen river ice per step | 4,005 km³ | 3,909 km³ | 3,685 km³ | | |
+| Visible lake nodes | 1,806 | 1,894 | 1,903 | | |
+| Glacier volume at 16.4 Myr | 7.92 M km³ | 3.82 M km³ | 3.79 M km³ | 2.0–4.5 M km³ | met |
+| Sea level at 16.4 Myr | −183.2 m | −172.8 m | −173.0 m | | |
+| Glacier-ledger residual | 0 | 0 | 0 | closes | met |
+| Round-cap warnings | — | — | 0 | none | met |
+| Step time | 4.61 s | 4.81 s | 5.41 s (1.17×) | ≤ 1.5× | met |
+| Peak RSS | 1,888 MB | 1,979 MB | 1,494 MB | ≤ 1.2× | met |
+
+**Water reaching no outlet, by 2 Myr window:**
+
+| Window | main | fix3 |
+|---|---:|---:|
+| 1 | 64,609 m³/s | 4,438 m³/s |
+| 2 | 50,007 m³/s | 5,013 m³/s |
+| 3 | 40,643 m³/s | 4,975 m³/s |
+| 4 | 45,594 m³/s | 5,527 m³/s |
+| 5 | 68,241 m³/s | 7,805 m³/s |
+
+The last window's rise is smaller than fix2's (11,259 m³/s).
+
+**Every preregistered prediction is met.**
+
+**Step time rose more than before:** from +4% (fix2) to +17%. The likely cause is the review
+fixes' per-pit Python walks: `breaching._spill_exits` runs on every routable pit, and the
+resolver sweeps basins with a path walk per opened basin. Step time stays within the 1.5×
+guard, and vectorising those walks is an option if the cost matters. Peak RSS was lower in
+this run than on main. RSS is noisy across runs, and this one ran alone.
