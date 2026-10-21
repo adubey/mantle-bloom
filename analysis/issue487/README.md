@@ -140,3 +140,18 @@ PYTHONHASHSEED=0 PYTHONPATH=backend backend/.venv/bin/python \
   --seed 7 --num-plates 12 --node-density 0.5 \
   --out analysis/issue487/representative-mesh-summary.json
 ```
+
+## Edge-connected shell replay preregistration (2026-10-21)
+
+The comparison changes only Gate 2's mesh admissibility check. Replay the same cratons-first,
+craton-formation-off, 2 Myr-step, 1 Gyr trajectories for seeds 7, 11, and 2024 with
+`PYTHONHASHSEED=0`; production cut totals and ordered craton-crossing signatures must still
+match the Gate 1 baseline (144/44, 111/42, 125/44). The primary diagnostic is the number of
+accepted shell solves with residual/load above 1%, using 1% as the existing screening
+threshold. Report skipped disconnected meshes separately and recompute residual quantiles and
+capacity scores over accepted solves only. Expected direction: the nine previously flagged
+vertex-connected but edge-disconnected meshes become skipped; their residuals are excluded,
+not interpreted as improved equilibrium. No capacity parameters or production model behavior
+change. Compare the resulting accepted-solve denominator and metrics against the prior
+130-candidate matched replay, while noting that its score denominator included these invalid
+meshes.
