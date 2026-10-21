@@ -1705,6 +1705,71 @@ def test_an_animation_that_fails_keeps_the_frames_it_finished(client, store, sav
     assert _saved_elapsed(store) == 124_000.0
 
 
+# --- Replay log (#442) --------------------------------------------------------------------------
+
+
+@pytest.fixture
+def replay_logged(client, saved_world, tmp_path, monkeypatch):
+    """A world, and a replay log whose one trigger fires on every step of a clock-only step."""
+    from app import replay_log
+
+    def fake_step(world, years):
+        world.elapsed_years += years
+        yield 1.0
+
+    log = replay_log.ReplayLog(tmp_path, min_steps_between=1, triggers={"always": lambda outcome: {}}, step_progress=fake_step)
+    monkeypatch.setattr(main, "_replay_log", log)
+    main._state["world"] = persistence.load_world_bytes(saved_world)
+    return log
+
+
+def test_replay_log_is_off_without_a_directory(client, monkeypatch):
+    from app import replay_log
+
+    monkeypatch.delenv(replay_log.REPLAY_LOG_DIR_ENV, raising=False)
+    monkeypatch.setattr(main, "_replay_log", None)
+    main._start_replay_log()
+    assert main._replay_log is None
+    assert client.get("/world/replay-logs").json() == {"enabled": False, "directory": None, "records": []}
+
+
+def test_replay_log_starts_from_the_env(client, tmp_path, monkeypatch):
+    from app import replay_log
+
+    monkeypatch.setenv(replay_log.REPLAY_LOG_DIR_ENV, str(tmp_path))
+    monkeypatch.setattr(main, "_replay_log", None)
+    main._start_replay_log()
+    assert client.get("/world/replay-logs").json() == {"enabled": True, "directory": str(tmp_path), "records": []}
+
+
+def test_a_logged_step_is_listed_and_shown_in_the_summary(client, replay_logged):
+    done = _post_step(client, json={"years": 1_000.0}).json()
+    replay_logged.flush()
+
+    [record] = client.get("/world/replay-logs").json()["records"]
+    assert record["triggers"] == ["always"]
+    assert [e["message"] for e in done["replay_logs"]] == [f"Replay log: always -> {record['name']}"]
+    # Not world state: the world's own event log doesn't carry it.
+    assert all("Replay log" not in e["message"] for e in done["events"])
+
+
+def test_a_new_world_clears_the_console_s_replay_log_messages(client, replay_logged):
+    _post_step(client, json={"years": 1_000.0})
+    replay_logged.flush()
+    assert client.get("/world/summary").json()["replay_logs"]
+    done = _post_generate(client, json={"seed": 5, "num_plates": 2, "node_density": 0.5}).json()
+    assert done["replay_logs"] == []
+    # The record itself stays on disk.
+    assert len(client.get("/world/replay-logs").json()["records"]) == 1
+
+
+def test_run_loop_and_animation_steps_are_logged(client, replay_logged):
+    assert main._run_step_once(1_000.0, lambda: True)
+    main._step_world(main._state["world"], 1_000.0)
+    replay_logged.flush()
+    assert len(client.get("/world/replay-logs").json()["records"]) == 2
+
+
 @pytest.fixture
 def mounted_frontend(tmp_path):
     """A stand-in `vite build` output mounted on the real app, as the Railway image does

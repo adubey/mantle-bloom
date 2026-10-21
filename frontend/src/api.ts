@@ -62,6 +62,9 @@ export interface WorldSummary {
   // `empty` is only possible for a loaded save with no plates.
   surface: "quad" | "empty";
   events: WorldEvent[];
+  // Records the server's replay log wrote (backend replay_log.py, #442); shown with `events`
+  // in the ?deb Event Console. Empty unless the server runs with a replay-log directory.
+  replay_logs: WorldEvent[];
 }
 
 export interface RenderResponse {
@@ -475,6 +478,7 @@ function worldSummaryFrom(msg: Record<string, unknown>): WorldSummary {
     num_plates: msg.num_plates as number,
     surface: msg.surface as WorldSummary["surface"],
     events: msg.events as WorldEvent[],
+    replay_logs: (msg.replay_logs as WorldEvent[] | undefined) ?? [],
   };
 }
 

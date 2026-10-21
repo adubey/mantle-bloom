@@ -33,6 +33,7 @@ from . import (
     projections,
     public_view,
     render_image,
+    replay_log,
     run_control,
     stats,
     worldsketch,
@@ -63,8 +64,12 @@ MAX_ANIMATION_FRAMES = 480
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
     _restore_checkpoint()
+    _start_replay_log()
     yield
     _runner.close()
+    # The writer is a daemon thread: give a record of the last rare event time to land.
+    if _replay_log is not None and not _replay_log.flush(timeout_s=REPLAY_LOG_SHUTDOWN_FLUSH_S):
+        _logger.warning("replay log: shutting down with records still unwritten")
 
 
 app = FastAPI(title="mantle-bloom", lifespan=_lifespan)
@@ -316,6 +321,8 @@ def _world_changed(completed: bool = True) -> None:
 def _set_world(world: World) -> None:
     """Replace the shared world; the caller holds `_world_lock`."""
     _state["world"] = world
+    if _replay_log is not None:
+        _replay_log.clear_recent_events()
     _world_changed()
 
 
@@ -337,6 +344,9 @@ def _summary(world: World) -> dict:
         # for the frontend than diffing "new since last call", and small enough not to
         # matter on the wire.
         "events": [{"elapsed_years": e, "message": m} for e, m in world.events],
+        # Replay-log records this process wrote (#442), for the ?deb Event Console. Kept out of
+        # `events`, which is pickled World state.
+        "replay_logs": _replay_log.recent_events() if _replay_log is not None else [],
     }
 
 
@@ -824,7 +834,7 @@ def step(req: StepRequest) -> StreamingResponse:
         raise HTTPException(status_code=503, detail="a generation, step, or animation is already in progress")
 
     def _stream():
-        progress = step_world_progress(world, req.years)
+        progress = _step_progress(world, req.years)
         completed = False
         try:
             for fraction in progress:
@@ -1041,7 +1051,7 @@ def animate(req: AnimateRequest) -> StreamingResponse:
             for message in render_image.stream_animation_mp4(
                 world, req.projection, req.view, req.width, req.height, view_rotation,
                 req.step_years, req.steps_per_frame, req.num_frames,
-                stop_event=_animation_stop_event,
+                step_fn=_step_world, stop_event=_animation_stop_event,
             ):
                 if message[0] == "progress":
                     _, frame, total, frame_png, elapsed_years = message
@@ -1883,7 +1893,7 @@ def public_render(view: str = "elevation", width: int = 1100, height: int = 611)
 def _run_guest_step() -> None:
     completed = False
     try:
-        for _ in step_world_progress(_require_world(), public_view.GUEST_STEP_YEARS):
+        for _ in _step_progress(_require_world(), public_view.GUEST_STEP_YEARS):
             pass
         completed = True
     finally:
@@ -1959,7 +1969,7 @@ def _run_step_once(step_years: float, should_step) -> bool:
             return True
         completed = False
         try:
-            for _ in step_world_progress(world, step_years):
+            for _ in _step_progress(world, step_years):
                 pass
             completed = True
         finally:
@@ -1992,6 +2002,48 @@ def _restore_checkpoint() -> None:
             # Already the checkpointed state; no need to write it straight back.
             _world_changed(completed=False)
     _runner.set_status(status, persist=False)
+
+
+# --- Replay log (#442) -------------------------------------------------------------------------
+# Every step of the shared world goes through `_step_progress`, which, when
+# MANTLE_BLOOM_REPLAY_LOG_DIR is set, saves the pre-step world of any step whose health
+# metrics go askew (replay_log.py).
+_replay_log: replay_log.ReplayLog | None = None
+# How long shutdown waits for queued replay-log records (a 60 MB write each).
+REPLAY_LOG_SHUTDOWN_FLUSH_S = 10.0
+
+
+def _start_replay_log() -> None:
+    global _replay_log
+    try:
+        _replay_log = replay_log.ReplayLog.from_env()
+    except OSError:
+        _logger.exception("replay log: can't use %s; running without it", os.environ.get(replay_log.REPLAY_LOG_DIR_ENV))
+        _replay_log = None
+        return
+    if _replay_log is not None:
+        _logger.info("replay log: recording to %s", _replay_log.directory)
+
+
+def _step_progress(world: World, years: float):
+    if _replay_log is None:
+        return step_world_progress(world, years)
+    return _replay_log.step(world, years)
+
+
+def _step_world(world: World, years: float) -> None:
+    for _ in _step_progress(world, years):
+        pass
+
+
+@app.get("/world/replay-logs")
+def replay_logs() -> dict:
+    """The replay-log records on disk, newest first (`enabled: false` and none when
+    MANTLE_BLOOM_REPLAY_LOG_DIR isn't set). Each names the triggers that fired and the
+    record's directory, which `bin/debug/replay_logged_event.py` replays."""
+    if _replay_log is None:
+        return {"enabled": False, "directory": None, "records": []}
+    return {"enabled": True, "directory": str(_replay_log.directory), "records": _replay_log.records()}
 
 
 class RunRequest(BaseModel):

@@ -13,6 +13,11 @@
 # up); --frontend-port overrides the Vite dev port (5173, --dev only). Logs go to
 # /tmp/mantle-bloom-<port>.log (and /tmp/mantle-bloom-frontend-<frontend-port>.log in --dev)
 # so parallel instances don't clobber each other.
+#
+# --replay-log turns on the server's replay log (backend/app/replay_log.py, #442): the world
+# before any step whose health metrics go askew is saved for replay, under
+# $MANTLE_BLOOM_REPLAY_LOG_DIR, or ~/.mantle-bloom/replay-logs/<port>/ if that isn't set. Off
+# by default. See docs/debugging.md.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
@@ -22,16 +27,18 @@ dev=false
 port=8000
 frontend_port=5173
 stay_awake=false
+replay_log=false
 while [ $# -gt 0 ]; do
   case "$1" in
     --dev) dev=true; shift ;;
     --stay-awake) stay_awake=true; shift ;;
+    --replay-log) replay_log=true; shift ;;
     --port|--backend-port)
       port="$2"; shift 2 ;;
     --frontend-port)
       frontend_port="$2"; shift 2 ;;
     *)
-      echo "Unknown argument: $1 (supported: --dev, --stay-awake, --port PORT, --frontend-port PORT)" >&2
+      echo "Unknown argument: $1 (supported: --dev, --stay-awake, --replay-log, --port PORT, --frontend-port PORT)" >&2
       exit 1
       ;;
   esac
@@ -42,6 +49,10 @@ if [ "$stay_awake" = true ]; then
   CAFFEINATE=caffeinate
 else
   CAFFEINATE=
+fi
+if [ "$replay_log" = true ]; then
+  export MANTLE_BLOOM_REPLAY_LOG_DIR="${MANTLE_BLOOM_REPLAY_LOG_DIR:-$HOME/.mantle-bloom/replay-logs/$port}"
+  echo "Replay log: $MANTLE_BLOOM_REPLAY_LOG_DIR"
 fi
 
 if [ "$dev" = true ]; then
