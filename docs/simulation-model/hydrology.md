@@ -122,12 +122,14 @@ discharge, channel-width growth, deposition, geology or lake silt.
   - it would overflow: the water reaching it, routed with the same per-node river losses the
     lakes use, exceeds the evaporation of a lake filled to its rim (`ENDORHEIC_DEMAND_FACTOR`).
     Runoff comes from Fu's Budyko curve, and open-water evaporation rises with temperature.
-    Steepest descent carries runoff only to the first pit downhill, so each pit passes on its
-    surplus: its inflow less the evaporation of a lake up to its own spill level, where its
-    least-cost path leaves its catchment. The surplus goes to the pit that steepest descent
-    reaches from there, upstream pits first (`breaching._overflows`, `_spill_exits`). A pit
-    downstream of a chain of pits is judged on the river flowing through them, not on its own
-    catchment alone (issue #503).
+    Steepest descent carries runoff only to the first pit downhill, so each pit hands its
+    water on to the pit that steepest descent reaches from where its least-cost path leaves its
+    catchment, upstream pits first (`breaching._overflows`, `_spill_exits`). If that spill
+    point is at or below the receiving pit's lake level, the two are one lake: the receiver
+    takes all the water and the flooded area, and the upstream pit is breached only if that
+    lake overflows. Otherwise the upstream pit passes on its surplus, its inflow less the
+    evaporation of a lake up to its own spill level. A pit downstream of a chain of pits is
+    judged on the river flowing through them, not on its own catchment alone (issue #503).
 
   Other pits stay closed and are filled as lakes, so dry and arid basins stay real endorheic
   basins. The hierarchy's boundary edges use the notched passages

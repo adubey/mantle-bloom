@@ -280,3 +280,13 @@ fixes' per-pit Python walks: `breaching._spill_exits` runs on every routable pit
 resolver sweeps basins with a path walk per opened basin. Step time stays within the 1.5×
 guard, and vectorising those walks is an option if the cost matters. Peak RSS was lower in
 this run than on main. RSS is noisy across runs, and this one ran alone.
+
+### The third run is superseded (note committed before the fourth run)
+
+After the third run, the unit tests caught a bug in the review fix to the breach gate.
+
+- **What went wrong:** a pit that hands its water to a lake that drowns it was judged on its own catchment. So one cell of a three-cell basin could breach on the whole basin's water and only its own evaporation.
+- **Effect:** `test_compute_hydrology_breaches_a_shallow_pit_instead_of_ponding_it`'s semi-arid pit was breached.
+- **Fix:** such a pit is now judged as the lake it joins, and pits join at equal levels too.
+
+The third run's numbers came from the buggy gate, so they're superseded. A fourth run (fix4, at the commit adding this note) is judged against Amendment 2's predictions, which are unchanged.

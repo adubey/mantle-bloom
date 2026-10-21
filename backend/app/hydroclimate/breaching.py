@@ -439,14 +439,17 @@ def _overflows(
     highest passage on its least-cost path) would evaporate, scaled by ENDORHEIC_DEMAND_FACTOR.
     Both sides are in m^3/yr.
 
-    Runoff reaches a pit down steepest descent, which stops at the first pit on the way. A pit
-    upstream that overflows passes its surplus on (issue #503): judged on its own catchment
-    alone, a pit downstream of a chain of pits never saw the river flowing through them, so a
-    pit fed 4,600 m^3/s looked like a 2 m^3/s endorheic basin and stayed closed. A pit's surplus
-    is its inflow less the evaporation of a lake up to where its least-cost path leaves its
-    catchment, its own spill level; it goes to the pit that steepest descent from there reaches.
-    Pits are visited upstream first, in topological order of that pit-to-pit graph, so each
-    pit has all its surplus before passing its own on. A cycle of pits passes nothing on."""
+    Runoff reaches a pit down steepest descent, which stops at the first pit on the way, so
+    each pit hands its water on to the pit that steepest descent reaches from where its
+    least-cost path leaves its catchment (issue #503). Judged on its own catchment alone, a pit
+    downstream of a chain of pits never saw the river flowing through them, so a pit fed
+    4,600 m^3/s looked like a 2 m^3/s endorheic basin and stayed closed. If that spill point is
+    at or below the receiving pit's own lake level, the two are one lake: the receiver takes all the
+    upstream pit's water and its catchment's flooded area, and the upstream pit overflows only
+    if that lake does. Otherwise the upstream pit overflows
+    separately and passes on only its surplus: its inflow less the evaporation of a lake up to
+    its own spill level. Pits are visited upstream first, in topological order of that
+    pit-to-pit graph. A cycle of pits passes nothing on."""
     n = len(elevation)
     loss = np.zeros(n) if water.loss_fraction is None else np.asarray(water.loss_fraction, dtype=float)
     sink, carried = _routed_to_sinks(elevation, neighbor_idx, is_ocean, 1.0 - loss)
@@ -454,35 +457,57 @@ def _overflows(
     evaporation_mm = open_water_evaporation_mm(water.temperature_c)
     runoff_m3 = runoff_mm(water.precipitation_mm, evaporation_mm) / 1000.0 * area
     inflow = np.bincount(sink, weights=runoff_m3 * carried, minlength=n)
-    open_water_m3 = evaporation_mm / 1000.0 * area
-
-    def demand_at(pit_idx: np.ndarray, levels: np.ndarray) -> np.ndarray:
-        level = np.full(n, -np.inf)
-        level[pit_idx] = levels
-        flooded = elevation < level[sink]
-        return ENDORHEIC_DEMAND_FACTOR * np.bincount(sink[flooded], weights=open_water_m3[flooded], minlength=n)
+    open_water_m3 = ENDORHEIC_DEMAND_FACTOR * evaporation_mm / 1000.0 * area
 
     spill_level, exit_node = _spill_exits(chain, sink)
-    spill_demand = demand_at(chain.pits, spill_level)
-    receiver = np.where(exit_node >= 0, sink[np.clip(exit_node, 0, None)], -1)
-    receiver = np.where((receiver >= 0) & ~is_ocean[np.clip(receiver, 0, None)], receiver, -1)
+    order = np.argsort(sink, kind="stable")
+    bounds = np.searchsorted(sink[order], np.arange(n + 1))
+    lake_level = dict(zip(chain.pits.tolist(), spill_level.tolist()))
+    lake_level.update(zip(pits.tolist(), np.asarray(rim_level, dtype=float).tolist()))
+    catchments: dict[int, list[np.ndarray]] = {}
+    merged_into: dict[int, int] = {}
+
+    def demand(pit: int) -> float:
+        parts = catchments.get(pit) or [order[bounds[pit]:bounds[pit + 1]]]
+        nodes = np.concatenate(parts)
+        return float(open_water_m3[nodes[elevation[nodes] < lake_level[pit]]].sum())
 
     position = {int(p): i for i, p in enumerate(chain.pits.tolist())}
-    downstream = [position.get(int(r), -1) if r >= 0 else -1 for r in receiver.tolist()]
-    upstream_count = np.bincount([d for d in downstream if d >= 0], minlength=len(chain.pits)).tolist()
+    receiver = [
+        position.get(int(sink[x]), -1) if x >= 0 and not is_ocean[x] and not is_ocean[sink[x]] else -1
+        for x in exit_node.tolist()
+    ]
+    upstream_count = np.bincount([d for d in receiver if d >= 0], minlength=len(chain.pits)).tolist()
     ready = [i for i, count in enumerate(upstream_count) if count == 0]
     while ready:
         i = ready.pop()
-        d = downstream[i]
-        pit = int(chain.pits[i])
-        surplus = inflow[pit] - spill_demand[pit]
-        if d >= 0:
+        d = receiver[i]
+        if d < 0:
+            continue
+        pit, downstream = int(chain.pits[i]), int(chain.pits[d])
+        share = carried[exit_node[i]]
+        if spill_level[i] <= lake_level[downstream]:
+            # One lake: the receiver's lake drowns this pit and evaporates from its catchment too.
+            catchments.setdefault(downstream, [order[bounds[downstream]:bounds[downstream + 1]]]).extend(
+                catchments.get(pit) or [order[bounds[pit]:bounds[pit + 1]]]
+            )
+            inflow[downstream] += inflow[pit] * share
+            merged_into[pit] = downstream
+        else:
+            surplus = inflow[pit] - demand(pit)
             if surplus > 0.0:
-                inflow[int(chain.pits[d])] += surplus * carried[exit_node[i]]
-            upstream_count[d] -= 1
-            if upstream_count[d] == 0:
-                ready.append(d)
-    return inflow[pits] > demand_at(pits, rim_level)[pits]
+                inflow[downstream] += surplus * share
+        upstream_count[d] -= 1
+        if upstream_count[d] == 0:
+            ready.append(d)
+
+    def lake(pit: int) -> int:
+        while pit in merged_into:
+            pit = merged_into[pit]
+        return pit
+
+    # A pit drowned by a lake downstream overflows only if that whole lake does.
+    return np.array([inflow[lake(pit)] > demand(lake(pit)) for pit in pits.tolist()], dtype=bool)
 
 
 def _spill_exits(chain: _PitChain, sink: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
