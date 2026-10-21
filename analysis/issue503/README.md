@@ -88,6 +88,31 @@ amendment).
 The secondary metrics and the step-time and RSS guards are unchanged from the original
 preregistration.
 
+## Amendment 2: review fixes (committed before the third run)
+
+The PR #504 review led to these changes:
+
+- **Fill test:** uses `lakes.lake_evaporation_m3_per_yr`, including the shallow-margin boost.
+- **Frozen sinks:** no longer count toward filling a basin.
+- **Pit chains:** basins are swept from the highest floor down, passing released water on, and hitting the round cap now logs a warning.
+- **Held unions:** pool their water at the lowest sink.
+- **Breach gate:** forwards surplus from each pit's own spill level, upstream first.
+- **Drawing:** fills in only river nodes below the width floor.
+
+**Run:** fix3 at this amendment's commit. The comparison is the second run's main arm, which is deterministic, with the script unchanged since then. Same command and save.
+
+| Metric | Prediction for fix3 |
+|---|---|
+| **Primary:** water reaching no outlet, mean over 100 steps | ≤ 50% of main's 53,819 m³/s; expected 4,000–8,000 m³/s, near fix2's 6,104 |
+| Flow cycles per step | ≤ 0.1 |
+| Discharge into the ocean | ≥ main + 5% |
+| Drawn river lines ending off the water | ≤ 50% of main |
+| Glacier volume at 16.4 Myr | within 2.0–4.5 M km³ |
+| Glacier ledger | closes |
+| Round-cap warnings in the log | none expected; any are reported |
+| Step time | ≤ 1.5× main |
+| Peak RSS | ≤ 1.2× main |
+
 ## Results: first run (fix `b6a2a46`, lakes still freezing 1:1)
 
 Both arms ran one after the other on the same machine, with nothing else running, from 6.4 to
