@@ -499,7 +499,10 @@ per drawn `is_river` node to its own `flow_target`. Which segments and how they 
 a `channel_width` past the small `RIVER_VISIBLE_MIN_WIDTH_M` creek floor is a candidate, not
 just the strongest few networks by mouth flow -- dropped along with the old node_density-scaled
 `RIVER_DRAW_MAX_NETWORKS_BY_NODE_DENSITY`/`RIVER_DRAW_MIN_FLOW_BY_NODE_DENSITY` network-rank
-cap. Downstream of a drawn segment, `is_river` nodes below the width floor are drawn too, to
+cap. Every map view that draws rivers, including animation frames, then keeps only networks from `hydrology.group_rivers` whose mouth discharge
+(`RiverInfo.flow_rate`) is above `RIVER_VISIBLE_MIN_FLOW_M3_S` (10,000 m³/s), so the map shows
+major rivers rather than every qualifying stream; the River Inspector doesn't apply this floor
+(issue #508). Downstream of a drawn segment, `is_river` nodes below the width floor are drawn too, to
 the river's mouth, at the width of the drawn reach above them
 (`_extend_drawn_rivers_downstream`): a river's last cells before the coast are often new or
 reset cells whose channel is still narrower than the floor, and the line used to stop one to

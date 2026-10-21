@@ -664,6 +664,8 @@ def test_draw_rivers_only_draws_segments_above_the_width_floor():
         is_ocean=np.zeros(n, dtype=bool),
         neighbor_idx=np.zeros((n, 1), dtype=np.int64),
         flow_accum=np.zeros(n),
+        # Above the discharge floor, so only the width floor decides what's drawn.
+        discharge_m3_s=np.full(n, render_image.RIVER_VISIBLE_MIN_FLOW_M3_S * 2.0),
         water_deposited=np.zeros(n),
         filled_elevation=np.zeros(n),
         spill_target=np.full(n, -1, dtype=np.int64),
@@ -785,6 +787,9 @@ def _linear_rivers_world(mouth_widths):
         glacier_depth=np.zeros(n),
         plates_in_order=[],
         channel_width=channel_width,
+        # Scaled with channel_width so every fixture river clears the map views' discharge
+        # floor (RIVER_VISIBLE_MIN_FLOW_M3_S) and the flow percentile follows channel_width.
+        discharge_m3_s=channel_width * 100.0,
     )
     return world
 
@@ -849,6 +854,22 @@ def test_rivers_to_draw_draws_every_wide_enough_network_regardless_of_count():
     world_with_creek = _linear_rivers_world(mouth_widths + [30])
     src_idx2, _, _ = render_image._rivers_to_draw(world_with_creek)
     assert len(mouth_widths) not in {int(i) // 3 for i in src_idx2}
+
+
+@pytest.mark.parametrize("hide_minor_networks", [False, True])
+def test_rivers_to_draw_omits_networks_at_or_below_the_discharge_floor(monkeypatch, hide_minor_networks):
+    # Every map view draws only networks whose mouth discharge is above 10,000 m^3/s, whether
+    # or not it also hides short networks (#508). The floor reads the mouth, so a drawn
+    # river's headwaters below the floor are still drawn.
+    world = _linear_rivers_world([5000, 5000, 5000])
+    hydro = world.hydrology_cache
+    hydro.discharge_m3_s[:3] = [2_000.0, 6_000.0, 10_001.0]
+    hydro.discharge_m3_s[3:6] = [2_000.0, 6_000.0, render_image.RIVER_VISIBLE_MIN_FLOW_M3_S]
+    hydro.discharge_m3_s[6:9] = [2_000.0, 6_000.0, 9_999.0]
+    # These 3-node fixture networks are short; pass the length cutoff so only the floor decides.
+    monkeypatch.setattr(render_image, "_river_network_is_visible", lambda river: True)
+    src_idx, _, _ = render_image._rivers_to_draw(world, hide_minor_networks=hide_minor_networks)
+    assert sorted(src_idx.tolist()) == [0, 1, 2]
 
 
 def test_rivers_to_draw_carries_a_drawn_river_to_its_mouth_past_a_narrow_coastal_channel():

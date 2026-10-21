@@ -126,8 +126,9 @@ SEA_COLOR_RGB = (42, 128, 140)
 #   percentile rank still separates a world's few truly major rivers once channel_width has
 #   saturated for most of what's drawn.
 #
-# The River Inspector uses the same physical-length visibility rule as the elevation map and
-# retains its explicit, scale-independent discharge readout.
+# The River Inspector uses the same physical-length visibility rule as the elevation map, but
+# not the map views' discharge floor (RIVER_VISIBLE_MIN_FLOW_M3_S), and retains its explicit,
+# scale-independent discharge readout.
 RIVER_COLOR_RGB = (77, 216, 230)
 RIVER_LINE_WIDTH_PX = 1.0
 # Widest drawn line, at flow-percentile-rank 1.0 (see RIVER_WIDE_MIN_PERCENTILE), is this many
@@ -155,6 +156,10 @@ RIVER_VISIBLE_MIN_WIDTH_M = 100.0
 # cutoff at default density. Use summed physical edge length so the threshold does not move
 # with node density; issue #355.
 RIVER_VISIBLE_MIN_LENGTH_M = 30 * PLANET_RADIUS_KM * 1000.0 * line_spacing_rad(DEFAULT_NODE_DENSITY)
+# Every view that draws rivers draws only networks whose mouth discharge is above this, so the
+# map shows major rivers rather than every qualifying stream. The River Inspector doesn't use
+# this floor, so smaller networks can still be found and inspected there; issue #508.
+RIVER_VISIBLE_MIN_FLOW_M3_S = 10_000.0
 # The floor on the percentile-rank color fraction above (RIVER_COLOR_BLEND_MIN_FRACTION) plus
 # (1 - floor) * (this segment's own percentile rank, see RIVER_COLOR_RGB's own comment) -- so
 # even this render's own narrowest visible channel still reads as a pale, visible trickle
@@ -2461,6 +2466,14 @@ def _river_network_is_visible(river: hydrology.RiverInfo) -> bool:
     return river.length_m >= RIVER_VISIBLE_MIN_LENGTH_M
 
 
+def _river_network_is_drawn(river: hydrology.RiverInfo, hide_minor_networks: bool) -> bool:
+    """Whether a map view draws this network: above the discharge floor in every view, and
+    also past the length cutoff in the views that hide minor networks."""
+    if river.flow_rate <= RIVER_VISIBLE_MIN_FLOW_M3_S:
+        return False
+    return not hide_minor_networks or _river_network_is_visible(river)
+
+
 def _extend_drawn_rivers_downstream(hydro, drawn: np.ndarray, channel_width: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Draws every river node downstream of a drawn one, all the way to its mouth. A river's
     last nodes before the coast are often new or reset cells whose channel hasn't grown past
@@ -2500,7 +2513,8 @@ def _rivers_to_draw(world: World, hide_minor_networks: bool = False) -> tuple[np
     single highest-flow segment. Every is_river network is a candidate, not just the strongest
     few by mouth flow -- hydrology.py's own is_river cut (top RIVER_FLOW_PERCENTILE of land
     physical discharge) is already the world-relative "how many rivers exist at all" decision; this
-    only additionally drops individual segments whose channel is too narrow to be a real,
+    drops networks whose mouth discharge is at or below RIVER_VISIBLE_MIN_FLOW_M3_S, then
+    drops individual segments whose channel is too narrow to be a real,
     visible river at all (RIVER_VISIBLE_MIN_WIDTH_M), which both keeps a bone-dry world's few
     real rivers from being buried in an unbounded creek count and keeps the per-segment
     ImageDraw loop in _draw_rivers cheap.
@@ -2515,12 +2529,11 @@ def _rivers_to_draw(world: World, hide_minor_networks: bool = False) -> tuple[np
         return np.empty(0, dtype=np.int64), np.empty(0), np.empty(0)
 
     visible_mask = hydro.is_river & (hydro.flow_target >= 0) & (channel_width >= RIVER_VISIBLE_MIN_WIDTH_M)
-    if hide_minor_networks:
-        visible_members = np.zeros(len(hydro.points), dtype=bool)
-        for river in hydrology.group_rivers(hydro):
-            if _river_network_is_visible(river):
-                visible_members[river.member_idx] = True
-        visible_mask &= visible_members
+    drawn_members = np.zeros(len(hydro.points), dtype=bool)
+    for river in hydrology.group_rivers(hydro):
+        if _river_network_is_drawn(river, hide_minor_networks):
+            drawn_members[river.member_idx] = True
+    visible_mask &= drawn_members
     if not np.any(visible_mask):
         return np.empty(0, dtype=np.int64), np.empty(0), np.empty(0)
     visible_mask, channel_width = _extend_drawn_rivers_downstream(hydro, visible_mask, channel_width)
