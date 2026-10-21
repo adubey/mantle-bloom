@@ -8,9 +8,11 @@ Each step, from that step's hydrology, it measures:
   outside them. Both are rivers that reach neither the sea nor a lake;
 - flow cycles: their count;
 - discharge into the ocean (m^3/s);
-- drawn river lines that end off the water on the elevation map (`_rivers_to_draw`): drawn
-  segments whose downstream node is neither drawn on, ocean, nor a visible lake;
-- length-visible river networks by mouth type (ocean / lake / other);
+- drawn river lines that end off the water on the elevation map (`_rivers_to_draw`, which
+  since #508 draws only networks above 10,000 m^3/s at the mouth): drawn segments whose
+  downstream node is neither drawn on, ocean, nor a visible lake;
+- long-enough river networks (`_river_network_is_long_enough`, no discharge floor) by mouth
+  type (ocean / lake / other);
 - warm single-node ice plugs: isolated nodes with visible ice at >= 0C;
 - the ice ledger's frozen river ice and snow accumulation (km^3), every other ice-ledger
   term (`ice_<term>_km3`), and visible lake nodes.
@@ -76,13 +78,13 @@ def main() -> None:
         sink_inflow = float(inflow[invisible_sink].sum())
         cycle_inflow = float(discharge[into_cycle].sum())
 
-        src, _, _ = render_image._rivers_to_draw(world, hide_minor_networks=True)
+        src, _, _ = render_image._rivers_to_draw(world, hide_short_networks=True)
         drawn = np.zeros(len(flow_target), dtype=bool)
         drawn[src] = True
         ends = flow_target[src]
         off_water = ~drawn[ends] & ~hydro.is_ocean[ends] & ~lake[ends]
 
-        visible = [r for r in hydrology.group_rivers(hydro) if render_image._river_network_is_visible(r)]
+        visible = [r for r in hydrology.group_rivers(hydro) if render_image._river_network_is_long_enough(r)]
         isolated = ice & ~np.any(ice[hydro.neighbor_idx], axis=1)
         ledger = hydro.ice.ledger
         return {

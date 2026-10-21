@@ -664,6 +664,8 @@ def test_draw_rivers_only_draws_segments_above_the_width_floor():
         is_ocean=np.zeros(n, dtype=bool),
         neighbor_idx=np.zeros((n, 1), dtype=np.int64),
         flow_accum=np.zeros(n),
+        # Above the discharge floor, so only the width floor decides what's drawn.
+        discharge_m3_s=np.full(n, render_image.RIVER_VISIBLE_MIN_FLOW_M3_S * 2.0),
         water_deposited=np.zeros(n),
         filled_elevation=np.zeros(n),
         spill_target=np.full(n, -1, dtype=np.int64),
@@ -719,7 +721,7 @@ def test_draw_rivers_wide_segment_has_a_dimmer_halo_than_its_own_core(monkeypatc
     monkeypatch.setattr(
         render_image,
         "_rivers_to_draw",
-        lambda w, hide_minor_networks=False: (np.array([0]), np.array([1.0]), np.array([1.0])),
+        lambda w, hide_short_networks=False: (np.array([0]), np.array([1.0]), np.array([1.0])),
     )
 
     image = Image.new("RGB", (300, 200), render_image.BACKGROUND_RGB)
@@ -742,10 +744,11 @@ def _linear_rivers_world(mouth_widths):
     """A synthetic world whose hydrology_cache holds one independent 3-node linear river per
     entry in `mouth_widths` (head -> mid -> mouth -> ocean sink). Node i of river r is index
     3*r + i; channel_width along each river is 20% / 50% / 100% of that river's own mouth
-    width, so it tapers from head to mouth. flow_accum mirrors channel_width (a real world's
+    width, so it tapers from head to mouth. discharge_m3_s is 100x channel_width (a real world's
     two are correlated too, just channel_width also saturates at a hard cap over time in a way
-    flow_accum doesn't -- irrelevant for these small, freshly-built fixtures) so tests can
-    exercise _rivers_to_draw's flow-percentile width gate without a separate parameter. Ocean
+    discharge doesn't -- irrelevant for these small, freshly-built fixtures) so tests can
+    exercise _rivers_to_draw's discharge-percentile width gate without a separate parameter,
+    and every river with a mouth of at least 500 m clears RIVER_VISIBLE_MIN_FLOW_M3_S. Ocean
     sink nodes come last."""
     world = _world()
     world.node_density = 1.0
@@ -785,6 +788,9 @@ def _linear_rivers_world(mouth_widths):
         glacier_depth=np.zeros(n),
         plates_in_order=[],
         channel_width=channel_width,
+        # Scaled with channel_width so every fixture river clears the map views' discharge
+        # floor (RIVER_VISIBLE_MIN_FLOW_M3_S) and the flow percentile follows channel_width.
+        discharge_m3_s=channel_width * 100.0,
     )
     return world
 
@@ -821,16 +827,32 @@ def test_rivers_to_draw_treats_a_stale_pre_channel_width_cache_as_absent():
         (1, 5, True),
     ],
 )
-def test_river_network_visibility_requires_30_nodes_or_5_tributaries(num_nodes, num_tributaries, expected):
-    river = hydrology.RiverInfo(
+def test_legacy_river_network_is_long_enough_with_30_nodes_or_5_tributaries(num_nodes, num_tributaries, expected):
+    river = _river_info(num_nodes=num_nodes, num_tributaries=num_tributaries)
+    assert render_image._river_network_is_long_enough(river) is expected
+    assert render_image._river_network_is_drawn(river, hide_short_networks=True) is expected
+    # Views that don't hide short networks (the Plates views) draw it either way.
+    assert render_image._river_network_is_drawn(river, hide_short_networks=False)
+
+
+def _river_info(num_nodes=30, num_tributaries=0, flow_rate=render_image.RIVER_VISIBLE_MIN_FLOW_M3_S * 2.0):
+    """A hand-built RiverInfo without length_m (the legacy node-count length rule)."""
+    return hydrology.RiverInfo(
         member_idx=np.arange(num_nodes),
         mouth_idx=0,
         mouth_type="ocean",
-        flow_rate=1.0,
+        flow_rate=flow_rate,
         speed=1.0,
         num_tributaries=num_tributaries,
     )
-    assert render_image._river_network_is_visible(river) is expected
+
+
+@pytest.mark.parametrize("hide_short_networks", [False, True])
+@pytest.mark.parametrize(("flow_rate", "expected"), [(9_999.0, False), (10_000.0, False), (10_001.0, True)])
+def test_river_network_is_drawn_only_above_the_discharge_floor(flow_rate, expected, hide_short_networks):
+    # Only rivers with more than 10,000 m^3/s at the mouth are drawn, in every map view (#508).
+    river = _river_info(flow_rate=flow_rate)
+    assert render_image._river_network_is_drawn(river, hide_short_networks=hide_short_networks) is expected
 
 
 def test_rivers_to_draw_draws_every_wide_enough_network_regardless_of_count():
@@ -849,6 +871,22 @@ def test_rivers_to_draw_draws_every_wide_enough_network_regardless_of_count():
     world_with_creek = _linear_rivers_world(mouth_widths + [30])
     src_idx2, _, _ = render_image._rivers_to_draw(world_with_creek)
     assert len(mouth_widths) not in {int(i) // 3 for i in src_idx2}
+
+
+@pytest.mark.parametrize("hide_short_networks", [False, True])
+def test_rivers_to_draw_omits_networks_at_or_below_the_discharge_floor(monkeypatch, hide_short_networks):
+    # Every map view draws only networks whose mouth discharge is above 10,000 m^3/s, whether
+    # or not it also hides short networks (#508). The floor reads the mouth, so a drawn
+    # river's headwaters below the floor are still drawn.
+    world = _linear_rivers_world([5000, 5000, 5000])
+    hydro = world.hydrology_cache
+    hydro.discharge_m3_s[:3] = [2_000.0, 6_000.0, 10_001.0]
+    hydro.discharge_m3_s[3:6] = [2_000.0, 6_000.0, render_image.RIVER_VISIBLE_MIN_FLOW_M3_S]
+    hydro.discharge_m3_s[6:9] = [2_000.0, 6_000.0, 9_999.0]
+    # These 3-node fixture networks are short; drop the length cutoff so only the floor decides.
+    monkeypatch.setattr(render_image, "RIVER_VISIBLE_MIN_LENGTH_M", 0.0)
+    src_idx, _, _ = render_image._rivers_to_draw(world, hide_short_networks=hide_short_networks)
+    assert sorted(src_idx.tolist()) == [0, 1, 2]
 
 
 def test_rivers_to_draw_carries_a_drawn_river_to_its_mouth_past_a_narrow_coastal_channel():
@@ -905,7 +943,7 @@ def test_rivers_to_draw_color_is_a_percentile_rank_not_an_absolute_fraction():
 
 
 def test_rivers_to_draw_width_only_widens_for_a_steep_top_flow_percentile():
-    # Line width is gated on a *flow_accum* percentile rank (RIVER_WIDE_MIN_PERCENTILE), not
+    # Line width is gated on a *discharge* percentile rank (RIVER_WIDE_MIN_PERCENTILE), not
     # channel_width -- and deliberately a much steeper bar than color's own rank, so only the
     # single biggest river's own mouth (this fixture's global top-flow node) ever draws wider
     # than 1px, not every node along it.
@@ -1338,7 +1376,7 @@ def test_globe_draws_rivers(globe_world, monkeypatch):
     monkeypatch.setattr(
         render_image,
         "_rivers_to_draw",
-        lambda w, hide_minor_networks=False: (np.array([0]), np.array([1.0]), np.array([1.0])),
+        lambda w, hide_short_networks=False: (np.array([0]), np.array([1.0]), np.array([1.0])),
     )
     image = Image.open(io.BytesIO(render_image.render_png(globe_world, "globe", "elevation", 220, 122)))
     assert image.size == (220, 122)

@@ -495,11 +495,19 @@ nearest-neighbor grid resample `_render_grid_arrays` already does for elevation/
 (`plates.collect_all_lake_depth`, index-aligned with `plates.collect_all_points`'s own
 output so both can share one `cKDTree` query). Rivers are drawn as short line segments, one
 per drawn `is_river` node to its own `flow_target`. Which segments and how they look is
-`render_image._rivers_to_draw`: every `is_river` node with a real downstream `flow_target` and
-a `channel_width` past the small `RIVER_VISIBLE_MIN_WIDTH_M` creek floor is a candidate, not
-just the strongest few networks by mouth flow -- dropped along with the old node_density-scaled
-`RIVER_DRAW_MAX_NETWORKS_BY_NODE_DENSITY`/`RIVER_DRAW_MIN_FLOW_BY_NODE_DENSITY` network-rank
-cap. Downstream of a drawn segment, `is_river` nodes below the width floor are drawn too, to
+`render_image._rivers_to_draw`. Every map view that draws rivers, including animation frames,
+keeps only the `hydrology.group_rivers` networks that `_river_network_is_drawn` accepts: mouth
+discharge (`RiverInfo.flow_rate`, the figure the River Inspector shows) above the fixed
+`RIVER_VISIBLE_MIN_FLOW_M3_S` floor of 10,000 m³/s, so the map shows major rivers rather than
+every qualifying stream (issue #508). The floor is physical and independent of node density,
+unlike the network-rank cap it replaces (`RIVER_DRAW_MAX_NETWORKS_BY_NODE_DENSITY`/
+`RIVER_DRAW_MIN_FLOW_BY_NODE_DENSITY`), and there is no limit on how many networks pass it. It
+reads the mouth, so a major river's headwaters stay drawn, and a river that loses water to
+evaporation can peak above the floor upstream yet stay hidden. A dry world may draw no rivers.
+The Elevation, Biome and Elevation & Biome maps also hide short networks (see the River
+Inspector's length cutoff below); the Plates views don't. Within those networks, a node needs
+a real downstream `flow_target` and a `channel_width` past the small
+`RIVER_VISIBLE_MIN_WIDTH_M` creek floor. Downstream of a drawn segment, `is_river` nodes below the width floor are drawn too, to
 the river's mouth, at the width of the drawn reach above them
 (`_extend_drawn_rivers_downstream`): a river's last cells before the coast are often new or
 reset cells whose channel is still narrower than the floor, and the line used to stop one to
