@@ -152,12 +152,13 @@ RIVER_BLUR_RADIUS_PX = 0.6
 # just expressed directly in physical channel_width now that color is a per-render percentile
 # rank rather than a direct function of it.
 RIVER_VISIBLE_MIN_WIDTH_M = 100.0
-# General-purpose maps and the River Inspector omit networks shorter than the old 30-node
-# cutoff at default density. Use summed physical edge length so the threshold does not move
-# with node density; issue #355.
+# The Elevation, Biome and Elevation & Biome maps (hide_short_networks) and the River Inspector
+# omit networks shorter than the old 30-node cutoff at default density; the Plates views don't.
+# Use summed physical edge length so the threshold does not move with node density; issue #355.
 RIVER_VISIBLE_MIN_LENGTH_M = 30 * PLANET_RADIUS_KM * 1000.0 * line_spacing_rad(DEFAULT_NODE_DENSITY)
-# Every view that draws rivers draws only networks whose mouth discharge is above this, so the
-# map shows major rivers rather than every qualifying stream. The River Inspector doesn't use
+# Every map view that draws rivers draws only networks whose mouth discharge is above this, so
+# the map shows major rivers rather than every qualifying stream. A fixed physical floor, unlike
+# the old node-density-scaled network-rank cap. The River Inspector doesn't use
 # this floor, so smaller networks can still be found and inspected there; issue #508.
 RIVER_VISIBLE_MIN_FLOW_M3_S = 10_000.0
 # The floor on the percentile-rank color fraction above (RIVER_COLOR_BLEND_MIN_FRACTION) plus
@@ -1830,7 +1831,7 @@ def _encode_biome_cells(
     image = Image.fromarray(pixels, mode="RGB").filter(ImageFilter.GaussianBlur(radius=CELL_BLUR_RADIUS_PX * width / REFERENCE_WIDTH_PX))
     image = _draw_rivers(
         image, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation,
-        hide_minor_networks=True,
+        hide_short_networks=True,
     )
     image.putalpha(Image.fromarray(alpha_buf[:, :, 0], mode="L"))
 
@@ -2458,20 +2459,21 @@ def _percentile_rank(values: np.ndarray) -> np.ndarray:
     return rank / max(len(values) - 1, 1)
 
 
-def _river_network_is_visible(river: hydrology.RiverInfo) -> bool:
-    """Whether a network clears the physical-length cutoff for terrain/biome maps."""
+def _river_network_is_long_enough(river: hydrology.RiverInfo) -> bool:
+    """Whether a network clears the physical-length cutoff (RIVER_VISIBLE_MIN_LENGTH_M)."""
     if river.length_m is None:
         # Preserve hand-built pre-length fixtures; computed river networks always set length_m.
         return len(river.member_idx) >= 30 or river.num_tributaries >= 5
     return river.length_m >= RIVER_VISIBLE_MIN_LENGTH_M
 
 
-def _river_network_is_drawn(river: hydrology.RiverInfo, hide_minor_networks: bool) -> bool:
-    """Whether a map view draws this network: above the discharge floor in every view, and
-    also past the length cutoff in the views that hide minor networks."""
+def _river_network_is_drawn(river: hydrology.RiverInfo, hide_short_networks: bool) -> bool:
+    """Whether a map view draws this network: its mouth discharge is above
+    RIVER_VISIBLE_MIN_FLOW_M3_S in every view, and it is also long enough in the views that
+    hide short networks."""
     if river.flow_rate <= RIVER_VISIBLE_MIN_FLOW_M3_S:
         return False
-    return not hide_minor_networks or _river_network_is_visible(river)
+    return not hide_short_networks or _river_network_is_long_enough(river)
 
 
 def _extend_drawn_rivers_downstream(hydro, drawn: np.ndarray, channel_width: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -2498,7 +2500,7 @@ def _extend_drawn_rivers_downstream(hydro, drawn: np.ndarray, channel_width: np.
     return drawn, width
 
 
-def _rivers_to_draw(world: World, hide_minor_networks: bool = False) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _rivers_to_draw(world: World, hide_short_networks: bool = False) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Selects which river segments the general-purpose map views draw, how strongly each
     tints toward RIVER_COLOR_RGB, and how much (if at all) each widens past 1px.
 
@@ -2510,14 +2512,15 @@ def _rivers_to_draw(world: World, hide_minor_networks: bool = False) -> tuple[np
     in [0, 1], a percentile rank of this segment's own physical discharge (not channel_width -- see
     RIVER_COLOR_RGB's own comment for why) among the same drawn population, floored at
     RIVER_WIDE_MIN_PERCENTILE (0 below it, an ordinary 1px line) and reaching 1 at this call's
-    single highest-flow segment. Every is_river network is a candidate, not just the strongest
-    few by mouth flow -- hydrology.py's own is_river cut (top RIVER_FLOW_PERCENTILE of land
-    physical discharge) is already the world-relative "how many rivers exist at all" decision; this
-    drops networks whose mouth discharge is at or below RIVER_VISIBLE_MIN_FLOW_M3_S, then
-    drops individual segments whose channel is too narrow to be a real,
-    visible river at all (RIVER_VISIBLE_MIN_WIDTH_M), which both keeps a bone-dry world's few
-    real rivers from being buried in an unbounded creek count and keeps the per-segment
-    ImageDraw loop in _draw_rivers cheap.
+    single highest-flow segment.
+
+    Candidates are the is_river networks (hydrology.py's top RIVER_FLOW_PERCENTILE of land
+    physical discharge) that _river_network_is_drawn accepts: mouth discharge above the fixed
+    RIVER_VISIBLE_MIN_FLOW_M3_S floor, so a dry world may draw no rivers at all, and with
+    `hide_short_networks` also long enough. There is no cap on how many networks qualify.
+    Individual segments whose channel is too narrow to be a visible river
+    (RIVER_VISIBLE_MIN_WIDTH_M) are then dropped, except downstream of a drawn reach, which
+    keeps the per-segment ImageDraw loop in _draw_rivers cheap.
 
     A stale/pre-#190 hydrology_cache (loaded from an old save, or a hand-built test fixture
     that doesn't set channel_width) has no channel_width of the right shape -- treated the same
@@ -2528,10 +2531,17 @@ def _rivers_to_draw(world: World, hide_minor_networks: bool = False) -> tuple[np
     if hydro is None or channel_width is None or len(channel_width) != len(hydro.points):
         return np.empty(0, dtype=np.int64), np.empty(0), np.empty(0)
 
+    discharge_m3_s = hydro.discharge_m3_s
+    if discharge_m3_s is None or len(discharge_m3_s) != len(hydro.points):
+        # Hand-built internal fixtures may still carry only the legacy field.
+        discharge_m3_s = hydrology.flow_accum_mm_yr_to_discharge_m3_s(hydro.flow_accum)
     visible_mask = hydro.is_river & (hydro.flow_target >= 0) & (channel_width >= RIVER_VISIBLE_MIN_WIDTH_M)
+    # No network's mouth can clear the discharge floor if no river node does, so skip grouping.
+    if not np.any(discharge_m3_s[hydro.is_river] > RIVER_VISIBLE_MIN_FLOW_M3_S):
+        return np.empty(0, dtype=np.int64), np.empty(0), np.empty(0)
     drawn_members = np.zeros(len(hydro.points), dtype=bool)
     for river in hydrology.group_rivers(hydro):
-        if _river_network_is_drawn(river, hide_minor_networks):
+        if _river_network_is_drawn(river, hide_short_networks):
             drawn_members[river.member_idx] = True
     visible_mask &= drawn_members
     if not np.any(visible_mask):
@@ -2542,10 +2552,6 @@ def _rivers_to_draw(world: World, hide_minor_networks: bool = False) -> tuple[np
     color_percentile = _percentile_rank(channel_width[candidates])
     color_alpha = RIVER_COLOR_BLEND_MIN_FRACTION + (1.0 - RIVER_COLOR_BLEND_MIN_FRACTION) * color_percentile
 
-    discharge_m3_s = hydro.discharge_m3_s
-    if discharge_m3_s is None or len(discharge_m3_s) != len(hydro.points):
-        # Hand-built internal fixtures may still carry only the legacy field.
-        discharge_m3_s = hydrology.flow_accum_mm_yr_to_discharge_m3_s(hydro.flow_accum)
     flow_percentile = _percentile_rank(discharge_m3_s[candidates])
     width_frac = np.clip((flow_percentile - RIVER_WIDE_MIN_PERCENTILE) / (1.0 - RIVER_WIDE_MIN_PERCENTILE), 0.0, 1.0)
 
@@ -2554,7 +2560,7 @@ def _rivers_to_draw(world: World, hide_minor_networks: bool = False) -> tuple[np
 
 def _draw_rivers(
     image: Image.Image, world: World, projection: str, scale: float, offset_x: float, offset_y: float, pixel_scale: float, view_rotation: np.ndarray,
-    hide_minor_networks: bool = False,
+    hide_short_networks: bool = False,
 ) -> Image.Image:
     """Draws each selected river segment (see _rivers_to_draw for which segments and how
     strongly each tints toward RIVER_COLOR_RGB) as a short line from a river node to its own
@@ -2571,7 +2577,7 @@ def _draw_rivers(
     hydro = world.hydrology_cache
     if hydro is None:
         return image
-    river_idx, color_alpha, width_frac = _rivers_to_draw(world, hide_minor_networks=hide_minor_networks)
+    river_idx, color_alpha, width_frac = _rivers_to_draw(world, hide_short_networks=hide_short_networks)
     if len(river_idx) == 0:
         return image
     target_idx = hydro.flow_target[river_idx]
@@ -2911,7 +2917,7 @@ def _render_map_png(  # noqa: C901
         image = image.filter(ImageFilter.GaussianBlur(radius=CELL_BLUR_RADIUS_PX * width / REFERENCE_WIDTH_PX))
     image = _draw_rivers(
         image, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation,
-        hide_minor_networks=view == "elevation",
+        hide_short_networks=view == "elevation",
     )
     draw = ImageDraw.Draw(image)
 
