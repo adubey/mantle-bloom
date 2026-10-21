@@ -2461,6 +2461,30 @@ def _river_network_is_visible(river: hydrology.RiverInfo) -> bool:
     return river.length_m >= RIVER_VISIBLE_MIN_LENGTH_M
 
 
+def _extend_drawn_rivers_downstream(hydro, drawn: np.ndarray, channel_width: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Draws every river node downstream of a drawn one, all the way to its mouth. A river's
+    last nodes before the coast are often new or reset cells whose channel hasn't grown past
+    RIVER_VISIBLE_MIN_WIDTH_M yet, so the line used to stop one to three nodes short of the
+    sea, a river to nowhere (issue #503). Only nodes below that floor are filled in, and they
+    take the width of the drawn reach above them; a node drawn in its own right keeps its own
+    width, so a river that narrows downstream is still drawn narrowing."""
+    original = drawn
+    drawn = drawn.copy()
+    width = channel_width.astype(float).copy()
+    flow_target = hydro.flow_target
+    is_river = hydro.is_river
+    for source in np.flatnonzero(original).tolist():
+        node = source
+        while True:
+            target = int(flow_target[node])
+            if target < 0 or original[target] or drawn[target] or not is_river[target] or flow_target[target] < 0:
+                break
+            drawn[target] = True
+            width[target] = width[node]
+            node = target
+    return drawn, width
+
+
 def _rivers_to_draw(world: World, hide_minor_networks: bool = False) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Selects which river segments the general-purpose map views draw, how strongly each
     tints toward RIVER_COLOR_RGB, and how much (if at all) each widens past 1px.
@@ -2499,6 +2523,7 @@ def _rivers_to_draw(world: World, hide_minor_networks: bool = False) -> tuple[np
         visible_mask &= visible_members
     if not np.any(visible_mask):
         return np.empty(0, dtype=np.int64), np.empty(0), np.empty(0)
+    visible_mask, channel_width = _extend_drawn_rivers_downstream(hydro, visible_mask, channel_width)
     candidates = np.where(visible_mask)[0]
 
     color_percentile = _percentile_rank(channel_width[candidates])

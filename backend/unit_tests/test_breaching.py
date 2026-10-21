@@ -205,6 +205,63 @@ def test_a_cheap_pit_breaches_only_when_its_catchment_outpaces_evaporation():
     assert dry.endorheic_pits.tolist() == [3]
 
 
+def test_a_pit_downstream_of_an_overflowing_pit_sees_its_river():
+    # A long wet slope drains into pit 14, which overflows over node 15 into pit 16. Pit 16's
+    # own two-node catchment can't outpace a rim-level lake's evaporation, but the slope's
+    # surplus passing through pit 14 can, so pit 16 is breached too instead of being judged
+    # endorheic on its own catchment (#503).
+    elevation = np.array([*np.linspace(300.0, 100.0, 14), 60.0, 65.0, 50.0, 52.0, -50.0])
+    n = len(elevation)
+    is_ocean = np.zeros(n, dtype=bool)
+    is_ocean[-1] = True
+    result = breaching.breach_depressions(
+        elevation, is_ocean, _chain(n), np.zeros(n), _ordinary_rate(n), years=100_000,
+        water=_pit_water(n, precipitation=800.0, temperature=15.0),
+    )
+    assert result.breached_pits.tolist() == [14, 16]
+    assert result.endorheic_pits.tolist() == []
+
+
+def test_a_pit_passes_its_surplus_to_a_receiver_with_a_costlier_way_out():
+    # Pit U (node 3) spills over node 2 (30 m), whose steepest descent runs into pit D (node 4).
+    # D's own way to the sea climbs 15 m, U's only 5 m (U's path turns off before D), so D sits
+    # later in a cost order. U's surplus still reaches it, and with it D overflows and is
+    # breached rather than judged endorheic on its small catchment (#503).
+    elevation = np.array([-50.0, 10.0, 30.0, 25.0, 5.0, 20.0, 15.0, 40.0, 60.0, 80.0, 100.0, 120.0])
+    neighbor_idx = np.array([
+        [1, 1, 1], [0, 2, 5], [3, 4, 1], [2, 7, 7], [2, 5, 6], [4, 1, 6], [4, 5, 5],
+        [3, 8, 8], [7, 9, 9], [8, 10, 10], [9, 11, 11], [10, 10, 10],
+    ])
+    n = len(elevation)
+    is_ocean = np.zeros(n, dtype=bool)
+    is_ocean[0] = True
+    result = breaching.breach_depressions(
+        elevation, is_ocean, neighbor_idx, np.zeros(n), _ordinary_rate(n), years=100_000,
+        water=_pit_water(n, precipitation=1500.0, temperature=20.0),
+    )
+    assert result.cost_m[4] > result.cost_m[3]
+    assert result.breached_pits.tolist() == [3, 4]
+
+
+def test_pits_drowned_by_one_lake_are_judged_as_that_lake():
+    # Three equal-height cells (28-30) form one basin below a slope that drains into it from
+    # the east, with a 105 m rim to the west. Each cell is its own steepest-descent pit and
+    # two hand their water on, but a lake at the rim floods all three, so the slope's runoff is
+    # weighed against all three cells' evaporation: in this dry climate the basin stays
+    # endorheic, rather than one cell breaching on the whole slope's water (#503).
+    elevation = np.full(40, -100.0)
+    elevation[15:28] = np.linspace(90.0, 105.0, 13)
+    elevation[28:31] = 80.0
+    elevation[31:40] = np.linspace(110.0, 150.0, 9)
+    is_ocean = elevation < 0.0
+    result = breaching.breach_depressions(
+        elevation, is_ocean, _chain(40), np.zeros(40), _ordinary_rate(40), years=100_000,
+        water=_pit_water(40, precipitation=800.0, temperature=15.0),
+    )
+    assert result.breached_pits.tolist() == []
+    assert not result.notch_m.any()
+
+
 def test_endorheic_demand_factor_keeps_more_basins_closed(monkeypatch):
     elevation = np.array([60.0, 40.0, 20.0, 0.0, 15.0, -50.0])
     is_ocean = np.array([False] * 5 + [True])

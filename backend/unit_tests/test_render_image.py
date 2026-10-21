@@ -851,6 +851,29 @@ def test_rivers_to_draw_draws_every_wide_enough_network_regardless_of_count():
     assert len(mouth_widths) not in {int(i) // 3 for i in src_idx2}
 
 
+def test_rivers_to_draw_carries_a_drawn_river_to_its_mouth_past_a_narrow_coastal_channel():
+    # The mouth node's channel is still a 30 m creek (a new coastal cell), below the width floor.
+    # The river upstream is drawn, so its last segment to the sea is drawn too, at the width
+    # upstream -- not cut one node short of the coast (#503).
+    world = _linear_rivers_world([5000])
+    world.hydrology_cache.channel_width[2] = 30.0
+    src_idx, color_alpha, _ = render_image._rivers_to_draw(world)
+    assert sorted(src_idx.tolist()) == [0, 1, 2]
+    alpha = dict(zip(src_idx.tolist(), color_alpha.tolist()))
+    assert alpha[2] >= alpha[1]  # not paler than the reach above it
+
+    # A reach drawn in its own right keeps its own width: the river narrowing to 1,000 m at
+    # its mouth is drawn narrowing, not at the 2,500 m width upstream.
+    world.hydrology_cache.channel_width[2] = 1000.0
+    src_idx, color_alpha, _ = render_image._rivers_to_draw(world)
+    alpha = dict(zip(src_idx.tolist(), color_alpha.tolist()))
+    assert alpha[2] < alpha[1]
+
+    # A creek that never clears the floor anywhere is still left out.
+    world.hydrology_cache.channel_width[:3] = 30.0
+    assert len(render_image._rivers_to_draw(world)[0]) == 0
+
+
 def test_rivers_to_draw_color_is_a_percentile_rank_not_an_absolute_fraction():
     # Color blend fraction is a percentile rank of channel_width among this call's own visible
     # drawn segments, not a fixed fraction of the physical MAX_CHANNEL_WIDTH_M cap (which most
