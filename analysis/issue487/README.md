@@ -124,37 +124,94 @@ or that plate motion was miscalculated. A further edge-disconnected mesh at seed
 plate 14 (components 5940 and 1) was rejected before solving; its residual is therefore not
 part of the accepted-solve metrics.
 
-### Edge-connectivity matched replay (2026-10-21)
+### Connected-source mesh repair and replay coverage audit (2026-10-21)
 
-The shell solver now accepts a mesh only when every triangle belongs to one component under
-full shared-edge adjacency; vertex-only contact does not connect elements. The full 1 Gyr replay
-used the repeatable Gate 1 baseline settings and matched its production cut counts and ordered
-craton-crossing candidate keys for each seed. The guard changes diagnostic eligibility only.
+The 130 Gate 1 craton-crossing candidates are complete production cut events (`split` or
+`failed_rift`) whose cut band intersects at least one craton cell. A candidate is the event-level
+load diagnostic target, not an independently nucleated local crack. Candidate identity and
+production outcome are unchanged by this diagnostic.
 
-| Seed | Gate 1 cuts | Crossing candidates | Accepted shell solves | Source-disconnected skips | Edge-disconnected skips | Accepted solves >1% |
-|---:|---:|---:|---:|---:|---:|---:|
-| 7 | 144 | 44 | 20 | 21 | 3 | 0 |
-| 11 | 111 | 42 | 25 | 16 | 1 | 0 |
-| 2024 | 125 | 44 | 19 | 19 | 6 | 0 |
-| **Pooled** | **380** | **130** | **64** | **56** | **10** | **0** |
+The shell mesh now follows this order: require a source plate connected by exact cell-edge
+adjacency; build the clipped curved mesh; if the source is connected but triangles are not edge
+connected, try a spherical-hull mesh clipped with centroid and edge-midpoint probes; if that does
+not reconnect it, retain the dominant triangle component only when it contains at least 99% of all
+triangles. Every solve must then cover at least 95% of both candidate cut-band nodes and craton
+cut-band nodes. Genuinely source-disconnected plates remain excluded as a whole. Keeping only their
+largest component would invent a connected plate/load path, and solving their islands separately
+would require an unsupported boundary/load condition.
 
-All nine former high-residual cases were among the ten edge-disconnected meshes and are now
-skipped before solving. The 10th rejected mesh was the low-residual seed 7 case above. Separately,
-56 candidates had disconnected source-cell regions and were skipped before mesh construction.
-Among the 64 accepted solves, residual/load quantiles are 0.0090% median, 0.0481% p90,
-0.0739% p95, and 0.2223% maximum; all use LSMR stop code 1 and meet the existing 1% screen.
-The accepted solves cover 20,370 cut-band node samples.
+The updated full 1 Gyr replay uses repeatable Gate 1 settings (seeds 7, 11, 2024; 2 Myr steps;
+craton formation and post-PR-490 spherical relief disabled). Production cuts and ordered candidate
+keys exactly match Gate 1 for every seed.
 
-With accepted solves only, median-capacity physical failure fractions are 0.049% for continental,
-77.92% for young-ridge oceanic proxy, and 2.87% for mature oceanic samples. At the phenomenological
-1× reference, 2.89% of all samples fail (0.22% in marked belts, 3.64% outside). These remain
-screening outcomes: the young-oceanic label proxies active divergent nodes because saved state
-has no oceanic age field, and the capacity assumptions are not calibrated. Gate 2 remains open
-for source/capacity justification and broader physical validation.
+| Seed | Production cuts | Candidates | Source connected | Valid shell solves | Source-disconnected exclusions | Repaired meshes | All-candidate coverage |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 7 | 144 | 44 | 23 | 23 | 21 | 3 | 52.3% |
+| 11 | 111 | 42 | 26 | 26 | 16 | 1 | 61.9% |
+| 2024 | 125 | 44 | 25 | 25 | 19 | 6 | 56.8% |
+| **Pooled** | **380** | **130** | **74** | **74** | **56** | **10** | **56.9%** |
 
-Per-seed replay details, accepted-only capacity summaries, hashes and the rejected-case list are
-in [`gate2-matched-replay.json`](gate2-matched-replay.json). Full replay outputs remain in `/tmp`.
-The exact source-cell connectivity audit is in [`gate2-connectivity-audit.json`](gate2-connectivity-audit.json).
+All ten previously edge-disconnected meshes are now solved: six used the spherical-hull outline
+probe repair (seed 2024 cases) and four dropped only one or two isolated triangles from the dominant
+edge-connected component. The exact affected events were:
+
+| Seed | Time (Myr) | Plate | Original triangle components | Repair |
+|---:|---:|---:|---|---|
+| 7 | 38 | 0 | 3316, 1, 1 | Keep dominant component (99.94% triangles) |
+| 7 | 68 | 14 | 5940, 1 | Keep dominant component (99.98%) |
+| 7 | 344 | 16 | 3861, 1 | Keep dominant component (99.97%) |
+| 11 | 982 | 42 | 2586, 1 | Keep dominant component (99.96%) |
+| 2024 | 90 | 1 | 11264, 14, 1 | Spherical hull, centroid + edge-midpoint outline probes |
+| 2024 | 306 | 9 | 5610, 2 | Spherical hull, centroid + edge-midpoint outline probes |
+| 2024 | 330 | 9 | 5560, 2 | Spherical hull, centroid + edge-midpoint outline probes |
+| 2024 | 348 | 9 | 6879, 2 | Spherical hull, centroid + edge-midpoint outline probes |
+| 2024 | 362 | 9 | 6804, 2 | Spherical hull, centroid + edge-midpoint outline probes |
+| 2024 | 452 | 31 | 2852, 3 | Spherical hull, centroid + edge-midpoint outline probes |
+
+All repaired solves retain at least 95% of the full cut band and craton subset; across all 74 solves
+the minimum sample coverage is 99.67% and 99.44%, respectively. The solver stops with code 1 on
+every solve. Residual/load is 0.0111% median, 0.0738% p90, 0.1362% p95, and 0.4514% maximum. The
+old nine high-residual cases reflected unsupported mesh topology; the repaired replay does not
+reproduce them as high-residual solves.
+
+#### Minimum coverage and interpretation
+
+For a replay-wide model comparison, require at least 90% of all craton-crossing candidates overall
+and at least 80% within each seed, each event-kind (`split` / `failed_rift`), each world-time bin
+(0–200, 200–500, 500–1000 Myr), and every nonempty event-kind × time-bin stratum. A scored event must also meet the per-mesh 95% cut-band and craton-band
+sample coverage thresholds, stop code 1 and residual/load ≤1%. The 90% and 80% thresholds are
+project completeness criteria, not geological constants. Empty strata are reported as not
+applicable; nonempty strata count source-disconnected exclusions as uncovered candidates.
+
+The mesh and numerical criteria pass for all 74 source-connected candidates, but replay-wide
+coverage is **56.9% (74/130)**, below the 90% minimum. The 56 source-disconnected events recur on 22 unique `(seed, plate_id)` pairs; 46 events have no
+off-main source component larger than three cells, while 10 contain a detached component of at
+least six cells (one reaches 369 cells). Those are separate source regions, not tiny mesh islands,
+so retaining just the dominant source component would change the material domain and its load path.
+The exclusions are not evenly distributed:
+
+| Candidate stratum | All candidates | Source connected and solved | Coverage |
+|---|---:|---:|---:|
+| Split | 69 | 33 | 47.8% |
+| Failed rift | 61 | 41 | 67.2% |
+| 0–200 Myr | 75 | 51 | 68.0% |
+| 200–500 Myr | 34 | 14 | 41.2% |
+| 500–1000 Myr | 21 | 9 | 42.9% |
+
+Thus the strength comparison is complete for its connected-source subset, but that subset favors
+failed rifts and early events. Its capacity fractions must not be generalized to all Gate 1 cuts or
+used to select a damage law for the full event population. Keep all 56 disconnected-source events
+visible in the denominator and report them by seed/type/time; do not relabel them as mesh failures.
+The whole-candidate coverage requirement currently fails, so Gate 2 remains open. To make a
+replay-wide model comparison, either validate a defensible load-transfer treatment for separate
+source components or change the claimed scope to connected-source events and justify that scope.
+
+On the 22,896 accepted cut-band samples, median-capacity physical failed fractions are 0.274%
+continental, 78.03% young-ridge oceanic proxy and 2.84% mature oceanic. At the phenomenological
+1× reference, 2.82% of all samples fail (0.34% in marked belts, 3.50% outside). These are screening
+outcomes only: saved state has no oceanic age field, and the capacity assumptions are uncalibrated.
+Per-seed results, coverage strata, hashes and mesh repair details are in
+[`gate2-matched-replay.json`](gate2-matched-replay.json); full outputs remain in `/private/tmp`.
 
 Reproduce with:
 

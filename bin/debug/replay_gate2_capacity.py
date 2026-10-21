@@ -38,6 +38,8 @@ from app.elevation_lines import line_spacing_rad  # noqa: E402
 
 STEP_YEARS = 2e6
 EFFECTIVE_MODULUS_PA = 70e9
+MIN_DIAGNOSTIC_BAND_COVERAGE = 0.95
+MIN_REPAIRED_TRIANGLE_FRACTION = 0.99
 PHENOMENOLOGICAL_WEAKENING = 0.5
 PHENOMENOLOGICAL_REFERENCE_FACTORS = (0.5, 1.0, 2.0)
 GATE1_EXPECTED_CUT_COUNTS = {7: 144, 11: 111, 2024: 125}
@@ -165,6 +167,114 @@ def _capacity_scores(resultant: np.ndarray, band: np.ndarray, continental: np.nd
     return scores
 
 
+def _nondegenerate_triangles(points_xyz: np.ndarray, triangles: np.ndarray) -> np.ndarray:
+    """Drop projected zero-area elements before connectivity checks or solving."""
+    keep = []
+    for triangle in triangles:
+        element = points_xyz[triangle]
+        radial = geometry.normalize(element.sum(axis=0))
+        edge = element[1] - element[0]
+        tangent = edge - np.dot(edge, radial) * radial
+        tangent_norm = float(np.linalg.norm(tangent))
+        if tangent_norm <= np.finfo(float).eps:
+            continue
+        axis_x = tangent / tangent_norm
+        axis_y = np.cross(radial, axis_x)
+        xy = np.column_stack((element @ axis_x, element @ axis_y)) * lithosphere.PLANET_RADIUS_M
+        twice_area = (
+            (xy[1, 0] - xy[0, 0]) * (xy[2, 1] - xy[0, 1])
+            - (xy[1, 1] - xy[0, 1]) * (xy[2, 0] - xy[0, 0])
+        )
+        if abs(twice_area) * 0.5 > np.finfo(float).eps * lithosphere.PLANET_RADIUS_M**2:
+            keep.append(triangle)
+    return np.asarray(keep, dtype=np.int64).reshape(-1, 3)
+
+
+def _remap_triangle_nodes(triangles: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Compact triangle indices and return the original node IDs used by the mesh."""
+    used = np.unique(triangles)
+    remap = np.full(int(triangles.max()) + 1, -1, dtype=np.int64)
+    remap[used] = np.arange(len(used))
+    return used, remap[triangles]
+
+
+def _triangle_mesh_component_sizes(triangles: np.ndarray) -> np.ndarray:
+    """Count full-edge-connected triangle components independent of unused plate nodes."""
+    if len(triangles) == 0:
+        return np.empty(0, dtype=np.int64)
+    used, compact = _remap_triangle_nodes(triangles)
+    return thin_shell._mesh_component_sizes(len(used), compact)
+
+
+def _hull_triangles_inside_outline(plate, points: np.ndarray, weights: np.ndarray) -> tuple[np.ndarray, int]:
+    """Clip curved-hull triangles with a stated set of interior outline probes."""
+    hull = thin_shell._spherical_surface_triangles(points)
+    probes = np.sum(points[hull][:, None, :, :] * weights[None, :, :, None], axis=2)
+    probes = geometry.normalize(probes.reshape(-1, 3))
+    inside = plate.contains_batch(probes).reshape(len(hull), len(weights)).all(axis=1)
+    selected = _nondegenerate_triangles(points, hull[inside])
+    return selected, int((~inside).sum())
+
+
+def _repair_connected_source_mesh(plate, points: np.ndarray, triangles: np.ndarray) -> tuple[np.ndarray, dict | None]:
+    """Retry an edge-disconnected clipped mesh with less strict outline probes.
+
+    Exact source-cell adjacency has already established that the plate is one component.
+    The strict eight-probe clip can nevertheless leave tiny detached triangulation scraps at
+    concave edges. Retriangulate the spherical hull, first requiring the centroid and all three
+    edge midpoints inside the plate, then trying centroid-only clipping as a recorded fallback.
+    """
+    if len(_triangle_mesh_component_sizes(triangles)) <= 1:
+        return triangles, None
+    midpoint_weights = np.array([
+        [1 / 3, 1 / 3, 1 / 3],
+        [0.5, 0.5, 0.0],
+        [0.5, 0.0, 0.5],
+        [0.0, 0.5, 0.5],
+    ])
+    centroid_weights = midpoint_weights[:1]
+    original_components = _triangle_mesh_component_sizes(triangles).tolist()
+    for policy, weights in (("centroid_and_edge_midpoints", midpoint_weights), ("centroid_only", centroid_weights)):
+        candidate, rejected = _hull_triangles_inside_outline(plate, points, weights)
+        if len(_triangle_mesh_component_sizes(candidate)) == 1:
+            return candidate, {
+                "policy": policy,
+                "original_triangle_component_sizes": original_components,
+                "repaired_triangle_count": int(len(candidate)),
+                "strict_outline_rejected_triangle_count": rejected,
+            }
+
+    labels = thin_shell._mesh_component_labels(triangles)
+    sizes = np.bincount(labels)
+    largest_component = int(np.argmax(sizes))
+    retained_fraction = float(sizes[largest_component] / len(triangles))
+    if retained_fraction >= MIN_REPAIRED_TRIANGLE_FRACTION:
+        repaired = triangles[labels == largest_component]
+        return repaired, {
+            "policy": "retain_dominant_edge_connected_component",
+            "original_triangle_component_sizes": original_components,
+            "repaired_triangle_count": int(len(repaired)),
+            "discarded_triangle_count": int(len(triangles) - len(repaired)),
+            "retained_triangle_fraction": retained_fraction,
+        }
+    return triangles, None
+
+
+def _skip_candidate(reason: str, world, plate, points: np.ndarray, kind: str, band: np.ndarray,
+                    craton: np.ndarray, **details) -> dict:
+    """Keep candidate identity and cut-band coverage metadata on every diagnostic skip."""
+    return {
+        "skipped": reason,
+        "kind": kind,
+        "plate": int(plate.plate_id),
+        "myr": float(world.elapsed_years / 1e6),
+        "node_count": int(len(points)),
+        "candidate_band_node_count": int(band.sum()),
+        "candidate_band_craton_node_count": int((band & craton).sum()),
+        **details,
+    }
+
+
 def _score_event(world, plate, points, cut_normal, kind, capacities) -> dict | None:
     points = np.asarray(points, dtype=float)
     normal = np.asarray(cut_normal, dtype=float)
@@ -187,51 +297,58 @@ def _score_event(world, plate, points, cut_normal, kind, capacities) -> dict | N
             raise
         # Broad plates may exceed one gnomonic patch; clip their spherical hull by the true
         # territory outline so the diagnostic still uses the original curved footprint.
-        hull = thin_shell._spherical_surface_triangles(source_points)
-        centroids = geometry.normalize(source_points[hull].mean(axis=1))
-        candidate_triangles = hull[plate.contains_batch(centroids)]
-        mesh_method = "spherical_hull_clipped_to_plate_outline"
+        candidate_triangles = thin_shell._spherical_surface_triangles(source_points)
+        centroids = geometry.normalize(source_points[candidate_triangles].mean(axis=1))
+        candidate_triangles = candidate_triangles[plate.contains_batch(centroids)]
+        mesh_method = "spherical_hull_centroid_clipped"
+    candidate_triangles = _nondegenerate_triangles(source_points, candidate_triangles)
     if len(candidate_triangles) == 0:
-        return {"skipped": "no clipped mesh triangles", "plate": plate.plate_id, "myr": world.elapsed_years / 1e6}
-    nondegenerate = []
-    for triangle in candidate_triangles:
-        element = source_points[triangle]
-        radial = geometry.normalize(element.sum(axis=0))
-        edge = element[1] - element[0]
-        tangent = edge - np.dot(edge, radial) * radial
-        tangent_norm = float(np.linalg.norm(tangent))
-        if tangent_norm <= np.finfo(float).eps:
-            continue
-        axis_x = tangent / tangent_norm
-        axis_y = np.cross(radial, axis_x)
-        xy = np.column_stack((element @ axis_x, element @ axis_y)) * lithosphere.PLANET_RADIUS_M
-        twice_area = (
-            (xy[1, 0] - xy[0, 0]) * (xy[2, 1] - xy[0, 1])
-            - (xy[1, 1] - xy[0, 1]) * (xy[2, 0] - xy[0, 0])
-        )
-        if abs(twice_area) * 0.5 > np.finfo(float).eps * lithosphere.PLANET_RADIUS_M**2:
-            nondegenerate.append(triangle)
-    candidate_triangles = np.asarray(nondegenerate, dtype=np.int64)
-    if len(candidate_triangles) == 0:
-        return {"skipped": "all clipped mesh triangles are degenerate", "plate": plate.plate_id, "myr": world.elapsed_years / 1e6}
+        return _skip_candidate("no nondegenerate clipped mesh triangles", world, plate, points, kind, band, craton)
+
     topology_audit = _topology_audit(plate, len(source_points), candidate_triangles)
     if topology_audit["source_component_count"] > 1:
-        return {
-            "skipped": "source plate adjacency has disconnected cell regions",
-            "plate": int(plate.plate_id),
-            "myr": float(world.elapsed_years / 1e6),
-            "mesh_method": mesh_method,
-            "mesh_node_count": int(len(np.unique(candidate_triangles))),
-            "mesh_triangle_count": int(len(candidate_triangles)),
-            "topology_audit": topology_audit,
-        }
-    used = np.unique(candidate_triangles)
-    remap = np.full(len(source_points), -1, dtype=np.int64)
-    remap[used] = np.arange(len(used))
-    triangles = remap[candidate_triangles]
-    band = band[used]
-    if not np.any(band):
-        return {"skipped": "cut band has no nodes on clipped mesh", "plate": plate.plate_id, "myr": world.elapsed_years / 1e6}
+        return _skip_candidate(
+            "source plate adjacency has disconnected cell regions", world, plate, points, kind, band, craton,
+            mesh_method=mesh_method,
+            mesh_node_count=int(len(np.unique(candidate_triangles))),
+            mesh_triangle_count=int(len(candidate_triangles)),
+            topology_audit=topology_audit,
+        )
+
+    primary_triangle_count = len(candidate_triangles)
+    candidate_triangles, mesh_repair = _repair_connected_source_mesh(plate, source_points, candidate_triangles)
+    if mesh_repair is not None:
+        mesh_method = "spherical_hull_outline_probe_repair"
+    if len(_triangle_mesh_component_sizes(candidate_triangles)) > 1:
+        return _skip_candidate(
+            "thin-shell mesh is disconnected", world, plate, points, kind, band, craton,
+            mesh_error=f"thin-shell mesh has disconnected element components with triangle counts {_triangle_mesh_component_sizes(candidate_triangles).tolist()}",
+            plate_node_count=int(len(source_points)),
+            mesh_node_count=int(len(np.unique(candidate_triangles))),
+            mesh_triangle_count=int(len(candidate_triangles)),
+            mesh_method=mesh_method,
+            topology_audit=topology_audit,
+        )
+
+    used, triangles = _remap_triangle_nodes(candidate_triangles)
+    in_band = band[used]
+    in_band_craton = in_band & craton[used]
+    band_coverage = float(in_band.sum() / max(band.sum(), 1))
+    craton_band_coverage = float(in_band_craton.sum() / max((band & craton).sum(), 1))
+    if band_coverage < MIN_DIAGNOSTIC_BAND_COVERAGE or craton_band_coverage < MIN_DIAGNOSTIC_BAND_COVERAGE:
+        return _skip_candidate(
+            "mesh does not cover at least 95% of cut-band and craton-band nodes", world, plate, points, kind, band, craton,
+            mesh_method=mesh_method, mesh_repair=mesh_repair,
+            mesh_band_node_count=int(in_band.sum()), mesh_craton_band_node_count=int(in_band_craton.sum()),
+            mesh_band_coverage=band_coverage, mesh_craton_band_coverage=craton_band_coverage,
+            topology_audit=topology_audit,
+        )
+    if not np.any(in_band):
+        return _skip_candidate("cut band has no nodes on clipped mesh", world, plate, points, kind, band, craton,
+                               mesh_method=mesh_method, topology_audit=topology_audit)
+    if not np.any(in_band_craton):
+        return _skip_candidate("cut band has no craton nodes on clipped mesh", world, plate, points, kind, band, craton,
+                               mesh_method=mesh_method, topology_audit=topology_audit)
 
     hc = plate.collect("crustal_thickness_m")[used]
     hm = plate.collect("mantle_lithosphere_thickness_m")[used]
@@ -262,19 +379,14 @@ def _score_event(world, plate, points, cut_normal, kind, capacities) -> dict | N
     except ValueError as error:
         if "disconnected element components" not in str(error):
             raise
-        return {
-            "skipped": "thin-shell mesh is disconnected",
-            "mesh_error": str(error),
-            "plate": int(plate.plate_id),
-            "myr": float(world.elapsed_years / 1e6),
-            "mesh_node_count": int(len(used)),
-            "mesh_triangle_count": int(len(triangles)),
-            "mesh_method": mesh_method,
-            "topology_audit": topology_audit,
-        }
+        return _skip_candidate(
+            "thin-shell mesh is disconnected", world, plate, points, kind, band, craton,
+            mesh_error=str(error), mesh_node_count=int(len(used)),
+            mesh_triangle_count=int(len(triangles)), mesh_method=mesh_method,
+            topology_audit=topology_audit,
+        )
     resultant = result.max_incremental_extensional_resultant_n_per_m
-    scores = _capacity_scores(resultant, band, continental, young_oceanic, belt, capacities)
-    in_band_craton = band & (plate.collect("craton_crust_m")[used] > 0.0)
+    scores = _capacity_scores(resultant, in_band, continental, young_oceanic, belt, capacities)
     return {
         "kind": kind,
         "myr": float(world.elapsed_years / 1e6),
@@ -282,20 +394,120 @@ def _score_event(world, plate, points, cut_normal, kind, capacities) -> dict | N
         "node_count": int(len(source_points)),
         "mesh_node_count": int(len(used)),
         "mesh_method": mesh_method,
-        "topology_audit": topology_audit,
-        "band_node_count": int(band.sum()),
-        "band_craton_node_count": int(in_band_craton.sum()),
-        "band_max_resultant_n_per_m": float(np.max(resultant[band])),
-        "band_p50_resultant_n_per_m": float(np.median(resultant[band])),
-        "band_p95_resultant_n_per_m": float(np.quantile(resultant[band], 0.95)),
+        "mesh_repair": mesh_repair,
+        "primary_mesh_triangle_count": int(primary_triangle_count),
+        "mesh_band_coverage": band_coverage,
+        "mesh_craton_band_coverage": craton_band_coverage,
+        "mesh_triangle_count": int(len(triangles)),
+        "candidate_band_node_count": int(band.sum()),
+        "candidate_band_craton_node_count": int((band & craton).sum()),
+        "band_node_count": int(in_band.sum()),
+        "band_nodes_omitted_by_mesh": int(band.sum() - in_band.sum()),
+        "band_craton_node_count": int((in_band & craton[used]).sum()),
+        "band_craton_nodes_omitted_by_mesh": int((band & craton).sum() - (in_band & craton[used]).sum()),
+        "band_max_resultant_n_per_m": float(np.max(resultant[in_band])),
+        "band_p50_resultant_n_per_m": float(np.median(resultant[in_band])),
+        "band_p95_resultant_n_per_m": float(np.quantile(resultant[in_band], 0.95)),
         "solver_stop_code": int(result.solver_stop_code),
         "equilibrium_residual_n": float(result.equilibrium_residual_n),
         "equilibrium_residual_over_load": float(
             result.equilibrium_residual_n / max(np.linalg.norm(result.equilibrated_force_n), 1.0)
         ),
+        "topology_audit": topology_audit,
         "capacity_scores": scores,
     }
 
+def _coverage_report(events: list[dict]) -> dict:
+    """Report complete-candidate coverage and eligible connected-source solve coverage."""
+    eligible = [
+        event for event in events
+        if event.get("topology_audit", {}).get("source_component_count") == 1
+    ]
+    scored = [
+        event for event in eligible
+        if "skipped" not in event
+        and event.get("solver_stop_code") == 1
+        and event.get("equilibrium_residual_over_load", 1.0) <= 0.01
+        and event.get("mesh_band_coverage", 0.0) >= MIN_DIAGNOSTIC_BAND_COVERAGE
+        and event.get("mesh_craton_band_coverage", 0.0) >= MIN_DIAGNOSTIC_BAND_COVERAGE
+    ]
+
+    def group_result(group: list[dict]) -> dict:
+        group_eligible = [
+            event for event in group
+            if event.get("topology_audit", {}).get("source_component_count") == 1
+        ]
+        group_scored = [
+            event for event in group_eligible
+            if "skipped" not in event
+            and event.get("solver_stop_code") == 1
+            and event.get("equilibrium_residual_over_load", 1.0) <= 0.01
+            and event.get("mesh_band_coverage", 0.0) >= MIN_DIAGNOSTIC_BAND_COVERAGE
+            and event.get("mesh_craton_band_coverage", 0.0) >= MIN_DIAGNOSTIC_BAND_COVERAGE
+        ]
+        return {
+            "candidate_events": len(group),
+            "source_connected_candidates": len(group_eligible),
+            "valid_shell_solves": len(group_scored),
+            "coverage_fraction_all_candidates": len(group_scored) / len(group) if group else None,
+            "coverage_fraction_source_connected": (
+                len(group_scored) / len(group_eligible) if group_eligible else None
+            ),
+        }
+
+    by_kind = {
+        kind: group_result([event for event in events if event.get("kind") == kind])
+        for kind in ("split", "failed_rift")
+    }
+    time_bins = (
+        ("0-200_Myr", 0.0, 200.0),
+        ("200-500_Myr", 200.0, 500.0),
+        ("500-1000_Myr", 500.0, 1000.000001),
+    )
+    by_world_time = {
+        name: group_result([event for event in events if low <= event.get("myr", -1.0) < high])
+        for name, low, high in time_bins
+    }
+    by_kind_and_time = {
+        kind: {
+            name: group_result([
+                event for event in events
+                if event.get("kind") == kind and low <= event.get("myr", -1.0) < high
+            ])
+            for name, low, high in time_bins
+        }
+        for kind in ("split", "failed_rift")
+    }
+    minimum_stratum = 0.80
+    stratum_fractions = [
+        value["coverage_fraction_all_candidates"]
+        for value in [
+            *by_kind.values(),
+            *by_world_time.values(),
+            *(stratum for groups in by_kind_and_time.values() for stratum in groups.values()),
+        ]
+        if value["coverage_fraction_all_candidates"] is not None
+    ]
+    overall_fraction_all = len(scored) / len(events) if events else 0.0
+    overall_fraction_connected = len(scored) / len(eligible) if eligible else 0.0
+    return {
+        "candidate_events": len(events),
+        "source_connected_candidates": len(eligible),
+        "valid_shell_solves": len(scored),
+        "coverage_fraction_all_candidates": overall_fraction_all,
+        "coverage_fraction_source_connected": overall_fraction_connected,
+        "minimum_overall_candidate_coverage": 0.90,
+        "minimum_coverage_per_seed_kind_and_time_stratum": minimum_stratum,
+        "minimum_band_and_craton_band_node_coverage": MIN_DIAGNOSTIC_BAND_COVERAGE,
+        "by_kind": by_kind,
+        "by_world_time_myr": by_world_time,
+        "by_kind_and_world_time_myr": by_kind_and_time,
+        "meets_seed_minimum": overall_fraction_all >= minimum_stratum,
+        "meets_overall_and_stratified_minimums": (
+            overall_fraction_all >= 0.90 and all(fraction >= minimum_stratum for fraction in stratum_fractions)
+        ),
+        "disconnected_source_candidates_excluded_from_solver": len(events) - len(eligible),
+    }
 
 def _run(seed: int, years: float, out_path: Path) -> dict:
     for name, value in __import__("compare_cratons")._DEFAULTS.items():
@@ -341,6 +553,7 @@ def _run(seed: int, years: float, out_path: Path) -> dict:
         "craton_formation_off": True,
         "gate1_baseline_commit": GATE1_BASELINE_COMMIT,
         "events_scored": len(events),
+        "diagnostic_coverage": _coverage_report(events),
         "gate1_craton_crossing_cut_count_expected": GATE1_EXPECTED_CRATON_CROSSING_CUTS[seed],
         "gate1_craton_crossing_cut_count_matches": len(events) == GATE1_EXPECTED_CRATON_CROSSING_CUTS[seed],
         "production_cut_count": int(round(

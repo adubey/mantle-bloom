@@ -7,7 +7,7 @@
 
 The source-force interface preserves each existing torque contribution as a per-node vector in N. `thin_shell.solve_force_field` transfers the combined tangent load through a linear triangular membrane equilibrium solve and returns local in-plane membrane stress increments in N/m. It removes the area-weighted rigid-rotation load handled by plate motion; applied radial force is assigned to shell-normal support. The comparison is defined as `N_ext = max(0, lambda_max(Delta_N))`, the largest positive principal value of the incremental membrane-resultant tensor, divided by `N_cap = integral(Delta_sigma_yield(z) dz)`, the column's additional extensional differential strength to normal-fault yield from its assumed `K0` background. Both are resultants in N/m. The interpretation assumes vertical compression remains the major principal stress, an elastic stress increment about a zero-load reference, and the same representative column geometry at each node. This maps units and failure mode; it does not add prestress to the shell or feed local yielding back into equilibrium. Synthetic tests verify equilibrium residual, rigid-rotation removal, linear force scaling and the named capacity pairing. Diagonal stiffness scaling lets the iterative solve handle generated plate meshes with thousands of nodes.
 
-This establishes an offline load-transfer and strength-comparison interface, not a production stress field. The solver assumes linear plane-stress elasticity, free in-plane displacement, prescribed nodal loads, no faults, bending or plasticity, and a caller-supplied effective thickness and modulus. A curved-shell manufactured solution and generated broad-mesh sensitivity are now recorded below. For an isolated single-plate solve, free displacement is selected as the diagnostic baseline because the inputs contain no displacement anchor to an external reference. Edge clamps remain artificial sensitivity probes. Actual interplate displacement and traction continuity would require a coupled multi-plate solve, which this diagnostic does not provide. The strength envelope remains an uncalibrated scenario model. Gate 2 therefore remains open for matched replay comparison and further boundary/load-model validation.
+This establishes an offline load-transfer and strength-comparison interface, not a production stress field. The solver assumes linear plane-stress elasticity, free in-plane displacement, prescribed nodal loads, no faults, bending or plasticity, and a caller-supplied effective thickness and modulus. A curved-shell manufactured solution and generated broad-mesh sensitivity are now recorded below. For an isolated single-plate solve, free displacement is selected as the diagnostic baseline because the inputs contain no displacement anchor to an external reference. Edge clamps remain artificial sensitivity probes. Actual interplate displacement and traction continuity would require a coupled multi-plate solve, which this diagnostic does not provide. The strength envelope remains an uncalibrated scenario model. Gate 2 therefore remains open because source-disconnected candidates leave the replay below its explicit coverage threshold, and because further boundary/load-model validation is needed.
 
 ## Synthetic solver validation
 
@@ -339,11 +339,14 @@ The complete trace is in `backend/app/torque.py` (`gather_boundary_force_inputs`
 
 ## Mesh-connectivity safeguard
 
-The thin-shell solver now requires the triangle elements for one plate solve to form one connected
-mesh. A disconnected mesh has additional rigid modes; the plate-wide rigid-rotation projection does
-not remove those modes, so the least-squares residual can reflect mesh topology as well as load
-transfer. The solver rejects such meshes, and the matched replay records the event as skipped
-instead of scoring its stress or capacity. This is a fail-closed guard, not a mesh repair.
+The thin-shell solver requires triangle elements in one plate solve to form one connected mesh.
+A disconnected mesh has additional rigid modes; the plate-wide rigid-rotation projection does not
+remove those modes, so the least-squares residual can reflect mesh topology as well as load transfer.
+For a source-connected plate with a mesh-only split, the replay first tries a spherical-hull mesh
+clipped by centroid and edge-midpoint probes, then retains the dominant triangle component only if
+at least 99% of triangles remain. It rechecks shared-edge connectivity and requires at least 95%
+coverage of both the candidate cut band and its craton subset. A source-disconnected plate remains
+excluded whole; no separate-island force boundary condition is supported.
 
 A seed 2024 replay through 460 Myr compared exact edge-sharing `plate.adjacency()` with the
 accepted triangle mesh for the two late plate 9 events. Both source plates have seven cell
@@ -358,24 +361,29 @@ These are the historical 55.52% and 51.47% residual cases. At 432 Myr, the resid
 least-squares fitting bug: the source shell consists of separate regions with no modeled material
 connection. At 460 Myr, the mesh additionally introduces a false connection between source
 components. Bridging those regions would invent a load path; solving each island independently
-would require an unsupported force/traction boundary condition. The replay now skips any event
-whose exact source adjacency has multiple components, records the mapping, and keeps the
-disconnected-element guard for a connected source whose clipped mesh is still split. This is an
-explicit exclusion from the shell/capacity diagnostic, not a repair or a claim about the physical
-plate. With the exact-source exclusion enabled, the partial seed 2024 replay through 460 Myr skips
-18 of 43 candidates and scores 25. Six of those 25 solves still exceed 1% residual; the maximum is
-6.43%. Those 25 events contain 7,241 cut-band samples. Their physical median-capacity failed
-fractions are 0.69% continental, 80.21% young-ridge oceanic and 9.70% mature oceanic. At the
-phenomenological 1x reference, 4.57% of all band samples fail (0.06% of marked-belt samples).
-These partial, single-seed values are not directly comparable to the historical 130-candidate
-aggregate. The compact source/mesh component data for the two late plate 9 cases is in
-[`gate2-connectivity-audit.json`](gate2-connectivity-audit.json). The full matched replay has since
-been regenerated with both the source-cell and shared-edge connectivity exclusions. It accepts 64
-of 130 candidates, skips 56 source-disconnected candidates and 10 edge-disconnected meshes, and
-all accepted solves are at or below 1% residual (maximum 0.222%). All nine former high-residual
-cases are among the edge-disconnected meshes. The current accepted-only capacity scores and
-per-seed results are in [`gate2-matched-replay.json`](gate2-matched-replay.json); Gate 2 remains
-open pending physical source/capacity justification and broader validation.
+would require an unsupported force/traction boundary condition. The replay excludes any event whose exact source adjacency has multiple components. Those 56
+source-disconnected candidates are not “mesh failures”; the plate cells themselves have no single
+edge-connected material domain for this solver. The old partial replay numbers in the paragraph
+above (25 solves and six residual failures) predate the final shared-edge/mesh repair treatment and
+are historical only. The full regenerated replay matches all Gate 1 production cuts and ordered
+candidate identities for seeds 7, 11 and 2024. It solves all 74 source-connected candidates and
+repairs the ten former edge-disconnected meshes (six by spherical-hull outline probes; four by
+retaining a ≥99% dominant triangle component). All 74 pass stop code 1 and residual/load ≤1%
+(maximum 0.4514%) on 22,896 cut-band samples. Minimum mesh coverage is 99.67% for all cut-band
+nodes and 99.44% for craton-band nodes.
+
+The replay-wide completeness requirement is at least 90% of all craton-crossing candidates overall
+and 80% in each seed, event kind, nonempty time bin and nonempty event-kind × time-bin stratum. It is a project evidence threshold, not a
+physical constant. Current coverage is 74/130 = 56.9%, so Gate 2 does not pass this requirement.
+Eligibility is biased: 33/69 split events (47.8%) versus 41/61 failed-rift events (67.2%) are
+source-connected; by time the rates are 51/75 (68.0%), 14/34 (41.2%) and 9/21 (42.9%). Report
+source-disconnected events as uncovered in the replay denominator; do not generalize capacity
+scores from the connected subset to all candidates. Resolving this gap requires either a defensible
+multi-component load-transfer model or an explicitly narrower, justified model scope. Compact
+per-seed results and source/mesh audit are in
+[`gate2-matched-replay.json`](gate2-matched-replay.json) and
+[`gate2-connectivity-audit.json`](gate2-connectivity-audit.json). Gate 2 remains open for this
+coverage gap, physical source/capacity justification, and broader validation.
 
 Reproduce the partial source-filtered replay with:
 
@@ -387,9 +395,9 @@ PYTHONHASHSEED=0 PYTHONPATH=backend backend/.venv/bin/python \
 
 ## Gate disposition
 
-- **Current diagnostic interface:** `max(0, lambda_max(Delta_N))`, the largest positive principal shell stress increment, is paired with the column's additional normal-fault capacity from an assumed `K0` background; both are in N/m. The physical envelope remains an uncalibrated scenario family. A broad curved-sphere analytic benchmark converges to 1.18% mean error and 2.75% p95 error at 17 × 33 nodes. Free in-plane displacement is selected for the isolated-plate diagnostic because the input has no external displacement anchor. Single, paired and full-boundary clamps show substantial sensitivity and are not adopted as physical boundary conditions. The direct-threshold phenomenological rule has a monotonic capacity and weak-band localization check, but is a competing design only. Matched replay comparison and coupled interplate boundary behavior remain open, so Gate 2 is not closed.
+- **Current diagnostic interface:** `max(0, lambda_max(Delta_N))`, the largest positive principal shell stress increment, is paired with the column's additional normal-fault capacity from an assumed `K0` background; both are in N/m. The physical envelope remains an uncalibrated scenario family. A broad curved-sphere analytic benchmark converges to 1.18% mean error and 2.75% p95 error at 17 × 33 nodes. Free in-plane displacement is selected for the isolated-plate diagnostic because the input has no external displacement anchor. Single, paired and full-boundary clamps show substantial sensitivity and are not adopted as physical boundary conditions. The direct-threshold phenomenological rule has a monotonic capacity and weak-band localization check, but is a competing design only. The matched comparison is complete for connected-source candidates, but the 90% overall / 80% stratum coverage gate fails because 56 source-disconnected candidates remain excluded. Physical strength is uncalibrated and coupled interplate boundary behavior remains outside this isolated solve, so Gate 2 is not closed.
 - **`internal_stress`:** retain only as a plate-scale eligibility/background signal if desired; it cannot trigger or weight local damage.
 - **No calibrated strength field:** do not assign `Y_t`, `eta_rift`, or failure-strain parameters from these diagnostics. Do not infer stress from applied traction, rigid rotation, flow-cluster residuals or `Plate.internal_stress`.
-- **Required next work:** compare the physical envelope with the labeled phenomenological alternative on matched replay candidates using the repeatable Gate 1 baseline, retaining the explicit material, thermal, pore-pressure and `K0` scenarios. Gate 3 accumulation and segment-growth calibration remains downstream of that model-choice evidence. A coupled interplate shell solve is a future fidelity improvement; the free-edge choice applies only to this isolated diagnostic.
+- **Required next work:** address the replay-wide coverage failure without inventing a load path for disconnected source components. Either validate a defensible separate-component load-transfer model, or justify an explicitly narrower scope and show its conclusions are not generalized beyond source-connected events. Re-evaluate model-choice evidence with the 90% overall / 80% stratum coverage rule. Gate 3 accumulation and segment-growth calibration remains downstream. A coupled interplate shell solve is a future fidelity improvement; the free-edge choice applies only to this isolated diagnostic.
 
 The RFC now records this outcome and keeps the local-cut damage design conditional. Gate 1 is closed by the explicit baseline/exclusion decision recorded in `analysis/issue487/README.md`; the archived-stream provenance limitation remains documented.

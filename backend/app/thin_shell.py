@@ -74,8 +74,8 @@ def _spherical_surface_triangles(points: np.ndarray) -> np.ndarray:
     return np.asarray(triangles, dtype=np.int64)
 
 
-def _mesh_component_sizes(node_count: int, triangles: np.ndarray) -> np.ndarray:
-    """Return triangle counts for components joined through shared edges."""
+def _mesh_component_labels(triangles: np.ndarray) -> np.ndarray:
+    """Label triangle components joined through complete shared edges."""
     edges = np.sort(
         np.concatenate((triangles[:, [0, 1]], triangles[:, [1, 2]], triangles[:, [2, 0]])),
         axis=1,
@@ -85,9 +85,6 @@ def _mesh_component_sizes(node_count: int, triangles: np.ndarray) -> np.ndarray:
     edge_triangles = np.tile(np.arange(len(triangles)), 3)[edge_order]
     same_edge = np.all(sorted_edges[1:] == sorted_edges[:-1], axis=1)
     edge_groups = np.split(edge_triangles, np.flatnonzero(~same_edge) + 1)
-
-    # Connect triangles only when they share a complete edge. Vertex-only contact leaves
-    # independent membrane hinges and extra zero-stiffness modes in the shell solve (#487).
     triangle_neighbors = [np.unique(group) for group in edge_groups if len(np.unique(group)) > 1]
     if triangle_neighbors:
         pairs = np.column_stack((
@@ -100,12 +97,14 @@ def _mesh_component_sizes(node_count: int, triangles: np.ndarray) -> np.ndarray:
         rows = cols = np.empty(0, dtype=np.int64)
     graph = coo_matrix((np.ones(len(rows)), (rows, cols)), shape=(len(triangles), len(triangles))).tocsr()
     _, labels = connected_components(graph, directed=False)
-    triangle_component_sizes = np.bincount(labels)
+    return labels
 
-    # Keep unused nodes visible as invalid zero-element components; they otherwise create
-    # unconstrained degrees of freedom that are absent from the element adjacency graph.
-    used_nodes = np.unique(triangles)
-    unused_node_count = node_count - len(used_nodes)
+
+def _mesh_component_sizes(node_count: int, triangles: np.ndarray) -> np.ndarray:
+    """Return triangle counts for edge-connected components, including unused nodes."""
+    triangle_component_sizes = np.bincount(_mesh_component_labels(triangles))
+    used_node_count = len(np.unique(triangles))
+    unused_node_count = node_count - used_node_count
     if unused_node_count:
         return np.r_[np.sort(triangle_component_sizes)[::-1], np.zeros(unused_node_count, dtype=np.int64)]
     return np.sort(triangle_component_sizes)[::-1]

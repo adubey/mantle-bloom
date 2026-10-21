@@ -210,6 +210,15 @@ def test_thin_shell_removes_plate_scale_rigid_rotation_load():
     assert np.allclose(result.rigid_rotation_force_n, force)
 
 
+def test_thin_shell_labels_edge_connected_triangle_components():
+    triangles = np.array([[0, 2, 4], [0, 2, 5], [0, 6, 7]], dtype=np.int64)
+
+    labels = thin_shell._mesh_component_labels(triangles)
+
+    assert labels[0] == labels[1]
+    assert labels[2] != labels[0]
+
+
 def test_thin_shell_rejects_disconnected_element_mesh():
     points, force = _octahedral_shell()
     cases = (
