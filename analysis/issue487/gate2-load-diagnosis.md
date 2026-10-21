@@ -369,9 +369,13 @@ fractions are 0.69% continental, 80.21% young-ridge oceanic and 9.70% mature oce
 phenomenological 1x reference, 4.57% of all band samples fail (0.06% of marked-belt samples).
 These partial, single-seed values are not directly comparable to the historical 130-candidate
 aggregate. The compact source/mesh component data for the two late plate 9 cases is in
-[`gate2-connectivity-audit.json`](gate2-connectivity-audit.json). Gate 2 remains open pending a
-full matched-replay rerun with this exclusion rule and residual checks on the retained connected
-meshes.
+[`gate2-connectivity-audit.json`](gate2-connectivity-audit.json). The full matched replay has since
+been regenerated with both the source-cell and shared-edge connectivity exclusions. It accepts 64
+of 130 candidates, skips 56 source-disconnected candidates and 10 edge-disconnected meshes, and
+all accepted solves are at or below 1% residual (maximum 0.222%). All nine former high-residual
+cases are among the edge-disconnected meshes. The current accepted-only capacity scores and
+per-seed results are in [`gate2-matched-replay.json`](gate2-matched-replay.json); Gate 2 remains
+open pending physical source/capacity justification and broader validation.
 
 Reproduce the partial source-filtered replay with:
 

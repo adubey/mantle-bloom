@@ -89,41 +89,72 @@ assumptions, material-law sources, reference profiles, full scenario grid, and n
 resolution comparison are documented in [`gate2-load-diagnosis.md`](gate2-load-diagnosis.md)
 and [`gate2-column-envelope.json`](gate2-column-envelope.json). At 0.125 km depth spacing,
 reference capacities are 23.79 TN/m (continental), 0.489 TN/m (young-ridge oceanic), and
-5.50 TN/m (mature oceanic). The scenario-grid p10/median/p90 values are 5.45/12.70/27.55,
-0.133/0.292/0.546, and 1.88/3.73/6.86 TN/m, respectively. These are not calibrated
-predictions; the integrated capacity is especially sensitive to the assumed background
-horizontal stress, pore pressure, mantle water state, and thermal profile. The shell diagnostic
-now reports the largest positive principal stress increment against this additional capacity,
-both in N/m, under an explicit normal-faulting `K0` assumption. An independent curved-sphere
-benchmark recovers uniform isotropic tension to 1.18% mean error and 2.75% p95 error on a 17 × 33
-mesh. Free in-plane displacement is selected as the isolated-plate diagnostic baseline; paired
-clamps shift the mean by as much as 46.6%, and actual neighboring-plate coupling is outside the
-solver. The matched replay has now scored both capacity choices on the same 130 Gate 1 craton-crossing
-candidate loads (39,467 cut-band node samples; all production cut counts and ordered candidate
-signatures matched on seeds 7, 11 and 2024). The physical envelope predicts median-capacity failure
-fractions of 0.64% in continental, 74.44% in young-ridge oceanic and 2.99% in mature oceanic
-samples. The phenomenological alternative uses marked belts with lambda=0.5 and a class-matched
-physical-median reference; at its 1x reference, 2.56% of all band nodes fail, with 0.33% inside
-marked belts versus 3.18% outside. Thus similar pooled rates hide different spatial predictions.
+5.50 TN/m (mature oceanic). These are screening values, not calibrated predictions; integrated
+capacity is sensitive to background horizontal stress, pore pressure, mantle water state, and
+temperature profile.
 
-This does not settle the model choice. The shell solve's residual/load ratio exceeds 1% in 29 of
-130 events (p50 0.023%, p90 11.52%, p95 25.75%, maximum 55.52%); conclusions are screening evidence, not
-constitutive calibration. The young-oceanic label is also only a proxy for active divergent nodes.
-The replay and a compact machine-readable result are in
-[`replay_gate2_capacity.py`](../../bin/debug/replay_gate2_capacity.py) and
-[`gate2-matched-replay.json`](gate2-matched-replay.json). Full per-event outputs remain in `/tmp`.
-Gate 2 remains open pending improved equilibrium quality, calibrated source/capacity assumptions,
-and resolution of edge sensitivity. See also
-[`representative-mesh-summary.json`](representative-mesh-summary.json).
+The shell diagnostic reports the largest positive principal stress increment against this
+additional capacity in N/m, under an explicit normal-faulting `K0` assumption. A curved-sphere
+benchmark recovers uniform isotropic tension to 1.18% mean error and 2.75% p95 error on a
+17 × 33 mesh. Free in-plane displacement is the isolated-plate baseline; paired clamps shift
+the mean by as much as 46.6%, and actual neighboring-plate coupling remains outside the solve.
 
-A later exact-adjacency audit found seven source-cell components in each of the two late plate 9
-events that had 55.52% and 51.47% historical residuals. At 460 Myr the clipped mesh also joined a
-17-cell component to the largest component despite their separation in exact cell adjacency. A
-guarded partial seed 2024 replay through 460 Myr now skips 18 of 43 candidates with fragmented
-source plates; six of the 25 remaining solves exceed 1% residual (maximum 6.43%). Its capacity
-fractions are partial single-seed results and do not replace the original 130-event aggregate.
-Component detail is in [`gate2-connectivity-audit.json`](gate2-connectivity-audit.json), and the
-assumptions and disposition are in [`gate2-load-diagnosis.md`](gate2-load-diagnosis.md).
+The first matched replay scored 130 candidates and reported 29 residual/load ratios above 1%.
+That result is retained in `gate2-matched-replay.json` under
+`pre_edge_connectivity_guard`; it included element meshes that touched only at vertices and
+therefore were not connected for the shell solver's rigid-mode treatment. The nine flagged
+cases were:
+
+| Seed | World time (Myr) | Plate | Triangle component sizes | Old residual/load |
+|---:|---:|---:|---:|---:|
+| 7 | 38 | 0 | 3316, 1, 1 | 11.51% |
+| 7 | 344 | 16 | 3861, 1 | 26.69% |
+| 11 | 982 | 42 | 2586, 1 | 1.15% |
+| 2024 | 90 | 1 | 11264, 14, 1 | 3.33% |
+| 2024 | 306 | 9 | 5610, 2 | 5.85% |
+| 2024 | 330 | 9 | 5560, 2 | 3.12% |
+| 2024 | 348 | 9 | 6879, 2 | 1.89% |
+| 2024 | 362 | 9 | 6804, 2 | 5.04% |
+| 2024 | 452 | 31 | 2852, 3 | 6.43% |
+
+The issue was unsupported mesh topology: separate triangle components introduced extra rigid
+modes, but the solve projected only the plate-wide rigid modes. The residual therefore measured
+an unsatisfied force balance on an invalid mesh, not evidence that the rock exceeded capacity
+or that plate motion was miscalculated. A further edge-disconnected mesh at seed 7, 68 Myr,
+plate 14 (components 5940 and 1) was rejected before solving; its residual is therefore not
+part of the accepted-solve metrics.
+
+### Edge-connectivity matched replay (2026-10-21)
+
+The shell solver now accepts a mesh only when every triangle belongs to one component under
+full shared-edge adjacency; vertex-only contact does not connect elements. The full 1 Gyr replay
+used the repeatable Gate 1 baseline settings and matched its production cut counts and ordered
+craton-crossing candidate keys for each seed. The guard changes diagnostic eligibility only.
+
+| Seed | Gate 1 cuts | Crossing candidates | Accepted shell solves | Source-disconnected skips | Edge-disconnected skips | Accepted solves >1% |
+|---:|---:|---:|---:|---:|---:|---:|
+| 7 | 144 | 44 | 20 | 21 | 3 | 0 |
+| 11 | 111 | 42 | 25 | 16 | 1 | 0 |
+| 2024 | 125 | 44 | 19 | 19 | 6 | 0 |
+| **Pooled** | **380** | **130** | **64** | **56** | **10** | **0** |
+
+All nine former high-residual cases were among the ten edge-disconnected meshes and are now
+skipped before solving. The 10th rejected mesh was the low-residual seed 7 case above. Separately,
+56 candidates had disconnected source-cell regions and were skipped before mesh construction.
+Among the 64 accepted solves, residual/load quantiles are 0.0090% median, 0.0481% p90,
+0.0739% p95, and 0.2223% maximum; all use LSMR stop code 1 and meet the existing 1% screen.
+The accepted solves cover 20,370 cut-band node samples.
+
+With accepted solves only, median-capacity physical failure fractions are 0.049% for continental,
+77.92% for young-ridge oceanic proxy, and 2.87% for mature oceanic samples. At the phenomenological
+1× reference, 2.89% of all samples fail (0.22% in marked belts, 3.64% outside). These remain
+screening outcomes: the young-oceanic label proxies active divergent nodes because saved state
+has no oceanic age field, and the capacity assumptions are not calibrated. Gate 2 remains open
+for source/capacity justification and broader physical validation.
+
+Per-seed replay details, accepted-only capacity summaries, hashes and the rejected-case list are
+in [`gate2-matched-replay.json`](gate2-matched-replay.json). Full replay outputs remain in `/tmp`.
+The exact source-cell connectivity audit is in [`gate2-connectivity-audit.json`](gate2-connectivity-audit.json).
 
 Reproduce with:
 
@@ -140,18 +171,3 @@ PYTHONHASHSEED=0 PYTHONPATH=backend backend/.venv/bin/python \
   --seed 7 --num-plates 12 --node-density 0.5 \
   --out analysis/issue487/representative-mesh-summary.json
 ```
-
-## Edge-connected shell replay preregistration (2026-10-21)
-
-The comparison changes only Gate 2's mesh admissibility check. Replay the same cratons-first,
-craton-formation-off, 2 Myr-step, 1 Gyr trajectories for seeds 7, 11, and 2024 with
-`PYTHONHASHSEED=0`; production cut totals and ordered craton-crossing signatures must still
-match the Gate 1 baseline (144/44, 111/42, 125/44). The primary diagnostic is the number of
-accepted shell solves with residual/load above 1%, using 1% as the existing screening
-threshold. Report skipped disconnected meshes separately and recompute residual quantiles and
-capacity scores over accepted solves only. Expected direction: the nine previously flagged
-vertex-connected but edge-disconnected meshes become skipped; their residuals are excluded,
-not interpreted as improved equilibrium. No capacity parameters or production model behavior
-change. Compare the resulting accepted-solve denominator and metrics against the prior
-130-candidate matched replay, while noting that its score denominator included these invalid
-meshes.

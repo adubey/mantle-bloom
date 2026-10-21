@@ -1,7 +1,7 @@
 {
   "title": "Issue 487 Gate 2 matched capacity replay",
-  "date": "2026-10-19",
-  "purpose": "Diagnostic comparison only: score physical column envelopes and a labeled phenomenological belt-weakening alternative against identical Gate 1 craton-crossing candidate loads; neither capacity changes production behavior.",
+  "date": "2026-10-21",
+  "purpose": "Diagnostic comparison only: replay identical Gate 1 craton-crossing loads, reject shell meshes that are not edge-connected, and score physical column envelopes and a labeled phenomenological alternative only on accepted shell solves. Neither capacity changes production behavior.",
   "baseline": {
     "commit": "0118752d0ffe75060464204d5b94f81a60fe9a07",
     "gate1_raw_sha256": "2294f885b5ac0d3f9c92055acdf7a3267572e6fa34c8d34c78afa56b9c840e1d",
@@ -21,7 +21,6 @@
     "script_sha256": "12cdc283344974ef2ddfeb879278f45f39afe2502cd1d3c2f161942ce185727d",
     "capacity_source": "analysis/issue487/gate2-column-envelope.json",
     "capacity_source_sha256": "9c6e01368a5d0ab5ff93b3568ccae245285f6c9ccb8c370591e7bb454795ea8f",
-    "production_cut_counts_and_ordered_craton_crossing_signatures_match_gate1": true,
     "seeds": [
       {
         "seed": 7,
@@ -30,8 +29,14 @@
         "production_cut_count_matches": true,
         "craton_crossing_candidates": 44,
         "gate1_craton_crossing_candidates": 44,
-        "ordered_candidate_signatures_match": true,
-        "runtime_seconds": 1823.709
+        "valid_edge_connected_shell_solves": 20,
+        "skipped_candidates": 24,
+        "skip_reasons": {
+          "thin-shell mesh is disconnected": 3,
+          "source plate adjacency has disconnected cell regions": 21
+        },
+        "runtime_seconds": 1655.4989202499855,
+        "ordered_candidate_keys_match": true
       },
       {
         "seed": 11,
@@ -40,8 +45,14 @@
         "production_cut_count_matches": true,
         "craton_crossing_candidates": 42,
         "gate1_craton_crossing_candidates": 42,
-        "ordered_candidate_signatures_match": true,
-        "runtime_seconds": 1709.36
+        "valid_edge_connected_shell_solves": 25,
+        "skipped_candidates": 17,
+        "skip_reasons": {
+          "source plate adjacency has disconnected cell regions": 16,
+          "thin-shell mesh is disconnected": 1
+        },
+        "runtime_seconds": 1752.0887754999567,
+        "ordered_candidate_keys_match": true
       },
       {
         "seed": 2024,
@@ -50,78 +61,93 @@
         "production_cut_count_matches": true,
         "craton_crossing_candidates": 44,
         "gate1_craton_crossing_candidates": 44,
-        "ordered_candidate_signatures_match": true,
-        "runtime_seconds": 1642.611
+        "valid_edge_connected_shell_solves": 19,
+        "skipped_candidates": 25,
+        "skip_reasons": {
+          "source plate adjacency has disconnected cell regions": 19,
+          "thin-shell mesh is disconnected": 6
+        },
+        "runtime_seconds": 1652.879593333928,
+        "ordered_candidate_keys_match": true
       }
     ],
-    "scored_candidates": 130,
-    "cut_band_node_samples": 39467,
+    "scored_candidates": 64,
+    "cut_band_node_samples": 20370,
     "mesh_paths": {
       "clipped_gnomonic_delaunay": 127,
       "spherical_hull_clipped_to_plate_outline": 3
-    }
+    },
+    "craton_crossing_candidates": 130,
+    "skipped_candidates": 66,
+    "skip_reason_counts": {
+      "thin-shell mesh is disconnected": 10,
+      "source plate adjacency has disconnected cell regions": 56
+    },
+    "connectivity_guard": "one triangle component joined by shared edges; vertex-only contact is rejected",
+    "thin_shell_source_sha256": "d032871464685068a7975629642885251c373da0786b883686b2df653c3c3415",
+    "production_cut_counts_and_ordered_candidate_keys_match_gate1": true
   },
   "stress_measure": {
     "quantity": "largest positive principal incremental membrane stress resultant",
     "units": "N/m",
     "effective_young_modulus_pa": 70000000000.0,
-    "band_median_of_event_band_medians_tn_per_m": 0.7601936445867911,
-    "median_of_event_band_p95_tn_per_m": 2.2016353865083595
+    "band_median_of_event_band_medians_tn_per_m": 1.1134877004832837,
+    "median_of_event_band_p95_tn_per_m": 2.3306016911080585
   },
   "physical_column_capacity": {
     "scenario_grid_failure_fraction_by_crust_type": {
       "p10_capacity": {
         "continental": {
-          "nodes": 29834,
-          "failed_fraction": 0.015988469531407118
+          "nodes": 14237,
+          "failed_fraction": 0.0028798201868371147
         },
         "oceanic_young_ridge": {
-          "nodes": 712,
-          "failed_fraction": 0.8553370786516854
+          "nodes": 530,
+          "failed_fraction": 0.8924528301886793
         },
         "oceanic_mature": {
-          "nodes": 8921,
-          "failed_fraction": 0.31678062997421813
+          "nodes": 5603,
+          "failed_fraction": 0.3805104408352668
         },
         "overall": {
-          "nodes": 39467,
-          "failed_fraction": 0.09912078445283401
+          "nodes": 20370,
+          "failed_fraction": 0.12989690721649486
         }
       },
       "median_capacity": {
         "continental": {
-          "nodes": 29834,
-          "failed_fraction": 0.006402091573372662
+          "nodes": 14237,
+          "failed_fraction": 0.0004916766172648732
         },
         "oceanic_young_ridge": {
-          "nodes": 712,
-          "failed_fraction": 0.7443820224719101
+          "nodes": 530,
+          "failed_fraction": 0.779245283018868
         },
         "oceanic_mature": {
-          "nodes": 8921,
-          "failed_fraction": 0.02992938011433696
+          "nodes": 5603,
+          "failed_fraction": 0.02873460646082456
         },
         "overall": {
-          "nodes": 39467,
-          "failed_fraction": 0.02503357235158487
+          "nodes": 20370,
+          "failed_fraction": 0.02852233676975945
         }
       },
       "p90_capacity": {
         "continental": {
-          "nodes": 29834,
-          "failed_fraction": 0.0018770530267480056
+          "nodes": 14237,
+          "failed_fraction": 0.0
         },
         "oceanic_young_ridge": {
-          "nodes": 712,
-          "failed_fraction": 0.5674157303370787
+          "nodes": 530,
+          "failed_fraction": 0.6056603773584905
         },
         "oceanic_mature": {
-          "nodes": 8921,
-          "failed_fraction": 0.010200650151328327
+          "nodes": 5603,
+          "failed_fraction": 0.00874531500981617
         },
         "overall": {
-          "nodes": 39467,
-          "failed_fraction": 0.013961030734537715
+          "nodes": 20370,
+          "failed_fraction": 0.018163966617574866
         }
       }
     },
@@ -135,103 +161,341 @@
     "failure_fraction_by_reference_multiplier": [
       {
         "reference_multiplier_of_class_physical_median": 0.5,
-        "failed_fraction_all_cut_band_nodes": 0.112575062710619,
-        "failed_fraction_marked_belt_nodes": 0.06623831775700935,
-        "failed_fraction_outside_marked_belts": 0.12540848351506131,
-        "marked_belt_nodes": 8560,
-        "cut_band_nodes": 39467
+        "failed_fraction_all_cut_band_nodes": 0.14457535591556211,
+        "failed_fraction_marked_belt_nodes": 0.061627133673243184,
+        "failed_fraction_outside_marked_belts": 0.16816949366290435,
+        "marked_belt_nodes": 4511,
+        "cut_band_nodes": 20370
       },
       {
         "reference_multiplier_of_class_physical_median": 1.0,
-        "failed_fraction_all_cut_band_nodes": 0.025616337699850507,
-        "failed_fraction_marked_belt_nodes": 0.0032710280373831778,
-        "failed_fraction_outside_marked_belts": 0.03180509269744718,
-        "marked_belt_nodes": 8560,
-        "cut_band_nodes": 39467
+        "failed_fraction_all_cut_band_nodes": 0.0288659793814433,
+        "failed_fraction_marked_belt_nodes": 0.0022168033695411215,
+        "failed_fraction_outside_marked_belts": 0.03644618197868718,
+        "marked_belt_nodes": 4511,
+        "cut_band_nodes": 20370
       },
       {
         "reference_multiplier_of_class_physical_median": 2.0,
-        "failed_fraction_all_cut_band_nodes": 0.012998201028707529,
-        "failed_fraction_marked_belt_nodes": 0.0005841121495327102,
-        "failed_fraction_outside_marked_belts": 0.01643640599217006,
-        "marked_belt_nodes": 8560,
-        "cut_band_nodes": 39467
+        "failed_fraction_all_cut_band_nodes": 0.01678939617083947,
+        "failed_fraction_marked_belt_nodes": 0.0006650410108623365,
+        "failed_fraction_outside_marked_belts": 0.021375874897534522,
+        "marked_belt_nodes": 4511,
+        "cut_band_nodes": 20370
       }
     ]
   },
   "solver_diagnostics": {
     "lsmr_stop_code_counts": {
-      "1": 100,
-      "2": 30
+      "1": 64
     },
     "residual_over_load_quantiles": {
-      "p50": 0.00023067000560796818,
-      "p90": 0.11524769865935798,
-      "p95": 0.25749010882580986,
-      "max": 0.5551568948337754
+      "p50": 9.022697842634134e-05,
+      "p90": 0.00048074307009554233,
+      "p95": 0.0007390808896868727,
+      "max": 0.0022231288073146817
     },
-    "events_over_1_percent_residual": 29,
-    "events_over_5_percent_residual": 20,
-    "events_at_or_below_1_percent_residual": 101,
-    "samples_at_or_below_1_percent_residual": 31121,
+    "events_over_1_percent_residual": 0,
+    "events_over_5_percent_residual": 0,
+    "events_at_or_below_1_percent_residual": 64,
+    "samples_at_or_below_1_percent_residual": 20370,
     "physical_failure_fraction_residual_at_or_below_1_percent": {
       "p10_capacity": {
         "continental": {
-          "nodes": 22949,
-          "failed_fraction": 0.01037082225805046
+          "nodes": 14237,
+          "failed_fraction": 0.0028798201868371147
         },
         "oceanic_young_ridge": {
-          "nodes": 685,
-          "failed_fraction": 0.8525547445255475
+          "nodes": 530,
+          "failed_fraction": 0.8924528301886793
         },
         "oceanic_mature": {
-          "nodes": 7487,
-          "failed_fraction": 0.34339521837852277
+          "nodes": 5603,
+          "failed_fraction": 0.3805104408352668
         },
         "overall": {
-          "nodes": 31121,
-          "failed_fraction": 0.10902605957392114
+          "nodes": 20370,
+          "failed_fraction": 0.12989690721649486
         }
       },
       "median_capacity": {
         "continental": {
-          "nodes": 22949,
-          "failed_fraction": 0.0022658939387337138
+          "nodes": 14237,
+          "failed_fraction": 0.0004916766172648732
         },
         "oceanic_young_ridge": {
-          "nodes": 685,
-          "failed_fraction": 0.7445255474452555
+          "nodes": 530,
+          "failed_fraction": 0.779245283018868
         },
         "oceanic_mature": {
-          "nodes": 7487,
-          "failed_fraction": 0.0333912114331508
+          "nodes": 5603,
+          "failed_fraction": 0.02873460646082456
         },
         "overall": {
-          "nodes": 31121,
-          "failed_fraction": 0.02609170656469908
+          "nodes": 20370,
+          "failed_fraction": 0.02852233676975945
         }
       },
       "p90_capacity": {
         "continental": {
-          "nodes": 22949,
+          "nodes": 14237,
           "failed_fraction": 0.0
         },
         "oceanic_young_ridge": {
-          "nodes": 685,
-          "failed_fraction": 0.5781021897810219
+          "nodes": 530,
+          "failed_fraction": 0.6056603773584905
         },
         "oceanic_mature": {
-          "nodes": 7487,
-          "failed_fraction": 0.01135301188727127
+          "nodes": 5603,
+          "failed_fraction": 0.00874531500981617
         },
         "overall": {
-          "nodes": 31121,
-          "failed_fraction": 0.015455801548793419
+          "nodes": 20370,
+          "failed_fraction": 0.018163966617574866
         }
       }
     },
-    "limitation": "29/130 events exceed 1% equilibrium residual; this replay cannot select or calibrate a constitutive capacity law."
+    "limitation": "All 64 accepted edge-connected solves are at or below 1% residual, but 10 edge-disconnected meshes (including all nine prior >1% cases) and 56 source-disconnected candidates were skipped; this screening replay cannot select or calibrate a constitutive capacity law."
   },
-  "interpretation": "At class-median physical capacities, predicted failures are concentrated in oceanic columns, while the phenomenological belt-only weakening marks fewer failing nodes than outside the marked belt. Similar pooled rates hide different spatial predictions. Screening result only; shell equilibrium quality, constitutive calibration, load-transfer assumptions and edge sensitivity remain unresolved.",
-  "raw_outputs": "Full per-event outputs are temporary files /tmp/issue487-g2-seed{7,11,2024}.json and are intentionally not checked in."
+  "interpretation": "The corrected guard rejects the nine former high-residual cases, plus one additional edge-disconnected low-residual case. Production cut counts and ordered Gate 1 craton-crossing candidate signatures match for all seeds, so the guard affects diagnostic mesh eligibility only. The 64 accepted solves all meet the 1% screening threshold. Capacity fractions are recomputed over those accepted band samples and remain sensitivity evidence, not calibration; Gate 2 remains open for physical-source justification and broader model validation.",
+  "raw_outputs": "Full per-event outputs are temporary files /private/tmp/issue487-g2-edge-connected-seed{7,11,2024}.json and are intentionally not checked in.",
+  "pre_edge_connectivity_guard": {
+    "note": "Historical pre-guard metrics below include vertex-connected but edge-disconnected meshes and are retained only for comparison; use the current top-level metrics for Gate 2 screening.",
+    "stress_measure": {
+      "quantity": "largest positive principal incremental membrane stress resultant",
+      "units": "N/m",
+      "effective_young_modulus_pa": 70000000000.0,
+      "band_median_of_event_band_medians_tn_per_m": 1.1134877004832837,
+      "median_of_event_band_p95_tn_per_m": 2.3306016911080585
+    },
+    "physical_column_capacity": {
+      "scenario_grid_failure_fraction_by_crust_type": {
+        "p10_capacity": {
+          "continental": {
+            "nodes": 14237,
+            "failed_fraction": 0.0028798201868371147
+          },
+          "oceanic_young_ridge": {
+            "nodes": 530,
+            "failed_fraction": 0.8924528301886793
+          },
+          "oceanic_mature": {
+            "nodes": 5603,
+            "failed_fraction": 0.3805104408352668
+          },
+          "overall": {
+            "nodes": 20370,
+            "failed_fraction": 0.12989690721649486
+          }
+        },
+        "median_capacity": {
+          "continental": {
+            "nodes": 14237,
+            "failed_fraction": 0.0004916766172648732
+          },
+          "oceanic_young_ridge": {
+            "nodes": 530,
+            "failed_fraction": 0.779245283018868
+          },
+          "oceanic_mature": {
+            "nodes": 5603,
+            "failed_fraction": 0.02873460646082456
+          },
+          "overall": {
+            "nodes": 20370,
+            "failed_fraction": 0.02852233676975945
+          }
+        },
+        "p90_capacity": {
+          "continental": {
+            "nodes": 14237,
+            "failed_fraction": 0.0
+          },
+          "oceanic_young_ridge": {
+            "nodes": 530,
+            "failed_fraction": 0.6056603773584905
+          },
+          "oceanic_mature": {
+            "nodes": 5603,
+            "failed_fraction": 0.00874531500981617
+          },
+          "overall": {
+            "nodes": 20370,
+            "failed_fraction": 0.018163966617574866
+          }
+        }
+      },
+      "young_oceanic_proxy": "active divergent nodes; saved state has no oceanic crust-age field",
+      "capacity_scenarios": "p10/median/p90 marginal summaries at 1330 C from the checked-in column-envelope scenario grid"
+    },
+    "phenomenological_alternative": {
+      "weak_zone": "belt_formed_years marked nodes",
+      "weakening_lambda": 0.5,
+      "reference": "class-matched physical median capacity; diagnostic scale only, not an independent calibration",
+      "failure_fraction_by_reference_multiplier": [
+        {
+          "reference_multiplier_of_class_physical_median": 0.5,
+          "failed_fraction_all_cut_band_nodes": 0.14457535591556211,
+          "failed_fraction_marked_belt_nodes": 0.061627133673243184,
+          "failed_fraction_outside_marked_belts": 0.16816949366290435,
+          "marked_belt_nodes": 4511,
+          "cut_band_nodes": 20370
+        },
+        {
+          "reference_multiplier_of_class_physical_median": 1.0,
+          "failed_fraction_all_cut_band_nodes": 0.0288659793814433,
+          "failed_fraction_marked_belt_nodes": 0.0022168033695411215,
+          "failed_fraction_outside_marked_belts": 0.03644618197868718,
+          "marked_belt_nodes": 4511,
+          "cut_band_nodes": 20370
+        },
+        {
+          "reference_multiplier_of_class_physical_median": 2.0,
+          "failed_fraction_all_cut_band_nodes": 0.01678939617083947,
+          "failed_fraction_marked_belt_nodes": 0.0006650410108623365,
+          "failed_fraction_outside_marked_belts": 0.021375874897534522,
+          "marked_belt_nodes": 4511,
+          "cut_band_nodes": 20370
+        }
+      ]
+    },
+    "solver_diagnostics": {
+      "lsmr_stop_code_counts": {
+        "1": 64
+      },
+      "residual_over_load_quantiles": {
+        "p50": 9.022697842634134e-05,
+        "p90": 0.00048074307009554233,
+        "p95": 0.0007390808896868727,
+        "max": 0.0022231288073146817
+      },
+      "events_over_1_percent_residual": 0,
+      "events_over_5_percent_residual": 0,
+      "events_at_or_below_1_percent_residual": 64,
+      "samples_at_or_below_1_percent_residual": 20370,
+      "physical_failure_fraction_residual_at_or_below_1_percent": {
+        "p10_capacity": {
+          "continental": {
+            "nodes": 14237,
+            "failed_fraction": 0.0028798201868371147
+          },
+          "oceanic_young_ridge": {
+            "nodes": 530,
+            "failed_fraction": 0.8924528301886793
+          },
+          "oceanic_mature": {
+            "nodes": 5603,
+            "failed_fraction": 0.3805104408352668
+          },
+          "overall": {
+            "nodes": 20370,
+            "failed_fraction": 0.12989690721649486
+          }
+        },
+        "median_capacity": {
+          "continental": {
+            "nodes": 14237,
+            "failed_fraction": 0.0004916766172648732
+          },
+          "oceanic_young_ridge": {
+            "nodes": 530,
+            "failed_fraction": 0.779245283018868
+          },
+          "oceanic_mature": {
+            "nodes": 5603,
+            "failed_fraction": 0.02873460646082456
+          },
+          "overall": {
+            "nodes": 20370,
+            "failed_fraction": 0.02852233676975945
+          }
+        },
+        "p90_capacity": {
+          "continental": {
+            "nodes": 14237,
+            "failed_fraction": 0.0
+          },
+          "oceanic_young_ridge": {
+            "nodes": 530,
+            "failed_fraction": 0.6056603773584905
+          },
+          "oceanic_mature": {
+            "nodes": 5603,
+            "failed_fraction": 0.00874531500981617
+          },
+          "overall": {
+            "nodes": 20370,
+            "failed_fraction": 0.018163966617574866
+          }
+        }
+      },
+      "limitation": "All 64 accepted edge-connected solves are at or below 1% residual, but 10 edge-disconnected meshes (including all nine prior >1% cases) and 56 source-disconnected candidates were skipped; this screening replay cannot select or calibrate a constitutive capacity law."
+    }
+  },
+  "connectivity_guard_validation": {
+    "criterion": "A mesh is accepted only if its triangles form one connected component under full shared-edge adjacency; shared vertices alone do not connect elements.",
+    "candidate_events": 130,
+    "accepted_edge_connected_solves": 64,
+    "skipped_source_disconnected_candidates": 56,
+    "skipped_edge_disconnected_meshes": 10,
+    "former_high_residual_cases_rejected": 9,
+    "former_high_residual_case_keys": [
+      {
+        "seed": 7,
+        "myr": 38.0,
+        "plate": 0
+      },
+      {
+        "seed": 7,
+        "myr": 344.0,
+        "plate": 16
+      },
+      {
+        "seed": 11,
+        "myr": 982.0,
+        "plate": 42
+      },
+      {
+        "seed": 2024,
+        "myr": 90.0,
+        "plate": 1
+      },
+      {
+        "seed": 2024,
+        "myr": 306.0,
+        "plate": 9
+      },
+      {
+        "seed": 2024,
+        "myr": 330.0,
+        "plate": 9
+      },
+      {
+        "seed": 2024,
+        "myr": 348.0,
+        "plate": 9
+      },
+      {
+        "seed": 2024,
+        "myr": 362.0,
+        "plate": 9
+      },
+      {
+        "seed": 2024,
+        "myr": 452.0,
+        "plate": 31
+      }
+    ],
+    "additional_edge_disconnected_case_below_prior_threshold": {
+      "seed": 7,
+      "myr": 68.0,
+      "plate": 14
+    },
+    "gate1_production_trajectory_unchanged": true,
+    "ordered_candidate_identity_fields_compared": [
+      "myr",
+      "plate",
+      "nodes"
+    ]
+  }
 }

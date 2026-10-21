@@ -212,16 +212,21 @@ def test_thin_shell_removes_plate_scale_rigid_rotation_load():
 
 def test_thin_shell_rejects_disconnected_element_mesh():
     points, force = _octahedral_shell()
-    with np.testing.assert_raises_regex(ValueError, "disconnected element components"):
-        thin_shell.solve_thin_shell(
-            points,
-            np.full(len(points), 1e12),
-            force,
-            thickness_m=100_000.0,
-            young_modulus_pa=70e9,
-            extensional_capacity_resultant_n_per_m=np.full(len(points), 2e10),
-            mesh_triangles=np.array([[0, 2, 4], [1, 3, 5]], dtype=np.int64),
-        )
+    cases = (
+        np.array([[0, 2, 4], [1, 3, 5]], dtype=np.int64),  # no shared vertices
+        np.array([[0, 2, 4], [0, 3, 5]], dtype=np.int64),  # shared vertex, no shared edge
+    )
+    for triangles in cases:
+        with np.testing.assert_raises_regex(ValueError, "disconnected element components"):
+            thin_shell.solve_thin_shell(
+                points,
+                np.full(len(points), 1e12),
+                force,
+                thickness_m=100_000.0,
+                young_modulus_pa=70e9,
+                extensional_capacity_resultant_n_per_m=np.full(len(points), 2e10),
+                mesh_triangles=triangles,
+            )
 
 
 def test_thin_shell_recovers_uniaxial_resultant_across_shallow_cap_meshes():

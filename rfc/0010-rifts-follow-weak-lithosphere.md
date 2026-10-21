@@ -149,11 +149,11 @@ An independent curved-sphere manufactured solution now validates that stress inv
 decreasing error through 17 × 33 nodes. Free in-plane displacement is selected as the boundary
 condition for the isolated single-plate diagnostic because its inputs provide no displacement
 anchor; clamps are sensitivity probes and real interplate continuity would require a coupled shell
-solve. Gate 2 remains open after the matched diagnostic replay: it compared physical and explicitly
-phenomenological capacities on the same Gate 1 loads, but did not validate the shell equilibrium or
-calibrate either capacity model. The existing flow fit and plate-level
-`internal_stress` may remain candidate-event or background-eligibility signals, but they do not
-choose a complete cut or stand in for local loading. Keep solution 4 separately sized against the
+solve. Gate 2 remains open after the matched diagnostic replay: the shared-edge guard and replay
+validate equilibrium eligibility for retained meshes and compare physical and explicitly
+phenomenological capacities on the same Gate 1 loads, but neither capacity model is calibrated.
+The existing flow fit and plate-level `internal_stress` may remain candidate-event or
+background-eligibility signals, but they do not choose a complete cut or stand in for local loading. Keep solution 4 separately sized against the
 craton-loss gate, and take plume weakening through RFC 0007. The connected-boundary rule and
 diagnosis gates are proposed here; constitutive values remain unsettled, so no implementation issue
 should start until those gates are resolved and the revised design is accepted.
@@ -226,29 +226,27 @@ should start until those gates are resolved and the revised design is accepted.
    envelope or integrated extensional differential capacity. The current maximum-positive-tension
    shell comparison uses a positive principal stress increment paired with additional normal-fault
    capacity only under the stated `K0` and normal-faulting assumptions.
-   The matched replay scored the physical envelope and the labeled phenomenological capacity rule
-   on 130 identical Gate 1 craton-crossing candidates (39,467 cut-band node samples); production
-   cut counts and ordered candidate signatures matched for all three seeds. The comparison showed
-   different spatial failure patterns, but 29/130 shell solves exceed a 1% equilibrium residual.
-   Exact `plate.adjacency()` checks on the 432 and 460 Myr plate 9 cases show seven source cell
-   components in each. At 432 Myr the mesh preserves the four substantial components but omits
-   some cells; at 460 Myr it also bridges a 17-cell source component into the main mesh. The replay
-   now excludes source-fragmented plates and records this mapping instead of assigning shell
-   stresses across unsupported paths. This is an explicit diagnostic exclusion, not a physical
-   repair. The partial seed 2024 run through 460 Myr skips 18/43 events; six of 25 remaining solves
-   exceed 1%, with a maximum of 6.43%. Its capacity comparison is also partial and single-seed. The
-   historical full replay's 29/130 count is still pending recomputation. Capacities remain
-   uncalibrated, and the young-oceanic class is only an active-divergence proxy. This is screening
-   evidence, not a model selection. The integrated envelope, shell invariant,
-   analytic curved-shell benchmark, curved-mesh checks and isolated-plate free-edge policy are
-   documented and reproducible. Natural interplate continuity and production load distributions
-   remain outside this single-plate solve. Do not start constitutive calibration or infer local
-   stress from applied traction, rigid rotation, flow clusters or `Plate.internal_stress`. Next
-   improve equilibrium quality, settle edge sensitivity, and ground or explicitly label the model
-   assumptions before selecting and tuning a capacity law. `Plate.internal_stress`
-   remains a dimensionless plate-level eligibility signal and
-   is not a local damage trigger. See
-   [`analysis/issue487/gate2-load-diagnosis.md`](../analysis/issue487/gate2-load-diagnosis.md).
+   The first full replay scored 130 identical Gate 1 craton-crossing candidates (39,467
+   cut-band node samples) and reported 29 shell solves above the 1% equilibrium-residual screen.
+   Follow-up topology diagnosis found all nine inspected high-residual cases had multiple triangle
+   components joined only by vertex contact; the plate-wide rigid-mode projection did not represent
+   those additional component modes. The shell solver now rejects meshes unless triangles form one
+   component under full shared-edge adjacency. The regenerated full replay preserves Gate 1
+   production cuts and ordered candidate keys for seeds 7, 11 and 2024. It accepts 64/130 shell
+   solves, skips 56 candidates with disconnected source-cell regions and 10 edge-disconnected
+   element meshes, and has zero accepted solves above 1% residual (maximum 0.222%). All nine former
+   high-residual cases are among the rejected meshes. The old 29/130 result is retained as
+   pre-guard history, not a current equilibrium estimate. On the 64 accepted solves (20,370
+   cut-band samples), the physical median-capacity failed fractions are 0.049% continental, 77.92%
+   young-ridge oceanic proxy and 2.87% mature oceanic; at the phenomenological 1x reference, 2.89%
+   of all samples fail. These are screening results, not model selection. Capacities remain
+   uncalibrated, the young-oceanic class is only an active-divergence proxy, and natural interplate
+   continuity and production load distributions remain outside this single-plate solve. Keep Gate 2
+   open for physical source/capacity justification and broader validation. Do not start constitutive
+   calibration or infer local stress from applied traction, rigid rotation, flow clusters or
+   `Plate.internal_stress`. See the replay and topology results in `analysis/issue487/README.md`,
+   `analysis/issue487/gate2-load-diagnosis.md`, and
+   `analysis/issue487/gate2-matched-replay.json`.
 3. **Calibrate accumulation and segment growth.** On synthetic plates and replayed candidate
    events, measure damage/strain accumulation, nucleation, tip propagation, arrest and linkage under
    timestep refinement. Select thresholds only after checking physical scale and sensitivity. If no
@@ -398,15 +396,14 @@ source or explicit design-choice status, and the sensitivity plan before impleme
        benchmark, original curved-mesh checks and isolated-plate free-edge policy are documented.
        A matched diagnostic replay now scores the physical column envelope and a labeled
        phenomenological belt-weakening alternative on the same Gate 1 candidate loads; all ordered
-       candidate signatures match. It is not a constitutive model selection: 29/130 shell solves
-       exceed 1% equilibrium residual, the oceanic-age proxy is coarse, and capacities remain
-       uncalibrated. A guard rejects disconnected element meshes, and replay skips source plates
-       with multiple exact cell components; a partial seed 2024 check confirmed both late plate 9
-       high-residual cases are fragmented, with a false Delaunay bridge in one. Recompute matched
-       replay residual and capacity results with this exclusion rule before model selection.
-       Ground or explicitly
-       label constitutive assumptions before selecting/tuning damage parameters or running full
-       production replays (see `analysis/issue487/gate2-load-diagnosis.md`,
+       candidate keys match. The edge-connectivity guard rejects all nine former high-residual
+       cases and one additional edge-disconnected mesh. The regenerated replay accepts 64 of 130
+       candidates; all 64 accepted solves are at or below 1% residual (maximum 0.222%), while 56
+       source-disconnected candidates and 10 edge-disconnected meshes are skipped. Capacity scores
+       are recomputed over 20,370 accepted cut-band samples and remain screening evidence. The
+       oceanic-age proxy is coarse and capacities remain uncalibrated. Ground or explicitly label
+       constitutive assumptions before selecting/tuning damage parameters or running production
+       replays (see `analysis/issue487/README.md`, `analysis/issue487/gate2-load-diagnosis.md`,
        `analysis/issue487/gate2-column-envelope.json`, and
        `analysis/issue487/gate2-matched-replay.json`).
 2. [ ] In synthetic tests, damage is timestep-partition invariant, bounded, absent under compression
