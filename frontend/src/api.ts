@@ -13,7 +13,7 @@ const API_ROOT =
 
 export const API_BASE = API_ROOT;
 
-export type Projection = "behrmann" | "eckert4";
+export type Projection = "behrmann" | "eckert4" | "globe";
 
 // The kind of view requested from /world/render -- the server now bakes this choice
 // directly into the returned image (fill color rule, whether boundaries/poles/velocity

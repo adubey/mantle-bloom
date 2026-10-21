@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import type { RefObject } from "react";
 import type { Projection } from "./api";
-import { PLANET_RADIUS_KM, backingPixelsToDisplayLatLon, getLocalPixelScale, type LocalPixelScale } from "./rotation";
+import { backingPixelsToDisplayLatLon, getLocalPixelScale, type LocalPixelScale } from "./rotation";
 
 // The map's scale bar (issue #158): normally a plain inline item in the Legend row below the
 // map, exact only at the equator (like any small-scale world map's static scale bar -- see the
@@ -34,17 +34,12 @@ interface Tick {
   major: boolean;
 }
 
-// The map's own km-per-pixel scale while docked in the Legend -- unchanged from this bar's
-// original, non-draggable version. The world is always Earth-sized (see backend
-// app/elevation_lines.py's PLANET_RADIUS_KM) and both current projections (behrmann/eckert4)
-// fit the whole sphere to the rendered width/height with their widest point at the equator, so
-// this reading is just circumference / available map width -- exact only at the equator, same
-// caveat any small-scale world map's static scale bar carries. Once dropped onto the map,
-// getLocalPixelScale below replaces this with an actual per-position reading instead.
-const MAP_DISPLAY_WIDTH_PX = 1100; // matches App.tsx's DISPLAY_WIDTH
-const MAP_PADDING_PX = 20; // matches backend app/render_image.py's PADDING_PX
-const KM_PER_PIXEL_AT_EQUATOR = (2 * Math.PI * PLANET_RADIUS_KM) / (MAP_DISPLAY_WIDTH_PX - 2 * MAP_PADDING_PX);
-const PX_PER_KM_AT_EQUATOR = 1 / KM_PER_PIXEL_AT_EQUATOR;
+// The map's own km-per-pixel scale while docked in the Legend: the east-west scale at the map's
+// centre. For the flat maps (behrmann/eckert4), which fit the whole sphere with their widest
+// point at the equator, that is circumference / available map width and holds along the whole
+// equator -- the caveat any small-scale world map's static scale bar carries. The globe is only
+// exact at its centre (#497). Once dropped onto the map, getLocalPixelScale replaces this with
+// an actual per-position reading instead.
 const DOCKED_TARGET_PX = 150;
 const DOCKED_MAJOR_STEP_KM = 1000;
 const DOCKED_MINOR_STEP_KM = 100;
@@ -84,6 +79,7 @@ export default function ScaleBar({ projection, width, height, displayWidth, disp
   const lastScale = useRef<LocalPixelScale>({ pxPerKmHorizontal: 0, pxPerKmVertical: 0 });
 
   const isDropped = dropped !== null;
+  const dockedPlace = projection === "globe" ? "at centre" : "at equator";
   const vertical = isDropped && orientation === "vertical";
 
   const onMouseDown = (e: React.MouseEvent) => {
@@ -172,12 +168,13 @@ export default function ScaleBar({ projection, width, height, displayWidth, disp
   } else {
     // Docked: the original always-equator reading and its 1,000/100 km tick scheme, unchanged
     // from before this bar was draggable.
-    const roughKm = KM_PER_PIXEL_AT_EQUATOR * DOCKED_TARGET_PX;
+    const pxPerKmAtCentre = getLocalPixelScale(projection, displayWidth, displayHeight, 0, 0).pxPerKmHorizontal;
+    const roughKm = DOCKED_TARGET_PX / pxPerKmAtCentre;
     label = Math.max(DOCKED_MAJOR_STEP_KM, Math.floor(roughKm / DOCKED_MAJOR_STEP_KM) * DOCKED_MAJOR_STEP_KM);
-    lengthPx = label * PX_PER_KM_AT_EQUATOR;
+    lengthPx = label * pxPerKmAtCentre;
     ticks = [];
     for (let km = 0; km <= label; km += DOCKED_MINOR_STEP_KM) {
-      ticks.push({ offsetPx: km * PX_PER_KM_AT_EQUATOR, major: km % DOCKED_MAJOR_STEP_KM === 0 });
+      ticks.push({ offsetPx: km * pxPerKmAtCentre, major: km % DOCKED_MAJOR_STEP_KM === 0 });
     }
   }
 
@@ -198,8 +195,8 @@ export default function ScaleBar({ projection, width, height, displayWidth, disp
       {isDropped && dropped && (
         <button
           type="button"
-          aria-label="Return scale to legend"
-          title="Return scale to legend"
+          aria-label="Return scale to its default location"
+          title="Return scale to its default location"
           onMouseDown={(e) => e.stopPropagation()}
           onClick={() => {
             setDropped(null);
@@ -222,8 +219,8 @@ export default function ScaleBar({ projection, width, height, displayWidth, disp
             cursor: "pointer",
           }}
         >
-          <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-            <path d="M10 9V5L3 12l7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11Z" />
+          <svg aria-hidden="true" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <path d="M6 6l12 12M18 6L6 18" />
           </svg>
         </button>
       )}
@@ -235,7 +232,7 @@ export default function ScaleBar({ projection, width, height, displayWidth, disp
         title={
           isDropped
             ? "Drag to measure elsewhere on the map. Press space to rotate horizontal/vertical."
-            : `Ticks every ${DOCKED_MAJOR_STEP_KM.toLocaleString()}/${DOCKED_MINOR_STEP_KM} km. Exact at the equator -- drag onto the map to measure accurately elsewhere.`
+            : `Ticks every ${DOCKED_MAJOR_STEP_KM.toLocaleString()}/${DOCKED_MINOR_STEP_KM} km. Exact ${dockedPlace} -- drag onto the map to measure accurately elsewhere.`
         }
         style={
           isDropped
@@ -315,7 +312,7 @@ export default function ScaleBar({ projection, width, height, displayWidth, disp
           )}
         </svg>
         <div style={{ marginTop: isDropped ? 0 : 2, fontSize: 10, color: STROKE, opacity: 0.9, whiteSpace: "nowrap" }}>
-          {label.toLocaleString()} km{isDropped ? "" : " at equator"}
+          {label.toLocaleString()} km{isDropped ? "" : ` ${dockedPlace}`}
         </div>
       </button>
     </>

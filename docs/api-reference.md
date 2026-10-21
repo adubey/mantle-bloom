@@ -325,14 +325,16 @@ multipliers:
   "ocean_deposition_multiplier": 1.0, "collision_uplift_multiplier": 1.0, "collision_uplift_reach_multiplier": 1.0, "volcanism_multiplier": 1.0 }
 ```
 
-## `GET /world/render?projection=behrmann|eckert4&view=elevation|plates|platesDetail|speckle|combined|temperature|wind|oceanCurrents|humidity|precipitation|biome|resources|soilQuality|geomorph|elevReason|overlapAge|oceanCfdSediment|oceanCfdDeposition&width=1100&height=611&rotation=1,0,0,0,1,0,0,0,1`
+## `GET /world/render?projection=behrmann|eckert4|globe&view=elevation|plates|platesDetail|speckle|combined|temperature|wind|oceanCurrents|humidity|precipitation|biome|resources|soilQuality|geomorph|elevReason|overlapAge|oceanCfdSediment|oceanCfdDeposition&width=1100&height=611&rotation=1,0,0,0,1,0,0,0,1`
 
 Renders the current world as a PNG, base64-encoded. All drawing (elevation fill, plate-color
 fill, boundary outlines, pole markers, rotation arcs, per-node dots) happens server-side
 (see [simulation-model/rendering-and-inspectors.md#render-image](simulation-model/rendering-and-inspectors.md#render-image)) -- the client
 just decodes and paints the image, it never sees raw coordinate data. `400` for an
 unrecognized projection/view name, a width/height outside `[1, main.MAX_RENDER_DIMENSION_PX]`
-(4000), or a malformed `rotation`, `404` if no world has been generated yet.
+(4000), or a malformed `rotation`, `404` if no world has been generated yet. `globe` draws the
+hemisphere facing the viewer as an orthographic disc (see
+[simulation-model/rendering-and-inspectors.md#projections](simulation-model/rendering-and-inspectors.md#projections)).
 
 ```json
 {

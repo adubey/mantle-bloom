@@ -9,6 +9,7 @@ import type {
 } from "./api";
 import MapCanvas from "./MapCanvas";
 import MantleCrossSection from "./MantleCrossSection";
+import GlobeSelector from "./GlobeSelector";
 import SketchEditor from "./SketchEditor";
 import PlateInspector from "./PlateInspector";
 import type { InspectorViewProps } from "./InspectorCanvas";
@@ -196,7 +197,7 @@ const MAP_VIEW_CHOICES = new Set<MapView>([
   "crossSection", "elevation", "platesDetail", "speckle", "temperature", "wind", "oceanCurrents", "humidity", "precipitation", "biome", "combined",
   "resources", "soilQuality", "geomorph", "elevReason", "overlapAge", "nodeAge", "plateInspector", "riverInspector", "lakeInspector", "platesAndFaults", "hc", "hm", "craton",
 ]);
-const PROJECTION_CHOICES = new Set<Projection>(["behrmann", "eckert4"]);
+const PROJECTION_CHOICES = new Set<Projection>(["behrmann", "eckert4", "globe"]);
 // The Map View select's "Debug >" optgroup (see the DEBUG_UI comment above) -- kept as its own
 // set so a restored VIEW_COOKIE_NAME cookie pointing at one of these can be sanitized back to
 // the default when the page loads without ?deb, rather than landing on a view whose picker
@@ -318,6 +319,7 @@ export default function App() {
   const [crossSectionShowBoundaries, setCrossSectionShowBoundaries] = useState(false);
   const [crossSectionShowFaults, setCrossSectionShowFaults] = useState(false);
   // Local cache epoch: advance it after every operation that can change sampled section data.
+  // The globes (see globeTexture.ts) key their world map on it too.
   const [crossSectionWorldRevision, setCrossSectionWorldRevision] = useState(0);
   // A callback's closure over `mapView` is captured when its work *starts*, so if the map
   // mode changes while (say) a load is still in flight, its follow-up refresh would otherwise
@@ -1222,9 +1224,18 @@ export default function App() {
           <AdminSession />
 
           <button
+            onClick={() => setShowFileModal(true)}
+            disabled={animating}
+            className={!summary ? "start-highlight" : undefined}
+            style={{ fontSize: 12 }}
+          >
+            📁 File...
+          </button>
+
+          <button
             onClick={() => setShowGenerateDialog(true)}
             disabled={busy || animating}
-            className={!summary ? "generate-flashing" : undefined}
+            className={!summary ? "start-highlight" : undefined}
             style={{ fontSize: 12 }}
           >
             Generate World
@@ -1241,10 +1252,6 @@ export default function App() {
             style={{ fontSize: 12 }}
           >
             🎛️ Controls
-          </button>
-
-          <button onClick={() => setShowFileModal(true)} disabled={animating} style={{ fontSize: 12 }}>
-            📁 File...
           </button>
 
           <fieldset style={{ border: "1px solid #333", borderRadius: 6, padding: 8, fontSize: 12 }}>
@@ -1376,6 +1383,7 @@ export default function App() {
             >
               <option value="behrmann">Behrmann (cylindrical equal-area)</option>
               <option value="eckert4">Eckert IV (pseudocylindrical equal-area)</option>
+              <option value="globe">Globe (orthographic)</option>
             </select>
             {/* position: relative anchors the popup below to this row specifically (not the
                 whole fieldset), so it floats over the Re-center button rather than pushing it
@@ -1460,6 +1468,17 @@ export default function App() {
             >
               Re-center
             </button>
+            {/* Hidden while the world runs (Play or Record): the map is busy following the run,
+                and a recording's camera is fixed when it starts (#497). */}
+            {!playing && !animating && (
+              <GlobeSelector
+                worldRevision={crossSectionWorldRevision}
+                rotation={rotation}
+                onRotationPreview={(latDeg, lonDeg) => setCenterLatLon({ lat: latDeg, lon: lonDeg })}
+                onRotationCommitted={(newRotation) => setRotation(newRotation)}
+                disabled={busy || !summary || editingCenter}
+              />
+            )}
               </>
             )}
           </fieldset>
@@ -1899,7 +1918,7 @@ export default function App() {
           />
           <p style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>
             {mapView === "crossSection"
-              ? "Adjust plane orientation and arc center in the locator. The section follows sampled world fields; nearby arc positions are prepared in the background."
+              ? "Drag the locator globe up or down to tilt the cut, and move the arc center with its slider. The section follows sampled world fields; nearby arc positions are prepared in the background."
               : mapView === "plateInspector"
               ? "Click a plate to select it. Tab / Shift+Tab cycles plates. Press and hold, then drag to rotate."
               : mapView === "riverInspector"

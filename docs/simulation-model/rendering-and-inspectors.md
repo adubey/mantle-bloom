@@ -16,6 +16,19 @@ unit-radius sphere; the frontend picks a single uniform pixel scale from the ret
 bounding box (not independent x/y scales) so the equal-area property actually reads as
 equal-area on screen.
 
+The third choice, `"globe"` (`projections.orthographic`, #497), is the orthographic view of
+the hemisphere facing the viewer, centred on the view centre (display lat 0, lon 0). It is
+not one-to-one: far-side points (`projections.is_far_side`) land inside the same unit disc as
+near ones. `render_image.render_png` therefore never hands `"globe"` to the per-view
+renderers. `_render_globe` renders the view in Behrmann at the same view rotation, then
+resamples it onto the disc with nearest-neighbour sampling. Behrmann's y is sin(lat), the
+same as the orthographic y, so only x is resampled. The Behrmann map is sized so its pixels
+per radian of longitude match the globe's at the disc centre. Nearest-neighbour sampling
+keeps the Combined and Biome views' alpha-encoded biome ids intact, and the Record path
+(`stream_animation_mp4`) gets the globe through the same `render_png` call. Client-drawn
+overlays use the matching `orthographic`/`isFarSide` in `rotation.ts`: `ScreenProjector`
+returns non-finite pixels for far-side points, so canvas drawing skips them.
+
 <a id="render-image"></a>
 ## Render image (`render_image.py`)
 
@@ -129,7 +142,14 @@ you drag), not an arcball trackball (see git history for that earlier version, w
 a full 3-DOF roll/twist and had drag sensitivity that varied with distance from the canvas
 center). Longitude wraps cyclically and latitude wraps *over* the pole, so dragging far in
 one direction just keeps circling the globe rather than clamping at an edge. Release to
-commit. This is a pure **view** transform, not a change to the simulated world -- see below
+commit.
+
+The sidebar's globe selector (`GlobeSelector.tsx`, #497) pans the same view: a small
+orthographic globe centred on the view centre, painted client-side from one unrotated
+Behrmann elevation render (`globeTexture.ts`, shared with the cross-section's locator).
+Dragging it by its radius turns the view by one radian; the globe and the "Center" readout
+follow the pointer, and the map re-renders when the drag ends. Arrow keys pan it by 5
+degrees. It is hidden while the world is playing or recording. This is a pure **view** transform, not a change to the simulated world -- see below
 for why that distinction matters and how it's enforced.
 
 **The transform itself.** A single 3x3 rotation matrix, applied to every *real* world

@@ -2586,7 +2586,7 @@ def _draw_coastline(
         draw.line([(x1, y1), (x2, y2)], fill=COASTLINE_COLOR_RGB, width=line_width_px)
 
 
-def render_png(  # noqa: C901
+def render_png(
     world: World,
     projection: str,
     view: str,
@@ -2607,6 +2607,80 @@ def render_png(  # noqa: C901
     (an ordinary render pays no extra cost for them)."""
     if view_rotation is None:
         view_rotation = np.eye(3)
+    if projection == projections.GLOBE:
+        return _render_globe(world, view, width, height, view_rotation, show_mountains, show_plains_plateaus)
+    return _render_map_png(world, projection, view, width, height, view_rotation, show_mountains, show_plains_plateaus)
+
+
+def _globe_transform(width: int, height: int) -> tuple[float, float, float]:
+    """`(scale, offset_x, offset_y)` placing the unit disc in a `width`x`height` image -- the
+    same bounding-box fit every other projection gets, which rotation.ts's getRenderTransform
+    reproduces client-side."""
+    padding_px = PADDING_PX * width / REFERENCE_WIDTH_PX
+    return _fit_view(np.array([[-1.0, -1.0], [1.0, 1.0]]), width, height, padding_px)
+
+
+def _render_globe(
+    world: World,
+    view: str,
+    width: int,
+    height: int,
+    view_rotation: np.ndarray,
+    show_mountains: bool,
+    show_plains_plateaus: bool,
+) -> bytes:
+    """The "globe" projection (#497): render the view in Behrmann, then resample it onto the
+    orthographic disc of the facing hemisphere, so every view (and the Record path) gets a
+    globe without each renderer learning to hide the far side.
+
+    Behrmann's y is sin(lat), exactly the orthographic y, so only x is resampled. The map is
+    rendered at the width that matches the globe's pixels per radian of longitude at the
+    disc's centre, so the middle of the globe is no blurrier than a flat map. Sampling is
+    nearest-neighbour so the Combined/Biome views' alpha-encoded biome ids survive."""
+    scale, offset_x, offset_y = _globe_transform(width, height)
+    radius_px = max(scale, 1.0)
+    cos_phi0 = np.cos(projections.BEHRMANN_STANDARD_PARALLEL)
+    # A Behrmann map whose x scale (scale_f * cos_phi0) is radius_px; its padding grows with
+    # its width, so solve width = 2 pi radius_px + 2 * PADDING_PX * width / REFERENCE_WIDTH_PX.
+    map_width = int(np.ceil(2 * np.pi * radius_px / (1 - 2 * PADDING_PX / REFERENCE_WIDTH_PX)))
+    map_width = min(map_width, 2 * max(width, height))
+    map_padding_px = PADDING_PX * map_width / REFERENCE_WIDTH_PX
+    map_height = int(np.ceil((map_width - 2 * map_padding_px) / (np.pi * cos_phi0 * cos_phi0) + 2 * map_padding_px))
+    flat = Image.open(io.BytesIO(_render_map_png(
+        world, "behrmann", view, map_width, map_height, view_rotation, show_mountains, show_plains_plateaus,
+    )))
+    source = np.asarray(flat)
+    map_scale, map_offset_x, map_offset_y = _fit_view(
+        np.array([[-np.pi * cos_phi0, -1 / cos_phi0], [np.pi * cos_phi0, 1 / cos_phi0]]),
+        map_width, map_height, map_padding_px,
+    )
+
+    xs = (np.arange(width) + 0.5 - offset_x) / scale
+    ys = (offset_y - (np.arange(height) + 0.5)) / scale
+    x, y = np.meshgrid(xs, ys)
+    on_disc = x * x + y * y <= 1.0
+    depth = np.sqrt(np.clip(1.0 - x * x - y * y, 0.0, 1.0))
+    lon = np.arctan2(x, depth)
+    map_x = np.clip(np.floor(map_scale * lon * cos_phi0 + map_offset_x), 0, map_width - 1).astype(np.intp)
+    map_y = np.clip(np.floor(map_offset_y - map_scale * y / cos_phi0), 0, map_height - 1).astype(np.intp)
+
+    # The map's own corner is its background, alpha included (Combined/Biome encode ids there).
+    out = np.broadcast_to(source[0, 0], (height, width) + source.shape[2:]).copy()
+    out[on_disc] = source[map_y[on_disc], map_x[on_disc]]
+    return _encode_image(Image.fromarray(out, mode=flat.mode))
+
+
+def _render_map_png(  # noqa: C901
+    world: World,
+    projection: str,
+    view: str,
+    width: int,
+    height: int,
+    view_rotation: np.ndarray,
+    show_mountains: bool = False,
+    show_plains_plateaus: bool = False,
+) -> bytes:
+    """render_png for the flat (one-to-one) projections."""
     pixel_scale = width / REFERENCE_WIDTH_PX
     padding_px = PADDING_PX * pixel_scale
     blank = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)

@@ -1191,3 +1191,32 @@ def test_step_world_rebuilds_healpix_index_cache_but_keeps_the_grid_cache():
 
     render_image.render_png(world, "eckert4", "elevation", 200, 100)
     assert world.node_healpix_index_cache is not None
+
+
+def test_globe_projection_draws_a_disc_on_the_background():
+    world = _world()
+    image = np.asarray(Image.open(io.BytesIO(render_image.render_png(world, "globe", "elevation", 220, 122))).convert("RGB"))
+    corner = tuple(int(c) for c in image[0, 0])
+    assert corner == render_image.BACKGROUND_RGB
+    scale, offset_x, offset_y = render_image._globe_transform(220, 122)
+    centre = image[int(offset_y), int(offset_x)]
+    assert tuple(int(c) for c in centre) != render_image.BACKGROUND_RGB
+    # Just outside the disc's right edge is background again.
+    assert tuple(int(c) for c in image[int(offset_y), int(offset_x + scale + 2)]) == render_image.BACKGROUND_RGB
+
+
+def test_globe_centre_matches_the_flat_map_centre():
+    """The disc's centre is the view centre (lat=0, lon=0 in the display frame), the same
+    point a Behrmann map shows at its own centre (#497)."""
+    world = _world()
+    rotation = render_image.np.eye(3)
+    globe = np.asarray(Image.open(io.BytesIO(render_image.render_png(world, "globe", "plates", 220, 122, rotation))).convert("RGB"))
+    flat = np.asarray(Image.open(io.BytesIO(render_image.render_png(world, "behrmann", "plates", 440, 244, rotation))).convert("RGB"))
+    _, offset_x, offset_y = render_image._globe_transform(220, 122)
+    assert np.allclose(globe[int(offset_y), int(offset_x)], flat[122, 220], atol=30)
+
+
+def test_globe_keeps_alpha_encoded_ids():
+    world = _world()
+    image = Image.open(io.BytesIO(render_image.render_png(world, "globe", "combined", 120, 80)))
+    assert image.mode == "RGBA"
