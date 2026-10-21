@@ -1664,7 +1664,13 @@ export default function App() {
           )}
           {error && <div style={{ color: "#ff8080", fontSize: 11 }}>{error}</div>}
 
-          {DEBUG_UI && <EventConsole events={summary?.events ?? []} />}
+          {DEBUG_UI && (
+            <EventConsole
+              events={[...(summary?.events ?? []), ...(summary?.replay_logs ?? [])].sort(
+                (a, b) => a.elapsed_years - b.elapsed_years,
+              )}
+            />
+          )}
         </div>
 
         <div>

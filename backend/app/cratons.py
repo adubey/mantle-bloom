@@ -268,6 +268,11 @@ def live_volume_m3(world: "World") -> float:
     return sum(plate_volume_m3(world, plate) for plate in world.plates)
 
 
+def genuine_continental_area_m2(world: "World") -> float:
+    """Area of continental crust thick enough to host a craton (CRATON_HOST_MIN_HC_M)."""
+    return sum(float(_areas(world, plate)[_genuine_continental(plate)].sum()) for plate in world.plates if plate.node_count())
+
+
 def booked_sinks_m3(world: "World") -> float:
     ledger = getattr(world, "craton_ledger", {})
     return sum(float(ledger.get(key, 0.0)) for key in CRATON_SINK_ACCOUNTS)

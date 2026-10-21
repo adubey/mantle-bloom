@@ -151,7 +151,8 @@ Response: a summary --
   "elapsed_years": 0.0,
   "num_plates": 13,
   "surface": "quad",
-  "events": [{ "elapsed_years": 0.0, "message": "World generated with 13 plates (4 continental)." }]
+  "events": [{ "elapsed_years": 0.0, "message": "World generated with 13 plates (4 continental)." }],
+  "replay_logs": []
 }
 ```
 
@@ -166,6 +167,11 @@ matter on the wire. See
 an event (merges, plates disappearing, splits, a plate fragmenting into disconnected
 landmasses or shedding stranded nodes -- a collision merely starting is deliberately not
 logged) and how each one is worded.
+
+`replay_logs` lists the records this server process's replay log wrote, in the same
+`{elapsed_years, message}` shape (newest 50; empty unless `MANTLE_BLOOM_REPLAY_LOG_DIR` is
+set, see [`GET /world/replay-logs`](#get-worldreplay-logs)). They aren't world state, so they
+stay out of `events` and out of saves.
 
 ## `POST /world/step`
 
@@ -216,6 +222,23 @@ status or `error`, and when a step finishes after Stop. `world` is `null` before
 answers when the revision moves past `after` or the run state moves past `run_version` (so a
 tab sees Stop pressed in another one), or after 25 s. Without `run_version`, only the revision
 counts.
+
+## `GET /world/replay-logs`
+
+The records the server's replay log has on disk, newest first (#442, see
+[architecture.md#replay-log](architecture.md#replay-log)). Behind the `/world/*` guard like
+every world route.
+
+```json
+{ "enabled": true, "directory": "/Users/me/.mantle-bloom/replay-logs/8442",
+  "records": [{ "name": "20261021T044502.881373Z-seed42-4.00myr-craton_step_loss",
+                "path": "/Users/me/.mantle-bloom/replay-logs/8442/20261021T044502.881373Z-seed42-4.00myr-craton_step_loss",
+                "triggers": ["craton_step_loss"], "seed": 42, "elapsed_years_before": 4000000.0,
+                "step_years": 1000000.0, "recorded_at": "2026-10-21T04:45:02.881373+00:00" }] }
+```
+
+Without `MANTLE_BLOOM_REPLAY_LOG_DIR`: `{"enabled": false, "directory": null, "records": []}`.
+[debugging.md#replay-logs](debugging.md#replay-logs) covers replaying a record.
 
 ## `GET /world/save`
 

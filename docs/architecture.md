@@ -267,6 +267,47 @@ The hosted instance (#376) is the root `Dockerfile` on Railway, configured by
 volume at `/data` and `GET /healthz` as the deploy health check. See
 [HOSTING.md](HOSTING.md).
 
+<a id="replay-log"></a>
+## Replay log (`backend/app/replay_log.py`)
+
+When `MANTLE_BLOOM_REPLAY_LOG_DIR` names a directory (`bin/restart.sh --replay-log` sets it
+to `~/.mantle-bloom/replay-logs/<port>/`), every step of the shared world (`POST /world/step`,
+`POST /world/animate`, the run loop and guest steps) goes through `main._step_progress`, which
+hands it to `ReplayLog.step` (#442). It is off by default.
+
+```mermaid
+flowchart LR
+  A[pickle the world<br/>measure health] --> B[step_world_progress]
+  B --> C[measure health]
+  C --> D{triggers fire<br/>and not rate-limited?}
+  D -- no --> E[drop the pickle]
+  D -- yes --> F[queue record] --> G[writer thread:<br/>atomic write, prune to cap]
+  B -- raises --> D
+```
+
+- Before the step, under the world lock, it pickles the world (`persistence.save_world_bytes`)
+  and measures `replay_log.Health`: plate count, live craton volume and ledger, the craton
+  balance error, whether `continental_ledger.assert_closed` passes, genuine continental area
+  and the area-weighted land fraction. It measures again after the step.
+- Each function in `replay_log.TRIGGERS` sees both measurements (or the exception, if the step
+  raised) and returns the values that make it fire, or `None`. An RFC adds a signature with
+  `replay_log.TRIGGERS["name"] = fn`; code inside a step can attach inputs that only exist there
+  with `replay_log.annotate(key, value)`.
+- When a trigger fires, the record (`before.mbworld` plus `record.json`) is queued for a
+  background thread, so the 60 MB write happens off the world lock. A trigger that fired stays
+  quiet for `DEFAULT_MIN_STEPS_BETWEEN` (20) logged steps, and the oldest records are removed
+  once all of them pass `DEFAULT_MAX_BYTES` (2 GB). Each record is written to a temporary
+  directory and renamed into place.
+- `record.json` holds a per-attribute `fingerprint` of the world after the step instead of a
+  second save. Every random stream a step draws is seeded from `(world.seed, elapsed_years, ...)`,
+  so `replay_log.replay` reruns the step from `before.mbworld` and compares fingerprints.
+- The snapshot costs about 4% of step time at node density 1 (about 90 ms on a 2.0 s step,
+  mostly the pickle). Nothing is added to the pickled `World`, so saves are unaffected.
+
+Records surface in `GET /world/replay-logs`, in the summary's `replay_logs` (the `?deb` Event
+Console) and as a warning in the server log. See
+[debugging.md#replay-logs](debugging.md#replay-logs) for replaying one.
+
 <a id="world-state"></a>
 ## World state (`backend/app/world.py`)
 
@@ -501,6 +542,8 @@ run_control.py       the run/stopped status and the background thread that steps
                      world (see #run-and-checkpoint above)
 checkpoint.py        atomic world and run-status checkpoints on persistent storage, and
                      restoring them at startup (see #run-and-checkpoint above)
+replay_log.py        saves the world before any step whose health metrics go askew, with
+                     the triggers, a post-step fingerprint, and replay (see #replay-log above)
 public_view.py       the logged-out viewer's step allowance cookie, the coordinator
                      that shares one guest step among concurrent requests, and the
                      world revision feed and render cache viewers follow (see
