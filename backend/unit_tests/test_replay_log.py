@@ -1,5 +1,6 @@
 import json
 
+import numpy as np
 import pytest
 from app import cratons, persistence, replay_log
 from app.replay_log import Health, ReplayLog, StepOutcome
@@ -88,6 +89,28 @@ def test_continental_area_jump_fires(tmp_path, world, monkeypatch):
     log.flush()
     [record] = log.records()
     assert "continental_area_jump" in record["triggers"]
+
+
+@pytest.mark.parametrize("trigger, field", [
+    ("hc_at_max", "crustal_thickness_m"),
+    ("hm_at_max", "mantle_lithosphere_thickness_m"),
+    ("glacier_at_max", "glacier_depth"),
+])
+def test_a_step_that_puts_nodes_at_a_thickness_cap_fires(tmp_path, world, trigger, field):
+    cap = replay_log._CAPPED_FIELDS[f"{trigger}_fraction"][1]
+
+    def to_cap(world):
+        plate = world.plates[0]
+        plate.set_fields_on_plate(**{field: np.full(plate.node_count(), cap)})
+
+    log = ReplayLog(tmp_path, step_progress=_fake_step(to_cap))
+    _run(log, world)
+    log.flush()
+    [record] = log.records()
+    assert trigger in record["triggers"]
+    sidecar = json.loads((tmp_path / record["name"] / replay_log.RECORD_FILE).read_text())
+    assert sidecar["health_before"][f"{trigger}_fraction"] == 0.0
+    assert sidecar["health_after"][f"{trigger}_fraction"] > replay_log.AT_CAP_FRACTION
 
 
 def test_a_step_that_raises_saves_the_world_before_it(tmp_path, world):
@@ -293,6 +316,16 @@ def test_craton_balance_fires_on_the_change_not_the_level():
 def test_continental_ledger_fires_only_when_it_opens():
     assert _fires("continental_ledger_open", _health(), _health(continental_ledger_error="open"))
     assert not _fires("continental_ledger_open", _health(continental_ledger_error="open"), _health(continental_ledger_error="open"))
+
+
+@pytest.mark.parametrize("trigger", ["hc_at_max", "hm_at_max", "glacier_at_max"])
+def test_at_cap_triggers_fire_on_the_crossing_not_the_level(trigger):
+    metric = f"{trigger}_fraction"
+    assert _fires(trigger, _health(**{metric: 0.0}), _health(**{metric: 0.0006}))
+    assert _fires(trigger, _health(**{metric: 0.0005}), _health(**{metric: 0.0006}))
+    assert not _fires(trigger, _health(**{metric: 0.0}), _health(**{metric: 0.0005}))
+    # Already over the threshold before the step: not this step's doing.
+    assert not _fires(trigger, _health(**{metric: 0.0006}), _health(**{metric: 0.01}))
 
 
 def test_jump_thresholds():

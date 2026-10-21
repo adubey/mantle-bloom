@@ -339,9 +339,15 @@ The starting triggers, each a constant in `replay_log.py`:
 | `continental_area_jump` | changes genuine continental area by more than `CONTINENTAL_AREA_JUMP_FRACTION` (5%) |
 | `land_fraction_jump` | changes the area-weighted land fraction by more than `LAND_FRACTION_JUMP` (0.05) |
 | `plate_count_jump` | changes the plate count by more than `PLATE_COUNT_JUMP_FRACTION` (25%) |
+| `hc_at_max` | takes the share of nodes with Hc at `MAX_CRUSTAL_THICKNESS_M` above `AT_CAP_FRACTION` (0.05%) |
+| `hm_at_max` | takes the share of nodes with Hm at `MAX_MANTLE_LITHOSPHERE_THICKNESS_M` above 0.05% |
+| `glacier_at_max` | takes the share of nodes with glacier ice at `GLACIER_MAX_DEPTH_M` (5000 m) above 0.05% |
 | `step_exception` | raises; the record has no post-step state |
 
-They are loose to start with: in 20 one-Myr steps of a default seed-42 world none fired.
+The three cap triggers count nodes the way the Stats panel's `hc_at_max_fraction` and
+`hm_at_max_fraction` do, and fire on the step that crosses the threshold, not on every step
+while the share stays above it. The thresholds are loose to start with: in 20 one-Myr steps
+of a default seed-42 world none fired.
 Each trigger is rate-limited to one record per 20 logged steps, and records past 2 GB in total
 are removed oldest first.
 

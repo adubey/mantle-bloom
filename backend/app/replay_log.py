@@ -53,8 +53,9 @@ from typing import Callable, Iterator
 
 import numpy as np
 
-from . import continental_ledger, cratons, persistence
+from . import continental_ledger, cratons, lithosphere, persistence
 from .elevation_lines import line_spacing_rad
+from .hydroclimate import hydrology
 from .world import World, step_world_progress
 
 REPLAY_LOG_DIR_ENV = "MANTLE_BLOOM_REPLAY_LOG_DIR"
@@ -88,6 +89,15 @@ CONTINENTAL_AREA_JUMP_FRACTION = 0.05
 LAND_FRACTION_JUMP = 0.05
 # Relative change of the plate count in one step.
 PLATE_COUNT_JUMP_FRACTION = 0.25
+# Share of nodes at a thickness cap (Hc, Hm, glacier ice) that a step must newly exceed.
+AT_CAP_FRACTION = 0.0005
+# The fields and caps behind Health's *_at_max_fraction metrics: the Stats panel's
+# hc/hm_at_max_fraction (stats.py), and glacier ice at the clip hydrology/ice_sheet apply.
+_CAPPED_FIELDS = {
+    "hc_at_max_fraction": ("crustal_thickness_m", lithosphere.MAX_CRUSTAL_THICKNESS_M),
+    "hm_at_max_fraction": ("mantle_lithosphere_thickness_m", lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M),
+    "glacier_at_max_fraction": ("glacier_depth", hydrology.GLACIER_MAX_DEPTH_M),
+}
 
 _logger = logging.getLogger(__name__)
 
@@ -107,6 +117,22 @@ class Health:
     # Area-weighted share of nodes above sea level. Not stats.py's lake-aware land fraction,
     # which needs the climate grid; this one costs one pass over the plates.
     land_fraction: float
+    # Shares of all nodes at MAX_CRUSTAL_THICKNESS_M, MAX_MANTLE_LITHOSPHERE_THICKNESS_M and
+    # GLACIER_MAX_DEPTH_M, as stats.py counts them (node counts, not areas).
+    hc_at_max_fraction: float = 0.0
+    hm_at_max_fraction: float = 0.0
+    glacier_at_max_fraction: float = 0.0
+
+
+def _at_max_fractions(world: World) -> dict[str, float]:
+    plates = [p for p in world.plates if p.node_count()]
+    total = sum(p.node_count() for p in plates)
+    if total == 0:
+        return {name: 0.0 for name in _CAPPED_FIELDS}
+    return {
+        name: sum(int(np.count_nonzero(p.collect(field) >= cap - 1e-6)) for p in plates) / total
+        for name, (field, cap) in _CAPPED_FIELDS.items()
+    }
 
 
 def measure(world: World) -> Health:
@@ -133,6 +159,7 @@ def measure(world: World) -> Health:
         continental_ledger_error=ledger_error,
         genuine_continental_area_m2=cratons.genuine_continental_area_m2(world),
         land_fraction=land_m2 / total_m2 if total_m2 > 0.0 else 0.0,
+        **_at_max_fractions(world),
     )
 
 
@@ -218,6 +245,20 @@ def _plate_count_jump(outcome: StepOutcome) -> dict | None:
     return _jump("plates", before, after, _relative_change(before, after), PLATE_COUNT_JUMP_FRACTION)
 
 
+def _at_cap_onset(metric: str, read: Callable[[Health], float]) -> Trigger:
+    """Fires on the step that takes `metric` above AT_CAP_FRACTION. The crossing, not the
+    level: a world that stays over the cap would otherwise write a record every
+    DEFAULT_MIN_STEPS_BETWEEN steps and push rarer records out under the disk cap."""
+    def check(outcome: StepOutcome) -> dict | None:
+        if outcome.after is None:
+            return None
+        before, after = read(outcome.before), read(outcome.after)
+        if before > AT_CAP_FRACTION or after <= AT_CAP_FRACTION:
+            return None
+        return {f"{metric}_before": before, f"{metric}_after": after, "threshold": AT_CAP_FRACTION}
+    return check
+
+
 def _step_exception(outcome: StepOutcome) -> dict | None:
     if outcome.error is None:
         return None
@@ -237,6 +278,9 @@ TRIGGERS: dict[str, Trigger] = {
     "continental_area_jump": _continental_area_jump,
     "land_fraction_jump": _land_fraction_jump,
     "plate_count_jump": _plate_count_jump,
+    "hc_at_max": _at_cap_onset("hc_at_max_fraction", lambda h: h.hc_at_max_fraction),
+    "hm_at_max": _at_cap_onset("hm_at_max_fraction", lambda h: h.hm_at_max_fraction),
+    "glacier_at_max": _at_cap_onset("glacier_at_max_fraction", lambda h: h.glacier_at_max_fraction),
     "step_exception": _step_exception,
 }
 

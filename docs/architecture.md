@@ -287,8 +287,9 @@ flowchart LR
 
 - Before the step, under the world lock, it pickles the world (`persistence.save_world_bytes`)
   and measures `replay_log.Health`: plate count, live craton volume and ledger, the craton
-  balance error, whether `continental_ledger.assert_closed` passes, genuine continental area
-  and the area-weighted land fraction. It measures again after the step.
+  balance error, whether `continental_ledger.assert_closed` passes, genuine continental area,
+  the area-weighted land fraction, and the shares of nodes at the Hc, Hm and glacier-ice
+  caps. It measures again after the step.
 - Each function in `replay_log.TRIGGERS` sees both measurements (or the exception, if the step
   raised) and returns the values that make it fire, or `None`. An RFC adds a signature with
   `replay_log.TRIGGERS["name"] = fn`; code inside a step can attach inputs that only exist there
