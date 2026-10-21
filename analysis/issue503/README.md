@@ -65,6 +65,29 @@ deviation over each checkpoint window, which the script reports. A gap smaller t
 arm's standard deviation is called inconclusive. A gap near it gets the trajectory across
 checkpoints in place of the single 100-step mean.
 
+## Amendment: frozen lakes (committed before the second run)
+
+The first run's glacier guard failed (see Results above), and the owner chose to fix lake
+freezing in this PR. A freezing lake now turns into ice at `hydrology.WATER_TO_ICE`, the rate
+frozen river water already used, instead of 1:1. That deliberately removes main's largest ice
+source (about 147,000 km³ per step, around 35× snowfall), so a "within ±10% of main" guard no
+longer applies.
+
+**Runs:** both arms again, one after the other, with the same command and the script updated to
+record sea level: main `f9d3d2f` and fix2 (this branch at the commit that adds this
+amendment).
+
+| Metric | Prediction |
+|---|---|
+| **Primary:** water reaching no outlet, mean over 100 steps | fix2 ≤ 50% of main, as before (expected about 5,000 m³/s) |
+| Lake water frozen into the ice, per step | fix2 ≤ 1/1,000 of main |
+| Glacier volume at 16.4 Myr | fix2 below main, and between 2.0 and 4.5 M km³ (the save starts at 3.56 M km³). Snow, river ice and melt alone come to about −5,000 km³ per step, so the ice should shrink slowly, neither growing beyond start + 25% nor collapsing below start − 45%. |
+| Sea level at 16.4 Myr | fix2 above main: less water is locked in ice. Reported; no size predicted. |
+| Glacier ledger | must close every step |
+
+The secondary metrics and the step-time and RSS guards are unchanged from the original
+preregistration.
+
 ## Results
 
 Both arms ran one after the other on the same machine, with nothing else running, from 6.4 to

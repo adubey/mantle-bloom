@@ -783,7 +783,7 @@ def river_transit_loss_fraction(temperature_c: np.ndarray, excluded: np.ndarray)
 #   meltwater is small next to runoff. Rescaling glacier mass balance changes discharge only
 #   through the ledger.
 # - Frozen river ice is the physical water that settles at a frozen land node, converted to
-#   ice at the glacier model's own exchange rate (`RIVER_WATER_TO_ICE`), one step late.
+#   ice at the glacier model's own exchange rate (`WATER_TO_ICE`), one step late.
 # - The breach surge (`HydrologyFields.breach_surge`) is a spilling lake's erosive forcing.
 #   It's sized by node count (LAKE_BREACH_EROSION_COEFFICIENT) and is in model units. It is
 #   never physical discharge.
@@ -855,18 +855,22 @@ def meltwater_m3_per_yr(melt_m: np.ndarray, areas_m2: np.ndarray, years: float) 
     return melt_m * areas_m2 / max(years, 1.0)
 
 
-# Metres of glacier ice per metre of liquid water settling at a frozen node (issue #355). It's
+# Metres of glacier ice per metre of liquid water freezing in place: river water settling at a
+# frozen node (issue #355) and a standing lake freezing solid (issue #503). It's
 # the rate snowfall builds ice at: GLACIER_ACCUMULATION_RATE turns mm/yr over Myr into metres,
 # so a metre of water (1000 mm for 1e-6 Myr-years) is GLACIER_ACCUMULATION_RATE / 1000 m of
 # ice, 1/50,000 of real. Frozen river ice therefore keeps the scale of the old
 # `GLACIER_ACCUMULATION_RATE * water_deposited` sizing, whose stacked mm/yr is roughly
-# catchment volume over cell area, and stays comparable with snowfall in the ledger.
+# catchment volume over cell area, and stays comparable with snowfall in the ledger. Lakes
+# froze 1:1 until #503: their water balances in real units (#297), so a freezing lake fed the
+# ice about 35x faster than all snowfall, and filling basins within the step grew the ice
+# without bound.
 # TODO(#353 decision B): when glacier mass balance moves to physical units, convert by mass
 # instead of this model-unit factor. Water (1000 kg/m^3) freezing to glacier ice (about
 # 917 kg/m^3, denser than the snow and firn it compacts from, and denser still deep in a
 # sheet under pressure) gains roughly 9% in volume, and meltwater (`meltwater_m3_per_yr`,
 # booked 1:1 today) should use the same density ratio.
-RIVER_WATER_TO_ICE = GLACIER_ACCUMULATION_RATE / 1000.0
+WATER_TO_ICE = GLACIER_ACCUMULATION_RATE / 1000.0
 
 
 def _compute_flow_direction(
@@ -1422,16 +1426,15 @@ def compute_hydrology(
     # rebuilt a single-node, 600 m ice plug every step at +0.4C. The ice's own meltwater
     # refroze in place the same way. Meltwater and rivers now drain past warm ice along the
     # ground. Lakes followed the same rule first (issue #353): such a lake (sub- or proglacial)
-    # is refilled every step by runoff and meltwater balanced in real units (#297), and
-    # freezing it 1:1 into ice -- whose snowfall is in model units, ~50,000x slower -- fed the
-    # ice ~60x faster than snow did once the ice volume was conserved. Computed *before* the
+    # is refilled every step by runoff and meltwater balanced in real units (#297). A lake that
+    # does freeze turns into ice at WATER_TO_ICE, the rate river water does. Computed *before* the
     # depression hierarchy/spill routing below since compute_spill_routing needs
     # lake_depth_adjusted, not just bare terrain -- see that function's own docstring for why.
     water_frozen = temperature_at_nodes < FREEZE_POINT_C
     lake_frozen = water_frozen
     freezing_lake = lake_frozen & (prev_lake_depth > 0.0)
     lake_depth_adjusted = np.where(freezing_lake, 0.0, prev_lake_depth)
-    frozen_from_lake = np.where(freezing_lake, prev_lake_depth, 0.0)
+    frozen_from_lake = np.where(freezing_lake, WATER_TO_ICE * prev_lake_depth, 0.0)
 
     # The depression hierarchy is built once, here, from bare terrain alone (no water/inflow
     # input needed -- see build_lake_hierarchy's own signature) so it can drive *both* this
@@ -1606,13 +1609,13 @@ def compute_hydrology(
     # 5): this ice joins its body's opening volume next step, and the ledger books it as
     # `frozen_river_ice_m3`.
     # It's the physical water settled over the step, at the glacier model's exchange rate
-    # (RIVER_WATER_TO_ICE, issue #355), so the breach surge never becomes ice. It's then
+    # (WATER_TO_ICE, issue #355), so the breach surge never becomes ice. It's then
     # re-clipped to GLACIER_MAX_DEPTH_M so a large river freezing into a cold sink can't
     # create a physically absurd ice column in a single step. What the clip drops is booked
     # (`frozen_river_capped_m3`) and logged as a warning (review of #359): reaching it means a
     # missing sink.
     settled_water_m = np.divide(settled_m3 * years, areas, out=np.zeros(n), where=areas > 0.0)
-    frozen_river_ice = RIVER_WATER_TO_ICE * settled_water_m
+    frozen_river_ice = WATER_TO_ICE * settled_water_m
     with_river_ice = np.where(
         water_frozen & ~is_ocean,
         np.minimum(new_glacier_depth + frozen_river_ice, GLACIER_MAX_DEPTH_M),

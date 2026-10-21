@@ -52,13 +52,13 @@ Three kinds of water/forcing move along `flow_target`:
   is the river discharge, `HydrologyFields.discharge_m3_s`, in m^3/s.
 - **Glacier meltwater** is the ice ledger's per-step volume (`IceLedger.meltwater_m3`: surface
   and basal melt, overflow, ice shed at the depth guard, and snow melting on bare ground)
-  divided by the step length (`hydrology.meltwater_m3_per_yr`). Ice and water volumes are
-  booked 1:1, as a freezing lake is. Calved ice goes to the ocean unrouted, and accumulation
+  divided by the step length (`hydrology.meltwater_m3_per_yr`). Melted ice is booked as
+  water 1:1. Calved ice goes to the ocean unrouted, and accumulation
   and frozen river ice stay ice, so none of them is discharge. The ledger is still in the
   glacier model's own units (see [Glaciation](#glaciation)), so meltwater is small next to
   runoff.
 - **Frozen river ice** is the physical water that settles at a frozen land node, turned into
-  ice at the rate snowfall builds it (`hydrology.RIVER_WATER_TO_ICE`, which is
+  ice at the rate snowfall builds it (`hydrology.WATER_TO_ICE`, which is
   `GLACIER_ACCUMULATION_RATE / 1000`, 1/50,000 of real), a step late. The breach surge never
   becomes ice. Once glacier mass balance is physical (#353), this should convert by mass,
   water at 1000 kg/m^3 to glacier ice at about 917 kg/m^3, and meltwater should too.
@@ -608,9 +608,9 @@ atmospheric humidity, which for architectural reasons can't be the literal same-
 this module evaporates, since climate.py runs *before* this module each step).
 
 - **Accumulation and melt rates**: `GLACIER_ACCUMULATION_RATE` converts frozen
-  precipitation into metres of ice per Myr. The same rate, as `RIVER_WATER_TO_ICE`, converts the
-  physical water a river settles when it freezes solid at a cold sink (not added 1:1 the way
-  a standing frozen lake's own `lake_depth` is).
+  precipitation into metres of ice per Myr. The same rate, as `WATER_TO_ICE`, converts the
+  physical water a river settles when it freezes solid at a cold sink, and a standing lake's
+  `lake_depth` when the lake freezes (issue #503).
   `GLACIER_MELT_RATE_M_PER_MYR`, scaled by the seasonal positive degrees over
   `GLACIER_MELT_REFERENCE_DEGREES_C` (capped at `GLACIER_MELT_MAX_FACTOR`; see above), is the
   surface melt. Where these rates apply, and to how much ice, is the ice-body solve below.
@@ -685,10 +685,10 @@ this module evaporates, since climate.py runs *before* this module each step).
   +0.4C, the ice's own meltwater refroze there too, and frozen river ice outgrew snowfall
   twofold (issue #503).
   Lakes balance in real units since #297, so a lake on warm ground under ice refills with
-  runoff and meltwater every step. Frozen into the ice 1:1, it fed the ice about 60x faster
-  than snowfall (in model units), which the old depth-squared basal melt and depth clip used
-  to throw away again. With ice volume conserved, that grew the ice without bound (see
-  `analysis/issue353/README.md`).
+  runoff and meltwater every step. A lake that does freeze turns into ice at `WATER_TO_ICE`,
+  the rate river water does. Frozen 1:1, real-unit lake water fed the ice about 35x faster than
+  all snowfall (in model units), and once basins filled within the step that grew the ice by a
+  third in 10 Myr (`analysis/issue503/README.md`; see also `analysis/issue353/README.md`).
 - **Thickness guard.** `GLACIER_MAX_DEPTH_M` (5 km) caps the plastic profile itself, so a
   sheet too big for it gets a flat top and its volume spreads outward through the root find
   instead of being shed. A plastic divide is `sqrt(2 c L)` thick for a margin L from the
@@ -705,7 +705,7 @@ this module evaporates, since climate.py runs *before* this module each step).
   excess as meltwater that refreezes on the same frozen node, and repeats every step.
 - **Frozen river ice, a step late.** The ice solve needs this step's meltwater to route
   rivers, so it can't know what settles yet. River water frozen at a sink is added to
-  `glacier_depth` after routing (converted by `RIVER_WATER_TO_ICE`, clipped to
+  `glacier_depth` after routing (converted by `WATER_TO_ICE`, clipped to
   `GLACIER_MAX_DEPTH_M`) and joins its body's opening volume next step; the ledger books it
   as `frozen_river_ice_m3`, and next step's opening is this step's closing plus it.
 - **Flux, velocity and sliding** (diagnostic only; volume moves through the body solve). The

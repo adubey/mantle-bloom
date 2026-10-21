@@ -16,7 +16,7 @@ Each step, from that step's hydrology, it measures:
   term (`ice_<term>_km3`), and visible lake nodes.
 
 Per-step values are averaged over each checkpoint window, beside the end-of-window glacier
-volume, step runtime and peak RSS. `--backend` points at the backend to import, so the same
+volume and sea level, step runtime and peak RSS. `--backend` points at the backend to import, so the same
 script measures both trees:
 
     cd backend
@@ -105,7 +105,7 @@ def main() -> None:
 
     def snapshot() -> dict:
         hydro = world.hydrology_cache
-        out = {"elapsed_myr": world.elapsed_years / 1e6}
+        out = {"elapsed_myr": world.elapsed_years / 1e6, "sea_level_m": float(world.sea_level_m)}
         if hydro is not None:
             out["glacier_volume_km3"] = hydro.ice.ledger.closing_m3 / 1e9 if hydro.ice is not None else None
             out["at_checkpoint"] = measure()

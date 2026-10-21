@@ -646,7 +646,7 @@ def test_a_spilling_sink_loses_the_same_transit_share_as_any_node():
 def test_frozen_river_ice_is_the_physical_water_settling_at_frozen_sinks():
     # Warm uplands drain into a frozen band: each frozen land node is a dead end, so the
     # physical water reaching it settles there and freezes at the glacier exchange rate
-    # (RIVER_WATER_TO_ICE, issue #355). The ice per year doesn't depend on step length, and
+    # (WATER_TO_ICE, issue #355). The ice per year doesn't depend on step length, and
     # the breach surge never reaches it.
     theta = 0.002 * np.arange(12)
     elevation = 500.0 - 60.0 * np.arange(12)
@@ -661,7 +661,7 @@ def test_frozen_river_ice_is_the_physical_water_settling_at_frozen_sinks():
         assert settled_m3 > 0.0
         ledger = fields.ice.ledger
         assert ledger.frozen_river_capped_m3 == 0.0
-        assert ledger.frozen_river_ice_m3 == pytest.approx(hydrology.RIVER_WATER_TO_ICE * settled_m3, rel=1e-9)
+        assert ledger.frozen_river_ice_m3 == pytest.approx(hydrology.WATER_TO_ICE * settled_m3, rel=1e-9)
         per_year.append(ledger.frozen_river_ice_m3 / years)
     assert per_year[1] == pytest.approx(per_year[0], rel=1e-6)  # snowmelt on the cold band varies a hair
 
@@ -842,8 +842,10 @@ def test_compute_hydrology_freezes_an_existing_lake_when_cold():
     assert np.isfinite(fields.filled_elevation[7])  # confirms the sink really is graph-connected to the ocean
 
     assert fields.lake_depth[7] == 0.0  # the lake froze, not still sitting there as water
-    # Its water joined the ice instead (issue #353: into its ice body, which may reshape it).
-    assert fields.ice.ledger.frozen_lake_m3 == pytest.approx(30.0 * _node_areas(world)[7])
+    # Its water joined the ice instead (issue #353: into its ice body, which may reshape it), at
+    # the glacier model's water-to-ice rate, as frozen river water does -- not 1:1, which let
+    # real-unit lake water outgrow all snowfall ~35x (#503).
+    assert fields.ice.ledger.frozen_lake_m3 == pytest.approx(hydrology.WATER_TO_ICE * 30.0 * _node_areas(world)[7])
     assert fields.ice.ledger.closing_m3 >= fields.ice.ledger.frozen_lake_m3
 
 
