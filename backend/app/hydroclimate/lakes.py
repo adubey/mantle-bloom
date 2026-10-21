@@ -880,18 +880,21 @@ def compute_spill_routing(
     filled_elevation = elevation.copy()
     spill_target = np.full(n, -1, dtype=np.int64)
     rim_node_idx = np.full(n, -1, dtype=np.int64)
+    for body in governing_bodies(forest, elevation, prev_lake_depth, hypsometry):
+        sinks = leaf_sinks(body)
+        filled_elevation[sinks] = body.max_depth if body.max_depth is not None else np.inf
+        spill_target[sinks] = body.outlet_target_idx
+        rim_node_idx[sinks] = body.outlet_node_idx
+    return filled_elevation, spill_target, rim_node_idx
 
-    def write_subtree(node: Lake, filled_value: float, target: int, rim: int) -> None:
-        leaves = [node]
-        while leaves:
-            cur = leaves.pop()
-            if cur.children:
-                leaves.extend(cur.children)
-            else:
-                filled_elevation[cur.sink_node_idx] = filled_value
-                spill_target[cur.sink_node_idx] = target
-                rim_node_idx[cur.sink_node_idx] = rim
 
+def governing_bodies(
+    forest: list[Lake], elevation: np.ndarray, prev_lake_depth: np.ndarray, hypsometry: CellHypsometry | None = None
+) -> list[Lake]:
+    """The lakes whose rims currently govern their leaves' sinks, walking down from each root to
+    the first lake that was already one merged body as of last step's water (see
+    `compute_spill_routing`). Every leaf lies under exactly one of them."""
+    bodies: list[Lake] = []
     stack: list[Lake] = list(forest)
     while stack:
         node = stack.pop()
@@ -899,14 +902,21 @@ def compute_spill_routing(
         if node.children and not already_merged:
             stack.extend(node.children)
             continue
-        write_subtree(
-            node,
-            node.max_depth if node.max_depth is not None else np.inf,
-            node.outlet_target_idx,
-            node.outlet_node_idx,
-        )
+        bodies.append(node)
+    return bodies
 
-    return filled_elevation, spill_target, rim_node_idx
+
+def leaf_sinks(lake: Lake) -> np.ndarray:
+    """The `sink_node_idx` of every leaf under `lake` (itself, for a leaf)."""
+    sinks: list[int] = []
+    stack = [lake]
+    while stack:
+        cur = stack.pop()
+        if cur.children:
+            stack.extend(cur.children)
+        else:
+            sinks.append(cur.sink_node_idx)
+    return np.asarray(sinks, dtype=np.int64)
 
 
 def _resolve(

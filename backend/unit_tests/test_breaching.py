@@ -205,6 +205,23 @@ def test_a_cheap_pit_breaches_only_when_its_catchment_outpaces_evaporation():
     assert dry.endorheic_pits.tolist() == [3]
 
 
+def test_a_pit_downstream_of_an_overflowing_pit_sees_its_river():
+    # A long wet slope drains into pit 14, which overflows over node 15 into pit 16. Pit 16's
+    # own two-node catchment can't outpace a rim-level lake's evaporation, but the slope's
+    # surplus passing through pit 14 can, so pit 16 is breached too instead of being judged
+    # endorheic on its own catchment (#503).
+    elevation = np.array([*np.linspace(300.0, 100.0, 14), 60.0, 65.0, 50.0, 52.0, -50.0])
+    n = len(elevation)
+    is_ocean = np.zeros(n, dtype=bool)
+    is_ocean[-1] = True
+    result = breaching.breach_depressions(
+        elevation, is_ocean, _chain(n), np.zeros(n), _ordinary_rate(n), years=100_000,
+        water=_pit_water(n, precipitation=800.0, temperature=15.0),
+    )
+    assert result.breached_pits.tolist() == [14, 16]
+    assert result.endorheic_pits.tolist() == []
+
+
 def test_endorheic_demand_factor_keeps_more_basins_closed(monkeypatch):
     elevation = np.array([60.0, 40.0, 20.0, 0.0, 15.0, -50.0])
     is_ocean = np.array([False] * 5 + [True])

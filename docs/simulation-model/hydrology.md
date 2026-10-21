@@ -119,9 +119,13 @@ discharge, channel-width growth, deposition, geology or lake silt.
     cover, scaled by step length;
   - every node on its path can be cut down to the pit's level within its own carving limit
     for the step, so a breached pit always drains;
-  - it would overflow: its catchment's runoff, routed with the same per-node river losses the
+  - it would overflow: the water reaching it, routed with the same per-node river losses the
     lakes use, exceeds the evaporation of a lake filled to its rim (`ENDORHEIC_DEMAND_FACTOR`).
     Runoff comes from Fu's Budyko curve, and open-water evaporation rises with temperature.
+    Steepest descent carries runoff only to the first pit downhill, so each pit that
+    overflows passes its surplus along its least-cost path to the next pit, from the highest
+    cost down (`breaching._overflows`). A pit downstream of a chain of pits is judged on the
+    river flowing through them, not on its own catchment alone (issue #503).
 
   Other pits stay closed and are filled as lakes, so dry and arid basins stay real endorheic
   basins. The hierarchy's boundary edges use the notched passages
@@ -169,12 +173,12 @@ discharge, channel-width growth, deposition, geology or lake silt.
   distinct from (and upstream of) `erosion.py`'s own `channel_boost`,
   which only affects how *fast* a node erodes once water is already routed there, not *where*
   it gets routed to begin with. A sink is -1 if there's no downhill candidate at all -- unless
-  the sink's current water surface (`elevation + previous step's lake_depth`, a one-step-lagged
-  "memory") has already reached its basin's
-  true spill point, in which case it redirects to `spill_target` instead of staying a
-  dead-end sink forever (turning a filled-past-its-rim lake into a normal through-flowing
-  river cell). A node below `FREEZE_POINT_C` (see [Glaciation](#glaciation) for why this is a
-  separate, warmer threshold than the one permanent glaciers use) is unconditionally forced to
+  the sink's water surface at the start of the step (last step's `lake_depth`, through
+  `CellHypsometry`) has already reached its basin's spill point, or that spill point is at or
+  below the sink's own centre (a breach notch cut to the floor), in which case it redirects to
+  `spill_target` (turning a filled-past-its-rim lake into a normal through-flowing river
+  cell). A node whose annual mean is below `FREEZE_POINT_C` (see [Glaciation](#glaciation) for
+  why this is a separate, warmer threshold than the one permanent glaciers use) is unconditionally forced to
   -1 *after* the should_spill check above, rather than folded into the same check: an
   ordinary, unobstructed downhill node has `filled_elevation` exactly equal to its own
   elevation, so forcing it to look like a sink first would make it trivially satisfy
@@ -182,6 +186,19 @@ discharge, channel-width growth, deposition, geology or lake silt.
   neighbor via `spill_target` -- silently undoing the freeze for most ordinary terrain (caught
   directly by this module's own test coverage). Applying the override to the final
   `flow_target` instead has no such escape hatch.
+- **Spilling within the step** (`_spill_within_step`, issue #503): the spill test above and
+  `lakes.compute_spill_routing`'s choice of governing rim both read last step's water, but a
+  100 kyr step's inflow fills most basins many times over. After routing the physical water,
+  every governing basin (`lakes.governing_bodies`) whose inflow, net of a rim-level lake's
+  open-water evaporation, fills its remaining room opens its outlet, and the water is routed
+  again. Basins whose spills run into each other form a `flow_target` cycle; they are united
+  at their lowest common ancestor in the hierarchy, which spills at its own rim if this step's
+  water fills it and otherwise holds the water as one lake. A cycle that runs through a
+  channel into a neighbouring catchment instead (channel-preferring flow can cross the
+  steepest-descent catchments the hierarchy is built on) sends that node down its steepest
+  descent. Repeats to a fixed point (`SPILL_WITHIN_STEP_MAX_ROUNDS`). Without it, a river
+  crossing a chain of dry pits advanced one pit per step, and basins filling in the same step
+  spilled into each other indefinitely. A frozen sink still holds its water.
 - **Downstream accumulation** (`route_downstream`, public -- `erosion.py` reuses it
   directly): a single forward sweep over land nodes in elevation-descending order,
   accumulating a source quantity (precipitation, for `flow_accum`; eroded material, for
@@ -471,7 +488,10 @@ per drawn `is_river` node to its own `flow_target`. Which segments and how they 
 a `channel_width` past the small `RIVER_VISIBLE_MIN_WIDTH_M` creek floor is a candidate, not
 just the strongest few networks by mouth flow -- dropped along with the old node_density-scaled
 `RIVER_DRAW_MAX_NETWORKS_BY_NODE_DENSITY`/`RIVER_DRAW_MIN_FLOW_BY_NODE_DENSITY` network-rank
-cap. Color and line width are driven by two different, deliberately decoupled measures of "how
+cap. Downstream of a drawn segment, every `is_river` node is drawn too, to the river's mouth,
+at no less than the channel width upstream (`_extend_drawn_rivers_downstream`): a river's last
+cells before the coast are often new or reset cells whose channel is still narrower than the
+floor, and the line used to stop one to three nodes short of the sea (issue #503). Color and line width are driven by two different, deliberately decoupled measures of "how
 big":
 
 - **Color** is a *percentile rank* of `channel_width` among this same render's own currently-
@@ -656,9 +676,14 @@ this module evaporates, since climate.py runs *before* this module each step).
   balances), so this under-states calving from Greenland-like sheets. Ice afloat on the
   ocean outside the ice-age sea-ice cap calves. Eustasy reads only `glacier_depth` and lake
   depth, so every sink returns its water to the ocean's budget.
-- **Lakes freeze on cold ground only.** A standing lake freezes into the ice only where the
-  annual mean is below `FREEZE_POINT_C`. Rivers and snowfall over an ice cap on warm ground
-  still freeze (the `is_frozen` rule above), but a lake beside or under that ice stays water.
+- **Liquid water freezes on cold ground only.** A standing lake, a river crossing a node and
+  the water settling at a sink freeze only where the annual mean is below `FREEZE_POINT_C`
+  (`water_frozen` in `compute_hydrology`). Snowfall over an ice cap on warm ground still falls
+  as snow (the `is_frozen` rule above), but rivers and meltwater on that ice drain along the
+  ground, and a lake beside or under it stays water. Frozen in place, a river reaching a warm
+  ice node rebuilt it every step: a 36,000 m^3/s river held a single-node, 600 m ice plug at
+  +0.4C, the ice's own meltwater refroze there too, and frozen river ice outgrew snowfall
+  twofold (issue #503).
   Lakes balance in real units since #297, so a lake on warm ground under ice refills with
   runoff and meltwater every step. Frozen into the ice 1:1, it fed the ice about 60x faster
   than snowfall (in model units), which the old depth-squared basal melt and depth clip used
@@ -743,8 +768,9 @@ growth and erosion all feel it through fields they already read -- the cooling s
 existing per-node freeze (rivers stop, standing lakes turn to ice, precipitation falls as
 snow) across a much wider area, and `hydrology.compute_hydrology`'s `is_frozen` mask also
 picks up *any* node already carrying a real ice cap (`GLACIER_VISIBLE_DEPTH_M` of ice), so
-water and snowfall stay frozen on top of an ice sheet even on a step whose temperature briefly
-ticks above 0. Two further effects switch on
+snowfall stays snow on top of an ice sheet even on a step whose temperature briefly ticks
+above 0. Liquid water there freezes only below 0 (see *Liquid water freezes on cold ground
+only* above). Two further effects switch on
 in a deep glacial phase: hydrology lets ice pile up over freezing polar *ocean* nodes instead
 of calving at the coast (`hydrology.SEA_ICE_FORMATION_TEMP_C`, gated at intensity ≥
 `hydrology.ICE_AGE_SEA_ICE_MIN_INTENSITY`, with a little hysteresis for a cap that already
