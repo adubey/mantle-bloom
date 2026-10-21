@@ -290,3 +290,44 @@ After the third run, the unit tests caught a bug in the review fix to the breach
 - **Fix:** such a pit is now judged as the lake it joins, and pits join at equal levels too.
 
 The third run's numbers came from the buggy gate, so they're superseded. A fourth run (fix4, at the commit adding this note) is judged against Amendment 2's predictions, which are unchanged.
+
+## Results: fourth run (fix4 `307a90f`, the PR's final model)
+
+This compares against the second run's main arm, which is deterministic, and is judged
+against Amendment 2's predictions. The fix4 run ran alone.
+
+| Mean over 100 steps, unless noted | main `f9d3d2f` | fix4 `307a90f` | Prediction | Outcome |
+|---|---:|---:|---|---|
+| **Water reaching no outlet** | 53,819 m³/s | **6,008 m³/s (−89%)** | ≤ 50% of main | **met** |
+| Flow cycles per step | 1.5 | 0.0 | ≤ 0.1 | met |
+| Discharge into the ocean | 629,638 m³/s | 725,598 m³/s (+15%) | ≥ +5% | met |
+| Drawn river lines ending off the water | 20.6 | 4.7 (23%) | ≤ 50% | met |
+| Length-visible networks ending at `other` | 5.3 | 2.5 | | |
+| Warm single-node ice plugs | 2.8 | 1.5 | | |
+| Frozen river ice per step | 4,005 km³ | 3,887 km³ | | |
+| Visible lake nodes | 1,806 | 1,940 | | |
+| Glacier volume at 16.4 Myr | 7.92 M km³ | 3.80 M km³ | 2.0–4.5 M km³ | met |
+| Sea level at 16.4 Myr | −183.2 m | −174.4 m | | |
+| Glacier-ledger residual | 0 | 0 | closes | met |
+| Round-cap warnings | — | 0 | none | met |
+| Step time | 4.61 s | 5.49 s (1.19×) | ≤ 1.5× | met |
+| Peak RSS | 1,888 MB | 1,695 MB | ≤ 1.2× | met |
+
+**Water reaching no outlet, by 2 Myr window:**
+
+| Window | main | fix4 |
+|---|---:|---:|
+| 1 | 64,609 m³/s | 5,245 m³/s |
+| 2 | 50,007 m³/s | 5,656 m³/s |
+| 3 | 40,643 m³/s | 5,252 m³/s |
+| 4 | 45,594 m³/s | 6,456 m³/s |
+| 5 | 68,241 m³/s | 7,429 m³/s |
+
+**Every preregistered prediction is met.**
+
+**Changes from fix2:**
+
+- **More water reaches the sea.** Ocean discharge is 725.6k m³/s against fix2's 721.2k.
+- **The late rise in water reaching no outlet is smaller:** the last window is 7,429 m³/s, against fix2's 11,259.
+- **The overall mean is about the same:** 6,008 m³/s against 6,104.
+- **Steps are slower:** about 1.19× main, against fix2's 1.04×. The likely cause is the breach gate's per-pit Python walks (`_spill_exits` and the topological forwarding) and the resolver's sweep.
