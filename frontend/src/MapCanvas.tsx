@@ -286,7 +286,7 @@ export default function MapCanvas({
       for (let i = 0; i < pixels.length - 1; i++) {
         segLengths.push(Math.hypot(pixels[i + 1][0] - pixels[i][0], pixels[i + 1][1] - pixels[i][1]));
       }
-      const sorted = [...segLengths].sort((a, b) => a - b);
+      const sorted = segLengths.filter(Number.isFinite).sort((a, b) => a - b);
       const median = sorted[Math.floor(sorted.length / 2)] || 0;
       const breakThreshold = Math.max(median * SEGMENT_BREAK_FACTOR, 20 * (width / 1100));
 
@@ -294,6 +294,11 @@ export default function MapCanvas({
       let penDown = false;
       for (let i = 0; i < pixels.length; i++) {
         if (i > 0 && segLengths[i - 1] > breakThreshold) penDown = false;
+        // A far-side point on the globe (see ScreenProjector) lifts the pen too.
+        if (Number.isNaN(pixels[i][0])) {
+          penDown = false;
+          continue;
+        }
         if (!penDown) {
           ctx.moveTo(pixels[i][0], pixels[i][1]);
           penDown = true;

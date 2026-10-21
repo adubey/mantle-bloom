@@ -279,7 +279,19 @@ function eckert4(lat: number, lon: number): [number, number] {
   return [ECKERT4_C * lon * (1 + Math.cos(theta)), ECKERT4_C * Math.PI * Math.sin(theta)];
 }
 
+// The "globe" view (#497): orthographic, looking at display lat=0/lon=0 -- backend
+// projections.py's orthographic. Far-side points land inside the same disc as near ones, so
+// anything drawn client-side must skip them (see isFarSide and ScreenProjector).
+function orthographic(lat: number, lon: number): [number, number] {
+  return [Math.cos(lat) * Math.sin(lon), Math.sin(lat)];
+}
+
+export function isFarSide(projection: Projection, lat: number, lon: number): boolean {
+  return projection === "globe" && Math.cos(lat) * Math.cos(lon) < 0;
+}
+
 export function project(projection: Projection, lat: number, lon: number): [number, number] {
+  if (projection === "globe") return orthographic(lat, lon);
   return projection === "behrmann" ? behrmann(lat, lon) : eckert4(lat, lon);
 }
 
@@ -312,7 +324,15 @@ function inverseEckert4(x: number, y: number): [number, number] | null {
   return [Math.asin(sinLat), x / denom];
 }
 
+// Off the disc is null; on it, the near-side point (the far one is hidden behind it).
+function inverseOrthographic(x: number, y: number): [number, number] | null {
+  const r2 = x * x + y * y;
+  if (r2 > 1) return null;
+  return [Math.asin(y), Math.atan2(x, Math.sqrt(1 - r2))];
+}
+
 export function unproject(projection: Projection, x: number, y: number): [number, number] | null {
+  if (projection === "globe") return inverseOrthographic(x, y);
   return projection === "behrmann" ? inverseBehrmann(x, y) : inverseEckert4(x, y);
 }
 

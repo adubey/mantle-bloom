@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { fetchCrossSection, renderWorld } from "./api";
+import { fetchCrossSection } from "./api";
 import { advanceCrossSectionPosition, nearbyCrossSectionPositions } from "./crossSectionFrames";
-import { getRenderTransform, project, toPixels } from "./rotation";
+import { loadWorldMapPixels, paintGlobe } from "./globeTexture";
 
 const PLANET_RADIUS_KM = 6_371;
 const ARC_LENGTH_KM = 3_000;
@@ -13,6 +13,10 @@ const MAX_CACHED_SECTION_FRAMES = ARC_POSITION_COUNT;
 const PREFETCH_CONCURRENCY = 3;
 const PREFETCHED_FRAME_COUNT = MAX_CACHED_SECTION_FRAMES;
 const ARC_KEYBOARD_STEP = 2;
+const TILT_LIMIT_DEG = 90;
+const TILT_STEP_DEG = 0.25;
+const TILT_KEYBOARD_STEP_DEG = 1;
+const LOCATOR_SIZE = 260;
 
 interface FrameKey {
   worldRevision: number;
@@ -32,7 +36,6 @@ interface CachedFrame {
 
 const frameCache = new Map<string, CachedFrame>();
 const inFlightFrames = new Map<string, { signal: AbortSignal; promise: Promise<string> }>();
-let globeMapImage: { worldRevision: number; image: string } | null = null;
 let activeFrameKey: FrameKey | null = null;
 let cacheClock = 0;
 
@@ -288,10 +291,33 @@ function SectionPlaceholder({ width, height }: { width: number; height: number }
   );
 }
 
-function GlobeLocator({ planeAngleDeg, arcPosition, worldRevision }: { planeAngleDeg: number; arcPosition: number; worldRevision: number }) {
+function clampTilt(degrees: number): number {
+  const stepped = Math.round(degrees / TILT_STEP_DEG) * TILT_STEP_DEG;
+  return Math.max(-TILT_LIMIT_DEG, Math.min(TILT_LIMIT_DEG, stepped));
+}
+
+interface GlobeLocatorProps {
+  planeAngleDeg: number;
+  arcPosition: number;
+  worldRevision: number;
+  onPlaneAngleChange: (value: number) => void;
+  // The tilt under an in-progress drag (null when idle), held by the parent so its readout
+  // follows the drag.
+  previewTilt: number | null;
+  onPreviewTiltChange: (value: number | null) => void;
+}
+
+// Dragging the globe up or down tilts the great circle (#497, replacing the tilt slider):
+// moving the pointer by the globe's radius tilts it by one radian. The globe follows the
+// pointer, and the new tilt is committed (and its section frames fetched) on release.
+function GlobeLocator({
+  planeAngleDeg: committedTilt, arcPosition, worldRevision, onPlaneAngleChange, previewTilt, onPreviewTiltChange: setPreviewTilt,
+}: GlobeLocatorProps) {
   const [textureUrl, setTextureUrl] = useState<string | null>(null);
-  const centerX = 130;
-  const centerY = 130;
+  const drag = useRef<{ pointerId: number; startY: number; unitsPerPixel: number } | null>(null);
+  const planeAngleDeg = previewTilt ?? committedTilt;
+  const centerX = LOCATOR_SIZE / 2;
+  const centerY = LOCATOR_SIZE / 2;
   const radius = 106;
   const centerAngle = (2 * Math.PI * arcPosition) / ARC_POSITION_COUNT;
   const halfArcAngle = ARC_LENGTH_KM / (2 * PLANET_RADIUS_KM);
@@ -311,72 +337,81 @@ function GlobeLocator({ planeAngleDeg, arcPosition, worldRevision }: { planeAngl
 
   useEffect(() => {
     let cancelled = false;
-    const mapImage = globeMapImage?.worldRevision === worldRevision ? globeMapImage.image : null;
-    const loadMap = mapImage
-      ? Promise.resolve(mapImage)
-      : renderWorld("behrmann", "elevation", 720, 360).then((map) => {
-        const image = `data:image/png;base64,${map.image_base64}`;
-        globeMapImage = { worldRevision, image };
-        return image;
-      });
-    void loadMap.then((dataUrl) => {
-      const source = new Image();
-      source.onload = () => {
+    loadWorldMapPixels(worldRevision)
+      .then((map) => {
         if (cancelled) return;
         const canvas = document.createElement("canvas");
-        canvas.width = 260;
-        canvas.height = 260;
+        canvas.width = LOCATOR_SIZE;
+        canvas.height = LOCATOR_SIZE;
         const context = canvas.getContext("2d");
         if (!context) return;
-        const sourceCanvas = document.createElement("canvas");
-        sourceCanvas.width = source.width;
-        sourceCanvas.height = source.height;
-        const sourceContext = sourceCanvas.getContext("2d", { willReadFrequently: true });
-        if (!sourceContext) return;
-        sourceContext.drawImage(source, 0, 0);
-        const mapPixels = sourceContext.getImageData(0, 0, source.width, source.height).data;
-        const transform = getRenderTransform("behrmann", source.width, source.height);
         const pixels = context.createImageData(canvas.width, canvas.height);
-        const [center, right, up] = locatorBasis(planeAngleDeg, centerAngle);
-        for (let y = 0; y < canvas.height; y++) {
-          for (let x = 0; x < canvas.width; x++) {
-            const sx = (x - centerX) / radius;
-            const sy = (centerY - y) / radius;
-            const squared = sx * sx + sy * sy;
-            if (squared > 1) continue;
-            const depth = Math.sqrt(1 - squared);
-            const vector: Vec3 = [
-              right[0] * sx + up[0] * sy + center[0] * depth,
-              right[1] * sx + up[1] * sy + center[1] * depth,
-              right[2] * sx + up[2] * sy + center[2] * depth,
-            ];
-            const lat = Math.asin(Math.max(-1, Math.min(1, vector[2])));
-            const lon = Math.atan2(vector[1], vector[0]);
-            const [mapX, mapY] = project("behrmann", lat, lon);
-            const [imageX, imageY] = toPixels(transform, mapX, mapY);
-            const sourceIndex = (Math.max(0, Math.min(source.height - 1, Math.round(imageY))) * source.width + Math.max(0, Math.min(source.width - 1, Math.round(imageX)))) * 4;
-            const targetIndex = (y * canvas.width + x) * 4;
-            const shade = 0.72 + 0.28 * depth;
-            pixels.data[targetIndex] = mapPixels[sourceIndex] * shade;
-            pixels.data[targetIndex + 1] = mapPixels[sourceIndex + 1] * shade;
-            pixels.data[targetIndex + 2] = mapPixels[sourceIndex + 2] * shade;
-            pixels.data[targetIndex + 3] = 255;
-          }
-        }
+        paintGlobe(map, locatorBasis(planeAngleDeg, centerAngle), pixels, centerX, centerY, radius);
         context.putImageData(pixels, 0, 0);
         setTextureUrl(canvas.toDataURL("image/png"));
-      };
-      source.src = dataUrl;
-    }).catch(() => setTextureUrl(null));
+      })
+      .catch(() => {
+        if (!cancelled) setTextureUrl(null);
+      });
     return () => { cancelled = true; };
-  }, [worldRevision, planeAngleDeg, arcPosition, centerAngle]);
+  }, [worldRevision, planeAngleDeg, centerAngle, centerX, centerY]);
+
+  const tiltAt = (clientY: number, startY: number, unitsPerPixel: number) =>
+    clampTilt(committedTilt + ((clientY - startY) * unitsPerPixel * 180) / (Math.PI * radius));
+
+  const onPointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
+    if (event.button !== 0) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const rect = event.currentTarget.getBoundingClientRect();
+    drag.current = { pointerId: event.pointerId, startY: event.clientY, unitsPerPixel: LOCATOR_SIZE / Math.max(1, rect.height) };
+  };
+
+  // Dragging down brings the north into view, as when grabbing a real globe.
+  const onPointerMove = (event: React.PointerEvent<SVGSVGElement>) => {
+    const current = drag.current;
+    if (!current || current.pointerId !== event.pointerId) return;
+    setPreviewTilt(tiltAt(event.clientY, current.startY, current.unitsPerPixel));
+  };
+
+  const endDrag = (event: React.PointerEvent<SVGSVGElement>) => {
+    const current = drag.current;
+    if (!current || current.pointerId !== event.pointerId) return;
+    drag.current = null;
+    setPreviewTilt(null);
+    const tilt = tiltAt(event.clientY, current.startY, current.unitsPerPixel);
+    if (event.type === "pointerup" && tilt !== committedTilt) onPlaneAngleChange(tilt);
+  };
+
+  const onKeyDown = (event: React.KeyboardEvent<SVGSVGElement>) => {
+    // Up looks further north, as on the sidebar's globe selector (and as dragging down does).
+    const delta = { ArrowUp: TILT_KEYBOARD_STEP_DEG, ArrowDown: -TILT_KEYBOARD_STEP_DEG }[event.key];
+    if (delta === undefined) return;
+    event.preventDefault();
+    const tilt = clampTilt(committedTilt + delta);
+    if (tilt !== committedTilt) onPlaneAngleChange(tilt);
+  };
 
   return (
     <svg
-      role="img"
-      aria-label={`Globe locator, plane orientation ${planeAngleDeg} degrees, arc center at position ${arcPosition + 1} of ${ARC_POSITION_COUNT}`}
-      viewBox="0 0 260 260"
-      style={{ width: "100%", maxWidth: 260, height: "auto", display: "block", alignSelf: "center" }}
+      role="slider"
+      tabIndex={0}
+      className="globe-control"
+      aria-label={`Globe locator, arc center at position ${arcPosition + 1} of ${ARC_POSITION_COUNT}. Drag up or down, or use the arrow keys, to tilt the great circle`}
+      aria-orientation="vertical"
+      aria-valuemin={-TILT_LIMIT_DEG}
+      aria-valuemax={TILT_LIMIT_DEG}
+      aria-valuenow={planeAngleDeg}
+      aria-valuetext={`Great-circle tilt ${planeAngleDeg} degrees`}
+      viewBox={`0 0 ${LOCATOR_SIZE} ${LOCATOR_SIZE}`}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
+      onKeyDown={onKeyDown}
+      style={{
+        width: "100%", maxWidth: LOCATOR_SIZE, height: "auto", display: "block", alignSelf: "center",
+        cursor: previewTilt === null ? "grab" : "grabbing", touchAction: "none",
+      }}
     >
       <defs>
         <clipPath id="cross-section-globe-clip">
@@ -384,7 +419,7 @@ function GlobeLocator({ planeAngleDeg, arcPosition, worldRevision }: { planeAngl
         </clipPath>
       </defs>
       <circle cx={centerX} cy={centerY} r={radius} fill="#122239" fillOpacity="0.82" />
-      {textureUrl && <image href={textureUrl} x="0" y="0" width="260" height="260" clipPath="url(#cross-section-globe-clip)" />}
+      {textureUrl && <image href={textureUrl} x="0" y="0" width={LOCATOR_SIZE} height={LOCATOR_SIZE} clipPath="url(#cross-section-globe-clip)" />}
       <g clipPath="url(#cross-section-globe-clip)" fill="none" strokeLinecap="round">
         {wholeCircle.map((segment, index) => (
           <path
@@ -442,6 +477,7 @@ export default function MantleCrossSection({
 }: Props) {
   const centerDegrees = (360 * arcPosition) / ARC_POSITION_COUNT;
   const [zoom, setZoom] = useState(1);
+  const [previewTilt, setPreviewTilt] = useState<number | null>(null);
   const [displayedFrame, setDisplayedFrame] = useState<{ key: string; dataUrl: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [prefetchProgress, setPrefetchProgress] = useState<number | null>(null);
@@ -502,6 +538,9 @@ export default function MantleCrossSection({
               setPrefetchProgress(completed);
             } catch (error) {
               if (controller.signal.aborted) return;
+              // Aborting also ends the selected arc's own load if it shares this controller, so
+              // clear its hourglass here; the message says why (#497).
+              setLoading(false);
               if (isNotImplementedError(error)) {
                 setLoadMessage("The cross-section route is reserved, but this backend does not render section images yet.");
                 controller.abort();
@@ -541,9 +580,13 @@ export default function MantleCrossSection({
     setLoading(cached === null);
     setLoadMessage(null);
     let isCurrentSelection = true;
-    const controller = scopeControllerRef.current;
+    // Once a prefetch error has aborted the scope's controller, loads on it end silently: give
+    // this arc its own, or its hourglass would never clear (#497).
+    const scopeController = scopeControllerRef.current;
+    const controller = scopeController && !scopeController.signal.aborted ? scopeController : new AbortController();
+    const ownsController = controller !== scopeController;
 
-    if (!cached && controller) {
+    if (!cached) {
       void loadFrame(activeKey, controller.signal)
         .then((image) => {
           if (!isCurrentSelection || controller.signal.aborted) return;
@@ -561,6 +604,7 @@ export default function MantleCrossSection({
 
     return () => {
       isCurrentSelection = false;
+      if (ownsController) controller.abort();
     };
   }, [worldRevision, planeAngleDeg, arcPosition, width, height, showBoundaries, showFaults, currentCacheKey]);
 
@@ -602,6 +646,25 @@ export default function MantleCrossSection({
           <div aria-hidden="true" style={{ display: "flex", minHeight: 0, flex: 1, width: "100%" }}>
             {!imageDataUrl && <SectionPlaceholder width={width} height={height} />}
           </div>
+          {/* The selected arc's section is still being computed (#497). */}
+          {!imageDataUrl && loading && (
+            <div
+              role="img"
+              aria-label="Computing the lithosphere section"
+              title="Computing the lithosphere section"
+              style={{
+                position: "absolute",
+                inset: 0,
+                display: "grid",
+                placeItems: "center",
+                background: "rgba(14, 20, 34, 0.45)",
+                fontSize: 44,
+                pointerEvents: "none",
+              }}
+            >
+              <span className="hourglass-turning" aria-hidden="true">⏳</span>
+            </div>
+          )}
           {imageDataUrl && (
             <img
               src={imageDataUrl}
@@ -657,34 +720,25 @@ export default function MantleCrossSection({
 
       <aside style={{ minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", gap: 7, borderLeft: "1px solid #303a4d", paddingLeft: 12 }}>
         <h3 style={{ margin: "1px 0 0", fontSize: 13, fontWeight: 600 }}>Globe locator</h3>
-        <GlobeLocator planeAngleDeg={planeAngleDeg} arcPosition={arcPosition} worldRevision={worldRevision} />
+        <GlobeLocator
+          planeAngleDeg={planeAngleDeg}
+          arcPosition={arcPosition}
+          worldRevision={worldRevision}
+          onPlaneAngleChange={onPlaneAngleChange}
+          previewTilt={previewTilt}
+          onPreviewTiltChange={setPreviewTilt}
+        />
         <div style={{ color: "#aeb8ca", fontSize: 10, textAlign: "center", marginTop: -3 }}>
-          <div style={{ color: "#91a0b8" }}>The map rotates under the fixed center as the arc moves</div>
-          <div style={{ color: "#61ded0" }}>The highlighted cut is 3,000 km long</div>
+          <div style={{ color: "#91a0b8" }}>Drag the globe up or down to tilt the great circle</div>
+          <div>
+            Great-circle tilt{" "}
+            <span style={{ color: "#b8c3d3", fontVariantNumeric: "tabular-nums" }}>{previewTilt ?? planeAngleDeg}°</span>
+            {" · "}
+            <span style={{ color: "#61ded0" }}>3,000 km cut</span>
+          </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 8, marginTop: 2 }}>
-          <div>
-            <label style={{ display: "block", fontSize: 10 }}>
-              <span style={{ display: "flex", justifyContent: "space-between", gap: 4 }}>
-                <span>Great-circle tilt</span>
-                <span style={{ color: "#b8c3d3", fontVariantNumeric: "tabular-nums" }}>{planeAngleDeg}°</span>
-              </span>
-              <input
-                type="range"
-                min={-90}
-                max={90}
-                step={0.25}
-                value={planeAngleDeg}
-                onChange={(event) => onPlaneAngleChange(Number(event.target.value))}
-                aria-label="Great-circle tilt from equator to pole-crossing plane"
-                style={{ width: "100%", margin: "3px 0 0", accentColor: "#8797af" }}
-              />
-            </label>
-            <div style={{ color: "#7f8ba0", fontSize: 8, display: "flex", justifyContent: "space-between" }}>
-              <span>Pole</span><span>Equator</span><span>Pole</span>
-            </div>
-          </div>
+        <div style={{ marginTop: 2 }}>
           <div>
             <label style={{ display: "block", fontSize: 10 }}>
               <span style={{ display: "flex", justifyContent: "space-between", gap: 4 }}>

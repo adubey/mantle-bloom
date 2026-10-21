@@ -21,6 +21,7 @@ import base64
 import functools
 import io
 from collections.abc import Callable
+from contextvars import ContextVar
 from fractions import Fraction
 
 import av
@@ -270,6 +271,16 @@ SOIL_OCEAN_BACKDROP_RGB = np.array([18, 28, 55], dtype=float)
 # look proportionally thinner -- see render_png's `px` scale factor.
 REFERENCE_WIDTH_PX = 1100
 PADDING_PX = 20
+
+# Multiplies every line width and marker size (not padding or the cell blur). The globe draws
+# its Behrmann source map wider than the image it returns and shrinks strokes back by this
+# much, so its lines are no thicker than a flat map's (#497).
+_STROKE_SCALE: ContextVar[float] = ContextVar("_STROKE_SCALE", default=1.0)
+
+
+def _stroke_scale(width: int) -> float:
+    """Line-width/marker multiplier for a `width`-pixel render (see REFERENCE_WIDTH_PX)."""
+    return float(width / REFERENCE_WIDTH_PX * _STROKE_SCALE.get())
 POLE_RADIUS_PX = 5
 ARROWHEAD_LENGTH_PX = 7
 NODE_DOT_RADIUS_PX = 1.6
@@ -1198,6 +1209,18 @@ def _fit_view(all_xy: np.ndarray, width: int, height: int, padding_px: float) ->
     return scale, offset_x, offset_y
 
 
+@functools.lru_cache(maxsize=None)
+def _sphere_extent(projection: str) -> np.ndarray:
+    """The full sphere's projected bounding box, `[[min_x, min_y], [max_x, max_y]]`, sampled on
+    the same 1-degree lat/lon lattice rotation.ts's computeExtent uses, so a fit to it matches
+    the frontend's render transform. A grid's cell centres stop half a cell short of the poles
+    and the antimeridian, so fitting them instead left climate views a few pixels off what the
+    frontend unprojects clicks with (#497)."""
+    lat, lon = np.meshgrid(np.radians(np.linspace(-90.0, 90.0, 181)), np.radians(np.linspace(-180.0, 180.0, 361)))
+    x, y = projections.project(projection, lat, lon)
+    return np.array([[x.min(), y.min()], [x.max(), y.max()]])
+
+
 def _fit_and_project_sphere(
     flat_xyz: np.ndarray, projection: str, view_rotation: np.ndarray, width: int, height: int, padding_px: float,
 ) -> tuple[np.ndarray, np.ndarray, float, float, float]:
@@ -1208,10 +1231,9 @@ def _fit_and_project_sphere(
     grid and `_project_healpix_grid`'s flat (npix,) HEALPix point cloud, so every view places
     the sphere identically and never rescales or re-centers relative to one another when the
     user switches views."""
-    bbox_xy = _project_points(projection, flat_xyz)
     flat_xy = _project_points(projection, _rotate(flat_xyz, view_rotation))
 
-    scale, offset_x, offset_y = _fit_view(bbox_xy, width, height, padding_px)
+    scale, offset_x, offset_y = _fit_view(_sphere_extent(projection), width, height, padding_px)
 
     centers = _to_pixels(scale, offset_x, offset_y, flat_xy)
     return centers, flat_xy, scale, offset_x, offset_y
@@ -1643,8 +1665,8 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
     grid and resampled nearest-cell onto this HEALPix grid's cells here. A separate path from
     the plate-tectonics views below since both data sources cover the whole sphere per-cell,
     structurally unlike the render grid's ragged lattice."""
-    pixel_scale = width / REFERENCE_WIDTH_PX
-    padding_px = PADDING_PX * pixel_scale
+    pixel_scale = _stroke_scale(width)
+    padding_px = PADDING_PX * width / REFERENCE_WIDTH_PX
     pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
 
     atmosphere = world.atmosphere_cfd_state
@@ -1784,8 +1806,8 @@ def _encode_biome_cells(
     """Fills the biome grid's cells with `colors`, blurs them (CELL_BLUR_RADIUS_PX), draws the
     rivers on top, and carries each cell's class `id_code` in alpha (see COMBINED_LAKE_ID_CODE's
     comment) -- the shared output of the Biome and Combined views."""
-    pixel_scale = width / REFERENCE_WIDTH_PX
-    padding_px = PADDING_PX * pixel_scale
+    pixel_scale = _stroke_scale(width)
+    padding_px = PADDING_PX * width / REFERENCE_WIDTH_PX
     pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
     lat_deg, lon_deg, world_xyz = fields[:3]
     cell_alpha = (255 - id_code).astype(np.uint8)
@@ -1800,7 +1822,7 @@ def _encode_biome_cells(
     alpha_buf = np.full((height, width, 1), 255, dtype=np.uint8)
     _fill_rects(alpha_buf, centers, half_w, half_h, cell_alpha.reshape(-1, 1))
 
-    image = Image.fromarray(pixels, mode="RGB").filter(ImageFilter.GaussianBlur(radius=CELL_BLUR_RADIUS_PX * pixel_scale))
+    image = Image.fromarray(pixels, mode="RGB").filter(ImageFilter.GaussianBlur(radius=CELL_BLUR_RADIUS_PX * width / REFERENCE_WIDTH_PX))
     image = _draw_rivers(
         image, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation,
         hide_minor_networks=True,
@@ -1970,7 +1992,7 @@ def _render_resource_view(world: World, projection: str, view: str, width: int, 
         # temperature/humidity/precipitation already have -- resources' own backdrop already
         # distinguishes land/ocean directly, so it doesn't need this.
         draw = ImageDraw.Draw(image)
-        _draw_coastline(draw, world, projection, scale, offset_x, offset_y, width / REFERENCE_WIDTH_PX, view_rotation)
+        _draw_coastline(draw, world, projection, scale, offset_x, offset_y, _stroke_scale(width), view_rotation)
 
     return _encode_image(image)
 
@@ -2051,8 +2073,8 @@ class _DotOverlayCanvas:
     ) -> None:
         xy, elev, _owner, _lake, _glacier, _volcano, _is_sea, half_w, half_h, _hillshade = grid
         self.world, self.projection, self.view_rotation = world, projection, view_rotation
-        self.pixel_scale = width / REFERENCE_WIDTH_PX
-        padding_px = PADDING_PX * self.pixel_scale
+        self.pixel_scale = _stroke_scale(width)
+        padding_px = PADDING_PX * width / REFERENCE_WIDTH_PX
         all_xy = np.concatenate([xy, *overlay_xy], axis=0)
         self.scale, self.offset_x, self.offset_y = _fit_view(all_xy, width, height, padding_px)
         self.pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
@@ -2201,8 +2223,8 @@ def _render_resampled_view(
     biome_grid_dimensions) with `cell_colors(flat_xyz)`, given the cells' un-rotated
     positions, and overlays the coastline for orientation. `cell_colors` returning None
     (a world with no plates) draws the plain background."""
-    pixel_scale = width / REFERENCE_WIDTH_PX
-    padding_px = PADDING_PX * pixel_scale
+    pixel_scale = _stroke_scale(width)
+    padding_px = PADDING_PX * width / REFERENCE_WIDTH_PX
     pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
 
     grid_h, grid_w = biome_grid_dimensions(world.climate_density)
@@ -2586,7 +2608,7 @@ def _draw_coastline(
         draw.line([(x1, y1), (x2, y2)], fill=COASTLINE_COLOR_RGB, width=line_width_px)
 
 
-def render_png(  # noqa: C901
+def render_png(
     world: World,
     projection: str,
     view: str,
@@ -2607,8 +2629,95 @@ def render_png(  # noqa: C901
     (an ordinary render pays no extra cost for them)."""
     if view_rotation is None:
         view_rotation = np.eye(3)
-    pixel_scale = width / REFERENCE_WIDTH_PX
-    padding_px = PADDING_PX * pixel_scale
+    if projection == projections.GLOBE:
+        return _render_globe(world, view, width, height, view_rotation, show_mountains, show_plains_plateaus)
+    return _render_map_png(world, projection, view, width, height, view_rotation, show_mountains, show_plains_plateaus)
+
+
+def _globe_transform(width: int, height: int) -> tuple[float, float, float]:
+    """`(scale, offset_x, offset_y)` placing the unit disc in a `width`x`height` image -- the
+    same bounding-box fit every other projection gets, which rotation.ts's getRenderTransform
+    reproduces client-side."""
+    padding_px = PADDING_PX * width / REFERENCE_WIDTH_PX
+    return _fit_view(_sphere_extent(projections.GLOBE), width, height, padding_px)
+
+
+def _globe_source_size(width: int, height: int) -> tuple[int, int]:
+    """The Behrmann map `_render_globe` resamples: wide enough that its x scale (scale_f *
+    cos_phi0) is the globe's radius in pixels, capped at twice the requested size. Its padding
+    grows with its width, so solve width = 2 pi radius_px + 2 * PADDING_PX * width / REFERENCE_WIDTH_PX."""
+    radius_px = max(_globe_transform(width, height)[0], 1.0)
+    cos_phi0 = np.cos(projections.BEHRMANN_STANDARD_PARALLEL)
+    map_width = int(np.ceil(2 * np.pi * radius_px / (1 - 2 * PADDING_PX / REFERENCE_WIDTH_PX)))
+    map_width = min(map_width, 2 * max(width, height))
+    map_padding_px = PADDING_PX * map_width / REFERENCE_WIDTH_PX
+    map_height = int(np.ceil((map_width - 2 * map_padding_px) / (np.pi * cos_phi0 * cos_phi0) + 2 * map_padding_px))
+    return map_width, map_height
+
+
+def _render_globe(
+    world: World,
+    view: str,
+    width: int,
+    height: int,
+    view_rotation: np.ndarray,
+    show_mountains: bool,
+    show_plains_plateaus: bool,
+) -> bytes:
+    """The "globe" projection (#497): render the view in Behrmann, then resample it onto the
+    orthographic disc of the facing hemisphere, so every view (and the Record path) gets a
+    globe without each renderer learning to hide the far side.
+
+    Behrmann's y is sin(lat), exactly the orthographic y, so only x is resampled. The map is
+    rendered at the width that matches the globe's pixels per radian of longitude at the
+    disc's centre, so the middle of the globe is no blurrier than a flat map; its strokes are
+    scaled back down (`_STROKE_SCALE`) so lines come out as thick as on a flat map of the
+    requested size. Sampling is nearest-neighbour so the Combined/Biome views' alpha-encoded
+    biome ids survive."""
+    scale, offset_x, offset_y = _globe_transform(width, height)
+    cos_phi0 = np.cos(projections.BEHRMANN_STANDARD_PARALLEL)
+    map_width, map_height = _globe_source_size(width, height)
+    map_padding_px = PADDING_PX * map_width / REFERENCE_WIDTH_PX
+    # At the disc's centre one map pixel spans one globe pixel across and cos^2(phi0) of one
+    # down; scaling strokes by the geometric mean of the two keeps them at a flat map's weight.
+    stroke_token = _STROKE_SCALE.set(float(width / (map_width * cos_phi0)))
+    try:
+        flat = Image.open(io.BytesIO(_render_map_png(
+            world, "behrmann", view, map_width, map_height, view_rotation, show_mountains, show_plains_plateaus,
+        )))
+    finally:
+        _STROKE_SCALE.reset(stroke_token)
+    source = np.asarray(flat)
+    map_scale, map_offset_x, map_offset_y = _fit_view(_sphere_extent("behrmann"), map_width, map_height, map_padding_px)
+
+    xs = (np.arange(width) + 0.5 - offset_x) / scale
+    ys = (offset_y - (np.arange(height) + 0.5)) / scale
+    x, y = np.meshgrid(xs, ys)
+    on_disc = x * x + y * y <= 1.0
+    depth = np.sqrt(np.clip(1.0 - x * x - y * y, 0.0, 1.0))
+    lon = np.arctan2(x, depth)
+    map_x = np.clip(np.floor(map_scale * lon * cos_phi0 + map_offset_x), 0, map_width - 1).astype(np.intp)
+    map_y = np.clip(np.floor(map_offset_y - map_scale * y / cos_phi0), 0, map_height - 1).astype(np.intp)
+
+    # The map's own corner is its background, alpha included (Combined/Biome encode ids there).
+    out = np.broadcast_to(source[0, 0], (height, width) + source.shape[2:]).copy()
+    out[on_disc] = source[map_y[on_disc], map_x[on_disc]]
+    return _encode_image(Image.fromarray(out, mode=flat.mode))
+
+
+def _render_map_png(  # noqa: C901
+    world: World,
+    projection: str,
+    view: str,
+    width: int,
+    height: int,
+    view_rotation: np.ndarray,
+    show_mountains: bool = False,
+    show_plains_plateaus: bool = False,
+) -> bytes:
+    """render_png for the flat (one-to-one) projections."""
+    pixel_scale = _stroke_scale(width)
+    padding_px = PADDING_PX * width / REFERENCE_WIDTH_PX
     blank = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
 
     if view in CLIMATE_VIEWS:
@@ -2761,7 +2870,7 @@ def render_png(  # noqa: C901
         # the hypsometric raster reads as a continuous surface, so softening the cell-grid
         # jaggies -- before rivers/graticule go on top -- makes coastlines and contours match
         # what "Elevation & Biome" shows. "plates" stays un-blurred: it's a categorical mosaic.
-        image = image.filter(ImageFilter.GaussianBlur(radius=CELL_BLUR_RADIUS_PX * pixel_scale))
+        image = image.filter(ImageFilter.GaussianBlur(radius=CELL_BLUR_RADIUS_PX * width / REFERENCE_WIDTH_PX))
     image = _draw_rivers(
         image, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation,
         hide_minor_networks=view == "elevation",

@@ -1,10 +1,14 @@
 import type { Projection } from "./api";
 import type { Mat3, RenderTransform, Vec3 } from "./rotation";
 import {
-  getRenderTransform, latLonToXyz, matApply, matTranspose, project, toPixels, unproject, wrapLongitudeNear, xyzToLatLon,
+  getRenderTransform, isFarSide, latLonToXyz, matApply, matTranspose, project, toPixels, unproject, wrapLongitudeNear, xyzToLatLon,
 } from "./rotation";
 
 export type Pixel = [number, number];
+
+// Where a far-side point goes in the globe projection: canvas calls ignore non-finite
+// coordinates, so a hidden dot or edge is simply not drawn.
+const HIDDEN: Pixel = [NaN, NaN];
 
 // Same "skip segments longer than N times the median" seam-break technique as backend
 // render_image._stroke_robust_loop.
@@ -25,6 +29,7 @@ export class ScreenProjector {
   }
 
   private toScreen(lat: number, lon: number): Pixel {
+    if (isFarSide(this.projection, lat, lon)) return HIDDEN;
     const [x, y] = project(this.projection, lat, lon);
     return toPixels(this.transform, x, y);
   }
@@ -43,7 +48,12 @@ export class ScreenProjector {
   segment(a: Vec3, b: Vec3): [Pixel, Pixel] {
     const [latA, lonA] = xyzToLatLon(matApply(this.rotation, a));
     const [latB, rawLonB] = xyzToLatLon(matApply(this.rotation, b));
-    return [this.toScreen(latA, lonA), this.toScreen(latB, wrapLongitudeNear(rawLonB, lonA))];
+    const start = this.toScreen(latA, lonA);
+    const end = this.toScreen(latB, wrapLongitudeNear(rawLonB, lonA));
+    // Both ends hidden if either is: a batched path would otherwise join the visible end to
+    // the previous edge.
+    if (Number.isNaN(start[0]) || Number.isNaN(end[0])) return [HIDDEN, HIDDEN];
+    return [start, end];
   }
 
   // A closed loop, unwrapping every point's longitude relative to the loop's own (rotated)
@@ -98,7 +108,7 @@ export function strokeRobustLoop(
     const next = pixels[(i + 1) % n];
     segLengths.push(Math.hypot(next[0] - pixels[i][0], next[1] - pixels[i][1]));
   }
-  const sorted = [...segLengths].sort((a, b) => a - b);
+  const sorted = segLengths.filter(Number.isFinite).sort((a, b) => a - b);
   const median = sorted[Math.floor(sorted.length / 2)] || 0;
   const breakThreshold = Math.max(median * SEGMENT_BREAK_FACTOR, 20 * (canvasWidth / 1100));
   ctx.strokeStyle = color;

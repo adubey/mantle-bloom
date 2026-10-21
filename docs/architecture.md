@@ -25,8 +25,10 @@
   share `InspectorCanvas.tsx` (the focusable canvas, rotate-drag, click-to-select and
   Tab/Shift+Tab cycling), and with `MapCanvas.tsx` they share `screenProjector.ts`, which
   projects true world points through the live view rotation. The mantle cross-section
-  (`MantleCrossSection.tsx`) draws a terrain-textured globe locator and controls; its selected
-  slice and optional boundary/fault markers are sampled and rendered by `cross_section.py`.
+  (`MantleCrossSection.tsx`) draws a terrain-textured globe locator, dragged up or down to tilt
+  the great circle, and controls; its selected slice and optional boundary/fault markers are
+  sampled and rendered by `cross_section.py`. The locator and the sidebar's map-centre globe
+  selector (`GlobeSelector.tsx`) share `globeTexture.ts`.
 
 ## Request flow
 
