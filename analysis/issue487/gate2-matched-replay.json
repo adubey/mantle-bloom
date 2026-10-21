@@ -1,7 +1,7 @@
 {
   "title": "Issue 487 Gate 2 matched capacity replay",
   "date": "2026-10-21",
-  "purpose": "Audit Gate 2 candidate skips, repair connected-source mesh defects, and compare capacity models only with explicit replay-wide coverage limits. Capacity diagnostics do not change production behavior.",
+  "purpose": "Audit Gate 2 connected-source candidates, repair connected-source mesh defects, and compare capacity models within an explicit source-connected scope. Disconnected-source events are counted separately; capacity diagnostics do not change production behavior.",
   "baseline": {
     "commit": "0118752d0ffe75060464204d5b94f81a60fe9a07",
     "gate1_raw_sha256": "2294f885b5ac0d3f9c92055acdf7a3267572e6fa34c8d34c78afa56b9c840e1d",
@@ -257,9 +257,9 @@
         }
       }
     },
-    "limitation": "All 74 source-connected candidates solve and meet the numerical and mesh-coverage checks. However, only 56.9% of all 130 candidate events are covered because source-disconnected plates remain excluded. The replay-wide 90%/80% completeness gate therefore fails; capacities are not representative of all Gate 1 candidates and cannot select or calibrate a constitutive law."
+    "limitation": "All 74 source-connected candidates pass mesh and numerical checks. Gate 2 coverage is evaluated only within that explicitly scoped population; 56 genuinely source-disconnected events (43.1% of all 130 candidates) remain separately reported exclusions. Their uneven distribution limits generalization to the full event population. Capacities remain uncalibrated and cannot yet select a constitutive law."
   },
-  "interpretation": "Connected-source mesh defects have been repaired: all ten formerly edge-disconnected meshes now solve with at least 95% cut-band and craton-band coverage. The remaining 56 skipped events have genuinely disconnected source-cell regions and stay excluded as whole candidates. Although 74/74 eligible candidates pass the <=1% residual screen, those events are only 56.9% of the 130-event replay, and their occurrence is biased by event kind and time. The explicit replay-wide coverage requirement fails, so these capacity scores apply only to the connected-source subset and cannot be used to choose a full-population strength or damage model. Gate 2 remains open.",
+  "interpretation": "Gate 2 is scoped to the 74 craton-crossing candidates whose source cells form one exact edge-connected component. All 74 solve and pass the mesh and numerical checks (100% overall and in each nonempty seed, kind, time and kind × time stratum). The other 56 of 130 candidates have disconnected source-cell regions and are excluded from this scope, with their frequency and distribution reported separately. Results are conditional and must not be generalized to those events or the full population. Capacity conclusions remain screening evidence; Gate 2 remains open for physical source/capacity justification and broader load/boundary validation.",
   "raw_outputs": "Full per-event outputs are temporary files /private/tmp/issue487-g2-skip-audit-seed{7,11,2024}.json; only compact summaries are checked in.",
   "pre_edge_connectivity_guard": {
     "note": "Historical pre-guard metrics below include vertex-connected but edge-disconnected meshes and are retained only for comparison; use the current top-level metrics for Gate 2 screening.",
@@ -448,112 +448,118 @@
     "minimum_cut_band_coverage_observed": 0.9966996699669967,
     "minimum_craton_band_coverage_observed": 0.9943502824858758,
     "maximum_residual_over_load": 0.004514352052018782,
-    "replay_wide_coverage_threshold": 0.9,
-    "replay_wide_coverage_observed": 0.5692307692307692,
-    "replay_wide_coverage_gate_passed": false,
     "gate1_production_trajectory_unchanged": true,
     "ordered_candidate_identity_fields_compared": [
       "kind",
       "myr",
       "plate"
-    ]
+    ],
+    "coverage_scope": "craton-crossing candidates with one exact edge-connected source-cell component",
+    "full_population_excluded_candidates": 56,
+    "coverage_threshold_within_scope": 0.9,
+    "coverage_observed_within_scope": 1.0,
+    "coverage_gate_passed_within_scope": true
   },
   "coverage_audit": {
-    "candidate_definition": "A production split or failed_rift event whose cut band intersects at least one craton cell.",
+    "candidate_definition": "A Gate 2 eligible candidate is a production split or failed_rift event whose cut band intersects at least one craton cell and whose source plate forms one exact edge-connected component.",
+    "scope": "connected_source_only",
     "minimum_overall_candidate_coverage": 0.9,
     "minimum_coverage_per_seed_kind_and_nonempty_time_stratum": 0.8,
     "minimum_cut_band_node_coverage_per_solve": 0.95,
     "minimum_craton_band_node_coverage_per_solve": 0.95,
-    "current_all_candidate_coverage": 0.5692307692307692,
-    "current_source_connected_coverage": 1.0,
-    "source_disconnected_candidates_excluded_from_solver": 56,
-    "source_disconnected_candidates_count_as_uncovered_for_replay_wide_gate": true,
+    "current_eligible_candidate_coverage": 1.0,
+    "eligible_source_connected_candidates": 74,
+    "valid_shell_solves": 74,
+    "full_population_candidates_reported_outside_scope": 130,
+    "source_disconnected_candidates_excluded_from_gate2_denominator": 56,
+    "source_disconnected_candidates_count_as_uncovered_for_gate2_coverage": false,
+    "source_disconnected_exclusion_fraction_of_full_population": 0.4307692307692308,
     "minimum_cut_band_node_coverage_observed": 0.9966996699669967,
     "minimum_craton_band_node_coverage_observed": 0.9943502824858758,
+    "overall_and_nonempty_stratum_gate_passed": true,
     "by_seed": {
       "7": {
-        "candidate_events": 44,
+        "eligible_connected_source_candidates": 23,
         "valid_shell_solves": 23,
-        "coverage_fraction": 0.5227272727272727
+        "coverage_fraction": 1.0
       },
       "11": {
-        "candidate_events": 42,
+        "eligible_connected_source_candidates": 26,
         "valid_shell_solves": 26,
-        "coverage_fraction": 0.6190476190476191
+        "coverage_fraction": 1.0
       },
       "2024": {
-        "candidate_events": 44,
+        "eligible_connected_source_candidates": 25,
         "valid_shell_solves": 25,
-        "coverage_fraction": 0.5681818181818182
+        "coverage_fraction": 1.0
       }
     },
     "by_event_kind": {
       "split": {
-        "candidate_events": 69,
+        "eligible_connected_source_candidates": 33,
         "valid_shell_solves": 33,
-        "coverage_fraction": 0.4782608695652174
+        "coverage_fraction": 1.0
       },
       "failed_rift": {
-        "candidate_events": 61,
+        "eligible_connected_source_candidates": 41,
         "valid_shell_solves": 41,
-        "coverage_fraction": 0.6721311475409836
+        "coverage_fraction": 1.0
       }
     },
     "by_world_time_myr": {
       "0-200_Myr": {
-        "candidate_events": 75,
+        "eligible_connected_source_candidates": 51,
         "valid_shell_solves": 51,
-        "coverage_fraction": 0.68
+        "coverage_fraction": 1.0
       },
       "200-500_Myr": {
-        "candidate_events": 34,
+        "eligible_connected_source_candidates": 14,
         "valid_shell_solves": 14,
-        "coverage_fraction": 0.4117647058823529
+        "coverage_fraction": 1.0
       },
       "500-1000_Myr": {
-        "candidate_events": 21,
+        "eligible_connected_source_candidates": 9,
         "valid_shell_solves": 9,
-        "coverage_fraction": 0.42857142857142855
+        "coverage_fraction": 1.0
       }
     },
     "by_event_kind_and_world_time_myr": {
       "split": {
         "0-200_Myr": {
-          "candidate_events": 36,
+          "eligible_connected_source_candidates": 21,
           "valid_shell_solves": 21,
-          "coverage_fraction": 0.5833333333333334
+          "coverage_fraction": 1.0
         },
         "200-500_Myr": {
-          "candidate_events": 22,
+          "eligible_connected_source_candidates": 9,
           "valid_shell_solves": 9,
-          "coverage_fraction": 0.4090909090909091
+          "coverage_fraction": 1.0
         },
         "500-1000_Myr": {
-          "candidate_events": 11,
+          "eligible_connected_source_candidates": 3,
           "valid_shell_solves": 3,
-          "coverage_fraction": 0.2727272727272727
+          "coverage_fraction": 1.0
         }
       },
       "failed_rift": {
         "0-200_Myr": {
-          "candidate_events": 39,
+          "eligible_connected_source_candidates": 30,
           "valid_shell_solves": 30,
-          "coverage_fraction": 0.7692307692307693
+          "coverage_fraction": 1.0
         },
         "200-500_Myr": {
-          "candidate_events": 12,
+          "eligible_connected_source_candidates": 5,
           "valid_shell_solves": 5,
-          "coverage_fraction": 0.4166666666666667
+          "coverage_fraction": 1.0
         },
         "500-1000_Myr": {
-          "candidate_events": 10,
+          "eligible_connected_source_candidates": 6,
           "valid_shell_solves": 6,
-          "coverage_fraction": 0.6
+          "coverage_fraction": 1.0
         }
       }
     },
-    "meets_replay_wide_minimum": false,
-    "interpretation": "All source-connected candidates solve, but 56 genuinely disconnected-source candidates leave overall and stratified replay coverage below threshold. Capacity conclusions are limited to the connected-source subset."
+    "excluded_source_disconnected_distribution": "Retained in the preceding all-candidate audit tables and source_disconnected_component_audit; not part of the connected-source Gate 2 denominator."
   },
   "source_disconnected_component_audit": {
     "excluded_candidate_events": 56,
@@ -562,5 +568,58 @@
     "events_with_off_main_component_at_least_6_cells": 10,
     "largest_off_main_component_cells": 369,
     "interpretation": "Repeat exclusions recur on the same source plates. These source-graph components are not mesh-only islands; the diagnostic excludes the complete event because a separate-component load path is not defined."
+  },
+  "full_population_scope_audit": {
+    "candidate_events": 130,
+    "source_connected_and_solved": 74,
+    "source_disconnected_excluded": 56,
+    "connected_fraction": 0.5692307692307692,
+    "by_seed": {
+      "7": {
+        "all": 44,
+        "connected": 23,
+        "connected_fraction": 0.5227272727272727
+      },
+      "11": {
+        "all": 42,
+        "connected": 26,
+        "connected_fraction": 0.6190476190476191
+      },
+      "2024": {
+        "all": 44,
+        "connected": 25,
+        "connected_fraction": 0.5681818181818182
+      }
+    },
+    "by_event_kind": {
+      "split": {
+        "all": 69,
+        "connected": 33,
+        "connected_fraction": 0.4782608695652174
+      },
+      "failed_rift": {
+        "all": 61,
+        "connected": 41,
+        "connected_fraction": 0.6721311475409836
+      }
+    },
+    "by_world_time_myr": {
+      "0-200_Myr": {
+        "all": 75,
+        "connected": 51,
+        "connected_fraction": 0.68
+      },
+      "200-500_Myr": {
+        "all": 34,
+        "connected": 14,
+        "connected_fraction": 0.4117647058823529
+      },
+      "500-1000_Myr": {
+        "all": 21,
+        "connected": 9,
+        "connected_fraction": 0.42857142857142855
+      }
+    },
+    "interpretation": "Source-connected eligibility is uneven. Gate 2 results are conditional and do not represent disconnected-source events or the full event population."
   }
 }

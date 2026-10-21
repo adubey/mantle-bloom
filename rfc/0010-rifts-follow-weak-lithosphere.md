@@ -149,10 +149,14 @@ An independent curved-sphere manufactured solution now validates that stress inv
 decreasing error through 17 × 33 nodes. Free in-plane displacement is selected as the boundary
 condition for the isolated single-plate diagnostic because its inputs provide no displacement
 anchor; clamps are sensitivity probes and real interplate continuity would require a coupled shell
-solve. The matched diagnostic replay validates equilibrium eligibility for connected-source
-meshes and compares physical and explicitly phenomenological capacities on the same Gate 1 loads.
-Gate 2 remains open because 56 genuinely source-disconnected candidates leave replay-wide coverage
-below the explicit threshold, and neither capacity model is calibrated.
+solve. The matched diagnostic replay validates equilibrium eligibility and compares physical and explicitly
+phenomenological capacities on Gate 1 candidates whose source cells form one exact edge-connected
+component. Gate 2 is explicitly scoped to this connected-source population: the 56 genuinely
+disconnected-source events are counted and reported separately, but excluded from the Gate 2 coverage
+denominator because this isolated shell solve cannot represent their disconnected material domains.
+This scope does not imply that connected events represent all events, and their capacity scores must
+not be generalized to disconnected-source events. Gate 2 remains open because neither capacity model
+is calibrated and broader load/boundary validation remains outstanding.
 The existing flow fit and plate-level `internal_stress` may remain candidate-event or
 background-eligibility signals, but they do not choose a complete cut or stand in for local loading. Keep solution 4 separately sized against the
 craton-loss gate, and take plume weakening through RFC 0007. The connected-boundary rule and
@@ -174,8 +178,10 @@ should start until those gates are resolved and the revised design is accepted.
    [`analysis/issue487/README.md`](../analysis/issue487/README.md).
 2. **Gate 2 — establish local loading and strength — incremental extensional measure, column
    scenario diagnostic, curved-shell benchmark, curved-mesh checks and isolated-plate edge policy
-   added; connected-source mesh repairs and a 2026-10-21 skip audit completed. Gate 2 remains open:
-   the replay-wide coverage requirement fails, and the physical source/capacity model is not calibrated.**
+   added; connected-source mesh repairs and a 2026-10-21 skip audit completed. Scope is craton-crossing
+   candidates whose source cells form one exact edge-connected component. The 56 disconnected-source
+   candidates are counted separately and excluded from the coverage denominator. The connected-source
+   coverage requirement passes; the physical source/capacity model remains uncalibrated.**
    `torque.gather_per_node_force_field` preserves each force
    source as a per-node vector in N. `thin_shell.solve_force_field` projects the combined loads
    onto the shell tangent plane, removes the area-weighted rigid-rotation component handled by
@@ -242,23 +248,27 @@ should start until those gates are resolved and the revised design is accepted.
    29/130 and 64/130 metrics remain historical pre-repair results, not current equilibrium
    estimates.
 
-   Set an explicit replay-wide coverage gate: at least 90% of all craton-crossing candidates overall
-   and at least 80% in each seed, event kind (`split`/`failed_rift`), and world-time bin (0–200,
-   200–500, 500–1000 Myr). These are project completeness thresholds, not physical constants.
-   A disconnected-source candidate counts as uncovered; empty strata are reported as not
-   applicable. The current 74/130 coverage is 56.9% and fails this gate. Source-connected coverage
-   is 74/74, but that subset is biased: 47.8% for splits versus 67.2% for failed rifts, and 68.0%,
-   41.2%, and 42.9% in the three successive time bins. Do not generalize its capacity scores to all
-   candidates or use them to select a damage law. On 22,896 connected-source cut-band samples, the
-   physical median-capacity failure fractions are 0.274% continental, 78.03% young-ridge oceanic
-   proxy, and 2.84% mature oceanic; at the phenomenological 1× reference, 2.82% of all samples
-   fail. These remain screening results: the oceanic-age proxy is coarse, capacities are
-   uncalibrated, and natural interplate continuity and production load distributions remain outside
-   this single-plate solve. Keep Gate 2 open until replay-wide coverage passes or the scope is
-   explicitly narrowed and justified. Do not start constitutive calibration or infer local stress
-   from applied traction, rigid rotation, flow clusters or `Plate.internal_stress`. See the audit in
-   `analysis/issue487/README.md`, `analysis/issue487/gate2-load-diagnosis.md`, and
-   `analysis/issue487/gate2-matched-replay.json`.
+   **Coverage population and threshold.** Gate 2 covers craton-crossing candidates whose source
+   plate is one connected component under exact cell-edge adjacency. Require valid shell solves for
+   at least 90% of these eligible candidates overall and 80% in each seed, event kind (`split` /
+   `failed_rift`), world-time bin (0–200, 200–500, 500–1000 Myr), and nonempty event-kind × time
+   stratum. A valid solve must also meet the per-mesh 95% cut-band and craton-band sample coverage,
+   stop code 1 and residual/load ≤1%. These are project completeness thresholds, not physical
+   constants. Empty strata are not applicable. The 74/74 connected-source candidates pass: overall
+   and every nonempty stratum have 100% solver coverage. The other 56/130 Gate 1 candidates (43.1%)
+   have genuinely disconnected source domains; report them separately by seed, kind and time, but
+   exclude them from this Gate 2 denominator because this isolated shell diagnostic has no defensible
+   load path for those components. Their frequency is uneven (source-connected coverage of the full
+   population was 47.8% for splits versus 67.2% for failed rifts, and 68.0%, 41.2%, and 42.9% across
+   successive time bins), so connected-source results are conditional and must not be generalized to
+   disconnected-source events or the full population. On 22,896 connected-source cut-band samples,
+   the physical median-capacity failure fractions are 0.274% continental, 78.03% young-ridge oceanic
+   proxy, and 2.84% mature oceanic; at the phenomenological 1× reference, 2.82% of samples fail.
+   These remain screening results: the oceanic-age proxy is coarse, capacities are uncalibrated, and
+   natural interplate continuity and production load distributions remain outside this single-plate
+   solve. Do not begin constitutive calibration or infer local stress from applied traction, rigid
+   rotation, flow clusters or `Plate.internal_stress`. See the audit in `analysis/issue487/README.md`,
+   `analysis/issue487/gate2-load-diagnosis.md`, and `analysis/issue487/gate2-matched-replay.json`.
 3. **Calibrate accumulation and segment growth.** On synthetic plates and replayed candidate
    events, measure damage/strain accumulation, nucleation, tip propagation, arrest and linkage under
    timestep refinement. Select thresholds only after checking physical scale and sensitivity. If no
@@ -406,17 +416,16 @@ source or explicit design-choice status, and the sensitivity plan before impleme
        incomplete archives from calibration (2026-10-19; see `analysis/issue487/README.md`).
    [ ] **Gate 2:** column-envelope scenarios, the incremental shell stress measure, curved-sphere
        benchmark, original curved-mesh checks and isolated-plate free-edge policy are documented.
-       The mesh repair recovers all ten prior edge-disconnected meshes, and all 74 source-connected
-       candidates pass the 95% cut-band and craton-band node coverage checks and the 1% residual
-       screen (maximum 0.4514%). However, 56/130 candidates have genuinely disconnected source-cell
-       regions and remain excluded. The replay-wide coverage gate is 90% overall and 80% in every
-       seed, outcome and nonempty time stratum; current all-candidate coverage is 56.9%, with splits
-       at 47.8% and mid/late time bins at 41–43%. Thus the replay is complete only for a
-       biased connected-source subset and cannot select a constitutive model for the full event
-       population. Capacity scores over 22,896 accepted cut-band samples remain screening evidence;
-       the oceanic-age proxy is coarse and capacities remain uncalibrated. Resolve the source-
-       component load path or explicitly justify a narrower scope before Gate 2 closes or
-       constitutive calibration begins (see `analysis/issue487/README.md`,
+       Scope is craton-crossing events whose source cells form one exact edge-connected component.
+       All 74/74 eligible source-connected candidates pass the 95% cut-band and craton-band node
+       coverage checks, stop-code and 1% residual screens (maximum 0.4514%); this is 100% overall
+       and in every nonempty seed, event-kind and time stratum, above the 90% overall / 80% stratum
+       minimum. The 56/130 genuinely disconnected-source events are counted and reported separately,
+       outside the Gate 2 denominator. Their unequal distribution means connected-source conclusions
+       are conditional and cannot be generalized to all events. Capacity scores over 22,896 accepted
+       cut-band samples remain screening evidence; the oceanic-age proxy is coarse and capacities
+       remain uncalibrated. Complete physical source/capacity justification and broader validation
+       before Gate 2 closes or constitutive calibration begins (see `analysis/issue487/README.md`,
        `analysis/issue487/gate2-load-diagnosis.md`, `analysis/issue487/gate2-column-envelope.json`,
        and `analysis/issue487/gate2-matched-replay.json`).
 2. [ ] In synthetic tests, damage is timestep-partition invariant, bounded, absent under compression

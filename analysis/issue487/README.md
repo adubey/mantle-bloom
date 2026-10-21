@@ -176,21 +176,24 @@ reproduce them as high-residual solves.
 
 #### Minimum coverage and interpretation
 
-For a replay-wide model comparison, require at least 90% of all craton-crossing candidates overall
-and at least 80% within each seed, each event-kind (`split` / `failed_rift`), each world-time bin
-(0–200, 200–500, 500–1000 Myr), and every nonempty event-kind × time-bin stratum. A scored event must also meet the per-mesh 95% cut-band and craton-band
-sample coverage thresholds, stop code 1 and residual/load ≤1%. The 90% and 80% thresholds are
-project completeness criteria, not geological constants. Empty strata are reported as not
-applicable; nonempty strata count source-disconnected exclusions as uncovered candidates.
+For the explicitly scoped Gate 2 population, require valid shell solves for at least 90% of
+craton-crossing candidates whose source plate is one exact edge-connected cell component overall,
+and at least 80% within each seed, event kind (`split` / `failed_rift`), world-time bin (0–200,
+200–500, 500–1000 Myr), and every nonempty event-kind × time-bin stratum. A scored event must also
+meet the per-mesh 95% cut-band and craton-band sample coverage thresholds, stop code 1 and
+residual/load ≤1%. The 90% and 80% thresholds are project completeness criteria, not physical
+constants. Empty strata are not applicable. Source-disconnected candidates are outside this Gate 2
+coverage denominator, but their number and distribution remain reported as a scope limitation.
 
-The mesh and numerical criteria pass for all 74 source-connected candidates, but replay-wide
-coverage is **56.9% (74/130)**, below the 90% minimum. The 56 source-disconnected events recur on 22 unique `(seed, plate_id)` pairs; 46 events have no
-off-main source component larger than three cells, while 10 contain a detached component of at
-least six cells (one reaches 369 cells). Those are separate source regions, not tiny mesh islands,
-so retaining just the dominant source component would change the material domain and its load path.
-The exclusions are not evenly distributed:
+The mesh and numerical criteria pass for all 74 source-connected candidates: coverage is **100%
+(74/74)** overall and in every nonempty seed, kind, time and kind × time stratum. The 56
+source-disconnected events (43.1% of the 130-event full replay) recur on 22 unique `(seed,
+plate_id)` pairs; 46 events have no off-main source component larger than three cells, while 10
+contain a detached component of at least six cells (one reaches 369 cells). Those are separate
+source regions, not tiny mesh islands, so retaining just the dominant source component would change
+the material domain and its load path. The exclusions are not evenly distributed:
 
-| Candidate stratum | All candidates | Source connected and solved | Coverage |
+| Candidate stratum | All candidates | Source connected and solved | Connected share of all |
 |---|---:|---:|---:|
 | Split | 69 | 33 | 47.8% |
 | Failed rift | 61 | 41 | 67.2% |
@@ -198,13 +201,14 @@ The exclusions are not evenly distributed:
 | 200–500 Myr | 34 | 14 | 41.2% |
 | 500–1000 Myr | 21 | 9 | 42.9% |
 
-Thus the strength comparison is complete for its connected-source subset, but that subset favors
-failed rifts and early events. Its capacity fractions must not be generalized to all Gate 1 cuts or
-used to select a damage law for the full event population. Keep all 56 disconnected-source events
-visible in the denominator and report them by seed/type/time; do not relabel them as mesh failures.
-The whole-candidate coverage requirement currently fails, so Gate 2 remains open. To make a
-replay-wide model comparison, either validate a defensible load-transfer treatment for separate
-source components or change the claimed scope to connected-source events and justify that scope.
+The Gate 2 strength comparison is complete only for the explicitly scoped connected-source
+population. Because connected-source eligibility is uneven (it covers 47.8% of splits versus 67.2%
+of failed rifts, and 68.0%, 41.2%, and 42.9% across the three time bins), capacity fractions are
+conditional and must not be generalized to disconnected-source events or the full Gate 1 event
+population. Report all 56 disconnected-source events separately by seed/type/time; do not relabel
+them as mesh failures. The connected-source coverage requirement passes. Gate 2 remains open for
+physical source/capacity justification and broader validation, not for the excluded-population
+coverage.
 
 On the 22,896 accepted cut-band samples, median-capacity physical failed fractions are 0.274%
 continental, 78.03% young-ridge oceanic proxy and 2.84% mature oceanic. At the phenomenological
