@@ -487,6 +487,31 @@ The pilot peak rate varies sharply by seed: 326494039: 66.1, 748935664: 152.6, 5
 
 Seed 580014012 produced extensive 5 km glacier-cap and ice-shedding/clipping warnings in both baseline and pilot; the pilot warnings affected hundreds to over 1,000 nodes on some steps. Treat its climate and land-fraction result with caution. Density-4 runtime remains unmeasured; these density-1 runs had mean median step times of 2.763 s (baseline) and 2.790 s (pilot).
 
+### Full-horizon timestep comparison (pre-registered)
+
+**Question:** do the 500 Myr baseline and G2 outcomes remain comparable when the step shrinks
+from 1 Myr to 0.1 Myr, beyond the existing 50 Myr sensitivity check?
+
+**Expected direction and scale:** based on the 50 Myr check, endpoint land fraction should change
+by less than 2 percentage points per seed and model, and G2's mean land-fraction advantage
+should remain positive and within 2 percentage points of its 1 Myr value. Long-horizon topology
+may amplify small timestep differences, so any larger change will be treated as a sensitivity
+finding, not averaged away.
+
+**Primary measures and screen:** per-seed endpoint land fraction for baseline and G2, and the
+four-seed mean G2-minus-baseline land difference at each timestep. The land response passes this
+screen only if each model/seed's 0.1-versus-1 Myr endpoint shift is ≤2 percentage points and
+the mean G2 effect has the same sign at both steps with a difference ≤2 points. Report peak
+rate, plate count, Hc/Hm, step runtime, and craton/subduction/merge ledgers as secondary outcomes;
+these are descriptive, with no preselected convergence threshold.
+
+**Controls:** generated worlds at node density 1.0; seeds 326494039, 748935664, 580014012, and
+111065103; 500 Myr endpoint; baseline code `2279d7e16c7d`; G2 model code `8618185b59c5` (no
+backend changes since that commit). Reuse the existing full-horizon 1 Myr traces after verifying
+their inputs, and run only the eight missing 0.1 Myr cases. Run baseline then G2 within each
+seed, with only one simulation process active at a time. Save full outputs and the manifest
+outside the repository; check in only a compact comparison JSON and the result summary.
+
 
 ## Four-seed G2 ledger and quiet-gate traces (1 Myr, 500 Myr)
 
