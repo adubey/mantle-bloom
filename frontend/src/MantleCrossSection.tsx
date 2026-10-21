@@ -301,14 +301,19 @@ interface GlobeLocatorProps {
   arcPosition: number;
   worldRevision: number;
   onPlaneAngleChange: (value: number) => void;
+  // The tilt under an in-progress drag (null when idle), held by the parent so its readout
+  // follows the drag.
+  previewTilt: number | null;
+  onPreviewTiltChange: (value: number | null) => void;
 }
 
 // Dragging the globe up or down tilts the great circle (#497, replacing the tilt slider):
 // moving the pointer by the globe's radius tilts it by one radian. The globe follows the
 // pointer, and the new tilt is committed (and its section frames fetched) on release.
-function GlobeLocator({ planeAngleDeg: committedTilt, arcPosition, worldRevision, onPlaneAngleChange }: GlobeLocatorProps) {
+function GlobeLocator({
+  planeAngleDeg: committedTilt, arcPosition, worldRevision, onPlaneAngleChange, previewTilt, onPreviewTiltChange: setPreviewTilt,
+}: GlobeLocatorProps) {
   const [textureUrl, setTextureUrl] = useState<string | null>(null);
-  const [previewTilt, setPreviewTilt] = useState<number | null>(null);
   const drag = useRef<{ pointerId: number; startY: number; unitsPerPixel: number } | null>(null);
   const planeAngleDeg = previewTilt ?? committedTilt;
   const centerX = LOCATOR_SIZE / 2;
@@ -378,7 +383,8 @@ function GlobeLocator({ planeAngleDeg: committedTilt, arcPosition, worldRevision
   };
 
   const onKeyDown = (event: React.KeyboardEvent<SVGSVGElement>) => {
-    const delta = { ArrowDown: TILT_KEYBOARD_STEP_DEG, ArrowUp: -TILT_KEYBOARD_STEP_DEG }[event.key];
+    // Up looks further north, as on the sidebar's globe selector (and as dragging down does).
+    const delta = { ArrowUp: TILT_KEYBOARD_STEP_DEG, ArrowDown: -TILT_KEYBOARD_STEP_DEG }[event.key];
     if (delta === undefined) return;
     event.preventDefault();
     const tilt = clampTilt(committedTilt + delta);
@@ -471,6 +477,7 @@ export default function MantleCrossSection({
 }: Props) {
   const centerDegrees = (360 * arcPosition) / ARC_POSITION_COUNT;
   const [zoom, setZoom] = useState(1);
+  const [previewTilt, setPreviewTilt] = useState<number | null>(null);
   const [displayedFrame, setDisplayedFrame] = useState<{ key: string; dataUrl: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [prefetchProgress, setPrefetchProgress] = useState<number | null>(null);
@@ -531,6 +538,9 @@ export default function MantleCrossSection({
               setPrefetchProgress(completed);
             } catch (error) {
               if (controller.signal.aborted) return;
+              // Aborting also ends the selected arc's own load if it shares this controller, so
+              // clear its hourglass here; the message says why (#497).
+              setLoading(false);
               if (isNotImplementedError(error)) {
                 setLoadMessage("The cross-section route is reserved, but this backend does not render section images yet.");
                 controller.abort();
@@ -570,9 +580,13 @@ export default function MantleCrossSection({
     setLoading(cached === null);
     setLoadMessage(null);
     let isCurrentSelection = true;
-    const controller = scopeControllerRef.current;
+    // Once a prefetch error has aborted the scope's controller, loads on it end silently: give
+    // this arc its own, or its hourglass would never clear (#497).
+    const scopeController = scopeControllerRef.current;
+    const controller = scopeController && !scopeController.signal.aborted ? scopeController : new AbortController();
+    const ownsController = controller !== scopeController;
 
-    if (!cached && controller) {
+    if (!cached) {
       void loadFrame(activeKey, controller.signal)
         .then((image) => {
           if (!isCurrentSelection || controller.signal.aborted) return;
@@ -590,6 +604,7 @@ export default function MantleCrossSection({
 
     return () => {
       isCurrentSelection = false;
+      if (ownsController) controller.abort();
     };
   }, [worldRevision, planeAngleDeg, arcPosition, width, height, showBoundaries, showFaults, currentCacheKey]);
 
@@ -710,12 +725,14 @@ export default function MantleCrossSection({
           arcPosition={arcPosition}
           worldRevision={worldRevision}
           onPlaneAngleChange={onPlaneAngleChange}
+          previewTilt={previewTilt}
+          onPreviewTiltChange={setPreviewTilt}
         />
         <div style={{ color: "#aeb8ca", fontSize: 10, textAlign: "center", marginTop: -3 }}>
           <div style={{ color: "#91a0b8" }}>Drag the globe up or down to tilt the great circle</div>
           <div>
             Great-circle tilt{" "}
-            <span style={{ color: "#b8c3d3", fontVariantNumeric: "tabular-nums" }}>{planeAngleDeg}°</span>
+            <span style={{ color: "#b8c3d3", fontVariantNumeric: "tabular-nums" }}>{previewTilt ?? planeAngleDeg}°</span>
             {" · "}
             <span style={{ color: "#61ded0" }}>3,000 km cut</span>
           </div>

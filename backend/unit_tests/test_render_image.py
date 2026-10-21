@@ -6,7 +6,7 @@ import av
 import numpy as np
 import pytest
 from PIL import Image
-from app import cratons, geometry, healpix_grid, render_image
+from app import cratons, geometry, healpix_grid, projections, render_image
 from app.hydroclimate import climate, hydrology
 from app.world import World, generate_world, step_world
 
@@ -1193,30 +1193,129 @@ def test_step_world_rebuilds_healpix_index_cache_but_keeps_the_grid_cache():
     assert world.node_healpix_index_cache is not None
 
 
-def test_globe_projection_draws_a_disc_on_the_background():
-    world = _world()
-    image = np.asarray(Image.open(io.BytesIO(render_image.render_png(world, "globe", "elevation", 220, 122))).convert("RGB"))
-    corner = tuple(int(c) for c in image[0, 0])
-    assert corner == render_image.BACKGROUND_RGB
+
+@pytest.fixture(scope="module")
+def globe_world():
+    return _world()
+
+
+def _png_array(png: bytes) -> np.ndarray:
+    return np.asarray(Image.open(io.BytesIO(png)))
+
+
+def test_globe_projection_draws_a_disc_on_the_background(globe_world):
+    image = _png_array(render_image.render_png(globe_world, "globe", "plates", 220, 122))
+    assert tuple(int(c) for c in image[0, 0]) == render_image.BACKGROUND_RGB
     scale, offset_x, offset_y = render_image._globe_transform(220, 122)
-    centre = image[int(offset_y), int(offset_x)]
-    assert tuple(int(c) for c in centre) != render_image.BACKGROUND_RGB
-    # Just outside the disc's right edge is background again.
+    assert tuple(int(c) for c in image[int(offset_y), int(offset_x)]) != render_image.BACKGROUND_RGB
     assert tuple(int(c) for c in image[int(offset_y), int(offset_x + scale + 2)]) == render_image.BACKGROUND_RGB
 
 
-def test_globe_centre_matches_the_flat_map_centre():
-    """The disc's centre is the view centre (lat=0, lon=0 in the display frame), the same
-    point a Behrmann map shows at its own centre (#497)."""
-    world = _world()
-    rotation = render_image.np.eye(3)
-    globe = np.asarray(Image.open(io.BytesIO(render_image.render_png(world, "globe", "plates", 220, 122, rotation))).convert("RGB"))
-    flat = np.asarray(Image.open(io.BytesIO(render_image.render_png(world, "behrmann", "plates", 440, 244, rotation))).convert("RGB"))
-    _, offset_x, offset_y = render_image._globe_transform(220, 122)
-    assert np.allclose(globe[int(offset_y), int(offset_x)], flat[122, 220], atol=30)
+def test_globe_pixels_show_the_point_the_frontend_unprojects_there(globe_world):
+    """Each disc pixel must show the true point rotation.ts's inverseOrthographic puts under it
+    (click probing, measuring and the drag graticule all assume this, #497). Checked against an
+    independent forward Behrmann projection of that point into the source map, on the
+    categorical "plates" view, off-centre and under a non-trivial rotation."""
+    width, height = 220, 122
+    rotation = geometry.rotation_matrix(np.array([0.3, -0.5, 0.8]), 0.9)
+    globe = _png_array(render_image.render_png(globe_world, "globe", "plates", width, height, rotation))
+    map_width, map_height = render_image._globe_source_size(width, height)
+    token = render_image._STROKE_SCALE.set(width / (map_width * np.cos(np.radians(30.0))))
+    try:
+        flat = _png_array(render_image._render_map_png(globe_world, "behrmann", "plates", map_width, map_height, rotation))
+    finally:
+        render_image._STROKE_SCALE.reset(token)
+    scale, offset_x, offset_y = render_image._globe_transform(width, height)
+    map_scale, map_offset_x, map_offset_y = render_image._fit_view(
+        render_image._sphere_extent("behrmann"), map_width, map_height,
+        render_image.PADDING_PX * map_width / render_image.REFERENCE_WIDTH_PX,
+    )
+    rng = np.random.default_rng(0)
+    matches = 0
+    samples = 0
+    while samples < 200:
+        px, py = rng.integers(0, width), rng.integers(0, height)
+        x = (px + 0.5 - offset_x) / scale
+        y = (offset_y - (py + 0.5)) / scale
+        if x * x + y * y > 0.9:
+            continue
+        lat, lon = np.arcsin(y), np.arctan2(x, np.sqrt(1 - x * x - y * y))
+        bx, by = projections.behrmann(lat, lon)
+        fx = int(np.floor(map_scale * bx + map_offset_x))
+        fy = int(np.floor(map_offset_y - map_scale * by))
+        samples += 1
+        matches += np.array_equal(globe[py, px], flat[fy, fx])
+    assert matches == samples
 
 
-def test_globe_keeps_alpha_encoded_ids():
-    world = _world()
-    image = Image.open(io.BytesIO(render_image.render_png(world, "globe", "combined", 120, 80)))
-    assert image.mode == "RGBA"
+def test_globe_keeps_alpha_encoded_ids(monkeypatch):
+    """Nearest-neighbour resampling must not invent alpha values: every id on the disc is one
+    the flat map encodes (the Combined/Biome views carry biome ids there)."""
+    ids = np.array([237, 240, 251, 255], dtype=np.uint8)
+    rng = np.random.default_rng(1)
+
+    def fake_map(world, projection, view, width, height, *args):
+        pixels = rng.integers(0, 256, size=(height, width, 4), dtype=np.uint8)
+        pixels[..., 3] = rng.choice(ids, size=(height, width))
+        return render_image._encode_image(Image.fromarray(pixels, mode="RGBA"))
+
+    monkeypatch.setattr(render_image, "_render_map_png", fake_map)
+    globe = Image.open(io.BytesIO(render_image.render_png(None, "globe", "biome", 120, 80)))
+    assert globe.mode == "RGBA"
+    assert set(np.unique(np.asarray(globe)[..., 3])) <= set(ids)
+
+
+def test_globe_strokes_are_scaled_back_to_the_requested_size():
+    width = 2200
+    map_width, _ = render_image._globe_source_size(width, 1222)
+    token = render_image._STROKE_SCALE.set(width / map_width)
+    try:
+        assert np.isclose(render_image._stroke_scale(map_width), width / render_image.REFERENCE_WIDTH_PX)
+    finally:
+        render_image._STROKE_SCALE.reset(token)
+    assert render_image._stroke_scale(width) == width / render_image.REFERENCE_WIDTH_PX
+
+
+@pytest.mark.parametrize("projection", ["behrmann", "eckert4"])
+def test_climate_grid_fits_the_whole_sphere_like_the_frontend(projection):
+    """A coarse climate grid's cell centres stop short of the poles and the antimeridian; the
+    fit must still be the full sphere's (rotation.ts's computeExtent), or every grid view is
+    shifted against click probing -- by several pixels once the globe upsamples it (#497)."""
+    lat_deg, lon_deg, world_xyz = render_image._biome_grid(18, 36)
+    width, height = 1100, 611
+    *_, scale, offset_x, offset_y = render_image._project_climate_grid(
+        lat_deg, lon_deg, world_xyz, projection, np.eye(3), width, height, render_image.PADDING_PX,
+    )
+    expected = render_image._fit_view(render_image._sphere_extent(projection), width, height, render_image.PADDING_PX)
+    assert np.allclose((scale, offset_x, offset_y), expected)
+
+
+def test_globe_draws_rivers(globe_world, monkeypatch):
+    """The globe's stroke scale reaches Pillow's river blur; a numpy scalar there made every
+    globe Elevation render with rivers fail (#497)."""
+    points = np.array([[1.0, 0.0, 0.0], [0.99, 0.05, 0.0]])
+    points = points / np.linalg.norm(points, axis=1, keepdims=True)
+    n = len(points)
+    monkeypatch.setattr(globe_world, "hydrology_cache", hydrology.HydrologyFields(
+        points=points,
+        elevation=np.array([10.0, 5.0]),
+        is_ocean=np.zeros(n, dtype=bool),
+        neighbor_idx=np.zeros((n, 1), dtype=np.int64),
+        flow_accum=np.zeros(n),
+        water_deposited=np.zeros(n),
+        filled_elevation=np.zeros(n),
+        spill_target=np.full(n, -1, dtype=np.int64),
+        is_river=np.array([True, False]),
+        flow_target=np.array([1, -1]),
+        lake_depth=np.zeros(n),
+        glacier_depth=np.zeros(n),
+        plates_in_order=[],
+        channel_width=np.array([5000.0, 0.0]),
+    ))
+    monkeypatch.setattr(
+        render_image,
+        "_rivers_to_draw",
+        lambda w, hide_minor_networks=False: (np.array([0]), np.array([1.0]), np.array([1.0])),
+    )
+    image = Image.open(io.BytesIO(render_image.render_png(globe_world, "globe", "elevation", 220, 122)))
+    assert image.size == (220, 122)

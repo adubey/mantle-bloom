@@ -23,7 +23,12 @@ near ones. `render_image.render_png` therefore never hands `"globe"` to the per-
 renderers. `_render_globe` renders the view in Behrmann at the same view rotation, then
 resamples it onto the disc with nearest-neighbour sampling. Behrmann's y is sin(lat), the
 same as the orthographic y, so only x is resampled. The Behrmann map is sized so its pixels
-per radian of longitude match the globe's at the disc centre. Nearest-neighbour sampling
+per radian of longitude match the globe's at the disc centre (`_globe_source_size`), and its
+line widths and markers are scaled back down through `_STROKE_SCALE` so they come out at a
+flat map's weight. The resampler assumes the source map is fitted to the full sphere's
+extent; every grid-based view fits to `_sphere_extent`, the same 1-degree lattice
+`rotation.ts`'s `computeExtent` samples, so click probing lines up on flat maps and globe
+alike. Nearest-neighbour sampling
 keeps the Combined and Biome views' alpha-encoded biome ids intact, and the Record path
 (`stream_animation_mp4`) gets the globe through the same `render_png` call. Client-drawn
 overlays use the matching `orthographic`/`isFarSide` in `rotation.ts`: `ScreenProjector`
