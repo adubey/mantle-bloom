@@ -686,7 +686,7 @@
     "Creep laws, pore pressure, K0, composition and strain rate are scenario choices, not locally observed state.",
     "Young oceanic crust is proxied by active divergence because oceanic age is not stored.",
     "Over-capacity fractions compare diagnostic incremental N_ext with N_cap; they are not observed rupture labels, and the capacity model was not fitted to these events.",
-    "Gate 2 remains open for source/capacity justification and broader load/boundary validation."
+    "Under RFC 0010's approved scope, Gate 2 closes for the connected-source, single-plate diagnostic. These conditional capacities do not select a physical source/capacity field or validate coupled loads."
   ],
   "raw_outputs": "Full per-event compact reports remain in /private/tmp/issue487-g2-spatial-g1baseline-seed{7,11,2024}.json.",
   "provenance": {

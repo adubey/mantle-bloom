@@ -1,9 +1,13 @@
 {
   "k0_status": {
-    "independent_constraint": "Regional stress observations constrain regime and orientation better than a spatially uniform stress magnitude ratio; K0 is not observed by this world model.",
-    "interpretation": "0.8 is retained as a nominal grid midpoint, not a measured or calibrated value. Keep the full 0.6-1.0 sensitivity bracket.",
+    "critical_normal_faulting_ratio": 0.3205715452371279,
+    "independent_constraint": "No outcome-independent K0 can be derived from current world state: force vectors are applied loads and thin-shell stresses are increments about a zero-load reference; neither supplies prestress. Regional focal mechanisms primarily constrain stress regime and orientation, with heterogeneous local regimes.",
+    "interpretation": "K0=0.6/0.8/1.0 are conditional sensitivity cases, not an observed range or probability distribution. K0=0.8 is a reproduction anchor only. A separate K0\u22480.32 near-critical sensitivity follows from the cohesionless normal-fault Mohr-Coulomb ratio at mu=0.6; it is not independent evidence or a K0 estimate.",
     "model_definition": "effective horizontal background compression / effective vertical overburden",
+    "production_status": "unresolved; do not select a scalar or production field without independent stress magnitudes or a validated tectonic stress model",
+    "reference_friction_coefficient": 0.6,
     "scenario_values": [
+      0.3205715452371279,
       0.6,
       0.8,
       1.0

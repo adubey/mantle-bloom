@@ -102,18 +102,25 @@ The independent input-basis audit is in [`gate2-assumption-basis.md`](gate2-assu
 with reproducible heat-flow and unit conversions in
 [`gate2-assumption-basis.json`](gate2-assumption-basis.json). It finds that regional observations
 support the normal-faulting regime and provide a useful strain-rate scale, but do not identify a
-spatial `K0`, full-depth pore-fluid profile, local geotherm or mantle hydration field. The current
-0.6–1.0 `K0`, dry/wet mantle laws and thermal boundaries therefore remain explicit sensitivity
-cases rather than fitted physical state. The diagnostic does not use legacy cut outcomes as
-strength labels.
+spatial `K0`, full-depth pore-fluid profile, local geotherm or mantle hydration field. The model
+force interface contains applied loads, and the shell solve returns incremental stress about a
+zero-load reference; neither provides the missing tectonic prestress. `K0=0.8` is only a
+reproduction anchor. The `0.6–1.0` cases are conditional sensitivities, not an observed interval;
+the screen now adds `K0≈0.32` as the cohesionless near-critical normal-faulting limit for the same
+`mu=0.6` friction assumption. That low case is a limiting scenario, not an independent constraint
+or probability bound. The diagnostic does not use legacy cut outcomes as strength labels.
 
 The fixed-load crossed screen is in
 [`gate2-assumption-screen.json`](gate2-assumption-screen.json), with results and interpretation in
 [`gate2-assumption-basis.md`](gate2-assumption-basis.md). At the geodetic upper distributed rate,
-crossing `K0=0.6/0.8/1.0`, dry/wet olivine, and full-column versus crust-hydrostatic Moho-held
-pressure gives 3.07–19.03% node exceedance. Pressure-profile choice changes fewer than 1% of node
-classifications at fixed K0/rheology; K0 and mantle rheology dominate the screen. The capacities
-remain conditional scenarios, not a physical rupture rule.
+crossing `K0≈0.32/0.6/0.8/1.0`, dry/wet olivine, and full-column versus crust-hydrostatic Moho-held
+pressure gives 3.07–60.66% node exceedance. Across the finite scenarios, 57.59% of nodes change
+classification, 703 are over capacity in every case and 13,888 in at least one. The added low-K0
+case is derived from the assumed friction law and shows a limiting near-critical state; it does not
+resolve the unobserved background stress field. Pressure-profile choice changes fewer than 1% of
+node classifications at fixed K0/rheology in the original 12-case screen; K0 and mantle rheology
+dominate the more central scenarios. The capacities remain conditional scenarios, not a physical
+rupture rule.
 
 The first matched replay scored 130 candidates and reported 29 residual/load ratios above 1%.
 That result is retained in `gate2-matched-replay.json` under
@@ -222,9 +229,10 @@ population. Because connected-source eligibility is uneven (it covers 47.8% of s
 of failed rifts, and 68.0%, 41.2%, and 42.9% across the three time bins), capacity fractions are
 conditional and must not be generalized to disconnected-source events or the full Gate 1 event
 population. Report all 56 disconnected-source events separately by seed/type/time; do not relabel
-them as mesh failures. The connected-source coverage requirement passes. Gate 2 remains open for
-physical source/capacity justification and broader validation, not for the excluded-population
-coverage.
+them as mesh failures. The connected-source coverage requirement passes. Under the approved
+scope, Gate 2 is closed for this connected-source, single-plate diagnostic. Physical source/capacity
+selection and broader coupled-load validation remain separate future work; the conditional results
+must not be generalized to excluded events or used as a production rupture threshold.
 
 On the 22,896 accepted cut-band samples, median-capacity physical failed fractions are 0.274%
 continental, 78.03% young-ridge oceanic proxy and 2.84% mature oceanic. At the phenomenological
@@ -275,8 +283,9 @@ linearly interpolated Moho-lag profiles. It adds strata for craton share and inh
 The prior mapped summary used the fixed `P_f/P_lith=0.42`, `phi=30 deg` scenario and is superseded
 by the corrected hydrostatic-reference sensitivity re-score below. Median event-level median
 `N_ext/N_cap` is 0.116; median event-level p95 ratio is 0.669. These are scenario-screening
-statistics, not observed rupture rates or a fit to split/failed-rift outcomes. Local capacity
-remains conditional on assumed thermal/rheology/stress state, so this step does not close Gate 2.
+statistics, not observed rupture rates or a fit to split/failed-rift outcomes. This
+screening result is consistent with Gate 2's closed diagnostic scope; local capacity remains
+conditional on assumed thermal/rheology/stress state and does not set a production threshold.
 See [`gate2-capacity-state-audit.md`](gate2-capacity-state-audit.md) and the compact
 [`gate2-spatial-capacity-replay.json`](gate2-spatial-capacity-replay.json); full event reports are
 in `/private/tmp`.
@@ -304,7 +313,9 @@ The load model passes its analytic manufactured-solution checks, while the colum
 creep-law inversion pass six analytical tests. The fixed-load re-score confirms that the changed
 pore-pressure assumption modestly shifts classification. This identifies the unobserved stress and
 fluid assumptions as the main capacity sensitivities;
-it does not select them or close Gate 2. Full assumptions, per-seed/stratum results and hashes are
+it does not select them as physical fields. These limits are retained in the closed
+scenario-diagnostic scope; they do not authorize a production rupture threshold. Full assumptions,
+per-seed/stratum results and hashes are
 in [`gate2-capacity-sensitivity.md`](gate2-capacity-sensitivity.md) and
 [`gate2-capacity-sensitivity.json`](gate2-capacity-sensitivity.json). Exact captured per-node loads
 remain outside the repository in `/private/tmp/`.
@@ -328,4 +339,7 @@ mean isolated cut-band N_ext as a zero-safe scale. The corrected difference rang
 4.6–21.6%. The tied solve is an idealized bonded/no-slip case, not a validated geological
 interface law. See [gate2-interface-sensitivity.md](gate2-interface-sensitivity.md),
 [gate2-interface-sensitivity.json](gate2-interface-sensitivity.json), and
-[gate2-coupled-shell-benchmark.json](gate2-coupled-shell-benchmark.json). The pair-level rigid-rotation projection audit finds 3.0–95.1% mean absolute cut-band stress sensitivity to projecting one joint rigid body versus separate plate groups, while both variants converge. This is sensitivity to incompatible interface assumptions, not a selection of either model. Gate 2 is scoped to the single connected source plate and its free-edge diagnostic; coupled neighbor mechanics are not a closure prerequisite, and the pair values are not physical coupled-stress predictions. A future coupled claim needs a consistent interface/load-transfer formulation. See [gate2-rigid-projection-audit.md](gate2-rigid-projection-audit.md) and its JSON. Gate 2 remains open for source/capacity justification.
+[gate2-coupled-shell-benchmark.json](gate2-coupled-shell-benchmark.json). The pair-level rigid-rotation projection audit finds 3.0–95.1% mean absolute cut-band stress sensitivity to projecting one joint rigid body versus separate plate groups, while both variants converge. This is sensitivity to incompatible interface assumptions, not a selection of either model. Gate 2 is scoped to the single connected source plate and its free-edge diagnostic; coupled neighbor mechanics are not a closure prerequisite, and the pair values are not physical coupled-stress predictions. A future coupled claim needs a consistent interface/load-transfer formulation. This work is
+outside Gate 2's approved single-plate scope. See [gate2-rigid-projection-audit.md](gate2-rigid-projection-audit.md)
+and its JSON. Gate 2 closes with conditional source/capacity scenarios; selecting a physical spatial
+field remains future work.

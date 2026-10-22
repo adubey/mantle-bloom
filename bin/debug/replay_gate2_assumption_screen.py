@@ -3,7 +3,8 @@
 
 The screen keeps the accepted connected-source Gate 1 loads fixed, uses the upper
 distributed East African Rift geodetic strain rate (2e-8/year), and crosses it with
-the existing K0 and dry/wet olivine sensitivity brackets. A crust-hydrostatic case
+the conditional K0 and dry/wet olivine sensitivity cases. A near-critical K0 limit is
+included as a friction-law endmember, not an independent estimate. A crust-hydrostatic case
 holds pore pressure at its Moho value below the crust to avoid assuming a hydrostatic
 fluid column through the mantle lid. Neither pressure profile is a fluid-flow solve.
 
@@ -21,6 +22,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
+import math
 import sys
 from pathlib import Path
 from typing import Any
@@ -37,7 +39,15 @@ import sensitivity_gate2_capacity as sensitivity  # noqa: E402
 SECONDS_PER_YEAR = 365.25 * 24.0 * 60.0 * 60.0
 GEODETIC_UPPER_RATE_PER_YEAR = 2e-8
 GEODETIC_UPPER_RATE_PER_SECOND = GEODETIC_UPPER_RATE_PER_YEAR / SECONDS_PER_YEAR
-K0_VALUES = (0.6, 0.8, 1.0)
+# Derive the limiting case from the same friction angle used by the reference column.
+REFERENCE_FRICTION_ANGLE_DEG = sensitivity.REFERENCE.friction_angle_deg
+REFERENCE_FRICTION_COEFFICIENT = math.tan(math.radians(REFERENCE_FRICTION_ANGLE_DEG))
+SIN_REFERENCE_FRICTION_ANGLE = math.sin(math.radians(REFERENCE_FRICTION_ANGLE_DEG))
+K0_CRITICAL_NORMAL_FAULT = (1.0 - SIN_REFERENCE_FRICTION_ANGLE) / (
+    1.0 + SIN_REFERENCE_FRICTION_ANGLE
+)
+# This friction-law limit is a conditional sensitivity, not an independent stress estimate.
+K0_VALUES = (K0_CRITICAL_NORMAL_FAULT, 0.6, 0.8, 1.0)
 MANTLE_LAWS = ("dry_olivine", "wet_olivine")
 PORE_MODES = ("hydrostatic_water", "hydrostatic_crust_moho_hold")
 
@@ -72,7 +82,7 @@ def _screen(
         for mantle_law in MANTLE_LAWS:
             for pore_mode in PORE_MODES:
                 key = (k0, mantle_law, pore_mode)
-                name = f"k0_{k0:.1f}_{mantle_law}_{pore_mode}"
+                name = f"k0_{k0:.2f}_{mantle_law}_{pore_mode}"
                 print(f"Scoring {name}", flush=True)
                 capacity = sensitivity._capacity_vector(
                     data, _scenario(k0, mantle_law, pore_mode), use_lag=False
@@ -87,7 +97,7 @@ def _screen(
                         "pore_pressure_mode": pore_mode,
                         "temperature_profile": "existing steady conductive profile, 1330 C base",
                         "cohesion_pa": 20e6,
-                        "friction_coefficient": 0.6,
+                        "friction_coefficient": REFERENCE_FRICTION_COEFFICIENT,
                     },
                     "summary": sensitivity._summaries(data, ext, capacity),
                 }
@@ -101,7 +111,7 @@ def _screen(
             capped_over = ext >= capped
             ratio_full = ext / np.maximum(full, 1.0)
             ratio_capped = ext / np.maximum(capped, 1.0)
-            paired_pressure_comparison[f"k0_{k0:.1f}_{mantle_law}"] = {
+            paired_pressure_comparison[f"k0_{k0:.2f}_{mantle_law}"] = {
                 "comparison": "crust hydrostatic then hold at Moho pressure versus hydrostatic through full lithosphere",
                 "median_capacity_change_percent": float(
                     100.0 * np.median((capped - full) / np.maximum(full, 1.0))
@@ -149,7 +159,7 @@ def _screen(
             "crust_hydrostatic_profile": "P_f=rho_water*g*min(depth,H_crust); pressure is continuous and held at its Moho value below the crust. This is a sensitivity cap, not a fluid-flow solution or evidence for connected deep fluids.",
             "limitations": [
                 "The geodetic rate is a regional surface strain invariant, not a depth-resolved local creep rate.",
-                "The K0 and dry/wet endmembers remain unobserved local state and are crossed as scenarios, not assigned probabilities.",
+                "The K0 and dry/wet endmembers remain unobserved local state and are crossed as scenarios, not assigned probabilities; the near-critical K0 case is derived from the reference friction law, not external stress data.",
                 "The two pore-pressure profiles bracket a deep hydrostatic gradient assumption; neither predicts fluid connectivity.",
                 "The steady conductive temperature profile remains the existing 1-D model proxy.",
                 "Capacity exceedance is an offline screen, not a rupture probability or a fitted yield label.",

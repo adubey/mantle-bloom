@@ -12,7 +12,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
+
+
+REFERENCE_FRICTION_COEFFICIENT = 0.6
+
+
+def cohesionless_normal_fault_k0(friction_coefficient: float) -> float:
+    """Return the Coulomb normal-fault ratio for a cohesionless friction law."""
+    sin_phi = friction_coefficient / math.sqrt(1.0 + friction_coefficient**2)
+    return (1.0 - sin_phi) / (1.0 + sin_phi)
 
 
 def surface_heat_flow_mw_m2(
@@ -35,6 +45,7 @@ def surface_heat_flow_mw_m2(
 def build_report() -> dict[str, object]:
     years_s = 365.25 * 24.0 * 60.0 * 60.0
     strain_rates = (1e-18, 1e-16, 1e-15, 1e-14)
+    critical_k0 = cohesionless_normal_fault_k0(REFERENCE_FRICTION_COEFFICIENT)
     columns = []
     for total_km in (70.0, 90.0, 100.0, 135.0, 150.0):
         mantle_km = total_km - 35.0
@@ -81,9 +92,17 @@ def build_report() -> dict[str, object]:
         },
         "k0_status": {
             "model_definition": "effective horizontal background compression / effective vertical overburden",
-            "scenario_values": [0.6, 0.8, 1.0],
-            "independent_constraint": "Regional stress observations constrain regime and orientation better than a spatially uniform stress magnitude ratio; K0 is not observed by this world model.",
-            "interpretation": "0.8 is retained as a nominal grid midpoint, not a measured or calibrated value. Keep the full 0.6-1.0 sensitivity bracket.",
+            "scenario_values": [
+                critical_k0,
+                0.6,
+                0.8,
+                1.0,
+            ],
+            "independent_constraint": "No outcome-independent K0 can be derived from current world state: force vectors are applied loads and thin-shell stresses are increments about a zero-load reference; neither supplies prestress. Regional focal mechanisms primarily constrain stress regime and orientation, with heterogeneous local regimes.",
+            "interpretation": "K0=0.6/0.8/1.0 are conditional sensitivity cases, not an observed range or probability distribution. K0=0.8 is a reproduction anchor only. A separate K0≈0.32 near-critical sensitivity follows from the cohesionless normal-fault Mohr-Coulomb ratio at mu=0.6; it is not independent evidence or a K0 estimate.",
+            "reference_friction_coefficient": REFERENCE_FRICTION_COEFFICIENT,
+            "critical_normal_faulting_ratio": critical_k0,
+            "production_status": "unresolved; do not select a scalar or production field without independent stress magnitudes or a validated tectonic stress model",
         },
         "mantle_creep": {
             "laws": ["dry dislocation-creep olivine", "wet dislocation-creep olivine"],

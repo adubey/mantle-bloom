@@ -160,9 +160,13 @@ not be generalized to disconnected-source events. A conditional scale audit now 
 100 km mobile/rift-like column at 6.28 TN/m and a 150 km thick-craton scenario at 20.86 TN/m,
 with wide constitutive sensitivity ranges; only the 100 km value has a regional strength-scale
 comparison. These are reference columns used to set scale, not a selected or calibrated spatial
-field. Gate 2 remains open
-because the replay provides no independent rupture labels, local material state is unresolved,
-and broader load/boundary validation remains outstanding.
+field. Gate 2 is closed as a validation diagnostic, not a production rupture-threshold decision:
+the connected-source shell solve meets the stated coverage, equilibrium and boundary-condition checks,
+and the capacity alternatives are reported with their assumptions and sensitivity. The replay
+has no independent rupture labels and the local material state remains unresolved, so its capacity
+scores are conditional scenarios; they cannot calibrate a production damage threshold. Physical
+capacity selection and coupled neighbor/interface mechanics remain outside Gate 2 and require separate
+evidence before any production damage law uses those quantities.
 The existing flow fit and plate-level `internal_stress` may remain candidate-event or
 background-eligibility signals, but they do not choose a complete cut or stand in for local loading. Keep solution 4 separately sized against the
 craton-loss gate, and take plume weakening through RFC 0007. The connected-boundary rule and
@@ -182,12 +186,15 @@ should start until those gates are resolved and the revised design is accepted.
    them from calibration and keep their denominators separate. The archived discrepancy is not
    explained or erased, but it no longer blocks use of the documented baseline. See
    [`analysis/issue487/README.md`](../analysis/issue487/README.md).
-2. **Gate 2 — establish local loading and strength — incremental extensional measure, column
-   scenario diagnostic, curved-shell benchmark, curved-mesh checks and isolated-plate edge policy
+2. **Gate 2 — validate the conditional local-load/capacity diagnostic — closed 2026-10-22.
+   Incremental extensional measure, column scenario diagnostic, curved-shell benchmark, curved-mesh
+   checks and isolated-plate edge policy
    added; connected-source mesh repairs and a 2026-10-21 skip audit completed. Scope is craton-crossing
    candidates whose source cells form one exact edge-connected component. The 56 disconnected-source
    candidates are counted separately and excluded from the coverage denominator. The connected-source
-   coverage requirement passes. A thickness-aware spatial capacity screen now uses per-node Hc/Hm,
+   coverage requirement passes. Under the scope decision below, Gate 2 validates a conditional
+   single-plate diagnostic; it does not select a production capacity field or validate coupled stress.
+   A thickness-aware spatial capacity screen now uses per-node Hc/Hm,
    crust type, craton share, belt marker and a bracketed Moho-lag profile on the pinned Gate 1
    replay; the capacity field remains scenario-dependent and underidentified.**
    `torque.gather_per_node_force_field` preserves each force
@@ -217,8 +224,12 @@ should start until those gates are resolved and the revised design is accepted.
    overpressure comparison. Friction is bracketed by `mu=0.6-0.85`, based on Byerlee's rock-friction
    experiments [[Byerlee, 1978]](#ref-byerlee1978). K0, cohesion, temperature, strain rate and
    water/rheology state remain assumptions because the world has no corresponding local fields.
-   The independent assumption-basis audit records that EARS stress observations support the
-   normal-faulting regime but do not identify the model's spatial `K0`; the geodetic strain-rate
+   The K0 audit finds that the force interface supplies external loads and the shell solve supplies
+   stress increments, while neither contains tectonic prestress; literature stress observations
+   constrain regime/orientation better than a globally transferable magnitude ratio. Thus `K0=0.8`
+   remains a reproduction anchor only, not a selected physical value. The independent assumption-basis
+   audit records that EARS stress observations support the normal-faulting regime but do not identify
+   the model's spatial `K0`; the geodetic strain-rate
    upper scale is about `6.3e-16 s-1`, so `1e-14 s-1` is an extreme localization sensitivity;
    and the wet-olivine law is an endmember with a stated water content, not a mapped mantle field.
    The existing 1250/1330/1400 C thermal boundaries are checked against their implied heat flow
@@ -227,13 +238,20 @@ should start until those gates are resolved and the revised design is accepted.
    [`analysis/issue487/gate2-assumption-basis.md`](../analysis/issue487/gate2-assumption-basis.md)
    and its generated JSON. No legacy event outcome is used to set these assumptions.
    A fixed-load crossed screen then scored all 22,896 connected-source node loads at
-   `6.3e-16 s-1`, crossing `K0=0.6/0.8/1.0`, dry/wet olivine and full-column versus capped
-   crust-hydrostatic pressure. Exceedance ranges from 3.07% to 19.03%; the capped pressure profile
-   changes fewer than 1% of classifications at matched K0/rheology, while K0 and mantle law move
-   the result much more. The screen's robust/possible bounds and scenario details are in
+   `6.3e-16 s-1`, crossing conditional `K0≈0.32/0.6/0.8/1.0`, dry/wet olivine and full-column versus
+   capped crust-hydrostatic pressure. The added `K0≈0.32` is the cohesionless near-critical limit
+   for the same assumed `mu=0.6` friction law, not an independent estimate. The extended finite
+   screen changes 57.59% of node classifications, with 3.07% over capacity in every case and 60.66%
+   in at least one. The original central cases show lower exceedance (3.07–19.03%); the capped
+   pressure profile changes fewer than 1% of classifications at matched K0/rheology there. No
+   scenario is assigned a probability. The screen's robust/possible bounds and scenario details are in
    [`analysis/issue487/gate2-assumption-screen.json`](../analysis/issue487/gate2-assumption-screen.json)
-   and are not probabilities. These checks show that the result remains assumption-sensitive;
-   Gate 2 still lacks an independently selected production capacity field.
+   and are not probabilities. These checks show that the result is highly sensitive to an
+   unobserved background stress state; Gate 2 still lacks an independently selected production
+   capacity field. The current world state and force interface do not contain tectonic prestress, and
+   stress literature does not identify one globally transferable `K0`, so `0.8` remains a replay
+   anchor only. The K0 audit and expanded result are documented in
+   [`analysis/issue487/gate2-assumption-basis.md`](../analysis/issue487/gate2-assumption-basis.md).
    The pressure-profile, Mohr-Coulomb, and dry/wet creep-inversion formulas pass six analytical unit checks. The shell-load
    transfer has separate manufactured-solution checks documented in
    [`analysis/issue487/gate2-load-diagnosis.md`](../analysis/issue487/gate2-load-diagnosis.md).
@@ -250,7 +268,8 @@ should start until those gates are resolved and the revised design is accepted.
    loads, the hydrostatic reference gives 1,563 nodes (6.83%) above capacity, compared with 1,718
    (7.50%) using fixed `P_f/P_lith=0.42`. Those are scenario screens, not rupture labels.
    Across the finite one-factor envelope, 795 nodes (3.47%) exceed capacity in every tested variant
-   and 2,701 (11.80%) in at least one; node rank correlation remains at least 0.9936. The `K0`
+   and 2,701 (11.80%) in at least one; node rank correlation remains at least 0.9936. These are the
+   earlier one-factor results; the expanded 16-case screen above includes the low-K0 limit. The `K0`
    range 0.6-1.0 moves the fraction from 11.23% to 3.47%; wet olivine yields 9.74%. These bounds
    omit interactions and do not identify a production threshold. Full results and field limitations
    are in `analysis/issue487/gate2-capacity-sensitivity.md`,
@@ -357,7 +376,8 @@ should start until those gates are resolved and the revised design is accepted.
   becomes a short rift segment, not a plate partition. The thin-shell diagnostic returns tensile
   membrane stress increment `N_ext = max(0, lambda_max(Delta_N))` and compares it with the column's
   additional normal-fault strength resultant `N_cap`, both in N/m. The diagnostic pairing is
-  defined, but production use waits for Gate 2 validation and a justified capacity selection. If the
+  defined. Gate 2 validates only this conditional diagnostic; production damage use waits for a
+  separately justified capacity selection and the later damage-calibration gate. If the
   damage law remains
   in Pa, convert both through the same effective thickness, `sigma_ext = N_ext / H_eff` and
   `Y_t = N_cap / H_eff`; otherwise formulate an integrated-viscosity law with units. The current
@@ -488,8 +508,9 @@ source or explicit design-choice status, and the sensitivity plan before impleme
 
 1. [x] **Gate 1:** use the repeatable paired runs as the baseline and retire the provenance-
        incomplete archives from calibration (2026-10-19; see `analysis/issue487/README.md`).
-   [ ] **Gate 2:** column-envelope scenarios, the incremental shell stress measure, curved-sphere
-       benchmark, original curved-mesh checks and isolated-plate free-edge policy are documented.
+   [x] **Gate 2 — validated conditional diagnostic (2026-10-22):** column-envelope scenarios, the
+       incremental shell stress measure, curved-sphere benchmark, original curved-mesh checks and
+       isolated-plate free-edge policy are documented.
        Scope is craton-crossing events whose source cells form one exact edge-connected component.
        All 74/74 eligible source-connected candidates pass the 95% cut-band and craton-band node
        coverage checks, stop-code and 1% residual screens (maximum 0.4514%); this is 100% overall
@@ -508,7 +529,12 @@ source or explicit design-choice status, and the sensitivity plan before impleme
        sensitivity and 2.0–21.4% force / 4.6–21.6% torque closure residuals for active mutual
        contact drag. The tied/no-slip comparison is an idealized bonded endmember, not a selected
        finite-slip law; the previous two-event relative-change summaries were invalid where baseline
-       node stress was zero. Resolve the interface model and make its kinematics, rigid-mode projection and traction ownership consistent before treating coupled values as physical. The projection audit in `analysis/issue487/gate2-rigid-projection-audit.md` does not select the physical interface. Justify the remaining source/capacity assumptions before Gate 2 closes (see
+       node stress was zero. These pair results are excluded from Gate 2 acceptance. A future
+       coupled-stress claim requires a consistent interface model, rigid-mode projection and traction
+       ownership; the projection audit
+       in `analysis/issue487/gate2-rigid-projection-audit.md` does not select one. Capacity and source
+       assumptions remain conditional and are reported as uncertainty scenarios; Gate 2 does not
+       require selecting a production capacity field, rupture label or damage threshold (see
        `analysis/issue487/README.md`, `analysis/issue487/gate2-load-diagnosis.md`,
        `analysis/issue487/gate2-column-envelope.json`, `analysis/issue487/gate2-matched-replay.json`,
        `analysis/issue487/gate2-spatial-capacity-replay.json`, and

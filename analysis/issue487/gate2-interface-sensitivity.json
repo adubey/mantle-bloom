@@ -147,7 +147,7 @@
     "joined_with_pair_contact_drag": "Shared-node displacement mesh; both plates' current force fields, including pair-specific contact drag, remain applied.",
     "tied_without_pair_contact_drag": "Same mesh and loads, but remove only mutual source-neighbor contact-drag forces. The tied displacement constraint carries interface transfer; contact loads from other neighbors remain external."
   },
-  "interpretation": "This is a diagnostic sensitivity study, not a physical contact-law validation. The bonded interface is an idealized no-slip endmember. Pair contact forces are not action-reaction balanced in several active cases, and the response is not monotonic between force-included and force-removed variants. Gate 2 remains open.",
+  "interpretation": "This is a diagnostic sensitivity study, not a physical contact-law validation. The bonded interface is an idealized no-slip endmember. Pair contact forces are not action-reaction balanced in several active cases, and the response is not monotonic between force-included and force-removed variants. This coupled-interface study is outside Gate 2's approved single-plate diagnostic scope; its results do not validate physical coupled stress.",
   "metrics": {
     "contact_force_action_reaction_closure": "norm(sum of both sides' pair-specific contact-drag forces) / sum of nodal force magnitudes; 0 means balanced or no mutual contact drag, distinguished by the L1 magnitude.",
     "contact_torque_action_reaction_closure": "norm(sum of pair-specific contact moments) / sum of nodal contact-moment magnitudes.",

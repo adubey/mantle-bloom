@@ -1,21 +1,21 @@
 {
   "crossed_scenario_envelope": {
-    "fraction_changing_classification_across_scenarios": 0.1596348707197764,
+    "fraction_changing_classification_across_scenarios": 0.5758647798742138,
     "interpretation": "Finite crossed scenario envelope, not a probability interval. A node is robustly over capacity if N_ext exceeds the largest tested capacity; it is possibly over capacity if it exceeds the smallest.",
-    "nodes_changing_classification_across_scenarios": 3655,
+    "nodes_changing_classification_across_scenarios": 13185,
     "possible_over_capacity": {
       "capacity_n_per_m_p10_median_p90": [
-        897530764730.2561,
-        3291813719950.9453,
-        7459746671470.554
+        308858160595.1052,
+        592157140349.156,
+        1045087557866.839
       ],
       "n_ext_over_capacity_median_p95": [
-        0.3108067846979333,
-        2.6085012672085566
+        1.7735048112525242,
+        7.995351781970513
       ],
       "node_count": 22896,
-      "over_capacity_fraction": 0.19033892382948986,
-      "over_capacity_nodes": 4358
+      "over_capacity_fraction": 0.6065688329839273,
+      "over_capacity_nodes": 13888
     },
     "robust_over_capacity": {
       "capacity_n_per_m_p10_median_p90": [
@@ -94,6 +94,7 @@
   "method": {
     "crossed_dimensions": {
       "k0": [
+        0.3205715452371279,
         0.6,
         0.8,
         1.0
@@ -111,7 +112,7 @@
     "event_count": 74,
     "limitations": [
       "The geodetic rate is a regional surface strain invariant, not a depth-resolved local creep rate.",
-      "The K0 and dry/wet endmembers remain unobserved local state and are crossed as scenarios, not assigned probabilities.",
+      "The K0 and dry/wet endmembers remain unobserved local state and are crossed as scenarios, not assigned probabilities; the near-critical K0 case is derived from the reference friction law, not external stress data.",
       "The two pore-pressure profiles bracket a deep hydrostatic gradient assumption; neither predicts fluid connectivity.",
       "The steady conductive temperature profile remains the existing 1-D model proxy.",
       "Capacity exceedance is an offline screen, not a rupture probability or a fitted yield label."
@@ -128,7 +129,31 @@
     }
   },
   "paired_pressure_profile_comparison": {
-    "k0_0.6_dry_olivine": {
+    "k0_0.32_dry_olivine": {
+      "changed_threshold_nodes": 78,
+      "comparison": "crust hydrostatic then hold at Moho pressure versus hydrostatic through full lithosphere",
+      "crust_hydrostatic_moho_hold_over_capacity_fraction": 0.5703179594689028,
+      "fraction_classification_changed": 0.0034067085953878406,
+      "full_hydrostatic_over_capacity_fraction": 0.566911250873515,
+      "median_capacity_change_percent": -1.992181481169749,
+      "newly_over_capacity_nodes": 78,
+      "no_longer_over_capacity_nodes": 0,
+      "spearman_capacity_rank_correlation": 0.9999707535130312,
+      "spearman_n_ext_over_capacity_rank_correlation": 0.9999923218228762
+    },
+    "k0_0.32_wet_olivine": {
+      "changed_threshold_nodes": 45,
+      "comparison": "crust hydrostatic then hold at Moho pressure versus hydrostatic through full lithosphere",
+      "crust_hydrostatic_moho_hold_over_capacity_fraction": 0.6065688329839273,
+      "fraction_classification_changed": 0.0019654088050314465,
+      "full_hydrostatic_over_capacity_fraction": 0.6046034241788959,
+      "median_capacity_change_percent": -1.6666546321235183,
+      "newly_over_capacity_nodes": 45,
+      "no_longer_over_capacity_nodes": 0,
+      "spearman_capacity_rank_correlation": 0.9999502837596619,
+      "spearman_n_ext_over_capacity_rank_correlation": 0.9999896925066747
+    },
+    "k0_0.60_dry_olivine": {
       "changed_threshold_nodes": 189,
       "comparison": "crust hydrostatic then hold at Moho pressure versus hydrostatic through full lithosphere",
       "crust_hydrostatic_moho_hold_over_capacity_fraction": 0.11023759608665269,
@@ -140,7 +165,7 @@
       "spearman_capacity_rank_correlation": 0.9976810005761692,
       "spearman_n_ext_over_capacity_rank_correlation": 0.9997516826109569
     },
-    "k0_0.6_wet_olivine": {
+    "k0_0.60_wet_olivine": {
       "changed_threshold_nodes": 214,
       "comparison": "crust hydrostatic then hold at Moho pressure versus hydrostatic through full lithosphere",
       "crust_hydrostatic_moho_hold_over_capacity_fraction": 0.18151642208245983,
@@ -152,7 +177,7 @@
       "spearman_capacity_rank_correlation": 0.9987746837653202,
       "spearman_n_ext_over_capacity_rank_correlation": 0.9997481271893324
     },
-    "k0_0.8_dry_olivine": {
+    "k0_0.80_dry_olivine": {
       "changed_threshold_nodes": 132,
       "comparison": "crust hydrostatic then hold at Moho pressure versus hydrostatic through full lithosphere",
       "crust_hydrostatic_moho_hold_over_capacity_fraction": 0.06503319357092942,
@@ -164,7 +189,7 @@
       "spearman_capacity_rank_correlation": 0.9972876023397053,
       "spearman_n_ext_over_capacity_rank_correlation": 0.9997126024080206
     },
-    "k0_0.8_wet_olivine": {
+    "k0_0.80_wet_olivine": {
       "changed_threshold_nodes": 63,
       "comparison": "crust hydrostatic then hold at Moho pressure versus hydrostatic through full lithosphere",
       "crust_hydrostatic_moho_hold_over_capacity_fraction": 0.10041055206149546,
@@ -176,7 +201,7 @@
       "spearman_capacity_rank_correlation": 0.9983179000043394,
       "spearman_n_ext_over_capacity_rank_correlation": 0.9997039351215415
     },
-    "k0_1.0_dry_olivine": {
+    "k0_1.00_dry_olivine": {
       "changed_threshold_nodes": 134,
       "comparison": "crust hydrostatic then hold at Moho pressure versus hydrostatic through full lithosphere",
       "crust_hydrostatic_moho_hold_over_capacity_fraction": 0.030704053109713487,
@@ -188,7 +213,7 @@
       "spearman_capacity_rank_correlation": 0.9964199687610419,
       "spearman_n_ext_over_capacity_rank_correlation": 0.9997254306962227
     },
-    "k0_1.0_wet_olivine": {
+    "k0_1.00_wet_olivine": {
       "changed_threshold_nodes": 111,
       "comparison": "crust hydrostatic then hold at Moho pressure versus hydrostatic through full lithosphere",
       "crust_hydrostatic_moho_hold_over_capacity_fraction": 0.05402690426275332,
@@ -204,15 +229,895 @@
   "provenance": {
     "column_model_sha256": "7783a0c2c752067850a6f779eb92f1df9f1be1212cb6679e7317d256ee3e350b",
     "gate1_baseline_commit": "0118752d0ffe75060464204d5b94f81a60fe9a07",
-    "screen_script_sha256": "548512a06b6b68604d677bd77731406f09a7044540e32ffb0f1dac727e021e6a",
+    "screen_script_sha256": "ed31463cbb969796a5eff9e9f38fa26ff1c0886a6ce233df0ebd8b82ebc4c7b8",
     "sensitivity_loader_sha256": "2e65e3d941d6f944d3a20ba18a5a04d09d203dbe41312ac53edac66d44792c98"
   },
   "purpose": "Scenario sensitivity only. No event identity or legacy outcome is used to fit any parameter.",
   "scenarios": {
-    "k0_0.6_dry_olivine_hydrostatic_crust_moho_hold": {
+    "k0_0.32_dry_olivine_hydrostatic_crust_moho_hold": {
       "assumptions": {
         "cohesion_pa": 20000000.0,
-        "friction_coefficient": 0.6,
+        "friction_coefficient": 0.6000000000000001,
+        "k0_horizontal_over_vertical": 0.3205715452371279,
+        "mantle_law": "dry_olivine",
+        "pore_pressure_mode": "hydrostatic_crust_moho_hold",
+        "strain_rate_per_year": 2e-08,
+        "strain_rate_s-1": 6.337617562805791e-16,
+        "temperature_profile": "existing steady conductive profile, 1330 C base"
+      },
+      "summary": {
+        "all": {
+          "capacity_n_per_m_p10_median_p90": [
+            341508369910.2163,
+            811369959710.5513,
+            1250332318072.5493
+          ],
+          "n_ext_over_capacity_median_p95": [
+            1.427803541107818,
+            6.918987922709516
+          ],
+          "node_count": 22896,
+          "over_capacity_fraction": 0.5703179594689028,
+          "over_capacity_nodes": 13058
+        },
+        "by_craton_share": {
+          "majority": {
+            "capacity_n_per_m_p10_median_p90": [
+              378051567854.7887,
+              972535259951.264,
+              1257388888738.8196
+            ],
+            "n_ext_over_capacity_median_p95": [
+              0.6582181481065177,
+              4.108704909257531
+            ],
+            "node_count": 8451,
+            "over_capacity_fraction": 0.43130990415335463,
+            "over_capacity_nodes": 3645
+          },
+          "none": {
+            "capacity_n_per_m_p10_median_p90": [
+              349404776318.28577,
+              597699266362.021,
+              1213658518136.5723
+            ],
+            "n_ext_over_capacity_median_p95": [
+              2.0589811607795863,
+              7.652544475997977
+            ],
+            "node_count": 13781,
+            "over_capacity_fraction": 0.6768739568971772,
+            "over_capacity_nodes": 9328
+          },
+          "partial": {
+            "capacity_n_per_m_p10_median_p90": [
+              236537034355.99683,
+              311039136779.58826,
+              1354941672670.0151
+            ],
+            "n_ext_over_capacity_median_p95": [
+              0.0,
+              3.578708136424461
+            ],
+            "node_count": 664,
+            "over_capacity_fraction": 0.1280120481927711,
+            "over_capacity_nodes": 85
+          }
+        },
+        "by_crust_type": {
+          "continental": {
+            "capacity_n_per_m_p10_median_p90": [
+              373374767794.9182,
+              964924863736.3146,
+              1257388888738.8196
+            ],
+            "n_ext_over_capacity_median_p95": [
+              0.7812063037477566,
+              4.6493115642901195
+            ],
+            "node_count": 16409,
+            "over_capacity_fraction": 0.4517033335364739,
+            "over_capacity_nodes": 7412
+          },
+          "oceanic_mature": {
+            "capacity_n_per_m_p10_median_p90": [
+              308323914255.77893,
+              539860334057.7259,
+              595915373864.936
+            ],
+            "n_ext_over_capacity_median_p95": [
+              2.9599502086321148,
+              8.825967234828436
+            ],
+            "node_count": 5950,
+            "over_capacity_fraction": 0.8794957983193278,
+            "over_capacity_nodes": 5233
+          },
+          "oceanic_young_ridge": {
+            "capacity_n_per_m_p10_median_p90": [
+              219887477015.45026,
+              346887835057.5956,
+              502493961335.0411
+            ],
+            "n_ext_over_capacity_median_p95": [
+              2.2653026636945555,
+              8.707741043364702
+            ],
+            "node_count": 537,
+            "over_capacity_fraction": 0.7690875232774674,
+            "over_capacity_nodes": 413
+          }
+        },
+        "by_event_kind": {
+          "failed_rift": {
+            "capacity_n_per_m_p10_median_p90": [
+              295503808186.03796,
+              813948833675.1296,
+              1255527165363.8916
+            ],
+            "n_ext_over_capacity_median_p95": [
+              1.4952605026503876,
+              7.009287345197095
+            ],
+            "node_count": 14059,
+            "over_capacity_fraction": 0.5883775517462124,
+            "over_capacity_nodes": 8272
+          },
+          "split": {
+            "capacity_n_per_m_p10_median_p90": [
+              379178254256.6762,
+              810089008233.468,
+              1247034309679.3557
+            ],
+            "n_ext_over_capacity_median_p95": [
+              1.2574445463587318,
+              6.644767227684857
+            ],
+            "node_count": 8837,
+            "over_capacity_fraction": 0.5415865112594772,
+            "over_capacity_nodes": 4786
+          }
+        },
+        "by_inherited_belt": {
+          "marked": {
+            "capacity_n_per_m_p10_median_p90": [
+              524001375640.18976,
+              960306257541.7966,
+              1247034309679.3557
+            ],
+            "n_ext_over_capacity_median_p95": [
+              1.1610356719206743,
+              4.356020393937147
+            ],
+            "node_count": 4970,
+            "over_capacity_fraction": 0.5466800804828974,
+            "over_capacity_nodes": 2717
+          },
+          "unmarked": {
+            "capacity_n_per_m_p10_median_p90": [
+              304419748079.86945,
+              664036368432.5491,
+              1253607049110.9995
+            ],
+            "n_ext_over_capacity_median_p95": [
+              1.5532043669048203,
+              7.2860724951906475
+            ],
+            "node_count": 17926,
+            "over_capacity_fraction": 0.5768715831752761,
+            "over_capacity_nodes": 10341
+          }
+        },
+        "by_seed": {
+          "11": {
+            "capacity_n_per_m_p10_median_p90": [
+              377932077961.8477,
+              829697223733.4606,
+              1038159553825.1685
+            ],
+            "n_ext_over_capacity_median_p95": [
+              1.9929133950021052,
+              7.5324114377182925
+            ],
+            "node_count": 9713,
+            "over_capacity_fraction": 0.6736332749922784,
+            "over_capacity_nodes": 6543
+          },
+          "2024": {
+            "capacity_n_per_m_p10_median_p90": [
+              408424639949.44073,
+              1026217477278.6592,
+              1287219799087.0586
+            ],
+            "n_ext_over_capacity_median_p95": [
+              0.8625809871204873,
+              6.127004528414334
+            ],
+            "node_count": 7241,
+            "over_capacity_fraction": 0.46443861345118076,
+            "over_capacity_nodes": 3363
+          },
+          "7": {
+            "capacity_n_per_m_p10_median_p90": [
+              256434481560.52347,
+              564774903021.6378,
+              1201028149387.8062
+            ],
+            "n_ext_over_capacity_median_p95": [
+              1.2775840956052424,
+              5.78694086662113
+            ],
+            "node_count": 5942,
+            "over_capacity_fraction": 0.5304611242006059,
+            "over_capacity_nodes": 3152
+          }
+        }
+      }
+    },
+    "k0_0.32_dry_olivine_hydrostatic_water": {
+      "assumptions": {
+        "cohesion_pa": 20000000.0,
+        "friction_coefficient": 0.6000000000000001,
+        "k0_horizontal_over_vertical": 0.3205715452371279,
+        "mantle_law": "dry_olivine",
+        "pore_pressure_mode": "hydrostatic_water",
+        "strain_rate_per_year": 2e-08,
+        "strain_rate_s-1": 6.337617562805791e-16,
+        "temperature_profile": "existing steady conductive profile, 1330 C base"
+      },
+      "summary": {
+        "all": {
+          "capacity_n_per_m_p10_median_p90": [
+            344813995608.0333,
+            829832779219.2278,
+            1277578738527.3953
+          ],
+          "n_ext_over_capacity_median_p95": [
+            1.400457350511351,
+            6.824197340607299
+          ],
+          "node_count": 22896,
+          "over_capacity_fraction": 0.566911250873515,
+          "over_capacity_nodes": 12980
+        },
+        "by_craton_share": {
+          "majority": {
+            "capacity_n_per_m_p10_median_p90": [
+              378051567854.7887,
+              994630821713.981,
+              1282947531882.099
+            ],
+            "n_ext_over_capacity_median_p95": [
+              0.644822335204976,
+              4.065596082175109
+            ],
+            "node_count": 8451,
+            "over_capacity_fraction": 0.42705005324813633,
+            "over_capacity_nodes": 3609
+          },
+          "none": {
+            "capacity_n_per_m_p10_median_p90": [
+              353113213087.10834,
+              607123247255.8224,
+              1238742951163.1377
+            ],
+            "n_ext_over_capacity_median_p95": [
+              2.02164009215006,
+              7.54686974730282
+            ],
+            "node_count": 13781,
+            "over_capacity_fraction": 0.673826282562949,
+            "over_capacity_nodes": 9286
+          },
+          "partial": {
+            "capacity_n_per_m_p10_median_p90": [
+              236537034355.99683,
+              311039136779.58826,
+              1385094288404.5273
+            ],
+            "n_ext_over_capacity_median_p95": [
+              0.0,
+              3.566687801504019
+            ],
+            "node_count": 664,
+            "over_capacity_fraction": 0.1280120481927711,
+            "over_capacity_nodes": 85
+          }
+        },
+        "by_crust_type": {
+          "continental": {
+            "capacity_n_per_m_p10_median_p90": [
+              373393338138.94196,
+              985855503859.7163,
+              1282947531882.099
+            ],
+            "n_ext_over_capacity_median_p95": [
+              0.765257668866079,
+              4.572814506080371
+            ],
+            "node_count": 16409,
+            "over_capacity_fraction": 0.44737643975866903,
+            "over_capacity_nodes": 7341
+          },
+          "oceanic_mature": {
+            "capacity_n_per_m_p10_median_p90": [
+              312351620259.3734,
+              549145743356.54144,
+              604958492190.645
+            ],
+            "n_ext_over_capacity_median_p95": [
+              2.918126590841158,
+              8.71600160622227
+            ],
+            "node_count": 5950,
+            "over_capacity_fraction": 0.8784873949579832,
+            "over_capacity_nodes": 5227
+          },
+          "oceanic_young_ridge": {
+            "capacity_n_per_m_p10_median_p90": [
+              221420098278.55893,
+              352149061292.54724,
+              510957844548.8748
+            ],
+            "n_ext_over_capacity_median_p95": [
+              2.2287142529837545,
+              8.597248551969956
+            ],
+            "node_count": 537,
+            "over_capacity_fraction": 0.7672253258845437,
+            "over_capacity_nodes": 412
+          }
+        },
+        "by_event_kind": {
+          "failed_rift": {
+            "capacity_n_per_m_p10_median_p90": [
+              297597485066.96313,
+              832264166939.3508,
+              1282567406495.0815
+            ],
+            "n_ext_over_capacity_median_p95": [
+              1.4643793864196195,
+              6.9152460477880515
+            ],
+            "node_count": 14059,
+            "over_capacity_fraction": 0.5851056262892098,
+            "over_capacity_nodes": 8226
+          },
+          "split": {
+            "capacity_n_per_m_p10_median_p90": [
+              380638647918.3549,
+              828053429242.2509,
+              1274365821628.903
+            ],
+            "n_ext_over_capacity_median_p95": [
+              1.2327331229726093,
+              6.534742848621007
+            ],
+            "node_count": 8837,
+            "over_capacity_fraction": 0.5379653728640942,
+            "over_capacity_nodes": 4754
+          }
+        },
+        "by_inherited_belt": {
+          "marked": {
+            "capacity_n_per_m_p10_median_p90": [
+              532295585631.86707,
+              980456487590.3541,
+              1274365821628.903
+            ],
+            "n_ext_over_capacity_median_p95": [
+              1.137233101156642,
+              4.274326626771491
+            ],
+            "node_count": 4970,
+            "over_capacity_fraction": 0.5406438631790744,
+            "over_capacity_nodes": 2687
+          },
+          "unmarked": {
+            "capacity_n_per_m_p10_median_p90": [
+              307020162100.0532,
+              676669463691.2395,
+              1279120536734.8638
+            ],
+            "n_ext_over_capacity_median_p95": [
+              1.5230090583267715,
+              7.17944106526129
+            ],
+            "node_count": 17926,
+            "over_capacity_fraction": 0.5741939082896351,
+            "over_capacity_nodes": 10293
+          }
+        },
+        "by_seed": {
+          "11": {
+            "capacity_n_per_m_p10_median_p90": [
+              382404050573.02734,
+              846209098160.9172,
+              1060571867994.6664
+            ],
+            "n_ext_over_capacity_median_p95": [
+              1.9532898994416301,
+              7.414162280361718
+            ],
+            "node_count": 9713,
+            "over_capacity_fraction": 0.6703387213013488,
+            "over_capacity_nodes": 6511
+          },
+          "2024": {
+            "capacity_n_per_m_p10_median_p90": [
+              412280977653.3154,
+              1048995506905.1388,
+              1313882228703.447
+            ],
+            "n_ext_over_capacity_median_p95": [
+              0.8453237230291547,
+              6.047219571732637
+            ],
+            "node_count": 7241,
+            "over_capacity_fraction": 0.45988123187405056,
+            "over_capacity_nodes": 3330
+          },
+          "7": {
+            "capacity_n_per_m_p10_median_p90": [
+              256434481560.52347,
+              574946293587.6638,
+              1226162991066.3154
+            ],
+            "n_ext_over_capacity_median_p95": [
+              1.2522125387699408,
+              5.737659596370489
+            ],
+            "node_count": 5942,
+            "over_capacity_fraction": 0.5282733086502861,
+            "over_capacity_nodes": 3139
+          }
+        }
+      }
+    },
+    "k0_0.32_wet_olivine_hydrostatic_crust_moho_hold": {
+      "assumptions": {
+        "cohesion_pa": 20000000.0,
+        "friction_coefficient": 0.6000000000000001,
+        "k0_horizontal_over_vertical": 0.3205715452371279,
+        "mantle_law": "wet_olivine",
+        "pore_pressure_mode": "hydrostatic_crust_moho_hold",
+        "strain_rate_per_year": 2e-08,
+        "strain_rate_s-1": 6.337617562805791e-16,
+        "temperature_profile": "existing steady conductive profile, 1330 C base"
+      },
+      "summary": {
+        "all": {
+          "capacity_n_per_m_p10_median_p90": [
+            308858160595.1052,
+            592157140349.156,
+            1045087557866.839
+          ],
+          "n_ext_over_capacity_median_p95": [
+            1.7735048112525242,
+            7.995351781970513
+          ],
+          "node_count": 22896,
+          "over_capacity_fraction": 0.6065688329839273,
+          "over_capacity_nodes": 13888
+        },
+        "by_craton_share": {
+          "majority": {
+            "capacity_n_per_m_p10_median_p90": [
+              377157517763.8917,
+              745629710199.8005,
+              1045087557866.839
+            ],
+            "n_ext_over_capacity_median_p95": [
+              0.8373661115285921,
+              5.193876844300384
+            ],
+            "node_count": 8451,
+            "over_capacity_fraction": 0.47544669269908885,
+            "over_capacity_nodes": 4018
+          },
+          "none": {
+            "capacity_n_per_m_p10_median_p90": [
+              305605841124.3301,
+              506636608004.3749,
+              1009315890553.1876
+            ],
+            "n_ext_over_capacity_median_p95": [
+              2.4574711812451397,
+              8.880613468614806
+            ],
+            "node_count": 13781,
+            "over_capacity_fraction": 0.7092373557796967,
+            "over_capacity_nodes": 9774
+          },
+          "partial": {
+            "capacity_n_per_m_p10_median_p90": [
+              236537034355.99683,
+              308716027569.6271,
+              1123938457819.5813
+            ],
+            "n_ext_over_capacity_median_p95": [
+              0.0,
+              4.247451197388826
+            ],
+            "node_count": 664,
+            "over_capacity_fraction": 0.14457831325301204,
+            "over_capacity_nodes": 96
+          }
+        },
+        "by_crust_type": {
+          "continental": {
+            "capacity_n_per_m_p10_median_p90": [
+              365852660194.82153,
+              744844933323.7806,
+              1068410060648.778
+            ],
+            "n_ext_over_capacity_median_p95": [
+              0.9878436826136271,
+              5.803634177510255
+            ],
+            "node_count": 16409,
+            "over_capacity_fraction": 0.497775610945213,
+            "over_capacity_nodes": 8168
+          },
+          "oceanic_mature": {
+            "capacity_n_per_m_p10_median_p90": [
+              268759371127.37985,
+              466083008631.5337,
+              517530752321.4405
+            ],
+            "n_ext_over_capacity_median_p95": [
+              3.434981312257342,
+              10.195671899315645
+            ],
+            "node_count": 5950,
+            "over_capacity_fraction": 0.888235294117647,
+            "over_capacity_nodes": 5285
+          },
+          "oceanic_young_ridge": {
+            "capacity_n_per_m_p10_median_p90": [
+              185517337700.70752,
+              302280023217.04553,
+              438891396232.29736
+            ],
+            "n_ext_over_capacity_median_p95": [
+              2.5839013070274484,
+              10.107467853952276
+            ],
+            "node_count": 537,
+            "over_capacity_fraction": 0.8100558659217877,
+            "over_capacity_nodes": 435
+          }
+        },
+        "by_event_kind": {
+          "failed_rift": {
+            "capacity_n_per_m_p10_median_p90": [
+              270024434668.4444,
+              601555228771.0122,
+              1045087557866.839
+            ],
+            "n_ext_over_capacity_median_p95": [
+              1.8433778797423852,
+              8.057804913625228
+            ],
+            "node_count": 14059,
+            "over_capacity_fraction": 0.6249377622875026,
+            "over_capacity_nodes": 8786
+          },
+          "split": {
+            "capacity_n_per_m_p10_median_p90": [
+              365364753846.79926,
+              582491833495.3694,
+              1045087557866.839
+            ],
+            "n_ext_over_capacity_median_p95": [
+              1.5969951172454742,
+              7.733231866132897
+            ],
+            "node_count": 8837,
+            "over_capacity_fraction": 0.5773452529138848,
+            "over_capacity_nodes": 5102
+          }
+        },
+        "by_inherited_belt": {
+          "marked": {
+            "capacity_n_per_m_p10_median_p90": [
+              405863754487.9318,
+              751868923227.5555,
+              1070438122341.1108
+            ],
+            "n_ext_over_capacity_median_p95": [
+              1.4685792555593102,
+              5.6261295632545165
+            ],
+            "node_count": 4970,
+            "over_capacity_fraction": 0.6048289738430583,
+            "over_capacity_nodes": 3006
+          },
+          "unmarked": {
+            "capacity_n_per_m_p10_median_p90": [
+              280798969552.2334,
+              512198591616.5732,
+              1045087557866.839
+            ],
+            "n_ext_over_capacity_median_p95": [
+              1.909751040908804,
+              8.357718796916508
+            ],
+            "node_count": 17926,
+            "over_capacity_fraction": 0.6070512105321879,
+            "over_capacity_nodes": 10882
+          }
+        },
+        "by_seed": {
+          "11": {
+            "capacity_n_per_m_p10_median_p90": [
+              336022132696.675,
+              612238641080.7542,
+              822734611865.9939
+            ],
+            "n_ext_over_capacity_median_p95": [
+              2.5201906151624085,
+              8.658574661999074
+            ],
+            "node_count": 9713,
+            "over_capacity_fraction": 0.7125501904663852,
+            "over_capacity_nodes": 6921
+          },
+          "2024": {
+            "capacity_n_per_m_p10_median_p90": [
+              377157517763.8917,
+              808264014471.4517,
+              1088873084745.5801
+            ],
+            "n_ext_over_capacity_median_p95": [
+              1.055472037159719,
+              7.2700768545227685
+            ],
+            "node_count": 7241,
+            "over_capacity_fraction": 0.5097362242784146,
+            "over_capacity_nodes": 3691
+          },
+          "7": {
+            "capacity_n_per_m_p10_median_p90": [
+              254371948950.0225,
+              466755377793.08307,
+              982885688855.4958
+            ],
+            "n_ext_over_capacity_median_p95": [
+              1.5294421916204244,
+              6.556417122591841
+            ],
+            "node_count": 5942,
+            "over_capacity_fraction": 0.5513295186805789,
+            "over_capacity_nodes": 3276
+          }
+        }
+      }
+    },
+    "k0_0.32_wet_olivine_hydrostatic_water": {
+      "assumptions": {
+        "cohesion_pa": 20000000.0,
+        "friction_coefficient": 0.6000000000000001,
+        "k0_horizontal_over_vertical": 0.3205715452371279,
+        "mantle_law": "wet_olivine",
+        "pore_pressure_mode": "hydrostatic_water",
+        "strain_rate_per_year": 2e-08,
+        "strain_rate_s-1": 6.337617562805791e-16,
+        "temperature_profile": "existing steady conductive profile, 1330 C base"
+      },
+      "summary": {
+        "all": {
+          "capacity_n_per_m_p10_median_p90": [
+            311073314122.4339,
+            600989166481.7051,
+            1064665668683.9948
+          ],
+          "n_ext_over_capacity_median_p95": [
+            1.7448358341355736,
+            7.894392982746515
+          ],
+          "node_count": 22896,
+          "over_capacity_fraction": 0.6046034241788959,
+          "over_capacity_nodes": 13843
+        },
+        "by_craton_share": {
+          "majority": {
+            "capacity_n_per_m_p10_median_p90": [
+              377157517763.8917,
+              759106494403.0164,
+              1064665668683.9948
+            ],
+            "n_ext_over_capacity_median_p95": [
+              0.8265653380345097,
+              5.18749376956818
+            ],
+            "node_count": 8451,
+            "over_capacity_fraction": 0.47355342563010294,
+            "over_capacity_nodes": 4002
+          },
+          "none": {
+            "capacity_n_per_m_p10_median_p90": [
+              309466447618.3377,
+              514113714384.59436,
+              1028639046818.0977
+            ],
+            "n_ext_over_capacity_median_p95": [
+              2.4193179613673594,
+              8.769772816179431
+            ],
+            "node_count": 13781,
+            "over_capacity_fraction": 0.7072781365648356,
+            "over_capacity_nodes": 9747
+          },
+          "partial": {
+            "capacity_n_per_m_p10_median_p90": [
+              236537034355.99683,
+              308716027569.6271,
+              1149552092478.8123
+            ],
+            "n_ext_over_capacity_median_p95": [
+              0.0,
+              4.247451197388826
+            ],
+            "node_count": 664,
+            "over_capacity_fraction": 0.14156626506024098,
+            "over_capacity_nodes": 94
+          }
+        },
+        "by_crust_type": {
+          "continental": {
+            "capacity_n_per_m_p10_median_p90": [
+              366200321578.14154,
+              757763849228.294,
+              1090183855166.171
+            ],
+            "n_ext_over_capacity_median_p95": [
+              0.9716351864821267,
+              5.781902322681268
+            ],
+            "node_count": 16409,
+            "over_capacity_fraction": 0.49539886647571457,
+            "over_capacity_nodes": 8129
+          },
+          "oceanic_mature": {
+            "capacity_n_per_m_p10_median_p90": [
+              271628660246.3229,
+              474261673785.33936,
+              524700660298.37195
+            ],
+            "n_ext_over_capacity_median_p95": [
+              3.3885674918496473,
+              10.102329588393701
+            ],
+            "node_count": 5950,
+            "over_capacity_fraction": 0.8873949579831932,
+            "over_capacity_nodes": 5280
+          },
+          "oceanic_young_ridge": {
+            "capacity_n_per_m_p10_median_p90": [
+              185914271012.55835,
+              305439653408.8972,
+              445738763182.80255
+            ],
+            "n_ext_over_capacity_median_p95": [
+              2.5452649780140235,
+              10.008378485556138
+            ],
+            "node_count": 537,
+            "over_capacity_fraction": 0.8081936685288641,
+            "over_capacity_nodes": 434
+          }
+        },
+        "by_event_kind": {
+          "failed_rift": {
+            "capacity_n_per_m_p10_median_p90": [
+              270775153788.0026,
+              610077391514.1534,
+              1064665668683.9948
+            ],
+            "n_ext_over_capacity_median_p95": [
+              1.8119189476437583,
+              7.95863054788307
+            ],
+            "node_count": 14059,
+            "over_capacity_fraction": 0.622946155487588,
+            "over_capacity_nodes": 8758
+          },
+          "split": {
+            "capacity_n_per_m_p10_median_p90": [
+              366240788131.05005,
+              590899173892.7905,
+              1064665668683.9948
+            ],
+            "n_ext_over_capacity_median_p95": [
+              1.5736457731232267,
+              7.638136327687221
+            ],
+            "node_count": 8837,
+            "over_capacity_fraction": 0.5754215231413375,
+            "over_capacity_nodes": 5085
+          }
+        },
+        "by_inherited_belt": {
+          "marked": {
+            "capacity_n_per_m_p10_median_p90": [
+              406792457767.01154,
+              765410353767.3102,
+              1094162907357.7092
+            ],
+            "n_ext_over_capacity_median_p95": [
+              1.4442348373383513,
+              5.593786508303247
+            ],
+            "node_count": 4970,
+            "over_capacity_fraction": 0.60261569416499,
+            "over_capacity_nodes": 2995
+          },
+          "unmarked": {
+            "capacity_n_per_m_p10_median_p90": [
+              282938413555.5333,
+              519693064898.45624,
+              1064665668683.9948
+            ],
+            "n_ext_over_capacity_median_p95": [
+              1.8783600857470684,
+              8.248459471990724
+            ],
+            "node_count": 17926,
+            "over_capacity_fraction": 0.6051545241548588,
+            "over_capacity_nodes": 10848
+          }
+        },
+        "by_seed": {
+          "11": {
+            "capacity_n_per_m_p10_median_p90": [
+              341129703328.85876,
+              621055445284.4775,
+              837846063281.8566
+            ],
+            "n_ext_over_capacity_median_p95": [
+              2.480483459476623,
+              8.552891602298507
+            ],
+            "node_count": 9713,
+            "over_capacity_fraction": 0.7103881396067127,
+            "over_capacity_nodes": 6900
+          },
+          "2024": {
+            "capacity_n_per_m_p10_median_p90": [
+              379666990801.76697,
+              823668549565.5364,
+              1110901372638.2307
+            ],
+            "n_ext_over_capacity_median_p95": [
+              1.0360629878067287,
+              7.155533226429157
+            ],
+            "node_count": 7241,
+            "over_capacity_fraction": 0.5073884822538324,
+            "over_capacity_nodes": 3674
+          },
+          "7": {
+            "capacity_n_per_m_p10_median_p90": [
+              254837851897.43124,
+              473659162936.2583,
+              1002155953854.8165
+            ],
+            "n_ext_over_capacity_median_p95": [
+              1.511381722893163,
+              6.5179457926854525
+            ],
+            "node_count": 5942,
+            "over_capacity_fraction": 0.5501514641534837,
+            "over_capacity_nodes": 3269
+          }
+        }
+      }
+    },
+    "k0_0.60_dry_olivine_hydrostatic_crust_moho_hold": {
+      "assumptions": {
+        "cohesion_pa": 20000000.0,
+        "friction_coefficient": 0.6000000000000001,
         "k0_horizontal_over_vertical": 0.6,
         "mantle_law": "dry_olivine",
         "pore_pressure_mode": "hydrostatic_crust_moho_hold",
@@ -429,10 +1334,10 @@
         }
       }
     },
-    "k0_0.6_dry_olivine_hydrostatic_water": {
+    "k0_0.60_dry_olivine_hydrostatic_water": {
       "assumptions": {
         "cohesion_pa": 20000000.0,
-        "friction_coefficient": 0.6,
+        "friction_coefficient": 0.6000000000000001,
         "k0_horizontal_over_vertical": 0.6,
         "mantle_law": "dry_olivine",
         "pore_pressure_mode": "hydrostatic_water",
@@ -649,10 +1554,10 @@
         }
       }
     },
-    "k0_0.6_wet_olivine_hydrostatic_crust_moho_hold": {
+    "k0_0.60_wet_olivine_hydrostatic_crust_moho_hold": {
       "assumptions": {
         "cohesion_pa": 20000000.0,
-        "friction_coefficient": 0.6,
+        "friction_coefficient": 0.6000000000000001,
         "k0_horizontal_over_vertical": 0.6,
         "mantle_law": "wet_olivine",
         "pore_pressure_mode": "hydrostatic_crust_moho_hold",
@@ -869,10 +1774,10 @@
         }
       }
     },
-    "k0_0.6_wet_olivine_hydrostatic_water": {
+    "k0_0.60_wet_olivine_hydrostatic_water": {
       "assumptions": {
         "cohesion_pa": 20000000.0,
-        "friction_coefficient": 0.6,
+        "friction_coefficient": 0.6000000000000001,
         "k0_horizontal_over_vertical": 0.6,
         "mantle_law": "wet_olivine",
         "pore_pressure_mode": "hydrostatic_water",
@@ -1089,10 +1994,10 @@
         }
       }
     },
-    "k0_0.8_dry_olivine_hydrostatic_crust_moho_hold": {
+    "k0_0.80_dry_olivine_hydrostatic_crust_moho_hold": {
       "assumptions": {
         "cohesion_pa": 20000000.0,
-        "friction_coefficient": 0.6,
+        "friction_coefficient": 0.6000000000000001,
         "k0_horizontal_over_vertical": 0.8,
         "mantle_law": "dry_olivine",
         "pore_pressure_mode": "hydrostatic_crust_moho_hold",
@@ -1309,10 +2214,10 @@
         }
       }
     },
-    "k0_0.8_dry_olivine_hydrostatic_water": {
+    "k0_0.80_dry_olivine_hydrostatic_water": {
       "assumptions": {
         "cohesion_pa": 20000000.0,
-        "friction_coefficient": 0.6,
+        "friction_coefficient": 0.6000000000000001,
         "k0_horizontal_over_vertical": 0.8,
         "mantle_law": "dry_olivine",
         "pore_pressure_mode": "hydrostatic_water",
@@ -1529,10 +2434,10 @@
         }
       }
     },
-    "k0_0.8_wet_olivine_hydrostatic_crust_moho_hold": {
+    "k0_0.80_wet_olivine_hydrostatic_crust_moho_hold": {
       "assumptions": {
         "cohesion_pa": 20000000.0,
-        "friction_coefficient": 0.6,
+        "friction_coefficient": 0.6000000000000001,
         "k0_horizontal_over_vertical": 0.8,
         "mantle_law": "wet_olivine",
         "pore_pressure_mode": "hydrostatic_crust_moho_hold",
@@ -1749,10 +2654,10 @@
         }
       }
     },
-    "k0_0.8_wet_olivine_hydrostatic_water": {
+    "k0_0.80_wet_olivine_hydrostatic_water": {
       "assumptions": {
         "cohesion_pa": 20000000.0,
-        "friction_coefficient": 0.6,
+        "friction_coefficient": 0.6000000000000001,
         "k0_horizontal_over_vertical": 0.8,
         "mantle_law": "wet_olivine",
         "pore_pressure_mode": "hydrostatic_water",
@@ -1969,10 +2874,10 @@
         }
       }
     },
-    "k0_1.0_dry_olivine_hydrostatic_crust_moho_hold": {
+    "k0_1.00_dry_olivine_hydrostatic_crust_moho_hold": {
       "assumptions": {
         "cohesion_pa": 20000000.0,
-        "friction_coefficient": 0.6,
+        "friction_coefficient": 0.6000000000000001,
         "k0_horizontal_over_vertical": 1.0,
         "mantle_law": "dry_olivine",
         "pore_pressure_mode": "hydrostatic_crust_moho_hold",
@@ -2189,10 +3094,10 @@
         }
       }
     },
-    "k0_1.0_dry_olivine_hydrostatic_water": {
+    "k0_1.00_dry_olivine_hydrostatic_water": {
       "assumptions": {
         "cohesion_pa": 20000000.0,
-        "friction_coefficient": 0.6,
+        "friction_coefficient": 0.6000000000000001,
         "k0_horizontal_over_vertical": 1.0,
         "mantle_law": "dry_olivine",
         "pore_pressure_mode": "hydrostatic_water",
@@ -2409,10 +3314,10 @@
         }
       }
     },
-    "k0_1.0_wet_olivine_hydrostatic_crust_moho_hold": {
+    "k0_1.00_wet_olivine_hydrostatic_crust_moho_hold": {
       "assumptions": {
         "cohesion_pa": 20000000.0,
-        "friction_coefficient": 0.6,
+        "friction_coefficient": 0.6000000000000001,
         "k0_horizontal_over_vertical": 1.0,
         "mantle_law": "wet_olivine",
         "pore_pressure_mode": "hydrostatic_crust_moho_hold",
@@ -2629,10 +3534,10 @@
         }
       }
     },
-    "k0_1.0_wet_olivine_hydrostatic_water": {
+    "k0_1.00_wet_olivine_hydrostatic_water": {
       "assumptions": {
         "cohesion_pa": 20000000.0,
-        "friction_coefficient": 0.6,
+        "friction_coefficient": 0.6000000000000001,
         "k0_horizontal_over_vertical": 1.0,
         "mantle_law": "wet_olivine",
         "pore_pressure_mode": "hydrostatic_water",

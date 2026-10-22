@@ -18,7 +18,7 @@ scenario brackets until those fields or a validated proxy exist.
 
 | Input | Independent evidence | Gate 2 treatment | Limitation / physical risk |
 |---|---|---|---|
-| Background stress `K0` | East African Rift focal mechanisms and stress compilations are predominantly normal faulting, with local strike-slip and other departures. This constrains the ordering/orientation of principal stresses better than their absolute magnitudes. | Keep `K0=0.6, 0.8, 1.0` as a declared sensitivity bracket for `sigma_h,bg / sigma_v,eff`; use 0.8 only as the nominal midpoint already used by calibration. It is not a measured regional prior. | A uniform scalar loses stress orientation, tectonic prestress, and spatial variation. It also assumes vertical compression is the largest principal stress. The result cannot be generalized into strike-slip or thrust regimes. |
+| Background stress `K0` | East African Rift focal mechanisms and stress compilations are predominantly normal faulting, with local strike-slip and other departures. This constrains the ordering/orientation of principal stresses better than their absolute magnitudes. Borehole observations at several sites find brittle crust near Coulomb failure equilibrium, but do not supply a globally transferable lateral-stress ratio. | **Unresolved as a physical field.** Keep `K0=0.6, 0.8, 1.0` as conditional sensitivity cases for `sigma_h,bg / sigma_v,eff`; `0.8` is only the reproducibility anchor used by the existing calibration. It is not a measured, preferred, or probabilistic value. `K0≈0.32` is a limiting near-critical normal-faulting sensitivity derived from the same `mu=0.6` cohesionless Mohr–Coulomb envelope, not an independent estimate. | The world stores no principal stress magnitudes, stress orientation tensor, tectonic prestress, or accumulated lateral strain. Per-node torque forces are applied external loads; the shell result is an incremental stress about a zero-load reference. Neither determines the shell's pre-existing horizontal stress. A scalar also loses anisotropy and spatial variation, and the normal-faulting branch assumes vertical compression is the major principal stress. |
 | Pore pressure | Deep borehole observations support approximately hydrostatic pressure to depths as great as 12 km at several intraplate sites. Freshwater hydrostatic gradient is 9.81 MPa/km; compared with rock overburden gradients for 2700–3300 kg/m³, this is roughly 0.30–0.37 of lithostatic pressure. | Use freshwater hydrostatic pressure as the reference brittle-crust profile, zero pressure as a dry lower sensitivity, and fixed `Pf/Plith=0.42` only as an above-hydrostatic comparison. Do not describe 0.42 as representative without site evidence. | Evidence to 12 km does not establish hydrostatic connectivity through the full crust, and especially not through the mantle lid. The current full-column fluid profile is a convenient effective-pressure scenario, not a fluid-flow model. |
 | Temperature | Regional East African Rift models use 1-D conductive geotherms and report heterogeneous heat-flow constraints; a Victoria microplate model uses a 1576 K LAB isotherm and matches 58–66 mW/m² model surface flux to measured values spanning 15–75 mW/m². Earlier regional compilations report much broader eastern, western, and shield values. | Preserve base-temperature scenarios 1250/1330/1400 °C only as boundary-condition sensitivities. Interpret the calculated surface heat flow alongside each column thickness, using the audit JSON. For a 35 km crust, the model gives 42–68 mW/m² across 70–150 km total thickness and those base temperatures. | The same base temperature does not imply the same surface heat flow when lid thickness changes. Steady 1-D conduction, uniform crustal heat production, and no magmatic/advective heating can understate hot, magmatic rifts; one base temperature cannot represent both rift branches and cratons. Do not back-fit heat flow from legacy event locations. |
 | Strain rate | The geodetic EARS strain-rate model reports second-invariant magnitudes around 0–2×10⁻⁸ yr⁻¹, with high values localized in a few rift branches. The upper end converts to about 6.3×10⁻¹⁶ s⁻¹. | Treat `1e-16 s-1` as an active distributed-deformation case, `1e-15 s-1` as a high localized reference, and `1e-14 s-1` as an explicit extreme localization stress test. Retain `1e-18 s-1` as a slow intraplate comparison if the full grid is rerun. | Geodetic rates describe a regional surface field over decades, while creep-law strain rate represents constitutive deformation at depth and can localize. They are not interchangeable. Existing values above about `6e-16 s-1` are not supported as regional EARS averages. |
@@ -26,7 +26,7 @@ scenario brackets until those fields or a validated proxy exist.
 
 ## Physical consistency checks
 
-1. **`K0` is not independently measured here.** The cited stress evidence supports the normal-faulting regime used by the diagnostic in many EARS locations, but it does not identify a uniform stress magnitude ratio. Keep the current bracket visible and describe 0.8 as a design midpoint. A production `K0` field needs stress magnitudes or a separately validated tectonic stress model.
+1. **`K0` cannot be inferred from the current model state or selected as one physical number.** The world has thickness, density, temperature proxies, plate angular velocity and external force vectors, but no local in-situ stress tensor or lateral strain history. The thin-shell solve maps applied loads to incremental membrane resultants; it has no initial stress state. Focal-mechanism compilations mainly constrain stress regime and orientation, and EARS observations include local departures from normal faulting. Several borehole sites being near Coulomb failure does not imply that every model column is critically stressed. Therefore retain `K0=0.6/0.8/1.0` as conditional scenarios only, with `0.8` labelled a reproduction anchor. The cohesionless normal-faulting Mohr–Coulomb limit for the tested `mu=0.6` is `K0_crit=(1-sin(phi))/(1+sin(phi))≈0.32`; it is a near-failure lower-limit sensitivity from the same assumed friction law, not an independent K0 measurement. Do not choose a K0 value by matching old rift cuts. A production K0 field needs independent stress magnitudes or a separately validated tectonic stress model.
 2. **Hydrostatic pressure is a crustal reference, not a full-column fluid solution.** At 12 km the freshwater column is about 118 MPa. Applying the same hydrostatic water column below the brittle crust may reduce effective pressure in a depth range where the assumption of connected free fluid is unsupported.
 3. **The temperature boundary is thickness-coupled.** The current conductive equation predicts a surface heat flow from the selected base temperature and thickness; the JSON records this directly. It cannot independently match the broad rift heat-flow observations by varying `T_base` alone at thick-lithosphere values without pushing that boundary toward implausible temperatures. Rift magmatism/advection and lateral heat transport are absent.
 4. **Strain-rate span is a constitutive extrapolation.** The documented geodetic rates bound distributed regional deformation, not fault-zone creep. The `1e-14 s-1` case is deliberately outside that regional range and should not be called a normal reference.
@@ -35,10 +35,16 @@ scenario brackets until those fields or a validated proxy exist.
 ## Crossed independent-assumption screen (2026-10-22)
 
 The fixed Gate 1 sample was re-scored without changing its 22,896 node loads or 74 connected-source
-events. The screen crosses the existing `K0=0.6/0.8/1.0` bracket and dry/wet olivine laws with two
+events. The screen crosses conditional `K0≈0.32/0.6/0.8/1.0` cases and dry/wet olivine laws with two
 pore-pressure profiles, all at the EARS geodetic upper distributed strain rate `6.3e-16 s-1`.
 Temperature remains the existing 1330 C steady conductive profile; cohesion and friction stay at
 20 MPa and `mu=0.6`. No legacy outcome is used as a fit target.
+
+The added low-end case is the cohesionless frictional lower limit for normal faulting at the
+assumed `mu=0.6`: `K0_crit=(1-sin(phi))/(1+sin(phi))≈0.321`. Because the column model also applies
+20 MPa cohesion, the exact failure ratio is depth dependent near the surface; 0.320 is an
+asymptotic limiting sensitivity, not a profile derived from observations. It is not independent
+evidence for background stress, and it must not be interpreted as equally likely to the other cases.
 
 The new capped profile is `P_f = rho_water*g*min(z,H_crust)`: pressure is hydrostatic in the crust
 and held at its Moho value below. It is continuous at the Moho and removes the unsupported
@@ -52,7 +58,7 @@ not a prediction that pore pressure is physically constant in the mantle.
 | Wet olivine, full-column hydrostatic pressure | 5.94 TN/m | 2,356 / 22,896 (10.29%) |
 | Wet olivine, crust-hydrostatic Moho hold | 5.97 TN/m | 2,299 / 22,896 (10.04%) |
 
-Across all 12 crossed cases, threshold exceedance ranges from 703 nodes (3.07%; `K0=1.0`, dry
+Across the original 12 crossed cases, threshold exceedance ranges from 703 nodes (3.07%; `K0=1.0`, dry
 olivine, capped pressure) to 4,358 (19.03%; `K0=0.6`, wet olivine, full hydrostatic pressure).
 There are 703 nodes over capacity in every case and 4,358 over capacity in at least one; 3,655
 nodes (15.96%) change classification across the bracket. For each matched K0/rheology pair, using
@@ -62,6 +68,16 @@ The `K0` and dry/wet rheology choices move the threshold much more than the deep
 choice in this screen. The `K0=0.8` full-hydrostatic dry result at the geodetic upper rate is 7.06%,
 compared with 6.83% at the prior `1e-15 s-1` reference rate.
 
+The added `K0≈0.32` endmember materially widens the finite scenario envelope. Holding the load,
+temperature, friction (`mu=0.6`), cohesion, strain rate and dry/full-hydrostatic reference fixed,
+over-capacity nodes increase from 2,691/22,896 (11.75%) at `K0=0.6`, to 1,617 (7.06%) at `K0=0.8`,
+837 (3.66%) at `K0=1.0`, and 12,980 (56.69%) at the near-critical `K0≈0.321`; median mapped capacity
+falls from 6.16, 10.91 and 18.68 TN/m to 0.83 TN/m, respectively. Across all 16 crossed cases,
+13,185 nodes (57.59%) change classification; 703 are over capacity in every case and 13,888 in at
+least one. These are conditional bounds, not probabilities. The low-end result is expected for a
+column initialized near its frictional failure envelope, but it exposes how strongly any failure
+classification depends on an unobserved prestress choice.
+
 These results identify a robust ranking but not a stable physical failure classification. The
 `gate2-assumption-screen.json` output records all scenarios, seed/material strata, paired pressure
 comparisons, and the finite scenario envelope. Reproduce it using the command in
@@ -70,17 +86,20 @@ capture files listed in its usage text. The complete raw capture files remain ou
 The pressure, strain-rate, `K0`, and mantle-water sensitivities remain assumptions rather than a
 production field; use the screen as conditional diagnostic evidence only.
 
-## Remaining Gate 2 decision
+## Gate 2 disposition
 
-The fixed-load rerun is complete, but it does not close Gate 2: 15.96% of node classifications
-change across the crossed geophysically motivated cases, and the stress magnitude and mantle
-hydration fields remain unidentified. Closing the gate requires either external, outcome-independent
-constraints for local background stress, thermal state and rheology, or an explicit decision that
-Gate 2 validates only a scenario-bounded diagnostic and does not authorize a production rupture
-threshold. Do not select the case that best reproduces legacy cuts.
+Gate 2 is closed for the approved conditional diagnostic on connected-source events. Across the
+expanded crossed scenarios, 57.59% of node classifications change, and the stress magnitude and
+mantle hydration fields remain unidentified. The K0 audit found that the simulator cannot supply an
+outcome-independent K0 and the literature does not support selecting one global number. The capacity
+results therefore remain conditional scenarios and do not authorize a production rupture threshold.
+This scope decision accepts that uncertainty for diagnostic reporting; it does not resolve the
+physical stress state or select a capacity field. Do not select the case that best reproduces legacy
+cuts.
 
 ## Sources
 
+- Wadge, Biggs, Lloyd & Kendall (2016), *Historical Volcanism and the State of Stress in the East African Rift System*, DOI [10.3389/feart.2016.00086](https://doi.org/10.3389/feart.2016.00086). Describes regional stress-orientation departures and local heterogeneity; it does not provide a uniform stress-magnitude ratio.
 - Stamps, Saria & Kreemer (2018), *A Geodetic Strain Rate Model for the East African Rift System*, DOI [10.1038/s41598-017-19097-w](https://doi.org/10.1038/s41598-017-19097-w). Reports approximately 0–2×10⁻⁸ yr⁻¹ EARS strain-rate magnitudes and their spatial heterogeneity.
 - Townend & Zoback (2001), *Implications of hydrostatic pore pressures and high crustal strength for the deformation of intraplate lithosphere*, DOI [10.1016/S0040-1951(01)00091-9](https://doi.org/10.1016/S0040-1951(01)00091-9). Supports hydrostatic pore pressures to about 12 km at several borehole sites; their strain-rate examples are specific to a modeled strike-slip stress state and are not generalized here.
 - Stamps et al. (2020), *Victoria continental microplate dynamics controlled by lithospheric strength distribution of the East African Rift*, DOI [10.1038/s41467-020-16176-x](https://doi.org/10.1038/s41467-020-16176-x). Uses a 1576 K LAB isotherm and reports regional thermal/strength comparisons; it is a regional model, not a global geotherm prior.
