@@ -264,3 +264,24 @@ remains conditional on assumed thermal/rheology/stress state, so this step does 
 See [`gate2-capacity-state-audit.md`](gate2-capacity-state-audit.md) and the compact
 [`gate2-spatial-capacity-replay.json`](gate2-spatial-capacity-replay.json); full event reports are
 in `/private/tmp`.
+
+### Capacity assumption sensitivity (2026-10-22)
+
+The prior replay retained event summaries, not per-node load/state, so the matched Gate 1 events
+were captured again with capacity scoring disabled. Cut totals, ordered candidate identities, and
+all 74 connected-source solves match the accepted baseline. A 13-case one-factor-at-a-time
+post-processing sweep then held the exact 22,896 node loads fixed while varying the documented
+temperature, strain-rate, pore-pressure, `K0`, cohesion, friction and rheology endpoints; the
+stored Moho-lag profile was compared separately at the reference scenario.
+
+The reference exceedance fraction is 7.63%. The largest individual shift is `K0`: 4.44% of nodes
+exceed capacity at `K0=1.0`, versus 12.47% at `K0=0.6`. Wet olivine gives 10.69%, and zero pore-
+pressure ratio gives 4.90%. Relative node ranking stays highly correlated with the reference
+(Spearman at least 0.9938), while 1,009 nodes (4.41%) exceed capacity across all tested one-factor
+scenarios and 3,016 (13.17%) do so in at least one. This is not a joint uncertainty interval.
+
+This identifies the unobserved stress and fluid assumptions as the main capacity sensitivities;
+it does not select them or close Gate 2. Full assumptions, per-seed/stratum results and hashes are
+in [`gate2-capacity-sensitivity.md`](gate2-capacity-sensitivity.md) and
+[`gate2-capacity-sensitivity.json`](gate2-capacity-sensitivity.json). Exact captured per-node loads
+remain outside the repository in `/private/tmp/`.

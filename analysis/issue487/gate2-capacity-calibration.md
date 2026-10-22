@@ -66,15 +66,15 @@ Use these as conditional reference anchors for future sensitivity and replay wor
   separate sensitivity range rather than forcing one rift-wide threshold.
 
 These choices establish a defensible scale range for continued diagnosis. They do **not**
-select the production capacity model. The replay carries per-node `Hc`, `Hm`, crust type, craton
-share, belt history and Moho thermal lag, so it can support a thickness-aware diagnostic map; the
-current scorer still uses class-level capacity scenarios rather than those local columns. The
+select the production capacity model. The matched replay now maps local columns using per-node
+`Hc`, `Hm`, crust type and available proxy fields. A one-factor sensitivity sweep on those exact
+node loads shows that the exceedance fraction depends most on `K0`, mantle-water/rheology and pore
+pressure assumptions; see [`gate2-capacity-sensitivity.md`](gate2-capacity-sensitivity.md). The
 world does not supply depth-resolved temperature, layer composition, pore pressure, mantle water,
 local strain rate or inherited-fabric orientation. The 35 km crust held fixed in this audit also
 differs from some regional rift profiles. Do not use one anchor for all continental nodes, tune
-to the old cut fraction, or close Gate 2 on this result alone. The next mapping should use
-observed `Hc/Hm` while explicitly bracketing the missing profile and rheology state, then undergo
-broader shell load/boundary validation.
+to the old cut fraction, or close Gate 2 on this result alone. Independently constrain the missing
+local profile and rheology state, then complete broader shell load/boundary validation.
 
 ## Reproduction
 

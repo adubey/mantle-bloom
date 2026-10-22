@@ -401,7 +401,10 @@ def _skip_candidate(reason: str, world, plate, points: np.ndarray, kind: str, ba
     }
 
 
-def _score_event(world, plate, points, cut_normal, kind, capacities) -> dict | None:
+def _score_event(
+    world, plate, points, cut_normal, kind, capacities,
+    capture_node_samples: bool = False, include_capacity_scores: bool = True,
+) -> dict | None:
     points = np.asarray(points, dtype=float)
     normal = np.asarray(cut_normal, dtype=float)
     spacing = line_spacing_rad(world.node_density)
@@ -514,19 +517,21 @@ def _score_event(world, plate, points, cut_normal, kind, capacities) -> dict | N
             topology_audit=topology_audit,
         )
     resultant = result.max_incremental_extensional_resultant_n_per_m
-    scores = _capacity_scores(resultant, in_band, continental, young_oceanic, belt, capacities)
-    scores["spatial_column_capacity"] = _spatial_capacity_scores(
-        resultant,
-        in_band,
-        continental,
-        young_oceanic,
-        belt,
-        hc,
-        hm,
-        moho_lag,
-        craton_hc,
-    )
-    return {
+    scores = {}
+    if include_capacity_scores:
+        scores = _capacity_scores(resultant, in_band, continental, young_oceanic, belt, capacities)
+        scores["spatial_column_capacity"] = _spatial_capacity_scores(
+            resultant,
+            in_band,
+            continental,
+            young_oceanic,
+            belt,
+            hc,
+            hm,
+            moho_lag,
+            craton_hc,
+        )
+    event = {
         "kind": kind,
         "myr": float(world.elapsed_years / 1e6),
         "plate": int(plate.plate_id),
@@ -555,6 +560,36 @@ def _score_event(world, plate, points, cut_normal, kind, capacities) -> dict | N
         "topology_audit": topology_audit,
         "capacity_scores": scores,
     }
+    if capture_node_samples:
+        craton_fraction = np.divide(
+            craton_hc, hc, out=np.zeros_like(hc, dtype=float), where=hc > 0.0
+        )
+        crust_labels = np.full(len(hc), "oceanic_mature", dtype=object)
+        crust_labels[continental] = "continental"
+        crust_labels[young_oceanic & ~continental] = "oceanic_young_ridge"
+        sample_indices = np.flatnonzero(in_band)
+        event["_node_samples"] = {
+            "seed": None,
+            "event_index": None,
+            "kind": kind,
+            "myr": float(world.elapsed_years / 1e6),
+            "plate": int(plate.plate_id),
+            "source_cell_index": used[sample_indices].tolist(),
+            "n_ext_n_per_m": resultant[in_band].astype(float).tolist(),
+            "h_crust_m": hc[in_band].astype(float).tolist(),
+            "h_mantle_m": hm[in_band].astype(float).tolist(),
+            "moho_lag_c": moho_lag[in_band].astype(float).tolist(),
+            "crust_type": crust_labels[in_band].tolist(),
+            "craton_crust_fraction": np.clip(craton_fraction[in_band], 0.0, 1.0).astype(float).tolist(),
+            "inherited_belt": belt[in_band].astype(bool).tolist(),
+            "solver_stop_code": int(result.solver_stop_code),
+            "equilibrium_residual_over_load": float(
+                result.equilibrium_residual_n / max(np.linalg.norm(result.equilibrated_force_n), 1.0)
+            ),
+            "mesh_band_coverage": band_coverage,
+            "mesh_craton_band_coverage": craton_band_coverage,
+        }
+    return event
 
 def _coverage_report(events: list[dict]) -> dict:
     """Report complete-candidate coverage and eligible connected-source solve coverage."""
@@ -679,21 +714,39 @@ def _aggregate_spatial_capacity(events: list[dict]) -> dict:
         "by_thermal_mode_and_stratum": aggregate,
     }
 
-def _run(seed: int, years: float, out_path: Path) -> dict:
+def _run(
+    seed: int, years: float, out_path: Path,
+    node_samples_path: Path | None = None, capture_only: bool = False,
+) -> dict:
     for name, value in __import__("compare_cratons")._DEFAULTS.items():
         setattr(cratons, name, value)
     cratons.CRATON_FORMATION_MYR = float("inf")
-    capacities = _physical_capacities()
+    capacities = {} if capture_only else _physical_capacities()
     events: list[dict] = []
+    if node_samples_path is not None:
+        node_samples_path.parent.mkdir(parents=True, exist_ok=True)
+        node_samples_path.write_text("", encoding="utf-8")
     original_cut = cratons.record_rift_cut
-    original_lowland_relief = initial_terrain.apply_lowland_spherical_relief
+    original_lowland_relief = getattr(
+        initial_terrain, "apply_lowland_spherical_relief", lambda _world: None
+    )
 
     def tapped(world, plate, points, cut_normal, band_sin, kind):
         started = time.perf_counter()
-        row = _score_event(world, plate, points, cut_normal, kind, capacities)
+        row = _score_event(
+            world, plate, points, cut_normal, kind, capacities,
+            capture_node_samples=node_samples_path is not None,
+            include_capacity_scores=not capture_only,
+        )
         if row is not None:
             row["event_index"] = len(events)
             row["diagnostic_wall_s"] = time.perf_counter() - started
+            node_samples = row.pop("_node_samples", None)
+            if node_samples is not None and node_samples_path is not None:
+                node_samples["seed"] = seed
+                node_samples["event_index"] = row["event_index"]
+                with node_samples_path.open("a", encoding="utf-8") as samples_file:
+                    samples_file.write(json.dumps(node_samples, allow_nan=False) + "\n")
             events.append(row)
             out_path.write_text(json.dumps({"seed": seed, "years": years, "events": events}, indent=2) + "\n")
             print(json.dumps({"seed": seed, "event": len(events), "myr": row.get("myr"),
@@ -721,6 +774,7 @@ def _run(seed: int, years: float, out_path: Path) -> dict:
         "years": years,
         "step_years": STEP_YEARS,
         "craton_formation_off": True,
+        "capture_only": capture_only,
         "gate1_baseline_commit": GATE1_BASELINE_COMMIT,
         "events_scored": len(events),
         "diagnostic_coverage": _coverage_report(events),
@@ -747,8 +801,18 @@ def main() -> None:
     parser.add_argument("--seed", type=int, choices=(7, 11, 2024), required=True)
     parser.add_argument("--years", type=float, default=1e9)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument(
+        "--node-samples-out", type=Path,
+        help="Optional JSONL sidecar with exact cut-band N_ext and per-cell state.",
+    )
+    parser.add_argument(
+        "--capture-only", action="store_true",
+        help="Skip capacity scoring while exporting node samples for post-processing.",
+    )
     args = parser.parse_args()
-    report = _run(args.seed, args.years, args.out)
+    if args.capture_only and args.node_samples_out is None:
+        parser.error("--capture-only requires --node-samples-out")
+    report = _run(args.seed, args.years, args.out, args.node_samples_out, args.capture_only)
     args.out.write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps({key: report[key] for key in ("seed", "years", "events_scored", "wall_seconds")} ), flush=True)
 

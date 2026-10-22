@@ -395,7 +395,13 @@ audit are in [`gate2-matched-replay.json`](gate2-matched-replay.json) and
 validation. Per-node thickness and proxy fields now feed the diagnostic capacity screen; its
 scenario assumptions and results are recorded in [`gate2-capacity-state-audit.md`](gate2-capacity-state-audit.md)
 and [`gate2-spatial-capacity-replay.json`](gate2-spatial-capacity-replay.json). These results do
-not resolve the missing local thermal, material and stress state, and do not close Gate 2.
+not resolve the missing local thermal, material and stress state, and do not close Gate 2. A
+one-factor sensitivity sweep on exact matched node loads finds the strongest capacity dependence
+in `K0`, mantle water/rheology and pore pressure. Relative node rankings remain stable, but the
+binary exceedance share ranges from 4.44% to 12.47% across single-factor scenarios. The tested
+envelope is not joint and does not identify these fields. Results and limitations are in
+[`gate2-capacity-sensitivity.md`](gate2-capacity-sensitivity.md) and
+[`gate2-capacity-sensitivity.json`](gate2-capacity-sensitivity.json).
 
 Reproduce the partial source-filtered replay with:
 
@@ -411,6 +417,6 @@ PYTHONHASHSEED=0 PYTHONPATH=backend backend/.venv/bin/python \
 spatial calibration. A broad curved-sphere analytic benchmark converges to 1.18% mean error and 2.75% p95 error at 17 × 33 nodes. Free in-plane displacement is selected for the isolated-plate diagnostic because the input has no external displacement anchor. Single, paired and full-boundary clamps show substantial sensitivity and are not adopted as physical boundary conditions. The direct-threshold phenomenological rule has a monotonic capacity and weak-band localization check, but is a competing design only. Within the narrowed connected-source scope, the matched comparison passes the 90% overall / 80% stratum coverage gate (74/74); 56 disconnected-source candidates are excluded and reported separately, so results do not generalize to them or the full population. A local strength field remains underidentified, and coupled interplate boundary behavior remains outside this isolated solve, so Gate 2 is not closed.
 - **`internal_stress`:** retain only as a plate-scale eligibility/background signal if desired; it cannot trigger or weight local damage.
 - **No calibrated strength field:** do not assign `Y_t`, `eta_rift`, or failure-strain parameters from these diagnostics. Do not infer stress from applied traction, rigid rotation, flow-cluster residuals or `Plate.internal_stress`.
-- **Required next work:** continue physical source/capacity justification and load/boundary sensitivity validation within the connected-source scope; keep disconnected-source event counts and strata visible, and do not generalize findings to those events. The 90% overall / 80% stratum coverage rule applies to connected-source candidates. A defensible multi-component load-transfer model would be a separate scope expansion, not a prerequisite for the current Gate 2 population. Gate 3 accumulation and segment-growth calibration remains downstream. A coupled interplate shell solve is a future fidelity improvement; the free-edge choice applies only to this isolated diagnostic.
+- **Required next work:** justify or constrain local `K0`, pore pressure and mantle water/rheology independently of legacy event outcomes, then validate load and boundary sensitivity within the connected-source scope. Keep disconnected-source event counts and strata visible, and do not generalize findings to those events. The 90% overall / 80% stratum coverage rule applies to connected-source candidates. A defensible multi-component load-transfer model would be a separate scope expansion, not a prerequisite for the current Gate 2 population. Gate 3 accumulation and segment-growth calibration remains downstream. A coupled interplate shell solve is a future fidelity improvement; the free-edge choice applies only to this isolated diagnostic.
 
 The RFC now records this outcome and keeps the local-cut damage design conditional. Gate 1 is closed by the explicit baseline/exclusion decision recorded in `analysis/issue487/README.md`; the archived-stream provenance limitation remains documented.

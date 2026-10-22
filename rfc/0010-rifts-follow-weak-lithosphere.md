@@ -158,7 +158,8 @@ This scope does not imply that connected events represent all events, and their 
 not be generalized to disconnected-source events. A conditional scale audit now brackets a
 100 km mobile/rift-like column at 5.91 TN/m and a 150 km thick-craton scenario at 19.02 TN/m,
 with wide constitutive sensitivity ranges; only the 100 km value has a regional strength-scale
-comparison. These are reference scenarios, not a spatial capacity field. Gate 2 remains open
+comparison. These are reference columns used to set scale, not a selected or calibrated spatial
+field. Gate 2 remains open
 because the replay provides no independent rupture labels, local material state is unresolved,
 and broader load/boundary validation remains outstanding.
 The existing flow fit and plate-level `internal_stress` may remain candidate-event or
@@ -224,6 +225,15 @@ should start until those gates are resolved and the revised design is accepted.
    interpolated Moho-lag assumption. These are screening comparisons, not rupture labels. Full
    results and field limitations are in `analysis/issue487/gate2-spatial-capacity-replay.json` and
    `analysis/issue487/gate2-capacity-state-audit.md`.
+   A one-factor-at-a-time sensitivity sweep on the same 22,896 node loads finds the over-capacity
+   fraction ranges from 4.44% (`K0=1.0`) to 12.47% (`K0=0.6`); wet olivine gives 10.69%, while
+   setting pore-pressure ratio to zero gives 4.90%. Node rank correlation remains at least 0.9938,
+   but 4.41% of nodes exceed capacity in every tested one-factor scenario and 13.17% in at least
+   one. Those bounds exclude parameter interactions and do not identify a calibrated field.
+   `K0`, mantle water and pore pressure remain unobserved locally, so the capacity comparison still
+   cannot choose a production threshold. See
+   `analysis/issue487/gate2-capacity-sensitivity.md` and
+   `analysis/issue487/gate2-capacity-sensitivity.json`.
    The elastic thickness and
    modulus, boundary conditions, default convex-hull mesh and rigid-mode removal are documented
    diagnostic assumptions, not calibrated production behavior. Explicit mesh connectivity now
@@ -461,7 +471,8 @@ source or explicit design-choice status, and the sensitivity plan before impleme
        assumptions before Gate 2 closes (see
        `analysis/issue487/README.md`, `analysis/issue487/gate2-load-diagnosis.md`,
        `analysis/issue487/gate2-column-envelope.json`, `analysis/issue487/gate2-matched-replay.json`,
-       and `analysis/issue487/gate2-spatial-capacity-replay.json`).
+       `analysis/issue487/gate2-spatial-capacity-replay.json`, and
+       `analysis/issue487/gate2-capacity-sensitivity.json`).
 2. [ ] In synthetic tests, damage is timestep-partition invariant, bounded, absent under compression
        or sub-yield loading, and advances only through adjacent cells with supported positive loading.
 3. [ ] Segments can nucleate independently, propagate, arrest and link; a transform/transfer zone
