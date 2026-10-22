@@ -53,26 +53,27 @@ CLIMATE_VIEWS = ("temperature", "wind", "oceanCurrents", "humidity", "precipitat
 # they share a render path with each other (one shared fine-grid resample) but not with
 # elevation/plates' own render-grid machinery.
 RESOURCE_VIEWS = ("resources", "soilQuality")
-# "speckle" is a debug-only diagnostic overlay (see docs/debugging.md#speckle-coastal-dither-overlay
+# "speckle" is a debug-only diagnostic overlay (see
+# docs/debugging/map-views.md#speckle-coastal-dither-overlay
 # and _render_speckle_view): a node-cloud view like "platesDetail", not a climate- or
 # biome-grid view, so it sits with the plate/elevation group here.
 # "geomorph" is also node-cloud-derived, but from last step's erosion breakdown
 # (World.erosion_cache) rather than any persistent plate field -- its own dispatch branch
 # (_render_geomorph_view), a debug view for the per-step erosion/deposition lumpiness that's
-# invisible in every other view (see GitHub issue #123 / docs/debugging.md).
+# invisible in every other view (see GitHub issue #123 / docs/debugging/map-views.md).
 # "elevReason" is node-cloud-derived from a persistent per-node field
 # (the `elev_change_reason` field -- the ELEV_CHANGE_* code for whatever process last moved
 # that node's elevation past elevation_lines.ELEV_CHANGE_MIN_DELTA_M), its own dispatch
 # branch (_render_elev_reason_view). A categorical debug view built to answer "why is so much
-# of this world flat: never uplifted, or actively planed down" (see docs/debugging.md).
+# of this world flat: never uplifted, or actively planed down" (see docs/debugging/map-views.md).
 # "overlapAge" is node-cloud-derived from the `overlap_onset_years` field (the year each
 # still-overlapping node first went over another plate -- merge_split.update_overlap_tracking),
-# its own dispatch branch (_render_overlap_age_view). See docs/debugging.md.
+# its own dispatch branch (_render_overlap_age_view). See docs/debugging/map-views.md.
 # "nodeAge" ("Added/Removed Points") composites two independent node-cloud layers: live nodes
 # coloured by how recently they were created (the `node_created_years` field) and no-longer-
 # live nodes coloured by how recently they were removed (World.removed_points_log, since a
 # removed node has no live node to carry a field on). Its own dispatch branch
-# (_render_node_age_view). See docs/debugging.md.
+# (_render_node_age_view). See docs/debugging/map-views.md.
 # "craton" is node-cloud-derived from the craton fields (cratons.py): where the cratons are,
 # which predate the simulation and which formed during it, and how far each quiet continental
 # interior's formation clock has run. Its own dispatch branch (_render_craton_view).
@@ -548,7 +549,7 @@ def crust_type_colors(codes: np.ndarray) -> np.ndarray:
 # the `overlap_onset_years` field, drawn only for nodes currently overlapping. A sequential
 # ramp, pale where the overlap is fresh (this is transient envelope slop, self-correcting)
 # deepening to magenta where it has been stuck for tens of Myr (a real stalled collision the
-# merge path never resolves -- docs/debugging.md). Clamped at 60 Myr.
+# merge path never resolves -- docs/debugging/map-views.md). Clamped at 60 Myr.
 _OVERLAP_AGE_STOP_MYR = np.array([0.0, 2.0, 10.0, 30.0, 60.0], dtype=float)
 _OVERLAP_AGE_STOP_RGB = np.array(
     [
@@ -2003,7 +2004,7 @@ def _render_resource_view(world: World, projection: str, view: str, width: int, 
     return _encode_image(image)
 
 
-# --- Speckle / coastal-dither overlay (debug view; see docs/debugging.md) -------------------
+# --- Speckle / coastal-dither overlay (debug view; see docs/debugging/map-views.md) -------------------
 # Every elevation node within SPECKLE_NEAR_BAND_M of sea level is drawn as a dot colored by
 # how "checkerboarded" its immediate neighbourhood is: the fraction of its k nearest
 # neighbours that sit on the *opposite* side of the waterline (land vs. ocean by raw
@@ -2140,7 +2141,7 @@ def _render_speckle_view(world: World, projection: str, width: int, height: int,
 
 
 def _render_overlap_age_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
-    """Renders the "overlapAge" debug view (see docs/debugging.md): a muted land/ocean
+    """Renders the "overlapAge" debug view (see docs/debugging/map-views.md): a muted land/ocean
     backdrop (same full-sphere grid as the Elevation view) overlaid with two independent dot
     layers. The first, warm (yellow -> magenta), is one dot per node that is *currently*
     sitting on top of another plate's territory, coloured by how long it has been --
@@ -2182,7 +2183,7 @@ def _render_overlap_age_view(world: World, projection: str, width: int, height: 
 
 
 def _render_node_age_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
-    """Renders the "nodeAge" ("Added/Removed Points") debug view (see docs/debugging.md): the
+    """Renders the "nodeAge" ("Added/Removed Points") debug view (see docs/debugging/map-views.md): the
     same muted land/ocean backdrop as overlapAge, overlaid with two independent dot layers --
     warm dots for still-live nodes created recently (the `node_created_years` field, via
     `plates.collect_all_node_created_years`; the -1.0 "predates tracking" sentinel and anything

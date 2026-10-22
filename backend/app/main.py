@@ -1764,7 +1764,7 @@ def list_stranded_basins() -> dict:
     """Endorheic depressions whose floor sits below sea level and that have no drainage path
     to the ocean at all -- the "land-locked coastal pit" pathology from GitHub issue #122's
     coastal-speckle section, which the event log records but drowns in near-sea-level
-    transient-pond churn (see docs/debugging.md). Read straight off this step's already-
+    transient-pond churn (see docs/debugging/debug-ui.md). Read straight off this step's already-
     resolved depression hierarchy (`world.hydrology_cache.lake_forest`): a top-level basin
     with no known spill (`Lake.max_depth is None`) whose floor is below `world.sea_level_m`.
     `persisted_years`/`steps_seen` come from `world.stranded_basin_tracks`, the cross-step

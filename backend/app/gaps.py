@@ -310,7 +310,7 @@ class GapTrack:
     lattice cluster needs, reconciled by centroid proximity each step -- same shape and same
     reasoning as `stranded_basins.StrandedBasinTrack` (a gap cluster has no persistent identity
     across steps any more than a stranded basin does). Diagnostic only, surfaced by the
-    `overlapAge` debug render view's gap-age layer (see docs/debugging.md); nothing in the
+    `overlapAge` debug render view's gap-age layer (see docs/debugging/map-views.md); nothing in the
     physics reads it back."""
 
     centroid_xyz: np.ndarray  # (3,) unit vector

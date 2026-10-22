@@ -1020,7 +1020,7 @@ def nearest_node_index(plate_list: list[Plate], query_xyz: np.ndarray) -> int | 
     per-node order every `collect_all_*` function uses -- so this index can be reused directly
     against `collect_all_points`/`collect_all_elevation`/`collect_all_node_created_years`/etc
     without a second lookup. `GET /world/node_at`'s click-to-inspect hit-test (see
-    `docs/debugging.md`'s "Added/Removed Points" view) -- `nearest_plate_id` above answers
+    `docs/debugging/map-views.md`'s "Added/Removed Points" view) -- `nearest_plate_id` above answers
     "which plate" alone; this answers "which node exactly," so a caller wanting both per-node
     fields *and* plate ownership needn't repeat the same k-d tree build twice. `None` if every
     plate is empty."""

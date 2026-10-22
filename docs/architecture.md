@@ -313,7 +313,7 @@ flowchart LR
 
 Records surface in `GET /world/replay-logs`, in the summary's `replay_logs` (the `?deb` Event
 Console, cleared when a world is generated or loaded) and as a warning in the server log. See
-[debugging.md#replay-logs](debugging.md#replay-logs) for replaying one.
+[debugging/replay-logs.md](debugging/replay-logs.md) for replaying one.
 
 <a id="world-state"></a>
 ## World state (`backend/app/world.py`)
@@ -526,7 +526,7 @@ hydroclimate/stranded_basins.py   diagnostic-only: finds endorheic below-sea-lev
                      tracks how long each has persisted across steps (world.stranded_basin_
                      tracks, reconciled from world.step_world) -- backs GET /world/stranded_
                      basins and the python -m app.hydroclimate.stranded_basins offline dump (see
-                     debugging.md)
+                     debugging/offline-cli.md)
 hydroclimate/bathymetry.py        the shelf-width constant geology.py keys off, plus a one-off
                      generation-time pass (shape_initial_bathymetry) that drowns submerged
                      continental interiors toward abyssal depth by distance from land and
@@ -563,7 +563,7 @@ public_view.py       the logged-out viewer's step allowance cookie, the coordina
 render_image.py      renders /world/render's requested view/resolution to a PNG server-side
                      (see simulation-model/rendering-and-inspectors.md#render-image and simulation-model/climate.md#climate),
                      plus /world/animate's streamed H.264/MP4 rendering (stream_animation_mp4)
-                     and the "speckle" coastal-dither debug overlay (see docs/debugging.md)
+                     and the "speckle" coastal-dither debug overlay (see debugging/map-views.md)
 persistence.py       whole-World save/load to a single versioned pickle envelope (File >
                      Save/Load World -- see api-reference.md's /world/save//world/load and
                      save-compatibility.md)

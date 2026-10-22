@@ -1,838 +1,156 @@
 # Debugging & Diagnostic Tools
 
-Working through a degradation (plate geometry going bad on long runs, coastlines dithering
-pixel-by-pixel) usually needs a number the ordinary map views don't surface. This page collects
-what exists for that: a handful of **command-line tools** that run offline against a saved
-world, and a cluster of **UI elements** -- extra map views, side panels, and a dialog tab --
-that only appear in the frontend when the page is loaded with `?deb` in the URL.
+Tracking down a problem such as plate geometry degrading on long runs, craton lost in a merge
+or a coastline dithering pixel by pixel usually needs a number the ordinary map views don't
+show. This page indexes the tools for that. The details are on the pages under
+[`debugging/`](debugging/).
 
-Most of this was built while chasing two long-run pathologies: plate geometry degrading over
-tens of My (pole winding, unbounded overlap, over-stretched continental plates) and speckled
-low-relief coastlines (see [GitHub issue #122](https://github.com/adubey/mantle-bloom/issues/122)).
-
----
-
-## Debugging command-line tools
-
-Four offline, read-only dumps of a saved world. Each **never starts the server or binds a
-port** -- three load a `.mbworld` file directly (same pickle format as *File > Load*, see
-[`persistence.py`](../backend/app/persistence.py)) and print to stdout; `phase_budget_diagnostics`
-can do that too, but (unlike the other three, which only ever read a save) it also *steps* the
-world forward by a given number of years before reporting -- see its own section below. Each of
-the first three reuses the exact code behind the equivalent API endpoint / UI panel, so the CLI
-and the UI can never disagree.
-
-```bash
-cd backend
-source .venv/bin/activate
-python -m app.plate_diagnostics <save.mbworld>            # plate geometry
-python -m app.hydroclimate.stranded_basins <save.mbworld>            # land-locked sub-sea-level pits
-python -m app.hydroclimate.lake_hierarchy_diagnostics <save.mbworld> # lake-merge-forest depth/size
-python -m app.phase_budget_diagnostics <save.mbworld> --years 1000000  # per-phase Hc/Hm budget
-```
-
-Every tool also takes `--json` for structured, scriptable output.
-
-### `python -m app.plate_diagnostics` -- plate geometry
-
-Reuses `main._plate_summary` / `main._plate_overlaps` -- the exact code path behind
-`GET /world/plates` and the in-app Plate Inspector.
-
-```
-mantle-bloom plate diagnostics
-  seed:          505070493
-  elapsed:       25,500,000 yr  (~255 steps @ 100 ky)
-  node_density:  4.0
-  sea level:     0.0 m
-  plates:        18
-
-per-plate  ( * = railed at MAX_PLATE_RATE 15.0 cm/yr;  ! = continental & >50% submerged )
-   id  crust         nodes   age     speed     pole lat,lon   med.elev  submrg
-  ----------------------------------------------------------------------------
-    0  oceanic        3364   255     4.59     +21.7,   -6.9      -3997   0.99
-    1  continental    6843   255     2.43     -24.1, +169.3       1391   0.08
-    ...
-
-territory overlaps  (share of THIS plate's nodes sitting on top of another; >= 0.5%, full list in --json)
-    1 -> 11    22.3%
-    1 -> 7      6.0%
-    ...
-
-sustained-collision timers  (world.collision_progress)
-  (  1,  11)    25.5 My
-  (  4,  13)    25.4 My
-  ...
-
-node budget
-  total nodes:             137,261
-  clean-tiling estimate:   130,577   (4*pi / line_spacing_rad(4.0)^2)
-  ratio:                      1.05x   (+5%)
-```
-
-**How to read it:**
-
-- **`speed` + the `*` flag.** `*` means the plate is pinned at `mantle.MAX_PLATE_RATE`
-  (15 cm/yr). One or two railed plates is normal (genuine slab pull); *most* plates railed --
-  and especially *every oceanic* plate at exactly 15.0 -- is a sign the torque balance has
-  broken down. (The stiff-basal-drag bug that pinned *all* plates from step 1 was fixed
-  2026-08-30; a mostly-ocean world can still rail its oceanic plates for real reasons.)
-- **`med.elev` + `submrg` + the `!` flag.** `!` marks a **continental** plate with more than
-  half its own nodes at/below sea level -- the signature of an over-stretched continental
-  plate whose interior the bathymetry model has (correctly) oceanised. A healthy continental
-  plate sits well above sea level with `submrg` well under 0.5; oceanic plates near 1.0 are
-  expected.
-- **territory overlaps.** `A -> B  X%` = X% of plate A's own nodes have their centres inside
-  B's territory (plates that merely share a boundary don't count). The text dump hides entries below 0.5%; `--json`
-  has the full list. A stable double-digit overlap that is *not* also in the collision timers
-  will never trigger the merge path.
-- **sustained-collision timers** are `world.collision_progress` -- accumulated convergent
-  years per plate pair (`merge_split.update_collision_progress`). Compared against the
-  50--100 My merge threshold, these tell you which overlaps are on track to heal and which
-  are stuck.
-- **node budget.** `clean-tiling estimate` is how many nodes a gap-free, non-overlapping
-  lattice would put on the whole sphere at this `node_density` (`4*pi / line_spacing_rad²`
-  -- ~32.6k at 1x, ~130k at 4x). `ratio` is the world's actual total over that. Up to
-  ~1.15x is the documented bounded-envelope / randomized-order effect; 1.5--1.75x is a
-  long-run node-count blowup worth investigating.
-
-Tests: [`unit_tests/test_plate_diagnostics.py`](../backend/unit_tests/test_plate_diagnostics.py).
-
-<a id="stranded-basins-cli"></a>
-### `python -m app.hydroclimate.stranded_basins` -- land-locked sub-sea-level pits
-
-A "stranded basin" is an endorheic depression whose floor sits *below sea level* and that has
-**no drainage path to the ocean at all**. Such a node is neither hydrology's connectivity-aware
-`is_ocean` nor above sea level, so the marine sink, coastal planation, and lake infill all skip
-it -- it churns (merge/split) in the event log every step and never drains or fills. The event
-log has this today but drowns it in near-sea-level transient-pond spam (see
-[Event log](#event-log) below); this surfaces the same thing as one clean list.
-
-The criterion is read straight off this step's already-resolved depression hierarchy
-(`hydrology.HydrologyFields.lake_forest`, `lakes.build_lake_hierarchy`): a **top-level** basin
-whose `max_depth is None` (lakes.py's own "no known spill to the ocean" state) *and* whose
-`floor_elevation` is below `world.sea_level_m`. Roots only -- an endorheic root is the maximal
-"no drainage" unit and its floor is the min over every descendant, so a deep sub-basin is
-already covered.
-
-Both the CLI and `GET /world/stranded_basins` go through
-`stranded_basins.find_stranded_basins` / `enrich_with_persistence`, so they can't disagree.
-Persistence -- *how long* each pit has been there -- comes from `world.stranded_basin_tracks`,
-a small cross-step tracker `world.step_world` reconciles each hydrology step by matching this
-step's basins to last step's by centroid proximity (the same lightweight first-seen-per-key
-idea `world.collision_progress` uses for plate pairs; diagnostic only, nothing in the physics
-reads it back). It's persisted in the save, so the CLI reports real persistence numbers as of
-save time.
-
-```
-mantle-bloom stranded-basin diagnostics
-  seed:          888151728
-  elapsed:       85,100,000 yr  (~851 steps @ 100 ky)
-  node_density:  4.0
-  sea level:     0.0 m
-  stranded basins: 2   (endorheic, floor below sea level, no ocean drainage)
-
-     floor  depth<SL   catch  flooded    water   centroid lat,lon         persisted
-  ------------------------------------------------------------------------------------
-     -4560      4560     512      480    -4400     -31.4,   +88.7   18.2 My (182 steps)
-     -1771      1771     435      412    -1750     -12.3,   +45.6   12.4 My (124 steps)
-```
-
-- **`floor` / `depth<SL`** -- basin floor elevation and how far below sea level that is.
-- **`catch` / `flooded`** -- the full geometric catchment node count vs. how many members
-  currently hold visible standing water.
-- **`water`** -- current standing-water surface elevation (`--` if bone dry).
-- **`persisted`** -- elapsed years (and approx 100-ky steps) since a basin first appeared at
-  this centroid. A large number here is the signal: a pit that's been stranded for tens of My
-  is a real drainage/infill gap, not a one-step transient.
-
-An empty list is the healthy case -- most seeds never strand a basin. The report needs a
-hydrology snapshot in the save (a world stepped at least once with climate on); a
-never-stepped world reports nothing.
-
-Test: [`unit_tests/test_stranded_basins.py`](../backend/unit_tests/test_stranded_basins.py).
-
-### `python -m app.hydroclimate.lake_hierarchy_diagnostics` -- lake-merge-forest depth/size
-
-Measures two numbers nothing else does: the longest root-to-leaf chain in
-`lakes.build_lake_hierarchy`'s merge forest, and a histogram of leaf-catchment node counts.
-Worth checking before tuning `lakes.SILT_ACCUMULATION_COEFFICIENT`, or deciding whether a
-depression pre-fill pass is warranted -- a deep merge forest (thousands of tiny
-sub-resolution catchments each spilling into the next, rather than siltation collapsing them
-into a handful of real basins) makes both of those guesswork otherwise.
-
-Same shape as the other two dumps -- reads `world.hydrology_cache.lake_forest`, never starts
-the server:
-
-```
-mantle-bloom lake-hierarchy diagnostics
-  seed:          888151728
-  elapsed:       5,000,000 yr  (~50 steps @ 100 ky)
-  node_density:  4.0
-  roots:         68
-  leaf catchments: 82
-  hierarchy depth: max 4   mean 1.21
-
-leaf catchment size (node count)
-         1-1: 0
-         2-5: 6
-        6-20: 15
-       21-100: 39
-      101-500: 20
-        501+: 2
-
-root-to-leaf hierarchy depth (chain length)
-         1-1: 60
-         2-5: 8
-        6-20: 0
-       21-100: 0
-      101-500: 0
-      501-1000: 0
-       1001+: 0
-```
-
-- **`hierarchy depth`** -- `max` is the headline number; `mean` is over roots only (a forest
-  of mostly-unmerged 1-level leaves still reports mean close to 1 even if one long cascade
-  exists, so read `max` first).
-- **Leaf catchment size vs. hierarchy depth histograms** -- leaf size is a statement about
-  how many genuinely tiny sub-resolution depressions exist right now; depth is a statement
-  about how long the spill *chains* between them run. A world could have many tiny leaves
-  that all merge shallowly (low depth, e.g. a wide flat plain with lots of small independent
-  pits), or few leaves chained very deep (a long river-like cascade of saddles) -- the two
-  numbers answer different questions about the same pathology.
-
-An empty/all-zero report is the healthy case -- most young or smooth worlds never build a
-deep cascade. The report needs a hydrology snapshot in the save (a world stepped at least
-once with climate on); a never-stepped world reports nothing, same convention as
-`stranded_basins`.
-
-**Issue #144 (closed).** Built for that issue's item #3; items #1 (silt coefficient's
-magnitude vs. tectonic roughening) and #2 (whether a depression pre-fill pass belongs in the
-pipeline) are answered together in `lakes.py`'s own comment above
-`SILT_ACCUMULATION_COEFFICIENT` -- including a re-check against issue #117's exact repro seed
-(23097282), regenerated from scratch and extended to 300 My, specifically to rule out issue
-#161's since-fixed unbounded Hc/Hm growth (spurious deep, narrow wells that this module's
-catchment detection could have mistaken for real depressions) as a confound in the original
-measurement. Depth stayed bounded and self-resolving the whole run; no pre-fill pass is
-warranted.
-
-Test: [`unit_tests/test_lake_hierarchy_diagnostics.py`](../backend/unit_tests/test_lake_hierarchy_diagnostics.py).
-
-### `python -m app.phase_budget_diagnostics` -- per-phase Hc/Hm budget
-
-Built for [GitHub issue #216](https://github.com/adubey/mantle-bloom/issues/216)
-("Investigate long-run Hc/Hm decline"). Every mechanism that touches crustal thickness (Hc) /
-mantle-lithosphere thickness (Hm) -- convergent/divergent deformation, arc magmatism, oceanic
-cooling relaxation, decompression melting, boundary advance/retreat, gap filling, plate
-merges/cleanup, failed rifts, erosion, the end-of-step cap clamp -- is individually instrumented (see [`phase_budget.py`](../backend/app/phase_budget.py)'s module docstring for
-the full mechanism-to-call-site mapping). This tool turns that instrumentation on, steps the
-world forward, and reports the accumulated before/after node count and sum(Hc)/sum(Hm) per
-phase, split by both plate type (`crust_type`) and per-node type (`crust_type_code`) -- so a
-mean-thickness decline can be attributed to a specific mechanism, to changing node population,
-or to reclassification, rather than treated as one undifferentiated trend.
-
-For issue #317 the same observations also feed a separate debug-only Hm source/sink ledger
-([`hm_ledger.py`](../backend/app/hm_ledger.py)). Hm is a thermal/mechanical thickness, so this
-is an attribution identity, not rock-mass conservation: `live change = sources - sinks +
-type reclassification + signed residual`. The JSON report keeps `hm_source_sink_accounts` separate from `phases` to
-prevent double booking, reports closure independently for continental and oceanic nodes, and
-includes actual per-cell Hm-cap entries/exits under each phase's `hm_cap_transitions`. Gap
-filling is bracketed as `gap_fill`; it was the large previously-unattributed oceanic writer.
-
-Unlike the other three tools above, this one *replays* rather than only reads: it takes
-`--years` (required) and steps the world forward that far, in ordinary 100 ky increments,
-with `debug_diagnostics` turned on and the budget reset first -- so the report always
-describes exactly the given interval, whether that's a short replay from a real save (the
-issue's own "replay short intervals from this save to establish current contributors") or a
-fresh world (`--seed`/`--node-density`, no save given, for a fully reproducible run):
-
-```bash
-python -m app.phase_budget_diagnostics <save.mbworld> --years 1000000
-python -m app.phase_budget_diagnostics --seed 611937962 --node-density 4 --years 1000000
-```
-
-```
-mantle-bloom Hc/Hm phase budget (GitHub issue #216)
-  seed:          611937962
-  node_density:  4.0
-  interval:      334,100,000 -> 335,100,000 yr  (10 steps @ 100,000 yr)
-
-  phase                          calls    d(count)     d(area) km2     d(Hc vol) km3     d(Hm vol) km3
-  ---------------------------------------------------------------------------------------------------
-  boundary_advance               ...
-  boundary_retreat               ...
-  convergent_deformation         ...
-  ...
-
-continental/oceanic node-type split (per phase, resolved against crust_type_code)
-  phase                          cont d(Hc) km3   ocean d(Hc) km3    cont d(Hm) km3   ocean d(Hm) km3
-  ---------------------------------------------------------------------------------------------------
-  ...
-```
-
-**How to read it:**
-
-- **`d(Hc vol)`/`d(Hm vol)`** are this interval's net volume change, summed over every node
-  the phase touched with each node weighted by its own accounting area
-  (`Plate.accounting_areas_m2`, the exact cell areas), not a mean -- comparable directly across phases regardless of how many nodes each one happened to
-  touch. Rows are sorted by `|d(Hc vol)|`. A large `calls` count with a small
-  `d(Hc vol)` means the phase ran often but nearly canceled out (e.g. `decompression_melting`
-  resetting a column to almost the same reference thickness it already had); a small `calls`
-  count with a large delta means a rare but individually large event (a merge).
-- **`d(area)`** is the touched slice's change in covered area, from the same per-node areas.
-  `d(count)` and `d(area)` can disagree in sign, since a phase can swap large cells for small
-  ones.
-- **`d(count)`** is the touched slice's own node-count change -- nonzero only for phases that
-  can add/remove nodes (`boundary_advance`/`boundary_retreat`, `gap_fill`, cleanup/merge);
-  the pure Hc/Hm-mutation phases (`convergent_deformation`,
-  `divergent_deformation`, `arc_magmatism`, `oceanic_cooling_relaxation`,
-  `decompression_melting`) always report 0 here, so any thickness change they show is a real
-  per-node change, not a population effect.
-- **the node-type split table** separates a genuine Hc/Hm change (both columns move) from pure
-  reclassification (one column drops while the other rises by roughly the same amount, with
-  little net change in the top table's combined total) -- `decompression_melting` is the
-  phase most likely to show this, since it can flip a node's effective type.
-- **`--json`**'s `scopes` dict on each phase row also has `continental_plate`/`oceanic_plate`
-  (split by the *owning plate's* `crust_type` rather than each node's own effective type --
-  the two disagree wherever a plate carries nodes of the other type, e.g. an accreted terrane)
-  and, per scope, the raw `count_*`, unweighted per-node `sum_hc_*`/`sum_hm_*`, area-weighted
-  `area_*_m2` and `hc_volume_*_m3`/`hm_volume_*_m3` totals behind the table. The area fields
-  are recorded per node as each phase runs (issue #257) -- on a quad world they can't be
-  recovered from the counts afterwards.
-- **`hm_closure`** in JSON gives the opening and closing live Hm inventories, booked source,
-  sink, signed node-type reclassification totals, and residual. `hm_suture_budget` separately reports
-  connected donor-front Hm, the volume placed on survivors, the unplaced remainder, and
-  bilateral donor→neighbor totals. Those transfer counters are diagnostic only; the live
-  change is already booked by `boundary_retreat`.
-- This tool answers issue #216's first acceptance-criteria item (instrumentation); it does not
-  by itself separate genuine geological sinks from numerical drift -- that's a reading exercise
-  against the mechanism list in the issue itself, using this tool's own numbers as the evidence.
-
-Test: [`unit_tests/test_phase_budget_diagnostics.py`](../backend/unit_tests/test_phase_budget_diagnostics.py).
-
----
-
-<a id="replay-logs"></a>
-## Replay logs: catching a rare step as it happens
-
-A rare event (a merge that clips craton, a ledger that stops closing) is hard to reproduce by
-replaying a seed for hundreds of Myr. Started with `--replay-log`, the server saves the world
-before any step whose health metrics go askew, so the step can be rerun offline (#442; how it
-works: [architecture.md#replay-log](architecture.md#replay-log)).
-
-```bash
-./bin/restart.sh --port 8442 --replay-log   # records under ~/.mantle-bloom/replay-logs/8442/
-```
-
-Set `MANTLE_BLOOM_REPLAY_LOG_DIR` to put them elsewhere. A record is a directory named
-`<UTC time>-seed<seed>-<Myr before the step>myr-<triggers>` holding `before.mbworld` and
-`record.json`. Find them with `GET /world/replay-logs`, the `?deb` Event Console
-(`Replay log: <triggers> -> <name>`), or the `replay log:` warnings in
-`/tmp/mantle-bloom-<port>.log`.
-
-The starting triggers, each a constant in `replay_log.py`:
-
-| Trigger | Fires when one step... |
+| Page | What it covers |
 |---|---|
-| `craton_step_loss` | books more than `CRATON_STEP_LOSS_FRACTION` (1%) of the starting live craton to one `CRATON_SINK_ACCOUNTS` account |
-| `craton_ledger_balance` | moves `cratons.balance_error_m3` by more than `CRATON_BALANCE_TOLERANCE` (1e-9) of live craton |
-| `continental_ledger_open` | leaves `continental_ledger.assert_closed` failing when it passed before |
-| `continental_area_jump` | changes genuine continental area by more than `CONTINENTAL_AREA_JUMP_FRACTION` (5%) |
-| `land_fraction_jump` | changes the area-weighted land fraction by more than `LAND_FRACTION_JUMP` (0.05) |
-| `plate_count_jump` | changes the plate count by more than `PLATE_COUNT_JUMP_FRACTION` (25%) |
-| `hc_at_max` | takes the share of nodes with Hc at `MAX_CRUSTAL_THICKNESS_M` above `AT_CAP_FRACTION` (0.05%) |
-| `hm_at_max` | takes the share of nodes with Hm at `MAX_MANTLE_LITHOSPHERE_THICKNESS_M` above 0.05% |
-| `glacier_at_max` | takes the share of nodes with glacier ice at `GLACIER_MAX_DEPTH_M` (5000 m) above 0.05% |
-| `step_exception` | raises; the record has no post-step state |
+| [Offline diagnostic CLIs](debugging/offline-cli.md) | `python -m app.*` dumps of a saved world: plate geometry, stranded basins, lake hierarchy, per-phase Hc/Hm budget |
+| [Replay logs](debugging/replay-logs.md) | `--replay-log`: the server saves the world before a step whose health metrics go wrong, for an offline rerun |
+| [Debug UI](debugging/debug-ui.md) | the `?deb` URL flag, the Event Console and the scripted "Debugging Worlds" scenarios |
+| [Debug map views](debugging/map-views.md) | the Map View "Debug >" group: speckle, platesDetail, geomorph, elevReason, overlapAge, nodeAge, cratons, the Plate Inspector |
+| [`bin/debug` scripts](#bin-debug-scripts) | about 60 checked-in measurement, probe and replay scripts, indexed below |
 
-The three cap triggers count nodes the way the Stats panel's `hc_at_max_fraction` and
-`hm_at_max_fraction` do, and fire on the step that crosses the threshold, not on every step
-while the share stays above it. The thresholds are loose to start with: in 20 one-Myr steps
-of a default seed-42 world none fired.
-Each trigger is rate-limited to one record per 20 logged steps, and records past 2 GB in total
-are removed oldest first.
+For map images of a saved world, use `GET /world/render?view=...`
+([api-reference.md](api-reference.md)) or `bin/debug/render_craton_map.py --load` for a plain
+plates-and-cratons map. Record the save or seed, elapsed time and view with the image.
 
-`record.json` has the triggers and their values, `step_years`, `seed`,
-`elapsed_years_before`, `steps_taken_before`, the world's scalar `controls` (flags, densities,
-`/world/controls` settings), `git` (commit and dirty flag), `step_seconds`, `health_before`
-and `health_after`, `fingerprint_after`, and any `annotations`.
+## Running the scripts
 
-Replay a record, checking it reproduces:
+The scripts in `bin/debug/` run offline: they generate a world or load a `.mbworld` save,
+step it in the same process, and print or write JSON. Run them from the repository root with
+the worktree's own `backend/.venv/bin/python`. Where a script's usage line shows
+`PYTHONPATH=backend`, include it. Each script's module docstring is its full reference; the
+pages below summarise it.
 
-```bash
-backend/.venv/bin/python bin/debug/replay_logged_event.py \
-    ~/.mantle-bloom/replay-logs/8442/<record> [--save-after /tmp/after.mbworld]
-```
+- **Baselines.** Scripts with a `--backend` option import the backend it names, so one copy
+  of the script measures both an `origin/main` worktree and a branch. All other scripts put
+  their own checkout's `backend/` first on `sys.path`, and `PYTHONPATH` does not override
+  that. For an `origin/main` baseline, run a copy of the script inside a detached
+  `origin/main` worktree. `craton_genuine_area.py` instead takes `--model-root`.
+- **Memory.** A replay or probe holds a full world (0.6–2.7 GB). Run one at a time, never
+  alongside another replay or a test run.
+- **Output.** Write full outputs to scratch space. Commit only compact JSON and findings, in
+  `analysis/issue<N>/` (see [AGENTS.md](../AGENTS.md#conventions)). Saves stay out of the
+  repository.
+- **New scripts.** Give a new script a usage docstring and add it to the index below and to
+  its topic page.
 
-It loads `before.mbworld` (which carries the controls), runs the recorded step, and compares
-the fingerprint, plate count and craton ledger with the record. A `step_exception` record
-reproduces when the replay raises the same exception type. It prints `REPRODUCED` or lists
-the world attributes that differ, and exits 1 on a mismatch. A mismatch usually means the code
-changed since the record was written: check out the record's `git` commit. It ends with a
-`probe_craton_clips.py` command for the same step, since `before.mbworld` is an ordinary save
-any `bin/debug` script loads.
+<a id="bin-debug-scripts"></a>
+## `bin/debug` scripts
 
-To catch a new signature, register it in `replay_log.py` (or from an RFC's module):
+### Cratons
 
-```python
-def _my_signature(outcome: replay_log.StepOutcome) -> dict | None:
-    ...  # outcome.before / outcome.after are replay_log.Health; return values or None
+[Craton scripts](debugging/scripts-cratons.md): the craton ledger and where its losses come
+from.
 
-replay_log.TRIGGERS["my_signature"] = _my_signature
-```
-
-Tests: [`unit_tests/test_replay_log.py`](../backend/unit_tests/test_replay_log.py).
-
----
-
-## Debugging UI elements
-
-### The `?deb` URL flag
-
-Load the frontend with `?deb` anywhere in the URL query string (e.g.
-`http://localhost:5173/?deb`) and a cluster of developer-only UI appears that is otherwise
-**absent entirely, not just disabled** -- an ordinarily-generated world's sidebar and dialogs
-stay uncluttered by default. It's a one-time flag read from `window.location.search` at module
-load (`frontend/src/App.tsx`'s `DEBUG_UI` constant), not something that changes while the app
-is open, and it works identically against the packaged prod server and the dev server -- it
-only ever looks at the URL the browser loaded, never which backend is serving it.
-
-`?deb` gates three things:
-
-1. The Map View select's **"Debug >"** option group (below).
-2. The **Event Console** side panel (below).
-3. The Generate World dialog's **"Debugging Worlds"** tab (below).
-
-Everything documented under this heading requires `?deb` in the URL unless noted otherwise.
-
-### Debug map views (Map View → "Debug >")
-
-Like every other render view, most of these are just `GET /world/render?view=...` PNGs (see
-[api-reference.md](api-reference.md)'s `/world/render`), billed the same as any render and
-carrying no simulation side effects. Three of the ten entries in the group --
-**Plate Inspector**, **Rivers**, and **Lake Inspector** -- are client-rendered JSON views
-instead; they're primarily feature/inspection tools rather than diagnostic-metric views, but
-they still live behind `?deb` because they were built alongside this tooling and haven't been
-promoted to the always-visible "Maps" group.
-
-#### Speckle (coastal-dither) overlay
-
-**View:** `?view=speckle` · `render_image._render_speckle_view`
-
-##### What it's for
-
-The "speckled low-relief coastlines" problem (see
-[GitHub issue #122](https://github.com/adubey/mantle-bloom/issues/122)): a marginally-submerged
-flat shelf whose per-node elevation noise is larger than its own height above/below sea
-level, so neighbouring nodes flip land↔ocean and the coast renders as a checkerboard instead
-of a shoreline. On the Elevation / Biome / Combined views that just looks like a fuzzy,
-slightly-noisy coast; there was no way to see *where* the coast is a genuine checkerboard vs.
-a clean line, or to make a legible before/after for a coastal-feedback change without an
-ad-hoc script. This view is that script, checked in.
-
-##### The metric
-
-For every elevation node in the raw plate node cloud (`plates.collect_all_points`), with
-`sea_level = World.sea_level_m`:
-
-- **class** = `elevation > sea_level` (land) vs. `<= sea_level` (ocean). Raw elevation only --
-  no `hydrology` connectivity filter, deliberately, so this matches what the investigation
-  scripts computed and so an enclosed sub-sea-level lake shore still shows up.
-- **near** = `|elevation - sea_level| < SPECKLE_NEAR_BAND_M` (120 m). Only these nodes are
-  drawn; everything else is just backdrop.
-- **coastal-dither fraction** = of a near node's `SPECKLE_NEIGHBOR_K` (8) nearest neighbours,
-  the share that are the *opposite* class from the node itself. `0.0` = the whole
-  neighbourhood agrees (a coherent shoreline); higher = more disagreement.
-
-`coastal_dither_fraction(points, elevation, sea_level_m) -> (fraction, near)` is a plain
-module-level function -- call it directly from a probe script against a loaded `.mbworld`.
-
-**Reading the numbers.** The metric's natural scale is set by taking *k* nearest neighbours
-on an irregular 2D node cloud:
-
-| situation | fraction |
+| Script | Answers |
 |---|---|
-| coherent shoreline (monotonic ramp across sea level) | `< ~0.35` |
-| a perfect land/ocean checkerboard | `~0.5` (the 4 orthogonal neighbours flip, the 4 diagonals don't) |
-| random per-node dither | `~0.5` |
-| a genuinely isolated speck (one land node ringed entirely by ocean, or vice versa) | `→ 1.0` |
+| [`compare_cratons.py`](debugging/scripts-cratons.md#compare_cratonspy) | multi-seed long runs with cratons on and off |
+| [`ledger_history.py`](debugging/scripts-cratons.md#ledger_historypy) | craton and continental-material budgets over a save's whole stats history |
+| [`rebaseline_rfcs.py`](debugging/scripts-cratons.md#rebaseline_rfcspy) | RFC 0001–0007 baselines with per-merge and attrition taps |
+| [`craton_genuine_area.py`](debugging/scripts-cratons.md#craton_genuine_areapy) | cratonic area inside the genuine continental set, on #403's runs |
+| [`rfc0004_gates.py`](debugging/scripts-cratons.md#rfc0004_gatespy) | RFC 0004's formation and craton-share gates from checked-in JSON |
+| [`split_craton_rework.py`](debugging/scripts-cratons.md#split_craton_reworkpy) | each craton sink split by the call site that booked it |
+| [`probe_craton_clips.py`](debugging/scripts-cratons.md#probe_craton_clipspy) | the step function behind a phase-audit clip; captures lossy merges |
+| [`measure_merge_placement.py`](debugging/scripts-cratons.md#measure_merge_placementpy) | why one captured merge lost craton |
+| [`attribute_rift_boundary_loss.py`](debugging/scripts-cratons.md#attribute_rift_boundary_losspy) | divergent and stretch loss by whether the split cut crossed craton |
+| [`prototype_mincut_split.py`](debugging/scripts-cratons.md#prototype_mincut_splitpy) | whether a minimum-cut split could bend around cratons |
 
-So `SPECKLE_FLAG_FRACTION` (0.75) flags **isolated specks** -- the single-pixel islands and
-ponds -- not the mixed zone. The colour ramp puts the `~0.5` checkerboard band firmly in
-"hot" (orange) territory below the flag threshold.
+### Craton layout
 
-##### Reading the render
+[Craton layout scripts](debugging/scripts-craton-layout.md): where plates, continents and
+cratons sit (RFC 0009).
 
-- **Backdrop:** muted olive land (`SPECKLE_LAND_BACKDROP_RGB`) / dark blue ocean
-  (`SPECKLE_OCEAN_BACKDROP_RGB`), split at raw sea level.
-- **Near-sea-level nodes:** a dot per node, coloured by fraction -- green (clean) → yellow →
-  orange (`~checkerboard`) → red (approaching isolated). `speckle_colors()` /
-  `_SPECKLE_STOP_F` / `_SPECKLE_STOP_RGB`.
-- **Flagged nodes** (fraction ≥ 0.75): an oversized **magenta** square (`SPECKLE_FLAG_RGB`),
-  so isolated specks stand out over the ramp even at a glance.
+| Script | Answers |
+|---|---|
+| [`measure_plate_layout.py`](debugging/scripts-craton-layout.md#measure_plate_layoutpy) | where plate boundaries run relative to continents and cratons, also for Earth |
+| [`probe_mixed_plates.py`](debugging/scripts-craton-layout.md#probe_mixed_platespy) | whether mixed continental and oceanic plates behave like single-type ones (gate G2) |
+| [`compare_g2.py`](debugging/scripts-craton-layout.md#compare_g2py) | two `probe_mixed_plates.py` results, `origin/main` against a branch |
+| [`probe_craton_mosaic.py`](debugging/scripts-craton-layout.md#probe_craton_mosaicpy) | whether the cratons-first layout keeps cratons whole (gate G3) |
+| [`measure_belt_marks.py`](debugging/scripts-craton-layout.md#measure_belt_markspy) | belt area, formation audit and step-time cost of belt marks |
+| [`render_craton_map.py`](debugging/scripts-craton-layout.md#render_craton_mappy) | a plain map of plates, crust and cratons from a seed or save |
+| [`render_layout_sheets.py`](debugging/scripts-craton-layout.md#render_layout_sheetspy) | contact sheets of cratons-first layouts at t = 0 |
+| [`render_earth_cratons.py`](debugging/scripts-craton-layout.md#render_earth_cratonspy) | Earth's plates over its cratons, as a reference figure |
 
-A clean coast reads as a thin green thread one node wide. A dithering drowned shelf reads as
-a broad orange/red smear with magenta flecks. Inland lake shores also light up (the metric
-doesn't know they aren't ocean) -- usually useful, occasionally noise.
+### Collisions and plate motion
 
-##### Doing a before/after
+[Collision and plate-motion scripts](debugging/scripts-collisions.md).
 
-```python
-from pathlib import Path
-from app import render_image
-from app.persistence import load_world_bytes    # or world.generate_world + step_world
+| Script | Answers |
+|---|---|
+| [`probe_craton_contacts.py`](debugging/scripts-collisions.md#probe_craton_contactspy) | craton jams, closing rates and craton loss at each plate contact (RFC 0008) |
+| [`probe_collision_budget.py`](debugging/scripts-collisions.md#probe_collision_budgetpy) | collision overlap, the force that would stall it, and the contact's volume budget |
+| [`report_collision_polarity.py`](debugging/scripts-collisions.md#report_collision_polaritypy) | which evidence decides collision polarity, fallback rates, churn and cost |
+| [`diagnose_polarity_fallbacks.py`](debugging/scripts-collisions.md#diagnose_polarity_fallbackspy) | contact history behind each polarity fallback |
+| [`diagnose_polarity_merge_conflicts.py`](debugging/scripts-collisions.md#diagnose_polarity_merge_conflictspy) | front merges whose records disagree on polarity |
+| [`polarity_replay_lib.py`](debugging/scripts-collisions.md#polarity_replay_libpy) | library for the two polarity diagnostics |
+| [`audit_force_rules.py`](debugging/scripts-collisions.md#audit_force_rulespy) | which force-proxy rules (rate clamp, merge roll, split gates) bind (RFC 0012) |
+| [`probe_boundary_load_normalization.py`](debugging/scripts-collisions.md#probe_boundary_load_normalizationpy) | whether boundary forces per metre are independent of resolution |
+| [`probe_rotation_pileup.py`](debugging/scripts-collisions.md#probe_rotation_pileuppy) | how much of fast rotation's land-volume rise is overlap and cell-area bias |
+| [`rotation_ledger.py`](debugging/scripts-collisions.md#rotation_ledgerpy) | land area against crust volume as rotation rate changes |
 
-world = load_world_bytes(Path("~/Downloads/mantle-bloom-seed888151728-85000000y.mbworld").expanduser().read_bytes())
-frac, near = render_image.coastal_dither_fraction(
-    *render_image.plates.collect_all_points(world.plates)[:2], world.sea_level_m
-)
-print(f"near={near.sum()}  flagged={(frac >= 0.75).sum()}  mean_frac={frac[near].mean():.3f}")
-open("/tmp/speckle.png", "wb").write(
-    render_image.render_png(world, "behrmann", "speckle", 1400, 770)
-)
-```
+### Crust and mantle budgets
 
-Step the world N times each way (feedback change on vs. off) and compare `flagged`,
-`frac[near].mean()`, and the two PNGs. A fix should drop `flagged` and `mean_frac` and visibly
-thin the smear.
+[Crust and mantle budget scripts](debugging/scripts-crust-budgets.md).
 
-##### Constants (`render_image.py`)
+| Script | Answers |
+|---|---|
+| [`attribute_hm_ratchet.py`](debugging/scripts-crust-budgets.md#attribute_hm_ratchetpy) | which phases push Hm toward its cap |
+| [`compare_crust_transfer.py`](debugging/scripts-crust-budgets.md#compare_crust_transferpy) | `attribute_hm_ratchet.py` replays side by side |
+| [`summarize_issue317_suture_pairs.py`](debugging/scripts-crust-budgets.md#summarize_issue317_suture_pairspy) | #317's suture Hm totals by donor and neighbour pair |
+| [`calibrate_collision_sinks.py`](debugging/scripts-crust-budgets.md#calibrate_collision_sinkspy) | continental crust lost to collisions, per step and compounded, with constant overrides |
+| [`attribute_suture_delamination.py`](debugging/scripts-crust-budgets.md#attribute_suture_delaminationpy) | the call site behind each delamination and no-outlet booking |
+| [`attribute_topology_removed.py`](debugging/scripts-crust-budgets.md#attribute_topology_removedpy) | what topology clean-up drops as `topology_removed_m3` |
+| [`probe_quad_retreat_continental.py`](debugging/scripts-crust-budgets.md#probe_quad_retreat_continentalpy) | where continental crust removed by boundary retreat goes |
+| [`measure_cap_overflow.py`](debugging/scripts-crust-budgets.md#measure_cap_overflowpy) | depositional Hc-cap overflow and where it ends up |
+| [`measure_collision_denudation.py`](debugging/scripts-crust-budgets.md#measure_collision_denudationpy) | Hc-cap saturation and erosion of collision belts |
+| [`measure_orogenic_relief.py`](debugging/scripts-crust-budgets.md#measure_orogenic_reliefpy) | whether continents keep area and volume through collisions |
+| [`measure_erosion_budget.py`](debugging/scripts-crust-budgets.md#measure_erosion_budgetpy) | how closely one erosion call conserves material |
 
-| constant | default | meaning |
-|---|---|---|
-| `SPECKLE_NEAR_BAND_M` | 120.0 | half-width of the sea-level band the overlay draws |
-| `SPECKLE_NEIGHBOR_K` | 8 | nearest neighbours averaged for the fraction |
-| `SPECKLE_FLAG_FRACTION` | 0.75 | fraction at/above which a node gets the magenta marker |
+### Elevation and relief
 
-#### Points (`platesDetail`)
+[Elevation and relief scripts](debugging/scripts-elevation.md).
 
-`GET /world/render?view=platesDetail` draws each plate's raw terrain nodes (quad cell centres)
-as dots coloured by elevation (not the smoothed territory fill that the "Plates & Faults" view
-uses). It is the fastest way to *see* lattice-level damage -- stray one-cell "teeth", ragged or
-overlapping plate edges -- against the actual elevation field. Clicking a dot
-(`GET /world/elevation_point_at`) reports the nearest node's plate, plate-local `phi`/`theta`
-and elevation, and marks it on the map. See
-[api-reference.md](api-reference.md) (`GET /world/render`) for the full view list.
+| Script | Answers |
+|---|---|
+| [`measure_initial_relief.py`](debugging/scripts-elevation.md#measure_initial_reliefpy) | how Earth-like a world's hypsometry, bathymetry and relief are |
+| [`diagnose_elevation_saturation.py`](debugging/scripts-elevation.md#diagnose_elevation_saturationpy) | how much land sits at `MAX_ELEVATION_M`, and whether Hc is capped there too |
+| [`drill_down_isostasy.py`](debugging/scripts-elevation.md#drill_down_isostasypy) | whether capped land is backed by its own column |
+| [`measure_transform_far_field_debt.py`](debugging/scripts-elevation.md#measure_transform_far_field_debtpy) | isostatic debt over a long run |
+| [`drill_down_volcanism.py`](debugging/scripts-elevation.md#drill_down_volcanismpy) | why more volcanism gave less land (#173) |
+| [`measure_volcano_node_elevation.py`](debugging/scripts-elevation.md#measure_volcano_node_elevationpy) | the elevation of nodes that have erupted |
 
-#### Erosion & Deposition (`geomorph`)
+### Water and ice
 
-`GET /world/render?view=geomorph` colours every node by its net elevation change over the
-last step -- `erosion.ErosionResult.net_elevation_change_m` (post-erosion elevation minus
-pre-erosion, so erosion minus every deposition pathway plus the small flatten/lake-siltation
-terms; *not* tectonic deform, isostasy, or volcanism), retained on `World.erosion_cache`
-purely for this view. A diverging scale: warm brown/orange where the step net-lowered a node,
-cool blue where it net-raised one, a flat neutral grey in the +-few-metre band so only the
-lumps stand out, clamped past +-60 m/step. The coastline is overlaid for orientation.
+[Water and ice scripts](debugging/scripts-water-ice.md).
 
-What it's for: the per-step deposition in the near-sea-level band is wildly lumpy -- a
-+200 m spike on one node, ~0 on its neighbour -- which is the mechanism behind the coastal
-checkerboard (see [GitHub issue #122](https://github.com/adubey/mantle-bloom/issues/122)),
-but is invisible in every other view. Step the world once with climate & biomes on, then
-switch to this view and look along a drowned shelf: a clean coastal plain deposits smoothly
-(uniform pale colour), a dithering one shows a salt-and-pepper mix of saturated warm and cool
-cells. Use it as a before/after for any coastal-feedback change instead of an ad-hoc script.
+| Script | Answers |
+|---|---|
+| [`measure_river_endings.py`](debugging/scripts-water-ice.md#measure_river_endingspy) | rivers that reach neither sea nor lake |
+| [`measure_discharge_calibration.py`](debugging/scripts-water-ice.md#measure_discharge_calibrationpy) | river and glacier calibration on one save in two trees |
+| [`measure_lake_silt.py`](debugging/scripts-water-ice.md#measure_lake_siltpy) | lake area, volume and silt |
+| [`measure_breaching.py`](debugging/scripts-water-ice.md#measure_breachingpy) | depression breaching on and off |
+| [`measure_ice_sheet.py`](debugging/scripts-water-ice.md#measure_ice_sheetpy) | glacier extent, volume, erosion and the ice ledger |
+| [`measure_seasonal_melt.py`](debugging/scripts-water-ice.md#measure_seasonal_meltpy) | glaciated land by annual-mean temperature |
+| [`measure_ice_loading.py`](debugging/scripts-water-ice.md#measure_ice_loadingpy) | isostatic ice-load deflection |
+| [`measure_meltwater_faults.py`](debugging/scripts-water-ice.md#measure_meltwater_faultspy) | earthquakes triggered by ice unloading |
 
-`erosion_cache` is `None` until the first climate/erosion step (and on a freshly loaded save
--- it isn't persisted), where the view falls back to a flat neutral field plus the coastline
-rather than erroring.
+### Surface, saves, sweeps and profiling
 
-#### `elevReason` render view (last elevation change)
+[Surface, save, sweep and profiling scripts](debugging/scripts-infrastructure.md).
 
-`GET /world/render?view=elevReason` colours every node by its
-`elev_change_reason` field -- one categorical
-`elevation_lines.ELEV_CHANGE_*` code per node recording *which process last moved that node's
-elevation* by more than `ELEV_CHANGE_MIN_DELTA_M` (2 m in a step). Warm hues = crust being
-built (collision / subduction-arc / transform / rift / new crust / volcano), cool blues =
-crust being planed down or buried (erosion / deposition / coastal planation / submarine),
-pale = glacial flattening, plain grey = **untouched since generation**. Coastline overlaid
-for orientation. `render_image._render_elev_reason_view` / `_ELEV_REASON_RGB`; labels in
-`elevation_lines.ELEV_CHANGE_LABELS`, frontend legend in `legendData.ts`'s
-`ELEV_REASON_ENTRIES` (hand-synced, same precedent as the biome palette).
-
-What it's for: "there should be more terrain features -- why is so much of this world flat?"
-The `geomorph` view above shows *this step's* rate; this shows the *standing* provenance
-accumulated over the run. A large grey (NONE) expanse on land means that terrain was never
-tectonically built -- its only relief is the generation-time noise texture, slowly being
-worn/buried away. Large erosion/deposition/coastal-leveling expanses mean it *is* being
-actively flattened now. Collision / subduction-arc / rift belts are where relief is still
-being made -- if those are thin or absent while the continents are large and quiescent, the
-tectonic engine has stalled and nothing is replacing the relief erosion removes.
-
-Provenance is written by the tectonic column pass (`lithosphere_plate.deform_columns`;
-tectonic codes, re-stamped every step a belt stays active), `volcanism` (eruptions), and `erosion` (geomorphic codes).
-A structural code is **sticky**: erosion only overrides it when this step's net geomorphic
-change is itself large (`ELEV_CHANGE_STRUCTURAL_OVERRIDE_M_PER_MYR`, ~100 m/Myr), so ordinary
-background wash on an actively-rising range doesn't relabel it "erosion".
-
-Unlike `geomorph`, the field is *persistent* (rides the plate through rotation/split/merge,
-survives save/load). But a save written before this field existed -- or a world never stepped
-since -- reads all-NONE and fills in over the next few steps. `ELEV_CHANGE_MIN_DELTA_M` /
-`ELEV_CHANGE_STRUCTURAL_OVERRIDE_M_PER_MYR` (elevation_lines.py) tune the two thresholds.
-
-#### `overlapAge` render view (plate overlap onset)
-
-`GET /world/render?view=overlapAge` draws a muted land/ocean backdrop (same grid as
-Elevation) overlaid with one dot per node that is **currently** sitting on top of another
-plate's territory, coloured by how long it has been --
-`world.elapsed_years - overlap_onset_years`
-(`render_image._render_overlap_age_view` / `overlap_age_colors`). Pale yellow = a fresh
-overlap (transient envelope slop, self-correcting); deepening through orange to
-magenta-purple = stuck for tens of Myr (a real stalled collision the merge path never
-resolves). Clamped at 60 Myr.
-
-`overlap_onset_years` is a per-node surface field stamped every step by
-`merge_split.update_overlap_tracking`, which goes through the same
-`plates.compute_node_overlap` the Plate Inspector's own overlap fractions use -- so the map,
-the `since_years` number in `GET /world/plates` / `App.tsx` (`#21 (15%, since 178 My)`), and
-`python -m app.plate_diagnostics`'s `21 -> 0  15.2%  since 178.0 My` line are all the same
-underlying node set. A save written before the field existed loads with every onset at its
-default and shows an all-backdrop map / `since` omitted until it is stepped. An all-backdrop map on a stepped world is the healthy case.
-
-The overlap itself now also *heals*: `torque.classify_boundary_nodes` tests deep-interior
-nodes (inside a neighbour's bounding sphere, not just within `reach_rad` of one) for polygon
-containment, so a plate that has slid well over another has those deep nodes classified
-`contested` -- continental crust thickens there (`rheology.apply_convergent_deformation` ->
-mountain uplift), oceanic crust subducts. Before this, only the boundary-local band was
-classified and a deep overlap just sat.
-
-#### Added/removed points (`nodeAge`)
-
-`GET /world/render?view=nodeAge` draws the same muted land/ocean backdrop as `overlapAge`,
-overlaid with two independent dot layers: warm dots (pale yellow -> amber -> burnt orange ->
-dark rust) for still-live nodes created recently, and cool dots (pale blue -> sky blue -> deep
-blue -> navy) for nodes no longer part of any plate that were removed recently
-(`render_image._render_node_age_view` / `node_added_colors` / `node_removed_colors`). Both
-ramps are clamped at 20 Myr -- older activity fades to plain backdrop rather than pinning at a
-saturated top-of-ramp colour that would misleadingly read as "still happening now." Answers
-"where has the lattice actually been changing, and in which direction" -- exactly the question
-a persistent gap raises: is either side even *trying* to grow into it, or has activity nearby
-gone quiet?
-
-**Added** comes from the `node_created_years` surface field, a permanent, write-once per-node
-timestamp stamped when a cell is inserted (`quad_tectonics._new_cell_fields`, which boundary
-advance, rift opening and gap filling all go through), so this view covers every place
-brand-new crust originates. Unlike `overlap_onset_years`, it never reverts: a node's birth date
-is permanent, carried through merges and remaps by nearest neighbour (never interpolated --
-averaging two birth years would invent a meaningless date). The sentinel is `-1.0`, not `0.0`
--- a world's initial genesis nodes (from generation, not from a tracked creation event) read as
-"predates tracking," not "created at year 0," and a save written before this field existed
-backfills the same way. `plates.collect_all_node_created_years` is the accessor.
-
-**Removed** has no live node to carry a field on, so it comes from a short-lived side buffer
-instead: `World.removed_points_log`, a `(world_xyz, removed_years, plate_id)` list appended to
-by `World.record_removed_points` at every node-removal site -- boundary retreat and
-interior subduction (`quad_tectonics._retreat`), `merge_split.merge_plates` (the absorbed
-plate's own points), `Plate.defragment` (stranded fragments cut off below
-`min_fragment_nodes`, whether later accreted or dropped), and
-`merge_split.remove_defunct_plates` (a whole plate's points, when it's dropped). Capped by count
-(`MAX_REMOVED_POINTS_LOG`, 20,000), not age -- subduction removes nodes essentially every step
-on a full-size save, so an age-based window would grow unboundedly at high `node_density`.
-Backfills to an empty list on a save written before this field existed.
-
-All-backdrop (no dots of either colour) means nothing has been created or removed recently --
-the common case between bursts of boundary activity, *not* necessarily unhealthy the way an
-empty `overlapAge` is (that view's empty case specifically means "no stuck overlaps," a
-positive signal; this one's empty case just means "quiet right now").
-
-##### Click-to-inspect -- `GET /world/node_at`
-
-Clicking a point on the `nodeAge` view calls `GET /world/node_at?lat_deg&lon_deg`, which --
-unlike `/world/sample_at` (climate-grid lookup) -- reports the actual nearest live
-node's own plate-local `phi`/`theta` (recovered by inverse-transforming its
-world position through its owning plate's frame, which round-trips exactly to the node's own
-creation-time value), elevation, and `node_created_years`, plus -- independently, since a
-removed point has no live node to report instead -- the nearest `removed_points_log` entry if
-one sits within `_REMOVED_POINT_MATCH_RAD` (~127 km) of the click. `plates.nearest_node_index`
-is the shared hit-test helper (mirrors `nearest_plate_id`, but returns the node's own index
-into the `collect_all_points` order rather than just its owning plate id, so a caller wanting
-both plate ownership and per-node fields needn't build the k-d tree twice).
-
-#### Cratons (`craton`)
-
-`GET /world/render?view=craton` (Debug > Cratons) colours every node by its craton state
-(`render_image._render_craton_view` / `craton_colors`, see `cratons.py`). Deep red marks
-cratons that predate the run, seeded at generation. Orange marks cratons that formed during
-it. Both fade toward grey as a column's cratonic share thins. Ordinary continental crust is
-grey, warming to amber as its formation clock (`stable_continental_myr`) approaches
-`CRATON_FORMATION_MYR`. Teal marks belts, welded or rifted crust that never forms craton
-(`cratons.belt_mask`, RFC 0009). Oceanic crust is dark blue.
-
-Destruction is recorded in `World.craton_ledger`, one account per mechanism (rifting,
-subduction, delamination, collisional reworking, erosion, topology removal), and
-`cratons.balance_error_m3` checks it against the live volume. `audit_clipped_m3` is craton a
-catch-all phase audit had to clip to its column, kept apart from the real mechanisms (#340);
-`bin/debug/split_craton_rework.py` replays a save and splits every account by the site that
-booked it, and `bin/debug/probe_craton_clips.py` finds the writer behind a one-off audit clip. Its
-`--capture-dir` saves the world before every collision merge that destroys more than
-`--min-share` of the live craton, and `bin/debug/measure_merge_placement.py` replays one such
-merge and splits its loss by cause: room under the cap, the eligible mask, the craton carried
-with the overflow, and the absorbed crust on third plates (RFC 0001, #440).
-`unattributed_m3` should stay
-near zero; anything there escaped every instrumented site. Every stats snapshot carries the
-ledger (`craton_ledger_km3`), so the Stats window's *Craton destroyed (cumulative)* series
-shows when cratons were lost. A step whose losses to one mechanism exceed
-`CRATON_EVENT_FRACTION` of the live cratons is also written to the Event Console.
-`bin/debug/compare_cratons.py` runs long multi-seed comparisons with cratons on and off, and
-reports rifting by path per Gyr and the share of split and failed-rift cuts through craton
-(RFC 0003); `bin/debug/ledger_history.py` reads the same paths from a save's stats history.
-`compare_cratons.py --save-dir <dir>` also writes each job's final world there as an
-`.mbworld` file, so the full stats history can be inspected with `ledger_history.py`. The
-RFC #403 audit uses `bin/debug/rebaseline_rfcs.py` when per-merge and attrition taps are
-needed alongside those saved histories.
-`bin/debug/probe_craton_contacts.py` replays a seed and records, per plate contact and step,
-where cratons jam retreat (the frozen `run_eligible` candidates on polarized fronts), closing
-rates, collision-time drops and fusions, the buoyant share of slab pull, contact forces, plate count and speed, and
-the craton lost within reach of each contact (RFC 0008's gate).
-`bin/debug/probe_collision_budget.py` builds on it for the collision-resolution gate (#452):
-per contact pair and step, the overlap and its double-counted volume by whether craton or the
-Hc cap blocks it, the force that would stall the pair (re-solved jointly from both plates'
-shift systems), the gravitational push of the contact band's own columns, the contact's volume
-budget, and, at each merge, the absorbed crust over third plates.
-
-`bin/debug/attribute_rift_boundary_loss.py` replays a seed with probe-only node marks on each
-split cut's band, and books later divergent and stretch craton loss by whether the cut that
-made the boundary crossed craton (RFC 0003 phase 1b).
-
-#### Plate Inspector, Rivers, Lake Inspector, Plates & Faults
-
-The remaining four entries in the "Debug >" group are documented as their own feature views,
-not here:
-
-- **Plate Inspector** (`GET /world/plates`, `frontend/src/PlateInspector.tsx`) plots every
-  plate's nodes and outline client-side and reports the same motion / shape / overlap numbers
-  the CLI plate dump does -- see [Plate Inspector diagnostic fields](#plate-inspector-fields)
-  below for the field walkthrough, and
-  [simulation-model/rendering-and-inspectors.md#plate-inspector](simulation-model/rendering-and-inspectors.md#plate-inspector) for the panel
-  layout and bounding-ellipse fit.
-- **Rivers** and **Lake Inspector** (`GET /world/rivers` / `GET /world/lakes`,
-  `RiverInspector.tsx` / `LakeInspector.tsx`) render flow networks and lake basins from raw
-  JSON -- see
-  [simulation-model/hydrology.md#river-inspector](simulation-model/hydrology.md#river-inspector) and
-  [simulation-model/hydrology.md#lake-inspector](simulation-model/hydrology.md#lake-inspector).
-- **Plates & Faults** (`GET /world/faults`, `GET /world/earthquakes`,
-  `frontend/src/PlatesAndFaults.tsx`) merges plate outlines with the fault-trace and
-  earthquake overlays. Its Overlays panel also toggles faults, cratons and a translucent
-  ocean/lake layer (cratons show through it), and clicking the legend's Cratons row isolates
-  the cratons the way a fault-type row isolates that regime -- see
-  [simulation-model/rendering-and-inspectors.md#fault-inspector](simulation-model/rendering-and-inspectors.md#fault-inspector).
-
-All four are primarily inspection/feature tools rather than pathology-hunting diagnostics, but
-all four currently require `?deb` to reach, same as the views above.
-
-<a id="plate-inspector-fields"></a>
-##### Plate Inspector diagnostic fields
-
-Per plate, alongside the geometry: `speed_cm_per_yr` + `at_max_rate` (railed at
-`mantle.MAX_PLATE_RATE`, shown red), `euler_pole` (lat/lon), `age_years`,
-`median_elevation_m` + `submerged_fraction` (red when a continental plate is >50% under
-water), `overlaps` (which other plates this one's territory sits on top of, by what fraction
-of its own nodes, and `since_years` -- the earliest `elapsed_years` any still-overlapping node
-first went over another plate; `main._plate_overlaps` / the `overlap_onset_years` field,
-see the `overlapAge` view above), and `collisions` (`world.collision_progress` timers
-involving the plate). Full field reference: [api-reference.md](api-reference.md)
-(`GET /world/plates`).
-
-Use the Inspector for the *visual* read -- concentric rings (pole winding), a plate's dots
-sitting inside a neighbour's (overlap), a long straight sawtooth chord across open ocean (an
-over-extended lattice) -- and `python -m app.plate_diagnostics` for the numbers behind it.
-
-### Event Console
-
-A side panel rendered only when `?deb` is set (`frontend/src/App.tsx`'s `EventConsole`).
-Without `?deb` the underlying data is still reachable through the API -- `GET /world/summary`'s
-`events` field -- only the in-app viewer is hidden. It also lists the records the server's
-replay log wrote (the summary's `replay_logs`, see [Replay logs](#replay-logs)), merged in
-order of elapsed time.
-
-<a id="event-log"></a>
-#### Event log
-
-The `events` list on `GET /world/summary`, shown in the Event Console, logs lake
-formation/splits and other discrete events.
-
-**Lake-churn aggregation -- `lakes.summarize_lake_events`.** On a long run over a dithering
-low-relief coast the lake solver produces hundreds of near-sea-level transient merge/split
-transitions per My -- one pair per puddle per step (see
-[GitHub issue #122](https://github.com/adubey/mantle-bloom/issues/122)). Left raw, these flood
-the console and bury real basin/tectonic events.
-
-`lakes.step_lakes` returns structured `lakes.LakeEvent`s (`kind` / `node_count` /
-`elevation_m` / `basin_count`, plus a `.message` property with the same wording as before)
-instead of pre-formatted strings. [`erosion.py`](../backend/app/hydroclimate/erosion.py) runs a step's
-events through `lakes.summarize_lake_events(events, world.sea_level_m)` before logging:
-
-- A transition whose water surface is more than `lakes.NEAR_SEA_LEVEL_EVENT_BAND_M`
-  (**15 m**) from the current sea level is a genuine basin event -- logged individually,
-  unchanged.
-- Transitions **within** that band are the coastal-pond churn. A lone one still logs
-  verbatim; **two or more in one step collapse to a single line** --
-  `"38 transient coastal ponds churned near sea level this step (22 merged, 16 split)."`
-
-So a persistent deep endorheic basin (e.g. a real ~435-node lake oscillating near -1770 m)
-stays visible in the console while the checkerboard shelf contributes at most one aggregate
-line per step. The band is measured against `world.sea_level_m`, so it tracks a sea-level
-control change. This aggregation always runs (it isn't gated by `?deb`) -- only the console
-that displays the result is. Tests:
-[`unit_tests/test_lakes.py`](../backend/unit_tests/test_lakes.py)
-(`test_summarize_lake_events_*`).
-
-### "Debugging Worlds" tab -- scripted plate scenarios
-
-The Generate World dialog's fourth tab (`POST /world/generate_debug`,
-`backend/app/debug_worlds.py`) builds tiny, low-resolution (`node_density=0.5`, the coarsest
-real choice), hand-placed plate configurations for fast iteration on the gap-filling problem,
-independent of any real save's history. `GET /world/debug_scenarios` lists the current
-options; picking one and pressing Generate replaces the current world exactly like the
-Random/Human-made/Premade tabs, with `debug_diagnostics` already on (so the phase budget
-records -- see `python -m app.phase_budget_diagnostics` above).
-
-Each plate's motion is **pinned**, not torque-driven: `World.pinned_omegas` (`plate_id ->` a
-fixed angular velocity) makes `Plate.shift` use that value verbatim every step,
-bypassing `torque.shift_plate`'s own ridge-push/slab-pull/basal-drag recompute entirely for
-that plate (`torque.apply_omega_and_rotate` is the shared rotate-and-report tail both the real
-and pinned paths use). This is what makes a scenario reliable to iterate on: "these two plates
-diverge" stays true step after step, rather than however the force balance against an
-otherwise-irrelevant `mantle_centers` field happens to settle it. `pinned_omegas` is empty for
-every ordinarily-generated world -- this is purely a debug-world mechanism.
-
-A scenario is a set of seed lat/lons, each plate's crust type, and a list of pairwise
-`(plate_i, plate_j, "divergent" | "convergent")` boundary relationships;
-`debug_worlds._omegas_from_relationships` converts that into each plate's own single rotation
-(the sum of its own boundaries' tangential "push" contributions, converted to a rotation axis
-via `omega = cross(seed_xyz, tangent_direction)`) so a plate sitting at a junction of several
-boundaries gets one rotation reflecting all of them at once, the same way a real plate's
-motion is a net result of every boundary force acting on it -- just picked directly here
-instead of emerging from `torque.py`'s force balance.
-
-Current scenarios (`debug_worlds.DEBUG_SCENARIOS`):
-
-| Scenario | Layout | Purpose |
-|---|---|---|
-| `two_plate_divergent` | 2 plates, straight rift | Baseline: ordinary boundary advance and rift opening should close this alone, never leaving a real gap. |
-| `two_plate_convergent` | 2 plates, closing boundary | Subduction/collision baseline. |
-| `triple_junction_mixed` | 3 plates, one junction, 2 divergent legs + 1 convergent | Three plates receding from a shared point, so boundary growth has to keep pace with three-way divergence (confirmed as a gap source on a real save, seed 430031492). Start here. |
-| `four_plate_grid` | 4 plates, 2x2, all edges divergent | Four simultaneous triple-junction-like corners at once, around one shared center point. |
-| `five_plate_irregular` | 5 plates, irregular ring, mixed relationships | Closest single scenario to a real save's messiness while staying small enough to iterate on quickly. |
-
-Workflow for chasing a junction gap: enable `?deb`, generate `triple_junction_mixed`, step it
-a handful of times (Play/Stop, small "Years per step" for fine-grained observation), and watch
-the "Added/removed points" and "Plate overlap age" views together.
-
-These tiny scripted scenarios don't naturally exercise
-`gaps.fill_gaps_by_growing_neighbours` (every plate starts adjacent to every gap that can open
-here) -- checking the whole-sphere sweep needs a real or synthetically-vacated-plate world
-instead, see `unit_tests/test_gaps.py`'s `fill_gaps_by_growing_neighbours` tests for the shape
-of that setup.
-
----
-
-## Still worth building
-
-Two tools were scoped out but never started:
-
-1. **A map-view render of the stranded-basin report.** `GET /world/stranded_basins` already
-   returns `centroid_xyz`/`floor_xyz` ready for one -- currently the report is CLI/JSON-only
-   (see [`python -m app.hydroclimate.stranded_basins`](#stranded-basins-cli) above), with no map view to
-   see the basins in place.
-2. **A `/world/sample_at` field for the `geomorph` / `elevReason` click-popup.** The popup is
-   only wired for elevation/biome/combined today (see `GET /world/sample_at` in
-   [api-reference.md](api-reference.md)).
+| Script | Answers |
+|---|---|
+| [`surface_parity.py`](debugging/scripts-infrastructure.md#surface_paritypy) | plate-surface audit runs and quality gates |
+| [`measure_quad_area_churn.py`](debugging/scripts-infrastructure.md#measure_quad_area_churnpy) | per-step churn in represented area and the sea-level jitter it drives |
+| [`convert_legacy_saves.py`](debugging/scripts-infrastructure.md#convert_legacy_savespy) | converting line-backed saves to quads, with audits |
+| [`replay_logged_event.py`](debugging/scripts-infrastructure.md#replay_logged_eventpy) | whether a replay-log record reproduces |
+| [`run_sweep.py`](debugging/scripts-infrastructure.md#run_sweeppy) | the multi-parameter sensitivity sweep |
+| [`aggregate_sweep.py`](debugging/scripts-infrastructure.md#aggregate_sweeppy) | sweep rows summarised per parameter and checkpoint |
+| [`profile_animation_60m.py`](debugging/scripts-infrastructure.md#profile_animation_60mpy) | per-frame timings of a 60 Myr animation |
+| [`seed_run_lib.py`](debugging/scripts-infrastructure.md#seed_run_libpy) | library: generate-and-step runs with `--backend` |
+| [`replay_lib.py`](debugging/scripts-infrastructure.md#replay_libpy) | library: save replays with `--backend` |
+| [`sweep_lib.py`](debugging/scripts-infrastructure.md#sweep_libpy) | library: sweep parameters, seeds and job runner |

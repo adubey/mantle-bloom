@@ -12,7 +12,7 @@ exact set of numbers the plate-geometry investigation in GitHub issue #119 keeps
 Inspector), so the CLI and the UI never drift.
 
 This is a read-only offline tool: it never starts the server or binds a port. See
-docs/debugging.md for the full list of debug views and how to read this one.
+docs/debugging/offline-cli.md for how to read this one.
 """
 
 from __future__ import annotations
