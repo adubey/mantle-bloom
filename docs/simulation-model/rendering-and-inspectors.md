@@ -2,8 +2,36 @@
 
 [Back to the Simulation Model index](../simulation-model.md).
 
+This part explains how simulation data becomes maps and interactive inspection views. The
+map renderer samples the planet into pixels for display; it does not alter the stored terrain.
+An **inspector** is a view that lets you select a feature, such as a plate or river, and read
+its stored shape and measurements.
+
+```mermaid
+flowchart LR
+    W[World state] --> S[Sample terrain and fields]
+    S --> P[Project onto a map or globe]
+    P --> I[PNG map or interactive vectors]
+    I --> U[Canvas shown in the browser]
+    U -->|selection and view rotation| W
+```
+
+A map projection turns curved planet coordinates into flat screen coordinates. Every flat
+map distorts at least one property, so the available projections are chosen for readability
+and area comparisons. The interactive globe shows only the hemisphere facing the viewer.
+
+The code uses **latitude** (north or south of the equator) and **longitude** (east or west
+around the planet), measured in radians internally. A **raster** is a picture made of pixels;
+a **vector overlay** is a line, point, or shape drawn from coordinates on top of that picture.
+Some views are server-rendered rasters, while inspectors draw selectable vector features in
+the browser.
+
 <a id="projections"></a>
 ## Projections (`projections.py`)
+
+The renderer must flatten a curved planet onto a screen. A **projection** is the mathematical
+rule that maps each point on the sphere to a point on a flat picture. Different rules preserve
+different properties, so the app offers equal-area world maps and a globe-like view.
 
 [Behrmann](https://en.wikipedia.org/wiki/Cylindrical_equal-area_projection) (cylindrical
 equal-area, standard parallel 30 degrees) and [Eckert
@@ -36,6 +64,10 @@ returns non-finite pixels for far-side points, so canvas drawing skips them.
 
 <a id="render-image"></a>
 ## Render image (`render_image.py`)
+
+The render route turns the current world into a picture. It samples the stored terrain,
+projects the samples to screen coordinates, and paints the selected map layer as a PNG. This
+display step does not change the simulation.
 
 `GET /world/render` returns a PNG, base64-encoded, rendered entirely server-side --
 `render_image.py` computes the same projected coordinates and drawing rules
@@ -139,6 +171,9 @@ never the legend baked into it.
 
 <a id="rotating-the-view"></a>
 ## Rotating the view
+
+Rotating the view changes which part of the planet faces the viewer. It changes the map's
+orientation only; plate positions and simulation state stay the same.
 
 Every map view can be reoriented interactively: press and hold on the map, then drag to pan
 it -- simple linear panning (dragging N pixels always pans the view by the same angle,
@@ -262,6 +297,10 @@ drag itself.
 <a id="plate-inspector"></a>
 ## Plate Inspector
 
+The Plate Inspector lets users select a plate and examine its outline and motion information.
+It draws from structured data returned by the server, so selection can follow the plate shape
+instead of relying on a colored map image.
+
 A second interactive map mode, structurally different from every other view: `GET
 /world/plates` returns plate outlines and metadata as plain JSON (not a baked PNG), and
 `frontend/src/PlateInspector.tsx` renders and drives the interaction entirely client-side --
@@ -362,6 +401,9 @@ center stays under pi, the same scope boundary as the antipodal-singularity limi
 
 <a id="fault-inspector"></a>
 ## Plates & Faults view
+
+This view layers plate boundaries, faults, recent earthquakes, and volcano locations on one
+map. It helps the user compare structures that the ordinary elevation view cannot show at once.
 
 An interactive map mode, same "raw JSON, client renders it" philosophy as
 [River Inspector](hydrology.md#river-inspector) / [Lake Inspector](hydrology.md#lake-inspector). It merges the old

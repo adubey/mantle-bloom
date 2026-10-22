@@ -2,15 +2,39 @@
 
 [Back to the Simulation Model index](../simulation-model.md).
 
+Hydrology is the movement and storage of water on land. Rain and melting ice flow downhill,
+feed streams, collect in low areas, and eventually reach the ocean. Mantle Bloom approximates
+this by connecting nearby terrain cells into a graph: each cell is a point in the data, and
+an edge says which other cells it can send water to. This works with the irregular cell
+layout carried by moving plates.
+
+```mermaid
+flowchart LR
+    R[Rain and meltwater] --> D[Choose downhill route]
+    D --> F[Add upstream water]
+    F --> L[Fill or spill lake basins]
+    L --> O[Ocean]
+    F --> E[Erosion and sediment]
+    I[Snow and glacier ice] -->|growth and melting| R
+```
+
+The route arrows represent the model's bookkeeping. Real rivers branch, flood, and change
+their channels at finer scales than this simulation resolves. **Discharge** means the volume
+of water passing a place per unit time; the code records it in cubic metres per second.
+
+The details below use **basin** for land that drains toward one low area, **spill point** for
+the lowest route water can take out of a filled basin, and **catchment** for all terrain
+upstream of a location. These are useful map-reading terms as well as code concepts.
+
 <a id="hydrology"></a>
 ## Hydrology: rivers and lakes (`hydrology.py`)
 
-This module implements hydrology over mantle-bloom's irregular per-plate node cloud rather
-than a fixed grid. Three core algorithms -- steepest-descent flow
-direction, priority-flood basin-spill (lake/depression detection), and elevation-ordered
-downstream flow accumulation -- all turn out not to actually need a *grid*, only a *graph*:
-a regular 8-neighbor grid adjacency is just one convenient substrate for them. This module
-builds a graph instead, via a whole-world k-nearest-neighbor query (`FLOW_NEIGHBOR_COUNT =
+This module routes water over the cells that already make up the terrain. Those cells do
+not form a rectangular grid, so the code first connects each cell to nearby cells. Water
+then follows the lowest available routes, collects in enclosed basins, and adds to the
+downstream flow as it moves. The algorithms need connected neighbors (a graph), not rows
+and columns: a regular grid is only one way to define neighbors. This module builds its
+neighbor graph by finding the nearest cells across the whole planet (`FLOW_NEIGHBOR_COUNT =
 8`, the same technique `erosion.py` already uses for its own whole-world slope pass), then
 runs the same three algorithms directly on it.
 
@@ -339,6 +363,10 @@ the reported water level (and sea-tier promotion) stays gated on not being froze
 <a id="lake-vs-sea-tiers"></a>
 ### Lake vs. sea tiers: a depth ceiling by size (2026-09-10)
 
+The model caps how deep a closed lake can become based on the size of the land area draining
+into it. This keeps small ponds and broad inland seas from being treated as the same feature.
+The cap is an approximation for lake processes too small or complex to resolve directly.
+
 Before this, a closed basin's only depth limit was its own real geological rim (`max_depth` --
 unbounded for a genuinely endorheic basin) -- so a large, gently-sloped drainage catchment
 could keep filling for hundreds of My with nothing to say "this is now physically implausible."
@@ -566,6 +594,10 @@ a real stepped world (a river's own classification genuinely stops at a lake's s
 
 <a id="glaciation"></a>
 ## Glaciation (`hydrology.py`)
+
+Glaciation tracks where snow and ice build up, how ice melts, and how thick ice moves downhill.
+The model uses long simulation steps, so it estimates seasonal melting rather than calculating
+every day of the year.
 
 **Freezing uses the annual mean; melt uses an imputed seasonal cycle.** `FREEZE_POINT_C` (0C,
 the real phase-change point) governs whether precipitation falls as snow/ice rather than rain,
@@ -803,6 +835,9 @@ ice sheets grow and rises again as they melt.
 <a id="river-inspector"></a>
 ## River Inspector
 
+The River Inspector draws river paths and lets the user select one to see its flow and outlet.
+It is a way to inspect current model data, not a separate river simulation.
+
 A third interactive map mode, same "raw JSON, client renders it" philosophy as
 [Plate Inspector](rendering-and-inspectors.md#plate-inspector): `GET /world/rivers` returns every distinct river
 network's flow-edge segments plus mouth metadata, plus the current coastline
@@ -890,6 +925,9 @@ choice, rather than adding one just for this view.
 <a id="lake-inspector"></a>
 ## Lake Inspector
 
+The Lake Inspector shows lakes and their drainage basins. Selecting land can also reveal a dry
+basin or tell the user that water drains directly to the ocean.
+
 A fourth interactive map mode, same "raw JSON, client renders it" philosophy as
 [River Inspector](#river-inspector): `GET /world/lakes` returns every currently-visible lake's
 basin info as plain JSON, and `frontend/src/LakeInspector.tsx` renders and drives the
@@ -967,6 +1005,10 @@ since fixed).
 
 <a id="coastline"></a>
 ## Coastline (`coastline.py`)
+
+The coastline is the boundary between land and ocean at the current sea level. The model
+shares the same coastline segments across map views so that climate and river displays line
+up with the terrain.
 
 The temperature/humidity/precipitation views and the River Inspector all needed a coastline
 for the same reason: none of them have any other land/ocean cue at all. The elevation/plates

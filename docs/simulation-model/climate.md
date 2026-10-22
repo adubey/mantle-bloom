@@ -2,13 +2,39 @@
 
 [Back to the Simulation Model index](../simulation-model.md).
 
+Climate describes how sunlight, terrain, air, and water shape temperature, wind, and rain.
+In this simulator, climate is a practical approximation: some fields come from a time-stepped
+wind calculation, while others are calculated from the current terrain each step. It is not
+a forecast model and it does not represent seasons hour by hour. A **grid** here is a
+regular array of locations used for calculations; the plate terrain itself remains attached
+to the plates.
+
+```mermaid
+flowchart LR
+    P[Plate terrain] -->|sample| G[Regular climate grid]
+    G --> W[Wind and temperature update]
+    G --> M[Humidity and rainfall estimate]
+    W --> M
+    M --> E[Erosion and water routing]
+    G --> V[Climate map views]
+```
+
+The grid is a temporary calculation surface. It lets the climate code use familiar array
+operations, then sample its results back at terrain cells. The sections below separate
+time-stepped atmospheric behavior from fields that are recalculated as diagnostics.
+
+Here, a **diagnostic** field is worked out from the current state whenever needed; a
+**prognostic** field is stored and advanced through time. The atmospheric wind and air
+temperature are prognostic. Many other climate fields are diagnostic. This distinction
+matters when comparing map layers with saved simulation state.
+
 <a id="climate"></a>
 ## Climate (`climate.py`)
 
-Seven fields -- land temperature, ocean surface temperature, air temperature, wind, ocean
-currents, humidity, and precipitation -- computed for five map views (temperature, wind,
-ocean currents with swells marked, humidity, precipitation), implementing a climate model
-whose mechanisms are richer than a first-principles description would suggest. Of those
+The climate module calculates seven fields: land temperature, ocean surface temperature,
+air temperature, wind, ocean currents, humidity, and precipitation. The viewer can display
+five of them as map layers. This is a simplified planetary climate model, not a complete
+Earth-like atmosphere or ocean simulation. Of those
 seven, only **wind and air temperature** are read straight off `World.atmosphere_cfd_state` --
 a real, continuously time-integrated shallow-water solve (see [Atmospheric wind
 solver](#ocean-atmospheric-fluid-dynamics)) -- rather than reconstructed by this module's own
@@ -308,6 +334,11 @@ boundary on its own.
 <a id="biomes"></a>
 ### Biomes (`biomes.py`)
 
+For this model, a **biome** is a broad climate-and-vegetation zone, such as a humid subtropical
+region or polar ocean. Biome labels are estimated from temperature, rainfall, elevation, and
+whether a cell is land or ocean. The model synthesizes seasonal patterns because it does not
+calculate a full year of monthly weather.
+
 A pure, stateless classification -- `biomes.classify_biomes(temperature_c, precipitation_mm,
 elevation_m, slope, is_ocean, sea_level_m, *, lat_deg, axial_tilt_deg, continentality=None,
 dist_to_land_rad=None, has_sea_ice=None)` -- assigning each land cell one of the **31
@@ -393,6 +424,11 @@ alpha to opaque before display.
 
 <a id="ocean-atmospheric-fluid-dynamics"></a>
 ## Atmospheric wind solver (`fluid_dynamics.py`, `atmosphere_cfd.py`)
+
+This solver updates wind over time using simplified fluid equations. A **solver** is a set of
+numerical steps that estimates how a system changes. It does not simulate clouds or forecast
+day-to-day weather; it provides a persistent wind and air-temperature field for the planetary
+model.
 
 Most of [Climate](#climate) is *diagnostic* -- recomputed from scratch every call via
 latitude-banded heuristics (Ekman currents, coastal deflection, mountain deflection),

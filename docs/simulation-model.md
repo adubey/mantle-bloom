@@ -1,9 +1,32 @@
 # Simulation Model
 
-Use this page to find the model topic and implementation area you need. The topic pages
-are the source for detailed descriptions; this index is navigation only. When changing
-behavior, update the matching topic page so people and coding agents can check the same
-current model description.
+This guide explains how Mantle Bloom builds and changes a planet. It is written for readers
+who know basic geology and programming, but may not know the specialist terms used in
+tectonics, numerical models, or this codebase. Each topic starts with a plain-language map
+of the main ideas, then gives the precise rules, units, and code locations for readers who
+need implementation detail.
+
+The simulation represents terrain as cells attached to moving plates. Climate, water, ice,
+and erosion act on that terrain; map views turn the model state into pictures. The diagram
+shows the main links between topics, not every calculation or feedback loop.
+
+```mermaid
+flowchart LR
+    F[Planet setup and plate cells] --> T[Plate motion and crust]
+    T --> S[Land, sea floor, and erosion]
+    S --> H[Rivers, lakes, and ice]
+    H --> C[Climate and rainfall]
+    C --> S
+    T --> R[Maps and inspectors]
+    S --> R
+    H --> R
+    C --> R
+```
+
+Use the topic pages below for the full explanation. The topic list is also a code map: it
+points to the main Python modules that implement each part. When model behavior changes,
+update the matching topic page so readers and developers have the same description of the
+current model.
 
 ## Topics and implementation map
 

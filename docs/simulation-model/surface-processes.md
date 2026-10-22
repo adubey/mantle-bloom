@@ -2,13 +2,40 @@
 
 [Back to the Simulation Model index](../simulation-model.md).
 
+Surface processes change the ground after tectonic motion builds or breaks crust. **Erosion**
+removes rock and loose sediment; rivers and ice can carry some of it downhill, while
+deposition puts sediment back. **Isostasy** is the model's rule for how crust and mantle
+support surface height: thicker or lighter columns tend to stand higher. These processes
+use simplified rates and limits rather than resolving individual grains or rock layers.
+
+```mermaid
+flowchart LR
+    T[Tectonic uplift and crust] --> E[Weathering and erosion]
+    C[Rain, wind, rivers, and ice] --> E
+    E -->|sediment carried| D[Deposition on land or seafloor]
+    E -->|mass removed| I[Isostatic adjustment]
+    D --> I
+    I --> H[Surface height]
+    H --> C
+```
+
+The arrows show important feedbacks. For example, higher terrain can affect rain and ice;
+those processes can then lower or reshape the terrain. Water, rock, and sediment quantities
+are tracked with physical units where the model supports them.
+
+The pages use **weathering** for breaking rock down in place, **transport** for moving loose
+material, and **deposition** for laying it down elsewhere. These are separate steps: erosion
+can remove material from a slope even when a river later deposits much of that material in a
+valley or basin.
+
 <a id="erosion"></a>
 ## Erosion (`erosion.py`)
 
-The other half of the weather<->geology coupling: [Climate](climate.md#climate) already has terrain
-influencing weather (lapse-rate cooling, mountain wind deflection, orographic rain shadow).
-This module is the new direction, weather influencing terrain, implementing an erosion model
-cut down to the sources that don't depend on infrastructure mantle-bloom doesn't have.
+Climate lets terrain affect weather: higher ground is colder, mountains deflect wind, and
+mountains can reduce rainfall on their far side (a rain shadow). Erosion closes the loop by
+letting weather affect terrain. It lowers exposed land and seafloor, moves loose material,
+and deposits some sediment downstream. The model includes several major sources of erosion
+but leaves out processes that need data or physics it does not have.
 
 **Seven erosion sources: five subaerial, two sea-side.** Weathering's vegetation boost is
 dropped (no vegetation field, same reasoning as climate.py's own "deliberately not ported"
@@ -394,6 +421,10 @@ term reads a `world.*_multiplier` scale (default `1.0`) at the point it is forme
 <a id="isostasy"></a>
 ## Bathymetry (`bathymetry.py`)
 
+Bathymetry is the shape and depth of the seafloor. In this model, crust thickness and
+composition set much of that depth, and the coastline-to-deep-ocean transition is shaped at
+world generation. Isostasy then updates surface height when the crust and mantle column changes.
+
 ### Isostasy
 
 **Conceptual diagram — Hc and Hm set the unloaded surface elevation and Moho thermal proxy; thermal lag adjusts current Moho temperature, while ice load adds a temporary downward deflection.**
@@ -467,6 +498,10 @@ nodes straddling a continent/ocean boundary drops from ~4km to ~2km.
 <a id="eustatic-sea-level"></a>
 ## Eustatic sea level (`eustasy.py`)
 
+**Eustatic sea level** means the average ocean level around the planet, as opposed to a local
+tide or storm surge. The model keeps the planet's total ocean water volume and solves for the
+level that volume reaches as ocean basins, lakes, and ice change.
+
 `World.sea_level_m` -- the datum every `is_ocean` / coastline / bathymetry check in the
 codebase reads -- is **not a fixed input**. It is re-solved every step from a *conserved
 ocean water volume*, so the shoreline responds to tectonics and erosion the way it does on
@@ -516,6 +551,10 @@ declines".
 
 <a id="tuning-knobs"></a>
 ## Live tuning knobs (`world.TUNING_MULTIPLIER_FIELDS`)
+
+The controls in this section scale selected process rates while a world is running. A value
+of `1.0` uses the model's default rate; increasing or decreasing it makes that process act
+more strongly or weakly. These are calibration controls, not new physical laws.
 
 The long-run land budget is a tug-of-war between a handful of erosion, deposition, uplift and
 volcanism processes whose individual hard-coded rates can't be recalibrated for one seed
@@ -610,6 +649,10 @@ hand -- which is why the shipped defaults are all `1.0`.
 
 <a id="resources-and-soil"></a>
 ## Resources and soil (`geology.py`, plus `volcanism.py`'s own eruption roll)
+
+This module estimates soil and resource properties from the surrounding geology, climate,
+water flow, and volcanic activity. These are broad indicators for the simulated world, not
+prospecting predictions for real deposits.
 
 Six new persistent per-node fields (`surface_fields.SURFACE_FIELDS`; see [Why not a
 grid](foundations.md#why-not-a-grid)/[World state](../architecture.md#world-state) for why "persistent" is
