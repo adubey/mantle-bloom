@@ -9,10 +9,9 @@ a forecast model and it does not represent seasons hour by hour. A **grid** here
 regular array of locations used for calculations; the plate terrain itself remains attached
 to the plates.
 
-![Clouds and rain fall on the windward side of a mountain range, while the lee side is drier; ocean currents and cold high latitudes are also visible.](../img/issue-514/climate-landscape.jpg)
-*Conceptual climate landscape showing winds, rainfall, a mountain rain shadow, ocean
-currents, and colder high latitudes. It illustrates the model's connected climate effects;
-it is not a simulation render.*
+![A conceptual landscape with callouts for wind and clouds, rainfall, a dry rain-shadow side, ocean currents, and cold polar climate.](../img/issue-514/climate-landscape-annotated.svg)
+*Conceptual climate landscape. The arrows identify features that help explain the model's
+connected climate effects; this is not a simulation render.*
 
 The model samples terrain onto a temporary regular grid to calculate some climate fields,
 then transfers the results back to terrain cells. The sections below separate time-stepped

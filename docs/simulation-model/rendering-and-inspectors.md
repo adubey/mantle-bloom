@@ -7,9 +7,10 @@ map renderer samples the planet into pixels for display; it does not alter the s
 An **inspector** is a view that lets you select a feature, such as a plate or river, and read
 its stored shape and measurements.
 
-![A terrain-covered globe transitions into a flat map with the same continents and latitude-longitude grid.](../img/issue-514/globe-to-map.jpg)
+![A conceptual globe and flat map with callouts for the globe view, latitude and longitude grid, map projection, and flat map view.](../img/issue-514/globe-to-map-annotated.svg)
 *The globe-to-map illustration introduces projection: representing the same curved surface
-on a flat screen changes its shape. It is a cartography illustration, not an app screenshot.*
+on a flat screen changes its shape. The arrows label the views and coordinate grid; this is a
+cartography illustration, not an app screenshot.*
 
 A map projection turns curved planet coordinates into flat screen coordinates. Every flat
 map distorts at least one property, so the available projections are chosen for readability

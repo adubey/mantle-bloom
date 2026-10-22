@@ -8,10 +8,10 @@ this by connecting nearby terrain cells into a graph: each cell is a point in th
 an edge says which other cells it can send water to. This works with the irregular cell
 layout carried by moving plates.
 
-![A glacier feeds a subglacial stream and surface water, two connected lake basins, and a river flowing to the ocean.](../img/issue-514/hydrology-glacier-lakes-river.jpg)
-*Conceptual watershed: meltwater emerges beneath the glacier, passes through connected
-basins, and flows downriver to the ocean. Real drainage is more complex than this scene, and
-the image is not a simulation render.*
+![A conceptual watershed with callouts for a glacier, basal meltwater river, upper lake basin, spillway between basins, river outlet, and ocean.](../img/issue-514/hydrology-glacier-lakes-river-annotated.svg)
+*Conceptual watershed. The arrows trace meltwater beneath the glacier, through connected
+basins, and downriver to the ocean. Real drainage is more complex than this scene, and the
+image is not a simulation render.*
 
 Real rivers branch, flood, and change their channels at finer scales than this simulation
 resolves. **Discharge** means the volume of water passing a place per unit time; the code

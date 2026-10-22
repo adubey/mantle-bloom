@@ -9,9 +9,9 @@ need implementation detail.
 The simulation represents terrain as cells attached to moving plates. Climate, water, ice,
 and erosion act on that terrain; map views turn the model state into pictures.
 
-![An illustrated planet with moving plates, mountains, ocean, rivers, ice, clouds, and a cutaway into the mantle.](img/issue-514/simulation-model-overview.jpg)
-*Conceptual overview of the systems described in these pages. This is an educational
-illustration, not a rendered Mantle Bloom world.*
+![A conceptual planet with callouts for moving plates, mountain building, climate, surface water, and the mantle.](img/issue-514/simulation-model-overview-annotated.svg)
+*Conceptual overview of the systems described in these pages. The arrows identify features
+in the illustration; it is an educational image, not a rendered Mantle Bloom world.*
 
 Use the topic pages below for the full explanation. The topic list is also a code map: it
 points to the main Python modules that implement each part. When model behavior changes,
