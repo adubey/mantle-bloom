@@ -291,3 +291,22 @@ it does not select them or close Gate 2. Full assumptions, per-seed/stratum resu
 in [`gate2-capacity-sensitivity.md`](gate2-capacity-sensitivity.md) and
 [`gate2-capacity-sensitivity.json`](gate2-capacity-sensitivity.json). Exact captured per-node loads
 remain outside the repository in `/private/tmp/`.
+
+
+### Coupled-boundary load check (2026-10-21)
+
+A two-region shared-node spherical-cap benchmark passes analytic force, torque, interface-reaction,
+and `N_ext` checks: global force closure including the analytic Laplace-pressure reaction is
+`9.44e-6` of total boundary load; torque is `2.92e-17` of load-radius; interface reaction mismatch
+is `2.19e-7` of the target resultant; joined/isolated regional mean `N_ext` differs by at most
+`0.0094%`. This verifies the linear shell assembly for its manufactured case.
+
+Two matched seed-7 source events were also remeshed with the nearest-plate neighbor receiving the
+most source-node assignments, applying both plates' per-node loads. The mean absolute nodewise change in source-band `N_ext` was 51.2% at 4 Myr
+and 26.2% at 38 Myr, with 100% cut-band coverage and residual/load below 0.02%. The sample is only
+two split events from one seed. It uses shared-node Delaunay remeshing, no contact or slip law, and a
+single rigid-mode projection for the pair. Those shifts are a coupling/rigid-mode/remeshing
+sensitivity, not a physical prediction. See [`gate2-load-diagnosis.md`](gate2-load-diagnosis.md),
+[`gate2-coupled-shell-benchmark.json`](gate2-coupled-shell-benchmark.json), and the two event JSON
+reports. Gate 2 remains open until interface-force ownership and a defensible traction/slip law are
+specified and tested across event kinds and seeds.

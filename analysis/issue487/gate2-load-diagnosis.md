@@ -11,9 +11,10 @@ This establishes an offline load-transfer and strength-comparison interface, not
 field. The solver assumes linear plane-stress elasticity, free in-plane displacement, prescribed
 nodal loads, no faults, bending or plasticity, and caller-supplied effective thickness and modulus.
 For an isolated single-plate solve, free displacement is the baseline because the inputs contain no
-displacement anchor to an external reference. Edge clamps remain artificial sensitivity probes;
-actual interplate displacement and traction continuity require a coupled multi-plate solve, which
-is outside this diagnostic. Gate 2 covers source-connected candidates; disconnected-source events
+displacement anchor to an external reference. Edge clamps remain artificial sensitivity probes. A shared-node two-plate manufactured case now
+verifies interface transfer for uniform isotropic tension, while event-level paired remeshes measure
+sensitivity to adding a force-contributing neighbor. These probes do not specify a geologic contact
+law or calibrate actual interplate displacement and traction continuity. Gate 2 covers source-connected candidates; disconnected-source events
 are counted separately and excluded from its coverage denominator.
 
 The strength envelope has conditional anchors and an uncertainty bracket, but no spatially
@@ -126,8 +127,9 @@ clamps also produce shifts from −0.58% to −23.52%, depending on location and
 show that arbitrary constraints can dominate the inferred load. The free-edge condition is selected
 for the current isolated-plate diagnostic because it adds no unsupported displacement anchor; it is
 still a simplified isolated-body assumption, not a claim about natural plate boundaries. Resolving
-tractions and displacement continuity across real plate boundaries requires assembling neighboring
-plates in a coupled shell solve. That coupling remains outside Gate 2's current offline diagnostic.
+tractions and displacement continuity across real plate boundaries require a coupled mesh. The
+new shared-node benchmark and two event probes exercise that mesh numerically, but leave contact
+force ownership, fault slip and the interface law unspecified; those physical aspects remain open.
 
 ## Representative generated plate meshes
 
@@ -429,12 +431,65 @@ PYTHONHASHSEED=0 PYTHONPATH=backend backend/.venv/bin/python \
   --out /tmp/issue487-g2-seed2024-source-filter.json
 ```
 
+## Coupled-boundary load validation
+
+The manufactured benchmark in [`benchmark_gate2_coupled_shell.py`](../../bin/debug/benchmark_gate2_coupled_shell.py)
+uses a mildly curved spherical cap split into two equal-material regions. The isolated runs put
+analytic uniform isotropic membrane traction on all edges, including equal-and-opposite traction
+on the cut. The joined run shares interface nodes and loads only the outer boundary. The analytic
+shell-normal Laplace pressure `p=2N/R` is included in the global force balance audit but remains
+outside the in-plane shell solve.
+
+| Check | Result | Acceptance limit |
+|---|---:|---:|
+| Global force balance including analytic normal-pressure reaction / boundary load | `9.44e-6` | `< 1e-3` |
+| Boundary torque / (boundary load × radius) | `2.92e-17` | `< 1e-8` |
+| Joined in-plane equilibrium residual / load | `2.48e-7` | `< 1e-5` |
+| Maximum interior interface reaction mismatch / target resultant | `2.19e-7` | `< 1e-5` |
+| Maximum joined-versus-isolated regional mean `N_ext` difference | `0.0094%` | `< 3%` |
+
+The mesh has 119 nodes, 192 triangles and seven shared interface nodes; two interface corners are
+excluded from the local reaction comparison because they also meet external edges. All three solves
+stop with code 1. The joined and isolated regional mean resultants recover `1e10 N/m` within
+`0.0290%` and `0.0196%`, respectively. The compact result is
+[`gate2-coupled-shell-benchmark.json`](gate2-coupled-shell-benchmark.json). This verifies the
+linear shared-node membrane implementation on its manufactured case; it does not validate a
+natural plate contact, fault slip, damage, or a strength law.
+
+Two short, deterministic Gate 1 seed-7 event slices then remeshed the source plate and the
+neighbor receiving the most nearest-plate assignments into one shared curved mesh. Both
+plates' existing per-node force fields were applied. The source cut-band `N_ext` was compared at
+all nodes shared by the isolated and joined meshes:
+
+| Event | Neighbor | Cut-band coverage | Isolated mean `N_ext` | Joined mean `N_ext` | Mean absolute nodewise change | p95 nodewise change | Isolated / joined residual-to-load |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Seed 7, 4 Myr, split, plate 3 | 14 | 290/290 (100%) | 1.502 TN/m | 2.123 TN/m | 51.2% | 114.8% | 0.0037% / 0.0190% |
+| Seed 7, 38 Myr, split, plate 0 | 15 | 298/298 (100%) | 2.158 TN/m | 2.341 TN/m | 26.2% | 96.2% | 0.0023% / 0.0048% |
+
+These are two split events from one seed, not a broad sample. Their changed values show that an
+isolated-plate load estimate can be sensitive to adding its nearest-plate neighbor,
+even while both solves have small equilibrium residuals. The union remesh has no explicit contact
+law, fault slip, or interface weakening, and the joined solve removes one rigid-rotation mode for
+the pair. The differences therefore combine neighboring-plate load addition, pair-level rigid-mode
+projection, and remeshing; they cannot be interpreted as the physical effect of a validated plate
+boundary. The event outputs are
+[`gate2-coupled-event-seed7-4myr.json`](gate2-coupled-event-seed7-4myr.json) and
+[`gate2-coupled-event-seed7-38myr.json`](gate2-coupled-event-seed7-38myr.json). The short runs replay only through 4 and 40 Myr. Their event-key prefixes were checked against the
+saved matched replay sidecar; they do not reproduce the full 1 Gyr candidate population.
+
+**Implication.** The manufactured verification gate passes, but actual interplate load transfer
+is still underidentified. Keep the isolated free-edge result as the current screening baseline and
+keep Gate 2 open. Before treating coupled `N_ext` as calibrated, define how a boundary transmits
+normal/shear traction, permits or resists slip, assigns contact forces once rather than twice, and
+partitions plate-scale rigid motion. Then repeat this event comparison on split and failed-rift
+events across all three seeds, including an explicit force/torque ownership audit.
+
 ## Gate disposition
 
 - **Current diagnostic interface:** `max(0, lambda_max(Delta_N))`, the largest positive principal shell stress increment, is paired with the column's additional normal-fault capacity from an assumed `K0` background; both are in N/m. The physical envelope has conditional reference anchors and a broad scenario bracket, but no
-spatial calibration. A broad curved-sphere analytic benchmark converges to 1.18% mean error and 2.75% p95 error at 17 × 33 nodes. Free in-plane displacement is selected for the isolated-plate diagnostic because the input has no external displacement anchor. Single, paired and full-boundary clamps show substantial sensitivity and are not adopted as physical boundary conditions. The direct-threshold phenomenological rule has a monotonic capacity and weak-band localization check, but is a competing design only. Within the narrowed connected-source scope, the matched comparison passes the 90% overall / 80% stratum coverage gate (74/74); 56 disconnected-source candidates are excluded and reported separately, so results do not generalize to them or the full population. A local strength field remains underidentified, and coupled interplate boundary behavior remains outside this isolated solve, so Gate 2 is not closed.
+spatial calibration. A broad curved-sphere analytic benchmark converges to 1.18% mean error and 2.75% p95 error at 17 × 33 nodes. Free in-plane displacement is selected for the isolated-plate diagnostic because the input has no external displacement anchor. Single, paired and full-boundary clamps show substantial sensitivity and are not adopted as physical boundary conditions. The direct-threshold phenomenological rule has a monotonic capacity and weak-band localization check, but is a competing design only. Within the narrowed connected-source scope, the matched comparison passes the 90% overall / 80% stratum coverage gate (74/74); 56 disconnected-source candidates are excluded and reported separately, so results do not generalize to them or the full population. A local strength field remains underidentified. A shared-node manufactured benchmark passes, but two event cases show 26.2% and 51.2% mean absolute nodewise `N_ext` changes when a neighboring plate is included; the pair mesh has no validated contact/slip law. Gate 2 is not closed.
 - **`internal_stress`:** retain only as a plate-scale eligibility/background signal if desired; it cannot trigger or weight local damage.
 - **No calibrated strength field:** do not assign `Y_t`, `eta_rift`, or failure-strain parameters from these diagnostics. Do not infer stress from applied traction, rigid rotation, flow-cluster residuals or `Plate.internal_stress`.
-- **Required next work:** justify or constrain local `K0`, pore pressure and mantle water/rheology independently of legacy event outcomes, then validate load and boundary sensitivity within the connected-source scope. Keep disconnected-source event counts and strata visible, and do not generalize findings to those events. The 90% overall / 80% stratum coverage rule applies to connected-source candidates. A defensible multi-component load-transfer model would be a separate scope expansion, not a prerequisite for the current Gate 2 population. Gate 3 accumulation and segment-growth calibration remains downstream. A coupled interplate shell solve is a future fidelity improvement; the free-edge choice applies only to this isolated diagnostic.
+- **Required next work:** justify or constrain local `K0`, pore pressure and mantle water/rheology independently of legacy event outcomes, then validate load and boundary sensitivity within the connected-source scope. Keep disconnected-source event counts and strata visible, and do not generalize findings to those events. The 90% overall / 80% stratum coverage rule applies to connected-source candidates. A defensible multi-component load-transfer model would be a separate scope expansion, not a prerequisite for the current Gate 2 population. Gate 3 accumulation and segment-growth calibration remains downstream. Further event-level work must define interface force ownership and contact/slip behavior before treating the coupled result as physical; the free-edge choice applies only to the isolated-plate baseline.
 
 The RFC now records this outcome and keeps the local-cut damage design conditional. Gate 1 is closed by the explicit baseline/exclusion decision recorded in `analysis/issue487/README.md`; the archived-stream provenance limitation remains documented.

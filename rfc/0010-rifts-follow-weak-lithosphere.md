@@ -148,8 +148,9 @@ stress state needed to choose among them.
 An independent curved-sphere manufactured solution now validates that stress invariant with
 decreasing error through 17 × 33 nodes. Free in-plane displacement is selected as the boundary
 condition for the isolated single-plate diagnostic because its inputs provide no displacement
-anchor; clamps are sensitivity probes and real interplate continuity would require a coupled shell
-solve. The matched diagnostic replay validates equilibrium eligibility and compares physical and explicitly
+anchor; clamps are sensitivity probes. A shared-node two-plate manufactured benchmark now checks
+numerical interface transfer for uniform isotropic tension, but it does not define a geologic
+contact law. The matched diagnostic replay validates equilibrium eligibility and compares physical and explicitly
 phenomenological capacities on Gate 1 candidates whose source cells form one exact edge-connected
 component. Gate 2 is explicitly scoped to this connected-source population: the 56 genuinely
 disconnected-source events are counted and reported separately, but excluded from the Gate 2 coverage
@@ -262,8 +263,11 @@ should start until those gates are resolved and the revised design is accepted.
    uniform-tension spherical-shell benchmark decreases mean error from 2.94% to 1.18%, with
    fine-grid p95 absolute error 2.75%. Free displacement is selected for the isolated diagnostic;
    paired clamps shift means by up to 46.6% and full-boundary clamps suppress the mean by about
-   100%, demonstrating why arbitrary anchors are not adopted. Actual edge continuity requires
-   coupled neighboring plates. A direct phenomenological capacity candidate,
+   100%, demonstrating why arbitrary anchors are not adopted. A two-plate shared-node benchmark passes manufactured force/torque balance, interface reaction and
+   resultant checks. Two matched seed-7 split events shift source-band `N_ext` by 26.2% and 51.2%
+   mean absolute nodewise when the dominant nearest neighbor and its loads are included. These are
+   two cases from one seed, with no contact/slip law and one rigid-mode projection over the pair;
+   they are sensitivity evidence, not physical coupled predictions. A direct phenomenological capacity candidate,
    `T_cap = T_ref * (1 - lambda * w)`, was swept on a prescribed weak band: increasing `T_ref`
    monotonically reduced failed nodes, and at `2e10 N/m` the weak-band failure fraction exceeded
    the background fraction for both plates. This verifies the candidate rule's response, not its
@@ -471,12 +475,18 @@ source or explicit design-choice status, and the sensitivity plan before impleme
        use old-algorithm cuts as calibration labels. A thickness-aware diagnostic mapping using
        local Hc/Hm and proxy fields with steady-versus-lagged temperature assumptions is complete;
        its output remains a scenario screen because profile and rheology state are unresolved.
-       Complete broader load/boundary validation and justify the remaining source/capacity
+       The manufactured shared-node benchmark passes, but the two event cases show large load
+       sensitivity when a neighbor is included. Specify interface force ownership and contact/slip
+       behavior, audit rigid-mode projection, and broaden paired split/failed-rift checks across
+       seeds before treating coupled values as physical. Justify the remaining source/capacity
        assumptions before Gate 2 closes (see
        `analysis/issue487/README.md`, `analysis/issue487/gate2-load-diagnosis.md`,
        `analysis/issue487/gate2-column-envelope.json`, `analysis/issue487/gate2-matched-replay.json`,
        `analysis/issue487/gate2-spatial-capacity-replay.json`, and
-       `analysis/issue487/gate2-capacity-sensitivity.json`).
+       `analysis/issue487/gate2-capacity-sensitivity.json`,
+       `analysis/issue487/gate2-coupled-shell-benchmark.json`, and the two event reports
+       `analysis/issue487/gate2-coupled-event-seed7-4myr.json` and
+       `analysis/issue487/gate2-coupled-event-seed7-38myr.json`).
 2. [ ] In synthetic tests, damage is timestep-partition invariant, bounded, absent under compression
        or sub-yield loading, and advances only through adjacent cells with supported positive loading.
 3. [ ] Segments can nucleate independently, propagate, arrest and link; a transform/transfer zone
