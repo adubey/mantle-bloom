@@ -63,6 +63,13 @@ older elevation-line surface instead added per-case elevation deltas with their 
 tapers (a banded arc, a trench rate, a 300 km rift reach); #251 retired it, and with it those
 deltas.
 
+![Conceptual convergent mountain-belt cross section showing thickened crust and mantle lithosphere, with Hc, Hm, the Moho and lithosphere base marked.](../img/issue-514/lithosphere-cross-section.svg)
+*This convergent mountain-belt schematic shows thickened crust (Hc) and mantle lithosphere
+(Hm). In the model, convergent shortening thickens both in proportion; arc magmatism can add
+Hc without increasing Hm, so the relationship is not universal. Isostasy couples both column
+thicknesses to surface elevation. Conceptual geometry; relief is exaggerated, and this is not
+a simulation render.*
+
 - **Convergent** (either crust type) -> yield-limited plastic shortening
   (`rheology.apply_convergent_deformation`), scaled by `orogen_contested_strength` (the
   collision tuning knobs, boosted by how much of the band is in overlap -- see

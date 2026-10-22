@@ -28,9 +28,11 @@ Each plate owns a rotation matrix `frame` (world = `frame @ local`, see
 `(phi, theta)`, with local `(phi=0, theta=0)` mapping to the plate's original seed point.
 Terrain is stored as a sparse set of active cells (`PlateWithSparseQuadPatch`,
 `sparse_quad_patch.py`) on an equiangular cube-sphere lattice laid out in that local frame:
-six faces, each an `n x n` grid whose cell edges are great-circle arcs, face 0 centred on the
-seed. One terrain node sits at each active cell's centre, carrying every surface field
-(`surface_fields.SURFACE_FIELDS`) for that cell's exact footprint.
+six faces, each starting as an `n x n` grid whose cell edges are great-circle arcs, face 0
+centred on the seed. The active surface is a sparse adaptive quadrilateral mesh: one node sits
+at each leaf cell's centre, carrying every surface field (`surface_fields.SURFACE_FIELDS`)
+for that cell's exact footprint. Refining a leaf replaces it with four children in a 2 x 2
+arrangement; neighboring leaves are kept within one refinement level (2:1 balance).
 
 **Conceptual diagram — each plate rotates its own cube-sphere lattice; overlaying those independently rotated lattices can create seams, overlaps and containment conflicts at plate boundaries.**
 
@@ -47,6 +49,17 @@ flowchart LR
 Each lattice stays internally aligned with its own plate. The seam appears only when the
 independent cell sets are compared in world coordinates; boundary evolution reconciles those
 sets rather than forcing both plates onto one shared grid.
+
+![Conceptual oblique view of one plate's curved quadrilateral mesh, its independently tiled neighbor, boundary cells, and an inset showing one leaf split into four children.](../img/issue-514/plate-territory.svg)
+*The plate owns a set of finite surface cells in its own rotating frame. Neighboring plates
+carry independent lattices, so their seam is handled at the boundary. The model uses a sparse
+adaptive quadrilateral mesh. The inset shows the local 2 x 2 refinement of one leaf. This
+schematic shows only a portion of the curved cube-sphere lattice. It is not a simulation
+render.*
+
+![Conceptual oblique view of a plate lattice carrying elevation relief, with deep ocean, lowland, upland and peak colors.](../img/issue-514/plate-relief.svg)
+*Elevation and crustal columns travel with the same surface cells. Relief is exaggerated for
+clarity. Conceptual; not a simulation render.*
 
 - **Rotating a plate is exact.** Advancing `frame` by composing the incremental rotation
   from the plate's current Euler pole/rate ([Rodrigues'
