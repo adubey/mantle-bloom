@@ -25,7 +25,8 @@ def one_middle_class(monkeypatch):
     monkeypatch.setattr(synthetic_relief, "SUTURE_CLASSES", ((1.0, 2_500.0, 120.0, 0.0),))
 
 
-def test_suture_belt_peaks_on_the_bisector_between_neighbouring_cratons(one_middle_class):
+@pytest.mark.usefixtures("one_middle_class")
+def test_suture_belt_peaks_on_the_bisector_between_neighbouring_cratons():
     lon, points, core, continent_of_core = _two_cratons({0: 0, 1: 0})
 
     relief, young = synthetic_relief.suture_relief(points, core, continent_of_core, np.zeros(len(lon)), seed=5)
@@ -37,7 +38,8 @@ def test_suture_belt_peaks_on_the_bisector_between_neighbouring_cratons(one_midd
     assert not young.any()  # The middle class is not young.
 
 
-def test_suture_warp_moves_the_belt_off_the_bisector(one_middle_class):
+@pytest.mark.usefixtures("one_middle_class")
+def test_suture_warp_moves_the_belt_off_the_bisector():
     lon, points, core, continent_of_core = _two_cratons({0: 0, 1: 0})
     warp = np.full(len(lon), 0.5)  # Shifts the belt by 150 km toward craton 0.
 
@@ -47,7 +49,8 @@ def test_suture_warp_moves_the_belt_off_the_bisector(one_middle_class):
     assert shift_km == pytest.approx(0.5 * synthetic_relief.SUTURE_WARP_KM, abs=15.0)
 
 
-def test_cratons_on_different_continents_draw_no_suture(one_middle_class):
+@pytest.mark.usefixtures("one_middle_class")
+def test_cratons_on_different_continents_draw_no_suture():
     lon, points, core, continent_of_core = _two_cratons({0: 0, 1: 1})
 
     relief, young = synthetic_relief.suture_relief(points, core, continent_of_core, np.zeros(len(lon)), seed=5)

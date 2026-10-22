@@ -67,7 +67,7 @@ SUTURE_WARP_KM = 300.0
 SUTURE_DROP_PROBABILITY = 0.3
 # (probability, peak m, Gaussian sigma km, plateau m). Young belts are Himalaya-like with a
 # Tibet-like plateau on one side, middle ones Alps/Rockies-like, old ones Appalachian-like.
-SUTURE_YOUNG, SUTURE_MIDDLE, SUTURE_OLD = 0, 1, 2
+SUTURE_YOUNG = 0  # index of the young class in SUTURE_CLASSES
 SUTURE_CLASSES = ((0.25, 4_500.0, 180.0, 3_500.0), (0.35, 2_500.0, 120.0, 0.0), (0.40, 900.0, 150.0, 0.0))
 SUTURE_PLATEAU_KM = 300.0
 SUTURE_PLATEAU_EDGE_KM = 150.0
