@@ -277,28 +277,43 @@ cratons_first=True, synthetic_relief=True)`, the `synthetic_relief` field of
 checkbox (shown under "Craton-first terrain") turns it on. It has no effect without the
 cratons-first layout. `world.generate_world` builds the layout once, passes it to plate
 generation, and then runs `apply_synthetic_relief` in place of
-`initial_terrain.apply_lowland_spherical_relief` and `apply_predicted_orogens`. Rivers, ice
-and the craton and continental ledgers are initialized afterwards as usual.
+`initial_terrain.apply_lowland_spherical_relief` and `apply_predicted_orogens`. Initial soil,
+rivers, ice and the craton and continental ledgers are seeded afterwards, on the new
+coastline.
 
 The pass reads the layout's cratons and continents and the first predicted plate motion
 (`torque.predict_plate_motion` over 5 Myr, read-only), and sets a target elevation for every
 continental-crust node:
 
-- **Sutures.** Each node takes the belt between its two nearest cratons when they are on the
-  same continent and their distances sum to at most `SUTURE_PAIR_MAX_KM` (2,400 km). The belt
-  follows the bisector, (d2 - d1) / 2, shifted by up to `SUTURE_WARP_KM` (300 km) of
-  low-frequency noise so it curves. Each pair draws from an rng keyed by the seed and the pair:
-  30% of pairs have no belt (`SUTURE_DROP_PROBABILITY`); the rest are young (p 0.25: 4.5 km
-  peak, 180 km Gaussian sigma, a 3.5 km plateau out to ~300 km on one side), middle (p 0.35:
-  2.5 km, 120 km) or old (p 0.40: 0.9 km, 150 km) (`SUTURE_CLASSES`).
-- **Active margins.** A node's leading-edge score is its plate's predicted velocity along the
-  outward tangent to the nearest oceanic-crust node, divided by speed and scaled down below
-  3 cm/yr. A positive score raises a cordillera of up to 4 km, peaking 200 km inland (sigma
-  90 km), and narrows the shelf to a quarter. A negative score raises a rift-shoulder
-  escarpment of up to 500 m, 250 km inland. Continental crust within 150 km of another plate's
-  continental crust that the predicted motion closes on raises a 4.2 km collision belt (sigma
-  160 km). Belt relief beside a craton is halved (principle 7). All belts are modulated by
-  along-strike and ridged noise.
+- **Sutures.** Two cratons on the same continent are a pair when they are some node's two
+  nearest and their distances there sum to at most `SUTURE_PAIR_MAX_KM` (2,400 km). Each pair
+  draws from an rng keyed by the seed and the pair:
+  - 30% of pairs have no belt (`SUTURE_DROP_PROBABILITY`);
+  - the rest are young (p 0.25: 4.5 km peak, 180 km Gaussian sigma, plus a 3.5 km plateau out
+    to ~300 km on one side), middle (p 0.35: 2.5 km, 120 km) or old (p 0.40: 0.9 km, 150 km)
+    (`SUTURE_CLASSES`).
+
+  A pair's belt follows the bisector, at signed distance (d_hi - d_lo) / 2 from the pair's
+  two cratons, shifted by up to `SUTURE_WARP_KM` (300 km) of low-frequency noise so it curves.
+  It is evaluated on every node and fades out where the pair's distances sum toward the
+  maximum, and where a third craton is nearer than both (over
+  `SUTURE_THIRD_CRATON_TAPER_KM`, 150 km). Each node takes the highest belt, so belts meet
+  without cliffs. A plateau fades out over `CRATON_EDGE_FADE_KM` (150 km) before the craton
+  it faces.
+- **Active margins.** `leading_edge` scores each continental node by its velocity relative to
+  the plate that owns its nearest oceanic-crust node, along the outward tangent toward that
+  node, divided by the relative speed and scaled down below 3 cm/yr. Where that ocean is on
+  the node's own plate the margin is passive and scores 0.
+  - A positive score raises a cordillera of up to 4 km, peaking 200 km inland (sigma 90 km).
+    Above 0.3 it also narrows the shelf to a quarter.
+  - A negative score raises a rift-shoulder escarpment of up to 500 m, 250 km inland; a
+    passive margin gets half of it (`PASSIVE_MARGIN_ESCARPMENT`).
+  - Continental crust near another plate's continental crust that the predicted motion closes
+    on raises a 4.2 km collision belt (sigma 160 km). "Near" is within 150 km, or 1.5 node
+    spacings on coarse worlds.
+
+  All belt relief is modulated by along-strike and ridged noise. It is halved on cratons,
+  rising smoothly to full strength 150 km outside them (principle 7).
 - **Coastline.** Land is the continental nodes with the highest land potential: distance
   inward from the continental-crust edge (km) times exp(0.6 x noise), plus 250 km x coastline
   noise, plus 0.12 km per metre of belt relief. The pass keeps the generated land node count,
@@ -327,8 +342,10 @@ not changed:
   land).
 - The isostasy has no depleted, buoyant keel that would justify a thicker lid under shields.
 
-Cratonic cores keep at least `cratons.CRATON_HOST_MIN_HC_M`, and `craton_crust_m` is reset to
-their new Hc. Young relief (young sutures, cordilleras, collision belts) starts with the
+Cratonic cores stay within the craton host window, `cratons.CRATON_HOST_MIN_HC_M` to
+`CRATON_HOST_MAX_HC_M` (28-50 km), and `craton_crust_m` is reset to their new Hc. A core's
+crust doesn't flow, melt or delaminate, so a thicker core would keep an orogenic plateau for
+good. Young relief (young sutures, cordilleras, collision belts) starts with the
 `moho_thermal_lag_c` of crust just buried from the reference column (`orogeny.bury_moho`),
 scaled by the young share of the node's relief. Young belts therefore start with a cold Moho
 and heat over `orogeny.THERMAL_RELAXATION_MYR`; older relief starts at steady state. Columns
@@ -346,7 +363,7 @@ Measured on seeds 447276134, 373936961, 910211954 and 374464662 at node density 
 
 At the default `continental_fraction` (0.5 of the surface), a third of the ocean is shallower
 than 3 km (Earth 24%), because about 30% of the ocean floor is continental crust; 0.4 brings
-it to about Earth's value. Generation takes about 25% longer. `bin/debug/measure_initial_relief.py`
+it to about Earth's value. Generation takes 25-50% longer. `bin/debug/measure_initial_relief.py`
 reports these measures against Earth, optionally after stepping; the exploration and its
 probes are in #218 and [analysis/issue218](../../analysis/issue218/README.md).
 

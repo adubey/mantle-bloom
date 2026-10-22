@@ -54,8 +54,11 @@ EARTH = {
     "ocean_share_above_3km_depth": 0.243,
     "ocean_share_above_200m_depth": 0.069,
     "lake_share_of_land": 0.02,
+    # Box-averaged to ~55 km (3x3 cells) and ~90 km (5x5): Earth's lowland relief at node scale.
     "lowland_rms_diff_m_by_km": {"50": 131, "100": 173, "200": 214, "400": 257},
+    "lowland_rms_diff_m_by_km_box90km": {"50": 119, "100": 166, "200": 210, "400": 253},
 }
+MIN_LAND_NODES_FOR_RELIEF = 200
 
 
 def _percentiles(values: np.ndarray) -> dict[str, float]:
@@ -101,11 +104,13 @@ def _shelf_and_seas(points: np.ndarray, h: np.ndarray, land: np.ndarray) -> dict
 
 def _relief_by_lag(points: np.ndarray, h: np.ndarray, land: np.ndarray) -> dict:
     """RMS height difference between land node pairs at each lag (+-10%), all pairs and pairs
-    with both ends below 1 km, from 4,000 sampled nodes and up to four partners each."""
+    with both ends below 1 km, from up to 4,000 sampled nodes and up to four partners each,
+    drawn at random from the ring so no direction is favoured."""
     lp, lh = points[land], h[land]
-    if len(lp) < 2000:
-        return {}
-    sel = np.random.default_rng(0).choice(len(lp), 4000, replace=False)
+    if len(lp) < MIN_LAND_NODES_FOR_RELIEF:
+        return {"relief_skipped": f"fewer than {MIN_LAND_NODES_FOR_RELIEF} land nodes"}
+    rng = np.random.default_rng(0)
+    sel = rng.choice(len(lp), min(4000, len(lp)), replace=False)
     tree = cKDTree(lp)
     all_pairs, lowland = {}, {}
     for lag in LAGS_KM:
@@ -113,7 +118,8 @@ def _relief_by_lag(points: np.ndarray, h: np.ndarray, land: np.ndarray) -> dict:
         a, b = [], []
         for i, js in zip(sel, tree.query_ball_point(lp[sel], chord * 1.1)):
             js = np.asarray(js, dtype=int)
-            far = js[np.linalg.norm(lp[js] - lp[i], axis=1) > chord * 0.9][:4]
+            ring = js[np.linalg.norm(lp[js] - lp[i], axis=1) > chord * 0.9]
+            far = rng.choice(ring, min(4, len(ring)), replace=False) if len(ring) else ring
             a.append(np.full(len(far), lh[i]))
             b.append(lh[far])
         a, b = np.concatenate(a), np.concatenate(b)
@@ -189,7 +195,7 @@ def main() -> None:
     from app import world as world_mod
 
     results = {"earth": EARTH, "runs": []}
-    stops = [float(t) for t in args.step_myr.split(",") if t]
+    stops = sorted(float(t) for t in args.step_myr.split(",") if t)
     sources = [("seed", int(s)) for s in args.seeds.split(",") if s] + [("save", p) for p in args.load]
     for kind, source in sources:
         start = time.time()

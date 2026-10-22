@@ -9,10 +9,11 @@ the layout and the first predicted plate motion and backs the result with crusta
 - **Sutures.** Neighbouring cratons on one continent are joined by a belt along their
   (noise-warped) bisector. Each pair draws an age class: young (high, with a plateau on one
   side), middle, or old and eroded; some pairs are welded with no surviving belt.
-- **Active margins.** Continental crust whose plate is moving toward its nearest ocean edge
-  (the leading edge) gets an Andean cordillera ~200 km inland and a narrow shelf; trailing
-  edges get a low rift-shoulder escarpment and wide shelves. Predicted continent-continent
-  convergence adds a collision belt.
+- **Active margins.** Continental crust moving toward its nearest ocean relative to the plate
+  that owns it (the leading edge) gets an Andean cordillera ~200 km inland and a narrow shelf;
+  trailing and passive margins (ocean on the continent's own plate) get a low rift-shoulder
+  escarpment and wide shelves. Predicted continent-continent convergence adds a collision
+  belt. Belt relief is halved on cratons, rising to full strength 150 km outside them.
 - **Coastlines.** Land is the requested share of nodes with the highest land potential:
   distance inward from the continental-crust edge, noise-scaled, plus the mountain relief.
 - **Interiors.** Cratons split into exposed shields (rolling hills) and covered platforms
@@ -55,8 +56,10 @@ if TYPE_CHECKING:
 # see #218's exploration summary). Cratons-first only.
 SYNTHETIC_RELIEF_DEFAULT = False
 FIRST_MOTION_STEP_YEARS = 5_000_000.0
-# Boundary nodes within this distance of another plate read that contact's regime.
+# Boundary nodes within this distance of another plate read that contact's regime; at least
+# REGIME_REACH_SPACINGS node spacings, so a coarse world still finds its contacts (principle 4).
 REGIME_REACH_KM = 150.0
+REGIME_REACH_SPACINGS = 1.5
 
 # Sutures. Pairs of cratons whose summed distance exceeds this are not neighbours.
 SUTURE_PAIR_MAX_KM = 2_400.0
@@ -71,6 +74,10 @@ SUTURE_YOUNG = 0  # index of the young class in SUTURE_CLASSES
 SUTURE_CLASSES = ((0.25, 4_500.0, 180.0, 3_500.0), (0.35, 2_500.0, 120.0, 0.0), (0.40, 900.0, 150.0, 0.0))
 SUTURE_PLATEAU_KM = 300.0
 SUTURE_PLATEAU_EDGE_KM = 150.0
+# A pair's belt gives way where a third craton is nearer than either of the pair: full
+# strength while the third is this much farther than the pair's nearer craton, none when it
+# is this much nearer, so belts meet without a cliff where the nearest pair changes.
+SUTURE_THIRD_CRATON_TAPER_KM = 150.0
 
 # Active margins: Andean cordillera on leading edges, peak ~200 km inland (the Andes' crest
 # sits 150-250 km from the trench), scaled by how directly and fast the plate advances.
@@ -83,8 +90,15 @@ COLLISION_SIGMA_KM = 160.0
 ESCARPMENT_PEAK_M = 500.0
 ESCARPMENT_INLAND_KM = 250.0
 ESCARPMENT_SIGMA_KM = 100.0
-# Cratons resist shortening (principle 7): belts beside a craton reach half the height.
+# Cratons resist shortening (principle 7): belt relief on a craton is scaled by this, rising
+# smoothly to full strength over CRATON_EDGE_FADE_KM outside it (a step would leave a cliff
+# at the craton edge). A plateau fades out over the same distance before the craton it faces:
+# Tibet sits on accreted terranes, not on a shield.
 CRATON_OROGEN_FACTOR = 0.5
+CRATON_EDGE_FADE_KM = 150.0
+# A passive margin (ocean on the continent's own plate) is trailing by construction; its rift
+# shoulder gets this share of the full escarpment.
+PASSIVE_MARGIN_ESCARPMENT = 0.5
 
 # Land potential: km of inland distance, noise-scaled by exp(this x noise) so shelf widths
 # vary, plus coastline noise in km and orogen relief at this many km per metre.
@@ -131,7 +145,7 @@ class _Cloud:
     continental: np.ndarray
     craton: np.ndarray
     plate_id: np.ndarray
-    velocity_cm_yr: np.ndarray
+    omega: np.ndarray  # (N, 3) each node's plate's predicted angular velocity, rad/yr
 
 
 def _smoothstep(t: np.ndarray) -> np.ndarray:
@@ -148,7 +162,7 @@ def _distance_km(sources: np.ndarray, points: np.ndarray) -> tuple[np.ndarray, n
 
 
 def _gather(world: "World", omegas: dict[int, np.ndarray]) -> _Cloud:
-    parts: dict[str, list[np.ndarray]] = {k: [] for k in ("points", "elevation", "continental", "craton", "plate_id", "velocity")}
+    parts: dict[str, list[np.ndarray]] = {k: [] for k in ("points", "elevation", "continental", "craton", "plate_id", "omega")}
     for plate in world.plates:
         points, elevation = plate.all_points_and_elevation()
         parts["points"].append(points)
@@ -158,17 +172,16 @@ def _gather(world: "World", omegas: dict[int, np.ndarray]) -> _Cloud:
         )
         parts["craton"].append(plate.collect("craton_crust_m") > 0.0)
         parts["plate_id"].append(np.full(len(points), plate.plate_id))
-        # omega is rad/yr, so omega x point is the tangential rate in planet radii per year.
-        parts["velocity"].append(np.cross(omegas[plate.plate_id], points) * PLANET_RADIUS_KM * 1e5)
+        parts["omega"].append(np.tile(omegas[plate.plate_id], (len(points), 1)))
     joined = {k: np.concatenate(v) for k, v in parts.items()}
-    return _Cloud(joined["points"], joined["elevation"], joined["continental"], joined["craton"], joined["plate_id"], joined["velocity"])
+    return _Cloud(joined["points"], joined["elevation"], joined["continental"], joined["craton"], joined["plate_id"], joined["omega"])
 
 
 def _collision_contacts(world: "World", omegas: dict[int, np.ndarray]) -> np.ndarray:
-    """Per node in plate order: continental crust within `REGIME_REACH_KM` of another plate's
+    """Per node in plate order: continental crust within the regime reach of another plate's
     continental crust that the first predicted motion closes on."""
     spacing = line_spacing_rad(world.node_density)
-    reach = REGIME_REACH_KM / PLANET_RADIUS_KM
+    reach = max(REGIME_REACH_KM / PLANET_RADIUS_KM, REGIME_REACH_SPACINGS * spacing)
     masks = []
     for plate in world.plates:
         n = len(plate.cell_keys)
@@ -192,51 +205,70 @@ def _collision_contacts(world: "World", omegas: dict[int, np.ndarray]) -> np.nda
     return np.concatenate(masks)
 
 
+def _third_craton_km(order: np.ndarray, distances: np.ndarray, lo_col: int, hi_col: int) -> np.ndarray:
+    """Per node, the distance to its nearest craton other than columns `lo_col`/`hi_col`, from
+    each node's three nearest (`order`, columns of `distances`); inf with only two cratons."""
+    if order.shape[1] < 3:
+        return np.full(len(distances), np.inf)
+    rows = np.arange(len(distances))
+    first_other = np.where((order[:, 0] != lo_col) & (order[:, 0] != hi_col), 0, np.where((order[:, 1] != lo_col) & (order[:, 1] != hi_col), 1, 2))
+    return distances[rows, order[rows, first_other]]
+
+
+def _neighbour_pairs(order: np.ndarray, distances: np.ndarray, ids: list[int], continent_of_core: dict[int, int]) -> list[tuple[int, int]]:
+    """(lo, hi) column pairs of cratons that are some node's two nearest, on one continent and
+    within SUTURE_PAIR_MAX_KM of each other there."""
+    rows = np.arange(len(distances))
+    near = distances[rows, order[:, 0]] + distances[rows, order[:, 1]] <= SUTURE_PAIR_MAX_KM
+    pairs = {(min(a, b), max(a, b)) for a, b in zip(order[near, 0].tolist(), order[near, 1].tolist())}
+    return sorted((a, b) for a, b in pairs if continent_of_core[ids[a]] == continent_of_core[ids[b]])
+
+
 def suture_relief(
     points: np.ndarray, core_id: np.ndarray, continent_of_core: dict[int, int], warp: np.ndarray, seed: int
 ) -> tuple[np.ndarray, np.ndarray]:
     """(relief m, young-class relief m) per point from belts between neighbouring cratons.
 
     `core_id` is each point's craton (-1 outside cratons); belts join only cratons on the same
-    continent. A point's belt is the one between its two nearest cratons, at signed distance
-    (d_hi - d_lo) / 2 from their bisector (positive on the lower-id craton's side) plus
-    `SUTURE_WARP_KM * warp`. Orienting by the pair, not by the nearer craton, is what lets the
-    warp move a belt sideways instead of splitting it in two. Each pair's class, plateau
-    side and survival are drawn from an rng keyed by the seed and the pair, so they don't
-    depend on node order or density."""
+    continent that are some point's two nearest. Each surviving pair's belt is evaluated on
+    every point at signed distance (d_hi - d_lo) / 2 from the pair's bisector (positive on the
+    lower-id craton's side) plus `SUTURE_WARP_KM * warp`; orienting by the pair lets the warp
+    move a belt sideways instead of splitting it. A belt fades where the pair is far apart
+    and where a third craton is nearer than both, and a point takes the highest belt, so
+    belts meet without cliffs. A young belt's plateau lies on one side and fades out before
+    reaching that side's craton. Each pair's class, plateau side and survival come from an rng
+    keyed by the seed and the pair, so they don't depend on node order or density."""
     relief = np.zeros(len(points))
     young = np.zeros(len(points))
     ids = sorted(continent_of_core)
     if len(ids) < 2:
         return relief, young
     distances = np.stack([_distance_km(points[core_id == c], points)[0] for c in ids], axis=1)
-    order = np.argsort(distances, axis=1)[:, :2]
-    d1 = np.take_along_axis(distances, order[:, :1], axis=1)[:, 0]
-    d2 = np.take_along_axis(distances, order[:, 1:], axis=1)[:, 0]
-    c1, c2 = np.asarray(ids)[order[:, 0]], np.asarray(ids)[order[:, 1]]
-    s = np.where(c1 < c2, 1.0, -1.0) * (d2 - d1) / 2.0 + SUTURE_WARP_KM * warp
-    # Fade belts out where the pair is far apart, so they end instead of running on.
-    fade = 1.0 - _smoothstep(((d1 + d2) - 0.75 * SUTURE_PAIR_MAX_KM) / (0.25 * SUTURE_PAIR_MAX_KM))
-    for lo, hi in sorted({(min(a, b), max(a, b)) for a, b in zip(c1.tolist(), c2.tolist())}):
-        if continent_of_core[lo] != continent_of_core[hi]:
-            continue
-        mask = (((c1 == lo) & (c2 == hi)) | ((c1 == hi) & (c2 == lo))) & ((d1 + d2) <= SUTURE_PAIR_MAX_KM)
+    order = np.argsort(distances, axis=1)[:, :3]
+    for lo_col, hi_col in _neighbour_pairs(order, distances, ids, continent_of_core):
+        lo, hi = ids[lo_col], ids[hi_col]
         rng = np.random.default_rng((seed, lo, hi, 0x5B2))
-        if not np.any(mask) or rng.random() < SUTURE_DROP_PROBABILITY:
+        if rng.random() < SUTURE_DROP_PROBABILITY:
             continue
         cls = int(rng.choice(len(SUTURE_CLASSES), p=[c[0] for c in SUTURE_CLASSES]))
         _, peak, sigma, plateau = SUTURE_CLASSES[cls]
-        side = lo if rng.random() < 0.5 else hi
-        r = peak * np.exp(-0.5 * (s[mask] / sigma) ** 2)
+        plateau_on_lo = rng.random() < 0.5
+        d_lo, d_hi = distances[:, lo_col], distances[:, hi_col]
+        s = (d_hi - d_lo) / 2.0 + SUTURE_WARP_KM * warp
+        r = peak * np.exp(-0.5 * (s / sigma) ** 2)
         if plateau:
-            # The warped bisector decides the side: s >= 0 is the lower-id craton's.
-            on_side = (s[mask] >= 0.0) == (side == lo)
-            shelf = 1.0 - _smoothstep((np.abs(s[mask]) - SUTURE_PLATEAU_KM) / SUTURE_PLATEAU_EDGE_KM)
-            r = np.maximum(r, np.where(on_side, plateau * shelf, 0.0))
-        r *= fade[mask]
-        relief[mask] = np.maximum(relief[mask], r)
+            # s >= 0 is the lower-id craton's side of the warped bisector.
+            on_side = (s >= 0.0) == plateau_on_lo
+            reach = 1.0 - _smoothstep((np.abs(s) - SUTURE_PLATEAU_KM) / SUTURE_PLATEAU_EDGE_KM)
+            before_craton = _smoothstep(np.where(plateau_on_lo, d_lo, d_hi) / CRATON_EDGE_FADE_KM)
+            r = np.maximum(r, np.where(on_side, plateau * reach * before_craton, 0.0))
+        pair_km = d_lo + d_hi
+        fade = 1.0 - _smoothstep((pair_km - 0.75 * SUTURE_PAIR_MAX_KM) / (0.25 * SUTURE_PAIR_MAX_KM))
+        third = _third_craton_km(order, distances, lo_col, hi_col) - np.minimum(d_lo, d_hi)
+        r *= fade * _smoothstep(0.5 + third / (2.0 * SUTURE_THIRD_CRATON_TAPER_KM))
+        relief = np.maximum(relief, r)
         if cls == SUTURE_YOUNG:
-            young[mask] = np.maximum(young[mask], r)
+            young = np.maximum(young, r)
     return relief, young
 
 
@@ -287,39 +319,56 @@ class _Noise:
         )
 
 
-def _leading_edge(cloud: _Cloud, edge_index: np.ndarray, oceanic_points: np.ndarray) -> np.ndarray:
-    """Per node, how directly (and fast) its plate moves toward its nearest ocean edge, in
-    [-1, 1]: the velocity component along the outward tangent, over speed, scaled down below
-    `LEADING_EDGE_FULL_SPEED_CM_YR`."""
-    p = cloud.points
-    outward = oceanic_points[edge_index] - p
-    outward -= np.sum(outward * p, axis=1, keepdims=True) * p
+def leading_edge(
+    points: np.ndarray, omega: np.ndarray, plate_id: np.ndarray, edge_point: np.ndarray, edge_omega: np.ndarray, edge_plate_id: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """(leading score in [-1, 1], passive mask) per continental node.
+
+    The score is the node's velocity relative to the plate that owns its nearest oceanic
+    node (`edge_*`), along the outward tangent toward that node, over the relative speed and
+    scaled down below `LEADING_EDGE_FULL_SPEED_CM_YR`: positive where the continent overrides
+    that ocean. Where the ocean is on the node's own plate nothing converges, so the score is
+    0 and the margin is passive. omega is rad/yr, so omega x point is in planet radii per year."""
+    outward = edge_point - points
+    outward -= np.sum(outward * points, axis=1, keepdims=True) * points
     outward /= np.maximum(np.linalg.norm(outward, axis=1, keepdims=True), 1e-12)
-    speed = np.linalg.norm(cloud.velocity_cm_yr, axis=1)
-    along = np.sum(cloud.velocity_cm_yr * outward, axis=1) / np.maximum(speed, 1e-9)
-    return along * np.clip(speed / LEADING_EDGE_FULL_SPEED_CM_YR, 0.0, 1.0)
+    relative = np.cross(omega - edge_omega, points) * PLANET_RADIUS_KM * 1e5  # cm/yr
+    speed = np.linalg.norm(relative, axis=1)
+    along = np.sum(relative * outward, axis=1) / np.maximum(speed, 1e-9)
+    passive = edge_plate_id == plate_id
+    score = along * np.clip(speed / LEADING_EDGE_FULL_SPEED_CM_YR, 0.0, 1.0)
+    return np.where(passive, 0.0, score), passive
 
 
-def _orogens(cloud, noise, layout, seed, d_edge, lead, collision_contact):
+def _continent_of_core(layout: "ContinentLayout") -> dict[int, int]:
+    """Each craton's continent (its most common one); cratons with no continental point are left out."""
+    out = {}
+    for c in np.unique(layout.core[layout.core >= 0]):
+        continents = layout.continent[(layout.core == c) & (layout.continent >= 0)]
+        if len(continents):
+            out[int(c)] = int(np.bincount(continents).argmax())
+    return out
+
+
+def _orogens(cloud, noise, layout, seed, d_edge, lead, passive, collision_contact):
     """(orogen relief m, young share in [0, 1], escarpment m) on continental crust."""
     p = cloud.points
     core_id = np.asarray(layout.core[layout.nearest(p)])
-    continent_of_core = {}
-    for c in np.unique(layout.core[layout.core >= 0]):
-        continents = layout.continent[(layout.core == c) & (layout.continent >= 0)]
-        continent_of_core[int(c)] = int(np.bincount(continents).argmax())
-    suture, suture_young = suture_relief(p, core_id, continent_of_core, np.tanh(noise.suture_warp.sample(p)), seed)
+    suture, suture_young = suture_relief(p, core_id, _continent_of_core(layout), np.tanh(noise.suture_warp.sample(p)), seed)
     cordillera = CORDILLERA_PEAK_M * np.clip(lead, 0.0, 1.0) * np.exp(-0.5 * ((d_edge - CORDILLERA_INLAND_KM) / CORDILLERA_SIGMA_KM) ** 2)
     d_collision, _ = _distance_km(p[collision_contact], p)
     collision = COLLISION_PEAK_M * np.exp(-0.5 * (d_collision / COLLISION_SIGMA_KM) ** 2)
-    margin = np.maximum(cordillera, collision) * np.where(cloud.craton, CRATON_OROGEN_FACTOR, 1.0)
+    margin = np.maximum(cordillera, collision)
+    d_craton, _ = _distance_km(p[cloud.craton], p)
+    craton_damping = CRATON_OROGEN_FACTOR + (1.0 - CRATON_OROGEN_FACTOR) * _smoothstep(d_craton / CRATON_EDGE_FADE_KM)
     along = np.clip(0.75 + 0.35 * noise.along.sample(p), 0.3, 1.3)
     ridged = np.clip(1.0 - np.abs(noise.ridged.sample(p)) / 1.8, 0.0, 1.0) ** 1.5
-    shape = along * (0.55 + 0.45 * ridged)
+    shape = along * (0.55 + 0.45 * ridged) * craton_damping
     orogen = np.where(cloud.continental, (suture + margin) * shape, 0.0)
     young = np.where(cloud.continental, (suture_young + margin) * shape, 0.0)
     young_share = np.where(orogen > 0.0, np.clip(young / np.maximum(orogen, 1e-9), 0.0, 1.0), 0.0)
-    escarpment = ESCARPMENT_PEAK_M * np.clip(-lead, 0.0, 1.0) * np.exp(-0.5 * ((d_edge - ESCARPMENT_INLAND_KM) / ESCARPMENT_SIGMA_KM) ** 2)
+    trailing = np.where(passive, PASSIVE_MARGIN_ESCARPMENT, np.clip(-lead, 0.0, 1.0))
+    escarpment = ESCARPMENT_PEAK_M * trailing * np.exp(-0.5 * ((d_edge - ESCARPMENT_INLAND_KM) / ESCARPMENT_SIGMA_KM) ** 2)
     return orogen, young_share, escarpment
 
 
@@ -346,10 +395,15 @@ def _target_elevation(cloud, noise, layout, seed, n_land, collision_contact):
     """(target elevation relative to sea level, land mask, young share) per node; oceanic
     nodes get NaN (left as generated)."""
     p = cloud.points
-    oceanic_points = p[~cloud.continental]
-    d_edge, edge_index = _distance_km(oceanic_points, p)
-    lead = _leading_edge(cloud, edge_index, oceanic_points)
-    orogen, young_share, escarpment = _orogens(cloud, noise, layout, seed, d_edge, lead, collision_contact)
+    oceanic = ~cloud.continental
+    d_edge, edge_index = _distance_km(p[oceanic], p)
+    if oceanic.any():
+        lead, passive = leading_edge(
+            p, cloud.omega, cloud.plate_id, p[oceanic][edge_index], cloud.omega[oceanic][edge_index], cloud.plate_id[oceanic][edge_index]
+        )
+    else:  # an all-continental world has no margins
+        lead, passive = np.zeros(len(p)), np.zeros(len(p), dtype=bool)
+    orogen, young_share, escarpment = _orogens(cloud, noise, layout, seed, d_edge, lead, passive, collision_contact)
 
     potential = d_edge * np.exp(LAND_REACH_NOISE * noise.reach.sample(p)) + LAND_COAST_NOISE_KM * noise.coast.sample(p)
     land = land_mask(potential + LAND_OROGEN_KM_PER_M * orogen, cloud.continental, n_land)
@@ -376,13 +430,14 @@ def back_columns(
     target_m: np.ndarray, hc_m: np.ndarray, hm_m: np.ndarray, rho_c: np.ndarray, core: np.ndarray, young_share: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray]:
     """(Hc, Moho thermal lag C) that float each column at `target_m` (absolute elevation) on
-    its own Hm. NaN targets keep their Hc. Cratonic cores keep at least the craton host
-    thickness. Young belts take the lag of crust buried from the reference column, scaled by
+    its own Hm. NaN targets keep their Hc. Cratonic cores stay within the craton host window
+    (`cratons.CRATON_HOST_MIN_HC_M`-`CRATON_HOST_MAX_HC_M`): neither a drowned shelf nor an
+    orogen, which a core's crust couldn't become later either (#218 review). Young belts take the lag of crust buried from the reference column, scaled by
     their young share; others start at steady state."""
     changed = np.isfinite(target_m)
     hc = np.where(changed, lithosphere.crustal_thickness_for_elevation(np.where(changed, target_m, 0.0), hm_m, rho_c), hc_m)
     hc = np.clip(hc, lithosphere.MIN_CRUSTAL_THICKNESS_M, lithosphere.MAX_CRUSTAL_THICKNESS_M)
-    hc = np.where(changed & core, np.maximum(hc, cratons.CRATON_HOST_MIN_HC_M), hc)
+    hc = np.where(changed & core, np.clip(hc, cratons.CRATON_HOST_MIN_HC_M, cratons.CRATON_HOST_MAX_HC_M), hc)
     hc0, hm0 = lithosphere.reference_thickness("continental")
     buried = orogeny.bury_moho(np.zeros(len(hc)), np.full(len(hc), hc0), np.full(len(hc), hm0), hc, hm_m)
     lag = np.where(changed, np.clip(young_share, 0.0, 1.0) * np.maximum(buried, 0.0), 0.0)

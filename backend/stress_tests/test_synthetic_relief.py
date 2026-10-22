@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from app import lithosphere, plates
+from app import cratons, lithosphere, plates
 from app import world as world_mod
 from app.elevation_lines import effective_is_continental_from_codes
 
@@ -57,12 +57,20 @@ def test_oceanic_crust_and_plates_are_left_as_generated(worlds):
     )
 
 
-def test_cratonic_cores_stay_cratonic_through_their_whole_new_crust(worlds):
+def test_cratonic_cores_stay_cratonic_within_the_host_window(worlds):
     _, world = worlds
     for plate in world.plates:
         craton = plate.collect("craton_crust_m")
         core = craton > 0.0
         assert np.allclose(craton[core], plate.collect("crustal_thickness_m")[core])
+        assert np.all(craton[core] <= cratons.CRATON_HOST_MAX_HC_M + 1e-6)
+
+
+def test_synthetic_relief_is_deterministic(worlds):
+    _, world = worlds
+    again = _generate(cratons_first=True, synthetic_relief=True)
+
+    assert np.array_equal(plates.collect_all_crustal_thickness(world.plates), plates.collect_all_crustal_thickness(again.plates))
 
 
 def test_synthetic_relief_needs_the_cratons_first_layout():

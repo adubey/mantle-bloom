@@ -13,7 +13,8 @@ number below.
   visual references.
 - Earth: GMT `earth_relief_10m` (SRTM15+), area weighted. Lowland relief is box-averaged to
   ~55 km to match the ~60 km node spacing.
-- Measures are per node; nodes are near-equal area.
+- Measures are per node. Cells vary up to ~1.4x in area, so per-node shares can differ
+  slightly from area shares; generation keeps the land *node* count.
   - *Lowland relief* is the RMS elevation difference between land points 100 km apart, both
     below 1 km.
   - *Backed* means elevation equals `isostatic_elevation(Hc, Hm)`.

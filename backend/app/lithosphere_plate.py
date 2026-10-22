@@ -1173,6 +1173,12 @@ def build_plate_tiling(
     return PlateTiling(site_xyz=site_xyz, site_plate=site_plate, num_plates=num_plates)
 
 
+def uses_cratons_first_layout(cratons_first: bool, sketch: worldsketch.SketchMasks | None, premade_world_id: str | None) -> bool:
+    """Whether generation lays the world out cratons first: only random worlds do; sketch
+    and premade worlds take their geography from a drawing or from data."""
+    return bool(cratons_first) and sketch is None and premade_world_id is None
+
+
 def generate_plates(  # noqa: C901
     seed: int,
     num_plates: int | None = None,
@@ -1249,7 +1255,7 @@ def generate_plates(  # noqa: C901
     so it is built once."""
     if cratons_first is None:
         cratons_first = continent_layout.CRATONS_FIRST_DEFAULT
-    if cratons_first and sketch is None and premade_world_id is None:
+    if uses_cratons_first_layout(cratons_first, sketch, premade_world_id):
         if cratons_first_setup is None:
             cratons_first_setup = cratons_first_layout(seed, num_plates, continental_fraction, land_fraction, node_density)
         return _generate_cratons_first(cratons_first_setup, node_density)

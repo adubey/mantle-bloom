@@ -726,7 +726,7 @@ def generate_world_progress(
         synthetic_relief = synthetic_relief_mod.SYNTHETIC_RELIEF_DEFAULT
     # The pass reads the layout, so build it here once and hand it to plate generation.
     layout_setup = None
-    if synthetic_relief and cratons_first and sketch is None and premade_world_id is None:
+    if synthetic_relief and lithosphere_plate.uses_cratons_first_layout(cratons_first, sketch, premade_world_id):
         layout_setup = lithosphere_plate.cratons_first_layout(seed, num_plates, continental_fraction, land_fraction, node_density)
     plates = generate_plates(
         seed,
@@ -772,9 +772,6 @@ def generate_world_progress(
         climate_density=climate_density,
         fluid_density=fluid_density,
     )
-    if initial_soil_maturity is not None:
-        geology.seed_initial_soil(world.plates, seed, initial_soil_maturity)
-
     # Add one seed-stable spherical residual to low continental elevations before terrain
     # diagnostics, rivers, and the baseline stats snapshot are initialized.
     from . import initial_terrain
@@ -791,6 +788,11 @@ def generate_world_progress(
         # informs terrain only; plate positions and elapsed time remain at generation state.
         if cratons_first:
             initial_terrain.apply_predicted_orogens(world)
+
+    # Soil goes on land, so seed it once the relief passes have settled the coastline: the
+    # synthetic pass moves it (#218); the others keep every node's land/sea side.
+    if initial_soil_maturity is not None:
+        geology.seed_initial_soil(world.plates, seed, initial_soil_maturity)
 
     n_continents = sum(1 for p in plates if p.crust_type == "continental")
     finish_generation(
