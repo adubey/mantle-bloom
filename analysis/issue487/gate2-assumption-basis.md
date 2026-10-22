@@ -27,14 +27,57 @@ scenario brackets until those fields or a validated proxy exist.
 ## Physical consistency checks
 
 1. **`K0` is not independently measured here.** The cited stress evidence supports the normal-faulting regime used by the diagnostic in many EARS locations, but it does not identify a uniform stress magnitude ratio. Keep the current bracket visible and describe 0.8 as a design midpoint. A production `K0` field needs stress magnitudes or a separately validated tectonic stress model.
-2. **Hydrostatic pressure is a crustal reference, not a full-column fluid solution.** At 12 km the freshwater column is about 118 MPa. Applying the same hydrostatic water column below the brittle crust may reduce effective pressure in a depth range where the assumption of connected free fluid is unsupported. Report a crust-only pore-pressure case before treating deep ductile capacity as physically calibrated.
+2. **Hydrostatic pressure is a crustal reference, not a full-column fluid solution.** At 12 km the freshwater column is about 118 MPa. Applying the same hydrostatic water column below the brittle crust may reduce effective pressure in a depth range where the assumption of connected free fluid is unsupported.
 3. **The temperature boundary is thickness-coupled.** The current conductive equation predicts a surface heat flow from the selected base temperature and thickness; the JSON records this directly. It cannot independently match the broad rift heat-flow observations by varying `T_base` alone at thick-lithosphere values without pushing that boundary toward implausible temperatures. Rift magmatism/advection and lateral heat transport are absent.
 4. **Strain-rate span is a constitutive extrapolation.** The documented geodetic rates bound distributed regional deformation, not fault-zone creep. The `1e-14 s-1` case is deliberately outside that regional range and should not be called a normal reference.
 5. **Dry/wet creep is not a mantle-water map.** Water and grain size change creep strength, while anisotropy may change the effective load path. The current sensitivity can show model dependence but cannot resolve these states from tectonic outcomes.
 
-## Next validation decision
+## Crossed independent-assumption screen (2026-10-22)
 
-These independent constraints justify carrying the assumptions as explicit branches; they do not justify one production capacity. Before using `N_ext/N_cap` as a physical threshold, rerun the capacity screen with the same connected-source loads under (a) crust-only hydrostatic pore pressure, (b) the regional strain-rate upper bound `6.3e-16 s-1`, and (c) the existing 0.6/0.8/1.0 stress bracket and dry/wet mantle endmembers. Keep the fixed 0.42 pore-pressure case labeled as a comparison. Use no legacy outcome as a target. Then inspect whether ranking and threshold-crossing patterns are robust; any chosen capacity still requires independent geological rupture labels or a transparent phenomenological decision.
+The fixed Gate 1 sample was re-scored without changing its 22,896 node loads or 74 connected-source
+events. The screen crosses the existing `K0=0.6/0.8/1.0` bracket and dry/wet olivine laws with two
+pore-pressure profiles, all at the EARS geodetic upper distributed strain rate `6.3e-16 s-1`.
+Temperature remains the existing 1330 C steady conductive profile; cohesion and friction stay at
+20 MPa and `mu=0.6`. No legacy outcome is used as a fit target.
+
+The new capped profile is `P_f = rho_water*g*min(z,H_crust)`: pressure is hydrostatic in the crust
+and held at its Moho value below. It is continuous at the Moho and removes the unsupported
+hydrostatic pressure gradient through the mantle lid. It is a controlled sensitivity endmember,
+not a prediction that pore pressure is physically constant in the mantle.
+
+| `K0=0.8` case | Median mapped capacity | Nodes above capacity |
+|---|---:|---:|
+| Dry olivine, full-column hydrostatic pressure | 10.91 TN/m | 1,617 / 22,896 (7.06%) |
+| Dry olivine, crust-hydrostatic Moho hold | 11.32 TN/m | 1,489 / 22,896 (6.50%) |
+| Wet olivine, full-column hydrostatic pressure | 5.94 TN/m | 2,356 / 22,896 (10.29%) |
+| Wet olivine, crust-hydrostatic Moho hold | 5.97 TN/m | 2,299 / 22,896 (10.04%) |
+
+Across all 12 crossed cases, threshold exceedance ranges from 703 nodes (3.07%; `K0=1.0`, dry
+olivine, capped pressure) to 4,358 (19.03%; `K0=0.6`, wet olivine, full hydrostatic pressure).
+There are 703 nodes over capacity in every case and 4,358 over capacity in at least one; 3,655
+nodes (15.96%) change classification across the bracket. For each matched K0/rheology pair, using
+the crust-hydrostatic Moho hold raises median capacity by 2.02–7.58%, changes 0.28–0.93% of node
+classifications, and leaves capacity ranking nearly unchanged (Spearman correlation >0.9997).
+The `K0` and dry/wet rheology choices move the threshold much more than the deep pressure-profile
+choice in this screen. The `K0=0.8` full-hydrostatic dry result at the geodetic upper rate is 7.06%,
+compared with 6.83% at the prior `1e-15 s-1` reference rate.
+
+These results identify a robust ranking but not a stable physical failure classification. The
+`gate2-assumption-screen.json` output records all scenarios, seed/material strata, paired pressure
+comparisons, and the finite scenario envelope. Reproduce it using the command in
+[`replay_gate2_assumption_screen.py`](../../bin/debug/replay_gate2_assumption_screen.py) with the
+capture files listed in its usage text. The complete raw capture files remain outside the repository.
+The pressure, strain-rate, `K0`, and mantle-water sensitivities remain assumptions rather than a
+production field; use the screen as conditional diagnostic evidence only.
+
+## Remaining Gate 2 decision
+
+The fixed-load rerun is complete, but it does not close Gate 2: 15.96% of node classifications
+change across the crossed geophysically motivated cases, and the stress magnitude and mantle
+hydration fields remain unidentified. Closing the gate requires either external, outcome-independent
+constraints for local background stress, thermal state and rheology, or an explicit decision that
+Gate 2 validates only a scenario-bounded diagnostic and does not authorize a production rupture
+threshold. Do not select the case that best reproduces legacy cuts.
 
 ## Sources
 

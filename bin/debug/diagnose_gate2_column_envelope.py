@@ -201,11 +201,18 @@ def creep_stress_pa(law: FlowLaw, strain_rate_s: float, pressure_pa: np.ndarray,
 
 
 def _pore_pressure_profile(
-    depth_m: np.ndarray, lithostatic_pa: np.ndarray, scenario: Scenario
+    depth_m: np.ndarray,
+    lithostatic_pa: np.ndarray,
+    scenario: Scenario,
+    crust_thickness_m: float = 0.0,
 ) -> np.ndarray:
-    """Compute freshwater hydrostatic pressure or a stated lithostatic fraction."""
+    """Compute a stated pore-pressure profile for the brittle strength branch."""
     if scenario.pore_pressure_mode == "hydrostatic_water":
         return 1000.0 * lithosphere.GRAVITY_M_S2 * depth_m
+    if scenario.pore_pressure_mode == "hydrostatic_crust_moho_hold":
+        # Borehole support is shallow-crustal; cap the pressure at Moho depth so the
+        # sensitivity case does not assume a hydrostatic fluid column through the mantle.
+        return 1000.0 * lithosphere.GRAVITY_M_S2 * np.minimum(depth_m, crust_thickness_m)
     if scenario.pore_pressure_mode == "fixed_lithostatic_ratio":
         if not 0.0 <= scenario.pore_pressure_ratio < 1.0:
             raise ValueError("pore_pressure_ratio must be in [0, 1)")
@@ -248,7 +255,7 @@ def evaluate_case(
         depth_m, hc_m, hm_m, crust_type, scenario.base_temperature_c,
         moho_thermal_lag_c=moho_thermal_lag_c,
     )
-    pore_pressure_pa = _pore_pressure_profile(depth_m, pressure_pa, scenario)
+    pore_pressure_pa = _pore_pressure_profile(depth_m, pressure_pa, scenario, hc_m)
     vertical_effective_pa = pressure_pa - pore_pressure_pa
     horizontal_background_pa = scenario.k0 * vertical_effective_pa
     brittle_increment_pa = _additional_brittle_extension_pa(
@@ -283,7 +290,9 @@ def evaluate_case(
             "base_temperature_c": scenario.base_temperature_c,
             "strain_rate_s-1": scenario.strain_rate_s,
             "pore_pressure_ratio": (
-                None if scenario.pore_pressure_mode == "hydrostatic_water"
+                None if scenario.pore_pressure_mode in (
+                    "hydrostatic_water", "hydrostatic_crust_moho_hold"
+                )
                 else scenario.pore_pressure_ratio
             ),
             "pore_pressure_mode": scenario.pore_pressure_mode,

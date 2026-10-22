@@ -336,13 +336,18 @@ def run(sample_paths: list[Path], report_paths: list[Path], reference_paths: lis
     return report
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
+def capture_cli_args(description: str | None = None) -> argparse.Namespace:
+    """Parse the shared inputs used by fixed-load Gate 2 capacity screens."""
+    parser = argparse.ArgumentParser(description=description or __doc__)
     parser.add_argument("--samples", nargs=3, type=Path, required=True)
     parser.add_argument("--replay-report", nargs=3, type=Path, required=True)
     parser.add_argument("--identity-reference", nargs=3, type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    args = parser.parse_args()
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = capture_cli_args()
     rendered = json.dumps(run(args.samples, args.replay_report, args.identity_reference), indent=2, allow_nan=False) + "\n"
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(rendered, encoding="utf-8")

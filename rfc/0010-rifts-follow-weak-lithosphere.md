@@ -226,6 +226,14 @@ should start until those gates are resolved and the revised design is accepted.
    supported only as a crustal benchmark, not as a full mantle-lid fluid model. See
    [`analysis/issue487/gate2-assumption-basis.md`](../analysis/issue487/gate2-assumption-basis.md)
    and its generated JSON. No legacy event outcome is used to set these assumptions.
+   A fixed-load crossed screen then scored all 22,896 connected-source node loads at
+   `6.3e-16 s-1`, crossing `K0=0.6/0.8/1.0`, dry/wet olivine and full-column versus capped
+   crust-hydrostatic pressure. Exceedance ranges from 3.07% to 19.03%; the capped pressure profile
+   changes fewer than 1% of classifications at matched K0/rheology, while K0 and mantle law move
+   the result much more. The screen's robust/possible bounds and scenario details are in
+   [`analysis/issue487/gate2-assumption-screen.json`](../analysis/issue487/gate2-assumption-screen.json)
+   and are not probabilities. These checks show that the result remains assumption-sensitive;
+   Gate 2 still lacks an independently selected production capacity field.
    The pressure-profile, Mohr-Coulomb, and dry/wet creep-inversion formulas pass six analytical unit checks. The shell-load
    transfer has separate manufactured-solution checks documented in
    [`analysis/issue487/gate2-load-diagnosis.md`](../analysis/issue487/gate2-load-diagnosis.md).

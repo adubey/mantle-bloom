@@ -59,6 +59,15 @@ def test_fixed_lithostatic_ratio_is_separate_from_hydrostatic_water():
     np.testing.assert_allclose(result, 0.42 * lithostatic)
 
 
+def test_crust_hydrostatic_pressure_is_held_at_moho_into_mantle():
+    depth = np.array([0.0, 10_000.0, 35_000.0, 100_000.0])
+    lithostatic = np.array([0.0, 2700.0, 2800.0, 3200.0]) * 9.81 * depth
+    scenario = _scenario(pore_pressure_mode="hydrostatic_crust_moho_hold")
+    result = _pore_pressure_profile(depth, lithostatic, scenario, crust_thickness_m=35_000.0)
+    expected = 1000.0 * 9.81 * np.array([0.0, 10_000.0, 35_000.0, 35_000.0])
+    np.testing.assert_allclose(result, expected)
+
+
 def test_normal_fault_increment_matches_closed_form_for_k0_one():
     vertical_effective = np.array([100e6])
     result = _additional_brittle_extension_pa(

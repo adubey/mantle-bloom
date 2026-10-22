@@ -107,6 +107,14 @@ spatial `K0`, full-depth pore-fluid profile, local geotherm or mantle hydration 
 cases rather than fitted physical state. The diagnostic does not use legacy cut outcomes as
 strength labels.
 
+The fixed-load crossed screen is in
+[`gate2-assumption-screen.json`](gate2-assumption-screen.json), with results and interpretation in
+[`gate2-assumption-basis.md`](gate2-assumption-basis.md). At the geodetic upper distributed rate,
+crossing `K0=0.6/0.8/1.0`, dry/wet olivine, and full-column versus crust-hydrostatic Moho-held
+pressure gives 3.07–19.03% node exceedance. Pressure-profile choice changes fewer than 1% of node
+classifications at fixed K0/rheology; K0 and mantle rheology dominate the screen. The capacities
+remain conditional scenarios, not a physical rupture rule.
+
 The first matched replay scored 130 candidates and reported 29 residual/load ratios above 1%.
 That result is retained in `gate2-matched-replay.json` under
 `pre_edge_connectivity_guard`; it included element meshes that touched only at vertices and
