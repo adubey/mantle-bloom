@@ -64,6 +64,7 @@ Request body:
 {
   "seed": 1,
   "cratons_first": false,
+  "synthetic_relief": false,
   "surface": "quad",
   "num_plates": null,
   "continental_fraction": 0.7,
@@ -95,6 +96,12 @@ selected by `cratons_first` -- see
 cratons are laid out before plates and relief is generated from that layout; when false or
 omitted, generation uses the plate-first layout (omission follows
 `continent_layout.CRATONS_FIRST_DEFAULT`). Sketches and premade worlds ignore this choice.
+`synthetic_relief` applies only to a cratons-first layout: when true, continental relief and
+coastlines come from a synthetic tectonic history (sutures between cratons, cordilleras on
+leading margins, interior terrain types), backed by crustal thickness; when false or omitted,
+the cratons-first relief is generated as before (omission follows
+`synthetic_relief.SYNTHETIC_RELIEF_DEFAULT`). See
+[simulation-model/foundations.md#synthetic-relief](simulation-model/foundations.md#synthetic-relief).
 `axial_tilt_deg` is the UI's third generation slider (degrees), defaulting to
 `world.DEFAULT_AXIAL_TILT_DEG = 23.5` (Earth's real tilt) -- doesn't affect plate generation,
 only `climate.py`'s insolation on future renders (see

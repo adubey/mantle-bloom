@@ -28,6 +28,7 @@ import SaveAnimationModal from "./SaveAnimationModal";
 import Legend from "./Legend";
 import MeasureOverlay from "./MeasureOverlay";
 import ProgressBar from "./ProgressBar";
+import GenerateOptionCheckbox from "./GenerateOptionCheckbox";
 import AdminSession from "./AdminSession";
 import ProbePopup from "./ProbePopup";
 import { PREMADE_WORLDS } from "./premadeWorlds";
@@ -289,6 +290,7 @@ export default function App() {
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [seed, setSeed] = useState(randomSeed());
   const [cratonsFirst, setCratonsFirst] = useState(false);
+  const [syntheticRelief, setSyntheticRelief] = useState(false);
   const [continentalPercent, setContinentalPercent] = useState(DEFAULT_CONTINENTAL_PERCENT);
   const [landPercent, setLandPercent] = useState(DEFAULT_LAND_PERCENT);
   const [axialTiltDeg, setAxialTiltDeg] = useState(DEFAULT_AXIAL_TILT_DEG);
@@ -752,6 +754,7 @@ export default function App() {
           : await generateWorld({
               seed,
               cratonsFirst: generateMode === "random" ? cratonsFirst : false,
+              syntheticRelief: generateMode === "random" && cratonsFirst ? syntheticRelief : false,
               continentalFraction: continentalPercent / 100,
               landFraction: landPercent / 100,
               axialTiltDeg,
@@ -792,7 +795,7 @@ export default function App() {
       setGenProgress(undefined);
     }
   }, [
-    seed, cratonsFirst, continentalPercent, landPercent, axialTiltDeg, detail, fluidDensity, initialSoilMaturityPercent, autoPlates, numPlates, voronoiPoints,
+    seed, cratonsFirst, syntheticRelief, continentalPercent, landPercent, axialTiltDeg, detail, fluidDensity, initialSoilMaturityPercent, autoPlates, numPlates, voronoiPoints,
     generateMode, sketchImageDataUrl, premadeWorldId, debugScenario, projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats,
   ]);
 
@@ -2163,22 +2166,16 @@ export default function App() {
             </label>
 
             {generateMode === "random" && (
-              <label style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 16 }}>
-                <input
-                  type="checkbox"
-                  checked={cratonsFirst}
-                  onChange={(e) => setCratonsFirst(e.target.checked)}
-                  disabled={busy}
-                  style={{ marginTop: 2 }}
-                />
-                <span>
-                  Craton-first terrain
-                  <span style={{ display: "block", fontSize: 11, color: "#999", marginTop: 3 }}>
-                    Build continents from cratons before assigning plates. Random worlds use
-                    the existing plate-first approach when unchecked.
-                  </span>
-                </span>
-              </label>
+              <GenerateOptionCheckbox checked={cratonsFirst} onChange={setCratonsFirst} disabled={busy} title="Craton-first terrain">
+                Build continents from cratons before assigning plates. Random worlds use
+                the existing plate-first approach when unchecked.
+              </GenerateOptionCheckbox>
+            )}
+            {generateMode === "random" && cratonsFirst && (
+              <GenerateOptionCheckbox checked={syntheticRelief} onChange={setSyntheticRelief} disabled={busy} title="Relief from a synthetic history">
+                Draw mountain belts where cratons once collided and on continents' leading
+                edges, with hilly interiors and shelves, instead of noise-shaped relief.
+              </GenerateOptionCheckbox>
             )}
 
             {generateMode !== "debug" && (

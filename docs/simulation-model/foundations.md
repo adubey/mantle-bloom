@@ -266,6 +266,90 @@ of straight for more than 400 km. Cold land above 2,500 m receives a 150 m initi
 leaving the rest of the relief available to later erosion. This generation-only initialization
 is implemented in `initial_terrain.py` (#477).
 
+<a id="synthetic-relief"></a>
+### Relief from a synthetic tectonic history (`synthetic_relief.py`)
+
+A cratons-first world can replace its noise-shaped continental relief with relief drawn from
+a synthetic tectonic history (#218). It is off by default
+(`synthetic_relief.SYNTHETIC_RELIEF_DEFAULT = False`); `generate_world(...,
+cratons_first=True, synthetic_relief=True)`, the `synthetic_relief` field of
+`POST /world/generate`, or the Generate World dialog's "Relief from a synthetic history"
+checkbox (shown under "Craton-first terrain") turns it on. It has no effect without the
+cratons-first layout. `world.generate_world` builds the layout once, passes it to plate
+generation, and then runs `apply_synthetic_relief` in place of
+`initial_terrain.apply_lowland_spherical_relief` and `apply_predicted_orogens`. Rivers, ice
+and the craton and continental ledgers are initialized afterwards as usual.
+
+The pass reads the layout's cratons and continents and the first predicted plate motion
+(`torque.predict_plate_motion` over 5 Myr, read-only), and sets a target elevation for every
+continental-crust node:
+
+- **Sutures.** Each node takes the belt between its two nearest cratons when they are on the
+  same continent and their distances sum to at most `SUTURE_PAIR_MAX_KM` (2,400 km). The belt
+  follows the bisector, (d2 - d1) / 2, shifted by up to `SUTURE_WARP_KM` (300 km) of
+  low-frequency noise so it curves. Each pair draws from an rng keyed by the seed and the pair:
+  30% of pairs have no belt (`SUTURE_DROP_PROBABILITY`); the rest are young (p 0.25: 4.5 km
+  peak, 180 km Gaussian sigma, a 3.5 km plateau out to ~300 km on one side), middle (p 0.35:
+  2.5 km, 120 km) or old (p 0.40: 0.9 km, 150 km) (`SUTURE_CLASSES`).
+- **Active margins.** A node's leading-edge score is its plate's predicted velocity along the
+  outward tangent to the nearest oceanic-crust node, divided by speed and scaled down below
+  3 cm/yr. A positive score raises a cordillera of up to 4 km, peaking 200 km inland (sigma
+  90 km), and narrows the shelf to a quarter. A negative score raises a rift-shoulder
+  escarpment of up to 500 m, 250 km inland. Continental crust within 150 km of another plate's
+  continental crust that the predicted motion closes on raises a 4.2 km collision belt (sigma
+  160 km). Belt relief beside a craton is halved (principle 7). All belts are modulated by
+  along-strike and ridged noise.
+- **Coastline.** Land is the continental nodes with the highest land potential: distance
+  inward from the continental-crust edge (km) times exp(0.6 x noise), plus 250 km x coastline
+  noise, plus 0.12 km per metre of belt relief. The pass keeps the generated land node count,
+  so `land_fraction` still holds, and oceanic crust never becomes land.
+- **Land surface.** A coastal plain rises up to 400 m inland over a 600 km e-folding,
+  scaled by regional noise. Interiors outside belts take one of four terrain types:
+  - cratons split into exposed shields (±250 m hills) and covered platforms (±60 m, with
+    basins to -150 m);
+  - 35% of other interior land is hill country (±400 m on a 200 m lift);
+  - the rest is plains (±100 m).
+
+  Shields and lowlands poleward of 50° get glacial-scour pits up to 60 m deep. Interior relief
+  fades out within 150 km of the coast.
+- **Submerged continental crust.** A shelf deepens from 20 m to 150 m over a noise-varied
+  80-300 km (narrowed on leading edges), then drops up to 1.8 km more over 400 km toward
+  marginal-plateau depth. Within 100 km of the oceanic contact it slopes to -3.2 km.
+
+All noise is `noise.IsotropicSphereNoise`, which sums 32 random-direction waves per octave.
+`SphereNoise`'s single wave per octave draws parallel stripes across a continent.
+
+**Columns.** Every continental column is backed: `back_columns` solves Hc from the target
+with `lithosphere.crustal_thickness_for_elevation` on the column's own Hm (the generated
+100 km reference lid), clipped to the Hc caps, and elevation is re-synced from Hc/Hm. Hm is
+not changed:
+- It moves elevation about 11 times less per km than Hc (-15 m/km against +169 m/km on dry
+  land).
+- The isostasy has no depleted, buoyant keel that would justify a thicker lid under shields.
+
+Cratonic cores keep at least `cratons.CRATON_HOST_MIN_HC_M`, and `craton_crust_m` is reset to
+their new Hc. Young relief (young sutures, cordilleras, collision belts) starts with the
+`moho_thermal_lag_c` of crust just buried from the reference column (`orogeny.bury_moho`),
+scaled by the young share of the node's relief. Young belts therefore start with a cold Moho
+and heat over `orogeny.THERMAL_RELAXATION_MYR`; older relief starts at steady state. Columns
+thicker than `orogeny.COLLAPSE_ONSET_HC_M` (50 km, about 3-7% of land at node density 4) are
+collapse-mobile from the first step.
+
+**Limits.** Oceanic crust is left as generated. GDH1 age-depth bathymetry, ridges and trenches
+need thermal buoyancy the column model does not have: an 11 km oceanic column floats no
+shallower than about -4.4 km at the 2 km Hm floor, so a -2.6 km ridge cannot be backed.
+Measured on seeds 447276134, 373936961, 910211954 and 374464662 at node density 4:
+- land p50 is 348-438 m (Earth 423 m), and 6-12% of land is above 2 km (Earth 11%);
+- lowland relief at 100 km is 147-162 m (Earth 166-173 m at node scale);
+- lakes cover 6-10% of land, against Earth's ~2%, because the scour pits and platform basins
+  are sub-grid features that form node-sized closed basins.
+
+At the default `continental_fraction` (0.5 of the surface), a third of the ocean is shallower
+than 3 km (Earth 24%), because about 30% of the ocean floor is continental crust; 0.4 brings
+it to about Earth's value. Generation takes about 25% longer. `bin/debug/measure_initial_relief.py`
+reports these measures against Earth, optionally after stepping; the exploration and its
+probes are in #218 and [analysis/issue218](../../analysis/issue218/README.md).
+
 <a id="worldsketch"></a>
 ## Human-made worlds (sketch-driven generation) (`worldsketch.py`)
 

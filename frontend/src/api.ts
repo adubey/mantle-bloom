@@ -549,6 +549,8 @@ export interface GenerateWorldOptions {
   seed: number;
   // Random-tab terrain layout; omitted follows the backend default. Sketches/premades ignore it.
   cratonsFirst?: boolean;
+  // With cratonsFirst, relief from a synthetic tectonic history (#218); omitted follows the backend default.
+  syntheticRelief?: boolean;
   continentalFraction: number;
   landFraction: number;
   axialTiltDeg: number;
@@ -565,7 +567,7 @@ export interface GenerateWorldOptions {
 
 export function generateWorld(options: GenerateWorldOptions): Promise<WorldSummary> {
   const {
-    seed, cratonsFirst, continentalFraction, landFraction, axialTiltDeg, nodeDensity,
+    seed, cratonsFirst, syntheticRelief, continentalFraction, landFraction, axialTiltDeg, nodeDensity,
     initialSoilMaturity, climateDensity, fluidDensity, numPlates, voronoiPoints,
     sketchImageBase64 = null, premadeWorldId = null, onProgress,
   } = options;
@@ -575,6 +577,7 @@ export function generateWorld(options: GenerateWorldOptions): Promise<WorldSumma
     body: JSON.stringify({
       seed,
       cratons_first: cratonsFirst,
+      synthetic_relief: syntheticRelief,
       num_plates: numPlates,
       voronoi_points: voronoiPoints,
       continental_fraction: continentalFraction,

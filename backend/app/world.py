@@ -35,6 +35,7 @@ from .hydroclimate import (
 )
 from .elevation_lines import DEFAULT_NODE_DENSITY, line_spacing_rad
 from . import lithosphere_plate
+from . import synthetic_relief as synthetic_relief_mod
 from .lithosphere_plate import generate_plates
 from .plates import Plate, gather_node_positions, query_workers
 
@@ -665,6 +666,7 @@ def generate_world_progress(
     sketch: worldsketch.SketchMasks | None = None,
     premade_world_id: str | None = None,
     cratons_first: bool | None = None,
+    synthetic_relief: bool | None = None,
 ):
     """Generate a world, yielding `("progress", fraction)` at each of its three natural phase
     boundaries -- plate/site generation, mantle-center fitting, then the `finish_generation`
@@ -714,9 +716,18 @@ def generate_world_progress(
     motion, for `"earth"`/`"pangaea"` specifically -- see real_plates.py's
     `fit_mantle_centers`. `"got"` has no real-world motion to fit to and keeps the ordinary
     random centers. `cratons_first` lays a random world out cratons first (RFC 0009; see
-    lithosphere_plate.generate_plates), defaulting to continent_layout.CRATONS_FIRST_DEFAULT."""
+    lithosphere_plate.generate_plates), defaulting to continent_layout.CRATONS_FIRST_DEFAULT.
+    `synthetic_relief` (default `synthetic_relief.SYNTHETIC_RELIEF_DEFAULT`) replaces that
+    layout's continental relief with relief from a synthetic tectonic history (#218, see
+    synthetic_relief.py); it applies only when the cratons-first layout does."""
     if cratons_first is None:
         cratons_first = lithosphere_plate.continent_layout.CRATONS_FIRST_DEFAULT
+    if synthetic_relief is None:
+        synthetic_relief = synthetic_relief_mod.SYNTHETIC_RELIEF_DEFAULT
+    # The pass reads the layout, so build it here once and hand it to plate generation.
+    layout_setup = None
+    if synthetic_relief and cratons_first and sketch is None and premade_world_id is None:
+        layout_setup = lithosphere_plate.cratons_first_layout(seed, num_plates, continental_fraction, land_fraction, node_density)
     plates = generate_plates(
         seed,
         num_plates,
@@ -728,6 +739,7 @@ def generate_world_progress(
         sketch=sketch,
         premade_world_id=premade_world_id,
         cratons_first=cratons_first,
+        cratons_first_setup=layout_setup,
     )
     yield ("progress", 1 / 3)
 
@@ -767,13 +779,18 @@ def generate_world_progress(
     # diagnostics, rivers, and the baseline stats snapshot are initialized.
     from . import initial_terrain
 
-    initial_terrain.apply_lowland_spherical_relief(world)
+    if layout_setup is not None:
+        # Synthetic history replaces both passes below on continental crust: it draws its own
+        # belts (including predicted collisions) and interior relief, backed by Hc (#218).
+        synthetic_relief_mod.apply_synthetic_relief(world, layout_setup.layout)
+    else:
+        initial_terrain.apply_lowland_spherical_relief(world)
 
-    # The cratons-first layout has explicit plate boundaries, so use the torque solver's
-    # read-only first-step prediction to seed modest convergent-belt relief. The prediction
-    # informs terrain only; plate positions and elapsed time remain at generation state.
-    if cratons_first:
-        initial_terrain.apply_predicted_orogens(world)
+        # The cratons-first layout has explicit plate boundaries, so use the torque solver's
+        # read-only first-step prediction to seed modest convergent-belt relief. The prediction
+        # informs terrain only; plate positions and elapsed time remain at generation state.
+        if cratons_first:
+            initial_terrain.apply_predicted_orogens(world)
 
     n_continents = sum(1 for p in plates if p.crust_type == "continental")
     finish_generation(
