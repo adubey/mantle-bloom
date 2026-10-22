@@ -21,7 +21,6 @@ material, and **deposition** for laying it down elsewhere. These are separate st
 can remove material from a slope even when a river later deposits much of that material in a
 valley or basin.
 
-<a id="erosion"></a>
 ## Erosion (`erosion.py`)
 
 Climate lets terrain affect weather: higher ground is colder, mountains deflect wind, and
@@ -34,8 +33,8 @@ but leaves out processes that need data or physics it does not have.
 dropped (no vegetation field, same reasoning as climate.py's own "deliberately not ported"
 list). Rain/sheet erosion, river-channelized erosion, weathering, glacier erosion, and seismic
 erosion are the five subaerial sources; they feed into a downstream deposition pass (see
-[Hydrology](hydrology.md#hydrology) for the flow-routing graph all of this depends on, and
-[Glaciation](hydrology.md#glaciation) for how `glacier_depth` itself is grown/melted/flowed), so material
+[Hydrology](hydrology.md#hydrology-rivers-and-lakes-hydrologypy) for the flow-routing graph all of this depends on, and
+[Glaciation](hydrology.md#glaciation-hydrologypy) for how `glacier_depth` itself is grown/melted/flowed), so material
 isn't purely one-way removed anymore: a slow, big river drops part of its sediment load locally
 instead of carrying every last grain to the coast. **Submarine erosion** and **coastal
 erosion** -- both mantle-bloom-original additions, previously listed as out-of-scope
@@ -71,7 +70,7 @@ by order-of-magnitude reasoning against the then-current direct convergent uplif
 rather than reused from a value tuned against a different scale.
 `WEATHERING_COEFFICIENT` needed no such rescaling, since wind speed already uses a directly
 comparable scale (`MERIDIONAL_BASE_SPEED = 6.0`) unaffected by the slope re-derivation. River
-erosion depends on physical catchment discharge (see [Hydrology](hydrology.md#hydrology)), converted to a
+erosion depends on physical catchment discharge (see [Hydrology](hydrology.md#hydrology-rivers-and-lakes-hydrologypy)), converted to a
 fixed reference-cell scale before the stream-power law. `RIVER_EROSION_COEFFICIENT` was
 originally derived by order of magnitude and checked against channel-depth growth; issue
 #355 step 5 recalibrated it after replacing accumulated precipitation with Budyko runoff.
@@ -111,7 +110,7 @@ law produced (see the formula below).
   nonzero slope -- a separate, not-yet-addressed contributor to the same overall trend.
 - **Glacier erosion** = `GLACIER_ABRASION_COEFFICIENT * u_b ** GLACIER_ABRASION_EXPONENT *
   dt_myr` (issue #353), where `u_b` is this step's basal sliding speed from the ice solve
-  (`HydrologyFields.ice.sliding_speed_m_per_yr`, see [Glaciation](hydrology.md#glaciation)): a share of
+  (`HydrologyFields.ice.sliding_speed_m_per_yr`, see [Glaciation](hydrology.md#glaciation-hydrologypy)): a share of
   the balance velocity on a thawed bed, zero on a frozen one, so ice frozen to its bed no
   longer abrades the way sliding ice does (Hallet 1979). Herman et al. (2015) fit an exponent
   near 2 on one Alpine glacier; Cook et al. (2020) find sub-linear scaling across a global
@@ -181,7 +180,7 @@ law produced (see the formula below).
   inverse-distance-weighted onto the nearest *lower* ocean nodes within `MARINE_SPREAD_RANGE_KM`
   (sediment runs downhill into basins; a source with no lower ocean node in range keeps the
   full amount). Mass is conserved exactly. This marine sediment is folded into the same
-  `sediment_deposited` total the `ErosionResult` carries, so [Resources and soil](#resources-and-soil)'s
+  `sediment_deposited` total the `ErosionResult` carries, so [Resources and soil](#resources-and-soil-geologypy-plus-volcanismpys-own-eruption-roll)'s
   shelf oil-and-gas and soil terms see it alongside every other deposition pathway.
 
 **Coastal leveling** (`_coastal_openness` / `leveling_datum_m` / `coastal_leveling_grind` /
@@ -205,7 +204,7 @@ saw only half the checkerboard (b7df00a).
 - **Datum.** `leveling_datum_m` is `sea_level - LEVELING_PLATFORM_UNDERCUT_M * exposure +
   LEVELING_MARSH_CREST_M * shelter`: an exposed coast targets a wave-cut platform a few
   metres below the waterline, a sheltered one (`shelter = 1 - openness / INFILL_SHELTER_REF`)
-  a marsh crest a few metres above it ([Biomes](climate.md#biomes)' `classify_wetland`). Aiming off the
+  a marsh crest a few metres above it ([Biomes](climate.md#biomes-biomespy)' `classify_wetland`). Aiming off the
   waterline, rather than exactly at it, is what resolves a checkerboard into a coast that
   follows the shelter field instead of only damping it. Grind and fill share this one number,
   so they never fight over a node.
@@ -253,9 +252,9 @@ capped at its Hc headroom above the floor.
 splits two ways: `GLACIER_TILL_FRACTION` (0.5) settles immediately as subglacial till, right
 where the ice picked it up; the rest travels *with the ice itself* rather than joining the
 water-routed pool -- `apply_erosion` reuses `hydrology.route_downstream` directly (the same
-engine the ordinary river-deposition pool already uses, see [Hydrology](hydrology.md#hydrology)), but along
+engine the ordinary river-deposition pool already uses, see [Hydrology](hydrology.md#hydrology-rivers-and-lakes-hydrologypy)), but along
 `hydrology.HydrologyFields.ice_flow_target` (the ice's own real downhill flow path, not water's
--- see [Glaciation](hydrology.md#glaciation) for why those two differ) instead of `flow_target`, retaining
+-- see [Glaciation](hydrology.md#glaciation-hydrologypy) for why those two differ) instead of `flow_target`, retaining
 in full the moment a hop reaches a node with less than `GLACIER_VISIBLE_DEPTH_M` of its own ice
 -- genuinely outside the glacier -- rather than continuing to travel once there's no more ice
 there to carry it. This is a real terminal moraine/outwash deposit built beyond the ice margin,
@@ -305,7 +304,7 @@ an *ocean* node's own elevation -- a river delta building outward is real, inten
 behavior, not a bug). `elevation`, `channel_depth` (this module's own), and
 `lake_depth`/`glacier_depth`/`silt_depth` (state transitions owned by
 `hydrology.py`/`lakes.py`, read directly from `World.hydrology_cache` -- see
-[Hydrology](hydrology.md#hydrology)) all get written back together per plate
+[Hydrology](hydrology.md#hydrology-rivers-and-lakes-hydrologypy)) all get written back together per plate
 (`Plate.set_fields_on_plate`) -- no resampling, no topology change.
 
 **Erosional isostatic compensation.** The net per-step surface change (all erosion minus all
@@ -404,14 +403,12 @@ earlier no-hydrology version regarding flow routing.** This module still calls
 before). Flow routing (`hydrology.compute_hydrology`) is comparatively expensive with no JIT
 available, so rather than computing it twice per step, this module computes it once and
 reuses the result for both erosion and `World.hydrology_cache` (see
-[Hydrology](hydrology.md#hydrology)). Runs in `world.step_world`
+[Hydrology](hydrology.md#hydrology-rivers-and-lakes-hydrologypy)). Runs in `world.step_world`
 right after `shift`/`deform`, topology changes and gap filling, every step.
 
-Nine of the twelve live [tuning knobs](#tuning-knobs) act here -- each erosion/deposition
+Nine of the twelve live [tuning knobs](#live-tuning-knobs-worldtuning_multiplier_fields) act here -- each erosion/deposition
 term reads a `world.*_multiplier` scale (default `1.0`) at the point it is formed.
 
-<a id="bathymetry"></a>
-<a id="isostasy"></a>
 ## Bathymetry (`bathymetry.py`)
 
 Bathymetry is the shape and depth of the seafloor. In this model, crust thickness and
@@ -488,7 +485,6 @@ submerged continental crust now runs from ~-50m on the shelf to ~-5.2km in a lar
 interior (was a near-flat ~-500m everywhere), and the median elevation step between adjacent
 nodes straddling a continent/ocean boundary drops from ~4km to ~2km.
 
-<a id="eustatic-sea-level"></a>
 ## Eustatic sea level (`eustasy.py`)
 
 **Eustatic sea level** means the average ocean level around the planet, as opposed to a local
@@ -542,7 +538,6 @@ from monotonic decline to a slight rise then a slow decline as sea level tracks 
 down (to roughly -150 to -300 m over the run). See [GitHub issue #120](https://github.com/adubey/mantle-bloom/issues/120), "Land fraction slowly
 declines".
 
-<a id="tuning-knobs"></a>
 ## Live tuning knobs (`world.TUNING_MULTIPLIER_FIELDS`)
 
 The controls in this section scale selected process rates while a world is running. A value
@@ -616,7 +611,7 @@ mean land elevation vs. an all-`1.0` baseline of `land = 0.294`, `mean = 1172 m`
 
 Two things compress the whole-world numbers, and both are *features*, not knob weakness:
 
-- **[Eustasy](#eustatic-sea-level) is a negative feedback.** Ocean water volume is conserved,
+- **[Eustasy](#eustatic-sea-level-eustasypy) is a negative feedback.** Ocean water volume is conserved,
   so building land anywhere (deposition up, erosion down, uplift up) displaces water, raises
   the eustatic stand, and re-drowns marginal coastline elsewhere -- roughly halving the
   net whole-sphere land-fraction change a knob would produce without it.
@@ -640,7 +635,6 @@ step 20-30 My, and watch `land_fraction` in Stats before going further. This is 
 "no single setting is right for every seed" situation the knobs exist to let you navigate by
 hand -- which is why the shipped defaults are all `1.0`.
 
-<a id="resources-and-soil"></a>
 ## Resources and soil (`geology.py`, plus `volcanism.py`'s own eruption roll)
 
 This module estimates soil and resource properties from the surrounding geology, climate,
@@ -680,7 +674,7 @@ Two of its own private helpers became public for the same reason (mirroring
 nothing to keep in sync by hand.
 
 **Coal** forms from peat accumulating in flat, low-lying, waterlogged land -- Wetland or
-Carboniferous Forest (see [Biomes](climate.md#biomes)'s `classify_wetland`, shared directly so the map's
+Carboniferous Forest (see [Biomes](climate.md#biomes-biomespy)'s `classify_wetland`, shared directly so the map's
 Carboniferous Forest region always lines up with where coal is actually forming fastest).
 Carboniferous Forest (warm, tropical swamp) accumulates several times faster than plain
 Wetland (a cooler bog/marsh) -- real Carboniferous/Permian coal is predominantly of that

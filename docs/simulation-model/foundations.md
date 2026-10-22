@@ -27,7 +27,6 @@ rotation that places a plate's local coordinates onto the planet. **Generation**
 building a new world's starting plates and terrain. Those choices determine how the rest of
 the simulation stores and moves its surface.
 
-<a id="why-not-a-grid"></a>
 ## Why not a grid
 
 Mantle Bloom does not store its simulated terrain on a single latitude-longitude grid. Such
@@ -46,7 +45,6 @@ plate-local lattice of cells that rotates *exactly* with the plate (no resamplin
 ordinary motion), and cells are only ever added or removed where a boundary actually creates
 or destroys crust.
 
-<a id="plate-local-frames"></a>
 ## Plate-local frames
 
 Each plate has its own map coordinates that rotate with it. The model stores cells in those
@@ -97,7 +95,6 @@ sets rather than forcing both plates onto one shared grid.
   (see below) adds or removes whole cells at the plate's edge, which is where irregular
   shapes should show up.
 
-<a id="initial-plate-generation"></a>
 ## Initial plate generation (`plates.py`)
 
 World generation chooses a set of plate centers, divides the sphere into plate territories,
@@ -125,7 +122,7 @@ land" sliders, both 0 to 1 (percent in the UI), defaulting to
 `DEFAULT_CONTINENTAL_FRACTION = 0.70` and `DEFAULT_LAND_FRACTION = 0.29`, plus a "point
 density" choice (`NODE_DENSITY_CHOICES = (0.5, 1.0, 2.0, 4.0)`, see below).
 
-- `continental_fraction`: on a [cratons-first](#cratons-first-layout) world, the
+- `continental_fraction`: on a [cratons-first](#cratons-first-layout-continent_layoutpy-plate_partitionpy) world, the
   continental share of the surface. Otherwise, when given, `round(continental_fraction * num_plates)` plates
   (`rng.choice`, without replacement) are made continental instead of the usual independent
   `CONTINENTAL_FRACTION = 0.4` coin flip per plate, and `num_plates` is bumped up if needed
@@ -202,7 +199,6 @@ are. 4x density comes with a real, continuous performance cost, not just a one-t
 generation cost -- several times slower per step -- which the UI surfaces as a short note when
 4x is selected.
 
-<a id="cratons-first-layout"></a>
 ### Cratons-first layout (`continent_layout.py`, `plate_partition.py`)
 
 This option starts by placing ancient continental cores, then builds plate boundaries and
@@ -306,7 +302,6 @@ of straight for more than 400 km. Cold land above 2,500 m receives a 150 m initi
 leaving the rest of the relief available to later erosion. This generation-only initialization
 is implemented in `initial_terrain.py` (#477).
 
-<a id="synthetic-relief"></a>
 ### Relief from a synthetic tectonic history (`synthetic_relief.py`)
 
 A synthetic tectonic history gives the starting landscape traces of processes such as
@@ -411,7 +406,6 @@ it to about Earth's value. Generation takes 25-50% longer. `bin/debug/measure_in
 reports these measures against Earth, optionally after stepping; the exploration and its
 probes are in #218 and [analysis/issue218](../../analysis/issue218/README.md).
 
-<a id="worldsketch"></a>
 ## Human-made worlds (sketch-driven generation) (`worldsketch.py`)
 
 The sketch tool lets a user draw the broad layout of continents, mountains, and rivers before
@@ -465,12 +459,11 @@ replaces two independent pieces of the usual random generation:
   its land nodes; a painted river stroke carves a shallow, clipped-so-it-stays-on-land channel
   -- a hint for `hydrology.py`'s per-step flow routing to find once the world is stepped, not a
   persisted river (nothing about a river is a generation-time concept elsewhere in this
-  codebase either -- see [Hydrology](hydrology.md#hydrology)). `land_fraction` is ignored when a sketch is
+  codebase either -- see [Hydrology](hydrology.md#hydrology-rivers-and-lakes-hydrologypy)). `land_fraction` is ignored when a sketch is
   given (the drawing decides land extent directly); oceanic `hc_at` is untouched either way --
   sketch masks only ever bias continental crust, the same way `land_fraction` already only
   touches the continental formula.
 
-<a id="mantle-flow"></a>
 ## Mantle flow (`mantle.py`)
 
 The deep mantle is not simulated as a full fluid here. Instead, the model places broad rising
@@ -536,7 +529,6 @@ Two long-run corrections (2026-09):
   at its nearest node (`contact_jam_factor`), so both plates feel one resistance. The band
   runs through zero closing so a contact the brake has stalled stays braked.
 
-<a id="known-simplifications"></a>
 ## Known simplifications
 
 This list names major processes the model intentionally leaves out or represents with a
@@ -551,11 +543,11 @@ than an oversight:
   [Plate motion: shift and deform](tectonics.md#boundary-evolution) and
   [docs/surface-parity.md](../surface-parity.md)'s C3 gate).
 - **Vegetation is a derived climate classification, not a persisted field.** Climate (see
-  [Climate](climate.md#climate)) feeds erosion, deposition, hydrology, and glaciation (see
-  [Erosion](surface-processes.md#erosion), [Hydrology](hydrology.md#hydrology), and [Glaciation](hydrology.md#glaciation):
+  [Climate](climate.md#climate-climatepy)) feeds erosion, deposition, hydrology, and glaciation (see
+  [Erosion](surface-processes.md#erosion-erosionpy), [Hydrology](hydrology.md#hydrology-rivers-and-lakes-hydrologypy), and [Glaciation](hydrology.md#glaciation-hydrologypy):
   rain/river/weathering/glacier erosion, downstream deposition, rivers, lakes, and glaciers,
   with glacier flattening as a mantle-bloom-original addition) and, since the moisture-
-  recycling addition (see [Climate](climate.md#climate)'s own "Moisture recycling" section), humidity's
+  recycling addition (see [Climate](climate.md#climate-climatepy)'s own "Moisture recycling" section), humidity's
   evapotranspiration term feeds back the other way too, sourced from `biomes.classify_biomes`.
   Vegetation still isn't a *persisted* per-node field anywhere, though (`biomes.py`'s
   classification, and climate.py's own transpiration weight derived from it, are both
@@ -564,6 +556,6 @@ than an oversight:
   warmth/moisture `productivity` proxy) remain out of scope, since neither has a persisted
   field to read like hydrology.py's `lake_depth`/`channel_depth`.
 - **No glacial eustatic sea-level coupling, no seasons.** Glaciation is purely local/per-node
-  here -- see [Glaciation](hydrology.md#glaciation).
+  here -- see [Glaciation](hydrology.md#glaciation-hydrologypy).
 - **Single in-memory world, no persistence.** See
   [World state](../architecture.md#world-state).

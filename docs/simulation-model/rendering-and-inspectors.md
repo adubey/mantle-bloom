@@ -22,7 +22,6 @@ a **vector overlay** is a line, point, or shape drawn from coordinates on top of
 Some views are server-rendered rasters, while inspectors draw selectable vector features in
 the browser.
 
-<a id="projections"></a>
 ## Projections (`projections.py`)
 
 The renderer must flatten a curved planet onto a screen. A **projection** is the mathematical
@@ -58,7 +57,6 @@ keeps the Combined and Biome views' alpha-encoded biome ids intact, and the Reco
 overlays use the matching `orthographic`/`isFarSide` in `rotation.ts`: `ScreenProjector`
 returns non-finite pixels for far-side points, so canvas drawing skips them.
 
-<a id="render-image"></a>
 ## Render image (`render_image.py`)
 
 The render route turns the current world into a picture. It samples the stored terrain,
@@ -165,7 +163,6 @@ couldn't update while a rotation drag was in progress (see "Rotating the view" b
 the live preview only redraws the *previous* rendered frame underneath a wireframe graticule,
 never the legend baked into it.
 
-<a id="rotating-the-view"></a>
 ## Rotating the view
 
 Rotating the view changes which part of the planet faces the viewer. It changes the map's
@@ -290,7 +287,6 @@ lat/lon readout) on every single mousemove, and including callbacks in that depe
 would tear down and rebuild the drag's window-level listeners on nearly every frame of the
 drag itself.
 
-<a id="plate-inspector"></a>
 ## Plate Inspector
 
 The Plate Inspector lets users select a plate and examine its outline and motion information.
@@ -395,8 +391,7 @@ longitude as a reference, and unwrap every other point in that same loop to with
 technique) before projecting -- exact as long as the shape's own true angular radius from its
 center stays under pi, the same scope boundary as the antipodal-singularity limitation above.
 
-<a id="fault-inspector"></a>
-## Plates & Faults view
+## Fault inspector
 
 This view layers plate boundaries, faults, recent earthquakes, and volcano locations on one
 map. It helps the user compare structures that the ordinary elevation view cannot show at once.
@@ -424,7 +419,7 @@ toward) a boundary as its plate moves.
 **Rendering**: each trace is an ordered polyline (not a branch-capable edge list like a
 river), colored by regime -- reverse magenta-red, normal yellow-green, strike-slip warm
 yellow, matching `render_image.py`'s `_ELEV_REASON_RGB` fault stops (codes 15/16/17) and the
-[Last elevation change](#render-image) view. Active faults draw solid; locked-up scars draw
+[Last elevation change](#render-image-render_imagepy) view. Active faults draw solid; locked-up scars draw
 dashed and dim. Every fault also gets a midpoint mark -- filled for active, a hollow ring for
 a scar -- because a real fault is only tens of km long and its whole trace can project to a
 few pixels at world scale, so the line alone wouldn't register. The selected fault draws

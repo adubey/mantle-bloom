@@ -85,7 +85,7 @@ Each plate runs two operations every step, in this order:
 
 1. **`shift(world, years)`** -- refit the plate's Euler pole from the mantle-flow field
    (damped toward the new target, same fit-then-clamp as generation-time, see [Mantle
-   flow](foundations.md#mantle-flow)), then rotate rigidly by `years` at that rate: exact for every node
+   flow](foundations.md#mantle-flow-mantlepy)), then rotate rigidly by `years` at that rate: exact for every node
    the plate carries, no resampling (see [Plate-local frames](foundations.md#plate-local-frames)). Returns
    `D`, the greatest angular distance any of the plate's own nodes actually moved this
    step -- a real, physically grounded bound on how much crust could plausibly have been
@@ -1107,7 +1107,7 @@ ground down to small remnants over a few hundred Myr.
 `CRATON_HOST_MIN_HC_M`..`CRATON_HOST_MAX_HC_M`, so neither a drowned shelf nor an active orogen)
 and at least `CRATON_FORMATION_MARGIN_KM` from its plate's edge or any non-genuine cell, and is
 not a belt. Its clock runs only while it stays quiet. After `CRATON_FORMATION_MYR` its whole Hc becomes
-cratonic. A [cratons-first](foundations.md#cratons-first-layout) world starts with its
+cratonic. A [cratons-first](foundations.md#cratons-first-layout-continent_layoutpy-plate_partitionpy) world starts with its
 generated cores as cratons (`cratons.seed_cores`: whole Hc, floored at
 `CRATON_HOST_MIN_HC_M`), and first-step seeding only books them. Every other world gets its
 interiors at least `CRATON_SEED_MARGIN_KM` from a margin seeded instead. Both kinds of seeded
@@ -1135,7 +1135,7 @@ continental cells in `mask` that hold no craton at `world.elapsed_years`:
 Belts are continental crust: `cratons.update` clears the mark of any cell retyped oceanic
 (`clear_oceanic_belts`), and the belt area counts continental cells only. Readers go through
 `cratons.belt_mask`, so belts could heal after `CRATON_BELT_HEAL_MYR`; it
-is infinite, and belts never heal. A [cratons-first](foundations.md#cratons-first-layout)
+is infinite, and belts never heal. A [cratons-first](foundations.md#cratons-first-layout-continent_layoutpy-plate_partitionpy)
 world starts with its generated belts marked (`cratons.seed_belts`), dated
 `CRATON_BELT_SEED_AGE_YEARS` (1.8 Gyr) before the start: Proterozoic welds, younger than the
 cores they join. `cratons.diagnostics` reports
@@ -1263,7 +1263,7 @@ active, it rolls a per-step eruption chance
 exponential-arrival-rate shape used elsewhere in this codebase, e.g. lake evaporation's own
 retention factor -- expected roughly 0.3 to 3 eruption events over a volcano's own full active
 life, "occasionally," not every step) and, if it erupts, adds `ERUPTION_ELEVATION_M` (100m) of
-new land and grows `mineral_deposit_m` (see [Resources and soil](surface-processes.md#resources-and-soil)).
+new land and grows `mineral_deposit_m` (see [Resources and soil](surface-processes.md#resources-and-soil-geologypy-plus-volcanismpys-own-eruption-roll)).
 Deterministic per `(seed, elapsed_years, plate_id, line_index)`, the same reproducibility
 precedent merge_split.py's own per-pair collision threshold sets. `active_years_this_step` is
 clamped to the volcano's own *remaining* life, not the full step size -- a large step (the UI
@@ -1492,7 +1492,7 @@ fades over the retention window. Exposed via `GET /world/earthquakes`, with each
 
 **Ice-unloading triggered earthquakes (`trigger_unloading_earthquakes`, issue #275 phase 5).**
 Right after erosion each step (so only when climate is simulated), `world.step_world_progress`
-hands the step's `ErosionResult.points` and `ice_load_change_pa` (see [Glaciation](hydrology.md#glaciation))
+hands the step's `ErosionResult.points` and `ice_load_change_pa` (see [Glaciation](hydrology.md#glaciation-hydrologypy))
 to this pass. Every fault, active or an
 inactive scar, reads the load change at the column under each trace node. Only unloading
 counts. `unloading_coulomb_stress_pa` resolves it onto the fault plane as a Coulomb failure

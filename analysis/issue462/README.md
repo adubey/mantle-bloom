@@ -9,7 +9,7 @@ with the flag off, `generate_plates` on seeds 7, 11 and 2024 (with and without t
 sliders) and `generate_world(7)`'s seeded cratons hash the same as origin/main `dd3c620`.
 
 The model description is in
-[docs/simulation-model/foundations.md](../../docs/simulation-model/foundations.md#cratons-first-layout).
+[docs/simulation-model/foundations.md](../../docs/simulation-model/foundations.md#cratons-first-layout-continent_layoutpy-plate_partitionpy).
 
 ## Figures
 

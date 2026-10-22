@@ -323,7 +323,7 @@ simpler, matching the v1 "elevation view only" scope. A `World` holds:
 
 - `plates: list[Plate]` -- see below.
 - `mantle_centers` -- the convection-cell flow field (see
-  [simulation-model/foundations.md#mantle-flow](simulation-model/foundations.md#mantle-flow)), fixed for the life of
+  [simulation-model/foundations.md#mantle-flow](simulation-model/foundations.md#mantle-flow-mantlepy)), fixed for the life of
   the world.
 - `elapsed_years`, `next_plate_id` (a monotonically increasing counter so a plate created by
   a split never collides with an existing id, even after other plates have been removed).
@@ -339,7 +339,7 @@ simpler, matching the v1 "elevation view only" scope. A `World` holds:
   [simulation-model/tectonics.md#merge-and-split](simulation-model/tectonics.md#merge-and-split)).
 - `axial_tilt_deg` -- a fixed generation-time property like `seed`, read by `climate.py`'s
   insolation calculation on every future render (see
-  [simulation-model/climate.md#climate](simulation-model/climate.md#climate)).
+  [simulation-model/climate.md#climate](simulation-model/climate.md#climate-climatepy)).
 - `sea_level_m`/`solar_multiplier` -- live-adjustable via `POST /world/controls` (the UI's
   "Controls" window, unlike every other generation-time property here), read fresh by
   `climate.py`/`hydrology.py`/`bathymetry.py`/`render_image.py` on every call rather than

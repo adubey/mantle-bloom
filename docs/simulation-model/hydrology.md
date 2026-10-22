@@ -21,7 +21,6 @@ The details below use **basin** for land that drains toward one low area, **spil
 the lowest route water can take out of a filled basin, and **catchment** for all terrain
 upstream of a location. These are useful map-reading terms as well as code concepts.
 
-<a id="hydrology"></a>
 ## Hydrology: rivers and lakes (`hydrology.py`)
 
 This module routes water over the cells that already make up the terrain. Those cells do
@@ -38,7 +37,7 @@ its grid, so a persistent field like `channel_depth` needs deliberate semi-Lagra
 advection every step just to keep following the crust. mantle-bloom's terrain nodes already
 rotate exactly with their own plate, so `channel_depth`, `channel_width`, `lake_depth`,
 `silt_depth` (see [Lakes](#lakes-are-an-explicit-tree) below), and `glacier_depth` (see
-[Glaciation](#glaciation)), stored as ordinary parallel arrays over the plate's cells right
+[Glaciation](#glaciation-hydrologypy)), stored as ordinary parallel arrays over the plate's cells right
 alongside `elevation` itself (see [Why not a grid](foundations.md#why-not-a-grid)), get that same "just
 works" persistence for free -- no advection scheme needed, since rotating a plate never
 touches those arrays at all. Every cell edit carries them by their `SURFACE_FIELDS` remap
@@ -74,7 +73,7 @@ Three kinds of water/forcing move along `flow_target`:
   divided by the step length (`hydrology.meltwater_m3_per_yr`). Melted ice is booked as
   water 1:1. Calved ice goes to the ocean unrouted, and accumulation
   and frozen river ice stay ice, so none of them is discharge. The ledger is still in the
-  glacier model's own units (see [Glaciation](#glaciation)), so meltwater is small next to
+  glacier model's own units (see [Glaciation](#glaciation-hydrologypy)), so meltwater is small next to
   runoff.
 - **Frozen river ice** is the physical water that settles at a frozen land node, turned into
   ice at the rate snowfall builds it (`hydrology.WATER_TO_ICE`, which is
@@ -200,7 +199,7 @@ discharge, channel-width growth, deposition, geology or lake silt.
   `CellHypsometry`) has already reached its basin's spill point, or that spill point is at or
   below the sink's own centre (a breach notch cut to the floor), in which case it redirects to
   `spill_target` (turning a filled-past-its-rim lake into a normal through-flowing river
-  cell). A node whose annual mean is below `FREEZE_POINT_C` (see [Glaciation](#glaciation) for
+  cell). A node whose annual mean is below `FREEZE_POINT_C` (see [Glaciation](#glaciation-hydrologypy) for
   why this is a separate, warmer threshold than the one permanent glaciers use) is unconditionally forced to
   -1 *after* the should_spill check above, rather than folded into the same check: an
   ordinary, unobstructed downhill node has `filled_elevation` exactly equal to its own
@@ -240,7 +239,7 @@ discharge, channel-width growth, deposition, geology or lake silt.
   pass because every node's target is guaranteed strictly lower, so it's always visited
   *later* in this same order.
 
-<a id="lakes-are-an-explicit-tree"></a>
+### Lakes are an explicit tree
 
 **Conceptual diagram — catchment floors join at a saddle; a size-limited depth tier can leave the merged lake surface below that saddle, preserving separate child lakes.**
 
@@ -355,7 +354,6 @@ still carries a suspended sediment load that settles onto the bed even when the 
 reported as open water, so silt now still deposits from this step's inflow while frozen -- only
 the reported water level (and sea-tier promotion) stays gated on not being frozen.
 
-<a id="lake-vs-sea-tiers"></a>
 ### Lake vs. sea tiers: a depth ceiling by size (2026-09-10)
 
 The model caps how deep a closed lake can become based on the size of the land area draining
@@ -587,7 +585,6 @@ monotonically upward, staying a small fraction of a world's total land nodes eve
 steps rather than creeping to cover a whole continent; `is_river & is_lake` never overlaps on
 a real stepped world (a river's own classification genuinely stops at a lake's shore).
 
-<a id="glaciation"></a>
 ## Glaciation (`hydrology.py`)
 
 Glaciation tracks where snow and ice build up, how ice melts, and how thick ice moves downhill.
@@ -605,7 +602,7 @@ precipitation is enough" simplification), an existing lake sitting there freezes
 A step spans thousands of years or more, so seasons are never stepped through, but their
 effect on glacier melt is imputed (issue #275 phase 2). Each node gets a seasonal
 half-amplitude from `biomes.seasonal_temp_amplitude` -- the same latitude x continentality x
-axial-tilt synthesis Köppen classification uses ([Biomes](climate.md#biomes)), plus a relief boost of
+axial-tilt synthesis Köppen classification uses ([Biomes](climate.md#biomes-biomespy)), plus a relief boost of
 `_SEASON_RELIEF_GAIN_C_PER_KM` (2.5C/km above sea level, saturating at 8C) for the larger
 swings of mountain valleys -- computed in `erosion.apply_erosion` and passed to
 `compute_hydrology` as `seasonal_amplitude_at_nodes`. Surface melt then scales with the mean
@@ -633,7 +630,7 @@ warmer epoch would never freeze, and a just-frozen basin would re-flood back to 
 the very same step, double-counting the same water as both a lake and a glacier at once.
 
 **A frozen river doesn't just vanish.** `_compute_flow_direction` forces a frozen node's
-`flow_target` to -1 unconditionally (see [Hydrology](#hydrology) for why this override can't
+`flow_target` to -1 unconditionally (see [Hydrology](#hydrology-rivers-and-lakes-hydrologypy) for why this override can't
 reuse the ordinary should-spill escape valve a genuine closed-basin lake gets) -- water
 arriving there this step has nowhere to go, so `route_downstream` settles it in place, and
 the physical water settled there (see *Water units* above) is folded into `glacier_depth`
@@ -646,10 +643,10 @@ locally-deposited share -- an evaporated share simply vanishes rather than settl
 -- warmer nodes lose more, capped well short of 1.0 so a single very large step can't
 evaporate an entire river in one hop. In the legacy `flow_accum` routing, it's excluded at
 an already-frozen node (already blocked above) and at a spilling lake's own breach node
-(`should_spill`, see [Hydrology](#hydrology)): that term already models a lake's concentrated overflow surge sized purely from its own
+(`should_spill`, see [Hydrology](#hydrology-rivers-and-lakes-hydrologypy)): that term already models a lake's concentrated overflow surge sized purely from its own
 surface area, and shouldn't also lose a further fraction to evaporation in the very same step
 it's cut loose. This evaporated water is genuinely lost from the river system, and is exactly
-half of the "rivers, lakes, and vegetation release moisture" ask (see [Climate](climate.md#climate)'s own
+half of the "rivers, lakes, and vegetation release moisture" ask (see [Climate](climate.md#climate-climatepy)'s own
 "Moisture recycling" section for the other half -- that lost moisture actually reappearing as
 atmospheric humidity, which for architectural reasons can't be the literal same-step amount
 this module evaporates, since climate.py runs *before* this module each step).
@@ -765,7 +762,7 @@ this module evaporates, since climate.py runs *before* this module each step).
   balance stays in model units these are a calibrated proxy, ~50,000x slower than real ice.
   Material riding the ice (`HydrologyFields.ice_flow_target`: glacial till, landslide debris
   on the ice) moves down the ice surface on visible ice and down the ground off it.
-- **Erosion and flattening**: see [Erosion](surface-processes.md#erosion). Glacial abrasion now scales with this
+- **Erosion and flattening**: see [Erosion](surface-processes.md#erosion-erosionpy). Glacial abrasion now scales with this
   step's sliding speed, so ice frozen to its bed doesn't erode the way sliding ice does;
   flattening is still driven by the *previous* step's `glacier_depth`.
 - **Cost.** Two Dijkstra passes per step, then per body a few numba sweeps per root-find
@@ -827,7 +824,6 @@ liquid-water equivalent of all `glacier_depth` plus every visible lake's `lake_d
 conserved total surface-water budget, so the ocean's share (and the shoreline) falls as the
 ice sheets grow and rises again as they melt.
 
-<a id="river-inspector"></a>
 ## River Inspector
 
 The River Inspector draws river paths and lets the user select one to see its flow and outlet.
@@ -836,7 +832,7 @@ It is a way to inspect current model data, not a separate river simulation.
 A third interactive map mode, same "raw JSON, client renders it" philosophy as
 [Plate Inspector](rendering-and-inspectors.md#plate-inspector): `GET /world/rivers` returns every distinct river
 network's flow-edge segments plus mouth metadata, plus the current coastline
-(`coastline_segments` -- see [Coastline](#coastline); this view has no filled backdrop at
+(`coastline_segments` -- see [Coastline](#coastline-coastlinepy); this view has no filled backdrop at
 all, so without it there'd be no land/ocean/lake cue whatsoever), as plain JSON, and
 `frontend/src/RiverInspector.tsx` renders and drives the interaction entirely client-side --
 reusing the same `rotationDrag.ts` gesture (rotation is shared with `MapCanvas`/
@@ -917,7 +913,6 @@ node cloud, so this is the natural fit rather than a departure from the pattern.
 elevation backdrop, matching Plate Inspector's own confirmed "the shapes are the whole visual"
 choice, rather than adding one just for this view.
 
-<a id="lake-inspector"></a>
 ## Lake Inspector
 
 The Lake Inspector shows lakes and their drainage basins. Selecting land can also reveal a dry
@@ -998,7 +993,6 @@ earlier version projected each endpoint independently here, which drew a spuriou
 across the whole canvas whenever a rotated view put the seam across a coastline edge (a bug,
 since fixed).
 
-<a id="coastline"></a>
 ## Coastline (`coastline.py`)
 
 The coastline is the boundary between land and ocean at the current sea level. The model
@@ -1016,7 +1010,7 @@ black, with no way to tell where the coast actually was.
 **Traced on climate.py's own grid, not the node cloud.** A coastline is inherently about
 *land shape*, which needs a "here or not" decision at every point on the sphere -- climate's
 `(H, W)` grid already covers the whole sphere densely and uniformly (see
-[Climate](climate.md#climate)), exactly what's needed, and `world.climate_cache` is already there to
+[Climate](climate.md#climate-climatepy)), exactly what's needed, and `world.climate_cache` is already there to
 reuse (same one-step-stale caching philosophy as everywhere else that reuses it) rather than
 building a second grid just for this.
 
@@ -1057,7 +1051,7 @@ land/ocean/lake grid their own way, so the coastline a climate view bakes into i
 one the River Inspector draws client-side are always exactly the same shape.
 
 **A single fixed line color would vanish against parts of the temperature gradient's own
-white/black extremes** (see [Render image](rendering-and-inspectors.md#render-image)'s temperature stops), so this is
+white/black extremes** (see [Render image](rendering-and-inspectors.md#render-image-render_imagepy)'s temperature stops), so this is
 always drawn as a dark halo pass first, then a lighter line on top -- the same "halo" trick
 real maps use for a boundary that has to stay legible over an arbitrary backdrop color, ported
 identically to both the server-side PNG stroke and the River Inspector's canvas stroke.
