@@ -274,6 +274,8 @@ should start until those gates are resolved and the revised design is accepted.
    mutual pair drag, but remains an idealized bonded interface, not a physical finite-slip law.
    See `analysis/issue487/gate2-interface-sensitivity.md`. These are sensitivity checks, not
    physical coupled predictions. The pair-level projection audit finds 3.0–95.1% cut-band stress sensitivity between joint and separate-group rigid-mode removal. The joint projection matches the bonded mesh; the separate-group variant does not represent free slip because it retains bonded displacements. A mechanically consistent interface/load-transfer formulation remains unresolved.
+
+   **Gate 2 scope decision (2026-10-22).** Gate 2 evaluates the single connected source plate using its per-node force field, free in-plane edge condition, incremental shell resultant and column capacity scenario. Coupled neighbor displacement and a finite-slip interface law are not prerequisites for closing this diagnostic gate. The six-event pair replay remains sensitivity evidence only: its projection choices represent different kinematics, and current pair contact forces do not consistently close force and moment. These pair results must not be presented as physical coupled stress predictions. A future coupled-stress claim requires a separately specified and validated interface model. This clarifies the earlier wording that required resolving the interface before treating coupled values as physical; that requirement applies only to future coupled predictions, not Gate 2’s single-plate diagnostic.
    A direct phenomenological capacity candidate,
    `T_cap = T_ref * (1 - lambda * w)`, was swept on a prescribed weak band: increasing `T_ref`
    monotonically reduced failed nodes, and at `2e10 N/m` the weak-band failure fraction exceeded
@@ -318,7 +320,9 @@ should start until those gates are resolved and the revised design is accepted.
    proxy, and 2.84% mature oceanic; at the phenomenological 1× reference, 2.82% of samples fail.
    These remain screening results: the oceanic-age proxy is coarse, the capacity anchors are
    conditional rather than spatially calibrated, and natural interplate continuity and production
-   load distributions remain outside this single-plate solve. Do not calibrate the damage law or
+   load distributions remain outside this single-plate solve. Gate 2 closure is scoped to this
+       single-plate diagnostic; it does not validate coupled neighbor stresses or imply a finite-slip
+       contact law. Do not calibrate the damage law or
    infer local stress from applied traction, rigid rotation, flow clusters or `Plate.internal_stress`.
    See the audits in `analysis/issue487/README.md`, `analysis/issue487/gate2-load-diagnosis.md`,
    `analysis/issue487/gate2-capacity-calibration.md`, and `analysis/issue487/gate2-matched-replay.json`.
@@ -494,7 +498,8 @@ source or explicit design-choice status, and the sensitivity plan before impleme
        `analysis/issue487/gate2-capacity-sensitivity.json`,
        `analysis/issue487/gate2-coupled-shell-benchmark.json`,
        `analysis/issue487/gate2-interface-sensitivity.json`, and
-       `analysis/issue487/gate2-rigid-projection-audit.md` / `.json`).
+       `analysis/issue487/gate2-rigid-projection-audit.md` and
+       `analysis/issue487/gate2-rigid-projection-audit.json`).
 2. [ ] In synthetic tests, damage is timestep-partition invariant, bounded, absent under compression
        or sub-yield loading, and advances only through adjacent cells with supported positive loading.
 3. [ ] Segments can nucleate independently, propagate, arrest and link; a transform/transfer zone
