@@ -495,6 +495,32 @@ def test_compute_hydrology_breaches_a_shallow_pit_instead_of_ponding_it(monkeypa
     assert not arid.breach_notch_m.any()
 
 
+def test_compute_hydrology_history_years_lets_a_zero_duration_pass_breach_and_fill(monkeypatch):
+    # The shallow wet pit above, in a zero-duration pass like generation's river bootstrap:
+    # with no time to carve or fill, the pit ends its river (#218). `history_years` gives the
+    # breach budget and basin filling a span of their own; the step itself stays zero-length.
+    monkeypatch.setattr(hydrology, "BREACH_DEPRESSIONS_ENABLED", True)
+    d = 0.05
+    theta = d * np.arange(40)
+    elevation = np.full(40, 100.0)
+    elevation[0:15] = -100.0
+    elevation[28:31] = 80.0
+
+    def run(**kw):
+        world = World(seed=0, plates=[_flow_line_plate(0, theta, elevation)])
+        return hydrology.compute_hydrology(world, np.full(40, 2000.0), np.full(40, 10.0), years=0.0, **kw)
+
+    instant = run()
+    assert not instant.breach_notch_m.any()
+    assert (instant.flow_target[28:31] < 0).any()
+
+    history = run(history_years=100_000)
+    assert history.breach_notch_m.max() == pytest.approx(20.0)
+    assert history.lake_depth[28:31].max() == 0.0
+    # Ice still grows over the zero-length step only.
+    np.testing.assert_array_equal(history.glacier_depth, instant.glacier_depth)
+
+
 def test_compute_hydrology_populates_is_sea_once_a_basin_stays_flooded():
     # Same interior-pit fixture as the test above. is_sea is derived from *last* step's own
     # flooded extent (lakes._classify_tier), so it can't promote on the very first pass -- but

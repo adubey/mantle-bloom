@@ -33,6 +33,10 @@ every step, from that step's real climate -- purely this-step derived quantities
 again, the same reuse pattern `climate.compute_climate_cached` already established.
 The cratons-first generator makes one zero-duration routing pass to populate that cache at
 generation; the first simulation step replaces it with routing from that step's climate.
+That pass sets `compute_hydrology`'s `history_years` (default: the step's `years`), the span
+the breach budget and in-step basin filling (`_spill_within_step`) read, so pits a humid
+basin would long since have filled or cut through drain at t = 0 (#218, see
+[foundations](foundations.md)).
 
 **Flow routing is computed once, not twice.** It would be simple enough to compute flow
 routing twice per step -- once in `hydrology.py` for the real river_flow/rendering fields,

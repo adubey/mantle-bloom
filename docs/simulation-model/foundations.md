@@ -261,7 +261,11 @@ erosion. Generation keeps the plates at their original positions and elapsed tim
 After the atmosphere bootstrap,
 `initial_terrain.initialize_river_channels` computes climate and one zero-duration hydrology
 routing pass; it persists channels on routed river nodes, with depth scaled from 20 to 120 m
-by discharge. Its initial river mask and channel fields omit routes that stay within 10 degrees
+by discharge. The pass gives depression breaching and basin filling a drainage history of
+`INITIAL_DRAINAGE_HISTORY_YEARS` (1 Myr, `compute_hydrology`'s `history_years`), since the
+generated terrain stands for a history it never ran: with no time to carve or fill, every pit
+ended a river (#218). Ice and every other rate still see a zero-length step. The breach
+notches it cuts persist in `breach_notch_depth_m`, as a step's do. Its initial river mask and channel fields omit routes that stay within 10 degrees
 of straight for more than 400 km. Cold land above 2,500 m receives a 150 m initial ice cap,
 leaving the rest of the relief available to later erosion. This generation-only initialization
 is implemented in `initial_terrain.py` (#477).

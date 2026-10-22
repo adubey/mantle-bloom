@@ -102,3 +102,52 @@ Seed 910211954 stepped to 10 Myr in 1 Myr steps (`--step-myr 1,5,10`), with and 
 - Unbacked elevation grows equally in both runs (up to ~800 m on ~10% of nodes by 10 Myr),
   from stepping processes that move elevation without Hc (`back_elevation_gain_fields`
   documents this). It is not introduced by generation.
+
+## Initial drainage
+
+Generated worlds drained far less land to the sea at t = 0 than any stepped world.
+`drainage.json` holds the numbers below. Measures are per node, as above.
+
+- *Closed drainage* is land whose routed water ends somewhere other than the ocean. Rivers
+  stop at a node below freezing, so ends at a frozen node are counted apart.
+- *Depression depth* is how far water at a land node must rise before it can reach the
+  ocean, from a priority flood over the hydrology graph. The Earth reference floods
+  `earth_relief_10m` box-averaged to ~55 km (`bin/debug/measure_earth_depressions.py`).
+
+**Cause 1: the river bootstrap had no time.** `initialize_river_channels` ran one hydrology
+pass with `years=0`. That pass gave depression breaching no carving budget and let no basin
+fill within the step (`_spill_within_step`), so every pit ended a river. The pass now gives
+those two a drainage history of 1 Myr (`INITIAL_DRAINAGE_HISTORY_YEARS`); ice and the other
+rates still see a zero-length step. Before is the same code with the history set to 0, which
+matches origin/main `34fb86f`.
+
+| world (4 seeds) | unfrozen closed drainage | frozen-end drainage | lakes, share of land |
+|---|---|---|---|
+| cratons-first, before | 0.31–0.48 | 0.12–0.48 | 0.006–0.033 |
+| cratons-first, after | 0.24–0.42 | 0.14–0.49 | 0.004–0.030 |
+| synthetic relief, before | 0.55–0.70 | 0.17–0.29 | 0.061–0.106 |
+| synthetic relief, after | 0.48–0.64 | 0.18–0.29 | 0.060–0.086 |
+| saves (6–220 My) after one 1 Myr step | 0.05–0.26 | 0.14–0.53 | 0.004–0.066 |
+| Earth | ~0.19 (endorheic) | — | ~0.02 |
+
+A second bootstrap pass with the climate held fixed changes little (0.483 → 0.466 on
+910211954 with synthetic relief), so routing settles in one pass. A second pass with the
+climate recomputed lowers closed drainage further (to 0.32–0.50 with synthetic relief),
+because the new lakes wet the climate.
+
+**What remains is climate and terrain.** At t = 0, median land precipitation is 55–226 mm/yr,
+and 52–72% of land gets under 250 mm (saves: 155–354 mm and 44–59%). About 70% of the
+remaining closed drainage lies in that arid land, where the breach gate's water balance
+keeps basins closed, as it should. Synthetic relief also roughly doubles Earth's area of
+closed depressions:
+
+| share of land in a closed depression deeper than | 1 m | 100 m | 250 m | 500 m |
+|---|---|---|---|---|
+| Earth (~55 km) | 0.100 | 0.040 | 0.015 | 0.006 |
+| synthetic relief | 0.20–0.24 | 0.09–0.11 | 0.032–0.035 | 0.004–0.010 |
+| cratons-first | 0.07–0.12 | 0.012–0.038 | 0.001–0.016 | 0–0.008 |
+
+Removing one synthetic-relief component at a time (seeds 910211954 and 447276134): interior
+hills (shield, hill-country and plains noise) are the main source of depression area
+(100 m share 0.087–0.105 → 0.032–0.065); orogens make the deep basins (250 m share
+0.033–0.035 → 0.011); glacial pits and platform basins barely matter.

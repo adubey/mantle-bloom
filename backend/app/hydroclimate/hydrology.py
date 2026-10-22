@@ -1384,6 +1384,7 @@ def compute_hydrology(
     years: float,
     node_cloud: tuple[np.ndarray, list[Plate]] | None = None,
     seasonal_amplitude_at_nodes: np.ndarray | None = None,
+    history_years: float | None = None,
 ) -> HydrologyFields:
     """Runs the full flow-routing pipeline against the world's current node cloud and this
     step's climate: (lake freeze, if cold enough) -> depression hierarchy + spill routing (see
@@ -1417,6 +1418,12 @@ def compute_hydrology(
     melt runs on the node's imputed seasonal cycle (`seasonal_amplitude_at_nodes`, see
     GLACIER_MELT_THRESHOLD_C's comment), so ice formed where only the annual mean is below
     freezing still melts back in summer. `None` means no seasonal swing anywhere.
+
+    `history_years` (default `years`) is the span basins have had to fill and outlets to be
+    cut: it sets the breach carving budget and which basins this step's water fills
+    (`_spill_within_step`). Everything else still reads `years`. Generation's zero-duration
+    bootstrap passes a longer span, since its terrain stands for a drainage history it never
+    ran: with no time to fill or carve, every pit ended a river (#218).
 
     **`should_spill` (below) and a lake's own `is_spilling` (`lakes._resolve`, set inside
     `lakes.resolve_lakes` near the end of this function) are now the same test -- "is this
@@ -1496,6 +1503,7 @@ def compute_hydrology(
     # neither loses water in transit. A spilling sink or its rim loses the same share as any
     # other node: the breach surge's own exemption belongs to the legacy routing only.
     transit_loss = river_transit_loss_fraction(temperature_at_nodes, water_frozen | is_ocean)
+    fill_years = years if history_years is None else history_years
     breach = None
     interface_pass = None
     if BREACH_DEPRESSIONS_ENABLED:
@@ -1505,7 +1513,7 @@ def compute_hydrology(
         # can before routing: liquid precipitation, and the same per-node river losses.
         breach = breaching.breach_depressions(
             elevation, is_ocean, neighbor_idx, prev_channel_depth,
-            breaching.bedrock_carve_rate_m_per_myr(craton_strength), years,
+            breaching.bedrock_carve_rate_m_per_myr(craton_strength), fill_years,
             water=breaching.WaterBalance(
                 np.where(is_frozen, 0.0, precipitation_at_nodes), temperature_at_nodes, areas,
                 loss_fraction=transit_loss,
@@ -1639,7 +1647,7 @@ def compute_hydrology(
         ),
         flow_target, should_spill, filled_elevation, spill_target,
         lambda targets: route_downstream(elevation, is_ocean, targets, physical_source_m3, loss_fraction=transit_loss),
-        years,
+        fill_years,
     )
 
     # A river blocked by its own freeze doesn't just vanish -- its water piles up as ice right

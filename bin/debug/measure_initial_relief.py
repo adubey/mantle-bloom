@@ -7,6 +7,9 @@ For each generated seed (or a loaded save) it reports, per node (nodes are near-
   of 0-200 m water within 300 km of land (shelves fringe coasts);
 - the share of ocean not connected to the world ocean (enclosed seas), and of land under
   lakes;
+- drainage (#218): the share of land whose routed water ends somewhere other than the ocean,
+  split into ends at a frozen node (rivers stop there) and unfrozen ends, and the share of
+  land in closed depressions deeper than 1-1,000 m (the rise water needs to reach the ocean);
 - relief: RMS elevation difference between land points at 50-1,600 km, and the same for
   "lowland" pairs with both points below 1 km (how hilly the plains are);
 - column backing: the largest |elevation - isostatic_elevation(Hc, Hm)| on any node with no
@@ -54,6 +57,11 @@ EARTH = {
     "ocean_share_above_3km_depth": 0.243,
     "ocean_share_above_200m_depth": 0.069,
     "lake_share_of_land": 0.02,
+    # Endorheic drainage, ~18-20% of land (literature). Closed depressions from a priority
+    # flood of earth_relief_10m box-averaged to ~55 km (3x3 cells), ice-free land, straits
+    # kept open by finding the world ocean at full resolution (bin/debug/measure_earth_depressions.py).
+    "endorheic_share_of_land": 0.19,
+    "depression_share_gt_m": {"1": 0.100, "10": 0.088, "50": 0.057, "100": 0.040, "250": 0.015, "500": 0.006, "1000": 0.0007},
     # Box-averaged to ~55 km (3x3 cells) and ~90 km (5x5): Earth's lowland relief at node scale.
     "lowland_rms_diff_m_by_km": {"50": 131, "100": 173, "200": 214, "400": 257},
     "lowland_rms_diff_m_by_km_box90km": {"50": 119, "100": 166, "200": 210, "400": 253},
@@ -131,6 +139,49 @@ def _relief_by_lag(points: np.ndarray, h: np.ndarray, land: np.ndarray) -> dict:
     return {"land_rms_diff_m_by_km": all_pairs, "lowland_rms_diff_m_by_km": lowland}
 
 
+def _drainage(world, land: np.ndarray) -> dict:
+    """Where routed water ends, from the world's hydrology cache, and closed-depression depth."""
+    import heapq
+
+    from app.hydroclimate.erosion import climate_grid_indices
+
+    fields, climate = world.hydrology_cache, world.climate_cache
+    if fields is None or climate is None or len(fields.flow_target) != len(land):
+        return {"drainage_skipped": "no hydrology cache"}
+    end = np.where(fields.flow_target >= 0, fields.flow_target, np.arange(len(land)))
+    for _ in range(64):
+        end, previous = end[end], end
+        if np.array_equal(end, previous):
+            break
+    rows, cols = climate_grid_indices(fields.points, *climate.air_temperature_c.shape)
+    frozen_end = climate.air_temperature_c[rows, cols][end] < 0.0
+    closed = land & ~fields.is_ocean[end]
+    # Priority flood from the world ocean over the hydrology graph: the level water must rise
+    # to before it can reach the sea.
+    elevation = fields.elevation.tolist()
+    filled = np.where(fields.is_ocean, fields.elevation, np.inf).tolist()
+    heap = [(filled[i], int(i)) for i in np.flatnonzero(fields.is_ocean)]
+    heapq.heapify(heap)
+    neighbours = fields.neighbor_idx.tolist()
+    while heap:
+        level, i = heapq.heappop(heap)
+        if level > filled[i]:
+            continue
+        for j in neighbours[i]:
+            rise = max(level, elevation[j])
+            if rise < filled[j]:
+                filled[j] = rise
+                heapq.heappush(heap, (rise, j))
+    depth = (np.asarray(filled) - fields.elevation)[land]
+    n_land = max(int(land.sum()), 1)
+    return {
+        "closed_drainage_share_of_land": float(closed.sum() / n_land),
+        "closed_drainage_frozen_end_share_of_land": float((closed & frozen_end).sum() / n_land),
+        "closed_drainage_unfrozen_share_of_land": float((closed & ~frozen_end).sum() / n_land),
+        "depression_share_gt_m": {str(t): float((depth > t).sum() / n_land) for t in (1, 10, 50, 100, 250, 500, 1000)},
+    }
+
+
 def _backing(world, land: np.ndarray) -> dict:
     from app import lithosphere, orogeny, plates
 
@@ -166,6 +217,7 @@ def measure(world) -> dict:
     out.update(_shelf_and_seas(points, h, land))
     out["lake_share_of_land"] = float((lakes & land).sum() / max(int(land.sum()), 1))
     out.update(_relief_by_lag(points, h, land))
+    out["drainage"] = _drainage(world, land)
     out["backing"] = _backing(world, land)
     return out
 
