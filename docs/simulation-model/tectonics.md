@@ -39,6 +39,7 @@ The boundary between the crust and mantle is called the **Moho**. It is marked i
 cross-section below.
 
 ![Conceptual convergent mountain-belt cross section showing thickened crust and mantle lithosphere, with Hc, Hm, the Moho and lithosphere base marked.](../img/issue-514/lithosphere-cross-section.svg)
+
 *This conceptual cross-section shows the two thicknesses the simulation tracks. A mountain
 belt can have thicker crust and thicker mantle lithosphere than the surrounding plate. The
 drawing is simplified and its relief is exaggerated; it is not a simulation render.*
@@ -85,7 +86,7 @@ Each plate runs two operations every step, in this order:
 
 1. **`shift(world, years)`** -- refit the plate's Euler pole from the mantle-flow field
    (damped toward the new target, same fit-then-clamp as generation-time, see [Mantle
-   flow](foundations.md#mantle-flow)), then rotate rigidly by `years` at that rate: exact for every node
+   flow](foundations.md#mantle-flow-mantlepy)), then rotate rigidly by `years` at that rate: exact for every node
    the plate carries, no resampling (see [Plate-local frames](foundations.md#plate-local-frames)). Returns
    `D`, the greatest angular distance any of the plate's own nodes actually moved this
    step -- a real, physically grounded bound on how much crust could plausibly have been
@@ -419,6 +420,10 @@ a fast, decisive convergence merges more readily than a slow oblique graze.
 
 ## Quad deformation
 
+Plate boundaries can add or remove surface cells as plates collide or separate. The mesh is
+made of quadrilaterals, so this section explains how the code grows or retreats those cells
+while keeping neighboring cell sizes compatible.
+
 **Conceptual diagram — boundary cells retreat or advance while deformation cuts or fills their surface; exact masks depend on local overlap and boundary class.**
 
 ```mermaid
@@ -497,6 +502,10 @@ The whole-world passes read territory from the cells rather than from node dista
   so adding or removing cells elsewhere on the plate doesn't change it.
 
 ### Orogenic relief
+
+An **orogen** is a mountain belt formed as crust is shortened and thickened. The model first
+spreads that crustal material into the growing belt. It allows part of the deep root to sink
+back into the mantle only when the root is hot and dense enough.
 
 Continental collision mostly shortens, thickens and moves crust around (issue #290). Lower-
 crustal delamination is real, but it needs a dense eclogitized root that is hot enough to
@@ -716,6 +725,10 @@ one donation loses much.
 
 ## Merge and split
 
+Over long periods, plates can join or divide. This section describes the tests the model uses
+before changing the number of plates; ordinary movement and boundary deformation happen much
+more often.
+
 Unlike `shift`/`deform`, these are rare, discrete, topology-changing events, so a one-time
 resample is an acceptable cost here -- the exact, no-resampling guarantee only matters for
 routine per-step motion.
@@ -924,6 +937,10 @@ routine per-step motion.
 
 ## Gap filling
 
+The model checks that plate cells cover the whole planet. Small uncovered patches can be
+filled by nearby plates; larger holes use a separate fallback process. Plate cell layouts do
+not line up perfectly, so a narrow overlap or seam can remain at their edges.
+
 Ordinary per-step boundary advance (`deform()`, see [Quad-surface
 deformation](#quad-deformation)) keeps pace with almost every gap that opens next to a live
 plate. Two mechanisms handle the two regimes a gap can actually be in:
@@ -1000,6 +1017,10 @@ least `gaps.MIN_GAP_NODES`; smaller isolated clusters wait for a neighbour to re
 
 ### Per-node crust type
 
+A plate can contain a mixture of oceanic and continental crust even though its broad plate
+label is only one type. This section describes how the model stores and updates crust type at
+each surface cell.
+
 A plate's `crust_type` ("oceanic"/"continental") is the usual, plate-wide answer to "what is
 this crust made of" -- but real crust is genuinely composite, and the two magma-typing events
 above (rift melting, gap-fill) are exactly the places a single node's own composition can
@@ -1058,6 +1079,9 @@ verification.
 
 ### Cratons
 
+Cratons are old, strong pieces of continental crust. The model keeps track of them separately
+so ordinary deformation does not erase them as if they were weak, young crust.
+
 Cratons are old, buoyant, mechanically strong continental cores that come through ordinary
 tectonic cycles intact (GitHub issue #274). Without them, continents that keep colliding are
 ground down to small remnants over a few hundred Myr.
@@ -1084,7 +1108,7 @@ ground down to small remnants over a few hundred Myr.
 `CRATON_HOST_MIN_HC_M`..`CRATON_HOST_MAX_HC_M`, so neither a drowned shelf nor an active orogen)
 and at least `CRATON_FORMATION_MARGIN_KM` from its plate's edge or any non-genuine cell, and is
 not a belt. Its clock runs only while it stays quiet. After `CRATON_FORMATION_MYR` its whole Hc becomes
-cratonic. A [cratons-first](foundations.md#cratons-first-layout) world starts with its
+cratonic. A [cratons-first](foundations.md#cratons-first-layout-continent_layoutpy-plate_partitionpy) world starts with its
 generated cores as cratons (`cratons.seed_cores`: whole Hc, floored at
 `CRATON_HOST_MIN_HC_M`), and first-step seeding only books them. Every other world gets its
 interiors at least `CRATON_SEED_MARGIN_KM` from a margin seeded instead. Both kinds of seeded
@@ -1112,7 +1136,7 @@ continental cells in `mask` that hold no craton at `world.elapsed_years`:
 Belts are continental crust: `cratons.update` clears the mark of any cell retyped oceanic
 (`clear_oceanic_belts`), and the belt area counts continental cells only. Readers go through
 `cratons.belt_mask`, so belts could heal after `CRATON_BELT_HEAL_MYR`; it
-is infinite, and belts never heal. A [cratons-first](foundations.md#cratons-first-layout)
+is infinite, and belts never heal. A [cratons-first](foundations.md#cratons-first-layout-continent_layoutpy-plate_partitionpy)
 world starts with its generated belts marked (`cratons.seed_belts`), dated
 `CRATON_BELT_SEED_AGE_YEARS` (1.8 Gyr) before the start: Proterozoic welds, younger than the
 cores they join. `cratons.diagnostics` reports
@@ -1196,6 +1220,10 @@ volume.
 
 ## Volcanism
 
+Volcanoes can form where new crust rises at separating plates and where magma is produced
+along converging boundaries. The model tracks vents and eruption events as part of the moving
+world.
+
 New continental crust forming where plates are separating. This used to be two halves in one
 module: a periodic whole-sphere *detection* pass that spawned brand-new "volcanic field"
 plates, plus a per-step *eruption* pass. The detection half is gone -- volcano creation is
@@ -1236,7 +1264,7 @@ active, it rolls a per-step eruption chance
 exponential-arrival-rate shape used elsewhere in this codebase, e.g. lake evaporation's own
 retention factor -- expected roughly 0.3 to 3 eruption events over a volcano's own full active
 life, "occasionally," not every step) and, if it erupts, adds `ERUPTION_ELEVATION_M` (100m) of
-new land and grows `mineral_deposit_m` (see [Resources and soil](surface-processes.md#resources-and-soil)).
+new land and grows `mineral_deposit_m` (see [Resources and soil](surface-processes.md#resources-and-soil-geologypy-plus-volcanismpys-own-eruption-roll)).
 Deterministic per `(seed, elapsed_years, plate_id, line_index)`, the same reproducibility
 precedent merge_split.py's own per-pair collision threshold sets. `active_years_this_step` is
 clamped to the volcano's own *remaining* life, not the full step size -- a large step (the UI
@@ -1262,6 +1290,10 @@ before glacier so ice still wins where both would apply (a volcano cold enough t
 should read as ice-covered, not lava-red).
 
 ## Faults
+
+Faults are narrow zones where crust has broken and moved. Boundary faults follow the edges
+between plates; intraplate faults form inside a plate. The display tracks their traces and
+motion so users can inspect deformation away from the main plate edges.
 
 Two kinds of fault trace live here: **boundary faults** laid along every live plate-boundary
 segment, and **intraplate faults** that nucleate away from any edge.
@@ -1461,7 +1493,7 @@ fades over the retention window. Exposed via `GET /world/earthquakes`, with each
 
 **Ice-unloading triggered earthquakes (`trigger_unloading_earthquakes`, issue #275 phase 5).**
 Right after erosion each step (so only when climate is simulated), `world.step_world_progress`
-hands the step's `ErosionResult.points` and `ice_load_change_pa` (see [Glaciation](hydrology.md#glaciation))
+hands the step's `ErosionResult.points` and `ice_load_change_pa` (see [Glaciation](hydrology.md#glaciation-hydrologypy))
 to this pass. Every fault, active or an
 inactive scar, reads the load change at the column under each trace node. Only unloading
 counts. `unloading_coulomb_stress_pa` resolves it onto the fault plane as a Coulomb failure

@@ -4,7 +4,7 @@ These scripts measure where craton volume goes: the craton ledger over a whole r
 that books each loss, and the loss caused by single merges and rift cuts. The ledger itself
 and the Cratons map view are described in [Debug map views](map-views.md#cratons-craton),
 and the model in
-[simulation-model/tectonics.md](../simulation-model/tectonics.md#cratons-cratonspy). Losses
+[simulation-model/tectonics.md](../simulation-model/tectonics.md#cratons). Losses
 at plate contacts (jams, collision budgets) are measured by the
 [collision scripts](scripts-collisions.md). The scripts for RFC 0009's cratons-first layout
 are on [Craton layout scripts](scripts-craton-layout.md).

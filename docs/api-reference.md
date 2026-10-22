@@ -82,7 +82,7 @@ All fields optional. `num_plates` defaults to `null` -- omit it (or check the fr
 "Auto" box, the default) to let the world tile itself into a plausible plate count from
 `seed` alone (`plates.MIN_AUTO_PLATES` to `plates.MAX_AUTO_PLATES`, the same range the UI's
 own plate-count slider covers when "Auto" is unchecked, see
-[simulation-model/foundations.md#initial-plate-generation](simulation-model/foundations.md#initial-plate-generation)),
+[simulation-model/foundations.md#initial-plate-generation](simulation-model/foundations.md#initial-plate-generation-platespy)),
 or pass an explicit count to override it. `continental_fraction` and `land_fraction` are the
 UI's two generation sliders (0 to 1, defaulting in the frontend to
 `plates.DEFAULT_CONTINENTAL_FRACTION = 0.70` and `plates.DEFAULT_LAND_FRACTION = 0.29`);
@@ -91,7 +91,7 @@ per-plate coin flip for crust type, a fixed elevation floor for land). `continen
 is a share of plates on today's plates-first worlds and a share of the surface on
 cratons-first ones (`plates.CONTINENTAL_AREA_FRACTION = 0.5` when omitted), a layout the
 selected by `cratons_first` -- see
-[simulation-model/foundations.md#initial-plate-generation](simulation-model/foundations.md#initial-plate-generation).
+[simulation-model/foundations.md#initial-plate-generation](simulation-model/foundations.md#initial-plate-generation-platespy).
 `cratons_first` is the Random tab's optional terrain-generation choice. When true, continental
 cratons are laid out before plates and relief is generated from that layout; when false or
 omitted, generation uses the plate-first layout (omission follows
@@ -101,11 +101,11 @@ coastlines come from a synthetic tectonic history (sutures between cratons, cord
 leading margins, interior terrain types), backed by crustal thickness; when false or omitted,
 the cratons-first relief is generated as before (omission follows
 `synthetic_relief.SYNTHETIC_RELIEF_DEFAULT`). See
-[simulation-model/foundations.md#synthetic-relief](simulation-model/foundations.md#synthetic-relief).
+[simulation-model/foundations.md#synthetic-relief](simulation-model/foundations.md#relief-from-a-synthetic-tectonic-history-synthetic_reliefpy).
 `axial_tilt_deg` is the UI's third generation slider (degrees), defaulting to
 `world.DEFAULT_AXIAL_TILT_DEG = 23.5` (Earth's real tilt) -- doesn't affect plate generation,
 only `climate.py`'s insolation on future renders (see
-[simulation-model/climate.md#climate](simulation-model/climate.md#climate)), which is why it's stored on
+[simulation-model/climate.md#climate](simulation-model/climate.md#climate-climatepy)), which is why it's stored on
 `World` rather than consumed once here. `num_mantle_centers` defaults to
 `world.DEFAULT_MANTLE_CENTERS = 8`. `node_density` is the UI's "point density" choice
 (`plates.NODE_DENSITY_CHOICES = (0.5, 1.0, 2.0, 4.0)`, defaults to
@@ -115,7 +115,7 @@ a lower-resolution middle ground (half the default), `0.5` the coarsest, fastest
 fifth generation slider (0 to 1, defaults to `0.0` -- a fully barren starting world, no soil
 on any land node) -- a one-time seed for `soil_depth`/`soil_mineral_content`/
 `soil_organic_content` (see
-[simulation-model/surface-processes.md#resources-and-soil](simulation-model/surface-processes.md#resources-and-soil)), not
+[simulation-model/surface-processes.md#resources-and-soil](simulation-model/surface-processes.md#resources-and-soil-geologypy-plus-volcanismpys-own-eruption-roll)), not
 stored on `World` afterward. `climate_density` is the UI's "climate & biome resolution"
 choice (`climate.CLIMATE_DENSITY_CHOICES = (0.5, 1.0, 2.0, 4.0)`, defaults to
 `climate.DEFAULT_CLIMATE_DENSITY = 4.0`) -- `400` if it isn't one of those four values.
@@ -125,7 +125,7 @@ quadruples it (16x the reference cell count), for the sharpest climate/biome map
 halves it, for a coarser but faster grid -- stored on `World` (unlike `initial_soil_maturity`)
 since every future step/render
 reads it again, same reasoning `node_density`'s own storage gives (see
-[simulation-model/climate.md#climate](simulation-model/climate.md#climate)). `fluid_density` is the UI's
+[simulation-model/climate.md#climate](simulation-model/climate.md#climate-climatepy)). `fluid_density` is the UI's
 "Fluid dynamics resolution" Advanced-settings choice -- same `climate.CLIMATE_DENSITY_CHOICES`
 set (capped at `2.0`/"High" rather than `4.0`/"Very High", see `climate.FLUID_DENSITY_CHOICES`'s
 own comment for why) and `400` validation as `climate_density`, but independent of it: sizes
@@ -133,12 +133,12 @@ only the atmospheric wind-solver grid (`atmosphere_cfd.init_atmosphere_cfd`, imm
 populated by this same call -- see below), not the climate/biome render grid or erosion's own
 climate sampling. Lets a world keep a sharp climate/biome grid while running the wind solve at
 a coarser (faster) resolution, or vice versa -- see
-[simulation-model/climate.md#ocean-atmospheric-fluid-dynamics](simulation-model/climate.md#ocean-atmospheric-fluid-dynamics).
+[simulation-model/climate.md#ocean-atmospheric-fluid-dynamics](simulation-model/climate.md#atmospheric-wind-solver-fluid_dynamicspy-atmosphere_cfdpy).
 Replaces whatever world previously existed.
 
 `sketch` (the Generate World dialog's "Human-made" tab) is optional and omitted by the
 "Random" tab entirely -- `{"image_base64": "<a PNG>"}`, the drawn or loaded coastline (see
-[simulation-model/foundations.md#worldsketch](simulation-model/foundations.md#worldsketch) for the ink convention and
+[simulation-model/foundations.md#worldsketch](simulation-model/foundations.md#human-made-worlds-sketch-driven-generation-worldsketchpy) for the ink convention and
 what it changes). When present, land/sea for continental crust comes from this image instead
 of noise (`land_fraction` above is then ignored), and plate sites/boundaries are fit to its
 landmasses and open ocean rather than scattered at random. `400` if the bytes aren't a
@@ -147,7 +147,7 @@ decodable image.
 `generate_world` also immediately seeds this new world's permanent
 `World.atmosphere_cfd_state` (`atmosphere_cfd.init_atmosphere_cfd`) -- the atmospheric wind
 solve is always on, not a mode entered later, see
-[simulation-model/climate.md#mode-toggle](simulation-model/climate.md#mode-toggle). Ocean currents and
+[simulation-model/climate.md#mode-toggle](simulation-model/climate.md#always-on-not-a-mode). Ocean currents and
 precipitation are diagnostic in `climate.py`, not CFD-solved.
 
 Response: a summary --
@@ -192,7 +192,7 @@ Advances the current world by `years` (see
 [simulation-model.md](simulation-model.md) for what a step actually does) -- including, gated
 on `World.simulate_climate_biomes`, advancing `World.atmosphere_cfd_state` by a fixed
 real-time increment (one simulated day) regardless of `years`, see
-[simulation-model/climate.md#mode-toggle](simulation-model/climate.md#mode-toggle). Returns the same summary
+[simulation-model/climate.md#mode-toggle](simulation-model/climate.md#always-on-not-a-mode). Returns the same summary
 shape as `/world/generate`, with `events` reflecting anything logged up through this step.
 `404` if no world has been generated yet.
 
@@ -336,7 +336,7 @@ The body also accepts the twelve **geomorphic-budget tuning multipliers**
 `collision_uplift_reach_multiplier`, `volcanism_multiplier`. Each is a dimensionless scale on
 one erosion / deposition / uplift / volcanism process, default `1.0` (== untuned, bit for
 bit), and a negative value is a `400`. See
-[simulation-model/surface-processes.md#tuning-knobs](simulation-model/surface-processes.md#tuning-knobs) for what each one scales
+[simulation-model/surface-processes.md#tuning-knobs](simulation-model/surface-processes.md#live-tuning-knobs-worldtuning_multiplier_fields) for what each one scales
 and measured effect sizes.
 
 Forces an immediate `climate.compute_climate` recompute (stored back onto
@@ -359,12 +359,12 @@ multipliers:
 
 Renders the current world as a PNG, base64-encoded. All drawing (elevation fill, plate-color
 fill, boundary outlines, pole markers, rotation arcs, per-node dots) happens server-side
-(see [simulation-model/rendering-and-inspectors.md#render-image](simulation-model/rendering-and-inspectors.md#render-image)) -- the client
+(see [simulation-model/rendering-and-inspectors.md#render-image](simulation-model/rendering-and-inspectors.md#render-image-render_imagepy)) -- the client
 just decodes and paints the image, it never sees raw coordinate data. `400` for an
 unrecognized projection/view name, a width/height outside `[1, main.MAX_RENDER_DIMENSION_PX]`
 (4000), or a malformed `rotation`, `404` if no world has been generated yet. `globe` draws the
 hemisphere facing the viewer as an orthographic disc (see
-[simulation-model/rendering-and-inspectors.md#projections](simulation-model/rendering-and-inspectors.md#projections)).
+[simulation-model/rendering-and-inspectors.md#projections](simulation-model/rendering-and-inspectors.md#projections-projectionspy)).
 
 ```json
 {
@@ -387,26 +387,26 @@ hemisphere facing the viewer as an orthographic disc (see
   and `"combined"` (Köppen-colored land, pelagic-province + hypsometric ocean,
   lakes/glaciers/rivers overlaid) are a categorical classification -- 31 Köppen-Geiger land
   classes + 10 pelagic ocean classes (see
-  [simulation-model/climate.md#biomes](simulation-model/climate.md#biomes)). `"combined"` alone returns an
+  [simulation-model/climate.md#biomes](simulation-model/climate.md#biomes-biomespy)). `"combined"` alone returns an
   **RGBA** PNG whose alpha channel encodes a per-pixel class id for the client's
   click-to-identify feature: `code = 255 - alpha`, where `code` is `0` for a gap between
   cells, `biome_index + 1` (`1`..`41`, land Köppen then ocean pelagic) for a classified cell,
   `42` for a lake, or `43` for glacier cover. Alpha is a data channel, not real transparency
   (the range is only ~`212`..`255`). Five more views come from
-  `climate.py` (see [simulation-model/climate.md#climate](simulation-model/climate.md#climate)):
+  `climate.py` (see [simulation-model/climate.md#climate](simulation-model/climate.md#climate-climatepy)):
   `"temperature"`, `"humidity"`, and `"precipitation"` are heatmaps (each also drawing the
-  current coastline -- see [simulation-model/hydrology.md#coastline](simulation-model/hydrology.md#coastline) --
+  current coastline -- see [simulation-model/hydrology.md#coastline](simulation-model/hydrology.md#coastline-coastlinepy) --
   since a color-scale view carries no land/ocean cue on its own); `"wind"` and
   `"oceanCurrents"` draw subsampled direction/magnitude arrows, and `"oceanCurrents"`
   additionally marks detected ocean swells with small circles. `"wind"` and the land side of
   `"temperature"` draw off `World.atmosphere_cfd_state` (a real, continuously time-integrated
   shallow-water wind solve, see
-  [simulation-model/climate.md#ocean-atmospheric-fluid-dynamics](simulation-model/climate.md#ocean-atmospheric-fluid-dynamics))
+  [simulation-model/climate.md#ocean-atmospheric-fluid-dynamics](simulation-model/climate.md#atmospheric-wind-solver-fluid_dynamicspy-atmosphere_cfdpy))
   -- or, under `wind_model == "diagnostic"` (see
-  [simulation-model/climate.md#wind-model](simulation-model/climate.md#wind-model)), off `climate.py`'s own
+  [simulation-model/climate.md#wind-model](simulation-model/climate.md#wind-model-diagnostic-default-vs-cfd)), off `climate.py`'s own
   closed-form wind/air-temperature instead; everything else is a `climate.py` diagnostic (the
   shallow-water ocean solver was retired) resampled nearest-cell onto the world's HEALPix grid. `"resources"` and `"soilQuality"` (see
-  [simulation-model/surface-processes.md#resources-and-soil](simulation-model/surface-processes.md#resources-and-soil)) are
+  [simulation-model/surface-processes.md#resources-and-soil](simulation-model/surface-processes.md#resources-and-soil-geologypy-plus-volcanismpys-own-eruption-roll)) are
   node-cloud-derived like elevation/plates, not climate-grid-derived -- `"resources"` overlays
   coal/oil & gas/mineral deposit richness on a muted land/ocean backdrop, `"soilQuality"` is a
   continuous fertility heatmap (barren to rich) plus the coastline overlay. `"geomorph"` (a
@@ -671,7 +671,7 @@ runs once). `404` if no world has been generated yet.
   [simulation-model/hydrology.md#river-inspector](simulation-model/hydrology.md#river-inspector) for the exact
   definition (an original one; no precedent to port).
 - `coastline_segments` is the land/ocean/lake boundary (see
-  [simulation-model/hydrology.md#coastline](simulation-model/hydrology.md#coastline)), same segment-pair shape as
+  [simulation-model/hydrology.md#coastline](simulation-model/hydrology.md#coastline-coastlinepy)), same segment-pair shape as
   `segments` above -- included because this view draws no filled backdrop at all, so without
   it there's no land/ocean/lake cue in the River Inspector whatsoever. The exact same segments
   are also drawn server-side into the `temperature`/`humidity`/`precipitation` views returned

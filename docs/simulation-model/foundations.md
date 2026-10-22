@@ -2,11 +2,38 @@
 
 [Back to the Simulation Model index](../simulation-model.md).
 
-<a id="why-not-a-grid"></a>
+Mantle Bloom stores terrain on cells that belong to plates. When a plate moves, its cells
+move with it. A **cell** represents a small patch of the planet's surface, and a **plate** is
+the connected region of crust that moves together in this model. The diagrams show the
+curved cell mesh and the elevation carried by those cells. They are teaching schematics,
+not output from a generated world.
+
+![Conceptual oblique view of a plate's curved cell mesh beside an independently tiled neighbor.](../img/issue-514/plate-territory.svg)
+
+*A plate carries its own surface cells. Neighboring plates can use different cell layouts,
+so the model handles their meeting area as a moving boundary.*
+
+![Conceptual oblique view of plate cells carrying lowlands and mountains.](../img/issue-514/plate-relief.svg)
+
+*Elevation travels with the same cells as the plate. The vertical relief is exaggerated for
+visibility.*
+
+The terms **plate-local** and **world** name two coordinate frames: a plate-local position
+stays fixed to its plate, while a world position describes where that point is on the shared
+planet. This distinction lets ordinary plate motion preserve terrain without repeatedly
+copying it onto a global grid.
+
+**How to read this page:** a **lattice** is the regular pattern used to place cells; an
+**adaptive mesh** makes some cells smaller where more detail is useful; a **frame** is the
+rotation that places a plate's local coordinates onto the planet. **Generation** means
+building a new world's starting plates and terrain. Those choices determine how the rest of
+the simulation stores and moves its surface.
+
 ## Why not a grid
 
-mantle-bloom does not model the planet as an equirectangular lat/lon grid, and deliberately
-so: a fixed lat/lon grid brings a cluster of problems. Pole cells need an artificial
+Mantle Bloom does not store its simulated terrain on a single latitude-longitude grid. Such
+a grid is easy to draw, but its cells become narrow near the poles and it would not move
+with the plates. Pole cells need an artificial
 full-clique patch to be mutually adjacent, falloff radii need a
 [Dijkstra](https://en.wikipedia.org/wiki/Dijkstra%27s_algorithm) search weighted by real 3D
 chord distance to correct for latitude-dependent cell size, and -- the significant one --
@@ -15,13 +42,16 @@ step via nearest-neighbor
 [semi-Lagrangian](https://en.wikipedia.org/wiki/Semi-Lagrangian_scheme) backward-advection,
 which doesn't conserve mass where a plate stretches or compresses.
 
-mantle-bloom drops the global grid entirely: each plate carries its terrain on its own
+Instead, each plate carries its terrain on its own
 plate-local lattice of cells that rotates *exactly* with the plate (no resampling at all for
 ordinary motion), and cells are only ever added or removed where a boundary actually creates
 or destroys crust.
 
-<a id="plate-local-frames"></a>
 ## Plate-local frames
+
+Each plate has its own map coordinates that rotate with it. The model stores cells in those
+coordinates, then uses the plate's orientation to place them on the planet. A point's local
+coordinates stay the same when the plate moves; only its world position changes.
 
 Each plate owns a rotation matrix `frame` (world = `frame @ local`, see
 `geometry.plate_frame_from_seed`) defining its own local spherical coordinate system
@@ -50,17 +80,6 @@ Each lattice stays internally aligned with its own plate. The seam appears only 
 independent cell sets are compared in world coordinates; boundary evolution reconciles those
 sets rather than forcing both plates onto one shared grid.
 
-![Conceptual oblique view of one plate's curved quadrilateral mesh, its independently tiled neighbor, boundary cells, and an inset showing one leaf split into four children.](../img/issue-514/plate-territory.svg)
-*The plate owns a set of finite surface cells in its own rotating frame. Neighboring plates
-carry independent lattices, so their seam is handled at the boundary. The model uses a sparse
-adaptive quadrilateral mesh. The inset shows the local 2 x 2 refinement of one leaf. This
-schematic shows only a portion of the curved cube-sphere lattice. It is not a simulation
-render.*
-
-![Conceptual oblique view of a plate lattice carrying elevation relief, with deep ocean, lowland, upland and peak colors.](../img/issue-514/plate-relief.svg)
-*Elevation and crustal columns travel with the same surface cells. Relief is exaggerated for
-clarity. Conceptual; not a simulation render.*
-
 - **Rotating a plate is exact.** Advancing `frame` by composing the incremental rotation
   from the plate's current Euler pole/rate ([Rodrigues'
   formula](https://en.wikipedia.org/wiki/Rodrigues%27_rotation_formula),
@@ -78,8 +97,11 @@ clarity. Conceptual; not a simulation render.*
   (see below) adds or removes whole cells at the plate's edge, which is where irregular
   shapes should show up.
 
-<a id="initial-plate-generation"></a>
 ## Initial plate generation (`plates.py`)
+
+World generation chooses a set of plate centers, divides the sphere into plate territories,
+and gives those territories starting crust and elevation. The seed makes the random choices
+repeatable: using the same seed and settings creates the same starting world.
 
 Total plate count isn't asked of the caller: `num_plates`, if not given, is drawn from the
 seed's own RNG stream (`plates.MIN_AUTO_PLATES = 8` to `plates.MAX_AUTO_PLATES = 20`), so the
@@ -102,7 +124,7 @@ land" sliders, both 0 to 1 (percent in the UI), defaulting to
 `DEFAULT_CONTINENTAL_FRACTION = 0.70` and `DEFAULT_LAND_FRACTION = 0.29`, plus a "point
 density" choice (`NODE_DENSITY_CHOICES = (0.5, 1.0, 2.0, 4.0)`, see below).
 
-- `continental_fraction`: on a [cratons-first](#cratons-first-layout) world, the
+- `continental_fraction`: on a [cratons-first](#cratons-first-layout-continent_layoutpy-plate_partitionpy) world, the
   continental share of the surface. Otherwise, when given, `round(continental_fraction * num_plates)` plates
   (`rng.choice`, without replacement) are made continental instead of the usual independent
   `CONTINENTAL_FRACTION = 0.4` coin flip per plate, and `num_plates` is bumped up if needed
@@ -179,8 +201,11 @@ are. 4x density comes with a real, continuous performance cost, not just a one-t
 generation cost -- several times slower per step -- which the UI surfaces as a short note when
 4x is selected.
 
-<a id="cratons-first-layout"></a>
 ### Cratons-first layout (`continent_layout.py`, `plate_partition.py`)
+
+This option starts by placing ancient continental cores, then builds plate boundaries and
+younger crust around them. A **craton** is a long-lived, strong part of a continent's deep
+foundation. The option is experimental and off by default.
 
 Behind a flag, a random world (no sketch, no premade world) is laid out cratons first instead
 ([RFC 0009](../../rfc/0009-craton-mosaic.md), #462). It is off by default
@@ -279,8 +304,11 @@ of straight for more than 400 km. Cold land above 2,500 m receives a 150 m initi
 leaving the rest of the relief available to later erosion. This generation-only initialization
 is implemented in `initial_terrain.py` (#477).
 
-<a id="synthetic-relief"></a>
 ### Relief from a synthetic tectonic history (`synthetic_relief.py`)
+
+A synthetic tectonic history gives the starting landscape traces of processes such as
+mountain building, rifting, and sediment filling. It is a generated starting pattern, not a
+step-by-step record of a world that the simulator has evolved.
 
 A cratons-first world can replace its noise-shaped continental relief with relief drawn from
 a synthetic tectonic history (#218). It is off by default
@@ -380,8 +408,11 @@ it to about Earth's value. Generation takes 25-50% longer. `bin/debug/measure_in
 reports these measures against Earth, optionally after stepping; the exploration and its
 probes are in #218 and [analysis/issue218](../../analysis/issue218/README.md).
 
-<a id="worldsketch"></a>
 ## Human-made worlds (sketch-driven generation) (`worldsketch.py`)
+
+The sketch tool lets a user draw the broad layout of continents, mountains, and rivers before
+the simulation begins. The model turns those strokes into starting terrain and then runs the
+same simulation rules used by random worlds.
 
 The Generate World dialog's "Human-made" tab (alongside the default "Random" tab, which is
 everything above unchanged) lets the user draw a coastline in-app (`SketchEditor.tsx`, a
@@ -430,13 +461,16 @@ replaces two independent pieces of the usual random generation:
   its land nodes; a painted river stroke carves a shallow, clipped-so-it-stays-on-land channel
   -- a hint for `hydrology.py`'s per-step flow routing to find once the world is stepped, not a
   persisted river (nothing about a river is a generation-time concept elsewhere in this
-  codebase either -- see [Hydrology](hydrology.md#hydrology)). `land_fraction` is ignored when a sketch is
+  codebase either -- see [Hydrology](hydrology.md#hydrology-rivers-and-lakes-hydrologypy)). `land_fraction` is ignored when a sketch is
   given (the drawing decides land extent directly); oceanic `hc_at` is untouched either way --
   sketch masks only ever bias continental crust, the same way `land_fraction` already only
   touches the continental formula.
 
-<a id="mantle-flow"></a>
 ## Mantle flow (`mantle.py`)
+
+The deep mantle is not simulated as a full fluid here. Instead, the model places broad rising
+and sinking flow regions beneath the plates. It samples those directions and estimates how
+each plate would rotate in response.
 
 A handful of upwelling/downwelling convection centers are placed via a **cubed-sphere
 mapping**: a point on a cube face `(u, v, +-1)`, normalized to the unit sphere
@@ -497,8 +531,10 @@ Two long-run corrections (2026-09):
   at its nearest node (`contact_jam_factor`), so both plates feel one resistance. The band
   runs through zero closing so a contact the brake has stalled stays braked.
 
-<a id="known-simplifications"></a>
 ## Known simplifications
+
+This list names major processes the model intentionally leaves out or represents with a
+shortcut. These limits help readers judge what the simulation can and cannot explain.
 
 Deliberate scoping decisions for v1 (elevation only), each an acceptable line to draw rather
 than an oversight:
@@ -509,11 +545,11 @@ than an oversight:
   [Plate motion: shift and deform](tectonics.md#boundary-evolution) and
   [docs/surface-parity.md](../surface-parity.md)'s C3 gate).
 - **Vegetation is a derived climate classification, not a persisted field.** Climate (see
-  [Climate](climate.md#climate)) feeds erosion, deposition, hydrology, and glaciation (see
-  [Erosion](surface-processes.md#erosion), [Hydrology](hydrology.md#hydrology), and [Glaciation](hydrology.md#glaciation):
+  [Climate](climate.md#climate-climatepy)) feeds erosion, deposition, hydrology, and glaciation (see
+  [Erosion](surface-processes.md#erosion-erosionpy), [Hydrology](hydrology.md#hydrology-rivers-and-lakes-hydrologypy), and [Glaciation](hydrology.md#glaciation-hydrologypy):
   rain/river/weathering/glacier erosion, downstream deposition, rivers, lakes, and glaciers,
   with glacier flattening as a mantle-bloom-original addition) and, since the moisture-
-  recycling addition (see [Climate](climate.md#climate)'s own "Moisture recycling" section), humidity's
+  recycling addition (see [Climate](climate.md#climate-climatepy)'s own "Moisture recycling" section), humidity's
   evapotranspiration term feeds back the other way too, sourced from `biomes.classify_biomes`.
   Vegetation still isn't a *persisted* per-node field anywhere, though (`biomes.py`'s
   classification, and climate.py's own transpiration weight derived from it, are both
@@ -522,6 +558,6 @@ than an oversight:
   warmth/moisture `productivity` proxy) remain out of scope, since neither has a persisted
   field to read like hydrology.py's `lake_depth`/`channel_depth`.
 - **No glacial eustatic sea-level coupling, no seasons.** Glaciation is purely local/per-node
-  here -- see [Glaciation](hydrology.md#glaciation).
+  here -- see [Glaciation](hydrology.md#glaciation-hydrologypy).
 - **Single in-memory world, no persistence.** See
   [World state](../architecture.md#world-state).
