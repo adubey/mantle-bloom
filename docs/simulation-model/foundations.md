@@ -334,17 +334,27 @@ continental-crust node:
 - **Submerged continental crust.** A shelf deepens from 20 m to 150 m over a noise-varied
   80-300 km (narrowed on leading edges), then drops up to 1.8 km more over 400 km toward
   marginal-plateau depth. Within 100 km of the oceanic contact it slopes to -3.2 km.
-- **Drainage.** `drain_land` then fills the large, low closed basins the land surface leaves
-  between the coastal rise, the regional noise and the belts: a basin of at least
-  `DRAIN_FILL_MIN_AREA_KM2` (80,000 km²) that spills below `DRAIN_KEEP_SPILL_M` (500 m) is
-  raised, by a priority flood from the sea over the hydrology graph's 8 nearest neighbours,
-  until every node in it has a strictly lower neighbour leading to the sea, climbing
-  `DRAIN_GRADIENT_M_PER_KM` (0.01 m/km) from where it drains. Higher basins (intermontane and
-  plateau basins) and smaller ones stay closed, and drain to their own floor; the river
-  bootstrap's breach and water balance decide whether they hold lakes or spill. Without it,
-  about twice Earth's land area lay in closed depressions, almost all in such basins; the
-  thresholds follow Earth's basin sizes and spill levels at node scale
-  (`bin/debug/measure_earth_depressions.py`).
+- **Drainage.** `drain_land` then fills most of the large, low closed basins the land
+  surface leaves between the coastal rise, the regional noise and the belts. A closed basin
+  is found by a priority flood from the world ocean (`hydrology.connected_ocean_mask`) over
+  the hydrology graph's 8 nearest neighbours, and its area sums the nodes' accounting areas.
+  - A basin of at least `DRAIN_FILL_MIN_AREA_KM2` (80,000 km²) that spills below
+    `DRAIN_KEEP_SPILL_M` (500 m) is raised until every node in it has a strictly lower
+    neighbour leading to the sea, climbing `DRAIN_GRADIENT_M_PER_KM` (0.01 m/km) from where
+    it drains.
+  - A seeded random set of those basins stays closed, like the Caspian, Aral, Chad or Eyre
+    basins: about `DRAIN_KEEP_LOW_SHARE` (1.7%) of land, within `DRAIN_KEEP_LOW_BAND`
+    (0.5-1.5 times that). A basin holding a submerged hole enclosed by land counts toward
+    it and always stays closed, since filling it would move the coastline.
+  - Higher basins (intermontane and plateau basins) and smaller ones stay closed and drain
+    to their own floor.
+
+  The river bootstrap's breach and water balance decide whether a closed basin holds a lake
+  or spills. The fill is sediment: the crust it adds over the undrained surface is booked as
+  `mobile_cover_m` (and its continental share), and a cratonic core's `craton_crust_m` stays
+  below it. Without this pass, about twice Earth's land area lay in closed depressions,
+  almost all in large low basins. The thresholds and the kept share follow Earth's basin
+  sizes and spill levels at node scale (`bin/debug/measure_earth_depressions.py`).
 
 All noise is `noise.IsotropicSphereNoise`, which sums 32 random-direction waves per octave.
 `SphereNoise`'s single wave per octave draws parallel stripes across a continent.
@@ -358,7 +368,8 @@ not changed:
 - The isostasy has no depleted, buoyant keel that would justify a thicker lid under shields.
 
 Cratonic cores stay within the craton host window, `cratons.CRATON_HOST_MIN_HC_M` to
-`CRATON_HOST_MAX_HC_M` (28-50 km), and `craton_crust_m` is reset to their new Hc. A core's
+`CRATON_HOST_MAX_HC_M` (28-50 km), and `craton_crust_m` is reset to their new Hc, less any
+basin fill on them. A core's
 crust doesn't flow, melt or delaminate, so a thicker core would keep an orogenic plateau for
 good. Young relief (young sutures, cordilleras, collision belts) starts with the
 `moho_thermal_lag_c` of crust just buried from the reference column (`orogeny.bury_moho`),
@@ -372,12 +383,12 @@ need thermal buoyancy the column model does not have: an 11 km oceanic column fl
 shallower than about -4.4 km at the 2 km Hm floor, so a -2.6 km ridge cannot be backed.
 Measured on seeds 447276134, 373936961, 910211954 and 374464662 at node density 4
 (`analysis/issue218/`):
-- land p50 is 368-513 m (Earth 423 m), and 5-8% of land is above 2 km (Earth 11%);
-- lowland relief at 100 km is 137-140 m (Earth 166-173 m at node scale); filling basins
+- land p50 is 365-513 m (Earth 423 m), and 5-8% of land is above 2 km (Earth 11%);
+- lowland relief at 100 km is 139-141 m (Earth 166-173 m at node scale); filling basins
   flattens their floors;
-- 8-12% of land lies in a closed depression deeper than 1 m and 3-4% deeper than 100 m
-  (Earth 10% and 4%), and lakes cover 1.4-1.7% of land (Earth ~2%);
-- 30-49% of unfrozen land drains to a closed basin rather than the sea (Earth ~19%
+- 9-14% of land lies in a closed depression deeper than 1 m and 3-5% deeper than 100 m
+  (Earth 10% and 4%), and lakes cover 1.4-1.9% of land (Earth ~2%);
+- 34-51% of unfrozen land drains to a closed basin rather than the sea (Earth ~19%
   endorheic), mostly in arid land: median land precipitation at t = 0 is 55-226 mm/yr.
 
 At the default `continental_fraction` (0.5 of the surface), a third of the ocean is shallower

@@ -495,30 +495,64 @@ def test_compute_hydrology_breaches_a_shallow_pit_instead_of_ponding_it(monkeypa
     assert not arid.breach_notch_m.any()
 
 
-def test_compute_hydrology_history_years_lets_a_zero_duration_pass_breach_and_fill(monkeypatch):
-    # The shallow wet pit above, in a zero-duration pass like generation's river bootstrap:
-    # with no time to carve or fill, the pit ends its river (#218). `history_years` gives the
-    # breach budget and basin filling a span of their own; the step itself stays zero-length.
-    monkeypatch.setattr(hydrology, "BREACH_DEPRESSIONS_ENABLED", True)
-    d = 0.05
-    theta = d * np.arange(40)
+def _plateau_pit_run(precipitation_mm: float, temperature_c: float, years: float = 0.0, **kw):
+    """The 20 m pit on a 100 m plateau above, by default in a zero-duration pass like
+    generation's river bootstrap (#218), with `kw` passed on to compute_hydrology."""
+    theta = 0.05 * np.arange(40)
     elevation = np.full(40, 100.0)
     elevation[0:15] = -100.0
     elevation[28:31] = 80.0
+    world = World(seed=0, plates=[_flow_line_plate(0, theta, elevation)])
+    return hydrology.compute_hydrology(world, np.full(40, precipitation_mm), np.full(40, temperature_c), years=years, **kw)
 
-    def run(**kw):
-        world = World(seed=0, plates=[_flow_line_plate(0, theta, elevation)])
-        return hydrology.compute_hydrology(world, np.full(40, 2000.0), np.full(40, 10.0), years=0.0, **kw)
 
-    instant = run()
+def _reaches_ocean(fields, node: int) -> bool:
+    for _ in range(len(fields.flow_target)):
+        if fields.is_ocean[node]:
+            return True
+        if fields.flow_target[node] < 0:
+            return False
+        node = int(fields.flow_target[node])
+    return False
+
+
+def test_compute_hydrology_history_years_gives_a_zero_duration_pass_a_breach_budget(monkeypatch):
+    # With no time to carve, the wet pit ends its river; `history_years` gives the breach
+    # budget a span of its own.
+    monkeypatch.setattr(hydrology, "BREACH_DEPRESSIONS_ENABLED", True)
+    instant = _plateau_pit_run(2000.0, 10.0)
     assert not instant.breach_notch_m.any()
-    assert (instant.flow_target[28:31] < 0).any()
+    assert not _reaches_ocean(instant, 29)
 
-    history = run(history_years=100_000)
+    history = _plateau_pit_run(2000.0, 10.0, history_years=100_000)
     assert history.breach_notch_m.max() == pytest.approx(20.0)
     assert history.lake_depth[28:31].max() == 0.0
-    # Ice still grows over the zero-length step only.
+    assert _reaches_ocean(history, 29)
+
+
+def test_compute_hydrology_history_years_lets_a_zero_duration_pass_fill_a_basin(monkeypatch):
+    # With breaching off, the wet pit can only drain by filling to its rim and spilling
+    # (`_spill_within_step`), which needs time to fill.
+    monkeypatch.setattr(hydrology, "BREACH_DEPRESSIONS_ENABLED", False)
+    instant = _plateau_pit_run(2000.0, 10.0)
+    assert not _reaches_ocean(instant, 29)
+
+    history = _plateau_pit_run(2000.0, 10.0, history_years=100_000)
+    assert _reaches_ocean(history, 29)
+    assert history.discharge_m3_s[29] > 0.0
+
+
+def test_compute_hydrology_history_years_leaves_ice_on_the_zero_length_step(monkeypatch):
+    # Cold and snowy: snow and frozen rivers make ice over the step's own `years` only, so a
+    # zero-duration pass grows none, whatever span basins get to fill.
+    monkeypatch.setattr(hydrology, "BREACH_DEPRESSIONS_ENABLED", True)
+    instant = _plateau_pit_run(1000.0, -10.0)
+    history = _plateau_pit_run(1000.0, -10.0, history_years=1_000_000)
     np.testing.assert_array_equal(history.glacier_depth, instant.glacier_depth)
+    assert not history.glacier_depth.any()
+    # Over a real step the same climate does grow ice, so the check above has teeth.
+    stepped = _plateau_pit_run(1000.0, -10.0, years=100_000)
+    assert stepped.glacier_depth.any()
 
 
 def test_compute_hydrology_populates_is_sea_once_a_basin_stays_flooded():

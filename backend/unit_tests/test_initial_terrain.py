@@ -61,7 +61,6 @@ def test_lowland_spherical_relief_is_seed_stable_bounded_and_only_changes_lowlan
     assert np.max(np.abs(changed[:6] - before[:6])) <= initial_terrain.LOWLAND_RELIEF_AMPLITUDE_M
 
 
-
 def test_river_bootstrap_cuts_through_a_wet_pit_and_keeps_the_notch(monkeypatch):
     # The zero-duration bootstrap had no time to carve or fill, so every pit ended a river and
     # most generated land drained to closed sinks (#218). With the drainage history it breaches

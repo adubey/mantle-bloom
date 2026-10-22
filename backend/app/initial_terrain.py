@@ -14,7 +14,7 @@ from . import geometry, lithosphere, noise, rheology, torque
 from .elevation_lines import effective_is_continental_from_codes, line_spacing_rad
 from .hydroclimate import biomes, climate, hydrology
 from .plates import PLANET_RADIUS_KM, collect_all_elevation, gather_node_positions
-from .hydroclimate.erosion import climate_grid_indices
+from .hydroclimate.erosion import MAX_CHANNEL_DEPTH_M, climate_grid_indices
 
 if TYPE_CHECKING:
     from .world import World
@@ -365,7 +365,7 @@ def initialize_river_channels(world: "World") -> None:
     per_node = {
         "glacier_depth": fields.glacier_depth,
         "lake_depth": fields.lake_depth,
-        "breach_notch_depth_m": np.where(fields.is_ocean, 0.0, notch),
+        "breach_notch_depth_m": np.where(fields.is_ocean, 0.0, np.clip(notch, 0.0, MAX_CHANNEL_DEPTH_M)),
     }
     eligible = fields.is_river
     if np.any(eligible):

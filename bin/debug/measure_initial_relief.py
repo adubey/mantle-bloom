@@ -40,7 +40,7 @@ import time
 from pathlib import Path
 
 import numpy as np
-from scipy.sparse import coo_matrix
+from scipy.sparse import coo_matrix, csr_matrix
 from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
@@ -157,17 +157,22 @@ def _drainage(world, land: np.ndarray) -> dict:
     frozen_end = climate.air_temperature_c[rows, cols][end] < 0.0
     closed = land & ~fields.is_ocean[end]
     # Priority flood from the world ocean over the hydrology graph: the level water must rise
-    # to before it can reach the sea.
+    # to before it can reach the sea. Water reaches node i from each node j listing i among
+    # its neighbours, so the flood walks those edges in reverse.
+    n = len(land)
+    k = fields.neighbor_idx.shape[1]
+    upstream = csr_matrix((np.ones(n * k), (fields.neighbor_idx.ravel(), np.repeat(np.arange(n), k))), shape=(n, n))
+    upstream.sort_indices()
+    indptr, indices = upstream.indptr.tolist(), upstream.indices.tolist()
     elevation = fields.elevation.tolist()
     filled = np.where(fields.is_ocean, fields.elevation, np.inf).tolist()
     heap = [(filled[i], int(i)) for i in np.flatnonzero(fields.is_ocean)]
     heapq.heapify(heap)
-    neighbours = fields.neighbor_idx.tolist()
     while heap:
         level, i = heapq.heappop(heap)
         if level > filled[i]:
             continue
-        for j in neighbours[i]:
+        for j in indices[indptr[i] : indptr[i + 1]]:
             rise = max(level, elevation[j])
             if rise < filled[j]:
                 filled[j] = rise
