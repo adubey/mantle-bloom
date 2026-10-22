@@ -405,7 +405,9 @@ geometry.py       unit-vector <-> lat/lon conversion, Rodrigues-formula rotation
 ellipse.py         minimum-volume enclosing ellipse (Khachiyan's algorithm), sphere-agnostic
                    pure 2D math -- see simulation-model/rendering-and-inspectors.md#plate-inspector
 projections.py     Behrmann and Eckert IV map projections, vectorized
-noise.py           cheap smooth sphere noise (sum of sinusoids) for initial terrain texture
+noise.py           cheap smooth sphere noise for initial terrain texture: SphereNoise (one
+                   sinusoid per octave) and IsotropicSphereNoise (many random-direction waves
+                   per octave, no preferred direction)
 elevation_lines.py  terrain-node constants and codes (planet radius, node density/spacing --
                     TARGET_LINE_SPACING_RAD, line_spacing_rad -- elevation-change and crust-type
                     codes) and the plate-local lattice sweep; the name predates #251, which
@@ -438,6 +440,9 @@ initial_terrain.py   cratons-first generation uses read-only first-step torque p
                      narrow, offset, rotated relief on straight land-land collision sections,
                      then seeds cold-range ice and curved river channels from one initial
                      climate/hydrology routing pass
+synthetic_relief.py  optional cratons-first relief from a synthetic tectonic history (#218):
+                     sutures between cratons, leading-edge cordilleras, coastlines from the
+                     continental-crust edge, interior terrain types, all backed by Hc
 torque.py            slab-pull/ridge-push torque integration and read-only plate-motion
                      prediction (`predict_plate_motion`) shared by generation and `shift()`
 quad_tectonics.py  the tectonic engine, `deform()`: boundary retreat and advance on the cell

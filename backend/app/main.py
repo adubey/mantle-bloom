@@ -149,6 +149,9 @@ class GenerateRequest(BaseModel):
     # The Random tab's optional craton-first terrain/plate layout (RFC 0009). None keeps
     # the configured default; sketches and premade worlds ignore this mode.
     cratons_first: bool | None = None
+    # With cratons_first, relief from a synthetic tectonic history (#218, synthetic_relief.py).
+    # None keeps the configured default; ignored when the cratons-first layout doesn't apply.
+    synthetic_relief: bool | None = None
     # Optional: the world tiles itself into a plausible plate count when omitted (see
     # plates.generate_plates) -- the frontend doesn't ask for one.
     num_plates: int | None = None
@@ -721,6 +724,7 @@ def generate(req: GenerateRequest) -> StreamingResponse:
         progress = generate_world_progress(
             req.seed,
             cratons_first=req.cratons_first,
+            synthetic_relief=req.synthetic_relief,
             num_plates=req.num_plates,
             voronoi_points=req.voronoi_points,
             continental_fraction=req.continental_fraction,
