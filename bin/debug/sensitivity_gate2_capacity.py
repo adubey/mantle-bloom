@@ -44,10 +44,11 @@ DZ_M = 125.0
 REFERENCE = Scenario(
     base_temperature_c=orogeny.LITHOSPHERE_BASE_TEMPERATURE_C,
     strain_rate_s=1e-15,
-    pore_pressure_ratio=0.42,
+    pore_pressure_ratio=0.0,
+    pore_pressure_mode="hydrostatic_water",
     k0=0.8,
     cohesion_pa=20e6,
-    friction_angle_deg=30.0,
+    friction_angle_deg=math.degrees(math.atan(0.6)),
     lower_crust_law="plagioclase_an75",
     mantle_law="dry_olivine",
 )
@@ -66,11 +67,12 @@ def _variants() -> list[dict[str, Any]]:
         {"name": "base_temperature_1400_c", "scenario": dataclasses.replace(REFERENCE, base_temperature_c=1400.0), "thermal_mode": "steady"},
         {"name": "strain_rate_1e-16_s", "scenario": dataclasses.replace(REFERENCE, strain_rate_s=1e-16), "thermal_mode": "steady"},
         {"name": "strain_rate_1e-14_s", "scenario": dataclasses.replace(REFERENCE, strain_rate_s=1e-14), "thermal_mode": "steady"},
-        {"name": "zero_pore_pressure_ratio", "scenario": dataclasses.replace(REFERENCE, pore_pressure_ratio=0.0), "thermal_mode": "steady"},
+        {"name": "dry_zero_pore_pressure", "scenario": dataclasses.replace(REFERENCE, pore_pressure_mode="fixed_lithostatic_ratio", pore_pressure_ratio=0.0), "thermal_mode": "steady"},
+        {"name": "fixed_lithostatic_ratio_0_42", "scenario": dataclasses.replace(REFERENCE, pore_pressure_mode="fixed_lithostatic_ratio", pore_pressure_ratio=0.42), "thermal_mode": "steady"},
         {"name": "k0_0_6", "scenario": dataclasses.replace(REFERENCE, k0=0.6), "thermal_mode": "steady"},
         {"name": "k0_1_0", "scenario": dataclasses.replace(REFERENCE, k0=1.0), "thermal_mode": "steady"},
         {"name": "cohesion_1_mpa", "scenario": dataclasses.replace(REFERENCE, cohesion_pa=1e6), "thermal_mode": "steady"},
-        {"name": "friction_atan_0_6", "scenario": dataclasses.replace(REFERENCE, friction_angle_deg=math.degrees(math.atan(0.6))), "thermal_mode": "steady"},
+        {"name": "friction_atan_0_85", "scenario": dataclasses.replace(REFERENCE, friction_angle_deg=math.degrees(math.atan(0.85))), "thermal_mode": "steady"},
         {"name": "mafic_granulite_lower_crust", "scenario": dataclasses.replace(REFERENCE, lower_crust_law="mafic_granulite"), "thermal_mode": "steady"},
         {"name": "wet_olivine_mantle", "scenario": dataclasses.replace(REFERENCE, mantle_law="wet_olivine"), "thermal_mode": "steady"},
     ]
@@ -308,6 +310,7 @@ def run(sample_paths: list[Path], report_paths: list[Path], reference_paths: lis
             "limitations": [
                 "OAT isolates first-order sensitivity and does not estimate interactions among assumptions.",
                 "The stored Moho-lag interpolation is a diagnostic profile assumption, not a transient thermal solution.",
+            "Hydrostatic pore pressure assumes connected freshwater at 1000 kg/m3; fixed lithostatic fractions are comparison scenarios, not equivalent hydrostatic profiles.",
                 "Young-ridge classification remains the active-divergence proxy; the simulation has no oceanic crust-age field.",
                 "Threshold exceedance is a screening comparison and not a rupture probability or a calibrated yield label.",
             ],

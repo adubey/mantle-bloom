@@ -156,7 +156,7 @@ disconnected-source events are counted and reported separately, but excluded fro
 denominator because this isolated shell solve cannot represent their disconnected material domains.
 This scope does not imply that connected events represent all events, and their capacity scores must
 not be generalized to disconnected-source events. A conditional scale audit now brackets a
-100 km mobile/rift-like column at 5.91 TN/m and a 150 km thick-craton scenario at 19.02 TN/m,
+100 km mobile/rift-like column at 6.28 TN/m and a 150 km thick-craton scenario at 20.86 TN/m,
 with wide constitutive sensitivity ranges; only the 100 km value has a regional strength-scale
 comparison. These are reference columns used to set scale, not a selected or calibrated spatial
 field. Gate 2 remains open
@@ -205,35 +205,39 @@ should start until those gates are resolved and the revised design is accepted.
    details and caveats are recorded in
    [`analysis/issue487/gate2-load-diagnosis.md`](../analysis/issue487/gate2-load-diagnosis.md).
    A scale-calibration audit evaluates the full 1,728-case constitutive grid at 70, 90, 100, 135
-   and 150 km total thickness, holding the existing 35 km continental crust fixed. With the
-   explicitly provisional `K0=0.8`, hydrostatic pore-pressure and reference rheology, the 100 km
-   column gives 5.91 TN/m; its factorial median is 4.43 TN/m (p10–p90: 1.37–11.46). This is
-   consistent in scale with the 3–8 TN/m integrated strength Stamps et al. report for a regional
-   100 km East African Rift lithosphere, but the definitions and spatial averaging differ
-   [[Stamps et al., 2014]](#ref-stamps2014). A 150 km Tanzania/Congo craton thickness is used in
-   one regional geodynamic model, motivating a distinct strong-column scenario, not a strength
-   observation [[Rajaonarison et al., 2021]](#ref-rajaonarison2021). A separate rifting model's
-   22 TN/m isotropic peak is a driving force, not capacity, and is not fitted
-   [[Duretz et al., 2025]](#ref-duretz2025). Full results, assumptions and reproducibility are in
-   [`analysis/issue487/gate2-capacity-calibration.md`](../analysis/issue487/gate2-capacity-calibration.md).
+   and 150 km total thickness, holding the existing 35 km continental crust fixed. The reference
+   uses `K0=0.8`, freshwater hydrostatic pressure `P_f=rho_water*g*z`, friction coefficient
+   `mu=0.6` (`phi=atan(mu)`), and the model's 1330 C base temperature. The 100 km column gives
+   6.28 TN/m; the factorial median is 4.88 TN/m (p10-p90: 1.49-12.07). This falls within the
+   3-8 TN/m integrated strength Stamps et al. report for a regional 100 km East African Rift
+   lithosphere, but definitions and spatial averaging differ [[Stamps et al., 2014]](#ref-stamps2014).
+   This is an order-of-magnitude check, not a fitted target. Hydrostatic pressure is computed from
+   water density and depth; the former fixed ratio `P_f/P_lith=0.42` is now clearly treated as an
+   overpressure comparison. Friction is bracketed by `mu=0.6-0.85`, based on Byerlee's rock-friction
+   experiments [[Byerlee, 1978]](#ref-byerlee1978). K0, cohesion, temperature, strain rate and
+   water/rheology state remain assumptions because the world has no corresponding local fields.
+   The pressure-profile, Mohr-Coulomb, and dry/wet creep-inversion formulas pass six analytical unit checks. The shell-load
+   transfer has separate manufactured-solution checks documented in
+   [`analysis/issue487/gate2-load-diagnosis.md`](../analysis/issue487/gate2-load-diagnosis.md).
+   A 150 km Tanzania/Congo craton thickness is used in one regional geodynamic model, motivating a
+   distinct strong-column scenario, not a strength observation [[Rajaonarison et al., 2021]](#ref-rajaonarison2021).
+   A separate rifting model's 22 TN/m isotropic peak is a driving force, not capacity, and is not
+   fitted [[Duretz et al., 2025]](#ref-duretz2025). Full results, assumptions and reproducibility are
+   in [`analysis/issue487/gate2-capacity-calibration.md`](../analysis/issue487/gate2-capacity-calibration.md).
    The old-algorithm replay candidates are not rupture/no-rupture labels, so their load distribution
    is not used to fit strength. Replay nodes carry local `Hc`, `Hm`, crust type, craton share, belt
    history and Moho thermal lag, which now feed the matched spatial screen. The world still lacks
-   depth-resolved temperature, composition, pore pressure, water, strain-rate and fabric state. This
-   is conditional scale calibration, not production calibration. The mapped replay
-   reports 1,746/22,896 nodes over capacity for the steady profile and 1,738/22,896 under the
-   interpolated Moho-lag assumption. These are screening comparisons, not rupture labels. Full
-   results and field limitations are in `analysis/issue487/gate2-spatial-capacity-replay.json` and
+   depth-resolved temperature, composition, pore pressure, water, strain-rate and fabric state.
+   This is conditional scale calibration, not production calibration. On the same fixed 22,896 node
+   loads, the hydrostatic reference gives 1,563 nodes (6.83%) above capacity, compared with 1,718
+   (7.50%) using fixed `P_f/P_lith=0.42`. Those are scenario screens, not rupture labels.
+   Across the finite one-factor envelope, 795 nodes (3.47%) exceed capacity in every tested variant
+   and 2,701 (11.80%) in at least one; node rank correlation remains at least 0.9936. The `K0`
+   range 0.6-1.0 moves the fraction from 11.23% to 3.47%; wet olivine yields 9.74%. These bounds
+   omit interactions and do not identify a production threshold. Full results and field limitations
+   are in `analysis/issue487/gate2-capacity-sensitivity.md`,
+   `analysis/issue487/gate2-capacity-sensitivity.json` and
    `analysis/issue487/gate2-capacity-state-audit.md`.
-   A one-factor-at-a-time sensitivity sweep on the same 22,896 node loads finds the over-capacity
-   fraction ranges from 4.44% (`K0=1.0`) to 12.47% (`K0=0.6`); wet olivine gives 10.69%, while
-   setting pore-pressure ratio to zero gives 4.90%. Node rank correlation remains at least 0.9938,
-   but 4.41% of nodes exceed capacity in every tested one-factor scenario and 13.17% in at least
-   one. Those bounds exclude parameter interactions and do not identify a calibrated field.
-   `K0`, mantle water and pore pressure remain unobserved locally, so the capacity comparison still
-   cannot choose a production threshold. See
-   `analysis/issue487/gate2-capacity-sensitivity.md` and
-   `analysis/issue487/gate2-capacity-sensitivity.json`.
    The elastic thickness and
    modulus, boundary conditions, default convex-hull mesh and rigid-mode removal are documented
    diagnostic assumptions, not calibrated production behavior. Explicit mesh connectivity now

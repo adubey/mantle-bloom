@@ -18,21 +18,25 @@ probability distribution.
 
 | Total lithosphere | Scenario anchor | Factorial p10 / median / p90 | Grid fraction in published EARS 3–8 TN/m range |
 |---:|---:|---:|---:|
-| 70 km | 0.89 TN/m | 0.30 / 0.77 / 2.32 TN/m | 4.6% |
-| 90 km | 3.92 TN/m | 0.74 / 2.63 / 7.88 TN/m | 35.9% |
-| 100 km | **5.91 TN/m** | **1.37 / 4.43 / 11.46 TN/m** | **46.3%** |
-| 135 km (current reference thickness) | 14.52 TN/m | 5.45 / 12.70 / 27.55 TN/m | 24.1% |
-| 150 km | **19.02 TN/m** | **7.49 / 17.16 / 36.17 TN/m** | 12.2% |
+| 70 km | 0.91 TN/m | 0.32 / 0.82 / 2.41 TN/m | 5.0% |
+| 90 km | 4.09 TN/m | 0.81 / 2.88 / 8.07 TN/m | 37.8% |
+| 100 km | **6.28 TN/m** | **1.49 / 4.88 / 12.07 TN/m** | **46.4%** |
+| 135 km (current reference thickness) | 15.82 TN/m | 6.17 / 13.98 / 29.62 TN/m | 19.0% |
+| 150 km | **20.86 TN/m** | **8.62 / 18.95 / 38.89 TN/m** | 8.0% |
 
-The anchor uses `K0=0.8`, hydrostatic pore pressure ratio 0.42, 1330°C lithosphere-base
-temperature, strain rate `1e-15 s-1`, 20 MPa cohesion, 30° friction, plagioclase lower crust
-and dry olivine mantle. These are explicit scenario choices; only the thickness cases and
-external comparison scale are literature-motivated. The 100 km reference column's 5.91 TN/m
-falls within Stamps et al.'s 3–8 TN/m integrated strength range for the East African Rift's
-100 km lithosphere. This is a useful order-of-magnitude check, not a formal equivalence:
+The anchor uses `K0=0.8`, a depth-varying freshwater hydrostatic pressure `P_f=1000 kg/m3 * g * z`,
+1330°C lithosphere-base temperature, strain rate `1e-15 s-1`, 20 MPa cohesion, friction coefficient
+`mu=0.6` (`phi=atan(mu)`), plagioclase lower crust and dry olivine mantle. The friction coefficient
+is the lower end of Byerlee's measured rock-friction range; the upper 0.85 endpoint is included in
+the scenario grid. Hydrostatic pore pressure follows the water-column pressure law; unlike the
+previous fixed 0.42 fraction, its ratio to lithostatic stress varies with depth and is lower than
+0.42 for rock densities used here. K0, cohesion, temperature, strain rate and rheology remain
+explicit modeling assumptions. Only the thickness cases and external comparison scale are
+literature-motivated. The 100 km reference column's 6.28 TN/m falls within Stamps et al.'s 3–8 TN/m
+integrated strength range for the East African Rift's 100 km lithosphere. This is a useful order-of-magnitude check, not a formal equivalence:
 Stamps et al. use regional rheology and stress averaging, while this diagnostic measures
 additional normal-fault differential capacity from an assumed `K0` state. The factorial median
-also falls inside that range, but only 46.3% of the designed grid does. That spread shows the
+also falls inside that range, but only 46.4% of the designed grid does. That spread shows the
 benchmark does not identify temperature, fluids, rheology, strain rate or `K0` individually.
 
 The 150 km column is a stronger-craton *scenario*, not a calibrated craton value. A 150 km
@@ -49,7 +53,7 @@ The young-oceanic comparison remains uncalibrated because active divergence is o
 oceanic crust age; `divergent_age_myr` is a boundary-activity clock, not seafloor age. The young
 proxy stratum is small (537 cut-band samples).
 
-Anchor capacity changed by at most 1.21% when the integration step doubled from 0.125 to
+Anchor capacity changed by at most 1.19% when the integration step doubled from 0.125 to
 0.25 km across the tested thicknesses. The 70 km case has the largest depth-grid difference;
 the 100 and 150 km anchors differ by 0.43% and 0.12% respectively.
 
@@ -57,12 +61,12 @@ the 100 and 150 km anchors differ by 0.43% and 0.12% respectively.
 
 Use these as conditional reference anchors for future sensitivity and replay work:
 
-- **Mobile/rift-like continental column:** 100 km total thickness, 5.91 TN/m anchor, and
-  1.37–11.46 TN/m p10–p90 scenario bracket.
-- **Thick cratonic column:** 150 km total thickness, 19.02 TN/m anchor, and
-  7.49–36.17 TN/m p10–p90 scenario bracket. The numeric value is a modeled scenario, not an
+- **Mobile/rift-like continental column:** 100 km total thickness, 6.28 TN/m anchor, and
+  1.49–12.07 TN/m p10–p90 scenario bracket.
+- **Thick cratonic column:** 150 km total thickness, 20.86 TN/m anchor, and
+  8.62–38.89 TN/m p10–p90 scenario bracket. The numeric value is a modeled scenario, not an
   externally calibrated target.
-- **Thin rift column:** 70–90 km totals give anchors of 0.89–3.92 TN/m; retain these as a
+- **Thin rift column:** 70–90 km totals give anchors of 0.91–4.09 TN/m; retain these as a
   separate sensitivity range rather than forcing one rift-wide threshold.
 
 These choices establish a defensible scale range for continued diagnosis. They do **not**
@@ -85,6 +89,8 @@ backend/.venv/bin/python bin/debug/calibrate_gate2_capacity.py \\
 
 Scale references:
 
+- Byerlee (1978), laboratory friction of rocks, supporting the `mu=0.6-0.85` friction bracket:
+  [USGS publication record](https://pubs.usgs.gov/publication/70012542).
 - Stamps et al. (2014), East African Rift integrated strength and tectonic stress estimates:
   [Journal of Geophysical Research: Solid Earth](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1002/2013JB010717).
 - Rajaonarison et al. (2021), regional lithosphere thicknesses used for East African rift and

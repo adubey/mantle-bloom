@@ -41,21 +41,23 @@ The `Plate.age_years` value is plate-wide and also does not provide the age of e
 ## What the replay artifact can support
 
 The matched replay covered all 74 source-connected candidates (23/23, 26/26 and 25/25 by seed),
-with 56 genuinely disconnected-source candidates excluded from the solver. The 74 accepted cut
-bands contain 22,896 node samples. In the reference scenario, steady conductive columns put 1,746
-samples (7.63%) above their local capacity; the interpolated Moho-lag profile puts 1,738 samples
-(7.59%) above capacity. The median across event-level median `N_ext/N_cap` values is 0.116; the
-median across event-level p95 ratios is 0.669. These are conditional diagnostic comparisons, not
+with 56 genuinely disconnected-source candidates excluded from the solver. The 74 accepted cut bands contain 22,896 node samples. The first spatial summary used fixed `P_f/P_lith=0.42` and `phi=30 deg`; it is superseded by the
+corrected hydrostatic-water and Byerlee-friction reference in `gate2-capacity-sensitivity.json`.
+That re-score places 1,563 nodes (6.83%) above capacity under the hydrostatic profile, and 1,558
+(6.80%) with interpolated Moho lag. The pooled node `N_ext/N_cap` ratio has median 0.111 and p95
+1.248. These are conditional diagnostic comparisons, not
 rupture rates or calibration labels.
 
-| Seed | Connected candidates solved | Band nodes | Steady-profile over-capacity | Median event capacity (TN/m) | Median event median `N_ext/N_cap` |
-|---:|---:|---:|---:|---:|---:|
-| 7 | 23/23 | 5,942 | 210 (3.53%) | 5.53 | 0.148 |
-| 11 | 26/26 | 9,713 | 1,153 (11.87%) | 11.79 | 0.162 |
-| 2024 | 25/25 | 7,241 | 383 (5.29%) | 14.28 | 0.050 |
+| Seed | Connected candidates solved | Band nodes | Over capacity | Median node capacity (TN/m) | Median node `N_ext/N_cap` | p95 node `N_ext/N_cap` |
+|---:|---:|---:|---:|---:|---:|---:|
+| 7 | 23/23 | 5,942 | 189 (3.18%) | 4.65 | 0.116 | 0.750 |
+| 11 | 26/26 | 9,713 | 1,038 (10.69%) | 11.89 | 0.146 | 1.503 |
+| 2024 | 25/25 | 7,241 | 336 (4.64%) | 15.64 | 0.058 | 0.956 |
 
 The thermal sensitivity is small for this replay because stored Moho lag is generally near zero;
-it changes the pooled over-capacity count by eight nodes. This does not make the capacity field
+it changes the pooled over-capacity count by five nodes under the corrected reference. The table is
+node-weighted and uses the updated hydrostatic-reference re-score; see the sensitivity report for
+all scenarios and source hashes. This does not make the capacity field
 well constrained: the local profile still uses one assumed `K0`, pore-pressure ratio, strain rate,
 cohesion, friction angle and representative creep laws. The young-oceanic class remains an active-
 divergence proxy, not an ocean-age model. The prior split/failed-rift outcome is not used to fit

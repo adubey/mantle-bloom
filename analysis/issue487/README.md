@@ -87,9 +87,8 @@ The standalone [`diagnose_gate2_column_envelope.py`](../../bin/debug/diagnose_ga
 implements an illustrative depth-integrated normal-faulting strength envelope. Its input
 assumptions, material-law sources, reference profiles, full scenario grid, and numerical
 resolution comparison are documented in [`gate2-load-diagnosis.md`](gate2-load-diagnosis.md)
-and [`gate2-column-envelope.json`](gate2-column-envelope.json). At 0.125 km depth spacing,
-reference capacities are 23.79 TN/m (continental), 0.489 TN/m (young-ridge oceanic), and
-5.50 TN/m (mature oceanic). These are screening values, not calibrated predictions; integrated
+and [`gate2-column-envelope.json`](gate2-column-envelope.json). At 0.125 km depth spacing, the hydrostatic-water, `K0=1`, `mu=0.6` reference capacities are
+25.91 TN/m (continental), 0.516 TN/m (young-ridge oceanic), and 6.20 TN/m (mature oceanic). These are screening values, not calibrated predictions; integrated
 capacity is sensitive to background horizontal stress, pore pressure, mantle water state, and
 temperature profile.
 
@@ -239,10 +238,10 @@ PYTHONHASHSEED=0 PYTHONPATH=backend backend/.venv/bin/python \
 
 A repeatable scale audit now checks the physical column envelope at 70, 90, 100, 135 and
 150 km total continental lithosphere thickness, with the current 35 km crust held fixed. Its
-provisional `K0=0.8` anchor gives 5.91 TN/m at 100 km, within the 3–8 TN/m regional EARS
-integrated-strength estimate; the 100 km full factorial grid has median 4.43 TN/m and p10–p90
-1.37–11.46 TN/m. A 150 km thick-craton scenario gives 19.02 TN/m, but the cited thickness model
-is not a capacity observation. The matched replay loads are not rupture labels and were not used
+provisional `K0=0.8`, hydrostatic-water, `mu=0.6` anchor gives 6.28 TN/m at 100 km, within the
+3–8 TN/m regional EARS integrated-strength estimate; the 100 km full factorial grid has median
+4.88 TN/m and p10–p90 1.49–12.07 TN/m. A 150 km thick-craton scenario gives 20.86 TN/m, but the
+cited thickness model is not a capacity observation. The matched replay loads are not rupture labels and were not used
 to fit parameters. This calibrates a conditional scale bracket, not a production strength law.
 See [`gate2-capacity-calibration.md`](gate2-capacity-calibration.md) and
 [`gate2-capacity-calibration.json`](gate2-capacity-calibration.json).
@@ -256,8 +255,8 @@ candidates solve successfully; 56 disconnected-source candidates remain excluded
 capacity map uses each node's actual Hc/Hm and crust-type proxy, and compares steady conductive and
 linearly interpolated Moho-lag profiles. It adds strata for craton share and inherited-belt marker.
 
-Across 22,896 accepted cut-band nodes, 1,746 (7.63%) exceed local capacity in the steady-profile
-reference; 1,738 (7.59%) do so with the Moho-lag interpolation. Median event-level median
+The prior mapped summary used the fixed `P_f/P_lith=0.42`, `phi=30 deg` scenario and is superseded
+by the corrected hydrostatic-reference sensitivity re-score below. Median event-level median
 `N_ext/N_cap` is 0.116; median event-level p95 ratio is 0.669. These are scenario-screening
 statistics, not observed rupture rates or a fit to split/failed-rift outcomes. Local capacity
 remains conditional on assumed thermal/rheology/stress state, so this step does not close Gate 2.
@@ -265,22 +264,29 @@ See [`gate2-capacity-state-audit.md`](gate2-capacity-state-audit.md) and the com
 [`gate2-spatial-capacity-replay.json`](gate2-spatial-capacity-replay.json); full event reports are
 in `/private/tmp`.
 
-### Capacity assumption sensitivity (2026-10-22)
+### Capacity assumption sensitivity and validation (2026-10-21)
 
 The prior replay retained event summaries, not per-node load/state, so the matched Gate 1 events
 were captured again with capacity scoring disabled. Cut totals, ordered candidate identities, and
-all 74 connected-source solves match the accepted baseline. A 13-case one-factor-at-a-time
+all 74 connected-source solves match the accepted baseline. A 14-case one-factor-at-a-time
 post-processing sweep then held the exact 22,896 node loads fixed while varying the documented
 temperature, strain-rate, pore-pressure, `K0`, cohesion, friction and rheology endpoints; the
-stored Moho-lag profile was compared separately at the reference scenario.
+stored Moho-lag profile was compared separately at the reference scenario. The reference now uses
+`P_f=rho_water*g*z`; fixed `P_f/P_lith=0.42` is separately labeled as an overpressure scenario.
+Four analytical unit tests verify pressure and Mohr–Coulomb calculations; two more verify inversion
+of the dry/wet creep laws.
 
-The reference exceedance fraction is 7.63%. The largest individual shift is `K0`: 4.44% of nodes
-exceed capacity at `K0=1.0`, versus 12.47% at `K0=0.6`. Wet olivine gives 10.69%, and zero pore-
-pressure ratio gives 4.90%. Relative node ranking stays highly correlated with the reference
-(Spearman at least 0.9938), while 1,009 nodes (4.41%) exceed capacity across all tested one-factor
-scenarios and 3,016 (13.17%) do so in at least one. This is not a joint uncertainty interval.
+The hydrostatic reference exceedance fraction is 6.83%; the fixed 0.42 lithostatic-ratio case gives
+7.50%. The largest tested effect remains `K0`: 3.47% of nodes exceed capacity at `K0=1.0`, versus
+11.23% at `K0=0.6`. Wet olivine gives 9.74%, while dry zero pore pressure gives 4.72%. Relative
+node ranking stays highly correlated (Spearman at least 0.9936), while 795 nodes (3.47%) exceed
+capacity across every tested one-factor scenario and 2,701 (11.80%) in at least one. This is not a
+joint uncertainty interval.
 
-This identifies the unobserved stress and fluid assumptions as the main capacity sensitivities;
+The load model passes its analytic manufactured-solution checks, while the column equations and
+creep-law inversion pass six analytical tests. The fixed-load re-score confirms that the changed
+pore-pressure assumption modestly shifts classification. This identifies the unobserved stress and
+fluid assumptions as the main capacity sensitivities;
 it does not select them or close Gate 2. Full assumptions, per-seed/stratum results and hashes are
 in [`gate2-capacity-sensitivity.md`](gate2-capacity-sensitivity.md) and
 [`gate2-capacity-sensitivity.json`](gate2-capacity-sensitivity.json). Exact captured per-node loads

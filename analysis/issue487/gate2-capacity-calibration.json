@@ -1,151 +1,156 @@
 {
   "columns": [
     {
-      "anchor_capacity_coarse_dz_tn_per_m": 0.9046191164139727,
-      "anchor_capacity_tn_per_m": 0.8938356847955743,
-      "anchor_resolution_relative_difference": 0.012064221424393761,
+      "anchor_capacity_coarse_dz_tn_per_m": 0.9190806201318829,
+      "anchor_capacity_tn_per_m": 0.9082687120645844,
+      "anchor_resolution_relative_difference": 0.011903864928608988,
       "anchor_state": {
         "base_temperature_c": 1330.0,
         "cohesion_pa": 20000000.0,
-        "friction_angle_deg": 30.0,
+        "friction_angle_deg": 30.96375653207352,
         "k0_horizontal_over_vertical": 0.8,
         "lower_crust_law": "plagioclase_an75",
         "mantle_law": "dry_olivine",
-        "pore_pressure_ratio": 0.42,
+        "pore_pressure_mode": "hydrostatic_water",
+        "pore_pressure_ratio": null,
         "status": "explicit design anchor; not inferred or uniquely calibrated",
         "strain_rate_s-1": 1e-15
       },
       "crust_thickness_km": 35.0,
       "factorial_scenario_grid": {
         "capacity_tn_per_m_quantiles": {
-          "median": 0.7674845663058871,
-          "p10": 0.2987866547672335,
-          "p25": 0.43939551296196655,
-          "p75": 1.3837571360257364,
-          "p90": 2.3237208627477943
+          "median": 0.8234031725827515,
+          "p10": 0.32443668909752243,
+          "p25": 0.46979283409398287,
+          "p75": 1.449352430881023,
+          "p90": 2.4116844006708664
         },
         "case_count": 864,
-        "fraction_of_grid_in_east_african_rift_3_to_8_tn_per_m_scale": 0.046296296296296294
+        "fraction_of_grid_in_east_african_rift_3_to_8_tn_per_m_scale": 0.04976851851851852
       },
       "mantle_lithosphere_thickness_km": 35.0,
       "total_lithosphere_thickness_km": 70.0
     },
     {
-      "anchor_capacity_coarse_dz_tn_per_m": 3.9418862124537286,
-      "anchor_capacity_tn_per_m": 3.916806734411528,
-      "anchor_resolution_relative_difference": 0.006403042004054534,
+      "anchor_capacity_coarse_dz_tn_per_m": 4.122886208692493,
+      "anchor_capacity_tn_per_m": 4.0948852658074335,
+      "anchor_resolution_relative_difference": 0.0068380286790621,
       "anchor_state": {
         "base_temperature_c": 1330.0,
         "cohesion_pa": 20000000.0,
-        "friction_angle_deg": 30.0,
+        "friction_angle_deg": 30.96375653207352,
         "k0_horizontal_over_vertical": 0.8,
         "lower_crust_law": "plagioclase_an75",
         "mantle_law": "dry_olivine",
-        "pore_pressure_ratio": 0.42,
+        "pore_pressure_mode": "hydrostatic_water",
+        "pore_pressure_ratio": null,
         "status": "explicit design anchor; not inferred or uniquely calibrated",
         "strain_rate_s-1": 1e-15
       },
       "crust_thickness_km": 35.0,
       "factorial_scenario_grid": {
         "capacity_tn_per_m_quantiles": {
-          "median": 2.6300592844787394,
-          "p10": 0.740782854254351,
-          "p25": 1.373203108893565,
-          "p75": 4.801726005894343,
-          "p90": 7.882381513144916
+          "median": 2.875373556551726,
+          "p10": 0.8078045754798728,
+          "p25": 1.4442920840393785,
+          "p75": 5.1317450563476665,
+          "p90": 8.071596629694623
         },
         "case_count": 864,
-        "fraction_of_grid_in_east_african_rift_3_to_8_tn_per_m_scale": 0.3587962962962963
+        "fraction_of_grid_in_east_african_rift_3_to_8_tn_per_m_scale": 0.3784722222222222
       },
       "mantle_lithosphere_thickness_km": 55.0,
       "total_lithosphere_thickness_km": 90.0
     },
     {
-      "anchor_capacity_coarse_dz_tn_per_m": 5.937624948698466,
-      "anchor_capacity_tn_per_m": 5.912461750301706,
-      "anchor_resolution_relative_difference": 0.004255959608614079,
+      "anchor_capacity_coarse_dz_tn_per_m": 6.30321827151708,
+      "anchor_capacity_tn_per_m": 6.2753825420421006,
+      "anchor_resolution_relative_difference": 0.004435702411525233,
       "anchor_state": {
         "base_temperature_c": 1330.0,
         "cohesion_pa": 20000000.0,
-        "friction_angle_deg": 30.0,
+        "friction_angle_deg": 30.96375653207352,
         "k0_horizontal_over_vertical": 0.8,
         "lower_crust_law": "plagioclase_an75",
         "mantle_law": "dry_olivine",
-        "pore_pressure_ratio": 0.42,
+        "pore_pressure_mode": "hydrostatic_water",
+        "pore_pressure_ratio": null,
         "status": "explicit design anchor; not inferred or uniquely calibrated",
         "strain_rate_s-1": 1e-15
       },
       "crust_thickness_km": 35.0,
       "factorial_scenario_grid": {
         "capacity_tn_per_m_quantiles": {
-          "median": 4.432994200798689,
-          "p10": 1.3709980878376864,
-          "p25": 2.5114607767667483,
-          "p75": 7.467889273046622,
-          "p90": 11.463654391053941
+          "median": 4.881857071598304,
+          "p10": 1.487835791129793,
+          "p25": 2.7463227877807284,
+          "p75": 8.012285400275074,
+          "p90": 12.07216186443714
         },
         "case_count": 864,
-        "fraction_of_grid_in_east_african_rift_3_to_8_tn_per_m_scale": 0.46296296296296297
+        "fraction_of_grid_in_east_african_rift_3_to_8_tn_per_m_scale": 0.46412037037037035
       },
       "mantle_lithosphere_thickness_km": 65.0,
       "total_lithosphere_thickness_km": 100.0
     },
     {
-      "anchor_capacity_coarse_dz_tn_per_m": 14.542921333868248,
-      "anchor_capacity_tn_per_m": 14.51890928530936,
-      "anchor_resolution_relative_difference": 0.0016538465863398417,
+      "anchor_capacity_coarse_dz_tn_per_m": 15.842666045477635,
+      "anchor_capacity_tn_per_m": 15.816009847128466,
+      "anchor_resolution_relative_difference": 0.001685393383465023,
       "anchor_state": {
         "base_temperature_c": 1330.0,
         "cohesion_pa": 20000000.0,
-        "friction_angle_deg": 30.0,
+        "friction_angle_deg": 30.96375653207352,
         "k0_horizontal_over_vertical": 0.8,
         "lower_crust_law": "plagioclase_an75",
         "mantle_law": "dry_olivine",
-        "pore_pressure_ratio": 0.42,
+        "pore_pressure_mode": "hydrostatic_water",
+        "pore_pressure_ratio": null,
         "status": "explicit design anchor; not inferred or uniquely calibrated",
         "strain_rate_s-1": 1e-15
       },
       "crust_thickness_km": 35.0,
       "factorial_scenario_grid": {
         "capacity_tn_per_m_quantiles": {
-          "median": 12.701155769861106,
-          "p10": 5.445161796561966,
-          "p25": 8.042051795067962,
-          "p75": 19.81154740599037,
-          "p90": 27.554035787973987
+          "median": 13.982325998589403,
+          "p10": 6.172282551534165,
+          "p25": 9.02837986175305,
+          "p75": 21.354437184512022,
+          "p90": 29.615899769602795
         },
         "case_count": 864,
-        "fraction_of_grid_in_east_african_rift_3_to_8_tn_per_m_scale": 0.24074074074074073
+        "fraction_of_grid_in_east_african_rift_3_to_8_tn_per_m_scale": 0.18981481481481483
       },
       "mantle_lithosphere_thickness_km": 100.0,
       "total_lithosphere_thickness_km": 135.0
     },
     {
-      "anchor_capacity_coarse_dz_tn_per_m": 19.037816934237465,
-      "anchor_capacity_tn_per_m": 19.015690815298953,
-      "anchor_resolution_relative_difference": 0.0011635716605525733,
+      "anchor_capacity_coarse_dz_tn_per_m": 20.881877152761742,
+      "anchor_capacity_tn_per_m": 20.857344946447327,
+      "anchor_resolution_relative_difference": 0.00117619027625051,
       "anchor_state": {
         "base_temperature_c": 1330.0,
         "cohesion_pa": 20000000.0,
-        "friction_angle_deg": 30.0,
+        "friction_angle_deg": 30.96375653207352,
         "k0_horizontal_over_vertical": 0.8,
         "lower_crust_law": "plagioclase_an75",
         "mantle_law": "dry_olivine",
-        "pore_pressure_ratio": 0.42,
+        "pore_pressure_mode": "hydrostatic_water",
+        "pore_pressure_ratio": null,
         "status": "explicit design anchor; not inferred or uniquely calibrated",
         "strain_rate_s-1": 1e-15
       },
       "crust_thickness_km": 35.0,
       "factorial_scenario_grid": {
         "capacity_tn_per_m_quantiles": {
-          "median": 17.155463797267473,
-          "p10": 7.485598853952682,
-          "p25": 10.808656373677255,
-          "p75": 26.127561696211796,
-          "p90": 36.167268061281106
+          "median": 18.945462961269612,
+          "p10": 8.616905390431103,
+          "p25": 12.346881435512753,
+          "p75": 28.229617877958454,
+          "p90": 38.89408255024201
         },
         "case_count": 864,
-        "fraction_of_grid_in_east_african_rift_3_to_8_tn_per_m_scale": 0.12152777777777778
+        "fraction_of_grid_in_east_african_rift_3_to_8_tn_per_m_scale": 0.0798611111111111
       },
       "mantle_lithosphere_thickness_km": 115.0,
       "total_lithosphere_thickness_km": 150.0
@@ -188,13 +193,13 @@
   },
   "method": {
     "column_model": "bin/debug/diagnose_gate2_column_envelope.py",
-    "column_model_sha256": "f9c3f0b0a4bdf9e746dcc699e3b0838acfb54a7143620b9b5d397a62f1de90b9",
+    "column_model_sha256": "2f470111a31464cc47147945438cf6c61f2fb0332087cebcf01c33fcd20c0928",
     "integration_depth_step_km": 0.125,
     "matched_replay_json": "analysis/issue487/gate2-matched-replay.json",
     "matched_replay_json_sha256": "15f151f838cc805b4d1a70e44155b774cdfbdb047ad07afa37173c1a0a3f1d1e",
     "quantile_interpretation": "Designed factorial grid summaries, not probabilities or posterior confidence intervals.",
     "script": "bin/debug/calibrate_gate2_capacity.py",
-    "script_sha256": "d5991e9883192804a1d80b9bc0b9206ebf6da11481c990b4b42cd6d5ce710e5b",
+    "script_sha256": "c50113e3a373a87d1c4fdffbf4e7736f617c5945d2b0fc4a4df1182a329afc61",
     "sweep": "Existing 1,728-case continental factorial scenario grid, independently repeated at each thickness.",
     "thickness_mapping": "35 km crust held fixed; remaining total thickness assigned to mantle lithosphere."
   },

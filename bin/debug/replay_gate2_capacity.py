@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import functools
 import json
+import math
 import sys
 import time
 from pathlib import Path
@@ -54,10 +55,11 @@ GATE1_BASELINE_COMMIT = "0118752d0ffe75060464204d5b94f81a60fe9a07"
 COLUMN_SCENARIO = Scenario(
     base_temperature_c=orogeny.LITHOSPHERE_BASE_TEMPERATURE_C,
     strain_rate_s=1e-15,
-    pore_pressure_ratio=0.42,
+    pore_pressure_ratio=0.0,
+    pore_pressure_mode="hydrostatic_water",
     k0=0.8,
     cohesion_pa=20e6,
-    friction_angle_deg=30.0,
+    friction_angle_deg=math.degrees(math.atan(0.6)),
     lower_crust_law="plagioclase_an75",
     mantle_law="dry_olivine",
 )
@@ -274,7 +276,7 @@ def _spatial_capacity_scores(
             "capacity_scenario": {
                 "base_temperature_c": COLUMN_SCENARIO.base_temperature_c,
                 "strain_rate_s-1": COLUMN_SCENARIO.strain_rate_s,
-                "pore_pressure_ratio": COLUMN_SCENARIO.pore_pressure_ratio,
+                "pore_pressure_ratio": "hydrostatic_water_depth_profile",
                 "k0": COLUMN_SCENARIO.k0,
                 "cohesion_pa": COLUMN_SCENARIO.cohesion_pa,
                 "friction_angle_deg": COLUMN_SCENARIO.friction_angle_deg,

@@ -696,4 +696,10 @@
     "baseline_execution": "Pinned commit archive at 0118752d0ffe75060464204d5b94f81a60fe9a07; diagnostic helpers overlaid without replacing baseline production torque functions.",
     "shell_solver_sha256": "c2be7b88ffbb1f57febcaa9cd16c4ec76829b434992fa3f9aeed341a9abc362a"
   }
+,
+  "superseded_capacity_scoring": {
+    "status": "superseded_for_capacity_interpretation",
+    "reason": "This spatial replay report used fixed pore_pressure_ratio=0.42 and friction_angle_deg=30. The later exact-load sensitivity re-score uses a depth-varying freshwater hydrostatic reference and friction coefficient mu=0.6; see gate2-capacity-sensitivity.json.",
+    "updated_loads_replayed": false
+  }
 }

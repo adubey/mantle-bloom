@@ -2,70 +2,69 @@
 
 ## Result
 
-The 74 connected-source candidates were re-run on the pinned Gate 1 source to capture exact
-cut-band node loads and state because the prior replay artifact retained summaries only. The
-capture matched all 380 production cuts and the ordered candidate time/plate identities for seeds
-7, 11 and 2024. All 74 eligible candidates passed the existing solver and mesh criteria, yielding
-22,896 accepted node samples.
+The exact 22,896 node loads from the 74 connected-source candidates were held fixed and re-scored.
+The Gate 1 event identities and cut counts were validated against the pinned baseline; this is a
+capacity-model change only, so no 1 Gyr world replay was needed.
 
-The post-processing study changes one capacity assumption at a time using the endpoint values from
-the already documented factorial grid. The reference is `K0=0.8`, pore-pressure ratio 0.42,
-1330 C base temperature, strain rate `1e-15 s-1`, 20 MPa cohesion, 30 degree friction, plagioclase
-lower crust and dry olivine mantle. The stored Moho-lag comparison is evaluated separately at that
-reference. These equally designed scenarios are sensitivity probes, not likelihood weights or a
-joint uncertainty distribution.
+The reference uses the steady conductive geotherm, `K0=0.8`, hydrostatic freshwater pressure
+`P_f=rho_water*g*z` with `rho_water=1000 kg/m3`, `mu=0.6` (`phi=atan(mu)`), strain rate
+`1e-15 s-1`, 20 MPa cohesion, plagioclase lower crust and dry olivine mantle. Only friction's
+0.6–0.85 range is directly anchored in Byerlee's rock-friction experiments. The other values are
+scenario choices or inherited model constants, not local observations. In particular, a fixed
+`P_f/P_lith=0.42` is retained as an overpressure comparison and is no longer labeled hydrostatic.
 
-| Capacity scenario | Nodes above capacity | Share of 22,896 | Nodes changing classification vs reference |
+| Capacity scenario | Nodes above capacity | Share | Changed vs reference |
 |---|---:|---:|---:|
-| Reference, steady profile | 1,746 | 7.63% | — |
-| Reference, stored Moho lag interpolated | 1,738 | 7.59% | 0.03% |
-| Base temperature 1,250 C | 1,485 | 6.49% | 1.14% |
-| Base temperature 1,400 C | 1,954 | 8.53% | 0.91% |
-| Strain rate `1e-16 s-1` | 2,094 | 9.15% | 1.52% |
-| Strain rate `1e-14 s-1` | 1,495 | 6.53% | 1.10% |
-| Pore-pressure ratio 0.0 | 1,123 | 4.90% | 2.74% |
-| `K0=0.6` | 2,854 | 12.47% | 4.84% |
-| `K0=1.0` | 1,017 | 4.44% | 3.18% |
-| Cohesion 1 MPa | 2,059 | 8.99% | 1.37% |
-| Friction `atan(0.6)` | 1,718 | 7.50% | 0.12% |
-| Mafic-granulite lower crust | 1,768 | 7.72% | 0.10% |
-| Wet-olivine mantle | 2,448 | 10.69% | 3.07% |
+| Reference: hydrostatic water profile | 1,563 | 6.83% | — |
+| Stored Moho-lag interpolation | 1,558 | 6.80% | 0.03% |
+| Base temperature 1,250 C | 1,283 | 5.60% | 1.22% |
+| Base temperature 1,400 C | 1,797 | 7.85% | 1.02% |
+| Strain rate `1e-16 s-1` | 1,929 | 8.43% | 1.60% |
+| Strain rate `1e-14 s-1` | 1,297 | 5.66% | 1.16% |
+| Dry, zero pore pressure | 1,080 | 4.72% | 2.13% |
+| Fixed lithostatic pore-pressure ratio 0.42 | 1,718 | 7.50% | 0.69% |
+| `K0=0.6` | 2,572 | 11.23% | 4.41% |
+| `K0=1.0` | 795 | 3.47% | 3.35% |
+| Cohesion 1 MPa | 1,880 | 8.21% | 1.38% |
+| Friction coefficient 0.85 | 1,344 | 5.87% | 0.96% |
+| Mafic-granulite lower crust | 1,592 | 6.95% | 0.13% |
+| Wet-olivine mantle | 2,230 | 9.74% | 2.91% |
 
-The rank ordering of `N_ext/N_cap` is highly stable: Spearman correlation with the reference is
-at least 0.9938 in every scenario. The binary threshold result is less stable. Across this finite
-one-factor envelope, 1,009 nodes (4.41%) exceed capacity under every tested scenario, and 3,016
-(13.17%) exceed capacity under at least one. These are OAT bounds only; interacting weak settings
-could produce a different joint envelope.
+The node ranking is highly stable: Spearman correlation of `N_ext/N_cap` against the reference is
+at least 0.9936 across the one-factor variants. The threshold classification is more sensitive.
+Across this finite OAT envelope, 795 nodes (3.47%) exceed capacity in every variant, and 2,701
+(11.80%) exceed it in at least one. These bounds are not probabilities and omit interactions.
+`K0` remains the strongest tested single-factor effect; wet mantle rheology also shifts the
+exceedance fraction. The fixed 0.42 lithostatic ratio increases exceedance relative to the
+hydrostatic profile, as expected for the stronger assumed pore pressure.
 
-`K0` has the largest single-factor effect: the over-capacity fraction ranges from 4.44% at `K0=1`
-to 12.47% at `K0=0.6`. The wet-olivine mantle case gives 10.69%; removing the pore-pressure
-reduction gives 4.90%. The Moho-lag profile changes only eight nodes, consistent with the stored
-lag being near zero for most samples. The result is conditional on the current stress-state and
-material assumptions, especially the missing spatial `K0`, mantle water and pore-pressure fields.
+At the hydrostatic reference, continental, mature-oceanic and young-ridge-proxy exceedance fractions
+are 1.57%, 20.32% and 18.06%, respectively. The young-ridge category still means an active
+divergence proxy, not oceanic age. Reference fractions by seed are 3.18% (seed 7), 10.69% (seed 11)
+and 4.64% (seed 2024). None of these are observed rupture rates: the replay candidates were
+selected by the old algorithm, not independently labeled as failures.
 
-In the reference case, continental nodes have a 1.68% exceedance fraction, while mature-oceanic
-and active-divergence young-ridge-proxy nodes have 22.71% and 22.35%, respectively. The latter is
-not an ocean-age result: active divergence remains a coarse oceanic-age proxy. Seed 11 has the
-highest reference exceedance fraction (11.87%), compared with 3.53% for seed 7 and 5.29% for seed
-2024. These are screening summaries, not observed rupture rates or labels for fitting a threshold.
+The capacity assumptions are therefore **partly justified and numerically validated, but not
+identified**. The hydrostatic pressure and Mohr-Coulomb equations pass independent analytic checks;
+the shell load transfer has separate manufactured-solution checks documented in
+[`gate2-load-diagnosis.md`](gate2-load-diagnosis.md). But the simulation has no spatial K0, fluid,
+water, grain-size, local strain-rate or fabric fields, and its elastic shell does not solve
+interplate traction continuity. The threshold comparison remains an offline scenario screen; Gate 2
+remains open.
 
 ## Reproduction
 
-The capture-only replay writes per-event JSONL node samples outside the repository. Run it on the
-pinned Gate 1 archive with the diagnostic force helpers overlaid:
+The three raw node-sample files remain outside the repository under `/private/tmp/`. Re-score them
+with the accepted Gate 1 identity references:
 
 ```bash
-PYTHONHASHSEED=0 PYTHONPATH=/path/to/gate1/backend backend/.venv/bin/python \
-  /path/to/gate1/bin/debug/replay_gate2_capacity.py --seed 7 --years 1e9 \
-  --out /tmp/g2-seed7-capture.json \
-  --node-samples-out /tmp/g2-seed7-samples.jsonl --capture-only
+backend/.venv/bin/python bin/debug/sensitivity_gate2_capacity.py \
+  --samples /private/tmp/g2-gate2-sensitivity-seed7.jsonl /private/tmp/g2-gate2-sensitivity-seed11.jsonl /private/tmp/g2-gate2-sensitivity-seed2024.jsonl \
+  --replay-report /private/tmp/g2-gate2-sensitivity-seed7.json /private/tmp/g2-gate2-sensitivity-seed11.json /private/tmp/g2-gate2-sensitivity-seed2024.json \
+  --identity-reference /private/tmp/issue487-g2-spatial-g1baseline-seed7.json /private/tmp/issue487-g2-spatial-g1baseline-seed11.json /private/tmp/issue487-g2-spatial-g1baseline-seed2024.json \
+  --output analysis/issue487/gate2-capacity-sensitivity.json
 ```
 
-Repeat for seeds 11 and 2024, then run `bin/debug/sensitivity_gate2_capacity.py` with all three
-sample files, capture reports and the accepted Gate 1 replay reports. The script verifies cut
-counts, candidate identities, connected-source coverage, per-node array lengths and the expected
-22,896-sample population before scoring.
-
-Compact results and source hashes are in
-[`gate2-capacity-sensitivity.json`](gate2-capacity-sensitivity.json). Full per-node capture files
-remain under `/private/tmp/` and are not checked into the repository.
+The compact output is [`gate2-capacity-sensitivity.json`](gate2-capacity-sensitivity.json). The
+source now distinguishes hydrostatic water pressure from a fixed lithostatic-pressure fraction and
+records the equations in `gate2-column-envelope.json`.

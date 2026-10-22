@@ -54,18 +54,19 @@ def _run_column(total_thickness_km: float, dz_km: float) -> dict[str, Any]:
     if mantle_lid_m <= 0.0:
         raise ValueError("total lithosphere thickness must exceed 35 km crust")
 
-    # Explicit reference state: hydrostatic pore-pressure proxy, modest extensional
+    # Explicit reference state: hydrostatic water-pressure profile, modest extensional
     # prestress (K0=0.8), 1330 C base, 1e-15/s, dry olivine. These are design
     # assumptions, not values uniquely inferred from literature or world state.
     anchor = Scenario(
         base_temperature_c=orogeny.LITHOSPHERE_BASE_TEMPERATURE_C,
         strain_rate_s=1e-15,
-        pore_pressure_ratio=0.42,
+        pore_pressure_ratio=0.0,
         k0=0.8,
         cohesion_pa=20e6,
-        friction_angle_deg=30.0,
+        friction_angle_deg=math.degrees(math.atan(0.6)),
         lower_crust_law="plagioclase_an75",
         mantle_law="dry_olivine",
+        pore_pressure_mode="hydrostatic_water",
     )
     anchor_case = evaluate_case(
         "continental", anchor, dz_km * 1000.0, continental_mantle_lithosphere_m=mantle_lid_m
@@ -107,7 +108,8 @@ def _run_column(total_thickness_km: float, dz_km: float) -> dict[str, Any]:
         "anchor_state": {
             "base_temperature_c": anchor.base_temperature_c,
             "strain_rate_s-1": anchor.strain_rate_s,
-            "pore_pressure_ratio": anchor.pore_pressure_ratio,
+            "pore_pressure_ratio": None,
+            "pore_pressure_mode": anchor.pore_pressure_mode,
             "k0_horizontal_over_vertical": anchor.k0,
             "cohesion_pa": anchor.cohesion_pa,
             "friction_angle_deg": anchor.friction_angle_deg,

@@ -71,6 +71,7 @@ class Scenario:
     friction_angle_deg: float
     lower_crust_law: str
     mantle_law: str
+    pore_pressure_mode: str = "fixed_lithostatic_ratio"
 
 
 FLOW_LAWS = {
@@ -199,6 +200,31 @@ def creep_stress_pa(law: FlowLaw, strain_rate_s: float, pressure_pa: np.ndarray,
     return np.exp(np.clip(log_stress_mpa, -100.0, 100.0)) * 1e6
 
 
+def _pore_pressure_profile(
+    depth_m: np.ndarray, lithostatic_pa: np.ndarray, scenario: Scenario
+) -> np.ndarray:
+    """Compute freshwater hydrostatic pressure or a stated lithostatic fraction."""
+    if scenario.pore_pressure_mode == "hydrostatic_water":
+        return 1000.0 * lithosphere.GRAVITY_M_S2 * depth_m
+    if scenario.pore_pressure_mode == "fixed_lithostatic_ratio":
+        if not 0.0 <= scenario.pore_pressure_ratio < 1.0:
+            raise ValueError("pore_pressure_ratio must be in [0, 1)")
+        return scenario.pore_pressure_ratio * lithostatic_pa
+    raise ValueError(f"unknown pore pressure mode: {scenario.pore_pressure_mode}")
+
+
+def _additional_brittle_extension_pa(
+    vertical_effective_pa: np.ndarray, k0: float, cohesion_pa: float, friction_angle_deg: float
+) -> np.ndarray:
+    """Return horizontal extension from background to Mohr-Coulomb normal-fault yield."""
+    friction = math.radians(friction_angle_deg)
+    sin_phi, cos_phi = math.sin(friction), math.cos(friction)
+    horizontal_background_pa = k0 * vertical_effective_pa
+    horizontal_failure_pa = (
+        vertical_effective_pa * (1.0 - sin_phi) - 2.0 * cohesion_pa * cos_phi
+    ) / (1.0 + sin_phi)
+    return np.maximum(horizontal_background_pa - horizontal_failure_pa, 0.0)
+
 def evaluate_case(
     crust_type: str,
     scenario: Scenario,
@@ -222,15 +248,12 @@ def evaluate_case(
         depth_m, hc_m, hm_m, crust_type, scenario.base_temperature_c,
         moho_thermal_lag_c=moho_thermal_lag_c,
     )
-    pore_pressure_pa = scenario.pore_pressure_ratio * pressure_pa
+    pore_pressure_pa = _pore_pressure_profile(depth_m, pressure_pa, scenario)
     vertical_effective_pa = pressure_pa - pore_pressure_pa
-    friction = math.radians(scenario.friction_angle_deg)
-    sin_phi, cos_phi = math.sin(friction), math.cos(friction)
     horizontal_background_pa = scenario.k0 * vertical_effective_pa
-    horizontal_failure_pa = (
-        vertical_effective_pa * (1.0 - sin_phi) - 2.0 * scenario.cohesion_pa * cos_phi
-    ) / (1.0 + sin_phi)
-    brittle_increment_pa = np.maximum(horizontal_background_pa - horizontal_failure_pa, 0.0)
+    brittle_increment_pa = _additional_brittle_extension_pa(
+        vertical_effective_pa, scenario.k0, scenario.cohesion_pa, scenario.friction_angle_deg
+    )
 
     ductile_stress_pa = np.empty_like(depth_m)
     law_labels = np.empty(depth_m.shape, dtype=object)
@@ -259,7 +282,11 @@ def evaluate_case(
         "scenario": {
             "base_temperature_c": scenario.base_temperature_c,
             "strain_rate_s-1": scenario.strain_rate_s,
-            "pore_pressure_ratio": scenario.pore_pressure_ratio,
+            "pore_pressure_ratio": (
+                None if scenario.pore_pressure_mode == "hydrostatic_water"
+                else scenario.pore_pressure_ratio
+            ),
+            "pore_pressure_mode": scenario.pore_pressure_mode,
             "k0_horizontal_over_vertical": scenario.k0,
             "cohesion_pa": scenario.cohesion_pa,
             "friction_angle_deg": scenario.friction_angle_deg,
@@ -296,7 +323,7 @@ def scenarios(include_lower_crust: bool = True) -> list[Scenario]:
         # as the major principal stress. K0 > 1 needs a different failure mode.
         (0.6, 0.8, 1.0),
         (1e6, 20e6),
-        (math.degrees(math.atan(0.6)), 30.0),
+        (math.degrees(math.atan(0.6)), math.degrees(math.atan(0.85))),
         (("plagioclase_an75", "mafic_granulite") if include_lower_crust else ("plagioclase_an75",)),
         ("dry_olivine", "wet_olivine"),
     )
@@ -336,12 +363,13 @@ def run(dz_km: float) -> dict[str, Any]:
     reference_params = Scenario(
         base_temperature_c=orogeny.LITHOSPHERE_BASE_TEMPERATURE_C,
         strain_rate_s=1e-15,
-        pore_pressure_ratio=0.42,
+        pore_pressure_ratio=0.0,
         k0=1.0,
         cohesion_pa=20e6,
-        friction_angle_deg=30.0,
+        friction_angle_deg=math.degrees(math.atan(0.6)),
         lower_crust_law="plagioclase_an75",
         mantle_law="dry_olivine",
+        pore_pressure_mode="hydrostatic_water",
     )
     crust_types = ("continental", "oceanic_young_ridge", "oceanic_mature")
     reference = [evaluate_case(crust, reference_params, dz_m) for crust in crust_types]
@@ -358,7 +386,7 @@ def run(dz_km: float) -> dict[str, Any]:
         "pore_pressure_ratio": (0.0, 0.42),
         "k0_horizontal_over_vertical": (0.6, 0.8, 1.0),
         "cohesion_pa": (1e6, 20e6),
-        "friction_angle_deg": (math.degrees(math.atan(0.6)), 30.0),
+        "friction_angle_deg": (math.degrees(math.atan(0.6)), math.degrees(math.atan(0.85))),
         "lower_crust_law": ("plagioclase_an75", "mafic_granulite"),
         "mantle_law": ("dry_olivine", "wet_olivine"),
     }
@@ -397,8 +425,9 @@ def run(dz_km: float) -> dict[str, Any]:
             "The entire effective oceanic crust uses one An75 plagioclase-based mafic flow law.",
             "Oceanic columns include the model's 8 km young-ridge and 40 km mature-reference lids; no ocean-age distribution is represented.",
             "Wet mantle uses 1000 ppm H/Si; the world has no mantle water field.",
-            "Pore pressure is a fixed fraction of lithostatic pressure, not a solved fluid-pressure profile.",
-            "The vertical stress is the maximum principal compression; K0 defines initial horizontal stress.",
+            "Factorial pore-pressure cases use fixed fractions of lithostatic pressure; the hydrostatic-water profile is separately calculated as rho_water*g*z.",
+            "The vertical stress is the maximum principal compression; K0 defines initial horizontal stress. K0 is an assumed stress-state bracket, not a field in the world.",
+            "Friction is bracketed by coefficients 0.6-0.85 from Byerlee (1978); cohesion remains a design assumption inherited from the boundary rheology proxy.",
             "Laboratory creep laws are extrapolated to 1e-16 to 1e-14 per second and ignore semibrittle, Peierls, diffusion-creep transitions, melt and damage feedback.",
             "The mafic-granulite central flow-law fit is from reconstituted nominally dry rock containing 0.16-0.28 wt% dissolved water; its reported parameter uncertainties are not sampled.",
         ],
@@ -406,7 +435,7 @@ def run(dz_km: float) -> dict[str, Any]:
             "crust_and_dry_mantle_flow_laws": "Chen & Gerya (2016), doi:10.1002/2016JB012872; parameterizations based on Ranalli (1995)",
             "mafic_granulite_flow_law": "Wang et al. (2012), doi:10.1016/j.epsl.2012.08.004",
             "wet_dry_olivine_flow_laws": "Hirth & Kohlstedt (2003), doi:10.1029/138GM06",
-            "brittle_friction": "Byerlee (1978), doi:10.1007/BF00876528",
+            "brittle_friction": "Byerlee (1978), doi:10.1007/BF00876528; coefficient 0.6-0.85 mapped to friction angle atan(mu)",
             "thickness_density_and_thermal_baseline": "backend/app/lithosphere.py and backend/app/orogeny.py",
         },
         "reference_cases": reference,

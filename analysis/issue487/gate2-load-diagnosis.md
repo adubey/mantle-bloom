@@ -7,7 +7,28 @@
 
 The source-force interface preserves each existing torque contribution as a per-node vector in N. `thin_shell.solve_force_field` transfers the combined tangent load through a linear triangular membrane equilibrium solve and returns local in-plane membrane stress increments in N/m. It removes the area-weighted rigid-rotation load handled by plate motion; applied radial force is assigned to shell-normal support. The comparison is defined as `N_ext = max(0, lambda_max(Delta_N))`, the largest positive principal value of the incremental membrane-resultant tensor, divided by `N_cap = integral(Delta_sigma_yield(z) dz)`, the column's additional extensional differential strength to normal-fault yield from its assumed `K0` background. Both are resultants in N/m. The interpretation assumes vertical compression remains the major principal stress, an elastic stress increment about a zero-load reference, and the same representative column geometry at each node. This maps units and failure mode; it does not add prestress to the shell or feed local yielding back into equilibrium. Synthetic tests verify equilibrium residual, rigid-rotation removal, linear force scaling and the named capacity pairing. Diagonal stiffness scaling lets the iterative solve handle generated plate meshes with thousands of nodes.
 
-This establishes an offline load-transfer and strength-comparison interface, not a production stress field. The solver assumes linear plane-stress elasticity, free in-plane displacement, prescribed nodal loads, no faults, bending or plasticity, and a caller-supplied effective thickness and modulus. A curved-shell manufactured solution and generated broad-mesh sensitivity are now recorded below. For an isolated single-plate solve, free displacement is selected as the diagnostic baseline because the inputs contain no displacement anchor to an external reference. Edge clamps remain artificial sensitivity probes. Actual interplate displacement and traction continuity would require a coupled multi-plate solve, which this diagnostic does not provide. Gate 2 is scoped to source-connected candidates; genuinely disconnected-source candidates are counted separately and excluded from its coverage denominator. The strength envelope has conditional reference anchors and an uncertainty bracket, but no spatially calibrated field; further boundary/load-model validation is needed.
+This establishes an offline load-transfer and strength-comparison interface, not a production stress
+field. The solver assumes linear plane-stress elasticity, free in-plane displacement, prescribed
+nodal loads, no faults, bending or plasticity, and caller-supplied effective thickness and modulus.
+For an isolated single-plate solve, free displacement is the baseline because the inputs contain no
+displacement anchor to an external reference. Edge clamps remain artificial sensitivity probes;
+actual interplate displacement and traction continuity require a coupled multi-plate solve, which
+is outside this diagnostic. Gate 2 covers source-connected candidates; disconnected-source events
+are counted separately and excluded from its coverage denominator.
+
+The strength envelope has conditional anchors and an uncertainty bracket, but no spatially
+calibrated field. The reference uses depth-varying freshwater hydrostatic pressure
+`P_f = rho_water * g * z`; fixed `P_f/P_lith=0.42` is only an overpressure comparison. Friction is
+bracketed by `mu=0.6-0.85` from Byerlee's rock-friction experiments. `K0`, cohesion, geotherm, creep
+law and local strain rate remain assumptions. Six unit tests check the hydrostatic pressure
+profile, Mohr-Coulomb normal-fault increment and dry/wet power-law inversion against analytic
+values. The shell's curved-sphere manufactured solution checks load-to-resultant mapping for its
+stated idealized case, not the real force field or interplate traction transfer.
+
+The exact 22,896-node matched-load screen was re-scored without another world replay. The hydrostatic
+reference classifies 1,563 nodes over capacity (6.83%), compared with 1,718 (7.50%) for fixed
+`P_f/P_lith=0.42`. This is threshold sensitivity, not an observed rupture rate. Broader load and
+boundary validation and locally constrained capacity inputs remain open.
 
 ## Synthetic solver validation
 
@@ -235,9 +256,7 @@ For each node, define depth `z` downward from the surface and evaluate the follo
    a resolved transient heat solution.
 2. **Lithostatic and pore pressure:** compute `P_lith(z) = integral_0^z rho(s) g ds` from the
    existing crust/lithosphere densities. Set `P_f(z) = lambda_f P_lith(z)` and use effective
-   compression `sigma' = sigma - P_f`. Treat dry rock (`lambda_f = 0`) and a hydrostatic-water
-   reference (`lambda_f` approximately 0.4) as sensitivity bounds, not as inferred local fluid
-   state. The world has no pore-pressure field; overpressure, drainage and fluid migration are
+   compression `sigma' = sigma - P_f`. Use dry rock (`P_f=0`) and a connected freshwater hydrostatic reference (`P_f=rho_water*g*z`) as distinct cases. The fixed-ratio tests (`P_f=lambda_f*P_lith`, including `lambda_f=0.42`) represent imposed fluid pressure fractions; 0.42 is not hydrostatic for the model's rock densities. None is inferred local fluid state. The world has no pore-pressure field; overpressure, drainage and fluid migration are
    omitted. Pore pressure materially changes brittle strength, so a single dry or hydrostatic
    choice could misstate rift resistance [[Brace & Kohlstedt, 1980]](https://doi.org/10.1029/JB085iB11p06248).
 3. **Brittle extension:** use a Mohr-Coulomb normal-faulting limit with compressive stress positive.
@@ -254,10 +273,7 @@ For each node, define depth `z` downward from the surface and evaluate the follo
 
    Here `sigma_v' = P_lith - P_f`, `C` is cohesion and `phi` is the friction angle. This assumes
    vertical stress is the maximum principal compression and a horizontal stress is the minimum;
-   another stress orientation can change the failure mode. The existing `C = 20 MPa` and
-   `phi = 30 deg` are boundary-deformation proxy values, not calibrated depth-dependent material
-   properties; they may seed a sensitivity sweep but must not be called the approved column
-   rheology. A tensile cutoff for intact, unfractured rock and fault-orientation anisotropy are not
+   another stress orientation can change the failure mode. The existing `C = 20 MPa` is an inherited boundary-deformation proxy, not a measured intact-rock or fault cohesion. Bracket friction using coefficients `mu=tan(phi)=0.6–0.85` from Byerlee's laboratory synthesis; this is a frictional strength range, not a locally measured fault value. Cohesion and K0 remain design assumptions. A tensile cutoff for intact, unfractured rock and fault-orientation anisotropy are not
    represented in this first pass.
 4. **Ductile extension:** for each layer and chosen rock scenario, invert a laboratory power-law
    creep relation at a stated strain rate, for example
@@ -284,23 +300,25 @@ For each node, define depth `z` downward from the surface and evaluate the follo
 [`bin/debug/diagnose_gate2_column_envelope.py`](../../bin/debug/diagnose_gate2_column_envelope.py);
 its complete assumptions, reference profiles, parameter sources and 1,728 scenario results are in
 [`gate2-column-envelope.json`](gate2-column-envelope.json). Using a 0.125 km depth interval, the
-illustrative reference capacities are 23.79 TN/m for the 35 km crust + 100 km mantle-lid
-continental column, 0.489 TN/m for the 11 + 8 km young-ridge oceanic column, and 5.50 TN/m for
+illustrative hydrostatic-reference capacities are 25.91 TN/m for the 35 km crust + 100 km mantle-lid
+continental column, 0.516 TN/m for the 11 + 8 km young-ridge oceanic column, and 6.20 TN/m for
 the 11 + 40 km mature-reference oceanic column. These are outputs of assumed material states, not
 Earth-calibrated strength estimates. Across the explicit normal-faulting scenario sweeps, the
-unweighted p10/median/p90 capacities are 5.45/12.70/27.55 TN/m (continental),
-0.133/0.292/0.546 TN/m (young ridge), and 1.88/3.73/6.86 TN/m (mature oceanic). These percentiles
+unweighted p10/median/p90 capacities are 6.17/13.98/29.62 TN/m (continental),
+0.149/0.310/0.570 TN/m (young ridge), and 2.17/4.09/7.29 TN/m (mature oceanic). These percentiles
 summarize a designed grid, not probability distributions. At 0.25 km spacing, reference capacities
 shift by 0.12%, 0.92%, and 0.01%, respectively. In the continental sweep, median capacity changes
-from 7.04 TN/m at `K0=0.6` to 22.22 TN/m at `K0=1.0`; wet versus dry mantle changes it from 9.83
-to 16.31 TN/m, and the pore-pressure bracket changes it from 10.74 to 15.25 TN/m. Missing
+from 8.25 TN/m at `K0=0.6` to 23.14 TN/m at `K0=1.0`; wet versus dry mantle changes it from 10.73
+to 17.98 TN/m, and the fixed pore-pressure-ratio cases change it from 11.84 TN/m at 0.42 to 16.71 TN/m when dry. Missing
 background stress and material state therefore dominate the interpretation.
 
 The diagnostic reconstructs a steady 1-D geotherm from current model constants; it does not use
 the stored Moho thermal lag as a transient depth profile. It applies one quartz-rich upper crust and
 one effective lower-crust law to continents, one effective mafic law to oceanic crust, dry/wet
-olivine endmembers to the mantle, a fixed pore-pressure ratio, and a normal-faulting Mohr-Coulomb
-branch with `K0` in [0.6, 1]. The laws are laboratory/geodynamic parameterizations extrapolated to
+olivine endmembers to the mantle, a depth-varying freshwater hydrostatic reference pressure, and a
+normal-faulting Mohr-Coulomb branch with `K0` in [0.6, 1]. The 1,728-case factorial still samples
+fixed `P_f/P_lith` fractions of 0 and 0.42 to test fluid-pressure sensitivity; 0.42 is not called
+hydrostatic. The laws are laboratory/geodynamic parameterizations extrapolated to
 geological strain rates. The mafic-granulite law is the central fit to reconstituted, nominally dry
 granulite with 0.16–0.28 wt% dissolved water; its reported fit uncertainties are not sampled, so
 this is not a water-free endmember. Semibrittle flow, localization, inherited faults, anisotropy,
@@ -398,7 +416,7 @@ and [`gate2-spatial-capacity-replay.json`](gate2-spatial-capacity-replay.json). 
 not resolve the missing local thermal, material and stress state, and do not close Gate 2. A
 one-factor sensitivity sweep on exact matched node loads finds the strongest capacity dependence
 in `K0`, mantle water/rheology and pore pressure. Relative node rankings remain stable, but the
-binary exceedance share ranges from 4.44% to 12.47% across single-factor scenarios. The tested
+binary exceedance share ranges from 3.47% to 11.23% across the tested `K0` endpoints. The tested
 envelope is not joint and does not identify these fields. Results and limitations are in
 [`gate2-capacity-sensitivity.md`](gate2-capacity-sensitivity.md) and
 [`gate2-capacity-sensitivity.json`](gate2-capacity-sensitivity.json).
