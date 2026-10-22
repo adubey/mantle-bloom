@@ -273,7 +273,7 @@ should start until those gates are resolved and the revised design is accepted.
    invalid where isolated stress was zero and are superseded. The tied/no-slip variant omits only
    mutual pair drag, but remains an idealized bonded interface, not a physical finite-slip law.
    See `analysis/issue487/gate2-interface-sensitivity.md`. These are sensitivity checks, not
-   physical coupled predictions; the pair-level rigid-mode projection remains unaudited.
+   physical coupled predictions. The pair-level projection audit finds 3.0–95.1% cut-band stress sensitivity between joint and separate-group rigid-mode removal. The joint projection matches the bonded mesh; the separate-group variant does not represent free slip because it retains bonded displacements. A mechanically consistent interface/load-transfer formulation remains unresolved.
    A direct phenomenological capacity candidate,
    `T_cap = T_ref * (1 - lambda * w)`, was swept on a prescribed weak band: increasing `T_ref`
    monotonically reduced failed nodes, and at `2e10 N/m` the weak-band failure fraction exceeded
@@ -487,14 +487,14 @@ source or explicit design-choice status, and the sensitivity plan before impleme
        sensitivity and 2.0–21.4% force / 4.6–21.6% torque closure residuals for active mutual
        contact drag. The tied/no-slip comparison is an idealized bonded endmember, not a selected
        finite-slip law; the previous two-event relative-change summaries were invalid where baseline
-       node stress was zero. Audit pair-level rigid-mode projection before treating coupled values
-       as physical. Justify the remaining source/capacity assumptions before Gate 2 closes (see
+       node stress was zero. Resolve the interface model and make its kinematics, rigid-mode projection and traction ownership consistent before treating coupled values as physical. The projection audit in `analysis/issue487/gate2-rigid-projection-audit.md` does not select the physical interface. Justify the remaining source/capacity assumptions before Gate 2 closes (see
        `analysis/issue487/README.md`, `analysis/issue487/gate2-load-diagnosis.md`,
        `analysis/issue487/gate2-column-envelope.json`, `analysis/issue487/gate2-matched-replay.json`,
        `analysis/issue487/gate2-spatial-capacity-replay.json`, and
        `analysis/issue487/gate2-capacity-sensitivity.json`,
-       `analysis/issue487/gate2-coupled-shell-benchmark.json`, and
-       `analysis/issue487/gate2-interface-sensitivity.json`).
+       `analysis/issue487/gate2-coupled-shell-benchmark.json`,
+       `analysis/issue487/gate2-interface-sensitivity.json`, and
+       `analysis/issue487/gate2-rigid-projection-audit.md` / `.json`).
 2. [ ] In synthetic tests, damage is timestep-partition invariant, bounded, absent under compression
        or sub-yield loading, and advances only through adjacent cells with supported positive loading.
 3. [ ] Segments can nucleate independently, propagate, arrest and link; a transform/transfer zone

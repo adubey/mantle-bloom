@@ -340,7 +340,7 @@ Gate 2 pair replay now audits pair-specific contact-drag force and moment closur
 and compares the current contact forces with a tied/no-slip shell solve that omits only that pair
 interaction. This identifies contact drag as internal to the two-plate pair, but the existing
 velocity-dependent drag is not a finite-slip constitutive law for the static shell solve. The
-bonded case is a sensitivity assumption only; see `analysis/issue487/gate2-interface-sensitivity.md`.
+bonded case is a sensitivity assumption only; see `analysis/issue487/gate2-interface-sensitivity.md`. The six-event projection audit confirms that the joint mesh removes its three global rigid rotations, consistent with its bonded displacement field. Projecting source and neighbor groups separately while retaining that mesh changes mean cut-band tensile resultants by 3.0–95.1%. This is a sensitivity variant with incompatible kinematics, not a physical free-slip model. Both variants converge, so the difference reflects the interface assumption. See `analysis/issue487/gate2-rigid-projection-audit.md`; coupled stress remains provisional until interface kinematics and traction ownership are formulated consistently.
 The source-force
 moments are checked against
 existing torque terms in `backend/unit_tests/test_torque.py`; synthetic equilibrium, rigid-rotation

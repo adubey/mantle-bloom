@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Replay one Gate 2 event and compare isolated and coupled source-band loads.
+"""Replay one Gate 2 event and compare source-band loads under alternate rigid-mode projections.
 
 The paired solve audits mutual contact-drag force/torque closure and compares applying that
 pair interaction with a bonded/no-slip solve where the shared interface carries the reaction.
@@ -63,6 +63,32 @@ def _pair_contact_drag(world, plate, neighbor):
     return force * (inputs.neighbor_plate_id == neighbor.plate_id)[:, None]
 
 
+def _project_rigid_rotation(points_xyz, areas_m2, force_n):
+    """Mirror the solver's area-weighted rigid-rotation force projection."""
+    points = np.asarray(points_xyz, dtype=float)
+    areas = np.asarray(areas_m2, dtype=float)
+    force = np.asarray(force_n, dtype=float)
+    first, second = thin_shell._tangent_basis(points)
+    tangent = force - np.sum(force * points, axis=1)[:, None] * points
+    force_dofs = np.column_stack((np.sum(tangent * first, axis=1),
+                                  np.sum(tangent * second, axis=1))).ravel()
+    modes = np.empty((2 * len(points), 3))
+    xyz_m = points * lithosphere.PLANET_RADIUS_M
+    for axis in range(3):
+        omega = np.eye(3)[axis]
+        velocity = np.cross(np.broadcast_to(omega, xyz_m.shape), xyz_m)
+        modes[:, axis] = np.column_stack((np.sum(velocity * first, axis=1),
+                                          np.sum(velocity * second, axis=1))).ravel()
+    weights = np.repeat(areas, 2)
+    coeff, *_ = np.linalg.lstsq(modes * np.sqrt(weights)[:, None],
+                                force_dofs / np.sqrt(weights), rcond=None)
+    rigid_dofs = weights * (modes @ coeff)
+    projected_dofs = force_dofs - rigid_dofs
+    rigid = rigid_dofs.reshape(-1, 2)[:, :1] * first + rigid_dofs.reshape(-1, 2)[:, 1:] * second
+    projected = projected_dofs.reshape(-1, 2)[:, :1] * first + projected_dofs.reshape(-1, 2)[:, 1:] * second
+    return projected, rigid
+
+
 def _solve_pair(world, source, cut_points, cut_normal):
     neighbor, nearest_node_count = _neighbor_for(source, world)
     source_field = replay._event_force_field(world, source)
@@ -96,6 +122,22 @@ def _solve_pair(world, source, cut_points, cut_normal):
         mesh_triangles=triangles,
     )
     joined = thin_shell.solve_thin_shell(applied_force_n=force, **shell_inputs)
+
+    # Audit whether treating the pair as one rigid body suppresses relative plate modes.
+    source_local = used < len(source_points)
+    source_projected, source_rigid = _project_rigid_rotation(
+        points[used][source_local], area[source_local], force[source_local]
+    )
+    neighbor_projected, neighbor_rigid = _project_rigid_rotation(
+        points[used][~source_local], area[~source_local], force[~source_local]
+    )
+    platewise_force = np.empty_like(force)
+    platewise_force[source_local] = source_projected
+    platewise_force[~source_local] = neighbor_projected
+    platewise_rigid_force = np.zeros_like(force)
+    platewise_rigid_force[source_local] = source_rigid
+    platewise_rigid_force[~source_local] = neighbor_rigid
+    platewise = thin_shell.solve_thin_shell(applied_force_n=platewise_force, **shell_inputs)
 
     # In a tied/no-slip interface model, contact exchange is carried by the interface
     # constraint reaction. Do not also apply the torque engine's contact drag as a
@@ -138,6 +180,7 @@ def _solve_pair(world, source, cut_points, cut_normal):
     solo_values = np.asarray([isolated.max_tensile_resultant_n_per_m[a] for a, _ in paired])
     coupled_values = np.asarray([joined.max_tensile_resultant_n_per_m[b] for _, b in paired])
     tied_values = np.asarray([tied_interface.max_tensile_resultant_n_per_m[b] for _, b in paired])
+    platewise_values = np.asarray([platewise.max_tensile_resultant_n_per_m[b] for _, b in paired])
     scale_n_per_m = max(float(np.mean(solo_values)), 1.0)
     joined_difference = np.abs(coupled_values - solo_values)
     tied_difference = np.abs(tied_values - solo_values)
@@ -185,11 +228,26 @@ def _solve_pair(world, source, cut_points, cut_normal):
         "joined_equilibrium_residual_over_load": joined.equilibrium_residual_n / max(float(np.linalg.norm(joined.equilibrated_force_n)), 1.0),
         "joined_rigid_rotation_force_fraction": float(np.linalg.norm(joined.rigid_rotation_force_n) / max(np.linalg.norm(force), 1.0)),
         "joined_rigid_rotation_removed_torque_nm": np.cross(points[used] * lithosphere.PLANET_RADIUS_M, joined.rigid_rotation_force_n).sum(axis=0).tolist(),
+        "sourcewise_rigid_rotation_force_fraction_of_raw_pair_load": float(np.linalg.norm(source_rigid) / max(float(np.linalg.norm(force)), 1.0)),
+        "neighborwise_rigid_rotation_force_fraction_of_raw_pair_load": float(np.linalg.norm(neighbor_rigid) / max(float(np.linalg.norm(force)), 1.0)),
+        "platewise_total_rigid_rotation_force_fraction_of_raw_pair_load": float(np.linalg.norm(platewise_rigid_force) / max(float(np.linalg.norm(force)), 1.0)),
+        "pairwise_projection_removed_force_fraction_of_raw_pair_load": float(np.linalg.norm(joined.rigid_rotation_force_n) / max(float(np.linalg.norm(force)), 1.0)),
+        "platewise_projection_pair_cleanup_fraction_of_raw_pair_load": float(np.linalg.norm(platewise.rigid_rotation_force_n) / max(float(np.linalg.norm(force)), 1.0)),
+        "projection_policy_removed_force_difference_fraction_of_raw_pair_load": float(np.linalg.norm(platewise_rigid_force - joined.rigid_rotation_force_n) / max(float(np.linalg.norm(force)), 1.0)),
+        "platewise_solver_stop_code": int(platewise.solver_stop_code),
+        "platewise_equilibrium_residual_over_load": platewise.equilibrium_residual_n / max(float(np.linalg.norm(platewise.equilibrated_force_n)), 1.0),
         "isolated_solver_stop_code": int(isolated.solver_stop_code),
         "isolated_equilibrium_residual_over_load": isolated.equilibrium_residual_n / max(float(np.linalg.norm(isolated.equilibrated_force_n)), 1.0),
         "isolated_rigid_rotation_force_fraction": float(np.linalg.norm(isolated.rigid_rotation_force_n) / max(np.linalg.norm(source_field.total_n[source_used]), 1.0)),
         "isolated_source_cut_band_n_ext_mean_n_per_m": float(solo_values.mean()),
         "joined_source_cut_band_n_ext_mean_n_per_m": float(coupled_values.mean()),
+        "platewise_projection_source_cut_band_n_ext_mean_n_per_m": float(platewise_values.mean()),
+        "platewise_vs_pairwise_projection_mean_abs_n_ext_difference_fraction_of_pairwise_mean": float(
+            np.mean(np.abs(platewise_values - coupled_values)) / max(float(np.mean(coupled_values)), 1.0)
+        ),
+        "platewise_vs_pairwise_projection_p95_abs_n_ext_difference_fraction_of_pairwise_mean": float(
+            np.quantile(np.abs(platewise_values - coupled_values), 0.95) / max(float(np.mean(coupled_values)), 1.0)
+        ),
         "tied_interface_without_applied_contact_drag_source_cut_band_n_ext_mean_n_per_m": float(tied_values.mean()),
         "comparison_scale_mean_isolated_n_ext_n_per_m": scale_n_per_m,
         "joined_mean_absolute_difference_fraction_of_isolated_band_mean": float(np.mean(joined_difference) / scale_n_per_m),
