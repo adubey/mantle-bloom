@@ -332,16 +332,16 @@ their new Hc. Young relief (young sutures, cordilleras, collision belts) starts 
 `moho_thermal_lag_c` of crust just buried from the reference column (`orogeny.bury_moho`),
 scaled by the young share of the node's relief. Young belts therefore start with a cold Moho
 and heat over `orogeny.THERMAL_RELAXATION_MYR`; older relief starts at steady state. Columns
-thicker than `orogeny.COLLAPSE_ONSET_HC_M` (50 km, about 3-7% of land at node density 4) are
+thicker than `orogeny.COLLAPSE_ONSET_HC_M` (50 km, about 3-5% of land at node density 4) are
 collapse-mobile from the first step.
 
 **Limits.** Oceanic crust is left as generated. GDH1 age-depth bathymetry, ridges and trenches
 need thermal buoyancy the column model does not have: an 11 km oceanic column floats no
 shallower than about -4.4 km at the 2 km Hm floor, so a -2.6 km ridge cannot be backed.
 Measured on seeds 447276134, 373936961, 910211954 and 374464662 at node density 4:
-- land p50 is 348-438 m (Earth 423 m), and 6-12% of land is above 2 km (Earth 11%);
-- lowland relief at 100 km is 147-162 m (Earth 166-173 m at node scale);
-- lakes cover 6-10% of land, against Earth's ~2%, because the scour pits and platform basins
+- land p50 is 330-473 m (Earth 423 m), and 5-9% of land is above 2 km (Earth 11%);
+- lowland relief at 100 km is 150-157 m (Earth 166-173 m at node scale);
+- lakes cover 7-10% of land, against Earth's ~2%, because the scour pits and platform basins
   are sub-grid features that form node-sized closed basins.
 
 At the default `continental_fraction` (0.5 of the surface), a third of the ocean is shallower
