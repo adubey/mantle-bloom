@@ -301,12 +301,15 @@ and `N_ext` checks: global force closure including the analytic Laplace-pressure
 is `2.19e-7` of the target resultant; joined/isolated regional mean `N_ext` differs by at most
 `0.0094%`. This verifies the linear shell assembly for its manufactured case.
 
-Two matched seed-7 source events were also remeshed with the nearest-plate neighbor receiving the
-most source-node assignments, applying both plates' per-node loads. The mean absolute nodewise change in source-band `N_ext` was 51.2% at 4 Myr
-and 26.2% at 38 Myr, with 100% cut-band coverage and residual/load below 0.02%. The sample is only
-two split events from one seed. It uses shared-node Delaunay remeshing, no contact or slip law, and a
-single rigid-mode projection for the pair. Those shifts are a coupling/rigid-mode/remeshing
-sensitivity, not a physical prediction. See [`gate2-load-diagnosis.md`](gate2-load-diagnosis.md),
-[`gate2-coupled-shell-benchmark.json`](gate2-coupled-shell-benchmark.json), and the two event JSON
-reports. Gate 2 remains open until interface-force ownership and a defensible traction/slip law are
-specified and tested across event kinds and seeds.
+The initial two-event seed-7 comparison used a per-node relative-change denominator and was
+invalid where isolated N_ext was zero; its quoted 26.2% and 51.2% values are superseded. A
+corrected six-event audit covers one connected-source split and one failed-rift event per Gate 1
+seed. It checks mutual contact-force/torque closure and compares current pair contact loads with a
+tied-interface solve that omits only the pair's mutual contact drag. Stress differences use the
+mean isolated cut-band N_ext as a zero-safe scale. The corrected difference ranges from 5.3% to
+97.0%; active pair contact has force closure residuals of 2.0–21.4% and torque closure of
+4.6–21.6%. The tied solve is an idealized bonded/no-slip case, not a validated geological
+interface law. See [gate2-interface-sensitivity.md](gate2-interface-sensitivity.md),
+[gate2-interface-sensitivity.json](gate2-interface-sensitivity.json), and
+[gate2-coupled-shell-benchmark.json](gate2-coupled-shell-benchmark.json). Gate 2 remains open; audit the pair-level rigid-rotation
+projection before selecting a finite-slip law.

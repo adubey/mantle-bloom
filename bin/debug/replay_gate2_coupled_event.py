@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Replay one Gate 2 event and compare its source-only load with a coupled neighbor mesh.
+"""Replay one Gate 2 event and compare isolated and coupled source-band loads.
+
+The paired solve audits mutual contact-drag force/torque closure and compares applying that
+pair interaction with a bonded/no-slip solve where the shared interface carries the reaction.
+This is not a calibrated finite-slip law.
 
 Usage:
     PYTHONHASHSEED=0 PYTHONPATH=backend backend/.venv/bin/python \
@@ -8,8 +12,9 @@ Usage:
       --output analysis/issue487/gate2-coupled-event-seed7-38myr.json
 
 The source and its nearest force-contributing neighbor are remeshed together on one clipped
-curved mesh, sharing nodes across the plate boundary. This remains a linear elastic screening
-diagnostic; it does not model slip, faults, or a geologic contact law.
+curved mesh. The shared displacement nodes impose a bonded/no-slip interface. The force-included
+and tied/no-pair-contact-drag cases are sensitivity diagnostics; neither defines a geological
+finite-slip law or models faults.
 """
 from __future__ import annotations
 
@@ -41,6 +46,23 @@ def _neighbor_for(source, world):
     return next(plate for plate in neighbors if plate.plate_id == neighbor_id), int(counts.max())
 
 
+def _pair_contact_drag(world, plate, neighbor):
+    spacing = line_spacing_rad(world.node_density)
+    reach = torque.boundary_force_reach_rad(spacing)
+    neighbors = plate.get_neighbours(world.plates)
+    inputs = torque.gather_boundary_force_inputs(
+        plate, neighbors, spacing, reach, getattr(world, "boundary_search_cache", None)
+    )
+    _convergent, _divergent, _transform, contested = torque.classify_boundary_nodes(
+        plate, neighbors, inputs, reach, getattr(world, "boundary_search_cache", None)
+    )
+    collision = torque.continental_contact_mask(plate, inputs, contested)
+    craton = torque.contact_craton_m(plate, neighbors, inputs)
+    jam = torque.contact_jam_factor(plate, world, neighbors, inputs, reach)
+    force = torque.contact_drag_force_vectors_n(plate, inputs, collision, spacing, craton, jam)
+    return force * (inputs.neighbor_plate_id == neighbor.plate_id)[:, None]
+
+
 def _solve_pair(world, source, cut_points, cut_normal):
     neighbor, nearest_node_count = _neighbor_for(source, world)
     source_field = replay._event_force_field(world, source)
@@ -65,10 +87,24 @@ def _solve_pair(world, source, cut_points, cut_normal):
     hc = np.r_[source.collect("crustal_thickness_m"), neighbor.collect("crustal_thickness_m")][used]
     hm = np.r_[source.collect("mantle_lithosphere_thickness_m"), neighbor.collect("mantle_lithosphere_thickness_m")][used]
     capacity = np.full(len(used), 1e10)
-    joined = thin_shell.solve_thin_shell(
-        points[used], area, force, thickness_m=np.maximum(hc + hm, 1.0),
+    shell_inputs = dict(
+        points_xyz=points[used],
+        areas_m2=area,
+        thickness_m=np.maximum(hc + hm, 1.0),
         young_modulus_pa=replay.EFFECTIVE_MODULUS_PA,
-        extensional_capacity_resultant_n_per_m=capacity, mesh_triangles=triangles,
+        extensional_capacity_resultant_n_per_m=capacity,
+        mesh_triangles=triangles,
+    )
+    joined = thin_shell.solve_thin_shell(applied_force_n=force, **shell_inputs)
+
+    # In a tied/no-slip interface model, contact exchange is carried by the interface
+    # constraint reaction. Do not also apply the torque engine's contact drag as a
+    # pair-external load in this variant.
+    source_pair_contact = _pair_contact_drag(world, source, neighbor)
+    neighbor_pair_contact = _pair_contact_drag(world, neighbor, source)
+    pair_contact_force = np.vstack((source_pair_contact, neighbor_pair_contact))
+    tied_interface = thin_shell.solve_thin_shell(
+        applied_force_n=force - pair_contact_force[used], **shell_inputs
     )
 
     # Recreate the same isolated-source clipped mesh and load used by the matched replay.
@@ -101,10 +137,31 @@ def _solve_pair(world, source, cut_points, cut_normal):
         raise ValueError("no matched source cut-band nodes in both meshes")
     solo_values = np.asarray([isolated.max_tensile_resultant_n_per_m[a] for a, _ in paired])
     coupled_values = np.asarray([joined.max_tensile_resultant_n_per_m[b] for _, b in paired])
+    tied_values = np.asarray([tied_interface.max_tensile_resultant_n_per_m[b] for _, b in paired])
+    scale_n_per_m = max(float(np.mean(solo_values)), 1.0)
+    joined_difference = np.abs(coupled_values - solo_values)
+    tied_difference = np.abs(tied_values - solo_values)
+    zero_tension = solo_values <= 1.0
     pair_force = np.vstack((source_field.total_n, neighbor_field.total_n))
     pair_points = np.vstack((source_points, neighbor_points))
     raw_force = pair_force.sum(axis=0)
     raw_torque = np.cross(pair_points * lithosphere.PLANET_RADIUS_M, pair_force).sum(axis=0)
+    contact_torque = np.cross(
+        pair_points * lithosphere.PLANET_RADIUS_M, pair_contact_force
+    ).sum(axis=0)
+    contact_scale = max(float(np.linalg.norm(pair_contact_force, axis=1).sum()), 1.0)
+    contact_torque_scale = max(
+        float(np.linalg.norm(np.cross(pair_points * lithosphere.PLANET_RADIUS_M, pair_contact_force), axis=1).sum()),
+        1.0,
+    )
+    force_components = {}
+    for name in ("slab_pull_n", "slab_drag_n", "ridge_push_n", "basal_drag_n", "contact_drag_n"):
+        component = np.vstack((getattr(source_field, name), getattr(neighbor_field, name)))
+        force_components[name.removesuffix("_n")] = {
+            "source_resultant_n": np.sum(getattr(source_field, name), axis=0).tolist(),
+            "neighbor_resultant_n": np.sum(getattr(neighbor_field, name), axis=0).tolist(),
+            "pair_resultant_n": component.sum(axis=0).tolist(),
+        }
     return {
         "neighbor_plate_id": int(neighbor.plate_id),
         "neighbor_node_count": int(len(neighbor_points)),
@@ -118,6 +175,12 @@ def _solve_pair(world, source, cut_points, cut_normal):
         "matched_cut_band_coverage": len(paired) / max(int(band.sum()), 1),
         "raw_pair_force_n": raw_force.tolist(),
         "raw_pair_torque_nm": raw_torque.tolist(),
+        "force_component_resultants": force_components,
+        "mutual_pair_contact_force_l1_sum_n": float(np.linalg.norm(pair_contact_force, axis=1).sum()),
+        "source_pair_contact_force_resultant_n": source_pair_contact.sum(axis=0).tolist(),
+        "neighbor_pair_contact_force_resultant_n": neighbor_pair_contact.sum(axis=0).tolist(),
+        "pair_contact_force_action_reaction_closure_ratio": float(np.linalg.norm(pair_contact_force.sum(axis=0)) / contact_scale),
+        "pair_contact_torque_action_reaction_closure_ratio": float(np.linalg.norm(contact_torque) / contact_torque_scale),
         "joined_solver_stop_code": int(joined.solver_stop_code),
         "joined_equilibrium_residual_over_load": joined.equilibrium_residual_n / max(float(np.linalg.norm(joined.equilibrated_force_n)), 1.0),
         "joined_rigid_rotation_force_fraction": float(np.linalg.norm(joined.rigid_rotation_force_n) / max(np.linalg.norm(force), 1.0)),
@@ -127,9 +190,25 @@ def _solve_pair(world, source, cut_points, cut_normal):
         "isolated_rigid_rotation_force_fraction": float(np.linalg.norm(isolated.rigid_rotation_force_n) / max(np.linalg.norm(source_field.total_n[source_used]), 1.0)),
         "isolated_source_cut_band_n_ext_mean_n_per_m": float(solo_values.mean()),
         "joined_source_cut_band_n_ext_mean_n_per_m": float(coupled_values.mean()),
-        "mean_absolute_relative_n_ext_change": float(np.mean(np.abs(coupled_values - solo_values) / np.maximum(solo_values, 1.0))),
-        "p95_absolute_relative_n_ext_change": float(np.quantile(np.abs(coupled_values - solo_values) / np.maximum(solo_values, 1.0), 0.95)),
-        "interpretation": "The pair uses shared mesh nodes and both plates' existing per-node force fields. Result is a diagnostic sensitivity to adding one neighboring plate; it is not a calibrated interface/contact model.",
+        "tied_interface_without_applied_contact_drag_source_cut_band_n_ext_mean_n_per_m": float(tied_values.mean()),
+        "comparison_scale_mean_isolated_n_ext_n_per_m": scale_n_per_m,
+        "joined_mean_absolute_difference_fraction_of_isolated_band_mean": float(np.mean(joined_difference) / scale_n_per_m),
+        "tied_mean_absolute_difference_fraction_of_isolated_band_mean": float(np.mean(tied_difference) / scale_n_per_m),
+        "joined_vs_tied_mean_absolute_difference_fraction_of_joined_band_mean": float(
+            np.mean(np.abs(tied_values - coupled_values)) / max(float(np.mean(coupled_values)), 1.0)
+        ),
+        "joined_p95_absolute_difference_fraction_of_isolated_band_mean": float(np.quantile(joined_difference, 0.95) / scale_n_per_m),
+        "source_band_fraction_zero_to_positive_tension_joined": float(
+            np.mean(zero_tension & (coupled_values > 1.0))
+        ),
+        "source_band_fraction_zero_to_positive_tension_tied": float(
+            np.mean(zero_tension & (tied_values > 1.0))
+        ),
+        "interface_assumptions": {
+            "joined_with_pair_contact_drag": "Shared displacement mesh plus each side's current contact drag for this same pair; equilibrium depends on those discretized tractions being action-reaction balanced.",
+            "tied_without_pair_contact_drag": "Perfectly tied/no-slip displacement interface; mutual contact transfer is represented by the interface constraint reaction, not also by applied pair contact-drag forces. Contact loads from other neighbors remain applied.",
+            "limitation": "The tied case is an idealized bonded endmember, not a calibrated tectonic contact law or an upper bound on extensional stress. Relative node positions and unequal front sampling may prevent exact force/torque cancellation.",
+        },
     }
 
 

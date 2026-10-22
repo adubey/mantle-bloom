@@ -263,11 +263,18 @@ should start until those gates are resolved and the revised design is accepted.
    uniform-tension spherical-shell benchmark decreases mean error from 2.94% to 1.18%, with
    fine-grid p95 absolute error 2.75%. Free displacement is selected for the isolated diagnostic;
    paired clamps shift means by up to 46.6% and full-boundary clamps suppress the mean by about
-   100%, demonstrating why arbitrary anchors are not adopted. A two-plate shared-node benchmark passes manufactured force/torque balance, interface reaction and
-   resultant checks. Two matched seed-7 split events shift source-band `N_ext` by 26.2% and 51.2%
-   mean absolute nodewise when the dominant nearest neighbor and its loads are included. These are
-   two cases from one seed, with no contact/slip law and one rigid-mode projection over the pair;
-   they are sensitivity evidence, not physical coupled predictions. A direct phenomenological capacity candidate,
+   100%, demonstrating why arbitrary anchors are not adopted.
+   A two-plate shared-node benchmark passes manufactured force/torque balance, interface reaction and
+   resultant checks. A corrected six-event sample (one split and one failed-rift per seed) measures
+   5.3–97.0% mean absolute source-band N_ext change on a band-scale denominator when the dominant
+   nearest neighbor is included. For four events with nonzero mutual contact drag, pair force closure
+   residuals are 2.0–21.4% and torque closure residuals are 4.6–21.6%; two events have no mutual
+   contact drag and do not test closure. The initial 26.2%/51.2% per-node-relative summaries were
+   invalid where isolated stress was zero and are superseded. The tied/no-slip variant omits only
+   mutual pair drag, but remains an idealized bonded interface, not a physical finite-slip law.
+   See `analysis/issue487/gate2-interface-sensitivity.md`. These are sensitivity checks, not
+   physical coupled predictions; the pair-level rigid-mode projection remains unaudited.
+   A direct phenomenological capacity candidate,
    `T_cap = T_ref * (1 - lambda * w)`, was swept on a prescribed weak band: increasing `T_ref`
    monotonically reduced failed nodes, and at `2e10 N/m` the weak-band failure fraction exceeded
    the background fraction for both plates. This verifies the candidate rule's response, not its
@@ -475,18 +482,19 @@ source or explicit design-choice status, and the sensitivity plan before impleme
        use old-algorithm cuts as calibration labels. A thickness-aware diagnostic mapping using
        local Hc/Hm and proxy fields with steady-versus-lagged temperature assumptions is complete;
        its output remains a scenario screen because profile and rheology state are unresolved.
-       The manufactured shared-node benchmark passes, but the two event cases show large load
-       sensitivity when a neighbor is included. Specify interface force ownership and contact/slip
-       behavior, audit rigid-mode projection, and broaden paired split/failed-rift checks across
-       seeds before treating coupled values as physical. Justify the remaining source/capacity
-       assumptions before Gate 2 closes (see
+       The manufactured shared-node benchmark passes. A corrected six-event sample covers one
+       connected-source split and failed-rift per seed; it records 5.3–97.0% band-scale load
+       sensitivity and 2.0–21.4% force / 4.6–21.6% torque closure residuals for active mutual
+       contact drag. The tied/no-slip comparison is an idealized bonded endmember, not a selected
+       finite-slip law; the previous two-event relative-change summaries were invalid where baseline
+       node stress was zero. Audit pair-level rigid-mode projection before treating coupled values
+       as physical. Justify the remaining source/capacity assumptions before Gate 2 closes (see
        `analysis/issue487/README.md`, `analysis/issue487/gate2-load-diagnosis.md`,
        `analysis/issue487/gate2-column-envelope.json`, `analysis/issue487/gate2-matched-replay.json`,
        `analysis/issue487/gate2-spatial-capacity-replay.json`, and
        `analysis/issue487/gate2-capacity-sensitivity.json`,
-       `analysis/issue487/gate2-coupled-shell-benchmark.json`, and the two event reports
-       `analysis/issue487/gate2-coupled-event-seed7-4myr.json` and
-       `analysis/issue487/gate2-coupled-event-seed7-38myr.json`).
+       `analysis/issue487/gate2-coupled-shell-benchmark.json`, and
+       `analysis/issue487/gate2-interface-sensitivity.json`).
 2. [ ] In synthetic tests, damage is timestep-partition invariant, bounded, absent under compression
        or sub-yield loading, and advances only through adjacent cells with supported positive loading.
 3. [ ] Segments can nucleate independently, propagate, arrest and link; a transform/transfer zone

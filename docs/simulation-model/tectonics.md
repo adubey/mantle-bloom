@@ -335,7 +335,13 @@ capacity `T_cap = T_ref * (1 - lambda * w)` was also swept against
 the manufactured resultants, where `T_ref` is a caller-selected capacity and `w` is a prescribed
 weak-zone weight. It localized the threshold response as intended, but its inputs are uncalibrated
 design values and are not part of production deformation. Neighbor coupling, faults, bending,
-plastic yielding and topology changes remain outside this read-only diagnostic. The source-force
+plastic yielding and topology changes remain outside this read-only diagnostic. A six-event
+Gate 2 pair replay now audits pair-specific contact-drag force and moment closure
+and compares the current contact forces with a tied/no-slip shell solve that omits only that pair
+interaction. This identifies contact drag as internal to the two-plate pair, but the existing
+velocity-dependent drag is not a finite-slip constitutive law for the static shell solve. The
+bonded case is a sensitivity assumption only; see `analysis/issue487/gate2-interface-sensitivity.md`.
+The source-force
 moments are checked against
 existing torque terms in `backend/unit_tests/test_torque.py`; synthetic equilibrium, rigid-rotation
 removal, linear load scaling and mesh/edge cases are checked in `backend/unit_tests/test_thin_shell.py`.
