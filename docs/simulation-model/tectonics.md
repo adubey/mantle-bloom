@@ -2,18 +2,84 @@
 
 [Back to the Simulation Model index](../simulation-model.md).
 
-<a id="boundary-evolution"></a>
-## Plate motion: shift and deform (`plates.py`'s `Plate.shift`/`Plate.deform`)
+## The short version
 
-Replaces an earlier design (`boundary.py`'s `step_boundaries`) that classified a boundary
-node as convergent/divergent/transform from the *velocity* decomposition described further
-down -- two plates' relative velocity at a point, decomposed against the direction toward
-the neighbor into a signed **closing rate**. That mechanism still exists (`boundary.
-closing_rate`) and is still exactly how `merge_split.py` decides whether two continental
-plates are actively colliding (see [Merge and split](#merge-and-split)) -- it just no longer
-drives ordinary per-step boundary evolution. Classification there is now purely
-*geometric*: did a plate's rotated territory end up overlapping a neighbor's, or did it open
-up space nobody else claims?
+Tectonic plates move across the planet's surface. Where they meet, they can push together,
+pull apart, or slide past one another. Those motions change the rocks beneath the surface,
+which can build mountains, open ocean basins, or create volcanoes.
+
+The simulation represents each plate as a flexible map of four-sided cells arranged on a
+sphere. The cells form an **adaptive mesh**: a large cell can be split into four smaller
+cells where more detail is needed. Each cell carries a vertical rock column, and the model
+uses that column to calculate the height of the land or depth of the ocean above it.
+
+## Two layers beneath the surface: Hc and Hm
+
+Each cell's rock column has two main thicknesses:
+
+- **Hc** means *crust thickness*: the thickness of the planet's outer rocky crust. Earth's
+  crust is the layer that includes the continents and ocean floor.
+- **Hm** means *mantle-lithosphere thickness*: the thickness of the strong uppermost mantle
+  that moves with the crust as part of a tectonic plate. It is only the upper, rigid part of
+  the mantle, not the entire mantle beneath the planet.
+
+Usually Hm is greater than Hc. For example, the simulation starts a typical continental
+column with about 35 km of crust (Hc) over about 100 km of mantle lithosphere (Hm). A mature
+ocean-floor column starts with about 11 km of crust over about 40 km of mantle lithosphere.
+Very young crust at a mid-ocean ridge is a special case: its mantle lithosphere starts thin
+and grows as it cools.
+
+The two thicknesses matter because they help set a column's buoyancy. In the simulation,
+thicker, less-dense crust tends to raise the surface, while denser mantle lithosphere tends
+to lower it. The model combines both effects to calculate elevation, a balance called
+**isostasy**. It recalculates the surface when either layer changes, so mountains and ocean
+basins follow the structure of the rock column.
+
+The boundary between the crust and mantle is called the **Moho**. It is marked in the
+cross-section below.
+
+![Conceptual convergent mountain-belt cross section showing thickened crust and mantle lithosphere, with Hc, Hm, the Moho and lithosphere base marked.](../img/issue-514/lithosphere-cross-section.svg)
+*This conceptual cross-section shows the two thicknesses the simulation tracks. A mountain
+belt can have thicker crust and thicker mantle lithosphere than the surrounding plate. The
+drawing is simplified and its relief is exaggerated; it is not a simulation render.*
+
+At plate boundaries, the simulation changes Hc and Hm according to the kind of motion:
+
+- **Plates push together:** continental crust thickens along with its mantle lithosphere in
+  the collision zone, helping build mountains. Oceanic crust is usually subducted. Where it
+  sinks beneath a continent, melting can add extra crust to a volcanic arc; this added crust
+  increases Hc without necessarily increasing Hm.
+- **Plates pull apart:** the crust and mantle lithosphere thin. If the crust gets thin enough,
+  melting adds new oceanic crust at the opening boundary.
+- **Plates slide past:** the simulation adds a small amount of local surface uplift, without
+  changing Hc or Hm through that uplift term.
+
+
+## Boundary evolution
+
+### How a plate changes during each time step
+
+First the plate rotates according to its motion. Then the simulation checks whether parts of
+its territory overlap a neighbor or leave open space behind. An overlap marks crust being
+overridden or compressed; open space can be filled as the plate edge advances. These
+geometric checks decide how the plate's cells change. A separate motion calculation helps
+distinguish convergence, spreading, and sliding near the boundary.
+
+The implementation uses two operations each step: `Plate.shift` rotates the plate, and
+`Plate.deform` updates its columns and territory. The detailed rules below describe how those
+operations work.
+
+The simulation no longer uses boundary velocity alone to decide how every node changes.
+Geometric overlap detects contested territory, while an open, unclaimed space indicates
+where a boundary may advance. The relative closing rate is still used for some decisions,
+including identifying active continental collisions when plates may merge (see
+[Merge and split](#merge-and-split)).
+
+The overview above explains the main ideas. The sections that follow are a more detailed
+reference: they describe specific rules the simulation uses and point to the code that
+implements them.
+
+### Implementation details: plate motion and deformation
 
 Each plate runs two operations every step, in this order:
 
@@ -63,12 +129,6 @@ older elevation-line surface instead added per-case elevation deltas with their 
 tapers (a banded arc, a trench rate, a 300 km rift reach); #251 retired it, and with it those
 deltas.
 
-![Conceptual convergent mountain-belt cross section showing thickened crust and mantle lithosphere, with Hc, Hm, the Moho and lithosphere base marked.](../img/issue-514/lithosphere-cross-section.svg)
-*This convergent mountain-belt schematic shows thickened crust (Hc) and mantle lithosphere
-(Hm). In the model, convergent shortening thickens both in proportion; arc magmatism can add
-Hc without increasing Hm, so the relationship is not universal. Isostasy couples both column
-thicknesses to surface elevation. Conceptual geometry; relief is exaggerated, and this is not
-a simulation render.*
 
 - **Convergent** (either crust type) -> yield-limited plastic shortening
   (`rheology.apply_convergent_deformation`), scaled by `orogen_contested_strength` (the
@@ -357,8 +417,7 @@ already merged a ready closing-rate pair). Separately, `_merge_probability` now 
 large pair's odds toward certainty in proportion to `|omega_a - omega_b| / MAX_PLATE_RATE` --
 a fast, decisive convergence merges more readily than a slow oblique graze.
 
-<a id="quad-deformation"></a>
-## Quad-surface deformation (`quad_tectonics.py`)
+## Quad deformation
 
 **Conceptual diagram — boundary cells retreat or advance while deformation cuts or fills their surface; exact masks depend on local overlap and boundary class.**
 
@@ -437,8 +496,7 @@ The whole-world passes read territory from the cells rather than from node dista
   by the seed, step, plate and the node's stable ID (`SurfaceNodes.node_ids`, the cell key),
   so adding or removing cells elsewhere on the plate doesn't change it.
 
-<a id="orogenic-relief"></a>
-### Orogenic relief before delamination (`orogeny.py`)
+### Orogenic relief
 
 Continental collision mostly shortens, thickens and moves crust around (issue #290). Lower-
 crustal delamination is real, but it needs a dense eclogitized root that is hot enough to
@@ -656,8 +714,7 @@ That save still loses ~0.15%/Myr to collision because ~3% of its whole inventory
 through suture retreat every Myr (the quad rotation pile-up, issue #289), not because any
 one donation loses much.
 
-<a id="merge-and-split"></a>
-## Merge and split (`merge_split.py`)
+## Merge and split
 
 Unlike `shift`/`deform`, these are rare, discrete, topology-changing events, so a one-time
 resample is an acceptable cost here -- the exact, no-resampling guarantee only matters for
@@ -865,8 +922,7 @@ routine per-step motion.
   alone here, not deleted. This runs before the collision and split passes so a severed
   lobe stops polluting neighbour territory and collision detection first.
 
-<a id="gap-filling"></a>
-## Whole-sphere coverage: local thinning-then-melting, plus a whole-sphere fallback (`gaps.py`)
+## Gap filling
 
 Ordinary per-step boundary advance (`deform()`, see [Quad-surface
 deformation](#quad-deformation)) keeps pace with almost every gap that opens next to a live
@@ -942,7 +998,6 @@ least `gaps.MIN_GAP_NODES`; smaller isolated clusters wait for a neighbour to re
 `gaps.py`'s own module docstring and [GitHub issue
 #127](https://github.com/adubey/mantle-bloom/issues/127).
 
-<a id="per-node-crust-type"></a>
 ### Per-node crust type
 
 A plate's `crust_type` ("oceanic"/"continental") is the usual, plate-wide answer to "what is
@@ -1001,8 +1056,7 @@ disagrees with the plate it sits on -- in bright highlight colours distinct from
 muted oceanic/continental tones, so a mixed-composition patch is directly visible for
 verification.
 
-<a id="cratons"></a>
-### Cratons (`cratons.py`)
+### Cratons
 
 Cratons are old, buoyant, mechanically strong continental cores that come through ordinary
 tectonic cycles intact (GitHub issue #274). Without them, continents that keep colliding are
@@ -1140,8 +1194,7 @@ One without any is dropped as before, and so is one no plate touches, booking it
 moves each donor's material with the crust it gives up, balancing the transfer by cell
 volume.
 
-<a id="volcanism"></a>
-## Volcanism (`volcanism.py`, plus `lithosphere_plate.deform_columns`)
+## Volcanism
 
 New continental crust forming where plates are separating. This used to be two halves in one
 module: a periodic whole-sphere *detection* pass that spawned brand-new "volcanic field"
@@ -1208,8 +1261,7 @@ glaciers are (`VOLCANO_COLOR_RGB`, a hot red-orange distinct from both), drawn a
 before glacier so ice still wins where both would apply (a volcano cold enough to glaciate
 should read as ice-covered, not lava-red).
 
-<a id="faults"></a>
-## Faults (intraplate) (`faults.py`)
+## Faults
 
 Two kinds of fault trace live here: **boundary faults** laid along every live plate-boundary
 segment, and **intraplate faults** that nucleate away from any edge.
