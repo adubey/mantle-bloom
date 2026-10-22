@@ -39,6 +39,7 @@ The boundary between the crust and mantle is called the **Moho**. It is marked i
 cross-section below.
 
 ![Conceptual convergent mountain-belt cross section showing thickened crust and mantle lithosphere, with Hc, Hm, the Moho and lithosphere base marked.](../img/issue-514/lithosphere-cross-section.svg)
+
 *This conceptual cross-section shows the two thicknesses the simulation tracks. A mountain
 belt can have thicker crust and thicker mantle lithosphere than the surrounding plate. The
 drawing is simplified and its relief is exaggerated; it is not a simulation render.*

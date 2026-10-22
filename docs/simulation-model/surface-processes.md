@@ -9,6 +9,7 @@ support surface height: thicker or lighter columns tend to stand higher. These p
 use simplified rates and limits rather than resolving individual grains or rock layers.
 
 ![A conceptual mountain-to-ocean landscape with callouts for tectonic uplift, erosion, river sediment transport, delta deposition, and the thick crustal root.](../img/issue-514/surface-processes-mountain-to-ocean-annotated.svg)
+
 *Conceptual mountain-to-ocean landscape. The arrows label uplift, erosion, sediment transport
 and deposition, and the crustal root beneath high terrain. The cutaway is simplified and not
 to scale; this is not a simulation render.*

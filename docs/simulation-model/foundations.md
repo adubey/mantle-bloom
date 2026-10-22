@@ -9,10 +9,12 @@ curved cell mesh and the elevation carried by those cells. They are teaching sch
 not output from a generated world.
 
 ![Conceptual oblique view of a plate's curved cell mesh beside an independently tiled neighbor.](../img/issue-514/plate-territory.svg)
+
 *A plate carries its own surface cells. Neighboring plates can use different cell layouts,
 so the model handles their meeting area as a moving boundary.*
 
 ![Conceptual oblique view of plate cells carrying lowlands and mountains.](../img/issue-514/plate-relief.svg)
+
 *Elevation travels with the same cells as the plate. The vertical relief is exaggerated for
 visibility.*
 

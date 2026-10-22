@@ -5,6 +5,18 @@ They introduce the plate-local surface cells and the Hc/Hm column vocabulary. Ke
 editable, and replace or complement them with simulation renders when a documented behavior
 needs evidence from a real run.
 
+## Conceptual landscape illustrations
+
+The JPG files are the unannotated source artwork. Each matching `*-annotated.svg` embeds
+that artwork and adds editable SVG text and arrows. Keep the JPG sources checked in so the
+art can be replaced without rebuilding the annotations.
+
+- `simulation-model-overview-annotated.svg` — planet systems overview.
+- `climate-landscape-annotated.svg` — wind, rainfall, rain shadow, ocean currents, and polar climate.
+- `hydrology-glacier-lakes-river-annotated.svg` — glacier meltwater, connected lake basins, and river outlet.
+- `globe-to-map-annotated.svg` — globe, coordinate grid, and map projection.
+- `surface-processes-mountain-to-ocean-annotated.svg` — uplift, erosion, sediment transport, and crustal root.
+
 ## Figures created
 
 - `plate-territory.svg` — oblique view of one plate's cell footprint and its independent

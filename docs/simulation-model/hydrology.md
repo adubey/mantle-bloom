@@ -9,6 +9,7 @@ an edge says which other cells it can send water to. This works with the irregul
 layout carried by moving plates.
 
 ![A conceptual watershed with callouts for a glacier, basal meltwater river, upper lake basin, spillway between basins, river outlet, and ocean.](../img/issue-514/hydrology-glacier-lakes-river-annotated.svg)
+
 *Conceptual watershed. The arrows trace meltwater beneath the glacier, through connected
 basins, and downriver to the ocean. Real drainage is more complex than this scene, and the
 image is not a simulation render.*

@@ -1,15 +1,14 @@
 # Simulation Model
 
-This guide explains how Mantle Bloom builds and changes a planet. It is written for readers
-who know basic geology and programming, but may not know the specialist terms used in
-tectonics, numerical models, or this codebase. Each topic starts with a plain-language map
-of the main ideas, then gives the precise rules, units, and code locations for readers who
-need implementation detail.
+This guide explains how Mantle Bloom builds and changes a planet. Each topic begins with
+its main ideas in plain language, then gives the rules, units, and code locations that
+explain how the simulation works.
 
 The simulation represents terrain as cells attached to moving plates. Climate, water, ice,
 and erosion act on that terrain; map views turn the model state into pictures.
 
 ![A conceptual planet with callouts for moving plates, mountain building, climate, surface water, and the mantle.](img/issue-514/simulation-model-overview-annotated.svg)
+
 *Conceptual overview of the systems described in these pages. The arrows identify features
 in the illustration; it is an educational image, not a rendered Mantle Bloom world.*
 

@@ -10,6 +10,7 @@ regular array of locations used for calculations; the plate terrain itself remai
 to the plates.
 
 ![A conceptual landscape with callouts for wind and clouds, rainfall, a dry rain-shadow side, ocean currents, and cold polar climate.](../img/issue-514/climate-landscape-annotated.svg)
+
 *Conceptual climate landscape. The arrows identify features that help explain the model's
 connected climate effects; this is not a simulation render.*
 
