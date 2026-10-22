@@ -12,17 +12,20 @@ def _arc(lon_deg: np.ndarray) -> np.ndarray:
 
 
 def _two_cratons(continent_of_core: dict[int, int]):
-    # Craton 0 at -20..-10 deg, craton 1 at +10..+20 deg, open ground between them.
-    lon = np.linspace(-20.0, 20.0, 401)
-    core = np.where(lon <= -10.0, 0, np.where(lon >= 10.0, 1, -1))
+    # Craton 0 at -15..-5 deg, craton 1 at +5..+15 deg, open ground between them. Their
+    # distances sum to ~1,110 km at the bisector, short of the far-pair fade.
+    lon = np.linspace(-15.0, 15.0, 301)
+    core = np.where(lon <= -5.0, 0, np.where(lon >= 5.0, 1, -1))
     return lon, _arc(lon), core, continent_of_core
 
 
 @pytest.fixture
 def one_middle_class(monkeypatch):
-    # Every pair survives and draws one class, so the geometry is what's under test.
+    # Every pair survives and draws the middle class, so the geometry is what's under test.
     monkeypatch.setattr(synthetic_relief, "SUTURE_DROP_PROBABILITY", 0.0)
-    monkeypatch.setattr(synthetic_relief, "SUTURE_CLASSES", ((1.0, 2_500.0, 120.0, 0.0),))
+    monkeypatch.setattr(
+        synthetic_relief, "SUTURE_CLASSES", ((0.0, 4_500.0, 180.0, 3_500.0), (1.0, 2_500.0, 120.0, 0.0), (0.0, 900.0, 150.0, 0.0))
+    )
 
 
 @pytest.mark.usefixtures("one_middle_class")
@@ -33,20 +36,25 @@ def test_suture_belt_peaks_on_the_bisector_between_neighbouring_cratons():
 
     assert lon[np.argmax(relief)] == pytest.approx(0.0, abs=0.2)
     assert relief.max() == pytest.approx(2_500.0, rel=1e-6)
-    # 10 deg is ~1,110 km: far outside a 120 km sigma, so the cratons themselves stay flat.
-    assert relief[np.abs(lon) >= 10.0].max() < 1.0
+    # A craton's edge is ~560 km from the bisector, far outside a 120 km sigma.
+    assert relief[np.abs(lon) >= 5.0].max() < 1.0
     assert not young.any()  # The middle class is not young.
 
 
 @pytest.mark.usefixtures("one_middle_class")
-def test_suture_warp_moves_the_belt_off_the_bisector():
+def test_suture_warp_moves_the_belt_off_the_bisector_without_splitting_it():
     lon, points, core, continent_of_core = _two_cratons({0: 0, 1: 0})
-    warp = np.full(len(lon), 0.5)  # Shifts the belt by 150 km toward craton 0.
 
-    relief, _ = synthetic_relief.suture_relief(points, core, continent_of_core, warp, seed=5)
+    for warp, direction in ((0.5, 1.0), (-0.5, -1.0)):
+        relief, _ = synthetic_relief.suture_relief(points, core, continent_of_core, np.full(len(lon), warp), seed=5)
 
-    shift_km = abs(lon[np.argmax(relief)]) * np.pi / 180.0 * PLANET_RADIUS_KM
-    assert shift_km == pytest.approx(0.5 * synthetic_relief.SUTURE_WARP_KM, abs=15.0)
+        # A positive warp moves the belt 150 km toward the higher-id craton, a negative one
+        # away from it; either way one belt at full height, not two lowered ones.
+        shift_km = lon[np.argmax(relief)] * np.pi / 180.0 * PLANET_RADIUS_KM
+        assert shift_km == pytest.approx(direction * 0.5 * synthetic_relief.SUTURE_WARP_KM, abs=15.0)
+        assert relief.max() == pytest.approx(2_500.0, rel=5e-3)  # peak between 11 km samples
+        peaks = np.flatnonzero((relief[1:-1] > relief[:-2]) & (relief[1:-1] > relief[2:]))
+        assert len(peaks) == 1
 
 
 @pytest.mark.usefixtures("one_middle_class")

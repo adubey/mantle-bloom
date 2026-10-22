@@ -199,7 +199,9 @@ def suture_relief(
 
     `core_id` is each point's craton (-1 outside cratons); belts join only cratons on the same
     continent. A point's belt is the one between its two nearest cratons, at signed distance
-    (d2 - d1) / 2 from their bisector plus `SUTURE_WARP_KM * warp`. Each pair's class, plateau
+    (d_hi - d_lo) / 2 from their bisector (positive on the lower-id craton's side) plus
+    `SUTURE_WARP_KM * warp`. Orienting by the pair, not by the nearer craton, is what lets the
+    warp move a belt sideways instead of splitting it in two. Each pair's class, plateau
     side and survival are drawn from an rng keyed by the seed and the pair, so they don't
     depend on node order or density."""
     relief = np.zeros(len(points))
@@ -212,7 +214,7 @@ def suture_relief(
     d1 = np.take_along_axis(distances, order[:, :1], axis=1)[:, 0]
     d2 = np.take_along_axis(distances, order[:, 1:], axis=1)[:, 0]
     c1, c2 = np.asarray(ids)[order[:, 0]], np.asarray(ids)[order[:, 1]]
-    s = (d2 - d1) / 2.0 + SUTURE_WARP_KM * warp
+    s = np.where(c1 < c2, 1.0, -1.0) * (d2 - d1) / 2.0 + SUTURE_WARP_KM * warp
     # Fade belts out where the pair is far apart, so they end instead of running on.
     fade = 1.0 - _smoothstep(((d1 + d2) - 0.75 * SUTURE_PAIR_MAX_KM) / (0.25 * SUTURE_PAIR_MAX_KM))
     for lo, hi in sorted({(min(a, b), max(a, b)) for a, b in zip(c1.tolist(), c2.tolist())}):
@@ -227,8 +229,8 @@ def suture_relief(
         side = lo if rng.random() < 0.5 else hi
         r = peak * np.exp(-0.5 * (s[mask] / sigma) ** 2)
         if plateau:
-            # The warped bisector decides the side: s >= 0 is c1's side.
-            on_side = (c1[mask] == side) == (s[mask] >= 0.0)
+            # The warped bisector decides the side: s >= 0 is the lower-id craton's.
+            on_side = (s[mask] >= 0.0) == (side == lo)
             shelf = 1.0 - _smoothstep((np.abs(s[mask]) - SUTURE_PLATEAU_KM) / SUTURE_PLATEAU_EDGE_KM)
             r = np.maximum(r, np.where(on_side, plateau * shelf, 0.0))
         r *= fade[mask]
