@@ -2085,7 +2085,7 @@ export default function App() {
                 <div style={{ fontSize: 11, color: "#999", marginTop: 6 }}>
                   Tiny, low-resolution plate configurations with pinned (scripted, not
                   torque-driven) motion, for fast iteration on the plate-boundary gap-filling
-                  problem -- see docs/debugging.md. Debug diagnostics (the corner-notch decision
+                  problem -- see docs/debugging/debug-ui.md. Debug diagnostics (the corner-notch decision
                   log) start on automatically.
                 </div>
               </div>

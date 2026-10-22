@@ -17,7 +17,7 @@
 # --replay-log turns on the server's replay log (backend/app/replay_log.py, #442): the world
 # before any step whose health metrics go askew is saved for replay, under
 # $MANTLE_BLOOM_REPLAY_LOG_DIR, or ~/.mantle-bloom/replay-logs/<port>/ if that isn't set. Off
-# by default. See docs/debugging.md.
+# by default. See docs/debugging/replay-logs.md.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"

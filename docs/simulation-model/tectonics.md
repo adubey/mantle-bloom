@@ -323,7 +323,7 @@ phase should stay empty. A nonzero entry means some writer upstream is missing i
 Every node's onset year is also stamped onto its
 `overlap_onset_years` field each step (`merge_split.update_overlap_tracking`) and
 surfaced as `since_years` in `GET /world/plates` and the `overlapAge` debug render view --
-see [debugging.md](../debugging.md#overlapage-render-view-plate-overlap-onset).
+see [debugging.md](../debugging/map-views.md#overlapage-render-view-plate-overlap-onset).
 
 **Consuming a continent-continent overlap (2026-09).** A contested continental edge
 retreats against a *continental* neighbour too, not only an oceanic one (see [Boundary

@@ -160,7 +160,7 @@ class World:
     # merge_split.update_overlap_progress. A default_factory field -> backfilled on load of an
     # older save (persistence._backfill_added_fields).
     overlap_progress: dict[tuple[int, int], float] = field(default_factory=dict)
-    # Cross-step memory for the stranded-basin diagnostic (docs/debugging.md): one
+    # Cross-step memory for the stranded-basin diagnostic (docs/debugging/offline-cli.md): one
     # `stranded_basins.StrandedBasinTrack` per endorheic, below-sea-level, ocean-disconnected
     # basin currently present, reconciled by centroid proximity every hydrology step (see
     # stranded_basins.reconcile_world_tracks) so the report can say how long each pit has
@@ -169,7 +169,7 @@ class World:
     # `default_factory` field, so an older save without it is backfilled on load (see
     # persistence._backfill_added_fields).
     stranded_basin_tracks: list = field(default_factory=list)
-    # Cross-step memory for the gap-age diagnostic (docs/debugging.md's overlapAge section):
+    # Cross-step memory for the gap-age diagnostic (docs/debugging/map-views.md's overlapAge section):
     # one `gaps.GapTrack` per currently-uncovered lattice cluster, reconciled by centroid
     # proximity every gaps.GAP_FILL_INTERVAL_STEPS steps, right after that step's gap fill
     # (see gaps.reconcile_gap_tracks) -- the same "lightweight per-key first-seen tracker" role
@@ -1001,7 +1001,7 @@ def step_world_progress(world: World, years: float):  # noqa: C901
         faults.reconcile_faults(world)
         # Stamp/clear the `overlap_onset_years` field and advance World.overlap_progress
         # against this step's final geometry (see merge_split.update_overlap_tracking /
-        # docs/debugging.md).
+        # docs/debugging/map-views.md).
         merge_split.update_overlap_tracking(world, years)
         # Whole-sphere coverage maintenance, every step: grow adjacent plates into, or spawn
         # new crust over, any region no plate covers (see gaps.py) -- e.g. ocean floor a
@@ -1027,7 +1027,7 @@ def step_world_progress(world: World, years: float):  # noqa: C901
                         np.array([], dtype=bool),
                     )
                 phase_budget.record_snapshots(world, plate, "gap_fill", before, after)
-        # Gap-age diagnostic (see docs/debugging.md's overlapAge section): reconciles
+        # Gap-age diagnostic (see docs/debugging/map-views.md's overlapAge section): reconciles
         # world.gap_tracks against this step's uncovered-lattice clusters -- the same
         # whole-sphere sweep as fill_gaps_by_growing_neighbours, kept on an interval since
         # nothing in the physics reads it -- see gaps.reconcile_gap_tracks.

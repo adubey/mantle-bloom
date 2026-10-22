@@ -705,7 +705,7 @@ temperature/humidity/precipitation already use), plus the coastline overlay (a c
 color scale carries no land/ocean cue on its own).
 
 A third node-cloud-derived view, **"geomorph"** (a debug view -- Map View dropdown's
-**Debug > Erosion & Deposition**; see [debugging.md](../debugging.md)), colours every node by
+**Debug > Erosion & Deposition**; see [debugging/map-views.md](../debugging/map-views.md#erosion--deposition-geomorph)), colours every node by
 `ErosionResult.net_elevation_change_m` -- this step's post-erosion elevation minus its
 pre-erosion elevation, i.e. erosion minus every deposition pathway plus the small
 flatten/lake-siltation terms, but *not* tectonic deform, isostasy, or volcanism. It is

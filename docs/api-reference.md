@@ -245,7 +245,7 @@ every world route.
 ```
 
 Without `MANTLE_BLOOM_REPLAY_LOG_DIR`: `{"enabled": false, "directory": null, "records": []}`.
-[debugging.md#replay-logs](debugging.md#replay-logs) covers replaying a record.
+[debugging/replay-logs.md](debugging/replay-logs.md) covers replaying a record.
 
 ## `GET /world/save`
 
@@ -379,7 +379,7 @@ hemisphere facing the viewer as an orthographic disc (see
   `"platesDetail"` (each plate's raw terrain nodes as dots, colored by elevation,
   plus boundary outlines) -- the frontend's Map View dropdown picks this directly.
   `"speckle"` is a debug overlay for diagnosing dithered coastlines (see
-  [debugging.md#speckle-coastal-dither-overlay](debugging.md#speckle-coastal-dither-overlay)):
+  [debugging/map-views.md#speckle-coastal-dither-overlay](debugging/map-views.md#speckle-coastal-dither-overlay)):
   a muted land/ocean backdrop with every node within 120 m of sea level drawn as a dot
   colored by its *coastal-dither fraction* -- the share of its nearest neighbours on the
   opposite side of the waterline -- and an oversized magenta marker on nodes at/above `0.75`
@@ -410,18 +410,18 @@ hemisphere facing the viewer as an orthographic disc (see
   node-cloud-derived like elevation/plates, not climate-grid-derived -- `"resources"` overlays
   coal/oil & gas/mineral deposit richness on a muted land/ocean backdrop, `"soilQuality"` is a
   continuous fertility heatmap (barren to rich) plus the coastline overlay. `"geomorph"` (a
-  debug view, see [debugging.md](debugging.md)) colours every node by its net elevation change
+  debug view, see [debugging/map-views.md](debugging/map-views.md#erosion--deposition-geomorph)) colours every node by its net elevation change
   over the last step (`erosion.ErosionResult.net_elevation_change_m` off `World.erosion_cache`
   -- erosion minus every deposition pathway, no tectonics) on a diverging warm/cool scale plus
   the coastline overlay, so the per-step lumpiness of near-sea-level deposition is legible; a
   flat neutral field before the world has been stepped (or on a freshly loaded save, which
   doesn't persist the cache). `"elevReason"` (a debug view, see
-  [debugging.md](debugging.md#elevreason-render-view-last-elevation-change)) colours every
+  [debugging/map-views.md](debugging/map-views.md#elevreason-render-view-last-elevation-change)) colours every
   node by which process last moved its elevation -- a persistent per-node code
   (the `elev_change_reason` node field), so unlike `"geomorph"` it accumulates over the whole
   run: grey where terrain is untouched since generation, warm where crust is being built,
   cool/pale where it's being planed down or buried. `"overlapAge"` (a debug view, see
-  [debugging.md](debugging.md#overlapage-render-view-plate-overlap-onset)) colours every node
+  [debugging/map-views.md](debugging/map-views.md#overlapage-render-view-plate-overlap-onset)) colours every node
   currently sitting on top of another plate by how long it has
   (`elapsed_years - overlap_onset_years`) over a muted land/ocean backdrop plus
   the coastline, pale where fresh and magenta where stuck for tens of Myr; all-backdrop is
@@ -923,7 +923,7 @@ near-sea-level transient-pond churn. Read straight off this step's already-resol
 depression hierarchy (`world.hydrology_cache.lake_forest`): a top-level basin with no known
 spill (`lakes.Lake.max_depth is None`) whose floor is below `world.sea_level_m`. `stranded_basins`
 is `[]` before the first step (or when no basin is stranded -- the healthy case). `404` if no
-world has been generated yet. See [debugging.md](debugging.md) for how to read this and the
+world has been generated yet. See [debugging/offline-cli.md](debugging/offline-cli.md#stranded-basins-cli) for how to read this and the
 matching offline dump (`python -m app.hydroclimate.stranded_basins`).
 
 ```json

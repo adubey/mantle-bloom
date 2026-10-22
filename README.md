@@ -18,8 +18,9 @@ Support the project: [Buy Me a Coffee](https://buymeacoffee.com/mantlebloom).
   frames, mantle flow, boundary evolution, line regularization, merge/split, boundary point
   reassignment, projections, and why each simplification was an acceptable line to draw.
 - **[docs/api-reference.md](docs/api-reference.md)** -- the three backend routes.
-- **[docs/debugging.md](docs/debugging.md)** -- offline `python -m app.*` diagnostic dumps and
-  the `?deb`-gated debug map views/panels for checking a long run's health.
+- **[docs/debugging.md](docs/debugging.md)** -- index of the debugging tools: offline
+  `python -m app.*` dumps, replay logs, the `?deb`-gated debug views and panels, and the
+  `bin/debug` scripts.
 - **[docs/packaging.md](docs/packaging.md)** -- building the single-process desktop binary
   (`bin/package.sh`).
 
