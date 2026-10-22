@@ -151,3 +151,32 @@ Removing one synthetic-relief component at a time (seeds 910211954 and 447276134
 hills (shield, hill-country and plains noise) are the main source of depression area
 (100 m share 0.087–0.105 → 0.032–0.065); orogens make the deep basins (250 m share
 0.033–0.035 → 0.011); glacial pits and platform basins barely matter.
+
+**Draining the synthetic surface.** The excess closed-depression area is not small pits. By
+basin size, generated basins under 20 nodes cover 4.0–4.2% of land (Earth 4.3% under 20
+cells), but basins of 20 or more nodes cover 15–20% (Earth 5.8%), and most spill below
+500 m. High basins are, if anything, scarcer than on Earth (spill at 1 km or more: 0.5–1.8%,
+Earth 3.2%). `synthetic_relief.drain_land` therefore fills closed basins of at least
+80,000 km² (~20 nodes at density 4) that spill below 500 m, by a priority flood from the sea
+with a 0.01 m/km drainage gradient (Barnes et al. 2014), and leaves high and small basins to
+the bootstrap's breach and water balance. Seeds and Earth as above; "before" is this branch
+with `drain_land` stubbed out.
+
+| density | surface | unfrozen closed drainage | lakes | depression > 1 m / > 100 m / > 250 m / > 500 m | lowland relief at 100 km (m) | land p50 (m) |
+|---|---|---|---|---|---|---|
+| 4x (4 seeds) | before | 0.48–0.64 | 0.060–0.086 | 0.19–0.24 / 0.09–0.11 / 0.032–0.035 / 0.004–0.010 | 148–159 | 350–482 |
+| | after | 0.30–0.49 | 0.014–0.017 | 0.075–0.115 / 0.028–0.043 / 0.011–0.026 / 0.003–0.007 | 137–140 | 368–513 |
+| 2x (2 seeds) | before | 0.67–0.70 | 0.073–0.076 | 0.17–0.21 / 0.06–0.11 / 0.010–0.042 / 0–0.006 | 139–148 | 394–396 |
+| | after | 0.46–0.51 | 0.017–0.025 | 0.076–0.100 / 0.021–0.050 / 0.005–0.025 / 0–0.004 | 129–132 | 402–417 |
+| 1x (2 seeds) | before | 0.62–0.70 | 0.066–0.067 | 0.14–0.18 / 0.06–0.09 / 0.011–0.028 / 0–0.005 | 160–171 | 389–440 |
+| | after | 0.40–0.47 | 0.018–0.022 | 0.056–0.076 / 0.022–0.038 / 0.003–0.017 / 0–0.003 | 150–152 | 393–462 |
+| Earth | | ~0.19 | ~0.02 | 0.100 / 0.040 / 0.015 / 0.006 | 166–173 | 423 |
+
+- Depressions and lakes now sit near Earth at every density. The land fraction, the share
+  above 2 km and the column backing are unchanged, and generation is no slower.
+- Lowland relief falls by about 12%, because filled basins have flat floors.
+- Unfrozen closed drainage stays above Earth's, mostly in the arid t = 0 climate's small dry
+  pits. Filling basins down to 20,000 km² lowers it to 0.22–0.29 on 910211954 and 447276134,
+  but leaves 6–8% of land in depressions and 1.1% under lakes.
+- Stepping 910211954 shows no snap: unfrozen closed drainage is 0.295, 0.228 and 0.224 at 0,
+  1 and 5 Myr, lakes 1.6–2.4% of land, depressions deeper than 100 m 4.1–4.3%.

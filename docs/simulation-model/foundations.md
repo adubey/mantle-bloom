@@ -334,6 +334,17 @@ continental-crust node:
 - **Submerged continental crust.** A shelf deepens from 20 m to 150 m over a noise-varied
   80-300 km (narrowed on leading edges), then drops up to 1.8 km more over 400 km toward
   marginal-plateau depth. Within 100 km of the oceanic contact it slopes to -3.2 km.
+- **Drainage.** `drain_land` then fills the large, low closed basins the land surface leaves
+  between the coastal rise, the regional noise and the belts: a basin of at least
+  `DRAIN_FILL_MIN_AREA_KM2` (80,000 km²) that spills below `DRAIN_KEEP_SPILL_M` (500 m) is
+  raised, by a priority flood from the sea over the hydrology graph's 8 nearest neighbours,
+  until every node in it has a strictly lower neighbour leading to the sea, climbing
+  `DRAIN_GRADIENT_M_PER_KM` (0.01 m/km) from where it drains. Higher basins (intermontane and
+  plateau basins) and smaller ones stay closed, and drain to their own floor; the river
+  bootstrap's breach and water balance decide whether they hold lakes or spill. Without it,
+  about twice Earth's land area lay in closed depressions, almost all in such basins; the
+  thresholds follow Earth's basin sizes and spill levels at node scale
+  (`bin/debug/measure_earth_depressions.py`).
 
 All noise is `noise.IsotropicSphereNoise`, which sums 32 random-direction waves per octave.
 `SphereNoise`'s single wave per octave draws parallel stripes across a continent.
@@ -359,11 +370,15 @@ collapse-mobile from the first step.
 **Limits.** Oceanic crust is left as generated. GDH1 age-depth bathymetry, ridges and trenches
 need thermal buoyancy the column model does not have: an 11 km oceanic column floats no
 shallower than about -4.4 km at the 2 km Hm floor, so a -2.6 km ridge cannot be backed.
-Measured on seeds 447276134, 373936961, 910211954 and 374464662 at node density 4:
-- land p50 is 330-473 m (Earth 423 m), and 5-9% of land is above 2 km (Earth 11%);
-- lowland relief at 100 km is 150-157 m (Earth 166-173 m at node scale);
-- lakes cover 7-10% of land, against Earth's ~2%, because the scour pits and platform basins
-  are sub-grid features that form node-sized closed basins.
+Measured on seeds 447276134, 373936961, 910211954 and 374464662 at node density 4
+(`analysis/issue218/`):
+- land p50 is 368-513 m (Earth 423 m), and 5-8% of land is above 2 km (Earth 11%);
+- lowland relief at 100 km is 137-140 m (Earth 166-173 m at node scale); filling basins
+  flattens their floors;
+- 8-12% of land lies in a closed depression deeper than 1 m and 3-4% deeper than 100 m
+  (Earth 10% and 4%), and lakes cover 1.4-1.7% of land (Earth ~2%);
+- 30-49% of unfrozen land drains to a closed basin rather than the sea (Earth ~19%
+  endorheic), mostly in arid land: median land precipitation at t = 0 is 55-226 mm/yr.
 
 At the default `continental_fraction` (0.5 of the surface), a third of the ocean is shallower
 than 3 km (Earth 24%), because about 30% of the ocean floor is continental crust; 0.4 brings

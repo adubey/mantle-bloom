@@ -21,6 +21,8 @@ the layout and the first predicted plate motion and backs the result with crusta
   shields and lowlands get glacial-scour pits.
 - **Submerged continental crust.** A shelf near the coast, deepening to marginal-plateau
   depth far from it, with a slope at the crust edge.
+- **Drainage.** Large, low closed basins are filled until they drain to the sea, as sediment
+  fills a basin; high and small basins stay closed (`drain_land`).
 
 Every changed column is backed: Hc comes from `lithosphere.crustal_thickness_for_elevation`
 on the column's existing Hm, and elevation is then re-derived from the column, so the
@@ -37,14 +39,18 @@ than about -4.4 km, so a -2.6 km ridge can't be backed (#218).
 
 from __future__ import annotations
 
+import heapq
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
+from scipy.sparse import coo_matrix
+from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
 from . import cratons, lithosphere, orogeny, rheology, torque
 from .elevation_lines import effective_is_continental_from_codes, line_spacing_rad
+from .hydroclimate.hydrology import FLOW_NEIGHBOR_COUNT
 from .noise import IsotropicSphereNoise
 from .plates import PLANET_RADIUS_KM
 
@@ -52,7 +58,7 @@ if TYPE_CHECKING:
     from .continent_layout import ContinentLayout
     from .world import World
 
-# Off until an RFC settles its open questions (ocean relief, lake share, early evolution;
+# Off until an RFC settles its open questions (ocean relief, early evolution;
 # see #218's exploration summary). Cratons-first only.
 SYNTHETIC_RELIEF_DEFAULT = False
 FIRST_MOTION_STEP_YEARS = 5_000_000.0
@@ -123,6 +129,19 @@ GLACIAL_PIT_M = 60.0
 INTERIOR_COAST_FADE_KM = 150.0
 OROGEN_INTERIOR_FADE_M = 1_500.0
 MIN_LAND_M = 5.0
+# Drainage. Before this pass, generated land held about twice Earth's area of closed
+# depressions, almost all of it in large basins spilling below 500 m: interior bowls between
+# the coastal rise, regional noise and belts, which became lakes or ended rivers (#218). A
+# closed basin of at least DRAIN_FILL_MIN_AREA_KM2 that spills below DRAIN_KEEP_SPILL_M is
+# filled, as sediment fills a basin, to drain along a gradient this gentle (the Amazon
+# lowlands fall ~0.02 m/km). Higher basins stay closed, like the Tarim, the Great Basin or
+# the Altiplano, and so do smaller ones, whose area already matches Earth's; the river
+# bootstrap's breach and water balance decide whether they drain. Earth at ~55 km: 6.5% of
+# land lies in closed basins spilling at 500 m or more, and 4.3% in basins under 20 cells
+# (analysis/issue218, bin/debug/measure_earth_depressions.py).
+DRAIN_GRADIENT_M_PER_KM = 0.01
+DRAIN_KEEP_SPILL_M = 500.0
+DRAIN_FILL_MIN_AREA_KM2 = 80_000.0
 
 # Submerged continental crust: shelf to ~150 m, then marginal-plateau depths further out,
 # and a slope down to the oceanic contact at the crust edge.
@@ -270,6 +289,70 @@ def suture_relief(
         if cls == SUTURE_YOUNG:
             young = np.maximum(young, r)
     return relief, young
+
+
+def _flood(order_edges, seeds_level: np.ndarray, elevation: np.ndarray, gradient: np.ndarray | None) -> np.ndarray:
+    """Priority flood from every node with a finite `seeds_level`: the lowest level each node
+    can drain at, rising by `gradient` (m per edge, per entry of `order_edges`'s data) along
+    each step. `order_edges` lists, for each node, the nodes that hold it as a neighbour."""
+    indptr, indices = order_edges.indptr.tolist(), order_edges.indices.tolist()
+    rise = [0.0] * len(indices) if gradient is None else gradient.tolist()
+    level = seeds_level.tolist()
+    z = elevation.tolist()
+    heap = [(level[i], i) for i in np.flatnonzero(np.isfinite(seeds_level)).tolist()]
+    heapq.heapify(heap)
+    while heap:
+        here, i = heapq.heappop(heap)
+        if here > level[i]:
+            continue
+        for e in range(indptr[i], indptr[i + 1]):
+            j = indices[e]
+            reach = max(z[j], here + rise[e])
+            if reach < level[j]:
+                level[j] = reach
+                heapq.heappush(heap, (reach, j))
+    return np.asarray(level)
+
+
+def drain_land(points: np.ndarray, elevation: np.ndarray, land: np.ndarray, keep_spill_m: float | None = None) -> np.ndarray:
+    """`elevation` (m above sea level) with land raised so that every land node has a strictly
+    lower neighbour among its `hydrology.FLOW_NEIGHBOR_COUNT` nearest, leading to the sea,
+    except inside the closed basins that stay closed: those spilling at `keep_spill_m`
+    (default `DRAIN_KEEP_SPILL_M`) or higher, or smaller than `DRAIN_FILL_MIN_AREA_KM2`, which
+    drain to their own lowest node instead. Raised ground climbs `DRAIN_GRADIENT_M_PER_KM`
+    from where it drains. Sea nodes are unchanged. Nodes are taken as equal-area."""
+    keep_spill_m = DRAIN_KEEP_SPILL_M if keep_spill_m is None else keep_spill_m
+    n = len(points)
+    k = min(FLOW_NEIGHBOR_COUNT, n - 1)
+    if k < 1 or not land.any() or land.all():
+        return elevation
+    chord, neighbours = cKDTree(points).query(points, k=k + 1, workers=-1)
+    chord, neighbours = chord[:, 1:], neighbours[:, 1:]
+    # Reverse adjacency: water reaching node i can have come from any node listing i.
+    src = np.repeat(np.arange(n), k)
+    km = 2.0 * np.arcsin(np.clip(chord.ravel() / 2.0, 0.0, 1.0)) * PLANET_RADIUS_KM
+    reverse = coo_matrix((km, (neighbours.ravel(), src)), shape=(n, n)).tocsr()
+    reverse.sort_indices()
+    z = np.where(land, elevation, np.minimum(np.nan_to_num(elevation, nan=0.0), 0.0))
+    sea = np.where(land, np.inf, z)
+
+    spill = _flood(reverse, sea, z, None)
+    closed = land & (spill > z)
+    seeds = sea.copy()
+    if closed.any():
+        undirected = coo_matrix((np.ones(n * k), (src, neighbours.ravel())), shape=(n, n))
+        _, basin = connected_components(undirected.tocsr()[closed][:, closed], directed=False)
+        nodes = np.flatnonzero(closed)
+        floors = {}
+        for b, i in zip(basin.tolist(), nodes.tolist()):
+            if b not in floors or z[i] < z[floors[b]]:
+                floors[b] = i
+        area_km2 = np.bincount(basin) * 4.0 * np.pi * PLANET_RADIUS_KM**2 / n
+        kept = np.asarray(
+            [i for b, i in floors.items() if spill[i] >= keep_spill_m or area_km2[b] < DRAIN_FILL_MIN_AREA_KM2], dtype=int
+        )
+        seeds[kept] = z[kept]
+    return np.where(land, _flood(reverse, seeds, z, DRAIN_GRADIENT_M_PER_KM * reverse.data), elevation)
 
 
 def land_mask(potential: np.ndarray, continental: np.ndarray, n_land: int) -> np.ndarray:
@@ -422,7 +505,7 @@ def _target_elevation(cloud, noise, layout, seed, n_land, collision_contact):
     t = _smoothstep(1.0 - d_edge / CRUST_EDGE_SLOPE_KM)
     z_sea = np.minimum((1.0 - t) * z_shelf + t * CRUST_EDGE_DEPTH_M, MAX_SUBMERGED_M)
 
-    target = np.where(land, z_land, z_sea)
+    target = drain_land(p, np.where(land, z_land, z_sea), land)
     return np.where(cloud.continental, target, np.nan), land, young_share
 
 

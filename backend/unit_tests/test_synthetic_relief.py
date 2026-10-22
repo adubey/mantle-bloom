@@ -214,3 +214,73 @@ def test_back_columns_caps_cratonic_cores_at_the_host_maximum():
 
     assert hc[0] == pytest.approx(cratons.CRATON_HOST_MAX_HC_M)
     assert hc[1] > cratons.CRATON_HOST_MAX_HC_M
+
+
+def _sphere(n: int) -> np.ndarray:
+    """A Fibonacci lattice: n near-equal-area points on the unit sphere."""
+    i = np.arange(n) + 0.5
+    z = 1.0 - 2.0 * i / n
+    lon = np.pi * (1.0 + 5.0**0.5) * i
+    r = np.sqrt(1.0 - z * z)
+    return np.stack([r * np.cos(lon), r * np.sin(lon), z], axis=1)
+
+
+def _bowl(points, lat_deg, lon_deg, radius_deg, depth_m):
+    lat, lon = np.radians(lat_deg), np.radians(lon_deg)
+    centre = np.array([np.cos(lat) * np.cos(lon), np.cos(lat) * np.sin(lon), np.sin(lat)])
+    d = np.degrees(np.arccos(np.clip(points @ centre, -1.0, 1.0)))
+    return np.where(d < radius_deg, depth_m * (1.0 - d / radius_deg), 0.0), d < radius_deg
+
+
+def _descent_end(points, elevation):
+    """Per node, where steepest descent among its 8 nearest ends."""
+    from scipy.spatial import cKDTree
+
+    _, neighbours = cKDTree(points).query(points, k=9)
+    neighbours = neighbours[:, 1:]
+    lowest = neighbours[np.arange(len(points)), np.argmin(elevation[neighbours], axis=1)]
+    nxt = np.where(elevation[lowest] < elevation, lowest, np.arange(len(points)))
+    for _ in range(len(points)):
+        if np.array_equal(nxt[nxt], nxt):
+            break
+        nxt = nxt[nxt]
+    return nxt
+
+
+def test_drain_land_fills_a_large_low_basin_and_keeps_high_and_small_ones():
+    # 20,000 nodes of ~25,500 km^2, land north of the equator rising 20 m per degree. A
+    # 6-degree bowl spilling near 300 m covers ~55 nodes (~1.4 million km^2): filled. The
+    # same bowl spilling near 1,200 m is an intermontane basin, and a one-node pit is below
+    # DRAIN_FILL_MIN_AREA_KM2: both stay closed (#218).
+    points = _sphere(20_000)
+    lat = np.degrees(np.arcsin(points[:, 2]))
+    land = lat > 0.0
+    base = np.where(land, 10.0 + 20.0 * lat, -3_000.0)
+    low, in_low = _bowl(points, 15.0, 0.0, 6.0, 200.0)
+    high, in_high = _bowl(points, 60.0, 120.0, 6.0, 200.0)
+    band = np.flatnonzero(land & (np.abs(lat - 15.0) < 1.0) & (points[:, 1] < -0.5))
+    pit = int(band[len(band) // 2])
+    elevation = base - low - high
+    elevation[pit] -= 50.0
+
+    out = synthetic_relief.drain_land(points, elevation, land)
+
+    np.testing.assert_array_equal(out[~land], elevation[~land])
+    assert np.all(out >= elevation)
+    end = _descent_end(points, out)
+    assert np.all(~land[end[land & in_low]])
+    assert end[pit] == pit and out[pit] == elevation[pit]
+    floor = int(np.flatnonzero(in_high)[np.argmin(elevation[in_high])])
+    assert end[floor] == floor and out[floor] == elevation[floor]
+    # All land drains to the sea or into one of the two closed basins, and ordinary slopes
+    # move by at most the drainage gradient's few metres.
+    assert set(end[land & land[end]].tolist()) <= {pit, floor}
+    untouched = land & ~in_low & ~in_high
+    assert np.max(out[untouched] - elevation[untouched]) < 5.0
+
+
+def test_drain_land_leaves_a_world_without_land_or_sea_unchanged():
+    points = _sphere(200)
+    elevation = np.linspace(-100.0, 100.0, 200)
+    for land in (np.zeros(200, dtype=bool), np.ones(200, dtype=bool)):
+        np.testing.assert_array_equal(synthetic_relief.drain_land(points, elevation, land), elevation)
