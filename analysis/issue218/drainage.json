@@ -1,0 +1,1080 @@
+{
+ "note": "t = 0 drainage (#218). Per node, node_density=4, land_fraction=0.29, cratons-first. 'history0' is the bootstrap with INITIAL_DRAINAGE_HISTORY_YEARS=0, identical to origin/main 34fb86f's zero-duration pass; 'history1myr' is this branch. 'saves_after_1myr_step' load a save and step 1 Myr. Ablations ran with the history0 bootstrap; their depression shares are terrain-only and don't depend on it.",
+ "earth": {
+  "endorheic_share_of_land": 0.19,
+  "lake_share_of_land": 0.02,
+  "depression_share_gt_m_55km": {
+   "1": 0.1,
+   "10": 0.088,
+   "50": 0.057,
+   "100": 0.04,
+   "250": 0.015,
+   "500": 0.006,
+   "1000": 0.0007
+  },
+  "depression_share_gt_m_90km": {
+   "1": 0.083,
+   "10": 0.072,
+   "50": 0.046,
+   "100": 0.033,
+   "250": 0.011,
+   "500": 0.0035,
+   "1000": 0.0006
+  },
+  "closed_basins_55km_by_cells_land_share": {
+   "1": 0.0078,
+   "2-4": 0.0135,
+   "5-19": 0.021,
+   "20-99": 0.0294,
+   "100+": 0.0285
+  },
+  "closed_basins_55km_spill_ge_m_land_share": {
+   "0": 0.1003,
+   "500": 0.0647,
+   "1000": 0.0321,
+   "1500": 0.0252
+  },
+  "closed_basins_55km_ge_80000km2_spill_lt_500m": {
+   "land_share": 0.0173,
+   "count": 12
+  }
+ },
+ "generated": [
+  {
+   "seed": 373936961,
+   "synthetic_relief": false,
+   "bootstrap": "history0",
+   "endorheic_unfrozen_share_of_land": 0.483,
+   "endorheic_frozen_terminal_share_of_land": 0.1165,
+   "lake_share_of_land": 0.0147,
+   "land_precip_p50_mm": 55.0,
+   "arid_share_of_land": 0.723,
+   "endorheic_share_in_arid_lt250mm": 0.726,
+   "depression_share_gt": {
+    "1": 0.0686,
+    "10": 0.0552,
+    "50": 0.0235,
+    "100": 0.0117,
+    "250": 0.0007,
+    "500": 0.0,
+    "1000": 0.0
+   }
+  },
+  {
+   "seed": 373936961,
+   "synthetic_relief": false,
+   "bootstrap": "history1myr",
+   "endorheic_unfrozen_share_of_land": 0.4172,
+   "endorheic_frozen_terminal_share_of_land": 0.1389,
+   "lake_share_of_land": 0.0116,
+   "land_precip_p50_mm": 55.0,
+   "arid_share_of_land": 0.723,
+   "endorheic_share_in_arid_lt250mm": 0.753,
+   "depression_share_gt": {
+    "1": 0.0686,
+    "10": 0.0552,
+    "50": 0.0235,
+    "100": 0.0117,
+    "250": 0.0007,
+    "500": 0.0,
+    "1000": 0.0
+   }
+  },
+  {
+   "seed": 373936961,
+   "synthetic_relief": true,
+   "bootstrap": "history0",
+   "endorheic_unfrozen_share_of_land": 0.653,
+   "endorheic_frozen_terminal_share_of_land": 0.1671,
+   "lake_share_of_land": 0.1061,
+   "land_precip_p50_mm": 80.0,
+   "arid_share_of_land": 0.654,
+   "endorheic_share_in_arid_lt250mm": 0.684,
+   "depression_share_gt": {
+    "1": 0.2068,
+    "10": 0.1905,
+    "50": 0.1236,
+    "100": 0.0857,
+    "250": 0.0318,
+    "500": 0.0059,
+    "1000": 0.0
+   }
+  },
+  {
+   "seed": 373936961,
+   "synthetic_relief": true,
+   "bootstrap": "history1myr",
+   "endorheic_unfrozen_share_of_land": 0.589,
+   "endorheic_frozen_terminal_share_of_land": 0.1765,
+   "lake_share_of_land": 0.0859,
+   "land_precip_p50_mm": 80.0,
+   "arid_share_of_land": 0.654,
+   "endorheic_share_in_arid_lt250mm": 0.723,
+   "depression_share_gt": {
+    "1": 0.2068,
+    "10": 0.1905,
+    "50": 0.1236,
+    "100": 0.0857,
+    "250": 0.0318,
+    "500": 0.0059,
+    "1000": 0.0
+   }
+  },
+  {
+   "seed": 374464662,
+   "synthetic_relief": false,
+   "bootstrap": "history0",
+   "endorheic_unfrozen_share_of_land": 0.3143,
+   "endorheic_frozen_terminal_share_of_land": 0.4784,
+   "lake_share_of_land": 0.0334,
+   "land_precip_p50_mm": 149.0,
+   "arid_share_of_land": 0.588,
+   "endorheic_share_in_arid_lt250mm": 0.654,
+   "depression_share_gt": {
+    "1": 0.1,
+    "10": 0.0831,
+    "50": 0.0448,
+    "100": 0.0315,
+    "250": 0.0159,
+    "500": 0.0077,
+    "1000": 0.0028
+   }
+  },
+  {
+   "seed": 374464662,
+   "synthetic_relief": false,
+   "bootstrap": "history1myr",
+   "endorheic_unfrozen_share_of_land": 0.241,
+   "endorheic_frozen_terminal_share_of_land": 0.4877,
+   "lake_share_of_land": 0.0301,
+   "land_precip_p50_mm": 149.0,
+   "arid_share_of_land": 0.588,
+   "endorheic_share_in_arid_lt250mm": 0.683,
+   "depression_share_gt": {
+    "1": 0.1,
+    "10": 0.0831,
+    "50": 0.0448,
+    "100": 0.0315,
+    "250": 0.0159,
+    "500": 0.0077,
+    "1000": 0.0028
+   }
+  },
+  {
+   "seed": 374464662,
+   "synthetic_relief": true,
+   "bootstrap": "history0",
+   "endorheic_unfrozen_share_of_land": 0.6559,
+   "endorheic_frozen_terminal_share_of_land": 0.1904,
+   "lake_share_of_land": 0.0613,
+   "land_precip_p50_mm": 115.0,
+   "arid_share_of_land": 0.639,
+   "endorheic_share_in_arid_lt250mm": 0.673,
+   "depression_share_gt": {
+    "1": 0.2065,
+    "10": 0.1908,
+    "50": 0.1445,
+    "100": 0.1063,
+    "250": 0.0338,
+    "500": 0.0072,
+    "1000": 0.0002
+   }
+  },
+  {
+   "seed": 374464662,
+   "synthetic_relief": true,
+   "bootstrap": "history1myr",
+   "endorheic_unfrozen_share_of_land": 0.6084,
+   "endorheic_frozen_terminal_share_of_land": 0.1929,
+   "lake_share_of_land": 0.0599,
+   "land_precip_p50_mm": 115.0,
+   "arid_share_of_land": 0.639,
+   "endorheic_share_in_arid_lt250mm": 0.702,
+   "depression_share_gt": {
+    "1": 0.2065,
+    "10": 0.1908,
+    "50": 0.1445,
+    "100": 0.1063,
+    "250": 0.0338,
+    "500": 0.0072,
+    "1000": 0.0002
+   }
+  },
+  {
+   "seed": 447276134,
+   "synthetic_relief": false,
+   "bootstrap": "history0",
+   "endorheic_unfrozen_share_of_land": 0.4272,
+   "endorheic_frozen_terminal_share_of_land": 0.2701,
+   "lake_share_of_land": 0.0142,
+   "land_precip_p50_mm": 132.0,
+   "arid_share_of_land": 0.629,
+   "endorheic_share_in_arid_lt250mm": 0.728,
+   "depression_share_gt": {
+    "1": 0.0667,
+    "10": 0.054,
+    "50": 0.0257,
+    "100": 0.0138,
+    "250": 0.0025,
+    "500": 0.0006,
+    "1000": 0.0
+   }
+  },
+  {
+   "seed": 447276134,
+   "synthetic_relief": false,
+   "bootstrap": "history1myr",
+   "endorheic_unfrozen_share_of_land": 0.3978,
+   "endorheic_frozen_terminal_share_of_land": 0.2722,
+   "lake_share_of_land": 0.0132,
+   "land_precip_p50_mm": 132.0,
+   "arid_share_of_land": 0.629,
+   "endorheic_share_in_arid_lt250mm": 0.756,
+   "depression_share_gt": {
+    "1": 0.0667,
+    "10": 0.054,
+    "50": 0.0257,
+    "100": 0.0138,
+    "250": 0.0025,
+    "500": 0.0006,
+    "1000": 0.0
+   }
+  },
+  {
+   "seed": 447276134,
+   "synthetic_relief": true,
+   "bootstrap": "history0",
+   "endorheic_unfrozen_share_of_land": 0.6967,
+   "endorheic_frozen_terminal_share_of_land": 0.2139,
+   "lake_share_of_land": 0.0852,
+   "land_precip_p50_mm": 132.0,
+   "arid_share_of_land": 0.61,
+   "endorheic_share_in_arid_lt250mm": 0.63,
+   "depression_share_gt": {
+    "1": 0.2352,
+    "10": 0.2175,
+    "50": 0.1589,
+    "100": 0.1054,
+    "250": 0.0328,
+    "500": 0.0042,
+    "1000": 0.0
+   }
+  },
+  {
+   "seed": 447276134,
+   "synthetic_relief": true,
+   "bootstrap": "history1myr",
+   "endorheic_unfrozen_share_of_land": 0.6394,
+   "endorheic_frozen_terminal_share_of_land": 0.214,
+   "lake_share_of_land": 0.0777,
+   "land_precip_p50_mm": 132.0,
+   "arid_share_of_land": 0.61,
+   "endorheic_share_in_arid_lt250mm": 0.668,
+   "depression_share_gt": {
+    "1": 0.2352,
+    "10": 0.2175,
+    "50": 0.1589,
+    "100": 0.1054,
+    "250": 0.0328,
+    "500": 0.0042,
+    "1000": 0.0
+   }
+  },
+  {
+   "seed": 910211954,
+   "synthetic_relief": false,
+   "bootstrap": "history0",
+   "endorheic_unfrozen_share_of_land": 0.4174,
+   "endorheic_frozen_terminal_share_of_land": 0.2993,
+   "lake_share_of_land": 0.0059,
+   "land_precip_p50_mm": 117.0,
+   "arid_share_of_land": 0.665,
+   "endorheic_share_in_arid_lt250mm": 0.703,
+   "depression_share_gt": {
+    "1": 0.1153,
+    "10": 0.0979,
+    "50": 0.0584,
+    "100": 0.0382,
+    "250": 0.0132,
+    "500": 0.0074,
+    "1000": 0.0023
+   }
+  },
+  {
+   "seed": 910211954,
+   "synthetic_relief": false,
+   "bootstrap": "history1myr",
+   "endorheic_unfrozen_share_of_land": 0.3591,
+   "endorheic_frozen_terminal_share_of_land": 0.2993,
+   "lake_share_of_land": 0.0045,
+   "land_precip_p50_mm": 117.0,
+   "arid_share_of_land": 0.665,
+   "endorheic_share_in_arid_lt250mm": 0.738,
+   "depression_share_gt": {
+    "1": 0.1153,
+    "10": 0.0979,
+    "50": 0.0584,
+    "100": 0.0382,
+    "250": 0.0132,
+    "500": 0.0074,
+    "1000": 0.0023
+   }
+  },
+  {
+   "seed": 910211954,
+   "synthetic_relief": true,
+   "bootstrap": "history0",
+   "endorheic_unfrozen_share_of_land": 0.5467,
+   "endorheic_frozen_terminal_share_of_land": 0.2849,
+   "lake_share_of_land": 0.0694,
+   "land_precip_p50_mm": 226.0,
+   "arid_share_of_land": 0.524,
+   "endorheic_share_in_arid_lt250mm": 0.57,
+   "depression_share_gt": {
+    "1": 0.1946,
+    "10": 0.1786,
+    "50": 0.1261,
+    "100": 0.0867,
+    "250": 0.0345,
+    "500": 0.0102,
+    "1000": 0.0011
+   }
+  },
+  {
+   "seed": 910211954,
+   "synthetic_relief": true,
+   "bootstrap": "history1myr",
+   "endorheic_unfrozen_share_of_land": 0.4832,
+   "endorheic_frozen_terminal_share_of_land": 0.2888,
+   "lake_share_of_land": 0.0655,
+   "land_precip_p50_mm": 226.0,
+   "arid_share_of_land": 0.524,
+   "endorheic_share_in_arid_lt250mm": 0.61,
+   "depression_share_gt": {
+    "1": 0.1946,
+    "10": 0.1786,
+    "50": 0.1261,
+    "100": 0.0867,
+    "250": 0.0345,
+    "500": 0.0102,
+    "1000": 0.0011
+   }
+  }
+ ],
+ "saves_after_1myr_step": [
+  {
+   "save": "seed447276134-116300000y",
+   "endorheic_unfrozen_share_of_land": 0.053,
+   "endorheic_frozen_terminal_share_of_land": 0.2862,
+   "lake_share_of_land": 0.0044,
+   "land_precip_p50_mm": 354.0,
+   "arid_share_of_land": 0.441,
+   "endorheic_share_in_arid_lt250mm": 0.598,
+   "depression_share_gt": {
+    "1": 0.0148,
+    "10": 0.012,
+    "50": 0.0073,
+    "100": 0.0057,
+    "250": 0.0026,
+    "500": 0.0008,
+    "1000": 0.0002
+   }
+  },
+  {
+   "save": "seed451481844-39700000y",
+   "endorheic_unfrozen_share_of_land": 0.2636,
+   "endorheic_frozen_terminal_share_of_land": 0.2579,
+   "lake_share_of_land": 0.0162,
+   "land_precip_p50_mm": 183.0,
+   "arid_share_of_land": 0.562,
+   "endorheic_share_in_arid_lt250mm": 0.641,
+   "depression_share_gt": {
+    "1": 0.1206,
+    "10": 0.1136,
+    "50": 0.0912,
+    "100": 0.0725,
+    "250": 0.0323,
+    "500": 0.0102,
+    "1000": 0.0043
+   }
+  },
+  {
+   "save": "seed649658380-6400000y",
+   "endorheic_unfrozen_share_of_land": 0.2356,
+   "endorheic_frozen_terminal_share_of_land": 0.1441,
+   "lake_share_of_land": 0.0335,
+   "land_precip_p50_mm": 221.0,
+   "arid_share_of_land": 0.52,
+   "endorheic_share_in_arid_lt250mm": 0.649,
+   "depression_share_gt": {
+    "1": 0.0885,
+    "10": 0.0685,
+    "50": 0.0301,
+    "100": 0.0146,
+    "250": 0.0047,
+    "500": 0.0022,
+    "1000": 0.0002
+   }
+  },
+  {
+   "save": "seed910211954-220200000y",
+   "endorheic_unfrozen_share_of_land": 0.1102,
+   "endorheic_frozen_terminal_share_of_land": 0.5313,
+   "lake_share_of_land": 0.0664,
+   "land_precip_p50_mm": 155.0,
+   "arid_share_of_land": 0.593,
+   "endorheic_share_in_arid_lt250mm": 0.697,
+   "depression_share_gt": {
+    "1": 0.1449,
+    "10": 0.1386,
+    "50": 0.1246,
+    "100": 0.1131,
+    "250": 0.0847,
+    "500": 0.0605,
+    "1000": 0.0268
+   }
+  }
+ ],
+ "ablation_synthetic_relief": [
+  {
+   "seed": 447276134,
+   "removed": "base",
+   "lake_share_of_land": 0.1076,
+   "depression_share_gt": {
+    "1": 0.2352,
+    "10": 0.2175,
+    "50": 0.1589,
+    "100": 0.1054,
+    "250": 0.0328,
+    "500": 0.0042,
+    "1000": 0.0
+   }
+  },
+  {
+   "seed": 447276134,
+   "removed": "nobasins",
+   "lake_share_of_land": 0.1008,
+   "depression_share_gt": {
+    "1": 0.2363,
+    "10": 0.2179,
+    "50": 0.1598,
+    "100": 0.1049,
+    "250": 0.0353,
+    "500": 0.004,
+    "1000": 0.0
+   }
+  },
+  {
+   "seed": 447276134,
+   "removed": "nohills",
+   "lake_share_of_land": 0.062,
+   "depression_share_gt": {
+    "1": 0.1752,
+    "10": 0.1512,
+    "50": 0.0984,
+    "100": 0.0646,
+    "250": 0.0084,
+    "500": 0.0002,
+    "1000": 0.0
+   }
+  },
+  {
+   "seed": 447276134,
+   "removed": "noorogens",
+   "lake_share_of_land": 0.1299,
+   "depression_share_gt": {
+    "1": 0.2439,
+    "10": 0.2196,
+    "50": 0.1489,
+    "100": 0.0872,
+    "250": 0.0108,
+    "500": 0.0014,
+    "1000": 0.0
+   }
+  },
+  {
+   "seed": 447276134,
+   "removed": "nopits",
+   "lake_share_of_land": 0.1055,
+   "depression_share_gt": {
+    "1": 0.2341,
+    "10": 0.2163,
+    "50": 0.1583,
+    "100": 0.1052,
+    "250": 0.0328,
+    "500": 0.0042,
+    "1000": 0.0
+   }
+  },
+  {
+   "seed": 447276134,
+   "removed": "noregional",
+   "lake_share_of_land": 0.1731,
+   "depression_share_gt": {
+    "1": 0.1858,
+    "10": 0.1699,
+    "50": 0.1192,
+    "100": 0.0826,
+    "250": 0.0095,
+    "500": 0.0005,
+    "1000": 0.0
+   }
+  },
+  {
+   "seed": 447276134,
+   "removed": "notexture",
+   "lake_share_of_land": 0.0903,
+   "depression_share_gt": {
+    "1": 0.242,
+    "10": 0.2234,
+    "50": 0.1627,
+    "100": 0.1098,
+    "250": 0.0277,
+    "500": 0.0022,
+    "1000": 0.0
+   }
+  },
+  {
+   "seed": 910211954,
+   "removed": "base",
+   "lake_share_of_land": 0.0921,
+   "depression_share_gt": {
+    "1": 0.1946,
+    "10": 0.1786,
+    "50": 0.1261,
+    "100": 0.0867,
+    "250": 0.0345,
+    "500": 0.0102,
+    "1000": 0.0011
+   }
+  },
+  {
+   "seed": 910211954,
+   "removed": "nobasins",
+   "lake_share_of_land": 0.0889,
+   "depression_share_gt": {
+    "1": 0.1883,
+    "10": 0.1723,
+    "50": 0.1206,
+    "100": 0.085,
+    "250": 0.0321,
+    "500": 0.0083,
+    "1000": 0.0009
+   }
+  },
+  {
+   "seed": 910211954,
+   "removed": "nohills",
+   "lake_share_of_land": 0.0371,
+   "depression_share_gt": {
+    "1": 0.1099,
+    "10": 0.0901,
+    "50": 0.0501,
+    "100": 0.0321,
+    "250": 0.0206,
+    "500": 0.0101,
+    "1000": 0.0006
+   }
+  },
+  {
+   "seed": 910211954,
+   "removed": "noorogens",
+   "lake_share_of_land": 0.1259,
+   "depression_share_gt": {
+    "1": 0.2114,
+    "10": 0.1906,
+    "50": 0.1207,
+    "100": 0.0708,
+    "250": 0.0115,
+    "500": 0.0001,
+    "1000": 0.0
+   }
+  },
+  {
+   "seed": 910211954,
+   "removed": "nopits",
+   "lake_share_of_land": 0.0895,
+   "depression_share_gt": {
+    "1": 0.1922,
+    "10": 0.1753,
+    "50": 0.1234,
+    "100": 0.0859,
+    "250": 0.0343,
+    "500": 0.01,
+    "1000": 0.001
+   }
+  },
+  {
+   "seed": 910211954,
+   "removed": "noregional",
+   "lake_share_of_land": 0.1457,
+   "depression_share_gt": {
+    "1": 0.1877,
+    "10": 0.1555,
+    "50": 0.0882,
+    "100": 0.0548,
+    "250": 0.0242,
+    "500": 0.0069,
+    "1000": 0.0011
+   }
+  },
+  {
+   "seed": 910211954,
+   "removed": "notexture",
+   "lake_share_of_land": 0.0877,
+   "depression_share_gt": {
+    "1": 0.2022,
+    "10": 0.1828,
+    "50": 0.1234,
+    "100": 0.0851,
+    "250": 0.0326,
+    "500": 0.0079,
+    "1000": 0.001
+   }
+  }
+ ],
+ "synthetic_relief_drainage": [
+  {
+   "seed": 447276134,
+   "node_density": 4,
+   "surface": "undrained",
+   "closed_drainage_unfrozen_share_of_land": 0.6394,
+   "closed_drainage_frozen_end_share_of_land": 0.214,
+   "lake_share_of_land": 0.0777,
+   "depression_share_gt_m": {
+    "1": 0.2352,
+    "10": 0.2175,
+    "50": 0.1589,
+    "100": 0.1054,
+    "250": 0.0328,
+    "500": 0.0042,
+    "1000": 0.0
+   },
+   "land_p50_m": 420.0,
+   "land_share_above_2km": 0.0459,
+   "lowland_rms_diff_100km_m": 159.0,
+   "land_fraction": 0.295,
+   "seconds_to_world": 13.07
+  },
+  {
+   "seed": 373936961,
+   "node_density": 4,
+   "surface": "undrained",
+   "closed_drainage_unfrozen_share_of_land": 0.589,
+   "closed_drainage_frozen_end_share_of_land": 0.1765,
+   "lake_share_of_land": 0.0859,
+   "depression_share_gt_m": {
+    "1": 0.2068,
+    "10": 0.1905,
+    "50": 0.1236,
+    "100": 0.0857,
+    "250": 0.0318,
+    "500": 0.0059,
+    "1000": 0.0
+   },
+   "land_p50_m": 350.0,
+   "land_share_above_2km": 0.0522,
+   "lowland_rms_diff_100km_m": 148.0,
+   "land_fraction": 0.2883,
+   "seconds_to_world": 11.81
+  },
+  {
+   "seed": 910211954,
+   "node_density": 4,
+   "surface": "undrained",
+   "closed_drainage_unfrozen_share_of_land": 0.4832,
+   "closed_drainage_frozen_end_share_of_land": 0.2888,
+   "lake_share_of_land": 0.0655,
+   "depression_share_gt_m": {
+    "1": 0.1946,
+    "10": 0.1786,
+    "50": 0.1261,
+    "100": 0.0867,
+    "250": 0.0345,
+    "500": 0.0102,
+    "1000": 0.0011
+   },
+   "land_p50_m": 397.0,
+   "land_share_above_2km": 0.0827,
+   "lowland_rms_diff_100km_m": 151.0,
+   "land_fraction": 0.2834,
+   "seconds_to_world": 13.3
+  },
+  {
+   "seed": 374464662,
+   "node_density": 4,
+   "surface": "undrained",
+   "closed_drainage_unfrozen_share_of_land": 0.6084,
+   "closed_drainage_frozen_end_share_of_land": 0.1929,
+   "lake_share_of_land": 0.0599,
+   "depression_share_gt_m": {
+    "1": 0.2065,
+    "10": 0.1908,
+    "50": 0.1445,
+    "100": 0.1063,
+    "250": 0.0338,
+    "500": 0.0072,
+    "1000": 0.0002
+   },
+   "land_p50_m": 482.0,
+   "land_share_above_2km": 0.0729,
+   "lowland_rms_diff_100km_m": 149.0,
+   "land_fraction": 0.2961,
+   "seconds_to_world": 13.46
+  },
+  {
+   "seed": 910211954,
+   "node_density": 1,
+   "surface": "undrained",
+   "closed_drainage_unfrozen_share_of_land": 0.6252,
+   "closed_drainage_frozen_end_share_of_land": 0.0771,
+   "lake_share_of_land": 0.0668,
+   "depression_share_gt_m": {
+    "1": 0.1395,
+    "10": 0.1289,
+    "50": 0.0907,
+    "100": 0.0595,
+    "250": 0.011,
+    "500": 0.0003,
+    "1000": 0.0
+   },
+   "land_p50_m": 389.0,
+   "land_share_above_2km": 0.06,
+   "lowland_rms_diff_100km_m": 160.0,
+   "land_fraction": 0.2923,
+   "seconds_to_world": 2.52
+  },
+  {
+   "seed": 447276134,
+   "node_density": 1,
+   "surface": "undrained",
+   "closed_drainage_unfrozen_share_of_land": 0.6968,
+   "closed_drainage_frozen_end_share_of_land": 0.0965,
+   "lake_share_of_land": 0.0665,
+   "depression_share_gt_m": {
+    "1": 0.1797,
+    "10": 0.1694,
+    "50": 0.1272,
+    "100": 0.0917,
+    "250": 0.0277,
+    "500": 0.0051,
+    "1000": 0.0002
+   },
+   "land_p50_m": 440.0,
+   "land_share_above_2km": 0.0744,
+   "lowland_rms_diff_100km_m": 171.0,
+   "land_fraction": 0.2994,
+   "seconds_to_world": 2.85
+  },
+  {
+   "seed": 910211954,
+   "node_density": 2,
+   "surface": "undrained",
+   "closed_drainage_unfrozen_share_of_land": 0.7002,
+   "closed_drainage_frozen_end_share_of_land": 0.0893,
+   "lake_share_of_land": 0.0728,
+   "depression_share_gt_m": {
+    "1": 0.1735,
+    "10": 0.1545,
+    "50": 0.0988,
+    "100": 0.0594,
+    "250": 0.0104,
+    "500": 0.0005,
+    "1000": 0.0
+   },
+   "land_p50_m": 394.0,
+   "land_share_above_2km": 0.0487,
+   "lowland_rms_diff_100km_m": 139.0,
+   "land_fraction": 0.2941,
+   "seconds_to_world": 4.45
+  },
+  {
+   "seed": 447276134,
+   "node_density": 2,
+   "surface": "undrained",
+   "closed_drainage_unfrozen_share_of_land": 0.6665,
+   "closed_drainage_frozen_end_share_of_land": 0.1565,
+   "lake_share_of_land": 0.0762,
+   "depression_share_gt_m": {
+    "1": 0.2117,
+    "10": 0.1954,
+    "50": 0.1423,
+    "100": 0.1049,
+    "250": 0.0417,
+    "500": 0.0064,
+    "1000": 0.0
+   },
+   "land_p50_m": 396.0,
+   "land_share_above_2km": 0.0343,
+   "lowland_rms_diff_100km_m": 148.0,
+   "land_fraction": 0.2937,
+   "seconds_to_world": 4.93
+  },
+  {
+   "seed": 447276134,
+   "node_density": 4,
+   "surface": "drained",
+   "closed_drainage_unfrozen_share_of_land": 0.3766,
+   "closed_drainage_frozen_end_share_of_land": 0.217,
+   "lake_share_of_land": 0.0141,
+   "depression_share_gt_m": {
+    "1": 0.0974,
+    "10": 0.0813,
+    "50": 0.0528,
+    "100": 0.0344,
+    "250": 0.0127,
+    "500": 0.0029,
+    "1000": 0.0
+   },
+   "land_p50_m": 434.0,
+   "land_share_above_2km": 0.0459,
+   "lowland_rms_diff_100km_m": 141.0,
+   "land_fraction": 0.295,
+   "seconds_to_world": 12.73
+  },
+  {
+   "seed": 373936961,
+   "node_density": 4,
+   "surface": "drained",
+   "closed_drainage_unfrozen_share_of_land": 0.4132,
+   "closed_drainage_frozen_end_share_of_land": 0.1614,
+   "lake_share_of_land": 0.0159,
+   "depression_share_gt_m": {
+    "1": 0.0888,
+    "10": 0.0741,
+    "50": 0.0505,
+    "100": 0.0361,
+    "250": 0.0182,
+    "500": 0.0053,
+    "1000": 0.0
+   },
+   "land_p50_m": 365.0,
+   "land_share_above_2km": 0.0522,
+   "lowland_rms_diff_100km_m": 139.0,
+   "land_fraction": 0.2883,
+   "seconds_to_world": 11.44
+  },
+  {
+   "seed": 910211954,
+   "node_density": 4,
+   "surface": "drained",
+   "closed_drainage_unfrozen_share_of_land": 0.3387,
+   "closed_drainage_frozen_end_share_of_land": 0.2912,
+   "lake_share_of_land": 0.0174,
+   "depression_share_gt_m": {
+    "1": 0.1157,
+    "10": 0.102,
+    "50": 0.0703,
+    "100": 0.0482,
+    "250": 0.027,
+    "500": 0.007,
+    "1000": 0.001
+   },
+   "land_p50_m": 406.0,
+   "land_share_above_2km": 0.0827,
+   "lowland_rms_diff_100km_m": 139.0,
+   "land_fraction": 0.2834,
+   "seconds_to_world": 10.82
+  },
+  {
+   "seed": 374464662,
+   "node_density": 4,
+   "surface": "drained",
+   "closed_drainage_unfrozen_share_of_land": 0.5087,
+   "closed_drainage_frozen_end_share_of_land": 0.1929,
+   "lake_share_of_land": 0.019,
+   "depression_share_gt_m": {
+    "1": 0.1397,
+    "10": 0.1086,
+    "50": 0.0565,
+    "100": 0.0373,
+    "250": 0.0153,
+    "500": 0.0068,
+    "1000": 0.0002
+   },
+   "land_p50_m": 513.0,
+   "land_share_above_2km": 0.0729,
+   "lowland_rms_diff_100km_m": 141.0,
+   "land_fraction": 0.2961,
+   "seconds_to_world": 11.74
+  },
+  {
+   "seed": 910211954,
+   "node_density": 1,
+   "surface": "drained",
+   "closed_drainage_unfrozen_share_of_land": 0.415,
+   "closed_drainage_frozen_end_share_of_land": 0.0771,
+   "lake_share_of_land": 0.0225,
+   "depression_share_gt_m": {
+    "1": 0.0642,
+    "10": 0.0576,
+    "50": 0.0387,
+    "100": 0.0273,
+    "250": 0.0046,
+    "500": 0.0002,
+    "1000": 0.0
+   },
+   "land_p50_m": 393.0,
+   "land_share_above_2km": 0.06,
+   "lowland_rms_diff_100km_m": 153.0,
+   "land_fraction": 0.2923,
+   "seconds_to_world": 2.54
+  },
+  {
+   "seed": 447276134,
+   "node_density": 1,
+   "surface": "drained",
+   "closed_drainage_unfrozen_share_of_land": 0.5125,
+   "closed_drainage_frozen_end_share_of_land": 0.097,
+   "lake_share_of_land": 0.0216,
+   "depression_share_gt_m": {
+    "1": 0.0886,
+    "10": 0.0809,
+    "50": 0.0577,
+    "100": 0.0436,
+    "250": 0.0183,
+    "500": 0.0031,
+    "1000": 0.0002
+   },
+   "land_p50_m": 462.0,
+   "land_share_above_2km": 0.0744,
+   "lowland_rms_diff_100km_m": 151.0,
+   "land_fraction": 0.2994,
+   "seconds_to_world": 2.73
+  },
+  {
+   "seed": 910211954,
+   "node_density": 2,
+   "surface": "drained",
+   "closed_drainage_unfrozen_share_of_land": 0.5543,
+   "closed_drainage_frozen_end_share_of_land": 0.1013,
+   "lake_share_of_land": 0.0297,
+   "depression_share_gt_m": {
+    "1": 0.099,
+    "10": 0.0812,
+    "50": 0.0478,
+    "100": 0.029,
+    "250": 0.0056,
+    "500": 0.0002,
+    "1000": 0.0
+   },
+   "land_p50_m": 398.0,
+   "land_share_above_2km": 0.0487,
+   "lowland_rms_diff_100km_m": 131.0,
+   "land_fraction": 0.2941,
+   "seconds_to_world": 4.5
+  },
+  {
+   "seed": 447276134,
+   "node_density": 2,
+   "surface": "drained",
+   "closed_drainage_unfrozen_share_of_land": 0.4844,
+   "closed_drainage_frozen_end_share_of_land": 0.1697,
+   "lake_share_of_land": 0.0165,
+   "depression_share_gt_m": {
+    "1": 0.118,
+    "10": 0.0991,
+    "50": 0.0713,
+    "100": 0.0541,
+    "250": 0.0262,
+    "500": 0.0037,
+    "1000": 0.0
+   },
+   "land_p50_m": 417.0,
+   "land_share_above_2km": 0.0343,
+   "lowland_rms_diff_100km_m": 133.0,
+   "land_fraction": 0.2937,
+   "seconds_to_world": 5.15
+  }
+ ],
+ "undrained_closed_basins_by_nodes_land_share": {
+  "910211954": {
+   "1": 0.005,
+   "2-4": 0.0121,
+   "5-19": 0.0226,
+   "20-99": 0.0705,
+   "100+": 0.0848,
+   "spill_ge_500m": 0.0628,
+   "spill_ge_1000m": 0.018
+  },
+  "447276134": {
+   "1": 0.0047,
+   "2-4": 0.011,
+   "5-19": 0.024,
+   "20-99": 0.0621,
+   "100+": 0.1346,
+   "spill_ge_500m": 0.0449,
+   "spill_ge_1000m": 0.0053
+  }
+ },
+ "after_10_steps_of_100kyr": [
+  {
+   "seed": 910211954,
+   "code": "origin/main 34fb86f",
+   "endorheic_unfrozen_share_of_land": 0.2577,
+   "endorheic_frozen_terminal_share_of_land": 0.2883,
+   "lake_share_of_land": 0.093,
+   "depression_share_gt": {
+    "1": 0.1966,
+    "10": 0.1771,
+    "50": 0.1213,
+    "100": 0.082,
+    "250": 0.031,
+    "500": 0.0082,
+    "1000": 0.0009
+   },
+   "river_share_of_land": 0.064
+  },
+  {
+   "seed": 910211954,
+   "code": "branch",
+   "endorheic_unfrozen_share_of_land": 0.2333,
+   "endorheic_frozen_terminal_share_of_land": 0.2868,
+   "lake_share_of_land": 0.0385,
+   "depression_share_gt": {
+    "1": 0.141,
+    "10": 0.1028,
+    "50": 0.0664,
+    "100": 0.0445,
+    "250": 0.0244,
+    "500": 0.0058,
+    "1000": 0.0009
+   },
+   "river_share_of_land": 0.0784
+  },
+  {
+   "seed": 447276134,
+   "code": "origin/main 34fb86f",
+   "endorheic_unfrozen_share_of_land": 0.3846,
+   "endorheic_frozen_terminal_share_of_land": 0.2136,
+   "lake_share_of_land": 0.1434,
+   "depression_share_gt": {
+    "1": 0.2371,
+    "10": 0.2179,
+    "50": 0.1596,
+    "100": 0.1103,
+    "250": 0.0324,
+    "500": 0.0043,
+    "1000": 0.0001
+   },
+   "river_share_of_land": 0.0465
+  },
+  {
+   "seed": 447276134,
+   "code": "branch",
+   "endorheic_unfrozen_share_of_land": 0.3151,
+   "endorheic_frozen_terminal_share_of_land": 0.215,
+   "lake_share_of_land": 0.0517,
+   "depression_share_gt": {
+    "1": 0.1491,
+    "10": 0.1057,
+    "50": 0.0603,
+    "100": 0.0353,
+    "250": 0.0139,
+    "500": 0.0034,
+    "1000": 0.0
+   },
+   "river_share_of_land": 0.0671
+  }
+ ]
+}

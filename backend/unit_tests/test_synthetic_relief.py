@@ -214,3 +214,123 @@ def test_back_columns_caps_cratonic_cores_at_the_host_maximum():
 
     assert hc[0] == pytest.approx(cratons.CRATON_HOST_MAX_HC_M)
     assert hc[1] > cratons.CRATON_HOST_MAX_HC_M
+
+
+def _sphere(n: int) -> np.ndarray:
+    """A Fibonacci lattice: n near-equal-area points on the unit sphere."""
+    i = np.arange(n) + 0.5
+    z = 1.0 - 2.0 * i / n
+    lon = np.pi * (1.0 + 5.0**0.5) * i
+    r = np.sqrt(1.0 - z * z)
+    return np.stack([r * np.cos(lon), r * np.sin(lon), z], axis=1)
+
+
+def _bowl(points, lat_deg, lon_deg, radius_deg, depth_m):
+    lat, lon = np.radians(lat_deg), np.radians(lon_deg)
+    centre = np.array([np.cos(lat) * np.cos(lon), np.cos(lat) * np.sin(lon), np.sin(lat)])
+    d = np.degrees(np.arccos(np.clip(points @ centre, -1.0, 1.0)))
+    return np.where(d < radius_deg, depth_m * (1.0 - d / radius_deg), 0.0), d < radius_deg
+
+
+def _descent_end(points, elevation):
+    """Per node, where steepest descent among its 8 nearest ends."""
+    from scipy.spatial import cKDTree
+
+    _, neighbours = cKDTree(points).query(points, k=9)
+    neighbours = neighbours[:, 1:]
+    lowest = neighbours[np.arange(len(points)), np.argmin(elevation[neighbours], axis=1)]
+    nxt = np.where(elevation[lowest] < elevation, lowest, np.arange(len(points)))
+    for _ in range(len(points)):
+        if np.array_equal(nxt[nxt], nxt):
+            break
+        nxt = nxt[nxt]
+    return nxt
+
+
+def _land_world(n=20_000):
+    """n near-equal-area nodes, land north of the equator rising 20 m per degree."""
+    points = _sphere(n)
+    lat = np.degrees(np.arcsin(points[:, 2]))
+    land = lat > 0.0
+    area_km2 = np.full(n, 4.0 * np.pi * PLANET_RADIUS_KM**2 / n)
+    return points, lat, land, np.where(land, 10.0 + 20.0 * lat, -3_000.0), area_km2
+
+
+def test_drain_land_fills_a_large_low_basin_and_keeps_high_and_small_ones(monkeypatch):
+    # ~25,500 km^2 nodes. A 6-degree bowl spilling near 300 m covers ~55 nodes (~1.4 million
+    # km^2): filled once no large low basin is budgeted to stay closed. The same bowl spilling
+    # near 1,200 m is an intermontane basin, and a one-node pit is below
+    # DRAIN_FILL_MIN_AREA_KM2: both stay closed (#218).
+    monkeypatch.setattr(synthetic_relief, "DRAIN_KEEP_LOW_SHARE", 0.0)
+    points, lat, land, base, area_km2 = _land_world()
+    low, in_low = _bowl(points, 15.0, 0.0, 6.0, 200.0)
+    high, in_high = _bowl(points, 60.0, 120.0, 6.0, 200.0)
+    band = np.flatnonzero(land & (np.abs(lat - 15.0) < 1.0) & (points[:, 1] < -0.5))
+    pit = int(band[len(band) // 2])
+    elevation = base - low - high
+    elevation[pit] -= 50.0
+
+    out = synthetic_relief.drain_land(points, elevation, land, area_km2, seed=1)
+
+    np.testing.assert_array_equal(out[~land], elevation[~land])
+    assert np.all(out >= elevation)
+    end = _descent_end(points, out)
+    assert np.all(~land[end[land & in_low]])
+    assert end[pit] == pit and out[pit] == elevation[pit]
+    floor = int(np.flatnonzero(in_high)[np.argmin(elevation[in_high])])
+    assert end[floor] == floor and out[floor] == elevation[floor]
+    # All land drains to the sea or into one of the two closed basins, and ordinary slopes
+    # move by at most the drainage gradient's few metres.
+    assert set(end[land & land[end]].tolist()) <= {pit, floor}
+    untouched = land & ~in_low & ~in_high
+    assert np.max(out[untouched] - elevation[untouched]) < 5.0
+
+
+def test_drain_land_keeps_about_earths_share_of_large_low_basins(monkeypatch):
+    # Twelve large low bowls (~1.4 million km^2 each, ~0.55% of this land apiece, spilling near
+    # 390 m): a seeded random set totalling DRAIN_KEEP_LOW_SHARE of land stays closed, within
+    # the band.
+    points, lat, land, base, area_km2 = _land_world()
+    bowls = [_bowl(points, 25.0, lon, 6.0, 450.0) for lon in np.arange(0.0, 360.0, 30.0)]
+    elevation = base - sum(depth for depth, _ in bowls)
+    land_km2 = area_km2[land].sum()
+
+    low, high = (f * synthetic_relief.DRAIN_KEEP_LOW_SHARE for f in synthetic_relief.DRAIN_KEEP_LOW_BAND)
+    out = synthetic_relief.drain_land(points, elevation, land, area_km2, seed=7)
+    # Each bowl's closed depression is what a run keeping none of them fills.
+    monkeypatch.setattr(synthetic_relief, "DRAIN_KEEP_LOW_SHARE", 0.0)
+    depression = synthetic_relief.drain_land(points, elevation, land, area_km2, seed=7) - elevation > 1.0
+
+    end = _descent_end(points, out)
+    floors = [int(np.flatnonzero(inside)[np.argmin(elevation[inside])]) for _, inside in bowls]
+    kept = [end[floor] == floor for floor in floors]
+    closed_km2 = sum(area_km2[inside & depression].sum() for (_, inside), k in zip(bowls, kept) if k)
+    assert low <= closed_km2 / land_km2 <= high
+    assert 0 < sum(kept) < len(bowls)
+    monkeypatch.undo()
+    np.testing.assert_array_equal(out, synthetic_relief.drain_land(points, elevation, land, area_km2, seed=7))
+
+
+def test_drain_land_keeps_an_enclosed_submerged_hole_as_a_basin(monkeypatch):
+    # A submerged hole inside the land is a closed basin to hydrology (connected_ocean_mask),
+    # so land around it drains into it, even with no budget for large low basins.
+    monkeypatch.setattr(synthetic_relief, "DRAIN_KEEP_LOW_SHARE", 0.0)
+    points, lat, land, base, area_km2 = _land_world()
+    depth, inside = _bowl(points, 30.0, 90.0, 6.0, 1_000.0)
+    elevation = base - depth
+    hole = inside & (elevation <= 0.0)
+    assert hole.any()
+    land = land & ~hole
+
+    out = synthetic_relief.drain_land(points, elevation, land, area_km2, seed=3)
+
+    np.testing.assert_array_equal(out[~land], elevation[~land])
+    end = _descent_end(points, out)
+    assert np.all(hole[end[land & inside]])
+
+
+def test_drain_land_leaves_a_world_without_land_or_sea_unchanged():
+    points = _sphere(200)
+    elevation = np.linspace(-100.0, 100.0, 200)
+    for land in (np.zeros(200, dtype=bool), np.ones(200, dtype=bool)):
+        np.testing.assert_array_equal(synthetic_relief.drain_land(points, elevation, land, np.ones(200), seed=0), elevation)

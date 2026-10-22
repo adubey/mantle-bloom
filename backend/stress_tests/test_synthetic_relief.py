@@ -58,12 +58,25 @@ def test_oceanic_crust_and_plates_are_left_as_generated(worlds):
 
 
 def test_cratonic_cores_stay_cratonic_within_the_host_window(worlds):
+    # A core is cratonic through its whole crust below any basin fill, which is cover.
     _, world = worlds
     for plate in world.plates:
         craton = plate.collect("craton_crust_m")
         core = craton > 0.0
-        assert np.allclose(craton[core], plate.collect("crustal_thickness_m")[core])
+        assert np.allclose(craton[core] + plate.collect("mobile_cover_m")[core], plate.collect("crustal_thickness_m")[core])
         assert np.all(craton[core] <= cratons.CRATON_HOST_MAX_HC_M + 1e-6)
+
+
+def test_filled_basins_are_booked_as_mobile_cover(worlds):
+    # drain_land's fill is loose sediment on top of the column, and continental-derived.
+    _, world = worlds
+    cover = np.concatenate([p.collect("mobile_cover_m") for p in world.plates])
+    continental_cover = np.concatenate([p.collect("mobile_cover_continental_m") for p in world.plates])
+    hc = plates.collect_all_crustal_thickness(world.plates)
+
+    assert np.any(cover > 0.0)
+    assert np.all((cover >= 0.0) & (cover <= hc))
+    assert np.all(continental_cover <= cover + 1e-9)
 
 
 def test_synthetic_relief_is_deterministic(worlds):
