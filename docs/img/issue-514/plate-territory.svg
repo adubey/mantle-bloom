@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
+  <title id="title">A plate's sparse, plate-local surface cells</title>
+  <desc id="desc">Conceptual oblique view of a curved plate patch tiled by a sparse quadrilateral mesh, with boundary cells highlighted and a neighboring plate across a seam. An inset shows one leaf split into four children by a local two-by-two refinement.</desc>
+  <defs>
+    <clipPath id="plateClip"><path d="M241 235 C287 164 394 151 465 177 C523 126 627 153 664 202 C754 201 802 267 778 323 C824 379 765 437 710 448 C663 510 558 500 505 469 C429 505 328 470 321 418 C250 403 207 333 241 287 Z"/></clipPath>
+  </defs>
+  <rect width="1200" height="760" rx="26" fill="#0a1625"/>
+  <ellipse cx="602" cy="516" rx="385" ry="98" fill="#020914" opacity=".55"/>
+  <path d="M108 447 C188 412 257 413 323 433 L399 454 C357 496 284 530 198 539 C148 544 110 515 108 447Z" fill="#68538f" stroke="#d4c1ef" stroke-width="3" opacity=".96"/>
+  <path d="M241 235 C287 164 394 151 465 177 C523 126 627 153 664 202 C754 201 802 267 778 323 C824 379 765 437 710 448 C663 510 558 500 505 469 C429 505 328 470 321 418 C250 403 207 333 241 287 Z" fill="#247f85" stroke="#a7ece2" stroke-width="5"/>
+  <g clip-path="url(#plateClip)" fill="none" stroke="#a9e4df" stroke-opacity=".68" stroke-width="2">
+    <path d="M211 258 C360 245 544 252 796 271 M205 307 C364 305 551 315 808 319 M220 357 C370 365 563 379 792 368 M263 406 C400 421 569 438 746 410 M322 451 C435 462 587 477 680 448"/>
+    <path d="M290 187 C304 260 286 336 315 431 M390 166 C407 244 367 345 392 478 M492 155 C510 239 471 338 507 486 M594 163 C618 244 584 346 608 488 M693 193 C715 268 671 356 704 462 M776 249 C772 313 757 375 740 438"/>
+  </g>
+  <path d="M710 448 C765 437 824 379 778 323" fill="none" stroke="#ffe08a" stroke-width="8" stroke-linecap="round" stroke-dasharray="4 15"/>
+  <path d="M747 445 L835 485" fill="none" stroke="#ffe08a" stroke-width="2"/>
+  <circle cx="747" cy="445" r="7" fill="#ffe08a"/>
+  <rect x="821" y="477" width="255" height="65" rx="13" fill="#10263a" stroke="#ffe08a"/>
+  <text x="844" y="504" fill="#ffe08a" font-family="Inter,Arial,sans-serif" font-size="18" font-weight="700">Boundary cells</text>
+  <text x="844" y="527" fill="#c4d5e4" font-family="Inter,Arial,sans-serif" font-size="15">change as the edge evolves</text>
+  <rect x="821" y="560" width="292" height="112" rx="13" fill="#10263a" stroke="#5f8791"/>
+  <rect x="840" y="581" width="58" height="58" fill="#247f85" stroke="#a9e4df" stroke-width="2"/>
+  <path d="M869 581 V639 M840 610 H898" stroke="#a9e4df" stroke-width="2"/>
+  <text x="916" y="594" fill="#ecf5fa" font-family="Inter,Arial,sans-serif" font-size="16" font-weight="700">One leaf refines</text>
+  <text x="916" y="617" fill="#c4d5e4" font-family="Inter,Arial,sans-serif" font-size="15">into four children.</text>
+  <text x="916" y="642" fill="#9bb1c1" font-family="Inter,Arial,sans-serif" font-size="13">This is the local 2 × 2 split.</text>
+  <path d="M379 188 L303 113" fill="none" stroke="#a7ece2" stroke-width="2"/>
+  <circle cx="379" cy="188" r="6" fill="#a7ece2"/>
+  <text x="88" y="94" fill="#ecf5fa" font-family="Inter,Arial,sans-serif" font-size="22" font-weight="700">One plate's local lattice</text>
+  <text x="88" y="121" fill="#a9bdce" font-family="Inter,Arial,sans-serif" font-size="16">Cells rotate with the plate as a curved surface</text>
+  <path d="M215 502 L177 590" fill="none" stroke="#d4c1ef" stroke-width="2"/>
+  <text x="88" y="624" fill="#d4c1ef" font-family="Inter,Arial,sans-serif" font-size="17" font-weight="700">Neighboring plate</text>
+  <text x="88" y="649" fill="#a9bdce" font-family="Inter,Arial,sans-serif" font-size="15">has its own independent lattice</text>
+  <text x="88" y="714" fill="#8196aa" font-family="Inter,Arial,sans-serif" font-size="13" letter-spacing="1.4">CONCEPTUAL • NOT A SIMULATION RENDER</text>
+</svg>
