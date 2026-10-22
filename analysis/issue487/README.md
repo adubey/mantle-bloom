@@ -213,7 +213,8 @@ coverage.
 On the 22,896 accepted cut-band samples, median-capacity physical failed fractions are 0.274%
 continental, 78.03% young-ridge oceanic proxy and 2.84% mature oceanic. At the phenomenological
 1× reference, 2.82% of all samples fail (0.34% in marked belts, 3.50% outside). These are screening
-outcomes only: saved state has no oceanic age field, and the capacity assumptions are uncalibrated.
+outcomes only: saved state has no oceanic age field, and capacities remain conditional scenario
+assumptions without spatial calibration.
 Per-seed results, coverage strata, hashes and mesh repair details are in
 [`gate2-matched-replay.json`](gate2-matched-replay.json); full outputs remain in `/private/tmp`.
 
@@ -232,3 +233,34 @@ PYTHONHASHSEED=0 PYTHONPATH=backend backend/.venv/bin/python \
   --seed 7 --num-plates 12 --node-density 0.5 \
   --out analysis/issue487/representative-mesh-summary.json
 ```
+
+
+## Gate 2 capacity scale calibration (2026-10-21)
+
+A repeatable scale audit now checks the physical column envelope at 70, 90, 100, 135 and
+150 km total continental lithosphere thickness, with the current 35 km crust held fixed. Its
+provisional `K0=0.8` anchor gives 5.91 TN/m at 100 km, within the 3–8 TN/m regional EARS
+integrated-strength estimate; the 100 km full factorial grid has median 4.43 TN/m and p10–p90
+1.37–11.46 TN/m. A 150 km thick-craton scenario gives 19.02 TN/m, but the cited thickness model
+is not a capacity observation. The matched replay loads are not rupture labels and were not used
+to fit parameters. This calibrates a conditional scale bracket, not a production strength law.
+See [`gate2-capacity-calibration.md`](gate2-capacity-calibration.md) and
+[`gate2-capacity-calibration.json`](gate2-capacity-calibration.json).
+
+### Thickness-aware spatial screen (2026-10-21)
+
+The full replay was rerun on the pinned Gate 1 source, with the diagnostic force-field helpers
+overlaid while leaving production torque routines unchanged. Production cut totals and ordered
+candidate time/plate identities match Gate 1 for all three seeds. All 74 connected-source
+candidates solve successfully; 56 disconnected-source candidates remain excluded. The local
+capacity map uses each node's actual Hc/Hm and crust-type proxy, and compares steady conductive and
+linearly interpolated Moho-lag profiles. It adds strata for craton share and inherited-belt marker.
+
+Across 22,896 accepted cut-band nodes, 1,746 (7.63%) exceed local capacity in the steady-profile
+reference; 1,738 (7.59%) do so with the Moho-lag interpolation. Median event-level median
+`N_ext/N_cap` is 0.116; median event-level p95 ratio is 0.669. These are scenario-screening
+statistics, not observed rupture rates or a fit to split/failed-rift outcomes. Local capacity
+remains conditional on assumed thermal/rheology/stress state, so this step does not close Gate 2.
+See [`gate2-capacity-state-audit.md`](gate2-capacity-state-audit.md) and the compact
+[`gate2-spatial-capacity-replay.json`](gate2-spatial-capacity-replay.json); full event reports are
+in `/private/tmp`.

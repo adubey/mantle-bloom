@@ -88,10 +88,19 @@ FLOW_LAWS = {
 }
 
 
-def make_layers(crust_type: str, lower_crust_law: str, mantle_law: str) -> tuple[list[Layer], float, float]:
+def make_layers(
+    crust_type: str,
+    lower_crust_law: str,
+    mantle_law: str,
+    continental_mantle_lithosphere_m: float | None = None,
+    column_crust_thickness_m: float | None = None,
+    column_mantle_lithosphere_thickness_m: float | None = None,
+) -> tuple[list[Layer], float, float]:
     """Return illustrative layers and reference Hc/Hm for a broad crust class."""
     if crust_type == "continental":
         hc_m, hm_m = lithosphere.reference_thickness("continental")
+        if continental_mantle_lithosphere_m is not None:
+            hm_m = continental_mantle_lithosphere_m
     else:
         hc_m = lithosphere.REFERENCE_HC_OCEANIC_M
         hm_m = (
@@ -99,6 +108,12 @@ def make_layers(crust_type: str, lower_crust_law: str, mantle_law: str) -> tuple
             if crust_type == "oceanic_young_ridge"
             else lithosphere.REFERENCE_HM_OCEANIC_M
         )
+    if column_crust_thickness_m is not None:
+        hc_m = column_crust_thickness_m
+    if column_mantle_lithosphere_thickness_m is not None:
+        hm_m = column_mantle_lithosphere_thickness_m
+    if not all(math.isfinite(value) and value >= 0.0 for value in (hc_m, hm_m)):
+        raise ValueError("column crust and mantle-lithosphere thicknesses must be finite and nonnegative")
     if crust_type == "continental":
         upper_crust_m = min(15_000.0, hc_m)
         layers = [
@@ -127,8 +142,13 @@ def profile_fields(
     hm_m: float,
     crust_type: str,
     base_temperature_c: float,
+    moho_thermal_lag_c: float = 0.0,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Return steady temperature (K) and lithostatic pressure (Pa)."""
+    """Return temperature (K) and lithostatic pressure (Pa).
+
+    A nonzero Moho lag is interpolated linearly to zero at the surface and lithosphere base.
+    This is an explicit diagnostic profile assumption, not a transient heat solve.
+    """
     k = orogeny.CRUST_CONDUCTIVITY_W_M_K
     heat = orogeny.CRUST_HEAT_PRODUCTION_W_M3
     total_m = max(hc_m + hm_m, 1.0)
@@ -150,6 +170,11 @@ def profile_fields(
         temperature_c,
         moho_c + mantle_heat_flux * mantle_depth / k,
     )
+    if moho_thermal_lag_c != 0.0:
+        crust_lag_fraction = depth_m / max(hc_m, 1.0)
+        mantle_lag_fraction = np.maximum(total_m - depth_m, 0.0) / max(hm_m, 1.0)
+        lag_fraction = np.where(depth_m <= hc_m, crust_lag_fraction, mantle_lag_fraction)
+        temperature_c = temperature_c - moho_thermal_lag_c * lag_fraction
     temperature_k = np.maximum(temperature_c + 273.15, 1.0)
 
     rho_crust = lithosphere.crust_density(crust_type)
@@ -174,12 +199,28 @@ def creep_stress_pa(law: FlowLaw, strain_rate_s: float, pressure_pa: np.ndarray,
     return np.exp(np.clip(log_stress_mpa, -100.0, 100.0)) * 1e6
 
 
-def evaluate_case(crust_type: str, scenario: Scenario, dz_m: float) -> dict[str, Any]:
-    layers, hc_m, hm_m = make_layers(crust_type, scenario.lower_crust_law, scenario.mantle_law)
+def evaluate_case(
+    crust_type: str,
+    scenario: Scenario,
+    dz_m: float,
+    continental_mantle_lithosphere_m: float | None = None,
+    column_crust_thickness_m: float | None = None,
+    column_mantle_lithosphere_thickness_m: float | None = None,
+    moho_thermal_lag_c: float = 0.0,
+) -> dict[str, Any]:
+    layers, hc_m, hm_m = make_layers(
+        crust_type,
+        scenario.lower_crust_law,
+        scenario.mantle_law,
+        continental_mantle_lithosphere_m=continental_mantle_lithosphere_m,
+        column_crust_thickness_m=column_crust_thickness_m,
+        column_mantle_lithosphere_thickness_m=column_mantle_lithosphere_thickness_m,
+    )
     total_m = hc_m + hm_m
     depth_m = depth_grid(total_m, hc_m, layers, dz_m)
     temperature_k, pressure_pa = profile_fields(
-        depth_m, hc_m, hm_m, crust_type, scenario.base_temperature_c
+        depth_m, hc_m, hm_m, crust_type, scenario.base_temperature_c,
+        moho_thermal_lag_c=moho_thermal_lag_c,
     )
     pore_pressure_pa = scenario.pore_pressure_ratio * pressure_pa
     vertical_effective_pa = pressure_pa - pore_pressure_pa
@@ -230,6 +271,7 @@ def evaluate_case(crust_type: str, scenario: Scenario, dz_m: float) -> dict[str,
             "mantle_lithosphere_thickness_m": hm_m,
             "moho_temperature_c": float(temperature_k[moho_i] - 273.15),
             "lithosphere_base_temperature_c": float(temperature_k[base_i] - 273.15),
+            "moho_thermal_lag_c": moho_thermal_lag_c,
             "lithosphere_base_pressure_gpa": float(pressure_pa[base_i] / 1e9),
         },
         "integrated_additional_strength_n_per_m": capacity_n_per_m,

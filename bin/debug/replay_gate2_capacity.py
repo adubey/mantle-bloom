@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """Compare Gate 2 strength alternatives on repeatable Gate 1 rift-cut candidates.
 
-Recreate the cratons-first baseline for seeds 7, 11, and 2024 at 2 Myr steps. At each
+Replay the pinned Gate 1 cratons-first model for seeds 7, 11, and 2024 at 2 Myr steps. The
+backend source must be the Gate 1 baseline commit with this diagnostic and the thin-shell
+per-node force-field helpers overlaid; running against later production model code can change
+the candidate population. Always check the Gate 1 count-match fields in the output. At each
 production cut crossing craton, reconstruct the event-local spatial force field, solve the
 free-edge shell diagnostic once on the clipped plate mesh, then score that same stress and
 cut band against physical column-capacity scenarios and the labeled belt-weakening rule.
 Capacity scores do not feed back into the world, so both alternatives see identical loads,
 cut events, and states. This is a diagnostic replay, not an A/B of production behavior.
 
-Run one seed at a time, never alongside unit/stress tests or another replay:
+Run at most two seeds at once, never alongside unit/stress tests:
 
     PYTHONHASHSEED=0 PYTHONPATH=backend backend/.venv/bin/python \
         bin/debug/replay_gate2_capacity.py --seed 7 --out /tmp/issue487-g2-seed7.json
@@ -19,6 +22,7 @@ Use ``--years 1e8`` for a short smoke replay. The full baseline is 1e9 years.
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import sys
 import time
@@ -33,7 +37,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import validate_thin_shell_plate_meshes as mesh_validation  # noqa: E402
 import prototype_mincut_split as mincut  # noqa: E402
+from diagnose_gate2_column_envelope import Scenario, evaluate_case  # noqa: E402
 from app import cratons, geometry, initial_terrain, lithosphere, merge_split, surface_fields, thin_shell, torque, world as world_mod  # noqa: E402
+from app import orogeny  # noqa: E402
 from app.elevation_lines import line_spacing_rad  # noqa: E402
 
 STEP_YEARS = 2e6
@@ -45,6 +51,17 @@ PHENOMENOLOGICAL_REFERENCE_FACTORS = (0.5, 1.0, 2.0)
 GATE1_EXPECTED_CUT_COUNTS = {7: 144, 11: 111, 2024: 125}
 GATE1_EXPECTED_CRATON_CROSSING_CUTS = {7: 44, 11: 42, 2024: 44}
 GATE1_BASELINE_COMMIT = "0118752d0ffe75060464204d5b94f81a60fe9a07"
+COLUMN_SCENARIO = Scenario(
+    base_temperature_c=orogeny.LITHOSPHERE_BASE_TEMPERATURE_C,
+    strain_rate_s=1e-15,
+    pore_pressure_ratio=0.42,
+    k0=0.8,
+    cohesion_pa=20e6,
+    friction_angle_deg=30.0,
+    lower_crust_law="plagioclase_an75",
+    mantle_law="dry_olivine",
+)
+COLUMN_DZ_M = 125.0
 
 
 def _physical_capacities() -> dict[str, list[float]]:
@@ -165,6 +182,115 @@ def _capacity_scores(resultant: np.ndarray, band: np.ndarray, continental: np.nd
         "reference_capacity_sweep": phenom,
     }
     return scores
+
+
+@functools.lru_cache(maxsize=100_000)
+def _column_capacity(crust_type: str, hc_m: float, hm_m: float, lag_c: float) -> float:
+    """Evaluate one local column; round cache keys below in the caller for tractability."""
+    result = evaluate_case(
+        crust_type,
+        COLUMN_SCENARIO,
+        COLUMN_DZ_M,
+        column_crust_thickness_m=hc_m,
+        column_mantle_lithosphere_thickness_m=hm_m,
+        moho_thermal_lag_c=lag_c,
+    )
+    return float(result["integrated_additional_strength_n_per_m"])
+
+
+def _spatial_capacity_scores(
+    resultant: np.ndarray,
+    in_band: np.ndarray,
+    continental: np.ndarray,
+    young_oceanic: np.ndarray,
+    belt_marked: np.ndarray,
+    hc_m: np.ndarray,
+    hm_m: np.ndarray,
+    moho_lag_c: np.ndarray,
+    craton_hc_m: np.ndarray,
+) -> dict:
+    """Compare event-local N_ext with mapped Hc/Hm column capacities, without fitting labels."""
+    classes = (
+        ("continental", continental),
+        ("oceanic_young_ridge", young_oceanic & ~continental),
+        ("oceanic_mature", ~young_oceanic & ~continental),
+    )
+    craton_fraction = np.divide(
+        craton_hc_m, hc_m, out=np.zeros_like(hc_m, dtype=float), where=hc_m > 0.0
+    )
+    craton_fraction = np.clip(craton_fraction, 0.0, 1.0)
+    strata = {
+        "all": np.ones(len(resultant), dtype=bool),
+        "craton_none": craton_fraction <= 1e-9,
+        "craton_partial": (craton_fraction > 1e-9) & (craton_fraction < 0.5),
+        "craton_majority": craton_fraction >= 0.5,
+        "inherited_belt": belt_marked,
+        "no_inherited_belt": ~belt_marked,
+    }
+    for name, mask in classes:
+        strata[f"crust_{name}"] = mask
+
+    mode_lags = {
+        "steady_conductive": np.zeros(len(resultant), dtype=float),
+        "moho_lag_interpolated": moho_lag_c,
+    }
+    summary = {}
+    for mode, lags in mode_lags.items():
+        capacities_by_node = np.empty(len(resultant), dtype=float)
+        crust_labels = np.empty(len(resultant), dtype=object)
+        for name, mask in classes:
+            crust_labels[mask] = name
+        for index in range(len(resultant)):
+            # State fields are quantized to 100 m / 1 C solely to reuse column solves;
+            # these increments are finer than the physical/rheology uncertainty here.
+            capacities_by_node[index] = _column_capacity(
+                str(crust_labels[index]),
+                round(float(hc_m[index]) / 100.0) * 100.0,
+                round(float(hm_m[index]) / 100.0) * 100.0,
+                round(float(lags[index])),
+            )
+        by_stratum = {}
+        for name, mask in strata.items():
+            selected = in_band & mask & np.isfinite(capacities_by_node) & (capacities_by_node > 0.0)
+            if not np.any(selected):
+                continue
+            caps = capacities_by_node[selected]
+            ratios = resultant[selected] / caps
+            by_stratum[name] = {
+                "nodes": int(selected.sum()),
+                "capacity_n_per_m_p10_median_p90": [
+                    float(value) for value in np.percentile(caps, (10, 50, 90))
+                ],
+                "n_ext_over_capacity_median_p95": [
+                    float(value) for value in np.percentile(ratios, (50, 95))
+                ],
+                "over_capacity_nodes": int(np.count_nonzero(ratios >= 1.0)),
+                "over_capacity_fraction": float(np.mean(ratios >= 1.0)),
+                "hc_median_m": float(np.median(hc_m[selected])),
+                "hm_median_m": float(np.median(hm_m[selected])),
+                "moho_lag_median_c": float(np.median(moho_lag_c[selected])),
+            }
+        summary[mode] = {
+            "capacity_scenario": {
+                "base_temperature_c": COLUMN_SCENARIO.base_temperature_c,
+                "strain_rate_s-1": COLUMN_SCENARIO.strain_rate_s,
+                "pore_pressure_ratio": COLUMN_SCENARIO.pore_pressure_ratio,
+                "k0": COLUMN_SCENARIO.k0,
+                "cohesion_pa": COLUMN_SCENARIO.cohesion_pa,
+                "friction_angle_deg": COLUMN_SCENARIO.friction_angle_deg,
+                "lower_crust_law": COLUMN_SCENARIO.lower_crust_law,
+                "mantle_law": COLUMN_SCENARIO.mantle_law,
+                "thermal_mode": mode,
+                "lag_profile_assumption": (
+                    "subtract lag linearly from zero at surface to the Moho, then linearly back to zero at lithosphere base"
+                    if mode == "moho_lag_interpolated" else "steady conductive profile; lag ignored"
+                ),
+                "column_grid_spacing_m": COLUMN_DZ_M,
+                "capacity_cache_rounding": {"Hc_m": 100, "Hm_m": 100, "Moho_lag_c": 1},
+            },
+            "by_stratum": by_stratum,
+        }
+    return summary
 
 
 def _nondegenerate_triangles(points_xyz: np.ndarray, triangles: np.ndarray) -> np.ndarray:
@@ -352,6 +478,8 @@ def _score_event(world, plate, points, cut_normal, kind, capacities) -> dict | N
 
     hc = plate.collect("crustal_thickness_m")[used]
     hm = plate.collect("mantle_lithosphere_thickness_m")[used]
+    moho_lag = plate.collect("moho_thermal_lag_c")[used]
+    craton_hc = plate.collect("craton_crust_m")[used]
     codes = plate.collect("crust_type_code")[used]
     continental = np.asarray(
         __import__("app.elevation_lines", fromlist=["effective_is_continental_from_codes"])
@@ -387,6 +515,17 @@ def _score_event(world, plate, points, cut_normal, kind, capacities) -> dict | N
         )
     resultant = result.max_incremental_extensional_resultant_n_per_m
     scores = _capacity_scores(resultant, in_band, continental, young_oceanic, belt, capacities)
+    scores["spatial_column_capacity"] = _spatial_capacity_scores(
+        resultant,
+        in_band,
+        continental,
+        young_oceanic,
+        belt,
+        hc,
+        hm,
+        moho_lag,
+        craton_hc,
+    )
     return {
         "kind": kind,
         "myr": float(world.elapsed_years / 1e6),
@@ -480,13 +619,13 @@ def _coverage_report(events: list[dict]) -> dict:
     }
     minimum_stratum = 0.80
     stratum_fractions = [
-        value["coverage_fraction_all_candidates"]
+        value["coverage_fraction_source_connected"]
         for value in [
             *by_kind.values(),
             *by_world_time.values(),
             *(stratum for groups in by_kind_and_time.values() for stratum in groups.values()),
         ]
-        if value["coverage_fraction_all_candidates"] is not None
+        if value["coverage_fraction_source_connected"] is not None
     ]
     overall_fraction_all = len(scored) / len(events) if events else 0.0
     overall_fraction_connected = len(scored) / len(eligible) if eligible else 0.0
@@ -496,17 +635,48 @@ def _coverage_report(events: list[dict]) -> dict:
         "valid_shell_solves": len(scored),
         "coverage_fraction_all_candidates": overall_fraction_all,
         "coverage_fraction_source_connected": overall_fraction_connected,
-        "minimum_overall_candidate_coverage": 0.90,
-        "minimum_coverage_per_seed_kind_and_time_stratum": minimum_stratum,
+        "minimum_overall_source_connected_coverage": 0.90,
+        "minimum_coverage_per_seed_kind_and_time_stratum_source_connected": minimum_stratum,
         "minimum_band_and_craton_band_node_coverage": MIN_DIAGNOSTIC_BAND_COVERAGE,
         "by_kind": by_kind,
         "by_world_time_myr": by_world_time,
         "by_kind_and_world_time_myr": by_kind_and_time,
-        "meets_seed_minimum": overall_fraction_all >= minimum_stratum,
+        "meets_seed_minimum": overall_fraction_connected >= minimum_stratum,
         "meets_overall_and_stratified_minimums": (
-            overall_fraction_all >= 0.90 and all(fraction >= minimum_stratum for fraction in stratum_fractions)
+            overall_fraction_connected >= 0.90
+            and all(fraction >= minimum_stratum for fraction in stratum_fractions)
         ),
         "disconnected_source_candidates_excluded_from_solver": len(events) - len(eligible),
+    }
+
+
+def _aggregate_spatial_capacity(events: list[dict]) -> dict:
+    """Combine node-weighted exceedance counts and event-level median ratios."""
+    aggregate: dict[str, dict[str, dict]] = {}
+    for event in events:
+        for mode, mode_result in event.get("capacity_scores", {}).get("spatial_column_capacity", {}).items():
+            mode_summary = aggregate.setdefault(mode, {})
+            for stratum, result in mode_result["by_stratum"].items():
+                bucket = mode_summary.setdefault(stratum, {
+                    "node_count": 0,
+                    "over_capacity_nodes": 0,
+                    "event_median_ratios": [],
+                    "event_capacity_medians_n_per_m": [],
+                })
+                bucket["node_count"] += result["nodes"]
+                bucket["over_capacity_nodes"] += result["over_capacity_nodes"]
+                bucket["event_median_ratios"].append(result["n_ext_over_capacity_median_p95"][0])
+                bucket["event_capacity_medians_n_per_m"].append(result["capacity_n_per_m_p10_median_p90"][1])
+    for mode_summary in aggregate.values():
+        for bucket in mode_summary.values():
+            bucket["node_weighted_over_capacity_fraction"] = (
+                bucket["over_capacity_nodes"] / bucket["node_count"] if bucket["node_count"] else None
+            )
+            bucket["median_event_median_n_ext_over_capacity"] = float(np.median(bucket.pop("event_median_ratios")))
+            bucket["median_event_capacity_median_n_per_m"] = float(np.median(bucket.pop("event_capacity_medians_n_per_m")))
+    return {
+        "interpretation": "Diagnostic exceedance comparison only; capacities are not fitted to split/failed-rift labels and do not feed back into replay.",
+        "by_thermal_mode_and_stratum": aggregate,
     }
 
 def _run(seed: int, years: float, out_path: Path) -> dict:
@@ -554,6 +724,7 @@ def _run(seed: int, years: float, out_path: Path) -> dict:
         "gate1_baseline_commit": GATE1_BASELINE_COMMIT,
         "events_scored": len(events),
         "diagnostic_coverage": _coverage_report(events),
+        "spatial_capacity_aggregate": _aggregate_spatial_capacity(events),
         "gate1_craton_crossing_cut_count_expected": GATE1_EXPECTED_CRATON_CROSSING_CUTS[seed],
         "gate1_craton_crossing_cut_count_matches": len(events) == GATE1_EXPECTED_CRATON_CROSSING_CUTS[seed],
         "production_cut_count": int(round(

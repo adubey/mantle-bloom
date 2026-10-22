@@ -142,7 +142,7 @@ The standalone column-envelope diagnostic uses published wet-quartzite, plagiocl
 mafic-granulite and wet/dry olivine flow-law parameterizations, with an explicit frictional
 branch [[Byerlee, 1978]](#ref-byerlee1978) [[Chen & Gerya, 2016]](#ref-chen2016)
 [[Wang et al., 2012]](#ref-wang2012)
-[[Hirth & Kohlstedt, 2003]](#ref-hirth2003). Its scenario ranges are hypotheses to test, not a
+[[Hirth & Kohlstedt, 2003]](#ref-hirth2003). Its scenario ranges are hypotheses to test, not a spatially
 calibrated Earth strength field; the model lacks the local temperature, composition, fluid and
 stress state needed to choose among them.
 An independent curved-sphere manufactured solution now validates that stress invariant with
@@ -155,8 +155,12 @@ component. Gate 2 is explicitly scoped to this connected-source population: the 
 disconnected-source events are counted and reported separately, but excluded from the Gate 2 coverage
 denominator because this isolated shell solve cannot represent their disconnected material domains.
 This scope does not imply that connected events represent all events, and their capacity scores must
-not be generalized to disconnected-source events. Gate 2 remains open because neither capacity model
-is calibrated and broader load/boundary validation remains outstanding.
+not be generalized to disconnected-source events. A conditional scale audit now brackets a
+100 km mobile/rift-like column at 5.91 TN/m and a 150 km thick-craton scenario at 19.02 TN/m,
+with wide constitutive sensitivity ranges; only the 100 km value has a regional strength-scale
+comparison. These are reference scenarios, not a spatial capacity field. Gate 2 remains open
+because the replay provides no independent rupture labels, local material state is unresolved,
+and broader load/boundary validation remains outstanding.
 The existing flow fit and plate-level `internal_stress` may remain candidate-event or
 background-eligibility signals, but they do not choose a complete cut or stand in for local loading. Keep solution 4 separately sized against the
 craton-loss gate, and take plume weakening through RFC 0007. The connected-boundary rule and
@@ -181,7 +185,9 @@ should start until those gates are resolved and the revised design is accepted.
    added; connected-source mesh repairs and a 2026-10-21 skip audit completed. Scope is craton-crossing
    candidates whose source cells form one exact edge-connected component. The 56 disconnected-source
    candidates are counted separately and excluded from the coverage denominator. The connected-source
-   coverage requirement passes; the physical source/capacity model remains uncalibrated.**
+   coverage requirement passes. A thickness-aware spatial capacity screen now uses per-node Hc/Hm,
+   crust type, craton share, belt marker and a bracketed Moho-lag profile on the pinned Gate 1
+   replay; the capacity field remains scenario-dependent and underidentified.**
    `torque.gather_per_node_force_field` preserves each force
    source as a per-node vector in N. `thin_shell.solve_force_field` projects the combined loads
    onto the shell tangent plane, removes the area-weighted rigid-rotation component handled by
@@ -197,6 +203,27 @@ should start until those gates are resolved and the revised design is accepted.
    rock rheology, strain rate and background stress because the current state does not resolve them;
    details and caveats are recorded in
    [`analysis/issue487/gate2-load-diagnosis.md`](../analysis/issue487/gate2-load-diagnosis.md).
+   A scale-calibration audit evaluates the full 1,728-case constitutive grid at 70, 90, 100, 135
+   and 150 km total thickness, holding the existing 35 km continental crust fixed. With the
+   explicitly provisional `K0=0.8`, hydrostatic pore-pressure and reference rheology, the 100 km
+   column gives 5.91 TN/m; its factorial median is 4.43 TN/m (p10–p90: 1.37–11.46). This is
+   consistent in scale with the 3–8 TN/m integrated strength Stamps et al. report for a regional
+   100 km East African Rift lithosphere, but the definitions and spatial averaging differ
+   [[Stamps et al., 2014]](#ref-stamps2014). A 150 km Tanzania/Congo craton thickness is used in
+   one regional geodynamic model, motivating a distinct strong-column scenario, not a strength
+   observation [[Rajaonarison et al., 2021]](#ref-rajaonarison2021). A separate rifting model's
+   22 TN/m isotropic peak is a driving force, not capacity, and is not fitted
+   [[Duretz et al., 2025]](#ref-duretz2025). Full results, assumptions and reproducibility are in
+   [`analysis/issue487/gate2-capacity-calibration.md`](../analysis/issue487/gate2-capacity-calibration.md).
+   The old-algorithm replay candidates are not rupture/no-rupture labels, so their load distribution
+   is not used to fit strength. Replay nodes carry local `Hc`, `Hm`, crust type, craton share, belt
+   history and Moho thermal lag, which now feed the matched spatial screen. The world still lacks
+   depth-resolved temperature, composition, pore pressure, water, strain-rate and fabric state. This
+   is conditional scale calibration, not production calibration. The mapped replay
+   reports 1,746/22,896 nodes over capacity for the steady profile and 1,738/22,896 under the
+   interpolated Moho-lag assumption. These are screening comparisons, not rupture labels. Full
+   results and field limitations are in `analysis/issue487/gate2-spatial-capacity-replay.json` and
+   `analysis/issue487/gate2-capacity-state-audit.md`.
    The elastic thickness and
    modulus, boundary conditions, default convex-hull mesh and rigid-mode removal are documented
    diagnostic assumptions, not calibrated production behavior. Explicit mesh connectivity now
@@ -264,11 +291,12 @@ should start until those gates are resolved and the revised design is accepted.
    disconnected-source events or the full population. On 22,896 connected-source cut-band samples,
    the physical median-capacity failure fractions are 0.274% continental, 78.03% young-ridge oceanic
    proxy, and 2.84% mature oceanic; at the phenomenological 1× reference, 2.82% of samples fail.
-   These remain screening results: the oceanic-age proxy is coarse, capacities are uncalibrated, and
-   natural interplate continuity and production load distributions remain outside this single-plate
-   solve. Do not begin constitutive calibration or infer local stress from applied traction, rigid
-   rotation, flow clusters or `Plate.internal_stress`. See the audit in `analysis/issue487/README.md`,
-   `analysis/issue487/gate2-load-diagnosis.md`, and `analysis/issue487/gate2-matched-replay.json`.
+   These remain screening results: the oceanic-age proxy is coarse, the capacity anchors are
+   conditional rather than spatially calibrated, and natural interplate continuity and production
+   load distributions remain outside this single-plate solve. Do not calibrate the damage law or
+   infer local stress from applied traction, rigid rotation, flow clusters or `Plate.internal_stress`.
+   See the audits in `analysis/issue487/README.md`, `analysis/issue487/gate2-load-diagnosis.md`,
+   `analysis/issue487/gate2-capacity-calibration.md`, and `analysis/issue487/gate2-matched-replay.json`.
 3. **Calibrate accumulation and segment growth.** On synthetic plates and replayed candidate
    events, measure damage/strain accumulation, nucleation, tip propagation, arrest and linkage under
    timestep refinement. Select thresholds only after checking physical scale and sensitivity. If no
@@ -423,11 +451,17 @@ source or explicit design-choice status, and the sensitivity plan before impleme
        minimum. The 56/130 genuinely disconnected-source events are counted and reported separately,
        outside the Gate 2 denominator. Their unequal distribution means connected-source conclusions
        are conditional and cannot be generalized to all events. Capacity scores over 22,896 accepted
-       cut-band samples remain screening evidence; the oceanic-age proxy is coarse and capacities
-       remain uncalibrated. Complete physical source/capacity justification and broader validation
-       before Gate 2 closes or constitutive calibration begins (see `analysis/issue487/README.md`,
-       `analysis/issue487/gate2-load-diagnosis.md`, `analysis/issue487/gate2-column-envelope.json`,
-       and `analysis/issue487/gate2-matched-replay.json`).
+       cut-band samples remain screening evidence; the oceanic-age proxy is coarse. The
+       conditional 100 km rift-like and 150 km thick-craton capacity anchors and their factorial
+       uncertainty are recorded in `analysis/issue487/gate2-capacity-calibration.md`; they do not
+       use old-algorithm cuts as calibration labels. A thickness-aware diagnostic mapping using
+       local Hc/Hm and proxy fields with steady-versus-lagged temperature assumptions is complete;
+       its output remains a scenario screen because profile and rheology state are unresolved.
+       Complete broader load/boundary validation and justify the remaining source/capacity
+       assumptions before Gate 2 closes (see
+       `analysis/issue487/README.md`, `analysis/issue487/gate2-load-diagnosis.md`,
+       `analysis/issue487/gate2-column-envelope.json`, `analysis/issue487/gate2-matched-replay.json`,
+       and `analysis/issue487/gate2-spatial-capacity-replay.json`).
 2. [ ] In synthetic tests, damage is timestep-partition invariant, bounded, absent under compression
        or sub-yield loading, and advances only through adjacent cells with supported positive loading.
 3. [ ] Segments can nucleate independently, propagate, arrest and link; a transform/transfer zone
@@ -487,6 +521,16 @@ source or explicit design-choice status, and the sensitivity plan before impleme
 - <a id="ref-wang2012"></a>Wang, Y. F., Zhang, J. F., Jin, Z. M., & Green, H. W., II (2012).
   Mafic granulite rheology: Implications for a weak continental lower crust. *Earth and Planetary
   Science Letters*, 353–354, 99–107. [doi:10.1016/j.epsl.2012.08.004](https://doi.org/10.1016/j.epsl.2012.08.004)
+- <a id="ref-stamps2014"></a>Stamps, D. S., Flesch, L. M., Calais, E., & Ghosh, A. (2014).
+  Current kinematics and dynamics of Africa and the East African Rift System. *Journal of
+  Geophysical Research: Solid Earth*, 119(6), 5161–5186.
+  [doi:10.1002/2013JB010717](https://doi.org/10.1002/2013JB010717)
+- <a id="ref-rajaonarison2021"></a>Rajaonarison, T. A., et al. (2021). Role of lithospheric buoyancy
+  forces in driving deformation in East Africa from 3D geodynamic modeling. *Geophysical Research
+  Letters*, 48, e2020GL090483. [doi:10.1029/2020GL090483](https://doi.org/10.1029/2020GL090483)
+- <a id="ref-duretz2025"></a>Duretz, T., et al. (2025). Lithospheric deformation with mechanical
+  anisotropy: A numerical model and application to continental rifting. *Geochemistry, Geophysics,
+  Geosystems*. [doi:10.1029/2025GC012409](https://doi.org/10.1029/2025GC012409)
 
 - <a id="ref-brune2023"></a>Brune, S., Kolawole, F., Olive, J.-A., et al. (2023).
   Geodynamics of continental rift initiation and evolution. *Nature Reviews Earth & Environment*,

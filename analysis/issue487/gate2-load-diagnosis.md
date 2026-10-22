@@ -7,7 +7,7 @@
 
 The source-force interface preserves each existing torque contribution as a per-node vector in N. `thin_shell.solve_force_field` transfers the combined tangent load through a linear triangular membrane equilibrium solve and returns local in-plane membrane stress increments in N/m. It removes the area-weighted rigid-rotation load handled by plate motion; applied radial force is assigned to shell-normal support. The comparison is defined as `N_ext = max(0, lambda_max(Delta_N))`, the largest positive principal value of the incremental membrane-resultant tensor, divided by `N_cap = integral(Delta_sigma_yield(z) dz)`, the column's additional extensional differential strength to normal-fault yield from its assumed `K0` background. Both are resultants in N/m. The interpretation assumes vertical compression remains the major principal stress, an elastic stress increment about a zero-load reference, and the same representative column geometry at each node. This maps units and failure mode; it does not add prestress to the shell or feed local yielding back into equilibrium. Synthetic tests verify equilibrium residual, rigid-rotation removal, linear force scaling and the named capacity pairing. Diagonal stiffness scaling lets the iterative solve handle generated plate meshes with thousands of nodes.
 
-This establishes an offline load-transfer and strength-comparison interface, not a production stress field. The solver assumes linear plane-stress elasticity, free in-plane displacement, prescribed nodal loads, no faults, bending or plasticity, and a caller-supplied effective thickness and modulus. A curved-shell manufactured solution and generated broad-mesh sensitivity are now recorded below. For an isolated single-plate solve, free displacement is selected as the diagnostic baseline because the inputs contain no displacement anchor to an external reference. Edge clamps remain artificial sensitivity probes. Actual interplate displacement and traction continuity would require a coupled multi-plate solve, which this diagnostic does not provide. Gate 2 is scoped to source-connected candidates; genuinely disconnected-source candidates are counted separately and excluded from its coverage denominator. The strength envelope remains an uncalibrated scenario model, and further boundary/load-model validation is needed.
+This establishes an offline load-transfer and strength-comparison interface, not a production stress field. The solver assumes linear plane-stress elasticity, free in-plane displacement, prescribed nodal loads, no faults, bending or plasticity, and a caller-supplied effective thickness and modulus. A curved-shell manufactured solution and generated broad-mesh sensitivity are now recorded below. For an isolated single-plate solve, free displacement is selected as the diagnostic baseline because the inputs contain no displacement anchor to an external reference. Edge clamps remain artificial sensitivity probes. Actual interplate displacement and traction continuity would require a coupled multi-plate solve, which this diagnostic does not provide. Gate 2 is scoped to source-connected candidates; genuinely disconnected-source candidates are counted separately and excluded from its coverage denominator. The strength envelope has conditional reference anchors and an uncertainty bracket, but no spatially calibrated field; further boundary/load-model validation is needed.
 
 ## Synthetic solver validation
 
@@ -316,10 +316,17 @@ column envelope. The shell exposes that pairing with explicit names and compatib
 The column diagnostic reports geotherm, pore-pressure, rock-law, strain-rate and `K0` scenarios,
 branch crossover and integrated-capacity ranges. The independent curved-sphere benchmark passes the
 stated refinement criteria, and free in-plane displacement is selected as the isolated-plate
-diagnostic boundary condition; clamps are sensitivity probes only. Do not wire this strength into
-production or calibrate damage yet. Next compare the physical envelope with the explicitly
-phenomenological weak-zone threshold on matched replay candidates. If the scenario ranges are too
-unconstrained to support a replay choice, revise the RFC before calibration.
+diagnostic boundary condition; clamps are sensitivity probes only. A conditional scale-calibration
+audit now brackets representative continental columns against independent strength-scale literature;
+see [`gate2-capacity-calibration.md`](gate2-capacity-calibration.md). Do not wire this strength into
+production or calibrate damage from legacy candidate cuts, which are not rupture labels. The
+per-node `Hc`, `Hm`, crust type, craton share, belt history and Moho thermal lag are available,
+and the matched replay now uses those fields for a thickness-aware diagnostic capacity map. The
+steady and interpolated-lag screens differ by only eight over-capacity nodes across 22,896 samples,
+but remain conditional on assumed temperature, rheology, fluid pressure and background stress.
+Depth-resolved temperature, composition, fluid, strain-rate and fabric state remain missing. Keep
+the map diagnostic and complete broader load/boundary validation before using a capacity threshold
+in production; see [`gate2-capacity-state-audit.md`](gate2-capacity-state-audit.md).
 
 **Known realism limits.** The current columns collapse a vertically layered, anisotropic, fluid-
 and rate-dependent lithosphere into two thicknesses and broad crust identity. The temperature
@@ -384,8 +391,11 @@ events (67.2%); by time the rates over all events are 51/75 (68.0%), 14/34 (41.2
 (42.9%). Keep those exclusions visible and do not generalize the conditional capacity scores to
 disconnected-source events or the full event population. Compact per-seed results and source/mesh
 audit are in [`gate2-matched-replay.json`](gate2-matched-replay.json) and
-[`gate2-connectivity-audit.json`](gate2-connectivity-audit.json). Gate 2 remains open for physical
-source/capacity justification and broader load/boundary validation.
+[`gate2-connectivity-audit.json`](gate2-connectivity-audit.json). Gate 2 remains open for a defensible spatial source/capacity mapping and broader load/boundary
+validation. Per-node thickness and proxy fields now feed the diagnostic capacity screen; its
+scenario assumptions and results are recorded in [`gate2-capacity-state-audit.md`](gate2-capacity-state-audit.md)
+and [`gate2-spatial-capacity-replay.json`](gate2-spatial-capacity-replay.json). These results do
+not resolve the missing local thermal, material and stress state, and do not close Gate 2.
 
 Reproduce the partial source-filtered replay with:
 
@@ -397,7 +407,8 @@ PYTHONHASHSEED=0 PYTHONPATH=backend backend/.venv/bin/python \
 
 ## Gate disposition
 
-- **Current diagnostic interface:** `max(0, lambda_max(Delta_N))`, the largest positive principal shell stress increment, is paired with the column's additional normal-fault capacity from an assumed `K0` background; both are in N/m. The physical envelope remains an uncalibrated scenario family. A broad curved-sphere analytic benchmark converges to 1.18% mean error and 2.75% p95 error at 17 × 33 nodes. Free in-plane displacement is selected for the isolated-plate diagnostic because the input has no external displacement anchor. Single, paired and full-boundary clamps show substantial sensitivity and are not adopted as physical boundary conditions. The direct-threshold phenomenological rule has a monotonic capacity and weak-band localization check, but is a competing design only. Within the narrowed connected-source scope, the matched comparison passes the 90% overall / 80% stratum coverage gate (74/74); 56 disconnected-source candidates are excluded and reported separately, so results do not generalize to them or the full population. Physical strength is uncalibrated and coupled interplate boundary behavior remains outside this isolated solve, so Gate 2 is not closed.
+- **Current diagnostic interface:** `max(0, lambda_max(Delta_N))`, the largest positive principal shell stress increment, is paired with the column's additional normal-fault capacity from an assumed `K0` background; both are in N/m. The physical envelope has conditional reference anchors and a broad scenario bracket, but no
+spatial calibration. A broad curved-sphere analytic benchmark converges to 1.18% mean error and 2.75% p95 error at 17 × 33 nodes. Free in-plane displacement is selected for the isolated-plate diagnostic because the input has no external displacement anchor. Single, paired and full-boundary clamps show substantial sensitivity and are not adopted as physical boundary conditions. The direct-threshold phenomenological rule has a monotonic capacity and weak-band localization check, but is a competing design only. Within the narrowed connected-source scope, the matched comparison passes the 90% overall / 80% stratum coverage gate (74/74); 56 disconnected-source candidates are excluded and reported separately, so results do not generalize to them or the full population. A local strength field remains underidentified, and coupled interplate boundary behavior remains outside this isolated solve, so Gate 2 is not closed.
 - **`internal_stress`:** retain only as a plate-scale eligibility/background signal if desired; it cannot trigger or weight local damage.
 - **No calibrated strength field:** do not assign `Y_t`, `eta_rift`, or failure-strain parameters from these diagnostics. Do not infer stress from applied traction, rigid rotation, flow-cluster residuals or `Plate.internal_stress`.
 - **Required next work:** continue physical source/capacity justification and load/boundary sensitivity validation within the connected-source scope; keep disconnected-source event counts and strata visible, and do not generalize findings to those events. The 90% overall / 80% stratum coverage rule applies to connected-source candidates. A defensible multi-component load-transfer model would be a separate scope expansion, not a prerequisite for the current Gate 2 population. Gate 3 accumulation and segment-growth calibration remains downstream. A coupled interplate shell solve is a future fidelity improvement; the free-edge choice applies only to this isolated diagnostic.
