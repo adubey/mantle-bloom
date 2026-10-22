@@ -217,6 +217,15 @@ should start until those gates are resolved and the revised design is accepted.
    overpressure comparison. Friction is bracketed by `mu=0.6-0.85`, based on Byerlee's rock-friction
    experiments [[Byerlee, 1978]](#ref-byerlee1978). K0, cohesion, temperature, strain rate and
    water/rheology state remain assumptions because the world has no corresponding local fields.
+   The independent assumption-basis audit records that EARS stress observations support the
+   normal-faulting regime but do not identify the model's spatial `K0`; the geodetic strain-rate
+   upper scale is about `6.3e-16 s-1`, so `1e-14 s-1` is an extreme localization sensitivity;
+   and the wet-olivine law is an endmember with a stated water content, not a mapped mantle field.
+   The existing 1250/1330/1400 C thermal boundaries are checked against their implied heat flow
+   and remain conductive scenarios, not local geotherm constraints. Hydrostatic pressure is
+   supported only as a crustal benchmark, not as a full mantle-lid fluid model. See
+   [`analysis/issue487/gate2-assumption-basis.md`](../analysis/issue487/gate2-assumption-basis.md)
+   and its generated JSON. No legacy event outcome is used to set these assumptions.
    The pressure-profile, Mohr-Coulomb, and dry/wet creep-inversion formulas pass six analytical unit checks. The shell-load
    transfer has separate manufactured-solution checks documented in
    [`analysis/issue487/gate2-load-diagnosis.md`](../analysis/issue487/gate2-load-diagnosis.md).

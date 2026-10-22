@@ -364,7 +364,8 @@ def run(dz_km: float) -> dict[str, Any]:
         base_temperature_c=orogeny.LITHOSPHERE_BASE_TEMPERATURE_C,
         strain_rate_s=1e-15,
         pore_pressure_ratio=0.0,
-        k0=1.0,
+        # Keep the illustrative reference aligned with the independent calibration anchor.
+        k0=0.8,
         cohesion_pa=20e6,
         friction_angle_deg=math.degrees(math.atan(0.6)),
         lower_crust_law="plagioclase_an75",

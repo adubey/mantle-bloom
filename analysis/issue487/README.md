@@ -87,8 +87,8 @@ The standalone [`diagnose_gate2_column_envelope.py`](../../bin/debug/diagnose_ga
 implements an illustrative depth-integrated normal-faulting strength envelope. Its input
 assumptions, material-law sources, reference profiles, full scenario grid, and numerical
 resolution comparison are documented in [`gate2-load-diagnosis.md`](gate2-load-diagnosis.md)
-and [`gate2-column-envelope.json`](gate2-column-envelope.json). At 0.125 km depth spacing, the hydrostatic-water, `K0=1`, `mu=0.6` reference capacities are
-25.91 TN/m (continental), 0.516 TN/m (young-ridge oceanic), and 6.20 TN/m (mature oceanic). These are screening values, not calibrated predictions; integrated
+and [`gate2-column-envelope.json`](gate2-column-envelope.json). At 0.125 km depth spacing, the hydrostatic-water, `K0=0.8`, `mu=0.6` reference capacities are
+15.82 TN/m (continental), 0.328 TN/m (young-ridge oceanic), and 4.20 TN/m (mature oceanic). These are screening values, not calibrated predictions; integrated
 capacity is sensitive to background horizontal stress, pore pressure, mantle water state, and
 temperature profile.
 
@@ -97,6 +97,15 @@ additional capacity in N/m, under an explicit normal-faulting `K0` assumption. A
 benchmark recovers uniform isotropic tension to 1.18% mean error and 2.75% p95 error on a
 17 × 33 mesh. Free in-plane displacement is the isolated-plate baseline; paired clamps shift
 the mean by as much as 46.6%, and actual neighboring-plate coupling remains outside the solve.
+
+The independent input-basis audit is in [`gate2-assumption-basis.md`](gate2-assumption-basis.md),
+with reproducible heat-flow and unit conversions in
+[`gate2-assumption-basis.json`](gate2-assumption-basis.json). It finds that regional observations
+support the normal-faulting regime and provide a useful strain-rate scale, but do not identify a
+spatial `K0`, full-depth pore-fluid profile, local geotherm or mantle hydration field. The current
+0.6–1.0 `K0`, dry/wet mantle laws and thermal boundaries therefore remain explicit sensitivity
+cases rather than fitted physical state. The diagnostic does not use legacy cut outcomes as
+strength labels.
 
 The first matched replay scored 130 candidates and reported 29 residual/load ratios above 1%.
 That result is retained in `gate2-matched-replay.json` under
