@@ -8,19 +8,14 @@ this by connecting nearby terrain cells into a graph: each cell is a point in th
 an edge says which other cells it can send water to. This works with the irregular cell
 layout carried by moving plates.
 
-```mermaid
-flowchart LR
-    R[Rain and meltwater] --> D[Choose downhill route]
-    D --> F[Add upstream water]
-    F --> L[Fill or spill lake basins]
-    L --> O[Ocean]
-    F --> E[Erosion and sediment]
-    I[Snow and glacier ice] -->|growth and melting| R
-```
+![A glacier feeds a subglacial stream and surface water, two connected lake basins, and a river flowing to the ocean.](../img/issue-514/hydrology-glacier-lakes-river.jpg)
+*Conceptual watershed: meltwater emerges beneath the glacier, passes through connected
+basins, and flows downriver to the ocean. Real drainage is more complex than this scene, and
+the image is not a simulation render.*
 
-The route arrows represent the model's bookkeeping. Real rivers branch, flood, and change
-their channels at finer scales than this simulation resolves. **Discharge** means the volume
-of water passing a place per unit time; the code records it in cubic metres per second.
+Real rivers branch, flood, and change their channels at finer scales than this simulation
+resolves. **Discharge** means the volume of water passing a place per unit time; the code
+records it in cubic metres per second.
 
 The details below use **basin** for land that drains toward one low area, **spill point** for
 the lowest route water can take out of a filled basin, and **catchment** for all terrain

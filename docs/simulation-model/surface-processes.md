@@ -8,20 +8,13 @@ deposition puts sediment back. **Isostasy** is the model's rule for how crust an
 support surface height: thicker or lighter columns tend to stand higher. These processes
 use simplified rates and limits rather than resolving individual grains or rock layers.
 
-```mermaid
-flowchart LR
-    T[Tectonic uplift and crust] --> E[Weathering and erosion]
-    C[Rain, wind, rivers, and ice] --> E
-    E -->|sediment carried| D[Deposition on land or seafloor]
-    E -->|mass removed| I[Isostatic adjustment]
-    D --> I
-    I --> H[Surface height]
-    H --> C
-```
+![A mountain river carries eroded sediment to a coastal delta; a cutaway shows a thick crustal root below the mountains and thinner crust under the ocean.](../img/issue-514/surface-processes-mountain-to-ocean.jpg)
+*Conceptual mountain-to-ocean landscape showing erosion, sediment transport and deposition,
+and the crustal root beneath high terrain. The cutaway is simplified and not to scale; this
+is not a simulation render.*
 
-The arrows show important feedbacks. For example, higher terrain can affect rain and ice;
-those processes can then lower or reshape the terrain. Water, rock, and sediment quantities
-are tracked with physical units where the model supports them.
+Higher terrain affects rain and ice; those processes can then lower or reshape the terrain.
+The model tracks water, rock, and sediment with physical units where it can.
 
 The pages use **weathering** for breaking rock down in place, **transport** for moving loose
 material, and **deposition** for laying it down elsewhere. These are separate steps: erosion

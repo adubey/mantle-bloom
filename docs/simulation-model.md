@@ -7,21 +7,11 @@ of the main ideas, then gives the precise rules, units, and code locations for r
 need implementation detail.
 
 The simulation represents terrain as cells attached to moving plates. Climate, water, ice,
-and erosion act on that terrain; map views turn the model state into pictures. The diagram
-shows the main links between topics, not every calculation or feedback loop.
+and erosion act on that terrain; map views turn the model state into pictures.
 
-```mermaid
-flowchart LR
-    F[Planet setup and plate cells] --> T[Plate motion and crust]
-    T --> S[Land, sea floor, and erosion]
-    S --> H[Rivers, lakes, and ice]
-    H --> C[Climate and rainfall]
-    C --> S
-    T --> R[Maps and inspectors]
-    S --> R
-    H --> R
-    C --> R
-```
+![An illustrated planet with moving plates, mountains, ocean, rivers, ice, clouds, and a cutaway into the mantle.](img/issue-514/simulation-model-overview.jpg)
+*Conceptual overview of the systems described in these pages. This is an educational
+illustration, not a rendered Mantle Bloom world.*
 
 Use the topic pages below for the full explanation. The topic list is also a code map: it
 points to the main Python modules that implement each part. When model behavior changes,

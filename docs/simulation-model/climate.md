@@ -9,19 +9,14 @@ a forecast model and it does not represent seasons hour by hour. A **grid** here
 regular array of locations used for calculations; the plate terrain itself remains attached
 to the plates.
 
-```mermaid
-flowchart LR
-    P[Plate terrain] -->|sample| G[Regular climate grid]
-    G --> W[Wind and temperature update]
-    G --> M[Humidity and rainfall estimate]
-    W --> M
-    M --> E[Erosion and water routing]
-    G --> V[Climate map views]
-```
+![Clouds and rain fall on the windward side of a mountain range, while the lee side is drier; ocean currents and cold high latitudes are also visible.](../img/issue-514/climate-landscape.jpg)
+*Conceptual climate landscape showing winds, rainfall, a mountain rain shadow, ocean
+currents, and colder high latitudes. It illustrates the model's connected climate effects;
+it is not a simulation render.*
 
-The grid is a temporary calculation surface. It lets the climate code use familiar array
-operations, then sample its results back at terrain cells. The sections below separate
-time-stepped atmospheric behavior from fields that are recalculated as diagnostics.
+The model samples terrain onto a temporary regular grid to calculate some climate fields,
+then transfers the results back to terrain cells. The sections below separate time-stepped
+atmospheric behavior from fields that are recalculated as diagnostics.
 
 Here, a **diagnostic** field is worked out from the current state whenever needed; a
 **prognostic** field is stored and advanced through time. The atmospheric wind and air
