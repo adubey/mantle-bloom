@@ -138,6 +138,66 @@ def test_boundary_load_equations_integrate_once_per_front_node(density, band_row
     assert contact_per_m == pytest.approx(torque.CONTACT_RESISTANCE_N_PER_M)
 
 
+def test_spatial_force_field_preserves_each_existing_torque_term():
+    """The spatial load interface must reproduce the same plate torque as the legacy terms."""
+    spacing = line_spacing_rad(1.0)
+    points = np.array([[1.0, 0.0, 0.0], [0.99, 0.1, 0.0], [0.99, 0.0, 0.1]], dtype=float)
+    points /= np.linalg.norm(points, axis=1, keepdims=True)
+    n = len(points)
+    tangents = np.cross(np.tile(np.array([[0.0, 0.0, 1.0]]), (n, 1)), points)
+    tangents /= np.linalg.norm(tangents, axis=1, keepdims=True)
+    inputs = torque.BoundaryForceInputs(
+        own_points=points,
+        own_hc=np.full(n, lithosphere.REFERENCE_HC_OCEANIC_M),
+        own_hm=np.full(n, 60_000.0),
+        own_crust_type_codes=np.full(n, CRUST_TYPE_OCEANIC, dtype=np.int8),
+        dist_to_neighbor=np.full(n, spacing),
+        direction_to_neighbor=tangents,
+        neighbor_is_oceanic=np.ones(n, dtype=bool),
+        neighbor_omega=np.tile(np.array([[0.0, 0.0, 1e-9]]), (n, 1)),
+        neighbor_plate_id=np.full(n, 2, dtype=np.int64),
+        neighbor_node_index=np.arange(n, dtype=np.int64),
+    )
+
+    class FakePlate:
+        crust_type = "oceanic"
+
+        def __init__(self):
+            self.omega = np.array([0.0, 0.0, -1e-9])
+
+        def all_points_and_elevation(self):
+            return points, np.zeros(n)
+
+        def accounting_areas_m2(self, spacing_rad):
+            return np.full(n, lithosphere.node_area_m2(spacing_rad))
+
+    class FakeWorld:
+        mantle_centers = []
+
+    plate = FakePlate()
+    subducting = np.ones(n, dtype=bool)
+    divergent = np.ones(n, dtype=bool)
+    collision = np.ones(n, dtype=bool)
+    jam = np.ones(n, dtype=bool)
+    field = torque.gather_per_node_force_field(
+        plate, FakeWorld(), inputs, spacing, subducting, divergent, collision, jam=jam
+    )
+
+    expected_torque = (
+        torque.slab_pull_torque(plate, inputs, subducting, spacing)
+        + torque.slab_drag_torque(plate, inputs, subducting, spacing)
+        + torque.ridge_push_torque(plate, inputs, divergent, spacing)
+        + torque.basal_drag_torque(plate, FakeWorld(), spacing)
+        + torque.collision_friction_torque(plate, inputs, collision, spacing, jam=jam)
+    )
+    np.testing.assert_allclose(field.torque_nm, expected_torque, rtol=1e-12, atol=1e-6)
+    assert field.total_n.shape == (n, 3)
+    assert field.total_traction_pa.shape == (n, 3)
+    for contribution in (field.slab_pull_n, field.slab_drag_n, field.ridge_push_n, field.basal_drag_n, field.contact_drag_n):
+        assert contribution.shape == (n, 3)
+        assert np.all(np.isfinite(contribution))
+
+
 def test_slab_pull_is_zero_without_a_subducting_node():
     n = 10
     inputs = torque.BoundaryForceInputs(

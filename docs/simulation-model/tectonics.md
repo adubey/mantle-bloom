@@ -280,6 +280,73 @@ equation checks are in `backend/unit_tests/test_torque.py`. The discretization s
 one `ds` to each distinct represented neighbour front node, so the represented length can
 differ slightly from the geometric boundary span at coarse density or near the band edge.
 
+**Spatial load transfer for rift diagnosis (#487, 2026-10-19).**
+`torque.gather_per_node_force_field` returns each existing slab-pull, slab-drag, ridge-push,
+basal-drag and contact-drag contribution as a per-node vector in N, before plate torque
+aggregation. `PerNodeForceField.total_traction_pa` is the area-average applied external
+traction; it is not internal stress. `thin_shell.solve_force_field` projects those loads onto
+the spherical tangent plane, removes the area-weighted rigid-rotation component handled by
+plate motion, and solves a linear membrane equilibrium problem on a triangular mesh. It uses
+outward convex-hull facets by default and accepts explicit triangle connectivity to preserve
+nonconvex outlines. It returns nodal incremental depth-integrated membrane stress resultants in N/m,
+the largest positive principal extensional increment, and its ratio to a caller-supplied
+depth-integrated *additional normal-fault strength* in N/m. The shell tensor is an elastic
+increment from a zero-load reference with tension positive. The column capacity is the additional
+horizontal extension to failure from an assumed background stress (`K0`); the comparison assumes
+vertical compression remains the major principal stress. Explicit names are
+`max_incremental_extensional_resultant_n_per_m`,
+`extensional_capacity_resultant_n_per_m`, and `extensional_failure_ratio`; old tensile-named
+fields remain compatibility aliases. Elastic modulus, thickness and integrated capacity are
+explicit inputs. The triangle mesh must be element-connected: the solver rejects disconnected
+components because each piece has additional rigid modes that the plate-wide rotation removal
+does not handle. The Gate 2 replay also checks the source plate's exact edge-sharing cell
+adjacency: it skips and reports plates with multiple cell components, and records when the
+triangulation merges source components. Those events have no modeled material path for transferring
+load between islands. `orogeny.steady_moho_temperature_c`
+provides a coarse conductive Moho-temperature proxy, and `moho_temperature_c` applies its
+tectonic lag; neither supplies a vertical yield-strength profile or integrated extensional
+capacity.
+The boundary-local scalar Mohr-Coulomb proxy in `rheology.yield_excess` is not such a profile.
+A manufactured uniaxial load on a shallow spherical cap recovers the analytic
+resultant within 0.16% on 3 × 3, 5 × 5 and 9 × 9 node grids. An irregular convex cap recovers its
+analytic free-edge load within 0.12%; clamping its west edge shifts the mean resultant by 2.82%
+with a small equilibrium residual. An L-shaped concave mesh recovers its manufactured free-edge
+load within 0.16% at both 9 × 9 and 17 × 17 resolution, with less than 0.001% spread. On the finer
+mesh, west and south clamps shift the mean resultant by 16.5%; these are sensitivity checks, not
+accuracy benchmarks or evidence for a preferred physical boundary condition. Representative
+generated-plate node sets were also checked with seed 7, 12 plates and node density 0.5. The
+largest hole-bearing oceanic plate (2390 nodes) and largest single-loop continental plate
+(1988 nodes) had 2.48% and 2.38% outside-territory centroids in their convex-hull meshes. Explicit
+territory-clipped meshes retained their two-loop and one-loop boundaries and recovered the
+controlled shallow-cap resultant within 0.09%. This shallow-cap result tests topology only; the
+separate original-coordinate solve below probes the broad curved meshes under a controlled load.
+The same two meshes were also solved on their original broad curved coordinates under a projected
+manufactured edge traction. Free-node residuals stayed below `8.5e-5` of load; clamping boundary
+nodes in west/east/south/north bands changed the mean resultant by up to 23.5% on the oceanic plate
+and 8.9% on the continental plate. A separate independent spherical-shell manufactured solution
+uses uniform isotropic membrane tension, its analytic conormal edge traction and normal pressure
+support. At 5 × 9, 9 × 17 and 17 × 33 nodes, mean extensional-resultant error decreases from 2.94%
+to 1.46% to 1.18%; the fine-grid p95 absolute error is 2.75% and equilibrium residual is
+`8.65e-6` of load. The single-plate diagnostic uses free in-plane displacement with supplied nodal
+loads as boundary loading. Fixed-edge cases are sensitivity probes because no neighbor displacement
+reference is available; paired clamps shift mean resultants by up to 46.6%, and clamping the full
+boundary suppresses them by about 100%. These constraints do not represent tectonic boundary
+conditions. Physically coupled plate edges require a multi-plate solve. An offline candidate
+capacity `T_cap = T_ref * (1 - lambda * w)` was also swept against
+the manufactured resultants, where `T_ref` is a caller-selected capacity and `w` is a prescribed
+weak-zone weight. It localized the threshold response as intended, but its inputs are uncalibrated
+design values and are not part of production deformation. Neighbor coupling, faults, bending,
+plastic yielding and topology changes remain outside this read-only diagnostic. A six-event
+Gate 2 pair replay now audits pair-specific contact-drag force and moment closure
+and compares the current contact forces with a tied/no-slip shell solve that omits only that pair
+interaction. This identifies contact drag as internal to the two-plate pair, but the existing
+velocity-dependent drag is not a finite-slip constitutive law for the static shell solve. The
+bonded case is a sensitivity assumption only; see `analysis/issue487/gate2-interface-sensitivity.md`. The six-event projection audit confirms that the joint mesh removes its three global rigid rotations, consistent with its bonded displacement field. Projecting source and neighbor groups separately while retaining that mesh changes mean cut-band tensile resultants by 3.0–95.1%. This is a sensitivity variant with incompatible kinematics, not a physical free-slip model. Both variants converge, so the difference reflects the interface assumption. See `analysis/issue487/gate2-rigid-projection-audit.md`. Gate 2 is scoped to the single connected source plate and its free-edge diagnostic. Coupled neighbor mechanics are not a closure prerequisite; the pair comparison is sensitivity evidence, not a physical coupled-stress prediction. A future coupled claim requires a consistent interface model.
+The source-force
+moments are checked against
+existing torque terms in `backend/unit_tests/test_torque.py`; synthetic equilibrium, rigid-rotation
+removal, linear load scaling and mesh/edge cases are checked in `backend/unit_tests/test_thin_shell.py`.
+
 **Deep interpenetration is classified too (torque engine, 2026).** The polygon-containment
 test used to run only on nodes within `reach_rad` (~3 spacings) of a neighbour node, so a
 plate that had slid *deep* over another had its deep-interior overlapping nodes classified

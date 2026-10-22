@@ -1,0 +1,119 @@
+{
+  "k0_status": {
+    "critical_normal_faulting_ratio": 0.3205715452371279,
+    "independent_constraint": "No outcome-independent K0 can be derived from current world state: force vectors are applied loads and thin-shell stresses are increments about a zero-load reference; neither supplies prestress. Regional focal mechanisms primarily constrain stress regime and orientation, with heterogeneous local regimes.",
+    "interpretation": "K0=0.6/0.8/1.0 are conditional sensitivity cases, not an observed range or probability distribution. K0=0.8 is a reproduction anchor only. A separate K0\u22480.32 near-critical sensitivity follows from the cohesionless normal-fault Mohr-Coulomb ratio at mu=0.6; it is not independent evidence or a K0 estimate.",
+    "model_definition": "effective horizontal background compression / effective vertical overburden",
+    "production_status": "unresolved; do not select a scalar or production field without independent stress magnitudes or a validated tectonic stress model",
+    "reference_friction_coefficient": 0.6,
+    "scenario_values": [
+      0.3205715452371279,
+      0.6,
+      0.8,
+      1.0
+    ]
+  },
+  "mantle_creep": {
+    "laws": [
+      "dry dislocation-creep olivine",
+      "wet dislocation-creep olivine"
+    ],
+    "limitation": "The dry/wet pair is a constitutive sensitivity bracket, not a mapped hydration range. Laboratory power laws are extrapolated to model strain rates.",
+    "unmodeled_controls": [
+      "water distribution",
+      "grain size and diffusion creep",
+      "fabric and anisotropy",
+      "Peierls creep",
+      "partial melt",
+      "damage and grain-size evolution"
+    ],
+    "wet_water_content_h_per_1e6_si": 1000
+  },
+  "pore_pressure_scale": {
+    "hydrostatic_gradient_mpa_per_km_freshwater": 9.80665,
+    "limitation": "Gradient ratios are illustrative density-only estimates; the true overburden includes changing crust and mantle densities, and connected fluids are not established throughout the mantle lithosphere.",
+    "lithostatic_to_hydrostatic_gradient_ratio_for_density_kg_m3": {
+      "2700.0": 0.37037037037037035,
+      "2800.0": 0.35714285714285715,
+      "2900.0": 0.3448275862068966,
+      "3300.0": 0.30303030303030304
+    }
+  },
+  "purpose": "Independent input-scale bookkeeping; no legacy event labels or loads used.",
+  "strain_rate_conversion": {
+    "ears_geodetic_second_invariant_per_year": [
+      0.0,
+      2e-08
+    ],
+    "ears_geodetic_upper_equivalent_per_second": 6.337617562805791e-16,
+    "equation": "strain_rate_per_year = strain_rate_per_second * seconds_per_year",
+    "values_per_second_to_per_year": {
+      "1e-14": 3.15576e-07,
+      "1e-15": 3.15576e-08,
+      "1e-16": 3.15576e-09,
+      "1e-18": 3.15576e-11
+    }
+  },
+  "thermal_profile": {
+    "assumptions": {
+      "conductivity_w_m_k": 2.5,
+      "crust_km": 35.0,
+      "surface_temperature_c": 10.0,
+      "uniform_crust_heat_production_w_m3": 7e-07
+    },
+    "columns": [
+      {
+        "crust_km": 35.0,
+        "mantle_lid_km": 35.0,
+        "surface_heat_flow_mw_m2_by_base_temperature_c": {
+          "1250.0": 62.661,
+          "1330.0": 65.518,
+          "1400.0": 68.018
+        },
+        "total_lithosphere_km": 70.0
+      },
+      {
+        "crust_km": 35.0,
+        "mantle_lid_km": 55.0,
+        "surface_heat_flow_mw_m2_by_base_temperature_c": {
+          "1250.0": 54.181,
+          "1330.0": 56.403,
+          "1400.0": 58.347
+        },
+        "total_lithosphere_km": 90.0
+      },
+      {
+        "crust_km": 35.0,
+        "mantle_lid_km": 65.0,
+        "surface_heat_flow_mw_m2_by_base_temperature_c": {
+          "1250.0": 51.212,
+          "1330.0": 53.213,
+          "1400.0": 54.962
+        },
+        "total_lithosphere_km": 100.0
+      },
+      {
+        "crust_km": 35.0,
+        "mantle_lid_km": 100.0,
+        "surface_heat_flow_mw_m2_by_base_temperature_c": {
+          "1250.0": 44.287,
+          "1330.0": 45.769,
+          "1400.0": 47.065
+        },
+        "total_lithosphere_km": 135.0
+      },
+      {
+        "crust_km": 35.0,
+        "mantle_lid_km": 115.0,
+        "surface_heat_flow_mw_m2_by_base_temperature_c": {
+          "1250.0": 42.308,
+          "1330.0": 43.642,
+          "1400.0": 44.808
+        },
+        "total_lithosphere_km": 150.0
+      }
+    ],
+    "equation": "q_surface=[k*(T_base-T_surface)+A*Hc*(Hc/2+Hm)]/(Hc+Hm)",
+    "limitation": "Steady 1-D conduction with fixed conductivity and no advective or magmatic heat transfer."
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "balance": {
+    "analytic_shell_normal_pressure_reaction_n": [
+      -0.000732421875,
+      -0.004638671875,
+      3030258819710385.0
+    ],
+    "global_force_balance_over_total_boundary_load": 9.440033128284502e-06,
+    "in_plane_equilibrium_residual_over_load": 2.4794628757434437e-07,
+    "isolated_equilibrium_residual_over_load": [
+      2.0103676120737268e-07,
+      1.9043896650947286e-07
+    ],
+    "outer_boundary_force_resultant_n": [
+      0.625,
+      0.0,
+      -3030631073047891.0
+    ],
+    "outer_boundary_torque_nm": [
+      0.0,
+      7340032.0,
+      32768.0
+    ],
+    "torque_over_load_radius": 2.921659457396806e-17
+  },
+  "benchmark": "mildly curved two-plate membrane cap with a shared, displacement-continuous interface",
+  "inputs": {
+    "analytic_isotropic_membrane_resultant_n_per_m": 10000000000.0,
+    "interface_external_load_in_joined_solve": 0,
+    "isolated_interface_tractions_equal_and_opposite": true,
+    "outer_edges_loaded": true,
+    "poisson_ratio": 0.25,
+    "thickness_m": 100000.0,
+    "young_modulus_pa": 70000000000.0
+  },
+  "interface": {
+    "interface_nodes": 5,
+    "isolated_cut_face_equal_opposite_traction_error": 0.0,
+    "max_traction_reaction_imbalance_over_target_resultant": 2.1855620296127282e-07,
+    "p95_traction_reaction_imbalance_over_target_resultant": 2.1477566752302146e-07,
+    "shared_displacement_dofs": true
+  },
+  "interpretation": "A successful result verifies force transfer through this shared-node membrane discretization for the manufactured case. It does not establish that the tectonic force fields or constitutive assumptions are geologically correct, and it does not model faults, slip, damage, or evolving plate boundaries.",
+  "mesh": {
+    "angular_half_height_deg": 3.437746770784939,
+    "angular_half_width_deg": 5.729577951308232,
+    "interface_nodes": 7,
+    "nodes": 119,
+    "triangles": 192,
+    "triangles_per_plate": [
+      96,
+      96
+    ]
+  },
+  "resultant": {
+    "isolated_plate_mean_n_per_m": [
+      10001957599.916456,
+      10001957598.550014
+    ],
+    "joined_plate_region_mean_n_per_m": [
+      10002896996.985939,
+      10002896996.879906
+    ],
+    "maximum_relative_difference": 9.393983298912048e-05,
+    "relative_difference_from_isolated": [
+      9.393970694828033e-05,
+      9.393983298912048e-05
+    ],
+    "target_n_per_m": 10000000000.0
+  },
+  "solver_stop_codes": {
+    "isolated": [
+      1,
+      1
+    ],
+    "joined": 1
+  },
+  "status": "manufactured verification only; not a geologic validation or production coupling model"
+}

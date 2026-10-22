@@ -11,7 +11,7 @@ show. This page indexes the tools for that. The details are on the pages under
 | [Replay logs](debugging/replay-logs.md) | `--replay-log`: the server saves the world before a step whose health metrics go wrong, for an offline rerun |
 | [Debug UI](debugging/debug-ui.md) | the `?deb` URL flag, the Event Console and the scripted "Debugging Worlds" scenarios |
 | [Debug map views](debugging/map-views.md) | the Map View "Debug >" group: speckle, platesDetail, geomorph, elevReason, overlapAge, nodeAge, cratons, the Plate Inspector |
-| [`bin/debug` scripts](#bin-debug-scripts) | about 60 checked-in measurement, probe and replay scripts, indexed below |
+| [`bin/debug` scripts](#bin-debug-scripts) | about 70 checked-in measurement, probe and replay scripts, indexed below |
 
 For map images of a saved world, use `GET /world/render?view=...`
 ([api-reference.md](api-reference.md)) or `bin/debug/render_craton_map.py --load` for a plain
@@ -91,6 +91,23 @@ cratons sit (RFC 0009).
 | [`probe_boundary_load_normalization.py`](debugging/scripts-collisions.md#probe_boundary_load_normalizationpy) | whether boundary forces per metre are independent of resolution |
 | [`probe_rotation_pileup.py`](debugging/scripts-collisions.md#probe_rotation_pileuppy) | how much of fast rotation's land-volume rise is overlap and cell-area bias |
 | [`rotation_ledger.py`](debugging/scripts-collisions.md#rotation_ledgerpy) | land area against crust volume as rotation rate changes |
+
+### Rifting and thin-shell diagnostics
+
+[Rifting and thin-shell scripts](debugging/scripts-rifting.md): RFC 0010's connected-source
+Gate 2 load, mesh and capacity diagnostics.
+
+| Script | Answers |
+|---|---|
+| [`audit_gate2_assumption_basis.py`](debugging/scripts-rifting.md#audit_gate2_assumption_basispy) | independent heat-flow, strain-rate and stress-assumption scales |
+| [`benchmark_gate2_coupled_shell.py`](debugging/scripts-rifting.md#benchmark_gate2_coupled_shellpy) | manufactured force, torque and resultant checks across a shared two-plate mesh |
+| [`calibrate_gate2_capacity.py`](debugging/scripts-rifting.md#calibrate_gate2_capacitypy) | column-capacity scales against published benchmarks and matched loads |
+| [`diagnose_gate2_column_envelope.py`](debugging/scripts-rifting.md#diagnose_gate2_column_envelopepy) | depth-integrated normal-fault and ductile lithosphere capacity scenarios |
+| [`replay_gate2_assumption_screen.py`](debugging/scripts-rifting.md#replay_gate2_assumption_screenpy) | crossed K0, mantle-rheology and pore-pressure scenarios on fixed loads |
+| [`replay_gate2_capacity.py`](debugging/scripts-rifting.md#replay_gate2_capacitypy) | thin-shell loads and capacity alternatives on the pinned Gate 1 events |
+| [`replay_gate2_coupled_event.py`](debugging/scripts-rifting.md#replay_gate2_coupled_eventpy) | pair-level stress sensitivity to contact loads and rigid-mode projections |
+| [`sensitivity_gate2_capacity.py`](debugging/scripts-rifting.md#sensitivity_gate2_capacitypy) | one-factor capacity sensitivity on captured node loads |
+| [`validate_thin_shell_plate_meshes.py`](debugging/scripts-rifting.md#validate_thin_shell_plate_meshespy) | generated-plate mesh coverage, curved-surface and edge-condition checks |
 
 ### Crust and mantle budgets
 

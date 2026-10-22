@@ -153,6 +153,39 @@ class BoundaryForceInputs:
             self.own_craton_m = np.zeros(n)
 
 
+@dataclass(frozen=True)
+class PerNodeForceField:
+    """Spatial external force terms on one plate's nodes, each in N.
+
+    These are applied loads, not the internal stress that balances them. A shell or other
+    load-transfer calculation must map them to stress before a rift strength comparison.
+    Keeping the components separate preserves source attribution and lets that calculation
+    use the exact forcing distribution instead of reconstructing it from a plate torque.
+    """
+
+    points_xyz: np.ndarray  # (N, 3) unit vectors
+    areas_m2: np.ndarray  # (N,) accounting area
+    slab_pull_n: np.ndarray  # (N, 3), N
+    slab_drag_n: np.ndarray  # (N, 3), N
+    ridge_push_n: np.ndarray  # (N, 3), N
+    basal_drag_n: np.ndarray  # (N, 3), N
+    contact_drag_n: np.ndarray  # (N, 3), N
+
+    @property
+    def total_n(self) -> np.ndarray:
+        return self.slab_pull_n + self.slab_drag_n + self.ridge_push_n + self.basal_drag_n + self.contact_drag_n
+
+    @property
+    def total_traction_pa(self) -> np.ndarray:
+        """Area-average applied traction at each node; not an in-plane stress tensor."""
+        return self.total_n / self.areas_m2[:, None]
+
+    @property
+    def torque_nm(self) -> np.ndarray:
+        """Moment of the spatial force field about the planet center, in N·m."""
+        return np.cross(self.points_xyz * lithosphere.PLANET_RADIUS_M, self.total_n).sum(axis=0)
+
+
 class BoundarySearchCache:
     """One step's per-(plate, neighbour) boundary searches, shared by the collision-polarity
     prepass (collision_polarity.py, issue #318) and `deform()`'s own `boundary_context`, so the
@@ -483,17 +516,38 @@ def slab_pull_force_n(plate, inputs: BoundaryForceInputs, subducting_mask: np.nd
     return np.clip(buoyancy, 0.0, None) * SUBDUCTION_LSINK_M * ds
 
 
+def slab_pull_force_vectors_n(plate, inputs: BoundaryForceInputs, subducting_mask: np.ndarray, spacing_rad: float) -> np.ndarray:
+    """Spatial slab-pull forces on all own nodes, in N, directed toward the neighbour."""
+    forces = np.zeros_like(inputs.own_points, dtype=float)
+    if np.any(subducting_mask):
+        forces[subducting_mask] = (
+            slab_pull_force_n(plate, inputs, subducting_mask, spacing_rad)[:, None]
+            * inputs.direction_to_neighbor[subducting_mask]
+        )
+    return forces
+
+
 def slab_pull_torque(plate, inputs: BoundaryForceInputs, subducting_mask: np.ndarray, spacing_rad: float) -> np.ndarray:
     """Eq. 8, discretized as a sum over this plate's own subducting-boundary nodes
     (`subducting_mask`, from `subducting_boundary_mask` -- passed in rather than recomputed so
     it stays in lockstep with the matching `slab_drag_torque` resistance), each pulling with
     `slab_pull_force_n`."""
+    force = slab_pull_force_vectors_n(plate, inputs, subducting_mask, spacing_rad)
+    return np.cross(inputs.own_points * lithosphere.PLANET_RADIUS_M, force).sum(axis=0)
+
+
+def slab_drag_force_vectors_n(inputs: BoundaryForceInputs, subducting_mask: np.ndarray, spacing_rad: float, omega: np.ndarray) -> np.ndarray:
+    """Spatial deep-mantle slab drag on a plate's subducting nodes, in N."""
+    forces = np.zeros_like(inputs.own_points, dtype=float)
     if not np.any(subducting_mask):
-        return np.zeros(3)
-    force_mag = slab_pull_force_n(plate, inputs, subducting_mask, spacing_rad)
-    force = force_mag[:, None] * inputs.direction_to_neighbor[subducting_mask]
-    r = inputs.own_points[subducting_mask] * lithosphere.PLANET_RADIUS_M
-    return np.cross(r, force).sum(axis=0)
+        return forces
+    points = inputs.own_points[subducting_mask]
+    lengths = boundary_node_length_m(inputs, spacing_rad)[subducting_mask]
+    area_m2 = SUBDUCTION_LSINK_M * lengths
+    velocity_m_s = np.cross(np.asarray(omega, dtype=float), points) * lithosphere.PLANET_RADIUS_M / SECONDS_PER_YEAR
+    traction_pa = -(SLAB_MANTLE_VISCOSITY_PA_S / SHEAR_ZONE_THICKNESS_M) * velocity_m_s
+    forces[subducting_mask] = traction_pa * area_m2[:, None]
+    return forces
 
 
 def slab_drag_coefficient_matrix(inputs: BoundaryForceInputs, subducting_mask: np.ndarray, spacing_rad: float) -> np.ndarray:
@@ -525,14 +579,11 @@ def slab_drag_torque(plate, inputs: BoundaryForceInputs, subducting_mask: np.nda
     return -slab_drag_coefficient_matrix(inputs, subducting_mask, spacing_rad) @ plate.omega
 
 
-def ridge_push_torque(plate, inputs: BoundaryForceInputs, divergent_mask: np.ndarray, spacing_rad: float) -> np.ndarray:
-    """Eq. 9, over this plate's own divergent/ridge boundary nodes (`divergent_mask`, the
-    same geometric classification `rheology.py`'s deform() pass computes -- passed in rather
-    than recomputed so the two stay in lockstep). Push direction is away from the boundary,
-    into this plate's own interior -- the opposite sense from slab-pull's "toward the
-    neighbour," since a ridge shoves both flanking plates apart."""
+def ridge_push_force_vectors_n(plate, inputs: BoundaryForceInputs, divergent_mask: np.ndarray, spacing_rad: float) -> np.ndarray:
+    """Spatial ridge-push force on all own nodes, in N, directed into the plate."""
+    force = np.zeros_like(inputs.own_points, dtype=float)
     if not np.any(divergent_mask):
-        return np.zeros(3)
+        return force
     ds = boundary_node_length_m(inputs, spacing_rad)[divergent_mask]
     rho_c = lithosphere.node_crust_density(inputs.own_crust_type_codes[divergent_mask], plate.crust_type)
     z = lithosphere.isostatic_elevation(inputs.own_hc[divergent_mask], inputs.own_hm[divergent_mask], rho_c)
@@ -545,9 +596,30 @@ def ridge_push_torque(plate, inputs: BoundaryForceInputs, divergent_mask: np.nda
     # (force magnitude still nonzero, but a zero direction vector cancels it) -- acceptable,
     # since "no neighbour nearby" also means this node isn't really acting as part of an
     # active spreading boundary the plate as a whole would feel a coherent push from.
-    force = force_mag[:, None] * direction
-    r = inputs.own_points[divergent_mask] * lithosphere.PLANET_RADIUS_M
+    force[divergent_mask] = force_mag[:, None] * direction
+    return force
+
+
+def ridge_push_torque(plate, inputs: BoundaryForceInputs, divergent_mask: np.ndarray, spacing_rad: float) -> np.ndarray:
+    """Eq. 9; sum the moments of the spatial ridge-push force vectors."""
+    force = ridge_push_force_vectors_n(plate, inputs, divergent_mask, spacing_rad)
+    r = inputs.own_points * lithosphere.PLANET_RADIUS_M
     return np.cross(r, force).sum(axis=0)
+
+
+def basal_drag_force_vectors_n(plate, world, spacing_rad: float) -> np.ndarray:
+    """Spatial basal-drag force on each owned node, in N, before plate aggregation."""
+    own_points, _ = plate.all_points_and_elevation()
+    if len(own_points) == 0:
+        return np.zeros((0, 3))
+    own_velocity_m_s = np.cross(plate.omega, own_points) * lithosphere.PLANET_RADIUS_M / SECONDS_PER_YEAR
+    mantle_velocity_m_s = mantle.flow_at(own_points, world.mantle_centers) * lithosphere.PLANET_RADIUS_M / SECONDS_PER_YEAR
+    basal_coefficient_pa_s_per_m = ASTHENOSPHERE_VISCOSITY_PA_S / SHEAR_ZONE_THICKNESS_M
+    return (
+        basal_coefficient_pa_s_per_m
+        * (mantle_velocity_m_s - own_velocity_m_s)
+        * plate.accounting_areas_m2(spacing_rad)[:, None]
+    )
 
 
 def basal_drag_coefficients(plate, world, spacing_rad: float) -> tuple[np.ndarray, np.ndarray]:
@@ -666,6 +738,60 @@ def collision_drag_coefficients(
     b = np.einsum("n,ni->i", c, np.cross(own_points, raw_neighbor))
     k = np.einsum("n,nij->ij", c, np.eye(3)[None, :, :] - np.einsum("ni,nj->nij", own_points, own_points))
     return b, k
+
+
+def contact_drag_force_vectors_n(
+    plate,
+    inputs: BoundaryForceInputs,
+    collision_mask: np.ndarray,
+    spacing_rad: float,
+    craton_m: np.ndarray | None = None,
+    jam: np.ndarray | None = None,
+) -> np.ndarray:
+    """Spatial contact/jam drag forces on all own nodes, in N."""
+    force = np.zeros_like(inputs.own_points, dtype=float)
+    coefficient = contact_drag_pa_s_per_m(plate, inputs, collision_mask, spacing_rad, craton_m, jam)
+    active = coefficient > 0.0
+    if np.any(active):
+        relative_velocity_m_s = (
+            np.cross(inputs.neighbor_omega[active] - plate.omega, inputs.own_points[active])
+            * lithosphere.PLANET_RADIUS_M
+            / SECONDS_PER_YEAR
+        )
+        force[active] = (
+            coefficient[active, None]
+            * plate.accounting_areas_m2(spacing_rad)[active, None]
+            * relative_velocity_m_s
+        )
+    return force
+
+
+def gather_per_node_force_field(
+    plate,
+    world,
+    inputs: BoundaryForceInputs,
+    spacing_rad: float,
+    subducting_mask: np.ndarray,
+    divergent_mask: np.ndarray,
+    collision_mask: np.ndarray,
+    craton_m: np.ndarray | None = None,
+    jam: np.ndarray | None = None,
+) -> PerNodeForceField:
+    """Return the existing torque engine's force terms before spatial aggregation.
+
+    The resulting node vectors preserve each source's existing units and formulation. They
+    are inputs to a later internal-load calculation, not a local stress estimate themselves.
+    """
+    areas_m2 = np.asarray(plate.accounting_areas_m2(spacing_rad), dtype=float)
+    return PerNodeForceField(
+        points_xyz=np.asarray(inputs.own_points, dtype=float),
+        areas_m2=areas_m2,
+        slab_pull_n=slab_pull_force_vectors_n(plate, inputs, subducting_mask, spacing_rad),
+        slab_drag_n=slab_drag_force_vectors_n(inputs, subducting_mask, spacing_rad, plate.omega),
+        ridge_push_n=ridge_push_force_vectors_n(plate, inputs, divergent_mask, spacing_rad),
+        basal_drag_n=basal_drag_force_vectors_n(plate, world, spacing_rad),
+        contact_drag_n=contact_drag_force_vectors_n(plate, inputs, collision_mask, spacing_rad, craton_m, jam),
+    )
 
 
 def collision_friction_torque(

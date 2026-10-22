@@ -48,6 +48,16 @@ or a runtime difference, caused the divergence. The second clean run reproduces 
 clean run bit-for-bit, but the archived event streams diverge from it within the first 3–6
 events. Counts and matching signature occurrences are tabulated in `gate1-summary.json`.
 
+## Gate 1 disposition (2026-10-19): closed
+
+Use the paired, provenance-recorded current runs as the repeatable baseline for subsequent
+comparison. Explicitly retire the older production and margin archives from calibration because
+their missing worktree/runtime provenance cannot be recovered and their event streams do not
+match the repeatable runs. Keep the historical archive comparison as a limitation; do not pool
+its counts or margins with the baseline. The paired baseline has 380 production cut rows
+across seeds 7/11/2024 (144/111/125), with each seed's tap count matching its production
+ledger count and all rows reproduced bit-for-bit in the second full run.
+
 Signature identity `(kind, elapsed Myr, plate ID, node count)` is not enough to align all
 events: among its 4, 6, and 4 matches to the archived margin streams, exact numeric/status
 margin values match on only 3, 1, and 1 events respectively. Most discrepancies are small,
@@ -70,3 +80,266 @@ PYTHONHASHSEED=0 PYTHONPATH=backend backend/.venv/bin/python \
 
 The full 446 KB output is intentionally left in `/tmp`; the compact statistics,
 fingerprints, and archived-series comparison are checked in as `gate1-summary.json`.
+
+## Gate 2 column-strength diagnostic
+
+The standalone [`diagnose_gate2_column_envelope.py`](../../bin/debug/diagnose_gate2_column_envelope.py)
+implements an illustrative depth-integrated normal-faulting strength envelope. Its input
+assumptions, material-law sources, reference profiles, full scenario grid, and numerical
+resolution comparison are documented in [`gate2-load-diagnosis.md`](gate2-load-diagnosis.md)
+and [`gate2-column-envelope.json`](gate2-column-envelope.json). At 0.125 km depth spacing, the hydrostatic-water, `K0=0.8`, `mu=0.6` reference capacities are
+15.82 TN/m (continental), 0.328 TN/m (young-ridge oceanic), and 4.20 TN/m (mature oceanic). These are screening values, not calibrated predictions; integrated
+capacity is sensitive to background horizontal stress, pore pressure, mantle water state, and
+temperature profile.
+
+The shell diagnostic reports the largest positive principal stress increment against this
+additional capacity in N/m, under an explicit normal-faulting `K0` assumption. A curved-sphere
+benchmark recovers uniform isotropic tension to 1.18% mean error and 2.75% p95 error on a
+17 × 33 mesh. Free in-plane displacement is the isolated-plate baseline; paired clamps shift
+the mean by as much as 46.6%, and actual neighboring-plate coupling remains outside the solve.
+
+The independent input-basis audit is in [`gate2-assumption-basis.md`](gate2-assumption-basis.md),
+with reproducible heat-flow and unit conversions in
+[`gate2-assumption-basis.json`](gate2-assumption-basis.json). It finds that regional observations
+support the normal-faulting regime and provide a useful strain-rate scale, but do not identify a
+spatial `K0`, full-depth pore-fluid profile, local geotherm or mantle hydration field. The model
+force interface contains applied loads, and the shell solve returns incremental stress about a
+zero-load reference; neither provides the missing tectonic prestress. `K0=0.8` is only a
+reproduction anchor. The `0.6–1.0` cases are conditional sensitivities, not an observed interval;
+the screen now adds `K0≈0.32` as the cohesionless near-critical normal-faulting limit for the same
+`mu=0.6` friction assumption. That low case is a limiting scenario, not an independent constraint
+or probability bound. The diagnostic does not use legacy cut outcomes as strength labels.
+
+The fixed-load crossed screen is in
+[`gate2-assumption-screen.json`](gate2-assumption-screen.json), with results and interpretation in
+[`gate2-assumption-basis.md`](gate2-assumption-basis.md). At the geodetic upper distributed rate,
+crossing `K0≈0.32/0.6/0.8/1.0`, dry/wet olivine, and full-column versus crust-hydrostatic Moho-held
+pressure gives 3.07–60.66% node exceedance. Across the finite scenarios, 57.59% of nodes change
+classification, 703 are over capacity in every case and 13,888 in at least one. The added low-K0
+case is derived from the assumed friction law and shows a limiting near-critical state; it does not
+resolve the unobserved background stress field. Pressure-profile choice changes fewer than 1% of
+node classifications at fixed K0/rheology in the original 12-case screen; K0 and mantle rheology
+dominate the more central scenarios. The capacities remain conditional scenarios, not a physical
+rupture rule.
+
+The first matched replay scored 130 candidates and reported 29 residual/load ratios above 1%.
+That result is retained in `gate2-matched-replay.json` under
+`pre_edge_connectivity_guard`; it included element meshes that touched only at vertices and
+therefore were not connected for the shell solver's rigid-mode treatment. The nine flagged
+cases were:
+
+| Seed | World time (Myr) | Plate | Triangle component sizes | Old residual/load |
+|---:|---:|---:|---:|---:|
+| 7 | 38 | 0 | 3316, 1, 1 | 11.51% |
+| 7 | 344 | 16 | 3861, 1 | 26.69% |
+| 11 | 982 | 42 | 2586, 1 | 1.15% |
+| 2024 | 90 | 1 | 11264, 14, 1 | 3.33% |
+| 2024 | 306 | 9 | 5610, 2 | 5.85% |
+| 2024 | 330 | 9 | 5560, 2 | 3.12% |
+| 2024 | 348 | 9 | 6879, 2 | 1.89% |
+| 2024 | 362 | 9 | 6804, 2 | 5.04% |
+| 2024 | 452 | 31 | 2852, 3 | 6.43% |
+
+The issue was unsupported mesh topology: separate triangle components introduced extra rigid
+modes, but the solve projected only the plate-wide rigid modes. The residual therefore measured
+an unsatisfied force balance on an invalid mesh, not evidence that the rock exceeded capacity
+or that plate motion was miscalculated. A further edge-disconnected mesh at seed 7, 68 Myr,
+plate 14 (components 5940 and 1) was rejected before solving; its residual is therefore not
+part of the accepted-solve metrics.
+
+### Connected-source mesh repair and replay coverage audit (2026-10-21)
+
+The 130 Gate 1 craton-crossing candidates are complete production cut events (`split` or
+`failed_rift`) whose cut band intersects at least one craton cell. A candidate is the event-level
+load diagnostic target, not an independently nucleated local crack. Candidate identity and
+production outcome are unchanged by this diagnostic.
+
+The shell mesh now follows this order: require a source plate connected by exact cell-edge
+adjacency; build the clipped curved mesh; if the source is connected but triangles are not edge
+connected, try a spherical-hull mesh clipped with centroid and edge-midpoint probes; if that does
+not reconnect it, retain the dominant triangle component only when it contains at least 99% of all
+triangles. Every solve must then cover at least 95% of both candidate cut-band nodes and craton
+cut-band nodes. Genuinely source-disconnected plates remain excluded as a whole. Keeping only their
+largest component would invent a connected plate/load path, and solving their islands separately
+would require an unsupported boundary/load condition.
+
+The updated full 1 Gyr replay uses repeatable Gate 1 settings (seeds 7, 11, 2024; 2 Myr steps;
+craton formation and post-PR-490 spherical relief disabled). Production cuts and ordered candidate
+keys exactly match Gate 1 for every seed.
+
+| Seed | Production cuts | Candidates | Source connected | Valid shell solves | Source-disconnected exclusions | Repaired meshes | All-candidate coverage |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 7 | 144 | 44 | 23 | 23 | 21 | 3 | 52.3% |
+| 11 | 111 | 42 | 26 | 26 | 16 | 1 | 61.9% |
+| 2024 | 125 | 44 | 25 | 25 | 19 | 6 | 56.8% |
+| **Pooled** | **380** | **130** | **74** | **74** | **56** | **10** | **56.9%** |
+
+All ten previously edge-disconnected meshes are now solved: six used the spherical-hull outline
+probe repair (seed 2024 cases) and four dropped only one or two isolated triangles from the dominant
+edge-connected component. The exact affected events were:
+
+| Seed | Time (Myr) | Plate | Original triangle components | Repair |
+|---:|---:|---:|---|---|
+| 7 | 38 | 0 | 3316, 1, 1 | Keep dominant component (99.94% triangles) |
+| 7 | 68 | 14 | 5940, 1 | Keep dominant component (99.98%) |
+| 7 | 344 | 16 | 3861, 1 | Keep dominant component (99.97%) |
+| 11 | 982 | 42 | 2586, 1 | Keep dominant component (99.96%) |
+| 2024 | 90 | 1 | 11264, 14, 1 | Spherical hull, centroid + edge-midpoint outline probes |
+| 2024 | 306 | 9 | 5610, 2 | Spherical hull, centroid + edge-midpoint outline probes |
+| 2024 | 330 | 9 | 5560, 2 | Spherical hull, centroid + edge-midpoint outline probes |
+| 2024 | 348 | 9 | 6879, 2 | Spherical hull, centroid + edge-midpoint outline probes |
+| 2024 | 362 | 9 | 6804, 2 | Spherical hull, centroid + edge-midpoint outline probes |
+| 2024 | 452 | 31 | 2852, 3 | Spherical hull, centroid + edge-midpoint outline probes |
+
+All repaired solves retain at least 95% of the full cut band and craton subset; across all 74 solves
+the minimum sample coverage is 99.67% and 99.44%, respectively. The solver stops with code 1 on
+every solve. Residual/load is 0.0111% median, 0.0738% p90, 0.1362% p95, and 0.4514% maximum. The
+old nine high-residual cases reflected unsupported mesh topology; the repaired replay does not
+reproduce them as high-residual solves.
+
+#### Minimum coverage and interpretation
+
+For the explicitly scoped Gate 2 population, require valid shell solves for at least 90% of
+craton-crossing candidates whose source plate is one exact edge-connected cell component overall,
+and at least 80% within each seed, event kind (`split` / `failed_rift`), world-time bin (0–200,
+200–500, 500–1000 Myr), and every nonempty event-kind × time-bin stratum. A scored event must also
+meet the per-mesh 95% cut-band and craton-band sample coverage thresholds, stop code 1 and
+residual/load ≤1%. The 90% and 80% thresholds are project completeness criteria, not physical
+constants. Empty strata are not applicable. Source-disconnected candidates are outside this Gate 2
+coverage denominator, but their number and distribution remain reported as a scope limitation.
+
+The mesh and numerical criteria pass for all 74 source-connected candidates: coverage is **100%
+(74/74)** overall and in every nonempty seed, kind, time and kind × time stratum. The 56
+source-disconnected events (43.1% of the 130-event full replay) recur on 22 unique `(seed,
+plate_id)` pairs; 46 events have no off-main source component larger than three cells, while 10
+contain a detached component of at least six cells (one reaches 369 cells). Those are separate
+source regions, not tiny mesh islands, so retaining just the dominant source component would change
+the material domain and its load path. The exclusions are not evenly distributed:
+
+| Candidate stratum | All candidates | Source connected and solved | Connected share of all |
+|---|---:|---:|---:|
+| Split | 69 | 33 | 47.8% |
+| Failed rift | 61 | 41 | 67.2% |
+| 0–200 Myr | 75 | 51 | 68.0% |
+| 200–500 Myr | 34 | 14 | 41.2% |
+| 500–1000 Myr | 21 | 9 | 42.9% |
+
+The Gate 2 strength comparison is complete only for the explicitly scoped connected-source
+population. Because connected-source eligibility is uneven (it covers 47.8% of splits versus 67.2%
+of failed rifts, and 68.0%, 41.2%, and 42.9% across the three time bins), capacity fractions are
+conditional and must not be generalized to disconnected-source events or the full Gate 1 event
+population. Report all 56 disconnected-source events separately by seed/type/time; do not relabel
+them as mesh failures. The connected-source coverage requirement passes. Under the approved
+scope, Gate 2 is closed for this connected-source, single-plate diagnostic. Physical source/capacity
+selection and broader coupled-load validation remain separate future work; the conditional results
+must not be generalized to excluded events or used as a production rupture threshold.
+
+On the 22,896 accepted cut-band samples, median-capacity physical failed fractions are 0.274%
+continental, 78.03% young-ridge oceanic proxy and 2.84% mature oceanic. At the phenomenological
+1× reference, 2.82% of all samples fail (0.34% in marked belts, 3.50% outside). These are screening
+outcomes only: saved state has no oceanic age field, and capacities remain conditional scenario
+assumptions without spatial calibration.
+Per-seed results, coverage strata, hashes and mesh repair details are in
+[`gate2-matched-replay.json`](gate2-matched-replay.json); full outputs remain in `/private/tmp`.
+
+Reproduce with:
+
+```bash
+backend/.venv/bin/python bin/debug/diagnose_gate2_column_envelope.py \
+  --dz-km 0.125 --output analysis/issue487/gate2-column-envelope.json
+```
+
+Reproduce the curved-shell and original-mesh boundary checks with:
+
+```bash
+PYTHONHASHSEED=0 PYTHONPATH=backend backend/.venv/bin/python \
+  bin/debug/validate_thin_shell_plate_meshes.py \
+  --seed 7 --num-plates 12 --node-density 0.5 \
+  --out analysis/issue487/representative-mesh-summary.json
+```
+
+
+## Gate 2 capacity scale calibration (2026-10-21)
+
+A repeatable scale audit now checks the physical column envelope at 70, 90, 100, 135 and
+150 km total continental lithosphere thickness, with the current 35 km crust held fixed. Its
+provisional `K0=0.8`, hydrostatic-water, `mu=0.6` anchor gives 6.28 TN/m at 100 km, within the
+3–8 TN/m regional EARS integrated-strength estimate; the 100 km full factorial grid has median
+4.88 TN/m and p10–p90 1.49–12.07 TN/m. A 150 km thick-craton scenario gives 20.86 TN/m, but the
+cited thickness model is not a capacity observation. The matched replay loads are not rupture labels and were not used
+to fit parameters. This calibrates a conditional scale bracket, not a production strength law.
+See [`gate2-capacity-calibration.md`](gate2-capacity-calibration.md) and
+[`gate2-capacity-calibration.json`](gate2-capacity-calibration.json).
+
+### Thickness-aware spatial screen (2026-10-21)
+
+The full replay was rerun on the pinned Gate 1 source, with the diagnostic force-field helpers
+overlaid while leaving production torque routines unchanged. Production cut totals and ordered
+candidate time/plate identities match Gate 1 for all three seeds. All 74 connected-source
+candidates solve successfully; 56 disconnected-source candidates remain excluded. The local
+capacity map uses each node's actual Hc/Hm and crust-type proxy, and compares steady conductive and
+linearly interpolated Moho-lag profiles. It adds strata for craton share and inherited-belt marker.
+
+The prior mapped summary used the fixed `P_f/P_lith=0.42`, `phi=30 deg` scenario and is superseded
+by the corrected hydrostatic-reference sensitivity re-score below. Median event-level median
+`N_ext/N_cap` is 0.116; median event-level p95 ratio is 0.669. These are scenario-screening
+statistics, not observed rupture rates or a fit to split/failed-rift outcomes. This
+screening result is consistent with Gate 2's closed diagnostic scope; local capacity remains
+conditional on assumed thermal/rheology/stress state and does not set a production threshold.
+See [`gate2-capacity-state-audit.md`](gate2-capacity-state-audit.md) and the compact
+[`gate2-spatial-capacity-replay.json`](gate2-spatial-capacity-replay.json); full event reports are
+in `/private/tmp`.
+
+### Capacity assumption sensitivity and validation (2026-10-21)
+
+The prior replay retained event summaries, not per-node load/state, so the matched Gate 1 events
+were captured again with capacity scoring disabled. Cut totals, ordered candidate identities, and
+all 74 connected-source solves match the accepted baseline. A 14-case one-factor-at-a-time
+post-processing sweep then held the exact 22,896 node loads fixed while varying the documented
+temperature, strain-rate, pore-pressure, `K0`, cohesion, friction and rheology endpoints; the
+stored Moho-lag profile was compared separately at the reference scenario. The reference now uses
+`P_f=rho_water*g*z`; fixed `P_f/P_lith=0.42` is separately labeled as an overpressure scenario.
+Four analytical unit tests verify pressure and Mohr–Coulomb calculations; two more verify inversion
+of the dry/wet creep laws.
+
+The hydrostatic reference exceedance fraction is 6.83%; the fixed 0.42 lithostatic-ratio case gives
+7.50%. The largest tested effect remains `K0`: 3.47% of nodes exceed capacity at `K0=1.0`, versus
+11.23% at `K0=0.6`. Wet olivine gives 9.74%, while dry zero pore pressure gives 4.72%. Relative
+node ranking stays highly correlated (Spearman at least 0.9936), while 795 nodes (3.47%) exceed
+capacity across every tested one-factor scenario and 2,701 (11.80%) in at least one. This is not a
+joint uncertainty interval.
+
+The load model passes its analytic manufactured-solution checks, while the column equations and
+creep-law inversion pass six analytical tests. The fixed-load re-score confirms that the changed
+pore-pressure assumption modestly shifts classification. This identifies the unobserved stress and
+fluid assumptions as the main capacity sensitivities;
+it does not select them as physical fields. These limits are retained in the closed
+scenario-diagnostic scope; they do not authorize a production rupture threshold. Full assumptions,
+per-seed/stratum results and hashes are
+in [`gate2-capacity-sensitivity.md`](gate2-capacity-sensitivity.md) and
+[`gate2-capacity-sensitivity.json`](gate2-capacity-sensitivity.json). Exact captured per-node loads
+remain outside the repository in `/private/tmp/`.
+
+
+### Coupled-boundary load check (2026-10-21)
+
+A two-region shared-node spherical-cap benchmark passes analytic force, torque, interface-reaction,
+and `N_ext` checks: global force closure including the analytic Laplace-pressure reaction is
+`9.44e-6` of total boundary load; torque is `2.92e-17` of load-radius; interface reaction mismatch
+is `2.19e-7` of the target resultant; joined/isolated regional mean `N_ext` differs by at most
+`0.0094%`. This verifies the linear shell assembly for its manufactured case.
+
+The initial two-event seed-7 comparison used a per-node relative-change denominator and was
+invalid where isolated N_ext was zero; its quoted 26.2% and 51.2% values are superseded. A
+corrected six-event audit covers one connected-source split and one failed-rift event per Gate 1
+seed. It checks mutual contact-force/torque closure and compares current pair contact loads with a
+tied-interface solve that omits only the pair's mutual contact drag. Stress differences use the
+mean isolated cut-band N_ext as a zero-safe scale. The corrected difference ranges from 5.3% to
+97.0%; active pair contact has force closure residuals of 2.0–21.4% and torque closure of
+4.6–21.6%. The tied solve is an idealized bonded/no-slip case, not a validated geological
+interface law. See [gate2-interface-sensitivity.md](gate2-interface-sensitivity.md),
+[gate2-interface-sensitivity.json](gate2-interface-sensitivity.json), and
+[gate2-coupled-shell-benchmark.json](gate2-coupled-shell-benchmark.json). The pair-level rigid-rotation projection audit finds 3.0–95.1% mean absolute cut-band stress sensitivity to projecting one joint rigid body versus separate plate groups, while both variants converge. This is sensitivity to incompatible interface assumptions, not a selection of either model. Gate 2 is scoped to the single connected source plate and its free-edge diagnostic; coupled neighbor mechanics are not a closure prerequisite, and the pair values are not physical coupled-stress predictions. A future coupled claim needs a consistent interface/load-transfer formulation. This work is
+outside Gate 2's approved single-plate scope. See [gate2-rigid-projection-audit.md](gate2-rigid-projection-audit.md)
+and its JSON. Gate 2 closes with conditional source/capacity scenarios; selecting a physical spatial
+field remains future work.

@@ -1,0 +1,319 @@
+{
+  "capture_only": true,
+  "coupled_event_found": true,
+  "coupled_event_target": {
+    "kind": "split",
+    "myr": 4.0,
+    "plate": 3
+  },
+  "craton_formation_off": true,
+  "diagnostic_coverage": {
+    "by_kind": {
+      "failed_rift": {
+        "candidate_events": 2,
+        "coverage_fraction_all_candidates": 1.0,
+        "coverage_fraction_source_connected": 1.0,
+        "source_connected_candidates": 2,
+        "valid_shell_solves": 2
+      },
+      "split": {
+        "candidate_events": 1,
+        "coverage_fraction_all_candidates": 1.0,
+        "coverage_fraction_source_connected": 1.0,
+        "source_connected_candidates": 1,
+        "valid_shell_solves": 1
+      }
+    },
+    "by_kind_and_world_time_myr": {
+      "failed_rift": {
+        "0-200_Myr": {
+          "candidate_events": 2,
+          "coverage_fraction_all_candidates": 1.0,
+          "coverage_fraction_source_connected": 1.0,
+          "source_connected_candidates": 2,
+          "valid_shell_solves": 2
+        },
+        "200-500_Myr": {
+          "candidate_events": 0,
+          "coverage_fraction_all_candidates": null,
+          "coverage_fraction_source_connected": null,
+          "source_connected_candidates": 0,
+          "valid_shell_solves": 0
+        },
+        "500-1000_Myr": {
+          "candidate_events": 0,
+          "coverage_fraction_all_candidates": null,
+          "coverage_fraction_source_connected": null,
+          "source_connected_candidates": 0,
+          "valid_shell_solves": 0
+        }
+      },
+      "split": {
+        "0-200_Myr": {
+          "candidate_events": 1,
+          "coverage_fraction_all_candidates": 1.0,
+          "coverage_fraction_source_connected": 1.0,
+          "source_connected_candidates": 1,
+          "valid_shell_solves": 1
+        },
+        "200-500_Myr": {
+          "candidate_events": 0,
+          "coverage_fraction_all_candidates": null,
+          "coverage_fraction_source_connected": null,
+          "source_connected_candidates": 0,
+          "valid_shell_solves": 0
+        },
+        "500-1000_Myr": {
+          "candidate_events": 0,
+          "coverage_fraction_all_candidates": null,
+          "coverage_fraction_source_connected": null,
+          "source_connected_candidates": 0,
+          "valid_shell_solves": 0
+        }
+      }
+    },
+    "by_world_time_myr": {
+      "0-200_Myr": {
+        "candidate_events": 3,
+        "coverage_fraction_all_candidates": 1.0,
+        "coverage_fraction_source_connected": 1.0,
+        "source_connected_candidates": 3,
+        "valid_shell_solves": 3
+      },
+      "200-500_Myr": {
+        "candidate_events": 0,
+        "coverage_fraction_all_candidates": null,
+        "coverage_fraction_source_connected": null,
+        "source_connected_candidates": 0,
+        "valid_shell_solves": 0
+      },
+      "500-1000_Myr": {
+        "candidate_events": 0,
+        "coverage_fraction_all_candidates": null,
+        "coverage_fraction_source_connected": null,
+        "source_connected_candidates": 0,
+        "valid_shell_solves": 0
+      }
+    },
+    "candidate_events": 3,
+    "coverage_fraction_all_candidates": 1.0,
+    "coverage_fraction_source_connected": 1.0,
+    "disconnected_source_candidates_excluded_from_solver": 0,
+    "meets_overall_and_stratified_minimums": true,
+    "meets_seed_minimum": true,
+    "minimum_band_and_craton_band_node_coverage": 0.95,
+    "minimum_coverage_per_seed_kind_and_time_stratum_source_connected": 0.8,
+    "minimum_overall_source_connected_coverage": 0.9,
+    "source_connected_candidates": 3,
+    "valid_shell_solves": 3
+  },
+  "events": [
+    {
+      "band_craton_node_count": 103,
+      "band_craton_nodes_omitted_by_mesh": 0,
+      "band_max_resultant_n_per_m": 3118081999345.5,
+      "band_node_count": 169,
+      "band_nodes_omitted_by_mesh": 0,
+      "band_p50_resultant_n_per_m": 0.0,
+      "band_p95_resultant_n_per_m": 1607152516291.4556,
+      "candidate_band_craton_node_count": 103,
+      "candidate_band_node_count": 169,
+      "capacity_scores": {},
+      "diagnostic_wall_s": 1.4766165839973837,
+      "equilibrium_residual_n": 150319436743130.7,
+      "equilibrium_residual_over_load": 5.3923263110761055e-05,
+      "event_index": 0,
+      "kind": "failed_rift",
+      "mesh_band_coverage": 1.0,
+      "mesh_craton_band_coverage": 1.0,
+      "mesh_method": "clipped_gnomonic_delaunay",
+      "mesh_node_count": 2302,
+      "mesh_repair": null,
+      "mesh_triangle_count": 4393,
+      "myr": 2.0,
+      "node_count": 2302,
+      "plate": 1,
+      "primary_mesh_triangle_count": 4393,
+      "solver_stop_code": 1,
+      "topology_audit": {
+        "mesh_components": [
+          {
+            "mesh_component_id": 0,
+            "mesh_node_count": 2302,
+            "source_component_ids": [
+              0
+            ]
+          }
+        ],
+        "source_component_count": 1,
+        "source_components": [
+          {
+            "mesh_component_sizes": [
+              2302
+            ],
+            "meshed_node_count": 2302,
+            "source_component_id": 0,
+            "source_node_count": 2302,
+            "unmeshed_node_count": 0
+          }
+        ]
+      }
+    },
+    {
+      "band_craton_node_count": 19,
+      "band_craton_nodes_omitted_by_mesh": 0,
+      "band_max_resultant_n_per_m": 4781596958749.342,
+      "band_node_count": 290,
+      "band_nodes_omitted_by_mesh": 0,
+      "band_p50_resultant_n_per_m": 2201161507847.4336,
+      "band_p95_resultant_n_per_m": 3073421561787.609,
+      "candidate_band_craton_node_count": 19,
+      "candidate_band_node_count": 290,
+      "capacity_scores": {},
+      "diagnostic_wall_s": 0.6969101249706,
+      "equilibrium_residual_n": 31863506224653.36,
+      "equilibrium_residual_over_load": 3.379173159415684e-05,
+      "event_index": 1,
+      "kind": "failed_rift",
+      "mesh_band_coverage": 1.0,
+      "mesh_craton_band_coverage": 1.0,
+      "mesh_method": "clipped_gnomonic_delaunay",
+      "mesh_node_count": 1503,
+      "mesh_repair": null,
+      "mesh_triangle_count": 2817,
+      "myr": 2.0,
+      "node_count": 1503,
+      "plate": 3,
+      "primary_mesh_triangle_count": 2817,
+      "solver_stop_code": 1,
+      "topology_audit": {
+        "mesh_components": [
+          {
+            "mesh_component_id": 0,
+            "mesh_node_count": 1503,
+            "source_component_ids": [
+              0
+            ]
+          }
+        ],
+        "source_component_count": 1,
+        "source_components": [
+          {
+            "mesh_component_sizes": [
+              1503
+            ],
+            "meshed_node_count": 1503,
+            "source_component_id": 0,
+            "source_node_count": 1503,
+            "unmeshed_node_count": 0
+          }
+        ]
+      }
+    },
+    {
+      "band_craton_node_count": 22,
+      "band_craton_nodes_omitted_by_mesh": 0,
+      "band_max_resultant_n_per_m": 3107071075631.1006,
+      "band_node_count": 290,
+      "band_nodes_omitted_by_mesh": 0,
+      "band_p50_resultant_n_per_m": 1827089837643.0862,
+      "band_p95_resultant_n_per_m": 2290602179696.581,
+      "candidate_band_craton_node_count": 22,
+      "candidate_band_node_count": 290,
+      "capacity_scores": {},
+      "coupled_neighbor_diagnostic": {
+        "interpretation": "The pair uses shared mesh nodes and both plates' existing per-node force fields. Result is a diagnostic sensitivity to adding one neighboring plate; it is not a calibrated interface/contact model.",
+        "isolated_equilibrium_residual_over_load": 3.6828839341286544e-05,
+        "isolated_rigid_rotation_force_fraction": 0.13708466290710658,
+        "isolated_solver_stop_code": 1,
+        "isolated_source_cut_band_n_ext_mean_n_per_m": 1502255629681.5042,
+        "joined_equilibrium_residual_over_load": 0.00018968276793197882,
+        "joined_rigid_rotation_force_fraction": 0.15389526727037214,
+        "joined_rigid_rotation_removed_torque_nm": [
+          9.935881765536709e+24,
+          -5.7249009490408775e+25,
+          8.143588998184238e+24
+        ],
+        "joined_solver_stop_code": 1,
+        "joined_source_cut_band_n_ext_mean_n_per_m": 2123074672604.687,
+        "joint_mesh_candidate_triangles": 7398,
+        "joint_mesh_nodes": 3705,
+        "joint_mesh_rejected_candidate_triangles": 382,
+        "joint_mesh_triangles": 7016,
+        "matched_cut_band_coverage": 1.0,
+        "matched_source_cut_band_node_count": 290,
+        "mean_absolute_relative_n_ext_change": 0.5120472679176233,
+        "neighbor_node_count": 2185,
+        "neighbor_plate_id": 14,
+        "p95_absolute_relative_n_ext_change": 1.1484118589127383,
+        "raw_pair_force_n": [
+          -1.1758639840820599e+19,
+          -4.2473629716167757e+18,
+          1.3855147360087933e+19
+        ],
+        "raw_pair_torque_nm": [
+          9.908984418870108e+24,
+          -5.728237100500318e+25,
+          8.224439113549156e+24
+        ],
+        "source_cut_band_node_count": 290,
+        "source_nodes_nearest_to_neighbor": 590
+      },
+      "diagnostic_wall_s": 4.512606708100066,
+      "equilibrium_residual_n": 27484055677724.27,
+      "equilibrium_residual_over_load": 3.6828839341286544e-05,
+      "event_index": 2,
+      "kind": "split",
+      "mesh_band_coverage": 1.0,
+      "mesh_craton_band_coverage": 1.0,
+      "mesh_method": "clipped_gnomonic_delaunay",
+      "mesh_node_count": 1521,
+      "mesh_repair": null,
+      "mesh_triangle_count": 2853,
+      "myr": 4.0,
+      "node_count": 1522,
+      "plate": 3,
+      "primary_mesh_triangle_count": 2853,
+      "solver_stop_code": 1,
+      "topology_audit": {
+        "mesh_components": [
+          {
+            "mesh_component_id": 0,
+            "mesh_node_count": 1521,
+            "source_component_ids": [
+              0
+            ]
+          }
+        ],
+        "source_component_count": 1,
+        "source_components": [
+          {
+            "mesh_component_sizes": [
+              1521
+            ],
+            "meshed_node_count": 1521,
+            "source_component_id": 0,
+            "source_node_count": 1522,
+            "unmeshed_node_count": 1
+          }
+        ]
+      }
+    }
+  ],
+  "events_scored": 3,
+  "gate1_baseline_commit": "0118752d0ffe75060464204d5b94f81a60fe9a07",
+  "gate1_craton_crossing_cut_count_expected": 44,
+  "gate1_craton_crossing_cut_count_matches": false,
+  "gate1_cut_count_expected": 144,
+  "gate1_cut_count_matches": false,
+  "physical_capacity_n_per_m_by_class_p10_median_p90": {},
+  "production_cut_count": 4,
+  "seed": 7,
+  "spatial_capacity_aggregate": {
+    "by_thermal_mode_and_stratum": {},
+    "interpretation": "Diagnostic exceedance comparison only; capacities are not fitted to split/failed-rift labels and do not feed back into replay."
+  },
+  "step_years": 2000000.0,
+  "wall_seconds": 14.21001970791258,
+  "years": 4000000.0
+}
