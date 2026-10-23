@@ -1,7 +1,7 @@
 # RFC 0015: Frozen water in physical units: glacier mass balance, ice flow and meltwater, freezing lakes and rivers, ocean ice and polar snow
 
 - **Status:** Draft
-- **Date:** 2026-10-23 (revised 2026-10-23 after review on PR #537)
+- **Date:** 2026-10-23 (revised twice on 2026-10-23 after review on PR #537)
 - **Related:** #368 (evidence; closed by PR #536), #353 and #359 (ice-sheet model, decision B), #355 (water units), #503 and #504 (lake freezing at `WATER_TO_ICE`), #297 (balanced lakes), RFC [0014](0014-lake-water-volume-and-freezing.md) (lake water volume and seasonal lake ice; its D2(b) and D2(c) are prerequisites here), RFC [0012](0012-physics-first-simulation.md) (physics-first simulation); superseded on acceptance: #197, #203, #358 item 4, #313 Stage E (see "Open issues this RFC supersedes"); design principles 3, 5, 6 and 8
 
 ## Problem
@@ -354,9 +354,10 @@ each cell's depth-averaged velocity and, on a thawed bed, a sliding speed
 
 **The fix, after G0:**
 - **Root choice is explicit.** Every step logs, per body, whether the bracket walk found more
-  than one root, and which branch it kept. If G0 attributes the swings to branch flips, the
-  rule changes to: keep the branch continuous with last step's (hysteresis, as real ice
-  sheets have) unless it no longer exists, and log each switch.
+  than one root, and which branch it kept. If G0's arm (h) or (i) shows that branch flips
+  cause the swings, the rule changes to G0 (h)'s: keep the branch continuous with last
+  step's (hysteresis, as real ice sheets have) unless it no longer exists, and log each
+  switch.
 - **Membership and yield stress** are re-evaluated at the solved thickness, iterated to a
   fixed point, if G0 finds them active.
 - **Sea level**, if G0 finds it active, becomes an outer unknown. Bracket
@@ -461,11 +462,27 @@ RFC 0014 owns lake water: its volume, seasonal ice cover and the bounded lake ic
   cell is `max(0, (ρ_i / ρ_w) · H − D) × area`, with `D = max(0, h − z)` the water depth
   over the deflected elevation `z` that eustasy's hypsometry integrates. Floating ice
   (`(ρ_i / ρ_w) · H ≤ D`) debits nothing.
-  - Why this is right: the connected-ocean mask keeps grounded marine cells, so their
-    `h − z` already counts as ocean capacity. Summed over all cells, ocean capacity minus
-    the above-flotation debit, Σ(h − z) − (0.917 H − D), equals the open ocean's capacity
-    minus the full debit, Σ_open(h − z) − 0.917 H. Today's full debit plus that mask counts
-    the below-sea-level ice twice.
+  - **Derivation.** Eustasy solves `C(h) = V_total − V_trapped`, where `C(h)` is the
+    *geometric* capacity below `h` summed over the connected-ocean mask
+    (`eustasy._ocean_connected_mask`). The mask is elevation-only, so it includes every
+    ice-covered marine cell, with its capacity `D = max(0, h − z)` per unit area. The
+    physical constraint is on *liquid* water: the liquid ocean is the total water minus the
+    water held as ice (`0.917 H` per unit area, by mass) and in lakes, and it fills only the
+    capacity that the ice doesn't occupy. Per marine ice cell, per unit area:
+    - **grounded** (`0.917 H > D`): the ice fills the whole capacity `D` and holds no liquid
+      there, so the liquid ocean is `C_other(h)`, the capacity of every other cell. The
+      physical equation is `C_other(h) = V_total − 0.917 H − lakes`. The model's left side is
+      `C(h) = C_other(h) + D`, so the debit that makes the model's equation equal the physical
+      one is `V_trapped = 0.917 H − D` (plus lakes): the ice's volume above flotation, in
+      water equivalent.
+    - **floating** (`0.917 H ≤ D`): the ice displaces liquid equal to its own mass, `0.917 H`,
+      and liquid fills the remaining `D − 0.917 H`. The liquid ocean is
+      `C_other(h) + D − 0.917 H = V_total − 0.917 H − lakes`, which gives `C(h) = V_total −
+      lakes`: a debit of 0.
+    - Both cases are `max(0, 0.917 H − D)`. Today's debit of `0.917 H` on grounded marine
+      cells subtracts `D` too much: it counts the capacity under the ice as empty ocean and
+      the ice that fills it as trapped water. A unit test checks both cases, including ice
+      grounded exactly at flotation, where the debit is 0 and sea level doesn't move.
   - If a later change excluded ice cells from the mask, this debit would have to change with
     it; a comment at both places records that.
   - The generalised approach of [[Goelzer et al., 2020]](#ref-goelzer2020) handles bed and
@@ -530,9 +547,14 @@ RFC 0014 owns lake water: its volume, seasonal ice cover and the bounded lake ic
   Following the potential takes water to the ice margin, where it leaves on the ground's own
   `flow_target` as an outlet stream. This is the drainage counterpart of
   `hydrology._ice_surface_flow_target`, which already routes till along the ice surface.
-- **A potential pit under the ice** (a closed low in φ) holds a subglacial lake. It is booked
-  as lake water by RFC 0014's solve on the bed beneath the ice, spills when full, and adds no
-  new reservoir type. G6 reports how much water such pits hold.
+- **No subglacial storage.** A closed low in φ under the ice (where a real ice sheet could
+  hold a subglacial lake) stores nothing. Each ice body's φ is depression-filled (priority
+  flood, as `build_lake_hierarchy` does for the ground), and water is routed on the filled
+  surface, so it passes through a pit within the step and leaves by the pit's lowest spill
+  point in φ. There is no new state: nothing persists between steps, nothing enters
+  eustasy, and the meltwater ledger has no storage term under the ice. G6 reports how many
+  pits were filled and how much water passed through them, to show what storage is being
+  left out. Subglacial lakes are an explicit omission (see Assumptions).
 - **By mass and annual.** Meltwater enters routing as water, ice volume × ρ_i / ρ_w. It is
   an annual mean; summer peak flows are not represented, and river visibility keeps its
   existing annual-discharge threshold.
@@ -560,16 +582,29 @@ Every gate run includes an `origin/main` arm on the same save and steps, as the 
   - (d) frozen river and lake ice disabled;
   - (e) D1's `f_snow` in place of today's `is_frozen` switch;
   - (f) membership and yield stress re-evaluated at the solved thickness;
-  - (g) all of (b)–(f).
+  - (g) all of (b)–(f);
+  - (h) the branch held continuous: each body keeps the root on the branch it took last step
+    (tracked by margin position from last step's root), and switches only when that branch
+    no longer exists. Every switch is logged;
+  - (i) (g) and (h) together.
 
   In every arm, log per body and step whether the bracket walk found more than one root and
   which branch it kept.
 
-  Measure the step-to-step swing in ice volume and the 0.25 vs 1 Myr gap.
-  *Outcome:* each arm that removes the swing and closes the gap fixes the corresponding part
-  of D2. If branch flips track the swings, the root rule changes. If (g) still swings, the
-  instability is in the solve itself: D2 substeps all bodies (alternative D, per body), and
-  the RFC is revised.
+  **Metrics,** on each arm after the first 2 Myr: the *swing*, the largest step-to-step
+  change in global ice volume, |ΔV| / V; and the *step gap*, |V(0.25 Myr steps) − V(1 Myr
+  steps)| / V at 10 Myr.
+
+  *Outcome:* an input or rule is a cause when its arm brings the swing below 25% and the step
+  gap below 10% where (a) doesn't. The comparisons:
+  - (b)–(f) each against (a), for the lagged inputs;
+  - (h) against (a), for root choice alone;
+  - (i) against (g), for root choice once the inputs are fixed.
+
+  D2 adopts each fix whose arm passes. The branch-continuity rule is adopted only if (h) or
+  (i) passes; a correlation between logged flips and volume jumps in (a) is reported but
+  doesn't decide it. If (i) still swings, the instability is in the solve itself: D2 substeps
+  all bodies (alternative D, per body), and the RFC is revised.
 - **G1: where does the endpoint premise hold?** On the diagnosis set, per body: τ from
   `−∂B_V/∂V` at the root by finite difference (D2), `H/|b|` alongside, and for bodies above
   10⁴ km² a direct check that substepping reaches the endpoint volume within 1%. Also report
@@ -599,7 +634,8 @@ Every gate run includes an `origin/main` arm on the same save and steps, as the 
   proxy, or replace it with a damped ocean amplitude if perennial ice covers no ocean at all
   without ice ages, or covers more than half of it with them.
 - **G6: meltwater rivers.** Against the `origin/main` arm on the diagnosis set, report the
-  meltwater reaching the ocean, lakes, transit loss and subglacial pits; the number of
+  meltwater reaching the ocean, lakes and transit loss; the number of filled φ pits and the
+  water passing through them; the number of
   visible river networks whose source lies within one cell of an ice margin; and their
   largest discharges. *Outcome:* report; the acceptance criteria below set the bar.
 
@@ -688,7 +724,8 @@ withdrawal can be handled part by part.
     physical constants; `WATER_TO_ICE` is removed after RFC 0014 removes its uses;
   - `compute_hydrology`: the snow fraction replaces `liquid_precip = where(is_frozen, 0, …)`
     off the ice, and rain on ice comes from the solve; `meltwater_m3_per_yr` converts by mass;
-  - meltwater routing on ice by hydraulic potential (new, beside `_ice_surface_flow_target`);
+  - meltwater routing on ice by hydraulic potential over a depression-filled φ (new, beside
+    `_ice_surface_flow_target`; no persisted state);
   - `allow_ocean_ice`, `SEA_ICE_FORMATION_TEMP_C` and `ICE_AGE_SEA_ICE_MIN_INTENSITY` are
     replaced by a derived sea-ice fraction (new, e.g. `sea_ice_fraction`) and
     `SEAWATER_FREEZING_C` (new);
@@ -753,7 +790,8 @@ withdrawal can be handled part by part.
   verified. Shortwave and albedo effects are folded into the factors.
 - **Frictional melt** uses the closing sliding speed and is neglected in the solve's root.
 - **Meltwater routing** follows the hydraulic potential at the annual mean. Seasonal
-  drainage evolution, supraglacial lakes and outburst floods aren't represented.
+  drainage evolution, supraglacial lakes and outburst floods aren't represented, and
+  subglacial lakes are omitted: water passes through φ pits within the step.
 - **Abrasion only.** Quarrying and subglacial water pressure are not represented, and the
   coefficient comes from a few dozen glaciers with erosion rates spanning five orders of
   magnitude [[Cook et al., 2020]](#ref-cook2020).
@@ -803,9 +841,9 @@ withdrawal can be handled part by part.
 
 ## Falsification criteria
 
-- **G0 (g) still swings:** with every lagged input fixed and the root logged, physical rates
-  still give step-to-step swings above 25% or a 0.25 vs 1 Myr gap above 10%, and the branch
-  log doesn't explain them. The instability isn't from lagged inputs or root choice.
+- **G0 (i) still swings:** with every lagged input fixed and the branch held continuous,
+  physical rates still give step-to-step swings above 25% or a 0.25 vs 1 Myr gap above 10%.
+  The instability isn't from lagged inputs or root choice.
   *Revise:* substep every body (alternative D per body), or find the solver's own fault,
   before D2.
 - **G1 fails broadly:** more than 20% of ice volume has τ > 0.1 Δt. The endpoint premise is
