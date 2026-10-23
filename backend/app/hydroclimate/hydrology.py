@@ -1786,12 +1786,27 @@ def _spill_hops(fields: HydrologyFields, sources: np.ndarray) -> np.ndarray:
     return hop
 
 
-def _spill_path(fields: HydrologyFields, source: int, target: int) -> list[int]:
-    """The nodes a spill from `source` to `target` crosses over neighbour edges: the fewest
-    hops among paths that never rise above the lowest pass between them (found first, by a
-    minimax search), so the path runs across the basin floor and out over its rim. Ocean
-    nodes other than `target` are excluded. Empty if `target` isn't reachable."""
-    elevation, neighbor_idx, is_ocean = fields.elevation, fields.neighbor_idx, fields.is_ocean
+def _undirected_neighbours(neighbor_idx: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """`(indptr, indices)` of the k-NN graph with every edge in both directions. k-NN is
+    directed, and a lake's rim edge is taken from either end (`lakes.build_lake_hierarchy`), so
+    the way back over a rim, or from the sea up to its shore, may exist only as a reverse edge."""
+    n, k = neighbor_idx.shape
+    rows = np.repeat(np.arange(n), k)
+    cols = neighbor_idx.ravel()
+    graph = coo_matrix((np.ones(2 * n * k, dtype=np.int8), (np.concatenate([rows, cols]), np.concatenate([cols, rows]))), shape=(n, n)).tocsr()
+    return graph.indptr, graph.indices
+
+
+def _spill_path(fields: HydrologyFields, adjacency: tuple[np.ndarray, np.ndarray], source: int, target: int) -> list[int]:
+    """The nodes a spill from `source` to `target` crosses over `adjacency`'s neighbour edges:
+    the fewest hops among paths that never rise above the lowest pass between them (found
+    first, by a minimax search), so the path runs across the basin floor and out over its rim.
+    Ocean nodes other than `target` are excluded. Empty if `target` isn't reachable."""
+    elevation, is_ocean = fields.elevation, fields.is_ocean
+    indptr, indices = adjacency
+
+    def neighbours(node: int) -> list[int]:
+        return indices[indptr[node] : indptr[node + 1]].tolist()
 
     def passable(node: int) -> bool:
         return node == target or not is_ocean[node]
@@ -1806,7 +1821,7 @@ def _spill_path(fields: HydrologyFields, source: int, target: int) -> list[int]:
             break
         if pass_m > best[node]:
             continue
-        for nxt in neighbor_idx[node].tolist():
+        for nxt in neighbours(node):
             candidate = max(pass_m, float(elevation[nxt]))
             if passable(nxt) and candidate < best.get(nxt, np.inf):
                 best[nxt] = candidate
@@ -1819,7 +1834,7 @@ def _spill_path(fields: HydrologyFields, source: int, target: int) -> list[int]:
     while frontier and target not in came_from:
         next_frontier = []
         for node in frontier:
-            for nxt in neighbor_idx[node].tolist():
+            for nxt in neighbours(node):
                 if nxt not in came_from and passable(nxt) and elevation[nxt] <= level:
                     came_from[nxt] = node
                     next_frontier.append(nxt)
@@ -1840,7 +1855,8 @@ def flow_segments(fields: HydrologyFields, sources: np.ndarray) -> tuple[np.ndar
 
     Returns `(from_idx, to_idx, owner, crosses_lake)`: one entry per segment, `owner` being the
     position in `sources` whose edge it draws, and per source, whether its edge crosses visible
-    lake water (or has no spill path), which `group_rivers` treats as the river's end."""
+    lake water, which `group_rivers` treats as the river's end. A hop with no spill path at all
+    keeps its straight segment rather than ending the river."""
     sources = np.asarray(sources, dtype=np.int64)
     targets = fields.flow_target[sources]
     hop = _spill_hops(fields, sources)
@@ -1848,12 +1864,15 @@ def flow_segments(fields: HydrologyFields, sources: np.ndarray) -> tuple[np.ndar
     from_parts, to_parts, owner_parts = [sources[plain]], [targets[plain]], [plain]
     crosses_lake = np.zeros(len(sources), dtype=bool)
     wet = fields.lake_depth > LAKE_MIN_VISIBLE_DEPTH_M
-    for position in np.flatnonzero(hop).tolist():
-        path = np.array(_spill_path(fields, int(sources[position]), int(targets[position])), dtype=np.int64)
+    hop_positions = np.flatnonzero(hop).tolist()
+    adjacency = _undirected_neighbours(fields.neighbor_idx) if hop_positions else None
+    for position in hop_positions:
+        source, target = int(sources[position]), int(targets[position])
+        path = np.array(_spill_path(fields, adjacency, source, target) or [source, target], dtype=np.int64)
         start, end = path[:-1], path[1:]
         # Every edge up to the first one under visible water.
         dry = np.logical_and.accumulate(~(wet[start] & wet[end]))
-        crosses_lake[position] = len(path) == 0 or not np.all(dry)
+        crosses_lake[position] = not np.all(dry)
         from_parts.append(start[dry])
         to_parts.append(end[dry])
         owner_parts.append(np.full(int(dry.sum()), position, dtype=np.int64))

@@ -477,8 +477,11 @@ path: the fewest neighbour edges that never rise above the lowest pass between t
 target. Across a basin with no visible water, the river is drawn through it. Where the path
 reaches visible lake water, it's drawn only up to the water. `group_rivers` then ends the
 upstream network there, with `mouth_type` `"lake"`, and the outflow is its own network
-starting beyond the rim. A network's `length_m` sums the drawn segments. Routing, discharge and
-lake inflow are unchanged.
+starting beyond the rim. The map's downstream fill-in (`_extend_drawn_rivers_downstream`)
+stops at that mouth too, so a hidden outflow network isn't drawn. The search follows k-NN edges
+in both directions, since the way over a rim may exist only as a reverse edge; a hop with no
+spill path at all keeps its straight segment. A network's `length_m` sums the drawn segments.
+Routing, discharge and lake inflow are unchanged.
 
 **A spilling lake erodes its own outlet hard**, proportional to the lake's own surface area,
 not just the ordinary precipitation-driven flow passing through that one channel node. Once a
