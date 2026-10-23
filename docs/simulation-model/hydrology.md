@@ -316,18 +316,18 @@ equals its real-unit inflow summed over every one of its own members (more than 
 true sink once several originally separate basins have merged), clipped to
 `[dry level, max_depth]` and its lake-vs-sea tier ceiling.
 Tracking a lake's level as one scalar shared by every member, rather than a per-node depth, is
-what removes the old design's threshold-crossing failure mode entirely. Merge/split
-transitions fall out of comparing this against each lake's own `min_depth`: a still-separate
-child whose own new level reaches its parent's saddle promotes to one merged body (pinned at
-exactly the saddle, continuity); an already-merged lake whose new level recedes below its own
-saddle demotes back into its children, and each child is resolved at its own balanced level
-that same step. No cross-step `Lake`-object registry is needed for any of this -- see
-`lakes.py`'s own module docstring for why continuity is instead derived from the same
-persisted `lake_depth` array (`elevation + prev_lake_depth`, the same "last step's water
-surface" the old per-node design itself already used) rather than matching this step's
-freshly-rebuilt tree against last step's by member-overlap, which would be fragile to a tree's
-exact shape shifting from ordinary terrain churn even when nothing physical about the lake
-changed.
+what removes the old design's threshold-crossing failure mode entirely. A still-separate
+parent merges this step when a child's main water body reaches the shared saddle; the newly
+merged body is pinned at the saddle for continuity. A parent counts as already merged on a
+later step only when the main water in every child reaches that saddle. `_already_merged`
+checks each child's sink cell (or the lowest cell of a composite child) and inverts its mean
+depth through `CellHypsometry`; perched water elsewhere in the upstream catchment cannot make
+the parent look connected. `compute_spill_routing` uses the same check, so a false merge cannot
+also give every child sink the parent's distant rim. If an already-merged lake recedes below
+its saddle, it splits back into its children, each resolved at its own balanced level that same
+step. No cross-step `Lake`-object registry is needed -- continuity comes from the persisted
+per-node `lake_depth` array rather than matching this step's freshly rebuilt tree against last
+step's by member overlap.
 
 **Lakes accumulate silt.** `silt_depth` (a persistent per-node field, carried exactly like `lake_depth`) is a
 small volume fraction (`SILT_ACCUMULATION_COEFFICIENT`, m^3 of silt per m^3 of water) of the
@@ -376,8 +376,8 @@ climatically or visually.
 
 `lakes._classify_tier(members, prev_lake_depth, node_area_km2)` decides, per lake, per step,
 whether it counts as **sea tier**: its own *prior* step's flooded extent (not the depth this
-step is about to compute -- the same "read the already-persisted array" idiom `_prev_level`'s
-own `already_merged` check already uses, avoiding a chicken-and-egg loop) covers at least
+step is about to compute -- the same "read the already-persisted array" idiom `_already_merged`
+uses for connected-water checks, avoiding a chicken-and-egg loop) covers at least
 `SEA_MIN_FLOODED_AREA_KM2` (200,000 km^2 -- between the historical Aral Sea and the Caspian).
 `node_area_km2` is derived once per call from `4*pi*R^2 / len(elevation)`, not a node count, so
 the threshold is resolution-invariant without threading `world.node_density` into a module that
@@ -404,10 +404,11 @@ merged resolution, restoring the silt and sea flags `_water_balance` wrote for i
 each child as an independent lake this step: its own inflow and evaporation, its own
 any-member-frozen check, its own rim (the parent's saddle) and its own tier cap. A child that
 has no inflow dries, a frozen child dries, and a fed child keeps the water its own balance
-supports. Next step's `_prev_level` reads the pair as merged only if a child reached the
-saddle itself. A child fed to its rim does reach it: the pair then reads as merged, balances
-below the saddle and splits again every step. That repeat costs a discarded merged balance and
-a `split` event per step but creates no water; the false merge behind it is #520 part 1.
+supports. Next step's `_already_merged` reads the pair as merged only if both children's main
+water bodies reached the saddle. A child fed to its rim can trigger a new merge in the current
+step; if the merged body's balance falls below the saddle, it splits next step and the fed
+child can trigger another merge. This real merge/split churn costs a discarded merged balance
+but creates no water. Perched water no longer triggers that cycle (#520 part 1).
 
 Earlier code instead reset both children to the saddle, as continuity for a small evaporation
 dip. Nothing supplied that water, and the saddle level read back as merged on the next step, so

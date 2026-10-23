@@ -265,7 +265,7 @@ def test_compute_spill_routing_routes_both_original_sinks_to_the_parents_rim_onc
     assert root.min_depth == 12.0 and root.max_depth == 30.0 and root.outlet_target_idx == 4
     assert root.outlet_node_idx == 3  # the merged body's own rim member, on the far side from node 4
 
-    already_merged_prev_depth = np.array([10.0, 0.0, 0.0, 0.0, 0.0, 0.0])  # node 0 surface: 2+10=12
+    already_merged_prev_depth = np.array([10.0, 0.0, 0.0, 8.0, 0.0, 0.0])  # both sinks at surface 12
     filled, spill, rim = lakes.compute_spill_routing(forest, _MERGE_ELEVATION, already_merged_prev_depth)
     assert filled[0] == filled[3] == 30.0
     assert spill[0] == spill[3] == 4
@@ -279,6 +279,35 @@ def test_compute_spill_routing_routes_both_original_sinks_to_the_parents_rim_onc
     assert spill_dry[3] == 1  # leaf {2,3}'s own outlet_target_idx, toward node 1
     assert rim_dry[0] == 1  # leaf {0,1}'s own outlet_node_idx
     assert rim_dry[3] == 2  # leaf {2,3}'s own outlet_node_idx
+
+
+def test_perched_water_does_not_merge_parent_or_govern_its_spill_rim():
+    # Node 4 is a perched sub-basin in the left child's upstream members. Its water surface is
+    # above the parent saddle, but the main lake in each child remains below it.
+    elevation = np.array([2.0, 12.0, 9.0, 4.0, 8.0, -10.0])
+    left = lakes.Lake(
+        lake_id=0, members=np.array([0, 1, 4]), floor_elevation=2.0, min_depth=2.0,
+        max_depth=12.0, outlet_node_idx=1, sink_node_idx=0,
+    )
+    right = lakes.Lake(
+        lake_id=1, members=np.array([2, 3]), floor_elevation=4.0, min_depth=4.0,
+        max_depth=12.0, outlet_node_idx=2, sink_node_idx=3,
+    )
+    parent = lakes.Lake(
+        lake_id=2, members=np.array([0, 1, 2, 3, 4]), floor_elevation=2.0, min_depth=12.0,
+        max_depth=30.0, children=[left, right], outlet_node_idx=3,
+    )
+    prev_lake_depth = np.array([1.0, 0.0, 0.0, 1.0, 6.0, 0.0])
+
+    assert elevation[4] + prev_lake_depth[4] == 14.0
+    assert sorted(body.lake_id for body in lakes.governing_bodies([parent], elevation, prev_lake_depth)) == [0, 1]
+
+    depth, _, _, events = lakes.resolve_lakes(
+        [parent], elevation, prev_lake_depth, years=100_000,
+        is_frozen=np.zeros(len(elevation), dtype=bool), climate=_climate(np.zeros(len(elevation)), 1.0),
+    )
+    assert events == []
+    assert not depth.any()
 
 
 def test_compute_spill_routing_endorheic_basin_never_spills():
@@ -676,20 +705,19 @@ def test_a_composite_lake_held_below_its_own_saddle_by_the_tier_cap_splits():
     assert forest2[0].current_water_elevation < 1800.0  # genuinely draining, not stuck at the cap
 
 
-def test_a_child_fed_to_the_saddle_re_splits_each_step_without_creating_water():
+def test_a_child_fed_to_the_saddle_churns_without_creating_water():
     # _BIG_MERGE with node 3's floor raised to 1000, so that child's own tier cap (2800) clears
     # the 2500 saddle while the merged body's (0 + 1800) doesn't. Fed, the child fills to its
-    # rim, the saddle, so the pair reads as merged every step, is capped below the saddle and
-    # splits again (#521 review; the false merge is #520 part 1). The repeat must not create
-    # water: the unfed child stays dry instead of being written at the 1800 m capped level, and
-    # the fed child keeps its own level.
+    # rim, the saddle, so it creates a merge after the initial split. The merged body is then
+    # capped below the saddle and becomes separate again. This is real merge/split churn; the
+    # false merge from a perched member is covered separately by the #520 regression above.
     elevation = _BIG_MERGE_ELEVATION.copy()
     elevation[3] = 1000.0
     climate = _climate([0.0, 0.0, 0.0, _FLOOD_M3_PER_YR, 0.0, 0.0])
     prev_lake_depth = np.zeros(6)
     prev_lake_depth[0] = 2500.0
     prev_lake_depth[3] = 1500.0  # merged at the saddle
-    for _ in range(3):
+    for step in range(3):
         forest = lakes.build_lake_hierarchy(elevation, _BIG_MERGE_IS_OCEAN, _BIG_MERGE_NEIGHBORS)
         root = forest[0]
         out_lake_depth = np.zeros(6)
@@ -700,10 +728,12 @@ def test_a_child_fed_to_the_saddle_re_splits_each_step_without_creating_water():
             out_silt_deposited=np.zeros(6), out_lake_is_sea=np.zeros(6, dtype=bool),
             node_area_km2=100.0, events=events, climate=climate,
         )
-        assert [e.kind for e in events] == ["split"]
-        assert out_lake_depth[0] == 0.0  # unfed child: dry
+        # The first step splits the stale merged state. After that, only the fed child reaches
+        # the saddle, so it creates a fresh merge event rather than a false split of the parent.
+        assert [e.kind for e in events] == (["split"] if step == 0 else ["merge"])
+        assert out_lake_depth[0] == (0.0 if step == 0 else 1800.0)
         assert root.children[1].current_water_elevation == 2500.0  # fed child: at its own rim
-        assert out_lake_depth[3] == 1500.0
+        assert out_lake_depth[3] == (1500.0 if step == 0 else 800.0)
         prev_lake_depth = out_lake_depth
 
 
