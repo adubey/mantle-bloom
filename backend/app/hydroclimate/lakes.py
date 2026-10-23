@@ -785,8 +785,6 @@ def _already_merged(
     elevation: np.ndarray,
     lake_depth: np.ndarray,
     hypsometry: CellHypsometry | None = None,
-    *,
-    require_both_children: bool = True,
 ) -> bool:
     """Whether water in every child's main basin reached this parent's saddle.
 
@@ -796,9 +794,8 @@ def _already_merged(
     floor cell's mean depth is inverted through the hypsometry to recover its water surface;
     this preserves exact-saddle merges when a boundary cell itself has zero mean depth.
 
-    When checking persisted water, all children must have reached the saddle. During this
-    step's merge check, one child's main body reaching the saddle is enough to send water into
-    the other child, so callers pass `require_both_children=False`.
+    When checking persisted water, all children must have reached the saddle. New merges during
+    this step use the children’s just-resolved levels directly in `_MERGE_CHECK`.
     """
     if not lake.children:
         return True
@@ -814,7 +811,7 @@ def _already_merged(
             continue
         level = float(hyps.level_from_depth(np.array([depth]), np.array([floor_idx]))[0])
         reached_saddle.append(level >= lake.min_depth - 1e-6)
-    return all(reached_saddle) if require_both_children else any(reached_saddle)
+    return all(reached_saddle)
 
 
 def compute_spill_routing(
@@ -1003,9 +1000,8 @@ def _resolve(
         if mode == _MERGE_CHECK:
             # A parent that was still split last step: its children are now resolved, so
             # decide whether this step's rise has merged them.
-            if _already_merged(
-                node, elevation, out_lake_depth, hyps, require_both_children=False
-            ):
+            child_levels = [child.current_water_elevation for child in node.children]
+            if max(child_levels) >= node.min_depth:
                 events.append(LakeEvent(kind="merge", node_count=len(node.members), elevation_m=node.min_depth, basin_count=2))
                 is_sea, tier_max_depth = _classify_tier(node.members, prev_lake_depth, node_area_km2)
                 # A child capable of independently reaching min_depth on its own (this can only
@@ -1025,7 +1021,7 @@ def _resolve(
                 node.current_water_elevation = merge_level
                 node.is_spilling = node.max_depth is not None and merge_level >= node.max_depth
             else:
-                node.current_water_elevation = max(child.current_water_elevation for child in node.children)
+                node.current_water_elevation = max(child_levels)
             continue
 
         already_merged = _already_merged(node, elevation, prev_lake_depth, hyps)
