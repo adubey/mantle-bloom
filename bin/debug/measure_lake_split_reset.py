@@ -10,6 +10,8 @@ Steps the save `--steps` times by `--step-years` and records, per step:
   the saddle (within 1e-6 m) with evaporation at that level against its inflow;
 - discharge (m^3/s) arriving at land sinks (`flow_target == -1`), split into frozen (annual
   mean air below `hydrology.FREEZE_POINT_C`) and unfrozen, and reaching the ocean;
+- the step's liquid precipitation and Budyko runoff over land (m^3/s), the water routing starts
+  from, read off `hydrology`'s `breaching.runoff_mm` call;
 - step runtime (s) and peak RSS.
 
 Tracked bodies are connected components of visible lake water (`LAKE_MIN_VISIBLE_DEPTH_M`) in
@@ -56,6 +58,7 @@ from app.hydroclimate import hydrology, lakes  # noqa: E402
 from app.hydroclimate.erosion import climate_grid_indices  # noqa: E402
 
 VIS = hydrology.LAKE_MIN_VISIBLE_DEPTH_M
+SECONDS_PER_YEAR = hydrology.SECONDS_PER_YEAR
 RSS_PER_MB = 2**20 if sys.platform == "darwin" else 2**10  # ru_maxrss: bytes on macOS, KiB on Linux
 
 # The resolve inputs, kept so each tracked basin's inflow and evaporation can be read back.
@@ -70,6 +73,18 @@ def _capture(forest, elevation, prev_lake_depth, years, is_frozen, climate, hyps
 
 lakes.resolve_lakes = _capture
 hydrology.lakes.resolve_lakes = _capture
+_orig_runoff_mm = hydrology.breaching.runoff_mm
+
+
+def _capture_runoff(precipitation_mm, potential_evaporation_mm):
+    runoff = _orig_runoff_mm(precipitation_mm, potential_evaporation_mm)
+    if sys._getframe(1).f_globals.get("__name__") != hydrology.__name__:
+        return runoff  # breaching's own breach sizing calls it too
+    captured.update(precip_mm=np.asarray(precipitation_mm).copy(), runoff_mm=np.asarray(runoff).copy())
+    return runoff
+
+
+hydrology.breaching.runoff_mm = _capture_runoff
 
 
 def components(f):
@@ -106,6 +121,16 @@ def frozen_sink_budget(world, f):
         "frozen_sink_inflow_m3_s": float(inflow[sink & frozen].sum()),
         "unfrozen_sink_inflow_m3_s": float(inflow[sink & ~frozen].sum()),
         "ocean_discharge_m3_s": float(f.discharge_m3_s[f.is_ocean].sum()),
+    }
+
+
+def land_source(f):
+    land = ~f.is_ocean
+    area = f.hypsometry.area_m2
+    to_m3_s = area[land] / 1000.0 / SECONDS_PER_YEAR
+    return {
+        "land_precip_m3_s": float((captured["precip_mm"][land] * to_m3_s).sum()),
+        "land_runoff_m3_s": float((captured["runoff_mm"][land] * to_m3_s).sum()),
     }
 
 
@@ -162,6 +187,7 @@ for step in range(1, args.steps + 1):
         "merge_events": sum(e.kind == "merge" for e in events),
         "split_events": sum(e.kind == "split" for e in events),
         **frozen_sink_budget(world, f),
+        **land_source(f),
         "tracks": {},
     }
     for tid in track_ids:

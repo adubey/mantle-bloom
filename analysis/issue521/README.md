@@ -91,12 +91,29 @@ cd backend
   volume rises by its own inflow (0.69 → 0.90 M km³); nothing is reset into it.
   `test_a_child_fed_to_the_saddle_re_splits_each_step_without_creating_water` pins this case,
   and #520 part 1 addresses the false merge behind it.
-- **Ocean discharge fails the preregistered 2% bound** (−20% and −7%). Spill routing
-  (`_spill_within_step`, #503) fills each governing basin from its stored volume before it
-  can spill. On main, the reset's water left basins near their rims, so the step's runoff
-  topped them and reached the ocean; on the branch, basins have room and keep it. A rerun of the
-  evidence pair that also measures unfrozen-sink inflow, to check that the missing discharge
-  ends there, is pending.
+- **Ocean discharge fails the preregistered 2% bound** (−20% and −7%), because the branch
+  has less rain on land, not because water goes missing in routing. My first explanation was
+  that the reset's water had left basins near their rims, so runoff spilled to the ocean. A
+  rerun of the evidence pair with inflow to unfrozen sinks added ruled that out: that inflow
+  falls too (median 448,200 → 201,900 m³/s), so less water reaches the ocean *and* the land
+  sinks. A second rerun added the step's land precipitation and Budyko runoff, read from the
+   call in :
+
+  | Evidence save, median steps 2–10 | main | branch |
+  |---|---:|---:|
+  | Land liquid precipitation | 2,902,000 m³/s | 1,701,000 m³/s (−41%) |
+  | Land runoff | 1,229,000 m³/s | 635,000 m³/s (−48%) |
+  | Ocean discharge | 448,100 m³/s | 357,100 m³/s (−20%) |
+  | Unfrozen-sink inflow | 448,200 m³/s | 201,900 m³/s (−55%) |
+
+  The two arms are equal at step 1, when both still start from the saved climate. They part
+  from step 2, once the branch's lake area has fallen from about 22 to about 2 M km². The
+  extra lakes main kept were an evaporation source for the climate, and the rain from it fed the
+  runoff. With them gone, land rain and runoff roughly halve. A smaller share of the reduced
+  runoff now ends in land sinks, so ocean discharge drops by less. The reruns repeat the first
+  run's ocean discharge to the m³/s, so the arms are deterministic. Land precipitation wasn't
+  measured on the held-out save, where lake area falls from about 7 to about 2 M km² and ocean
+  discharge falls 7%.
 - **Frozen-sink inflow** falls 91% on the evidence save, as K2b found, but rises about 3× on
   the held-out save. That rise is not explained yet.
 - **Events and cost.** Split events rise 3–5× without climbing across steps, and merges are
@@ -111,6 +128,6 @@ cd backend
 | Branch lake volume below main at every step (evidence) | Met |
 | Sea 26 never floods past 100 nodes | Met (43) |
 | Lake 13 not on its saddle at the end | Met |
-| Ocean discharge within 2% | **Not met** (−20%, −7%); explanation above, pending confirmation |
+| Ocean discharge within 2% | **Not met** (−20%, −7%): less land rain once the reset's lakes stop evaporating, above |
 | Merge/split counts don't grow step after step | Met |
 | Runtime within 10% | Met (faster) |
