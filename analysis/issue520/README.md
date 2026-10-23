@@ -63,3 +63,33 @@ one configuration at a time. Median ms; "cold" clears the path cache first.
 - All three branch versions draw the same segments.
 - The kernels compile in 0.85 s on first use and load from numba's cache in 0.15 s per process.
 - The search's climb ceiling and node cap never stopped a search on this save.
+
+## Part 1 replay preregistration
+
+**Question.** Does checking each child's main basin prevent the false parent merge on sea 26,
+without materially changing the unrelated frozen lake 13?
+
+**Comparison.** Replay the 100 kyr evidence save for 10 steps on baseline `origin/main`
+`9ae6eaf40fee013f9989b8ad236837927be0496e` and on the issue branch
+`d0bd84932009ae35c1f153a969d9b7b46ed838bf`. This baseline already contains the sibling #521
+split-reset change and part 2's river rendering fix; both arms use the same save, step length,
+tracked bodies (sea 26 and lake 13), and replay script. Save SHA-256 is
+`c557251402f9d2df3d2f67b93c2ad528674cba32055791ed089ca56d6214d6e0`.
+
+**Expected direction and threshold.** Primary metric is sea 26's wet-node extent. The issue's
+historical baseline was 1,713 nodes at +3 and 1,020 at +8 on `59d2ef3`, before sibling #521
+landed. Since #521 changes replay numbers, use the measured current `origin/main` counts as the
+comparison; expect the branch to reduce sea 26's wet extent by at least 25% at both +3 and +8.
+Secondary metrics are per-step visible lake area and volume, plus merge/split event counts;
+expect fewer false parent transitions and no false rise in standing water. Lake 13's size is a
+control expected to remain broadly unchanged because its inflation is attributed to the frozen
+rule and split reset, not this perched-water check.
+
+**Variability and decision rule.** Both arms start from the identical serialized world and take
+the same fixed 100 kyr steps, so the replay is expected to be deterministic. Keep all 10
+per-step observations. If sea 26 lands near the 25% reduction threshold, or event counts suggest
+a marginal effect, rerun both arms from the same save before interpreting the comparison.
+
+**Run controls.** Run baseline first, then branch, one replay at a time and without unit or
+stress tests running. Record exact commits, command, endpoint values, runtime, and peak RSS in
+the results section after both runs complete.
