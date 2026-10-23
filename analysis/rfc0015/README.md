@@ -35,11 +35,11 @@ cd backend
 | …warmest month below −1.8 °C | < 0.01% | < 0.01% |
 
 **Sea-ice balance by latitude** (RFC 0015 D6, `sea_ice_balance`; both saves are at Earth
-tilt, so both give the same rows). `T_ice` is the land-temperature construct at sea level,
+tilt, so both give the same rows). `T_si` is the land-temperature construct at sea level,
 FDD and TDD are degree-days below −1.8 °C and above 0 °C, growth is Stefan's law, and the
 state uses an ocean heat flux of 2 W m⁻²:
 
-| Latitude | Ocean baseline | `T_ice` | FDD | TDD | Growth (m/yr) | State, `DDF_ice` 4 or 7 mm |
+| Latitude | Ocean baseline | `T_si` | FDD | TDD | Growth (m/yr) | State, `DDF_ice` 4 or 7 mm |
 |---:|---:|---:|---:|---:|---:|---|
 | 50° | 16.7 °C | 6.3 °C | 0 | 2,333 | 0 | ice-free |
 | 55° | 14.7 °C | 2.6 °C | 289 | 1,472 | 0.58 | seasonal |

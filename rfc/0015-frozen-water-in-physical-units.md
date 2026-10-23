@@ -323,69 +323,92 @@ Each removal has one owner:
 
 ### D1. Physical mass balance
 
-All rates are metres of ice per year; `ice_sheet.SurfaceClimate.rates` integrates them over
-the step as today. A heat flux `q` in W m⁻² melts ice at `q · Y / (ρ_i L_f)` m/yr, with
-`Y` = 3.15576 × 10⁷ s per year, ρ_i = 917 kg m⁻³ and L_f = 334 kJ kg⁻¹: one named conversion,
-`W_M2_TO_M_ICE_PER_YR` ≈ 0.103 m yr⁻¹ per W m⁻² (new), used by D1 and D6.
+**Units.** The physical rates below are metres of ice per year. `SurfaceClimate.rates` keeps
+its interface in m/Myr, which its callers expect (`dt_myr` in the body solve, `/ 1e6` in
+`_diagnose_flow`, `_melt_bare_snow`, the ledgers), so the m/yr rates are multiplied by 10⁶ in
+one place, inside `rates()`. Every conversion to m/yr of ice:
 
-- **Accumulation** = snowfall in water equivalent × ρ_w / ρ_i, with ρ_w / ρ_i = 1000/917.
-  This replaces `GLACIER_ACCUMULATION_RATE`'s model unit and removes `MODEL_UNIT_SCALE`.
+| Quantity | Its unit | To m/yr of ice |
+|---|---|---|
+| Precipitation `P` | mm/yr water equivalent | × 10⁻³ × ρ_w / ρ_i |
+| Degree-day factor × degree-days | mm w.e. d⁻¹ K⁻¹ × K·d/yr | × 10⁻³ × ρ_w / ρ_i |
+| A heat flux `q` | W m⁻² | × `W_M2_TO_M_ICE_PER_YR` = Y / (ρ_i L_f) ≈ 0.103 |
+| Frictional heat `τ_b u_b` | Pa × m/yr = J m⁻² yr⁻¹ | ÷ (ρ_i L_f), i.e. `W_M2_TO_M_ICE_PER_YR × τ_b u_b / Y` |
+| Sliding speed `u_b` | m/yr (`IceStep.sliding_speed_m_per_yr`) | — |
+
+Here Y = 3.15576 × 10⁷ s per year, ρ_w = 1000 and ρ_i = 917 kg m⁻³, and L_f = 334 kJ kg⁻¹.
+`W_M2_TO_M_ICE_PER_YR` is one named constant (new), used by D1 and D6. A unit test checks
+each row.
+
+- **Accumulation** = snowfall × 10⁻³ × ρ_w / ρ_i. This replaces
+  `GLACIER_ACCUMULATION_RATE`'s model unit and removes `MODEL_UNIT_SCALE`.
 - **Snow fraction from the seasonal cycle.**
   - Precipitation is assumed spread evenly over the year (a stated proxy; see Assumptions).
-    Its snow fraction is the share of the year below the rain–snow threshold `T_s`:
-    `f_snow(T, A) = ½ + arcsin(clip((T_s − T) / A, −1, 1)) / π`.
+    Its snow fraction is the share of the year below the rain–snow threshold `T_rs`:
+    `f_snow(T, A) = ½ + arcsin(clip((T_rs − T) / A, −1, 1)) / π`.
   - Where `A` → 0 (a zero-tilt world), `f_snow` falls back to the existing continuous
-    `ICE_SNOW_RAMP_C` ramp around `T_s`, so the root find never meets a jump.
+    `ICE_SNOW_RAMP_C` ramp around `T_rs`, so the root find never meets a jump.
   - On ice, `T` is the ice surface at the trial thickness; elsewhere, the ground.
 - **One partition of precipitation per cell.** Each cell's precipitation `P` is split once,
   after the ice solve, into disjoint parts that sum to `P`. With `w` the lake's wet fraction
   (RFC 0014 D1) and `c` the closing ice cover from the body solve (`_plastic_body`'s cover):
-  - **lake:** `w · P` goes to the lake (D4);
+  - **lake:** `w · P` goes to the lake, as liquid supply or onto its cap (D4);
   - **ice:** snow `(1 − w) c f_snow(ice) P` is the body's accumulation, and rain
     `(1 − w) c (1 − f_snow(ice)) P` is routed as water on the ice (D8). `rates()` returns both
     at the same trial thickness, so the root sees the same split that is booked;
   - **bare ground:** snow `(1 − w)(1 − c) f_snow(ground) P`, and rain
-    `(1 − w)(1 − c)(1 − f_snow(ground)) P`, which is runoff. As today, snow on a cell outside
-    every ice body melts where it fell within the step (`_melt_bare_snow`), and a bare cell
-    whose balance is positive joins a body instead (`step_ice`'s `positive`).
+    `(1 − w)(1 − c)(1 − f_snow(ground)) P`, which is runoff. As today, where the bare part of a
+    cell inside a body's domain has a positive balance and so feeds the body (`_plastic_body`'s
+    `feeds`, `_Shape`'s `bare` term), its snow is the body's accumulation; elsewhere it melts
+    where it fell within the step (`_melt_bare_snow`).
 
-  The liquid source routed by hydrology is the sum of the rain shares and melt, computed after
-  `step_ice` returns. A unit test checks that the parts sum to `P` on every cell.
+  `SurfaceClimate` receives `(1 − w) P`, so the lake's share isn't also counted as glacier
+  accumulation or bare-ground melt. The liquid source routed by hydrology is the sum of the
+  rain shares and melt, computed after `step_ice` returns. A unit test checks that the parts
+  sum to `P` on every cell, and that the ledger's accumulation and `snow_melted_m3` match them.
 - **The breach gate reads a stated lag.** `breaching.breach_depressions` runs before
   `step_ice` and needs a liquid supply. Its `WaterBalance` reads the same partition at the
-  **opening** state: `w_open · (1 − f_snow(ground)) · P + (1 − w_open) [(1 − c_open)(1 −
-  f_snow(ground)) + c_open (1 − f_snow(ice at H_open))] · P`, with `w_open` RFC 0014's
-  last-step wet fraction and `c_open`, `H_open` the opening ice cover and thickness. This is
-  a one-step lag on the cover only, in place of today's `is_frozen` switch.
-- **Surface melt** = DDF × positive degree-days × ρ_w / ρ_i.
+  **opening** state: `w_open · P + (1 − w_open) [(1 − c_open)(1 − f_snow(ground)) + c_open
+  (1 − f_snow(ice at H_open))] · P`, with `w_open` RFC 0014's last-step wet fraction and
+  `c_open`, `H_open` the opening ice cover and thickness. The lake's whole share counts, as in
+  D4, since snow on a lake is lake water. This is a one-step lag on the cover only, in place
+  of today's `is_frozen` switch.
+- **Surface melt** = DDF × positive degree-days × 10⁻³ × ρ_w / ρ_i.
   - Positive degree-days = 365.25 × `seasonal_positive_degrees` on the lapse-corrected surface.
   - `DDF_snow` = 4 mm w.e. d⁻¹ K⁻¹ (Braithwaite's range), applied to the year's snow.
   - `DDF_ice` is applied to bare ice once that snow is gone. Its value must be sourced and
     verified before implementation (G2). #368's runs used 7 mm w.e. d⁻¹ K⁻¹, not verified.
 - **Basal melt** on the bed is an energy balance, in m/yr of ice:
-  `m_b = W_M2_TO_M_ICE_PER_YR × max(0, Q_b)`, with the net basal heat
-  `Q_b = G + τ_b u_b − k · max(0, T_pmp − T_s) / H` in W m⁻².
+  `m_b = W_M2_TO_M_ICE_PER_YR × max(0, Q_b)`, with the net basal heat in W m⁻²
+  `Q_b(H) = G + Q_f − k · max(0, T_pmp(H) − T_surf(H)) / H`.
   - `G` = 0.06 W m⁻² geothermal flux. Alone, it melts about 6.2 mm/yr of ice.
-  - `τ_b u_b` is frictional heating at the sliding base. `τ_b` is the profile's own yield
-    stress (`ice_sheet.yield_stress_pa`, 30–100 kPa), and `u_b` the sliding speed. At 100 kPa
-    and 100 m/yr it is 0.32 W m⁻², about 33 mm/yr of ice.
-  - `k · max(0, T_pmp − T_s) / H` is the heat conducted up into the ice, with
+  - `Q_f = τ_b u_b / Y` is frictional heating at the sliding base, in W m⁻². `τ_b` is the
+    profile's yield stress (`ice_sheet.yield_stress_pa`, 30–100 kPa) and `u_b` the sliding
+    speed in m/yr. At 100 kPa and 100 m/yr it is 0.32 W m⁻², about 33 mm/yr of ice.
+  - `k · max(0, T_pmp − T_surf) / H` is the heat conducted up into the ice, with
     `k = ICE_THERMAL_CONDUCTIVITY_W_M_K` = 2.1 W m⁻¹ K⁻¹, `T_pmp` the pressure-melting point
-    (`−ICE_PRESSURE_MELT_C_PER_M · H`) and `T_s` the ice-surface temperature. Under 1.5 km of
-    ice and a −20 °C surface it is about 0.026 W m⁻², which cuts geothermal melt by about 40%.
-    Ice can't be warmer than its melting point, so a surface above `T_pmp` conducts nothing to
-    the bed: its heat goes into surface melt, which the degree-day term already counts. The
-    clamp also keeps the term bounded as H → 0.
-  - **One thermal state.** The bed is thawed where `Q_b ≥ 0`, with the same lagged `u_b`, and
-    frozen elsewhere. That one test sets `warm_based`, `yield_stress_pa`'s softness, sliding,
-    and melt, so melt is zero exactly at the boundary and continuous across it, and the
-    `ICE_THAW_RAMP_C` ramp goes. Without friction this is today's test: `_bed_excess_c ≥ 0` is
-    the condition `G ≥ k (T_pmp − T_s) / H`.
+    (`−ICE_PRESSURE_MELT_C_PER_M · H`) and `T_surf` the ice-surface temperature. Under 1.5 km
+    of ice and a −20 °C surface it is about 0.026 W m⁻², which cuts geothermal melt by about
+    40%. Ice can't be warmer than its melting point, so a surface above `T_pmp` conducts
+    nothing to the bed: its heat goes into surface melt, which the degree-day term already
+    counts. The clamp also keeps the term bounded as H → 0.
+  - **Friction is lagged as a whole.** `Q_f` is last step's frictional heat, `τ_b u_b / Y`
+    with both `τ_b` and `u_b` from last step's state (the hydrology cache's `IceStep`), and 0
+    on nodes that didn't exist then. Taking `τ_b` from this step would make the test below
+    circular, since `τ_b` depends on the thermal state and the thermal state on `τ_b`. The lag
+    is G0 arm (j)'s subject.
+  - **One thermal state.** With `Q_f` fixed for the step, the bed is thawed where
+    `Q_b(H) ≥ 0`, and frozen elsewhere. Each use reads it at its own thickness:
+    - melt, inside `rates()`, at the trial thickness, so melt is zero exactly at the boundary
+      and continuous across it, and the `ICE_THAW_RAMP_C` ramp goes;
+    - yield stress (`yield_stress_pa`'s softness) and body membership, at the opening
+      thickness, as today (G0 arm (f) tests re-evaluating them at the solved thickness);
+    - the diagnostic `warm_based` and sliding, at the closing thickness.
+
+    Without friction this is today's test: `_bed_excess_c ≥ 0` is the condition
+    `G ≥ k (T_pmp − T_surf) / H`.
   - **Inside the root.** `m_b` is a per-cell rate in `rates()`, so the solve's balance `B(d)`
-    includes it. `u_b` is last step's sliding speed from the hydrology cache
-    (`IceStep.sliding_speed_m_per_yr`), 0 on nodes that didn't exist then: a one-step lag,
-    tested as a G0 arm. The current step's sliding speed depends on the solved shape, so
-    using it would need an outer iteration (G1 prices it).
+    includes it.
 - **Bounds:** every rate ≥ 0; `f_snow` ∈ [0, 1]; melt in a step can't exceed the opening ice
   plus that step's accumulation (the solve's existing volume contract).
 - **Meltwater** is converted by mass: ice volume × ρ_i / ρ_w (the TODO at
@@ -414,7 +437,7 @@ each cell's depth-averaged velocity and, on a thawed bed, a sliding speed
 - the mass-balance surface, which uses last step's isostatic deflection.
   `erosion._apply_ice_load` already brings the bed into balance with the closing ice in the
   same step;
-- frictional melt, from last step's sliding speed (D1);
+- frictional heat, from last step's yield stress and sliding speed (D1);
 - frozen river and lake ice, injected a step late (removed by D4, D5).
 
 **Fixes, each adopted only if G0 shows it is needed:**
@@ -440,6 +463,17 @@ each cell's depth-averaged velocity and, on a thawed bed, a sliding speed
   - The feedback is positive (lower sea level grounds more ice), so convergence comes from
     the bracket, not from fixed-point iteration. A bracket that can't be found (no sign
     change within ±500 m) is logged and the step falls back to the opening sea level.
+  - **Discontinuities.** As `h` crosses a sill or a node's threshold, the connected-ocean,
+    flotation, eligibility and membership masks change, and `g(h)` can jump, so a sign change
+    need not hold a zero. The solve therefore checks water, not bracket width. Its residual is
+    the water-volume imbalance `r(h) = C(h) − (V_total − V_trapped(h))`, expressed as metres
+    of sea level over the ocean area.
+    - Converged: `|r|` ≤ 1 m at the final `h`.
+    - Otherwise the final bracket spans an active-set transition: the masks differ between
+      its two ends. The solve evaluates `r` on both sides, keeps the side with the smaller
+      `|r|`, and logs the step, the masks that changed, and both residuals.
+    - G1 reports the distribution of `|r|`, the share of transition steps, and the largest
+      transition residual, including steps where body membership changed.
 - **Deflection** for the mass-balance surface is updated inside the same outer loop.
 
 **Bodies slower than the step.** A body's response time is `τ = 1 / (−∂B_V/∂V)` at its root,
@@ -518,10 +552,17 @@ RFC 0014 owns lake water: its volume, seasonal ice cover and the bounded lake ic
   routing on it follows D8.
   - **Which ice:** the hierarchy, hypsometry, spill routing and `_compute_flow_direction` all
     run before `step_ice` in `compute_hydrology`, and are built once per step. They read the
-    **opening** ice: a one-step lag, like the breach gate's. G1 measures the liquid
-    `lake_depth` that sits under the closing ice during that lag. If it exceeds 1% of global
-    lake volume, the hierarchy is rebuilt on the closing ice after the solve instead, at the
-    cost G1 reports.
+    **opening** ice: a one-step lag, like the breach gate's. D8's φ routing exists only after
+    the solve and reads the **closing** ice; at the margin it hands water to the ground's
+    `flow_target`, built on the opening ice.
+  - **The lag's measure and trigger.** G1 measures the liquid `lake_depth` under closing
+    glacier ice, as a share of global lake volume, at every step. If its maximum over the
+    steps of any diagnosis save exceeds 1%, the hierarchy is rebuilt on the closing ice after
+    the solve instead, at the cost G1 reports.
+  - **The one exception to one owner per cell.** For the step in which ice covers it, a cell
+    holds both closing `glacier_depth` and liquid `lake_depth`. For that step lithosphere
+    loads the ice (`grounded_ice_load_kg_m2`, as today), eustasy counts the lake water as
+    lake water and the ice by D6, and the maps draw the ice. The next step the water spills.
   - So a ground depression under an established ice sheet is not a lake basin, and holds no
     water under the ice (consistent with D8's omission of subglacial lakes).
   - When glacier ice advances over a lake, the `lake_depth` it now covers is booked as lake
@@ -580,8 +621,8 @@ RFC 0014 owns lake water: its volume, seasonal ice cover and the bounded lake ic
 - **Sea ice is set by the air above it, not by the water below.** The ocean temperature can't
   mark perennial ice (Evidence item 9). Each ocean cell instead gets a derived sea-ice state
   from a degree-day balance:
-  - **Surface temperature over ice, `T_ice`.** Where ice covers the sea, the ocean's heat no
-    longer reaches the air, and the surface behaves like land at sea level. `T_ice` is the
+  - **Surface temperature over ice, `T_si`.** Where ice covers the sea, the ocean's heat no
+    longer reaches the air, and the surface behaves like land at sea level. `T_si` is the
     climate's land-temperature construct at sea level for the cell's insolation
     (`climate.compute_land_temperature` at elevation 0), with the ice-age cooling the climate
     already applies, **plus** the cell's ocean-current anomaly, `ocean_temperature_c −
@@ -603,17 +644,18 @@ RFC 0014 owns lake water: its volume, seasonal ice cover and the bounded lake ic
     the summer and multiyear ice builds; *seasonal* where `FDD > 0` but it doesn't;
     *ice-free* where `FDD` = 0. The ice-covered share of the year, `f_ice`, is 1 for
     perennial cells and the share of the year below `T_f` otherwise.
-  - Ice-age cooling lowers `T_ice`, so sea ice grows in an ice age without a separate cap.
+  - Ice-age cooling lowers `T_si`, so sea ice grows in an ice age without a separate cap.
   - **Scale check.** At Earth tilt, without the current anomaly, this balance gives perennial
-    ice poleward of about 70°, seasonal ice at 55–65°, and open water at 50°. Poleward of 70°,
-    ice grows 1.9–2.9 m in a winter from open water. That is Stefan's upper bound for
+    ice poleward of about 66° (65.75° on a 0.25° grid), seasonal ice equatorward of that to
+    about 52°, and open water at 50°. Poleward of 70°, ice grows 1.9–2.9 m in a winter from
+    open water. That is Stefan's upper bound for
     first-year ice without snow cover; multiyear ice equilibrates near 288 cm
     [[Maykut & Untersteiner, 1971]](#ref-maykut1971), the same magnitude but a different
     quantity. The bands are the same for `DDF_ice` = 4 and 7 mm w.e. d⁻¹ K⁻¹
     (`measure_frozen_water.py`'s `sea_ice_balance`).
 - **What reads sea ice:** the maps (D7: perennial sea ice drawn as ice; the Polar Sea Ice
   class where `f_ice` ≥ 0.5) and the inspector. On perennial sea-ice cells the Temperature
-  view and the inspector show `T_ice` as the surface temperature, not the air over the open
+  view and the inspector show `T_si` as the surface temperature, not the air over the open
   ocean. Climate doesn't read sea ice: there is no ice albedo, and the ocean temperature isn't
   changed (see Assumptions). Sea ice has no persisted
   thickness: metres of floating ice are negligible as a load or reservoir
@@ -697,16 +739,24 @@ RFC 0014 owns lake water: its volume, seasonal ice cover and the bounded lake ic
 - a **diagnosis set** of ≥ 3 saves for G0–G6, including:
   - seed 997271774 at 87.4 Myr;
   - seed 649658380 at 6.4 Myr;
-  - one save replayed with the Ice Age Frequency control on, with a period of at least 8 of
-    the longest step tested (8 Myr when 1 Myr steps are run), so no arm aliases the forcing.
+  - one save replayed with ice ages on, with a period of at least 8 of the longest step
+    tested (8 Myr when 1 Myr steps are run), so no arm aliases the forcing. The Ice Age
+    Frequency slider stops at 1 Myr (`ICE_AGE_MAX_YEARS` in `ControlsModal.tsx`), so the
+    period is set through `POST /world/controls`, which accepts any non-negative
+    `ice_age_period_years`, or by the replay script setting `World.ice_age_period_years`.
+  - a report-only run of the same save at a period users can pick, 1 Myr, with 0.25 Myr steps,
+    so the selectable range is seen at physical rates. It isn't pass/fail: 4 steps per cycle
+    sample the forcing coarsely (see Assumptions).
 - a **held-out acceptance set** of ≥ 3 other saves, at least one replayed with ice ages on
   under the same period rule, never used for gates or knob choices.
 
 Every gate run includes an `origin/main` arm on the same save and steps, as the baseline.
 
 - **G0: what makes the implicit solve swing?** At D1's physical rates, on the diagnosis set,
-  over 10 Myr at 0.25 Myr and 1 Myr steps, with checkpoints every step. Every arm runs with
-  frictional melt from last step's sliding speed (D1's default) unless it says otherwise.
+  at 0.25 Myr and 1 Myr steps, with checkpoints every step: over 10 Myr on saves without ice
+  ages, and over at least two forcing periods plus 2 Myr of spin-up (≥ 18 Myr at an 8 Myr
+  period) on the ice-age save. Every arm runs with D1's lagged frictional heat unless it says
+  otherwise.
 
   **Arms:**
   - (a) today's inputs and root rule;
@@ -717,24 +767,32 @@ Every gate run includes an `origin/main` arm on the same save and steps, as the 
   - (d) frozen river and lake ice disabled;
   - (e) D1's `f_snow` in place of today's `is_frozen` switch;
   - (f) membership and yield stress re-evaluated at the solved thickness;
-  - (j) frictional melt from the current step's sliding speed, by an outer iteration on the
-    solved shape, in place of last step's;
+  - (j) the passing combined arm, with frictional heat from the current step's state by an
+    outer iteration on the solved shape, in place of last step's (run only once a combined
+    arm passes);
   - (g) all of (b′), (c′), (d), (e) and (f);
   - (g−x) for each x in {(b′), (c′), (d), (e), (f)}: (g) without x;
   - (h1) today's inputs, always keeping the largest stable root; (h2) the smallest;
-  - (i1), (i2): (g) with (h1) or (h2).
+  - (i1), (i2): (g) with (h1) or (h2);
+  - (i1−x), (i2−x) for each input fix x: (i1) or (i2) without x, run only when that arm
+    passes.
 
   Every arm enumerates all roots on `[d_min, d_max]` each step and logs, per body, the number
   of stable roots and the root kept. A body with no stable root under (h1) or (h2) takes D2's
   unstable-branch substeps, and is logged.
 
   **Metrics,** after the first 2 Myr: the *swing*, the largest step-to-step change in global
-  ice volume, |ΔV| / V; and the *step gap*, |V(0.25 Myr steps) − V(1 Myr steps)| / V at
-  10 Myr. On saves without ice ages, an arm *passes* when its swing is below 25% and its step
-  gap below 10%. On the ice-age save, whose swing is forced, an arm passes when its step gap is
-  below 10% and its ice volume follows the forcing: the overshoot of V beyond its range over
-  the first full cycle is below 25%, and its lag behind the intensity curve is below a
-  quarter period.
+  ice volume, |ΔV| / V; and the *step gap*, |V(0.25 Myr steps) − V(1 Myr steps)| / V at the
+  run's end. On saves without ice ages, an arm *passes* when its swing is below 25% and its
+  step gap below 10%. On the ice-age save, whose swing is forced, an arm passes when its step
+  gap is below 10% and its ice volume follows the forcing:
+  - the second cycle's range of V exceeds the first's by less than 25% (no growing
+    oscillation), measured on the 0.25 Myr run;
+  - V's lag behind the intensity curve, at its maximum, is at most one step of the longest
+    arm (1 Myr).
+
+  An arm passes the gate only if it passes on every diagnosis save. The forcing-following
+  condition is diagnosis-only; acceptance carries the step gap and the period rule.
 
   **Outcome:**
   - An input fix is adopted if its own arm passes where (a) fails, **or** if a combined arm
@@ -744,23 +802,27 @@ Every gate run includes an `origin/main` arm on the same save and steps, as the 
   - The root rule changes only if (h1) or (h2) passes where (a) fails, or (i1) or (i2) passes
     where (g) fails. It becomes the rule that passed. A correlation between root counts and
     volume jumps in (a) is reported but doesn't decide it.
-  - The outer iteration on the current step's sliding is adopted if (j) moves the swing or the
-    step gap by more than 5 percentage points from (a); otherwise last step's sliding stays.
+  - The outer iteration on the current step's frictional heat is adopted if (j) reduces the
+    passing combined arm's swing or step gap by more than 5 percentage points, or if that arm
+    fails without it on any save where (j) passes; otherwise the lagged heat stays.
   - If (g), (i1) and (i2) all fail, the instability is in the solve itself: D2 substeps all
     bodies (alternative D, per body), and the RFC is revised.
 - **G1: where does the endpoint premise hold?** On the diagnosis set, per body: τ from
   `−∂B_V/∂V` at the root (D2's perturbations), `H/|b|` alongside, and for bodies above
   10⁴ km² a direct check that substepping reaches the endpoint volume within 1%. Also report:
-  the outer iteration count and per-iteration cost of any loop G0 kept; the bodies that
-  change marine status within the sea-level bracket; the cost of the root enumeration; the
-  membership iterations and non-convergences; and frictional melt's share of total melt.
+  the outer iteration count and per-iteration cost of any loop G0 kept; the sea-level water
+  residual `|r|`, the share of active-set transition steps and their largest residual (D2);
+  the bodies that change marine status within the sea-level bracket; the cost of the root
+  enumeration; the membership iterations and non-convergences; frictional melt's share of
+  total melt; and the liquid `lake_depth` under closing glacier ice during D4's lag, as a
+  share of global lake volume, with its maximum per save.
   *Pass:* ≥ 95% of ice volume has τ ≤ 0.1 Δt at 0.25 Myr steps. Bodies that fail are
   substepped; report their share and cost. Seed 649658380's `H/|b|` of ≈ 110 kyr suggests it
   may fail there (see Falsification), though frozen river ice, which D5 removes, feeds much
   of that ice.
 - **G2: melt factors and snow phase.** Source and verify `DDF_ice`. Run sensitivity of ice
   area and volume to `DDF_snow` ∈ {3, 4, 5}, `DDF_ice` across its sourced range and
-  `T_s` ∈ {0, 1, 2} °C on the diagnosis set. *Outcome:* fix the starting values. A knob whose
+  `T_rs` ∈ {0, 1, 2} °C on the diagnosis set. *Outcome:* fix the starting values. A knob whose
   range moves ice volume by more than 2× is flagged as weakly constrained in the RFC.
 - **G3: erosion and its limits.** For each (K_G, l) pair in D3, report applied glacial
   erosion, its applied/raw ratio and its 0.25 vs 1 Myr gap. Report flattening's volume beside
@@ -781,22 +843,33 @@ Every gate run includes an `origin/main` arm on the same save and steps, as the 
     latitude (for example NSIDC's), sourced and verified in this gate. Earth-tilt saves are
     compared with it as a sanity check, since the model's continents and currents differ from
     Earth's.
-  - *Outcome:* keep the proxies if, without ice ages on an Earth-tilt save, the perennial edge
-    falls within 10° of latitude of the observed one in each hemisphere, and the current
-    anomaly moves the edge by at least 2° somewhere along it (so the ocean's heat transport
-    is felt). Otherwise revise the proxies before implementation.
+  - **Edge statistic.** In each hemisphere, the *equivalent-area edge*: the latitude that
+    encloses the same area as the perennial ice, poleward of it. A hemisphere with no ocean
+    poleward of 60° has no edge, and is reported and excluded.
+  - **Expected margin.** Without the current anomaly the zonal edge at Earth tilt is 65.75°
+    (pure functions, 0.25° grid). The anomaly can move it by at most about ±4°
+    (`advect_ocean_temperature` samples the 30 °C-range ocean baseline 6° upstream, against
+    `T_si`'s 55 °C-range land construct). So a late-summer observed edge near 75° would put the
+    10° test near its bound before any run; the gate records that margin when the reference is
+    sourced.
+  - *Outcome:* keep the proxies if, without ice ages on an Earth-tilt save, the equivalent-area
+    edge falls within 10° of latitude of the observed one in each hemisphere that has one, and
+    the current anomaly moves the local edge by at least 2° somewhere along it (so the ocean's
+    heat transport is felt). Otherwise revise the proxies before implementation.
 - **G6: meltwater rivers.** Against the `origin/main` arm on the diagnosis set, report for
   each meltwater source the water reaching the ocean, lakes and transit loss; the number of
   filled φ pits and the water passing through them; the number of visible river networks
-  whose source lies within one cell of an ice margin; and their largest discharges.
-  *Outcome:* report; the acceptance criteria below set the bar.
+  whose source lies within one cell of an ice margin; their largest discharges; and the
+  surface melt routed by φ on warm-based ice thicker than 1 km, where a thawed bed is least
+  like temperate ice (see Assumptions). *Outcome:* report; the acceptance criteria below set
+  the bar.
 
 ### Knobs
 
 | Knob | Start | Source | Tuning |
 |---|---|---|---|
 | ρ_w / ρ_i | 1000/917 | Densities | None |
-| `T_s` (rain–snow threshold) | 1.0 °C | [[Jennings et al., 2018]](#ref-jennings2018) | G2 sensitivity 0–2 °C |
+| `T_rs` (rain–snow threshold) | 1.0 °C | [[Jennings et al., 2018]](#ref-jennings2018) | G2 sensitivity 0–2 °C |
 | `DDF_snow` | 4 mm w.e. d⁻¹ K⁻¹ | [[Braithwaite, 2008]](#ref-braithwaite2008) | G2 sensitivity 3–5 |
 | `DDF_ice` | To be sourced in G2 | Literature, unverified | G2 |
 | G (geothermal flux) | 0.06 W m⁻² | Existing `ICE_GEOTHERMAL_FLUX_W_M2` | Out of scope |
@@ -805,7 +878,7 @@ Every gate run includes an `origin/main` arm on the same save and steps, as the 
 | (K_G, l) | (1 × 10⁻⁴, 0.65) | [[Cook et al., 2020]](#ref-cook2020) | G3 pairs: (1 × 10⁻⁴, 1) [[Humphrey & Raymond, 1994]](#ref-humphrey1994); l = 2 only with a verified coefficient |
 | `SEAWATER_FREEZING_C` | −1.8 °C | Physical | None |
 | `F_w` (ocean heat flux under sea ice) | 2 W m⁻² | [[Maykut & Untersteiner, 1971]](#ref-maykut1971) (1.3–2.7) | G5 sensitivity |
-| `T_ice`, `A` over sea ice | Land construct at sea level; maritime amplitude | Design choice (proxies) | G5 |
+| `T_si`, `A` over sea ice | Land construct at sea level; maritime amplitude | Design choice (proxies) | G5 |
 | Polar Sea Ice class threshold | `f_ice` ≥ 0.5 | Design choice | G5 |
 | Endpoint threshold τ / Δt | 0.1 | Design choice | Owner may revise after G1 |
 | τ perturbations | ±5%, ±10%, root tolerance ÷ 10 | Design choice | G1 |
@@ -902,11 +975,12 @@ withdrawal can be handled part by part.
     energy balance; `W_M2_TO_M_ICE_PER_YR` (new); `MODEL_UNIT_SCALE`, the model-unit
     `GEOTHERMAL_BASAL_MELT_M_PER_MYR` and `ICE_THAW_RAMP_C` removed;
   - `warm_based` and `yield_stress_pa` read one thermal state from the full basal balance,
-    with last step's sliding speed;
+    with last step's frictional heat, each at its own thickness (D1);
+  - `SurfaceClimate` takes `(1 − w) P`, so the lake's share isn't counted twice;
   - `_solve_plastic_body`: root enumeration and logging; the root rule as G0 decides;
   - `step_ice`: the sea-ice cap block removed; membership, sea level and deflection updates as
-    G0 decides; per-body substepping for slow and unstable bodies (new); last step's sliding
-    speed as an input;
+    G0 decides; per-body substepping for slow and unstable bodies (new); last step's frictional
+    heat (yield stress × sliding speed) as an input;
   - `IceLedger`: `frozen_river_ice_m3`, `frozen_river_capped_m3` and `frozen_lake_m3` deleted;
     lake-cap hand-off and frictional-melt terms (new).
 - `backend/app/hydroclimate/lakes.py`: hypsometry and hierarchy read bed + opening glacier ice
@@ -920,7 +994,7 @@ withdrawal can be handled part by part.
   `_ICE_WATER_EQUIVALENT` kept for the conversion; a comment tying it to
   `_ocean_connected_mask`.
 - `backend/app/hydroclimate/climate.py`: `compute_land_temperature` reused at sea level, and
-  the ocean-current anomaly (`ocean_temperature_c` minus the baseline) exposed, for `T_ice`
+  the ocean-current anomaly (`ocean_temperature_c` minus the baseline) exposed, for `T_si`
   (no change to the ocean temperature).
 - `backend/app/hydroclimate/biomes.py`: `classify_pelagic` and `_smooth_biome_classify` take
   the sea-ice state in place of `has_sea_ice`; the Ice Cap override for drawn glacier and lake
@@ -930,12 +1004,13 @@ withdrawal can be handled part by part.
   Biome views; `_biome_fields` carries surface elevation, lapse-corrected temperature,
   `lake_ice_m` and the sea-ice state.
 - `backend/app/main.py`: the inspector shows surface and bed elevation, sea-ice state, and
-  `T_ice` as the surface temperature on perennial sea ice.
+  `T_si` as the surface temperature on perennial sea ice.
 - `frontend/src/legendData.ts`: legend text for ice, lake ice and sea ice.
 - `rfc/0014-lake-water-volume-and-freezing.md`: a note on D2(b)'s snow bullet and the
   `IceLedger` fields, pointing here.
 - **Tests:**
-  - `test_ice_sheet.py`: physical rates and the W m⁻² → m/yr conversion; root enumeration and
+  - `test_ice_sheet.py`: physical rates and every row of D1's units table, including
+    frictional heat from Pa × m/yr; root enumeration and
     the fixed root rules; basal melt continuous at the thaw boundary, including a cell with
     non-zero sliding; basal melt bounded as H → 0 under a surface above 0 °C; frictional melt
     inside the root; substepped bodies match the endpoint at steady state; ledger closure;
@@ -974,13 +1049,13 @@ withdrawal can be handled part by part.
   `f_snow` is a refinement G2 can test.
 - **Degree-day melt** is a temperature-index proxy for the energy balance. `DDF_ice` isn't yet
   verified. Shortwave and albedo effects are folded into the factors.
-- **Frictional melt** uses last step's sliding speed. The basal energy balance assumes steady
+- **Frictional melt** uses last step's frictional heat (its yield stress and sliding speed). The basal energy balance assumes steady
   conduction through the ice, without advection or strain heating.
 - **Meltwater routing** follows the hydraulic potential on warm-based ice and the ice surface
   on cold-based ice, at the annual mean. A thawed bed stands in for temperate ice: much of a
   large warm-based sheet is cold above its bed, and its surface water reaches the bed only
   through moulins or fractures. The water ends at the margin either way; G6 reports how much
-  surface melt is routed by φ on thick warm-based ice. Seasonal drainage evolution, moulins, supraglacial
+  surface melt is routed by φ on warm-based ice thicker than 1 km. Seasonal drainage evolution, moulins, supraglacial
   lakes and outburst floods aren't represented, and subglacial lakes are omitted: water passes
   through φ pits within the step.
 - **Abrasion only.** Quarrying and subglacial water pressure are not represented, and the
@@ -990,8 +1065,13 @@ withdrawal can be handled part by part.
 - **Sea ice** comes from a land-temperature construct standing in for the air over ice, shifted
   by the ocean-current anomaly, a borrowed maritime amplitude, Stefan growth without snow cover
   (an upper bound on first-year growth), and a single ocean heat flux. It has no persisted
-  thickness, salt budget, drift or climate feedback. The Temperature view shows `T_ice` over
-  perennial sea ice, but the climate's own air temperature there stays the ocean's.
+  thickness, salt budget, drift or climate feedback. The Temperature view shows `T_si` over
+  perennial sea ice, but the climate's own air temperature there stays the ocean's. The
+  current anomaly can move the ice edge by at most about ±4° of latitude, far less than
+  Earth's strongest currents do.
+- **Ice-age forcing is sampled once per step.** The climate reads the ice-age intensity at the
+  step's time, so a period shorter than a few steps is aliased. Periods users can pick
+  (0.1–1 Myr) are sampled 1–10 times per cycle at 0.1–1 Myr steps.
 - **Isostatic relaxation** is taken as short against the step; the model's ~10 kyr isn't
   sourced here.
 - **Two saves, one density, no ice ages** for all evidence so far. The diagnosis and
@@ -1021,7 +1101,9 @@ withdrawal can be handled part by part.
   visible river networks sourced at ice margins is reported against `origin/main`
   (proposed; G6 informs it). Bare-ground snowmelt is reported separately.
 - [ ] **Sea level:** unit tests show floating ice, and ice grounded exactly at flotation,
-  leave sea level unchanged; G4's difference is recorded.
+  leave sea level unchanged; G4's difference is recorded. If D2's sea-level loop is adopted,
+  on each held-out save the water residual `|r|` is ≤ 1 m of sea level on at least 99% of
+  steps, and ≤ 10 m on every active-set transition step (proposed).
 - [ ] **Sea ice:** no ocean cell carries floating `glacier_depth` (every ice-bearing ocean
   cell is grounded by `is_grounded`); G5's extents recorded and its outcome met.
 - [ ] **Maps:** unit tests show perennial ice drawn on land, grounded marine, lake and sea
@@ -1057,7 +1139,7 @@ withdrawal can be handled part by part.
   *Revise:* D8.
 - **Sea ice can't be placed from the air above it:** at every G5 setting, perennial sea ice
   covers no ocean without ice ages on an Earth-tilt save, or covers most of the ocean poleward
-  of 50°. *Revise:* D6's `T_ice` proxy, or give sea ice an energy balance with the ocean.
+  of 50°. *Revise:* D6's `T_si` proxy, or give sea ice an energy balance with the ocean.
 - **The maps' mismatch is not an artefact of slow ice:** after D1–D2, more than 20% of EF land
   still carries no ice on a held-out save with positive net snowfall there. *Revise:* the
   snow-phase or melt law, not the maps.
