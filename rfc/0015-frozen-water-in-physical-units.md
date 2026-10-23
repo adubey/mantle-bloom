@@ -2,7 +2,7 @@
 
 - **Status:** Draft
 - **Date:** 2026-10-23
-- **Related:** #368 (evidence; PR #536), #353 and #359 (ice-sheet model, decision B), #355 (water units), #503 and #504 (lake freezing at `WATER_TO_ICE`), #297 (balanced lakes), RFC [0014](0014-lake-water-volume-and-freezing.md) (lake water volume, seasonal lake ice), RFC [0012](0012-physics-first-simulation.md) (physics-first simulation); design principles 3, 5, 6 and 8
+- **Related:** #368 (evidence; PR #536), #353 and #359 (ice-sheet model, decision B), #355 (water units), #503 and #504 (lake freezing at `WATER_TO_ICE`), #297 (balanced lakes), RFC [0014](0014-lake-water-volume-and-freezing.md) (lake water volume, seasonal lake ice), RFC [0012](0012-physics-first-simulation.md) (physics-first simulation); superseded on acceptance: #197, #203, #358 item 4, #313 Stage E (see "Open issues this RFC supersedes"); design principles 3, 5, 6 and 8
 
 ## Problem
 
@@ -289,6 +289,14 @@ fast bodies. Substepped bodies integrate along their path, not at their end stat
 - **Calibration.** The current coefficient was set to match the old depth × slope law
   (#353). Under physical sliding, `K_G` is literature-constrained, and the global glacial
   erosion volume is reported against `origin/main` as a sanity check, not a target.
+- **Flattening.** The glacial flattening blur (`GLACIER_FLATTEN_RATE_PER_MYR`, scaled by ice
+  depth up to `GLACIER_EROSION_MAX_FACTOR`) reads ice thickness, not a mass-balance rate, so
+  the unit change doesn't rescale it. It has no literature value, and physical rates change
+  where ice sits. G3 reports its volume beside abrasion's and its share of
+  `glacier_erosion_multiplier`'s effect (#203).
+- **The tuning knob.** `World.glacier_erosion_multiplier` stays a dimensionless user
+  multiplier on both terms, 1.0 by default. #197 and #203 measured its effect under the
+  model-unit law; G3 re-measures it under D3.
 
 ### D4. Lakes that freeze (with RFC 0014)
 
@@ -389,7 +397,9 @@ RFC 0014 owns lake water: its volume, seasonal ice cover and the bounded lake ic
   `T_s` ∈ {0, 1, 2} °C on the diagnosis set. *Outcome:* fix the starting values. A knob whose
   range moves ice volume by more than 2× is flagged as weakly constrained in the RFC.
 - **G3: erosion and its limits.** With D3's law at l ∈ {0.65, 1, 2}, report applied glacial
-  erosion, its applied/raw ratio and its 0.25 vs 1 Myr gap.
+  erosion, its applied/raw ratio and its 0.25 vs 1 Myr gap. Report flattening's volume beside
+  abrasion's, and the effect of `glacier_erosion_multiplier` at 0.25× and 4× on ice-cap area
+  and land volume (the metrics of #197 and #203).
   *Outcome:* if the neighbor-drop clip still removes more than half of raw abrasion, D3's
   within-step bound is designed explicitly before implementation.
 - **G4: sea level.** On the diagnosis set and one ice-age save, report floating, grounded
@@ -423,6 +433,48 @@ RFC 0014 owns lake water: its volume, seasonal ice cover and the bounded lake ic
   saves' ice loads as it is and re-balances under physical rates on its first steps (#368
   shows it moves within 1–4 Myr). Sea ice is derived, not stored. `lake_ice_m` is RFC 0014's.
   Old saves load (`unit_tests/test_persistence.py`).
+
+### Open issues this RFC supersedes
+
+All 55 open issues were searched (2026-10-23) for glacier, ice-sheet, ice-cap, frozen,
+freezing, sea-ice, snow, `WATER_TO_ICE`, abrasion, calving and eustasy terms, and each match
+was read. Each issue below is mapped to the part of this RFC that replaces it, so a partial
+withdrawal can be handled part by part.
+
+| Issue | What it asks | Covered by | On acceptance |
+|---|---|---|---|
+| #368 | Physical glacier mass-balance scaling and cap behaviour | Whole RFC; its analysis is the Evidence | Closed by PR #536 when that merges. If #536 is still open at acceptance, close #368 as completed with a link here. |
+| #197 | A dedicated sweep of `glacier_erosion_multiplier` | D3, G3 | Close as superseded: the sweep measures the model-unit abrasion law that D3 replaces. G3 re-measures the multiplier. |
+| #203 | Confirm or taper `glacier_erosion_multiplier`'s ice-cap and land-volume lever | D3 (abrasion and flattening), G3 | Close as superseded: it cites the depth × slope law #353 already replaced, and the remaining lever is re-measured by G3. |
+| #358 item 4 | Glacier mass balance in physical units | D1, D2 | Keep #358 open (its other items stand). Mark item 4 as superseded by this RFC in its body. |
+| #313 Stage E | Glacier mass-balance controls in the calibration campaign | D1–D3, Knobs | Keep #313 open. Replace Stage E's constant list with this RFC's knobs table, and point the stage here. |
+
+**Related but not superseded** (each keeps its own scope; this RFC changes their inputs):
+- #176, #289: tectonics that raise land and so grow ice caps. Their ice-cap metrics move under
+  D1, so their baselines need re-measuring after implementation.
+- #310, #493: craton work that notes seed 580014012's repeated 5 km glacier cap.
+  Interpretation changes once the cap rarely binds.
+- #505, #519, #520: lake water, owned by RFC 0014. #519's item on rivers freezing at the
+  annual mean is RFC 0014's D2(b); this RFC owns only the glacier border (D4, D5).
+
+**(a) When this RFC is accepted** (the owner merges the RFC PR), on the tracking issue:
+1. For #197 and #203, comment with the section and gate that covers each, set its project
+   status to `Deprecated`, and close it with `gh issue close <N> --reason "not planned"`
+   (the project's procedure for work that won't be pursued).
+2. Edit #358 and #313 as the table says, with a link to this RFC.
+3. Close #368 as the table says.
+4. List every closed or edited issue on the tracking issue, with the RFC section each maps
+   to.
+
+**(b) If this RFC is withdrawn**, or the part an issue maps to is dropped or falsified:
+1. Review each issue the table maps to that part. Read its last state and check whether its
+   premise still holds on current `origin/main` (for #197 and #203, whether
+   `glacier_erosion_multiplier` still acts on the same law).
+2. Reopen it if the premise holds, with a comment linking the withdrawal or the gate result
+   and saying what changed since it was closed. Set its project status back to `Backlog`.
+   Leave it closed, with a comment saying why, if its premise no longer holds.
+3. Revert the #358 and #313 edits, or point them at whatever supersedes this RFC.
+4. Record each decision in this RFC's Outcome section (`complete-rfc`).
 
 ## Detailed design (provisional touchpoints)
 
@@ -491,6 +543,8 @@ RFC 0014 owns lake water: its volume, seasonal ice cover and the bounded lake ic
 
 ## Acceptance criteria
 
+- [ ] **Superseded issues settled** at acceptance as planned in "Open issues this RFC
+  supersedes" (a), and listed on the tracking issue.
 - [ ] **G0–G4 run and recorded** in this RFC, with D2's coupling list fixed by G0.
 - [ ] **Step robustness:** on each held-out save, ice volume and area at 10 Myr agree within
   10% between 0.25 Myr and 1 Myr steps (proposed).
@@ -533,6 +587,10 @@ RFC 0014 owns lake water: its volume, seasonal ice cover and the bounded lake ic
 - **The maps' mismatch is not an artefact of slow ice:** after D1–D2, more than 20% of EF land
   still carries no ice on a held-out save with positive net snowfall there. *Revise:* the
   snow-phase or melt law, not the maps.
+
+Whenever a criterion here leads to withdrawing the RFC or dropping a design part, the issues
+mapped to that part are reviewed and possibly reopened by plan (b) in "Open issues this RFC
+supersedes".
 
 ## References
 
