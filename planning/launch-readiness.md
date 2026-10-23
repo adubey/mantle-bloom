@@ -49,7 +49,7 @@ resolutions; fluxes that affect one another use compatible units and close their
 **Goal:** the public service is safe to operate for multiple independent users and their worlds.
 
 - [ ] **Needs a tracker:** perform a security review of the full codebase and deployment, then create issues for findings with severity, affected surface and verification criteria. Include authentication/session handling, API authorization, world-file import/export, resource-exhaustion limits, dependencies and deployment secrets.
-- [ ] **Needs a decision and tracker:** define user accounts, identity provider, account database (if required), and ownership/retention rules. The current hosting guide describes a single owner account and public viewer, not general user accounts; see [hosting](hosting.md).
+- [ ] **Needs a decision and tracker:** define user accounts, identity provider, account database (if required), and ownership/retention rules. The current hosting guide describes a single owner account and public viewer, not general user accounts; see [hosting](../docs/HOSTING.md).
 - [ ] **Needs a decision and tracker:** define the three access levels and their boundaries:
   1. Logged-out viewer: can inspect and step worlds within public limits.
   2. Logged-in paid user: can create, save and export worlds; determine what actions require payment and how billing, quotas and cancellation work.
