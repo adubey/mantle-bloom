@@ -1,0 +1,186 @@
+{
+ "source": "ERA5 1990-2019 hourly climatology, WeatherBench2 240x121 conservative regrid",
+ "global_speed_m_s": 6.16,
+ "ocean_speed_m_s": 7.25,
+ "land_speed_m_s": 3.46,
+ "land_60s_to_70n_speed_m_s": 3.02,
+ "bands": [
+  {
+   "lat_lo": -90,
+   "lat_hi": -80,
+   "land_speed_m_s": 6.72,
+   "land_u_m_s": -1.04,
+   "land_v_m_s": 0.5
+  },
+  {
+   "lat_lo": -80,
+   "lat_hi": -70,
+   "ocean_speed_m_s": 6.85,
+   "ocean_u_m_s": -0.28,
+   "ocean_v_m_s": 1.25,
+   "land_speed_m_s": 6.97,
+   "land_u_m_s": -2.3,
+   "land_v_m_s": 1.6
+  },
+  {
+   "lat_lo": -70,
+   "lat_hi": -60,
+   "ocean_speed_m_s": 8.62,
+   "ocean_u_m_s": 2.11,
+   "ocean_v_m_s": 0.08,
+   "land_speed_m_s": 9.23,
+   "land_u_m_s": -5.67,
+   "land_v_m_s": 4.49
+  },
+  {
+   "lat_lo": -60,
+   "lat_hi": -50,
+   "ocean_speed_m_s": 10.57,
+   "ocean_u_m_s": 6.53,
+   "ocean_v_m_s": -1.05,
+   "land_speed_m_s": 5.49,
+   "land_u_m_s": 3.54,
+   "land_v_m_s": -1.18
+  },
+  {
+   "lat_lo": -50,
+   "lat_hi": -40,
+   "ocean_speed_m_s": 9.66,
+   "ocean_u_m_s": 5.43,
+   "ocean_v_m_s": -0.73,
+   "land_speed_m_s": 4.02,
+   "land_u_m_s": 2.06,
+   "land_v_m_s": -0.78
+  },
+  {
+   "lat_lo": -40,
+   "lat_hi": -30,
+   "ocean_speed_m_s": 7.5,
+   "ocean_u_m_s": 1.23,
+   "ocean_v_m_s": 0.29,
+   "land_speed_m_s": 3.72,
+   "land_u_m_s": -0.2,
+   "land_v_m_s": 0.19
+  },
+  {
+   "lat_lo": -30,
+   "lat_hi": -20,
+   "ocean_speed_m_s": 6.68,
+   "ocean_u_m_s": -3.27,
+   "ocean_v_m_s": 1.44,
+   "land_speed_m_s": 3.51,
+   "land_u_m_s": -1.12,
+   "land_v_m_s": 0.31
+  },
+  {
+   "lat_lo": -20,
+   "lat_hi": -10,
+   "ocean_speed_m_s": 6.72,
+   "ocean_u_m_s": -4.81,
+   "ocean_v_m_s": 2.14,
+   "land_speed_m_s": 2.52,
+   "land_u_m_s": -0.99,
+   "land_v_m_s": 0.16
+  },
+  {
+   "lat_lo": -10,
+   "lat_hi": 0,
+   "ocean_speed_m_s": 5.64,
+   "ocean_u_m_s": -3.21,
+   "ocean_v_m_s": 1.71,
+   "land_speed_m_s": 1.82,
+   "land_u_m_s": -0.62,
+   "land_v_m_s": 0.13
+  },
+  {
+   "lat_lo": 0,
+   "lat_hi": 10,
+   "ocean_speed_m_s": 5.3,
+   "ocean_u_m_s": -1.93,
+   "ocean_v_m_s": 0.55,
+   "land_speed_m_s": 2.03,
+   "land_u_m_s": -0.27,
+   "land_v_m_s": 0.34
+  },
+  {
+   "lat_lo": 10,
+   "lat_hi": 20,
+   "ocean_speed_m_s": 6.64,
+   "ocean_u_m_s": -3.95,
+   "ocean_v_m_s": -1.51,
+   "land_speed_m_s": 3.19,
+   "land_u_m_s": -0.57,
+   "land_v_m_s": -0.46
+  },
+  {
+   "lat_lo": 20,
+   "lat_hi": 30,
+   "ocean_speed_m_s": 6.42,
+   "ocean_u_m_s": -2.67,
+   "ocean_v_m_s": -1.04,
+   "land_speed_m_s": 3.23,
+   "land_u_m_s": -0.31,
+   "land_v_m_s": -0.56
+  },
+  {
+   "lat_lo": 30,
+   "lat_hi": 40,
+   "ocean_speed_m_s": 7.13,
+   "ocean_u_m_s": 1.25,
+   "ocean_v_m_s": -0.34,
+   "land_speed_m_s": 2.85,
+   "land_u_m_s": 0.29,
+   "land_v_m_s": -0.0
+  },
+  {
+   "lat_lo": 40,
+   "lat_hi": 50,
+   "ocean_speed_m_s": 8.09,
+   "ocean_u_m_s": 2.58,
+   "ocean_v_m_s": 0.27,
+   "land_speed_m_s": 3.3,
+   "land_u_m_s": 0.49,
+   "land_v_m_s": -0.04
+  },
+  {
+   "lat_lo": 50,
+   "lat_hi": 60,
+   "ocean_speed_m_s": 8.16,
+   "ocean_u_m_s": 1.55,
+   "ocean_v_m_s": 0.11,
+   "land_speed_m_s": 3.29,
+   "land_u_m_s": 0.72,
+   "land_v_m_s": 0.24
+  },
+  {
+   "lat_lo": 60,
+   "lat_hi": 70,
+   "ocean_speed_m_s": 7.34,
+   "ocean_u_m_s": 0.02,
+   "ocean_v_m_s": -0.84,
+   "land_speed_m_s": 3.46,
+   "land_u_m_s": 0.16,
+   "land_v_m_s": 0.02
+  },
+  {
+   "lat_lo": 70,
+   "lat_hi": 80,
+   "ocean_speed_m_s": 6.28,
+   "ocean_u_m_s": -0.33,
+   "ocean_v_m_s": -0.44,
+   "land_speed_m_s": 4.97,
+   "land_u_m_s": 0.33,
+   "land_v_m_s": 0.52
+  },
+  {
+   "lat_lo": 80,
+   "lat_hi": 90,
+   "ocean_speed_m_s": 5.89,
+   "ocean_u_m_s": 0.08,
+   "ocean_v_m_s": -0.01,
+   "land_speed_m_s": 3.34,
+   "land_u_m_s": 0.92,
+   "land_v_m_s": 0.84
+  }
+ ]
+}

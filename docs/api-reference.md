@@ -11,9 +11,9 @@ request made on the server's own machine. Anyone else gets `401`. Cross-site wri
 ## `GET /healthz`
 
 `{"status": "ok"}`, open to anyone, and doesn't wait for the world lock. It's Railway's deploy
-health check (#376, see [HOSTING.md](HOSTING.md)). It can't answer before startup has
-restored the checkpoint. `503` with the reason in `detail` when a checkpoint directory is
-configured but couldn't be created or written.
+health check (#376; see [hosting.md](hosting.md)). It can't answer before
+startup has restored the checkpoint. `503` with the reason in `detail` when a checkpoint
+directory is configured but couldn't be created or written.
 
 ## Login routes
 
@@ -293,7 +293,7 @@ only whichever control the user touched):
 ```
 
 Live-adjusts `World.sea_level_m` (default `0.0`), `World.solar_multiplier` (default `1.0`,
-scales `climate.SUNLIGHT`), `World.ice_age_period_years` (default `0.0` = disabled; the full
+scales `climate.SUNLIGHT` and the `insolation_w_m2` diagnostic), `World.ice_age_period_years` (default `0.0` = disabled; the full
 period in years of a glacial↔interglacial temperature cycle -- see
 simulation-model/hydrology.md#glaciation, negative is clamped to `0`), `World.simulate_plate_movement`,
 `World.simulate_climate_biomes` (both default `true`), `World.wind_model`
@@ -319,8 +319,8 @@ always advances regardless of both.
 
 `wind_model` picks the wind field feeding `climate.py`: `"cfd"` runs the shallow-water
 solve every step (`_advance_fluid_dynamics`), `"diagnostic"` skips it and rebuilds wind /
-air temperature from `climate.py`'s closed-form ABL formulas -- much faster steps for
-~85-90% of the CFD biome map. See simulation-model/climate.md#wind-model.
+air temperature from `climate.py`'s closed-form ABL formulas -- much faster steps; see
+simulation-model/climate.md#wind-model for how closely it matches the CFD (#529).
 
 `fault_deformation_mode` (`"boundary"` default, or `"fault"` / `"both"` -- a `400` for any
 other value) picks where plate-boundary deformation is applied: `"boundary"` is the smooth
@@ -650,16 +650,21 @@ runs once). `404` if no world has been generated yet.
 }
 ```
 
-- `length_m` is the summed geodesic length of these flow edges, in meters. River visibility
+- `length_m` is the summed geodesic length of `segments`, in meters. River visibility
   uses this physical measure instead of a node-count cutoff, which would move with mesh density.
-- `segments` is a flat list of flow edges (a node and its own `flow_target`), each a pair of
-  world-space points -- not an ordered polyline, since a river network can branch. Every
+- `segments` is a flat list of line segments, normally between neighbouring nodes
+  (`hydrology.flow_segments`), each a pair of world-space points -- not an ordered polyline,
+  since a river network can branch. An ordinary member contributes one segment, to its own
+  `flow_target`. A spilling lake sink whose `flow_target` lies beyond the rim contributes its
+  spill path instead: several segments, stopping at visible lake water (#520; see
+  [simulation-model/hydrology.md](simulation-model/hydrology.md#lake-vs-sea-tiers-a-depth-ceiling-by-size-2026-09-10)). Every
   coordinate in this response is rounded to 6 decimal places before serializing, same as
   `/world/plates`.
 - `mouth_xyz` is the network's downstream-most member, the location the River Inspector marks
   for the selected river.
 - `mouth_type` is `"ocean"` or `"lake"` (based on what the mouth's own `flow_target` empties
-  into, not the mouth itself -- see
+  into, not the mouth itself, and `"lake"` for a sink whose spill path reaches visible lake
+  water -- see
   [simulation-model/hydrology.md#river-inspector](simulation-model/hydrology.md#river-inspector)), or `"other"`
   (a true dead-end sink, `flow_target == -1` -- a basin `lakes.step_lakes` is already growing
   into a real lake node by node every step, so this flips to `"lake"` on its own once that

@@ -69,8 +69,10 @@ silently depends on grid resolution) -- which is why `RAIN_EROSION_COEFFICIENT` 
 by order-of-magnitude reasoning against the then-current direct convergent uplift rate
 (`CONVERGENT_MOUNTAIN_RATE_M_PER_MYR`, 800 m/Myr, since retired for Hc-driven uplift) and checked against real slope/precipitation distributions from an actual run,
 rather than reused from a value tuned against a different scale.
-`WEATHERING_COEFFICIENT` needed no such rescaling, since wind speed already uses a directly
-comparable scale (`MERIDIONAL_BASE_SPEED = 6.0`) unaffected by the slope re-derivation. River
+`WEATHERING_COEFFICIENT` needed no such rescaling, since wind speed is a physical 10 m speed
+in m/s (the [surface-wind contract](climate.md#surface-wind-contract)) unaffected by the slope
+re-derivation; it is 3.6 m per (m/s) per Myr, recalibrated when the wind moved to m/s so land
+weathering volume held ([#526](https://github.com/adubey/mantle-bloom/issues/526)). River
 erosion depends on physical catchment discharge (see [Hydrology](hydrology.md#hydrology-rivers-and-lakes-hydrologypy)), converted to a
 fixed reference-cell scale before the stream-power law. `RIVER_EROSION_COEFFICIENT` was
 originally derived by order of magnitude and checked against channel-depth growth; issue
@@ -92,8 +94,8 @@ law produced (see the formula below).
   monotonically non-decreasing, land-only, capped purely as a sanity bound (not a
   physically-derived limit).
 - **Weathering** = `WEATHERING_COEFFICIENT * wind_speed * humidity_norm * relief_factor *
-  dt_myr`, where `humidity_norm` is humidity clipped to `[0, 1]` against
-  `HUMIDITY_REFERENCE`, and `relief_factor = clip(slope / WEATHERING_RELIEF_REFERENCE_SLOPE,
+  dt_myr`, where `humidity_norm` is humidity (g/kg) over
+  `HUMIDITY_REFERENCE_G_KG` (`climate.HUMIDITY_INDEX_G_KG`, 12.3 g/kg), clipped to `[0, 1]`, and `relief_factor = clip(slope / WEATHERING_RELIEF_REFERENCE_SLOPE,
   0, 1)` (same normalize-and-saturate idiom as `humidity_norm`). `relief_factor` is a
   mantle-bloom-original addition -- added after a real bug: unlike rain/river erosion (both already `*
   slope`), weathering originally had no relief dependence at all, so a flat, low-lying coastal

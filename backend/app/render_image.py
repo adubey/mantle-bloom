@@ -417,8 +417,8 @@ _TEMPERATURE_STOP_RGB = np.array(
     dtype=float,
 )
 
-# Dry (tan) -> humid (deep teal/blue). climate.py's humidity is roughly [0, MAX_EVAPORATION_CEILING=1.4].
-_HUMIDITY_STOP_V = np.array([0.0, 0.3, 0.6, 0.9, 1.2, 1.4], dtype=float)
+# Dry (tan) -> humid (deep teal/blue), g/kg. climate.py's humidity_g_kg runs [~0.25, MAX_HUMIDITY_G_KG=18.8].
+_HUMIDITY_STOP_G_KG = np.array([0.0, 4.0, 8.0, 12.0, 16.0, 18.8], dtype=float)
 _HUMIDITY_STOP_RGB = np.array(
     [
         (120, 100, 60), (170, 150, 90), (140, 170, 110), (70, 150, 140), (30, 100, 140), (15, 60, 110),
@@ -470,8 +470,8 @@ def temperature_colors(celsius: np.ndarray) -> np.ndarray:
     return _interp_colors(celsius, _TEMPERATURE_STOP_C, _TEMPERATURE_STOP_RGB)
 
 
-def humidity_colors(humidity: np.ndarray) -> np.ndarray:
-    return _interp_colors(humidity, _HUMIDITY_STOP_V, _HUMIDITY_STOP_RGB)
+def humidity_colors(humidity_g_kg: np.ndarray) -> np.ndarray:
+    return _interp_colors(humidity_g_kg, _HUMIDITY_STOP_G_KG, _HUMIDITY_STOP_RGB)
 
 
 def precipitation_colors(precipitation_mm: np.ndarray) -> np.ndarray:
@@ -1691,7 +1691,7 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
     # or -- when the diagnostic wind model is selected, leaving that state frozen -- the
     # diagnostic fields climate.compute_climate rebuilt this call. is_ocean likewise: the CFD
     # state's copy goes stale in diagnostic mode (refresh_forcing stops running).
-    if world.wind_model != "cfd":
+    if climate.uses_diagnostic_wind(world):
         wind_u_hp, wind_v_hp = _to_healpix(cfields.wind_u), _to_healpix(cfields.wind_v)
         land_air_temp_hp = _to_healpix(cfields.air_temperature_c)
         is_ocean_hp = _to_healpix(cfields.is_ocean.astype(np.float64)) > 0.5
@@ -1701,7 +1701,7 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
         is_ocean_hp = atmosphere.is_ocean
 
     if view == "humidity":
-        _fill_rects(pixels, centers, half_px, half_px, humidity_colors(_to_healpix(cfields.humidity)))
+        _fill_rects(pixels, centers, half_px, half_px, humidity_colors(_to_healpix(cfields.humidity_g_kg)))
     elif view == "precipitation":
         _fill_rects(pixels, centers, half_px, half_px, precipitation_colors(_to_healpix(cfields.precipitation_mm)))
     elif view == "temperature":
@@ -2477,13 +2477,19 @@ def _river_network_is_drawn(river: hydrology.RiverInfo, hide_short_networks: boo
     return not hide_short_networks or _river_network_is_long_enough(river)
 
 
-def _extend_drawn_rivers_downstream(hydro, drawn: np.ndarray, channel_width: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def _extend_drawn_rivers_downstream(
+    hydro, drawn: np.ndarray, channel_width: np.ndarray, mouths: set[int]
+) -> tuple[np.ndarray, np.ndarray]:
     """Draws every river node downstream of a drawn one, all the way to its mouth. A river's
     last nodes before the coast are often new or reset cells whose channel hasn't grown past
     RIVER_VISIBLE_MIN_WIDTH_M yet, so the line used to stop one to three nodes short of the
     sea, a river to nowhere (issue #503). Only nodes below that floor are filled in, and they
     take the width of the drawn reach above them; a node drawn in its own right keeps its own
-    width, so a river that narrows downstream is still drawn narrowing."""
+    width, so a river that narrows downstream is still drawn narrowing.
+
+    The walk stops at the network's mouth (`mouths`, every `group_rivers` mouth_idx). A sink
+    whose spill crosses a lake is a mouth whose `flow_target` is a river node of the outflow
+    network beyond the rim, and that network is drawn or hidden on its own merits (#520)."""
     original = drawn
     drawn = drawn.copy()
     width = channel_width.astype(float).copy()
@@ -2493,7 +2499,7 @@ def _extend_drawn_rivers_downstream(hydro, drawn: np.ndarray, channel_width: np.
         node = source
         while True:
             target = int(flow_target[node])
-            if target < 0 or original[target] or drawn[target] or not is_river[target] or flow_target[target] < 0:
+            if node in mouths or target < 0 or original[target] or drawn[target] or not is_river[target] or flow_target[target] < 0:
                 break
             drawn[target] = True
             width[target] = width[node]
@@ -2505,9 +2511,9 @@ def _rivers_to_draw(world: World, hide_short_networks: bool = False) -> tuple[np
     """Selects which river segments the general-purpose map views draw, how strongly each
     tints toward RIVER_COLOR_RGB, and how much (if at all) each widens past 1px.
 
-    Returns (src_idx, color_alpha, width_frac): `src_idx` is the node index at the *upstream*
-    end of each drawn segment (its downstream end is hydro.flow_target[src_idx], guaranteed
-    >= 0). `color_alpha` is in [RIVER_COLOR_BLEND_MIN_FRACTION, 1.0], a percentile rank of this
+    Returns (src_idx, color_alpha, width_frac): `src_idx` is each drawn river node, whose flow
+    edge (`hydro.flow_target[src_idx]`, guaranteed >= 0) _draw_rivers draws as one segment, or
+    as several along a spill path (`hydrology.flow_segments`). `color_alpha` is in [RIVER_COLOR_BLEND_MIN_FRACTION, 1.0], a percentile rank of this
     segment's own channel_width among every other segment drawn in this same call -- see
     RIVER_COLOR_RGB's own comment for why a rank beats a fixed fraction here. `width_frac` is
     in [0, 1], a percentile rank of this segment's own physical discharge (not channel_width -- see
@@ -2541,13 +2547,16 @@ def _rivers_to_draw(world: World, hide_short_networks: bool = False) -> tuple[np
     if not np.any(discharge_m3_s[hydro.is_river] > RIVER_VISIBLE_MIN_FLOW_M3_S):
         return np.empty(0, dtype=np.int64), np.empty(0), np.empty(0)
     drawn_members = np.zeros(len(hydro.points), dtype=bool)
-    for river in hydrology.group_rivers(hydro):
+    rivers = hydrology.group_rivers(hydro)
+    for river in rivers:
         if _river_network_is_drawn(river, hide_short_networks):
             drawn_members[river.member_idx] = True
     visible_mask &= drawn_members
     if not np.any(visible_mask):
         return np.empty(0, dtype=np.int64), np.empty(0), np.empty(0)
-    visible_mask, channel_width = _extend_drawn_rivers_downstream(hydro, visible_mask, channel_width)
+    visible_mask, channel_width = _extend_drawn_rivers_downstream(
+        hydro, visible_mask, channel_width, {river.mouth_idx for river in rivers}
+    )
     candidates = np.where(visible_mask)[0]
 
     color_percentile = _percentile_rank(channel_width[candidates])
@@ -2565,8 +2574,8 @@ def _draw_rivers(
 ) -> Image.Image:
     """Draws each selected river segment (see _rivers_to_draw for which segments and how
     strongly each tints toward RIVER_COLOR_RGB) as a short line from a river node to its own
-    downstream flow target. Each segment is a real, short 3D hop between two
-    adjacent-in-the-flow-graph nodes, so _project_offset (not two independent _project_points
+    downstream flow target, or, for a spill hop, along its spill path (hydrology.flow_segments).
+    Each segment is a real, short 3D hop between two adjacent-in-the-flow-graph nodes, so _project_offset (not two independent _project_points
     calls) keeps it from being wrongly split across the antimeridian seam -- same technique
     _render_grid_arrays' own corner measurements already rely on.
 
@@ -2581,7 +2590,9 @@ def _draw_rivers(
     river_idx, color_alpha, width_frac = _rivers_to_draw(world, hide_short_networks=hide_short_networks)
     if len(river_idx) == 0:
         return image
-    target_idx = hydro.flow_target[river_idx]
+    # A spill hop is drawn along its spill path, so one node can own several segments (#520).
+    from_idx, target_idx, owner, _ = hydrology.flow_segments(hydro, river_idx)
+    color_alpha, width_frac = color_alpha[owner], width_frac[owner]
 
     width_px = np.maximum(
         np.round(pixel_scale * RIVER_LINE_WIDTH_PX * (1.0 + (RIVER_LINE_WIDTH_MAX_MULT - 1.0) * width_frac)).astype(int), 1
@@ -2595,7 +2606,7 @@ def _draw_rivers(
     halo_fill_value = np.clip(np.round(fill_value * RIVER_HALO_FILL_FRACTION), 0, 255).astype(int)
     core_width_px = np.maximum(np.round(width_px * RIVER_CORE_WIDTH_FRACTION).astype(int), 1)
 
-    from_points = _rotate(hydro.points[river_idx], view_rotation)
+    from_points = _rotate(hydro.points[from_idx], view_rotation)
     to_points = _rotate(hydro.points[target_idx], view_rotation)
     _, from_lon = geometry.xyz_to_latlon(from_points)
     from_xy = _project_points(projection, from_points)

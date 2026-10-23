@@ -1,0 +1,173 @@
+{
+  "question": "Does the full-horizon 0.1 Myr replay materially change the 1 Myr matched G2 comparison?",
+  "horizon_myr": 500,
+  "node_density": 1.0,
+  "seeds": [
+    326494039,
+    748935664,
+    580014012,
+    111065103
+  ],
+  "runs_completed": 8,
+  "registered_gates": {
+    "each_model_seed_abs_endpoint_land_difference_pp_lte_2": true,
+    "mean_g2_land_effect_same_sign_and_difference_pp_lte_2": true
+  },
+  "mean_g2_land_effect_0_1myr_pp": 4.612915339903291,
+  "mean_g2_land_effect_1myr_pp": 3.998500953288021,
+  "mean_g2_effect_timestep_difference_pp": 0.6144143866152705,
+  "per_seed": [
+    {
+      "seed": 326494039,
+      "models": {
+        "baseline": {
+          "land_fraction_0_1myr": 0.1387281754503433,
+          "land_fraction_1myr": 0.15077401549170377,
+          "land_dt_delta_pp": -1.2045840041360472,
+          "mean_hc_m_0_1myr": 19046.337210292735,
+          "mean_hm_m_0_1myr": 49414.64896381463,
+          "plate_count_0_1myr": 39,
+          "max_rate_0_1myr_cm_per_yr": 15.000000000000005,
+          "median_step_seconds_0_1myr": 2.47852237499319,
+          "formed_m3_0_1myr": 4.769206497701845e+17,
+          "subducted_m3_0_1myr": 135065925852730.33,
+          "merge_capped_m3_0_1myr": 1.107644870922311e+16,
+          "max_rate_1myr_cm_per_yr": 15.000000000000004,
+          "median_step_seconds_1myr": 2.7519986875122413
+        },
+        "pilot": {
+          "land_fraction_0_1myr": 0.21423143760656904,
+          "land_fraction_1myr": 0.21356619809061697,
+          "land_dt_delta_pp": 0.06652395159520708,
+          "mean_hc_m_0_1myr": 20014.360152559988,
+          "mean_hm_m_0_1myr": 55042.15272256323,
+          "plate_count_0_1myr": 41,
+          "max_rate_0_1myr_cm_per_yr": 64.63078020316479,
+          "median_step_seconds_0_1myr": 2.6319736669538543,
+          "formed_m3_0_1myr": 9.21311198056818e+17,
+          "subducted_m3_0_1myr": 8962737353179.402,
+          "merge_capped_m3_0_1myr": 0.0,
+          "max_rate_1myr_cm_per_yr": 66.0693543119456,
+          "median_step_seconds_1myr": 2.839972750050947
+        }
+      },
+      "land_effect_0_1myr_pp": 7.550326215622574,
+      "land_effect_1myr_pp": 6.27921825989132,
+      "land_effect_dt_delta_pp": 1.271107955731254
+    },
+    {
+      "seed": 748935664,
+      "models": {
+        "baseline": {
+          "land_fraction_0_1myr": 0.09750360082782625,
+          "land_fraction_1myr": 0.10137325478375597,
+          "land_dt_delta_pp": -0.3869653955929725,
+          "mean_hc_m_0_1myr": 15345.504279626743,
+          "mean_hm_m_0_1myr": 45268.4967495633,
+          "plate_count_0_1myr": 46,
+          "max_rate_0_1myr_cm_per_yr": 15.000000000000005,
+          "median_step_seconds_0_1myr": 2.8206074164481834,
+          "formed_m3_0_1myr": 2.4992038192858768e+17,
+          "subducted_m3_0_1myr": 39471000085741.1,
+          "merge_capped_m3_0_1myr": 9.35889031970953,
+          "max_rate_1myr_cm_per_yr": 15.000000000000005,
+          "median_step_seconds_1myr": 2.649494417011738
+        },
+        "pilot": {
+          "land_fraction_0_1myr": 0.1265148392677007,
+          "land_fraction_1myr": 0.13178619314347156,
+          "land_dt_delta_pp": -0.5271353875770851,
+          "mean_hc_m_0_1myr": 14976.065780503217,
+          "mean_hm_m_0_1myr": 48202.160206453955,
+          "plate_count_0_1myr": 45,
+          "max_rate_0_1myr_cm_per_yr": 124.58224363686324,
+          "median_step_seconds_0_1myr": 2.5759219374740496,
+          "formed_m3_0_1myr": 4.283443460917889e+17,
+          "subducted_m3_0_1myr": 0.0,
+          "merge_capped_m3_0_1myr": 0.0,
+          "max_rate_1myr_cm_per_yr": 152.5868694085403,
+          "median_step_seconds_1myr": 2.655060646007769
+        }
+      },
+      "land_effect_0_1myr_pp": 2.9011238439874463,
+      "land_effect_1myr_pp": 3.041293835971559,
+      "land_effect_dt_delta_pp": -0.14016999198411284
+    },
+    {
+      "seed": 580014012,
+      "models": {
+        "baseline": {
+          "land_fraction_0_1myr": 0.2302518070180645,
+          "land_fraction_1myr": 0.2330362881896513,
+          "land_dt_delta_pp": -0.27844811715868056,
+          "mean_hc_m_0_1myr": 23176.18065534577,
+          "mean_hm_m_0_1myr": 63681.95635310852,
+          "plate_count_0_1myr": 39,
+          "max_rate_0_1myr_cm_per_yr": 15.000000000000005,
+          "median_step_seconds_0_1myr": 2.7891454164637253,
+          "formed_m3_0_1myr": 7.455481719891648e+17,
+          "subducted_m3_0_1myr": 161890635368146.47,
+          "merge_capped_m3_0_1myr": 3.1062821995554816e+16,
+          "max_rate_1myr_cm_per_yr": 15.000000000000004,
+          "median_step_seconds_1myr": 2.7538530204910785
+        },
+        "pilot": {
+          "land_fraction_0_1myr": 0.23415670922738108,
+          "land_fraction_1myr": 0.23219017016292468,
+          "land_dt_delta_pp": 0.19665390644564018,
+          "mean_hc_m_0_1myr": 22045.424996116624,
+          "mean_hm_m_0_1myr": 73089.82686950262,
+          "plate_count_0_1myr": 32,
+          "max_rate_0_1myr_cm_per_yr": 6.3752096067565684,
+          "median_step_seconds_0_1myr": 2.78881212498527,
+          "formed_m3_0_1myr": 9.480791565333684e+17,
+          "subducted_m3_0_1myr": 0.0,
+          "merge_capped_m3_0_1myr": 0.0,
+          "max_rate_1myr_cm_per_yr": 4.986374055845247,
+          "median_step_seconds_1myr": 2.6984783749794587
+        }
+      },
+      "land_effect_0_1myr_pp": 0.39049022093165797,
+      "land_effect_1myr_pp": -0.08461180267266277,
+      "land_effect_dt_delta_pp": 0.47510202360432074
+    },
+    {
+      "seed": 111065103,
+      "models": {
+        "baseline": {
+          "land_fraction_0_1myr": 0.25141498254155026,
+          "land_fraction_1myr": 0.25429074727692874,
+          "land_dt_delta_pp": -0.2875764735378483,
+          "mean_hc_m_0_1myr": 23104.69655956678,
+          "mean_hm_m_0_1myr": 55744.30755490606,
+          "plate_count_0_1myr": 39,
+          "max_rate_0_1myr_cm_per_yr": 15.000000000000009,
+          "median_step_seconds_0_1myr": 2.9579590420471504,
+          "formed_m3_0_1myr": 9.406316495242789e+17,
+          "subducted_m3_0_1myr": 224657366593786.44,
+          "merge_capped_m3_0_1myr": 422931523097501.25,
+          "max_rate_1myr_cm_per_yr": 15.000000000000005,
+          "median_step_seconds_1myr": 2.896596895996481
+        },
+        "pilot": {
+          "land_fraction_0_1myr": 0.3275121933322651,
+          "land_fraction_1myr": 0.3218717824765474,
+          "land_dt_delta_pp": 0.5640410855717704,
+          "mean_hc_m_0_1myr": 25438.131214533714,
+          "mean_hm_m_0_1myr": 64342.36240312044,
+          "plate_count_0_1myr": 40,
+          "max_rate_0_1myr_cm_per_yr": 9.365401050826907,
+          "median_step_seconds_0_1myr": 3.005866645486094,
+          "formed_m3_0_1myr": 1.254673768701144e+18,
+          "subducted_m3_0_1myr": 278006041303576.56,
+          "merge_capped_m3_0_1myr": 0.0,
+          "max_rate_1myr_cm_per_yr": 9.36786043309596,
+          "median_step_seconds_1myr": 2.964968708460219
+        }
+      },
+      "land_effect_0_1myr_pp": 7.609721079071486,
+      "land_effect_1myr_pp": 6.758103519961867,
+      "land_effect_dt_delta_pp": 0.8516175591096191
+    }
+  ]
+}

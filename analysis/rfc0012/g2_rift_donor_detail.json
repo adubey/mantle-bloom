@@ -1,0 +1,3754 @@
+{
+  "diagnostic": "RFC 0012 targeted rift donor cell and split-state trace",
+  "horizon_myr": 500.0,
+  "models": [
+    {
+      "by_path": {
+        "failed_rift_thinning": {
+          "craton_loss_mkm3": 1.42091973,
+          "donor_cell_visits": 168,
+          "operations": 4
+        },
+        "stretch_donation": {
+          "craton_loss_mkm3": 32.887127768,
+          "donor_cell_visits": 2060,
+          "operations": 462
+        }
+      },
+      "commit": "2279d7e16c7debe839bd04ab18ce0a8f895f8654",
+      "failed_rift_cut_steps": [
+        {
+          "band_area_m2": 10237136238074.242,
+          "band_craton_area_m2": 1192842915768.178,
+          "craton_loss_mkm3": 0.5748713087942555,
+          "cuts": 2,
+          "cuts_through_craton": 1,
+          "elapsed_myr": 6.0,
+          "step": 6
+        },
+        {
+          "band_area_m2": 2403944307213.7305,
+          "band_craton_area_m2": 0.0,
+          "craton_loss_mkm3": 0.0,
+          "cuts": 1,
+          "cuts_through_craton": 0,
+          "elapsed_myr": 64.0,
+          "step": 64
+        },
+        {
+          "band_area_m2": 2477254196141.4805,
+          "band_craton_area_m2": 36261001043.74048,
+          "craton_loss_mkm3": 0.001230608945068125,
+          "cuts": 1,
+          "cuts_through_craton": 1,
+          "elapsed_myr": 77.0,
+          "step": 77
+        },
+        {
+          "band_area_m2": 1249628504842.6094,
+          "band_craton_area_m2": 952339402802.2051,
+          "craton_loss_mkm3": 0.5173196209089691,
+          "cuts": 1,
+          "cuts_through_craton": 1,
+          "elapsed_myr": 79.0,
+          "step": 79
+        },
+        {
+          "band_area_m2": 3019035467968.797,
+          "band_craton_area_m2": 725092723223.9741,
+          "craton_loss_mkm3": 0.32749819163469224,
+          "cuts": 1,
+          "cuts_through_craton": 1,
+          "elapsed_myr": 196.0,
+          "step": 196
+        },
+        {
+          "band_area_m2": 2420710468080.414,
+          "band_craton_area_m2": 0.0,
+          "craton_loss_mkm3": 0.0,
+          "cuts": 1,
+          "cuts_through_craton": 0,
+          "elapsed_myr": 241.0,
+          "step": 241
+        },
+        {
+          "band_area_m2": 2522551521141.5234,
+          "band_craton_area_m2": 0.0,
+          "craton_loss_mkm3": 0.0,
+          "cuts": 1,
+          "cuts_through_craton": 0,
+          "elapsed_myr": 247.0,
+          "step": 247
+        },
+        {
+          "band_area_m2": 3257589911660.543,
+          "band_craton_area_m2": 0.0,
+          "craton_loss_mkm3": 0.0,
+          "cuts": 1,
+          "cuts_through_craton": 0,
+          "elapsed_myr": 317.0,
+          "step": 317
+        },
+        {
+          "band_area_m2": 3312361438329.1914,
+          "band_craton_area_m2": 0.0,
+          "craton_loss_mkm3": 0.0,
+          "cuts": 1,
+          "cuts_through_craton": 0,
+          "elapsed_myr": 325.0,
+          "step": 325
+        },
+        {
+          "band_area_m2": 2549591449869.3867,
+          "band_craton_area_m2": 0.0,
+          "craton_loss_mkm3": 0.0,
+          "cuts": 1,
+          "cuts_through_craton": 0,
+          "elapsed_myr": 337.0,
+          "step": 337
+        },
+        {
+          "band_area_m2": 3555243097966.551,
+          "band_craton_area_m2": 0.0,
+          "craton_loss_mkm3": 0.0,
+          "cuts": 1,
+          "cuts_through_craton": 0,
+          "elapsed_myr": 359.0,
+          "step": 359
+        },
+        {
+          "band_area_m2": 2820610478943.8516,
+          "band_craton_area_m2": 0.0,
+          "craton_loss_mkm3": 0.0,
+          "cuts": 1,
+          "cuts_through_craton": 0,
+          "elapsed_myr": 406.0,
+          "step": 406
+        },
+        {
+          "band_area_m2": 4390209321934.6484,
+          "band_craton_area_m2": 0.0,
+          "craton_loss_mkm3": 0.0,
+          "cuts": 1,
+          "cuts_through_craton": 0,
+          "elapsed_myr": 438.0,
+          "step": 438
+        },
+        {
+          "band_area_m2": 2954153019259.2656,
+          "band_craton_area_m2": 0.0,
+          "craton_loss_mkm3": 0.0,
+          "cuts": 1,
+          "cuts_through_craton": 0,
+          "elapsed_myr": 453.0,
+          "step": 453
+        },
+        {
+          "band_area_m2": 2529621026939.0547,
+          "band_craton_area_m2": 0.0,
+          "craton_loss_mkm3": 0.0,
+          "cuts": 1,
+          "cuts_through_craton": 0,
+          "elapsed_myr": 475.0,
+          "step": 475
+        }
+      ],
+      "failed_rift_events": [
+        {
+          "affected_cells": 67,
+          "craton_loss_mkm3": 0.5748713087942555,
+          "donor_cell_visits": 67,
+          "donor_inventory_mkm3": 47.11801238836602,
+          "elapsed_myr": 6.0,
+          "failed_cut": {
+            "band_cell_count": 288,
+            "band_craton_inventory_mkm3": 47.11801238836602,
+            "cut_normal_world": [
+              -0.05715716878944487,
+              0.013890952765398618,
+              0.9982685507854309
+            ],
+            "flow_fit_rms_rad_per_year": 6.671493841192626e-09,
+            "flow_residual_over_threshold": 1.3498068017855618,
+            "flow_residual_threshold_rad_per_year": 4.942554617718172e-09,
+            "loss_fraction_of_band_inventory": 0.012200669757797294,
+            "pole_separation_over_threshold": 1.2264471947979647,
+            "pole_separation_rad_per_year": 4.041188164024119e-09,
+            "pole_separation_threshold_rad_per_year": 3.2950364118121147e-09
+          },
+          "ledger_vs_cellwise_residual_m3": 0.0,
+          "path": "failed_rift_thinning",
+          "plate_id": 10,
+          "plate_state": {
+            "age_myr": 2.0,
+            "craton_inventory_m3": 3.54815224213557e+17,
+            "frame": [
+              [
+                -0.9765042153316451,
+                -0.20928896600679223,
+                0.051358019308923454
+              ],
+              [
+                0.20917479034493822,
+                -0.9778483568348514,
+                -0.007648406339401003
+              ],
+              [
+                0.05182108184589641,
+                0.0032741018904810424,
+                0.9986510179903345
+              ]
+            ],
+            "geometry_revision": 5,
+            "internal_stress": 0.10907686707609854,
+            "neighbour_plates": [
+              {
+                "age_myr": 6.0,
+                "node_count": 1826,
+                "omega_rad_per_year": [
+                  -1.111589161101052e-09,
+                  -9.149923663145684e-10,
+                  4.483525204632723e-09
+                ],
+                "plate_id": 2
+              },
+              {
+                "age_myr": 4.0,
+                "node_count": 3912,
+                "omega_rad_per_year": [
+                  5.645354835130616e-10,
+                  -2.2062118983269765e-09,
+                  1.4363940443200668e-09
+                ],
+                "plate_id": 3
+              },
+              {
+                "age_myr": 4.0,
+                "node_count": 4041,
+                "omega_rad_per_year": [
+                  1.6577706448552794e-09,
+                  -2.0034790701842273e-10,
+                  2.026238957162034e-10
+                ],
+                "plate_id": 8
+              },
+              {
+                "age_myr": 6.0,
+                "node_count": 2746,
+                "omega_rad_per_year": [
+                  3.405826302487106e-10,
+                  -1.8052946227999952e-09,
+                  1.6642400482482979e-09
+                ],
+                "plate_id": 5
+              },
+              {
+                "age_myr": 0.0,
+                "node_count": 4792,
+                "omega_rad_per_year": [
+                  -1.5534866620317218e-09,
+                  4.0114934399453905e-10,
+                  2.0732753476970484e-09
+                ],
+                "plate_id": 7
+              }
+            ],
+            "node_count": 4279,
+            "omega_rad_per_year": [
+              2.862361432766538e-10,
+              2.382940857482451e-09,
+              -1.472356919351061e-09
+            ],
+            "plate_id": 10,
+            "split_gates": {
+              "combined_relaxation": 0.4751830755086255,
+              "flow_residual_threshold_rad_per_year": 4.942554617718172e-09,
+              "minimum_nodes": 700,
+              "pole_separation_threshold_rad_per_year": 3.2950364118121147e-09,
+              "radius_rad": 1.0454027661189762,
+              "size_relaxation": 0.4751830755086255,
+              "stress_relaxation": 0.036358955692032846
+            },
+            "topology_revision": 3
+          },
+          "step": 6
+        },
+        {
+          "affected_cells": 2,
+          "craton_loss_mkm3": 0.001230608945068125,
+          "donor_cell_visits": 2,
+          "donor_inventory_mkm3": 1.1611498857071063,
+          "elapsed_myr": 77.0,
+          "failed_cut": {
+            "band_cell_count": 153,
+            "band_craton_inventory_mkm3": 1.1611498857071063,
+            "cut_normal_world": [
+              -0.27034058975440434,
+              -0.9625518764610009,
+              0.02024476852539227
+            ],
+            "flow_fit_rms_rad_per_year": 6.3853653885658365e-09,
+            "flow_residual_over_threshold": 1.3482434280431281,
+            "flow_residual_threshold_rad_per_year": 4.7360626840463846e-09,
+            "loss_fraction_of_band_inventory": 0.001059819201823992,
+            "pole_separation_over_threshold": 1.9561335517910876,
+            "pole_separation_rad_per_year": 6.1762474130992575e-09,
+            "pole_separation_threshold_rad_per_year": 3.1573751226975897e-09
+          },
+          "ledger_vs_cellwise_residual_m3": -0.010009765625,
+          "path": "failed_rift_thinning",
+          "plate_id": 13,
+          "plate_state": {
+            "age_myr": 66.0,
+            "craton_inventory_m3": 1.610596636530981e+17,
+            "frame": [
+              [
+                -0.9089091022863925,
+                -0.2782546471757993,
+                0.3105778406551466
+              ],
+              [
+                0.28225171666391147,
+                -0.9587734190174471,
+                -0.0329772561907189
+              ],
+              [
+                0.3069498529421655,
+                0.05768780036251135,
+                0.9499757394102849
+              ]
+            ],
+            "geometry_revision": 185,
+            "internal_stress": 1.4913272319970245,
+            "neighbour_plates": [
+              {
+                "age_myr": 77.0,
+                "node_count": 1912,
+                "omega_rad_per_year": [
+                  -1.8568358110372563e-09,
+                  1.0352831288335935e-09,
+                  3.836568303567211e-09
+                ],
+                "plate_id": 2
+              },
+              {
+                "age_myr": 0.0,
+                "node_count": 3566,
+                "omega_rad_per_year": [
+                  1.7620308682679271e-09,
+                  -1.5619129973490457e-09,
+                  3.0525713794566305e-10
+                ],
+                "plate_id": 16
+              },
+              {
+                "age_myr": 65.0,
+                "node_count": 2614,
+                "omega_rad_per_year": [
+                  -7.701365624869136e-10,
+                  -1.769485358268264e-09,
+                  -2.539478205994558e-10
+                ],
+                "plate_id": 7
+              },
+              {
+                "age_myr": 11.0,
+                "node_count": 792,
+                "omega_rad_per_year": [
+                  7.919632938182497e-10,
+                  2.691932108841821e-09,
+                  -4.6638361022905776e-09
+                ],
+                "plate_id": 14
+              },
+              {
+                "age_myr": 67.0,
+                "node_count": 705,
+                "omega_rad_per_year": [
+                  -4.925512913316047e-10,
+                  1.1766943745500778e-09,
+                  -9.64019253742506e-10
+                ],
+                "plate_id": 10
+              },
+              {
+                "age_myr": 67.0,
+                "node_count": 941,
+                "omega_rad_per_year": [
+                  5.072395551854986e-10,
+                  2.3606962533774955e-09,
+                  5.617827505629862e-11
+                ],
+                "plate_id": 12
+              },
+              {
+                "age_myr": 66.0,
+                "node_count": 1452,
+                "omega_rad_per_year": [
+                  6.488597712441697e-10,
+                  -1.0644978201523811e-09,
+                  -1.2253052573435952e-09
+                ],
+                "plate_id": 11
+              }
+            ],
+            "node_count": 1461,
+            "omega_rad_per_year": [
+              -1.285989056167128e-10,
+              3.6769320797650313e-09,
+              -7.341027188706352e-10
+            ],
+            "plate_id": 13,
+            "split_gates": {
+              "combined_relaxation": 0.4971090773323415,
+              "flow_residual_threshold_rad_per_year": 4.7360626840463846e-09,
+              "minimum_nodes": 700,
+              "pole_separation_threshold_rad_per_year": 3.1573751226975897e-09,
+              "radius_rad": 0.6881244412693618,
+              "size_relaxation": 0.31278383694061895,
+              "stress_relaxation": 0.4971090773323415
+            },
+            "topology_revision": 119
+          },
+          "step": 77
+        },
+        {
+          "affected_cells": 54,
+          "craton_loss_mkm3": 0.5173196209089691,
+          "donor_cell_visits": 54,
+          "donor_inventory_mkm3": 40.850435538533354,
+          "elapsed_myr": 79.0,
+          "failed_cut": {
+            "band_cell_count": 71,
+            "band_craton_inventory_mkm3": 40.850435538533354,
+            "cut_normal_world": [
+              -0.46722175716278297,
+              0.22935708571407568,
+              -0.8538730332235979
+            ],
+            "flow_fit_rms_rad_per_year": 4.431415472218676e-09,
+            "flow_residual_over_threshold": 1.0965879295722811,
+            "flow_residual_threshold_rad_per_year": 4.041094519385352e-09,
+            "loss_fraction_of_band_inventory": 0.012663747989198119,
+            "pole_separation_over_threshold": 2.426920450753587,
+            "pole_separation_rad_per_year": 6.538276621683033e-09,
+            "pole_separation_threshold_rad_per_year": 2.694063012923568e-09
+          },
+          "ledger_vs_cellwise_residual_m3": 0.0,
+          "path": "failed_rift_thinning",
+          "plate_id": 16,
+          "plate_state": {
+            "age_myr": 2.0,
+            "craton_inventory_m3": 1.3027108147500813e+18,
+            "frame": [
+              [
+                -0.21030809954729146,
+                -0.9774514234547811,
+                -0.018953048594603252
+              ],
+              [
+                0.7646071570029331,
+                -0.15236990617130672,
+                -0.6262262427854952
+              ],
+              [
+                0.6092178581794017,
+                -0.14619208760931626,
+                0.7794109793913171
+              ]
+            ],
+            "geometry_revision": 61,
+            "internal_stress": 1.4154734644332527,
+            "neighbour_plates": [
+              {
+                "age_myr": 29.0,
+                "node_count": 1526,
+                "omega_rad_per_year": [
+                  3.412676908069464e-10,
+                  -1.590566018036683e-09,
+                  -6.997816987563635e-10
+                ],
+                "plate_id": 3
+              },
+              {
+                "age_myr": 26.0,
+                "node_count": 2022,
+                "omega_rad_per_year": [
+                  1.5772616662436878e-09,
+                  -9.286214181175889e-10,
+                  8.291554891821513e-10
+                ],
+                "plate_id": 8
+              },
+              {
+                "age_myr": 76.0,
+                "node_count": 2259,
+                "omega_rad_per_year": [
+                  -2.634979618004694e-09,
+                  2.5433384302729227e-09,
+                  2.3573066075916694e-09
+                ],
+                "plate_id": 4
+              },
+              {
+                "age_myr": 76.0,
+                "node_count": 1535,
+                "omega_rad_per_year": [
+                  1.526012639595422e-10,
+                  -5.234486641511014e-09,
+                  2.0904358386778524e-09
+                ],
+                "plate_id": 9
+              },
+              {
+                "age_myr": 79.0,
+                "node_count": 2753,
+                "omega_rad_per_year": [
+                  4.951222290898075e-10,
+                  5.791380153206709e-10,
+                  -1.8807933185295814e-10
+                ],
+                "plate_id": 5
+              },
+              {
+                "age_myr": 69.0,
+                "node_count": 681,
+                "omega_rad_per_year": [
+                  -9.517734732403345e-10,
+                  9.924173785511304e-10,
+                  -8.04040334315982e-10
+                ],
+                "plate_id": 10
+              },
+              {
+                "age_myr": 69.0,
+                "node_count": 946,
+                "omega_rad_per_year": [
+                  -3.088380824931577e-10,
+                  2.46604655964773e-09,
+                  8.382050632776776e-10
+                ],
+                "plate_id": 12
+              },
+              {
+                "age_myr": 68.0,
+                "node_count": 1466,
+                "omega_rad_per_year": [
+                  5.394542734442702e-10,
+                  -1.0637381335380653e-09,
+                  -1.2391944293952179e-09
+                ],
+                "plate_id": 11
+              },
+              {
+                "age_myr": 2.0,
+                "node_count": 1482,
+                "omega_rad_per_year": [
+                  -1.0741004795655116e-11,
+                  3.506644849152907e-09,
+                  -5.254529752564858e-10
+                ],
+                "plate_id": 13
+              }
+            ],
+            "node_count": 3656,
+            "omega_rad_per_year": [
+              1.6209811807657844e-09,
+              -1.5312886935278138e-09,
+              2.736698357262589e-10
+            ],
+            "plate_id": 16,
+            "split_gates": {
+              "combined_relaxation": 0.5709031136165987,
+              "flow_residual_threshold_rad_per_year": 4.041094519385352e-09,
+              "minimum_nodes": 700,
+              "pole_separation_threshold_rad_per_year": 2.694063012923568e-09,
+              "radius_rad": 1.2559868499565172,
+              "size_relaxation": 0.5709031136165987,
+              "stress_relaxation": 0.4718244881444176
+            },
+            "topology_revision": 32
+          },
+          "step": 79
+        },
+        {
+          "affected_cells": 45,
+          "craton_loss_mkm3": 0.32749819163469224,
+          "donor_cell_visits": 45,
+          "donor_inventory_mkm3": 25.476136110449627,
+          "elapsed_myr": 196.0,
+          "failed_cut": {
+            "band_cell_count": 176,
+            "band_craton_inventory_mkm3": 25.476136110449634,
+            "cut_normal_world": [
+              0.5688377208143526,
+              0.8045151423441573,
+              0.17081871419049163
+            ],
+            "flow_fit_rms_rad_per_year": 2.882833142515741e-09,
+            "flow_residual_over_threshold": 1.000675784398514,
+            "flow_residual_threshold_rad_per_year": 2.880886284510776e-09,
+            "loss_fraction_of_band_inventory": 0.012855096636901748,
+            "pole_separation_over_threshold": 1.535066870791344,
+            "pole_separation_rad_per_year": 2.9482353959131057e-09,
+            "pole_separation_threshold_rad_per_year": 1.9205908563405174e-09
+          },
+          "ledger_vs_cellwise_residual_m3": 0.0,
+          "path": "failed_rift_thinning",
+          "plate_id": 5,
+          "plate_state": {
+            "age_myr": 57.0,
+            "craton_inventory_m3": 1.2090221087854702e+17,
+            "frame": [
+              [
+                0.11967810104209914,
+                0.827933189319203,
+                0.547908556380249
+              ],
+              [
+                0.003099831779400481,
+                0.5515607198943578,
+                -0.834128984817429
+              ],
+              [
+                -0.9928079084968527,
+                0.10152539728239697,
+                0.06344328595489718
+              ]
+            ],
+            "geometry_revision": 178,
+            "internal_stress": 2.0822936740690925,
+            "neighbour_plates": [
+              {
+                "age_myr": 196.0,
+                "node_count": 410,
+                "omega_rad_per_year": [
+                  3.240741846448582e-09,
+                  3.311356806409669e-09,
+                  2.4083229352312703e-09
+                ],
+                "plate_id": 1
+              },
+              {
+                "age_myr": 196.0,
+                "node_count": 2455,
+                "omega_rad_per_year": [
+                  -2.545618261485222e-09,
+                  7.110448411135248e-10,
+                  4.211864526145828e-09
+                ],
+                "plate_id": 2
+              },
+              {
+                "age_myr": 47.0,
+                "node_count": 921,
+                "omega_rad_per_year": [
+                  1.4898533852490406e-09,
+                  -1.5845068314295576e-09,
+                  -4.79363964668194e-10
+                ],
+                "plate_id": 25
+              },
+              {
+                "age_myr": 108.0,
+                "node_count": 1086,
+                "omega_rad_per_year": [
+                  9.736108064746933e-10,
+                  2.6773954498813703e-10,
+                  -2.2624725670852457e-10
+                ],
+                "plate_id": 22
+              },
+              {
+                "age_myr": 193.0,
+                "node_count": 2368,
+                "omega_rad_per_year": [
+                  -2.739832175167677e-09,
+                  2.4073799753585754e-09,
+                  3.3148566183622884e-09
+                ],
+                "plate_id": 4
+              },
+              {
+                "age_myr": 196.0,
+                "node_count": 2923,
+                "omega_rad_per_year": [
+                  -1.2791006640733158e-09,
+                  3.3060978469817305e-10,
+                  2.2841176653545183e-10
+                ],
+                "plate_id": 6
+              },
+              {
+                "age_myr": 55.0,
+                "node_count": 1173,
+                "omega_rad_per_year": [
+                  -4.2764685294981996e-11,
+                  3.540997390188375e-09,
+                  -4.506183103904532e-09
+                ],
+                "plate_id": 11
+              },
+              {
+                "age_myr": 55.0,
+                "node_count": 1090,
+                "omega_rad_per_year": [
+                  3.0125194620588487e-09,
+                  -3.231832385261286e-09,
+                  4.2936465555282045e-09
+                ],
+                "plate_id": 24
+              }
+            ],
+            "node_count": 2549,
+            "omega_rad_per_year": [
+              7.189384747718969e-10,
+              5.040044062837731e-10,
+              -5.986439675509315e-11
+            ],
+            "plate_id": 5,
+            "split_gates": {
+              "combined_relaxation": 0.6940978913563641,
+              "flow_residual_threshold_rad_per_year": 2.880886284510776e-09,
+              "minimum_nodes": 700,
+              "pole_separation_threshold_rad_per_year": 1.9205908563405174e-09,
+              "radius_rad": 0.9112256639239718,
+              "size_relaxation": 0.4141934836018053,
+              "stress_relaxation": 0.6940978913563641
+            },
+            "topology_revision": 114
+          },
+          "step": 196
+        }
+      ],
+      "failed_rift_ledger": {
+        "failed_rift_band_area_m2": 49699640448365.29,
+        "failed_rift_band_craton_area_m2": 2906536042838.0977,
+        "failed_rift_cuts": 16.0,
+        "failed_rift_cuts_through_craton": 4.0,
+        "rifted_failed_m3": 1420919730282985.0
+      },
+      "largest_stretch_events": [
+        {
+          "affected_cells": 109,
+          "craton_loss_mkm3": 3.303723070094752,
+          "donor_cell_visits": 109,
+          "donor_inventory_mkm3": 83.75368381727279,
+          "elapsed_myr": 207.0,
+          "plate_id": 12,
+          "step": 207,
+          "stretch": {
+            "rifted_new_cell_count": 30,
+            "stretch_share_area_weighted_mean": 0.6784392007109494
+          }
+        },
+        {
+          "affected_cells": 79,
+          "craton_loss_mkm3": 2.414392041000954,
+          "donor_cell_visits": 79,
+          "donor_inventory_mkm3": 44.98460337491413,
+          "elapsed_myr": 207.0,
+          "plate_id": 3,
+          "step": 207,
+          "stretch": {
+            "rifted_new_cell_count": 31,
+            "stretch_share_area_weighted_mean": 0.7407137780727414
+          }
+        },
+        {
+          "affected_cells": 46,
+          "craton_loss_mkm3": 2.1301635027230157,
+          "donor_cell_visits": 46,
+          "donor_inventory_mkm3": 34.88899071574058,
+          "elapsed_myr": 77.0,
+          "plate_id": 16,
+          "step": 77,
+          "stretch": {
+            "rifted_new_cell_count": 87,
+            "stretch_share_area_weighted_mean": 0.7208348183861986
+          }
+        },
+        {
+          "affected_cells": 49,
+          "craton_loss_mkm3": 1.673694865741122,
+          "donor_cell_visits": 49,
+          "donor_inventory_mkm3": 31.227550063634048,
+          "elapsed_myr": 207.0,
+          "plate_id": 8,
+          "step": 207,
+          "stretch": {
+            "rifted_new_cell_count": 17,
+            "stretch_share_area_weighted_mean": 0.8133749597257229
+          }
+        },
+        {
+          "affected_cells": 23,
+          "craton_loss_mkm3": 0.493497180763726,
+          "donor_cell_visits": 23,
+          "donor_inventory_mkm3": 14.20456936301399,
+          "elapsed_myr": 77.0,
+          "plate_id": 8,
+          "step": 77,
+          "stretch": {
+            "rifted_new_cell_count": 18,
+            "stretch_share_area_weighted_mean": 0.5582760474882023
+          }
+        },
+        {
+          "affected_cells": 8,
+          "craton_loss_mkm3": 0.407123695015848,
+          "donor_cell_visits": 8,
+          "donor_inventory_mkm3": 5.581598016419067,
+          "elapsed_myr": 207.0,
+          "plate_id": 16,
+          "step": 207,
+          "stretch": {
+            "rifted_new_cell_count": 3,
+            "stretch_share_area_weighted_mean": 0.8471289097182944
+          }
+        },
+        {
+          "affected_cells": 9,
+          "craton_loss_mkm3": 0.3463206663986539,
+          "donor_cell_visits": 9,
+          "donor_inventory_mkm3": 4.841578260666442,
+          "elapsed_myr": 13.0,
+          "plate_id": 11,
+          "step": 13,
+          "stretch": {
+            "rifted_new_cell_count": 20,
+            "stretch_share_area_weighted_mean": 0.9831430019763081
+          }
+        },
+        {
+          "affected_cells": 6,
+          "craton_loss_mkm3": 0.2709633778314,
+          "donor_cell_visits": 6,
+          "donor_inventory_mkm3": 6.851174550008757,
+          "elapsed_myr": 243.0,
+          "plate_id": 12,
+          "step": 243,
+          "stretch": {
+            "rifted_new_cell_count": 1,
+            "stretch_share_area_weighted_mean": 0.9943282607674012
+          }
+        },
+        {
+          "affected_cells": 10,
+          "craton_loss_mkm3": 0.263994714996983,
+          "donor_cell_visits": 10,
+          "donor_inventory_mkm3": 5.577171414346324,
+          "elapsed_myr": 160.0,
+          "plate_id": 16,
+          "step": 160,
+          "stretch": {
+            "rifted_new_cell_count": 4,
+            "stretch_share_area_weighted_mean": 0.7215406425086953
+          }
+        },
+        {
+          "affected_cells": 7,
+          "craton_loss_mkm3": 0.2520203307230926,
+          "donor_cell_visits": 7,
+          "donor_inventory_mkm3": 3.866506789087611,
+          "elapsed_myr": 13.0,
+          "plate_id": 13,
+          "step": 13,
+          "stretch": {
+            "rifted_new_cell_count": 24,
+            "stretch_share_area_weighted_mean": 0.8549809291915479
+          }
+        }
+      ],
+      "model": "baseline",
+      "top_donor_cells": [
+        {
+          "craton_loss_mkm3": 0.1480287826639433,
+          "local_xyz": [
+            0.960905554,
+            0.09206723,
+            -0.261120934
+          ],
+          "max_single_operation_loss_mkm3": 0.1480287826639433,
+          "node_id": [
+            402653225,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 16,
+          "topology_revision": 28
+        },
+        {
+          "craton_loss_mkm3": 0.12999295226029206,
+          "local_xyz": [
+            0.966185952,
+            0.092573161,
+            -0.240655182
+          ],
+          "max_single_operation_loss_mkm3": 0.12999295226029206,
+          "node_id": [
+            419430441,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 16,
+          "topology_revision": 28
+        },
+        {
+          "craton_loss_mkm3": 0.12870003307237113,
+          "local_xyz": [
+            0.973331709,
+            0.114154015,
+            -0.198983029
+          ],
+          "max_single_operation_loss_mkm3": 0.12870003307237113,
+          "node_id": [
+            452984874,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 16,
+          "topology_revision": 28
+        },
+        {
+          "craton_loss_mkm3": 0.10619813265806782,
+          "local_xyz": [
+            0.977283426,
+            0.114617479,
+            -0.178269287
+          ],
+          "max_single_operation_loss_mkm3": 0.10619813265806782,
+          "node_id": [
+            469762090,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 16,
+          "topology_revision": 28
+        },
+        {
+          "craton_loss_mkm3": 0.09878536508565822,
+          "local_xyz": [
+            0.710108774,
+            -0.348626652,
+            0.611722965
+          ],
+          "max_single_operation_loss_mkm3": 0.09878536508565822,
+          "node_id": [
+            1174405135,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 12,
+          "topology_revision": 55
+        },
+        {
+          "craton_loss_mkm3": 0.09579202442408796,
+          "local_xyz": [
+            0.816895772,
+            -0.515018881,
+            0.259686059
+          ],
+          "max_single_operation_loss_mkm3": 0.09579202442408796,
+          "node_id": [
+            855638026,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 12,
+          "topology_revision": 55
+        },
+        {
+          "craton_loss_mkm3": 0.09474757332848117,
+          "local_xyz": [
+            0.806515636,
+            -0.532727515,
+            0.256386278
+          ],
+          "max_single_operation_loss_mkm3": 0.09474757332848117,
+          "node_id": [
+            855638025,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 12,
+          "topology_revision": 55
+        },
+        {
+          "craton_loss_mkm3": 0.09049629624738093,
+          "local_xyz": [
+            0.964129385,
+            0.11307475,
+            -0.240142937
+          ],
+          "max_single_operation_loss_mkm3": 0.09049629624738093,
+          "node_id": [
+            419430442,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 16,
+          "topology_revision": 28
+        },
+        {
+          "craton_loss_mkm3": 0.09045722356614186,
+          "local_xyz": [
+            0.857116676,
+            -0.490821658,
+            0.156349299
+          ],
+          "max_single_operation_loss_mkm3": 0.09045722356614186,
+          "node_id": [
+            754974732,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 12,
+          "topology_revision": 55
+        },
+        {
+          "craton_loss_mkm3": 0.08876171175408497,
+          "local_xyz": [
+            0.682413106,
+            -0.539146497,
+            0.49359235
+          ],
+          "max_single_operation_loss_mkm3": 0.08876171175408497,
+          "node_id": [
+            1107296261,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 12,
+          "topology_revision": 55
+        },
+        {
+          "craton_loss_mkm3": 0.08743873794794557,
+          "local_xyz": [
+            0.698452756,
+            -0.528132095,
+            0.48294952
+          ],
+          "max_single_operation_loss_mkm3": 0.08743873794794557,
+          "node_id": [
+            1090519046,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 12,
+          "topology_revision": 55
+        },
+        {
+          "craton_loss_mkm3": 0.08667359238744285,
+          "local_xyz": [
+            0.689687208,
+            -0.544893466,
+            0.476888527
+          ],
+          "max_single_operation_loss_mkm3": 0.08667359238744285,
+          "node_id": [
+            1090519045,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 12,
+          "topology_revision": 55
+        },
+        {
+          "craton_loss_mkm3": 0.08322224891562156,
+          "local_xyz": [
+            0.705349588,
+            -0.365069919,
+            0.607623166
+          ],
+          "max_single_operation_loss_mkm3": 0.08322224891562156,
+          "node_id": [
+            1174405134,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 12,
+          "topology_revision": 55
+        },
+        {
+          "craton_loss_mkm3": 0.07995343930293844,
+          "local_xyz": [
+            0.548331506,
+            -0.609851054,
+            0.572201234
+          ],
+          "max_single_operation_loss_mkm3": 0.07995343930293844,
+          "node_id": [
+            216172783321743431,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 12,
+          "topology_revision": 55
+        },
+        {
+          "craton_loss_mkm3": 0.07704467190676384,
+          "local_xyz": [
+            0.859486084,
+            -0.492178482,
+            0.13800005
+          ],
+          "max_single_operation_loss_mkm3": 0.07704467190676384,
+          "node_id": [
+            738197516,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 12,
+          "topology_revision": 55
+        },
+        {
+          "craton_loss_mkm3": 0.07664154540700917,
+          "local_xyz": [
+            0.531958271,
+            -0.617515211,
+            0.579392236
+          ],
+          "max_single_operation_loss_mkm3": 0.07664154540700917,
+          "node_id": [
+            216172783321743430,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 12,
+          "topology_revision": 55
+        },
+        {
+          "craton_loss_mkm3": 0.07650671623472872,
+          "local_xyz": [
+            0.803418105,
+            -0.312977705,
+            -0.506521771
+          ],
+          "max_single_operation_loss_mkm3": 0.07650671623472872,
+          "node_id": [
+            167772179,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 11,
+          "topology_revision": 4
+        },
+        {
+          "craton_loss_mkm3": 0.0757127776971568,
+          "local_xyz": [
+            0.72133703,
+            -0.354139145,
+            0.595196064
+          ],
+          "max_single_operation_loss_mkm3": 0.0757127776971568,
+          "node_id": [
+            1157627919,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 12,
+          "topology_revision": 55
+        },
+        {
+          "craton_loss_mkm3": 0.07561960445741678,
+          "local_xyz": [
+            0.564699117,
+            -0.601855311,
+            0.564699117
+          ],
+          "max_single_operation_loss_mkm3": 0.07561960445741678,
+          "node_id": [
+            216172783321743432,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 12,
+          "topology_revision": 55
+        },
+        {
+          "craton_loss_mkm3": 0.07545377470992827,
+          "local_xyz": [
+            0.968946445,
+            0.113639703,
+            -0.219610573
+          ],
+          "max_single_operation_loss_mkm3": 0.07545377470992827,
+          "node_id": [
+            436207658,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 16,
+          "topology_revision": 28
+        },
+        {
+          "craton_loss_mkm3": 0.07392902519246324,
+          "local_xyz": [
+            0.378714816,
+            -0.647454228,
+            0.661345682
+          ],
+          "max_single_operation_loss_mkm3": 0.07392902519246324,
+          "node_id": [
+            288230376353038336,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 12,
+          "topology_revision": 55
+        },
+        {
+          "craton_loss_mkm3": 0.07332122361045945,
+          "local_xyz": [
+            0.956455504,
+            0.259911657,
+            -0.132811141
+          ],
+          "max_single_operation_loss_mkm3": 0.07332122361045945,
+          "node_id": [
+            503316529,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 16,
+          "topology_revision": 78
+        },
+        {
+          "craton_loss_mkm3": 0.0729178105437256,
+          "local_xyz": [
+            0.961662482,
+            0.239528487,
+            -0.13353417
+          ],
+          "max_single_operation_loss_mkm3": 0.0729178105437256,
+          "node_id": [
+            503316528,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 16,
+          "topology_revision": 78
+        },
+        {
+          "craton_loss_mkm3": 0.07278128676886454,
+          "local_xyz": [
+            0.362771809,
+            -0.651906651,
+            0.665893635
+          ],
+          "max_single_operation_loss_mkm3": 0.07278128676886454,
+          "node_id": [
+            288230376369815552,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 12,
+          "topology_revision": 55
+        },
+        {
+          "craton_loss_mkm3": 0.07195173341537525,
+          "local_xyz": [
+            0.955195065,
+            0.091520091,
+            -0.281471953
+          ],
+          "max_single_operation_loss_mkm3": 0.07195173341537525,
+          "node_id": [
+            385876009,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 16,
+          "topology_revision": 28
+        },
+        {
+          "craton_loss_mkm3": 0.06964684417230785,
+          "local_xyz": [
+            0.931383895,
+            0.029665723,
+            0.362827763
+          ],
+          "max_single_operation_loss_mkm3": 0.06964684417230785,
+          "node_id": [
+            905969702,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 3,
+          "topology_revision": 67
+        },
+        {
+          "craton_loss_mkm3": 0.06904273665687848,
+          "local_xyz": [
+            0.787234524,
+            -0.365963874,
+            0.496318695
+          ],
+          "max_single_operation_loss_mkm3": 0.06904273665687848,
+          "node_id": [
+            1056964624,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 3,
+          "topology_revision": 67
+        },
+        {
+          "craton_loss_mkm3": 0.06829387030786704,
+          "local_xyz": [
+            0.822488469,
+            -0.0087298,
+            -0.568714788
+          ],
+          "max_single_operation_loss_mkm3": 0.06829387030786704,
+          "node_id": [
+            134217764,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 16,
+          "topology_revision": 28
+        },
+        {
+          "craton_loss_mkm3": 0.06818109101283609,
+          "local_xyz": [
+            0.832036327,
+            -0.284080659,
+            0.476459578
+          ],
+          "max_single_operation_loss_mkm3": 0.06818109101283609,
+          "node_id": [
+            1023410197,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 3,
+          "topology_revision": 67
+        },
+        {
+          "craton_loss_mkm3": 0.06745173730023142,
+          "local_xyz": [
+            0.53940583,
+            -0.62616059,
+            0.562995796
+          ],
+          "max_single_operation_loss_mkm3": 0.06745173730023142,
+          "node_id": [
+            216172783304966214,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 12,
+          "topology_revision": 55
+        }
+      ]
+    },
+    {
+      "by_path": {
+        "failed_rift_thinning": {
+          "craton_loss_mkm3": 5.56244126,
+          "donor_cell_visits": 751,
+          "operations": 12
+        },
+        "stretch_donation": {
+          "craton_loss_mkm3": 5.262623772,
+          "donor_cell_visits": 358,
+          "operations": 113
+        }
+      },
+      "commit": "d2d7d79c1f4ac7f7fa05ff39f55cf7059c43c3ab",
+      "failed_rift_cut_steps": [
+        {
+          "band_area_m2": 9906488320581.926,
+          "band_craton_area_m2": 1013742761273.5,
+          "craton_loss_mkm3": 0.5618400483389578,
+          "cuts": 2,
+          "cuts_through_craton": 1,
+          "elapsed_myr": 6.0,
+          "step": 6
+        },
+        {
+          "band_area_m2": 2884714210511.6523,
+          "band_craton_area_m2": 69681953023.97559,
+          "craton_loss_mkm3": 0.01146886752533075,
+          "cuts": 1,
+          "cuts_through_craton": 1,
+          "elapsed_myr": 10.0,
+          "step": 10
+        },
+        {
+          "band_area_m2": 3174633020404.6465,
+          "band_craton_area_m2": 634355470066.6235,
+          "craton_loss_mkm3": 0.2879466780531085,
+          "cuts": 1,
+          "cuts_through_craton": 1,
+          "elapsed_myr": 12.0,
+          "step": 12
+        },
+        {
+          "band_area_m2": 2884714210511.6543,
+          "band_craton_area_m2": 69681953023.97559,
+          "craton_loss_mkm3": 0.011675947075859125,
+          "cuts": 1,
+          "cuts_through_craton": 1,
+          "elapsed_myr": 13.0,
+          "step": 13
+        },
+        {
+          "band_area_m2": 2884714210511.6523,
+          "band_craton_area_m2": 69681953023.97559,
+          "craton_loss_mkm3": 0.0115545059505825,
+          "cuts": 1,
+          "cuts_through_craton": 1,
+          "elapsed_myr": 15.0,
+          "step": 15
+        },
+        {
+          "band_area_m2": 5402308549293.0625,
+          "band_craton_area_m2": 4285424416031.5474,
+          "craton_loss_mkm3": 2.0528099141480163,
+          "cuts": 1,
+          "cuts_through_craton": 1,
+          "elapsed_myr": 43.0,
+          "step": 43
+        },
+        {
+          "band_area_m2": 5596645013325.797,
+          "band_craton_area_m2": 2709280752856.7305,
+          "craton_loss_mkm3": 1.3526496706655076,
+          "cuts": 1,
+          "cuts_through_craton": 1,
+          "elapsed_myr": 60.0,
+          "step": 60
+        },
+        {
+          "band_area_m2": 2664373889527.836,
+          "band_craton_area_m2": 1280283029843.9727,
+          "craton_loss_mkm3": 0.5501701279294295,
+          "cuts": 1,
+          "cuts_through_craton": 1,
+          "elapsed_myr": 119.0,
+          "step": 119
+        },
+        {
+          "band_area_m2": 2164481084500.25,
+          "band_craton_area_m2": 108493184899.03125,
+          "craton_loss_mkm3": 0.016537458851636,
+          "cuts": 1,
+          "cuts_through_craton": 1,
+          "elapsed_myr": 160.0,
+          "step": 160
+        },
+        {
+          "band_area_m2": 3109167808583.9297,
+          "band_craton_area_m2": 0.0,
+          "craton_loss_mkm3": 0.0,
+          "cuts": 1,
+          "cuts_through_craton": 0,
+          "elapsed_myr": 216.0,
+          "step": 216
+        },
+        {
+          "band_area_m2": 2625503330155.8438,
+          "band_craton_area_m2": 454130434055.37695,
+          "craton_loss_mkm3": 0.152684636384315,
+          "cuts": 1,
+          "cuts_through_craton": 1,
+          "elapsed_myr": 338.0,
+          "step": 338
+        },
+        {
+          "band_area_m2": 3474183354512.3438,
+          "band_craton_area_m2": 1110225330985.955,
+          "craton_loss_mkm3": 0.500429100065447,
+          "cuts": 1,
+          "cuts_through_craton": 1,
+          "elapsed_myr": 342.0,
+          "step": 342
+        },
+        {
+          "band_area_m2": 2741868458274.6797,
+          "band_craton_area_m2": 225569021369.79883,
+          "craton_loss_mkm3": 0.052674305429057,
+          "cuts": 1,
+          "cuts_through_craton": 1,
+          "elapsed_myr": 384.0,
+          "step": 384
+        },
+        {
+          "band_area_m2": 2655439431881.453,
+          "band_craton_area_m2": 0.0,
+          "craton_loss_mkm3": 0.0,
+          "cuts": 1,
+          "cuts_through_craton": 0,
+          "elapsed_myr": 427.0,
+          "step": 427
+        },
+        {
+          "band_area_m2": 3410388527739.867,
+          "band_craton_area_m2": 0.0,
+          "craton_loss_mkm3": 0.0,
+          "cuts": 1,
+          "cuts_through_craton": 0,
+          "elapsed_myr": 472.0,
+          "step": 472
+        }
+      ],
+      "failed_rift_events": [
+        {
+          "affected_cells": 57,
+          "craton_loss_mkm3": 0.5618400483389578,
+          "donor_cell_visits": 57,
+          "donor_inventory_mkm3": 39.95827345352359,
+          "elapsed_myr": 6.0,
+          "failed_cut": {
+            "band_cell_count": 271,
+            "band_craton_inventory_mkm3": 39.95827345352359,
+            "cut_normal_world": [
+              -0.06269919175434781,
+              0.011908408643953457,
+              0.9979614226797148
+            ],
+            "flow_fit_rms_rad_per_year": 7.283581504769636e-09,
+            "flow_residual_over_threshold": 1.4797226528907979,
+            "flow_residual_threshold_rad_per_year": 4.922261270070019e-09,
+            "loss_fraction_of_band_inventory": 0.014060668787214924,
+            "pole_separation_over_threshold": 1.2561664048422982,
+            "pole_separation_rad_per_year": 4.12211949554556e-09,
+            "pole_separation_threshold_rad_per_year": 3.2815075133800126e-09
+          },
+          "ledger_vs_cellwise_residual_m3": 0.0,
+          "path": "failed_rift_thinning",
+          "plate_id": 10,
+          "plate_state": {
+            "age_myr": 2.0,
+            "craton_inventory_m3": 3.53315379006784e+17,
+            "frame": [
+              [
+                -0.9773358306910399,
+                -0.2067936005566893,
+                0.04528885973675727
+              ],
+              [
+                0.20674173200174092,
+                -0.9783778978997894,
+                -0.005877512238190667
+              ],
+              [
+                0.0455250513055785,
+                0.0036187939966522333,
+                0.9989566427196097
+              ]
+            ],
+            "geometry_revision": 5,
+            "internal_stress": 0.11050140925185577,
+            "neighbour_plates": [
+              {
+                "age_myr": 6.0,
+                "node_count": 1830,
+                "omega_rad_per_year": [
+                  -1.6526358809712619e-10,
+                  -2.789889563625648e-10,
+                  2.0719616981006445e-09
+                ],
+                "plate_id": 2
+              },
+              {
+                "age_myr": 4.0,
+                "node_count": 3941,
+                "omega_rad_per_year": [
+                  3.5616652670195834e-10,
+                  -1.2363997735141581e-09,
+                  1.1996502217629231e-09
+                ],
+                "plate_id": 3
+              },
+              {
+                "age_myr": 4.0,
+                "node_count": 4043,
+                "omega_rad_per_year": [
+                  9.995111086412458e-10,
+                  -1.048230095213985e-09,
+                  9.432499668451353e-10
+                ],
+                "plate_id": 8
+              },
+              {
+                "age_myr": 6.0,
+                "node_count": 2733,
+                "omega_rad_per_year": [
+                  5.840285487769225e-10,
+                  -5.60650146519289e-10,
+                  7.1529506717514e-10
+                ],
+                "plate_id": 5
+              },
+              {
+                "age_myr": 0.0,
+                "node_count": 4787,
+                "omega_rad_per_year": [
+                  -7.551214461763832e-10,
+                  7.726373633667856e-10,
+                  6.350744857012565e-10
+                ],
+                "plate_id": 7
+              }
+            ],
+            "node_count": 4266,
+            "omega_rad_per_year": [
+              -2.393918455171794e-10,
+              1.1910698144824176e-09,
+              -4.7936396963079717e-11
+            ],
+            "plate_id": 10,
+            "split_gates": {
+              "combined_relaxation": 0.4773378908063985,
+              "flow_residual_threshold_rad_per_year": 4.922261270070019e-09,
+              "minimum_nodes": 700,
+              "pole_separation_threshold_rad_per_year": 3.2815075133800126e-09,
+              "radius_rad": 1.0501433597740768,
+              "size_relaxation": 0.4773378908063985,
+              "stress_relaxation": 0.03683380308395192
+            },
+            "topology_revision": 3
+          },
+          "step": 6
+        },
+        {
+          "affected_cells": 5,
+          "craton_loss_mkm3": 0.01146886752533075,
+          "donor_cell_visits": 5,
+          "donor_inventory_mkm3": 2.368661437303196,
+          "elapsed_myr": 10.0,
+          "failed_cut": {
+            "band_cell_count": 192,
+            "band_craton_inventory_mkm3": 2.368661437303196,
+            "cut_normal_world": [
+              0.860063465988319,
+              -0.45180280403578,
+              0.23699168917404356
+            ],
+            "flow_fit_rms_rad_per_year": 6.199728392995372e-09,
+            "flow_residual_over_threshold": 1.0073494490996422,
+            "flow_residual_threshold_rad_per_year": 6.154496236173674e-09,
+            "loss_fraction_of_band_inventory": 0.0048419192986856145,
+            "pole_separation_over_threshold": 1.4522932680539185,
+            "pole_separation_rad_per_year": 5.95875563470547e-09,
+            "pole_separation_threshold_rad_per_year": 4.102997490782449e-09
+          },
+          "ledger_vs_cellwise_residual_m3": 0.01171875,
+          "path": "failed_rift_thinning",
+          "plate_id": 7,
+          "plate_state": {
+            "age_myr": 2.0,
+            "craton_inventory_m3": 1.873002506446688e+17,
+            "frame": [
+              [
+                -0.977397762745808,
+                -0.20550343894061654,
+                0.04961804070164286
+              ],
+              [
+                0.2057326497288003,
+                -0.9786081079921389,
+                -0.0004978027852169519
+              ],
+              [
+                0.04865891711758806,
+                0.009721499659340686,
+                0.9987681423780581
+              ]
+            ],
+            "geometry_revision": 2,
+            "internal_stress": 0.07941165453251417,
+            "neighbour_plates": [
+              {
+                "age_myr": 10.0,
+                "node_count": 4142,
+                "omega_rad_per_year": [
+                  -2.4334434000648557e-10,
+                  -2.366925027485494e-09,
+                  -1.9339913297337535e-09
+                ],
+                "plate_id": 0
+              },
+              {
+                "age_myr": 8.0,
+                "node_count": 3895,
+                "omega_rad_per_year": [
+                  1.6688757059071859e-10,
+                  -8.873383007714864e-10,
+                  5.105439367374126e-10
+                ],
+                "plate_id": 3
+              },
+              {
+                "age_myr": 2.0,
+                "node_count": 2276,
+                "omega_rad_per_year": [
+                  -3.0124515839564207e-10,
+                  9.516164963036617e-10,
+                  5.119576338746378e-10
+                ],
+                "plate_id": 11
+              },
+              {
+                "age_myr": 1.0,
+                "node_count": 2324,
+                "omega_rad_per_year": [
+                  -2.942710875092168e-10,
+                  1.3367964569002194e-09,
+                  -1.3710628518053703e-10
+                ],
+                "plate_id": 10
+              }
+            ],
+            "node_count": 2522,
+            "omega_rad_per_year": [
+              -1.2725655560912283e-09,
+              1.2186362156633366e-09,
+              -4.4958390837583346e-10
+            ],
+            "plate_id": 7,
+            "split_gates": {
+              "combined_relaxation": 0.3464950746556254,
+              "flow_residual_threshold_rad_per_year": 6.154496236173674e-09,
+              "minimum_nodes": 700,
+              "pole_separation_threshold_rad_per_year": 4.102997490782449e-09,
+              "radius_rad": 0.7622891642423759,
+              "size_relaxation": 0.3464950746556254,
+              "stress_relaxation": 0.026470551510838058
+            },
+            "topology_revision": 0
+          },
+          "step": 10
+        },
+        {
+          "affected_cells": 41,
+          "craton_loss_mkm3": 0.2879466780531085,
+          "donor_cell_visits": 41,
+          "donor_inventory_mkm3": 22.61017659591986,
+          "elapsed_myr": 12.0,
+          "failed_cut": {
+            "band_cell_count": 209,
+            "band_craton_inventory_mkm3": 22.610176595919857,
+            "cut_normal_world": [
+              0.5271539751433634,
+              0.033488359692958714,
+              -0.849109660912903
+            ],
+            "flow_fit_rms_rad_per_year": 7.3507604904863126e-09,
+            "flow_residual_over_threshold": 1.2829627913847024,
+            "flow_residual_threshold_rad_per_year": 5.729519624300743e-09,
+            "loss_fraction_of_band_inventory": 0.012735268865837618,
+            "pole_separation_over_threshold": 3.1704072751948282,
+            "pole_separation_rad_per_year": 1.2109940466836408e-08,
+            "pole_separation_threshold_rad_per_year": 3.8196797495338284e-09
+          },
+          "ledger_vs_cellwise_residual_m3": 0.0,
+          "path": "failed_rift_thinning",
+          "plate_id": 12,
+          "plate_state": {
+            "age_myr": 3.0,
+            "craton_inventory_m3": 1.7998194807213763e+17,
+            "frame": [
+              [
+                -0.9766169021797998,
+                -0.2088939852809183,
+                0.05082055971933635
+              ],
+              [
+                0.20887730886342348,
+                -0.9779252521260885,
+                -0.005698341521912748
+              ],
+              [
+                0.05088905794672509,
+                0.005050165104414941,
+                0.9986915437780141
+              ]
+            ],
+            "geometry_revision": 5,
+            "internal_stress": 0.13183212608739148,
+            "neighbour_plates": [
+              {
+                "age_myr": 12.0,
+                "node_count": 1831,
+                "omega_rad_per_year": [
+                  -5.476835739989234e-10,
+                  9.747915729392244e-11,
+                  8.610435308161117e-10
+                ],
+                "plate_id": 2
+              },
+              {
+                "age_myr": 10.0,
+                "node_count": 4059,
+                "omega_rad_per_year": [
+                  1.3015403781827825e-09,
+                  -3.5039712693908017e-10,
+                  3.694872260136899e-10
+                ],
+                "plate_id": 8
+              },
+              {
+                "age_myr": 12.0,
+                "node_count": 2739,
+                "omega_rad_per_year": [
+                  2.684529618225693e-10,
+                  1.6084469323750785e-10,
+                  5.977203637583228e-10
+                ],
+                "plate_id": 5
+              },
+              {
+                "age_myr": 4.0,
+                "node_count": 2279,
+                "omega_rad_per_year": [
+                  -1.8039834004140147e-10,
+                  1.241796922489447e-09,
+                  3.2787521365918385e-10
+                ],
+                "plate_id": 11
+              },
+              {
+                "age_myr": 1.0,
+                "node_count": 1278,
+                "omega_rad_per_year": [
+                  -6.792880207766285e-10,
+                  1.4334098876195928e-09,
+                  -1.5133588810259374e-09
+                ],
+                "plate_id": 10
+              },
+              {
+                "age_myr": 1.0,
+                "node_count": 1039,
+                "omega_rad_per_year": [
+                  7.532699756662931e-10,
+                  1.8951945341863384e-09,
+                  -1.6588336753692489e-10
+                ],
+                "plate_id": 13
+              }
+            ],
+            "node_count": 1955,
+            "omega_rad_per_year": [
+              2.3774556339503585e-10,
+              7.358850350515468e-10,
+              -4.3077401357016734e-10
+            ],
+            "plate_id": 12,
+            "split_gates": {
+              "combined_relaxation": 0.39162050789299957,
+              "flow_residual_threshold_rad_per_year": 5.729519624300743e-09,
+              "minimum_nodes": 700,
+              "pole_separation_threshold_rad_per_year": 3.8196797495338284e-09,
+              "radius_rad": 0.8615651173645991,
+              "size_relaxation": 0.39162050789299957,
+              "stress_relaxation": 0.04394404202913049
+            },
+            "topology_revision": 2
+          },
+          "step": 12
+        },
+        {
+          "affected_cells": 5,
+          "craton_loss_mkm3": 0.011675947075859125,
+          "donor_cell_visits": 5,
+          "donor_inventory_mkm3": 2.341018382995203,
+          "elapsed_myr": 13.0,
+          "failed_cut": {
+            "band_cell_count": 192,
+            "band_craton_inventory_mkm3": 2.341018382995203,
+            "cut_normal_world": [
+              0.8601659249730935,
+              -0.45276563196941927,
+              0.23477194044969443
+            ],
+            "flow_fit_rms_rad_per_year": 6.191018245696025e-09,
+            "flow_residual_over_threshold": 1.0059341996681541,
+            "flow_residual_threshold_rad_per_year": 6.154496236173668e-09,
+            "loss_fraction_of_band_inventory": 0.004987550358712006,
+            "pole_separation_over_threshold": 1.4714681569585624,
+            "pole_separation_rad_per_year": 6.03743015576725e-09,
+            "pole_separation_threshold_rad_per_year": 4.102997490782445e-09
+          },
+          "ledger_vs_cellwise_residual_m3": 0.021484375,
+          "path": "failed_rift_thinning",
+          "plate_id": 7,
+          "plate_state": {
+            "age_myr": 3.0,
+            "craton_inventory_m3": 1.871532243661714e+17,
+            "frame": [
+              [
+                -0.9765817902389858,
+                -0.20818504450736205,
+                0.05428622492940434
+              ],
+              [
+                0.2086465663395763,
+                -0.977986766720747,
+                0.0029145280585782846
+              ],
+              [
+                0.052484448442590426,
+                0.014172909460206143,
+                0.998521162173897
+              ]
+            ],
+            "geometry_revision": 5,
+            "internal_stress": 0.1587259624940877,
+            "neighbour_plates": [
+              {
+                "age_myr": 13.0,
+                "node_count": 4128,
+                "omega_rad_per_year": [
+                  -6.510544451180412e-11,
+                  -1.9508054489510767e-09,
+                  -2.2638158875438586e-09
+                ],
+                "plate_id": 0
+              },
+              {
+                "age_myr": 11.0,
+                "node_count": 3867,
+                "omega_rad_per_year": [
+                  4.2844423074696425e-10,
+                  -9.450219662912274e-10,
+                  7.759032774907805e-10
+                ],
+                "plate_id": 3
+              },
+              {
+                "age_myr": 5.0,
+                "node_count": 2279,
+                "omega_rad_per_year": [
+                  -2.2384583662457509e-10,
+                  1.168385802815311e-09,
+                  2.2837291441328916e-10
+                ],
+                "plate_id": 11
+              },
+              {
+                "age_myr": 2.0,
+                "node_count": 1278,
+                "omega_rad_per_year": [
+                  -6.215523311190957e-10,
+                  1.4304035335676854e-09,
+                  -1.324421881928746e-09
+                ],
+                "plate_id": 10
+              }
+            ],
+            "node_count": 2522,
+            "omega_rad_per_year": [
+              -1.0826112888018121e-09,
+              1.4024599622038203e-09,
+              -1.0795736249583214e-09
+            ],
+            "plate_id": 7,
+            "split_gates": {
+              "combined_relaxation": 0.34649507465562607,
+              "flow_residual_threshold_rad_per_year": 6.154496236173668e-09,
+              "minimum_nodes": 700,
+              "pole_separation_threshold_rad_per_year": 4.102997490782445e-09,
+              "radius_rad": 0.7622891642423774,
+              "size_relaxation": 0.34649507465562607,
+              "stress_relaxation": 0.0529086541646959
+            },
+            "topology_revision": 0
+          },
+          "step": 13
+        },
+        {
+          "affected_cells": 5,
+          "craton_loss_mkm3": 0.0115545059505825,
+          "donor_cell_visits": 5,
+          "donor_inventory_mkm3": 2.3196557017261625,
+          "elapsed_myr": 15.0,
+          "failed_cut": {
+            "band_cell_count": 192,
+            "band_craton_inventory_mkm3": 2.3196557017261625,
+            "cut_normal_world": [
+              0.8598726562814412,
+              -0.45399403665687815,
+              0.23347040424750165
+            ],
+            "flow_fit_rms_rad_per_year": 6.167559868828605e-09,
+            "flow_residual_over_threshold": 1.002122616076707,
+            "flow_residual_threshold_rad_per_year": 6.15449623617367e-09,
+            "loss_fraction_of_band_inventory": 0.004981129717649158,
+            "pole_separation_over_threshold": 1.4844681495229346,
+            "pole_separation_rad_per_year": 6.090769092639062e-09,
+            "pole_separation_threshold_rad_per_year": 4.1029974907824465e-09
+          },
+          "ledger_vs_cellwise_residual_m3": 0.01953125,
+          "path": "failed_rift_thinning",
+          "plate_id": 7,
+          "plate_state": {
+            "age_myr": 2.0,
+            "craton_inventory_m3": 1.870495610447527e+17,
+            "frame": [
+              [
+                -0.9760043305249824,
+                -0.21015305811429427,
+                0.05701963663240734
+              ],
+              [
+                0.2107776998809811,
+                -0.9775206997470712,
+                0.005103214563377102
+              ],
+              [
+                0.05466541895352763,
+                0.016999227370882202,
+                0.9983600143432371
+              ]
+            ],
+            "geometry_revision": 7,
+            "internal_stress": 0.1566661788748523,
+            "neighbour_plates": [
+              {
+                "age_myr": 15.0,
+                "node_count": 4115,
+                "omega_rad_per_year": [
+                  -1.0174413508141081e-10,
+                  -2.0426073177344676e-09,
+                  -2.2061249729101585e-09
+                ],
+                "plate_id": 0
+              },
+              {
+                "age_myr": 13.0,
+                "node_count": 3850,
+                "omega_rad_per_year": [
+                  3.497349583983001e-10,
+                  -1.044720433090971e-09,
+                  9.243537817121589e-10
+                ],
+                "plate_id": 3
+              },
+              {
+                "age_myr": 7.0,
+                "node_count": 2279,
+                "omega_rad_per_year": [
+                  -3.9000581347080614e-10,
+                  1.3561804200838128e-09,
+                  2.7875582700549716e-10
+                ],
+                "plate_id": 11
+              },
+              {
+                "age_myr": 4.0,
+                "node_count": 1278,
+                "omega_rad_per_year": [
+                  -7.137676495799589e-10,
+                  1.651135149060246e-09,
+                  -1.5361345248865484e-09
+                ],
+                "plate_id": 10
+              }
+            ],
+            "node_count": 2522,
+            "omega_rad_per_year": [
+              -1.1779978795410388e-09,
+              1.408949407032075e-09,
+              -1.0498764683622468e-09
+            ],
+            "plate_id": 7,
+            "split_gates": {
+              "combined_relaxation": 0.3464950746556259,
+              "flow_residual_threshold_rad_per_year": 6.15449623617367e-09,
+              "minimum_nodes": 700,
+              "pole_separation_threshold_rad_per_year": 4.1029974907824465e-09,
+              "radius_rad": 0.762289164242377,
+              "size_relaxation": 0.3464950746556259,
+              "stress_relaxation": 0.052222059624950766
+            },
+            "topology_revision": 0
+          },
+          "step": 15
+        },
+        {
+          "affected_cells": 270,
+          "craton_loss_mkm3": 2.0528099141480163,
+          "donor_cell_visits": 270,
+          "donor_inventory_mkm3": 161.654708417337,
+          "elapsed_myr": 43.0,
+          "failed_cut": {
+            "band_cell_count": 339,
+            "band_craton_inventory_mkm3": 161.65470841733702,
+            "cut_normal_world": [
+              -0.7149729908679919,
+              -0.5714245840992387,
+              0.40284931055705
+            ],
+            "flow_fit_rms_rad_per_year": 5.270923449144907e-09,
+            "flow_residual_over_threshold": 1.01777399864861,
+            "flow_residual_threshold_rad_per_year": 5.17887414705385e-09,
+            "loss_fraction_of_band_inventory": 0.01269873259025877,
+            "pole_separation_over_threshold": 2.2192532614462426,
+            "pole_separation_rad_per_year": 7.662155560979256e-09,
+            "pole_separation_threshold_rad_per_year": 3.4525827647025664e-09
+          },
+          "ledger_vs_cellwise_residual_m3": 0.25,
+          "path": "failed_rift_thinning",
+          "plate_id": 3,
+          "plate_state": {
+            "age_myr": 41.0,
+            "craton_inventory_m3": 1.296809757939501e+18,
+            "frame": [
+              [
+                -0.10498226893086295,
+                -0.9942340353784047,
+                0.021849624832057893
+              ],
+              [
+                0.8089349543401901,
+                -0.09815483908684403,
+                -0.5796463294203373
+              ],
+              [
+                0.5784487556013603,
+                -0.04317766157412235,
+                0.8145751817261729
+              ]
+            ],
+            "geometry_revision": 88,
+            "internal_stress": 1.3502696404559964,
+            "neighbour_plates": [
+              {
+                "age_myr": 43.0,
+                "node_count": 4034,
+                "omega_rad_per_year": [
+                  -3.717853465475817e-10,
+                  -1.6622067453427051e-09,
+                  -1.7470903630995276e-09
+                ],
+                "plate_id": 0
+              },
+              {
+                "age_myr": 41.0,
+                "node_count": 4108,
+                "omega_rad_per_year": [
+                  4.83655697445598e-10,
+                  -3.08006314135306e-10,
+                  -1.8249107313736048e-10
+                ],
+                "plate_id": 8
+              },
+              {
+                "age_myr": 40.0,
+                "node_count": 2277,
+                "omega_rad_per_year": [
+                  -1.3493911357942646e-09,
+                  2.603709083378464e-09,
+                  1.9303010660616098e-10
+                ],
+                "plate_id": 4
+              },
+              {
+                "age_myr": 40.0,
+                "node_count": 1455,
+                "omega_rad_per_year": [
+                  8.3610171771809e-11,
+                  -1.1528024392787044e-09,
+                  -7.829520307408872e-10
+                ],
+                "plate_id": 9
+              },
+              {
+                "age_myr": 25.0,
+                "node_count": 1147,
+                "omega_rad_per_year": [
+                  -5.773680125744983e-10,
+                  1.0377312607389016e-10,
+                  -7.91236078713239e-10
+                ],
+                "plate_id": 7
+              },
+              {
+                "age_myr": 25.0,
+                "node_count": 1385,
+                "omega_rad_per_year": [
+                  -5.696797063146692e-10,
+                  1.040010123689054e-09,
+                  -9.842477757064113e-10
+                ],
+                "plate_id": 15
+              },
+              {
+                "age_myr": 32.0,
+                "node_count": 1181,
+                "omega_rad_per_year": [
+                  -4.2706074442313167e-10,
+                  1.1025318005556932e-09,
+                  -1.280117506785117e-09
+                ],
+                "plate_id": 10
+              },
+              {
+                "age_myr": 32.0,
+                "node_count": 1029,
+                "omega_rad_per_year": [
+                  4.585184752268625e-10,
+                  1.1689790689667557e-09,
+                  -3.377761682622097e-10
+                ],
+                "plate_id": 13
+              }
+            ],
+            "node_count": 3683,
+            "omega_rad_per_year": [
+              4.612262142042891e-10,
+              -5.428324823522584e-10,
+              -4.6481937409471313e-10
+            ],
+            "plate_id": 3,
+            "split_gates": {
+              "combined_relaxation": 0.4500898801519988,
+              "flow_residual_threshold_rad_per_year": 5.17887414705385e-09,
+              "minimum_nodes": 700,
+              "pole_separation_threshold_rad_per_year": 3.4525827647025664e-09,
+              "radius_rad": 0.8578078115123753,
+              "size_relaxation": 0.3899126415965342,
+              "stress_relaxation": 0.4500898801519988
+            },
+            "topology_revision": 47
+          },
+          "step": 43
+        },
+        {
+          "affected_cells": 166,
+          "craton_loss_mkm3": 1.3526496706655076,
+          "donor_cell_visits": 166,
+          "donor_inventory_mkm3": 107.13290489290637,
+          "elapsed_myr": 60.0,
+          "failed_cut": {
+            "band_cell_count": 352,
+            "band_craton_inventory_mkm3": 107.13290489290638,
+            "cut_normal_world": [
+              -0.9257423916301508,
+              -0.11173223509121752,
+              -0.36127127201094944
+            ],
+            "flow_fit_rms_rad_per_year": 4.1212178425227076e-09,
+            "flow_residual_over_threshold": 1.0019605236621631,
+            "flow_residual_threshold_rad_per_year": 4.11315390696199e-09,
+            "loss_fraction_of_band_inventory": 0.012625903050212828,
+            "pole_separation_over_threshold": 1.9332733609534172,
+            "pole_separation_rad_per_year": 5.3012339185540564e-09,
+            "pole_separation_threshold_rad_per_year": 2.7421026046413264e-09
+          },
+          "ledger_vs_cellwise_residual_m3": 0.0,
+          "path": "failed_rift_thinning",
+          "plate_id": 8,
+          "plate_state": {
+            "age_myr": 58.0,
+            "craton_inventory_m3": 9.931397003526671e+17,
+            "frame": [
+              [
+                -0.09635680989822556,
+                -0.9946298599297335,
+                0.03777309786602719
+              ],
+              [
+                0.7981658074825306,
+                -0.09988608855241793,
+                -0.5940994134650017
+              ],
+              [
+                0.5946820233973766,
+                -0.027096329084540467,
+                0.8035042501431736
+              ]
+            ],
+            "geometry_revision": 146,
+            "internal_stress": 1.6897548229372583,
+            "neighbour_plates": [
+              {
+                "age_myr": 17.0,
+                "node_count": 3624,
+                "omega_rad_per_year": [
+                  4.203858176496125e-10,
+                  -1.706096174981574e-10,
+                  2.042788934463595e-10
+                ],
+                "plate_id": 3
+              },
+              {
+                "age_myr": 57.0,
+                "node_count": 2231,
+                "omega_rad_per_year": [
+                  -1.2683983499580683e-09,
+                  2.350850698349983e-09,
+                  6.023334528950784e-10
+                ],
+                "plate_id": 4
+              },
+              {
+                "age_myr": 57.0,
+                "node_count": 1492,
+                "omega_rad_per_year": [
+                  1.815007014682728e-10,
+                  -7.870439147462119e-10,
+                  -1.2689266131477393e-10
+                ],
+                "plate_id": 9
+              },
+              {
+                "age_myr": 60.0,
+                "node_count": 2795,
+                "omega_rad_per_year": [
+                  -1.6427673904963485e-10,
+                  -9.307193290279037e-11,
+                  2.754938524843246e-10
+                ],
+                "plate_id": 5
+              },
+              {
+                "age_myr": 49.0,
+                "node_count": 1016,
+                "omega_rad_per_year": [
+                  4.1917030891392224e-10,
+                  1.2187811975837808e-09,
+                  -8.854144604541957e-12
+                ],
+                "plate_id": 13
+              },
+              {
+                "age_myr": 46.0,
+                "node_count": 1105,
+                "omega_rad_per_year": [
+                  2.3577515325461945e-10,
+                  -4.411051217565837e-10,
+                  2.8041053517357747e-11
+                ],
+                "plate_id": 12
+              },
+              {
+                "age_myr": 46.0,
+                "node_count": 1094,
+                "omega_rad_per_year": [
+                  -1.3707979104509876e-10,
+                  1.932740568759302e-09,
+                  -2.0758408894596908e-10
+                ],
+                "plate_id": 14
+              }
+            ],
+            "node_count": 4133,
+            "omega_rad_per_year": [
+              4.6138335148208933e-10,
+              -5.736692582052148e-11,
+              1.750670282042785e-10
+            ],
+            "plate_id": 8,
+            "split_gates": {
+              "combined_relaxation": 0.5632516076457528,
+              "flow_residual_threshold_rad_per_year": 4.11315390696199e-09,
+              "minimum_nodes": 700,
+              "pole_separation_threshold_rad_per_year": 2.7421026046413264e-09,
+              "radius_rad": 0.8998895986404073,
+              "size_relaxation": 0.40904072665473057,
+              "stress_relaxation": 0.5632516076457528
+            },
+            "topology_revision": 88
+          },
+          "step": 60
+        },
+        {
+          "affected_cells": 86,
+          "craton_loss_mkm3": 0.5501701279294295,
+          "donor_cell_visits": 86,
+          "donor_inventory_mkm3": 43.9110660785545,
+          "elapsed_myr": 119.0,
+          "failed_cut": {
+            "band_cell_count": 187,
+            "band_craton_inventory_mkm3": 43.9110660785545,
+            "cut_normal_world": [
+              0.6112399118704988,
+              -0.7580201634342519,
+              0.22757680453784174
+            ],
+            "flow_fit_rms_rad_per_year": 3.8226101382147686e-09,
+            "flow_residual_over_threshold": 1.006704980771613,
+            "flow_residual_threshold_rad_per_year": 3.797150318343352e-09,
+            "loss_fraction_of_band_inventory": 0.012529190863760977,
+            "pole_separation_over_threshold": 1.0940701660342869,
+            "pole_separation_rad_per_year": 2.7695659194980374e-09,
+            "pole_separation_threshold_rad_per_year": 2.5314335455622344e-09
+          },
+          "ledger_vs_cellwise_residual_m3": -0.0625,
+          "path": "failed_rift_thinning",
+          "plate_id": 3,
+          "plate_state": {
+            "age_myr": 53.0,
+            "craton_inventory_m3": 5.149103304376448e+17,
+            "frame": [
+              [
+                -0.11607281312992847,
+                -0.9931061396871398,
+                0.016349231413510884
+              ],
+              [
+                0.7951878539683914,
+                -0.10277835539655937,
+                -0.5975892289550769
+              ],
+              [
+                0.595149879402868,
+                -0.056363152659218214,
+                0.8016357128203954
+              ]
+            ],
+            "geometry_revision": 98,
+            "internal_stress": 1.7904177660917253,
+            "neighbour_plates": [
+              {
+                "age_myr": 31.0,
+                "node_count": 1824,
+                "omega_rad_per_year": [
+                  -3.065671149451844e-10,
+                  5.04426028659349e-10,
+                  1.0239355438365477e-09
+                ],
+                "plate_id": 0
+              },
+              {
+                "age_myr": 21.0,
+                "node_count": 757,
+                "omega_rad_per_year": [
+                  -1.4230526024913034e-10,
+                  -7.274732910438785e-10,
+                  2.3033594286727907e-11
+                ],
+                "plate_id": 16
+              },
+              {
+                "age_myr": 21.0,
+                "node_count": 920,
+                "omega_rad_per_year": [
+                  2.618347552168519e-10,
+                  -2.5461536307248846e-10,
+                  2.000132087535771e-10
+                ],
+                "plate_id": 21
+              },
+              {
+                "age_myr": 24.0,
+                "node_count": 2206,
+                "omega_rad_per_year": [
+                  2.6648719444357286e-10,
+                  3.773389405952143e-10,
+                  6.927075872628088e-10
+                ],
+                "plate_id": 8
+              },
+              {
+                "age_myr": 36.0,
+                "node_count": 694,
+                "omega_rad_per_year": [
+                  3.314318258974896e-10,
+                  -1.6805096918886054e-09,
+                  -1.4098479241155117e-09
+                ],
+                "plate_id": 17
+              },
+              {
+                "age_myr": 101.0,
+                "node_count": 1146,
+                "omega_rad_per_year": [
+                  -5.148833064562458e-10,
+                  5.523234030914639e-10,
+                  8.643695856434154e-10
+                ],
+                "plate_id": 7
+              },
+              {
+                "age_myr": 101.0,
+                "node_count": 1389,
+                "omega_rad_per_year": [
+                  -5.593140019377832e-10,
+                  1.2238135298519762e-09,
+                  1.1777408402568078e-10
+                ],
+                "plate_id": 15
+              },
+              {
+                "age_myr": 108.0,
+                "node_count": 966,
+                "omega_rad_per_year": [
+                  -3.874669159087304e-10,
+                  9.262866414335488e-10,
+                  -2.1133085747869946e-10
+                ],
+                "plate_id": 10
+              },
+              {
+                "age_myr": 108.0,
+                "node_count": 956,
+                "omega_rad_per_year": [
+                  2.751627476375132e-10,
+                  1.0431122271223337e-09,
+                  4.646960864561262e-10
+                ],
+                "plate_id": 13
+              }
+            ],
+            "node_count": 1791,
+            "omega_rad_per_year": [
+              2.649278228539722e-10,
+              9.048873201264287e-12,
+              4.212360535687278e-10
+            ],
+            "plate_id": 3,
+            "split_gates": {
+              "combined_relaxation": 0.5968059220305751,
+              "flow_residual_threshold_rad_per_year": 3.797150318343352e-09,
+              "minimum_nodes": 700,
+              "pole_separation_threshold_rad_per_year": 2.5314335455622344e-09,
+              "radius_rad": 0.8229384086629496,
+              "size_relaxation": 0.37406291302861344,
+              "stress_relaxation": 0.5968059220305751
+            },
+            "topology_revision": 45
+          },
+          "step": 119
+        },
+        {
+          "affected_cells": 6,
+          "craton_loss_mkm3": 0.016537458851636,
+          "donor_cell_visits": 6,
+          "donor_inventory_mkm3": 3.5231148961909624,
+          "elapsed_myr": 160.0,
+          "failed_cut": {
+            "band_cell_count": 130,
+            "band_craton_inventory_mkm3": 3.5231148961909624,
+            "cut_normal_world": [
+              0.21646748361828508,
+              0.9749781067082034,
+              -0.050591698683227826
+            ],
+            "flow_fit_rms_rad_per_year": 8.041858735816328e-09,
+            "flow_residual_over_threshold": 2.328152528870886,
+            "flow_residual_threshold_rad_per_year": 3.4541803580697915e-09,
+            "loss_fraction_of_band_inventory": 0.004693987945018647,
+            "pole_separation_over_threshold": 1.7723074232785847,
+            "pole_separation_rad_per_year": 4.0812463266334474e-09,
+            "pole_separation_threshold_rad_per_year": 2.302786905379861e-09
+          },
+          "ledger_vs_cellwise_residual_m3": -0.45703125,
+          "path": "failed_rift_thinning",
+          "plate_id": 14,
+          "plate_state": {
+            "age_myr": 146.0,
+            "craton_inventory_m3": 1.5852375698592026e+17,
+            "frame": [
+              [
+                -0.9359641807958753,
+                -0.20788614054211674,
+                0.2841731951426956
+              ],
+              [
+                0.2189908985057154,
+                -0.9756980157334759,
+                0.0075078935405882875
+              ],
+              [
+                0.2757064356136161,
+                0.06925846276275828,
+                0.958743566704348
+              ]
+            ],
+            "geometry_revision": 339,
+            "internal_stress": 1.8996708469368682,
+            "neighbour_plates": [
+              {
+                "age_myr": 160.0,
+                "node_count": 1908,
+                "omega_rad_per_year": [
+                  -3.557366377768519e-10,
+                  -1.3216759482907154e-11,
+                  1.437788655721822e-09
+                ],
+                "plate_id": 2
+              },
+              {
+                "age_myr": 15.0,
+                "node_count": 1029,
+                "omega_rad_per_year": [
+                  5.51084809672108e-10,
+                  4.685910167783513e-10,
+                  7.240501536114085e-10
+                ],
+                "plate_id": 8
+              },
+              {
+                "age_myr": 65.0,
+                "node_count": 2017,
+                "omega_rad_per_year": [
+                  3.344948073170225e-10,
+                  5.359365794845746e-10,
+                  2.7850969864115237e-10
+                ],
+                "plate_id": 20
+              },
+              {
+                "age_myr": 12.0,
+                "node_count": 709,
+                "omega_rad_per_year": [
+                  -6.144486270910816e-10,
+                  1.3684019372430086e-09,
+                  3.160290342136109e-11
+                ],
+                "plate_id": 23
+              },
+              {
+                "age_myr": 152.0,
+                "node_count": 2488,
+                "omega_rad_per_year": [
+                  -3.8225004246825036e-10,
+                  9.044198618903157e-10,
+                  8.468575196005905e-10
+                ],
+                "plate_id": 11
+              },
+              {
+                "age_myr": 149.0,
+                "node_count": 902,
+                "omega_rad_per_year": [
+                  -3.8803868088553536e-10,
+                  1.1280029112460175e-09,
+                  -1.4763475155713757e-10
+                ],
+                "plate_id": 10
+              },
+              {
+                "age_myr": 149.0,
+                "node_count": 902,
+                "omega_rad_per_year": [
+                  2.646703109524736e-10,
+                  1.3574563416321657e-09,
+                  3.1917756209347777e-10
+                ],
+                "plate_id": 13
+              },
+              {
+                "age_myr": 146.0,
+                "node_count": 1317,
+                "omega_rad_per_year": [
+                  2.505003685643219e-10,
+                  -1.4041098916465447e-10,
+                  2.1205816656471835e-10
+                ],
+                "plate_id": 12
+              }
+            ],
+            "node_count": 1422,
+            "omega_rad_per_year": [
+              4.111464845483107e-11,
+              1.4645692834066682e-09,
+              3.4740557803114657e-10
+            ],
+            "plate_id": 14,
+            "split_gates": {
+              "combined_relaxation": 0.6332236156456227,
+              "flow_residual_threshold_rad_per_year": 3.4541803580697915e-09,
+              "minimum_nodes": 700,
+              "pole_separation_threshold_rad_per_year": 2.302786905379861e-09,
+              "radius_rad": 0.6823140011909723,
+              "size_relaxation": 0.3101427278140783,
+              "stress_relaxation": 0.6332236156456227
+            },
+            "topology_revision": 193
+          },
+          "step": 160
+        },
+        {
+          "affected_cells": 30,
+          "craton_loss_mkm3": 0.152684636384315,
+          "donor_cell_visits": 30,
+          "donor_inventory_mkm3": 15.101794528977452,
+          "elapsed_myr": 338.0,
+          "failed_cut": {
+            "band_cell_count": 180,
+            "band_craton_inventory_mkm3": 15.101794528977452,
+            "cut_normal_world": [
+              0.9060868659037711,
+              -0.18511354325999044,
+              -0.38044653703038644
+            ],
+            "flow_fit_rms_rad_per_year": 4.712547394170975e-09,
+            "flow_residual_over_threshold": 1.1412142947269914,
+            "flow_residual_threshold_rad_per_year": 4.129414971355875e-09,
+            "loss_fraction_of_band_inventory": 0.010110363777718099,
+            "pole_separation_over_threshold": 1.664231540026963,
+            "pole_separation_rad_per_year": 4.5815350914599905e-09,
+            "pole_separation_threshold_rad_per_year": 2.7529433142372503e-09
+          },
+          "ledger_vs_cellwise_residual_m3": 0.375,
+          "path": "failed_rift_thinning",
+          "plate_id": 22,
+          "plate_state": {
+            "age_myr": 193.0,
+            "craton_inventory_m3": 2.2684043095941178e+17,
+            "frame": [
+              [
+                -0.17310852395111542,
+                -0.958884396649727,
+                0.22488697782920958
+              ],
+              [
+                0.6844712589514963,
+                -0.2813085853060681,
+                -0.6725805345848613
+              ],
+              [
+                0.7081896176906453,
+                0.037499249256319464,
+                0.7050257241408913
+              ]
+            ],
+            "geometry_revision": 379,
+            "internal_stress": 1.684574860874586,
+            "neighbour_plates": [
+              {
+                "age_myr": 240.0,
+                "node_count": 944,
+                "omega_rad_per_year": [
+                  4.828585279156968e-10,
+                  1.5231738107356728e-10,
+                  4.546590838831092e-10
+                ],
+                "plate_id": 21
+              },
+              {
+                "age_myr": 193.0,
+                "node_count": 975,
+                "omega_rad_per_year": [
+                  7.518504974680382e-10,
+                  1.6869525921197773e-10,
+                  5.620876755258603e-10
+                ],
+                "plate_id": 8
+              },
+              {
+                "age_myr": 130.0,
+                "node_count": 941,
+                "omega_rad_per_year": [
+                  7.539848933510218e-10,
+                  -7.461923107045619e-11,
+                  2.720431569073264e-10
+                ],
+                "plate_id": 20
+              },
+              {
+                "age_myr": 130.0,
+                "node_count": 1095,
+                "omega_rad_per_year": [
+                  8.387490078864296e-10,
+                  9.555163605598765e-11,
+                  1.5238987186454494e-10
+                ],
+                "plate_id": 26
+              },
+              {
+                "age_myr": 335.0,
+                "node_count": 2486,
+                "omega_rad_per_year": [
+                  7.006196262371888e-11,
+                  1.1742493651731574e-09,
+                  3.9133907642339775e-10
+                ],
+                "plate_id": 4
+              },
+              {
+                "age_myr": 83.0,
+                "node_count": 1046,
+                "omega_rad_per_year": [
+                  6.831308683696492e-10,
+                  -1.6160064632815668e-10,
+                  8.010486182899535e-10
+                ],
+                "plate_id": 9
+              }
+            ],
+            "node_count": 1404,
+            "omega_rad_per_year": [
+              7.704027954718428e-10,
+              2.5600339060106847e-10,
+              5.993239145227634e-10
+            ],
+            "plate_id": 22,
+            "split_gates": {
+              "combined_relaxation": 0.561524953624862,
+              "flow_residual_threshold_rad_per_year": 4.129414971355875e-09,
+              "minimum_nodes": 700,
+              "pole_separation_threshold_rad_per_year": 2.7529433142372503e-09,
+              "radius_rad": 0.5033721237848617,
+              "size_relaxation": 0.22880551081130077,
+              "stress_relaxation": 0.561524953624862
+            },
+            "topology_revision": 186
+          },
+          "step": 338
+        },
+        {
+          "affected_cells": 65,
+          "craton_loss_mkm3": 0.500429100065447,
+          "donor_cell_visits": 65,
+          "donor_inventory_mkm3": 38.16194197153715,
+          "elapsed_myr": 342.0,
+          "failed_cut": {
+            "band_cell_count": 209,
+            "band_craton_inventory_mkm3": 38.16194197153715,
+            "cut_normal_world": [
+              0.947041111432843,
+              -0.31569311249695947,
+              -0.058745144293188056
+            ],
+            "flow_fit_rms_rad_per_year": 2.3310233109116223e-09,
+            "flow_residual_over_threshold": 1.0073744664191115,
+            "flow_residual_threshold_rad_per_year": 2.313959097253727e-09,
+            "loss_fraction_of_band_inventory": 0.01311330278838244,
+            "pole_separation_over_threshold": 1.912849377668729,
+            "pole_separation_rad_per_year": 2.9508368127551237e-09,
+            "pole_separation_threshold_rad_per_year": 1.5426393981691513e-09
+          },
+          "ledger_vs_cellwise_residual_m3": -0.5,
+          "path": "failed_rift_thinning",
+          "plate_id": 11,
+          "plate_state": {
+            "age_myr": 334.0,
+            "craton_inventory_m3": 4.109905124247645e+17,
+            "frame": [
+              [
+                -0.9570004577170882,
+                0.05663834155588309,
+                0.28450346605108284
+              ],
+              [
+                -0.006423030126802472,
+                -0.9846509834121184,
+                0.17441670089052866
+              ],
+              [
+                0.2900152903094436,
+                0.1650894882521141,
+                0.9426752315911247
+              ]
+            ],
+            "geometry_revision": 742,
+            "internal_stress": 2.2628883295698254,
+            "neighbour_plates": [
+              {
+                "age_myr": 254.0,
+                "node_count": 629,
+                "omega_rad_per_year": [
+                  1.4288677632725965e-10,
+                  2.2731374529507647e-10,
+                  7.266922840909185e-10
+                ],
+                "plate_id": 0
+              },
+              {
+                "age_myr": 342.0,
+                "node_count": 1850,
+                "omega_rad_per_year": [
+                  2.766462224594054e-10,
+                  -8.08054011813936e-10,
+                  2.2296792232742534e-09
+                ],
+                "plate_id": 2
+              },
+              {
+                "age_myr": 342.0,
+                "node_count": 2298,
+                "omega_rad_per_year": [
+                  -2.772002645634613e-10,
+                  5.125438262574582e-10,
+                  3.3992911390260553e-11
+                ],
+                "plate_id": 6
+              },
+              {
+                "age_myr": 324.0,
+                "node_count": 1090,
+                "omega_rad_per_year": [
+                  1.0795822178121417e-10,
+                  6.03214004876581e-10,
+                  6.866995880417021e-10
+                ],
+                "plate_id": 7
+              },
+              {
+                "age_myr": 194.0,
+                "node_count": 747,
+                "omega_rad_per_year": [
+                  -3.6784161623500227e-10,
+                  1.3906635135847052e-09,
+                  3.276857888581521e-10
+                ],
+                "plate_id": 23
+              },
+              {
+                "age_myr": 331.0,
+                "node_count": 636,
+                "omega_rad_per_year": [
+                  -3.861183605119528e-11,
+                  6.932547749149591e-10,
+                  2.194833130696146e-10
+                ],
+                "plate_id": 10
+              },
+              {
+                "age_myr": 178.0,
+                "node_count": 1179,
+                "omega_rad_per_year": [
+                  -2.7499572739751214e-10,
+                  1.0925322379884417e-09,
+                  5.332847494847511e-10
+                ],
+                "plate_id": 14
+              }
+            ],
+            "node_count": 2749,
+            "omega_rad_per_year": [
+              -1.4235918167989573e-10,
+              8.549342850173631e-10,
+              8.103538408163854e-10
+            ],
+            "plate_id": 11,
+            "split_gates": {
+              "combined_relaxation": 0.7542961098566084,
+              "flow_residual_threshold_rad_per_year": 2.313959097253727e-09,
+              "minimum_nodes": 700,
+              "pole_separation_threshold_rad_per_year": 1.5426393981691513e-09,
+              "radius_rad": 0.8472150411555266,
+              "size_relaxation": 0.3850977459797848,
+              "stress_relaxation": 0.7542961098566084
+            },
+            "topology_revision": 408
+          },
+          "step": 342
+        },
+        {
+          "affected_cells": 15,
+          "craton_loss_mkm3": 0.052674305429057,
+          "donor_cell_visits": 15,
+          "donor_inventory_mkm3": 7.285918544511526,
+          "elapsed_myr": 384.0,
+          "failed_cut": {
+            "band_cell_count": 189,
+            "band_craton_inventory_mkm3": 7.285918544511526,
+            "cut_normal_world": [
+              0.8915820968100484,
+              -0.15835999291471695,
+              -0.4242681667198805
+            ],
+            "flow_fit_rms_rad_per_year": 4.896654843557682e-09,
+            "flow_residual_over_threshold": 1.0018940012896114,
+            "flow_residual_threshold_rad_per_year": 4.8873981052435075e-09,
+            "loss_fraction_of_band_inventory": 0.007229603941803123,
+            "pole_separation_over_threshold": 1.4432172894340414,
+            "pole_separation_rad_per_year": 4.702384963889736e-09,
+            "pole_separation_threshold_rad_per_year": 3.258265403495672e-09
+          },
+          "ledger_vs_cellwise_residual_m3": -0.34375,
+          "path": "failed_rift_thinning",
+          "plate_id": 22,
+          "plate_state": {
+            "age_myr": 46.0,
+            "craton_inventory_m3": 2.264029044191371e+17,
+            "frame": [
+              [
+                -0.18232844745996174,
+                -0.9518304307358507,
+                0.24652620220180407
+              ],
+              [
+                0.660059174929583,
+                -0.3043235545526299,
+                -0.6868107888900234
+              ],
+              [
+                0.728751139167632,
+                0.037496736786777916,
+                0.6837512500114502
+              ]
+            ],
+            "geometry_revision": 468,
+            "internal_stress": 1.4431193335746808,
+            "neighbour_plates": [
+              {
+                "age_myr": 286.0,
+                "node_count": 938,
+                "omega_rad_per_year": [
+                  4.834789919529291e-10,
+                  2.1256841517460035e-10,
+                  6.099554878591487e-10
+                ],
+                "plate_id": 21
+              },
+              {
+                "age_myr": 239.0,
+                "node_count": 961,
+                "omega_rad_per_year": [
+                  5.111211113271465e-10,
+                  1.7475220703305998e-10,
+                  5.713799945663373e-10
+                ],
+                "plate_id": 8
+              },
+              {
+                "age_myr": 176.0,
+                "node_count": 933,
+                "omega_rad_per_year": [
+                  5.521381708438498e-10,
+                  -6.485617534320475e-11,
+                  2.89325255172148e-10
+                ],
+                "plate_id": 20
+              },
+              {
+                "age_myr": 176.0,
+                "node_count": 1099,
+                "omega_rad_per_year": [
+                  5.997076677821406e-10,
+                  1.398868288099198e-10,
+                  1.5876241884030178e-10
+                ],
+                "plate_id": 26
+              },
+              {
+                "age_myr": 381.0,
+                "node_count": 2578,
+                "omega_rad_per_year": [
+                  -7.128140354230002e-11,
+                  1.0535584995245953e-09,
+                  5.243057261004938e-10
+                ],
+                "plate_id": 4
+              },
+              {
+                "age_myr": 129.0,
+                "node_count": 1118,
+                "omega_rad_per_year": [
+                  6.529118378981028e-10,
+                  -2.386935527591785e-10,
+                  7.129410581297535e-10
+                ],
+                "plate_id": 9
+              }
+            ],
+            "node_count": 1424,
+            "omega_rad_per_year": [
+              5.06856143611434e-10,
+              6.865351157615325e-11,
+              5.391385545414763e-10
+            ],
+            "plate_id": 22,
+            "split_gates": {
+              "combined_relaxation": 0.48103977785822694,
+              "flow_residual_threshold_rad_per_year": 4.8873981052435075e-09,
+              "minimum_nodes": 700,
+              "pole_separation_threshold_rad_per_year": 3.258265403495672e-09,
+              "radius_rad": 0.5126453527404715,
+              "size_relaxation": 0.2330206148820325,
+              "stress_relaxation": 0.48103977785822694
+            },
+            "topology_revision": 229
+          },
+          "step": 384
+        }
+      ],
+      "failed_rift_ledger": {
+        "failed_rift_band_area_m2": 55579623420316.59,
+        "failed_rift_band_craton_area_m2": 12030550260454.463,
+        "failed_rift_cuts": 16.0,
+        "failed_rift_cuts_through_craton": 12.0,
+        "rifted_failed_m3": 5562441260417247.0
+      },
+      "largest_stretch_events": [
+        {
+          "affected_cells": 10,
+          "craton_loss_mkm3": 0.4940313575142973,
+          "donor_cell_visits": 10,
+          "donor_inventory_mkm3": 5.337911495746545,
+          "elapsed_myr": 19.0,
+          "plate_id": 12,
+          "step": 19,
+          "stretch": {
+            "rifted_new_cell_count": 22,
+            "stretch_share_area_weighted_mean": 0.9910260451939953
+          }
+        },
+        {
+          "affected_cells": 9,
+          "craton_loss_mkm3": 0.16882289485638174,
+          "donor_cell_visits": 9,
+          "donor_inventory_mkm3": 4.727090205850032,
+          "elapsed_myr": 43.0,
+          "plate_id": 14,
+          "step": 43,
+          "stretch": {
+            "rifted_new_cell_count": 6,
+            "stretch_share_area_weighted_mean": 0.6085587902302957
+          }
+        },
+        {
+          "affected_cells": 6,
+          "craton_loss_mkm3": 0.145862024032073,
+          "donor_cell_visits": 6,
+          "donor_inventory_mkm3": 3.6958331091063923,
+          "elapsed_myr": 179.0,
+          "plate_id": 22,
+          "step": 179,
+          "stretch": {
+            "rifted_new_cell_count": 2,
+            "stretch_share_area_weighted_mean": 0.8410128675225746
+          }
+        },
+        {
+          "affected_cells": 4,
+          "craton_loss_mkm3": 0.135399831759081,
+          "donor_cell_visits": 4,
+          "donor_inventory_mkm3": 2.435432085425097,
+          "elapsed_myr": 154.0,
+          "plate_id": 21,
+          "step": 154,
+          "stretch": {
+            "rifted_new_cell_count": 1,
+            "stretch_share_area_weighted_mean": 0.9439947777900624
+          }
+        },
+        {
+          "affected_cells": 6,
+          "craton_loss_mkm3": 0.119290972284308,
+          "donor_cell_visits": 6,
+          "donor_inventory_mkm3": 3.1475175784889493,
+          "elapsed_myr": 451.0,
+          "plate_id": 21,
+          "step": 451,
+          "stretch": {
+            "rifted_new_cell_count": 1,
+            "stretch_share_area_weighted_mean": 0.9315022830015407
+          }
+        },
+        {
+          "affected_cells": 4,
+          "craton_loss_mkm3": 0.111864633313181,
+          "donor_cell_visits": 4,
+          "donor_inventory_mkm3": 1.9315652576661928,
+          "elapsed_myr": 247.0,
+          "plate_id": 12,
+          "step": 247,
+          "stretch": {
+            "rifted_new_cell_count": 1,
+            "stretch_share_area_weighted_mean": 0.9833127279378296
+          }
+        },
+        {
+          "affected_cells": 4,
+          "craton_loss_mkm3": 0.111154956488163,
+          "donor_cell_visits": 4,
+          "donor_inventory_mkm3": 2.287420571995895,
+          "elapsed_myr": 123.0,
+          "plate_id": 21,
+          "step": 123,
+          "stretch": {
+            "rifted_new_cell_count": 1,
+            "stretch_share_area_weighted_mean": 0.8186999702918928
+          }
+        },
+        {
+          "affected_cells": 3,
+          "craton_loss_mkm3": 0.108919009770741,
+          "donor_cell_visits": 3,
+          "donor_inventory_mkm3": 1.386515630857229,
+          "elapsed_myr": 178.0,
+          "plate_id": 22,
+          "step": 178,
+          "stretch": {
+            "rifted_new_cell_count": 4,
+            "stretch_share_area_weighted_mean": 0.743197628915405
+          }
+        },
+        {
+          "affected_cells": 5,
+          "craton_loss_mkm3": 0.108201431599245,
+          "donor_cell_visits": 5,
+          "donor_inventory_mkm3": 2.6842691898237034,
+          "elapsed_myr": 236.0,
+          "plate_id": 3,
+          "step": 236,
+          "stretch": {
+            "rifted_new_cell_count": 2,
+            "stretch_share_area_weighted_mean": 0.8440630202436714
+          }
+        },
+        {
+          "affected_cells": 5,
+          "craton_loss_mkm3": 0.10718285965184507,
+          "donor_cell_visits": 5,
+          "donor_inventory_mkm3": 2.671206432500213,
+          "elapsed_myr": 20.0,
+          "plate_id": 14,
+          "step": 20,
+          "stretch": {
+            "rifted_new_cell_count": 3,
+            "stretch_share_area_weighted_mean": 0.40356411128479996
+          }
+        }
+      ],
+      "model": "pilot",
+      "top_donor_cells": [
+        {
+          "craton_loss_mkm3": 0.08211380062319484,
+          "local_xyz": [
+            0.79618085,
+            -0.370122777,
+            -0.478649334
+          ],
+          "max_single_operation_loss_mkm3": 0.08211380062319484,
+          "node_id": [
+            184549392,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 12,
+          "topology_revision": 2
+        },
+        {
+          "craton_loss_mkm3": 0.08019913783980408,
+          "local_xyz": [
+            0.816895772,
+            -0.259686059,
+            -0.515018881
+          ],
+          "max_single_operation_loss_mkm3": 0.08019913783980408,
+          "node_id": [
+            167772182,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 12,
+          "topology_revision": 2
+        },
+        {
+          "craton_loss_mkm3": 0.0596774168350196,
+          "local_xyz": [
+            0.802079125,
+            -0.352358907,
+            -0.482195269
+          ],
+          "max_single_operation_loss_mkm3": 0.0596774168350196,
+          "node_id": [
+            184549393,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 12,
+          "topology_revision": 2
+        },
+        {
+          "craton_loss_mkm3": 0.05902910878381478,
+          "local_xyz": [
+            0.789964934,
+            -0.387831893,
+            -0.47491244
+          ],
+          "max_single_operation_loss_mkm3": 0.05902910878381478,
+          "node_id": [
+            184549391,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 12,
+          "topology_revision": 2
+        },
+        {
+          "craton_loss_mkm3": 0.057843316899205695,
+          "local_xyz": [
+            0.812699008,
+            -0.277478353,
+            -0.512372995
+          ],
+          "max_single_operation_loss_mkm3": 0.057843316899205695,
+          "node_id": [
+            167772181,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 12,
+          "topology_revision": 2
+        },
+        {
+          "craton_loss_mkm3": 0.05238225730214361,
+          "local_xyz": [
+            0.864323551,
+            -0.470874329,
+            -0.176697951
+          ],
+          "max_single_operation_loss_mkm3": 0.05238225730214361,
+          "node_id": [
+            452984845,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 22,
+          "topology_revision": 48
+        },
+        {
+          "craton_loss_mkm3": 0.04289715258956936,
+          "local_xyz": [
+            0.841320233,
+            -0.505786304,
+            -0.190684242
+          ],
+          "max_single_operation_loss_mkm3": 0.04289715258956936,
+          "node_id": [
+            436207627,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 22,
+          "topology_revision": 35
+        },
+        {
+          "craton_loss_mkm3": 0.038960181320552595,
+          "local_xyz": [
+            0.857116676,
+            -0.490821658,
+            -0.156349299
+          ],
+          "max_single_operation_loss_mkm3": 0.038960181320552595,
+          "node_id": [
+            469762060,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 21,
+          "topology_revision": 26
+        },
+        {
+          "craton_loss_mkm3": 0.035569960531220274,
+          "local_xyz": [
+            0.908238613,
+            -0.398995504,
+            -0.126115858
+          ],
+          "max_single_operation_loss_mkm3": 0.035569960531220274,
+          "node_id": [
+            503316497,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 21,
+          "topology_revision": 12
+        },
+        {
+          "craton_loss_mkm3": 0.03469122297378665,
+          "local_xyz": [
+            0.897344157,
+            -0.417150841,
+            -0.144078585
+          ],
+          "max_single_operation_loss_mkm3": 0.03469122297378665,
+          "node_id": [
+            486539280,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 21,
+          "topology_revision": 12
+        },
+        {
+          "craton_loss_mkm3": 0.03414360045337917,
+          "local_xyz": [
+            0.854447042,
+            -0.489292911,
+            -0.174678847
+          ],
+          "max_single_operation_loss_mkm3": 0.03414360045337917,
+          "node_id": [
+            452984844,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 22,
+          "topology_revision": 35
+        },
+        {
+          "craton_loss_mkm3": 0.03376453019414894,
+          "local_xyz": [
+            0.812934357,
+            -0.316684834,
+            -0.488721236
+          ],
+          "max_single_operation_loss_mkm3": 0.03376453019414894,
+          "node_id": [
+            184549395,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 14,
+          "topology_revision": 7
+        },
+        {
+          "craton_loss_mkm3": 0.03338755504953867,
+          "local_xyz": [
+            0.817896901,
+            -0.298782898,
+            -0.491704626
+          ],
+          "max_single_operation_loss_mkm3": 0.03338755504953867,
+          "node_id": [
+            184549396,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 14,
+          "topology_revision": 7
+        },
+        {
+          "craton_loss_mkm3": 0.03288621068778254,
+          "local_xyz": [
+            0.905814031,
+            -0.397930368,
+            -0.145438518
+          ],
+          "max_single_operation_loss_mkm3": 0.03288621068778254,
+          "node_id": [
+            486539281,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 21,
+          "topology_revision": 12
+        },
+        {
+          "craton_loss_mkm3": 0.03225243756629166,
+          "local_xyz": [
+            0.913879514,
+            -0.378541289,
+            -0.14673352
+          ],
+          "max_single_operation_loss_mkm3": 0.03225243756629166,
+          "node_id": [
+            486539282,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 21,
+          "topology_revision": 12
+        },
+        {
+          "craton_loss_mkm3": 0.03187825672779225,
+          "local_xyz": [
+            0.84418609,
+            -0.507509204,
+            -0.17258115
+          ],
+          "max_single_operation_loss_mkm3": 0.03187825672779225,
+          "node_id": [
+            452984843,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 22,
+          "topology_revision": 35
+        },
+        {
+          "craton_loss_mkm3": 0.03165505711225888,
+          "local_xyz": [
+            0.822085225,
+            -0.320249625,
+            -0.470761151
+          ],
+          "max_single_operation_loss_mkm3": 0.03165505711225888,
+          "node_id": [
+            201326611,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 14,
+          "topology_revision": 7
+        },
+        {
+          "craton_loss_mkm3": 0.03158026185464947,
+          "local_xyz": [
+            0.807662681,
+            -0.334544836,
+            -0.485552001
+          ],
+          "max_single_operation_loss_mkm3": 0.03158026185464947,
+          "node_id": [
+            184549394,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 12,
+          "topology_revision": 2
+        },
+        {
+          "craton_loss_mkm3": 0.031576488263481514,
+          "local_xyz": [
+            0.891614014,
+            -0.414487054,
+            -0.182277076
+          ],
+          "max_single_operation_loss_mkm3": 0.031576488263481514,
+          "node_id": [
+            452984848,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 22,
+          "topology_revision": 4
+        },
+        {
+          "craton_loss_mkm3": 0.03117277340537921,
+          "local_xyz": [
+            0.792934778,
+            -0.348341732,
+            -0.499912468
+          ],
+          "max_single_operation_loss_mkm3": 0.03117277340537921,
+          "node_id": [
+            167772177,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 12,
+          "topology_revision": 2
+        },
+        {
+          "craton_loss_mkm3": 0.03110217619876154,
+          "local_xyz": [
+            0.879203965,
+            -0.455052255,
+            -0.141165975
+          ],
+          "max_single_operation_loss_mkm3": 0.03110217619876154,
+          "node_id": [
+            486539278,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 21,
+          "topology_revision": 3
+        },
+        {
+          "craton_loss_mkm3": 0.03107727541973921,
+          "local_xyz": [
+            0.787234524,
+            -0.365963874,
+            -0.496318695
+          ],
+          "max_single_operation_loss_mkm3": 0.03107727541973921,
+          "node_id": [
+            167772176,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 12,
+          "topology_revision": 2
+        },
+        {
+          "craton_loss_mkm3": 0.03085366022924191,
+          "local_xyz": [
+            0.781224231,
+            -0.38354066,
+            -0.492529454
+          ],
+          "max_single_operation_loss_mkm3": 0.03085366022924191,
+          "node_id": [
+            167772175,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 12,
+          "topology_revision": 2
+        },
+        {
+          "craton_loss_mkm3": 0.0304846056242485,
+          "local_xyz": [
+            0.808207383,
+            -0.295243256,
+            -0.509541212
+          ],
+          "max_single_operation_loss_mkm3": 0.0304846056242485,
+          "node_id": [
+            167772180,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 12,
+          "topology_revision": 2
+        },
+        {
+          "craton_loss_mkm3": 0.029782180372136823,
+          "local_xyz": [
+            0.532261298,
+            -0.062838335,
+            -0.844244784
+          ],
+          "max_single_operation_loss_mkm3": 0.029782180372136823,
+          "node_id": [
+            360287971246604321,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 12,
+          "topology_revision": 8
+        },
+        {
+          "craton_loss_mkm3": 0.0281530785523389,
+          "local_xyz": [
+            0.550090163,
+            -0.061986602,
+            -0.832801582
+          ],
+          "max_single_operation_loss_mkm3": 0.0281530785523389,
+          "node_id": [
+            360287971263381537,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 12,
+          "topology_revision": 8
+        },
+        {
+          "craton_loss_mkm3": 0.027884094664707593,
+          "local_xyz": [
+            0.876668201,
+            -0.453739812,
+            -0.159915753
+          ],
+          "max_single_operation_loss_mkm3": 0.027884094664707593,
+          "node_id": [
+            469762062,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 21,
+          "topology_revision": 3
+        },
+        {
+          "craton_loss_mkm3": 0.027745158985535038,
+          "local_xyz": [
+            0.550609494,
+            -0.044277947,
+            -0.833587817
+          ],
+          "max_single_operation_loss_mkm3": 0.027745158985535038,
+          "node_id": [
+            360287971263381538,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 27,
+          "topology_revision": 272
+        },
+        {
+          "craton_loss_mkm3": 0.02773175252254752,
+          "local_xyz": [
+            0.549397091,
+            -0.079692673,
+            -0.831752315
+          ],
+          "max_single_operation_loss_mkm3": 0.02773175252254752,
+          "node_id": [
+            360287971263381536,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 12,
+          "topology_revision": 8
+        },
+        {
+          "craton_loss_mkm3": 0.027513426162778694,
+          "local_xyz": [
+            0.885856459,
+            -0.434909669,
+            -0.161591812
+          ],
+          "max_single_operation_loss_mkm3": 0.027513426162778694,
+          "node_id": [
+            469762063,
+            0
+          ],
+          "operations": 1,
+          "path": "stretch_donation",
+          "plate_id": 21,
+          "topology_revision": 3
+        }
+      ]
+    }
+  ],
+  "seed": 580014012,
+  "step_myr": 1.0
+}

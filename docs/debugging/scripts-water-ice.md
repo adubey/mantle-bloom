@@ -11,7 +11,8 @@ Every script here takes `--backend`, so the same script measures an `origin/main
 and a branch (see [Running the scripts](../debugging.md#running-the-scripts)). They come in
 two kinds:
 
-- **Save replays** (`measure_ice_sheet.py`, `measure_lake_silt.py`, `measure_river_endings.py`)
+- **Save replays** (`measure_ice_sheet.py`, `measure_lake_silt.py`, `measure_river_endings.py`,
+  `measure_river_hops.py`)
   share `replay_lib.py`'s command line: a save, `--backend`, `--myr` (required),
   `--step-years` (default 100 kyr), `--checkpoint-myr` (default 1) and `--out` (required).
   Each records step runtime and peak RSS.
@@ -39,6 +40,24 @@ Values are averaged over each checkpoint window.
 backend/.venv/bin/python bin/debug/measure_river_endings.py world.mbworld --myr 5 --out /tmp/branch.json
 backend/.venv/bin/python bin/debug/measure_river_endings.py world.mbworld --myr 5 \
     --backend ../mantle-bloom-baseline/backend --out /tmp/main.json
+```
+
+### `measure_river_hops.py`
+
+Counts river lines drawn across lakes (#520). At the loaded save and at each checkpoint, it
+records spill hops (flow edges between non-neighbour nodes), the median flow-edge length, and,
+for River Inspector segments and drawn map segments, how many are longer than 3× that median
+and how many join non-neighbours. A backend without `hydrology.flow_segments` is measured from
+each river node's own `flow_target` edge. `--render-dir` writes an elevation globe centred on
+`--center LAT LON` at each checkpoint. `--timing N` adds the median of N cold (spill-path
+cache cleared) and warm timings of an elevation map render, the `/world/rivers` payload and
+`flow_segments` over every river node.
+
+```bash
+backend/.venv/bin/python bin/debug/measure_river_hops.py world.mbworld --myr 0.1 --checkpoint-myr 0.1 \
+    --center 43 153 --render-dir /tmp/branch --out /tmp/branch.json
+backend/.venv/bin/python bin/debug/measure_river_hops.py world.mbworld --myr 0.1 --checkpoint-myr 0.1 \
+    --backend ../mantle-bloom-baseline/backend --center 43 153 --render-dir /tmp/main --out /tmp/main.json
 ```
 
 ### `measure_discharge_calibration.py`
@@ -136,4 +155,20 @@ differs, so `--controlled` deep-copies the world every `--every` steps and steps
 backend/.venv/bin/python bin/debug/measure_meltwater_faults.py --seeds 1 2 3 --steps 100 --out /tmp/branch.jsonl
 backend/.venv/bin/python bin/debug/measure_meltwater_faults.py --compare /tmp/main.jsonl /tmp/branch.jsonl
 backend/.venv/bin/python bin/debug/measure_meltwater_faults.py --controlled --seeds 1 2 3 --steps 80 --every 20
+```
+
+## Climate
+
+### `measure_climate_fields.py`
+
+Measures the climate fields on a save in either tree (#522). At each checkpoint it computes a
+fresh climate snapshot and records, weighted by cos(latitude): land and ocean air temperature,
+humidity (g/kg; an `origin/main` tree's unitless index is converted by `HUMIDITY_INDEX_G_KG`)
+and precipitation; land's share of precipitation; the same by 15-degree band; Köppen group
+shares of land; land fraction and the ice cap. At t = 0 both trees see the same loaded world,
+so a difference there comes from the climate code alone.
+
+```bash
+backend/.venv/bin/python bin/debug/measure_climate_fields.py world.mbworld --myr 10 --step-years 250000 \
+  --checkpoint-myr 2 --backend ../<baseline-worktree>/backend --out /tmp/main.json
 ```

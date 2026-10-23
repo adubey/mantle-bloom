@@ -69,10 +69,10 @@ Random/Human-made/Premade tabs, with `debug_diagnostics` already on (so the phas
 records -- see [`python -m app.phase_budget_diagnostics`](offline-cli.md#python--m-appphase_budget_diagnostics----per-phase-hchm-budget)).
 
 Each plate's motion is **pinned**, not torque-driven: `World.pinned_omegas` (`plate_id ->` a
-fixed angular velocity) makes `Plate.shift` use that value verbatim every step,
-bypassing `torque.shift_plate`'s own ridge-push/slab-pull/basal-drag recompute entirely for
-that plate (`torque.apply_omega_and_rotate` is the shared rotate-and-report tail both the real
-and pinned paths use). This is what makes a scenario reliable to iterate on: "these two plates
+fixed angular velocity) fixes that plate's degrees of freedom in the coupled solve every step.
+Other plates still solve against the pinned plate's drag and contact loads. The batch then
+uses `torque.apply_omega_and_rotate` to rotate all plates and report displacement. This is what
+makes a scenario reliable to iterate on: "these two plates
 diverge" stays true step after step, rather than however the force balance against an
 otherwise-irrelevant `mantle_centers` field happens to settle it. `pinned_omegas` is empty for
 every ordinarily-generated world -- this is purely a debug-world mechanism.

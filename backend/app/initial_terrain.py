@@ -19,7 +19,6 @@ from .hydroclimate.erosion import MAX_CHANNEL_DEPTH_M, climate_grid_indices
 if TYPE_CHECKING:
     from .world import World
 
-FIRST_MOTION_STEP_YEARS = 5_000_000.0
 INITIAL_GLACIER_DEPTH_M = 150.0
 INITIAL_GLACIER_MIN_ELEVATION_M = 2_500.0
 INITIAL_GLACIER_MAX_TEMPERATURE_C = -3.0
@@ -114,10 +113,7 @@ def apply_predicted_orogens(world: "World") -> None:
     """Seed narrow, high ridges on weak land beside initially converging contacts."""
     spacing = line_spacing_rad(world.node_density)
     reach = OROGEN_SEARCH_RADIUS_KM / PLANET_RADIUS_KM
-    predicted = {
-        plate.plate_id: torque.predict_plate_motion(plate, world, world.plates, FIRST_MOTION_STEP_YEARS)
-        for plate in world.plates
-    }
+    predicted = torque.solve_plates_quasistatic(world)
     relief_by_plate = {
         plate.plate_id: np.zeros(len(plate.cell_keys), dtype=float) for plate in world.plates
     }

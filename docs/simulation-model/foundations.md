@@ -284,8 +284,8 @@ raised to at least `cratons.CRATON_HOST_MIN_HC_M` and seeded as craton
 ([cratons](tectonics.md#cratons)). The layout measures over 40 seeds are in
 [analysis/issue462](../../analysis/issue462/README.md).
 
-For cratons-first worlds, `world.generate_world` then asks
-`torque.predict_plate_motion` for each plate's first-step angular velocity without applying
+For cratons-first worlds, `world.generate_world` solves all plates together with
+`torque.solve_plates_quasistatic` for their first-step angular velocities without applying
 the rotation. `initial_terrain.apply_predicted_orogens` finds above-sea-level continental
 contacts that are converging, selects a relatively straight section up to 1,000 km long, then
 places a short ridge on the less-cratonic plate (sections with more than 100 km RMS bend are
@@ -327,7 +327,7 @@ rivers, ice and the craton and continental ledgers are seeded afterwards, on the
 coastline.
 
 The pass reads the layout's cratons and continents and the first predicted plate motion
-(`torque.predict_plate_motion` over 5 Myr, read-only), and sets a target elevation for every
+(`torque.solve_plates_quasistatic`, read-only), and sets a target elevation for every
 continental-crust node:
 
 - **Sutures.** Two cratons on the same continent are a pair when they are some node's two

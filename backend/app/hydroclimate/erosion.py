@@ -25,9 +25,9 @@ by the real great-circle distance to that neighbor. This is a genuine dimensionl
 RAIN_EROSION_COEFFICIENT below is tuned for this rise/run scale (order 0.001-0.1), not for
 meters-of-drop-per-grid-cell (order 10-100s of meters); a coefficient tuned against that
 coarser, resolution-dependent scale would make rain erosion negligible here.
-WEATHERING_COEFFICIENT needs no such rescaling, since it depends only on wind speed, whose
-scale (MERIDIONAL_BASE_SPEED = 6.0) is fixed by this module's own climate pipeline rather
-than by any grid convention. River erosion needs the same reasoning as rain erosion, one
+WEATHERING_COEFFICIENT needs no such rescaling, since it depends only on wind speed, which
+is a physical 10 m speed in m/s (climate.py's surface-wind contract) rather than anything
+tied to a grid convention. River erosion needs the same reasoning as rain erosion, one
 level further removed: it depends on physical catchment discharge (see hydrology.py), mapped
 to a fixed reference-cell scale so a denser mesh does not increase the forcing. Issue #355
 step 5 recalibrated RIVER_EROSION_COEFFICIENT after the source changed from raw precipitation
@@ -125,12 +125,15 @@ SLOPE_NEIGHBOR_COUNT = 4
 # swamped by them (the raw number can't be picked from a grid-cell-based slope convention;
 # see above for why).
 RAIN_EROSION_COEFFICIENT = 6000.0
-# Needs no rescaling the way the rain coefficient does, since wind speed's scale
-# (MERIDIONAL_BASE_SPEED = 6.0) is fixed by this module's own climate pipeline, not tied to a
-# grid-resolution-dependent slope convention.
-WEATHERING_COEFFICIENT = 3.0
-# Humidity level at which the weathering-humidity factor saturates to 1.0.
-HUMIDITY_REFERENCE = 1.0
+# Metres of weathering per (m/s of 10 m wind speed) per Myr. Needs no rescaling the way the rain coefficient does,
+# since wind speed is a physical 10 m speed (climate.py's surface-wind contract), not tied to
+# a grid-resolution-dependent slope convention. Was 3.0 against the old unitless wind; #526's
+# switch to m/s lowered land wind speed by about a fifth, and 3.6 holds land weathering
+# volume (analysis/issue526/README.md).
+WEATHERING_COEFFICIENT = 3.6
+# Near-surface specific humidity at which the weathering-humidity factor saturates to 1.0:
+# the old unitless index's 1.0, converted to g/kg (#522).
+HUMIDITY_REFERENCE_G_KG = climate.HUMIDITY_INDEX_G_KG
 # Unlike rain/river erosion (both already multiply by `slope`), weathering had no relief
 # dependence at all until this was added -- confirmed as the main reason flat, low-lying
 # coastal land was drowning within a step or two of being created: wind/humidity-driven
@@ -1915,7 +1918,7 @@ def apply_erosion(
     wind_u_at_nodes = fields.wind_u[row, col]
     wind_v_at_nodes = fields.wind_v[row, col]
     wind_speed = np.hypot(wind_u_at_nodes, wind_v_at_nodes)
-    humidity = fields.humidity[row, col]
+    humidity = fields.humidity_g_kg[row, col]
     # Preliminary, elevation-only ocean test -- just for the ocean-vs-air temperature pick
     # feeding the flow solve below. The authoritative, connectivity-aware mask
     # (`hydro.is_ocean`, which also excludes an enclosed interior sub-sea-level pit) is only
@@ -1968,7 +1971,7 @@ def apply_erosion(
         discharge_m3_s, breach_surge_accum, slope, prior_channel_depth,
         world.river_erosion_multiplier, dt_myr,
     )
-    humidity_norm = np.clip(humidity / HUMIDITY_REFERENCE, 0.0, 1.0)
+    humidity_norm = np.clip(humidity / HUMIDITY_REFERENCE_G_KG, 0.0, 1.0)
     relief_factor = np.clip(slope / WEATHERING_RELIEF_REFERENCE_SLOPE, 0.0, 1.0)
     weathering = WEATHERING_COEFFICIENT * world.wind_erosion_multiplier * wind_speed * humidity_norm * relief_factor * dt_myr
     ice_factor = np.clip(prior_glacier_depth / GLACIER_EROSION_REFERENCE_DEPTH_M, 0.0, GLACIER_EROSION_MAX_FACTOR)

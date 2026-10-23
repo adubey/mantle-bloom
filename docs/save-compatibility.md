@@ -58,6 +58,13 @@ assumes 10 kyr per step (`legacy_conversion.FALLBACK_YEARS_PER_STEP`, the UI's s
 step). Either way an age is capped at `elapsed_years`. A negative or fractional step count
 is a `CorruptSaveError`.
 
+**Cached humidity without units.** Before #522 the pickled `World.climate_cache` held
+`humidity`, a unitless index. `persistence._migrate_climate_humidity_units` renames it to
+`humidity_g_kg` and multiplies it by `climate.HUMIDITY_INDEX_G_KG` (12.3), the factor the
+index's constants were converted by. The cache isn't dropped, because the next step's transpiration
+source reads its precipitation. The converted humidity is only drawn until that step
+recomputes it.
+
 **Errors.** `load_world_bytes` raises one of two `SaveFormatError`s (a `ValueError`) and never
 loads part of a save:
 

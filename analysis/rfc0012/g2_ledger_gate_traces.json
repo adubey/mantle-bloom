@@ -1,0 +1,1163 @@
+{
+  "manifest": {
+    "baseline_commit": "2279d7e16c7debe839bd04ab18ce0a8f895f8654",
+    "endpoint_myr": 500,
+    "instrumentation_commit_state": "working tree, trace script only",
+    "node_density": 1.0,
+    "order": "per seed: baseline then G2 pilot; one simulation process at a time",
+    "pilot_commit": "512895dc2f3aef7cf03abc3a9dd447a060690bcd",
+    "runs": [
+      {
+        "command": [
+          "/Users/adubey/.codex/worktrees/rfc0012-g2-baseline/Mantle Bloom/backend/.venv/bin/python",
+          "/Users/adubey/.codex/worktrees/rfc0012-g2/Mantle Bloom/bin/debug/trace_rfc0012_ledger_gates.py",
+          "--seed",
+          "326494039",
+          "--steps",
+          "500",
+          "--step-myr",
+          "1",
+          "--model-root",
+          "/Users/adubey/.codex/worktrees/rfc0012-g2-baseline/Mantle Bloom",
+          "--out",
+          "/private/tmp/rfc0012-ledger-gates/baseline-seed326494039-1myr-500myr.jsonl"
+        ],
+        "finished_utc": "2026-10-19T15:55:06.039045+00:00",
+        "model": "baseline",
+        "output": "/private/tmp/rfc0012-ledger-gates/baseline-seed326494039-1myr-500myr.jsonl",
+        "return_code": 0,
+        "seed": 326494039,
+        "started_utc": "2026-10-19T15:30:57.530579+00:00",
+        "status": "complete",
+        "step_myr": 1.0,
+        "steps": 500,
+        "wall_seconds": 1448.5
+      },
+      {
+        "command": [
+          "/Users/adubey/.codex/worktrees/rfc0012-g2/Mantle Bloom/backend/.venv/bin/python",
+          "/Users/adubey/.codex/worktrees/rfc0012-g2/Mantle Bloom/bin/debug/trace_rfc0012_ledger_gates.py",
+          "--seed",
+          "326494039",
+          "--steps",
+          "500",
+          "--step-myr",
+          "1",
+          "--model-root",
+          "/Users/adubey/.codex/worktrees/rfc0012-g2/Mantle Bloom",
+          "--out",
+          "/private/tmp/rfc0012-ledger-gates/pilot-seed326494039-1myr-500myr.jsonl"
+        ],
+        "finished_utc": "2026-10-19T16:19:46.403120+00:00",
+        "model": "pilot",
+        "output": "/private/tmp/rfc0012-ledger-gates/pilot-seed326494039-1myr-500myr.jsonl",
+        "return_code": 0,
+        "seed": 326494039,
+        "started_utc": "2026-10-19T15:55:06.039934+00:00",
+        "status": "complete",
+        "step_myr": 1.0,
+        "steps": 500,
+        "wall_seconds": 1480.36
+      },
+      {
+        "command": [
+          "/Users/adubey/.codex/worktrees/rfc0012-g2-baseline/Mantle Bloom/backend/.venv/bin/python",
+          "/Users/adubey/.codex/worktrees/rfc0012-g2/Mantle Bloom/bin/debug/trace_rfc0012_ledger_gates.py",
+          "--seed",
+          "748935664",
+          "--steps",
+          "500",
+          "--step-myr",
+          "1",
+          "--model-root",
+          "/Users/adubey/.codex/worktrees/rfc0012-g2-baseline/Mantle Bloom",
+          "--out",
+          "/private/tmp/rfc0012-ledger-gates/baseline-seed748935664-1myr-500myr.jsonl"
+        ],
+        "finished_utc": "2026-10-19T16:44:18.208875+00:00",
+        "model": "baseline",
+        "output": "/private/tmp/rfc0012-ledger-gates/baseline-seed748935664-1myr-500myr.jsonl",
+        "return_code": 0,
+        "seed": 748935664,
+        "started_utc": "2026-10-19T16:19:46.404176+00:00",
+        "status": "complete",
+        "step_myr": 1.0,
+        "steps": 500,
+        "wall_seconds": 1471.8
+      },
+      {
+        "command": [
+          "/Users/adubey/.codex/worktrees/rfc0012-g2/Mantle Bloom/backend/.venv/bin/python",
+          "/Users/adubey/.codex/worktrees/rfc0012-g2/Mantle Bloom/bin/debug/trace_rfc0012_ledger_gates.py",
+          "--seed",
+          "748935664",
+          "--steps",
+          "500",
+          "--step-myr",
+          "1",
+          "--model-root",
+          "/Users/adubey/.codex/worktrees/rfc0012-g2/Mantle Bloom",
+          "--out",
+          "/private/tmp/rfc0012-ledger-gates/pilot-seed748935664-1myr-500myr.jsonl"
+        ],
+        "finished_utc": "2026-10-19T17:09:16.877948+00:00",
+        "model": "pilot",
+        "output": "/private/tmp/rfc0012-ledger-gates/pilot-seed748935664-1myr-500myr.jsonl",
+        "return_code": 0,
+        "seed": 748935664,
+        "started_utc": "2026-10-19T16:44:18.212294+00:00",
+        "status": "complete",
+        "step_myr": 1.0,
+        "steps": 500,
+        "wall_seconds": 1498.69
+      },
+      {
+        "command": [
+          "/Users/adubey/.codex/worktrees/rfc0012-g2-baseline/Mantle Bloom/backend/.venv/bin/python",
+          "/Users/adubey/.codex/worktrees/rfc0012-g2/Mantle Bloom/bin/debug/trace_rfc0012_ledger_gates.py",
+          "--seed",
+          "580014012",
+          "--steps",
+          "500",
+          "--step-myr",
+          "1",
+          "--model-root",
+          "/Users/adubey/.codex/worktrees/rfc0012-g2-baseline/Mantle Bloom",
+          "--out",
+          "/private/tmp/rfc0012-ledger-gates/baseline-seed580014012-1myr-500myr.jsonl"
+        ],
+        "finished_utc": "2026-10-19T17:30:24.504002+00:00",
+        "model": "baseline",
+        "output": "/private/tmp/rfc0012-ledger-gates/baseline-seed580014012-1myr-500myr.jsonl",
+        "return_code": 0,
+        "seed": 580014012,
+        "started_utc": "2026-10-19T17:09:16.879202+00:00",
+        "status": "complete",
+        "step_myr": 1.0,
+        "steps": 500,
+        "wall_seconds": 1267.63
+      },
+      {
+        "command": [
+          "/Users/adubey/.codex/worktrees/rfc0012-g2/Mantle Bloom/backend/.venv/bin/python",
+          "/Users/adubey/.codex/worktrees/rfc0012-g2/Mantle Bloom/bin/debug/trace_rfc0012_ledger_gates.py",
+          "--seed",
+          "580014012",
+          "--steps",
+          "500",
+          "--step-myr",
+          "1",
+          "--model-root",
+          "/Users/adubey/.codex/worktrees/rfc0012-g2/Mantle Bloom",
+          "--out",
+          "/private/tmp/rfc0012-ledger-gates/pilot-seed580014012-1myr-500myr.jsonl"
+        ],
+        "finished_utc": "2026-10-19T17:51:02.014049+00:00",
+        "model": "pilot",
+        "output": "/private/tmp/rfc0012-ledger-gates/pilot-seed580014012-1myr-500myr.jsonl",
+        "return_code": 0,
+        "seed": 580014012,
+        "started_utc": "2026-10-19T17:30:24.505303+00:00",
+        "status": "complete",
+        "step_myr": 1.0,
+        "steps": 500,
+        "wall_seconds": 1237.49
+      },
+      {
+        "command": [
+          "/Users/adubey/.codex/worktrees/rfc0012-g2-baseline/Mantle Bloom/backend/.venv/bin/python",
+          "/Users/adubey/.codex/worktrees/rfc0012-g2/Mantle Bloom/bin/debug/trace_rfc0012_ledger_gates.py",
+          "--seed",
+          "111065103",
+          "--steps",
+          "500",
+          "--step-myr",
+          "1",
+          "--model-root",
+          "/Users/adubey/.codex/worktrees/rfc0012-g2-baseline/Mantle Bloom",
+          "--out",
+          "/private/tmp/rfc0012-ledger-gates/baseline-seed111065103-1myr-500myr.jsonl"
+        ],
+        "finished_utc": "2026-10-19T18:13:04.702144+00:00",
+        "model": "baseline",
+        "output": "/private/tmp/rfc0012-ledger-gates/baseline-seed111065103-1myr-500myr.jsonl",
+        "return_code": 0,
+        "seed": 111065103,
+        "started_utc": "2026-10-19T17:51:02.015115+00:00",
+        "status": "complete",
+        "step_myr": 1.0,
+        "steps": 500,
+        "wall_seconds": 1322.68
+      },
+      {
+        "command": [
+          "/Users/adubey/.codex/worktrees/rfc0012-g2/Mantle Bloom/backend/.venv/bin/python",
+          "/Users/adubey/.codex/worktrees/rfc0012-g2/Mantle Bloom/bin/debug/trace_rfc0012_ledger_gates.py",
+          "--seed",
+          "111065103",
+          "--steps",
+          "500",
+          "--step-myr",
+          "1",
+          "--model-root",
+          "/Users/adubey/.codex/worktrees/rfc0012-g2/Mantle Bloom",
+          "--out",
+          "/private/tmp/rfc0012-ledger-gates/pilot-seed111065103-1myr-500myr.jsonl"
+        ],
+        "finished_utc": "2026-10-19T18:34:56.689270+00:00",
+        "model": "pilot",
+        "output": "/private/tmp/rfc0012-ledger-gates/pilot-seed111065103-1myr-500myr.jsonl",
+        "return_code": 0,
+        "seed": 111065103,
+        "started_utc": "2026-10-19T18:13:04.704131+00:00",
+        "status": "complete",
+        "step_myr": 1.0,
+        "steps": 500,
+        "wall_seconds": 1311.96
+      }
+    ],
+    "seeds": [
+      326494039,
+      748935664,
+      580014012,
+      111065103
+    ],
+    "step_myr": 1
+  },
+  "matched": {
+    "111065103": {
+      "baseline_land_fraction": 0.25429074727692874,
+      "baseline_merge_count": 15,
+      "pilot_land_fraction": 0.3145998746444286,
+      "pilot_merge_count": 0,
+      "pilot_minus_baseline_ledger_mkm3": {
+        "deeply_subducted": -1935.0577843580897,
+        "formed_craton": 438.18109232735605,
+        "merge_capped_craton": -72.65738366616104,
+        "subducted_craton": -0.5196191352845813
+      }
+    },
+    "326494039": {
+      "baseline_land_fraction": 0.15077401549170377,
+      "baseline_merge_count": 21,
+      "pilot_land_fraction": 0.2117948942342957,
+      "pilot_merge_count": 0,
+      "pilot_minus_baseline_ledger_mkm3": {
+        "deeply_subducted": -1400.6786928580032,
+        "formed_craton": 383.6317523525104,
+        "merge_capped_craton": -18.550036374455964,
+        "subducted_craton": -0.30622463576466846
+      }
+    },
+    "580014012": {
+      "baseline_land_fraction": 0.2330362881896513,
+      "baseline_merge_count": 5,
+      "pilot_land_fraction": 0.2430889305148205,
+      "pilot_merge_count": 1,
+      "pilot_minus_baseline_ledger_mkm3": {
+        "deeply_subducted": -1399.2255722769974,
+        "formed_craton": 258.64443000613323,
+        "merge_capped_craton": 0.0,
+        "subducted_craton": -0.7331512735547924
+      }
+    },
+    "748935664": {
+      "baseline_land_fraction": 0.10137325478375597,
+      "baseline_merge_count": 13,
+      "pilot_land_fraction": 0.14158107932360472,
+      "pilot_merge_count": 1,
+      "pilot_minus_baseline_ledger_mkm3": {
+        "deeply_subducted": -541.7312098950458,
+        "formed_craton": 140.99238656805738,
+        "merge_capped_craton": -8.02578799472742,
+        "subducted_craton": -0.12070013108602201
+      }
+    }
+  },
+  "runs": [
+    {
+      "commit": "2279d7e16c7debe839bd04ab18ce0a8f895f8654",
+      "endpoint": {
+        "land_fraction": 0.25429074727692874,
+        "mean_hc_km": 22.06006042012286,
+        "mean_hm_km": 55.97873542882395,
+        "nodes": 32720,
+        "plates": 36
+      },
+      "erosion_unloading_trace": {
+        "max_abs_ice_deflection_change_m": 2037.777694502777,
+        "max_plate_step_ice_unloaded_area_km2": 17778980.084776063,
+        "plate_step_samples": 16070,
+        "sum_ice_unloaded_area_step_mkm2": 18144.91841398122
+      },
+      "event_counts": {
+        "boundary_deformation": 16052,
+        "formation_total": 175,
+        "local_lithosphere_deformation": 16052,
+        "plate_merge": 15,
+        "quiet_gate": 16070,
+        "subduction_front": 16052,
+        "suture_transfer": 1949
+      },
+      "ledger_mkm3": {
+        "collision_subducted": 751.230962511435,
+        "deeply_subducted": 2764.5634983982422,
+        "formed_craton": 812.773464186783,
+        "merge_capped_craton": 72.65738366616104,
+        "subducted_craton": 0.5196191352845813
+      },
+      "merge_trace": {
+        "merge_capped_event_mkm3": 72.65738366616104,
+        "merge_events": 15,
+        "merge_pairs": [
+          [
+            4,
+            14
+          ],
+          [
+            4,
+            22
+          ],
+          [
+            4,
+            29
+          ],
+          [
+            4,
+            17
+          ],
+          [
+            4,
+            23
+          ],
+          [
+            30,
+            41
+          ],
+          [
+            4,
+            30
+          ],
+          [
+            33,
+            36
+          ],
+          [
+            3,
+            5
+          ],
+          [
+            33,
+            46
+          ],
+          [
+            4,
+            33
+          ],
+          [
+            4,
+            54
+          ],
+          [
+            4,
+            57
+          ],
+          [
+            59,
+            21
+          ],
+          [
+            37,
+            62
+          ]
+        ],
+        "premerge_receiver_headroom_mkm3": 3880.904228009701
+      },
+      "model": "baseline",
+      "quiet_gate_trace": {
+        "eligible_uncratonized_area_step_mkm2": 8359.879094485128,
+        "formation_events": 175,
+        "plate_step_samples": 16070,
+        "quiet_host_abs_hc_change_mkm3": 8.053360314636993,
+        "quiet_host_abs_hm_change_mkm3": 21.55582357336504,
+        "quiet_host_area_step_mkm2": 30680.175483797415,
+        "quiet_host_plate_steps_with_local_hc_or_hm_change": 4489,
+        "reset_reason_area_step_mkm2": {
+          "already_cratonized": 22320.296389312276,
+          "belt_exclusion": 0.0,
+          "host_too_thick": 33094.2931872618,
+          "not_genuine_continental": 166319.87419682596,
+          "outside_interior_margin": 42869.898908187584
+        }
+      },
+      "reconciliation_m3": {
+        "continental_material_balance_error": 14336.0,
+        "craton_balance_error": 512.0,
+        "craton_subduction_event_minus_endpoint": 0.0,
+        "deep_subduction_event_minus_endpoint": 0.0,
+        "formation_event_minus_endpoint": 0.0,
+        "merge_cap_event_minus_endpoint": 0.0
+      },
+      "runtime_min": 22.011552310416786,
+      "seed": 111065103,
+      "step_balance_max_abs_m3": {
+        "continental_material": 20480.0,
+        "craton": 1536.0
+      },
+      "step_myr": 1.0,
+      "steps": 500,
+      "subduction_trace": {
+        "budget_blocked_cells": 828,
+        "candidate_cells": 277674,
+        "eligible_donor_cells_not_removed": 170856,
+        "front_events": 16052,
+        "removed_cells": 103647,
+        "removed_deep_subduction_cells": 95947,
+        "suture_lost_lower_crust_mkm3": 84.6531160106189,
+        "suture_transfer_events": 1949,
+        "suture_unplaced_hc_mkm3": 0.0
+      }
+    },
+    {
+      "commit": "2279d7e16c7debe839bd04ab18ce0a8f895f8654",
+      "endpoint": {
+        "land_fraction": 0.15077401549170377,
+        "mean_hc_km": 18.252579704168937,
+        "mean_hm_km": 49.98402335447097,
+        "nodes": 32800,
+        "plates": 35
+      },
+      "erosion_unloading_trace": {
+        "max_abs_ice_deflection_change_m": 1406.9069335095282,
+        "max_plate_step_ice_unloaded_area_km2": 17313339.58525702,
+        "plate_step_samples": 14884,
+        "sum_ice_unloaded_area_step_mkm2": 10238.483835606941
+      },
+      "event_counts": {
+        "boundary_deformation": 14868,
+        "formation_total": 54,
+        "local_lithosphere_deformation": 14868,
+        "plate_merge": 21,
+        "quiet_gate": 14884,
+        "subduction_front": 14868,
+        "suture_transfer": 1948
+      },
+      "ledger_mkm3": {
+        "collision_subducted": 150.67827215548596,
+        "deeply_subducted": 2040.277155948305,
+        "formed_craton": 472.32922192961166,
+        "merge_capped_craton": 18.550036374455964,
+        "subducted_craton": 0.30622463576466846
+      },
+      "merge_trace": {
+        "merge_capped_event_mkm3": 18.550036374455964,
+        "merge_events": 21,
+        "merge_pairs": [
+          [
+            13,
+            19
+          ],
+          [
+            4,
+            6
+          ],
+          [
+            4,
+            10
+          ],
+          [
+            13,
+            24
+          ],
+          [
+            4,
+            29
+          ],
+          [
+            13,
+            28
+          ],
+          [
+            4,
+            13
+          ],
+          [
+            14,
+            34
+          ],
+          [
+            4,
+            39
+          ],
+          [
+            30,
+            38
+          ],
+          [
+            4,
+            41
+          ],
+          [
+            14,
+            33
+          ],
+          [
+            14,
+            30
+          ],
+          [
+            14,
+            50
+          ],
+          [
+            32,
+            48
+          ],
+          [
+            4,
+            47
+          ],
+          [
+            4,
+            51
+          ],
+          [
+            4,
+            32
+          ],
+          [
+            56,
+            61
+          ],
+          [
+            4,
+            56
+          ],
+          [
+            3,
+            65
+          ]
+        ],
+        "premerge_receiver_headroom_mkm3": 9571.941082174844
+      },
+      "model": "baseline",
+      "quiet_gate_trace": {
+        "eligible_uncratonized_area_step_mkm2": 5141.612484015957,
+        "formation_events": 54,
+        "plate_step_samples": 14884,
+        "quiet_host_abs_hc_change_mkm3": 5.904679956417841,
+        "quiet_host_abs_hm_change_mkm3": 16.28118440655296,
+        "quiet_host_area_step_mkm2": 20460.359979145804,
+        "quiet_host_plate_steps_with_local_hc_or_hm_change": 2323,
+        "reset_reason_area_step_mkm2": {
+          "already_cratonized": 15318.747495129895,
+          "belt_exclusion": 0.0,
+          "host_too_thick": 21719.860015223087,
+          "not_genuine_continental": 199558.18561566342,
+          "outside_interior_margin": 25429.197989781886
+        }
+      },
+      "reconciliation_m3": {
+        "continental_material_balance_error": 2048.0,
+        "craton_balance_error": 0.0,
+        "craton_subduction_event_minus_endpoint": 0.0,
+        "deep_subduction_event_minus_endpoint": 0.0,
+        "formation_event_minus_endpoint": 0.0,
+        "merge_cap_event_minus_endpoint": 0.0
+      },
+      "runtime_min": 24.081132386116465,
+      "seed": 326494039,
+      "step_balance_max_abs_m3": {
+        "continental_material": 5120.0,
+        "craton": 1024.0
+      },
+      "step_myr": 1.0,
+      "steps": 500,
+      "subduction_trace": {
+        "budget_blocked_cells": 449,
+        "candidate_cells": 268915,
+        "eligible_donor_cells_not_removed": 139744,
+        "front_events": 14868,
+        "removed_cells": 126238,
+        "removed_deep_subduction_cells": 119965,
+        "suture_lost_lower_crust_mkm3": 70.5433773812462,
+        "suture_transfer_events": 1948,
+        "suture_unplaced_hc_mkm3": 0.0
+      }
+    },
+    {
+      "commit": "2279d7e16c7debe839bd04ab18ce0a8f895f8654",
+      "endpoint": {
+        "land_fraction": 0.2330362881896513,
+        "mean_hc_km": 21.943509813623606,
+        "mean_hm_km": 64.22147840644769,
+        "nodes": 34112,
+        "plates": 37
+      },
+      "erosion_unloading_trace": {
+        "max_abs_ice_deflection_change_m": 1778.3499894195352,
+        "max_plate_step_ice_unloaded_area_km2": 14789307.11725872,
+        "plate_step_samples": 13548,
+        "sum_ice_unloaded_area_step_mkm2": 17839.937764599574
+      },
+      "event_counts": {
+        "boundary_deformation": 13519,
+        "formation_total": 238,
+        "local_lithosphere_deformation": 13519,
+        "plate_merge": 5,
+        "quiet_gate": 13548,
+        "subduction_front": 13519,
+        "suture_transfer": 2584
+      },
+      "ledger_mkm3": {
+        "collision_subducted": 4.652725760181513,
+        "deeply_subducted": 1945.5374513863082,
+        "formed_craton": 771.5558397881962,
+        "merge_capped_craton": 0.0,
+        "subducted_craton": 0.739157401790142
+      },
+      "merge_trace": {
+        "merge_capped_event_mkm3": 0.0,
+        "merge_events": 5,
+        "merge_pairs": [
+          [
+            16,
+            17
+          ],
+          [
+            5,
+            21
+          ],
+          [
+            12,
+            20
+          ],
+          [
+            12,
+            10
+          ],
+          [
+            3,
+            18
+          ]
+        ],
+        "premerge_receiver_headroom_mkm3": 3265.6376797927815
+      },
+      "model": "baseline",
+      "quiet_gate_trace": {
+        "eligible_uncratonized_area_step_mkm2": 7771.806673576883,
+        "formation_events": 238,
+        "plate_step_samples": 13548,
+        "quiet_host_abs_hc_change_mkm3": 11.708811565923538,
+        "quiet_host_abs_hm_change_mkm3": 32.54042943789467,
+        "quiet_host_area_step_mkm2": 29882.673855219124,
+        "quiet_host_plate_steps_with_local_hc_or_hm_change": 3249,
+        "reset_reason_area_step_mkm2": {
+          "already_cratonized": 22110.867181642174,
+          "belt_exclusion": 0.0,
+          "host_too_thick": 26315.1598389198,
+          "not_genuine_continental": 178524.27527166856,
+          "outside_interior_margin": 40400.551797370616
+        }
+      },
+      "reconciliation_m3": {
+        "continental_material_balance_error": 0.0,
+        "craton_balance_error": -512.0,
+        "craton_subduction_event_minus_endpoint": 0.0,
+        "deep_subduction_event_minus_endpoint": 0.0,
+        "formation_event_minus_endpoint": 0.0,
+        "merge_cap_event_minus_endpoint": 0.0
+      },
+      "runtime_min": 21.094972859031987,
+      "seed": 580014012,
+      "step_balance_max_abs_m3": {
+        "continental_material": 6144.0,
+        "craton": 1024.0
+      },
+      "step_myr": 1.0,
+      "steps": 500,
+      "subduction_trace": {
+        "budget_blocked_cells": 491,
+        "candidate_cells": 596110,
+        "eligible_donor_cells_not_removed": 506143,
+        "front_events": 13519,
+        "removed_cells": 87362,
+        "removed_deep_subduction_cells": 77489,
+        "suture_lost_lower_crust_mkm3": 79.03795769521277,
+        "suture_transfer_events": 2584,
+        "suture_unplaced_hc_mkm3": 0.0
+      }
+    },
+    {
+      "commit": "2279d7e16c7debe839bd04ab18ce0a8f895f8654",
+      "endpoint": {
+        "land_fraction": 0.10137325478375597,
+        "mean_hc_km": 14.84773049586137,
+        "mean_hm_km": 45.68180016580485,
+        "nodes": 33386,
+        "plates": 51
+      },
+      "erosion_unloading_trace": {
+        "max_abs_ice_deflection_change_m": 1466.1658930665571,
+        "max_plate_step_ice_unloaded_area_km2": 17484873.611136857,
+        "plate_step_samples": 16590,
+        "sum_ice_unloaded_area_step_mkm2": 8722.216383897021
+      },
+      "event_counts": {
+        "boundary_deformation": 16547,
+        "formation_total": 32,
+        "local_lithosphere_deformation": 16547,
+        "plate_merge": 13,
+        "quiet_gate": 16590,
+        "subduction_front": 16547,
+        "suture_transfer": 1473
+      },
+      "ledger_mkm3": {
+        "collision_subducted": 0.7618987066029113,
+        "deeply_subducted": 966.228486524443,
+        "formed_craton": 212.92583401275368,
+        "merge_capped_craton": 8.02578799472742,
+        "subducted_craton": 0.13043980098307897
+      },
+      "merge_trace": {
+        "merge_capped_event_mkm3": 8.02578799472742,
+        "merge_events": 13,
+        "merge_pairs": [
+          [
+            4,
+            12
+          ],
+          [
+            4,
+            18
+          ],
+          [
+            4,
+            21
+          ],
+          [
+            15,
+            25
+          ],
+          [
+            4,
+            33
+          ],
+          [
+            15,
+            36
+          ],
+          [
+            4,
+            19
+          ],
+          [
+            15,
+            47
+          ],
+          [
+            4,
+            44
+          ],
+          [
+            42,
+            51
+          ],
+          [
+            4,
+            42
+          ],
+          [
+            4,
+            61
+          ],
+          [
+            4,
+            66
+          ]
+        ],
+        "premerge_receiver_headroom_mkm3": 14564.012397908855
+      },
+      "model": "baseline",
+      "quiet_gate_trace": {
+        "eligible_uncratonized_area_step_mkm2": 2737.6251722666084,
+        "formation_events": 32,
+        "plate_step_samples": 16590,
+        "quiet_host_abs_hc_change_mkm3": 3.3374767102236276,
+        "quiet_host_abs_hm_change_mkm3": 9.6709811708754,
+        "quiet_host_area_step_mkm2": 13145.752172129345,
+        "quiet_host_plate_steps_with_local_hc_or_hm_change": 1276,
+        "reset_reason_area_step_mkm2": {
+          "already_cratonized": 10408.126999862714,
+          "belt_exclusion": 0.0,
+          "host_too_thick": 13796.539873266594,
+          "not_genuine_continental": 220672.16557051142,
+          "outside_interior_margin": 15206.232007767048
+        }
+      },
+      "reconciliation_m3": {
+        "continental_material_balance_error": 2560.0,
+        "craton_balance_error": 0.0,
+        "craton_subduction_event_minus_endpoint": 0.0,
+        "deep_subduction_event_minus_endpoint": 0.0,
+        "formation_event_minus_endpoint": 0.0,
+        "merge_cap_event_minus_endpoint": 0.0
+      },
+      "runtime_min": 24.495290509735543,
+      "seed": 748935664,
+      "step_balance_max_abs_m3": {
+        "continental_material": 3072.0,
+        "craton": 512.0
+      },
+      "step_myr": 1.0,
+      "steps": 500,
+      "subduction_trace": {
+        "budget_blocked_cells": 253,
+        "candidate_cells": 285579,
+        "eligible_donor_cells_not_removed": 123794,
+        "front_events": 16547,
+        "removed_cells": 158044,
+        "removed_deep_subduction_cells": 153688,
+        "suture_lost_lower_crust_mkm3": 38.20605715475117,
+        "suture_transfer_events": 1473,
+        "suture_unplaced_hc_mkm3": 0.0
+      }
+    },
+    {
+      "commit": "512895dc2f3aef7cf03abc3a9dd447a060690bcd",
+      "endpoint": {
+        "land_fraction": 0.3145998746444286,
+        "mean_hc_km": 24.935515022368865,
+        "mean_hm_km": 64.16200825519465,
+        "nodes": 31701,
+        "plates": 40
+      },
+      "erosion_unloading_trace": {
+        "max_abs_ice_deflection_change_m": 1284.0523585454866,
+        "max_plate_step_ice_unloaded_area_km2": 17925123.365452223,
+        "plate_step_samples": 16047,
+        "sum_ice_unloaded_area_step_mkm2": 20436.919421066694
+      },
+      "event_counts": {
+        "boundary_deformation": 16025,
+        "formation_total": 230,
+        "local_lithosphere_deformation": 16025,
+        "quiet_gate": 16047,
+        "subduction_front": 16025,
+        "suture_transfer": 656
+      },
+      "ledger_mkm3": {
+        "collision_subducted": 3.508535277752925e-14,
+        "deeply_subducted": 829.5057140401525,
+        "formed_craton": 1250.954556514139,
+        "merge_capped_craton": 0.0,
+        "subducted_craton": 0.0
+      },
+      "merge_trace": {
+        "merge_capped_event_mkm3": 0.0,
+        "merge_events": 0,
+        "merge_pairs": [],
+        "premerge_receiver_headroom_mkm3": 0.0
+      },
+      "model": "pilot",
+      "quiet_gate_trace": {
+        "eligible_uncratonized_area_step_mkm2": 9537.399652944614,
+        "formation_events": 230,
+        "plate_step_samples": 16047,
+        "quiet_host_abs_hc_change_mkm3": 1.627052379104494,
+        "quiet_host_abs_hm_change_mkm3": 4.315282315361754,
+        "quiet_host_area_step_mkm2": 42658.49972828312,
+        "quiet_host_plate_steps_with_local_hc_or_hm_change": 1499,
+        "reset_reason_area_step_mkm2": {
+          "already_cratonized": 33121.10007533885,
+          "belt_exclusion": 422.6857761069167,
+          "host_too_thick": 27939.50731514516,
+          "not_genuine_continental": 148733.40537674353,
+          "outside_interior_margin": 45424.59760635216
+        }
+      },
+      "reconciliation_m3": {
+        "continental_material_balance_error": -6144.0,
+        "craton_balance_error": 1536.0,
+        "craton_subduction_event_minus_endpoint": 0.0,
+        "deep_subduction_event_minus_endpoint": 0.0,
+        "formation_event_minus_endpoint": 0.0,
+        "merge_cap_event_minus_endpoint": 0.0
+      },
+      "runtime_min": 21.833036420133432,
+      "seed": 111065103,
+      "step_balance_max_abs_m3": {
+        "continental_material": 10240.0,
+        "craton": 2048.0
+      },
+      "step_myr": 1.0,
+      "steps": 500,
+      "subduction_trace": {
+        "budget_blocked_cells": 170,
+        "candidate_cells": 78258,
+        "eligible_donor_cells_not_removed": 43252,
+        "front_events": 16025,
+        "removed_cells": 34226,
+        "removed_deep_subduction_cells": 31442,
+        "suture_lost_lower_crust_mkm3": 27.47355808716906,
+        "suture_transfer_events": 656,
+        "suture_unplaced_hc_mkm3": 0.0
+      }
+    },
+    {
+      "commit": "512895dc2f3aef7cf03abc3a9dd447a060690bcd",
+      "endpoint": {
+        "land_fraction": 0.2117948942342957,
+        "mean_hc_km": 19.474440682258905,
+        "mean_hm_km": 55.39412616468894,
+        "nodes": 31789,
+        "plates": 40
+      },
+      "erosion_unloading_trace": {
+        "max_abs_ice_deflection_change_m": 1641.527215019888,
+        "max_plate_step_ice_unloaded_area_km2": 9501578.203985613,
+        "plate_step_samples": 15116,
+        "sum_ice_unloaded_area_step_mkm2": 10634.12428797358
+      },
+      "event_counts": {
+        "boundary_deformation": 15095,
+        "formation_total": 109,
+        "local_lithosphere_deformation": 15095,
+        "quiet_gate": 15116,
+        "subduction_front": 15095,
+        "suture_transfer": 1160
+      },
+      "ledger_mkm3": {
+        "collision_subducted": 0.09017209708317364,
+        "deeply_subducted": 639.5984630903018,
+        "formed_craton": 855.960974282122,
+        "merge_capped_craton": 0.0,
+        "subducted_craton": 0.0
+      },
+      "merge_trace": {
+        "merge_capped_event_mkm3": 0.0,
+        "merge_events": 0,
+        "merge_pairs": [],
+        "premerge_receiver_headroom_mkm3": 0.0
+      },
+      "model": "pilot",
+      "quiet_gate_trace": {
+        "eligible_uncratonized_area_step_mkm2": 6547.518027849444,
+        "formation_events": 109,
+        "plate_step_samples": 15116,
+        "quiet_host_abs_hc_change_mkm3": 1.7281720835874363,
+        "quiet_host_abs_hm_change_mkm3": 4.929977212454974,
+        "quiet_host_area_step_mkm2": 34683.604062148894,
+        "quiet_host_plate_steps_with_local_hc_or_hm_change": 710,
+        "reset_reason_area_step_mkm2": {
+          "already_cratonized": 28136.08603429954,
+          "belt_exclusion": 297.8839792400671,
+          "host_too_thick": 11604.914365689621,
+          "not_genuine_continental": 185917.52107082467,
+          "outside_interior_margin": 31704.543110120292
+        }
+      },
+      "reconciliation_m3": {
+        "continental_material_balance_error": -2048.0,
+        "craton_balance_error": 1024.0,
+        "craton_subduction_event_minus_endpoint": 0.0,
+        "deep_subduction_event_minus_endpoint": 0.0,
+        "formation_event_minus_endpoint": 0.0,
+        "merge_cap_event_minus_endpoint": 0.0
+      },
+      "runtime_min": 24.63841622916516,
+      "seed": 326494039,
+      "step_balance_max_abs_m3": {
+        "continental_material": 3072.0,
+        "craton": 1024.0
+      },
+      "step_myr": 1.0,
+      "steps": 500,
+      "subduction_trace": {
+        "budget_blocked_cells": 75,
+        "candidate_cells": 198593,
+        "eligible_donor_cells_not_removed": 119760,
+        "front_events": 15095,
+        "removed_cells": 77433,
+        "removed_deep_subduction_cells": 73118,
+        "suture_lost_lower_crust_mkm3": 46.25915481455811,
+        "suture_transfer_events": 1160,
+        "suture_unplaced_hc_mkm3": 0.0
+      }
+    },
+    {
+      "commit": "512895dc2f3aef7cf03abc3a9dd447a060690bcd",
+      "endpoint": {
+        "land_fraction": 0.2430889305148205,
+        "mean_hc_km": 21.74559557120706,
+        "mean_hm_km": 71.73581678785811,
+        "nodes": 32813,
+        "plates": 33
+      },
+      "erosion_unloading_trace": {
+        "max_abs_ice_deflection_change_m": 1824.7767597391075,
+        "max_plate_step_ice_unloaded_area_km2": 15394639.530113649,
+        "plate_step_samples": 12944,
+        "sum_ice_unloaded_area_step_mkm2": 22054.2292612104
+      },
+      "event_counts": {
+        "boundary_deformation": 12919,
+        "formation_total": 190,
+        "local_lithosphere_deformation": 12919,
+        "plate_merge": 1,
+        "quiet_gate": 12944,
+        "subduction_front": 12919,
+        "suture_transfer": 1259
+      },
+      "ledger_mkm3": {
+        "collision_subducted": 5.666859556159508,
+        "deeply_subducted": 546.3118791093109,
+        "formed_craton": 1030.2002697943294,
+        "merge_capped_craton": 0.0,
+        "subducted_craton": 0.006006128235349601
+      },
+      "merge_trace": {
+        "merge_capped_event_mkm3": 0.0,
+        "merge_events": 1,
+        "merge_pairs": [
+          [
+            32,
+            14
+          ]
+        ],
+        "premerge_receiver_headroom_mkm3": 926.0829797972303
+      },
+      "model": "pilot",
+      "quiet_gate_trace": {
+        "eligible_uncratonized_area_step_mkm2": 8166.66436006893,
+        "formation_events": 190,
+        "plate_step_samples": 12944,
+        "quiet_host_abs_hc_change_mkm3": 0.7946140068491884,
+        "quiet_host_abs_hm_change_mkm3": 2.220335321517047,
+        "quiet_host_area_step_mkm2": 43437.278141860435,
+        "quiet_host_plate_steps_with_local_hc_or_hm_change": 425,
+        "reset_reason_area_step_mkm2": {
+          "already_cratonized": 35270.613781791326,
+          "belt_exclusion": 133.18940927741824,
+          "host_too_thick": 9338.82309986853,
+          "not_genuine_continental": 169248.84930676362,
+          "outside_interior_margin": 41140.969953556254
+        }
+      },
+      "reconciliation_m3": {
+        "continental_material_balance_error": 0.0,
+        "craton_balance_error": -512.0,
+        "craton_subduction_event_minus_endpoint": 0.0,
+        "deep_subduction_event_minus_endpoint": 0.0,
+        "formation_event_minus_endpoint": 0.0,
+        "merge_cap_event_minus_endpoint": 0.0
+      },
+      "runtime_min": 20.593287114585596,
+      "seed": 580014012,
+      "step_balance_max_abs_m3": {
+        "continental_material": 4096.0,
+        "craton": 1024.0
+      },
+      "step_myr": 1.0,
+      "steps": 500,
+      "subduction_trace": {
+        "budget_blocked_cells": 9,
+        "candidate_cells": 182325,
+        "eligible_donor_cells_not_removed": 157755,
+        "front_events": 12919,
+        "removed_cells": 24230,
+        "removed_deep_subduction_cells": 19370,
+        "suture_lost_lower_crust_mkm3": 38.112560684956115,
+        "suture_transfer_events": 1259,
+        "suture_unplaced_hc_mkm3": 0.0
+      }
+    },
+    {
+      "commit": "512895dc2f3aef7cf03abc3a9dd447a060690bcd",
+      "endpoint": {
+        "land_fraction": 0.14158107932360472,
+        "mean_hc_km": 14.415368029948203,
+        "mean_hm_km": 48.11892611596559,
+        "nodes": 32576,
+        "plates": 49
+      },
+      "erosion_unloading_trace": {
+        "max_abs_ice_deflection_change_m": 1656.6538577545066,
+        "max_plate_step_ice_unloaded_area_km2": 8291358.299967023,
+        "plate_step_samples": 17158,
+        "sum_ice_unloaded_area_step_mkm2": 8249.752848084341
+      },
+      "event_counts": {
+        "boundary_deformation": 17117,
+        "formation_total": 92,
+        "local_lithosphere_deformation": 17117,
+        "plate_merge": 1,
+        "quiet_gate": 17158,
+        "subduction_front": 17117,
+        "suture_transfer": 990
+      },
+      "ledger_mkm3": {
+        "collision_subducted": 6.551578914202719e-15,
+        "deeply_subducted": 424.49727662939716,
+        "formed_craton": 353.91822058081107,
+        "merge_capped_craton": 0.0,
+        "subducted_craton": 0.009739669897056956
+      },
+      "merge_trace": {
+        "merge_capped_event_mkm3": 0.0,
+        "merge_events": 1,
+        "merge_pairs": [
+          [
+            11,
+            19
+          ]
+        ],
+        "premerge_receiver_headroom_mkm3": 1717.1683069150477
+      },
+      "model": "pilot",
+      "quiet_gate_trace": {
+        "eligible_uncratonized_area_step_mkm2": 3224.2953553626144,
+        "formation_events": 92,
+        "plate_step_samples": 17158,
+        "quiet_host_abs_hc_change_mkm3": 0.6704406246965169,
+        "quiet_host_abs_hm_change_mkm3": 1.8967778318233468,
+        "quiet_host_area_step_mkm2": 21103.028269310646,
+        "quiet_host_plate_steps_with_local_hc_or_hm_change": 646,
+        "reset_reason_area_step_mkm2": {
+          "already_cratonized": 17878.732913948155,
+          "belt_exclusion": 303.94824091353365,
+          "host_too_thick": 3103.6614201288967,
+          "not_genuine_continental": 213271.42302261642,
+          "outside_interior_margin": 20130.445851687047
+        }
+      },
+      "reconciliation_m3": {
+        "continental_material_balance_error": 0.0,
+        "craton_balance_error": 256.0,
+        "craton_subduction_event_minus_endpoint": 0.0,
+        "deep_subduction_event_minus_endpoint": 0.0,
+        "formation_event_minus_endpoint": 0.0,
+        "merge_cap_event_minus_endpoint": 0.0
+      },
+      "runtime_min": 24.942638724999657,
+      "seed": 748935664,
+      "step_balance_max_abs_m3": {
+        "continental_material": 2048.0,
+        "craton": 512.0
+      },
+      "step_myr": 1.0,
+      "steps": 500,
+      "subduction_trace": {
+        "budget_blocked_cells": 34,
+        "candidate_cells": 256542,
+        "eligible_donor_cells_not_removed": 136563,
+        "front_events": 17117,
+        "removed_cells": 117481,
+        "removed_deep_subduction_cells": 114542,
+        "suture_lost_lower_crust_mkm3": 21.082983912764902,
+        "suture_transfer_events": 990,
+        "suture_unplaced_hc_mkm3": 0.0
+      }
+    }
+  ]
+}

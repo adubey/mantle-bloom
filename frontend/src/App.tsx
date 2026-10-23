@@ -147,8 +147,9 @@ const DEFAULT_TUNING: TuningMultipliers = Object.fromEntries(
 const DEFAULT_SIMULATE_PLATE_MOVEMENT = true;
 const DEFAULT_SIMULATE_CLIMATE_BIOMES = true;
 // Matching backend app/world.py's World.wind_model default -- the fast closed-form diagnostic
-// (ABL) wind: it reproduces ~85-90% of the CFD biome map for a fraction of the per-step cost,
-// so it's the better starting point; switch to "cfd" in Controls for the full shallow-water solve.
+// (ABL) wind: it approximates the CFD climate for a fraction of the per-step cost (how closely:
+// docs/simulation-model/climate.md#wind-model, #529), so it's the better starting point; switch
+// to "cfd" in Controls for the full shallow-water solve.
 const DEFAULT_WIND_MODEL = "diagnostic";
 // Matching backend app/world.py's World.fault_deformation_mode default. "fault" localises
 // plate-boundary deformation onto fault lines (faults spawn boundary-hugging, so the

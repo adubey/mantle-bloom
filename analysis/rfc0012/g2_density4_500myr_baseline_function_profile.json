@@ -1,0 +1,34 @@
+{
+  "seed": 326494039,
+  "model": "baseline",
+  "commit": "2279d7e16c7debe839bd04ab18ce0a8f895f8654",
+  "node_density": 4.0,
+  "step_myr": 2.0,
+  "advance_to_myr": 500.0,
+  "warmup_steps": 1,
+  "profile_steps": 3,
+  "profile_elapsed_myr": 508.0,
+  "nodes": 134251,
+  "plates": 41,
+  "python": "3.14.6",
+  "cprofile_wall_s_per_step": [10.54341520788148, 8.353767124935985, 8.633792791049927],
+  "median_cprofile_wall_s": 8.633792791049927,
+  "cprofile_cumulative_s_over_three_steps": {
+    "world.step_world": 27.531,
+    "apply_erosion": 7.493,
+    "threading.join": 5.950,
+    "fill_gaps_by_growing_neighbours": 3.930,
+    "update_faults": 3.913,
+    "compute_hydrology": 3.574,
+    "shift_plate": 1.705,
+    "gather_boundary_force_inputs": 1.841,
+    "classify_boundary_nodes": 0.759
+  },
+  "max_rss_mib": 1795.84375,
+  "reports": {
+    "pstats": "/private/tmp/rfc0012-density4-baseline-function-profile/g2_density4_500myr.pstats",
+    "cumulative": "/private/tmp/rfc0012-density4-baseline-function-profile/cumulative.txt",
+    "tottime": "/private/tmp/rfc0012-density4-baseline-function-profile/tottime.txt",
+    "run": "/private/tmp/rfc0012-density4-baseline-function-profile/run.json"
+  }
+}

@@ -105,7 +105,7 @@ class World:
     # sutures (crust_transfer.py), reset with phase_budget.
     suture_transfer_stats: dict = field(default_factory=dict)
     # A fixed per-world property, like `seed` -- set once at generation and read again on
-    # every future climate render (see climate.py's compute_insolation), not rendering/cache
+    # every future climate render (see climate.py's compute_heating_index), not rendering/cache
     # state. The one deliberate exception to climate being otherwise fully stateless.
     axial_tilt_deg: float = DEFAULT_AXIAL_TILT_DEG
     # Another fixed per-world property: which Premade-worlds tab entry (if any) this world
@@ -216,9 +216,8 @@ class World:
     # interval you want to measure. A `default_factory` field -> backfilled on load (see
     # persistence._backfill_added_fields).
     phase_budget: dict = field(default_factory=dict)
-    # Debug-world-only: plate_id -> a fixed world-frame angular velocity (rad/s) that
-    # Plate.shift uses verbatim every step, bypassing torque.shift_plate's own
-    # torque-balance recompute entirely for that plate (see torque.py) -- the "Debugging
+    # Debug-world-only: plate_id -> a fixed world-frame angular velocity (rad/yr) used as a
+    # fixed degree of freedom in the coupled solve (see torque.py) -- the "Debugging
     # Worlds" tab's scripted-motion mechanism (see debug_worlds.py), so a tiny hand-built
     # scenario moves exactly as scripted every step rather than however real ridge-push/
     # slab-pull/basal-drag against world.mantle_centers happens to settle it. Empty for every
@@ -312,8 +311,9 @@ class World:
     # (`collision_polarity.PolarityFrame`), set by the prepass before any plate deforms and
     # left in place until the next step's prepass replaces it.
     collision_polarity_frame: object | None = None
-    # Step-scoped scratch, None outside the passes that use it: the boundary searches the
-    # prepass shares with deform() (`torque.BoundarySearchCache`), and the (parent, child)
+    # Step-scoped scratch, None outside the passes that use it: motion creates the boundary
+    # cache, the post-rotation prepass repopulates it, and deform() shares those searches
+    # (`torque.BoundarySearchCache`); also the (parent, child)
     # plate-id pairs topology changes record (`collision_polarity.note_lineage`).
     boundary_search_cache: object | None = None
     topology_lineage: list | None = None
@@ -411,7 +411,8 @@ class World:
     # -- unlike axial_tilt_deg/node_density (fixed at generation), these are meant to be
     # tweaked mid-simulation. sea_level_m replaces the bare `elevation <= 0.0` convention
     # every is_ocean check in this codebase used to hardcode (climate.py, hydrology.py);
-    # solar_multiplier scales climate.py's own SUNLIGHT constant. Changing
+    # solar_multiplier scales climate.py's own SUNLIGHT constant (and the W/m² insolation
+    # diagnostic's SOLAR_CONSTANT_W_M2). Changing
     # either forces an immediate climate_cache recompute (see main.py's controls route) so
     # /world/render and /world/stats reflect it right away, without waiting for a step.
     sea_level_m: float = 0.0
@@ -512,9 +513,9 @@ class World:
     # docs/simulation-model/climate.md#fd-performance). "diagnostic" (default): skip that solve entirely
     # and let climate.compute_climate rebuild wind/air-temperature from its own closed-form
     # ABL-style formulas (compute_wind + compute_air_temperature_diagnostic) every call, the same
-    # way it already does during the pre-CFD cold-start bootstrap. Reproduces ~85-90% of the land
-    # biome map and precipitation within ~10% for a fraction of the cost -- see
-    # docs/simulation-model/climate.md#wind-model and GitHub issue #118 -- so it's the default; opt into "cfd"
+    # way it already does during the pre-CFD cold-start bootstrap. It approximates the CFD's
+    # climate for a fraction of the cost (how closely: docs/simulation-model/climate.md#wind-model,
+    # GitHub issues #118 and #529) -- so it's the default; opt into "cfd"
     # via Controls for the full solve. atmosphere_cfd_state is still kept in sync (init'd at
     # generation, never cleared) so switching to "cfd" mid-session resumes from a real, if
     # now-stale, state rather than a cold start.
@@ -783,9 +784,9 @@ def generate_world_progress(
     else:
         initial_terrain.apply_lowland_spherical_relief(world)
 
-        # The cratons-first layout has explicit plate boundaries, so use the torque solver's
-        # read-only first-step prediction to seed modest convergent-belt relief. The prediction
-        # informs terrain only; plate positions and elapsed time remain at generation state.
+        # The cratons-first layout has explicit plate boundaries, so use the coupled solver's
+        # read-only first-step rates to seed modest convergent-belt relief. The solve informs
+        # terrain only; plate positions and elapsed time remain at generation state.
         if cratons_first:
             initial_terrain.apply_predicted_orogens(world)
 
@@ -875,16 +876,16 @@ def _advance_fluid_dynamics(world: World, node_cloud: tuple[np.ndarray, list[Pla
     atmosphere_cfd.step_atmosphere_cfd(world, world.atmosphere_cfd_state, atmosphere_cfd.SECONDS_PER_TECTONIC_STEP)
 
 
-def step_world(world: World, years: float) -> None:
+def step_world(world: World, years: float, *, motion_diagnostics: list[dict] | None = None) -> None:
     """Advance the world by `years` -- thin wrapper draining step_world_progress to
     completion for callers that don't need its per-plate progress (every caller but main.py's
     streaming /world/step endpoint). See step_world_progress for what actually runs; this
     function's own former docstring, describing that same behavior, now lives there."""
-    for _ in step_world_progress(world, years):
+    for _ in step_world_progress(world, years, motion_diagnostics=motion_diagnostics):
         pass
 
 
-def step_world_progress(world: World, years: float):  # noqa: C901
+def step_world_progress(world: World, years: float, *, motion_diagnostics: list[dict] | None = None):  # noqa: C901
     """Generator form of step_world, advancing the world by `years` exactly as it did before
     this function existed, but yielding a fraction-complete float (0 to 1) after each
     per-plate `shift()`/`deform()` call -- main.py's /world/step endpoint streams these
@@ -896,10 +897,10 @@ def step_world_progress(world: World, years: float):  # noqa: C901
     dominates a step's runtime on any world large enough for progress to matter, so this
     still tracks real, if coarse, completion.
 
-    Plate movement (skippable via World.simulate_plate_movement) is two per-plate passes:
-    `Plate.shift(world, years)` for every plate (integrate the torque balance and rotate
-    rigidly), then `deform(world, other_plates, years, D)` for every plate in a freshly
-    randomized order each turn (Mohr-Coulomb yield/isostasy -- see quad_tectonics.py).
+    Plate movement (skippable via World.simulate_plate_movement) is a coupled solve and
+    batch rotation through `torque.shift_plates_quasistatic`, then
+    `deform(world, other_plates, years, D)` for every plate in a freshly randomized order
+    each turn (Mohr-Coulomb yield/isostasy -- see quad_tectonics.py).
     Randomizing the processing order each turn is what keeps two neighbors from both claiming
     the same contested/unclaimed space in the same turn.
 
@@ -943,16 +944,24 @@ def step_world_progress(world: World, years: float):  # noqa: C901
     craton_ledger_before = dict(world.craton_ledger)
     craton_live_before = cratons.live_volume_m3(world)
     if world.simulate_plate_movement:
-        distances = {}
-        for plate in world.plates:
-            distances[plate.plate_id] = plate.shift(world, years)
+        # RFC 0012 G2: assemble all plate torques and drag from one frozen pre-step snapshot,
+        # solve the coupled system, then apply every rotation. The per-plate progress units
+        # remain the same even though the solve/rotation batch is simultaneous.
+        motion_result = {}
+        distances = torque.shift_plates_quasistatic(
+            world,
+            years,
+            diagnostics=motion_result if motion_diagnostics is not None else None,
+        )
+        if motion_diagnostics is not None:
+            motion_diagnostics.append({"step": world.steps_taken, "elapsed_years": world.elapsed_years, **motion_result})
+        for _plate in world.plates:
             done_units += 1
             yield done_units / total_units
         # Collision polarity prepass (issue #318): every plate has moved and none has deformed,
         # so record subduction evidence and freeze each continental front's lower/upper plate
-        # now, independent of the deform order below. Its boundary searches stay cached for
-        # deform() -- see torque.BoundarySearchCache.
-        world.boundary_search_cache = torque.BoundarySearchCache()
+        # now, independent of the deform order below. Rotation invalidated the motion-phase
+        # node trees; this prepass repopulates the cache for the following deformation pass.
         collision_polarity.observe_contacts(world, years)
         # Fail before any plate deforms, not at the first polarized front mid-pass.
         crust_transfer.partition(world)
@@ -968,7 +977,7 @@ def step_world_progress(world: World, years: float):  # noqa: C901
         audit = cratons.PhaseAudit(world)
         for plate in order:
             others = [p for p in world.plates if p.plate_id != plate.plate_id]
-            plate.deform(world, others, years, distances[plate.plate_id])
+            plate.deform(world, others, years, distances.get(plate.plate_id, 0.0))
             done_units += 1
             yield done_units / total_units
         collision_polarity.finish_deform_pass(world)

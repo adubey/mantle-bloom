@@ -11,6 +11,7 @@ from app.hydroclimate import climate, hydrology
 from app.world import World, generate_world, step_world
 
 from .quad_fixtures import quad_plate
+from .river_fixtures import spill_hop_fields
 
 
 def _world(seed=1, num_plates=10, continental_fraction=0.4):
@@ -738,6 +739,50 @@ def test_draw_rivers_wide_segment_has_a_dimmer_halo_than_its_own_core(monkeypatc
     # what an all-one-fill single-pass line (see the width-floor test above) would show instead.
     halo_ring_px = int(is_river_px.sum()) - int(near_full_color.sum())
     assert halo_ring_px > int(near_full_color.sum()) * 0.2
+
+
+def test_draw_rivers_stops_a_spill_hop_at_the_lake_it_crosses(monkeypatch):
+    # Issue #520: sink 2 spills across lake nodes 3-4 to node 6 beyond rim 5. Its line must stop
+    # at the lake, not run on across it. Nodes 0-2 are drawn, node 0 dimmer, so the line from
+    # the sink also shows that each segment takes its own node's color (`owner`).
+    world = World(seed=0, plates=[])
+    world.hydrology_cache = spill_hop_fields(lake_m=15.0)
+    monkeypatch.setattr(
+        render_image,
+        "_rivers_to_draw",
+        lambda w, hide_short_networks=False: (np.array([0, 1, 2]), np.array([0.3, 1.0, 1.0]), np.zeros(3)),
+    )
+    scale, offset_x, offset_y = 2500.0, 20.0, 50.0
+    image = Image.new("RGB", (240, 100), render_image.BACKGROUND_RGB)
+    image = render_image._draw_rivers(image, world, "behrmann", scale, offset_x, offset_y, 1.0, np.eye(3))
+    pixels = np.asarray(image).astype(np.int64)
+    background = np.array(render_image.BACKGROUND_RGB)
+    node_px = render_image._to_pixels(scale, offset_x, offset_y, render_image._project_points("behrmann", world.hydrology_cache.points))
+
+    def color_at(a: int, b: int) -> np.ndarray:
+        x, y = np.round((node_px[a] + node_px[b]) / 2).astype(int)
+        return pixels[y, x]
+
+    assert np.any(color_at(1, 2) != background)
+    assert np.any(color_at(2, 3) != background)
+    assert np.all(color_at(4, 5) == background)
+    assert np.all(color_at(5, 6) == background)
+    assert np.abs(color_at(0, 1) - background).sum() < np.abs(color_at(2, 3) - background).sum()
+
+
+def test_rivers_to_draw_does_not_carry_a_river_across_a_lake_into_a_hidden_outflow():
+    # Issue #520: sink 2's spill crosses the lake into node 6's own network. That outflow is
+    # below the discharge floor and its channel below the width floor, so it isn't drawn; the
+    # inflow's downstream fill-in (#503) must stop at its own mouth rather than draw node 6.
+    world = World(seed=0, plates=[])
+    fields = spill_hop_fields(lake_m=15.0)
+    fields.discharge_m3_s[[0, 1, 2]] = render_image.RIVER_VISIBLE_MIN_FLOW_M3_S * 2
+    fields.discharge_m3_s[6] = render_image.RIVER_VISIBLE_MIN_FLOW_M3_S / 2
+    fields.channel_width[6] = render_image.RIVER_VISIBLE_MIN_WIDTH_M / 2
+    world.hydrology_cache = fields
+
+    src_idx, _, _ = render_image._rivers_to_draw(world)
+    assert sorted(src_idx.tolist()) == [0, 1, 2]
 
 
 def _linear_rivers_world(mouth_widths):

@@ -7,13 +7,17 @@ import math
 import threading
 import time
 import av
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 from app.lithosphere_plate import generate_plates
 from app import main, persistence
+from app.hydroclimate import hydrology
 from app.main import app
 from app.plates import MAX_AUTO_PLATES, MIN_AUTO_PLATES
+
+from .river_fixtures import spill_hop_fields
 
 
 def _reset_app_state():
@@ -194,6 +198,20 @@ def test_generate_forwards_cratons_first_choice(client, monkeypatch):
 
     assert response.json()["seed"] == 7
     assert captured["cratons_first"] is True
+
+
+def test_river_summary_draws_a_spill_hop_along_neighbour_edges():
+    # Issue #520: the River Inspector's segments follow sink 2's spill path over the dry basin,
+    # not one straight segment from the sink to node 6 beyond the rim.
+    fields = spill_hop_fields(lake_m=0.0)
+    (river,) = hydrology.group_rivers(fields)
+
+    summary = main._river_summary(fields, river, 0)
+
+    step = float(np.linalg.norm(fields.points[1] - fields.points[0]))
+    lengths = [np.linalg.norm(np.subtract(b, a)) for a, b in summary["segments"]]
+    assert len(lengths) == 7
+    assert max(lengths) == pytest.approx(step, rel=1e-3)
 
 
 def test_render_before_generate_returns_404(client):
