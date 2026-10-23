@@ -128,6 +128,11 @@ def _instrument_collision_search(world, runtime: dict) -> list[tuple[int, int]]:
                     "max": _cm_per_year(float(np.max(rates))),
                     "convergent_mean": _cm_per_year(float(np.mean(rates[convergent]))) if convergent_count else None,
                 },
+                "closing_abs_cm_per_yr": {
+                    "median": _cm_per_year(float(np.median(np.abs(rates)))),
+                    "p95": _cm_per_year(float(np.percentile(np.abs(rates), 95))),
+                    "max": _cm_per_year(float(np.max(np.abs(rates)))),
+                },
             })
             if convergent_count < merge_split.MERGE_MIN_CONTACT_NODES:
                 stages["insufficient_convergent_contacts"] += 1
