@@ -40,3 +40,26 @@ cd backend
     --backend <origin-main-worktree>/backend --center 43 153 --render-dir <scratch>/main \
     --out <scratch>/main.json
 ```
+
+## Request cost
+
+The first version recomputed every spill path, in plain Python, each time `flow_segments` was
+called: twice per map render and once per river on `/world/rivers`. The branch now works the
+paths out once per `HydrologyFields` (`_SpillPathCache`), bounds each search, and runs it as
+numba kernels. `measure_river_hops.py --timing 7` on the evidence save, one 100 kyr step on, run
+one configuration at a time. Median ms; "cold" clears the path cache first.
+
+| | `03e5dc5` (before) | paths, no cache | cache | cache + numba |
+|---|---|---|---|---|
+| Elevation map render, cold | 995 | 2,469 | 1,694 | 536 |
+| Elevation map render, warm | 981 | 2,356 | 1,005 | 574 |
+| `/world/rivers` payload, cold | 76 | 2,469 | 792 | 82 |
+| `/world/rivers` payload, warm | 50 | 2,442 | 78 | 45 |
+| `flow_segments` over every river node, cold | — | 754 | 719 | 43 |
+
+- Absolute times drift between runs: the same render on `03e5dc5` took 0.3 s in an earlier
+  set. Compare within a column; cache + numba's render coming in below the baseline is that
+  drift.
+- All three branch versions draw the same segments.
+- The kernels compile in 0.85 s on first use and load from numba's cache in 0.15 s per process.
+- The search's climb ceiling and node cap never stopped a search on this save.

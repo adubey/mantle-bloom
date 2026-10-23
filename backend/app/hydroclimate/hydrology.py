@@ -1785,8 +1785,10 @@ def _spill_hops(fields: HydrologyFields, sources: np.ndarray) -> np.ndarray:
     targets = fields.flow_target[sources]
     spilling = fields.should_spill
     if spilling is None or len(spilling) != len(fields.flow_target):
-        spilling = fields.flow_target == fields.spill_target
-    hop = (targets >= 0) & spilling[sources]
+        # Only `sources`: the River Inspector calls this once per river.
+        hop = (targets >= 0) & (targets == fields.spill_target[sources])
+    else:
+        hop = (targets >= 0) & spilling[sources]
     hop_sources, hop_targets = sources[hop], targets[hop]
     neighbour = (fields.neighbor_idx[hop_sources] == hop_targets[:, None]).any(axis=1)
     neighbour |= (fields.neighbor_idx[hop_targets] == hop_sources[:, None]).any(axis=1)

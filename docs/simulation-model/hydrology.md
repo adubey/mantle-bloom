@@ -482,8 +482,10 @@ stops at that mouth too, so a hidden outflow network isn't drawn. The search fol
 in both directions, since the way over a rim may exist only as a reverse edge. It gives up
 once the pass would climb more than `breaching.BREACH_MAX_NOTCH_M` above the sink's routed
 spill level (`filled_elevation`), or after `SPILL_PATH_MAX_NODES` nodes, and a hop with no
-spill path keeps its straight segment. The paths are worked out once per `HydrologyFields`,
-on first use, for every river hop (`_SpillPathCache`), and aren't saved with it. A network's
+spill path keeps its straight segment. Both searches are numba kernels
+(`_spill_pass_level`, `_fewest_hops_path`). The paths are worked out once per
+`HydrologyFields`, on first use, for every river hop (`_SpillPathCache`), and aren't saved
+with it. A network's
 `length_m` sums the drawn segments. Routing, discharge and lake inflow are unchanged.
 
 **A spilling lake erodes its own outlet hard**, proportional to the lake's own surface area,
