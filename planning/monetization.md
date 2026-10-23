@@ -3,7 +3,7 @@
 This preserves the earlier ad-network comparison and monetization hypotheses. Traffic,
 eligibility, policy, pricing, and revenue estimates can change; verify them with providers
 before committing money or implementation time. The hosting and launch context is in
-[the hosting overview](../docs/HOSTING.md) and [launch readiness](launch-readiness.md).
+[the hosting overview](../docs/hosting.md) and [launch readiness](launch-readiness.md).
 
 ## Revenue estimates
 

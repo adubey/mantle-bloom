@@ -3,7 +3,7 @@
 These are exploratory audience, channel, and launch ideas, not a committed schedule. Test
 audience fit with small outreach and recheck claims about current product capabilities before
 using them in public copy. Hosting and launch dependencies are summarized in
-[launch readiness](launch-readiness.md) and [the hosting overview](../docs/HOSTING.md).
+[launch readiness](launch-readiness.md) and [the hosting overview](../docs/hosting.md).
 
 ## Positioning
 

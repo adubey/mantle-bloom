@@ -6,7 +6,7 @@ built frontend from its own origin, picks a free port, and opens a browser at it
 
 This is a **local single-user app**, not a deployment. The public deployment uses the same
 single-origin setup in a Docker image on Railway, behind GitHub login (#376); see
-[HOSTING.md](HOSTING.md).
+[hosting.md](hosting.md).
 
 ## How it works
 

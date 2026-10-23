@@ -25,7 +25,7 @@ Support the project: [Buy Me a Coffee](https://buymeacoffee.com/mantlebloom).
   (`bin/package.sh`).
 - **[planning/launch-readiness.md](planning/launch-readiness.md)** -- cross-cutting launch
   goals, known tracking links, dependencies and decisions still to make.
-- **[docs/HOSTING.md](docs/HOSTING.md)** -- current hosted deployment and the limits
+- **[docs/hosting.md](docs/hosting.md)** -- current hosted deployment and the limits
   of its single-world design.
 - **[planning/marketing.md](planning/marketing.md)** -- audience, channels and launch ideas.
 - **[planning/monetization.md](planning/monetization.md)** -- advertising and monetization research.
