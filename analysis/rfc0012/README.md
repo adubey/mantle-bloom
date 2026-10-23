@@ -898,3 +898,26 @@ reinterpret these descriptive results as a new acceptance gate.
 efficiency update is algebraically equivalent; the pair-side averaging correction changes
 drag when only one side is sampled, and pinned motion is corrected for scripted worlds. Those
 behavior changes can alter long-run trajectories.
+
+**Result:** all eight runs completed serially: baseline then candidate for each seed. Baseline
+is current `origin/main` `f3a1e4603cbab4bbbebfae0ff87e95e48c678f8c`; the candidate is review-fix
+commit `f2add3e1f5a2d2e03d2ab22945cb1da54a0a7b0c`. Full per-step JSON and logs remain in
+`/private/tmp/rfc0012-review-replay/`; the compact data are in
+[`g2_review_fix_replay.json`](g2_review_fix_replay.json).
+
+| Seed | Baseline land | G2 land | Δ percentage points | G2 peak rate | Peak plate size | Formed volume, baseline → G2 (million km³) |
+|---:|---:|---:|---:|---:|---:|---:|
+| 326494039 | 13.26% | 22.16% | +8.90 | 130.1 cm/yr | 6 nodes | 384 → 876 |
+| 748935664 | 9.35% | 13.69% | +4.34 | 161.5 cm/yr | 4 nodes | 191 → 359 |
+| 580014012 | 21.51% | 26.92% | +5.42 | 8.8 cm/yr | 6 nodes | 549 → 920 |
+| 111065103 | 25.73% | 32.98% | +7.24 | 9.4 cm/yr | 1,251 nodes | 716 → 1,250 |
+
+Land remains higher in all four candidate runs, averaging **+6.47 percentage points**.
+The two high-rate outliers occur on the six-node plate 18 and four-node plate 46, matching the
+small-fragment pattern already assigned to #494. They do not justify adding a global rate cap
+to G2. Subducted volume totals 2.12 million km³ on baseline and 0.055 million km³ on G2;
+merge-capped volume totals 1,402 million km³ on baseline and zero on G2. These ledger shifts
+remain real model outcomes, not missing trace entries. Mean per-step medians were 2.85 s
+baseline and 2.74 s G2; treat this runtime difference as descriptive only, not a performance
+gate. This rerun confirms the land direction and the small-plate speed caveat on current main;
+it does not explain the formation or merge/subduction mechanisms.
