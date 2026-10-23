@@ -111,19 +111,30 @@ being something to recompute per call.
 temperature needs currents, which need wind -- resolved by computing a pre-advection baseline
 first and closing the loop only for the final consumer-facing fields:
 
-1. **Insolation** -- `cos(lat)` zenith-angle law (clipped floor) at full sun (`SUNLIGHT =
-   1.0`), plus axial tilt: with tilt 0 it's the flat law; otherwise the mean of that same law
-   over `AXIAL_TILT_DECLINATION_SAMPLES` declinations swept between `-tilt` and `+tilt` (the
-   sub-solar latitude's annual sweep -- this model has no calendar, so it's an annual mean,
-   not a season cycle). `World.solar_multiplier` scales it live.
-2. **Land temperature** = `LAND_TEMP_MIN_C + LAND_TEMP_RANGE_C * insolation` (`-28 + 55*(·)`,
-   calibrated so the equator-to-pole profile lands near `25 / 10 / -1 / -22 C` at lat
-   `0 / 45 / 60 / 90` -- an earlier `-60 + 95*(·)` at a dimmed sun put the equator at ~18C
-   and everything poleward of ~40 degrees below freezing) minus elevation-based lapse-rate
-   cooling, kept as part of the same base-heating formula rather than a separate causal
-   channel (mountains being cold is a consequence of solar heating at altitude).
-3. **Ocean temperature baseline** = `WATER_TEMP_MIN_C + WATER_TEMP_RANGE_C * insolation`
-   (`-2 + 30*(·)`), a narrower range plus a freezing floor (water's greater thermal inertia)
+1. **Insolation** -- annual-mean top-of-atmosphere flux in W/m² (`compute_insolation`): the
+   daily-mean flux `S/pi * (h0 sin(lat) sin(dec) + cos(lat) cos(dec) sin(h0))` (`h0` the
+   sunset hour angle, polar day and night included), averaged over a circular orbit's
+   declinations (`ANNUAL_INSOLATION_SAMPLES` solar longitudes). `S` is
+   `SOLAR_CONSTANT_W_M2 = 1361` times `World.solar_multiplier`, which scales it live. At
+   Earth's tilt it runs ~415 W/m² at the equator, ~307 at 45 degrees and ~172 at the poles;
+   with no tilt it's `S/pi * cos(lat)`. The model has no calendar (a step spans thousands to
+   millions of years), so only the annual mean is used. There is no albedo or longwave term.
+2. **Land temperature** = `_temperature_from_insolation(insolation, LAND_CALIBRATION_TEMP_C)`
+   minus lapse-rate cooling (`LAPSE_RATE_C_PER_KM` over elevation above 0). The calibration
+   table holds a realistic annual-mean profile at Earth's tilt
+   (`TEMPERATURE_CALIBRATION_TILT_DEG = 23.5`), every 7.5 degrees of latitude: about `25 / 10
+   / -1 / -22 C` at lat `0 / 45 / 60 / 90`. Temperature is interpolated by each calibration
+   point's insolation, so the default world sits on that profile (within 0.7 C between
+   points). Other tilts and solar multipliers extrapolate linearly at the table's
+   end-to-end slope (~0.2 C per W/m² on land). A straight line in W/m² can't fit the profile:
+   polar insolation flattens near 172 W/m² while polar temperature keeps falling, the cold the
+   real planet gets from ice albedo and longwave loss. `_temperature_from_insolation` is where
+   an energy balance would replace the table ([#522](https://github.com/adubey/mantle-bloom/issues/522)).
+   Lapse-rate cooling is part of the same base-heating formula rather than a separate causal
+   channel (mountains are cold because of solar heating at altitude).
+3. **Ocean temperature baseline** = the same interpolation through
+   `OCEAN_CALIBRATION_TEMP_C` (about `27 / 19 / 12 / 1 C` at lat `0 / 45 / 60 / 90`, a
+   narrower range for water's greater thermal inertia), floored at `SEAWATER_FREEZING_C = -2`
    -- pre-advection.
 4. **Wind** -- latitude-banded meridional flow (trade winds/westerlies/polar easterlies,
    empirical lookup, the near-surface branch of the real three-cell circulation) plus
@@ -167,8 +178,16 @@ first and closing the loop only for the final consumer-facing fields:
    temperature" query being a `cKDTree` chord-distance search -- true 3D distance, so no
    pole/antimeridian special-casing is needed the way a lat/lon-tangent-plane BFS search would
    require. Land temperature itself is never moderated -- only air temperature is.
-9. **Humidity** -- an evaporation ceiling over ocean from the local final ocean temperature,
-   *plus* a local land-surface moisture source (lake/river evaporation and vegetation
+9. **Humidity** -- near-surface specific humidity in g/kg (`ClimateFields.humidity_g_kg`). Over
+   ocean it's `open_water_humidity_g_kg` of the final ocean temperature:
+   `MARINE_RELATIVE_HUMIDITY` (0.8) times the Clausius-Clapeyron saturation specific humidity
+   at sea-level pressure (`saturation_specific_humidity_g_kg`, Magnus form), capped at
+   `MAX_HUMIDITY_G_KG = 16.2` -- ~3 g/kg over 0 C water, ~11.6 at 20 C, the cap from ~25 C.
+   The cap sits below real tropical marine air (~18-20 g/kg) so the tropics keep the
+   precipitation they were tuned to; the humidity constants were converted from an earlier
+   unitless index at its reference point (1.0 == 11.56 g/kg), see
+   [#522](https://github.com/adubey/mantle-bloom/issues/522). Over land it's that ocean
+   moisture *plus* a local land-surface moisture source (lake/river evaporation and vegetation
    transpiration -- see "Moisture recycling" below), advected onto land by a wind-driven 2D
    sweep: a zonal pass and a meridional pass (each a sequential flow-direction walk,
    vectorized across the perpendicular axis, single-column evaporation/retention/orographic-
@@ -176,7 +195,7 @@ first and closing the loop only for the final consumer-facing fields:
    component's share of total wind magnitude. The zonal pass's sweep *direction* is the same
    fixed latitude-band lookup wind's meridional structure uses (`zonal_direction_for_lat`),
    not the literal local wind sign. Land-cell moisture (advected carry-over plus local source)
-   is capped at the same ceiling ocean evaporation saturates at -- without that cap, a long,
+   is capped at the same `MAX_HUMIDITY_G_KG` open water saturates at -- without that cap, a long,
    uniformly-sourced land stretch (a continent-spanning rainforest belt) would compound its
    own source additively, cell after cell, toward an asymptote many multiples of any
    physically sensible humidity value; confirmed directly during development as a genuine
@@ -200,7 +219,7 @@ first and closing the loop only for the final consumer-facing fields:
    and precipitation reading *highest in continental interiors* rather than near coasts: at
    coarser densities a single step barely dented moisture even 300km inland (~95% retained,
    not the physically-expected ~50%), so land-locked interiors sat near the ocean's own
-   evaporation ceiling indefinitely, before any local land-surface source was even added on
+   humidity indefinitely, before any local land-surface source was even added on
    top -- unlike real Earth, where roughly 70-80% of precipitation falls over ocean and only
    20-23% over land, concentrated near coasts and windward mountain slopes rather than spread
    evenly (or worse, favoring the interior) across a continent. On-terrain wind slowdown
@@ -209,8 +228,8 @@ first and closing the loop only for the final consumer-facing fields:
    from before -- air moving slower through rough terrain loses proportionally more moisture
    to mixing independent of the distance it covered.
 
-   **Coherent noise breaks the zonal banding.** The ocean evaporation ceiling is a clip of
-   the insolation-driven ocean-temperature baseline, so it's very nearly a pure function of
+   **Coherent noise breaks the zonal banding.** Open-water humidity is a function of the
+   insolation-driven ocean-temperature baseline, so it's very nearly a pure function of
    latitude, and both sweeps inherit those flat parallels -- visible as horizontal banding on
    the humidity map and in the precipitation baseline it scales. The same fractal gaussian
    perturbation the moisture-flux convergence uses (`_coherent_noise` -- a scale-free
@@ -225,9 +244,9 @@ first and closing the loop only for the final consumer-facing fields:
    humidity (the distance-decay sweeps with no local source over a frozen interior), hence
    exactly zero precipitation, which starves glacier accumulation (scaled by frozen
    precipitation, see [Glaciation](hydrology.md#glaciation-hydrologypy)) so a pole cold enough to keep ice forever
-   never receives any to keep. ~0.02 q is a few tens of mm/yr of baseline precipitation --
+   never receives any to keep. 0.23 g/kg is a few tens of mm/yr of baseline precipitation --
    the order of a real polar desert, enough to seed a polar ice cap over geological time.
-10. **Precipitation** = f(humidity) + an orographic bonus (continuous saturating
+10. **Precipitation** = `PRECIP_MM_PER_G_KG` (130 mm/yr per g/kg) times humidity + an orographic bonus (continuous saturating
     windward-slope moisture dump, from wind blowing up-elevation) + a **Hadley/Ferrel
     moisture-flux convergence** term (`compute_moisture_flux_convergence`): the
     metric-correct spherical divergence `-div(humidity * wind)` of the CFD wind field,
@@ -280,7 +299,7 @@ nothing.** `_vegetation_transpiration_source` scales `VEGETATION_TRANSPIRATION_B
 per-biome weight by `VEGETATION_RECYCLING_FRACTION` (0.16 -- below the real Amazon-basin
 quarter-to-half range, tuned down as the climate model got warmer, see the constant's own
 comment) *and* by that same cell's own `prev.precipitation_mm` from `World.climate_cache`
-(converted back to humidity units) -- a fraction of what actually fell there last turn, not a
+(converted back to g/kg) -- a fraction of what actually fell there last turn, not a
 flat per-biome constant. An earlier version used a fixed `VEGETATION_TRANSPIRATION_MAX` source
 keyed only on biome type, with no real reservoir behind it -- confirmed directly as a real
 multi-step runaway: mean land precipitation climbed turn after turn with no equilibrium,

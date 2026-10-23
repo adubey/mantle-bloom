@@ -281,7 +281,7 @@ def test_compute_humidity_a_sea_cell_evaporates_more_than_an_identical_lake_cell
         is_ocean, elevation, ocean_temp, air_temp, wind_u, wind_v, elevation_factor, lat_deg, lake_depth, channel_depth,
         is_sea=np.ones(shape, dtype=bool),
     )
-    # Same wetness everywhere -- the only difference is the tier's own evaporation ceiling, so
+    # Same wetness everywhere -- the only difference is the tier's own evaporation fraction, so
     # the sea version must read higher at every cell, not just downwind of some source.
     assert np.all(sea_humidity >= lake_humidity)
     assert np.any(sea_humidity > lake_humidity)
@@ -289,7 +289,7 @@ def test_compute_humidity_a_sea_cell_evaporates_more_than_an_identical_lake_cell
 
 def test_humidity_noise_breaks_zonal_banding_without_moving_row_means():
     # All-ocean grid with a latitude-banded ocean temperature: without an rng every row of
-    # the humidity field is flat (the evaporation ceiling is a near-pure function of
+    # the humidity field is flat (open-water humidity is a near-pure function of
     # latitude), which is the horizontal banding. Passing an rng adds a spatially-coherent
     # perturbation that gives each row real along-row variation, while the per-row means --
     # the insolation-derived belt structure -- stay put.

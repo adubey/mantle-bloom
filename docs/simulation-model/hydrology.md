@@ -444,10 +444,9 @@ look if it turns out to cost real per-step time on a large save, but not otherwi
 **Sea tier reaches climate and rendering, not `hydrology.is_ocean`.** `resolve_lakes` returns
 a new `(N,) bool` `lake_is_sea` array (`HydrologyFields.is_sea`, same "recomputed fresh every
 step, no persistent identity" contract as `lake_depth` itself), true for every currently-wet
-member of a sea-tier lake. `climate.py`'s `_land_moisture_source` picks `SEA_EVAPORATION_
-CEILING` (1.0 -- well above `LAKE_EVAPORATION_FRACTION`'s 0.5, still short of open ocean's own
-`MAX_HUMIDITY_G_KG` 1.4, since a big enclosed sea has no current-driven mixing/upwelling
-replenishing its surface the way the open ocean does) over a sea cell, so a large enough basin
+member of a sea-tier lake. `climate.py`'s `_land_moisture_source` picks
+`SEA_EVAPORATION_FRACTION` (1.0 of open-water humidity at the cell's air temperature, double
+`LAKE_EVAPORATION_FRACTION`'s 0.5) over a sea cell, so a large enough basin
 now visibly drives more downwind humidity -- the "generating humidity" a real inland sea does.
 `render_image.py` draws a sea cell in a distinct, more saturated `SEA_COLOR_RGB` (both the
 Biome/Combined grid and the Elevation/Plates lattice), with its own Combined-view alpha id
