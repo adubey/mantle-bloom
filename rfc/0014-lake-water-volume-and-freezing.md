@@ -1,8 +1,8 @@
 # RFC 0014: Lakes conserve their water: in-step fill-spill-merge, seasonal freezing and water-surface temperature
 
-- **Status:** Draft
+- **Status:** Accepted (2026-10-23)
 - **Date:** 2026-10-22 (revised 2026-10-23 after review)
-- **Related:** #519 (exploration and evidence), #520 (perched-lake false merges, river lines across lakes, floor-drain flips), #521 (split reset), #505 (lake merges lag routing), #503 and #297 (breaching, balanced lakes), #355 (water units), #363 (lake silt), #353 and #368 (glacier ice and its units), #358 items 10–11 (water-surface temperature, one evaporation flux), #118 (wind speed)
+- **Related:** #538 (tracking), #539 (D2b), #540 (gate G3), #541 (seed sets, gate G5); #519 (exploration and evidence), #520 (perched-lake false merges, river lines across lakes, floor-drain flips), #521 (split reset), #505 (lake merges lag routing), #503 and #297 (breaching, balanced lakes), #355 (water units), #363 (lake silt), #353 and #368 (glacier ice and its units), #358 items 10–11 (water-surface temperature, one evaporation flux), #118 (wind speed)
 
 ## Problem
 
@@ -180,6 +180,15 @@ After D1–D3, measure how often `LAKE_MAX_DEPTH_M` and `SEA_MAX_DEPTH_M` bind, 
 - remove them, leaving lakes bounded by their rim and their balance.
 
 The choice is the owner's after G4. Water a cap holds back is booked as overflow at the cap, never dropped.
+
+### Implementation order
+
+At acceptance (2026-10-23), the owner scoped implementation first to what [RFC 0015](0015-frozen-water-in-physical-units.md) needs. RFC 0015 needs D2(b) and D2(c) as prerequisites, and D2(a)'s `f_free` and seasonal helpers.
+
+- **Phase 1:** D2(b), then D2(a) after G3, then D2(c) after G5, with the seed sets chosen before G5.
+- **Phase 2**, deferred until the owner reopens it: G0, G1, G2 and G4, with D1, D3 and D4.
+
+G0's outcome decides only D1's scope, so it runs before D1 rather than before D2. Until D3 lands, D2 reads today's lake temperature. The tracking issue (#538) holds the checklist.
 
 ### Diagnosis gates
 
