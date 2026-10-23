@@ -110,3 +110,54 @@ than 27 merges, at least 29 splits, global visible lake volume no more than 1.05
 replacement for the primary sea 26 acceptance measurement above.
 
 **Variability and controls.** Reuse the completed baseline run from `9ae6eaf40fee013f9989b8ad236837927be0496e`; it starts from the same saved state and is unchanged by the correction. Run the corrected branch once at its recorded commit, after all tests have stopped. Retain the first branch run as an exploratory result and report why the correction was made.
+
+## Part 1 replay results
+
+**What was replayed.** The 128,340-node save `seed308161711-121.5Myr`, SHA-256
+`c557251402f9d2df3d2f67b93c2ad528674cba32055791ed089ca56d6214d6e0`, for 10 steps of
+100,000 years. Current baseline was `origin/main` `9ae6eaf40fee013f9989b8ad236837927be0496e`;
+the corrected branch was `14ae639a5f31e30f44b8ee1c71a5d5afcb1e1789`. #521's split-reset removal
+was already on the baseline. Each replay ran alone, without unit or stress tests. The first
+branch attempt at `88f4abf945070a80d2c9e4dc8750b29440c00b85` is retained in the JSON; it used
+the new helper in the current-step merge check as well. The correction was motivated by that
+run's event and water-volume shift. The corrected run's step-2 measurements were effectively the
+same, so that hypothesis was not supported: it still had 39 merges, 5 splits, 1.57M km³ of
+visible lake water, and 1.04M km³ in lake 13. All four preregistered correction thresholds
+failed.
+
+**Measures.** The preregistered current-main comparison does not meet the 25% sea-26 reduction
+criterion at +8: baseline has 6 wet nodes and the corrected branch has 68. Both have 0 at +3.
+The original issue's 1,713 (+3) and 1,020 (+8) nodes were measured on `59d2ef3`, before #521;
+the corrected branch is far below those historical extents, but current main already removed
+that expansion by landing #521 first. At +10 the branch has 340 sea-26 wet nodes versus 1,685
+on current main. Across the 10 steps, the branch has 207 merge and 291 split events, versus 46
+and 765 on current main. Lake 13 also changes materially (for example, 671 vs 1,260 wet nodes
+at +8), despite the expectation that this control would remain broadly unchanged. The issue
+therefore shows a strong topology and water-balance interaction with the #521 baseline; the
+global event counts alone do not identify which transitions are false.
+
+| Step | Sea 26 wet nodes (main → branch) | Sea 26 volume km³ | Visible lake area km² | Visible lake volume km³ | Merges (main → branch) | Splits (main → branch) |
+|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 0 → 0 | 0 → 0 | 2,376,497 → 2,376,497 | 735,164 → 735,708 | 2 → 2 | 83 → 73 |
+| 2 | 42 → 42 | 455 → 455 | 2,838,633 → 3,630,305 | 524,447 → 1,574,278 | 14 → 39 | 53 → 5 |
+| 3 | 0 → 0 | 0 → 0 | 4,115,398 → 3,311,601 | 1,908,866 → 1,176,986 | 3 → 29 | 98 → 20 |
+| 4 | 0 → 0 | 0 → 0 | 2,054,957 → 3,493,854 | 583,388 → 1,850,286 | 2 → 20 | 72 → 5 |
+| 5 | 30 → 27 | 395 → 373 | 1,825,698 → 4,268,335 | 463,101 → 1,760,200 | 4 → 26 | 80 → 18 |
+| 6 | 15 → 13 | 144 → 130 | 1,744,844 → 5,609,712 | 455,449 → 1,964,652 | 2 → 19 | 87 → 25 |
+| 7 | 0 → 50 | 0 → 488 | 1,493,123 → 4,907,186 | 428,551 → 1,864,956 | 3 → 18 | 84 → 40 |
+| 8 | 6 → 68 | 64 → 594 | 6,257,890 → 4,776,587 | 2,753,476 → 2,026,376 | 7 → 22 | 63 → 23 |
+| 9 | 2 → 0 | 19 → 0 | 5,896,513 → 6,414,787 | 2,745,636 → 1,995,511 | 4 → 16 | 75 → 42 |
+| 10 | 1,685 → 340 | 150,153 → 3,512 | 8,647,382 → 4,776,826 | 777,997 → 1,246,655 | 5 → 16 | 70 → 40 |
+
+**Commands.** On each arm, run from `backend/` with its own environment:
+
+```bash
+source .venv/mantle-bloom-env.sh
+.venv/bin/python -I ../bin/debug/measure_lake_split_reset.py <local-save> \
+    --steps 10 --track 26 13 --out <scratch-output>
+```
+
+The baseline took 72.13 s of summed step runtime (peak RSS 1,118.62 MB); the corrected branch
+took 89.17 s (1,097.19 MB). The exploratory branch attempt took 88.69 s (1,135.05 MB). The
+complete compact per-step measurements and run labels are in
+`analysis/issue520/replay-part1-10steps.json`; full replay logs and saves remain local.
