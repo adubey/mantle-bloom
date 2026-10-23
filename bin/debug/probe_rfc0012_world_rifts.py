@@ -171,6 +171,22 @@ def run(seed: int, steps: int, step_myr: float, every_myr: float, out: Path) -> 
                 craton = cratons.diagnostics(world)
                 craton_ledger = world.craton_ledger
                 rift_paths = sum(craton_ledger.get(key, 0.0) for key in cratons.CRATON_RIFT_PATH_ACCOUNTS)
+                rifted_craton = craton_ledger.get("rifted_m3", 0.0)
+                rift_path_residual = rift_paths - rifted_craton
+                if abs(rift_path_residual) > max(1.0, 1e-10 * max(abs(rifted_craton), 1.0)):
+                    raise AssertionError(
+                        f"craton rift paths do not close at {world.elapsed_years / 1e6:g} Myr: "
+                        f"residual={rift_path_residual:.6g} m^3"
+                    )
+                craton_error = craton["craton_balance_error_m3"]
+                craton_sources = sum(
+                    craton_ledger.get(key, 0.0) for key in cratons.CRATON_SOURCE_ACCOUNTS
+                )
+                if abs(craton_error) > max(1.0, 1e-10 * max(abs(craton_sources), 1.0)):
+                    raise AssertionError(
+                        f"craton ledger does not close at {world.elapsed_years / 1e6:g} Myr: "
+                        f"error={craton_error:.6g} m^3"
+                    )
                 row = {
                     "seed": seed,
                     "step": step,
@@ -179,10 +195,10 @@ def run(seed: int, steps: int, step_myr: float, every_myr: float, out: Path) -> 
                     "rift_width": _summarize_step(runtime),
                     "divergent_crust_loss_m3": runtime["divergent_loss_m3"],
                     "divergent_thinned_nodes": runtime["thinned_nodes"],
-                    "rifted_craton_m3": craton_ledger.get("rifted_m3", 0.0),
+                    "rifted_craton_m3": rifted_craton,
                     "rift_path_sum_m3": rift_paths,
-                    "rift_path_residual_m3": rift_paths - craton_ledger.get("rifted_m3", 0.0),
-                    "craton_balance_error_m3": craton["craton_balance_error_m3"],
+                    "rift_path_residual_m3": rift_path_residual,
+                    "craton_balance_error_m3": craton_error,
                     "continental_material_balance_error_m3": continental_ledger.balance_error_m3(world),
                     "wall_seconds": time.perf_counter() - started,
                 }
