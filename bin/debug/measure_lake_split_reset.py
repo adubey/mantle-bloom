@@ -8,8 +8,8 @@ Steps the save `--steps` times by `--step-years` and records, per step:
 - each tracked body's wet extent (nodes), volume, and the smallest lake in the tree that holds
   it: that lake's level, saddle (`min_depth`), floor and rim, and whether the level rests on
   the saddle (within 1e-6 m) with evaporation at that level against its inflow;
-- discharge (m^3/s) arriving at frozen land sinks (`flow_target == -1`, annual mean air below
-  `hydrology.FREEZE_POINT_C`) and reaching the ocean;
+- discharge (m^3/s) arriving at land sinks (`flow_target == -1`), split into frozen (annual
+  mean air below `hydrology.FREEZE_POINT_C`) and unfrozen, and reaching the ocean;
 - step runtime (s) and peak RSS.
 
 Tracked bodies are connected components of visible lake water (`LAKE_MIN_VISIBLE_DEPTH_M`) in
@@ -56,6 +56,7 @@ from app.hydroclimate import hydrology, lakes  # noqa: E402
 from app.hydroclimate.erosion import climate_grid_indices  # noqa: E402
 
 VIS = hydrology.LAKE_MIN_VISIBLE_DEPTH_M
+RSS_PER_MB = 2**20 if sys.platform == "darwin" else 2**10  # ru_maxrss: bytes on macOS, KiB on Linux
 
 # The resolve inputs, kept so each tracked basin's inflow and evaporation can be read back.
 captured: dict = {}
@@ -103,6 +104,7 @@ def frozen_sink_budget(world, f):
     sink = ~routed & ~f.is_ocean
     return {
         "frozen_sink_inflow_m3_s": float(inflow[sink & frozen].sum()),
+        "unfrozen_sink_inflow_m3_s": float(inflow[sink & ~frozen].sum()),
         "ocean_discharge_m3_s": float(f.discharge_m3_s[f.is_ocean].sum()),
     }
 
@@ -116,7 +118,7 @@ def body(f, wet, footprint):
         return out
     hyps, clim = captured["hyps"], captured["climate"]
     m = lake.members
-    level = lake.current_water_elevation if lake.current_water_elevation is not None else hyps.dry_level(m)
+    level = lake.current_water_elevation
     inflow = float(clim.inflow_m3_per_yr[m].sum())
     evap = lakes.lake_evaporation_m3_per_yr(level, m, hyps, clim)
     out["basin"] = {
@@ -154,7 +156,7 @@ for step in range(1, args.steps + 1):
     events = f.lake_events or []
     rec = {
         "step": step, "elapsed_years": world.elapsed_years, "runtime_s": runtime_s,
-        "peak_rss_mb": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2**20,
+        "peak_rss_mb": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / RSS_PER_MB,
         "lake_volume_km3": float((f.lake_depth * area).sum() / 1e9),
         "lake_area_km2": float(area[wet_mask].sum() / 1e6),
         "merge_events": sum(e.kind == "merge" for e in events),

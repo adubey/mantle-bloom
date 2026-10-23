@@ -1043,9 +1043,9 @@ def _resolve(
             events.append(LakeEvent(kind="split", node_count=len(node.members), elevation_m=node.min_depth, basin_count=len(node.children)))
             # Each child is balanced on its own water this step, under its own rim and tier
             # cap, rather than filled to the saddle (#521). Neither can rise past this saddle
-            # (it is each child's own rim), so next step's `_prev_level` reads the pair as
-            # merged only if a child genuinely reached it -- which also ends the tier-cap
-            # merge/split loop the old saddle reset had to special-case.
+            # (it is each child's own rim). A child fed enough to reach it reads as merged
+            # next step and splits again: per-step churn, but no water is created (#520 part 1
+            # is the false merge behind it).
             out_silt_deposited[node.members] = saved_silt
             out_lake_is_sea[node.members] = saved_sea
             stack.append((node, _SPLIT_DONE))

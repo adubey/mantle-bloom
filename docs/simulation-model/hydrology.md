@@ -404,8 +404,10 @@ merged resolution, restoring the silt and sea flags `_water_balance` wrote for i
 each child as an independent lake this step: its own inflow and evaporation, its own
 any-member-frozen check, its own rim (the parent's saddle) and its own tier cap. A child that
 has no inflow dries, a frozen child dries, and a fed child keeps the water its own balance
-supports. Next step's `_prev_level` then reads the pair as merged only if a child reached the
-saddle itself.
+supports. Next step's `_prev_level` reads the pair as merged only if a child reached the
+saddle itself. A child fed to its rim does reach it: the pair then reads as merged, balances
+below the saddle and splits again every step. That repeat costs a discarded merged balance and
+a `split` event per step but creates no water; the false merge behind it is #520 part 1.
 
 Earlier code instead reset both children to the saddle, as continuity for a small evaporation
 dip. Nothing supplied that water, and the saddle level read back as merged on the next step, so
@@ -414,13 +416,17 @@ a body whose budget could not hold it there stayed on its saddle indefinitely. O
 world's whole visible lake volume, mostly from parents dried by a frozen member (#519, #521).
 The reset also needed a tier-cap exception to avoid an endless merge/split loop when the tier
 cap, not evaporation, held a composite below its saddle. Per-child balance doesn't need that
-exception, because each child is already bounded by its own rim and tier cap. The merge branch
+exception, because each child is already bounded by its own rim and tier cap. The old
+tier-capped reset also wrote the capped level into both children, flooding a dry child and
+removing water from a child fed above it. The merge branch
 (two children rejoining) still folds the merged body's own `_classify_tier` cap into its
 `min(node.min_depth, floor + tier_max_depth)` result, so a child large enough to reach the
 saddle on its own (one that classifies sea tier can grow past an internal saddle below
 `SEA_MAX_DEPTH_M`) doesn't merge back above the cap. `test_lakes.py` pins both cases:
 `test_a_composite_lake_held_below_its_own_saddle_by_the_tier_cap_splits` resolves twice and
-asserts no repeat split, and
+asserts no repeat split,
+`test_a_child_fed_to_the_saddle_re_splits_each_step_without_creating_water` pins the churn
+above, and
 `test_a_merged_lake_split_by_a_frozen_member_rebalances_each_child_at_its_own_level` checks
 that neither child is written above its own balance.
 
