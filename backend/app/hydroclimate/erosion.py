@@ -129,8 +129,9 @@ RAIN_EROSION_COEFFICIENT = 6000.0
 # (MERIDIONAL_BASE_SPEED = 6.0) is fixed by this module's own climate pipeline, not tied to a
 # grid-resolution-dependent slope convention.
 WEATHERING_COEFFICIENT = 3.0
-# Humidity level at which the weathering-humidity factor saturates to 1.0.
-HUMIDITY_REFERENCE = 1.0
+# Near-surface specific humidity at which the weathering-humidity factor saturates to 1.0:
+# the old unitless index's 1.0, converted to g/kg (#522).
+HUMIDITY_REFERENCE_G_KG = climate.HUMIDITY_INDEX_G_KG
 # Unlike rain/river erosion (both already multiply by `slope`), weathering had no relief
 # dependence at all until this was added -- confirmed as the main reason flat, low-lying
 # coastal land was drowning within a step or two of being created: wind/humidity-driven
@@ -1915,7 +1916,7 @@ def apply_erosion(
     wind_u_at_nodes = fields.wind_u[row, col]
     wind_v_at_nodes = fields.wind_v[row, col]
     wind_speed = np.hypot(wind_u_at_nodes, wind_v_at_nodes)
-    humidity = fields.humidity[row, col]
+    humidity = fields.humidity_g_kg[row, col]
     # Preliminary, elevation-only ocean test -- just for the ocean-vs-air temperature pick
     # feeding the flow solve below. The authoritative, connectivity-aware mask
     # (`hydro.is_ocean`, which also excludes an enclosed interior sub-sea-level pit) is only
@@ -1968,7 +1969,7 @@ def apply_erosion(
         discharge_m3_s, breach_surge_accum, slope, prior_channel_depth,
         world.river_erosion_multiplier, dt_myr,
     )
-    humidity_norm = np.clip(humidity / HUMIDITY_REFERENCE, 0.0, 1.0)
+    humidity_norm = np.clip(humidity / HUMIDITY_REFERENCE_G_KG, 0.0, 1.0)
     relief_factor = np.clip(slope / WEATHERING_RELIEF_REFERENCE_SLOPE, 0.0, 1.0)
     weathering = WEATHERING_COEFFICIENT * world.wind_erosion_multiplier * wind_speed * humidity_norm * relief_factor * dt_myr
     ice_factor = np.clip(prior_glacier_depth / GLACIER_EROSION_REFERENCE_DEPTH_M, 0.0, GLACIER_EROSION_MAX_FACTOR)

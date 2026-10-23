@@ -21,7 +21,7 @@ def test_compute_climate_handles_extreme_land_ocean_fractions():
     assert np.all(np.isfinite(all_ocean.current_u))
 
     mostly_land = climate.compute_climate(_world(seed=3, continental_fraction=1.0, land_fraction=0.9))
-    assert np.all(np.isfinite(mostly_land.humidity))
+    assert np.all(np.isfinite(mostly_land.humidity_g_kg))
 
 
 def test_submerged_continental_crust_is_treated_as_ocean():
@@ -35,12 +35,12 @@ def test_submerged_continental_crust_is_treated_as_ocean():
     assert np.all(fields.is_ocean)
     # Evaporation should actually happen there -- an all-land reading would leave humidity at
     # 0 everywhere, with no ocean source anywhere on the grid to draw from.
-    assert np.any(fields.humidity > 0.0)
+    assert np.any(fields.humidity_g_kg > 0.0)
 
 
 def test_insolation_peaks_at_equator_and_falls_toward_poles():
     lat_deg = np.array([-90.0, -45.0, 0.0, 45.0, 90.0])
-    insolation = climate.compute_insolation(lat_deg, axial_tilt_deg=0.0)
+    insolation = climate.compute_heating_index(lat_deg, axial_tilt_deg=0.0)
     assert insolation[2] == insolation.max()
     assert insolation[0] < insolation[2] and insolation[4] < insolation[2]
     # Symmetric with no tilt.
@@ -50,8 +50,8 @@ def test_insolation_peaks_at_equator_and_falls_toward_poles():
 
 def test_axial_tilt_flattens_the_insolation_curve():
     lat_deg = np.linspace(-90, 90, 37)
-    flat = climate.compute_insolation(lat_deg, axial_tilt_deg=0.0)
-    tilted = climate.compute_insolation(lat_deg, axial_tilt_deg=23.5)
+    flat = climate.compute_heating_index(lat_deg, axial_tilt_deg=0.0)
+    tilted = climate.compute_heating_index(lat_deg, axial_tilt_deg=23.5)
     # Tilt brings the poles' annual-mean insolation up (they catch some direct sun over the
     # sweep) without changing the equator much.
     pole_idx = 0
@@ -60,9 +60,70 @@ def test_axial_tilt_flattens_the_insolation_curve():
     assert abs(tilted[equator_idx] - flat[equator_idx]) < abs(tilted[pole_idx] - flat[pole_idx])
 
 
+def test_insolation_is_in_watts_per_square_metre():
+    # Issue #522: daily-mean top-of-atmosphere flux. With no tilt it's S0/pi * cos(lat); at
+    # Earth's tilt the annual mean is ~415 W/m² at the equator and ~172 at the poles.
+    lat_deg = np.array([0.0, 60.0, 90.0])
+    flat = climate.compute_insolation_w_m2(lat_deg, axial_tilt_deg=0.0)
+    np.testing.assert_allclose(flat, climate.SOLAR_CONSTANT_W_M2 / np.pi * np.cos(np.radians(lat_deg)), atol=1e-9)
+    earth = climate.compute_insolation_w_m2(lat_deg, axial_tilt_deg=23.5)
+    np.testing.assert_allclose(earth, [415.4, 236.4, 172.5], atol=0.5)
+    brighter = climate.compute_insolation_w_m2(lat_deg, axial_tilt_deg=23.5, solar_multiplier=1.1)
+    np.testing.assert_allclose(brighter, 1.1 * earth)
+    # Any shape of latitude array, including a scalar.
+    assert climate.compute_insolation_w_m2(np.full((2, 3), 60.0), 23.5).shape == (2, 3)
+    assert float(climate.compute_insolation_w_m2(0.0, 23.5)) == pytest.approx(earth[0])
+
+
+def test_climate_fields_carry_insolation_without_it_driving_temperature():
+    # Issue #522: W/m² is a diagnostic; temperature still reads the heating index, so a world
+    # at a non-Earth tilt keeps today's temperatures.
+    world = World(seed=1, plates=[globe_plate("continental", elevation=100.0)], node_density=0.5, axial_tilt_deg=40.0)
+    fields = climate.compute_climate(world, height=30, width=60)
+    np.testing.assert_allclose(fields.insolation_w_m2, climate.compute_insolation_w_m2(fields.lat_deg, 40.0))
+    index = climate.compute_heating_index(fields.lat_deg, 40.0)
+    np.testing.assert_allclose(
+        fields.land_temperature_c, climate.compute_land_temperature(index, fields.elevation_m)
+    )
+
+
+def test_saturation_specific_humidity_matches_tabulated_values():
+    # Sea-level saturation specific humidity: ~3.8 g/kg at 0 C, ~14.5 at 20 C, ~27 at 30 C.
+    q = climate.saturation_specific_humidity_g_kg(np.array([0.0, 20.0, 30.0]))
+    np.testing.assert_allclose(q, [3.77, 14.5, 27.2], rtol=0.03)
+
+
+def test_open_water_humidity_follows_clausius_clapeyron_up_to_the_cap():
+    # Issue #522: g/kg at a fixed marine relative humidity, so it rises ~7%/C, and the old
+    # unitless index's 1.0 (20 C water) is ~11.6 g/kg.
+    q = climate.open_water_humidity_g_kg(np.array([0.0, 10.0, 20.0, 35.0]))
+    assert q[2] == pytest.approx(11.56, abs=0.01)
+    assert 0.06 < np.log(q[2] / q[1]) / 10.0 < 0.07
+    assert q[0] < 3.5
+    assert q[3] == climate.MAX_HUMIDITY_G_KG
+    # The cap is open water at 28 C, where the old index's ceiling also stopped, so the tropics
+    # below 28 C keep a gradient.
+    at_28 = climate.MARINE_RELATIVE_HUMIDITY * climate.saturation_specific_humidity_g_kg(28.0)
+    assert climate.MAX_HUMIDITY_G_KG == pytest.approx(at_28, abs=0.05)
+    tropics = climate.open_water_humidity_g_kg(np.array([24.0, 26.0, 27.5]))
+    assert np.all(np.diff(tropics) > 0.5)
+
+
+def test_lakes_in_near_freezing_air_still_evaporate():
+    # Without the old index's 0.3 floor, a lake just above freezing evaporates at its own
+    # Clausius-Clapeyron humidity (~3 g/kg), not zero; below freezing it stops.
+    air_temp = np.array([-1.0, 1.0, 5.0])
+    lake_depth = np.full(3, 50.0)
+    source = climate._land_moisture_source(air_temp, lake_depth, np.zeros(3), np.zeros(3))
+    assert source[0] == 0.0
+    expected = climate.LAKE_EVAPORATION_FRACTION * climate.open_water_humidity_g_kg(air_temp[1:])
+    np.testing.assert_allclose(source[1:], expected)
+    assert 1.4 < source[1] < source[2]
+
+
 def test_land_temperature_warmer_at_equator_than_poles_and_cooler_with_elevation():
     lat_deg = np.array([-90.0, 0.0, 90.0])
-    insolation = climate.compute_insolation(lat_deg, axial_tilt_deg=0.0)
+    insolation = climate.compute_heating_index(lat_deg, axial_tilt_deg=0.0)
     flat_elevation = np.zeros((3, 1))
     temp_flat = climate.compute_land_temperature(insolation, flat_elevation)
     assert temp_flat[1, 0] > temp_flat[0, 0]
@@ -192,8 +253,9 @@ def test_land_moisture_source_sea_cells_evaporate_at_a_higher_ceiling_than_lake_
     is_sea = np.array([[False, True]])
 
     source = climate._land_moisture_source(air_temp, lake_depth, channel_depth, vegetation, is_sea=is_sea)
-    assert source[0, 0] == pytest.approx(climate.LAKE_EVAPORATION_CEILING)
-    assert source[0, 1] == pytest.approx(climate.SEA_EVAPORATION_CEILING)
+    open_water = climate.open_water_humidity_g_kg(20.0)
+    assert source[0, 0] == pytest.approx(climate.LAKE_EVAPORATION_FRACTION * open_water)
+    assert source[0, 1] == pytest.approx(climate.SEA_EVAPORATION_FRACTION * open_water)
     assert source[0, 1] > source[0, 0]
 
 
@@ -205,7 +267,7 @@ def test_land_moisture_source_defaults_every_cell_to_the_flat_lake_ceiling():
     channel_depth = np.zeros(1)
     vegetation = np.zeros(1)
     source = climate._land_moisture_source(air_temp, lake_depth, channel_depth, vegetation)
-    assert source[0] == pytest.approx(climate.LAKE_EVAPORATION_CEILING)
+    assert source[0] == pytest.approx(climate.LAKE_EVAPORATION_FRACTION * climate.open_water_humidity_g_kg(20.0))
 
 
 def test_compute_humidity_a_sea_cell_evaporates_more_than_an_identical_lake_cell():
@@ -228,7 +290,7 @@ def test_compute_humidity_a_sea_cell_evaporates_more_than_an_identical_lake_cell
         is_ocean, elevation, ocean_temp, air_temp, wind_u, wind_v, elevation_factor, lat_deg, lake_depth, channel_depth,
         is_sea=np.ones(shape, dtype=bool),
     )
-    # Same wetness everywhere -- the only difference is the tier's own evaporation ceiling, so
+    # Same wetness everywhere -- the only difference is the tier's own evaporation fraction, so
     # the sea version must read higher at every cell, not just downwind of some source.
     assert np.all(sea_humidity >= lake_humidity)
     assert np.any(sea_humidity > lake_humidity)
@@ -236,7 +298,7 @@ def test_compute_humidity_a_sea_cell_evaporates_more_than_an_identical_lake_cell
 
 def test_humidity_noise_breaks_zonal_banding_without_moving_row_means():
     # All-ocean grid with a latitude-banded ocean temperature: without an rng every row of
-    # the humidity field is flat (the evaporation ceiling is a near-pure function of
+    # the humidity field is flat (open-water humidity is a near-pure function of
     # latitude), which is the horizontal banding. Passing an rng adds a spatially-coherent
     # perturbation that gives each row real along-row variation, while the per-row means --
     # the insolation-derived belt structure -- stay put.
@@ -256,8 +318,8 @@ def test_humidity_noise_breaks_zonal_banding_without_moving_row_means():
 
     assert plain.std(axis=1).mean() < 1e-9  # essentially banded
     assert noised.std(axis=1).mean() > 100 * plain.std(axis=1).mean()  # along-row variation restored
-    np.testing.assert_allclose(noised.mean(axis=1), plain.mean(axis=1), atol=2 * climate.HUMIDITY_NOISE_STD)
-    assert noised.min() >= 0.0 and noised.max() <= climate.MAX_EVAPORATION_CEILING
+    np.testing.assert_allclose(noised.mean(axis=1), plain.mean(axis=1), atol=2 * climate.HUMIDITY_NOISE_STD_G_KG)
+    assert noised.min() >= 0.0 and noised.max() <= climate.MAX_HUMIDITY_G_KG
 
     # Deterministic in the rng seed.
     again, _ = climate.compute_humidity(*args, rng=np.random.default_rng(0))
@@ -311,7 +373,7 @@ def test_moisture_flux_convergence_noise_breaks_zonal_banding_without_moving_row
 
     assert plain.std(axis=1).mean() < 1e-6  # essentially banded
     assert noised.std(axis=1).mean() > 10 * plain.std(axis=1).mean()  # along-row variation restored
-    np.testing.assert_allclose(noised.mean(axis=1), plain.mean(axis=1), atol=2 * climate.MFC_NOISE_Q_STD)
+    np.testing.assert_allclose(noised.mean(axis=1), plain.mean(axis=1), atol=2 * climate.MFC_NOISE_STD_G_KG)
 
     # Deterministic in the rng seed.
     again = climate.compute_moisture_flux_convergence(
@@ -486,7 +548,7 @@ def test_wind_model_diagnostic_bypasses_the_cfd_state():
 
     lat_deg, _, world_xyz = climate._build_grid(height, width)
     elevation_m, is_ocean, _, _, _ = climate._sample_elevation_and_crust(world, world_xyz)
-    insol = climate.compute_insolation(lat_deg, world.axial_tilt_deg, world.solar_multiplier)
+    insol = climate.compute_heating_index(lat_deg, world.axial_tilt_deg, world.solar_multiplier)
     land_t = climate.compute_land_temperature(insol, elevation_m)
     ocean_b = climate.compute_ocean_temperature_baseline(insol, height, width)
     surface_t = np.where(is_ocean, ocean_b, land_t)
@@ -525,7 +587,7 @@ def test_compute_climate_skip_moisture_zeros_humidity_and_precipitation():
     world = _world(seed=7, num_plates=8, steps=1)
     height, width = climate.grid_dimensions(world.climate_density)
     fields = climate.compute_climate(world, height, width, skip_moisture=True)
-    assert np.all(fields.humidity == 0.0)
+    assert np.all(fields.humidity_g_kg == 0.0)
     assert np.all(fields.precipitation_mm == 0.0)
 
 
@@ -541,7 +603,7 @@ def test_compute_climate_falls_back_to_diagnostics_when_cfd_state_is_none():
     fields = climate.compute_climate(world, height=30, width=60)
     assert np.all(np.isfinite(fields.ocean_temperature_c))
     assert np.all(np.isfinite(fields.air_temperature_c))
-    assert np.all(np.isfinite(fields.humidity))
+    assert np.all(np.isfinite(fields.humidity_g_kg))
     assert np.all(np.isfinite(fields.precipitation_mm))
 
 
@@ -633,5 +695,5 @@ def test_compute_climate_runs_end_to_end_under_healpix_mode():
     world = _world(seed=22, steps=1)
     world.node_cloud_resample_mode = "healpix"
     fields = climate.compute_climate(world, height=30, width=60)
-    assert np.all(np.isfinite(fields.humidity))
+    assert np.all(np.isfinite(fields.humidity_g_kg))
     assert np.all(np.isfinite(fields.precipitation_mm))
