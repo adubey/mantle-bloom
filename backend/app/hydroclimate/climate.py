@@ -187,8 +187,9 @@ class ClimateFields:
     land_temperature_c: np.ndarray  # (H, W) -- solar heating (+ lapse rate), unmoderated
     ocean_temperature_c: np.ndarray  # (H, W) -- final, current-advected
     air_temperature_c: np.ndarray  # (H, W) -- final, moderated toward nearby ocean
-    # (H, W) eastward/northward wind in m/s at 10 m above the surface, whichever
-    # World.wind_model is active -- the surface-wind contract, see surface_wind (#526).
+    # (H, W) eastward/northward wind in m/s at 10 m above the surface -- the surface-wind
+    # contract, see surface_wind (#526). Under World.wind_model == "cfd" the solver's layer
+    # wind passes through unconverted and runs weaker than 10 m until #530.
     wind_u: np.ndarray
     wind_v: np.ndarray
     current_u: np.ndarray  # (H, W) eastward, zero over land
@@ -615,12 +616,14 @@ CORIOLIS_DEFLECTION_GAIN = 1.8
 # on top of the latitude-banded structure above rather than replacing it: deriving wind from
 # a computed temperature gradient *alone*, with no latitude-banded base flow, produces no
 # visible planetary-scale structure. In (m/s) per (degC/km): surface flow toward warmer air,
-# e.g. 2.9 m/s across a 10 degC land-sea contrast over 100 km, the scale of a sea breeze.
+# 0.29 m/s per 1 degC/100 km of temperature gradient resolved across the ~440 km difference
+# span below -- a large-scale thermal-low term, not a sea breeze, which is far narrower.
 # Measured per km since #526 (it was per grid cell, so the wind changed with
 # World.climate_density); 29 keeps the term's land-mean magnitude at the default density 4.0.
 GRADIENT_WIND_M_S_PER_C_PER_KM = 29.0
 # Half the ground distance the thermal gradient is differenced across (see
-# _temperature_gradient_per_km): the default-density-1.0 cell, ~220 km, the sea-breeze scale.
+# _temperature_gradient_per_km): the reference (climate_density 1.0) cell, ~220 km. A coarser
+# grid can't difference across less than one cell, so at density 0.5 the half span is 4 deg.
 THERMAL_GRADIENT_HALF_SPAN_DEG = _REFERENCE_CELL_DEG
 ELEVATION_SLOWDOWN_REF_M = 4000.0
 MIN_ELEVATION_SPEED_FACTOR = 0.4
@@ -738,18 +741,24 @@ def _temperature_gradient_per_km(field: np.ndarray, lat_deg: np.ndarray) -> tupl
     THERMAL_GRADIENT_HALF_SPAN_DEG either side rather than across the neighbouring cells. Per km
     alone is not enough: a finer grid resolves steeper lapse-rate contrasts on mountain flanks,
     so a neighbour difference grows with World.climate_density (#526). Differencing over a fixed
-    ground distance, like the wake and tangent offsets above, keeps the term's scale fixed."""
+    ground distance, like the wake and tangent offsets above, keeps the term's scale fixed at
+    density 1.0 and above; at 0.5 one cell already exceeds the half span (see
+    THERMAL_GRADIENT_HALF_SPAN_DEG)."""
     height, width = field.shape
     cell_deg = 180.0 / height
     steps = max(1, round(THERMAL_GRADIENT_HALF_SPAN_DEG / cell_deg))
     gx = np.roll(field, -steps, axis=1) - np.roll(field, steps, axis=1)
-    # Row 0 is the north pole, so northward is the negative row direction; rows clamp at the
-    # poles instead of wrapping.
+    # Row 0 is the north pole, so northward is the negative row direction. Rows clamp at the
+    # poles instead of wrapping, and the northward span shrinks with them so the gradient near
+    # a pole stays per km.
     rows = np.arange(height)
-    gy = field[np.clip(rows - steps, 0, height - 1)] - field[np.clip(rows + steps, 0, height - 1)]
+    north, south = np.clip(rows - steps, 0, height - 1), np.clip(rows + steps, 0, height - 1)
+    gy = field[north] - field[south]
+    km_per_cell = np.radians(cell_deg) * plates.PLANET_RADIUS_KM
+    span_y_km = ((south - north) * km_per_cell)[:, None]
     cos_lat = np.clip(np.cos(np.radians(lat_deg)), 0.15, 1.0)[:, None]
-    span_km = np.radians(2.0 * steps * cell_deg) * plates.PLANET_RADIUS_KM
-    return gx / (span_km * cos_lat), gy / span_km
+    span_x_km = 2.0 * steps * km_per_cell * cos_lat
+    return gx / span_x_km, gy / span_y_km
 
 
 def compute_wind(lat_deg: np.ndarray, elevation_m: np.ndarray, surface_temperature_c: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -1122,11 +1131,11 @@ HUMIDITY_NOISE_STD_G_KG = 0.035 * HUMIDITY_INDEX_G_KG
 #
 # MFC_COLLECTION_LENGTH_KM: the horizontal scale over which a column's converging moisture
 # flux is gathered before it precipitates -- turns the per-km divergence into a
-# g/kg-equivalent quantity (then non-dimensionalized by MFC_REFERENCE_WIND_SPEED_M_S). A few
-# hundred km, same order as MOISTURE_HALVING_DISTANCE_KM.
+# g/kg-equivalent quantity (after dividing by MFC_REFERENCE_WIND_SPEED_M_S). A few hundred
+# km, same order as MOISTURE_HALVING_DISTANCE_KM.
 MFC_COLLECTION_LENGTH_KM = 320.0
-# The wind speed (m/s) that makes the convergence dimensionless: one unit of humidity carried
-# at this speed. A calibration constant, not a property of the wind: it was the old unitless
+# The wind speed (m/s) the moisture-flux convergence is divided by, turning a flux (g/kg x m/s
+# per km) into a g/kg-equivalent: humidity carried at this speed. A calibration constant, not a property of the wind: it was the old unitless
 # 6.0 wind amplitude until #526 put the wind in 10 m m/s, and 4.9 holds land precipitation
 # across that switch (analysis/issue526/README.md).
 MFC_REFERENCE_WIND_SPEED_M_S = 4.9
@@ -1609,7 +1618,7 @@ def compute_moisture_flux_convergence(
     normalized to per-km by the real cell spacing -- so it's resolution-invariant (a raw
     per-cell difference would not be), and the meridian-convergence term (`d cos phi / dphi`)
     alone supplies the right dry-pole signal even where the zonal wind profile is flat.
-    Non-dimensionalized by `MFC_REFERENCE_WIND_SPEED_M_S` and scaled by
+    Divided by `MFC_REFERENCE_WIND_SPEED_M_S` and scaled by
     `MFC_COLLECTION_LENGTH_KM`, smoothed (`_mfc_smoothing_passes`, a fixed real-world radius)
     to shed the CFD wind's mesoscale speckle and widen the near-discontinuous equatorial
     convergence into a ~5 deg belt, then blended toward its own per-latitude-row mean
@@ -1700,10 +1709,15 @@ def surface_wind(
     ln(10 / z0), with roughness z0 ~ 0.0002 m over open water and ~0.1 m over land
     (docs/simulation-model/climate.md#surface-wind-contract).
 
+    Over land the diagnostic wind slows only with elevation and in mountain wakes; it has no
+    surface-roughness term, so flat lowland reads close to the ocean speed for its latitude
+    (about twice ERA5's land values) until #534 adds one.
+
     Under `"cfd"` the solver's single layer wind is passed through unconverted. It is relaxed
     toward `planetary_wind`, the same 10 m target `compute_wind` starts from, but settles at
-    about 0.4-0.65x of it (ocean mean ~4.3 m/s against 7.4), so CFD-mode consumers see weaker
-    than 10 m speeds until #530 retunes the solver or adds a stated layer-to-10 m rule.
+    0.42-0.66x of it in every 15 deg ocean band (ocean mean ~4.3 m/s), so CFD-mode consumers
+    see weaker than 10 m speeds until #530 retunes the solver or adds a stated layer-to-10 m
+    rule.
 
     elevation_factor isn't purely a function of elevation (see compute_wind's own body) -- it
     also depends on the wind field via _mountain_wake_factor, so it's recomputed from whichever

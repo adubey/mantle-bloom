@@ -65,9 +65,17 @@ term fell by a factor of 2.4 from density 1 to 4. A per-km neighbour difference 
 only partly, because finer grids resolve steeper lapse-rate contrasts on mountain flanks.
 The term is now differenced across a fixed ±2° span. From density 1 to 8 the land mean varies
 by 3.8%; the rest comes from terrain smoothing that is still counted in cells. At density 0.5
-the span is one 4° cell either side. `test_wind_speed_is_independent_of_climate_density` pins
-the 5% tolerance on synthetic terrain, and `test_thermal_wind_term_is_per_km_of_ground_distance`
-fails on `origin/main`.
+the span is one 4° cell either side, and the term is 21% weaker. Two tests fail on
+`origin/main`:
+
+- `test_wind_speed_is_independent_of_climate_density` pins the 5% tolerance on synthetic
+  terrain, both for the mean speed and for the thermal term alone. On `origin/main` the mean
+  speeds pass, but the thermal term falls from 0.373 to 0.192 m/s between densities 1 and 2.
+- `test_thermal_wind_term_is_per_km_of_ground_distance`.
+
+**Land roughness.** This calibration has no land-roughness slowdown, so flat lowland reads
+close to the ocean speed. Save A's land mean matches ERA5 only because its land averages
+3.2 km high; save B, at 2.0 km, gives 4.0 m/s. #534 adds a roughness rule.
 
 ## Downstream calibration
 
@@ -79,7 +87,7 @@ seed 910211954 at 220.2 Myr, SHA-256 `bd487409…b060d2`.
 |---|---|---|
 | Weathering | linear in speed | `WEATHERING_COEFFICIENT` 3.0 → 3.6. A proxy (speed × humidity × relief over land) fell to 0.82× on A and 0.86× on B at density 4. |
 | Moisture-flux convergence | linear in speed / reference speed | `MERIDIONAL_BASE_SPEED` (6.0) replaced as normaliser by `MFC_REFERENCE_WIND_SPEED_M_S` = 4.9. Land precipitation moves −1.2% (A) and +0.4% (B) at density 4, and +1.4% (A) and +2.9% (B) at density 2. |
-| Ocean currents | linear (Ekman + swirl) | None. Mean current falls 13% with the wind, but nothing reads current magnitude: temperature advection uses direction, arrows scale by their maximum and swell markers are weighted samples. |
+| Ocean currents | linear (Ekman + swirl) | None. Mean current falls 13% with the wind, but no simulation state reads current magnitude: temperature advection uses direction and arrows scale by their maximum. Swell markers are the exception: they clip convergence at `OCEAN_SWELL_CONVERGENCE_REFERENCE` before weighted sampling, so which cells saturate shifts slightly, which is cosmetic. Currents are not in m/s (their mean, ~8, exceeds the wind's); see #358 item 8. |
 | Humidity | direction share (`abs(u) / (abs(u) + abs(v))`) | None. The direction is unchanged. |
 
 With these, the one-shot land-biome map agrees with `origin/main` on 98–99% (A) and 97–98% (B)
@@ -102,7 +110,9 @@ It uses seed 7 at density 2 with 10 × 2 Myr steps, as in
 | CFD ocean mean (m/s) | 5.18 | 4.30 |
 | diagnostic ocean mean (m/s) | 8.93 | 7.38 |
 
-The CFD settles at 0.4–0.65× its own relaxation target (#530), and the stress test's floors
+Against its own relaxation target (`planetary_wind`, averaged over each band), the CFD's ocean
+speed is 0.42× at 0–15°, 0.66× at 15–30°, 0.58× at 30–45°, 0.64× at 45–60°, 0.54× at 60–75° and
+0.56× at 75–90° (#530). The stress test's floors
 (0.78 and 0.25) fail on both arms once it compares the two models. Recomputing the CFD
 world's climate with one input swapped at a time attributes the precipitation gap entirely to
 the wind's convergence pattern. The diagnostic wind alone gives 0.786 land-biome agreement and
@@ -177,8 +187,8 @@ latitudes. At 3.6 the mean change is −3.2% on A and +4.0% on B, which brackets
 coefficient tuned to either save alone would move the other by 7–8%.
 
 **Intended changes.** The 10 m wind drops 14% over the ocean and 17–20% over land, toward
-ERA5. Mean ocean current falls 12–15% with it; nothing reads current magnitude (see
-*Downstream calibration*).
+ERA5. Mean ocean current falls 12–15% with it; no simulation state reads current magnitude
+(see *Downstream calibration*).
 
 **After merging #525.** The replays ran on `0fc4901` against `ff373af`, before `origin/main`
 gained #525, which put humidity in g/kg and capped it at 28 °C water. Repeating the one-shot
@@ -192,3 +202,31 @@ compensate a wind-speed ratio, which #525's humidity rescaling leaves unchanged.
 1226 s, with peak RSS of 1.8–2.0 GB (A) and 6.8–7.4 GB (B). The wind change adds two array
 rolls per climate call. The runtime gap is larger than that and was not designed as a timing
 test, so read it as noise.
+
+## Review fixes
+
+The PR #532 review led to these changes after the replays, which ran at `ff373af`.
+
+- **Polar rows.** The thermal gradient now divides by the clamped span in the rows within ±2°
+  of each pole, so it stays per km there. Before, it was underestimated by up to 2×. This
+  changes the wind only in those rows, about 0.06% of the sphere's area, so the replay
+  numbers above stand.
+  `test_thermal_gradient_stays_per_km_in_the_polar_rows` pins it.
+- **CFD mode.** The replays ran the default diagnostic model, but this branch also moves
+  `"cfd"` runs.
+  - *Coefficients alone.* A one-shot climate on each save's frozen CFD state, at density 4
+    against `origin/main` `03e5dc5`, isolates the two coefficient changes:
+
+    | | save A | save B |
+    |---|---|---|
+    | land precipitation | +8.6% | +3.0% |
+    | global precipitation | −0.6% | 0.0% |
+    | land-biome agreement | 0.965 | 0.973 |
+    | weathering | +20% | +20% |
+
+    Weathering rises the full +20% because the frozen wind is unchanged.
+  - *Live run.* The lower target also slows the CFD wind (seed 7, density 2: ocean −17%, land
+    −8.5%; [`cfd_agreement.json`](cfd_agreement.json)), so in a live CFD run weathering should
+    rise by roughly half as much, about +10%.
+  - *Not done.* CFD mode is not recalibrated here; #530 will rework the CFD's speed.
+

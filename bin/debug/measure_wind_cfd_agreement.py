@@ -4,7 +4,9 @@
 Steps two copies of one generated world the same way, one under `World.wind_model == "cfd"` and
 one under `"diagnostic"`, using the setup of stress_tests/test_climate.py's
 test_diagnostic_wind_model_tracks_the_cfd_biome_map, and reports wind-speed rel-RMS, zonal-mean
-10 m speeds for both models, land-biome agreement and precipitation rel-RMS. It imports the
+ocean speeds for both models (the diagnostic one is the 10 m wind; the CFD layer wind runs
+weaker, #530), land-biome agreement and precipitation rel-RMS. Both worlds are masked with the
+CFD world's land/ocean, as in the stress test, though their terrain drifts apart over the run. It imports the
 backend of the worktree it is run from (the current directory), not the one it lives in, so the
 same copy measures a baseline worktree too.
 

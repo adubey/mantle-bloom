@@ -41,7 +41,7 @@ VISCOSITY_M2_S = 6.0e4
 
 # Relaxation of (u, v) toward the latitude-banded target wind (see module docstring). Well
 # above SURFACE_DRAG_BASE_PER_S so the forcing keeps a planetary circulation going against
-# drag/viscosity/orographic damping -- though the steady state is only ~0.4-0.65x of the
+# drag/viscosity/orographic damping -- though the steady state is only 0.42-0.66x of the
 # target's 10 m speeds (climate.OCEAN_WIND_SPEED_M_S), not near them (#530) -- while still
 # leaving Coriolis, the pressure-gradient/thermal term, and orographic deflection free to
 # reshape the flow away from a pure zonal band -- tuned against a 60-step run (see
@@ -106,8 +106,9 @@ def _target_wind(grid: healpix_grid.HealpixGrid) -> tuple[np.ndarray, np.ndarray
     grid's own per-pixel latitude. Deliberately *without* compute_wind's mountain-deflection/wake
     and temperature-gradient terms: this solver produces those itself (orographic deflection
     in the momentum pass, the pressure-gradient/thermal term via `eta`), so the target is
-    only the planetary-scale banded structure they modify. Sharing it keeps the solver's
-    layer wind on the same 10 m calibration as the diagnostic wind (#526)."""
+    only the planetary-scale banded structure they modify. Sharing it keeps the solver aimed at
+    the same 10 m wind as the diagnostic model (#526), though it settles at only 0.42-0.66x of
+    it (#530)."""
     u_target, v_target = climate.planetary_wind(np.degrees(grid.lat_rad))
     return u_target.astype(np.float32), v_target.astype(np.float32)
 

@@ -71,7 +71,7 @@ by order-of-magnitude reasoning against the then-current direct convergent uplif
 rather than reused from a value tuned against a different scale.
 `WEATHERING_COEFFICIENT` needed no such rescaling, since wind speed is a physical 10 m speed
 in m/s (the [surface-wind contract](climate.md#surface-wind-contract)) unaffected by the slope
-re-derivation; it is 3.6 per (m/s) per Myr, recalibrated when the wind moved to m/s so land
+re-derivation; it is 3.6 m per (m/s) per Myr, recalibrated when the wind moved to m/s so land
 weathering volume held ([#526](https://github.com/adubey/mantle-bloom/issues/526)). River
 erosion depends on physical catchment discharge (see [Hydrology](hydrology.md#hydrology-rivers-and-lakes-hydrologypy)), converted to a
 fixed reference-cell scale before the stream-power law. `RIVER_EROSION_COEFFICIENT` was

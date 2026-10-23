@@ -149,7 +149,8 @@ first and closing the loop only for the final consumer-facing fields:
    gradient of the pre-advection land/ocean surface temperature, drives flow toward warmer
    air. That gradient is differenced across a fixed `THERMAL_GRADIENT_HALF_SPAN_DEG` (2 deg)
    either side, not across neighbouring cells, so the term doesn't change with
-   `climate_density`. The banding supplies the planetary-scale structure that a gradient-only
+   `climate_density` from 1.0 up (at 0.5 a single 4 deg cell is the shortest span, and the term
+   is about a fifth weaker). The banding supplies the planetary-scale structure that a gradient-only
    field doesn't produce; the gradient term is the temperature-responsive component. **Mountain
    deflection/Venturi/wake**: smooth elevation
    (Jacobi blur) before differencing into a gradient, cancel wind's into-slope component and
@@ -523,7 +524,7 @@ to skip, diluted by the rest of a step's fixed cost, and the multiple grows with
 measurements suggested. On seed 7 at density 2 after 10 × 2 Myr steps
 ([`analysis/issue526`](../../analysis/issue526/README.md#agreement-with-the-cfd)), the
 diagnostic model matches 62% of the CFD's land-biome map, with precipitation rel-RMS 0.52.
-The precipitation gap comes from the wind: the CFD settles at 0.4-0.65x of its own target
+The precipitation gap comes from the wind: the CFD settles at 0.42-0.66x of its own target
 ([#530](https://github.com/adubey/mantle-bloom/issues/530)), and its convergence pattern
 differs. Air temperature, the subject of
 [#118](https://github.com/adubey/mantle-bloom/issues/118), accounts for part of the biome gap.
@@ -553,16 +554,21 @@ consumers don't repeat that test.
 - **Direction is the prevailing one.** The steady field has no transients.
 - **Calibration.** Over open ocean the speed follows ERA5's zonal means
   (`OCEAN_WIND_SPEED_M_S`). On a mature world the diagnostic wind's ocean mean is ~7.0 m/s
-  (ERA5 7.25) and its land mean ~3.1 m/s (ERA5 3.46, or 3.02 excluding Antarctica and
-  Greenland). [`analysis/issue526`](../../analysis/issue526/README.md) has the band-by-band
-  comparison and the ERA5 extraction.
+  (ERA5 7.25). Over land the only slowdowns are elevation (`_elevation_speed_factor`) and
+  mountain wakes, with no surface-roughness term, so flat lowland reads close to the ocean
+  speed for its latitude, about twice ERA5's land values. The land mean therefore depends on
+  how high a world's land stands: 3.1 m/s on a save averaging 3.2 km, 4.0 m/s on one averaging
+  2.0 km (ERA5 3.46, or 3.02 excluding Antarctica and Greenland).
+  [#534](https://github.com/adubey/mantle-bloom/issues/534) adds the roughness rule.
+  [`analysis/issue526`](../../analysis/issue526/README.md) has the band-by-band comparison and
+  the ERA5 extraction.
 - **Other heights.** Use a neutral log profile, `u(z) = u10 * ln(z / z0) / ln(10 / z0)`,
   with roughness length `z0` ≈ 0.0002 m over open water and ≈ 0.1 m over land (grassland and
   cropland are 0.03-0.1 m; forest and towns are larger). For example, Penman's 2 m wind is
   ~0.85 × u10 over water and ~0.65 × u10 over land with `z0 = 0.1 m`. The helper is added
   with its first caller.
 - **Under `"cfd"`** the solver's layer wind passes through unconverted. It is relaxed toward
-  the same `planetary_wind` target but settles at about 0.4-0.65x of it, so CFD-mode
+  the same `planetary_wind` target but settles at 0.42-0.66x of it in every 15 deg ocean band, so CFD-mode
   consumers see weaker than 10 m speeds until
   [#530](https://github.com/adubey/mantle-bloom/issues/530) is resolved.
 
@@ -695,7 +701,7 @@ Ekman-forced ocean currents down with them. `(u, v)` is now additionally relaxed
 fast momentum pass, toward a latitude-banded target (`WIND_FORCING_RELAXATION_PER_S` toward
 `climate.planetary_wind`, the same 10 m trade-wind/westerly/polar-easterly structure
 `climate.compute_wind` starts from, *without* its mountain/temperature-gradient terms -- this
-solver produces those itself). Steady-state planetary wind then settles at about 0.4-0.65x of
+solver produces those itself). Steady-state planetary wind then settles at 0.42-0.66x of
 the target's speeds ([#530](https://github.com/adubey/mantle-bloom/issues/530)) and holds there
 step to step, while
 Coriolis, the pressure-gradient/thermal term, and orographic deflection still reshape it away

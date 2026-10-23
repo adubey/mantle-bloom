@@ -125,7 +125,7 @@ SLOPE_NEIGHBOR_COUNT = 4
 # swamped by them (the raw number can't be picked from a grid-cell-based slope convention;
 # see above for why).
 RAIN_EROSION_COEFFICIENT = 6000.0
-# Per (m/s of 10 m wind speed) per Myr. Needs no rescaling the way the rain coefficient does,
+# Metres of weathering per (m/s of 10 m wind speed) per Myr. Needs no rescaling the way the rain coefficient does,
 # since wind speed is a physical 10 m speed (climate.py's surface-wind contract), not tied to
 # a grid-resolution-dependent slope convention. Was 3.0 against the old unitless wind; #526's
 # switch to m/s lowered land wind speed by about a fifth, and 3.6 holds land weathering

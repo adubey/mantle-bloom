@@ -44,8 +44,14 @@ def _install_weathering_probe(totals: dict) -> None:
             totals["weathering_m3"] += float(np.sum(result.weathering[land] * area[land]))
         return result
 
+    # world.step_world calls it as erosion.apply_erosion, so patching the module is enough.
     erosion.apply_erosion = probed
-    world_mod.erosion.apply_erosion = probed
+
+
+def _peak_rss_mb() -> float:
+    # ru_maxrss is bytes on macOS and kilobytes on Linux.
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    return peak / 2**20 if sys.platform == "darwin" else peak / 2**10
 
 
 def _snapshot(world, weathering_m3: float, myr: float) -> tuple[dict, np.ndarray]:
@@ -116,7 +122,7 @@ def main() -> None:
         "myr": args.myr,
         "step_years": args.step_years,
         "runtime_s": round(time.time() - started, 1),
-        "peak_rss_mb": round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2**20, 1),  # bytes on macOS
+        "peak_rss_mb": round(_peak_rss_mb(), 1),
         "checkpoints": checkpoints,
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)

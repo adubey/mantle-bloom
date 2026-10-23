@@ -183,22 +183,29 @@ def _synthetic_continent(density):
         climate.compute_land_temperature(insolation, np.maximum(elevation, 0.0)),
     )
     u, v, _ = climate.compute_wind(lat_deg, elevation, temperature)
+    # The thermal term alone: the same terrain with the temperature contrast removed.
+    still_u, still_v, _ = climate.compute_wind(lat_deg, elevation, np.full_like(temperature, 15.0))
     weight = np.cos(np.radians(lat))
+
+    def land_mean(field):
+        return float((field * weight)[~is_ocean].sum() / weight[~is_ocean].sum())
+
     speed = np.hypot(u, v)
-
-    def mean(mask):
-        return float((speed * weight)[mask].sum() / weight[mask].sum())
-
-    return mean(np.ones_like(is_ocean)), mean(~is_ocean)
+    return {
+        "global": float((speed * weight).sum() / weight.sum()),
+        "land": land_mean(speed),
+        "thermal_land": land_mean(np.hypot(u - still_u, v - still_v)),
+    }
 
 
 def test_wind_speed_is_independent_of_climate_density():
-    # Principle 4: the same terrain at a finer climate grid gives the same wind. The thermal
-    # term was a per-cell gradient before #526, so it halved with each doubling of density.
-    coarse_global, coarse_land = _synthetic_continent(1.0)
-    fine_global, fine_land = _synthetic_continent(2.0)
-    assert abs(fine_global / coarse_global - 1.0) < 0.05
-    assert abs(fine_land / coarse_land - 1.0) < 0.05
+    # Principle 4: the same terrain at a finer climate grid gives the same wind (#526).
+    coarse, fine = _synthetic_continent(1.0), _synthetic_continent(2.0)
+    for key in ("global", "land"):
+        assert abs(fine[key] / coarse[key] - 1.0) < 0.05, key
+    # The mean speed is dominated by the planetary wind, so check the thermal term on its own
+    # too: as a per-cell gradient before #526, it halved with each doubling of density.
+    assert abs(fine["thermal_land"] / coarse["thermal_land"] - 1.0) < 0.05
 
 
 def test_thermal_wind_term_is_per_km_of_ground_distance():
@@ -217,6 +224,17 @@ def test_thermal_wind_term_is_per_km_of_ground_distance():
         interior = slice(width // 4, 3 * width // 4)  # away from the wrap seam
         assert np.allclose(warmed_u[:, interior] - still_u[:, interior], climate.GRADIENT_WIND_M_S_PER_C_PER_KM * 0.01)
         assert np.allclose(warmed_v, still_v)
+
+
+def test_thermal_gradient_stays_per_km_in_the_polar_rows():
+    # Rows clamp at the poles, so the rows within the difference span of a pole difference
+    # across fewer cells; dividing by the clamped span keeps them per km (#526 review).
+    height, width = climate.grid_dimensions(4.0)
+    lat_deg, _, _ = climate._build_grid(height, width)
+    km_northward = np.radians(lat_deg) * plates.PLANET_RADIUS_KM
+    temperature = np.repeat((km_northward * 0.01)[:, None], width, axis=1)
+    _, gy = climate._temperature_gradient_per_km(temperature, lat_deg)
+    assert np.allclose(gy, 0.01)
 
 
 def test_mountain_deflection_cancels_into_slope_component():

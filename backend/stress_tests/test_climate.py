@@ -63,9 +63,10 @@ def test_diagnostic_wind_model_tracks_the_cfd_biome_map():
     # stepped the same number of times, one CFD, one diagnostic, should agree on the large
     # majority of the land biome map and keep precipitation close. A drop here most likely
     # means compute_wind, compute_air_temperature_diagnostic, or the biome thresholds moved.
-    # Characterised at climate_density/fluid_density 2.0 (see the "~84-89%" figure in
-    # docs/simulation-model/climate.md#wind-model); the agreement is somewhat config-sensitive, so
-    # the floor here is deliberately loose.
+    # Known gap (#529): cfd_world is left on World.wind_model's default, "diagnostic", so this
+    # compares the diagnostic model with itself. Run as two models, seed 7 at density 2 gives
+    # 0.62 land-biome agreement and 0.52 precipitation rel-RMS, below these floors; #529 fixes
+    # the setup and chooses floors from a multi-seed run.
     kw = dict(num_plates=10, continental_fraction=0.7, land_fraction=0.29, climate_density=2.0, fluid_density=2.0)
     cfd_world = generate_world(7, **kw)
     abl_world = generate_world(7, **kw)
