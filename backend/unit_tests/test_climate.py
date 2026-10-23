@@ -175,7 +175,7 @@ def _synthetic_continent(density):
     lat_deg, lon_deg, _ = climate._build_grid(height, width)
     lat, lon = np.meshgrid(lat_deg, lon_deg, indexing="ij")
     elevation = 3000.0 * np.exp(-(((lat - 20.0) / 25.0) ** 2 + ((lon - 30.0) / 40.0) ** 2)) - 500.0
-    insolation = climate.compute_insolation(lat_deg, axial_tilt_deg=23.4)
+    insolation = climate.compute_heating_index(lat_deg, axial_tilt_deg=23.4)
     is_ocean = elevation < 0.0
     temperature = np.where(
         is_ocean,
