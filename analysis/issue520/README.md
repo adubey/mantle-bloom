@@ -93,3 +93,20 @@ a marginal effect, rerun both arms from the same save before interpreting the co
 **Run controls.** Run baseline first, then branch, one replay at a time and without unit or
 stress tests running. Record exact commits, command, endpoint values, runtime, and peak RSS in
 the results section after both runs complete.
+
+## Replay correction preregistration
+
+The first branch replay at `d0bd84932009ae35c1f153a969d9b7b46ed838bf` produced a large step-2
+departure from current `origin/main`: 39 vs 14 merges, 5 vs 53 splits, and 1.57M vs 0.52M km³
+of visible lake water. The first implementation also used the persisted-water helper to inspect
+one floor cell during the same-step merge check, even though the just-resolved child levels are
+available there. The correction keeps the helper for persisted state and restores the direct
+child-level check for a merge happening in the current step.
+
+**Expected direction and threshold.** Rerun the same baseline save and branch after this change.
+At step 2, expect at least half of the first trial's branch-to-baseline gaps to close: no more
+than 27 merges, at least 29 splits, global visible lake volume no more than 1.05M km³, and lake
+13 volume no more than 529,000 km³. These are diagnostic thresholds for the correction, not a
+replacement for the primary sea 26 acceptance measurement above.
+
+**Variability and controls.** Reuse the completed baseline run from `9ae6eaf40fee013f9989b8ad236837927be0496e`; it starts from the same saved state and is unchanged by the correction. Run the corrected branch once at its recorded commit, after all tests have stopped. Retain the first branch run as an exploratory result and report why the correction was made.
