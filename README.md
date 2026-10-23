@@ -23,6 +23,10 @@ Support the project: [Buy Me a Coffee](https://buymeacoffee.com/mantlebloom).
   `bin/debug` scripts.
 - **[docs/packaging.md](docs/packaging.md)** -- building the single-process desktop binary
   (`bin/package.sh`).
+- **[planning/launch-readiness.md](planning/launch-readiness.md)** -- cross-cutting launch
+  goals, known tracking links, dependencies and decisions still to make.
+- **[planning/hosting.md](planning/hosting.md)** -- current hosted deployment and the limits
+  of its single-world design.
 
 ## Getting started
 

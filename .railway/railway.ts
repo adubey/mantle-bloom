@@ -1,6 +1,6 @@
 // The hosted mantle-bloom (#376): one Railway service built from the root Dockerfile, serving
 // the frontend and the API from one origin, with a volume for the world checkpoint.
-// `railway config plan` / `railway config apply` from the repo root; see docs/HOSTING.md.
+// `railway config plan` / `railway config apply` from the repo root; see planning/hosting.md.
 import { defineRailway, github, preserve, project, service, volume } from "railway/iac";
 
 // checkpoint.py finds the volume through RAILWAY_VOLUME_MOUNT_PATH, which Railway sets to this.
@@ -34,7 +34,7 @@ export default defineRailway(() => {
       drainingSeconds: 10,
     },
     volumeMounts: { [CHECKPOINT_MOUNT]: checkpoint },
-    // Secrets are set with `railway variables --set` (docs/HOSTING.md), never in this file.
+    // Secrets are set with `railway variables --set` (planning/hosting.md), never in this file.
     env: {
       MANTLE_BLOOM_GITHUB_CLIENT_ID: preserve(),
       MANTLE_BLOOM_GITHUB_CLIENT_SECRET: preserve(),
