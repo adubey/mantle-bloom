@@ -1,0 +1,58 @@
+{
+ "script": "bin/debug/measure_frozen_water.py",
+ "commit": "9d6fa07",
+ "saves": [
+  {
+   "save": "mantle-bloom-seed997271774-87400000y.mbworld",
+   "save_sha256": "08ad9461d9585e92be93a58d81e326c7e4b685ae7d462135d01b0e9931ed762b",
+   "elapsed_myr": 87.4,
+   "map": {
+    "land_area_share_of_globe": 0.2865,
+    "iced_share_of_land": 0.06,
+    "iced_land_classified_EF": 0.9314,
+    "iced_land_classified_ET": 0.0546,
+    "EF_land_without_ice": 0.3914,
+    "EF_share_of_land": 0.0918,
+    "iced_land_mean_thickness_m": 390.7035,
+    "iced_land_warm_month_above_0_at_bed_below_0_at_surface": 0.0311,
+    "frozen_share_of_land": 0.2724,
+    "frozen_land_precip_in_thawing_months": 0.2767
+   },
+   "sea_level": {
+    "sea_level_m": -408.1539,
+    "ice_debited_km3_we": 5184193.863,
+    "floating_ice_km3_we": 0.4154,
+    "grounded_marine_ice_km3_we": 3551.3166,
+    "land_ice_km3_we": 5180642.1309,
+    "above_flotation_km3_we": 5183804.7942,
+    "ocean_area_km2": 362190691.7492
+   }
+  },
+  {
+   "save": "mantle-bloom-seed649658380-6400000y.mbworld",
+   "save_sha256": "ebbfb5da073ae27b3baa20e53ef958cedd9153f4ce38ca549b742c561273f7b3",
+   "elapsed_myr": 6.4,
+   "map": {
+    "land_area_share_of_globe": 0.2925,
+    "iced_share_of_land": 0.0279,
+    "iced_land_classified_EF": 0.3309,
+    "iced_land_classified_ET": 0.5983,
+    "EF_land_without_ice": 0.0269,
+    "EF_share_of_land": 0.0095,
+    "iced_land_mean_thickness_m": 853.041,
+    "iced_land_warm_month_above_0_at_bed_below_0_at_surface": 0.3691,
+    "frozen_share_of_land": 0.126,
+    "frozen_land_precip_in_thawing_months": 0.4403
+   },
+   "sea_level": {
+    "sea_level_m": -100.5374,
+    "ice_debited_km3_we": 3267067.6941,
+    "floating_ice_km3_we": 70.9391,
+    "grounded_marine_ice_km3_we": 2802.9863,
+    "land_ice_km3_we": 3264193.7688,
+    "above_flotation_km3_we": 3265502.7956,
+    "ocean_area_km2": 354420811.5839
+   }
+  }
+ ]
+}
