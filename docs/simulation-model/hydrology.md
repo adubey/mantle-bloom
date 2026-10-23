@@ -468,6 +468,18 @@ river's own classification ends at the lake's shore rather than jumping straight
 water to whatever's on the far side, even though the water itself (`flow_target`/`flow_accum`)
 still physically continues through if the lake is spilling.
 
+A spilling sink's `flow_target` is the node beyond its lake's rim (`spill_target`), or, in a
+lake united within the step, that lake's lowest sink. That edge can span the whole lake, so it
+isn't drawn as a straight line (#520). `hydrology.flow_segments`, which the map
+(`render_image._draw_rivers`) and the River Inspector both use, draws such a spill hop
+(`HydrologyFields.should_spill`, between nodes that aren't k-NN neighbours) along its spill
+path: the fewest neighbour edges that never rise above the lowest pass between the sink and its
+target. Across a basin with no visible water, the river is drawn through it. Where the path
+reaches visible lake water, it's drawn only up to the water. `group_rivers` then ends the
+upstream network there, with `mouth_type` `"lake"`, and the outflow is its own network
+starting beyond the rim. A network's `length_m` sums the drawn segments. Routing, discharge and
+lake inflow are unchanged.
+
 **A spilling lake erodes its own outlet hard**, proportional to the lake's own surface area,
 not just the ordinary precipitation-driven flow passing through that one channel node. Once a
 sink's `should_spill` fires (see `_compute_flow_direction`), `compute_hydrology` adds an extra

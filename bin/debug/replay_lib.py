@@ -20,8 +20,13 @@ from collections.abc import Callable
 from pathlib import Path
 
 
-def parse_replay_args(doc: str | None) -> argparse.Namespace:
+def parse_replay_args(
+    doc: str | None, add_arguments: Callable[[argparse.ArgumentParser], None] | None = None
+) -> argparse.Namespace:
+    """The common command line; `add_arguments` adds a script's own options."""
     ap = argparse.ArgumentParser(description=doc, formatter_class=argparse.RawDescriptionHelpFormatter)
+    if add_arguments is not None:
+        add_arguments(ap)
     ap.add_argument("save", type=Path)
     ap.add_argument("--backend", type=Path, default=Path(__file__).resolve().parents[2] / "backend")
     ap.add_argument("--myr", type=float, required=True)

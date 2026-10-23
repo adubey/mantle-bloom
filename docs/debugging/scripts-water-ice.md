@@ -11,7 +11,8 @@ Every script here takes `--backend`, so the same script measures an `origin/main
 and a branch (see [Running the scripts](../debugging.md#running-the-scripts)). They come in
 two kinds:
 
-- **Save replays** (`measure_ice_sheet.py`, `measure_lake_silt.py`, `measure_river_endings.py`)
+- **Save replays** (`measure_ice_sheet.py`, `measure_lake_silt.py`, `measure_river_endings.py`,
+  `measure_river_hops.py`)
   share `replay_lib.py`'s command line: a save, `--backend`, `--myr` (required),
   `--step-years` (default 100 kyr), `--checkpoint-myr` (default 1) and `--out` (required).
   Each records step runtime and peak RSS.
@@ -39,6 +40,22 @@ Values are averaged over each checkpoint window.
 backend/.venv/bin/python bin/debug/measure_river_endings.py world.mbworld --myr 5 --out /tmp/branch.json
 backend/.venv/bin/python bin/debug/measure_river_endings.py world.mbworld --myr 5 \
     --backend ../mantle-bloom-baseline/backend --out /tmp/main.json
+```
+
+### `measure_river_hops.py`
+
+Counts river lines drawn across lakes (#520). At the loaded save and at each checkpoint, it
+records spill hops (flow edges between non-neighbour nodes), the median flow-edge length, and,
+for River Inspector segments and drawn map segments, how many are longer than 3× that median
+and how many join non-neighbours. A backend without `hydrology.flow_segments` is measured from
+each river node's own `flow_target` edge. `--render-dir` writes an elevation globe centred on
+`--center LAT LON` at each checkpoint.
+
+```bash
+backend/.venv/bin/python bin/debug/measure_river_hops.py world.mbworld --myr 0.1 --checkpoint-myr 0.1 \
+    --center 43 153 --render-dir /tmp/branch --out /tmp/branch.json
+backend/.venv/bin/python bin/debug/measure_river_hops.py world.mbworld --myr 0.1 --checkpoint-myr 0.1 \
+    --backend ../mantle-bloom-baseline/backend --center 43 153 --render-dir /tmp/main --out /tmp/main.json
 ```
 
 ### `measure_discharge_calibration.py`

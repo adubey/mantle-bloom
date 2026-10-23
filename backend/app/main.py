@@ -455,10 +455,9 @@ def _plate_summary(plate: plates.Plate, world: World, overlaps: dict[int, list[d
 
 
 def _river_summary(fields: hydrology.HydrologyFields, river: hydrology.RiverInfo, river_id: int) -> dict:
-    targets = fields.flow_target[river.member_idx]
-    has_target = targets >= 0
-    from_points = fields.points[river.member_idx[has_target]]
-    to_points = fields.points[targets[has_target]]
+    from_idx, to_idx, _, _ = hydrology.flow_segments(fields, river.member_idx)
+    from_points = fields.points[from_idx]
+    to_points = fields.points[to_idx]
     segments = np.round(np.stack([from_points, to_points], axis=1), _COORD_DECIMALS).tolist()
     return {
         "river_id": river_id,

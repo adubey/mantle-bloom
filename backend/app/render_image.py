@@ -2565,8 +2565,8 @@ def _draw_rivers(
 ) -> Image.Image:
     """Draws each selected river segment (see _rivers_to_draw for which segments and how
     strongly each tints toward RIVER_COLOR_RGB) as a short line from a river node to its own
-    downstream flow target. Each segment is a real, short 3D hop between two
-    adjacent-in-the-flow-graph nodes, so _project_offset (not two independent _project_points
+    downstream flow target, or, for a spill hop, along its spill path (hydrology.flow_segments).
+    Each segment is a real, short 3D hop between two adjacent-in-the-flow-graph nodes, so _project_offset (not two independent _project_points
     calls) keeps it from being wrongly split across the antimeridian seam -- same technique
     _render_grid_arrays' own corner measurements already rely on.
 
@@ -2581,7 +2581,9 @@ def _draw_rivers(
     river_idx, color_alpha, width_frac = _rivers_to_draw(world, hide_short_networks=hide_short_networks)
     if len(river_idx) == 0:
         return image
-    target_idx = hydro.flow_target[river_idx]
+    # A spill hop is drawn along its spill path, so one node can own several segments (#520).
+    from_idx, target_idx, owner, _ = hydrology.flow_segments(hydro, river_idx)
+    color_alpha, width_frac = color_alpha[owner], width_frac[owner]
 
     width_px = np.maximum(
         np.round(pixel_scale * RIVER_LINE_WIDTH_PX * (1.0 + (RIVER_LINE_WIDTH_MAX_MULT - 1.0) * width_frac)).astype(int), 1
@@ -2595,7 +2597,7 @@ def _draw_rivers(
     halo_fill_value = np.clip(np.round(fill_value * RIVER_HALO_FILL_FRACTION), 0, 255).astype(int)
     core_width_px = np.maximum(np.round(width_px * RIVER_CORE_WIDTH_FRACTION).astype(int), 1)
 
-    from_points = _rotate(hydro.points[river_idx], view_rotation)
+    from_points = _rotate(hydro.points[from_idx], view_rotation)
     to_points = _rotate(hydro.points[target_idx], view_rotation)
     _, from_lon = geometry.xyz_to_latlon(from_points)
     from_xy = _project_points(projection, from_points)

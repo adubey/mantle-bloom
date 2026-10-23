@@ -120,8 +120,9 @@ script imports `app` only after calling it.
 ### `replay_lib.py`
 
 The save-replay command line (`save`, `--backend`, `--myr`, `--step-years`,
-`--checkpoint-myr`, `--out`) and the step-and-checkpoint loop for `measure_ice_sheet.py`,
-`measure_lake_silt.py` and `measure_river_endings.py`. `load_replay` puts `--backend` first
+`--checkpoint-myr`, `--out`, plus a script's own options through `add_arguments`) and the
+step-and-checkpoint loop for `measure_ice_sheet.py`, `measure_lake_silt.py`,
+`measure_river_endings.py` and `measure_river_hops.py`. `load_replay` puts `--backend` first
 on `sys.path`.
 
 ### `sweep_lib.py`

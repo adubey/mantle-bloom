@@ -1196,6 +1196,77 @@ def test_group_rivers_on_a_real_monotonic_chain_is_one_unbranched_network():
     assert fields.is_ocean[fields.flow_target[rivers[0].mouth_idx]]
 
 
+def _spill_hop_fields(lake_m: float, store_should_spill: bool = True) -> hydrology.HydrologyFields:
+    # Issue #520: a line of 8 nodes, each a k-NN neighbour of the next. River 0 -> 1 -> sink 2,
+    # whose basin spans 2-4 behind rim 5; filled, sink 2 spills straight to node 6 beyond the
+    # rim (a non-neighbour hop, as compute_spill_routing routes it), then 6 -> ocean 7. Nodes 3
+    # and 4 hold `lake_m` of water; the sink itself is shallower than the visible depth.
+    n = 8
+    points = np.array([[np.cos(0.01 * i), np.sin(0.01 * i), 0.0] for i in range(n)])
+    neighbor_idx = np.array([[max(i - 1, 0), min(i + 1, n - 1)] for i in range(n)])
+    lake_depth = np.zeros(n)
+    lake_depth[2] = 0.5
+    lake_depth[[3, 4]] = lake_m
+    spill_target = np.full(n, -1, dtype=np.int64)
+    spill_target[2] = 6
+    should_spill = np.zeros(n, dtype=bool)
+    should_spill[2] = True
+    zeros = np.zeros(n)
+    return hydrology.HydrologyFields(
+        points=points,
+        elevation=np.array([100.0, 80.0, 10.0, 20.0, 25.0, 40.0, 30.0, -10.0]),
+        is_ocean=np.arange(n) == 7,
+        neighbor_idx=neighbor_idx,
+        flow_target=np.array([1, 2, 6, 2, 3, 6, 7, -1]),
+        flow_accum=np.array([5.0, 6.0, 8.0, 0.0, 0.0, 0.0, 9.0, 0.0]),
+        water_deposited=zeros.copy(),
+        filled_elevation=zeros.copy(),
+        spill_target=spill_target,
+        is_river=np.isin(np.arange(n), [0, 1, 2, 6]),
+        lake_depth=lake_depth,
+        glacier_depth=zeros.copy(),
+        plates_in_order=[],
+        should_spill=should_spill if store_should_spill else None,
+    )
+
+
+def _is_neighbour_pair(fields, a: int, b: int) -> bool:
+    return b in fields.neighbor_idx[a] or a in fields.neighbor_idx[b]
+
+
+def test_a_spill_hop_across_a_lake_ends_the_river_at_the_lake():
+    fields = _spill_hop_fields(lake_m=15.0)
+
+    rivers = sorted(hydrology.group_rivers(fields), key=lambda r: r.mouth_idx)
+    inflow, outflow = rivers
+    assert sorted(inflow.member_idx.tolist()) == [0, 1, 2]
+    assert (inflow.mouth_idx, inflow.mouth_type) == (2, "lake")
+    assert outflow.member_idx.tolist() == [6]
+    assert outflow.mouth_type == "ocean"
+
+    from_idx, to_idx, owner, crosses_lake = hydrology.flow_segments(fields, inflow.member_idx)
+    pairs = set(zip(from_idx.tolist(), to_idx.tolist()))
+    # Drawn into the lake's edge and no further: nothing across the water or beyond the rim.
+    assert pairs == {(0, 1), (1, 2), (2, 3)}
+    assert all(_is_neighbour_pair(fields, a, b) for a, b in pairs)
+    assert crosses_lake.tolist() == [m == 2 for m in inflow.member_idx.tolist()]
+
+
+def test_a_spill_hop_over_a_dry_basin_is_drawn_along_its_spill_path():
+    # A pre-#520 cache has no should_spill; the hop is still found from spill_target.
+    fields = _spill_hop_fields(lake_m=0.0, store_should_spill=False)
+
+    rivers = hydrology.group_rivers(fields)
+    assert len(rivers) == 1
+    assert sorted(rivers[0].member_idx.tolist()) == [0, 1, 2, 6]
+
+    from_idx, to_idx, _, _ = hydrology.flow_segments(fields, rivers[0].member_idx)
+    pairs = set(zip(from_idx.tolist(), to_idx.tolist()))
+    assert pairs == {(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 6), (6, 7)}
+    step_m = geometry.angular_distance(fields.points[0], fields.points[1]) * hydrology.PLANET_RADIUS_KM * 1000.0
+    assert rivers[0].length_m == pytest.approx(7 * step_m, rel=1e-3)
+
+
 def test_compute_river_speed_increases_with_slope_and_flow():
     base = hydrology.compute_river_speed(np.array([0.01]), np.array([1.0]))[0]
     steeper = hydrology.compute_river_speed(np.array([0.1]), np.array([1.0]))[0]

@@ -392,6 +392,11 @@ class HydrologyFields:
     # and ocean-mouth inflow of the m^3/yr runoff-plus-meltwater routing, in m^3/s. Plain None
     # default, like `ice`, so a cache pickled before this existed still loads.
     discharge_m3_s: np.ndarray | None = None
+    # Nodes whose `flow_target` is a spill rather than steepest descent: a filled basin's sink
+    # routed to its outlet, or a united lake's sinks pooled at its lowest one. Such an edge can
+    # span a whole lake, so river drawing follows the spill path instead (`flow_segments`,
+    # #520). Plain None default, like `ice`, so a cache pickled before this existed still loads.
+    should_spill: np.ndarray | None = None
     # This step's breach-surge sources (`lake_breach_source + rim_breach_source`), in model
     # units. They're kept out of `discharge_m3_s`, but they still reach every consumer of the
     # legacy `flow_accum`/`water_deposited` routing (see "Water units").
@@ -1684,6 +1689,7 @@ def compute_hydrology(
         channel_width=prev_channel_width,
         breach_notch_m=breach.notch_m if breach is not None else np.zeros(0),
         ice=ice,
+        should_spill=should_spill,
     )
     # Resolves the *same* forest built early (above, for spill routing) against this step's
     # routed physical water -- not a second lakes.step_lakes call, which would rebuild the
@@ -1764,6 +1770,96 @@ class RiverInfo:
     length_m: float | None = None  # summed physical length; None only for legacy fixtures
 
 
+def _spill_hops(fields: HydrologyFields, sources: np.ndarray) -> np.ndarray:
+    """Which of `sources`' flow edges are spill hops: a spilling node routed to a node that
+    isn't its k-NN neighbour. A cache pickled before `should_spill` was stored falls back to
+    `flow_target == spill_target`, which misses only the united-lake pooling hops."""
+    targets = fields.flow_target[sources]
+    spilling = fields.should_spill
+    if spilling is None or len(spilling) != len(fields.flow_target):
+        spilling = fields.flow_target == fields.spill_target
+    hop = (targets >= 0) & spilling[sources]
+    hop_sources, hop_targets = sources[hop], targets[hop]
+    neighbour = (fields.neighbor_idx[hop_sources] == hop_targets[:, None]).any(axis=1)
+    neighbour |= (fields.neighbor_idx[hop_targets] == hop_sources[:, None]).any(axis=1)
+    hop[hop] = ~neighbour
+    return hop
+
+
+def _spill_path(fields: HydrologyFields, source: int, target: int) -> list[int]:
+    """The nodes a spill from `source` to `target` crosses over neighbour edges: the fewest
+    hops among paths that never rise above the lowest pass between them (found first, by a
+    minimax search), so the path runs across the basin floor and out over its rim. Ocean
+    nodes other than `target` are excluded. Empty if `target` isn't reachable."""
+    elevation, neighbor_idx, is_ocean = fields.elevation, fields.neighbor_idx, fields.is_ocean
+
+    def passable(node: int) -> bool:
+        return node == target or not is_ocean[node]
+
+    best = {source: float(elevation[source])}
+    heap = [(best[source], source)]
+    level = None
+    while heap:
+        pass_m, node = heapq.heappop(heap)
+        if node == target:
+            level = pass_m
+            break
+        if pass_m > best[node]:
+            continue
+        for nxt in neighbor_idx[node].tolist():
+            candidate = max(pass_m, float(elevation[nxt]))
+            if passable(nxt) and candidate < best.get(nxt, np.inf):
+                best[nxt] = candidate
+                heapq.heappush(heap, (candidate, nxt))
+    if level is None:
+        return []
+
+    came_from = {source: -1}
+    frontier = [source]
+    while frontier and target not in came_from:
+        next_frontier = []
+        for node in frontier:
+            for nxt in neighbor_idx[node].tolist():
+                if nxt not in came_from and passable(nxt) and elevation[nxt] <= level:
+                    came_from[nxt] = node
+                    next_frontier.append(nxt)
+        frontier = next_frontier
+    path = [target]
+    while came_from[path[-1]] >= 0:
+        path.append(came_from[path[-1]])
+    return path[::-1]
+
+
+def flow_segments(fields: HydrologyFields, sources: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """The river line segments drawn for the flow edges leaving `sources`, for the map and the
+    River Inspector alike. An ordinary edge is one segment to `flow_target`. A spill hop
+    (`_spill_hops`) can span a whole lake (#520: a 1,669 km edge drawn across an inland sea),
+    so it's drawn along its spill path (`_spill_path`) instead. A path that reaches visible
+    lake water is drawn only up to it: the river ends at the lake, and the outflow is its own
+    network beyond the rim. Routing and discharge are unchanged; only the drawn geometry is.
+
+    Returns `(from_idx, to_idx, owner, crosses_lake)`: one entry per segment, `owner` being the
+    position in `sources` whose edge it draws, and per source, whether its edge crosses visible
+    lake water (or has no spill path), which `group_rivers` treats as the river's end."""
+    sources = np.asarray(sources, dtype=np.int64)
+    targets = fields.flow_target[sources]
+    hop = _spill_hops(fields, sources)
+    plain = np.flatnonzero((targets >= 0) & ~hop)
+    from_parts, to_parts, owner_parts = [sources[plain]], [targets[plain]], [plain]
+    crosses_lake = np.zeros(len(sources), dtype=bool)
+    wet = fields.lake_depth > LAKE_MIN_VISIBLE_DEPTH_M
+    for position in np.flatnonzero(hop).tolist():
+        path = np.array(_spill_path(fields, int(sources[position]), int(targets[position])), dtype=np.int64)
+        start, end = path[:-1], path[1:]
+        # Every edge up to the first one under visible water.
+        dry = np.logical_and.accumulate(~(wet[start] & wet[end]))
+        crosses_lake[position] = len(path) == 0 or not np.all(dry)
+        from_parts.append(start[dry])
+        to_parts.append(end[dry])
+        owner_parts.append(np.full(int(dry.sum()), position, dtype=np.int64))
+    return np.concatenate(from_parts), np.concatenate(to_parts), np.concatenate(owner_parts), crosses_lake
+
+
 def group_rivers(fields: HydrologyFields) -> list[RiverInfo]:
     """Groups the flat `is_river` node mask into distinct connected drainage networks, via
     union-find over `flow_target` edges restricted to nodes that are `is_river` on *both*
@@ -1799,6 +1895,11 @@ def group_rivers(fields: HydrologyFields) -> list[RiverInfo]:
     water crosses `LAKE_MIN_VISIBLE_DEPTH_M` anywhere along the chain this same river correctly
     flips to `"lake"` on its own, no separate fix needed there.
 
+    A spill hop that crosses visible lake water (`flow_segments`) is the one edge between river
+    nodes that doesn't join them: the upstream network ends there with `mouth_type` `"lake"`,
+    and the outflow is a separate network starting beyond the rim (#520). `length_m` sums the
+    drawn segments, so a hop counts its spill path, not the straight line.
+
     **num_tributaries** (an original definition, with no existing precedent in this codebase
     to follow): counts each member's in-network in-degree (how many *other* members flow
     directly into it); a member with in-degree 0 is a headwater -- a separate source stream
@@ -1814,6 +1915,11 @@ def group_rivers(fields: HydrologyFields) -> list[RiverInfo]:
     river_set = set(river_list)
     flow_target_list = fields.flow_target.tolist()
 
+    seg_from, seg_to, seg_owner, crosses_lake = flow_segments(fields, river_idx)
+    # A spill across visible lake water ends the river at the lake, as a river meeting a lake's
+    # shore does; the outflow is its own network from the outlet on (#520).
+    ends_at_lake = set(river_idx[crosses_lake].tolist())
+
     parent = {i: i for i in river_list}
 
     def find(x: int) -> int:
@@ -1826,7 +1932,7 @@ def group_rivers(fields: HydrologyFields) -> list[RiverInfo]:
 
     for i in river_list:
         target = flow_target_list[i]
-        if target in river_set:
+        if target in river_set and i not in ends_at_lake:
             ra, rb = find(i), find(target)
             if ra != rb:
                 parent[ra] = rb
@@ -1837,12 +1943,10 @@ def group_rivers(fields: HydrologyFields) -> list[RiverInfo]:
 
     slope_to_target = _slope_to_flow_target(fields.points, fields.elevation, fields.flow_target)
     edge_length_m = np.zeros(len(fields.points), dtype=float)
-    edge_sources = river_idx[fields.flow_target[river_idx] >= 0]
-    edge_targets = fields.flow_target[edge_sources]
-    edge_length_m[edge_sources] = (
-        geometry.angular_distance(fields.points[edge_sources], fields.points[edge_targets])
-        * PLANET_RADIUS_KM
-        * 1000.0
+    np.add.at(
+        edge_length_m,
+        river_idx[seg_owner],
+        geometry.angular_distance(fields.points[seg_from], fields.points[seg_to]) * PLANET_RADIUS_KM * 1000.0,
     )
     discharge_m3_s = fields.discharge_m3_s
     if discharge_m3_s is None or len(discharge_m3_s) != len(fields.flow_accum):
@@ -1855,7 +1959,7 @@ def group_rivers(fields: HydrologyFields) -> list[RiverInfo]:
     for members in groups.values():
         member_idx = np.array(members, dtype=np.int64)
         member_set = set(members)
-        terminal_members = [member for member in members if flow_target_list[member] not in member_set]
+        terminal_members = [member for member in members if flow_target_list[member] not in member_set or member in ends_at_lake]
         mouth_candidates = terminal_members or members
         # A cycle in a hand-built fixture has no terminal; use its greatest-discharge member.
         mouth_idx = max(mouth_candidates, key=lambda member: discharge_m3_s[member])
@@ -1872,8 +1976,8 @@ def group_rivers(fields: HydrologyFields) -> list[RiverInfo]:
         # reached real lake water two hops later). `visited` guards this since it walks live
         # per-step state rather than trusting the usual downhill-monotonic invariant to
         # terminate.
-        mouth_type = "other"
-        node = int(fields.flow_target[mouth_idx])
+        mouth_type = "lake" if mouth_idx in ends_at_lake else "other"
+        node = -1 if mouth_idx in ends_at_lake else int(fields.flow_target[mouth_idx])
         visited: set[int] = set()
         while node >= 0 and node not in visited:
             if fields.is_ocean[node]:
@@ -1888,7 +1992,7 @@ def group_rivers(fields: HydrologyFields) -> list[RiverInfo]:
         in_degree = {m: 0 for m in members}
         for m in members:
             t = flow_target_list[m]
-            if t in member_set:
+            if t in member_set and m not in ends_at_lake:
                 in_degree[t] += 1
         headwater_count = sum(1 for m in members if in_degree[m] == 0)
 
