@@ -319,8 +319,8 @@ always advances regardless of both.
 
 `wind_model` picks the wind field feeding `climate.py`: `"cfd"` runs the shallow-water
 solve every step (`_advance_fluid_dynamics`), `"diagnostic"` skips it and rebuilds wind /
-air temperature from `climate.py`'s closed-form ABL formulas -- much faster steps for
-~85-90% of the CFD biome map. See simulation-model/climate.md#wind-model.
+air temperature from `climate.py`'s closed-form ABL formulas -- much faster steps; see
+simulation-model/climate.md#wind-model for how closely it matches the CFD (#529).
 
 `fault_deformation_mode` (`"boundary"` default, or `"fault"` / `"both"` -- a `400` for any
 other value) picks where plate-boundary deformation is applied: `"boundary"` is the smooth

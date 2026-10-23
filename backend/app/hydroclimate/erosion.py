@@ -25,9 +25,9 @@ by the real great-circle distance to that neighbor. This is a genuine dimensionl
 RAIN_EROSION_COEFFICIENT below is tuned for this rise/run scale (order 0.001-0.1), not for
 meters-of-drop-per-grid-cell (order 10-100s of meters); a coefficient tuned against that
 coarser, resolution-dependent scale would make rain erosion negligible here.
-WEATHERING_COEFFICIENT needs no such rescaling, since it depends only on wind speed, whose
-scale (MERIDIONAL_BASE_SPEED = 6.0) is fixed by this module's own climate pipeline rather
-than by any grid convention. River erosion needs the same reasoning as rain erosion, one
+WEATHERING_COEFFICIENT needs no such rescaling, since it depends only on wind speed, which
+is a physical 10 m speed in m/s (climate.py's surface-wind contract) rather than anything
+tied to a grid convention. River erosion needs the same reasoning as rain erosion, one
 level further removed: it depends on physical catchment discharge (see hydrology.py), mapped
 to a fixed reference-cell scale so a denser mesh does not increase the forcing. Issue #355
 step 5 recalibrated RIVER_EROSION_COEFFICIENT after the source changed from raw precipitation
@@ -125,10 +125,12 @@ SLOPE_NEIGHBOR_COUNT = 4
 # swamped by them (the raw number can't be picked from a grid-cell-based slope convention;
 # see above for why).
 RAIN_EROSION_COEFFICIENT = 6000.0
-# Needs no rescaling the way the rain coefficient does, since wind speed's scale
-# (MERIDIONAL_BASE_SPEED = 6.0) is fixed by this module's own climate pipeline, not tied to a
-# grid-resolution-dependent slope convention.
-WEATHERING_COEFFICIENT = 3.0
+# Metres of weathering per (m/s of 10 m wind speed) per Myr. Needs no rescaling the way the rain coefficient does,
+# since wind speed is a physical 10 m speed (climate.py's surface-wind contract), not tied to
+# a grid-resolution-dependent slope convention. Was 3.0 against the old unitless wind; #526's
+# switch to m/s lowered land wind speed by about a fifth, and 3.6 holds land weathering
+# volume (analysis/issue526/README.md).
+WEATHERING_COEFFICIENT = 3.6
 # Near-surface specific humidity at which the weathering-humidity factor saturates to 1.0:
 # the old unitless index's 1.0, converted to g/kg (#522).
 HUMIDITY_REFERENCE_G_KG = climate.HUMIDITY_INDEX_G_KG

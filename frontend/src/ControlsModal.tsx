@@ -278,7 +278,7 @@ export default function ControlsModal({
               </select>
               <div style={{ fontSize: 11, color: "#999", marginTop: 8 }}>
                 {windModel === "diagnostic"
-                  ? "Skips the shallow-water solve -- much faster steps, ~85-90% of the CFD biome map. Wind/temperature maps show the closed-form field."
+                  ? "Skips the shallow-water solve -- much faster steps, approximating the CFD climate. Wind/temperature maps show the closed-form field."
                   : "Genuine time-integrated shallow-water solve -- the largest single cost of a step at high fluid-dynamics resolution."}
               </div>
             </div>

@@ -513,9 +513,9 @@ class World:
     # docs/simulation-model/climate.md#fd-performance). "diagnostic" (default): skip that solve entirely
     # and let climate.compute_climate rebuild wind/air-temperature from its own closed-form
     # ABL-style formulas (compute_wind + compute_air_temperature_diagnostic) every call, the same
-    # way it already does during the pre-CFD cold-start bootstrap. Reproduces ~85-90% of the land
-    # biome map and precipitation within ~10% for a fraction of the cost -- see
-    # docs/simulation-model/climate.md#wind-model and GitHub issue #118 -- so it's the default; opt into "cfd"
+    # way it already does during the pre-CFD cold-start bootstrap. It approximates the CFD's
+    # climate for a fraction of the cost (how closely: docs/simulation-model/climate.md#wind-model,
+    # GitHub issues #118 and #529) -- so it's the default; opt into "cfd"
     # via Controls for the full solve. atmosphere_cfd_state is still kept in sync (init'd at
     # generation, never cleared) so switching to "cfd" mid-session resumes from a real, if
     # now-stale, state rather than a cold start.
