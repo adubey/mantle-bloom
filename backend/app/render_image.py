@@ -1691,7 +1691,7 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
     # or -- when the diagnostic wind model is selected, leaving that state frozen -- the
     # diagnostic fields climate.compute_climate rebuilt this call. is_ocean likewise: the CFD
     # state's copy goes stale in diagnostic mode (refresh_forcing stops running).
-    if world.wind_model != "cfd":
+    if climate.uses_diagnostic_wind(world):
         wind_u_hp, wind_v_hp = _to_healpix(cfields.wind_u), _to_healpix(cfields.wind_v)
         land_air_temp_hp = _to_healpix(cfields.air_temperature_c)
         is_ocean_hp = _to_healpix(cfields.is_ocean.astype(np.float64)) > 0.5

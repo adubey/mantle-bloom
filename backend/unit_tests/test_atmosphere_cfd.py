@@ -1,6 +1,6 @@
 import numpy as np
 
-from app.hydroclimate import atmosphere_cfd
+from app.hydroclimate import atmosphere_cfd, climate
 from app.world import generate_world
 
 # Coarse settings throughout -- same rationale as test_world_smoke.py's own
@@ -72,6 +72,16 @@ def test_prevailing_wind_is_sustained_over_many_steps():
     lat_deg = np.degrees(state.grid.lat_rad)
     midlat = (np.abs(lat_deg) > 15.0) & (np.abs(lat_deg) < 55.0)
     assert speed[midlat].mean() > 1.0
+
+
+def test_target_wind_is_the_diagnostic_planetary_wind():
+    # The solver's layer wind is documented as the 10 m wind (#526) because it is relaxed toward
+    # the same 10 m target compute_wind starts from; the two must not drift apart.
+    state = _world().atmosphere_cfd_state
+    u_target, v_target = atmosphere_cfd._target_wind(state.grid)
+    u, v = climate.planetary_wind(np.degrees(state.grid.lat_rad))
+    assert np.allclose(u_target, u, atol=1e-5)
+    assert np.allclose(v_target, v, atol=1e-5)
 
 
 def test_atmosphere_cfd_never_mutates_world_plates():

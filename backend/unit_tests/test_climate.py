@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+from app import plates
 from app.hydroclimate import biomes, climate
 from app.world import World, generate_world, step_world
 
@@ -80,6 +81,81 @@ def test_wind_coriolis_deflection_flips_sign_by_hemisphere():
     south = climate.coriolis_parameter(np.array([-30.0]))
     assert north > 0 and south < 0
     assert np.isclose(north, -south)
+
+
+def _flat_ocean_wind(lat_deg):
+    """compute_wind over a flat, uniform-temperature ocean: the planetary wind alone."""
+    shape = (len(lat_deg), 8)
+    u, v, _ = climate.compute_wind(lat_deg, np.zeros(shape), np.full(shape, 15.0))
+    return np.hypot(u, v)[:, 0]
+
+
+def test_flat_ocean_wind_is_a_10m_speed_in_the_era5_bands():
+    # The surface-wind contract (#526): m/s at 10 m. ERA5's ocean zonal means put the trades
+    # and the mid-latitude westerlies in 6-10 m/s and the doldrums lower than the trades.
+    speed = _flat_ocean_wind(np.array([2.0, 15.0, 55.0, -15.0, -55.0]))
+    doldrums, trades_n, westerlies_n, trades_s, westerlies_s = speed
+    assert 6.0 <= trades_n <= 8.0 and 6.0 <= trades_s <= 8.0
+    assert 8.0 <= westerlies_n <= 10.0 and 8.0 <= westerlies_s <= 10.0
+    assert 4.5 <= doldrums < trades_n
+
+
+def test_planetary_wind_speed_is_the_tabulated_ocean_climatology():
+    lat_deg = np.concatenate([climate.OCEAN_WIND_SPEED_LAT_DEG, -climate.OCEAN_WIND_SPEED_LAT_DEG])
+    u, v = climate.planetary_wind(lat_deg)
+    expected = np.concatenate([climate.OCEAN_WIND_SPEED_M_S, climate.OCEAN_WIND_SPEED_M_S])
+    assert np.allclose(np.hypot(u, v), expected)
+
+
+def _synthetic_continent(density):
+    """A smooth 3 km continent with a land-sea temperature contrast, on the climate grid at
+    `density`, defined in lat/lon so every density samples the same terrain."""
+    height, width = climate.grid_dimensions(density)
+    lat_deg, lon_deg, _ = climate._build_grid(height, width)
+    lat, lon = np.meshgrid(lat_deg, lon_deg, indexing="ij")
+    elevation = 3000.0 * np.exp(-(((lat - 20.0) / 25.0) ** 2 + ((lon - 30.0) / 40.0) ** 2)) - 500.0
+    insolation = climate.compute_insolation(lat_deg, axial_tilt_deg=23.4)
+    is_ocean = elevation < 0.0
+    temperature = np.where(
+        is_ocean,
+        climate.compute_ocean_temperature_baseline(insolation, height, width),
+        climate.compute_land_temperature(insolation, np.maximum(elevation, 0.0)),
+    )
+    u, v, _ = climate.compute_wind(lat_deg, elevation, temperature)
+    weight = np.cos(np.radians(lat))
+    speed = np.hypot(u, v)
+
+    def mean(mask):
+        return float((speed * weight)[mask].sum() / weight[mask].sum())
+
+    return mean(np.ones_like(is_ocean)), mean(~is_ocean)
+
+
+def test_wind_speed_is_independent_of_climate_density():
+    # Principle 4: the same terrain at a finer climate grid gives the same wind. The thermal
+    # term was a per-cell gradient before #526, so it halved with each doubling of density.
+    coarse_global, coarse_land = _synthetic_continent(1.0)
+    fine_global, fine_land = _synthetic_continent(2.0)
+    assert abs(fine_global / coarse_global - 1.0) < 0.05
+    assert abs(fine_land / coarse_land - 1.0) < 0.05
+
+
+def test_thermal_wind_term_is_per_km_of_ground_distance():
+    # A uniform 1 degC per 100 km eastward warming on a flat ocean adds
+    # GRADIENT_WIND_M_S_PER_C_PER_KM * 0.01 m/s of eastward wind at any grid size. Before
+    # #526 the gradient was per grid cell, so the same warming pushed half as hard at
+    # twice the density.
+    for density in (1.0, 2.0):
+        height, width = climate.grid_dimensions(density)
+        lat_deg = np.zeros(height)  # every row at the equator, so km per degree is uniform
+        km_per_col = 2.0 * np.pi * plates.PLANET_RADIUS_KM / width
+        ramp = np.repeat((np.arange(width) * km_per_col * 0.01)[None, :], height, axis=0)
+        flat = np.zeros((height, width))
+        warmed_u, warmed_v, _ = climate.compute_wind(lat_deg, flat, 15.0 + ramp)
+        still_u, still_v, _ = climate.compute_wind(lat_deg, flat, np.full((height, width), 15.0))
+        interior = slice(width // 4, 3 * width // 4)  # away from the wrap seam
+        assert np.allclose(warmed_u[:, interior] - still_u[:, interior], climate.GRADIENT_WIND_M_S_PER_C_PER_KM * 0.01)
+        assert np.allclose(warmed_v, still_v)
 
 
 def test_mountain_deflection_cancels_into_slope_component():
