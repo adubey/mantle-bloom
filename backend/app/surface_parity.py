@@ -62,6 +62,7 @@ from . import (
     merge_split,
     persistence,
     plates as plates_mod,
+    torque,
     world as world_mod,
 )
 from .hydroclimate import erosion, eustasy, geology, hydrology, stranded_basins, volcanism
@@ -243,7 +244,7 @@ def state_hash(world) -> str:
 # the outermost bucket so buckets never double count. `deform` and `topology`, together with
 # `gap_fill` and `overlap_tracking`, are the deformation/topology phases #228 calls out.
 _PHASES = (
-    (Plate, "shift", "shift"),
+    (torque, "shift_plates_quasistatic", "shift"),
     (PlateWithSparseQuadPatch, "deform", "deform"),
     (faults, "update_faults", "faults"),
     (merge_split, "apply_topology_changes", "topology"),

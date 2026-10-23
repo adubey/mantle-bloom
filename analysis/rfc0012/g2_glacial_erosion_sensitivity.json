@@ -1,0 +1,54 @@
+{
+  "experiment": "G2 matched glacial-erosion sensitivity replay",
+  "source_head": "2279d7e16c7debe839bd04ab18ce0a8f895f8654",
+  "source_state": "Uncommitted RFC 0012 G2 working tree; diagnostic overlay matched world.py, torque.py, and quasistatic.py, with per-node glacier-erosion tracing added to erosion.py.",
+  "node_density": 1.0,
+  "step_myr": 1.0,
+  "horizon_myr": 250,
+  "seeds": [326494039, 748935664, 580014012, 111065103],
+  "order": "Serial; within each seed, 1x then 2x.",
+  "intervention": {
+    "control_glacier_erosion_multiplier": 1.0,
+    "treatment_glacier_erosion_multiplier": 2.0,
+    "changes": "Glacial abrasion and glacier flattening.",
+    "held_constant": "G2 model state, ice accumulation/melt mass-balance rates, timestep, seed, and 200 Myr craton-formation rule.",
+    "note": "This is not a glacier mass-balance experiment."
+  },
+  "results": [
+    {
+      "seed": 326494039,
+      "eligible_host_at_190_myr_mkm2": [26.936, 26.236],
+      "applied_glacial_erosion_by_200_myr_mkm3": [8.468, 17.794],
+      "craton_formed_at_200_myr_mkm3": [737.437, 736.813],
+      "craton_formed_by_250_myr_mkm3": [791.249, 772.847]
+    },
+    {
+      "seed": 748935664,
+      "eligible_host_at_190_myr_mkm2": [11.307, 11.393],
+      "applied_glacial_erosion_by_200_myr_mkm3": [9.872, 11.412],
+      "craton_formed_at_200_myr_mkm3": [274.982, 266.669],
+      "craton_formed_by_250_myr_mkm3": [314.613, 284.951]
+    },
+    {
+      "seed": 580014012,
+      "eligible_host_at_190_myr_mkm2": [27.121, 28.251],
+      "applied_glacial_erosion_by_200_myr_mkm3": [54.031, 117.765],
+      "craton_formed_at_200_myr_mkm3": [644.214, 698.983],
+      "craton_formed_by_250_myr_mkm3": [702.626, 738.758]
+    },
+    {
+      "seed": 111065103,
+      "eligible_host_at_190_myr_mkm2": [32.702, 35.797],
+      "applied_glacial_erosion_by_200_myr_mkm3": [11.472, 20.654],
+      "craton_formed_at_200_myr_mkm3": [853.427, 927.677],
+      "craton_formed_by_250_myr_mkm3": [915.971, 994.309]
+    }
+  ],
+  "aggregate": {
+    "craton_formed_at_200_myr_mkm3": [2510.059, 2630.143],
+    "craton_formed_by_250_myr_mkm3": [2724.459, 2790.865],
+    "applied_glacial_erosion_by_200_myr_mkm3": [83.843, 167.625]
+  },
+  "ice_cap_caveat": "5 km ice-depth cap warnings occurred in the runs. Seed 580014012 had frequent multi-node cap and frozen-river clipping warnings; the 2x replay reported a single shed event of about 449,000 km3. Exact warning counts were not captured in the checkpoint JSONL.",
+  "raw_traces": "/private/tmp/g2-glacial-sensitivity/"
+}

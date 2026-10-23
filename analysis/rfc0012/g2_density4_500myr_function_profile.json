@@ -1,0 +1,47 @@
+{
+  "seed": 326494039,
+  "model": "G2",
+  "commit": "fa381dadafc174e82a5a740f6ae8723f10551a63",
+  "node_density": 4.0,
+  "step_myr": 2.0,
+  "advance_to_myr": 500.0,
+  "warmup_steps": 1,
+  "profile_steps": 3,
+  "profile_elapsed_myr": 508.0,
+  "nodes": 129305,
+  "plates": 43,
+  "python": "3.14.6",
+  "cprofile_wall_s_per_step": [9.740134541876614, 9.11716116592288, 9.16283195791766],
+  "median_cprofile_wall_s": 9.16283195791766,
+  "cprofile_cumulative_s_over_three_steps": {
+    "world.step_world": 28.020,
+    "apply_erosion": 7.803,
+    "update_faults": 5.660,
+    "compute_hydrology": 4.152,
+    "fill_gaps_by_growing_neighbours": 3.766,
+    "threading.join": 6.136,
+    "shift_plates_quasistatic": 1.988,
+    "gather_boundary_force_inputs": 1.552,
+    "classify_boundary_nodes": 0.712,
+    "solve_quasistatic_contacts": 0.008
+  },
+  "interpretation": {
+    "coupled_motion_assembly_s_per_step": 0.663,
+    "coupled_contact_solver_s_per_step": 0.003,
+    "runtime_gate_status": "unconfirmed: cProfile timing is not directly comparable to the earlier phase-tapped five-step sample; repeat both arms with an unprofiled harness",
+    "overlap_note": "Cumulative call times include nested calls and thread waits, so phase values must not be summed."
+  },
+  "matched_baseline_comparison": {
+    "baseline_median_cprofile_wall_s": 8.633792791049927,
+    "g2_median_cprofile_wall_s": 9.16283195791766,
+    "median_increase_pct": 6.1275,
+    "within_10pct_target": true,
+    "status": "Provisional: this matched three-step cProfile pair is within target, but conflicts with the earlier phase-tapped five-step sample."
+  },
+  "reports": {
+    "pstats": "/private/tmp/rfc0012-density4-function-profile/g2_density4_500myr.pstats",
+    "cumulative": "/private/tmp/rfc0012-density4-function-profile/cumulative.txt",
+    "tottime": "/private/tmp/rfc0012-density4-function-profile/tottime.txt",
+    "run": "/private/tmp/rfc0012-density4-function-profile/run.json"
+  }
+}

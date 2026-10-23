@@ -62,8 +62,9 @@ Browser then fetches, for whichever projection/map view/resolution/rotation is s
 
 Time-stepping:
   POST /world/step  { years }
-  → world.step_world(world, years): every plate refits its Euler pole and rotates
-    (`Plate.shift`), then every plate reconciles its actual footprint against the
+  → world.step_world(world, years): `torque.shift_plates_quasistatic` assembles plate loads
+    from one pre-step snapshot, solves all angular velocities together, then rotates every
+    plate; after that every plate reconciles its actual footprint against the
     sphere minus every other live plate's own territory (`Plate.deform` -- quad_tectonics.py --
     in a freshly randomized order each turn) -- collision/subduction uplift or trench elevation where a plate's
     rotated territory now overlaps a neighbor's, rift fill (or, occasionally, a fresh
@@ -436,15 +437,15 @@ lithosphere_plate.py
                    reference Hc/Hm, composite relief)
                    and the per-node column physics -- boundary classification context,
                    elevation/Hc/Hm deltas, decompression melting and rift volcanism
-initial_terrain.py   cratons-first generation uses read-only first-step torque predictions for
+initial_terrain.py   cratons-first generation uses read-only coupled first-step motion rates for
                      narrow, offset, rotated relief on straight land-land collision sections,
                      then seeds cold-range ice and curved river channels from one initial
                      climate/hydrology routing pass
 synthetic_relief.py  optional cratons-first relief from a synthetic tectonic history (#218):
                      sutures between cratons, leading-edge cordilleras, coastlines from the
                      continental-crust edge, interior terrain types, all backed by Hc
-torque.py            slab-pull/ridge-push torque integration and read-only plate-motion
-                     prediction (`predict_plate_motion`) shared by generation and `shift()`
+torque.py            slab-pull/ridge-push load assembly, coupled quasi-static solve
+                     (`solve_plates_quasistatic`), and simultaneous plate rotation
 thin_shell.py        offline thin-shell membrane equilibrium diagnostic that transfers
                      `torque.PerNodeForceField` loads to incremental extensional resultants
                      and compares them with integrated normal-fault capacity for rift analysis

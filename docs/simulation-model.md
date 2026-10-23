@@ -38,7 +38,7 @@ Use these Markdown links to jump directly to detailed sections on the topic page
 - [Cratons-first layout (continent_layout.py, plate_partition.py)](simulation-model/foundations.md#cratons-first-layout-continent_layoutpy-plate_partitionpy)
 - [Human-made worlds (sketch-driven generation) (worldsketch.py)](simulation-model/foundations.md#human-made-worlds-sketch-driven-generation-worldsketchpy)
 - [Mantle flow (mantle.py)](simulation-model/foundations.md#mantle-flow-mantlepy)
-- [Plate motion: shift and deform (plates.py's Plate.shift/Plate.deform)](simulation-model/tectonics.md#boundary-evolution)
+- [Plate motion and deformation (torque.py's coupled solve and Plate.deform)](simulation-model/tectonics.md#boundary-evolution)
 - [Quad-surface deformation (quad_tectonics.py)](simulation-model/tectonics.md#quad-deformation)
 - [Orogenic relief before delamination (orogeny.py)](simulation-model/tectonics.md#orogenic-relief)
 - [Merge and split (merge_split.py)](simulation-model/tectonics.md#merge-and-split)

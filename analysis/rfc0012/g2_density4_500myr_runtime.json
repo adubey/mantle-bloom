@@ -1,0 +1,57 @@
+{
+  "question": "Does G2's late-world density-4 median total step time stay within 10% of matched baseline?",
+  "seed": 326494039,
+  "node_density": 4.0,
+  "step_myr": 2.0,
+  "advance_to_myr": 500.0,
+  "warmup_steps": 1,
+  "profile_steps": 5,
+  "profile_elapsed_myr": [502.0, 512.0],
+  "python": "3.14.6",
+  "baseline_commit": "2279d7e16c7debe839bd04ab18ce0a8f895f8654",
+  "g2_commit": "fa381dadafc174e82a5a740f6ae8723f10551a63",
+  "command_template": "MB_SOURCE_ROOT=<checkout> NUMBA_CACHE_DIR=/private/tmp/rfc0012-numba-cache <checkout>/backend/.venv/bin/python /private/tmp/rfc0012_density4_late_profile.py 326494039 500",
+  "baseline": {
+    "approx_advance_wall_s_to_500myr": 1958.0,
+    "nodes": 134533,
+    "plates": 41,
+    "step_s": [10.01685474999249, 9.00806075008586, 8.43196608312428, 7.886788749834523, 9.904890124918893],
+    "median_step_s": 9.00806075008586,
+    "phase_s_per_step": {
+      "gather": 0.5600362153258175,
+      "classify": 0.2537195329554379,
+      "forces": 0.10419722199440003,
+      "solve": 0.001254042610526085,
+      "rotate": 0.0036723829340189694,
+      "shift_total": 0.5288461679127068,
+      "deform_total": 1.462879284285009,
+      "topology": 0.11240816698409617
+    },
+    "max_rss_mib": 1407.46875
+  },
+  "g2": {
+    "approx_advance_wall_s_to_500myr": 2184.0,
+    "nodes": 129371,
+    "plates": 43,
+    "step_s": [18.475751959020272, 17.741386582842097, 16.090521374950185, 16.71325304196216, 17.544604709139094],
+    "median_step_s": 17.544604709139094,
+    "phase_s_per_step": {
+      "gather": 2.007718117767945,
+      "classify": 0.4791024588048458,
+      "forces": 0.18195776394568383,
+      "rotate": 0.007971399603411556,
+      "deform_total": 2.5650997173506767,
+      "topology": 0.18927642521448435
+    },
+    "max_rss_mib": 1245.9375
+  },
+  "comparison": {
+    "median_step_increase_pct": 94.758,
+    "node_count_change_pct": -3.84,
+    "runtime_gate_limit_pct": 10.0,
+    "runtime_gate_status": "matched cProfile pair is +6.1% (within 10%), but remains provisional due to conflict with the earlier phase-tapped five-step sample",
+    "full_density4_replays_serial": true,
+    "phase_tap_limit": "Current taps do not separately time shift_plates_quasistatic or solve_quasistatic_contacts."
+  },
+  "full_world_states": "Not retained; the temporary harness was /private/tmp/rfc0012_density4_late_profile.py."
+}

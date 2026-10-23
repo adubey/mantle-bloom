@@ -1,0 +1,40 @@
+{
+  "experiment": "G2 craton formation timer sensitivity",
+  "g2_worktree_head": "2279d7e16c7debe839bd04ab18ce0a8f895f8654",
+  "seeds": [326494039, 748935664, 580014012, 111065103],
+  "node_density": 1.0,
+  "step_myr": 1.0,
+  "steps": 400,
+  "horizon_myr": 400,
+  "formation_thresholds_myr": [100, 200, 300],
+  "changed_parameter": "CRATON_FORMATION_MYR",
+  "unchanged_gate": "genuine continental host, crustal thickness <= 50 km, and >= 500 km inside plate edge",
+  "method": "Runtime override of cratons.CRATON_FORMATION_MYR; same G2 source and initial world for each seed; one process at a time.",
+  "units": {
+    "formed_at_threshold_mkm3": "million km^3",
+    "formed_cumulative_400_mkm3": "million km^3",
+    "live_craton_400_mkm3": "million km^3",
+    "eligible_uncratonized_400_mkm2": "million km^2"
+  },
+  "results": [
+    {"seed": 326494039, "threshold_myr": 100, "formed_at_threshold_mkm3": 936.4415, "formed_cumulative_400_mkm3": 1176.1128, "live_craton_400_mkm3": 3768.4533, "eligible_uncratonized_400_mkm2": 1.0910},
+    {"seed": 326494039, "threshold_myr": 200, "formed_at_threshold_mkm3": 737.4366, "formed_cumulative_400_mkm3": 886.2312, "live_craton_400_mkm3": 3503.9796, "eligible_uncratonized_400_mkm2": 1.6194},
+    {"seed": 326494039, "threshold_myr": 300, "formed_at_threshold_mkm3": 619.7096, "formed_cumulative_400_mkm3": 662.3879, "live_craton_400_mkm3": 3288.6291, "eligible_uncratonized_400_mkm2": 3.4828},
+    {"seed": 748935664, "threshold_myr": 100, "formed_at_threshold_mkm3": 346.4865, "formed_cumulative_400_mkm3": 471.9793, "live_craton_400_mkm3": 2003.8021, "eligible_uncratonized_400_mkm2": 1.9163},
+    {"seed": 748935664, "threshold_myr": 200, "formed_at_threshold_mkm3": 274.9821, "formed_cumulative_400_mkm3": 362.2191, "live_craton_400_mkm3": 1899.9753, "eligible_uncratonized_400_mkm2": 2.9727},
+    {"seed": 748935664, "threshold_myr": 300, "formed_at_threshold_mkm3": 241.7068, "formed_cumulative_400_mkm3": 279.5684, "live_craton_400_mkm3": 1828.0565, "eligible_uncratonized_400_mkm2": 6.1648},
+    {"seed": 580014012, "threshold_myr": 100, "formed_at_threshold_mkm3": 908.5881, "formed_cumulative_400_mkm3": 1240.8598, "live_craton_400_mkm3": 4348.3311, "eligible_uncratonized_400_mkm2": 2.5687},
+    {"seed": 580014012, "threshold_myr": 200, "formed_at_threshold_mkm3": 644.2136, "formed_cumulative_400_mkm3": 854.1397, "live_craton_400_mkm3": 3967.1334, "eligible_uncratonized_400_mkm2": 5.8493},
+    {"seed": 580014012, "threshold_myr": 300, "formed_at_threshold_mkm3": 526.3478, "formed_cumulative_400_mkm3": 591.8509, "live_craton_400_mkm3": 3722.1198, "eligible_uncratonized_400_mkm2": 7.3693},
+    {"seed": 111065103, "threshold_myr": 100, "formed_at_threshold_mkm3": 1132.6943, "formed_cumulative_400_mkm3": 1675.2745, "live_craton_400_mkm3": 4741.6888, "eligible_uncratonized_400_mkm2": 4.6735},
+    {"seed": 111065103, "threshold_myr": 200, "formed_at_threshold_mkm3": 853.4270, "formed_cumulative_400_mkm3": 1130.8910, "live_craton_400_mkm3": 4218.9766, "eligible_uncratonized_400_mkm2": 9.0642},
+    {"seed": 111065103, "threshold_myr": 300, "formed_at_threshold_mkm3": 708.7761, "formed_cumulative_400_mkm3": 796.4548, "live_craton_400_mkm3": 3902.5694, "eligible_uncratonized_400_mkm2": 12.8233}
+  ],
+  "aggregate_formed_cumulative_400_mkm3": {"100": 4564.2263, "200": 3233.4810, "300": 2330.2620},
+  "aggregate_live_craton_400_mkm3": {"100": 14862.2754, "200": 13590.0650, "300": 12741.3749},
+  "aggregate_eligible_uncratonized_400_mkm2": {"100": 10.2495, "200": 19.5056, "300": 29.8403},
+  "warnings": [
+    "Seed 580014012 repeatedly reached the 5 km glacier-depth cap, with hundreds to over 1,000 affected nodes on some steps and reported ice shedding/clipping."
+  ],
+  "raw_outputs": "/private/tmp/g2-formation-gate-sensitivity/"
+}

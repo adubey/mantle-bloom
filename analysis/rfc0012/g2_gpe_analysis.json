@@ -1,0 +1,97 @@
+{
+  "method": {
+    "g_m_s2": 9.81,
+    "column_integral": "GPE = integral rho*g*(z - common basal datum) dz, z positive upward",
+    "units": "J/m^2 = N/m",
+    "ridge_segment_length_km": 1000,
+    "ridge_note": "uniform thermal density-deficit layer plus the RFC relief term; first-order bound, not a full plate-cooling solution",
+    "collision_note": "20-km upper crust, remaining lower crust, mantle to 125-km common compensation depth; Tibet elevation solved for Airy equal-column-mass balance"
+  },
+  "ridge_force_per_length_benchmark_N_per_m": 2500000000000.0,
+  "himalaya_tibet_force_per_length_benchmark_N_per_m": [
+    5000000000000.0,
+    6000000000000.0
+  ],
+  "ridge_cases": [
+    {
+      "case": "low thermal anomaly",
+      "thermal_density_deficit_kg_m3": 35,
+      "thermal_anomaly_depth_km": 90,
+      "ridge_to_old_flank_depth_difference_km": 3.32,
+      "thermal_column_gpe_N_per_m": 1390567500000.0,
+      "bathymetry_component_gpe_N_per_m": 124349205600.0,
+      "delta_gpe_N_per_m": 1514916705600.0,
+      "stated_ridge_segment_length_km": 1000.0,
+      "net_force_on_segment_N": 1.5149167056e+18
+    },
+    {
+      "case": "central thermal anomaly",
+      "thermal_density_deficit_kg_m3": 50,
+      "thermal_anomaly_depth_km": 105,
+      "ridge_to_old_flank_depth_difference_km": 3.32,
+      "thermal_column_gpe_N_per_m": 2703881250000.0,
+      "bathymetry_component_gpe_N_per_m": 124349205600.0,
+      "delta_gpe_N_per_m": 2828230455600.0,
+      "stated_ridge_segment_length_km": 1000.0,
+      "net_force_on_segment_N": 2.8282304556e+18
+    },
+    {
+      "case": "high thermal anomaly",
+      "thermal_density_deficit_kg_m3": 65,
+      "thermal_anomaly_depth_km": 120,
+      "ridge_to_old_flank_depth_difference_km": 3.32,
+      "thermal_column_gpe_N_per_m": 4591080000000.0,
+      "bathymetry_component_gpe_N_per_m": 124349205600.0,
+      "delta_gpe_N_per_m": 4715429205600.0,
+      "stated_ridge_segment_length_km": 1000.0,
+      "net_force_on_segment_N": 4.7154292056e+18
+    }
+  ],
+  "collision_cases": [
+    {
+      "case": "low-density, 60 km Tibet crust",
+      "upper_crust_density_kg_m3": 2700,
+      "lower_crust_density_kg_m3": 2850,
+      "mantle_density_kg_m3": 3250,
+      "india_surface_elevation_km": 0.5,
+      "india_crust_thickness_km": 35.0,
+      "tibet_surface_elevation_km_airy_balanced": 3.576923076923077,
+      "tibet_crust_thickness_km": 60.0,
+      "compensation_depth_km_below_sea_level": 125.0,
+      "column_mass_mismatch_fraction": 0.0,
+      "india_gpe_N_per_m": 232846787812500.0,
+      "tibet_gpe_N_per_m": 236842476274038.47,
+      "delta_gpe_N_per_m": 3995688461538.4688
+    },
+    {
+      "case": "central-density, 65 km Tibet crust",
+      "upper_crust_density_kg_m3": 2750,
+      "lower_crust_density_kg_m3": 2900,
+      "mantle_density_kg_m3": 3300,
+      "india_surface_elevation_km": 0.5,
+      "india_crust_thickness_km": 35.0,
+      "tibet_surface_elevation_km_airy_balanced": 4.136363636363636,
+      "tibet_crust_thickness_km": 65.0,
+      "compensation_depth_km_below_sea_level": 125.0,
+      "column_mass_mismatch_fraction": 0.0,
+      "india_gpe_N_per_m": 236709536625000.0,
+      "tibet_gpe_N_per_m": 241775063897727.25,
+      "delta_gpe_N_per_m": 5065527272727.25
+    },
+    {
+      "case": "high-density, 70 km Tibet crust",
+      "upper_crust_density_kg_m3": 2800,
+      "lower_crust_density_kg_m3": 3000,
+      "mantle_density_kg_m3": 3350,
+      "india_surface_elevation_km": 0.5,
+      "india_crust_thickness_km": 35.0,
+      "tibet_surface_elevation_km_airy_balanced": 4.156716417910448,
+      "tibet_crust_thickness_km": 70.0,
+      "compensation_depth_km_below_sea_level": 125.0,
+      "column_mass_mismatch_fraction": 0.0,
+      "india_gpe_N_per_m": 241293320437500.0,
+      "tibet_gpe_N_per_m": 246799732004664.16,
+      "delta_gpe_N_per_m": 5506411567164.156
+    }
+  ]
+}
