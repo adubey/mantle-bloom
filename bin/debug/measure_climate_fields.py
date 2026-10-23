@@ -6,8 +6,8 @@ climate snapshot of the world (`climate.compute_climate` at the world's own clim
 records, area-weighted by cos(latitude):
 
 - mean sea-level-equivalent air temperature over land and ocean (C);
-- mean humidity over land and ocean, in g/kg. A `main` backend's unitless index is converted at
-  its reference point (1.0 == air over 20 C open water == 11.56 g/kg), so the two arms compare
+- mean humidity over land and ocean, in g/kg. A `main` backend's unitless index is converted by
+  the factor its constants were (`climate.HUMIDITY_INDEX_G_KG`, 12.3), so the two arms compare
   directly; the raw index is kept as `humidity_index` too;
 - mean precipitation over land and ocean (mm/yr) and land's share of all precipitation (%);
 - the same temperature, humidity and precipitation in 15-degree latitude bands, both
@@ -30,8 +30,9 @@ from __future__ import annotations
 import numpy as np
 from replay_lib import load_replay, parse_replay_args, run_replay
 
-# The old unitless humidity index's 1.0, in g/kg (air over 20 C open water, #522).
-LEGACY_HUMIDITY_INDEX_G_KG = 11.56
+# The old unitless humidity index's 1.0, in g/kg -- climate.HUMIDITY_INDEX_G_KG, repeated here
+# because an `origin/main` backend from before #522 doesn't define it.
+LEGACY_HUMIDITY_INDEX_G_KG = 12.3
 BAND_EDGES_DEG = np.arange(0.0, 90.1, 15.0)
 
 

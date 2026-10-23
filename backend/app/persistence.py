@@ -136,13 +136,14 @@ def _migrate_climate_humidity_units(world: World) -> None:
     """Convert a saved `climate_cache` from the unitless humidity index to g/kg (#522). The
     cache is kept rather than dropped because the next step's transpiration source reads its
     precipitation. Its humidity is only rendered until that step recomputes it, so the index
-    is converted at its reference point (1.0 == air over 20 C open water), not re-derived."""
+    is scaled by the same factor its constants were (`climate.HUMIDITY_INDEX_G_KG`), not
+    re-derived."""
     cache = world.climate_cache
     if cache is None or "humidity" not in vars(cache):
         return
     from .hydroclimate import climate
 
-    cache.humidity_g_kg = vars(cache).pop("humidity") * float(climate.open_water_humidity_g_kg(20.0))
+    cache.humidity_g_kg = vars(cache).pop("humidity") * climate.HUMIDITY_INDEX_G_KG
 
 
 def _migrate_plate_ages(world: World) -> None:

@@ -130,9 +130,8 @@ RAIN_EROSION_COEFFICIENT = 6000.0
 # grid-resolution-dependent slope convention.
 WEATHERING_COEFFICIENT = 3.0
 # Near-surface specific humidity at which the weathering-humidity factor saturates to 1.0:
-# air over 20 C open water (see climate.py's MARINE_RELATIVE_HUMIDITY), the old unitless 1.0
-# converted to g/kg (#522).
-HUMIDITY_REFERENCE_G_KG = 11.56
+# the old unitless index's 1.0, converted to g/kg (#522).
+HUMIDITY_REFERENCE_G_KG = climate.HUMIDITY_INDEX_G_KG
 # Unlike rain/river erosion (both already multiply by `slope`), weathering had no relief
 # dependence at all until this was added -- confirmed as the main reason flat, low-lying
 # coastal land was drowning within a step or two of being created: wind/humidity-driven

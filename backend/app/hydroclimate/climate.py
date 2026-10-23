@@ -196,6 +196,9 @@ class ClimateFields:
     biome_ids: np.ndarray  # (H, W) int, index into biomes.BIOME_NAMES/BIOME_COLORS
     swell_rows: np.ndarray  # (K,) int, sampled convergence points
     swell_cols: np.ndarray  # (K,) int
+    # (H,) annual-mean top-of-atmosphere insolation, W/m² (#522) -- diagnostic, not read by
+    # temperature. A class-level default so a climate_cache pickled before it existed loads.
+    insolation_w_m2: np.ndarray | None = None
 
 
 # ---------------------------------------------------------------------------------------
@@ -370,15 +373,31 @@ def weighted_sample_without_replacement(rng: np.random.Generator, weights: np.nd
 # Insolation
 # ---------------------------------------------------------------------------------------
 
-# Top-of-atmosphere insolation in W/m² (#522). Earth's total solar irradiance is ~1361 W/m²
-# (Kopp & Lean 2011); `solar_multiplier` (World.solar_multiplier, default 1.0 -- the UI's
-# "Controls" window, see main.py's /world/controls) scales it live. An earlier normalised
-# `SUNLIGHT` was once dimmed to 0.85 to pull the displayed median temperature toward a
-# target, which also crushed the equator-to-pole land profile toward a glacial one; the
-# temperature mapping below is calibrated directly against a realistic profile instead, and
-# residual over-wetness is a knob on the precipitation side (PRECIP_MM_PER_G_KG).
+# Temperature is driven by a normalised heating index, not by W/m² (#522). The index is the
+# annual mean of the noon zenith-angle cosine -- not a physical flux -- and the land/ocean
+# temperature mappings below are calibrated against it. It stays the driver because a W/m²
+# mapping calibrated at Earth's tilt misbehaves at other tilts: real annual insolation alone
+# can't produce Earth's polar cold, which comes from ice albedo and longwave loss, so any
+# T(W/m²) lookup either loses the poles at tilt 23.5 or swings them by many degrees per degree
+# of tilt (#522's review). `compute_insolation_w_m2` is the physical flux, a readable field
+# (`ClimateFields.insolation_w_m2`) for an energy-balance model to drive temperature from.
+#
+# Full sunlight. An earlier value of 0.85 dimmed the sun to pull the *displayed median*
+# temperature toward a target (and humidity/precipitation down with it, since the evaporation
+# ceiling is ocean-temperature-driven -- see compute_humidity). That coupled two things that
+# shouldn't be coupled: it also crushed the equator-to-pole *land* temperature profile down to
+# a near-glacial one (equatorial land ~18C, mid-latitude land already below freezing). The
+# insolation->temperature mapping (LAND_TEMP_MIN_C/RANGE, WATER_TEMP_MIN_C/RANGE) is now
+# calibrated directly against a realistic latitudinal profile instead, at full sun, and any
+# residual over-wetness is a knob on the precipitation side (PRECIP_HUMIDITY_COEFFICIENT_MM).
+# `solar_multiplier` (World.solar_multiplier, default 1.0 -- the UI's "Controls" window, see
+# main.py's /world/controls) still scales this live.
+SUNLIGHT = 1.0
+INSOLATION_FLOOR = 0.03
+AXIAL_TILT_DECLINATION_SAMPLES = 24
+# Earth's total solar irradiance (Kopp & Lean 2011), W/m², scaled by `solar_multiplier`.
 SOLAR_CONSTANT_W_M2 = 1361.0
-# Solar-longitude samples over one (circular) orbit for the annual mean. 48 is within
+# Solar-longitude samples over one (circular) orbit for the annual-mean flux. 48 is within
 # 0.2 W/m² of a 360-sample mean at every latitude for Earth's tilt.
 ANNUAL_INSOLATION_SAMPLES = 48
 
@@ -417,68 +436,60 @@ def ice_age_cooling_c(world: "World") -> float:
     return ICE_AGE_MAX_COOLING_C * ice_age_glacial_intensity(world)
 
 
-def compute_insolation(lat_deg: np.ndarray, axial_tilt_deg: float, solar_multiplier: float = 1.0) -> np.ndarray:
-    """Annual-mean top-of-atmosphere insolation in W/m², (H,) broadcastable: the daily-mean
-    flux `S/pi * (h0 sin(lat) sin(dec) + cos(lat) cos(dec) sin(h0))`, with `h0` the sunset
-    hour angle (polar day and night handled by clipping `cos h0`), averaged over a circular
-    orbit's declinations `asin(sin(tilt) sin(solar longitude))`. This model has no calendar
-    (one step spans thousands to millions of years), so only the annual mean is used. With
-    no tilt this is `S/pi * cos(lat)`: ~433 W/m² at the equator and 0 at the poles; at
-    Earth's tilt it runs ~415 at the equator down to ~172 at the poles."""
-    irradiance = SOLAR_CONSTANT_W_M2 * solar_multiplier
-    lat_r = np.radians(np.asarray(lat_deg, dtype=float))[:, None]
+def compute_insolation_w_m2(lat_deg: np.ndarray, axial_tilt_deg: float, solar_multiplier: float = 1.0) -> np.ndarray:
+    """Annual-mean top-of-atmosphere insolation in W/m², the shape of `lat_deg`: the
+    daily-mean flux `S/pi * (h0 sin(lat) sin(dec) + cos(lat) cos(dec) sin(h0))`, with `h0` the
+    sunset hour angle (polar day and night handled by clipping `cos h0`), averaged over a
+    circular orbit's declinations `asin(sin(tilt) sin(solar longitude))`. With no tilt this is
+    `S/pi * cos(lat)`: ~433 W/m² at the equator and 0 at the poles; at Earth's tilt it runs
+    ~415 at the equator down to ~172 at the poles. Diagnostic only -- temperature reads
+    `compute_heating_index` (see SUNLIGHT's comment)."""
+    lat_r = np.radians(np.asarray(lat_deg, dtype=float))[..., None]
     solar_longitude = np.linspace(0.0, 2.0 * np.pi, ANNUAL_INSOLATION_SAMPLES, endpoint=False)
-    declination = np.arcsin(np.sin(np.radians(axial_tilt_deg)) * np.sin(solar_longitude))[None, :]
+    declination = np.arcsin(np.sin(np.radians(axial_tilt_deg)) * np.sin(solar_longitude))
     sunset_hour_angle = np.arccos(np.clip(-np.tan(lat_r) * np.tan(declination), -1.0, 1.0))
     daily = (
         sunset_hour_angle * np.sin(lat_r) * np.sin(declination)
         + np.cos(lat_r) * np.cos(declination) * np.sin(sunset_hour_angle)
     )
-    return np.clip(daily.mean(axis=1), 0.0, None) * (irradiance / np.pi)
+    return np.clip(daily.mean(axis=-1), 0.0, None) * (SOLAR_CONSTANT_W_M2 * solar_multiplier / np.pi)
+
+
+def compute_heating_index(lat_deg: np.ndarray, axial_tilt_deg: float, solar_multiplier: float = 1.0) -> np.ndarray:
+    """Annual-mean heating index (normalised, ~1 at the equator), (H,) broadcastable -- the
+    temperature driver (see SUNLIGHT's comment; the physical flux is
+    `compute_insolation_w_m2`). Flat zenith-angle cosine law with no tilt; with tilt, the mean of that same law (clipped at 0, sun below horizon) over
+    `AXIAL_TILT_DECLINATION_SAMPLES` declinations swept between -tilt and +tilt -- the
+    sub-solar latitude's annual sweep, not an actual season cycle (this model has no
+    calendar; one step spans thousands to millions of years)."""
+    sunlight = SUNLIGHT * solar_multiplier
+    lat_r = np.radians(lat_deg)
+    if axial_tilt_deg <= 1e-6:
+        return np.clip(np.cos(lat_r), INSOLATION_FLOOR, 1.0) * sunlight
+    declinations = np.radians(np.linspace(-axial_tilt_deg, axial_tilt_deg, AXIAL_TILT_DECLINATION_SAMPLES))
+    cos_zenith = np.cos(lat_r[:, None] - declinations[None, :])
+    return np.clip(np.clip(cos_zenith, 0.0, None).mean(axis=1), INSOLATION_FLOOR, 1.0) * sunlight
 
 
 # ---------------------------------------------------------------------------------------
 # Temperature: land (solar heating + lapse rate), ocean baseline, air (moderated)
 # ---------------------------------------------------------------------------------------
 
-# insolation -> temperature (#522). Calibrated against a realistic annual-mean latitudinal
-# profile at Earth's tilt and full sun: land ~25C / ~10C / ~-1C / ~-22C at lat 0 / 45 / 60 /
-# 90, ocean ~27C / ~19C / ~1C over the same span (a narrower range for water's far greater
-# thermal inertia). These are the profile the earlier normalised-insolation linear fit gave.
-# A straight line in W/m² can't reproduce it: polar insolation flattens at ~172 W/m² while
-# polar temperature keeps falling, the cold the real planet gets from ice albedo and polar
-# longwave loss, which this model has no energy balance for. So temperature is interpolated
-# through the calibration points by their insolation, and extrapolated linearly (with the
-# table's end-to-end slope) for other tilts and solar multipliers. `_temperature_from_
-# insolation` is the one place an energy-balance model (albedo, longwave) would replace.
-TEMPERATURE_CALIBRATION_TILT_DEG = 23.5
-TEMPERATURE_CALIBRATION_LAT_DEG = np.arange(0.0, 90.1, 7.5)
-LAND_CALIBRATION_TEMP_C = np.array([25.3, 24.9, 23.5, 21.3, 18.2, 14.3, 9.7, 4.5, -1.3, -7.5, -13.3, -18.2, -22.2])
-OCEAN_CALIBRATION_TEMP_C = np.array([27.1, 26.8, 26.1, 24.9, 23.2, 21.1, 18.6, 15.7, 12.5, 9.2, 6.0, 3.3, 1.2])
-# Seawater can't cool below its freezing point in bulk; an extrapolation to low insolation
-# (no tilt at the poles, a dim sun) stops here.
-SEAWATER_FREEZING_C = -2.0
+# insolation -> temperature. Calibrated at full sun (SUNLIGHT = 1.0) against a realistic
+# annual-mean latitudinal profile: with axial tilt 23.5 the tilt-averaged insolation runs
+# ~0.97 at the equator down to ~0.11 at the poles, so `MIN + RANGE * insol` gives land
+# ~25C / ~10C / ~-1C / ~-22C at lat 0 / 45 / 60 / 90 and ocean ~27C / ~19C / ~1C over the
+# same span (narrower range + a freezing floor for water's far greater thermal inertia). The
+# old -60/95 land mapping put the equator at ~18C and everything poleward of ~40 degrees
+# below freezing -- see SUNLIGHT's comment.
+LAND_TEMP_MIN_C = -28.0
+LAND_TEMP_RANGE_C = 55.0
 LAPSE_RATE_C_PER_KM = 6.5
+WATER_TEMP_MIN_C = -2.0
+WATER_TEMP_RANGE_C = 30.0
 # How far (degrees, great-circle) the ocean's moderating influence reaches onto land --
 # an e-folding distance, not a hard cutoff.
 MARITIME_INFLUENCE_DIST_DEG = 15.0
-# Insolation at each calibration latitude, falling monotonically from the equator, so it
-# can serve as np.interp's x after reversing.
-_CALIBRATION_INSOLATION_W_M2 = compute_insolation(TEMPERATURE_CALIBRATION_LAT_DEG, TEMPERATURE_CALIBRATION_TILT_DEG)
-
-
-def _temperature_from_insolation(insolation_w_m2: np.ndarray, calibration_temp_c: np.ndarray) -> np.ndarray:
-    """Sea-level annual-mean temperature (C) for an annual-mean insolation (W/m²):
-    piecewise-linear through the calibration points, linear beyond them at the table's
-    end-to-end slope. See TEMPERATURE_CALIBRATION_LAT_DEG."""
-    q = _CALIBRATION_INSOLATION_W_M2[::-1]
-    t = calibration_temp_c[::-1]
-    slope = (t[-1] - t[0]) / (q[-1] - q[0])
-    insolation = np.asarray(insolation_w_m2, dtype=float)
-    inside = np.interp(insolation, q, t)
-    below = t[0] + slope * (insolation - q[0])
-    above = t[-1] + slope * (insolation - q[-1])
-    return np.where(insolation < q[0], below, np.where(insolation > q[-1], above, inside))
 
 
 def compute_land_temperature(insolation_row: np.ndarray, elevation_m: np.ndarray) -> np.ndarray:
@@ -486,7 +497,7 @@ def compute_land_temperature(insolation_row: np.ndarray, elevation_m: np.ndarray
     cooling -- kept as part of the *same* base-heating formula rather than a separate causal
     channel (mountains being cold is a consequence of solar heating at altitude, not an
     extra input)."""
-    base = _temperature_from_insolation(insolation_row, LAND_CALIBRATION_TEMP_C)[:, None]
+    base = LAND_TEMP_MIN_C + LAND_TEMP_RANGE_C * insolation_row[:, None]
     altitude_cooling = LAPSE_RATE_C_PER_KM * np.clip(elevation_m, 0.0, None) / 1000.0
     return base - altitude_cooling
 
@@ -494,7 +505,7 @@ def compute_land_temperature(insolation_row: np.ndarray, elevation_m: np.ndarray
 def compute_ocean_temperature_baseline(insolation_row: np.ndarray, height: int, width: int) -> np.ndarray:
     """Pre-advection zonal baseline -- narrower range and a freezing floor relative to land,
     since water has far more thermal inertia."""
-    base = np.maximum(_temperature_from_insolation(insolation_row, OCEAN_CALIBRATION_TEMP_C), SEAWATER_FREEZING_C)[:, None]
+    base = WATER_TEMP_MIN_C + WATER_TEMP_RANGE_C * insolation_row[:, None]
     return np.repeat(base, width, axis=1) if base.shape[1] == 1 else base
 
 
@@ -967,20 +978,26 @@ def advect_ocean_temperature(baseline_c: np.ndarray, current_u: np.ndarray, curr
 
 # Humidity is near-surface specific humidity in g/kg (#522). Over open water it's a fixed
 # marine relative humidity times the saturation value at the water's temperature
-# (`open_water_humidity_g_kg`): ~3 g/kg over 0 C water, ~12 at 20 C, ~16 at 25 C, the range
+# (`open_water_humidity_g_kg`): ~3 g/kg over 0 C water, ~12 at 20 C, ~19 at 28 C, the range
 # real marine boundary-layer air spans (about 80% relative humidity, Dai 2006). It replaced
-# a unitless "evaporation ceiling", `clip(T / 20 C, 0.3, 1.4)`; the constants below that were
-# in those units were converted at its reference point, 1.0 == 20 C water == 11.56 g/kg, so
-# precipitation near 20 C water is unchanged and only the curve's shape moved. A later
-# evaporation model (#358 items 10-11) would replace `open_water_humidity_g_kg`.
+# a unitless "evaporation ceiling", `clip(T / 20 C, 0.3, 1.4)`. A later evaporation model
+# (#358 items 10-11) would replace `open_water_humidity_g_kg`.
 SEA_LEVEL_PRESSURE_HPA = 1013.25
 MARINE_RELATIVE_HUMIDITY = 0.8
+# The old index's 1.0 in g/kg: every constant below that was in index units is converted by
+# this factor, and so is an old save's cached humidity (persistence.py). Frozen as a literal so
+# retuning MARINE_RELATIVE_HUMIDITY doesn't silently rescale them. Because the precipitation
+# coefficient and the other index constants all scale by it together, it only sets where the
+# new Clausius-Clapeyron curve crosses the old linear one. 12.3 g/kg is open water at ~21 C,
+# picked so mean land and ocean precipitation stay within ~1.5% on the #522 A/B saves
+# (analysis/issue522).
+HUMIDITY_INDEX_G_KG = 12.3
 # Air can only hold so much water: open-water humidity and the land sweeps both stop here.
 # It's also the guard against the transpiration feedback running away along a continent-
-# spanning forest belt (see the land sweeps). 16.2 g/kg is the old ceiling (1.4) converted,
-# which open water reaches at ~25 C; real tropical marine air runs ~18-20 g/kg, but lifting
-# the cap would wet the tropics, and #522 keeps the precipitation map where it was.
-MAX_HUMIDITY_G_KG = 16.2
+# spanning forest belt (see the land sweeps). 18.8 g/kg is open water at 28 C, where the old
+# ceiling (1.4) also stopped, so the tropical gradient below 28 C survives; real tropical
+# marine air runs ~18-20 g/kg.
+MAX_HUMIDITY_G_KG = 18.8
 # An irreducible background specific-humidity everywhere -- the trace of atmospheric water
 # vapour that no advective sweep drains completely (turbulent mixing, transient synoptic
 # intrusions, the fact that even the driest air over a polar plateau is not bone dry). The
@@ -991,12 +1008,12 @@ MAX_HUMIDITY_G_KG = 16.2
 # humidity -- and then, via `PRECIP_MM_PER_G_KG * humidity`, exactly zero
 # precipitation, which starves glacier accumulation (`ice_sheet.SurfaceClimate.rates` scales
 # accumulation by frozen precipitation) so a permanently-below-freezing pole that is cold
-# enough to keep ice forever never receives a single flake to keep. 0.23 g/kg is a few tens of
+# enough to keep ice forever never receives a single flake to keep. ~0.2 g/kg is a few tens of
 # mm/yr of baseline precipitation -- the order of a real polar desert (central Antarctica
 # runs ~50 mm/yr water-equivalent, wetter than the Atacama), enough to seed and sustain a
 # polar ice cap over geological time without meaningfully wetting a hot subtropical desert.
 # It's also about what the air over the East Antarctic plateau holds.
-MIN_BACKGROUND_HUMIDITY_G_KG = 0.23
+MIN_BACKGROUND_HUMIDITY_G_KG = 0.02 * HUMIDITY_INDEX_G_KG
 MIN_WIND_RETENTION_FACTOR = 0.5
 # Real-world rule of thumb: over flat land, rainfall runs about half as much 300km inland as
 # it does right at the shore -- an exponential decay of airborne moisture with distance
@@ -1019,8 +1036,8 @@ MOISTURE_HALVING_DISTANCE_KM = 380.0
 OROGRAPHIC_LIFT_SCALE_M = 600.0
 OROGRAPHIC_RAIN_SHADOW_FACTOR = 0.6
 # Precipitation per g/kg of near-surface humidity -- a bulk rain-out coefficient, mm/yr per
-# g/kg. 130 is the earlier 1500 mm per unit of the unitless humidity, converted (#522).
-PRECIP_MM_PER_G_KG = 130.0
+# g/kg: the earlier 1500 mm per unit of the unitless index, converted (#522).
+PRECIP_MM_PER_G_KG = 1500.0 / HUMIDITY_INDEX_G_KG
 OROGRAPHIC_PRECIPITATION_COEFFICIENT = 1.0
 
 # Humidity carries the same zonal banding the moisture-flux convergence does, for a related
@@ -1038,7 +1055,7 @@ OROGRAPHIC_PRECIPITATION_COEFFICIENT = 1.0
 # MFC_NOISE_SPECTRAL_BETA): it's the same meandering-band texture at the same scale. Seeded
 # per world state, on its own RNG stream (see compute_climate). The noised field is re-clipped
 # to [0, MAX_HUMIDITY_G_KG] so it keeps the same bounds the sweep itself guarantees.
-HUMIDITY_NOISE_STD_G_KG = 0.4
+HUMIDITY_NOISE_STD_G_KG = 0.035 * HUMIDITY_INDEX_G_KG
 
 # --- Hadley/Ferrel moisture-flux convergence: the zonal wet/dry banding of the general
 # circulation, applied on top of the humidity baseline + orographic lift above.
@@ -1075,14 +1092,14 @@ MFC_ZONAL_COHERENCE = 0.65
 # forest belt -- the same failure mode the MAX_HUMIDITY_G_KG cap on the humidity sweep
 # itself guards against.
 MFC_CONVERGENCE_GAIN = 2.2
-MFC_CONVERGENCE_MAX_G_KG = 9.8
+MFC_CONVERGENCE_MAX_G_KG = 0.85 * HUMIDITY_INDEX_G_KG
 # Diverging (subsiding) air instead suppresses the humidity-baseline rainfall -- sinking air
 # retains its moisture rather than raining it out. A multiplicative factor, bounded so even
 # the core of a subtropical high keeps some rain (real subtropical deserts are dry, not
 # rainless). Orographic lift is deliberately *not* suppressed here: a forced ascent up a
 # windward slope rains out regardless of the large-scale subsidence around it. The gain is
 # per g/kg of divergence: the earlier 4.0 per unitless-humidity unit, converted (#522).
-MFC_SUBSIDENCE_GAIN_PER_G_KG = 0.346
+MFC_SUBSIDENCE_GAIN_PER_G_KG = 4.0 / HUMIDITY_INDEX_G_KG
 MFC_SUBSIDENCE_MAX_SUPPRESSION = 0.72
 # Jacobi smoothing on the divergence field before use -- the CFD wind carries mesoscale
 # noise (mountain deflection, the eta/thermal term) that a raw divergence turns into
@@ -1114,7 +1131,7 @@ MFC_SMOOTHING_REFERENCE_PASSES = 3
 # its own; it's coarser than the ITCZ so the noise bends a band rather than just speckling
 # it. Seeded per world state (seed, elapsed_years) like every other RNG use here, so it
 # doesn't flicker between renders of the same world.
-MFC_NOISE_STD_G_KG = 0.58
+MFC_NOISE_STD_G_KG = 0.05 * HUMIDITY_INDEX_G_KG
 MFC_NOISE_CORRELATION_DEG = 18.0
 MFC_NOISE_SPECTRAL_BETA = 2.6
 
@@ -1127,11 +1144,11 @@ MFC_NOISE_SPECTRAL_BETA = 2.6
 # river doesn't need to be anywhere near that incised to have a substantial, fully-evaporating
 # surface). A lake's source is LAKE_EVAPORATION_FRACTION of open-water humidity at the same
 # temperature -- a lake or river covers only part of a land cell's own area, unlike an ocean
-# cell, which is entirely water. RIVER_EVAPORATION_HUMIDITY_G_KG is a flat 1.73 g/kg (the
-# earlier 0.15 unitless, converted -- #522).
+# cell, which is entirely water. RIVER_EVAPORATION_HUMIDITY_G_KG is flat (the earlier 0.15
+# unitless, converted -- #522).
 LAKE_EVAPORATION_FRACTION = 0.5
 LAKE_EVAPORATION_REFERENCE_DEPTH_M = 20.0
-RIVER_EVAPORATION_HUMIDITY_G_KG = 1.73
+RIVER_EVAPORATION_HUMIDITY_G_KG = 0.15 * HUMIDITY_INDEX_G_KG
 # A basin large enough to classify sea tier (lakes._classify_tier / hydrology.HydrologyFields.
 # is_sea -- see that function's own docstring for the real-world reference points) drives real
 # regional humidity, at the open-water humidity of its temperature -- double
@@ -1631,7 +1648,7 @@ def compute_climate(
     lat_deg, lon_deg, world_xyz = _build_grid(height, width)
     elevation_m, is_ocean, lake_depth_m, channel_depth_m, is_sea = _sample_elevation_and_crust(world, world_xyz, node_cloud=node_cloud)
 
-    insolation_row = compute_insolation(lat_deg, world.axial_tilt_deg, world.solar_multiplier)
+    insolation_row = compute_heating_index(lat_deg, world.axial_tilt_deg, world.solar_multiplier)
     land_temperature_c = compute_land_temperature(insolation_row, elevation_m)
     ocean_baseline_c = compute_ocean_temperature_baseline(insolation_row, height, width)
 
@@ -1745,6 +1762,7 @@ def compute_climate(
         biome_ids=biome_ids,
         swell_rows=swell_rows,
         swell_cols=swell_cols,
+        insolation_w_m2=compute_insolation_w_m2(lat_deg, world.axial_tilt_deg, world.solar_multiplier),
     )
 
 

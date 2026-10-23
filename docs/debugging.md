@@ -154,6 +154,7 @@ Gate 2 load, mesh and capacity diagnostics.
 | [`measure_seasonal_melt.py`](debugging/scripts-water-ice.md#measure_seasonal_meltpy) | glaciated land by annual-mean temperature |
 | [`measure_ice_loading.py`](debugging/scripts-water-ice.md#measure_ice_loadingpy) | isostatic ice-load deflection |
 | [`measure_meltwater_faults.py`](debugging/scripts-water-ice.md#measure_meltwater_faultspy) | earthquakes triggered by ice unloading |
+| [`measure_climate_fields.py`](debugging/scripts-water-ice.md#measure_climate_fieldspy) | temperature, humidity and precipitation by latitude band in two trees |
 
 ### Surface, saves, sweeps and profiling
 

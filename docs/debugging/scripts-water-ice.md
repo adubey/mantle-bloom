@@ -137,3 +137,19 @@ backend/.venv/bin/python bin/debug/measure_meltwater_faults.py --seeds 1 2 3 --s
 backend/.venv/bin/python bin/debug/measure_meltwater_faults.py --compare /tmp/main.jsonl /tmp/branch.jsonl
 backend/.venv/bin/python bin/debug/measure_meltwater_faults.py --controlled --seeds 1 2 3 --steps 80 --every 20
 ```
+
+## Climate
+
+### `measure_climate_fields.py`
+
+Measures the climate fields on a save in either tree (#522). At each checkpoint it computes a
+fresh climate snapshot and records, weighted by cos(latitude): land and ocean air temperature,
+humidity (g/kg; an `origin/main` tree's unitless index is converted by `HUMIDITY_INDEX_G_KG`)
+and precipitation; land's share of precipitation; the same by 15-degree band; Köppen group
+shares of land; land fraction and the ice cap. At t = 0 both trees see the same loaded world,
+so a difference there comes from the climate code alone.
+
+```bash
+backend/.venv/bin/python bin/debug/measure_climate_fields.py world.mbworld --myr 10 --step-years 250000 \
+  --checkpoint-myr 2 --backend ../<baseline-worktree>/backend --out /tmp/main.json
+```

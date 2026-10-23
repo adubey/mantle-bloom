@@ -136,8 +136,8 @@ def test_loading_a_save_drops_the_retired_line_engine_state():
 
 
 def test_loading_a_save_with_unitless_cached_humidity_converts_it_to_g_per_kg():
-    # Issue #522: saves before humidity had units cache `humidity`, an index where 1.0 meant
-    # air over 20 C open water. Loading converts it at that point and keeps the cached
+    # Issue #522: saves before humidity had units cache `humidity`, a unitless index. Loading
+    # converts it by the factor the index's constants were converted by, and keeps the cached
     # precipitation the next step's transpiration source reads.
     world = generate_world(seed=3, num_plates=4)
     cache = climate.compute_climate_cached(world)
@@ -146,7 +146,7 @@ def test_loading_a_save_with_unitless_cached_humidity_converts_it_to_g_per_kg():
 
     loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
     assert "humidity" not in vars(loaded.climate_cache)
-    np.testing.assert_allclose(loaded.climate_cache.humidity_g_kg, 0.5 * 11.56, rtol=1e-3)
+    np.testing.assert_allclose(loaded.climate_cache.humidity_g_kg, 0.5 * climate.HUMIDITY_INDEX_G_KG)
     np.testing.assert_array_equal(loaded.climate_cache.precipitation_mm, precipitation)
 
 

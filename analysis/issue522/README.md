@@ -125,3 +125,31 @@ Ocean humidity and land precipitation by latitude band (both hemispheres togethe
 447276134 at 8–10 Myr, 23 s; branch 447276134 at 0–2 Myr, 15.5 s). Those look like machine
 load rather than the change, since the climate code path costs the same in both arms. Peak RSS
 was 1.2–1.6 GB.
+
+## Revision after review (preregistered before the re-run)
+
+A code review of the first version found three problems, and the design changed:
+
+1. **Temperature at other tilts.** The W/m² lookup is steep between 82.5° and 90°
+   (~1.15 °C per W/m², since polar insolation flattens near 172 W/m²). Tilt 25° warmed the pole
+   by 7 °C, tilt 0° put it at −56 °C (main: −26) and tilt 45° at +9.5 °C (main: −17). The A/B
+   above only tested tilt 23.5°. Temperature is now driven by the old heating index again
+   (`compute_heating_index`, unchanged). W/m² is a diagnostic field,
+   `ClimateFields.insolation_w_m2`, until an energy balance can drive temperature from it.
+2. **Flat tropical humidity.** A 16.2 g/kg cap is reached at ~25 °C, so 0–20° ocean read one
+   value. The cap is now open water at 28 °C (18.8 g/kg), where the old index's ceiling also
+   stopped.
+3. **One conversion factor.** All index-unit constants and the save migration now use one
+   frozen factor, `HUMIDITY_INDEX_G_KG`. With the higher cap, 11.56 (20 °C water) would add
+   ~4% to land and ocean precipitation. So the factor was tuned on the reference save's t = 0
+   snapshot: 12.3 g/kg (open water at ~21 °C) gives land +0.7% and ocean −1.1% there. On the
+   held-out save at t = 0 the probe gave land +1.5% and ocean −1.0%.
+
+**Expected on the re-run** (branch only; the `origin/main` runs above still apply, since the
+rebase onto `30766af` added only RFC documents):
+
+- Air temperature at t = 0: identical to main in every band (difference 0.000).
+- Reference save, t = 0: tuned, so not evidence. Held-out save, t = 0: land precipitation
+  within ±3%, ocean within ±3%, every land band within ±10%.
+- Thresholds otherwise as preregistered above. The 10 Myr checkpoints on both saves are
+  secondary, and the polar land band is re-checked for the earlier persistent drying.

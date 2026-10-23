@@ -125,19 +125,19 @@ const TEMPERATURE_GRADIENT: LegendGradient = {
 // _HUMIDITY_STOP_G_KG / _HUMIDITY_STOP_RGB.
 const HUMIDITY_GRADIENT: LegendGradient = {
   min: 0,
-  max: 16.2,
+  max: 18.8,
   stops: [
     { value: 0, color: rgb(120, 100, 60) },
-    { value: 3.5, color: rgb(170, 150, 90) },
-    { value: 7, color: rgb(140, 170, 110) },
-    { value: 10.5, color: rgb(70, 150, 140) },
-    { value: 14, color: rgb(30, 100, 140) },
-    { value: 16.2, color: rgb(15, 60, 110) },
+    { value: 4, color: rgb(170, 150, 90) },
+    { value: 8, color: rgb(140, 170, 110) },
+    { value: 12, color: rgb(70, 150, 140) },
+    { value: 16, color: rgb(30, 100, 140) },
+    { value: 18.8, color: rgb(15, 60, 110) },
   ],
   ticks: [
     { value: 0, label: "0" },
-    { value: 8, label: "8" },
-    { value: 16.2, label: "16" },
+    { value: 10, label: "10" },
+    { value: 18.8, label: "18.8" },
   ],
 };
 

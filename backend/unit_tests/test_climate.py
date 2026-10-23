@@ -40,7 +40,7 @@ def test_submerged_continental_crust_is_treated_as_ocean():
 
 def test_insolation_peaks_at_equator_and_falls_toward_poles():
     lat_deg = np.array([-90.0, -45.0, 0.0, 45.0, 90.0])
-    insolation = climate.compute_insolation(lat_deg, axial_tilt_deg=0.0)
+    insolation = climate.compute_heating_index(lat_deg, axial_tilt_deg=0.0)
     assert insolation[2] == insolation.max()
     assert insolation[0] < insolation[2] and insolation[4] < insolation[2]
     # Symmetric with no tilt.
@@ -50,8 +50,8 @@ def test_insolation_peaks_at_equator_and_falls_toward_poles():
 
 def test_axial_tilt_flattens_the_insolation_curve():
     lat_deg = np.linspace(-90, 90, 37)
-    flat = climate.compute_insolation(lat_deg, axial_tilt_deg=0.0)
-    tilted = climate.compute_insolation(lat_deg, axial_tilt_deg=23.5)
+    flat = climate.compute_heating_index(lat_deg, axial_tilt_deg=0.0)
+    tilted = climate.compute_heating_index(lat_deg, axial_tilt_deg=23.5)
     # Tilt brings the poles' annual-mean insolation up (they catch some direct sun over the
     # sweep) without changing the equator much.
     pole_idx = 0
@@ -64,36 +64,27 @@ def test_insolation_is_in_watts_per_square_metre():
     # Issue #522: daily-mean top-of-atmosphere flux. With no tilt it's S0/pi * cos(lat); at
     # Earth's tilt the annual mean is ~415 W/m² at the equator and ~172 at the poles.
     lat_deg = np.array([0.0, 60.0, 90.0])
-    flat = climate.compute_insolation(lat_deg, axial_tilt_deg=0.0)
+    flat = climate.compute_insolation_w_m2(lat_deg, axial_tilt_deg=0.0)
     np.testing.assert_allclose(flat, climate.SOLAR_CONSTANT_W_M2 / np.pi * np.cos(np.radians(lat_deg)), atol=1e-9)
-    earth = climate.compute_insolation(lat_deg, axial_tilt_deg=23.5)
+    earth = climate.compute_insolation_w_m2(lat_deg, axial_tilt_deg=23.5)
     np.testing.assert_allclose(earth, [415.4, 236.4, 172.5], atol=0.5)
-    brighter = climate.compute_insolation(lat_deg, axial_tilt_deg=23.5, solar_multiplier=1.1)
+    brighter = climate.compute_insolation_w_m2(lat_deg, axial_tilt_deg=23.5, solar_multiplier=1.1)
     np.testing.assert_allclose(brighter, 1.1 * earth)
+    # Any shape of latitude array, including a scalar.
+    assert climate.compute_insolation_w_m2(np.full((2, 3), 60.0), 23.5).shape == (2, 3)
+    assert float(climate.compute_insolation_w_m2(0.0, 23.5)) == pytest.approx(earth[0])
 
 
-def test_temperature_at_earths_tilt_reproduces_the_calibration_profile():
-    # The insolation -> temperature mapping is calibrated to land ~25/10/-1/-22 C and ocean
-    # ~27/19/12/1 C at latitude 0/45/60/90, and must stay on it between calibration points.
-    lat_deg = np.array([0.0, 45.0, 60.0, 90.0, 33.0, 80.0])
-    insolation = climate.compute_insolation(lat_deg, axial_tilt_deg=23.5)
-    land = climate.compute_land_temperature(insolation, np.zeros((6, 1)))[:, 0]
-    ocean = climate.compute_ocean_temperature_baseline(insolation, 6, 1)[:, 0]
-    np.testing.assert_allclose(land[:4], [25.3, 9.7, -1.3, -22.2], atol=0.05)
-    np.testing.assert_allclose(ocean[:4], [27.1, 18.6, 12.5, 1.2], atol=0.05)
-    assert 9.7 < land[4] < 18.2 and -22.2 < land[5] < -13.3
-
-
-def test_temperature_extrapolates_past_the_calibration_range():
-    # A brighter sun warms the equator past the calibration table; no tilt starves the poles
-    # of sun, colder than any calibration point, with the ocean stopping at seawater freezing.
-    equator = np.array([0.0])
-    base = climate.compute_land_temperature(climate.compute_insolation(equator, 23.5), np.zeros((1, 1)))
-    bright = climate.compute_land_temperature(climate.compute_insolation(equator, 23.5, 1.2), np.zeros((1, 1)))
-    assert bright[0, 0] > base[0, 0] + 10.0
-    pole = climate.compute_insolation(np.array([90.0]), axial_tilt_deg=0.0)
-    assert climate.compute_land_temperature(pole, np.zeros((1, 1)))[0, 0] < -40.0
-    assert climate.compute_ocean_temperature_baseline(pole, 1, 1)[0, 0] == climate.SEAWATER_FREEZING_C
+def test_climate_fields_carry_insolation_without_it_driving_temperature():
+    # Issue #522: W/m² is a diagnostic; temperature still reads the heating index, so a world
+    # at a non-Earth tilt keeps today's temperatures.
+    world = World(seed=1, plates=[globe_plate("continental", elevation=100.0)], node_density=0.5, axial_tilt_deg=40.0)
+    fields = climate.compute_climate(world, height=30, width=60)
+    np.testing.assert_allclose(fields.insolation_w_m2, climate.compute_insolation_w_m2(fields.lat_deg, 40.0))
+    index = climate.compute_heating_index(fields.lat_deg, 40.0)
+    np.testing.assert_allclose(
+        fields.land_temperature_c, climate.compute_land_temperature(index, fields.elevation_m)
+    )
 
 
 def test_saturation_specific_humidity_matches_tabulated_values():
@@ -110,11 +101,29 @@ def test_open_water_humidity_follows_clausius_clapeyron_up_to_the_cap():
     assert 0.06 < np.log(q[2] / q[1]) / 10.0 < 0.07
     assert q[0] < 3.5
     assert q[3] == climate.MAX_HUMIDITY_G_KG
+    # The cap is open water at 28 C, where the old index's ceiling also stopped, so the tropics
+    # below 28 C keep a gradient.
+    at_28 = climate.MARINE_RELATIVE_HUMIDITY * climate.saturation_specific_humidity_g_kg(28.0)
+    assert climate.MAX_HUMIDITY_G_KG == pytest.approx(at_28, abs=0.05)
+    tropics = climate.open_water_humidity_g_kg(np.array([24.0, 26.0, 27.5]))
+    assert np.all(np.diff(tropics) > 0.5)
+
+
+def test_lakes_in_near_freezing_air_still_evaporate():
+    # Without the old index's 0.3 floor, a lake just above freezing evaporates at its own
+    # Clausius-Clapeyron humidity (~3 g/kg), not zero; below freezing it stops.
+    air_temp = np.array([-1.0, 1.0, 5.0])
+    lake_depth = np.full(3, 50.0)
+    source = climate._land_moisture_source(air_temp, lake_depth, np.zeros(3), np.zeros(3))
+    assert source[0] == 0.0
+    expected = climate.LAKE_EVAPORATION_FRACTION * climate.open_water_humidity_g_kg(air_temp[1:])
+    np.testing.assert_allclose(source[1:], expected)
+    assert 1.4 < source[1] < source[2]
 
 
 def test_land_temperature_warmer_at_equator_than_poles_and_cooler_with_elevation():
     lat_deg = np.array([-90.0, 0.0, 90.0])
-    insolation = climate.compute_insolation(lat_deg, axial_tilt_deg=0.0)
+    insolation = climate.compute_heating_index(lat_deg, axial_tilt_deg=0.0)
     flat_elevation = np.zeros((3, 1))
     temp_flat = climate.compute_land_temperature(insolation, flat_elevation)
     assert temp_flat[1, 0] > temp_flat[0, 0]
@@ -539,7 +548,7 @@ def test_wind_model_diagnostic_bypasses_the_cfd_state():
 
     lat_deg, _, world_xyz = climate._build_grid(height, width)
     elevation_m, is_ocean, _, _, _ = climate._sample_elevation_and_crust(world, world_xyz)
-    insol = climate.compute_insolation(lat_deg, world.axial_tilt_deg, world.solar_multiplier)
+    insol = climate.compute_heating_index(lat_deg, world.axial_tilt_deg, world.solar_multiplier)
     land_t = climate.compute_land_temperature(insol, elevation_m)
     ocean_b = climate.compute_ocean_temperature_baseline(insol, height, width)
     surface_t = np.where(is_ocean, ocean_b, land_t)
