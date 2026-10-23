@@ -11,9 +11,9 @@ request made on the server's own machine. Anyone else gets `401`. Cross-site wri
 ## `GET /healthz`
 
 `{"status": "ok"}`, open to anyone, and doesn't wait for the world lock. It's Railway's deploy
-health check (#376, see [HOSTING.md](HOSTING.md)). It can't answer before startup has
-restored the checkpoint. `503` with the reason in `detail` when a checkpoint directory is
-configured but couldn't be created or written.
+health check (#376; see [hosting.md](hosting.md)). It can't answer before
+startup has restored the checkpoint. `503` with the reason in `detail` when a checkpoint
+directory is configured but couldn't be created or written.
 
 ## Login routes
 
