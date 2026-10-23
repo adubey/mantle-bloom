@@ -919,6 +919,10 @@ def leaf_sinks(lake: Lake) -> np.ndarray:
     return np.asarray(sinks, dtype=np.int64)
 
 
+# `_resolve`'s stack entry modes: resolve a lake, or finish a parent once its children are done.
+_DESCEND, _MERGE_CHECK, _SPLIT_DONE = range(3)
+
+
 def _resolve(
     lake: Lake,
     elevation: np.ndarray,
@@ -942,11 +946,12 @@ def _resolve(
 
     A leaf, or a parent that **was already** one merged body last step (`prev_level >=
     min_depth`), is resolved as a single connected water body over its own full `members` set.
-    If that resolution's *new* level drops back below `min_depth`, it just split this step: both
-    children start fresh at exactly `min_depth` (continuity -- the instant they separated, both
-    sides were still at that shared height) with no further balance applied to them this same
-    step, deferring their independent divergence to next step, the same "changes happen
-    gradually across steps" character as everything else persistent in this codebase.
+    If that resolution's *new* level drops back below `min_depth`, it just split this step: the
+    merged resolution is discarded (its silt and sea flags restored from a snapshot) and each
+    child is resolved at its own balance this same step, exactly as a never-merged pair would
+    be. Children used to be written full to the saddle instead (continuity), but nothing
+    supplied that water, and the saddle level read back as "still merged" next step, so a lake
+    whose budget couldn't hold it there sat on its saddle indefinitely (#519, #521).
 
     A parent that **was not** yet merged last step resolves its children independently first;
     if either child's own new level has now reached this parent's `min_depth`, they merge this
@@ -957,18 +962,17 @@ def _resolve(
     after the moment of merging."
 
     Returns this lake's own resolved level (informational -- only consulted by a parent's own
-    merge check above; a lake that just split returns its parent's saddle, not a per-child
-    value, since the two children no longer share one level).
+    merge check above; a lake that just split returns its higher child's level, since the two
+    children no longer share one level).
 
     Implemented as an explicit-stack post-order walk of the subtree rather than plain
     recursion: the merge hierarchy `build_lake_hierarchy` produces is a near-linear chain for
     a long spill cascade (thousands of levels deep on an old, rough world), and a recursive
     resolve -- one Python frame per level -- overran the interpreter's recursion limit.
     `build_lake_hierarchy` and `_catchment_roots` are already iterative for exactly this
-    reason. Each stack entry is visited twice: `descend=False` pushes the node's children,
-    `descend=True` resolves it once they are done. A resolved lake's level is read back off
-    its own `current_water_elevation`, which every branch below sets to the same value it
-    would previously have returned.
+    reason. A parent's entry can come back after its children are done: `_MERGE_CHECK` for a
+    pair that was still separate, `_SPLIT_DONE` for a merged body that just split. A resolved
+    lake's level is read back off its own `current_water_elevation`.
 
     `out_lake_is_sea`/`node_area_km2` feed `_classify_tier` at every point this function
     writes `out_lake_depth` -- each write site classifies the *members it's actually writing*
@@ -976,11 +980,16 @@ def _resolve(
     larger extent, not either child's alone), so `_classify_tier`'s own `SEA_MIN_FLOODED_AREA_
     KM2` reads on the same set of members a viewer would actually see as one lake this step."""
     hyps = hypsometry if hypsometry is not None else CellHypsometry.whole_cells(elevation)
-    stack: list[tuple[Lake, bool]] = [(lake, False)]
+    stack: list[tuple[Lake, int]] = [(lake, _DESCEND)]
     while stack:
-        node, resolve_now = stack.pop()
+        node, mode = stack.pop()
 
-        if resolve_now:
+        if mode == _SPLIT_DONE:
+            node.current_water_elevation = max(child.current_water_elevation for child in node.children)
+            node.is_spilling = False
+            continue
+
+        if mode == _MERGE_CHECK:
             # A parent that was still split last step: its children are now resolved, so
             # decide whether this step's rise has merged them.
             child_levels = [child.current_water_elevation for child in node.children]
@@ -1015,11 +1024,15 @@ def _resolve(
             # Pushed in reverse so the leftmost child resolves first, matching the old
             # list-comprehension order (only affects `events` ordering -- sibling subtrees
             # write disjoint node sets).
-            stack.append((node, True))
-            stack.extend((child, False) for child in reversed(node.children))
+            stack.append((node, _MERGE_CHECK))
+            stack.extend((child, _DESCEND) for child in reversed(node.children))
             continue
 
         # A leaf, or a parent already one merged body last step: single connected water body.
+        if node.children:
+            # If this body splits, its merged resolution is discarded, silt and sea flags too.
+            saved_silt = out_silt_deposited[node.members]
+            saved_sea = out_lake_is_sea[node.members]
         node_is_frozen = bool(is_frozen[node.members].any())
         is_sea, tier_max_depth = _classify_tier(node.members, prev_lake_depth, node_area_km2)
         new_level = _water_balance(
@@ -1028,33 +1041,15 @@ def _resolve(
         )
         if node.children and new_level < node.min_depth:
             events.append(LakeEvent(kind="split", node_count=len(node.members), elevation_m=node.min_depth, basin_count=len(node.children)))
-            # Ordinarily both children reset to exactly node.min_depth (continuity -- see this
-            # function's own docstring: a small organic evaporation dip means both sides really
-            # were still at that shared saddle a moment ago). That approximation breaks down,
-            # and oscillates forever, when the *tier* cap (not ordinary evaporation) is what
-            # pushed new_level below the saddle: `_water_balance` can never return more than
-            # `tier_max_depth` above the floor, so `new_level` landing at (or past, by rounding)
-            # that ceiling means the tier cap was the binding constraint, not a near-miss dip.
-            # (A real geological rim cap can never do this on its own -- max_depth is always
-            # >= min_depth by construction, so a rim-bounded new_level can never fall below
-            # min_depth in the first place.) Resetting to the stale min_depth in that case would
-            # completely undo the cap for this step's *reported* depth, and -- worse -- persist
-            # a value that reads as "still merged" (exactly >= min_depth) on the very next
-            # step's _prev_level check, re-running this same capped computation and splitting
-            # again forever with no actual progress. Using the real (capped) new_level instead
-            # breaks that loop: next step reads a level genuinely below the saddle and resolves
-            # each child independently, the same as an ordinary multi-step organic decay would.
-            tier_capped = (new_level - node.floor_elevation) >= tier_max_depth - 1e-6
-            reset_level = new_level if tier_capped else node.min_depth
-            for child in node.children:
-                child_level = max(reset_level, hyps.dry_level(child.members))
-                out_lake_depth[child.members] = hyps.mean_depth(child_level, child.members)
-                child_is_sea, _ = _classify_tier(child.members, prev_lake_depth, node_area_km2)
-                if child_is_sea:
-                    out_lake_is_sea[child.members[elevation[child.members] < child_level]] = True
-                child.current_water_elevation = child_level
-                child.is_spilling = False
-            node.current_water_elevation = reset_level
+            # Each child is balanced on its own water this step, under its own rim and tier
+            # cap, rather than filled to the saddle (#521). Neither can rise past this saddle
+            # (it is each child's own rim), so next step's `_prev_level` reads the pair as
+            # merged only if a child genuinely reached it -- which also ends the tier-cap
+            # merge/split loop the old saddle reset had to special-case.
+            out_silt_deposited[node.members] = saved_silt
+            out_lake_is_sea[node.members] = saved_sea
+            stack.append((node, _SPLIT_DONE))
+            stack.extend((child, _DESCEND) for child in reversed(node.children))
         else:
             out_lake_depth[node.members] = hyps.mean_depth(new_level, node.members)
             node.current_water_elevation = new_level
