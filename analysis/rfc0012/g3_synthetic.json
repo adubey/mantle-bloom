@@ -1,0 +1,590 @@
+{
+  "kind": "synthetic_gate_g3",
+  "merge_lock": {
+    "epsilon_tau_sensitivity": [
+      {
+        "epsilon_cm_per_yr": 0.25,
+        "instantaneous_rate_and_threshold_duration_candidates": 2,
+        "tau_myr": 0.0
+      },
+      {
+        "epsilon_cm_per_yr": 0.25,
+        "instantaneous_rate_and_threshold_duration_candidates": 2,
+        "tau_myr": 10.0
+      },
+      {
+        "epsilon_cm_per_yr": 0.25,
+        "instantaneous_rate_and_threshold_duration_candidates": 2,
+        "tau_myr": 25.0
+      },
+      {
+        "epsilon_cm_per_yr": 0.25,
+        "instantaneous_rate_and_threshold_duration_candidates": 2,
+        "tau_myr": 50.0
+      },
+      {
+        "epsilon_cm_per_yr": 0.25,
+        "instantaneous_rate_and_threshold_duration_candidates": 0,
+        "tau_myr": 75.0
+      },
+      {
+        "epsilon_cm_per_yr": 0.25,
+        "instantaneous_rate_and_threshold_duration_candidates": 0,
+        "tau_myr": 100.0
+      },
+      {
+        "epsilon_cm_per_yr": 0.5,
+        "instantaneous_rate_and_threshold_duration_candidates": 13,
+        "tau_myr": 0.0
+      },
+      {
+        "epsilon_cm_per_yr": 0.5,
+        "instantaneous_rate_and_threshold_duration_candidates": 13,
+        "tau_myr": 10.0
+      },
+      {
+        "epsilon_cm_per_yr": 0.5,
+        "instantaneous_rate_and_threshold_duration_candidates": 11,
+        "tau_myr": 25.0
+      },
+      {
+        "epsilon_cm_per_yr": 0.5,
+        "instantaneous_rate_and_threshold_duration_candidates": 8,
+        "tau_myr": 50.0
+      },
+      {
+        "epsilon_cm_per_yr": 0.5,
+        "instantaneous_rate_and_threshold_duration_candidates": 1,
+        "tau_myr": 75.0
+      },
+      {
+        "epsilon_cm_per_yr": 0.5,
+        "instantaneous_rate_and_threshold_duration_candidates": 0,
+        "tau_myr": 100.0
+      },
+      {
+        "epsilon_cm_per_yr": 1.0,
+        "instantaneous_rate_and_threshold_duration_candidates": 29,
+        "tau_myr": 0.0
+      },
+      {
+        "epsilon_cm_per_yr": 1.0,
+        "instantaneous_rate_and_threshold_duration_candidates": 27,
+        "tau_myr": 10.0
+      },
+      {
+        "epsilon_cm_per_yr": 1.0,
+        "instantaneous_rate_and_threshold_duration_candidates": 20,
+        "tau_myr": 25.0
+      },
+      {
+        "epsilon_cm_per_yr": 1.0,
+        "instantaneous_rate_and_threshold_duration_candidates": 11,
+        "tau_myr": 50.0
+      },
+      {
+        "epsilon_cm_per_yr": 1.0,
+        "instantaneous_rate_and_threshold_duration_candidates": 1,
+        "tau_myr": 75.0
+      },
+      {
+        "epsilon_cm_per_yr": 1.0,
+        "instantaneous_rate_and_threshold_duration_candidates": 0,
+        "tau_myr": 100.0
+      },
+      {
+        "epsilon_cm_per_yr": 2.0,
+        "instantaneous_rate_and_threshold_duration_candidates": 38,
+        "tau_myr": 0.0
+      },
+      {
+        "epsilon_cm_per_yr": 2.0,
+        "instantaneous_rate_and_threshold_duration_candidates": 30,
+        "tau_myr": 10.0
+      },
+      {
+        "epsilon_cm_per_yr": 2.0,
+        "instantaneous_rate_and_threshold_duration_candidates": 23,
+        "tau_myr": 25.0
+      },
+      {
+        "epsilon_cm_per_yr": 2.0,
+        "instantaneous_rate_and_threshold_duration_candidates": 14,
+        "tau_myr": 50.0
+      },
+      {
+        "epsilon_cm_per_yr": 2.0,
+        "instantaneous_rate_and_threshold_duration_candidates": 1,
+        "tau_myr": 75.0
+      },
+      {
+        "epsilon_cm_per_yr": 2.0,
+        "instantaneous_rate_and_threshold_duration_candidates": 0,
+        "tau_myr": 100.0
+      },
+      {
+        "epsilon_cm_per_yr": 5.0,
+        "instantaneous_rate_and_threshold_duration_candidates": 40,
+        "tau_myr": 0.0
+      },
+      {
+        "epsilon_cm_per_yr": 5.0,
+        "instantaneous_rate_and_threshold_duration_candidates": 30,
+        "tau_myr": 10.0
+      },
+      {
+        "epsilon_cm_per_yr": 5.0,
+        "instantaneous_rate_and_threshold_duration_candidates": 23,
+        "tau_myr": 25.0
+      },
+      {
+        "epsilon_cm_per_yr": 5.0,
+        "instantaneous_rate_and_threshold_duration_candidates": 14,
+        "tau_myr": 50.0
+      },
+      {
+        "epsilon_cm_per_yr": 5.0,
+        "instantaneous_rate_and_threshold_duration_candidates": 1,
+        "tau_myr": 75.0
+      },
+      {
+        "epsilon_cm_per_yr": 5.0,
+        "instantaneous_rate_and_threshold_duration_candidates": 0,
+        "tau_myr": 100.0
+      },
+      {
+        "epsilon_cm_per_yr": 10.0,
+        "instantaneous_rate_and_threshold_duration_candidates": 41,
+        "tau_myr": 0.0
+      },
+      {
+        "epsilon_cm_per_yr": 10.0,
+        "instantaneous_rate_and_threshold_duration_candidates": 30,
+        "tau_myr": 10.0
+      },
+      {
+        "epsilon_cm_per_yr": 10.0,
+        "instantaneous_rate_and_threshold_duration_candidates": 23,
+        "tau_myr": 25.0
+      },
+      {
+        "epsilon_cm_per_yr": 10.0,
+        "instantaneous_rate_and_threshold_duration_candidates": 14,
+        "tau_myr": 50.0
+      },
+      {
+        "epsilon_cm_per_yr": 10.0,
+        "instantaneous_rate_and_threshold_duration_candidates": 1,
+        "tau_myr": 75.0
+      },
+      {
+        "epsilon_cm_per_yr": 10.0,
+        "instantaneous_rate_and_threshold_duration_candidates": 0,
+        "tau_myr": 100.0
+      }
+    ],
+    "limitation": "fusion-time rate and randomized convergence threshold only; qualifying counts are upper bounds, since prior per-step rates are not recorded to prove continuous locking",
+    "n_fusions": 41,
+    "source": "G1 rules_*.json fusion-event contact rate summaries"
+  },
+  "rift": {
+    "force_sweep": [
+      {
+        "basal_line_load_n_per_m": 10000000000.0,
+        "basal_loaded_width_m": 100000.0,
+        "basal_traction_pa": 100000.0,
+        "boundary_tensile_load_n_per_m": 2235661142541.2144,
+        "capacity_n_per_m": 4491322285082.429,
+        "converged": true,
+        "drive_n_per_m": 2245661142541.2144,
+        "equal_opposite": true,
+        "relative_rate_m_per_s": 0.0,
+        "residual_torque_fraction": 1.3267009843615694e-16,
+        "residual_torque_nm": 268435456.0,
+        "resistance_n_per_m": 2245661142541.215
+      },
+      {
+        "basal_line_load_n_per_m": 10000000000.0,
+        "basal_loaded_width_m": 100000.0,
+        "basal_traction_pa": 100000.0,
+        "boundary_tensile_load_n_per_m": 4032190056574.186,
+        "capacity_n_per_m": 4491322285082.429,
+        "converged": true,
+        "drive_n_per_m": 4042190056574.186,
+        "equal_opposite": true,
+        "relative_rate_m_per_s": 0.0,
+        "residual_torque_fraction": 0.0,
+        "residual_torque_nm": 0.0,
+        "resistance_n_per_m": 4042190056574.186
+      },
+      {
+        "basal_line_load_n_per_m": 10000000000.0,
+        "basal_loaded_width_m": 100000.0,
+        "basal_traction_pa": 100000.0,
+        "boundary_tensile_load_n_per_m": 4481322285082.429,
+        "capacity_n_per_m": 4491322285082.429,
+        "converged": true,
+        "drive_n_per_m": 4491322285082.429,
+        "equal_opposite": true,
+        "relative_rate_m_per_s": 1.66995198702542e-25,
+        "residual_torque_fraction": 1.2127792627286878e-18,
+        "residual_torque_nm": 4907706.533052444,
+        "resistance_n_per_m": 4491322285082.429
+      },
+      {
+        "basal_line_load_n_per_m": 10000000000.0,
+        "basal_loaded_width_m": 100000.0,
+        "basal_traction_pa": 100000.0,
+        "boundary_tensile_load_n_per_m": 4930454513590.672,
+        "capacity_n_per_m": 4491322285082.429,
+        "converged": true,
+        "drive_n_per_m": 4940454513590.672,
+        "equal_opposite": true,
+        "relative_rate_m_per_s": 8.982644570164886e-11,
+        "residual_torque_fraction": 3.769036887390822e-17,
+        "residual_torque_nm": 167772160.0,
+        "resistance_n_per_m": 4491322285082.429
+      },
+      {
+        "basal_line_load_n_per_m": 10000000000.0,
+        "basal_loaded_width_m": 100000.0,
+        "basal_traction_pa": 100000.0,
+        "boundary_tensile_load_n_per_m": 6726983427623.643,
+        "capacity_n_per_m": 4491322285082.429,
+        "converged": true,
+        "drive_n_per_m": 6736983427623.643,
+        "equal_opposite": true,
+        "relative_rate_m_per_s": 4.4913222850824293e-10,
+        "residual_torque_fraction": 4.4223366145385653e-17,
+        "residual_torque_nm": 268435456.0,
+        "resistance_n_per_m": 4491322285082.429
+      },
+      {
+        "basal_line_load_n_per_m": 10000000000.0,
+        "basal_loaded_width_m": 100000.0,
+        "basal_traction_pa": 100000.0,
+        "boundary_tensile_load_n_per_m": 8972644570164.857,
+        "capacity_n_per_m": 4491322285082.429,
+        "converged": true,
+        "drive_n_per_m": 8982644570164.857,
+        "equal_opposite": true,
+        "relative_rate_m_per_s": 8.982644570164861e-10,
+        "residual_torque_fraction": 0.0,
+        "residual_torque_nm": 0.0,
+        "resistance_n_per_m": 4491322285082.429
+      }
+    ],
+    "geological_scale_widening": {
+      "column_count": 40,
+      "column_spacing_km": 25.0,
+      "cross_section_width_km": 1000.0,
+      "crust_thickness_profile": "15 km at x=0, linear to 30 km at |x|=250 km, 30 km beyond",
+      "force_sweep": [
+        {
+          "active_column_count": 2,
+          "active_width_km": 50.0,
+          "active_x_max_km": 12.5,
+          "active_x_min_km": -12.5,
+          "mean_active_extension_rate_cm_per_yr": 0.028098188764920866,
+          "uniform_extensional_force_n_per_m": 4300000000000.0
+        },
+        {
+          "active_column_count": 4,
+          "active_width_km": 100.0,
+          "active_x_max_km": 37.5,
+          "active_x_min_km": -37.5,
+          "mean_active_extension_rate_cm_per_yr": 0.06120742416799653,
+          "uniform_extensional_force_n_per_m": 4400000000000.0
+        },
+        {
+          "active_column_count": 6,
+          "active_width_km": 150.0,
+          "active_x_max_km": 62.5,
+          "active_x_min_km": -62.5,
+          "mean_active_extension_rate_cm_per_yr": 0.09568793717560947,
+          "uniform_extensional_force_n_per_m": 4500000000000.0
+        },
+        {
+          "active_column_count": 10,
+          "active_width_km": 250.0,
+          "active_x_max_km": 112.5,
+          "active_x_min_km": -112.5,
+          "mean_active_extension_rate_cm_per_yr": 0.1368481705347977,
+          "uniform_extensional_force_n_per_m": 4650000000000.0
+        },
+        {
+          "active_column_count": 14,
+          "active_width_km": 350.0,
+          "active_x_max_km": 162.5,
+          "active_x_min_km": -162.5,
+          "mean_active_extension_rate_cm_per_yr": 0.18260298769500946,
+          "uniform_extensional_force_n_per_m": 4800000000000.0
+        },
+        {
+          "active_column_count": 40,
+          "active_width_km": 1000.0,
+          "active_x_max_km": 487.5,
+          "active_x_min_km": -487.5,
+          "mean_active_extension_rate_cm_per_yr": 0.1158659276606004,
+          "uniform_extensional_force_n_per_m": 4950000000000.0
+        }
+      ],
+      "limitation": "frozen strength heterogeneity; no lateral shear transfer, strain weakening, rift migration, or thermal evolution",
+      "loading_assumption": "uniform extensional membrane force per along-strike metre at each column",
+      "thermal_profile_per_column": "same prescribed 0\u00b0C surface, 650\u00b0C Moho, 1300\u00b0C LAB as the strength envelope"
+    },
+    "integrated_strength_n_per_m": 4491322285082.429,
+    "interpretation": "the 15 km crust profile yields before the 30 km profile; both extend after the stronger profile's integrated strength is exceeded",
+    "localization_profiles": [
+      {
+        "crust_thickness_m": 15000.0,
+        "integrated_strength_n_per_m": 4192252341277.9688,
+        "lithosphere_base_temperature_k": 1573.15,
+        "lithosphere_thickness_m": 100000.0,
+        "moho_temperature_k": 923.15,
+        "peak_envelope_strength_pa": 336905230.48439693,
+        "reference_strain_rate_per_s": 1e-15
+      },
+      {
+        "crust_thickness_m": 30000.0,
+        "integrated_strength_n_per_m": 4917630662042.9375,
+        "lithosphere_base_temperature_k": 1573.15,
+        "lithosphere_thickness_m": 100000.0,
+        "moho_temperature_k": 923.15,
+        "peak_envelope_strength_pa": 523265400.0,
+        "reference_strain_rate_per_s": 1e-15
+      }
+    ],
+    "strength_assumption": {
+      "crust_thickness_m": 20000.0,
+      "integrated_strength_n_per_m": 4491322285082.429,
+      "lithosphere_base_temperature_k": 1573.15,
+      "lithosphere_thickness_m": 100000.0,
+      "moho_temperature_k": 923.15,
+      "peak_envelope_strength_pa": 395362620.0,
+      "reference_strain_rate_per_s": 1e-15
+    },
+    "strength_law": {
+      "brittle": "0.6 * lithostatic pressure; full lithostatic effective pressure",
+      "caveat": "unvalidated rheology extrapolated to 1e-15 s^-1; no water pressure, pressure-dependent creep, damage, melt, or simulator temperature field",
+      "crust_ductile": "wet Simpson quartzite power-law creep, Koch et al. 1989",
+      "envelope": "min(brittle, ductile differential stress), depth-integrated",
+      "mantle_ductile": "dry olivine dislocation creep, Hirth & Kohlstedt 2003",
+      "thermal_profile": "0\u00b0C surface, 650\u00b0C Moho, 1300\u00b0C at 100 km LAB; piecewise linear"
+    },
+    "weaker_adjacent_segment_sweep": [
+      {
+        "drive_n_per_m": 2096126170638.9844,
+        "strong_segment": {
+          "capacity_n_per_m": 4917630662042.9375,
+          "converged": true,
+          "drive_n_per_m": 2096126170638.9844,
+          "equal_opposite": true,
+          "relative_rate_m_per_s": 0.0,
+          "residual_torque_fraction": 0.0,
+          "residual_torque_nm": 0.0,
+          "resistance_n_per_m": 2096126170638.9844
+        },
+        "weak_segment": {
+          "capacity_n_per_m": 4192252341277.9688,
+          "converged": true,
+          "drive_n_per_m": 2096126170638.9844,
+          "equal_opposite": true,
+          "relative_rate_m_per_s": 0.0,
+          "residual_torque_fraction": 0.0,
+          "residual_torque_nm": 0.0,
+          "resistance_n_per_m": 2096126170638.9844
+        }
+      },
+      {
+        "drive_n_per_m": 2976179474376.5547,
+        "strong_segment": {
+          "capacity_n_per_m": 4917630662042.9375,
+          "converged": true,
+          "drive_n_per_m": 2976179474376.5547,
+          "equal_opposite": true,
+          "relative_rate_m_per_s": 0.0,
+          "residual_torque_fraction": 1.0010555055575266e-16,
+          "residual_torque_nm": 268435456.0,
+          "resistance_n_per_m": 2976179474376.555
+        },
+        "weak_segment": {
+          "capacity_n_per_m": 4192252341277.9688,
+          "converged": true,
+          "drive_n_per_m": 2976179474376.5547,
+          "equal_opposite": true,
+          "relative_rate_m_per_s": 0.0,
+          "residual_torque_fraction": 1.0010555055575266e-16,
+          "residual_torque_nm": 268435456.0,
+          "resistance_n_per_m": 2976179474376.555
+        }
+      },
+      {
+        "drive_n_per_m": 3856232778114.125,
+        "strong_segment": {
+          "capacity_n_per_m": 4917630662042.9375,
+          "converged": true,
+          "drive_n_per_m": 3856232778114.125,
+          "equal_opposite": true,
+          "relative_rate_m_per_s": 0.0,
+          "residual_torque_fraction": 1.5451976163166068e-16,
+          "residual_torque_nm": 536870912.0,
+          "resistance_n_per_m": 3856232778114.1255
+        },
+        "weak_segment": {
+          "capacity_n_per_m": 4192252341277.9688,
+          "converged": true,
+          "drive_n_per_m": 3856232778114.125,
+          "equal_opposite": true,
+          "relative_rate_m_per_s": 0.0,
+          "residual_torque_fraction": 1.5451976163166068e-16,
+          "residual_torque_nm": 536870912.0,
+          "resistance_n_per_m": 3856232778114.1255
+        }
+      },
+      {
+        "drive_n_per_m": 4736286081851.695,
+        "strong_segment": {
+          "capacity_n_per_m": 4917630662042.9375,
+          "converged": true,
+          "drive_n_per_m": 4736286081851.695,
+          "equal_opposite": true,
+          "relative_rate_m_per_s": 0.0,
+          "residual_torque_fraction": 0.0,
+          "residual_torque_nm": 0.0,
+          "resistance_n_per_m": 4736286081851.695
+        },
+        "weak_segment": {
+          "capacity_n_per_m": 4192252341277.9688,
+          "converged": true,
+          "drive_n_per_m": 4736286081851.695,
+          "equal_opposite": true,
+          "relative_rate_m_per_s": 1.088067481147453e-10,
+          "residual_torque_fraction": 7.863019665788333e-17,
+          "residual_torque_nm": 335544320.0,
+          "resistance_n_per_m": 4192252341277.9688
+        }
+      },
+      {
+        "drive_n_per_m": 5616339385589.266,
+        "strong_segment": {
+          "capacity_n_per_m": 4917630662042.9375,
+          "converged": true,
+          "drive_n_per_m": 5616339385589.266,
+          "equal_opposite": true,
+          "relative_rate_m_per_s": 1.3974174470926578e-10,
+          "residual_torque_fraction": 1.193566030926134e-16,
+          "residual_torque_nm": 603979776.0,
+          "resistance_n_per_m": 4917630662042.9375
+        },
+        "weak_segment": {
+          "capacity_n_per_m": 4192252341277.9688,
+          "converged": true,
+          "drive_n_per_m": 5616339385589.266,
+          "equal_opposite": true,
+          "relative_rate_m_per_s": 2.848174088622595e-10,
+          "residual_torque_fraction": 7.957106872840892e-17,
+          "residual_torque_nm": 402653184.0,
+          "resistance_n_per_m": 4192252341277.9688
+        }
+      },
+      {
+        "drive_n_per_m": 6496392689326.836,
+        "strong_segment": {
+          "capacity_n_per_m": 4917630662042.9375,
+          "converged": true,
+          "drive_n_per_m": 6496392689326.836,
+          "equal_opposite": true,
+          "relative_rate_m_per_s": 3.1575240545677997e-10,
+          "residual_torque_fraction": 1.146528924139235e-16,
+          "residual_torque_nm": 671088640.0,
+          "resistance_n_per_m": 4917630662042.9375
+        },
+        "weak_segment": {
+          "capacity_n_per_m": 4192252341277.9688,
+          "converged": true,
+          "drive_n_per_m": 6496392689326.836,
+          "equal_opposite": true,
+          "relative_rate_m_per_s": 4.6082806960977365e-10,
+          "residual_torque_fraction": 4.5861156965569394e-17,
+          "residual_torque_nm": 268435456.0,
+          "resistance_n_per_m": 4192252341277.9688
+        }
+      },
+      {
+        "drive_n_per_m": 7376445993064.406,
+        "strong_segment": {
+          "capacity_n_per_m": 4917630662042.9375,
+          "converged": true,
+          "drive_n_per_m": 7376445993064.406,
+          "equal_opposite": true,
+          "relative_rate_m_per_s": 4.917630662042938e-10,
+          "residual_torque_fraction": 8.07793035061388e-17,
+          "residual_torque_nm": 536870912.0,
+          "resistance_n_per_m": 4917630662042.9375
+        },
+        "weak_segment": {
+          "capacity_n_per_m": 4192252341277.9688,
+          "converged": true,
+          "drive_n_per_m": 7376445993064.406,
+          "equal_opposite": true,
+          "relative_rate_m_per_s": 6.368387303572875e-10,
+          "residual_torque_fraction": 4.03896517530694e-17,
+          "residual_torque_nm": 268435456.0,
+          "resistance_n_per_m": 4192252341277.9688
+        }
+      }
+    ]
+  },
+  "transform": {
+    "force_sweep": [
+      {
+        "capacity_n_per_m": 500000000000.0,
+        "converged": true,
+        "drive_n_per_m": 250000000000.0,
+        "equal_opposite": true,
+        "relative_rate_m_per_s": 0.0,
+        "residual_torque_fraction": 0.0,
+        "residual_torque_nm": 0.0,
+        "resistance_n_per_m": 250000000000.00003
+      },
+      {
+        "capacity_n_per_m": 500000000000.0,
+        "converged": true,
+        "drive_n_per_m": 500000000000.0,
+        "equal_opposite": true,
+        "relative_rate_m_per_s": 2.087439983781775e-26,
+        "residual_torque_fraction": 1.47604296785203e-16,
+        "residual_torque_nm": 66495400.683368444,
+        "resistance_n_per_m": 500000000000.0
+      },
+      {
+        "capacity_n_per_m": 500000000000.0,
+        "converged": true,
+        "drive_n_per_m": 750000000000.0,
+        "equal_opposite": true,
+        "relative_rate_m_per_s": 5e-11,
+        "residual_torque_fraction": 9.93106949450652e-17,
+        "residual_torque_nm": 67108864.0,
+        "resistance_n_per_m": 500000000000.0
+      },
+      {
+        "capacity_n_per_m": 500000000000.0,
+        "converged": true,
+        "drive_n_per_m": 1000000000000.0,
+        "equal_opposite": true,
+        "relative_rate_m_per_s": 1.0000000000000003e-10,
+        "residual_torque_fraction": 1.489660424175978e-16,
+        "residual_torque_nm": 134217728.0,
+        "resistance_n_per_m": 500000000000.0
+      }
+    ],
+    "interpretation": "bounded resistance suppresses slip until capacity, then excess drive produces slip",
+    "shear_capacity_n_per_m": 500000000000.0
+  },
+  "units": {
+    "integrated_strength": "Pa*m = N/m",
+    "load": "N/m",
+    "rate": "m/s"
+  }
+}

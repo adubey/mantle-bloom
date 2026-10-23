@@ -2,7 +2,7 @@
 
 - **Status:** Accepted (2026-10-16)
 - **Date:** 2026-10-16
-- **Related:** #464 (tracking), #465 (gate G1); RFCs [0009](0009-craton-mosaic.md)
+- **Related:** #464 (tracking), #465 (gate G1), #535 (gate G3); RFCs [0009](0009-craton-mosaic.md)
   (cratons-first layout), [0010](0010-rifts-follow-weak-lithosphere.md) (rift routing), and
   [0011](https://github.com/adubey/mantle-bloom/blob/claude/rfc-0011-contact-strength/rfc/0011-contact-strength.md)
   (collision resistance); design principles 1–5 and 8–9
@@ -528,6 +528,51 @@ constitutive choices are not fixed by this RFC. If rifting or transform motion r
 incompatible or meaningless shared fields, keep a narrower mechanical interface and document
 the process-specific extension.
 
+*G3 result (2026-10-23, #535, [analysis/rfc0012](../analysis/rfc0012/README.md)).*
+The merged G2 active-set solver can express the same bounded load/rate/capacity equation for a
+directionally oriented rift cut and a transform segment: synthetic cases converge with equal-
+and-opposite loads, hold below capacity, and yield above it. A paired weak/strong cut sweep
+localizes extension on the weak segment first, then activates the stronger segment after its
+larger capacity is exceeded. The interface remains process-specific at the constitutive and
+assembly layers: the current production caller supplies contact-normal loads, and a rift or
+transform adapter must supply its own signed direction, net driving load, and capacity. G3
+added a prescribed vertically integrated strength envelope: at a 20 km crust, 100 km total
+lithosphere, 650°C Moho and 1300°C LAB, its candidate capacity is `4.491e12 N/m`; 15 km and
+30 km crust profiles give `4.192e12` and `4.918e12 N/m`. This shows the shared solve responds to
+a depth-integrated, temperature/thickness-dependent capacity, but the profile is an assumed
+diagnostic end member, not derived from `World` fields or calibrated against observations. A
+reduced 1,000 km cross-section with 40 prescribed 25 km columns widens from 50 km active at
+`4.30e12 N/m` to 350 km at `4.80e12 N/m`, then 1,000 km at `4.95e12 N/m`. This is a frozen
+strength-heterogeneity sweep under uniform membrane force, not a Buck-style thin-sheet model:
+it omits lateral stress transfer, strain weakening, thermal evolution, and buoyancy. As an
+order-of-magnitude screen only, the 100 km model zone at `4.40e12 N/m` matches the reported
+about-100-km Kenya Rift surface-to-upper-mantle/thinning zone, and the 350 km zone at
+`4.80e12 N/m` falls within the reported 300–600 km Basin and Range rifting province
+[[Braile et al., 1994]](#ref-braile1994) [[Matthews & Anderson, 1973]](#ref-matthews1973).
+These observations describe unlike geological features and neither is the probe's positive-rate
+width; the 1,000 km activation at `4.95e12 N/m` exceeds the Basin and Range scale and exposes
+the imposed outer-profile threshold jump. This dimensional comparison is not geological
+validation or calibration. No ledger check is useful for this frozen synthetic screen: it
+changes no material and calls no production rifting writer, so there is no transfer to audit.
+Ledger closure is separately checked in the world-level rift evolution diagnostic. A 500 Myr
+current-model replay at 1 Myr steps measures
+production divergent-thinning support at 10 Myr checkpoints. Aggregate area-equivalent widths
+had a 72 km median and 93 km maximum; the widest connected component was 213 km. The component
+share ≥100 km had a 2.8% median and 10.1% maximum checkpoint share; no connected component
+reached 300 km at a sampled checkpoint. The 10 Myr sampling can miss shorter events, and active
+thinning width is not full basin/province width. The continental material ledger closed at every
+checkpoint, with a maximum relative rift-path residual of 1.1e-15. Six glacier depth-cap warnings
+also occurred. This is descriptive current-model evidence only: production still does not use
+the synthetic integrated-strength law. The complete current-main merge trace records one
+sustained-collision merger at 141 Myr; its maximum absolute local rate was 0.643 cm/yr. Under
+the retrospective lock metric, the fusion qualifies at ε = 1 cm/yr through τ = 10 Myr, and at
+ε = 2–10 cm/yr through τ = 25 Myr; it fails at τ = 50 Myr for every tested ε. This single-seed,
+single-merger result demonstrates sensitivity without selecting a production trigger or
+changing topology. Together with the synthetic rift/transform cases, geological scale screen,
+and world ledger checks, G3's diagnostic acceptance criteria are met. This does not validate a
+production integrated-strength law or select a general implementation plan. See the reproducible
+synthetic, world-rift, and complete lock-sensitivity outputs in the analysis report.
+
 No full implementation plan is selected until G1–G3 are recorded. RFC 0011 can proceed as a
 process-specific change if its own gates justify it; its implementation should not assume
 that this RFC has already proven the shared interface.
@@ -692,11 +737,14 @@ this pilot.
       (new candidate diagnostic) on generated worlds with seeds 326494039, 748935664,
       580014012, and 111065103, at the same endpoints and node density. Do not use 5 Myr as
       an acceptance step: the issue #452 step-size check fails at that step.
-- [ ] **G3** reports whether the same interface can express a rift and a transform response;
+- [x] **G3** reports whether the same interface can express a rift and a transform response;
       any process-specific extension is documented with a physical reason. Rifting diagnostics
       compare whether extension widens or stays localized as the force needed to continue
       extension changes; Buck (1991) supports that widening/localization relationship, not a
-      universal rift-stall rule.
+      universal rift-stall rule. Compare active-width scales with at least one narrow and one
+      broad geological example while matching definitions and labeling this as a scale screen,
+      not calibration. Any world-level rift evolution or material-changing implementation must
+      close the principle-6 rift ledgers against its cellwise inventory.
 - [ ] Any pilot that consumes material properties identifies the upper-crust, lower-crust,
       and lithospheric-mantle derived state it reads. Any composition fractions are bounded
       and material transfers conserve layer budgets. Temperature and any optional fluid state
@@ -788,6 +836,18 @@ this pilot.
 - Buck, W. R. (1991). Modes of continental lithospheric extension.
   *Journal of Geophysical Research: Solid Earth*, 96(B12), 20161–20178.
   [doi:10.1029/91JB01485](https://doi.org/10.1029/91JB01485)
+
+### Braile et al 1994
+
+- <a id="ref-braile1994"></a>Braile, L. W., Wang, B., Daudt, C. R., Keller, G. R., & Patel, J. P. (1994). Modeling the
+  2-D seismic velocity structure across the Kenya rift. *Tectonophysics*, 236(1–4), 251–269.
+  [doi:10.1016/0040-1951(94)90179-1](https://doi.org/10.1016/0040-1951(94)90179-1)
+
+### Matthews Anderson 1973
+
+- <a id="ref-matthews1973"></a>Matthews, V., & Anderson, C. E. (1973). Yellowstone convection plume and break-up of the
+  Western United States. *Nature*, 243, 158–159.
+  [doi:10.1038/243158a0](https://doi.org/10.1038/243158a0)
 
 ### Stewart Trinkle 1996
 

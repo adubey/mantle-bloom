@@ -1,0 +1,52 @@
+{
+  "seed": 326494039,
+  "model_commit": "9f51c5781a6f9ec6cc173d73b71a7f24c3c3a47b",
+  "years": 500000000.0,
+  "step_myr": 1.0,
+  "checkpoint_interval_myr": 10.0,
+  "checkpoint_count": 50,
+  "width_metric": "2 * connected active-thinning area / its mesh perimeter; per-plate components, checkpoint samples only",
+  "area_equivalent_width_km": {
+    "median_across_checkpoints": 72.2402884702943,
+    "p90_across_checkpoints": 80.8105608819581,
+    "maximum_checkpoint": 92.91384339961874
+  },
+  "area_weighted_component_width_km": {
+    "p50_across_checkpoints": 66.60326005080378,
+    "p90_across_checkpoints": 84.46319845434282,
+    "maximum_checkpoint_p50": 97.33883845236453,
+    "median_checkpoint_p90": 99.8137830690273,
+    "maximum_checkpoint_p90": 208.0364153510309,
+    "maximum_individual_component_width_km": 213.27060748748647,
+    "component_share_ge_100km": {
+      "median_checkpoint": 0.027729735962181482,
+      "maximum_checkpoint": 0.10067114093959731
+    },
+    "component_share_ge_300km": {
+      "median_checkpoint": 0.0,
+      "maximum_checkpoint": 0.0
+    },
+    "active_area_share_ge_100km": {
+      "median_checkpoint": 0.10269801063042117,
+      "maximum_checkpoint": 0.4053393004752957
+    },
+    "active_area_share_ge_300km": {
+      "median_checkpoint": 0.0,
+      "maximum_checkpoint": 0.0
+    }
+  },
+  "ledger_closure": {
+    "continental_material_assert_closed_at_all_checkpoints": true,
+    "maximum_absolute_craton_balance_error_m3": 1024.0,
+    "maximum_absolute_continental_material_balance_error_m3": 5120.0,
+    "maximum_relative_craton_rift_path_residual": 1.0912952297148908e-15,
+    "final_rifted_craton_m3": 4.676853717671957e16,
+    "final_craton_rift_path_sum_m3": 4.676853717671959e16
+  },
+  "runtime_wall_seconds": 1372.9269839581102,
+  "glacier_max_depth_warnings": 6,
+  "raw_trace_sha256": "1c2bc221fa28042dab5f8ef20fb2038f267ca6077a8854197f8d6f324a75ebb3",
+  "probe_script_sha256": "886aa653dd4a8afbd0a3717a1d043f26937bd26585f04bd648e19f34530cddc4",
+  "summary_script_sha256": "02902994ac979745670112dd8babe237397d900b1baf1d2ea5eda3c7994dbed6",
+  "interpretation": "Current production divergent thinning is sampled at 10 Myr checkpoints. No connected active-thinning patch reached 300 km; active-thinning width is not basin width, and events between checkpoints may be missed. No integrated-strength law feeds back into this replay."
+}
