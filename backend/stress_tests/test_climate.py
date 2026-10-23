@@ -21,7 +21,7 @@ def test_compute_climate_produces_finite_fields_for_a_real_world():
     fields = climate.compute_climate(world, height, width)
     for name in [
         "elevation_m", "land_temperature_c", "ocean_temperature_c", "air_temperature_c",
-        "wind_u", "wind_v", "current_u", "current_v", "humidity", "precipitation_mm",
+        "wind_u", "wind_v", "current_u", "current_v", "humidity_g_kg", "precipitation_mm",
     ]:
         arr = getattr(fields, name)
         assert arr.shape == (height, width)
