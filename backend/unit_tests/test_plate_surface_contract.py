@@ -5,8 +5,6 @@
 can be added to the fixtures and inherit the whole contract.
 """
 
-from types import SimpleNamespace
-
 import numpy as np
 import pytest
 
@@ -115,12 +113,13 @@ def test_surface_rigid_rotation_moves_world_views_but_not_local_ones(surface):
 
 
 def test_surface_pinned_shift_is_representation_neutral(surface):
+    from app.torque import apply_omega_and_rotate
+
     before = surface.surface_nodes()
     topology0, geometry0 = surface.topology_revision, surface.geometry_revision
     pinned = np.array([0.0, 0.0, 0.05])
-    world = SimpleNamespace(pinned_omegas={surface.plate_id: pinned}, plates=[surface])
 
-    distance = surface.shift(world, years=2.0)
+    distance = apply_omega_and_rotate(surface, before.world_xyz, pinned, years=2.0)
     after = surface.surface_nodes()
 
     np.testing.assert_allclose(surface.omega, pinned)

@@ -421,6 +421,8 @@ def observe_contacts(world: "World", years: float) -> PolarityFrame:
     cache = world.boundary_search_cache
     if cache is None:
         cache = torque.BoundarySearchCache()
+    # Motion ran against the pre-rotation trees. These counters intentionally measure the
+    # post-rotation prepass and deform passes only; the cache itself spans all three phases.
     searches_before = cache.searches
     now = world.elapsed_years
 

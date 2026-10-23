@@ -1,0 +1,961 @@
+{
+  "diagnostic": "RFC 0012 matched merge-opportunity tracing",
+  "interpretation_note": "Filter-stage totals count continental pair checks over all steps. A pair can appear in multiple stages only once per step; the pair details give its deepest reached stage. Bounding-sphere rejections are aggregated, while pairs that survive that prune retain their IDs and contact-rate details. Collision timers and probability rolls are reconstructed with the same deterministic inputs and cross-checked against the production function's returned ready list.",
+  "matched": {
+    "111065103": {
+      "baseline_collision_timer_and_rolls": {
+        "forced_overlap_selected": 3,
+        "probability_fail_steps": 4,
+        "probability_pass_steps": 12,
+        "ready_pairs_deferred_by_one_merge_limit": 0,
+        "returned_collision_ready_pairs": 12,
+        "timer_ready_steps": 16,
+        "tracked_pair_steps": 1052
+      },
+      "baseline_commit": "2279d7e16c7debe839bd04ab18ce0a8f895f8654",
+      "baseline_merge_events_by_path": {
+        "forced_overlap": 3,
+        "sustained_collision": 12
+      },
+      "baseline_pair_filter_stage_totals": {
+        "bounding_sphere_separated": 63610,
+        "bounding_sphere_survivors": 17559,
+        "continental_pairs": 81169,
+        "convergent_collision_candidates": 295,
+        "insufficient_convergent_contacts": 4562,
+        "no_point_candidates": 3007,
+        "too_few_close_contacts": 9695
+      },
+      "pilot_collision_timer_and_rolls": {
+        "ready_pairs_deferred_by_one_merge_limit": 0,
+        "returned_collision_ready_pairs": 0
+      },
+      "pilot_commit": "329fd2a5f03be366929bd299e0b65d02e06a8094",
+      "pilot_merge_events_by_path": {},
+      "pilot_minus_baseline_pair_filter_stage_totals": {
+        "bounding_sphere_separated": 6334,
+        "bounding_sphere_survivors": 1441,
+        "continental_pairs": 7775,
+        "convergent_collision_candidates": -295,
+        "insufficient_convergent_contacts": -1514,
+        "no_point_candidates": 573,
+        "too_few_close_contacts": 2677
+      },
+      "pilot_pair_filter_stage_totals": {
+        "bounding_sphere_separated": 69944,
+        "bounding_sphere_survivors": 19000,
+        "continental_pairs": 88944,
+        "insufficient_convergent_contacts": 3048,
+        "no_point_candidates": 3580,
+        "too_few_close_contacts": 12372
+      }
+    },
+    "326494039": {
+      "baseline_collision_timer_and_rolls": {
+        "forced_overlap_selected": 1,
+        "probability_fail_steps": 12,
+        "probability_pass_steps": 20,
+        "ready_pairs_deferred_by_one_merge_limit": 0,
+        "returned_collision_ready_pairs": 20,
+        "timer_ready_steps": 32,
+        "tracked_pair_steps": 1453
+      },
+      "baseline_commit": "2279d7e16c7debe839bd04ab18ce0a8f895f8654",
+      "baseline_merge_events_by_path": {
+        "forced_overlap": 1,
+        "sustained_collision": 20
+      },
+      "baseline_pair_filter_stage_totals": {
+        "bounding_sphere_separated": 21827,
+        "bounding_sphere_survivors": 10049,
+        "continental_pairs": 31876,
+        "convergent_collision_candidates": 389,
+        "insufficient_convergent_contacts": 3056,
+        "no_point_candidates": 1900,
+        "too_few_close_contacts": 4704
+      },
+      "pilot_collision_timer_and_rolls": {
+        "ready_pairs_deferred_by_one_merge_limit": 0,
+        "returned_collision_ready_pairs": 0,
+        "tracked_pair_steps": 16
+      },
+      "pilot_commit": "329fd2a5f03be366929bd299e0b65d02e06a8094",
+      "pilot_merge_events_by_path": {},
+      "pilot_minus_baseline_pair_filter_stage_totals": {
+        "bounding_sphere_separated": 9045,
+        "bounding_sphere_survivors": 5788,
+        "continental_pairs": 14833,
+        "convergent_collision_candidates": -373,
+        "insufficient_convergent_contacts": -33,
+        "no_point_candidates": 1036,
+        "too_few_close_contacts": 5158
+      },
+      "pilot_pair_filter_stage_totals": {
+        "bounding_sphere_separated": 30872,
+        "bounding_sphere_survivors": 15837,
+        "continental_pairs": 46709,
+        "convergent_collision_candidates": 16,
+        "insufficient_convergent_contacts": 3023,
+        "no_point_candidates": 2936,
+        "too_few_close_contacts": 9862
+      }
+    },
+    "580014012": {
+      "baseline_collision_timer_and_rolls": {
+        "forced_overlap_selected": 2,
+        "probability_fail_steps": 5,
+        "probability_pass_steps": 3,
+        "ready_pairs_deferred_by_one_merge_limit": 0,
+        "returned_collision_ready_pairs": 3,
+        "timer_ready_steps": 8,
+        "tracked_pair_steps": 405
+      },
+      "baseline_commit": "2279d7e16c7debe839bd04ab18ce0a8f895f8654",
+      "baseline_merge_events_by_path": {
+        "forced_overlap": 2,
+        "sustained_collision": 3
+      },
+      "baseline_pair_filter_stage_totals": {
+        "bounding_sphere_separated": 51817,
+        "bounding_sphere_survivors": 22031,
+        "continental_pairs": 73848,
+        "convergent_collision_candidates": 140,
+        "insufficient_convergent_contacts": 5726,
+        "no_point_candidates": 3906,
+        "too_few_close_contacts": 12259
+      },
+      "pilot_collision_timer_and_rolls": {
+        "forced_overlap_selected": 1,
+        "ready_pairs_deferred_by_one_merge_limit": 0,
+        "returned_collision_ready_pairs": 0,
+        "tracked_pair_steps": 17
+      },
+      "pilot_commit": "329fd2a5f03be366929bd299e0b65d02e06a8094",
+      "pilot_merge_events_by_path": {
+        "forced_overlap": 1
+      },
+      "pilot_minus_baseline_pair_filter_stage_totals": {
+        "bounding_sphere_separated": 9216,
+        "bounding_sphere_survivors": 4895,
+        "continental_pairs": 14111,
+        "convergent_collision_candidates": -123,
+        "insufficient_convergent_contacts": -1649,
+        "no_point_candidates": 534,
+        "too_few_close_contacts": 6133
+      },
+      "pilot_pair_filter_stage_totals": {
+        "bounding_sphere_separated": 61033,
+        "bounding_sphere_survivors": 26926,
+        "continental_pairs": 87959,
+        "convergent_collision_candidates": 17,
+        "insufficient_convergent_contacts": 4077,
+        "no_point_candidates": 4440,
+        "too_few_close_contacts": 18392
+      }
+    },
+    "748935664": {
+      "baseline_collision_timer_and_rolls": {
+        "probability_fail_steps": 8,
+        "probability_pass_steps": 13,
+        "ready_pairs_deferred_by_one_merge_limit": 0,
+        "returned_collision_ready_pairs": 13,
+        "timer_ready_steps": 21,
+        "tracked_pair_steps": 925
+      },
+      "baseline_commit": "2279d7e16c7debe839bd04ab18ce0a8f895f8654",
+      "baseline_merge_events_by_path": {
+        "sustained_collision": 13
+      },
+      "baseline_pair_filter_stage_totals": {
+        "bounding_sphere_separated": 3237,
+        "bounding_sphere_survivors": 6142,
+        "continental_pairs": 9379,
+        "convergent_collision_candidates": 177,
+        "insufficient_convergent_contacts": 2460,
+        "no_point_candidates": 912,
+        "too_few_close_contacts": 2593
+      },
+      "pilot_collision_timer_and_rolls": {
+        "probability_fail_steps": 2,
+        "probability_pass_steps": 1,
+        "ready_pairs_deferred_by_one_merge_limit": 0,
+        "returned_collision_ready_pairs": 1,
+        "timer_ready_steps": 3,
+        "tracked_pair_steps": 128
+      },
+      "pilot_commit": "329fd2a5f03be366929bd299e0b65d02e06a8094",
+      "pilot_merge_events_by_path": {
+        "sustained_collision": 1
+      },
+      "pilot_minus_baseline_pair_filter_stage_totals": {
+        "bounding_sphere_separated": 2017,
+        "bounding_sphere_survivors": 3063,
+        "continental_pairs": 5080,
+        "convergent_collision_candidates": -132,
+        "insufficient_convergent_contacts": -21,
+        "no_point_candidates": 1161,
+        "too_few_close_contacts": 2055
+      },
+      "pilot_pair_filter_stage_totals": {
+        "bounding_sphere_separated": 5254,
+        "bounding_sphere_survivors": 9205,
+        "continental_pairs": 14459,
+        "convergent_collision_candidates": 45,
+        "insufficient_convergent_contacts": 2439,
+        "no_point_candidates": 2073,
+        "too_few_close_contacts": 4648
+      }
+    }
+  },
+  "runs": [
+    {
+      "collision_progress_reset_count": 61,
+      "collision_ready_decision_mismatches": 0,
+      "collision_timer_and_rolls": {
+        "forced_overlap_selected": 3,
+        "probability_fail_steps": 4,
+        "probability_pass_steps": 12,
+        "ready_pairs_deferred_by_one_merge_limit": 0,
+        "returned_collision_ready_pairs": 12,
+        "timer_ready_steps": 16,
+        "tracked_pair_steps": 1052
+      },
+      "commit": "2279d7e16c7debe839bd04ab18ce0a8f895f8654",
+      "final_collision_progress_pairs": 4,
+      "final_overlap_progress_pairs": 0,
+      "merge_events_by_path": {
+        "forced_overlap": 3,
+        "sustained_collision": 12
+      },
+      "model": "baseline",
+      "overlap_pair_step_records": 10310,
+      "pair_detail_statistics": {
+        "convergent_collision_candidate": {
+          "close_contact_points": {
+            "count": 295,
+            "max": 67,
+            "median": 15
+          },
+          "convergent_contacts": {
+            "count": 295,
+            "max": 45,
+            "median": 5
+          },
+          "max_contact_closing_cm_per_yr": {
+            "count": 295,
+            "max": 5.0358,
+            "median": 1.4631
+          },
+          "relative_rotation_cm_per_yr": {
+            "count": 295,
+            "max": 5.6635,
+            "median": 1.9602
+          }
+        },
+        "insufficient_convergent_contacts": {
+          "close_contact_points": {
+            "count": 4562,
+            "max": 89,
+            "median": 8.0
+          },
+          "convergent_contacts": {
+            "count": 4562,
+            "max": 3,
+            "median": 0.0
+          },
+          "max_contact_closing_cm_per_yr": {
+            "count": 4562,
+            "max": 3.3536,
+            "median": 0.518
+          },
+          "relative_rotation_cm_per_yr": {
+            "count": 4562,
+            "max": 6.4771,
+            "median": 1.1933
+          }
+        },
+        "no_point_candidates": {},
+        "too_few_close_contacts": {
+          "close_contact_points": {
+            "count": 9695,
+            "max": 3,
+            "median": 0
+          },
+          "relative_rotation_cm_per_yr": {
+            "count": 9695,
+            "max": 10.9888,
+            "median": 2.2974
+          }
+        }
+      },
+      "pair_filter_stage_totals": {
+        "bounding_sphere_separated": 63610,
+        "bounding_sphere_survivors": 17559,
+        "continental_pairs": 81169,
+        "convergent_collision_candidates": 295,
+        "insufficient_convergent_contacts": 4562,
+        "no_point_candidates": 3007,
+        "too_few_close_contacts": 9695
+      },
+      "runtime_seconds": 1779.7701514998917,
+      "seed": 111065103,
+      "step_myr": 1.0,
+      "steps": 500,
+      "steps_forced_merge_deferred_by_collision_merge": 0,
+      "steps_with_ready_forced_overlap": 3,
+      "tracked_pair_step_sources": {
+        "convergent_contact": 295,
+        "retained_craton_jam": 757
+      }
+    },
+    {
+      "collision_progress_reset_count": 69,
+      "collision_ready_decision_mismatches": 0,
+      "collision_timer_and_rolls": {
+        "forced_overlap_selected": 1,
+        "probability_fail_steps": 12,
+        "probability_pass_steps": 20,
+        "ready_pairs_deferred_by_one_merge_limit": 0,
+        "returned_collision_ready_pairs": 20,
+        "timer_ready_steps": 32,
+        "tracked_pair_steps": 1453
+      },
+      "commit": "2279d7e16c7debe839bd04ab18ce0a8f895f8654",
+      "final_collision_progress_pairs": 4,
+      "final_overlap_progress_pairs": 2,
+      "merge_events_by_path": {
+        "forced_overlap": 1,
+        "sustained_collision": 20
+      },
+      "model": "baseline",
+      "overlap_pair_step_records": 6239,
+      "pair_detail_statistics": {
+        "convergent_collision_candidate": {
+          "close_contact_points": {
+            "count": 389,
+            "max": 85,
+            "median": 14
+          },
+          "convergent_contacts": {
+            "count": 389,
+            "max": 43,
+            "median": 5
+          },
+          "max_contact_closing_cm_per_yr": {
+            "count": 389,
+            "max": 10.7579,
+            "median": 1.4862
+          },
+          "relative_rotation_cm_per_yr": {
+            "count": 389,
+            "max": 11.0993,
+            "median": 1.8527
+          }
+        },
+        "insufficient_convergent_contacts": {
+          "close_contact_points": {
+            "count": 3056,
+            "max": 146,
+            "median": 7.0
+          },
+          "convergent_contacts": {
+            "count": 3056,
+            "max": 3,
+            "median": 0.0
+          },
+          "max_contact_closing_cm_per_yr": {
+            "count": 3056,
+            "max": 5.9133,
+            "median": 0.8408
+          },
+          "relative_rotation_cm_per_yr": {
+            "count": 3056,
+            "max": 7.9012,
+            "median": 1.6269
+          }
+        },
+        "no_point_candidates": {},
+        "too_few_close_contacts": {
+          "close_contact_points": {
+            "count": 4704,
+            "max": 3,
+            "median": 0.0
+          },
+          "relative_rotation_cm_per_yr": {
+            "count": 4704,
+            "max": 10.8051,
+            "median": 2.3353
+          }
+        }
+      },
+      "pair_filter_stage_totals": {
+        "bounding_sphere_separated": 21827,
+        "bounding_sphere_survivors": 10049,
+        "continental_pairs": 31876,
+        "convergent_collision_candidates": 389,
+        "insufficient_convergent_contacts": 3056,
+        "no_point_candidates": 1900,
+        "too_few_close_contacts": 4704
+      },
+      "runtime_seconds": 1498.3731431670021,
+      "seed": 326494039,
+      "step_myr": 1.0,
+      "steps": 500,
+      "steps_forced_merge_deferred_by_collision_merge": 0,
+      "steps_with_ready_forced_overlap": 1,
+      "tracked_pair_step_sources": {
+        "convergent_contact": 389,
+        "retained_craton_jam": 1064
+      }
+    },
+    {
+      "collision_progress_reset_count": 84,
+      "collision_ready_decision_mismatches": 0,
+      "collision_timer_and_rolls": {
+        "forced_overlap_selected": 2,
+        "probability_fail_steps": 5,
+        "probability_pass_steps": 3,
+        "ready_pairs_deferred_by_one_merge_limit": 0,
+        "returned_collision_ready_pairs": 3,
+        "timer_ready_steps": 8,
+        "tracked_pair_steps": 405
+      },
+      "commit": "2279d7e16c7debe839bd04ab18ce0a8f895f8654",
+      "final_collision_progress_pairs": 2,
+      "final_overlap_progress_pairs": 0,
+      "merge_events_by_path": {
+        "forced_overlap": 2,
+        "sustained_collision": 3
+      },
+      "model": "baseline",
+      "overlap_pair_step_records": 11783,
+      "pair_detail_statistics": {
+        "convergent_collision_candidate": {
+          "close_contact_points": {
+            "count": 140,
+            "max": 110,
+            "median": 8.0
+          },
+          "convergent_contacts": {
+            "count": 140,
+            "max": 18,
+            "median": 4.0
+          },
+          "max_contact_closing_cm_per_yr": {
+            "count": 140,
+            "max": 4.4678,
+            "median": 1.6394
+          },
+          "relative_rotation_cm_per_yr": {
+            "count": 140,
+            "max": 4.6718,
+            "median": 2.0429
+          }
+        },
+        "insufficient_convergent_contacts": {
+          "close_contact_points": {
+            "count": 5726,
+            "max": 153,
+            "median": 10.0
+          },
+          "convergent_contacts": {
+            "count": 5726,
+            "max": 3,
+            "median": 0.0
+          },
+          "max_contact_closing_cm_per_yr": {
+            "count": 5726,
+            "max": 4.4846,
+            "median": 0.4555
+          },
+          "relative_rotation_cm_per_yr": {
+            "count": 5726,
+            "max": 8.0424,
+            "median": 1.0376
+          }
+        },
+        "no_point_candidates": {},
+        "too_few_close_contacts": {
+          "close_contact_points": {
+            "count": 12259,
+            "max": 3,
+            "median": 0
+          },
+          "relative_rotation_cm_per_yr": {
+            "count": 12259,
+            "max": 11.8636,
+            "median": 1.989
+          }
+        }
+      },
+      "pair_filter_stage_totals": {
+        "bounding_sphere_separated": 51817,
+        "bounding_sphere_survivors": 22031,
+        "continental_pairs": 73848,
+        "convergent_collision_candidates": 140,
+        "insufficient_convergent_contacts": 5726,
+        "no_point_candidates": 3906,
+        "too_few_close_contacts": 12259
+      },
+      "runtime_seconds": 1294.299131958047,
+      "seed": 580014012,
+      "step_myr": 1.0,
+      "steps": 500,
+      "steps_forced_merge_deferred_by_collision_merge": 0,
+      "steps_with_ready_forced_overlap": 2,
+      "tracked_pair_step_sources": {
+        "convergent_contact": 140,
+        "retained_craton_jam": 265
+      }
+    },
+    {
+      "collision_progress_reset_count": 67,
+      "collision_ready_decision_mismatches": 0,
+      "collision_timer_and_rolls": {
+        "probability_fail_steps": 8,
+        "probability_pass_steps": 13,
+        "ready_pairs_deferred_by_one_merge_limit": 0,
+        "returned_collision_ready_pairs": 13,
+        "timer_ready_steps": 21,
+        "tracked_pair_steps": 925
+      },
+      "commit": "2279d7e16c7debe839bd04ab18ce0a8f895f8654",
+      "final_collision_progress_pairs": 2,
+      "final_overlap_progress_pairs": 0,
+      "merge_events_by_path": {
+        "sustained_collision": 13
+      },
+      "model": "baseline",
+      "overlap_pair_step_records": 4504,
+      "pair_detail_statistics": {
+        "convergent_collision_candidate": {
+          "close_contact_points": {
+            "count": 177,
+            "max": 45,
+            "median": 11
+          },
+          "convergent_contacts": {
+            "count": 177,
+            "max": 27,
+            "median": 5
+          },
+          "max_contact_closing_cm_per_yr": {
+            "count": 177,
+            "max": 7.0445,
+            "median": 1.5345
+          },
+          "relative_rotation_cm_per_yr": {
+            "count": 177,
+            "max": 9.718,
+            "median": 1.9712
+          }
+        },
+        "insufficient_convergent_contacts": {
+          "close_contact_points": {
+            "count": 2460,
+            "max": 81,
+            "median": 15.0
+          },
+          "convergent_contacts": {
+            "count": 2460,
+            "max": 3,
+            "median": 0.0
+          },
+          "max_contact_closing_cm_per_yr": {
+            "count": 2460,
+            "max": 6.9646,
+            "median": 0.6561
+          },
+          "relative_rotation_cm_per_yr": {
+            "count": 2460,
+            "max": 10.1005,
+            "median": 1.1185
+          }
+        },
+        "no_point_candidates": {},
+        "too_few_close_contacts": {
+          "close_contact_points": {
+            "count": 2593,
+            "max": 3,
+            "median": 1
+          },
+          "relative_rotation_cm_per_yr": {
+            "count": 2593,
+            "max": 19.0817,
+            "median": 1.9436
+          }
+        }
+      },
+      "pair_filter_stage_totals": {
+        "bounding_sphere_separated": 3237,
+        "bounding_sphere_survivors": 6142,
+        "continental_pairs": 9379,
+        "convergent_collision_candidates": 177,
+        "insufficient_convergent_contacts": 2460,
+        "no_point_candidates": 912,
+        "too_few_close_contacts": 2593
+      },
+      "runtime_seconds": 1617.8231150419451,
+      "seed": 748935664,
+      "step_myr": 1.0,
+      "steps": 500,
+      "steps_forced_merge_deferred_by_collision_merge": 0,
+      "steps_with_ready_forced_overlap": 0,
+      "tracked_pair_step_sources": {
+        "convergent_contact": 177,
+        "retained_craton_jam": 748
+      }
+    },
+    {
+      "collision_progress_reset_count": 0,
+      "collision_ready_decision_mismatches": 0,
+      "collision_timer_and_rolls": {
+        "ready_pairs_deferred_by_one_merge_limit": 0,
+        "returned_collision_ready_pairs": 0
+      },
+      "commit": "329fd2a5f03be366929bd299e0b65d02e06a8094",
+      "final_collision_progress_pairs": 0,
+      "final_overlap_progress_pairs": 0,
+      "merge_events_by_path": {},
+      "model": "pilot",
+      "overlap_pair_step_records": 9008,
+      "pair_detail_statistics": {
+        "insufficient_convergent_contacts": {
+          "close_contact_points": {
+            "count": 3048,
+            "max": 32,
+            "median": 6.0
+          },
+          "convergent_contacts": {
+            "count": 3048,
+            "max": 3,
+            "median": 0.0
+          },
+          "max_contact_closing_cm_per_yr": {
+            "count": 3048,
+            "max": 1.4268,
+            "median": 0.2326
+          },
+          "relative_rotation_cm_per_yr": {
+            "count": 3048,
+            "max": 2.4669,
+            "median": 0.3962
+          }
+        },
+        "no_point_candidates": {},
+        "too_few_close_contacts": {
+          "close_contact_points": {
+            "count": 12372,
+            "max": 3,
+            "median": 0.0
+          },
+          "relative_rotation_cm_per_yr": {
+            "count": 12372,
+            "max": 9.3556,
+            "median": 0.55
+          }
+        }
+      },
+      "pair_filter_stage_totals": {
+        "bounding_sphere_separated": 69944,
+        "bounding_sphere_survivors": 19000,
+        "continental_pairs": 88944,
+        "insufficient_convergent_contacts": 3048,
+        "no_point_candidates": 3580,
+        "too_few_close_contacts": 12372
+      },
+      "runtime_seconds": 1383.611032875022,
+      "seed": 111065103,
+      "step_myr": 1.0,
+      "steps": 500,
+      "steps_forced_merge_deferred_by_collision_merge": 0,
+      "steps_with_ready_forced_overlap": 0,
+      "tracked_pair_step_sources": {}
+    },
+    {
+      "collision_progress_reset_count": 13,
+      "collision_ready_decision_mismatches": 0,
+      "collision_timer_and_rolls": {
+        "ready_pairs_deferred_by_one_merge_limit": 0,
+        "returned_collision_ready_pairs": 0,
+        "tracked_pair_steps": 16
+      },
+      "commit": "329fd2a5f03be366929bd299e0b65d02e06a8094",
+      "final_collision_progress_pairs": 0,
+      "final_overlap_progress_pairs": 0,
+      "merge_events_by_path": {},
+      "model": "pilot",
+      "overlap_pair_step_records": 8818,
+      "pair_detail_statistics": {
+        "convergent_collision_candidate": {
+          "close_contact_points": {
+            "count": 16,
+            "max": 9,
+            "median": 7.0
+          },
+          "convergent_contacts": {
+            "count": 16,
+            "max": 6,
+            "median": 4.0
+          },
+          "max_contact_closing_cm_per_yr": {
+            "count": 16,
+            "max": 10.7604,
+            "median": 1.5268
+          },
+          "relative_rotation_cm_per_yr": {
+            "count": 16,
+            "max": 11.1034,
+            "median": 1.6183
+          }
+        },
+        "insufficient_convergent_contacts": {
+          "close_contact_points": {
+            "count": 3023,
+            "max": 48,
+            "median": 6
+          },
+          "convergent_contacts": {
+            "count": 3023,
+            "max": 3,
+            "median": 0
+          },
+          "max_contact_closing_cm_per_yr": {
+            "count": 3023,
+            "max": 5.6836,
+            "median": 0.3073
+          },
+          "relative_rotation_cm_per_yr": {
+            "count": 3023,
+            "max": 7.9963,
+            "median": 0.5836
+          }
+        },
+        "no_point_candidates": {},
+        "too_few_close_contacts": {
+          "close_contact_points": {
+            "count": 9862,
+            "max": 3,
+            "median": 0.0
+          },
+          "relative_rotation_cm_per_yr": {
+            "count": 9862,
+            "max": 9.4068,
+            "median": 0.6207
+          }
+        }
+      },
+      "pair_filter_stage_totals": {
+        "bounding_sphere_separated": 30872,
+        "bounding_sphere_survivors": 15837,
+        "continental_pairs": 46709,
+        "convergent_collision_candidates": 16,
+        "insufficient_convergent_contacts": 3023,
+        "no_point_candidates": 2936,
+        "too_few_close_contacts": 9862
+      },
+      "runtime_seconds": 1322.342503250111,
+      "seed": 326494039,
+      "step_myr": 1.0,
+      "steps": 500,
+      "steps_forced_merge_deferred_by_collision_merge": 0,
+      "steps_with_ready_forced_overlap": 0,
+      "tracked_pair_step_sources": {
+        "convergent_contact": 16
+      }
+    },
+    {
+      "collision_progress_reset_count": 8,
+      "collision_ready_decision_mismatches": 0,
+      "collision_timer_and_rolls": {
+        "forced_overlap_selected": 1,
+        "ready_pairs_deferred_by_one_merge_limit": 0,
+        "returned_collision_ready_pairs": 0,
+        "tracked_pair_steps": 17
+      },
+      "commit": "329fd2a5f03be366929bd299e0b65d02e06a8094",
+      "final_collision_progress_pairs": 0,
+      "final_overlap_progress_pairs": 0,
+      "merge_events_by_path": {
+        "forced_overlap": 1
+      },
+      "model": "pilot",
+      "overlap_pair_step_records": 13952,
+      "pair_detail_statistics": {
+        "convergent_collision_candidate": {
+          "close_contact_points": {
+            "count": 17,
+            "max": 21,
+            "median": 8
+          },
+          "convergent_contacts": {
+            "count": 17,
+            "max": 9,
+            "median": 5
+          },
+          "max_contact_closing_cm_per_yr": {
+            "count": 17,
+            "max": 4.1551,
+            "median": 1.7771
+          },
+          "relative_rotation_cm_per_yr": {
+            "count": 17,
+            "max": 4.3716,
+            "median": 1.8989
+          }
+        },
+        "insufficient_convergent_contacts": {
+          "close_contact_points": {
+            "count": 4077,
+            "max": 25,
+            "median": 5
+          },
+          "convergent_contacts": {
+            "count": 4077,
+            "max": 3,
+            "median": 0
+          },
+          "max_contact_closing_cm_per_yr": {
+            "count": 4077,
+            "max": 2.3377,
+            "median": 0.2413
+          },
+          "relative_rotation_cm_per_yr": {
+            "count": 4077,
+            "max": 3.0029,
+            "median": 0.3707
+          }
+        },
+        "no_point_candidates": {},
+        "too_few_close_contacts": {
+          "close_contact_points": {
+            "count": 18392,
+            "max": 3,
+            "median": 0.0
+          },
+          "relative_rotation_cm_per_yr": {
+            "count": 18392,
+            "max": 3.8957,
+            "median": 0.3544
+          }
+        }
+      },
+      "pair_filter_stage_totals": {
+        "bounding_sphere_separated": 61033,
+        "bounding_sphere_survivors": 26926,
+        "continental_pairs": 87959,
+        "convergent_collision_candidates": 17,
+        "insufficient_convergent_contacts": 4077,
+        "no_point_candidates": 4440,
+        "too_few_close_contacts": 18392
+      },
+      "runtime_seconds": 1286.3407292079646,
+      "seed": 580014012,
+      "step_myr": 1.0,
+      "steps": 500,
+      "steps_forced_merge_deferred_by_collision_merge": 0,
+      "steps_with_ready_forced_overlap": 1,
+      "tracked_pair_step_sources": {
+        "convergent_contact": 17
+      }
+    },
+    {
+      "collision_progress_reset_count": 20,
+      "collision_ready_decision_mismatches": 0,
+      "collision_timer_and_rolls": {
+        "probability_fail_steps": 2,
+        "probability_pass_steps": 1,
+        "ready_pairs_deferred_by_one_merge_limit": 0,
+        "returned_collision_ready_pairs": 1,
+        "timer_ready_steps": 3,
+        "tracked_pair_steps": 128
+      },
+      "commit": "329fd2a5f03be366929bd299e0b65d02e06a8094",
+      "final_collision_progress_pairs": 0,
+      "final_overlap_progress_pairs": 0,
+      "merge_events_by_path": {
+        "sustained_collision": 1
+      },
+      "model": "pilot",
+      "overlap_pair_step_records": 6612,
+      "pair_detail_statistics": {
+        "convergent_collision_candidate": {
+          "close_contact_points": {
+            "count": 45,
+            "max": 30,
+            "median": 11
+          },
+          "convergent_contacts": {
+            "count": 45,
+            "max": 18,
+            "median": 6
+          },
+          "max_contact_closing_cm_per_yr": {
+            "count": 45,
+            "max": 2.9402,
+            "median": 1.65
+          },
+          "relative_rotation_cm_per_yr": {
+            "count": 45,
+            "max": 3.6202,
+            "median": 2.0237
+          }
+        },
+        "insufficient_convergent_contacts": {
+          "close_contact_points": {
+            "count": 2439,
+            "max": 35,
+            "median": 7
+          },
+          "convergent_contacts": {
+            "count": 2439,
+            "max": 3,
+            "median": 0
+          },
+          "max_contact_closing_cm_per_yr": {
+            "count": 2439,
+            "max": 2.0949,
+            "median": 0.2717
+          },
+          "relative_rotation_cm_per_yr": {
+            "count": 2439,
+            "max": 3.4919,
+            "median": 0.4103
+          }
+        },
+        "no_point_candidates": {},
+        "too_few_close_contacts": {
+          "close_contact_points": {
+            "count": 4648,
+            "max": 3,
+            "median": 0.0
+          },
+          "relative_rotation_cm_per_yr": {
+            "count": 4648,
+            "max": 5.6194,
+            "median": 0.3052
+          }
+        }
+      },
+      "pair_filter_stage_totals": {
+        "bounding_sphere_separated": 5254,
+        "bounding_sphere_survivors": 9205,
+        "continental_pairs": 14459,
+        "convergent_collision_candidates": 45,
+        "insufficient_convergent_contacts": 2439,
+        "no_point_candidates": 2073,
+        "too_few_close_contacts": 4648
+      },
+      "runtime_seconds": 1565.4029655000195,
+      "seed": 748935664,
+      "step_myr": 1.0,
+      "steps": 500,
+      "steps_forced_merge_deferred_by_collision_merge": 0,
+      "steps_with_ready_forced_overlap": 0,
+      "tracked_pair_step_sources": {
+        "convergent_contact": 45,
+        "retained_craton_jam": 83
+      }
+    }
+  ]
+}
