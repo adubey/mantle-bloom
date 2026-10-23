@@ -26,12 +26,11 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
-import sys
 from pathlib import Path
 
 import numpy as np
+from replay_lib import load_replay
 
 
 def area_weights(lat_deg: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
@@ -115,18 +114,13 @@ def main() -> None:
     ap.add_argument("--backend", type=Path, default=Path(__file__).resolve().parents[2] / "backend")
     ap.add_argument("--out", type=Path, required=True)
     args = ap.parse_args()
-    sys.path.insert(0, str(args.backend.resolve()))
-    from app import persistence  # noqa: E402
-
-    data = args.save.read_bytes()
-    world = persistence.load_world_bytes(data)
-    result = {
-        "save": args.save.name,
-        "save_sha256": hashlib.sha256(data).hexdigest(),
-        "elapsed_myr": world.elapsed_years / 1e6,
-        "map": map_measures(world),
-        "sea_level": sea_level_measures(world),
-    }
+    args.step_years = None  # load_replay's header field; this probe doesn't step
+    world, result = load_replay(args, issue=368)
+    result.update(
+        save=args.save.name, elapsed_myr=world.elapsed_years / 1e6,
+        map=map_measures(world), sea_level=sea_level_measures(world),
+    )
+    del result["checkpoints"], result["step_years"], result["backend"]
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(result, indent=1))
     print(json.dumps(result, indent=1))
