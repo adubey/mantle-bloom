@@ -20,7 +20,8 @@ from collections.abc import Callable
 from pathlib import Path
 
 
-def parse_replay_args(doc: str | None) -> argparse.Namespace:
+def parse_replay_args(doc: str | None, extra: Callable[[argparse.ArgumentParser], None] | None = None) -> argparse.Namespace:
+    """The common replay command line; `extra` adds a script's own options."""
     ap = argparse.ArgumentParser(description=doc, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("save", type=Path)
     ap.add_argument("--backend", type=Path, default=Path(__file__).resolve().parents[2] / "backend")
@@ -28,6 +29,8 @@ def parse_replay_args(doc: str | None) -> argparse.Namespace:
     ap.add_argument("--step-years", type=float, default=100_000.0)
     ap.add_argument("--checkpoint-myr", type=float, default=1.0)
     ap.add_argument("--out", type=Path, required=True)
+    if extra is not None:
+        extra(ap)
     return ap.parse_args()
 
 
