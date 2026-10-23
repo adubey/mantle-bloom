@@ -921,3 +921,204 @@ remain real model outcomes, not missing trace entries. Mean per-step medians wer
 baseline and 2.74 s G2; treat this runtime difference as descriptive only, not a performance
 gate. This rerun confirms the land direction and the small-plate speed caveat on current main;
 it does not explain the formation or merge/subduction mechanisms.
+
+## G3 transferability probe
+
+The G2 solver is a shared algebraic load/motion solve, not yet a reusable process-object API.
+It accepts generalized segment force maps, signed rate maps and per-segment capacities, but
+its current physical interpretation is one-sided contact response. A rift or transform
+adapter can orient the generalized rate in its positive failure/slip direction and return an
+equal-and-opposite resisting load. Such an adapter must select its direction from the local
+process state; a reversed transform slip needs the opposite orientation. The geometry and
+constitutive law remain process-owned, consistent with design principle 8.
+
+[`probe_physics_first_g3.py`](../../bin/debug/probe_physics_first_g3.py) exercises the
+merged `solve_quasistatic_contacts` implementation with two free blocks, segment length
+100 km and drag `1e27 N·s/m`. The two plate angular rates are converted to local m/s at the
+planetary radius; boundary line loads are integrated over segment length and applied as
+equal-and-opposite torques. The rift drive is explicitly the sum of boundary tension and
+integrated basal traction: `T_net = T_boundary + τ_b × W_b`, with `τ_b = 0.1 MPa` and a
+`100 km` loaded width contributing `1e10 N/m`. The rift capacity is now integrated from an
+explicit brittle/ductile strength envelope: a fixed 100 km lithosphere, 20 km reference crust,
+piecewise-linear geotherm (0°C surface, 650°C Moho, 1300°C at the LAB), 0.6 friction on full
+lithostatic effective pressure, wet Simpson quartzite crustal creep, and dry-olivine mantle
+creep at a reference strain rate of `1e-15 s⁻¹`. The envelope is the lesser of brittle and
+ductile differential stress at each depth, integrated as `∫σ_y dz`, giving `4.491e12 N/m`.
+The adjacent-cut sweep uses 15 km and 30 km crust profiles (`4.192e12` and `4.918e12 N/m`),
+with the same total lithosphere and thermal endpoints. The wet-quartzite flow law is from
+[Koch et al. (1989)](https://doi.org/10.1029/JB094iB10p13975); the dry-olivine parameters are
+from [Hirth & Kohlstedt (2003)](https://doi.org/10.1126/science.1087132); the frictional
+envelope follows [Byerlee (1978)](https://doi.org/10.1007/BF00876528). This is a literature-
+parameterized diagnostic end member, not a calibrated constitutive model: the creep laws are
+extrapolated to geological strain rate, effective pressure is assumed lithostatic, and the
+simulator does not supply this temperature profile. Transform retains an illustrative bounded
+shear capacity of `5e11 N/m`.
+
+| Process | Drive / capacity (N/m) | Resistance (N/m) | Relative rate (m/s) | Result |
+|---|---:|---:|---:|---|
+| Rift | `0.9 / 4.491 × 10¹²` | `4.042 × 10¹²` | 0 | Below integrated strength |
+| Rift | `1.1 / 4.491 × 10¹²` | `4.491 × 10¹²` | `8.98e-11` | Extension above integrated strength |
+| Transform | `0.5 / 0.5 × 10¹²` | `0.5 × 10¹²` | 0 | Shear slip held |
+| Transform | `0.75 / 0.5 × 10¹²` | `0.5 × 10¹²` | `5.0e-11` | Excess tangential rate slips at capacity |
+
+All synthetic cases converge, have equal-and-opposite segment loads, and leave a zero (or
+roundoff-scale) residual (maximum normalized torque residual `1.9e-16`). The adjacent-cut
+sweep localizes extension on the 15 km crust profile between `4.192e12` and `4.918e12 N/m`,
+then activates both profiles above the stronger capacity. This confirms that the supplied
+profile and force sweep produce a capacity-sensitive localization response through the shared
+solver. It does not establish a universal thickness-strength relation, derive the profile
+from current `World` temperature/crust fields, or close rift material ledgers. The current model has no vertically integrated
+extensional-strength field. Compact output:
+[`g3_synthetic.json`](g3_synthetic.json).
+
+### Reduced geological-scale widening sweep
+
+To check spatial spread across a scale comparable to a continental rift, the same column
+envelope is sampled at 40 × 25 km cells across a 1,000 km cross-section. Crust thickness is
+15 km at the center, increases linearly to 30 km at |x| = 250 km, and remains 30 km farther
+out; the same piecewise thermal end member is prescribed at every column. Each column is
+tested against a uniform extensional membrane force per along-strike metre, and the active
+width is the count of cells whose solved rate is positive. This follows the yield-strength /
+force-balance framing of [Buck (1991)](https://doi.org/10.1029/91jb01485), but is not a
+reproduction of Buck's thin-sheet models.
+
+| Force (N/m) | Active width (km) | Mean rate in active cells (cm/yr) |
+|---:|---:|---:|
+| 4.30e12 | 50 | 0.028 |
+| 4.40e12 | 100 | 0.061 |
+| 4.50e12 | 150 | 0.096 |
+| 4.65e12 | 250 | 0.137 |
+| 4.80e12 | 350 | 0.183 |
+| 4.95e12 | 1,000 | 0.116 |
+
+Under this prescribed heterogeneity, the response widens as force rises; at 4.95e12 N/m the
+force exceeds the strongest column capacity and all cells activate. The discontinuous final
+jump reflects the 30 km outer plateau in the input profile. This tests the shared solve's
+ability to express spatially widening yield under a stated force sweep. It does not model
+lateral stress transfer, strain weakening, rift migration, thermal evolution, extension
+feedback on crustal thickness, or buoyancy; it cannot establish a geologic rift mode or a
+universal widening threshold.
+
+### Geological width-scale screen
+
+The model's active width is only dimensionally comparable to published rift widths; the
+definitions differ. Braile et al. describe the equatorial Kenya Rift as about 100 km wide and
+report crustal thinning across a 100 km zone. Matthews and Anderson describe the Basin and
+Range rifting province as 300–600 km wide. These are a seismic rift/thinning zone and a broad
+tectonic province, respectively, not the same observable as the probe's cells with positive
+rate [[Braile et al., 1994]](https://doi.org/10.1016/0040-1951(94)90179-1)
+[[Matthews & Anderson, 1973]](https://doi.org/10.1038/243158a0).
+
+| Geological scale reference | Reported width | Probe comparison | Reading |
+|---|---:|---:|---|
+| Kenya Rift surface-to-upper-mantle feature / crust-thinning zone | about 100 km | 100 km active at 4.40e12 N/m | Same order of magnitude; the measures are not identical. |
+| Basin and Range rifting province | 300–600 km | 250 km at 4.65e12 and 350 km at 4.80e12 N/m | The 350 km response lies within the reported province range. |
+| Full prescribed cross-section | 1,000 km | 1,000 km active at 4.95e12 N/m | Exceeds the broad-province benchmark; the abrupt jump is caused by the imposed outer strength plateau. |
+
+This is a dimensional plausibility screen, not a validation or calibration: the literature
+widths describe different geological observables and histories, while the probe prescribes a
+static crust/thermal profile and uniform force independently in every column. It omits the
+couplings that determine natural rift width. The comparison supports that the interface can
+represent narrow and broad active zones at continental scales, but it cannot select a natural
+force or strength profile. No rift-ledger check was run: this synthetic probe creates no
+material, changes no crustal thickness, and invokes no production rifting writer, so a ledger
+would have no process transfer to audit. Ledger closure belongs with a subsequent world-level
+rift evolution diagnostic or implementation that actually changes material.
+
+### Current-model world replay (pre-registered)
+
+**Question:** what is the spatial width of cells that actually lose crust to the production
+divergent-deformation path in an evolving generated world, and do the rift-related material
+ledgers close? This measures the current model's active thinning support; it does not exercise
+the synthetic integrated-strength law or feed back on plate motion.
+
+**Controls and metrics:** seed 326494039, default generated-world controls, 1 Myr steps for
+500 Myr, model commit `9f51c5781a6f9ec6cc173d73b71a7f24c3c3a47b`, with 10 Myr reporting
+checkpoints. For each connected patch of cells with positive Hc loss during divergent
+deformation, compute the area-equivalent width `2 × patch area / patch perimeter` from the
+actual cube-sphere cell edges. The primary summaries are area-weighted median/p90 component
+width per checkpoint and the share of active patches at least 100 km and 300 km wide. This
+boundary-patch width is not a full rift-basin or tectonic-province width. Expect widths to
+remain local to the model's active boundary support; a sustained ≥300 km patch would be
+evidence that the current trajectory distributes thinning at broad-rift scale. At each
+checkpoint require `rifted_m3` to equal the sum of its divergent, stretch, and failed-rift
+path accounts within `1e-10` relative error; also check craton balance and the continental
+material ledger's existing `1e-10` closure tolerance. Any closure failure is a model-ledger
+finding, not an expected rift-width effect.
+
+The replay runs current production only: there is no branch/baseline A/B contrast because
+the synthetic G3 strength law is not integrated into production. Compact results and run
+provenance will follow below; per-step traces remain in private scratch.
+
+**Result.** The corrected run completed all 500 Myr and 50 checkpoints in 1,373 s. Aggregate
+active-thinning area-equivalent width had a 72.2 km median, an 80.8 km checkpoint p90, and a
+92.9 km maximum checkpoint. The area-weighted component-width p50 had a 66.6 km median across
+checkpoints; checkpoint p90 component widths had a 99.8 km median and 208.0 km maximum. The
+widest individual component at any checkpoint was 213.3 km. The component share at least 100 km
+had a 2.8% median and 10.1% maximum checkpoint share; the area share in such components had a
+10.3% median and 40.5% maximum. No connected component reached 300 km at any sampled checkpoint.
+These results indicate mostly local active thinning in this trajectory, with occasional wider
+components, but the 10 Myr sampling interval can miss shorter events and this boundary-patch
+width is not a full basin or tectonic-province width.
+
+The continental material ledger closed at all 50 checkpoints. Maximum absolute craton and
+continental-material balance errors were 1,024 m³ and 5,120 m³, respectively; the maximum
+relative craton rift-path residual was 1.1e-15. The run emitted six warnings that glacier ice
+reached the 5,000 m depth cap. That climate-side limitation did not stop the run, but it is
+relevant context for interpreting long-term landscape evolution. Compact metrics and script
+hashes are in [`g3_world_rifts.json`](g3_world_rifts.json); raw trace remains private.
+
+Reproduce with a private trace and Numba cache path:
+
+```bash
+PYTHONHASHSEED=0 PYTHONPATH=backend NUMBA_CACHE_DIR=<private-cache> \
+  backend/.venv/bin/python bin/debug/probe_rfc0012_world_rifts.py \
+  --seed 326494039 --steps 500 --step-myr 1 --every-myr 10 --out <private-trace.jsonl>
+backend/.venv/bin/python bin/debug/summarize_rfc0012_world_rifts.py \
+  <private-trace.jsonl> --step-myr 1 --glacier-cap-warnings <warning-count> \
+  --out analysis/rfc0012/g3_world_rifts.json
+```
+
+The corrected raw trace SHA-256 is `1c2bc221fa28042dab5f8ef20fb2038f267ca6077a8854197f8d6f324a75ebb3`;
+the probe and summary script hashes are recorded in the compact JSON. This is a single-seed,
+current-model trajectory, not an A/B test or a test of the integrated-strength feedback law.
+
+Reproduce the deterministic synthetic cases with
+`PYTHONPATH=backend backend/.venv/bin/python bin/debug/probe_physics_first_g3.py`.
+The complete lock trace used Python 3.14.6, generated seed 326494039 at density 1.0, 1 Myr
+steps through 500 Myr, and model commit `9f51c5781a6f9ec6cc173d73b71a7f24c3c3a47b` (G2 PR
+#491 merge). It completed all steps and recorded one actual sustained-collision merge at
+141 Myr. Its maximum absolute nodal closing rate across nine qualifying contacts was
+0.643 cm/yr. For the preceding continuous lock, ε = 0.25 or 0.5 cm/yr does not qualify this
+merge at any tested τ. At ε = 1 cm/yr it qualifies τ = 1 and 10 Myr but not 25 Myr; at ε = 2,
+5, or 10 cm/yr it qualifies through τ = 25 Myr but not 50 Myr. Thus ε/τ sensitivity remains
+strong, and one fusion does not select a production threshold. Across all observed contact
+histories, the longest episode ranges from 99 Myr at ε = 0.25 cm/yr to 442 Myr at ε ≥ 2 cm/yr;
+these long low-rate episodes often do not end in a merge. Six glacier depth-cap warnings
+occurred. Reproduce with a private JSONL output path and Numba cache:
+
+```bash
+PYTHONPATH=backend NUMBA_CACHE_DIR=<private-cache> \
+  backend/.venv/bin/python bin/debug/trace_rfc0012_merge_opportunities.py \
+  --model-root . --seed 326494039 --steps 500 --step-myr 1 --out <private-trace.jsonl>
+backend/.venv/bin/python bin/debug/summarize_physics_first_g3_lock.py \
+  <private-trace.jsonl> --glacier-cap-warnings <warning-count> \
+  --out analysis/rfc0012/g3_lock_sensitivity.json
+```
+
+The complete raw trace SHA-256 is `015d4bb77b5eb5e3c8fa20f18d12adba259c9e7d12a3f2a943f89926477f3dfc`;
+trace and summary script SHA-256 values are recorded in
+[`g3_lock_sensitivity.json`](g3_lock_sensitivity.json), alongside compact sensitivity output.
+
+The trace records the maximum absolute local closing rate across each pair's at least four
+close continental contacts on every step. Contact disappearance or fewer than four close nodes
+breaks continuous lock. The raw JSONL stays in private scratch. This is a retrospective check:
+the replay measures the existing merge rule but does not apply a lock-based trigger or change
+topology. One seed and one observed merger do not select a production ε/τ pair.
+
+This topology result is a retrospective check: it tests whether an observed fusion would have
+qualified under the candidate lock rule, but the replay did not apply the new rule or alter
+topology. The broader G1 inventory's 41 fusion snapshots independently gave 2 / 13 / 29 / 38 /
+40 / 41 events with median absolute fusion-contact rate below ε = 0.25 / 0.5 / 1 / 2 / 5 / 10
+cm/yr. Continuous current-main histories are the stronger τ evidence; the older snapshot
+counts remain context only.
