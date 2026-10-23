@@ -136,4 +136,51 @@ below about 5%. Weathering moved less than 1% between steps.
 
 ## Replay results
 
-Pending.
+All four runs ran alone, one at a time. The main arm is `0fc4901` and the branch arm
+`ff373af`. Save A is seed 628977350 at 226.7 Myr and save B seed 910211954 at 220.2 Myr (SHAs
+above). The compact per-checkpoint numbers are in [`replay-ab.json`](replay-ab.json).
+Weathering is the land-node volume demand per 2.5 Myr interval; everything else is read at
+the checkpoint. Changes are branch relative to main.
+
+| Measure | A 2.5 | A 5 | A 7.5 | A 10 | B 2.5 | B 5 | B 7.5 | B 10 |
+|---|---|---|---|---|---|---|---|---|
+| land weathering volume | −5.0% | −3.8% | −2.2% | −1.8% | +4.0% | +2.4% | **+6.0%** | +3.8% |
+| global precipitation | −1.6% | −1.5% | −1.5% | −1.5% | −1.8% | −1.8% | −1.6% | −1.2% |
+| land precipitation | −2.1% | −1.4% | −0.5% | −1.2% | −3.8% | −3.4% | **−9.8%** | −0.6% |
+| land-biome agreement | 0.949 | 0.948 | 0.937 | 0.939 | 0.936 | 0.927 | **0.673** | 0.913 |
+| land area fraction (main → branch) | 0.162 → 0.162 | 0.162 → 0.162 | 0.161 → 0.161 | 0.161 → 0.161 | 0.322 → 0.322 | 0.323 → 0.323 | **0.352 → 0.322** | 0.321 → 0.321 |
+| 10 m wind, land | −19.7% | −19.7% | −20.1% | −19.8% | −17.1% | −16.8% | −25.0% | −17.3% |
+| 10 m wind, ocean | −13.9% | −13.9% | −13.9% | −13.9% | −14.4% | −14.4% | −12.9% | −14.3% |
+| mean ocean current | −13.2% | −12.2% | −12.4% | −13.7% | −14.7% | −15.0% | −15.0% | −14.8% |
+
+**Against the pre-registered thresholds**:
+
+- Global precipitation, land area and the 10 Myr biome agreement pass on both saves.
+- Weathering fails at one checkpoint (B at 7.5 Myr, +6.0% against ±5%), and A's 2.5 Myr value
+  sits on the limit at −5.0%.
+- Land precipitation fails at that same B checkpoint.
+- Biome agreement at 2.5 Myr is 0.94–0.95, below the 0.97 I expected but not a pass criterion.
+
+**Save B at 7.5 Myr.** The main arm's land fraction jumps from 0.323 to 0.352 and its mean land
+elevation falls from about 2000 m to 1485 m, then both return by 10 Myr; the branch shows no
+such excursion. The 0.67 biome agreement and the land-precipitation, land-wind and land-area
+outliers all coincide with it. The extra land alone would cost about 0.08 of agreement (9% of
+main's land cells are ocean in the branch), so the rest of that drop is climate on the
+newly-low land. It is a transient in one arm, not a trend, though a single replicate per arm
+can't say what triggers it. The weathering miss belongs to the whole 5–7.5 Myr interval, but at +6.0% it is in line
+with B's other checkpoints.
+
+**Weathering.** No single coefficient centres both saves. Land wind falls 19.7–20.1% on A
+and about 17% on B (−25% at B's 7.5 Myr transient), because the envelope cuts high-latitude
+and westerly speeds more than tropical ones, and the two worlds put their land at different
+latitudes. At 3.6 the mean change is −3.2% on A and +4.0% on B, which brackets zero. A
+coefficient tuned to either save alone would move the other by 7–8%.
+
+**Intended changes.** The 10 m wind drops 14% over the ocean and 17–20% over land, toward
+ERA5. Mean ocean current falls 12–15% with it; nothing reads current magnitude (see
+*Downstream calibration*).
+
+**Runtime and memory.** Branch runs took 734 s (A) and 1136 s (B), main runs 1006 s and
+1226 s, with peak RSS of 1.8–2.0 GB (A) and 6.8–7.4 GB (B). The wind change adds two array
+rolls per climate call. The runtime gap is larger than that and was not designed as a timing
+test, so read it as noise.

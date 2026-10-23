@@ -56,6 +56,7 @@ Use these Markdown links to jump directly to detailed sections on the topic page
 - [Atmospheric wind solver (fluid_dynamics.py, atmosphere_cfd.py)](simulation-model/climate.md#atmospheric-wind-solver-fluid_dynamicspy-atmosphere_cfdpy)
 - [Always-on, not a mode](simulation-model/climate.md#always-on-not-a-mode)
 - [Wind model: "diagnostic" (default) vs "cfd"](simulation-model/climate.md#wind-model-diagnostic-default-vs-cfd)
+- [Surface-wind contract](simulation-model/climate.md#surface-wind-contract)
 - [The shallow-water formulation](simulation-model/climate.md#the-shallow-water-formulation)
 - [The pole problem, and why both solvers need it solved](simulation-model/climate.md#the-pole-problem-and-why-both-solvers-need-it-solved)
 - [Ocean currents (retired CFD; now diagnostic in climate.py)](simulation-model/climate.md#ocean-currents-retired-cfd-now-diagnostic-in-climatepy)

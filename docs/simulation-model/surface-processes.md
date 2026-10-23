@@ -69,8 +69,10 @@ silently depends on grid resolution) -- which is why `RAIN_EROSION_COEFFICIENT` 
 by order-of-magnitude reasoning against the then-current direct convergent uplift rate
 (`CONVERGENT_MOUNTAIN_RATE_M_PER_MYR`, 800 m/Myr, since retired for Hc-driven uplift) and checked against real slope/precipitation distributions from an actual run,
 rather than reused from a value tuned against a different scale.
-`WEATHERING_COEFFICIENT` needed no such rescaling, since wind speed already uses a directly
-comparable scale (`MERIDIONAL_BASE_SPEED = 6.0`) unaffected by the slope re-derivation. River
+`WEATHERING_COEFFICIENT` needed no such rescaling, since wind speed is a physical 10 m speed
+in m/s (the [surface-wind contract](climate.md#surface-wind-contract)) unaffected by the slope
+re-derivation; it is 3.6 per (m/s) per Myr, recalibrated when the wind moved to m/s so land
+weathering volume held ([#526](https://github.com/adubey/mantle-bloom/issues/526)). River
 erosion depends on physical catchment discharge (see [Hydrology](hydrology.md#hydrology-rivers-and-lakes-hydrologypy)), converted to a
 fixed reference-cell scale before the stream-power law. `RIVER_EROSION_COEFFICIENT` was
 originally derived by order of magnitude and checked against channel-depth growth; issue

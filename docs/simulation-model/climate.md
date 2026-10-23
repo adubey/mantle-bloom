@@ -125,13 +125,22 @@ first and closing the loop only for the final consumer-facing fields:
 3. **Ocean temperature baseline** = `WATER_TEMP_MIN_C + WATER_TEMP_RANGE_C * insolation`
    (`-2 + 30*(·)`), a narrower range plus a freezing floor (water's greater thermal inertia)
    -- pre-advection.
-4. **Wind** -- latitude-banded meridional flow (trade winds/westerlies/polar easterlies,
-   empirical lookup, the near-surface branch of the real three-cell circulation) plus
-   Coriolis zonal deflection (`u = GAIN * sin(lat) * v`), plus an additive term from the real
-   local gradient of the pre-advection land/ocean surface temperature (`np.roll`
-   centered-difference) -- the empirical banding supplies planetary-scale structure a
-   gradient-alone field doesn't produce on its own, the
-   gradient term is the genuinely temperature-responsive component. **Mountain
+4. **Wind** (`compute_wind`, m/s at 10 m; see [Surface-wind contract](#surface-wind-contract))
+   -- `planetary_wind` first: the near-surface branch of the three-cell circulation, with
+   direction from the latitude bands (trade winds/westerlies/polar easterlies,
+   `meridional_direction_for_lat`) deflected zonally by `u = CORIOLIS_DEFLECTION_GAIN *
+   sin(lat) * v`, and speed from `OCEAN_WIND_SPEED_M_S`, ERA5's 1990-2019 mean 10 m speed
+   over open ocean by latitude (5.5 m/s in the doldrums, 6.6-6.7 in the trades, 8.9-9.4 at
+   45-55 deg, falling to 5.9 near the poles; both hemispheres averaged). The gain of 1.8 is
+   dimensionless: it is `2 * Omega / r` for an effective boundary-layer drag `r` of 8.1e-5
+   s^-1, about five times Earth's, so the trades here are more meridional than ERA5's (u/v
+   ~2.4). Terrain then scales speed by `_elevation_speed_factor` (down to 0.4 at 4 km). An
+   additive thermal term, `GRADIENT_WIND_M_S_PER_C_PER_KM` (29 (m/s)/(degC/km)) times the
+   gradient of the pre-advection land/ocean surface temperature, drives flow toward warmer
+   air. That gradient is differenced across a fixed `THERMAL_GRADIENT_HALF_SPAN_DEG` (2 deg)
+   either side, not across neighbouring cells, so the term doesn't change with
+   `climate_density`. The banding supplies the planetary-scale structure that a gradient-only
+   field doesn't produce; the gradient term is the temperature-responsive component. **Mountain
    deflection/Venturi/wake**: smooth elevation
    (Jacobi blur) before differencing into a gradient, cancel wind's into-slope component and
    redirect it tangentially with a speedup factor, ramped so gentle hills don't fully block;
@@ -489,24 +498,59 @@ which wind field feeds `climate.py`:
   the CFD's near-radiative-equilibrium temperature field (benchmarks at ~41% land-biome
   agreement vs the CFD, against `compute_air_temperature_diagnostic`'s ~90%).
 
-**Why it's a reasonable trade.** The CFD wind is relaxed hard toward the same
-latitude-banded target `compute_wind` builds, and only integrates ~one simulated day per
-step, so downstream (ocean currents, humidity advection, precipitation) barely distinguishes
-the two wind fields -- keeping the *CFD* air temperature while swapping to diagnostic wind
-holds land-biome agreement near 95%. Measured against a ~12-step CFD reference at
-`fluid_density=2.0` across three seeds, the fully-diagnostic model reproduces **~84-89% of
-the land biome map** and precipitation/temperature **within ~8-11%**, while cutting a
-12-step run from ~42 s to ~7 s (**~6x**) at that resolution -- the CFD substep loop itself
-is ~15x, diluted by the rest of a step's fixed cost, and the multiple grows with
-`fluid_density` (closer to ~1.5x at `0.5`). The residual gap is almost entirely the
-air-temperature field's missing advective/diffusive structure -- see [GitHub issue #118](https://github.com/adubey/mantle-bloom/issues/118) for the
-options to close it.
+**How close the two models are.** The diagnostic model cuts a 12-step run at
+`fluid_density=2.0` from ~42 s to ~7 s (**~6x**). The CFD substep loop alone is ~15x faster
+to skip, diluted by the rest of a step's fixed cost, and the multiple grows with
+`fluid_density` (closer to ~1.5x at `0.5`). The two climates differ more than earlier
+measurements suggested. On seed 7 at density 2 after 10 × 2 Myr steps
+([`analysis/issue526`](../../analysis/issue526/README.md#agreement-with-the-cfd)), the
+diagnostic model matches 62% of the CFD's land-biome map, with precipitation rel-RMS 0.52.
+The precipitation gap comes from the wind: the CFD settles at 0.4-0.65x of its own target
+([#530](https://github.com/adubey/mantle-bloom/issues/530)), and its convergence pattern
+differs. Air temperature, the subject of
+[#118](https://github.com/adubey/mantle-bloom/issues/118), accounts for part of the biome gap.
+`stress_tests/test_climate.py::test_diagnostic_wind_model_tracks_the_cfd_biome_map` does not
+yet compare the two models; [#529](https://github.com/adubey/mantle-bloom/issues/529) tracks
+that.
 
 **Rendering.** The `"wind"` and `"temperature"` map views normally draw
 `World.atmosphere_cfd_state`'s native HEALPix arrays; under `"diagnostic"` they fall back to
 `compute_climate`'s own wind/air-temperature (resampled onto the HEALPix cells like every
 other climate field) so the maps reflect the model that's actually driving the sim rather
 than a frozen CFD snapshot.
+
+### Surface-wind contract
+
+`ClimateFields.wind_u`/`wind_v` are eastward/northward wind in **m/s at 10 m above the
+surface**, the reanalysis convention, whichever wind model is active. Consumers get them from
+`climate.surface_wind(world, lat_deg, elevation_m, surface_temperature_c)`, which returns
+`(u, v, elevation_factor)` and owns the diagnostic-vs-CFD selection
+(`climate.uses_diagnostic_wind`, which the wind and temperature map views also use) so later
+consumers don't repeat that test.
+
+- **Magnitude is the mean speed.** `hypot(u, v)` is the climatological mean of the
+  instantaneous speed, the quantity speed-linear processes (weathering, evaporation) need. It
+  is not the length of a mean wind vector, which in the mid-latitudes is several times
+  shorter: ERA5's mean vector at 30-40 deg is ~1.3 m/s against a 7.1-7.5 m/s mean speed.
+- **Direction is the prevailing one.** The steady field has no transients.
+- **Calibration.** Over open ocean the speed follows ERA5's zonal means
+  (`OCEAN_WIND_SPEED_M_S`). On a mature world the diagnostic wind's ocean mean is ~7.0 m/s
+  (ERA5 7.25) and its land mean ~3.1 m/s (ERA5 3.46, or 3.02 excluding Antarctica and
+  Greenland). [`analysis/issue526`](../../analysis/issue526/README.md) has the band-by-band
+  comparison and the ERA5 extraction.
+- **Other heights.** Use a neutral log profile, `u(z) = u10 * ln(z / z0) / ln(10 / z0)`,
+  with roughness length `z0` ≈ 0.0002 m over open water and ≈ 0.1 m over land (grassland and
+  cropland are 0.03-0.1 m; forest and towns are larger). For example, Penman's 2 m wind is
+  ~0.85 × u10 over water and ~0.65 × u10 over land with `z0 = 0.1 m`. The helper is added
+  with its first caller.
+- **Under `"cfd"`** the solver's layer wind passes through unconverted. It is relaxed toward
+  the same `planetary_wind` target but settles at about 0.4-0.65x of it, so CFD-mode
+  consumers see weaker than 10 m speeds until
+  [#530](https://github.com/adubey/mantle-bloom/issues/530) is resolved.
+
+Wind stress on the ocean ([#234](https://github.com/adubey/mantle-bloom/issues/234)) and
+open-water evaporation ([#519](https://github.com/adubey/mantle-bloom/issues/519)) are
+expected to read this contract.
 
 ### The shallow-water formulation
 
@@ -627,14 +671,15 @@ temperature -- see [Climate](#climate-climatepy). This solver keeps only `u`/`v`
 
 **Sustained prevailing wind.** The shallow-water momentum equation here has surface drag,
 viscosity, and orographic damping but no term that would sustain a planetary circulation on
-its own, so the bootstrap winds (`climate.compute_wind`'s latitude bands, ~6 m/s) spun down
+its own, so the bootstrap winds (`climate.compute_wind`'s latitude bands) spun down
 to a near-still thermal-gradient balance within a few tectonic steps -- taking the
 Ekman-forced ocean currents down with them. `(u, v)` is now additionally relaxed, in the
 fast momentum pass, toward a latitude-banded target (`WIND_FORCING_RELAXATION_PER_S` toward
-the same trade-wind/westerly/polar-easterly `meridional_dir * MERIDIONAL_BASE_SPEED` +
-Coriolis-deflected structure `climate.compute_wind` bootstraps from, *without* its mountain/
-temperature-gradient terms -- this solver produces those itself). Steady-state planetary wind
-then settles near the target's own ~6-8 m/s scale and holds there step to step, while
+`climate.planetary_wind`, the same 10 m trade-wind/westerly/polar-easterly structure
+`climate.compute_wind` starts from, *without* its mountain/temperature-gradient terms -- this
+solver produces those itself). Steady-state planetary wind then settles at about 0.4-0.65x of
+the target's speeds ([#530](https://github.com/adubey/mantle-bloom/issues/530)) and holds there
+step to step, while
 Coriolis, the pressure-gradient/thermal term, and orographic deflection still reshape it away
 from a pure zonal band.
 
