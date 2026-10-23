@@ -1,3 +1,5 @@
+import pickle
+
 import numpy as np
 import pytest
 from app import geometry
@@ -7,6 +9,7 @@ from app.plates import collect_all_accounting_areas_m2
 from app.world import World, generate_world, step_world
 
 from .quad_fixtures import quad_plate
+from .river_fixtures import DRY_SPILL_PATH, segment_pairs, spill_hop_fields
 
 
 def _row(count: int) -> np.ndarray:
@@ -1194,6 +1197,103 @@ def test_group_rivers_on_a_real_monotonic_chain_is_one_unbranched_network():
     assert rivers[0].num_tributaries == 0
     assert rivers[0].mouth_type == "ocean"
     assert fields.is_ocean[fields.flow_target[rivers[0].mouth_idx]]
+
+
+def _is_neighbour_pair(fields, a: int, b: int) -> bool:
+    return b in fields.neighbor_idx[a] or a in fields.neighbor_idx[b]
+
+
+def test_a_spill_hop_across_a_lake_ends_the_river_at_the_lake():
+    fields = spill_hop_fields(lake_m=15.0)
+
+    rivers = sorted(hydrology.group_rivers(fields), key=lambda r: r.mouth_idx)
+    inflow, outflow = rivers
+    assert sorted(inflow.member_idx.tolist()) == [0, 1, 2]
+    assert (inflow.mouth_idx, inflow.mouth_type) == (2, "lake")
+    assert outflow.member_idx.tolist() == [6]
+    assert outflow.mouth_type == "ocean"
+
+    _, _, _, crosses_lake = hydrology.flow_segments(fields, inflow.member_idx)
+    pairs = segment_pairs(fields, inflow.member_idx)
+    # Drawn into the lake's edge and no further: nothing across the water or beyond the rim.
+    assert pairs == {(0, 1), (1, 2), (2, 3)}
+    assert all(_is_neighbour_pair(fields, a, b) for a, b in pairs)
+    assert crosses_lake.tolist() == [m == 2 for m in inflow.member_idx.tolist()]
+
+
+def test_a_spill_hop_over_a_dry_basin_is_drawn_along_its_spill_path():
+    # A pre-#520 cache has no should_spill; the hop is still found from spill_target.
+    fields = spill_hop_fields(lake_m=0.0, store_should_spill=False)
+
+    rivers = hydrology.group_rivers(fields)
+    assert len(rivers) == 1
+    assert sorted(rivers[0].member_idx.tolist()) == [0, 1, 2, 6]
+
+    assert segment_pairs(fields, rivers[0].member_idx) == {(0, 1), (1, 2), (6, 7)} | DRY_SPILL_PATH
+    step_m = geometry.angular_distance(fields.points[0], fields.points[1]) * hydrology.PLANET_RADIUS_KM * 1000.0
+    assert rivers[0].length_m == pytest.approx(7 * step_m, rel=1e-3)
+
+
+def test_a_united_lake_pooling_hop_is_found_from_should_spill():
+    # A united lake's sinks are routed to its lowest sink, not to their spill_target
+    # (`_SpillResolver._unite`), so only should_spill marks the hop.
+    fields = spill_hop_fields(lake_m=0.0)
+    fields.spill_target[2] = 5
+
+    assert segment_pairs(fields, [2]) == DRY_SPILL_PATH
+
+
+def test_a_spill_hop_over_a_one_way_rim_edge_still_follows_its_spill_path():
+    # k-NN is directed: here only node 6 lists rim 5 as a neighbour, not the other way round.
+    fields = spill_hop_fields(lake_m=0.0)
+    fields.neighbor_idx[5] = [4, 4]
+
+    rivers = hydrology.group_rivers(fields)
+    assert len(rivers) == 1
+    assert rivers[0].mouth_type == "ocean"
+    assert segment_pairs(fields, [2]) == DRY_SPILL_PATH
+
+
+def test_a_spill_hop_with_no_spill_path_keeps_its_straight_segment():
+    # Node 6 is reachable only through the ocean, so there's no spill path over land.
+    fields = spill_hop_fields(lake_m=0.0)
+    fields.neighbor_idx[5] = [4, 4]
+    fields.neighbor_idx[6] = [7, 7]
+
+    _, _, _, crosses_lake = hydrology.flow_segments(fields, np.array([2]))
+    assert segment_pairs(fields, [2]) == {(2, 6)}
+    assert not crosses_lake[0]
+    rivers = hydrology.group_rivers(fields)
+    assert len(rivers) == 1
+    assert rivers[0].mouth_type == "ocean"
+
+
+def test_a_spill_path_never_climbs_past_the_deepest_notch_above_the_spill_level():
+    # The routed spill level is 40 m; a rim more than BREACH_MAX_NOTCH_M above that can't be
+    # the pass routing used, so the search gives up and the straight segment stays.
+    fields = spill_hop_fields(lake_m=0.0)
+    fields.filled_elevation[2] = 40.0
+    fields.elevation[5] = 40.0 + breaching.BREACH_MAX_NOTCH_M + 1.0
+
+    assert segment_pairs(fields, [2]) == {(2, 6)}
+
+
+def test_spill_paths_are_cached_per_fields_and_left_out_of_saves():
+    fields = spill_hop_fields(lake_m=0.0)
+    hydrology.group_rivers(fields)
+    assert set(fields._spill_path_cache.paths) == {2}
+
+    restored = pickle.loads(pickle.dumps(fields))
+    assert "_spill_path_cache" not in restored.__dict__
+    assert segment_pairs(restored, [2]) == DRY_SPILL_PATH
+
+
+def test_a_spill_hop_from_a_sink_under_visible_water_draws_nothing():
+    fields = spill_hop_fields(lake_m=15.0, sink_m=15.0)
+
+    _, _, _, crosses_lake = hydrology.flow_segments(fields, np.array([2]))
+    assert segment_pairs(fields, [2]) == set()
+    assert crosses_lake[0]
 
 
 def test_compute_river_speed_increases_with_slope_and_flow():

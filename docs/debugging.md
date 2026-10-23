@@ -147,6 +147,7 @@ Gate 2 load, mesh and capacity diagnostics.
 | Script | Answers |
 |---|---|
 | [`measure_river_endings.py`](debugging/scripts-water-ice.md#measure_river_endingspy) | rivers that reach neither sea nor lake |
+| [`measure_river_hops.py`](debugging/scripts-water-ice.md#measure_river_hopspy) | river lines drawn across lakes by spill hops |
 | [`measure_discharge_calibration.py`](debugging/scripts-water-ice.md#measure_discharge_calibrationpy) | river and glacier calibration on one save in two trees |
 | [`measure_lake_silt.py`](debugging/scripts-water-ice.md#measure_lake_siltpy) | lake area, volume and silt |
 | [`measure_breaching.py`](debugging/scripts-water-ice.md#measure_breachingpy) | depression breaching on and off |

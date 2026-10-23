@@ -468,6 +468,26 @@ river's own classification ends at the lake's shore rather than jumping straight
 water to whatever's on the far side, even though the water itself (`flow_target`/`flow_accum`)
 still physically continues through if the lake is spilling.
 
+A spilling sink's `flow_target` is the node beyond its lake's rim (`spill_target`), or, in a
+lake united within the step, that lake's lowest sink. That edge can span the whole lake, so it
+isn't drawn as a straight line (#520). `hydrology.flow_segments`, which the map
+(`render_image._draw_rivers`) and the River Inspector both use, draws such a spill hop
+(`HydrologyFields.should_spill`, between nodes that aren't k-NN neighbours) along its spill
+path: the fewest neighbour edges that never rise above the lowest pass between the sink and its
+target. Across a basin with no visible water, the river is drawn through it. Where the path
+reaches visible lake water, it's drawn only up to the water. `group_rivers` then ends the
+upstream network there, with `mouth_type` `"lake"`, and the outflow is its own network
+starting beyond the rim. The map's downstream fill-in (`_extend_drawn_rivers_downstream`)
+stops at that mouth too, so a hidden outflow network isn't drawn. The search follows k-NN edges
+in both directions, since the way over a rim may exist only as a reverse edge. It gives up
+once the pass would climb more than `breaching.BREACH_MAX_NOTCH_M` above the sink's routed
+spill level (`filled_elevation`), or after `SPILL_PATH_MAX_NODES` nodes, and a hop with no
+spill path keeps its straight segment. Both searches are numba kernels
+(`_spill_pass_level`, `_fewest_hops_path`). The paths are worked out once per
+`HydrologyFields`, on first use, for every river hop (`_SpillPathCache`), and aren't saved
+with it. A network's
+`length_m` sums the drawn segments. Routing, discharge and lake inflow are unchanged.
+
 **A spilling lake erodes its own outlet hard**, proportional to the lake's own surface area,
 not just the ordinary precipitation-driven flow passing through that one channel node. Once a
 sink's `should_spill` fires (see `_compute_flow_direction`), `compute_hydrology` adds an extra

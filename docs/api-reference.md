@@ -650,16 +650,21 @@ runs once). `404` if no world has been generated yet.
 }
 ```
 
-- `length_m` is the summed geodesic length of these flow edges, in meters. River visibility
+- `length_m` is the summed geodesic length of `segments`, in meters. River visibility
   uses this physical measure instead of a node-count cutoff, which would move with mesh density.
-- `segments` is a flat list of flow edges (a node and its own `flow_target`), each a pair of
-  world-space points -- not an ordered polyline, since a river network can branch. Every
+- `segments` is a flat list of line segments, normally between neighbouring nodes
+  (`hydrology.flow_segments`), each a pair of world-space points -- not an ordered polyline,
+  since a river network can branch. An ordinary member contributes one segment, to its own
+  `flow_target`. A spilling lake sink whose `flow_target` lies beyond the rim contributes its
+  spill path instead: several segments, stopping at visible lake water (#520; see
+  [simulation-model/hydrology.md](simulation-model/hydrology.md#lake-vs-sea-tiers-a-depth-ceiling-by-size-2026-09-10)). Every
   coordinate in this response is rounded to 6 decimal places before serializing, same as
   `/world/plates`.
 - `mouth_xyz` is the network's downstream-most member, the location the River Inspector marks
   for the selected river.
 - `mouth_type` is `"ocean"` or `"lake"` (based on what the mouth's own `flow_target` empties
-  into, not the mouth itself -- see
+  into, not the mouth itself, and `"lake"` for a sink whose spill path reaches visible lake
+  water -- see
   [simulation-model/hydrology.md#river-inspector](simulation-model/hydrology.md#river-inspector)), or `"other"`
   (a true dead-end sink, `flow_target == -1` -- a basin `lakes.step_lakes` is already growing
   into a real lake node by node every step, so this flips to `"lake"` on its own once that
