@@ -362,8 +362,9 @@ def test_step_lakes_merges_two_basins_once_one_reaches_the_saddle():
 def test_step_lakes_splits_a_merged_lake_once_it_recedes_below_the_saddle():
     # Start from exactly the merged state test_step_lakes_merges_... just produced (both
     # sub-basins recorded at the 12.0 saddle), then cut off the inflow, so the balanced level
-    # drops well below the saddle. It must split back into two independent basins, both
-    # starting exactly at the saddle height (continuity), not something lower.
+    # drops well below the saddle. It must split back into two independent basins, each at its
+    # own balance -- dry, with no inflow -- not refilled to the saddle with water nothing
+    # supplied (#521).
     prev_lake_depth = np.array([10.0, 0.0, 3.0, 8.0, 0.0, 0.0])
     is_accumulating = np.zeros(6, dtype=bool)
 
@@ -372,14 +373,59 @@ def test_step_lakes_splits_a_merged_lake_once_it_recedes_below_the_saddle():
         is_frozen=is_accumulating, climate=_climate(np.zeros(6)),
     )
     assert len(events) == 1 and events[0].kind == "split" and "split" in events[0].message
-    assert depth[0] == 10.0  # 12.0 (the saddle) - 2.0 (floor) -- both children land exactly there
-    assert depth[1] == 0.0
-    assert depth[2] == 3.0  # 12.0 - 9.0
-    assert depth[3] == 8.0  # 12.0 - 4.0
+    assert not depth.any()
 
     assert len(forest) == 1  # the tree shape itself is unchanged -- only the *active* level split
-    assert forest[0].children[0].current_water_elevation == 12.0
-    assert forest[0].children[1].current_water_elevation == 12.0
+    assert forest[0].children[0].current_water_elevation == 2.0  # each child's own dry floor
+    assert forest[0].children[1].current_water_elevation == 4.0
+
+    # Next step reads the pair as separate, so it doesn't split again.
+    _, _, _, _, events2 = lakes.step_lakes(
+        _MERGE_ELEVATION, _MERGE_IS_OCEAN, _MERGE_NEIGHBORS, depth, years=100_000,
+        is_frozen=is_accumulating, climate=_climate(np.zeros(6)),
+    )
+    assert events2 == []
+
+
+def test_a_merged_lake_split_by_a_frozen_member_rebalances_each_child_at_its_own_level():
+    # #521: a merged body with one frozen member dries as a whole (`_water_balance`'s
+    # any-member-frozen rule) and splits. Each child must then be resolved at its own balance:
+    # the fed, unfrozen child keeps its own water, the frozen one stays dry -- not both filled
+    # to the 12.0 saddle, which created ~5 M km^3 of water per step on a mature world (#519).
+    forest = lakes.build_lake_hierarchy(_MERGE_ELEVATION, _MERGE_IS_OCEAN, _MERGE_NEIGHBORS)
+    root = forest[0]
+    prev_lake_depth = np.array([10.0, 0.0, 3.0, 8.0, 0.0, 0.0])  # merged at the saddle
+    is_frozen = np.array([False, False, False, True, False, False])
+    climate = _climate([_FLOOD_M3_PER_YR, 0.0, 0.0, 0.0, 0.0, 0.0])
+    out_lake_depth = np.zeros(6)
+    out_silt = np.zeros(6)
+    out_is_sea = np.zeros(6, dtype=bool)
+    events: list[lakes.LakeEvent] = []
+
+    lakes._resolve(
+        root, _MERGE_ELEVATION, prev_lake_depth, years_myr=0.1, is_frozen=is_frozen,
+        out_lake_depth=out_lake_depth, out_silt_deposited=out_silt, out_lake_is_sea=out_is_sea,
+        node_area_km2=100.0, events=events, climate=climate,
+    )
+    assert [e.kind for e in events] == ["split"]
+
+    # Each child balanced on its own, with fresh outputs, as a never-merged pair would be.
+    hyps = lakes.CellHypsometry.whole_cells(_MERGE_ELEVATION)
+    expected_depth = np.zeros(6)
+    expected_silt = np.zeros(6)
+    for child in root.children:
+        _, tier = lakes._classify_tier(child.members, prev_lake_depth, 100.0)
+        level = lakes._water_balance(
+            child, _MERGE_ELEVATION, 0.1, bool(is_frozen[child.members].any()), expected_silt,
+            tier, False, np.zeros(6, dtype=bool), climate,
+        )
+        assert child.current_water_elevation == level
+        expected_depth[child.members] = hyps.mean_depth(level, child.members)
+    assert root.children[1].current_water_elevation == 4.0  # the frozen child is dry
+    np.testing.assert_allclose(out_lake_depth, expected_depth)
+    assert out_lake_depth[0] > 0.0  # the fed child keeps its water
+    # The discarded merged resolution's silt isn't kept on top of the children's.
+    np.testing.assert_allclose(out_silt, expected_silt)
 
 
 def test_step_lakes_silt_raises_the_floor_and_eventually_fills_a_small_lake_in():
@@ -603,15 +649,14 @@ def test_a_composite_lake_held_below_its_own_saddle_by_the_tier_cap_splits():
     )
 
     assert len(events) == 1 and events[0].kind == "split"
-    # Both children land at the tier-capped level (floor 0 + LAKE_MAX_DEPTH_M 1800 = 1800), not
-    # the stale old saddle (2500) -- see _resolve's own comment on why resetting to min_depth
-    # here (the *ordinary* organic-dip case's continuity approximation) would completely undo
-    # the cap and oscillate forever: the very next step's _prev_level check would read exactly
-    # min_depth again and re-merge into the same failing computation.
+    # Each child lands at its own balance (#521): the fed child at its own lake-tier cap
+    # (floor 0 + LAKE_MAX_DEPTH_M 1800 = 1800), the unfed one dry at its floor (100) -- neither
+    # at the stale saddle (2500), which would read as still merged next step and re-run the
+    # same capped computation forever.
     assert root.children[0].current_water_elevation == 1800.0
-    assert root.children[1].current_water_elevation == 1800.0
+    assert root.children[1].current_water_elevation == 100.0
     assert out_lake_depth[0] == 1800.0  # node 0's own floor is 0
-    assert out_lake_depth[3] == 1700.0  # node 3's own floor is 100 -> 1800 - 100
+    assert out_lake_depth[3] == 0.0
     # The cap held it at lake tier throughout -- nothing here was ever big enough to promote.
     assert not out_lake_is_sea.any()
 
@@ -629,6 +674,37 @@ def test_a_composite_lake_held_below_its_own_saddle_by_the_tier_cap_splits():
     )
     assert not any(e.kind == "split" for e in events2)  # no repeat split -- already independent
     assert forest2[0].current_water_elevation < 1800.0  # genuinely draining, not stuck at the cap
+
+
+def test_a_child_fed_to_the_saddle_re_splits_each_step_without_creating_water():
+    # _BIG_MERGE with node 3's floor raised to 1000, so that child's own tier cap (2800) clears
+    # the 2500 saddle while the merged body's (0 + 1800) doesn't. Fed, the child fills to its
+    # rim, the saddle, so the pair reads as merged every step, is capped below the saddle and
+    # splits again (#521 review; the false merge is #520 part 1). The repeat must not create
+    # water: the unfed child stays dry instead of being written at the 1800 m capped level, and
+    # the fed child keeps its own level.
+    elevation = _BIG_MERGE_ELEVATION.copy()
+    elevation[3] = 1000.0
+    climate = _climate([0.0, 0.0, 0.0, _FLOOD_M3_PER_YR, 0.0, 0.0])
+    prev_lake_depth = np.zeros(6)
+    prev_lake_depth[0] = 2500.0
+    prev_lake_depth[3] = 1500.0  # merged at the saddle
+    for _ in range(3):
+        forest = lakes.build_lake_hierarchy(elevation, _BIG_MERGE_IS_OCEAN, _BIG_MERGE_NEIGHBORS)
+        root = forest[0]
+        out_lake_depth = np.zeros(6)
+        events: list[lakes.LakeEvent] = []
+        lakes._resolve(
+            root, elevation, prev_lake_depth, years_myr=1.0,
+            is_frozen=np.zeros(6, dtype=bool), out_lake_depth=out_lake_depth,
+            out_silt_deposited=np.zeros(6), out_lake_is_sea=np.zeros(6, dtype=bool),
+            node_area_km2=100.0, events=events, climate=climate,
+        )
+        assert [e.kind for e in events] == ["split"]
+        assert out_lake_depth[0] == 0.0  # unfed child: dry
+        assert root.children[1].current_water_elevation == 2500.0  # fed child: at its own rim
+        assert out_lake_depth[3] == 1500.0
+        prev_lake_depth = out_lake_depth
 
 
 def _hyps(elevation, relief, area=1.0e10):
