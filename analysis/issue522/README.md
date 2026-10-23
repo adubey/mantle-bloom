@@ -153,3 +153,44 @@ rebase onto `30766af` added only RFC documents):
   within ±3%, ocean within ±3%, every land band within ±10%.
 - Thresholds otherwise as preregistered above. The 10 Myr checkpoints on both saves are
   secondary, and the polar land band is re-checked for the earlier persistent drying.
+
+## Results after the revision
+
+Branch at `9478494`, the same command and saves, against the same `origin/main` runs. Each
+run went alone.
+
+| t = 0 | 997271774 (tuned on) | 447276134 (held out) | Threshold |
+|---|---|---|---|
+| Air temperature, worst band (land / SST) | 0.000 / 0.000 °C | 0.000 / 0.000 °C | identical |
+| Land precipitation | +0.7% | +1.5% | ±3% held out |
+| Ocean precipitation | −1.1% | −1.0% | ±3% held out |
+| Land precipitation by band, 0–15 / 15–30 / 30–45 / 45–60 / 60–75 / 75–90° | +2.5 / −1.6 / +0.1 / −1.3 / +1.2 / −3.9% | +3.1 / +0.8 / −0.1 / −0.3 / +2.3 / −2.4% | ±10% held out |
+| Land share of precipitation | +0.24 pp | +0.42 pp | 2 pp |
+| Worst Köppen group shift | 0.09 pp | 0.09 pp | 5 pp |
+
+Ocean humidity by band is now 17.1 / 15.2 / 12.6 / 9.0 / 5.9 / 4.1 g/kg from the equator
+poleward (both saves agree within 0.1). The tropical bands no longer read the cap.
+
+| Across 2–10 Myr (range over the five checkpoints) | 997271774 | 447276134 |
+|---|---|---|
+| Land precipitation | −1.4 to +4.1% | +1.5 to +1.9% |
+| Ice cap (pp of land) | −0.03 to +0.15 | −0.05 to +0.14 |
+| Land (pp of surface) | +0.01 to +0.08 | −0.05 to +0.05 |
+| Worst Köppen group shift | 0.3–1.2 pp | 0.1–0.3 pp |
+| Land air temperature, worst band | ≤ 0.11 °C | ≤ 0.08 °C |
+| 75–90° land precipitation | −8 to −12% | −3 to −5% |
+
+**What it means.**
+
+- Temperature is unchanged, as designed. The small later differences are divergence between
+  replays: the climate code gives identical temperature on identical worlds.
+- Precipitation is within 2% on the held-out save at every checkpoint. The reference save
+  wanders between −1.4% and +4.1% from checkpoint to checkpoint with no trend. Its 15–30°
+  band swings between −1% and −12%, which is how a small arid band responds to divergence.
+- Polar land is still slightly drier: −8 to −12% on the reference save from the first step
+  on, −3 to −5% on the held-out save. That's a few mm/yr. It's smaller than in the first
+  version, and the ice cap doesn't respond. It is the one systematic regional change.
+- Runtime matches main: 6.1–6.5 s per step. Peak RSS was 2.0 GB on the reference save and
+  1.3 GB on the held-out save; main's runs were 1.4 GB and 1.3 GB.
+
+The first version's results (above) are kept as a record. That design is superseded.

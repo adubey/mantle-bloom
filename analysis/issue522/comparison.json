@@ -1,7 +1,6 @@
 {
  "issue": 522,
  "baseline_commit": "59d2ef3550a70f7c68566488d0a83a3bd472fd0d",
- "branch_commit": "454a1f34bfbdd81e94a1ff280fa25f549bef21bd",
  "script": "bin/debug/measure_climate_fields.py",
  "myr": 10,
  "step_years": 250000,
@@ -77,7 +76,7 @@
       }
      ]
     },
-    "branch": {
+    "first_version": {
      "land_pct": 29.198,
      "ice_cap_pct_of_land": 6.235,
      "air_temp_land_c": 7.189,
@@ -142,6 +141,74 @@
        "humidity_ocean_g_kg": 4.049,
        "precip_land_mm": 60.478,
        "precip_ocean_mm": 359.272
+      }
+     ]
+    },
+    "revised": {
+     "land_pct": 29.198,
+     "ice_cap_pct_of_land": 6.235,
+     "air_temp_land_c": 7.218,
+     "air_temp_ocean_c": 20.559,
+     "humidity_land_g_kg": 3.609,
+     "humidity_ocean_g_kg": 12.713,
+     "precip_land_mm": 652.891,
+     "precip_ocean_mm": 1454.785,
+     "land_precip_share_pct": 15.47,
+     "koppen_land_pct": {
+      "A": 8.23,
+      "B": 45.97,
+      "C": 8.98,
+      "D": 18.2,
+      "E": 18.61
+     },
+     "bands": [
+      {
+       "band": "0-15",
+       "air_temp_land_c": 12.289,
+       "sst_c": 26.452,
+       "humidity_ocean_g_kg": 17.126,
+       "precip_land_mm": 1016.295,
+       "precip_ocean_mm": 2318.967
+      },
+      {
+       "band": "15-30",
+       "air_temp_land_c": 11.155,
+       "sst_c": 24.437,
+       "humidity_ocean_g_kg": 15.223,
+       "precip_land_mm": 199.433,
+       "precip_ocean_mm": 1066.957
+      },
+      {
+       "band": "30-45",
+       "air_temp_land_c": 10.946,
+       "sst_c": 21.232,
+       "humidity_ocean_g_kg": 12.588,
+       "precip_land_mm": 300.763,
+       "precip_ocean_mm": 1245.182
+      },
+      {
+       "band": "45-60",
+       "air_temp_land_c": 0.576,
+       "sst_c": 15.797,
+       "humidity_ocean_g_kg": 8.996,
+       "precip_land_mm": 1359.285,
+       "precip_ocean_mm": 1617.105
+      },
+      {
+       "band": "60-75",
+       "air_temp_land_c": -8.926,
+       "sst_c": 9.757,
+       "humidity_ocean_g_kg": 5.911,
+       "precip_land_mm": 462.066,
+       "precip_ocean_mm": 907.977
+      },
+      {
+       "band": "75-90",
+       "air_temp_land_c": -19.33,
+       "sst_c": 4.432,
+       "humidity_ocean_g_kg": 4.091,
+       "precip_land_mm": 61.127,
+       "precip_ocean_mm": 350.635
       }
      ]
     }
@@ -215,7 +282,7 @@
       }
      ]
     },
-    "branch": {
+    "first_version": {
      "land_pct": 30.18,
      "ice_cap_pct_of_land": 5.477,
      "air_temp_land_c": 7.259,
@@ -280,6 +347,74 @@
        "humidity_ocean_g_kg": 4.179,
        "precip_land_mm": 83.319,
        "precip_ocean_mm": 372.409
+      }
+     ]
+    },
+    "revised": {
+     "land_pct": 30.216,
+     "ice_cap_pct_of_land": 5.649,
+     "air_temp_land_c": 7.31,
+     "air_temp_ocean_c": 20.542,
+     "humidity_land_g_kg": 3.794,
+     "humidity_ocean_g_kg": 12.657,
+     "precip_land_mm": 661.935,
+     "precip_ocean_mm": 1455.587,
+     "land_precip_share_pct": 16.27,
+     "koppen_land_pct": {
+      "A": 7.82,
+      "B": 45.19,
+      "C": 9.37,
+      "D": 19.69,
+      "E": 17.94
+     },
+     "bands": [
+      {
+       "band": "0-15",
+       "air_temp_land_c": 12.616,
+       "sst_c": 26.449,
+       "humidity_ocean_g_kg": 17.019,
+       "precip_land_mm": 1007.404,
+       "precip_ocean_mm": 2347.81
+      },
+      {
+       "band": "15-30",
+       "air_temp_land_c": 10.742,
+       "sst_c": 24.428,
+       "humidity_ocean_g_kg": 15.183,
+       "precip_land_mm": 157.363,
+       "precip_ocean_mm": 1082.985
+      },
+      {
+       "band": "30-45",
+       "air_temp_land_c": 11.206,
+       "sst_c": 21.242,
+       "humidity_ocean_g_kg": 12.501,
+       "precip_land_mm": 304.335,
+       "precip_ocean_mm": 1246.049
+      },
+      {
+       "band": "45-60",
+       "air_temp_land_c": 0.298,
+       "sst_c": 15.802,
+       "humidity_ocean_g_kg": 8.889,
+       "precip_land_mm": 1382.785,
+       "precip_ocean_mm": 1587.828
+      },
+      {
+       "band": "60-75",
+       "air_temp_land_c": -8.124,
+       "sst_c": 9.687,
+       "humidity_ocean_g_kg": 6.013,
+       "precip_land_mm": 560.19,
+       "precip_ocean_mm": 881.242
+      },
+      {
+       "band": "75-90",
+       "air_temp_land_c": -19.547,
+       "sst_c": 4.442,
+       "humidity_ocean_g_kg": 4.233,
+       "precip_land_mm": 87.131,
+       "precip_ocean_mm": 363.749
       }
      ]
     }
@@ -356,7 +491,7 @@
       }
      ]
     },
-    "branch": {
+    "first_version": {
      "land_pct": 33.743,
      "ice_cap_pct_of_land": 4.341,
      "air_temp_land_c": 7.252,
@@ -421,6 +556,74 @@
        "humidity_ocean_g_kg": 4.027,
        "precip_land_mm": 107.475,
        "precip_ocean_mm": 351.597
+      }
+     ]
+    },
+    "revised": {
+     "land_pct": 33.743,
+     "ice_cap_pct_of_land": 4.341,
+     "air_temp_land_c": 7.28,
+     "air_temp_ocean_c": 20.425,
+     "humidity_land_g_kg": 4.474,
+     "humidity_ocean_g_kg": 12.624,
+     "precip_land_mm": 835.474,
+     "precip_ocean_mm": 1427.993,
+     "land_precip_share_pct": 22.81,
+     "koppen_land_pct": {
+      "A": 10.53,
+      "B": 36.97,
+      "C": 13.5,
+      "D": 20.21,
+      "E": 18.79
+     },
+     "bands": [
+      {
+       "band": "0-15",
+       "air_temp_land_c": 14.137,
+       "sst_c": 26.48,
+       "humidity_ocean_g_kg": 17.225,
+       "precip_land_mm": 1052.349,
+       "precip_ocean_mm": 2284.076
+      },
+      {
+       "band": "15-30",
+       "air_temp_land_c": 12.003,
+       "sst_c": 24.385,
+       "humidity_ocean_g_kg": 15.13,
+       "precip_land_mm": 524.989,
+       "precip_ocean_mm": 1208.369
+      },
+      {
+       "band": "30-45",
+       "air_temp_land_c": 6.027,
+       "sst_c": 21.369,
+       "humidity_ocean_g_kg": 12.593,
+       "precip_land_mm": 596.55,
+       "precip_ocean_mm": 1177.2
+      },
+      {
+       "band": "45-60",
+       "air_temp_land_c": 1.311,
+       "sst_c": 15.8,
+       "humidity_ocean_g_kg": 9.002,
+       "precip_land_mm": 1305.515,
+       "precip_ocean_mm": 1563.244
+      },
+      {
+       "band": "60-75",
+       "air_temp_land_c": -9.885,
+       "sst_c": 9.665,
+       "humidity_ocean_g_kg": 5.984,
+       "precip_land_mm": 738.878,
+       "precip_ocean_mm": 868.605
+      },
+      {
+       "band": "75-90",
+       "air_temp_land_c": -21.927,
+       "sst_c": 4.398,
+       "humidity_ocean_g_kg": 4.068,
+       "precip_land_mm": 106.249,
+       "precip_ocean_mm": 343.26
       }
      ]
     }
@@ -494,7 +697,7 @@
       }
      ]
     },
-    "branch": {
+    "first_version": {
      "land_pct": 33.835,
      "ice_cap_pct_of_land": 5.19,
      "air_temp_land_c": 7.199,
@@ -561,8 +764,78 @@
        "precip_ocean_mm": 370.356
       }
      ]
+    },
+    "revised": {
+     "land_pct": 33.883,
+     "ice_cap_pct_of_land": 5.176,
+     "air_temp_land_c": 7.27,
+     "air_temp_ocean_c": 20.385,
+     "humidity_land_g_kg": 4.551,
+     "humidity_ocean_g_kg": 12.58,
+     "precip_land_mm": 857.219,
+     "precip_ocean_mm": 1405.714,
+     "land_precip_share_pct": 23.67,
+     "koppen_land_pct": {
+      "A": 10.58,
+      "B": 36.92,
+      "C": 13.89,
+      "D": 18.66,
+      "E": 19.95
+     },
+     "bands": [
+      {
+       "band": "0-15",
+       "air_temp_land_c": 13.924,
+       "sst_c": 26.483,
+       "humidity_ocean_g_kg": 17.133,
+       "precip_land_mm": 1071.265,
+       "precip_ocean_mm": 2251.158
+      },
+      {
+       "band": "15-30",
+       "air_temp_land_c": 11.891,
+       "sst_c": 24.386,
+       "humidity_ocean_g_kg": 15.112,
+       "precip_land_mm": 539.377,
+       "precip_ocean_mm": 1153.977
+      },
+      {
+       "band": "30-45",
+       "air_temp_land_c": 6.066,
+       "sst_c": 21.35,
+       "humidity_ocean_g_kg": 12.614,
+       "precip_land_mm": 627.041,
+       "precip_ocean_mm": 1173.562
+      },
+      {
+       "band": "45-60",
+       "air_temp_land_c": 0.955,
+       "sst_c": 15.817,
+       "humidity_ocean_g_kg": 8.992,
+       "precip_land_mm": 1311.778,
+       "precip_ocean_mm": 1586.277
+      },
+      {
+       "band": "60-75",
+       "air_temp_land_c": -10.075,
+       "sst_c": 9.682,
+       "humidity_ocean_g_kg": 6.023,
+       "precip_land_mm": 742.188,
+       "precip_ocean_mm": 872.625
+      },
+      {
+       "band": "75-90",
+       "air_temp_land_c": -21.195,
+       "sst_c": 4.371,
+       "humidity_ocean_g_kg": 4.11,
+       "precip_land_mm": 109.444,
+       "precip_ocean_mm": 360.029
+      }
+     ]
     }
    }
   }
- }
+ },
+ "first_version_commit": "454a1f34bfbdd81e94a1ff280fa25f549bef21bd",
+ "revised_commit": "9478494ec692405e1c5307fbf4629ce0e6fc560c"
 }
