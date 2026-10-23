@@ -97,7 +97,7 @@ cd backend
   rerun of the evidence pair with inflow to unfrozen sinks added ruled that out: that inflow
   falls too (median 448,200 → 201,900 m³/s), so less water reaches the ocean *and* the land
   sinks. A second rerun added the step's land precipitation and Budyko runoff, read from the
-   call in :
+  `breaching.runoff_mm` call in `compute_hydrology`:
 
   | Evidence save, median steps 2–10 | main | branch |
   |---|---:|---:|
