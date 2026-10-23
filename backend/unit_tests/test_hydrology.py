@@ -1,3 +1,5 @@
+import pickle
+
 import numpy as np
 import pytest
 from app import geometry
@@ -1264,6 +1266,26 @@ def test_a_spill_hop_with_no_spill_path_keeps_its_straight_segment():
     rivers = hydrology.group_rivers(fields)
     assert len(rivers) == 1
     assert rivers[0].mouth_type == "ocean"
+
+
+def test_a_spill_path_never_climbs_past_the_deepest_notch_above_the_spill_level():
+    # The routed spill level is 40 m; a rim more than BREACH_MAX_NOTCH_M above that can't be
+    # the pass routing used, so the search gives up and the straight segment stays.
+    fields = spill_hop_fields(lake_m=0.0)
+    fields.filled_elevation[2] = 40.0
+    fields.elevation[5] = 40.0 + breaching.BREACH_MAX_NOTCH_M + 1.0
+
+    assert segment_pairs(fields, [2]) == {(2, 6)}
+
+
+def test_spill_paths_are_cached_per_fields_and_left_out_of_saves():
+    fields = spill_hop_fields(lake_m=0.0)
+    hydrology.group_rivers(fields)
+    assert set(fields._spill_path_cache.paths) == {2}
+
+    restored = pickle.loads(pickle.dumps(fields))
+    assert "_spill_path_cache" not in restored.__dict__
+    assert segment_pairs(restored, [2]) == DRY_SPILL_PATH
 
 
 def test_a_spill_hop_from_a_sink_under_visible_water_draws_nothing():

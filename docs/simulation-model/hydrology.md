@@ -479,9 +479,12 @@ reaches visible lake water, it's drawn only up to the water. `group_rivers` then
 upstream network there, with `mouth_type` `"lake"`, and the outflow is its own network
 starting beyond the rim. The map's downstream fill-in (`_extend_drawn_rivers_downstream`)
 stops at that mouth too, so a hidden outflow network isn't drawn. The search follows k-NN edges
-in both directions, since the way over a rim may exist only as a reverse edge; a hop with no
-spill path at all keeps its straight segment. A network's `length_m` sums the drawn segments.
-Routing, discharge and lake inflow are unchanged.
+in both directions, since the way over a rim may exist only as a reverse edge. It gives up
+once the pass would climb more than `breaching.BREACH_MAX_NOTCH_M` above the sink's routed
+spill level (`filled_elevation`), or after `SPILL_PATH_MAX_NODES` nodes, and a hop with no
+spill path keeps its straight segment. The paths are worked out once per `HydrologyFields`,
+on first use, for every river hop (`_SpillPathCache`), and aren't saved with it. A network's
+`length_m` sums the drawn segments. Routing, discharge and lake inflow are unchanged.
 
 **A spilling lake erodes its own outlet hard**, proportional to the lake's own surface area,
 not just the ordinary precipitation-driven flow passing through that one channel node. Once a

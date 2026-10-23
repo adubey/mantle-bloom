@@ -13,8 +13,14 @@ away. At the loaded save and after each checkpoint, it measures:
 
 Segments come from `hydrology.flow_segments` when the backend has it, else from each river
 node's own `flow_target` edge, as before #520. With `--render-dir` it also writes an elevation
-globe centred on `--center LAT LON` at each checkpoint. `--backend` points at the backend to
-import, so the same script measures both trees:
+globe centred on `--center LAT LON` at each checkpoint.
+
+With `--timing N`, each checkpoint also records the median of N timings (seconds) of an
+elevation map (`render_png`, Behrmann 1600x800), the `/world/rivers` payload
+(`group_rivers` plus every `main._river_summary`), and `flow_segments` over every river node.
+"Cold" clears the per-fields spill-path cache first (`_spill_path_cache`, where the backend
+has one); "warm" repeats the call straight after. One untimed render first builds the render's
+own caches. `--backend` points at the backend to import, so the same script measures both trees:
 
     cd backend
     .venv/bin/python ../bin/debug/measure_river_hops.py <local-save> --myr 0.1 --checkpoint-myr 0.1 \\
@@ -22,10 +28,13 @@ import, so the same script measures both trees:
     .venv/bin/python ../bin/debug/measure_river_hops.py <local-save> --myr 0.1 --checkpoint-myr 0.1 \\
         --backend <baseline-worktree>/backend --center 43 153 --render-dir <scratch>/main \\
         --out <scratch>/main.json
+    .venv/bin/python ../bin/debug/measure_river_hops.py <local-save> --myr 0.1 --checkpoint-myr 0.1 \
+        --timing 5 --out <scratch>/timing.json
 """
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import numpy as np
@@ -35,6 +44,47 @@ from replay_lib import load_replay, parse_replay_args, run_replay
 def _add_arguments(ap) -> None:
     ap.add_argument("--center", type=float, nargs=2, default=(0.0, 0.0), metavar=("LAT", "LON"))
     ap.add_argument("--render-dir", type=Path)
+    ap.add_argument("--timing", type=int, default=0, metavar="N")
+
+
+def _seconds(call) -> float:
+    started = time.perf_counter()
+    call()
+    return time.perf_counter() - started
+
+
+def _timings(world, repeats: int) -> dict:
+    """Median cold and warm seconds of the map, the rivers payload and the spill paths."""
+    from app import main as app_main  # noqa: E402
+    from app import render_image  # noqa: E402
+    from app.hydroclimate import hydrology  # noqa: E402
+
+    fields = world.hydrology_cache
+    river_idx = np.flatnonzero(fields.is_river)
+
+    def clear() -> None:
+        fields.__dict__.pop("_spill_path_cache", None)
+
+    def render() -> None:
+        render_image.render_png(world, "behrmann", "elevation", 1600, 800)
+
+    def rivers_payload() -> None:
+        for i, river in enumerate(hydrology.group_rivers(fields)):
+            app_main._river_summary(fields, river, i)
+
+    def spill_paths() -> None:
+        if hasattr(hydrology, "flow_segments"):
+            hydrology.flow_segments(fields, river_idx)
+
+    render()
+    samples: dict[str, list[float]] = {}
+    for _ in range(repeats):
+        for name, call in (("render", render), ("rivers", rivers_payload), ("flow_segments", spill_paths)):
+            clear()
+            samples.setdefault(f"{name}_cold_s", []).append(_seconds(call))
+            samples.setdefault(f"{name}_warm_s", []).append(_seconds(call))
+    clear()
+    return {name: float(np.median(values)) for name, values in samples.items()}
 
 
 def _km(points, a, b, radius_km):
@@ -91,6 +141,8 @@ def main() -> None:
     def snapshot() -> dict:
         fields = world.hydrology_cache
         snap = {"elapsed_myr": world.elapsed_years / 1e6, "nodes": int(len(fields.points))}
+        if args.timing:
+            snap["timing"] = _timings(world, args.timing)
         sources = np.flatnonzero(fields.flow_target >= 0)
         targets = fields.flow_target[sources]
         median_km = float(np.median(_km(fields.points, sources, targets, PLANET_RADIUS_KM)))
