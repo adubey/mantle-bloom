@@ -1,12 +1,23 @@
 {
  "script": "bin/debug/measure_frozen_water.py",
- "commit": "9d6fa07",
  "saves": [
   {
    "save": "mantle-bloom-seed997271774-87400000y.mbworld",
    "save_sha256": "08ad9461d9585e92be93a58d81e326c7e4b685ae7d462135d01b0e9931ed762b",
    "elapsed_myr": 87.4,
    "map": {
+    "polar_ocean": {
+     "polar_ocean_share_of_ocean": 0.1417,
+     "sst_min_c": 1.2248,
+     "sst_at_floor": 0.0,
+     "sst_annual_below_freezing": 0.0,
+     "sst_warmest_month_below_freezing": 0.0,
+     "air_finite": 1.0,
+     "air_mean_c": 8.444,
+     "air_annual_below_freezing": 0.0011,
+     "air_warmest_month_below_freezing": 0.0001,
+     "air_coldest_month_below_freezing": 0.5159
+    },
     "land_area_share_of_globe": 0.2865,
     "iced_share_of_land": 0.06,
     "iced_land_classified_EF": 0.9314,
@@ -26,13 +37,126 @@
     "land_ice_km3_we": 5180642.1309,
     "above_flotation_km3_we": 5183804.7942,
     "ocean_area_km2": 362190691.7492
-   }
+   },
+   "sea_ice_balance": [
+    {
+     "lat_deg": 50.0,
+     "sst_baseline_c": 16.7,
+     "t_ice_c": 6.29,
+     "amplitude_c": 7.22,
+     "fdd": 0,
+     "tdd": 2333,
+     "growth_m": 0.0,
+     "state_ddf_4mm": "ice-free",
+     "state_ddf_7mm": "ice-free"
+    },
+    {
+     "lat_deg": 55.0,
+     "sst_baseline_c": 14.69,
+     "t_ice_c": 2.59,
+     "amplitude_c": 8.17,
+     "fdd": 289,
+     "tdd": 1472,
+     "growth_m": 0.58,
+     "state_ddf_4mm": "seasonal",
+     "state_ddf_7mm": "seasonal"
+    },
+    {
+     "lat_deg": 60.0,
+     "sst_baseline_c": 12.55,
+     "t_ice_c": -1.33,
+     "amplitude_c": 9.15,
+     "fdd": 979,
+     "tdd": 832,
+     "growth_m": 1.08,
+     "state_ddf_4mm": "seasonal",
+     "state_ddf_7mm": "seasonal"
+    },
+    {
+     "lat_deg": 65.0,
+     "sst_baseline_c": 10.3,
+     "t_ice_c": -5.46,
+     "amplitude_c": 10.15,
+     "fdd": 1926,
+     "tdd": 359,
+     "growth_m": 1.51,
+     "state_ddf_4mm": "seasonal",
+     "state_ddf_7mm": "seasonal"
+    },
+    {
+     "lat_deg": 70.0,
+     "sst_baseline_c": 8.06,
+     "t_ice_c": -9.56,
+     "amplitude_c": 11.18,
+     "fdd": 3045,
+     "tdd": 68,
+     "growth_m": 1.9,
+     "state_ddf_4mm": "perennial",
+     "state_ddf_7mm": "perennial"
+    },
+    {
+     "lat_deg": 75.0,
+     "sst_baseline_c": 6.01,
+     "t_ice_c": -13.31,
+     "amplitude_c": 12.23,
+     "fdd": 4225,
+     "tdd": 0,
+     "growth_m": 2.24,
+     "state_ddf_4mm": "perennial",
+     "state_ddf_7mm": "perennial"
+    },
+    {
+     "lat_deg": 80.0,
+     "sst_baseline_c": 4.17,
+     "t_ice_c": -16.69,
+     "amplitude_c": 13.3,
+     "fdd": 5437,
+     "tdd": 0,
+     "growth_m": 2.54,
+     "state_ddf_4mm": "perennial",
+     "state_ddf_7mm": "perennial"
+    },
+    {
+     "lat_deg": 85.0,
+     "sst_baseline_c": 2.55,
+     "t_ice_c": -19.67,
+     "amplitude_c": 14.39,
+     "fdd": 6525,
+     "tdd": 0,
+     "growth_m": 2.78,
+     "state_ddf_4mm": "perennial",
+     "state_ddf_7mm": "perennial"
+    },
+    {
+     "lat_deg": 89.0,
+     "sst_baseline_c": 1.41,
+     "t_ice_c": -21.74,
+     "amplitude_c": 15.28,
+     "fdd": 7283,
+     "tdd": 0,
+     "growth_m": 2.94,
+     "state_ddf_4mm": "perennial",
+     "state_ddf_7mm": "perennial"
+    }
+   ]
   },
   {
    "save": "mantle-bloom-seed649658380-6400000y.mbworld",
    "save_sha256": "ebbfb5da073ae27b3baa20e53ef958cedd9153f4ce38ca549b742c561273f7b3",
    "elapsed_myr": 6.4,
    "map": {
+    "polar_ocean": {
+     "polar_ocean_share_of_ocean": 0.1448,
+     "sst_min_c": 1.2248,
+     "sst_at_floor": 0.0,
+     "sst_annual_below_freezing": 0.0,
+     "sst_warmest_month_below_freezing": 0.0,
+     "air_finite": 1.0,
+     "air_mean_c": 8.6778,
+     "air_annual_below_freezing": 0.001,
+     "air_warmest_month_below_freezing": 0.0,
+     "air_coldest_month_below_freezing": 0.4939
+    },
     "land_area_share_of_globe": 0.2925,
     "iced_share_of_land": 0.0279,
     "iced_land_classified_EF": 0.3309,
@@ -52,7 +176,109 @@
     "land_ice_km3_we": 3264193.7688,
     "above_flotation_km3_we": 3265502.7956,
     "ocean_area_km2": 354420811.5839
-   }
+   },
+   "sea_ice_balance": [
+    {
+     "lat_deg": 50.0,
+     "sst_baseline_c": 16.7,
+     "t_ice_c": 6.29,
+     "amplitude_c": 7.22,
+     "fdd": 0,
+     "tdd": 2333,
+     "growth_m": 0.0,
+     "state_ddf_4mm": "ice-free",
+     "state_ddf_7mm": "ice-free"
+    },
+    {
+     "lat_deg": 55.0,
+     "sst_baseline_c": 14.69,
+     "t_ice_c": 2.59,
+     "amplitude_c": 8.17,
+     "fdd": 289,
+     "tdd": 1472,
+     "growth_m": 0.58,
+     "state_ddf_4mm": "seasonal",
+     "state_ddf_7mm": "seasonal"
+    },
+    {
+     "lat_deg": 60.0,
+     "sst_baseline_c": 12.55,
+     "t_ice_c": -1.33,
+     "amplitude_c": 9.15,
+     "fdd": 979,
+     "tdd": 832,
+     "growth_m": 1.08,
+     "state_ddf_4mm": "seasonal",
+     "state_ddf_7mm": "seasonal"
+    },
+    {
+     "lat_deg": 65.0,
+     "sst_baseline_c": 10.3,
+     "t_ice_c": -5.46,
+     "amplitude_c": 10.15,
+     "fdd": 1926,
+     "tdd": 359,
+     "growth_m": 1.51,
+     "state_ddf_4mm": "seasonal",
+     "state_ddf_7mm": "seasonal"
+    },
+    {
+     "lat_deg": 70.0,
+     "sst_baseline_c": 8.06,
+     "t_ice_c": -9.56,
+     "amplitude_c": 11.18,
+     "fdd": 3045,
+     "tdd": 68,
+     "growth_m": 1.9,
+     "state_ddf_4mm": "perennial",
+     "state_ddf_7mm": "perennial"
+    },
+    {
+     "lat_deg": 75.0,
+     "sst_baseline_c": 6.01,
+     "t_ice_c": -13.31,
+     "amplitude_c": 12.23,
+     "fdd": 4225,
+     "tdd": 0,
+     "growth_m": 2.24,
+     "state_ddf_4mm": "perennial",
+     "state_ddf_7mm": "perennial"
+    },
+    {
+     "lat_deg": 80.0,
+     "sst_baseline_c": 4.17,
+     "t_ice_c": -16.69,
+     "amplitude_c": 13.3,
+     "fdd": 5437,
+     "tdd": 0,
+     "growth_m": 2.54,
+     "state_ddf_4mm": "perennial",
+     "state_ddf_7mm": "perennial"
+    },
+    {
+     "lat_deg": 85.0,
+     "sst_baseline_c": 2.55,
+     "t_ice_c": -19.67,
+     "amplitude_c": 14.39,
+     "fdd": 6525,
+     "tdd": 0,
+     "growth_m": 2.78,
+     "state_ddf_4mm": "perennial",
+     "state_ddf_7mm": "perennial"
+    },
+    {
+     "lat_deg": 89.0,
+     "sst_baseline_c": 1.41,
+     "t_ice_c": -21.74,
+     "amplitude_c": 15.28,
+     "fdd": 7283,
+     "tdd": 0,
+     "growth_m": 2.94,
+     "state_ddf_4mm": "perennial",
+     "state_ddf_7mm": "perennial"
+    }
+   ]
   }
- ]
+ ],
+ "commit": "8e2c1ba1e31bc6e1f02b54224396158ca9cdf1d8"
 }

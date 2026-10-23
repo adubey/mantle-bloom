@@ -152,7 +152,7 @@ Following the review on PR #523, ice cover, liquid storage and routing, and phas
   - the any-member `is_frozen[node.members].any()` in `lakes._resolve`;
   - the frozen-river-ice conversion of liquid water at `WATER_TO_ICE`.
 - **Unchanged:** precipitation still falls as snow on frozen or ice-capped nodes (principle #8); snow onto a lake's ice cap joins the glacier accumulation as today.
-  - *Note (RFC 0015, if accepted):* RFC 0015 D1 replaces the frozen-node snow switch with a seasonal snow fraction, and its D4 gives snow on a lake's wet fraction to the lake (onto `lake_ice_m` while frozen), not to glacier accumulation. See [RFC 0015](0015-frozen-water-in-physical-units.md#d4-lakes-that-freeze-with-rfc-0014).
+  - *Note (RFC 0015, if accepted):* RFC 0015 D1 replaces the frozen-node snow switch with a seasonal snow fraction, and its D4 gives snow on a lake's wet fraction to the lake (onto `lake_ice_m` while frozen), not to glacier accumulation. This RFC stops writing `IceLedger.frozen_river_ice_m3`, `frozen_river_capped_m3` and `frozen_lake_m3`; RFC 0015 D5 deletes them. See [RFC 0015](0015-frozen-water-in-physical-units.md#d4-lakes-that-freeze-and-lakes-under-ice-with-rfc-0014).
 
 **(c) A bounded, energy-limited ice cap.**
 - Each wet cell carries an ice-cap thickness `H` (water equivalent), persisted between steps.
