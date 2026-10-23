@@ -70,12 +70,18 @@ The motion phase runs once for the whole world through
 `torque.shift_plates_quasistatic(world, years)`. It gathers each plate's force inputs from
 the same pre-step geometry, assembles a `3P × 3P` drag system, solves all angular rates, and
 then rotates every plate. Basal and slab drag contribute plate-local blocks. Contact drag
-contributes a symmetric pair block, so both sides receive equal-and-opposite resistance
-without reading a neighbour's newly updated rate. The blocked-collision pilot can apply a
+contributes a symmetric pair block formed by averaging both sides' discretized matrices;
+a missing side contributes zero, so one side cannot silently double the effective drag. Both
+sides receive equal-and-opposite resistance without reading a neighbour's newly updated rate.
+Pinned debug plates are eliminated from the unknowns, while their prescribed rates remain in
+the free plates' drag and contact equations. The blocked-collision pilot can apply a
 shared compressive load capped by candidate yield strength; closing beyond that capacity
 remains for the deformation pass. The bounded contact solver uses the minimum-norm rate when
 resistance leaves a free mode, reports unbalanced torque through diagnostics, and does not
-impose a minimum plate rate or clamp the solved rate.
+impose a minimum plate rate or clamp the solved rate. Rates are limited by the modeled basal,
+slab, pair-contact, and blocked-contact resistance only; the model has no universal physical
+speed bound yet. The high-rate outlier pathway, including stress-driven conversion of part of
+a plate to magma, remains a follow-up investigation (#494).
 
 After all plates rotate, `Plate.deform` updates their columns and territories. The per-plate
 territory reconciliation still runs in a freshly randomized order each turn.

@@ -56,6 +56,16 @@ class ContactSolveResult:
     sweeps: int
 
 
+def contact_force_at_capacity(force: np.ndarray, capacity: np.ndarray) -> np.ndarray:
+    """Return the solver's shared tolerance-based capacity classification."""
+    force = np.asarray(force, dtype=float)
+    capacity = np.asarray(capacity, dtype=float)
+    if force.shape != capacity.shape:
+        raise ValueError("force and capacity must have matching shapes")
+    tolerance = max(1e-12, float(capacity.max(initial=0.0)) * 1e-12)
+    return force >= capacity - tolerance
+
+
 def solve_quasistatic_contacts(
     drag_matrix: np.ndarray,
     driving_torque_nm: np.ndarray,
@@ -63,6 +73,7 @@ def solve_quasistatic_contacts(
     closing_rate_per_omega: np.ndarray | None = None,
     contact_capacity_n_per_m: np.ndarray | None = None,
     *,
+    closing_rate_offset: np.ndarray | None = None,
     rate_tolerance: float = 1e-12,
     max_sweeps: int = 1000,
 ) -> ContactSolveResult:
@@ -110,6 +121,14 @@ def solve_quasistatic_contacts(
         residual = matrix @ omega - torque
         return ContactSolveResult(omega, capacity, np.zeros(0), residual, True, 0)
 
+    offset = (
+        np.zeros(len(capacity), dtype=float)
+        if closing_rate_offset is None
+        else np.asarray(closing_rate_offset, dtype=float)
+    )
+    if offset.shape != (len(capacity),) or not np.all(np.isfinite(offset)):
+        raise ValueError("closing_rate_offset must contain one finite value per contact")
+
     # A single response factorization keeps every projected contact update on the same
     # pre-step drag system. Least squares also gives the prescribed zero-rate free mode.
     response = np.linalg.lstsq(matrix, contact_map, rcond=None)[0]
@@ -121,17 +140,20 @@ def solve_quasistatic_contacts(
 
     for sweep in range(1, max_sweeps + 1):
         for index in range(len(force)):
-            rate = float(closure_map[index] @ omega)
+            rate = float(closure_map[index] @ omega + offset[index])
             slope = float(compliance[index, index])
             # Compliance is a rate per line force and is naturally far below machine
             # epsilon in SI units (m/s per N/m). An absolute epsilon here silently disables
             # every physical contact update even when its sign is well resolved.
             if slope < 0.0:
-                force[index] = np.clip(force[index] + rate / -slope, 0.0, capacity[index])
-                omega = free_omega + response @ force
-        closing = closure_map @ omega
-        at_zero = force <= max(1e-12, np.max(capacity) * 1e-12)
-        at_cap = force >= capacity - max(1e-12, np.max(capacity) * 1e-12)
+                old_force = force[index]
+                new_force = np.clip(old_force + rate / -slope, 0.0, capacity[index])
+                force[index] = new_force
+                omega += response[:, index] * (new_force - old_force)
+        closing = closure_map @ omega + offset
+        force_tolerance = max(1e-12, np.max(capacity) * 1e-12)
+        at_zero = force <= force_tolerance
+        at_cap = contact_force_at_capacity(force, capacity)
         violation = np.where(at_zero, np.maximum(closing, 0.0), 0.0)
         violation = np.where(at_cap, np.maximum(-closing, 0.0), violation)
         interior = ~(at_zero | at_cap)
@@ -140,7 +162,7 @@ def solve_quasistatic_contacts(
             converged = True
             break
 
-    closing = closure_map @ omega
+    closing = closure_map @ omega + offset
     rhs = torque + contact_map @ force
     residual = matrix @ omega - rhs
     return ContactSolveResult(omega, force, closing, residual, converged, sweep)

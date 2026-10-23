@@ -216,9 +216,8 @@ class World:
     # interval you want to measure. A `default_factory` field -> backfilled on load (see
     # persistence._backfill_added_fields).
     phase_budget: dict = field(default_factory=dict)
-    # Debug-world-only: plate_id -> a fixed world-frame angular velocity (rad/s) that
-    # Plate.shift uses verbatim every step, bypassing torque.shift_plate's own
-    # torque-balance recompute entirely for that plate (see torque.py) -- the "Debugging
+    # Debug-world-only: plate_id -> a fixed world-frame angular velocity (rad/yr) used as a
+    # fixed degree of freedom in the coupled solve (see torque.py) -- the "Debugging
     # Worlds" tab's scripted-motion mechanism (see debug_worlds.py), so a tiny hand-built
     # scenario moves exactly as scripted every step rather than however real ridge-push/
     # slab-pull/basal-drag against world.mantle_centers happens to settle it. Empty for every
@@ -312,8 +311,9 @@ class World:
     # (`collision_polarity.PolarityFrame`), set by the prepass before any plate deforms and
     # left in place until the next step's prepass replaces it.
     collision_polarity_frame: object | None = None
-    # Step-scoped scratch, None outside the passes that use it: the boundary searches the
-    # prepass shares with deform() (`torque.BoundarySearchCache`), and the (parent, child)
+    # Step-scoped scratch, None outside the passes that use it: motion creates the boundary
+    # cache, the post-rotation prepass repopulates it, and deform() shares those searches
+    # (`torque.BoundarySearchCache`); also the (parent, child)
     # plate-id pairs topology changes record (`collision_polarity.note_lineage`).
     boundary_search_cache: object | None = None
     topology_lineage: list | None = None
@@ -784,9 +784,9 @@ def generate_world_progress(
     else:
         initial_terrain.apply_lowland_spherical_relief(world)
 
-        # The cratons-first layout has explicit plate boundaries, so use the torque solver's
-        # read-only first-step prediction to seed modest convergent-belt relief. The prediction
-        # informs terrain only; plate positions and elapsed time remain at generation state.
+        # The cratons-first layout has explicit plate boundaries, so use the coupled solver's
+        # read-only first-step rates to seed modest convergent-belt relief. The solve informs
+        # terrain only; plate positions and elapsed time remain at generation state.
         if cratons_first:
             initial_terrain.apply_predicted_orogens(world)
 
@@ -897,10 +897,10 @@ def step_world_progress(world: World, years: float, *, motion_diagnostics: list[
     dominates a step's runtime on any world large enough for progress to matter, so this
     still tracks real, if coarse, completion.
 
-    Plate movement (skippable via World.simulate_plate_movement) is two per-plate passes:
-    `Plate.shift(world, years)` for every plate (integrate the torque balance and rotate
-    rigidly), then `deform(world, other_plates, years, D)` for every plate in a freshly
-    randomized order each turn (Mohr-Coulomb yield/isostasy -- see quad_tectonics.py).
+    Plate movement (skippable via World.simulate_plate_movement) is a coupled solve and
+    batch rotation through `torque.shift_plates_quasistatic`, then
+    `deform(world, other_plates, years, D)` for every plate in a freshly randomized order
+    each turn (Mohr-Coulomb yield/isostasy -- see quad_tectonics.py).
     Randomizing the processing order each turn is what keeps two neighbors from both claiming
     the same contested/unclaimed space in the same turn.
 
@@ -960,7 +960,8 @@ def step_world_progress(world: World, years: float, *, motion_diagnostics: list[
             yield done_units / total_units
         # Collision polarity prepass (issue #318): every plate has moved and none has deformed,
         # so record subduction evidence and freeze each continental front's lower/upper plate
-        # now, independent of the deform order below. It reuses the shift-time boundary cache.
+        # now, independent of the deform order below. Rotation invalidated the motion-phase
+        # node trees; this prepass repopulates the cache for the following deformation pass.
         collision_polarity.observe_contacts(world, years)
         # Fail before any plate deforms, not at the first polarized front mid-pass.
         crust_transfer.partition(world)
@@ -976,7 +977,7 @@ def step_world_progress(world: World, years: float, *, motion_diagnostics: list[
         audit = cratons.PhaseAudit(world)
         for plate in order:
             others = [p for p in world.plates if p.plate_id != plate.plate_id]
-            plate.deform(world, others, years, distances[plate.plate_id])
+            plate.deform(world, others, years, distances.get(plate.plate_id, 0.0))
             done_units += 1
             yield done_units / total_units
         collision_polarity.finish_deform_pass(world)

@@ -23,6 +23,7 @@ from app.sparse_quad_patch import (
     parent_cell_keys,
     unpack_cell_keys,
 )
+from app.torque import shift_plates_quasistatic
 from app.world import generate_world
 
 N = 12
@@ -277,12 +278,12 @@ def test_quad_world_round_trips_through_the_versioned_save_format():
             np.testing.assert_array_equal(restored.collect(name), original.collect(name))
 
 
-def test_quad_plate_uses_shared_torque_pipeline_for_rigid_motion():
+def test_quad_world_uses_shared_torque_pipeline_for_rigid_motion():
     world = generate_world(seed=5, num_plates=5)
     plate = world.plates[0]
     topology0, geometry0 = plate.topology_revision, plate.geometry_revision
 
-    displacement = plate.shift(world, 1_000_000)
+    displacement = shift_plates_quasistatic(world, 1_000_000)[plate.plate_id]
 
     assert np.isfinite(displacement)
     assert np.all(np.isfinite(plate.omega))

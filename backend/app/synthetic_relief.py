@@ -61,7 +61,6 @@ if TYPE_CHECKING:
 # Off until an RFC settles its open questions (ocean relief, early evolution;
 # see #218's exploration summary). Cratons-first only.
 SYNTHETIC_RELIEF_DEFAULT = False
-FIRST_MOTION_STEP_YEARS = 5_000_000.0
 # Boundary nodes within this distance of another plate read that contact's regime; at least
 # REGIME_REACH_SPACINGS node spacings, so a coarse world still finds its contacts (principle 4).
 REGIME_REACH_KM = 150.0
@@ -572,7 +571,7 @@ def apply_synthetic_relief(world: "World", layout: "ContinentLayout") -> None:
     """Replace continental relief on a freshly generated cratons-first world with relief from
     a synthetic tectonic history, backed by Hc (see the module docstring). Keeps the land
     node count; leaves oceanic crust, plates and elapsed time untouched."""
-    omegas = {p.plate_id: torque.predict_plate_motion(p, world, world.plates, FIRST_MOTION_STEP_YEARS) for p in world.plates}
+    omegas = torque.solve_plates_quasistatic(world)
     cloud = _gather(world, omegas)
     if not cloud.continental.any():
         return

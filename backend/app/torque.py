@@ -1,6 +1,8 @@
-"""Dynamic torque-balance plate motion (spec section 3): slab-pull, ridge-push, basal drag,
-and collision friction, integrated into an angular acceleration rather than fit via OLS to a
-static mantle-flow field the way `mantle.fit_euler_pole` does for v1.
+"""Plate motion loads and resistance (spec section 3): slab-pull, ridge-push, basal drag,
+and collision friction are assembled into a coupled quasi-static solve. The legacy
+single-plate inertial integrator remains available for targeted mechanics tests, but normal
+world stepping and generation use the coupled solver rather than fitting angular motion from
+the static mantle-flow field the way `mantle.fit_euler_pole` does for v1.
 
 Unit convention, matched to the rest of this codebase (`mantle.py`'s own docstrings/
 constants): `Plate.omega` is a true angular velocity in real radians/year -- radius-
@@ -17,6 +19,7 @@ unit systems.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 import numpy as np
@@ -26,6 +29,8 @@ from .boundary import TRANSFORM_RATE_THRESHOLD
 from .elevation_lines import effective_is_continental_from_codes, line_spacing_rad
 from . import lithosphere
 from .plates import query_workers
+
+logger = logging.getLogger(__name__)
 
 SECONDS_PER_YEAR = 365.25 * 86400.0
 
@@ -187,16 +192,17 @@ class PerNodeForceField:
 
 
 class BoundarySearchCache:
-    """One step's per-(plate, neighbour) boundary searches, shared by the collision-polarity
-    prepass (collision_polarity.py, issue #318) and `deform()`'s own `boundary_context`, so the
-    prepass doesn't add a second full neighbour search to every step.
+    """One step's boundary searches shared by motion, the collision-polarity prepass, and
+    `deform()`'s own `boundary_context`.
 
     A cached result is reused only while both plates' node sets are unchanged, judged by the
     identity of their cached node k-d trees (`Plate.get_node_kdtree`), which every geometry
     change drops. A reused result is therefore exactly what a fresh search would return, and
     `deform()` behaves as it did without the cache. A neighbour that already deformed this
-    step (cells peeled or grown) is searched afresh. Lives on `World.boundary_search_cache`
-    from the prepass to the end of the deform pass only."""
+    step (cells peeled or grown) is searched afresh. Motion searches use the pre-rotation
+    geometry; rotation invalidates its trees, so the prepass searches the post-rotation
+    geometry afresh and shares those results with the deform pass. Lives on
+    `World.boundary_search_cache` from motion through the end of deformation."""
 
     def __init__(self) -> None:
         # (own id, neighbour id) -> (own tree, neighbour tree, dist, idx): nearest neighbour
@@ -553,7 +559,7 @@ def slab_drag_force_vectors_n(inputs: BoundaryForceInputs, subducting_mask: np.n
 def slab_drag_coefficient_matrix(inputs: BoundaryForceInputs, subducting_mask: np.ndarray, spacing_rad: float) -> np.ndarray:
     """The `K` half of Eq. 10-style drag, but for the *sunk slab* shearing against the deep
     mantle (`SLAB_MANTLE_VISCOSITY_PA_S`) over its `SUBDUCTION_LSINK_M` down-dip length,
-    summed over this plate's subducting nodes. Folded into `integrate_omega`'s implicit `K`
+    summed over this plate's subducting nodes. Folded into the coupled solve's drag matrix
     exactly like `basal_drag_coefficients` -- it is at least as stiff, and an explicit step on
     it would overshoot the same way. `b` is zero: the deep mantle it shears against is taken
     at rest (unlike the asthenosphere, which carries `mantle.flow_at`), so the drag is purely
@@ -574,8 +580,8 @@ def slab_drag_coefficient_matrix(inputs: BoundaryForceInputs, subducting_mask: n
 
 def slab_drag_torque(plate, inputs: BoundaryForceInputs, subducting_mask: np.ndarray, spacing_rad: float) -> np.ndarray:
     """`slab_drag_coefficient_matrix` evaluated at the plate's current `omega` (`-K @ omega`)
-    -- a standalone entry point for tests / callers that just want the resistive torque;
-    `shift_plate` itself folds the `K` into `integrate_omega` for implicit stability."""
+    -- a standalone entry point for tests / callers that just want the resistive torque.
+    The coupled solve assembles the matrix directly instead of evaluating this helper."""
     return -slab_drag_coefficient_matrix(inputs, subducting_mask, spacing_rad) @ plate.omega
 
 
@@ -953,12 +959,10 @@ def classify_boundary_nodes(
 
 
 def apply_omega_and_rotate(plate, old_points: np.ndarray, omega: np.ndarray, years: float) -> float:
-    """Shared tail of `shift_plate`'s real torque-balance path and `Plate.shift`'s
-    pinned-omega override (see `World.pinned_omegas`): set `omega`, rotate rigidly by it over
-    `years`, and report the same `D` (max node displacement) contract every `shift`
-    implementation returns. `old_points` is the plate's own pre-rotation node cloud (the
-    caller already has it -- both callers need it for their own zero-node early-out too, so
-    it's a parameter rather than refetched here)."""
+    """Set a solved or prescribed rate, rotate a plate, and report its max node displacement.
+
+    `old_points` is the plate's pre-rotation node cloud, already captured by the batch caller.
+    """
     plate.set_omega(omega)
     increment = geometry.rotation_matrix_from_omega(plate.omega, years)
     plate.rotate(increment)
@@ -1014,77 +1018,25 @@ def contact_jam_factor(plate, world, neighbours: list, inputs: BoundaryForceInpu
     return np.maximum(own, np.where(_jam_contact(plate, inputs, reach_rad), other, 0.0))
 
 
-def predict_plate_motion(plate, world, other_plates: list, years: float) -> np.ndarray:
-    """Predict this plate's first-step angular velocity without changing its state.
-
-    Generation uses this read-only interface to build terrain from the *initial* tectonic
-    regime. The normal stepping path uses the same prediction and then applies it via
-    `apply_omega_and_rotate`; this function itself never sets omega or rotates geometry."""
-    spacing_rad = line_spacing_rad(world.node_density)
-    reach_rad = boundary_force_reach_rad(spacing_rad)
-
-    old_points, _ = plate.all_points_and_elevation()
-    if len(old_points) == 0:
-        return np.asarray(plate.omega, dtype=float).copy()
-
-    neighbours = plate.get_neighbours(other_plates)
-    inputs = gather_boundary_force_inputs(plate, neighbours, spacing_rad, reach_rad)
-    _convergent, divergent, _transform, contested = classify_boundary_nodes(plate, neighbours, inputs, reach_rad)
-    collision_mask = continental_contact_mask(plate, inputs, contested)
-    subducting = subducting_boundary_mask(plate, inputs, reach_rad)
-
-    rho_c = lithosphere.node_crust_density(inputs.own_crust_type_codes, plate.crust_type)
-    inertia = lithosphere.moment_of_inertia_tensor(
-        inputs.own_points, inputs.own_hc, inputs.own_hm, rho_c, spacing_rad, area_m2=plate.accounting_areas_m2(spacing_rad)
-    )
-
-    explicit_torque = slab_pull_torque(plate, inputs, subducting, spacing_rad) + ridge_push_torque(
-        plate, inputs, divergent, spacing_rad
-    )
-    drag_b, drag_k = basal_drag_coefficients(plate, world, spacing_rad)
-    drag_k = drag_k + slab_drag_coefficient_matrix(inputs, subducting, spacing_rad)
-    # Collision resistance is folded into the same implicit (b, K) drag terms as basal/slab
-    # drag, not explicit_torque -- see collision_drag_coefficients' own docstring for why an
-    # explicit collision torque here structurally can't compete with basal drag's stiffness.
-    jam = contact_jam_factor(plate, world, neighbours, inputs, reach_rad)
-    collision_b, collision_k = collision_drag_coefficients(
-        plate, inputs, collision_mask, spacing_rad, contact_craton_m(plate, neighbours, inputs), jam
-    )
-    drag_b = drag_b + collision_b
-    drag_k = drag_k + collision_k
-    new_omega = integrate_omega(plate, explicit_torque, drag_b, drag_k, inertia, years)
-    return np.asarray(new_omega, dtype=float)
-
-
-def shift_plate(plate, world, other_plates: list, years: float) -> float:
-    """`Plate.shift`'s real (non-pinned) implementation: predict omega from the plate's
-    current boundary configuration, then rotate rigidly -- see `apply_omega_and_rotate` for
-    the shared tail with the pinned-omega override."""
-    old_points, _ = plate.all_points_and_elevation()
-    if len(old_points) == 0:
-        return 0.0
-    new_omega = predict_plate_motion(plate, world, other_plates, years)
-    return apply_omega_and_rotate(plate, old_points, new_omega, years)
-
-
-def shift_plates_quasistatic(world, years: float, *, diagnostics: dict | None = None) -> dict[int, float]:
-    """Assemble one pre-step motion system, solve all live plates, then rotate them.
+def solve_plates_quasistatic(world, *, diagnostics: dict | None = None) -> dict[int, np.ndarray]:
+    """Assemble and solve one coupled motion system without changing plate geometry.
 
     Basal and slab drag remain plate-local. Contact drag is assembled once per plate pair
-    from the mean of the two sides' discretized resistance matrices, then enters as the
+    from the mean of both sides' discretized resistance matrices, treating a missing side as
+    zero, then enters as the
     symmetric block ``[[K, -K], [-K, K]]``. Frozen blocked edges also supply one shared
     normal force each, bounded by the weaker side's lithospheric strength. The solve is
     quasi-static: inertia and the per-plate rate clamp do not create motion or hide a
     force-balance residual.
     """
-    from .quasistatic import solve_quasistatic_contacts
+    from .quasistatic import contact_force_at_capacity, solve_quasistatic_contacts
 
     spacing_rad = line_spacing_rad(world.node_density)
     reach_rad = boundary_force_reach_rad(spacing_rad)
     plates = sorted((p for p in world.plates if p.node_count() > 0), key=lambda p: p.plate_id)
     count = len(plates)
     if not count:
-        return {}
+        return {plate.plate_id: np.asarray(plate.omega, dtype=float).copy() for plate in world.plates}
     index_by_id = {p.plate_id: i for i, p in enumerate(plates)}
     cache = world.boundary_search_cache
     if cache is None:
@@ -1094,16 +1046,13 @@ def shift_plates_quasistatic(world, years: float, *, diagnostics: dict | None = 
     dimension = 3 * count
     drag = np.zeros((dimension, dimension), dtype=float)
     driving = np.zeros(dimension, dtype=float)
-    old_points_by_id: dict[int, np.ndarray] = {}
     inputs_by_id: dict[int, BoundaryForceInputs] = {}
-    pair_side_k: dict[tuple[int, int], list[np.ndarray]] = {}
+    pair_side_k: dict[tuple[int, int], dict[int, np.ndarray]] = {}
     boundary_inputs_by_id: dict[int, dict] = {}
     driving_terms_by_id: dict[int, dict[str, np.ndarray]] = {}
 
     for i, plate in enumerate(plates):
         start = 3 * i
-        old_points, _ = plate.all_points_and_elevation()
-        old_points_by_id[plate.plate_id] = old_points
         neighbours = cache.neighbours(plate, plates, reach_rad)
         inputs = gather_boundary_force_inputs(plate, neighbours, spacing_rad, reach_rad, cache)
         inputs_by_id[plate.plate_id] = inputs
@@ -1151,12 +1100,13 @@ def shift_plates_quasistatic(world, years: float, *, diagnostics: dict | None = 
             _b_side, k_side = collision_drag_coefficients(
                 plate, inputs, pair_mask, spacing_rad, craton_m, jam
             )
-            pair_side_k.setdefault(pair, []).append(k_side)
+            pair_side_k.setdefault(pair, {})[plate.plate_id] = k_side
 
     for (plate_a, plate_b), side_matrices in pair_side_k.items():
         if plate_a not in index_by_id or plate_b not in index_by_id:
             continue
-        pair_drag = np.mean(side_matrices, axis=0)
+        zero = np.zeros((3, 3), dtype=float)
+        pair_drag = 0.5 * (side_matrices.get(plate_a, zero) + side_matrices.get(plate_b, zero))
         a = slice(3 * index_by_id[plate_a], 3 * index_by_id[plate_a] + 3)
         b = slice(3 * index_by_id[plate_b], 3 * index_by_id[plate_b] + 3)
         drag[a, a] += pair_drag
@@ -1190,32 +1140,37 @@ def shift_plates_quasistatic(world, years: float, *, diagnostics: dict | None = 
         omega_flat[fixed_indices] = [fixed_values[int(i)] for i in fixed_indices]
     if len(free_indices):
         rhs = driving[free_indices].copy()
+        contact_map_free = contact_torque[free_indices]
+        closure_map_free = contact_closing[:, free_indices]
+        closing_offset = np.zeros(len(contact_capacity), dtype=float)
         if len(fixed_indices):
             rhs -= drag[np.ix_(free_indices, fixed_indices)] @ omega_flat[fixed_indices]
-            # Scripted diagnostic rates are fixed kinematics; hold contact complementarity
-            # out of this debug-only path rather than treating the fixed motion as a load.
-            result = solve_quasistatic_contacts(drag[np.ix_(free_indices, free_indices)], rhs)
-        else:
-            result = solve_quasistatic_contacts(
-                drag,
-                driving,
-                contact_torque,
-                contact_closing,
-                contact_capacity,
-            )
+            closing_offset = contact_closing[:, fixed_indices] @ omega_flat[fixed_indices]
+        result = solve_quasistatic_contacts(
+            drag[np.ix_(free_indices, free_indices)],
+            rhs,
+            contact_map_free,
+            closure_map_free,
+            contact_capacity,
+            closing_rate_offset=closing_offset,
+        )
         omega_flat[free_indices] = result.omega
         solver_converged = result.converged
         solver_sweeps = result.sweeps
-        if len(fixed_indices) == 0:
-            contact_force = result.contact_force_n_per_m
+        contact_force = result.contact_force_n_per_m
+    if not solver_converged:
+        logger.warning(
+            "Quasi-static plate solve did not converge after %d sweeps (plates=%d, contacts=%d)",
+            solver_sweeps,
+            count,
+            len(contact_capacity),
+        )
     if diagnostics is not None:
         overlap_by_plate = plate_geometry.compute_node_overlap(plates)
         contact_rate = contact_closing @ omega_flat
         residual = drag @ omega_flat - driving - contact_torque @ contact_force
         speeds_cm_per_yr = np.linalg.norm(omega_flat.reshape(count, 3), axis=1) * lithosphere.PLANET_RADIUS_M * 100.0
-        yielded = (contact_force >= contact_capacity - np.maximum(1.0, contact_capacity * 1e-12)) & (
-            contact_rate > 1e-12
-        )
+        yielded = contact_force_at_capacity(contact_force, contact_capacity) & (contact_rate > 1e-12)
         plate_rates = []
         for plate, speed in zip(plates, speeds_cm_per_yr, strict=True):
             area = plate.accounting_areas_m2(spacing_rad)
@@ -1286,10 +1241,31 @@ def shift_plates_quasistatic(world, years: float, *, diagnostics: dict | None = 
             }
         )
     omegas = omega_flat.reshape(count, 3)
-    distances: dict[int, float] = {}
-    for i, plate in enumerate(plates):
+    omega_by_id = {plate.plate_id: omegas[i].copy() for i, plate in enumerate(plates)}
+    for plate in world.plates:
+        omega_by_id.setdefault(plate.plate_id, np.asarray(plate.omega, dtype=float).copy())
+    return omega_by_id
+
+
+def shift_plates_quasistatic(world, years: float, *, diagnostics: dict | None = None) -> dict[int, float]:
+    """Solve all live plates from one frozen snapshot, then rotate the batch together.
+
+    The returned displacement for every plate is the greatest angular distance its nodes
+    moved; empty plates receive zero so the deformation pass can safely visit all plates.
+    """
+    old_points_by_id = {
+        plate.plate_id: plate.all_points_and_elevation()[0]
+        for plate in world.plates
+        if plate.node_count() > 0
+    }
+    omega_by_id = solve_plates_quasistatic(world, diagnostics=diagnostics)
+    distances = {plate.plate_id: 0.0 for plate in world.plates}
+    for plate in world.plates:
+        if plate.node_count() == 0:
+            plate.set_omega(omega_by_id[plate.plate_id])
+            continue
         distances[plate.plate_id] = apply_omega_and_rotate(
-            plate, old_points_by_id[plate.plate_id], omegas[i], years
+            plate, old_points_by_id[plate.plate_id], omega_by_id[plate.plate_id], years
         )
     return distances
 

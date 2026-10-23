@@ -91,3 +91,55 @@ def test_si_scale_contact_compliance_is_not_lost_to_absolute_epsilon():
     assert result.converged
     assert 0.0 < result.contact_force_n_per_m[0] < 5e12
     assert abs(result.closing_rate[0]) <= 1e-18
+
+
+def test_incremental_contact_updates_match_full_rate_recomputation():
+    drag = np.array([[4.0, 0.5, 0.0], [0.5, 3.0, 0.2], [0.0, 0.2, 2.0]])
+    torque = np.array([2.0, -1.0, 0.5])
+    contact_torque = np.array([[-1.0, 0.0], [1.0, -1.0], [0.0, 1.0]])
+    closing_map = np.array([[1.0, -1.0, 0.0], [0.0, 1.0, -1.0]])
+    capacity = np.array([3.0, 2.0])
+
+    response = np.linalg.lstsq(drag, contact_torque, rcond=None)[0]
+    free = np.linalg.lstsq(drag, torque, rcond=None)[0]
+    force = np.zeros(2)
+    omega = free.copy()
+    compliance = closing_map @ response
+    for _ in range(1000):
+        for index in range(2):
+            rate = closing_map[index] @ omega
+            slope = compliance[index, index]
+            if slope < 0.0:
+                force[index] = np.clip(force[index] + rate / -slope, 0.0, capacity[index])
+                omega = free + response @ force
+        closing = closing_map @ omega
+        at_zero = force <= max(1e-12, capacity.max() * 1e-12)
+        at_cap = force >= capacity - max(1e-12, capacity.max() * 1e-12)
+        violation = np.where(at_zero, np.maximum(closing, 0.0), 0.0)
+        violation = np.where(at_cap, np.maximum(-closing, 0.0), violation)
+        violation = np.where(~(at_zero | at_cap), np.abs(closing), violation)
+        if violation.max() <= 1e-12:
+            break
+
+    result = solve_quasistatic_contacts(drag, torque, contact_torque, closing_map, capacity)
+
+    assert result.converged
+    np.testing.assert_allclose(result.omega, omega, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(result.contact_force_n_per_m, force, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(result.closing_rate, closing_map @ omega, atol=1e-12)
+
+
+def test_contact_solver_includes_fixed_plate_closing_rate_offset():
+    result = solve_quasistatic_contacts(
+        np.eye(1),
+        np.array([0.0]),
+        np.array([[-1.0]]),
+        np.array([[1.0]]),
+        np.array([1.0]),
+        closing_rate_offset=np.array([0.5]),
+    )
+
+    assert result.converged
+    assert result.contact_force_n_per_m[0] == 0.5
+    np.testing.assert_allclose(result.omega, [-0.5], atol=1e-12)
+    np.testing.assert_allclose(result.closing_rate, [0.0], atol=1e-12)

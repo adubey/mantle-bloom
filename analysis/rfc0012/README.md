@@ -876,3 +876,25 @@ Follow-up issues #493 and #494 retain the early-craton/quiet-gate question and h
 remnant response. The 5 km glacier-depth cap also limits interpretation of erosion and ice
 unloading for seed 580014012. None of these follow-ups blocks the G2 gate disposition; they
 remain explicit model limitations for later work.
+
+## Review-fix replay preregistration (four seeds, 2 Myr, 500 Myr)
+
+**Question:** Do the PR #491 review fixes preserve the four-seed G2 endpoint behavior?
+
+**Controls:** generate each world from its seed at node density 1.0; advance 250 steps of 2 Myr
+to 500 Myr; compare current `origin/main` with the reviewed G2 branch at the exact commits
+recorded in the run data. Pair baseline and G2 by seed, run every replay serially, and keep
+full JSON outputs and logs under `/private/tmp`.
+
+**Primary measure:** endpoint land fraction. **Secondary measures:** plate count, peak rate,
+mean Hc/Hm, craton ledger, and median step time. The previous G2 result against the older
+`2279d7e16c7d` baseline showed a positive land difference on all four seeds; that is context,
+not a prediction for the current `origin/main`, which has since advanced. No numerical pass
+threshold is preregistered for this review regression check. Report any seed whose land
+difference changes sign and any change in high-rate outliers or ledger outcomes; do not
+reinterpret these descriptive results as a new acceptance gate.
+
+**Expected direction:** no directional prediction for the current-baseline comparison. The
+efficiency update is algebraically equivalent; the pair-side averaging correction changes
+drag when only one side is sampled, and pinned motion is corrected for scripted worlds. Those
+behavior changes can alter long-run trajectories.
