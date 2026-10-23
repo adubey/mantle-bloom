@@ -1079,16 +1079,18 @@ withdrawal can be handled part by part.
 
 ## Acceptance criteria
 
+The thresholds below were confirmed by the project owner on 2026-10-23.
+
 - [ ] **Prerequisites:** RFC 0014 D2(b) and D2(c) landed before D4, D5 and D8; or D1–D3 shipped
   first under the interim rule, stated in the PR.
 - [ ] **Superseded issues settled** at acceptance as planned in "Open issues this RFC
   supersedes" (a), and listed on the tracking issue.
 - [ ] **G0–G6 run and recorded** in this RFC, with D2's fixes chosen by G0.
 - [ ] **Step robustness:** on each held-out save, ice volume and area at 10 Myr agree within
-  10% between 0.25 Myr and 1 Myr steps (proposed). Ice-age saves use a period of at least 8
+  10% between 0.25 Myr and 1 Myr steps. Ice-age saves use a period of at least 8
   of the longest step.
 - [ ] **No unforced swings:** with the ice-age control at "never", no step-to-step change in
-  global ice volume exceeds 25% after the first 2 Myr (proposed).
+  global ice volume exceeds 25% after the first 2 Myr.
 - [ ] **Ledgers close:** glacier ledger residual ≤ 0.1% of the step's accumulation, and both
   meltwater sources' ledgers (D8) close to round-off, on every step of a 10-step replay of
   each held-out save.
@@ -1099,11 +1101,11 @@ withdrawal can be handled part by part.
 - [ ] **Meltwater rivers:** on each held-out save, at least half of the melt from the ice
   (surface, basal and rain on ice) reaches the ocean or a lake as discharge, and the number of
   visible river networks sourced at ice margins is reported against `origin/main`
-  (proposed; G6 informs it). Bare-ground snowmelt is reported separately.
+  (G6 informs the report). Bare-ground snowmelt is reported separately.
 - [ ] **Sea level:** unit tests show floating ice, and ice grounded exactly at flotation,
   leave sea level unchanged; G4's difference is recorded. If D2's sea-level loop is adopted,
   on each held-out save the water residual `|r|` is ≤ 1 m of sea level on at least 99% of
-  steps, and ≤ 10 m on every active-set transition step (proposed).
+  steps, and ≤ 10 m on every active-set transition step.
 - [ ] **Sea ice:** no ocean cell carries floating `glacier_depth` (every ice-bearing ocean
   cell is grounded by `is_grounded`); G5's extents recorded and its outcome met.
 - [ ] **Maps:** unit tests show perennial ice drawn on land, grounded marine, lake and sea
