@@ -26,12 +26,16 @@ fixed lake freezing.
 | Abrasion (m / Myr per m/yr of sliding) | 430 (calibrated) | 100 (ė = 10⁻⁴ u_b) | — |
 | Meltwater routed per m³ of ice | 1 m³ | 0.917 m³ (by mass) | 0.917 |
 
-Physical surface melt uses a degree-day factor of 7 mm water equivalent per °C per day, which
-falls inside Hock's (2003) range for ice and above the snow range. One °C of year-averaged
-positive degrees is 365.25 positive degree-days per year. Physical melt is therefore 2.56×
-stronger relative to accumulation than the model's current ratio, so a full conversion is
-not the same as scaling both by one factor. The abrasion value is the linear law of Humphrey
-& Raymond (1994), the upper end of the coefficients summarised by Cook et al. (2020).
+Physical surface melt uses a degree-day factor of 7 mm water equivalent per °C per day. That
+is above the 3.5 ± 1.4 and 4.6 ± 1.4 mm d⁻¹ K⁻¹ Braithwaite (2008, doi:10.3189/002214308785836968)
+finds for melting snow at 66 glaciers' equilibrium lines, as an ice factor should be, but the
+value itself is a design choice: it is not checked against a published ice range here (RFC
+0015's gate G2 sources it). One °C of year-averaged positive degrees is 365.25 positive
+degree-days per year. Physical melt is therefore 2.56× stronger relative to accumulation than
+the model's current ratio, so a full conversion is not the same as scaling both by one
+factor. The abrasion value is the dimensionless erosion rate of order 1.0 × 10⁻⁴ that Humphrey
+& Raymond (1994, doi:10.3189/S0022143000012429) measured on Variegated Glacier, and the mean
+coefficient of Cook et al.'s (2020, doi:10.1038/s41467-020-14583-8) 38-glacier compilation.
 
 ## Design (preregistered)
 
