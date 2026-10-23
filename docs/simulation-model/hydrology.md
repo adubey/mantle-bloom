@@ -320,8 +320,8 @@ what removes the old design's threshold-crossing failure mode entirely. Merge/sp
 transitions fall out of comparing this against each lake's own `min_depth`: a still-separate
 child whose own new level reaches its parent's saddle promotes to one merged body (pinned at
 exactly the saddle, continuity); an already-merged lake whose new level recedes below its own
-saddle demotes back into its children (both starting at exactly the saddle, continuity in
-reverse). No cross-step `Lake`-object registry is needed for any of this -- see
+saddle demotes back into its children, and each child is resolved at its own balanced level
+that same step. No cross-step `Lake`-object registry is needed for any of this -- see
 `lakes.py`'s own module docstring for why continuity is instead derived from the same
 persisted `lake_depth` array (`elevation + prev_lake_depth`, the same "last step's water
 surface" the old per-node design itself already used) rather than matching this step's
@@ -398,36 +398,37 @@ ordinary split mechanism `build_lake_hierarchy`'s merge tree already provides --
 mechanism needed, just removing the thing that let a merge become permanent regardless of
 whether the water level could actually still support it.
 
-**The split reset had to change too, or the cap oscillates forever instead of ever actually
-shrinking anything.** `_resolve`'s existing split branch reset both children to exactly
-`node.min_depth` regardless of how far below it `new_level` had fallen -- a fine approximation
-for an ordinary organic dip (the two sides really were still at that shared saddle a moment
-ago), but wrong by a wide margin when the *tier cap*, not evaporation, is what pushed
-`new_level` down: resetting to the stale `min_depth` completely undoes the cap for this step's
-reported depth, and -- confirmed directly on the 286 My save above, as a genuine infinite loop,
-not just an approximation error -- the very next step's `_prev_level` check reads that reset
-value as still exactly `>= min_depth`, re-merges into the identical capped computation, and
-splits again, forever, with the depth never actually decreasing. `max_depth` being a real rim
-can never trigger this on its own (a rim is always `>= min_depth` by construction, so a
-rim-bounded `new_level` can never itself fall below `min_depth`) -- only a tier cap, independent
-of the tree's own topology, can. The fix: when `new_level` lands at or past `tier_max_depth`
-above the floor (the exact, checkable signature of "the tier cap bound this, not organic
-decay"), both children reset to that real, capped `new_level` instead of `min_depth` (each
-clamped to its own `floor_elevation`, since one child's floor can sit above the merged body's
-overall floor, in which case that child now reads as dry rather than negative-depth) -- a
-genuinely lower value the next step's `_prev_level` reads as *not* still merged, so it resolves
-each child independently instead of re-entering the same losing computation. The mirror-image
-case needed the same fix: the merge branch (two children rejoining) also folds the merged
-body's own `_classify_tier` cap into its `min(node.min_depth, floor + tier_max_depth)` result,
-not just `node.min_depth` -- without it, a child large enough to independently reach the saddle
-on its own (legitimate: a child that itself classifies sea tier can grow past an internal
-saddle below `SEA_MAX_DEPTH_M`) would merge back up past the cap the split just enforced, only
-to be capped and split again next step. Both fixes are pinned in `test_lakes.py`'s own
-`test_a_composite_lake_held_below_its_own_saddle_by_the_tier_cap_splits`, which re-resolves a
-second time from the first split's own output and asserts no immediate repeat split. Verified
-on the 286 My save: the largest basin's own reported depth, previously frozen forever at 4,626
-m (an exact, unchanging fixed point under both bugs), now converges to a stable ~3,340 m within
-a handful of resolution passes and stays there.
+**A split rebalances each child; it doesn't refill them to the saddle.** When an
+already-merged body's balanced level falls below its `min_depth`, `_resolve` discards that
+merged resolution, restoring the silt and sea flags `_water_balance` wrote for it, and resolves
+each child as an independent lake this step: its own inflow and evaporation, its own
+any-member-frozen check, its own rim (the parent's saddle) and its own tier cap. A child that
+has no inflow dries, a frozen child dries, and a fed child keeps the water its own balance
+supports. Next step's `_prev_level` reads the pair as merged only if a child reached the
+saddle itself. A child fed to its rim does reach it: the pair then reads as merged, balances
+below the saddle and splits again every step. That repeat costs a discarded merged balance and
+a `split` event per step but creates no water; the false merge behind it is #520 part 1.
+
+Earlier code instead reset both children to the saddle, as continuity for a small evaporation
+dip. Nothing supplied that water, and the saddle level read back as merged on the next step, so
+a body whose budget could not hold it there stayed on its saddle indefinitely. On the
+`seed308161711-121.5Myr` save the reset added 4.7-5.5 M km^3 of water per step, about the
+world's whole visible lake volume, mostly from parents dried by a frozen member (#519, #521).
+The reset also needed a tier-cap exception to avoid an endless merge/split loop when the tier
+cap, not evaporation, held a composite below its saddle. Per-child balance doesn't need that
+exception, because each child is already bounded by its own rim and tier cap. The old
+tier-capped reset also wrote the capped level into both children, flooding a dry child and
+removing water from a child fed above it. The merge branch
+(two children rejoining) still folds the merged body's own `_classify_tier` cap into its
+`min(node.min_depth, floor + tier_max_depth)` result, so a child large enough to reach the
+saddle on its own (one that classifies sea tier can grow past an internal saddle below
+`SEA_MAX_DEPTH_M`) doesn't merge back above the cap. `test_lakes.py` pins both cases:
+`test_a_composite_lake_held_below_its_own_saddle_by_the_tier_cap_splits` resolves twice and
+asserts no repeat split,
+`test_a_child_fed_to_the_saddle_re_splits_each_step_without_creating_water` pins the churn
+above, and
+`test_a_merged_lake_split_by_a_frozen_member_rebalances_each_child_at_its_own_level` checks
+that neither child is written above its own balance.
 
 **Known residual, not chased further: some steady-state merge/split churn remains, invisible
 to the player.** On the same save, replaying `lakes.step_lakes` repeatedly against *frozen*
@@ -444,10 +445,9 @@ look if it turns out to cost real per-step time on a large save, but not otherwi
 **Sea tier reaches climate and rendering, not `hydrology.is_ocean`.** `resolve_lakes` returns
 a new `(N,) bool` `lake_is_sea` array (`HydrologyFields.is_sea`, same "recomputed fresh every
 step, no persistent identity" contract as `lake_depth` itself), true for every currently-wet
-member of a sea-tier lake. `climate.py`'s `_land_moisture_source` picks `SEA_EVAPORATION_
-CEILING` (1.0 -- well above `LAKE_EVAPORATION_CEILING`'s 0.5, still short of open ocean's own
-`MAX_EVAPORATION_CEILING` 1.4, since a big enclosed sea has no current-driven mixing/upwelling
-replenishing its surface the way the open ocean does) over a sea cell, so a large enough basin
+member of a sea-tier lake. `climate.py`'s `_land_moisture_source` picks
+`SEA_EVAPORATION_FRACTION` (1.0 of open-water humidity at the cell's air temperature, double
+`LAKE_EVAPORATION_FRACTION`'s 0.5) over a sea cell, so a large enough basin
 now visibly drives more downwind humidity -- the "generating humidity" a real inland sea does.
 `render_image.py` draws a sea cell in a distinct, more saturated `SEA_COLOR_RGB` (both the
 Biome/Combined grid and the Elevation/Plates lattice), with its own Combined-view alpha id

@@ -25,7 +25,7 @@ resolutions; fluxes that affect one another use compatible units and close their
 - [ ] Resolve the remaining physical-unit work in [#358](https://github.com/adubey/mantle-bloom/issues/358), including river discharge/speed and glacier mass balance dependencies. Track glacier mass-balance scaling and depth-cap behavior in [#368](https://github.com/adubey/mantle-bloom/issues/368); it is an investigation, not yet a decision to convert the model.
 - [ ] Express insolation and humidity in physical units under [#522](https://github.com/adubey/mantle-bloom/issues/522). This issue explicitly leaves albedo, longwave radiation and land humidity/vapour-pressure deficit to later work.
 - [ ] **Needs a tracker:** define and implement an albedo-aware energy balance so polar ice caps and insolation respond to surface reflectivity. Treat this as downstream of, or a deliberate replacement for, #522's calibrated temperature mapping. Decide how it should interact with ice and temperature before implementation.
-- [ ] **Needs a tracker or RFC decision:** diagnose the wind-speed estimate and establish physical wind units. Wind speed feeds evaporation; credible physical evaporation also needs suitable humidity and radiation inputs (see #519 and #522). Decide whether this is an RFC before creating implementation issues.
+- [ ] Give the diagnostic wind a physical 10 m speed in m/s and define the surface-wind contract every wind consumer reads: [#526](https://github.com/adubey/mantle-bloom/issues/526). This is an issue, not an RFC, because it calibrates against stated targets (ERA5 zonal means, CFD rel-RMS, resolution invariance). It was split from [#118](https://github.com/adubey/mantle-bloom/issues/118), which keeps the diagnostic air-temperature gap. Wind speed feeds evaporation; credible physical evaporation also needs suitable humidity and radiation inputs (see #519 and #522). Prognostic ocean circulation ([#234](https://github.com/adubey/mantle-bloom/issues/234)) stays a separate, larger effort and takes its wind stress from #526's contract.
 - [ ] **Needs a tracker:** improve glacier erosion on high, ice-capped mountains. Start from the measurements and recommendation in #368; define a mountain-exposure and erosion metric rather than presuming a larger multiplier is the answer.
 
 ### 2. Long-term landforms
@@ -71,6 +71,7 @@ upstream item must be fully complete before all downstream investigation can beg
 ```mermaid
 flowchart TD
   units[Physical fluxes and units: #358, #522, RFC 0014]
+  wind[Physical surface wind: #526]
   evaporation[Wind, humidity and radiation based evaporation]
   land[Long-term landforms: RFC 0010, RFC 0012]
   maps[Wind and ocean-current maps]
@@ -82,6 +83,8 @@ flowchart TD
   perf[Workload targets and measured optimization]
 
   units --> evaporation
+  wind --> evaporation
+  wind --> maps
   units --> land
   units --> maps
   security --> accounts

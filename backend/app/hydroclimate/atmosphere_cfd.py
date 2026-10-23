@@ -94,7 +94,7 @@ def _equilibrium_temperature(world: "World", grid: healpix_grid.HealpixGrid, is_
     every *other* pixel's insolation too, an (npix, npix) result). Squeezed back to `(npix,)`
     after."""
     lat_deg = np.degrees(grid.lat_rad)
-    insolation = climate.compute_insolation(lat_deg, world.axial_tilt_deg, world.solar_multiplier)
+    insolation = climate.compute_heating_index(lat_deg, world.axial_tilt_deg, world.solar_multiplier)
     land = climate.compute_land_temperature(insolation, elevation_m[:, None])[:, 0]
     ocean = climate.compute_ocean_temperature_baseline(insolation, grid.npix, 1)[:, 0]
     return np.where(is_ocean, ocean, land)

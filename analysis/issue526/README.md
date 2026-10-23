@@ -180,6 +180,14 @@ coefficient tuned to either save alone would move the other by 7–8%.
 ERA5. Mean ocean current falls 12–15% with it; nothing reads current magnitude (see
 *Downstream calibration*).
 
+**After merging #525.** The replays ran on `0fc4901` against `ff373af`, before `origin/main`
+gained #525, which put humidity in g/kg and capped it at 28 °C water. Repeating the one-shot
+comparison against `03e5dc5`, with this branch merged in, gives the same calibration at
+density 4. Land precipitation moves −1.6% (A) and +0.4% (B), global precipitation −1.7% and
+−1.0%, and land-biome agreement is 0.993 and 0.982. The weathering proxy before the
+coefficient is 0.818× and 0.859×, against 0.82× and 0.86× before the merge. Both coefficients
+compensate a wind-speed ratio, which #525's humidity rescaling leaves unchanged.
+
 **Runtime and memory.** Branch runs took 734 s (A) and 1136 s (B), main runs 1006 s and
 1226 s, with peak RSS of 1.8–2.0 GB (A) and 6.8–7.4 GB (B). The wind change adds two array
 rolls per climate call. The runtime gap is larger than that and was not designed as a timing
