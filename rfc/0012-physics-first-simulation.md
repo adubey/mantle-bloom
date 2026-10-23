@@ -475,19 +475,31 @@ material-ledger closure, step-size sensitivity, and runtime. A pilot that only r
 geometric event count does not pass. At node density 4, median total step time must increase
 by no more than 10% over the matched baseline.
 
-*G2 diagnosis (2026-10-19; implementation and replay results: [analysis/rfc0012](../analysis/rfc0012/README.md)).*
+*G2 outcome (2026-10-22; implementation and replay results: [analysis/rfc0012](../analysis/rfc0012/README.md)).*
 The reduced simultaneous contact pilot and its equation-level tests are implemented on the
 G2 branch. The ridge and collision column-GPE scale checks land within the expected regional
 orders of magnitude under the documented density/geometry sweeps. Four-seed generated-world
-replays show higher 500 Myr land fraction in three seeds and nearly unchanged land in one,
-but the pilot does not pass G2: its 1 Myr full-horizon peak rates reach 66.1 and 152.6 cm/yr
-on two seeds; subducted volume is zero in three seeds; merge-capped volume is zero in all
-four; and formed craton is 1.2–1.9× baseline. The 50 Myr 0.1/1 Myr comparison is relatively
-stable, but it does not establish full-horizon timestep robustness, and density-4 runtime
-has not been measured. Treat the higher land fraction as a diagnostic outcome, not
-validation. The force solve and column-GPE checks support continuing the reduced interface;
-the ledger/topology and long-run rate differences remain unresolved before G2 can be
-accepted.
+replays show higher 500 Myr land fraction in three seeds and nearly unchanged land in one.
+The 500 Myr 0.1/1 Myr comparison passes its preregistered land-fraction gates: the largest
+per-run endpoint shift is 1.205 percentage points and the mean G2 land advantage changes by
+0.614 points. A matched density-4 baseline/G2 cProfile pair measured a 6.1% median increase,
+below the ≤10% target. The earlier five-step phase-tapped G2 sample measured +94.8%; the
+three-step profiled samples are small and differ methodologically. By project-owner decision,
+the runtime gate is accepted provisionally without another unprofiled replay, with this
+measurement conflict recorded as a caveat. Profiling places `shift_plates_quasistatic` at about
+0.66 s per step and `solve_quasistatic_contacts` at about 0.003 s; the coupled solver itself
+is not the runtime hotspot.
+
+**G2 is closed as a supported reduced-interface pilot, with follow-up caveats; this is not a
+claim that every original numerical acceptance bound passed.** Ledger traces reconcile the
+zero subduction/merge-cap entries as actual outcomes, and the merge-opportunity diagnostic
+shows far fewer sustained convergent candidates and merges in G2; it does not isolate contact
+braking as the only cause of the changed geology. The full-horizon timestep gate established
+land-fraction robustness, not robustness of every ledger or topology metric. High-rate
+outliers on very small remnant plates remain assigned to #494, and early craton formation and
+the geometric/clock quiet gate remain assigned to #493. These follow-ups do not block moving
+to G3, but G2's land increase is a diagnostic outcome, not validation. See the full evidence
+and caveats in [analysis/rfc0012](../analysis/rfc0012/README.md).
 
 The four-seed formation-timer sensitivity keeps the G2 host gate fixed and varies only the
 200 Myr waiting period to 100 and 300 Myr. Cumulative formation at 400 Myr decreases
@@ -498,8 +510,8 @@ craton. It does not establish a preferred geological duration or validate the ge
 host gate as a measure of low deformation. A physical quiet-gate diagnostic should measure
 host strain/deformation history before changing the rule. Seed 580014012 repeatedly reaches
 the 5 km glacier-depth cap; its absolute craton result remains climate-limited in
-interpretation. G2 remains open pending the listed force, ledger, topology, timestep, and
-runtime acceptance checks.
+interpretation. G2 is closed with the disposition and outstanding follow-ups recorded above;
+G3 must still test transferability to rifting and transform motion.
 
 **Gate G3: transferability.** Exercise the contract against at least one divergent/rifting and
 one transform case before declaring it the general tectonic interface. For rifting, calculate
@@ -649,7 +661,7 @@ this pilot.
       band width, and repeated-row synthetic cases. Each retained proxy is tied to a named
       design principle and measurable outcome; each retired rule is checked against accepted
       geology metrics.
-- [ ] **G2:** compare the simultaneous quasi-static contact pilot against current behavior on
+- [x] **G2 (closed with caveats by the project owner, 2026-10-22):** compare the simultaneous quasi-static contact pilot against current behavior on
       synthetic no-load/no-resistance, unbalanced-torque/no-resistance, symmetric-action/
       reaction, zero-slip compressive contact, yield, and Tibet-like cases, plus matched
       replays. The no-load/no-resistance case solves to zero motion; an unbalanced torque with
@@ -665,7 +677,14 @@ this pilot.
       ΔGPE integrated along a stated oceanic ridge segment with the order of 2.5×10¹² N/m.
       These are regional Indian-plate magnitude checks, not universal targets or calibration
       values; vary geometry and layer densities. Do not tune a single column to match either
-      regional estimate.
+      regional estimate. The owner accepted the pilot to proceed to G3 while recording these
+      exceptions to the original strict bounds: the ≤10% density-4 runtime result is based on
+      a three-step-per-model cProfile pair (+6.1%) that conflicts with a five-step phase-tapped
+      G2 result (+94.8%); no clean unprofiled repeat was run. The full-horizon timestep check
+      passed its land-fraction gates, but did not establish ≤10% agreement for all force,
+      motion, deformation, Hc/Hm, ledger, and topology metrics. Long-run high-rate remnant
+      behavior and early craton/quiet-gate behavior are deferred to #494 and #493. This marks
+      the gate disposition, not a claim that every original numerical bound passed.
 - [ ] The pilot's accumulated force response, mean plate rate, relative contact motion,
       deformation, Hc/Hm distributions, land fraction, and material ledgers agree within 10%
       across 0.1, 1, and 2 Myr steps, except for discrete topology events. For these, report

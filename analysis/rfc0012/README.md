@@ -776,3 +776,103 @@ flow-fit / threshold 1.11× baseline versus 1.21× G2; mean pole-separation / th
 The split-cut trace ledger totals match the successful event count and band areas in both runs.
 The compact event data are in [`g2_successful_split_exposure.json`](g2_successful_split_exposure.json);
 the full JSONL replays remain outside the repo under `/private/tmp/rfc0012-successful-split/`.
+
+### Full-horizon timestep comparison (pre-registered) — results
+
+**Question:** does replaying the same four matched seeds for 500 Myr at a 0.1 Myr step materially change the 1 Myr-step G2 comparison?
+
+**Controls:** node density 1.0; seeds `326494039`, `748935664`, `580014012`, and `111065103`; baseline model `2279d7e16c7d`; G2 model implementation `8618185b59c5` (the 0.1 Myr trace was recorded at `fa381dadafc1`, with no model-code changes since the G2 implementation). The existing 1 Myr traces were reused. All eight missing 0.1 Myr runs completed serially, with baseline and G2 paired within each seed. Full traces remain outside the repo in `/private/tmp/rfc0012-g2-full-timestep-500/`.
+
+**Pre-registered gates:** (1) for every seed and model, the absolute endpoint land-fraction difference between 0.1 and 1 Myr is at most 2 percentage points; (2) the mean G2-minus-baseline land effect has the same sign at both steps and differs by at most 2 percentage points.
+
+| Seed | Baseline land Δ (0.1 − 1 Myr, pp) | G2 land Δ (0.1 − 1 Myr, pp) | G2 advantage at 1 Myr (pp) | G2 advantage at 0.1 Myr (pp) | Effect Δ (pp) |
+|---|---:|---:|---:|---:|---:|
+| 326494039 | −1.205 | +0.067 | +6.279 | +7.550 | +1.271 |
+| 748935664 | −0.387 | −0.527 | +3.041 | +2.901 | −0.140 |
+| 580014012 | −0.278 | +0.197 | −0.085 | +0.390 | +0.475 |
+| 111065103 | −0.288 | +0.564 | +6.758 | +7.610 | +0.852 |
+| **Mean effect** | — | — | **+3.999** | **+4.613** | **+0.614** |
+
+**Result: both preregistered gates pass.** The largest per-run land shift across timestep choices is 1.205 pp. The mean G2 land advantage remains positive and changes by only 0.614 pp (from +3.999 to +4.613 pp). Seed 580014012 changes from a very small negative G2 effect at 1 Myr (−0.085 pp) to a small positive one at 0.1 Myr (+0.390 pp); the mean-effect gate passes, while this individual seed remains sensitive in sign at a near-zero effect.
+
+Peak rates and ledger values were secondary descriptive measures, not timestep acceptance gates. The fastest G2 outlier remains in seed 748935664 (124.6 cm/yr at 0.1 Myr; 152.6 cm/yr at 1 Myr), so it is not eliminated by the finer step and remains covered by the high-rate follow-up. Formation, subduction and merge ledgers also vary by seed and timestep; this comparison establishes land-outcome timestep robustness, not the causal explanation for G2's ledger changes or validation of the formation/quiet gate.
+
+Compact matched results are in [`g2_timestep_500myr_0.1_vs_1.json`](g2_timestep_500myr_0.1_vs_1.json); the reused 1 Myr results are in [`g2_timestep_500myr_1myr.json`](g2_timestep_500myr_1myr.json).
+
+### Density-4 late-world runtime profile
+
+**Question:** does the G2 coupled motion path keep median total step time within the RFC limit of
+10% over baseline at node density 4, after the model has developed a late-world plate count?
+
+**Controls:** both arms were generated from seed `326494039` at density 4, advanced serially to
+500 Myr using 2 Myr steps, then warmed by one additional step and measured for five steps.
+Baseline is `2279d7e16c7debe839bd04ab18ce0a8f895f8654` (the `origin/main` baseline worktree);
+G2 is `fa381dadafc174e82a5a740f6ae8723f10551a63`. Both used Python 3.14.6 and the same host.
+The sample is at 502–512 Myr. The run command was:
+
+```sh
+MB_SOURCE_ROOT=<checkout> NUMBA_CACHE_DIR=/private/tmp/rfc0012-numba-cache \
+  <checkout>/backend/.venv/bin/python /private/tmp/rfc0012_density4_late_profile.py 326494039 500
+```
+
+| Measure | Baseline | G2 | G2 vs baseline |
+|---|---:|---:|---:|
+| Median total step time | 9.008 s | 17.545 s | +94.8% |
+| Timed step range (5 steps) | 7.887–10.017 s | 16.091–18.476 s | — |
+| Nodes at sample | 134,533 | 129,371 | −3.8% |
+| Plates after sample | 41 | 43 | — |
+| Peak RSS | 1,407 MiB | 1,246 MiB | −11.5% |
+
+**Initial result: apparent failure; later profile methods conflicted.** The first five-step G2
+sample was 1.95× baseline despite fewer nodes. Its phase taps showed gather at 2.008 s/step,
+classification at 0.479 s/step, and deformation at 2.565 s/step. A later G2 replay at the same
+seed and horizon produced a different late-world cProfile sample: 9.34 s/step averaged over
+three profiled steps. cProfile is not an acceptance timing, but this large discrepancy means the
+first sample cannot yet establish a stable 94.8% regression. A matched baseline cProfile replay
+was then run with the same seed, horizon, warmup and three-step profile window; its paired result
+is summarized below. That cProfile pair is within the ≤10% target. The project owner later
+closed G2 without a same-method unprofiled repeat; the conflicting timing methods and small
+profile sample are retained as an explicit runtime caveat.
+
+The function profile places `shift_plates_quasistatic` at 1.988 s cumulative over three steps
+(0.663 s/step); `solve_quasistatic_contacts` itself takes 0.008 s total (about 0.003 s/step).
+The coupled linear/complementarity solver is therefore not the hotspot. Other large cumulative
+costs over the same sample include erosion (2.60 s/step), fault updates (1.89 s/step), hydrology
+(1.38 s/step), and gap filling (1.26 s/step); these overlap with thread waits and are not
+additive. The pstats report and raw output are under
+`/private/tmp/rfc0012-density4-function-profile/`.
+
+**Matched baseline cProfile rerun:** baseline median was 8.634 s/step; G2 median was 9.163 s/step,
+an increase of 6.1% in this identically profiled sample. The baseline sample had 134,251 nodes and
+41 plates; G2 had 129,305 nodes and 43 plates. Motion assembly was 0.568 s/step baseline and
+0.663 s/step G2, while the G2 contact solver remained about 0.003 s/step. Thus this paired
+cProfile sample is under the 10% limit. Its three samples per model are small, and the earlier
+phase-tapped sample conflicts. On 2026-10-22, the project owner accepted this as a provisional
+pass and closed G2 without a clean unprofiled repeat. Do not describe the runtime result as a
+confirmed unprofiled ≤10% pass.
+Baseline pstats and reports are under `/private/tmp/rfc0012-density4-baseline-function-profile/`.
+
+The initial phase-tapped density-4 evolutions took 1,958 s baseline and 2,184 s G2. The matched
+cProfile evolutions took about 1,846 s baseline and 1,944 s G2. Compact timing data are in
+[`g2_density4_500myr_runtime.json`](g2_density4_500myr_runtime.json); the phase-tapped harness is
+in `/private/tmp/rfc0012_density4_late_profile.py`.
+
+## G2 closeout and caveats (2026-10-22)
+
+The project owner closed G2 as a supported reduced-interface pilot, allowing RFC 0012 to
+proceed to G3. This disposition does not claim that every original numerical acceptance bound
+passed. The density-4 runtime evidence is a provisional pass: matched cProfile medians were
++6.1%, but only three steps per model were profiled and the earlier phase-tapped G2 sample was
++94.8%. No clean unprofiled repeat was run.
+
+The four-seed 500 Myr timestep comparison passes the preregistered endpoint land-fraction
+gates only. It does not establish that every material ledger or discrete topology event is
+robust to timestep. The ledger traces reconcile zero subduction and merge-cap totals as real
+outcomes; the merge-opportunity diagnostic finds far fewer convergent candidates and merges
+in G2, but does not prove contact braking alone caused the geological differences. The higher
+land fraction is therefore diagnostic, not model validation.
+
+Follow-up issues #493 and #494 retain the early-craton/quiet-gate question and high-rate
+remnant response. The 5 km glacier-depth cap also limits interpretation of erosion and ice
+unloading for seed 580014012. None of these follow-ups blocks the G2 gate disposition; they
+remain explicit model limitations for later work.
