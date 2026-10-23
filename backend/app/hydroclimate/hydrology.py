@@ -88,6 +88,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import numpy as np
+from numba import njit
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
@@ -1855,6 +1856,72 @@ def _spill_path_ceiling(fields: HydrologyFields, source: int) -> float:
     return filled + breaching.BREACH_MAX_NOTCH_M if np.isfinite(filled) else np.inf
 
 
+@njit(cache=True)
+def _spill_pass_level(indptr, indices, elevation, is_ocean, source, target, ceiling, max_nodes):
+    """`_spill_path`'s minimax search, compiled: the lowest pass between `source` and
+    `target`, or inf if the search gives up."""
+    n = len(elevation)
+    best = np.full(n, np.inf)
+    best[source] = elevation[source]
+    heap = [(elevation[source], np.int64(source))]
+    level = np.inf
+    found = False
+    explored = 0
+    while len(heap) > 0:
+        pass_m, node = heapq.heappop(heap)
+        if node == target:
+            level = pass_m
+            found = True
+            break
+        if pass_m > best[node]:
+            continue
+        # The heap pops passes in rising order, so nothing left can come in under the ceiling.
+        explored += 1
+        if pass_m > ceiling or explored > max_nodes:
+            break
+        for j in range(indptr[node], indptr[node + 1]):
+            nxt = np.int64(indices[j])
+            if is_ocean[nxt] and nxt != target:
+                continue
+            candidate = max(pass_m, elevation[nxt])
+            if candidate < best[nxt]:
+                best[nxt] = candidate
+                heapq.heappush(heap, (candidate, nxt))
+    return level if found else np.inf
+
+
+@njit(cache=True)
+def _fewest_hops_path(indptr, indices, elevation, is_ocean, source, target, level):
+    """`_spill_path`'s breadth-first search, compiled: the fewest-hop path from `source` to
+    `target` through nodes no higher than `level`."""
+    n = len(elevation)
+    came_from = np.full(n, -2, dtype=np.int64)
+    came_from[source] = -1
+    queue = np.empty(n, dtype=np.int64)
+    queue[0] = source
+    head, tail = 0, 1
+    while head < tail and came_from[target] == -2:
+        node = queue[head]
+        head += 1
+        for j in range(indptr[node], indptr[node + 1]):
+            nxt = np.int64(indices[j])
+            if came_from[nxt] == -2 and (nxt == target or not is_ocean[nxt]) and elevation[nxt] <= level:
+                came_from[nxt] = node
+                queue[tail] = nxt
+                tail += 1
+    length = 1
+    node = target
+    while came_from[node] >= 0:
+        node = came_from[node]
+        length += 1
+    path = np.empty(length, dtype=np.int64)
+    node = target
+    for i in range(length - 1, -1, -1):
+        path[i] = node
+        node = came_from[node]
+    return path
+
+
 def _spill_path(fields: HydrologyFields, adjacency: tuple[np.ndarray, np.ndarray], source: int, target: int) -> list[int]:
     """The nodes a spill from `source` to `target` crosses over `adjacency`'s neighbour edges:
     the fewest hops among paths that never rise above the lowest pass between them (found
@@ -1863,53 +1930,15 @@ def _spill_path(fields: HydrologyFields, adjacency: tuple[np.ndarray, np.ndarray
 
     Empty if `target` isn't reachable without climbing past `_spill_path_ceiling`, or within
     SPILL_PATH_MAX_NODES: an unreachable target would otherwise search every land node."""
-    elevation, is_ocean = fields.elevation, fields.is_ocean
     indptr, indices = adjacency
-    ceiling = _spill_path_ceiling(fields, source)
-
-    def neighbours(node: int) -> list[int]:
-        return indices[indptr[node] : indptr[node + 1]].tolist()
-
-    def passable(node: int) -> bool:
-        return node == target or not is_ocean[node]
-
-    best = {source: float(elevation[source])}
-    heap = [(best[source], source)]
-    level = None
-    explored = 0
-    while heap:
-        pass_m, node = heapq.heappop(heap)
-        if node == target:
-            level = pass_m
-            break
-        if pass_m > best[node]:
-            continue
-        # The heap pops passes in rising order, so nothing left can come in under the ceiling.
-        explored += 1
-        if pass_m > ceiling or explored > SPILL_PATH_MAX_NODES:
-            return []
-        for nxt in neighbours(node):
-            candidate = max(pass_m, float(elevation[nxt]))
-            if passable(nxt) and candidate < best.get(nxt, np.inf):
-                best[nxt] = candidate
-                heapq.heappush(heap, (candidate, nxt))
-    if level is None:
+    elevation = np.asarray(fields.elevation, dtype=np.float64)
+    is_ocean = np.asarray(fields.is_ocean, dtype=np.bool_)
+    level = _spill_pass_level(
+        indptr, indices, elevation, is_ocean, source, target, float(_spill_path_ceiling(fields, source)), SPILL_PATH_MAX_NODES
+    )
+    if not np.isfinite(level):
         return []
-
-    came_from = {source: -1}
-    frontier = [source]
-    while frontier and target not in came_from:
-        next_frontier = []
-        for node in frontier:
-            for nxt in neighbours(node):
-                if nxt not in came_from and passable(nxt) and elevation[nxt] <= level:
-                    came_from[nxt] = node
-                    next_frontier.append(nxt)
-        frontier = next_frontier
-    path = [target]
-    while came_from[path[-1]] >= 0:
-        path.append(came_from[path[-1]])
-    return path[::-1]
+    return _fewest_hops_path(indptr, indices, elevation, is_ocean, source, target, level).tolist()
 
 
 def flow_segments(fields: HydrologyFields, sources: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
