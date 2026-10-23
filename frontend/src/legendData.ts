@@ -122,21 +122,22 @@ const TEMPERATURE_GRADIENT: LegendGradient = {
   ],
 };
 
-// _HUMIDITY_STOP_V / _HUMIDITY_STOP_RGB.
+// _HUMIDITY_STOP_G_KG / _HUMIDITY_STOP_RGB.
 const HUMIDITY_GRADIENT: LegendGradient = {
   min: 0,
-  max: 1.4,
+  max: 16.2,
   stops: [
     { value: 0, color: rgb(120, 100, 60) },
-    { value: 0.3, color: rgb(170, 150, 90) },
-    { value: 0.6, color: rgb(140, 170, 110) },
-    { value: 0.9, color: rgb(70, 150, 140) },
-    { value: 1.2, color: rgb(30, 100, 140) },
-    { value: 1.4, color: rgb(15, 60, 110) },
+    { value: 3.5, color: rgb(170, 150, 90) },
+    { value: 7, color: rgb(140, 170, 110) },
+    { value: 10.5, color: rgb(70, 150, 140) },
+    { value: 14, color: rgb(30, 100, 140) },
+    { value: 16.2, color: rgb(15, 60, 110) },
   ],
   ticks: [
-    { value: 0, label: "Dry" },
-    { value: 1.4, label: "Humid" },
+    { value: 0, label: "0" },
+    { value: 8, label: "8" },
+    { value: 16.2, label: "16" },
   ],
 };
 
@@ -633,7 +634,7 @@ export function legendFor(view: MapView): LegendSpec | null {
     case "temperature":
       return { title: "Temperature (°C)", gradient: TEMPERATURE_GRADIENT, symbols: [COASTLINE_SYMBOL] };
     case "humidity":
-      return { title: "Humidity", gradient: HUMIDITY_GRADIENT, symbols: [COASTLINE_SYMBOL] };
+      return { title: "Humidity (g/kg)", gradient: HUMIDITY_GRADIENT, symbols: [COASTLINE_SYMBOL] };
     case "precipitation":
       return { title: "Precipitation (mm/yr)", gradient: PRECIPITATION_GRADIENT, symbols: [COASTLINE_SYMBOL] };
     case "wind":

@@ -293,7 +293,7 @@ only whichever control the user touched):
 ```
 
 Live-adjusts `World.sea_level_m` (default `0.0`), `World.solar_multiplier` (default `1.0`,
-scales `climate.SUNLIGHT`), `World.ice_age_period_years` (default `0.0` = disabled; the full
+scales `climate.SOLAR_CONSTANT_W_M2`, 1361 W/m²), `World.ice_age_period_years` (default `0.0` = disabled; the full
 period in years of a glacial↔interglacial temperature cycle -- see
 simulation-model/hydrology.md#glaciation, negative is clamped to `0`), `World.simulate_plate_movement`,
 `World.simulate_climate_biomes` (both default `true`), `World.wind_model`

@@ -3,6 +3,7 @@ import pickle
 import numpy as np
 import pytest
 from app import legacy_conversion, persistence, sparse_quad_patch
+from app.hydroclimate import climate
 from app.elevation_lines import line_spacing_rad
 from app.world import generate_world, step_world
 
@@ -132,6 +133,21 @@ def test_loading_a_save_drops_the_retired_line_engine_state():
     loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
     assert "corner_notch_log" not in loaded.__dict__
     assert "gap_fill_algorithm" not in loaded.__dict__
+
+
+def test_loading_a_save_with_unitless_cached_humidity_converts_it_to_g_per_kg():
+    # Issue #522: saves before humidity had units cache `humidity`, an index where 1.0 meant
+    # air over 20 C open water. Loading converts it at that point and keeps the cached
+    # precipitation the next step's transpiration source reads.
+    world = generate_world(seed=3, num_plates=4)
+    cache = climate.compute_climate_cached(world)
+    precipitation = cache.precipitation_mm.copy()
+    cache.__dict__["humidity"] = np.full_like(cache.__dict__.pop("humidity_g_kg"), 0.5)
+
+    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+    assert "humidity" not in vars(loaded.climate_cache)
+    np.testing.assert_allclose(loaded.climate_cache.humidity_g_kg, 0.5 * 11.56, rtol=1e-3)
+    np.testing.assert_array_equal(loaded.climate_cache.precipitation_mm, precipitation)
 
 
 def test_loading_a_save_with_the_old_water_column_budget_rebuilds_it_in_m3():

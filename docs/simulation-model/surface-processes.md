@@ -93,7 +93,7 @@ law produced (see the formula below).
   physically-derived limit).
 - **Weathering** = `WEATHERING_COEFFICIENT * wind_speed * humidity_norm * relief_factor *
   dt_myr`, where `humidity_norm` is humidity clipped to `[0, 1]` against
-  `HUMIDITY_REFERENCE`, and `relief_factor = clip(slope / WEATHERING_RELIEF_REFERENCE_SLOPE,
+  `HUMIDITY_REFERENCE_G_KG`, and `relief_factor = clip(slope / WEATHERING_RELIEF_REFERENCE_SLOPE,
   0, 1)` (same normalize-and-saturate idiom as `humidity_norm`). `relief_factor` is a
   mantle-bloom-original addition -- added after a real bug: unlike rain/river erosion (both already `*
   slope`), weathering originally had no relief dependence at all, so a flat, low-lying coastal

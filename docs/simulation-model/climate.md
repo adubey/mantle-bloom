@@ -216,10 +216,10 @@ first and closing the loop only for the final consumer-facing fields:
    perturbation the moisture-flux convergence uses (`_coherent_noise` -- a scale-free
    `1/k**MFC_NOISE_SPECTRAL_BETA` spectral field, correlation length
    `MFC_NOISE_CORRELATION_DEG`, seeded per world state on its own RNG stream) is added to the
-   blended humidity field at std `HUMIDITY_NOISE_STD` (smaller than `MFC_NOISE_Q_STD` -- it
+   blended humidity field at std `HUMIDITY_NOISE_STD_G_KG` (smaller than `MFC_NOISE_STD_G_KG` -- it
    perturbs the baseline everywhere, not just a belt edge), re-clipped to
-   `[MIN_BACKGROUND_HUMIDITY, MAX_EVAPORATION_CEILING]`. The orographic dump, a separate
-   rain-shadow channel, is left untouched. **`MIN_BACKGROUND_HUMIDITY`** is an irreducible
+   `[MIN_BACKGROUND_HUMIDITY_G_KG, MAX_HUMIDITY_G_KG]`. The orographic dump, a separate
+   rain-shadow channel, is left untouched. **`MIN_BACKGROUND_HUMIDITY_G_KG`** is an irreducible
    background specific humidity -- the trace of water vapour no advective sweep drains
    completely. Without it the centre of a large cold continent reaches *exactly* zero
    humidity (the distance-decay sweeps with no local source over a frozen interior), hence
@@ -236,20 +236,20 @@ first and closing the loop only for the final consumer-facing fields:
     (the ITCZ where the two hemispheres' trades meet, the ~50-65 deg sub-polar front);
     diverging wind multiplies the humidity baseline *down* (the subtropical highs at ~15-35
     deg, the poles under the polar cells) -- but the final field is floored at the
-    `MIN_BACKGROUND_HUMIDITY`-equivalent rainfall, so subsidence can suppress the convective
+    `MIN_BACKGROUND_HUMIDITY_G_KG`-equivalent rainfall, so subsidence can suppress the convective
     baseline toward zero without ever driving precipitation to exactly zero (a polar plateau
     is permanently subsiding yet still accumulates snow). This is the model's zonal precipitation
     climatology -- but emergent from the winds, not a hardcoded function of latitude, so the
     bands shift and distort with the circulation (a supercontinent, an off-centre landmass, a
     monsoon dragging the ITCZ poleward over a summer continent). The convergence bonus is
-    capped (`MFC_CONVERGENCE_MAX_Q`) for the same reason the humidity sweep is capped at
-    `MAX_EVAPORATION_CEILING`: to keep the precipitation -> rainforest -> transpiration ->
+    capped (`MFC_CONVERGENCE_MAX_G_KG`) for the same reason the humidity sweep is capped at
+    `MAX_HUMIDITY_G_KG`: to keep the precipitation -> rainforest -> transpiration ->
     humidity recycling loop from running away along an equatorial forest belt.
     Because the row-mean blend leaves each latitude nearly flat, the belt edges would
     otherwise fall on hard parallels and show as horizontal banding in the map; a fractal
     gaussian perturbation (`_coherent_noise` -- white noise shaped by a
     `1/k**MFC_NOISE_SPECTRAL_BETA` power spectrum in the spectral domain, so it's isotropic
-    and scale-free rather than one dominant bump size, std `MFC_NOISE_Q_STD`, correlation
+    and scale-free rather than one dominant bump size, std `MFC_NOISE_STD_G_KG`, correlation
     length `MFC_NOISE_CORRELATION_DEG`, seeded per world state) added after the blend warps
     and stipples those edges the way real convergence zones meander, without moving the
     wind-derived per-row means.

@@ -395,8 +395,8 @@ def elevation_colors(elevations: np.ndarray, sea_level_m: float = 0.0) -> np.nda
 
 # Spectral rainbow, degrees C: white at the cold end, violet -> indigo -> blue -> green ->
 # yellow -> orange -> red through the middle, black at the hot end -- white/black are hard
-# bounds (climate.py's land/air temperature can reach LAND_TEMP_MIN_C + LAND_TEMP_RANGE_C =
-# 35, so the hottest cells do clamp to solid black, same as the coldest already clamp to
+# bounds (climate.py's land/air temperature can reach the mid-30s under a brightened sun --
+# see LAND_CALIBRATION_TEMP_C -- so the hottest cells do clamp to solid black, same as the coldest already clamp to
 # solid white -- an intentional saturation effect, not a range that quietly clips real data
 # without visual indication). green/yellow/red/black are pinned to specific requested
 # values (0/10/20/30); violet/indigo/blue fill the -60..0 span evenly, orange sits at the
@@ -417,8 +417,8 @@ _TEMPERATURE_STOP_RGB = np.array(
     dtype=float,
 )
 
-# Dry (tan) -> humid (deep teal/blue). climate.py's humidity is roughly [0, MAX_EVAPORATION_CEILING=1.4].
-_HUMIDITY_STOP_V = np.array([0.0, 0.3, 0.6, 0.9, 1.2, 1.4], dtype=float)
+# Dry (tan) -> humid (deep teal/blue), g/kg. climate.py's humidity_g_kg runs [0.23, MAX_HUMIDITY_G_KG=16.2].
+_HUMIDITY_STOP_G_KG = np.array([0.0, 3.5, 7.0, 10.5, 14.0, 16.2], dtype=float)
 _HUMIDITY_STOP_RGB = np.array(
     [
         (120, 100, 60), (170, 150, 90), (140, 170, 110), (70, 150, 140), (30, 100, 140), (15, 60, 110),
@@ -470,8 +470,8 @@ def temperature_colors(celsius: np.ndarray) -> np.ndarray:
     return _interp_colors(celsius, _TEMPERATURE_STOP_C, _TEMPERATURE_STOP_RGB)
 
 
-def humidity_colors(humidity: np.ndarray) -> np.ndarray:
-    return _interp_colors(humidity, _HUMIDITY_STOP_V, _HUMIDITY_STOP_RGB)
+def humidity_colors(humidity_g_kg: np.ndarray) -> np.ndarray:
+    return _interp_colors(humidity_g_kg, _HUMIDITY_STOP_G_KG, _HUMIDITY_STOP_RGB)
 
 
 def precipitation_colors(precipitation_mm: np.ndarray) -> np.ndarray:
@@ -1701,7 +1701,7 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
         is_ocean_hp = atmosphere.is_ocean
 
     if view == "humidity":
-        _fill_rects(pixels, centers, half_px, half_px, humidity_colors(_to_healpix(cfields.humidity)))
+        _fill_rects(pixels, centers, half_px, half_px, humidity_colors(_to_healpix(cfields.humidity_g_kg)))
     elif view == "precipitation":
         _fill_rects(pixels, centers, half_px, half_px, precipitation_colors(_to_healpix(cfields.precipitation_mm)))
     elif view == "temperature":

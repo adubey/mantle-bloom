@@ -153,7 +153,7 @@ SILT_ACCUMULATION_COEFFICIENT = 4.1e-6
 PLANET_RADIUS_KM = 6371.0
 
 # Lake-vs-sea tiers: a real lake and a real sea behave differently (a sea drives regional
-# humidity at close to ocean strength -- see climate.py's SEA_EVAPORATION_CEILING -- and looks
+# humidity at close to ocean strength -- see climate.py's SEA_EVAPORATION_FRACTION -- and looks
 # different, hydrology.HydrologyFields.is_sea/render_image.py's SEA_COLOR), and neither should
 # be allowed to grow to an arbitrary size just because its own geological rim happens to sit
 # high. Without any ceiling, a closed basin fills to whatever its real rim allows regardless of

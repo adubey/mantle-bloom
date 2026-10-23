@@ -411,7 +411,7 @@ class World:
     # -- unlike axial_tilt_deg/node_density (fixed at generation), these are meant to be
     # tweaked mid-simulation. sea_level_m replaces the bare `elevation <= 0.0` convention
     # every is_ocean check in this codebase used to hardcode (climate.py, hydrology.py);
-    # solar_multiplier scales climate.py's own SUNLIGHT constant. Changing
+    # solar_multiplier scales climate.py's SOLAR_CONSTANT_W_M2. Changing
     # either forces an immediate climate_cache recompute (see main.py's controls route) so
     # /world/render and /world/stats reflect it right away, without waiting for a step.
     sea_level_m: float = 0.0

@@ -59,7 +59,7 @@ latitude-banded meridional wind + Coriolis zonal deflection + mountain deflectio
 (the *bootstrap*-only wind pipeline -- an ordinary call reads the atmosphere CFD state
 instead), plus -- on every call -- Ekman-based ocean currents + coastal deflection/smoothing/
 wake + land swirl + circumglobal boost, convergence-based swell detection, semi-Lagrangian
-ocean-temperature advection along those currents, and evaporation-ceiling + land-surface
+ocean-temperature advection along those currents, and open-water humidity + land-surface
 moisture source + wind-driven 2D humidity advection (decaying inland at a real per-km rate,
 see MOISTURE_HALVING_DISTANCE_KM) + orographic precipitation + Hadley/Ferrel moisture-flux
 convergence (the ITCZ / subtropical-desert / sub-polar zonal rainfall banding, emergent from
@@ -69,7 +69,7 @@ compute_moisture_flux_convergence).
 **Moisture recycling: rivers, lakes, and vegetation release moisture too, feeding the same
 humidity field ocean evaporation does.** The "rain in a rainforest" effect, where a wet,
 densely-vegetated region partly sustains its own precipitation: `compute_humidity`'s land
-cells get an extra local source alongside ocean cells' own evaporation ceiling -- lake surface
+cells get an extra local source alongside ocean cells' own open-water humidity -- lake surface
 and river-channel evaporation (sized from the *persisted*, already-known `lake_depth`/
 `channel_depth` surface fields, resampled onto this grid exactly like
 elevation itself -- see `_sample_elevation_and_crust`) plus vegetation transpiration (sized
@@ -77,7 +77,7 @@ from a biome classification, `biomes.classify_biomes`, of *last* step's climate 
 see `_vegetation_transpiration_source`). A frozen surface (`air_temperature_c` below
 `hydrology.FREEZE_POINT_C`) can't evaporate, so lake/river evaporation -- but not vegetation
 transpiration, already near zero in any biome cold enough to freeze -- is zeroed there. Lake/sea
-evaporation is also scaled by how warm that water actually is (`_water_evaporation_temp_factor`),
+evaporation is also scaled by how warm that water actually is (`open_water_humidity_g_kg`),
 not a single flat rate -- real lakes/seas have far less thermal mass than the open ocean, so they
 heat up (and evaporate) faster for the same climate, which is what lets a large enclosed sea
 drive its own local rain -- and, through erosion.py's own river erosion/deposition, its own
@@ -191,7 +191,7 @@ class ClimateFields:
     wind_v: np.ndarray  # (H, W) northward
     current_u: np.ndarray  # (H, W) eastward, zero over land
     current_v: np.ndarray  # (H, W) northward, zero over land
-    humidity: np.ndarray  # (H, W), [MIN_BACKGROUND_HUMIDITY, MAX_EVAPORATION_CEILING]
+    humidity_g_kg: np.ndarray  # (H, W), near-surface specific humidity, [MIN_BACKGROUND_HUMIDITY_G_KG, MAX_HUMIDITY_G_KG]
     precipitation_mm: np.ndarray  # (H, W)
     biome_ids: np.ndarray  # (H, W) int, index into biomes.BIOME_NAMES/BIOME_COLORS
     swell_rows: np.ndarray  # (K,) int, sampled convergence points
@@ -370,19 +370,17 @@ def weighted_sample_without_replacement(rng: np.random.Generator, weights: np.nd
 # Insolation
 # ---------------------------------------------------------------------------------------
 
-# Full insolation. An earlier value of 0.85 dimmed the sun to pull the *displayed median*
-# temperature toward a target (and humidity/precipitation down with it, since the evaporation
-# ceiling is ocean-temperature-driven -- see compute_humidity). That coupled two things that
-# shouldn't be coupled: it also crushed the equator-to-pole *land* temperature profile down to
-# a near-glacial one (equatorial land ~18C, mid-latitude land already below freezing). The
-# insolation->temperature mapping (LAND_TEMP_MIN_C/RANGE, WATER_TEMP_MIN_C/RANGE) is now
-# calibrated directly against a realistic latitudinal profile instead, at full sun, and any
-# residual over-wetness is a knob on the precipitation side (PRECIP_HUMIDITY_COEFFICIENT_MM).
-# `solar_multiplier` (World.solar_multiplier, default 1.0 -- the UI's "Controls" window, see
-# main.py's /world/controls) still scales this live.
-SUNLIGHT = 1.0
-INSOLATION_FLOOR = 0.03
-AXIAL_TILT_DECLINATION_SAMPLES = 24
+# Top-of-atmosphere insolation in W/m² (#522). Earth's total solar irradiance is ~1361 W/m²
+# (Kopp & Lean 2011); `solar_multiplier` (World.solar_multiplier, default 1.0 -- the UI's
+# "Controls" window, see main.py's /world/controls) scales it live. An earlier normalised
+# `SUNLIGHT` was once dimmed to 0.85 to pull the displayed median temperature toward a
+# target, which also crushed the equator-to-pole land profile toward a glacial one; the
+# temperature mapping below is calibrated directly against a realistic profile instead, and
+# residual over-wetness is a knob on the precipitation side (PRECIP_MM_PER_G_KG).
+SOLAR_CONSTANT_W_M2 = 1361.0
+# Solar-longitude samples over one (circular) orbit for the annual mean. 48 is within
+# 0.2 W/m² of a 360-sample mean at every latitude for Earth's tilt.
+ANNUAL_INSOLATION_SAMPLES = 48
 
 # --- Ice ages --------------------------------------------------------------------------
 # `World.ice_age_period_years` (the Controls "Ice Age Frequency" slider, 0 = disabled) sets
@@ -420,39 +418,67 @@ def ice_age_cooling_c(world: "World") -> float:
 
 
 def compute_insolation(lat_deg: np.ndarray, axial_tilt_deg: float, solar_multiplier: float = 1.0) -> np.ndarray:
-    """Annual-mean insolation, (H,) broadcastable. Flat zenith-angle cosine law with no
-    tilt; with tilt, the mean of that same law (clipped at 0, sun below horizon) over
-    `AXIAL_TILT_DECLINATION_SAMPLES` declinations swept between -tilt and +tilt -- the
-    sub-solar latitude's annual sweep, not an actual season cycle (this model has no
-    calendar; one step spans thousands to millions of years)."""
-    sunlight = SUNLIGHT * solar_multiplier
-    lat_r = np.radians(lat_deg)
-    if axial_tilt_deg <= 1e-6:
-        return np.clip(np.cos(lat_r), INSOLATION_FLOOR, 1.0) * sunlight
-    declinations = np.radians(np.linspace(-axial_tilt_deg, axial_tilt_deg, AXIAL_TILT_DECLINATION_SAMPLES))
-    cos_zenith = np.cos(lat_r[:, None] - declinations[None, :])
-    return np.clip(np.clip(cos_zenith, 0.0, None).mean(axis=1), INSOLATION_FLOOR, 1.0) * sunlight
+    """Annual-mean top-of-atmosphere insolation in W/m², (H,) broadcastable: the daily-mean
+    flux `S/pi * (h0 sin(lat) sin(dec) + cos(lat) cos(dec) sin(h0))`, with `h0` the sunset
+    hour angle (polar day and night handled by clipping `cos h0`), averaged over a circular
+    orbit's declinations `asin(sin(tilt) sin(solar longitude))`. This model has no calendar
+    (one step spans thousands to millions of years), so only the annual mean is used. With
+    no tilt this is `S/pi * cos(lat)`: ~433 W/m² at the equator and 0 at the poles; at
+    Earth's tilt it runs ~415 at the equator down to ~172 at the poles."""
+    irradiance = SOLAR_CONSTANT_W_M2 * solar_multiplier
+    lat_r = np.radians(np.asarray(lat_deg, dtype=float))[:, None]
+    solar_longitude = np.linspace(0.0, 2.0 * np.pi, ANNUAL_INSOLATION_SAMPLES, endpoint=False)
+    declination = np.arcsin(np.sin(np.radians(axial_tilt_deg)) * np.sin(solar_longitude))[None, :]
+    sunset_hour_angle = np.arccos(np.clip(-np.tan(lat_r) * np.tan(declination), -1.0, 1.0))
+    daily = (
+        sunset_hour_angle * np.sin(lat_r) * np.sin(declination)
+        + np.cos(lat_r) * np.cos(declination) * np.sin(sunset_hour_angle)
+    )
+    return np.clip(daily.mean(axis=1), 0.0, None) * (irradiance / np.pi)
 
 
 # ---------------------------------------------------------------------------------------
 # Temperature: land (solar heating + lapse rate), ocean baseline, air (moderated)
 # ---------------------------------------------------------------------------------------
 
-# insolation -> temperature. Calibrated at full sun (SUNLIGHT = 1.0) against a realistic
-# annual-mean latitudinal profile: with axial tilt 23.5 the tilt-averaged insolation runs
-# ~0.97 at the equator down to ~0.11 at the poles, so `MIN + RANGE * insol` gives land
-# ~25C / ~10C / ~-1C / ~-22C at lat 0 / 45 / 60 / 90 and ocean ~27C / ~19C / ~1C over the
-# same span (narrower range + a freezing floor for water's far greater thermal inertia). The
-# old -60/95 land mapping put the equator at ~18C and everything poleward of ~40 degrees
-# below freezing -- see SUNLIGHT's comment.
-LAND_TEMP_MIN_C = -28.0
-LAND_TEMP_RANGE_C = 55.0
+# insolation -> temperature (#522). Calibrated against a realistic annual-mean latitudinal
+# profile at Earth's tilt and full sun: land ~25C / ~10C / ~-1C / ~-22C at lat 0 / 45 / 60 /
+# 90, ocean ~27C / ~19C / ~1C over the same span (a narrower range for water's far greater
+# thermal inertia). These are the profile the earlier normalised-insolation linear fit gave.
+# A straight line in W/m² can't reproduce it: polar insolation flattens at ~172 W/m² while
+# polar temperature keeps falling, the cold the real planet gets from ice albedo and polar
+# longwave loss, which this model has no energy balance for. So temperature is interpolated
+# through the calibration points by their insolation, and extrapolated linearly (with the
+# table's end-to-end slope) for other tilts and solar multipliers. `_temperature_from_
+# insolation` is the one place an energy-balance model (albedo, longwave) would replace.
+TEMPERATURE_CALIBRATION_TILT_DEG = 23.5
+TEMPERATURE_CALIBRATION_LAT_DEG = np.arange(0.0, 90.1, 7.5)
+LAND_CALIBRATION_TEMP_C = np.array([25.3, 24.9, 23.5, 21.3, 18.2, 14.3, 9.7, 4.5, -1.3, -7.5, -13.3, -18.2, -22.2])
+OCEAN_CALIBRATION_TEMP_C = np.array([27.1, 26.8, 26.1, 24.9, 23.2, 21.1, 18.6, 15.7, 12.5, 9.2, 6.0, 3.3, 1.2])
+# Seawater can't cool below its freezing point in bulk; an extrapolation to low insolation
+# (no tilt at the poles, a dim sun) stops here.
+SEAWATER_FREEZING_C = -2.0
 LAPSE_RATE_C_PER_KM = 6.5
-WATER_TEMP_MIN_C = -2.0
-WATER_TEMP_RANGE_C = 30.0
 # How far (degrees, great-circle) the ocean's moderating influence reaches onto land --
 # an e-folding distance, not a hard cutoff.
 MARITIME_INFLUENCE_DIST_DEG = 15.0
+# Insolation at each calibration latitude, falling monotonically from the equator, so it
+# can serve as np.interp's x after reversing.
+_CALIBRATION_INSOLATION_W_M2 = compute_insolation(TEMPERATURE_CALIBRATION_LAT_DEG, TEMPERATURE_CALIBRATION_TILT_DEG)
+
+
+def _temperature_from_insolation(insolation_w_m2: np.ndarray, calibration_temp_c: np.ndarray) -> np.ndarray:
+    """Sea-level annual-mean temperature (C) for an annual-mean insolation (W/m²):
+    piecewise-linear through the calibration points, linear beyond them at the table's
+    end-to-end slope. See TEMPERATURE_CALIBRATION_LAT_DEG."""
+    q = _CALIBRATION_INSOLATION_W_M2[::-1]
+    t = calibration_temp_c[::-1]
+    slope = (t[-1] - t[0]) / (q[-1] - q[0])
+    insolation = np.asarray(insolation_w_m2, dtype=float)
+    inside = np.interp(insolation, q, t)
+    below = t[0] + slope * (insolation - q[0])
+    above = t[-1] + slope * (insolation - q[-1])
+    return np.where(insolation < q[0], below, np.where(insolation > q[-1], above, inside))
 
 
 def compute_land_temperature(insolation_row: np.ndarray, elevation_m: np.ndarray) -> np.ndarray:
@@ -460,7 +486,7 @@ def compute_land_temperature(insolation_row: np.ndarray, elevation_m: np.ndarray
     cooling -- kept as part of the *same* base-heating formula rather than a separate causal
     channel (mountains being cold is a consequence of solar heating at altitude, not an
     extra input)."""
-    base = LAND_TEMP_MIN_C + LAND_TEMP_RANGE_C * insolation_row[:, None]
+    base = _temperature_from_insolation(insolation_row, LAND_CALIBRATION_TEMP_C)[:, None]
     altitude_cooling = LAPSE_RATE_C_PER_KM * np.clip(elevation_m, 0.0, None) / 1000.0
     return base - altitude_cooling
 
@@ -468,7 +494,7 @@ def compute_land_temperature(insolation_row: np.ndarray, elevation_m: np.ndarray
 def compute_ocean_temperature_baseline(insolation_row: np.ndarray, height: int, width: int) -> np.ndarray:
     """Pre-advection zonal baseline -- narrower range and a freezing floor relative to land,
     since water has far more thermal inertia."""
-    base = WATER_TEMP_MIN_C + WATER_TEMP_RANGE_C * insolation_row[:, None]
+    base = np.maximum(_temperature_from_insolation(insolation_row, OCEAN_CALIBRATION_TEMP_C), SEAWATER_FREEZING_C)[:, None]
     return np.repeat(base, width, axis=1) if base.shape[1] == 1 else base
 
 
@@ -936,12 +962,25 @@ def advect_ocean_temperature(baseline_c: np.ndarray, current_u: np.ndarray, curr
 
 
 # ---------------------------------------------------------------------------------------
-# Humidity (evaporation ceiling + wind-driven 2D advection) and precipitation
+# Humidity (open-water humidity + wind-driven 2D advection) and precipitation
 # ---------------------------------------------------------------------------------------
 
-EVAPORATION_REFERENCE_TEMP_C = 20.0
-MIN_EVAPORATION_CEILING = 0.3
-MAX_EVAPORATION_CEILING = 1.4
+# Humidity is near-surface specific humidity in g/kg (#522). Over open water it's a fixed
+# marine relative humidity times the saturation value at the water's temperature
+# (`open_water_humidity_g_kg`): ~3 g/kg over 0 C water, ~12 at 20 C, ~16 at 25 C, the range
+# real marine boundary-layer air spans (about 80% relative humidity, Dai 2006). It replaced
+# a unitless "evaporation ceiling", `clip(T / 20 C, 0.3, 1.4)`; the constants below that were
+# in those units were converted at its reference point, 1.0 == 20 C water == 11.56 g/kg, so
+# precipitation near 20 C water is unchanged and only the curve's shape moved. A later
+# evaporation model (#358 items 10-11) would replace `open_water_humidity_g_kg`.
+SEA_LEVEL_PRESSURE_HPA = 1013.25
+MARINE_RELATIVE_HUMIDITY = 0.8
+# Air can only hold so much water: open-water humidity and the land sweeps both stop here.
+# It's also the guard against the transpiration feedback running away along a continent-
+# spanning forest belt (see the land sweeps). 16.2 g/kg is the old ceiling (1.4) converted,
+# which open water reaches at ~25 C; real tropical marine air runs ~18-20 g/kg, but lifting
+# the cap would wet the tropics, and #522 keeps the precipitation map where it was.
+MAX_HUMIDITY_G_KG = 16.2
 # An irreducible background specific-humidity everywhere -- the trace of atmospheric water
 # vapour that no advective sweep drains completely (turbulent mixing, transient synoptic
 # intrusions, the fact that even the driest air over a polar plateau is not bone dry). The
@@ -949,14 +988,15 @@ MAX_EVAPORATION_CEILING = 1.4
 # distance travelled over dry land (MOISTURE_HALVING_DISTANCE_KM) with no local source in a
 # frozen interior (`_land_moisture_source` -> 0 where lakes/rivers are ice and vegetation is
 # absent), so without this floor a large cold continent's centre reaches *exactly* zero
-# humidity -- and then, via `PRECIP_HUMIDITY_COEFFICIENT_MM * humidity`, exactly zero
+# humidity -- and then, via `PRECIP_MM_PER_G_KG * humidity`, exactly zero
 # precipitation, which starves glacier accumulation (`ice_sheet.SurfaceClimate.rates` scales
 # accumulation by frozen precipitation) so a permanently-below-freezing pole that is cold
-# enough to keep ice forever never receives a single flake to keep. ~0.02 q is a few tens of
+# enough to keep ice forever never receives a single flake to keep. 0.23 g/kg is a few tens of
 # mm/yr of baseline precipitation -- the order of a real polar desert (central Antarctica
 # runs ~50 mm/yr water-equivalent, wetter than the Atacama), enough to seed and sustain a
 # polar ice cap over geological time without meaningfully wetting a hot subtropical desert.
-MIN_BACKGROUND_HUMIDITY = 0.02
+# It's also about what the air over the East Antarctic plateau holds.
+MIN_BACKGROUND_HUMIDITY_G_KG = 0.23
 MIN_WIND_RETENTION_FACTOR = 0.5
 # Real-world rule of thumb: over flat land, rainfall runs about half as much 300km inland as
 # it does right at the shore -- an exponential decay of airborne moisture with distance
@@ -968,7 +1008,7 @@ MIN_WIND_RETENTION_FACTOR = 0.5
 # toward the poles) -- confirmed directly as the actual cause of humidity/precipitation reading
 # highest deep in continental interiors instead of near coasts: at climate_density=1.0's larger
 # cells, a single fixed-0.96-per-cell step barely dented moisture even 300km inland (about 95%
-# retained, not 50%), so land-locked interiors stayed near the ocean's own evaporation ceiling
+# retained, not 50%), so land-locked interiors stayed near the ocean's own humidity
 # indefinitely, before any local land-surface source (see below) was even added on top.
 # 380 rather than the ~300 rule-of-thumb: the CFD-sourced wind field carries moisture inland
 # less efficiently than the old diagnostic trade-wind field did (it isn't uniformly onshore),
@@ -978,25 +1018,27 @@ MIN_WIND_RETENTION_FACTOR = 0.5
 MOISTURE_HALVING_DISTANCE_KM = 380.0
 OROGRAPHIC_LIFT_SCALE_M = 600.0
 OROGRAPHIC_RAIN_SHADOW_FACTOR = 0.6
-PRECIP_HUMIDITY_COEFFICIENT_MM = 1500.0
+# Precipitation per g/kg of near-surface humidity -- a bulk rain-out coefficient, mm/yr per
+# g/kg. 130 is the earlier 1500 mm per unit of the unitless humidity, converted (#522).
+PRECIP_MM_PER_G_KG = 130.0
 OROGRAPHIC_PRECIPITATION_COEFFICIENT = 1.0
 
 # Humidity carries the same zonal banding the moisture-flux convergence does, for a related
-# reason: the ocean evaporation ceiling is a clip of the insolation-driven ocean-temperature
-# baseline (`_evaporation_ceiling`), so it's very nearly a pure function of latitude, and the
+# reason: open-water humidity is a function of the insolation-driven ocean-temperature
+# baseline (`open_water_humidity_g_kg`), so it's very nearly a pure function of latitude, and the
 # wind-driven sweeps that carry it onto land inherit those flat parallels. On the humidity
-# map -- and in the precipitation baseline it scales (`PRECIP_HUMIDITY_COEFFICIENT_MM *
+# map -- and in the precipitation baseline it scales (`PRECIP_MM_PER_G_KG *
 # humidity`) -- that reads as horizontal banding. The same fractal gaussian perturbation
 # `compute_moisture_flux_convergence` uses against its own banding (`_coherent_noise`, a
 # scale-free 1/k**beta spectral field -- see the MFC_NOISE_* block) is added to the blended
-# humidity field to undulate and stipple those bands. HUMIDITY_NOISE_STD is in humidity units
-# (the same q the evaporation ceiling is in, ~0.3-1.4) -- smaller than MFC_NOISE_Q_STD since
+# humidity field to undulate and stipple those bands. HUMIDITY_NOISE_STD_G_KG is in g/kg
+# (open-water humidity runs ~3-16 g/kg) -- smaller than MFC_NOISE_STD_G_KG since
 # this perturbs the baseline everywhere, not just a belt edge. The correlation length and
 # spectral roll-off are shared with the MFC noise (MFC_NOISE_CORRELATION_DEG /
 # MFC_NOISE_SPECTRAL_BETA): it's the same meandering-band texture at the same scale. Seeded
 # per world state, on its own RNG stream (see compute_climate). The noised field is re-clipped
-# to [0, MAX_EVAPORATION_CEILING] so it keeps the same bounds the sweep itself guarantees.
-HUMIDITY_NOISE_STD = 0.035
+# to [0, MAX_HUMIDITY_G_KG] so it keeps the same bounds the sweep itself guarantees.
+HUMIDITY_NOISE_STD_G_KG = 0.4
 
 # --- Hadley/Ferrel moisture-flux convergence: the zonal wet/dry banding of the general
 # circulation, applied on top of the humidity baseline + orographic lift above.
@@ -1013,7 +1055,7 @@ HUMIDITY_NOISE_STD = 0.035
 #
 # MFC_COLLECTION_LENGTH_KM: the horizontal scale over which a column's converging moisture
 # flux is gathered before it precipitates -- turns the per-km divergence into a
-# humidity-equivalent quantity (then non-dimensionalized by MERIDIONAL_BASE_SPEED, the
+# g/kg-equivalent quantity (then non-dimensionalized by MERIDIONAL_BASE_SPEED, the
 # planetary wind scale the rest of this module is tuned against). A few hundred km, same
 # order as MOISTURE_HALVING_DISTANCE_KM.
 MFC_COLLECTION_LENGTH_KM = 320.0
@@ -1026,20 +1068,21 @@ MFC_COLLECTION_LENGTH_KM = 320.0
 # coherent part stays wind-derived, not a fixed parallel.
 MFC_ZONAL_COHERENCE = 0.65
 # Converging moisture flux adds rainfall on top of the humidity baseline, in the same
-# humidity-equivalent units (x PRECIP_HUMIDITY_COEFFICIENT_MM for mm). The cap is the load-
+# g/kg-equivalent units (x PRECIP_MM_PER_G_KG for mm). The cap is the load-
 # bearing one: it bounds how much the ITCZ can pile on top of the baseline, keeping the
 # precipitation -> rainforest -> transpiration -> humidity recycling loop (see
 # VEGETATION_RECYCLING_FRACTION) from running away along a continent-spanning equatorial
-# forest belt -- the same failure mode the MAX_EVAPORATION_CEILING cap on the humidity sweep
+# forest belt -- the same failure mode the MAX_HUMIDITY_G_KG cap on the humidity sweep
 # itself guards against.
 MFC_CONVERGENCE_GAIN = 2.2
-MFC_CONVERGENCE_MAX_Q = 0.85
+MFC_CONVERGENCE_MAX_G_KG = 9.8
 # Diverging (subsiding) air instead suppresses the humidity-baseline rainfall -- sinking air
 # retains its moisture rather than raining it out. A multiplicative factor, bounded so even
 # the core of a subtropical high keeps some rain (real subtropical deserts are dry, not
 # rainless). Orographic lift is deliberately *not* suppressed here: a forced ascent up a
-# windward slope rains out regardless of the large-scale subsidence around it.
-MFC_SUBSIDENCE_GAIN = 4.0
+# windward slope rains out regardless of the large-scale subsidence around it. The gain is
+# per g/kg of divergence: the earlier 4.0 per unitless-humidity unit, converted (#522).
+MFC_SUBSIDENCE_GAIN_PER_G_KG = 0.346
 MFC_SUBSIDENCE_MAX_SUPPRESSION = 0.72
 # Jacobi smoothing on the divergence field before use -- the CFD wind carries mesoscale
 # noise (mountain deflection, the eta/thermal term) that a raw divergence turns into
@@ -1059,9 +1102,9 @@ MFC_SMOOTHING_REFERENCE_PASSES = 3
 # steps between neighbours. A fractal gaussian perturbation added after the blend
 # (`_coherent_noise`) breaks that up: it undulates the belt boundaries and stipples their
 # interiors the way real convergence zones meander, without disturbing the row means the
-# wind field actually derived. MFC_NOISE_Q_STD is its standard deviation in the same
-# humidity-equivalent q units as the convergence field (~0.05 -> a few-hundred-mm swing at a
-# belt edge, comparable to the monsoon-scale departures MFC_ZONAL_COHERENCE already permits).
+# wind field actually derived. MFC_NOISE_STD_G_KG is its standard deviation in the same
+# g/kg-equivalent units as the convergence field (~0.6 -> a few-hundred-mm swing at a belt
+# edge, comparable to the monsoon-scale departures MFC_ZONAL_COHERENCE already permits).
 # The noise is synthesized in the spectral domain (see `_coherent_noise`): a repeated box
 # blur has one dominant bump size and plus-shaped kernel artifacts, both of which read as a
 # regular, man-made texture; a 1/k**MFC_NOISE_SPECTRAL_BETA power spectrum instead is
@@ -1071,66 +1114,78 @@ MFC_SMOOTHING_REFERENCE_PASSES = 3
 # its own; it's coarser than the ITCZ so the noise bends a band rather than just speckling
 # it. Seeded per world state (seed, elapsed_years) like every other RNG use here, so it
 # doesn't flicker between renders of the same world.
-MFC_NOISE_Q_STD = 0.05
+MFC_NOISE_STD_G_KG = 0.58
 MFC_NOISE_CORRELATION_DEG = 18.0
 MFC_NOISE_SPECTRAL_BETA = 2.6
 
 # Moisture recycling: lake/river evaporation and vegetation transpiration, all added as a
-# local land-surface source alongside ocean cells' own evap_ceiling -- see module docstring.
-# Reference depths pick the point at which a lake/river reads as "big enough to evaporate at
-# its own full rate" -- LAKE_EVAPORATION_REFERENCE_DEPTH_M against lake_depth's own realistic
-# range (lakes.py's balanced-level depths), RIVER_EVAPORATION_REFERENCE_DEPTH_M against
-# channel_depth's much larger range (erosion.py's MAX_CHANNEL_DEPTH_M = 2000 -- a real river
-# doesn't need to be anywhere near that incised to have a substantial, fully-evaporating
-# surface). Ceilings are smaller than a full ocean cell's own MAX_EVAPORATION_CEILING -- a
-# lake or river covers only part of a land cell's own area, unlike an ocean cell, which is
-# entirely water.
-LAKE_EVAPORATION_CEILING = 0.5
+# local land-surface source alongside ocean cells' own open-water humidity -- see module
+# docstring. Reference depths pick the point at which a lake/river reads as "big enough to
+# evaporate at its own full rate" -- LAKE_EVAPORATION_REFERENCE_DEPTH_M against lake_depth's
+# own realistic range (lakes.py's balanced-level depths), RIVER_EVAPORATION_REFERENCE_DEPTH_M
+# against channel_depth's much larger range (erosion.py's MAX_CHANNEL_DEPTH_M = 2000 -- a real
+# river doesn't need to be anywhere near that incised to have a substantial, fully-evaporating
+# surface). A lake's source is LAKE_EVAPORATION_FRACTION of open-water humidity at the same
+# temperature -- a lake or river covers only part of a land cell's own area, unlike an ocean
+# cell, which is entirely water. RIVER_EVAPORATION_HUMIDITY_G_KG is a flat 1.73 g/kg (the
+# earlier 0.15 unitless, converted -- #522).
+LAKE_EVAPORATION_FRACTION = 0.5
 LAKE_EVAPORATION_REFERENCE_DEPTH_M = 20.0
-RIVER_EVAPORATION_CEILING = 0.15
+RIVER_EVAPORATION_HUMIDITY_G_KG = 1.73
 # A basin large enough to classify sea tier (lakes._classify_tier / hydrology.HydrologyFields.
 # is_sea -- see that function's own docstring for the real-world reference points) drives real
-# regional humidity, closer to ocean strength than an ordinary lake's -- well above
-# LAKE_EVAPORATION_CEILING, but still short of open ocean's own MAX_EVAPORATION_CEILING (1.4):
-# a big enclosed sea has no current-driven mixing/upwelling replenishing its surface the way
-# the open ocean does. Reuses LAKE_EVAPORATION_REFERENCE_DEPTH_M rather than a separate,
+# regional humidity, at the open-water humidity of its temperature -- double
+# LAKE_EVAPORATION_FRACTION, and capped by the same MAX_HUMIDITY_G_KG as the ocean. Reuses LAKE_EVAPORATION_REFERENCE_DEPTH_M rather than a separate,
 # larger reference depth -- evaporation saturates once a cell is wet at all (any real depth of
 # standing water already covers the whole cell), so what should differ between tiers is the
 # ceiling a saturated cell tops out at, not how quickly it saturates.
-SEA_EVAPORATION_CEILING = 1.0
+SEA_EVAPORATION_FRACTION = 1.0
 RIVER_EVAPORATION_REFERENCE_DEPTH_M = 50.0
 
 # Lakes and seas have far less thermal mass than the open ocean, so the same sun that only
 # slowly warms a current-mixed ocean column (`ocean_temperature_c`, buffered/advected -- see
 # `advect_ocean_temperature`) heats a shallow enclosed body of water toward the local air
-# equilibrium much faster -- and a warmer water surface evaporates faster, the same physical
-# relationship `_evaporation_ceiling` already models for the ocean. `LAKE_EVAPORATION_CEILING`/
-# `SEA_EVAPORATION_CEILING` above were previously flat -- a lake/sea evaporated at the same rate
-# regardless of how hot it actually was, only cut off outright below freezing. This factor
-# multiplies onto those ceilings using `air_temperature_c` (already the land side's own
-# "no thermal inertia" energy balance, unlike `ocean_temperature_c`) as the faster-responding
-# stand-in for the water's own surface temperature, reusing `_evaporation_ceiling`'s exact
-# normalize-and-clip shape (and its own reference/floor/ceiling constants) rather than a
-# separate set tuned from scratch, since it's the same relationship applied to a different
-# temperature signal. This is what lets a large enclosed sea sitting in a hot climate evaporate
-# as strongly as warm open ocean instead of capping out at a flat, temperature-blind ceiling --
-# closing the loop the user asked for: a big, shallow, fast-heating lake/sea evaporates hard,
-# drives local humidity/rain, and that rain's own erosion feeds sediment back into the very
-# basin _spread_lake_sediment (erosion.py) is filling in.
-def _water_evaporation_temp_factor(air_temperature_c: np.ndarray) -> np.ndarray:
-    return np.clip(air_temperature_c / EVAPORATION_REFERENCE_TEMP_C, MIN_EVAPORATION_CEILING, MAX_EVAPORATION_CEILING)
+# equilibrium much faster -- and a warmer water surface evaporates faster. So a lake/sea's
+# source is `open_water_humidity_g_kg` (the same relationship the ocean uses) evaluated at
+# `air_temperature_c` (already the land side's own "no thermal inertia" energy balance, unlike
+# `ocean_temperature_c`) as the faster-responding stand-in for the water's own surface
+# temperature, times `LAKE_EVAPORATION_FRACTION`/`SEA_EVAPORATION_FRACTION`. Those were once
+# flat -- a lake/sea evaporated at the same rate regardless of how hot it actually was, only
+# cut off outright below freezing. This is what lets a large enclosed sea sitting in a hot
+# climate evaporate as strongly as warm open ocean instead of capping out at a flat,
+# temperature-blind ceiling -- closing the loop the user asked for: a big, shallow,
+# fast-heating lake/sea evaporates hard, drives local humidity/rain, and that rain's own
+# erosion feeds sediment back into the very basin _spread_lake_sediment (erosion.py) is
+# filling in.
+
+
+def saturation_specific_humidity_g_kg(temperature_c: np.ndarray, pressure_hpa: float = SEA_LEVEL_PRESSURE_HPA) -> np.ndarray:
+    """Saturation specific humidity (g/kg) over liquid water: the Magnus form of the
+    Clausius-Clapeyron saturation vapour pressure (Alduchov & Eskridge 1996, hPa), converted
+    with `q = 622 e / (p - 0.378 e)`."""
+    temperature_c = np.asarray(temperature_c, dtype=float)
+    vapour_pressure_hpa = 6.1094 * np.exp(17.625 * temperature_c / (temperature_c + 243.04))
+    return 622.0 * vapour_pressure_hpa / (pressure_hpa - 0.378 * vapour_pressure_hpa)
+
+
+def open_water_humidity_g_kg(water_temperature_c: np.ndarray) -> np.ndarray:
+    """Near-surface specific humidity (g/kg) of air over open water at `water_temperature_c`:
+    MARINE_RELATIVE_HUMIDITY of saturation, capped at MAX_HUMIDITY_G_KG. The one place a
+    physical evaporation model (wind, vapour-pressure deficit, #358 items 10-11) would
+    replace."""
+    return np.minimum(MARINE_RELATIVE_HUMIDITY * saturation_specific_humidity_g_kg(water_temperature_c), MAX_HUMIDITY_G_KG)
 
 # Vegetation transpiration: a *recycling* term, not a manufactured one -- it can only return
 # some fraction of the moisture that actually fell as rain *last step* at that same cell
-# (`prev.precipitation_mm`, converted back to humidity units), scaled by
+# (`prev.precipitation_mm`, converted back to g/kg), scaled by
 # VEGETATION_TRANSPIRATION_BY_BIOME below (index-aligned with biomes.BIOME_NAMES).
 # VEGETATION_RECYCLING_FRACTION (at the strongest biome weight, 1.0, Tropical Rainforest) is
 # the ceiling on that fraction -- real Amazon-basin studies put regional transpiration-recycled
 # rainfall at roughly a quarter to a half. 0.16 is well below that ceiling, tuned by stepping
 # two seeds 65-80 turns: it lands the long-run land precipitation share near ~24% (real Earth
 # is ~20-24%) and keeps a diverse biome mix rather than a continent of desert. It's this low
-# (down from an earlier 0.3) because the model got warmer -- once SUNLIGHT went back to 1.0
-# and the land-temperature mapping was recalibrated (see SUNLIGHT's comment), more cells cross
+# (down from an earlier 0.3) because the model got warmer -- once full sunlight was restored
+# and the land-temperature mapping was recalibrated (see SOLAR_CONSTANT_W_M2), more cells cross
 # into lush, high-transpiration biomes, so the same fraction recycles more moisture over land
 # and pushes the share up; a lower fraction restores the target split.
 # This anchors transpiration to a real, finite quantity the same way lake/river evaporation is
@@ -1140,7 +1195,7 @@ def _water_evaporation_temp_factor(air_temperature_c: np.ndarray) -> np.ndarray:
 # more rain reclassified a cell as lusher, which unconditionally added the same fixed source
 # regardless of how much rain actually fell, regardless of how many steps had already elapsed
 # -- confirmed directly as a genuine multi-step runaway, not just the single-step spatial one
-# the MAX_EVAPORATION_CEILING cap below already guards against: mean land precipitation still
+# the MAX_HUMIDITY_G_KG cap below already guards against: mean land precipitation still
 # climbing steadily after 10 stepped turns (about 55mm on step 1, over 1500mm by step 10, with
 # more than half of all land area reclassified "lush" by then), eventually overtaking the
 # ocean's own precipitation total even though ocean humidity itself never grows step to step.
@@ -1167,10 +1222,6 @@ VEGETATION_TRANSPIRATION_BY_BIOME = np.array(
     + [0.0] * len(biomes.PELAGIC_NAMES)
 )
 assert len(VEGETATION_TRANSPIRATION_BY_BIOME) == len(biomes.BIOME_NAMES)
-
-
-def _evaporation_ceiling(ocean_temperature_c: np.ndarray) -> np.ndarray:
-    return np.clip(ocean_temperature_c / EVAPORATION_REFERENCE_TEMP_C, MIN_EVAPORATION_CEILING, MAX_EVAPORATION_CEILING)
 
 
 def _vegetation_transpiration_source(world: "World", elevation_m: np.ndarray, is_ocean: np.ndarray) -> np.ndarray:
@@ -1207,7 +1258,7 @@ def _vegetation_transpiration_source(world: "World", elevation_m: np.ndarray, is
         lat_deg=prev.lat_deg[:, None], axial_tilt_deg=world.axial_tilt_deg,
         continentality=biomes.grid_continentality(is_ocean),
     )
-    prev_precip_humidity_equiv = prev.precipitation_mm / PRECIP_HUMIDITY_COEFFICIENT_MM
+    prev_precip_humidity_equiv = prev.precipitation_mm / PRECIP_MM_PER_G_KG
     return VEGETATION_TRANSPIRATION_BY_BIOME[biome_id] * VEGETATION_RECYCLING_FRACTION * prev_precip_humidity_equiv
 
 
@@ -1223,22 +1274,22 @@ def _land_moisture_source(
 
     `is_sea` (default `None`, treated as all-False -- same optional-defaults-to-off pattern
     `lake_depth_m`/`channel_depth_m` themselves use for a caller that doesn't have it) picks
-    `SEA_EVAPORATION_CEILING` over `LAKE_EVAPORATION_CEILING` per cell wherever true -- a cell
+    `SEA_EVAPORATION_FRACTION` over `LAKE_EVAPORATION_FRACTION` per cell wherever true -- a cell
     can be both wet (`lake_depth_m > 0`) and sea-classified, in which case it evaporates at the
-    stronger sea ceiling; `LAKE_EVAPORATION_REFERENCE_DEPTH_M` is shared by both tiers (see that
-    constant's own comment for why saturation depth, unlike the ceiling, shouldn't differ). That
-    ceiling is further scaled by `_water_evaporation_temp_factor` -- a lake/sea's own thin,
-    fast-heating water evaporates harder when it's actually warm, not at a single flat rate
-    regardless of climate (see that function's own comment); river evaporation keeps its own
-    flat `RIVER_EVAPORATION_CEILING` unscaled, since flowing water's evaporation is already
+    stronger sea fraction; `LAKE_EVAPORATION_REFERENCE_DEPTH_M` is shared by both tiers (see that
+    constant's own comment for why saturation depth, unlike the fraction, shouldn't differ). The
+    fraction multiplies `open_water_humidity_g_kg` at the air temperature -- a lake/sea's own
+    thin, fast-heating water evaporates harder when it's actually warm, not at a single flat rate
+    regardless of climate (see the comment above `saturation_specific_humidity_g_kg`); river evaporation keeps its own
+    flat `RIVER_EVAPORATION_HUMIDITY_G_KG` unscaled, since flowing water's evaporation is already
     handled in-transit, temperature-scaled, over in hydrology.py's own RIVER_EVAPORATION_* terms
     -- this river term is only the same-step humidity-source stand-in that module's docstring
     already describes."""
     lake_fraction = np.clip(lake_depth_m / LAKE_EVAPORATION_REFERENCE_DEPTH_M, 0.0, 1.0)
     river_fraction = np.clip(channel_depth_m / RIVER_EVAPORATION_REFERENCE_DEPTH_M, 0.0, 1.0)
-    lake_ceiling = LAKE_EVAPORATION_CEILING if is_sea is None else np.where(is_sea, SEA_EVAPORATION_CEILING, LAKE_EVAPORATION_CEILING)
-    water_temp_factor = _water_evaporation_temp_factor(air_temperature_c)
-    water_source = lake_fraction * lake_ceiling * water_temp_factor + river_fraction * RIVER_EVAPORATION_CEILING
+    evaporation_fraction = LAKE_EVAPORATION_FRACTION if is_sea is None else np.where(is_sea, SEA_EVAPORATION_FRACTION, LAKE_EVAPORATION_FRACTION)
+    water_humidity = open_water_humidity_g_kg(air_temperature_c)
+    water_source = lake_fraction * evaporation_fraction * water_humidity + river_fraction * RIVER_EVAPORATION_HUMIDITY_G_KG
     water_source = np.where(air_temperature_c < hydrology.FREEZE_POINT_C, 0.0, water_source)
     return water_source + vegetation_source
 
@@ -1304,10 +1355,10 @@ def _humidity_zonal_sweep(
             # long, uniformly-sourced land stretch (e.g. a continent-spanning rainforest belt)
             # would compound its own local source additively, cell after cell, toward an
             # asymptote of source/(1 - retention) -- confirmed directly this blows past any
-            # physically sensible value (multiples of MAX_EVAPORATION_CEILING) well before a
+            # physically sensible value (multiples of MAX_HUMIDITY_G_KG) well before a
             # world's vegetation even finishes saturating, since the fixed point of that
             # recurrence is a real cliff, not a gentle diminishing return.
-            land_moisture = np.minimum(moisture * _retention_factor(ef_i, base_retention) + source_i, MAX_EVAPORATION_CEILING)
+            land_moisture = np.minimum(moisture * _retention_factor(ef_i, base_retention) + source_i, MAX_HUMIDITY_G_KG)
             after_source = np.where(ocean_i, ceiling_i, land_moisture)
             retained = _orographic_retained_fraction(elev_i - prev_elev)
             new_moisture = np.where(ocean_i, after_source, after_source * retained)
@@ -1358,7 +1409,7 @@ def _humidity_meridional_sweep(
 
             # See the matching cap in _humidity_zonal_sweep for why this can't be left
             # uncapped.
-            land_moisture = np.minimum(moisture * _retention_factor(ef_r, base_retention) + source_r, MAX_EVAPORATION_CEILING)
+            land_moisture = np.minimum(moisture * _retention_factor(ef_r, base_retention) + source_r, MAX_HUMIDITY_G_KG)
             after_source = np.where(ocean_r, ceiling_r, land_moisture)
             retained = _orographic_retained_fraction(elev_r - prev_elev)
             new_moisture = np.where(ocean_r, after_source, after_source * retained)
@@ -1377,7 +1428,8 @@ def compute_humidity(
     lake_depth_m: np.ndarray | None = None, channel_depth_m: np.ndarray | None = None, vegetation_source: np.ndarray | None = None,
     rng: np.random.Generator | None = None, is_sea: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Evaporation ceiling over ocean (from local ocean temperature), plus a local
+    """Near-surface specific humidity in g/kg: open-water humidity over ocean (from local
+    ocean temperature, `open_water_humidity_g_kg`), plus a local
     lake/sea/river-evaporation-and-vegetation-transpiration source over land (see module
     docstring and `_land_moisture_source`), wind-driven 2D advection onto land -- a zonal
     sweep and a meridional sweep, blended per-cell by each wind component's share of total
@@ -1387,21 +1439,21 @@ def compute_humidity(
     wherever there is one) so existing callers -- most usefully, test fixtures exercising this
     function in isolation -- keep working unchanged.
 
-    The blended field is clamped to `[MIN_BACKGROUND_HUMIDITY, MAX_EVAPORATION_CEILING]`
+    The blended field is clamped to `[MIN_BACKGROUND_HUMIDITY_G_KG, MAX_HUMIDITY_G_KG]`
     regardless of `rng` -- the floor is the irreducible background water vapour that keeps a
-    dry continental interior off exactly zero (see `MIN_BACKGROUND_HUMIDITY`).
+    dry continental interior off exactly zero (see `MIN_BACKGROUND_HUMIDITY_G_KG`).
 
     `rng`, when given, adds a fractal gaussian perturbation (`_coherent_noise`, std
-    `HUMIDITY_NOISE_STD`) to the blended humidity field before that clamp. The evaporation
-    ceiling is nearly a pure function of
+    `HUMIDITY_NOISE_STD_G_KG`) to the blended humidity field before that clamp. Open-water
+    humidity is nearly a pure function of
     latitude, so both sweeps inherit flat parallels that read as horizontal banding on the
     humidity map (and the precipitation baseline it scales); the noise undulates and stipples
     those bands the same way it does for the moisture-flux convergence (see
-    `HUMIDITY_NOISE_STD` and `compute_moisture_flux_convergence`). `rng=None` reproduces the
+    `HUMIDITY_NOISE_STD_G_KG` and `compute_moisture_flux_convergence`). `rng=None` reproduces the
     earlier deterministic field -- for callers/tests exercising the sweep in isolation.
     Returns (humidity, orographic_dump); the orographic dump, a separate rain-shadow channel,
     is not perturbed."""
-    evap_ceiling = _evaporation_ceiling(ocean_temperature_c)
+    evap_ceiling = open_water_humidity_g_kg(ocean_temperature_c)
     zero_land = np.zeros_like(elevation_m)
     land_source = _land_moisture_source(
         air_temperature_c,
@@ -1424,14 +1476,14 @@ def compute_humidity(
     if rng is not None:
         height, width = is_ocean.shape
         correlation_cells = MFC_NOISE_CORRELATION_DEG * height / 180.0  # deg latitude -> rows, resolution-invariant
-        noise = _coherent_noise(rng, (height, width), HUMIDITY_NOISE_STD, correlation_cells, MFC_NOISE_SPECTRAL_BETA)
+        noise = _coherent_noise(rng, (height, width), HUMIDITY_NOISE_STD_G_KG, correlation_cells, MFC_NOISE_SPECTRAL_BETA)
         humidity = humidity + noise
-    # Clamp to [background floor, evaporation ceiling]. The floor keeps a dry continental
+    # Clamp to [background floor, MAX_HUMIDITY_G_KG]. The floor keeps a dry continental
     # interior (or a cell the mean-zero noise above pushed negative) from bottoming out at
-    # exactly zero humidity -- see MIN_BACKGROUND_HUMIDITY. Ocean cells already sit well above
-    # the floor (the evaporation ceiling is >= MIN_EVAPORATION_CEILING), so it only bites on
+    # exactly zero humidity -- see MIN_BACKGROUND_HUMIDITY_G_KG. Ocean cells already sit well above
+    # the floor (open-water humidity is ~2.6 g/kg even over -2 C water), so it only bites on
     # dry land.
-    humidity = np.clip(humidity, MIN_BACKGROUND_HUMIDITY, MAX_EVAPORATION_CEILING)
+    humidity = np.clip(humidity, MIN_BACKGROUND_HUMIDITY_G_KG, MAX_HUMIDITY_G_KG)
     return humidity, orographic
 
 
@@ -1476,7 +1528,7 @@ def compute_moisture_flux_convergence(
     humidity: np.ndarray, wind_u: np.ndarray, wind_v: np.ndarray, lat_deg: np.ndarray,
     rng: np.random.Generator | None = None,
 ) -> np.ndarray:
-    """`-div(humidity * wind)` as a dimensionless, humidity-equivalent field: positive where
+    """`-div(humidity * wind)` as a g/kg-equivalent field: positive where
     the moisture-bearing wind converges (air and its moisture pile up, rise, and rain out --
     the ITCZ, the sub-polar front), negative where it diverges (the subtropical highs, the
     poles). See the `MFC_*` constants for how this feeds `compute_precipitation`.
@@ -1494,7 +1546,7 @@ def compute_moisture_flux_convergence(
     of blobs -- while a partial local weight keeps monsoon-scale departures visible.
 
     `rng`, when given, adds a fractal gaussian perturbation (`_coherent_noise`, std
-    `MFC_NOISE_Q_STD`, correlation length `MFC_NOISE_CORRELATION_DEG`) on top of the blended
+    `MFC_NOISE_STD_G_KG`, correlation length `MFC_NOISE_CORRELATION_DEG`) on top of the blended
     field. The zonal-coherence blend leaves each row nearly flat, which lands the belt edges
     on hard parallels and shows as horizontal banding in the precipitation map; the noise
     warps and stipples those edges the way real convergence zones meander. `rng=None`
@@ -1518,7 +1570,7 @@ def compute_moisture_flux_convergence(
     if rng is None:
         return blended
     correlation_cells = MFC_NOISE_CORRELATION_DEG * height / 180.0  # deg latitude -> rows, resolution-invariant
-    noise = _coherent_noise(rng, (height, width), MFC_NOISE_Q_STD, correlation_cells, MFC_NOISE_SPECTRAL_BETA)
+    noise = _coherent_noise(rng, (height, width), MFC_NOISE_STD_G_KG, correlation_cells, MFC_NOISE_SPECTRAL_BETA)
     return blended + noise
 
 
@@ -1531,22 +1583,22 @@ def compute_precipitation(
     ITCZ, the sub-polar belt), diverging wind suppresses the humidity baseline (subtropical
     highs, the poles). `moisture_flux_convergence=None` reproduces the earlier
     humidity+orographic-only field -- for callers/tests exercising this in isolation."""
-    baseline = PRECIP_HUMIDITY_COEFFICIENT_MM * humidity
-    orographic = OROGRAPHIC_PRECIPITATION_COEFFICIENT * PRECIP_HUMIDITY_COEFFICIENT_MM * orographic_dump
-    # The background-humidity floor (MIN_BACKGROUND_HUMIDITY) carried through as a hard minimum
+    baseline = PRECIP_MM_PER_G_KG * humidity
+    orographic = OROGRAPHIC_PRECIPITATION_COEFFICIENT * PRECIP_MM_PER_G_KG * orographic_dump
+    # The background-humidity floor (MIN_BACKGROUND_HUMIDITY_G_KG) carried through as a hard minimum
     # rainfall -- large-scale subsidence below can scale the *convective* baseline down toward
     # zero (a subtropical high), but it does not suppress the trace delivery that keeps even a
     # permanently-subsiding polar plateau accumulating snow. Applying it as a floor on the
     # final field (rather than only inside `baseline`) is what guarantees precipitation is
-    # never exactly zero anywhere -- see MIN_BACKGROUND_HUMIDITY for why that matters to
+    # never exactly zero anywhere -- see MIN_BACKGROUND_HUMIDITY_G_KG for why that matters to
     # glaciation.
-    floor_mm = PRECIP_HUMIDITY_COEFFICIENT_MM * MIN_BACKGROUND_HUMIDITY
+    floor_mm = PRECIP_MM_PER_G_KG * MIN_BACKGROUND_HUMIDITY_G_KG
     if moisture_flux_convergence is None:
         return np.maximum(baseline + orographic, floor_mm)
     converging = np.clip(moisture_flux_convergence, 0.0, None)
     diverging = np.clip(-moisture_flux_convergence, 0.0, None)
-    convergence_rain = PRECIP_HUMIDITY_COEFFICIENT_MM * np.minimum(MFC_CONVERGENCE_GAIN * converging, MFC_CONVERGENCE_MAX_Q)
-    subsidence = 1.0 - np.minimum(MFC_SUBSIDENCE_GAIN * diverging, MFC_SUBSIDENCE_MAX_SUPPRESSION)
+    convergence_rain = PRECIP_MM_PER_G_KG * np.minimum(MFC_CONVERGENCE_GAIN * converging, MFC_CONVERGENCE_MAX_G_KG)
+    subsidence = 1.0 - np.minimum(MFC_SUBSIDENCE_GAIN_PER_G_KG * diverging, MFC_SUBSIDENCE_MAX_SUPPRESSION)
     return np.maximum(baseline * subsidence + orographic + convergence_rain, floor_mm)
 
 
@@ -1657,7 +1709,7 @@ def compute_climate(
         # mix_rng (whose draw count feeds the ocean-current texture) -- so the humidity and
         # moisture-flux-convergence banding noise are each steady between renders of one world
         # state without perturbing each other's draws. Both break the same insolation-driven
-        # zonal banding (see HUMIDITY_NOISE_STD / the MFC_NOISE_* block).
+        # zonal banding (see HUMIDITY_NOISE_STD_G_KG / the MFC_NOISE_* block).
         humidity_rng = np.random.default_rng((world.seed, round(world.elapsed_years), 947))
         mfc_rng = np.random.default_rng((world.seed, round(world.elapsed_years), 811))
         humidity, orographic_dump = compute_humidity(
@@ -1688,7 +1740,7 @@ def compute_climate(
         wind_v=wind_v,
         current_u=current_u,
         current_v=current_v,
-        humidity=humidity,
+        humidity_g_kg=humidity,
         precipitation_mm=precipitation_mm,
         biome_ids=biome_ids,
         swell_rows=swell_rows,
