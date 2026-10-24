@@ -422,7 +422,7 @@ export interface WorldStats {
 async function readNdjsonLines(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   onLine: (line: string) => void,
-  onChunk?: () => void,
+  onChunk?: (byteLength: number) => void,
 ): Promise<void> {
   const decoder = new TextDecoder();
   let buffered = "";
@@ -430,7 +430,7 @@ async function readNdjsonLines(
     for (;;) {
       const { value, done: streamDone } = await reader.read();
       if (streamDone) break;
-      onChunk?.();
+      onChunk?.(value?.byteLength ?? 0);
       buffered += decoder.decode(value, { stream: true });
       const lines = buffered.split("\n");
       buffered = lines.pop() ?? "";
@@ -450,7 +450,7 @@ async function readNdjsonLines(
 async function readStreamMessages(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   onProgress: (msg: Record<string, unknown>) => void,
-  onChunk?: () => void,
+  onChunk?: (byteLength: number) => void,
 ): Promise<Record<string, unknown> | null> {
   let done: Record<string, unknown> | null = null;
   await readNdjsonLines(
@@ -982,6 +982,14 @@ export async function animateWorld(
   onProgress?: (progress: AnimateProgress) => void,
   cancelSignal?: AbortSignal,
 ): Promise<AnimateResponse> {
+  const startedAt = Date.now();
+  let stage = "request";
+  let chunksReceived = 0;
+  let bytesReceived = 0;
+  let lastFrame = 0;
+  let lastProgressAt: number | null = null;
+  let responseStatus: number | null = null;
+  let responseContentType: string | null = null;
   // Idle watchdog: abort the fetch if no bytes arrive for ANIMATE_IDLE_TIMEOUT_MS. Rearmed
   // on every chunk (see the read loop below), so an actively-streaming run never trips it.
   const idleAbort = new AbortController();
@@ -1016,31 +1024,79 @@ export async function animateWorld(
       }),
       signal: idleAbort.signal,
     });
+    responseStatus = resp.status;
+    responseContentType = resp.headers.get("content-type");
+    stage = "response body";
     if (!resp.ok || !resp.body) {
       const detail = await resp.text();
       throw new Error(`${resp.status} ${resp.statusText}: ${detail}`);
     }
+    console.info("[mantle-bloom] Animation stream opened", {
+      status: responseStatus,
+      contentType: responseContentType,
+      projection,
+      view,
+      width,
+      height,
+      requestedFrames: numFrames,
+      stepsPerFrame,
+    });
 
+    stage = "reading animation stream";
     const done = await readStreamMessages(
       resp.body.getReader(),
-      (msg) =>
+      (msg) => {
+        lastFrame = Number(msg.frame) || lastFrame;
+        lastProgressAt = Date.now();
         onProgress?.({
           frame: msg.frame as number,
           total: msg.total as number,
           imageBase64: msg.image_base64 as string | undefined,
           elapsedYears: msg.elapsed_years as number,
           stats: (msg.stats as WorldStats | null | undefined) ?? undefined,
-        }),
-      rearmIdleTimer,
+        });
+      },
+      (byteLength) => {
+        chunksReceived++;
+        bytesReceived += byteLength;
+        rearmIdleTimer();
+      },
     );
 
     if (!done) throw new Error("animation stream ended without a result");
+    console.info("[mantle-bloom] Animation stream completed", {
+      lastFrame,
+      chunksReceived,
+      bytesReceived,
+      elapsedMs: Date.now() - startedAt,
+      stoppedEarly: Boolean(done.stopped_early),
+    });
     return {
       ...worldSummaryFrom(done),
       videoBase64: done.video_base64 as string,
       mime: done.mime as string,
       stoppedEarly: Boolean(done.stopped_early),
     };
+  } catch (error) {
+    const diagnostic = {
+      stage,
+      responseStatus,
+      responseContentType,
+      lastFrame,
+      chunksReceived,
+      bytesReceived,
+      elapsedMs: Date.now() - startedAt,
+      msSinceLastProgress: lastProgressAt === null ? null : Date.now() - lastProgressAt,
+      aborted: idleAbort.signal.aborted,
+      abortReason: idleAbort.signal.reason instanceof Error ? idleAbort.signal.reason.message : undefined,
+      errorName: error instanceof Error ? error.name : typeof error,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    };
+    console.error("[mantle-bloom] Animation stream failed", diagnostic, error);
+    throw new Error(
+      `Animation failed during ${stage} after frame ${lastFrame} (${chunksReceived} chunks, ${bytesReceived} bytes): ${diagnostic.errorName}: ${diagnostic.errorMessage}`,
+      { cause: error },
+    );
   } finally {
     clearTimeout(idleTimer);
   }
