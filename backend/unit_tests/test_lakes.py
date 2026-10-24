@@ -310,6 +310,40 @@ def test_perched_water_does_not_merge_parent_or_govern_its_spill_rim():
     assert not depth.any()
 
 
+def test_equal_floor_merge_stays_connected_when_child_depths_are_zero():
+    # Equal-height sinks merge at their shared floor. Their stored mean depths are zero, but
+    # their dry levels still reach the saddle, so the persisted parent must not emit a new
+    # merge event or route the sinks through the child rims on every step (#520).
+    elevation = np.array([12.0, 12.0, 20.0, -10.0])
+    left = lakes.Lake(
+        lake_id=0, members=np.array([0]), floor_elevation=12.0, min_depth=12.0,
+        max_depth=12.0, outlet_node_idx=0, sink_node_idx=0, outlet_target_idx=1,
+    )
+    right = lakes.Lake(
+        lake_id=1, members=np.array([1]), floor_elevation=12.0, min_depth=12.0,
+        max_depth=12.0, outlet_node_idx=1, sink_node_idx=1, outlet_target_idx=0,
+    )
+    parent = lakes.Lake(
+        lake_id=2, members=np.array([0, 1]), floor_elevation=12.0, min_depth=12.0,
+        max_depth=20.0, children=[left, right], outlet_node_idx=1, outlet_target_idx=2,
+    )
+    prev_lake_depth = np.zeros(len(elevation))
+
+    assert lakes.governing_bodies([parent], elevation, prev_lake_depth) == [parent]
+    filled, spill, rim = lakes.compute_spill_routing([parent], elevation, prev_lake_depth)
+    assert filled[0] == filled[1] == 20.0
+    assert spill[0] == spill[1] == 2
+    assert rim[0] == rim[1] == 1
+
+    depth, _, _, events = lakes.resolve_lakes(
+        [parent], elevation, prev_lake_depth, years=100_000,
+        is_frozen=np.zeros(len(elevation), dtype=bool), climate=_climate(np.zeros(len(elevation))),
+    )
+    assert not depth.any()
+    assert events == []
+    assert parent.current_water_elevation == 12.0
+
+
 def test_compute_spill_routing_endorheic_basin_never_spills():
     elevation = np.array([5.0, 15.0, 8.0])
     is_ocean = np.array([False, False, False])

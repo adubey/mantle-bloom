@@ -321,13 +321,14 @@ parent merges this step when a child's main water body reaches the shared saddle
 merged body is pinned at the saddle for continuity. A parent counts as already merged on a
 later step only when the main water in every child reaches that saddle. `_already_merged`
 checks each child's sink cell (or the lowest cell of a composite child) and inverts its mean
-depth through `CellHypsometry`; perched water elsewhere in the upstream catchment cannot make
-the parent look connected. `compute_spill_routing` uses the same check, so a false merge cannot
-also give every child sink the parent's distant rim. If an already-merged lake recedes below
-its saddle, it splits back into its children, each resolved at its own balanced level that same
-step. No cross-step `Lake`-object registry is needed -- continuity comes from the persisted
-per-node `lake_depth` array rather than matching this step's freshly rebuilt tree against last
-step's by member overlap.
+depth through `CellHypsometry`; at zero mean depth it uses that cell's dry level, so equal-floor
+basins merged at their shared floor remain connected. Perched water elsewhere in the upstream
+catchment cannot make the parent look connected. `compute_spill_routing` uses the same check,
+so a false merge cannot also give every child sink the parent's distant rim. If an already-merged
+lake recedes below its saddle, it splits back into its children, each resolved at its own
+balanced level that same step. No cross-step `Lake`-object registry is needed -- continuity
+comes from the persisted per-node `lake_depth` array rather than matching this step's freshly
+rebuilt tree against last step's by member overlap.
 
 **Lakes accumulate silt.** `silt_depth` (a persistent per-node field, carried exactly like `lake_depth`) is a
 small volume fraction (`SILT_ACCUMULATION_COEFFICIENT`, m^3 of silt per m^3 of water) of the

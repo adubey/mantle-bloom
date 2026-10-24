@@ -791,8 +791,9 @@ def _already_merged(
     `members` also contains perched sub-basins in the upstream catchments. Their water level
     says nothing about whether the main bodies on both sides of this saddle are connected, so
     inspect each child's floor (its sink for a leaf) instead of the highest wet member. The
-    floor cell's mean depth is inverted through the hypsometry to recover its water surface;
-    this preserves exact-saddle merges when a boundary cell itself has zero mean depth.
+    floor cell's mean depth is inverted through the hypsometry to recover its water surface.
+    At zero depth, use the cell's dry level so equal-floor basins that merge at their shared
+    floor remain connected across steps (#520).
 
     When checking persisted water, all children must have reached the saddle. New merges during
     this step use the children’s just-resolved levels directly in `_MERGE_CHECK`.
@@ -805,11 +806,12 @@ def _already_merged(
         floor_idx = child.sink_node_idx
         if floor_idx < 0:
             floor_idx = int(child.members[np.argmin(elevation[child.members])])
+        floor_cell = np.array([floor_idx])
         depth = float(lake_depth[floor_idx])
         if depth <= 0.0:
-            reached_saddle.append(False)
-            continue
-        level = float(hyps.level_from_depth(np.array([depth]), np.array([floor_idx]))[0])
+            level = hyps.dry_level(floor_cell)
+        else:
+            level = float(hyps.level_from_depth(np.array([depth]), floor_cell)[0])
         reached_saddle.append(level >= lake.min_depth - 1e-6)
     return all(reached_saddle)
 
