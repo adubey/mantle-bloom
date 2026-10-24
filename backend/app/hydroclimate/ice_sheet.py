@@ -128,6 +128,15 @@ class G0Config:
     march_tolerance: float = 1.0e-3  # |dV|/V between two-substep means counted as settled
     march_patience: int = 3  # settled substeps in a row before holding
     march_max_years: float = 100_000.0  # longest march before holding regardless (logged)
+    # Arm (m2): lagged inputs read the mean of the last two substeps' ice, which cancels the
+    # residual two-substep alternation; substeps grow while the march is smooth and shrink when
+    # it alternates; and the march runs to the end of the step if the ice never settles.
+    march_damped: bool = False
+    march_adaptive: bool = False
+    march_min_substep_years: float = 250.0
+    march_max_substep_years: float = 10_000.0
+    # Membership and yield stress read this instead of the opening ice when set (m2).
+    reference_depth: np.ndarray | None = None
     ddf_snow_mm: float = 4.0
     ddf_ice_mm: float = 8.0
     rain_snow_c: float = 1.0
@@ -1016,7 +1025,10 @@ def step_ice(
                 bodies.append(body)
         return trial, bodies, in_domain, scratch, (members, is_warm0 if np.any(members) else None)
 
-    out, bodies, in_domain, scratch, used = solve_bodies(h0)
+    reference = G0.reference_depth
+    if reference is None or len(reference) != n:
+        reference = h0
+    out, bodies, in_domain, scratch, used = solve_bodies(np.where(h0 > 0.0, reference, 0.0) if reference is not h0 else h0)
     if G0.reevaluate_membership:
         # Arm (f): re-read membership and yield stress at the solved thickness, at most
         # G0_MEMBERSHIP_ITERATIONS times; keep the last iterate if it hasn't settled.

@@ -1021,16 +1021,25 @@ def _g0_march_ice(world, points, neighbor_idx, elevation, deflection, areas, pre
     ice = None
     recent: list[tuple] = []
     change = None
+    previous_depth, previous_heat = depth, heat
+    flips = 0
     while elapsed < years - 1e-6:
         dt = min(sub, years - elapsed)
-        load = lithosphere.grounded_ice_load_kg_m2(depth, unloaded, sea_level)
+        # The lagged inputs read the current ice, or with m2's damping the mean of the last two
+        # substeps' ice (and frictional heat), which cancels a two-substep alternation.
+        ref = 0.5 * (depth + previous_depth) if g0.march_damped else depth
+        ref_heat = heat
+        if g0.march_damped and heat is not None and previous_heat is not None:
+            ref_heat = 0.5 * (heat + previous_heat)
+        load = lithosphere.grounded_ice_load_kg_m2(ref, unloaded, sea_level)
         target = lithosphere.ice_load_deflection(hc, hm, rho_c, load)
         temperature = temperature_at_nodes - ice_sheet.LAPSE_RATE_C_PER_KM * (target - deflection) / 1000.0
-        frozen = (temperature < FREEZE_POINT_C) | (depth >= GLACIER_VISIBLE_DEPTH_M)
-        ice_sheet.G0.frictional_heat_w_m2 = heat
+        frozen = (temperature < FREEZE_POINT_C) | (ref >= GLACIER_VISIBLE_DEPTH_M)
+        ice_sheet.G0.frictional_heat_w_m2 = ref_heat
+        ice_sheet.G0.reference_depth = ref if g0.march_damped else None
         new_depth, melt, ice = ice_sheet.step_ice(
             points, neighbor_idx, areas, elevation, deflection, sea_level, depth,
-            ice_sheet.SurfaceClimate(precipitation, temperature, amplitude, frozen, heat),
+            ice_sheet.SurfaceClimate(precipitation, temperature, amplitude, frozen, ref_heat),
             mobile_cover_m, ocean_mask, allow_ocean_ice, dt,
         )
         substeps += 1
@@ -1041,7 +1050,8 @@ def _g0_march_ice(world, points, neighbor_idx, elevation, deflection, areas, pre
             if key not in ("opening_m3", "closing_m3", "capped_nodes"):
                 setattr(ledger_total, key, getattr(ledger_total, key) + value)
         ledger_total.capped_nodes = max(ledger_total.capped_nodes, ice.ledger.capped_nodes)
-        depth = new_depth
+        previous_depth, depth = depth, new_depth
+        previous_heat = heat
         heat = None if g0.no_friction else _g0_frictional_heat(ice_sheet, mobile_cover_m, ice)
         debit = to_water * float(np.dot(areas, depth))
         sea_level = eustasy._solve_sea_level_connected(world, elevations, hyps_areas, max(0.0, total_water - lakes_trapped - debit))
@@ -1054,7 +1064,16 @@ def _g0_march_ice(world, points, neighbor_idx, elevation, deflection, areas, pre
             pair_before = 0.5 * (volumes[-3] + volumes[-4])
             change = abs(pair_now - pair_before) / max(pair_before, 1.0)
             settled = settled + 1 if change < g0.march_tolerance else 0
-        if settled >= g0.march_patience or elapsed >= g0.march_max_years - 1e-6:
+        if g0.march_adaptive and len(volumes) >= 3:
+            d1, d2 = volumes[-1] - volumes[-2], volumes[-2] - volumes[-3]
+            alternating = d1 * d2 < 0.0 and abs(d1) > g0.march_tolerance * max(volumes[-2], 1.0)
+            if alternating:
+                flips += 1
+                sub = max(sub / 2.0, g0.march_min_substep_years)
+            elif abs(d1) < 0.01 * max(volumes[-2], 1.0):
+                sub = min(sub * 2.0, g0.march_max_substep_years)
+        cap = years if g0.march_adaptive else g0.march_max_years
+        if settled >= g0.march_patience or elapsed >= cap - 1e-6:
             break
     remaining = years - elapsed
     if remaining > 1e-6 and recent:
@@ -1073,6 +1092,8 @@ def _g0_march_ice(world, points, neighbor_idx, elevation, deflection, areas, pre
         "last_change": None if change is None else round(change, 6), "sea_level_m": sea_level,
         "volume_path_km3": [round(v / 1e9) for v in volumes[:: max(1, len(volumes) // 12)]],
     })
+    ice_sheet.G0_MARCH_LOG[-1].update(flips=flips, last_substep_years=sub)
+    ice_sheet.G0.reference_depth = None
     ice.calved_m3 = calved_total
     ice.ledger = ledger_total
     return depth, melt_total, ice

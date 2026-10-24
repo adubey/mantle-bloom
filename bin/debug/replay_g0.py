@@ -21,6 +21,8 @@ origin/main. The arm presets:
   Outside the RFC's list: it tests whether step-to-step climate noise moves fast ice.
 - `m`: (a) marched to equilibrium in short substeps within each step, then held (#554's
   design direction): every fast input is recomputed between substeps.
+- `m2`: (m) with the lagged inputs damped (mean of the last two substeps), adaptive substeps
+  (250 yr to 10 kyr) and no march cap short of the step, at a tighter settling tolerance.
 - `y`, `q`, `x`: diagnostic arms outside the RFC's list, each (a) less one feedback: yield
   stress fixed at the hard-bed value (y), no frictional heat (q), no glacial erosion (x).
 
@@ -64,6 +66,7 @@ ARMS = {
     "q": {"physical": True, "no_friction": True},
     "x": {"physical": True},
     "m": {"physical": True, "march": True},
+    "m2": {"physical": True, "march": True, "march_damped": True, "march_adaptive": True, "march_tolerance": 2.0e-4},
 }
 NO_EROSION_ARMS = {"x"}
 FREEZE_NOISE_ARMS = {"n"}
@@ -80,6 +83,7 @@ def add_arguments(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE", help="override a G0Config field")
     ap.add_argument("--ice-age-period-years", type=float, default=None)
     ap.add_argument("--no-enumerate", action="store_true", help="skip root enumeration on physical arms")
+    ap.add_argument("--sliding-report", action="store_true", help="report where the sliding is fast, per checkpoint")
     ap.add_argument("--freeze-climate-noise", action="store_true", help="arm (n)'s noise freeze on any arm")
 
 
@@ -166,6 +170,25 @@ def summarise_roots(log: list[dict]) -> dict:
     }
 
 
+def sliding_report(ice, areas) -> dict:
+    """Where the diagnosed sliding is fast: the iced area above each speed, and the thickness
+    and balance flux at the fastest 1% of sliding nodes."""
+    iced = ice.thickness > 0.0
+    speed = ice.sliding_speed_m_per_yr
+    total = float(areas[iced].sum()) or 1.0
+    out = {f"area_share_above_{int(v)}_m_per_yr": round(float(areas[iced & (speed > v)].sum()) / total, 5) for v in (100, 1000, 10000)}
+    sliding = np.flatnonzero(speed > 0.0)
+    if len(sliding):
+        top = sliding[np.argsort(-speed[sliding])][: max(1, len(sliding) // 100)]
+        out.update(
+            top_speed_median_m_per_yr=float(np.median(speed[top])),
+            top_thickness_median_m=float(np.median(ice.thickness[top])),
+            top_flux_median_m3_per_yr=float(np.median(ice.balance_flux_m3_per_yr[top])),
+            top_nodes=int(len(top)),
+        )
+    return out
+
+
 def summarise_iterations(log: list[dict]) -> dict | None:
     if not log:
         return None
@@ -243,6 +266,9 @@ def main() -> None:
                     window["ledger"][key] = window["ledger"].get(key, 0.0) + value / 1e9
             window["worst_residual_m3"] = max(window["worst_residual_m3"], abs(ice.ledger.residual_m3))
             window["warm_based_nodes"] = int(np.count_nonzero(ice.warm_based))
+            if args.sliding_report:
+                areas_now = plates_mod.collect_all_accounting_areas_m2(hydro.plates_in_order, line_spacing_rad(world.node_density))
+                window["sliding"] = sliding_report(ice, areas_now)
             window["sliding_max_m_per_yr"] = float(ice.sliding_speed_m_per_yr.max()) if len(ice.sliding_speed_m_per_yr) else 0.0
 
     def close_window(steps: int) -> dict:
@@ -258,6 +284,7 @@ def main() -> None:
             "outer": summarise_outer(window["outer"]),
             "march": window["march"][-1] if window["march"] else None,
             "march_unsettled_steps": sum(not r["settled"] for r in window["march"]),
+            "sliding": window.pop("sliding", None),
         }
         window.update(seconds=0.0, ice_seconds=0.0, ledger={}, worst_residual_m3=0.0, roots=[], membership=[], outer=[], march=[])
         return closed
