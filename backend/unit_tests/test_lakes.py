@@ -303,7 +303,7 @@ def test_perched_water_does_not_merge_parent_or_govern_its_spill_rim():
 
     depth, _, _, events = lakes.resolve_lakes(
         [parent], elevation, prev_lake_depth, years=100_000,
-        is_frozen=np.zeros(len(elevation), dtype=bool), climate=_climate(np.zeros(len(elevation)), 1.0),
+        climate=_climate(np.zeros(len(elevation)), 1.0),
     )
     assert events == []
     assert not depth.any()
@@ -336,7 +336,7 @@ def test_equal_floor_merge_stays_connected_when_child_depths_are_zero():
 
     depth, _, _, events = lakes.resolve_lakes(
         [parent], elevation, prev_lake_depth, years=100_000,
-        is_frozen=np.zeros(len(elevation), dtype=bool), climate=_climate(np.zeros(len(elevation))),
+        climate=_climate(np.zeros(len(elevation))),
     )
     assert not depth.any()
     assert events == []
