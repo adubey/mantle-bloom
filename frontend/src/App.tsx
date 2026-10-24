@@ -51,6 +51,18 @@ import { getCookie, setCookie } from "./cookies";
 // actually loaded, never which backend is serving it.
 const DEBUG_UI = new URLSearchParams(window.location.search).has("deb");
 
+// Current page URL with the `deb` flag added (bare `deb`, no value) -- target of the
+// sidebar's "Debug..." link. Preserves any existing query params and the hash;
+// `&deb` when there is already a query string, `?deb` when there is not.
+function debugUrl(): string {
+  const url = new URL(window.location.href);
+  if (url.searchParams.has("deb")) return url.href;
+  const hash = url.hash;
+  url.hash = "";
+  const separator = url.search ? "&" : "?";
+  return `${url.href}${separator}deb${hash}`;
+}
+
 const DISPLAY_WIDTH = 1100;
 const DISPLAY_HEIGHT = 611;
 const RENDER_SCALE = 2;
@@ -1224,6 +1236,13 @@ export default function App() {
           <p style={{ opacity: 0.7, marginTop: 0, marginBottom: 16 }}>
             Physical World Builder
           </p>
+          {/* Reloads the same page with &deb added, turning on the developer-only UI
+              described at DEBUG_UI above. Hidden once already in debug mode. */}
+          {!DEBUG_UI && (
+            <a href={debugUrl()} style={{ fontSize: 11, textAlign: "center", color: "#5b8cff" }}>
+              Debug...
+            </a>
+          )}
           <AdminSession />
 
           <button
