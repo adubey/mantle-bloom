@@ -819,7 +819,7 @@ The River Inspector draws river paths and lets the user select one to see its fl
 It is a way to inspect current model data, not a separate river simulation.
 
 A third interactive map mode, same "raw JSON, client renders it" philosophy as
-[Plate Inspector](rendering-and-inspectors.md#plate-inspector): `GET /world/rivers` returns every distinct river
+[Plate Inspector](rendering-and-inspectors.md#plate-inspector): `GET /worlds/{world_id}/rivers` returns every distinct river
 network's flow-edge segments plus mouth metadata, plus the current coastline
 (`coastline_segments` -- see [Coastline](#coastline-coastlinepy); this view has no filled backdrop at
 all, so without it there'd be no land/ocean/lake cue whatsoever), as plain JSON, and
@@ -846,10 +846,10 @@ push it over the percentile cut. With no grouping into distinct networks otherwi
 that grouping with union-find over `flow_target` edges restricted to nodes that are `is_river`
 on *both* ends. Adjacent selected nodes stay in one component; disconnected selected segments
 remain separate. Grouping is recomputed
-fresh from `world.hydrology_cache` on every `/world/rivers` (and `/world/river_at`) call
+fresh from `world.hydrology_cache` on every `/worlds/{world_id}/rivers` (and `/worlds/{world_id}/river_at`) call
 rather than persisted -- `hydrology_cache` itself is already at most one step stale by design,
 and grouping it is cheap, so a `river_id` is only ever meaningful against the most recent
-`/world/rivers` response for that reason, not a stable identity across steps (unlike
+`/worlds/{world_id}/rivers` response for that reason, not a stable identity across steps (unlike
 `plate_id`, which survives a plate's whole lifetime). `App.tsx` resets `selectedRiverId` on
 every step for the same reason, not just on generate.
 
@@ -895,7 +895,7 @@ draws a ring** (`ctx.arc`, a new drawing primitive Plate Inspector doesn't need 
 colored by `mouth_type` (`ocean`/`lake`/`other` each a distinct hue) so the endpoint
 classification is visible at a glance, not just in the sidebar text.
 
-**Click-to-select** is a server round trip (`GET /world/river_at`), the same nearest-node
+**Click-to-select** is a server round trip (`GET /worlds/{world_id}/river_at`), the same nearest-node
 `cKDTree` hit-test pattern as `plate_at` (`hydrology.river_at`, searching every network's own
 member points at once) -- there's no shape to point-in-polygon test against, only a sparse
 node cloud, so this is the natural fit rather than a departure from the pattern. No baked-PNG
@@ -908,7 +908,7 @@ The Lake Inspector shows lakes and their drainage basins. Selecting land can als
 basin or tell the user that water drains directly to the ocean.
 
 A fourth interactive map mode, same "raw JSON, client renders it" philosophy as
-[River Inspector](#river-inspector): `GET /world/lakes` returns every currently-visible lake's
+[River Inspector](#river-inspector): `GET /worlds/{world_id}/lakes` returns every currently-visible lake's
 basin info as plain JSON, and `frontend/src/LakeInspector.tsx` renders and drives the
 interaction entirely client-side -- reusing the same rotation gesture and Tab/Shift+Tab
 cycling pattern as the other inspectors, plus a click that always resolves to *something*
@@ -941,9 +941,9 @@ _lake_basin_summary` filters to `fields.lake_depth`-wet members before reporting
 `member_count`/`floor_xyz` whenever `is_lake` is true; a dry basin has no such distinction to
 make, so it keeps reporting its whole catchment.
 
-**A land click always resolves to a basin, not just a lake hit.** `GET /world/lake_at` finds
+**A land click always resolves to a basin, not just a lake hit.** `GET /worlds/{world_id}/lake_at` finds
 the node nearest the click, then classifies it into one of four `kind`s: `"lake"` (currently
-flooded -- same info shape as a `/world/lakes` entry), `"basin"` (dry land that's still part of
+flooded -- same info shape as a `/worlds/{world_id}/lakes` entry), `"basin"` (dry land that's still part of
 a real catchment -- `main._leaf_lakes_by_node` maps every catchment-owning node straight to its
 own leaf `Lake`, no hierarchy walk needed since a dry click doesn't need to align with any
 currently-merged water body), `"no_basin"` (an ordinary hillslope whose steepest-descent chain
@@ -973,8 +973,8 @@ basin actually has a live `outflow_river`, its full segment path is drawn too --
 Inspector's own river color, at its own "selected" line width -- so a spilling lake's actual
 outflow reads as a real river leaving the basin, not just another ring at the rim. The same
 `coastline_segments` River Inspector already fetches is reused rather than a second copy, since
-`/world/lakes` computes the identical boundary -- both endpoints expose it independently
-(matching `/world/rivers`' own precedent) but the frontend only needs to fetch it once.
+`/worlds/{world_id}/lakes` computes the identical boundary -- both endpoints expose it independently
+(matching `/worlds/{world_id}/rivers`' own precedent) but the frontend only needs to fetch it once.
 `LakeInspector.tsx` projects each of those coastline edges with the same two-point,
 antimeridian-safe technique River Inspector's own segments use (unwrap the second endpoint's
 longitude relative to the first's -- see River Inspector's own Rendering section above): an
@@ -1032,7 +1032,7 @@ inside a landmass that itself isn't one), so there's no ordering to preserve any
 (reusing `_project_offset`, same antimeridian-seam handling `_draw_rivers` already needs, for
 the same reason: a real, short step between two adjacent grid points can still land on
 opposite sides of the seam once the view can rotate arbitrarily) and strokes it into the
-temperature/humidity/precipitation PNGs, plus a legend entry. `GET /world/rivers` sends the
+temperature/humidity/precipitation PNGs, plus a legend entry. `GET /worlds/{world_id}/rivers` sends the
 same segments as `coastline_segments` (world-space xyz, same shape as `river.segments`) for
 the River Inspector to project and draw itself -- see [River Inspector](#river-inspector).
 Both call `coastline.compute_coastline_segments` directly rather than each re-deriving the

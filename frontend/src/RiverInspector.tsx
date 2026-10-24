@@ -9,6 +9,7 @@ import { beginInspectorFrame, strokeCoastline, strokeSegments } from "./inspecto
 import { cycleId } from "./screenProjector";
 
 interface Props extends InspectorViewProps {
+  worldId: string;
   rivers: RiverSummary[];
   coastlineSegments: Segment[];
   selectedRiverId: number | null;
@@ -34,12 +35,12 @@ const MOUTH_RING_RADIUS_PX = 7;
 
 
 // Renders every river network's flow-edge segments (see backend app/hydrology.py's
-// group_rivers and GET /world/rivers) as an interactive display -- no server-baked PNG for
+// group_rivers and GET /worlds/{world_id}/rivers) as an interactive display -- no server-baked PNG for
 // this view, same "raw JSON, client draws it" philosophy as PlateInspector.tsx. Every river
 // is always drawn, dim; the selected one is drawn last, bright, plus a ring at its own mouth
 // (colored by endpoint type). Reuses the same long-press-drag rotate gesture as MapCanvas/
 // PlateInspector (see rotationDrag.ts) plus click-to-select and Tab/Shift+Tab to cycle rivers.
-export default function RiverInspector({ rivers, coastlineSegments, selectedRiverId, onSelectRiver, ...view }: Props) {
+export default function RiverInspector({ worldId, rivers, coastlineSegments, selectedRiverId, onSelectRiver, ...view }: Props) {
   const { width, height, projection, rotation } = view;
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -84,7 +85,7 @@ export default function RiverInspector({ rivers, coastlineSegments, selectedRive
 
   // A click on a river too minor to draw selects nothing, rather than an invisible river.
   const pickRiver = (latDeg: number, lonDeg: number) =>
-    fetchRiverAt(latDeg, lonDeg).then(({ river_id }) => {
+    fetchRiverAt(worldId, latDeg, lonDeg).then(({ river_id }) => {
       const visibleRiverId = rivers.some(
         (river) => river.river_id === river_id && isVisibleRiver(river),
       ) ? river_id : null;

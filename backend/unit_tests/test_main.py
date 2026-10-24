@@ -20,27 +20,63 @@ from app.plates import MAX_AUTO_PLATES, MIN_AUTO_PLATES
 from .river_fixtures import spill_hop_fields
 
 
+_default_session = None
+
+
 def _reset_app_state():
-    main._state["world"] = None
-    main._animation_stop_event.clear()
+    """Drop every registered world and create one fresh empty default session
+    (#563). Tests address it through the `_WorldClient` wrapper below, which
+    maps the old unqualified `/world/*` paths onto its `/worlds/{id}/*` paths,
+    so test bodies keep the URLs they were written against."""
+    global _default_session
+    for session in main._registry.list():
+        if session.runner is not None:
+            session.runner.close()
+        main._registry.remove(session.world_id)
+    _default_session = main._registry.create(name="test")
+    main._wire_session(_default_session)
+    _default_session.is_public = True
+    _default_session.world = None
+    _default_session.animation_stop_event.clear()
+
+
+class _WorldClient:
+    """Maps `/world/*` (and `/world/debug_scenarios`) onto the default test
+    world's `/worlds/{id}/*` (and `/debug/scenarios`) paths."""
+
+    def __init__(self, inner):
+        self._inner = inner
+
+    def _map(self, url: str) -> str:
+        if url.startswith("/world/debug_scenarios"):
+            return "/debug/scenarios" + url[len("/world/debug_scenarios"):]
+        if url == "/world" or url.startswith("/world/") or url.startswith("/world?"):
+            return f"/worlds/{_default_session.world_id}" + url[len("/world"):]
+        return url
+
+    def get(self, url, **kwargs):
+        return self._inner.get(self._map(url), **kwargs)
+
+    def post(self, url, **kwargs):
+        return self._inner.post(self._map(url), **kwargs)
 
 
 @pytest.fixture
 def client():
-    """A TestClient over a fresh app.main: no world, no pending animation stop. app.main keeps
-    its world, busy lock and stop signal in module globals, so without this reset each test
-    saw whatever the previous one left behind -- the *_before_generate_returns_404 tests only
-    passed by running before any generate in source order (#334). A test that needs a world
-    generates its own. Teardown also fails a test that leaves `_world_lock` held (releasing
-    it first, so the leak doesn't cascade into every later test as a 503 or a hang)."""
+    """A TestClient over a fresh app.main: one empty default world, no pending
+    animation stop. Without this reset each test saw whatever world the
+    previous one left behind. A test that needs a populated world generates
+    its own. Teardown also fails a test that leaves the session lock held
+    (releasing it first, so the leak doesn't cascade into every later test
+    as a 503 or a hang)."""
     _reset_app_state()
     # A loopback client on a loopback host: the local no-login path, so these tests exercise
     # the routes rather than the auth guard (test_auth.py covers that, #372).
-    yield TestClient(app, base_url="http://localhost", client=("127.0.0.1", 50000))
+    yield _WorldClient(TestClient(app, base_url="http://localhost", client=("127.0.0.1", 50000)))
     _reset_app_state()
-    if main._world_lock.locked():
-        main._world_lock.release()
-        pytest.fail("test left app.main._world_lock held")
+    if _default_session.lock.locked():
+        _default_session.lock.release()
+        pytest.fail("test left the default session lock held")
 
 
 def _decode_image(body: dict) -> Image.Image:
@@ -171,15 +207,15 @@ def _wait_until(predicate, timeout: float = 5.0, interval: float = 0.05) -> bool
     return result
 
 
-def test_client_fixture_discards_state_left_by_an_earlier_test(request):
+def test_client_fixture_discards_state_left_by_an_earlier_test(client):
     # Stand-ins for what a previous test could leave behind: its generated world and an
-    # animate stop that nothing consumed. The fixture must clear both, or the 404 tests below
-    # depend on their position in the file (#334).
-    main._state["world"] = object()
-    main._animation_stop_event.set()
-    client = request.getfixturevalue("client")
-    assert main._state["world"] is None
-    assert not main._animation_stop_event.is_set()
+    # animate stop that nothing consumed. A fresh setup must clear both, or the 404 tests
+    # below depend on their position in the file (#334).
+    _default_session.world = object()
+    _default_session.animation_stop_event.set()
+    _reset_app_state()
+    assert _default_session.world is None
+    assert not _default_session.animation_stop_event.is_set()
     assert client.get("/world/stats").status_code == 404
 
 
@@ -191,8 +227,8 @@ def test_generate_forwards_cratons_first_choice(client, monkeypatch):
         yield ("world", object())
 
     monkeypatch.setattr(main, "generate_world_progress", fake_generate_world_progress)
-    monkeypatch.setattr(main, "_set_world", lambda world: None)
-    monkeypatch.setattr(main, "_summary", lambda world: {"seed": 7})
+    monkeypatch.setattr(main, "_set_world", lambda session, world: None)
+    monkeypatch.setattr(main, "_summary", lambda session, world: {"seed": 7})
 
     response = _post_generate(client, json={"seed": 7, "cratons_first": True})
 
@@ -222,7 +258,7 @@ def test_render_before_generate_returns_404(client):
 def test_cross_section_route_renders_image_and_keeps_request_validation(client, monkeypatch):
     assert client.get("/world/cross-section").status_code == 404
 
-    main._state["world"] = object()
+    _default_session.world = object()
     monkeypatch.setattr(
         main.cross_section_view,
         "render_png_base64",
@@ -246,7 +282,7 @@ def test_step_rejects_invalid_years(client):
     # each step costs seconds of CPU regardless of its size. Non-finite values
     # go as raw bodies: httpx's json= refuses to serialize them.
     _post_generate(client, json={"seed": 9, "num_plates": 6})
-    before = main._state["world"].elapsed_years
+    before = _default_session.world.elapsed_years
     for years in (0, -1_000_000, main.MAX_STEP_YEARS + 1):
         resp = _post_step(client, json={"years": years})
         assert resp.status_code == 400, years
@@ -256,7 +292,7 @@ def test_step_rejects_invalid_years(client):
         )
         assert resp.status_code == 400, raw
     # Rejected before any stepping: the world has not advanced.
-    assert main._state["world"].elapsed_years == before
+    assert _default_session.world.elapsed_years == before
 
 
 def test_step_accepts_ui_step_sizes_and_run_accepts_the_max(client):
@@ -266,7 +302,7 @@ def test_step_accepts_ui_step_sizes_and_run_accepts_the_max(client):
     _post_generate(client, json={"seed": 9, "num_plates": 6})
     resp = _post_step(client, json={"years": 10_000_000})
     assert resp.status_code == 200
-    assert main._state["world"].elapsed_years == 10_000_000.0
+    assert _default_session.world.elapsed_years == 10_000_000.0
     resp = client.post(
         "/world/run", json={"running": False, "step_years": main.MAX_STEP_YEARS}
     )
@@ -392,7 +428,7 @@ def test_step_disconnect_mid_stream_still_finishes_the_step(client):
     # to completion first, so the step still fully applies -- proven here by disconnecting
     # after only 3 of a 10-plate step's 22 total NDJSON lines (21 progress fractions + done).
     _post_generate(client, json={"seed": 1, "num_plates": 10})
-    chunk_count = _post_streaming_then_disconnect("/world/step", {"years": 1_000_000}, disconnect_after_chunks=3)
+    chunk_count = _post_streaming_then_disconnect(f"/worlds/{_default_session.world_id}/step", {"years": 1_000_000}, disconnect_after_chunks=3)
     assert chunk_count == 3  # confirms the scenario really did cut the stream short
 
     _wait_until(lambda: client.get("/world/summary").json()["elapsed_years"] == 1_000_000.0)
@@ -406,7 +442,7 @@ def test_generate_disconnect_mid_stream_still_finishes_generating(client):
     # complete, usable world in `_state` once mantle-center fitting and the
     # finish_generation bootstrap finish server-side.
     chunk_count = _post_streaming_then_disconnect(
-        "/world/generate", {"seed": 1, "num_plates": 10}, disconnect_after_chunks=1,
+        f"/worlds/{_default_session.world_id}/generate", {"seed": 1, "num_plates": 10}, disconnect_after_chunks=1,
     )
     assert chunk_count == 1  # confirms the scenario really did cut the stream short
 
@@ -420,7 +456,7 @@ def test_overlapping_step_returns_503(client, monkeypatch):
     _post_generate(client, json={"seed": 1, "num_plates": 6})
 
     # Makes the first /world/step's own critical section deterministically overlap the
-    # second's: the blocking replacement only runs (and lets app.main._world_lock be released)
+    # second's: the blocking replacement only runs (and lets app._default_session.lock be released)
     # once entered_step_world confirms the first request is already holding the lock, so the
     # second request's 503 isn't a race on request scheduling order.
     entered_step_world = threading.Event()
@@ -590,7 +626,7 @@ def test_generate_defaults_to_quad_surfaces(client):
     resp = _post_generate(client, json={"seed": 1, "num_plates": 6, "node_density": 0.5})
 
     assert resp.status_code == 200
-    assert all(isinstance(plate, PlateWithSparseQuadPatch) for plate in main._state["world"].plates)
+    assert all(isinstance(plate, PlateWithSparseQuadPatch) for plate in _default_session.world.plates)
 
 
 def test_generate_returns_a_generation_event(client):
@@ -613,7 +649,6 @@ def test_debug_scenarios_lists_every_scenario_with_a_label(client):
 
 
 def test_generate_debug_returns_summary_with_diagnostics_on(client):
-    from app import main
 
     resp = client.post("/world/generate_debug", json={"scenario": "two_plate_divergent", "seed": 3})
     assert resp.status_code == 200
@@ -621,7 +656,7 @@ def test_generate_debug_returns_summary_with_diagnostics_on(client):
     assert body["num_plates"] == 2
     assert body["elapsed_years"] == 0.0
     assert body["seed"] == 3
-    world = main._state["world"]
+    world = _default_session.world
     assert world.debug_diagnostics is True
     assert len(world.pinned_omegas) == 2
 
@@ -910,10 +945,10 @@ def test_node_at_rejects_non_finite_query(client):
 
 def test_node_at_reports_a_nearby_removed_point(client):
     import numpy as np
-    from app import geometry, main
+    from app import geometry
 
     _post_generate(client, json={"seed": 12, "num_plates": 8})
-    world = main._state["world"]
+    world = _default_session.world
     query_lat_deg, query_lon_deg = 10.0, 20.0
     query_xyz = geometry.latlon_to_xyz(math.radians(query_lat_deg), math.radians(query_lon_deg))
     world.elapsed_years = 7_000_000.0
@@ -960,7 +995,7 @@ def test_elevation_point_at_returns_the_nearest_node(client):
 
 def test_surface_node_lookup_uses_storage_neutral_node_id(client):
     _post_generate(client, json={"seed": 12, "num_plates": 8})
-    world = main._state["world"]
+    world = _default_session.world
     plate = next(plate for plate in world.plates if plate.node_count() > 0)
     node_id = plate.surface_nodes().node_ids[0]
 
@@ -1324,7 +1359,6 @@ def test_animate_steps_per_frame_runs_every_step_but_renders_only_the_last(clien
     # total, even though only 3 frames are ever rendered/encoded -- see
     # render_image.stream_animation_mp4's own docstring for why this isn't the same as one
     # bigger step_world(world, steps_per_frame * step_years) call per frame.
-    from app import main
 
     _post_generate(client, json={"seed": 9, "num_plates": 6})
     resp = client.post(
@@ -1338,7 +1372,7 @@ def test_animate_steps_per_frame_runs_every_step_but_renders_only_the_last(clien
     # Each rendered frame is still steps_per_frame * step_years further along than the last.
     assert [m["elapsed_years"] for m in progress] == [0.0, 1_000_000.0, 2_000_000.0]
 
-    world = main._state["world"]
+    world = _default_session.world
     assert world.steps_taken == 8  # (num_frames - 1) * steps_per_frame real step_world calls
     assert world.elapsed_years == 2_000_000.0
 
@@ -1459,12 +1493,11 @@ def test_step_advances_atmosphere_cfd_by_its_own_fixed_seconds(client):
     # by its own fixed real-time increment per step (atmosphere_cfd.SECONDS_PER_TECTONIC_STEP)
     # -- reaches into main.py's internal `_state` since this is not surfaced through any HTTP
     # response.
-    from app import main
     from app.hydroclimate import atmosphere_cfd
 
     _post_generate(client, json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
     client.post("/world/controls", json={"wind_model": "cfd"})  # the CFD solve only advances under "cfd" (default is "diagnostic")
-    world = main._state["world"]
+    world = _default_session.world
     assert world.atmosphere_cfd_state.elapsed_seconds == 0.0
 
     resp = _post_step(client, json={"years": 1_000_000})
@@ -1473,11 +1506,10 @@ def test_step_advances_atmosphere_cfd_by_its_own_fixed_seconds(client):
 
 
 def test_step_does_not_advance_fluid_dynamics_when_climate_biomes_paused(client):
-    from app import main
 
     _post_generate(client, json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
     client.post("/world/controls", json={"simulate_climate_biomes": False})
-    world = main._state["world"]
+    world = _default_session.world
 
     resp = _post_step(client, json={"years": 1_000_000})
     assert resp.status_code == 200
@@ -1485,10 +1517,9 @@ def test_step_does_not_advance_fluid_dynamics_when_climate_biomes_paused(client)
 
 
 def test_controls_ice_age_frequency_round_trip(client):
-    from app import main
 
     _post_generate(client, json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
-    world = main._state["world"]
+    world = _default_session.world
     assert world.ice_age_period_years == 0.0
     assert client.post("/world/controls", json={}).json()["ice_age_period_years"] == 0.0
 
@@ -1504,10 +1535,9 @@ def test_controls_ice_age_frequency_round_trip(client):
 
 
 def test_controls_debug_diagnostics_round_trip(client):
-    from app import main
 
     _post_generate(client, json={"seed": 12, "num_plates": 6})
-    world = main._state["world"]
+    world = _default_session.world
     assert world.debug_diagnostics is False
     assert client.post("/world/controls", json={}).json()["debug_diagnostics"] is False
 
@@ -1518,10 +1548,9 @@ def test_controls_debug_diagnostics_round_trip(client):
 
 
 def test_controls_wind_model_toggle_and_validation(client):
-    from app import main
 
     _post_generate(client, json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
-    world = main._state["world"]
+    world = _default_session.world
     assert world.wind_model == "diagnostic"
 
     resp = client.post("/world/controls", json={"wind_model": "cfd"})
@@ -1546,10 +1575,9 @@ def test_controls_wind_model_toggle_and_validation(client):
 
 
 def test_controls_fault_deformation_mode_toggle_and_validation(client):
-    from app import main
 
     _post_generate(client, json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
-    world = main._state["world"]
+    world = _default_session.world
     assert world.fault_deformation_mode == "fault"
 
     for mode in ("boundary", "both", "fault"):
@@ -1563,10 +1591,9 @@ def test_controls_fault_deformation_mode_toggle_and_validation(client):
 
 
 def test_controls_node_cloud_resample_mode_toggle_and_validation(client):
-    from app import main
 
     _post_generate(client, json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
-    world = main._state["world"]
+    world = _default_session.world
     assert world.node_cloud_resample_mode == "kdtree"
 
     for mode in ("healpix", "kdtree"):
@@ -1592,11 +1619,10 @@ def test_earthquakes_endpoint(client):
 
 
 def test_controls_tuning_multipliers_round_trip_and_validate(client):
-    from app import main
     from app.world import TUNING_MULTIPLIER_FIELDS
 
     _post_generate(client, json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
-    world = main._state["world"]
+    world = _default_session.world
 
     # Default: every knob reads 1.0, and an untouched POST echoes them all.
     body = client.post("/world/controls", json={}).json()
@@ -1633,17 +1659,19 @@ def store(client, tmp_path, monkeypatch):
     from app import checkpoint
 
     monkeypatch.setenv(checkpoint.CHECKPOINT_DIR_ENV, str(tmp_path))
-    monkeypatch.setattr(main, "_checkpoint_store", None)
+    monkeypatch.setattr(main, "_checkpoint_root", checkpoint.CheckpointStore(tmp_path))
     monkeypatch.setattr(main, "_checkpoint_error", None)
+    _default_session.checkpoint_store = main._checkpoint_root.for_world(_default_session.world_id)
+    main._save_index()
 
     def fake_step(world, years):
         world.elapsed_years += years
         yield 1.0
 
     monkeypatch.setattr(main, "step_world_progress", fake_step)
-    yield checkpoint.CheckpointStore(tmp_path)
-    main._runner.set_status(checkpoint.RunStatus(), persist=False)
-    with main._world_lock:
+    yield _default_session.checkpoint_store
+    _default_session.runner.set_status(checkpoint.RunStatus(), persist=False)
+    with _default_session.lock:
         pass
 
 
@@ -1667,7 +1695,7 @@ def test_restart_restores_a_stopped_world_at_the_same_point_and_stays_stopped(cl
     assert client.get("/world/summary").json()["elapsed_years"] == 123_000.0
     assert client.get("/world/run").json()["running"] is False
     time.sleep(0.05)
-    assert main._state["world"].elapsed_years == 123_000.0
+    assert _default_session.world.elapsed_years == 123_000.0
 
 
 def test_restart_resumes_a_running_world_from_the_same_point(client, store, saved_world):
@@ -1677,8 +1705,8 @@ def test_restart_resumes_a_running_world_from_the_same_point(client, store, save
     run = client.get("/world/run").json()
     assert (run["running"], run["step_years"]) == (True, 500.0)
     # Resumes from the saved point: no catch-up for time spent asleep, then 500 years a step.
-    assert _wait_until(lambda: main._state["world"].elapsed_years >= 123_500.0)
-    assert (main._state["world"].elapsed_years - 123_000.0) % 500.0 == 0
+    assert _wait_until(lambda: _default_session.world.elapsed_years >= 123_500.0)
+    assert (_default_session.world.elapsed_years - 123_000.0) % 500.0 == 0
     # Each completed step is checkpointed.
     assert _wait_until(lambda: _saved_elapsed(store) >= 123_500.0)
 
@@ -1691,7 +1719,7 @@ def test_play_and_stop_save_the_run_status(client, store, saved_world):
     assert client.post("/world/run", json={"running": True, "step_years": 10.0}).json()["running"] is True
     assert json.loads(store.status_path.read_text())["running"] is True
     start = persistence.load_world_bytes(saved_world).elapsed_years
-    assert _wait_until(lambda: main._state["world"].elapsed_years > start)
+    assert _wait_until(lambda: _default_session.world.elapsed_years > start)
 
     body = client.post("/world/run", json={"running": False}).json()
     assert (body["running"], body["step_years"]) == (False, 10.0)
@@ -1714,7 +1742,7 @@ def test_a_failed_step_does_not_overwrite_the_checkpoint(client, store, saved_wo
     monkeypatch.setattr(main, "step_world_progress", failing_step)
     lines = client.post("/world/step", json={"years": 1_000.0}).text.splitlines()
     assert json.loads(lines[-1])["type"] == "error"
-    assert main._state["world"].elapsed_years == 124_000.0
+    assert _default_session.world.elapsed_years == 124_000.0
     assert _saved_elapsed(store) == 123_000.0
 
 
@@ -1751,12 +1779,12 @@ def test_a_status_that_cannot_be_saved_is_reported(client, store, saved_world, m
     def fails(status):
         raise OSError("volume gone")
 
-    monkeypatch.setattr(main._checkpoint_store, "save_status", fails)
+    monkeypatch.setattr(_default_session.checkpoint_store, "save_status", fails)
     resp = client.post("/world/run", json={"running": False, "step_years": 20.0})
     assert resp.status_code == 500
     assert client.get("/world/run").json()["step_years"] == 20.0
     monkeypatch.undo()
-    monkeypatch.setattr(main, "_checkpoint_store", None)
+    _default_session.checkpoint_store = None
 
 
 def test_health_check_fails_when_the_checkpoint_directory_is_unusable(client, store, tmp_path, monkeypatch):
@@ -1803,8 +1831,8 @@ def replay_logged(client, saved_world, tmp_path, monkeypatch):
         yield 1.0
 
     log = replay_log.ReplayLog(tmp_path, min_steps_between=1, triggers={"always": lambda outcome: {}}, step_progress=fake_step)
-    monkeypatch.setattr(main, "_replay_log", log)
-    main._state["world"] = persistence.load_world_bytes(saved_world)
+    _default_session.replay_log = log
+    _default_session.world = persistence.load_world_bytes(saved_world)
     return log
 
 
@@ -1812,9 +1840,8 @@ def test_replay_log_is_off_without_a_directory(client, monkeypatch):
     from app import replay_log
 
     monkeypatch.delenv(replay_log.REPLAY_LOG_DIR_ENV, raising=False)
-    monkeypatch.setattr(main, "_replay_log", None)
-    main._start_replay_log()
-    assert main._replay_log is None
+    _default_session.replay_log = main._make_replay_log(_default_session.world_id)
+    assert _default_session.replay_log is None
     assert client.get("/world/replay-logs").json() == {"enabled": False, "directory": None, "records": []}
 
 
@@ -1822,9 +1849,12 @@ def test_replay_log_starts_from_the_env(client, tmp_path, monkeypatch):
     from app import replay_log
 
     monkeypatch.setenv(replay_log.REPLAY_LOG_DIR_ENV, str(tmp_path))
-    monkeypatch.setattr(main, "_replay_log", None)
-    main._start_replay_log()
-    assert client.get("/world/replay-logs").json() == {"enabled": True, "directory": str(tmp_path), "records": []}
+    _default_session.replay_log = main._make_replay_log(_default_session.world_id)
+    assert client.get("/world/replay-logs").json() == {
+        "enabled": True,
+        "directory": str(tmp_path / _default_session.world_id),
+        "records": [],
+    }
 
 
 def test_a_logged_step_is_listed_and_shown_in_the_summary(client, replay_logged):
@@ -1849,8 +1879,8 @@ def test_a_new_world_clears_the_console_s_replay_log_messages(client, replay_log
 
 
 def test_run_loop_and_animation_steps_are_logged(client, replay_logged):
-    assert main._run_step_once(1_000.0, lambda: True)
-    main._step_world(main._state["world"], 1_000.0)
+    assert main._run_step_once(_default_session, 1_000.0, lambda: True)
+    main._step_world(_default_session, _default_session.world, 1_000.0)
     replay_logged.flush()
     assert len(client.get("/world/replay-logs").json()["records"]) == 2
 
@@ -1875,6 +1905,86 @@ def test_mounted_frontend_serves_spa_routes_and_keeps_the_backend_ones(mounted_f
     assert mounted_frontend.get("/assets/index-abc.js").text == "console.log(1)"
     # Registered before the catch-all, so the bundle doesn't shadow them.
     assert "<title>bundle</title>" not in mounted_frontend.get("/login").text
-    assert mounted_frontend.get("/world/summary").status_code == 401
+    assert mounted_frontend.get("/worlds/test-world/summary").status_code == 401
     assert mounted_frontend.get("/").headers["location"].endswith("/view")
+
+
+# --- Multiple worlds (#563) ------------------------------------------------------------
+
+
+def _raw_client():
+    from fastapi.testclient import TestClient
+
+    return TestClient(app, base_url="http://localhost", client=("127.0.0.1", 50000))
+
+
+def test_two_populated_worlds_do_not_share_state(client, saved_world):
+    raw = _raw_client()
+    a = raw.post("/worlds", json={"name": "A"}).json()["world_id"]
+    b = raw.post("/worlds", json={"name": "B"}).json()["world_id"]
+    assert a != b
+    assert raw.post(f"/worlds/{a}/load", content=saved_world).status_code == 200
+    assert raw.post(f"/worlds/{b}/load", content=saved_world).status_code == 200
+    lines = raw.post(f"/worlds/{a}/step", json={"years": 1_000.0}).text.splitlines()
+    assert json.loads(lines[-1])["type"] == "done"
+    assert raw.get(f"/worlds/{a}/summary").json()["elapsed_years"] == 1_000.0
+    assert raw.get(f"/worlds/{b}/summary").json()["elapsed_years"] == 0.0
+
+
+def test_registry_crud_public_listing_and_removed_old_routes(client, saved_world):
+    raw = _raw_client()
+    a = raw.post("/worlds", json={"name": "A"}).json()
+    b = raw.post("/worlds", json={"name": "B"}).json()
+    assert a["world_id"] != b["world_id"]
+    names = [w["name"] for w in raw.get("/worlds").json()["worlds"]]
+    assert {"A", "B"} <= set(names)
+    assert raw.post(f"/worlds/{a['world_id']}/load", content=saved_world).status_code == 200
+    raw.patch(f"/worlds/{a['world_id']}", json={"name": "Renamed", "is_public": True})
+    # Only populated public worlds are listed or addressable.
+    public = raw.get("/public/worlds").json()["worlds"]
+    assert [w["name"] for w in public] == ["Renamed"]
+    assert raw.get(f"/public/worlds/{b['world_id']}/world").status_code == 404
+    assert raw.get("/world/summary").status_code == 404
+    assert raw.post("/world/step", json={"years": 1}).status_code == 404
+    assert raw.delete(f"/worlds/{a['world_id']}").status_code == 200
+    assert raw.delete(f"/worlds/{b['world_id']}").status_code == 200
+    assert {w["name"] for w in raw.get("/worlds").json()["worlds"]} == {"test"}
+
+
+def test_legacy_checkpoint_imports_as_one_public_world(client, store, saved_world, tmp_path):
+    from app import checkpoint
+
+    root = checkpoint.CheckpointStore(tmp_path)
+    (tmp_path / checkpoint.WORLDS_INDEX_FILE).unlink()
+    saved = persistence.load_world_bytes(saved_world)
+    saved.elapsed_years = 123_000.0
+    root.save_world(saved)
+    root.save_status(checkpoint.RunStatus(running=True, step_years=500.0))
+    main._restore_checkpoint()
+    restored = [s for s in main._registry.list() if s.world is not None]
+    assert len(restored) == 1
+    assert restored[0].is_public is True
+    # The saved status was running, so the run resumes and steps on its own.
+    assert restored[0].runner.status().running is True
+    assert restored[0].world.elapsed_years >= 123_000.0
+    assert (tmp_path / checkpoint.WORLDS_INDEX_FILE).exists()
+    assert (tmp_path / checkpoint.WORLD_FILE).exists()  # legacy files left in place
+    assert len(raw_list_worlds()) == 2  # the restored world plus this test's default session
+
+
+def raw_list_worlds():
+    return _raw_client().get("/worlds").json()["worlds"]
+
+
+def test_delete_while_busy_is_refused(client):
+    raw = _raw_client()
+    world_id = raw.post("/worlds", json={"name": "Busy"}).json()["world_id"]
+    session = main._registry.get(world_id)
+    assert session.begin_operation()
+    try:
+        assert raw.delete(f"/worlds/{world_id}").status_code == 409
+    finally:
+        session.end_operation()
+    assert raw.delete(f"/worlds/{world_id}").status_code == 200
+    assert world_id not in {w["world_id"] for w in raw_list_worlds()}
 

@@ -8,6 +8,7 @@ import { beginInspectorFrame, strokeCoastline, strokeSegments } from "./inspecto
 import { cycleId } from "./screenProjector";
 
 interface Props extends InspectorViewProps {
+  worldId: string;
   lakes: LakeSummary[];
   coastlineSegments: Segment[];
   // Whatever's currently displayed -- either one of `lakes` (selectedBasin.is_lake) or a dry
@@ -41,7 +42,7 @@ const MARKER_RADIUS_PX = 6;
 // codebase draws one, rather than inventing a fourth meaning for a color already spoken for.
 const OUTFLOW_RIVER_RGB = "77, 216, 230";
 
-// Renders every currently-visible lake (see backend app/main.py's GET /world/lakes) as an
+// Renders every currently-visible lake (see backend app/main.py's GET /worlds/{world_id}/lakes) as an
 // interactive point-cloud display -- no server-baked PNG, same "raw JSON, client draws it"
 // philosophy as PlateInspector/RiverInspector. Every lake is always drawn, dim; the selected
 // basin (a lake from `lakes`, or a dry basin returned by a land click -- see LakeAtResponse) is
@@ -51,7 +52,7 @@ const OUTFLOW_RIVER_RGB = "77, 216, 230";
 // just another ring. Reuses the same long-press-drag rotate gesture as the other inspectors, plus
 // click-to-select and Tab/Shift+Tab to cycle through `lakes` specifically (a dry basin has no
 // enumerable identity to cycle through -- see this module's own Tab handler).
-export default function LakeInspector({ lakes, coastlineSegments, selectedBasin, onSelect, ...view }: Props) {
+export default function LakeInspector({ worldId, lakes, coastlineSegments, selectedBasin, onSelect, ...view }: Props) {
   const { width, height, projection, rotation } = view;
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -115,7 +116,7 @@ export default function LakeInspector({ lakes, coastlineSegments, selectedBasin,
   }, [lakes, coastlineSegments, selectedBasin, projection, rotation, width, height]);
 
   const pickBasin = (latDeg: number, lonDeg: number) =>
-    fetchLakeAt(latDeg, lonDeg).then(({ kind, basin }) => onSelect(kind, basin));
+    fetchLakeAt(worldId, latDeg, lonDeg).then(({ kind, basin }) => onSelect(kind, basin));
 
   // Cycles through `lakes` only: a dry basin has no enumerable identity to cycle through.
   const cycleLake = (backwards: boolean) => {

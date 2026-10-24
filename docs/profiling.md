@@ -8,7 +8,7 @@ Passes dated before 2026-10-02 (#250) profiled the elevation-line plate surface
 (`PlateWithLines`, `LithospherePlate`, `ElevationLine`), retired in #251; the hot spots they
 name in that code no longer exist, but their measurements of the shared phases still stand.
 
-## File > Make Animation (`POST /world/animate`), 60 frames
+## File > Make Animation (`POST /worlds/{world_id}/animate`), 60 frames
 
 **Measured:** re-run 2026-09-01, commit `f68fa46` (`perf/vectorize-all-points-elevation`
 -- `main`, which carries fixes 1-4 below, plus fix 5). 6-core Apple Silicon (2 performance + 4 efficiency
@@ -24,7 +24,7 @@ at `75e8c95`. Supersedes both that run and the original at `c8f9990`, 2026-08-31
 the step breakdown), identity view rotation. `seed = 0`: 19 plates, ~131 K nodes; the
 Biome/Combined render grid at `climate_density` 4.0 is **801 x 1601 = 1.28 M points**.
 
-**Method:** drove `render_image.stream_animation_mp4` directly (same call `/world/animate`
+**Method:** drove `render_image.stream_animation_mp4` directly (same call `/worlds/{world_id}/animate`
 makes) for two back-to-back 60-frame runs to get end-to-end timings, then a warmed
 12-frame run under `cProfile` for the breakdown. The `combined` view path is
 `_render_combined_view` -> `_biome_fields` + `_project_climate_grid` + `_fill_rects`.
@@ -822,7 +822,7 @@ than ever returning an unfilled `-1`), and `NodePixelIndex` -- a `cKDTree.query(
 wrapper so every real `_node_cloud_and_tree` consumer (`_render_grid_arrays`, `_biome_fields`,
 `_resource_fields`, and the elev-reason/crust-type/speckle views) needed zero changes. Gated by
 a new `World.node_cloud_resample_mode` flag (`"kdtree"` default / `"healpix"`) -- backend/API-only
-for now (`POST /world/controls`), no Controls-panel entry, since this is a proving-out flag, not
+for now (`POST /worlds/{world_id}/controls`), no Controls-panel entry, since this is a proving-out flag, not
 yet a user-facing tuning knob.
 
 **Deviation from this checklist item's original text:** it named both
@@ -1052,7 +1052,7 @@ section's world (same seed/density), so node count isn't a confound here.
 
 **Method:** a throwaway driver script (not committed, same convention every spike in this
 document follows), three passes:
-1. Two back-to-back real `render_image.stream_animation_mp4` calls (the same call `/world/
+1. Two back-to-back real `render_image.stream_animation_mp4` calls (the same call `/worlds/{world_id}/
    animate` makes) at `num_frames=4`, i.e. 3 real "advance" frames of `steps_per_frame=10`
    real `step_world` calls each, for genuine end-to-end wall-clock at the requested cadence.
 2. Isolated, unprofiled single-call timing (`step_world`/`render_png` called directly, no

@@ -16,6 +16,7 @@ const RADIUS_PX = SIZE_PX / 2 - 3;
 const KEYBOARD_STEP_RAD = (5 * Math.PI) / 180;
 
 interface Props {
+  worldId: string;
   worldRevision: number;
   rotation: Mat3;
   onRotationPreview: (latDeg: number, lonDeg: number) => void;
@@ -30,7 +31,7 @@ function basisFor(rotation: Mat3): GlobeBasis {
   return [matApply(inverse, [1, 0, 0]), matApply(inverse, [0, 1, 0]), matApply(inverse, [0, 0, 1])];
 }
 
-export default function GlobeSelector({ worldRevision, rotation, onRotationPreview, onRotationCommitted, disabled }: Props) {
+export default function GlobeSelector({ worldId, worldRevision, rotation, onRotationPreview, onRotationCommitted, disabled }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [map, setMap] = useState<MapPixels | null>(null);
   const [preview, setPreview] = useState<Mat3 | null>(null);
@@ -39,7 +40,7 @@ export default function GlobeSelector({ worldRevision, rotation, onRotationPrevi
 
   useEffect(() => {
     let cancelled = false;
-    loadWorldMapPixels(worldRevision)
+    loadWorldMapPixels(worldId, worldRevision)
       .then((pixels) => {
         if (!cancelled) setMap(pixels);
       })
@@ -49,7 +50,7 @@ export default function GlobeSelector({ worldRevision, rotation, onRotationPrevi
     return () => {
       cancelled = true;
     };
-  }, [worldRevision]);
+  }, [worldId, worldRevision]);
 
   useEffect(() => {
     const context = canvasRef.current?.getContext("2d");

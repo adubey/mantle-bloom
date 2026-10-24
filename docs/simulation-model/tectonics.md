@@ -471,7 +471,7 @@ phase should stay empty. A nonzero entry means some writer upstream is missing i
 
 Every node's onset year is also stamped onto its
 `overlap_onset_years` field each step (`merge_split.update_overlap_tracking`) and
-surfaced as `since_years` in `GET /world/plates` and the `overlapAge` debug render view --
+surfaced as `since_years` in `GET /worlds/{world_id}/plates` and the `overlapAge` debug render view --
 see [debugging.md](../debugging/map-views.md#overlapage-render-view-plate-overlap-onset).
 
 **Consuming a continent-continent overlap (2026-09).** A contested continental edge
@@ -614,7 +614,7 @@ over-thickened crust of a suture or a standing orogen goes through these process
   delamination-eligible. A delamination-eligible column has at least `DELAMINATION_MIN_ROOT_M`
   (10 km) of crust below `ECLOGITE_DEPTH_M` (50 km) and a Moho at least
   `DELAMINATION_MIN_MOHO_C` (750 C), or as much restite instead (below). All of these read
-  the lagged temperature. `/world/stats` reports the area in each state
+  the lagged temperature. `/worlds/{world_id}/stats` reports the area in each state
   (`crust_state_area_m2`).
 - **Anatexis** (`anatexis`, each quad step before collapse). The crust hotter than
   `MELT_ONSET_MOHO_C` is the melting zone. That is everything below the 750 C isotherm, taking
@@ -684,7 +684,7 @@ over-thickened crust of a suture or a standing orogen goes through these process
   measured fractions: the partition varies along strike, and India-Asia mass balances that
   put the loss near half the converged crust are disputed. The defaults keep collision loss
   close to issue #276's calibration. They are checked at the start of each step's deform
-  pass, so bad values fail before any plate deforms. `/world/stats` reports them under
+  pass, so bad values fail before any plate deforms. `/worlds/{world_id}/stats` reports them under
   `suture_crust_transfer`. `crust_transfer.transfer_column` takes a column as volumes plus a
   world-frame front, so terrane docking (#321) can reuse it.
 - **Suture accretion** (`quad_tectonics._place_suture_crust`). A front's consumed Hc tries each
@@ -773,7 +773,7 @@ over-thickened crust of a suture or a standing orogen goes through these process
   The flow is subcycled at a Courant number of 0.1, so 1 x 4 Myr and 16 x 0.25 Myr give the
   same result to within 1-2% of the relief.
 
-`world.orogenic_relief_budget` (also in `/world/stats`) accumulates the Hc volume each stage
+`world.orogenic_relief_budget` (also in `/worlds/{world_id}/stats`) accumulates the Hc volume each stage
 handled: `suture_donated_m3`, `suture_belt_placed_m3`, `escape_attempted_m3` /
 `escape_placed_m3`, `delamination_attempted_m3` / `delamination_completed_m3`,
 `far_field_placed_m3`, `foreland_spill_placed_m3`, `overrider_placed_m3`,
@@ -887,7 +887,7 @@ routine per-step motion.
   proximity-and-closing-rate check in `find_continental_collision_pairs` at some point
   without ever accumulating the sustained duration needed to actually merge -- logging every
   one of those would flood the console with events that don't end up mattering. The API
-  returns the full current log on every `/world/generate` and `/world/step` call (see
+  returns the full current log on every `/worlds/{world_id}/generate` and `/worlds/{world_id}/step` call (see
   api-reference.md) for the frontend's collapsible console.
 - **Split.** Each plate's mantle-flow samples are clustered into two groups
   (`scipy.cluster.vq.kmeans2`, k=2) and a separate Euler pole is fit to each. If a single
@@ -1569,7 +1569,7 @@ only the largest `BOUNDARY_FAULT_MAX_QUAKES_PER_STEP` are retained (they are num
 (5 Myr) at the top of the step. `erosion.py`'s seismic-erosion term is multiplied by
 `_earthquake_erosion_multiplier` -- `1 + Σ EARTHQUAKE_EROSION_PEAK_BOOST·10^(Mw −
 EARTHQUAKE_EROSION_MW_REF)·recency·taper` over nearby epicentres, a landsliding burst that
-fades over the retention window. Exposed via `GET /world/earthquakes`, with each quake's
+fades over the retention window. Exposed via `GET /worlds/{world_id}/earthquakes`, with each quake's
 `trigger` (`"tectonic"` or `"ice_unloading"`).
 
 **Ice-unloading triggered earthquakes (`trigger_unloading_earthquakes`, issue #275 phase 5).**

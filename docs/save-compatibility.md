@@ -77,7 +77,7 @@ loads part of a save:
 - `UnsupportedSaveVersionError`: an envelope version outside 1–4 (including a non-integer), or
   a quad plate in another surface format version.
 
-`POST /world/load` returns `400` with `invalid or incompatible world file: <reason>` for
+`POST /worlds/{world_id}/load` returns `400` with `invalid or incompatible world file: <reason>` for
 either.
 
 **Fields a save predates.** A `World` field added after a save was written is backfilled on
@@ -265,3 +265,11 @@ carries a field this build doesn't know. The only line-only plate state is
   fills them on the first step. A save with a large void will see sea level move on that
   step as new ocean floor appears. The report's `coverage.after.uncovered` shows how much to
   expect.
+
+## 7. Multi-world registry metadata (#563)
+
+The registry's world identity and management metadata (id, name, visibility, timestamps)
+live in `worlds.json` beside the per-world checkpoints, outside the pickled `World`. A
+save therefore carries no name or visibility: loading one into a record keeps that record's
+name and visibility, and importing a legacy one-world checkpoint creates a new record. No
+save-format change was needed for multiple worlds.

@@ -1,5 +1,49 @@
 import { asBlob, asJson, expandColumnarStatsHistory, type ColumnarStatsHistory } from "./apiResponse";
 import { requestCrossSection, type CrossSectionResponse } from "./crossSectionApi";
+import { worldBase, type WorldId } from "./worldRoutes";
+
+export type { WorldId } from "./worldRoutes";
+
+/** One world's admin-route base (`${API_BASE}/worlds/<id>`), #563. */
+const W = (worldId: WorldId, path: string) => `${worldBase(API_BASE, worldId)}${path}`;
+
+/** One row of `GET /worlds`: registry metadata plus state when populated. */
+export interface WorldRecord {
+  world_id: WorldId;
+  name: string;
+  is_public: boolean;
+  created_at: number;
+  updated_at: number;
+  load_error: string | null;
+  run: { running: boolean; step_years: number; stepping: boolean; error: string | null } | null;
+  summary: WorldSummary | null;
+}
+
+export function fetchWorlds(): Promise<{ worlds: WorldRecord[] }> {
+  return fetch(`${API_BASE}/worlds`).then(asJson<{ worlds: WorldRecord[] }>);
+}
+
+export function createWorld(name?: string): Promise<WorldRecord> {
+  return fetch(`${API_BASE}/worlds`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: name ?? null }),
+  }).then(asJson<WorldRecord>);
+}
+
+export function patchWorld(worldId: WorldId, patch: { name?: string; is_public?: boolean }): Promise<WorldRecord> {
+  return fetch(W(worldId, ""), {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  }).then(asJson<WorldRecord>);
+}
+
+export function deleteWorld(worldId: WorldId): Promise<void> {
+  return fetch(W(worldId, ""), { method: "DELETE" }).then((resp) => {
+    if (!resp.ok) throw new Error(`delete failed: ${resp.status}`);
+  });
+}
 
 export type { CrossSectionResponse } from "./crossSectionApi";
 
@@ -15,11 +59,11 @@ export const API_BASE = API_ROOT;
 
 export type Projection = "behrmann" | "eckert4" | "globe";
 
-// The kind of view requested from /world/render -- the server now bakes this choice
+// The kind of view requested from /worlds/{world_id}/render -- the server now bakes this choice
 // directly into the returned image (fill color rule, whether boundaries/poles/velocity
 // arrows or raw per-plate node dots are drawn), rather than the frontend deciding how to
 // draw raw coordinate data it fetched. `crossSection` is served by its own
-// /world/cross-section endpoint and remains omitted from /world/render.
+// /worlds/{world_id}/cross-section endpoint and remains omitted from /worlds/{world_id}/render.
 export type MapView =
   | "crossSection"
   | "elevation"
@@ -46,7 +90,7 @@ export type MapView =
   | "hm"
   | "craton";
 
-// Transparent RGBA layers /world/render also serves (backend render_image.LAYER_VIEWS) -- not
+// Transparent RGBA layers /worlds/{world_id}/render also serves (backend render_image.LAYER_VIEWS) -- not
 // maps of their own: the client-drawn "Plates & Faults" view composites them under its vectors.
 export type OverlayLayer = "cratonLayer" | "waterLayer";
 
@@ -56,6 +100,8 @@ export interface WorldEvent {
 }
 
 export interface WorldSummary {
+  world_id: WorldId;
+  revision: string;
   seed: number;
   elapsed_years: number;
   num_plates: number;
@@ -123,7 +169,7 @@ export interface PlatesResponse {
 
 // River Inspector data -- same "raw JSON, client renders itself" philosophy as
 // PlatesResponse (see RiverInspector.tsx). `river_id` is only meaningful against the most
-// recent /world/rivers response -- rivers are regrouped fresh on every call, not given a
+// recent /worlds/{world_id}/rivers response -- rivers are regrouped fresh on every call, not given a
 // persistent identity across steps (see backend app/hydrology.py's group_rivers).
 export interface RiverSummary {
   river_id: number;
@@ -273,7 +319,7 @@ export interface OutflowRiver {
 
 // Lake Inspector data -- same "raw JSON, client renders itself" philosophy as PlatesResponse/
 // RiversResponse (see LakeInspector.tsx). `lake_id` is only meaningful against the most recent
-// /world/lakes response -- lakes are regrouped fresh every call, same non-persistent-identity
+// /worlds/{world_id}/lakes response -- lakes are regrouped fresh every call, same non-persistent-identity
 // contract as `river_id` (see backend app/hydrology.py's group_rivers/lake_components).
 // This same shape is also embedded (with `lake_id: null`) in a `LakeAtResponse` for a click
 // that lands on a dry, never-flooded basin -- see backend app/main.py's `_lake_basin_summary`.
@@ -315,9 +361,9 @@ export interface LakeAtResponse {
   basin: LakeSummary | null;
 }
 
-// Stats panel data (see backend app/stats.py) -- /world/stats is a stateless snapshot of the
+// Stats panel data (see backend app/stats.py) -- /worlds/{world_id}/stats is a stateless snapshot of the
 // *current* world; the actual recorded time series lives on the backend now too (see
-// World.stats_history / GET /world/stats_history below), persisted in every saved .mbworld,
+// World.stats_history / GET /worlds/{world_id}/stats_history below), persisted in every saved .mbworld,
 // so App.tsx's statsHistory just mirrors that rather than accumulating its own copy client-
 // side. Land/ocean
 // temperature/elevation/depth fields are `null` when their domain has no grid cells at all
@@ -473,6 +519,8 @@ async function readStreamMessages(
 // The WorldSummary fields of a stream's `done` message.
 function worldSummaryFrom(msg: Record<string, unknown>): WorldSummary {
   return {
+    world_id: msg.world_id as string,
+    revision: msg.revision as string,
     seed: msg.seed as number,
     elapsed_years: msg.elapsed_years as number,
     num_plates: msg.num_plates as number,
@@ -483,7 +531,7 @@ function worldSummaryFrom(msg: Record<string, unknown>): WorldSummary {
 }
 
 // Used by generateWorld below, which streams newline-delimited JSON progress the
-// same shape /world/animate does (see AnimateProgress/animateWorld's own comment for that
+// same shape /worlds/{world_id}/animate does (see AnimateProgress/animateWorld's own comment for that
 // established contract): a `{type: "progress", fraction}` line (0 to 1) per phase/plate
 // checkpoint (surfaced via `onProgress`), then a final `{type: "done", ...WorldSummary
 // fields}`, or a `{type: "error", detail}` line if generation/stepping raises partway
@@ -544,7 +592,7 @@ async function readProgressStream(resp: Response, onProgress?: (fraction: number
 // `onProgress`, if given, is called with a fraction (0 to 1) as the backend's
 // generate_world_progress passes its three phase boundaries (plate/site generation,
 // mantle-center fitting, the finish_generation bootstrap -- see backend app/main.py's
-// /world/generate for the NDJSON contract this reads, same shape as animateWorld's own).
+// /worlds/{world_id}/generate for the NDJSON contract this reads, same shape as animateWorld's own).
 export interface GenerateWorldOptions {
   seed: number;
   // Random-tab terrain layout; omitted follows the backend default. Sketches/premades ignore it.
@@ -565,13 +613,13 @@ export interface GenerateWorldOptions {
   onProgress?: (fraction: number) => void;
 }
 
-export function generateWorld(options: GenerateWorldOptions): Promise<WorldSummary> {
+export function generateWorld(worldId: WorldId, options: GenerateWorldOptions): Promise<WorldSummary> {
   const {
     seed, cratonsFirst, syntheticRelief, continentalFraction, landFraction, axialTiltDeg, nodeDensity,
     initialSoilMaturity, climateDensity, fluidDensity, numPlates, voronoiPoints,
     sketchImageBase64 = null, premadeWorldId = null, onProgress,
   } = options;
-  return fetch(`${API_BASE}/world/generate`, {
+  return fetch(`${worldBase(API_BASE, worldId)}/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -601,14 +649,14 @@ export interface DebugScenario {
 // The "Debugging Worlds" Generate World tab's scenario picker options -- see backend
 // debug_worlds.py's DEBUG_SCENARIOS / DEBUG_SCENARIO_LABELS.
 export function fetchDebugScenarios(): Promise<{ scenarios: DebugScenario[] }> {
-  return fetch(`${API_BASE}/world/debug_scenarios`).then(asJson<{ scenarios: DebugScenario[] }>);
+  return fetch(`${API_BASE}/debug/scenarios`).then(asJson<{ scenarios: DebugScenario[] }>);
 }
 
 // Generates one of the tiny, hand-scripted plate configurations above -- see
 // backend debug_worlds.py. Unlike generateWorld, there's no plate count/land fraction/etc to
 // choose: each scenario name is its own complete, fixed configuration.
-export function generateDebugWorld(scenario: string, seed: number): Promise<WorldSummary> {
-  return fetch(`${API_BASE}/world/generate_debug`, {
+export function generateDebugWorld(worldId: WorldId, scenario: string, seed: number): Promise<WorldSummary> {
+  return fetch(`${worldBase(API_BASE, worldId)}/generate_debug`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ scenario, seed }),
@@ -640,9 +688,9 @@ export type TuningMultipliers = Record<TuningKey, number>;
 // wind model, and/or the geomorphic-budget tuning multipliers on the current world (the
 // "Controls" window -- see backend app/world.py's World.sea_level_m/World.solar_multiplier/
 // World.simulate_plate_movement/World.simulate_climate_biomes/World.wind_model, its
-// tuning-knob field group, and main.py's /world/controls) -- any argument may be omitted to
+// tuning-knob field group, and main.py's /worlds/{world_id}/controls) -- any argument may be omitted to
 // leave that value untouched. Forces an immediate server-side climate recompute, so the
-// caller should re-fetch /world/render and /world/stats right after this resolves to see the
+// caller should re-fetch /worlds/{world_id}/render and /worlds/{world_id}/stats right after this resolves to see the
 // effect.
 export type ControlsState = {
   sea_level_m: number;
@@ -657,7 +705,7 @@ export type ControlsState = {
   debug_diagnostics: boolean;
 } & TuningMultipliers;
 
-export function updateControls(controls: {
+export function updateControls(worldId: WorldId, controls: {
   seaLevelM?: number;
   solarMultiplier?: number;
   iceAgePeriodYears?: number;
@@ -668,7 +716,7 @@ export function updateControls(controls: {
   debugDiagnostics?: boolean;
   tuning?: Partial<TuningMultipliers>;
 }): Promise<ControlsState> {
-  return fetch(`${API_BASE}/world/controls`, {
+  return fetch(`${worldBase(API_BASE, worldId)}/controls`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -702,18 +750,18 @@ export class RunStateRefused extends Error {}
 
 // With `after` (the revision on screen) and `runVersion` (the last run_version seen), a long
 // poll: the server answers once the world or the run state moves on, or after ~25 s.
-export async function fetchRunState(after?: string, runVersion?: number, signal?: AbortSignal): Promise<RunState> {
+export async function fetchRunState(worldId: WorldId, after?: string, runVersion?: number, signal?: AbortSignal): Promise<RunState> {
   const params = new URLSearchParams();
   if (after !== undefined) params.set("after", after);
   if (runVersion !== undefined) params.set("run_version", String(runVersion));
   const query = params.size ? `?${params}` : "";
-  const resp = await fetch(`${API_BASE}/world/run${query}`, { signal });
+  const resp = await fetch(`${worldBase(API_BASE, worldId)}/run${query}`, { signal });
   if (resp.status >= 400 && resp.status < 500) throw new RunStateRefused(`${resp.status} ${await resp.text()}`);
   return asJson<RunState>(resp);
 }
 
-export function setRunState(running: boolean, stepYears?: number): Promise<RunState> {
-  return fetch(`${API_BASE}/world/run`, {
+export function setRunState(worldId: WorldId, running: boolean, stepYears?: number): Promise<RunState> {
+  return fetch(`${worldBase(API_BASE, worldId)}/run`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ running, step_years: stepYears }),
@@ -730,6 +778,7 @@ export function setRunState(running: boolean, stepYears?: number): Promise<RunSt
 // Legend.tsx/App.tsx) -- both meaningless outside `view === "elevation"`, and left off the
 // query string entirely when false/omitted so every other call's URL is unchanged.
 export function renderWorld(
+  worldId: WorldId,
   projection: Projection,
   view: MapView | OverlayLayer,
   width: number,
@@ -742,12 +791,13 @@ export function renderWorld(
   if (rotation) params.set("rotation", rotation.join(","));
   if (showMountains) params.set("show_mountains", "true");
   if (showPlainsPlateaus) params.set("show_plains_plateaus", "true");
-  return fetch(`${API_BASE}/world/render?${params}`).then(asJson<RenderResponse>);
+  return fetch(`${worldBase(API_BASE, worldId)}/render?${params}`).then(asJson<RenderResponse>);
 }
 
 // Fetch one rendered frame from the shallow mantle cross-section route. The output size is
 // fixed for a panel layout so cached frames for the same world/plane/position are identical.
 export function fetchCrossSection(
+  worldId: WorldId,
   planeAngleDeg: number,
   positionIndex: number,
   width: number,
@@ -756,19 +806,19 @@ export function fetchCrossSection(
   showBoundaries = false,
   showFaults = false,
 ): Promise<CrossSectionResponse> {
-  return requestCrossSection(API_BASE, planeAngleDeg, positionIndex, width, height, signal, fetch, showBoundaries, showFaults);
+  return requestCrossSection(worldBase(API_BASE, worldId), planeAngleDeg, positionIndex, width, height, signal, fetch, showBoundaries, showFaults);
 }
 
-export function fetchPlates(): Promise<PlatesResponse> {
-  return fetch(`${API_BASE}/world/plates`).then(asJson<PlatesResponse>);
+export function fetchPlates(worldId: WorldId): Promise<PlatesResponse> {
+  return fetch(`${worldBase(API_BASE, worldId)}/plates`).then(asJson<PlatesResponse>);
 }
 
 // The Plate Inspector's click hit-test -- (latDeg, lonDeg) must already be in the *true*
 // (un-rotated) frame; the caller unprojects the click through whatever view rotation is
 // currently active first (see rotation.ts's unproject/matTranspose).
-export function fetchPlateAt(latDeg: number, lonDeg: number): Promise<{ plate_id: number | null }> {
+export function fetchPlateAt(worldId: WorldId, latDeg: number, lonDeg: number): Promise<{ plate_id: number | null }> {
   const params = new URLSearchParams({ lat_deg: String(latDeg), lon_deg: String(lonDeg) });
-  return fetch(`${API_BASE}/world/plate_at?${params}`).then(asJson<{ plate_id: number | null }>);
+  return fetch(`${worldBase(API_BASE, worldId)}/plate_at?${params}`).then(asJson<{ plate_id: number | null }>);
 }
 
 export interface PointSample {
@@ -786,9 +836,9 @@ export interface PointSample {
 // The Elevation & Biome / Elevation / Biome views' click-to-inspect popup (see App.tsx) --
 // like fetchPlateAt, (latDeg, lonDeg) must already be in the *true* (un-rotated) frame; the
 // caller unprojects the click through the active view rotation first.
-export function fetchPointSample(latDeg: number, lonDeg: number): Promise<PointSample> {
+export function fetchPointSample(worldId: WorldId, latDeg: number, lonDeg: number): Promise<PointSample> {
   const params = new URLSearchParams({ lat_deg: String(latDeg), lon_deg: String(lonDeg) });
-  return fetch(`${API_BASE}/world/sample_at?${params}`).then(asJson<PointSample>);
+  return fetch(`${worldBase(API_BASE, worldId)}/sample_at?${params}`).then(asJson<PointSample>);
 }
 
 export interface NodeAtResponse {
@@ -816,9 +866,9 @@ export interface NodeAtResponse {
 
 // The "Added/Removed Points" (nodeAge) debug view's click-to-inspect popup -- same true-frame
 // contract as fetchPlateAt/fetchPointSample.
-export function fetchNodeAt(latDeg: number, lonDeg: number): Promise<NodeAtResponse> {
+export function fetchNodeAt(worldId: WorldId, latDeg: number, lonDeg: number): Promise<NodeAtResponse> {
   const params = new URLSearchParams({ lat_deg: String(latDeg), lon_deg: String(lonDeg) });
-  return fetch(`${API_BASE}/world/node_at?${params}`).then(asJson<NodeAtResponse>);
+  return fetch(`${worldBase(API_BASE, worldId)}/node_at?${params}`).then(asJson<NodeAtResponse>);
 }
 
 // The "Points" (platesDetail) debug view's click-to-inspect response: the nearest terrain
@@ -835,55 +885,55 @@ export interface ElevationPointResponse {
 }
 
 // The click-to-inspect hit-test -- same true-frame contract as fetchPlateAt/fetchNodeAt.
-export function fetchElevationPointAt(latDeg: number, lonDeg: number): Promise<ElevationPointResponse> {
+export function fetchElevationPointAt(worldId: WorldId, latDeg: number, lonDeg: number): Promise<ElevationPointResponse> {
   const params = new URLSearchParams({ lat_deg: String(latDeg), lon_deg: String(lonDeg) });
-  return fetch(`${API_BASE}/world/elevation_point_at?${params}`).then(asJson<ElevationPointResponse>);
+  return fetch(`${worldBase(API_BASE, worldId)}/elevation_point_at?${params}`).then(asJson<ElevationPointResponse>);
 }
 
-export function fetchStats(): Promise<WorldStats> {
-  return fetch(`${API_BASE}/world/stats`).then(asJson<WorldStats>);
+export function fetchStats(worldId: WorldId): Promise<WorldStats> {
+  return fetch(`${worldBase(API_BASE, worldId)}/stats`).then(asJson<WorldStats>);
 }
 
 // The full recorded time series (see World.stats_history) -- persisted server-side and so
 // present in every saved .mbworld, unlike the single instantaneous fetchStats() snapshot
 // above. App.tsx calls this after a Load to restore the Stats panel's history charts instead
 // of resetting them to empty.
-export async function fetchStatsHistory(): Promise<{ history: WorldStats[] }> {
-  const payload = await fetch(`${API_BASE}/world/stats_history`).then(asJson<ColumnarStatsHistory>);
+export async function fetchStatsHistory(worldId: WorldId): Promise<{ history: WorldStats[] }> {
+  const payload = await fetch(`${worldBase(API_BASE, worldId)}/stats_history`).then(asJson<ColumnarStatsHistory>);
   return { history: expandColumnarStatsHistory<WorldStats>(payload) };
 }
 
 // Re-syncs with whatever world is already sitting in server memory -- used on page load to
 // restore the map after a browser refresh (see App.tsx) without generating a new world.
 // Rejects (404) if no world has been generated yet in this server session.
-export function fetchWorldSummary(): Promise<WorldSummary> {
-  return fetch(`${API_BASE}/world/summary`).then(asJson<WorldSummary>);
+export function fetchWorldSummary(worldId: WorldId): Promise<WorldSummary> {
+  return fetch(`${worldBase(API_BASE, worldId)}/summary`).then(asJson<WorldSummary>);
 }
 
-export function fetchRivers(): Promise<RiversResponse> {
-  return fetch(`${API_BASE}/world/rivers`).then(asJson<RiversResponse>);
+export function fetchRivers(worldId: WorldId): Promise<RiversResponse> {
+  return fetch(`${worldBase(API_BASE, worldId)}/rivers`).then(asJson<RiversResponse>);
 }
 
 // The River Inspector's click hit-test -- same true-frame contract as fetchPlateAt.
-export function fetchRiverAt(latDeg: number, lonDeg: number): Promise<{ river_id: number | null }> {
+export function fetchRiverAt(worldId: WorldId, latDeg: number, lonDeg: number): Promise<{ river_id: number | null }> {
   const params = new URLSearchParams({ lat_deg: String(latDeg), lon_deg: String(lonDeg) });
-  return fetch(`${API_BASE}/world/river_at?${params}`).then(asJson<{ river_id: number | null }>);
+  return fetch(`${worldBase(API_BASE, worldId)}/river_at?${params}`).then(asJson<{ river_id: number | null }>);
 }
 
-export function fetchLakes(): Promise<LakesResponse> {
-  return fetch(`${API_BASE}/world/lakes`).then(asJson<LakesResponse>);
+export function fetchLakes(worldId: WorldId): Promise<LakesResponse> {
+  return fetch(`${worldBase(API_BASE, worldId)}/lakes`).then(asJson<LakesResponse>);
 }
 
-export function fetchFaults(): Promise<FaultsResponse> {
-  return fetch(`${API_BASE}/world/faults`).then(asJson<FaultsResponse>);
+export function fetchFaults(worldId: WorldId): Promise<FaultsResponse> {
+  return fetch(`${worldBase(API_BASE, worldId)}/faults`).then(asJson<FaultsResponse>);
 }
 
-export function fetchEarthquakes(): Promise<EarthquakesResponse> {
-  return fetch(`${API_BASE}/world/earthquakes`).then(asJson<EarthquakesResponse>);
+export function fetchEarthquakes(worldId: WorldId): Promise<EarthquakesResponse> {
+  return fetch(`${worldBase(API_BASE, worldId)}/earthquakes`).then(asJson<EarthquakesResponse>);
 }
 
-export function fetchVolcanoes(): Promise<VolcanoesResponse> {
-  return fetch(`${API_BASE}/world/volcanoes`).then(asJson<VolcanoesResponse>);
+export function fetchVolcanoes(worldId: WorldId): Promise<VolcanoesResponse> {
+  return fetch(`${worldBase(API_BASE, worldId)}/volcanoes`).then(asJson<VolcanoesResponse>);
 }
 
 // "File > Save World" -- the entire current world state as an opaque binary blob (see
@@ -891,16 +941,16 @@ export function fetchVolcanoes(): Promise<VolcanoesResponse> {
 // promise). The caller downloads this via the usual SPA blob-download pattern
 // (URL.createObjectURL + a synthetic <a download>), not a plain navigation, so the browser
 // doesn't need a same-origin/CORS-friendly direct link.
-export function saveWorld(): Promise<Blob> {
-  return fetch(`${API_BASE}/world/save`).then(asBlob);
+export function saveWorld(worldId: WorldId): Promise<Blob> {
+  return fetch(`${worldBase(API_BASE, worldId)}/save`).then(asBlob);
 }
 
 // "File > Load World" -- `file` is the raw bytes of a file saveWorld() previously produced
 // (an <input type="file">'s File object, or any Blob). Replaces whatever world previously
 // existed, same as generateWorld -- the caller should run the same full refresh sequence it
 // runs after generateWorld.
-export function loadWorld(file: Blob): Promise<WorldSummary> {
-  return fetch(`${API_BASE}/world/load`, {
+export function loadWorld(worldId: WorldId, file: Blob): Promise<WorldSummary> {
+  return fetch(`${worldBase(API_BASE, worldId)}/load`, {
     method: "POST",
     headers: { "Content-Type": "application/octet-stream" },
     body: file,
@@ -937,7 +987,7 @@ export interface AnimateProgress {
 }
 
 // Each animation frame is a full step_world + render (see backend app/main.py's
-// /world/animate), and up to MAX_ANIMATION_FRAMES=480 of those run back-to-back server-side
+// /worlds/{world_id}/animate), and up to MAX_ANIMATION_FRAMES=480 of those run back-to-back server-side
 // before the video is complete -- by far the slowest request the app makes, and one that's
 // only gotten slower as the simulation itself has picked up more per-step work (erosion,
 // sediment redistribution, coastline stabilization, ...). A big/slow world's 480-frame worst
@@ -954,7 +1004,7 @@ const ANIMATE_IDLE_TIMEOUT_MS = 3 * 60 * 1000;
 // `stepsPerFrame` real simulation steps of `stepYears` each -- only the last of which gets
 // rendered -- encoded as an H.264/MP4 video. **This permanently advances the world** by up to
 // `(numFrames - 1) * stepsPerFrame * stepYears` years, the same as that many
-// /world/step calls -- not a side-effect-free preview (see backend app/main.py's /world/animate,
+// /worlds/{world_id}/step calls -- not a side-effect-free preview (see backend app/main.py's /worlds/{world_id}/animate,
 // and render_image.stream_animation_mp4's docstring for why a coarser render cadence still
 // simulates every step rather than taking one bigger step). The caller should run the same
 // refresh it runs when a running world advances (App.tsx's handleWorldAdvanced).
@@ -971,6 +1021,7 @@ const ANIMATE_IDLE_TIMEOUT_MS = 3 * 60 * 1000;
 // deliberately doesn't use it, going through stopAnimation() instead so the run still
 // finishes cleanly.
 export async function animateWorld(
+  worldId: WorldId,
   projection: Projection,
   view: MapView,
   width: number,
@@ -1009,7 +1060,7 @@ export async function animateWorld(
   }
 
   try {
-    const resp = await fetch(`${API_BASE}/world/animate`, {
+    const resp = await fetch(`${worldBase(API_BASE, worldId)}/animate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1103,13 +1154,13 @@ export async function animateWorld(
 }
 
 // The toolbar's "Stop" button while an animation is recording -- asks the server to end the
-// in-progress /world/animate run cleanly after its current frame (see backend main.py's
-// POST /world/animate/stop) so animateWorld's stream still resolves normally with a complete
+// in-progress /worlds/{world_id}/animate run cleanly after its current frame (see backend main.py's
+// POST /worlds/{world_id}/animate/stop) so animateWorld's stream still resolves normally with a complete
 // (just shorter) video, rather than the caller aborting the connection and losing it. This is
 // what makes the animation dialog's "keep going until Stop is pressed" mode useful. A no-op
 // if no animation is running.
-export function stopAnimation(): Promise<void> {
-  return fetch(`${API_BASE}/world/animate/stop`, { method: "POST" }).then(() => undefined);
+export function stopAnimation(worldId: WorldId): Promise<void> {
+  return fetch(`${worldBase(API_BASE, worldId)}/animate/stop`, { method: "POST" }).then(() => undefined);
 }
 
 // "File > Export Hex Grid" data -- a geodesic-icosahedron hex/pentagon tiling of the sphere
@@ -1143,8 +1194,8 @@ export interface HexGridExport {
 // `frequency` is one of a small preset set (see backend app/geodesic.py's
 // FREQUENCY_CHOICES) -- the UI offers it as a size dropdown, not a free-form input, same
 // "discrete choices" pattern as node_density/climate_density in generateWorld.
-export function exportHexGrid(frequency: number): Promise<HexGridExport> {
-  return fetch(`${API_BASE}/world/export_hexgrid`, {
+export function exportHexGrid(worldId: WorldId, frequency: number): Promise<HexGridExport> {
+  return fetch(`${worldBase(API_BASE, worldId)}/export_hexgrid`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ frequency }),
@@ -1154,7 +1205,7 @@ export function exportHexGrid(frequency: number): Promise<HexGridExport> {
 // The Lake Inspector's click hit-test -- same true-frame contract as fetchPlateAt/fetchRiverAt,
 // but (unlike those) always resolves to *something* informative for any land click, not just a
 // hit on the thing being inspected -- see LakeAtResponse's own comment.
-export function fetchLakeAt(latDeg: number, lonDeg: number): Promise<LakeAtResponse> {
+export function fetchLakeAt(worldId: WorldId, latDeg: number, lonDeg: number): Promise<LakeAtResponse> {
   const params = new URLSearchParams({ lat_deg: String(latDeg), lon_deg: String(lonDeg) });
-  return fetch(`${API_BASE}/world/lake_at?${params}`).then(asJson<LakeAtResponse>);
+  return fetch(`${worldBase(API_BASE, worldId)}/lake_at?${params}`).then(asJson<LakeAtResponse>);
 }

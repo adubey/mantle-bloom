@@ -1,8 +1,11 @@
-import { API_BASE } from "./api";
+import { API_BASE, type WorldId } from "./api";
 import { asJson } from "./apiResponse";
+import { publicWorldBase } from "./worldRoutes";
 
-// The logged-out viewer's routes (backend app/main.py's /public/*, app/public_view.py, #373).
-// The allowance rides on an HttpOnly cookie, which a same-origin fetch sends by default.
+// The logged-out viewer's routes (backend app/main.py's /public/worlds/*,
+// app/public_view.py, #373, #563). Each addresses one world the owner marked
+// public. The allowance rides on an HttpOnly cookie, which a same-origin fetch
+// sends by default; it is per browser across all public worlds.
 
 export type PublicView = "elevation" | "biome" | "combined";
 
@@ -10,6 +13,11 @@ export interface PublicWorld {
   revision: string;
   seed: number;
   elapsed_years: number;
+}
+
+export interface PublicWorldListing extends PublicWorld {
+  world_id: WorldId;
+  name: string;
 }
 
 export interface PublicState {
@@ -38,25 +46,30 @@ export class PublicStepRefused extends Error {
   }
 }
 
-// With `after` (the revision on screen), the server holds the request until the shared world
-// moves past it or ~25 s pass, so every viewer follows other viewers' steps (#374).
-export function fetchPublicState(after?: string, signal?: AbortSignal, guestDemo = false): Promise<PublicState> {
+export function fetchPublicWorlds(): Promise<{ worlds: PublicWorldListing[] }> {
+  return fetch(`${API_BASE}/public/worlds`).then(asJson<{ worlds: PublicWorldListing[] }>);
+}
+
+// With `after` (the revision on screen), the server holds the request until the
+// addressed world moves past it or ~25 s pass, so every viewer follows other
+// viewers' steps (#374).
+export function fetchPublicState(worldId: WorldId, after?: string, signal?: AbortSignal, guestDemo = false): Promise<PublicState> {
   const params = new URLSearchParams();
   if (after !== undefined) params.set("after", after);
   if (guestDemo) params.set("guest_demo", "true");
   const encoded = params.toString();
   const query = encoded ? `?${encoded}` : "";
-  return fetch(`${API_BASE}/public/world${query}`, { signal }).then(asJson<PublicState>);
+  return fetch(`${publicWorldBase(API_BASE, worldId)}/world${query}`, { signal }).then(asJson<PublicState>);
 }
 
-export function renderPublicWorld(view: PublicView, width: number, height: number): Promise<PublicWorld & { image_base64: string }> {
+export function renderPublicWorld(worldId: WorldId, view: PublicView, width: number, height: number): Promise<PublicWorld & { image_base64: string }> {
   const params = new URLSearchParams({ view, width: String(width), height: String(height) });
-  return fetch(`${API_BASE}/public/render?${params}`).then(asJson<PublicWorld & { image_base64: string }>);
+  return fetch(`${publicWorldBase(API_BASE, worldId)}/render?${params}`).then(asJson<PublicWorld & { image_base64: string }>);
 }
 
-export async function stepPublicWorld(revision: string, guestDemo = false): Promise<PublicStepResult> {
+export async function stepPublicWorld(worldId: WorldId, revision: string, guestDemo = false): Promise<PublicStepResult> {
   const query = guestDemo ? "?guest_demo=true" : "";
-  const resp = await fetch(`${API_BASE}/public/step${query}`, {
+  const resp = await fetch(`${publicWorldBase(API_BASE, worldId)}/step${query}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ revision }),

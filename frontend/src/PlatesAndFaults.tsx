@@ -21,6 +21,7 @@ export interface PlatesLayers {
 }
 
 interface Props extends InspectorViewProps {
+  worldId: string;
   plates: PlateSummary[];
   faults: FaultSummary[];
   faultSystems: FaultSystemSummary[];
@@ -130,7 +131,7 @@ const loopCentroid = (pts: Vec3[]): Vec3 => {
 // earthquake + volcano activity overlay toggled together from the sidebar. All client-drawn,
 // same "raw JSON, the client renders it" approach as the other inspectors.
 export default function PlatesAndFaults({
-  plates, faults, faultSystems, earthquakes, volcanoes, coastlineSegments, showQuakesVolcanoes,
+  worldId, plates, faults, faultSystems, earthquakes, volcanoes, coastlineSegments, showQuakesVolcanoes,
   showFaults, showCratons, showWater, layers, highlightCratons, highlightedFaultKind,
   selectedPlateId, onSelectPlate, ...view
 }: Props) {
@@ -391,5 +392,5 @@ export default function PlatesAndFaults({
     highlightedFaultKind, selectedPlateId, projection, rotation, width, height,
   ]);
 
-  return <InspectorCanvas {...view} canvasRef={canvasRef} onFrame={draw} {...plateSelection(plates, selectedPlateId, onSelectPlate)} />;
+  return <InspectorCanvas {...view} canvasRef={canvasRef} onFrame={draw} {...plateSelection(worldId, plates, selectedPlateId, onSelectPlate)} />;
 }

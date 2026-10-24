@@ -1,4 +1,5 @@
 import { renderWorld } from "./api";
+import type { WorldId } from "./worldRoutes";
 import type { Vec3 } from "./rotation";
 import { getRenderTransform, project, toPixels } from "./rotation";
 
@@ -19,7 +20,7 @@ export type GlobeBasis = [Vec3, Vec3, Vec3];
 const MAP_WIDTH = 720;
 const MAP_HEIGHT = 360;
 
-let cachedMap: { worldRevision: number; pixels: Promise<MapPixels> } | null = null;
+let cachedMap: { worldId: WorldId; worldRevision: number; pixels: Promise<MapPixels> } | null = null;
 
 function decodeMap(dataUrl: string): Promise<MapPixels> {
   return new Promise((resolve, reject) => {
@@ -41,13 +42,13 @@ function decodeMap(dataUrl: string): Promise<MapPixels> {
   });
 }
 
-// The unrotated Behrmann elevation map, decoded once per world revision and shared by both
-// globes.
-export function loadWorldMapPixels(worldRevision: number): Promise<MapPixels> {
-  if (cachedMap?.worldRevision === worldRevision) return cachedMap.pixels;
-  const pixels = renderWorld("behrmann", "elevation", MAP_WIDTH, MAP_HEIGHT)
+// The unrotated Behrmann elevation map, decoded once per (world, revision) and shared by
+// both globes.
+export function loadWorldMapPixels(worldId: WorldId, worldRevision: number): Promise<MapPixels> {
+  if (cachedMap?.worldId === worldId && cachedMap?.worldRevision === worldRevision) return cachedMap.pixels;
+  const pixels = renderWorld(worldId, "behrmann", "elevation", MAP_WIDTH, MAP_HEIGHT)
     .then((map) => decodeMap(`data:image/png;base64,${map.image_base64}`));
-  const entry = { worldRevision, pixels };
+  const entry = { worldId, worldRevision, pixels };
   cachedMap = entry;
   pixels.catch(() => {
     if (cachedMap === entry) cachedMap = null;

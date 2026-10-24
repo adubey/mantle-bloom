@@ -17,13 +17,18 @@ The service is a small hosted preview, not a multi-user world service:
 
 - One configured GitHub account has the full app and API.
 - Logged-out visitors can use the public viewer and its limited step allowance.
-- Everyone sees and steps the same active world. The world lives in one process's memory;
-  there are no separate user-owned worlds or general user accounts.
-- A Railway volume stores the latest world checkpoint and run status. On restart or wake, the
-  process restores that state. If the service sleeps, simulation pauses until a request wakes
-  it; elapsed time is the time simulated, not wall-clock time.
-- One replica and one Uvicorn worker are required by the in-memory world and single-writer
-  checkpoint. This setup does not provide horizontal scaling or independent world workers.
+- The owner keeps several named worlds in one process, each addressed by world ID; the
+  public viewer opens whichever ones the owner marks public. There are no separate
+  user-owned worlds or general user accounts.
+- A Railway volume stores the registry index plus every world's checkpoint and run status
+  (`worlds.json` and `worlds/<id>/` per world; a default world pickles to about 60 MB).
+  On restart or wake, the process restores all of that state. If the service sleeps,
+  simulation pauses until a request wakes it; elapsed time is the time simulated, not
+  wall-clock time.
+- One replica and one Uvicorn worker are required by the in-memory worlds and single-writer
+  checkpoints. This setup does not provide horizontal scaling or parallel physics workers:
+  independently running worlds take turns at one compute gate. `MANTLE_BLOOM_MAX_WORLDS`
+  caps the registry (default 4 records); size the volume and memory for the worlds kept.
 
 The route and access details are documented in the [API reference](api-reference.md).
 The checkpoint and startup behavior are in [architecture](architecture.md#run-and-checkpoint).
@@ -48,11 +53,12 @@ for the behavior.
 ## Hosting boundary
 
 The Docker image keeps the application build portable, while the deployment contract is still
-Railway-specific: one replica, one shared world, and one persistent checkpoint volume. Adding
-accounts, paid access, per-user worlds, concurrent workers, a database or object store, or
-sharding requires an explicit storage and execution design. The launch roadmap tracks those
-decisions under [security and public service](../planning/launch-readiness.md#4-security-and-public-service)
-and [performance and capacity](../planning/launch-readiness.md#5-performance-and-capacity).
+Railway-specific: one replica, one multi-world registry, and one persistent checkpoint volume.
+Adding accounts, paid access, per-user worlds, parallel physics workers, a database or object
+store, or sharding requires an explicit storage and execution design. The launch roadmap
+tracks those decisions under [security and public
+service](../planning/launch-readiness.md#4-security-and-public-service) and [performance and
+capacity](../planning/launch-readiness.md#5-performance-and-capacity).
 
 Marketing and monetization notes are in [planning/marketing.md](../planning/marketing.md)
 and [planning/monetization.md](../planning/monetization.md).

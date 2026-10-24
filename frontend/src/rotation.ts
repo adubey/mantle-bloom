@@ -4,7 +4,7 @@
 // trip to the server for every mouse move (the real detailed map -- elevation fill, plate
 // boundaries, climate heatmaps -- is far too slow to re-render at that rate; see
 // docs/simulation-model/rendering-and-inspectors.md#rotating-the-view). The final committed rotation is sent to
-// `/world/render`'s `rotation` query param (see api.ts's renderWorld) for the real render.
+// `/worlds/{world_id}/render`'s `rotation` query param (see api.ts's renderWorld) for the real render.
 
 import type { Projection } from "./api";
 
@@ -297,7 +297,7 @@ export function project(projection: Projection, lat: number, lon: number): [numb
 
 // --- Inverse projections: for turning a click's planar (x, y) back into (lat, lon), so
 // PlateInspector can unproject a click and ask the server which plate is there
-// (/world/plate_at). Both return null outside their valid domain (e.g. a click landed in the
+// (/worlds/{world_id}/plate_at). Both return null outside their valid domain (e.g. a click landed in the
 // canvas's background padding, off the sphere's own projected silhouette) -- callers must
 // skip the plate_at call on null, not coerce it to NaN.
 

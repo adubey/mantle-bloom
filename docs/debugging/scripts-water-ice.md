@@ -50,7 +50,7 @@ for River Inspector segments and drawn map segments, how many are longer than 3Ã
 and how many join non-neighbours. A backend without `hydrology.flow_segments` is measured from
 each river node's own `flow_target` edge. `--render-dir` writes an elevation globe centred on
 `--center LAT LON` at each checkpoint. `--timing N` adds the median of N cold (spill-path
-cache cleared) and warm timings of an elevation map render, the `/world/rivers` payload and
+cache cleared) and warm timings of an elevation map render, the `/worlds/{world_id}/rivers` payload and
 `flow_segments` over every river node.
 
 ```bash

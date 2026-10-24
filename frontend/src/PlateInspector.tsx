@@ -8,6 +8,7 @@ import { beginInspectorFrame, plateSelection } from "./inspectorDrawing";
 import { strokeRobustLoop } from "./screenProjector";
 
 interface Props extends InspectorViewProps {
+  worldId: string;
   plates: PlateSummary[];
   selectedPlateId: number | null;
   onSelectPlate: (id: number | null) => void;
@@ -31,7 +32,7 @@ const POINT_ALPHA = 0.18; // other (non-selected) plates -- "less visible"
 const SELECTED_POINT_ALPHA = 0.9; // the selected plate -- "visible"
 
 // Renders every plate's outline + bounding ellipse + individual node points (see backend
-// app/plates.py's plate_bounding_ellipse and GET /world/plates) as an interactive display --
+// app/plates.py's plate_bounding_ellipse and GET /worlds/{world_id}/plates) as an interactive display --
 // no server-baked PNG for this view. Every plate is always drawn as a filled, translucent
 // ellipse (so overlapping plates visibly blend) plus a plate-colored outline stroke plus its
 // own points (always neutral white/off-white, on top of everything else, deliberately never
@@ -39,7 +40,7 @@ const SELECTED_POINT_ALPHA = 0.9; // the selected plate -- "visible"
 // the traced boundary); the selected plate is drawn last, brighter, with a full-opacity
 // outline and highly visible points. Reuses the same long-press-drag rotate gesture as
 // MapCanvas (see rotationDrag.ts) plus click-to-select and Tab/Shift+Tab to cycle plates.
-export default function PlateInspector({ plates, selectedPlateId, onSelectPlate, ...view }: Props) {
+export default function PlateInspector({ worldId, plates, selectedPlateId, onSelectPlate, ...view }: Props) {
   const { width, height, projection, rotation } = view;
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -102,5 +103,5 @@ export default function PlateInspector({ plates, selectedPlateId, onSelectPlate,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plates, selectedPlateId, projection, rotation, width, height]);
 
-  return <InspectorCanvas {...view} canvasRef={canvasRef} onFrame={drawPlates} {...plateSelection(plates, selectedPlateId, onSelectPlate)} />;
+  return <InspectorCanvas {...view} canvasRef={canvasRef} onFrame={drawPlates} {...plateSelection(worldId, plates, selectedPlateId, onSelectPlate)} />;
 }

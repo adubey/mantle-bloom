@@ -390,7 +390,7 @@ structural zone -- sea ice (`has_sea_ice` or SST `< -1`), coastal shelf
 (`dist_to_land_rad <= SHELF_RANGE_RAD`, matching `geology.SHELF_RANGE_RAD`), equatorial
 divergence (`|lat| <= 6` in the tropics), or open ocean / subtropical gyre.
 
-`smooth_biome_field` (the version the map views and `/world/stats` use) computes
+`smooth_biome_field` (the version the map views and `/worlds/{world_id}/stats` use) computes
 `continentality` and coast distance from `is_ocean` itself via a distance transform, plus
 sea-ice cover from a passed glacier-depth grid, then runs the same stateless neighbour-vote
 cleanup as before on land cells only. `climate.compute_climate` calls it once per computation
@@ -469,12 +469,12 @@ CFD-solved wind.
 ### Always-on, not a mode
 
 Earlier revisions gated Fluid Dynamics behind a three-way `World.fluid_mode` toggle
-(`POST /world/mode`) that froze plate tectonics/climate while it was active. That's gone:
+(`POST /worlds/{world_id}/mode`) that froze plate tectonics/climate while it was active. That's gone:
 `World.atmosphere_cfd_state` is created once, by `generate_world`
 (`atmosphere_cfd.init_atmosphere_cfd`, seeded from the diagnostic `compute_wind` bootstrap),
 and never re-initialized again for the rest of that world's life.
 
-**Every `POST /world/step` call advances it**, via `step_world`'s own
+**Every `POST /worlds/{world_id}/step` call advances it**, via `step_world`'s own
 `_advance_fluid_dynamics`, right alongside plate tectonics/climate/erosion -- gated on
 `World.simulate_climate_biomes` the same way erosion/hydrology already are (not on
 `simulate_plate_movement`; wind keeps evolving even with plate movement paused), *and* on
@@ -484,7 +484,7 @@ Real atmospheric fluid dynamics needs timesteps of hours to days; plate tectonic
 timesteps of thousands to millions of years -- reconciled by advancing the wind state by a
 **fixed real-time increment per tectonics step, regardless of the tectonic `years`
 requested**: `atmosphere_cfd.SECONDS_PER_TECTONIC_STEP` (one simulated day). A single
-`/world/step` call covering a million tectonic years still only advances the atmosphere by one
+`/worlds/{world_id}/step` call covering a million tectonic years still only advances the atmosphere by one
 simulated day -- an intentional decoupling.
 
 **`refresh_forcing`** (called right before `step_atmosphere_cfd` each tectonics step) keeps the
@@ -502,11 +502,11 @@ diagnostic wind model is selected, below.
 
 ### Wind model: `"diagnostic"` (default) vs `"cfd"`
 
-`World.wind_model` (live-adjustable via the Controls window / `POST /world/controls`) picks
+`World.wind_model` (live-adjustable via the Controls window / `POST /worlds/{world_id}/controls`) picks
 which wind field feeds `climate.py`:
 
 - **`"cfd"`** -- the genuine shallow-water solve described above. At the default
-  `fluid_density` this is the single most expensive piece of a `/world/step` (hundreds to
+  `fluid_density` this is the single most expensive piece of a `/worlds/{world_id}/step` (hundreds to
   a thousand+ CFL-stable substeps; see [Performance](#performance-and-grid-resolution)).
 - **`"diagnostic"`** (default) -- skip that solve entirely. `_advance_fluid_dynamics` becomes a no-op
   (the CFD state is *kept*, just frozen, so switching back resumes from it rather than a
