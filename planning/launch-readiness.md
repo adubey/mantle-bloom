@@ -48,7 +48,7 @@ resolutions; fluxes that affect one another use compatible units and close their
 
 **Goal:** the public service is safe to operate for multiple independent users and their worlds.
 
-- [ ] **Needs a tracker:** perform a security review of the full codebase and deployment, then create issues for findings with severity, affected surface and verification criteria. Include authentication/session handling, API authorization, world-file import/export, resource-exhaustion limits, dependencies and deployment secrets.
+- [ ] Perform a security review of the full codebase and deployment, then create issues for findings with severity, affected surface and verification criteria. Include authentication/session handling, API authorization, world-file import/export, resource-exhaustion limits, dependencies and deployment secrets. Tracked in [#556](https://github.com/adubey/mantle-bloom/issues/556) (first pass: [#555](https://github.com/adubey/mantle-bloom/issues/555)).
 - [ ] **Needs a decision and tracker:** define user accounts, identity provider, account database (if required), and ownership/retention rules. The current hosting guide describes a single owner account and public viewer, not general user accounts; see [hosting](../docs/hosting.md).
 - [ ] **Needs a decision and tracker:** define the three access levels and their boundaries:
   1. Logged-out viewer: can inspect and step worlds within public limits.
