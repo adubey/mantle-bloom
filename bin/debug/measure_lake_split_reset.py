@@ -66,9 +66,11 @@ captured: dict = {}
 _orig_resolve_lakes = lakes.resolve_lakes
 
 
-def _capture(forest, elevation, prev_lake_depth, years, climate, hypsometry=None):
-    captured.update(climate=climate, hyps=hypsometry)
-    return _orig_resolve_lakes(forest, elevation, prev_lake_depth, years, climate, hypsometry)
+def _capture(*args):
+    # `compute_hydrology` passes climate and hypsometry last, both before #539 (when an
+    # `is_frozen` array came before them) and after, so either backend can be measured.
+    captured.update(climate=args[-2], hyps=args[-1])
+    return _orig_resolve_lakes(*args)
 
 
 lakes.resolve_lakes = _capture
