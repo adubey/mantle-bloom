@@ -241,6 +241,73 @@ def test_step_before_generate_returns_404(client):
     assert resp.status_code == 404
 
 
+def test_step_rejects_invalid_years(client):
+    # #557: years must be positive, finite, and under the per-request ceiling;
+    # each step costs seconds of CPU regardless of its size. Non-finite values
+    # go as raw bodies: httpx's json= refuses to serialize them.
+    _post_generate(client, json={"seed": 9, "num_plates": 6})
+    before = main._state["world"].elapsed_years
+    for years in (0, -1_000_000, main.MAX_STEP_YEARS + 1):
+        resp = _post_step(client, json={"years": years})
+        assert resp.status_code == 400, years
+    for raw in (b'{"years": Infinity}', b'{"years": NaN}'):
+        resp = _post_step(
+            client, content=raw, headers={"Content-Type": "application/json"}
+        )
+        assert resp.status_code == 400, raw
+    # Rejected before any stepping: the world has not advanced.
+    assert main._state["world"].elapsed_years == before
+
+
+def test_step_accepts_ui_step_sizes_and_run_accepts_the_max(client):
+    # #557 verification: ordinary UI step sizes still work, and exactly
+    # MAX_STEP_YEARS is allowed (the cap is inclusive). The max itself is
+    # exercised through /world/run, which validates without stepping.
+    _post_generate(client, json={"seed": 9, "num_plates": 6})
+    resp = _post_step(client, json={"years": 10_000_000})
+    assert resp.status_code == 200
+    assert main._state["world"].elapsed_years == 10_000_000.0
+    resp = client.post(
+        "/world/run", json={"running": False, "step_years": main.MAX_STEP_YEARS}
+    )
+    assert resp.status_code == 200
+
+
+def test_animate_rejects_invalid_step_years(client):
+    _post_generate(client, json={"seed": 9, "num_plates": 6})
+    for step_years in (0, -1_000_000, main.MAX_STEP_YEARS + 1):
+        resp = client.post(
+            "/world/animate", json={"step_years": step_years, "num_frames": 2}
+        )
+        assert resp.status_code == 400, step_years
+    for raw in (b'{"step_years": Infinity, "num_frames": 2}', b'{"step_years": NaN, "num_frames": 2}'):
+        resp = client.post(
+            "/world/animate", content=raw, headers={"Content-Type": "application/json"}
+        )
+        assert resp.status_code == 400, raw
+
+
+def test_animate_rejects_out_of_range_steps_per_frame(client):
+    # #557: steps_per_frame is capped as well as floored, so a request's total
+    # step count (num_frames x steps_per_frame) is bounded through both factors.
+    _post_generate(client, json={"seed": 9, "num_plates": 6})
+    resp = client.post(
+        "/world/animate",
+        json={"step_years": 1_000_000, "steps_per_frame": main.MAX_STEPS_PER_FRAME + 1, "num_frames": 2},
+    )
+    assert resp.status_code == 400
+
+
+def test_run_rejects_step_years_over_the_max(client):
+    # #557: /world/run gets the same MAX_STEP_YEARS cap as /world/step.
+    assert (
+        client.post(
+            "/world/run", json={"running": False, "step_years": main.MAX_STEP_YEARS + 1}
+        ).status_code
+        == 400
+    )
+
+
 def test_plates_before_generate_returns_404(client):
     assert client.get("/world/plates").status_code == 404
 
