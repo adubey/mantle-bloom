@@ -127,6 +127,9 @@ doesn't need to wait for #520 part 1.
 
 ## Review fixes
 
+Superseded by [After rebasing onto #520 part 1](#after-rebasing-onto-520-part-1) below, which
+reruns these measures with the final script against the current `main`.
+
 The review of #550 found two weaknesses in the results above.
 - **The primary metric was 0 by construction on the branch.** It read the ice ledger's frozen
   terms, which the branch never writes, so it couldn't show a loss there.
@@ -192,11 +195,18 @@ fixed here.
 
 #520 part 1 (perched-lake false merges) landed on `main` while this PR was open. The branch was
 rebased onto `origin/main` `009d63a`, and all four arms were rerun one at a time with the final
-script against that baseline. Medians are over steps 2–10.
+script against that baseline (branch `978e1e4`). Medians are over steps 2–10, and "max" is the
+largest step among steps 2–10.
+
+The final script corrects one more undercount found in a second review. A body balanced at its
+rim used to count as passing its water on even when none of its sinks spilled. Because the
+in-step spill test fills by volume while the balance goes straight to equilibrium, such a body
+drops its surplus for the step. It now counts as lost. The other measures reproduce the run
+before this correction exactly.
 
 | Measure (median) | Evidence, main | Evidence, branch | Held-out, main | Held-out, branch |
 |---|---:|---:|---:|---:|
-| Liquid water lost at lakes (m^3/s) | 47,200 (max 514,000) | **< 0.001** | 18,800 (max 145,000) | **< 0.001** |
+| Liquid water lost at lakes (m^3/s) | 62,200 (max 112,500) | **146** (max 10,400) | 19,800 (max 98,700) | **0** (max 1,300) |
 | of which deleted by freezing | 11,900 | 0 | 8,600 | 0 |
 | Held at a depth cap (m^3/s) | **0** | **92,000** | 58,900 | 59,400 |
 | Ocean discharge (m^3/s) | 370,500 | 407,300 (+10%) | 971,400 | 1,009,800 (+4.0%) |
@@ -205,11 +215,14 @@ script against that baseline. Medians are over steps 2–10.
 | Cold-lake area (k km^2) | 13 | 89 | 0 | 33 |
 | Glacier volume (M km^3) | 6.067 | 6.055 | 1.866 | 1.853 |
 | Breached pits / floor-drain toggles | 31 / 56 | 75 / 72 | 21 / 24 | 26 / 25 |
-| Step time (s) / peak RSS (MB) | 8.45 / 1,252 | 8.09 / 1,271 | 6.81 / 1,061 | 6.59 / 1,030 |
+| Step time (s) / peak RSS (MB) | 9.83 / 1,252 | 9.55 / 1,271 | 7.96 / 1,061 | 7.94 / 1,030 |
 
-**#520 part 1 narrows main's loss but doesn't remove it.** The loss falls from 131,500 to 47,200
-m^3/s (evidence) and from 78,600 to 18,800 (held-out). The branch still loses none at its lakes,
-and lake flicker on main is lower than before the rebase.
+**#520 part 1 narrows main's loss but doesn't remove it.** Main still loses a median 62,200 m^3/s
+(evidence) and 19,800 m^3/s (held-out) by freezing, by drying lakes that have a frozen member,
+and at rims whose outlet hasn't opened. The branch keeps only that last, small loss: a median
+146 and 0 m^3/s, worst steps 10,400 and 1,300 (19,400 at step 1 on the held-out save). That's
+the in-step spill test lagging the equilibrium balance, which is #553's resolver problem. Lake
+flicker on main is lower than before the rebase.
 
 **On the evidence save the depth caps now drop more water on the branch than main loses.** That's
 92,000 m^3/s held at a cap against main's 47,200 m^3/s lost. After #520 part 1, main's lakes are
@@ -218,8 +231,16 @@ sea-tier cap. The surplus over its evaporation at the cap is then neither spille
 the held-out save the caps hold the same water on both arms, about 59,000 m^3/s.
 
 This is the defect RFC 0014 D4 names: "water a cap holds back is booked as overflow at the cap,
-never dropped". D4 itself is deferred to phase 2. The owner decides whether booking the cap's
-surplus as overflow lands before or with this PR.
+never dropped". The owner chose to leave it out of this PR, and it is tracked as #553 under
+phase 2.
+- A prototype (branch `claude/cap-overflow-prototype`) opened a basin's outlet once it filled to
+  its cap. That brought the held-at-cap loss to 0 on both saves, except one evidence step.
+- But it passed the lake's whole inflow downstream while the lake still evaporated at its cap,
+  so it over-supplied the river below.
+- It also needed 22–32 in-step resolver rounds per step instead of 13–21, hitting the 32-round
+  limit on 3 of 10 evidence steps, and cost about +15–20% step time.
+
+RFC 0014 D1's step budget is designed for this.
 
 The #520 attribution, with #520 part 1 now on `main`: the share of the top-five cold sinks'
 inflow that came through spills is 31% (evidence) and 71% (held-out). The share from basins that

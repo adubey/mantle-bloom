@@ -209,7 +209,7 @@
   "evidence_seed308161711_121.5Myr": {
    "main": {
     "commit": "009d63a",
-    "liquid_water_lost_m3_s_median_2_10": 47238.952,
+    "liquid_water_lost_m3_s_median_2_10": 62215.6,
     "deleted_by_freezing_m3_s_median_2_10": 11919.182,
     "held_at_depth_cap_m3_s_median_2_10": 0.0,
     "ocean_discharge_m3_s_median_2_10": 370468.518,
@@ -220,17 +220,18 @@
     "breached_pits_median_2_10": 31,
     "floor_drain_leaves_median_2_10": 44,
     "floor_drain_toggles_median_2_10": 56,
-    "runtime_s_median_2_10": 8.454,
-    "peak_rss_mb_median_2_10": 1252.5,
+    "runtime_s_median_2_10": 9.828,
+    "peak_rss_mb_median_2_10": 785.625,
     "per_step": {
-     "liquid_water_lost_m3_s": [513544.103, 85510.878, 39183.447, 18101.87, 37257.62, 50392.492, 76224.484, 14075.526, 51936.749, 47238.952],
+     "liquid_water_lost_m3_s": [541746.554, 85510.878, 39392.657, 18101.87, 62215.6, 54000.134, 112523.825, 14075.526, 88572.443, 71568.839],
      "held_at_depth_cap_m3_s": [0.0, 0.0, 57519.135, 49617.15, 47977.894, 0.0, 0.0, 0.0, 0.0, 0.0],
      "lake_volume_km3": [735707.878, 1574277.526, 1176986.253, 1850285.655, 1760199.958, 1964650.504, 1865359.187, 2029173.033, 1998688.847, 1249270.165]
-    }
+    },
+    "liquid_water_lost_m3_s_max_2_10": 112523.825
    },
    "branch": {
-    "commit": "d703251",
-    "liquid_water_lost_m3_s_median_2_10": 0.0,
+    "commit": "978e1e4",
+    "liquid_water_lost_m3_s_median_2_10": 146.3,
     "deleted_by_freezing_m3_s_median_2_10": 0.0,
     "held_at_depth_cap_m3_s_median_2_10": 92010.185,
     "ocean_discharge_m3_s_median_2_10": 407343.177,
@@ -241,19 +242,20 @@
     "breached_pits_median_2_10": 75,
     "floor_drain_leaves_median_2_10": 68,
     "floor_drain_toggles_median_2_10": 72,
-    "runtime_s_median_2_10": 8.089,
-    "peak_rss_mb_median_2_10": 1270.562,
+    "runtime_s_median_2_10": 9.551,
+    "peak_rss_mb_median_2_10": 901.328,
     "per_step": {
-     "liquid_water_lost_m3_s": [0.0, 0.0, 0.0, 0.001, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+     "liquid_water_lost_m3_s": [41.215, 0.0, 1813.465, 10360.051, 166.274, 0.0, 146.3, 0.0, 741.309, 0.0],
      "held_at_depth_cap_m3_s": [327453.407, 290090.756, 144266.039, 92010.185, 82817.801, 85249.747, 30028.568, 89153.443, 111925.859, 98388.692],
      "lake_volume_km3": [2320191.422, 2074071.845, 2164782.529, 2191540.813, 2257777.615, 2323898.378, 2446438.826, 2497877.485, 2594329.73, 1978153.041]
-    }
+    },
+    "liquid_water_lost_m3_s_max_2_10": 10360.051
    }
   },
   "held_out_seed374464662_132.6Myr": {
    "main": {
     "commit": "009d63a",
-    "liquid_water_lost_m3_s_median_2_10": 18833.973,
+    "liquid_water_lost_m3_s_median_2_10": 19842.341,
     "deleted_by_freezing_m3_s_median_2_10": 8605.344,
     "held_at_depth_cap_m3_s_median_2_10": 58911.111,
     "ocean_discharge_m3_s_median_2_10": 971433.686,
@@ -264,16 +266,17 @@
     "breached_pits_median_2_10": 21,
     "floor_drain_leaves_median_2_10": 17,
     "floor_drain_toggles_median_2_10": 24,
-    "runtime_s_median_2_10": 6.806,
-    "peak_rss_mb_median_2_10": 1060.984,
+    "runtime_s_median_2_10": 7.962,
+    "peak_rss_mb_median_2_10": 883.031,
     "per_step": {
-     "liquid_water_lost_m3_s": [144720.616, 18833.973, 30676.601, 8666.07, 97418.138, 10958.87, 24646.477, 12314.279, 56488.447, 9968.413],
+     "liquid_water_lost_m3_s": [164951.005, 19842.341, 31455.961, 10799.045, 98701.69, 10958.87, 24646.477, 12314.279, 57304.503, 10060.386],
      "held_at_depth_cap_m3_s": [33907.424, 75310.381, 66479.276, 57975.73, 62578.502, 58911.111, 59254.811, 56473.06, 58190.166, 57198.641],
      "lake_volume_km3": [1193713.696, 2296098.527, 2302153.147, 2253477.712, 2230990.695, 2239054.135, 2249069.796, 2243134.668, 2239657.068, 2401722.868]
-    }
+    },
+    "liquid_water_lost_m3_s_max_2_10": 98701.69
    },
    "branch": {
-    "commit": "d703251",
+    "commit": "978e1e4",
     "liquid_water_lost_m3_s_median_2_10": 0.0,
     "deleted_by_freezing_m3_s_median_2_10": 0.0,
     "held_at_depth_cap_m3_s_median_2_10": 59377.635,
@@ -285,13 +288,14 @@
     "breached_pits_median_2_10": 26,
     "floor_drain_leaves_median_2_10": 18,
     "floor_drain_toggles_median_2_10": 25,
-    "runtime_s_median_2_10": 6.588,
-    "peak_rss_mb_median_2_10": 1030.203,
+    "runtime_s_median_2_10": 7.945,
+    "peak_rss_mb_median_2_10": 748.094,
     "per_step": {
-     "liquid_water_lost_m3_s": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+     "liquid_water_lost_m3_s": [19383.523, 0.0, 0.0, 501.563, 1282.492, 0.0, 0.0, 0.0, 894.978, 95.779],
      "held_at_depth_cap_m3_s": [33907.424, 75986.908, 67325.844, 59004.971, 63105.657, 59377.635, 60033.376, 53654.462, 59255.925, 54617.772],
      "lake_volume_km3": [1471657.501, 2392229.349, 2431014.998, 2379465.399, 2331345.752, 2328861.771, 2339575.363, 2345963.199, 2450603.988, 2425361.19]
-    }
+    },
+    "liquid_water_lost_m3_s_max_2_10": 1282.492
    }
   }
  }
