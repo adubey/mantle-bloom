@@ -121,6 +121,8 @@ class G0Config:
     couple_sea_level: bool = False  # arm (b'): sea level solved within the step (D2's bracket)
     couple_deflection: bool = False  # arm (c'): mass-balance surface on the closing deflection
     current_friction: bool = False  # arm (j): frictional heat from the current step, by iteration
+    fixed_yield: bool = False  # diagnostic arm (y): yield stress always the hard-bed value
+    no_friction: bool = False  # diagnostic arm (q): no frictional heat
     ddf_snow_mm: float = 4.0
     ddf_ice_mm: float = 8.0
     rain_snow_c: float = 1.0
@@ -242,6 +244,8 @@ def warm_based(thickness_m: np.ndarray, surface_temperature_c: np.ndarray) -> np
 
 def yield_stress_pa(mobile_cover_m: np.ndarray, is_warm: np.ndarray) -> np.ndarray:
     """Basal yield stress: soft only where a thawed bed has sediment to deform."""
+    if G0.fixed_yield:
+        return np.full(np.shape(mobile_cover_m), ICE_YIELD_STRESS_HARD_PA)
     softness = np.where(is_warm, np.clip(np.asarray(mobile_cover_m, dtype=float) / ICE_SOFT_BED_COVER_M, 0.0, 1.0), 0.0)
     return ICE_YIELD_STRESS_HARD_PA + (ICE_YIELD_STRESS_SOFT_PA - ICE_YIELD_STRESS_HARD_PA) * softness
 

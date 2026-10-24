@@ -1638,6 +1638,8 @@ def compute_hydrology(
         mb_frozen = (mb_temperature < FREEZE_POINT_C) | (prev_glacier_depth >= GLACIER_VISIBLE_DEPTH_M)
     if ice_sheet.G0.physical:
         frictional = np.concatenate([p.collect("g0_frictional_heat_w_m2") for p in plates_in_order])
+        if ice_sheet.G0.no_friction:
+            frictional = np.zeros(n)
         allow_ocean_ice = np.zeros(n, dtype=bool)  # D6 removes the ice-age sea-ice cap
     amplitude_at_nodes = seasonal_amplitude_at_nodes if seasonal_amplitude_at_nodes is not None else np.zeros(n)
 

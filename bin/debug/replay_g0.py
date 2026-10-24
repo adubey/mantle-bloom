@@ -16,6 +16,11 @@ origin/main. The arm presets:
 - `g`: every input fix, (b') + (c') + (e) + (f); `g-b2`, `g-c2`, `g-e`, `g-f` leave one out.
   Arm (d), frozen river and lake ice off, is origin/main since #550, so it has no switch.
 - `i1`, `i2`: (g) with the largest or the smallest stable root.
+- `n`: (a) with the climate's per-step random fields (humidity, moisture-flux and current
+  noise, drawn from (seed, elapsed_years) in climate.py) frozen at the run's opening draw.
+  Outside the RFC's list: it tests whether step-to-step climate noise moves fast ice.
+- `y`, `q`, `x`: diagnostic arms outside the RFC's list, each (a) less one feedback: yield
+  stress fixed at the hard-bed value (y), no frictional heat (q), no glacial erosion (x).
 
 `--set key=value` overrides any `G0Config` field, for combined arms. Physical arms use D3's
 starting abrasion law (E = 1e-4 u_b^0.65 m/yr; coefficient 100 m/Myr) and drop the ice-age
@@ -52,7 +57,13 @@ ARMS = {
     "b2": {"physical": True, "couple_sea_level": True},
     "c2": {"physical": True, "couple_deflection": True},
     "j": {"physical": True, "current_friction": True},
+    "n": {"physical": True},
+    "y": {"physical": True, "fixed_yield": True},
+    "q": {"physical": True, "no_friction": True},
+    "x": {"physical": True},
 }
+NO_EROSION_ARMS = {"x"}
+FREEZE_NOISE_ARMS = {"n"}
 _FIXES = {"b2": "couple_sea_level", "c2": "couple_deflection", "e": "f_snow", "f": "reevaluate_membership"}
 ARMS["g"] = {"physical": True, **{field: True for field in _FIXES.values()}}
 for _fix, _field in _FIXES.items():
@@ -66,6 +77,7 @@ def add_arguments(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE", help="override a G0Config field")
     ap.add_argument("--ice-age-period-years", type=float, default=None)
     ap.add_argument("--no-enumerate", action="store_true", help="skip root enumeration on physical arms")
+    ap.add_argument("--freeze-climate-noise", action="store_true", help="arm (n)'s noise freeze on any arm")
 
 
 def _parse_value(text: str):
@@ -75,6 +87,25 @@ def _parse_value(text: str):
         return float(text)
     except ValueError:
         return text
+
+
+def freeze_climate_noise(world) -> None:
+    """Seed climate.py's per-step generators with the opening time instead of the current one.
+    Only calls made from climate.py itself are changed."""
+    import sys
+
+    import numpy as np_mod
+
+    original = np_mod.random.default_rng
+    opening = round(world.elapsed_years)
+
+    def frozen(seed=None):
+        caller = sys._getframe(1).f_globals.get("__name__", "")
+        if caller.endswith("hydroclimate.climate") and isinstance(seed, tuple) and len(seed) >= 2 and seed[0] == world.seed:
+            seed = (seed[0], opening, *seed[2:])
+        return original(seed)
+
+    np_mod.random.default_rng = frozen
 
 
 def configure(args: argparse.Namespace, world) -> dict:
@@ -92,8 +123,10 @@ def configure(args: argparse.Namespace, world) -> dict:
     g0 = ice_sheet.G0
     if g0.physical:
         g0.enumerate_roots = not args.no_enumerate
-        erosion.GLACIER_ABRASION_COEFFICIENT = 100.0
+        erosion.GLACIER_ABRASION_COEFFICIENT = 0.0 if args.arm in NO_EROSION_ARMS else 100.0
         erosion.GLACIER_ABRASION_EXPONENT = 0.65
+        if args.arm in NO_EROSION_ARMS:
+            erosion.GLACIER_FLATTEN_RATE_PER_MYR = 0.0
     if g0.hold_sea_level:
         eustasy.update_sea_level = lambda world_: None
     if g0.hold_deflection:
@@ -101,12 +134,15 @@ def configure(args: argparse.Namespace, world) -> dict:
             plate.set_fields_on_plate(g0_hold_deflection_m=plate.collect("ice_load_deflection_m").copy())
     if args.ice_age_period_years is not None:
         world.ice_age_period_years = args.ice_age_period_years
+    if args.arm in FREEZE_NOISE_ARMS or args.freeze_climate_noise:
+        freeze_climate_noise(world)
     return {
         "arm": args.arm,
         **{k: v for k, v in vars(g0).items() if k != "frictional_heat_w_m2"},
         "abrasion_coefficient": erosion.GLACIER_ABRASION_COEFFICIENT,
         "abrasion_exponent": erosion.GLACIER_ABRASION_EXPONENT,
         "ice_age_period_years": float(getattr(world, "ice_age_period_years", 0.0) or 0.0),
+        "climate_noise_frozen": args.arm in FREEZE_NOISE_ARMS or args.freeze_climate_noise,
     }
 
 

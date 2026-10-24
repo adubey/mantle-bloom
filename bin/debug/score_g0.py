@@ -45,25 +45,21 @@ def swing(t: list[float], v: list[float], spin_up_myr: float) -> float | None:
 
 
 def forcing(t: list[float], v: list[float], intensity: list[float], period_myr: float, spin_up_myr: float) -> dict:
-    """Cycle ranges and lags after spin-up, cycles aligned to the forcing's minima."""
+    """Range of V and its lag behind the intensity maximum, per forcing period counted from the
+    end of spin-up (the RFC's two periods plus 2 Myr)."""
     start = t[0] + spin_up_myr
     cycles = []
-    k = 0
+    lo = start
     while True:
-        # Cycle boundaries: whole multiples of the period in absolute model time.
-        lo = (int(start // period_myr) + k) * period_myr
         hi = lo + period_myr
-        if lo < start - 1e-9:
-            k += 1
-            continue
         idx = [i for i, ti in enumerate(t) if lo - 1e-9 <= ti <= hi + 1e-9]
         if not idx or t[idx[-1]] < hi - 1e-9:
             break
         vs = [v[i] for i in idx]
         peak_v = idx[vs.index(max(vs))]
         peak_f = idx[[intensity[i] for i in idx].index(max(intensity[i] for i in idx))]
-        cycles.append({"from_myr": lo, "range_km3": max(vs) - min(vs), "lag_myr": round(t[peak_v] - t[peak_f], 3)})
-        k += 1
+        cycles.append({"from_myr": round(lo, 3), "range_km3": max(vs) - min(vs), "lag_myr": round(t[peak_v] - t[peak_f], 3)})
+        lo = hi
     out = {"cycles": cycles}
     if len(cycles) >= 2 and cycles[0]["range_km3"] > 0.0:
         out["second_over_first"] = cycles[1]["range_km3"] / cycles[0]["range_km3"]
