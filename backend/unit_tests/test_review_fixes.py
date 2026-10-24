@@ -107,6 +107,40 @@ def test_generate_on_deleted_world_bails_without_publishing(client):
         assert resp.text == ""
         assert session.world is None
         assert session.feed.summary() is None
+        # F1: the early bail must still release the gate, the session lock and
+        # the operation flag -- a pre-try return skipped the finally and wedged
+        # every world at the leaked gate.
+        assert main._compute_gate.acquire(timeout=0)
+        main._compute_gate.release()
+        assert session.lock.acquire(blocking=False)
+        session.lock.release()
+        assert not session.operation_busy()
+    finally:
+        session.deleted = False
+        client.delete(f"/worlds/{record['world_id']}")
+
+
+def test_animate_on_deleted_world_bails_without_leaking(client):
+    """F1/F2: same early-bail guarantee for the animation stream, which also
+    releases the gate between frames."""
+    record = client.post("/worlds", json={}).json()
+    scenario = client.get("/debug/scenarios").json()["scenarios"][0]["name"]
+    assert client.post(
+        f"/worlds/{record['world_id']}/generate_debug", json={"scenario": scenario, "seed": 1}
+    ).status_code == 200
+    session = _tracked_session(record["world_id"])
+    session.deleted = True
+    try:
+        resp = client.post(
+            f"/worlds/{record['world_id']}/animate",
+            json={"step_years": 100000, "steps_per_frame": 1, "num_frames": 1},
+        )
+        assert resp.status_code == 200
+        assert main._compute_gate.acquire(timeout=0)
+        main._compute_gate.release()
+        assert session.lock.acquire(blocking=False)
+        session.lock.release()
+        assert not session.operation_busy()
     finally:
         session.deleted = False
         client.delete(f"/worlds/{record['world_id']}")
@@ -135,3 +169,51 @@ def test_corrupt_index_detaches_checkpoints_and_survives(client, tmp_path):
     assert main._checkpoint_error
     assert client.post("/worlds", json={}).status_code == 201
     assert (tmp_path / "worlds.json").read_text() == "{"
+
+
+def test_load_refuses_while_the_session_lock_is_held(client):
+    """F3: load is async, so a held session lock must 503 instead of freezing
+    the event loop for the whole step holding it."""
+    record = client.post("/worlds", json={}).json()
+    scenario = client.get("/debug/scenarios").json()["scenarios"][0]["name"]
+    assert client.post(
+        f"/worlds/{record['world_id']}/generate_debug", json={"scenario": scenario, "seed": 1}
+    ).status_code == 200
+    saved = client.get(f"/worlds/{record['world_id']}/save").content
+    session = _tracked_session(record["world_id"])
+    session.lock.acquire()
+    try:
+        resp = client.post(f"/worlds/{record['world_id']}/load", content=saved)
+        assert resp.status_code == 503
+    finally:
+        session.lock.release()
+    assert client.post(f"/worlds/{record['world_id']}/load", content=saved).status_code == 200
+
+
+def test_world_change_persists_updated_at(client, tmp_path):
+    """F7: the frontend auto-selects the most recently updated world, so a
+    change must persist updated_at -- not just touch it in memory."""
+    import json
+
+    def updated_at_of(world_id: str) -> float:
+        index = json.loads((tmp_path / "worlds.json").read_text())
+        return next(w["updated_at"] for w in index["worlds"] if w["world_id"] == world_id)
+
+    record = client.post("/worlds", json={}).json()
+    before = updated_at_of(record["world_id"])
+    scenario = client.get("/debug/scenarios").json()["scenarios"][0]["name"]
+    assert client.post(
+        f"/worlds/{record['world_id']}/generate_debug", json={"scenario": scenario, "seed": 1}
+    ).status_code == 200
+    assert updated_at_of(record["world_id"]) > before
+
+
+def test_blank_or_huge_world_names_are_rejected(client):
+    """F9: an empty name renders as a blank option (and restores differently);
+    a huge one is rewritten to worlds.json on every save."""
+    assert client.post("/worlds", json={"name": ""}).status_code == 422
+    assert client.post("/worlds", json={"name": "x" * 101}).status_code == 422
+    record = client.post("/worlds", json={"name": "ok"}).json()
+    assert client.patch(f"/worlds/{record['world_id']}", json={"name": ""}).status_code == 422
+    assert client.patch(f"/worlds/{record['world_id']}", json={"name": "y" * 101}).status_code == 422
+    assert client.patch(f"/worlds/{record['world_id']}", json={"name": "fine"}).json()["name"] == "fine"

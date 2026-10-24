@@ -120,6 +120,8 @@ def test_world_routes_reject_unauthenticated_requests(remote):
     assert remote.post("/worlds/test-world/step", json={"years": 1}).status_code == 401
     assert remote.post("/worlds/test-world/generate", json={}).status_code == 401
     assert remote.post("/worlds/test-world/load", content=b"x").status_code == 401
+    # /debug/scenarios moved out from under /worlds/ but stays owner-only (#563 review).
+    assert remote.get("/debug/scenarios").status_code == 401
 
 
 def test_view_and_login_stay_public(remote):

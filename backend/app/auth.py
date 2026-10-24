@@ -1,7 +1,8 @@
 """Single-owner GitHub login guarding the full app (#372).
 
-The full app at `/` and every `/worlds/{world_id}/*` route are for one person: the GitHub account whose
-numeric user ID is in `MANTLE_BLOOM_GITHUB_OWNER_ID`. The ID is stable where the login name
+The full app at `/`, every `/worlds/{world_id}/*` route, and `/debug/scenarios` are for
+one person: the GitHub account whose numeric user ID is in
+`MANTLE_BLOOM_GITHUB_OWNER_ID`. The ID is stable where the login name
 isn't -- a renamed or recycled login can't inherit admin. Everyone else is sent to `/view`.
 
 Sessions are stateless: an HMAC-signed cookie carrying the owner's ID and an expiry, so there's
@@ -216,7 +217,10 @@ def _route_path(scope) -> tuple[str, str]:
 
 
 def _is_world_route(path: str) -> bool:
-    return path == "/worlds" or path.startswith("/worlds/")
+    # /debug/scenarios is guarded too: it moved out from under /worlds/ but is
+    # still an owner-route, and the guard below also carries the cross-site
+    # write check for it.
+    return path == "/worlds" or path.startswith("/worlds/") or path.startswith("/debug/")
 
 
 def gate(request: Request, config: AuthConfig, extra_origins: frozenset[str]) -> Response | None:

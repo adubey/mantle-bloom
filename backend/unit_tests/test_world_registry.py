@@ -23,6 +23,26 @@ def test_create_list_get_remove():
         registry.remove(a.world_id)
 
 
+def test_cancelled_ticket_is_skipped_not_wedged():
+    # A waiter that times out cancels its ticket; the next release must skip it
+    # so later acquires proceed (#563 review F10: verified no stall, kept as a guard).
+    gate = FairComputeGate()
+    assert gate.acquire()
+    outcome: list[bool] = []
+
+    def waiter() -> None:
+        outcome.append(gate.acquire(timeout=0.05))
+
+    thread = threading.Thread(target=waiter)
+    thread.start()
+    thread.join(timeout=10)
+    assert not thread.is_alive()
+    assert outcome == [False]
+    gate.release()
+    assert gate.acquire(timeout=0)
+    gate.release()
+
+
 def test_cap_blocks_new_records_but_adopt_restores_past_it():
     registry = WorldRegistry(max_worlds=1)
     registry.create()

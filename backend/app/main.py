@@ -15,7 +15,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from scipy.spatial import cKDTree
 
 from . import (
@@ -350,6 +350,10 @@ def _world_changed(session: WorldSession, completed: bool = True) -> None:
     see what it left, but a restart goes back to the last whole step rather than resuming
     from a half-stepped world."""
     session.touch()
+    # Persist the touched timestamp, not just the world: the frontend auto-selects
+    # the most recently updated world, and without this a restart would fall back
+    # to the stale updated_at from the record's creation. A tiny atomic write.
+    _save_index()
     session.public_renders.clear()
     session.feed.publish(session.world)
     if completed:
@@ -738,19 +742,28 @@ def _drain_progress(progress) -> World | None:
 
 
 class CreateWorldRequest(BaseModel):
-    name: str | None = None
+    # Bounded: an empty name renders as a blank option (and restores as
+    # "Untitled world", so live and persisted names would differ), while a
+    # huge one is rewritten to worlds.json on every record save.
+    name: str | None = Field(default=None, min_length=1, max_length=100)
     is_public: bool = False
 
 
 class PatchWorldRequest(BaseModel):
-    name: str | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=100)
     is_public: bool | None = None
 
 
 @app.get("/worlds")
 def list_worlds() -> dict:
     """Every world record in this process (#563)."""
-    return {"worlds": [_record_json(session) for session in _registry.list()]}
+    worlds = []
+    for session in _registry.list():
+        # The summary reads world arrays a concurrent step mutates in place;
+        # hold the session lock so a record can't tear mid-step.
+        with session.lock:
+            worlds.append(_record_json(session))
+    return {"worlds": worlds}
 
 
 @app.post("/worlds", status_code=201)
@@ -803,8 +816,14 @@ def delete_world(world_id: str) -> dict:
     if _checkpoint_root is not None and session.checkpoint_store is not None:
         import shutil
 
-        shutil.rmtree(session.checkpoint_store.directory, ignore_errors=True)
+        # Persist the removal before deleting the files: a crash between the two
+        # must leave an orphaned directory (restore ignores it -- no record
+        # references it), never an index entry pointing at files that no longer
+        # exist. A checkpoint can't be mid-save here: writers either hold the
+        # operation flag (refused above), are the runner (closed above), or are a
+        # guest step (refused above).
         _save_index()
+        shutil.rmtree(session.checkpoint_store.directory, ignore_errors=True)
     return {"deleted": world_id}
 
 
@@ -864,56 +883,60 @@ def generate(world_id: str, req: GenerateRequest) -> StreamingResponse:
         _compute_gate.acquire()
         session.lock.acquire()
         acquired = True
-        # The world may have been deleted while this stream queued at the gate.
-        # Bail out quietly rather than generating into a detached session.
-        if session.deleted:
-            return
-        progress = generate_world_progress(
-            req.seed,
-            cratons_first=req.cratons_first,
-            synthetic_relief=req.synthetic_relief,
-            num_plates=req.num_plates,
-            voronoi_points=req.voronoi_points,
-            continental_fraction=req.continental_fraction,
-            land_fraction=req.land_fraction,
-            num_mantle_centers=req.num_mantle_centers,
-            axial_tilt_deg=req.axial_tilt_deg,
-            node_density=req.node_density,
-            initial_soil_maturity=req.initial_soil_maturity,
-            climate_density=req.climate_density,
-            fluid_density=req.fluid_density,
-            sketch=sketch_masks,
-            premade_world_id=req.premade_world_id,
-        )
-        world = None
         try:
-            for message in progress:
-                if message[0] == "progress":
-                    yield json.dumps({"type": "progress", "fraction": message[1]}) + "\n"
-                else:
-                    world = message[1]
-            _set_world(session, world)
-            yield json.dumps({"type": "done", **_summary(session, world)}) + "\n"
-        except GeneratorExit:
-            # The client disconnected mid-stream -- Starlette closes a sync generator behind
-            # StreamingResponse by throwing this in at whichever `yield` above is suspended
-            # (see iterate_in_threadpool), same as it would for a `for` loop that `break`s
-            # early. Generation was never a resumable/abortable transaction (unlike
-            # /worlds/{world_id}/animate's per-frame stopEvent, which is deliberate and cooperative, and
-            # unlike animate's own `_stream` -- see its comment -- which doesn't need this at
-            # all) -- world.py's generate_world_progress mutates its own local `world` across
-            # multiple phases with no valid "half-generated" state to leave sitting in
-            # `_state`, so _drain_progress finishes driving it to completion here regardless
-            # of whether anyone is still listening, the same as this endpoint's single
-            # synchronous response body used to unconditionally do before it streamed
-            # progress. Only `_state` needs updating at this point -- there's no client left
-            # to send progress/done lines to.
-            world = _drain_progress(progress) or world
-            if world is not None:
+            # The world may have been deleted while this stream queued at the gate.
+            # Bail out quietly rather than generating into a detached session. This
+            # check sits inside the try on purpose: returning before the try would
+            # skip the finally below and leak the compute gate (wedging every
+            # world), the session lock and the operation flag.
+            if session.deleted:
+                return
+            progress = generate_world_progress(
+                req.seed,
+                cratons_first=req.cratons_first,
+                synthetic_relief=req.synthetic_relief,
+                num_plates=req.num_plates,
+                voronoi_points=req.voronoi_points,
+                continental_fraction=req.continental_fraction,
+                land_fraction=req.land_fraction,
+                num_mantle_centers=req.num_mantle_centers,
+                axial_tilt_deg=req.axial_tilt_deg,
+                node_density=req.node_density,
+                initial_soil_maturity=req.initial_soil_maturity,
+                climate_density=req.climate_density,
+                fluid_density=req.fluid_density,
+                sketch=sketch_masks,
+                premade_world_id=req.premade_world_id,
+            )
+            world = None
+            try:
+                for message in progress:
+                    if message[0] == "progress":
+                        yield json.dumps({"type": "progress", "fraction": message[1]}) + "\n"
+                    else:
+                        world = message[1]
                 _set_world(session, world)
-            raise
-        except Exception as exc:  # noqa: BLE001 -- status is already 200, so surface it as a data line
-            yield json.dumps({"type": "error", "detail": f"{type(exc).__name__}: {exc}"}) + "\n"
+                yield json.dumps({"type": "done", **_summary(session, world)}) + "\n"
+            except GeneratorExit:
+                # The client disconnected mid-stream -- Starlette closes a sync generator behind
+                # StreamingResponse by throwing this in at whichever `yield` above is suspended
+                # (see iterate_in_threadpool), same as it would for a `for` loop that `break`s
+                # early. Generation was never a resumable/abortable transaction (unlike
+                # /worlds/{world_id}/animate's per-frame stopEvent, which is deliberate and cooperative, and
+                # unlike animate's own `_stream` -- see its comment -- which doesn't need this at
+                # all) -- world.py's generate_world_progress mutates its own local `world` across
+                # multiple phases with no valid "half-generated" state to leave sitting in
+                # `_state`, so _drain_progress finishes driving it to completion here regardless
+                # of whether anyone is still listening, the same as this endpoint's single
+                # synchronous response body used to unconditionally do before it streamed
+                # progress. Only `_state` needs updating at this point -- there's no client left
+                # to send progress/done lines to.
+                world = _drain_progress(progress) or world
+                if world is not None:
+                    _set_world(session, world)
+                raise
+            except Exception as exc:  # noqa: BLE001 -- status is already 200, so surface it as a data line
+                yield json.dumps({"type": "error", "detail": f"{type(exc).__name__}: {exc}"}) + "\n"
         finally:
             if acquired:
                 session.lock.release()
@@ -1012,33 +1035,37 @@ def step(world_id: str, req: StepRequest) -> StreamingResponse:
         _compute_gate.acquire()
         session.lock.acquire()
         acquired = True
-        # The world may have been deleted while this stream queued at the gate.
-        # Bail out quietly rather than stepping a detached session.
-        if session.deleted:
-            return
-        progress = _step_progress(session, world, req.years)
-        completed = False
         try:
-            for fraction in progress:
-                yield json.dumps({"type": "progress", "fraction": fraction}) + "\n"
-            completed = True
-            yield json.dumps({"type": "done", **_summary(session, world)}) + "\n"
-        except GeneratorExit:
-            # The client disconnected mid-stream (see /worlds/{world_id}/generate's own comment on this
-            # exact exception for why Starlette raises it here). A step mutates `world` in
-            # place across many per-plate checkpoints with no valid "half-stepped" state to
-            # leave it in -- world.elapsed_years not yet advanced but some plates already
-            # shifted/deformed, no topology/climate/erosion/sea-level pass -- so finish
-            # driving step_world_progress to completion here regardless, the same as this
-            # endpoint's single synchronous response body used to unconditionally do before
-            # it streamed progress. `world` is mutated in place (unlike generate_world_progress,
-            # which builds a fresh World to hand back), so there's nothing further to write to
-            # `_state` here -- just let the step finish.
-            _drain_progress(progress)
-            completed = True
-            raise
-        except Exception as exc:  # noqa: BLE001 -- status is already 200, so surface it as a data line
-            yield json.dumps({"type": "error", "detail": f"{type(exc).__name__}: {exc}"}) + "\n"
+            # The world may have been deleted while this stream queued at the gate.
+            # Bail out quietly rather than stepping a detached session. Inside the
+            # try on purpose: returning before it would skip the finally and leak
+            # the gate, the session lock and the operation flag (see generate).
+            # Initialized before the bail: the finally below reads it.
+            completed = False
+            if session.deleted:
+                return
+            progress = _step_progress(session, world, req.years)
+            try:
+                for fraction in progress:
+                    yield json.dumps({"type": "progress", "fraction": fraction}) + "\n"
+                completed = True
+                yield json.dumps({"type": "done", **_summary(session, world)}) + "\n"
+            except GeneratorExit:
+                # The client disconnected mid-stream (see /worlds/{world_id}/generate's own comment on this
+                # exact exception for why Starlette raises it here). A step mutates `world` in
+                # place across many per-plate checkpoints with no valid "half-stepped" state to
+                # leave it in -- world.elapsed_years not yet advanced but some plates already
+                # shifted/deformed, no topology/climate/erosion/sea-level pass -- so finish
+                # driving step_world_progress to completion here regardless, the same as this
+                # endpoint's single synchronous response body used to unconditionally do before
+                # it streamed progress. `world` is mutated in place (unlike generate_world_progress,
+                # which builds a fresh World to hand back), so there's nothing further to write to
+                # `_state` here -- just let the step finish.
+                _drain_progress(progress)
+                completed = True
+                raise
+            except Exception as exc:  # noqa: BLE001 -- status is already 200, so surface it as a data line
+                yield json.dumps({"type": "error", "detail": f"{type(exc).__name__}: {exc}"}) + "\n"
         finally:
             if acquired:
                 # Even a failed step has changed the world partway.
@@ -1096,13 +1123,22 @@ async def load_world(world_id: str, request: Request) -> dict:
     if not session.begin_operation():
         raise HTTPException(status_code=503, detail="a generation, step, or animation is already in progress")
     try:
-        with session.lock:
+        # Non-blocking: this route is `async`, so parking on the session lock here
+        # would freeze the event loop -- every long-poll and async route on every
+        # world -- for as long as the step or animation holding it runs. The runner
+        # and guest steps hold the lock without setting the busy flag, so refuse
+        # instead, like an overlapping manual operation would.
+        if not session.lock.acquire(blocking=False):
+            raise HTTPException(status_code=503, detail="a generation, step, or animation is already in progress")
+        try:
             if session.deleted:
                 raise HTTPException(status_code=404, detail="no such world")
             _set_world(session, world)
+            return _summary(session, world)
+        finally:
+            session.lock.release()
     finally:
         session.end_operation()
-    return _summary(session, world)
 
 
 @app.get("/worlds/{world_id}/render")
@@ -1250,73 +1286,103 @@ def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
         _compute_gate.acquire()
         session.lock.acquire()
         acquired = True
-        # The world may have been deleted while this stream queued at the gate.
-        # Bail out quietly rather than animating a detached session.
-        if session.deleted:
-            return
-        last_frame = 0
-        completed = False
-        animation = render_image.stream_animation_mp4(
-            world, req.projection, req.view, req.width, req.height, view_rotation,
-            req.step_years, req.steps_per_frame, req.num_frames,
-            step_fn=lambda w, y: _step_world(session, w, y), stop_event=session.animation_stop_event,
-        )
         try:
-            for message in animation:
-                if message[0] == "progress":
-                    _, frame, total, frame_png, elapsed_years = message
-                    last_frame = frame
-                    # Each frame ends on a whole step. Saved now, a run that ends badly later
-                    # (a disconnect, a failed step or encoder) still keeps the frames before it.
-                    _checkpoint_world(session)
-                    yield json.dumps({
-                        "type": "progress",
-                        "frame": frame,
-                        "total": total,
-                        "image_base64": base64.b64encode(frame_png).decode("ascii"),
-                        "elapsed_years": elapsed_years,
-                        # Each frame's step_fn call already records a stats.py snapshot onto
-                        # World.stats_history (see World.record_stats, called from step_world)
-                        # -- ride the latest one along here so the Stats panel can update live
-                        # instead of sitting frozen until the run finishes (GET stats
-                        # would just wait at the compute gate for the whole run, see its own
-                        # docstring). `None` if record_stats skipped recording this step (e.g.
-                        # simulate_climate_biomes off leaves climate_cache empty) -- the
-                        # frontend just keeps showing its last-known snapshot in that case.
-                        "stats": world.stats_history[-1] if world.stats_history else None,
-                    }) + "\n"
-                else:
-                    completed = True
-                    _, mp4_bytes, stopped_early = message
-                    yield json.dumps({
-                        "type": "done",
-                        "mime": "video/mp4",
-                        "video_base64": base64.b64encode(mp4_bytes).decode("ascii"),
-                        "stopped_early": stopped_early,
-                        **_summary(session, world),
-                    }) + "\n"
-        except GeneratorExit:
-            # The client disconnected mid-stream -- close the inner generator so its
-            # try/finally flushes and closes the encoder instead of leaking the
-            # native libx264 context (see stream_animation_mp4).
-            animation.close()
-            raise
-        except Exception as exc:  # noqa: BLE001 -- status is already 200, so surface it as a data line
-            _logger.exception(
-                "animation stream failed at frame %s/%s (projection=%s view=%s size=%sx%s steps_per_frame=%s)",
-                last_frame,
-                req.num_frames,
-                req.projection,
-                req.view,
-                req.width,
-                req.height,
-                req.steps_per_frame,
+            # The world may have been deleted while this stream queued at the gate.
+            # Bail out quietly rather than animating a detached session. Inside the
+            # try on purpose (see generate): a pre-try return would skip the finally
+            # and leak the gate, the session lock and the operation flag. Both flags
+            # are initialized before the bail: the finally below reads them.
+            last_frame = 0
+            completed = False
+            if session.deleted:
+                return
+            animation = render_image.stream_animation_mp4(
+                world, req.projection, req.view, req.width, req.height, view_rotation,
+                req.step_years, req.steps_per_frame, req.num_frames,
+                step_fn=lambda w, y: _step_world(session, w, y), stop_event=session.animation_stop_event,
             )
-            yield json.dumps({"type": "error", "detail": f"{type(exc).__name__}: {exc}"}) + "\n"
+            try:
+                while True:
+                    # Advance one frame while holding the locks, then let them go
+                    # while the line goes out to the client: holding the global
+                    # gate across up to 480 frames would starve every other world
+                    # at the FIFO gate (and pin a worker thread for the whole
+                    # run). The operation flag stays held throughout, so no other
+                    # world replacer can swap session.world underneath; each frame
+                    # ends on a whole step, so anything running between frames
+                    # sees a consistent world.
+                    try:
+                        message = next(animation)
+                    except StopIteration:
+                        break
+                    if message[0] == "progress":
+                        _, frame, total, frame_png, elapsed_years = message
+                        last_frame = frame
+                        # Each frame ends on a whole step. Saved now, a run that ends badly later
+                        # (a disconnect, a failed step or encoder) still keeps the frames before it.
+                        _checkpoint_world(session)
+                        line = json.dumps({
+                            "type": "progress",
+                            "frame": frame,
+                            "total": total,
+                            "image_base64": base64.b64encode(frame_png).decode("ascii"),
+                            "elapsed_years": elapsed_years,
+                            # Each frame's step_fn call already records a stats.py snapshot onto
+                            # World.stats_history (see World.record_stats, called from step_world)
+                            # -- ride the latest one along here so the Stats panel can update live
+                            # instead of sitting frozen until the run finishes (GET stats
+                            # would just wait at the compute gate for the whole run, see its own
+                            # docstring). `None` if record_stats skipped recording this step (e.g.
+                            # simulate_climate_biomes off leaves climate_cache empty) -- the
+                            # frontend just keeps showing its last-known snapshot in that case.
+                            "stats": world.stats_history[-1] if world.stats_history else None,
+                        }) + "\n"
+                    else:
+                        completed = True
+                        _, mp4_bytes, stopped_early = message
+                        line = json.dumps({
+                            "type": "done",
+                            "mime": "video/mp4",
+                            "video_base64": base64.b64encode(mp4_bytes).decode("ascii"),
+                            "stopped_early": stopped_early,
+                            **_summary(session, world),
+                        }) + "\n"
+                    session.lock.release()
+                    _compute_gate.release()
+                    acquired = False
+                    try:
+                        yield line
+                    except GeneratorExit:
+                        # The client disconnected mid-stream -- close the inner generator
+                        # so its try/finally flushes and closes the encoder instead of
+                        # leaking the native libx264 context (see stream_animation_mp4).
+                        animation.close()
+                        raise
+                    _compute_gate.acquire()
+                    session.lock.acquire()
+                    acquired = True
+            except GeneratorExit:
+                # A failure line (below) is yielded while holding the locks, so a
+                # disconnect there lands here rather than in the loop's handler.
+                animation.close()
+                raise
+            except Exception as exc:  # noqa: BLE001 -- status is already 200, so surface it as a data line
+                _logger.exception(
+                    "animation stream failed at frame %s/%s (projection=%s view=%s size=%sx%s steps_per_frame=%s)",
+                    last_frame,
+                    req.num_frames,
+                    req.projection,
+                    req.view,
+                    req.width,
+                    req.height,
+                    req.steps_per_frame,
+                )
+                yield json.dumps({"type": "error", "detail": f"{type(exc).__name__}: {exc}"}) + "\n"
         finally:
             if acquired:
-                # Published once at the end: viewers can't render while the animation holds the
-                # world anyway, and meanwhile keep their cached frame of the revision before it.
+                # Published once at the end; between frames other worlds (and this
+                # world's own renders) get their turns at the gate instead of
+                # waiting out the whole run.
                 _world_changed(session, completed)
                 session.lock.release()
                 _compute_gate.release()
