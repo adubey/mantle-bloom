@@ -122,3 +122,66 @@ doesn't need to wait for #520 part 1.
   still undiagnosed, and this change gives it more basins to flip.
 - **Glacier volume falls slightly**, as expected: the river and lake ice is gone.
 - **Runtime and RSS are unchanged.**
+
+## Review fixes
+
+The review of #550 found two weaknesses in the results above.
+- **The primary metric was 0 by construction on the branch.** It read the ice ledger's frozen
+  terms, which the branch never writes, so it couldn't show a loss there.
+- **It undercounted main.** It missed the inflow of warm lakes dried whole by the any-member
+  frozen rule.
+
+The script now also measures **unbooked lake inflow**. This measure was added after review, so
+it wasn't preregistered. For every lake body resolved at its own balance this step:
+- it takes the water that settled in the body, excluding through-flow at sinks that spilled on
+  last step's water;
+- it subtracts the body's evaporation at its resolved level;
+- it sums the surplus over bodies that neither spill, drain at their floor nor sit at a depth
+  cap.
+
+On main, settled water at frozen nodes is left out of this sum, since the ledger term already
+counts it. **Liquid water lost** is the ledger term plus unbooked inflow. Bodies held at a depth
+cap are summed separately.
+
+The four arms were rerun one at a time with the final script (`git log` on this file shows the
+versions). Every measure the first runs had reproduced exactly.
+
+| Measure (median, steps 2–10) | Evidence, main | Evidence, branch | Held-out, main | Held-out, branch |
+|---|---:|---:|---:|---:|
+| Liquid water lost (m^3/s) | 131,500 (43,700–467,000) | **< 0.001** | 78,600 (24,200–145,000) | **< 0.003** |
+| of which unbooked lake inflow | 124,500 | < 0.001 | 49,100 | < 0.003 |
+| Held at a depth cap (m^3/s) | 3,800 | **36,300** (33,400–74,200) | 10,000 | 9,300 |
+
+**The branch loses no liquid water at its lakes.** I checked that this isn't vacuous: in one
+held-out branch step, 147 bodies with inflow, carrying 57,700 m^3/s in all, were evaluated, and
+each balanced to within 0.025% of its inflow (the bisection tolerance). **Main loses far more
+than the frozen-ice term showed.** On the evidence save that's 131,500 m^3/s against 8,450, so
+most of main's loss came from lakes the any-member rule dried. This accounts for the extra ocean
+discharge that the results above put down to rain-back: main's lost water now reaches lakes,
+evaporation or the sea.
+
+**The depth caps still drop water, and more of it on the branch.** A body held below its rim
+by `LAKE_MAX_DEPTH_M` or `SEA_MAX_DEPTH_M`, with more inflow than its evaporation at the cap,
+neither spills nor books the surplus. On the evidence save that rises from 3,800 to 36,300
+m^3/s, mostly lake 13 reaching its sea-tier cap now that the frozen rule no longer dries it.
+RFC 0014 Problem item 7 predicted this. RFC 0014 D4 owns the decision: water held back at a cap
+should be booked as overflow at the cap, and G4 measures how often the caps bind. It isn't
+fixed here.
+
+### Caveats
+
+- **Side effects not measured here.** Rivers now carry discharge through cold and ice-covered
+  nodes.
+  - `erosion._river_erosion_amount` and channel widening have no temperature or ice gate, so
+    stream-power incision and channel carving now run there too, and water-routed sediment
+    passes cold nodes.
+  - The extra lake water on the evidence save (about 1 M km^3 at the median) lowers sea level by
+    roughly 2.8 m through `eustasy.trapped_water_volume_m3`.
+  - Cold lakes render as open water and can be classified sea tier.
+
+  These are expected until RFC 0014 D2(a) (ice cover) and D2(c) (lake ice). Erosion, elevation
+  and sea-level metrics weren't measured.
+- **The #520 decision was tested on the held-out save only.** On the evidence save just 6% of
+  the top-five cold sinks' inflow came through spills, so the flood-then-empty share there could
+  never have approached the 50% threshold. On the held-out save, where 85% did, the share was a
+  median 0% (maximum 23%).
