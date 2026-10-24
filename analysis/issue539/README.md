@@ -187,3 +187,40 @@ fixed here.
   the top-five cold sinks' inflow came through spills, so the flood-then-empty share there could
   never have approached the 50% threshold. On the held-out save, where 85% did, the share was a
   median 0% (maximum 23%).
+
+## After rebasing onto #520 part 1
+
+#520 part 1 (perched-lake false merges) landed on `main` while this PR was open. The branch was
+rebased onto `origin/main` `009d63a`, and all four arms were rerun one at a time with the final
+script against that baseline. Medians are over steps 2–10.
+
+| Measure (median) | Evidence, main | Evidence, branch | Held-out, main | Held-out, branch |
+|---|---:|---:|---:|---:|
+| Liquid water lost at lakes (m^3/s) | 47,200 (max 514,000) | **< 0.001** | 18,800 (max 145,000) | **< 0.001** |
+| of which deleted by freezing | 11,900 | 0 | 8,600 | 0 |
+| Held at a depth cap (m^3/s) | **0** | **92,000** | 58,900 | 59,400 |
+| Ocean discharge (m^3/s) | 370,500 | 407,300 (+10%) | 971,400 | 1,009,800 (+4.0%) |
+| Visible lake area (M km^2) | 4.78 | 5.79 | 3.06 | 3.79 |
+| Visible lake volume (M km^3) | 1.85 | 2.26 | 2.25 | 2.38 |
+| Cold-lake area (k km^2) | 13 | 89 | 0 | 33 |
+| Glacier volume (M km^3) | 6.067 | 6.055 | 1.866 | 1.853 |
+| Breached pits / floor-drain toggles | 31 / 56 | 75 / 72 | 21 / 24 | 26 / 25 |
+| Step time (s) / peak RSS (MB) | 8.45 / 1,252 | 8.09 / 1,271 | 6.81 / 1,061 | 6.59 / 1,030 |
+
+**#520 part 1 narrows main's loss but doesn't remove it.** The loss falls from 131,500 to 47,200
+m^3/s (evidence) and from 78,600 to 18,800 (held-out). The branch still loses none at its lakes,
+and lake flicker on main is lower than before the rebase.
+
+**On the evidence save the depth caps now drop more water on the branch than main loses.** That's
+92,000 m^3/s held at a cap against main's 47,200 m^3/s lost. After #520 part 1, main's lakes are
+already larger, so once the frozen rule stops drying the basin of lake 13, it reaches its
+sea-tier cap. The surplus over its evaporation at the cap is then neither spilled nor booked. On
+the held-out save the caps hold the same water on both arms, about 59,000 m^3/s.
+
+This is the defect RFC 0014 D4 names: "water a cap holds back is booked as overflow at the cap,
+never dropped". D4 itself is deferred to phase 2. The owner decides whether booking the cap's
+surplus as overflow lands before or with this PR.
+
+The #520 attribution, with #520 part 1 now on `main`: the share of the top-five cold sinks'
+inflow that came through spills is 31% (evidence) and 71% (held-out). The share from basins that
+flood and then empty is a median 0% on both, maximum 22% and 23%.
