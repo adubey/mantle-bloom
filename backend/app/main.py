@@ -923,6 +923,7 @@ def animate(req: AnimateRequest) -> StreamingResponse:
     _animation_stop_event.clear()
 
     def _stream():
+        last_frame = 0
         try:
             for message in render_image.stream_animation_mp4(
                 world, req.projection, req.view, req.width, req.height, view_rotation,
@@ -931,6 +932,7 @@ def animate(req: AnimateRequest) -> StreamingResponse:
             ):
                 if message[0] == "progress":
                     _, frame, total, frame_png, elapsed_years = message
+                    last_frame = frame
                     yield json.dumps({
                         "type": "progress",
                         "frame": frame,
@@ -957,6 +959,16 @@ def animate(req: AnimateRequest) -> StreamingResponse:
                         **_summary(world),
                     }) + "\n"
         except Exception as exc:  # noqa: BLE001 -- status is already 200, so surface it as a data line
+            _logger.exception(
+                "animation stream failed at frame %s/%s (projection=%s view=%s size=%sx%s steps_per_frame=%s)",
+                last_frame,
+                req.num_frames,
+                req.projection,
+                req.view,
+                req.width,
+                req.height,
+                req.steps_per_frame,
+            )
             yield json.dumps({"type": "error", "detail": f"{type(exc).__name__}: {exc}"}) + "\n"
         finally:
             _world_lock.release()
