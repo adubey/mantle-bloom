@@ -1,0 +1,1874 @@
+{
+ "issue": 548,
+ "commit": "402f00944251f383e7baf5ef7b418e8d606cde63",
+ "save": "mantle-bloom-seed374464662-132600000y.mbworld",
+ "save_sha256": "0f8c50c9788684c0ce28050e42a9eb1289f5092ba7fbe3a834c1809ce6a4279c",
+ "seed": 374464662,
+ "elapsed_myr": 132.6,
+ "node_density": 4.0,
+ "axial_tilt_deg": 23.5,
+ "solar_multiplier": 1.0,
+ "wind_model": "diagnostic",
+ "arms": {
+  "no_ice_age": {
+   "ice_age_cooling_c": 0.0,
+   "polar_sea_ice_class_before_mkm2": 0.0,
+   "anomaly_poleward_50_c": {
+    "min": -2.69,
+    "max": 2.73
+   },
+   "settings": {
+    "Fw1.3_DDF5.5": {
+     "with_anomaly": {
+      "north": {
+       "ocean_mkm2": 187.985,
+       "perennial_mkm2": 20.205,
+       "seasonal_mkm2": 30.606,
+       "ocean_poleward_50_perennial_share": 0.388,
+       "perennial_edge_deg": 67.02,
+       "all_ice_edge_deg": 50.68,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 65.0,
+        "p05": 67.0,
+        "median": 67.0,
+        "p95": 71.0,
+        "max": 73.0
+       }
+      },
+      "south": {
+       "ocean_mkm2": 154.75,
+       "perennial_mkm2": 19.755,
+       "seasonal_mkm2": 34.023,
+       "ocean_poleward_50_perennial_share": 0.359,
+       "perennial_edge_deg": 66.8,
+       "all_ice_edge_deg": 50.55,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 67.0,
+        "p05": 67.0,
+        "median": 67.0,
+        "p95": 73.0,
+        "max": 75.0
+       }
+      }
+     },
+     "without_anomaly": {
+      "north": {
+       "ocean_mkm2": 187.985,
+       "perennial_mkm2": 21.962,
+       "seasonal_mkm2": 30.153,
+       "ocean_poleward_50_perennial_share": 0.421,
+       "perennial_edge_deg": 66.0,
+       "all_ice_edge_deg": 50.0,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 67.0,
+        "p05": 67.0,
+        "median": 67.0,
+        "p95": 67.0,
+        "max": 69.0
+       }
+      },
+      "south": {
+       "ocean_mkm2": 154.75,
+       "perennial_mkm2": 21.026,
+       "seasonal_mkm2": 33.933,
+       "ocean_poleward_50_perennial_share": 0.383,
+       "perennial_edge_deg": 66.0,
+       "all_ice_edge_deg": 50.0,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 67.0,
+        "p05": 67.0,
+        "median": 67.0,
+        "p95": 73.0,
+        "max": 75.0
+       }
+      }
+     },
+     "anomaly_moves_perennial_edge": {
+      "north": {
+       "max_deg": 6.0,
+       "columns_moved_ge_2deg": 71,
+       "columns": 180,
+       "columns_with_ice_one_way_only": 0
+      },
+      "south": {
+       "max_deg": 4.0,
+       "columns_moved_ge_2deg": 64,
+       "columns": 180,
+       "columns_with_ice_one_way_only": 0
+      }
+     },
+     "polar_sea_ice_class_after_mkm2": {
+      "north": 32.565,
+      "south": 31.095
+     }
+    },
+    "Fw1.3_DDF8": {
+     "with_anomaly": {
+      "north": {
+       "ocean_mkm2": 187.985,
+       "perennial_mkm2": 18.875,
+       "seasonal_mkm2": 31.936,
+       "ocean_poleward_50_perennial_share": 0.362,
+       "perennial_edge_deg": 67.8,
+       "all_ice_edge_deg": 50.68,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 65.0,
+        "p05": 67.0,
+        "median": 69.0,
+        "p95": 71.0,
+        "max": 73.0
+       }
+      },
+      "south": {
+       "ocean_mkm2": 154.75,
+       "perennial_mkm2": 18.116,
+       "seasonal_mkm2": 35.663,
+       "ocean_poleward_50_perennial_share": 0.33,
+       "perennial_edge_deg": 67.83,
+       "all_ice_edge_deg": 50.55,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 67.0,
+        "p05": 67.0,
+        "median": 69.0,
+        "p95": 73.0,
+        "max": 75.0
+       }
+      }
+     },
+     "without_anomaly": {
+      "north": {
+       "ocean_mkm2": 187.985,
+       "perennial_mkm2": 18.522,
+       "seasonal_mkm2": 33.593,
+       "ocean_poleward_50_perennial_share": 0.355,
+       "perennial_edge_deg": 68.0,
+       "all_ice_edge_deg": 50.0,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 69.0,
+        "p05": 69.0,
+        "median": 69.0,
+        "p95": 69.0,
+        "max": 71.0
+       }
+      },
+      "south": {
+       "ocean_mkm2": 154.75,
+       "perennial_mkm2": 17.837,
+       "seasonal_mkm2": 37.121,
+       "ocean_poleward_50_perennial_share": 0.325,
+       "perennial_edge_deg": 68.0,
+       "all_ice_edge_deg": 50.0,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 69.0,
+        "p05": 69.0,
+        "median": 69.0,
+        "p95": 73.0,
+        "max": 75.0
+       }
+      }
+     },
+     "anomaly_moves_perennial_edge": {
+      "north": {
+       "max_deg": 4.0,
+       "columns_moved_ge_2deg": 64,
+       "columns": 180,
+       "columns_with_ice_one_way_only": 0
+      },
+      "south": {
+       "max_deg": 2.0,
+       "columns_moved_ge_2deg": 21,
+       "columns": 180,
+       "columns_with_ice_one_way_only": 0
+      }
+     },
+     "polar_sea_ice_class_after_mkm2": {
+      "north": 32.565,
+      "south": 31.095
+     }
+    },
+    "Fw1.3_DDF20": {
+     "with_anomaly": {
+      "north": {
+       "ocean_mkm2": 187.985,
+       "perennial_mkm2": 14.914,
+       "seasonal_mkm2": 35.897,
+       "ocean_poleward_50_perennial_share": 0.286,
+       "perennial_edge_deg": 70.3,
+       "all_ice_edge_deg": 50.68,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 69.0,
+        "p05": 69.0,
+        "median": 71.0,
+        "p95": 73.0,
+        "max": 75.0
+       }
+      },
+      "south": {
+       "ocean_mkm2": 154.75,
+       "perennial_mkm2": 14.195,
+       "seasonal_mkm2": 39.583,
+       "ocean_poleward_50_perennial_share": 0.258,
+       "perennial_edge_deg": 70.55,
+       "all_ice_edge_deg": 50.55,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 69.0,
+        "p05": 69.0,
+        "median": 71.0,
+        "p95": 73.0,
+        "max": 75.0
+       }
+      }
+     },
+     "without_anomaly": {
+      "north": {
+       "ocean_mkm2": 187.985,
+       "perennial_mkm2": 15.35,
+       "seasonal_mkm2": 36.765,
+       "ocean_poleward_50_perennial_share": 0.295,
+       "perennial_edge_deg": 70.0,
+       "all_ice_edge_deg": 50.0,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 71.0,
+        "p05": 71.0,
+        "median": 71.0,
+        "p95": 71.0,
+        "max": 73.0
+       }
+      },
+      "south": {
+       "ocean_mkm2": 154.75,
+       "perennial_mkm2": 14.931,
+       "seasonal_mkm2": 40.028,
+       "ocean_poleward_50_perennial_share": 0.272,
+       "perennial_edge_deg": 70.0,
+       "all_ice_edge_deg": 50.0,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 71.0,
+        "p05": 71.0,
+        "median": 71.0,
+        "p95": 73.0,
+        "max": 75.0
+       }
+      }
+     },
+     "anomaly_moves_perennial_edge": {
+      "north": {
+       "max_deg": 4.0,
+       "columns_moved_ge_2deg": 105,
+       "columns": 180,
+       "columns_with_ice_one_way_only": 0
+      },
+      "south": {
+       "max_deg": 4.0,
+       "columns_moved_ge_2deg": 91,
+       "columns": 180,
+       "columns_with_ice_one_way_only": 0
+      }
+     },
+     "polar_sea_ice_class_after_mkm2": {
+      "north": 32.565,
+      "south": 31.095
+     }
+    },
+    "Fw2_DDF5.5": {
+     "with_anomaly": {
+      "north": {
+       "ocean_mkm2": 187.985,
+       "perennial_mkm2": 20.205,
+       "seasonal_mkm2": 30.606,
+       "ocean_poleward_50_perennial_share": 0.388,
+       "perennial_edge_deg": 67.02,
+       "all_ice_edge_deg": 50.68,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 65.0,
+        "p05": 67.0,
+        "median": 67.0,
+        "p95": 71.0,
+        "max": 73.0
+       }
+      },
+      "south": {
+       "ocean_mkm2": 154.75,
+       "perennial_mkm2": 19.755,
+       "seasonal_mkm2": 34.023,
+       "ocean_poleward_50_perennial_share": 0.359,
+       "perennial_edge_deg": 66.8,
+       "all_ice_edge_deg": 50.55,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 67.0,
+        "p05": 67.0,
+        "median": 67.0,
+        "p95": 73.0,
+        "max": 75.0
+       }
+      }
+     },
+     "without_anomaly": {
+      "north": {
+       "ocean_mkm2": 187.985,
+       "perennial_mkm2": 21.962,
+       "seasonal_mkm2": 30.153,
+       "ocean_poleward_50_perennial_share": 0.421,
+       "perennial_edge_deg": 66.0,
+       "all_ice_edge_deg": 50.0,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 67.0,
+        "p05": 67.0,
+        "median": 67.0,
+        "p95": 67.0,
+        "max": 69.0
+       }
+      },
+      "south": {
+       "ocean_mkm2": 154.75,
+       "perennial_mkm2": 21.026,
+       "seasonal_mkm2": 33.933,
+       "ocean_poleward_50_perennial_share": 0.383,
+       "perennial_edge_deg": 66.0,
+       "all_ice_edge_deg": 50.0,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 67.0,
+        "p05": 67.0,
+        "median": 67.0,
+        "p95": 73.0,
+        "max": 75.0
+       }
+      }
+     },
+     "anomaly_moves_perennial_edge": {
+      "north": {
+       "max_deg": 6.0,
+       "columns_moved_ge_2deg": 71,
+       "columns": 180,
+       "columns_with_ice_one_way_only": 0
+      },
+      "south": {
+       "max_deg": 4.0,
+       "columns_moved_ge_2deg": 64,
+       "columns": 180,
+       "columns_with_ice_one_way_only": 0
+      }
+     },
+     "polar_sea_ice_class_after_mkm2": {
+      "north": 32.565,
+      "south": 31.095
+     }
+    },
+    "Fw2_DDF8": {
+     "with_anomaly": {
+      "north": {
+       "ocean_mkm2": 187.985,
+       "perennial_mkm2": 18.056,
+       "seasonal_mkm2": 32.755,
+       "ocean_poleward_50_perennial_share": 0.346,
+       "perennial_edge_deg": 68.29,
+       "all_ice_edge_deg": 50.68,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 67.0,
+        "p05": 67.0,
+        "median": 69.0,
+        "p95": 71.0,
+        "max": 73.0
+       },
+       "bands": [
+        {
+         "band": "40-50",
+         "ocean_mkm2": 22.496,
+         "perennial_share": 0.0,
+         "seasonal_share": 0.003
+        },
+        {
+         "band": "50-60",
+         "ocean_mkm2": 18.819,
+         "perennial_share": 0.0,
+         "seasonal_share": 0.927
+        },
+        {
+         "band": "60-70",
+         "ocean_mkm2": 17.947,
+         "perennial_share": 0.152,
+         "seasonal_share": 0.848
+        },
+        {
+         "band": "70-80",
+         "ocean_mkm2": 11.475,
+         "perennial_share": 0.999,
+         "seasonal_share": 0.001
+        },
+        {
+         "band": "80-90",
+         "ocean_mkm2": 3.875,
+         "perennial_share": 1.0,
+         "seasonal_share": 0.0
+        }
+       ]
+      },
+      "south": {
+       "ocean_mkm2": 154.75,
+       "perennial_mkm2": 16.999,
+       "seasonal_mkm2": 36.779,
+       "ocean_poleward_50_perennial_share": 0.309,
+       "perennial_edge_deg": 68.58,
+       "all_ice_edge_deg": 50.55,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 67.0,
+        "p05": 67.0,
+        "median": 69.0,
+        "p95": 73.0,
+        "max": 75.0
+       },
+       "bands": [
+        {
+         "band": "40-50",
+         "ocean_mkm2": 19.372,
+         "perennial_share": 0.0,
+         "seasonal_share": 0.003
+        },
+        {
+         "band": "50-60",
+         "ocean_mkm2": 22.748,
+         "perennial_share": 0.0,
+         "seasonal_share": 0.945
+        },
+        {
+         "band": "60-70",
+         "ocean_mkm2": 17.279,
+         "perennial_share": 0.121,
+         "seasonal_share": 0.879
+        },
+        {
+         "band": "70-80",
+         "ocean_mkm2": 11.125,
+         "perennial_share": 0.999,
+         "seasonal_share": 0.001
+        },
+        {
+         "band": "80-90",
+         "ocean_mkm2": 3.806,
+         "perennial_share": 1.0,
+         "seasonal_share": 0.0
+        }
+       ]
+      }
+     },
+     "without_anomaly": {
+      "north": {
+       "ocean_mkm2": 187.985,
+       "perennial_mkm2": 18.522,
+       "seasonal_mkm2": 33.593,
+       "ocean_poleward_50_perennial_share": 0.355,
+       "perennial_edge_deg": 68.0,
+       "all_ice_edge_deg": 50.0,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 69.0,
+        "p05": 69.0,
+        "median": 69.0,
+        "p95": 69.0,
+        "max": 71.0
+       },
+       "bands": [
+        {
+         "band": "40-50",
+         "ocean_mkm2": 22.496,
+         "perennial_share": 0.0,
+         "seasonal_share": 0.0
+        },
+        {
+         "band": "50-60",
+         "ocean_mkm2": 18.819,
+         "perennial_share": 0.0,
+         "seasonal_share": 1.0
+        },
+        {
+         "band": "60-70",
+         "ocean_mkm2": 17.947,
+         "perennial_share": 0.177,
+         "seasonal_share": 0.823
+        },
+        {
+         "band": "70-80",
+         "ocean_mkm2": 11.475,
+         "perennial_share": 1.0,
+         "seasonal_share": 0.0
+        },
+        {
+         "band": "80-90",
+         "ocean_mkm2": 3.875,
+         "perennial_share": 1.0,
+         "seasonal_share": 0.0
+        }
+       ]
+      },
+      "south": {
+       "ocean_mkm2": 154.75,
+       "perennial_mkm2": 17.837,
+       "seasonal_mkm2": 37.121,
+       "ocean_poleward_50_perennial_share": 0.325,
+       "perennial_edge_deg": 68.0,
+       "all_ice_edge_deg": 50.0,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 69.0,
+        "p05": 69.0,
+        "median": 69.0,
+        "p95": 73.0,
+        "max": 75.0
+       },
+       "bands": [
+        {
+         "band": "40-50",
+         "ocean_mkm2": 19.372,
+         "perennial_share": 0.0,
+         "seasonal_share": 0.0
+        },
+        {
+         "band": "50-60",
+         "ocean_mkm2": 22.748,
+         "perennial_share": 0.0,
+         "seasonal_share": 1.0
+        },
+        {
+         "band": "60-70",
+         "ocean_mkm2": 17.279,
+         "perennial_share": 0.168,
+         "seasonal_share": 0.832
+        },
+        {
+         "band": "70-80",
+         "ocean_mkm2": 11.125,
+         "perennial_share": 1.0,
+         "seasonal_share": 0.0
+        },
+        {
+         "band": "80-90",
+         "ocean_mkm2": 3.806,
+         "perennial_share": 1.0,
+         "seasonal_share": 0.0
+        }
+       ]
+      }
+     },
+     "anomaly_moves_perennial_edge": {
+      "north": {
+       "max_deg": 4.0,
+       "columns_moved_ge_2deg": 108,
+       "columns": 180,
+       "columns_with_ice_one_way_only": 0
+      },
+      "south": {
+       "max_deg": 4.0,
+       "columns_moved_ge_2deg": 84,
+       "columns": 180,
+       "columns_with_ice_one_way_only": 0
+      }
+     },
+     "polar_sea_ice_class_after_mkm2": {
+      "north": 32.565,
+      "south": 31.095
+     }
+    },
+    "Fw2_DDF20": {
+     "with_anomaly": {
+      "north": {
+       "ocean_mkm2": 187.985,
+       "perennial_mkm2": 14.914,
+       "seasonal_mkm2": 35.897,
+       "ocean_poleward_50_perennial_share": 0.286,
+       "perennial_edge_deg": 70.3,
+       "all_ice_edge_deg": 50.68,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 69.0,
+        "p05": 69.0,
+        "median": 71.0,
+        "p95": 73.0,
+        "max": 75.0
+       }
+      },
+      "south": {
+       "ocean_mkm2": 154.75,
+       "perennial_mkm2": 14.195,
+       "seasonal_mkm2": 39.583,
+       "ocean_poleward_50_perennial_share": 0.258,
+       "perennial_edge_deg": 70.55,
+       "all_ice_edge_deg": 50.55,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 69.0,
+        "p05": 69.0,
+        "median": 71.0,
+        "p95": 73.0,
+        "max": 75.0
+       }
+      }
+     },
+     "without_anomaly": {
+      "north": {
+       "ocean_mkm2": 187.985,
+       "perennial_mkm2": 15.35,
+       "seasonal_mkm2": 36.765,
+       "ocean_poleward_50_perennial_share": 0.295,
+       "perennial_edge_deg": 70.0,
+       "all_ice_edge_deg": 50.0,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 71.0,
+        "p05": 71.0,
+        "median": 71.0,
+        "p95": 71.0,
+        "max": 73.0
+       }
+      },
+      "south": {
+       "ocean_mkm2": 154.75,
+       "perennial_mkm2": 14.931,
+       "seasonal_mkm2": 40.028,
+       "ocean_poleward_50_perennial_share": 0.272,
+       "perennial_edge_deg": 70.0,
+       "all_ice_edge_deg": 50.0,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 71.0,
+        "p05": 71.0,
+        "median": 71.0,
+        "p95": 73.0,
+        "max": 75.0
+       }
+      }
+     },
+     "anomaly_moves_perennial_edge": {
+      "north": {
+       "max_deg": 4.0,
+       "columns_moved_ge_2deg": 105,
+       "columns": 180,
+       "columns_with_ice_one_way_only": 0
+      },
+      "south": {
+       "max_deg": 4.0,
+       "columns_moved_ge_2deg": 91,
+       "columns": 180,
+       "columns_with_ice_one_way_only": 0
+      }
+     },
+     "polar_sea_ice_class_after_mkm2": {
+      "north": 32.565,
+      "south": 31.095
+     }
+    },
+    "Fw2.7_DDF5.5": {
+     "with_anomaly": {
+      "north": {
+       "ocean_mkm2": 187.985,
+       "perennial_mkm2": 20.205,
+       "seasonal_mkm2": 30.606,
+       "ocean_poleward_50_perennial_share": 0.388,
+       "perennial_edge_deg": 67.02,
+       "all_ice_edge_deg": 50.68,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 65.0,
+        "p05": 67.0,
+        "median": 67.0,
+        "p95": 71.0,
+        "max": 73.0
+       }
+      },
+      "south": {
+       "ocean_mkm2": 154.75,
+       "perennial_mkm2": 19.755,
+       "seasonal_mkm2": 34.023,
+       "ocean_poleward_50_perennial_share": 0.359,
+       "perennial_edge_deg": 66.8,
+       "all_ice_edge_deg": 50.55,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 67.0,
+        "p05": 67.0,
+        "median": 67.0,
+        "p95": 73.0,
+        "max": 75.0
+       }
+      }
+     },
+     "without_anomaly": {
+      "north": {
+       "ocean_mkm2": 187.985,
+       "perennial_mkm2": 21.962,
+       "seasonal_mkm2": 30.153,
+       "ocean_poleward_50_perennial_share": 0.421,
+       "perennial_edge_deg": 66.0,
+       "all_ice_edge_deg": 50.0,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 67.0,
+        "p05": 67.0,
+        "median": 67.0,
+        "p95": 67.0,
+        "max": 69.0
+       }
+      },
+      "south": {
+       "ocean_mkm2": 154.75,
+       "perennial_mkm2": 21.026,
+       "seasonal_mkm2": 33.933,
+       "ocean_poleward_50_perennial_share": 0.383,
+       "perennial_edge_deg": 66.0,
+       "all_ice_edge_deg": 50.0,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 67.0,
+        "p05": 67.0,
+        "median": 67.0,
+        "p95": 73.0,
+        "max": 75.0
+       }
+      }
+     },
+     "anomaly_moves_perennial_edge": {
+      "north": {
+       "max_deg": 6.0,
+       "columns_moved_ge_2deg": 71,
+       "columns": 180,
+       "columns_with_ice_one_way_only": 0
+      },
+      "south": {
+       "max_deg": 4.0,
+       "columns_moved_ge_2deg": 64,
+       "columns": 180,
+       "columns_with_ice_one_way_only": 0
+      }
+     },
+     "polar_sea_ice_class_after_mkm2": {
+      "north": 32.565,
+      "south": 31.095
+     }
+    },
+    "Fw2.7_DDF8": {
+     "with_anomaly": {
+      "north": {
+       "ocean_mkm2": 187.985,
+       "perennial_mkm2": 18.056,
+       "seasonal_mkm2": 32.755,
+       "ocean_poleward_50_perennial_share": 0.346,
+       "perennial_edge_deg": 68.29,
+       "all_ice_edge_deg": 50.68,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 67.0,
+        "p05": 67.0,
+        "median": 69.0,
+        "p95": 71.0,
+        "max": 73.0
+       }
+      },
+      "south": {
+       "ocean_mkm2": 154.75,
+       "perennial_mkm2": 16.999,
+       "seasonal_mkm2": 36.779,
+       "ocean_poleward_50_perennial_share": 0.309,
+       "perennial_edge_deg": 68.58,
+       "all_ice_edge_deg": 50.55,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 67.0,
+        "p05": 67.0,
+        "median": 69.0,
+        "p95": 73.0,
+        "max": 75.0
+       }
+      }
+     },
+     "without_anomaly": {
+      "north": {
+       "ocean_mkm2": 187.985,
+       "perennial_mkm2": 18.522,
+       "seasonal_mkm2": 33.593,
+       "ocean_poleward_50_perennial_share": 0.355,
+       "perennial_edge_deg": 68.0,
+       "all_ice_edge_deg": 50.0,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 69.0,
+        "p05": 69.0,
+        "median": 69.0,
+        "p95": 69.0,
+        "max": 71.0
+       }
+      },
+      "south": {
+       "ocean_mkm2": 154.75,
+       "perennial_mkm2": 17.837,
+       "seasonal_mkm2": 37.121,
+       "ocean_poleward_50_perennial_share": 0.325,
+       "perennial_edge_deg": 68.0,
+       "all_ice_edge_deg": 50.0,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 69.0,
+        "p05": 69.0,
+        "median": 69.0,
+        "p95": 73.0,
+        "max": 75.0
+       }
+      }
+     },
+     "anomaly_moves_perennial_edge": {
+      "north": {
+       "max_deg": 4.0,
+       "columns_moved_ge_2deg": 108,
+       "columns": 180,
+       "columns_with_ice_one_way_only": 0
+      },
+      "south": {
+       "max_deg": 4.0,
+       "columns_moved_ge_2deg": 84,
+       "columns": 180,
+       "columns_with_ice_one_way_only": 0
+      }
+     },
+     "polar_sea_ice_class_after_mkm2": {
+      "north": 32.565,
+      "south": 31.095
+     }
+    },
+    "Fw2.7_DDF20": {
+     "with_anomaly": {
+      "north": {
+       "ocean_mkm2": 187.985,
+       "perennial_mkm2": 14.914,
+       "seasonal_mkm2": 35.897,
+       "ocean_poleward_50_perennial_share": 0.286,
+       "perennial_edge_deg": 70.3,
+       "all_ice_edge_deg": 50.68,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 69.0,
+        "p05": 69.0,
+        "median": 71.0,
+        "p95": 73.0,
+        "max": 75.0
+       }
+      },
+      "south": {
+       "ocean_mkm2": 154.75,
+       "perennial_mkm2": 14.195,
+       "seasonal_mkm2": 39.583,
+       "ocean_poleward_50_perennial_share": 0.258,
+       "perennial_edge_deg": 70.55,
+       "all_ice_edge_deg": 50.55,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 69.0,
+        "p05": 69.0,
+        "median": 71.0,
+        "p95": 73.0,
+        "max": 75.0
+       }
+      }
+     },
+     "without_anomaly": {
+      "north": {
+       "ocean_mkm2": 187.985,
+       "perennial_mkm2": 15.35,
+       "seasonal_mkm2": 36.765,
+       "ocean_poleward_50_perennial_share": 0.295,
+       "perennial_edge_deg": 70.0,
+       "all_ice_edge_deg": 50.0,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 71.0,
+        "p05": 71.0,
+        "median": 71.0,
+        "p95": 71.0,
+        "max": 73.0
+       }
+      },
+      "south": {
+       "ocean_mkm2": 154.75,
+       "perennial_mkm2": 14.931,
+       "seasonal_mkm2": 40.028,
+       "ocean_poleward_50_perennial_share": 0.272,
+       "perennial_edge_deg": 70.0,
+       "all_ice_edge_deg": 50.0,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 71.0,
+        "p05": 71.0,
+        "median": 71.0,
+        "p95": 73.0,
+        "max": 75.0
+       }
+      }
+     },
+     "anomaly_moves_perennial_edge": {
+      "north": {
+       "max_deg": 4.0,
+       "columns_moved_ge_2deg": 105,
+       "columns": 180,
+       "columns_with_ice_one_way_only": 0
+      },
+      "south": {
+       "max_deg": 4.0,
+       "columns_moved_ge_2deg": 91,
+       "columns": 180,
+       "columns_with_ice_one_way_only": 0
+      }
+     },
+     "polar_sea_ice_class_after_mkm2": {
+      "north": 32.565,
+      "south": 31.095
+     }
+    }
+   }
+  },
+  "ice_age_max": {
+   "ice_age_cooling_c": 8.0,
+   "polar_sea_ice_class_before_mkm2": 23.398,
+   "anomaly_poleward_50_c": {
+    "min": -2.69,
+    "max": 2.73
+   },
+   "settings": {
+    "Fw1.3_DDF5.5": {
+     "with_anomaly": {
+      "north": {
+       "ocean_mkm2": 187.985,
+       "perennial_mkm2": 43.527,
+       "seasonal_mkm2": 27.11,
+       "ocean_poleward_50_perennial_share": 0.835,
+       "perennial_edge_deg": 54.58,
+       "all_ice_edge_deg": 41.68,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 51.0,
+        "p05": 53.0,
+        "median": 57.0,
+        "p95": 63.1,
+        "max": 65.0
+       }
+      },
+      "south": {
+       "ocean_mkm2": 154.75,
+       "perennial_mkm2": 45.443,
+       "seasonal_mkm2": 26.289,
+       "ocean_poleward_50_perennial_share": 0.827,
+       "perennial_edge_deg": 54.25,
+       "all_ice_edge_deg": 41.45,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 51.0,
+        "p05": 53.0,
+        "median": 55.0,
+        "p95": 57.0,
+        "max": 75.0
+       }
+      }
+     },
+     "without_anomaly": {
+      "north": {
+       "ocean_mkm2": 187.985,
+       "perennial_mkm2": 44.567,
+       "seasonal_mkm2": 25.304,
+       "ocean_poleward_50_perennial_share": 0.855,
+       "perennial_edge_deg": 54.0,
+       "all_ice_edge_deg": 42.0,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 55.0,
+        "p05": 55.0,
+        "median": 55.0,
+        "p95": 63.1,
+        "max": 65.0
+       }
+      },
+      "south": {
+       "ocean_mkm2": 154.75,
+       "perennial_mkm2": 46.049,
+       "seasonal_mkm2": 24.698,
+       "ocean_poleward_50_perennial_share": 0.838,
+       "perennial_edge_deg": 54.0,
+       "all_ice_edge_deg": 42.0,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 55.0,
+        "p05": 55.0,
+        "median": 55.0,
+        "p95": 55.1,
+        "max": 75.0
+       }
+      }
+     },
+     "anomaly_moves_perennial_edge": {
+      "north": {
+       "max_deg": 4.0,
+       "columns_moved_ge_2deg": 53,
+       "columns": 180,
+       "columns_with_ice_one_way_only": 0
+      },
+      "south": {
+       "max_deg": 4.0,
+       "columns_moved_ge_2deg": 43,
+       "columns": 180,
+       "columns_with_ice_one_way_only": 0
+      }
+     },
+     "polar_sea_ice_class_after_mkm2": {
+      "north": 51.138,
+      "south": 54.239
+     }
+    },
+    "Fw1.3_DDF8": {
+     "with_anomaly": {
+      "north": {
+       "ocean_mkm2": 187.985,
+       "perennial_mkm2": 42.311,
+       "seasonal_mkm2": 28.326,
+       "ocean_poleward_50_perennial_share": 0.812,
+       "perennial_edge_deg": 55.25,
+       "all_ice_edge_deg": 41.68,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 53.0,
+        "p05": 53.0,
+        "median": 57.0,
+        "p95": 63.1,
+        "max": 65.0
+       }
+      },
+      "south": {
+       "ocean_mkm2": 154.75,
+       "perennial_mkm2": 42.743,
+       "seasonal_mkm2": 28.99,
+       "ocean_poleward_50_perennial_share": 0.778,
+       "perennial_edge_deg": 55.36,
+       "all_ice_edge_deg": 41.45,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 53.0,
+        "p05": 54.9,
+        "median": 57.0,
+        "p95": 57.0,
+        "max": 75.0
+       }
+      }
+     },
+     "without_anomaly": {
+      "north": {
+       "ocean_mkm2": 187.985,
+       "perennial_mkm2": 40.964,
+       "seasonal_mkm2": 28.907,
+       "ocean_poleward_50_perennial_share": 0.786,
+       "perennial_edge_deg": 56.0,
+       "all_ice_edge_deg": 42.0,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 57.0,
+        "p05": 57.0,
+        "median": 57.0,
+        "p95": 63.1,
+        "max": 65.0
+       }
+      },
+      "south": {
+       "ocean_mkm2": 154.75,
+       "perennial_mkm2": 41.198,
+       "seasonal_mkm2": 29.549,
+       "ocean_poleward_50_perennial_share": 0.75,
+       "perennial_edge_deg": 56.0,
+       "all_ice_edge_deg": 42.0,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 57.0,
+        "p05": 57.0,
+        "median": 57.0,
+        "p95": 57.0,
+        "max": 75.0
+       }
+      }
+     },
+     "anomaly_moves_perennial_edge": {
+      "north": {
+       "max_deg": 4.0,
+       "columns_moved_ge_2deg": 68,
+       "columns": 180,
+       "columns_with_ice_one_way_only": 0
+      },
+      "south": {
+       "max_deg": 4.0,
+       "columns_moved_ge_2deg": 48,
+       "columns": 180,
+       "columns_with_ice_one_way_only": 0
+      }
+     },
+     "polar_sea_ice_class_after_mkm2": {
+      "north": 51.138,
+      "south": 54.239
+     }
+    },
+    "Fw1.3_DDF20": {
+     "with_anomaly": {
+      "north": {
+       "ocean_mkm2": 187.985,
+       "perennial_mkm2": 38.043,
+       "seasonal_mkm2": 32.594,
+       "ocean_poleward_50_perennial_share": 0.73,
+       "perennial_edge_deg": 57.55,
+       "all_ice_edge_deg": 41.68,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 55.0,
+        "p05": 55.0,
+        "median": 59.0,
+        "p95": 63.1,
+        "max": 65.0
+       }
+      },
+      "south": {
+       "ocean_mkm2": 154.75,
+       "perennial_mkm2": 37.458,
+       "seasonal_mkm2": 34.274,
+       "ocean_poleward_50_perennial_share": 0.682,
+       "perennial_edge_deg": 57.61,
+       "all_ice_edge_deg": 41.45,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 55.0,
+        "p05": 57.0,
+        "median": 59.0,
+        "p95": 61.0,
+        "max": 75.0
+       }
+      }
+     },
+     "without_anomaly": {
+      "north": {
+       "ocean_mkm2": 187.985,
+       "perennial_mkm2": 37.193,
+       "seasonal_mkm2": 32.678,
+       "ocean_poleward_50_perennial_share": 0.714,
+       "perennial_edge_deg": 58.0,
+       "all_ice_edge_deg": 42.0,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 59.0,
+        "p05": 59.0,
+        "median": 59.0,
+        "p95": 63.1,
+        "max": 65.0
+       }
+      },
+      "south": {
+       "ocean_mkm2": 154.75,
+       "perennial_mkm2": 36.566,
+       "seasonal_mkm2": 34.182,
+       "ocean_poleward_50_perennial_share": 0.665,
+       "perennial_edge_deg": 58.0,
+       "all_ice_edge_deg": 42.0,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 59.0,
+        "p05": 59.0,
+        "median": 59.0,
+        "p95": 59.7,
+        "max": 75.0
+       }
+      }
+     },
+     "anomaly_moves_perennial_edge": {
+      "north": {
+       "max_deg": 4.0,
+       "columns_moved_ge_2deg": 82,
+       "columns": 180,
+       "columns_with_ice_one_way_only": 0
+      },
+      "south": {
+       "max_deg": 16.0,
+       "columns_moved_ge_2deg": 57,
+       "columns": 180,
+       "columns_with_ice_one_way_only": 0
+      }
+     },
+     "polar_sea_ice_class_after_mkm2": {
+      "north": 51.138,
+      "south": 54.239
+     }
+    },
+    "Fw2_DDF5.5": {
+     "with_anomaly": {
+      "north": {
+       "ocean_mkm2": 187.985,
+       "perennial_mkm2": 43.527,
+       "seasonal_mkm2": 27.11,
+       "ocean_poleward_50_perennial_share": 0.835,
+       "perennial_edge_deg": 54.58,
+       "all_ice_edge_deg": 41.68,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 51.0,
+        "p05": 53.0,
+        "median": 57.0,
+        "p95": 63.1,
+        "max": 65.0
+       }
+      },
+      "south": {
+       "ocean_mkm2": 154.75,
+       "perennial_mkm2": 45.443,
+       "seasonal_mkm2": 26.289,
+       "ocean_poleward_50_perennial_share": 0.827,
+       "perennial_edge_deg": 54.25,
+       "all_ice_edge_deg": 41.45,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 51.0,
+        "p05": 53.0,
+        "median": 55.0,
+        "p95": 57.0,
+        "max": 75.0
+       }
+      }
+     },
+     "without_anomaly": {
+      "north": {
+       "ocean_mkm2": 187.985,
+       "perennial_mkm2": 44.567,
+       "seasonal_mkm2": 25.304,
+       "ocean_poleward_50_perennial_share": 0.855,
+       "perennial_edge_deg": 54.0,
+       "all_ice_edge_deg": 42.0,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 55.0,
+        "p05": 55.0,
+        "median": 55.0,
+        "p95": 63.1,
+        "max": 65.0
+       }
+      },
+      "south": {
+       "ocean_mkm2": 154.75,
+       "perennial_mkm2": 46.049,
+       "seasonal_mkm2": 24.698,
+       "ocean_poleward_50_perennial_share": 0.838,
+       "perennial_edge_deg": 54.0,
+       "all_ice_edge_deg": 42.0,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 55.0,
+        "p05": 55.0,
+        "median": 55.0,
+        "p95": 55.1,
+        "max": 75.0
+       }
+      }
+     },
+     "anomaly_moves_perennial_edge": {
+      "north": {
+       "max_deg": 4.0,
+       "columns_moved_ge_2deg": 53,
+       "columns": 180,
+       "columns_with_ice_one_way_only": 0
+      },
+      "south": {
+       "max_deg": 4.0,
+       "columns_moved_ge_2deg": 43,
+       "columns": 180,
+       "columns_with_ice_one_way_only": 0
+      }
+     },
+     "polar_sea_ice_class_after_mkm2": {
+      "north": 51.138,
+      "south": 54.239
+     }
+    },
+    "Fw2_DDF8": {
+     "with_anomaly": {
+      "north": {
+       "ocean_mkm2": 187.985,
+       "perennial_mkm2": 42.311,
+       "seasonal_mkm2": 28.326,
+       "ocean_poleward_50_perennial_share": 0.812,
+       "perennial_edge_deg": 55.25,
+       "all_ice_edge_deg": 41.68,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 53.0,
+        "p05": 53.0,
+        "median": 57.0,
+        "p95": 63.1,
+        "max": 65.0
+       },
+       "bands": [
+        {
+         "band": "40-50",
+         "ocean_mkm2": 22.496,
+         "perennial_share": 0.0,
+         "seasonal_share": 0.822
+        },
+        {
+         "band": "50-60",
+         "ocean_mkm2": 18.819,
+         "perennial_share": 0.479,
+         "seasonal_share": 0.521
+        },
+        {
+         "band": "60-70",
+         "ocean_mkm2": 17.947,
+         "perennial_share": 1.0,
+         "seasonal_share": 0.0
+        },
+        {
+         "band": "70-80",
+         "ocean_mkm2": 11.475,
+         "perennial_share": 1.0,
+         "seasonal_share": 0.0
+        },
+        {
+         "band": "80-90",
+         "ocean_mkm2": 3.875,
+         "perennial_share": 1.0,
+         "seasonal_share": 0.0
+        }
+       ]
+      },
+      "south": {
+       "ocean_mkm2": 154.75,
+       "perennial_mkm2": 42.743,
+       "seasonal_mkm2": 28.99,
+       "ocean_poleward_50_perennial_share": 0.778,
+       "perennial_edge_deg": 55.36,
+       "all_ice_edge_deg": 41.45,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 53.0,
+        "p05": 54.9,
+        "median": 57.0,
+        "p95": 57.0,
+        "max": 75.0
+       },
+       "bands": [
+        {
+         "band": "40-50",
+         "ocean_mkm2": 19.372,
+         "perennial_share": 0.0,
+         "seasonal_share": 0.858
+        },
+        {
+         "band": "50-60",
+         "ocean_mkm2": 22.748,
+         "perennial_share": 0.463,
+         "seasonal_share": 0.537
+        },
+        {
+         "band": "60-70",
+         "ocean_mkm2": 17.279,
+         "perennial_share": 1.0,
+         "seasonal_share": 0.0
+        },
+        {
+         "band": "70-80",
+         "ocean_mkm2": 11.125,
+         "perennial_share": 1.0,
+         "seasonal_share": 0.0
+        },
+        {
+         "band": "80-90",
+         "ocean_mkm2": 3.806,
+         "perennial_share": 1.0,
+         "seasonal_share": 0.0
+        }
+       ]
+      }
+     },
+     "without_anomaly": {
+      "north": {
+       "ocean_mkm2": 187.985,
+       "perennial_mkm2": 40.964,
+       "seasonal_mkm2": 28.907,
+       "ocean_poleward_50_perennial_share": 0.786,
+       "perennial_edge_deg": 56.0,
+       "all_ice_edge_deg": 42.0,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 57.0,
+        "p05": 57.0,
+        "median": 57.0,
+        "p95": 63.1,
+        "max": 65.0
+       },
+       "bands": [
+        {
+         "band": "40-50",
+         "ocean_mkm2": 22.496,
+         "perennial_share": 0.0,
+         "seasonal_share": 0.789
+        },
+        {
+         "band": "50-60",
+         "ocean_mkm2": 18.819,
+         "perennial_share": 0.407,
+         "seasonal_share": 0.593
+        },
+        {
+         "band": "60-70",
+         "ocean_mkm2": 17.947,
+         "perennial_share": 1.0,
+         "seasonal_share": 0.0
+        },
+        {
+         "band": "70-80",
+         "ocean_mkm2": 11.475,
+         "perennial_share": 1.0,
+         "seasonal_share": 0.0
+        },
+        {
+         "band": "80-90",
+         "ocean_mkm2": 3.875,
+         "perennial_share": 1.0,
+         "seasonal_share": 0.0
+        }
+       ]
+      },
+      "south": {
+       "ocean_mkm2": 154.75,
+       "perennial_mkm2": 41.198,
+       "seasonal_mkm2": 29.549,
+       "ocean_poleward_50_perennial_share": 0.75,
+       "perennial_edge_deg": 56.0,
+       "all_ice_edge_deg": 42.0,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 57.0,
+        "p05": 57.0,
+        "median": 57.0,
+        "p95": 57.0,
+        "max": 75.0
+       },
+       "bands": [
+        {
+         "band": "40-50",
+         "ocean_mkm2": 19.372,
+         "perennial_share": 0.0,
+         "seasonal_share": 0.815
+        },
+        {
+         "band": "50-60",
+         "ocean_mkm2": 22.748,
+         "perennial_share": 0.395,
+         "seasonal_share": 0.605
+        },
+        {
+         "band": "60-70",
+         "ocean_mkm2": 17.279,
+         "perennial_share": 1.0,
+         "seasonal_share": 0.0
+        },
+        {
+         "band": "70-80",
+         "ocean_mkm2": 11.125,
+         "perennial_share": 1.0,
+         "seasonal_share": 0.0
+        },
+        {
+         "band": "80-90",
+         "ocean_mkm2": 3.806,
+         "perennial_share": 1.0,
+         "seasonal_share": 0.0
+        }
+       ]
+      }
+     },
+     "anomaly_moves_perennial_edge": {
+      "north": {
+       "max_deg": 4.0,
+       "columns_moved_ge_2deg": 68,
+       "columns": 180,
+       "columns_with_ice_one_way_only": 0
+      },
+      "south": {
+       "max_deg": 4.0,
+       "columns_moved_ge_2deg": 48,
+       "columns": 180,
+       "columns_with_ice_one_way_only": 0
+      }
+     },
+     "polar_sea_ice_class_after_mkm2": {
+      "north": 51.138,
+      "south": 54.239
+     }
+    },
+    "Fw2_DDF20": {
+     "with_anomaly": {
+      "north": {
+       "ocean_mkm2": 187.985,
+       "perennial_mkm2": 38.043,
+       "seasonal_mkm2": 32.594,
+       "ocean_poleward_50_perennial_share": 0.73,
+       "perennial_edge_deg": 57.55,
+       "all_ice_edge_deg": 41.68,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 55.0,
+        "p05": 55.0,
+        "median": 59.0,
+        "p95": 63.1,
+        "max": 65.0
+       }
+      },
+      "south": {
+       "ocean_mkm2": 154.75,
+       "perennial_mkm2": 37.458,
+       "seasonal_mkm2": 34.274,
+       "ocean_poleward_50_perennial_share": 0.682,
+       "perennial_edge_deg": 57.61,
+       "all_ice_edge_deg": 41.45,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 55.0,
+        "p05": 57.0,
+        "median": 59.0,
+        "p95": 61.0,
+        "max": 75.0
+       }
+      }
+     },
+     "without_anomaly": {
+      "north": {
+       "ocean_mkm2": 187.985,
+       "perennial_mkm2": 37.193,
+       "seasonal_mkm2": 32.678,
+       "ocean_poleward_50_perennial_share": 0.714,
+       "perennial_edge_deg": 58.0,
+       "all_ice_edge_deg": 42.0,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 59.0,
+        "p05": 59.0,
+        "median": 59.0,
+        "p95": 63.1,
+        "max": 65.0
+       }
+      },
+      "south": {
+       "ocean_mkm2": 154.75,
+       "perennial_mkm2": 36.566,
+       "seasonal_mkm2": 34.182,
+       "ocean_poleward_50_perennial_share": 0.665,
+       "perennial_edge_deg": 58.0,
+       "all_ice_edge_deg": 42.0,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 59.0,
+        "p05": 59.0,
+        "median": 59.0,
+        "p95": 59.7,
+        "max": 75.0
+       }
+      }
+     },
+     "anomaly_moves_perennial_edge": {
+      "north": {
+       "max_deg": 4.0,
+       "columns_moved_ge_2deg": 82,
+       "columns": 180,
+       "columns_with_ice_one_way_only": 0
+      },
+      "south": {
+       "max_deg": 16.0,
+       "columns_moved_ge_2deg": 57,
+       "columns": 180,
+       "columns_with_ice_one_way_only": 0
+      }
+     },
+     "polar_sea_ice_class_after_mkm2": {
+      "north": 51.138,
+      "south": 54.239
+     }
+    },
+    "Fw2.7_DDF5.5": {
+     "with_anomaly": {
+      "north": {
+       "ocean_mkm2": 187.985,
+       "perennial_mkm2": 43.527,
+       "seasonal_mkm2": 27.11,
+       "ocean_poleward_50_perennial_share": 0.835,
+       "perennial_edge_deg": 54.58,
+       "all_ice_edge_deg": 41.68,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 51.0,
+        "p05": 53.0,
+        "median": 57.0,
+        "p95": 63.1,
+        "max": 65.0
+       }
+      },
+      "south": {
+       "ocean_mkm2": 154.75,
+       "perennial_mkm2": 45.443,
+       "seasonal_mkm2": 26.289,
+       "ocean_poleward_50_perennial_share": 0.827,
+       "perennial_edge_deg": 54.25,
+       "all_ice_edge_deg": 41.45,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 51.0,
+        "p05": 53.0,
+        "median": 55.0,
+        "p95": 57.0,
+        "max": 75.0
+       }
+      }
+     },
+     "without_anomaly": {
+      "north": {
+       "ocean_mkm2": 187.985,
+       "perennial_mkm2": 44.567,
+       "seasonal_mkm2": 25.304,
+       "ocean_poleward_50_perennial_share": 0.855,
+       "perennial_edge_deg": 54.0,
+       "all_ice_edge_deg": 42.0,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 55.0,
+        "p05": 55.0,
+        "median": 55.0,
+        "p95": 63.1,
+        "max": 65.0
+       }
+      },
+      "south": {
+       "ocean_mkm2": 154.75,
+       "perennial_mkm2": 46.049,
+       "seasonal_mkm2": 24.698,
+       "ocean_poleward_50_perennial_share": 0.838,
+       "perennial_edge_deg": 54.0,
+       "all_ice_edge_deg": 42.0,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 55.0,
+        "p05": 55.0,
+        "median": 55.0,
+        "p95": 55.1,
+        "max": 75.0
+       }
+      }
+     },
+     "anomaly_moves_perennial_edge": {
+      "north": {
+       "max_deg": 4.0,
+       "columns_moved_ge_2deg": 53,
+       "columns": 180,
+       "columns_with_ice_one_way_only": 0
+      },
+      "south": {
+       "max_deg": 4.0,
+       "columns_moved_ge_2deg": 43,
+       "columns": 180,
+       "columns_with_ice_one_way_only": 0
+      }
+     },
+     "polar_sea_ice_class_after_mkm2": {
+      "north": 51.138,
+      "south": 54.239
+     }
+    },
+    "Fw2.7_DDF8": {
+     "with_anomaly": {
+      "north": {
+       "ocean_mkm2": 187.985,
+       "perennial_mkm2": 41.097,
+       "seasonal_mkm2": 29.54,
+       "ocean_poleward_50_perennial_share": 0.789,
+       "perennial_edge_deg": 55.93,
+       "all_ice_edge_deg": 41.68,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 53.0,
+        "p05": 55.0,
+        "median": 57.0,
+        "p95": 63.1,
+        "max": 65.0
+       }
+      },
+      "south": {
+       "ocean_mkm2": 154.75,
+       "perennial_mkm2": 41.592,
+       "seasonal_mkm2": 30.141,
+       "ocean_poleward_50_perennial_share": 0.757,
+       "perennial_edge_deg": 55.84,
+       "all_ice_edge_deg": 41.45,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 53.0,
+        "p05": 55.0,
+        "median": 57.0,
+        "p95": 59.0,
+        "max": 75.0
+       }
+      }
+     },
+     "without_anomaly": {
+      "north": {
+       "ocean_mkm2": 187.985,
+       "perennial_mkm2": 40.964,
+       "seasonal_mkm2": 28.907,
+       "ocean_poleward_50_perennial_share": 0.786,
+       "perennial_edge_deg": 56.0,
+       "all_ice_edge_deg": 42.0,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 57.0,
+        "p05": 57.0,
+        "median": 57.0,
+        "p95": 63.1,
+        "max": 65.0
+       }
+      },
+      "south": {
+       "ocean_mkm2": 154.75,
+       "perennial_mkm2": 41.198,
+       "seasonal_mkm2": 29.549,
+       "ocean_poleward_50_perennial_share": 0.75,
+       "perennial_edge_deg": 56.0,
+       "all_ice_edge_deg": 42.0,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 57.0,
+        "p05": 57.0,
+        "median": 57.0,
+        "p95": 57.0,
+        "max": 75.0
+       }
+      }
+     },
+     "anomaly_moves_perennial_edge": {
+      "north": {
+       "max_deg": 4.0,
+       "columns_moved_ge_2deg": 102,
+       "columns": 180,
+       "columns_with_ice_one_way_only": 0
+      },
+      "south": {
+       "max_deg": 4.0,
+       "columns_moved_ge_2deg": 80,
+       "columns": 180,
+       "columns_with_ice_one_way_only": 0
+      }
+     },
+     "polar_sea_ice_class_after_mkm2": {
+      "north": 51.138,
+      "south": 54.239
+     }
+    },
+    "Fw2.7_DDF20": {
+     "with_anomaly": {
+      "north": {
+       "ocean_mkm2": 187.985,
+       "perennial_mkm2": 38.043,
+       "seasonal_mkm2": 32.594,
+       "ocean_poleward_50_perennial_share": 0.73,
+       "perennial_edge_deg": 57.55,
+       "all_ice_edge_deg": 41.68,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 55.0,
+        "p05": 55.0,
+        "median": 59.0,
+        "p95": 63.1,
+        "max": 65.0
+       }
+      },
+      "south": {
+       "ocean_mkm2": 154.75,
+       "perennial_mkm2": 37.458,
+       "seasonal_mkm2": 34.274,
+       "ocean_poleward_50_perennial_share": 0.682,
+       "perennial_edge_deg": 57.61,
+       "all_ice_edge_deg": 41.45,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 55.0,
+        "p05": 57.0,
+        "median": 59.0,
+        "p95": 61.0,
+        "max": 75.0
+       }
+      }
+     },
+     "without_anomaly": {
+      "north": {
+       "ocean_mkm2": 187.985,
+       "perennial_mkm2": 37.193,
+       "seasonal_mkm2": 32.678,
+       "ocean_poleward_50_perennial_share": 0.714,
+       "perennial_edge_deg": 58.0,
+       "all_ice_edge_deg": 42.0,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 59.0,
+        "p05": 59.0,
+        "median": 59.0,
+        "p95": 63.1,
+        "max": 65.0
+       }
+      },
+      "south": {
+       "ocean_mkm2": 154.75,
+       "perennial_mkm2": 36.566,
+       "seasonal_mkm2": 34.182,
+       "ocean_poleward_50_perennial_share": 0.665,
+       "perennial_edge_deg": 58.0,
+       "all_ice_edge_deg": 42.0,
+       "perennial_edge_by_longitude": {
+        "columns": 180,
+        "min": 59.0,
+        "p05": 59.0,
+        "median": 59.0,
+        "p95": 59.7,
+        "max": 75.0
+       }
+      }
+     },
+     "anomaly_moves_perennial_edge": {
+      "north": {
+       "max_deg": 4.0,
+       "columns_moved_ge_2deg": 82,
+       "columns": 180,
+       "columns_with_ice_one_way_only": 0
+      },
+      "south": {
+       "max_deg": 16.0,
+       "columns_moved_ge_2deg": 57,
+       "columns": 180,
+       "columns_with_ice_one_way_only": 0
+      }
+     },
+     "polar_sea_ice_class_after_mkm2": {
+      "north": 51.138,
+      "south": 54.239
+     }
+    }
+   }
+  }
+ }
+}
