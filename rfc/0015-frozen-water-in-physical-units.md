@@ -651,8 +651,9 @@ RFC 0014 owns lake water: its volume, seasonal ice cover and the bounded lake ic
     open water. That is Stefan's upper bound for
     first-year ice without snow cover; multiyear ice equilibrates near 288 cm
     [[Maykut & Untersteiner, 1971]](#ref-maykut1971), the same magnitude but a different
-    quantity. The bands are the same for `DDF_ice` = 4 and 7 mm w.e. d⁻¹ K⁻¹
-    (`measure_frozen_water.py`'s `sea_ice_balance`).
+    quantity. The 65.75° edge is for `DDF_ice` = 4 mm w.e. d⁻¹ K⁻¹. At 7 it is 67.4°, and at
+    G2's starting value of 8 it is 67.9° (G5; `measure_frozen_water.py`'s 5° latitude rows
+    could not separate them).
 - **What reads sea ice:** the maps (D7: perennial sea ice drawn as ice; the Polar Sea Ice
   class where `f_ice` ≥ 0.5) and the inspector. On perennial sea-ice cells the Temperature
   view and the inspector show `T_si` as the surface temperature, not the air over the open
@@ -750,6 +751,13 @@ RFC 0014 owns lake water: its volume, seasonal ice cover and the bounded lake ic
 - a **held-out acceptance set** of ≥ 3 other saves, at least one replayed with ice ages on
   under the same period rule, never used for gates or knob choices.
 
+**Chosen (2026-10-23, #548).** All six are density 4, at a tilt of 23.5°, with ice ages off
+as saved. Checksums and the survey are in [`analysis/issue548/`](../analysis/issue548/README.md).
+- Diagnosis: seed 997271774 at 87.4 Myr, seed 649658380 at 6.4 Myr, and seed 374464662 at
+  132.6 Myr, replayed with ice ages at an 8 Myr period (report-only arm: 1 Myr).
+- Held out: seed 447276134 at 116.4 Myr (replayed with ice ages at an 8 Myr period), seed
+  628977350 at 226.7 Myr, and seed 295569319 at 180.1 Myr.
+
 Every gate run includes an `origin/main` arm on the same save and steps, as the baseline.
 
 - **G0: what makes the implicit solve swing?** At D1's physical rates, on the diagnosis set,
@@ -824,6 +832,11 @@ Every gate run includes an `origin/main` arm on the same save and steps, as the 
   area and volume to `DDF_snow` ∈ {3, 4, 5}, `DDF_ice` across its sourced range and
   `T_rs` ∈ {0, 1, 2} °C on the diagnosis set. *Outcome:* fix the starting values. A knob whose
   range moves ice volume by more than 2× is flagged as weakly constrained in the RFC.
+
+  **`DDF_ice` sourced (2026-10-23, #548).** Start 8 mm w.e. d⁻¹ K⁻¹, range 5.5–8.2: the
+  multi-season fits on bare ice in [[Hock, 2003]](#ref-hock2003), Table 1, and 7.5–8.2 observed
+  in West Greenland [[Braithwaite, 1995]](#ref-braithwaite1995). Single-season values reach 20,
+  which G5 runs as an extreme. The sensitivity runs wait for the D1 prototype.
 - **G3: erosion and its limits.** For each (K_G, l) pair in D3, report applied glacial
   erosion, its applied/raw ratio and its 0.25 vs 1 Myr gap. Report flattening's volume beside
   abrasion's, and the effect of `glacier_erosion_multiplier` at 0.25× and 4× on ice-cap area
@@ -856,6 +869,27 @@ Every gate run includes an `origin/main` arm on the same save and steps, as the 
     edge falls within 10° of latitude of the observed one in each hemisphere that has one, and
     the current anomaly moves the local edge by at least 2° somewhere along it (so the ocean's
     heat transport is felt). Otherwise revise the proxies before implementation.
+
+  **Gate result (2026-10-23, #548, commit `402f009`): pass; keep the proxies.** The reference
+  is ERA5's 1990–2019 sea-ice concentration (≥ 15% every day of the year is perennial), with
+  and without coastal cells filled. The two versions bracket NSIDC's 1990–2019 extents. The
+  edge is measured against ocean area poleward of it. Observed perennial edges are
+  75.3–76.7°N and 69.5–70.5°S.
+  - Without ice ages, at `F_w` = 2 and `DDF_ice` = 8, the model edge is 68.2–68.3°N and
+    68.4–68.6°S on the three diagnosis saves: gaps of at most 8.5° and 2.1°. The anomaly
+    (±2.7 °C poleward of 50°) moves the local edge by ≥ 2° in each hemisphere of each save.
+  - `F_w` across 1.3–2.7 moves the edge by ≤ 1°, and `DDF_ice` across 5.5–20 by about 4°.
+    Only `DDF_ice` = 5.5 takes one save's north past 10° (10.4°), against the far end of the
+    observed range.
+  - Three findings remain open before D6's implementation issue (owner decisions, through
+    `rfc-authoring`):
+    1. The north is biased 6–10° equatorward, which the knobs can't fix.
+    2. Seasonal ice reaches about 50.5° (observed 60–71°), so `f_ice` ≥ 0.5 gives 15–34 M km²
+       per hemisphere against 9–15 M km² observed ice-covered for half the year.
+    3. At the full 8 °C ice-age cooling, perennial ice covers 63–84% of the ocean poleward of
+       50°. The falsification criterion is read as applying without ice ages.
+  - Zonal bands, perennial / freezing at `DDF_ice` = 8: 64.4° / 54.9° at 15° tilt, 67.9° /
+    51.1° at 23.5°, and 81.9° / 45.9° at 35°.
 - **G6: meltwater rivers.** Against the `origin/main` arm on the diagnosis set, report for
   each meltwater source the water reaching the ocean, lakes and transit loss; the number of
   filled φ pits and the water passing through them; the number of visible river networks
@@ -871,7 +905,7 @@ Every gate run includes an `origin/main` arm on the same save and steps, as the 
 | ρ_w / ρ_i | 1000/917 | Densities | None |
 | `T_rs` (rain–snow threshold) | 1.0 °C | [[Jennings et al., 2018]](#ref-jennings2018) | G2 sensitivity 0–2 °C |
 | `DDF_snow` | 4 mm w.e. d⁻¹ K⁻¹ | [[Braithwaite, 2008]](#ref-braithwaite2008) | G2 sensitivity 3–5 |
-| `DDF_ice` | To be sourced in G2 | Literature, unverified | G2 |
+| `DDF_ice` | 8 mm w.e. d⁻¹ K⁻¹ | [[Hock, 2003]](#ref-hock2003); [[Braithwaite, 1995]](#ref-braithwaite1995) (5.5–8.2) | G2 sensitivity |
 | G (geothermal flux) | 0.06 W m⁻² | Existing `ICE_GEOTHERMAL_FLUX_W_M2` | Out of scope |
 | k (ice conductivity) | 2.1 W m⁻¹ K⁻¹ | Existing `ICE_THERMAL_CONDUCTIVITY_W_M_K` | None |
 | τ_b (frictional melt) | The profile's yield stress, 30–100 kPa | Existing `ICE_YIELD_STRESS_*_PA` | None |
@@ -1152,11 +1186,13 @@ supersedes".
 
 ## References
 
+- <a id="ref-braithwaite1995"></a>Braithwaite, R. J. (1995). Positive degree-day factors for ablation on the Greenland ice sheet studied by energy-balance modelling. *Journal of Glaciology*, 41(137), 153–160. [https://doi.org/10.3189/S0022143000017846](https://doi.org/10.3189/S0022143000017846)
 - <a id="ref-braithwaite2008"></a>Braithwaite, R. J. (2008). Temperature and precipitation climate at the equilibrium-line altitude of glaciers expressed by the degree-day factor for melting snow. *Journal of Glaciology*, 54, 437–444. [https://doi.org/10.3189/002214308785836968](https://doi.org/10.3189/002214308785836968)
 - <a id="ref-cook2020"></a>Cook, S. J., Swift, D. A., Kirkbride, M. P., Knight, P. G., & Waller, R. I. (2020). The empirical basis for modelling glacial erosion rates. *Nature Communications*, 11, 759. [https://doi.org/10.1038/s41467-020-14583-8](https://doi.org/10.1038/s41467-020-14583-8)
 - <a id="ref-ensom2020"></a>Ensom, T., Makarieva, O., Morse, P., Kane, D., Alekseev, V., & Marsh, P. (2020). The distribution and dynamics of aufeis in permafrost regions. *Permafrost and Periglacial Processes*, 31(3), 383–395. [https://doi.org/10.1002/ppp.2051](https://doi.org/10.1002/ppp.2051)
 - <a id="ref-goelzer2020"></a>Goelzer, H., Coulon, V., Pattyn, F., de Boer, B., & van de Wal, R. (2020). Brief communication: On calculating the sea-level contribution in marine ice-sheet models. *The Cryosphere*, 14, 833–840. [https://doi.org/10.5194/tc-14-833-2020](https://doi.org/10.5194/tc-14-833-2020)
 - <a id="ref-herman2015"></a>Herman, F., Beyssac, O., Brughelli, M., Lane, S. N., Leprince, S., Adatte, T., Lin, J. Y., Avouac, J.-P., & Cox, S. C. (2015). Erosion by an Alpine glacier. *Science*, 350, 193–195. [https://doi.org/10.1126/science.aab2386](https://doi.org/10.1126/science.aab2386)
+- <a id="ref-hock2003"></a>Hock, R. (2003). Temperature index melt modelling in mountain areas. *Journal of Hydrology*, 282, 104–115. [https://doi.org/10.1016/S0022-1694(03)00257-9](https://doi.org/10.1016/S0022-1694(03)00257-9)
 - <a id="ref-humphrey1994"></a>Humphrey, N. F., & Raymond, C. F. (1994). Hydrology, erosion and sediment production in a surging glacier: Variegated Glacier, Alaska, 1982–83. *Journal of Glaciology*, 40, 539–552. [https://doi.org/10.3189/S0022143000012429](https://doi.org/10.3189/S0022143000012429)
 - <a id="ref-jennings2018"></a>Jennings, K. S., Winchell, T. S., Livneh, B., & Molotch, N. P. (2018). Spatial variation of the rain–snow temperature threshold across the Northern Hemisphere. *Nature Communications*, 9, 1148. [https://doi.org/10.1038/s41467-018-03629-7](https://doi.org/10.1038/s41467-018-03629-7)
 - <a id="ref-lambeck2014"></a>Lambeck, K., Rouby, H., Purcell, A., Sun, Y., & Sambridge, M. (2014). Sea level and global ice volumes from the Last Glacial Maximum to the Holocene. *Proceedings of the National Academy of Sciences*, 111, 15296–15303. [https://doi.org/10.1073/pnas.1411762111](https://doi.org/10.1073/pnas.1411762111)
