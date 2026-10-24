@@ -210,6 +210,12 @@ class GuestStepCoordinator:
         self._mutex = threading.Lock()
         self._inflight: threading.Event | None = None
 
+    def busy(self) -> bool:
+        """A guest step is computing right now. Lets delete refuse while one is
+        in flight instead of detaching the session underneath it."""
+        with self._mutex:
+            return self._inflight is not None
+
     def request_step(
         self,
         seen_revision: str,

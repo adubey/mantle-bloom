@@ -661,42 +661,57 @@ export default function App() {
     }
   }, []);
 
+  // Each refresh below captures the selected world up front and drops its response
+  // when the selection moved on mid-flight (#563 S7): without the guard, a slow
+  // response for the old world would paint over the newly selected one.
   const refreshPlates = useCallback(async () => {
+    const id = worldIdRef.current;
     try {
-      const data = await fetchPlates(worldIdRef.current!, );
+      const data = await fetchPlates(id!, );
+      if (worldIdRef.current !== id) return;
       setPlatesData(data.plates);
     } catch (e) {
+      if (worldIdRef.current !== id) return;
       setError(String(e));
     }
   }, []);
 
   const refreshRivers = useCallback(async () => {
+    const id = worldIdRef.current;
     try {
-      const data = await fetchRivers(worldIdRef.current!, );
+      const data = await fetchRivers(id!, );
+      if (worldIdRef.current !== id) return;
       setRiversData(data.rivers);
       setCoastlineSegments(data.coastline_segments);
     } catch (e) {
+      if (worldIdRef.current !== id) return;
       setError(String(e));
     }
   }, []);
 
   const refreshLakes = useCallback(async () => {
+    const id = worldIdRef.current;
     try {
-      const data = await fetchLakes(worldIdRef.current!, );
+      const data = await fetchLakes(id!, );
+      if (worldIdRef.current !== id) return;
       setLakesData(data.lakes);
     } catch (e) {
+      if (worldIdRef.current !== id) return;
       setError(String(e));
     }
   }, []);
 
   const refreshFaults = useCallback(async () => {
+    const id = worldIdRef.current;
     try {
-      const [faults, quakes, volcanoes] = await Promise.all([fetchFaults(worldIdRef.current!, ), fetchEarthquakes(worldIdRef.current!, ), fetchVolcanoes(worldIdRef.current!, )]);
+      const [faults, quakes, volcanoes] = await Promise.all([fetchFaults(id!, ), fetchEarthquakes(id!, ), fetchVolcanoes(id!, )]);
+      if (worldIdRef.current !== id) return;
       setFaultsData(faults.faults);
       setFaultSystemsData(faults.fault_systems);
       setEarthquakesData(quakes.earthquakes);
       setVolcanoesData(volcanoes.volcanoes);
     } catch (e) {
+      if (worldIdRef.current !== id) return;
       setError(String(e));
     }
   }, []);
@@ -714,18 +729,19 @@ export default function App() {
   useEffect(() => {
     if (mapView !== "platesAndFaults" || !summary || (!wantCratonLayer && !showWater)) return;
     let cancelled = false;
+    const id = worldIdRef.current;
     Promise.all([
-      wantCratonLayer ? renderWorld(worldIdRef.current!, projection, "cratonLayer", RENDER_WIDTH, RENDER_HEIGHT, rotation) : null,
-      showWater ? renderWorld(worldIdRef.current!, projection, "waterLayer", RENDER_WIDTH, RENDER_HEIGHT, rotation) : null,
+      wantCratonLayer ? renderWorld(id!, projection, "cratonLayer", RENDER_WIDTH, RENDER_HEIGHT, rotation) : null,
+      showWater ? renderWorld(id!, projection, "waterLayer", RENDER_WIDTH, RENDER_HEIGHT, rotation) : null,
     ])
       .then(([craton, water]) => {
-        if (cancelled) return;
+        if (cancelled || worldIdRef.current !== id) return;
         setPlatesLayers({
           projection, rotation, craton: craton?.image_base64 ?? null, water: water?.image_base64 ?? null,
         });
       })
       .catch((e) => {
-        if (!cancelled) setError(String(e));
+        if (!cancelled && worldIdRef.current === id) setError(String(e));
       });
     return () => {
       cancelled = true;
@@ -746,8 +762,10 @@ export default function App() {
   // network blip) shouldn't surface as the main error line or block generate/step, unlike
   // refresh/refreshPlates above which are core to the map actually updating.
   const recordStats = useCallback(async () => {
+    const id = worldIdRef.current;
     try {
-      const s = await fetchStats(worldIdRef.current!, );
+      const s = await fetchStats(id!, );
+      if (worldIdRef.current !== id) return;
       applyStats(s);
     } catch {
       // ignored -- see comment above
@@ -755,6 +773,10 @@ export default function App() {
   }, [applyStats]);
 
   const handleGenerate = useCallback(async () => {
+    // The world being generated into: the selection may move mid-run (once the
+    // selector stays enabled for other states), so every commit below bails when
+    // it no longer matches instead of painting the old world over the new one.
+    const id = worldIdRef.current;
     setBusy(true);
     setGenProgress(undefined);
     setError(null);
@@ -771,8 +793,8 @@ export default function App() {
       // so genProgress just stays undefined (indeterminate) for that path.
       const s =
         generateMode === "debug"
-          ? await generateDebugWorld(worldIdRef.current!, debugScenario, seed)
-          : await generateWorld(worldIdRef.current!, {
+          ? await generateDebugWorld(id!, debugScenario, seed)
+          : await generateWorld(id!, {
               seed,
               cratonsFirst: generateMode === "random" ? cratonsFirst : false,
               syntheticRelief: generateMode === "random" && cratonsFirst ? syntheticRelief : false,
@@ -787,8 +809,11 @@ export default function App() {
               voronoiPoints,
               sketchImageBase64: sketchBase64,
               premadeWorldId: generateMode === "premade" ? premadeWorldId : null,
-              onProgress: setGenProgress,
+              onProgress: (f) => {
+                if (worldIdRef.current === id) setGenProgress(f);
+              },
             });
+      if (worldIdRef.current !== id) return;
       setSummary(s);
       setCrossSectionWorldRevision((revision) => revision + 1);
       setSelectedPlateId(null);
@@ -810,7 +835,7 @@ export default function App() {
       setTuning(DEFAULT_TUNING);
       await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), recordStats()]);
     } catch (e) {
-      setError(String(e));
+      if (worldIdRef.current === id) setError(String(e));
     } finally {
       setBusy(false);
       setGenProgress(undefined);
@@ -918,6 +943,9 @@ export default function App() {
   // loaded save's own recorded series (see World.stats_history), not reset to empty the way
   // it used to be before the backend persisted this itself.
   const handleWorldReplaced = useCallback(async (s: WorldSummary) => {
+    // The summary names its own world: when the selection moved on mid-flight, drop
+    // the stale commit instead of painting the old world over the new one (#563 S7).
+    if (s.world_id !== worldIdRef.current) return;
     setBusy(true);
     setError(null);
     try {
@@ -932,12 +960,14 @@ export default function App() {
       // setStatsHistory calls could resolve in either order and recordStats()'s plain-array
       // append would risk being clobbered by this one landing second.
       try {
-        const { history } = await fetchStatsHistory(worldIdRef.current!, );
+        const { history } = await fetchStatsHistory(s.world_id, );
+        if (s.world_id !== worldIdRef.current) return;
         setStatsHistory(history);
       } catch {
         // best-effort, same spirit as recordStats below -- see its own comment
       }
-      const controls = await updateControls(worldIdRef.current!, {});
+      const controls = await updateControls(s.world_id, {});
+      if (s.world_id !== worldIdRef.current) return;
       setSeaLevelM(controls.sea_level_m);
       setSolarMultiplier(controls.solar_multiplier);
       setIceAgePeriodYears(controls.ice_age_period_years);
@@ -949,7 +979,7 @@ export default function App() {
       setTuning(Object.fromEntries(TUNING_MULTIPLIER_KEYS.map((k) => [k, controls[k]])) as TuningMultipliers);
       await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), recordStats()]);
     } catch (e) {
-      setError(String(e));
+      if (s.world_id === worldIdRef.current) setError(String(e));
     } finally {
       setBusy(false);
     }
@@ -958,6 +988,8 @@ export default function App() {
   // Post-step refresh -- after an animation run (see api.ts's animateWorld) or each step of
   // the server's run (see handlePlay), both of which already advanced the world for real.
   const handleWorldAdvanced = useCallback(async (s: WorldSummary) => {
+    // Same stale-world guard as handleWorldReplaced above (#563 S7).
+    if (s.world_id !== worldIdRef.current) return;
     setSummary(s);
     setCrossSectionWorldRevision((revision) => revision + 1);
     setSelectedRiverId(null);
@@ -981,10 +1013,14 @@ export default function App() {
       setAnimationResult(null);
       setAnimation({ frame: 0, total: numFrames, unbounded });
       const view = mapViewRef.current;
+      const id = worldIdRef.current;
       try {
-        const result = await animateWorld(worldIdRef.current!, 
+        const result = await animateWorld(id!,
           projection, view, RENDER_WIDTH, RENDER_HEIGHT, rotation, stepYears, stepsPerFrame, numFrames,
           (p) => {
+            // Frames belong to the world the run started on; drop them when the
+            // selection moved on rather than painting the old world (#563 S7).
+            if (worldIdRef.current !== id) return;
             setAnimation({ frame: p.frame, total: p.total, unbounded });
             // Keep the sidebar's "elapsed" readout climbing frame by frame instead of it
             // sitting frozen at the pre-recording value until the whole run resolves.
@@ -1004,10 +1040,13 @@ export default function App() {
         // Reached whether the run finished on its own or the toolbar's Stop button ended it
         // early (see api.ts's stopAnimation -- the stream still finishes cleanly and returns
         // the video either way, so both cases resolve here rather than throwing).
+        // handleWorldAdvanced drops a stale world on its own, but skip setting the
+        // video result too when the selection moved on mid-run.
+        if (worldIdRef.current !== id) return;
         setAnimationResult(result);
         await handleWorldAdvanced(result);
       } catch (e) {
-        setError(String(e));
+        if (worldIdRef.current === id) setError(String(e));
       } finally {
         setAnimation(null);
       }
@@ -1137,6 +1176,22 @@ export default function App() {
     setWorldId(id);
     if (id) window.history.replaceState(null, "", withWorldId(window.location.href, id));
     setSummary(null);
+    // Drop everything derived from the previously shown world, so the old map,
+    // overlays, stats, and error line can't linger under the new world's name
+    // while its own restore loads (#563 S7, and N5 for the error line).
+    setRenderData(null);
+    setPlatesData([]);
+    setRiversData([]);
+    setCoastlineSegments([]);
+    setLakesData([]);
+    setFaultsData([]);
+    setFaultSystemsData([]);
+    setEarthquakesData([]);
+    setVolcanoesData([]);
+    setPlatesLayers(null);
+    setStats(null);
+    setStatsHistory([]);
+    setError(null);
     setPlaying(false);
     setStopping(false);
     shownRevisionRef.current = undefined;
@@ -1266,6 +1321,10 @@ export default function App() {
           // The first request answers at once, with the run_version later ones wait past.
           const after = runVersion === undefined ? undefined : shownRevisionRef.current;
           const run = await fetchRunState(worldIdRef.current!, after, runVersion, controller.signal);
+          // The selection moved on mid-poll (the effect's cleanup aborts too, but a
+          // resolved fetch can slip past it): drop it rather than following the old
+          // world's run under the new world's name (#563 S7).
+          if (worldIdRef.current !== worldId) return;
           runVersion = run.run_version;
           const revision = run.world?.revision;
           if (revision !== shownRevisionRef.current) {
@@ -1358,6 +1417,8 @@ export default function App() {
               <select
                 value={worldId ?? ""}
                 onChange={(e) => selectWorld(e.target.value || null)}
+                disabled={busy || animating || playing}
+                title={busy || animating || playing ? "Stop the current operation first" : undefined}
                 style={{ width: "100%", fontSize: 12, marginBottom: 6 }}
                 aria-label="World"
               >
@@ -1371,7 +1432,7 @@ export default function App() {
               </select>
             )}
             <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-              <button onClick={handleNewWorld} style={{ flex: 1, fontSize: 12 }} title="Create an empty world">
+              <button onClick={handleNewWorld} disabled={busy || animating || playing} style={{ flex: 1, fontSize: 12 }} title="Create an empty world">
                 + New
               </button>
               <button
@@ -1380,7 +1441,7 @@ export default function App() {
                     handleDeleteWorld(worldId);
                   }
                 }}
-                disabled={!worldId}
+                disabled={!worldId || busy || animating || playing}
                 style={{ flex: 1, fontSize: 12 }}
                 title="Delete the selected world"
               >

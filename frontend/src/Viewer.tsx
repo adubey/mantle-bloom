@@ -101,7 +101,13 @@ function usePublicWorldId(): { worlds: PublicWorldListing[] | null; worldId: Wor
     fetchPublicWorlds().then(
       ({ worlds: list }) => {
         setWorlds(list);
-        if (!worldIdFromSearch(window.location.search) && list.length === 1) {
+        const urlId = worldIdFromSearch(window.location.search);
+        if (urlId && list.some((w) => w.world_id === urlId)) return;
+        if (list.length === 0) return;
+        // No selection and exactly one public world: adopt it. A selection naming an
+        // unknown, private, or deleted world falls back to the first listed one
+        // instead of leaving a blank page (#563 S8).
+        if ((!urlId && list.length === 1) || urlId) {
           const id = list[0].world_id;
           setWorldId(id);
           window.history.replaceState(null, "", withWorldId(window.location.href, id));
@@ -259,7 +265,11 @@ function WorldView({ worldId }: { worldId: WorldId }) {
   }, [exhausted, revision, stepping, step]);
 
   if (state && !state.world) return <p>This world is no longer public. Check back later.</p>;
-  if (!state?.world) return null;
+  // A failed fetch used to fall through to a blank page, swallowing the message (#563 S8).
+  if (!state?.world) {
+    if (error) return <p role="alert" style={{ color: "#ff9b9b" }}>{error}</p>;
+    return null;
+  }
   const worldState = state.world;
   return (
     <>

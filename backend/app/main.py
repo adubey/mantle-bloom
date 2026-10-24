@@ -787,12 +787,18 @@ def delete_world(world_id: str) -> dict:
     session = _session_or_404(world_id)
     if session.operation_busy():
         raise HTTPException(status_code=409, detail="a generation, step, or animation is in progress on this world")
+    if session.guest_steps.busy():
+        raise HTTPException(status_code=409, detail="a guest step is in progress on this world; try again in a moment")
+    if session.runner is not None and session.runner.stepping():
+        raise HTTPException(status_code=409, detail="a run step is under way on this world; try again in a moment")
+    # Mark first: streams that queued at the compute gate before this delete re-check
+    # `deleted` under the session lock when their turn arrives and bail out instead
+    # of working on a detached session (see each _stream's check). A runner waking
+    # between here and close() sees the same flag in _run_step_once and stands down.
+    session.deleted = True
     if session.runner is not None:
-        if session.runner.stepping():
-            raise HTTPException(status_code=409, detail="a run step is under way on this world; try again in a moment")
         session.runner.set_status(checkpoint.RunStatus(running=False, step_years=session.runner.status().step_years), persist=False)
         session.runner.close()
-    session.deleted = True
     _registry.remove(world_id)
     if _checkpoint_root is not None and session.checkpoint_store is not None:
         import shutil
@@ -812,13 +818,14 @@ def generate(world_id: str, req: GenerateRequest) -> StreamingResponse:
     bootstrap -- coarser-grained than /worlds/{world_id}/step's per-plate progress, see that generator's
     own docstring for why), then a final `{"type": "done", ...summary fields}` once the world
     is fully built, or a `{"type": "error", "detail": ...}` line if generation raises
-    partway through (the HTTP status is already 200 by then, same as animate). Unlike
-    /worlds/{id}/step, `404` doesn't apply here -- there's no existing world required -- but
-    `503` still does, same as step/animate, if a generation/step/animation is already in
-    progress on this world (see `session.begin_operation` below). Every other validation
+    partway through (the HTTP status is already 200 by then, same as animate). `404` for an
+    unknown world id (there's no existing world *content* required); `503` if a
+    generation/step/animation is already in progress on this world (see
+    `session.begin_operation` below). Every other validation
     (density/voronoi_points/premade_world_id/sketch) still happens synchronously before the
     stream starts, so a bad request still gets an ordinary 400 response rather than an error
     line."""
+    session = _session_or_404(world_id)
     if req.node_density not in NODE_DENSITY_CHOICES:
         raise HTTPException(status_code=400, detail=f"unknown node_density {req.node_density!r}; choices are {NODE_DENSITY_CHOICES}")
     if req.climate_density not in climate.CLIMATE_DENSITY_CHOICES:
@@ -842,7 +849,6 @@ def generate(world_id: str, req: GenerateRequest) -> StreamingResponse:
         except Exception as exc:
             raise HTTPException(status_code=400, detail=f"invalid sketch image: {exc}") from exc
 
-    session = _session_or_404(world_id)
     # Mark synchronously (like animate's own, see its comment) -- an overlapping
     # generate/step/animation on this world still 503s before the stream starts.
     # The compute gate itself is taken inside the stream, so work on another
@@ -858,6 +864,10 @@ def generate(world_id: str, req: GenerateRequest) -> StreamingResponse:
         _compute_gate.acquire()
         session.lock.acquire()
         acquired = True
+        # The world may have been deleted while this stream queued at the gate.
+        # Bail out quietly rather than generating into a detached session.
+        if session.deleted:
+            return
         progress = generate_world_progress(
             req.seed,
             cratons_first=req.cratons_first,
@@ -925,14 +935,17 @@ def generate_debug(world_id: str, req: GenerateDebugRequest) -> dict:
     independent of any real save. Unlike `/worlds/{world_id}/generate`, there's no Voronoi tiling, plate
     count, or land/continental fraction to choose -- each scenario name is its own complete,
     fixed configuration; only `seed` (for the per-node terrain texture, see
-    `lithosphere_plate.new_plate`) varies. `400` for an unknown scenario name."""
+    `lithosphere_plate.new_plate`) varies. `400` for an unknown scenario name, `404`
+    for an unknown world id."""
+    session = _session_or_404(world_id)
     if req.scenario not in debug_worlds.DEBUG_SCENARIOS:
         raise HTTPException(
             status_code=400,
             detail=f"unknown scenario {req.scenario!r}; choices are {sorted(debug_worlds.DEBUG_SCENARIOS)}",
         )
-    session = _session_or_404(world_id)
     with _compute_gate.hold(), session.lock:
+        if session.deleted:
+            raise HTTPException(status_code=404, detail="no such world")
         world = debug_worlds.generate_debug_world(req.scenario, req.seed)
         _set_world(session, world)
     return _summary(session, world)
@@ -957,8 +970,11 @@ def get_summary(world_id: str) -> dict:
     after a browser refresh, see App.tsx's restore-on-mount effect and its view-state cookie)
     without generating a new one. `404` if no world has been generated yet."""
     session = _session_or_404(world_id)
-    world = _require_world(session)
-    return _summary(session, world)
+    # Under the lock: a concurrent step mutates the world's numpy arrays in place,
+    # and reading them mid-step would report a torn, half-stepped world.
+    with session.lock:
+        world = _require_world(session)
+        return _summary(session, world)
 
 
 @app.post("/worlds/{world_id}/step")
@@ -985,6 +1001,10 @@ def step(world_id: str, req: StepRequest) -> StreamingResponse:
         _compute_gate.acquire()
         session.lock.acquire()
         acquired = True
+        # The world may have been deleted while this stream queued at the gate.
+        # Bail out quietly rather than stepping a detached session.
+        if session.deleted:
+            return
         progress = _step_progress(session, world, req.years)
         completed = False
         try:
@@ -1003,8 +1023,7 @@ def step(world_id: str, req: StepRequest) -> StreamingResponse:
             # it streamed progress. `world` is mutated in place (unlike generate_world_progress,
             # which builds a fresh World to hand back), so there's nothing further to write to
             # `_state` here -- just let the step finish.
-            for _ in progress:
-                pass
+            _drain_progress(progress)
             completed = True
             raise
         except Exception as exc:  # noqa: BLE001 -- status is already 200, so surface it as a data line
@@ -1026,9 +1045,13 @@ def save_world(world_id: str) -> Response:
     mantle field, caches, event log -- see World) pickled as a single opaque file (see
     persistence.py for why pickle, and docs/save-compatibility.md for which older saves load).
     `404` if no world has been generated yet."""
-    world = _require_world(_session_or_404(world_id))
-    body = persistence.save_world_bytes(world)
-    filename = f"mantle-bloom-seed{world.seed}-{int(world.elapsed_years)}y.mbworld"
+    session = _session_or_404(world_id)
+    # Serialized under the lock: a concurrent step mutates the world's numpy arrays in
+    # place, and pickling them mid-step would write a torn, unloadable file.
+    with session.lock:
+        world = _require_world(session)
+        body = persistence.save_world_bytes(world)
+        filename = f"mantle-bloom-seed{world.seed}-{int(world.elapsed_years)}y.mbworld"
     return Response(
         content=body, media_type="application/octet-stream", headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
@@ -1063,6 +1086,8 @@ async def load_world(world_id: str, request: Request) -> dict:
         raise HTTPException(status_code=503, detail="a generation, step, or animation is already in progress")
     try:
         with session.lock:
+            if session.deleted:
+                raise HTTPException(status_code=404, detail="no such world")
             _set_world(session, world)
     finally:
         session.end_operation()
@@ -1214,14 +1239,19 @@ def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
         _compute_gate.acquire()
         session.lock.acquire()
         acquired = True
+        # The world may have been deleted while this stream queued at the gate.
+        # Bail out quietly rather than animating a detached session.
+        if session.deleted:
+            return
         last_frame = 0
         completed = False
+        animation = render_image.stream_animation_mp4(
+            world, req.projection, req.view, req.width, req.height, view_rotation,
+            req.step_years, req.steps_per_frame, req.num_frames,
+            step_fn=lambda w, y: _step_world(session, w, y), stop_event=session.animation_stop_event,
+        )
         try:
-            for message in render_image.stream_animation_mp4(
-                world, req.projection, req.view, req.width, req.height, view_rotation,
-                req.step_years, req.steps_per_frame, req.num_frames,
-                step_fn=lambda w, y: _step_world(session, w, y), stop_event=session.animation_stop_event,
-            ):
+            for message in animation:
                 if message[0] == "progress":
                     _, frame, total, frame_png, elapsed_years = message
                     last_frame = frame
@@ -1254,6 +1284,12 @@ def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
                         "stopped_early": stopped_early,
                         **_summary(session, world),
                     }) + "\n"
+        except GeneratorExit:
+            # The client disconnected mid-stream -- close the inner generator so its
+            # try/finally flushes and closes the encoder instead of leaking the
+            # native libx264 context (see stream_animation_mp4).
+            animation.close()
+            raise
         except Exception as exc:  # noqa: BLE001 -- status is already 200, so surface it as a data line
             _logger.exception(
                 "animation stream failed at frame %s/%s (projection=%s view=%s size=%sx%s steps_per_frame=%s)",
@@ -1411,8 +1447,13 @@ def get_stats_history(world_id: str) -> dict:
     calls this once after a Load (see App.tsx's handleWorldReplaced) to restore the Stats
     panel's history charts from a save, instead of the pre-history-persistence behaviour of
     just resetting them to empty. `404` if no world has been generated yet."""
-    world = _require_world(_session_or_404(world_id))
-    return _columnar_stats_history(world.stats_history)
+    session = _session_or_404(world_id)
+    # Under the lock: record_stats appends to stats_history at the end of every step,
+    # so transposing it mid-step would read a torn list.
+    with session.lock:
+        world = _require_world(session)
+        history = list(world.stats_history)
+    return _columnar_stats_history(history)
 
 
 def _columnar_stats_history(history: list[dict]) -> dict:
@@ -2002,10 +2043,16 @@ def export_hexgrid(world_id: str, req: ExportHexGridRequest) -> dict:
     docs/hex-export-format.md for the file format and the neighbor-finding pseudocode its
     own `neighbor_ids`/`corner_vertex_ids` fields back). `400` if `frequency` isn't one of
     `geodesic.FREQUENCY_CHOICES`, `404` if no world has been generated yet."""
-    world = _require_world(_session_or_404(world_id))
+    session = _session_or_404(world_id)
     if req.frequency not in geodesic.FREQUENCY_CHOICES:
         raise HTTPException(status_code=400, detail=f"unknown frequency {req.frequency!r}; choices are {geodesic.FREQUENCY_CHOICES}")
-    return geodesic.export_hexgrid(world, req.frequency)
+    # Sampling reads elevation/ocean/biome arrays a step mutates in place, so hold the
+    # session lock (and the gate, like the other kernel-backed reads); deleted worlds
+    # 404 rather than exporting a detached session's leftovers.
+    with _compute_gate.hold(), session.lock:
+        if session.deleted:
+            raise HTTPException(status_code=404, detail="no such world")
+        return geodesic.export_hexgrid(_require_world(session), req.frequency)
 
 
 # --- Public viewer --------------------------------------------------------------------------
@@ -2026,7 +2073,12 @@ class _SessionComputeLock:
         gate_timeout = None if blocking and timeout == -1 else max(timeout, 0.0)
         if not _compute_gate.acquire(timeout=gate_timeout):
             return False
-        self._session.lock.acquire()
+        # Non-blocking here even when the caller would wait: this runs inside the
+        # coordinator's mutex, where parking would hold the compute gate (stalling
+        # every other world) and pile up guest threads behind it.
+        if not self._session.lock.acquire(blocking=False):
+            _compute_gate.release()
+            return False
         return True
 
     def release(self) -> None:
@@ -2100,7 +2152,11 @@ def public_render(world_id: str, view: str = "elevation", width: int = 1100, hei
     if not _compute_gate.acquire(timeout=public_view.GUEST_LOCK_WAIT_S):
         raise HTTPException(status_code=503, detail="the world is busy; try again shortly")
     try:
-        with session.lock:
+        # Timed, not blocking: the owner can hold the session lock for minutes, and
+        # this runs with the gate held, so parking here would stall every world.
+        if not session.lock.acquire(timeout=public_view.GUEST_LOCK_WAIT_S):
+            raise HTTPException(status_code=503, detail="the world is busy; try again shortly")
+        try:
             # Look again: viewers that arrive together after a step queue here, and only
             # the first of them needs to render.
             revision = session.feed.revision()
@@ -2111,14 +2167,20 @@ def public_render(world_id: str, view: str = "elevation", width: int = 1100, hei
                 )
                 entry = {**session.feed.summary(), "image_base64": image_base64}
                 session.public_renders.put(revision, key, entry)
+        finally:
+            session.lock.release()
     finally:
         _compute_gate.release()
     return entry
 
 
 def _run_guest_step(session: WorldSession) -> None:
+    # Runs with the coordinator's lock pair held. A delete that slipped in between the
+    # coordinator's acquire and here stands down instead of stepping a detached world.
     completed = False
     try:
+        if session.deleted:
+            return
         for _ in _step_progress(session, _require_world(session), public_view.GUEST_STEP_YEARS):
             pass
         completed = True
@@ -2246,10 +2308,14 @@ def _restore_checkpoint() -> None:
     except checkpoint.RegistryIndexError as exc:
         _logger.exception("checkpoint: can't use %s; running without checkpoints", store.directory)
         _checkpoint_error = str(exc)
+        # Detach: later creates/renames/deletes must not _save_index() over the corrupt
+        # worlds.json and destroy the evidence the fail-closed path preserved.
+        _checkpoint_root = None
         return
     except OSError as exc:
         _logger.exception("checkpoint: can't use %s; running without checkpoints", store.directory)
         _checkpoint_error = f"can't use checkpoint directory {store.directory}: {exc}"
+        _checkpoint_root = None
         return
     _checkpoint_error = None
     if records is None:
@@ -2273,15 +2339,28 @@ def _restore_checkpoint() -> None:
             session.name = record.get("name") or session.name
             session.is_public = bool(record.get("is_public"))
         _wire_session(session)
+        # Read before load(): an unreadable file makes load() return None *and* renames
+        # the file aside, so checking existence only afterwards can't tell "corrupt"
+        # from "never saved".
+        had_world_file = session.checkpoint_store.world_path.exists()
         try:
             world, status = session.checkpoint_store.load()
-        except OSError:
+        except OSError as exc:
             _logger.exception("checkpoint: couldn't load world %s", session.world_id)
+            session.load_error = f"couldn't load the checkpointed world: {exc}"
             continue
         if world is not None:
             with session.lock:
                 session.world = world
                 session.feed.publish(world)
+        elif had_world_file:
+            # The record says a checkpoint should be here, but nothing usable came back:
+            # checkpoint.py renamed the unreadable file aside with an `.invalid-` suffix
+            # rather than overwriting it. Say so, instead of serving a silent empty world.
+            session.load_error = (
+                "the checkpointed world couldn't be loaded; the unreadable file "
+                "was moved aside with an `.invalid-` suffix for inspection"
+            )
         session.runner.set_status(status, persist=False)
 
 
@@ -2289,12 +2368,13 @@ def _import_legacy_checkpoint(store: checkpoint.CheckpointStore) -> None:
     """First startup after multi-world support: import the single root
     checkpoint as one public world, leaving the legacy files in place. The
     registry index takes precedence on later starts."""
-    global _checkpoint_error
+    global _checkpoint_error, _checkpoint_root
     try:
         world, status = store.load()
     except OSError as exc:
         _logger.exception("checkpoint: can't use %s; running without checkpoints", store.directory)
         _checkpoint_error = f"can't use checkpoint directory {store.directory}: {exc}"
+        _checkpoint_root = None
         return
     if world is None:
         return
