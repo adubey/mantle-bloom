@@ -95,7 +95,8 @@ doesn't need to wait for #520 part 1.
 
 ### What it means
 
-- **The primary criterion passes.** The branch deletes no liquid water on any step. On main the
+- **The primary criterion passes, but it can't fail on the branch** (see [Review fixes](#review-fixes)
+  for a measure that can). The branch deletes no liquid water on any step. On main the
   deletion swings by two orders of magnitude from step to step: up to 126,000 m^3/s, about a
   quarter of the evidence save's ocean discharge, at step 1.
 - **Ocean discharge rises more than the deleted water on the evidence save.** That's +67,000
@@ -106,7 +107,8 @@ doesn't need to wait for #520 part 1.
     coupling in reverse.
 
   It's outside the preregistered +5–10% on the evidence save, and just inside on the held-out
-  one.
+  one. Review fixes below show the first explanation dominates: main also lost the inflow of
+  lakes the any-member rule dried, which this metric missed.
 - **Lakes grow, mostly warm ones.** Cold lakes are a small share: 0.43 of 6.48 M km^2 on the
   evidence save, 0.03 of 2.64 on the held-out one. Most of the gain is lakes the any-member
   frozen rule used to dry whole. RFC 0014's Problem item 7 predicted this for lake 13, which
