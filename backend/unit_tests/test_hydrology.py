@@ -263,6 +263,24 @@ def test_spill_within_step_water_reaching_one_sink_of_a_shared_lake_fills_it_and
     assert through[1] == pytest.approx(1000.0)  # all of it reaches the sea
 
 
+def test_spill_within_step_opens_the_outlet_of_a_basin_filled_to_its_depth_cap():
+    # A 2,005 m deep pit whose lake-tier cap (lakes.LAKE_MAX_DEPTH_M, 1,800 m) sits below its
+    # rim. This step's 1,900 m^3 (1 m^2 cells) fills it to the cap but not to the rim. Water the
+    # cap holds back leaves by the outlet like any spill, rather than vanishing (RFC 0014 D4,
+    # #539).
+    elevation = np.array([-10.0, 5.0, -2000.0, 3000.0])
+    is_ocean = np.array([True, False, False, False])
+    pit = lakes.Lake(0, np.array([2]), -2000.0, -2000.0, 5.0, outlet_node_idx=2, sink_node_idx=2, outlet_target_idx=1)
+    source = np.array([0.0, 0.0, 0.0, 1.9])
+
+    targets, spilling, _, _, through, _ = hydrology._spill_within_step(
+        _spill_basins(elevation, [pit], [pit]), np.array([-1, 0, -1, 2]), np.zeros(4, dtype=bool),
+        elevation.copy(), np.full(4, -1), _route_for(elevation, is_ocean, source), years=1000.0,
+    )
+    assert targets[2] == 1 and spilling[2]
+    assert through[1] == pytest.approx(1.9)
+
+
 def test_spill_within_step_unites_sibling_basins_that_spill_into_each_other():
     # Sibling pits A (node 2) and B (node 3) both reached their shared saddle, so each spills
     # into the other and the water circles. United at their parent, the pair either spills once
@@ -982,6 +1000,32 @@ def test_compute_hydrology_delivers_every_drop_of_liquid_water_past_cold_nodes(c
     assert fields.lake_depth[28:31].min() > 0.0  # the pit holds a lake
     liquid_m3 = float(np.dot(np.where((temperature < 0.0) | fields.is_ocean, 0.0, precipitation) / 1000.0, areas))
     source_m3 = liquid_m3 + fields.ice.ledger.meltwater_m3 / years  # Budyko runoff is all of it with no evaporation
+    ocean_m3 = float(fields.discharge_m3_s[fields.is_ocean].sum()) * hydrology.SECONDS_PER_YEAR
+    assert ocean_m3 == pytest.approx(source_m3, rel=1e-9)
+
+
+def test_compute_hydrology_passes_what_a_depth_cap_holds_back_to_the_sea(monkeypatch):
+    # A closed pit 4,300 m below its 300 m plateau, with evaporation off and every node at 0 C.
+    # Its three wet nodes are sea-scale at this resolution, so from the second step the lake
+    # stops at lakes.SEA_MAX_DEPTH_M (3,500 m), below the rim. A 100-year step's inflow can't
+    # fill the 800 m above the cap, so only the cap decides whether the basin is full. Every m^3
+    # of runoff must still reach the ocean: what the cap holds back leaves by the outlet (RFC 0014
+    # D4, #539). It used to vanish.
+    monkeypatch.setattr(breaching, "open_water_evaporation_mm", lambda t: np.zeros_like(np.asarray(t, dtype=float)))
+    theta = 0.05 * np.arange(40)
+    elevation = np.full(40, 300.0)
+    elevation[0:15] = -100.0
+    elevation[28:31] = -4000.0
+    precipitation = np.full(40, 800.0)
+    plate = _flow_line_plate(0, theta, elevation)
+    world = World(seed=0, plates=[plate])
+    areas = _node_areas(world)
+
+    for _ in range(3):
+        fields = hydrology.compute_hydrology(world, precipitation, np.zeros(40), years=100)
+        plate.set_fields_on_plate(lake_depth=fields.lake_depth)
+    assert fields.lake_depth[28:31].max() == pytest.approx(lakes.SEA_MAX_DEPTH_M)  # held at the cap
+    source_m3 = float(np.dot(np.where(fields.is_ocean, 0.0, precipitation) / 1000.0, areas))
     ocean_m3 = float(fields.discharge_m3_s[fields.is_ocean].sum()) * hydrology.SECONDS_PER_YEAR
     assert ocean_m3 == pytest.approx(source_m3, rel=1e-9)
 

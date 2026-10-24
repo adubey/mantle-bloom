@@ -1148,8 +1148,15 @@ class _SpillResolver:
             return False
         hyp = self.basins.hypsometry
         members = body.members
-        room = hyp.volume(body.max_depth, members) - float(self.basins.stored_m3[members].sum())
-        evaporation = lakes.lake_evaporation_m3_per_yr(body.max_depth, members, hyp, self.climate)
+        stored = self.basins.stored_m3
+        # Filled to its cap, not only its rim: a depth cap (`lakes.LAKE_MAX_DEPTH_M`,
+        # `SEA_MAX_DEPTH_M`) holds a lake below its rim, and the surplus it holds back leaves by
+        # the outlet like any spill instead of vanishing (RFC 0014 D4, #539). On the evidence save
+        # of #519 one capped basin dropped up to 260,000 m^3/s that way. The stored volume is
+        # positive exactly where last step held water, which is what the tier test reads.
+        level = lakes.cap_level(body, hyp, lakes.tier_cap_depth(members, stored))
+        room = hyp.volume(level, members) - float(stored[members].sum())
+        evaporation = lakes.lake_evaporation_m3_per_yr(level, members, hyp, self.climate)
         return (inflow_m3_per_yr - evaporation) * self.years >= room
 
     def _open_outlet(self, body: "lakes.Lake", sinks: np.ndarray) -> None:

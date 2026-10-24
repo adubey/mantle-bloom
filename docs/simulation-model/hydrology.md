@@ -208,12 +208,14 @@ discharge, channel-width growth, deposition, geology or lake silt.
   `lakes.compute_spill_routing`'s choice of governing rim both read last step's water, but a
   100 kyr step's inflow fills most basins many times over. After routing the physical water,
   the governing basins (`lakes.governing_bodies`) are swept from the highest floor down. One
-  whose liquid inflow, net of a rim-level lake's evaporation (`lakes.lake_evaporation_m3_per_yr`,
-  the same rate, shallow-margin boost included, that `resolve_lakes` balances against), fills
-  its remaining room opens its outlet, and its inflow is passed on to the basin that outlet
-  drains into, so a chain of pits opens in one sweep. The water is then routed again. Basins
+  whose liquid inflow, net of the evaporation of a lake at its cap
+  (`lakes.lake_evaporation_m3_per_yr`, the same rate, shallow-margin boost included, that
+  `resolve_lakes` balances against), fills its remaining room up to that cap opens its outlet,
+  and its inflow is passed on to the basin that outlet drains into, so a chain of pits opens in
+  one sweep. The cap is `lakes.cap_level`: the rim, or a lower depth cap (see *Lake vs. sea
+  tiers*), so a capped basin overflows too. The water is then routed again. Basins
   whose spills run into each other form a `flow_target` cycle; they are united at their lowest
-  common ancestor in the hierarchy, which spills at its own rim if this step's water fills it
+  common ancestor in the hierarchy, which spills if this step's water fills it to its cap
   and otherwise pools the water at its lowest sink. A cycle that runs through a channel into a
   neighbouring catchment instead (channel-preferring flow can cross the steepest-descent
   catchments the hierarchy is built on) sends that node down its steepest descent. Repeats to
@@ -373,6 +375,13 @@ inf, tier_max_depth)`) -- `LAKE_MAX_DEPTH_M` (1,800 m, comfortably above Baikal'
 for an ordinary basin, `SEA_MAX_DEPTH_M` (3,500 m, deeper than the Caspian's real 1,025 m --
 a simulated rift-sea basin can plausibly run deeper, but not unbounded) once promoted. Both are
 first-pass estimates pinned to those two real-world reference points, not swept.
+
+**What a cap holds back overflows.** A lake held at its cap below its rim, with more inflow than
+it evaporates there, doesn't keep the surplus or drop it: the in-step spill test treats the
+basin as full at its cap (`lakes.cap_level`, shared with `_water_balance`) and opens its outlet,
+so the surplus leaves as discharge over the rim (RFC 0014 D4, #539). Until then it vanished:
+one capped basin on the `seed308161711-121.5Myr` save dropped up to 260,000 m^3/s. Whether the
+caps should stay is RFC 0014's D4 decision after its gate G4.
 
 **The cap doubles as the fix for "smaller lakes should split apart" rather than staying
 pathologically merged.** It applies at whichever `Lake` node `_resolve` is currently

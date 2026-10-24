@@ -349,6 +349,32 @@ def _classify_tier(
     return is_sea, (SEA_MAX_DEPTH_M if is_sea else LAKE_MAX_DEPTH_M)
 
 
+def area_per_node_km2(n: int) -> float:
+    """The area one of `n` nodes stands in for: the sphere spread evenly over them, the scale
+    `_classify_tier`'s area threshold reads."""
+    return (4.0 * np.pi * PLANET_RADIUS_KM**2) / n
+
+
+def cap_level(lake: "Lake", hyps: "CellHypsometry", tier_max_depth: float) -> float:
+    """The highest level `lake` may stand at this step: its rim, or `tier_max_depth` above its
+    floor where that is lower, and its dry level if its outlet drains at its floor
+    (`Lake.drains_at_floor`). `_water_balance` clips the balanced level here, and hydrology's
+    in-step spill test opens the outlet of a basin whose water fills it to here, so what a cap
+    holds back leaves as overflow instead of vanishing (RFC 0014 D4, #539)."""
+    dry_level = hyps.dry_level(lake.members)
+    if lake.drains_at_floor:
+        return dry_level
+    rim_cap_depth = (lake.max_depth - lake.floor_elevation) if lake.max_depth is not None else None
+    cap_depth = tier_max_depth if rim_cap_depth is None else min(rim_cap_depth, tier_max_depth)
+    return max(lake.floor_elevation + cap_depth, dry_level)
+
+
+def tier_cap_depth(members: np.ndarray, prev_lake_depth: np.ndarray) -> float:
+    """`_classify_tier`'s depth ceiling for `members`, from last step's wet extent. Any array
+    that is positive exactly where last step held water will do."""
+    return _classify_tier(members, prev_lake_depth, area_per_node_km2(len(prev_lake_depth)))[1]
+
+
 # Sentinel `_catchment_roots` result: this node's own pure-steepest-descent chain reaches the
 # ocean without ever passing through a land local minimum first -- an ordinary hillslope node,
 # never part of any Lake. Distinct from a real node index (always >= 0) and from -1 (unused
@@ -742,13 +768,10 @@ def _water_balance(
     # The same real inflow that sets the level sizes the silt (issue #363).
     inflow_m3_per_yr = float(climate.inflow_m3_per_yr[members].sum())
 
-    rim_cap_depth = (lake.max_depth - lake.floor_elevation) if lake.max_depth is not None else None
-    cap_depth = tier_max_depth if rim_cap_depth is None else min(rim_cap_depth, tier_max_depth)
     dry_level = hyps.dry_level(members)
     # A lake whose outlet is cut to its floor and leads lower holds no water at all, not even
     # in the low ground inside its floor cell (see Lake.drains_at_floor).
-    cap_level = dry_level if lake.drains_at_floor else max(lake.floor_elevation + cap_depth, dry_level)
-    new_level = balanced_level(lake, hyps, climate, dry_level, cap_level)
+    new_level = balanced_level(lake, hyps, climate, dry_level, cap_level(lake, hyps, tier_max_depth))
 
     wet_fraction = hyps.wet_fraction(new_level, members)
     is_wet = wet_fraction > 0.0
@@ -1092,7 +1115,7 @@ def resolve_lakes(
     if n == 0:
         return lake_depth, silt_deposited, lake_is_sea, []
 
-    node_area_km2 = (4.0 * np.pi * PLANET_RADIUS_KM**2) / n
+    node_area_km2 = area_per_node_km2(n)
     years_myr = years / 1_000_000.0
     events: list[LakeEvent] = []
     for root in forest:
