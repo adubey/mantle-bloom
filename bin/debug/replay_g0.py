@@ -10,6 +10,12 @@ origin/main. The arm presets:
 - `c`: (a) with the mass-balance surface on the run's opening deflection.
 - `e`: (a) with D1's seasonal snow fraction in place of the is_frozen switch.
 - `h1`, `h2`: (a) keeping the largest or the smallest stable root.
+- `f`: (a) with membership and yield stress re-evaluated at the solved thickness.
+- `b2`, `c2`: (a) with sea level (b') or the mass-balance deflection (c') solved within the step.
+- `j`: (a) with frictional heat from the current step by outer iteration (combine with --set).
+- `g`: every input fix, (b') + (c') + (e) + (f); `g-b2`, `g-c2`, `g-e`, `g-f` leave one out.
+  Arm (d), frozen river and lake ice off, is origin/main since #550, so it has no switch.
+- `i1`, `i2`: (g) with the largest or the smallest stable root.
 
 `--set key=value` overrides any `G0Config` field, for combined arms. Physical arms use D3's
 starting abrasion law (E = 1e-4 u_b^0.65 m/yr; coefficient 100 m/Myr) and drop the ice-age
@@ -42,7 +48,17 @@ ARMS = {
     "e": {"physical": True, "f_snow": True},
     "h1": {"physical": True, "root_rule": "largest"},
     "h2": {"physical": True, "root_rule": "smallest"},
+    "f": {"physical": True, "reevaluate_membership": True},
+    "b2": {"physical": True, "couple_sea_level": True},
+    "c2": {"physical": True, "couple_deflection": True},
+    "j": {"physical": True, "current_friction": True},
 }
+_FIXES = {"b2": "couple_sea_level", "c2": "couple_deflection", "e": "f_snow", "f": "reevaluate_membership"}
+ARMS["g"] = {"physical": True, **{field: True for field in _FIXES.values()}}
+for _fix, _field in _FIXES.items():
+    ARMS[f"g-{_fix}"] = {**ARMS["g"], _field: False}
+ARMS["i1"] = {**ARMS["g"], "root_rule": "largest"}
+ARMS["i2"] = {**ARMS["g"], "root_rule": "smallest"}
 
 
 def add_arguments(ap: argparse.ArgumentParser) -> None:
@@ -110,6 +126,29 @@ def summarise_roots(log: list[dict]) -> dict:
     }
 
 
+def summarise_iterations(log: list[dict]) -> dict | None:
+    if not log:
+        return None
+    return {"solves": len(log), "max_iterations": max(r["iterations"] for r in log), "not_converged": sum(not r["converged"] for r in log)}
+
+
+def summarise_outer(log: list[dict]) -> dict | None:
+    inner = [r for r in log if r["kind"] == "inner"]
+    sea = [r for r in log if r["kind"] == "sea_level"]
+    if not log:
+        return None
+    out = {"inner": summarise_iterations(inner)}
+    if sea:
+        out["sea_level"] = {
+            "steps": len(sea),
+            "max_evaluations": max(r["evaluations"] for r in sea),
+            "unbracketed": sum(not r["bracketed"] for r in sea),
+            "max_residual_m": max(r["residual_m"] for r in sea),
+            "last": sea[-1],
+        }
+    return out
+
+
 def main() -> None:
     args = parse_replay_args(__doc__, add_arguments)
     world, result = load_replay(args, issue=554)
@@ -129,7 +168,7 @@ def main() -> None:
             tap["ice_seconds"] += time.perf_counter() - started
 
     ice_sheet.step_ice = timed_step_ice
-    window = {"seconds": 0.0, "ice_seconds": 0.0, "ledger": {}, "worst_residual_m3": 0.0, "roots": []}
+    window = {"seconds": 0.0, "ice_seconds": 0.0, "ledger": {}, "worst_residual_m3": 0.0, "roots": [], "membership": [], "outer": []}
 
     def snapshot() -> dict:
         areas = plates_mod.collect_all_accounting_areas_m2(world.plates, line_spacing_rad(world.node_density))
@@ -150,6 +189,10 @@ def main() -> None:
         tap["ice_seconds"] = 0.0
         window["roots"].extend(ice_sheet.G0_ROOT_LOG)
         ice_sheet.G0_ROOT_LOG.clear()
+        window["membership"].extend(ice_sheet.G0_MEMBERSHIP_LOG)
+        ice_sheet.G0_MEMBERSHIP_LOG.clear()
+        window["outer"].extend(ice_sheet.G0_OUTER_LOG)
+        ice_sheet.G0_OUTER_LOG.clear()
         hydro = world.hydrology_cache
         ice = getattr(hydro, "ice", None) if hydro is not None else None
         if ice is not None:
@@ -169,8 +212,10 @@ def main() -> None:
             "warm_based_nodes": window.get("warm_based_nodes"),
             "sliding_max_m_per_yr": window.get("sliding_max_m_per_yr"),
             "roots": summarise_roots(window["roots"]) if window["roots"] else None,
+            "membership": summarise_iterations(window["membership"]),
+            "outer": summarise_outer(window["outer"]),
         }
-        window.update(seconds=0.0, ice_seconds=0.0, ledger={}, worst_residual_m3=0.0, roots=[])
+        window.update(seconds=0.0, ice_seconds=0.0, ledger={}, worst_residual_m3=0.0, roots=[], membership=[], outer=[])
         return closed
 
     run_replay(world, args, result, snapshot, after_step, close_window)

@@ -118,6 +118,9 @@ class G0Config:
     hold_deflection: bool = False  # arm (c): mass-balance surface on the run's opening deflection
     hold_sea_level: bool = False  # arm (b): read by the driver
     reevaluate_membership: bool = False  # arm (f): membership and yield stress at the solved thickness
+    couple_sea_level: bool = False  # arm (b'): sea level solved within the step (D2's bracket)
+    couple_deflection: bool = False  # arm (c'): mass-balance surface on the closing deflection
+    current_friction: bool = False  # arm (j): frictional heat from the current step, by iteration
     ddf_snow_mm: float = 4.0
     ddf_ice_mm: float = 8.0
     rain_snow_c: float = 1.0
@@ -128,6 +131,12 @@ class G0Config:
 
 G0 = G0Config()
 G0_ROOT_LOG: list[dict] = []
+G0_MEMBERSHIP_LOG: list[dict] = []
+G0_OUTER_LOG: list[dict] = []
+G0_OUTER_ITERATIONS = 5
+G0_SEA_LEVEL_EVALUATIONS = 8
+G0_SEA_LEVEL_TOLERANCE_M = 1.0
+G0_SEA_LEVEL_BRACKET_M = 500.0
 SECONDS_PER_YEAR = 3.15576e7
 W_M2_TO_M_ICE_PER_YR = SECONDS_PER_YEAR / (RHO_ICE * ICE_LATENT_HEAT_J_KG)
 G0_MEMBERSHIP_ITERATIONS = 5
@@ -934,59 +943,86 @@ def step_ice(
     h0 = np.where(stray, 0.0, h0)
 
     bare_acc = climate.rates(np.zeros(n))[0]
-    ref_acc, ref_sm, ref_bm = climate.rates(h0)
-    reference_balance = ref_acc - ref_sm - ref_bm
-    positive = eligible & (reference_balance > 0.0) & (~is_ocean | (h0 > 0.0))
-    members = eligible & ((h0 > 0.0) | positive)
+    base_out = out
 
-    bodies: list[BodyBalance] = []
-    in_domain = np.zeros(n, dtype=bool)
-    if np.any(members):
-        graph = symmetric_graph(points, neighbor_idx)
-        _, comp = connected_components(_restrict(graph, members), directed=False)
-        comp = np.where(members, comp, -1)
-        body_ids = np.unique(comp[members])
-        # A body with no positive-balance node (a dying one) shrinks toward its
-        # least-negative node instead. One that is positive everywhere and borders nothing
-        # else (it fills its whole patch of the graph) has no margin to measure from, so its
-        # least-positive node, lowest first, stands in for one.
-        seeds = positive.copy()
-        touches_outside = graph @ (~positive).astype(float) > 0.0
-        for b in body_ids:
-            idx = np.flatnonzero(comp == b)
-            if not np.any(positive[idx]):
-                seeds[idx[np.argmax(reference_balance[idx])]] = True
-            elif np.all(positive[idx]) and not np.any(touches_outside[idx]):
-                seeds[idx[np.lexsort((bed[idx], reference_balance[idx]))[0]]] = False
-        phi, sources = _signed_distance(graph, _restrict(graph, eligible), seeds)
-        # Each eligible node belongs to the body whose positive-balance area is nearest; a
-        # body's own nodes always belong to it.
-        label = np.where(eligible & (sources >= 0), comp[np.clip(sources, 0, None)], -1)
-        label[members] = comp[members]
-        # Yield stress from last step's thermal state (a one-step lag: the new thickness
-        # isn't known until the profile it shapes is solved).
-        is_warm0 = warm_based(h0, climate.temperature_c - LAPSE_RATE_C_PER_KM * h0 / 1000.0)
-        c = yield_stress_pa(mobile_cover_m, is_warm0) / (RHO_ICE * GRAVITY_M_S2)
-        step_m = float(np.median(graph.data)) if graph.nnz else 1.0
+    def solve_bodies(ref_h: np.ndarray):
+        """Membership and yield stress read at `ref_h` (the opening ice; with G0's arm (f),
+        the last solve's thickness). Returns the filled output, bodies, domain mask, a scratch
+        ledger and the membership used."""
+        trial = _Output.copy_of(base_out)
+        scratch = IceLedger()
+        ref_acc, ref_sm, ref_bm = climate.rates(ref_h)
+        reference_balance = ref_acc - ref_sm - ref_bm
+        positive = eligible & (reference_balance > 0.0) & (~is_ocean | (h0 > 0.0))
+        members = eligible & ((h0 > 0.0) | positive)
 
-        order = np.argsort(label, kind="stable")
-        sorted_labels = label[order]
-        starts = np.searchsorted(sorted_labels, body_ids, side="left")
-        ends = np.searchsorted(sorted_labels, body_ids, side="right")
-        for b, start, end in zip(body_ids, starts, ends):
-            dom_nodes = order[start:end]
-            body_nodes = np.flatnonzero(comp == b)
-            in_domain[dom_nodes] = True
-            opening = float(np.dot(h0[body_nodes], area[body_nodes]))
-            if len(dom_nodes) < ICE_BODY_MIN_NODES:
-                body = _uniform_body(out, body_nodes, opening, area, bed, climate, is_ocean, dt_myr)
-                rest = np.setdiff1d(dom_nodes, body_nodes)
-                ledger.snow_melted_m3 += _melt_bare_snow(out, rest, bare_acc, area, dt_myr)
-            else:
-                dom = _build_domain(graph, dom_nodes, phi, bed, c, area, sea_level_m, is_ocean, climate)
-                body = _plastic_body(out, dom, body_nodes, opening, area, dt_myr, sea_level_m, step_m, ledger)
-            _guard_body(out, body, bed, area, sea_level_m)
-            bodies.append(body)
+        bodies: list[BodyBalance] = []
+        in_domain = np.zeros(n, dtype=bool)
+        if np.any(members):
+            graph = symmetric_graph(points, neighbor_idx)
+            _, comp = connected_components(_restrict(graph, members), directed=False)
+            comp = np.where(members, comp, -1)
+            body_ids = np.unique(comp[members])
+            # A body with no positive-balance node (a dying one) shrinks toward its
+            # least-negative node instead. One that is positive everywhere and borders nothing
+            # else (it fills its whole patch of the graph) has no margin to measure from, so its
+            # least-positive node, lowest first, stands in for one.
+            seeds = positive.copy()
+            touches_outside = graph @ (~positive).astype(float) > 0.0
+            for b in body_ids:
+                idx = np.flatnonzero(comp == b)
+                if not np.any(positive[idx]):
+                    seeds[idx[np.argmax(reference_balance[idx])]] = True
+                elif np.all(positive[idx]) and not np.any(touches_outside[idx]):
+                    seeds[idx[np.lexsort((bed[idx], reference_balance[idx]))[0]]] = False
+            phi, sources = _signed_distance(graph, _restrict(graph, eligible), seeds)
+            # Each eligible node belongs to the body whose positive-balance area is nearest; a
+            # body's own nodes always belong to it.
+            label = np.where(eligible & (sources >= 0), comp[np.clip(sources, 0, None)], -1)
+            label[members] = comp[members]
+            # Yield stress from last step's thermal state (a one-step lag: the new thickness
+            # isn't known until the profile it shapes is solved).
+            is_warm0 = warm_based(ref_h, climate.temperature_c - LAPSE_RATE_C_PER_KM * ref_h / 1000.0)
+            c = yield_stress_pa(mobile_cover_m, is_warm0) / (RHO_ICE * GRAVITY_M_S2)
+            step_m = float(np.median(graph.data)) if graph.nnz else 1.0
+
+            order = np.argsort(label, kind="stable")
+            sorted_labels = label[order]
+            starts = np.searchsorted(sorted_labels, body_ids, side="left")
+            ends = np.searchsorted(sorted_labels, body_ids, side="right")
+            for b, start, end in zip(body_ids, starts, ends):
+                dom_nodes = order[start:end]
+                body_nodes = np.flatnonzero(comp == b)
+                in_domain[dom_nodes] = True
+                opening = float(np.dot(h0[body_nodes], area[body_nodes]))
+                if len(dom_nodes) < ICE_BODY_MIN_NODES:
+                    body = _uniform_body(trial, body_nodes, opening, area, bed, climate, is_ocean, dt_myr)
+                    rest = np.setdiff1d(dom_nodes, body_nodes)
+                    scratch.snow_melted_m3 += _melt_bare_snow(trial, rest, bare_acc, area, dt_myr)
+                else:
+                    dom = _build_domain(graph, dom_nodes, phi, bed, c, area, sea_level_m, is_ocean, climate)
+                    body = _plastic_body(trial, dom, body_nodes, opening, area, dt_myr, sea_level_m, step_m, scratch)
+                _guard_body(trial, body, bed, area, sea_level_m)
+                bodies.append(body)
+        return trial, bodies, in_domain, scratch, (members, is_warm0 if np.any(members) else None)
+
+    out, bodies, in_domain, scratch, used = solve_bodies(h0)
+    if G0.reevaluate_membership:
+        # Arm (f): re-read membership and yield stress at the solved thickness, at most
+        # G0_MEMBERSHIP_ITERATIONS times; keep the last iterate if it hasn't settled.
+        converged = False
+        for iteration in range(G0_MEMBERSHIP_ITERATIONS):
+            trial = solve_bodies(out.thickness)
+            same = np.array_equal(trial[4][0], used[0]) and (
+                (trial[4][1] is None and used[1] is None)
+                or (trial[4][1] is not None and used[1] is not None and np.array_equal(trial[4][1], used[1]))
+            )
+            out, bodies, in_domain, scratch, used = trial
+            if same:
+                converged = True
+                break
+        G0_MEMBERSHIP_LOG.append({"iterations": iteration + 1, "converged": converged})
+    ledger.snow_melted_m3 += scratch.snow_melted_m3
 
     # Snow on frozen ground no body claims melts in place (it can't be positive balance there,
     # or the node would be a body member).
@@ -1034,6 +1070,13 @@ class _Output:
         self.thickness = np.zeros(n)
         self.covered = np.zeros(n)
         self.surface = np.full(n, np.nan)
+
+    @classmethod
+    def copy_of(cls, other: "_Output") -> "_Output":
+        copy = cls(len(other.depth))
+        for name in ("depth", "melt_m3", "calved", "thickness", "covered", "surface"):
+            setattr(copy, name, getattr(other, name).copy())
+        return copy
 
 
 def _uniform_body(out: _Output, nodes, opening, area, bed, climate, is_ocean, dt_myr) -> BodyBalance:

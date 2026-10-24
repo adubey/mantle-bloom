@@ -880,6 +880,104 @@ def meltwater_m3_per_yr(melt_m: np.ndarray, areas_m2: np.ndarray, years: float) 
 WATER_TO_ICE = GLACIER_ACCUMULATION_RATE / 1000.0
 
 
+def _g0_frictional_heat(ice_sheet, mobile_cover_m, ice) -> np.ndarray:
+    """tau_b u_b / Y (W m^-2) from a solved step (G0 prototype, D1)."""
+    tau = ice_sheet.yield_stress_pa(mobile_cover_m, ice.warm_based)
+    return tau * ice.sliding_speed_m_per_yr / ice_sheet.SECONDS_PER_YEAR
+
+
+def _g0_coupled_ice(world, solve_ice, points, neighbor_idx, elevation, deflection, areas, prev_glacier_depth,
+                    temperature_at_nodes, temperature, frozen, heat, mobile_cover_m, is_ocean, plates_in_order):
+    """G0 prototype (#554) of D2's within-step couplings. Arms (c') and (j) are a fixed point
+    on the mass-balance surface's deflection and the frictional heat, at most
+    G0_OUTER_ITERATIONS solves. Arm (b') wraps that in a bracketed solve for sea level,
+    g(h) = h - SL(V_trapped(h)), at most G0_SEA_LEVEL_EVALUATIONS evaluations, keeping the
+    evaluation with the smallest |g|; `is_ocean` is re-masked at each trial level."""
+    from .. import lithosphere
+    from ..plates import collect_all_crustal_thickness, collect_all_mantle_lithosphere_thickness
+    from . import eustasy, ice_sheet
+
+    g0 = ice_sheet.G0
+    hc = collect_all_crustal_thickness(plates_in_order)
+    hm = collect_all_mantle_lithosphere_thickness(plates_in_order)
+    rho_c = np.concatenate([lithosphere.node_crust_density(p.collect("crust_type_code"), p.crust_type) for p in plates_in_order])
+    unloaded = elevation - deflection
+
+    def inner(sea_level_m, ocean_mask):
+        t, f, q = temperature, frozen, heat
+        for iteration in range(ice_sheet.G0_OUTER_ITERATIONS):
+            result = solve_ice(sea_level_m, ocean_mask, t, f, q)
+            changed = False
+            if g0.couple_deflection:
+                load = lithosphere.grounded_ice_load_kg_m2(result[0], unloaded, sea_level_m)
+                target = lithosphere.ice_load_deflection(hc, hm, rho_c, load)
+                new_t = temperature_at_nodes - ice_sheet.LAPSE_RATE_C_PER_KM * (target - deflection) / 1000.0
+                changed |= bool(np.max(np.abs(new_t - t), initial=0.0) > 0.01)
+                t = new_t
+                f = (t < FREEZE_POINT_C) | (prev_glacier_depth >= GLACIER_VISIBLE_DEPTH_M)
+            if g0.current_friction:
+                new_q = _g0_frictional_heat(ice_sheet, mobile_cover_m, result[2])
+                changed |= bool(np.max(np.abs(new_q - (0.0 if q is None else q)), initial=0.0) > 1e-3)
+                q = new_q
+            if not changed:
+                break
+        ice_sheet.G0_OUTER_LOG.append({"kind": "inner", "iterations": iteration + 1, "converged": not changed})
+        return result
+
+    if not g0.couple_sea_level:
+        return inner(world.sea_level_m, is_ocean)
+
+    elevations, hyps_areas = eustasy.hypsometry(world)
+    to_water = ice_sheet.RHO_ICE / ice_sheet.RHO_WATER
+    lakes_trapped = eustasy.trapped_water_volume_m3(world) - to_water * float(np.dot(areas, np.clip(prev_glacier_depth, 0.0, None)))
+    total = world.ocean_water_volume_m3
+    tried = []
+
+    def g(h):
+        mask = connected_ocean_mask(points, elevation, h, neighbor_idx)
+        result = inner(h, mask)
+        debit = to_water * float(np.dot(areas, result[0]))
+        level = eustasy._solve_sea_level_connected(world, elevations, hyps_areas, max(0.0, total - lakes_trapped - debit))
+        tried.append((abs(h - level), h, result, int(mask.sum())))
+        return h - level
+
+    h0 = float(world.sea_level_m)
+    lo, glo = h0, g(h0)
+    hi = ghi = None
+    if abs(glo) > ice_sheet.G0_SEA_LEVEL_TOLERANCE_M:
+        # g's slope is near 1 when the ice barely responds, so step to the level SL(h0) first,
+        # then widen toward the bracket limit if the sign hasn't changed.
+        step = -glo
+        while len(tried) < ice_sheet.G0_SEA_LEVEL_EVALUATIONS and abs(step) <= ice_sheet.G0_SEA_LEVEL_BRACKET_M:
+            h = h0 + step
+            gh = g(h)
+            if np.sign(gh) != np.sign(glo) or abs(gh) <= ice_sheet.G0_SEA_LEVEL_TOLERANCE_M:
+                hi, ghi = h, gh
+                break
+            step *= 2.0
+        side = 0
+        while hi is not None and len(tried) < ice_sheet.G0_SEA_LEVEL_EVALUATIONS and min(abs(glo), abs(ghi)) > ice_sheet.G0_SEA_LEVEL_TOLERANCE_M:
+            x = hi - ghi * (hi - lo) / (ghi - glo) if ghi != glo else 0.5 * (lo + hi)
+            gx = g(x)
+            if np.sign(gx) == np.sign(ghi):
+                hi, ghi = x, gx
+                if side == 1:
+                    glo *= 0.5
+                side = 1
+            else:
+                lo, glo = x, gx
+                if side == -1:
+                    ghi *= 0.5
+                side = -1
+    # No bracket within the limit: the step falls back to the opening sea level (D2).
+    best = min(tried, key=lambda item: item[0]) if hi is not None else tried[0]
+    ice_sheet.G0_OUTER_LOG.append({
+        "kind": "sea_level", "evaluations": len(tried), "bracketed": hi is not None, "residual_m": best[0],
+        "opening_m": h0, "solved_m": best[1], "ocean_cells_range": [min(t[3] for t in tried), max(t[3] for t in tried)],
+    })
+    return best[2]
+
+
 def _compute_flow_direction(
     elevation: np.ndarray,
     is_ocean: np.ndarray,
@@ -1541,21 +1639,27 @@ def compute_hydrology(
     if ice_sheet.G0.physical:
         frictional = np.concatenate([p.collect("g0_frictional_heat_w_m2") for p in plates_in_order])
         allow_ocean_ice = np.zeros(n, dtype=bool)  # D6 removes the ice-age sea-ice cap
-    ice_sheet.G0.frictional_heat_w_m2 = frictional
-    new_glacier_depth, melt, ice = ice_sheet.step_ice(
-        points, neighbor_idx, areas, elevation, deflection, world.sea_level_m,
-        prev_glacier_depth,
-        ice_sheet.SurfaceClimate(
-            precipitation_at_nodes, mb_temperature,
-            seasonal_amplitude_at_nodes if seasonal_amplitude_at_nodes is not None else np.zeros(n), mb_frozen,
-            frictional,
-        ),
-        mobile_cover_at_nodes, is_ocean, allow_ocean_ice, years,
-    )
+    amplitude_at_nodes = seasonal_amplitude_at_nodes if seasonal_amplitude_at_nodes is not None else np.zeros(n)
+
+    def solve_ice(sea_level_m, ocean_mask, temperature, frozen, heat):
+        ice_sheet.G0.frictional_heat_w_m2 = heat
+        return ice_sheet.step_ice(
+            points, neighbor_idx, areas, elevation, deflection, sea_level_m, prev_glacier_depth,
+            ice_sheet.SurfaceClimate(precipitation_at_nodes, temperature, amplitude_at_nodes, frozen, heat),
+            mobile_cover_at_nodes, ocean_mask, allow_ocean_ice, years,
+        )
+
+    g0 = ice_sheet.G0
+    if g0.couple_sea_level or g0.couple_deflection or g0.current_friction:
+        new_glacier_depth, melt, ice = _g0_coupled_ice(
+            world, solve_ice, points, neighbor_idx, elevation, deflection, areas, prev_glacier_depth,
+            temperature_at_nodes, mb_temperature, mb_frozen, frictional, mobile_cover_at_nodes, is_ocean, plates_in_order,
+        )
+    else:
+        new_glacier_depth, melt, ice = solve_ice(world.sea_level_m, is_ocean, mb_temperature, mb_frozen, frictional)
     if ice_sheet.G0.physical:
         # D1: this step's frictional heat tau_b u_b / Y, read next step.
-        tau = ice_sheet.yield_stress_pa(mobile_cover_at_nodes, ice.warm_based)
-        heat = tau * ice.sliding_speed_m_per_yr / ice_sheet.SECONDS_PER_YEAR
+        heat = _g0_frictional_heat(ice_sheet, mobile_cover_at_nodes, ice)
         offset = 0
         for plate in plates_in_order:
             count = plate.node_count()
