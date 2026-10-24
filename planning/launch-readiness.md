@@ -49,12 +49,12 @@ resolutions; fluxes that affect one another use compatible units and close their
 **Goal:** the public service is safe to operate for multiple independent users and their worlds.
 
 - [ ] Perform a security review of the full codebase and deployment, then create issues for findings with severity, affected surface and verification criteria. Include authentication/session handling, API authorization, world-file import/export, resource-exhaustion limits, dependencies and deployment secrets. Tracked in [#556](https://github.com/adubey/mantle-bloom/issues/556) (first pass: [#555](https://github.com/adubey/mantle-bloom/issues/555)).
-- [ ] **Needs a decision and tracker:** define user accounts, identity provider, account database (if required), and ownership/retention rules. The current hosting guide describes a single owner account and public viewer, not general user accounts; see [hosting](../docs/hosting.md).
-- [ ] **Needs a decision and tracker:** define the three access levels and their boundaries:
-  1. Logged-out viewer: can inspect and step worlds within public limits.
-  2. Logged-in paid user: can create, save and export worlds; determine what actions require payment and how billing, quotas and cancellation work.
-  3. Super-user/local mode: retains the full local experience and operational controls.
-- [ ] **Needs a decision and tracker:** choose world-state ownership and storage, then design concurrent execution, quotas, recovery and horizontal scaling. Several worlds may require a database or durable object storage plus workers; clusters/shards are an option to evaluate, not an assumed first implementation. Tie this decision to account ownership and security boundaries.
+- [ ] Define user accounts, identity provider, account database (if required), and ownership/retention rules. The current hosting guide describes a single owner account and public viewer, not general user accounts; see [hosting](../docs/hosting.md). Tracked in [#560](https://github.com/adubey/mantle-bloom/issues/560): GitHub stays the identity provider, and login itself needs no account database; a durable store (SQLite first) holds entitlements and world ownership.
+- [ ] Define the three access levels and their boundaries. Tracked in [#560](https://github.com/adubey/mantle-bloom/issues/560), which settles the tiers as free / paid / admin, a subscription via a merchant of record (Polar planned), and admin as an override rather than a paid plan:
+  1. Free (logged-out or logged-in viewer): can inspect and step the shared world within public limits. Logged-in does not imply paid; a signed-in free account is how a subscription is linked to a GitHub user.
+  2. Logged-in paid user: can create, save and export their own worlds, with possibly higher resolution and longer runs; billing, quotas and cancellation are defined in #560, except pricing and exact caps, which wait on section 5 capacity targets.
+  3. Admin/super-user (owner account and local mode): retains the full local experience and operational controls, with no payment or quotas.
+- [ ] Choose world-state ownership and storage, then design concurrent execution, quotas, recovery and horizontal scaling. Several worlds may require a database or durable object storage plus workers; clusters/shards are an option to evaluate, not an assumed first implementation. Tie this decision to account ownership and security boundaries. Per-user world ownership and storage (SQLite metadata plus per-user world files on the volume) are tracked in [#560](https://github.com/adubey/mantle-bloom/issues/560); horizontal scaling stays out of its scope.
 
 ### 5. Performance and capacity
 
@@ -107,8 +107,8 @@ operation. Performance targets should be set before promising a concurrency leve
 2. Which surface-process and Gyr-scale scientific criteria are launch blockers, and which can
    ship as known limitations?
 3. How many simultaneous worlds and what world size/runtime should the service support?
-4. What exactly does payment unlock, and does “logged-in” always imply a paid account?
-5. Is super-user mode a local-only mode, an admin role in the hosted service, or both?
+4. What exactly does payment unlock, and does “logged-in” always imply a paid account? Settled in [#560](https://github.com/adubey/mantle-bloom/issues/560): payment unlocks a user's own worlds and, subject to capacity targets, higher resolution and longer runs; logged-in does not imply paid (there is a signed-in free tier). Pricing and exact caps remain open.
+5. Is super-user mode a local-only mode, an admin role in the hosted service, or both? Settled in [#560](https://github.com/adubey/mantle-bloom/issues/560): both — the owner account in the hosted service and local/desktop mode are admin.
 
 Once these are decided, turn each **Needs a tracker** item into a scoped issue (or RFC when the
 science or architecture is uncertain), assign an owner, and replace the placeholders with
