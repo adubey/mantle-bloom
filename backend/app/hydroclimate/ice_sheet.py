@@ -135,6 +135,8 @@ class G0Config:
     march_adaptive: bool = False
     march_min_substep_years: float = 250.0
     march_max_substep_years: float = 10_000.0
+    march_flip_fraction: float | None = None  # alternation that halves the substep (None: the tolerance)
+    march_hold_window: int = 2  # substeps whose mean rates the hold keeps
     # Membership and yield stress read this instead of the opening ice when set (m2).
     reference_depth: np.ndarray | None = None
     ddf_snow_mm: float = 4.0

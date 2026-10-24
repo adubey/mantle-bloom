@@ -23,6 +23,9 @@ origin/main. The arm presets:
   design direction): every fast input is recomputed between substeps.
 - `m2`: (m) with the lagged inputs damped (mean of the last two substeps), adaptive substeps
   (250 yr to 10 kyr) and no march cap short of the step, at a tighter settling tolerance.
+- `m3`: (m2) at (m)'s settling tolerance (0.1%), halving substeps only for alternations over
+  1%, and holding the mean rates of the last six substeps. (m2) never settled: a 0.1-0.3%
+  two-substep alternation survives the damping and kept halving its substeps.
 - `y`, `q`, `x`: diagnostic arms outside the RFC's list, each (a) less one feedback: yield
   stress fixed at the hard-bed value (y), no frictional heat (q), no glacial erosion (x).
 
@@ -67,6 +70,8 @@ ARMS = {
     "x": {"physical": True},
     "m": {"physical": True, "march": True},
     "m2": {"physical": True, "march": True, "march_damped": True, "march_adaptive": True, "march_tolerance": 2.0e-4},
+    "m3": {"physical": True, "march": True, "march_damped": True, "march_adaptive": True,
+           "march_flip_fraction": 0.01, "march_hold_window": 6},
 }
 NO_EROSION_ARMS = {"x"}
 FREEZE_NOISE_ARMS = {"n"}

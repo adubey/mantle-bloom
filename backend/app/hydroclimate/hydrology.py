@@ -1058,7 +1058,7 @@ def _g0_march_ice(world, points, neighbor_idx, elevation, deflection, areas, pre
         ocean_mask = connected_ocean_mask(points, elevation, sea_level, neighbor_idx)
         volume = float(np.dot(depth, areas))
         volumes.append(volume)
-        recent = (recent + [(dt, melt, ice.calved_m3, ice.ledger)])[-2:]
+        recent = (recent + [(dt, melt, ice.calved_m3, ice.ledger)])[-max(g0.march_hold_window, 1):]
         if len(volumes) >= 5:
             pair_now = 0.5 * (volumes[-1] + volumes[-2])
             pair_before = 0.5 * (volumes[-3] + volumes[-4])
@@ -1066,7 +1066,8 @@ def _g0_march_ice(world, points, neighbor_idx, elevation, deflection, areas, pre
             settled = settled + 1 if change < g0.march_tolerance else 0
         if g0.march_adaptive and len(volumes) >= 3:
             d1, d2 = volumes[-1] - volumes[-2], volumes[-2] - volumes[-3]
-            alternating = d1 * d2 < 0.0 and abs(d1) > g0.march_tolerance * max(volumes[-2], 1.0)
+            flip = g0.march_tolerance if g0.march_flip_fraction is None else g0.march_flip_fraction
+            alternating = d1 * d2 < 0.0 and abs(d1) > flip * max(volumes[-2], 1.0)
             if alternating:
                 flips += 1
                 sub = max(sub / 2.0, g0.march_min_substep_years)
@@ -1077,7 +1078,7 @@ def _g0_march_ice(world, points, neighbor_idx, elevation, deflection, areas, pre
             break
     remaining = years - elapsed
     if remaining > 1e-6 and recent:
-        # Hold: the settled state keeps the mean rates of its last two substeps.
+        # Hold: the settled state keeps the mean rates of its last G0.march_hold_window substeps.
         span = sum(r[0] for r in recent)
         scale = remaining / span
         for _, sub_melt, sub_calved, sub_ledger in recent:
