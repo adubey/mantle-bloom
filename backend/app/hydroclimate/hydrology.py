@@ -978,6 +978,106 @@ def _g0_coupled_ice(world, solve_ice, points, neighbor_idx, elevation, deflectio
     return best[2]
 
 
+def _g0_march_ice(world, points, neighbor_idx, elevation, deflection, areas, prev_glacier_depth, precipitation,
+                  temperature_at_nodes, amplitude, heat, mobile_cover_m, is_ocean, allow_ocean_ice, plates_in_order, years):
+    """G0 arm (m), #554: march the ice to equilibrium in short substeps, then hold it.
+
+    Each substep is an ordinary `step_ice` solve over G0.march_substep_years from the current
+    ice, so membership and yield stress read the current ice. Between substeps the other fast
+    inputs are recomputed from it: frictional heat, the snow switch, the mass-balance surface
+    (on the load-equilibrium deflection of the current ice) and sea level (re-solved from the
+    current ice debit, with the ocean mask). Even short substeps leave a small two-substep
+    alternation (+-0.4% at 500 yr), so settling compares the means of successive pairs of
+    substeps: once they differ by less than G0.march_tolerance for G0.march_patience substeps
+    in a row, or after G0.march_max_years, or at the end of the step, the last state is held.
+    For the rest of the step it keeps the mean rates of its last two substeps (melt, calving and
+    the ledger flows), which net to about zero over the alternation, and its ice doesn't change.
+    Returns what step_ice returns, totalled over the step."""
+    from .. import lithosphere
+    from ..plates import collect_all_crustal_thickness, collect_all_mantle_lithosphere_thickness
+    from . import eustasy, ice_sheet
+
+    g0 = ice_sheet.G0
+    hc = collect_all_crustal_thickness(plates_in_order)
+    hm = collect_all_mantle_lithosphere_thickness(plates_in_order)
+    rho_c = np.concatenate([lithosphere.node_crust_density(p.collect("crust_type_code"), p.crust_type) for p in plates_in_order])
+    unloaded = elevation - deflection
+    to_water = ice_sheet.RHO_ICE / ice_sheet.RHO_WATER
+    elevations, hyps_areas = eustasy.hypsometry(world)
+    lakes_trapped = eustasy.trapped_water_volume_m3(world) - to_water * float(np.dot(areas, np.clip(prev_glacier_depth, 0.0, None)))
+    total_water = world.ocean_water_volume_m3
+
+    depth = np.clip(prev_glacier_depth, 0.0, None).copy()
+    sea_level = float(world.sea_level_m)
+    ocean_mask = is_ocean
+    sub = min(g0.march_substep_years, years)
+    elapsed = 0.0
+    melt_total = np.zeros_like(depth)
+    calved_total = np.zeros_like(depth)
+    ledger_total = ice_sheet.IceLedger(opening_m3=float(np.dot(depth, areas)))
+    settled = 0
+    volumes = [ledger_total.opening_m3]
+    substeps = 0
+    ice = None
+    recent: list[tuple] = []
+    change = None
+    while elapsed < years - 1e-6:
+        dt = min(sub, years - elapsed)
+        load = lithosphere.grounded_ice_load_kg_m2(depth, unloaded, sea_level)
+        target = lithosphere.ice_load_deflection(hc, hm, rho_c, load)
+        temperature = temperature_at_nodes - ice_sheet.LAPSE_RATE_C_PER_KM * (target - deflection) / 1000.0
+        frozen = (temperature < FREEZE_POINT_C) | (depth >= GLACIER_VISIBLE_DEPTH_M)
+        ice_sheet.G0.frictional_heat_w_m2 = heat
+        new_depth, melt, ice = ice_sheet.step_ice(
+            points, neighbor_idx, areas, elevation, deflection, sea_level, depth,
+            ice_sheet.SurfaceClimate(precipitation, temperature, amplitude, frozen, heat),
+            mobile_cover_m, ocean_mask, allow_ocean_ice, dt,
+        )
+        substeps += 1
+        elapsed += dt
+        melt_total += melt
+        calved_total += ice.calved_m3
+        for key, value in vars(ice.ledger).items():
+            if key not in ("opening_m3", "closing_m3", "capped_nodes"):
+                setattr(ledger_total, key, getattr(ledger_total, key) + value)
+        ledger_total.capped_nodes = max(ledger_total.capped_nodes, ice.ledger.capped_nodes)
+        depth = new_depth
+        heat = None if g0.no_friction else _g0_frictional_heat(ice_sheet, mobile_cover_m, ice)
+        debit = to_water * float(np.dot(areas, depth))
+        sea_level = eustasy._solve_sea_level_connected(world, elevations, hyps_areas, max(0.0, total_water - lakes_trapped - debit))
+        ocean_mask = connected_ocean_mask(points, elevation, sea_level, neighbor_idx)
+        volume = float(np.dot(depth, areas))
+        volumes.append(volume)
+        recent = (recent + [(dt, melt, ice.calved_m3, ice.ledger)])[-2:]
+        if len(volumes) >= 5:
+            pair_now = 0.5 * (volumes[-1] + volumes[-2])
+            pair_before = 0.5 * (volumes[-3] + volumes[-4])
+            change = abs(pair_now - pair_before) / max(pair_before, 1.0)
+            settled = settled + 1 if change < g0.march_tolerance else 0
+        if settled >= g0.march_patience or elapsed >= g0.march_max_years - 1e-6:
+            break
+    remaining = years - elapsed
+    if remaining > 1e-6 and recent:
+        # Hold: the settled state keeps the mean rates of its last two substeps.
+        span = sum(r[0] for r in recent)
+        scale = remaining / span
+        for _, sub_melt, sub_calved, sub_ledger in recent:
+            melt_total += sub_melt * scale
+            calved_total += sub_calved * scale
+            for key in ("accumulation_m3", "surface_melt_m3", "basal_melt_m3", "calved_m3", "overflow_m3", "snow_melted_m3", "capped_m3"):
+                setattr(ledger_total, key, getattr(ledger_total, key) + getattr(sub_ledger, key) * scale)
+        # Their small net (half the alternation) shows up as the ledger residual, not as ice.
+    ledger_total.closing_m3 = float(np.dot(depth, areas))
+    ice_sheet.G0_MARCH_LOG.append({
+        "substeps": substeps, "marched_years": elapsed, "held_years": max(remaining, 0.0), "settled": settled >= g0.march_patience,
+        "last_change": None if change is None else round(change, 6), "sea_level_m": sea_level,
+        "volume_path_km3": [round(v / 1e9) for v in volumes[:: max(1, len(volumes) // 12)]],
+    })
+    ice.calved_m3 = calved_total
+    ice.ledger = ledger_total
+    return depth, melt_total, ice
+
+
 def _compute_flow_direction(
     elevation: np.ndarray,
     is_ocean: np.ndarray,
@@ -1652,7 +1752,13 @@ def compute_hydrology(
         )
 
     g0 = ice_sheet.G0
-    if g0.couple_sea_level or g0.couple_deflection or g0.current_friction:
+    if g0.march:
+        new_glacier_depth, melt, ice = _g0_march_ice(
+            world, points, neighbor_idx, elevation, deflection, areas, prev_glacier_depth, precipitation_at_nodes,
+            temperature_at_nodes, amplitude_at_nodes, frictional, mobile_cover_at_nodes, is_ocean, allow_ocean_ice,
+            plates_in_order, years,
+        )
+    elif g0.couple_sea_level or g0.couple_deflection or g0.current_friction:
         new_glacier_depth, melt, ice = _g0_coupled_ice(
             world, solve_ice, points, neighbor_idx, elevation, deflection, areas, prev_glacier_depth,
             temperature_at_nodes, mb_temperature, mb_frozen, frictional, mobile_cover_at_nodes, is_ocean, plates_in_order,

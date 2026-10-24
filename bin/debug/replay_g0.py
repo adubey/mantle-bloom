@@ -19,6 +19,8 @@ origin/main. The arm presets:
 - `n`: (a) with the climate's per-step random fields (humidity, moisture-flux and current
   noise, drawn from (seed, elapsed_years) in climate.py) frozen at the run's opening draw.
   Outside the RFC's list: it tests whether step-to-step climate noise moves fast ice.
+- `m`: (a) marched to equilibrium in short substeps within each step, then held (#554's
+  design direction): every fast input is recomputed between substeps.
 - `y`, `q`, `x`: diagnostic arms outside the RFC's list, each (a) less one feedback: yield
   stress fixed at the hard-bed value (y), no frictional heat (q), no glacial erosion (x).
 
@@ -61,6 +63,7 @@ ARMS = {
     "y": {"physical": True, "fixed_yield": True},
     "q": {"physical": True, "no_friction": True},
     "x": {"physical": True},
+    "m": {"physical": True, "march": True},
 }
 NO_EROSION_ARMS = {"x"}
 FREEZE_NOISE_ARMS = {"n"}
@@ -122,7 +125,8 @@ def configure(args: argparse.Namespace, world) -> dict:
         setattr(ice_sheet.G0, key, value)
     g0 = ice_sheet.G0
     if g0.physical:
-        g0.enumerate_roots = not args.no_enumerate
+        # A march's substeps are short, so the nearest root is the one the ice evolves to.
+        g0.enumerate_roots = not args.no_enumerate and not g0.march
         erosion.GLACIER_ABRASION_COEFFICIENT = 0.0 if args.arm in NO_EROSION_ARMS else 100.0
         erosion.GLACIER_ABRASION_EXPONENT = 0.65
         if args.arm in NO_EROSION_ARMS:
@@ -204,7 +208,7 @@ def main() -> None:
             tap["ice_seconds"] += time.perf_counter() - started
 
     ice_sheet.step_ice = timed_step_ice
-    window = {"seconds": 0.0, "ice_seconds": 0.0, "ledger": {}, "worst_residual_m3": 0.0, "roots": [], "membership": [], "outer": []}
+    window = {"seconds": 0.0, "ice_seconds": 0.0, "ledger": {}, "worst_residual_m3": 0.0, "roots": [], "membership": [], "outer": [], "march": []}
 
     def snapshot() -> dict:
         areas = plates_mod.collect_all_accounting_areas_m2(world.plates, line_spacing_rad(world.node_density))
@@ -229,6 +233,8 @@ def main() -> None:
         ice_sheet.G0_MEMBERSHIP_LOG.clear()
         window["outer"].extend(ice_sheet.G0_OUTER_LOG)
         ice_sheet.G0_OUTER_LOG.clear()
+        window["march"].extend(ice_sheet.G0_MARCH_LOG)
+        ice_sheet.G0_MARCH_LOG.clear()
         hydro = world.hydrology_cache
         ice = getattr(hydro, "ice", None) if hydro is not None else None
         if ice is not None:
@@ -250,8 +256,10 @@ def main() -> None:
             "roots": summarise_roots(window["roots"]) if window["roots"] else None,
             "membership": summarise_iterations(window["membership"]),
             "outer": summarise_outer(window["outer"]),
+            "march": window["march"][-1] if window["march"] else None,
+            "march_unsettled_steps": sum(not r["settled"] for r in window["march"]),
         }
-        window.update(seconds=0.0, ice_seconds=0.0, ledger={}, worst_residual_m3=0.0, roots=[], membership=[], outer=[])
+        window.update(seconds=0.0, ice_seconds=0.0, ledger={}, worst_residual_m3=0.0, roots=[], membership=[], outer=[], march=[])
         return closed
 
     run_replay(world, args, result, snapshot, after_step, close_window)
