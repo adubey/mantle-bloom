@@ -639,13 +639,15 @@ every step (`RIVER_EVAPORATION_*`, applied as `route_downstream`'s `loss_fractio
 from `retain_fraction`'s locally-deposited share -- an evaporated share simply vanishes rather
 than settling anywhere) -- warmer nodes lose more, capped well short of 1.0 so a single very
 large step can't evaporate an entire river in one hop. In the legacy `flow_accum` routing, it's
-excluded at a spilling lake's own breach node (`should_spill`, see [Hydrology](#hydrology-rivers-and-lakes-hydrologypy)): that term already models a lake's concentrated overflow surge sized purely from its own
-surface area, and shouldn't also lose a further fraction to evaporation in the very same step
-it's cut loose. This evaporated water is genuinely lost from the river system, and is exactly
-half of the "rivers, lakes, and vegetation release moisture" ask (see [Climate](climate.md#climate-climatepy)'s own
-"Moisture recycling" section for the other half -- that lost moisture actually reappearing as
-atmospheric humidity, which for architectural reasons can't be the literal same-step amount
-this module evaporates, since climate.py runs *before* this module each step).
+excluded at a spilling lake's own breach node (`should_spill`, see
+[Hydrology](#hydrology-rivers-and-lakes-hydrologypy)): that term already models a lake's
+concentrated overflow surge sized purely from its own surface area, and shouldn't also lose a
+further fraction to evaporation in the very same step it's cut loose. This evaporated water is
+genuinely lost from the river system, and is exactly half of the "rivers, lakes, and vegetation
+release moisture" ask (see [Climate](climate.md#climate-climatepy)'s own "Moisture recycling"
+section for the other half -- that lost moisture actually reappearing as atmospheric humidity,
+which for architectural reasons can't be the literal same-step amount this module evaporates,
+since climate.py runs *before* this module each step).
 
 - **Accumulation and melt rates**: `GLACIER_ACCUMULATION_RATE` converts frozen
   precipitation into metres of ice per Myr.
@@ -654,11 +656,12 @@ this module evaporates, since climate.py runs *before* this module each step).
   surface melt. Where these rates apply, and to how much ice, is the ice-body solve below.
 - **Ice bodies and the volume contract** (`ice_sheet.py`, issue #353). Ice no longer flows one
   hop down the bed each step. Each step `ice_sheet.step_ice` groups ice into **bodies**:
-  connected components, over the symmetrised k-NN graph, of nodes that hold ice or have
-  positive surface balance at the reference surface (bed + last step's ice). A body's volume
-  is conserved: its opening volume, `sum(glacier_depth * area)`, changes by exactly the step's accumulation less surface and basal melt, less
-  calving and overflow. The ledger (`HydrologyFields.ice.ledger`, per body in `.bodies`)
-  closes to round-off, and ice is never created.
+  connected components, over the symmetrised k-NN graph, of nodes that hold ice or have positive
+  surface balance at the reference surface (bed + last step's ice). A body's volume is
+  conserved: its opening volume, `sum(glacier_depth * area)`, changes by exactly the step's
+  accumulation less surface and basal melt, less calving and overflow. The ledger
+  (`HydrologyFields.ice.ledger`, per body in `.bodies`) closes to round-off, and ice is never
+  created.
 - **Backward-Euler extent.** Each body's candidate extents form a nested family: `phi` is the
   signed graph distance from the edge of its positive-balance area S (negative inside, two
   scipy Dijkstra passes), and the extent at margin position `d` is every node with
@@ -789,26 +792,26 @@ population size and total ice depth fluctuate across steps as plates rotate glac
 in and out of genuinely cold regions, rather than growing monotonically or vanishing
 outright.
 
-**Ice ages** (`World.ice_age_period_years`, the Controls → Climate "Ice Age Frequency"
-slider; 0 disables). A raised-cosine glacial intensity in `[0, 1]`
-(`climate.ice_age_glacial_intensity`) driven purely by `elapsed_years` -- 0 at generation and
-at every whole multiple of the period, 1 at the half-period glacial maximum -- scales a
-uniform cooling of up to `climate.ICE_AGE_MAX_COOLING_C` applied to *both* temperature
-baselines in `compute_climate`, so air temperature, biomes, hydrology's freeze / glacier
-growth and erosion all feel it through fields they already read -- the cooling spreads the
-existing per-node snowfall rule (precipitation falls as snow) across a much wider area, and `hydrology.compute_hydrology`'s `is_frozen` mask also
-picks up *any* node already carrying a real ice cap (`GLACIER_VISIBLE_DEPTH_M` of ice), so
-snowfall stays snow on top of an ice sheet even on a step whose temperature briefly ticks
-above 0. Liquid water doesn't freeze (see *Liquid water doesn't freeze on the annual mean*
-above). Two further effects switch on
-in a deep glacial phase: hydrology lets ice pile up over freezing polar *ocean* nodes instead
-of calving at the coast (`hydrology.SEA_ICE_FORMATION_TEMP_C`, gated at intensity ≥
+**Ice ages** (`World.ice_age_period_years`, the Controls → Climate "Ice Age Frequency" slider; 0
+disables). A raised-cosine glacial intensity in `[0, 1]` (`climate.ice_age_glacial_intensity`)
+driven purely by `elapsed_years` -- 0 at generation and at every whole multiple of the period, 1
+at the half-period glacial maximum -- scales a uniform cooling of up to
+`climate.ICE_AGE_MAX_COOLING_C` applied to *both* temperature baselines in `compute_climate`, so
+air temperature, biomes, hydrology's freeze / glacier growth and erosion all feel it through
+fields they already read -- the cooling spreads the existing per-node snowfall rule
+(precipitation falls as snow) across a much wider area, and `hydrology.compute_hydrology`'s
+`is_frozen` mask also picks up *any* node already carrying a real ice cap
+(`GLACIER_VISIBLE_DEPTH_M` of ice), so snowfall stays snow on top of an ice sheet even on a step
+whose temperature briefly ticks above 0. Liquid water doesn't freeze (see *Liquid water doesn't
+freeze on the annual mean* above). Two further effects switch on in a deep glacial phase:
+hydrology lets ice pile up over freezing polar *ocean* nodes instead of calving at the coast
+(`hydrology.SEA_ICE_FORMATION_TEMP_C`, gated at intensity ≥
 `hydrology.ICE_AGE_SEA_ICE_MIN_INTENSITY`, with a little hysteresis for a cap that already
-exists) -- a floating polar ice cap that retreats when the
-age passes; and **glacial eustasy** returns -- `eustasy.trapped_water_volume_m3` debits the
-liquid-water equivalent of all `glacier_depth` plus every visible lake's `lake_depth` from the
-conserved total surface-water budget, so the ocean's share (and the shoreline) falls as the
-ice sheets grow and rises again as they melt.
+exists) -- a floating polar ice cap that retreats when the age passes; and **glacial eustasy**
+returns -- `eustasy.trapped_water_volume_m3` debits the liquid-water equivalent of all
+`glacier_depth` plus every visible lake's `lake_depth` from the conserved total surface-water
+budget, so the ocean's share (and the shoreline) falls as the ice sheets grow and rises again as
+they melt.
 
 ## River Inspector
 

@@ -60,8 +60,8 @@ def main() -> None:
         p = bound.arguments
         lake, members = p["lake"], p["lake"].members
         hyps = p["hypsometry"] or lakes.CellHypsometry.whole_cells(p["elevation"])
-        # A frozen lake returns its dry level but still silts at its balanced level, so redo
-        # the balance (same cap as `_water_balance`) to see whether it holds water.
+        # Before #539 a frozen lake returned its dry level but still silted at its balanced
+        # level, so redo the balance (same cap as `_water_balance`) to see whether it holds water.
         dry = hyps.dry_level(members)
         rim = (lake.max_depth - lake.floor_elevation) if lake.max_depth is not None else None
         cap_depth = p["tier_max_depth"] if rim is None else min(rim, p["tier_max_depth"])

@@ -243,6 +243,26 @@ def test_spill_within_step_counts_shallow_margin_evaporation_against_a_fill():
     assert through[1] == 0.0
 
 
+def test_spill_within_step_water_reaching_one_sink_of_a_shared_lake_fills_it_and_opens_its_outlet():
+    # One lake covers sink 2 and sink 4, and the river reaches only sink 4. Its water fills the
+    # shared lake, which opens its outlet through node 1 to the sea, whatever sink 4's
+    # temperature: before RFC 0014 D2(b) (#539), a frozen sink 4 turned the water into river ice,
+    # so the lake never filled and its other sink stayed closed.
+    elevation = np.array([-10.0, 5.0, 2.0, 30.0, 3.0])
+    is_ocean = np.array([True, False, False, False, False])
+    left = lakes.Lake(0, np.array([2]), 2.0, 2.0, 4.0, outlet_node_idx=2, sink_node_idx=2, outlet_target_idx=4)
+    right = lakes.Lake(1, np.array([3, 4]), 3.0, 3.0, 4.0, outlet_node_idx=4, sink_node_idx=4, outlet_target_idx=2)
+    pair = lakes.Lake(2, np.array([2, 3, 4]), 2.0, 4.0, 5.0, children=[left, right], outlet_node_idx=2, outlet_target_idx=1)
+    source = np.array([0.0, 0.0, 0.0, 1000.0, 0.0])
+
+    targets, spilling, _, _, through, _ = hydrology._spill_within_step(
+        _spill_basins(elevation, [pair], [pair]), np.array([-1, 0, -1, 4, -1]), np.zeros(5, dtype=bool),
+        elevation.copy(), np.full(5, -1), _route_for(elevation, is_ocean, source), years=1000.0,
+    )
+    assert targets[2] == 1 and targets[4] == 1 and spilling[2] and spilling[4]
+    assert through[1] == pytest.approx(1000.0)  # all of it reaches the sea
+
+
 def test_spill_within_step_unites_sibling_basins_that_spill_into_each_other():
     # Sibling pits A (node 2) and B (node 3) both reached their shared saddle, so each spills
     # into the other and the water circles. United at their parent, the pair either spills once
@@ -757,8 +777,7 @@ def test_rivers_flow_on_through_a_cold_band_to_the_sea():
     keep = np.prod(1.0 - hydrology.river_transit_loss_fraction(temperature[cold_land], np.zeros(int(cold_land.sum()), dtype=bool)))
     assert upland_m3_s > 0.0
     assert float(fields.discharge_m3_s[fields.is_ocean].sum()) >= upland_m3_s * keep * (1.0 - 1e-9)
-    ledger = fields.ice.ledger
-    assert ledger.frozen_river_ice_m3 == 0.0 and ledger.frozen_river_capped_m3 == 0.0
+
 
 def test_discharge_carries_the_ice_ledgers_meltwater_exactly_once_at_any_step_length():
     # An all-land chain under 200 m of melting ice, draining to its lowest node. The discharge
@@ -931,8 +950,41 @@ def test_compute_hydrology_keeps_a_lake_where_its_water_is_cold(cold):
     assert not fields.is_ocean[28:31].any()
     assert fields.lake_depth[28:31].max() > 0.0
     ledger = fields.ice.ledger
-    assert ledger.frozen_lake_m3 == 0.0 and ledger.frozen_river_ice_m3 == 0.0
     assert ledger.closing_m3 <= ledger.opening_m3 + ledger.accumulation_m3  # no water became ice
+
+
+@pytest.mark.parametrize(
+    "cold", [slice(28, 31), slice(33, 34), slice(20, 34)], ids=["cold-pit", "one-cold-member", "cold-band"]
+)
+def test_compute_hydrology_delivers_every_drop_of_liquid_water_past_cold_nodes(cold, monkeypatch):
+    # The closed pit of the test above, with evaporation off and every warm node at 0 C, so no
+    # water evaporates from lakes or in transit (river_transit_loss_fraction is 0 at or below
+    # 0 C). The pit fills to its rim in the first step; from then on every m^3 of liquid
+    # runoff and meltwater must reach the ocean, wherever the cold nodes are (RFC 0014 D2(b),
+    # #539). On main the frozen nodes deleted 58% (cold pit), 4% (one cold member) and 53%
+    # (cold band) of it.
+    monkeypatch.setattr(breaching, "open_water_evaporation_mm", lambda t: np.zeros_like(np.asarray(t, dtype=float)))
+    theta = 0.05 * np.arange(40)
+    elevation = np.full(40, 300.0)
+    elevation[0:15] = -100.0
+    elevation[28:31] = -60.0
+    temperature = np.zeros(40)
+    temperature[cold] = -10.0
+    precipitation = np.full(40, 800.0)
+    plate = _flow_line_plate(0, theta, elevation)
+    world = World(seed=0, plates=[plate])
+    areas = _node_areas(world)
+    years = 10_000.0
+
+    for _ in range(2):
+        fields = hydrology.compute_hydrology(world, precipitation, temperature, years=years)
+        plate.set_fields_on_plate(lake_depth=fields.lake_depth, glacier_depth=fields.glacier_depth)
+    assert fields.lake_depth[28:31].min() > 0.0  # the pit holds a lake
+    liquid_m3 = float(np.dot(np.where((temperature < 0.0) | fields.is_ocean, 0.0, precipitation) / 1000.0, areas))
+    source_m3 = liquid_m3 + fields.ice.ledger.meltwater_m3 / years  # Budyko runoff is all of it with no evaporation
+    ocean_m3 = float(fields.discharge_m3_s[fields.is_ocean].sum()) * hydrology.SECONDS_PER_YEAR
+    assert ocean_m3 == pytest.approx(source_m3, rel=1e-9)
+
 
 def test_compute_hydrology_banks_a_cold_chains_snow_as_ice():
     # Same 12-node monotonic-descent chain as the end-to-end test, just below freezing (-3C)
@@ -952,6 +1004,7 @@ def test_compute_hydrology_banks_a_cold_chains_snow_as_ice():
     assert ocean_m3 <= ledger.meltwater_m3 * (1.0 + 1e-9)
     assert ledger.accumulation_m3 > 0.0
     assert float(np.dot(fields.glacier_depth, _node_areas(world))) == pytest.approx(ledger.closing_m3)
+
 
 def test_compute_hydrology_snows_on_an_ice_cap_above_freezing_but_lets_its_water_drain():
     # Same 12-node descending chain as the cold-chain test, at a sampled temperature of
@@ -1370,11 +1423,11 @@ def test_ice_ledger_closes_across_steps_and_meltwater_never_refreezes_as_river_i
         fields = hydrology.compute_hydrology(world, precipitation, temperature, years=1_000_000, seasonal_amplitude_at_nodes=amplitude)
         ledgers.append(fields.ice.ledger)
         assert float(np.dot(fields.glacier_depth, areas)) == pytest.approx(fields.ice.ledger.closing_m3)
-        assert fields.ice.ledger.frozen_river_ice_m3 == 0.0
         plate.set_fields_on_plate(glacier_depth=fields.glacier_depth)
     first, second = ledgers
     assert first.meltwater_m3 > 0.0
     assert second.opening_m3 == pytest.approx(first.closing_m3)
+
 
 def test_ice_flow_target_follows_the_ice_surface_on_the_ice_and_the_ground_off_it():
     # A dome on a flat bed: on the ice, material moves down the ice surface (away from the

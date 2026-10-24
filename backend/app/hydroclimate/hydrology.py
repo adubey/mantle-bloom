@@ -223,11 +223,11 @@ LAKE_BREACH_EROSION_COEFFICIENT = 4000.0
 # where the warmest-month mean is a degree or two above freezing (about an annual mean of
 # -12.5C under a 15C half-amplitude), close to where real glacier equilibrium lines sit.
 #
-# FREEZE_POINT_C is the real phase-change point: precipitation below it falls as snow/ice
-# rather than rain, and standing lake water or flowing river water below it freezes solid
-# *this same step* (see compute_hydrology). That stays annual-mean-gated; a node between the
-# two (annual mean below 0C, summer above it) freezes its lake/river for the step but the ice
-# it forms still melts back every step, so it doesn't build a permanent glacier.
+# FREEZE_POINT_C is the real phase-change point: precipitation on a node whose annual mean is
+# below it falls as snow rather than rain (see compute_hydrology). It doesn't freeze liquid
+# water: rivers and lakes stay liquid at any temperature (RFC 0014 D2(b), #539). Snow on a node
+# between the two thresholds (annual mean below 0C, summer above it) still melts back every
+# step, so it doesn't build a permanent glacier.
 FREEZE_POINT_C = 0.0
 GLACIER_MELT_THRESHOLD_C = 0.0
 GLACIER_ACCUMULATION_RATE = 0.02

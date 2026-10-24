@@ -101,7 +101,9 @@ def main() -> None:
     ice_sheet = import_ice_sheet(args, hydrology, erosion, result)
 
     # Taps: the glacier depth erosion sees (the old law's input), the erosion result, and the
-    # time spent in the ice solve.
+    # time spent in the ice solve. `lake_frozen_km3` replays the pre-#539 rule (a lake on a
+    # frozen node froze) for backends whose ledger has no `frozen_lake_m3`; from #539 on the
+    # ledger's value, 0, is reported instead.
     tap = {"prior_glacier": None, "ice_seconds": 0.0, "lake_frozen_km3": 0.0}
     original_hydrology = hydrology.compute_hydrology
 

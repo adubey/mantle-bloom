@@ -86,9 +86,9 @@ ICE_THAW_RAMP_C = 1.0
 # A plastic profile on one or two cells is meaningless: a body with room for fewer cells than
 # this (its domain: its own nodes plus the ground it could advance onto) spreads its volume
 # evenly over its own nodes, under the same volume contract. The test is the room, not the
-# body's current size: a one- or two-node body (lake or river ice that froze in place) can
-# hold kilometres of ice, and held to its own nodes it saturates, sheds the excess as
-# meltwater that refreezes on the same frozen node, and repeats every step.
+# body's current size: a one- or two-node body can hold kilometres of ice (lake and river ice
+# froze in place like that until #539), and held to its own nodes it saturates and sheds the
+# excess as meltwater every step.
 ICE_BODY_MIN_NODES = 3
 
 # Basal sliding: a share of the depth-averaged balance velocity on a warm bed, none on a frozen
@@ -624,7 +624,8 @@ def _solve_plastic_body(dom: _Domain, opening_m3: float, dt_myr: float, sea_leve
 
     Last step's extent is the one whose profile holds the opening volume, V(d_prev) = V_open
     (V is nondecreasing in d, so bisection finds it). Where the ice actually sits is a poor
-    guide: frozen river and lake ice join a body wherever they froze, far beyond its sheet."""
+    guide: snow builds ice on any cold node, often far beyond a body's sheet (and before #539,
+    frozen river and lake ice joined a body wherever they froze)."""
     cache: dict[float, _Shape] = {}
 
     def shape(d: float) -> _Shape:

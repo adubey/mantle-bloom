@@ -384,12 +384,12 @@ MARINE_SPREAD_NEIGHBOR_COUNT = 8
 # itself* rather than joining the water-routed pool -- apply_erosion reuses hydrology.
 # route_downstream directly (the same "elevation-descending sweep along a flow_target graph,
 # retain_fraction settles material locally" engine the ordinary river-deposition pool already
-# uses below), but along hydrology.HydrologyFields.ice_flow_target (the ice's own real downhill
-# flow path down the ice surface, not water's) instead of flow_target, retaining in full the moment a hop reaches a node with
-# less than hydrology.GLACIER_VISIBLE_DEPTH_M of its own ice -- genuinely outside the glacier --
-# rather than continuing to travel once there's no more ice there to carry it. A real terminal
-# moraine/outwash deposit built beyond the ice margin, not debris stranded throughout the
-# glacier's interior.
+# uses below), but along hydrology.HydrologyFields.ice_flow_target (the ice's own downhill path
+# down the ice surface, not water's) instead of flow_target, retaining in full the moment a hop
+# reaches a node with less than hydrology.GLACIER_VISIBLE_DEPTH_M of its own ice -- genuinely
+# outside the glacier -- rather than continuing to travel once there's no more ice there to
+# carry it. A real terminal moraine/outwash deposit built beyond the ice margin, not debris
+# stranded throughout the glacier's interior.
 GLACIER_TILL_FRACTION = 0.5
 
 # Aeolian transport: wind-eroded material moves with the wind, not downhill with water, so it

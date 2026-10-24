@@ -471,6 +471,7 @@ def test_a_merged_lake_split_by_a_falling_supply_rebalances_each_child_at_its_ow
     # The discarded merged resolution's silt isn't kept on top of the children's.
     np.testing.assert_allclose(out_silt, expected_silt)
 
+
 def test_step_lakes_silt_raises_the_floor_and_eventually_fills_a_small_lake_in():
     # A small, low-capacity lake (max_depth - floor = 15.0) with heavy, sustained sediment
     # inflow every step. `step_lakes` returns a per-step silt increment that erosion.py folds
