@@ -1236,13 +1236,6 @@ export default function App() {
           <p style={{ opacity: 0.7, marginTop: 0, marginBottom: 16 }}>
             Physical World Builder
           </p>
-          {/* Reloads the same page with &deb added, turning on the developer-only UI
-              described at DEBUG_UI above. Hidden once already in debug mode. */}
-          {!DEBUG_UI && (
-            <a href={debugUrl()} style={{ fontSize: 11, textAlign: "center", color: "#5b8cff" }}>
-              Debug...
-            </a>
-          )}
           <AdminSession />
 
           <button
@@ -1504,6 +1497,14 @@ export default function App() {
               </>
             )}
           </fieldset>
+
+          {/* Reloads the same page with &deb added, turning on the developer-only UI
+              described at DEBUG_UI above. Hidden once already in debug mode. */}
+          {!DEBUG_UI && (
+            <a href={debugUrl()} style={{ fontSize: 11, color: "#5b8cff" }}>
+              Debug...
+            </a>
+          )}
 
           {/* Only for a fixed-frame-count recording -- "frame 12 of 20" is meaningful
               progress, but a "keep going until Stop is pressed" run has no total to show a
