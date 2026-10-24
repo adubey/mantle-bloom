@@ -4,7 +4,18 @@
 Steps the save for `--myr` in `--step-years` steps and records, per step:
 
 - liquid water deleted by freezing (m^3/s): the ice ledger's frozen river ice and frozen lake
-  water, converted back to water at `hydrology.WATER_TO_ICE` (0 once #539 lands);
+  water, converted back to water at `hydrology.WATER_TO_ICE`. From #539 on the ledger never
+  books any, so this is 0 by construction there; the next measure is the one that can show a
+  loss on either backend;
+- unbooked lake inflow (m^3/s): for every lake body resolved at its own balance this step (each
+  `lakes._water_balance` call whose level was written out, not one discarded by a split or
+  overwritten by a merge), the inflow that its evaporation at that level doesn't remove, summed
+  over bodies that neither spill, drain at their floor nor sit at a depth cap. A lake at its
+  balance has none; a lake dried by a frozen member (before #539) leaves all its inflow
+  unbooked. Bodies held at a depth cap are summed separately (`held_at_depth_cap_m3_s`): the
+  cap holds that water back, which is RFC 0014 D4's question, not this issue's. Before #539
+  water settling at a frozen node is already in the ledger term, so on such a backend the
+  inflow at frozen nodes (annual mean below 0 C, as hydrology reads it) is left out here;
 - inflow (m^3/s) to land sinks (`flow_target == -1`) whose annual-mean air temperature is below
   `hydrology.FREEZE_POINT_C`, and their count; before #539 every cold land node is such a sink;
 - the five largest cold sinks: their inflow, and how much of it arrived through a spill (a
@@ -66,6 +77,60 @@ def cold_mask(world, f):
     return c.air_temperature_c[row, col] < hydrology.FREEZE_POINT_C
 
 
+import inspect  # noqa: E402
+
+# Before #539 `_compute_flow_direction` took the freeze override, and frozen nodes deleted the
+# water settling there through the ledger.
+FREEZES_AT_COLD_NODES = "apply_freeze" in inspect.signature(hydrology._compute_flow_direction).parameters
+hydrology_temperature: dict = {}
+_orig_compute_hydrology = hydrology.compute_hydrology
+
+
+def _record_temperature(world_, precipitation, temperature, *a, **k):
+    hydrology_temperature["c"] = np.asarray(temperature)
+    return _orig_compute_hydrology(world_, precipitation, temperature, *a, **k)
+
+
+hydrology.compute_hydrology = _record_temperature
+
+# Every `_water_balance` call this step: (lake, level, tier cap depth, climate, hypsometry).
+# `_resolve` passes them positionally, with climate and hypsometry last on either backend.
+balance_calls: list[tuple] = []
+_orig_water_balance = lakes._water_balance
+
+
+def _record_balance(*a):
+    level = _orig_water_balance(*a)
+    balance_calls.append((a[0], level, a[-5], a[-2], a[-1]))
+    return level
+
+
+lakes._water_balance = _record_balance
+
+
+def lake_balance(f):
+    """(unbooked inflow, inflow held at a depth cap), m^3/s, over this step's final bodies."""
+    unbooked = held = 0.0
+    frozen = hydrology_temperature["c"] < hydrology.FREEZE_POINT_C if FREEZES_AT_COLD_NODES else None
+    for lake, level, tier_depth, climate, hyps in balance_calls:
+        m = lake.members
+        if lake.children and level < lake.min_depth:
+            continue  # a split: discarded, each child resolved on its own
+        if not np.allclose(f.lake_depth[m], hyps.mean_depth(level, m), rtol=1e-9, atol=1e-9):
+            continue  # overwritten by a merge or a parent's resolution
+        if lake.drains_at_floor or (lake.max_depth is not None and level >= lake.max_depth - 1e-6):
+            continue  # its water passes on through the outlet
+        inflow = climate.inflow_m3_per_yr[m] if frozen is None else np.where(frozen[m], 0.0, climate.inflow_m3_per_yr[m])
+        surplus = float(inflow.sum()) - lakes.lake_evaporation_m3_per_yr(level, m, hyps, climate)
+        rim_depth = None if lake.max_depth is None else lake.max_depth - lake.floor_elevation
+        at_cap = (rim_depth is None or tier_depth < rim_depth) and level >= lake.floor_elevation + tier_depth - 1e-6
+        if at_cap:
+            held += max(surplus, 0.0)
+        else:
+            unbooked += max(surplus, 0.0)
+    return unbooked / SECONDS_PER_YEAR, held / SECONDS_PER_YEAR
+
+
 def deleted_m3_s(f, years):
     ledger = f.ice.ledger
     ice_m3 = ledger.frozen_river_ice_m3 + ledger.frozen_lake_m3
@@ -112,6 +177,7 @@ prev_drain_xyz = None
 
 for step in range(1, int(round(args.myr * 1e6 / args.step_years)) + 1):
     start = time.perf_counter()
+    balance_calls.clear()
     world_mod.step_world(world, args.step_years)
     runtime_s = time.perf_counter() - start
     f = world.hydrology_cache
@@ -177,6 +243,7 @@ for step in range(1, int(round(args.myr * 1e6 / args.step_years)) + 1):
         "step": step, "elapsed_years": world.elapsed_years, "runtime_s": runtime_s,
         "peak_rss_mb": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / RSS_PER_MB,
         "deleted_by_freezing_m3_s": deleted_m3_s(f, args.step_years),
+        **dict(zip(("unbooked_lake_inflow_m3_s", "held_at_depth_cap_m3_s"), lake_balance(f))),
         "cold_sink_count": int(np.count_nonzero(cold_sink)),
         "cold_sink_inflow_m3_s": float(inflow[cold_sink].sum()),
         "cold_spilling_sinks": int(np.count_nonzero(f.should_spill & cold & land)),
