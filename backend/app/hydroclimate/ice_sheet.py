@@ -107,6 +107,51 @@ ICE_FLOTATION_PASSES = 6
 _FLOTATION_RATIO = RHO_WATER / RHO_ICE
 
 
+# --- RFC 0015 gate G0 prototype (#554; gate branch only, never merged) -------------------
+# Every switch off reproduces origin/main. `bin/debug/replay_g0.py` sets them per arm.
+@dataclass
+class G0Config:
+    physical: bool = False  # D1's physical mass balance (m/yr of ice, converted to m/Myr here)
+    f_snow: bool = False  # arm (e): seasonal snow fraction instead of the is_frozen switch
+    root_rule: str = "nearest"  # "nearest" (today), "largest" (h1) or "smallest" (h2) stable root
+    enumerate_roots: bool = False  # scan every sign change on [d_min, d_max] and log it
+    hold_deflection: bool = False  # arm (c): mass-balance surface on the run's opening deflection
+    hold_sea_level: bool = False  # arm (b): read by the driver
+    reevaluate_membership: bool = False  # arm (f): membership and yield stress at the solved thickness
+    ddf_snow_mm: float = 4.0
+    ddf_ice_mm: float = 8.0
+    rain_snow_c: float = 1.0
+    # Per-node frictional heat (W m^-2) from last step, aligned with step_ice's nodes; set by
+    # hydrology before each solve.
+    frictional_heat_w_m2: np.ndarray | None = None
+
+
+G0 = G0Config()
+G0_ROOT_LOG: list[dict] = []
+SECONDS_PER_YEAR = 3.15576e7
+W_M2_TO_M_ICE_PER_YR = SECONDS_PER_YEAR / (RHO_ICE * ICE_LATENT_HEAT_J_KG)
+G0_MEMBERSHIP_ITERATIONS = 5
+
+
+def snow_fraction(temperature_c: np.ndarray, amplitude_c: np.ndarray, threshold_c: float) -> np.ndarray:
+    """D1: share of a year-round sinusoid below the rain-snow threshold, with the continuous
+    ICE_SNOW_RAMP_C ramp where the amplitude vanishes."""
+    amp = np.asarray(amplitude_c, dtype=float)
+    ratio = np.clip((threshold_c - temperature_c) / np.maximum(amp, 1e-6), -1.0, 1.0)
+    seasonal = 0.5 + np.arcsin(ratio) / np.pi
+    ramp = np.clip(0.5 + (threshold_c - temperature_c) / ICE_SNOW_RAMP_C, 0.0, 1.0)
+    return np.where(amp > 1e-3, seasonal, ramp)
+
+
+def basal_heat_w_m2(thickness_m: np.ndarray, surface_c: np.ndarray, frictional_w_m2) -> np.ndarray:
+    """D1: net basal heat G + Q_f - k max(0, T_pmp - T_surf) / H (W m^-2); -inf without ice."""
+    h = np.asarray(thickness_m, dtype=float)
+    t_pmp = -ICE_PRESSURE_MELT_C_PER_M * h
+    conducted = ICE_THERMAL_CONDUCTIVITY_W_M_K * np.clip(t_pmp - surface_c, 0.0, None) / np.maximum(h, 1e-9)
+    q = ICE_GEOTHERMAL_FLUX_W_M2 + frictional_w_m2 - conducted
+    return np.where(h > 0.0, q, -np.inf)
+
+
 @dataclass
 class SurfaceClimate:
     """Per-node climate the mass balance needs. `temperature_c` is the annual mean at the
@@ -117,11 +162,31 @@ class SurfaceClimate:
     temperature_c: np.ndarray
     seasonal_amplitude_c: np.ndarray
     is_frozen: np.ndarray
+    frictional_heat_w_m2: np.ndarray | None = None  # G0 prototype: last step's tau_b u_b / Y
 
     def subset(self, idx: np.ndarray) -> "SurfaceClimate":
         return SurfaceClimate(
-            self.precipitation_mm[idx], self.temperature_c[idx], self.seasonal_amplitude_c[idx], self.is_frozen[idx]
+            self.precipitation_mm[idx], self.temperature_c[idx], self.seasonal_amplitude_c[idx], self.is_frozen[idx],
+            None if self.frictional_heat_w_m2 is None else self.frictional_heat_w_m2[idx],
         )
+
+    def _physical_rates(self, thickness: np.ndarray, surface_c: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """G0 prototype of RFC 0015 D1, in m/Myr of ice: snowfall by mass, degree-day melt of
+        the year's snow then bare ice, and the basal energy balance."""
+        to_ice = RHO_WATER / RHO_ICE
+        if G0.f_snow:
+            snows = snow_fraction(surface_c, self.seasonal_amplitude_c, G0.rain_snow_c)
+        else:
+            snows = np.where(self.is_frozen, 1.0, np.clip((hydrology.FREEZE_POINT_C - surface_c) / ICE_SNOW_RAMP_C, 0.0, 1.0))
+        snow_we = snows * self.precipitation_mm * 1.0e-3  # m w.e. per yr
+        pdd = 365.25 * hydrology.seasonal_positive_degrees(surface_c, self.seasonal_amplitude_c, 0.0)
+        snow_capacity = G0.ddf_snow_mm * 1.0e-3 * pdd
+        snow_melt = np.minimum(snow_we, snow_capacity)
+        pdd_left = pdd - snow_melt / (G0.ddf_snow_mm * 1.0e-3)
+        ice_melt = np.where(thickness > 0.0, G0.ddf_ice_mm * 1.0e-3 * pdd_left, 0.0)
+        frictional = 0.0 if self.frictional_heat_w_m2 is None else self.frictional_heat_w_m2
+        basal = W_M2_TO_M_ICE_PER_YR * np.clip(basal_heat_w_m2(thickness, surface_c, frictional), 0.0, None)
+        return snow_we * to_ice * 1.0e6, (snow_melt + ice_melt) * to_ice * 1.0e6, basal * 1.0e6
 
     def rates(self, thickness_m: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """(accumulation, surface melt, basal melt), metres of ice per Myr in model units, under
@@ -131,6 +196,8 @@ class SurfaceClimate:
         over a ramp (ICE_SNOW_RAMP_C, ICE_THAW_RAMP_C) so the rates are continuous in thickness."""
         thickness = np.clip(thickness_m, 0.0, None)
         surface_c = self.temperature_c - LAPSE_RATE_C_PER_KM * thickness / 1000.0
+        if G0.physical:
+            return self._physical_rates(thickness, surface_c)
         snows = np.where(self.is_frozen, 1.0, np.clip((hydrology.FREEZE_POINT_C - surface_c) / ICE_SNOW_RAMP_C, 0.0, 1.0))
         accumulation = snows * hydrology.GLACIER_ACCUMULATION_RATE * self.precipitation_mm
         melt_factor = np.clip(
@@ -154,6 +221,13 @@ def _bed_excess_c(thickness_m: np.ndarray, surface_temperature_c: np.ndarray) ->
 def warm_based(thickness_m: np.ndarray, surface_temperature_c: np.ndarray) -> np.ndarray:
     """True where steady conduction through `thickness_m` of ice brings the bed to the
     pressure-melting point."""
+    if G0.physical:
+        # D1's single thermal state: thawed where the net basal heat, with last step's
+        # frictional heat, is >= 0. Called by step_ice on whole-cloud arrays only.
+        frictional = G0.frictional_heat_w_m2
+        if frictional is None or len(frictional) != len(np.atleast_1d(thickness_m)):
+            frictional = 0.0
+        return basal_heat_w_m2(thickness_m, surface_temperature_c, frictional) >= 0.0
     return (np.asarray(thickness_m) > 0.0) & (_bed_excess_c(thickness_m, surface_temperature_c) >= 0.0)
 
 
@@ -667,6 +741,10 @@ def _solve_plastic_body(dom: _Domain, opening_m3: float, dt_myr: float, sea_leve
             if f_lo <= 0.0:
                 break
             hi, f_hi = lo, f_lo
+    if G0.enumerate_roots or G0.root_rule != "nearest":
+        lo, hi, f_lo, f_hi, saturated = _g0_choose_root(
+            shape, f, opening_m3, dt_myr, d_min, d_max, step_m, (lo, hi, f_lo, f_hi, saturated), len(dom.nodes)
+        )
     if saturated:
         final = shape(d_max)
     else:
@@ -690,6 +768,38 @@ def _solve_plastic_body(dom: _Domain, opening_m3: float, dt_myr: float, sea_leve
     if final.volume > 0.0:
         final = final.scaled(target / final.volume)
     return final, acc, sm, bm, excess, saturated
+
+
+def _g0_choose_root(shape, f, opening_m3, dt_myr, d_min, d_max, step_m, walked, n_nodes):
+    """G0 prototype (D2's root choice): every sign change of the residual on [d_min, d_max]
+    at one-edge spacing, logged with which are stable (an upward crossing where the balance
+    falls as the volume grows), and the bracket the root rule keeps. `walked` is today's
+    walk's (lo, hi, f_lo, f_hi, saturated)."""
+    grid = np.unique(np.append(np.arange(d_min, d_max, max(step_m, 1.0)), d_max))
+    fs = np.array([f(d) for d in grid])
+    vols = np.array([shape(d).volume for d in grid])
+    balance = (vols - opening_m3 - fs) / dt_myr
+    roots = []
+    for k in range(len(grid) - 1):
+        a, b = fs[k], fs[k + 1]
+        if a <= 0.0 < b:
+            roots.append((grid[k], grid[k + 1], a, b, bool(balance[k + 1] <= balance[k])))
+        elif a > 0.0 >= b:
+            roots.append((grid[k], grid[k + 1], b, a, False))
+    stable = [r for r in roots if r[4]]
+    lo, hi, f_lo, f_hi, saturated = walked
+    walk_rank = next((i for i, r in enumerate(stable) if r[0] <= hi and lo <= r[1]), -1)
+    kept = "walk"
+    if G0.root_rule != "nearest" and stable and not saturated:
+        r = stable[-1] if G0.root_rule == "largest" else stable[0]
+        lo, hi, f_lo, f_hi = r[0], r[1], r[2], r[3]
+        kept = G0.root_rule
+    G0_ROOT_LOG.append({
+        "nodes": n_nodes, "opening_km3": opening_m3 / 1e9, "roots": len(roots), "stable": len(stable),
+        "walk_rank": walk_rank, "kept": kept, "saturated": bool(saturated),
+        "stable_volumes_km3": [round(float(shape(r[1]).volume) / 1e9, 3) for r in stable][:8],
+    })
+    return lo, hi, f_lo, f_hi, saturated
 
 
 def _volume_extent(shape, volume_m3: float, d_min: float, d_max: float, tolerance: float) -> float:

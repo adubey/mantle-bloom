@@ -95,6 +95,10 @@ SURFACE_FIELDS: dict[str, SurfaceField] = {
     # lithosphere.ice_load_deflection). It records what is baked into `elevation`, so it
     # remaps the way `elevation` does rather than the way `glacier_depth` does.
     "ice_load_deflection_m": _field(float, 0.0, RemapClass.INTENSIVE),
+    # RFC 0015 gate G0 prototype (#554; gate branch only): last step's basal frictional heat
+    # (W m^-2), and the deflection arm (c) holds the mass-balance surface at.
+    "g0_frictional_heat_w_m2": _field(float, 0.0, RemapClass.INTENSIVE),
+    "g0_hold_deflection_m": _field(float, 0.0, RemapClass.INTENSIVE),
     # Each node's elevation right after last step's erosion (issue #297). Next step's erosion
     # reads any rise since then as uplift, which wears down channel_depth. Remaps like
     # elevation.

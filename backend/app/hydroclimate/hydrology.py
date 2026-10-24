@@ -865,7 +865,10 @@ def meltwater_m3_per_yr(melt_m: np.ndarray, areas_m2: np.ndarray, years: float) 
     """Glacier meltwater as a rate in m^3/yr: `ice_sheet.step_ice`'s per-node melt (metres of
     ice over the cell, summed over the step) times cell area, divided by the step length. Its
     total over all nodes is `IceLedger.meltwater_m3 / years`."""
-    return melt_m * areas_m2 / max(years, 1.0)
+    from . import ice_sheet  # G0 prototype: meltwater by mass at physical rates
+
+    by_mass = ice_sheet.RHO_ICE / ice_sheet.RHO_WATER if ice_sheet.G0.physical else 1.0
+    return by_mass * melt_m * areas_m2 / max(years, 1.0)
 
 
 # Metres of glacier ice per metre of liquid water, at the glacier model's own model-unit rate
@@ -1527,15 +1530,37 @@ def compute_hydrology(
     # reason as climate above: ice_sheet imports this module.
     from . import ice_sheet
 
+    deflection = collect_all_ice_load_deflection(plates_in_order)
+    mobile_cover_at_nodes = np.concatenate([p.collect("mobile_cover_m") for p in plates_in_order])
+    # G0 prototype (#554): the mass-balance surface and the lagged frictional heat.
+    mb_temperature, mb_frozen, frictional = temperature_at_nodes, is_frozen, None
+    if ice_sheet.G0.hold_deflection:
+        held = np.concatenate([p.collect("g0_hold_deflection_m") for p in plates_in_order])
+        mb_temperature = temperature_at_nodes - ice_sheet.LAPSE_RATE_C_PER_KM * (held - deflection) / 1000.0
+        mb_frozen = (mb_temperature < FREEZE_POINT_C) | (prev_glacier_depth >= GLACIER_VISIBLE_DEPTH_M)
+    if ice_sheet.G0.physical:
+        frictional = np.concatenate([p.collect("g0_frictional_heat_w_m2") for p in plates_in_order])
+        allow_ocean_ice = np.zeros(n, dtype=bool)  # D6 removes the ice-age sea-ice cap
+    ice_sheet.G0.frictional_heat_w_m2 = frictional
     new_glacier_depth, melt, ice = ice_sheet.step_ice(
-        points, neighbor_idx, areas, elevation, collect_all_ice_load_deflection(plates_in_order), world.sea_level_m,
+        points, neighbor_idx, areas, elevation, deflection, world.sea_level_m,
         prev_glacier_depth,
         ice_sheet.SurfaceClimate(
-            precipitation_at_nodes, temperature_at_nodes,
-            seasonal_amplitude_at_nodes if seasonal_amplitude_at_nodes is not None else np.zeros(n), is_frozen,
+            precipitation_at_nodes, mb_temperature,
+            seasonal_amplitude_at_nodes if seasonal_amplitude_at_nodes is not None else np.zeros(n), mb_frozen,
+            frictional,
         ),
-        np.concatenate([p.collect("mobile_cover_m") for p in plates_in_order]), is_ocean, allow_ocean_ice, years,
+        mobile_cover_at_nodes, is_ocean, allow_ocean_ice, years,
     )
+    if ice_sheet.G0.physical:
+        # D1: this step's frictional heat tau_b u_b / Y, read next step.
+        tau = ice_sheet.yield_stress_pa(mobile_cover_at_nodes, ice.warm_based)
+        heat = tau * ice.sliding_speed_m_per_yr / ice_sheet.SECONDS_PER_YEAR
+        offset = 0
+        for plate in plates_in_order:
+            count = plate.node_count()
+            plate.set_fields_on_plate(g0_frictional_heat_w_m2=heat[offset : offset + count])
+            offset += count
     ice_flow_target = _ice_surface_flow_target(elevation + new_glacier_depth, neighbor_idx, new_glacier_depth, ice_flow_target)
 
     # A spilling lake's own surface area feeds extra erosive "water" in at its sink, on top of
