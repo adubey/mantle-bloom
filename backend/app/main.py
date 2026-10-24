@@ -936,18 +936,29 @@ def generate_debug(world_id: str, req: GenerateDebugRequest) -> dict:
     count, or land/continental fraction to choose -- each scenario name is its own complete,
     fixed configuration; only `seed` (for the per-node terrain texture, see
     `lithosphere_plate.new_plate`) varies. `400` for an unknown scenario name, `404`
-    for an unknown world id."""
+    for an unknown world id, `503` while a generation, step, or animation is in
+    progress."""
     session = _session_or_404(world_id)
     if req.scenario not in debug_worlds.DEBUG_SCENARIOS:
         raise HTTPException(
             status_code=400,
             detail=f"unknown scenario {req.scenario!r}; choices are {sorted(debug_worlds.DEBUG_SCENARIOS)}",
         )
-    with _compute_gate.hold(), session.lock:
-        if session.deleted:
-            raise HTTPException(status_code=404, detail="no such world")
-        world = debug_worlds.generate_debug_world(req.scenario, req.seed)
-        _set_world(session, world)
+    # Joins the operation-flag protocol like every other world replacer: step
+    # captures its world object at request time and then queues at the compute
+    # gate, so a debug generation slipping in between would swap session.world
+    # out from under it -- the step would mutate a detached world whose work
+    # never reaches the published state.
+    if not session.begin_operation():
+        raise HTTPException(status_code=503, detail="a generation, step, or animation is already in progress")
+    try:
+        with _compute_gate.hold(), session.lock:
+            if session.deleted:
+                raise HTTPException(status_code=404, detail="no such world")
+            world = debug_worlds.generate_debug_world(req.scenario, req.seed)
+            _set_world(session, world)
+    finally:
+        session.end_operation()
     return _summary(session, world)
 
 

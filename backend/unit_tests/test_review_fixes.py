@@ -78,6 +78,23 @@ def test_delete_refuses_while_a_guest_step_is_in_flight(client):
     assert client.delete(f"/worlds/{record['world_id']}").status_code == 200
 
 
+def test_generate_debug_refuses_while_an_operation_is_in_flight(client):
+    """Review follow-up: generate_debug used to skip the operation flag, so a
+    debug generation could swap session.world out from under a step queued at
+    the compute gate -- the step would mutate a detached world whose work never
+    reached the published state. Now it 503s like every other replacer."""
+    record = client.post("/worlds", json={}).json()
+    session = _tracked_session(record["world_id"])
+    scenario = client.get("/debug/scenarios").json()["scenarios"][0]["name"]
+    assert session.begin_operation()
+    try:
+        resp = client.post(f"/worlds/{record['world_id']}/generate_debug", json={"scenario": scenario, "seed": 1})
+        assert resp.status_code == 503
+    finally:
+        session.end_operation()
+    assert client.post(f"/worlds/{record['world_id']}/generate_debug", json={"scenario": scenario, "seed": 1}).status_code == 200
+
+
 def test_generate_on_deleted_world_bails_without_publishing(client):
     """S5: a stream that queued at the gate before its world was deleted must
     bail out instead of generating into the detached session."""
