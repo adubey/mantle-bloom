@@ -76,15 +76,13 @@ Three kinds of water/forcing move along `flow_target`:
 - **Glacier meltwater** is the ice ledger's per-step volume (`IceLedger.meltwater_m3`: surface
   and basal melt, overflow, ice shed at the depth guard, and snow melting on bare ground)
   divided by the step length (`hydrology.meltwater_m3_per_yr`). Melted ice is booked as
-  water 1:1. Calved ice goes to the ocean unrouted, and accumulation
-  and frozen river ice stay ice, so none of them is discharge. The ledger is still in the
+  water 1:1. Calved ice goes to the ocean unrouted, and accumulation stays ice, so neither is
+  discharge. The ledger is still in the
   glacier model's own units (see [Glaciation](#glaciation-hydrologypy)), so meltwater is small next to
   runoff.
-- **Frozen river ice** is the physical water that settles at a frozen land node, turned into
-  ice at the rate snowfall builds it (`hydrology.WATER_TO_ICE`, which is
-  `GLACIER_ACCUMULATION_RATE / 1000`, 1/50,000 of real), a step late. The breach surge never
-  becomes ice. Once glacier mass balance is physical (#353), this should convert by mass,
-  water at 1000 kg/m^3 to glacier ice at about 917 kg/m^3, and meltwater should too.
+- **No liquid water becomes ice.** Water reaching a sink below 0 C on the annual mean pools as
+  a lake there like any other, and a cold lake keeps its water (RFC 0014 D2(b), #539). See
+  [Glaciation](#glaciation-hydrologypy), *Liquid water doesn't freeze on the annual mean*.
 - **The breach surge** (`HydrologyFields.breach_surge`) is a spilling lake's erosive forcing,
   sized by node count (`LAKE_BREACH_EROSION_COEFFICIENT`). It is never part of the discharge.
   Its separately-routed accumulation (`breach_surge_accum`) contributes to river erosion only.
@@ -179,7 +177,7 @@ discharge, channel-width growth, deposition, geology or lake silt.
   melt, routed as volume (m^3/yr). In-transit river losses on these real-unit flows are a
   fixed per-node fraction, taken at a 100 kyr reference step
   (`hydrology.river_transit_loss_fraction`), so they don't grow with step length. The breach
-  gate uses the same losses, and only frozen and ocean nodes are exempt: a spilling lake's
+  gate uses the same losses, and only ocean nodes are exempt: a spilling lake's
   sink and rim lose their share like any other node. A spilling lake's inflow is the flow
   through its sink.
   Evaporation is the real open-water rate, about 0.3 m/yr at 0 C rising to 1.8 m/yr at 25 C.
@@ -204,15 +202,8 @@ discharge, channel-width growth, deposition, geology or lake silt.
   `CellHypsometry`) has already reached its basin's spill point, or that spill point is at or
   below the sink's own centre (a breach notch cut to the floor), in which case it redirects to
   `spill_target` (turning a filled-past-its-rim lake into a normal through-flowing river
-  cell). A node whose annual mean is below `FREEZE_POINT_C` (see [Glaciation](#glaciation-hydrologypy) for
-  why this is a separate, warmer threshold than the one permanent glaciers use) is unconditionally forced to
-  -1 *after* the should_spill check above, rather than folded into the same check: an
-  ordinary, unobstructed downhill node has `filled_elevation` exactly equal to its own
-  elevation, so forcing it to look like a sink first would make it trivially satisfy
-  `water_surface >= filled_elevation` and get redirected right back onto its own normal
-  neighbor via `spill_target` -- silently undoing the freeze for most ordinary terrain (caught
-  directly by this module's own test coverage). Applying the override to the final
-  `flow_target` instead has no such escape hatch.
+  cell). Cold nodes route water like any other: a node below `FREEZE_POINT_C` on the annual
+  mean isn't a dead end (RFC 0014 D2(b), #539).
 - **Spilling within the step** (`_spill_within_step`, issue #503): the spill test above and
   `lakes.compute_spill_routing`'s choice of governing rim both read last step's water, but a
   100 kyr step's inflow fills most basins many times over. After routing the physical water,
@@ -228,8 +219,7 @@ discharge, channel-width growth, deposition, geology or lake silt.
   catchments the hierarchy is built on) sends that node down its steepest descent. Repeats to
   a fixed point; reaching `SPILL_WITHIN_STEP_MAX_ROUNDS` logs a warning. Without it, a river
   crossing a chain of dry pits advanced one pit per step, and basins filling in the same step
-  spilled into each other indefinitely. Water settling at a frozen sink becomes river ice and
-  never counts toward filling a basin. `lakes.resolve_lakes` still merges lakes on last step's
+  spilled into each other indefinitely. `lakes.resolve_lakes` still merges lakes on last step's
   water, so for one step a lake that routing has united and spilled can be reported at the
   saddle below its rim (#505); the breach surge still routes on the flow directions from before
   this resolution (#506).
@@ -346,19 +336,14 @@ its floor has risen to meet the surrounding rim, it stops registering as a local
 all (steepest descent no longer sees a depression there), and the lake disappears outright,
 exactly the "reaches ground level" case a lake should eventually hit.
 
-**A frozen lake still silts in (2026-09-14).** `_water_balance` forces a lake with any member
-below freezing (`hydrology.FREEZE_POINT_C`, the mild 0C threshold -- a seasonally-freezing lake,
-not necessarily a permanently ice-locked one) to report its own dry floor -- no visible standing
-water this step. It used to also skip silt entirely while frozen ("no liquid water to carry
-suspended sediment"), but that made a *chronically* frozen catchment (common at altitude/
-latitude on an old, rough world) accumulate literal zero silt forever, no matter how much inflow
-reached it -- one of the two ways a pit can genuinely "never hold water, get nothing" named in
-GitHub issue #117 ("Lake-hierarchy caterpillar trees"), where thousands of tiny, often
-sub-freezing catchments each stay their own permanent `Lake` leaf instead of silting into their
-neighbors, producing merge-tree depths in the thousands on old, rough worlds. Real meltwater
-still carries a suspended sediment load that settles onto the bed even when the surface won't be
-reported as open water, so silt now still deposits from this step's inflow while frozen -- only
-the reported water level (and sea-tier promotion) stays gated on not being frozen.
+**Cold lakes keep their water.** `_water_balance` resolves a lake the same way whatever its
+temperature: inflow, storage and spill continue under ice, as in Lake Untersee, Antarctica,
+which has been ice-covered for centuries yet holds a 169 m deep basin fed by glacier melt
+(RFC 0014 D2(b), #539). Until then a lake with any member below 0 C on the annual mean
+reported its dry floor, and the water its inflow brought was booked nowhere. That rule still
+silted the lake, so that a chronically cold catchment filled in rather than staying its own
+permanent leaf (#117); every lake now silts from its inflow anyway. Seasonal ice cover and a
+lake ice cap are RFC 0014 D2(a) and D2(c), not yet implemented.
 
 ### Lake vs. sea tiers: a depth ceiling by size (2026-09-10)
 
@@ -402,20 +387,21 @@ whether the water level could actually still support it.
 **A split rebalances each child; it doesn't refill them to the saddle.** When an
 already-merged body's balanced level falls below its `min_depth`, `_resolve` discards that
 merged resolution, restoring the silt and sea flags `_water_balance` wrote for it, and resolves
-each child as an independent lake this step: its own inflow and evaporation, its own
-any-member-frozen check, its own rim (the parent's saddle) and its own tier cap. A child that
-has no inflow dries, a frozen child dries, and a fed child keeps the water its own balance
-supports. Next step's `_already_merged` reads the pair as merged only if both children's main
-water bodies reached the saddle. A child fed to its rim can trigger a new merge in the current
-step; if the merged body's balance falls below the saddle, it splits next step and the fed
-child can trigger another merge. This real merge/split churn costs a discarded merged balance
-but creates no water. Perched water no longer triggers that cycle (#520 part 1).
+each child as an independent lake this step: its own inflow and evaporation, its own rim (the
+parent's saddle) and its own tier cap. A child that has no inflow dries, and a fed child keeps
+the water its own balance supports. Next step's `_already_merged` reads the pair as merged only
+if both children's main water bodies reached the saddle. A child fed to its rim can trigger a
+new merge in the current step; if the merged body's balance falls below the saddle, it splits
+next step and the fed child can trigger another merge. This real merge/split churn costs a
+discarded merged balance but creates no water. Perched water no longer triggers that cycle
+(#520 part 1).
 
 Earlier code instead reset both children to the saddle, as continuity for a small evaporation
 dip. Nothing supplied that water, and the saddle level read back as merged on the next step, so
 a body whose budget could not hold it there stayed on its saddle indefinitely. On the
 `seed308161711-121.5Myr` save the reset added 4.7-5.5 M km^3 of water per step, about the
-world's whole visible lake volume, mostly from parents dried by a frozen member (#519, #521).
+world's whole visible lake volume, mostly from parents dried by a frozen member under the
+any-member freezing rule that RFC 0014 D2(b) later removed (#519, #521, #539).
 The reset also needed a tier-cap exception to avoid an endless merge/split loop when the tier
 cap, not evaporation, held a composite below its saddle. Per-child balance doesn't need that
 exception, because each child is already bounded by its own rim and tier cap. The old
@@ -429,7 +415,7 @@ saddle on its own (one that classifies sea tier can grow past an internal saddle
 asserts no repeat split,
 `test_a_child_fed_to_the_saddle_re_splits_each_step_without_creating_water` pins the churn
 above, and
-`test_a_merged_lake_split_by_a_frozen_member_rebalances_each_child_at_its_own_level` checks
+`test_a_merged_lake_split_by_a_falling_supply_rebalances_each_child_at_its_own_level` checks
 that neither child is written above its own balance.
 
 **Known residual, not chased further: some steady-state merge/split churn remains, invisible
@@ -618,13 +604,13 @@ Glaciation tracks where snow and ice build up, how ice melts, and how thick ice 
 The model uses long simulation steps, so it estimates seasonal melting rather than calculating
 every day of the year.
 
-**Freezing uses the annual mean; melt uses an imputed seasonal cycle.** `FREEZE_POINT_C` (0C,
-the real phase-change point) governs whether precipitation falls as snow/ice rather than rain,
-and whether standing lake water or flowing river water freezes solid *this same step* -- a node
-whose annual mean is below it never holds liquid water at all: any precipitation there is
-treated as fully frozen (no partial liquid/frozen split, matching `erosion.py`'s existing "use
-precipitation is enough" simplification), an existing lake sitting there freezes solid into
-`glacier_depth`, and a river reaching it stops flowing entirely this step.
+**Snowfall uses the annual mean; melt uses an imputed seasonal cycle.** `FREEZE_POINT_C` (0C,
+the real phase-change point) governs whether precipitation falls as snow rather than rain: on
+a node whose annual mean is below it, or under visible ice, all precipitation is snow (no
+partial liquid/frozen split, matching `erosion.py`'s existing "use precipitation is enough"
+simplification). It doesn't freeze liquid water: rivers, lakes and the water settling at a
+sink stay liquid at any temperature (see *Liquid water doesn't freeze on the annual mean*
+below).
 
 A step spans thousands of years or more, so seasons are never stepped through, but their
 effect on glacier melt is imputed (issue #275 phase 2). Each node gets a seasonal
@@ -645,54 +631,37 @@ passes none) melt starts at a 0C annual mean.
 This replaced `GLACIER_ACCUMULATION_TEMP_C` (-10C), a fixed annual-mean floor below which ice
 never melted -- a stand-in for seasons that kept permanent ice in high-amplitude continental
 and mountain interiors whose summers are well above freezing, while melting ice in
-low-amplitude places that never thaw. A node at, say, -3C still freezes its lake/river solid
-every step, and the ice it forms still melts back at a real rate when its summer clears 0C.
+low-amplitude places that never thaw. Ice formed where the annual mean is, say, -3C still
+melts back at a real rate when its summer clears 0C.
 
-Freezing happens *before* `flow_target` is (re)computed, so a lake that
-just froze is correctly treated as a genuine sink again this step rather than immediately
-re-filling from this same step's routed water (see `lakes.step_lakes`'s own docstring). This
-ordering avoids a specific failure mode: without the freeze-before-routing ordering and an
-`is_frozen` gate on `lakes.step_lakes`'s own inflow/pin-at-cap logic, a lake formed in a
-warmer epoch would never freeze, and a just-frozen basin would re-flood back to its old cap
-the very same step, double-counting the same water as both a lake and a glacier at once.
-
-**A frozen river doesn't just vanish.** `_compute_flow_direction` forces a frozen node's
-`flow_target` to -1 unconditionally (see [Hydrology](#hydrology-rivers-and-lakes-hydrologypy) for why this override can't
-reuse the ordinary should-spill escape valve a genuine closed-basin lake gets) -- water
-arriving there this step has nowhere to go, so `route_downstream` settles it in place, and
-the physical water settled there (see *Water units* above) is folded into `glacier_depth`
-right after routing finishes (the ice solve already ran by then, so this newly-frozen river ice
-joins its ice body from next step onward -- an explicit one-step lag the ice ledger books,
-see below). A river's flow also loses a
-real, evaporating fraction of itself every step it's *not* frozen (`RIVER_EVAPORATION_*`,
-applied as `route_downstream`'s new `loss_fraction`, distinct from `retain_fraction`'s
-locally-deposited share -- an evaporated share simply vanishes rather than settling anywhere)
--- warmer nodes lose more, capped well short of 1.0 so a single very large step can't
-evaporate an entire river in one hop. In the legacy `flow_accum` routing, it's excluded at
-an already-frozen node (already blocked above) and at a spilling lake's own breach node
-(`should_spill`, see [Hydrology](#hydrology-rivers-and-lakes-hydrologypy)): that term already models a lake's concentrated overflow surge sized purely from its own
-surface area, and shouldn't also lose a further fraction to evaporation in the very same step
-it's cut loose. This evaporated water is genuinely lost from the river system, and is exactly
-half of the "rivers, lakes, and vegetation release moisture" ask (see [Climate](climate.md#climate-climatepy)'s own
-"Moisture recycling" section for the other half -- that lost moisture actually reappearing as
-atmospheric humidity, which for architectural reasons can't be the literal same-step amount
-this module evaporates, since climate.py runs *before* this module each step).
+**Rivers lose water in transit.** A river's flow loses a real, evaporating fraction of itself
+every step (`RIVER_EVAPORATION_*`, applied as `route_downstream`'s `loss_fraction`, distinct
+from `retain_fraction`'s locally-deposited share -- an evaporated share simply vanishes rather
+than settling anywhere) -- warmer nodes lose more, capped well short of 1.0 so a single very
+large step can't evaporate an entire river in one hop. In the legacy `flow_accum` routing, it's
+excluded at a spilling lake's own breach node (`should_spill`, see
+[Hydrology](#hydrology-rivers-and-lakes-hydrologypy)): that term already models a lake's
+concentrated overflow surge sized purely from its own surface area, and shouldn't also lose a
+further fraction to evaporation in the very same step it's cut loose. This evaporated water is
+genuinely lost from the river system, and is exactly half of the "rivers, lakes, and vegetation
+release moisture" ask (see [Climate](climate.md#climate-climatepy)'s own "Moisture recycling"
+section for the other half -- that lost moisture actually reappearing as atmospheric humidity,
+which for architectural reasons can't be the literal same-step amount this module evaporates,
+since climate.py runs *before* this module each step).
 
 - **Accumulation and melt rates**: `GLACIER_ACCUMULATION_RATE` converts frozen
-  precipitation into metres of ice per Myr. The same rate, as `WATER_TO_ICE`, converts the
-  physical water a river settles when it freezes solid at a cold sink, and a standing lake's
-  `lake_depth` when the lake freezes (issue #503).
+  precipitation into metres of ice per Myr.
   `GLACIER_MELT_RATE_M_PER_MYR`, scaled by the seasonal positive degrees over
   `GLACIER_MELT_REFERENCE_DEGREES_C` (capped at `GLACIER_MELT_MAX_FACTOR`; see above), is the
   surface melt. Where these rates apply, and to how much ice, is the ice-body solve below.
 - **Ice bodies and the volume contract** (`ice_sheet.py`, issue #353). Ice no longer flows one
   hop down the bed each step. Each step `ice_sheet.step_ice` groups ice into **bodies**:
-  connected components, over the symmetrised k-NN graph, of nodes that hold ice or have
-  positive surface balance at the reference surface (bed + last step's ice). A body's volume
-  is conserved: its opening volume, `sum(glacier_depth * area)` plus any lake that froze into
-  it this step, changes by exactly the step's accumulation less surface and basal melt, less
-  calving and overflow. The ledger (`HydrologyFields.ice.ledger`, per body in `.bodies`)
-  closes to round-off, and ice is never created.
+  connected components, over the symmetrised k-NN graph, of nodes that hold ice or have positive
+  surface balance at the reference surface (bed + last step's ice). A body's volume is
+  conserved: its opening volume, `sum(glacier_depth * area)`, changes by exactly the step's
+  accumulation less surface and basal melt, less calving and overflow. The ledger
+  (`HydrologyFields.ice.ledger`, per body in `.bodies`) closes to round-off, and ice is never
+  created.
 - **Backward-Euler extent.** Each body's candidate extents form a nested family: `phi` is the
   signed graph distance from the edge of its positive-balance area S (negative inside, two
   scipy Dijkstra passes), and the extent at margin position `d` is every node with
@@ -747,38 +716,32 @@ this module evaporates, since climate.py runs *before* this module each step).
   balances), so this under-states calving from Greenland-like sheets. Ice afloat on the
   ocean outside the ice-age sea-ice cap calves. Eustasy reads only `glacier_depth` and lake
   depth, so every sink returns its water to the ocean's budget.
-- **Liquid water freezes on cold ground only.** A standing lake, a river crossing a node and
-  the water settling at a sink freeze only where the annual mean is below `FREEZE_POINT_C`
-  (`water_frozen` in `compute_hydrology`). Snowfall over an ice cap on warm ground still falls
-  as snow (the `is_frozen` rule above), but rivers and meltwater on that ice drain along the
-  ground, and a lake beside or under it stays water. Frozen in place, a river reaching a warm
-  ice node rebuilt it every step: a 36,000 m^3/s river held a single-node, 600 m ice plug at
-  +0.4C, the ice's own meltwater refroze there too, and frozen river ice outgrew snowfall
-  twofold (issue #503).
-  Lakes balance in real units since #297, so a lake on warm ground under ice refills with
-  runoff and meltwater every step. A lake that does freeze turns into ice at `WATER_TO_ICE`,
-  the rate river water does. Frozen 1:1, real-unit lake water fed the ice about 35x faster than
-  all snowfall (in model units), and once basins filled within the step that grew the ice by a
-  third in 10 Myr (`analysis/issue503/README.md`; see also `analysis/issue353/README.md`).
+- **Liquid water doesn't freeze on the annual mean.** Rivers flow on through nodes below
+  `FREEZE_POINT_C`, water reaching a cold sink pools there as a lake, and a cold lake balances
+  like any other (RFC 0014 D2(b), #539). Snowfall over an ice cap on warm ground still falls as
+  snow (the `is_frozen` rule above), and meltwater on the ice drains along the ground.
+  Liquid water used to freeze where the annual mean was below 0 C: a river reaching a cold
+  sink became river ice at `WATER_TO_ICE` (`GLACIER_ACCUMULATION_RATE / 1000`, 1/50,000 of its
+  volume, a step late), and a lake on a cold node was emptied into the ice at the same rate. So
+  nearly all of that water was deleted: 2.5-48% of land-to-ocean discharge per step on #519's
+  evidence save. A sub-zero annual mean doesn't mean no summer flow (design principle 3), and
+  ice cover doesn't stop a lake's inflow, storage or spill. Earlier still, rivers froze on warm
+  ice too, and a 36,000 m^3/s river rebuilt a single-node, 600 m ice plug every step at +0.4C
+  (#503). `IceLedger.frozen_lake_m3`, `frozen_river_ice_m3` and `frozen_river_capped_m3` are
+  now always 0; RFC 0015 D5 removes them and `WATER_TO_ICE`.
 - **Thickness guard.** `GLACIER_MAX_DEPTH_M` (5 km) caps the plastic profile itself, so a
   sheet too big for it gets a flat top and its volume spreads outward through the root find
   instead of being shed. A plastic divide is `sqrt(2 c L)` thick for a margin L from the
   divide: 3.3 km at 500 km and 4.7 km at 1000 km under 100 kPa. The same guard holds the
-  ice-age sea-ice cap and frozen river ice. Ice shed there is booked (`capped_m3`,
-  `frozen_river_capped_m3`), and the cap is never treated as physics: real ice spreads and
-  melts at its base long before 5 km, so any step where ice reaches it logs a warning
-  (`ice_sheet.warn_if_capped`, `warn_if_river_ice_capped`).
+  ice-age sea-ice cap. Ice shed there is booked (`capped_m3`), and the cap is never treated as
+  physics: real ice spreads and melts at its base long before 5 km, so any step where ice
+  reaches it logs a warning (`ice_sheet.warn_if_capped`).
 - **Small bodies.** A plastic profile on one or two cells is meaningless, so a body with room
   for fewer than `ICE_BODY_MIN_NODES` (3) cells -- counting the ground it could advance onto,
   not just the nodes it covers -- spreads its volume evenly over its own nodes, under the same
-  backward-Euler contract. Counting room rather than current size matters: lake or river ice
-  frozen on one node can be kilometres thick, and held to that node it saturates, sheds the
-  excess as meltwater that refreezes on the same frozen node, and repeats every step.
-- **Frozen river ice, a step late.** The ice solve needs this step's meltwater to route
-  rivers, so it can't know what settles yet. River water frozen at a sink is added to
-  `glacier_depth` after routing (converted by `WATER_TO_ICE`, clipped to
-  `GLACIER_MAX_DEPTH_M`) and joins its body's opening volume next step; the ledger books it
-  as `frozen_river_ice_m3`, and next step's opening is this step's closing plus it.
+  backward-Euler contract. Counting room rather than current size matters: ice on one node can
+  be kilometres thick, and held to that node it saturates and sheds the excess as meltwater
+  every step.
 - **Flux, velocity and sliding** (diagnostic only; volume moves through the body solve). The
   balance-flux source per cell is `(b - d(glacier_depth)/dt) * area` in m^3/yr, routed down
   the plastic surface with multiple-direction weights proportional to each lower neighbour's
@@ -829,27 +792,26 @@ population size and total ice depth fluctuate across steps as plates rotate glac
 in and out of genuinely cold regions, rather than growing monotonically or vanishing
 outright.
 
-**Ice ages** (`World.ice_age_period_years`, the Controls → Climate "Ice Age Frequency"
-slider; 0 disables). A raised-cosine glacial intensity in `[0, 1]`
-(`climate.ice_age_glacial_intensity`) driven purely by `elapsed_years` -- 0 at generation and
-at every whole multiple of the period, 1 at the half-period glacial maximum -- scales a
-uniform cooling of up to `climate.ICE_AGE_MAX_COOLING_C` applied to *both* temperature
-baselines in `compute_climate`, so air temperature, biomes, hydrology's freeze / glacier
-growth and erosion all feel it through fields they already read -- the cooling spreads the
-existing per-node freeze (rivers stop, standing lakes turn to ice, precipitation falls as
-snow) across a much wider area, and `hydrology.compute_hydrology`'s `is_frozen` mask also
-picks up *any* node already carrying a real ice cap (`GLACIER_VISIBLE_DEPTH_M` of ice), so
-snowfall stays snow on top of an ice sheet even on a step whose temperature briefly ticks
-above 0. Liquid water there freezes only below 0 (see *Liquid water freezes on cold ground
-only* above). Two further effects switch on
-in a deep glacial phase: hydrology lets ice pile up over freezing polar *ocean* nodes instead
-of calving at the coast (`hydrology.SEA_ICE_FORMATION_TEMP_C`, gated at intensity ≥
+**Ice ages** (`World.ice_age_period_years`, the Controls → Climate "Ice Age Frequency" slider; 0
+disables). A raised-cosine glacial intensity in `[0, 1]` (`climate.ice_age_glacial_intensity`)
+driven purely by `elapsed_years` -- 0 at generation and at every whole multiple of the period, 1
+at the half-period glacial maximum -- scales a uniform cooling of up to
+`climate.ICE_AGE_MAX_COOLING_C` applied to *both* temperature baselines in `compute_climate`, so
+air temperature, biomes, hydrology's freeze / glacier growth and erosion all feel it through
+fields they already read -- the cooling spreads the existing per-node snowfall rule
+(precipitation falls as snow) across a much wider area, and `hydrology.compute_hydrology`'s
+`is_frozen` mask also picks up *any* node already carrying a real ice cap
+(`GLACIER_VISIBLE_DEPTH_M` of ice), so snowfall stays snow on top of an ice sheet even on a step
+whose temperature briefly ticks above 0. Liquid water doesn't freeze (see *Liquid water doesn't
+freeze on the annual mean* above). Two further effects switch on in a deep glacial phase:
+hydrology lets ice pile up over freezing polar *ocean* nodes instead of calving at the coast
+(`hydrology.SEA_ICE_FORMATION_TEMP_C`, gated at intensity ≥
 `hydrology.ICE_AGE_SEA_ICE_MIN_INTENSITY`, with a little hysteresis for a cap that already
-exists) -- a floating polar ice cap that retreats when the
-age passes; and **glacial eustasy** returns -- `eustasy.trapped_water_volume_m3` debits the
-liquid-water equivalent of all `glacier_depth` plus every visible lake's `lake_depth` from the
-conserved total surface-water budget, so the ocean's share (and the shoreline) falls as the
-ice sheets grow and rises again as they melt.
+exists) -- a floating polar ice cap that retreats when the age passes; and **glacial eustasy**
+returns -- `eustasy.trapped_water_volume_m3` debits the liquid-water equivalent of all
+`glacier_depth` plus every visible lake's `lake_depth` from the conserved total surface-water
+budget, so the ocean's share (and the shoreline) falls as the ice sheets grow and rises again as
+they melt.
 
 ## River Inspector
 
