@@ -81,8 +81,7 @@ def test_interface_pass_does_not_cross_a_genuinely_higher_divide():
     )
     filled, spill, _ = lakes.compute_spill_routing(forest, elevation, np.zeros(4))
     flow, spilling = hydrology._compute_flow_direction(
-        elevation, is_ocean, neighbor_idx, np.array([10.0, 0.0, 0.0, 0.0]), filled, spill,
-        np.zeros(4), np.zeros(4, dtype=bool),
+        elevation, is_ocean, neighbor_idx, np.array([10.0, 0.0, 0.0, 0.0]), filled, spill, np.zeros(4),
     )
     assert filled[0] == 12.0
     assert flow[0] == -1
@@ -358,12 +357,11 @@ def test_compute_spill_routing_endorheic_basin_never_spills():
 
 def test_step_lakes_fills_a_flooded_sink_to_its_spill_point_and_silts_only_its_wet_floor():
     prev_lake_depth = np.zeros(3)
-    is_accumulating = np.zeros(3, dtype=bool)
     flooded = _climate([_FLOOD_M3_PER_YR, 0.0, 0.0])
 
     depth, silt_deposited, _is_sea, forest, events = lakes.step_lakes(
         _SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS, prev_lake_depth, years=1_000_000,
-        is_frozen=is_accumulating, climate=flooded,
+        climate=flooded,
     )
     assert depth[0] == 25.0 - 10.0  # more inflow than it can evaporate: fills to its own max_depth
     assert depth[1] == 0.0 and depth[2] == 0.0  # rim and ocean never hold water
@@ -375,28 +373,13 @@ def test_step_lakes_fills_a_flooded_sink_to_its_spill_point_and_silts_only_its_w
 
 def test_step_lakes_dries_a_lake_with_no_inflow():
     prev_lake_depth = np.array([5.0, 0.0, 0.0])
-    is_accumulating = np.zeros(3, dtype=bool)
 
     depth, _, _, _, events = lakes.step_lakes(
         _SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS, prev_lake_depth, years=100_000,
-        is_frozen=is_accumulating, climate=_climate(np.zeros(3)),
+        climate=_climate(np.zeros(3)),
     )
     assert depth[0] == 0.0
     assert events == []
-
-
-def test_step_lakes_freezes_a_lake_to_its_dry_floor_but_still_silts_it_in():
-    prev_lake_depth = np.array([5.0, 0.0, 0.0])
-    is_accumulating = np.array([True, False, False])
-
-    depth, silt_deposited, _, _, _ = lakes.step_lakes(
-        _SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS, prev_lake_depth, years=1_000_000,
-        is_frozen=is_accumulating, climate=_climate([_FLOOD_M3_PER_YR, 0.0, 0.0]),  # would otherwise fill it
-    )
-    assert depth[0] == 0.0  # frozen -- no visible standing water reported
-    # ...but real inflow still carries a sediment load that settles onto the bed even under
-    # ice (GitHub issue #117: without this a chronically-frozen pit never silts in at all).
-    assert silt_deposited[0] > 0.0
 
 
 def test_step_lakes_merges_two_basins_once_one_reaches_the_saddle():
@@ -405,11 +388,10 @@ def test_step_lakes_merges_two_basins_once_one_reaches_the_saddle():
     # saddle height) -- at that point it must merge with node 3's basin rather than spilling
     # past its own cap, since 12.0 is a real internal saddle, not the true rim (30.0).
     prev_lake_depth = np.array([9.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-    is_accumulating = np.zeros(6, dtype=bool)
 
     depth, _, _is_sea, forest, events = lakes.step_lakes(
         _MERGE_ELEVATION, _MERGE_IS_OCEAN, _MERGE_NEIGHBORS, prev_lake_depth, years=1_000_000,
-        is_frozen=is_accumulating, climate=_climate([_FLOOD_M3_PER_YR, 0.0, 0.0, 0.0, 0.0, 0.0]),
+        climate=_climate([_FLOOD_M3_PER_YR, 0.0, 0.0, 0.0, 0.0, 0.0]),
     )
     assert len(events) == 1 and events[0].kind == "merge" and "merged" in events[0].message
     assert depth[0] == 10.0  # 12.0 (the saddle) - 2.0 (floor)
@@ -429,11 +411,10 @@ def test_step_lakes_splits_a_merged_lake_once_it_recedes_below_the_saddle():
     # own balance -- dry, with no inflow -- not refilled to the saddle with water nothing
     # supplied (#521).
     prev_lake_depth = np.array([10.0, 0.0, 3.0, 8.0, 0.0, 0.0])
-    is_accumulating = np.zeros(6, dtype=bool)
 
     depth, _, _is_sea, forest, events = lakes.step_lakes(
         _MERGE_ELEVATION, _MERGE_IS_OCEAN, _MERGE_NEIGHBORS, prev_lake_depth, years=100_000,
-        is_frozen=is_accumulating, climate=_climate(np.zeros(6)),
+        climate=_climate(np.zeros(6)),
     )
     assert len(events) == 1 and events[0].kind == "split" and "split" in events[0].message
     assert not depth.any()
@@ -445,28 +426,29 @@ def test_step_lakes_splits_a_merged_lake_once_it_recedes_below_the_saddle():
     # Next step reads the pair as separate, so it doesn't split again.
     _, _, _, _, events2 = lakes.step_lakes(
         _MERGE_ELEVATION, _MERGE_IS_OCEAN, _MERGE_NEIGHBORS, depth, years=100_000,
-        is_frozen=is_accumulating, climate=_climate(np.zeros(6)),
+        climate=_climate(np.zeros(6)),
     )
     assert events2 == []
 
 
-def test_a_merged_lake_split_by_a_frozen_member_rebalances_each_child_at_its_own_level():
-    # #521: a merged body with one frozen member dries as a whole (`_water_balance`'s
-    # any-member-frozen rule) and splits. Each child must then be resolved at its own balance:
-    # the fed, unfrozen child keeps its own water, the frozen one stays dry -- not both filled
-    # to the 12.0 saddle, which created ~5 M km^3 of water per step on a mature world (#519).
+def test_a_merged_lake_split_by_a_falling_supply_rebalances_each_child_at_its_own_level():
+    # #521: a merged body whose supply can no longer hold it at the 12.0 saddle splits. Each
+    # child must then be resolved at its own balance: the fed child keeps its own water, the
+    # unfed one stays dry -- not both filled to the saddle, which created ~5 M km^3 of water per
+    # step on a mature world (#519). 1.5 cells' worth of evaporation holds node 0's own basin
+    # full, but the merged body balances at 4.0, where node 3 floods too.
     forest = lakes.build_lake_hierarchy(_MERGE_ELEVATION, _MERGE_IS_OCEAN, _MERGE_NEIGHBORS)
     root = forest[0]
     prev_lake_depth = np.array([10.0, 0.0, 3.0, 8.0, 0.0, 0.0])  # merged at the saddle
-    is_frozen = np.array([False, False, False, True, False, False])
-    climate = _climate([_FLOOD_M3_PER_YR, 0.0, 0.0, 0.0, 0.0, 0.0])
+    cell_m2 = 4.0 * np.pi * (lakes.PLANET_RADIUS_KM * 1000.0) ** 2 / 6
+    climate = _climate([1.5 * cell_m2, 0.0, 0.0, 0.0, 0.0, 0.0])
     out_lake_depth = np.zeros(6)
     out_silt = np.zeros(6)
     out_is_sea = np.zeros(6, dtype=bool)
     events: list[lakes.LakeEvent] = []
 
     lakes._resolve(
-        root, _MERGE_ELEVATION, prev_lake_depth, years_myr=0.1, is_frozen=is_frozen,
+        root, _MERGE_ELEVATION, prev_lake_depth, years_myr=0.1,
         out_lake_depth=out_lake_depth, out_silt_deposited=out_silt, out_lake_is_sea=out_is_sea,
         node_area_km2=100.0, events=events, climate=climate,
     )
@@ -479,17 +461,15 @@ def test_a_merged_lake_split_by_a_frozen_member_rebalances_each_child_at_its_own
     for child in root.children:
         _, tier = lakes._classify_tier(child.members, prev_lake_depth, 100.0)
         level = lakes._water_balance(
-            child, _MERGE_ELEVATION, 0.1, bool(is_frozen[child.members].any()), expected_silt,
-            tier, False, np.zeros(6, dtype=bool), climate,
+            child, _MERGE_ELEVATION, 0.1, expected_silt, tier, False, np.zeros(6, dtype=bool), climate,
         )
         assert child.current_water_elevation == level
         expected_depth[child.members] = hyps.mean_depth(level, child.members)
-    assert root.children[1].current_water_elevation == 4.0  # the frozen child is dry
+    assert root.children[1].current_water_elevation == 4.0  # the unfed child is dry
     np.testing.assert_allclose(out_lake_depth, expected_depth)
     assert out_lake_depth[0] > 0.0  # the fed child keeps its water
     # The discarded merged resolution's silt isn't kept on top of the children's.
     np.testing.assert_allclose(out_silt, expected_silt)
-
 
 def test_step_lakes_silt_raises_the_floor_and_eventually_fills_a_small_lake_in():
     # A small, low-capacity lake (max_depth - floor = 15.0) with heavy, sustained sediment
@@ -499,7 +479,6 @@ def test_step_lakes_silt_raises_the_floor_and_eventually_fills_a_small_lake_in()
     # eventually to 0 once the floor has silted all the way up to the original rim (25.0).
     elevation = _SINK_ELEVATION.astype(float).copy()
     prev_lake_depth = np.zeros(3)
-    is_accumulating = np.zeros(3, dtype=bool)
     flooded = _climate([_FLOOD_M3_PER_YR, 0.0, 0.0])
 
     floor_over_time = []
@@ -507,7 +486,7 @@ def test_step_lakes_silt_raises_the_floor_and_eventually_fills_a_small_lake_in()
     for _ in range(400):
         depth, silt_deposited, _, _, _ = lakes.step_lakes(
             elevation, _SINK_IS_OCEAN, _SINK_NEIGHBORS, prev_lake_depth, years=1_000_000,
-            is_frozen=is_accumulating, climate=flooded,
+            climate=flooded,
         )
         elevation = elevation + silt_deposited  # erosion.py: new_elevation += hydro.silt_deposited
         prev_lake_depth = depth
@@ -519,49 +498,6 @@ def test_step_lakes_silt_raises_the_floor_and_eventually_fills_a_small_lake_in()
     assert elevation[0] <= 25.0 + 1e-6  # never silts past the basin rim
     assert depths_over_time[-1] == 0.0  # lake fully silted in despite inflow never stopping
     assert depths_over_time[0] > 0.0
-
-
-def test_water_balance_frozen_lake_reports_no_water_but_still_deposits_silt():
-    # GitHub issue #117: a chronically-frozen catchment used to get zero silt forever
-    # regardless of inflow, since the old code returned before computing anything. It should
-    # still report a dry floor (no visible standing water while frozen)...
-    lake = lakes._make_leaf(0, [0], [0.0], sink_node_idx=0)
-    lake.max_depth = 10.0
-    elevation = np.array([0.0])
-    out_silt = np.zeros(1)
-    out_is_sea = np.zeros(1, dtype=bool)
-
-    new_level = lakes._water_balance(
-        lake, elevation, years_myr=1.0, is_frozen=True,
-        out_silt_deposited=out_silt, tier_max_depth=lakes.LAKE_MAX_DEPTH_M, is_sea=True,
-        out_lake_is_sea=out_is_sea, climate=_climate([_FLOOD_M3_PER_YR]),
-    )
-    # ...but still silts in from this step's inflow, and never gets marked as open sea while
-    # frozen even if it's big enough to otherwise qualify.
-    assert new_level == lake.floor_elevation
-    assert out_silt[0] > 0.0
-    assert not out_is_sea[0]
-
-
-def test_step_lakes_a_chronically_frozen_pit_still_silts_in_over_time():
-    # Same shape as test_step_lakes_silt_raises_the_floor_and_eventually_fills_a_small_lake_in,
-    # but frozen every single step -- the exact "never holds water" caterpillar-tree case from
-    # GitHub issue #117. Before the fix this lake's floor never moved at all.
-    elevation = _SINK_ELEVATION.astype(float).copy()
-    prev_lake_depth = np.zeros(3)
-    is_frozen = np.ones(3, dtype=bool)
-    flooded = _climate([_FLOOD_M3_PER_YR, 0.0, 0.0])
-
-    for _ in range(400):
-        depth, silt_deposited, _, _, _ = lakes.step_lakes(
-            elevation, _SINK_IS_OCEAN, _SINK_NEIGHBORS, prev_lake_depth, years=1_000_000,
-            is_frozen=is_frozen, climate=flooded,
-        )
-        elevation = elevation + silt_deposited
-        prev_lake_depth = depth
-
-    assert elevation[0] > _SINK_ELEVATION[0]  # the floor silted upward despite being frozen throughout
-    assert (depth == 0.0).all()  # never reports standing water while frozen
 
 
 def _ev(kind, elevation_m, node_count=10, basin_count=2):
@@ -644,7 +580,7 @@ def test_water_balance_caps_depth_at_the_lake_tier_ceiling_even_when_the_real_ri
     out_is_sea = np.zeros(1, dtype=bool)
 
     new_level = lakes._water_balance(
-        lake, elevation, years_myr=1.0, is_frozen=False,
+        lake, elevation, years_myr=1.0,
         out_silt_deposited=out_silt, tier_max_depth=lakes.LAKE_MAX_DEPTH_M, is_sea=False,
         out_lake_is_sea=out_is_sea, climate=flooded,
     )
@@ -661,7 +597,7 @@ def test_water_balance_sea_tier_gets_a_higher_ceiling_and_marks_is_sea():
     out_is_sea = np.zeros(1, dtype=bool)
 
     new_level = lakes._water_balance(
-        lake, elevation, years_myr=1.0, is_frozen=False,
+        lake, elevation, years_myr=1.0,
         out_silt_deposited=out_silt, tier_max_depth=lakes.SEA_MAX_DEPTH_M, is_sea=True,
         out_lake_is_sea=out_is_sea, climate=flooded,
     )
@@ -705,7 +641,7 @@ def test_a_composite_lake_held_below_its_own_saddle_by_the_tier_cap_splits():
 
     lakes._resolve(
         root, _BIG_MERGE_ELEVATION, prev_lake_depth, years_myr=1.0,
-        is_frozen=np.zeros(6, dtype=bool), out_lake_depth=out_lake_depth,
+        out_lake_depth=out_lake_depth,
         out_silt_deposited=out_silt_deposited, out_lake_is_sea=out_lake_is_sea,
         node_area_km2=100.0,  # small -- keeps this scenario at lake tier, not sea
         events=events, climate=flooded,
@@ -731,7 +667,7 @@ def test_a_composite_lake_held_below_its_own_saddle_by_the_tier_cap_splits():
     events2: list[lakes.LakeEvent] = []
     lakes._resolve(
         forest2[0], _BIG_MERGE_ELEVATION, out_lake_depth, years_myr=1.0,
-        is_frozen=np.zeros(6, dtype=bool), out_lake_depth=np.zeros(6),
+        out_lake_depth=np.zeros(6),
         out_silt_deposited=np.zeros(6), out_lake_is_sea=np.zeros(6, dtype=bool),
         node_area_km2=100.0, events=events2, climate=_climate(np.zeros(6)),
     )
@@ -758,7 +694,7 @@ def test_a_child_fed_to_the_saddle_churns_without_creating_water():
         events: list[lakes.LakeEvent] = []
         lakes._resolve(
             root, elevation, prev_lake_depth, years_myr=1.0,
-            is_frozen=np.zeros(6, dtype=bool), out_lake_depth=out_lake_depth,
+            out_lake_depth=out_lake_depth,
             out_silt_deposited=np.zeros(6), out_lake_is_sea=np.zeros(6, dtype=bool),
             node_area_km2=100.0, events=events, climate=climate,
         )
@@ -838,7 +774,7 @@ def test_silt_settles_in_a_lake_that_only_partly_floods_its_cells():
     hyps = _hyps(elevation, np.full(7, 10.0))
     silt = np.zeros(7)
     new_level = lakes._water_balance(
-        lake, elevation, years_myr=0.1, is_frozen=False,
+        lake, elevation, years_myr=0.1,
         out_silt_deposited=silt, tier_max_depth=lakes.LAKE_MAX_DEPTH_M, is_sea=False,
         out_lake_is_sea=np.zeros(7, dtype=bool), climate=_bowl_climate(1.0e8), hypsometry=hyps,
     )
@@ -863,7 +799,7 @@ def test_silt_volume_follows_real_inflow_whatever_the_cell_size():
     def silt_m3(lake_, hyps, climate):
         silt = np.zeros(len(hyps.elevation))
         lakes._water_balance(
-            lake_, hyps.elevation, years_myr=0.1, is_frozen=False, out_silt_deposited=silt,
+            lake_, hyps.elevation, years_myr=0.1, out_silt_deposited=silt,
             tier_max_depth=lakes.LAKE_MAX_DEPTH_M, is_sea=False,
             out_lake_is_sea=np.zeros(len(silt), dtype=bool), climate=climate, hypsometry=hyps,
         )
@@ -920,7 +856,7 @@ def test_water_balance_with_climate_uses_the_balanced_level():
     hyps = _hyps(elevation, np.full(7, 10.0))
     climate = _bowl_climate(2.0e10)
     new_level = lakes._water_balance(
-        lake, elevation, years_myr=0.1, is_frozen=False,
+        lake, elevation, years_myr=0.1,
         out_silt_deposited=np.zeros(7), tier_max_depth=lakes.LAKE_MAX_DEPTH_M, is_sea=False,
         out_lake_is_sea=np.zeros(7, dtype=bool), climate=climate, hypsometry=hyps,
     )

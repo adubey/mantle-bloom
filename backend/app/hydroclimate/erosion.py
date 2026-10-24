@@ -285,11 +285,12 @@ EARTHQUAKE_EROSION_MW_REF = 6.5
 EARTHQUAKE_EROSION_REACH_KM_PER_MW = 12.0
 
 # Mass-wasting runout (issue #275 phase 4). Landslide and rockfall debris moves by gravity, not
-# with liquid water, so seismic erosion no longer joins the water-routed pool. That pool stops
-# dead at a frozen node (hydrology gives frozen land no flow target), and nearly every column
-# at the Hc cap is a frozen summit: its debris was "deposited" straight back where it came
-# from, so the highest belts never lost any net rock. `_route_mass_wasting` instead carries the
-# debris down the bare-rock steepest-descent path, frozen or not, and settles it where the
+# with liquid water, so seismic erosion doesn't join the water-routed pool. That pool used to
+# stop dead at a frozen node, and nearly every column at the Hc cap is a frozen summit: its
+# debris was "deposited" straight back where it came from, so the highest belts never lost any
+# net rock. (Water now flows on through cold nodes, RFC 0014 D2(b), #539, but debris still
+# follows gravity rather than water.) `_route_mass_wasting` carries the debris down the
+# bare-rock steepest-descent path, with no lake-spill or ice edges, and settles it where the
 # ground flattens out -- the foreland. On ground at or above MASS_WASTING_RUNOUT_SLOPE (a
 # mountain flank) none of it settles; on flat ground it all does, linearly in between. A
 # column within MASS_WASTING_HEADROOM_TAPER_M of the Hc cap takes proportionally less, and none
@@ -384,8 +385,7 @@ MARINE_SPREAD_NEIGHBOR_COUNT = 8
 # route_downstream directly (the same "elevation-descending sweep along a flow_target graph,
 # retain_fraction settles material locally" engine the ordinary river-deposition pool already
 # uses below), but along hydrology.HydrologyFields.ice_flow_target (the ice's own real downhill
-# flow path, not water's -- see that field's own comment for the frozen-node routing this
-# depends on) instead of flow_target, retaining in full the moment a hop reaches a node with
+# flow path down the ice surface, not water's) instead of flow_target, retaining in full the moment a hop reaches a node with
 # less than hydrology.GLACIER_VISIBLE_DEPTH_M of its own ice -- genuinely outside the glacier --
 # rather than continuing to travel once there's no more ice there to carry it. A real terminal
 # moraine/outwash deposit built beyond the ice margin, not debris stranded throughout the

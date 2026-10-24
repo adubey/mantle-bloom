@@ -703,7 +703,6 @@ def _water_balance(
     lake: Lake,
     elevation: np.ndarray,
     years_myr: float,
-    is_frozen: bool,
     out_silt_deposited: np.ndarray,
     tier_max_depth: float,
     is_sea: bool,
@@ -733,20 +732,11 @@ def _water_balance(
     higher catchment nodes -- which are `members` too, see the module docstring -- never get
     raised. Clamped so one step's fill can't lift the bed past the basin rim (`max_depth`).
 
-    A lake with any member currently below freezing (`hydrology.FREEZE_POINT_C` -- the real 0C
-    freezing point, on the annual mean; glacier melt instead runs on an imputed seasonal cycle,
-    see `hydrology.GLACIER_MELT_THRESHOLD_C`) freezes solid this step -- forced to its own dry floor
-    (`out_lake_depth` reads 0 everywhere for it, matching the old system's all-or-nothing
-    freeze simplification generalized from one node to a lake's whole connected surface) -- but
-    still deposits silt. This step's inflow is still routed here at the mild 0C threshold (a
-    seasonally-freezing lake, not necessarily a permanently ice-locked one) and real meltwater
-    still carries a suspended sediment load that settles onto the bed even when the surface
-    itself won't be reported as open water this step; skipping silt too would leave any
-    catchment that's frozen *every* step it's ever resolved with zero fill forever regardless of
-    how much inflow reaches it, one of the two literal "never holds water, gets nothing" gaps
-    behind GitHub issue #117's lake-hierarchy caterpillar trees (thousands of tiny, high, often
-    sub-freezing catchments each staying their own permanent `Lake` leaf instead of silting
-    into their neighbors)."""
+    A cold lake keeps its liquid water and balances like any other (RFC 0014 D2(b), #539).
+    Until then a lake with any member below freezing on the annual mean was forced dry, and the
+    water its inflow brought was booked nowhere: a sub-zero annual mean doesn't mean the lake
+    never thaws (design principle 3), and ice cover doesn't stop inflow, storage or spill.
+    Silt was still deposited on such lakes (#117), and every lake now deposits it the same way."""
     hyps = hypsometry if hypsometry is not None else CellHypsometry.whole_cells(elevation)
     members = lake.members
     # The same real inflow that sets the level sizes the silt (issue #363).
@@ -763,7 +753,7 @@ def _water_balance(
     wet_fraction = hyps.wet_fraction(new_level, members)
     is_wet = wet_fraction > 0.0
     wet = members[is_wet]
-    if is_sea and len(wet) > 0 and not is_frozen:
+    if is_sea and len(wet) > 0:
         out_lake_is_sea[wet] = True
     if len(wet) > 0:
         # The silt volume settles evenly over the wet area, so a partly flooded cell gains its
@@ -777,7 +767,7 @@ def _water_balance(
         # water it holds, as a mean depth.
         room = hyps.mean_depth(new_level, wet)
         out_silt_deposited[wet] += np.minimum(silt_rise, room)
-    return dry_level if is_frozen else new_level
+    return new_level
 
 
 def _already_merged(
@@ -938,7 +928,6 @@ def _resolve(
     elevation: np.ndarray,
     prev_lake_depth: np.ndarray,
     years_myr: float,
-    is_frozen: np.ndarray,
     out_lake_depth: np.ndarray,
     out_silt_deposited: np.ndarray,
     out_lake_is_sea: np.ndarray,
@@ -1042,10 +1031,9 @@ def _resolve(
             # If this body splits, its merged resolution is discarded, silt and sea flags too.
             saved_silt = out_silt_deposited[node.members]
             saved_sea = out_lake_is_sea[node.members]
-        node_is_frozen = bool(is_frozen[node.members].any())
         is_sea, tier_max_depth = _classify_tier(node.members, prev_lake_depth, node_area_km2)
         new_level = _water_balance(
-            node, elevation, years_myr, node_is_frozen,
+            node, elevation, years_myr,
             out_silt_deposited, tier_max_depth, is_sea, out_lake_is_sea, climate, hyps,
         )
         if node.children and new_level < node.min_depth:
@@ -1072,7 +1060,6 @@ def resolve_lakes(
     elevation: np.ndarray,
     prev_lake_depth: np.ndarray,
     years: float,
-    is_frozen: np.ndarray,
     climate: LakeClimate,
     hypsometry: CellHypsometry | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[LakeEvent]]:
@@ -1110,7 +1097,7 @@ def resolve_lakes(
     events: list[LakeEvent] = []
     for root in forest:
         _resolve(
-            root, elevation, prev_lake_depth, years_myr, is_frozen,
+            root, elevation, prev_lake_depth, years_myr,
             lake_depth, silt_deposited, lake_is_sea, node_area_km2, events, climate, hypsometry,
         )
     return lake_depth, silt_deposited, lake_is_sea, events
@@ -1122,7 +1109,6 @@ def step_lakes(
     neighbor_idx: np.ndarray,
     prev_lake_depth: np.ndarray,
     years: float,
-    is_frozen: np.ndarray,
     climate: LakeClimate,
     hypsometry: CellHypsometry | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[Lake], list[LakeEvent]]:
@@ -1151,6 +1137,6 @@ def step_lakes(
     calls `world.log_event` directly, keeping it testable without a `World`)."""
     forest = build_lake_hierarchy(elevation, is_ocean, neighbor_idx)
     lake_depth, silt_deposited, lake_is_sea, events = resolve_lakes(
-        forest, elevation, prev_lake_depth, years, is_frozen, climate, hypsometry
+        forest, elevation, prev_lake_depth, years, climate, hypsometry
     )
     return lake_depth, silt_deposited, lake_is_sea, forest, events

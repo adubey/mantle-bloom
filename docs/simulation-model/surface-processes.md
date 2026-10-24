@@ -266,12 +266,12 @@ nodes sitting right at a glacier's edge (ice-free themselves, with at least one 
 neighbor) received roughly 7x the mean sediment deposit of ordinary land elsewhere.
 
 **Landslide debris runs out by gravity ([issue #275](https://github.com/adubey/mantle-bloom/issues/275) phase 4).**
-Seismic erosion's debris doesn't join the water-routed pool. That pool stops dead at a frozen
-node, because hydrology gives frozen land no flow target, and nearly every column at
-`MAX_CRUSTAL_THICKNESS_M` is a frozen summit. So its landslide debris used to settle straight
-back where it came from, and the highest collision belts never lost any net rock.
-`_route_mass_wasting` instead hands each node's debris to its lowest strictly-lower neighbour on
-the bare-rock surface, frozen or not, with no lake-spill or ice edges. Debris leaves its source.
+Seismic erosion's debris doesn't join the water-routed pool: it moves by gravity, not with
+water. (That pool also used to stop dead at a frozen node, where nearly every column at
+`MAX_CRUSTAL_THICKNESS_M` sits, so landslide debris settled straight back where it came from and
+the highest collision belts never lost any net rock. Water now flows on through cold nodes, RFC
+0014 D2(b), #539.) `_route_mass_wasting` hands each node's debris to its lowest strictly-lower
+neighbour on the bare-rock surface, with no lake-spill or ice edges. Debris leaves its source.
 From the first node downslope, a share settles wherever it passes. None settles on ground at or
 above `MASS_WASTING_RUNOUT_SLOPE` (0.005, a mountain flank), all of it on flat ground, and a
 linear share in between: the foreland basin at the foot of the range. A column within

@@ -66,9 +66,9 @@ captured: dict = {}
 _orig_resolve_lakes = lakes.resolve_lakes
 
 
-def _capture(forest, elevation, prev_lake_depth, years, is_frozen, climate, hypsometry=None):
+def _capture(forest, elevation, prev_lake_depth, years, climate, hypsometry=None):
     captured.update(climate=climate, hyps=hypsometry)
-    return _orig_resolve_lakes(forest, elevation, prev_lake_depth, years, is_frozen, climate, hypsometry)
+    return _orig_resolve_lakes(forest, elevation, prev_lake_depth, years, climate, hypsometry)
 
 
 lakes.resolve_lakes = _capture

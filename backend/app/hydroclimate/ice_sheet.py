@@ -395,19 +395,19 @@ class BodyBalance:
 @dataclass
 class IceLedger:
     """The world's glacier-ice budget for one step (m^3 of ice). `opening_m3` is last step's
-    glacier_depth, which includes last step's frozen river ice; frozen lake water joins this
-    step (`frozen_lake_m3`). `closing_m3` is the ice after the solve; hydrology then adds this
-    step's frozen river ice (`frozen_river_ice_m3`, a one-step lag, issue #353 section 5), so
-    next step's opening is closing + frozen_river_ice. `snow_melted_m3` is snowfall on
-    ice-free ground that melts within the step and never joins the ice.
+    glacier_depth and `closing_m3` the ice after the solve, which is next step's opening.
+    `snow_melted_m3` is snowfall on ice-free ground that melts within the step and never joins
+    the ice.
+
+    `frozen_lake_m3`, `frozen_river_ice_m3` and `frozen_river_capped_m3` are always 0: liquid
+    water no longer freezes into the ice (RFC 0014 D2(b), #539). They stay so older code and
+    caches reading them still work, and RFC 0015 D5 deletes them.
 
     `capped_m3` is ice shed as meltwater at the GLACIER_MAX_DEPTH_M guard, and
     `capped_nodes` how many nodes reached it (including sheets whose plastic profile was
     flattened there, which sheds nothing). Real ice spreads and melts at its base long before
     5 km, so either being nonzero means some sink or flow is missing for that ice, and it is
-    logged as a warning (`warn_if_capped`). `frozen_river_capped_m3` is frozen river ice the
-    same guard clipped after routing (outside the solve's identity, like
-    `frozen_river_ice_m3`); it returns to the ocean's share of the water budget."""
+    logged as a warning (`warn_if_capped`)."""
 
     opening_m3: float = 0.0
     frozen_lake_m3: float = 0.0
@@ -447,16 +447,6 @@ def warn_if_capped(ledger: IceLedger) -> None:
         "glacier ice reached GLACIER_MAX_DEPTH_M (%.0f m) at %d nodes, %.3g km^3 shed as meltwater: "
         "a missing sink or flow for ice this thick",
         hydrology.GLACIER_MAX_DEPTH_M, ledger.capped_nodes, ledger.capped_m3 / 1e9,
-    )
-
-
-def warn_if_river_ice_capped(ledger: IceLedger) -> None:
-    """Log a warning when frozen river ice was clipped at GLACIER_MAX_DEPTH_M (see `IceLedger`)."""
-    if ledger.frozen_river_capped_m3 <= 0.0:
-        return
-    _logger.warning(
-        "frozen river ice clipped at GLACIER_MAX_DEPTH_M (%.0f m): %.3g km^3 not added to the ice",
-        hydrology.GLACIER_MAX_DEPTH_M, ledger.frozen_river_capped_m3 / 1e9,
     )
 
 
@@ -777,7 +767,6 @@ def step_ice(
     prior_deflection_m: np.ndarray,
     sea_level_m: float,
     prev_depth: np.ndarray,
-    frozen_from_lake: np.ndarray,
     climate: SurfaceClimate,
     mobile_cover_m: np.ndarray,
     is_ocean: np.ndarray,
@@ -805,9 +794,8 @@ def step_ice(
     dt_myr = years / 1_000_000.0
     bed = elevation - prior_deflection_m
     opening_depth = np.clip(prev_depth, 0.0, None)
-    lake_ice = np.clip(frozen_from_lake, 0.0, None)
-    ledger = IceLedger(opening_m3=float(np.dot(opening_depth, area)), frozen_lake_m3=float(np.dot(lake_ice, area)))
-    h0 = opening_depth + lake_ice
+    ledger = IceLedger(opening_m3=float(np.dot(opening_depth, area)))
+    h0 = opening_depth
     out = _Output(n)
 
     # The sea-ice cap: the old per-node rule, minus flow.
@@ -910,7 +898,7 @@ def step_ice(
     thickness = out.thickness
     is_warm = warm_based(thickness, climate.temperature_c - LAPSE_RATE_C_PER_KM * thickness / 1000.0)
     flux, _, sliding = _diagnose_flow(
-        points, neighbor_idx, area, out.surface, out.depth, opening_depth + lake_ice, thickness, out.covered, climate, is_warm, years,
+        points, neighbor_idx, area, out.surface, out.depth, opening_depth, thickness, out.covered, climate, is_warm, years,
     )
     melt_m = out.melt_m3 / np.where(area > 0.0, area, 1.0)
     return out.depth, melt_m, IceStep(

@@ -118,12 +118,11 @@ def _continent(spacing_km=125.0, land_radius_km=900.0, half_km=1300.0, ocean_flo
     return points, r, elevation, np.full(len(points), cell)
 
 
-def _step(points, area, elevation, depth, climate, years, sea_level=0.0, frozen_lake=None, allow_ocean_ice=None):
+def _step(points, area, elevation, depth, climate, years, sea_level=0.0, allow_ocean_ice=None):
     n = len(points)
     is_ocean = elevation <= sea_level
     return ice_sheet.step_ice(
-        points, _neighbors(points), area, elevation, np.zeros(n), sea_level, depth,
-        np.zeros(n) if frozen_lake is None else frozen_lake, climate, np.zeros(n), is_ocean,
+        points, _neighbors(points), area, elevation, np.zeros(n), sea_level, depth, climate, np.zeros(n), is_ocean,
         np.zeros(n, dtype=bool) if allow_ocean_ice is None else allow_ocean_ice, years,
     )
 
@@ -138,11 +137,9 @@ def test_volume_contract_closes_per_body_and_across_the_world():
     points, r, elevation, area = _continent()
     climate = _graded_climate(r)
     depth = np.zeros(len(points))
-    lake = np.zeros(len(points))
-    lake[np.argmin(r)] = 40.0  # a lake freezing at the centre joins the ice
-    for step in range(3):
+    for _ in range(3):
         opening = float(np.dot(depth, area))
-        depth, melt, ice = _step(points, area, elevation, depth, climate, 1e6, frozen_lake=lake if step == 1 else None)
+        depth, melt, ice = _step(points, area, elevation, depth, climate, 1e6)
         ledger = ice.ledger
         scale = max(ledger.accumulation_m3, ledger.closing_m3, 1.0)
         assert ledger.opening_m3 == pytest.approx(opening)
@@ -150,8 +147,8 @@ def test_volume_contract_closes_per_body_and_across_the_world():
         assert ledger.closing_m3 == pytest.approx(float(np.dot(depth, area)))
         for body in ice.bodies:
             assert abs(body.residual_m3) < 1e-9 * max(body.accumulation_m3, body.closing_m3, 1.0)
-        # Ice is never created: closing <= opening + lake ice + accumulation.
-        assert ledger.closing_m3 <= ledger.opening_m3 + ledger.frozen_lake_m3 + ledger.accumulation_m3 + 1e-9 * scale
+        # Ice is never created: closing <= opening + accumulation.
+        assert ledger.closing_m3 <= ledger.opening_m3 + ledger.accumulation_m3 + 1e-9 * scale
         # Every booked sink reaches the water or the ocean: melt (with snow on bare ground) as
         # meltwater at its node, calving unrouted.
         assert float(np.dot(melt, area)) == pytest.approx(ledger.meltwater_m3, rel=1e-9, abs=1.0)
