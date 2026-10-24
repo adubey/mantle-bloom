@@ -58,12 +58,16 @@ MAX_RENDER_DIMENSION_PX = 4000
 # (see _animation_stop_event below) -- that mode is meant to be ended by the user, not by
 # this cap, but the cap still applies underneath so a forgotten run can't loop forever.
 MAX_ANIMATION_FRAMES = 480
-# Ceiling on one step's years for /world/step and /world/animate (#557): the UI's
-# largest "Years per step" choice is 10 Myr and debug replays step 10 Myr at a
-# time, so 100 Myr leaves 10x headroom while stopping a single request from
-# asking for an unbounded advance. Positivity/finiteness reuse
+# Ceilings on one step's years for /world/step, /world/animate and /world/run
+# (#557): the UI's largest "Years per step" choice is 10 Myr and debug replays
+# step 10 Myr at a time, so 100 Myr leaves 10x headroom while stopping a single
+# request from asking for an unbounded advance. Positivity/finiteness reuse
 # checkpoint.valid_step_years, the same rule /world/run already applies.
 MAX_STEP_YEARS = 100_000_000.0
+# Same idea for /world/animate's steps per frame: the dialog offers 1/10/100,
+# so 1000 leaves 10x headroom while bounding a request's total step count
+# (num_frames x steps_per_frame) through this factor too (#557).
+MAX_STEPS_PER_FRAME = 1000
 
 
 
@@ -342,12 +346,12 @@ def _require_world() -> World:
     return world
 
 
-def _require_valid_step_years(years: float) -> None:
-    """400 unless `years` is a positive, finite step under MAX_STEP_YEARS (#557)."""
+def _require_valid_step_years(years: float, field: str = "years") -> None:
+    """400 unless `years` is a positive, finite step of at most MAX_STEP_YEARS (#557)."""
     if not checkpoint.valid_step_years(years) or years > MAX_STEP_YEARS:
         raise HTTPException(
             status_code=400,
-            detail=f"years must be positive, finite, and at most {MAX_STEP_YEARS:g}",
+            detail=f"{field} must be positive, finite, and at most {MAX_STEP_YEARS:,.0f}",
         )
 
 
@@ -1050,9 +1054,11 @@ def animate(req: AnimateRequest) -> StreamingResponse:
         raise HTTPException(status_code=400, detail=f"width/height must be in [1, {MAX_RENDER_DIMENSION_PX}]")
     if not (1 <= req.num_frames <= MAX_ANIMATION_FRAMES):
         raise HTTPException(status_code=400, detail=f"num_frames must be in [1, {MAX_ANIMATION_FRAMES}]")
-    if req.steps_per_frame < 1:
-        raise HTTPException(status_code=400, detail="steps_per_frame must be >= 1")
-    _require_valid_step_years(req.step_years)
+    if not 1 <= req.steps_per_frame <= MAX_STEPS_PER_FRAME:
+        raise HTTPException(
+            status_code=400, detail=f"steps_per_frame must be in [1, {MAX_STEPS_PER_FRAME}]"
+        )
+    _require_valid_step_years(req.step_years, field="step_years")
     view_rotation = _parse_view_rotation(req.rotation)
 
     # Acquire `_world_lock` synchronously, not via a `with` block -- the response streams, so
@@ -2122,8 +2128,7 @@ def set_run(req: RunRequest) -> dict:
     retried with the next world checkpoint)."""
     current = _runner.status()
     step_years = current.step_years if req.step_years is None else req.step_years
-    if not checkpoint.valid_step_years(step_years):
-        raise HTTPException(status_code=400, detail="step_years must be a positive number")
+    _require_valid_step_years(step_years, field="step_years")
     if req.running:
         _require_world()
     try:
