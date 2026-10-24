@@ -10,7 +10,9 @@ Steps the save for `--myr` in `--step-years` steps and records, per step:
 - unbooked lake inflow (m^3/s): for every lake body resolved at its own balance this step (each
   `lakes._water_balance` call whose level was written out, not one discarded by a split or
   overwritten by a merge), the inflow that its evaporation at that level doesn't remove, summed
-  over bodies that neither spill, drain at their floor nor sit at a depth cap. A lake at its
+  over bodies that neither spill, drain at their floor nor sit at a depth cap. Only water that
+  settles counts: a sink that spilled on last step's water passes its through-flow on, and that
+  water isn't lost even though `LakeClimate.inflow_m3_per_yr` includes it. A lake at its
   balance has none; a lake dried by a frozen member (before #539) leaves all its inflow
   unbooked. Bodies held at a depth cap are summed separately (`held_at_depth_cap_m3_s`): the
   cap holds that water back, which is RFC 0014 D4's question, not this issue's. Before #539
@@ -120,7 +122,8 @@ def lake_balance(f):
             continue  # overwritten by a merge or a parent's resolution
         if lake.drains_at_floor or (lake.max_depth is not None and level >= lake.max_depth - 1e-6):
             continue  # its water passes on through the outlet
-        inflow = climate.inflow_m3_per_yr[m] if frozen is None else np.where(frozen[m], 0.0, climate.inflow_m3_per_yr[m])
+        settled = climate.inflow_m3_per_yr[m] - np.where(f.should_spill[m], f.discharge_m3_s[m] * SECONDS_PER_YEAR, 0.0)
+        inflow = np.clip(settled, 0.0, None) if frozen is None else np.where(frozen[m], 0.0, np.clip(settled, 0.0, None))
         surplus = float(inflow.sum()) - lakes.lake_evaporation_m3_per_yr(level, m, hyps, climate)
         rim_depth = None if lake.max_depth is None else lake.max_depth - lake.floor_elevation
         at_cap = (rim_depth is None or tier_depth < rim_depth) and level >= lake.floor_elevation + tier_depth - 1e-6
