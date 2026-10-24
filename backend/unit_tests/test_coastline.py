@@ -27,7 +27,7 @@ def _climate_fields(is_ocean: np.ndarray) -> climate.ClimateFields:
         wind_v=zeros,
         current_u=zeros,
         current_v=zeros,
-        humidity=zeros,
+        humidity_g_kg=zeros,
         precipitation_mm=zeros,
         biome_ids=np.zeros((height, width), dtype=int),
         swell_rows=np.zeros(0, dtype=int),

@@ -1,16 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import type { KeyboardEvent } from "react";
 import type {
   EarthquakeSummary, FaultKind, FaultSummary, FaultSystemSummary, PlateSummary, Projection, Segment, VolcanoSummary,
 } from "./api";
-import { fetchPlateAt } from "./api";
-import type { Mat3, RenderTransform, Vec3 } from "./rotation";
-import {
-  getRenderTransform, latLonToXyz, matApply, matTranspose, project, rotationMatrix, toPixels, unproject,
-  wrapLongitudeNear, xyzToLatLon,
-} from "./rotation";
-import { useRotationDrag } from "./rotationDrag";
+import InspectorCanvas from "./InspectorCanvas";
+import type { InspectorViewProps } from "./InspectorCanvas";
+import type { Mat3, Vec3 } from "./rotation";
+import { latLonToXyz, matApply, rotationMatrix } from "./rotation";
 import { plateColor } from "./platePalette";
+import { beginInspectorFrame, plateSelection, strokeSegments } from "./inspectorDrawing";
+import { strokeRobustLoop } from "./screenProjector";
 
 // The server-rendered transparent layers (backend render_image.LAYER_VIEWS) drawn under the
 // vectors, tagged with the projection + rotation they were rendered for -- a raster can't be
@@ -22,7 +20,7 @@ export interface PlatesLayers {
   water: string | null;
 }
 
-interface Props {
+interface Props extends InspectorViewProps {
   plates: PlateSummary[];
   faults: FaultSummary[];
   faultSystems: FaultSystemSummary[];
@@ -46,30 +44,16 @@ interface Props {
   // faultKindForLegendLabel): that kind's strands + systems are haloed and everything else on
   // the map is dimmed right back, so you can see where that regime sits. null = no isolation.
   highlightedFaultKind: FaultKind | null;
-  width: number;
-  height: number;
-  displayWidth: number;
-  displayHeight: number;
-  projection: Projection;
-  // The currently *committed* view rotation -- same rotation state MapCanvas/the other
-  // inspectors share, so switching between views preserves orientation.
-  rotation: Mat3;
   selectedPlateId: number | null;
   onSelectPlate: (id: number | null) => void;
-  onRotationPreview: (latDeg: number, lonDeg: number) => void;
-  onRotationCommitted: (rotation: Mat3) => void;
-  // Inert rotate-drag + click while a background animation holds the world lock (see App.tsx).
-  interactionDisabled?: boolean;
 }
 
-const BACKGROUND = "#0b1020";
 
 // --- Plate drawing --- just the outline loop now (no bounding ellipse, no per-node dots): the
 // view is the plate + fault geometry over a coastline, nothing else. Non-selected outlines sit
 // at OUTLINE_ALPHA in each plate's own palette colour, the selected one opaque and thicker.
 const OUTLINE_ALPHA = 0.6;
 const OUTLINE_ALPHA_SELECTED = 1.0;
-const SEGMENT_BREAK_FACTOR = 6;
 
 // The selected plate's Euler pole + motion arc, and a bright cyan distinct from every plate
 // palette hue and from the three fault regime colours.
@@ -148,11 +132,10 @@ const loopCentroid = (pts: Vec3[]): Vec3 => {
 export default function PlatesAndFaults({
   plates, faults, faultSystems, earthquakes, volcanoes, coastlineSegments, showQuakesVolcanoes,
   showFaults, showCratons, showWater, layers, highlightCratons, highlightedFaultKind,
-  width, height, displayWidth, displayHeight, projection, rotation,
-  selectedPlateId, onSelectPlate, onRotationPreview, onRotationCommitted, interactionDisabled,
+  selectedPlateId, onSelectPlate, ...view
 }: Props) {
+  const { width, height, projection, rotation } = view;
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
   const cratonImage = useDecodedImage(layers?.craton);
   const waterImage = useDecodedImage(layers?.water);
 
@@ -162,72 +145,11 @@ export default function PlatesAndFaults({
       .map((f) => f.system_id as number),
   );
 
-  // Projects a closed loop of *true* world points, unwrapping every point's longitude
-  // relative to the loop's own (rotated) center -- see PlateInspector.projectLoop.
-  const projectLoop = (worldPts: Vec3[], centerXyz: Vec3, previewRotation: Mat3, transform: RenderTransform): [number, number][] => {
-    const [, centerLon] = xyzToLatLon(matApply(previewRotation, centerXyz));
-    return worldPts.map((p) => {
-      const r = matApply(previewRotation, p);
-      const lat = Math.asin(Math.min(1, Math.max(-1, r[2])));
-      const lon = wrapLongitudeNear(Math.atan2(r[1], r[0]), centerLon);
-      const [x, y] = project(projection, lat, lon);
-      return toPixels(transform, x, y);
-    });
-  };
-
-  const strokeRobustLoop = (
-    ctx: CanvasRenderingContext2D, pixels: [number, number][], color: string, lineWidth: number,
-  ) => {
-    const n = pixels.length;
-    if (n < 2) return;
-    const segLengths: number[] = [];
-    for (let i = 0; i < n; i++) {
-      const next = pixels[(i + 1) % n];
-      segLengths.push(Math.hypot(next[0] - pixels[i][0], next[1] - pixels[i][1]));
-    }
-    const sorted = [...segLengths].sort((a, b) => a - b);
-    const median = sorted[Math.floor(sorted.length / 2)] || 0;
-    const breakThreshold = Math.max(median * SEGMENT_BREAK_FACTOR, 20 * (width / 1100));
-    ctx.strokeStyle = color;
-    ctx.lineWidth = lineWidth;
-    for (let i = 0; i < n; i++) {
-      if (segLengths[i] > breakThreshold) continue;
-      const next = pixels[(i + 1) % n];
-      ctx.beginPath();
-      ctx.moveTo(pixels[i][0], pixels[i][1]);
-      ctx.lineTo(next[0], next[1]);
-      ctx.stroke();
-    }
-  };
-
-  // Projects one edge (two *true* world points), unwrapping the second relative to the first
-  // -- see RiverInspector.projectSegment for why a naive independent projection bows an edge
-  // across the antimeridian seam.
-  const projectEdge = (
-    a: Vec3, b: Vec3, previewRotation: Mat3, transform: RenderTransform,
-  ): [[number, number], [number, number]] => {
-    const ra = matApply(previewRotation, a);
-    const latA = Math.asin(Math.min(1, Math.max(-1, ra[2])));
-    const lonA = Math.atan2(ra[1], ra[0]);
-    const rb = matApply(previewRotation, b);
-    const latB = Math.asin(Math.min(1, Math.max(-1, rb[2])));
-    const lonB = wrapLongitudeNear(Math.atan2(rb[1], rb[0]), lonA);
-    const [xA, yA] = project(projection, latA, lonA);
-    const [xB, yB] = project(projection, latB, lonB);
-    return [toPixels(transform, xA, yA), toPixels(transform, xB, yB)];
-  };
-
   // oxlint-disable-next-line eslint/complexity -- over the cap when it was turned on; split it rather than add more
   const draw = (previewRotation: Mat3) => {
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext("2d");
-    if (!canvas || !ctx) return;
-    ctx.fillStyle = BACKGROUND;
-    ctx.fillRect(0, 0, width, height);
-
-    const transform = getRenderTransform(projection, width, height);
-    const pixelScale = width / 1100;
-    const lineWidth = Math.max(1, pixelScale);
+    const frame = beginInspectorFrame(canvasRef.current, projection, previewRotation, width, height);
+    if (!frame) return;
+    const { ctx, projector, pixelScale, lineWidth } = frame;
     // A fault type (or the cratons) is isolated from the legend -- dim the standing geometry
     // (coastline, plate outlines, other regimes, the activity overlay) so it reads clearly.
     const hk = highlightedFaultKind;
@@ -240,27 +162,8 @@ export default function PlatesAndFaults({
     // seam wrapping, not a real edge -- skip it (see strokeRobustLoop's own break logic).
     const seamJump = Math.max(40 * pixelScale, width * 0.25);
 
-    const projectPoint = (v: Vec3): [number, number] => {
-      const r = matApply(previewRotation, v);
-      const lat = Math.asin(Math.min(1, Math.max(-1, r[2])));
-      const lon = Math.atan2(r[1], r[0]);
-      const [x, y] = project(projection, lat, lon);
-      return toPixels(transform, x, y);
-    };
-
-    const strokeEdges = (edges: [Vec3, Vec3][], color: string, w: number, dash: number[] = []) => {
-      ctx.strokeStyle = color;
-      ctx.lineWidth = w;
-      ctx.setLineDash(dash);
-      for (const [a, b] of edges) {
-        const [[x1, y1], [x2, y2]] = projectEdge(a, b, previewRotation, transform);
-        ctx.beginPath();
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(x2, y2);
-        ctx.stroke();
-      }
-      ctx.setLineDash([]);
-    };
+    const strokeEdges = (edges: [Vec3, Vec3][], color: string, w: number, dash: number[] = []) =>
+      strokeSegments(ctx, projector, edges, color, w, dash);
 
     const strokePolyline = (trace: [number, number, number][], color: string, w: number, dash: number[] = []) => {
       if (trace.length < 2) return;
@@ -271,7 +174,7 @@ export default function PlatesAndFaults({
       ctx.setLineDash(dash);
       ctx.beginPath();
       for (let i = 0; i + 1 < trace.length; i++) {
-        const [[x1, y1], [x2, y2]] = projectEdge(trace[i] as Vec3, trace[i + 1] as Vec3, previewRotation, transform);
+        const [[x1, y1], [x2, y2]] = projector.segment(trace[i] as Vec3, trace[i + 1] as Vec3);
         ctx.moveTo(x1, y1);
         ctx.lineTo(x2, y2);
       }
@@ -310,9 +213,9 @@ export default function PlatesAndFaults({
       if (plate.outline.length === 0) return;
       const [r, g, b] = plateColor(plate.plate_id);
       const center = loopCentroid(plate.outline as Vec3[]);
-      const pixels = projectLoop(plate.outline, center, previewRotation, transform);
+      const pixels = projector.loop(plate.outline, center);
       const alpha = (selected ? OUTLINE_ALPHA_SELECTED : OUTLINE_ALPHA) * contextDim;
-      strokeRobustLoop(ctx, pixels, `rgba(${r}, ${g}, ${b}, ${alpha})`, selected ? lineWidth * 2 : lineWidth);
+      strokeRobustLoop(ctx, pixels, `rgba(${r}, ${g}, ${b}, ${alpha})`, selected ? lineWidth * 2 : lineWidth, width);
     };
 
     for (const plate of plates) {
@@ -358,7 +261,7 @@ export default function PlatesAndFaults({
       }
       strokeEdges(edges, `rgba(${KIND_RGB[fault.kind]}, ${alpha})`, muted ? Math.max(1, w * 0.7) : w, dash);
       if (bf) return;
-      const [mx, my] = projectPoint(fault.trace[Math.floor(fault.trace.length / 2)] as Vec3);
+      const [mx, my] = projector.point(fault.trace[Math.floor(fault.trace.length / 2)] as Vec3);
       const r = 2.6 * pixelScale;
       ctx.fillStyle = `rgba(${KIND_RGB[fault.kind]}, ${alpha})`;
       ctx.strokeStyle = `rgba(${KIND_RGB[fault.kind]}, ${Math.min(1, alpha + 0.15)})`;
@@ -396,7 +299,7 @@ export default function PlatesAndFaults({
       ctx.lineWidth = lineWidth * 2.2;
       ctx.lineCap = "round";
       for (let i = 0; i + 1 < arcPts.length; i++) {
-        const [[x1, y1], [x2, y2]] = projectEdge(arcPts[i], arcPts[i + 1], previewRotation, transform);
+        const [[x1, y1], [x2, y2]] = projector.segment(arcPts[i], arcPts[i + 1]);
         if (Math.hypot(x2 - x1, y2 - y1) > seamJump) continue;
         ctx.beginPath();
         ctx.moveTo(x1, y1);
@@ -405,7 +308,7 @@ export default function PlatesAndFaults({
       }
       ctx.lineCap = "butt";
       // Arrowhead at the leading end (direction = right-hand rotation about the Euler pole).
-      const [tailPx, tipPx] = projectEdge(arcPts[STEPS - 1], arcPts[STEPS], previewRotation, transform);
+      const [tailPx, tipPx] = projector.segment(arcPts[STEPS - 1], arcPts[STEPS]);
       if (Math.hypot(tipPx[0] - tailPx[0], tipPx[1] - tailPx[1]) < seamJump) {
         const ang = Math.atan2(tipPx[1] - tailPx[1], tipPx[0] - tailPx[0]);
         const ah = 9 * pixelScale;
@@ -419,7 +322,7 @@ export default function PlatesAndFaults({
       }
       // Euler pole glyph: a ringed crosshair at the pole, a hollow ring at its antipode.
       const drawPole = (axis: Vec3, filled: boolean) => {
-        const [px, py] = projectPoint(axis);
+        const [px, py] = projector.point(axis);
         const rr = 5 * pixelScale;
         ctx.strokeStyle = `rgba(${MOTION_RGB}, ${ma})`;
         ctx.fillStyle = `rgba(${MOTION_RGB}, ${ma})`;
@@ -449,7 +352,7 @@ export default function PlatesAndFaults({
     for (const q of earthquakes) {
       const recency = Math.max(0, 1 - q.age_myr / EARTHQUAKE_RETAIN_MYR);
       if (recency <= 0) continue;
-      const [ex, ey] = projectPoint(q.epicenter as Vec3);
+      const [ex, ey] = projector.point(q.epicenter as Vec3);
       const r = (1.5 + 1.6 * Math.max(0, q.magnitude - 4)) * pixelScale;
       ctx.beginPath();
       ctx.arc(ex, ey, r, 0, 2 * Math.PI);
@@ -462,7 +365,7 @@ export default function PlatesAndFaults({
 
     // 6. Volcanoes -- an upward triangle, filled when still active, hollow when dormant.
     for (const v of volcanoes) {
-      const [vx, vy] = projectPoint(v.position as Vec3);
+      const [vx, vy] = projector.point(v.position as Vec3);
       const s = 3.4 * pixelScale;
       ctx.beginPath();
       ctx.moveTo(vx, vy - s);
@@ -488,58 +391,5 @@ export default function PlatesAndFaults({
     highlightedFaultKind, selectedPlateId, projection, rotation, width, height,
   ]);
 
-  const handleClick = (backingX: number, backingY: number) => {
-    const transform = getRenderTransform(projection, width, height);
-    const x = (backingX - transform.offsetX) / transform.scale;
-    const y = -(backingY - transform.offsetY) / transform.scale;
-    const latLon = unproject(projection, x, y);
-    if (!latLon) return;
-    const displayXyz = latLonToXyz(latLon[0], latLon[1]);
-    const trueXyz = matApply(matTranspose(rotation), displayXyz);
-    const [trueLat, trueLon] = xyzToLatLon(trueXyz);
-    fetchPlateAt((trueLat * 180) / Math.PI, (trueLon * 180) / Math.PI)
-      .then(({ plate_id }) => {
-        onSelectPlate(plate_id);
-        containerRef.current?.focus();
-      })
-      .catch(() => {
-        // A click that races a generate/step -- ignored, matching the other inspectors.
-      });
-  };
-
-  useRotationDrag({
-    elementRef: canvasRef,
-    width, height, displayWidth, displayHeight, projection, rotation,
-    onFrame: draw,
-    onRotationPreview,
-    onRotationCommitted,
-    onClick: handleClick,
-    disabled: interactionDisabled,
-  });
-
-  useEffect(() => {
-    containerRef.current?.focus();
-  }, []);
-
-  const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== "Tab") return;
-    e.preventDefault();
-    if (plates.length === 0) return;
-    const ids = plates.map((p) => p.plate_id).sort((a, b) => a - b);
-    const currentIndex = selectedPlateId == null ? -1 : ids.indexOf(selectedPlateId);
-    const delta = e.shiftKey ? -1 : 1;
-    const nextIndex = currentIndex === -1 ? (e.shiftKey ? ids.length - 1 : 0) : (currentIndex + delta + ids.length) % ids.length;
-    onSelectPlate(ids[nextIndex]);
-  };
-
-  return (
-    <div ref={containerRef} tabIndex={0} onKeyDown={handleKeyDown} style={{ outline: "none", display: "inline-block" }}>
-      <canvas
-        ref={canvasRef}
-        width={width}
-        height={height}
-        style={{ borderRadius: 8, width: displayWidth, height: displayHeight }}
-      />
-    </div>
-  );
+  return <InspectorCanvas {...view} canvasRef={canvasRef} onFrame={draw} {...plateSelection(plates, selectedPlateId, onSelectPlate)} />;
 }

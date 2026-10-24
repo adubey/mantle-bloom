@@ -1,0 +1,212 @@
+{
+  "columns": [
+    {
+      "anchor_capacity_coarse_dz_tn_per_m": 0.9190806201318829,
+      "anchor_capacity_tn_per_m": 0.9082687120645844,
+      "anchor_resolution_relative_difference": 0.011903864928608988,
+      "anchor_state": {
+        "base_temperature_c": 1330.0,
+        "cohesion_pa": 20000000.0,
+        "friction_angle_deg": 30.96375653207352,
+        "k0_horizontal_over_vertical": 0.8,
+        "lower_crust_law": "plagioclase_an75",
+        "mantle_law": "dry_olivine",
+        "pore_pressure_mode": "hydrostatic_water",
+        "pore_pressure_ratio": null,
+        "status": "explicit design anchor; not inferred or uniquely calibrated",
+        "strain_rate_s-1": 1e-15
+      },
+      "crust_thickness_km": 35.0,
+      "factorial_scenario_grid": {
+        "capacity_tn_per_m_quantiles": {
+          "median": 0.8234031725827515,
+          "p10": 0.32443668909752243,
+          "p25": 0.46979283409398287,
+          "p75": 1.449352430881023,
+          "p90": 2.4116844006708664
+        },
+        "case_count": 864,
+        "fraction_of_grid_in_east_african_rift_3_to_8_tn_per_m_scale": 0.04976851851851852
+      },
+      "mantle_lithosphere_thickness_km": 35.0,
+      "total_lithosphere_thickness_km": 70.0
+    },
+    {
+      "anchor_capacity_coarse_dz_tn_per_m": 4.122886208692493,
+      "anchor_capacity_tn_per_m": 4.0948852658074335,
+      "anchor_resolution_relative_difference": 0.0068380286790621,
+      "anchor_state": {
+        "base_temperature_c": 1330.0,
+        "cohesion_pa": 20000000.0,
+        "friction_angle_deg": 30.96375653207352,
+        "k0_horizontal_over_vertical": 0.8,
+        "lower_crust_law": "plagioclase_an75",
+        "mantle_law": "dry_olivine",
+        "pore_pressure_mode": "hydrostatic_water",
+        "pore_pressure_ratio": null,
+        "status": "explicit design anchor; not inferred or uniquely calibrated",
+        "strain_rate_s-1": 1e-15
+      },
+      "crust_thickness_km": 35.0,
+      "factorial_scenario_grid": {
+        "capacity_tn_per_m_quantiles": {
+          "median": 2.875373556551726,
+          "p10": 0.8078045754798728,
+          "p25": 1.4442920840393785,
+          "p75": 5.1317450563476665,
+          "p90": 8.071596629694623
+        },
+        "case_count": 864,
+        "fraction_of_grid_in_east_african_rift_3_to_8_tn_per_m_scale": 0.3784722222222222
+      },
+      "mantle_lithosphere_thickness_km": 55.0,
+      "total_lithosphere_thickness_km": 90.0
+    },
+    {
+      "anchor_capacity_coarse_dz_tn_per_m": 6.30321827151708,
+      "anchor_capacity_tn_per_m": 6.2753825420421006,
+      "anchor_resolution_relative_difference": 0.004435702411525233,
+      "anchor_state": {
+        "base_temperature_c": 1330.0,
+        "cohesion_pa": 20000000.0,
+        "friction_angle_deg": 30.96375653207352,
+        "k0_horizontal_over_vertical": 0.8,
+        "lower_crust_law": "plagioclase_an75",
+        "mantle_law": "dry_olivine",
+        "pore_pressure_mode": "hydrostatic_water",
+        "pore_pressure_ratio": null,
+        "status": "explicit design anchor; not inferred or uniquely calibrated",
+        "strain_rate_s-1": 1e-15
+      },
+      "crust_thickness_km": 35.0,
+      "factorial_scenario_grid": {
+        "capacity_tn_per_m_quantiles": {
+          "median": 4.881857071598304,
+          "p10": 1.487835791129793,
+          "p25": 2.7463227877807284,
+          "p75": 8.012285400275074,
+          "p90": 12.07216186443714
+        },
+        "case_count": 864,
+        "fraction_of_grid_in_east_african_rift_3_to_8_tn_per_m_scale": 0.46412037037037035
+      },
+      "mantle_lithosphere_thickness_km": 65.0,
+      "total_lithosphere_thickness_km": 100.0
+    },
+    {
+      "anchor_capacity_coarse_dz_tn_per_m": 15.842666045477635,
+      "anchor_capacity_tn_per_m": 15.816009847128466,
+      "anchor_resolution_relative_difference": 0.001685393383465023,
+      "anchor_state": {
+        "base_temperature_c": 1330.0,
+        "cohesion_pa": 20000000.0,
+        "friction_angle_deg": 30.96375653207352,
+        "k0_horizontal_over_vertical": 0.8,
+        "lower_crust_law": "plagioclase_an75",
+        "mantle_law": "dry_olivine",
+        "pore_pressure_mode": "hydrostatic_water",
+        "pore_pressure_ratio": null,
+        "status": "explicit design anchor; not inferred or uniquely calibrated",
+        "strain_rate_s-1": 1e-15
+      },
+      "crust_thickness_km": 35.0,
+      "factorial_scenario_grid": {
+        "capacity_tn_per_m_quantiles": {
+          "median": 13.982325998589403,
+          "p10": 6.172282551534165,
+          "p25": 9.02837986175305,
+          "p75": 21.354437184512022,
+          "p90": 29.615899769602795
+        },
+        "case_count": 864,
+        "fraction_of_grid_in_east_african_rift_3_to_8_tn_per_m_scale": 0.18981481481481483
+      },
+      "mantle_lithosphere_thickness_km": 100.0,
+      "total_lithosphere_thickness_km": 135.0
+    },
+    {
+      "anchor_capacity_coarse_dz_tn_per_m": 20.881877152761742,
+      "anchor_capacity_tn_per_m": 20.857344946447327,
+      "anchor_resolution_relative_difference": 0.00117619027625051,
+      "anchor_state": {
+        "base_temperature_c": 1330.0,
+        "cohesion_pa": 20000000.0,
+        "friction_angle_deg": 30.96375653207352,
+        "k0_horizontal_over_vertical": 0.8,
+        "lower_crust_law": "plagioclase_an75",
+        "mantle_law": "dry_olivine",
+        "pore_pressure_mode": "hydrostatic_water",
+        "pore_pressure_ratio": null,
+        "status": "explicit design anchor; not inferred or uniquely calibrated",
+        "strain_rate_s-1": 1e-15
+      },
+      "crust_thickness_km": 35.0,
+      "factorial_scenario_grid": {
+        "capacity_tn_per_m_quantiles": {
+          "median": 18.945462961269612,
+          "p10": 8.616905390431103,
+          "p25": 12.346881435512753,
+          "p75": 28.229617877958454,
+          "p90": 38.89408255024201
+        },
+        "case_count": 864,
+        "fraction_of_grid_in_east_african_rift_3_to_8_tn_per_m_scale": 0.0798611111111111
+      },
+      "mantle_lithosphere_thickness_km": 115.0,
+      "total_lithosphere_thickness_km": 150.0
+    }
+  ],
+  "diagnostic_status": "scale-constrained scenario bracket; no unique capacity selected",
+  "external_scale_checks": [
+    {
+      "reported_quantity": "East African Rift integrated lithosphere strength of about 30-80 MPa for a 100 km lithosphere, i.e. 3-8 TN/m; estimated tectonic stresses about 1-2.2 TN/m.",
+      "source": "Stamps et al. (2014), doi:10.1002/2013JB010717",
+      "url": "https://agupubs.onlinelibrary.wiley.com/doi/full/10.1002/2013JB010717",
+      "use": "Regional scale check. Definitions, spatial averaging and stress state are not identical to this model's incremental normal-fault capacity."
+    },
+    {
+      "reported_quantity": "Geodynamic model sets lithosphere at 70 km for the Eastern Rift, 90 km for the Western Rift, and 150 km for Tanzania/Congo cratons.",
+      "source": "Rajaonarison et al. (2021), doi:10.1029/2020GL090483",
+      "url": "https://agupubs.onlinelibrary.wiley.com/doi/10.1029/2020GL090483",
+      "use": "Thickness-context scenarios only; this paper's modeled thicknesses do not directly give strength values."
+    },
+    {
+      "reported_quantity": "Their isotropic rifting model has peak driving force about 22 TN/m; models with strong inherited anisotropy stay at or below 10 TN/m.",
+      "source": "Duretz et al. (2025), doi:10.1029/2025GC012409",
+      "url": "https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2025GC012409",
+      "use": "Load-scale context only; driving force is not lithosphere capacity and cannot be used as a capacity target."
+    }
+  ],
+  "limitations": [
+    "No rupture/no-rupture observations are available for the matched replay candidates, so fitting a capacity multiplier to their candidate loads would be circular.",
+    "Replay nodes carry per-cell crustal thickness, mantle-lid thickness, crust type, craton share, belt history, Moho thermal lag, and restite; this audit fixes 35 km crust and does not evaluate that spatial field.",
+    "No full depth-temperature, pore-pressure, water, layer-mineralogy, grain-size, local strain-rate, fault-fabric, or K0 field is available; this keeps the capacity choice underidentified.",
+    "All thickness scenarios retain a 35 km crust; this is not representative of every rift or craton and keeps the result conditional on the current continental column proxy.",
+    "The literature checks use different definitions, averaging, boundary conditions, and constitutive assumptions; agreement in TN/m is only an order-of-magnitude check.",
+    "The matched replay population is conditionally selected: connected-source craton-crossing cuts only, not the 130 candidates or all tectonic states."
+  ],
+  "matched_replay_load_context": {
+    "band_median_of_event_band_medians_tn_per_m": 1.1134877004832837,
+    "interpretation": "Candidate loads from the old algorithm are not observed rupture/no-rupture labels and are not used to fit capacity.",
+    "median_of_event_band_p95_tn_per_m": 2.3306016911080585,
+    "population": "74 source-connected craton-crossing candidates, seeds 7, 11 and 2024; 22,896 cut-band node samples."
+  },
+  "method": {
+    "column_model": "bin/debug/diagnose_gate2_column_envelope.py",
+    "column_model_sha256": "2f470111a31464cc47147945438cf6c61f2fb0332087cebcf01c33fcd20c0928",
+    "integration_depth_step_km": 0.125,
+    "matched_replay_json": "analysis/issue487/gate2-matched-replay.json",
+    "matched_replay_json_sha256": "15f151f838cc805b4d1a70e44155b774cdfbdb047ad07afa37173c1a0a3f1d1e",
+    "quantile_interpretation": "Designed factorial grid summaries, not probabilities or posterior confidence intervals.",
+    "script": "bin/debug/calibrate_gate2_capacity.py",
+    "script_sha256": "c50113e3a373a87d1c4fdffbf4e7736f617c5945d2b0fc4a4df1182a329afc61",
+    "sweep": "Existing 1,728-case continental factorial scenario grid, independently repeated at each thickness.",
+    "thickness_mapping": "35 km crust held fixed; remaining total thickness assigned to mantle lithosphere."
+  },
+  "schema_version": 1,
+  "title": "RFC 0010 Gate 2 strength/capacity calibration audit",
+  "units": {
+    "capacity": "TN/m (10^12 N/m)",
+    "shell_load": "TN/m (10^12 N/m)"
+  }
+}

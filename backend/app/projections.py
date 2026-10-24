@@ -1,8 +1,9 @@
-"""Equal-area map projections for rendering the sphere to a 2D canvas.
+"""Map projections for rendering the sphere to a 2D canvas.
 
-Both take/return radians and are vectorized over numpy arrays of any shape. Output is in
-planar units for a unit-radius sphere (multiply by the desired pixels-per-radian scale when
-rendering).
+Behrmann and Eckert IV are equal-area world maps; "globe" is the orthographic view of the
+hemisphere facing the viewer (#497). All take/return radians and are vectorized over numpy
+arrays of any shape. Output is in planar units for a unit-radius sphere (multiply by the
+desired pixels-per-radian scale when rendering).
 """
 
 from __future__ import annotations
@@ -67,9 +68,27 @@ def eckert4(lat: np.ndarray, lon: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return x, y
 
 
+GLOBE = "globe"
+
+
+def orthographic(lat: np.ndarray, lon: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Orthographic view from far out along +x (lat=0/lon=0 at the disc's centre). Points on
+    the far hemisphere (`cos(lat) cos(lon) < 0`) land inside the same unit disc as the near
+    ones, so callers must hide them -- see `is_far_side` and render_image's `_render_globe`."""
+    lat = np.asarray(lat, dtype=float)
+    lon = np.asarray(lon, dtype=float)
+    return np.cos(lat) * np.sin(lon), np.sin(lat)
+
+
+def is_far_side(lat: np.ndarray, lon: np.ndarray) -> np.ndarray:
+    """True where `orthographic` would put a point from the hemisphere facing away."""
+    return np.cos(lat) * np.cos(lon) < 0.0
+
+
 PROJECTIONS = {
     "behrmann": behrmann,
     "eckert4": eckert4,
+    GLOBE: orthographic,
 }
 
 

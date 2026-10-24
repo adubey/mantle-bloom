@@ -21,7 +21,7 @@ def test_compute_climate_produces_finite_fields_for_a_real_world():
     fields = climate.compute_climate(world, height, width)
     for name in [
         "elevation_m", "land_temperature_c", "ocean_temperature_c", "air_temperature_c",
-        "wind_u", "wind_v", "current_u", "current_v", "humidity", "precipitation_mm",
+        "wind_u", "wind_v", "current_u", "current_v", "humidity_g_kg", "precipitation_mm",
     ]:
         arr = getattr(fields, name)
         assert arr.shape == (height, width)
@@ -58,14 +58,15 @@ def test_stats_and_render_reuse_the_same_step_cache():
 def test_diagnostic_wind_model_tracks_the_cfd_biome_map():
     # The "ABL" wind model (World.wind_model == "diagnostic") is meant to reproduce *most* of
     # the shallow-water CFD's downstream climate for a fraction of the cost -- see
-    # docs/simulation-model.md#wind-model and GitHub issue #118. This locks in that it stays a decent
+    # docs/simulation-model/climate.md#wind-model and GitHub issue #118. This locks in that it stays a decent
     # approximation, not a regression guard on an exact value: two copies of the same world
     # stepped the same number of times, one CFD, one diagnostic, should agree on the large
     # majority of the land biome map and keep precipitation close. A drop here most likely
     # means compute_wind, compute_air_temperature_diagnostic, or the biome thresholds moved.
-    # Characterised at climate_density/fluid_density 2.0 (see the "~84-89%" figure in
-    # docs/simulation-model.md#wind-model); the agreement is somewhat config-sensitive, so
-    # the floor here is deliberately loose.
+    # Known gap (#529): cfd_world is left on World.wind_model's default, "diagnostic", so this
+    # compares the diagnostic model with itself. Run as two models, seed 7 at density 2 gives
+    # 0.62 land-biome agreement and 0.52 precipitation rel-RMS, below these floors; #529 fixes
+    # the setup and chooses floors from a multi-seed run.
     kw = dict(num_plates=10, continental_fraction=0.7, land_fraction=0.29, climate_density=2.0, fluid_density=2.0)
     cfd_world = generate_world(7, **kw)
     abl_world = generate_world(7, **kw)

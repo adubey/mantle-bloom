@@ -1,7 +1,8 @@
 import numpy as np
-from app import debug_worlds, geometry, lithosphere
+from app import debug_worlds, geometry, lithosphere, quad_tectonics
 from app.hydroclimate import erosion
-from app import lithosphere_plate
+from app import merge_split
+from app.elevation_lines import effective_is_continental_from_codes
 from app.sparse_quad_patch import PlateWithSparseQuadPatch
 from app.world import generate_world, step_world
 
@@ -125,49 +126,84 @@ def test_step_world_events_are_timestamped_with_post_step_elapsed_years():
     assert len(world.events) <= 200  # MAX_EVENT_LOG_LENGTH
 
 
-def _continental_node_count(world) -> int:
-    return sum(plate.node_count() for plate in world.plates if plate.crust_type == "continental")
+def _continental_crust_area_m2(world) -> float:
+    area_m2 = 0.0
+    for plate in world.plates:
+        continental = effective_is_continental_from_codes(
+            plate.collect("crust_type_code"), plate.crust_type == "continental"
+        )
+        area_m2 += float(np.sum(plate.node_areas_m2()[continental]))
+    return area_m2
+
+
+def _continental_plate_footprint_area_m2(world) -> float:
+    return sum(
+        float(np.sum(plate.node_areas_m2()))
+        for plate in world.plates
+        if plate.crust_type == "continental"
+    )
 
 
 def test_continental_volume_budget_bounds_the_boundary_ratchet(monkeypatch):
     """The continental boundary ratchet (GitHub issue #119, "Continental ratchet: solution design")
     grows every continental margin at the oceanic reference column and never retreats a
-    leading row, so a continental plate's node pile climbs without limit over a long run. The
-    volume-budget growth gate (lithosphere_plate.CONTINENTAL_AREA_BUDGET_MULT) suppresses
-    areal growth once a plate has outrun its crustal volume. Same seed / step schedule with
-    the gate effectively disabled must grow the continental node count meaningfully more.
+    leading row, so a continental plate's footprint can climb over a long run (#482). The
+    volume-budget gate bounds continental-coded area against genuine continental crust volume. It
+    excludes oceanic-coded cells even when they sit on a continental plate (#447), so whole-
+    plate footprint is a separate metric and may grow as oceanic crust is added. This run
+    verifies the production gate is active and that continental-coded area stays bounded;
+    the production threshold is covered directly in test_quad_tectonics.
 
-    GitHub issue #162: seed 60461418 (used here previously) drives this scenario into heavy
-    plate fragmentation around step 35-45, which is chaotic enough in its floating-point
-    trajectory that an unrelated, legitimate change elsewhere (#161) flipped which of the two
-    runs ended up lower and failed the tight margin below -- even though the gate's suppression
-    effect held up throughout most of the run on both the old and new code. Seed 1 was checked
-    across the full 60-step schedule and never approaches that fragmentation crash: the
-    gated/ungated gap grows smoothly and monotonically from step ~20 on, giving this assertion
-    real headroom instead of sitting on a knife-edge."""
+    Seed 60461418 (used here previously) drives this scenario into heavy plate fragmentation
+    around step 35-45. Seed 1 was checked across the full 60-step schedule and stays clear of
+    that fragmentation crash."""
 
-    def _run_continental_growth(budget_mult: float) -> float:
-        monkeypatch.setattr(lithosphere_plate, "CONTINENTAL_AREA_BUDGET_MULT", budget_mult)
-        world = generate_world(seed=1, num_plates=14, continental_fraction=0.6, node_density=0.5)
-        world.simulate_climate_biomes = False  # plate geometry only -- keeps the run quick
-        before = _continental_node_count(world)
-        for _ in range(60):
-            step_world(world, years=2_000_000)
-        return _continental_node_count(world) / before - 1.0
+    # Keep the 20-step split cooldown (40 Myr at this step length) used to select a trajectory
+    # with little fragmentation; #358 changed the production cooldown to two million years.
+    monkeypatch.setattr(merge_split, "SPLIT_MIN_AGE_YEARS", 20 * 2_000_000)
 
-    gated = _run_continental_growth(1.8)
-    ungated = _run_continental_growth(1e9)
+    gate_suppressions = []
+    original_boundary_context = quad_tectonics.boundary_context
 
-    # The gate does bite -- the ungated ratchet grows the continental lattice substantially
-    # more over the same 120 My.
-    assert ungated > gated + 0.04
-    # ... and the gated run's own growth stays modest rather than running away.
-    assert gated < 0.15
+    def track_growth_gate(*args, **kwargs):
+        context = original_boundary_context(*args, **kwargs)
+        gate_suppressions.append(context.suppress_growth)
+        return context
+
+    monkeypatch.setattr(quad_tectonics, "boundary_context", track_growth_gate)
+
+    world = generate_world(seed=1, num_plates=14, continental_fraction=0.6, node_density=0.5)
+    world.simulate_climate_biomes = False  # plate geometry only -- keeps the run quick
+    before_continental_crust = _continental_crust_area_m2(world)
+    before_plate_footprint = _continental_plate_footprint_area_m2(world)
+    for _ in range(60):
+        step_world(world, years=2_000_000)
+    continental_crust_growth = _continental_crust_area_m2(world) / before_continental_crust - 1.0
+    plate_footprint_growth = _continental_plate_footprint_area_m2(world) / before_plate_footprint - 1.0
+
+    assert any(gate_suppressions)  # exercise the production growth gate in this trajectory
+    # Continental-coded area stays bounded over 120 My. The whole continental-plate footprint
+    # is tracked separately because oceanic-coded growth is outside this continental budget.
+    assert continental_crust_growth < 0.15, (
+        f"continental-coded growth {continental_crust_growth:.1%}; "
+        f"continental-plate footprint growth {plate_footprint_growth:.1%}"
+    )
 
 
 def _continental_hc_hm(world):
-    hc = np.concatenate([p.collect("crustal_thickness_m") for p in world.plates if p.crust_type == "continental"])
-    hm = np.concatenate([p.collect("mantle_lithosphere_thickness_m") for p in world.plates if p.crust_type == "continental"])
+    continental_columns = []
+    for plate in world.plates:
+        mask = effective_is_continental_from_codes(
+            plate.collect("crust_type_code"), plate.crust_type == "continental"
+        )
+        if np.any(mask):
+            continental_columns.append(
+                (plate.collect("crustal_thickness_m")[mask], plate.collect("mantle_lithosphere_thickness_m")[mask])
+            )
+    if not continental_columns:
+        return np.empty(0), np.empty(0)
+    hc = np.concatenate([columns[0] for columns in continental_columns])
+    hm = np.concatenate([columns[1] for columns in continental_columns])
     return hc, hm
 
 
@@ -202,6 +238,7 @@ def test_sustained_collision_caps_hc_hm():
     for _ in range(40):
         step_world(world, years=5_000_000)  # another 200 My
     hc_late, hm_late = _continental_hc_hm(world)
+    assert hc_late.size > 0  # keep the late-run cap checks meaningful after plate mergers
     assert np.all(hc_late <= lithosphere.MAX_CRUSTAL_THICKNESS_M + 1e-6)
     assert np.all(hm_late <= lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M + 1e-6)
 

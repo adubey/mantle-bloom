@@ -6,8 +6,10 @@ canvas viewer is in `frontend/src/`. There's one human author, and most changes 
 Claude Code and Codex agents, one GitHub issue per branch.
 
 Before changing the model, read [docs/architecture.md](docs/architecture.md) (module map,
-request flow) and [docs/simulation-model.md](docs/simulation-model.md). For offline
-diagnostics of saved worlds, see [docs/debugging.md](docs/debugging.md).
+request flow), [docs/simulation-model.md](docs/simulation-model.md), and
+[docs/design-principles.md](docs/design-principles.md). In simulation issues and PRs, name
+the principle the current behavior violates and the invariant or metric that will demonstrate
+the fix. For offline diagnostics of saved worlds, see [docs/debugging.md](docs/debugging.md).
 
 ## Commands
 
@@ -46,21 +48,45 @@ Run from the repo root (or worktree root).
 
 ## Workflow
 
-- **One worktree per issue, branched off `origin/main`.** Name the branch
-  `<agent>/issue-<N>-<slug>`, where `<agent>` is `claude` or `codex`. The primary checkout's
-  local `main` lags `origin`: don't use it as a base or baseline, and don't pull or reset it.
-  Run `./bin/setup.sh` in each new worktree. Each worktree has its own `backend/.venv`, so
-  don't symlink one from another tree.
+- **One issue branch and worktree per issue, branched off `origin/main`.** Name the branch
+  `<agent>/issue-<N>-<slug>`, where `<agent>` is `claude` or `codex`. RFCs are large
+  decisions tracked by a parent issue with sub-issues; each sub-issue gets its own isolated
+  issue worktree. Never switch the RFC proposal worktree to an issue branch. Use
+  `start-rfc` to begin or advance an RFC workstream, `continue-rfc` to reconstruct an RFC
+  handoff, and `rfc-authoring` to choose new RFC numbers and write proposal content. The
+  primary checkout's local `main` lags `origin`: don't use it as a base or baseline, and
+  don't pull or reset it. Run `./bin/setup.sh` in each new worktree. Each worktree has its own
+  `backend/.venv`, so don't symlink one from another tree.
 - **Ports:** never use 8000 or 5173 (the user's own instance). Pick free ports for each
   worktree so issues can run side by side.
-- **Before/after comparisons** use a detached `origin/main` worktree. Never use
-  `git stash`: the stash is shared by every worktree, including the user's.
-- **Replays are RAM-heavy** (0.6–2.7 GB each). Run at most two at once, and never alongside
-  a unit or stress test run.
+- **Before/after comparisons** use a task-specific detached `origin/main` worktree. Never
+  share or reuse another task's baseline worktree. Never use `git stash`: the stash is
+  shared by every worktree, including the user's.
+- **Replays and scratch simulation probes are RAM-heavy** (0.6–2.7 GB each). Run only one
+  replay or probe at a time, never alongside another such run or a unit or stress test. Follow
+  this limit regardless of the skill used.
 - **Reviews:** when a PR's author reports its tests passing, don't rerun them. Run targeted
   checks they couldn't have covered instead.
+- **Merging is the user's job.** Open the PR and stop: never run `gh pr merge`. `main` only
+  takes changes through a PR with the `backend` and `frontend` checks green, and refuses
+  force pushes and deletion, for everyone. Every branch outside `claude/*` and `codex/*` is
+  the user's: don't push to, rebase, force-push or delete it. Force-push (with
+  `--force-with-lease`) only your own agent branch.
+- **Never discard work you didn't create.** Don't run `git reset --hard`, `git checkout --`,
+  `git restore`, `git clean`, `git stash`, `git branch -D`, `git worktree remove --force` or
+  `rm -rf` against anything but your own worktree and scratch files. The user's checkout
+  may hold uncommitted work that exists nowhere else.
+- **Private local evidence handoffs:** use a `mantle-bloom-handoff/` directory inside the
+  shared Git common directory for same-machine paths and other private pointers. Resolve it
+  with `handoff="$(cd "$(git rev-parse --git-common-dir)" && pwd)/mantle-bloom-handoff"`,
+  then create it with `mkdir -p "$handoff"`; this works with older Git versions and all
+  worktrees of the clone share it. Never copy its
+  contents or personal paths into a commit, issue, PR, or checked-in report. Keep durable
+  run labels, checksums, commands, and findings in the appropriate analysis report or RFC.
 - Skills for these workflows, shared by Claude Code and Codex, are in `.agents/skills/`
-  (`.claude/skills` links there): `start-issue`, `replay-ab`, `pre-push-check`.
+  (`.claude/skills` links there): `explore-problem`, `create-issue`, `start-issue`,
+  `start-rfc`, `continue-rfc`, `project-management`, `replay-ab`,
+  `pre-push-check`, `rfc-authoring`, `rfc-review`, `complete-rfc`, `documentation`.
 
 ## Conventions
 
@@ -73,12 +99,23 @@ Run from the repo root (or worktree root).
   saves loading. See [docs/save-compatibility.md](docs/save-compatibility.md) and
   `unit_tests/test_persistence.py`.
 - **Docs:** when you add a module, route or model behaviour, update `docs/architecture.md`,
-  `docs/api-reference.md` or `docs/simulation-model.md` in the same PR.
+  `docs/api-reference.md` or the relevant `docs/simulation-model/<topic>.md` page in the same
+  PR. `docs/simulation-model.md` is navigation only; use its module map to choose a topic.
+  Use the [`documentation` skill](.agents/skills/documentation/SKILL.md) for documentation edits.
 - **Investigations:** diagnostic scripts go in `bin/debug/` (checked in, with a usage
-  docstring). Findings go in `analysis/issue<N>/README.md`, with only compact JSON checked
-  in. Saves and full replay outputs stay out of the repo.
+  docstring). Findings go in `analysis/issue<N>/README.md`, or, when no issue exists, in
+  `analysis/exploration-<slug>/README.md`; check in only compact JSON. Saves and full replay
+  outputs stay out of the repo.
+- **RFCs:** a model change that is large, uncertain or rests on the science starts as an RFC
+  in `rfc/NNNN-slug.md` ([rfc/README.md](rfc/README.md) has the index and lifecycle). Use
+  `rfc-authoring` for its content and `start-rfc` to advance acceptance, gates and
+  implementation PRs; review RFCs with `rfc-review`, and close them out (implemented or
+  withdrawn) with `complete-rfc`. Follow the [RFC lifecycle](rfc/README.md#lifecycle) for
+  implementation issue timing and eligibility.
 - **Commits:** imperative subject that says what changed in model terms (e.g. "Transfer
   consumed lower-plate crust to the upper plate"), with the issue number when useful.
 - **PRs:** a `## Summary` that explains what changed and why, with replay numbers in a
   table when the model moved, then `Closes #<N>`. Add a `## Review fixes` section when
   addressing review comments.
+- **Links in chats:** when mentioning a PR or another chat in a chat message, include a
+  clickable link to it rather than plain text.

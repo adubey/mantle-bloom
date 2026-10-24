@@ -1,0 +1,37 @@
+{
+  "layout": "cratons-first",
+  "seed": 7,
+  "years": 100000000.0,
+  "step": 2000000.0,
+  "corridor_km": 1000.0,
+  "flow_band_craton_mkm2": 26.759654037983978,
+  "results": [
+    {
+      "floor": 0.01,
+      "through": 12,
+      "line_clear_admissible": 3,
+      "L": 0.25,
+      "used_band_craton_mkm2": 24.594688253633628,
+      "B": 0.9190958978289745,
+      "band_reduction_pct": 8.090410217102551
+    },
+    {
+      "floor": 0.025,
+      "through": 12,
+      "line_clear_admissible": 2,
+      "L": 0.16666666666666666,
+      "used_band_craton_mkm2": 24.571243551890685,
+      "B": 0.9182197765715896,
+      "band_reduction_pct": 8.17802234284104
+    },
+    {
+      "floor": 0.05,
+      "through": 12,
+      "line_clear_admissible": 2,
+      "L": 0.16666666666666666,
+      "used_band_craton_mkm2": 24.588034931437512,
+      "B": 0.9188472652350452,
+      "band_reduction_pct": 8.115273476495478
+    }
+  ]
+}

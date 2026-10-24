@@ -18,13 +18,10 @@ hydrology/climate caches:
 
 from __future__ import annotations
 
-import argparse
-import json
-import sys
-import time
 from pathlib import Path
 
 import numpy as np
+from seed_run_lib import import_backend, run_seeds, seed_run_parser
 
 BANDS_C = (-np.inf, -25.0, -15.0, -10.0, -5.0, 0.0, np.inf)
 
@@ -53,35 +50,17 @@ def snapshot(world, modules) -> dict[str, float]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--backend", type=Path, default=Path(__file__).resolve().parents[2] / "backend")
-    parser.add_argument("--seeds", type=int, nargs="+", default=[1])
-    parser.add_argument("--steps", type=int, default=20)
-    parser.add_argument("--years", type=float, default=1_000_000.0)
-    parser.add_argument("--every", type=int, default=5, help="print every Nth step")
+    parser = seed_run_parser(__doc__, every=5, every_help="print every Nth step")
     parser.add_argument("--out", type=Path)
     args = parser.parse_args()
 
-    sys.path.insert(0, str(args.backend.resolve()))
+    import_backend(args)
     from app import plates
     from app.hydroclimate import erosion, hydrology  # noqa: E402
     from app.elevation_lines import line_spacing_rad  # noqa: E402
-    from app.world import generate_world, step_world  # noqa: E402
 
     modules = (erosion, hydrology, plates, line_spacing_rad)
-    rows = []
-    for seed in args.seeds:
-        world = generate_world(seed=seed)
-        start = time.perf_counter()
-        for step in range(1, args.steps + 1):
-            step_world(world, args.years)
-            if step % args.every == 0 or step == args.steps:
-                row = {"seed": seed, "step": step, "seconds": round(time.perf_counter() - start, 1), **snapshot(world, modules)}
-                rows.append(row)
-                print(json.dumps({k: (round(v, 4) if isinstance(v, float) else v) for k, v in row.items()}), flush=True)
-    if args.out:
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(json.dumps(rows, indent=2))
+    run_seeds(args, lambda world, seed, step: snapshot(world, modules))
 
 
 if __name__ == "__main__":

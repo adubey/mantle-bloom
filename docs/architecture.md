@@ -8,22 +8,27 @@
   `scipy.sparse.csgraph.connected_components` for plate defragmentation), Pillow
   (server-side map rendering, see `render_image.py`), pytest.
 - **Frontend:** React + TypeScript via Vite, plain HTML `<canvas>` — no mapping/charting
-  library: the frontend's whole job is decoding a PNG the backend already rendered and
-  drawing it (`ctx.drawImage`), which a library would be more ceremony than the problem
-  needs. Three exceptions: `rotation.ts` — a
+  library: data-backed raster maps decode a PNG the backend already rendered and draw it
+  (`ctx.drawImage`), which a library would be more ceremony than the problem needs. Other
+  client-side views are `rotation.ts` — a
   small, dependency-free port of just enough backend geometry/projection math to drive the
   "rotate the planet" drag gesture and preview it live client-side (see
-  [simulation-model.md#rotating-the-view](simulation-model.md#rotating-the-view)) — and the
+  [simulation-model/rendering-and-inspectors.md#rotating-the-view](simulation-model/rendering-and-inspectors.md#rotating-the-view)) — and the
   Plate Inspector (`PlateInspector.tsx`), River Inspector (`RiverInspector.tsx`), Lake
   Inspector (`LakeInspector.tsx`), and Plates & Faults (`PlatesAndFaults.tsx`) views,
   which each render and drive their whole interaction
   client-side from raw JSON rather than a baked PNG (see
-  [simulation-model.md#plate-inspector](simulation-model.md#plate-inspector),
-  [simulation-model.md#river-inspector](simulation-model.md#river-inspector),
-  [simulation-model.md#lake-inspector](simulation-model.md#lake-inspector), and
-  [simulation-model.md#fault-inspector](simulation-model.md#fault-inspector)). None of this makes
-  it a mapping library, and the real detailed rendering stays entirely server-side for every
-  other view.
+  [simulation-model/rendering-and-inspectors.md#plate-inspector](simulation-model/rendering-and-inspectors.md#plate-inspector),
+  [simulation-model/hydrology.md#river-inspector](simulation-model/hydrology.md#river-inspector),
+  [simulation-model/hydrology.md#lake-inspector](simulation-model/hydrology.md#lake-inspector), and
+  [simulation-model/rendering-and-inspectors.md#fault-inspector](simulation-model/rendering-and-inspectors.md#fault-inspector)). Those four
+  share `InspectorCanvas.tsx` (the focusable canvas, rotate-drag, click-to-select and
+  Tab/Shift+Tab cycling), and with `MapCanvas.tsx` they share `screenProjector.ts`, which
+  projects true world points through the live view rotation. The mantle cross-section
+  (`MantleCrossSection.tsx`) draws a terrain-textured globe locator, dragged up or down to tilt
+  the great circle, and controls; its selected slice and optional boundary/fault markers are
+  sampled and rendered by `cross_section.py`. The locator and the sidebar's map-centre globe
+  selector (`GlobeSelector.tsx`) share `globeTexture.ts`.
 
 ## Request flow
 
@@ -35,7 +40,7 @@ Browser (App.tsx)
 FastAPI (main.py)
   │  world.generate_world(seed, continental_fraction, land_fraction) -- builds the plate
   │  mosaic (total plate count is chosen automatically from the seed; the two fractions are
-  │  the UI's generation sliders -- see simulation-model.md#initial-plate-generation),
+  │  the UI's generation sliders -- see simulation-model/foundations.md#initial-plate-generation),
   │  stores it as the single in-memory World (see below)
   ▼
   { seed, elapsed_years, num_plates, events }
@@ -43,39 +48,47 @@ FastAPI (main.py)
 Browser then fetches, for whichever projection/map view/resolution/rotation is selected:
   GET /world/render?projection=...&view=...&width=...&height=...&rotation=...
   → a PNG, base64-encoded, rendered entirely server-side -- see api-reference below and
-    simulation-model.md#render-image. `rotation` (see simulation-model.md#rotating-the-view)
+    simulation-model/rendering-and-inspectors.md#render-image. `rotation` (see simulation-model/rendering-and-inspectors.md#rotating-the-view)
     is the map's current view orientation, driven by a long-press-and-drag gesture on the
     canvas -- client-local view state, not simulation state, so it's sent fresh with every
-    render call rather than stored server-side.
+    render call rather than stored server-side. The shallow mantle cross-section has its own
+    `GET /world/cross-section` request path for plane angle, arc position, and output size;
+    `cross_section.py` samples the existing surface columns along a node-density-scaled corridor
+    and renders a shallow PNG with optional plate-boundary and fault markers. It draws stored
+    crust/lithosphere thicknesses, an illustrative
+    crustal geotherm, and supported surface vents and magma-source markers. Surface-sampled
+    mantle-flow directions are projected into the schematic asthenosphere; deeper mantle flow
+    remains unresolved. The frontend renders the shared legend over either placeholder or PNG.
 
 Time-stepping:
   POST /world/step  { years }
-  → world.step_world(world, years): every plate refits its Euler pole and rotates
-    (`Plate.shift`), then every plate reconciles its actual footprint against the
+  → world.step_world(world, years): `torque.shift_plates_quasistatic` assembles plate loads
+    from one pre-step snapshot, solves all angular velocities together, then rotates every
+    plate; after that every plate reconciles its actual footprint against the
     sphere minus every other live plate's own territory (`Plate.deform` -- quad_tectonics.py --
     in a freshly randomized order each turn) -- collision/subduction uplift or trench elevation where a plate's
     rotated territory now overlaps a neighbor's, rift fill (or, occasionally, a fresh
     volcano) where it opens unclaimed space, transform uplift where it's merely close --
-    see simulation-model.md#boundary-evolution. Then topology changes (at most one collision
+    see simulation-model/tectonics.md#boundary-evolution. Then topology changes (at most one collision
     merge per step, only after a sustained 50-100
-    Myr collision -- see simulation-model.md#merge-and-split), erode elevation and route
+    Myr collision -- see simulation-model/tectonics.md#merge-and-split), erode elevation and route
     rivers/lakes/glaciers from the world's current climate (every step -- see
-    simulation-model.md#erosion, simulation-model.md#hydrology, and
-    simulation-model.md#glaciation), and roll each active volcano's own eruption chance (every
-    step -- see simulation-model.md#volcanism). (Submerged crust's depth is set directly by
+    simulation-model/surface-processes.md#erosion, simulation-model/hydrology.md#hydrology, and
+    simulation-model/hydrology.md#glaciation), and roll each active volcano's own eruption chance (every
+    step -- see simulation-model/tectonics.md#volcanism). (Submerged crust's depth is set directly by
     isostasy, not a per-step relaxation; `bathymetry.py` now only grades continent/ocean
-    margins once, at generation -- see simulation-model.md#bathymetry.) Boundary advance into
+    margins once, at generation -- see simulation-model/surface-processes.md#bathymetry.) Boundary advance into
     open ground happens inside every `deform()` call; whatever it leaves uncovered is filled
-    by `gaps.py` every step (see simulation-model.md#gap-filling)
+    by `gaps.py` every step (see simulation-model/tectonics.md#gap-filling)
   → browser re-fetches /world/render, and appends any new `events` to the console
 
 Every POST /world/step call also advances the atmospheric wind solve -- not a separate
-mode/endpoint (see simulation-model.md#mode-toggle):
+mode/endpoint (see simulation-model/climate.md#mode-toggle):
   → world.py's step_world → _advance_fluid_dynamics(world, node_cloud), gated on
     World.simulate_climate_biomes the same way erosion/hydrology already are:
     atmosphere_cfd.step_atmosphere_cfd(world, state, seconds): a genuine time-integrated
     shallow-water solve (real Coriolis/pressure-gradient physics, CFL-stable substepping --
-    see simulation-model.md#ocean-atmospheric-fluid-dynamics), a fixed real-time increment per
+    see simulation-model/climate.md#ocean-atmospheric-fluid-dynamics), a fixed real-time increment per
     tectonics step (one simulated day) regardless of the tectonic `years` requested, against
     terrain refreshed from the world's *current* elevation/climate each step (refresh_forcing)
   → browser re-fetches /world/render as usual (wind/temperature draw off this state; the
@@ -86,7 +99,7 @@ When the "Plate Inspector" or "Plates & Faults" map view is active, the browser 
 (also on every generate/step, but never on a projection/rotation-only change) fetches:
   GET /world/plates
   → every plate's outline + metadata as JSON, not a PNG -- see api-reference.md and
-    simulation-model.md#plate-inspector. Clicking a plate sends its unprojected true
+    simulation-model/rendering-and-inspectors.md#plate-inspector. Clicking a plate sends its unprojected true
     lat/lon to GET /world/plate_at, a nearest-node lookup answering "which plate is here."
   "Plates & Faults" also fetches GET /world/faults, GET /world/earthquakes and
     GET /world/volcanoes (fault traces + fault systems, recent earthquake epicentres, and
@@ -100,9 +113,9 @@ When the "Plate Inspector" or "Plates & Faults" map view is active, the browser 
 When the "River Inspector" map view is active, the browser instead fetches (same cadence):
   GET /world/rivers
   → every distinct river network's flow-edge segments + mouth metadata, plus the current
-    coastline (coastline_segments -- see simulation-model.md#coastline, the same segments
+    coastline (coastline_segments -- see simulation-model/hydrology.md#coastline, the same segments
     drawn server-side into the temperature/humidity/precipitation renders below), as JSON,
-    not a PNG -- see api-reference.md and simulation-model.md#river-inspector. Grouped fresh
+    not a PNG -- see api-reference.md and simulation-model/hydrology.md#river-inspector. Grouped fresh
     from world.hydrology_cache/climate_cache on every call (no persistent river identity
     across steps -- see hydrology.group_rivers), empty before the first step. Clicking a
     river sends its unprojected true lat/lon to GET /world/river_at, the same nearest-node
@@ -112,32 +125,196 @@ When the "Lake Inspector" map view is active, the browser instead fetches (same 
   GET /world/lakes
   → every currently-visible lake's basin info (floor, outlet, current water level, inflowing
     rivers), as JSON, not a PNG -- see api-reference.md and
-    simulation-model.md#lake-inspector. Regrouped fresh from world.hydrology_cache on every
+    simulation-model/hydrology.md#lake-inspector. Regrouped fresh from world.hydrology_cache on every
     call, same non-persistent-identity contract as river_id, empty before the first step.
     Clicking anywhere on land -- not just a visible lake -- sends its unprojected true lat/lon
     to GET /world/lake_at, which always resolves to something informative: a lake, a dry but
     real basin, "drains straight to the ocean, no basin here," or open ocean.
 
-GET /world/faults (see faults.py / simulation-model.md#faults) returns every intraplate
+GET /world/faults (see faults.py / simulation-model/tectonics.md#faults) returns every intraplate
 fault as a true-frame trace polyline + type/motion/age metadata plus the fault systems and
 the shared coastline_segments, as JSON not a PNG -- see api-reference.md. It backs the
 "Plates & Faults" view (above). GET /world/fault_at is a nearest-trace hit-test (currently
 unused by the frontend since faults aren't selectable there).
 ```
 
-The frontend never holds simulation state, and holds only one small piece of *rendering*
-logic -- it's a thin client that re-fetches `/world/render` after every `generate`/`step`
-call (or a projection/map-view/rotation change) and draws the returned PNG onto the canvas
-(`MapCanvas.tsx`). That component also owns the rotate-the-planet drag gesture -- a
+The frontend never holds simulation state. Data-backed raster views re-fetch `/world/render`
+after every `generate`/`step` call (or a projection/map-view/rotation change) and draw the
+returned PNG onto the canvas (`MapCanvas.tsx`). That component also owns the rotate-the-planet drag gesture -- a
 long-press-and-drag interaction that previews a cheap wireframe graticule client-side (via
 `rotation.ts`) while dragging, then commits the real rotation and lets the usual
 `/world/render` re-fetch replace it with the actual detailed frame (see
-simulation-model.md#rotating-the-view); that gesture itself was later extracted into
+simulation-model/rendering-and-inspectors.md#rotating-the-view); that gesture itself was later extracted into
 `rotationDrag.ts`'s `useRotationDrag` hook so `PlateInspector.tsx` could reuse it for a
 completely different kind of content (translucent plate ellipses, click-to-select,
 Tab/Shift+Tab). The event console is the one other exception: it just displays whatever
 `events` the last `generate`/`step` response carried, which is already the full current log
 -- see api-reference.md).
+
+<a id="access-control"></a>
+## Access control (`backend/app/auth.py`)
+
+The full app is single-owner (#372). `auth.AuthMiddleware` sits inside the CORS middleware
+and checks every request before routing:
+
+- `GET /` from someone who isn't the admin redirects to `/view`, the logged-out page (the
+  frontend's `main.tsx` renders `Viewer.tsx` there and `App.tsx` everywhere else).
+- Every `/world/*` route answers `401` to anyone who isn't the admin, including direct API
+  calls.
+- Any non-GET request whose `Origin` is another site (or `Sec-Fetch-Site: cross-site` when
+  there's no `Origin`) is refused with `403`. This is the CSRF guard. Same-site means the
+  request's own `Host` or the origin of `MANTLE_BLOOM_PUBLIC_URL`, so a proxy that rewrites
+  `Host` still works. The Vite dev origin counts as same-site only for local requests.
+
+The guard matches paths the way the router does, with any `root_path` prefix stripped, so
+serving the app under a prefix doesn't open `/<prefix>/world/*`.
+
+A request is the admin when it carries a valid session cookie, or when it was made on this
+machine. A session cookie (`mb_session`) is an HMAC-signed `{uid, login, exp}` that
+`/auth/github/callback` sets only when GitHub's numeric user ID matches the configured owner.
+It's `Secure`, `HttpOnly` and `SameSite=Lax`, lasts 14 days, and isn't stored server-side.
+A request counts as made on this machine when the client is loopback, `Host` is loopback,
+and there are no proxy headers (`Forwarded`, `Via`, any `X-Forwarded-*`, `X-Real-IP`,
+`CF-Connecting-IP` and similar). That covers `bin/restart.sh` and the desktop build, so
+neither needs login. The OAuth flow uses PKCE and a signed, short-lived `state` cookie.
+
+Configuration is read from the environment on every request:
+
+| Variable | Meaning |
+|---|---|
+| `MANTLE_BLOOM_GITHUB_CLIENT_ID`, `MANTLE_BLOOM_GITHUB_CLIENT_SECRET` | The GitHub OAuth app. Its callback URL is `<public URL>/auth/github/callback`. |
+| `MANTLE_BLOOM_GITHUB_OWNER_ID` | The one GitHub user ID allowed in (`gh api user -q .id`). |
+| `MANTLE_BLOOM_SESSION_SECRET` | At least 32 bytes, used to sign cookies. Rotating it signs everyone out. |
+| `MANTLE_BLOOM_PUBLIC_URL` | Optional. The public `https://` URL. The OAuth callback is built from it, and its origin is trusted for writes. Needed behind a TLS-terminating or `Host`-rewriting proxy. |
+| `MANTLE_BLOOM_LOCAL_NO_LOGIN` | `0` turns off the local no-login rule. Set it behind a same-host proxy that rewrites `Host` to loopback and adds no forwarding headers. |
+
+Missing any of the first four leaves login unconfigured, and the guard fails closed: remote
+requests never get admin access, and `/login` says login isn't configured.
+
+<a id="public-viewer"></a>
+### The public viewer (`backend/app/public_view.py`)
+
+Logged-out visitors land on `/view` (#373), which shows the shared world in the Eckert IV
+projection, in the biome or elevation view only, and can step it by a fixed 100 kyr. It
+reaches the world only through `/public/world`, `/public/render` and `/public/step` (see
+api-reference.md). Those routes accept no projection, rotation, step size or other setting,
+so creating, saving, loading, animating and reconfiguring a world all stay behind the
+`/world/*` guard above.
+
+Each browser may trigger at most 30 step computations. The count is kept in an HMAC-signed
+`mb_guest` cookie, so it can't be edited down, though clearing the cookie resets it (a usage
+limit, not abuse protection). It's signed with `MANTLE_BLOOM_SESSION_SECRET`, or, when that's
+unset, a per-process secret that a restart replaces. The admin is never charged.
+
+Viewers share one world, so they share the work of following it too (#374). Every change to
+the world (generate, load, step, animation, controls, a guest step) publishes a new revision
+through `WorldFeed`, a counter behind a per-process epoch, together with a summary snapshot
+taken under the world lock. Viewers long-poll `/public/world?after=<revision>` and re-render
+when it changes, so one viewer's step updates every page without anyone else computing.
+Concurrent guest steps against the same revision run the simulation once, and the others get
+its result for free. `/public/render` caches each (view, size) per revision in `RenderCache`,
+so the first viewer after a change renders it and the rest are served without the world lock.
+Any route that changes the world must call `main._world_changed()` (or `_set_world`) before
+it releases `_world_lock`, or viewers keep seeing, and the cache keeps serving, the old world.
+
+Only a request that runs the simulation is charged. A step request names the world revision
+(seed and elapsed years) that its viewer is looking at. If the world has already moved past
+that revision, the request gets the current world for free. If another guest's step is
+running, the request waits for it and then gets that result for free. At most one guest step
+runs at a time, and a guest never queues behind the owner: guest steps get `503` while the
+owner holds the world, and guest renders get `503` after waiting 10 s.
+
+<a id="run-and-checkpoint"></a>
+## Running and checkpointing (`backend/app/run_control.py`, `backend/app/checkpoint.py`)
+
+Play and Stop in the full app set a run status on the server (`POST /world/run`, behind the
+`/world/*` guard, #375). While it's running, a background thread (`WorldRunner`) steps the
+world by the chosen "Years per step", pausing 0.4 s between steps so renders and viewers get
+the world lock. It keeps going with no tab open. A step that raises stops the run, and
+`GET /world/run` reports why; an automatic stop never overrides a newer Play or Stop. The
+full app follows a running world by long-polling `GET /world/run?after=<revision>&run_version=<n>`
+and refreshing whenever the revision moves. It keeps following after Stop until the server
+reports no step under way, so the last step still reaches the map, and a run-state change
+(Stop from another tab) wakes the poll through `WorldFeed.wake`. `POST
+/world/step` and animations still work alongside it; the run just waits its turn for the lock.
+
+When `MANTLE_BLOOM_CHECKPOINT_DIR` (or, failing that, Railway's `RAILWAY_VOLUME_MOUNT_PATH`)
+names a directory, the world and the run status are checkpointed there, so a hosted instance
+that sleeps or restarts comes back where it was. Unset, as in a local run, nothing is saved.
+
+- `world.mbworld` is an ordinary save (see [save-compatibility.md](save-compatibility.md)),
+  rewritten after every *completed* change: `_world_changed()` writes it under the world lock
+  for generate, load, controls, and every whole step (owner, guest or run loop). An animation
+  writes it after each frame, so one that ends badly keeps the frames it finished. A
+  step that raises partway still publishes what it left to viewers, but isn't checkpointed,
+  so a restart returns to the last whole step. Pickling a default world takes about 30 ms and
+  writes about 60 MB.
+- `run_status.json` holds `running` and `step_years`, rewritten on every Play/Stop and when a
+  run stops on its own. If that write fails, `POST /world/run` answers `500` and the status
+  is written again with the next world checkpoint.
+- Each file is written to a temporary file in the same directory, fsynced, and renamed over
+  the old one, so a process killed mid-write leaves the previous checkpoint whole; leftover
+  temporaries are deleted at startup. Nothing relies on a pre-sleep or shutdown hook.
+- At startup (the app's lifespan) the world is restored exactly as saved, with no catch-up
+  for the time spent asleep, and the run resumes if it was running. An unreadable world file
+  is renamed to `world.mbworld.invalid-<time>` and the server starts with no world, stopped;
+  an unreadable status file means stopped. Each case is logged. A directory that can't be
+  created or written means no checkpointing at all, and `GET /healthz` answers `503`, so a
+  hosted deploy with a broken volume fails its health check (#376).
+
+Checkpoints assume one process owns the directory: keep the service at one replica while it
+uses the volume.
+
+The hosted instance (#376) is the root `Dockerfile` on Railway, configured by
+`.railway/railway.ts`: one uvicorn process serving the built frontend and the API, with the
+volume at `/data` and `GET /healthz` as the deploy health check. See
+[hosting.md](hosting.md).
+
+<a id="replay-log"></a>
+## Replay log (`backend/app/replay_log.py`)
+
+When `MANTLE_BLOOM_REPLAY_LOG_DIR` names a directory (`bin/restart.sh --replay-log` sets it
+to `~/.mantle-bloom/replay-logs/<port>/`), every step of the shared world (`POST /world/step`,
+`POST /world/animate`, the run loop and guest steps) goes through `main._step_progress`, which
+hands it to `ReplayLog.step` (#442). It is off by default.
+
+```mermaid
+flowchart LR
+  A[pickle the world<br/>measure health] --> B[step_world_progress]
+  B --> C[measure health]
+  C --> D{triggers fire<br/>and not rate-limited?}
+  D -- no --> E[drop the pickle]
+  D -- yes --> F[queue record] --> G[writer thread:<br/>atomic write, prune to cap]
+  B -- raises --> D
+```
+
+- Before the step, under the world lock, it pickles the world (`persistence.save_world_bytes`)
+  and measures `replay_log.Health`: plate count, live craton volume and ledger, the craton
+  balance error, whether `continental_ledger.assert_closed` passes, genuine continental area,
+  the area-weighted land fraction, and the shares of nodes at the Hc, Hm and glacier-ice
+  caps. It measures again after the step.
+- Each function in `replay_log.TRIGGERS` sees both measurements (or the exception, if the step
+  raised) and returns the values that make it fire, or `None`. An RFC adds a signature with
+  `replay_log.TRIGGERS["name"] = fn`; code inside a step can attach inputs that only exist there
+  with `replay_log.annotate(key, value)`.
+- When a trigger fires, the post-step fingerprint (about 0.1 s at node density 1) is taken
+  under the world lock, and the record (`before.mbworld` plus `record.json`) is queued for a
+  background thread, so the 60 MB write happens off the lock. At most `MAX_QUEUED_RECORDS` (3)
+  wait in memory; past that a record is dropped and logged. Shutdown waits up to 10 s for the
+  queue. A trigger that fired stays quiet for `DEFAULT_MIN_STEPS_BETWEEN` (20) logged steps,
+  and the oldest records are removed once all of them pass `DEFAULT_MAX_BYTES` (2 GB). Pruning
+  only touches directories named like a record and holding a `record.json`, so the log can
+  share a directory with other files. Each record is written to a temporary directory and
+  renamed into place.
+- `record.json` holds a per-attribute `fingerprint` of the world after the step instead of a
+  second save. Every random stream a step draws is seeded from `(world.seed, elapsed_years, ...)`,
+  so `replay_log.replay` reruns the step from `before.mbworld` and compares fingerprints.
+- The snapshot costs about 4% of step time at node density 1 (about 90 ms on a 2.0 s step,
+  mostly the pickle). Nothing is added to the pickled `World`, so saves are unaffected.
+
+Records surface in `GET /world/replay-logs`, in the summary's `replay_logs` (the `?deb` Event
+Console, cleared when a world is generated or loaded) and as a warning in the server log. See
+[debugging/replay-logs.md](debugging/replay-logs.md) for replaying one.
 
 <a id="world-state"></a>
 ## World state (`backend/app/world.py`)
@@ -147,7 +324,7 @@ simpler, matching the v1 "elevation view only" scope. A `World` holds:
 
 - `plates: list[Plate]` -- see below.
 - `mantle_centers` -- the convection-cell flow field (see
-  [simulation-model.md#mantle-flow](simulation-model.md#mantle-flow)), fixed for the life of
+  [simulation-model/foundations.md#mantle-flow](simulation-model/foundations.md#mantle-flow-mantlepy)), fixed for the life of
   the world.
 - `elapsed_years`, `next_plate_id` (a monotonically increasing counter so a plate created by
   a split never collides with an existing id, even after other plates have been removed).
@@ -155,15 +332,15 @@ simpler, matching the v1 "elevation view only" scope. A `World` holds:
   the thing it gates is about accumulated topology drift, not elapsed time). Drives the
   cadence of `merge_split.py`'s geometric plate defragmentation pass
   (`DEFRAG_INTERVAL_STEPS`, see
-  [simulation-model.md#merge-and-split](simulation-model.md#merge-and-split)). A plain-int
+  [simulation-model/tectonics.md#merge-and-split](simulation-model/tectonics.md#merge-and-split)). A plain-int
   dataclass default is a class attribute, so worlds pickled before this field existed still
   load, reading 0.
 - `collision_progress: dict[(int, int), float]` -- sustained-collision tracking for
-  merge_split.py, pair of plate ids -> accumulated convergent years (see
-  [simulation-model.md#merge-and-split](simulation-model.md#merge-and-split)).
+  merge_split.py, pair of plate ids -> accumulated convergent (or craton-jammed, #401) years (see
+  [simulation-model/tectonics.md#merge-and-split](simulation-model/tectonics.md#merge-and-split)).
 - `axial_tilt_deg` -- a fixed generation-time property like `seed`, read by `climate.py`'s
   insolation calculation on every future render (see
-  [simulation-model.md#climate](simulation-model.md#climate)).
+  [simulation-model/climate.md#climate](simulation-model/climate.md#climate-climatepy)).
 - `sea_level_m`/`solar_multiplier` -- live-adjustable via `POST /world/controls` (the UI's
   "Controls" window, unlike every other generation-time property here), read fresh by
   `climate.py`/`hydrology.py`/`bathymetry.py`/`render_image.py` on every call rather than
@@ -182,15 +359,15 @@ simpler, matching the v1 "elevation view only" scope. A `World` holds:
 - `climate_cache`/`hydrology_cache` -- this step's climate/flow-routing snapshot, populated
   by `erosion.py` (which needs a fresh one every step regardless) and reused by
   `/world/stats`, a climate map render, and river/lake rendering so they don't each trigger
-  their own recomputation the same turn (see simulation-model.md#climate and
-  simulation-model.md#hydrology). Up to one step stale by design, not a bug.
+  their own recomputation the same turn (see simulation-model/climate.md#climate and
+  simulation-model/hydrology.md#hydrology). Up to one step stale by design, not a bug.
 - `atmosphere_cfd_state` -- the always-on atmospheric wind solver state
   (`atmosphere_cfd.AtmosphereCFDState`), populated once by `generate_world` and never `None`
   again for the rest of that world's life -- not a mode to switch into (see
-  simulation-model.md#mode-toggle). Genuinely prognostic (wind + air temperature evolving
+  simulation-model/climate.md#mode-toggle). Genuinely prognostic (wind + air temperature evolving
   continuously, step to step) rather than recomputed fresh like `climate_cache` above. Ocean
   currents and precipitation are diagnostic in climate.py, not CFD state -- see
-  simulation-model.md#ocean-atmospheric-fluid-dynamics.
+  simulation-model/climate.md#ocean-atmospheric-fluid-dynamics.
 
 Each `Plate` (`backend/app/plates.py`) is:
 
@@ -202,12 +379,12 @@ Each `Plate` (`backend/app/plates.py`) is:
   lattice in the plate's own local frame (`PlateWithSparseQuadPatch`,
   `backend/app/sparse_quad_patch.py`), one terrain node per cell at its centre. This is the
   central data structure; see
-  [simulation-model.md#plate-local-frames](simulation-model.md#plate-local-frames). Every
+  [simulation-model/foundations.md#plate-local-frames](simulation-model/foundations.md#plate-local-frames). Every
   per-node field in `surface_fields.SURFACE_FIELDS` -- `elevation`, crustal and
   mantle-lithosphere thickness, `channel_depth`/`channel_width`/`lake_depth`/`silt_depth`/
-  `glacier_depth` (persistent, land-only -- see simulation-model.md#hydrology and
-  simulation-model.md#glaciation), `is_volcano`/`volcano_active_years_remaining`
-  (persistent -- see simulation-model.md#volcanism) and the provenance fields -- is one
+  `glacier_depth` (persistent, land-only -- see simulation-model/hydrology.md#hydrology and
+  simulation-model/hydrology.md#glaciation), `is_volcano`/`volcano_active_years_remaining`
+  (persistent -- see simulation-model/tectonics.md#volcanism) and the provenance fields -- is one
   parallel array over the plate's cells, so it rotates with the plate for free, no advection
   scheme needed. Read fields with `Plate.collect` / `Plate.surface_nodes` and write them with
   `Plate.set_fields_on_plate`; a cell edit (insert, remove, refine, merge) carries every
@@ -218,7 +395,7 @@ A plate has no separately-tracked boundary polygon at all -- an earlier version 
 "Plates" map view's outline overlay, and it visibly drifted out of sync with the real
 territory after enough stepping. `Plate.outline_world()` replaces it: the outline is traced
 live from the plate's boundary cells, cached per topology/geometry revision, so it can never
-be stale (see [simulation-model.md#boundary-evolution](simulation-model.md#boundary-evolution)).
+be stale (see [simulation-model/tectonics.md#boundary-evolution](simulation-model/tectonics.md#boundary-evolution)).
 
 ## The simulation pipeline, module by module
 
@@ -227,9 +404,11 @@ geometry.py       unit-vector <-> lat/lon conversion, Rodrigues-formula rotation
                    plate-local coordinate frames, local tangent bases + azimuthal-equidistant
                    projection (for the Plate Inspector's bounding-ellipse fit)
 ellipse.py         minimum-volume enclosing ellipse (Khachiyan's algorithm), sphere-agnostic
-                   pure 2D math -- see simulation-model.md#plate-inspector
+                   pure 2D math -- see simulation-model/rendering-and-inspectors.md#plate-inspector
 projections.py     Behrmann and Eckert IV map projections, vectorized
-noise.py           cheap smooth sphere noise (sum of sinusoids) for initial terrain texture
+noise.py           cheap smooth sphere noise for initial terrain texture: SphereNoise (one
+                   sinusoid per octave) and IsotropicSphereNoise (many random-direction waves
+                   per octave, no preferred direction)
 elevation_lines.py  terrain-node constants and codes (planet radius, node density/spacing --
                     TARGET_LINE_SPACING_RAD, line_spacing_rad -- elevation-change and crust-type
                     codes) and the plate-local lattice sweep; the name predates #251, which
@@ -246,10 +425,30 @@ sparse_quad_patch.py
                    and the only one. Its row/column intervals are derived topology caches used
                    by cell-native algorithms; they do not expose row ends through the shared
                    surface API.
+layout_lattice.py  the whole-sphere cell lattice a cratons-first world is laid out on
+continent_layout.py
+                   cratons-first layout for random worlds, behind a flag (RFC 0009): cratonic
+                   cores, the continents around them, belts and margins
+plate_partition.py the plates over a cratons-first layout: polygon-seed Voronoi from craton
+                   cores and grouped point sites, a land-aware boundary cost, best-of-K
+                   candidates, boundary refinement
 lithosphere_plate.py
-                   plate generation (nearest-seed tiling, reference Hc/Hm, composite relief)
+                   plate generation (nearest-seed tiling or a continent_layout partition,
+                   reference Hc/Hm, composite relief)
                    and the per-node column physics -- boundary classification context,
                    elevation/Hc/Hm deltas, decompression melting and rift volcanism
+initial_terrain.py   cratons-first generation uses read-only coupled first-step motion rates for
+                     narrow, offset, rotated relief on straight land-land collision sections,
+                     then seeds cold-range ice and curved river channels from one initial
+                     climate/hydrology routing pass
+synthetic_relief.py  optional cratons-first relief from a synthetic tectonic history (#218):
+                     sutures between cratons, leading-edge cordilleras, coastlines from the
+                     continental-crust edge, interior terrain types, all backed by Hc
+torque.py            slab-pull/ridge-push load assembly, coupled quasi-static solve
+                     (`solve_plates_quasistatic`), and simultaneous plate rotation
+thin_shell.py        offline thin-shell membrane equilibrium diagnostic that transfers
+                     `torque.PerNodeForceField` loads to incremental extensional resultants
+                     and compares them with integrated normal-fault capacity for rift analysis
 quad_tectonics.py  the tectonic engine, `deform()`: boundary retreat and advance on the cell
                    graph, rift opening, interior subduction, gap filling
 mantle.py           cubed-sphere convection-cell flow field, per-plate Euler-pole
@@ -273,7 +472,7 @@ hydroclimate/volcanism.py          every-step eruption lifecycle for existing vo
                      countdown, per-step eruption roll, elevation/mineral_deposit_m growth) --
                      volcanic-field *creation* now happens inline inside `deform()`'s own
                      overstretched-rift handling, not a separate periodic detection pass (see
-                     simulation-model.md#volcanism)
+                     simulation-model/tectonics.md#volcanism)
 faults.py            every-step intraplate fault-line lifecycle (stress-weighted Poisson
                      spawn near boundaries, Andersonian regime pick, sub-parallel fault
                      sets, per-regime relief within ~45 km of the trace, lock-up into
@@ -282,10 +481,10 @@ faults.py            every-step intraplate fault-line lifecycle (stress-weighted
                      trace) -- an *additive* layer that never touches deform()'s own
                      boundary classification; re-homed across merges/splits by
                      reconcile_faults from world.step_world; backs the "Plates & Faults" map
-                     view (GET /world/faults, /world/fault_at) -- see simulation-model.md#faults
+                     view (GET /world/faults, /world/fault_at) -- see simulation-model/tectonics.md#faults
 worldsketch.py       parses a drawn/loaded coastline image (Generate World's "Human-made" tab)
                      into land/mountain/river masks + plate seed sites -- see
-                     simulation-model.md#worldsketch. Consumed by lithosphere_plate.py's
+                     simulation-model/foundations.md#worldsketch. Consumed by lithosphere_plate.py's
                      generate_plates (its `sketch` param), not part of the per-step pipeline
 world.py             World/Plate orchestration: generate_world, step_world
 hydroclimate/        climate, hydrology, and surface-process package: atmospheric and
@@ -293,13 +492,13 @@ hydroclimate/        climate, hydrology, and surface-process package: atmospheri
                      bathymetry, surface cover, volcanism, and their shared numerics
 hydroclimate/climate.py           temperature/wind/currents/humidity/precipitation, computed fresh on
                      their own fixed equirectangular grid -- every render, and now every
-                     step too, to drive erosion.py (see simulation-model.md#climate)
+                     step too, to drive erosion.py (see simulation-model/climate.md#climate)
 hydroclimate/erosion.py           every-step rain/river/weathering/glacier erosion + downstream sediment
                      deposition + glacier flattening + coastal planation/infill feedback
                      (near-sea-level wave-cut planation + sheltered-shelf silting, emergent
                      barrier islands), elevation deltas driven by climate.py's
                      current fields and hydrology.py's flow routing/glacier state (see
-                     simulation-model.md#erosion) -- the weather-influences-geology half of
+                     simulation-model/surface-processes.md#erosion) -- the weather-influences-geology half of
                      the coupling; climate.py's own elevation-reading mechanics (lapse rate,
                      mountain wind deflection, orographic rain shadow) are the other half
 hydroclimate/hydrology.py         every-step flow routing over the geology node cloud (a k-nearest-
@@ -307,56 +506,68 @@ hydroclimate/hydrology.py         every-step flow routing over the geology node 
                      descent flow direction, downstream flow accumulation, glacier
                      mass balance and shape (via ice_sheet.py) -- feeds erosion.py's river/glacier erosion and
                      deposition and the rendered river/lake/glacier overlay (see
-                     simulation-model.md#hydrology and simulation-model.md#glaciation); also
+                     simulation-model/hydrology.md#hydrology and simulation-model/hydrology.md#glaciation); also
                      groups the flat is_river mask into distinct drainage networks
                      (group_rivers) and answers the River Inspector's click hit-test
                      (river_at), on demand rather than every step (see
-                     simulation-model.md#river-inspector)
+                     simulation-model/hydrology.md#river-inspector)
 hydroclimate/ice_sheet.py         every-step glacier solve, called from hydrology.compute_hydrology:
                      groups ice into bodies, conserves each body's volume with a backward-
                      Euler update of its extent, shapes it with a plastic ice-sheet profile
                      (an ordered-upwind numba sweep on the k-NN graph), books an ice ledger,
                      and diagnoses balance flux and the basal sliding speed erosion.py's
-                     glacial abrasion reads (see simulation-model.md#glaciation)
+                     glacial abrasion reads (see simulation-model/hydrology.md#glaciation)
 hydroclimate/lakes.py              every-step lake growth/evaporation/merge/split/silt, an explicit n-ary
                      tree of Lake objects built from a depression-hierarchy pass over
                      hydroclimate/hydrology.py's own k-NN graph -- called from hydrology.compute_hydrology,
                      projects back down into the same flat lake_depth array every other
-                     consumer already reads (see simulation-model.md#lakes-are-an-explicit-tree);
+                     consumer already reads (see simulation-model/hydrology.md#lakes-are-an-explicit-tree);
                      also rebuilt fresh, on demand, by main.py to answer the Lake Inspector's
                      GET /world/lakes and GET /world/lake_at (see
-                     simulation-model.md#lake-inspector)
+                     simulation-model/hydrology.md#lake-inspector)
 hydroclimate/stranded_basins.py   diagnostic-only: finds endorheic below-sea-level basins with no ocean
                      drainage (the "land-locked coastal pit") in lakes.py's forest, and
                      tracks how long each has persisted across steps (world.stranded_basin_
                      tracks, reconciled from world.step_world) -- backs GET /world/stranded_
                      basins and the python -m app.hydroclimate.stranded_basins offline dump (see
-                     debugging.md)
+                     debugging/offline-cli.md)
 hydroclimate/bathymetry.py        the shelf-width constant geology.py keys off, plus a one-off
                      generation-time pass (shape_initial_bathymetry) that drowns submerged
                      continental interiors toward abyssal depth by distance from land and
                      grades every continent/ocean plate margin into a slope, so the seabed
                      reads as real relief rather than a bright shelf and hard cliffs (see
-                     simulation-model.md#bathymetry)
+                     simulation-model/surface-processes.md#bathymetry)
 hydroclimate/coastline.py          traces the land/ocean and lake boundary as line segments over
                      hydroclimate/climate.py's own grid, on demand (not every step) -- drawn into the
                      temperature/humidity/precipitation renders and sent as JSON alongside
-                     GET /world/rivers and GET /world/lakes (see simulation-model.md#coastline)
+                     GET /world/rivers and GET /world/lakes (see simulation-model/hydrology.md#coastline)
 hydroclimate/fluid_dynamics.py      shared numerical primitives for atmosphere_cfd.py: real physical-unit
                      gradients/Laplacians/divergence, real Coriolis parameter, CFL-stable
                      substep sizing, semi-Lagrangian advection (see
-                     simulation-model.md#ocean-atmospheric-fluid-dynamics)
+                     simulation-model/climate.md#ocean-atmospheric-fluid-dynamics)
 hydroclimate/atmosphere_cfd.py      the atmospheric wind solver: a genuine time-integrated (not diagnostic)
                      shallow-water simulation of wind + air temperature -- prognostic state
                      (World.atmosphere_cfd_state) that persists/evolves step to step, plus a
                      sustained latitude-banded wind forcing. Ocean currents and precipitation
                      are diagnostic in climate.py, not CFD-solved -- the shallow-water ocean
-                     solver was retired (see simulation-model.md#ocean-atmospheric-fluid-dynamics)
+                     solver was retired (see simulation-model/climate.md#ocean-atmospheric-fluid-dynamics)
 main.py              FastAPI routes
+auth.py              single-owner GitHub login: the request guard, OAuth routes and signed
+                     session cookies (see #access-control above)
+run_control.py       the run/stopped status and the background thread that steps a running
+                     world (see #run-and-checkpoint above)
+checkpoint.py        atomic world and run-status checkpoints on persistent storage, and
+                     restoring them at startup (see #run-and-checkpoint above)
+replay_log.py        saves the world before any step whose health metrics go askew, with
+                     the triggers, a post-step fingerprint, and replay (see #replay-log above)
+public_view.py       the logged-out viewer's step allowance cookie, the coordinator
+                     that shares one guest step among concurrent requests, and the
+                     world revision feed and render cache viewers follow (see
+                     #public-viewer above)
 render_image.py      renders /world/render's requested view/resolution to a PNG server-side
-                     (see simulation-model.md#render-image and simulation-model.md#climate),
+                     (see simulation-model/rendering-and-inspectors.md#render-image and simulation-model/climate.md#climate),
                      plus /world/animate's streamed H.264/MP4 rendering (stream_animation_mp4)
-                     and the "speckle" coastal-dither debug overlay (see docs/debugging.md)
+                     and the "speckle" coastal-dither debug overlay (see debugging/map-views.md)
 persistence.py       whole-World save/load to a single versioned pickle envelope (File >
                      Save/Load World -- see api-reference.md's /world/save//world/load and
                      save-compatibility.md)

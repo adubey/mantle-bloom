@@ -424,6 +424,14 @@ class IceLedger:
     frozen_river_capped_m3: float = 0.0
 
     @property
+    def meltwater_m3(self) -> float:
+        """Ice that left as liquid water this step, the volume `step_ice`'s meltwater carries:
+        surface and basal melt, overflow, ice shed at the depth guard, and snow that melted on
+        bare ground. Calved ice isn't included because it goes to the ocean unrouted. See
+        hydrology's "Water units" (issue #355)."""
+        return self.surface_melt_m3 + self.basal_melt_m3 + self.overflow_m3 + self.capped_m3 + self.snow_melted_m3
+
+    @property
     def residual_m3(self) -> float:
         return (
             self.opening_m3 + self.frozen_lake_m3 + self.accumulation_m3 - self.surface_melt_m3 - self.basal_melt_m3

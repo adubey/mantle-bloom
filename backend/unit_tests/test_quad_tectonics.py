@@ -19,6 +19,8 @@ from app import (
 from app.hydroclimate import volcanism
 from app.elevation_lines import CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC, line_spacing_rad
 from app.lithosphere_plate import (
+    CONTINENTAL_AREA_BUDGET_MULT,
+    CONTINENTAL_BUDGET_HC_FRACTION,
     CONTINENTAL_CONTESTED_RETREAT_MIN_RUN,
     EXTEND_THRESHOLD_MULTIPLIER,
     SUTURE_ACCRETION_MAX_HC_M,
@@ -1011,7 +1013,7 @@ def test_fully_consumed_terrane_relocates_without_relabeling_oceanic_volume():
     continental_before = float(hc_before[0] * areas[0])
     total_before = float(np.dot(hc_before, areas))
 
-    quad_tectonics._accrete_onto_survivors(a, donors, survivors)
+    quad_tectonics._accrete_onto_survivors(a, donors, survivors, terranes=donors)
 
     hc_after = a.collect("crustal_thickness_m")
     continental = a.collect("crust_type_code") == CRUST_TYPE_CONTINENTAL
@@ -1035,7 +1037,7 @@ def test_disconnected_terrane_relocation_takes_only_the_footprint_it_needs():
     total_before = float(np.dot(a.collect("crustal_thickness_m"), areas))
     hm_before = float(np.dot(a.collect("mantle_lithosphere_thickness_m"), areas))
 
-    quad_tectonics._accrete_onto_survivors(a, donors, survivors)
+    quad_tectonics._accrete_onto_survivors(a, donors, survivors, terranes=donors)
 
     continental = a.collect("crust_type_code") == CRUST_TYPE_CONTINENTAL
     assert np.count_nonzero(continental & survivors) == 1
@@ -1528,3 +1530,241 @@ def test_oceanic_override_retreat_waits_for_arc_creation_but_a_suture_does_not()
     assert np.all(survivors_against("oceanic"))
     assert not np.all(survivors_against("continental"))
 
+
+
+# --- Mixed plates: each node follows its own crust's rule (RFC 0009, #447) -----------------
+
+
+def test_arc_band_follows_each_nodes_crust_not_the_majority_type():
+    from types import SimpleNamespace
+
+    from app import rheology
+    from app.lithosphere_plate import continental_arc_band
+
+    inputs = SimpleNamespace(
+        own_points=np.zeros((3, 3)),
+        own_crust_type_codes=np.array([0, CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC], dtype=np.int8),
+        neighbor_is_oceanic=np.ones(3, dtype=bool),
+        dist_to_neighbor=np.full(3, 0.001),
+    )
+    closing = np.full(3, 2.0 * rheology.ARC_MIN_CONVERGENCE_M_PER_S)
+    # A continental margin on a mostly oceanic plate grows an arc; ocean floor on a mostly
+    # continental plate doesn't.
+    np.testing.assert_array_equal(continental_arc_band(SimpleNamespace(crust_type="oceanic"), inputs, closing), [False, True, False])
+    np.testing.assert_array_equal(continental_arc_band(SimpleNamespace(crust_type="continental"), inputs, closing), [True, True, False])
+
+
+def _context(a, others):
+    world = _world(a, *others)
+    return world, boundary_context(
+        world, a, list(others), 1_000_000,
+        lambda contested: quad_tectonics.components_of_at_least(a, contested, CONTINENTAL_CONTESTED_RETREAT_MIN_RUN),
+        node_weight=a.node_areas_m2() / lithosphere.node_area_m2(SPACING),
+    )
+
+
+def test_growth_gate_weighs_a_continent_against_its_own_area_not_its_plates_ocean_floor():
+    # A genuine continent riding a plate that is mostly its own ocean floor is within its
+    # area budget; before #447 the ocean floor counted against it.
+    keys = _block((10, 20), (20, 21))
+    i, _ = _columns(_plate(1, keys))
+    ocean = i >= 12
+    hc = np.where(ocean, lithosphere.REFERENCE_HC_OCEANIC_M, lithosphere.REFERENCE_HC_CONTINENTAL_M)
+    a = _plate(1, keys, "continental", crust_type_code=np.where(ocean, CRUST_TYPE_OCEANIC, 0).astype(np.int8), crustal_thickness_m=hc)
+    _, ctx = _context(a, [])
+    assert not ctx.suppress_growth
+
+
+def test_growth_gate_suppresses_growth_when_continental_area_exceeds_its_crust_budget():
+    # Three thin continental cells contribute footprint without enough crustal volume to
+    # count as genuine continent; the remaining cell carries reference continental crust.
+    # Their area ratio is 4:1, above the production budget multiplier (1.8).
+    keys = _block((10, 14), (20, 21))
+    hc = np.full(len(keys), lithosphere.MIN_CRUSTAL_THICKNESS_M)
+    hc[0] = lithosphere.REFERENCE_HC_CONTINENTAL_M
+    plate = _plate(1, keys, "continental", crustal_thickness_m=hc)
+
+    _, ctx = _context(plate, [])
+
+    assert CONTINENTAL_BUDGET_HC_FRACTION * lithosphere.REFERENCE_HC_CONTINENTAL_M > hc[1]
+    assert CONTINENTAL_AREA_BUDGET_MULT == pytest.approx(1.8)
+    assert ctx.suppress_growth
+
+
+def test_contested_ocean_floor_on_a_continental_plate_retreats_cell_by_cell_and_does_not_accrete():
+    # Ocean floor retreats wherever it is contested, with no run to wait for, and goes down
+    # rather than accreting as a suture (#447).
+    keys = _block((10, 24), (20, 30))
+    i, j = _columns(_plate(1, keys))
+    ocean = (i == 23) & (j == 25)
+    a = _plate(1, keys, "continental", crust_type_code=np.where(ocean, CRUST_TYPE_OCEANIC, 0).astype(np.int8))
+    b = _plate(2, np.sort(np.concatenate([_block((24, 34), (20, 30)), pack_cell_keys(np.array([0]), np.array([23]), np.array([25]))])), "continental")
+    _, ctx = _context(a, [b])
+    assert ctx.contested[ocean].all() and np.count_nonzero(ctx.contested) == 1
+    assert ctx.shrinkable[ocean].all()
+    assert not ctx.accrete.any()
+
+
+def test_column_update_reads_each_nodes_own_density_label_and_cooling():
+    from app import rheology
+    from app.elevation_lines import ELEV_CHANGE_COLLISION, ELEV_CHANGE_TRENCH
+
+    keys = _block((10, 14), (20, 21))
+    codes = np.array([CRUST_TYPE_OCEANIC, CRUST_TYPE_OCEANIC, 0, 0], dtype=np.int8)
+    hm0 = np.array([lithosphere.YOUNG_RIDGE_HM_M, lithosphere.YOUNG_RIDGE_HM_M, 150_000.0, 150_000.0])
+    a = _plate(1, keys, "continental", crust_type_code=codes, mantle_lithosphere_thickness_m=hm0)
+    ctx = _converging_ctx(4, np.array([True, False, True, False]))
+    before, columns = _columns_after(a, ctx)
+
+    # Ocean floor on a continental plate cools like any other (#447)...
+    assert columns["mantle_lithosphere_thickness_m"][1] > hm0[1]
+    assert columns["mantle_lithosphere_thickness_m"][3] == hm0[3]
+    # ...rises or sinks at its own density...
+    rho = lithosphere.node_crust_density(codes, "continental")
+    expected = before["elevation"] + (
+        lithosphere.isostatic_elevation(columns["crustal_thickness_m"], columns["mantle_lithosphere_thickness_m"], rho)
+        - lithosphere.isostatic_elevation(before["crustal_thickness_m"], hm0, rho)
+    )
+    np.testing.assert_allclose(columns["elevation"], rheology.clip_elevation_bounds(expected), atol=1e-6)
+    # ...and a convergent band on it is a trench, not a collision.
+    assert columns["elev_change_reason"][0] == ELEV_CHANGE_TRENCH
+    assert columns["elev_change_reason"][2] == ELEV_CHANGE_COLLISION
+
+
+def test_fault_relief_noise_only_roughens_continental_crust():
+    class Rough:
+        def sample(self, xyz):
+            return np.full(4, -1.0)
+
+    keys = _block((10, 14), (20, 21))
+    codes = np.array([CRUST_TYPE_OCEANIC, CRUST_TYPE_OCEANIC, 0, 0], dtype=np.int8)
+    convergent = np.ones(4, dtype=bool)
+
+    def gain(noise):
+        a = _plate(1, keys, "continental", crust_type_code=codes)
+        before, columns = _columns_after(a, _quiet_ctx(4, convergent=convergent, closing_rate=np.full(4, 0.1 / (365.25 * 86400.0)), fault_noise=noise))
+        return columns["crustal_thickness_m"] - before["crustal_thickness_m"]
+
+    plain, rough = gain(None), gain(Rough())
+    np.testing.assert_array_equal(rough[:2], plain[:2])
+    assert np.all(rough[2:] != plain[2:])
+
+
+def test_shortening_spreads_through_continental_cells_only_on_any_plate():
+    # A continental plate's ocean floor takes up its own shortening in place; before #447 the
+    # cascade carried it into the ocean floor's neighbours as if it were continent.
+    keys = _block((10, 20), (20, 21))
+    i, _ = _columns(_plate(1, keys))
+    ocean = i < 13
+    a = _plate(1, keys, "continental", crust_type_code=np.where(ocean, CRUST_TYPE_OCEANIC, 0).astype(np.int8))
+    world = _world(a)
+    n = a.node_count()
+    convergent = i == 10
+    ctx = _converging_ctx(n, convergent)
+    ctx.contested = np.zeros(n, dtype=bool)
+    accommodate = quad_tectonics._shortening_accommodation(a, world, ctx, a.node_areas_m2(), SPACING)
+    strain = np.where(convergent, 0.01, 0.0)
+
+    taken = accommodate(strain, a.collect("crustal_thickness_m"), a.collect("mantle_lithosphere_thickness_m"))
+
+    assert taken[convergent].all()
+    assert not taken[~convergent].any()
+
+
+def _terrane_retreat(continental_from: int):
+    """An oceanic plate whose cells from column `continental_from` on are a terrane, overlapped
+    at its end by a still oceanic plate. Returns (survivors, terrane volume before, after)."""
+    keys = _block((10, 30), (20, 30))
+    i, _ = _columns(_plate(1, keys))
+    terrane = i >= continental_from
+    a = _plate(1, keys, "oceanic", crust_type_code=np.where(terrane, CRUST_TYPE_CONTINENTAL, 0).astype(np.int8))
+    b = _plate(2, _block((24, 40), (20, 30)), "oceanic")
+    world, ctx = _context(a, [b])
+
+    def volume():
+        cells = a.collect("crust_type_code") == CRUST_TYPE_CONTINENTAL
+        return float((a.collect("crustal_thickness_m") * a.node_areas_m2())[cells].sum())
+
+    before = volume()
+    survivors = quad_tectonics._retreat(a, world, ctx, 1.5 * SPACING, 1000)
+    return survivors, before, volume()
+
+
+def test_a_terrane_docks_only_where_its_own_plates_slab_drags_it_in():
+    """#447: behind its plate's ocean floor subducting at the same contact, a terrane is
+    dragged in and docks, its crust conserved (#253). With no slab of its own plate there, it
+    is a continental margin under an oceanic neighbour, held to the #177 arc budget like any
+    other: these plates are still, so no arc grows and nothing retreats. Before, every
+    continental cell of an oceanic-majority plate docked."""
+    survivors, before, after = _terrane_retreat(26)
+    assert not np.all(survivors)
+    assert after == pytest.approx(before, rel=1e-9)
+
+    survivors, _, _ = _terrane_retreat(18)
+    assert np.all(survivors)
+
+
+def test_a_continental_plate_carves_out_ocean_floor_the_edge_peel_cannot_reach():
+    a, b = _plate_with_overlay("continental")
+    covered = b.contains_batch(a.all_points_and_elevation()[0])
+    a.set_fields_on_plate(crust_type_code=np.where(covered, CRUST_TYPE_OCEANIC, 0).astype(np.int8))
+    world = _world(a, b)
+
+    a.deform(world, [b], 1_000_000, SPACING)
+
+    assert not np.any(b.contains_batch(a.all_points_and_elevation()[0]))
+    assert len(a.boundary_loops_world()) == 2
+
+
+def test_a_continental_margin_on_an_oceanic_plate_grows_continental_arc_crust():
+    from types import SimpleNamespace
+
+    from app.elevation_lines import ELEV_CHANGE_SUBDUCTION_ARC
+    from app.lithosphere_plate import ARC_MARGIN_SEED_HC_M
+
+    keys = _block((10, 20), (20, 30))
+    i, _ = _columns(_plate(1, keys))
+    margin = i >= 17
+    a = _plate(1, keys, "oceanic", crust_type_code=np.where(margin, CRUST_TYPE_CONTINENTAL, 0).astype(np.int8))
+    world = _world(a)
+    continental_ledger.ensure_initialized(world)
+    n = a.node_count()
+    ctx = SimpleNamespace(
+        contested=np.zeros(n, dtype=bool), inputs=SimpleNamespace(dist_to_neighbor=np.full(n, np.inf)),
+        arc_band=margin & (i == 19),
+    )
+
+    quad_tectonics._advance(a, world, ctx, np.ones(n, dtype=bool), [], SPACING, 100)
+
+    i_after, _ = _columns(a)
+    grown_beyond_margin = i_after >= 20
+    assert np.any(grown_beyond_margin)
+    np.testing.assert_array_equal(a.collect("crust_type_code")[grown_beyond_margin], CRUST_TYPE_CONTINENTAL)
+    np.testing.assert_array_equal(a.collect("crustal_thickness_m")[grown_beyond_margin], ARC_MARGIN_SEED_HC_M)
+    np.testing.assert_array_equal(a.collect("elev_change_reason")[grown_beyond_margin], ELEV_CHANGE_SUBDUCTION_ARC)
+    # The ocean floor's own edge grows ordinary fresh crust, not arc.
+    assert not np.any(a.collect("elev_change_reason")[i_after < 10] == ELEV_CHANGE_SUBDUCTION_ARC)
+
+
+def test_suture_accretion_marks_exactly_the_continental_cells_it_welds_onto():
+    """RFC 0009: the survivors a suture's crust lands on are belt, dated now; the rest of the
+    plate, and every cell when no world is given, stays unmarked."""
+    from app import cratons
+
+    def accrete(with_world: bool):
+        keys = _block((10, 30), (20, 21))
+        a = _plate(1, keys, "continental")
+        donors = np.zeros(len(keys), dtype=bool)
+        donors[0] = True
+        world = _world(a)
+        world.elapsed_years = 3.0e8
+        hc_before = a.collect("crustal_thickness_m")
+        quad_tectonics._accrete_onto_survivors(a, donors, ~donors, world if with_world else None)
+        return a, ~donors & (a.collect("crustal_thickness_m") > hc_before), world
+
+    a, welded, world = accrete(True)
+    assert np.any(welded) and not np.all(welded[1:])
+    np.testing.assert_array_equal(cratons.belt_mask(a, world.elapsed_years), welded)
+    assert np.all(a.collect("belt_formed_years")[welded] == 3.0e8)
+    a, _, world = accrete(False)
+    assert not np.any(cratons.belt_mask(a, world.elapsed_years))

@@ -152,7 +152,7 @@ def test_plate_identity_and_motion_carry_over(shape_world, converted_shapes):
         assert quad.crust_type == line.crust_type
         np.testing.assert_array_equal(quad.frame, line.frame)
         np.testing.assert_array_equal(quad.omega, line.omega)
-        assert quad.age_steps == line.age_steps
+        assert quad.age_years == legacy_conversion.legacy_age_years(line.age_steps, shape_world)
 
 
 def test_conversion_is_deterministic(shape_world):
@@ -226,6 +226,7 @@ def test_every_surface_field_is_handled_by_the_transfer():
         RemapClass.CLOCK,
         RemapClass.HISTORY,
         RemapClass.WRITE_ONCE_HISTORY,
+        RemapClass.MAJORITY_HISTORY,
     }
 
 

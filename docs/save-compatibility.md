@@ -42,8 +42,28 @@ A save is a pickled envelope. `persistence.SAVE_FORMAT_VERSION` is 4.
 | > 4 | written by a newer build | no: `UnsupportedSaveVersionError` |
 
 Each `PlateWithSparseQuadPatch` also versions its own pickled state
-(`QUAD_SURFACE_FORMAT_VERSION`, now 1). A quad plate from a newer build makes the whole save
+(`QUAD_SURFACE_FORMAT_VERSION`, now 2). A quad plate from a newer build makes the whole save
 `UnsupportedSaveVersionError`.
+
+| quad version | change | loads? |
+|---|---|---|
+| 1 | plate age is `_age_steps`, a count of `step_world` calls | yes; age converts to years on load |
+| 2 | plate age is `_age_years` (#358) | yes |
+
+**Plate age in steps.** Before #358 a plate counted its age in steps, which the split
+cooldown read regardless of step length. `persistence._migrate_plate_ages` (and the line
+conversion) multiplies the step count by the world's mean step length,
+`elapsed_years / steps_taken`. A save from before `steps_taken` existed reads 0 steps, so it
+assumes 10 kyr per step (`legacy_conversion.FALLBACK_YEARS_PER_STEP`, the UI's shortest
+step). Either way an age is capped at `elapsed_years`. A negative or fractional step count
+is a `CorruptSaveError`.
+
+**Cached humidity without units.** Before #522 the pickled `World.climate_cache` held
+`humidity`, a unitless index. `persistence._migrate_climate_humidity_units` renames it to
+`humidity_g_kg` and multiplies it by `climate.HUMIDITY_INDEX_G_KG` (12.3), the factor the
+index's constants were converted by. The cache isn't dropped, because the next step's transpiration
+source reads its precipitation. The converted humidity is only drawn until that step
+recomputes it.
 
 **Errors.** `load_world_bytes` raises one of two `SaveFormatError`s (a `ValueError`) and never
 loads part of a save:
@@ -80,7 +100,8 @@ dropping it.
 
 | state | conversion |
 |---|---|
-| plate id, frame, omega, nominal crust type, age, internal stress | kept exactly |
+| plate id, frame, omega, nominal crust type, internal stress | kept exactly |
+| age (`_age_steps`, a step count) | converted to years, as for a version 1 quad plate (§2) |
 | every `SURFACE_FIELDS` field | transferred by its `RemapClass` (§4) |
 | line positions (`phi`, `theta` per row) | replaced by cells; topology is now the cell set |
 | `_leading_row_retreat_years` (a row-end retreat tracker, in 33 of 51 real saves) | dropped: it has no quad meaning |

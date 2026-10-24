@@ -1,0 +1,70 @@
+{
+ "issue": 403,
+ "measured_model_commit": "2562f6381b5777b021f68a958a196bf99d0d25aa",
+ "measured_step_years": 5000000,
+ "split_min_age_years": 2000000,
+ "tuning_seeds": [
+  7,
+  11,
+  2024
+ ],
+ "stress_seed": 456862899,
+ "historical_save": {
+  "name": "mantle-bloom-seed456862899-19191800000y.mbworld",
+  "available_for_download": false,
+  "generating_commit": null,
+  "first_rfc_publication_commit": "d795a094752750dd61e33ced71a6c623324dcff9",
+  "scope": "post-#340 and pre-#358; discovery evidence only",
+  "schedule_source": "https://github.com/adubey/mantle-bloom/issues/403",
+  "step_schedule": [
+   {
+    "until_elapsed_years": 21800000,
+    "step_years": 100000,
+    "split_cooldown_years": 2000000
+   },
+   {
+    "until_elapsed_years": 19191800000,
+    "step_years": 10000000,
+    "split_cooldown_years": 200000000
+   }
+  ],
+  "controls_and_density": "unrecorded; do not infer from the regenerated run",
+  "saved_summary_rates": "preserved as originally published, not recomputed after the Gyr-endpoint correction"
+ },
+ "prior_evidence": {
+  "rfc0003_phase1": {
+   "model_commit": "dfb9248755552269697453cb65c569b0d22c5efc",
+   "diagnostic_commit": "112dcd75f8d6b63cd0bff22a74d3532042e114b0",
+   "results_commit": "eefaa55a93e3dc1c32fc31e925bf9166ce1f6f48",
+   "step_years": 5000000,
+   "split_cooldown_years": 100000000
+  },
+  "rfc0003_failed_rift_resistance": {
+   "results_commit": "0ac33cb02f3c57c7a8377fd4e89bfa4d975d00ba",
+   "step_years": 5000000,
+   "split_cooldown_years": 100000000,
+   "implementation_commit": "bf69b4e3946a28c4891969721db34a2416ebfe55"
+  },
+  "rfc0003_phase1b": {
+   "model_commit": "8878cd2ce070d8c54c94cf87232f1c66ad3b81f3",
+   "published_probe_commit": "33c3d19a919c98b820384a2cb8ea2323edf70f47",
+   "pull_request": "https://github.com/adubey/mantle-bloom/pull/392",
+   "step_years": 5000000,
+   "split_cooldown_years": 2000000,
+   "status_at_measurement": "published, pending merge"
+  },
+  "rfc0008_sinks": {
+   "model_commit": "1b4f6860e29761eef0eec11ab55ea41e0f41a706",
+   "step_years": 5000000,
+   "split_cooldown_years": 2000000
+  }
+ },
+ "revision_followups": {
+  "0002": 405,
+  "0004": 409,
+  "0005": 408,
+  "0006": 406,
+  "0007": 407
+ },
+ "existing_rfc0003_tracking_issue": 389
+}

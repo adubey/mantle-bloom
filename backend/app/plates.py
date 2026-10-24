@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import abc
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Iterator, Mapping, Protocol
+from typing import TYPE_CHECKING, Callable, Iterator, Mapping, Protocol
 
 import numpy as np
 from scipy.sparse import coo_matrix
@@ -32,7 +32,11 @@ if TYPE_CHECKING:
     from . import terrain_noise
     from .world import World
 
+# Plates-first random worlds: the chance each plate is continental.
 CONTINENTAL_FRACTION = 0.4
+# Cratons-first random worlds (RFC 0009, continent_layout.py): the continental share of the
+# sphere's area, today's mean starting continental area (51% on seeds 7, 11 and 2024).
+CONTINENTAL_AREA_FRACTION = 0.5
 BASE_CONTINENTAL_M = 200.0
 BASE_OCEANIC_M = -3800.0
 # Widened from the original 1200/500 so a freshly generated world already shows real relief --
@@ -49,6 +53,7 @@ OCEANIC_NOISE_AMPLITUDE_M = 900.0
 MIN_AUTO_PLATES = 8
 MAX_AUTO_PLATES = 20
 # Both user-facing (UI sliders) -- see generate_plates' continental_fraction/land_fraction.
+# A share of plates on plates-first worlds and of the surface on cratons-first ones.
 DEFAULT_CONTINENTAL_FRACTION = 0.70
 DEFAULT_LAND_FRACTION = 0.29
 # However high the requested continental fraction, still leave room for real ocean floor.
@@ -239,14 +244,14 @@ class Plate(PlateSurface, abc.ABC):
         frame: np.ndarray,
         crust_type: str,
         omega: np.ndarray | None = None,
-        age_steps: int = 0,
+        age_years: float = 0.0,
         internal_stress: float = 0.0,
     ) -> None:
         self._plate_id = plate_id
         self._frame = frame
         self._crust_type = crust_type
         self._omega = omega if omega is not None else np.zeros(3)
-        self._age_steps = age_steps
+        self._age_years = age_years
         # Accumulated breakup pressure -- see merge_split.accumulate_plate_stress (background,
         # size-driven accumulation plus an overlap-driven top-up biased toward whichever plate
         # in an overlapping pair is the larger one) and maybe_split_plate (folds this into the
@@ -298,11 +303,12 @@ class Plate(PlateSurface, abc.ABC):
         return self._omega
 
     @property
-    def age_steps(self) -> int:
-        """Steps since this plate was created (by generation, merge, or split). Gates split
+    def age_years(self) -> float:
+        """Years since this plate was created (by generation, merge, or split). Gates split
         eligibility in merge_split.py so a plate can't fragment repeatedly in quick
-        succession -- see the note there on why that runaway is a real failure mode."""
-        return self._age_steps
+        succession -- see the note there on why that runaway is a real failure mode. Counted
+        in years, not steps, so the cooldown doesn't depend on the step length (#358)."""
+        return self._age_years
 
     @property
     def seed_world(self) -> np.ndarray:
@@ -319,29 +325,6 @@ class Plate(PlateSurface, abc.ABC):
         self._geometry_revision += 1
         self._invalidate_bounding_polygon()
 
-    def shift(self, world: "World", years: float) -> float:  # noqa: F821
-        """Integrate this plate's rigid motion through the shared torque model.
-
-        Torque inputs consume only the representation-neutral surface API, so rigid motion
-        belongs here rather than in the tectonic engine. Topology remains fixed by this
-        operation: only the frame and geometry revision move.
-        """
-        # Local import avoids plates <-> torque's module-level dependency cycle.
-        from . import torque
-
-        # Debug-world-only escape hatch (see World.pinned_omegas): scripted scenarios move
-        # exactly as configured rather than through the real torque balance.
-        pinned = world.pinned_omegas.get(self.plate_id)
-        if pinned is not None:
-            old_points, _ = self.all_points_and_elevation()
-            if len(old_points) == 0:
-                return 0.0
-            return torque.apply_omega_and_rotate(
-                self, old_points, np.asarray(pinned, dtype=float), years
-            )
-        other_plates = [plate for plate in world.plates if plate.plate_id != self.plate_id]
-        return torque.shift_plate(self, world, other_plates, years)
-
     @property
     def topology_revision(self) -> int:
         return self._topology_revision
@@ -350,14 +333,14 @@ class Plate(PlateSurface, abc.ABC):
     def geometry_revision(self) -> int:
         return self._geometry_revision
 
-    def age_one_step(self) -> None:
-        self._age_steps += 1
+    def advance_age(self, years: float) -> None:
+        self._age_years += years
 
     def reset_age(self) -> None:
-        self._age_steps = 0
+        self._age_years = 0.0
 
-    def set_age_steps(self, age_steps: int) -> None:
-        self._age_steps = age_steps
+    def set_age_years(self, age_years: float) -> None:
+        self._age_years = age_years
 
     @property
     def internal_stress(self) -> float:
@@ -749,6 +732,12 @@ def collect_all_points(plate_list: list[Plate]) -> tuple[np.ndarray, np.ndarray,
 OVERLAP_TOLERANCE_MULT = 0.5
 
 
+def node_is_continental(plate: Plate) -> np.ndarray:
+    """Per node, whether its own crust is continental (`crust_type_code`, with INHERIT read as
+    the plate's nominal type)."""
+    return elevation_lines.effective_is_continental_from_codes(plate.collect("crust_type_code"), plate.crust_type == "continental")
+
+
 def compute_node_overlap(plate_list: list[Plate]) -> dict[int, dict]:
     """Per plate (keyed by plate_id, only plates with nodes), a genuine territory overlap
     read against every *other* plate:
@@ -761,9 +750,12 @@ def compute_node_overlap(plate_list: list[Plate]) -> dict[int, dict]:
     - `cover_count`: int array aligned like `overlap_mask` -- how many *other* plates this
       node sits on (`overlap_mask` is `cover_count > 0`). Whole-world area sums divide by
       `1 + cover_count` to count overlapped ground once (issue #289).
-    - `continental_cover_count`: the same, counting only other plates whose `crust_type` is
-      continental -- the denominator for a continental-plates-only sum, where an oceanic
-      plate on top duplicates nothing.
+    - `continental_cover_count`: the same, counting only other plates whose crust at that
+      spot is continental (the covering plate's nearest node's own crust, #447) -- the
+      denominator for a continental-crust-only sum, where ocean floor on top duplicates
+      nothing.
+    - `continental_by_partner`: {other_plate_id: count of this plate's own continental nodes
+      on top of that plate's continental crust}.
 
     Containment, not node proximity: the same test deform's contested classification uses.
     Two cell lattices in different frames never line up node for node, so a proximity
@@ -777,6 +769,7 @@ def compute_node_overlap(plate_list: list[Plate]) -> dict[int, dict]:
             "by_partner": {},
             "cover_count": np.zeros(p.node_count(), dtype=np.int64),
             "continental_cover_count": np.zeros(p.node_count(), dtype=np.int64),
+            "continental_by_partner": {},
         }
         for p in active
     }
@@ -791,6 +784,7 @@ def _contained_node_overlap(active: list[Plate], result: dict[int, dict]) -> Non
     buried wholly inside another -- the superimposed case the forced merge exists for -- is
     still tested."""
     clouds = [p.all_points_and_elevation()[0] for p in active]
+    continental = [node_is_continental(p) for p in active]
     caps = [geometry.bounding_sphere(c) for c in clouds]
     # Cell centres sit up to a cell's half-diagonal inside the territory's edge, so each cap is
     # padded by one of its plate's largest cells before a pair is ruled out.
@@ -805,11 +799,20 @@ def _contained_node_overlap(active: list[Plate], result: dict[int, dict]) -> Non
                 continue
             inside = other.contains_batch(clouds[i])
             if np.any(inside):
-                result[plate.plate_id]["overlap_mask"] |= inside
-                result[plate.plate_id]["cover_count"] += inside
-                if other.crust_type == "continental":
-                    result[plate.plate_id]["continental_cover_count"] += inside
-                result[plate.plate_id]["by_partner"][other.plate_id] = int(np.count_nonzero(inside))
+                entry = result[plate.plate_id]
+                entry["overlap_mask"] |= inside
+                entry["cover_count"] += inside
+                entry["by_partner"][other.plate_id] = int(np.count_nonzero(inside))
+                # The crust on top is the covering plate's nearest node's, not its plate's
+                # majority type (#447).
+                covered = np.zeros(len(inside), dtype=bool)
+                if np.any(continental[j]):
+                    under = np.flatnonzero(inside)
+                    covered[under] = continental[j][other.get_node_kdtree().query(clouds[i][under])[1]]
+                entry["continental_cover_count"] += covered
+                both = int(np.count_nonzero(covered & continental[i]))
+                if both:
+                    entry["continental_by_partner"][other.plate_id] = both
 
 
 def _collect_all(plate_list: list[Plate], field_name: str) -> np.ndarray:
@@ -994,7 +997,7 @@ def nearest_node_index(plate_list: list[Plate], query_xyz: np.ndarray) -> int | 
     per-node order every `collect_all_*` function uses -- so this index can be reused directly
     against `collect_all_points`/`collect_all_elevation`/`collect_all_node_created_years`/etc
     without a second lookup. `GET /world/node_at`'s click-to-inspect hit-test (see
-    `docs/debugging.md`'s "Added/Removed Points" view) -- `nearest_plate_id` above answers
+    `docs/debugging/map-views.md`'s "Added/Removed Points" view) -- `nearest_plate_id` above answers
     "which plate" alone; this answers "which node exactly," so a caller wanting both per-node
     fields *and* plate ownership needn't repeat the same k-d tree build twice. `None` if every
     plate is empty."""
@@ -1049,6 +1052,22 @@ def _land_noise_threshold(
     means `quantile(1 - target)` lands on the actual land/sea crossing, so the measured
     land fraction tracks the request instead of overshooting it. Default 0.0 keeps the
     old behaviour for a caller that adds the noise straight onto elevation."""
+    def is_continental_at(sample_pts: np.ndarray) -> np.ndarray:
+        _, nearest_idx = owner_tree.query(sample_pts)
+        return np.array([crust_types[i] == "continental" for i in nearest_idx])
+
+    return land_noise_threshold_for_mask(is_continental_at, noise, land_fraction, sealevel_noise_offset)
+
+
+def land_noise_threshold_for_mask(
+    is_continental_at: Callable[[np.ndarray], np.ndarray],
+    noise: "terrain_noise.ReliefField",
+    land_fraction: float,
+    sealevel_noise_offset: float = 0.0,
+) -> float | None:
+    """`_land_noise_threshold` against any per-point continental mask: `is_continental_at`
+    says whether each sample point is continental crust. A cratons-first world's continents
+    aren't keyed to plate sites, so it passes its lattice's continental mask (RFC 0009)."""
     sample_pts = np.concatenate(
         [
             world_pts
@@ -1056,8 +1075,7 @@ def _land_noise_threshold(
         ],
         axis=0,
     )
-    _, nearest_idx = owner_tree.query(sample_pts)
-    is_continental = np.array([crust_types[i] == "continental" for i in nearest_idx])
+    is_continental = np.asarray(is_continental_at(sample_pts), dtype=bool)
     continental_area_fraction = float(np.mean(is_continental))
     if continental_area_fraction <= 0.0:
         return None

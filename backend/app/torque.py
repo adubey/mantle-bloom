@@ -1,6 +1,8 @@
-"""Dynamic torque-balance plate motion (spec section 3): slab-pull, ridge-push, basal drag,
-and collision friction, integrated into an angular acceleration rather than fit via OLS to a
-static mantle-flow field the way `mantle.fit_euler_pole` does for v1.
+"""Plate motion loads and resistance (spec section 3): slab-pull, ridge-push, basal drag,
+and collision friction are assembled into a coupled quasi-static solve. The legacy
+single-plate inertial integrator remains available for targeted mechanics tests, but normal
+world stepping and generation use the coupled solver rather than fitting angular motion from
+the static mantle-flow field the way `mantle.fit_euler_pole` does for v1.
 
 Unit convention, matched to the rest of this codebase (`mantle.py`'s own docstrings/
 constants): `Plate.omega` is a true angular velocity in real radians/year -- radius-
@@ -17,15 +19,18 @@ unit systems.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 import numpy as np
 
-from . import cratons, geometry, mantle
+from . import cratons, geometry, mantle, plates as plate_geometry
 from .boundary import TRANSFORM_RATE_THRESHOLD
-from .elevation_lines import line_spacing_rad
+from .elevation_lines import effective_is_continental_from_codes, line_spacing_rad
 from . import lithosphere
 from .plates import query_workers
+
+logger = logging.getLogger(__name__)
 
 SECONDS_PER_YEAR = 365.25 * 86400.0
 
@@ -56,21 +61,17 @@ ABYSSAL_PLAIN_REFERENCE_ELEVATION_M = float(
     )[0]
 )
 
-# Collision friction: not a literal stress solve (see rheology.py), a reference stress scale
-# applied to the [0, 1] collision intensity `rheology.py` already reports, opposing local
-# relative motion at continent-continent contested nodes -- 50 MPa is a plausible
-# lithospheric differential-stress magnitude.
-COLLISION_FRICTION_REFERENCE_PA = 5e7
-
-# A pair that's barely grazing (a handful of contested nodes out of thousands) shouldn't brake
-# as hard as one where most of this plate's own boundary band is currently overlapping a
-# neighbour -- real collisional resistance scales with how much of the margin is actually
-# jammed, not just a fixed per-node stress. `overlap_severity` (collision_mask's own fraction
-# of this plate's boundary-band nodes, see shift_plate) scales the reference stress up to
-# 1 + this factor at severity 1.0 (the whole band contested) -- a deep, sustained pile-up
-# brakes several times harder than a light graze, on top of the torque already summing over
-# more nodes.
-OVERLAP_FRICTION_SEVERITY_GAIN = 2.0
+# Contact drag (RFC 0008 solution 0, #399): collision resistance as a force per unit trench
+# length. Copley, Avouac & Royer (2010) balance India's motion after the collision against
+# ~5e12 N/m from the thickening Himalaya-Tibet, at ~4 cm/yr of convergence. The drag is linear
+# in relative velocity, converted to per-node traction by the shared front-length weight, so a
+# fully braked contact (factor 1, see `contact_drag_pa_s_per_m`) at the reference rate resists
+# with CONTACT_RESISTANCE_N_PER_M per represented boundary metre. It
+# replaces a 5e7 reference *stress* that multiplied the velocity in m/s, as basal drag's
+# mu/d_s (5e14 Pa*s/m) does: about 1e7 times too weak to slow anything. The RFC 0008 gate
+# (#395) measured a median 2.5-7.8e4 N/m at jammed contacts.
+CONTACT_RESISTANCE_N_PER_M = 5e12
+CONTACT_RESISTANCE_REF_CM_PER_YR = 4.0
 
 # Reference (baseline) continental column elevation -- REFERENCE_HC/HM_CONTINENTAL_M's own
 # isostatic_elevation, i.e. plates.BASE_CONTINENTAL_M (200m) recomputed from first principles
@@ -84,41 +85,43 @@ CONTINENTAL_REFERENCE_ELEVATION_M = float(
 
 # GitHub issue #176: `collision_uplift_multiplier` pumps up land volume/ice-cap coverage by
 # making *existing* orogens taller rather than reclaiming new land area, because nothing in the
-# model resists further shortening once a belt is already very tall -- `collision_friction_
-# torque` above only ever brakes on overlap severity, blind to how much relief a node already
-# carries. Real thickened orogenic crust resists further shortening more than fresh crust does
-# (already near its own strength limit and gravitationally spreading under its own weight --
-# the same physical argument behind Hc's own hard `lithosphere.MAX_CRUSTAL_THICKNESS_M`
-# ceiling), so scaling collision friction up with a node's own current relief closes that gap
-# directly at the velocity/momentum level -- upstream of `apply_convergent_deformation`'s
-# thickening rate, itself driven by `closing_rate` (rheology.py) -- rather than tapering the
-# thickening term after the fact. `COLLISION_RELIEF_FRICTION_SCALE_M` (relief above
-# `CONTINENTAL_REFERENCE_ELEVATION_M` at which the extra brake saturates) sits at roughly the
-# Tibetan Plateau's own mean-elevation scale (isostatic_elevation at 2x reference Hc/Hm computes
-# to ~4.4km, ~4.4km relief above the 200m baseline) -- well below `MAX_CRUSTAL_THICKNESS_M`'s
-# hard cap (2.4x reference), so this brake bites *before* a collision zone ever reaches the
-# ceiling, not only once it's already there.
-COLLISION_RELIEF_FRICTION_GAIN = 3.0
+# model resists further shortening once a belt is already very tall. Real thickened orogenic
+# crust resists further shortening more than fresh crust does (already near its own strength
+# limit and gravitationally spreading under its own weight -- the same physical argument
+# behind Hc's own hard `lithosphere.MAX_CRUSTAL_THICKNESS_M` ceiling), and Copley's resistance
+# *is* the thickened plateau's. So a node's contact drag rises with its relief, at the velocity
+# level, upstream of `apply_convergent_deformation`'s thickening rate. Full resistance at
+# `COLLISION_RELIEF_FRICTION_SCALE_M` of relief above `CONTINENTAL_REFERENCE_ELEVATION_M`,
+# roughly the Tibetan Plateau's mean-elevation scale (isostatic_elevation at 2x reference
+# Hc/Hm computes to ~4.4km, ~4.4km relief above the 200m baseline) -- well below
+# `MAX_CRUSTAL_THICKNESS_M`'s hard cap (2.4x reference), so the brake bites *before* a
+# collision zone reaches the ceiling.
 COLLISION_RELIEF_FRICTION_SCALE_M = 4000.0
 # Where craton meets craton, no weak crust is left to crumple, so convergence has to slow or go
-# elsewhere (#340). Retreat never consumes craton (cratons.retreat_allowed), so a contested node
-# scales the reference stress by up to 1 + this factor, as much as a Tibet-height plateau does,
-# times the *weaker* side's craton strength (cratons.strength): its own, or the craton at the
-# neighbour's nearest node. Collision resistance is one force across the contact, equal and
-# opposite on both plates (Copley, Avouac & Royer 2010; Warners-Ruckstuhl et al. 2013), and
-# it is the weak side's deformation that sets it: India, a cratonic indenter, is resisted by
-# Tibet's thickening and the strong mantle under it (Clark 2012), not by its own strength. A
-# craton pushing into weak crust therefore adds nothing here; the weak side's retreat and the
-# relief term carry that resistance.
-# Uncalibrated (#313). The brake acts only at a contact; a keel adds no basal drag here. That
-# leaves out a contested effect rather than settling it: Stoddard & Abbott (1996) found
-# tectosphere sped plates up in the configurations they tested, which argues against a simple
-# basal-drag slowdown but doesn't show keels never slow plates.
-CRATON_COLLISION_FRICTION_GAIN = 3.0
+# elsewhere (#340). Retreat never consumes craton (cratons.retreat_allowed), so a contested
+# node resists as hard as a Tibet-height plateau does, in proportion to the *weaker* side's
+# craton strength (cratons.strength): its own, or the craton at the neighbour's nearest node.
+# Collision resistance is one force across the contact, equal and opposite on both plates
+# (Copley, Avouac & Royer 2010; Warners-Ruckstuhl et al. 2013), and it is the weak side's
+# deformation that sets it: India, a cratonic indenter, is resisted by Tibet's thickening and
+# the strong mantle under it (Clark 2012), not by its own strength. A craton pushing into weak
+# crust therefore adds nothing here; the weak side's retreat and the relief term carry that
+# resistance. The brake acts only at a contact; a keel adds no basal drag here. That leaves
+# out a contested effect rather than settling it: Stoddard & Abbott (1996) found tectosphere
+# sped plates up in the configurations they tested, which argues against a simple basal-drag
+# slowdown but doesn't show keels never slow plates.
 
-# Boundary-line integrals (slab-pull/ridge-push) treat each contributing node as owning one
-# `spacing_rad * PLANET_RADIUS_M`-long stretch of the boundary -- consistent with how deform()
-# already treats a line's own node spacing as the physical along-boundary resolution.
+# Buoyant columns (RFC 0008 solution 1, #400). Continental crust thicker than ~15 km makes the
+# lithosphere buoyant enough to jam a subduction zone, and 30 km of it on 100 km of lithosphere
+# resists subduction (Cloos 1993). A continental-coded node being forced down at a contact
+# jams in proportion between the two (`jam_factor`), and the jam brakes through the contact
+# drag. The thresholds come from Cloos's crust thicknesses, not his densities: with the model's
+# densities the reference continental column is more buoyant than his.
+JAM_MIN_CRUST_M = 15_000.0
+JAM_FULL_CRUST_M = 30_000.0
+
+# Boundary-line integrals (slab-pull/ridge-push) share a `spacing_rad * PLANET_RADIUS_M`
+# stretch among all band rows mapped to the same neighbour front node (#468).
 
 
 @dataclass
@@ -141,6 +144,9 @@ class BoundaryForceInputs:
     # attributes evidence to the neighbour responsible (issue #318).
     neighbor_plate_id: np.ndarray | None = None  # (N,) int64
     neighbor_node_index: np.ndarray | None = None  # (N,) int64
+    own_craton_m: np.ndarray | None = None  # (N,) craton_crust_m, for the keel's buoyancy (RFC 0008, #400)
+    boundary_length_m: np.ndarray | None = None  # (N,) shared front-node length measure (#468)
+    boundary_length_spacing_rad: float | None = None
 
     def __post_init__(self) -> None:
         n = len(self.own_points)
@@ -148,19 +154,55 @@ class BoundaryForceInputs:
             self.neighbor_plate_id = np.full(n, -1, dtype=np.int64)
         if self.neighbor_node_index is None:
             self.neighbor_node_index = np.full(n, -1, dtype=np.int64)
+        if self.own_craton_m is None:
+            self.own_craton_m = np.zeros(n)
+
+
+@dataclass(frozen=True)
+class PerNodeForceField:
+    """Spatial external force terms on one plate's nodes, each in N.
+
+    These are applied loads, not the internal stress that balances them. A shell or other
+    load-transfer calculation must map them to stress before a rift strength comparison.
+    Keeping the components separate preserves source attribution and lets that calculation
+    use the exact forcing distribution instead of reconstructing it from a plate torque.
+    """
+
+    points_xyz: np.ndarray  # (N, 3) unit vectors
+    areas_m2: np.ndarray  # (N,) accounting area
+    slab_pull_n: np.ndarray  # (N, 3), N
+    slab_drag_n: np.ndarray  # (N, 3), N
+    ridge_push_n: np.ndarray  # (N, 3), N
+    basal_drag_n: np.ndarray  # (N, 3), N
+    contact_drag_n: np.ndarray  # (N, 3), N
+
+    @property
+    def total_n(self) -> np.ndarray:
+        return self.slab_pull_n + self.slab_drag_n + self.ridge_push_n + self.basal_drag_n + self.contact_drag_n
+
+    @property
+    def total_traction_pa(self) -> np.ndarray:
+        """Area-average applied traction at each node; not an in-plane stress tensor."""
+        return self.total_n / self.areas_m2[:, None]
+
+    @property
+    def torque_nm(self) -> np.ndarray:
+        """Moment of the spatial force field about the planet center, in N·m."""
+        return np.cross(self.points_xyz * lithosphere.PLANET_RADIUS_M, self.total_n).sum(axis=0)
 
 
 class BoundarySearchCache:
-    """One step's per-(plate, neighbour) boundary searches, shared by the collision-polarity
-    prepass (collision_polarity.py, issue #318) and `deform()`'s own `boundary_context`, so the
-    prepass doesn't add a second full neighbour search to every step.
+    """One step's boundary searches shared by motion, the collision-polarity prepass, and
+    `deform()`'s own `boundary_context`.
 
     A cached result is reused only while both plates' node sets are unchanged, judged by the
     identity of their cached node k-d trees (`Plate.get_node_kdtree`), which every geometry
     change drops. A reused result is therefore exactly what a fresh search would return, and
     `deform()` behaves as it did without the cache. A neighbour that already deformed this
-    step (cells peeled or grown) is searched afresh. Lives on `World.boundary_search_cache`
-    from the prepass to the end of the deform pass only."""
+    step (cells peeled or grown) is searched afresh. Motion searches use the pre-rotation
+    geometry; rotation invalidates its trees, so the prepass searches the post-rotation
+    geometry afresh and shares those results with the deform pass. Lives on
+    `World.boundary_search_cache` from motion through the end of deformation."""
 
     def __init__(self) -> None:
         # (own id, neighbour id) -> (own tree, neighbour tree, dist, idx): nearest neighbour
@@ -249,13 +291,15 @@ def gather_boundary_force_inputs(
     own_hc = plate.collect("crustal_thickness_m")
     own_hm = plate.collect("mantle_lithosphere_thickness_m")
     own_crust_type_codes = plate.collect("crust_type_code")
+    own_craton_m = plate.collect("craton_crust_m")
     n = len(own_points)
     if n == 0:
         empty3 = np.zeros((0, 3))
         return BoundaryForceInputs(empty3, np.zeros(0), np.zeros(0), np.zeros(0, dtype=np.int8), np.full(0, np.inf), empty3, np.zeros(0, dtype=bool), empty3)
 
     no_neighbour = BoundaryForceInputs(
-        own_points, own_hc, own_hm, own_crust_type_codes, np.full(n, np.inf), np.zeros((n, 3)), np.zeros(n, dtype=bool), np.zeros((n, 3))
+        own_points, own_hc, own_hm, own_crust_type_codes, np.full(n, np.inf), np.zeros((n, 3)), np.zeros(n, dtype=bool), np.zeros((n, 3)),
+        own_craton_m=own_craton_m,
     )
     if not neighbours:
         return no_neighbour
@@ -301,54 +345,221 @@ def gather_boundary_force_inputs(
         owned = best_owner == i
         if not np.any(owned):
             continue
-        neighbor_is_oceanic[owned] = neighbour.crust_type == "oceanic"
+        # The nearest neighbour node's own crust, not its plate's majority type: an ocean
+        # margin on a mostly continental plate is a trench to subduct under, and a continent on
+        # a mostly oceanic plate is a collision (RFC 0009, #447).
+        codes = neighbour.collect("crust_type_code")[best_index[owned]]
+        neighbor_is_oceanic[owned] = ~effective_is_continental_from_codes(codes, neighbour.crust_type == "continental")
         neighbor_omega[owned] = neighbour.omega
         neighbor_plate_id[owned] = neighbour.plate_id
     dist = np.where(best_dist <= reach_rad, best_dist, np.inf)
     return BoundaryForceInputs(
         own_points, own_hc, own_hm, own_crust_type_codes, dist, direction, neighbor_is_oceanic, neighbor_omega,
-        neighbor_plate_id, best_index,
+        neighbor_plate_id, best_index, own_craton_m,
     )
 
 
 def subducting_boundary_mask(plate, inputs: BoundaryForceInputs, reach_rad: float) -> np.ndarray:
-    """This plate's own boundary-band nodes that are genuinely subducting: the plate is
-    oceanic (only oceanic lithosphere is dense enough to descend, the same asymmetry
-    `deform()`'s trench-vs-uplift branch draws), the node is within `reach_rad` of a
-    neighbour, *and* the two plates are actually converging there (`closing_rate` past the
-    same `TRANSFORM_RATE_THRESHOLD` `merge_split` uses). The convergence check is what this
-    used to be missing: slab pull was applied to the plate's *entire* near-neighbour band,
-    ridge and transform stretches included, so a plate spreading at three of its four edges
-    still felt a full-perimeter pull and railed at MAX_PLATE_RATE. A ridge does not pull a
-    slab down."""
-    n = len(inputs.own_points)
-    if plate.crust_type != "oceanic" or n == 0:
-        return np.zeros(n, dtype=bool)
+    """This plate's own boundary-band nodes that are genuinely subducting: the node's crust goes
+    down (`down_going_crust`), it is within `reach_rad` of a neighbour, *and*
+    the two plates are actually converging there (`closing_rate` past the same
+    `TRANSFORM_RATE_THRESHOLD` `merge_split` uses). The convergence check is what this used to
+    be missing: slab pull was applied to the plate's *entire* near-neighbour band, ridge and
+    transform stretches included, so a plate spreading at three of its four edges still felt a
+    full-perimeter pull and railed at MAX_PLATE_RATE. A ridge does not pull a slab down."""
     band = inputs.dist_to_neighbor <= reach_rad
+    return band & (closing_rad_per_yr(plate, inputs) > TRANSFORM_RATE_THRESHOLD) & down_going_crust(plate, inputs, reach_rad)
+
+
+def own_is_continental(plate, inputs: BoundaryForceInputs) -> np.ndarray:
+    return effective_is_continental_from_codes(inputs.own_crust_type_codes, plate.crust_type == "continental")
+
+
+def down_going_crust(plate, inputs: BoundaryForceInputs, reach_rad: float) -> np.ndarray:
+    """Per node, whether its crust goes down when it converges on a neighbour (RFC 0009, #447):
+    every oceanic-coded node, since only oceanic lithosphere is dense enough to descend (the
+    same asymmetry `deform()`'s trench-vs-uplift branch draws), and the continental nodes
+    `slab_attached_continent` finds. A classification of crust, not a contact mask: it holds
+    interior ocean floor too, and callers add the boundary band and closing they need
+    (`subducting_boundary_mask`, `jam_mask`).
+
+    Before #447 the plate's majority type decided for every node: all of an oceanic-majority
+    plate went down, at any contact, and none of a continental-majority plate did. A
+    single-type plate gives the same answer as before."""
+    return ~own_is_continental(plate, inputs) | slab_attached_continent(plate, inputs, reach_rad)
+
+
+def slab_attached_continent(plate, inputs: BoundaryForceInputs, reach_rad: float) -> np.ndarray:
+    """Per node, whether it is continental crust attached to its own plate's slab at its
+    contact: some oceanic-coded node of the plate is in the band facing the same neighbour
+    plate, at a contact that isn't diverging. The slab drags the continent in behind it, a
+    terrane riding ocean floor or a continent behind its own ocean (India), and the
+    continent's buoyancy then cuts the pull and jams the trench (`column_buoyancy_pa`,
+    `jam_mask`). Not diverging rather than converging past +1 cm/yr, for the reason `jam_mask`
+    gives: a jam that slows the contact must not detach the continent from its slab."""
+    continental = own_is_continental(plate, inputs)
+    return continental & _faces_slab_neighbour(inputs, ~continental & _jam_contact(plate, inputs, reach_rad))
+
+
+def _faces_slab_neighbour(inputs: BoundaryForceInputs, slab: np.ndarray) -> np.ndarray:
+    """Per node, whether its nearest neighbour plate is one of those faced by a `slab` node."""
+    slab_ids = np.unique(inputs.neighbor_plate_id[slab])
+    return np.isin(inputs.neighbor_plate_id, slab_ids[slab_ids >= 0])
+
+
+def closing_rad_per_yr(plate, inputs: BoundaryForceInputs) -> np.ndarray:
+    """Per node, the closing rate toward the nearest neighbour in rad/yr, the unit
+    `TRANSFORM_RATE_THRESHOLD` is in (positive = converging)."""
     v_self = np.cross(plate.omega, inputs.own_points)
     v_neighbor = np.cross(inputs.neighbor_omega, inputs.own_points)
-    closing = np.sum((v_self - v_neighbor) * inputs.direction_to_neighbor, axis=-1)
-    return band & (closing > TRANSFORM_RATE_THRESHOLD)
+    return np.sum((v_self - v_neighbor) * inputs.direction_to_neighbor, axis=-1)
+
+
+def jam_factor(hc_cont: np.ndarray) -> np.ndarray:
+    """j in [0, 1] per node from its continental crust (`continental_crust_m`): 0 up to
+    JAM_MIN_CRUST_M, 1 from JAM_FULL_CRUST_M, linear between (RFC 0008, #400)."""
+    return np.clip((np.asarray(hc_cont, dtype=float) - JAM_MIN_CRUST_M) / (JAM_FULL_CRUST_M - JAM_MIN_CRUST_M), 0.0, 1.0)
+
+
+def forced_down_mask(plate, world, inputs: BoundaryForceInputs, reach_rad: float) -> np.ndarray:
+    """Per node of `plate`, whether it is on the side forced down at a contact: crust that goes
+    down (`down_going_crust`: an oceanic node, or a continental one behind its plate's own
+    slab), and the lower-plate nodes of polarized fronts (`lower_plate_mask`). Like
+    `down_going_crust`, not a contact mask: `jam_mask` adds the contact."""
+    return down_going_crust(plate, inputs, reach_rad) | lower_plate_mask(plate, world, len(inputs.own_points))
+
+
+def lower_plate_mask(plate, world, n: int) -> np.ndarray:
+    """Per node of `plate` (`n` nodes), whether it is on the lower plate of a polarized
+    continental front (`collision_polarity`).
+
+    Plates shift before the polarity prepass freezes this step's fronts, so this reads the last
+    frozen frame, the previous step's, and matches its lower-plate cells to the plate's cells
+    now by cell key: cells lost since then drop out, cells gained join only at the next
+    prepass. A plate the frame doesn't know (new since a split or merge, or a loaded save)
+    has no lower-plate nodes until then."""
+    frame = getattr(world, "collision_polarity_frame", None)
+    masks = frame.masks.get(plate.plate_id) if frame is not None else None
+    if masks is None or not np.any(masks.lower):
+        return np.zeros(n, dtype=bool)
+    return np.isin(plate.cell_keys, masks.node_keys[masks.lower])
+
+
+def jam_mask(plate, inputs: BoundaryForceInputs, forced_down: np.ndarray, reach_rad: float) -> np.ndarray:
+    """RFC 0008's jam mask (#400): continental-coded nodes on the side being forced down
+    (`forced_down_mask`), in the boundary band, at a contact that isn't diverging (closing
+    >= -TRANSFORM_RATE_THRESHOLD).
+
+    Independent of `subducting_boundary_mask`, which needs closing above +1 cm/yr: a jam read
+    from it would lose its resistance as soon as the brake slowed the contact below 1 cm/yr,
+    the driving forces would speed it back up, and the contact would flicker. A band through
+    zero keeps the resistance while the contact stalls; the drag vanishes with the relative
+    velocity, so it can't hold together a contact that is pulling apart."""
+    return own_is_continental(plate, inputs) & forced_down & _jam_contact(plate, inputs, reach_rad)
+
+
+def _jam_contact(plate, inputs: BoundaryForceInputs, reach_rad: float) -> np.ndarray:
+    return (inputs.dist_to_neighbor <= reach_rad) & (closing_rad_per_yr(plate, inputs) >= -TRANSFORM_RATE_THRESHOLD)
+
+
+def continental_crust_m(plate, inputs: BoundaryForceInputs) -> np.ndarray:
+    """Per node, Hc where the node is continental-coded, else 0. Oceanic crust is left out of
+    a column's buoyancy: it turns to eclogite as it subducts (Cloos 1993)."""
+    return np.where(own_is_continental(plate, inputs), inputs.own_hc, 0.0)
+
+
+def column_buoyancy_pa(hc_cont: np.ndarray, hm: np.ndarray, craton_m: np.ndarray) -> np.ndarray:
+    """Net negative buoyancy per unit area of a column, in Pa (positive sinks), RFC 0008
+    solution 1 (#400): `g [(rho_m - rho_a) Hm (1 - s) - (rho_a - rho_cc) Hc_cont]`.
+
+    The mantle lithosphere's excess density pulls; continental crust (`hc_cont`, from
+    `continental_crust_m`) holds the column up. A cratonic keel is chemically depleted, which
+    offsets its cold, dense thermal state (Jordan 1978), so a full-strength craton's keel
+    (`cratons.strength` s = 1) is neutral. For ocean floor (no continental crust, no craton)
+    it is the mantle term alone, slab pull's buoyancy before this change."""
+    s = cratons.strength(craton_m)
+    return lithosphere.GRAVITY_M_S2 * (
+        (lithosphere.RHO_LITHOSPHERE_MANTLE - lithosphere.RHO_ASTHENOSPHERE) * hm * (1.0 - s)
+        - (lithosphere.RHO_ASTHENOSPHERE - lithosphere.RHO_CONTINENTAL_CRUST) * hc_cont
+    )
+
+
+def boundary_node_length_m(inputs: BoundaryForceInputs, spacing_rad: float) -> np.ndarray:
+    """Length represented by each own-side node along its nearest neighbour front.
+
+    Several rows in a boundary band can map to the same neighbour node. They share that
+    front node's one along-boundary interval, rather than each contributing a full `ds`.
+    This keeps line loads invariant to band width and repeated sampling (#468). Inputs
+    without a valid neighbour-node identity retain the historical one-`ds` fallback for
+    standalone callers and small equation tests. The result is memoized on `inputs` for
+    the requested spacing; a different spacing replaces the cached array.
+    """
+    if inputs.boundary_length_m is not None and inputs.boundary_length_spacing_rad == spacing_rad:
+        return inputs.boundary_length_m
+    n = len(inputs.own_points)
+    ds = spacing_rad * lithosphere.PLANET_RADIUS_M
+    lengths = np.full(n, ds, dtype=float)
+    valid = (inputs.neighbor_plate_id >= 0) & (inputs.neighbor_node_index >= 0) & np.isfinite(inputs.dist_to_neighbor)
+    if np.any(valid):
+        front_nodes = np.column_stack((inputs.neighbor_plate_id[valid], inputs.neighbor_node_index[valid]))
+        _, inverse, counts = np.unique(front_nodes, axis=0, return_inverse=True, return_counts=True)
+        lengths[valid] = ds / counts[inverse]
+    inputs.boundary_length_m = lengths
+    inputs.boundary_length_spacing_rad = spacing_rad
+    return lengths
+
+
+def slab_pull_force_n(plate, inputs: BoundaryForceInputs, subducting_mask: np.ndarray, spacing_rad: float) -> np.ndarray:
+    """Per subducting node (`subducting_mask`), the magnitude of its slab pull in N: its
+    column's buoyancy (`column_buoyancy_pa`) times `SUBDUCTION_LSINK_M` and its stretch of
+    boundary. A buoyant column pulls nothing (RFC 0008, #400): before, every node pulled with
+    its Hm alone, so a continental terrane or a craton was dragged into the trench at full
+    strength, and a thick cratonic keel pulled *harder* than ocean floor."""
+    ds = boundary_node_length_m(inputs, spacing_rad)[subducting_mask]
+    buoyancy = column_buoyancy_pa(
+        continental_crust_m(plate, inputs)[subducting_mask], inputs.own_hm[subducting_mask], inputs.own_craton_m[subducting_mask]
+    )
+    return np.clip(buoyancy, 0.0, None) * SUBDUCTION_LSINK_M * ds
+
+
+def slab_pull_force_vectors_n(plate, inputs: BoundaryForceInputs, subducting_mask: np.ndarray, spacing_rad: float) -> np.ndarray:
+    """Spatial slab-pull forces on all own nodes, in N, directed toward the neighbour."""
+    forces = np.zeros_like(inputs.own_points, dtype=float)
+    if np.any(subducting_mask):
+        forces[subducting_mask] = (
+            slab_pull_force_n(plate, inputs, subducting_mask, spacing_rad)[:, None]
+            * inputs.direction_to_neighbor[subducting_mask]
+        )
+    return forces
 
 
 def slab_pull_torque(plate, inputs: BoundaryForceInputs, subducting_mask: np.ndarray, spacing_rad: float) -> np.ndarray:
     """Eq. 8, discretized as a sum over this plate's own subducting-boundary nodes
     (`subducting_mask`, from `subducting_boundary_mask` -- passed in rather than recomputed so
-    it stays in lockstep with the matching `slab_drag_torque` resistance)."""
+    it stays in lockstep with the matching `slab_drag_torque` resistance), each pulling with
+    `slab_pull_force_n`."""
+    force = slab_pull_force_vectors_n(plate, inputs, subducting_mask, spacing_rad)
+    return np.cross(inputs.own_points * lithosphere.PLANET_RADIUS_M, force).sum(axis=0)
+
+
+def slab_drag_force_vectors_n(inputs: BoundaryForceInputs, subducting_mask: np.ndarray, spacing_rad: float, omega: np.ndarray) -> np.ndarray:
+    """Spatial deep-mantle slab drag on a plate's subducting nodes, in N."""
+    forces = np.zeros_like(inputs.own_points, dtype=float)
     if not np.any(subducting_mask):
-        return np.zeros(3)
-    ds = spacing_rad * lithosphere.PLANET_RADIUS_M
-    hm = inputs.own_hm[subducting_mask]
-    force_mag = (lithosphere.RHO_LITHOSPHERE_MANTLE - lithosphere.RHO_ASTHENOSPHERE) * lithosphere.GRAVITY_M_S2 * hm * SUBDUCTION_LSINK_M * ds
-    force = force_mag[:, None] * inputs.direction_to_neighbor[subducting_mask]
-    r = inputs.own_points[subducting_mask] * lithosphere.PLANET_RADIUS_M
-    return np.cross(r, force).sum(axis=0)
+        return forces
+    points = inputs.own_points[subducting_mask]
+    lengths = boundary_node_length_m(inputs, spacing_rad)[subducting_mask]
+    area_m2 = SUBDUCTION_LSINK_M * lengths
+    velocity_m_s = np.cross(np.asarray(omega, dtype=float), points) * lithosphere.PLANET_RADIUS_M / SECONDS_PER_YEAR
+    traction_pa = -(SLAB_MANTLE_VISCOSITY_PA_S / SHEAR_ZONE_THICKNESS_M) * velocity_m_s
+    forces[subducting_mask] = traction_pa * area_m2[:, None]
+    return forces
 
 
 def slab_drag_coefficient_matrix(inputs: BoundaryForceInputs, subducting_mask: np.ndarray, spacing_rad: float) -> np.ndarray:
     """The `K` half of Eq. 10-style drag, but for the *sunk slab* shearing against the deep
     mantle (`SLAB_MANTLE_VISCOSITY_PA_S`) over its `SUBDUCTION_LSINK_M` down-dip length,
-    summed over this plate's subducting nodes. Folded into `integrate_omega`'s implicit `K`
+    summed over this plate's subducting nodes. Folded into the coupled solve's drag matrix
     exactly like `basal_drag_coefficients` -- it is at least as stiff, and an explicit step on
     it would overshoot the same way. `b` is zero: the deep mantle it shears against is taken
     at rest (unlike the asthenosphere, which carries `mantle.flow_at`), so the drag is purely
@@ -357,32 +568,29 @@ def slab_drag_coefficient_matrix(inputs: BoundaryForceInputs, subducting_mask: n
     pts = inputs.own_points[subducting_mask]
     if len(pts) == 0:
         return np.zeros((3, 3))
-    ds = spacing_rad * lithosphere.PLANET_RADIUS_M
+    ds = boundary_node_length_m(inputs, spacing_rad)[subducting_mask]
     c = (
         (SLAB_MANTLE_VISCOSITY_PA_S / SHEAR_ZONE_THICKNESS_M)
         * (SUBDUCTION_LSINK_M * ds)
         * lithosphere.PLANET_RADIUS_M**2
         / SECONDS_PER_YEAR
     )
-    return c * (len(pts) * np.eye(3) - np.einsum("ni,nj->nij", pts, pts).sum(axis=0))
+    return c.sum() * np.eye(3) - np.einsum("n,ni,nj->ij", c, pts, pts)
 
 
 def slab_drag_torque(plate, inputs: BoundaryForceInputs, subducting_mask: np.ndarray, spacing_rad: float) -> np.ndarray:
     """`slab_drag_coefficient_matrix` evaluated at the plate's current `omega` (`-K @ omega`)
-    -- a standalone entry point for tests / callers that just want the resistive torque;
-    `shift_plate` itself folds the `K` into `integrate_omega` for implicit stability."""
+    -- a standalone entry point for tests / callers that just want the resistive torque.
+    The coupled solve assembles the matrix directly instead of evaluating this helper."""
     return -slab_drag_coefficient_matrix(inputs, subducting_mask, spacing_rad) @ plate.omega
 
 
-def ridge_push_torque(plate, inputs: BoundaryForceInputs, divergent_mask: np.ndarray, spacing_rad: float) -> np.ndarray:
-    """Eq. 9, over this plate's own divergent/ridge boundary nodes (`divergent_mask`, the
-    same geometric classification `rheology.py`'s deform() pass computes -- passed in rather
-    than recomputed so the two stay in lockstep). Push direction is away from the boundary,
-    into this plate's own interior -- the opposite sense from slab-pull's "toward the
-    neighbour," since a ridge shoves both flanking plates apart."""
+def ridge_push_force_vectors_n(plate, inputs: BoundaryForceInputs, divergent_mask: np.ndarray, spacing_rad: float) -> np.ndarray:
+    """Spatial ridge-push force on all own nodes, in N, directed into the plate."""
+    force = np.zeros_like(inputs.own_points, dtype=float)
     if not np.any(divergent_mask):
-        return np.zeros(3)
-    ds = spacing_rad * lithosphere.PLANET_RADIUS_M
+        return force
+    ds = boundary_node_length_m(inputs, spacing_rad)[divergent_mask]
     rho_c = lithosphere.node_crust_density(inputs.own_crust_type_codes[divergent_mask], plate.crust_type)
     z = lithosphere.isostatic_elevation(inputs.own_hc[divergent_mask], inputs.own_hm[divergent_mask], rho_c)
     e_r = np.clip(z - ABYSSAL_PLAIN_REFERENCE_ELEVATION_M, 0.0, None)
@@ -394,9 +602,30 @@ def ridge_push_torque(plate, inputs: BoundaryForceInputs, divergent_mask: np.nda
     # (force magnitude still nonzero, but a zero direction vector cancels it) -- acceptable,
     # since "no neighbour nearby" also means this node isn't really acting as part of an
     # active spreading boundary the plate as a whole would feel a coherent push from.
-    force = force_mag[:, None] * direction
-    r = inputs.own_points[divergent_mask] * lithosphere.PLANET_RADIUS_M
+    force[divergent_mask] = force_mag[:, None] * direction
+    return force
+
+
+def ridge_push_torque(plate, inputs: BoundaryForceInputs, divergent_mask: np.ndarray, spacing_rad: float) -> np.ndarray:
+    """Eq. 9; sum the moments of the spatial ridge-push force vectors."""
+    force = ridge_push_force_vectors_n(plate, inputs, divergent_mask, spacing_rad)
+    r = inputs.own_points * lithosphere.PLANET_RADIUS_M
     return np.cross(r, force).sum(axis=0)
+
+
+def basal_drag_force_vectors_n(plate, world, spacing_rad: float) -> np.ndarray:
+    """Spatial basal-drag force on each owned node, in N, before plate aggregation."""
+    own_points, _ = plate.all_points_and_elevation()
+    if len(own_points) == 0:
+        return np.zeros((0, 3))
+    own_velocity_m_s = np.cross(plate.omega, own_points) * lithosphere.PLANET_RADIUS_M / SECONDS_PER_YEAR
+    mantle_velocity_m_s = mantle.flow_at(own_points, world.mantle_centers) * lithosphere.PLANET_RADIUS_M / SECONDS_PER_YEAR
+    basal_coefficient_pa_s_per_m = ASTHENOSPHERE_VISCOSITY_PA_S / SHEAR_ZONE_THICKNESS_M
+    return (
+        basal_coefficient_pa_s_per_m
+        * (mantle_velocity_m_s - own_velocity_m_s)
+        * plate.accounting_areas_m2(spacing_rad)[:, None]
+    )
 
 
 def basal_drag_coefficients(plate, world, spacing_rad: float) -> tuple[np.ndarray, np.ndarray]:
@@ -445,60 +674,130 @@ def basal_drag_torque(plate, world, spacing_rad: float) -> np.ndarray:
     return b - k @ plate.omega
 
 
+def contact_drag_pa_s_per_m(
+    plate,
+    inputs: BoundaryForceInputs,
+    collision_mask: np.ndarray,
+    spacing_rad: float,
+    craton_m: np.ndarray | None = None,
+    jam: np.ndarray | None = None,
+) -> np.ndarray:
+    """Per node, the contact drag coefficient in Pa*s/m: traction per unit relative velocity.
+
+    `eta_i = CONTACT_RESISTANCE_N_PER_M * dL_i / (A_i * v_ref)`, where `dL_i` is this row's
+    shared front-node length and `A_i` its accounting area. Integrating `eta_i * A_i * v_ref`
+    returns the stated force per represented boundary metre (RFC 0008, #468). g is the largest of the
+    contact's jam factor (`jam`, from `contact_jam_factor`, #400) and, at contested nodes
+    (`collision_mask`), the node's relief factor (COLLISION_RELIEF_FRICTION_SCALE_M) and the
+    contact's craton strength (`craton_m`, per node the weaker side's `craton_crust_m`), so it
+    stays in [0, 1]: one bounded factor in place of the multiplicative overlap, relief and
+    craton gains tuned against the old inert coefficient. A contact with no buoyant crust
+    forced down, no relief and no craton resists with nothing until relief builds, as
+    Copley's resistance comes from mountain building."""
+    n = len(inputs.own_points)
+    factor = np.zeros(n) if jam is None else np.asarray(jam, dtype=float).copy()
+    if np.any(collision_mask):
+        rho_c = lithosphere.node_crust_density(inputs.own_crust_type_codes[collision_mask], plate.crust_type)
+        elevation = lithosphere.isostatic_elevation(inputs.own_hc[collision_mask], inputs.own_hm[collision_mask], rho_c)
+        relief = np.clip(elevation - CONTINENTAL_REFERENCE_ELEVATION_M, 0.0, None)
+        relief_factor = np.clip(relief / COLLISION_RELIEF_FRICTION_SCALE_M, 0.0, 1.0)
+        craton_factor = cratons.strength(craton_m[collision_mask]) if craton_m is not None else 0.0
+        factor[collision_mask] = np.maximum(factor[collision_mask], np.maximum(relief_factor, craton_factor))
+    factor = np.clip(factor, 0.0, 1.0)
+    v_ref_m_per_s = CONTACT_RESISTANCE_REF_CM_PER_YR * 0.01 / SECONDS_PER_YEAR
+    node_area_m2 = plate.accounting_areas_m2(spacing_rad)
+    boundary_length_m = boundary_node_length_m(inputs, spacing_rad)
+    return CONTACT_RESISTANCE_N_PER_M * boundary_length_m / (node_area_m2 * v_ref_m_per_s) * factor
+
+
 def collision_drag_coefficients(
     plate,
     inputs: BoundaryForceInputs,
     collision_mask: np.ndarray,
     spacing_rad: float,
-    overlap_severity: float = 0.0,
     craton_m: np.ndarray | None = None,
+    jam: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Resistive drag at continent-continent contested nodes (`collision_mask`), in
-    `basal_drag_coefficients`' own affine `tau(omega) = b - K @ omega` form -- keeps two
-    head-on continents from accelerating straight through each other indefinitely.
-    `overlap_severity` (see OVERLAP_FRICTION_SEVERITY_GAIN) scales the reference stress up for
-    a deeper/wider overlap, on top of the torque already summing over more nodes for a bigger
-    contested band. Each node's own current relief (see COLLISION_RELIEF_FRICTION_GAIN) scales
-    it up further still -- an already-tall orogen resists further shortening more than fresh
-    crust does -- and so does the contact's craton (`craton_m`, per node the weaker side's
-    `craton_crust_m`; see CRATON_COLLISION_FRICTION_GAIN), which retreat never consumes.
+    """Resistive drag at continent-continent contested nodes (`collision_mask`) and jammed
+    contacts (`jam`), in `basal_drag_coefficients`' own affine `tau(omega) = b - K @ omega`
+    form, with each node's coefficient from `contact_drag_pa_s_per_m`.
 
-    GitHub issue #176: this used to be a standalone torque (`force = -reference_pa * area *
-    min(speed, 1.0) * relative_dir`, folded into `shift_plate`'s `explicit_torque`) -- at every
-    real plate speed `mantle.MAX_PLATE_RATE` allows (many orders of magnitude under the 1 m/s
-    cap, which never actually binds), `min(speed, 1.0) * relative_dir` reduces to `relative`
-    itself, so that formula was *already* affine in omega (`relative = v_self - v_neighbor`,
-    linear in `plate.omega`) -- it was just computed as if it weren't and handed to
-    `integrate_omega` as an explicit forcing term. `integrate_omega`'s own docstring already
-    flags the consequence: the implicit basal-drag term is stiff enough to swamp *any* purely
-    explicit torque, collision friction included, so raising the relief/severity gain there
-    barely moved a #176 sweep's land-volume runaway (confirmed: a 4x reference-stress boost
-    changed 120 My land volume by <1%). Splitting this into the same `(b, K)` form
-    `basal_drag_coefficients`/`slab_drag_coefficient_matrix` already use lets `shift_plate` fold
-    it into `drag_k` instead, so it competes with basal drag on equal footing in the implicit
-    solve rather than getting divided away by it first."""
-    n = len(inputs.own_points)
-    if not np.any(collision_mask) or n == 0:
+    GitHub issue #176: this used to be a standalone torque handed to `integrate_omega` as an
+    explicit forcing term, though it was already affine in omega (`relative = v_self -
+    v_neighbor`, linear in `plate.omega`). The implicit basal-drag term is stiff enough to swamp
+    *any* purely explicit torque, so raising its gains barely moved a #176 sweep. In the same
+    `(b, K)` form `basal_drag_coefficients`/`slab_drag_coefficient_matrix` use, `shift_plate`
+    folds it into `drag_k`, where it competes with basal drag on equal footing. Being implicit
+    and linear in the relative velocity, it slows a driven plate toward the speed where driving
+    and resistance balance but never reverses it in one step."""
+    if len(inputs.own_points) == 0:
         return np.zeros(3), np.zeros((3, 3))
-    own_points = inputs.own_points[collision_mask]
-    neighbor_omega = inputs.neighbor_omega[collision_mask]
-    rho_c = lithosphere.node_crust_density(inputs.own_crust_type_codes[collision_mask], plate.crust_type)
-    elevation = lithosphere.isostatic_elevation(inputs.own_hc[collision_mask], inputs.own_hm[collision_mask], rho_c)
-    relief = np.clip(elevation - CONTINENTAL_REFERENCE_ELEVATION_M, 0.0, None)
-    relief_factor = np.clip(relief / COLLISION_RELIEF_FRICTION_SCALE_M, 0.0, 1.0)
-    craton_factor = cratons.strength(craton_m[collision_mask]) if craton_m is not None else 0.0
-    reference_pa = (
-        COLLISION_FRICTION_REFERENCE_PA
-        * (1.0 + OVERLAP_FRICTION_SEVERITY_GAIN * overlap_severity)
-        * (1.0 + COLLISION_RELIEF_FRICTION_GAIN * relief_factor)
-        * (1.0 + CRATON_COLLISION_FRICTION_GAIN * craton_factor)
-    )  # (k,) -- one coefficient per contested node, varying with each node's relief and craton.
-    area_m2 = plate.accounting_areas_m2(spacing_rad)[collision_mask]
-    c = reference_pa * area_m2 * lithosphere.PLANET_RADIUS_M**2 / SECONDS_PER_YEAR
+    coefficient = contact_drag_pa_s_per_m(plate, inputs, collision_mask, spacing_rad, craton_m, jam)
+    drag = coefficient > 0.0
+    if not np.any(drag):
+        return np.zeros(3), np.zeros((3, 3))
+    own_points = inputs.own_points[drag]
+    neighbor_omega = inputs.neighbor_omega[drag]
+    area_m2 = plate.accounting_areas_m2(spacing_rad)[drag]
+    c = coefficient[drag] * area_m2 * lithosphere.PLANET_RADIUS_M**2 / SECONDS_PER_YEAR
     raw_neighbor = np.cross(neighbor_omega, own_points)  # rad/yr-equivalent, not yet real m/s -- see basal_drag_coefficients
     b = np.einsum("n,ni->i", c, np.cross(own_points, raw_neighbor))
     k = np.einsum("n,nij->ij", c, np.eye(3)[None, :, :] - np.einsum("ni,nj->nij", own_points, own_points))
     return b, k
+
+
+def contact_drag_force_vectors_n(
+    plate,
+    inputs: BoundaryForceInputs,
+    collision_mask: np.ndarray,
+    spacing_rad: float,
+    craton_m: np.ndarray | None = None,
+    jam: np.ndarray | None = None,
+) -> np.ndarray:
+    """Spatial contact/jam drag forces on all own nodes, in N."""
+    force = np.zeros_like(inputs.own_points, dtype=float)
+    coefficient = contact_drag_pa_s_per_m(plate, inputs, collision_mask, spacing_rad, craton_m, jam)
+    active = coefficient > 0.0
+    if np.any(active):
+        relative_velocity_m_s = (
+            np.cross(inputs.neighbor_omega[active] - plate.omega, inputs.own_points[active])
+            * lithosphere.PLANET_RADIUS_M
+            / SECONDS_PER_YEAR
+        )
+        force[active] = (
+            coefficient[active, None]
+            * plate.accounting_areas_m2(spacing_rad)[active, None]
+            * relative_velocity_m_s
+        )
+    return force
+
+
+def gather_per_node_force_field(
+    plate,
+    world,
+    inputs: BoundaryForceInputs,
+    spacing_rad: float,
+    subducting_mask: np.ndarray,
+    divergent_mask: np.ndarray,
+    collision_mask: np.ndarray,
+    craton_m: np.ndarray | None = None,
+    jam: np.ndarray | None = None,
+) -> PerNodeForceField:
+    """Return the existing torque engine's force terms before spatial aggregation.
+
+    The resulting node vectors preserve each source's existing units and formulation. They
+    are inputs to a later internal-load calculation, not a local stress estimate themselves.
+    """
+    areas_m2 = np.asarray(plate.accounting_areas_m2(spacing_rad), dtype=float)
+    return PerNodeForceField(
+        points_xyz=np.asarray(inputs.own_points, dtype=float),
+        areas_m2=areas_m2,
+        slab_pull_n=slab_pull_force_vectors_n(plate, inputs, subducting_mask, spacing_rad),
+        slab_drag_n=slab_drag_force_vectors_n(inputs, subducting_mask, spacing_rad, plate.omega),
+        ridge_push_n=ridge_push_force_vectors_n(plate, inputs, divergent_mask, spacing_rad),
+        basal_drag_n=basal_drag_force_vectors_n(plate, world, spacing_rad),
+        contact_drag_n=contact_drag_force_vectors_n(plate, inputs, collision_mask, spacing_rad, craton_m, jam),
+    )
 
 
 def collision_friction_torque(
@@ -506,14 +805,14 @@ def collision_friction_torque(
     inputs: BoundaryForceInputs,
     collision_mask: np.ndarray,
     spacing_rad: float,
-    overlap_severity: float = 0.0,
     craton_m: np.ndarray | None = None,
+    jam: np.ndarray | None = None,
 ) -> np.ndarray:
     """`collision_drag_coefficients` evaluated at the plate's current `omega` (`b - K @ omega`)
     -- a standalone entry point for tests / callers that just want the resistive torque, same
     role `slab_drag_torque`/`basal_drag_torque` play for their own `(b, K)` splits; `shift_plate`
     itself uses the split form for implicit integration."""
-    b, k = collision_drag_coefficients(plate, inputs, collision_mask, spacing_rad, overlap_severity, craton_m)
+    b, k = collision_drag_coefficients(plate, inputs, collision_mask, spacing_rad, craton_m, jam)
     return b - k @ plate.omega
 
 
@@ -554,6 +853,11 @@ def integrate_omega(
 
 
 BOUNDARY_FORCE_REACH_MULTIPLIER = 3.0  # multiples of spacing_rad -- how boundary-local slab-pull/ridge-push/collision are
+
+
+def boundary_force_reach_rad(spacing_rad: float) -> float:
+    """Configured width of the boundary-local force integration band."""
+    return BOUNDARY_FORCE_REACH_MULTIPLIER * spacing_rad
 
 # Motion-based boundary classification (see classify_boundary_nodes). A near-boundary node
 # whose closing rate is within +-this of zero is a transform (strike-slip) contact; faster
@@ -655,12 +959,10 @@ def classify_boundary_nodes(
 
 
 def apply_omega_and_rotate(plate, old_points: np.ndarray, omega: np.ndarray, years: float) -> float:
-    """Shared tail of `shift_plate`'s real torque-balance path and `Plate.shift`'s
-    pinned-omega override (see `World.pinned_omegas`): set `omega`, rotate rigidly by it over
-    `years`, and report the same `D` (max node displacement) contract every `shift`
-    implementation returns. `old_points` is the plate's own pre-rotation node cloud (the
-    caller already has it -- both callers need it for their own zero-node early-out too, so
-    it's a parameter rather than refetched here)."""
+    """Set a solved or prescribed rate, rotate a plate, and report its max node displacement.
+
+    `old_points` is the plate's pre-rotation node cloud, already captured by the batch caller.
+    """
     plate.set_omega(omega)
     increment = geometry.rotation_matrix_from_omega(plate.omega, years)
     plate.rotate(increment)
@@ -668,10 +970,17 @@ def apply_omega_and_rotate(plate, old_points: np.ndarray, omega: np.ndarray, yea
     return float(geometry.angular_distance(old_points, new_points).max())
 
 
+def continental_contact_mask(plate, inputs: BoundaryForceInputs, contested: np.ndarray) -> np.ndarray:
+    """The contested nodes that are a continent-continent contact, the ones contact drag brakes:
+    the node's own crust and its nearest neighbour node's are both continental. Node by node,
+    not by either plate's majority type (RFC 0009, #447)."""
+    return contested & own_is_continental(plate, inputs) & ~inputs.neighbor_is_oceanic
+
+
 def contact_craton_m(plate, neighbours: list, inputs: BoundaryForceInputs) -> np.ndarray:
     """Per node of `plate`, the craton of the weaker side of its contact: the lesser of its own
     `craton_crust_m` and that at its nearest neighbour node (`inputs.neighbor_node_index`),
-    so both plates at one contact are braked alike (CRATON_COLLISION_FRICTION_GAIN). Zero
+    so both plates at one contact are braked alike (`contact_drag_pa_s_per_m`). Zero
     where there is no neighbour."""
     own = plate.collect("craton_crust_m")
     other = np.zeros(len(own))
@@ -682,54 +991,405 @@ def contact_craton_m(plate, neighbours: list, inputs: BoundaryForceInputs) -> np
     return np.minimum(own, other)
 
 
-def shift_plate(plate, world, other_plates: list, years: float) -> float:
-    """`Plate.shift`'s real (non-pinned) implementation: gather this step's
-    driving/resisting torques from the plate's *current* (pre-rotation) boundary
-    configuration, integrate omega, then rotate rigidly -- see `apply_omega_and_rotate` for
-    the shared tail with the pinned-omega override."""
+def contact_jam_factor(plate, world, neighbours: list, inputs: BoundaryForceInputs, reach_rad: float) -> np.ndarray:
+    """Per node of `plate`, the jam factor j of its contact (RFC 0008, #400): its own where it
+    is in the jam mask (`jam_mask`), or that of the neighbour's nearest node
+    (`inputs.neighbor_node_index`, as `contact_craton_m` reads) where that node is
+    continental-coded and forced down, whichever is larger. Both plates at a jammed contact so
+    feel one resistance, equal and opposite: the upper plate is never in the jam mask itself,
+    but reads the lower plate's j across the contact.
+
+    The neighbour's node is forced down where it is a lower-plate cell, or where the neighbour
+    has a slab under this plate: an oceanic-coded nearest node of it at a contact with this
+    plate that isn't diverging, the mirror of `slab_attached_continent` read from this side (#447)."""
+    n = len(inputs.own_points)
+    own = np.where(jam_mask(plate, inputs, forced_down_mask(plate, world, inputs, reach_rad), reach_rad), jam_factor(continental_crust_m(plate, inputs)), 0.0)
+    other = np.zeros(n)
+    behind_slab = _faces_slab_neighbour(inputs, inputs.neighbor_is_oceanic & _jam_contact(plate, inputs, reach_rad))
+    for neighbour in neighbours:
+        mine = inputs.neighbor_plate_id == neighbour.plate_id
+        if not np.any(mine):
+            continue
+        idx = inputs.neighbor_node_index[mine]
+        continental = ~inputs.neighbor_is_oceanic[mine]
+        down = lower_plate_mask(neighbour, world, len(neighbour.cell_keys))[idx] | behind_slab[mine]
+        hc = neighbour.collect("crustal_thickness_m")[idx]
+        other[mine] = np.where(continental & down, jam_factor(hc), 0.0)
+    return np.maximum(own, np.where(_jam_contact(plate, inputs, reach_rad), other, 0.0))
+
+
+def solve_plates_quasistatic(world, *, diagnostics: dict | None = None) -> dict[int, np.ndarray]:
+    """Assemble and solve one coupled motion system without changing plate geometry.
+
+    Basal and slab drag remain plate-local. Contact drag is assembled once per plate pair
+    from the mean of both sides' discretized resistance matrices, treating a missing side as
+    zero, then enters as the
+    symmetric block ``[[K, -K], [-K, K]]``. Frozen blocked edges also supply one shared
+    normal force each, bounded by the weaker side's lithospheric strength. The solve is
+    quasi-static: inertia and the per-plate rate clamp do not create motion or hide a
+    force-balance residual.
+    """
+    from .quasistatic import contact_force_at_capacity, solve_quasistatic_contacts
+
     spacing_rad = line_spacing_rad(world.node_density)
-    reach_rad = BOUNDARY_FORCE_REACH_MULTIPLIER * spacing_rad
+    reach_rad = boundary_force_reach_rad(spacing_rad)
+    plates = sorted((p for p in world.plates if p.node_count() > 0), key=lambda p: p.plate_id)
+    count = len(plates)
+    if not count:
+        return {plate.plate_id: np.asarray(plate.omega, dtype=float).copy() for plate in world.plates}
+    index_by_id = {p.plate_id: i for i, p in enumerate(plates)}
+    cache = world.boundary_search_cache
+    if cache is None:
+        cache = BoundarySearchCache()
+        world.boundary_search_cache = cache
 
-    old_points, _ = plate.all_points_and_elevation()
-    if len(old_points) == 0:
-        return 0.0
+    dimension = 3 * count
+    drag = np.zeros((dimension, dimension), dtype=float)
+    driving = np.zeros(dimension, dtype=float)
+    inputs_by_id: dict[int, BoundaryForceInputs] = {}
+    pair_side_k: dict[tuple[int, int], dict[int, np.ndarray]] = {}
+    boundary_inputs_by_id: dict[int, dict] = {}
+    driving_terms_by_id: dict[int, dict[str, np.ndarray]] = {}
 
-    neighbours = plate.get_neighbours(other_plates)
-    inputs = gather_boundary_force_inputs(plate, neighbours, spacing_rad, reach_rad)
-    _convergent, divergent, _transform, contested = classify_boundary_nodes(plate, neighbours, inputs, reach_rad)
-    collision_mask = contested & (plate.crust_type == "continental") & ~inputs.neighbor_is_oceanic
-    subducting = subducting_boundary_mask(plate, inputs, reach_rad)
+    for i, plate in enumerate(plates):
+        start = 3 * i
+        neighbours = cache.neighbours(plate, plates, reach_rad)
+        inputs = gather_boundary_force_inputs(plate, neighbours, spacing_rad, reach_rad, cache)
+        inputs_by_id[plate.plate_id] = inputs
+        convergent, divergent, transform, contested = classify_boundary_nodes(
+            plate, neighbours, inputs, reach_rad, cache
+        )
+        collision_mask = continental_contact_mask(plate, inputs, contested)
+        subducting = subducting_boundary_mask(plate, inputs, reach_rad)
+        basal_b, local_drag = basal_drag_coefficients(plate, world, spacing_rad)
+        local_drag += slab_drag_coefficient_matrix(inputs, subducting, spacing_rad)
+        drag[start : start + 3, start : start + 3] = local_drag
+        slab_pull = slab_pull_torque(plate, inputs, subducting, spacing_rad)
+        ridge_push = ridge_push_torque(plate, inputs, divergent, spacing_rad)
+        driving_terms_by_id[plate.plate_id] = {
+            "slab_pull_nm": slab_pull,
+            "ridge_push_nm": ridge_push,
+            "basal_flow_nm": basal_b,
+        }
+        driving[start : start + 3] = slab_pull + ridge_push + basal_b
+        boundary_inputs_by_id[plate.plate_id] = {
+            "neighbor_plate_ids": sorted(neighbor.plate_id for neighbor in neighbours),
+            "nearest_boundary_node_counts": {
+                str(neighbor.plate_id): int(
+                    np.count_nonzero(
+                        (inputs.neighbor_plate_id == neighbor.plate_id)
+                        & np.isfinite(inputs.dist_to_neighbor)
+                    )
+                )
+                for neighbor in neighbours
+            },
+            "in_reach_nodes": int(np.count_nonzero(np.isfinite(inputs.dist_to_neighbor))),
+            "convergent_nodes": int(np.count_nonzero(convergent)),
+            "divergent_nodes": int(np.count_nonzero(divergent)),
+            "transform_nodes": int(np.count_nonzero(transform)),
+            "contested_nodes": int(np.count_nonzero(contested)),
+            "continental_collision_nodes": int(np.count_nonzero(collision_mask)),
+            "subducting_nodes": int(np.count_nonzero(subducting)),
+        }
 
-    rho_c = lithosphere.node_crust_density(inputs.own_crust_type_codes, plate.crust_type)
-    inertia = lithosphere.moment_of_inertia_tensor(
-        inputs.own_points, inputs.own_hc, inputs.own_hm, rho_c, spacing_rad, area_m2=plate.accounting_areas_m2(spacing_rad)
+        jam = contact_jam_factor(plate, world, neighbours, inputs, reach_rad)
+        craton_m = contact_craton_m(plate, neighbours, inputs)
+        for neighbour in neighbours:
+            pair = (min(plate.plate_id, neighbour.plate_id), max(plate.plate_id, neighbour.plate_id))
+            pair_mask = collision_mask & (inputs.neighbor_plate_id == neighbour.plate_id)
+            _b_side, k_side = collision_drag_coefficients(
+                plate, inputs, pair_mask, spacing_rad, craton_m, jam
+            )
+            pair_side_k.setdefault(pair, {})[plate.plate_id] = k_side
+
+    for (plate_a, plate_b), side_matrices in pair_side_k.items():
+        if plate_a not in index_by_id or plate_b not in index_by_id:
+            continue
+        zero = np.zeros((3, 3), dtype=float)
+        pair_drag = 0.5 * (side_matrices.get(plate_a, zero) + side_matrices.get(plate_b, zero))
+        a = slice(3 * index_by_id[plate_a], 3 * index_by_id[plate_a] + 3)
+        b = slice(3 * index_by_id[plate_b], 3 * index_by_id[plate_b] + 3)
+        drag[a, a] += pair_drag
+        drag[b, b] += pair_drag
+        drag[a, b] -= pair_drag
+        drag[b, a] -= pair_drag
+
+    contact_torque, contact_closing, contact_capacity, contact_pairs = _blocked_contact_response(
+        world, plates, inputs_by_id, index_by_id, spacing_rad
     )
 
-    # A deeper/wider overlap should brake a collision harder, not just proportionally more
-    # (more contested nodes already sum to a bigger torque) -- see collision_drag_coefficients'
-    # own OVERLAP_FRICTION_SEVERITY_GAIN comment. Normalized against the near-boundary *band*
-    # (not the whole plate -- a huge plate's boundary is a small fraction of its own node
-    # count, which would dilute this to near-zero for exactly the large-plate case that
-    # matters) so it reads as "how much of the active margin is jammed," not "how much of the
-    # plate."
-    band = inputs.dist_to_neighbor <= reach_rad
-    overlap_severity = float(collision_mask.sum()) / max(1, int(band.sum()))
+    # Debug worlds can prescribe selected plate rates. Eliminate those degrees of freedom
+    # before solving so their neighbours feel the same fixed motion from this snapshot. Do
+    # this by partitioning the system: setting unit diagonal rows would be ill-conditioned
+    # beside physical drag entries many orders larger than one.
+    fixed_values: dict[int, float] = {}
+    for i, plate in enumerate(plates):
+        pinned = world.pinned_omegas.get(plate.plate_id)
+        if pinned is not None:
+            for axis, value in enumerate(np.asarray(pinned, dtype=float)):
+                fixed_values[3 * i + axis] = float(value)
+    fixed_indices = np.fromiter(fixed_values, dtype=int, count=len(fixed_values))
+    free_mask = np.ones(dimension, dtype=bool)
+    free_mask[fixed_indices] = False
+    free_indices = np.flatnonzero(free_mask)
+    omega_flat = np.zeros(dimension, dtype=float)
+    contact_force = np.zeros(len(contact_capacity), dtype=float)
+    solver_converged = True
+    solver_sweeps = 0
+    if fixed_values:
+        omega_flat[fixed_indices] = [fixed_values[int(i)] for i in fixed_indices]
+    if len(free_indices):
+        rhs = driving[free_indices].copy()
+        contact_map_free = contact_torque[free_indices]
+        closure_map_free = contact_closing[:, free_indices]
+        closing_offset = np.zeros(len(contact_capacity), dtype=float)
+        if len(fixed_indices):
+            rhs -= drag[np.ix_(free_indices, fixed_indices)] @ omega_flat[fixed_indices]
+            closing_offset = contact_closing[:, fixed_indices] @ omega_flat[fixed_indices]
+        result = solve_quasistatic_contacts(
+            drag[np.ix_(free_indices, free_indices)],
+            rhs,
+            contact_map_free,
+            closure_map_free,
+            contact_capacity,
+            closing_rate_offset=closing_offset,
+        )
+        omega_flat[free_indices] = result.omega
+        solver_converged = result.converged
+        solver_sweeps = result.sweeps
+        contact_force = result.contact_force_n_per_m
+    if not solver_converged:
+        logger.warning(
+            "Quasi-static plate solve did not converge after %d sweeps (plates=%d, contacts=%d)",
+            solver_sweeps,
+            count,
+            len(contact_capacity),
+        )
+    if diagnostics is not None:
+        overlap_by_plate = plate_geometry.compute_node_overlap(plates)
+        contact_rate = contact_closing @ omega_flat
+        residual = drag @ omega_flat - driving - contact_torque @ contact_force
+        speeds_cm_per_yr = np.linalg.norm(omega_flat.reshape(count, 3), axis=1) * lithosphere.PLANET_RADIUS_M * 100.0
+        yielded = contact_force_at_capacity(contact_force, contact_capacity) & (contact_rate > 1e-12)
+        plate_rates = []
+        for plate, speed in zip(plates, speeds_cm_per_yr, strict=True):
+            area = plate.accounting_areas_m2(spacing_rad)
+            hc = plate.collect("crustal_thickness_m")
+            hm = plate.collect("mantle_lithosphere_thickness_m")
+            total_area = float(area.sum())
+            plate_rates.append(
+                {
+                    "plate_id": plate.plate_id,
+                    "rate_cm_per_yr": float(speed),
+                    "node_count": plate.node_count(),
+                    "accounted_area_km2": total_area / 1_000_000.0,
+                    "fraction_planet_area": total_area / (4.0 * np.pi * lithosphere.PLANET_RADIUS_M**2),
+                    "overlap_nodes": int(np.count_nonzero(overlap_by_plate[plate.plate_id]["overlap_mask"])),
+                    "overlap_partners": {
+                        str(partner): count
+                        for partner, count in overlap_by_plate[plate.plate_id]["by_partner"].items()
+                    },
+                    "mean_hc_km": float(np.sum(hc * area) / total_area / 1_000.0),
+                    "max_hc_km": float(hc.max(initial=0.0) / 1_000.0),
+                    "fraction_hc_at_cap": float(
+                        area[hc >= lithosphere.MAX_CRUSTAL_THICKNESS_M - 1.0].sum() / total_area
+                    ),
+                    "mean_hm_km": float(np.sum(hm * area) / total_area / 1_000.0),
+                    "max_hm_km": float(hm.max(initial=0.0) / 1_000.0),
+                    **boundary_inputs_by_id[plate.plate_id],
+                    "driving_torque_components_nm": {
+                        name: float(np.linalg.norm(value))
+                        for name, value in driving_terms_by_id[plate.plate_id].items()
+                    },
+                    "resistance_torque_nm": float(
+                        np.linalg.norm(
+                            (drag @ omega_flat)[
+                                3 * index_by_id[plate.plate_id] : 3 * index_by_id[plate.plate_id] + 3
+                            ]
+                        )
+                    ),
+                }
+            )
+        contact_rows = [
+            {
+                "lower_plate_id": pair[0],
+                "upper_plate_id": pair[1],
+                "force_n_per_m": float(force),
+                "capacity_n_per_m": float(capacity),
+                "closing_rate_m_per_s": float(rate),
+                "yielded": bool(is_yielded),
+            }
+            for pair, force, capacity, rate, is_yielded in zip(
+                contact_pairs, contact_force, contact_capacity, contact_rate, yielded, strict=True
+            )
+        ]
+        diagnostics.update(
+            {
+                "plates": count,
+                "blocked_contacts": len(contact_capacity),
+                "yielded_contacts": int(np.count_nonzero(yielded)),
+                "solver_converged": solver_converged,
+                "solver_sweeps": solver_sweeps,
+                "contact_force_max_n_per_m": float(contact_force.max()) if len(contact_force) else 0.0,
+                "contact_closing_max_m_per_s": float(contact_rate.max()) if len(contact_rate) else 0.0,
+                "driving_torque_norm_nm": float(np.linalg.norm(driving)),
+                "residual_torque_norm_nm": float(np.linalg.norm(residual)),
+                "max_plate_rate_cm_per_yr": float(speeds_cm_per_yr.max()) if len(speeds_cm_per_yr) else 0.0,
+                "median_plate_rate_cm_per_yr": float(np.median(speeds_cm_per_yr)) if len(speeds_cm_per_yr) else 0.0,
+                "plate_rates_cm_per_yr": plate_rates,
+                "blocked_contact_responses": contact_rows,
+            }
+        )
+    omegas = omega_flat.reshape(count, 3)
+    omega_by_id = {plate.plate_id: omegas[i].copy() for i, plate in enumerate(plates)}
+    for plate in world.plates:
+        omega_by_id.setdefault(plate.plate_id, np.asarray(plate.omega, dtype=float).copy())
+    return omega_by_id
 
-    explicit_torque = slab_pull_torque(plate, inputs, subducting, spacing_rad) + ridge_push_torque(
-        plate, inputs, divergent, spacing_rad
-    )
-    drag_b, drag_k = basal_drag_coefficients(plate, world, spacing_rad)
-    drag_k = drag_k + slab_drag_coefficient_matrix(inputs, subducting, spacing_rad)
-    # Collision resistance is folded into the same implicit (b, K) drag terms as basal/slab
-    # drag, not explicit_torque -- see collision_drag_coefficients' own docstring for why an
-    # explicit collision torque here structurally can't compete with basal drag's stiffness.
-    collision_b, collision_k = collision_drag_coefficients(
-        plate, inputs, collision_mask, spacing_rad, overlap_severity, contact_craton_m(plate, neighbours, inputs)
-    )
-    drag_b = drag_b + collision_b
-    drag_k = drag_k + collision_k
-    new_omega = integrate_omega(plate, explicit_torque, drag_b, drag_k, inertia, years)
-    return apply_omega_and_rotate(plate, old_points, new_omega, years)
+
+def shift_plates_quasistatic(world, years: float, *, diagnostics: dict | None = None) -> dict[int, float]:
+    """Solve all live plates from one frozen snapshot, then rotate the batch together.
+
+    The returned displacement for every plate is the greatest angular distance its nodes
+    moved; empty plates receive zero so the deformation pass can safely visit all plates.
+    """
+    old_points_by_id = {
+        plate.plate_id: plate.all_points_and_elevation()[0]
+        for plate in world.plates
+        if plate.node_count() > 0
+    }
+    omega_by_id = solve_plates_quasistatic(world, diagnostics=diagnostics)
+    distances = {plate.plate_id: 0.0 for plate in world.plates}
+    for plate in world.plates:
+        if plate.node_count() == 0:
+            plate.set_omega(omega_by_id[plate.plate_id])
+            continue
+        distances[plate.plate_id] = apply_omega_and_rotate(
+            plate, old_points_by_id[plate.plate_id], omega_by_id[plate.plate_id], years
+        )
+    return distances
+
+
+def _blocked_contact_response(world, plates, inputs_by_id, index_by_id, spacing_rad):
+    """Return torque, closing-rate and capacity maps for frozen blocked collision edges."""
+    from . import collision_polarity
+
+    frame = world.collision_polarity_frame
+    dimension = 3 * len(plates)
+    if frame is None or not frame.polarity:
+        return np.zeros((dimension, 0)), np.zeros((0, dimension)), np.zeros(0), []
+
+    by_id = {plate.plate_id: plate for plate in plates}
+    edge_reach = collision_polarity.CONTACT_EDGE_SPACINGS * spacing_rad
+    contact_columns = []
+    closing_rows = []
+    capacities = []
+    contact_pairs = []
+    # RFC 0011's G-R candidate values, exercised as hypotheses in G2 (#476).
+    resistance_unblocked_n_per_m = 5e12
+    resistance_full_craton_n_per_m = 1.5e13
+    radius = lithosphere.PLANET_RADIUS_M
+
+    for front_id, (lower_id, upper_id) in sorted(frame.polarity.items()):
+        if lower_id not in by_id or upper_id not in by_id:
+            continue
+        pair = (lower_id, upper_id)
+        side_geometry = {}
+        strengths = []
+        for plate_id, neighbour_id in (pair, pair[::-1]):
+            plate = by_id[plate_id]
+            inputs = inputs_by_id[plate_id]
+            masks = frame.masks.get(plate_id)
+            if masks is None:
+                continue
+            # The polarity frame is frozen before the previous deform pass. Remap its
+            # per-node decisions by stable cell key; cells created since then have no
+            # inherited blocked-front classification in this pilot.
+            previous_index = {int(key): i for i, key in enumerate(masks.node_keys)}
+            current_keys = plate.cell_keys
+            frame_index = np.fromiter(
+                (previous_index.get(int(key), -1) for key in current_keys),
+                dtype=np.int64,
+                count=len(current_keys),
+            )
+            mapped_front = np.full(len(current_keys), -1, dtype=np.int64)
+            mapped_retreat = np.zeros(len(current_keys), dtype=bool)
+            mapped = frame_index >= 0
+            mapped_front[mapped] = masks.front_id[frame_index[mapped]]
+            mapped_retreat[mapped] = masks.retreat_eligible[frame_index[mapped]]
+            neighbour = by_id[neighbour_id]
+            own_hc = inputs.own_hc
+            neighbour_idx = np.clip(inputs.neighbor_node_index, 0, max(0, neighbour.node_count() - 1))
+            other_hc = neighbour.collect("crustal_thickness_m")[neighbour_idx]
+            other_craton = neighbour.collect("craton_crust_m")[neighbour_idx]
+            own_craton = inputs.own_craton_m
+            blocked = (
+                (own_craton > 0.0) & (mapped_retreat | (other_craton > 0.0))
+            ) | (own_hc >= lithosphere.MAX_CRUSTAL_THICKNESS_M - 1.0) | (
+                other_hc >= lithosphere.MAX_CRUSTAL_THICKNESS_M - 1.0
+            )
+            use = (
+                (mapped_front == front_id)
+                & (inputs.neighbor_plate_id == neighbour_id)
+                & (inputs.dist_to_neighbor <= edge_reach)
+                & blocked
+            )
+            if not np.any(use):
+                continue
+            lengths = boundary_node_length_m(inputs, spacing_rad)[use]
+            total_length = float(lengths.sum())
+            if total_length <= 0.0:
+                continue
+            geometry = np.einsum(
+                "n,ni->i",
+                lengths,
+                np.cross(inputs.own_points[use], inputs.direction_to_neighbor[use]),
+            ) / total_length
+            side_geometry[plate_id] = (geometry, total_length)
+            side_strength = np.minimum(cratons.strength(own_craton[use]), cratons.strength(other_craton[use]))
+            strengths.append(float(np.average(side_strength, weights=lengths)))
+
+        if not side_geometry:
+            continue
+        geometry_candidates = []
+        length_candidates = []
+        if lower_id in side_geometry:
+            geometry_candidates.append(side_geometry[lower_id][0])
+            length_candidates.append(side_geometry[lower_id][1])
+        if upper_id in side_geometry:
+            geometry_candidates.append(-side_geometry[upper_id][0])
+            length_candidates.append(side_geometry[upper_id][1])
+        shared_geometry = np.mean(geometry_candidates, axis=0)
+        blocked_length = float(np.mean(length_candidates))
+        if blocked_length <= 0.0 or not strengths:
+            continue
+        strength = min(strengths)
+        capacity = resistance_unblocked_n_per_m + strength * (
+            resistance_full_craton_n_per_m - resistance_unblocked_n_per_m
+        )
+
+        torque_column = np.zeros(dimension, dtype=float)
+        closing_row = np.zeros(dimension, dtype=float)
+        lower_start = 3 * index_by_id[lower_id]
+        upper_start = 3 * index_by_id[upper_id]
+        # Positive q pushes the lower side away from the upper side. The pair receives the
+        # same force with opposite sign; the geometry is integrated over blocked edge length.
+        torque_column[lower_start : lower_start + 3] = -radius * blocked_length * shared_geometry
+        torque_column[upper_start : upper_start + 3] = radius * blocked_length * shared_geometry
+        closing_row[lower_start : lower_start + 3] = (
+            radius / SECONDS_PER_YEAR
+        ) * shared_geometry
+        closing_row[upper_start : upper_start + 3] = -(
+            radius / SECONDS_PER_YEAR
+        ) * shared_geometry
+        contact_columns.append(torque_column)
+        closing_rows.append(closing_row)
+        capacities.append(capacity)
+        contact_pairs.append(pair)
+
+    if not capacities:
+        return np.zeros((dimension, 0)), np.zeros((0, dimension)), np.zeros(0), []
+    return np.column_stack(contact_columns), np.vstack(closing_rows), np.asarray(capacities), contact_pairs
 
 
 def merge_omega(plate_a, inertia_a: np.ndarray, plate_b, inertia_b: np.ndarray) -> np.ndarray:

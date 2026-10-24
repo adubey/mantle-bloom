@@ -1,4 +1,7 @@
 import { asBlob, asJson, expandColumnarStatsHistory, type ColumnarStatsHistory } from "./apiResponse";
+import { requestCrossSection, type CrossSectionResponse } from "./crossSectionApi";
+
+export type { CrossSectionResponse } from "./crossSectionApi";
 
 // Overridable at build/dev time via VITE_API_BASE (see bin/restart.sh's --backend-port), so a
 // non-default backend port stays wired up correctly instead of silently pointing at :8000.
@@ -10,13 +13,15 @@ const API_ROOT =
 
 export const API_BASE = API_ROOT;
 
-export type Projection = "behrmann" | "eckert4";
+export type Projection = "behrmann" | "eckert4" | "globe";
 
-// The "kind of map" requested from /world/render -- the server now bakes this choice
+// The kind of view requested from /world/render -- the server now bakes this choice
 // directly into the returned image (fill color rule, whether boundaries/poles/velocity
 // arrows or raw per-plate node dots are drawn), rather than the frontend deciding how to
-// draw raw coordinate data it fetched.
+// draw raw coordinate data it fetched. `crossSection` is served by its own
+// /world/cross-section endpoint and remains omitted from /world/render.
 export type MapView =
+  | "crossSection"
   | "elevation"
   | "platesDetail"
   | "speckle"
@@ -57,6 +62,9 @@ export interface WorldSummary {
   // `empty` is only possible for a loaded save with no plates.
   surface: "quad" | "empty";
   events: WorldEvent[];
+  // Records the server's replay log wrote (backend replay_log.py, #442); shown with `events`
+  // in the ?deb Event Console. Empty unless the server runs with a replay-log directory.
+  replay_logs: WorldEvent[];
 }
 
 export interface RenderResponse {
@@ -96,7 +104,7 @@ export interface PlateSummary {
   speed_cm_per_yr: number;
   at_max_rate: boolean;
   euler_pole: { lat_deg: number; lon_deg: number } | null;
-  age_steps: number;
+  age_years: number;
   median_elevation_m: number | null;
   submerged_fraction: number;
   overlaps: PlateOverlap[];
@@ -120,6 +128,7 @@ export interface PlatesResponse {
 export interface RiverSummary {
   river_id: number;
   num_nodes: number;
+  length_m: number; // summed geodesic length of flow edges, in meters
   // Each entry is one flow edge (a node and its downstream flow_target) as a pair of world-
   // space points -- a flat edge list, not an ordered polyline, since a river network can
   // branch (see PlateInspector.tsx's segment-based river rendering for the same shape used
@@ -127,7 +136,8 @@ export interface RiverSummary {
   segments: Segment[];
   mouth_xyz: [number, number, number];
   mouth_type: "ocean" | "lake" | "other";
-  flow_rate: number;
+  flow_rate: number; // physical discharge at the mouth, m^3/s
+  // A stylized, unitless comparison value from hydrology.compute_river_speed.
   speed: number;
   num_tributaries: number;
 }
@@ -242,8 +252,9 @@ export interface RiversResponse {
 // Inspector's own map mode is for). Contrast OutflowRiver below, which *does* need a full path.
 export interface InflowRiver {
   mouth_xyz: [number, number, number];
-  flow_rate: number;
+  flow_rate: number; // physical discharge at the mouth, m^3/s
   num_nodes: number;
+  length_m: number; // summed geodesic length of flow edges
 }
 
 // The river actually carrying a lake's current spill outward (see LakeSummary.outflow_river
@@ -255,8 +266,9 @@ export interface OutflowRiver {
   segments: Segment[];
   mouth_xyz: [number, number, number];
   mouth_type: "ocean" | "lake" | "other";
-  flow_rate: number;
+  flow_rate: number; // physical discharge at the mouth, m^3/s
   num_nodes: number;
+  length_m: number; // summed geodesic length of flow edges
 }
 
 // Lake Inspector data -- same "raw JSON, client renders itself" philosophy as PlatesResponse/
@@ -341,6 +353,8 @@ export interface WorldStats {
   craton_area_km2?: number;
   craton_continental_fraction?: number;
   craton_volume_km3?: number;
+  // Welded and rifted crust that never forms craton (RFC 0009). Absent before belt marks.
+  belt_area_km2?: number;
   // Cumulative cratonic volume destroyed, every mechanism together; craton_ledger_km3 has
   // the per-mechanism split.
   craton_destroyed_km3?: number;
@@ -430,7 +444,45 @@ async function readNdjsonLines(
   }
 }
 
-// Shared by generateWorld/stepWorld below -- both stream newline-delimited JSON progress the
+// The `{type: ...}` protocol on top of readNdjsonLines that both streaming endpoints share:
+// every `progress` message goes to `onProgress`, an `error` message throws its `detail`, and
+// the `done` message is returned (null if the stream ended without one).
+async function readStreamMessages(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  onProgress: (msg: Record<string, unknown>) => void,
+  onChunk?: (byteLength: number) => void,
+): Promise<Record<string, unknown> | null> {
+  let done: Record<string, unknown> | null = null;
+  await readNdjsonLines(
+    reader,
+    (line) => {
+      const msg = JSON.parse(line) as Record<string, unknown>;
+      if (msg.type === "progress") {
+        onProgress(msg);
+      } else if (msg.type === "error") {
+        throw new Error(String(msg.detail));
+      } else if (msg.type === "done") {
+        done = msg;
+      }
+    },
+    onChunk,
+  );
+  return done;
+}
+
+// The WorldSummary fields of a stream's `done` message.
+function worldSummaryFrom(msg: Record<string, unknown>): WorldSummary {
+  return {
+    seed: msg.seed as number,
+    elapsed_years: msg.elapsed_years as number,
+    num_plates: msg.num_plates as number,
+    surface: msg.surface as WorldSummary["surface"],
+    events: msg.events as WorldEvent[],
+    replay_logs: (msg.replay_logs as WorldEvent[] | undefined) ?? [],
+  };
+}
+
+// Used by generateWorld below, which streams newline-delimited JSON progress the
 // same shape /world/animate does (see AnimateProgress/animateWorld's own comment for that
 // established contract): a `{type: "progress", fraction}` line (0 to 1) per phase/plate
 // checkpoint (surfaced via `onProgress`), then a final `{type: "done", ...WorldSummary
@@ -446,26 +498,9 @@ async function readProgressStream(resp: Response, onProgress?: (fraction: number
     throw new Error(`${resp.status} ${resp.statusText}: ${detail}`);
   }
 
-  let done: WorldSummary | null = null;
-  await readNdjsonLines(resp.body.getReader(), (line) => {
-    const msg = JSON.parse(line) as Record<string, unknown>;
-    if (msg.type === "progress") {
-      onProgress?.(msg.fraction as number);
-    } else if (msg.type === "error") {
-      throw new Error(String(msg.detail));
-    } else if (msg.type === "done") {
-      done = {
-        seed: msg.seed as number,
-        elapsed_years: msg.elapsed_years as number,
-        num_plates: msg.num_plates as number,
-        surface: msg.surface as WorldSummary["surface"],
-        events: msg.events as WorldEvent[],
-      };
-    }
-  });
-
+  const done = await readStreamMessages(resp.body.getReader(), (msg) => onProgress?.(msg.fraction as number));
   if (!done) throw new Error("stream ended without a result");
-  return done;
+  return worldSummaryFrom(done);
 }
 
 // `numPlates`: the "Number of plates" slider (see backend app/plates.py's MIN_AUTO_PLATES/
@@ -512,6 +547,10 @@ async function readProgressStream(resp: Response, onProgress?: (fraction: number
 // /world/generate for the NDJSON contract this reads, same shape as animateWorld's own).
 export interface GenerateWorldOptions {
   seed: number;
+  // Random-tab terrain layout; omitted follows the backend default. Sketches/premades ignore it.
+  cratonsFirst?: boolean;
+  // With cratonsFirst, relief from a synthetic tectonic history (#218); omitted follows the backend default.
+  syntheticRelief?: boolean;
   continentalFraction: number;
   landFraction: number;
   axialTiltDeg: number;
@@ -528,7 +567,7 @@ export interface GenerateWorldOptions {
 
 export function generateWorld(options: GenerateWorldOptions): Promise<WorldSummary> {
   const {
-    seed, continentalFraction, landFraction, axialTiltDeg, nodeDensity,
+    seed, cratonsFirst, syntheticRelief, continentalFraction, landFraction, axialTiltDeg, nodeDensity,
     initialSoilMaturity, climateDensity, fluidDensity, numPlates, voronoiPoints,
     sketchImageBase64 = null, premadeWorldId = null, onProgress,
   } = options;
@@ -537,6 +576,8 @@ export function generateWorld(options: GenerateWorldOptions): Promise<WorldSumma
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       seed,
+      cratons_first: cratonsFirst,
+      synthetic_relief: syntheticRelief,
       num_plates: numPlates,
       voronoi_points: voronoiPoints,
       continental_fraction: continentalFraction,
@@ -644,36 +685,46 @@ export function updateControls(controls: {
   }).then(asJson<ControlsState>);
 }
 
-// The backend rejects an overlapping /world/step with 503 (see backend app/main.py's
-// _world_lock) rather than queueing it, since a step already in flight can take seconds on a
-// large world. Retry on a short delay until the in-flight step finishes and the lock frees up
-// -- any other error (network failure, 404 for no world, etc.) still propagates immediately.
-const STEP_RETRY_DELAY_MS = 300;
+// Play/Stop (backend app/run_control.py, #375): the server steps the world itself while
+// `running`, and keeps that status across a restart. `error` says why a run stopped on its own.
+// `stepping` can outlast Stop: a step under way finishes, and the world moves once more.
+export interface RunState {
+  running: boolean;
+  step_years: number;
+  stepping: boolean;
+  error: string | null;
+  run_version: number;
+  world: { revision: string; seed: number; elapsed_years: number } | null;
+}
 
-// `onProgress`, if given, is called with a fraction (0 to 1) as the backend's
-// step_world_progress passes each per-plate shift()/deform() checkpoint (see backend
-// app/main.py's /world/step for the NDJSON contract this reads, same shape as
-// animateWorld's own).
-export async function stepWorld(years: number, onProgress?: (fraction: number) => void): Promise<WorldSummary> {
-  for (;;) {
-    const resp = await fetch(`${API_BASE}/world/step`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ years }),
-    });
-    if (resp.status === 503) {
-      await new Promise((resolve) => setTimeout(resolve, STEP_RETRY_DELAY_MS));
-      continue;
-    }
-    return readProgressStream(resp, onProgress);
-  }
+// A refusal that retrying won't fix, such as an expired session (401).
+export class RunStateRefused extends Error {}
+
+// With `after` (the revision on screen) and `runVersion` (the last run_version seen), a long
+// poll: the server answers once the world or the run state moves on, or after ~25 s.
+export async function fetchRunState(after?: string, runVersion?: number, signal?: AbortSignal): Promise<RunState> {
+  const params = new URLSearchParams();
+  if (after !== undefined) params.set("after", after);
+  if (runVersion !== undefined) params.set("run_version", String(runVersion));
+  const query = params.size ? `?${params}` : "";
+  const resp = await fetch(`${API_BASE}/world/run${query}`, { signal });
+  if (resp.status >= 400 && resp.status < 500) throw new RunStateRefused(`${resp.status} ${await resp.text()}`);
+  return asJson<RunState>(resp);
+}
+
+export function setRunState(running: boolean, stepYears?: number): Promise<RunState> {
+  return fetch(`${API_BASE}/world/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ running, step_years: stepYears }),
+  }).then(asJson<RunState>);
 }
 
 // width/height are the actual pixel dimensions of the returned image -- pass a higher
 // resolution than the canvas's displayed CSS size for a sharper (retina-style) render; the
 // server scales line widths/dot/pole sizes to match (see render_image.py's pixel_scale).
 // `rotation` is the map's current view orientation (see rotation.ts and
-// docs/simulation-model.md#rotating-the-view) -- a flattened row-major 3x3 matrix, default
+// docs/simulation-model/rendering-and-inspectors.md#rotating-the-view) -- a flattened row-major 3x3 matrix, default
 // identity (center at lat=0/lon=0) when omitted, matching backend main.py's own default.
 // `showMountains`/`showPlainsPlateaus` are the Elevation view's own legend toggles (see
 // Legend.tsx/App.tsx) -- both meaningless outside `view === "elevation"`, and left off the
@@ -692,6 +743,20 @@ export function renderWorld(
   if (showMountains) params.set("show_mountains", "true");
   if (showPlainsPlateaus) params.set("show_plains_plateaus", "true");
   return fetch(`${API_BASE}/world/render?${params}`).then(asJson<RenderResponse>);
+}
+
+// Fetch one rendered frame from the shallow mantle cross-section route. The output size is
+// fixed for a panel layout so cached frames for the same world/plane/position are identical.
+export function fetchCrossSection(
+  planeAngleDeg: number,
+  positionIndex: number,
+  width: number,
+  height: number,
+  signal?: AbortSignal,
+  showBoundaries = false,
+  showFaults = false,
+): Promise<CrossSectionResponse> {
+  return requestCrossSection(API_BASE, planeAngleDeg, positionIndex, width, height, signal, fetch, showBoundaries, showFaults);
 }
 
 export function fetchPlates(): Promise<PlatesResponse> {
@@ -888,11 +953,11 @@ const ANIMATE_IDLE_TIMEOUT_MS = 3 * 60 * 1000;
 // progress, starting from the world's current state (frame 0). Each subsequent frame costs
 // `stepsPerFrame` real simulation steps of `stepYears` each -- only the last of which gets
 // rendered -- encoded as an H.264/MP4 video. **This permanently advances the world** by up to
-// `(numFrames - 1) * stepsPerFrame * stepYears` years, the same as calling stepWorld that
-// many times -- not a side-effect-free preview (see backend app/main.py's /world/animate,
+// `(numFrames - 1) * stepsPerFrame * stepYears` years, the same as that many
+// /world/step calls -- not a side-effect-free preview (see backend app/main.py's /world/animate,
 // and render_image.stream_animation_mp4's docstring for why a coarser render cadence still
 // simulates every step rather than taking one bigger step). The caller should run the same
-// post-step refresh sequence it runs after stepWorld.
+// refresh it runs when a running world advances (App.tsx's handleWorldAdvanced).
 //
 // The endpoint streams newline-delimited JSON: one `{type: "progress", frame, total,
 // image_base64}` per frame (surfaced via `onProgress` -- the image lets the caller paint the
@@ -967,7 +1032,7 @@ export async function animateWorld(
       throw new Error(`${resp.status} ${resp.statusText}: ${detail}`);
     }
     console.info("[mantle-bloom] Animation stream opened", {
-      status: resp.status,
+      status: responseStatus,
       contentType: responseContentType,
       projection,
       view,
@@ -977,47 +1042,19 @@ export async function animateWorld(
       stepsPerFrame,
     });
 
-    let done: AnimateResponse | null = null;
     stage = "reading animation stream";
-    await readNdjsonLines(
+    const done = await readStreamMessages(
       resp.body.getReader(),
-      (line) => {
-        const msg = JSON.parse(line) as Record<string, unknown>;
-        if (msg.type === "progress") {
-          lastFrame = Number(msg.frame) || lastFrame;
-          lastProgressAt = Date.now();
-          onProgress?.({
-            frame: msg.frame as number,
-            total: msg.total as number,
-            imageBase64: msg.image_base64 as string | undefined,
-            elapsedYears: msg.elapsed_years as number,
-            stats: (msg.stats as WorldStats | null | undefined) ?? undefined,
-          });
-        } else if (msg.type === "error") {
-          console.error("[mantle-bloom] Animation stream reported a server error", {
-            frame: lastFrame,
-            detail: msg.detail,
-          });
-          throw new Error(String(msg.detail));
-        } else if (msg.type === "done") {
-          console.info("[mantle-bloom] Animation stream completed", {
-            lastFrame,
-            chunksReceived,
-            bytesReceived,
-            elapsedMs: Date.now() - startedAt,
-            stoppedEarly: Boolean(msg.stopped_early),
-          });
-          done = {
-            seed: msg.seed as number,
-            elapsed_years: msg.elapsed_years as number,
-            num_plates: msg.num_plates as number,
-            surface: msg.surface as WorldSummary["surface"],
-            events: msg.events as WorldEvent[],
-            videoBase64: msg.video_base64 as string,
-            mime: msg.mime as string,
-            stoppedEarly: Boolean(msg.stopped_early),
-          };
-        }
+      (msg) => {
+        lastFrame = Number(msg.frame) || lastFrame;
+        lastProgressAt = Date.now();
+        onProgress?.({
+          frame: msg.frame as number,
+          total: msg.total as number,
+          imageBase64: msg.image_base64 as string | undefined,
+          elapsedYears: msg.elapsed_years as number,
+          stats: (msg.stats as WorldStats | null | undefined) ?? undefined,
+        });
       },
       (byteLength) => {
         chunksReceived++;
@@ -1027,7 +1064,19 @@ export async function animateWorld(
     );
 
     if (!done) throw new Error("animation stream ended without a result");
-    return done;
+    console.info("[mantle-bloom] Animation stream completed", {
+      lastFrame,
+      chunksReceived,
+      bytesReceived,
+      elapsedMs: Date.now() - startedAt,
+      stoppedEarly: Boolean(done.stopped_early),
+    });
+    return {
+      ...worldSummaryFrom(done),
+      videoBase64: done.video_base64 as string,
+      mime: done.mime as string,
+      stoppedEarly: Boolean(done.stopped_early),
+    };
   } catch (error) {
     const diagnostic = {
       stage,

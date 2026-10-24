@@ -6,8 +6,8 @@ interface Props {
   label: string;
   style?: CSSProperties;
   // A real fraction (0 to 1) from the backend's NDJSON progress stream (see api.ts's
-  // generateWorld/stepWorld `onProgress` -- world.py's generate_world_progress/
-  // step_world_progress are where these fractions actually come from). `undefined` (e.g.
+  // generateWorld `onProgress` -- world.py's generate_world_progress is where these
+  // fractions actually come from). `undefined` (e.g.
   // before the first progress line of a run has arrived) falls back to the old
   // indeterminate "something's happening" animation (see index.css's .progress-track/
   // .progress-indeterminate) rather than showing a bar frozen at 0%.

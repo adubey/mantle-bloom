@@ -36,8 +36,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
-from scipy.sparse import coo_matrix
-from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
 from . import geometry, mantle, quad_tectonics
@@ -48,7 +46,7 @@ from .elevation_lines import (
     line_spacing_rad,
 )
 from .lithosphere_plate import new_plate
-from .plates import Plate, _contested_by_any
+from .plates import Plate, _contested_by_any, node_components
 
 if TYPE_CHECKING:
     from .world import World
@@ -165,20 +163,6 @@ def _find_gap_points(existing_tree: _ExistingNodeContext, spacing_rad: float, pl
     return points[dist > COVERAGE_RADIUS_MULT * spacing_rad]
 
 
-def _cluster(points: np.ndarray, radius_rad: float) -> np.ndarray:
-    """Connected-component label per point: points within `radius_rad` of each other
-    (directly or transitively) share a label -- same technique plates.node_components uses."""
-    n = len(points)
-    if n == 0:
-        return np.zeros(0, dtype=int)
-    pairs = cKDTree(points).query_pairs(r=radius_rad, output_type="ndarray")
-    if len(pairs) == 0:
-        return np.arange(n)
-    graph = coo_matrix((np.ones(len(pairs)), (pairs[:, 0], pairs[:, 1])), shape=(n, n))
-    _, labels = connected_components(graph, directed=False)
-    return labels
-
-
 def _spawn_plate_from_gap(
     world: "World", cluster_points: np.ndarray, spacing_rad: float, existing_context: _ExistingNodeContext
 ) -> Plate:
@@ -259,7 +243,7 @@ def fill_gaps_by_growing_neighbours(world: "World") -> list[str]:
     if len(gap_points) == 0:
         return []
 
-    labels = _cluster(gap_points, CLUSTER_RADIUS_MULT * spacing_rad)
+    labels = node_components(gap_points, CLUSTER_RADIUS_MULT * spacing_rad)
     min_gap_nodes = max(1, round(MIN_GAP_NODES * world.node_density))
     # A cluster below MIN_GAP_NODES is not catch-up lag the next advance will close: it is a
     # seam the advance's standoff from neighbouring nodes leaves for good (issue #228 Phase 4).
@@ -326,7 +310,7 @@ class GapTrack:
     lattice cluster needs, reconciled by centroid proximity each step -- same shape and same
     reasoning as `stranded_basins.StrandedBasinTrack` (a gap cluster has no persistent identity
     across steps any more than a stranded basin does). Diagnostic only, surfaced by the
-    `overlapAge` debug render view's gap-age layer (see docs/debugging.md); nothing in the
+    `overlapAge` debug render view's gap-age layer (see docs/debugging/map-views.md); nothing in the
     physics reads it back."""
 
     centroid_xyz: np.ndarray  # (3,) unit vector
@@ -370,7 +354,7 @@ def reconcile_gap_tracks(world: "World") -> None:
         world.gap_tracks = []
         return
 
-    labels = _cluster(gap_points, CLUSTER_RADIUS_MULT * spacing_rad)
+    labels = node_components(gap_points, CLUSTER_RADIUS_MULT * spacing_rad)
     prev_tracks = world.gap_tracks
     prev_centroids = np.array([t.centroid_xyz for t in prev_tracks]) if prev_tracks else None
     used = np.zeros(len(prev_tracks), dtype=bool)

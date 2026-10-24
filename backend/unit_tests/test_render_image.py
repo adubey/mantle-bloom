@@ -6,11 +6,12 @@ import av
 import numpy as np
 import pytest
 from PIL import Image
-from app import cratons, geometry, healpix_grid, render_image
+from app import cratons, geometry, healpix_grid, projections, render_image
 from app.hydroclimate import climate, hydrology
 from app.world import World, generate_world, step_world
 
 from .quad_fixtures import quad_plate
+from .river_fixtures import spill_hop_fields
 
 
 def _world(seed=1, num_plates=10, continental_fraction=0.4):
@@ -664,6 +665,8 @@ def test_draw_rivers_only_draws_segments_above_the_width_floor():
         is_ocean=np.zeros(n, dtype=bool),
         neighbor_idx=np.zeros((n, 1), dtype=np.int64),
         flow_accum=np.zeros(n),
+        # Above the discharge floor, so only the width floor decides what's drawn.
+        discharge_m3_s=np.full(n, render_image.RIVER_VISIBLE_MIN_FLOW_M3_S * 2.0),
         water_deposited=np.zeros(n),
         filled_elevation=np.zeros(n),
         spill_target=np.full(n, -1, dtype=np.int64),
@@ -719,7 +722,7 @@ def test_draw_rivers_wide_segment_has_a_dimmer_halo_than_its_own_core(monkeypatc
     monkeypatch.setattr(
         render_image,
         "_rivers_to_draw",
-        lambda w, hide_minor_networks=False: (np.array([0]), np.array([1.0]), np.array([1.0])),
+        lambda w, hide_short_networks=False: (np.array([0]), np.array([1.0]), np.array([1.0])),
     )
 
     image = Image.new("RGB", (300, 200), render_image.BACKGROUND_RGB)
@@ -738,14 +741,59 @@ def test_draw_rivers_wide_segment_has_a_dimmer_halo_than_its_own_core(monkeypatc
     assert halo_ring_px > int(near_full_color.sum()) * 0.2
 
 
+def test_draw_rivers_stops_a_spill_hop_at_the_lake_it_crosses(monkeypatch):
+    # Issue #520: sink 2 spills across lake nodes 3-4 to node 6 beyond rim 5. Its line must stop
+    # at the lake, not run on across it. Nodes 0-2 are drawn, node 0 dimmer, so the line from
+    # the sink also shows that each segment takes its own node's color (`owner`).
+    world = World(seed=0, plates=[])
+    world.hydrology_cache = spill_hop_fields(lake_m=15.0)
+    monkeypatch.setattr(
+        render_image,
+        "_rivers_to_draw",
+        lambda w, hide_short_networks=False: (np.array([0, 1, 2]), np.array([0.3, 1.0, 1.0]), np.zeros(3)),
+    )
+    scale, offset_x, offset_y = 2500.0, 20.0, 50.0
+    image = Image.new("RGB", (240, 100), render_image.BACKGROUND_RGB)
+    image = render_image._draw_rivers(image, world, "behrmann", scale, offset_x, offset_y, 1.0, np.eye(3))
+    pixels = np.asarray(image).astype(np.int64)
+    background = np.array(render_image.BACKGROUND_RGB)
+    node_px = render_image._to_pixels(scale, offset_x, offset_y, render_image._project_points("behrmann", world.hydrology_cache.points))
+
+    def color_at(a: int, b: int) -> np.ndarray:
+        x, y = np.round((node_px[a] + node_px[b]) / 2).astype(int)
+        return pixels[y, x]
+
+    assert np.any(color_at(1, 2) != background)
+    assert np.any(color_at(2, 3) != background)
+    assert np.all(color_at(4, 5) == background)
+    assert np.all(color_at(5, 6) == background)
+    assert np.abs(color_at(0, 1) - background).sum() < np.abs(color_at(2, 3) - background).sum()
+
+
+def test_rivers_to_draw_does_not_carry_a_river_across_a_lake_into_a_hidden_outflow():
+    # Issue #520: sink 2's spill crosses the lake into node 6's own network. That outflow is
+    # below the discharge floor and its channel below the width floor, so it isn't drawn; the
+    # inflow's downstream fill-in (#503) must stop at its own mouth rather than draw node 6.
+    world = World(seed=0, plates=[])
+    fields = spill_hop_fields(lake_m=15.0)
+    fields.discharge_m3_s[[0, 1, 2]] = render_image.RIVER_VISIBLE_MIN_FLOW_M3_S * 2
+    fields.discharge_m3_s[6] = render_image.RIVER_VISIBLE_MIN_FLOW_M3_S / 2
+    fields.channel_width[6] = render_image.RIVER_VISIBLE_MIN_WIDTH_M / 2
+    world.hydrology_cache = fields
+
+    src_idx, _, _ = render_image._rivers_to_draw(world)
+    assert sorted(src_idx.tolist()) == [0, 1, 2]
+
+
 def _linear_rivers_world(mouth_widths):
     """A synthetic world whose hydrology_cache holds one independent 3-node linear river per
     entry in `mouth_widths` (head -> mid -> mouth -> ocean sink). Node i of river r is index
     3*r + i; channel_width along each river is 20% / 50% / 100% of that river's own mouth
-    width, so it tapers from head to mouth. flow_accum mirrors channel_width (a real world's
+    width, so it tapers from head to mouth. discharge_m3_s is 100x channel_width (a real world's
     two are correlated too, just channel_width also saturates at a hard cap over time in a way
-    flow_accum doesn't -- irrelevant for these small, freshly-built fixtures) so tests can
-    exercise _rivers_to_draw's flow-percentile width gate without a separate parameter. Ocean
+    discharge doesn't -- irrelevant for these small, freshly-built fixtures) so tests can
+    exercise _rivers_to_draw's discharge-percentile width gate without a separate parameter,
+    and every river with a mouth of at least 500 m clears RIVER_VISIBLE_MIN_FLOW_M3_S. Ocean
     sink nodes come last."""
     world = _world()
     world.node_density = 1.0
@@ -785,6 +833,9 @@ def _linear_rivers_world(mouth_widths):
         glacier_depth=np.zeros(n),
         plates_in_order=[],
         channel_width=channel_width,
+        # Scaled with channel_width so every fixture river clears the map views' discharge
+        # floor (RIVER_VISIBLE_MIN_FLOW_M3_S) and the flow percentile follows channel_width.
+        discharge_m3_s=channel_width * 100.0,
     )
     return world
 
@@ -821,16 +872,32 @@ def test_rivers_to_draw_treats_a_stale_pre_channel_width_cache_as_absent():
         (1, 5, True),
     ],
 )
-def test_river_network_visibility_requires_30_nodes_or_5_tributaries(num_nodes, num_tributaries, expected):
-    river = hydrology.RiverInfo(
+def test_legacy_river_network_is_long_enough_with_30_nodes_or_5_tributaries(num_nodes, num_tributaries, expected):
+    river = _river_info(num_nodes=num_nodes, num_tributaries=num_tributaries)
+    assert render_image._river_network_is_long_enough(river) is expected
+    assert render_image._river_network_is_drawn(river, hide_short_networks=True) is expected
+    # Views that don't hide short networks (the Plates views) draw it either way.
+    assert render_image._river_network_is_drawn(river, hide_short_networks=False)
+
+
+def _river_info(num_nodes=30, num_tributaries=0, flow_rate=render_image.RIVER_VISIBLE_MIN_FLOW_M3_S * 2.0):
+    """A hand-built RiverInfo without length_m (the legacy node-count length rule)."""
+    return hydrology.RiverInfo(
         member_idx=np.arange(num_nodes),
         mouth_idx=0,
         mouth_type="ocean",
-        flow_rate=1.0,
+        flow_rate=flow_rate,
         speed=1.0,
         num_tributaries=num_tributaries,
     )
-    assert render_image._river_network_is_visible(river) is expected
+
+
+@pytest.mark.parametrize("hide_short_networks", [False, True])
+@pytest.mark.parametrize(("flow_rate", "expected"), [(9_999.0, False), (10_000.0, False), (10_001.0, True)])
+def test_river_network_is_drawn_only_above_the_discharge_floor(flow_rate, expected, hide_short_networks):
+    # Only rivers with more than 10,000 m^3/s at the mouth are drawn, in every map view (#508).
+    river = _river_info(flow_rate=flow_rate)
+    assert render_image._river_network_is_drawn(river, hide_short_networks=hide_short_networks) is expected
 
 
 def test_rivers_to_draw_draws_every_wide_enough_network_regardless_of_count():
@@ -849,6 +916,45 @@ def test_rivers_to_draw_draws_every_wide_enough_network_regardless_of_count():
     world_with_creek = _linear_rivers_world(mouth_widths + [30])
     src_idx2, _, _ = render_image._rivers_to_draw(world_with_creek)
     assert len(mouth_widths) not in {int(i) // 3 for i in src_idx2}
+
+
+@pytest.mark.parametrize("hide_short_networks", [False, True])
+def test_rivers_to_draw_omits_networks_at_or_below_the_discharge_floor(monkeypatch, hide_short_networks):
+    # Every map view draws only networks whose mouth discharge is above 10,000 m^3/s, whether
+    # or not it also hides short networks (#508). The floor reads the mouth, so a drawn
+    # river's headwaters below the floor are still drawn.
+    world = _linear_rivers_world([5000, 5000, 5000])
+    hydro = world.hydrology_cache
+    hydro.discharge_m3_s[:3] = [2_000.0, 6_000.0, 10_001.0]
+    hydro.discharge_m3_s[3:6] = [2_000.0, 6_000.0, render_image.RIVER_VISIBLE_MIN_FLOW_M3_S]
+    hydro.discharge_m3_s[6:9] = [2_000.0, 6_000.0, 9_999.0]
+    # These 3-node fixture networks are short; drop the length cutoff so only the floor decides.
+    monkeypatch.setattr(render_image, "RIVER_VISIBLE_MIN_LENGTH_M", 0.0)
+    src_idx, _, _ = render_image._rivers_to_draw(world, hide_short_networks=hide_short_networks)
+    assert sorted(src_idx.tolist()) == [0, 1, 2]
+
+
+def test_rivers_to_draw_carries_a_drawn_river_to_its_mouth_past_a_narrow_coastal_channel():
+    # The mouth node's channel is still a 30 m creek (a new coastal cell), below the width floor.
+    # The river upstream is drawn, so its last segment to the sea is drawn too, at the width
+    # upstream -- not cut one node short of the coast (#503).
+    world = _linear_rivers_world([5000])
+    world.hydrology_cache.channel_width[2] = 30.0
+    src_idx, color_alpha, _ = render_image._rivers_to_draw(world)
+    assert sorted(src_idx.tolist()) == [0, 1, 2]
+    alpha = dict(zip(src_idx.tolist(), color_alpha.tolist()))
+    assert alpha[2] >= alpha[1]  # not paler than the reach above it
+
+    # A reach drawn in its own right keeps its own width: the river narrowing to 1,000 m at
+    # its mouth is drawn narrowing, not at the 2,500 m width upstream.
+    world.hydrology_cache.channel_width[2] = 1000.0
+    src_idx, color_alpha, _ = render_image._rivers_to_draw(world)
+    alpha = dict(zip(src_idx.tolist(), color_alpha.tolist()))
+    assert alpha[2] < alpha[1]
+
+    # A creek that never clears the floor anywhere is still left out.
+    world.hydrology_cache.channel_width[:3] = 30.0
+    assert len(render_image._rivers_to_draw(world)[0]) == 0
 
 
 def test_rivers_to_draw_color_is_a_percentile_rank_not_an_absolute_fraction():
@@ -882,7 +988,7 @@ def test_rivers_to_draw_color_is_a_percentile_rank_not_an_absolute_fraction():
 
 
 def test_rivers_to_draw_width_only_widens_for_a_steep_top_flow_percentile():
-    # Line width is gated on a *flow_accum* percentile rank (RIVER_WIDE_MIN_PERCENTILE), not
+    # Line width is gated on a *discharge* percentile rank (RIVER_WIDE_MIN_PERCENTILE), not
     # channel_width -- and deliberately a much steeper bar than color's own rank, so only the
     # single biggest river's own mouth (this fixture's global top-flow node) ever draws wider
     # than 1px, not every node along it.
@@ -1191,3 +1297,131 @@ def test_step_world_rebuilds_healpix_index_cache_but_keeps_the_grid_cache():
 
     render_image.render_png(world, "eckert4", "elevation", 200, 100)
     assert world.node_healpix_index_cache is not None
+
+
+
+@pytest.fixture(scope="module")
+def globe_world():
+    return _world()
+
+
+def _png_array(png: bytes) -> np.ndarray:
+    return np.asarray(Image.open(io.BytesIO(png)))
+
+
+def test_globe_projection_draws_a_disc_on_the_background(globe_world):
+    image = _png_array(render_image.render_png(globe_world, "globe", "plates", 220, 122))
+    assert tuple(int(c) for c in image[0, 0]) == render_image.BACKGROUND_RGB
+    scale, offset_x, offset_y = render_image._globe_transform(220, 122)
+    assert tuple(int(c) for c in image[int(offset_y), int(offset_x)]) != render_image.BACKGROUND_RGB
+    assert tuple(int(c) for c in image[int(offset_y), int(offset_x + scale + 2)]) == render_image.BACKGROUND_RGB
+
+
+def test_globe_pixels_show_the_point_the_frontend_unprojects_there(globe_world):
+    """Each disc pixel must show the true point rotation.ts's inverseOrthographic puts under it
+    (click probing, measuring and the drag graticule all assume this, #497). Checked against an
+    independent forward Behrmann projection of that point into the source map, on the
+    categorical "plates" view, off-centre and under a non-trivial rotation."""
+    width, height = 220, 122
+    rotation = geometry.rotation_matrix(np.array([0.3, -0.5, 0.8]), 0.9)
+    globe = _png_array(render_image.render_png(globe_world, "globe", "plates", width, height, rotation))
+    map_width, map_height = render_image._globe_source_size(width, height)
+    token = render_image._STROKE_SCALE.set(width / (map_width * np.cos(np.radians(30.0))))
+    try:
+        flat = _png_array(render_image._render_map_png(globe_world, "behrmann", "plates", map_width, map_height, rotation))
+    finally:
+        render_image._STROKE_SCALE.reset(token)
+    scale, offset_x, offset_y = render_image._globe_transform(width, height)
+    map_scale, map_offset_x, map_offset_y = render_image._fit_view(
+        render_image._sphere_extent("behrmann"), map_width, map_height,
+        render_image.PADDING_PX * map_width / render_image.REFERENCE_WIDTH_PX,
+    )
+    rng = np.random.default_rng(0)
+    matches = 0
+    samples = 0
+    while samples < 200:
+        px, py = rng.integers(0, width), rng.integers(0, height)
+        x = (px + 0.5 - offset_x) / scale
+        y = (offset_y - (py + 0.5)) / scale
+        if x * x + y * y > 0.9:
+            continue
+        lat, lon = np.arcsin(y), np.arctan2(x, np.sqrt(1 - x * x - y * y))
+        bx, by = projections.behrmann(lat, lon)
+        fx = int(np.floor(map_scale * bx + map_offset_x))
+        fy = int(np.floor(map_offset_y - map_scale * by))
+        samples += 1
+        matches += np.array_equal(globe[py, px], flat[fy, fx])
+    assert matches == samples
+
+
+def test_globe_keeps_alpha_encoded_ids(monkeypatch):
+    """Nearest-neighbour resampling must not invent alpha values: every id on the disc is one
+    the flat map encodes (the Combined/Biome views carry biome ids there)."""
+    ids = np.array([237, 240, 251, 255], dtype=np.uint8)
+    rng = np.random.default_rng(1)
+
+    def fake_map(world, projection, view, width, height, *args):
+        pixels = rng.integers(0, 256, size=(height, width, 4), dtype=np.uint8)
+        pixels[..., 3] = rng.choice(ids, size=(height, width))
+        return render_image._encode_image(Image.fromarray(pixels, mode="RGBA"))
+
+    monkeypatch.setattr(render_image, "_render_map_png", fake_map)
+    globe = Image.open(io.BytesIO(render_image.render_png(None, "globe", "biome", 120, 80)))
+    assert globe.mode == "RGBA"
+    assert set(np.unique(np.asarray(globe)[..., 3])) <= set(ids)
+
+
+def test_globe_strokes_are_scaled_back_to_the_requested_size():
+    width = 2200
+    map_width, _ = render_image._globe_source_size(width, 1222)
+    token = render_image._STROKE_SCALE.set(width / map_width)
+    try:
+        assert np.isclose(render_image._stroke_scale(map_width), width / render_image.REFERENCE_WIDTH_PX)
+    finally:
+        render_image._STROKE_SCALE.reset(token)
+    assert render_image._stroke_scale(width) == width / render_image.REFERENCE_WIDTH_PX
+
+
+@pytest.mark.parametrize("projection", ["behrmann", "eckert4"])
+def test_climate_grid_fits_the_whole_sphere_like_the_frontend(projection):
+    """A coarse climate grid's cell centres stop short of the poles and the antimeridian; the
+    fit must still be the full sphere's (rotation.ts's computeExtent), or every grid view is
+    shifted against click probing -- by several pixels once the globe upsamples it (#497)."""
+    lat_deg, lon_deg, world_xyz = render_image._biome_grid(18, 36)
+    width, height = 1100, 611
+    *_, scale, offset_x, offset_y = render_image._project_climate_grid(
+        lat_deg, lon_deg, world_xyz, projection, np.eye(3), width, height, render_image.PADDING_PX,
+    )
+    expected = render_image._fit_view(render_image._sphere_extent(projection), width, height, render_image.PADDING_PX)
+    assert np.allclose((scale, offset_x, offset_y), expected)
+
+
+def test_globe_draws_rivers(globe_world, monkeypatch):
+    """The globe's stroke scale reaches Pillow's river blur; a numpy scalar there made every
+    globe Elevation render with rivers fail (#497)."""
+    points = np.array([[1.0, 0.0, 0.0], [0.99, 0.05, 0.0]])
+    points = points / np.linalg.norm(points, axis=1, keepdims=True)
+    n = len(points)
+    monkeypatch.setattr(globe_world, "hydrology_cache", hydrology.HydrologyFields(
+        points=points,
+        elevation=np.array([10.0, 5.0]),
+        is_ocean=np.zeros(n, dtype=bool),
+        neighbor_idx=np.zeros((n, 1), dtype=np.int64),
+        flow_accum=np.zeros(n),
+        water_deposited=np.zeros(n),
+        filled_elevation=np.zeros(n),
+        spill_target=np.full(n, -1, dtype=np.int64),
+        is_river=np.array([True, False]),
+        flow_target=np.array([1, -1]),
+        lake_depth=np.zeros(n),
+        glacier_depth=np.zeros(n),
+        plates_in_order=[],
+        channel_width=np.array([5000.0, 0.0]),
+    ))
+    monkeypatch.setattr(
+        render_image,
+        "_rivers_to_draw",
+        lambda w, hide_short_networks=False: (np.array([0]), np.array([1.0]), np.array([1.0])),
+    )
+    image = Image.open(io.BytesIO(render_image.render_png(globe_world, "globe", "elevation", 220, 122)))
+    assert image.size == (220, 122)

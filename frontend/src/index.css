@@ -44,17 +44,41 @@ button:disabled {
   opacity: 1;
 }
 
-/* The Generate World button before any world exists yet (see App.tsx's `summary`) -- draws
-   attention to the one action that's meaningful on a blank start screen. */
-@keyframes generate-flash-outline {
-  0%, 49% { outline-color: #27c93f; }
-  50%, 100% { outline-color: transparent; }
+/* The File and Generate World buttons before any world exists yet (see App.tsx's `summary`)
+   -- draws attention to the two ways to start (load or generate) on a blank start screen. A
+   steady highlight rather than a flash (#497). */
+.start-highlight {
+  outline: 2px solid #27c93f;
+  outline-offset: 2px;
 }
 
-.generate-flashing {
-  outline: 2px solid transparent;
+/* The draggable globes (GlobeSelector.tsx, MantleCrossSection.tsx's locator): a focus ring for
+   keyboard focus only, not after every drag. */
+.globe-control:focus {
+  outline: none;
+}
+
+.globe-control:focus-visible {
+  outline: 2px solid #61ded0;
   outline-offset: 2px;
-  animation: generate-flash-outline 1s step-start infinite;
+  border-radius: 50%;
+}
+
+/* The cross-section's "still computing" hourglass (see MantleCrossSection.tsx). */
+@keyframes hourglass-turn {
+  0%, 70% { transform: rotate(0deg); }
+  100% { transform: rotate(180deg); }
+}
+
+.hourglass-turning {
+  display: inline-block;
+  animation: hourglass-turn 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hourglass-turning {
+    animation: none;
+  }
 }
 
 /* Progress bars shown while world generation (`busy`) or a step (`stepping`) is in flight

@@ -1,0 +1,925 @@
+{
+ "commit": "dd3c620",
+ "args": {
+  "densities": [
+   1.0,
+   2.0,
+   4.0
+  ],
+  "reach_mults": [
+   1.5,
+   3.0,
+   6.0
+  ],
+  "repeats": [
+   1,
+   2
+  ],
+  "offsets": 6,
+  "rate_cm_yr": 5.0,
+  "ridge_hm_km": 20.0,
+  "lat_max_deg": 60.0
+ },
+ "sweeps": {
+  "density": {
+   "levels": {
+    "1.0": {
+     "slab_pull_ratio": {
+      "mean": 2.45127590502154,
+      "alignment_spread": 0.6399999999999999
+     },
+     "ridge_push_ratio": {
+      "mean": 2.2764078149817877,
+      "alignment_spread": 0.535353535353535
+     },
+     "slab_drag_ratio": {
+      "mean": 2.3998978681437078,
+      "alignment_spread": 0.5955977504701726
+     },
+     "contact_drag_ratio": {
+      "mean": 0.8186648076528519,
+      "alignment_spread": 0.6812556220541093
+     }
+    },
+    "2.0": {
+     "slab_pull_ratio": {
+      "mean": 2.8925364301272585,
+      "alignment_spread": 0.19587628865979378
+     },
+     "ridge_push_ratio": {
+      "mean": 2.132969611834299,
+      "alignment_spread": 0.2846715328467151
+     },
+     "slab_drag_ratio": {
+      "mean": 2.795686907869639,
+      "alignment_spread": 0.19939205361583445
+     },
+     "contact_drag_ratio": {
+      "mean": 0.984559710014295,
+      "alignment_spread": 0.2054179031582668
+     }
+    },
+    "4.0": {
+     "slab_pull_ratio": {
+      "mean": 2.816625307426024,
+      "alignment_spread": 0.6502463054187193
+     },
+     "ridge_push_ratio": {
+      "mean": 2.1109076583370214,
+      "alignment_spread": 0.3052631578947371
+     },
+     "slab_drag_ratio": {
+      "mean": 2.7321116301853863,
+      "alignment_spread": 0.6095488645381788
+     },
+     "contact_drag_ratio": {
+      "mean": 0.9449143541282111,
+      "alignment_spread": 0.6872926512002775
+     }
+    }
+   },
+   "spread": {
+    "slab_pull_ratio": 0.1800125902603531,
+    "ridge_push_ratio": 0.07840236686390512,
+    "slab_drag_ratio": 0.1649191180089964,
+    "contact_drag_ratio": 0.20264081320054683
+   },
+   "rows": [
+    {
+     "density": 1.0,
+     "reach_mult": 3.0,
+     "repeat": 1,
+     "nodes": 16428,
+     "band_rows_per_spacing": 2.2483040147968265,
+     "trench_gap_spacings": 1.41320013626997,
+     "ridge_gap_spacings": 0.5754675633287345,
+     "slab_pull_ratio": 2.2483040147968265,
+     "ridge_push_ratio": 2.847851752075981,
+     "slab_drag_ratio": 2.228571977308243,
+     "contact_drag_ratio": 0.7480979920475868,
+     "slab_pull_n_per_m": 11027931192578.434,
+     "ridge_push_n_per_m": 6208316819.52561
+    },
+    {
+     "density": 1.0,
+     "reach_mult": 3.0,
+     "repeat": 1,
+     "nodes": 16428,
+     "band_rows_per_spacing": 2.2670398815868,
+     "trench_gap_spacings": 1.5314386348811657,
+     "ridge_gap_spacings": 0.4207766218621225,
+     "slab_pull_ratio": 2.2670398815868,
+     "ridge_push_ratio": 2.2295681480068543,
+     "slab_drag_ratio": 2.2412890825652463,
+     "contact_drag_ratio": 0.7552646323129371,
+     "slab_pull_n_per_m": 11119830619183.254,
+     "ridge_push_n_per_m": 4860458562.65492
+    },
+    {
+     "density": 1.0,
+     "reach_mult": 3.0,
+     "repeat": 1,
+     "nodes": 16428,
+     "band_rows_per_spacing": 2.2108322812168795,
+     "trench_gap_spacings": 1.6600788618988709,
+     "ridge_gap_spacings": 0.2606654711214813,
+     "slab_pull_ratio": 2.2108322812168795,
+     "ridge_push_ratio": 2.304511615166749,
+     "slab_drag_ratio": 2.161155997382033,
+     "contact_drag_ratio": 0.7380723873094566,
+     "slab_pull_n_per_m": 10844132339368.793,
+     "ridge_push_n_per_m": 5023835321.063489
+    },
+    {
+     "density": 1.0,
+     "reach_mult": 3.0,
+     "repeat": 1,
+     "nodes": 16428,
+     "band_rows_per_spacing": 1.8735866789973554,
+     "trench_gap_spacings": 1.8059823124340948,
+     "ridge_gap_spacings": 0.09885077225346471,
+     "slab_pull_ratio": 1.8735866789973556,
+     "ridge_push_ratio": 2.360719215536668,
+     "slab_drag_ratio": 1.856583102851362,
+     "contact_drag_ratio": 0.6155094673265824,
+     "slab_pull_n_per_m": 9189942660482.03,
+     "ridge_push_n_per_m": 5146367889.869913
+    },
+    {
+     "density": 1.0,
+     "reach_mult": 3.0,
+     "repeat": 1,
+     "nodes": 16428,
+     "band_rows_per_spacing": 3.0726821535556628,
+     "trench_gap_spacings": 0.06418270644254255,
+     "ridge_gap_spacings": 1.8187481201213493,
+     "slab_pull_ratio": 3.072682153555663,
+     "ridge_push_ratio": 1.8548508122073828,
+     "slab_drag_ratio": 2.962359822470566,
+     "contact_drag_ratio": 1.0348287523703468,
+     "slab_pull_n_per_m": 15071505963190.527,
+     "ridge_push_n_per_m": 4043574770.612076
+    },
+    {
+     "density": 1.0,
+     "reach_mult": 3.0,
+     "repeat": 1,
+     "nodes": 16428,
+     "band_rows_per_spacing": 3.0352104199757157,
+     "trench_gap_spacings": 0.22615880401353353,
+     "ridge_gap_spacings": 1.6845485649183967,
+     "slab_pull_ratio": 3.0352104199757157,
+     "ridge_push_ratio": 2.0609453468970917,
+     "slab_drag_ratio": 2.949427226284796,
+     "contact_drag_ratio": 1.020215614550202,
+     "slab_pull_n_per_m": 14887707109980.885,
+     "ridge_push_n_per_m": 4492860856.23564
+    },
+    {
+     "density": 2.0,
+     "reach_mult": 3.0,
+     "repeat": 1,
+     "nodes": 32448,
+     "band_rows_per_spacing": 3.0735959623947666,
+     "trench_gap_spacings": 0.11795857700808116,
+     "ridge_gap_spacings": 1.8276947070706933,
+     "slab_pull_ratio": 3.0735959623947666,
+     "ridge_push_ratio": 1.815011408827944,
+     "slab_drag_ratio": 2.982491107955343,
+     "contact_drag_ratio": 1.0462941428190597,
+     "slab_pull_n_per_m": 15075988195546.33,
+     "ridge_push_n_per_m": 3956724871.2448997
+    },
+    {
+     "density": 2.0,
+     "reach_mult": 3.0,
+     "repeat": 1,
+     "nodes": 32448,
+     "band_rows_per_spacing": 2.9676098947259817,
+     "trench_gap_spacings": 0.28048397824762217,
+     "ridge_gap_spacings": 1.6795722558563935,
+     "slab_pull_ratio": 2.9676098947259817,
+     "ridge_push_ratio": 2.132969611834299,
+     "slab_drag_ratio": 2.888897282509672,
+     "contact_drag_ratio": 1.0108205461175022,
+     "slab_pull_n_per_m": 14556126533630.94,
+     "ridge_push_n_per_m": 4649873753.79875
+    },
+    {
+     "density": 2.0,
+     "reach_mult": 3.0,
+     "repeat": 1,
+     "nodes": 32448,
+     "band_rows_per_spacing": 2.9543616362673837,
+     "trench_gap_spacings": 0.43719956864503773,
+     "ridge_gap_spacings": 1.543075666744534,
+     "slab_pull_ratio": 2.954361636267383,
+     "ridge_push_ratio": 2.132969611834299,
+     "slab_drag_ratio": 2.863048724669219,
+     "contact_drag_ratio": 1.0057393980921778,
+     "slab_pull_n_per_m": 14491143825891.514,
+     "ridge_push_n_per_m": 4649873753.79875
+    },
+    {
+     "density": 2.0,
+     "reach_mult": 3.0,
+     "repeat": 1,
+     "nodes": 32448,
+     "band_rows_per_spacing": 2.9411133778087852,
+     "trench_gap_spacings": 0.5908302087798155,
+     "ridge_gap_spacings": 1.4138822102220414,
+     "slab_pull_ratio": 2.941113377808785,
+     "ridge_push_ratio": 2.146217870292897,
+     "slab_drag_ratio": 2.830687770944834,
+     "contact_drag_ratio": 1.002528952009099,
+     "slab_pull_n_per_m": 14426161118152.09,
+     "ridge_push_n_per_m": 4678754957.238494
+    },
+    {
+     "density": 2.0,
+     "reach_mult": 3.0,
+     "repeat": 1,
+     "nodes": 32448,
+     "band_rows_per_spacing": 2.8483755685985988,
+     "trench_gap_spacings": 0.7457086090184152,
+     "ridge_gap_spacings": 1.268714494963999,
+     "slab_pull_ratio": 2.848375568598598,
+     "ridge_push_ratio": 2.2389556795030843,
+     "slab_drag_ratio": 2.7223275032906997,
+     "contact_drag_ratio": 0.9739823531158174,
+     "slab_pull_n_per_m": 13971282163976.123,
+     "ridge_push_n_per_m": 4880923381.316701
+    },
+    {
+     "density": 2.0,
+     "reach_mult": 3.0,
+     "repeat": 1,
+     "nodes": 32448,
+     "band_rows_per_spacing": 2.5701621409680375,
+     "trench_gap_spacings": 0.8988181007551933,
+     "ridge_gap_spacings": 1.1265887096725127,
+     "slab_pull_ratio": 2.5701621409680375,
+     "ridge_push_ratio": 2.3316934887132708,
+     "slab_drag_ratio": 2.486669057848065,
+     "contact_drag_ratio": 0.8679928679321144,
+     "slab_pull_n_per_m": 12606645301448.225,
+     "ridge_push_n_per_m": 5083091805.394907
+    },
+    {
+     "density": 4.0,
+     "reach_mult": 3.0,
+     "repeat": 1,
+     "nodes": 65712,
+     "band_rows_per_spacing": 1.9016904791823157,
+     "trench_gap_spacings": 1.7949355168633656,
+     "ridge_gap_spacings": 0.11718560772865717,
+     "slab_pull_ratio": 1.9016904791823155,
+     "ridge_push_ratio": 2.323247481956722,
+     "slab_drag_ratio": 1.8876347651299046,
+     "contact_drag_ratio": 0.6251840304961686,
+     "slab_pull_n_per_m": 9327791800389.258,
+     "ridge_push_n_per_m": 5064679510.66563
+    },
+    {
+     "density": 4.0,
+     "reach_mult": 3.0,
+     "repeat": 1,
+     "nodes": 65712,
+     "band_rows_per_spacing": 3.1382576873205705,
+     "trench_gap_spacings": 0.04539277967741014,
+     "ridge_gap_spacings": 1.8718130714690522,
+     "slab_pull_ratio": 3.13825768732057,
+     "ridge_push_ratio": 1.7799073450474883,
+     "slab_drag_ratio": 3.0382403928776296,
+     "contact_drag_ratio": 1.0548684203039553,
+     "slab_pull_n_per_m": 15393153956307.396,
+     "ridge_push_n_per_m": 3880198012.2035065
+    },
+    {
+     "density": 4.0,
+     "reach_mult": 3.0,
+     "repeat": 1,
+     "nodes": 65712,
+     "band_rows_per_spacing": 3.016474553185742,
+     "trench_gap_spacings": 0.20775930901360262,
+     "ridge_gap_spacings": 1.7244775815785434,
+     "slab_pull_ratio": 3.016474553185742,
+     "ridge_push_ratio": 2.0141056799221584,
+     "slab_drag_ratio": 2.9263448640187413,
+     "contact_drag_ratio": 1.0144694918811403,
+     "slab_pull_n_per_m": 14795807683376.064,
+     "ridge_push_n_per_m": 4390750382.230285
+    },
+    {
+     "density": 4.0,
+     "reach_mult": 3.0,
+     "repeat": 1,
+     "nodes": 65712,
+     "band_rows_per_spacing": 2.988370753000782,
+     "trench_gap_spacings": 0.3663619920016285,
+     "ridge_gap_spacings": 1.5773683359193067,
+     "slab_pull_ratio": 2.9883707530007815,
+     "ridge_push_ratio": 2.163992614241947,
+     "slab_drag_ratio": 2.907500763078431,
+     "contact_drag_ratio": 1.0036086898752201,
+     "slab_pull_n_per_m": 14657958543468.834,
+     "ridge_push_n_per_m": 4717503899.047422
+    },
+    {
+     "density": 4.0,
+     "reach_mult": 3.0,
+     "repeat": 1,
+     "nodes": 65712,
+     "band_rows_per_spacing": 2.9696348862108084,
+     "trench_gap_spacings": 0.519370563560022,
+     "ridge_gap_spacings": 1.4602951295350504,
+     "slab_pull_ratio": 2.9696348862108084,
+     "ridge_push_ratio": 2.15462468084696,
+     "slab_drag_ratio": 2.860799116672188,
+     "contact_drag_ratio": 0.9985542012894689,
+     "slab_pull_n_per_m": 14566059116864.016,
+     "ridge_push_n_per_m": 4697081804.246351
+    },
+    {
+     "density": 4.0,
+     "reach_mult": 3.0,
+     "repeat": 1,
+     "nodes": 65712,
+     "band_rows_per_spacing": 2.8853234856559276,
+     "trench_gap_spacings": 0.6771232825936939,
+     "ridge_gap_spacings": 1.3162876097074458,
+     "slab_pull_ratio": 2.885323485655927,
+     "ridge_push_ratio": 2.2295681480068543,
+     "slab_drag_ratio": 2.772149879335422,
+     "contact_drag_ratio": 0.9728012909233137,
+     "slab_pull_n_per_m": 14152511697142.322,
+     "ridge_push_n_per_m": 4860458562.65492
+    }
+   ]
+  },
+  "reach": {
+   "levels": {
+    "1.5": {
+     "slab_pull_ratio": {
+      "mean": 0.8993216059187307,
+      "alignment_spread": 4.235294117647059
+     },
+     "ridge_push_ratio": {
+      "mean": 0.7588026049939293,
+      "alignment_spread": 3.3999999999999995
+     },
+     "slab_drag_ratio": {
+      "mean": 0.8741610336060178,
+      "alignment_spread": 4.061302942308225
+     },
+     "contact_drag_ratio": {
+      "mean": 0.5951985084540882,
+      "alignment_spread": 4.83832294879687
+     }
+    },
+    "3.0": {
+     "slab_pull_ratio": {
+      "mean": 2.45127590502154,
+      "alignment_spread": 0.6399999999999999
+     },
+     "ridge_push_ratio": {
+      "mean": 2.2764078149817877,
+      "alignment_spread": 0.535353535353535
+     },
+     "slab_drag_ratio": {
+      "mean": 2.3998978681437078,
+      "alignment_spread": 0.5955977504701726
+     },
+     "contact_drag_ratio": {
+      "mean": 0.8186648076528519,
+      "alignment_spread": 0.6812556220541093
+     }
+    },
+    "6.0": {
+     "slab_pull_ratio": {
+      "mean": 5.414665502302358,
+      "alignment_spread": 0.2615384615384617
+     },
+     "ridge_push_ratio": {
+      "mean": 5.311618234957503,
+      "alignment_spread": 0.22007722007721986
+     },
+     "slab_drag_ratio": {
+      "mean": 5.275293287296177,
+      "alignment_spread": 0.24227348203538646
+     },
+     "contact_drag_ratio": {
+      "mean": 0.9065416944553003,
+      "alignment_spread": 0.276608840660336
+     }
+    }
+   },
+   "spread": {
+    "slab_pull_ratio": 5.020833333333334,
+    "ridge_push_ratio": 5.999999999999998,
+    "slab_drag_ratio": 5.0346927905662495,
+    "contact_drag_ratio": 0.5230913410886482
+   },
+   "rows": [
+    {
+     "density": 1.0,
+     "reach_mult": 1.5,
+     "repeat": 1,
+     "nodes": 16428,
+     "band_rows_per_spacing": 0.7494346715989422,
+     "trench_gap_spacings": 1.41320013626997,
+     "ridge_gap_spacings": 0.5754675633287345,
+     "slab_pull_ratio": 0.7494346715989422,
+     "ridge_push_ratio": 1.2365672081382546,
+     "slab_drag_ratio": 0.7429932571734398,
+     "contact_drag_ratio": 0.4818562473032132,
+     "slab_pull_n_per_m": 3675977064192.8115,
+     "ridge_push_n_per_m": 2695716513.7413826
+    },
+    {
+     "density": 1.0,
+     "reach_mult": 3.0,
+     "repeat": 1,
+     "nodes": 16428,
+     "band_rows_per_spacing": 2.2483040147968265,
+     "trench_gap_spacings": 1.41320013626997,
+     "ridge_gap_spacings": 0.5754675633287345,
+     "slab_pull_ratio": 2.2483040147968265,
+     "ridge_push_ratio": 2.847851752075981,
+     "slab_drag_ratio": 2.228571977308243,
+     "contact_drag_ratio": 0.7480979920475868,
+     "slab_pull_n_per_m": 11027931192578.434,
+     "ridge_push_n_per_m": 6208316819.52561
+    },
+    {
+     "density": 1.0,
+     "reach_mult": 6.0,
+     "repeat": 1,
+     "nodes": 16428,
+     "band_rows_per_spacing": 5.32098616835249,
+     "trench_gap_spacings": 1.41320013626997,
+     "ridge_gap_spacings": 0.5754675633287345,
+     "slab_pull_ratio": 5.320986168352491,
+     "ridge_push_ratio": 5.920533905631644,
+     "slab_drag_ratio": 5.15914141138863,
+     "contact_drag_ratio": 0.8912517885516201,
+     "slab_pull_n_per_m": 26099437155768.965,
+     "ridge_push_n_per_m": 12906763914.276924
+    },
+    {
+     "density": 1.0,
+     "reach_mult": 1.5,
+     "repeat": 1,
+     "nodes": 16428,
+     "band_rows_per_spacing": 0.5620760036992066,
+     "trench_gap_spacings": 1.5314386348811657,
+     "ridge_gap_spacings": 0.4207766218621225,
+     "slab_pull_ratio": 0.5620760036992066,
+     "ridge_push_ratio": 0.8056422719688633,
+     "slab_drag_ratio": 0.5653455544143196,
+     "contact_drag_ratio": 0.3493892352838525,
+     "slab_pull_n_per_m": 2756982798144.6084,
+     "ridge_push_n_per_m": 1756300152.892114
+    },
+    {
+     "density": 1.0,
+     "reach_mult": 3.0,
+     "repeat": 1,
+     "nodes": 16428,
+     "band_rows_per_spacing": 2.2670398815868,
+     "trench_gap_spacings": 1.5314386348811657,
+     "ridge_gap_spacings": 0.4207766218621225,
+     "slab_pull_ratio": 2.2670398815868,
+     "ridge_push_ratio": 2.2295681480068543,
+     "slab_drag_ratio": 2.2412890825652463,
+     "contact_drag_ratio": 0.7552646323129371,
+     "slab_pull_n_per_m": 11119830619183.254,
+     "ridge_push_n_per_m": 4860458562.65492
+    },
+    {
+     "density": 1.0,
+     "reach_mult": 6.0,
+     "repeat": 1,
+     "nodes": 16428,
+     "band_rows_per_spacing": 5.11489163366278,
+     "trench_gap_spacings": 1.5314386348811657,
+     "ridge_gap_spacings": 0.4207766218621225,
+     "slab_pull_ratio": 5.114891633662779,
+     "ridge_push_ratio": 5.32098616835249,
+     "slab_drag_ratio": 4.997344588638565,
+     "contact_drag_ratio": 0.8552956659472912,
+     "slab_pull_n_per_m": 25088543463115.934,
+     "ridge_push_n_per_m": 11599749847.008375
+    },
+    {
+     "density": 1.0,
+     "reach_mult": 1.5,
+     "repeat": 1,
+     "nodes": 16428,
+     "band_rows_per_spacing": 0.44966080295936534,
+     "trench_gap_spacings": 1.6600788618988709,
+     "ridge_gap_spacings": 0.2606654711214813,
+     "slab_pull_ratio": 0.44966080295936534,
+     "ridge_push_ratio": 0.9367933394986782,
+     "slab_drag_ratio": 0.44767951557857294,
+     "contact_drag_ratio": 0.2746770458129251,
+     "slab_pull_n_per_m": 2205586238515.687,
+     "ridge_push_n_per_m": 2042209480.107109
+    },
+    {
+     "density": 1.0,
+     "reach_mult": 3.0,
+     "repeat": 1,
+     "nodes": 16428,
+     "band_rows_per_spacing": 2.2108322812168795,
+     "trench_gap_spacings": 1.6600788618988709,
+     "ridge_gap_spacings": 0.2606654711214813,
+     "slab_pull_ratio": 2.2108322812168795,
+     "ridge_push_ratio": 2.304511615166749,
+     "slab_drag_ratio": 2.161155997382033,
+     "contact_drag_ratio": 0.7380723873094566,
+     "slab_pull_n_per_m": 10844132339368.793,
+     "ridge_push_n_per_m": 5023835321.063489
+    },
+    {
+     "density": 1.0,
+     "reach_mult": 6.0,
+     "repeat": 1,
+     "nodes": 16428,
+     "band_rows_per_spacing": 4.9837405661329655,
+     "trench_gap_spacings": 1.6600788618988709,
+     "ridge_gap_spacings": 0.2606654711214813,
+     "slab_pull_ratio": 4.9837405661329655,
+     "ridge_push_ratio": 5.358457901932438,
+     "slab_drag_ratio": 4.903100760054458,
+     "contact_drag_ratio": 0.8297040816857196,
+     "slab_pull_n_per_m": 24445247476882.195,
+     "ridge_push_n_per_m": 11681438226.21266
+    },
+    {
+     "density": 1.0,
+     "reach_mult": 1.5,
+     "repeat": 1,
+     "nodes": 16428,
+     "band_rows_per_spacing": 0.3185097354295504,
+     "trench_gap_spacings": 1.8059823124340948,
+     "ridge_gap_spacings": 0.09885077225346471,
+     "slab_pull_ratio": 0.3185097354295504,
+     "ridge_push_ratio": 0.9367933394986782,
+     "slab_drag_ratio": 0.3154323789623367,
+     "contact_drag_ratio": 0.19543832054071067,
+     "slab_pull_n_per_m": 1562290252281.9448,
+     "ridge_push_n_per_m": 2042209480.107109
+    },
+    {
+     "density": 1.0,
+     "reach_mult": 3.0,
+     "repeat": 1,
+     "nodes": 16428,
+     "band_rows_per_spacing": 1.8735866789973554,
+     "trench_gap_spacings": 1.8059823124340948,
+     "ridge_gap_spacings": 0.09885077225346471,
+     "slab_pull_ratio": 1.8735866789973556,
+     "ridge_push_ratio": 2.360719215536668,
+     "slab_drag_ratio": 1.856583102851362,
+     "contact_drag_ratio": 0.6155094673265824,
+     "slab_pull_n_per_m": 9189942660482.03,
+     "ridge_push_n_per_m": 5146367889.869913
+    },
+    {
+     "density": 1.0,
+     "reach_mult": 6.0,
+     "repeat": 1,
+     "nodes": 16428,
+     "band_rows_per_spacing": 4.871325365393124,
+     "trench_gap_spacings": 1.8059823124340948,
+     "ridge_gap_spacings": 0.09885077225346471,
+     "slab_pull_ratio": 4.871325365393124,
+     "ridge_push_ratio": 5.433401369092332,
+     "slab_drag_ratio": 4.788199729479845,
+     "contact_drag_ratio": 0.8099269822668236,
+     "slab_pull_n_per_m": 23893850917253.273,
+     "ridge_push_n_per_m": 11844814984.62123
+    },
+    {
+     "density": 1.0,
+     "reach_mult": 1.5,
+     "repeat": 1,
+     "nodes": 16428,
+     "band_rows_per_spacing": 1.6487562775176727,
+     "trench_gap_spacings": 0.06418270644254255,
+     "ridge_gap_spacings": 1.8187481201213493,
+     "slab_pull_ratio": 1.648756277517673,
+     "ridge_push_ratio": 0.28103800184960337,
+     "slab_drag_ratio": 1.5770166677660804,
+     "contact_drag_ratio": 1.128798169896678,
+     "slab_pull_n_per_m": 8087149541224.186,
+     "ridge_push_n_per_m": 612662844.0321325
+    },
+    {
+     "density": 1.0,
+     "reach_mult": 3.0,
+     "repeat": 1,
+     "nodes": 16428,
+     "band_rows_per_spacing": 3.0726821535556628,
+     "trench_gap_spacings": 0.06418270644254255,
+     "ridge_gap_spacings": 1.8187481201213493,
+     "slab_pull_ratio": 3.072682153555663,
+     "ridge_push_ratio": 1.8548508122073828,
+     "slab_drag_ratio": 2.962359822470566,
+     "contact_drag_ratio": 1.0348287523703468,
+     "slab_pull_n_per_m": 15071505963190.527,
+     "ridge_push_n_per_m": 4043574770.612076
+    },
+    {
+     "density": 1.0,
+     "reach_mult": 6.0,
+     "repeat": 1,
+     "nodes": 16428,
+     "band_rows_per_spacing": 6.1453643071113255,
+     "trench_gap_spacings": 0.06418270644254255,
+     "ridge_gap_spacings": 1.8187481201213493,
+     "slab_pull_ratio": 6.145364307111326,
+     "ridge_push_ratio": 4.852589498603153,
+     "slab_drag_ratio": 5.948253550621823,
+     "contact_drag_ratio": 1.0339599458511741,
+     "slab_pull_n_per_m": 30143011926381.055,
+     "ridge_push_n_per_m": 10578645106.954824
+    },
+    {
+     "density": 1.0,
+     "reach_mult": 1.5,
+     "repeat": 1,
+     "nodes": 16428,
+     "band_rows_per_spacing": 1.6674921443076465,
+     "trench_gap_spacings": 0.22615880401353353,
+     "ridge_gap_spacings": 1.6845485649183967,
+     "slab_pull_ratio": 1.6674921443076463,
+     "ridge_push_ratio": 0.35598146900949745,
+     "slab_drag_ratio": 1.5964988277413579,
+     "contact_drag_ratio": 1.1410320318871499,
+     "slab_pull_n_per_m": 8179048967829.005,
+     "ridge_push_n_per_m": 776039602.4407009
+    },
+    {
+     "density": 1.0,
+     "reach_mult": 3.0,
+     "repeat": 1,
+     "nodes": 16428,
+     "band_rows_per_spacing": 3.0352104199757157,
+     "trench_gap_spacings": 0.22615880401353353,
+     "ridge_gap_spacings": 1.6845485649183967,
+     "slab_pull_ratio": 3.0352104199757157,
+     "ridge_push_ratio": 2.0609453468970917,
+     "slab_drag_ratio": 2.949427226284796,
+     "contact_drag_ratio": 1.020215614550202,
+     "slab_pull_n_per_m": 14887707109980.885,
+     "ridge_push_n_per_m": 4492860856.23564
+    },
+    {
+     "density": 1.0,
+     "reach_mult": 6.0,
+     "repeat": 1,
+     "nodes": 16428,
+     "band_rows_per_spacing": 6.051684973161458,
+     "trench_gap_spacings": 0.22615880401353353,
+     "ridge_gap_spacings": 1.6845485649183967,
+     "slab_pull_ratio": 6.051684973161458,
+     "ridge_push_ratio": 4.983740566132966,
+     "slab_drag_ratio": 5.855719683593737,
+     "contact_drag_ratio": 1.0191117024291738,
+     "slab_pull_n_per_m": 29683514793356.953,
+     "ridge_push_n_per_m": 10864554434.169817
+    }
+   ]
+  },
+  "repeat": {
+   "levels": {
+    "1": {
+     "slab_pull_ratio": {
+      "mean": 2.45127590502154,
+      "alignment_spread": 0.6399999999999999
+     },
+     "ridge_push_ratio": {
+      "mean": 2.2764078149817877,
+      "alignment_spread": 0.535353535353535
+     },
+     "slab_drag_ratio": {
+      "mean": 2.3998978681437078,
+      "alignment_spread": 0.5955977504701726
+     },
+     "contact_drag_ratio": {
+      "mean": 0.8186648076528519,
+      "alignment_spread": 0.6812556220541093
+     }
+    },
+    "2": {
+     "slab_pull_ratio": {
+      "mean": 4.90255181004308,
+      "alignment_spread": 0.6399999999999999
+     },
+     "ridge_push_ratio": {
+      "mean": 4.552815629963575,
+      "alignment_spread": 0.535353535353535
+     },
+     "slab_drag_ratio": {
+      "mean": 4.7997957362874155,
+      "alignment_spread": 0.5955977504701726
+     },
+     "contact_drag_ratio": {
+      "mean": 1.6373296153057038,
+      "alignment_spread": 0.6812556220541093
+     }
+    }
+   },
+   "spread": {
+    "slab_pull_ratio": 1.0,
+    "ridge_push_ratio": 1.0,
+    "slab_drag_ratio": 1.0,
+    "contact_drag_ratio": 1.0
+   },
+   "rows": [
+    {
+     "density": 1.0,
+     "reach_mult": 3.0,
+     "repeat": 1,
+     "nodes": 16428,
+     "band_rows_per_spacing": 2.2483040147968265,
+     "trench_gap_spacings": 1.41320013626997,
+     "ridge_gap_spacings": 0.5754675633287345,
+     "slab_pull_ratio": 2.2483040147968265,
+     "ridge_push_ratio": 2.847851752075981,
+     "slab_drag_ratio": 2.228571977308243,
+     "contact_drag_ratio": 0.7480979920475868,
+     "slab_pull_n_per_m": 11027931192578.434,
+     "ridge_push_n_per_m": 6208316819.52561
+    },
+    {
+     "density": 1.0,
+     "reach_mult": 3.0,
+     "repeat": 2,
+     "nodes": 16428,
+     "band_rows_per_spacing": 2.2483040147968265,
+     "trench_gap_spacings": 1.41320013626997,
+     "ridge_gap_spacings": 0.5754675633287345,
+     "slab_pull_ratio": 4.496608029593653,
+     "ridge_push_ratio": 5.695703504151962,
+     "slab_drag_ratio": 4.457143954616486,
+     "contact_drag_ratio": 1.4961959840951737,
+     "slab_pull_n_per_m": 22055862385156.867,
+     "ridge_push_n_per_m": 12416633639.05122
+    },
+    {
+     "density": 1.0,
+     "reach_mult": 3.0,
+     "repeat": 1,
+     "nodes": 16428,
+     "band_rows_per_spacing": 2.2670398815868,
+     "trench_gap_spacings": 1.5314386348811657,
+     "ridge_gap_spacings": 0.4207766218621225,
+     "slab_pull_ratio": 2.2670398815868,
+     "ridge_push_ratio": 2.2295681480068543,
+     "slab_drag_ratio": 2.2412890825652463,
+     "contact_drag_ratio": 0.7552646323129371,
+     "slab_pull_n_per_m": 11119830619183.254,
+     "ridge_push_n_per_m": 4860458562.65492
+    },
+    {
+     "density": 1.0,
+     "reach_mult": 3.0,
+     "repeat": 2,
+     "nodes": 16428,
+     "band_rows_per_spacing": 2.2670398815868,
+     "trench_gap_spacings": 1.5314386348811657,
+     "ridge_gap_spacings": 0.4207766218621225,
+     "slab_pull_ratio": 4.5340797631736,
+     "ridge_push_ratio": 4.459136296013709,
+     "slab_drag_ratio": 4.482578165130493,
+     "contact_drag_ratio": 1.5105292646258746,
+     "slab_pull_n_per_m": 22239661238366.508,
+     "ridge_push_n_per_m": 9720917125.30984
+    },
+    {
+     "density": 1.0,
+     "reach_mult": 3.0,
+     "repeat": 1,
+     "nodes": 16428,
+     "band_rows_per_spacing": 2.2108322812168795,
+     "trench_gap_spacings": 1.6600788618988709,
+     "ridge_gap_spacings": 0.2606654711214813,
+     "slab_pull_ratio": 2.2108322812168795,
+     "ridge_push_ratio": 2.304511615166749,
+     "slab_drag_ratio": 2.161155997382033,
+     "contact_drag_ratio": 0.7380723873094566,
+     "slab_pull_n_per_m": 10844132339368.793,
+     "ridge_push_n_per_m": 5023835321.063489
+    },
+    {
+     "density": 1.0,
+     "reach_mult": 3.0,
+     "repeat": 2,
+     "nodes": 16428,
+     "band_rows_per_spacing": 2.2108322812168795,
+     "trench_gap_spacings": 1.6600788618988709,
+     "ridge_gap_spacings": 0.2606654711214813,
+     "slab_pull_ratio": 4.421664562433759,
+     "ridge_push_ratio": 4.609023230333496,
+     "slab_drag_ratio": 4.322311994764065,
+     "contact_drag_ratio": 1.4761447746189131,
+     "slab_pull_n_per_m": 21688264678737.586,
+     "ridge_push_n_per_m": 10047670642.126974
+    },
+    {
+     "density": 1.0,
+     "reach_mult": 3.0,
+     "repeat": 1,
+     "nodes": 16428,
+     "band_rows_per_spacing": 1.8735866789973554,
+     "trench_gap_spacings": 1.8059823124340948,
+     "ridge_gap_spacings": 0.09885077225346471,
+     "slab_pull_ratio": 1.8735866789973556,
+     "ridge_push_ratio": 2.360719215536668,
+     "slab_drag_ratio": 1.856583102851362,
+     "contact_drag_ratio": 0.6155094673265824,
+     "slab_pull_n_per_m": 9189942660482.03,
+     "ridge_push_n_per_m": 5146367889.869913
+    },
+    {
+     "density": 1.0,
+     "reach_mult": 3.0,
+     "repeat": 2,
+     "nodes": 16428,
+     "band_rows_per_spacing": 1.8735866789973554,
+     "trench_gap_spacings": 1.8059823124340948,
+     "ridge_gap_spacings": 0.09885077225346471,
+     "slab_pull_ratio": 3.7471733579947113,
+     "ridge_push_ratio": 4.721438431073337,
+     "slab_drag_ratio": 3.713166205702724,
+     "contact_drag_ratio": 1.2310189346531648,
+     "slab_pull_n_per_m": 18379885320964.06,
+     "ridge_push_n_per_m": 10292735779.739828
+    },
+    {
+     "density": 1.0,
+     "reach_mult": 3.0,
+     "repeat": 1,
+     "nodes": 16428,
+     "band_rows_per_spacing": 3.0726821535556628,
+     "trench_gap_spacings": 0.06418270644254255,
+     "ridge_gap_spacings": 1.8187481201213493,
+     "slab_pull_ratio": 3.072682153555663,
+     "ridge_push_ratio": 1.8548508122073828,
+     "slab_drag_ratio": 2.962359822470566,
+     "contact_drag_ratio": 1.0348287523703468,
+     "slab_pull_n_per_m": 15071505963190.527,
+     "ridge_push_n_per_m": 4043574770.612076
+    },
+    {
+     "density": 1.0,
+     "reach_mult": 3.0,
+     "repeat": 2,
+     "nodes": 16428,
+     "band_rows_per_spacing": 3.0726821535556628,
+     "trench_gap_spacings": 0.06418270644254255,
+     "ridge_gap_spacings": 1.8187481201213493,
+     "slab_pull_ratio": 6.145364307111326,
+     "ridge_push_ratio": 3.7097016244147656,
+     "slab_drag_ratio": 5.924719644941132,
+     "contact_drag_ratio": 2.0696575047406935,
+     "slab_pull_n_per_m": 30143011926381.055,
+     "ridge_push_n_per_m": 8087149541.224152
+    },
+    {
+     "density": 1.0,
+     "reach_mult": 3.0,
+     "repeat": 1,
+     "nodes": 16428,
+     "band_rows_per_spacing": 3.0352104199757157,
+     "trench_gap_spacings": 0.22615880401353353,
+     "ridge_gap_spacings": 1.6845485649183967,
+     "slab_pull_ratio": 3.0352104199757157,
+     "ridge_push_ratio": 2.0609453468970917,
+     "slab_drag_ratio": 2.949427226284796,
+     "contact_drag_ratio": 1.020215614550202,
+     "slab_pull_n_per_m": 14887707109980.885,
+     "ridge_push_n_per_m": 4492860856.23564
+    },
+    {
+     "density": 1.0,
+     "reach_mult": 3.0,
+     "repeat": 2,
+     "nodes": 16428,
+     "band_rows_per_spacing": 3.0352104199757157,
+     "trench_gap_spacings": 0.22615880401353353,
+     "ridge_gap_spacings": 1.6845485649183967,
+     "slab_pull_ratio": 6.0704208399514314,
+     "ridge_push_ratio": 4.1218906937941835,
+     "slab_drag_ratio": 5.898854452569593,
+     "contact_drag_ratio": 2.040431229100404,
+     "slab_pull_n_per_m": 29775414219961.77,
+     "ridge_push_n_per_m": 8985721712.47128
+    }
+   ]
+  }
+ }
+}

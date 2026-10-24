@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { WorldStats } from "./api";
 import TimeSeriesChart from "./TimeSeriesChart";
 import type { ChartBand, ChartPoint, ChartSeries } from "./TimeSeriesChart";
+import ModalShell from "./ModalShell";
 
 interface Props {
   stats: WorldStats | null;
@@ -224,6 +225,8 @@ const SIMULATION_ENTRIES: TabEntry[] = [
   )),
   metricEntry(numMetric("craton_volume_km3", "Craton volume", (s) => s.craton_volume_km3 ?? null, 0, " km³")),
   metricEntry(numMetric("craton_destroyed_km3", "Craton destroyed (cumulative)", (s) => s.craton_destroyed_km3 ?? null, 0, " km³")),
+  // Belts (RFC 0009): welded and rifted crust that never forms craton.
+  metricEntry(numMetric("belt_area_km2", "Belt area", (s) => s.belt_area_km2 ?? null, 0, " km²")),
 ];
 
 interface HistoryStats {
@@ -480,15 +483,20 @@ function entryYFormat(selected: TabEntry): (v: number) => string {
   return selected.kind === "metric" ? selected.metric.yFormat : selected.group.yFormat;
 }
 
-function MetricTab({ entries, history, current }: { entries: TabEntry[]; history: WorldStats[]; current: WorldStats }) {
-  const [viewMode, setViewMode] = useState<"table" | "graph">("graph");
+// The selected entry of a tab's dropdown and the chart inputs derived from it -- shared by
+// MetricTab and SimulationTab, whose graph modes are the same dropdown+chart.
+function useEntryChart(entries: TabEntry[], history: WorldStats[]) {
   const [selectedKey, setSelectedKey] = useState(entryKey(entries[0]));
   const selected = entries.find((e) => entryKey(e) === selectedKey) ?? entries[0];
-
   const chartData = useMemo(() => entryChartData(selected, history), [history, selected]);
   const chartSeries = useMemo(() => entryChartSeries(selected), [selected]);
   const chartBands = useMemo(() => entryChartBands(selected), [selected]);
-  const yFormat = entryYFormat(selected);
+  return { selected, selectedKey, setSelectedKey, chartData, chartSeries, chartBands, yFormat: entryYFormat(selected) };
+}
+
+function MetricTab({ entries, history, current }: { entries: TabEntry[]; history: WorldStats[]; current: WorldStats }) {
+  const [viewMode, setViewMode] = useState<"table" | "graph">("graph");
+  const { selectedKey, setSelectedKey, chartData, chartSeries, chartBands, yFormat } = useEntryChart(entries, history);
 
   return (
     <>
@@ -623,13 +631,7 @@ function BiomeTab({ history, current }: { history: WorldStats[]; current: WorldS
 // so it still needs a dedicated historyStats summary over `history` instead.
 function SimulationTab({ history, current }: { history: WorldStats[]; current: WorldStats }) {
   const [viewMode, setViewMode] = useState<"table" | "graph">("graph");
-  const [selectedKey, setSelectedKey] = useState(entryKey(SIMULATION_ENTRIES[0]));
-  const selected = SIMULATION_ENTRIES.find((e) => entryKey(e) === selectedKey) ?? SIMULATION_ENTRIES[0];
-
-  const chartData = useMemo(() => entryChartData(selected, history), [history, selected]);
-  const chartSeries = useMemo(() => entryChartSeries(selected), [selected]);
-  const chartBands = useMemo(() => entryChartBands(selected), [selected]);
-  const yFormat = entryYFormat(selected);
+  const { selectedKey, setSelectedKey, chartData, chartSeries, chartBands, yFormat } = useEntryChart(SIMULATION_ENTRIES, history);
 
   return (
     <>
@@ -676,44 +678,7 @@ export default function StatsModal({ stats, history, onClose }: Props) {
   const [activeTab, setActiveTab] = useState<TabKey>("physical");
 
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0, 0, 0, 0.6)",
-        zIndex: 100,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: 520,
-          maxHeight: "80vh",
-          overflowY: "auto",
-          padding: 20,
-          background: "#151a2e",
-          border: "1px solid #333",
-          borderRadius: 8,
-          color: "#e6e8ef",
-          fontSize: 13,
-          boxShadow: "0 8px 32px rgba(0, 0, 0, 0.6)",
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <span style={{ fontSize: 16, fontWeight: 600 }}>World Stats</span>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{ background: "none", border: "none", color: "#8b8fa3", cursor: "pointer", fontSize: 16 }}
-          >
-            ✕
-          </button>
-        </div>
-
+    <ModalShell title="World Stats" onClose={onClose} width={520} maxHeight="80vh">
         {!stats && <div style={{ opacity: 0.6 }}>No world yet.</div>}
 
         {stats && (
@@ -737,7 +702,6 @@ export default function StatsModal({ stats, history, onClose }: Props) {
             )}
           </>
         )}
-      </div>
-    </div>
+    </ModalShell>
   );
 }

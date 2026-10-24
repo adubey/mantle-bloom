@@ -14,7 +14,7 @@ would be tuned by feel rather than against real numbers. This module is that ins
 Like `stranded_basins.py`/`plate_diagnostics.py`, it's a pure read of one already-resolved
 `lakes.Lake` forest (the same `HydrologyFields.lake_forest` those two modules read), exposed
 both as library functions and as the same `python -m app.<name> <save.mbworld> [--json]`
-offline-dump CLI shape those two use -- see docs/debugging.md.
+offline-dump CLI shape those two use -- see docs/debugging/offline-cli.md.
 
 Two numbers this reports that neither existing tool does:
 

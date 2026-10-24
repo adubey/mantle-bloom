@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
+  <title id="title">Plate surface cells carrying elevation</title>
+  <desc id="desc">Conceptual oblique view of the same curved plate lattice as the territory figure, now colored by elevation and raised into simplified terrain relief. Blue marks deep ocean, green lowlands, ochre uplands, and pale peaks.</desc>
+  <defs>
+    <clipPath id="terrain"><path d="M260 323 C296 254 385 221 461 244 C525 184 611 210 660 256 C733 239 797 282 774 337 C820 383 764 445 707 460 C665 510 569 513 503 477 C427 513 334 475 322 424 C263 408 230 363 260 323Z"/></clipPath>
+  </defs>
+  <rect width="1200" height="760" rx="26" fill="#102638"/>
+  <ellipse cx="601" cy="560" rx="385" ry="91" fill="#020914" opacity=".55"/>
+  <path d="M260 323 C296 254 385 221 461 244 C525 184 611 210 660 256 C733 239 797 282 774 337 C820 383 764 445 707 460 C665 510 569 513 503 477 C427 513 334 475 322 424 C263 408 230 363 260 323Z" fill="#6c503b" transform="translate(0 66)" stroke="#c7a472" stroke-width="3"/>
+  <path d="M260 323 C296 254 385 221 461 244 C525 184 611 210 660 256 C733 239 797 282 774 337 C820 383 764 445 707 460 C665 510 569 513 503 477 C427 513 334 475 322 424 C263 408 230 363 260 323Z" fill="#155f7e" stroke="#b1e5ed" stroke-width="4"/>
+  <g clip-path="url(#terrain)">
+    <path d="M226 432 C321 392 343 359 418 373 C470 382 492 427 560 395 C630 361 657 344 713 363 C764 381 800 359 833 329 L850 526 L216 526Z" fill="#3c9b75"/>
+    <path d="M319 383 C387 339 414 330 460 338 C505 347 508 392 560 367 C605 346 636 315 684 325 C719 331 741 359 777 342 L797 396 C731 430 673 402 629 412 C565 427 532 463 473 436 C422 413 398 431 350 452Z" fill="#9fba62"/>
+    <path d="M413 350 C442 312 467 291 498 293 C526 295 536 332 558 327 C586 322 609 274 638 277 C668 280 679 315 714 312 L732 352 C680 360 649 342 617 366 C584 390 550 395 520 376 C484 352 460 378 432 393Z" fill="#d6ae58"/>
+    <path d="M480 319 C492 286 510 258 532 259 C555 260 559 296 578 300 C599 304 615 260 637 257 C659 254 671 286 693 292 L702 322 C664 320 651 306 630 324 C606 344 582 349 562 334 C533 313 515 346 490 362Z" fill="#f1e2ba"/>
+    <path d="M236 413 C316 391 343 355 418 373 C470 382 492 427 560 395 C630 361 657 344 713 363 C764 381 800 359 833 329" fill="none" stroke="#f8f0d8" stroke-width="2" opacity=".88"/>
+    <path d="M341 421 C390 401 417 379 454 389 C492 399 513 423 559 402 C608 380 640 354 672 354 C712 354 745 382 785 364" fill="none" stroke="#f2ddaa" stroke-width="2" opacity=".75"/>
+    <path d="M430 367 C462 347 478 321 504 321 C529 321 541 352 566 348 C595 344 612 304 640 298 C664 293 681 322 713 324" fill="none" stroke="#fff5de" stroke-width="2" opacity=".8"/>
+    <g fill="none" stroke="#e8fbf4" stroke-opacity=".55" stroke-width="1.7">
+      <path d="M207 287 L393 264 L466 329 L398 392 L223 366 Z M393 264 L589 228 L661 283 L615 353 L466 329 Z M589 228 L799 274 L811 339 L661 283 Z"/>
+      <path d="M223 366 L398 392 L384 466 L282 481 L204 432 Z M398 392 L466 329 L615 353 L574 422 L491 479 L384 466 Z M615 353 L661 283 L811 339 L798 421 L710 470 L574 422 Z"/>
+      <path d="M282 481 L384 466 L491 479 L505 538 L354 535 Z M491 479 L574 422 L710 470 L706 535 L505 538Z"/>
+    </g>
+  </g>
+  <path d="M888 228 L888 424" stroke="#d4e4ed" stroke-width="2"/>
+  <path d="M878 238 L888 222 L898 238 M878 414 L888 430 L898 414" fill="none" stroke="#d4e4ed" stroke-width="2"/>
+  <text x="908" y="310" fill="#d4e4ed" font-family="Inter,Arial,sans-serif" font-size="16">Elevation varies</text>
+  <text x="908" y="333" fill="#9fb3c3" font-family="Inter,Arial,sans-serif" font-size="14">from cell to cell</text>
+  <text x="88" y="84" fill="#f1f7fa" font-family="Inter,Arial,sans-serif" font-size="23" font-weight="700">Surface fields travel with the plate</text>
+  <text x="88" y="112" fill="#b5c9d6" font-family="Inter,Arial,sans-serif" font-size="16">The lattice carries elevation and crustal columns in the same cells.</text>
+  <g font-family="Inter,Arial,sans-serif" font-size="14" fill="#d8e6ed">
+    <circle cx="116" cy="631" r="8" fill="#167f9c"/><text x="133" y="636">deep ocean</text>
+    <circle cx="267" cy="631" r="8" fill="#3c9b75"/><text x="284" y="636">lowland</text>
+    <circle cx="398" cy="631" r="8" fill="#d6ae58"/><text x="415" y="636">upland</text>
+    <circle cx="520" cy="631" r="8" fill="#f1e2ba"/><text x="537" y="636">high peak</text>
+  </g>
+  <text x="88" y="714" fill="#8196aa" font-family="Inter,Arial,sans-serif" font-size="13" letter-spacing="1.4">CONCEPTUAL • RELIEF EXAGGERATED • NOT A SIMULATION RENDER</text>
+</svg>

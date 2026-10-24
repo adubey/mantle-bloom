@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./index.css";
 import {
-  animateWorld, fetchDebugScenarios, fetchEarthquakes, fetchElevationPointAt, fetchFaults, fetchLakes, fetchNodeAt, fetchPlates, fetchPointSample, fetchRivers, fetchStats, fetchStatsHistory, fetchVolcanoes, fetchWorldSummary, generateDebugWorld, generateWorld, renderWorld, stepWorld, stopAnimation, updateControls,
-  TUNING_MULTIPLIER_KEYS,
+  animateWorld, fetchDebugScenarios, fetchEarthquakes, fetchElevationPointAt, fetchFaults, fetchLakes, fetchNodeAt, fetchPlates, fetchPointSample, fetchRivers, fetchRunState, fetchStats, fetchStatsHistory, fetchVolcanoes, fetchWorldSummary, generateDebugWorld, generateWorld, renderWorld, setRunState, stopAnimation, updateControls,
+  RunStateRefused, TUNING_MULTIPLIER_KEYS,
 } from "./api";
 import type {
   AnimateResponse, DebugScenario, EarthquakeSummary, ElevationPointResponse, FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, NodeAtResponse, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, TuningKey, TuningMultipliers, VolcanoSummary, WorldStats, WorldSummary,
 } from "./api";
 import MapCanvas from "./MapCanvas";
+import MantleCrossSection from "./MantleCrossSection";
+import GlobeSelector from "./GlobeSelector";
 import SketchEditor from "./SketchEditor";
 import PlateInspector from "./PlateInspector";
+import type { InspectorViewProps } from "./InspectorCanvas";
 import RiverInspector from "./RiverInspector";
 import { isVisibleRiver } from "./riverVisibility";
 import LakeInspector from "./LakeInspector";
@@ -25,6 +28,9 @@ import SaveAnimationModal from "./SaveAnimationModal";
 import Legend from "./Legend";
 import MeasureOverlay from "./MeasureOverlay";
 import ProgressBar from "./ProgressBar";
+import GenerateOptionCheckbox from "./GenerateOptionCheckbox";
+import AdminSession from "./AdminSession";
+import ProbePopup from "./ProbePopup";
 import { PREMADE_WORLDS } from "./premadeWorlds";
 import { CRATON_LEGEND_LABEL, faultKindForLegendLabel, highlightTargetFor } from "./legendData";
 import { centerOfRotation, IDENTITY_ROTATION, rotationForCenter } from "./rotation";
@@ -51,7 +57,8 @@ const RENDER_SCALE = 2;
 const RENDER_WIDTH = DISPLAY_WIDTH * RENDER_SCALE;
 const RENDER_HEIGHT = DISPLAY_HEIGHT * RENDER_SCALE;
 const STEP_YEARS_OPTIONS = [10_000, 100_000, 1_000_000, 10_000_000];
-const PLAY_INTERVAL_MS = 400;
+// After a failed long poll of the run status, wait this long before asking again.
+const RUN_POLL_RETRY_MS = 2000;
 // Percent, matching backend app/plates.py's DEFAULT_CONTINENTAL_FRACTION/DEFAULT_LAND_FRACTION.
 const DEFAULT_CONTINENTAL_PERCENT = 70;
 const DEFAULT_LAND_PERCENT = 29;
@@ -89,7 +96,7 @@ function climateDensityForDetail(detail: number): number {
 // world.py's World.fluid_density) -- same shape as DETAIL_CHOICES but capped at its own top
 // choice, "High" (value 2, unrelated to -- and unchanged by -- the "High" now atop
 // DETAIL_CHOICES above; the two dials' labels aren't on a shared scale): the atmospheric wind
-// solver runs every step (see docs/simulation-model.md#ocean-atmospheric-fluid-dynamics), so
+// solver runs every step (see docs/simulation-model/climate.md#ocean-atmospheric-fluid-dynamics), so
 // there's no "only pay for Standard (or finer) when you opt in" case left to justify offering
 // this dial anything past that, matching backend app/climate.py's own FLUID_DENSITY_CHOICES.
 const FLUID_DETAIL_CHOICES: { value: number; label: string }[] = [
@@ -140,8 +147,9 @@ const DEFAULT_TUNING: TuningMultipliers = Object.fromEntries(
 const DEFAULT_SIMULATE_PLATE_MOVEMENT = true;
 const DEFAULT_SIMULATE_CLIMATE_BIOMES = true;
 // Matching backend app/world.py's World.wind_model default -- the fast closed-form diagnostic
-// (ABL) wind: it reproduces ~85-90% of the CFD biome map for a fraction of the per-step cost,
-// so it's the better starting point; switch to "cfd" in Controls for the full shallow-water solve.
+// (ABL) wind: it approximates the CFD climate for a fraction of the per-step cost (how closely:
+// docs/simulation-model/climate.md#wind-model, #529), so it's the better starting point; switch
+// to "cfd" in Controls for the full shallow-water solve.
 const DEFAULT_WIND_MODEL = "diagnostic";
 // Matching backend app/world.py's World.fault_deformation_mode default. "fault" localises
 // plate-boundary deformation onto fault lines (faults spawn boundary-hugging, so the
@@ -188,10 +196,10 @@ function isIdentityRotation(rotation: Mat3): boolean {
 const VIEW_COOKIE_NAME = "mantle-bloom-view";
 const MAP_VIEW_CHOICES = new Set<MapView>([
 
-  "elevation", "platesDetail", "speckle", "temperature", "wind", "oceanCurrents", "humidity", "precipitation", "biome", "combined",
+  "crossSection", "elevation", "platesDetail", "speckle", "temperature", "wind", "oceanCurrents", "humidity", "precipitation", "biome", "combined",
   "resources", "soilQuality", "geomorph", "elevReason", "overlapAge", "nodeAge", "plateInspector", "riverInspector", "lakeInspector", "platesAndFaults", "hc", "hm", "craton",
 ]);
-const PROJECTION_CHOICES = new Set<Projection>(["behrmann", "eckert4"]);
+const PROJECTION_CHOICES = new Set<Projection>(["behrmann", "eckert4", "globe"]);
 // The Map View select's "Debug >" optgroup (see the DEBUG_UI comment above) -- kept as its own
 // set so a restored VIEW_COOKIE_NAME cookie pointing at one of these can be sanitized back to
 // the default when the page loads without ?deb, rather than landing on a view whose picker
@@ -282,6 +290,8 @@ export default function App() {
   }, []);
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [seed, setSeed] = useState(randomSeed());
+  const [cratonsFirst, setCratonsFirst] = useState(false);
+  const [syntheticRelief, setSyntheticRelief] = useState(false);
   const [continentalPercent, setContinentalPercent] = useState(DEFAULT_CONTINENTAL_PERCENT);
   const [landPercent, setLandPercent] = useState(DEFAULT_LAND_PERCENT);
   const [axialTiltDeg, setAxialTiltDeg] = useState(DEFAULT_AXIAL_TILT_DEG);
@@ -305,8 +315,17 @@ export default function App() {
   const [mapView, setMapView] = useState<MapView>(
     initialView && (DEBUG_UI || !DEBUG_MAP_VIEWS.has(initialView.mapView)) ? initialView.mapView : "combined",
   );
-  // handleStep's own closure over `mapView` is captured when the step *starts*, so if the map
-  // mode changes while that step is still in flight, its post-step refresh would otherwise
+  // These controls describe only the cross-section's great-circle cut. Keep them independent
+  // of the map projection/rotation state, and retain their values when switching views.
+  const [crossSectionPlaneAngleDeg, setCrossSectionPlaneAngleDeg] = useState(0);
+  const [crossSectionArcPosition, setCrossSectionArcPosition] = useState(0);
+  const [crossSectionShowBoundaries, setCrossSectionShowBoundaries] = useState(false);
+  const [crossSectionShowFaults, setCrossSectionShowFaults] = useState(false);
+  // Local cache epoch: advance it after every operation that can change sampled section data.
+  // The globes (see globeTexture.ts) key their world map on it too.
+  const [crossSectionWorldRevision, setCrossSectionWorldRevision] = useState(0);
+  // A callback's closure over `mapView` is captured when its work *starts*, so if the map
+  // mode changes while (say) a load is still in flight, its follow-up refresh would otherwise
   // render the world's new (stepped) state back in the old, now-stale map mode -- overwriting
   // whatever the mode change's own refresh (the effect below) just showed. This ref always
   // holds the current value, so the post-step refresh renders whatever mode is selected by the
@@ -314,7 +333,7 @@ export default function App() {
   const mapViewRef = useRef(mapView);
   mapViewRef.current = mapView;
   // The map's current view orientation (see rotation.ts and
-  // docs/simulation-model.md#rotating-the-view) -- lives entirely here, like
+  // docs/simulation-model/rendering-and-inspectors.md#rotating-the-view) -- lives entirely here, like
   // projection/mapView, sent fresh with every render call rather than stored server-side
   // (it's client-local view state, not simulation state). centerLatLon is derived display
   // state: it tracks `rotation` normally, but during an active drag MapCanvas overrides it
@@ -570,15 +589,15 @@ export default function App() {
   // out of this DOM node rather than a ref threaded through four separate components.
   const mapWrapperRef = useRef<HTMLDivElement>(null);
   const [playing, setPlaying] = useState(false);
+  // Stop was pressed, and the server's last step may still be landing (see handleStopRun).
+  const [stopping, setStopping] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [stepping, setStepping] = useState(false);
-  // Real percent-complete for the `busy`/`stepping` progress bars below, fed by
-  // generateWorld's/stepWorld's `onProgress` (see api.ts and issue #195) -- `undefined`
+  // Real percent-complete for the `busy` progress bar below, fed by
+  // generateWorld's `onProgress` (see api.ts and issue #195) -- `undefined`
   // until that run's first NDJSON progress line arrives (ProgressBar falls back to its old
   // indeterminate animation for that brief window), and reset to `undefined` again once the
   // run ends so a stale 100% doesn't flash before the bar disappears on the next one.
   const [genProgress, setGenProgress] = useState<number | undefined>(undefined);
-  const [stepProgress, setStepProgress] = useState<number | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   // Background animation (recording) -- see AnimationModal.tsx and handleStartAnimation
   // below. `animation` is non-null only while a run is in flight -- it holds the live frame
@@ -601,7 +620,7 @@ export default function App() {
 
   // Two refresh() calls can be in flight at once -- e.g. changing map mode while a step is
   // in flight fires one from the mode-change effect below (for the pre-step world) and
-  // another from handleStep's own post-step Promise.all (for the post-step world) -- and
+  // another from handleWorldAdvanced's own Promise.all (for the post-step world) -- and
   // nothing guarantees they resolve in the order they were issued (server thread-pool
   // scheduling, retries, network jitter). Without a guard, whichever response happens to
   // land last wins even if it's the stale one, which is what let the map mode visibly revert
@@ -611,7 +630,7 @@ export default function App() {
   // instead of overwriting a newer one.
   const renderRequestIdRef = useRef(0);
   const refresh = useCallback(async (proj: Projection, view: MapView, viewRotation: Mat3) => {
-    if (view === "plateInspector" || view === "riverInspector" || view === "lakeInspector" || view === "platesAndFaults") return; // none of these use renderData -- see below
+    if (view === "crossSection" || view === "plateInspector" || view === "riverInspector" || view === "lakeInspector" || view === "platesAndFaults") return; // frontend-rendered views do not use renderData
     const requestId = ++renderRequestIdRef.current;
     const { showMountains: mountains, showPlainsPlateaus: plainsPlateaus } = terrainOverlayRef.current;
     try {
@@ -735,6 +754,8 @@ export default function App() {
           ? await generateDebugWorld(debugScenario, seed)
           : await generateWorld({
               seed,
+              cratonsFirst: generateMode === "random" ? cratonsFirst : false,
+              syntheticRelief: generateMode === "random" && cratonsFirst ? syntheticRelief : false,
               continentalFraction: continentalPercent / 100,
               landFraction: landPercent / 100,
               axialTiltDeg,
@@ -749,6 +770,7 @@ export default function App() {
               onProgress: setGenProgress,
             });
       setSummary(s);
+      setCrossSectionWorldRevision((revision) => revision + 1);
       setSelectedPlateId(null);
       setSelectedRiverId(null);
       setSelectedBasin(null);
@@ -774,7 +796,7 @@ export default function App() {
       setGenProgress(undefined);
     }
   }, [
-    seed, continentalPercent, landPercent, axialTiltDeg, detail, fluidDensity, initialSoilMaturityPercent, autoPlates, numPlates, voronoiPoints,
+    seed, cratonsFirst, syntheticRelief, continentalPercent, landPercent, axialTiltDeg, detail, fluidDensity, initialSoilMaturityPercent, autoPlates, numPlates, voronoiPoints,
     generateMode, sketchImageDataUrl, premadeWorldId, debugScenario, projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats,
   ]);
 
@@ -806,6 +828,7 @@ export default function App() {
       pendingControlsRef.current = {};
       try {
         await updateControls(payload);
+        setCrossSectionWorldRevision((revision) => revision + 1);
         await Promise.all([refresh(projection, mapViewRef.current, rotation), recordStats()]);
       } catch (e) {
         setError(String(e));
@@ -865,30 +888,6 @@ export default function App() {
     pushControls({ debugDiagnostics: v });
   }, [pushControls]);
 
-  const handleStep = useCallback(async () => {
-    if (!summary) return;
-    setStepping(true);
-    setStepProgress(undefined);
-    setError(null);
-    try {
-      const s = await stepWorld(stepYears, setStepProgress);
-      setSummary(s);
-      setSelectedRiverId(null); // rivers are regrouped fresh every step -- a stale id could point at an unrelated network
-      setSelectedBasin(null); // lakes are regrouped fresh every step too -- same reasoning
-      setSelectedBasinKind(null);
-      // mapViewRef.current, not mapView -- see the ref's own comment above.
-      await Promise.all([
-        refresh(projection, mapViewRef.current, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), recordStats(),
-      ]);
-    } catch (e) {
-      setError(String(e));
-      setPlaying(false);
-    } finally {
-      setStepping(false);
-      setStepProgress(undefined);
-    }
-  }, [summary, stepYears, projection, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats]);
-
   // FileModal's "Load World" -- a loaded world fully replaces the current one, same as a
   // fresh Generate (see handleGenerate above), plus syncing every live Controls value
   // (seaLevelM/solarMultiplier/simulatePlateMovement/simulateClimateBiomes) to the *loaded*
@@ -903,6 +902,7 @@ export default function App() {
     setError(null);
     try {
       setSummary(s);
+      setCrossSectionWorldRevision((revision) => revision + 1);
       setSelectedPlateId(null);
       setSelectedRiverId(null);
       setSelectedBasin(null);
@@ -935,15 +935,19 @@ export default function App() {
     }
   }, [projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats]);
 
-  // Post-animation refresh -- an animation run already advanced the world for real (see
-  // api.ts's animateWorld), so this just runs the same post-step refresh handleStep does.
+  // Post-step refresh -- after an animation run (see api.ts's animateWorld) or each step of
+  // the server's run (see handlePlay), both of which already advanced the world for real.
   const handleWorldAdvanced = useCallback(async (s: WorldSummary) => {
     setSummary(s);
+    setCrossSectionWorldRevision((revision) => revision + 1);
     setSelectedRiverId(null);
     setSelectedBasin(null);
     setSelectedBasinKind(null);
-    await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), recordStats()]);
-  }, [projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats]);
+    // mapViewRef.current, not mapView -- see the ref's own comment above.
+    await Promise.all([
+      refresh(projection, mapViewRef.current, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), recordStats(),
+    ]);
+  }, [projection, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats]);
 
   // The Record toolbar button's AnimationModal -- run the whole recording in the background.
   // Each streamed frame's PNG is painted straight onto the main map (the run holds the server
@@ -1109,32 +1113,109 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const stepRef = useRef(handleStep);
-  stepRef.current = handleStep;
+  // Play and Stop set the server's run status (#375): the server steps the world itself, so
+  // it keeps running with this tab closed, and across a server restart. This tab follows it
+  // with a long poll, refreshing the map whenever the world moves on.
+  const handlePlay = useCallback(async () => {
+    setError(null);
+    try {
+      setPlaying((await setRunState(true, stepYears)).running);
+    } catch (e) {
+      setError(String(e));
+    }
+  }, [stepYears]);
 
-  // Self-scheduling rather than setInterval: each step must finish before the next is
-  // scheduled, so a slow step (larger worlds take longer -- a step that also lands on a
-  // regularize/gap-fill or reassignment interval, or triggers a merge/split, can take
-  // noticeably longer than a routine one) can never overlap with the next tick. A
-  // fixed-cadence setInterval would keep firing regardless of whether the previous request
-  // had returned.
+  // Leaves `playing` to the follow loop below, which ends it once the server is idle: a step
+  // under way when Stop is pressed still finishes, and should still reach the map.
+  const handleStopRun = useCallback(async () => {
+    setStopping(true);
+    try {
+      await setRunState(false);
+    } catch (e) {
+      // A 500 means stopped but not saved; anything else may not have stopped at all. Either
+      // way the follow loop reports what the server is actually doing.
+      setError(String(e));
+      setStopping(false);
+    }
+  }, []);
+
+  // A change of step size while running takes effect on the server's next step.
+  const handleStepYearsChange = useCallback((years: number) => {
+    setStepYears(years);
+    if (playing) setRunState(true, years).catch((e) => setError(String(e)));
+  }, [playing]);
+
+  // The world revision this tab last showed while following a run.
+  const shownRevisionRef = useRef<string | undefined>(undefined);
+  const worldAdvancedRef = useRef(handleWorldAdvanced);
+  worldAdvancedRef.current = handleWorldAdvanced;
+
+  // Polls the run state until the server is idle (stopped, with no step under way), showing
+  // each new revision. `shownRevisionRef` carries the revision on screen from one run to the
+  // next, so a world that moved in between is shown when the next run starts.
   useEffect(() => {
     if (!playing) return;
-    let cancelled = false;
-    let timeoutId: ReturnType<typeof setTimeout>;
-    const tick = () => {
-      timeoutId = setTimeout(async () => {
-        if (cancelled) return;
-        await stepRef.current();
-        if (!cancelled) tick();
-      }, PLAY_INTERVAL_MS);
+    const controller = new AbortController();
+    const finish = (message: string | null) => {
+      if (message) setError(message);
+      setPlaying(false);
+      setStopping(false);
     };
-    tick();
-    return () => {
-      cancelled = true;
-      clearTimeout(timeoutId);
-    };
+    (async () => {
+      let runVersion: number | undefined;
+      while (!controller.signal.aborted) {
+        try {
+          // The first request answers at once, with the run_version later ones wait past.
+          const after = runVersion === undefined ? undefined : shownRevisionRef.current;
+          const run = await fetchRunState(after, runVersion, controller.signal);
+          runVersion = run.run_version;
+          const revision = run.world?.revision;
+          if (revision !== shownRevisionRef.current) {
+            const hadOne = shownRevisionRef.current !== undefined;
+            shownRevisionRef.current = revision;
+            if (hadOne && revision !== undefined) {
+              const s = await fetchWorldSummary();
+              await worldAdvancedRef.current(s);
+            }
+          }
+          if (!run.running && !run.stepping) return finish(run.error);
+        } catch (e) {
+          if (controller.signal.aborted) return;
+          if (e instanceof RunStateRefused) return finish(String(e));
+          await new Promise((resolve) => setTimeout(resolve, RUN_POLL_RETRY_MS));
+        }
+      }
+    })();
+    return () => controller.abort();
   }, [playing]);
+
+  // A run the server already has going (started from another tab, or resumed after a
+  // restart) shows as playing.
+  useEffect(() => {
+    fetchRunState()
+      .then((run) => {
+        shownRevisionRef.current = run.world?.revision;
+        if (!run.running) return;
+        if (STEP_YEARS_OPTIONS.includes(run.step_years)) setStepYears(run.step_years);
+        setPlaying(true);
+      })
+      .catch(() => {
+        // best-effort: without it, Play still shows the run's state once pressed
+      });
+  }, []);
+
+  // The view props every client-drawn inspector takes (see InspectorCanvas.tsx).
+  const inspectorView: InspectorViewProps = {
+    width: RENDER_WIDTH,
+    height: RENDER_HEIGHT,
+    displayWidth: DISPLAY_WIDTH,
+    displayHeight: DISPLAY_HEIGHT,
+    projection,
+    rotation,
+    onRotationPreview: (latDeg, lonDeg) => setCenterLatLon({ lat: latDeg, lon: lonDeg }),
+    onRotationCommitted: (newRotation) => setRotation(newRotation),
+    interactionDisabled: animating,
+  };
 
   return (
     <div style={{ fontFamily: "system-ui, sans-serif", color: "#e6e8ef", padding: 24 }}>
@@ -1144,11 +1225,21 @@ export default function App() {
           <p style={{ opacity: 0.7, marginTop: 0, marginBottom: 16 }}>
             Physical World Builder
           </p>
+          <AdminSession />
+
+          <button
+            onClick={() => setShowFileModal(true)}
+            disabled={animating}
+            className={!summary ? "start-highlight" : undefined}
+            style={{ fontSize: 12 }}
+          >
+            📁 File...
+          </button>
 
           <button
             onClick={() => setShowGenerateDialog(true)}
             disabled={busy || animating}
-            className={!summary ? "generate-flashing" : undefined}
+            className={!summary ? "start-highlight" : undefined}
             style={{ fontSize: 12 }}
           >
             Generate World
@@ -1167,17 +1258,13 @@ export default function App() {
             🎛️ Controls
           </button>
 
-          <button onClick={() => setShowFileModal(true)} disabled={animating} style={{ fontSize: 12 }}>
-            📁 File...
-          </button>
-
           <fieldset style={{ border: "1px solid #333", borderRadius: 6, padding: 8, fontSize: 12 }}>
             <legend style={{ fontSize: 11 }}>Time</legend>
             <label style={{ display: "block", marginBottom: 6 }}>
               Years per step
               <select
                 value={stepYears}
-                onChange={(e) => setStepYears(Number(e.target.value))}
+                onChange={(e) => handleStepYearsChange(Number(e.target.value))}
                 style={{ width: "100%", fontSize: 12 }}
               >
                 {STEP_YEARS_OPTIONS.map((y) => (
@@ -1187,9 +1274,9 @@ export default function App() {
                 ))}
               </select>
             </label>
-            {/* Play / Stop / Record -- the classic tape-deck order. Play advances the world
-                continuously (one step every PLAY_INTERVAL_MS, sized by "Years per step"
-                above) until Stop is pressed; Record opens AnimationModal to configure and
+            {/* Play / Stop / Record -- the classic tape-deck order. Play has the server advance
+                the world continuously (a step of "Years per step" at a time, see handlePlay)
+                until Stop is pressed; Record opens AnimationModal to configure and
                 start a video recording, which Stop also ends (cleanly -- see
                 handleStopAnimation). Stop is only enabled while one of the two is running.
                 Ending a recording, whether by Stop or by running its course, resolves
@@ -1202,22 +1289,22 @@ export default function App() {
                 progress, since it has no fixed total to show a fraction of. */}
             <div style={{ display: "flex", gap: 6 }}>
               <button
-                onClick={() => setPlaying(true)}
-                disabled={busy || stepping || !summary || animating || playing}
+                onClick={handlePlay}
+                disabled={busy || !summary || animating || playing}
                 title="Play"
                 aria-label="Play"
                 // Green while clickable, same "color signals affordance" treatment as Record's
                 // red (below) -- both go back to the default (undefined) color once disabled.
                 style={{
                   flex: 1, fontSize: 15, lineHeight: 1, padding: "4px 0",
-                  color: busy || stepping || !summary || animating || playing ? undefined : "#27c93f",
+                  color: busy || !summary || animating || playing ? undefined : "#27c93f",
                 }}
               >
                 ▶
               </button>
               <button
-                onClick={() => (animating ? handleStopAnimation() : setPlaying(false))}
-                disabled={!playing && !animating}
+                onClick={() => (animating ? handleStopAnimation() : handleStopRun())}
+                disabled={(!playing && !animating) || stopping}
                 title="Stop"
                 aria-label="Stop"
                 style={{ flex: 1, fontSize: 15, lineHeight: 1, padding: "4px 0" }}
@@ -1242,14 +1329,20 @@ export default function App() {
                 ⏺
               </button>
             </div>
-            {stepping && <ProgressBar label="Stepping world" style={{ marginTop: 6 }} fraction={stepProgress} />}
           </fieldset>
 
           <fieldset style={{ border: "1px solid #333", borderRadius: 6, padding: 8, fontSize: 12 }}>
             <legend style={{ fontSize: 11 }}>Map View</legend>
             <select
               value={mapView}
-              onChange={(e) => setMapView(e.target.value as MapView)}
+              onChange={(e) => {
+                const nextView = e.target.value as MapView;
+                setMapView(nextView);
+                if (nextView === "crossSection") {
+                  setEditingCenter(false);
+                  setCenterEditError(null);
+                }
+              }}
               disabled={animating || !summary}
               style={{ width: "100%", marginBottom: 6, fontSize: 12 }}
             >
@@ -1257,6 +1350,7 @@ export default function App() {
                 <option value="combined">Elevation &amp; Biome</option>
                 <option value="elevation">Elevation</option>
                 <option value="biome">Biome</option>
+                <option value="crossSection">Lithosphere cross-section</option>
                 <option value="temperature">Temperature</option>
                 <option value="wind">Wind</option>
                 <option value="oceanCurrents">Ocean currents</option>
@@ -1283,6 +1377,8 @@ export default function App() {
                 </optgroup>
               )}
             </select>
+            {mapView !== "crossSection" && (
+              <>
             <select
               value={projection}
               onChange={(e) => setProjection(e.target.value as Projection)}
@@ -1291,6 +1387,7 @@ export default function App() {
             >
               <option value="behrmann">Behrmann (cylindrical equal-area)</option>
               <option value="eckert4">Eckert IV (pseudocylindrical equal-area)</option>
+              <option value="globe">Globe (orthographic)</option>
             </select>
             {/* position: relative anchors the popup below to this row specifically (not the
                 whole fieldset), so it floats over the Re-center button rather than pushing it
@@ -1375,6 +1472,19 @@ export default function App() {
             >
               Re-center
             </button>
+            {/* Hidden while the world runs (Play or Record): the map is busy following the run,
+                and a recording's camera is fixed when it starts (#497). */}
+            {!playing && !animating && (
+              <GlobeSelector
+                worldRevision={crossSectionWorldRevision}
+                rotation={rotation}
+                onRotationPreview={(latDeg, lonDeg) => setCenterLatLon({ lat: latDeg, lon: lonDeg })}
+                onRotationCommitted={(newRotation) => setRotation(newRotation)}
+                disabled={busy || !summary || editingCenter}
+              />
+            )}
+              </>
+            )}
           </fieldset>
 
           {/* Only for a fixed-frame-count recording -- "frame 12 of 20" is meaningful
@@ -1409,7 +1519,7 @@ export default function App() {
                   <div>id: {selectedPlate.plate_id}</div>
                   <div>crust: {selectedPlate.crust_type}</div>
                   <div>points: {selectedPlate.num_points}</div>
-                  <div>age: {selectedPlate.age_steps} steps</div>
+                  <div>age: {(selectedPlate.age_years / 1e6).toFixed(2)} Myr</div>
                   <div style={{ color: selectedPlate.at_max_rate ? "#e06c4b" : undefined }}>
                     speed: {selectedPlate.speed_cm_per_yr.toFixed(2)} cm/yr{selectedPlate.at_max_rate ? " (railed at MAX)" : ""}
                   </div>
@@ -1501,8 +1611,8 @@ export default function App() {
                 <div style={{ opacity: 0.9 }}>
                   <div>id: {selectedRiver.river_id}</div>
                   <div>ends at: {selectedRiver.mouth_type}</div>
-                  <div>flow rate: {selectedRiver.flow_rate.toFixed(1)}</div>
-                  <div>speed: {selectedRiver.speed.toFixed(2)}</div>
+                  <div>flow rate: {selectedRiver.flow_rate.toFixed(1)} m³/s</div>
+                  <div>speed (model): {selectedRiver.speed.toFixed(2)}</div>
                   <div>tributaries: {selectedRiver.num_tributaries}</div>
                   <div>nodes: {selectedRiver.num_nodes}</div>
                 </div>
@@ -1537,7 +1647,7 @@ export default function App() {
                   </div>
                   {selectedBasin.inflow_rivers.map((r, i) => (
                     <div key={i} style={{ paddingLeft: 8, opacity: 0.8 }}>
-                      - flow {r.flow_rate.toFixed(1)}, {r.num_nodes} nodes
+                      - flow {r.flow_rate.toFixed(1)} m³/s, {r.num_nodes} nodes
                     </div>
                   ))}
                   <div style={{ marginTop: 6 }}>
@@ -1551,7 +1661,7 @@ export default function App() {
                   {selectedBasin.outflow_river && (
                     <div style={{ paddingLeft: 8, opacity: 0.8 }}>
                       - ends at {selectedBasin.outflow_river.mouth_type}, flow{" "}
-                      {selectedBasin.outflow_river.flow_rate.toFixed(1)}, {selectedBasin.outflow_river.num_nodes} nodes
+                      {selectedBasin.outflow_river.flow_rate.toFixed(1)} m³/s, {selectedBasin.outflow_river.num_nodes} nodes
                     </div>
                   )}
                 </div>
@@ -1577,63 +1687,62 @@ export default function App() {
           )}
           {error && <div style={{ color: "#ff8080", fontSize: 11 }}>{error}</div>}
 
-          {DEBUG_UI && <EventConsole events={summary?.events ?? []} />}
+          {DEBUG_UI && (
+            <EventConsole
+              events={[...(summary?.events ?? []), ...(summary?.replay_logs ?? [])].sort(
+                (a, b) => a.elapsed_years - b.elapsed_years,
+              )}
+            />
+          )}
         </div>
 
         <div>
           <div ref={mapWrapperRef} style={{ position: "relative", width: DISPLAY_WIDTH, height: DISPLAY_HEIGHT }}>
-          {mapView === "plateInspector" ? (
+          {mapView === "crossSection" ? (
+            <MantleCrossSection
+              width={DISPLAY_WIDTH}
+              height={DISPLAY_HEIGHT}
+              worldRevision={crossSectionWorldRevision}
+              planeAngleDeg={crossSectionPlaneAngleDeg}
+              arcPosition={crossSectionArcPosition}
+              showBoundaries={crossSectionShowBoundaries}
+              showFaults={crossSectionShowFaults}
+              onLayerToggle={(layer, enabled) => {
+                if (layer === "boundaries") setCrossSectionShowBoundaries(enabled);
+                else setCrossSectionShowFaults(enabled);
+              }}
+              onPlaneAngleChange={setCrossSectionPlaneAngleDeg}
+              onArcPositionChange={setCrossSectionArcPosition}
+            />
+          ) : mapView === "plateInspector" ? (
             <PlateInspector
+              {...inspectorView}
               plates={platesData}
-              width={RENDER_WIDTH}
-              height={RENDER_HEIGHT}
-              displayWidth={DISPLAY_WIDTH}
-              displayHeight={DISPLAY_HEIGHT}
-              projection={projection}
-              rotation={rotation}
               selectedPlateId={selectedPlateId}
               onSelectPlate={setSelectedPlateId}
-              onRotationPreview={(latDeg, lonDeg) => setCenterLatLon({ lat: latDeg, lon: lonDeg })}
-              onRotationCommitted={(newRotation) => setRotation(newRotation)}
-              interactionDisabled={animating}
             />
           ) : mapView === "riverInspector" ? (
             <RiverInspector
+              {...inspectorView}
               rivers={visibleRivers}
               coastlineSegments={coastlineSegments}
-              width={RENDER_WIDTH}
-              height={RENDER_HEIGHT}
-              displayWidth={DISPLAY_WIDTH}
-              displayHeight={DISPLAY_HEIGHT}
-              projection={projection}
-              rotation={rotation}
               selectedRiverId={selectedRiverId}
               onSelectRiver={setSelectedRiverId}
-              onRotationPreview={(latDeg, lonDeg) => setCenterLatLon({ lat: latDeg, lon: lonDeg })}
-              onRotationCommitted={(newRotation) => setRotation(newRotation)}
-              interactionDisabled={animating}
             />
           ) : mapView === "lakeInspector" ? (
             <LakeInspector
+              {...inspectorView}
               lakes={lakesData}
               coastlineSegments={coastlineSegments}
-              width={RENDER_WIDTH}
-              height={RENDER_HEIGHT}
-              displayWidth={DISPLAY_WIDTH}
-              displayHeight={DISPLAY_HEIGHT}
-              projection={projection}
-              rotation={rotation}
               selectedBasin={selectedBasin}
               onSelect={(kind, basin) => {
                 setSelectedBasinKind(kind);
                 setSelectedBasin(basin);
               }}
-              onRotationPreview={(latDeg, lonDeg) => setCenterLatLon({ lat: latDeg, lon: lonDeg })}
-              onRotationCommitted={(newRotation) => setRotation(newRotation)}
-              interactionDisabled={animating}
             />
           ) : mapView === "platesAndFaults" ? (
             <PlatesAndFaults
+              {...inspectorView}
               plates={platesData}
               faults={faultsData}
               faultSystems={faultSystemsData}
@@ -1647,17 +1756,8 @@ export default function App() {
               layers={platesLayers}
               highlightCratons={highlightCratons}
               highlightedFaultKind={highlightedBiome ? faultKindForLegendLabel(highlightedBiome) : null}
-              width={RENDER_WIDTH}
-              height={RENDER_HEIGHT}
-              displayWidth={DISPLAY_WIDTH}
-              displayHeight={DISPLAY_HEIGHT}
-              projection={projection}
-              rotation={rotation}
               selectedPlateId={selectedPlateId}
               onSelectPlate={setSelectedPlateId}
-              onRotationPreview={(latDeg, lonDeg) => setCenterLatLon({ lat: latDeg, lon: lonDeg })}
-              onRotationCommitted={(newRotation) => setRotation(newRotation)}
-              interactionDisabled={animating}
             />
           ) : (
             <div style={{ display: "inline-block" }}>
@@ -1688,39 +1788,19 @@ export default function App() {
               />
             </div>
           )}
-          {probe && (
-            <div
-              style={{
-                position: "absolute",
-                left: Math.max(4, Math.min(probe.displayX + 12, DISPLAY_WIDTH - 186)),
-                top: Math.max(4, Math.min(probe.displayY + 12, DISPLAY_HEIGHT - 150)),
-                width: 174,
-                background: "#151a2e",
-                border: "1px solid #333",
-                borderRadius: 6,
-                padding: "8px 10px",
-                fontSize: 11,
-                lineHeight: 1.6,
-                boxShadow: "0 2px 10px rgba(0, 0, 0, 0.5)",
-                zIndex: 10,
-              }}
+          {mapView !== "crossSection" && probe && (
+            <ProbePopup
+              displayX={probe.displayX}
+              displayY={probe.displayY}
+              title={formatLatLon(probe.latDeg, probe.lonDeg)}
+              status={probe.status}
+              width={174}
+              maxHeight={150}
+              mapWidth={DISPLAY_WIDTH}
+              mapHeight={DISPLAY_HEIGHT}
+              onClose={() => handleProbe(null)}
             >
-              <button
-                type="button"
-                title="Close"
-                onClick={() => handleProbe(null)}
-                style={{
-                  position: "absolute", top: 3, right: 4, width: 18, height: 18, padding: 0,
-                  border: "none", background: "transparent", color: "#999", cursor: "pointer",
-                  fontSize: 14, lineHeight: "18px",
-                }}
-              >
-                ×
-              </button>
-              <div style={{ opacity: 0.6, marginBottom: 4 }}>{formatLatLon(probe.latDeg, probe.lonDeg)}</div>
-              {probe.status === "loading" && <div style={{ opacity: 0.7 }}>Sampling…</div>}
-              {probe.status === "error" && <div style={{ color: "#ff8080" }}>Couldn’t sample this point.</div>}
-              {probe.status === "ok" && probe.sample && (
+              {probe.sample && (
                 <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", columnGap: 8, rowGap: 1 }}>
                   <span style={{ opacity: 0.55 }}>Elevation</span>
                   <span>{Math.round(probe.sample.elevation_m).toLocaleString()} m</span>
@@ -1734,41 +1814,21 @@ export default function App() {
                   <span>{probe.sample.plate_id ?? "—"}</span>
                 </div>
               )}
-            </div>
+            </ProbePopup>
           )}
           {nodeProbe && (
-            <div
-              style={{
-                position: "absolute",
-                left: Math.max(4, Math.min(nodeProbe.displayX + 12, DISPLAY_WIDTH - 200)),
-                top: Math.max(4, Math.min(nodeProbe.displayY + 12, DISPLAY_HEIGHT - 170)),
-                width: 188,
-                background: "#151a2e",
-                border: "1px solid #333",
-                borderRadius: 6,
-                padding: "8px 10px",
-                fontSize: 11,
-                lineHeight: 1.6,
-                boxShadow: "0 2px 10px rgba(0, 0, 0, 0.5)",
-                zIndex: 10,
-              }}
+            <ProbePopup
+              displayX={nodeProbe.displayX}
+              displayY={nodeProbe.displayY}
+              title={formatLatLon(nodeProbe.latDeg, nodeProbe.lonDeg)}
+              status={nodeProbe.status}
+              width={188}
+              maxHeight={170}
+              mapWidth={DISPLAY_WIDTH}
+              mapHeight={DISPLAY_HEIGHT}
+              onClose={() => handleNodeProbe(null)}
             >
-              <button
-                type="button"
-                title="Close"
-                onClick={() => handleNodeProbe(null)}
-                style={{
-                  position: "absolute", top: 3, right: 4, width: 18, height: 18, padding: 0,
-                  border: "none", background: "transparent", color: "#999", cursor: "pointer",
-                  fontSize: 14, lineHeight: "18px",
-                }}
-              >
-                ×
-              </button>
-              <div style={{ opacity: 0.6, marginBottom: 4 }}>{formatLatLon(nodeProbe.latDeg, nodeProbe.lonDeg)}</div>
-              {nodeProbe.status === "loading" && <div style={{ opacity: 0.7 }}>Sampling…</div>}
-              {nodeProbe.status === "error" && <div style={{ color: "#ff8080" }}>Couldn’t sample this point.</div>}
-              {nodeProbe.status === "ok" && nodeProbe.result && (
+              {nodeProbe.result && (
                 <div>
                   {nodeProbe.result.node && (
                     <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", columnGap: 8, rowGap: 1 }}>
@@ -1811,41 +1871,21 @@ export default function App() {
                   )}
                 </div>
               )}
-            </div>
+            </ProbePopup>
           )}
           {pointProbe && (
-            <div
-              style={{
-                position: "absolute",
-                left: Math.max(4, Math.min(pointProbe.displayX + 12, DISPLAY_WIDTH - 200)),
-                top: Math.max(4, Math.min(pointProbe.displayY + 12, DISPLAY_HEIGHT - 190)),
-                width: 188,
-                background: "#151a2e",
-                border: "1px solid #333",
-                borderRadius: 6,
-                padding: "8px 10px",
-                fontSize: 11,
-                lineHeight: 1.6,
-                boxShadow: "0 2px 10px rgba(0, 0, 0, 0.5)",
-                zIndex: 10,
-              }}
+            <ProbePopup
+              displayX={pointProbe.displayX}
+              displayY={pointProbe.displayY}
+              title={formatLatLon(pointProbe.latDeg, pointProbe.lonDeg)}
+              status={pointProbe.status}
+              width={188}
+              maxHeight={190}
+              mapWidth={DISPLAY_WIDTH}
+              mapHeight={DISPLAY_HEIGHT}
+              onClose={() => handlePointProbe(null)}
             >
-              <button
-                type="button"
-                title="Close"
-                onClick={() => handlePointProbe(null)}
-                style={{
-                  position: "absolute", top: 3, right: 4, width: 18, height: 18, padding: 0,
-                  border: "none", background: "transparent", color: "#999", cursor: "pointer",
-                  fontSize: 14, lineHeight: "18px",
-                }}
-              >
-                ×
-              </button>
-              <div style={{ opacity: 0.6, marginBottom: 4 }}>{formatLatLon(pointProbe.latDeg, pointProbe.lonDeg)}</div>
-              {pointProbe.status === "loading" && <div style={{ opacity: 0.7 }}>Sampling…</div>}
-              {pointProbe.status === "error" && <div style={{ color: "#ff8080" }}>Couldn’t sample this point.</div>}
-              {pointProbe.status === "ok" && pointProbe.result && (
+              {pointProbe.result && (
                 <div>
                   <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", columnGap: 8, rowGap: 1 }}>
                     <span style={{ opacity: 0.55 }}>Plate</span>
@@ -1859,7 +1899,7 @@ export default function App() {
                   </div>
                 </div>
               )}
-            </div>
+            </ProbePopup>
           )}
           <MeasureOverlay
             projection={projection}
@@ -1867,7 +1907,7 @@ export default function App() {
             height={RENDER_HEIGHT}
             displayWidth={DISPLAY_WIDTH}
             displayHeight={DISPLAY_HEIGHT}
-            disabled={animating}
+            disabled={animating || mapView === "crossSection"}
           />
           </div>
           <Legend
@@ -1887,7 +1927,9 @@ export default function App() {
             onTogglePlainsPlateaus={() => setShowPlainsPlateaus((cur) => !cur)}
           />
           <p style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>
-            {mapView === "plateInspector"
+            {mapView === "crossSection"
+              ? "Drag the locator globe up or down to tilt the cut, and move the arc center with its slider. The section follows sampled world fields; nearby arc positions are prepared in the background."
+              : mapView === "plateInspector"
               ? "Click a plate to select it. Tab / Shift+Tab cycles plates. Press and hold, then drag to rotate."
               : mapView === "riverInspector"
                 ? "Click a river to select it. Tab / Shift+Tab cycles rivers. Press and hold, then drag to rotate."
@@ -2044,7 +2086,7 @@ export default function App() {
                 <div style={{ fontSize: 11, color: "#999", marginTop: 6 }}>
                   Tiny, low-resolution plate configurations with pinned (scripted, not
                   torque-driven) motion, for fast iteration on the plate-boundary gap-filling
-                  problem -- see docs/debugging.md. Debug diagnostics (the corner-notch decision
+                  problem -- see docs/debugging/debug-ui.md. Debug diagnostics (the corner-notch decision
                   log) start on automatically.
                 </div>
               </div>
@@ -2123,6 +2165,19 @@ export default function App() {
                 </div>
               )}
             </label>
+
+            {generateMode === "random" && (
+              <GenerateOptionCheckbox checked={cratonsFirst} onChange={setCratonsFirst} disabled={busy} title="Craton-first terrain">
+                Build continents from cratons before assigning plates. Random worlds use
+                the existing plate-first approach when unchecked.
+              </GenerateOptionCheckbox>
+            )}
+            {generateMode === "random" && cratonsFirst && (
+              <GenerateOptionCheckbox checked={syntheticRelief} onChange={setSyntheticRelief} disabled={busy} title="Relief from a synthetic history">
+                Draw mountain belts where cratons once collided and on continents' leading
+                edges, with hilly interiors and shelves, instead of noise-shaped relief.
+              </GenerateOptionCheckbox>
+            )}
 
             {generateMode !== "debug" && (
               <label style={{ display: "block", marginBottom: 16 }}>

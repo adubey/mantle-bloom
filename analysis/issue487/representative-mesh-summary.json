@@ -1,0 +1,349 @@
+{
+  "seed": 7,
+  "num_plates": 12,
+  "node_density": 0.5,
+  "mapping": "Generated cell-centre topology mapped to a shallow cap for manufactured-load testing",
+  "target_resultant_n_per_m": 10000000000.0,
+  "curved_shell_manufactured_benchmark": {
+    "analytic_solution": "uniform isotropic membrane resultant N on a sphere; normal pressure 2N/R is supported and omitted from in-plane solve",
+    "edge_condition": "free displacement with prescribed analytic conormal traction",
+    "mesh_refinement": [
+      {
+        "theta_nodes": 5,
+        "phi_nodes": 9,
+        "triangle_count": 64,
+        "analytic_isotropic_resultant_n_per_m": 10000000000.0,
+        "mean_resultant_n_per_m": 10294077726.274675,
+        "mean_relative_error": 0.029407772627467358,
+        "p95_absolute_relative_error": 0.06173067479458747,
+        "max_absolute_relative_error": 0.12968703417205774,
+        "equilibrium_residual_over_load": 4.200157551469724e-07,
+        "solver_stop_code": 1
+      },
+      {
+        "theta_nodes": 9,
+        "phi_nodes": 17,
+        "triangle_count": 256,
+        "analytic_isotropic_resultant_n_per_m": 10000000000.0,
+        "mean_resultant_n_per_m": 10146286247.733746,
+        "mean_relative_error": 0.01462862477337454,
+        "p95_absolute_relative_error": 0.03226762499034624,
+        "max_absolute_relative_error": 0.04239397546997248,
+        "equilibrium_residual_over_load": 3.0468850782797384e-06,
+        "solver_stop_code": 1
+      },
+      {
+        "theta_nodes": 17,
+        "phi_nodes": 33,
+        "triangle_count": 1024,
+        "analytic_isotropic_resultant_n_per_m": 10000000000.0,
+        "mean_resultant_n_per_m": 10118063475.769222,
+        "mean_relative_error": 0.011806347576921975,
+        "p95_absolute_relative_error": 0.027476107182864418,
+        "max_absolute_relative_error": 0.029103741129161476,
+        "equilibrium_residual_over_load": 8.647029927335289e-06,
+        "solver_stop_code": 1
+      }
+    ]
+  },
+  "boundary_condition_selection": "Free in-plane displacement with loads applied as nodal forces is the single-plate diagnostic baseline. Fixed-edge cases are sensitivity probes because no neighboring-plate displacement anchor exists in the input. Physical coupling requires solving neighboring plates together.",
+  "phenomenological_capacity_model": {
+    "formula": "T_cap = T_ref * (1 - weakening_fraction * weak_zone_weight)",
+    "weakening_fraction": 0.5,
+    "reference_capacity_sweep_n_per_m": [
+      10000000000.0,
+      20000000000.0,
+      40000000000.0
+    ],
+    "weak_zone_weight": "1 inside |projected_x - median(projected_x)| <= 0.08 * projected_x_span; otherwise 0",
+    "status": "synthetic response check; parameters are not calibrated or physical"
+  },
+  "plates": [
+    {
+      "plate_id": 6,
+      "crust_type": "oceanic",
+      "node_count": 2390,
+      "actual_boundary_loops": 2,
+      "convex_hull_triangles": 4757,
+      "convex_hull_centroids_outside_plate": 118,
+      "convex_hull_outside_fraction": 0.024805549716207694,
+      "delaunay_candidate_triangles": 4765,
+      "triangles_rejected_by_territory_probes": 217,
+      "explicit_triangles": 4548,
+      "explicit_mesh_nodes": 2389,
+      "original_curved_mesh_sensitivity": {
+        "boundary_condition_policy": "Free-edge Neumann boundary is the diagnostic baseline because the single-plate input has no displacement anchor; clamps are sensitivity probes, not inferred physical plate boundaries. Coupled neighboring plates would require a multi-plate solve.",
+        "projected_span_radians": [
+          3.3855498116980973,
+          2.2761140664626636
+        ],
+        "mesh_boundary_loops": 2,
+        "boundary_edges": 226,
+        "manufactured_resultant_n_per_m": 10000000000.0,
+        "capacity_sensitivity": [
+          {
+            "reference_capacity_n_per_m": 10000000000.0,
+            "weakening_fraction": 0.5,
+            "weak_band_fraction_of_nodes": 0.30933444956048556,
+            "failed_nodes_total": 2387,
+            "failed_nodes_in_weak_band": 739,
+            "failed_fraction_in_weak_band": 1.0,
+            "failed_nodes_outside_weak_band": 1648,
+            "failed_fraction_outside_weak_band": 0.9987878787878788
+          },
+          {
+            "reference_capacity_n_per_m": 20000000000.0,
+            "weakening_fraction": 0.5,
+            "weak_band_fraction_of_nodes": 0.30933444956048556,
+            "failed_nodes_total": 892,
+            "failed_nodes_in_weak_band": 725,
+            "failed_fraction_in_weak_band": 0.9810554803788903,
+            "failed_nodes_outside_weak_band": 167,
+            "failed_fraction_outside_weak_band": 0.10121212121212121
+          },
+          {
+            "reference_capacity_n_per_m": 40000000000.0,
+            "weakening_fraction": 0.5,
+            "weak_band_fraction_of_nodes": 0.30933444956048556,
+            "failed_nodes_total": 0,
+            "failed_nodes_in_weak_band": 0,
+            "failed_fraction_in_weak_band": 0.0,
+            "failed_nodes_outside_weak_band": 0,
+            "failed_fraction_outside_weak_band": 0.0
+          }
+        ],
+        "edge_cases": [
+          {
+            "edge_condition": "free",
+            "clamped_boundary_nodes": 0,
+            "mean_resultant_n_per_m": 13625403667.305267,
+            "mean_change_from_free_fraction": 0.0,
+            "p95_resultant_n_per_m": 21654233780.529236,
+            "max_resultant_n_per_m": 31379348009.077656,
+            "equilibrium_residual_over_load": 5.0181647854155474e-05,
+            "solver_stop_code": 2
+          },
+          {
+            "edge_condition": "west",
+            "clamped_boundary_nodes": 17,
+            "mean_resultant_n_per_m": 13425088780.092213,
+            "mean_change_from_free_fraction": -0.01470157450774967,
+            "p95_resultant_n_per_m": 20188752952.7105,
+            "max_resultant_n_per_m": 32283716166.757233,
+            "equilibrium_residual_over_load": 6.988503903617768e-05,
+            "solver_stop_code": 1
+          },
+          {
+            "edge_condition": "east",
+            "clamped_boundary_nodes": 11,
+            "mean_resultant_n_per_m": 13545776714.505827,
+            "mean_change_from_free_fraction": -0.005844006881829733,
+            "p95_resultant_n_per_m": 21476361020.839394,
+            "max_resultant_n_per_m": 31815973712.87567,
+            "equilibrium_residual_over_load": 8.498234794690521e-05,
+            "solver_stop_code": 1
+          },
+          {
+            "edge_condition": "south",
+            "clamped_boundary_nodes": 35,
+            "mean_resultant_n_per_m": 12587708175.083445,
+            "mean_change_from_free_fraction": -0.07615888068782994,
+            "p95_resultant_n_per_m": 17799337223.293785,
+            "max_resultant_n_per_m": 27931027828.44352,
+            "equilibrium_residual_over_load": 6.794159405438693e-05,
+            "solver_stop_code": 1
+          },
+          {
+            "edge_condition": "north",
+            "clamped_boundary_nodes": 59,
+            "mean_resultant_n_per_m": 10420884099.498968,
+            "mean_change_from_free_fraction": -0.23518712884049664,
+            "p95_resultant_n_per_m": 20958322126.85838,
+            "max_resultant_n_per_m": 31441769654.58001,
+            "equilibrium_residual_over_load": 5.006827990533403e-05,
+            "solver_stop_code": 2
+          },
+          {
+            "edge_condition": "west+east",
+            "clamped_boundary_nodes": 28,
+            "mean_resultant_n_per_m": 8375219715.549576,
+            "mean_change_from_free_fraction": -0.385323186009801,
+            "p95_resultant_n_per_m": 16600965273.102797,
+            "max_resultant_n_per_m": 30850744011.582985,
+            "equilibrium_residual_over_load": 5.006827936470464e-05,
+            "solver_stop_code": 2
+          },
+          {
+            "edge_condition": "south+north",
+            "clamped_boundary_nodes": 94,
+            "mean_resultant_n_per_m": 8236654324.935193,
+            "mean_change_from_free_fraction": -0.3954928216402577,
+            "p95_resultant_n_per_m": 14753188710.660791,
+            "max_resultant_n_per_m": 26865108198.444817,
+            "equilibrium_residual_over_load": 1.452617588548307e-05,
+            "solver_stop_code": 1
+          },
+          {
+            "edge_condition": "all_edges",
+            "clamped_boundary_nodes": 226,
+            "mean_resultant_n_per_m": 646939.1822989018,
+            "mean_change_from_free_fraction": -0.9999525196318513,
+            "p95_resultant_n_per_m": 1767818.5693509064,
+            "max_resultant_n_per_m": 3422623.018203701,
+            "equilibrium_residual_over_load": 1.1361366841222218e-09,
+            "solver_stop_code": 1
+          }
+        ]
+      },
+      "mesh_boundary_loops": 2,
+      "boundary_edges": 226,
+      "mean_resultant_n_per_m": 9991119711.189442,
+      "relative_error": -0.0008880288810558801,
+      "equilibrium_residual_over_load": 8.28856568579143e-05,
+      "solver_stop_code": 2
+    },
+    {
+      "plate_id": 8,
+      "crust_type": "continental",
+      "node_count": 1988,
+      "actual_boundary_loops": 1,
+      "convex_hull_triangles": 3956,
+      "convex_hull_centroids_outside_plate": 94,
+      "convex_hull_outside_fraction": 0.023761375126390292,
+      "delaunay_candidate_triangles": 3963,
+      "triangles_rejected_by_territory_probes": 214,
+      "explicit_triangles": 3749,
+      "explicit_mesh_nodes": 1987,
+      "original_curved_mesh_sensitivity": {
+        "boundary_condition_policy": "Free-edge Neumann boundary is the diagnostic baseline because the single-plate input has no displacement anchor; clamps are sensitivity probes, not inferred physical plate boundaries. Coupled neighboring plates would require a multi-plate solve.",
+        "projected_span_radians": [
+          2.12843394790066,
+          2.33119131761787
+        ],
+        "mesh_boundary_loops": 1,
+        "boundary_edges": 223,
+        "manufactured_resultant_n_per_m": 10000000000.0,
+        "capacity_sensitivity": [
+          {
+            "reference_capacity_n_per_m": 10000000000.0,
+            "weakening_fraction": 0.5,
+            "weak_band_fraction_of_nodes": 0.3085052843482637,
+            "failed_nodes_total": 1935,
+            "failed_nodes_in_weak_band": 613,
+            "failed_fraction_in_weak_band": 1.0,
+            "failed_nodes_outside_weak_band": 1322,
+            "failed_fraction_outside_weak_band": 0.9621542940320232
+          },
+          {
+            "reference_capacity_n_per_m": 20000000000.0,
+            "weakening_fraction": 0.5,
+            "weak_band_fraction_of_nodes": 0.3085052843482637,
+            "failed_nodes_total": 587,
+            "failed_nodes_in_weak_band": 552,
+            "failed_fraction_in_weak_band": 0.9004893964110929,
+            "failed_nodes_outside_weak_band": 35,
+            "failed_fraction_outside_weak_band": 0.025473071324599708
+          },
+          {
+            "reference_capacity_n_per_m": 40000000000.0,
+            "weakening_fraction": 0.5,
+            "weak_band_fraction_of_nodes": 0.3085052843482637,
+            "failed_nodes_total": 17,
+            "failed_nodes_in_weak_band": 17,
+            "failed_fraction_in_weak_band": 0.02773246329526917,
+            "failed_nodes_outside_weak_band": 0,
+            "failed_fraction_outside_weak_band": 0.0
+          }
+        ],
+        "edge_cases": [
+          {
+            "edge_condition": "free",
+            "clamped_boundary_nodes": 0,
+            "mean_resultant_n_per_m": 13212631834.781357,
+            "mean_change_from_free_fraction": 0.0,
+            "p95_resultant_n_per_m": 18686180114.07822,
+            "max_resultant_n_per_m": 24221455873.981285,
+            "equilibrium_residual_over_load": 2.1331757322159627e-05,
+            "solver_stop_code": 1
+          },
+          {
+            "edge_condition": "west",
+            "clamped_boundary_nodes": 25,
+            "mean_resultant_n_per_m": 13053783220.108013,
+            "mean_change_from_free_fraction": -0.012022480960620197,
+            "p95_resultant_n_per_m": 18931581499.48932,
+            "max_resultant_n_per_m": 25176568454.78105,
+            "equilibrium_residual_over_load": 5.266527894520473e-05,
+            "solver_stop_code": 1
+          },
+          {
+            "edge_condition": "east",
+            "clamped_boundary_nodes": 37,
+            "mean_resultant_n_per_m": 13009097684.578686,
+            "mean_change_from_free_fraction": -0.015404512344533883,
+            "p95_resultant_n_per_m": 18836200979.04381,
+            "max_resultant_n_per_m": 25336168750.28881,
+            "equilibrium_residual_over_load": 4.267910785040043e-05,
+            "solver_stop_code": 1
+          },
+          {
+            "edge_condition": "south",
+            "clamped_boundary_nodes": 26,
+            "mean_resultant_n_per_m": 12041976146.032665,
+            "mean_change_from_free_fraction": -0.08860124942458625,
+            "p95_resultant_n_per_m": 16046501827.68571,
+            "max_resultant_n_per_m": 21099096365.36155,
+            "equilibrium_residual_over_load": 2.7376667464715365e-05,
+            "solver_stop_code": 1
+          },
+          {
+            "edge_condition": "north",
+            "clamped_boundary_nodes": 32,
+            "mean_resultant_n_per_m": 12260868626.147984,
+            "mean_change_from_free_fraction": -0.07203433960279748,
+            "p95_resultant_n_per_m": 18346758155.671463,
+            "max_resultant_n_per_m": 24217461672.946037,
+            "equilibrium_residual_over_load": 2.5625321729825072e-05,
+            "solver_stop_code": 1
+          },
+          {
+            "edge_condition": "west+east",
+            "clamped_boundary_nodes": 62,
+            "mean_resultant_n_per_m": 7058919267.634559,
+            "mean_change_from_free_fraction": -0.4657446483105332,
+            "p95_resultant_n_per_m": 18813023953.00717,
+            "max_resultant_n_per_m": 24257576050.77688,
+            "equilibrium_residual_over_load": 1.1438176019599524e-05,
+            "solver_stop_code": 1
+          },
+          {
+            "edge_condition": "south+north",
+            "clamped_boundary_nodes": 58,
+            "mean_resultant_n_per_m": 11297883465.249233,
+            "mean_change_from_free_fraction": -0.14491801432714402,
+            "p95_resultant_n_per_m": 15160516885.1973,
+            "max_resultant_n_per_m": 21511926518.861866,
+            "equilibrium_residual_over_load": 1.9118159511422963e-05,
+            "solver_stop_code": 1
+          },
+          {
+            "edge_condition": "all_edges",
+            "clamped_boundary_nodes": 223,
+            "mean_resultant_n_per_m": 189023.73555140715,
+            "mean_change_from_free_fraction": -0.9999856937105404,
+            "p95_resultant_n_per_m": 516401.8814144804,
+            "max_resultant_n_per_m": 1021414.6974042787,
+            "equilibrium_residual_over_load": 2.715534321915999e-10,
+            "solver_stop_code": 1
+          }
+        ]
+      },
+      "mesh_boundary_loops": 1,
+      "boundary_edges": 223,
+      "mean_resultant_n_per_m": 9991270085.281277,
+      "relative_error": -0.0008729914718723641,
+      "equilibrium_residual_over_load": 2.1900592705858305e-05,
+      "solver_stop_code": 1
+    }
+  ]
+}

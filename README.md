@@ -8,6 +8,8 @@ https://github.com/user-attachments/assets/0535bac6-e602-41e7-82f7-c4a096244443
 
 An Earth-like planet simulator, including plate tectonics, climate and biosphere. The planet can have completely different terrain from Earth but is similar in other ways including size, composition and insolation. 
 
+Support the project: [Buy Me a Coffee](https://buymeacoffee.com/mantlebloom).
+
 ## Where to look
 
 - **[docs/architecture.md](docs/architecture.md)** -- stack, request flow, how world state
@@ -16,10 +18,17 @@ An Earth-like planet simulator, including plate tectonics, climate and biosphere
   frames, mantle flow, boundary evolution, line regularization, merge/split, boundary point
   reassignment, projections, and why each simplification was an acceptable line to draw.
 - **[docs/api-reference.md](docs/api-reference.md)** -- the three backend routes.
-- **[docs/debugging.md](docs/debugging.md)** -- offline `python -m app.*` diagnostic dumps and
-  the `?deb`-gated debug map views/panels for checking a long run's health.
+- **[docs/debugging.md](docs/debugging.md)** -- index of the debugging tools: offline
+  `python -m app.*` dumps, replay logs, the `?deb`-gated debug views and panels, and the
+  `bin/debug` scripts.
 - **[docs/packaging.md](docs/packaging.md)** -- building the single-process desktop binary
   (`bin/package.sh`).
+- **[planning/launch-readiness.md](planning/launch-readiness.md)** -- cross-cutting launch
+  goals, known tracking links, dependencies and decisions still to make.
+- **[docs/hosting.md](docs/hosting.md)** -- current hosted deployment and the limits
+  of its single-world design.
+- **[planning/marketing.md](planning/marketing.md)** -- audience, channels and launch ideas.
+- **[planning/monetization.md](planning/monetization.md)** -- advertising and monetization research.
 
 ## Getting started
 

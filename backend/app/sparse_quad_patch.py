@@ -47,12 +47,16 @@ from .elevation_lines import (
     install_point_field_accessors,
 )
 from .plates import NEIGHBOUR_DISTANCE_RAD, Plate, SurfaceAdjacency, SurfaceNodes, _plates_within
-from .surface_fields import SURFACE_FIELDS, RemapClass
+from .surface_fields import SURFACE_FIELDS, RemapClass, majority_history
 
 # Bumped whenever the pickled state of a `PlateWithSparseQuadPatch` changes shape. A save
 # carrying a newer version than this code understands is rejected on load rather than
 # half-restored (see `__setstate__`).
-QUAD_SURFACE_FORMAT_VERSION = 1
+# - Version 2 (#358) replaced `_age_steps` with `_age_years`. A version 1 plate loads with its
+#   `_age_steps` in place; `persistence.load_world_bytes` converts it to years, since only the
+#   world knows how long its steps were.
+QUAD_SURFACE_FORMAT_VERSION = 2
+LEGACY_QUAD_SURFACE_FORMAT_VERSIONS = (1,)
 
 PLANET_RADIUS_M = PLANET_RADIUS_KM * 1000.0
 
@@ -335,10 +339,10 @@ class PlateWithSparseQuadPatch(Plate):
         cell_keys: np.ndarray,
         fields: Mapping[str, np.ndarray] | None = None,
         omega: np.ndarray | None = None,
-        age_steps: int = 0,
+        age_years: float = 0.0,
         internal_stress: float = 0.0,
     ) -> None:
-        super().__init__(plate_id, frame, crust_type, omega=omega, age_steps=age_steps, internal_stress=internal_stress)
+        super().__init__(plate_id, frame, crust_type, omega=omega, age_years=age_years, internal_stress=internal_stress)
         if cells_per_edge < 1 or cells_per_edge > _INDEX_MASK:
             raise ValueError(f"cells_per_edge must be in [1, {_INDEX_MASK}], got {cells_per_edge}")
         keys = np.asarray(cell_keys, dtype=np.int64).reshape(-1)
@@ -844,6 +848,12 @@ class PlateWithSparseQuadPatch(Plate):
         if spec.remap_class in (RemapClass.HISTORY, RemapClass.WRITE_ONCE_HISTORY):
             valid = values != spec.sentinel
             return spec.sentinel if not np.any(valid) else float(np.min(values[valid]))
+        if spec.remap_class == RemapClass.MAJORITY_HISTORY:
+            # The coarse cell keeps any craton its children had, and a craton cell is not a
+            # belt (cratons.keep_belts_off_cratons).
+            if np.any(all_fields.get("craton_crust_m", np.zeros(len(values))) > 0.0):
+                return spec.sentinel
+            return float(majority_history(np.zeros(len(values), dtype=np.int64), values, areas, 1, spec.sentinel)[0])
         return float(np.average(values, weights=areas))
 
     def coarsen_cells(self, parent_ids: np.ndarray) -> dict[int, int]:
@@ -1007,14 +1017,18 @@ class PlateWithSparseQuadPatch(Plate):
         quad_tectonics.deform(self, world, other_plates, years, max_distance)
 
     def merge_with(
-        self, other: "PlateWithSparseQuadPatch", other_points_xyz: np.ndarray, other_plates: Sequence["PlateWithSparseQuadPatch"] = ()
+        self,
+        other: "PlateWithSparseQuadPatch",
+        other_points_xyz: np.ndarray,
+        other_plates: Sequence["PlateWithSparseQuadPatch"] = (),
+        world=None,
     ) -> None:
         """Absorb `other` onto this plate's lattice by exact-area remap, keeping clear of
-        `other_points_xyz` (every other plate's nodes) and `other_plates`' cells -- see
-        quad_merge.py."""
+        `other_points_xyz` (every other plate's nodes) and `other_plates`' cells; with
+        `world`, the suture is marked as belt -- see quad_merge.py."""
         from . import quad_merge
 
-        quad_merge.merge(self, other, other_points_xyz, other_plates)
+        quad_merge.merge(self, other, other_points_xyz, other_plates, world)
 
     def _crust_type_for_mask(self, mask: np.ndarray) -> str:
         """Nominal crust type for a newly partitioned patch.
@@ -1070,7 +1084,7 @@ class PlateWithSparseQuadPatch(Plate):
                     cell_keys=self._keys[mask],
                     fields=fragment_fields,
                     omega=self._omega.copy(),
-                    age_steps=self._age_steps if k == 0 else 0,
+                    age_years=self._age_years if k == 0 else 0.0,
                     internal_stress=self._internal_stress if k == 0 else 0.0,
                 )
             )
@@ -1097,9 +1111,11 @@ class PlateWithSparseQuadPatch(Plate):
         result[1].reset_age()
         return result[0], result[1]
 
-    def apply_failed_rift(self, cut_normal: np.ndarray, spacing_rad: float) -> None:
-        """Thin a tapered band around an aborted rift without changing quad topology."""
-        from . import lithosphere, rheology
+    def apply_failed_rift(self, cut_normal: np.ndarray, spacing_rad: float, world=None) -> None:
+        """Thin a tapered band around an aborted rift without changing quad topology. A craton
+        resists it as it resists divergent thinning (RFC 0003). With `world`, the thinned band
+        is marked as belt (RFC 0009)."""
+        from . import cratons, lithosphere, rheology
         from .merge_split import FAILED_RIFT_BAND_MULT, FAILED_RIFT_THINNING_FRACTION
 
         cut_normal = np.asarray(cut_normal, dtype=float)
@@ -1124,7 +1140,8 @@ class PlateWithSparseQuadPatch(Plate):
         density = lithosphere.node_crust_density(self.collect("crust_type_code"), self.crust_type)
         before = lithosphere.isostatic_elevation(hc, hm, density)
         taper = np.clip(1.0 - distance / band_sin, 0.0, 1.0)
-        factor = 1.0 - FAILED_RIFT_THINNING_FRACTION * taper
+        resisted = cratons.rift_resistance(self.collect("craton_crust_m"))
+        factor = np.clip(1.0 - FAILED_RIFT_THINNING_FRACTION * taper * (1.0 - resisted), 0.0, 1.0)
         hc[in_band] = np.maximum(
             hc[in_band] * factor[in_band], lithosphere.MIN_CRUSTAL_THICKNESS_M
         )
@@ -1142,6 +1159,8 @@ class PlateWithSparseQuadPatch(Plate):
             mantle_lithosphere_thickness_m=hm,
             elev_change_reason=reason,
         )
+        if world is not None:
+            cratons.mark_belt(world, self, in_band)
 
     # --- Persistence -----------------------------------------------------------------------
 
@@ -1158,10 +1177,10 @@ class PlateWithSparseQuadPatch(Plate):
         from .persistence import UnsupportedSaveVersionError
 
         version = state.get("_surface_format_version")
-        if version != QUAD_SURFACE_FORMAT_VERSION:
+        if version != QUAD_SURFACE_FORMAT_VERSION and version not in LEGACY_QUAD_SURFACE_FORMAT_VERSIONS:
             raise UnsupportedSaveVersionError(
                 f"unsupported sparse quad surface format version {version!r}; "
-                f"this build reads version {QUAD_SURFACE_FORMAT_VERSION}"
+                f"this build reads versions 1-{QUAD_SURFACE_FORMAT_VERSION}"
             )
         state = dict(state)
         del state["_surface_format_version"]

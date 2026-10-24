@@ -1,4 +1,5 @@
 import VoronoiPreview from "./VoronoiPreview";
+import ModalShell from "./ModalShell";
 
 interface Props {
   landPercent: number;
@@ -79,45 +80,7 @@ export default function AdvancedSettingsModal({
   const showVoronoiPreview = (generateMode === "human" || generateMode === "premade") && sketchImageDataUrl != null;
 
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0, 0, 0, 0.6)",
-        zIndex: 200,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: 380,
-          maxWidth: "66vw",
-          maxHeight: "85vh",
-          overflowY: "auto",
-          padding: 20,
-          background: "#151a2e",
-          border: "1px solid #333",
-          borderRadius: 8,
-          color: "#e6e8ef",
-          fontSize: 13,
-          boxShadow: "0 8px 32px rgba(0, 0, 0, 0.6)",
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <span style={{ fontSize: 16, fontWeight: 600 }}>Advanced settings</span>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{ background: "none", border: "none", color: "#8b8fa3", cursor: "pointer", fontSize: 16 }}
-          >
-            ✕
-          </button>
-        </div>
-
+    <ModalShell title="Advanced settings" onClose={onClose} maxWidth="66vw" zIndex={200}>
         <label style={{ display: "block", marginBottom: 16 }}>
           Initial land: {landPercent}%
           <input
@@ -241,7 +204,6 @@ export default function AdvancedSettingsModal({
             coarser (faster) resolution. Lower runs faster but coarser.
           </div>
         </label>
-      </div>
-    </div>
+    </ModalShell>
   );
 }

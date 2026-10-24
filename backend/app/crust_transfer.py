@@ -349,7 +349,7 @@ def _underthrust(
         return 0.0
     quad_tectonics.settle_received_crust(
         upper, hc_before, hc, hc - hc_before, changed, volume, material_volume, restite_volume,
-        upper.collect("continental_material_m"), upper.collect("restite_m"),
+        upper.collect("continental_material_m"), upper.collect("restite_m"), world=world,
     )
     return placed
 

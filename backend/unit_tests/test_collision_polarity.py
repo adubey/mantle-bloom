@@ -697,7 +697,7 @@ def _busy_world() -> World:
 def _frame_signature(world: World):
     frame = world.collision_polarity_frame
     masks = {
-        pid: tuple(np.flatnonzero(getattr(m, name)).tolist() for name in ("lower", "upper", "retreat_eligible", "retreatable", "override"))
+        pid: tuple(np.flatnonzero(getattr(m, name)).tolist() for name in ("lower", "upper", "retreat_eligible", "run_eligible", "retreatable", "override"))
         + (m.front_id.tolist(),)
         for pid, m in frame.masks.items()
     }
@@ -834,6 +834,50 @@ def test_collision_front_falls_back_to_bilateral_retreat_when_lower_is_cratonic(
     assert not np.any(context.suture_hm_subduct)
 
 
+def test_run_eligible_keeps_the_cratonic_lower_candidates_retreatable_excludes():
+    # RFC 0008's gate counts a cratonic lower-plate cell facing ordinary crust as jammed, on a
+    # front where other lower cells can still retreat (#395).
+    world, lower, upper, _ = _front_with_lower_a()
+    _move(upper, _column(20), _column(19))
+    cp.observe_contacts(world, STEP_YEARS)
+    eligible = world.collision_polarity_frame.masks[lower.plate_id].retreatable.copy()
+    assert np.count_nonzero(eligible) >= 4
+    cratonic = np.zeros(lower.node_count(), dtype=bool)
+    cratonic[np.flatnonzero(eligible)[: np.count_nonzero(eligible) // 2]] = True
+    lower.set_fields_on_plate(craton_crust_m=np.where(cratonic, lower.collect("crustal_thickness_m"), 0.0))
+
+    cp.observe_contacts(world, STEP_YEARS)
+
+    masks = world.collision_polarity_frame.masks[lower.plate_id]
+    np.testing.assert_array_equal(masks.run_eligible, eligible)
+    np.testing.assert_array_equal(masks.retreatable, eligible & ~cratonic)
+    assert np.any(masks.retreatable)
+
+
+def test_cratonic_lower_cell_facing_ordinary_crust_counts_as_jammed_on_a_mixed_front():
+    # RFC 0008 (#401): on a front where other lower cells can still retreat, boundary_context's
+    # shrinkable is craton-filtered, so the jam test reads run_eligible instead.
+    world, lower, upper, _ = _front_with_lower_a()
+    _move(upper, _column(20), _column(19))
+    cp.observe_contacts(world, STEP_YEARS)
+    eligible = world.collision_polarity_frame.masks[lower.plate_id].retreatable.copy()
+    cratonic = np.zeros(lower.node_count(), dtype=bool)
+    cratonic[np.flatnonzero(eligible)[: np.count_nonzero(eligible) // 2]] = True
+    lower.set_fields_on_plate(craton_crust_m=np.where(cratonic, lower.collect("crustal_thickness_m"), 0.0))
+
+    frame = cp.observe_contacts(world, STEP_YEARS)
+
+    context = boundary_context(
+        world,
+        lower,
+        [upper],
+        STEP_YEARS,
+        lambda mask: quad_tectonics.components_of_at_least(lower, mask, CONTINENTAL_CONTESTED_RETREAT_MIN_RUN),
+    )
+    assert np.any(context.shrinkable) and not np.any(context.shrinkable & cratonic)
+    assert frame.contacts[(lower.plate_id, upper.plate_id)].jammed == np.count_nonzero(cratonic)
+
+
 def test_continental_terrane_on_oceanic_carrier_can_be_frozen_lower_donor():
     lower = _plate(1, _block((10, 20), (0, 50)), "oceanic")
     codes = np.full(lower.node_count(), CRUST_TYPE_CONTINENTAL, dtype=np.uint8)
@@ -883,3 +927,20 @@ def test_step_world_runs_the_prepass_and_reports_its_cost():
     assert report["counters"]["deform_searches_reused"] > 0
     assert report["prepass_seconds_per_step"] > 0.0
     assert world.collision_polarity_frame is not None
+
+
+def test_retreat_runs_follow_each_nodes_crust_not_the_majority_type():
+    """#447: a lone contested oceanic node retreats on a mostly continental plate, and a lone
+    contested continental node doesn't on a mostly oceanic one."""
+    from types import SimpleNamespace
+
+    from .quad_fixtures import quad_plate
+
+    contested = np.zeros(8, dtype=bool)
+    contested[[0, 7]] = True
+    continental = np.ones(8, dtype=bool)
+    continental[0] = False
+    for crust_type in ("continental", "oceanic"):
+        plate = quad_plate(1, crust_type, columns=range(8))
+        frame = SimpleNamespace(masks={1: SimpleNamespace(continental=continental)}, polarity={})
+        np.testing.assert_array_equal(cp.retreat_candidates(frame, plate, contested), contested & ~continental)

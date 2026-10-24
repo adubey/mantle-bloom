@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from scipy.spatial import cKDTree
 
-from app import geometry, mantle, merge_split
+from app import collision_polarity, geometry, mantle, merge_split
 from app import plates as plates_mod
 from app.elevation_lines import line_spacing_rad
 from app.plates import node_components
@@ -30,12 +30,12 @@ def _converging_omega_pair(rate_cm_per_yr=5.0):
     return np.array([0.0, 0.0, rate]), np.array([0.0, 0.0, -rate])
 
 
-def _converging_pair_world(seed=123):
+def _converging_pair_world(seed=123, keep_type="continental"):
     # See test_find_continental_collision_pairs_detects_close_and_converging_plates for why
     # these offsets are fractions of MERGE_CONTACT_DISTANCE_RAD rather than hardcoded angles.
     d = merge_split.MERGE_CONTACT_DISTANCE_RAD
     # Two rows each, so the contact band holds more than MERGE_MIN_CONTACT_NODES nodes.
-    keep = _test_plate(0, [1.0, 0.0, 0.0], "continental", np.linspace(-d, 0.0, 6), np.zeros(6), rows=range(2))
+    keep = _test_plate(0, [1.0, 0.0, 0.0], keep_type, np.linspace(-d, 0.0, 6), np.zeros(6), rows=range(2))
     seed_absorb = geometry.rotate_vectors(
         np.array([1.0, 0.0, 0.0])[None, :], axis=np.array([0.0, 0.0, 1.0]), angle=d * 0.3
     )[0]
@@ -181,6 +181,95 @@ def test_collision_progress_resets_if_convergence_stops(monkeypatch):
         p.set_omega(np.zeros(3))
     merge_split.apply_topology_changes(world, 10_000_000)
     assert (0, 1) not in world.collision_progress
+
+
+def _cratonic_pair_world():
+    world = _converging_pair_world()
+    for p in world.plates:
+        p.set_fields_on_plate(craton_crust_m=p.collect("crustal_thickness_m"))
+    return world
+
+
+def _topology_step(world, years=10_000_000):
+    # The prepass that freezes this step's contacts, then topology, as world.step_world runs them.
+    collision_polarity.observe_contacts(world, years)
+    world.elapsed_years += years
+    merge_split.apply_topology_changes(world, years)
+
+
+def test_jammed_pair_keeps_collision_time_when_closing_stalls(monkeypatch):
+    # RFC 0008 solution 5 (#401): a craton jam braking the contact below the closing threshold
+    # must not reset the clock that would fuse it; separating still does.
+    monkeypatch.setattr(merge_split, "_merge_probability", lambda world, pair: 0.0)
+    world = _cratonic_pair_world()
+    _topology_step(world)
+    assert world.collision_progress[(0, 1)] == 10_000_000
+
+    for p in world.plates:
+        p.set_omega(np.zeros(3))
+    _topology_step(world)
+    assert merge_split.find_continental_collision_pairs(world) == []
+    assert merge_split.find_jammed_pairs(world)[(0, 1)] > 0.0
+    assert world.collision_progress[(0, 1)] == 20_000_000
+
+    keep_omega, absorb_omega = _converging_omega_pair()
+    world.plates[0].set_omega(-keep_omega)
+    world.plates[1].set_omega(-absorb_omega)
+    _topology_step(world)
+    assert (0, 1) not in merge_split.find_jammed_pairs(world)
+    assert (0, 1) not in world.collision_progress
+
+
+def test_jammed_pair_rolls_for_merge_while_stalled(monkeypatch):
+    monkeypatch.setattr(merge_split, "MERGE_SIZE_UNLIKELY_FRACTION", 1e9)
+    world = _cratonic_pair_world()
+    for p in world.plates:
+        p.set_omega(np.zeros(3))
+    world.collision_progress[(0, 1)] = merge_split._collision_threshold_years(world.seed, (0, 1)) + 1
+    _topology_step(world)
+    assert len(world.plates) == 1
+
+
+def test_jammed_pair_is_dropped_when_a_plate_vanishes_after_the_prepass():
+    # The jam map is the prepass's; topology removes defunct plates after it. A pair whose
+    # plate is gone must not be kept, or its merge roll looks up a missing plate (#435 review).
+    world = _cratonic_pair_world()
+    for p in world.plates:
+        p.set_omega(np.zeros(3))
+    collision_polarity.observe_contacts(world, 10_000_000)
+    assert (0, 1) in merge_split.find_jammed_pairs(world)
+    world.collision_progress[(0, 1)] = merge_split._collision_threshold_years(world.seed, (0, 1)) + 1
+    world.plates = [p for p in world.plates if p.plate_id != 1]
+
+    merge_split.update_collision_progress(world, 10_000_000)
+
+    assert world.collision_progress == {}
+
+
+def test_a_jam_alone_does_not_start_collision_time():
+    world = _cratonic_pair_world()
+    for p in world.plates:
+        p.set_omega(np.zeros(3))
+    _topology_step(world)
+    assert (0, 1) in merge_split.find_jammed_pairs(world)
+    assert world.collision_progress == {}
+
+
+def test_find_jammed_pairs_needs_enough_jammed_nodes_both_sides_and_no_divergence():
+    from types import SimpleNamespace
+
+    PairContact = collision_polarity.PairContact
+    n = merge_split.MERGE_MIN_CONTACT_NODES
+    diverging = -2.0 * merge_split.TRANSFORM_RATE_THRESHOLD
+    contacts = {
+        (0, 1): PairContact(sides=2, nodes=4 * n, jammed=n, edge=2, edge_closing_rad_per_yr=0.0),
+        (0, 2): PairContact(sides=2, nodes=4 * n, jammed=n - 1),
+        (0, 3): PairContact(sides=1, nodes=4 * n, jammed=n),
+        (0, 4): PairContact(sides=2, nodes=4 * n, jammed=n, edge=2, edge_closing_rad_per_yr=2 * diverging),
+    }
+    world = SimpleNamespace(collision_polarity_frame=SimpleNamespace(contacts=contacts))
+    assert merge_split.find_jammed_pairs(world) == {(0, 1): 0.25}
+    assert merge_split.find_jammed_pairs(SimpleNamespace(collision_polarity_frame=None)) == {}
 
 
 def test_apply_topology_changes_merges_at_most_one_pair_per_call(monkeypatch):
@@ -402,6 +491,26 @@ def _engineered_split_world():
     return world, plate
 
 
+def test_split_cooldown_counts_years_not_steps(monkeypatch):
+    """#358: the cooldown is a span of time, so a plate one year short of it can't split
+    however many steps that took, and one long step can carry it past."""
+    monkeypatch.setattr(merge_split, "RIFT_SUCCESS_PROBABILITY", 1.0)
+    world, plate = _engineered_split_world()
+    plate.set_age_years(merge_split.SPLIT_MIN_AGE_YEARS - 1.0)
+    assert merge_split.maybe_split_plate(world, plate) is None
+    assert world.next_plate_id == 1
+
+    plate.advance_age(1.0)
+    assert merge_split.maybe_split_plate(world, plate) is not None
+
+
+def test_apply_topology_changes_ages_plates_by_the_step_length():
+    world = _converging_pair_world()
+    merge_split.apply_topology_changes(world, 250_000)
+    merge_split.apply_topology_changes(world, 750_000)
+    assert [p.age_years for p in world.plates] == [1_000_000, 1_000_000]
+
+
 def test_maybe_split_plate_with_failed_outcome_returns_none_and_resets_cooldown(monkeypatch):
     """A rift that clears every split gate but loses the outcome roll
     (`RIFT_SUCCESS_PROBABILITY`) leaves the plate whole -- no daughter, no plate id consumed
@@ -414,7 +523,7 @@ def test_maybe_split_plate_with_failed_outcome_returns_none_and_resets_cooldown(
 
     assert result is None
     assert world.next_plate_id == 1  # no id consumed
-    assert plate.age_steps == 0  # cooldown reset
+    assert plate.age_years == 0.0  # cooldown reset
     assert plate.node_count() == nodes_before  # still one plate, nothing removed
 
 
@@ -458,6 +567,82 @@ def test_a_failed_rift_thins_continental_material_with_its_column(monkeypatch):
     np.testing.assert_allclose(plate.collect("continental_material_m"), 0.5 * hc)
     assert world.continental_material_ledger["rift_thinned_m3"] > 0.0
     assert abs(continental_ledger.balance_error_m3(world)) <= 1e-9 * continental_ledger.surface_volume_m3(world)
+
+
+def test_a_failed_rift_resists_a_craton_and_books_its_loss_and_cut_to_the_failed_rift_path(monkeypatch):
+    """RFC 0003: a failed rift thins full-strength craton columns by at most a quarter of the
+    plain amount (solution 2), books exactly the craton lost to `rifted_failed_m3` as well as
+    `rifted_m3`, and counts its cut with the craton area inside its band (phase 1)."""
+    from app import cratons
+
+    monkeypatch.setattr(merge_split, "RIFT_SUCCESS_PROBABILITY", 0.0)
+    world, plate = _engineered_split_world()
+    hc_before = plate.collect("crustal_thickness_m")
+    craton = np.minimum(hc_before, cratons.CRATON_FULL_STRENGTH_HC_M)
+    plate.set_fields_on_plate(craton_crust_m=craton)
+    full = craton >= cratons.CRATON_FULL_STRENGTH_HC_M
+    cratons.ensure_ledger(world)
+    before = cratons.plate_volume_m3(world, plate)
+
+    assert merge_split.maybe_split_plate(world, plate) is None
+
+    ledger = world.craton_ledger
+    lost = before - cratons.plate_volume_m3(world, plate)
+    assert lost > 0.0
+    assert ledger["rifted_failed_m3"] == pytest.approx(lost, rel=1e-9)
+    assert ledger["rifted_m3"] == ledger["rifted_failed_m3"]
+    assert (ledger["failed_rift_cuts"], ledger["failed_rift_cuts_through_craton"], ledger["split_cuts"]) == (1.0, 1.0, 0.0)
+    assert 0.0 < ledger["failed_rift_band_craton_area_m2"] == ledger["failed_rift_band_area_m2"]
+    thinned = 1.0 - plate.collect("crustal_thickness_m") / hc_before
+    assert np.any(full & (thinned > 0.0))
+    assert np.all(thinned[full] <= (1.0 - cratons.CRATON_RIFT_RESISTANCE) * merge_split.FAILED_RIFT_THINNING_FRACTION + 1e-12)
+
+
+def test_a_split_counts_its_cut_and_whether_the_band_holds_craton(monkeypatch):
+    from app import cratons
+
+    monkeypatch.setattr(merge_split, "RIFT_SUCCESS_PROBABILITY", 1.0)
+    world, plate = _engineered_split_world()
+    cratons.ensure_ledger(world)
+
+    assert merge_split.maybe_split_plate(world, plate) is not None
+
+    ledger = world.craton_ledger
+    assert (ledger["split_cuts"], ledger["split_cuts_through_craton"], ledger["failed_rift_cuts"]) == (1.0, 0.0, 0.0)
+    assert ledger["split_band_area_m2"] > 0.0
+    assert ledger["split_band_craton_area_m2"] == 0.0
+
+
+def test_a_merge_books_column_clips_and_unplaceable_craton_to_merge_capped(monkeypatch):
+    """RFC 0001 (#441, #443): cap clips and remap volume without capacity are merge losses."""
+    from app import cratons
+
+    world, plate = _engineered_split_world()
+    hc = plate.collect("crustal_thickness_m")
+    plate.set_fields_on_plate(craton_crust_m=hc.copy())
+    cratons.ensure_ledger(world)
+    world.craton_ledger["initial_m3"] = cratons.live_volume_m3(world)
+    capped = np.arange(plate.node_count()) < 5
+    unplaced_cells = (np.arange(plate.node_count()) >= 5) & (np.arange(plate.node_count()) < 10)
+
+    def merge_that_caps(w, keep, absorb):
+        # Stand in for a merge with both cap loss and craton that had no host-column headroom.
+        thinned = plate.collect("crustal_thickness_m")
+        thinned[capped] *= 0.5
+        craton = plate.collect("craton_crust_m")
+        craton[unplaced_cells] *= 0.9
+        plate.set_fields_on_plate(crustal_thickness_m=thinned, craton_crust_m=craton)
+
+    monkeypatch.setattr(merge_split, "merge_plates", merge_that_caps)
+    merge_split._merge_plates_with_craton_audit(world, plate.plate_id, plate.plate_id)
+
+    ledger = world.craton_ledger
+    clipped = float(0.5 * hc[capped] @ plate.node_areas_m2()[capped])
+    unplaced = float(0.1 * hc[unplaced_cells] @ plate.node_areas_m2()[unplaced_cells])
+    assert ledger["merge_capped_m3"] == pytest.approx(clipped + unplaced, rel=1e-9)
+    assert ledger["unattributed_m3"] == 0.0
+    assert ledger["delaminated_m3"] == 0.0
+    assert abs(cratons.balance_error_m3(world)) <= 1e-9 * ledger["initial_m3"]
 
 
 def test_maybe_split_plate_splits_under_engineered_flow_divergence(monkeypatch):
@@ -510,7 +695,7 @@ def _split_eligible_plate(plate_id: int, seed_xyz, rows=range(1)):
     2 * SPLIT_MIN_NODES, so each half of a split still clears the threshold -- past its split
     cooldown."""
     plate = _test_plate(plate_id, seed_xyz, "continental", np.linspace(-0.5, 0.5, 4 * merge_split.SPLIT_MIN_NODES), 0.0, rows=rows)
-    plate.set_age_steps(merge_split.SPLIT_MIN_AGE_STEPS)
+    plate.set_age_years(merge_split.SPLIT_MIN_AGE_YEARS)
     return plate
 
 
@@ -882,3 +1067,63 @@ def test_forced_merge_yields_to_a_ready_closing_rate_merge_the_same_step(monkeyp
     events = merge_split.apply_topology_changes(world, 1_000_000.0)
 
     assert sum(("merged into" in e or "fused into" in e) for e in events) == 1
+
+
+def _mixed_pair_world(keep_type: str, keep_codes):
+    """`_converging_pair_world`, with keep of nominal `keep_type` and its nodes' crust codes set
+    by `keep_codes(longitude / d)`."""
+    world = _converging_pair_world(keep_type=keep_type)
+    keep = world.plates[0]
+    points = keep.all_points_and_elevation()[0]
+    keep.set_fields_on_plate(crust_type_code=keep_codes(np.arctan2(points[:, 1], points[:, 0]) / merge_split.MERGE_CONTACT_DISTANCE_RAD))
+    return world
+
+
+def test_continental_collision_pairs_follow_each_nodes_crust_not_the_majority_type():
+    """#447: a continent riding a mostly oceanic plate collides and can fuse; a continental
+    plate whose contact is its own ocean floor doesn't."""
+    from app.elevation_lines import CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC
+
+    def terrane_at_contact(x):
+        return np.where(x > -0.5, CRUST_TYPE_CONTINENTAL, 0).astype(np.int8)
+
+    def ocean_at_contact(x):
+        return np.where(x < -0.9, 0, CRUST_TYPE_OCEANIC).astype(np.int8)
+
+    assert (0, 1) in merge_split.find_continental_collision_pairs(_mixed_pair_world("oceanic", terrane_at_contact))
+    assert merge_split.find_continental_collision_pairs(_mixed_pair_world("continental", ocean_at_contact)) == []
+
+
+def test_a_failed_rift_from_the_split_path_marks_its_thinned_band(monkeypatch):
+    from app import cratons
+
+    monkeypatch.setattr(merge_split, "RIFT_SUCCESS_PROBABILITY", 0.0)
+    world, plate = _engineered_split_world()
+    hc_before = plate.collect("crustal_thickness_m")
+
+    assert merge_split.maybe_split_plate(world, plate) is None
+
+    thinned = plate.collect("crustal_thickness_m") < hc_before
+    assert np.any(thinned)
+    np.testing.assert_array_equal(cratons.belt_mask(plate, world.elapsed_years), thinned)
+
+
+def test_a_split_marks_the_band_along_its_cut_on_both_daughters(monkeypatch):
+    """RFC 0009: both new margins are stretched crust, over the band a failed rift would
+    have thinned; the rest of each daughter stays unmarked."""
+    from app import cratons
+
+    monkeypatch.setattr(merge_split, "RIFT_SUCCESS_PROBABILITY", 1.0)
+    world, plate = _engineered_split_world()
+    cuts = []
+    split = plate.split
+    monkeypatch.setattr(plate, "split", lambda plate_id, cut_normal, min_nodes: cuts.append(cut_normal) or split(plate_id, cut_normal, min_nodes))
+
+    daughters = merge_split.maybe_split_plate(world, plate)
+
+    assert daughters is not None
+    band_sin = np.sin(merge_split.FAILED_RIFT_BAND_MULT * line_spacing_rad(world.node_density))
+    for daughter in daughters:
+        band = np.abs(daughter.all_points_and_elevation()[0] @ cuts[0]) < band_sin
+        assert np.any(band) and not np.all(band)
+        np.testing.assert_array_equal(cratons.belt_mask(daughter, world.elapsed_years), band)

@@ -230,6 +230,8 @@ export default function Legend({
       <div style={{ display: "flex", flexWrap: "wrap", columnGap: 16, rowGap: 2, marginTop: spec.gradient || spec.gradients ? 2 : 8 }}>
         {spec.symbols.map((sym) => {
           const terrainToggle = mapView === "elevation" ? TERRAIN_TOGGLES[sym.label] : undefined;
+          // No handler (the public viewer, #373): the overlay can't be shown, so don't list it.
+          if (terrainToggle && !terrainToggle.toggle) return null;
           if (terrainToggle) {
             return (
               <SymbolRow key={sym.label} symbol={sym} onClick={terrainToggle.toggle} selected={!!terrainToggle.on} />

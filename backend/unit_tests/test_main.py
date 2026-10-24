@@ -7,13 +7,17 @@ import math
 import threading
 import time
 import av
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 from app.lithosphere_plate import generate_plates
 from app import main, persistence
+from app.hydroclimate import hydrology
 from app.main import app
 from app.plates import MAX_AUTO_PLATES, MIN_AUTO_PLATES
+
+from .river_fixtures import spill_hop_fields
 
 
 def _reset_app_state():
@@ -30,7 +34,9 @@ def client():
     generates its own. Teardown also fails a test that leaves `_world_lock` held (releasing
     it first, so the leak doesn't cascade into every later test as a 503 or a hang)."""
     _reset_app_state()
-    yield TestClient(app)
+    # A loopback client on a loopback host: the local no-login path, so these tests exercise
+    # the routes rather than the auth guard (test_auth.py covers that, #372).
+    yield TestClient(app, base_url="http://localhost", client=("127.0.0.1", 50000))
     _reset_app_state()
     if main._world_lock.locked():
         main._world_lock.release()
@@ -93,6 +99,7 @@ def _post_streaming_then_disconnect(path: str, body: dict, disconnect_after_chun
 
     async def _drive() -> int:
         body_bytes = json.dumps(body).encode()
+        # Loopback client and host, like the `client` fixture, so the auth guard lets it through (#372).
         scope = {
             "type": "http",
             "asgi": {"version": "3.0", "spec_version": "2.3"},
@@ -104,12 +111,12 @@ def _post_streaming_then_disconnect(path: str, body: dict, disconnect_after_chun
             "query_string": b"",
             "root_path": "",
             "headers": [
-                (b"host", b"testserver"),
+                (b"host", b"localhost"),
                 (b"content-type", b"application/json"),
                 (b"content-length", str(len(body_bytes)).encode()),
             ],
-            "client": ("testclient", 123),
-            "server": ("testserver", 80),
+            "client": ("127.0.0.1", 123),
+            "server": ("localhost", 80),
         }
 
         request_body_sent = False
@@ -176,9 +183,57 @@ def test_client_fixture_discards_state_left_by_an_earlier_test(request):
     assert client.get("/world/stats").status_code == 404
 
 
+def test_generate_forwards_cratons_first_choice(client, monkeypatch):
+    captured = {}
+
+    def fake_generate_world_progress(seed, **kwargs):
+        captured.update(kwargs)
+        yield ("world", object())
+
+    monkeypatch.setattr(main, "generate_world_progress", fake_generate_world_progress)
+    monkeypatch.setattr(main, "_set_world", lambda world: None)
+    monkeypatch.setattr(main, "_summary", lambda world: {"seed": 7})
+
+    response = _post_generate(client, json={"seed": 7, "cratons_first": True})
+
+    assert response.json()["seed"] == 7
+    assert captured["cratons_first"] is True
+
+
+def test_river_summary_draws_a_spill_hop_along_neighbour_edges():
+    # Issue #520: the River Inspector's segments follow sink 2's spill path over the dry basin,
+    # not one straight segment from the sink to node 6 beyond the rim.
+    fields = spill_hop_fields(lake_m=0.0)
+    (river,) = hydrology.group_rivers(fields)
+
+    summary = main._river_summary(fields, river, 0)
+
+    step = float(np.linalg.norm(fields.points[1] - fields.points[0]))
+    lengths = [np.linalg.norm(np.subtract(b, a)) for a, b in summary["segments"]]
+    assert len(lengths) == 7
+    assert max(lengths) == pytest.approx(step, rel=1e-3)
+
+
 def test_render_before_generate_returns_404(client):
     resp = client.get("/world/render")
     assert resp.status_code == 404
+
+
+def test_cross_section_route_renders_image_and_keeps_request_validation(client, monkeypatch):
+    assert client.get("/world/cross-section").status_code == 404
+
+    main._state["world"] = object()
+    monkeypatch.setattr(
+        main.cross_section_view,
+        "render_png_base64",
+        lambda *args, **kwargs: ("cG5n", {"image_base64": "cG5n", "world_revision": "revision"}),
+    )
+    response = client.get("/world/cross-section")
+    assert response.status_code == 200
+    assert response.json()["image_base64"] == "cG5n"
+    assert response.json()["world_revision"] == "revision"
+    assert client.get("/world/cross-section", params={"position_index": 120}).status_code == 400
+    assert client.get("/world/cross-section", params={"width": main.MAX_RENDER_DIMENSION_PX + 1}).status_code == 400
 
 
 def test_step_before_generate_returns_404(client):
@@ -691,7 +746,7 @@ def test_plates_endpoint_reports_motion_shape_and_overlap_diagnostics(client):
         # the reported speed.
         assert entry["at_max_rate"] == (entry["speed_cm_per_yr"] >= mantle.rad_per_yr_to_cm_per_yr(mantle.MAX_PLATE_RATE) - 1e-9)
         assert 0.0 <= entry["submerged_fraction"] <= 1.0
-        assert entry["age_steps"] >= 0
+        assert entry["age_years"] >= 0.0
         # A plate never overlaps itself. (Overlap is read by containment of cell centres, so it
         # can be one-sided where two lattices meet: A's centre inside B, but no centre of B's
         # inside A.)
@@ -1187,12 +1242,13 @@ def test_animate_progress_carries_a_live_stats_snapshot(client):
     _post_generate(client, json={"seed": 9, "num_plates": 6})
     resp = client.post(
         "/world/animate",
-        json={"projection": "eckert4", "view": "elevation", "width": 64, "height": 64, "step_years": 1_000_000, "num_frames": 3},
+        json={"projection": "eckert4", "view": "elevation", "width": 64, "height": 64, "step_years": 100_000, "num_frames": 3},
     )
     assert resp.status_code == 200
 
+    # Steps well inside merge_split.SPLIT_MIN_AGE_YEARS, so no plate can rift mid-recording.
     progress = [json.loads(line) for line in resp.text.splitlines() if line.strip() and json.loads(line)["type"] == "progress"]
-    assert [m["stats"]["elapsed_years"] for m in progress] == [0.0, 1_000_000.0, 2_000_000.0]
+    assert [m["stats"]["elapsed_years"] for m in progress] == [0.0, 100_000.0, 200_000.0]
     assert all(m["stats"]["plate_count"] == 6 for m in progress)
 
 
@@ -1491,3 +1547,267 @@ def test_controls_tuning_multipliers_round_trip_and_validate(client):
 
     assert client.post("/world/controls", json={"volcanism_multiplier": -0.5}).status_code == 400
     assert world.volcanism_multiplier == 1.0  # rejected write did not land
+
+
+# --- Run status and checkpoint (#375) -------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def saved_world() -> bytes:
+    from app.world import generate_world
+
+    return persistence.save_world_bytes(generate_world(seed=5, num_plates=2, node_density=0.5))
+
+
+@pytest.fixture
+def store(client, tmp_path, monkeypatch):
+    """Checkpointing into tmp_path, and a fake step that only advances the clock. Teardown
+    stops the run loop and waits out any step it has under way."""
+    from app import checkpoint
+
+    monkeypatch.setenv(checkpoint.CHECKPOINT_DIR_ENV, str(tmp_path))
+    monkeypatch.setattr(main, "_checkpoint_store", None)
+    monkeypatch.setattr(main, "_checkpoint_error", None)
+
+    def fake_step(world, years):
+        world.elapsed_years += years
+        yield 1.0
+
+    monkeypatch.setattr(main, "step_world_progress", fake_step)
+    yield checkpoint.CheckpointStore(tmp_path)
+    main._runner.set_status(checkpoint.RunStatus(), persist=False)
+    with main._world_lock:
+        pass
+
+
+def _checkpoint(store, saved_world, running, step_years=1_000.0):
+    from app.checkpoint import RunStatus
+
+    world = persistence.load_world_bytes(saved_world)
+    world.elapsed_years = 123_000.0
+    store.save_world(world)
+    store.save_status(RunStatus(running=running, step_years=step_years))
+
+
+def _saved_elapsed(store) -> float:
+    return persistence.load_world_bytes(store.world_path.read_bytes()).elapsed_years
+
+
+def test_restart_restores_a_stopped_world_at_the_same_point_and_stays_stopped(client, store, saved_world):
+    _checkpoint(store, saved_world, running=False)
+    main._restore_checkpoint()
+
+    assert client.get("/world/summary").json()["elapsed_years"] == 123_000.0
+    assert client.get("/world/run").json()["running"] is False
+    time.sleep(0.05)
+    assert main._state["world"].elapsed_years == 123_000.0
+
+
+def test_restart_resumes_a_running_world_from_the_same_point(client, store, saved_world):
+    _checkpoint(store, saved_world, running=True, step_years=500.0)
+    main._restore_checkpoint()
+
+    run = client.get("/world/run").json()
+    assert (run["running"], run["step_years"]) == (True, 500.0)
+    # Resumes from the saved point: no catch-up for time spent asleep, then 500 years a step.
+    assert _wait_until(lambda: main._state["world"].elapsed_years >= 123_500.0)
+    assert (main._state["world"].elapsed_years - 123_000.0) % 500.0 == 0
+    # Each completed step is checkpointed.
+    assert _wait_until(lambda: _saved_elapsed(store) >= 123_500.0)
+
+
+def test_play_and_stop_save_the_run_status(client, store, saved_world):
+    main._restore_checkpoint()  # nothing saved yet: no world, stopped
+    assert client.post("/world/run", json={"running": True, "step_years": 10.0}).status_code == 404
+    client.post("/world/load", content=saved_world)
+
+    assert client.post("/world/run", json={"running": True, "step_years": 10.0}).json()["running"] is True
+    assert json.loads(store.status_path.read_text())["running"] is True
+    start = persistence.load_world_bytes(saved_world).elapsed_years
+    assert _wait_until(lambda: main._state["world"].elapsed_years > start)
+
+    body = client.post("/world/run", json={"running": False}).json()
+    assert (body["running"], body["step_years"]) == (False, 10.0)
+    assert json.loads(store.status_path.read_text()) == {"version": 1, "running": False, "step_years": 10.0}
+
+
+def test_run_rejects_a_bad_step_size(client, store):
+    assert client.post("/world/run", json={"running": False, "step_years": 0}).status_code == 400
+
+
+def test_a_failed_step_does_not_overwrite_the_checkpoint(client, store, saved_world, monkeypatch):
+    _checkpoint(store, saved_world, running=False)
+    main._restore_checkpoint()
+
+    def failing_step(world, years):
+        world.elapsed_years += years
+        yield 0.5
+        raise RuntimeError("degenerate geometry")
+
+    monkeypatch.setattr(main, "step_world_progress", failing_step)
+    lines = client.post("/world/step", json={"years": 1_000.0}).text.splitlines()
+    assert json.loads(lines[-1])["type"] == "error"
+    assert main._state["world"].elapsed_years == 124_000.0
+    assert _saved_elapsed(store) == 123_000.0
+
+
+def test_run_poll_wakes_when_another_tab_stops_the_run(client, store, saved_world):
+    _checkpoint(store, saved_world, running=False)
+    main._restore_checkpoint()
+    client.post("/world/run", json={"running": True, "step_years": 10.0})
+    result = {}
+
+    def follow():
+        # Like the full app: poll past whatever was last seen until the run has stopped.
+        run = client.get("/world/run").json()
+        while run["running"]:
+            run = client.get("/world/run", params={"after": run["world"]["revision"], "run_version": run["run_version"]}).json()
+        result.update(run)
+
+    poller = threading.Thread(target=follow)
+    started = time.monotonic()
+    poller.start()
+    time.sleep(0.05)
+    client.post("/world/run", json={"running": False})
+    poller.join(10)
+
+    # Without the wake, the last poll would sit out the 25 s timeout: a stopped run publishes
+    # no new revision.
+    assert time.monotonic() - started < 5
+    assert result["running"] is False
+
+
+def test_a_status_that_cannot_be_saved_is_reported(client, store, saved_world, monkeypatch):
+    _checkpoint(store, saved_world, running=False)
+    main._restore_checkpoint()
+
+    def fails(status):
+        raise OSError("volume gone")
+
+    monkeypatch.setattr(main._checkpoint_store, "save_status", fails)
+    resp = client.post("/world/run", json={"running": False, "step_years": 20.0})
+    assert resp.status_code == 500
+    assert client.get("/world/run").json()["step_years"] == 20.0
+    monkeypatch.undo()
+    monkeypatch.setattr(main, "_checkpoint_store", None)
+
+
+def test_health_check_fails_when_the_checkpoint_directory_is_unusable(client, store, tmp_path, monkeypatch):
+    # A deploy whose volume can't hold a checkpoint must not pass as healthy (#376).
+    from app import checkpoint
+
+    blocker = tmp_path / "not-a-directory"
+    blocker.write_text("")
+    monkeypatch.setenv(checkpoint.CHECKPOINT_DIR_ENV, str(blocker))
+    main._restore_checkpoint()
+
+    resp = client.get("/healthz")
+    assert resp.status_code == 503
+    assert "not-a-directory" in resp.json()["detail"]
+
+
+def test_an_animation_that_fails_keeps_the_frames_it_finished(client, store, saved_world, monkeypatch):
+    _checkpoint(store, saved_world, running=False)
+    main._restore_checkpoint()
+
+    def frames(world, *args, **kwargs):
+        world.elapsed_years += 1_000.0
+        yield ("progress", 1, 3, b"png", world.elapsed_years)
+        world.elapsed_years += 500.0  # a step that fails halfway
+        raise RuntimeError("encoder died")
+
+    monkeypatch.setattr(main.render_image, "stream_animation_mp4", frames)
+    lines = client.post("/world/animate", json={"step_years": 1_000.0, "num_frames": 3}).text.splitlines()
+
+    assert json.loads(lines[-1])["type"] == "error"
+    assert _saved_elapsed(store) == 124_000.0
+
+
+# --- Replay log (#442) --------------------------------------------------------------------------
+
+
+@pytest.fixture
+def replay_logged(client, saved_world, tmp_path, monkeypatch):
+    """A world, and a replay log whose one trigger fires on every step of a clock-only step."""
+    from app import replay_log
+
+    def fake_step(world, years):
+        world.elapsed_years += years
+        yield 1.0
+
+    log = replay_log.ReplayLog(tmp_path, min_steps_between=1, triggers={"always": lambda outcome: {}}, step_progress=fake_step)
+    monkeypatch.setattr(main, "_replay_log", log)
+    main._state["world"] = persistence.load_world_bytes(saved_world)
+    return log
+
+
+def test_replay_log_is_off_without_a_directory(client, monkeypatch):
+    from app import replay_log
+
+    monkeypatch.delenv(replay_log.REPLAY_LOG_DIR_ENV, raising=False)
+    monkeypatch.setattr(main, "_replay_log", None)
+    main._start_replay_log()
+    assert main._replay_log is None
+    assert client.get("/world/replay-logs").json() == {"enabled": False, "directory": None, "records": []}
+
+
+def test_replay_log_starts_from_the_env(client, tmp_path, monkeypatch):
+    from app import replay_log
+
+    monkeypatch.setenv(replay_log.REPLAY_LOG_DIR_ENV, str(tmp_path))
+    monkeypatch.setattr(main, "_replay_log", None)
+    main._start_replay_log()
+    assert client.get("/world/replay-logs").json() == {"enabled": True, "directory": str(tmp_path), "records": []}
+
+
+def test_a_logged_step_is_listed_and_shown_in_the_summary(client, replay_logged):
+    done = _post_step(client, json={"years": 1_000.0}).json()
+    replay_logged.flush()
+
+    [record] = client.get("/world/replay-logs").json()["records"]
+    assert record["triggers"] == ["always"]
+    assert [e["message"] for e in done["replay_logs"]] == [f"Replay log: always -> {record['name']}"]
+    # Not world state: the world's own event log doesn't carry it.
+    assert all("Replay log" not in e["message"] for e in done["events"])
+
+
+def test_a_new_world_clears_the_console_s_replay_log_messages(client, replay_logged):
+    _post_step(client, json={"years": 1_000.0})
+    replay_logged.flush()
+    assert client.get("/world/summary").json()["replay_logs"]
+    done = _post_generate(client, json={"seed": 5, "num_plates": 2, "node_density": 0.5}).json()
+    assert done["replay_logs"] == []
+    # The record itself stays on disk.
+    assert len(client.get("/world/replay-logs").json()["records"]) == 1
+
+
+def test_run_loop_and_animation_steps_are_logged(client, replay_logged):
+    assert main._run_step_once(1_000.0, lambda: True)
+    main._step_world(main._state["world"], 1_000.0)
+    replay_logged.flush()
+    assert len(client.get("/world/replay-logs").json()["records"]) == 2
+
+
+@pytest.fixture
+def mounted_frontend(tmp_path):
+    """A stand-in `vite build` output mounted on the real app, as the Railway image does
+    (#376). mount_frontend adds a catch-all route, so the app's routes are put back after."""
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "index.html").write_text("<!doctype html><title>bundle</title>")
+    (tmp_path / "assets" / "index-abc.js").write_text("console.log(1)")
+    routes = list(app.router.routes)
+    main.mount_frontend(app, tmp_path)
+    yield TestClient(app, base_url="https://mantle.example.com", follow_redirects=False)
+    app.router.routes[:] = routes
+
+
+def test_mounted_frontend_serves_spa_routes_and_keeps_the_backend_ones(mounted_frontend):
+    for path in ("/view", "/view/some/deep/link"):
+        resp = mounted_frontend.get(path)
+        assert resp.status_code == 200 and "<title>bundle</title>" in resp.text, path
+    assert mounted_frontend.get("/assets/index-abc.js").text == "console.log(1)"
+    # Registered before the catch-all, so the bundle doesn't shadow them.
+    assert "<title>bundle</title>" not in mounted_frontend.get("/login").text
+    assert mounted_frontend.get("/world/summary").status_code == 401
+    assert mounted_frontend.get("/").headers["location"].endswith("/view")
+

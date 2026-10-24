@@ -26,12 +26,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from sweep_lib import SWEEP_SEEDS  # noqa: E402
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-BACKEND_DIR = REPO_ROOT / "backend"
-if str(BACKEND_DIR) not in sys.path:
-    sys.path.insert(0, str(BACKEND_DIR))
+from sweep_lib import NODE_DENSITY, STEP_YEARS, SWEEP_SEEDS  # noqa: E402
 
 import numpy as np  # noqa: E402
 
@@ -39,8 +34,6 @@ from app import lithosphere  # noqa: E402
 from app.elevation_lines import MAX_ELEVATION_M  # noqa: E402
 from app.world import generate_world, step_world  # noqa: E402
 
-NODE_DENSITY = 1.0
-STEP_YEARS = 10_000_000
 CHECKPOINTS_MY = (120, 240, 360, 500)
 COLLISION_UPLIFT_MULTIPLIERS = (1.0, 0.25)
 PIN_EPS_M = 1e-6

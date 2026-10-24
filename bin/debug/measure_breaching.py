@@ -23,27 +23,21 @@ back. The "off" run shows how many pits *would* be breached on unchanged terrain
 
 from __future__ import annotations
 
-import argparse
 import json
-import sys
 import time
 from pathlib import Path
 
 import numpy as np
+from seed_run_lib import import_backend, seed_run_parser
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--backend", type=Path, default=Path(__file__).resolve().parents[2] / "backend")
-    parser.add_argument("--seeds", type=int, nargs="+", default=[1])
-    parser.add_argument("--steps", type=int, default=50)
-    parser.add_argument("--years", type=float, default=100_000.0)
-    parser.add_argument("--every", type=int, default=10, help="print every Nth step")
+    parser = seed_run_parser(__doc__, steps=50, years=100_000.0, every_help="print every Nth step")
     parser.add_argument("--modes", default="off,on", help="breaching modes to run, e.g. 'on' for an A/B against another --backend")
     parser.add_argument("--out", type=Path)
     args = parser.parse_args()
 
-    sys.path.insert(0, str(args.backend.resolve()))
+    import_backend(args)
     from app import cratons
     from app.hydroclimate import breaching, erosion, hydrology, lakes  # noqa: E402
     from app.world import generate_world, step_world  # noqa: E402

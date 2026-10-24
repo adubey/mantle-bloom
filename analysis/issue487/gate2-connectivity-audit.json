@@ -1,0 +1,207 @@
+{
+  "seed": 2024,
+  "years": 460000000.0,
+  "step_years": 2000000.0,
+  "source_adjacency": "plate.adjacency() exact edge-sharing cell graph",
+  "mesh": "eight-probe clipped gnomonic Delaunay triangles",
+  "events": [
+    {
+      "event_index": 40,
+      "time_myr": 432.0,
+      "plate": 9,
+      "historical_residual_over_load": 0.5551568948337754,
+      "source_component_sizes": [
+        1848,
+        20,
+        19,
+        14,
+        1,
+        1,
+        1
+      ],
+      "source_components": [
+        {
+          "node_count": 1848,
+          "meshed_node_count": 1844,
+          "unmeshed_node_count": 4,
+          "mesh_component_sizes": [
+            1844
+          ]
+        },
+        {
+          "node_count": 1,
+          "meshed_node_count": 0,
+          "unmeshed_node_count": 1,
+          "mesh_component_sizes": []
+        },
+        {
+          "node_count": 20,
+          "meshed_node_count": 19,
+          "unmeshed_node_count": 1,
+          "mesh_component_sizes": [
+            19
+          ]
+        },
+        {
+          "node_count": 1,
+          "meshed_node_count": 0,
+          "unmeshed_node_count": 1,
+          "mesh_component_sizes": []
+        },
+        {
+          "node_count": 14,
+          "meshed_node_count": 12,
+          "unmeshed_node_count": 2,
+          "mesh_component_sizes": [
+            12
+          ]
+        },
+        {
+          "node_count": 1,
+          "meshed_node_count": 0,
+          "unmeshed_node_count": 1,
+          "mesh_component_sizes": []
+        },
+        {
+          "node_count": 19,
+          "meshed_node_count": 19,
+          "unmeshed_node_count": 0,
+          "mesh_component_sizes": [
+            19
+          ]
+        }
+      ],
+      "mesh_components": [
+        {
+          "node_count": 1844,
+          "source_component_ids": [
+            0
+          ]
+        },
+        {
+          "node_count": 19,
+          "source_component_ids": [
+            2
+          ]
+        },
+        {
+          "node_count": 12,
+          "source_component_ids": [
+            4
+          ]
+        },
+        {
+          "node_count": 19,
+          "source_component_ids": [
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "event_index": 42,
+      "time_myr": 460.0,
+      "plate": 9,
+      "historical_residual_over_load": 0.5147344517103931,
+      "source_component_sizes": [
+        1760,
+        17,
+        17,
+        14,
+        1,
+        1,
+        1
+      ],
+      "source_components": [
+        {
+          "node_count": 1760,
+          "meshed_node_count": 1757,
+          "unmeshed_node_count": 3,
+          "mesh_component_sizes": [
+            1757
+          ]
+        },
+        {
+          "node_count": 1,
+          "meshed_node_count": 0,
+          "unmeshed_node_count": 1,
+          "mesh_component_sizes": []
+        },
+        {
+          "node_count": 1,
+          "meshed_node_count": 0,
+          "unmeshed_node_count": 1,
+          "mesh_component_sizes": []
+        },
+        {
+          "node_count": 17,
+          "meshed_node_count": 16,
+          "unmeshed_node_count": 1,
+          "mesh_component_sizes": [
+            16
+          ]
+        },
+        {
+          "node_count": 14,
+          "meshed_node_count": 12,
+          "unmeshed_node_count": 2,
+          "mesh_component_sizes": [
+            12
+          ]
+        },
+        {
+          "node_count": 1,
+          "meshed_node_count": 0,
+          "unmeshed_node_count": 1,
+          "mesh_component_sizes": []
+        },
+        {
+          "node_count": 17,
+          "meshed_node_count": 17,
+          "unmeshed_node_count": 0,
+          "mesh_component_sizes": [
+            17
+          ]
+        }
+      ],
+      "mesh_components": [
+        {
+          "node_count": 1773,
+          "source_component_ids": [
+            0,
+            3
+          ]
+        },
+        {
+          "node_count": 12,
+          "source_component_ids": [
+            4
+          ]
+        },
+        {
+          "node_count": 17,
+          "source_component_ids": [
+            6
+          ]
+        }
+      ]
+    }
+  ],
+  "source_filtered_partial_replay": {
+    "candidates_through_myr": 460.0,
+    "candidate_count": 43,
+    "fragmented_source_skips": 18,
+    "solved_events": 25,
+    "solved_residuals_over_1_percent": 6,
+    "maximum_solved_residual": 0.06428277608109768,
+    "cut_band_node_samples": 7241,
+    "physical_median_capacity_failed_fraction": {
+      "continental": 0.0069,
+      "oceanic_young_ridge": 0.8021,
+      "oceanic_mature": 0.097
+    },
+    "phenomenological_reference_1x_failed_fraction_all_band_nodes": 0.0457,
+    "phenomenological_reference_1x_failed_fraction_marked_belt": 0.0006,
+    "note": "Partial seed 2024 results only; not comparable to the historical 130-candidate aggregate."
+  }
+}

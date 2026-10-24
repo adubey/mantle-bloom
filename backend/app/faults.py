@@ -82,7 +82,7 @@ if TYPE_CHECKING:
 # replayed session spawns the identical faults. Arbitrary int, distinct from every other tag.
 _FAULT_SEED_TAG = 7331
 
-# --- Spawn model (see the real-world table in docs/simulation-model.md#faults) ---
+# --- Spawn model (see the real-world table in docs/simulation-model/tectonics.md#faults) ---
 # Expected new fault *systems* per Myr over the whole sphere at full boundary stress; the
 # per-plate roll scales this by the plate's area fraction and its mean stress weight, so the
 # realised rate is far lower (most of a plate is low-stress interior). Tunable -- raise it to
@@ -596,7 +596,7 @@ def generate_boundary_faults(world: "World") -> None:
     """Rebuild `world.boundary_faults` from scratch: walk every plate's outline, classify
     each stretch by the local closing rate against the nearest other plate (convergent ->
     reverse, divergent -> normal, transform -> strike-slip), and lay a fault family along
-    each run. See the BOUNDARY_FAULT_* constants and `docs/simulation-model.md#faults`."""
+    each run. See the BOUNDARY_FAULT_* constants and `docs/simulation-model/tectonics.md#faults`."""
     world.boundary_faults = []
     if len(world.plates) < 2:
         return
@@ -962,24 +962,7 @@ def _spawn_one_or_set(
     seed_world: np.ndarray, seed_dist_rad: float, seed_weight: float,
     nn_omega: np.ndarray, nn_point: np.ndarray,
 ) -> None:
-    seed_world = seed_world / np.linalg.norm(seed_world)
-    closing = float(
-        boundary.closing_rate(seed_world[None], np.asarray(plate.omega, dtype=float), nn_omega[None], nn_point[None])[0]
-    )
-    kind = _regime_from_closing(closing)
-
-    # Local tangent-plane axes at the seed: t_perp points toward the boundary (the local
-    # shortening / extension direction), t_par runs along it.
-    toward = nn_point - seed_world
-    t_perp = toward - np.dot(toward, seed_world) * seed_world
-    n = np.linalg.norm(t_perp)
-    if n < 1e-9:
-        east, _ = geometry.local_tangent_basis(seed_world)
-        t_perp = east
-    else:
-        t_perp = t_perp / n
-    t_par = np.cross(seed_world, t_perp)
-    t_par = t_par / max(np.linalg.norm(t_par), 1e-12)
+    seed_world, _closing, kind, t_perp, t_par = _seed_frame(plate, seed_world, nn_omega, nn_point)
 
     if kind == _KIND_STRIKE_SLIP:
         sign = 1.0 if rng.random() < 0.5 else -1.0

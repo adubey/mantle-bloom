@@ -154,10 +154,7 @@ def test_volume_contract_closes_per_body_and_across_the_world():
         assert ledger.closing_m3 <= ledger.opening_m3 + ledger.frozen_lake_m3 + ledger.accumulation_m3 + 1e-9 * scale
         # Every booked sink reaches the water or the ocean: melt (with snow on bare ground) as
         # meltwater at its node, calving unrouted.
-        assert float(np.dot(melt, area)) == pytest.approx(
-            ledger.surface_melt_m3 + ledger.basal_melt_m3 + ledger.overflow_m3 + ledger.capped_m3 + ledger.snow_melted_m3,
-            rel=1e-9, abs=1.0,
-        )
+        assert float(np.dot(melt, area)) == pytest.approx(ledger.meltwater_m3, rel=1e-9, abs=1.0)
         assert float(ice.calved_m3.sum()) == pytest.approx(ledger.calved_m3)
     assert ledger.closing_m3 > 0.0
 
@@ -254,7 +251,12 @@ def test_a_saturated_marine_body_calves_rather_than_melting():
     assert ice.ledger.calved_m3 > 0.0
     assert ice.ledger.overflow_m3 == 0.0
     ledger = ice.ledger
-    assert float(np.dot(melt, area)) == pytest.approx(ledger.surface_melt_m3 + ledger.basal_melt_m3 + ledger.snow_melted_m3)
+    assert float(np.dot(melt, area)) == pytest.approx(ledger.meltwater_m3)
+    # #355 step 5: the hydrology handoff is a yearly liquid-water rate. Calving leaves
+    # directly for the ocean, even when it occurs in the same step as melt.
+    routed_melt_m3 = hydrology.meltwater_m3_per_yr(melt, area, 1e6).sum() * 1e6
+    assert routed_melt_m3 == pytest.approx(ledger.meltwater_m3)
+    assert routed_melt_m3 < ledger.meltwater_m3 + ledger.calved_m3
     assert ice.bodies[0].saturated
 
 

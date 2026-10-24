@@ -49,6 +49,7 @@ FULL_SUITE_FILES = {
 # Files outside backend/ that a test exercises without importing them.
 EXTRA_TEST_DEPENDENCIES = {
     REPO_ROOT / "bin" / "list_affected_tests.py": TESTS_DIR / "test_list_affected_tests.py",
+    REPO_ROOT / "bin" / "debug" / "ledger_history.py": TESTS_DIR / "test_ledger_history.py",
 }
 
 

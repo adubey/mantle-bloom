@@ -14,7 +14,7 @@ measured, steps forward in ordinary `CONVENTIONAL_YEARS_PER_STEP`-sized incremen
 plate_diagnostics.py's own convention), then prints/dumps the accumulated per-phase budget --
 see phase_budget.py for exactly what each phase measures and where in the engine it's hooked
 in. This is a read-only offline tool: it never starts the server or binds a port. See
-docs/debugging.md for the full list of debug views and how to read this one.
+docs/debugging/offline-cli.md for how to read this one.
 """
 
 from __future__ import annotations

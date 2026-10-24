@@ -6,8 +6,8 @@ section. An isolated sub-sea-level node ringed by land is neither hydrology's
 connectivity-aware `is_ocean` nor above sea level, so the marine sink, coastal planation, and
 lake infill all skip it -- it churns (merge/split) in the event log every step and never
 drains or fills. The event log records this today but is drowned in near-sea-level
-transient-pond spam (see docs/debugging.md), so this module surfaces the same information as
-one clean list.
+transient-pond spam (see docs/debugging/debug-ui.md), so this module surfaces the same
+information as one clean list.
 
 Two pieces:
 

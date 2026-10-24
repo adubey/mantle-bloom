@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
+  <title id="title">Conceptual convergent-mountain crust and lithosphere cross section</title>
+  <desc id="desc">A schematic section through a continent and ocean basin with a convergent mountain belt. The ground surface follows elevation, the Moho separates thickened crust from mantle lithosphere, and the lithosphere base separates the thickened mantle lid from the softer asthenosphere. Both Hc and Hm are larger beneath the mountain belt.</desc>
+  <defs>
+  </defs>
+  <rect width="1200" height="760" rx="26" fill="#0b1725"/>
+  <rect x="65" y="115" width="1070" height="520" rx="18" fill="#203a53"/>
+  <path d="M65 570 C174 568 245 567 323 571 C386 575 428 580 489 582 C532 583 556 564 603 554 C646 547 683 548 724 532 L780 514 C855 507 925 519 1014 530 L1135 536 L1135 635 L65 635Z" fill="#c45d4d"/>
+  <path d="M65 380 C174 375 245 365 323 350 C386 338 428 330 489 329 C532 324 556 337 603 351 C646 363 683 355 724 360 L780 373 C855 378 925 383 1014 390 L1135 395 L1135 536 C1014 530 925 519 855 507 L780 514 L724 532 C683 548 646 547 603 554 C556 564 532 583 489 582 C428 580 386 575 323 571 C245 567 174 568 65 570Z" fill="#3f5876"/>
+  <path d="M65 300 C174 296 245 270 323 227 C386 191 428 153 489 147 C532 142 556 189 603 211 C646 231 683 218 724 228 L780 266 C855 275 925 287 1014 299 L1135 305 L1135 395 C1014 390 925 383 855 378 L780 373 L724 360 C683 355 646 363 603 351 C556 337 532 324 489 329 C428 330 386 338 323 350 C245 365 174 375 65 380Z" fill="#d2aa71"/>
+  <path d="M65 380 C174 375 245 365 323 350 C386 338 428 330 489 329 C532 324 556 337 603 351 C646 363 683 355 724 360 L780 373 C855 378 925 383 1014 390 L1135 395" fill="none" stroke="#f4ca80" stroke-width="3" stroke-dasharray="7 9"/>
+  <path d="M65 300 C174 296 245 270 323 227 C386 191 428 153 489 147 C532 142 556 189 603 211 C646 231 683 218 724 228 L780 266 C855 275 925 287 1014 299 L1135 305" fill="none" stroke="#fff4d9" stroke-width="5"/>
+  <path d="M65 570 C174 568 245 567 323 571 C386 575 428 580 489 582 C532 583 556 564 603 554 C646 547 683 548 724 532 L780 514 C855 507 925 519 1014 530 L1135 536" fill="none" stroke="#f1a078" stroke-width="3" stroke-dasharray="8 8"/>
+  <g font-family="Inter,Arial,sans-serif">
+    <text x="103" y="176" fill="#dceaf3" font-size="20" font-weight="700">CONTINENT</text>
+    <text x="826" y="176" fill="#dceaf3" font-size="20" font-weight="700">OCEAN BASIN</text>
+    <text x="103" y="207" fill="#fff1d9" font-size="16" font-weight="700">Thickened crust and mantle lid</text>
+    <path d="M365 213 L421 290" stroke="#fff1d9" stroke-width="2"/>
+    <circle cx="421" cy="290" r="5" fill="#fff1d9"/>
+  </g>
+  <g font-family="Inter,Arial,sans-serif" font-size="16" font-weight="700">
+    <path d="M861 242 L861 277" stroke="#fff4d9" stroke-width="2"/><text x="812" y="230" fill="#fff4d9">Ground surface</text>
+    <path d="M1006 359 L1006 388" stroke="#f4ca80" stroke-width="2"/><text x="966" y="355" fill="#f4ca80">Moho</text>
+    <path d="M1040 503 L1040 529" stroke="#f1a078" stroke-width="2"/><text x="958" y="499" fill="#ffd2b7">Lithosphere base</text>
+  </g>
+  <g font-family="Inter,Arial,sans-serif" font-size="17" font-weight="700" fill="#fff9ed" stroke="#fff9ed" stroke-width="2">
+    <path d="M550 190 L550 329 M543 201 L550 190 L557 201 M543 318 L550 329 L557 318" fill="none"/>
+    <text x="564" y="266" stroke="none">Hc</text>
+    <path d="M550 340 L550 575 M543 351 L550 340 L557 351 M543 564 L550 575 L557 564" fill="none"/>
+    <text x="564" y="463" stroke="none">Hm</text>
+  </g>
+  <g font-family="Inter,Arial,sans-serif" font-size="19" font-weight="700" fill="#edf4f7">
+    <text x="88" y="349">Crust</text>
+    <text x="88" y="458">Mantle lithosphere</text>
+    <text x="88" y="611">Asthenosphere</text>
+  </g>
+  <g font-family="Inter,Arial,sans-serif" font-size="14" fill="#c8d6df">
+    <text x="88" y="688">Hc = ground surface to Moho</text>
+    <text x="375" y="688">Hm = Moho to lithosphere base</text>
+    <text x="704" y="688">Convergent belt schematic; relief is exaggerated.</text>
+  </g>
+  <text x="88" y="730" fill="#8196aa" font-family="Inter,Arial,sans-serif" font-size="13" letter-spacing="1.4">SCHEMATIC • NOT A SIMULATION RENDER</text>
+</svg>

@@ -15,31 +15,20 @@ between the two would show up there, attached to one side or the other.
 
 from __future__ import annotations
 
-import argparse
-import json
-import sys
 from collections import defaultdict, deque
-from pathlib import Path
 
 import numpy as np
 from scipy.spatial import cKDTree
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
+from polarity_replay_lib import load_polarity_replay, replay
 
-from app import collision_polarity as cp, geometry, persistence, world as world_mod  # noqa: E402
+from app import collision_polarity as cp, geometry  # noqa: E402
 
 HISTORY_STEPS = 100  # 10 Myr at the UI step
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("save", type=Path)
-    ap.add_argument("--myr", type=float, default=43.1)
-    ap.add_argument("--step-years", type=float, default=100_000.0)
-    ap.add_argument("--out", type=Path)
-    args = ap.parse_args()
-
-    world = persistence.load_world_bytes(args.save.read_bytes())
+    args, world = load_polarity_replay(__doc__)
     history: dict[tuple[int, int], deque] = defaultdict(lambda: deque(maxlen=HISTORY_STEPS))
     state = {"step": 0}
     decisions: list[dict] = []
@@ -111,14 +100,11 @@ def main() -> None:
 
     cp._detect_fronts = detect_and_record
     cp._decide = decide_and_record
-    steps = int(round(args.myr * 1e6 / args.step_years))
-    for k in range(steps):
+
+    def before_step(k: int) -> None:
         state["step"] = k
-        world_mod.step_world(world, args.step_years)
-        if (k + 1) % 50 == 0:
-            print(f"{world.elapsed_years / 1e6:.1f} Myr: {len(decisions)} decisions", flush=True)
-    if args.out is not None:
-        args.out.write_text(json.dumps({"save": str(args.save), "decisions": decisions}, indent=1, default=float))
+
+    replay(world, args, lambda: f"{len(decisions)} decisions", lambda: {"decisions": decisions}, before_step)
 
 
 if __name__ == "__main__":

@@ -35,6 +35,7 @@ from .hydroclimate import (
 )
 from .elevation_lines import DEFAULT_NODE_DENSITY, line_spacing_rad
 from . import lithosphere_plate
+from . import synthetic_relief as synthetic_relief_mod
 from .lithosphere_plate import generate_plates
 from .plates import Plate, gather_node_positions, query_workers
 
@@ -104,7 +105,7 @@ class World:
     # sutures (crust_transfer.py), reset with phase_budget.
     suture_transfer_stats: dict = field(default_factory=dict)
     # A fixed per-world property, like `seed` -- set once at generation and read again on
-    # every future climate render (see climate.py's compute_insolation), not rendering/cache
+    # every future climate render (see climate.py's compute_heating_index), not rendering/cache
     # state. The one deliberate exception to climate being otherwise fully stateless.
     axial_tilt_deg: float = DEFAULT_AXIAL_TILT_DEG
     # Another fixed per-world property: which Premade-worlds tab entry (if any) this world
@@ -159,7 +160,7 @@ class World:
     # merge_split.update_overlap_progress. A default_factory field -> backfilled on load of an
     # older save (persistence._backfill_added_fields).
     overlap_progress: dict[tuple[int, int], float] = field(default_factory=dict)
-    # Cross-step memory for the stranded-basin diagnostic (docs/debugging.md): one
+    # Cross-step memory for the stranded-basin diagnostic (docs/debugging/offline-cli.md): one
     # `stranded_basins.StrandedBasinTrack` per endorheic, below-sea-level, ocean-disconnected
     # basin currently present, reconciled by centroid proximity every hydrology step (see
     # stranded_basins.reconcile_world_tracks) so the report can say how long each pit has
@@ -168,7 +169,7 @@ class World:
     # `default_factory` field, so an older save without it is backfilled on load (see
     # persistence._backfill_added_fields).
     stranded_basin_tracks: list = field(default_factory=list)
-    # Cross-step memory for the gap-age diagnostic (docs/debugging.md's overlapAge section):
+    # Cross-step memory for the gap-age diagnostic (docs/debugging/map-views.md's overlapAge section):
     # one `gaps.GapTrack` per currently-uncovered lattice cluster, reconciled by centroid
     # proximity every gaps.GAP_FILL_INTERVAL_STEPS steps, right after that step's gap fill
     # (see gaps.reconcile_gap_tracks) -- the same "lightweight per-key first-seen tracker" role
@@ -215,9 +216,8 @@ class World:
     # interval you want to measure. A `default_factory` field -> backfilled on load (see
     # persistence._backfill_added_fields).
     phase_budget: dict = field(default_factory=dict)
-    # Debug-world-only: plate_id -> a fixed world-frame angular velocity (rad/s) that
-    # Plate.shift uses verbatim every step, bypassing torque.shift_plate's own
-    # torque-balance recompute entirely for that plate (see torque.py) -- the "Debugging
+    # Debug-world-only: plate_id -> a fixed world-frame angular velocity (rad/yr) used as a
+    # fixed degree of freedom in the coupled solve (see torque.py) -- the "Debugging
     # Worlds" tab's scripted-motion mechanism (see debug_worlds.py), so a tiny hand-built
     # scenario moves exactly as scripted every step rather than however real ridge-push/
     # slab-pull/basal-drag against world.mantle_centers happens to settle it. Empty for every
@@ -311,8 +311,9 @@ class World:
     # (`collision_polarity.PolarityFrame`), set by the prepass before any plate deforms and
     # left in place until the next step's prepass replaces it.
     collision_polarity_frame: object | None = None
-    # Step-scoped scratch, None outside the passes that use it: the boundary searches the
-    # prepass shares with deform() (`torque.BoundarySearchCache`), and the (parent, child)
+    # Step-scoped scratch, None outside the passes that use it: motion creates the boundary
+    # cache, the post-rotation prepass repopulates it, and deform() shares those searches
+    # (`torque.BoundarySearchCache`); also the (parent, child)
     # plate-id pairs topology changes record (`collision_polarity.note_lineage`).
     boundary_search_cache: object | None = None
     topology_lineage: list | None = None
@@ -410,7 +411,8 @@ class World:
     # -- unlike axial_tilt_deg/node_density (fixed at generation), these are meant to be
     # tweaked mid-simulation. sea_level_m replaces the bare `elevation <= 0.0` convention
     # every is_ocean check in this codebase used to hardcode (climate.py, hydrology.py);
-    # solar_multiplier scales climate.py's own SUNLIGHT constant. Changing
+    # solar_multiplier scales climate.py's own SUNLIGHT constant (and the W/m² insolation
+    # diagnostic's SOLAR_CONSTANT_W_M2). Changing
     # either forces an immediate climate_cache recompute (see main.py's controls route) so
     # /world/render and /world/stats reflect it right away, without waiting for a step.
     sea_level_m: float = 0.0
@@ -508,17 +510,17 @@ class World:
     # "Controls" window). "cfd": the genuine time-integrated shallow-water solve in
     # atmosphere_cfd.py, advanced once per step by _advance_fluid_dynamics -- the most
     # expensive single piece of a step at the default fluid_density (see
-    # docs/simulation-model.md#fd-performance). "diagnostic" (default): skip that solve entirely
+    # docs/simulation-model/climate.md#fd-performance). "diagnostic" (default): skip that solve entirely
     # and let climate.compute_climate rebuild wind/air-temperature from its own closed-form
     # ABL-style formulas (compute_wind + compute_air_temperature_diagnostic) every call, the same
-    # way it already does during the pre-CFD cold-start bootstrap. Reproduces ~85-90% of the land
-    # biome map and precipitation within ~10% for a fraction of the cost -- see
-    # docs/simulation-model.md#wind-model and GitHub issue #118 -- so it's the default; opt into "cfd"
+    # way it already does during the pre-CFD cold-start bootstrap. It approximates the CFD's
+    # climate for a fraction of the cost (how closely: docs/simulation-model/climate.md#wind-model,
+    # GitHub issues #118 and #529) -- so it's the default; opt into "cfd"
     # via Controls for the full solve. atmosphere_cfd_state is still kept in sync (init'd at
     # generation, never cleared) so switching to "cfd" mid-session resumes from a real, if
     # now-stale, state rather than a cold start.
     wind_model: str = "diagnostic"
-    # Atmospheric wind-solver state -- see docs/simulation-model.md#atmospheric-fluid-dynamics.
+    # Atmospheric wind-solver state -- see docs/simulation-model/climate.md#ocean-atmospheric-fluid-dynamics.
     # Always on, not a mode: generate_world populates it immediately after constructing this
     # World (atmosphere_cfd.init_atmosphere_cfd) and it's never re-initialized or cleared again
     # for the rest of this world's life -- step_world's own _advance_fluid_dynamics just keeps
@@ -639,7 +641,17 @@ def _build_land_kdtree(world: World) -> cKDTree | None:
     return cKDTree(land_points, balanced_tree=False, compact_nodes=False)
 
 
-def generate_world(
+def generate_world(seed: int, **options) -> World:
+    """Generate a world, taking `generate_world_progress`'s options (see its docstring for
+    what each one means) and returning the finished World without the progress reports."""
+    world = None
+    for message in generate_world_progress(seed, **options):
+        if message[0] == "done":
+            world = message[1]
+    return world
+
+
+def generate_world_progress(
     seed: int,
     num_plates: int | None = None,
     continental_fraction: float | None = None,
@@ -654,8 +666,20 @@ def generate_world(
     voronoi_points: int | None = None,
     sketch: worldsketch.SketchMasks | None = None,
     premade_world_id: str | None = None,
-) -> World:
-    """`num_plates` is optional -- see lithosphere_plate.generate_plates for why: the world
+    cratons_first: bool | None = None,
+    synthetic_relief: bool | None = None,
+):
+    """Generate a world, yielding `("progress", fraction)` at each of its three natural phase
+    boundaries -- plate/site generation, mantle-center fitting, then the `finish_generation`
+    bootstrap -- before a final `("done", world)` carrying the finished World, same
+    progress/done contract as render_image.stream_animation_mp4. `generate_world` just drains
+    this to completion and returns the `done` payload. Necessarily coarser-grained than
+    step_world_progress's per-plate resolution: unlike a step's shift()/deform() loops,
+    nothing here naturally subdivides further without reaching into
+    lithosphere_plate.generate_plates itself, so the three phases are treated as
+    equal-weight thirds rather than a measured cost split.
+
+    `num_plates` is optional -- see lithosphere_plate.generate_plates for why: the world
     tiles itself into a plausible number of plates rather than requiring the caller to pick
     one. `continental_fraction`/`land_fraction` are the UI's generation sliders -- see
     lithosphere_plate.generate_plates. `axial_tilt_deg` is the UI's third generation slider
@@ -692,56 +716,19 @@ def generate_world(
     ones fit to reproduce known (or, for Pangaea, directionally-approximated) real plate
     motion, for `"earth"`/`"pangaea"` specifically -- see real_plates.py's
     `fit_mantle_centers`. `"got"` has no real-world motion to fit to and keeps the ordinary
-    random centers."""
-    world = None
-    for message in generate_world_progress(
-        seed,
-        num_plates=num_plates,
-        continental_fraction=continental_fraction,
-        land_fraction=land_fraction,
-        num_mantle_centers=num_mantle_centers,
-        axial_tilt_deg=axial_tilt_deg,
-        node_density=node_density,
-        initial_soil_maturity=initial_soil_maturity,
-        climate_density=climate_density,
-        fluid_density=fluid_density,
-        extra_sites_per_plate=extra_sites_per_plate,
-        voronoi_points=voronoi_points,
-        sketch=sketch,
-        premade_world_id=premade_world_id,
-    ):
-        if message[0] == "done":
-            world = message[1]
-    return world
-
-
-def generate_world_progress(
-    seed: int,
-    num_plates: int | None = None,
-    continental_fraction: float | None = None,
-    land_fraction: float | None = None,
-    num_mantle_centers: int = DEFAULT_MANTLE_CENTERS,
-    axial_tilt_deg: float | None = None,
-    node_density: float = 1.0,
-    initial_soil_maturity: float | None = None,
-    climate_density: float = climate.DEFAULT_CLIMATE_DENSITY,
-    fluid_density: float = 1.0,
-    extra_sites_per_plate: int = lithosphere_plate.EXTRA_SITES_PER_PLATE,
-    voronoi_points: int | None = None,
-    sketch: worldsketch.SketchMasks | None = None,
-    premade_world_id: str | None = None,
-):
-    """Generator form of `generate_world`, driving the exact same work but yielding
-    `("progress", fraction)` at each of its three natural phase boundaries -- plate/site
-    generation, mantle-center fitting, then the `finish_generation` bootstrap -- before a
-    final `("done", world)` carrying the finished World, same progress/done contract as
-    render_image.stream_animation_mp4. `generate_world` itself just drains this to
-    completion and returns the `done` payload -- see that function's own docstring for what
-    every parameter means, unchanged here. Necessarily coarser-grained than
-    step_world_progress's per-plate resolution: unlike a step's shift()/deform() loops,
-    nothing here naturally subdivides further without reaching into
-    lithosphere_plate.generate_plates itself, so the three phases are treated as
-    equal-weight thirds rather than a measured cost split."""
+    random centers. `cratons_first` lays a random world out cratons first (RFC 0009; see
+    lithosphere_plate.generate_plates), defaulting to continent_layout.CRATONS_FIRST_DEFAULT.
+    `synthetic_relief` (default `synthetic_relief.SYNTHETIC_RELIEF_DEFAULT`) replaces that
+    layout's continental relief with relief from a synthetic tectonic history (#218, see
+    synthetic_relief.py); it applies only when the cratons-first layout does."""
+    if cratons_first is None:
+        cratons_first = lithosphere_plate.continent_layout.CRATONS_FIRST_DEFAULT
+    if synthetic_relief is None:
+        synthetic_relief = synthetic_relief_mod.SYNTHETIC_RELIEF_DEFAULT
+    # The pass reads the layout, so build it here once and hand it to plate generation.
+    layout_setup = None
+    if synthetic_relief and lithosphere_plate.uses_cratons_first_layout(cratons_first, sketch, premade_world_id):
+        layout_setup = lithosphere_plate.cratons_first_layout(seed, num_plates, continental_fraction, land_fraction, node_density)
     plates = generate_plates(
         seed,
         num_plates,
@@ -752,6 +739,8 @@ def generate_world_progress(
         voronoi_points=voronoi_points,
         sketch=sketch,
         premade_world_id=premade_world_id,
+        cratons_first=cratons_first,
+        cratons_first_setup=layout_setup,
     )
     yield ("progress", 1 / 3)
 
@@ -784,16 +773,38 @@ def generate_world_progress(
         climate_density=climate_density,
         fluid_density=fluid_density,
     )
+    # Add one seed-stable spherical residual to low continental elevations before terrain
+    # diagnostics, rivers, and the baseline stats snapshot are initialized.
+    from . import initial_terrain
+
+    if layout_setup is not None:
+        # Synthetic history replaces both passes below on continental crust: it draws its own
+        # belts (including predicted collisions) and interior relief, backed by Hc (#218).
+        synthetic_relief_mod.apply_synthetic_relief(world, layout_setup.layout)
+    else:
+        initial_terrain.apply_lowland_spherical_relief(world)
+
+        # The cratons-first layout has explicit plate boundaries, so use the coupled solver's
+        # read-only first-step rates to seed modest convergent-belt relief. The solve informs
+        # terrain only; plate positions and elapsed time remain at generation state.
+        if cratons_first:
+            initial_terrain.apply_predicted_orogens(world)
+
+    # Soil goes on land, so seed it once the relief passes have settled the coastline: the
+    # synthetic pass moves it (#218); the others keep every node's land/sea side.
     if initial_soil_maturity is not None:
         geology.seed_initial_soil(world.plates, seed, initial_soil_maturity)
 
     n_continents = sum(1 for p in plates if p.crust_type == "continental")
-    finish_generation(world, f"World generated with {len(plates)} plates ({n_continents} continental).")
+    finish_generation(
+        world, f"World generated with {len(plates)} plates ({n_continents} continental).",
+        initialize_rivers=bool(cratons_first),
+    )
     yield ("progress", 1.0)
     yield ("done", world)
 
 
-def finish_generation(world: World, log_message: str) -> None:
+def finish_generation(world: World, log_message: str, initialize_rivers: bool = False) -> None:
     """Shared tail every world-generation path (`generate_world`, `debug_worlds.
     generate_debug_world`) runs once `world.plates` is populated: bootstrap the permanent
     atmosphere wind-solver state, snapshot the eustatic water budget from the flat starting
@@ -811,6 +822,14 @@ def finish_generation(world: World, log_message: str) -> None:
     # Snapshot the ocean water volume from the flat starting sea level -- from here on
     # step_world re-solves sea_level_m against this fixed budget every step (see eustasy.py).
     eustasy.initialize_water_budget(world)
+
+    if initialize_rivers:
+        # Seed first-step routing and river channels as part of generation, not as a later
+        # terrain mutation. The short hydrology interval also lets cold high ranges acquire
+        # initial ice while leaving most of their relief available for erosion.
+        from . import initial_terrain
+
+        initial_terrain.initialize_river_channels(world)
 
     # Seed the persistent continental-material tracer before the baseline stats/save state.
     # Later terrain work records transfers through continental_ledger's public API.
@@ -857,16 +876,16 @@ def _advance_fluid_dynamics(world: World, node_cloud: tuple[np.ndarray, list[Pla
     atmosphere_cfd.step_atmosphere_cfd(world, world.atmosphere_cfd_state, atmosphere_cfd.SECONDS_PER_TECTONIC_STEP)
 
 
-def step_world(world: World, years: float) -> None:
+def step_world(world: World, years: float, *, motion_diagnostics: list[dict] | None = None) -> None:
     """Advance the world by `years` -- thin wrapper draining step_world_progress to
     completion for callers that don't need its per-plate progress (every caller but main.py's
     streaming /world/step endpoint). See step_world_progress for what actually runs; this
     function's own former docstring, describing that same behavior, now lives there."""
-    for _ in step_world_progress(world, years):
+    for _ in step_world_progress(world, years, motion_diagnostics=motion_diagnostics):
         pass
 
 
-def step_world_progress(world: World, years: float):  # noqa: C901
+def step_world_progress(world: World, years: float, *, motion_diagnostics: list[dict] | None = None):  # noqa: C901
     """Generator form of step_world, advancing the world by `years` exactly as it did before
     this function existed, but yielding a fraction-complete float (0 to 1) after each
     per-plate `shift()`/`deform()` call -- main.py's /world/step endpoint streams these
@@ -878,10 +897,10 @@ def step_world_progress(world: World, years: float):  # noqa: C901
     dominates a step's runtime on any world large enough for progress to matter, so this
     still tracks real, if coarse, completion.
 
-    Plate movement (skippable via World.simulate_plate_movement) is two per-plate passes:
-    `Plate.shift(world, years)` for every plate (integrate the torque balance and rotate
-    rigidly), then `deform(world, other_plates, years, D)` for every plate in a freshly
-    randomized order each turn (Mohr-Coulomb yield/isostasy -- see quad_tectonics.py).
+    Plate movement (skippable via World.simulate_plate_movement) is a coupled solve and
+    batch rotation through `torque.shift_plates_quasistatic`, then
+    `deform(world, other_plates, years, D)` for every plate in a freshly randomized order
+    each turn (Mohr-Coulomb yield/isostasy -- see quad_tectonics.py).
     Randomizing the processing order each turn is what keeps two neighbors from both claiming
     the same contested/unclaimed space in the same turn.
 
@@ -925,16 +944,24 @@ def step_world_progress(world: World, years: float):  # noqa: C901
     craton_ledger_before = dict(world.craton_ledger)
     craton_live_before = cratons.live_volume_m3(world)
     if world.simulate_plate_movement:
-        distances = {}
-        for plate in world.plates:
-            distances[plate.plate_id] = plate.shift(world, years)
+        # RFC 0012 G2: assemble all plate torques and drag from one frozen pre-step snapshot,
+        # solve the coupled system, then apply every rotation. The per-plate progress units
+        # remain the same even though the solve/rotation batch is simultaneous.
+        motion_result = {}
+        distances = torque.shift_plates_quasistatic(
+            world,
+            years,
+            diagnostics=motion_result if motion_diagnostics is not None else None,
+        )
+        if motion_diagnostics is not None:
+            motion_diagnostics.append({"step": world.steps_taken, "elapsed_years": world.elapsed_years, **motion_result})
+        for _plate in world.plates:
             done_units += 1
             yield done_units / total_units
         # Collision polarity prepass (issue #318): every plate has moved and none has deformed,
         # so record subduction evidence and freeze each continental front's lower/upper plate
-        # now, independent of the deform order below. Its boundary searches stay cached for
-        # deform() -- see torque.BoundarySearchCache.
-        world.boundary_search_cache = torque.BoundarySearchCache()
+        # now, independent of the deform order below. Rotation invalidated the motion-phase
+        # node trees; this prepass repopulates the cache for the following deformation pass.
         collision_polarity.observe_contacts(world, years)
         # Fail before any plate deforms, not at the first polarized front mid-pass.
         crust_transfer.partition(world)
@@ -950,7 +977,7 @@ def step_world_progress(world: World, years: float):  # noqa: C901
         audit = cratons.PhaseAudit(world)
         for plate in order:
             others = [p for p in world.plates if p.plate_id != plate.plate_id]
-            plate.deform(world, others, years, distances[plate.plate_id])
+            plate.deform(world, others, years, distances.get(plate.plate_id, 0.0))
             done_units += 1
             yield done_units / total_units
         collision_polarity.finish_deform_pass(world)
@@ -983,7 +1010,7 @@ def step_world_progress(world: World, years: float):  # noqa: C901
         faults.reconcile_faults(world)
         # Stamp/clear the `overlap_onset_years` field and advance World.overlap_progress
         # against this step's final geometry (see merge_split.update_overlap_tracking /
-        # docs/debugging.md).
+        # docs/debugging/map-views.md).
         merge_split.update_overlap_tracking(world, years)
         # Whole-sphere coverage maintenance, every step: grow adjacent plates into, or spawn
         # new crust over, any region no plate covers (see gaps.py) -- e.g. ocean floor a
@@ -1009,7 +1036,7 @@ def step_world_progress(world: World, years: float):  # noqa: C901
                         np.array([], dtype=bool),
                     )
                 phase_budget.record_snapshots(world, plate, "gap_fill", before, after)
-        # Gap-age diagnostic (see docs/debugging.md's overlapAge section): reconciles
+        # Gap-age diagnostic (see docs/debugging/map-views.md's overlapAge section): reconciles
         # world.gap_tracks against this step's uncovered-lattice clusters -- the same
         # whole-sphere sweep as fill_gaps_by_growing_neighbours, kept on an interval since
         # nothing in the physics reads it -- see gaps.reconcile_gap_tracks.

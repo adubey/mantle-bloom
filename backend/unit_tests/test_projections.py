@@ -67,3 +67,19 @@ def test_project_unknown_raises():
         assert False, "expected ValueError"
     except ValueError:
         pass
+
+
+def test_orthographic_centre_and_limb():
+    x, y = projections.orthographic(0.0, 0.0)
+    assert np.isclose(x, 0.0) and np.isclose(y, 0.0)
+    x, y = projections.orthographic(0.0, np.pi / 2)
+    assert np.isclose(x, 1.0) and np.isclose(y, 0.0)
+    x, y = projections.orthographic(np.pi / 2, 0.0)
+    assert np.isclose(x, 0.0, atol=1e-12) and np.isclose(y, 1.0)
+
+
+def test_is_far_side_hides_only_the_back_hemisphere():
+    assert not projections.is_far_side(0.0, 0.0)
+    assert not projections.is_far_side(np.radians(60.0), np.radians(80.0))
+    assert projections.is_far_side(0.0, np.pi)
+    assert projections.is_far_side(np.radians(-30.0), np.radians(120.0))

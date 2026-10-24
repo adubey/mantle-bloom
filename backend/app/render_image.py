@@ -20,6 +20,8 @@ from __future__ import annotations
 import base64
 import functools
 import io
+from collections.abc import Callable
+from contextvars import ContextVar
 from fractions import Fraction
 
 import av
@@ -30,7 +32,7 @@ from scipy.spatial import cKDTree
 
 from . import cratons, geometry, healpix_grid, lithosphere, mantle, plates, projections
 from .hydroclimate import biomes, climate, coastline, geology, hydrology, volcanism
-from .elevation_lines import effective_is_continental_from_codes, line_spacing_rad
+from .elevation_lines import DEFAULT_NODE_DENSITY, PLANET_RADIUS_KM, effective_is_continental_from_codes, line_spacing_rad
 from .world import World, step_world
 
 # Climate views draw from climate.py's own fixed (H, W) grid, not the render grid below --
@@ -51,26 +53,27 @@ CLIMATE_VIEWS = ("temperature", "wind", "oceanCurrents", "humidity", "precipitat
 # they share a render path with each other (one shared fine-grid resample) but not with
 # elevation/plates' own render-grid machinery.
 RESOURCE_VIEWS = ("resources", "soilQuality")
-# "speckle" is a debug-only diagnostic overlay (see docs/debugging.md#speckle-coastal-dither-overlay
+# "speckle" is a debug-only diagnostic overlay (see
+# docs/debugging/map-views.md#speckle-coastal-dither-overlay
 # and _render_speckle_view): a node-cloud view like "platesDetail", not a climate- or
 # biome-grid view, so it sits with the plate/elevation group here.
 # "geomorph" is also node-cloud-derived, but from last step's erosion breakdown
 # (World.erosion_cache) rather than any persistent plate field -- its own dispatch branch
 # (_render_geomorph_view), a debug view for the per-step erosion/deposition lumpiness that's
-# invisible in every other view (see GitHub issue #123 / docs/debugging.md).
+# invisible in every other view (see GitHub issue #123 / docs/debugging/map-views.md).
 # "elevReason" is node-cloud-derived from a persistent per-node field
 # (the `elev_change_reason` field -- the ELEV_CHANGE_* code for whatever process last moved
 # that node's elevation past elevation_lines.ELEV_CHANGE_MIN_DELTA_M), its own dispatch
 # branch (_render_elev_reason_view). A categorical debug view built to answer "why is so much
-# of this world flat: never uplifted, or actively planed down" (see docs/debugging.md).
+# of this world flat: never uplifted, or actively planed down" (see docs/debugging/map-views.md).
 # "overlapAge" is node-cloud-derived from the `overlap_onset_years` field (the year each
 # still-overlapping node first went over another plate -- merge_split.update_overlap_tracking),
-# its own dispatch branch (_render_overlap_age_view). See docs/debugging.md.
+# its own dispatch branch (_render_overlap_age_view). See docs/debugging/map-views.md.
 # "nodeAge" ("Added/Removed Points") composites two independent node-cloud layers: live nodes
 # coloured by how recently they were created (the `node_created_years` field) and no-longer-
 # live nodes coloured by how recently they were removed (World.removed_points_log, since a
 # removed node has no live node to carry a field on). Its own dispatch branch
-# (_render_node_age_view). See docs/debugging.md.
+# (_render_node_age_view). See docs/debugging/map-views.md.
 # "craton" is node-cloud-derived from the craton fields (cratons.py): where the cratons are,
 # which predate the simulation and which formed during it, and how far each quiet continental
 # interior's formation clock has run. Its own dispatch branch (_render_craton_view).
@@ -93,15 +96,16 @@ LAKE_COLOR_RGB = (58, 92, 122)
 SEA_COLOR_RGB = (42, 128, 140)
 # River overlay color (#4dd8e6) -- the color a river's color blend (see
 # RIVER_COLOR_BLEND_MIN_FRACTION below) tints toward. See _draw_rivers and _rivers_to_draw:
-# every is_river network is a drawing candidate (no top-N-networks cap), gated only on an
-# absolute "is this even a real, visible channel" floor (RIVER_VISIBLE_MIN_WIDTH_M). Color and
+# every is_river network is a drawing candidate (no top-N-networks cap), gated on an absolute
+# "is this even a real, visible channel" floor (RIVER_VISIBLE_MIN_WIDTH_M); elevation views
+# also apply the physical-length minor-network filter below. Color and
 # line width are deliberately driven by two *different* notions of "how big":
 #
 # - Color blend is a *percentile rank* of channel_width among this render's own currently-
 #   visible drawn segments, not a fraction of any fixed physical scale. Both an absolute
 #   fraction of MAX_CHANNEL_WIDTH_M and a fraction of each segment's own network's widest point
 #   were tried and rejected: confirmed directly against a real 60My-old run that is_river's own
-#   selection (hydrology.RIVER_FLOW_PERCENTILE -- only the top decile-ish of land flow_accum
+#   selection (hydrology.RIVER_FLOW_PERCENTILE -- only the top decile-ish of land discharge
 #   ever qualifies) already means most *drawn* segments sit close to whatever denominator you
 #   pick, so either absolute approach reads as uniformly bright with barely any visible
 #   head-to-mouth gradient or confluence "gets bluer" moment. A percentile rank is, by
@@ -110,7 +114,7 @@ SEA_COLOR_RGB = (42, 128, 140)
 #   channel_width values happen to be -- and it's still exactly monotonic in channel_width, so
 #   a real confluence (a genuine local width increase) still visibly brightens everything
 #   downstream of it.
-# - Line width is gated on a *percentile rank of flow_accum* (not channel_width) among this
+# - Line width is gated on a *percentile rank of physical discharge* (not channel_width) among this
 #   same drawn population, requiring the top RIVER_WIDE_MIN_PERCENTILE (a steep bar, so only a
 #   genuine few ever widen) -- deliberately a different field than color's own channel_width
 #   rank. channel_width turned out to have essentially no discriminating power left at world
@@ -118,14 +122,14 @@ SEA_COLOR_RGB = (42, 128, 140)
 #   channel_width across every currently-drawn segment already sits at 4959 of the 5000
 #   physical cap (channel_width only ever grows, never shrinks, see erosion.py) -- so almost
 #   any fixed real-meters threshold below the cap either catches "most of the map" or catches
-#   nothing, with no meaningful few-percent band in between. flow_accum has no such artificial
-#   ceiling (it's recomputed from real precipitation/routing every step, not a monotonically-
-#   saturating persisted quantity), so a percentile rank of it still meaningfully separates a
-#   world's few truly major rivers from everything else even once channel_width has long since
+#   nothing, with no meaningful few-percent band in between. Physical discharge has no such
+#   artificial ceiling and is recomputed from each step's area-weighted routing, so its
+#   percentile rank still separates a world's few truly major rivers once channel_width has
 #   saturated for most of what's drawn.
 #
-# The River Inspector (main.py's /world/rivers, RiverInspector.tsx) is unaffected either way --
-# it lists every is_river network regardless of size or width already.
+# The River Inspector uses the same physical-length visibility rule as the elevation map, but
+# not the map views' discharge floor (RIVER_VISIBLE_MIN_FLOW_M3_S), and retains its explicit,
+# scale-independent discharge readout.
 RIVER_COLOR_RGB = (77, 216, 230)
 RIVER_LINE_WIDTH_PX = 1.0
 # Widest drawn line, at flow-percentile-rank 1.0 (see RIVER_WIDE_MIN_PERCENTILE), is this many
@@ -149,19 +153,24 @@ RIVER_BLUR_RADIUS_PX = 0.6
 # just expressed directly in physical channel_width now that color is a per-render percentile
 # rank rather than a direct function of it.
 RIVER_VISIBLE_MIN_WIDTH_M = 100.0
-# General-purpose terrain/biome maps omit short drainage networks unless they have at least
-# this many tributaries. The River Inspector intentionally remains exhaustive.
-RIVER_VISIBLE_MIN_NODES = 30
-RIVER_VISIBLE_MIN_TRIBUTARIES = 5
+# The Elevation, Biome and Elevation & Biome maps (hide_short_networks) and the River Inspector
+# omit networks shorter than the old 30-node cutoff at default density; the Plates views don't.
+# Use summed physical edge length so the threshold does not move with node density; issue #355.
+RIVER_VISIBLE_MIN_LENGTH_M = 30 * PLANET_RADIUS_KM * 1000.0 * line_spacing_rad(DEFAULT_NODE_DENSITY)
+# Every map view that draws rivers draws only networks whose mouth discharge is above this, so
+# the map shows major rivers rather than every qualifying stream. A fixed physical floor, unlike
+# the old node-density-scaled network-rank cap. The River Inspector doesn't use
+# this floor, so smaller networks can still be found and inspected there; issue #508.
+RIVER_VISIBLE_MIN_FLOW_M3_S = 10_000.0
 # The floor on the percentile-rank color fraction above (RIVER_COLOR_BLEND_MIN_FRACTION) plus
 # (1 - floor) * (this segment's own percentile rank, see RIVER_COLOR_RGB's own comment) -- so
 # even this render's own narrowest visible channel still reads as a pale, visible trickle
 # rather than fading all the way to indistinguishable-from-land-color.
 RIVER_COLOR_BLEND_MIN_FRACTION = 0.15
-# Only the top (1 - RIVER_WIDE_MIN_PERCENTILE) of drawn segments by flow_accum percentile rank
+# Only the top (1 - RIVER_WIDE_MIN_PERCENTILE) of drawn segments by physical-discharge percentile rank
 # ever draw wider than 1px, ramping from 0 extra width at this floor to full
 # RIVER_LINE_WIDTH_MAX_MULT at percentile-rank 1.0 (this render's single highest-flow drawn
-# segment) -- see RIVER_COLOR_RGB's own comment for why flow_accum rather than channel_width.
+# segment) -- see RIVER_COLOR_RGB's own comment for why discharge rather than channel_width.
 # 0.97 (a steep top-3% bar) is a starting point calibrated by eye against a real run rather
 # than any hard requirement -- issue #190 asked for multi-pixel width to stay rare and reserved
 # for genuinely major rivers, not for a specific percentage.
@@ -269,6 +278,16 @@ SOIL_OCEAN_BACKDROP_RGB = np.array([18, 28, 55], dtype=float)
 # look proportionally thinner -- see render_png's `px` scale factor.
 REFERENCE_WIDTH_PX = 1100
 PADDING_PX = 20
+
+# Multiplies every line width and marker size (not padding or the cell blur). The globe draws
+# its Behrmann source map wider than the image it returns and shrinks strokes back by this
+# much, so its lines are no thicker than a flat map's (#497).
+_STROKE_SCALE: ContextVar[float] = ContextVar("_STROKE_SCALE", default=1.0)
+
+
+def _stroke_scale(width: int) -> float:
+    """Line-width/marker multiplier for a `width`-pixel render (see REFERENCE_WIDTH_PX)."""
+    return float(width / REFERENCE_WIDTH_PX * _STROKE_SCALE.get())
 POLE_RADIUS_PX = 5
 ARROWHEAD_LENGTH_PX = 7
 NODE_DOT_RADIUS_PX = 1.6
@@ -398,8 +417,8 @@ _TEMPERATURE_STOP_RGB = np.array(
     dtype=float,
 )
 
-# Dry (tan) -> humid (deep teal/blue). climate.py's humidity is roughly [0, MAX_EVAPORATION_CEILING=1.4].
-_HUMIDITY_STOP_V = np.array([0.0, 0.3, 0.6, 0.9, 1.2, 1.4], dtype=float)
+# Dry (tan) -> humid (deep teal/blue), g/kg. climate.py's humidity_g_kg runs [~0.25, MAX_HUMIDITY_G_KG=18.8].
+_HUMIDITY_STOP_G_KG = np.array([0.0, 4.0, 8.0, 12.0, 16.0, 18.8], dtype=float)
 _HUMIDITY_STOP_RGB = np.array(
     [
         (120, 100, 60), (170, 150, 90), (140, 170, 110), (70, 150, 140), (30, 100, 140), (15, 60, 110),
@@ -451,8 +470,8 @@ def temperature_colors(celsius: np.ndarray) -> np.ndarray:
     return _interp_colors(celsius, _TEMPERATURE_STOP_C, _TEMPERATURE_STOP_RGB)
 
 
-def humidity_colors(humidity: np.ndarray) -> np.ndarray:
-    return _interp_colors(humidity, _HUMIDITY_STOP_V, _HUMIDITY_STOP_RGB)
+def humidity_colors(humidity_g_kg: np.ndarray) -> np.ndarray:
+    return _interp_colors(humidity_g_kg, _HUMIDITY_STOP_G_KG, _HUMIDITY_STOP_RGB)
 
 
 def precipitation_colors(precipitation_mm: np.ndarray) -> np.ndarray:
@@ -530,7 +549,7 @@ def crust_type_colors(codes: np.ndarray) -> np.ndarray:
 # the `overlap_onset_years` field, drawn only for nodes currently overlapping. A sequential
 # ramp, pale where the overlap is fresh (this is transient envelope slop, self-correcting)
 # deepening to magenta where it has been stuck for tens of Myr (a real stalled collision the
-# merge path never resolves -- docs/debugging.md). Clamped at 60 Myr.
+# merge path never resolves -- docs/debugging/map-views.md). Clamped at 60 Myr.
 _OVERLAP_AGE_STOP_MYR = np.array([0.0, 2.0, 10.0, 30.0, 60.0], dtype=float)
 _OVERLAP_AGE_STOP_RGB = np.array(
     [
@@ -644,7 +663,7 @@ def _rotate(world_pts: np.ndarray, view_rotation: np.ndarray) -> np.ndarray:
     rotation). This is a pure render-time transform: it only ever runs on positions
     immediately before they're projected to pixels, never on anything climate.py uses for
     actual physics (insolation, Coriolis, latitude-banded wind/currents all key off the
-    true, un-rotated planetary frame -- see docs/simulation-model.md#rotating-the-view)."""
+    true, un-rotated planetary frame -- see docs/simulation-model/rendering-and-inspectors.md#rotating-the-view)."""
     return world_pts @ view_rotation.T
 
 
@@ -924,7 +943,7 @@ def _render_grid_arrays(
     """A uniform lat/lon grid covering the whole sphere (GRID_SPACING_RAD, independent of
     any plate's own line spacing), each cell assigned its nearest elevation node's elevation,
     owning plate, lake_depth, glacier_depth, is_volcano, is_sea, and hillshade -- see
-    docs/simulation-model.md#render-image. Returns flat concatenated (projected_xy, elevation,
+    docs/simulation-model/rendering-and-inspectors.md#render-image. Returns flat concatenated (projected_xy, elevation,
     plate_id, lake_depth, glacier_depth, is_volcano, is_sea, cell_half_width, cell_half_height,
     hillshade) arrays, or None for an empty world. channel_depth/channel_width aren't among
     them -- their only consumer here used to be the flat channel-darken effect
@@ -1046,20 +1065,14 @@ def _render_grid_arrays(
 
 @functools.lru_cache(maxsize=8)
 def _biome_grid(height: int, width: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Same lat/lon/world_xyz construction as climate.py's own `_build_grid` (row 0 = north
-    pole, increasing southward; column increasing eastward, wrapping) -- duplicated rather
-    than imported since that's a private helper of climate.py's own native simulation grid,
-    and this one is deliberately a different (finer) shape -- see BIOME_GRID_HEIGHT/WIDTH.
+    """climate.py's `_build_grid` lat/lon/world_xyz construction (row 0 = north pole,
+    increasing southward; column increasing eastward, wrapping), at the render grid's own
+    (finer) shape -- see BIOME_GRID_HEIGHT/WIDTH.
 
     Pure function of (height, width), so it's `lru_cache`d -- every renderer rebuilds the
     same lat/lon/xyz arrays for a given grid size, and across animation frames the size never
     changes. Callers treat the returned arrays as read-only."""
-    lat_deg = 90.0 - (np.arange(height) + 0.5) * (180.0 / height)
-    lon_deg = -180.0 + (np.arange(width) + 0.5) * (360.0 / width)
-    lat_grid = np.repeat(lat_deg[:, None], width, axis=1)
-    lon_grid = np.repeat(lon_deg[None, :], height, axis=0)
-    world_xyz = geometry.latlon_to_xyz(np.radians(lat_grid), np.radians(lon_grid))
-    return lat_deg, lon_deg, world_xyz
+    return climate._build_grid(height, width)
 
 
 def _bilinear_resample(
@@ -1190,6 +1203,31 @@ def _resource_fields(world: World, grid_h: int, grid_w: int):
     return lat_deg, lon_deg, world_xyz, is_ocean, soil_depth, soil_mineral, soil_organic, coal, oil_gas, mineral
 
 
+def _fit_view(all_xy: np.ndarray, width: int, height: int, padding_px: float) -> tuple[float, float, float]:
+    """`(scale, offset_x, offset_y)` that fit projected points `all_xy` (N, 2) inside the
+    image, `padding_px` from every edge, centred (see `_to_pixels`)."""
+    min_x, min_y = all_xy.min(axis=0)
+    max_x, max_y = all_xy.max(axis=0)
+    data_w = max(max_x - min_x, 1e-9)
+    data_h = max(max_y - min_y, 1e-9)
+    scale = min((width - 2 * padding_px) / data_w, (height - 2 * padding_px) / data_h)
+    offset_x = width / 2 - scale * (min_x + max_x) / 2
+    offset_y = height / 2 + scale * (min_y + max_y) / 2
+    return scale, offset_x, offset_y
+
+
+@functools.lru_cache(maxsize=None)
+def _sphere_extent(projection: str) -> np.ndarray:
+    """The full sphere's projected bounding box, `[[min_x, min_y], [max_x, max_y]]`, sampled on
+    the same 1-degree lat/lon lattice rotation.ts's computeExtent uses, so a fit to it matches
+    the frontend's render transform. A grid's cell centres stop half a cell short of the poles
+    and the antimeridian, so fitting them instead left climate views a few pixels off what the
+    frontend unprojects clicks with (#497)."""
+    lat, lon = np.meshgrid(np.radians(np.linspace(-90.0, 90.0, 181)), np.radians(np.linspace(-180.0, 180.0, 361)))
+    x, y = projections.project(projection, lat, lon)
+    return np.array([[x.min(), y.min()], [x.max(), y.max()]])
+
+
 def _fit_and_project_sphere(
     flat_xyz: np.ndarray, projection: str, view_rotation: np.ndarray, width: int, height: int, padding_px: float,
 ) -> tuple[np.ndarray, np.ndarray, float, float, float]:
@@ -1200,16 +1238,9 @@ def _fit_and_project_sphere(
     grid and `_project_healpix_grid`'s flat (npix,) HEALPix point cloud, so every view places
     the sphere identically and never rescales or re-centers relative to one another when the
     user switches views."""
-    bbox_xy = _project_points(projection, flat_xyz)
     flat_xy = _project_points(projection, _rotate(flat_xyz, view_rotation))
 
-    min_x, min_y = bbox_xy.min(axis=0)
-    max_x, max_y = bbox_xy.max(axis=0)
-    data_w = max(max_x - min_x, 1e-9)
-    data_h = max(max_y - min_y, 1e-9)
-    scale = min((width - 2 * padding_px) / data_w, (height - 2 * padding_px) / data_h)
-    offset_x = width / 2 - scale * (min_x + max_x) / 2
-    offset_y = height / 2 + scale * (min_y + max_y) / 2
+    scale, offset_x, offset_y = _fit_view(_sphere_extent(projection), width, height, padding_px)
 
     centers = _to_pixels(scale, offset_x, offset_y, flat_xy)
     return centers, flat_xy, scale, offset_x, offset_y
@@ -1641,8 +1672,8 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
     grid and resampled nearest-cell onto this HEALPix grid's cells here. A separate path from
     the plate-tectonics views below since both data sources cover the whole sphere per-cell,
     structurally unlike the render grid's ragged lattice."""
-    pixel_scale = width / REFERENCE_WIDTH_PX
-    padding_px = PADDING_PX * pixel_scale
+    pixel_scale = _stroke_scale(width)
+    padding_px = PADDING_PX * width / REFERENCE_WIDTH_PX
     pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
 
     atmosphere = world.atmosphere_cfd_state
@@ -1660,7 +1691,7 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
     # or -- when the diagnostic wind model is selected, leaving that state frozen -- the
     # diagnostic fields climate.compute_climate rebuilt this call. is_ocean likewise: the CFD
     # state's copy goes stale in diagnostic mode (refresh_forcing stops running).
-    if world.wind_model != "cfd":
+    if climate.uses_diagnostic_wind(world):
         wind_u_hp, wind_v_hp = _to_healpix(cfields.wind_u), _to_healpix(cfields.wind_v)
         land_air_temp_hp = _to_healpix(cfields.air_temperature_c)
         is_ocean_hp = _to_healpix(cfields.is_ocean.astype(np.float64)) > 0.5
@@ -1670,7 +1701,7 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
         is_ocean_hp = atmosphere.is_ocean
 
     if view == "humidity":
-        _fill_rects(pixels, centers, half_px, half_px, humidity_colors(_to_healpix(cfields.humidity)))
+        _fill_rects(pixels, centers, half_px, half_px, humidity_colors(_to_healpix(cfields.humidity_g_kg)))
     elif view == "precipitation":
         _fill_rects(pixels, centers, half_px, half_px, precipitation_colors(_to_healpix(cfields.precipitation_mm)))
     elif view == "temperature":
@@ -1760,6 +1791,54 @@ def _biome_blend_rgb(winner_ids: np.ndarray, winner_share: np.ndarray, runner_up
     return winner_rgb * share + runner_up_rgb * (1.0 - share)
 
 
+def _classify_biome_grid(world: World):
+    """`_biome_fields` on the fine biome grid plus its smoothed biome classification
+    (biomes.smooth_biome_field_blend). Returns `(fields, winner_ids, winner_share,
+    runner_up_ids)`, the last three flattened to one entry per cell."""
+    fields = _biome_fields(world, *biome_grid_dimensions(world.climate_density))
+    lat_deg, _lon_deg, _world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, _lake_depth, glacier_depth, _is_sea, _hillshade = fields
+    display_temp = np.where(is_ocean, ocean_temp, air_temp)
+    slope = biomes.grid_slope(elevation_m, lat_deg)
+    winner_ids, winner_share, runner_up_ids = biomes.smooth_biome_field_blend(
+        display_temp, precip, elevation_m, slope, is_ocean, world.sea_level_m,
+        lat_deg=lat_deg, axial_tilt_deg=world.axial_tilt_deg, glacier_depth_m=glacier_depth,
+    )
+    return fields, winner_ids.reshape(-1), winner_share.reshape(-1), runner_up_ids.reshape(-1)
+
+
+def _encode_biome_cells(
+    world: World, projection: str, width: int, height: int, view_rotation: np.ndarray, fields: tuple,
+    colors: np.ndarray, id_code: np.ndarray,
+) -> bytes:
+    """Fills the biome grid's cells with `colors`, blurs them (CELL_BLUR_RADIUS_PX), draws the
+    rivers on top, and carries each cell's class `id_code` in alpha (see COMBINED_LAKE_ID_CODE's
+    comment) -- the shared output of the Biome and Combined views."""
+    pixel_scale = _stroke_scale(width)
+    padding_px = PADDING_PX * width / REFERENCE_WIDTH_PX
+    pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
+    lat_deg, lon_deg, world_xyz = fields[:3]
+    cell_alpha = (255 - id_code).astype(np.uint8)
+
+    centers, half_w, half_h, scale, offset_x, offset_y = _project_climate_grid(
+        lat_deg, lon_deg, world_xyz, projection, view_rotation, width, height, padding_px
+    )
+    _fill_rects(pixels, centers, half_w, half_h, colors)
+
+    # Filled at cell resolution and left un-blurred so biome ids stay crisp at boundaries;
+    # gaps between cells keep alpha 255 (code 0), same as ocean.
+    alpha_buf = np.full((height, width, 1), 255, dtype=np.uint8)
+    _fill_rects(alpha_buf, centers, half_w, half_h, cell_alpha.reshape(-1, 1))
+
+    image = Image.fromarray(pixels, mode="RGB").filter(ImageFilter.GaussianBlur(radius=CELL_BLUR_RADIUS_PX * width / REFERENCE_WIDTH_PX))
+    image = _draw_rivers(
+        image, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation,
+        hide_short_networks=True,
+    )
+    image.putalpha(Image.fromarray(alpha_buf[:, :, 0], mode="L"))
+
+    return _encode_image(image)
+
+
 def _render_biome_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
     """"Biome": each cell's biome classification shown as a color mosaic (no relief shading or
     ocean hypsometry -- that's the Combined view), blended toward its runner-up class near a
@@ -1776,43 +1855,9 @@ def _render_biome_view(world: World, projection: str, width: int, height: int, v
     class id rides in alpha rather than RGB now that RGB itself blends across a boundary. A
     light post-fill blur (see CELL_BLUR_RADIUS_PX) further softens the cell-grid edges on top
     of the per-cell color blend; the alpha id buffer stays crisp."""
-    pixel_scale = width / REFERENCE_WIDTH_PX
-    padding_px = PADDING_PX * pixel_scale
-    pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
-
-    lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, _lake_depth, _glacier_depth, _is_sea, _hillshade = _biome_fields(
-        world, *biome_grid_dimensions(world.climate_density)
-    )
-    display_temp = np.where(is_ocean, ocean_temp, air_temp)
-    slope = biomes.grid_slope(elevation_m, lat_deg)
-    winner_ids, winner_share, runner_up_ids = biomes.smooth_biome_field_blend(
-        display_temp, precip, elevation_m, slope, is_ocean, world.sea_level_m,
-        lat_deg=lat_deg, axial_tilt_deg=world.axial_tilt_deg, glacier_depth_m=_glacier_depth,
-    )
-    winner_ids = winner_ids.reshape(-1)
-    winner_share = winner_share.reshape(-1)
-    runner_up_ids = runner_up_ids.reshape(-1)
+    fields, winner_ids, winner_share, runner_up_ids = _classify_biome_grid(world)
     colors = np.clip(np.round(_biome_blend_rgb(winner_ids, winner_share, runner_up_ids)), 0, 255).astype(np.uint8)
-
-    id_code = winner_ids + 1
-    cell_alpha = (255 - id_code).astype(np.uint8)
-
-    centers, half_w, half_h, scale, offset_x, offset_y = _project_climate_grid(
-        lat_deg, lon_deg, world_xyz, projection, view_rotation, width, height, padding_px
-    )
-    _fill_rects(pixels, centers, half_w, half_h, colors)
-
-    alpha_buf = np.full((height, width, 1), 255, dtype=np.uint8)
-    _fill_rects(alpha_buf, centers, half_w, half_h, cell_alpha.reshape(-1, 1))
-
-    image = Image.fromarray(pixels, mode="RGB").filter(ImageFilter.GaussianBlur(radius=CELL_BLUR_RADIUS_PX * pixel_scale))
-    image = _draw_rivers(
-        image, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation,
-        hide_minor_networks=True,
-    )
-    image.putalpha(Image.fromarray(alpha_buf[:, :, 0], mode="L"))
-
-    return _encode_image(image)
+    return _encode_biome_cells(world, projection, width, height, view_rotation, fields, colors, winner_ids + 1)
 
 
 def _render_combined_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
@@ -1835,21 +1880,9 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
     glacier id (see COMBINED_LAKE_ID_CODE) so the frontend's click-to-highlight can identify a
     land cell despite the wide shaded-relief color spread and the boundary blend. Alpha is a
     data channel, not real transparency -- the client resets it to opaque before display."""
-    pixel_scale = width / REFERENCE_WIDTH_PX
-    padding_px = PADDING_PX * pixel_scale
-    pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
-
-    lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, lake_depth, glacier_depth, is_sea, hillshade = _biome_fields(
-        world, *biome_grid_dimensions(world.climate_density)
-    )
-    display_temp = np.where(is_ocean, ocean_temp, air_temp)
-    slope = biomes.grid_slope(elevation_m, lat_deg)
-    winner_ids, winner_share, runner_up_ids = biomes.smooth_biome_field_blend(
-        display_temp, precip, elevation_m, slope, is_ocean, world.sea_level_m,
-        lat_deg=lat_deg, axial_tilt_deg=world.axial_tilt_deg, glacier_depth_m=glacier_depth,
-    )
-    biome_ids = winner_ids.reshape(-1)
-    biome_rgb = _biome_blend_rgb(biome_ids, winner_share.reshape(-1), runner_up_ids.reshape(-1))
+    fields, biome_ids, winner_share, runner_up_ids = _classify_biome_grid(world)
+    _lat_deg, _lon_deg, _world_xyz, elevation_m, is_ocean, _air_temp, _ocean_temp, _precip, lake_depth, glacier_depth, is_sea, hillshade = fields
+    biome_rgb = _biome_blend_rgb(biome_ids, winner_share, runner_up_ids)
     terrain_rgb = elevation_colors(elevation_m.reshape(-1), world.sea_level_m).astype(float)
 
     shade = biomes.biome_relative_shade_factor(biome_ids, elevation_m.reshape(-1))[:, None]
@@ -1893,26 +1926,7 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
     id_code = np.where(is_lake, COMBINED_LAKE_ID_CODE, id_code)
     id_code = np.where(is_sea_cell, COMBINED_SEA_ID_CODE, id_code)
     id_code = np.where(is_glacier, COMBINED_GLACIER_ID_CODE, id_code)
-    cell_alpha = (255 - id_code).astype(np.uint8)
-
-    centers, half_w, half_h, scale, offset_x, offset_y = _project_climate_grid(
-        lat_deg, lon_deg, world_xyz, projection, view_rotation, width, height, padding_px
-    )
-    _fill_rects(pixels, centers, half_w, half_h, colors)
-
-    # Filled at cell resolution and left un-blurred so biome ids stay crisp at boundaries;
-    # gaps between cells keep alpha 255 (code 0), same as ocean.
-    alpha_buf = np.full((height, width, 1), 255, dtype=np.uint8)
-    _fill_rects(alpha_buf, centers, half_w, half_h, cell_alpha.reshape(-1, 1))
-
-    image = Image.fromarray(pixels, mode="RGB").filter(ImageFilter.GaussianBlur(radius=CELL_BLUR_RADIUS_PX * pixel_scale))
-    image = _draw_rivers(
-        image, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation,
-        hide_minor_networks=True,
-    )
-    image.putalpha(Image.fromarray(alpha_buf[:, :, 0], mode="L"))
-
-    return _encode_image(image)
+    return _encode_biome_cells(world, projection, width, height, view_rotation, fields, colors, id_code)
 
 
 def _blend(backdrop: np.ndarray, color: np.ndarray, fraction: np.ndarray) -> np.ndarray:
@@ -1985,12 +1999,12 @@ def _render_resource_view(world: World, projection: str, view: str, width: int, 
         # temperature/humidity/precipitation already have -- resources' own backdrop already
         # distinguishes land/ocean directly, so it doesn't need this.
         draw = ImageDraw.Draw(image)
-        _draw_coastline(draw, world, projection, scale, offset_x, offset_y, width / REFERENCE_WIDTH_PX, view_rotation)
+        _draw_coastline(draw, world, projection, scale, offset_x, offset_y, _stroke_scale(width), view_rotation)
 
     return _encode_image(image)
 
 
-# --- Speckle / coastal-dither overlay (debug view; see docs/debugging.md) -------------------
+# --- Speckle / coastal-dither overlay (debug view; see docs/debugging/map-views.md) -------------------
 # Every elevation node within SPECKLE_NEAR_BAND_M of sea level is drawn as a dot colored by
 # how "checkerboarded" its immediate neighbourhood is: the fraction of its k nearest
 # neighbours that sit on the *opposite* side of the waterline (land vs. ocean by raw
@@ -2055,57 +2069,79 @@ def coastal_dither_fraction(
     return fraction, near
 
 
+class _DotOverlayCanvas:
+    """The muted land/ocean backdrop (the Elevation view's full-sphere grid) that the speckle,
+    overlapAge and nodeAge debug views draw their dot layers on. The view is fitted to the grid
+    plus every point in `overlay_xy`, so no dot falls off the edge."""
+
+    def __init__(
+        self, world: World, grid: tuple, overlay_xy: list[np.ndarray], width: int, height: int, projection: str,
+        view_rotation: np.ndarray,
+    ) -> None:
+        xy, elev, _owner, _lake, _glacier, _volcano, _is_sea, half_w, half_h, _hillshade = grid
+        self.world, self.projection, self.view_rotation = world, projection, view_rotation
+        self.pixel_scale = _stroke_scale(width)
+        padding_px = PADDING_PX * width / REFERENCE_WIDTH_PX
+        all_xy = np.concatenate([xy, *overlay_xy], axis=0)
+        self.scale, self.offset_x, self.offset_y = _fit_view(all_xy, width, height, padding_px)
+        self.pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
+        backdrop = np.where(
+            (elev <= world.sea_level_m)[:, None], SPECKLE_OCEAN_BACKDROP_RGB, SPECKLE_LAND_BACKDROP_RGB
+        )
+        cell_scale = self.scale * CELL_OVERLAP_FACTOR
+        _fill_rects(self.pixels, self.to_pixels(xy), half_w * cell_scale, half_h * cell_scale, backdrop)
+
+    def to_pixels(self, xy: np.ndarray) -> np.ndarray:
+        return _to_pixels(self.scale, self.offset_x, self.offset_y, xy)
+
+    def dots(self, xy: np.ndarray, radius_px: float, colors: np.ndarray) -> None:
+        _fill_rects(self.pixels, self.to_pixels(xy), radius_px, radius_px, colors)
+
+    def encode(self, coastline: bool) -> bytes:
+        image = Image.fromarray(self.pixels, mode="RGB")
+        if coastline:
+            _draw_coastline(
+                ImageDraw.Draw(image), self.world, self.projection, self.scale, self.offset_x, self.offset_y,
+                self.pixel_scale, self.view_rotation,
+            )
+        return _encode_image(image)
+
+
+def _blank_image(width: int, height: int) -> bytes:
+    return _encode_image(Image.fromarray(np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8), mode="RGB"))
+
+
 def _render_speckle_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
     """Renders the "speckle" debug view -- see coastal_dither_fraction and the constants above.
     Uses the same full-sphere render grid as the Elevation view for a muted land/ocean
     backdrop, then overlays one dot per near-sea-level node from the raw plate node cloud
     (like "platesDetail"), coloured by that node's coastal-dither fraction."""
-    pixel_scale = width / REFERENCE_WIDTH_PX
-    padding_px = PADDING_PX * pixel_scale
-    blank = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
-
     grid = _render_grid_arrays(world, projection, view_rotation) if world.plates else None
     node_cloud = _node_cloud_and_tree(world) if world.plates else None
     if grid is None or node_cloud is None:
-        return _encode_image(Image.fromarray(blank, mode="RGB"))
+        return _blank_image(width, height)
 
-    xy, elev, _owner, _lake, _glacier, _volcano, _is_sea, half_w, half_h, _hillshade = grid
     all_points, all_elevation, _owner, _tree = node_cloud
     node_xy = _project_points(projection, _rotate(all_points, view_rotation))
-
-    all_xy = np.concatenate([xy, node_xy], axis=0)
-    min_x, min_y = all_xy.min(axis=0)
-    max_x, max_y = all_xy.max(axis=0)
-    data_w = max(max_x - min_x, 1e-9)
-    data_h = max(max_y - min_y, 1e-9)
-    scale = min((width - 2 * padding_px) / data_w, (height - 2 * padding_px) / data_h)
-    offset_x = width / 2 - scale * (min_x + max_x) / 2
-    offset_y = height / 2 + scale * (min_y + max_y) / 2
-
-    pixels = blank.copy()
-    centers = _to_pixels(scale, offset_x, offset_y, xy)
-    backdrop = np.where(
-        (elev <= world.sea_level_m)[:, None], SPECKLE_OCEAN_BACKDROP_RGB, SPECKLE_LAND_BACKDROP_RGB
-    )
-    _fill_rects(pixels, centers, half_w * scale * CELL_OVERLAP_FACTOR, half_h * scale * CELL_OVERLAP_FACTOR, backdrop)
+    canvas = _DotOverlayCanvas(world, grid, [node_xy], width, height, projection, view_rotation)
 
     fraction, near = coastal_dither_fraction(all_points, all_elevation, world.sea_level_m)
     if np.any(near):
-        near_centers = _to_pixels(scale, offset_x, offset_y, node_xy[near])
+        near_xy = node_xy[near]
         near_frac = fraction[near]
         flagged = near_frac >= SPECKLE_FLAG_FRACTION
-        base_r = NODE_DOT_RADIUS_PX * pixel_scale
+        base_r = NODE_DOT_RADIUS_PX * canvas.pixel_scale
         colors = speckle_colors(near_frac)
-        _fill_rects(pixels, near_centers[~flagged], base_r, base_r, colors[~flagged])
+        canvas.dots(near_xy[~flagged], base_r, colors[~flagged])
         if np.any(flagged):
             flag_colors = np.tile(np.array(SPECKLE_FLAG_RGB, dtype=np.uint8), (int(flagged.sum()), 1))
-            _fill_rects(pixels, near_centers[flagged], base_r * 2.0, base_r * 2.0, flag_colors)
+            canvas.dots(near_xy[flagged], base_r * 2.0, flag_colors)
 
-    return _encode_image(Image.fromarray(pixels, mode="RGB"))
+    return canvas.encode(coastline=False)
 
 
 def _render_overlap_age_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
-    """Renders the "overlapAge" debug view (see docs/debugging.md): a muted land/ocean
+    """Renders the "overlapAge" debug view (see docs/debugging/map-views.md): a muted land/ocean
     backdrop (same full-sphere grid as the Elevation view) overlaid with two independent dot
     layers. The first, warm (yellow -> magenta), is one dot per node that is *currently*
     sitting on top of another plate's territory, coloured by how long it has been --
@@ -2117,64 +2153,37 @@ def _render_overlap_age_view(world: World, projection: str, width: int, height: 
     appear on the same map. Answers "where is the trouble, and since when" that the Plate
     Inspector's single per-pair fraction can't. All-backdrop (no dots of either colour) is the
     healthy case, and also what a save predating these fields shows until it is stepped."""
-    pixel_scale = width / REFERENCE_WIDTH_PX
-    padding_px = PADDING_PX * pixel_scale
-    blank = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
-
     grid = _render_grid_arrays(world, projection, view_rotation) if world.plates else None
     collected = plates.collect_all_points(world.plates) if world.plates else None
     if grid is None or collected is None:
-        return _encode_image(Image.fromarray(blank, mode="RGB"))
+        return _blank_image(width, height)
 
-    xy, elev, _owner, _lake, _glacier, _volcano, _is_sea, half_w, half_h, _hillshade = grid
     all_points, _all_elevation, _ = collected
     onset = plates.collect_all_overlap_onset_years(world.plates)
     node_xy = _project_points(projection, _rotate(all_points, view_rotation))
 
     gap_xyz = np.array([t.centroid_xyz for t in world.gap_tracks]) if world.gap_tracks else np.zeros((0, 3))
     gap_xy = _project_points(projection, _rotate(gap_xyz, view_rotation)) if len(gap_xyz) else np.zeros((0, 2))
-
-    all_xy = np.concatenate([xy, node_xy] + ([gap_xy] if len(gap_xy) else []), axis=0)
-    min_x, min_y = all_xy.min(axis=0)
-    max_x, max_y = all_xy.max(axis=0)
-    data_w = max(max_x - min_x, 1e-9)
-    data_h = max(max_y - min_y, 1e-9)
-    scale = min((width - 2 * padding_px) / data_w, (height - 2 * padding_px) / data_h)
-    offset_x = width / 2 - scale * (min_x + max_x) / 2
-    offset_y = height / 2 + scale * (min_y + max_y) / 2
-
-    pixels = blank.copy()
-    centers = _to_pixels(scale, offset_x, offset_y, xy)
-    backdrop = np.where(
-        (elev <= world.sea_level_m)[:, None], SPECKLE_OCEAN_BACKDROP_RGB, SPECKLE_LAND_BACKDROP_RGB
-    )
-    _fill_rects(pixels, centers, half_w * scale * CELL_OVERLAP_FACTOR, half_h * scale * CELL_OVERLAP_FACTOR, backdrop)
+    canvas = _DotOverlayCanvas(world, grid, [node_xy, gap_xy], width, height, projection, view_rotation)
 
     overlapping = onset > 0.0
     if np.any(overlapping):
         age_myr = (world.elapsed_years - onset[overlapping]) / 1e6
-        dot_centers = _to_pixels(scale, offset_x, offset_y, node_xy[overlapping])
-        r = NODE_DOT_RADIUS_PX * pixel_scale
-        _fill_rects(pixels, dot_centers, r, r, overlap_age_colors(age_myr))
+        canvas.dots(node_xy[overlapping], NODE_DOT_RADIUS_PX * canvas.pixel_scale, overlap_age_colors(age_myr))
 
     if len(gap_xyz):
         gap_age_myr = np.array([(world.elapsed_years - t.first_seen_years) / 1e6 for t in world.gap_tracks])
-        gap_centers = _to_pixels(scale, offset_x, offset_y, gap_xy)
         # One dot per gap *cluster* centroid, not per uncovered lattice point -- cheap (no
         # extra whole-sphere sweep at render time) and enough to place a persistent notch at a
         # glance; a bit larger than an ordinary node dot since it stands in for a whole
         # cluster, not a single node.
-        r_gap = NODE_DOT_RADIUS_PX * pixel_scale * 1.5
-        _fill_rects(pixels, gap_centers, r_gap, r_gap, gap_age_colors(gap_age_myr))
+        canvas.dots(gap_xy, NODE_DOT_RADIUS_PX * canvas.pixel_scale * 1.5, gap_age_colors(gap_age_myr))
 
-    image = Image.fromarray(pixels, mode="RGB")
-    draw = ImageDraw.Draw(image)
-    _draw_coastline(draw, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
-    return _encode_image(image)
+    return canvas.encode(coastline=True)
 
 
 def _render_node_age_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
-    """Renders the "nodeAge" ("Added/Removed Points") debug view (see docs/debugging.md): the
+    """Renders the "nodeAge" ("Added/Removed Points") debug view (see docs/debugging/map-views.md): the
     same muted land/ocean backdrop as overlapAge, overlaid with two independent dot layers --
     warm dots for still-live nodes created recently (the `node_created_years` field, via
     `plates.collect_all_node_created_years`; the -1.0 "predates tracking" sentinel and anything
@@ -2184,16 +2193,11 @@ def _render_node_age_view(world: World, projection: str, width: int, height: int
     All-backdrop (no dots) means nothing has been created or removed recently, which is the
     common case between bursts of boundary activity, not necessarily unhealthy the way an
     empty overlapAge is."""
-    pixel_scale = width / REFERENCE_WIDTH_PX
-    padding_px = PADDING_PX * pixel_scale
-    blank = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
-
     grid = _render_grid_arrays(world, projection, view_rotation) if world.plates else None
     collected = plates.collect_all_points(world.plates) if world.plates else None
     if grid is None or collected is None:
-        return _encode_image(Image.fromarray(blank, mode="RGB"))
+        return _blank_image(width, height)
 
-    xy, elev, _owner, _lake, _glacier, _volcano, _is_sea, half_w, half_h, _hillshade = grid
     all_points, _all_elevation, _ = collected
     created = plates.collect_all_node_created_years(world.plates)
     node_xy = _project_points(projection, _rotate(all_points, view_rotation))
@@ -2201,41 +2205,62 @@ def _render_node_age_view(world: World, projection: str, width: int, height: int
     removed_points = np.array([p for p, _, _ in world.removed_points_log]) if world.removed_points_log else np.zeros((0, 3))
     removed_years = np.array([t for _, t, _ in world.removed_points_log]) if world.removed_points_log else np.zeros(0)
     removed_xy = _project_points(projection, _rotate(removed_points, view_rotation)) if len(removed_points) else np.zeros((0, 2))
+    canvas = _DotOverlayCanvas(world, grid, [node_xy, removed_xy], width, height, projection, view_rotation)
 
-    all_xy = np.concatenate([xy, node_xy] + ([removed_xy] if len(removed_xy) else []), axis=0)
-    min_x, min_y = all_xy.min(axis=0)
-    max_x, max_y = all_xy.max(axis=0)
-    data_w = max(max_x - min_x, 1e-9)
-    data_h = max(max_y - min_y, 1e-9)
-    scale = min((width - 2 * padding_px) / data_w, (height - 2 * padding_px) / data_h)
-    offset_x = width / 2 - scale * (min_x + max_x) / 2
-    offset_y = height / 2 + scale * (min_y + max_y) / 2
-
-    pixels = blank.copy()
-    centers = _to_pixels(scale, offset_x, offset_y, xy)
-    backdrop = np.where(
-        (elev <= world.sea_level_m)[:, None], SPECKLE_OCEAN_BACKDROP_RGB, SPECKLE_LAND_BACKDROP_RGB
-    )
-    _fill_rects(pixels, centers, half_w * scale * CELL_OVERLAP_FACTOR, half_h * scale * CELL_OVERLAP_FACTOR, backdrop)
-
-    r = NODE_DOT_RADIUS_PX * pixel_scale
+    r = NODE_DOT_RADIUS_PX * canvas.pixel_scale
     added_mask = (created >= 0.0) & ((world.elapsed_years - created) <= _NODE_ADDED_STOP_MYR[-1] * 1e6)
     if np.any(added_mask):
         age_myr = (world.elapsed_years - created[added_mask]) / 1e6
-        dot_centers = _to_pixels(scale, offset_x, offset_y, node_xy[added_mask])
-        _fill_rects(pixels, dot_centers, r, r, node_added_colors(age_myr))
+        canvas.dots(node_xy[added_mask], r, node_added_colors(age_myr))
 
     if len(removed_points):
         recent = (world.elapsed_years - removed_years) <= _NODE_REMOVED_STOP_MYR[-1] * 1e6
         if np.any(recent):
             age_myr = (world.elapsed_years - removed_years[recent]) / 1e6
-            dot_centers = _to_pixels(scale, offset_x, offset_y, removed_xy[recent])
-            _fill_rects(pixels, dot_centers, r, r, node_removed_colors(age_myr))
+            canvas.dots(removed_xy[recent], r, node_removed_colors(age_myr))
+
+    return canvas.encode(coastline=True)
+
+
+def _render_resampled_view(
+    world: World, projection: str, width: int, height: int, view_rotation: np.ndarray,
+    cell_colors: Callable[[np.ndarray], np.ndarray | None],
+) -> bytes:
+    """Renders a debug view that colours each cell of the fine biome render grid (see
+    biome_grid_dimensions) with `cell_colors(flat_xyz)`, given the cells' un-rotated
+    positions, and overlays the coastline for orientation. `cell_colors` returning None
+    (a world with no plates) draws the plain background."""
+    pixel_scale = _stroke_scale(width)
+    padding_px = PADDING_PX * width / REFERENCE_WIDTH_PX
+    pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
+
+    grid_h, grid_w = biome_grid_dimensions(world.climate_density)
+    lat_deg, lon_deg, world_xyz = _biome_grid(grid_h, grid_w)
+    colors = cell_colors(world_xyz.reshape(-1, 3))
+    if colors is None:
+        return _encode_image(Image.fromarray(pixels, mode="RGB"))
+
+    centers, half_w, half_h, scale, offset_x, offset_y = _project_climate_grid(
+        lat_deg, lon_deg, world_xyz, projection, view_rotation, width, height, padding_px
+    )
+    _fill_rects(pixels, centers, half_w, half_h, colors)
 
     image = Image.fromarray(pixels, mode="RGB")
     draw = ImageDraw.Draw(image)
     _draw_coastline(draw, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
     return _encode_image(image)
+
+
+def _nearest_node_indices(world: World, flat_xyz: np.ndarray) -> np.ndarray | None:
+    """Index into the plates' collected node arrays of the node nearest each of `flat_xyz`,
+    looked up in the true (un-rotated) frame -- _project_climate_grid applies view_rotation
+    later, at projection time. None for a world with no plates."""
+    node_cloud = _node_cloud_and_tree(world) if world.plates else None
+    if node_cloud is None:
+        return None
+    _all_points, _all_elev, _owner, tree = node_cloud
+    _, idx = tree.query(flat_xyz, workers=plates.query_workers(len(flat_xyz)))
+    return idx
 
 
 def _render_geomorph_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
@@ -2250,34 +2275,20 @@ def _render_geomorph_view(world: World, projection: str, width: int, height: int
     erosion_cache is None until the world has been stepped once with climate & biomes on (and
     on a freshly loaded save, which doesn't persist it) -- then this draws a flat neutral
     field with just the coastline for orientation, rather than erroring like Biome does."""
-    pixel_scale = width / REFERENCE_WIDTH_PX
-    padding_px = PADDING_PX * pixel_scale
-    pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
 
-    grid_h, grid_w = biome_grid_dimensions(world.climate_density)
-    lat_deg, lon_deg, world_xyz = _biome_grid(grid_h, grid_w)
-    flat_xyz = world_xyz.reshape(-1, 3)
+    def cell_colors(flat_xyz: np.ndarray) -> np.ndarray:
+        result = world.erosion_cache
+        if result is None or len(result.points) == 0:
+            net_change = np.zeros(len(flat_xyz))
+        else:
+            _, idx = cKDTree(result.points).query(flat_xyz, workers=plates.query_workers(len(flat_xyz)))
+            net_change = result.net_elevation_change_m[idx]
+        return geomorph_colors(net_change)
 
-    result = world.erosion_cache
-    if result is None or len(result.points) == 0:
-        net_change = np.zeros(len(flat_xyz))
-    else:
-        _, idx = cKDTree(result.points).query(flat_xyz, workers=plates.query_workers(len(flat_xyz)))
-        net_change = result.net_elevation_change_m[idx]
-    colors = geomorph_colors(net_change)
-
-    centers, half_w, half_h, scale, offset_x, offset_y = _project_climate_grid(
-        lat_deg, lon_deg, world_xyz, projection, view_rotation, width, height, padding_px
-    )
-    _fill_rects(pixels, centers, half_w, half_h, colors)
-
-    image = Image.fromarray(pixels, mode="RGB")
     # The diverging scale carries no land/ocean cue on its own (same reasoning as soilQuality/
     # the climate heatmaps) -- and erosion vs deposition straddles the shoreline, so the
     # coastline is exactly the reference a viewer needs to read this view.
-    draw = ImageDraw.Draw(image)
-    _draw_coastline(draw, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
-    return _encode_image(image)
+    return _render_resampled_view(world, projection, width, height, view_rotation, cell_colors)
 
 
 def _render_elev_reason_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
@@ -2293,33 +2304,12 @@ def _render_elev_reason_view(world: World, projection: str, width: int, height: 
     of the view: large NONE / EROSION / COASTAL-LEVELING expanses on land tell you the flat
     terrain was never tectonically built (or is being actively worn/planed down), whereas
     COLLISION / SUBDUCTION_ARC / TRANSFORM belts are where relief is still being made."""
-    pixel_scale = width / REFERENCE_WIDTH_PX
-    padding_px = PADDING_PX * pixel_scale
-    pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
 
-    grid_h, grid_w = biome_grid_dimensions(world.climate_density)
-    lat_deg, lon_deg, world_xyz = _biome_grid(grid_h, grid_w)
-    flat_xyz = world_xyz.reshape(-1, 3)
+    def cell_colors(flat_xyz: np.ndarray) -> np.ndarray | None:
+        idx = _nearest_node_indices(world, flat_xyz)
+        return None if idx is None else elev_reason_colors(plates.collect_all_elev_change_reason(world.plates)[idx])
 
-    node_cloud = _node_cloud_and_tree(world) if world.plates else None
-    if node_cloud is None:
-        return _encode_image(Image.fromarray(pixels, mode="RGB"))
-    _all_points, _all_elev, _owner, tree = node_cloud
-    reason = plates.collect_all_elev_change_reason(world.plates)
-    # Nearest-node lookup in the true (un-rotated) frame -- _project_climate_grid applies
-    # view_rotation later, at projection time, exactly as _render_geomorph_view does.
-    _, idx = tree.query(flat_xyz, workers=plates.query_workers(len(flat_xyz)))
-    colors = elev_reason_colors(reason[idx])
-
-    centers, half_w, half_h, scale, offset_x, offset_y = _project_climate_grid(
-        lat_deg, lon_deg, world_xyz, projection, view_rotation, width, height, padding_px
-    )
-    _fill_rects(pixels, centers, half_w, half_h, colors)
-
-    image = Image.fromarray(pixels, mode="RGB")
-    draw = ImageDraw.Draw(image)
-    _draw_coastline(draw, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
-    return _encode_image(image)
+    return _render_resampled_view(world, projection, width, height, view_rotation, cell_colors)
 
 
 def _render_crust_type_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
@@ -2332,50 +2322,37 @@ def _render_crust_type_view(world: World, projection: str, width: int, height: i
     drowned continental margin that melted through to real oceanic crust, a volcanic island on
     an oceanic plate, or a gap-fill patch adopted from a bordering coastline. Same
     nearest-node-resampled-onto-the-biome-grid technique as "elevReason"."""
-    pixel_scale = width / REFERENCE_WIDTH_PX
-    padding_px = PADDING_PX * pixel_scale
-    pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
 
-    grid_h, grid_w = biome_grid_dimensions(world.climate_density)
-    lat_deg, lon_deg, world_xyz = _biome_grid(grid_h, grid_w)
-    flat_xyz = world_xyz.reshape(-1, 3)
+    def cell_colors(flat_xyz: np.ndarray) -> np.ndarray | None:
+        idx = _nearest_node_indices(world, flat_xyz)
+        return None if idx is None else crust_type_colors(plates.collect_all_crust_type_view_codes(world.plates)[idx])
 
-    node_cloud = _node_cloud_and_tree(world) if world.plates else None
-    if node_cloud is None:
-        return _encode_image(Image.fromarray(pixels, mode="RGB"))
-    _all_points, _all_elev, _owner, tree = node_cloud
-    codes = plates.collect_all_crust_type_view_codes(world.plates)
-    _, idx = tree.query(flat_xyz, workers=plates.query_workers(len(flat_xyz)))
-    colors = crust_type_colors(codes[idx])
-
-    centers, half_w, half_h, scale, offset_x, offset_y = _project_climate_grid(
-        lat_deg, lon_deg, world_xyz, projection, view_rotation, width, height, padding_px
-    )
-    _fill_rects(pixels, centers, half_w, half_h, colors)
-
-    image = Image.fromarray(pixels, mode="RGB")
-    draw = ImageDraw.Draw(image)
-    _draw_coastline(draw, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
-    return _encode_image(image)
+    return _render_resampled_view(world, projection, width, height, view_rotation, cell_colors)
 
 
 # Craton debug view (see _render_craton_view). Oceanic crust is dark; ordinary continental crust
 # is grey, warming toward amber as its craton formation clock runs (a proto-craton); cratons are
 # deep red if seeded at generation, orange if they formed during the run, faded toward grey as
-# their cratonic share of the column thins.
+# their cratonic share of the column thins. Belts -- welded or rifted crust that never forms
+# craton (cratons.belt_mask, RFC 0009) -- are teal.
 CRATON_VIEW_OCEANIC_RGB = np.array((24, 38, 72), dtype=float)
 CRATON_VIEW_CONTINENTAL_RGB = np.array((128, 126, 118), dtype=float)
 CRATON_VIEW_PROTO_RGB = np.array((214, 186, 96), dtype=float)
 CRATON_VIEW_SEEDED_RGB = np.array((150, 34, 40), dtype=float)
 CRATON_VIEW_FORMED_RGB = np.array((232, 112, 38), dtype=float)
+CRATON_VIEW_BELT_RGB = np.array((40, 150, 140), dtype=float)
 # Open ocean on the "waterLayer" overlay (lakes/seas keep LAKE_COLOR_RGB / SEA_COLOR_RGB).
 WATER_LAYER_OCEAN_RGB = (40, 90, 170)
 
 
-def craton_colors(continental: np.ndarray, craton_m: np.ndarray, formed_years: np.ndarray, stable_myr: np.ndarray) -> np.ndarray:
+def craton_colors(
+    continental: np.ndarray, craton_m: np.ndarray, formed_years: np.ndarray, stable_myr: np.ndarray, belt: np.ndarray | None = None
+) -> np.ndarray:
     """Per-node craton view colour -- see the CRATON_VIEW_* constants."""
     proto = np.clip(stable_myr / cratons.CRATON_FORMATION_MYR, 0.0, 1.0)[:, None]
     colors = CRATON_VIEW_CONTINENTAL_RGB + proto * (CRATON_VIEW_PROTO_RGB - CRATON_VIEW_CONTINENTAL_RGB)
+    if belt is not None:
+        colors = np.where(belt[:, None], CRATON_VIEW_BELT_RGB, colors)
     craton_rgb = np.where((formed_years < 0.0)[:, None], CRATON_VIEW_SEEDED_RGB, CRATON_VIEW_FORMED_RGB)
     share = (0.35 + 0.65 * cratons.strength(craton_m))[:, None]
     colors = np.where((craton_m > 0.0)[:, None], CRATON_VIEW_CONTINENTAL_RGB + share * (craton_rgb - CRATON_VIEW_CONTINENTAL_RGB), colors)
@@ -2386,32 +2363,29 @@ def craton_colors(continental: np.ndarray, craton_m: np.ndarray, formed_years: n
 def _render_craton_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
     """Renders "craton" (see DEBUG_VIEWS) -- same nearest-node-resampled-onto-the-biome-grid
     technique as "crustType"."""
-    pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
-    if not world.plates:
-        return _encode_image(Image.fromarray(pixels, mode="RGB"))
-    grid_h, grid_w = biome_grid_dimensions(world.climate_density)
-    lat_deg, lon_deg, world_xyz = _biome_grid(grid_h, grid_w)
-    _points, _elev, _owner, tree = _node_cloud_and_tree(world)
-    live = [p for p in world.plates if p.node_count() > 0]
-    continental = np.concatenate(
-        [effective_is_continental_from_codes(p.collect("crust_type_code"), p.crust_type == "continental") for p in live]
-    )
-    fields = {
-        name: np.concatenate([p.collect(name) for p in live])
-        for name in ("craton_crust_m", "craton_formed_years", "stable_continental_myr")
-    }
-    _, idx = tree.query(world_xyz.reshape(-1, 3), workers=plates.query_workers(grid_h * grid_w))
-    colors = craton_colors(
-        continental[idx], fields["craton_crust_m"][idx], fields["craton_formed_years"][idx], fields["stable_continental_myr"][idx]
-    )
-    padding_px = PADDING_PX * width / REFERENCE_WIDTH_PX
-    centers, half_w, half_h, scale, offset_x, offset_y = _project_climate_grid(
-        lat_deg, lon_deg, world_xyz, projection, view_rotation, width, height, padding_px
-    )
-    _fill_rects(pixels, centers, half_w, half_h, colors)
-    image = Image.fromarray(pixels, mode="RGB")
-    _draw_coastline(ImageDraw.Draw(image), world, projection, scale, offset_x, offset_y, width / REFERENCE_WIDTH_PX, view_rotation)
-    return _encode_image(image)
+
+    def cell_colors(flat_xyz: np.ndarray) -> np.ndarray | None:
+        idx = _nearest_node_indices(world, flat_xyz)
+        if idx is None:
+            return None
+        live = [p for p in world.plates if p.node_count() > 0]
+        continental = np.concatenate(
+            [effective_is_continental_from_codes(p.collect("crust_type_code"), p.crust_type == "continental") for p in live]
+        )
+        fields = {
+            name: np.concatenate([p.collect(name) for p in live])
+            for name in ("craton_crust_m", "craton_formed_years", "stable_continental_myr")
+        }
+        belt = np.concatenate([cratons.belt_mask(p, world.elapsed_years) for p in live])
+        return craton_colors(
+            continental[idx],
+            fields["craton_crust_m"][idx],
+            fields["craton_formed_years"][idx],
+            fields["stable_continental_myr"][idx],
+            belt[idx],
+        )
+
+    return _render_resampled_view(world, projection, width, height, view_rotation, cell_colors)
 
 
 def _render_overlay_layer(world: World, layer: str, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
@@ -2458,28 +2432,20 @@ def _render_overlay_layer(world: World, layer: str, projection: str, width: int,
 
 
 def _render_thickness_view(world: World, projection: str, view: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
-    pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
-    if not world.plates:
-        return _encode_image(Image.fromarray(pixels, mode="RGB"))
-    grid_h, grid_w = biome_grid_dimensions(world.climate_density)
-    lat_deg, lon_deg, world_xyz = _biome_grid(grid_h, grid_w)
-    _points, _elev, _owner, tree = _node_cloud_and_tree(world)
     field = "crustal_thickness_m" if view == "hc" else "mantle_lithosphere_thickness_m"
     cap = lithosphere.MAX_CRUSTAL_THICKNESS_M if view == "hc" else lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M
-    values = np.concatenate([p.collect(field) for p in world.plates])
-    _, idx = tree.query(world_xyz.reshape(-1, 3), workers=plates.query_workers(grid_h * grid_w))
-    sampled = values[idx]
-    fraction = np.clip(sampled / cap, 0.0, 1.0)
-    colors = np.stack((35 + 175 * fraction, 55 + 120 * fraction, 105 - 65 * fraction), axis=-1).astype(np.uint8)
-    colors[sampled >= cap - 1e-6] = (255, 35, 210)
-    padding_px = PADDING_PX * width / REFERENCE_WIDTH_PX
-    centers, half_w, half_h, scale, offset_x, offset_y = _project_climate_grid(
-        lat_deg, lon_deg, world_xyz, projection, view_rotation, width, height, padding_px
-    )
-    _fill_rects(pixels, centers, half_w, half_h, colors)
-    image = Image.fromarray(pixels, mode="RGB")
-    _draw_coastline(ImageDraw.Draw(image), world, projection, scale, offset_x, offset_y, width / REFERENCE_WIDTH_PX, view_rotation)
-    return _encode_image(image)
+
+    def cell_colors(flat_xyz: np.ndarray) -> np.ndarray | None:
+        idx = _nearest_node_indices(world, flat_xyz)
+        if idx is None:
+            return None
+        sampled = np.concatenate([p.collect(field) for p in world.plates])[idx]
+        fraction = np.clip(sampled / cap, 0.0, 1.0)
+        colors = np.stack((35 + 175 * fraction, 55 + 120 * fraction, 105 - 65 * fraction), axis=-1).astype(np.uint8)
+        colors[sampled >= cap - 1e-6] = (255, 35, 210)
+        return colors
+
+    return _render_resampled_view(world, projection, width, height, view_rotation, cell_colors)
 
 
 def _percentile_rank(values: np.ndarray) -> np.ndarray:
@@ -2494,31 +2460,74 @@ def _percentile_rank(values: np.ndarray) -> np.ndarray:
     return rank / max(len(values) - 1, 1)
 
 
-def _river_network_is_visible(river: hydrology.RiverInfo) -> bool:
-    """Whether a network belongs on terrain/biome maps. The River Inspector does not use
-    this filter and continues to show every network."""
-    return len(river.member_idx) >= RIVER_VISIBLE_MIN_NODES or river.num_tributaries >= RIVER_VISIBLE_MIN_TRIBUTARIES
+def _river_network_is_long_enough(river: hydrology.RiverInfo) -> bool:
+    """Whether a network clears the physical-length cutoff (RIVER_VISIBLE_MIN_LENGTH_M)."""
+    if river.length_m is None:
+        # Preserve hand-built pre-length fixtures; computed river networks always set length_m.
+        return len(river.member_idx) >= 30 or river.num_tributaries >= 5
+    return river.length_m >= RIVER_VISIBLE_MIN_LENGTH_M
 
 
-def _rivers_to_draw(world: World, hide_minor_networks: bool = False) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _river_network_is_drawn(river: hydrology.RiverInfo, hide_short_networks: bool) -> bool:
+    """Whether a map view draws this network: its mouth discharge is above
+    RIVER_VISIBLE_MIN_FLOW_M3_S in every view, and it is also long enough in the views that
+    hide short networks."""
+    if river.flow_rate <= RIVER_VISIBLE_MIN_FLOW_M3_S:
+        return False
+    return not hide_short_networks or _river_network_is_long_enough(river)
+
+
+def _extend_drawn_rivers_downstream(
+    hydro, drawn: np.ndarray, channel_width: np.ndarray, mouths: set[int]
+) -> tuple[np.ndarray, np.ndarray]:
+    """Draws every river node downstream of a drawn one, all the way to its mouth. A river's
+    last nodes before the coast are often new or reset cells whose channel hasn't grown past
+    RIVER_VISIBLE_MIN_WIDTH_M yet, so the line used to stop one to three nodes short of the
+    sea, a river to nowhere (issue #503). Only nodes below that floor are filled in, and they
+    take the width of the drawn reach above them; a node drawn in its own right keeps its own
+    width, so a river that narrows downstream is still drawn narrowing.
+
+    The walk stops at the network's mouth (`mouths`, every `group_rivers` mouth_idx). A sink
+    whose spill crosses a lake is a mouth whose `flow_target` is a river node of the outflow
+    network beyond the rim, and that network is drawn or hidden on its own merits (#520)."""
+    original = drawn
+    drawn = drawn.copy()
+    width = channel_width.astype(float).copy()
+    flow_target = hydro.flow_target
+    is_river = hydro.is_river
+    for source in np.flatnonzero(original).tolist():
+        node = source
+        while True:
+            target = int(flow_target[node])
+            if node in mouths or target < 0 or original[target] or drawn[target] or not is_river[target] or flow_target[target] < 0:
+                break
+            drawn[target] = True
+            width[target] = width[node]
+            node = target
+    return drawn, width
+
+
+def _rivers_to_draw(world: World, hide_short_networks: bool = False) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Selects which river segments the general-purpose map views draw, how strongly each
     tints toward RIVER_COLOR_RGB, and how much (if at all) each widens past 1px.
 
-    Returns (src_idx, color_alpha, width_frac): `src_idx` is the node index at the *upstream*
-    end of each drawn segment (its downstream end is hydro.flow_target[src_idx], guaranteed
-    >= 0). `color_alpha` is in [RIVER_COLOR_BLEND_MIN_FRACTION, 1.0], a percentile rank of this
+    Returns (src_idx, color_alpha, width_frac): `src_idx` is each drawn river node, whose flow
+    edge (`hydro.flow_target[src_idx]`, guaranteed >= 0) _draw_rivers draws as one segment, or
+    as several along a spill path (`hydrology.flow_segments`). `color_alpha` is in [RIVER_COLOR_BLEND_MIN_FRACTION, 1.0], a percentile rank of this
     segment's own channel_width among every other segment drawn in this same call -- see
     RIVER_COLOR_RGB's own comment for why a rank beats a fixed fraction here. `width_frac` is
-    in [0, 1], a percentile rank of this segment's own flow_accum (not channel_width -- see
+    in [0, 1], a percentile rank of this segment's own physical discharge (not channel_width -- see
     RIVER_COLOR_RGB's own comment for why) among the same drawn population, floored at
     RIVER_WIDE_MIN_PERCENTILE (0 below it, an ordinary 1px line) and reaching 1 at this call's
-    single highest-flow segment. Every is_river network is a candidate, not just the strongest
-    few by mouth flow -- hydrology.py's own is_river cut (top RIVER_FLOW_PERCENTILE of land
-    flow_accum) is already the world-relative "how many rivers exist at all" decision; this
-    only additionally drops individual segments whose channel is too narrow to be a real,
-    visible river at all (RIVER_VISIBLE_MIN_WIDTH_M), which both keeps a bone-dry world's few
-    real rivers from being buried in an unbounded creek count and keeps the per-segment
-    ImageDraw loop in _draw_rivers cheap.
+    single highest-flow segment.
+
+    Candidates are the is_river networks (hydrology.py's top RIVER_FLOW_PERCENTILE of land
+    physical discharge) that _river_network_is_drawn accepts: mouth discharge above the fixed
+    RIVER_VISIBLE_MIN_FLOW_M3_S floor, so a dry world may draw no rivers at all, and with
+    `hide_short_networks` also long enough. There is no cap on how many networks qualify.
+    Individual segments whose channel is too narrow to be a visible river
+    (RIVER_VISIBLE_MIN_WIDTH_M) are then dropped, except downstream of a drawn reach, which
+    keeps the per-segment ImageDraw loop in _draw_rivers cheap.
 
     A stale/pre-#190 hydrology_cache (loaded from an old save, or a hand-built test fixture
     that doesn't set channel_width) has no channel_width of the right shape -- treated the same
@@ -2529,21 +2538,31 @@ def _rivers_to_draw(world: World, hide_minor_networks: bool = False) -> tuple[np
     if hydro is None or channel_width is None or len(channel_width) != len(hydro.points):
         return np.empty(0, dtype=np.int64), np.empty(0), np.empty(0)
 
+    discharge_m3_s = hydro.discharge_m3_s
+    if discharge_m3_s is None or len(discharge_m3_s) != len(hydro.points):
+        # Hand-built internal fixtures may still carry only the legacy field.
+        discharge_m3_s = hydrology.flow_accum_mm_yr_to_discharge_m3_s(hydro.flow_accum)
     visible_mask = hydro.is_river & (hydro.flow_target >= 0) & (channel_width >= RIVER_VISIBLE_MIN_WIDTH_M)
-    if hide_minor_networks:
-        visible_members = np.zeros(len(hydro.points), dtype=bool)
-        for river in hydrology.group_rivers(hydro):
-            if _river_network_is_visible(river):
-                visible_members[river.member_idx] = True
-        visible_mask &= visible_members
+    # No network's mouth can clear the discharge floor if no river node does, so skip grouping.
+    if not np.any(discharge_m3_s[hydro.is_river] > RIVER_VISIBLE_MIN_FLOW_M3_S):
+        return np.empty(0, dtype=np.int64), np.empty(0), np.empty(0)
+    drawn_members = np.zeros(len(hydro.points), dtype=bool)
+    rivers = hydrology.group_rivers(hydro)
+    for river in rivers:
+        if _river_network_is_drawn(river, hide_short_networks):
+            drawn_members[river.member_idx] = True
+    visible_mask &= drawn_members
     if not np.any(visible_mask):
         return np.empty(0, dtype=np.int64), np.empty(0), np.empty(0)
+    visible_mask, channel_width = _extend_drawn_rivers_downstream(
+        hydro, visible_mask, channel_width, {river.mouth_idx for river in rivers}
+    )
     candidates = np.where(visible_mask)[0]
 
     color_percentile = _percentile_rank(channel_width[candidates])
     color_alpha = RIVER_COLOR_BLEND_MIN_FRACTION + (1.0 - RIVER_COLOR_BLEND_MIN_FRACTION) * color_percentile
 
-    flow_percentile = _percentile_rank(hydro.flow_accum[candidates])
+    flow_percentile = _percentile_rank(discharge_m3_s[candidates])
     width_frac = np.clip((flow_percentile - RIVER_WIDE_MIN_PERCENTILE) / (1.0 - RIVER_WIDE_MIN_PERCENTILE), 0.0, 1.0)
 
     return candidates.astype(np.int64), color_alpha, width_frac
@@ -2551,12 +2570,12 @@ def _rivers_to_draw(world: World, hide_minor_networks: bool = False) -> tuple[np
 
 def _draw_rivers(
     image: Image.Image, world: World, projection: str, scale: float, offset_x: float, offset_y: float, pixel_scale: float, view_rotation: np.ndarray,
-    hide_minor_networks: bool = False,
+    hide_short_networks: bool = False,
 ) -> Image.Image:
     """Draws each selected river segment (see _rivers_to_draw for which segments and how
     strongly each tints toward RIVER_COLOR_RGB) as a short line from a river node to its own
-    downstream flow target. Each segment is a real, short 3D hop between two
-    adjacent-in-the-flow-graph nodes, so _project_offset (not two independent _project_points
+    downstream flow target, or, for a spill hop, along its spill path (hydrology.flow_segments).
+    Each segment is a real, short 3D hop between two adjacent-in-the-flow-graph nodes, so _project_offset (not two independent _project_points
     calls) keeps it from being wrongly split across the antimeridian seam -- same technique
     _render_grid_arrays' own corner measurements already rely on.
 
@@ -2568,10 +2587,12 @@ def _draw_rivers(
     hydro = world.hydrology_cache
     if hydro is None:
         return image
-    river_idx, color_alpha, width_frac = _rivers_to_draw(world, hide_minor_networks=hide_minor_networks)
+    river_idx, color_alpha, width_frac = _rivers_to_draw(world, hide_short_networks=hide_short_networks)
     if len(river_idx) == 0:
         return image
-    target_idx = hydro.flow_target[river_idx]
+    # A spill hop is drawn along its spill path, so one node can own several segments (#520).
+    from_idx, target_idx, owner, _ = hydrology.flow_segments(hydro, river_idx)
+    color_alpha, width_frac = color_alpha[owner], width_frac[owner]
 
     width_px = np.maximum(
         np.round(pixel_scale * RIVER_LINE_WIDTH_PX * (1.0 + (RIVER_LINE_WIDTH_MAX_MULT - 1.0) * width_frac)).astype(int), 1
@@ -2585,7 +2606,7 @@ def _draw_rivers(
     halo_fill_value = np.clip(np.round(fill_value * RIVER_HALO_FILL_FRACTION), 0, 255).astype(int)
     core_width_px = np.maximum(np.round(width_px * RIVER_CORE_WIDTH_FRACTION).astype(int), 1)
 
-    from_points = _rotate(hydro.points[river_idx], view_rotation)
+    from_points = _rotate(hydro.points[from_idx], view_rotation)
     to_points = _rotate(hydro.points[target_idx], view_rotation)
     _, from_lon = geometry.xyz_to_latlon(from_points)
     from_xy = _project_points(projection, from_points)
@@ -2643,7 +2664,7 @@ def _draw_coastline(
         draw.line([(x1, y1), (x2, y2)], fill=COASTLINE_COLOR_RGB, width=line_width_px)
 
 
-def render_png(  # noqa: C901
+def render_png(
     world: World,
     projection: str,
     view: str,
@@ -2657,15 +2678,102 @@ def render_png(  # noqa: C901
     Mirrors what MapCanvas.tsx used to compute client-side from raw coordinate JSON -- this
     is now the only place that drawing logic lives. `view_rotation` (default identity, i.e.
     today's behavior exactly, center at lat=0/lon=0) is a pure render-time transform -- see
-    _rotate's docstring and docs/simulation-model.md#rotating-the-view.
+    _rotate's docstring and docs/simulation-model/rendering-and-inspectors.md#rotating-the-view.
 
     `show_mountains`/`show_plains_plateaus` are the Elevation view's own legend toggles (see
     _classify_terrain_relief) -- silently ignored on every other view, both default `False`
     (an ordinary render pays no extra cost for them)."""
     if view_rotation is None:
         view_rotation = np.eye(3)
-    pixel_scale = width / REFERENCE_WIDTH_PX
-    padding_px = PADDING_PX * pixel_scale
+    if projection == projections.GLOBE:
+        return _render_globe(world, view, width, height, view_rotation, show_mountains, show_plains_plateaus)
+    return _render_map_png(world, projection, view, width, height, view_rotation, show_mountains, show_plains_plateaus)
+
+
+def _globe_transform(width: int, height: int) -> tuple[float, float, float]:
+    """`(scale, offset_x, offset_y)` placing the unit disc in a `width`x`height` image -- the
+    same bounding-box fit every other projection gets, which rotation.ts's getRenderTransform
+    reproduces client-side."""
+    padding_px = PADDING_PX * width / REFERENCE_WIDTH_PX
+    return _fit_view(_sphere_extent(projections.GLOBE), width, height, padding_px)
+
+
+def _globe_source_size(width: int, height: int) -> tuple[int, int]:
+    """The Behrmann map `_render_globe` resamples: wide enough that its x scale (scale_f *
+    cos_phi0) is the globe's radius in pixels, capped at twice the requested size. Its padding
+    grows with its width, so solve width = 2 pi radius_px + 2 * PADDING_PX * width / REFERENCE_WIDTH_PX."""
+    radius_px = max(_globe_transform(width, height)[0], 1.0)
+    cos_phi0 = np.cos(projections.BEHRMANN_STANDARD_PARALLEL)
+    map_width = int(np.ceil(2 * np.pi * radius_px / (1 - 2 * PADDING_PX / REFERENCE_WIDTH_PX)))
+    map_width = min(map_width, 2 * max(width, height))
+    map_padding_px = PADDING_PX * map_width / REFERENCE_WIDTH_PX
+    map_height = int(np.ceil((map_width - 2 * map_padding_px) / (np.pi * cos_phi0 * cos_phi0) + 2 * map_padding_px))
+    return map_width, map_height
+
+
+def _render_globe(
+    world: World,
+    view: str,
+    width: int,
+    height: int,
+    view_rotation: np.ndarray,
+    show_mountains: bool,
+    show_plains_plateaus: bool,
+) -> bytes:
+    """The "globe" projection (#497): render the view in Behrmann, then resample it onto the
+    orthographic disc of the facing hemisphere, so every view (and the Record path) gets a
+    globe without each renderer learning to hide the far side.
+
+    Behrmann's y is sin(lat), exactly the orthographic y, so only x is resampled. The map is
+    rendered at the width that matches the globe's pixels per radian of longitude at the
+    disc's centre, so the middle of the globe is no blurrier than a flat map; its strokes are
+    scaled back down (`_STROKE_SCALE`) so lines come out as thick as on a flat map of the
+    requested size. Sampling is nearest-neighbour so the Combined/Biome views' alpha-encoded
+    biome ids survive."""
+    scale, offset_x, offset_y = _globe_transform(width, height)
+    cos_phi0 = np.cos(projections.BEHRMANN_STANDARD_PARALLEL)
+    map_width, map_height = _globe_source_size(width, height)
+    map_padding_px = PADDING_PX * map_width / REFERENCE_WIDTH_PX
+    # At the disc's centre one map pixel spans one globe pixel across and cos^2(phi0) of one
+    # down; scaling strokes by the geometric mean of the two keeps them at a flat map's weight.
+    stroke_token = _STROKE_SCALE.set(float(width / (map_width * cos_phi0)))
+    try:
+        flat = Image.open(io.BytesIO(_render_map_png(
+            world, "behrmann", view, map_width, map_height, view_rotation, show_mountains, show_plains_plateaus,
+        )))
+    finally:
+        _STROKE_SCALE.reset(stroke_token)
+    source = np.asarray(flat)
+    map_scale, map_offset_x, map_offset_y = _fit_view(_sphere_extent("behrmann"), map_width, map_height, map_padding_px)
+
+    xs = (np.arange(width) + 0.5 - offset_x) / scale
+    ys = (offset_y - (np.arange(height) + 0.5)) / scale
+    x, y = np.meshgrid(xs, ys)
+    on_disc = x * x + y * y <= 1.0
+    depth = np.sqrt(np.clip(1.0 - x * x - y * y, 0.0, 1.0))
+    lon = np.arctan2(x, depth)
+    map_x = np.clip(np.floor(map_scale * lon * cos_phi0 + map_offset_x), 0, map_width - 1).astype(np.intp)
+    map_y = np.clip(np.floor(map_offset_y - map_scale * y / cos_phi0), 0, map_height - 1).astype(np.intp)
+
+    # The map's own corner is its background, alpha included (Combined/Biome encode ids there).
+    out = np.broadcast_to(source[0, 0], (height, width) + source.shape[2:]).copy()
+    out[on_disc] = source[map_y[on_disc], map_x[on_disc]]
+    return _encode_image(Image.fromarray(out, mode=flat.mode))
+
+
+def _render_map_png(  # noqa: C901
+    world: World,
+    projection: str,
+    view: str,
+    width: int,
+    height: int,
+    view_rotation: np.ndarray,
+    show_mountains: bool = False,
+    show_plains_plateaus: bool = False,
+) -> bytes:
+    """render_png for the flat (one-to-one) projections."""
+    pixel_scale = _stroke_scale(width)
+    padding_px = PADDING_PX * width / REFERENCE_WIDTH_PX
     blank = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
 
     if view in CLIMATE_VIEWS:
@@ -2737,13 +2845,7 @@ def render_png(  # noqa: C901
         return _encode_image(Image.fromarray(blank, mode="RGB"))
 
     all_xy = np.concatenate(bbox_chunks, axis=0)
-    min_x, min_y = all_xy.min(axis=0)
-    max_x, max_y = all_xy.max(axis=0)
-    data_w = max(max_x - min_x, 1e-9)
-    data_h = max(max_y - min_y, 1e-9)
-    scale = min((width - 2 * padding_px) / data_w, (height - 2 * padding_px) / data_h)
-    offset_x = width / 2 - scale * (min_x + max_x) / 2
-    offset_y = height / 2 + scale * (min_y + max_y) / 2
+    scale, offset_x, offset_y = _fit_view(all_xy, width, height, padding_px)
 
     pixels = blank.copy()
 
@@ -2824,10 +2926,10 @@ def render_png(  # noqa: C901
         # the hypsometric raster reads as a continuous surface, so softening the cell-grid
         # jaggies -- before rivers/graticule go on top -- makes coastlines and contours match
         # what "Elevation & Biome" shows. "plates" stays un-blurred: it's a categorical mosaic.
-        image = image.filter(ImageFilter.GaussianBlur(radius=CELL_BLUR_RADIUS_PX * pixel_scale))
+        image = image.filter(ImageFilter.GaussianBlur(radius=CELL_BLUR_RADIUS_PX * width / REFERENCE_WIDTH_PX))
     image = _draw_rivers(
         image, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation,
-        hide_minor_networks=view == "elevation",
+        hide_short_networks=view == "elevation",
     )
     draw = ImageDraw.Draw(image)
 

@@ -2,7 +2,8 @@ import pickle
 
 import numpy as np
 import pytest
-from app import persistence
+from app import legacy_conversion, persistence, sparse_quad_patch
+from app.hydroclimate import climate
 from app.elevation_lines import line_spacing_rad
 from app.world import generate_world, step_world
 
@@ -132,6 +133,21 @@ def test_loading_a_save_drops_the_retired_line_engine_state():
     loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
     assert "corner_notch_log" not in loaded.__dict__
     assert "gap_fill_algorithm" not in loaded.__dict__
+
+
+def test_loading_a_save_with_unitless_cached_humidity_converts_it_to_g_per_kg():
+    # Issue #522: saves before humidity had units cache `humidity`, a unitless index. Loading
+    # converts it by the factor the index's constants were converted by, and keeps the cached
+    # precipitation the next step's transpiration source reads.
+    world = generate_world(seed=3, num_plates=4)
+    cache = climate.compute_climate_cached(world)
+    precipitation = cache.precipitation_mm.copy()
+    cache.__dict__["humidity"] = np.full_like(cache.__dict__.pop("humidity_g_kg"), 0.5)
+
+    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+    assert "humidity" not in vars(loaded.climate_cache)
+    np.testing.assert_allclose(loaded.climate_cache.humidity_g_kg, 0.5 * climate.HUMIDITY_INDEX_G_KG)
+    np.testing.assert_array_equal(loaded.climate_cache.precipitation_mm, precipitation)
 
 
 def test_loading_a_save_with_the_old_water_column_budget_rebuilds_it_in_m3():
@@ -296,3 +312,84 @@ def test_a_line_save_the_converter_refuses_is_a_corrupt_save():
     world.plates[0].lines[0].__dict__["_future_field"] = np.zeros(len(world.plates[0].lines[0]))
     with pytest.raises(persistence.CorruptSaveError, match="_future_field"):
         persistence.load_world_bytes(_line_pickle(world))
+
+
+def _quad_v1_save(world, age_steps, monkeypatch) -> bytes:
+    """`world` saved by a build from before #358, whose quad plates counted age in steps."""
+    for plate in world.plates:
+        del plate.__dict__["_age_years"]
+        plate.__dict__["_age_steps"] = age_steps
+    monkeypatch.setattr(sparse_quad_patch, "QUAD_SURFACE_FORMAT_VERSION", 1)
+    data = persistence.save_world_bytes(world)
+    monkeypatch.undo()
+    return data
+
+
+def test_a_quad_plate_age_in_steps_loads_as_years_at_the_worlds_step_length(monkeypatch):
+    world = generate_world(seed=3, num_plates=4)
+    world.elapsed_years, world.steps_taken = 3_000_000.0, 10
+
+    loaded = persistence.load_world_bytes(_quad_v1_save(world, 4, monkeypatch))
+    assert [p.age_years for p in loaded.plates] == [1_200_000.0] * len(world.plates)
+    assert all("_age_steps" not in p.__dict__ for p in loaded.plates)
+    resaved = persistence.load_world_bytes(persistence.save_world_bytes(loaded))
+    assert [p.age_years for p in resaved.plates] == [1_200_000.0] * len(world.plates)
+
+
+def test_a_step_age_without_a_step_count_assumes_the_fallback_step_capped_at_world_age(monkeypatch):
+    """A save from before `steps_taken` existed reads 0 steps, so its step length is unknown."""
+    world = generate_world(seed=3, num_plates=4)
+    world.elapsed_years, world.steps_taken = 1_000_000.0, 0
+    loaded = persistence.load_world_bytes(_quad_v1_save(world, 4, monkeypatch))
+    assert loaded.plates[0].age_years == 4 * legacy_conversion.FALLBACK_YEARS_PER_STEP
+
+    world = generate_world(seed=3, num_plates=4)
+    world.elapsed_years, world.steps_taken = 1_000_000.0, 0
+    loaded = persistence.load_world_bytes(_quad_v1_save(world, 500, monkeypatch))
+    assert loaded.plates[0].age_years == 1_000_000.0
+
+
+@pytest.mark.parametrize("age_steps", [-1, 2.5, None])
+def test_an_invalid_step_age_in_an_old_quad_save_is_refused(age_steps, monkeypatch):
+    world = generate_world(seed=3, num_plates=4)
+    with pytest.raises(persistence.CorruptSaveError, match="age"):
+        persistence.load_world_bytes(_quad_v1_save(world, age_steps, monkeypatch))
+
+
+def test_an_old_quad_plate_with_no_age_is_refused(monkeypatch):
+    world = generate_world(seed=3, num_plates=4)
+    for plate in world.plates:
+        del plate.__dict__["_age_years"]
+    monkeypatch.setattr(sparse_quad_patch, "QUAD_SURFACE_FORMAT_VERSION", 1)
+    data = persistence.save_world_bytes(world)
+    monkeypatch.undo()
+    with pytest.raises(persistence.CorruptSaveError, match="no age"):
+        persistence.load_world_bytes(data)
+
+
+def test_a_line_save_converts_plate_age_from_steps_to_years():
+    world = _line_world()
+    world.elapsed_years, world.steps_taken = 2_000_000.0, 20
+    for plate in world.plates:
+        plate.__dict__["_age_steps"] = 7
+
+    loaded = persistence.load_world_bytes(_line_pickle(world))
+    assert [p.age_years for p in loaded.plates] == [700_000.0] * len(loaded.plates)
+
+
+def test_a_save_from_before_belt_marks_loads_with_no_belts_and_unchanged_cratons():
+    """RFC 0009: a save without the `belt_formed_years` array loads with the "never" default
+    everywhere and its cratons as they were; belts come only from later collisions and rifts."""
+    from app.surface_fields import BELT_UNMARKED_YEARS
+
+    world = generate_world(5, node_density=0.25)
+    assert any(np.any(p.collect("craton_crust_m") > 0.0) for p in world.plates)
+    for plate in world.plates:
+        plate._fields.pop("belt_formed_years", None)
+
+    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+
+    for old, new in zip(world.plates, loaded.plates):
+        assert np.all(new.collect("belt_formed_years") == BELT_UNMARKED_YEARS)
+        np.testing.assert_array_equal(new.collect("craton_crust_m"), old.collect("craton_crust_m"))
+        np.testing.assert_array_equal(new.collect("craton_formed_years"), old.collect("craton_formed_years"))

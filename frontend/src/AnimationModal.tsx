@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { MapView } from "./api";
+import ModalShell from "./ModalShell";
 
 // How many simulation steps each animation frame advances the world -- the real years each
 // frame covers is this times the app's current "Years per step" (see App.tsx's
@@ -15,7 +16,7 @@ const DEFAULT_NUM_FRAMES = 480;
 // "keep going until Stop is pressed" (see the `unbounded` checkbox below).
 const MAX_NUM_FRAMES = 480;
 
-const INSPECTOR_VIEWS: MapView[] = ["plateInspector", "riverInspector", "lakeInspector", "platesAndFaults"];
+const NON_RENDERED_VIEWS: MapView[] = ["crossSection", "plateInspector", "riverInspector", "lakeInspector", "platesAndFaults"];
 
 interface Props {
   hasWorld: boolean;
@@ -50,35 +51,14 @@ export default function AnimationModal({ hasWorld, stepYears, mapView, onClose, 
   const [unbounded, setUnbounded] = useState(true);
   const yearsPerFrame = stepsPerFrame * stepYears;
 
-  const isInspectorView = INSPECTOR_VIEWS.includes(mapView);
-  const canStart = hasWorld && !isInspectorView;
+  const isRenderedMapView = !NON_RENDERED_VIEWS.includes(mapView);
+  const canStart = hasWorld && isRenderedMapView;
 
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: "fixed", inset: 0, background: "rgba(0, 0, 0, 0.6)", zIndex: 100,
-        display: "flex", alignItems: "center", justifyContent: "center",
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: 380, maxHeight: "85vh", overflowY: "auto", padding: 20, background: "#151a2e",
-          border: "1px solid #333", borderRadius: 8, color: "#e6e8ef", fontSize: 13,
-          boxShadow: "0 8px 32px rgba(0, 0, 0, 0.6)",
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <span style={{ fontSize: 16, fontWeight: 600 }}>⏺ Record Animation</span>
-          <button type="button" onClick={onClose} style={{ background: "none", border: "none", color: "#8b8fa3", cursor: "pointer", fontSize: 16 }}>
-            ✕
-          </button>
-        </div>
-
-        {isInspectorView ? (
+    <ModalShell title="⏺ Record Animation" onClose={onClose}>
+        {!isRenderedMapView ? (
           <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 12 }}>
-            Switch to a map view (not an Inspector) to make an animation.
+            Switch to a rendered map view to make an animation.
           </div>
         ) : (
           <>
@@ -129,7 +109,6 @@ export default function AnimationModal({ hasWorld, stepYears, mapView, onClose, 
             </button>
           </>
         )}
-      </div>
-    </div>
+    </ModalShell>
   );
 }

@@ -1,0 +1,90 @@
+{
+ "7": {
+  "myr": 1000.0,
+  "start_craton_km3": 4098019740,
+  "rifted_km3": 165813156,
+  "rifted_share_of_start_craton": 0.0405,
+  "path_share_of_rifted": {
+   "divergent": 0.32,
+   "stretch": 0.512,
+   "failed": 0.168
+  },
+  "cuts": {
+   "split": {
+    "cuts": 33,
+    "through_craton": 5,
+    "craton_share_of_band_area": 0.107
+   },
+   "failed_rift": {
+    "cuts": 29,
+    "through_craton": 4,
+    "craton_share_of_band_area": 0.179
+   }
+  },
+  "plates": 18,
+  "events": {
+   "merged": 15,
+   "failed_rift": 29,
+   "split": 33
+  }
+ },
+ "11": {
+  "myr": 1000.0,
+  "start_craton_km3": 3169623315,
+  "rifted_km3": 137954757,
+  "rifted_share_of_start_craton": 0.0435,
+  "path_share_of_rifted": {
+   "divergent": 0.283,
+   "stretch": 0.575,
+   "failed": 0.142
+  },
+  "cuts": {
+   "split": {
+    "cuts": 37,
+    "through_craton": 6,
+    "craton_share_of_band_area": 0.075
+   },
+   "failed_rift": {
+    "cuts": 31,
+    "through_craton": 5,
+    "craton_share_of_band_area": 0.059
+   }
+  },
+  "plates": 28,
+  "events": {
+   "merged": 11,
+   "failed_rift": 31,
+   "split": 37,
+   "craton": 1
+  }
+ },
+ "2024": {
+  "myr": 1000.0,
+  "start_craton_km3": 1723807860,
+  "rifted_km3": 184615631,
+  "rifted_share_of_start_craton": 0.1071,
+  "path_share_of_rifted": {
+   "divergent": 0.407,
+   "stretch": 0.497,
+   "failed": 0.096
+  },
+  "cuts": {
+   "split": {
+    "cuts": 32,
+    "through_craton": 4,
+    "craton_share_of_band_area": 0.035
+   },
+   "failed_rift": {
+    "cuts": 28,
+    "through_craton": 5,
+    "craton_share_of_band_area": 0.094
+   }
+  },
+  "plates": 26,
+  "events": {
+   "merged": 9,
+   "failed_rift": 28,
+   "split": 32
+  }
+ }
+}

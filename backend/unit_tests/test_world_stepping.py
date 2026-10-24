@@ -1,16 +1,25 @@
 import numpy as np
 from app.hydroclimate import climate
+from app.torque import shift_plates_quasistatic
 from app.world import generate_world, step_world
 
 
 def test_generate_world_starts_plates_at_rest():
     # Motion is torque-driven (see torque.py) rather than fit from the mantle flow field at
-    # generation time -- a freshly generated world's plates haven't yet resolved any torque
-    # balance, so they start at rest and only acquire an omega once step_world's own
-    # Plate.shift runs.
+    # generation time. Freshly generated plates acquire omega in the first coupled step.
     world = generate_world(seed=10, num_plates=8)
     rates = [np.linalg.norm(p.omega) for p in world.plates]
     assert all(r == 0.0 for r in rates)
+
+
+def test_coupled_motion_returns_zero_displacement_for_empty_plates():
+    world = generate_world(seed=10, num_plates=4)
+    empty = world.plates[0]
+    empty._keys = np.array([], dtype=np.int64)
+
+    distances = shift_plates_quasistatic(world, years=1_000_000)
+
+    assert distances[empty.plate_id] == 0.0
 
 
 def test_generate_world_records_baseline_stats_without_leaking_a_climate_cache():
@@ -100,9 +109,7 @@ def test_step_world_at_doubled_climate_density_does_not_crash_and_uses_the_finer
 
 
 def test_pinned_omega_overrides_the_real_torque_balance():
-    """World.pinned_omegas (the "Debugging Worlds" tab's scripted-motion mechanism) should
-    make Plate.shift use the pinned value verbatim, bypassing torque.shift_plate's
-    own torque-balance recompute entirely -- not just happen to produce the same result."""
+    """World.pinned_omegas prescribes one plate's rate while the other plates still solve."""
     world = generate_world(seed=10, num_plates=8)
     pinned_plate = world.plates[0]
     pinned_omega = np.array([0.0, 0.0, 0.05])

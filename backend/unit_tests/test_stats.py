@@ -358,3 +358,24 @@ def test_land_near_max_elevation_fraction(monkeypatch, heights, sea_level, expec
     world = _all_ocean_world()
     world.sea_level_m = sea_level
     assert stats.compute_stats(world)["land_near_max_elevation_fraction"] == pytest.approx(expected)
+
+
+def test_continental_volume_sums_continental_crust_on_any_plate():
+    # #447: a terrane on an oceanic plate counts, a continental plate's ocean floor doesn't.
+    from app.elevation_lines import CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC
+
+    half = np.arange(10) < 5
+    codes = np.where(half, CRUST_TYPE_CONTINENTAL, 0).astype(np.int8)
+    terrane = quad_plate(0, "oceanic", columns=range(10), crustal_thickness_m=30_000.0, crust_type_code=codes)
+    margin = quad_plate(
+        1, "continental", columns=range(10), rows=[5], crustal_thickness_m=40_000.0,
+        crust_type_code=np.where(half, CRUST_TYPE_OCEANIC, 0).astype(np.int8),
+    )
+    world = World(seed=0, plates=[terrane, margin], next_plate_id=2)
+
+    _, volume, _ = stats._total_land_area_and_continental_volume(world)
+    terrane_cells = terrane.collect("crust_type_code") == CRUST_TYPE_CONTINENTAL
+    margin_cells = margin.collect("crust_type_code") != CRUST_TYPE_OCEANIC
+    expected = 30_000.0 * terrane.node_areas_m2()[terrane_cells].sum() + 40_000.0 * margin.node_areas_m2()[margin_cells].sum()
+    assert volume == pytest.approx(expected)
+    assert stats.compute_stats(world)["total_continental_crust_volume_dedup_km3"] == pytest.approx(expected / 1.0e9)

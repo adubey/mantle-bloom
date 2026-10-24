@@ -80,3 +80,8 @@ jobs:
       - run: npm run deadcode
       - run: npm run dupes
       - run: npm run build
+      # Railway applies .railway/railway.ts only at `railway config apply`, so check it here
+      # against the SDK version it pins (#376).
+      - name: Typecheck the Railway config
+        working-directory: .railway
+        run: npm ci --no-audit --no-fund && npm run typecheck

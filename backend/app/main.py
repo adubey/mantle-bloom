@@ -7,17 +7,21 @@ import json
 import logging
 import os
 import threading
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import numpy as np
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from scipy.spatial import cKDTree
 
 from . import (
+    auth,
+    checkpoint,
+    cross_section as cross_section_view,
     debug_worlds,
     faults,
     geodesic,
@@ -27,7 +31,10 @@ from . import (
     persistence,
     plates,
     projections,
+    public_view,
     render_image,
+    replay_log,
+    run_control,
     stats,
     worldsketch,
 )
@@ -52,15 +59,42 @@ MAX_RENDER_DIMENSION_PX = 4000
 # this cap, but the cap still applies underneath so a forgotten run can't loop forever.
 MAX_ANIMATION_FRAMES = 480
 
-app = FastAPI(title="mantle-bloom")
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    _restore_checkpoint()
+    _start_replay_log()
+    yield
+    _runner.close()
+    # The writer is a daemon thread: give a record of the last rare event time to land.
+    if _replay_log is not None and not _replay_log.flush(timeout_s=REPLAY_LOG_SHUTDOWN_FLUSH_S):
+        _logger.warning("replay log: shutting down with records still unwritten")
+
+
+app = FastAPI(title="mantle-bloom", lifespan=_lifespan)
 
 # FRONTEND_PORT lets bin/restart.sh --frontend-port point CORS at a non-default frontend
 # port; 5174 stays allowed alongside it since that's Vite dev's own fallback when its primary
 # port is taken.
 _frontend_port = os.environ.get("FRONTEND_PORT", "5173")
+_frontend_origins = frozenset({f"http://localhost:{_frontend_port}", "http://localhost:5174"})
+# Added before CORSMiddleware so CORS stays outermost and its headers reach the auth guard's
+# 401/403 refusals too (#372). The Vite dev origin counts as same-site for the CSRF check.
+app.add_middleware(auth.AuthMiddleware, extra_origins=_frontend_origins)
+app.include_router(auth.router)
+
+
+@app.get("/demo/", include_in_schema=False)
+@app.get("/demo", include_in_schema=False)
+def demo_login_page() -> RedirectResponse:
+    """Show the login page in a local demo, even though local use skips authentication."""
+    return RedirectResponse("/login?demo=true", status_code=302)
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=list({f"http://localhost:{_frontend_port}", "http://localhost:5174"}),
+    allow_origins=list(_frontend_origins),
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -75,8 +109,9 @@ _state: dict[str, World | None] = {"world": None}
 # threads, which the default `workqueue` threading layer is not safe against and crashes the
 # interpreter outright. So every route that runs the simulation compute path or mutates
 # shared World state holds this one lock: step / animate / generate / controls / stats /
-# render. The read-mostly inspector routes (plates, rivers, lakes, *_at) touch neither a
-# Numba kernel nor a shared-array write and are left lock-free.
+# render. The /world/plates inspector also holds it because overlap masks and per-node fields
+# must come from one stable topology. The other read-mostly inspector routes (rivers, lakes,
+# *_at) touch neither a Numba kernel nor a shared-array write and are left lock-free.
 #
 # Long-running writes where an overlap means a genuine conflict (step, animate) reject with a
 # 503 rather than blocking -- the second request would otherwise silently hang for as long as
@@ -85,6 +120,11 @@ _state: dict[str, World | None] = {"world": None}
 # wait the brief window out -- a render especially is called far too often, and is far too
 # cheap, to fail every time it lands during a step (see the render route's own docstring).
 _world_lock = threading.Lock()
+
+# The shared world's published revision and the viewers' render cache (#374, see
+# public_view.py). Every change to the world goes through `_world_changed` or `_set_world`.
+_world_feed = public_view.WorldFeed()
+_public_renders = public_view.RenderCache()
 
 # Set by POST /world/animate/stop, checked once per frame inside stream_animation_mp4 (see
 # animate() below): lets the frontend's "Stop" button end an in-progress animation *cleanly*
@@ -106,6 +146,12 @@ class SketchRequest(BaseModel):
 
 class GenerateRequest(BaseModel):
     seed: int = 0
+    # The Random tab's optional craton-first terrain/plate layout (RFC 0009). None keeps
+    # the configured default; sketches and premade worlds ignore this mode.
+    cratons_first: bool | None = None
+    # With cratons_first, relief from a synthetic tectonic history (#218, synthetic_relief.py).
+    # None keeps the configured default; ignored when the cratons-first layout doesn't apply.
+    synthetic_relief: bool | None = None
     # Optional: the world tiles itself into a plausible plate count when omitted (see
     # plates.generate_plates) -- the frontend doesn't ask for one.
     num_plates: int | None = None
@@ -237,7 +283,7 @@ NODE_CLOUD_RESAMPLE_MODE_CHOICES = healpix_grid.NODE_CLOUD_RESAMPLE_MODE_CHOICES
 
 
 def _parse_view_rotation(rotation: str | None) -> np.ndarray:
-    """The map's current view orientation (see docs/simulation-model.md#rotating-the-view),
+    """The map's current view orientation (see docs/simulation-model/rendering-and-inspectors.md#rotating-the-view),
     a row-major 3x3 rotation matrix as 9 comma-separated floats -- default identity (today's
     behavior, center at lat=0/lon=0) when omitted. This is purely a render-time transform;
     it's never stored on `World` (see world.py) since it's client-local view state, not
@@ -259,6 +305,30 @@ def _parse_view_rotation(rotation: str | None) -> np.ndarray:
     return np.array(values, dtype=float).reshape(3, 3)
 
 
+def _world_changed(completed: bool = True) -> None:
+    """Publish a new revision of the shared world to viewers. Call it after every change to the
+    world, before releasing `_world_lock`: a viewer's render takes the lock and caches what it
+    draws under the revision it reads there, so a change published after the release could
+    leave the new world cached under the old revision.
+
+    A completed change is also checkpointed (#375), under the same lock so nothing mutates the
+    world mid-pickle. `completed=False` is for a step that raised partway: viewers still see
+    what it left, but a restart goes back to the last whole step rather than resuming from a
+    half-stepped world."""
+    _public_renders.clear()
+    _world_feed.publish(_state["world"])
+    if completed:
+        _checkpoint_world()
+
+
+def _set_world(world: World) -> None:
+    """Replace the shared world; the caller holds `_world_lock`."""
+    _state["world"] = world
+    if _replay_log is not None:
+        _replay_log.clear_recent_events()
+    _world_changed()
+
+
 def _require_world() -> World:
     world = _state["world"]
     if world is None:
@@ -277,6 +347,9 @@ def _summary(world: World) -> dict:
         # for the frontend than diffing "new since last call", and small enough not to
         # matter on the wire.
         "events": [{"elapsed_years": e, "message": m} for e, m in world.events],
+        # Replay-log records this process wrote (#442), for the ?deb Event Console. Kept out of
+        # `events`, which is pickled World state.
+        "replay_logs": _replay_log.recent_events() if _replay_log is not None else [],
     }
 
 
@@ -355,7 +428,7 @@ def _plate_summary(plate: plates.Plate, world: World, overlaps: dict[int, list[d
         "speed_cm_per_yr": round(mantle.rad_per_yr_to_cm_per_yr(rate_rad), 3),
         "at_max_rate": bool(rate_rad >= mantle.MAX_PLATE_RATE - 1e-12),
         "euler_pole": euler_pole,
-        "age_steps": plate.age_steps,
+        "age_years": plate.age_years,
         # Median height of the plate's own nodes and the share of them at/below sea level --
         # a continental plate reading mostly-submerged is a red flag for over-stretching.
         "median_elevation_m": round(float(np.median(node_elevation)), 1) if len(node_elevation) else None,
@@ -367,7 +440,7 @@ def _plate_summary(plate: plates.Plate, world: World, overlaps: dict[int, list[d
         "num_points": plate.node_count(),
         "outline": _round_coords(outline),
         # Every node's own position (not just the outline loop) -- lets the client plot each
-        # point individually (see docs/simulation-model.md#plate-inspector), highlighted for
+        # point individually (see docs/simulation-model/rendering-and-inspectors.md#plate-inspector), highlighted for
         # the selected plate and dimmed for every other one.
         "points": _round_coords(node_points),
         "bounding_ellipse": None
@@ -382,14 +455,14 @@ def _plate_summary(plate: plates.Plate, world: World, overlaps: dict[int, list[d
 
 
 def _river_summary(fields: hydrology.HydrologyFields, river: hydrology.RiverInfo, river_id: int) -> dict:
-    targets = fields.flow_target[river.member_idx]
-    has_target = targets >= 0
-    from_points = fields.points[river.member_idx[has_target]]
-    to_points = fields.points[targets[has_target]]
+    from_idx, to_idx, _, _ = hydrology.flow_segments(fields, river.member_idx)
+    from_points = fields.points[from_idx]
+    to_points = fields.points[to_idx]
     segments = np.round(np.stack([from_points, to_points], axis=1), _COORD_DECIMALS).tolist()
     return {
         "river_id": river_id,
         "num_nodes": int(len(river.member_idx)),
+        "length_m": river.length_m,
         "segments": segments,
         "mouth_xyz": _round_coords(fields.points[river.mouth_idx]),
         "mouth_type": river.mouth_type,
@@ -539,6 +612,7 @@ def _lake_basin_summary(
             "mouth_xyz": _round_coords(fields.points[river.mouth_idx]),
             "flow_rate": river.flow_rate,
             "num_nodes": int(len(river.member_idx)),
+            "length_m": river.length_m,
         }
         for river in rivers
         if river.mouth_idx in member_set
@@ -648,6 +722,8 @@ def generate(req: GenerateRequest) -> StreamingResponse:
     def _stream():
         progress = generate_world_progress(
             req.seed,
+            cratons_first=req.cratons_first,
+            synthetic_relief=req.synthetic_relief,
             num_plates=req.num_plates,
             voronoi_points=req.voronoi_points,
             continental_fraction=req.continental_fraction,
@@ -668,7 +744,7 @@ def generate(req: GenerateRequest) -> StreamingResponse:
                     yield json.dumps({"type": "progress", "fraction": message[1]}) + "\n"
                 else:
                     world = message[1]
-            _state["world"] = world
+            _set_world(world)
             yield json.dumps({"type": "done", **_summary(world)}) + "\n"
         except GeneratorExit:
             # The client disconnected mid-stream -- Starlette closes a sync generator behind
@@ -686,7 +762,7 @@ def generate(req: GenerateRequest) -> StreamingResponse:
             # to send progress/done lines to.
             world = _drain_progress(progress) or world
             if world is not None:
-                _state["world"] = world
+                _set_world(world)
             raise
         except Exception as exc:  # noqa: BLE001 -- status is already 200, so surface it as a data line
             yield json.dumps({"type": "error", "detail": f"{type(exc).__name__}: {exc}"}) + "\n"
@@ -716,7 +792,7 @@ def generate_debug(req: GenerateDebugRequest) -> dict:
         )
     with _world_lock:
         world = debug_worlds.generate_debug_world(req.scenario, req.seed)
-        _state["world"] = world
+        _set_world(world)
     return _summary(world)
 
 
@@ -761,10 +837,12 @@ def step(req: StepRequest) -> StreamingResponse:
         raise HTTPException(status_code=503, detail="a generation, step, or animation is already in progress")
 
     def _stream():
-        progress = step_world_progress(world, req.years)
+        progress = _step_progress(world, req.years)
+        completed = False
         try:
             for fraction in progress:
                 yield json.dumps({"type": "progress", "fraction": fraction}) + "\n"
+            completed = True
             yield json.dumps({"type": "done", **_summary(world)}) + "\n"
         except GeneratorExit:
             # The client disconnected mid-stream (see /world/generate's own comment on this
@@ -779,10 +857,13 @@ def step(req: StepRequest) -> StreamingResponse:
             # `_state` here -- just let the step finish.
             for _ in progress:
                 pass
+            completed = True
             raise
         except Exception as exc:  # noqa: BLE001 -- status is already 200, so surface it as a data line
             yield json.dumps({"type": "error", "detail": f"{type(exc).__name__}: {exc}"}) + "\n"
         finally:
+            # Even a failed step has changed the world partway.
+            _world_changed(completed)
             _world_lock.release()
 
     return StreamingResponse(_stream(), media_type="application/x-ndjson")
@@ -810,7 +891,8 @@ async def load_world(request: Request) -> dict:
     sparse quads on load, one way -- see docs/save-compatibility.md; the summary's
     `surface_conversion` then reports what changed. `400` with the reason if the
     bytes are corrupt or in a save format this build doesn't read; any other failure is
-    still a `400`, without detail."""
+    still a `400`, without detail. `503` while a generation, step, or animation is in
+    progress."""
     body = await request.body()
     try:
         world = persistence.load_world_bytes(body)
@@ -818,7 +900,19 @@ async def load_world(request: Request) -> dict:
         raise HTTPException(status_code=400, detail=f"invalid or incompatible world file: {exc}") from exc
     except Exception as exc:
         raise HTTPException(status_code=400, detail="invalid or incompatible world file") from exc
-    _state["world"] = world
+    # Physical discharge is derived routing state. Saves from before #355 may carry a cached
+    # HydrologyFields without it; discard that cache so River/Lake Inspector APIs don't label
+    # legacy stacked-mm/yr values as m^3/s. The next simulated step rebuilds the cache.
+    if world.hydrology_cache is not None and getattr(world.hydrology_cache, "discharge_m3_s", None) is None:
+        world.hydrology_cache = None
+        world.hydrology_cache_step = None
+    # Under the lock, so a step can't still be mutating the world viewers are told replaced it.
+    if not _world_lock.acquire(blocking=False):
+        raise HTTPException(status_code=503, detail="a generation, step, or animation is already in progress")
+    try:
+        _set_world(world)
+    finally:
+        _world_lock.release()
     return _summary(world)
 
 
@@ -877,6 +971,38 @@ def render(
     }
 
 
+@app.get("/world/cross-section")
+def cross_section(
+    plane_angle_deg: float = 0.0,
+    position_index: int = 0,
+    width: int = 1100,
+    height: int = 611,
+    show_boundaries: bool = False,
+    show_faults: bool = False,
+) -> dict:
+    """Render one surface-sampled section for the shallow mantle view (#360).
+
+    The image uses existing per-column crust/lithosphere thicknesses and an illustrative
+    geotherm; the mantle below modeled lithosphere is schematic. `404` if no world exists.
+    """
+    with _world_lock:
+        world = _require_world()
+        if not -90.0 <= plane_angle_deg <= 90.0:
+            raise HTTPException(status_code=400, detail="plane_angle_deg must be in [-90, 90]")
+        if not 0 <= position_index < 120:
+            raise HTTPException(status_code=400, detail="position_index must be in [0, 119]")
+        if not (1 <= width <= MAX_RENDER_DIMENSION_PX and 1 <= height <= MAX_RENDER_DIMENSION_PX):
+            raise HTTPException(status_code=400, detail=f"width/height must be in [1, {MAX_RENDER_DIMENSION_PX}]")
+        try:
+            _, result = cross_section_view.render_png_base64(
+                world, plane_angle_deg, position_index, width, height,
+                show_boundaries=show_boundaries, show_faults=show_faults,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return result
+
+
 @app.post("/world/animate")
 def animate(req: AnimateRequest) -> StreamingResponse:
     """The "File > Make Animation" action: streams newline-delimited JSON progress while
@@ -924,15 +1050,19 @@ def animate(req: AnimateRequest) -> StreamingResponse:
 
     def _stream():
         last_frame = 0
+        completed = False
         try:
             for message in render_image.stream_animation_mp4(
                 world, req.projection, req.view, req.width, req.height, view_rotation,
                 req.step_years, req.steps_per_frame, req.num_frames,
-                stop_event=_animation_stop_event,
+                step_fn=_step_world, stop_event=_animation_stop_event,
             ):
                 if message[0] == "progress":
                     _, frame, total, frame_png, elapsed_years = message
                     last_frame = frame
+                    # Each frame ends on a whole step. Saved now, a run that ends badly later
+                    # (a disconnect, a failed step or encoder) still keeps the frames before it.
+                    _checkpoint_world()
                     yield json.dumps({
                         "type": "progress",
                         "frame": frame,
@@ -950,6 +1080,7 @@ def animate(req: AnimateRequest) -> StreamingResponse:
                         "stats": world.stats_history[-1] if world.stats_history else None,
                     }) + "\n"
                 else:
+                    completed = True
                     _, mp4_bytes, stopped_early = message
                     yield json.dumps({
                         "type": "done",
@@ -971,6 +1102,9 @@ def animate(req: AnimateRequest) -> StreamingResponse:
             )
             yield json.dumps({"type": "error", "detail": f"{type(exc).__name__}: {exc}"}) + "\n"
         finally:
+            # Published once at the end: viewers can't render while the animation holds the
+            # world anyway, and meanwhile keep their cached frame of the revision before it.
+            _world_changed(completed)
             _world_lock.release()
 
     return StreamingResponse(_stream(), media_type="application/x-ndjson")
@@ -1053,6 +1187,8 @@ def set_controls(req: ControlsRequest) -> dict:
         for name, value in tuning_updates.items():
             setattr(world, name, float(value))
         world.climate_cache = climate.compute_climate(world, *climate.grid_dimensions(world.climate_density))
+        # Sea level and climate change what the viewer's renders show.
+        _world_changed()
     return {
         "sea_level_m": world.sea_level_m,
         "solar_multiplier": world.solar_multiplier,
@@ -1073,11 +1209,15 @@ def list_plates() -> dict:
     "Plate Inspector" map mode -- unlike /world/render, the client renders this itself
     interactively rather than receiving a baked PNG. Un-rotated/true-frame throughout (no
     `rotation` param): the client applies its current view rotation only at draw time, same
-    philosophy as climate/render-grid geometry (see docs/simulation-model.md#rotating-the-view).
+    philosophy as climate/render-grid geometry (see docs/simulation-model/rendering-and-inspectors.md#rotating-the-view).
     `404` if no world has been generated yet."""
-    world = _require_world()
-    overlaps = _plate_overlaps(world)
-    return {"elapsed_years": world.elapsed_years, "plates": [_plate_summary(p, world, overlaps) for p in world.plates]}
+    with _world_lock:
+        world = _require_world()
+        overlaps = _plate_overlaps(world)
+        return {
+            "elapsed_years": world.elapsed_years,
+            "plates": [_plate_summary(p, world, overlaps) for p in world.plates],
+        }
 
 
 @app.get("/world/stats")
@@ -1507,7 +1647,7 @@ def list_rivers() -> dict:
     """Every distinct river network's path + endpoint metadata, plus the current coastline, as
     JSON, for the "River Inspector" map mode -- same philosophy as /world/plates: the client
     renders and drives this itself rather than receiving a baked PNG (see
-    docs/simulation-model.md#hydrology and #river-inspector). Rivers are grouped fresh from
+    docs/simulation-model/hydrology.md#hydrology and docs/simulation-model/hydrology.md#river-inspector). Rivers are grouped fresh from
     the current world.hydrology_cache (see hydrology.group_rivers) on every call rather than
     persisted -- hydrology_cache itself is already at most one step stale by design (see
     World.hydrology_cache), and grouping it is cheap. `coastline_segments` is computed the
@@ -1635,7 +1775,7 @@ def list_stranded_basins() -> dict:
     """Endorheic depressions whose floor sits below sea level and that have no drainage path
     to the ocean at all -- the "land-locked coastal pit" pathology from GitHub issue #122's
     coastal-speckle section, which the event log records but drowns in near-sea-level
-    transient-pond churn (see docs/debugging.md). Read straight off this step's already-
+    transient-pond churn (see docs/debugging/debug-ui.md). Read straight off this step's already-
     resolved depression hierarchy (`world.hydrology_cache.lake_forest`): a top-level basin
     with no known spill (`Lake.max_depth is None`) whose floor is below `world.sea_level_m`.
     `persisted_years`/`steps_seen` come from `world.stranded_basin_tracks`, the cross-step
@@ -1690,10 +1830,309 @@ def export_hexgrid(req: ExportHexGridRequest) -> dict:
 
 
 # --- Static frontend -----------------------------------------------------------------------
-# In the packaged single-process app there is no separate Vite server: FastAPI serves the
-# built React bundle itself, from the same origin as the API (so api.ts's API_BASE is ""). The
-# dev workflow (bin/restart.sh) is unaffected -- it runs its own frontend server and never
-# sets MANTLE_BLOOM_FRONTEND_DIST.
+# The logged-out viewer's routes (#373): read-only renders plus an allowance-limited step,
+# answering to anyone. AuthMiddleware only guards /world/*, so these are the whole of what an
+# anonymous client can do to the world. See public_view.py.
+_guest_steps = public_view.GuestStepCoordinator()
+
+
+class PublicStepRequest(BaseModel):
+    # The revision (`/public/world`'s `world.revision`) the viewer is looking at.
+    revision: str
+
+
+def _guest_allowance(request: Request, guest_demo: bool = False) -> tuple[auth.AuthConfig, int | None]:
+    """(config, steps left). None means unlimited: the owner viewing /view isn't charged.
+
+    The local viewer demo opts into the guest allowance so the guest UI can be previewed."""
+    config = auth.load_config()
+    if auth.is_admin(request, config) and not guest_demo:
+        return config, None
+    return config, max(0, public_view.GUEST_STEP_LIMIT - public_view.steps_used(request, config))
+
+
+@app.get("/public/world")
+async def public_world(request: Request, after: str | None = None, guest_demo: bool = False) -> dict:
+    """What the viewer shows: the current world's revision and age (`world` is null before
+    one exists), and this browser's remaining step allowance.
+
+    With `after`, a long poll (#374): while `after` is still the current revision, wait up to
+    public_view.GUEST_POLL_WAIT_S for the world to change before answering. This is how every
+    viewer follows steps that others (or the owner) take without computing anything itself.
+    Async, so a waiting viewer holds no worker thread."""
+    if after is not None:
+        await _world_feed.wait_past(after, public_view.GUEST_POLL_WAIT_S)
+    _, remaining = _guest_allowance(request, guest_demo)
+    return {
+        "world": _world_feed.summary(),
+        "steps_remaining": remaining,
+        "step_limit": public_view.GUEST_STEP_LIMIT,
+        "step_years": public_view.GUEST_STEP_YEARS,
+    }
+
+
+@app.get("/public/render")
+def public_render(view: str = "elevation", width: int = 1100, height: int = 611) -> dict:
+    """/world/render restricted to the viewer's fixed choices: Eckert IV, the default
+    orientation, and the viewer's supported views. Each (view, size) is rendered once per world
+    revision and then served from public_view.RenderCache without touching the world. `503`
+    if the owner holds the world for longer than public_view.GUEST_LOCK_WAIT_S."""
+    _require_world()
+    if view not in public_view.GUEST_VIEWS:
+        raise HTTPException(status_code=400, detail=f"unknown view {view!r}; choices are {public_view.GUEST_VIEWS}")
+    limit = public_view.GUEST_MAX_RENDER_PX
+    if not (1 <= width <= limit and 1 <= height <= limit):
+        raise HTTPException(status_code=400, detail=f"width/height must be in [1, {limit}]")
+    key = (view, width, height)
+    cached = _public_renders.get(_world_feed.revision(), key)
+    if cached is not None:
+        return cached
+    if not _world_lock.acquire(timeout=public_view.GUEST_LOCK_WAIT_S):
+        raise HTTPException(status_code=503, detail="the world is busy; try again shortly")
+    try:
+        # Look again: viewers that arrive together after a step queue on the lock, and only
+        # the first of them needs to render.
+        revision = _world_feed.revision()
+        entry = _public_renders.get(revision, key)
+        if entry is None:
+            image_base64 = render_image.render_png_base64(
+                _require_world(), public_view.GUEST_PROJECTION, view, width, height, _parse_view_rotation(None), False, False
+            )
+            entry = {**_world_feed.summary(), "image_base64": image_base64}
+            _public_renders.put(revision, key, entry)
+    finally:
+        _world_lock.release()
+    return entry
+
+
+def _run_guest_step() -> None:
+    completed = False
+    try:
+        for _ in _step_progress(_require_world(), public_view.GUEST_STEP_YEARS):
+            pass
+        completed = True
+    finally:
+        _world_changed(completed)
+
+
+@app.post("/public/step")
+def public_step(req: PublicStepRequest, request: Request, response: Response, guest_demo: bool = False) -> dict:
+    """Advances the shared world by public_view.GUEST_STEP_YEARS, charging this browser's
+    allowance only if this request is the one that computes it. `computed` says whether it
+    did; a stale `revision`, or a step another viewer already has running, is answered with
+    the resulting world for free. `429` when a computation is needed and the allowance is
+    spent, `503` if the owner is using the world, `404` before any world exists."""
+    _require_world()
+    config, remaining = _guest_allowance(request, guest_demo)
+    outcome = _guest_steps.request_step(
+        req.revision,
+        may_compute=remaining is None or remaining > 0,
+        current_revision=_world_feed.revision,
+        world_lock=_world_lock,
+        compute=_run_guest_step,
+    )
+    if outcome.status == "exhausted":
+        raise HTTPException(status_code=429, detail="step allowance used up")
+    if outcome.status == "busy":
+        raise HTTPException(status_code=503, detail="the world is busy; try again shortly")
+    if outcome.status == "computed" and remaining is not None:
+        remaining -= 1
+        public_view.set_steps_used(response, public_view.GUEST_STEP_LIMIT - remaining, config)
+    return {
+        "world": _world_feed.summary(),
+        "computed": outcome.status == "computed",
+        "steps_remaining": remaining,
+    }
+
+
+# --- Run status and checkpoint (#375) --------------------------------------------------------
+# The owner's Play/Stop is a server-side status, stepped by a background thread
+# (run_control.py), and the world and that status are checkpointed to persistent storage when
+# one is configured (checkpoint.py), so a hosted instance that sleeps or restarts resumes them.
+_checkpoint_store: checkpoint.CheckpointStore | None = None
+# Why a configured checkpoint directory couldn't be used at startup, for /healthz to report.
+_checkpoint_error: str | None = None
+
+
+def _checkpoint_world() -> None:
+    """Write the current world to the checkpoint; the caller holds `_world_lock`. A failed write
+    is logged rather than raised: the world in memory is fine, and the next change retries."""
+    world = _state["world"]
+    if _checkpoint_store is None or world is None:
+        return
+    try:
+        _checkpoint_store.save_world(world)
+    except Exception:  # noqa: BLE001 -- e.g. a full or unmounted volume mustn't fail the step
+        _logger.exception("checkpoint: couldn't save the world")
+        return
+    _runner.retry_unsaved_status()
+
+
+def _save_run_status(status: checkpoint.RunStatus) -> None:
+    if _checkpoint_store is not None:
+        _checkpoint_store.save_status(status)
+
+
+def _run_step_once(step_years: float, should_step) -> bool:
+    """One step of the run loop. Waits for the world rather than refusing like POST /world/step:
+    the owner's own step or animation just delays the run."""
+    with _world_lock:
+        world = _state["world"]
+        if world is None:
+            return False
+        if not should_step():
+            return True
+        completed = False
+        try:
+            for _ in _step_progress(world, step_years):
+                pass
+            completed = True
+        finally:
+            _world_changed(completed)
+    return True
+
+
+_runner = run_control.WorldRunner(_run_step_once, _save_run_status, on_change=_world_feed.wake)
+
+
+def _restore_checkpoint() -> None:
+    """At startup: load the checkpointed world and run status, if checkpointing is configured,
+    and resume running if it was. The world is restored exactly as saved; the time the server
+    spent asleep isn't simulated."""
+    global _checkpoint_store, _checkpoint_error
+    store = checkpoint.CheckpointStore.from_env()
+    if store is None:
+        _logger.info("checkpoint: %s isn't set; the world won't survive a restart", checkpoint.CHECKPOINT_DIR_ENV)
+        return
+    try:
+        world, status = store.load()
+    except OSError as exc:
+        _logger.exception("checkpoint: can't use %s; running without checkpoints", store.directory)
+        _checkpoint_error = f"can't use checkpoint directory {store.directory}: {exc}"
+        return
+    _checkpoint_store, _checkpoint_error = store, None
+    if world is not None:
+        with _world_lock:
+            _state["world"] = world
+            # Already the checkpointed state; no need to write it straight back.
+            _world_changed(completed=False)
+    _runner.set_status(status, persist=False)
+
+
+# --- Replay log (#442) -------------------------------------------------------------------------
+# Every step of the shared world goes through `_step_progress`, which, when
+# MANTLE_BLOOM_REPLAY_LOG_DIR is set, saves the pre-step world of any step whose health
+# metrics go askew (replay_log.py).
+_replay_log: replay_log.ReplayLog | None = None
+# How long shutdown waits for queued replay-log records (a 60 MB write each).
+REPLAY_LOG_SHUTDOWN_FLUSH_S = 10.0
+
+
+def _start_replay_log() -> None:
+    global _replay_log
+    try:
+        _replay_log = replay_log.ReplayLog.from_env()
+    except OSError:
+        _logger.exception("replay log: can't use %s; running without it", os.environ.get(replay_log.REPLAY_LOG_DIR_ENV))
+        _replay_log = None
+        return
+    if _replay_log is not None:
+        _logger.info("replay log: recording to %s", _replay_log.directory)
+
+
+def _step_progress(world: World, years: float):
+    if _replay_log is None:
+        return step_world_progress(world, years)
+    return _replay_log.step(world, years)
+
+
+def _step_world(world: World, years: float) -> None:
+    for _ in _step_progress(world, years):
+        pass
+
+
+@app.get("/world/replay-logs")
+def replay_logs() -> dict:
+    """The replay-log records on disk, newest first (`enabled: false` and none when
+    MANTLE_BLOOM_REPLAY_LOG_DIR isn't set). Each names the triggers that fired and the
+    record's directory, which `bin/debug/replay_logged_event.py` replays."""
+    if _replay_log is None:
+        return {"enabled": False, "directory": None, "records": []}
+    return {"enabled": True, "directory": str(_replay_log.directory), "records": _replay_log.records()}
+
+
+class RunRequest(BaseModel):
+    running: bool
+    # The UI's "Years per step". Omitted: keep the current one.
+    step_years: float | None = None
+
+
+def _run_summary() -> dict:
+    # The version first: anything that changes after it's read moves it again, so a poller
+    # can't miss a change by having seen a newer status under an older version.
+    run_version = _runner.version()
+    status = _runner.status()
+    return {
+        "running": status.running,
+        "step_years": status.step_years,
+        "stepping": _runner.stepping(),
+        "error": _runner.error(),
+        "run_version": run_version,
+        "world": _world_feed.summary(),
+    }
+
+
+@app.get("/world/run")
+async def get_run(after: str | None = None, run_version: int | None = None) -> dict:
+    """The run status (`running`, `step_years`, `stepping`: a step is under way, which can
+    still be true just after Stop, and `error`: why the run last stopped on its own, or null),
+    its `run_version`, and the world's current revision. With `after`, a long poll like
+    /public/world's that also answers when the run state moves past `run_version`: the full
+    app follows the running world with it, and sees Stop pressed in another tab."""
+    if after is not None:
+        changed = None if run_version is None else (lambda: _runner.version() != run_version)
+        await _world_feed.wait_past(after, public_view.GUEST_POLL_WAIT_S, changed)
+    return _run_summary()
+
+
+@app.post("/world/run")
+def set_run(req: RunRequest) -> dict:
+    """Play (`running: true`) or Stop. While running, the server steps the world by `step_years`
+    after each run_control.RUN_INTERVAL_S pause, whether or not anyone is watching, and the
+    status survives a restart when checkpointing is configured. Stop takes effect before the
+    next step; a step already under way finishes. `400` for a non-positive `step_years`, `404`
+    to start without a world, `500` if the status took effect but couldn't be saved (it's
+    retried with the next world checkpoint)."""
+    current = _runner.status()
+    step_years = current.step_years if req.step_years is None else req.step_years
+    if not checkpoint.valid_step_years(step_years):
+        raise HTTPException(status_code=400, detail="step_years must be a positive number")
+    if req.running:
+        _require_world()
+    try:
+        _runner.set_status(checkpoint.RunStatus(running=req.running, step_years=float(step_years)))
+    except run_control.StatusNotSaved as exc:
+        # In effect now, but a restart would go back to the saved status (#375 review).
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return _run_summary()
+
+
+@app.get("/healthz", include_in_schema=False)
+def healthz() -> dict:
+    """Railway's deploy health check (.railway/railway.ts, #376). Public and lock-free: a step
+    or render holding the world lock mustn't fail a deploy. It can't answer before the
+    lifespan's checkpoint restore finishes. `503` when a checkpoint directory is configured
+    but couldn't be used, so a deploy whose volume can't be written fails instead of running
+    a world that the next sleep would lose."""
+    if _checkpoint_error is not None:
+        raise HTTPException(status_code=503, detail=_checkpoint_error)
+    return {"status": "ok"}
+
+
+# In the packaged single-process app and the Railway image (Dockerfile, #376) there is no
+# separate Vite server: FastAPI serves the built React bundle itself, from the same origin as
+# the API (so api.ts's API_BASE is ""). The dev workflow (bin/restart.sh) is unaffected -- it
+# runs its own frontend server and never sets MANTLE_BLOOM_FRONTEND_DIST.
 
 
 def mount_frontend(app: FastAPI, dist_dir: str | os.PathLike[str]) -> None:

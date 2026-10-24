@@ -23,6 +23,7 @@ from app.sparse_quad_patch import (
     parent_cell_keys,
     unpack_cell_keys,
 )
+from app.torque import shift_plates_quasistatic
 from app.world import generate_world
 
 N = 12
@@ -277,12 +278,12 @@ def test_quad_world_round_trips_through_the_versioned_save_format():
             np.testing.assert_array_equal(restored.collect(name), original.collect(name))
 
 
-def test_quad_plate_uses_shared_torque_pipeline_for_rigid_motion():
+def test_quad_world_uses_shared_torque_pipeline_for_rigid_motion():
     world = generate_world(seed=5, num_plates=5)
     plate = world.plates[0]
     topology0, geometry0 = plate.topology_revision, plate.geometry_revision
 
-    displacement = plate.shift(world, 1_000_000)
+    displacement = shift_plates_quasistatic(world, 1_000_000)[plate.plate_id]
 
     assert np.isfinite(displacement)
     assert np.all(np.isfinite(plate.omega))
@@ -496,7 +497,7 @@ def test_split_partitions_cells_and_fields_without_resampling():
         keys,
         fields={"elevation": values},
         omega=np.array([1.0, 2.0, 3.0]),
-        age_steps=9,
+        age_years=9e5,
         internal_stress=4.0,
     )
 
@@ -505,7 +506,7 @@ def test_split_partitions_cells_and_fields_without_resampling():
     assert result is not None
     left, right = result
     assert (left.plate_id, right.plate_id) == (7, 12)
-    assert (left.age_steps, right.age_steps) == (0, 0)
+    assert (left.age_years, right.age_years) == (0.0, 0.0)
     assert (left.internal_stress, right.internal_stress) == (4.0, 0.0)
     np.testing.assert_allclose(left.omega, plate.omega)
     np.testing.assert_allclose(right.omega, plate.omega)
@@ -581,3 +582,53 @@ def test_failed_rift_thins_only_the_cut_band_and_preserves_topology():
     assert np.any(thinned)
     assert np.any(~thinned)
     assert np.all(plate.collect("elev_change_reason")[thinned] == ELEV_CHANGE_RIFT)
+
+
+def test_a_full_strength_craton_resists_a_failed_rift_like_a_divergent_one():
+    """RFC 0003 solution 2: a failed rift thins a full-strength craton column (Hc and Hm) by
+    1 - CRATON_RIFT_RESISTANCE of what it takes from the same column without craton."""
+    from app import cratons
+
+    def thinning(craton_m):
+        keys = pack_cell_keys(np.zeros(5, dtype=int), np.arange(4, 9), np.full(5, 5))
+        plate = PlateWithSparseQuadPatch(
+            7, np.eye(3), "continental", N, keys,
+            fields={
+                "elevation": np.full(5, 1000.0),
+                "crustal_thickness_m": np.full(5, 35_000.0),
+                "mantle_lithosphere_thickness_m": np.full(5, 100_000.0),
+                "craton_crust_m": np.full(5, craton_m),
+            },
+        )
+        plate.apply_failed_rift(np.array([0.0, 1.0, 0.0]), spacing_rad=0.1)
+        return 35_000.0 - plate.collect("crustal_thickness_m"), 100_000.0 - plate.collect("mantle_lithosphere_thickness_m")
+
+    plain_hc, plain_hm = thinning(0.0)
+    craton_hc, craton_hm = thinning(cratons.CRATON_FULL_STRENGTH_HC_M)
+
+    assert np.any(plain_hc > 0.0)
+    np.testing.assert_allclose(craton_hc, (1.0 - cratons.CRATON_RIFT_RESISTANCE) * plain_hc, rtol=1e-12)
+    np.testing.assert_allclose(craton_hm, (1.0 - cratons.CRATON_RIFT_RESISTANCE) * plain_hm, rtol=1e-12)
+
+
+def test_a_failed_rift_marks_exactly_its_thinned_band_as_belt():
+    """RFC 0009: the band an aborted rift stretches is belt, dated now; without a world the
+    thinning is the same and nothing is marked."""
+    from types import SimpleNamespace
+
+    from app import cratons
+
+    def rift(world):
+        keys = pack_cell_keys(np.zeros(5, dtype=int), np.arange(4, 9), np.full(5, 5))
+        plate = PlateWithSparseQuadPatch(
+            7, np.eye(3), "continental", N, keys,
+            fields={"crustal_thickness_m": np.full(5, 35_000.0), "mantle_lithosphere_thickness_m": np.full(5, 100_000.0)},
+        )
+        plate.apply_failed_rift(np.array([0.0, 1.0, 0.0]), spacing_rad=0.1, world=world)
+        return plate, plate.collect("crustal_thickness_m") < 35_000.0
+
+    plate, thinned = rift(SimpleNamespace(elapsed_years=6.0e8))
+    assert np.any(thinned) and not np.all(thinned)
+    np.testing.assert_array_equal(cratons.belt_mask(plate, 6.0e8), thinned)
+    plate, _ = rift(None)
+    assert not np.any(cratons.belt_mask(plate, 6.0e8))

@@ -11,7 +11,7 @@ from app import continental_ledger, cratons, lithosphere, persistence, quad_merg
 from app import world as world_mod
 from app.elevation_lines import CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC, line_spacing_rad
 from app.lithosphere_plate import deform_columns
-from app.surface_fields import CRATON_UNFORMED_YEARS
+from app.surface_fields import BELT_UNMARKED_YEARS, CRATON_UNFORMED_YEARS
 from app.sparse_quad_patch import PlateWithSparseQuadPatch, cells_per_face_edge, pack_cell_keys
 from app.world import World
 
@@ -107,6 +107,25 @@ def test_a_seeded_world_is_never_reseeded():
     assert _volume(plate, "craton_crust_m") == 0.0
 
 
+def test_generated_cores_are_booked_and_the_interior_rule_is_skipped():
+    """A cratons-first world's generation seeds its cores (RFC 0009, #462): first-step
+    seeding books them as the initial volume and adds no deep interior of its own."""
+    plate = _cap(1)
+    core = plate.all_points_and_elevation()[0][:, 1] > 0.0
+    cratons.seed_cores(plate, core)
+    world = _world(plate)
+
+    cratons.ensure_initialized(world)
+
+    craton = plate.collect("craton_crust_m")
+    assert np.array_equal(craton > 0.0, core)
+    np.testing.assert_array_equal(craton[core], plate.collect("crustal_thickness_m")[core])
+    assert np.all(plate.collect("craton_formed_years")[core] == -cratons.CRATON_SEED_AGE_YEARS)
+    assert np.all(plate.collect("craton_formed_years")[~core] == CRATON_UNFORMED_YEARS)
+    assert world.craton_ledger["initial_m3"] == pytest.approx(_volume(plate, "craton_crust_m"))
+    assert cratons.balance_error_m3(world) == pytest.approx(0.0, abs=1e-9 * world.craton_ledger["initial_m3"])
+
+
 def test_thin_or_thick_crust_is_never_seeded():
     plate = _cap(1)
     world = _world(plate)
@@ -141,6 +160,121 @@ def test_leaving_the_host_window_resets_the_formation_clock(monkeypatch):
     cratons.update(world, 1e6)
 
     assert np.all(plate.collect("stable_continental_myr") == 0.0)
+
+
+def _quiet_centre_forms(monkeypatch, marked: bool) -> bool:
+    """Whether a cap's centre column -- in the Hc window, at least 1,000 km inside -- forms
+    craton over 300 Myr of quiet, with or without a belt mark."""
+    plate = _cap(1)
+    world = _unseeded(monkeypatch, plate)
+    centre = np.zeros(plate.node_count(), dtype=bool)
+    centre[int(np.argmax(plate.all_points_and_elevation()[0] @ np.array([1.0, 0.0, 0.0])))] = True
+    inside_km = cratons._interior_hops(plate, cratons._genuine_continental(plate), 20)[centre][0] * SPACING * 6371.0
+    assert inside_km >= 1_000.0
+    if marked:
+        cratons.mark_belt(world, plate, centre)
+    for _ in range(30):
+        world.elapsed_years += 10e6
+        cratons.update(world, 10e6)
+    return bool(plate.collect("craton_crust_m")[centre][0] > 0.0)
+
+
+def test_a_belt_never_forms_craton_however_long_it_stays_quiet(monkeypatch):
+    """RFC 0009: welded and rifted crust never cratonises; the same column unmarked does."""
+    assert _quiet_centre_forms(monkeypatch, marked=False)
+    assert not _quiet_centre_forms(monkeypatch, marked=True)
+
+
+def test_mark_belt_dates_only_continental_cells_without_craton(monkeypatch):
+    keys = _block((10, 14), (10, 11))
+    plate = _plate(1, keys)
+    codes = plate.collect("crust_type_code")
+    codes[0] = CRUST_TYPE_OCEANIC
+    plate.set_fields_on_plate(crust_type_code=codes)
+    _set_craton(plate, np.arange(len(keys)) == 1)
+    world = _unseeded(monkeypatch, plate)
+    world.elapsed_years = 7.0e8
+
+    cratons.mark_belt(world, plate, np.ones(len(keys), dtype=bool))
+
+    np.testing.assert_array_equal(plate.collect("belt_formed_years"), [BELT_UNMARKED_YEARS, BELT_UNMARKED_YEARS, 7.0e8, 7.0e8])
+    np.testing.assert_array_equal(cratons.belt_mask(plate, world.elapsed_years), [False, False, True, True])
+
+
+def test_belts_heal_only_after_the_heal_time(monkeypatch):
+    plate = _plate(1, _block((10, 12), (10, 11)))
+    world = _unseeded(monkeypatch, plate)
+    cratons.mark_belt(world, plate, np.ones(2, dtype=bool))
+    assert np.all(cratons.belt_mask(plate, 4.0e9))  # never, by default
+
+    monkeypatch.setattr(cratons, "CRATON_BELT_HEAL_MYR", 100.0)
+    assert np.all(cratons.belt_mask(plate, 99.0e6)) and not np.any(cratons.belt_mask(plate, 100.0e6))
+
+
+@pytest.mark.parametrize("marked_children, expected", [(1, BELT_UNMARKED_YEARS), (3, 3.0e8)])
+def test_a_coarsened_cell_is_a_belt_only_if_most_of_its_area_was(marked_children, expected):
+    plate = _plate(1, _block((10, 12), (10, 11)))
+    parent = plate.cell_keys[0]
+    children = plate.refine_cells(np.array([parent]))[int(parent)]
+    child = np.flatnonzero(np.isin(plate.cell_keys, children))
+    belt = plate.collect("belt_formed_years")
+    belt[child[:marked_children]] = np.array([3.0e8, 1.0e8, 2.0e8])[:marked_children]
+    plate.set_fields_on_plate(belt_formed_years=belt)
+
+    plate.coarsen_cells(np.array([parent]))
+
+    assert plate.collect("belt_formed_years")[int(np.flatnonzero(plate.cell_keys == parent)[0])] == expected
+
+
+def test_a_coarsened_cell_holding_craton_is_never_a_belt():
+    plate = _plate(1, _block((10, 12), (10, 11)))
+    parent = plate.cell_keys[0]
+    children = plate.refine_cells(np.array([parent]))[int(parent)]
+    child = np.flatnonzero(np.isin(plate.cell_keys, children))
+    belt = plate.collect("belt_formed_years")
+    belt[child[:3]] = 2.0e8
+    craton = np.zeros(plate.node_count())
+    craton[child[3]] = 10_000.0
+    plate.set_fields_on_plate(belt_formed_years=belt, craton_crust_m=craton)
+
+    plate.coarsen_cells(np.array([parent]))
+
+    at = int(np.flatnonzero(plate.cell_keys == parent)[0])
+    assert plate.collect("craton_crust_m")[at] > 0.0
+    assert plate.collect("belt_formed_years")[at] == BELT_UNMARKED_YEARS
+
+
+def test_a_belt_retyped_oceanic_leaves_the_belt_area_and_loses_its_mark(monkeypatch):
+    """#474 review: belts are continental crust. A marked cell retyped oceanic drops out of
+    `craton_belt_area_m2` at once, and `update` clears its mark, so turning continental again
+    doesn't bring the old mark back."""
+    plate = _plate(1, _block((10, 14), (10, 11)))
+    world = _unseeded(monkeypatch, plate)
+    cratons.mark_belt(world, plate, np.ones(4, dtype=bool))
+    areas = plate.node_areas_m2()
+    codes = plate.collect("crust_type_code")
+    codes[0] = CRUST_TYPE_OCEANIC
+    plate.set_fields_on_plate(crust_type_code=codes)
+
+    assert cratons.diagnostics(world)["craton_belt_area_m2"] == pytest.approx(float(areas[1:].sum()))
+    cratons.update(world, 1e6)
+    codes[0] = CRUST_TYPE_CONTINENTAL
+    plate.set_fields_on_plate(crust_type_code=codes)
+
+    np.testing.assert_array_equal(cratons.belt_mask(plate, world.elapsed_years), [False, True, True, True])
+    assert cratons.diagnostics(world)["craton_belt_area_m2"] == pytest.approx(float(areas[1:].sum()))
+
+
+def test_diagnostics_report_belt_area_and_connected_cores():
+    plate = _plate(1, _block((10, 16), (10, 11)))
+    world = _world(plate)
+    _set_craton(plate, np.isin(np.arange(6), [0, 1, 4]))
+    cratons.mark_belt(world, plate, np.isin(np.arange(6), [2, 3]))
+
+    result = cratons.diagnostics(world)
+
+    assert result["craton_core_count"] == 2.0
+    assert result["craton_belt_area_m2"] == pytest.approx(float(plate.node_areas_m2()[2:4].sum()))
 
 
 # --- Resistance and ledgered destruction --------------------------------------------------
@@ -213,6 +347,7 @@ def test_a_craton_resists_divergent_thinning_and_books_what_it_loses(monkeypatch
     assert thinned[1] == pytest.approx((1.0 - cratons.CRATON_RIFT_RESISTANCE) * thinned[0], rel=1e-9)
     np.testing.assert_allclose(out["craton_crust_m"][1], out["crustal_thickness_m"][1])
     assert world.craton_ledger["rifted_m3"] == pytest.approx(thinned[1] * areas[1])
+    assert world.craton_ledger["rifted_divergent_m3"] == world.craton_ledger["rifted_m3"]
 
 
 def test_rift_stretch_draws_less_from_a_craton_and_books_its_thinning(monkeypatch):
@@ -238,6 +373,7 @@ def test_rift_stretch_draws_less_from_a_craton_and_books_its_thinning(monkeypatc
     # quarter as much, since thinning is not linear in the area asked of it.
     assert 0.0 < craton_loss < 0.5 * plain_loss
     assert world.craton_ledger["rifted_m3"] == pytest.approx(craton_loss, rel=1e-9)
+    assert world.craton_ledger["rifted_stretch_m3"] == world.craton_ledger["rifted_m3"]
     # What the craton withheld is fresh magmatic crust: the new cell is thinner, not missing.
     assert craton.collect("crustal_thickness_m")[new] < plain.collect("crustal_thickness_m")[new]
 
@@ -245,7 +381,7 @@ def test_rift_stretch_draws_less_from_a_craton_and_books_its_thinning(monkeypatc
 def _retreat_ctx(plate, shrinkable, accrete):
     n = plate.node_count()
     return SimpleNamespace(
-        shrinkable=shrinkable, accrete=accrete, spacing_rad=SPACING,
+        shrinkable=shrinkable, accrete=accrete, terrane=np.zeros(n, dtype=bool), spacing_rad=SPACING,
         oceanic_override_retreat_budget_hc=np.full(1, np.inf), own_points=plate.all_points_and_elevation()[0],
         inputs=SimpleNamespace(neighbor_plate_id=np.full(n, -1), direction_to_neighbor=np.zeros((n, 3))), neighbours=[],
         suture_upper_plate_id=np.full(n, -1), suture_hm_subduct=np.zeros(n, dtype=bool),
@@ -353,7 +489,7 @@ def test_a_relocated_terrane_keeps_its_craton_and_material_on_its_new_footprint_
     craton_before = _volume(plate, "craton_crust_m")
     material_before = _volume(plate, "continental_material_m")
 
-    quad_tectonics._accrete_onto_survivors(plate, donors, ~donors, world)
+    quad_tectonics._accrete_onto_survivors(plate, donors, ~donors, world, terranes=donors)
 
     survivors = ~donors
     terrane = (plate.collect("crust_type_code") == CRUST_TYPE_CONTINENTAL) & survivors
@@ -438,6 +574,61 @@ def test_craton_state_round_trips_and_old_saves_are_seeded_on_their_first_step()
     world_mod.step_world(old, 1_000_000)
     assert old.craton_ledger["initial_m3"] > 0.0
     assert cratons.balance_error_m3(old) == pytest.approx(0.0, abs=1e-9 * old.craton_ledger["initial_m3"])
+
+
+def test_a_rift_path_account_also_books_rifted_m3_outside_the_balance():
+    # RFC 0003 phase 1: the paths are diagnostics; the balance counts rifted_m3 once.
+    world = _world(_cap(1))
+    cratons.ensure_initialized(world)
+    cratons.record(world, "rifted_m3", 2.0)  # booked before a save tracked the paths
+    cratons.record(world, "rifted_failed_m3", 3.0)
+    cratons.record(world, "rifted_stretch_m3", 5.0)
+
+    ledger = world.craton_ledger
+    assert ledger["rifted_m3"] == 10.0
+    assert (ledger["rifted_divergent_m3"], ledger["rifted_stretch_m3"], ledger["rifted_failed_m3"]) == (0.0, 5.0, 3.0)
+    assert cratons.booked_sinks_m3(world) == 10.0
+
+
+def test_an_old_ledger_gains_the_rift_diagnostics_on_load():
+    world = _world(_cap(1))
+    cratons.ensure_initialized(world)
+    for key in cratons.CRATON_RIFT_PATH_ACCOUNTS + cratons.CRATON_RIFT_CUT_COUNTERS:
+        del world.craton_ledger[key]
+
+    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+
+    assert all(loaded.craton_ledger[key] == 0.0 for key in cratons.CRATON_RIFT_PATH_ACCOUNTS + cratons.CRATON_RIFT_CUT_COUNTERS)
+    cratons.record(loaded, "rifted_divergent_m3", 1.0)
+    assert loaded.craton_ledger["rifted_m3"] == 1.0
+
+
+def test_a_save_from_before_merge_capped_loads_with_it_at_zero_and_balanced():
+    # #441: older saves hold their merge losses in delaminated_m3 and lack the new account.
+    world = _world(_cap(1))
+    cratons.ensure_initialized(world)
+    del world.craton_ledger["merge_capped_m3"]
+    world.craton_ledger["delaminated_m3"] = 0.0
+
+    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+
+    assert loaded.craton_ledger["merge_capped_m3"] == 0.0
+    assert abs(cratons.balance_error_m3(loaded)) <= 1e-9 * max(loaded.craton_ledger["initial_m3"], 1.0)
+
+
+@pytest.mark.parametrize("resistance", [0.0, 0.75, 1.0, 1.5])
+def test_rift_thinning_factors_stay_in_unit_range(monkeypatch, resistance):
+    # RFC 0003: resistance is clamped, so no strength or tuned constant can make a failed
+    # rift thicken a column or thin it past zero.
+    from app.merge_split import FAILED_RIFT_THINNING_FRACTION
+
+    monkeypatch.setattr(cratons, "CRATON_RIFT_RESISTANCE", resistance)
+    craton = np.linspace(0.0, 2.0 * cratons.CRATON_FULL_STRENGTH_HC_M, 41)
+    resisted = cratons.rift_resistance(craton)
+    assert np.all((resisted >= 0.0) & (resisted <= 1.0))
+    for taper in np.linspace(0.0, 1.0, 11):
+        factor = np.clip(1.0 - FAILED_RIFT_THINNING_FRACTION * taper * (1.0 - resisted), 0.0, 1.0)
+        assert np.all((factor >= 1.0 - FAILED_RIFT_THINNING_FRACTION) & (factor <= 1.0))
 
 
 def test_record_rejects_negative_or_unknown_entries():

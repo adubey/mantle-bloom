@@ -7,9 +7,15 @@ import numpy as np
 import pytest
 
 from app import continental_ledger, geometry, lithosphere, merge_split, quad_merge
-from app.elevation_lines import CRUST_TYPE_INHERIT, CRUST_TYPE_OCEANIC, line_spacing_rad
+from app.elevation_lines import (
+    CRUST_TYPE_CONTINENTAL,
+    CRUST_TYPE_INHERIT,
+    CRUST_TYPE_OCEANIC,
+    line_spacing_rad,
+)
 from app.lithosphere_plate import SUTURE_ACCRETION_MAX_HC_M
 from app.sparse_quad_patch import PLANET_RADIUS_M, PlateWithSparseQuadPatch, unpack_cell_keys
+from app.surface_fields import CRATON_UNFORMED_YEARS
 from app.world import World
 
 DENSITY = 0.5
@@ -210,6 +216,42 @@ def test_craton_stacked_on_craton_past_the_cap_goes_with_the_overflow():
     assert keep.collect("craton_formed_years").min() == -2e9
 
 
+def test_patchy_craton_is_carried_with_hc_onto_new_cells():
+    # Issue #443 (H4): preserve the source patch on new cells while using Hc's restoring ratio;
+    # orphan craton may use only the Hc headroom of cells that already received craton.
+    keep = _cap(1, np.eye(3), _direction(0.0))
+    absorb = _cap(2, ROTATED, _direction(2 * RADIUS + 0.5 * SPACING))
+    hc = absorb.collect("crustal_thickness_m")
+    points = absorb.all_points_and_elevation()[0]
+    patch_limit = np.quantile(points[:, 1], 0.55)
+    patch = points[:, 1] > patch_limit
+    absorb.set_fields_on_plate(
+        craton_crust_m=np.where(patch, hc, 0.0),
+        craton_formed_years=np.where(patch, -2e9, CRATON_UNFORMED_YEARS),
+        crust_type_code=np.where(patch, CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC),
+    )
+    craton_before = _volume([absorb], "craton_crust_m")
+    old_keys = set(map(int, keep.cell_keys))
+
+    quad_merge.merge(keep, absorb, np.zeros((0, 3)))
+
+    new = np.array([int(key) not in old_keys for key in keep.cell_keys])
+    craton = keep.collect("craton_crust_m")
+    merged_hc = keep.collect("crustal_thickness_m")
+    formed = keep.collect("craton_formed_years")
+    codes = keep.collect("crust_type_code")
+    merged_points = keep.all_points_and_elevation()[0]
+    away_from_patch = new & (merged_points[:, 1] < patch_limit - 2.0 * SPACING)
+
+    assert np.any(new & (craton > 0.0))
+    assert np.any(away_from_patch)
+    assert np.all(craton[away_from_patch] == 0.0)
+    assert np.all(codes[away_from_patch] == CRUST_TYPE_OCEANIC)
+    assert np.all(formed[craton > 0.0] != CRATON_UNFORMED_YEARS)
+    assert np.all(craton[new] <= merged_hc[new] + 1e-6)
+    assert _volume([keep], "craton_crust_m") == pytest.approx(craton_before, rel=1e-9)
+
+
 def test_a_craton_column_stays_continental_under_a_thicker_oceanic_pile():
     # Issue #340: the crust-type vote counts crust volume, so an oceanic-coded pile at the Hc
     # cap fused onto a craton used to retype it oceanic and strip its craton.
@@ -385,7 +427,7 @@ def test_merge_conserves_angular_momentum_against_the_merged_plates_own_inertia(
     quad_merge.merge(keep, absorb, np.zeros((0, 3)))
 
     assert np.allclose(quad_merge._inertia(keep) @ keep.omega, momentum, rtol=1e-12, atol=0.0)
-    assert keep.age_steps == 0
+    assert keep.age_years == 0.0
 
 
 def test_crust_removed_at_the_suture_cap_leaves_with_the_absorbed_plates_momentum():
@@ -398,7 +440,7 @@ def test_crust_removed_at_the_suture_cap_leaves_with_the_absorbed_plates_momentu
     absorb.set_omega(np.array([2e-9, 0.0, 0.0]))
     momentum = _momentum(keep, absorb)
     probe_keep, probe_absorb = copy.deepcopy(keep), copy.deepcopy(absorb)
-    lost = quad_merge._transfer(probe_keep, probe_absorb, np.zeros((0, 3)))
+    lost, _ = quad_merge._transfer(probe_keep, probe_absorb, np.zeros((0, 3)))
     assert np.linalg.norm(lost) > 0.0
 
     quad_merge.merge(keep, absorb, np.zeros((0, 3)))
@@ -564,7 +606,7 @@ def _islet_world(crust_type="continental", touching=True, material=None):
     lithosphere.sync_plate_elevation(parent)
     gap = 1 * SPACING if touching else 3.0
     neighbour = _cap(2, ROTATED, _direction(ISLET_ANGLE + ISLET_RADIUS + gap + RADIUS), crust_type="oceanic")
-    neighbour.set_age_steps(17)
+    neighbour.set_age_years(1.7e6)
     world = _world(parent, neighbour)
     continental_ledger.ensure_initialized(world)
     return world, parent, neighbour
@@ -586,7 +628,7 @@ def test_a_stranded_continental_fragment_accretes_onto_the_plate_it_touches():
     assert world.next_plate_id == 3  # no tiny plate spawned
     receiver = world.plates[1]
     assert receiver.node_count() > neighbour_cells
-    assert receiver.age_steps == 17  # a terrane this small doesn't reset the split cooldown
+    assert receiver.age_years == 1.7e6  # a terrane this small doesn't reset the split cooldown
     assert len(events) == 1 and "stranded fragment" in events[0] and "onto plate 2" in events[0]
     assert world.continental_material_ledger["topology_removed_m3"] == 0.0
     assert world.mobile_cover_ledger.get("stranded_m3", 0.0) == 0.0
@@ -686,3 +728,61 @@ def test_overflow_craton_keeps_the_date_of_the_front_it_came_from():
     assert np.any(received[: n // 2]) and np.any(received[n // 2 :])
     assert np.all(out["craton_formed_years"][: n // 2][received[: n // 2]] == -3e9)
     assert np.all(out["craton_formed_years"][n // 2 :][received[n // 2 :]] == -1e9)
+
+
+def test_a_merge_marks_exactly_its_stacked_cells_as_belt():
+    """RFC 0009: the suture's stacked columns are welded crust; the survivor's other cells
+    are not, and a merge without a world marks nothing."""
+    from app import cratons
+
+    keep, absorb, stacked = _overlapping_pair()
+    world = _world(keep, absorb)
+    world.elapsed_years = 4.0e8
+
+    merge_split.merge_plates(world, 1, 2)
+
+    np.testing.assert_array_equal(cratons.belt_mask(keep, world.elapsed_years), stacked)
+    assert np.all(keep.collect("belt_formed_years")[stacked] == 4.0e8)
+    keep, absorb, _ = _overlapping_pair()
+    quad_merge.merge(keep, absorb, np.zeros((0, 3)))
+    assert not np.any(cratons.belt_mask(keep, 4.0e8))
+
+
+@pytest.mark.parametrize("own, absorbed, expected", [(None, 5.0e8, None), (1.0e8, 5.0e8, 5.0e8), (1.0e8, None, None)])
+def test_a_suture_cell_stays_a_belt_only_if_most_of_its_area_was(own, absorbed, expected):
+    """The majority-by-area remap: each stacked cell here is half survivor, half absorbed, so
+    it is a belt only when both halves are, with the later date."""
+    from app.surface_fields import BELT_UNMARKED_YEARS
+
+    keep, absorb, stacked = _overlapping_pair()
+    for plate, date in ((keep, own), (absorb, absorbed)):
+        plate.set_fields_on_plate(belt_formed_years=np.full(plate.node_count(), BELT_UNMARKED_YEARS if date is None else date))
+
+    quad_merge.merge(keep, absorb, np.zeros((0, 3)))
+
+    belt = keep.collect("belt_formed_years")
+    assert np.all(belt[stacked] == (BELT_UNMARKED_YEARS if expected is None else expected))
+    assert np.all(belt[~stacked] == (BELT_UNMARKED_YEARS if own is None else own))
+
+
+def test_a_cratonic_receiver_is_never_left_a_belt_by_the_merge_vote():
+    """A stacked cell that keeps craton is not a belt, even when every contributor carried a
+    mark: belts and cores stay disjoint (#474 review)."""
+    from app.surface_fields import BELT_UNMARKED_YEARS
+
+    keep, absorb, stacked = _overlapping_pair()
+    cratonic = stacked & (np.arange(keep.node_count()) % 2 == 0)
+    keep.set_fields_on_plate(
+        craton_crust_m=np.where(cratonic, 10_000.0, 0.0),
+        craton_formed_years=np.where(cratonic, -2.0e9, CRATON_UNFORMED_YEARS),
+        belt_formed_years=np.full(keep.node_count(), 1.0e8),
+    )
+    absorb.set_fields_on_plate(belt_formed_years=np.full(absorb.node_count(), 3.0e8))
+
+    quad_merge.merge(keep, absorb, np.zeros((0, 3)))
+
+    belt = keep.collect("belt_formed_years")
+    craton = keep.collect("craton_crust_m") > 0.0
+    assert np.any(craton & stacked) and np.any(~craton & stacked)
+    assert np.all(belt[craton] == BELT_UNMARKED_YEARS)
+    assert np.all(belt[stacked & ~craton] == 3.0e8)

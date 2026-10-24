@@ -76,7 +76,7 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
-from . import geometry, lithosphere, rheology
+from . import cratons, geometry, lithosphere, rheology
 from .elevation_lines import (
     CRUST_TYPE_CONTINENTAL,
     CRUST_TYPE_INHERIT,
@@ -95,7 +95,7 @@ from .sparse_quad_patch import (
     pack_cell_keys,
     unpack_cell_keys,
 )
-from .surface_fields import SURFACE_FIELDS, RemapClass
+from .surface_fields import SURFACE_FIELDS, RemapClass, majority_history
 
 if TYPE_CHECKING:
     from .world import World
@@ -338,6 +338,31 @@ def _plate_motion_state(state: dict) -> tuple[np.ndarray, np.ndarray, int, float
     return frame.copy(), omega.copy(), int(age_steps), internal_stress, crust_type
 
 
+# Step length assumed for a save that counted plate age in steps (before #358) when the
+# world's own clock can't give it: a save from before `World.steps_taken` existed reads 0
+# steps taken. The UI's shortest step, so a converted plate errs young and an old split
+# cooldown isn't cut short.
+FALLBACK_YEARS_PER_STEP = 10_000.0
+
+
+def legacy_years_per_step(world: "World") -> float:
+    """The mean step length of `world` so far, or `FALLBACK_YEARS_PER_STEP` when its clock
+    can't say."""
+    steps = int(getattr(world, "steps_taken", 0))
+    elapsed = float(getattr(world, "elapsed_years", 0.0))
+    if steps > 0 and np.isfinite(elapsed) and elapsed > 0.0:
+        return elapsed / steps
+    return FALLBACK_YEARS_PER_STEP
+
+
+def legacy_age_years(age_steps: int, world: "World") -> float:
+    """A plate age counted in steps (before #358), in years. Capped at the world's elapsed
+    time: no plate is older than its world, which also bounds the fallback step length on a
+    save that predates `steps_taken`."""
+    elapsed = float(getattr(world, "elapsed_years", 0.0))
+    return min(age_steps * legacy_years_per_step(world), max(elapsed, 0.0))
+
+
 @dataclass
 class ConversionReport:
     """What a conversion kept and changed. Volumes are m^3 (field value x area); fractions
@@ -450,7 +475,7 @@ def convert_world_to_quad(world: "World", *, coverage_samples: int = COVERAGE_SA
                 keys[k],
                 fields=fields,
                 omega=plate.omega.copy(),
-                age_steps=plate.age_steps,
+                age_years=legacy_age_years(plate.age_steps, world),
                 internal_stress=plate.internal_stress,
             )
         )
@@ -782,6 +807,8 @@ def _cell_fields(
             set_ = values != spec.sentinel
             np.minimum.at(earliest, cell[set_], values[set_])
             out[name] = np.where(np.isfinite(earliest), earliest, spec.sentinel)
+        elif spec.remap_class == RemapClass.MAJORITY_HISTORY:
+            out[name] = majority_history(cell, values, weight, count, spec.sentinel)
         elif spec.remap_class == RemapClass.BOOLEAN_PROVENANCE:
             out[name] = np.bincount(cell, weights=values.astype(float), minlength=count) > 0.0
         elif spec.remap_class == RemapClass.CATEGORICAL:
@@ -811,6 +838,7 @@ def _cell_fields(
             spec = SURFACE_FIELDS[name]
             point_feature = spec.remap_class in (RemapClass.BOOLEAN_PROVENANCE, RemapClass.COUNTDOWN)
             out[name][empty] = spec.default if point_feature else values[nearest]
+    cratons.keep_belts_off_cratons(out)
 
     # Conserve every extensive field per plate, as quad_merge does: one ratio restores the
     # volume of the nodes the cells took in (the mean transfer alone gains or loses where an
@@ -905,6 +933,9 @@ def _stack_foreign(
                 fields[name] = own[name] + np.bincount(cell, weights=values * node_area, minlength=count) / area
                 if name in _CAPS:
                     fields[name] = _spread_overflow(quad, fields[name], own[name], _CAPS[name][1])
+            elif spec.remap_class == RemapClass.MAJORITY_HISTORY:
+                voted = majority_history(cell, values, node_area, count, spec.sentinel, own[name], area)
+                fields[name] = np.where(receiving, voted, own[name])
             elif spec.remap_class == RemapClass.BOOLEAN_PROVENANCE:
                 fields[name] = own[name] | (np.bincount(cell, weights=values.astype(float), minlength=count) > 0.0)
             elif name == "channel_depth" or spec.remap_class == RemapClass.COUNTDOWN:
@@ -931,6 +962,7 @@ def _stack_foreign(
         # only on continental hosts (#340, as in quad_merge).
         keeps_craton = receiving & (fields["craton_crust_m"] > 0.0)
         fields["crust_type_code"][keeps_craton] = CRUST_TYPE_INHERIT if own_code == CRUST_TYPE_CONTINENTAL else CRUST_TYPE_CONTINENTAL
+        cratons.keep_belts_off_cratons(fields)
 
         # Elevation: isostasy from the stacked column, plus both sides' non-isostatic residual
         # blended by area, as quad_merge does at a suture.

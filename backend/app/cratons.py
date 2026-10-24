@@ -1,6 +1,6 @@
 """Persistent cratons: old, stable continental cores that resist ordinary tectonics (issue #274).
 
-State. Three per-node surface fields carry everything (see surface_fields.py):
+State. Four per-node surface fields carry everything (see surface_fields.py):
 
 - ``craton_crust_m`` -- the cratonic share of the column's crust, a thickness in metres and
   never more than Hc. Extensive, so every topology change (quad merge, partition, defrag,
@@ -13,17 +13,34 @@ State. Three per-node surface fields carry everything (see surface_fields.py):
   or coarsened cell keeps its oldest contributor's date.
 - ``stable_continental_myr`` -- the formation clock: how long the column has sat as quiet
   continental interior.
+- ``belt_formed_years`` -- when the column last became a belt (below), or
+  surface_fields.BELT_UNMARKED_YEARS if it never has.
 
 Formation rule. A column is quiet when it is genuine continental crust (Hc within
 [CRATON_HOST_MIN_HC_M, CRATON_HOST_MAX_HC_M] -- neither a drowned shelf nor an active orogen)
 at least CRATON_FORMATION_MARGIN_KM from its plate's edge or any non-genuine cell. Once the
-clock reaches CRATON_FORMATION_MYR its whole Hc becomes cratonic. World generation (and the
-first load of an older save) seeds the deep interiors -- CRATON_SEED_MARGIN_KM in -- as
-cratons that already exist, dated CRATON_SEED_AGE_YEARS before the start.
+clock reaches CRATON_FORMATION_MYR its whole Hc becomes cratonic. A cratons-first world
+(RFC 0009, continent_layout.py) starts with its generated cratonic cores; every other world
+(and the first load of an older save) seeds the deep interiors -- CRATON_SEED_MARGIN_KM in.
+Either way the starting cratons already exist, dated CRATON_SEED_AGE_YEARS before the start.
+
+Belts (RFC 0009). Crust welded in a collision or stretched by a rift stays weaker than the
+shields around it and is what later rifts reactivate (Vauchez et al., 1997; Heron et al.,
+2016), so it never forms craton however long it stays quiet: `update` leaves belt columns out
+of `quiet`. A cratons-first world starts with its generated belts (`seed_belts`, dated
+CRATON_BELT_SEED_AGE_YEARS before the start). At runtime every writer goes through
+`mark_belt`, which dates the continental, non-cratonic cells it is given: suture-accretion receivers (quad_tectonics._accrete_onto_survivors), crust
+an overriding plate takes in (quad_tectonics.settle_received_crust, which carries
+crust_transfer's upper-plate placement), stacked merge cells (quad_merge._transfer), a failed
+rift's thinned band (apply_failed_rift) and the band along a successful split's cut
+(merge_split.maybe_split_plate). A merged or coarsened cell is a belt only if most of its area
+was (surface_fields.majority_history). Readers use `belt_mask`, so a belt could later heal
+after CRATON_BELT_HEAL_MYR; that is infinite here.
 
 Resistance. Strength rises linearly with cratonic thickness up to CRATON_FULL_STRENGTH_HC_M.
 It scales back erosional Hc removal (erosion.py), divergent thinning
-(lithosphere_plate.deform_columns), collisional shortening (a craton passes it on to weaker
+(lithosphere_plate.deform_columns) and failed-rift thinning (apply_failed_rift, RFC 0003)
+alike (`rift_resistance`), collisional shortening (a craton passes it on to weaker
 ground instead of thickening -- shortening.py), how much of a rift's stretched footprint a craton donates
 (quad_tectonics._allocate_stretch), and how hard a collision front it jams brakes the plates
 (torque.collision_drag_coefficients). Cratonic crust doesn't flow, melt or delaminate
@@ -34,19 +51,23 @@ its edge wears back by subduction erosion first (`attrite`, #340).
 Destruction. Every loss of cratonic volume is booked into ``World.craton_ledger`` under the
 mechanism that caused it (CRATON_SINK_ACCOUNTS); ``balance_error_m3`` checks that sources,
 sinks and the live inventory agree. Boundary consumption also books the continental material
-it removes into the continental-material ledger (continental_ledger.py).
+it removes into the continental-material ledger (continental_ledger.py). Rifting is also split
+by path (CRATON_RIFT_PATH_ACCOUNTS), and every split or failed-rift cut records how much craton
+its band crosses (CRATON_RIFT_CUT_COUNTERS) -- diagnostics outside the balance (RFC 0003).
 """
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING
 
 import numpy as np
+from scipy.sparse.csgraph import connected_components
 
 from . import lithosphere
 from .elevation_lines import effective_is_continental_from_codes, line_spacing_rad
 from .mantle import PLANET_RADIUS_KM
-from .surface_fields import CRATON_UNFORMED_YEARS
+from .surface_fields import BELT_UNMARKED_YEARS, CRATON_UNFORMED_YEARS
 
 if TYPE_CHECKING:
     from .plates import Plate
@@ -65,11 +86,17 @@ CRATON_FORMATION_MARGIN_KM = 500.0
 # hundred Myr; long enough here that an ordinary collision belt has to stop deforming and
 # relax back into the host Hc window before it joins the craton.
 CRATON_FORMATION_MYR = 200.0
-# Generation seeding: the deep interiors of the starting continents. 875 km (seven default
-# cells) covers ~40-50% of genuine continental area on default worlds -- the order of
-# Earth's shields plus platforms.
+# Generation seeding without generated cores (plates-first, sketch and premade worlds): the
+# deep interiors of the starting continents. 875 km (seven default cells) covers ~40-50% of
+# genuine continental area on default worlds -- the order of Earth's shields plus platforms.
 CRATON_SEED_MARGIN_KM = 875.0
 CRATON_SEED_AGE_YEARS = 2.5e9
+# Belts (RFC 0009). Generated belts are dated this long before the start: Proterozoic welds,
+# younger than the cores they join, as for Laurentia (Hoffman, 1988). Provenance only.
+CRATON_BELT_SEED_AGE_YEARS = 1.8e9
+# How long after it was marked a belt can form craton again. Infinite: in RFC 0009 welded and
+# rifted crust never heals.
+CRATON_BELT_HEAL_MYR = math.inf
 
 # --- Resistance --------------------------------------------------------------------------
 
@@ -77,7 +104,7 @@ CRATON_SEED_AGE_YEARS = 2.5e9
 CRATON_FULL_STRENGTH_HC_M = 25_000.0
 # Fraction of erosional Hc removal a full-strength craton column resists.
 CRATON_EROSION_RESISTANCE = 0.75
-# Fraction of divergent thinning a full-strength craton column resists.
+# Fraction of divergent and failed-rift thinning a full-strength craton column resists.
 CRATON_RIFT_RESISTANCE = 0.75
 # Fraction of its share of a rift's stretched footprint a full-strength craton donor
 # withholds -- the rest of that footprint is fresh magmatic crust instead.
@@ -100,12 +127,17 @@ CRATON_SOURCE_ACCOUNTS = ("initial_m3", "formed_m3")
 # cleanup. "audit_clipped" is craton a catch-all phase audit (the deform phase, the end of
 # the step) had to clip to its column because some writer thinned the column below it
 # without booking it: kept apart from any mechanism so the real sinks can be read (#340).
+# "merge_capped" is craton stacked past the suture cap in a plate merge that the overflow
+# placement couldn't place (RFC 0001, #441). Merges booked it to "delaminated" before then,
+# which read as root foundering (forbidden for cratons, #340); nothing books "delaminated"
+# now, and it is kept so older saves' historical merge losses still balance.
 # "unattributed" is signed and should stay ~0 -- anything there escaped every instrumented
 # site.
 CRATON_SINK_ACCOUNTS = (
     "rifted_m3",
     "subducted_m3",
     "delaminated_m3",
+    "merge_capped_m3",
     "collision_reworked_m3",
     "eroded_m3",
     "topology_removed_m3",
@@ -113,6 +145,21 @@ CRATON_SINK_ACCOUNTS = (
     "unattributed_m3",
 )
 CRATON_ACCOUNTS = CRATON_SOURCE_ACCOUNTS + CRATON_SINK_ACCOUNTS
+# rifted_m3 by path (RFC 0003 phase 1): divergent-boundary thinning
+# (lithosphere_plate.deform_columns), stretch donated to new rift cells
+# (quad_tectonics._allocate_stretch) and failed rifts (merge_split.maybe_split_plate). Booking
+# one of these also books rifted_m3, so they are diagnostics outside the balance; their sum
+# equals rifted_m3 only from when a save started tracking them.
+CRATON_RIFT_PATH_ACCOUNTS = ("rifted_divergent_m3", "rifted_stretch_m3", "rifted_failed_m3")
+# Every plate-split cut that cleared the split gates, by outcome ("split" broke the plate up,
+# "failed_rift" became an aulacogen): how many there were, how many had craton in the cut's
+# band (the band a failed rift thins), and the band's total and cratonic area -- the share of
+# cuts through cratons that steering the cut (RFC 0003) would act on.
+CRATON_RIFT_CUT_KINDS = ("split", "failed_rift")
+CRATON_RIFT_CUT_COUNTERS = tuple(
+    f"{kind}_{name}" for kind in CRATON_RIFT_CUT_KINDS
+    for name in ("cuts", "cuts_through_craton", "band_area_m2", "band_craton_area_m2")
+)
 # A single step's destruction above this fraction of the live craton volume is logged to the
 # event console, naming the mechanism.
 CRATON_EVENT_FRACTION = 0.01
@@ -123,14 +170,22 @@ def strength(craton_crust_m: np.ndarray) -> np.ndarray:
     return np.clip(np.asarray(craton_crust_m, dtype=float) / CRATON_FULL_STRENGTH_HC_M, 0.0, 1.0)
 
 
+def rift_resistance(craton_crust_m: np.ndarray) -> np.ndarray:
+    """0..1 share of rift thinning (divergent or failed) a column resists, clamped so a
+    tuned CRATON_RIFT_RESISTANCE can't push a thinning factor out of [0, 1] (RFC 0003)."""
+    return np.clip(CRATON_RIFT_RESISTANCE * strength(craton_crust_m), 0.0, 1.0)
+
+
 def _hops(km: float, spacing_rad: float) -> int:
     return max(1, round(km / (spacing_rad * PLANET_RADIUS_KM)))
 
 
+def _continental(plate: "Plate") -> np.ndarray:
+    return effective_is_continental_from_codes(plate.collect("crust_type_code"), plate.crust_type == "continental")
+
+
 def _genuine_continental(plate: "Plate") -> np.ndarray:
-    hc = plate.collect("crustal_thickness_m")
-    continental = effective_is_continental_from_codes(plate.collect("crust_type_code"), plate.crust_type == "continental")
-    return continental & (hc >= CRATON_HOST_MIN_HC_M)
+    return _continental(plate) & (plate.collect("crustal_thickness_m") >= CRATON_HOST_MIN_HC_M)
 
 
 def _interior_hops(plate: "Plate", host: np.ndarray, max_hops: int) -> np.ndarray | None:
@@ -151,7 +206,7 @@ def ensure_ledger(world: "World") -> None:
     """Backfill the ledger's accounts without touching any plate -- safe on load."""
     if not isinstance(getattr(world, "craton_ledger", None), dict):
         world.craton_ledger = {}
-    for key in CRATON_ACCOUNTS:
+    for key in CRATON_ACCOUNTS + CRATON_RIFT_PATH_ACCOUNTS + CRATON_RIFT_CUT_COUNTERS:
         if key != "initial_m3":
             world.craton_ledger.setdefault(key, 0.0)
 
@@ -168,8 +223,8 @@ def ensure_initialized(world: "World") -> None:
 
 def record(world: "World", account: str, volume_m3: float) -> None:
     """Book `volume_m3` of cratonic crust into one account. Only `unattributed_m3` may go
-    negative (a remap that gained volume)."""
-    if account not in CRATON_ACCOUNTS:
+    negative (a remap that gained volume). A rift path account books rifted_m3 too."""
+    if account not in CRATON_ACCOUNTS and account not in CRATON_RIFT_PATH_ACCOUNTS:
         raise KeyError(f"unknown craton ledger account: {account}")
     volume_m3 = float(volume_m3)
     if not np.isfinite(volume_m3) or (volume_m3 < 0.0 and account != "unattributed_m3"):
@@ -178,6 +233,25 @@ def record(world: "World", account: str, volume_m3: float) -> None:
         return
     ensure_ledger(world)
     world.craton_ledger[account] = world.craton_ledger.get(account, 0.0) + volume_m3
+    if account in CRATON_RIFT_PATH_ACCOUNTS:
+        world.craton_ledger["rifted_m3"] += volume_m3
+
+
+def record_rift_cut(world: "World", plate: "Plate", points: np.ndarray, cut_normal: np.ndarray, band_sin: float, kind: str) -> None:
+    """Count one split cut of `kind` (CRATON_RIFT_CUT_KINDS) through `plate` along the great
+    circle with unit normal `cut_normal`, and the area and craton area of the nodes (world
+    positions `points`, in collect order) within `band_sin` of it."""
+    if kind not in CRATON_RIFT_CUT_KINDS:
+        raise KeyError(f"unknown rift cut kind: {kind}")
+    ensure_ledger(world)
+    in_band = np.abs(points @ np.asarray(cut_normal, dtype=float)) < band_sin
+    areas = _areas(world, plate)[in_band]
+    craton_area = float(areas[plate.collect("craton_crust_m")[in_band] > 0.0].sum())
+    ledger = world.craton_ledger
+    ledger[f"{kind}_cuts"] += 1.0
+    ledger[f"{kind}_cuts_through_craton"] += float(craton_area > 0.0)
+    ledger[f"{kind}_band_area_m2"] += float(areas.sum())
+    ledger[f"{kind}_band_craton_area_m2"] += craton_area
 
 
 def _areas(world: "World", plate: "Plate") -> np.ndarray:
@@ -192,6 +266,11 @@ def plate_volume_m3(world: "World", plate: "Plate") -> float:
 
 def live_volume_m3(world: "World") -> float:
     return sum(plate_volume_m3(world, plate) for plate in world.plates)
+
+
+def genuine_continental_area_m2(world: "World") -> float:
+    """Area of continental crust thick enough to host a craton (CRATON_HOST_MIN_HC_M)."""
+    return sum(float(_areas(world, plate)[_genuine_continental(plate)].sum()) for plate in world.plates if plate.node_count())
 
 
 def booked_sinks_m3(world: "World") -> float:
@@ -281,9 +360,40 @@ class PhaseAudit:
 # --- Seeding, formation, and the per-step update -----------------------------------------
 
 
+def seed_cores(plate: "Plate", core: np.ndarray, elapsed_years: float = 0.0) -> None:
+    """Make the whole Hc of each `core` column (a mask in node order) cratonic, dated
+    CRATON_SEED_AGE_YEARS before `elapsed_years` -- generation's cratonic cores on a
+    cratons-first world (RFC 0009, continent_layout.py)."""
+    if not np.any(core):
+        return
+    hc = plate.collect("crustal_thickness_m")
+    craton = plate.collect("craton_crust_m")
+    craton[core] = hc[core]
+    formed = plate.collect("craton_formed_years")
+    formed[core] = elapsed_years - CRATON_SEED_AGE_YEARS
+    stable = plate.collect("stable_continental_myr")
+    stable[core] = np.maximum(stable[core], CRATON_SEED_AGE_YEARS / 1e6)
+    plate.set_fields_on_plate(craton_crust_m=craton, craton_formed_years=formed, stable_continental_myr=stable)
+
+
+def seed_belts(plate: "Plate", belt: np.ndarray, elapsed_years: float = 0.0) -> None:
+    """Mark generation's belts (a mask in node order) on a cratons-first world (RFC 0009,
+    continent_layout.py), dated CRATON_BELT_SEED_AGE_YEARS before `elapsed_years`."""
+    if not np.any(belt):
+        return
+    formed = plate.collect("belt_formed_years")
+    formed[belt] = elapsed_years - CRATON_BELT_SEED_AGE_YEARS
+    plate.set_fields_on_plate(belt_formed_years=formed)
+
+
 def seed_initial_cratons(world: "World") -> float:
-    """Mark the deep interiors of the world's genuine continents as pre-existing cratons.
-    Returns the seeded volume (m^3)."""
+    """The world's starting cratons; returns their volume (m^3). A cratons-first world's
+    generation has already seeded its cores (`seed_cores`), so they are only booked. Every
+    other world -- a sketch, a premade world, a plates-first random world or an old save's
+    first step -- gets the deep interiors of its genuine continents, CRATON_SEED_MARGIN_KM in."""
+    generated = live_volume_m3(world)
+    if generated > 0.0:
+        return generated
     spacing_rad = line_spacing_rad(world.node_density)
     hops = _hops(CRATON_SEED_MARGIN_KM, spacing_rad)
     seeded = 0.0
@@ -307,21 +417,66 @@ def seed_initial_cratons(world: "World") -> float:
     return seeded
 
 
+def mark_belt(world: "World", plate: "Plate", mask: np.ndarray) -> None:
+    """Date the cells in `mask` (node order) as belt at `world.elapsed_years`. Only continental
+    cells holding no craton are marked: belts are continental crust between the shields, and
+    crust welded onto a shield is ordinary crust over it."""
+    mask = np.asarray(mask, dtype=bool)
+    if plate.node_count() == 0 or not np.any(mask):
+        return
+    mask = mask & _continental(plate) & (plate.collect("craton_crust_m") <= 0.0)
+    if not np.any(mask):
+        return
+    formed = plate.collect("belt_formed_years")
+    formed[mask] = world.elapsed_years
+    plate.set_fields_on_plate(belt_formed_years=formed)
+
+
+def keep_belts_off_cratons(fields: dict[str, np.ndarray]) -> None:
+    """In place on a remap's output `fields`: a cell holding craton is not a belt, whatever
+    the majority vote gave it. Belts and cores stay disjoint, as `mark_belt` keeps them, so a
+    mark can't linger under a craton and block re-formation once that craton is lost."""
+    if "belt_formed_years" in fields and "craton_crust_m" in fields:
+        fields["belt_formed_years"][fields["craton_crust_m"] > 0.0] = BELT_UNMARKED_YEARS
+
+
+def belt_mask(plate: "Plate", elapsed_years: float) -> np.ndarray:
+    """Per node, whether the column is a belt: marked, and marked less than
+    CRATON_BELT_HEAL_MYR ago."""
+    formed = plate.collect("belt_formed_years")
+    return (formed != BELT_UNMARKED_YEARS) & (elapsed_years - formed < CRATON_BELT_HEAL_MYR * 1e6)
+
+
+def clear_oceanic_belts(plate: "Plate") -> None:
+    """Unmark every belt cell whose crust is no longer continental. Writers retype crust in
+    many places; the end-of-step `update` clears the marks they leave on oceanic cells, so a
+    cell that becomes continental again is a belt only if a writer marks it anew."""
+    if plate.node_count() == 0:
+        return
+    formed = plate.collect("belt_formed_years")
+    stale = (formed != BELT_UNMARKED_YEARS) & ~_continental(plate)
+    if np.any(stale):
+        formed[stale] = BELT_UNMARKED_YEARS
+        plate.set_fields_on_plate(belt_formed_years=formed)
+
+
 def update(world: "World", years: float) -> None:
     """End-of-step craton pass: advance every quiet column's formation clock, cratonise the
     ones that reach CRATON_FORMATION_MYR, and drop the provenance stamp of any cell whose
-    craton is gone."""
+    craton is gone. A belt column is never quiet (RFC 0009), and a cell retyped oceanic stops
+    being a belt: belts are continental crust (`clear_oceanic_belts`)."""
     ensure_initialized(world)
     years_myr = years / 1e6
     spacing_rad = line_spacing_rad(world.node_density)
     hops = _hops(CRATON_FORMATION_MARGIN_KM, spacing_rad)
     for plate in world.plates:
+        clear_oceanic_belts(plate)
         host = _genuine_continental(plate)
         interior = _interior_hops(plate, host, hops)
         if interior is None:
             continue
         hc = plate.collect("crustal_thickness_m")
-        quiet = host & (hc <= CRATON_HOST_MAX_HC_M) & (interior >= hops)
+        quiet = host & (hc <= CRATON_HOST_MAX_HC_M) & (interior >= hops) & ~belt_mask(plate, world.elapsed_years)
         stable = np.where(quiet, plate.collect("stable_continental_myr") + years_myr, 0.0)
         craton = plate.collect("craton_crust_m")
         formed = plate.collect("craton_formed_years")
@@ -403,12 +558,24 @@ def log_destruction(world: "World", before: dict[str, float], live_before: float
             world.log_event(f"Craton destruction ({mechanism}): {lost / 1e9:,.0f} km³ ({100.0 * lost / live_before:.1f}% of cratons).")
 
 
+def core_count(plate: "Plate") -> int:
+    """Cratonic cores on `plate`: its edge-connected components of craton cells."""
+    core = np.flatnonzero(plate.collect("craton_crust_m") > 0.0)
+    if not len(core):
+        return 0
+    from .quad_tectonics import _adjacency_matrix
+
+    return int(connected_components(_adjacency_matrix(plate)[core][:, core], directed=False)[0])
+
+
 def diagnostics(world: "World") -> dict[str, float]:
     """Live craton inventory, the persisted ledger, and its balance -- for stats and the API."""
     ensure_ledger(world)
     area = 0.0
     continental_area = 0.0
     volume = 0.0
+    belt_area = 0.0
+    cores = 0
     for plate in world.plates:
         if plate.node_count() == 0:
             continue
@@ -417,9 +584,15 @@ def diagnostics(world: "World") -> dict[str, float]:
         area += float(areas[craton > 0.0].sum())
         continental_area += float(areas[_genuine_continental(plate)].sum())
         volume += float(np.dot(craton, areas))
-    result = {f"craton_{key}": float(world.craton_ledger.get(key, 0.0)) for key in CRATON_ACCOUNTS}
+        # Only belts on continental crust: a marked cell retyped oceanic mid-step is no belt.
+        belt_area += float(areas[belt_mask(plate, world.elapsed_years) & _continental(plate)].sum())
+        cores += core_count(plate)
+    keys = CRATON_ACCOUNTS + CRATON_RIFT_PATH_ACCOUNTS + CRATON_RIFT_CUT_COUNTERS
+    result = {f"craton_{key}": float(world.craton_ledger.get(key, 0.0)) for key in keys}
     result["craton_area_m2"] = area
     result["craton_area_fraction_of_continental"] = area / continental_area if continental_area > 0.0 else 0.0
     result["craton_volume_m3"] = volume
+    result["craton_belt_area_m2"] = belt_area
+    result["craton_core_count"] = float(cores)
     result["craton_balance_error_m3"] = balance_error_m3(world)
     return result

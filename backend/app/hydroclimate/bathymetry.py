@@ -118,9 +118,8 @@ def _gather_columns(plates: list["Plate"]):
 
     points, plates_in_order = plates_mod.gather_node_positions(plates)
     counts = [p.node_count() for p in plates_in_order]
-    is_continental = np.concatenate(
-        [np.full(c, p.crust_type == "continental", dtype=bool) for p, c in zip(plates_in_order, counts)]
-    ) if counts else np.zeros(0, dtype=bool)
+    # Each node's own crust type: a cratons-first world's plates carry both (RFC 0009, #462).
+    is_continental = np.concatenate([plates_mod.node_is_continental(p) for p in plates_in_order]) if counts else np.zeros(0, dtype=bool)
     hc = np.concatenate([np.asarray(p.collect("crustal_thickness_m"), dtype=float) for p in plates_in_order]) if counts else np.zeros(0)
     hm = np.concatenate([np.asarray(p.collect("mantle_lithosphere_thickness_m"), dtype=float) for p in plates_in_order]) if counts else np.zeros(0)
     elevation = np.concatenate([np.asarray(p.collect("elevation"), dtype=float) for p in plates_in_order]) if counts else np.zeros(0)

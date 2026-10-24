@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import pickle
 
+import numpy as np
+
 from .world import World
 
 
@@ -121,11 +123,46 @@ def load_world_bytes(data: bytes) -> World:
             convert_world_to_quad(world)
         except ValueError as exc:
             raise CorruptSaveError(f"line-backed save can't be converted: {exc}") from exc
+    _migrate_plate_ages(world)
     _backfill_added_fields(world)
     _drop_retired_state(world)
     _drop_derived_caches(world)
+    _migrate_climate_humidity_units(world)
     _backfill_water_budget(world)
     return world
+
+
+def _migrate_climate_humidity_units(world: World) -> None:
+    """Convert a saved `climate_cache` from the unitless humidity index to g/kg (#522). The
+    cache is kept rather than dropped because the next step's transpiration source reads its
+    precipitation. Its humidity is only rendered until that step recomputes it, so the index
+    is scaled by the same factor its constants were (`climate.HUMIDITY_INDEX_G_KG`), not
+    re-derived."""
+    cache = world.climate_cache
+    if cache is None or "humidity" not in vars(cache):
+        return
+    from .hydroclimate import climate
+
+    cache.humidity_g_kg = vars(cache).pop("humidity") * climate.HUMIDITY_INDEX_G_KG
+
+
+def _migrate_plate_ages(world: World) -> None:
+    """A quad plate saved before #358 (surface format version 1) counted its age in steps.
+    Convert it to years with the world's own mean step length (see
+    `legacy_conversion.legacy_age_years`)."""
+    from .legacy_conversion import legacy_age_years
+
+    for plate in world.plates:
+        state = plate.__dict__
+        if "_age_years" in state:
+            continue
+        # Without either age the plate would load and then fail on its first `age_years` read.
+        if "_age_steps" not in state:
+            raise CorruptSaveError(f"plate {plate.plate_id!r}: no age in years or steps")
+        age_steps = state.pop("_age_steps")
+        if isinstance(age_steps, bool) or not isinstance(age_steps, (int, np.integer)) or age_steps < 0:
+            raise CorruptSaveError(f"plate {plate.plate_id!r}: age must be a non-negative step count")
+        plate.set_age_years(legacy_age_years(int(age_steps), world))
 
 
 def _backfill_added_fields(world: World) -> None:

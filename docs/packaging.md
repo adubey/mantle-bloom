@@ -4,11 +4,9 @@ Turns the two-process dev setup (uvicorn on `:8000` + Vite on `:5173`) into **on
 self-contained executable** that a non-developer can double-click. The backend serves the
 built frontend from its own origin, picks a free port, and opens a browser at it.
 
-This is a **local single-user app**, not a deployment. For putting mantle-bloom on the
-public internet see [HOSTING.md](HOSTING.md) instead — the security blockers there
-(pickle RCE in `/world/load`, single in-memory world, localhost CORS) do **not** matter
-when the whole thing runs on one person's machine, which is the only thing this build
-targets.
+This is a **local single-user app**, not a deployment. The public deployment uses the same
+single-origin setup in a Docker image on Railway, behind GitHub login (#376); see
+[hosting.md](hosting.md).
 
 ## How it works
 

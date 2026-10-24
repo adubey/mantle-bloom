@@ -1,0 +1,1145 @@
+{
+  "endpoint_myr": 500,
+  "step_myr": 1,
+  "node_density": 1.0,
+  "seeds": [
+    326494039,
+    748935664,
+    580014012,
+    111065103
+  ],
+  "order": "baseline then pilot within each seed; one process at a time",
+  "runs": [
+    {
+      "model": "baseline",
+      "seed": 326494039,
+      "step_myr": 1.0,
+      "steps": 500,
+      "started_utc": "2026-10-18T20:05:44.516403+00:00",
+      "output": "/private/tmp/rfc0012-g2-full-1myr/baseline-seed326494039-1myr-500myr.json",
+      "status": "complete",
+      "wall_seconds": 1355.66,
+      "finished_utc": "2026-10-18T20:28:20.142404+00:00",
+      "return_code": 0
+    },
+    {
+      "model": "pilot",
+      "seed": 326494039,
+      "step_myr": 1.0,
+      "steps": 500,
+      "started_utc": "2026-10-18T20:28:20.143237+00:00",
+      "output": "/private/tmp/rfc0012-g2-full-1myr/pilot-seed326494039-1myr-500myr.json",
+      "status": "complete",
+      "wall_seconds": 1393.12,
+      "finished_utc": "2026-10-18T20:51:33.246694+00:00",
+      "return_code": 0
+    },
+    {
+      "model": "baseline",
+      "seed": 748935664,
+      "step_myr": 1.0,
+      "steps": 500,
+      "started_utc": "2026-10-18T20:51:33.247723+00:00",
+      "output": "/private/tmp/rfc0012-g2-full-1myr/baseline-seed748935664-1myr-500myr.json",
+      "status": "complete",
+      "wall_seconds": 1308.78,
+      "finished_utc": "2026-10-18T21:13:22.050992+00:00",
+      "return_code": 0
+    },
+    {
+      "model": "pilot",
+      "seed": 748935664,
+      "step_myr": 1.0,
+      "steps": 500,
+      "started_utc": "2026-10-18T21:13:22.052193+00:00",
+      "output": "/private/tmp/rfc0012-g2-full-1myr/pilot-seed748935664-1myr-500myr.json",
+      "status": "complete",
+      "wall_seconds": 1329.86,
+      "finished_utc": "2026-10-18T21:35:31.902929+00:00",
+      "return_code": 0
+    },
+    {
+      "model": "baseline",
+      "seed": 580014012,
+      "step_myr": 1.0,
+      "steps": 500,
+      "started_utc": "2026-10-18T21:35:31.903715+00:00",
+      "output": "/private/tmp/rfc0012-g2-full-1myr/baseline-seed580014012-1myr-500myr.json",
+      "status": "complete",
+      "wall_seconds": 1353.61,
+      "finished_utc": "2026-10-18T21:58:05.508344+00:00",
+      "return_code": 0
+    },
+    {
+      "model": "pilot",
+      "seed": 580014012,
+      "step_myr": 1.0,
+      "steps": 500,
+      "started_utc": "2026-10-18T21:58:05.509407+00:00",
+      "output": "/private/tmp/rfc0012-g2-full-1myr/pilot-seed580014012-1myr-500myr.json",
+      "status": "complete",
+      "wall_seconds": 1330.62,
+      "finished_utc": "2026-10-18T22:20:16.130418+00:00",
+      "return_code": 0
+    },
+    {
+      "model": "baseline",
+      "seed": 111065103,
+      "step_myr": 1.0,
+      "steps": 500,
+      "started_utc": "2026-10-18T22:20:16.131474+00:00",
+      "output": "/private/tmp/rfc0012-g2-full-1myr/baseline-seed111065103-1myr-500myr.json",
+      "status": "complete",
+      "wall_seconds": 1428.62,
+      "finished_utc": "2026-10-18T22:44:04.746988+00:00",
+      "return_code": 0
+    },
+    {
+      "model": "pilot",
+      "seed": 111065103,
+      "step_myr": 1.0,
+      "steps": 500,
+      "started_utc": "2026-10-18T22:44:04.747815+00:00",
+      "output": "/private/tmp/rfc0012-g2-full-1myr/pilot-seed111065103-1myr-500myr.json",
+      "status": "complete",
+      "wall_seconds": 1428.37,
+      "finished_utc": "2026-10-18T23:07:53.103300+00:00",
+      "return_code": 0
+    }
+  ],
+  "seed_results": [
+    {
+      "seed": 326494039,
+      "baseline": {
+        "commit": "2279d7e16c7debe839bd04ab18ce0a8f895f8654",
+        "median_step_seconds": 2.7519986875122413,
+        "geology": [
+          {
+            "elapsed_myr": 0.0,
+            "land_fraction": 0.27112137239437883,
+            "mean_hc_m": 20811.333361775392,
+            "mean_hm_m": 47297.67248339146,
+            "plate_count": 19,
+            "step": 0
+          },
+          {
+            "elapsed_myr": 50.0,
+            "land_fraction": 0.25072313203972424,
+            "mean_hc_m": 20163.70803484206,
+            "mean_hm_m": 58766.355707349714,
+            "plate_count": 20,
+            "step": 50
+          },
+          {
+            "elapsed_myr": 100.0,
+            "land_fraction": 0.24969360865136922,
+            "mean_hc_m": 20016.112791797994,
+            "mean_hm_m": 57263.72003076239,
+            "plate_count": 23,
+            "step": 100
+          },
+          {
+            "elapsed_myr": 150.0,
+            "land_fraction": 0.234743732662966,
+            "mean_hc_m": 19877.579991636972,
+            "mean_hm_m": 56234.3808010895,
+            "plate_count": 26,
+            "step": 150
+          },
+          {
+            "elapsed_myr": 200.0,
+            "land_fraction": 0.2185239052504173,
+            "mean_hc_m": 19707.20432949032,
+            "mean_hm_m": 54942.31878963528,
+            "plate_count": 29,
+            "step": 200
+          },
+          {
+            "elapsed_myr": 250.0,
+            "land_fraction": 0.19874789239351123,
+            "mean_hc_m": 19758.787449190975,
+            "mean_hm_m": 54458.486283082806,
+            "plate_count": 29,
+            "step": 250
+          },
+          {
+            "elapsed_myr": 300.0,
+            "land_fraction": 0.18216408319485897,
+            "mean_hc_m": 19615.44795716008,
+            "mean_hm_m": 53503.53291633088,
+            "plate_count": 32,
+            "step": 300
+          },
+          {
+            "elapsed_myr": 350.0,
+            "land_fraction": 0.17475973735313577,
+            "mean_hc_m": 19394.48825060145,
+            "mean_hm_m": 52875.035594154906,
+            "plate_count": 32,
+            "step": 350
+          },
+          {
+            "elapsed_myr": 400.0,
+            "land_fraction": 0.16882492147286787,
+            "mean_hc_m": 19463.16345211362,
+            "mean_hm_m": 51418.65618455072,
+            "plate_count": 34,
+            "step": 400
+          },
+          {
+            "elapsed_myr": 450.0,
+            "land_fraction": 0.1567038846963862,
+            "mean_hc_m": 18856.72321818347,
+            "mean_hm_m": 50502.51641870054,
+            "plate_count": 38,
+            "step": 450
+          },
+          {
+            "elapsed_myr": 500.0,
+            "land_fraction": 0.15077401549170377,
+            "mean_hc_m": 18252.579704168933,
+            "mean_hm_m": 49984.02335447097,
+            "plate_count": 35,
+            "step": 500
+          }
+        ],
+        "max_plate_rate_cm_per_yr": 15.000000000000004,
+        "median_plate_rate_cm_per_yr": 3.144298658637508,
+        "ledgers": {
+          "audit_clipped_m3": 0.0,
+          "collision_reworked_m3": 3.355129407715507e+16,
+          "delaminated_m3": 0.0,
+          "eroded_m3": 7.25932504731156e+16,
+          "failed_rift_band_area_m2": 149702944956101.84,
+          "failed_rift_band_craton_area_m2": 58248936010429.68,
+          "failed_rift_cuts": 45.0,
+          "failed_rift_cuts_through_craton": 24.0,
+          "formed_m3": 4.7232922192961165e+17,
+          "initial_m3": 2.7631672977028444e+18,
+          "merge_capped_m3": 1.8550036374455964e+16,
+          "rifted_divergent_m3": 5433734832901612.0,
+          "rifted_failed_m3": 3.4086948558874668e+16,
+          "rifted_m3": 1.545341575498532e+17,
+          "rifted_stretch_m3": 1.1501347415807672e+17,
+          "split_band_area_m2": 133280124938943.23,
+          "split_band_craton_area_m2": 46422746899830.43,
+          "split_cuts": 43.0,
+          "split_cuts_through_craton": 22.0,
+          "subducted_m3": 306224635764668.44,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0
+        }
+      },
+      "pilot": {
+        "commit": "2279d7e16c7debe839bd04ab18ce0a8f895f8654",
+        "median_step_seconds": 2.839972750050947,
+        "geology": [
+          {
+            "elapsed_myr": 0.0,
+            "land_fraction": 0.27112137239437883,
+            "mean_hc_m": 20811.333361775392,
+            "mean_hm_m": 47297.67248339146,
+            "plate_count": 19,
+            "step": 0
+          },
+          {
+            "elapsed_myr": 50.0,
+            "land_fraction": 0.2636463087491513,
+            "mean_hc_m": 20338.692101975106,
+            "mean_hm_m": 60891.5914942298,
+            "plate_count": 23,
+            "step": 50
+          },
+          {
+            "elapsed_myr": 100.0,
+            "land_fraction": 0.25897797595214,
+            "mean_hc_m": 20064.28263117856,
+            "mean_hm_m": 59976.20838438372,
+            "plate_count": 25,
+            "step": 100
+          },
+          {
+            "elapsed_myr": 150.0,
+            "land_fraction": 0.25224524425146183,
+            "mean_hc_m": 19813.12291714576,
+            "mean_hm_m": 58970.58153502401,
+            "plate_count": 27,
+            "step": 150
+          },
+          {
+            "elapsed_myr": 200.0,
+            "land_fraction": 0.2592450340729858,
+            "mean_hc_m": 19572.05676850918,
+            "mean_hm_m": 58586.947812516504,
+            "plate_count": 27,
+            "step": 200
+          },
+          {
+            "elapsed_myr": 250.0,
+            "land_fraction": 0.25573879811024086,
+            "mean_hc_m": 19474.952380723877,
+            "mean_hm_m": 57756.3113625915,
+            "plate_count": 31,
+            "step": 250
+          },
+          {
+            "elapsed_myr": 300.0,
+            "land_fraction": 0.24709012185607776,
+            "mean_hc_m": 19390.033122747725,
+            "mean_hm_m": 57142.41297697522,
+            "plate_count": 36,
+            "step": 300
+          },
+          {
+            "elapsed_myr": 350.0,
+            "land_fraction": 0.23711067246309564,
+            "mean_hc_m": 19369.027148938207,
+            "mean_hm_m": 56721.23271745057,
+            "plate_count": 37,
+            "step": 350
+          },
+          {
+            "elapsed_myr": 400.0,
+            "land_fraction": 0.22928806191443485,
+            "mean_hc_m": 19391.674707745602,
+            "mean_hm_m": 56329.565752900024,
+            "plate_count": 37,
+            "step": 400
+          },
+          {
+            "elapsed_myr": 450.0,
+            "land_fraction": 0.22138594236943068,
+            "mean_hc_m": 19360.488560365524,
+            "mean_hm_m": 56166.28722495664,
+            "plate_count": 39,
+            "step": 450
+          },
+          {
+            "elapsed_myr": 500.0,
+            "land_fraction": 0.21356619809061697,
+            "mean_hc_m": 19367.105265534145,
+            "mean_hm_m": 55958.175976535735,
+            "plate_count": 41,
+            "step": 500
+          }
+        ],
+        "max_plate_rate_cm_per_yr": 66.0693543119456,
+        "median_plate_rate_cm_per_yr": 1.477337774805695,
+        "ledgers": {
+          "audit_clipped_m3": 0.0,
+          "collision_reworked_m3": 6.291060305432672e+16,
+          "delaminated_m3": 0.0,
+          "eroded_m3": 6.604072809673389e+16,
+          "failed_rift_band_area_m2": 64412646380159.01,
+          "failed_rift_band_craton_area_m2": 21477925353633.36,
+          "failed_rift_cuts": 19.0,
+          "failed_rift_cuts_through_craton": 9.0,
+          "formed_m3": 9.012483972828516e+17,
+          "initial_m3": 2.7631672977028444e+18,
+          "merge_capped_m3": 0.0,
+          "rifted_divergent_m3": 324707112938874.56,
+          "rifted_failed_m3": 1.0951088687276042e+16,
+          "rifted_m3": 4.198240997992854e+16,
+          "rifted_stretch_m3": 3.0706614179713656e+16,
+          "split_band_area_m2": 72154037209303.16,
+          "split_band_craton_area_m2": 14823183523797.53,
+          "split_cuts": 22.0,
+          "split_cuts_through_craton": 7.0,
+          "subducted_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0
+        }
+      },
+      "land_delta_pp": 6.27921825989132,
+      "land_delta_by_checkpoint_pp": [
+        0.0,
+        1.2923176709427053,
+        0.9284367300770785,
+        1.7501511588495833,
+        4.072112882256854,
+        5.699090571672963,
+        6.492603866121879,
+        6.235093510995987,
+        6.046314044156698,
+        6.4682057673044495,
+        6.27921825989132
+      ]
+    },
+    {
+      "seed": 748935664,
+      "baseline": {
+        "commit": "2279d7e16c7debe839bd04ab18ce0a8f895f8654",
+        "median_step_seconds": 2.649494417011738,
+        "geology": [
+          {
+            "elapsed_myr": 0.0,
+            "land_fraction": 0.12135989856157667,
+            "mean_hc_m": 15851.377502130288,
+            "mean_hm_m": 32990.340054110544,
+            "plate_count": 8,
+            "step": 0
+          },
+          {
+            "elapsed_myr": 50.0,
+            "land_fraction": 0.12395064365640111,
+            "mean_hc_m": 15219.579524054623,
+            "mean_hm_m": 51226.261513719306,
+            "plate_count": 19,
+            "step": 50
+          },
+          {
+            "elapsed_myr": 100.0,
+            "land_fraction": 0.13158334169564076,
+            "mean_hc_m": 15090.800145170006,
+            "mean_hm_m": 50205.78993187526,
+            "plate_count": 22,
+            "step": 100
+          },
+          {
+            "elapsed_myr": 150.0,
+            "land_fraction": 0.134328324665258,
+            "mean_hc_m": 15003.233473294005,
+            "mean_hm_m": 49526.61559724897,
+            "plate_count": 28,
+            "step": 150
+          },
+          {
+            "elapsed_myr": 200.0,
+            "land_fraction": 0.1355820038659718,
+            "mean_hc_m": 14936.995575067143,
+            "mean_hm_m": 48758.30507510168,
+            "plate_count": 31,
+            "step": 200
+          },
+          {
+            "elapsed_myr": 250.0,
+            "land_fraction": 0.12135796493097262,
+            "mean_hc_m": 15002.226347129255,
+            "mean_hm_m": 48201.41047680319,
+            "plate_count": 32,
+            "step": 250
+          },
+          {
+            "elapsed_myr": 300.0,
+            "land_fraction": 0.11672897377625843,
+            "mean_hc_m": 14973.837136795128,
+            "mean_hm_m": 47160.79790087825,
+            "plate_count": 39,
+            "step": 300
+          },
+          {
+            "elapsed_myr": 350.0,
+            "land_fraction": 0.11202251038872628,
+            "mean_hc_m": 15037.121635747379,
+            "mean_hm_m": 46360.22596002835,
+            "plate_count": 42,
+            "step": 350
+          },
+          {
+            "elapsed_myr": 400.0,
+            "land_fraction": 0.10473639293858997,
+            "mean_hc_m": 15058.167251814695,
+            "mean_hm_m": 46036.00710181601,
+            "plate_count": 44,
+            "step": 400
+          },
+          {
+            "elapsed_myr": 450.0,
+            "land_fraction": 0.10887147973202739,
+            "mean_hc_m": 14882.234366654777,
+            "mean_hm_m": 45846.89352128577,
+            "plate_count": 47,
+            "step": 450
+          },
+          {
+            "elapsed_myr": 500.0,
+            "land_fraction": 0.10137325478375597,
+            "mean_hc_m": 14847.730495861368,
+            "mean_hm_m": 45681.800165804845,
+            "plate_count": 51,
+            "step": 500
+          }
+        ],
+        "max_plate_rate_cm_per_yr": 15.000000000000005,
+        "median_plate_rate_cm_per_yr": 3.563515286811347,
+        "ledgers": {
+          "audit_clipped_m3": 0.0,
+          "collision_reworked_m3": 2.8236813585176076e+16,
+          "delaminated_m3": 0.0,
+          "eroded_m3": 5.082143843819481e+16,
+          "failed_rift_band_area_m2": 157883685674857.0,
+          "failed_rift_band_craton_area_m2": 24209343188829.945,
+          "failed_rift_cuts": 41.0,
+          "failed_rift_cuts_through_craton": 15.0,
+          "formed_m3": 2.129258340127537e+17,
+          "initial_m3": 1.6389618541886943e+18,
+          "merge_capped_m3": 8025787994727419.0,
+          "rifted_divergent_m3": 156754563947808.78,
+          "rifted_failed_m3": 1.232404778362316e+16,
+          "rifted_m3": 5.563100491898694e+16,
+          "rifted_stretch_m3": 4.3150202571415944e+16,
+          "split_band_area_m2": 196469304212775.2,
+          "split_band_craton_area_m2": 26283440687807.926,
+          "split_cuts": 58.0,
+          "split_cuts_through_craton": 15.0,
+          "subducted_m3": 130439800983078.97,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0
+        }
+      },
+      "pilot": {
+        "commit": "2279d7e16c7debe839bd04ab18ce0a8f895f8654",
+        "median_step_seconds": 2.655060646007769,
+        "geology": [
+          {
+            "elapsed_myr": 0.0,
+            "land_fraction": 0.12135989856157667,
+            "mean_hc_m": 15851.377502130288,
+            "mean_hm_m": 32990.340054110544,
+            "plate_count": 8,
+            "step": 0
+          },
+          {
+            "elapsed_myr": 50.0,
+            "land_fraction": 0.12551048788899977,
+            "mean_hc_m": 15372.089364549964,
+            "mean_hm_m": 51927.77352025844,
+            "plate_count": 21,
+            "step": 50
+          },
+          {
+            "elapsed_myr": 100.0,
+            "land_fraction": 0.12810000788223397,
+            "mean_hc_m": 15114.408963500087,
+            "mean_hm_m": 51534.794597353655,
+            "plate_count": 23,
+            "step": 100
+          },
+          {
+            "elapsed_myr": 150.0,
+            "land_fraction": 0.1277795221274651,
+            "mean_hc_m": 14875.00112735452,
+            "mean_hm_m": 50980.40292644153,
+            "plate_count": 27,
+            "step": 150
+          },
+          {
+            "elapsed_myr": 200.0,
+            "land_fraction": 0.13017649269032983,
+            "mean_hc_m": 14709.303608870754,
+            "mean_hm_m": 50531.51956021719,
+            "plate_count": 27,
+            "step": 200
+          },
+          {
+            "elapsed_myr": 250.0,
+            "land_fraction": 0.12751008256835805,
+            "mean_hc_m": 14594.267728428398,
+            "mean_hm_m": 50056.73264193448,
+            "plate_count": 33,
+            "step": 250
+          },
+          {
+            "elapsed_myr": 300.0,
+            "land_fraction": 0.1288326577807058,
+            "mean_hc_m": 14442.643713960999,
+            "mean_hm_m": 49592.389866310026,
+            "plate_count": 35,
+            "step": 300
+          },
+          {
+            "elapsed_myr": 350.0,
+            "land_fraction": 0.1316434243002401,
+            "mean_hc_m": 14377.59477682697,
+            "mean_hm_m": 49140.819288355844,
+            "plate_count": 39,
+            "step": 350
+          },
+          {
+            "elapsed_myr": 400.0,
+            "land_fraction": 0.13223679564001856,
+            "mean_hc_m": 14373.723067526931,
+            "mean_hm_m": 48790.39957327728,
+            "plate_count": 39,
+            "step": 400
+          },
+          {
+            "elapsed_myr": 450.0,
+            "land_fraction": 0.1327301981729621,
+            "mean_hc_m": 14378.255934365025,
+            "mean_hm_m": 48248.42339597168,
+            "plate_count": 44,
+            "step": 450
+          },
+          {
+            "elapsed_myr": 500.0,
+            "land_fraction": 0.13178619314347156,
+            "mean_hc_m": 14371.624994360769,
+            "mean_hm_m": 48125.98475875915,
+            "plate_count": 50,
+            "step": 500
+          }
+        ],
+        "max_plate_rate_cm_per_yr": 152.5868694085403,
+        "median_plate_rate_cm_per_yr": 2.0903080681904918,
+        "ledgers": {
+          "audit_clipped_m3": 0.0,
+          "collision_reworked_m3": 7.224264265544035e+16,
+          "delaminated_m3": 0.0,
+          "eroded_m3": 3.5898071457739308e+16,
+          "failed_rift_band_area_m2": 131946310233950.55,
+          "failed_rift_band_craton_area_m2": 9046205378280.082,
+          "failed_rift_cuts": 39.0,
+          "failed_rift_cuts_through_craton": 5.0,
+          "formed_m3": 3.837644549725798e+17,
+          "initial_m3": 1.6389618541886943e+18,
+          "merge_capped_m3": 0.0,
+          "rifted_divergent_m3": 0.0,
+          "rifted_failed_m3": 4167818511295606.0,
+          "rifted_m3": 8649768506547000.0,
+          "rifted_stretch_m3": 4481949995251393.5,
+          "split_band_area_m2": 139346368179355.05,
+          "split_band_craton_area_m2": 8959325012412.078,
+          "split_cuts": 41.0,
+          "split_cuts_through_craton": 6.0,
+          "subducted_m3": 466695841562449.6,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0
+        }
+      },
+      "land_delta_pp": 3.041293835971559,
+      "land_delta_by_checkpoint_pp": [
+        0.0,
+        0.15598442325986533,
+        -0.34833338134067915,
+        -0.6548802537792886,
+        -0.5405511175641975,
+        0.6152117637385435,
+        1.2103684004447364,
+        1.9620913911513813,
+        2.750040270142859,
+        2.385871844093472,
+        3.041293835971559
+      ]
+    },
+    {
+      "seed": 580014012,
+      "baseline": {
+        "commit": "2279d7e16c7debe839bd04ab18ce0a8f895f8654",
+        "median_step_seconds": 2.7538530204910785,
+        "geology": [
+          {
+            "elapsed_myr": 0.0,
+            "land_fraction": 0.2653772942111161,
+            "mean_hc_m": 21920.54886578923,
+            "mean_hm_m": 71432.81827807151,
+            "plate_count": 8,
+            "step": 0
+          },
+          {
+            "elapsed_myr": 50.0,
+            "land_fraction": 0.25609852057148824,
+            "mean_hc_m": 21627.881062836586,
+            "mean_hm_m": 74983.49365713049,
+            "plate_count": 17,
+            "step": 50
+          },
+          {
+            "elapsed_myr": 100.0,
+            "land_fraction": 0.2634211942494665,
+            "mean_hc_m": 21842.2671344351,
+            "mean_hm_m": 73128.74297110291,
+            "plate_count": 22,
+            "step": 100
+          },
+          {
+            "elapsed_myr": 150.0,
+            "land_fraction": 0.25903259715565635,
+            "mean_hc_m": 22021.90968463216,
+            "mean_hm_m": 71635.82050225741,
+            "plate_count": 24,
+            "step": 150
+          },
+          {
+            "elapsed_myr": 200.0,
+            "land_fraction": 0.25499778916439064,
+            "mean_hc_m": 22109.42536282744,
+            "mean_hm_m": 70307.57839834328,
+            "plate_count": 25,
+            "step": 200
+          },
+          {
+            "elapsed_myr": 250.0,
+            "land_fraction": 0.2365936396174777,
+            "mean_hc_m": 22407.764654452498,
+            "mean_hm_m": 70178.5419701363,
+            "plate_count": 27,
+            "step": 250
+          },
+          {
+            "elapsed_myr": 300.0,
+            "land_fraction": 0.22855879831342613,
+            "mean_hc_m": 22358.958702432123,
+            "mean_hm_m": 68138.07005545529,
+            "plate_count": 31,
+            "step": 300
+          },
+          {
+            "elapsed_myr": 350.0,
+            "land_fraction": 0.2276347797094529,
+            "mean_hc_m": 22281.498464535158,
+            "mean_hm_m": 66847.15897632894,
+            "plate_count": 33,
+            "step": 350
+          },
+          {
+            "elapsed_myr": 400.0,
+            "land_fraction": 0.22648931074598425,
+            "mean_hc_m": 22198.136464161144,
+            "mean_hm_m": 65717.15235400775,
+            "plate_count": 34,
+            "step": 400
+          },
+          {
+            "elapsed_myr": 450.0,
+            "land_fraction": 0.2312460902254122,
+            "mean_hc_m": 22068.32766757039,
+            "mean_hm_m": 65127.95526075544,
+            "plate_count": 36,
+            "step": 450
+          },
+          {
+            "elapsed_myr": 500.0,
+            "land_fraction": 0.2330362881896513,
+            "mean_hc_m": 21943.5098136236,
+            "mean_hm_m": 64221.478406447684,
+            "plate_count": 37,
+            "step": 500
+          }
+        ],
+        "max_plate_rate_cm_per_yr": 15.000000000000004,
+        "median_plate_rate_cm_per_yr": 2.2027351848359196,
+        "ledgers": {
+          "audit_clipped_m3": 0.0,
+          "collision_reworked_m3": 7.251810526800746e+16,
+          "delaminated_m3": 0.0,
+          "eroded_m3": 8.52909961327776e+16,
+          "failed_rift_band_area_m2": 49699640448365.29,
+          "failed_rift_band_craton_area_m2": 2906536042838.0977,
+          "failed_rift_cuts": 16.0,
+          "failed_rift_cuts_through_craton": 4.0,
+          "formed_m3": 7.715558397881962e+17,
+          "initial_m3": 3.268363049939043e+18,
+          "merge_capped_m3": 0.0,
+          "rifted_divergent_m3": 1330419511217374.5,
+          "rifted_failed_m3": 1420919730282985.0,
+          "rifted_m3": 3.5638467009165944e+16,
+          "rifted_stretch_m3": 3.2887127767665572e+16,
+          "split_band_area_m2": 115981089418935.11,
+          "split_band_craton_area_m2": 16480580230675.688,
+          "split_cuts": 32.0,
+          "split_cuts_through_craton": 14.0,
+          "subducted_m3": 739157401790142.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0
+        }
+      },
+      "pilot": {
+        "commit": "2279d7e16c7debe839bd04ab18ce0a8f895f8654",
+        "median_step_seconds": 2.6984783749794587,
+        "geology": [
+          {
+            "elapsed_myr": 0.0,
+            "land_fraction": 0.2653772942111161,
+            "mean_hc_m": 21920.54886578923,
+            "mean_hm_m": 71432.81827807151,
+            "plate_count": 8,
+            "step": 0
+          },
+          {
+            "elapsed_myr": 50.0,
+            "land_fraction": 0.25548918820295774,
+            "mean_hc_m": 21625.05123846335,
+            "mean_hm_m": 77573.11196761955,
+            "plate_count": 16,
+            "step": 50
+          },
+          {
+            "elapsed_myr": 100.0,
+            "land_fraction": 0.25641801253869334,
+            "mean_hc_m": 21599.46606189411,
+            "mean_hm_m": 76396.63878426775,
+            "plate_count": 20,
+            "step": 100
+          },
+          {
+            "elapsed_myr": 150.0,
+            "land_fraction": 0.2584111614005073,
+            "mean_hc_m": 21551.014083074035,
+            "mean_hm_m": 75635.95795005656,
+            "plate_count": 21,
+            "step": 150
+          },
+          {
+            "elapsed_myr": 200.0,
+            "land_fraction": 0.2538469618256782,
+            "mean_hc_m": 21596.86944837351,
+            "mean_hm_m": 75502.01094403157,
+            "plate_count": 21,
+            "step": 200
+          },
+          {
+            "elapsed_myr": 250.0,
+            "land_fraction": 0.2516221367095719,
+            "mean_hc_m": 21504.453543507625,
+            "mean_hm_m": 74806.92439503473,
+            "plate_count": 23,
+            "step": 250
+          },
+          {
+            "elapsed_myr": 300.0,
+            "land_fraction": 0.24720452854822353,
+            "mean_hc_m": 21428.77579130907,
+            "mean_hm_m": 74233.56808288376,
+            "plate_count": 25,
+            "step": 300
+          },
+          {
+            "elapsed_myr": 350.0,
+            "land_fraction": 0.24729305994619644,
+            "mean_hc_m": 21469.888966090482,
+            "mean_hm_m": 73783.86638663286,
+            "plate_count": 26,
+            "step": 350
+          },
+          {
+            "elapsed_myr": 400.0,
+            "land_fraction": 0.24294329223064146,
+            "mean_hc_m": 21491.274721033504,
+            "mean_hm_m": 73523.37647352283,
+            "plate_count": 26,
+            "step": 400
+          },
+          {
+            "elapsed_myr": 450.0,
+            "land_fraction": 0.2373485240426842,
+            "mean_hc_m": 21551.155852584598,
+            "mean_hm_m": 73136.3857572705,
+            "plate_count": 28,
+            "step": 450
+          },
+          {
+            "elapsed_myr": 500.0,
+            "land_fraction": 0.23219017016292468,
+            "mean_hc_m": 21673.03348248085,
+            "mean_hm_m": 72858.60547641803,
+            "plate_count": 29,
+            "step": 500
+          }
+        ],
+        "max_plate_rate_cm_per_yr": 4.986374055845247,
+        "median_plate_rate_cm_per_yr": 0.5855575663935553,
+        "ledgers": {
+          "audit_clipped_m3": 0.0,
+          "collision_reworked_m3": 8.313414347583688e+16,
+          "delaminated_m3": 0.0,
+          "eroded_m3": 7.776867933922365e+16,
+          "failed_rift_band_area_m2": 94949142431937.84,
+          "failed_rift_band_craton_area_m2": 44275302684680.82,
+          "failed_rift_cuts": 21.0,
+          "failed_rift_cuts_through_craton": 17.0,
+          "formed_m3": 9.240157804204215e+17,
+          "initial_m3": 3.268363049939043e+18,
+          "merge_capped_m3": 0.0,
+          "rifted_divergent_m3": 141587096925257.44,
+          "rifted_failed_m3": 2.102066250774129e+16,
+          "rifted_m3": 2.862759935445833e+16,
+          "rifted_stretch_m3": 7465349749791790.0,
+          "split_band_area_m2": 82278444259464.33,
+          "split_band_craton_area_m2": 19745788452900.01,
+          "split_cuts": 21.0,
+          "split_cuts_through_craton": 13.0,
+          "subducted_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0
+        }
+      },
+      "land_delta_pp": -0.08461180267266277,
+      "land_delta_by_checkpoint_pp": [
+        0.0,
+        -0.06093323685305019,
+        -0.7003181710773132,
+        -0.06214357551490579,
+        -0.11508273387124679,
+        1.5028497092094195,
+        1.8645730234797404,
+        1.9658280236743542,
+        1.645398148465721,
+        0.610243381727199,
+        -0.08461180267266277
+      ]
+    },
+    {
+      "seed": 111065103,
+      "baseline": {
+        "commit": "2279d7e16c7debe839bd04ab18ce0a8f895f8654",
+        "median_step_seconds": 2.896596895996481,
+        "geology": [
+          {
+            "elapsed_myr": 0.0,
+            "land_fraction": 0.4089466726282418,
+            "mean_hc_m": 27341.464369063848,
+            "mean_hm_m": 57731.61510453156,
+            "plate_count": 18,
+            "step": 0
+          },
+          {
+            "elapsed_myr": 50.0,
+            "land_fraction": 0.36095051278857737,
+            "mean_hc_m": 25585.555364343003,
+            "mean_hm_m": 65673.47506207635,
+            "plate_count": 25,
+            "step": 50
+          },
+          {
+            "elapsed_myr": 100.0,
+            "land_fraction": 0.33864205413512627,
+            "mean_hc_m": 25330.68902646261,
+            "mean_hm_m": 64563.93550428286,
+            "plate_count": 26,
+            "step": 100
+          },
+          {
+            "elapsed_myr": 150.0,
+            "land_fraction": 0.3182486797230714,
+            "mean_hc_m": 25201.376675942938,
+            "mean_hm_m": 63151.984201856736,
+            "plate_count": 31,
+            "step": 150
+          },
+          {
+            "elapsed_myr": 200.0,
+            "land_fraction": 0.3027745760522403,
+            "mean_hc_m": 24887.82996125603,
+            "mean_hm_m": 61015.52210923531,
+            "plate_count": 33,
+            "step": 200
+          },
+          {
+            "elapsed_myr": 250.0,
+            "land_fraction": 0.29577568528130005,
+            "mean_hc_m": 24748.87586454939,
+            "mean_hm_m": 60007.91206357023,
+            "plate_count": 35,
+            "step": 250
+          },
+          {
+            "elapsed_myr": 300.0,
+            "land_fraction": 0.2870234586967933,
+            "mean_hc_m": 24385.02317438471,
+            "mean_hm_m": 59149.41850932544,
+            "plate_count": 33,
+            "step": 300
+          },
+          {
+            "elapsed_myr": 350.0,
+            "land_fraction": 0.2759853436131497,
+            "mean_hc_m": 23617.7235226312,
+            "mean_hm_m": 58726.79679217501,
+            "plate_count": 34,
+            "step": 350
+          },
+          {
+            "elapsed_myr": 400.0,
+            "land_fraction": 0.2732562551721291,
+            "mean_hc_m": 23437.091970779205,
+            "mean_hm_m": 57618.21329835233,
+            "plate_count": 37,
+            "step": 400
+          },
+          {
+            "elapsed_myr": 450.0,
+            "land_fraction": 0.2665680617756031,
+            "mean_hc_m": 23040.19088507861,
+            "mean_hm_m": 56848.271853626735,
+            "plate_count": 39,
+            "step": 450
+          },
+          {
+            "elapsed_myr": 500.0,
+            "land_fraction": 0.25429074727692874,
+            "mean_hc_m": 22060.060420122856,
+            "mean_hm_m": 55978.735428823944,
+            "plate_count": 36,
+            "step": 500
+          }
+        ],
+        "max_plate_rate_cm_per_yr": 15.000000000000005,
+        "median_plate_rate_cm_per_yr": 2.7226057197681373,
+        "ledgers": {
+          "audit_clipped_m3": 0.0,
+          "collision_reworked_m3": 5.821250690992306e+16,
+          "delaminated_m3": 0.0,
+          "eroded_m3": 8.451093981889658e+16,
+          "failed_rift_band_area_m2": 116171451962326.27,
+          "failed_rift_band_craton_area_m2": 29538066734101.242,
+          "failed_rift_cuts": 36.0,
+          "failed_rift_cuts_through_craton": 21.0,
+          "formed_m3": 8.12773464186783e+17,
+          "initial_m3": 3.232121613413618e+18,
+          "merge_capped_m3": 7.265738366616104e+16,
+          "rifted_divergent_m3": 7301190313582964.0,
+          "rifted_failed_m3": 1.5982150251221298e+16,
+          "rifted_m3": 1.2085898803974016e+17,
+          "rifted_stretch_m3": 9.757564747493584e+16,
+          "split_band_area_m2": 129035035738360.61,
+          "split_band_craton_area_m2": 34830533739714.44,
+          "split_cuts": 41.0,
+          "split_cuts_through_craton": 26.0,
+          "subducted_m3": 519619135284581.3,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0
+        }
+      },
+      "pilot": {
+        "commit": "2279d7e16c7debe839bd04ab18ce0a8f895f8654",
+        "median_step_seconds": 2.964968708460219,
+        "geology": [
+          {
+            "elapsed_myr": 0.0,
+            "land_fraction": 0.4089466726282418,
+            "mean_hc_m": 27341.464369063848,
+            "mean_hm_m": 57731.61510453156,
+            "plate_count": 18,
+            "step": 0
+          },
+          {
+            "elapsed_myr": 50.0,
+            "land_fraction": 0.37880415295103814,
+            "mean_hc_m": 26337.677603557233,
+            "mean_hm_m": 68060.83904208885,
+            "plate_count": 24,
+            "step": 50
+          },
+          {
+            "elapsed_myr": 100.0,
+            "land_fraction": 0.35533879169226923,
+            "mean_hc_m": 25965.98029502121,
+            "mean_hm_m": 67226.18723086944,
+            "plate_count": 27,
+            "step": 100
+          },
+          {
+            "elapsed_myr": 150.0,
+            "land_fraction": 0.3443843422661743,
+            "mean_hc_m": 25640.277974911583,
+            "mean_hm_m": 66711.74749526722,
+            "plate_count": 28,
+            "step": 150
+          },
+          {
+            "elapsed_myr": 200.0,
+            "land_fraction": 0.34181733487421734,
+            "mean_hc_m": 25463.40985136378,
+            "mean_hm_m": 66212.89236622238,
+            "plate_count": 31,
+            "step": 200
+          },
+          {
+            "elapsed_myr": 250.0,
+            "land_fraction": 0.3370144742764378,
+            "mean_hc_m": 25345.208362333677,
+            "mean_hm_m": 65617.90048155983,
+            "plate_count": 31,
+            "step": 250
+          },
+          {
+            "elapsed_myr": 300.0,
+            "land_fraction": 0.3345239461760406,
+            "mean_hc_m": 25252.025446737545,
+            "mean_hm_m": 65133.3694912035,
+            "plate_count": 33,
+            "step": 300
+          },
+          {
+            "elapsed_myr": 350.0,
+            "land_fraction": 0.3340507494971532,
+            "mean_hc_m": 25168.688503974954,
+            "mean_hm_m": 64907.53125036497,
+            "plate_count": 33,
+            "step": 350
+          },
+          {
+            "elapsed_myr": 400.0,
+            "land_fraction": 0.3334358307969148,
+            "mean_hc_m": 25103.21492507583,
+            "mean_hm_m": 64749.48055829204,
+            "plate_count": 35,
+            "step": 400
+          },
+          {
+            "elapsed_myr": 450.0,
+            "land_fraction": 0.3285200806669758,
+            "mean_hc_m": 25035.44977661739,
+            "mean_hm_m": 64341.21847883329,
+            "plate_count": 36,
+            "step": 450
+          },
+          {
+            "elapsed_myr": 500.0,
+            "land_fraction": 0.3218717824765474,
+            "mean_hc_m": 25015.304829584788,
+            "mean_hm_m": 64256.84831496177,
+            "plate_count": 36,
+            "step": 500
+          }
+        ],
+        "max_plate_rate_cm_per_yr": 9.36786043309596,
+        "median_plate_rate_cm_per_yr": 0.7754605124257081,
+        "ledgers": {
+          "audit_clipped_m3": 0.0,
+          "collision_reworked_m3": 5.6727036963717256e+16,
+          "delaminated_m3": 0.0,
+          "eroded_m3": 9.002405395124558e+16,
+          "failed_rift_band_area_m2": 39275913041856.2,
+          "failed_rift_band_craton_area_m2": 7125110873388.373,
+          "failed_rift_cuts": 12.0,
+          "failed_rift_cuts_through_craton": 10.0,
+          "formed_m3": 1.255597343662324e+18,
+          "initial_m3": 3.232121613413618e+18,
+          "merge_capped_m3": 0.0,
+          "rifted_divergent_m3": 597429506238742.5,
+          "rifted_failed_m3": 3525793667740084.0,
+          "rifted_m3": 3.0138868679619104e+16,
+          "rifted_stretch_m3": 2.601564550564029e+16,
+          "split_band_area_m2": 67851311313768.11,
+          "split_band_craton_area_m2": 14691164451991.273,
+          "split_cuts": 20.0,
+          "split_cuts_through_craton": 14.0,
+          "subducted_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0
+        }
+      },
+      "land_delta_pp": 6.758103519961867,
+      "land_delta_by_checkpoint_pp": [
+        0.0,
+        1.785364016246077,
+        1.669673755714296,
+        2.6135662543102898,
+        3.9042758821977053,
+        4.123878899513778,
+        4.750048747924729,
+        5.80654058840035,
+        6.017957562478571,
+        6.1952018891372695,
+        6.758103519961867
+      ]
+    }
+  ],
+  "mean_final_land_delta_pp": 3.998500953288021,
+  "mean_peak_rate_baseline_cm_per_yr": 15.000000000000004,
+  "mean_peak_rate_pilot_cm_per_yr": 58.25261455235678,
+  "mean_median_step_seconds_baseline": 2.7629857552528847,
+  "mean_median_step_seconds_pilot": 2.7896201198745985
+}

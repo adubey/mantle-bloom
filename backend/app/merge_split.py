@@ -123,7 +123,7 @@ FORCED_MERGE_SUSTAINED_YEARS = 30_000_000
 # clearing both physics gates only to have plate.split() reject the cut on size, and true
 # rift-splits essentially never happening while merges/consumption ran unchecked (reported:
 # "the number of plates is decreasing over time"). 600 still means each half is a genuinely
-# plate-sized fragment, not a near-continent; SPLIT_MIN_AGE_STEPS is what actually blocks the
+# plate-sized fragment, not a near-continent; SPLIT_MIN_AGE_YEARS is what actually blocks the
 # freshly-split-daughter sliver cascade.
 SPLIT_MIN_NODES = 700
 # A single rigid rotation essentially never fits a wide footprint's flow samples exactly
@@ -146,7 +146,9 @@ SPLIT_MIN_POLE_SEPARATION = mantle.cm_per_yr_to_rad_per_yr(4.0)
 # Raised 15 -> 20 (2026) alongside the more permissive split gates below -- it also spaces
 # out the otherwise-synchronized first rift of every freshly-generated plate (they all clear
 # their cooldown on the same step).
-SPLIT_MIN_AGE_STEPS = 20
+# Counted in years since #358: 20 steps at the UI's default 100 kyr step. As a step count the
+# cooldown ran from 200 kyr to 200 Myr depending on the chosen step length.
+SPLIT_MIN_AGE_YEARS = 2_000_000.0
 
 # A plate's own sheer size independently raises its odds of rifting, on top of (not instead
 # of) the mantle-flow-fit criteria above -- a bigger footprint is both more likely to
@@ -378,9 +380,9 @@ def _accrete_stranded_terrane(
     if not touching:
         return None
     receiver = max(touching, key=lambda entry: entry[:2])[2]
-    age = receiver.age_steps
+    age = receiver.age_years
     _fuse_plates(world, receiver, fragment, "terrane_accretion")
-    receiver.set_age_steps(age)
+    receiver.set_age_years(age)
     contacts.invalidate(receiver)
     return receiver
 
@@ -410,8 +412,15 @@ def find_continental_collision_pairs(world: "World") -> list[tuple[int, int]]:
     # doesn't duplicate boundary.py's own MERGE_THRESHOLD_RAD derivation.
     merge_contact_distance_rad = MERGE_THRESHOLD_RAD * (line_spacing_rad(world.node_density) / TARGET_LINE_SPACING_RAD)
 
-    continental = [p for p in world.plates if p.crust_type == "continental" and p.node_count() > 0]
-    points = {p.plate_id: p.all_points_and_elevation()[0] for p in continental}
+    # Each plate's continental nodes, whatever its majority type (RFC 0009, #447): a continent
+    # on a mostly oceanic plate collides, and a continental plate's ocean floor doesn't.
+    points = {}
+    for p in world.plates:
+        if p.node_count() > 0:
+            mask = plates_mod.node_is_continental(p)
+            if np.any(mask):
+                points[p.plate_id] = p.all_points_and_elevation()[0][mask]
+    continental = [p for p in world.plates if p.plate_id in points]
     spheres = {pid: geometry.bounding_sphere(pts) for pid, pts in points.items()}
     trees: dict[int, cKDTree] = {}
 
@@ -459,6 +468,27 @@ def find_continental_collision_pairs(world: "World") -> list[tuple[int, int]]:
     return pairs
 
 
+def find_jammed_pairs(world: "World") -> dict[tuple[int, int], float]:
+    """Plate pairs a craton jams this step (RFC 0008, #401), with f, the jammed share of their
+    contact nodes. A pair is jammed when at least MERGE_MIN_CONTACT_NODES of its contact nodes
+    are (`collision_polarity._pair_contacts`), both plates reach the contact, and its edge
+    isn't diverging: mean closing >= -TRANSFORM_RATE_THRESHOLD. A band through zero, as in
+    `torque.jam_mask`: the jam brakes a contact below +1 cm/yr, so it can't need the closing
+    `find_continental_collision_pairs` does. Read from this step's prepass frame; empty when
+    it hasn't run (a loaded save before its first step)."""
+    frame = world.collision_polarity_frame
+    if frame is None:
+        return {}
+    jammed = {}
+    for pair, contact in frame.contacts.items():
+        if contact.sides < 2 or contact.jammed < MERGE_MIN_CONTACT_NODES:
+            continue
+        closing = contact.edge_closing_rad_per_yr / contact.edge if contact.edge else 0.0
+        if closing >= -TRANSFORM_RATE_THRESHOLD:
+            jammed[pair] = contact.jammed / contact.nodes
+    return jammed
+
+
 def _collision_threshold_years(seed: int, pair: tuple[int, int]) -> float:
     """How long `pair` needs to stay continuously close-and-converging before it's eligible to
     roll for a merge (see _merge_probability for the roll itself) -- deterministic per (world
@@ -501,7 +531,12 @@ def update_collision_progress(world: "World", years: float) -> list[tuple[int, i
     re-rolled fresh, with a freshly recomputed size, on every subsequent step it stays close-
     and-converging) rather than losing credit toward a future attempt. A pair that stops being
     close-and-converging before reaching its threshold has its progress dropped entirely --
-    the collision didn't sustain, so it doesn't get partial credit toward a future one.
+    the collision didn't sustain, so it doesn't get partial credit toward a future one --
+    unless a craton jams it (`find_jammed_pairs`): a tracked jammed pair keeps accumulating,
+    and rolling, as if still converging (RFC 0008 solution 5, #401). The jam brakes a contact
+    below the closing threshold, and dropping its time then reset the clock that would fuse
+    it: 26-48% of drops were of jammed pairs, 270-955 Myr per seed to 1 Gyr (#395). A jam
+    doesn't start tracking a pair; only separating or diverging drops it.
 
     A collision *starting* isn't logged to the UI's event console (see
     apply_topology_changes) -- plates.py's tiling has every neighbor pair already touching
@@ -510,6 +545,16 @@ def update_collision_progress(world: "World", years: float) -> list[tuple[int, i
     a plate disappearing) are worth surfacing there."""
     current_pairs = find_continental_collision_pairs(world)
     current_set = set(current_pairs)
+    # The jam map is the prepass's, and topology has removed defunct plates since: keep only
+    # pairs of continental plates still live, the ones find_continental_collision_pairs sees.
+    jammed = find_jammed_pairs(world)
+    live = {p.plate_id for p in world.plates if p.node_count() > 0 and np.any(plates_mod.node_is_continental(p))}
+    current_pairs += [
+        pair
+        for pair in world.collision_progress
+        if pair in jammed and pair not in current_set and pair[0] in live and pair[1] in live
+    ]
+    current_set.update(current_pairs)
 
     ready = []
     for pair in current_pairs:
@@ -531,22 +576,21 @@ def update_collision_progress(world: "World", years: float) -> list[tuple[int, i
 
 
 def _deep_continental_overlap_fractions(world: "World", overlap: dict[int, dict]) -> dict[tuple[int, int], float]:
-    """For every pair of continental plates whose node clouds currently interpenetrate, the
-    fraction of the *more-covered* plate's own nodes sitting on the other -- keyed by sorted
-    (id, id). `overlap` is a `plates.compute_node_overlap` result (the same node-cloud read
-    behind the Plate Inspector / `overlapAge` view), so "40% of plate 61 is on plate 0" here
-    is the same number the UI shows."""
-    continental = {p.plate_id: p for p in world.plates if p.crust_type == "continental" and p.node_count() > 0}
+    """For every pair of plates whose continental crust currently interpenetrates, the fraction
+    of the *more-covered* plate's own continental nodes sitting on the other's continental
+    crust -- keyed by sorted (id, id). `overlap` is a `plates.compute_node_overlap` result (the
+    same node-cloud read behind the Plate Inspector / `overlapAge` view). Continental crust
+    node by node, not plates by majority type (RFC 0009, #447); for wholly continental plates
+    it is the share of the plate the UI shows."""
+    continental_nodes = {
+        p.plate_id: int(np.count_nonzero(plates_mod.node_is_continental(p))) for p in world.plates if p.node_count() > 0
+    }
 
     fractions: dict[tuple[int, int], float] = {}
     for pid_a, info_a in overlap.items():
-        if pid_a not in continental:
-            continue
-        for pid_b, count_a_on_b in info_a["by_partner"].items():
-            if pid_b not in continental:
-                continue
+        for pid_b, count_a_on_b in info_a.get("continental_by_partner", {}).items():
             pair = (pid_a, pid_b) if pid_a < pid_b else (pid_b, pid_a)
-            frac = count_a_on_b / max(1, continental[pid_a].node_count())
+            frac = count_a_on_b / max(1, continental_nodes.get(pid_a, 0))
             fractions[pair] = max(fractions.get(pair, 0.0), frac)
     return fractions
 
@@ -617,7 +661,7 @@ def pop_ready_forced_merge(world: "World") -> tuple[int, int] | None:
     from `world.overlap_progress` and returned, or `None`. At most one per step, same as every
     other topology change. A pair whose plate has since vanished (subducted, defragmented) is
     silently dropped."""
-    live = {p.plate_id: p for p in world.plates if p.crust_type == "continental" and p.node_count() > 0}
+    live = {p.plate_id: p for p in world.plates if p.node_count() > 0 and np.any(plates_mod.node_is_continental(p))}
     ready = [
         pair
         for pair, acc in world.overlap_progress.items()
@@ -671,7 +715,7 @@ def _fuse_plates(world: "World", keep: Plate, absorb: Plate, phase: str) -> None
         # out of the volumes.
         pair = [phase_budget.snapshot(keep, spacing_rad), phase_budget.snapshot(absorb, spacing_rad)]
         before = phase_budget.Snapshot(*(np.concatenate(parts) for parts in zip(*pair)))
-    keep.merge_with(absorb, other_points, others)
+    keep.merge_with(absorb, other_points, others, world)
     collision_polarity.note_lineage(world, absorb.plate_id, keep.plate_id)
     # Continental material stacked past the suture cap that the merge couldn't place leaves
     # with the crust that carried it, booked as collision subduction (issue #276).
@@ -729,7 +773,7 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
     min_nodes = max(1, round(SPLIT_MIN_NODES * world.node_density))
     if plate.node_count() < min_nodes:
         return None
-    if plate.age_steps < SPLIT_MIN_AGE_STEPS:
+    if plate.age_years < SPLIT_MIN_AGE_YEARS:
         return None
 
     points, _ = plate.all_points_and_elevation()
@@ -779,12 +823,16 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
     # (seed, elapsed_years, plate). The split_result is discarded (next_plate_id never
     # incremented), the failed-rift thinning is booked, and the plate's cooldown resets.
     outcome_rng = np.random.default_rng((world.seed, round(world.elapsed_years), plate.plate_id, _RIFT_OUTCOME_SEED_TAG))
-    if outcome_rng.random() >= RIFT_SUCCESS_PROBABILITY:
+    failed = outcome_rng.random() >= RIFT_SUCCESS_PROBABILITY
+    # RFC 0003 phase 1: how often a cut crosses craton, in the band a failed rift thins.
+    band_sin = float(np.sin(FAILED_RIFT_BAND_MULT * line_spacing_rad(world.node_density)))
+    cratons.record_rift_cut(world, plate, points, cut_normal, band_sin, "failed_rift" if failed else "split")
+    if failed:
         if world.debug_diagnostics:
             before = phase_budget.snapshot(plate, line_spacing_rad(world.node_density))
         hc_before = plate.collect("crustal_thickness_m")
-        plate.apply_failed_rift(cut_normal, line_spacing_rad(world.node_density))
-        cratons.thin_with_column(world, plate, hc_before, "rifted_m3")
+        plate.apply_failed_rift(cut_normal, line_spacing_rad(world.node_density), world)
+        cratons.thin_with_column(world, plate, hc_before, "rifted_failed_m3")
         mobile_cover.thin_with_column(world, plate, hc_before, "rift_thinned_m3")
         continental_ledger.thin_with_column(world, plate, hc_before, "rift_thinned_m3")
         if world.debug_diagnostics:
@@ -799,11 +847,15 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
     world.next_plate_id += 1
 
     plate_a, plate_b = split_result
+    # The crust along the cut was stretched to breaking: both margins are belt (RFC 0009),
+    # over the band a failed rift would have thinned.
+    for daughter in (plate_a, plate_b):
+        cratons.mark_belt(world, daughter, np.abs(daughter.all_points_and_elevation()[0] @ cut_normal) < band_sin)
     plate_a.set_omega(mantle.clamp_rate(pole_a))
     plate_b.set_omega(mantle.clamp_rate(pole_b))
     # A completed rift fully releases the accumulated breakup pressure that drove it -- both
     # daughters start fresh, the same "topology event resets accumulated state" precedent
-    # reset_age already sets for age_steps.
+    # reset_age already sets for age_years.
     plate_a.set_internal_stress(0.0)
     plate_b.set_internal_stress(0.0)
     return plate_a, plate_b
@@ -912,11 +964,12 @@ def update_overlap_tracking(world: "World", years: float) -> None:
 
 
 def _merge_plates_with_craton_audit(world: "World", id_keep: int, id_absorb: int) -> None:
-    """`merge_plates`, booking any cratonic crust the suture cap shaved off a stacked column as
-    delamination -- the cap is the merge's delamination of over-thickened crust."""
+    """`merge_plates`, booking craton clipped to the host column or unplaceable in the merge
+    remap to `merge_capped_m3` (RFC 0001, #441, #443): these are merge-capacity losses, not
+    root delamination."""
     audit = cratons.PhaseAudit(world)
     merge_plates(world, id_keep, id_absorb)
-    audit.settle("delaminated_m3")
+    audit.settle("merge_capped_m3", residual_account="merge_capped_m3")
 
 
 def apply_topology_changes(world: "World", years: float) -> list[str]:
@@ -927,7 +980,7 @@ def apply_topology_changes(world: "World", years: float) -> list[str]:
     logged here -- see update_collision_progress."""
     events: list[str] = []
     for plate in world.plates:
-        plate.age_one_step()
+        plate.advance_age(years)
 
     consumed = [p for p in world.plates if p.node_count() == 0]
     for p in consumed:

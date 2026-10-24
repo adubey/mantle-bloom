@@ -1,0 +1,12 @@
+{
+  "name": "mantle-bloom-railway",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit --strict --module nodenext --moduleResolution nodenext --target es2022 --skipLibCheck false railway.ts"
+  },
+  "devDependencies": {
+    "railway": "3.16.0",
+    "typescript": "~6.0.2"
+  }
+}
