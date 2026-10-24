@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Issue #539 (RFC 0014 D2(b)): replay a saved world and measure liquid water at cold nodes.
 
-Steps the save `--steps` times by `--step-years` and records, per step:
+Steps the save for `--myr` in `--step-years` steps and records, per step:
 
 - liquid water deleted by freezing (m^3/s): the ice ledger's frozen river ice and frozen lake
   water, converted back to water at `hydrology.WATER_TO_ICE` (0 once #539 lands);
@@ -24,39 +24,30 @@ Steps the save `--steps` times by `--step-years` and records, per step:
 Nodes move with their plates, so a node is matched across steps by position (nearest node
 within `--match-km`), never by index.
 
-`--backend` points at the backend to import, so the same script measures both trees:
+The command line and save loading are `replay_lib`'s, so `--backend` measures `origin/main`
+from a detached worktree. Ten 100 kyr steps, branch then baseline:
 
     cd backend
-    .venv/bin/python -I ../bin/debug/measure_cold_sink_water.py <save> --steps 10 \\
-        --out <scratch>/branch.json
-    .venv/bin/python -I ../bin/debug/measure_cold_sink_water.py <save> --steps 10 \\
+    .venv/bin/python ../bin/debug/measure_cold_sink_water.py <save> --myr 1 --out <scratch>/branch.json
+    .venv/bin/python ../bin/debug/measure_cold_sink_water.py <save> --myr 1 \\
         --backend <baseline-worktree>/backend --out <scratch>/main.json
 """
 
 from __future__ import annotations
 
-import argparse
 import json
 import resource
 import sys
 import time
-from pathlib import Path
 
 import numpy as np
+from replay_lib import load_replay, parse_replay_args
 
-ap = argparse.ArgumentParser()
-ap.add_argument("save", type=Path)
-ap.add_argument("--steps", type=int, default=10)
-ap.add_argument("--step-years", type=float, default=100_000.0)
-ap.add_argument("--match-km", type=float, default=20.0)
-ap.add_argument("--backend", type=Path, default=Path(__file__).resolve().parents[2] / "backend")
-ap.add_argument("--out", type=Path, required=True)
-args = ap.parse_args()
-sys.path.insert(0, str(args.backend.resolve()))
+args = parse_replay_args(__doc__, lambda ap: ap.add_argument("--match-km", type=float, default=20.0))
+world, result = load_replay(args, issue=539)
 
 from scipy.spatial import cKDTree  # noqa: E402
 
-from app import persistence  # noqa: E402
 from app import world as world_mod  # noqa: E402
 from app.plates import PLANET_RADIUS_KM  # noqa: E402
 from app.hydroclimate import hydrology, lakes  # noqa: E402
@@ -113,13 +104,13 @@ def matched(tree, xyz):
     return idx, dist <= MATCH
 
 
-world = persistence.load_world_bytes(args.save.read_bytes())
-result = {"elapsed_years": world.elapsed_years, "nodes": len(world.hydrology_cache.elevation), "steps": []}
+result.update(elapsed_years=world.elapsed_years, nodes=len(world.hydrology_cache.elevation), steps=[])
+del result["checkpoints"]  # this script records every step instead
 print(json.dumps({k: v for k, v in result.items() if k != "steps"}), flush=True)
 prev_sources: list[dict] = []  # last step's top-sink spill sources, judged once this step is known
 prev_drain_xyz = None
 
-for step in range(1, args.steps + 1):
+for step in range(1, int(round(args.myr * 1e6 / args.step_years)) + 1):
     start = time.perf_counter()
     world_mod.step_world(world, args.step_years)
     runtime_s = time.perf_counter() - start

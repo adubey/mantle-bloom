@@ -59,11 +59,16 @@ judged against the next). The per-step series are in [`comparison.json`](compari
 
 ```bash
 cd backend
-.venv/bin/python -I ../bin/debug/measure_cold_sink_water.py <local-save> --steps 10 \
+.venv/bin/python ../bin/debug/measure_cold_sink_water.py <local-save> --myr 1 \
     --out <scratch-output>/branch.json
-.venv/bin/python -I ../bin/debug/measure_cold_sink_water.py <local-save> --steps 10 \
+.venv/bin/python ../bin/debug/measure_cold_sink_water.py <local-save> --myr 1 \
     --backend <baseline-worktree>/backend --out <scratch-output>/main.json
 ```
+
+The runs used the script's first version, which had its own `--steps` option. It then moved onto
+`replay_lib`'s command line (`--myr`) to remove copied code. A one-step rerun of the held-out
+branch arm with the final script matched the recorded step in every measure except runtime and
+RSS.
 
 | Measure (median) | Evidence, main | Evidence, branch | Held-out, main | Held-out, branch |
 |---|---:|---:|---:|---:|
