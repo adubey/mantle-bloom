@@ -12,6 +12,7 @@ const HEX_FREQUENCY_OPTIONS: { frequency: number; label: string }[] = [
 const DEFAULT_HEX_FREQUENCY = 16;
 
 interface Props {
+  worldId: string;
   hasWorld: boolean;
   seed: number | null;
   elapsedYears: number | null;
@@ -38,7 +39,7 @@ function downloadBlob(blob: Blob, filename: string): void {
 }
 
 export default function FileModal({
-  hasWorld, seed, elapsedYears, mapView, mapWrapperRef,
+  worldId, hasWorld, seed, elapsedYears, mapView, mapWrapperRef,
   onClose, onWorldReplaced,
 }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
@@ -59,15 +60,15 @@ export default function FileModal({
   }, []);
 
   const handleSaveWorld = useCallback(() => runAction("save", async () => {
-    const blob = await saveWorld();
+    const blob = await saveWorld(worldId);
     downloadBlob(blob, `mantle-bloom-seed${seed}-${Math.round(elapsedYears ?? 0)}y.mbworld`);
-  }), [runAction, seed, elapsedYears]);
+  }), [runAction, seed, elapsedYears, worldId]);
 
   const handleLoadFileChosen = useCallback((file: File) => runAction("load", async () => {
-    const summary = await loadWorld(file);
+    const summary = await loadWorld(worldId, file);
     await onWorldReplaced(summary);
     onClose();
-  }), [runAction, onWorldReplaced, onClose]);
+  }), [runAction, onWorldReplaced, onClose, worldId]);
 
   const handleSaveImage = useCallback(() => runAction("image", async () => {
     const canvas = mapWrapperRef.current?.querySelector("canvas");
@@ -78,10 +79,10 @@ export default function FileModal({
   }), [runAction, mapWrapperRef, seed, mapView, elapsedYears]);
 
   const handleExportHexGrid = useCallback(() => runAction("export", async () => {
-    const result = await exportHexGrid(hexFrequency);
+    const result = await exportHexGrid(worldId, hexFrequency);
     const blob = new Blob([JSON.stringify(result)], { type: "application/json" });
     downloadBlob(blob, `mantle-bloom-seed${seed}-hexgrid-f${hexFrequency}.json`);
-  }), [runAction, hexFrequency, seed]);
+  }), [runAction, hexFrequency, seed, worldId]);
 
   return (
     <ModalShell title="File" onClose={onClose}>

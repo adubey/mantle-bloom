@@ -96,7 +96,7 @@ const selectStyle = {
 // Real-time controls for World's live-adjustable properties (see backend app/world.py's
 // World.sea_level_m/World.solar_multiplier/World.ice_age_period_years/
 // World.simulate_plate_movement/World.simulate_climate_biomes/World.wind_model and its
-// tuning-knob field group, plus main.py's /world/controls) -- unlike the "Generate World"
+// tuning-knob field group, plus main.py's /worlds/{world_id}/controls) -- unlike the "Generate World"
 // dialog's sliders, these apply to the *current* world immediately, no regenerate needed.
 // Controlled from App.tsx's own state (not local state here) since the same values also need
 // to reset on a fresh Generate. Grouped into Climate / Erosion / Tectonics tabs.

@@ -11,7 +11,7 @@ works: [architecture.md#replay-log](../architecture.md#replay-log)).
 
 Set `MANTLE_BLOOM_REPLAY_LOG_DIR` to put them elsewhere. A record is a directory named
 `<UTC time>-seed<seed>-<Myr before the step>myr-<triggers>` holding `before.mbworld` and
-`record.json`. Find them with `GET /world/replay-logs`, the `?deb` Event Console
+`record.json`. Find them with `GET /worlds/{world_id}/replay-logs`, the `?deb` Event Console
 (`Replay log: <triggers> -> <name>`), or the `replay log:` warnings in
 `/tmp/mantle-bloom-<port>.log`.
 
@@ -39,7 +39,7 @@ are removed oldest first.
 
 `record.json` has the triggers and their values, `step_years`, `seed`,
 `elapsed_years_before`, `steps_taken_before`, the world's scalar `controls` (flags, densities,
-`/world/controls` settings), `git` (commit and dirty flag), `step_seconds`, `health_before`
+`/worlds/{world_id}/controls` settings), `git` (commit and dirty flag), `step_seconds`, `health_before`
 and `health_after`, `fingerprint_after`, and any `annotations`.
 
 Replay a record, checking it reproduces:

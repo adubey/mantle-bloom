@@ -10,7 +10,7 @@ test("requests the selected cross-section frame with its dimensions and abort si
   let requestedSignal: AbortSignal | null | undefined;
 
   const response = await requestCrossSection(
-    "http://localhost:8123",
+    "http://localhost:8123/worlds/abc123",
     73,
     119,
     1100,
@@ -25,7 +25,7 @@ test("requests the selected cross-section frame with its dimensions and abort si
 
   const url = new URL(requestedUrl);
   assert.equal(url.origin, "http://localhost:8123");
-  assert.equal(url.pathname, "/world/cross-section");
+  assert.equal(url.pathname, "/worlds/abc123/cross-section");
   assert.deepEqual(Object.fromEntries(url.searchParams), {
     plane_angle_deg: "73",
     position_index: "119",

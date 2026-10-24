@@ -26,13 +26,20 @@ def configured(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _fresh_app_state():
-    """No world and no pending animation stop, before and after: the CSRF tests post
-    /world/animate/stop, which would otherwise leak a stop signal into later tests."""
-    main._state["world"] = None
-    main._animation_stop_event.clear()
+    """One empty world record (ID `test-world`) and no pending animation stop,
+    before and after: the CSRF tests post its animate/stop, which would
+    otherwise leak a stop signal into later tests."""
+    from app.world_registry import WorldSession
+
+    for session in main._registry.list():
+        if session.runner is not None:
+            session.runner.close()
+        main._registry.remove(session.world_id)
+    session = main._wire_session(main._registry.adopt(WorldSession(world_id="test-world")))
+    session.animation_stop_event.clear()
     yield
-    main._state["world"] = None
-    main._animation_stop_event.clear()
+    session.world = None
+    session.animation_stop_event.clear()
 
 
 @pytest.fixture
@@ -97,22 +104,22 @@ def test_logged_out_root_redirects_to_view(remote):
 
 @pytest.mark.parametrize("method", ["HEAD", "PUT", "DELETE", "PATCH"])
 def test_world_routes_reject_every_method(remote, method):
-    assert remote.request(method, "/world/summary").status_code == 401
+    assert remote.request(method, "/worlds/test-world/summary").status_code == 401
 
 
 def test_prefixed_app_still_guards_world_routes():
     """Under a root_path the router strips the prefix, so the guard must too (PR #377 review)."""
     client = TestClient(app, base_url="https://testserver", root_path="/mb", follow_redirects=False)
-    assert client.get("/mb/world/summary").status_code == 401
-    assert client.post("/mb/world/animate/stop", headers={"Origin": "https://testserver"}).status_code == 401
+    assert client.get("/mb/worlds/test-world/summary").status_code == 401
+    assert client.post("/mb/worlds/test-world/animate/stop", headers={"Origin": "https://testserver"}).status_code == 401
     assert client.get("/mb/").headers["location"] == "/mb/view"
 
 
 def test_world_routes_reject_unauthenticated_requests(remote):
-    assert remote.get("/world/summary").status_code == 401
-    assert remote.post("/world/step", json={"years": 1}).status_code == 401
-    assert remote.post("/world/generate", json={}).status_code == 401
-    assert remote.post("/world/load", content=b"x").status_code == 401
+    assert remote.get("/worlds/test-world/summary").status_code == 401
+    assert remote.post("/worlds/test-world/step", json={"years": 1}).status_code == 401
+    assert remote.post("/worlds/test-world/generate", json={}).status_code == 401
+    assert remote.post("/worlds/test-world/load", content=b"x").status_code == 401
 
 
 def test_view_and_login_stay_public(remote):
@@ -133,7 +140,7 @@ def test_railway_health_check_is_public(remote):
 def test_unconfigured_server_fails_closed(monkeypatch, remote):
     for name in ("CLIENT_ID", "CLIENT_SECRET", "OWNER_ID"):
         monkeypatch.delenv(f"MANTLE_BLOOM_GITHUB_{name}", raising=False)
-    assert remote.get("/world/summary").status_code == 401
+    assert remote.get("/worlds/test-world/summary").status_code == 401
     page = remote.get("/login")
     assert "isn&#x27;t configured" in page.text and "/auth/github" not in page.text
     assert remote.get("/auth/github").headers["location"] == "/login?error=unconfigured"
@@ -146,7 +153,7 @@ def test_short_session_secret_leaves_login_unconfigured(monkeypatch):
 
 def test_local_requests_skip_login():
     with _local() as client:
-        assert client.get("/world/summary").status_code == 404  # no world yet, but let through
+        assert client.get("/worlds/test-world/summary").status_code == 404  # no world yet, but let through
         assert client.get("/auth/session").json()["admin"] is True
 
 
@@ -158,13 +165,13 @@ def test_local_requests_skip_login():
 ])
 def test_proxied_loopback_requests_need_login(headers):
     with _local() as client:
-        assert client.get("/world/summary", headers=headers).status_code == 401
+        assert client.get("/worlds/test-world/summary", headers=headers).status_code == 401
 
 
 def test_local_bypass_can_be_disabled(monkeypatch):
     monkeypatch.setenv("MANTLE_BLOOM_LOCAL_NO_LOGIN", "0")
     with _local() as client:
-        assert client.get("/world/summary").status_code == 401
+        assert client.get("/worlds/test-world/summary").status_code == 401
 
 
 def test_login_start_redirects_to_github_with_state_and_pkce(remote):
@@ -194,7 +201,7 @@ def test_owner_signs_in_and_reaches_the_full_app(monkeypatch, remote):
     assert resp.status_code == 303 and resp.headers["location"] == "/"
     token_form = urllib.parse.parse_qs(calls[0].data.decode())
     assert token_form["code"] == ["abc"] and token_form["code_verifier"][0]
-    assert remote.get("/world/summary").status_code == 404  # authorized; just no world yet
+    assert remote.get("/worlds/test-world/summary").status_code == 404  # authorized; just no world yet
     assert remote.get("/").status_code != 302
     assert remote.get("/auth/session").json() == {
         "admin": True, "local": False, "login": "owner", "login_available": True,
@@ -206,7 +213,7 @@ def test_other_github_account_gets_no_session(monkeypatch, remote):
     resp = _sign_in(remote, monkeypatch, user_id=OWNER_ID + 1)
     assert resp.headers["location"] == "/login?error=forbidden"
     assert auth.SESSION_COOKIE not in remote.cookies
-    assert remote.get("/world/summary").status_code == 401
+    assert remote.get("/worlds/test-world/summary").status_code == 401
 
 
 @pytest.mark.parametrize("params, error", [
@@ -243,11 +250,11 @@ def test_login_page_shows_only_known_error_messages(remote):
 
 def test_forged_or_stale_sessions_are_rejected(monkeypatch, remote):
     remote.cookies.set(auth.SESSION_COOKIE, auth.sign_token({"uid": OWNER_ID}, b"x" * 40, "session", 60))
-    assert remote.get("/world/summary").status_code == 401
+    assert remote.get("/worlds/test-world/summary").status_code == 401
     # A session minted for a previous owner ID stops working when the owner changes.
     remote.cookies.set(auth.SESSION_COOKIE, auth.sign_token({"uid": OWNER_ID}, SECRET.encode(), "session", 60))
     monkeypatch.setenv("MANTLE_BLOOM_GITHUB_OWNER_ID", str(OWNER_ID + 1))
-    assert remote.get("/world/summary").status_code == 401
+    assert remote.get("/worlds/test-world/summary").status_code == 401
 
 
 def test_logout_clears_the_session(monkeypatch, remote):
@@ -255,36 +262,36 @@ def test_logout_clears_the_session(monkeypatch, remote):
     resp = remote.post("/logout", headers={"Origin": "https://testserver"})
     assert resp.status_code == 303 and resp.headers["location"] == "/view"
     assert auth.SESSION_COOKIE not in remote.cookies
-    assert remote.get("/world/summary").status_code == 401
+    assert remote.get("/worlds/test-world/summary").status_code == 401
 
 
 def test_cross_site_writes_are_refused(monkeypatch, remote):
     _sign_in(remote, monkeypatch)
     evil = {"Origin": "https://evil.example"}
-    assert remote.post("/world/animate/stop", headers=evil).status_code == 403
+    assert remote.post("/worlds/test-world/animate/stop", headers=evil).status_code == 403
     assert remote.post("/logout", headers=evil).status_code == 403
-    assert remote.post("/world/animate/stop", headers={"Origin": "null"}).status_code == 403
-    assert remote.post("/world/animate/stop", headers={"Sec-Fetch-Site": "cross-site"}).status_code == 403
-    assert remote.post("/world/animate/stop", headers={"Origin": "https://testserver"}).status_code == 200
+    assert remote.post("/worlds/test-world/animate/stop", headers={"Origin": "null"}).status_code == 403
+    assert remote.post("/worlds/test-world/animate/stop", headers={"Sec-Fetch-Site": "cross-site"}).status_code == 403
+    assert remote.post("/worlds/test-world/animate/stop", headers={"Origin": "https://testserver"}).status_code == 200
 
 
 def test_dev_frontend_origin_may_write_locally():
     with _local() as client:
-        resp = client.post("/world/animate/stop", headers={"Origin": f"http://localhost:{main._frontend_port}"})
+        resp = client.post("/worlds/test-world/animate/stop", headers={"Origin": f"http://localhost:{main._frontend_port}"})
         assert resp.status_code == 200
-        assert client.post("/world/animate/stop", headers={"Origin": "https://evil.example"}).status_code == 403
+        assert client.post("/worlds/test-world/animate/stop", headers={"Origin": "https://evil.example"}).status_code == 403
 
 
 def test_public_url_origin_may_write_behind_a_host_rewriting_proxy(monkeypatch, remote):
     """A proxy that sends Host: 127.0.0.1:<port> still lets the owner's own pages write."""
     _sign_in(remote, monkeypatch)
     origin = {"Origin": "https://mantle.example.com"}
-    assert remote.post("/world/animate/stop", headers=origin).status_code == 403
+    assert remote.post("/worlds/test-world/animate/stop", headers=origin).status_code == 403
     monkeypatch.setenv("MANTLE_BLOOM_PUBLIC_URL", "https://mantle.example.com/")
-    assert remote.post("/world/animate/stop", headers=origin).status_code == 200
+    assert remote.post("/worlds/test-world/animate/stop", headers=origin).status_code == 200
 
 
 def test_dev_frontend_origin_may_not_write_remotely(monkeypatch, remote):
     _sign_in(remote, monkeypatch)
     dev = {"Origin": f"http://localhost:{main._frontend_port}"}
-    assert remote.post("/world/animate/stop", headers=dev).status_code == 403
+    assert remote.post("/worlds/test-world/animate/stop", headers=dev).status_code == 403

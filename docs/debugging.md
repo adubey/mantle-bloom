@@ -13,7 +13,7 @@ show. This page indexes the tools for that. The details are on the pages under
 | [Debug map views](debugging/map-views.md) | the Map View "Debug >" group: speckle, platesDetail, geomorph, elevReason, overlapAge, nodeAge, cratons, the Plate Inspector |
 | [`bin/debug` scripts](#bin-debug-scripts) | about 70 checked-in measurement, probe and replay scripts, indexed below |
 
-For map images of a saved world, use `GET /world/render?view=...`
+For map images of a saved world, use `GET /worlds/{world_id}/render?view=...`
 ([api-reference.md](api-reference.md)) or `bin/debug/render_craton_map.py --load` for a plain
 plates-and-cratons map. Record the save or seed, elapsed time and view with the image.
 

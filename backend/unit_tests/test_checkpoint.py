@@ -106,6 +106,29 @@ def test_an_unwritable_directory_fails_at_startup(tmp_path):
         tmp_path.chmod(0o700)
 
 
+def test_registry_index_round_trip_and_per_world_stores(tmp_path, world):
+    root = CheckpointStore(tmp_path)
+    assert root.load_index() is None  # no index yet: a legacy directory
+    records = [
+        {"world_id": "aaa", "name": "A", "is_public": True, "created_at": 1.0, "updated_at": 2.0},
+        {"world_id": "bbb", "name": "B", "is_public": False, "created_at": 3.0, "updated_at": 4.0},
+    ]
+    root.save_index(records)
+    assert root.load_index() == records
+    # Each world's checkpoint lives in its own subdirectory.
+    root.for_world("aaa").save_world(world)
+    root.for_world("aaa").save_status(RunStatus(running=True, step_years=10.0))
+    loaded, status = root.for_world("aaa").load()
+    assert (loaded.seed, status.running) == (world.seed, True)
+    assert root.for_world("bbb").load() == (None, RunStatus())
+
+
+def test_unreadable_registry_index_raises(tmp_path):
+    (tmp_path / checkpoint.WORLDS_INDEX_FILE).write_text("not json")
+    with pytest.raises(checkpoint.RegistryIndexError):
+        CheckpointStore(tmp_path).load_index()
+
+
 def test_directory_comes_from_the_env_or_the_railway_volume(monkeypatch, tmp_path):
     monkeypatch.delenv(checkpoint.CHECKPOINT_DIR_ENV, raising=False)
     monkeypatch.delenv(checkpoint.RAILWAY_VOLUME_ENV, raising=False)

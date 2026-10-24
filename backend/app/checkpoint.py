@@ -42,6 +42,16 @@ RAILWAY_VOLUME_ENV = "RAILWAY_VOLUME_MOUNT_PATH"
 WORLD_FILE = "world.mbworld"
 STATUS_FILE = "run_status.json"
 STATUS_VERSION = 1
+# The multi-world registry index (#563): metadata for every world whose
+# checkpoint lives under `WORLDS_DIR/<world_id>/` in the same root.
+WORLDS_INDEX_FILE = "worlds.json"
+WORLDS_DIR = "worlds"
+INDEX_VERSION = 1
+
+
+class RegistryIndexError(ValueError):
+    """The registry index exists but cannot be trusted. Startup must fail its
+    health check rather than silently start with an empty registry."""
 # The full app's default "Years per step" (App.tsx), for a status written before any Play.
 DEFAULT_STEP_YEARS = 100_000.0
 # Prefix of in-progress writes. Any left behind were cut off by a killed process.
@@ -71,6 +81,38 @@ class CheckpointStore:
     def from_env(cls) -> CheckpointStore | None:
         directory = os.environ.get(CHECKPOINT_DIR_ENV, "").strip() or os.environ.get(RAILWAY_VOLUME_ENV, "").strip()
         return cls(directory) if directory else None
+
+    def for_world(self, world_id: str) -> CheckpointStore:
+        """The store for one world's checkpoint subdirectory (#563)."""
+        return CheckpointStore(self.directory / WORLDS_DIR / world_id)
+
+    @property
+    def index_path(self) -> Path:
+        return self.directory / WORLDS_INDEX_FILE
+
+    def save_index(self, records: list[dict]) -> None:
+        """Atomically replace the registry index. Called on record create,
+        rename, publish/unpublish, import and delete -- not on every step."""
+        data = json.dumps({"version": INDEX_VERSION, "worlds": records})
+        self._replace(self.index_path, data.encode())
+
+    def load_index(self) -> list[dict] | None:
+        """The registry index records, or None when no index exists yet (a
+        pre-multi-world checkpoint directory). Raises RegistryIndexError when
+        an index exists but is unreadable or malformed."""
+        path = self.index_path
+        if not path.exists():
+            return None
+        try:
+            payload = json.loads(path.read_text())
+            if payload.get("version") != INDEX_VERSION or not isinstance(payload.get("worlds"), list):
+                raise ValueError(f"unexpected contents {payload!r}")
+            for record in payload["worlds"]:
+                if not isinstance(record, dict) or not isinstance(record.get("world_id"), str):
+                    raise ValueError(f"unexpected record {record!r}")
+        except Exception as exc:  # noqa: BLE001 - any bad index must fail closed
+            raise RegistryIndexError(f"can't read registry index {path}: {exc}") from exc
+        return payload["worlds"]
 
     @property
     def world_path(self) -> Path:
