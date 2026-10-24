@@ -194,7 +194,8 @@ on `World.simulate_climate_biomes`, advancing `World.atmosphere_cfd_state` by a 
 real-time increment (one simulated day) regardless of `years`, see
 [simulation-model/climate.md#mode-toggle](simulation-model/climate.md#always-on-not-a-mode). Returns the same summary
 shape as `/world/generate`, with `events` reflecting anything logged up through this step.
-`404` if no world has been generated yet.
+`400` for a `years` that isn't positive, finite, and at most `main.MAX_STEP_YEARS`
+(100 Myr, #557), `404` if no world has been generated yet.
 
 ## `POST /world/run`, `GET /world/run`
 
@@ -492,7 +493,8 @@ Same fields/validation as `/world/render`'s own query params (`rotation` is the 
 9-comma-separated-float string, `400` for an unrecognized `projection`/`view` or an
 out-of-range `width`/`height`), plus `num_frames` bounded to `[1,
 main.MAX_ANIMATION_FRAMES]` (480) -- each frame costs a full simulation step and render, so
-this bounds worst-case request time. The animation dialog's "keep going until Stop is
+this bounds worst-case request time. `step_years` gets the same validation as
+`/world/step`'s `years` (`400` unless positive, finite, and at most 100 Myr, #557). The animation dialog's "keep going until Stop is
 pressed" mode just sends `num_frames` at that ceiling and expects the client to call
 `POST /world/animate/stop` (below) rather than waiting for it to be reached on its own.
 `404` if no world has been generated yet, `503` if a step or another animation is already

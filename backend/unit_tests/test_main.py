@@ -241,6 +241,36 @@ def test_step_before_generate_returns_404(client):
     assert resp.status_code == 404
 
 
+def test_step_rejects_invalid_years(client):
+    # #557: years must be positive, finite, and under the per-request ceiling;
+    # each step costs seconds of CPU regardless of its size. Non-finite values
+    # go as raw bodies: httpx's json= refuses to serialize them.
+    _post_generate(client, json={"seed": 9, "num_plates": 6})
+    for years in (0, -1_000_000, main.MAX_STEP_YEARS + 1):
+        resp = _post_step(client, json={"years": years})
+        assert resp.status_code == 400, years
+    for raw in (b'{"years": Infinity}', b'{"years": NaN}'):
+        resp = _post_step(
+            client, content=raw, headers={"Content-Type": "application/json"}
+        )
+        assert resp.status_code == 400, raw
+
+
+def test_animate_rejects_invalid_step_years(client):
+    _post_generate(client, json={"seed": 9, "num_plates": 6})
+    for step_years in (0, -1_000_000, main.MAX_STEP_YEARS + 1):
+        resp = client.post(
+            "/world/animate", json={"step_years": step_years, "num_frames": 2}
+        )
+        assert resp.status_code == 400, step_years
+    resp = client.post(
+        "/world/animate",
+        content=b'{"step_years": Infinity, "num_frames": 2}',
+        headers={"Content-Type": "application/json"},
+    )
+    assert resp.status_code == 400
+
+
 def test_plates_before_generate_returns_404(client):
     assert client.get("/world/plates").status_code == 404
 

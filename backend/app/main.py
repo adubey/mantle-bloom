@@ -58,6 +58,12 @@ MAX_RENDER_DIMENSION_PX = 4000
 # (see _animation_stop_event below) -- that mode is meant to be ended by the user, not by
 # this cap, but the cap still applies underneath so a forgotten run can't loop forever.
 MAX_ANIMATION_FRAMES = 480
+# Ceiling on one step's years for /world/step and /world/animate (#557): the UI's
+# largest "Years per step" choice is 10 Myr and debug replays step 10 Myr at a
+# time, so 100 Myr leaves 10x headroom while stopping a single request from
+# asking for an unbounded advance. Positivity/finiteness reuse
+# checkpoint.valid_step_years, the same rule /world/run already applies.
+MAX_STEP_YEARS = 100_000_000.0
 
 
 
@@ -334,6 +340,15 @@ def _require_world() -> World:
     if world is None:
         raise HTTPException(status_code=404, detail="no world generated yet")
     return world
+
+
+def _require_valid_step_years(years: float) -> None:
+    """400 unless `years` is a positive, finite step under MAX_STEP_YEARS (#557)."""
+    if not checkpoint.valid_step_years(years) or years > MAX_STEP_YEARS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"years must be positive, finite, and at most {MAX_STEP_YEARS:g}",
+        )
 
 
 def _summary(world: World) -> dict:
@@ -833,6 +848,7 @@ def step(req: StepRequest) -> StreamingResponse:
     `503` (before the stream starts, same as /world/animate) if a generation, step, or
     animation is already in progress."""
     world = _require_world()
+    _require_valid_step_years(req.years)
     if not _world_lock.acquire(blocking=False):
         raise HTTPException(status_code=503, detail="a generation, step, or animation is already in progress")
 
@@ -1036,6 +1052,7 @@ def animate(req: AnimateRequest) -> StreamingResponse:
         raise HTTPException(status_code=400, detail=f"num_frames must be in [1, {MAX_ANIMATION_FRAMES}]")
     if req.steps_per_frame < 1:
         raise HTTPException(status_code=400, detail="steps_per_frame must be >= 1")
+    _require_valid_step_years(req.step_years)
     view_rotation = _parse_view_rotation(req.rotation)
 
     # Acquire `_world_lock` synchronously, not via a `with` block -- the response streams, so
