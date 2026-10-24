@@ -10,7 +10,9 @@ Steps the save for `--myr` in `--step-years` steps and records, per step:
 - unbooked lake inflow (m^3/s): for every lake body resolved at its own balance this step (each
   `lakes._water_balance` call whose level was written out, not one discarded by a split or
   overwritten by a merge), the inflow that its evaporation at that level doesn't remove, summed
-  over bodies that neither spill, drain at their floor nor sit at a depth cap. Only water that
+  over bodies whose outlet doesn't spill and that don't sit at a depth cap. A body at its rim
+  or draining at its floor counts as passing its water on only if one of its sinks spills
+  (`should_spill`). Only water that
   settles counts: a sink that spilled on last step's water passes its through-flow on, and that
   water isn't lost even though `LakeClimate.inflow_m3_per_yr` includes it. A lake at its
   balance has none; a lake dried by a frozen member (before #539) leaves all its inflow
@@ -120,8 +122,12 @@ def lake_balance(f):
             continue  # a split: discarded, each child resolved on its own
         if not np.allclose(f.lake_depth[m], hyps.mean_depth(level, m), rtol=1e-9, atol=1e-9):
             continue  # overwritten by a merge or a parent's resolution
-        if lake.drains_at_floor or (lake.max_depth is not None and level >= lake.max_depth - 1e-6):
+        at_rim = lake.max_depth is not None and level >= lake.max_depth - 1e-6
+        if (lake.drains_at_floor or at_rim) and f.should_spill[lakes.leaf_sinks(lake)].any():
             continue  # its water passes on through the outlet
+        # A body balanced at its rim whose outlet routing hasn't opened yet (the in-step spill
+        # test fills by volume, the balance goes straight to equilibrium) drops its surplus this
+        # step, so it is counted like any other.
         settled = climate.inflow_m3_per_yr[m] - np.where(f.should_spill[m], f.discharge_m3_s[m] * SECONDS_PER_YEAR, 0.0)
         inflow = np.clip(settled, 0.0, None) if frozen is None else np.where(frozen[m], 0.0, np.clip(settled, 0.0, None))
         surplus = float(inflow.sum()) - lakes.lake_evaporation_m3_per_yr(level, m, hyps, climate)
