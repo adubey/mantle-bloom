@@ -338,7 +338,7 @@ def _classify_tier(
     """Whether `members` (a Lake's own catchment, leaf or merged) counts as sea tier *this*
     step, decided from *last* step's own persisted flooded extent (`prev_lake_depth`) rather
     than the depth this step is about to compute -- the same "read the already-persisted array,
-    not a value not yet computed this step" idiom `_prev_level`/`_resolve`'s own `already_merged`
+    not a value not yet computed this step" idiom `_already_merged`/`_resolve`'s own `already_merged`
     check already uses, avoiding a chicken-and-egg loop between "how big is this lake" and "how
     deep is this lake allowed to get." A lake that has never yet held any water defaults to lake
     tier (promotes one step after first crossing the threshold -- negligible). Returns
@@ -780,31 +780,40 @@ def _water_balance(
     return dry_level if is_frozen else new_level
 
 
-def _prev_level(
-    lake: Lake, elevation: np.ndarray, prev_lake_depth: np.ndarray, hypsometry: CellHypsometry | None = None
-) -> float:
-    """Last step's recorded water elevation for `lake`, considering only members that were
-    actually wet (`prev_lake_depth > 0`) -- **not** simply `max(elevation + prev_lake_depth)`
-    over every member. A lake's own members routinely include currently-dry higher ground (a
-    leaf's catchment includes every node steepest descent drains through, not just its floor;
-    a parent's members include the saddle/rim node that defines its own `min_depth`/
-    `max_depth`) whose *bare* elevation, with zero recorded depth, can easily sit at or above
-    `min_depth` purely because that's what a saddle or rim node's elevation *is* -- taking the
-    max over all members regardless of wetness would then read a completely dry lake as
-    already full, or a still-separate pair of children as already merged, confirmed directly
-    while writing this module's own test fixtures (a leaf's own catchment member can coincide
-    with the very saddle node that defines its parent's `min_depth`). Falls back to
-    the lake's dry level (`floor_elevation` without sub-cell relief) when no member was wet
-    at all. A wet member's level comes from inverting its mean water depth through
-    `CellHypsometry`. Without relief that is `elevation + depth`."""
+def _already_merged(
+    lake: Lake,
+    elevation: np.ndarray,
+    lake_depth: np.ndarray,
+    hypsometry: CellHypsometry | None = None,
+) -> bool:
+    """Whether water in every child's main basin reached this parent's saddle.
+
+    `members` also contains perched sub-basins in the upstream catchments. Their water level
+    says nothing about whether the main bodies on both sides of this saddle are connected, so
+    inspect each child's floor (its sink for a leaf) instead of the highest wet member. The
+    floor cell's mean depth is inverted through the hypsometry to recover its water surface.
+    At zero depth, use the cell's dry level so equal-floor basins that merge at their shared
+    floor remain connected across steps (#520).
+
+    When checking persisted water, all children must have reached the saddle. New merges during
+    this step use the children’s just-resolved levels directly in `_MERGE_CHECK`.
+    """
+    if not lake.children:
+        return True
     hyps = hypsometry if hypsometry is not None else CellHypsometry.whole_cells(elevation)
-    members = lake.members
-    member_depth = prev_lake_depth[members]
-    wet = member_depth > 0.0
-    dry_level = hyps.dry_level(members)
-    if not wet.any():
-        return dry_level
-    return max(float(hyps.level_from_depth(member_depth[wet], members[wet]).max()), dry_level)
+    reached_saddle: list[bool] = []
+    for child in lake.children:
+        floor_idx = child.sink_node_idx
+        if floor_idx < 0:
+            floor_idx = int(child.members[np.argmin(elevation[child.members])])
+        floor_cell = np.array([floor_idx])
+        depth = float(lake_depth[floor_idx])
+        if depth <= 0.0:
+            level = hyps.dry_level(floor_cell)
+        else:
+            level = float(hyps.level_from_depth(np.array([depth]), floor_cell)[0])
+        reached_saddle.append(level >= lake.min_depth - 1e-6)
+    return all(reached_saddle)
 
 
 def compute_spill_routing(
@@ -853,7 +862,8 @@ def compute_spill_routing(
     old kernel's own "unreachable" convention -- it never spills, however full it gets.
 
     **Which rim currently governs a sink is decided the same way `_resolve` decides "is this
-    lake one connected body yet," and deliberately reuses that exact test (`_prev_level` against
+    lake one connected body yet," and deliberately reuses that exact test (`_already_merged`
+    against
     `min_depth`)** -- this is the one place this function depends on `prev_lake_depth`, not just
     bare terrain, and it's what fixes the multi-sink-under-one-merged-body drift: once several
     original leaf catchments have merged (as of *last* step's persisted water) into one shared
@@ -861,14 +871,14 @@ def compute_spill_routing(
     bare-terrain flow graph even while fully submerged -- must escape via the *merged* body's
     own current rim, not whatever shallower rim its own individual leaf used to have before it
     was swallowed. Walking down from each root, the first node found to already be one merged
-    body (a leaf, trivially, or a parent whose children were already united as of last step) is
+    body (a leaf, trivially, or a parent whose children's main water bodies both reached the
+    saddle last step) is
     exactly that governing rim: everything in its subtree writes that same `(max_depth,
     outlet_target_idx, outlet_node_idx)` triple. A node still short of that (a parent whose children were *not*
     yet one body last step) recurses into its children independently instead, since they may
     each still be governed by their own, still-separate, shallower rims. Because the walk always
-    stops at the *first* such node encountered from the root down, and a parent's own
-    `_prev_level` is computed over the union of both children's members (so it can only read as
-    "already merged" once the *real* `_resolve` pass actually pooled them), no leaf's
+    stops at the *first* such node encountered from the root down, and `_already_merged` checks
+    each child's main water body (so a perched lake cannot mark the parent as merged), no leaf's
     `sink_node_idx` can ever be written by more than one stopping point -- the whole walk does
     `O(total tree size)` work, the same complexity class as `_resolve` itself, not `O(depth x
     leaf count)`.
@@ -892,13 +902,13 @@ def governing_bodies(
     forest: list[Lake], elevation: np.ndarray, prev_lake_depth: np.ndarray, hypsometry: CellHypsometry | None = None
 ) -> list[Lake]:
     """The lakes whose rims currently govern their leaves' sinks, walking down from each root to
-    the first lake that was already one merged body as of last step's water (see
+    the first lake whose children's main water bodies reached its saddle last step (see
     `compute_spill_routing`). Every leaf lies under exactly one of them."""
     bodies: list[Lake] = []
     stack: list[Lake] = list(forest)
     while stack:
         node = stack.pop()
-        already_merged = _prev_level(node, elevation, prev_lake_depth, hypsometry) >= node.min_depth
+        already_merged = _already_merged(node, elevation, prev_lake_depth, hypsometry)
         if node.children and not already_merged:
             stack.extend(node.children)
             continue
@@ -940,12 +950,12 @@ def _resolve(
     """Resolves one lake (and, for a parent, implicitly its whole subtree) into this step's
     actual water elevation, writing every member's own `out_lake_depth` exactly once, and
     detects a merge/split transition purely from whether last step's recorded depth
-    (`prev_lake_depth`) already showed this lake's water reaching its own `min_depth` -- see
-    `_prev_level` and this module's own docstring for why that's derived from the persistent
+    (`prev_lake_depth`) showed both children's main water bodies reaching their shared
+    `min_depth` -- see `_already_merged` for the connectivity check.
     per-node array rather than a persistent `Lake` registry.
 
-    A leaf, or a parent that **was already** one merged body last step (`prev_level >=
-    min_depth`), is resolved as a single connected water body over its own full `members` set.
+    A leaf, or a parent whose children's main water bodies **already reached** the saddle last
+    step, is resolved as a single connected water body over its own full `members` set.
     If that resolution's *new* level drops back below `min_depth`, it just split this step: the
     merged resolution is discarded (its silt and sea flags restored from a snapshot) and each
     child is resolved at its own balance this same step, exactly as a never-merged pair would
@@ -1016,8 +1026,7 @@ def _resolve(
                 node.current_water_elevation = max(child_levels)
             continue
 
-        prev_level = _prev_level(node, elevation, prev_lake_depth, hyps)
-        already_merged = prev_level >= node.min_depth  # trivially true for a leaf (min_depth == floor_elevation)
+        already_merged = _already_merged(node, elevation, prev_lake_depth, hyps)
 
         if node.children and not already_merged:
             # Resolve children independently first, then merge-check on the way back up.
