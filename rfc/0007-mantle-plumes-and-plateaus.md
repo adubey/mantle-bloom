@@ -4,10 +4,11 @@
 - **Date:** 2026-10-13; evidence refreshed 2026-10-14 (#403)
 - **Related:** #205 (magma transport),
   [#407](https://github.com/adubey/mantle-bloom/issues/407) (source attribution and breakup baseline); RFCs [0010](0010-rifts-follow-weak-lithosphere.md)
-  (plume weakening of cratons; supersedes 0003), [0009](0009-craton-mosaic.md) (cratons;
+  (plume weakening of cratons and plume-keyed split triggers; supersedes 0003), [0009](0009-craton-mosaic.md) (cratons;
   supersedes 0004, keeps its depletion follow-up deferred),
   [0005](0005-continental-recycling-balance.md), [0006](0006-intra-oceanic-arcs.md)
-  (shared docking, buoyant-crust tracers and ledger)
+  (shared docking, buoyant-crust tracers and ledger),
+  [0012](0012-physics-first-simulation.md) (force-response interface for plume loads)
 
 ## Problem
 
@@ -435,8 +436,8 @@ worlds can turn plumes off that way.
 | ΔE, `DOCK_WIDTH_M` | 3,000 m | Design choice: the spread of outcomes for similar plateaus | Sensitivity 1,500–6,000 m |
 | `DOCK_LOWER_CRUST_LOSS` | 0.2 | Design choice: Ontong Java lost lower crust at its edge [[Mann & Taira, 2004]](#ref-mann2004); no fraction is given | Sensitivity 0–0.4 |
 | `PLATEAU_PRESERVED_FRACTION` | 0.9 | Calibration assumption: budgets count accreted plateaus as continental growth [[Clift et al., 2009]](#ref-clift2009), though they are mafic | Sensitivity at 0.5 |
-| `PLUME_HEAT_MYR` | 20 Myr | The order of thermal re-equilibration of heated lithosphere; no direct constraint | Tune with RFC 0010: craton rifting should cluster on plume-heated cells |
-| `PLUME_CRATON_WEAKENING` | 0.75 | Cancels `CRATON_RIFT_RESISTANCE` at full heat | Sweep 0.5–1.0 |
+| `PLUME_HEAT_MYR` | 20 Myr | The order of thermal re-equilibration of heated lithosphere; no direct constraint | Tune with RFC 0010: craton rifting should cluster on plume-heated cells (see cross-RFC tuning interface) |
+| `PLUME_CRATON_WEAKENING` | 0.75 | Cancels `CRATON_RIFT_RESISTANCE` at full heat | Sweep 0.5–1.0 (see cross-RFC tuning interface) |
 | `PLUME_HEAD_STRESS` | 1.5 (`internal_stress` units; `STRESS_CERTAIN_RIFT` = 3.0) | Breakup often follows a continental plume head [[White & McKenzie, 1989]](#ref-white1989); no rate is given | Provisional design target: about half of continental plume heads followed by a split of their plate within 20 Myr; report matched plume-off/background incidence before stress tuning. Sensitivity at 0.75 and 3.0, plus 0 to disable |
 
 **Breakup calibration after #358.** The #403 tuning worlds record 115, 109 and 104 splits
@@ -458,6 +459,24 @@ run, not the historical save. Report:
 - juvenile continental by source (flood basalt, converted plateau, tail);
 - craton rifted volume inside versus outside plume-heated cells;
 - step time.
+
+**Cross-RFC tuning interface (for RFC 0010 and RFC 0012 agents).** Other RFCs consume
+plume state; they do not reimplement it. Ownership: RFC 0007 owns the plume event
+stream, emplacement, the `plume_heat_myr` lifecycle, and the buoyant-crust ledger.
+RFC 0010 owns cut-strength consumption, damage calibration, and any plume-keyed split
+trigger. RFC 0012 owns the motion-solve force interface. Agents working those RFCs may
+tune the coupling knobs below within their stated ranges, but must keep this RFC's
+acceptance green (isolated-head scale check, ledger closure, source-attribution gate)
+and report the values used.
+
+| Consumed by | Knob or field | What the other RFC may change | Limits |
+|---|---|---|---|
+| RFC 0010 | `PLUME_HEAT_MYR` | Heat duration, to cluster craton rifting on plume-heated cells | Stay in 5–50 Myr (see falsification); outside that needs an RFC 0007 revision |
+| RFC 0010 | `PLUME_CRATON_WEAKENING` | Strength reduction on heated cells, and the "heated counts as weak" cut rule | Sweep 0.5–1.0; the product stays clamped to [0, 1] |
+| RFC 0010 | Plume-event schedule (read-only) | Key split decisions on event index, `born_years`, position, head volume and oceanic/continental branch | Event semantics are owned here; do not re-derive plume timing. Branch agreement target is in the timestep acceptance |
+| RFC 0010 | `PLUME_HEAD_STRESS` | Background split-eligibility bump only | Provisional `internal_stress` units; must never be presented as local loading (RFC 0010 forbids inferring local stress from `internal_stress`) |
+| RFC 0012 | Plateau excess thickness | Consume `plateau_crust_m` plus E as a ΔGPE/buoyancy input | Read-only; physical units (N/m) at the interface |
+| RFC 0012 | `PLUME_HEAD_STRESS` | Nothing yet | The `internal_stress` bump is not a force response and stays out of the motion solve until re-expressed as a bounded (N/m) response or retired |
 
 ## Detailed design (provisional touchpoints)
 
@@ -616,6 +635,9 @@ emplacement or plateau docking.
       [[Clift et al., 2009]](#ref-clift2009), not a fit.
 - [ ] The sensitivity runs (rate, clustering, volume distribution, docking knobs) are
       reported, with the spread of converted continental material each produces.
+- [ ] Any RFC 0010/0012 tuning of the cross-RFC coupling knobs is reported with the
+      values used, and this RFC's scale, ledger and source-attribution gates are
+      re-run green at those values.
 - [ ] Side effects stay bounded: report plate counts and mean overlap fraction at every
       100 Myr checkpoint beside the matched plume-off baseline; flag over 20% drift
       for review before tuning further.
