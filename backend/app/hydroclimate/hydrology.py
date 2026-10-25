@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 31857)
-Total output lines: 2137
-
 """Rivers, lakes, and glaciers: flow routing, basin/lake detection, ice accumulation/melt/
 flow, and downstream flow accumulation over the world's current node cloud.
 
@@ -949,7 +946,155 @@ def _compute_flow_direction(
     water surface (elevation + `water_surface_offset`, the previous step's water surface above
     the cell's centre, a one-step-lagged "memory" of the water surface; compute_hydrology
     recovers it from lake_depth through lakes.CellHypsometry) has already reached its
-    basin's true spill point, in which case it redirects to spill_target instead of staying…1857 tokens truncated… forest: list["lakes.Lake"]
+    basin's true spill point, in which case it redirects to spill_target instead of staying
+    a dead-end sink forever. Ocean nodes are never routed (they're a destination, not a
+    source).
+
+    Also returns `should_spill`, the exact per-node mask of which sinks got redirected this
+    way -- `compute_hydrology` needs this specific mask (not something recomputed after the
+    fact from `flow_target == spill_target`, which could false-positive on an ordinary
+    steepest-descent node that happens to coincide with a neighboring basin's spill_target) to
+    know which lakes just found a real outlet, for the breach-erosion term (see its own
+    docstring in `compute_hydrology`).
+
+    Liquid water and glacial ice both follow this target off the ice (`compute_hydrology`), so
+    it isn't stopped at a frozen node. Water used to be: rivers stopped dead below 0 C on the
+    annual mean and their water froze where it settled, at `WATER_TO_ICE`, so it was nearly all
+    deleted (RFC 0014 D2(b), #539). A sub-zero annual mean doesn't mean no summer flow
+    (design principle 3)."""
+    n = len(elevation)
+    neighbor_elev = elevation[neighbor_idx]  # (n, k)
+    own_elev = elevation[:, None]
+    lower_mask = neighbor_elev < own_elev
+
+    steepest_masked = np.where(lower_mask, neighbor_elev, np.inf)
+    steepest_col = np.argmin(steepest_masked, axis=1)
+    rows = np.arange(n)
+    has_lower = np.isfinite(steepest_masked[rows, steepest_col])
+
+    neighbor_channel = prev_channel_depth[neighbor_idx]  # (n, k)
+    channelized_mask = lower_mask & (neighbor_channel > CHANNEL_PREFERENCE_THRESHOLD_M)
+    has_channelized = np.any(channelized_mask, axis=1)
+    channel_masked = np.where(channelized_mask, neighbor_channel, -np.inf)
+    channel_col = np.argmax(channel_masked, axis=1)
+
+    best_col = np.where(has_channelized, channel_col, steepest_col)
+    flow_target = np.where(has_lower, neighbor_idx[rows, best_col], -1).astype(np.int64)
+
+    is_sink = (flow_target < 0) & ~is_ocean
+    water_surface = elevation + water_surface_offset
+    # A rim at or below the sink's own centre (a breach notch cut to the floor, issue #297)
+    # spills whatever water the sink holds. The water surface of a partly wet cell sits below
+    # its centre (CellHypsometry), so testing it against a centre-height rim held a breached
+    # pit's first shallow water forever -- and with it rivers of up to 13,000 m^3/s (#503).
+    should_spill = is_sink & ((water_surface >= filled_elevation) | (filled_elevation <= elevation))
+    flow_target = np.where(should_spill, spill_target, flow_target).astype(np.int64)
+    flow_target = np.where(is_ocean, -1, flow_target).astype(np.int64)
+    return flow_target, should_spill
+
+
+def _slope_to_flow_target(points: np.ndarray, elevation: np.ndarray, flow_target: np.ndarray) -> np.ndarray:
+    """Dimensionless rise/run from each node to its own flow_target (0 for a node with no
+    target) -- the slope a river's mouth speed uses (see group_rivers), distinct from
+    erosion.py's own SLOPE_NEIGHBOR_COUNT=4 "lowest of k neighbors" slope: it follows
+    `flow_target` (this module's own k=FLOW_NEIGHBOR_COUNT graph), not erosion's separate,
+    smaller neighborhood."""
+    has_target = flow_target >= 0
+    safe_target = np.where(has_target, flow_target, 0)
+    drop = np.where(has_target, elevation - elevation[safe_target], 0.0)
+    run_m = geometry.angular_distance(points, points[safe_target]) * PLANET_RADIUS_KM * 1000.0
+    run_m = np.maximum(run_m, 1.0)
+    return np.where(has_target, np.clip(drop, 0.0, None) / run_m, 0.0)
+
+
+def compute_river_speed(slope: np.ndarray, discharge_m3_s: np.ndarray | float) -> np.ndarray:
+    """Stylized, unitless speed using physical discharge on the default-density reference scale."""
+    flow_scale = discharge_m3_s_to_flow_accum_mm_yr(np.asarray(discharge_m3_s, dtype=float))
+    return RIVER_SPEED_COEFFICIENT * np.sqrt(np.clip(slope, 0.0, None)) * np.power(flow_scale, RIVER_SPEED_DISCHARGE_EXPONENT)
+
+
+def _routing_order(elevation: np.ndarray, is_ocean: np.ndarray, flow_target: np.ndarray) -> tuple[list[int], list[int]]:
+    """Land nodes in an order where every node comes before its own flow_target, plus any
+    nodes that can't be ordered at all (on, or downstream of, a flow cycle).
+
+    Elevation-descending is such an order whenever every land->land edge runs strictly
+    downhill, which is the common case. But spill routing (a filled lake's outlet) and ice
+    routing (`ice_flow_target`, judged against elevation + lake + ice) can point a node at a
+    higher neighbour, and an elevation sweep then adds that node's flux to a target it already
+    visited -- flux that is never passed on or deposited (issue #275: ~0.1% of routed
+    sediment and ~9% of glacier-carried sediment silently vanished per step). In that case
+    this falls back to Kahn's algorithm, highest available node first, so the order still
+    matches the elevation sweep wherever the graph allows."""
+    land_indices = np.nonzero(~is_ocean)[0]
+    targets = flow_target[land_indices]
+    land_edge = targets >= 0
+    land_edge[land_edge] = ~is_ocean[targets[land_edge]]
+    if not np.any(elevation[targets[land_edge]] >= elevation[land_indices[land_edge]]):
+        return land_indices[np.argsort(-elevation[land_indices])].tolist(), []
+
+    n = len(elevation)
+    indegree = np.bincount(targets[land_edge], minlength=n)
+    heap = [(-float(elevation[i]), int(i)) for i in land_indices[indegree[land_indices] == 0]]
+    heapq.heapify(heap)
+    flow_target_list = flow_target.tolist()
+    is_ocean_list = is_ocean.tolist()
+    indegree_list = indegree.tolist()
+    elevation_list = elevation.tolist()
+    order = []
+    while heap:
+        _, i = heapq.heappop(heap)
+        order.append(i)
+        target = flow_target_list[i]
+        if target >= 0 and not is_ocean_list[target]:
+            indegree_list[target] -= 1
+            if indegree_list[target] == 0:
+                heapq.heappush(heap, (-elevation_list[target], target))
+    if len(order) == len(land_indices):
+        return order, []
+    placed = np.zeros(n, dtype=bool)
+    placed[order] = True
+    return order, land_indices[~placed[land_indices]].tolist()
+
+
+def flow_cycles(flow_target: np.ndarray) -> list[np.ndarray]:
+    """Every cycle in the `flow_target` graph, as an array of its nodes. Pointer doubling
+    finds one node on each cycle (whatever doesn't end at -1 after `n` hops sits on one); a
+    short walk from it lists the rest."""
+    n = len(flow_target)
+    if n == 0:
+        return []
+    jump = np.append(np.where(flow_target >= 0, flow_target, n), n)
+    hops = 1
+    while hops < n:
+        jump = jump[jump]
+        hops *= 2
+    ends = jump[:n]
+    cycles: list[np.ndarray] = []
+    seen: set[int] = set()
+    for start in np.unique(ends[ends < n]).tolist():
+        if start in seen:
+            continue
+        cycle = [start]
+        node = int(flow_target[start])
+        while node != start:
+            cycle.append(node)
+            node = int(flow_target[node])
+        seen.update(cycle)
+        cycles.append(np.asarray(cycle, dtype=np.int64))
+    return cycles
+
+
+# Rounds of the within-step spill/merge fixed point (_spill_within_step). Each round either
+# opens a basin's outlet or unites basins one level higher, so real worlds settle in a few;
+# this only bounds a pathological case.
+SPILL_WITHIN_STEP_MAX_ROUNDS = 32
+
+
+@dataclass
+class SpillBasins:
+    """What _spill_within_step needs to know about this step's depression hierarchy."""
+
+    forest: list["lakes.Lake"]
     governing: list["lakes.Lake"]  # lakes.governing_bodies: the rim each leaf's sink obeys
     hypsometry: "lakes.CellHypsometry"
     neighbor_idx: np.ndarray  # the routing graph the hierarchy's catchments were built on
@@ -1990,3 +2135,4 @@ def river_at(fields: HydrologyFields, rivers: list[RiverInfo], query_xyz: np.nda
     tree = cKDTree(fields.points[all_idx])
     _, nearest = tree.query(query_xyz.reshape(1, 3), k=1)
     return int(owner[int(nearest[0])])
+
