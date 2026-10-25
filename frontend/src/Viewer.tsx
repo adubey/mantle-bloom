@@ -12,7 +12,7 @@ import {
   type PublicView,
   type PublicWorldListing,
 } from "./publicApi";
-import { withWorldId, worldIdFromSearch, type WorldId } from "./worldRoutes";
+import { worldIdFromSearch, type WorldId } from "./worldRoutes";
 import { IDENTITY_ROTATION } from "./rotation";
 import { useSession } from "./session";
 
@@ -29,6 +29,12 @@ const RENDER_SCALE = 2;
 const PAGE_GUTTER = 16;
 const noop = () => {};
 const POLL_RETRY_MS = 5000;
+// How often the world list itself re-polls: new, newly public, or newly live
+// worlds show up in the picker without a reload (#597). Cheap and infrequent
+// on purpose -- revision changes on the open world still stream through the
+// long poll below, and a websocket would be new infra for data nobody needs
+// within milliseconds.
+const WORLDS_POLL_MS = 15000;
 const DEMO_STEP_PAUSE_MS = 1000;
 const isDemo = window.location.pathname.replace(/\/+$/, "") === "/demo/view";
 
@@ -94,46 +100,74 @@ function AccountLink() {
 // Which public world to show (#563, #597): `?world=<id>`, the only live world
 // when one is running, the only public one when there is one, or a picker when
 // there are several.
-function usePublicWorldId(): { worlds: PublicWorldListing[] | null; worldId: WorldId | null; selectWorld: (id: WorldId) => void } {
+function usePublicWorldId(): { worlds: PublicWorldListing[] | null; worldId: WorldId | null; selectWorld: (id: WorldId | null) => void } {
   const [worlds, setWorlds] = useState<PublicWorldListing[] | null>(null);
   const [worldId, setWorldId] = useState<WorldId | null>(() => worldIdFromSearch(window.location.search));
+
+  const selectWorld = useCallback((id: WorldId | null) => {
+    setWorldId(id);
+    const url = new URL(window.location.href);
+    if (id) url.searchParams.set("world", id);
+    else url.searchParams.delete("world");
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  }, []);
+
+  // Applies the selection rules to a freshly fetched list: keep watching the
+  // selected world (a new live world only joins the picker, never steals the
+  // view), adopt the only live or only public world when nothing is selected,
+  // and fall back when the selection names a world that is gone.
+  const adoptFromList = useCallback(
+    (list: PublicWorldListing[]) => {
+      const urlId = worldIdFromSearch(window.location.search);
+      if (urlId && list.some((w) => w.world_id === urlId)) return;
+      if (list.length === 0) {
+        selectWorld(null);
+        return;
+      }
+      // No selection and exactly one live world: adopt it, so /view opens on
+      // the planet that is currently stepping (#597).
+      if (!urlId) {
+        const live = list.filter((w) => w.running);
+        if (live.length === 1) {
+          selectWorld(live[0].world_id);
+          return;
+        }
+      }
+      // No selection and exactly one public world: adopt it. A selection naming an
+      // unknown, private, or deleted world falls back to the first listed one
+      // instead of leaving a blank page (#563 S8).
+      if ((!urlId && list.length === 1) || urlId) {
+        selectWorld(list[0].world_id);
+      }
+    },
+    [selectWorld],
+  );
 
   useEffect(() => {
     fetchPublicWorlds().then(
       ({ worlds: list }) => {
         setWorlds(list);
-        const urlId = worldIdFromSearch(window.location.search);
-        if (urlId && list.some((w) => w.world_id === urlId)) return;
-        if (list.length === 0) return;
-        // No selection and exactly one live world: adopt it, so /view opens on
-        // the planet that is currently stepping (#597).
-        if (!urlId) {
-          const live = list.filter((w) => w.running);
-          if (live.length === 1) {
-            const id = live[0].world_id;
-            setWorldId(id);
-            window.history.replaceState(null, "", withWorldId(window.location.href, id));
-            return;
-          }
-        }
-        // No selection and exactly one public world: adopt it. A selection naming an
-        // unknown, private, or deleted world falls back to the first listed one
-        // instead of leaving a blank page (#563 S8).
-        if ((!urlId && list.length === 1) || urlId) {
-          const id = list[0].world_id;
-          setWorldId(id);
-          window.history.replaceState(null, "", withWorldId(window.location.href, id));
-        }
+        adoptFromList(list);
       },
       () => {},
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [adoptFromList]);
 
-  const selectWorld = useCallback((id: WorldId) => {
-    setWorldId(id);
-    window.history.replaceState(null, "", withWorldId(window.location.href, id));
-  }, []);
+  // Re-polls the world list so worlds created, published, or started elsewhere
+  // show up in the picker without a reload. Skipped while the tab is hidden.
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.hidden) return;
+      fetchPublicWorlds().then(
+        ({ worlds: list }) => {
+          setWorlds(list);
+          adoptFromList(list);
+        },
+        () => {},
+      );
+    }, WORLDS_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [adoptFromList]);
 
   return { worlds, worldId, selectWorld };
 }

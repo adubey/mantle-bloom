@@ -51,6 +51,11 @@ import { getCookie, setCookie } from "./cookies";
 // actually loaded, never which backend is serving it.
 const DEBUG_UI = new URLSearchParams(window.location.search).has("deb");
 
+// How often the World list re-polls itself (see the worlds effect below): new,
+// renamed, published, or newly running worlds show up without a reload (#597).
+// Infrequent on purpose -- selection changes stream through their own effects.
+const WORLDS_POLL_MS = 15000;
+
 // Current page URL with the `deb` flag added (bare `deb`, no value) -- target of the
 // sidebar's "Debug..." link. Preserves any existing query params and the hash;
 // `&deb` when there is already a query string, `?deb` when there is not.
@@ -1092,11 +1097,22 @@ export default function App() {
 
   useEffect(() => {
     refreshWorlds().catch(() => {
-      // best-effort: the empty state still offers New World, which surfaces errors
+      // best-effort: the empty state still offers Add, which surfaces errors
     });
     const onFocus = () => refreshWorlds().catch(() => {});
     window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
+    // Re-polls the world list so worlds created, renamed, published, or
+    // started elsewhere show up without a reload or refocus (#597). Never
+    // touches the selection: with no world selected the page stays empty.
+    // Skipped while the tab is hidden.
+    const timer = window.setInterval(() => {
+      if (document.hidden) return;
+      refreshWorlds().catch(() => {});
+    }, WORLDS_POLL_MS);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.clearInterval(timer);
+    };
   }, [refreshWorlds]);
 
   // Selects a world: updates the URL (preserving ?deb), drops everything

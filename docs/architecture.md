@@ -214,6 +214,9 @@ revision through that world's own `WorldFeed`, a counter behind a per-process ep
 together with a summary snapshot taken under the world's session lock. Viewers long-poll
 `/public/worlds/{world_id}/world?after=<revision>` and re-render when it changes, so one
 viewer's step updates every page watching that world without anyone else computing.
+The world list itself re-polls every 15 s (skipped while the tab is hidden), so worlds
+created, published, or started elsewhere join the picker without a reload; the full
+app's World list re-polls the same way, without touching the selection.
 Concurrent guest steps against the same revision run the simulation once, and the others get
 its result for free. `/public/worlds/{world_id}/render` caches each (view, size) per
 revision in that world's own `RenderCache`, so the first viewer after a change renders it
