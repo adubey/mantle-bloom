@@ -30,7 +30,7 @@ Both runs completed all 431 steps to 130.5 Myr. Continental area changed by **+0
 | Continental area (km²) | 264,942,578 | 264,986,124 | +0.0164% |
 | Land area (km²) | 152,129,138 | 151,873,845 | −0.1678% |
 | Emergent continental area (km²) | 151,208,071 | 150,955,595 | −0.1670% |
-| Hm-cap area (km²) | 15,331,121 | 15,155,673 | −1.143% |
+| Hm-cap area (km²) | 15,331,121 | 15,155,673 | −1.144% |
 | Hm ledger residual (km³) | −142,315.54 | 0.0000048 | — |
 | Runtime (s) | 3,272 | 3,529 | +7.85% |
 | Peak RSS (MiB) | 1,741 | 1,611 | — |
