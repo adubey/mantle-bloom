@@ -4,7 +4,7 @@
 - **Date:** 2026-10-13; evidence refreshed 2026-10-14 (#403)
 - **Related:** #205 (magma transport),
   [#407](https://github.com/adubey/mantle-bloom/issues/407) (source attribution and breakup baseline); RFCs [0010](0010-rifts-follow-weak-lithosphere.md)
-  (plume weakening of cratons and plume-keyed split triggers; supersedes 0003), [0009](0009-craton-mosaic.md) (cratons;
+  (plume weakening of cratons and conditional plume-assisted local rifting; supersedes 0003), [0009](0009-craton-mosaic.md) (cratons;
   supersedes 0004, keeps its depletion follow-up deferred),
   [0005](0005-continental-recycling-balance.md), [0006](0006-intra-oceanic-arcs.md)
   (shared docking, buoyant-crust tracers and ledger),
@@ -27,9 +27,11 @@ spawning yet". Four Earth processes are therefore missing:
    additions of crust to existing continents.
 3. **Hotspot tracks**, such as the Hawaiian–Emperor chain: age-progressive volcanic chains
    that record plate motion over a fixed source.
-4. **Plume-weakened lithosphere.** Cratons rift only after heating or melt weakens them
-   [[Foley, 2008]](#ref-foley2008) [[Koptev et al., 2015]](#ref-koptev2015). RFC 0010
-   leaves this out because there is nothing in the model to do the weakening.
+4. **Plume-weakened lithosphere.** Heating and melt can weaken lithosphere and influence some
+   rifts [[Foley, 2008]](#ref-foley2008) [[Koptev et al., 2015]](#ref-koptev2015). RFC 0010
+   proposes this as a conditional local contribution, but its production rift mechanics and plume
+   coupling have not yet passed Gate 3. This RFC supplies the plume field; it does not make a plume
+   necessary for every rift or let a plume event force a plate-wide split.
 
 **Historical evidence, pre-#358.** The run behind RFCs 0001–0007 motivated item 1. The
 run is seed 456862899, 19.2 Gyr, saved locally as
@@ -449,6 +451,22 @@ scheduled head times and host plates, with the same step schedule and controls. 
 fraction remains a provisional design choice, and this refresh sets no new stress value.
 [#407](https://github.com/adubey/mantle-bloom/issues/407) includes that baseline comparison.
 
+**RFC 0010 target class and current evidence.** RFC 0010's first Earth-facing comparison is the
+plume-associated continental-rift subset. It does not claim that every Earth rift is plume-driven;
+the plume-off member of a paired test is a causal control under the same initial state and tectonic
+forcing, not a model of the full non-plume rift population. The broad 6–8 successful continental
+split-system context per 200 Myr remains a whole-population plausibility check, not a plume-event
+rate or tuning target.
+
+RFC 0010 Gate 3 remains open ([tracking issue #487](https://github.com/adubey/mantle-bloom/issues/487)).
+Its current local-damage and dike diagnostics have not demonstrated
+causal tip propagation, segment linkage and a viable production split. The finite-reservoir dike
+screen brackets arrest between 60 and 60.5 km for one diagnostic case, whose event volume is about
+0.814 km³ against the 1–2 km³ comparison range. These results identify mechanics still to solve;
+they do not calibrate plume weakening or show that a plume caused a rift. Keep the half-of-heads
+split incidence as a provisional design choice, and do not tune plume coupling to it until local
+rift growth and the matched plume-off/on comparison are supported.
+
 Tune on seeds 7, 11 and 2024 to 1 Gyr, plus a regenerated seed 456862899 to 3 Gyr; run the
 replays one at a time, after the isolated-head scale check passes. Record the generating
 commit, density, controls and full step schedule; a regenerated seed 456862899 is a new
@@ -460,21 +478,31 @@ run, not the historical save. Report:
 - craton rifted volume inside versus outside plume-heated cells;
 - step time.
 
-**Cross-RFC tuning interface (for RFC 0010 and RFC 0012 agents).** Other RFCs consume
-plume state; they do not reimplement it. Ownership: RFC 0007 owns the plume event
-stream, emplacement, the `plume_heat_myr` lifecycle, and the buoyant-crust ledger.
-RFC 0010 owns cut-strength consumption, damage calibration, and any plume-keyed split
-trigger. RFC 0012 owns the motion-solve force interface. Agents working those RFCs may
-tune the coupling knobs below within their stated ranges, but must keep this RFC's
-acceptance green (isolated-head scale check, ledger closure, source-attribution gate)
+**Cross-RFC interface (for RFC 0010 and RFC 0012).** Other RFCs consume plume state; they do not
+reimplement plume emplacement or ownership. RFC 0007 owns the plume event stream, emplacement,
+the `plume_heat_myr` lifecycle, and the buoyant-crust ledger. RFC 0010 owns local cut-strength
+consumption, damage calibration, propagation and final boundary formation. RFC 0012 owns the
+motion-solve force interface. RFC 0010 may use plume event time, position, host class and heat as
+read-only context for attribution and paired tests; plume presence alone must not create a cut or
+plate split. Tectonic extension and RFC 0010's local failure/growth conditions remain necessary.
+
+RFC 0010's Gate 2 first-order diagnostic converts extensional membrane resultant and integrated
+capacity to thickness-averaged stress, `sigma_ext_bar = N_ext/(Hc + Hm)` and
+`Y_bar = N_cap/(Hc + Hm)`. RFC 0007's dimensionless `PLUME_HEAD_STRESS` in
+`Plate.internal_stress` is only a provisional split-eligibility signal: it is not a local stress,
+force or substitute for those fields. The Gate 3 plume contribution has not yet been tested against
+that local failure and growth path. Therefore the RFC 0010 rows below describe available state and
+future sensitivity bounds, not calibrated values. Do not tune RFC 0010's plume-coupling knobs until
+the local mechanics pass their propagation/linkage checks and the matched plume-off/on comparison
+is run. Any eventual tuning must keep this RFC's scale, ledger and source-attribution gates green
 and report the values used.
 
 | Consumed by | Knob or field | What the other RFC may change | Limits |
 |---|---|---|---|
-| RFC 0010 | `PLUME_HEAT_MYR` | Heat duration, to cluster craton rifting on plume-heated cells | Stay in 5–50 Myr (see falsification); outside that needs an RFC 0007 revision |
-| RFC 0010 | `PLUME_CRATON_WEAKENING` | Strength reduction on heated cells, and the "heated counts as weak" cut rule | Sweep 0.5–1.0; the product stays clamped to [0, 1] |
-| RFC 0010 | Plume-event schedule (read-only) | Key split decisions on event index, `born_years`, position, head volume and oceanic/continental branch | Event semantics are owned here; do not re-derive plume timing. Branch agreement target is in the timestep acceptance |
-| RFC 0010 | `PLUME_HEAD_STRESS` | Background split-eligibility bump only | Provisional `internal_stress` units; must never be presented as local loading (RFC 0010 forbids inferring local stress from `internal_stress`) |
+| RFC 0010 | `PLUME_HEAT_MYR` | Heat duration for a later plume-assisted sensitivity | Keep the 5–50 Myr range provisional; do not tune against Gate 3 until local propagation/linkage and the paired plume comparison are supported |
+| RFC 0010 | `PLUME_CRATON_WEAKENING` | Strength reduction on heated cells | Keep the 0.5–1.0 sweep provisional; the product stays clamped to [0, 1], and heated-as-weak cannot replace local damage/growth |
+| RFC 0010 | Plume-event schedule (read-only) | Attribute and pair local rift cases by event index, `born_years`, position, head volume, host class and heat | Event semantics are owned here; use as context, not as an automatic cut/split trigger. Branch agreement target is in the timestep acceptance |
+| RFC 0010 | `PLUME_HEAD_STRESS` | Background candidate/split-eligibility signal only, if retained | Provisional `internal_stress` units; not local loading. It cannot create a cut or bypass a connected viable boundary |
 | RFC 0012 | Plateau excess thickness | Consume `plateau_crust_m` plus E as a ΔGPE/buoyancy input | Read-only; physical units (N/m) at the interface |
 | RFC 0012 | `PLUME_HEAD_STRESS` | Nothing yet | The `internal_stress` bump is not a force response and stays out of the motion solve until re-expressed as a bounded (N/m) response or retired |
 
@@ -637,12 +665,15 @@ emplacement or plateau docking.
       reported, with the spread of converted continental material each produces.
 - [ ] Any RFC 0010/0012 tuning of the cross-RFC coupling knobs is reported with the
       values used, and this RFC's scale, ledger and source-attribution gates are
-      re-run green at those values.
+      re-run green at those values. RFC 0010 tuning also requires its local propagation/linkage
+      checks and matched plume-off/on comparison to be supported.
 - [ ] Side effects stay bounded: report plate counts and mean overlap fraction at every
       100 Myr checkpoint beside the matched plume-off baseline; flag over 20% drift
       for review before tuning further.
-- [ ] With RFC 0010 in place, at least half of the craton volume lost to rifting is lost in
-      plume-heated cells.
+- [ ] With RFC 0010 in place, report craton volume lost to rifting inside and outside plume-heated
+      cells, split between plume-associated and other rift episodes, with a matched plume-off/on
+      comparison for the plume-associated subset. Do not use a single whole-world 50% localization
+      threshold: non-plume rifts are outside the initial plume-assisted target class.
 - [ ] Before tuning `PLUME_HEAD_STRESS`, report the fraction of continental heads followed
       by a split within 20 Myr beside matched plume-off/background incidence under the
       physical 2 Myr cooldown. The half-of-heads target remains a provisional design
