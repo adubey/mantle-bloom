@@ -265,6 +265,117 @@ def test_concurrent_index_saves_converge_on_memory(client, tmp_path):
         assert index[session.world_id] == session.record()
 
 
+def test_delete_wins_over_concurrent_index_saves(client, tmp_path):
+    """Round-5 P2-index: a delete's index write must not be resurrected by a
+    concurrent step's stale snapshot. Saves are serialized under _index_lock, so
+    any save that read before the removal completes before the delete's save --
+    the final file never names the deleted world."""
+    import json
+    import threading
+
+    record = client.post("/worlds", json={"name": "doomed"}).json()
+    wid = record["world_id"]
+    stop = threading.Event()
+
+    def saver() -> None:
+        while not stop.is_set():
+            main._save_index()
+
+    threads = [threading.Thread(target=saver) for _ in range(4)]
+    for thread in threads:
+        thread.start()
+    try:
+        assert client.delete(f"/worlds/{wid}").status_code == 200
+    finally:
+        stop.set()
+    for thread in threads:
+        thread.join(timeout=60)
+    assert not any(thread.is_alive() for thread in threads)
+    index = json.loads((tmp_path / "worlds.json").read_text())["worlds"]
+    assert all(w["world_id"] != wid for w in index)
+
+
+def test_guest_step_waiters_are_bounded(client):
+    """Round-5 P1-guest: only GUEST_MAX_WAITERS requests may queue behind a
+    running guest step; the rest fail fast instead of pinning worker threads."""
+    import threading
+    import time
+
+    from app import public_view
+
+    record = client.post("/worlds", json={}).json()
+    session = _tracked_session(record["world_id"])
+    stuck = threading.Event()
+    session.guest_steps._inflight = stuck  # a step is computing; never finishes on its own
+
+    def hold_a_slot() -> None:
+        session.guest_steps.request_step(
+            "rev", True, lambda: "rev", threading.Lock(), lambda: None, inflight_wait_s=60.0
+        )
+
+    holders = [threading.Thread(target=hold_a_slot, daemon=True) for _ in range(public_view.GUEST_MAX_WAITERS)]
+    for holder in holders:
+        holder.start()
+    try:
+        # Wait until every slot is occupied (poll until a non-blocking take fails,
+        # releasing takes that succeed).
+        deadline = time.monotonic() + 10
+        while session.guest_steps._waiter_slots.acquire(blocking=False):
+            session.guest_steps._waiter_slots.release()
+            assert time.monotonic() < deadline, "waiters never took all slots"
+            time.sleep(0.01)
+        outcome = session.guest_steps.request_step(
+            "rev", True, lambda: "rev", threading.Lock(), lambda: None, inflight_wait_s=0
+        )
+        assert outcome.status == "busy"
+    finally:
+        # Wake the holders and clear the inflight marker so they become computers
+        # one by one, finish, and exit cleanly instead of spinning.
+        stuck.set()
+        session.guest_steps._inflight = None
+        for holder in holders:
+            holder.join(timeout=10)
+            assert not holder.is_alive()
+
+
+def test_restore_skips_worlds_over_the_cap(client, tmp_path):
+    """Round-5 P1-memory: an index holding more worlds than the cap allows must
+    not load them all. The most recently updated up to the cap restore; the rest
+    are adopted as visible, deletable records with load_error, files preserved."""
+    from app import checkpoint as checkpoint_mod
+    from app.world_registry import WorldRegistry
+
+    checkpoint_mod.CheckpointStore(tmp_path).save_index([
+        {"world_id": "a" * 32, "name": "Old", "is_public": False, "created_at": 1.0, "updated_at": 1.0},
+        {"world_id": "b" * 32, "name": "New", "is_public": False, "created_at": 2.0, "updated_at": 2.0},
+    ])
+    real_registry = main._registry
+    main._registry = WorldRegistry(max_worlds=1)
+    try:
+        main._restore_checkpoint()
+        sessions = {s.world_id: s for s in main._registry.list()}
+        assert set(sessions) == {"a" * 32, "b" * 32}
+        assert sessions["b" * 32].load_error is None
+        assert "MANTLE_BLOOM_MAX_WORLDS" in (sessions["a" * 32].load_error or "")
+    finally:
+        main._registry = real_registry
+
+
+def test_animation_rejects_steps_per_frame_over_dialog_max(client):
+    """Round-5 P2-anim: one frame may hold the gate for at most the dialog's
+    largest choice (100 steps)."""
+    record = client.post("/worlds", json={}).json()
+    scenario = client.get("/debug/scenarios").json()["scenarios"][0]["name"]
+    client.post(f"/worlds/{record['world_id']}/generate_debug", json={"scenario": scenario, "seed": 1})
+    wid = record["world_id"]
+    assert client.post(
+        f"/worlds/{wid}/animate", json={"step_years": 100000, "steps_per_frame": 101, "num_frames": 2}
+    ).status_code == 400
+    assert client.post(
+        f"/worlds/{wid}/animate", json={"step_years": 100000, "steps_per_frame": 100, "num_frames": 2}
+    ).status_code == 200
+
+
 def test_blank_or_huge_world_names_are_rejected(client):
     """F9: an empty name renders as a blank option (and restores differently);
     a huge one is rewritten to worlds.json on every save."""

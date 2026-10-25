@@ -66,10 +66,14 @@ MAX_ANIMATION_FRAMES = 480
 # request from asking for an unbounded advance. Positivity/finiteness reuse
 # checkpoint.valid_step_years, the same rule /worlds/{world_id}/run already applies.
 MAX_STEP_YEARS = 100_000_000.0
-# Same idea for /worlds/{world_id}/animate's steps per frame: the dialog offers 1/10/100,
-# so 1000 leaves 10x headroom while bounding a request's total step count
-# (num_frames x steps_per_frame) through this factor too (#557).
-MAX_STEPS_PER_FRAME = 1000
+# The animation dialog offers steps-per-frame 1/10/100, so this matches the largest
+# offered choice exactly: a single frame can hold the compute gate for at most 100
+# real steps (down from 1000), bounding how long one animation frame can delay every
+# other world -- and the whole run to the dialog's own maximum of 479 x 100 = 47,900
+# steps (down from 479,000). Any lower total would reject combinations the dialog
+# itself offers, so the per-frame bound plus the per-frame gate release carry the
+# fairness guarantee instead of a separate total.
+MAX_STEPS_PER_FRAME = 100
 
 
 
@@ -2469,7 +2473,12 @@ def _restore_checkpoint() -> None:
     if records is None:
         _import_legacy_checkpoint(store)
         return
-    for record in records:
+    # Most recently updated first: when the index holds more worlds than the cap
+    # allows (a lowered cap, a tampered index), the least relevant ones are the
+    # ones left unloaded below.
+    by_recency = sorted(records, key=lambda r: float(r.get("updated_at") or 0.0), reverse=True)
+    restored = 0
+    for record in by_recency:
         # Reuse a live session with this ID when there is one (a restart in the
         # same process, as in tests): update it in place so references held by
         # callers stay valid.
@@ -2487,6 +2496,25 @@ def _restore_checkpoint() -> None:
             session.name = record.get("name") or session.name
             session.is_public = bool(record.get("is_public"))
         _wire_session(session)
+        if restored >= _registry.max_worlds:
+            # Memory bound: adopt() deliberately bypasses the create cap so saved
+            # work is never lost, but eagerly loading every indexed world would let
+            # an over-cap index (or a lowered cap) exhaust RAM and spawn unbounded
+            # runners. The record stays visible and deletable, its files stay on
+            # disk, and raising the cap + restarting resumes it.
+            session.load_error = (
+                f"not restored: the checkpoint holds more worlds than "
+                f"MANTLE_BLOOM_MAX_WORLDS allows ({_registry.max_worlds}); "
+                f"raise the cap and restart, or delete this record"
+            )
+            if session.world is not None:
+                # Same-process restart (tests) reusing a live populated session:
+                # don't keep serving a world that is over the cap.
+                with session.lock:
+                    session.world = None
+                    session.feed.publish(None)
+            continue
+        restored += 1
         # Read before load(): an unreadable file makes load() return None *and* renames
         # the file aside, so checking existence only afterwards can't tell "corrupt"
         # from "never saved".
