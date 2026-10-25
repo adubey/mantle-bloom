@@ -780,19 +780,24 @@ def create_world(req: CreateWorldRequest) -> dict:
 
 @app.get("/worlds/{world_id}")
 def get_world(world_id: str) -> dict:
-    return _record_json(_session_or_404(world_id))
+    session = _session_or_404(world_id)
+    # Like list_worlds and get_summary: the record carries a world summary over
+    # mutable arrays, so hold the lock against a mid-step torn read.
+    with session.lock:
+        return _record_json(session)
 
 
 @app.patch("/worlds/{world_id}")
 def patch_world(world_id: str, req: PatchWorldRequest) -> dict:
     session = _session_or_404(world_id)
-    if req.name is not None:
-        session.name = req.name
-    if req.is_public is not None:
-        session.is_public = req.is_public
-    session.touch()
-    _save_index()
-    return _record_json(session)
+    with session.lock:
+        if req.name is not None:
+            session.name = req.name
+        if req.is_public is not None:
+            session.is_public = req.is_public
+        session.touch()
+        _save_index()
+        return _record_json(session)
 
 
 @app.delete("/worlds/{world_id}")
@@ -2307,8 +2312,15 @@ _checkpoint_error: str | None = None
 
 
 def _save_index() -> None:
-    if _checkpoint_root is not None:
+    # Best-effort, like _checkpoint_world below: a failing index write (a full or
+    # unmounted volume) is logged rather than raised, so it can never skip the
+    # lock/gate releases in a stream's finally or wedge every world.
+    if _checkpoint_root is None:
+        return
+    try:
         _checkpoint_root.save_index([session.record() for session in _registry.list()])
+    except Exception:  # noqa: BLE001 -- e.g. a full volume mustn't fail the request
+        _logger.exception("checkpoint: couldn't save the registry index")
 
 
 def _checkpoint_world(session: WorldSession) -> None:

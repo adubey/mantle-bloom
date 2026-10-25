@@ -145,6 +145,24 @@ def test_suspicious_world_ids_fail_closed(tmp_path):
         root.load_index()
 
 
+@pytest.mark.parametrize("field,value", [
+    ("name", 42),
+    ("is_public", "yes"),
+    ("created_at", "garbage"),
+    ("updated_at", True),
+])
+def test_garbage_metadata_types_fail_closed(tmp_path, field, value):
+    # Timestamps are read with float() at restore outside any try: a garbage one
+    # that passed validation would fail startup for every world. Reject it with
+    # the index instead, like any other corruption.
+    root = CheckpointStore(tmp_path)
+    record = {"world_id": "a" * 32, "name": "A", "is_public": True, "created_at": 1.0, "updated_at": 2.0}
+    record[field] = value
+    root.save_index([record])
+    with pytest.raises(checkpoint.RegistryIndexError):
+        root.load_index()
+
+
 def test_directory_comes_from_the_env_or_the_railway_volume(monkeypatch, tmp_path):
     monkeypatch.delenv(checkpoint.CHECKPOINT_DIR_ENV, raising=False)
     monkeypatch.delenv(checkpoint.RAILWAY_VOLUME_ENV, raising=False)

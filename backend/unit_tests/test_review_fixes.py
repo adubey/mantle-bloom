@@ -208,6 +208,30 @@ def test_world_change_persists_updated_at(client, tmp_path):
     assert updated_at_of(record["world_id"]) > before
 
 
+def test_failing_index_save_is_logged_not_raised(client, tmp_path):
+    """Advisory 2: _save_index runs before the lock/gate release in stream
+    finally blocks, so a failing write must never raise and wedge every world.
+    Record ops keep working (201) while the volume is unwritable."""
+    import os
+
+    from app import checkpoint
+
+    store = checkpoint.CheckpointStore(tmp_path / "ro")
+    store.directory.mkdir(parents=True)
+    os.chmod(store.directory, 0o555)
+    # Plain assignment, not monkeypatch.setattr: the client fixture depends on
+    # monkeypatch, so monkeypatch undoes AFTER the fixture teardown and would
+    # resurrect the store for later tests. A test-level finally runs first.
+    old_root = main._checkpoint_root
+    main._checkpoint_root = store
+    try:
+        main._save_index()
+        assert client.post("/worlds", json={}).status_code == 201
+    finally:
+        main._checkpoint_root = old_root
+        os.chmod(store.directory, 0o755)
+
+
 def test_blank_or_huge_world_names_are_rejected(client):
     """F9: an empty name renders as a blank option (and restores differently);
     a huge one is rewritten to worlds.json on every save."""

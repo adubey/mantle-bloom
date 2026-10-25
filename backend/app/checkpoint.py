@@ -87,6 +87,10 @@ class CheckpointStore:
     # be a tampered index turning rmtree/replay-log setup into a path traversal.
     _WORLD_ID_PATTERN = re.compile(r"[0-9a-f]{32}")
 
+    @staticmethod
+    def _is_timestamp(value: object) -> bool:
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+
     def for_world(self, world_id: str) -> CheckpointStore:
         """The store for one world's checkpoint subdirectory (#563)."""
         if not self._WORLD_ID_PATTERN.fullmatch(world_id):
@@ -119,6 +123,14 @@ class CheckpointStore:
                     not isinstance(record, dict)
                     or not isinstance(record.get("world_id"), str)
                     or not self._WORLD_ID_PATTERN.fullmatch(record["world_id"])
+                    # Timestamps are read with float() at restore: a non-numeric
+                    # one would raise outside any try and fail startup for every
+                    # world, so reject it here where the index fails closed.
+                    # (bool is an int subclass; a True timestamp is nonsense too.)
+                    or not isinstance(record.get("name"), str)
+                    or not isinstance(record.get("is_public"), bool)
+                    or not self._is_timestamp(record.get("created_at"))
+                    or not self._is_timestamp(record.get("updated_at"))
                 ):
                     raise ValueError(f"unexpected record {record!r}")
         except Exception as exc:  # noqa: BLE001 - any bad index must fail closed
