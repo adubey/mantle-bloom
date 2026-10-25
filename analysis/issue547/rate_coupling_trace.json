@@ -1,0 +1,254 @@
+{
+  "commits": {
+    "baseline": "402f00944251f383e7baf5ef7b418e8d606cde63",
+    "candidate": "ea595b210e0f37a95f6a3f2ecb7328a1d1ce0b30",
+    "candidate_model_code_equivalent_to": "9804addb2b1f29c53b4e22c473db18220c74a248"
+  },
+  "daughter_post_topology_omega_rad_per_year": {
+    "11": {
+      "baseline": [
+        6.243662206178349e-09,
+        8.404713976588227e-09,
+        5.205869664851181e-09
+      ],
+      "candidate": [
+        3.7692083265412024e-09,
+        8.99220841044008e-10,
+        5.754571004643609e-09
+      ]
+    },
+    "19": {
+      "baseline": [
+        6.261687630043051e-09,
+        6.505677005795509e-09,
+        9.17245464004292e-09
+      ],
+      "candidate": [
+        3.7692083265412024e-09,
+        8.99220841044008e-10,
+        5.754571004643609e-09
+      ]
+    }
+  },
+  "final_plate_count": {
+    "baseline": 20,
+    "candidate": 20
+  },
+  "first_post_split_solve_step_2_1": {
+    "aggregate_class_node_counts": {
+      "baseline": {
+        "contested": 1047,
+        "convergent": 11564,
+        "divergent": 7760,
+        "transform": 27675
+      },
+      "candidate": {
+        "contested": 1046,
+        "convergent": 11490,
+        "divergent": 7727,
+        "transform": 27786
+      }
+    },
+    "changed_plate_ids": [
+      0,
+      1,
+      2,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      13,
+      16,
+      17,
+      18,
+      19
+    ],
+    "daughter_driving_torque_components_nm": {
+      "11": {
+        "baseline": {
+          "basal_flow_nm": 1.1090780136950065e+26,
+          "ridge_push_nm": 1.6082292802780343e+23,
+          "slab_pull_nm": 3.0268000015587983e+25
+        },
+        "candidate": {
+          "basal_flow_nm": 1.1090780136950065e+26,
+          "ridge_push_nm": 3.0941591429420354e+22,
+          "slab_pull_nm": 3.937780992298023e+25
+        }
+      },
+      "19": {
+        "baseline": {
+          "basal_flow_nm": 1.306329305282644e+26,
+          "ridge_push_nm": 3.7304080311722256e+22,
+          "slab_pull_nm": 1.732502128969743e+26
+        },
+        "candidate": {
+          "basal_flow_nm": 1.306329305282644e+26,
+          "ridge_push_nm": 3.615048287753145e+22,
+          "slab_pull_nm": 1.7959923003130198e+26
+        }
+      }
+    },
+    "daughter_rates_cm_per_yr": {
+      "11": {
+        "baseline": 2.6186928439389074,
+        "candidate": 2.72148549055753
+      },
+      "19": {
+        "baseline": 4.336114032022844,
+        "candidate": 4.852233318165817
+      }
+    },
+    "driving_torque_norm_nm": {
+      "baseline": 6.176420415399652e+26,
+      "candidate": 6.188505946637657e+26,
+      "relative_change_pct": 0.19567209524584683
+    },
+    "max_plate_rate_cm_per_yr": {
+      "baseline": 4.336114032022844,
+      "candidate": 4.852233318165817,
+      "relative_change_pct": 11.902807037161756
+    },
+    "plate_11_class_counts": {
+      "baseline": {
+        "contested": 0,
+        "convergent": 22,
+        "divergent": 311,
+        "transform": 236
+      },
+      "candidate": {
+        "contested": 0,
+        "convergent": 29,
+        "divergent": 354,
+        "transform": 186
+      }
+    },
+    "plate_19_class_counts": {
+      "baseline": {
+        "contested": 10,
+        "convergent": 333,
+        "divergent": 136,
+        "transform": 181
+      },
+      "candidate": {
+        "contested": 10,
+        "convergent": 334,
+        "divergent": 196,
+        "transform": 120
+      }
+    },
+    "plates_classified": 20,
+    "plates_with_different_class_counts": 16,
+    "residual_torque_norm_nm": {
+      "baseline": 1516834280193.4539,
+      "candidate": 2291120006903.9136,
+      "relative_change_pct": 51.04616481977906
+    },
+    "topology_events": [
+      [
+        {
+          "elapsed_myr": 2.0,
+          "event": "M8.3 earthquake on fault #69498 (reverse) on plate 16"
+        },
+        {
+          "elapsed_myr": 2.1,
+          "event": "Plate 13 began rifting but the rift failed, leaving an aulacogen basin."
+        }
+      ],
+      [
+        {
+          "elapsed_myr": 2.0,
+          "event": "M8.3 earthquake on fault #69513 (reverse) on plate 16"
+        },
+        {
+          "elapsed_myr": 2.1,
+          "event": "Plate 13 began rifting but the rift failed, leaving an aulacogen basin."
+        }
+      ]
+    ]
+  },
+  "ledger_closure_m3": {
+    "baseline": {
+      "continental_balance_error_m3": 2048.0,
+      "craton_balance_error_m3": 0.0,
+      "hm_closure_error_m3": {
+        "all": 7424.0,
+        "continental_node": -436.0,
+        "oceanic_node": 1792.0
+      },
+      "mobile_cover_balance_error_m3": -24.0
+    },
+    "candidate": {
+      "continental_balance_error_m3": -1024.0,
+      "craton_balance_error_m3": 0.0,
+      "hm_closure_error_m3": {
+        "all": 7680.0,
+        "continental_node": 680.0,
+        "oceanic_node": 1792.0
+      },
+      "mobile_cover_balance_error_m3": -34.0
+    }
+  },
+  "probe": {
+    "node_density": 4.0,
+    "pythonhashseed": 0,
+    "seed": 326494039,
+    "step_myr": 0.1,
+    "total_myr": 2.1
+  },
+  "runtime_seconds": [
+    132.49744641700818,
+    226.23179783299565
+  ],
+  "same_through_split_step_2_0": true,
+  "split_event_step_2_0": [
+    [
+      {
+        "elapsed_myr": 1.9,
+        "event": "fault system born on plate 6 (reverse, single, ~83 km, 44 km from boundary)"
+      },
+      {
+        "elapsed_myr": 1.9,
+        "event": "M8.3 earthquake on fault #66192 (normal) on plate 18"
+      },
+      {
+        "elapsed_myr": 2.0,
+        "event": "Plate 4 began rifting but the rift failed, leaving an aulacogen basin."
+      },
+      {
+        "elapsed_myr": 2.0,
+        "event": "Plate 11 split into plates 11 and 19."
+      },
+      {
+        "elapsed_myr": 2.0,
+        "event": "Lateral magma transport deposited 7201 m of crust across 10619 nodes."
+      }
+    ],
+    [
+      {
+        "elapsed_myr": 1.9,
+        "event": "fault system born on plate 6 (reverse, single, ~83 km, 44 km from boundary)"
+      },
+      {
+        "elapsed_myr": 1.9,
+        "event": "M8.3 earthquake on fault #66192 (normal) on plate 18"
+      },
+      {
+        "elapsed_myr": 2.0,
+        "event": "Plate 4 began rifting but the rift failed, leaving an aulacogen basin."
+      },
+      {
+        "elapsed_myr": 2.0,
+        "event": "Plate 11 split into plates 11 and 19."
+      },
+      {
+        "elapsed_myr": 2.0,
+        "event": "Lateral magma transport deposited 7201 m of crust across 10619 nodes."
+      }
+    ]
+  ]
+}

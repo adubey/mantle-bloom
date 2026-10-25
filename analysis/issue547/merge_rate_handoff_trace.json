@@ -1,0 +1,291 @@
+{
+  "controls": {
+    "baseline_commit": "f155b7eb36727f452139955b13350593db57cbcd",
+    "candidate_commit": "45b035c34ed0c370e52d1386e17c14318e893d5a",
+    "node_density": 4.0,
+    "pythonhashseed": 0,
+    "seed": 580014012,
+    "step_myr": 2.0,
+    "stop_myr": 18.0
+  },
+  "events_through_18_myr": [
+    {
+      "elapsed_myr": 2.0,
+      "message": "Plate 3 split into plates 3 and 8.",
+      "step": 1
+    },
+    {
+      "elapsed_myr": 4.0,
+      "message": "Plate 7 split into plates 7 and 9.",
+      "step": 2
+    },
+    {
+      "elapsed_myr": 6.0,
+      "message": "Plate 9 split into plates 9 and 10.",
+      "step": 3
+    },
+    {
+      "elapsed_myr": 8.0,
+      "message": "Plate 7 split into plates 7 and 11.",
+      "step": 4
+    },
+    {
+      "elapsed_myr": 10.0,
+      "message": "Plate 4 split into plates 4 and 12.",
+      "step": 5
+    },
+    {
+      "elapsed_myr": 12.0,
+      "message": "Plate 7 split into plates 7 and 13.",
+      "step": 6
+    },
+    {
+      "elapsed_myr": 14.0,
+      "message": "Plate 9 split into plates 9 and 14.",
+      "step": 7
+    },
+    {
+      "elapsed_myr": 16.0,
+      "message": "Plates 8 and 13 collided and merged into plate 8 after 2 million years.",
+      "step": 8
+    },
+    {
+      "elapsed_myr": 18.0,
+      "message": "Plate 10 split into plates 10 and 15.",
+      "step": 9
+    }
+  ],
+  "interpretation": "The merge changes survivor omega as predicted. The first following solve sees changed boundary classes on four plates before replacing rates; the event sequence remains matched through 18 Myr. This supports a causal contribution of merge-rate handoff to boundary classification, but is one seed and one merge, not acceptance evidence or a model validation.",
+  "ledger_at_18_myr": {
+    "baseline": {
+      "continental_balance_error_m3": 1024.0,
+      "craton_balance_error_m3": 0.0,
+      "hm_closure_error_m3": {
+        "all": 10624.0,
+        "continental_node": -896.0,
+        "oceanic_node": 256.0
+      },
+      "mobile_cover_balance_error_m3": 80.0
+    },
+    "candidate": {
+      "continental_balance_error_m3": 2048.0,
+      "craton_balance_error_m3": 0.0,
+      "hm_closure_error_m3": {
+        "all": -2944.0,
+        "continental_node": 1344.0,
+        "oceanic_node": -256.0
+      },
+      "mobile_cover_balance_error_m3": 48.0
+    }
+  },
+  "merge_rate_cm_per_yr": {
+    "absorbed_before": 1.19290394381103,
+    "baseline_before": 0.3768576021392378,
+    "baseline_survivor_after_merge": 0.5,
+    "candidate_minus_baseline_survivor_vector_cm_per_yr": [
+      0.2730550392973936,
+      -0.4021624992814542,
+      -0.372994784508802
+    ],
+    "candidate_survivor_after_merge": 0.3768576021392378,
+    "survivor_vector_difference_magnitude_cm_per_yr": 0.6127143213478647
+  },
+  "next_solve": {
+    "aggregate_class_counts": {
+      "contested_nodes": {
+        "baseline": 290,
+        "candidate": 290
+      },
+      "convergent_nodes": {
+        "baseline": 1661,
+        "candidate": 1670
+      },
+      "divergent_nodes": {
+        "baseline": 1003,
+        "candidate": 975
+      },
+      "subducting_nodes": {
+        "baseline": 1009,
+        "candidate": 1021
+      },
+      "transform_nodes": {
+        "baseline": 11285,
+        "candidate": 11304
+      }
+    },
+    "baseline": {
+      "blocked_contacts": 1,
+      "contact_force_max_n_per_m": 5320219098146.285,
+      "driving_torque_norm_nm": 4.2882608579453555e+26,
+      "plates": 14,
+      "residual_torque_norm_nm": 1270377821901.4375,
+      "solver_converged": true,
+      "yielded_contacts": 0
+    },
+    "candidate": {
+      "blocked_contacts": 1,
+      "contact_force_max_n_per_m": 5300579263627.202,
+      "driving_torque_norm_nm": 4.266677317603898e+26,
+      "plates": 14,
+      "residual_torque_norm_nm": 714116013732.7697,
+      "solver_converged": true,
+      "yielded_contacts": 0
+    },
+    "class_count_changes": [
+      {
+        "baseline": {
+          "contested_nodes": 3,
+          "convergent_nodes": 387,
+          "divergent_nodes": 172,
+          "subducting_nodes": 386,
+          "transform_nodes": 839
+        },
+        "baseline_driving_torque_component_norms_nm": {
+          "basal_flow_nm": 1.0639575720554524e+26,
+          "ridge_push_nm": 5.591364002119071e+22,
+          "slab_pull_nm": 1.794004567428349e+26
+        },
+        "baseline_solved_rate_cm_per_yr": 1.5457540338641025,
+        "candidate": {
+          "contested_nodes": 3,
+          "convergent_nodes": 377,
+          "divergent_nodes": 159,
+          "subducting_nodes": 376,
+          "transform_nodes": 862
+        },
+        "candidate_driving_torque_component_norms_nm": {
+          "basal_flow_nm": 1.0639575720554524e+26,
+          "ridge_push_nm": 2.8434554852347096e+22,
+          "slab_pull_nm": 1.7741956555134663e+26
+        },
+        "candidate_solved_rate_cm_per_yr": 1.5030506534417933,
+        "delta_candidate_minus_baseline": {
+          "convergent_nodes": -10,
+          "divergent_nodes": -13,
+          "subducting_nodes": -10,
+          "transform_nodes": 23
+        },
+        "plate_id": 0
+      },
+      {
+        "baseline": {
+          "contested_nodes": 91,
+          "convergent_nodes": 103,
+          "divergent_nodes": 16,
+          "subducting_nodes": 9,
+          "transform_nodes": 1699
+        },
+        "baseline_driving_torque_component_norms_nm": {
+          "basal_flow_nm": 7.303113739827371e+25,
+          "ridge_push_nm": 3.3833540279888494e+23,
+          "slab_pull_nm": 0.0
+        },
+        "baseline_solved_rate_cm_per_yr": 0.04947533845720705,
+        "candidate": {
+          "contested_nodes": 91,
+          "convergent_nodes": 112,
+          "divergent_nodes": 0,
+          "subducting_nodes": 21,
+          "transform_nodes": 1706
+        },
+        "candidate_driving_torque_component_norms_nm": {
+          "basal_flow_nm": 7.303113739827371e+25,
+          "ridge_push_nm": 0.0,
+          "slab_pull_nm": 2.3446271562542255e+23
+        },
+        "candidate_solved_rate_cm_per_yr": 0.05855204078124291,
+        "delta_candidate_minus_baseline": {
+          "convergent_nodes": 9,
+          "divergent_nodes": -16,
+          "subducting_nodes": 12,
+          "transform_nodes": 7
+        },
+        "plate_id": 8
+      },
+      {
+        "baseline": {
+          "contested_nodes": 38,
+          "convergent_nodes": 38,
+          "divergent_nodes": 0,
+          "subducting_nodes": 0,
+          "transform_nodes": 998
+        },
+        "baseline_driving_torque_component_norms_nm": {
+          "basal_flow_nm": 1.2305455345735907e+26,
+          "ridge_push_nm": 0.0,
+          "slab_pull_nm": 0.0
+        },
+        "baseline_solved_rate_cm_per_yr": 0.7396126634915835,
+        "candidate": {
+          "contested_nodes": 38,
+          "convergent_nodes": 58,
+          "divergent_nodes": 2,
+          "subducting_nodes": 20,
+          "transform_nodes": 976
+        },
+        "candidate_driving_torque_component_norms_nm": {
+          "basal_flow_nm": 1.2305455345735907e+26,
+          "ridge_push_nm": 7.943362142877629e+19,
+          "slab_pull_nm": 0.0
+        },
+        "candidate_solved_rate_cm_per_yr": 0.7195189190510587,
+        "delta_candidate_minus_baseline": {
+          "convergent_nodes": 20,
+          "divergent_nodes": 2,
+          "subducting_nodes": 20,
+          "transform_nodes": -22
+        },
+        "plate_id": 10
+      },
+      {
+        "baseline": {
+          "contested_nodes": 0,
+          "convergent_nodes": 10,
+          "divergent_nodes": 192,
+          "subducting_nodes": 10,
+          "transform_nodes": 604
+        },
+        "baseline_driving_torque_component_norms_nm": {
+          "basal_flow_nm": 7.208907117741048e+25,
+          "ridge_push_nm": 1.6618845608456724e+22,
+          "slab_pull_nm": 5.633166903984285e+24
+        },
+        "baseline_solved_rate_cm_per_yr": 0.6534907465065645,
+        "candidate": {
+          "contested_nodes": 0,
+          "convergent_nodes": 0,
+          "divergent_nodes": 191,
+          "subducting_nodes": 0,
+          "transform_nodes": 615
+        },
+        "candidate_driving_torque_component_norms_nm": {
+          "basal_flow_nm": 7.208907117741048e+25,
+          "ridge_push_nm": 1.536974254823037e+22,
+          "slab_pull_nm": 0.0
+        },
+        "candidate_solved_rate_cm_per_yr": 0.5651447030574255,
+        "delta_candidate_minus_baseline": {
+          "convergent_nodes": -10,
+          "divergent_nodes": -1,
+          "subducting_nodes": -10,
+          "transform_nodes": 11
+        },
+        "plate_id": 12
+      }
+    ],
+    "interval_myr": "16 to 18",
+    "maximum_absolute_solved_rate_difference_cm_per_yr": {
+      "delta_candidate_minus_baseline": -0.08834604344913899,
+      "plate_id": 12
+    },
+    "step": 9
+  },
+  "scope": "RFC 0012 #547 matched merge-rate handoff trace (causal diagnostic)",
+  "validity": {
+    "initial_state_hashes_match": true,
+    "initial_state_sha256": "e0e07ae5719945be9774e4a2a2b17bb3a729e3739ffa30cef970d202a817eb07",
+    "merge_at_16_myr_matches": true,
+    "topology_event_count_through_18_myr": 9,
+    "topology_events_match_through_18_myr": true
+  }
+}
