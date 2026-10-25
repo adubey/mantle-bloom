@@ -20,6 +20,7 @@ from . import (
     mantle,
     merge_split,
     phase_budget,
+    plumes,
     torque,
     worldsketch,
 )
@@ -69,6 +70,7 @@ TUNING_MULTIPLIER_FIELDS = (
     "collision_uplift_reach_multiplier",
     "volcanism_multiplier",
     "fault_relief_multiplier",
+    "plume_multiplier",
 )
 
 
@@ -77,6 +79,11 @@ class World:
     seed: int
     plates: list[Plate] = field(default_factory=list)
     mantle_centers: list[mantle.ConvectionCenter] = field(default_factory=list)
+    # Mantle plume population (RFC 0007, plumes.py): discrete long-lived events fixed
+    # in the world frame, plus the next event index and arrival time per stream (head,
+    # tail-only). Mutable defaults, so old saves are backfilled (see persistence.py).
+    mantle_plumes: list = field(default_factory=list)
+    plume_stream: dict = field(default_factory=dict)
     elapsed_years: float = 0.0
     next_plate_id: int = 0
     # Count of step_world calls on this world. Drives the cadence of merge_split.py's
@@ -478,6 +485,12 @@ class World:
     # deformation. Meaningful only in "fault"/"both" mode, where it directly controls how sharp
     # fault-line ridges/scarps read relative to the surrounding boundary swell.
     fault_relief_multiplier: float = 1.0
+    # Mantle plume production (RFC 0007, plumes.py): scales stream acceptance against
+    # the stream ceiling. At 0 no plume ever spawns, reproducing a matched plume-off
+    # run. Plain-scalar default, so an older pickle falls through to 1.0.
+    plume_multiplier: float = 1.0
+    # Cox clustering variant of the plume arrival process (sensitivity case only).
+    plume_cox_modulation: bool = False
     # How a consumed lower-plate continental column splits at a polarized collision front
     # (issue #320, crust_transfer.py). Shares of the crust below the mobile cover, which all
     # goes with the scraped share. Scraped: thrust onto the upper plate's frontal belt.
@@ -1051,6 +1064,10 @@ def step_world_progress(world: World, years: float, *, motion_diagnostics: list[
             for message in magma_transport.run_magma_transport(world, world.magma_transport_banked_years / 1_000_000.0):
                 world.log_event(message)
             world.magma_transport_banked_years = 0.0
+        # Mantle plumes (RFC 0007, plumes.py): a whole-sphere pass after topology has
+        # settled for this step, same reasoning as magma_transport above. Interval
+        # overlap makes any step length exact; multiplier 0 is a strict no-op.
+        plumes.apply(world, years)
 
     erosion_result = None
     if world.simulate_climate_biomes:
