@@ -611,6 +611,34 @@ def test_a_full_strength_craton_resists_a_failed_rift_like_a_divergent_one():
     np.testing.assert_allclose(craton_hm, (1.0 - cratons.CRATON_RIFT_RESISTANCE) * plain_hm, rtol=1e-12)
 
 
+def test_a_heated_craton_resists_a_failed_rift_less(monkeypatch):
+    """RFC 0007 (#582): plume heat scales a craton's failed-rift resistance by
+    (1 - PLUME_CRATON_WEAKENING) for the heated fraction of the step."""
+    from app import cratons, plumes
+
+    monkeypatch.setattr(plumes, "PLUME_CRATON_WEAKENING", 0.5)
+
+    def thinning(heat_myr):
+        keys = pack_cell_keys(np.zeros(5, dtype=int), np.arange(4, 9), np.full(5, 5))
+        plate = PlateWithSparseQuadPatch(
+            7, np.eye(3), "continental", N, keys,
+            fields={
+                "elevation": np.full(5, 1000.0),
+                "crustal_thickness_m": np.full(5, 35_000.0),
+                "mantle_lithosphere_thickness_m": np.full(5, 100_000.0),
+                "craton_crust_m": np.full(5, cratons.CRATON_FULL_STRENGTH_HC_M),
+                "plume_heat_myr": np.full(5, heat_myr),
+            },
+        )
+        plate.apply_failed_rift(np.array([0.0, 1.0, 0.0]), spacing_rad=0.1, step_years=1_000_000)
+        return 35_000.0 - plate.collect("crustal_thickness_m")
+
+    cold = thinning(0.0)
+    hot = thinning(20.0)
+    assert np.any(cold > 0.0)
+    np.testing.assert_allclose(hot, 2.5 * cold, rtol=1e-12)
+
+
 def test_a_failed_rift_marks_exactly_its_thinned_band_as_belt():
     """RFC 0009: the band an aborted rift stretches is belt, dated now; without a world the
     thinning is the same and nothing is marked."""

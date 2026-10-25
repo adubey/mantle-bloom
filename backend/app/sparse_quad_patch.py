@@ -1111,10 +1111,12 @@ class PlateWithSparseQuadPatch(Plate):
         result[1].reset_age()
         return result[0], result[1]
 
-    def apply_failed_rift(self, cut_normal: np.ndarray, spacing_rad: float, world=None) -> None:
+    def apply_failed_rift(self, cut_normal: np.ndarray, spacing_rad: float, world=None, step_years: float = 0.0) -> None:
         """Thin a tapered band around an aborted rift without changing quad topology. A craton
         resists it as it resists divergent thinning (RFC 0003). With `world`, the thinned band
-        is marked as belt (RFC 0009)."""
+        is marked as belt (RFC 0009). Plume heat weakens that resistance for the heated
+        fraction of the step (RFC 0007, #582); without a step to scale it by the resistance
+        is exactly the unweakened one."""
         from . import cratons, lithosphere, rheology
         from .merge_split import FAILED_RIFT_BAND_MULT, FAILED_RIFT_THINNING_FRACTION
 
@@ -1140,7 +1142,11 @@ class PlateWithSparseQuadPatch(Plate):
         density = lithosphere.node_crust_density(self.collect("crust_type_code"), self.crust_type)
         before = lithosphere.isostatic_elevation(hc, hm, density)
         taper = np.clip(1.0 - distance / band_sin, 0.0, 1.0)
-        resisted = cratons.rift_resistance(self.collect("craton_crust_m"))
+        craton = self.collect("craton_crust_m")
+        if step_years > 0.0:
+            resisted = cratons.heated_rift_resistance(craton, self.collect("plume_heat_myr"), step_years)
+        else:
+            resisted = cratons.rift_resistance(craton)
         factor = np.clip(1.0 - FAILED_RIFT_THINNING_FRACTION * taper * (1.0 - resisted), 0.0, 1.0)
         hc[in_band] = np.maximum(
             hc[in_band] * factor[in_band], lithosphere.MIN_CRUSTAL_THICKNESS_M

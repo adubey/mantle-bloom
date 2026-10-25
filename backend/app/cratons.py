@@ -176,6 +176,53 @@ def rift_resistance(craton_crust_m: np.ndarray) -> np.ndarray:
     return np.clip(CRATON_RIFT_RESISTANCE * strength(craton_crust_m), 0.0, 1.0)
 
 
+def heated_strength(
+    craton_crust_m: np.ndarray,
+    plume_heat_myr: np.ndarray,
+    step_years: float,
+) -> np.ndarray:
+    """Craton strength scaled down by plume heat (RFC 0007, #582).
+
+    Cells carrying plume heat (`plume_heat_myr > 0`) keep only
+    ``(1 - PLUME_CRATON_WEAKENING)`` of their strength; a step that extends
+    beyond the remaining heat weakens only the heated fraction
+    (``remaining / step``), so decay is gradual as the countdown expires. No
+    heat anywhere returns exactly `strength`.
+    """
+    from . import plumes
+
+    weakening = float(np.clip(plumes.PLUME_CRATON_WEAKENING, 0.0, 1.0))
+    heat = np.asarray(plume_heat_myr, dtype=float)
+    step_myr = max(float(step_years) / 1e6, 0.0)
+    if step_myr <= 0.0:
+        return strength(craton_crust_m)
+    heated_fraction = np.clip(heat / step_myr, 0.0, 1.0)
+    return strength(craton_crust_m) * (1.0 - weakening * heated_fraction)
+
+
+def heated_rift_resistance(
+    craton_crust_m: np.ndarray,
+    plume_heat_myr: np.ndarray,
+    step_years: float,
+) -> np.ndarray:
+    """Craton-rooted rift resistance weakened by plume heat (RFC 0007, #582).
+
+    While cells carry plume heat (`plume_heat_myr > 0`), craton strength is
+    scaled by ``(1 - PLUME_CRATON_WEAKENING)`` and the product is clamped to
+    [0, 1] exactly like `rift_resistance`. A step that extends beyond the
+    remaining heat weakens only the heated fraction (``remaining / step``),
+    so decay is gradual as the countdown expires rather than an abrupt return
+    to full strength. No heat anywhere returns exactly `rift_resistance`.
+    Tails convention holds: tails stamp no tracer, so heat (and weakening)
+    is a head-only state.
+    """
+    return np.clip(
+        CRATON_RIFT_RESISTANCE * heated_strength(craton_crust_m, plume_heat_myr, step_years),
+        0.0,
+        1.0,
+    )
+
+
 def _hops(km: float, spacing_rad: float) -> int:
     return max(1, round(km / (spacing_rad * PLANET_RADIUS_KM)))
 

@@ -236,7 +236,7 @@ def deform(plate: "PlateWithSparseQuadPatch", world: "World", other_plates: list
         growth_neighbours = plate.get_neighbours(
             other_plates, threshold_rad=ctx.reach_rad + (MAX_ADVANCE_LAYERS_PER_STEP + 1) * spacing_rad
         )
-        _advance(plate, world, ctx, survivors, growth_neighbours, spacing_rad, max_cells)
+        _advance(plate, world, ctx, survivors, growth_neighbours, spacing_rad, max_cells, years)
         if world.debug_diagnostics:
             after = phase_budget.snapshot(plate, spacing_rad)
             phase_budget.record_snapshots(world, plate, "boundary_advance", before, after)
@@ -1509,6 +1509,7 @@ def _advance(
     neighbours: list,
     spacing_rad: float,
     max_cells: int,
+    years: float = 0.0,
 ) -> None:
     """Grow the boundary into open ground, layer by layer -- see the module docstring."""
     inputs = ctx.inputs
@@ -1526,7 +1527,7 @@ def _advance(
     if np.any(continental):
         signal = continental & (ctx.arc_band[survivors] | (plate.collect("elev_change_reason") == ELEV_CHANGE_SUBDUCTION_ARC))
         arc_source = continental & (hop_distance(plate, signal, ARC_MARGIN_END_SCAN_NODES - 1) < ARC_MARGIN_END_SCAN_NODES)
-    grow_frontier(plate, world, eligible, arc_source, neighbours, spacing_rad, MAX_ADVANCE_LAYERS_PER_STEP, max_cells)
+    grow_frontier(plate, world, eligible, arc_source, neighbours, spacing_rad, MAX_ADVANCE_LAYERS_PER_STEP, max_cells, years=years)
 
 
 def grow_frontier(
@@ -1540,6 +1541,7 @@ def grow_frontier(
     max_cells: int,
     claimable=None,
     standoff: bool = True,
+    years: float = 0.0,
 ) -> int:
     """Activate open empty cells across the exposed sides of `eligible` cells, then across
     the newest layer's, for up to `max_layers` layers and `max_cells` cells -- the shared
@@ -1617,7 +1619,7 @@ def grow_frontier(
 
         rifted = ~arc[inserted]
         if np.any(rifted):
-            _open_rift(plate, world, _ADVANCE_RNG_INDEX + 2 * layer, new_index, new_index[rifted], stretch_share[inserted][rifted])
+            _open_rift(plate, world, _ADVANCE_RNG_INDEX + 2 * layer, new_index, new_index[rifted], stretch_share[inserted][rifted], years)
     return max_cells - budget
 
 
@@ -1714,6 +1716,8 @@ def _allocate_stretch(
     craton: np.ndarray | None = None,
     cover: np.ndarray | None = None,
     cover_material: np.ndarray | None = None,
+    heat: np.ndarray | None = None,
+    step_years: float = 0.0,
 ) -> _StretchTransfer:
     """Share each rifted cell's stretched footprint (`stretch_share` of its area) out over its
     donor band -- the pre-existing cells within `K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION` hops,
@@ -1725,7 +1729,9 @@ def _allocate_stretch(
     construction. A rifted cell with no pre-existing cell in reach asks for nothing.
 
     A cratonic donor (`craton`, its cratonic thickness per node) is asked for only
-    `1 - CRATON_STRETCH_RESISTANCE * strength` of its area share; what it withholds is not
+    `1 - CRATON_STRETCH_RESISTANCE * strength` of its area share (with the strength
+    weakened by plume heat for the heated fraction of the step, RFC 0007 #582);
+    what it withholds is not
     shifted onto the other donors but left to the rifted cell's magmatic share
     (`withheld_area`), so the stretch concentrates in the younger crust beside a craton.
     Mobile cover (`cover`, its continental share `cover_material`) stretches with its column
@@ -1748,7 +1754,13 @@ def _allocate_stretch(
     requested_area_by_cell = np.where(band_area > 0.0, stretch_share * areas[rifted], 0.0)
     willing = np.ones(len(preexisting))
     if craton is not None:
-        willing = 1.0 - cratons.CRATON_STRETCH_RESISTANCE * cratons.strength(craton[preexisting])
+        # Plume heat weakens a cratonic donor's stretch resistance for the heated
+        # fraction of the step (RFC 0007, #582); without heat (or without a step to
+        # scale it by) this is exactly the unweakened strength.
+        donor_strength = cratons.strength(craton[preexisting])
+        if heat is not None and step_years > 0.0:
+            donor_strength = cratons.heated_strength(craton[preexisting], heat[preexisting], step_years)
+        willing = 1.0 - cratons.CRATON_STRETCH_RESISTANCE * donor_strength
     # requested_area[c, d]: footprint rifted cell c asks of donor d, in m^2.
     requested_area = csr_matrix(
         in_band.multiply((areas[preexisting] * willing)[None, :]).multiply(
@@ -1789,6 +1801,7 @@ def _open_rift(
     inserted_indices: np.ndarray,
     rifted: np.ndarray,
     stretch_share: np.ndarray,
+    years: float = 0.0,
 ) -> None:
     """Rift opening for this layer's `rifted` cells (node indices; `inserted_indices` is every
     cell this layer inserted, arc cells included). Each rifted cell covers `stretch_share` of
@@ -1812,9 +1825,11 @@ def _open_rift(
     material = plate.collect("continental_material_m")
     cover = plate.collect("mobile_cover_m")
     cover_material = plate.collect("mobile_cover_continental_m")
+    heat = plate.collect("plume_heat_myr")
     continental = effective_is_continental_from_codes(codes, plate.crust_type == "continental")
     transfer = _allocate_stretch(
-        plate, inserted_indices, rifted, stretch_share, hc, hm, continental, material, craton, cover, cover_material
+        plate, inserted_indices, rifted, stretch_share, hc, hm, continental, material, craton, cover, cover_material,
+        heat=heat, step_years=years,
     )
     areas = plate.node_areas_m2()
 

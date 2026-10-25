@@ -90,9 +90,21 @@ PLUME_UNIFORM_SHARE = 0.3
 PLUME_RATE_CORRELATION_MYR = 100.0
 PLUME_RATE_MODULATION_MAX = 3.0
 PLUME_HEAT_MYR = 20.0
+# Lithospheric weakening (#582): while `plume_heat_myr` covers emplaced cells,
+# craton-rooted rift resistance is scaled by (1 - PLUME_CRATON_WEAKENING), with
+# the product clamped like `cratons.rift_resistance`. Default 0.75. The weakened
+# state decays back automatically as the heat countdown expires; decay is gradual
+# (interval-overlap scaling), not an abrupt return to full strength.
+PLUME_CRATON_WEAKENING = 0.75
 # Stream ceiling: the knob's upper bound for thinning. Changing `plume_multiplier`
 # never reshuffles kept events because every draw below is index-keyed (#579).
 PLUME_MULTIPLIER_MAX = 4.0
+# Breakup stress (RFC 0007, #582): every continental head arrival adds this much to
+# its host plate's `internal_stress` (merge_split.py), pushing plume-affected
+# continents toward the split gates. Default 1.0 against STRESS_CERTAIN_RIFT 3.0;
+# provisional -- tuned in #584. Oceanic heads add nothing (no craton to weaken, and
+# oceanic lithosphere already rifts freely).
+PLUME_HEAD_STRESS = 1.0
 COX_LOG_SIGMA = 1.0
 
 HEAD_STREAM = "head"
@@ -306,6 +318,23 @@ def _unit_vectors(plate) -> np.ndarray:
     return points / np.maximum(norms, 1e-9)
 
 
+def _credit_head_stress(plates_data: list, continental: bool, host_plate: int) -> bool:
+    """Add PLUME_HEAD_STRESS to the continental head's host plate (RFC 0007, #582).
+
+    `host_plate` is a plate id, not a `plates_data` position (ids go sparse after
+    merges). Oceanic heads and unknown hosts credit nothing. Returns True when a
+    plate was credited.
+    """
+    if not continental or host_plate < 0:
+        return False
+    for entry in plates_data:
+        if entry["plate"].plate_id == host_plate:
+            host = entry["plate"]
+            host.set_internal_stress(host.internal_stress + PLUME_HEAD_STRESS)
+            return True
+    return False
+
+
 def _center_host(plates: list, position: np.ndarray) -> tuple[bool, int]:
     """Host at the plume centre: (is continental, plate id) of the nearest node."""
     from .elevation_lines import effective_is_continental_from_codes
@@ -463,6 +492,10 @@ def apply(world, years: float) -> dict:
                     f"Mantle plume head {plume.plume_id}: {plume.head_volume_m3 / 1e15:.1f} M km3 "
                     f"on {'oceanic' if plume.oceanic_host is not False else 'continental'} plate {host_plate}."
                 )
+            # A plate taking a continental head carries that stress toward breakup
+            # (RFC 0007, #582). Per arrival, not per step: the head's thermal halo
+            # persists separately as `plume_heat_myr`.
+            _credit_head_stress(plates_data, continental, host_plate)
     earth_m = PLANET_RADIUS_KM * 1000.0
     for plume in world.mantle_plumes:
         head_vol, tail_vol, active = _stage_volumes(plume, t0_years, t1_years)

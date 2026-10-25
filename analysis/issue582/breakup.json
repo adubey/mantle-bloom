@@ -1,0 +1,68 @@
+{
+  "provenance": {
+    "script": "compare_plume_breakup.py",
+    "git_head": "16abc00701608656e46b16ae4a327d754b011e25",
+    "git_status_short": "M backend/app/cratons.py\n M backend/app/lithosphere_plate.py\n M backend/app/merge_split.py\n M backend/app/plumes.py\n M backend/app/quad_tectonics.py\n M backend/app/sparse_quad_patch.py\n M backend/unit_tests/test_cratons.py\n M backend/unit_tests/test_plumes.py\n M backend/unit_tests/test_sparse_quad_patch.py\n?? analysis/issue582/\n?? bin/debug/compare_plume_breakup.py",
+    "python": "3.14.6",
+    "controls": {
+      "steps": "default generate_world, cratons on",
+      "plume_multiplier_on": 1.0,
+      "plume_multiplier_off": 0.0
+    },
+    "knobs": {
+      "PLUME_CRATON_WEAKENING": 0.75,
+      "PLUME_HEAD_STRESS": 1.0,
+      "PLUME_HEAT_MYR": 20.0,
+      "STRESS_CERTAIN_RIFT": 3.0,
+      "RIFT_SUCCESS_PROBABILITY": 0.55
+    }
+  },
+  "window_years": 20000000.0,
+  "results": [
+    {
+      "seed": 7,
+      "continental_heads": 27,
+      "oceanic_heads": 35,
+      "head_followed_by_host_split": 5,
+      "censored_windows": 0,
+      "head_split_fraction": 0.1852,
+      "matched_off_windows_with_any_split": 14,
+      "matched_off_fraction": 0.5185,
+      "on_splits_per_500myr": 28,
+      "off_splits_per_500myr": 26,
+      "off_background_expected": 26,
+      "on_wall_s": 505.6,
+      "off_wall_s": 549.9
+    },
+    {
+      "seed": 11,
+      "continental_heads": 22,
+      "oceanic_heads": 19,
+      "head_followed_by_host_split": 4,
+      "censored_windows": 0,
+      "head_split_fraction": 0.1818,
+      "matched_off_windows_with_any_split": 15,
+      "matched_off_fraction": 0.6818,
+      "on_splits_per_500myr": 32,
+      "off_splits_per_500myr": 28,
+      "off_background_expected": 28,
+      "on_wall_s": 299.9,
+      "off_wall_s": 273.8
+    },
+    {
+      "seed": 2024,
+      "continental_heads": 14,
+      "oceanic_heads": 32,
+      "head_followed_by_host_split": 3,
+      "censored_windows": 0,
+      "head_split_fraction": 0.2143,
+      "matched_off_windows_with_any_split": 11,
+      "matched_off_fraction": 0.7857,
+      "on_splits_per_500myr": 38,
+      "off_splits_per_500myr": 36,
+      "off_background_expected": 36,
+      "on_wall_s": 305.9,
+      "off_wall_s": 296.1
+    }
+  ]
+}
