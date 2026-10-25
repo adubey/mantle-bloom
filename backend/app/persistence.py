@@ -171,45 +171,32 @@ def _backfill_added_fields(world: World) -> None:
     pickle falls through to), a `field(default_factory=...)` sets no class attribute, so an
     old save's `__dict__` simply won't have the key and the first access `AttributeError`s.
     Only mutable-default fields need listing here."""
-    if not hasattr(world, "stranded_basin_tracks"):
-        world.stranded_basin_tracks = []
-    if not hasattr(world, "gap_tracks"):
-        world.gap_tracks = []
-    if not hasattr(world, "pending_magma_parcels"):
-        world.pending_magma_parcels = []
-    if not hasattr(world, "overlap_progress"):
-        world.overlap_progress = {}
-    if not hasattr(world, "faults"):
-        world.faults = []
-    if not hasattr(world, "boundary_faults"):
-        world.boundary_faults = []
-    if not hasattr(world, "fault_systems"):
-        world.fault_systems = []
-    if not hasattr(world, "earthquakes"):
-        world.earthquakes = []
-    if not hasattr(world, "removed_points_log"):
-        world.removed_points_log = []
-    if not hasattr(world, "pinned_omegas"):
-        world.pinned_omegas = {}
-    if not hasattr(world, "stats_history"):
-        world.stats_history = []
-    if not hasattr(world, "phase_budget"):
-        world.phase_budget = {}
-    if not hasattr(world, "collision_evidence"):
-        world.collision_evidence = {}
-    if not hasattr(world, "collision_fronts"):
-        world.collision_fronts = []
-    if not hasattr(world, "collision_polarity_stats"):
-        world.collision_polarity_stats = {}
-    if not hasattr(world, "hm_source_sink_ledger"):
-        world.hm_source_sink_ledger = {}
-    if not hasattr(world, "hm_suture_budget"):
-        world.hm_suture_budget = {}
-    if not hasattr(world, "suture_transfer_stats"):
-        world.suture_transfer_stats = {}
-    # ensure_ledger, not another hasattr branch: _backfill_added_fields already sits
-    # at the complexity cap (see ruff C901). Unconditional because a world pickled
-    # between the field landing and this repair may hold a bare {} or partial dict.
+    for name, make in (
+        ("stranded_basin_tracks", list),
+        ("gap_tracks", list),
+        ("pending_magma_parcels", list),
+        ("mantle_plumes", list),
+        ("plume_stream", dict),
+        ("overlap_progress", dict),
+        ("faults", list),
+        ("boundary_faults", list),
+        ("fault_systems", list),
+        ("earthquakes", list),
+        ("removed_points_log", list),
+        ("pinned_omegas", dict),
+        ("stats_history", list),
+        ("phase_budget", dict),
+        ("collision_evidence", dict),
+        ("collision_fronts", list),
+        ("collision_polarity_stats", dict),
+        ("hm_source_sink_ledger", dict),
+        ("hm_suture_budget", dict),
+        ("suture_transfer_stats", dict),
+    ):
+        if not hasattr(world, name):
+            setattr(world, name, make())
+    # Buoyant-crust ledger needs more than a missing-key default: backfill must
+    # also repair a bare {} or partial dict, so ensure_ledger runs unconditionally.
     from . import terranes
 
     terranes.ensure_ledger(world)

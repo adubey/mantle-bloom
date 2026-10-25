@@ -63,6 +63,10 @@ SURFACE_FIELDS: dict[str, SurfaceField] = {
     "silt_depth": _field(float, 0.0, RemapClass.EXTENSIVE),
     "is_volcano": _field(bool, False, RemapClass.BOOLEAN_PROVENANCE),
     "volcano_active_years_remaining": _field(float, 0.0, RemapClass.COUNTDOWN),
+    # Mantle plume heating for RFC 0010's craton weakening (RFC 0007, plumes.py):
+    # time left on plume weakening, in Myr. Counted down by plumes.apply, not by
+    # the remap machinery -- COUNTDOWN only governs refinement/coarsening here.
+    "plume_heat_myr": _field(float, 0.0, RemapClass.COUNTDOWN),
     "soil_depth": _field(float, 0.0, RemapClass.EXTENSIVE),
     "soil_mineral_content": _field(float, 0.0, RemapClass.INTENSIVE, coupled_to=("soil_depth",)),
     "soil_organic_content": _field(float, 0.0, RemapClass.INTENSIVE, coupled_to=("soil_depth",)),

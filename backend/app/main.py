@@ -295,6 +295,7 @@ class ControlsRequest(BaseModel):
     collision_uplift_reach_multiplier: float | None = None
     volcanism_multiplier: float | None = None
     fault_relief_multiplier: float | None = None
+    plume_multiplier: float | None = None
     # Gate for the debug-only diagnostics (see World.debug_diagnostics) -- on by default for a
     # "Debugging Worlds" tab world, off/toggleable here for any other loaded save.
     debug_diagnostics: bool | None = None
@@ -1464,7 +1465,7 @@ def set_controls(world_id: str, req: ControlsRequest) -> dict:
     step toggles, the wind model, and/or the geomorphic-budget tuning multipliers
     (world.TUNING_MULTIPLIER_FIELDS -- rain/river/wind/ocean/glacier/seismic erosion,
     coastal leveling, river/ocean deposition, collision uplift rate & reach, volcanism,
-    fault relief strength; all dimensionless, 1.0 == untuned) on the current world (the "Controls" window -- see
+    fault relief strength, plume production; all dimensionless, 1.0 == untuned) on the current world (the "Controls" window -- see
     World.sea_level_m/World.solar_multiplier/World.simulate_plate_movement/
     World.simulate_climate_biomes/World.wind_model and World's tuning-knob field group) and
     immediately recomputes world.climate_cache so the very next /worlds/{world_id}/render or
@@ -1496,8 +1497,8 @@ def set_controls(world_id: str, req: ControlsRequest) -> dict:
         )
     tuning_updates = {name: getattr(req, name) for name in TUNING_MULTIPLIER_FIELDS if getattr(req, name) is not None}
     for name, value in tuning_updates.items():
-        if value < 0.0:
-            raise HTTPException(status_code=400, detail=f"{name} must be >= 0 (got {value})")
+        if not np.isfinite(value) or value < 0.0:
+            raise HTTPException(status_code=400, detail=f"{name} must be finite and >= 0 (got {value})")
     with _compute_gate.hold(), session.lock:
         if req.sea_level_m is not None:
             # Sea level is eustatic now (see eustasy.py) -- the slider sets the conserved
