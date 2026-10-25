@@ -115,6 +115,9 @@ class MantlePlume:
     head_end_years: float = 0.0
     tail_flux_m3_per_yr: float = 0.0
     tail_end_years: float = 0.0
+    # Host type judged once at first emplacement (RFC: at born_years). Plain default
+    # so old saves load; None means "not judged yet" (#579).
+    oceanic_host: bool | None = None
 
     @property
     def is_tail_only(self) -> bool:
@@ -151,14 +154,17 @@ def _modulation(seed: int, stream: str, t_years: float, cox: bool) -> float:
     sensitivity variant (#579)."""
     if not cox:
         return 1.0
-    slot = int(t_years // (PLUME_RATE_CORRELATION_MYR * 1e6))
+    slot = int(math.floor(t_years / (PLUME_RATE_CORRELATION_MYR * 1e6)))
     draw = _event_rng(seed, f"cox/{stream}", slot).standard_normal()
     return min(math.exp(COX_LOG_SIGMA * draw - 0.5 * COX_LOG_SIGMA**2), PLUME_RATE_MODULATION_MAX)
 
 
 def _uniform_sphere(rng: np.random.Generator) -> np.ndarray:
     vec = rng.standard_normal(3)
-    return vec / np.linalg.norm(vec)
+    norm = float(np.linalg.norm(vec))
+    if norm == 0.0:
+        return np.array([0.0, 0.0, 1.0])
+    return vec / norm
 
 
 def _sample_position(rng: np.random.Generator, centers: list) -> tuple[float, float, float]:
@@ -225,8 +231,10 @@ def _sample_event(
             tail_end_years=head_end + PLUME_TAIL_LIFETIME_MYR * 1e6,
         )
     flux = _log_uniform(rng, PLUME_TAIL_FLUX_MIN_KM3_PER_YR, PLUME_TAIL_FLUX_MAX_KM3_PER_YR) * KM3_TO_M3
+    # Negative ids: each stream numbers from zero, so tail-only plumes take the
+    # mirrored range to keep event ids unambiguous (#579).
     return MantlePlume(
-        plume_id=index,
+        plume_id=-(index + 1),
         position=position,
         born_years=born_years,
         tail_flux_m3_per_yr=flux,
@@ -240,14 +248,14 @@ def consume_arrivals(
     cox: bool,
     centers: list,
     state: dict,
-    t0_years: float,
+    _t0_years: float,
     t1_years: float,
 ) -> list[MantlePlume]:
     """Consume every event with arrival time in (t0, t1], advancing `state` in place.
 
     `state` maps each stream to `[next_index, next_arrival_years]`. Arrivals at or
-    before t0 were consumed by earlier steps; only t1 matters, so any step partition
-    yields identical events (#579).
+    before t0 were consumed by earlier steps, so only t1 is read here; t0 is
+    documented for the interval contract and ignored (#579).
     """
     fresh: list[MantlePlume] = []
     for stream in (HEAD_STREAM, TAIL_STREAM):
@@ -339,8 +347,11 @@ def _footprint_share(
     dist = np.arccos(np.clip(unit @ position, -1.0, 1.0)) * earth_m
     mask = dist <= truncate_radii * radius_m
     if not np.any(mask):
+        # Nowhere in reach (only on degenerate cover): park the whole stage on the
+        # nearest cell with a uniform weight so scheduled volume is never lost (#579).
         mask = np.zeros(len(dist), dtype=bool)
         mask[int(np.argmin(dist))] = True
+        return mask, np.ones(1), float(areas[mask].sum())
     weights = _kernel_weights(dist[mask], radius_m, gaussian)
     return mask, weights, float(np.sum(weights * areas[mask]))
 
@@ -362,12 +373,17 @@ def _deposit_on_plate(world, plate, fields: dict, mask: np.ndarray, weights: np.
         return 0.0
     thick = volume_m3 * weights / norm
     hc = fields["hc"]
-    hc[mask] = hc[mask] + thick
+    hm = fields["hm"]
     density = lithosphere.node_crust_density(fields["codes"], plate.crust_type)
-    shift = lithosphere.isostatic_elevation(hc, fields["hm"], density) - lithosphere.isostatic_elevation(
-        fields["hc_before"], fields["hm"], density
+    # Incremental shift from THIS deposit only: isostasy is pointwise, so later
+    # deposits in the same step each add their own marginal relief (#579).
+    hc_pre = hc[mask].copy()
+    hc[mask] = hc_pre + thick
+    shift = lithosphere.isostatic_elevation(hc[mask], hm[mask], density[mask]) - lithosphere.isostatic_elevation(
+        hc_pre, hm[mask], density[mask]
     )
-    fields["elevation"] = rheology.clip_elevation_bounds(fields["elevation"] + shift)
+    elevation = fields["elevation"]
+    elevation[mask] = rheology.clip_elevation_bounds(elevation[mask] + shift)
     fields["reason"][mask] = ELEV_CHANGE_VOLCANO
     continental = effective_is_continental_from_codes(fields["codes"], plate.crust_type == "continental")
     juvenile = np.zeros(len(hc))
@@ -400,7 +416,9 @@ def apply(world, years: float) -> dict:
     from .elevation_lines import PLANET_RADIUS_KM, line_spacing_rad
 
     result = {"new_heads": 0, "new_tails": 0, "head_volume_m3": 0.0, "tail_volume_m3": 0.0}
-    if years <= 0.0 or world.plume_multiplier <= 0.0 or not world.simulate_plate_movement:
+    if years <= 0.0 or not (world.plume_multiplier > 0.0) or not world.simulate_plate_movement:
+        # `not (... > 0.0)` rather than `<= 0.0` so a NaN multiplier no-ops instead
+        # of producing at ceiling rate; set_controls also rejects non-finite (#579).
         return result
     t1_years = world.elapsed_years
     t0_years = t1_years - years
@@ -432,29 +450,32 @@ def apply(world, years: float) -> dict:
                 "heat": plate.collect("plume_heat_myr"),
             }
         )
-        entry = plates_data[-1]
-        entry["hc_before"] = entry["hc"].copy()
     for plume in fresh:
         if plume.is_tail_only:
             result["new_tails"] += 1
         else:
             result["new_heads"] += 1
-            oceanic, host_plate = _center_host([e["plate"] for e in plates_data], np.asarray(plume.position))
-            world.log_event(
-                f"Mantle plume head {plume.plume_id}: {plume.head_volume_m3 / 1e15:.1f} M km3 "
-                f"on {'oceanic' if oceanic else 'continental'} plate {host_plate}."
-            )
+            continental, host_plate = _center_host([e["plate"] for e in plates_data], np.asarray(plume.position))
+            if plates_data:
+                plume.oceanic_host = not continental
+            if host_plate >= 0:
+                world.log_event(
+                    f"Mantle plume head {plume.plume_id}: {plume.head_volume_m3 / 1e15:.1f} M km3 "
+                    f"on {'oceanic' if plume.oceanic_host is not False else 'continental'} plate {host_plate}."
+                )
     earth_m = PLANET_RADIUS_KM * 1000.0
-    host_cache: dict[int, bool] = {}
     for plume in world.mantle_plumes:
         head_vol, tail_vol, active = _stage_volumes(plume, t0_years, t1_years)
         if head_vol <= 0.0 and tail_vol <= 0.0 and not active:
             continue
         position = np.asarray(plume.position, dtype=float)
-        if id(plume) not in host_cache:
-            oceanic, _ = _center_host([e["plate"] for e in plates_data], position)
-            host_cache[id(plume)] = oceanic
-        oceanic = host_cache[id(plume)]
+        if plume.oceanic_host is None and plates_data:
+            continental, _ = _center_host([e["plate"] for e in plates_data], position)
+            plume.oceanic_host = not continental
+        # No plates: nothing to emplace on, so the kernel choice is dead.
+        oceanic = plume.oceanic_host is not False
+        # Tail-only plumes never refresh heat: weakening follows the head stage's
+        # broad radius (RFC 0007), so an 80 Myr tail outlives its thermal halo (#579).
         for stage, volume in (("head", head_vol), ("tail", tail_vol)):
             if volume <= 0.0:
                 continue

@@ -250,3 +250,164 @@ def test_old_save_backfills_plume_fields():
     persistence._backfill_added_fields(world)
     assert world.mantle_plumes == []
     assert world.plume_stream == {}
+
+
+def test_stream_identical_over_many_partitions():
+    """Ten chunks and random boundaries schedule the same events (#579)."""
+    centers = _test_centers()
+    whole = plumes.consume_arrivals(11, 1.0, False, centers, {}, 0.0, 50e6)
+    state: dict = {}
+    chunks = []
+    for stop in range(5, 55, 5):
+        chunks.extend(plumes.consume_arrivals(11, 1.0, False, centers, state, (stop - 5) * 1e6, stop * 1e6))
+    assert sorted(_event_key(p) for p in whole) == sorted(_event_key(p) for p in chunks)
+    rng = np.random.default_rng(0)
+    bounds = sorted(rng.uniform(0.0, 50e6, 7).tolist())
+    state = {}
+    jittered = []
+    prev = 0.0
+    for bound in bounds + [50e6]:
+        jittered.extend(plumes.consume_arrivals(11, 1.0, False, centers, state, prev, bound))
+        prev = bound
+    assert sorted(_event_key(p) for p in whole) == sorted(_event_key(p) for p in jittered)
+
+
+def test_cox_stream_identical_across_partitions():
+    """The Cox variant is partition-invariant too (#579)."""
+    centers = _test_centers()
+    whole = plumes.consume_arrivals(11, 1.0, True, centers, {}, 0.0, 30e6)
+    state: dict = {}
+    first = plumes.consume_arrivals(11, 1.0, True, centers, state, 0.0, 17e6)
+    second = plumes.consume_arrivals(11, 1.0, True, centers, state, 17e6, 30e6)
+    assert sorted(_event_key(p) for p in whole) == sorted(_event_key(p) for p in first + second)
+
+
+def test_plume_ids_unique_across_streams():
+    """Head ids count up from zero; tail-only ids mirror negative (#579)."""
+    centers = _test_centers()
+    events = plumes.consume_arrivals(11, 1.0, False, centers, {}, 0.0, 200e6)
+    heads = [p.plume_id for p in events if not p.is_tail_only]
+    tails = [p.plume_id for p in events if p.is_tail_only]
+    assert heads and tails
+    assert all(i >= 0 for i in heads)
+    assert all(i < 0 for i in tails)
+    assert len(set(heads)) == len(heads) and len(set(tails)) == len(tails)
+
+
+def _straddling_world() -> tuple[World, tuple[float, float, float]]:
+    left = quad_plate(0, "oceanic", columns=range(8), rows=range(8), density=2.0)
+    right = quad_plate(1, "oceanic", columns=range(8, 16), rows=range(8), density=2.0)
+    points = node_points(left)
+    position = tuple(float(v) for v in points[3 * 8 + 7] / np.linalg.norm(points[3 * 8 + 7]))
+    world = World(seed=11, plates=[left, right])
+    world.plume_stream = _stream_silenced()
+    world.mantle_plumes = [_head_plume(position)]
+    return world, position
+
+
+def test_cross_plate_footprint_places_exact_total():
+    """A boundary-straddling head still places its volume exactly once (#579)."""
+    world, _ = _straddling_world()
+    before = [p.collect("crustal_thickness_m").copy() for p in world.plates]
+    world.elapsed_years = 10e6
+    out = plumes.apply(world, 10e6)
+    from app.elevation_lines import line_spacing_rad
+
+    placed = 0.0
+    got_right = 0.0
+    for plate, hc0 in zip(world.plates, before):
+        areas = plate.accounting_areas_m2(line_spacing_rad(world.node_density))
+        delta = float(np.sum((plate.collect("crustal_thickness_m") - hc0) * areas))
+        placed += delta
+        if plate.plate_id == 1:
+            got_right = delta
+    assert out["head_volume_m3"] == pytest.approx(7e15, rel=1e-9)
+    # The head plume's tail also emplaces over the window (tail [5, 85] Myr).
+    assert placed == pytest.approx(7e15 + out["tail_volume_m3"], rel=1e-9)
+    assert got_right > 0.0
+
+
+def test_heat_refreshes_and_counts_down():
+    """Head-active cells refresh to 20 Myr; heat decays; tails stay cold (#579)."""
+    world, position = _straddling_world()
+    plate = world.plates[0]
+    world.elapsed_years = 3e6
+    plumes.apply(world, 1e6)
+    heat = plate.collect("plume_heat_myr")
+    # Refresh sets 20 Myr, then the step's own 1 Myr passes: end-of-step state is
+    # the true remaining time.
+    assert heat.max() == pytest.approx(plumes.PLUME_HEAT_MYR - 1.0)
+    globe_world = World(seed=11, plates=[globe_plate("oceanic")])
+    globe_world.plume_stream = _stream_silenced()
+    globe_world.mantle_plumes = [_head_plume((1.0, 0.0, 0.0))]
+    globe_world.elapsed_years = 3e6
+    plumes.apply(globe_world, 1e6)
+    globe_heat = globe_world.plates[0].collect("plume_heat_myr")
+    assert globe_heat.max() == pytest.approx(plumes.PLUME_HEAT_MYR - 1.0)
+    assert np.any(globe_heat == 0.0)
+    world.mantle_plumes = []
+    world.elapsed_years = 8e6
+    plumes.apply(world, 5e6)
+    assert plate.collect("plume_heat_myr").max() == pytest.approx(plumes.PLUME_HEAT_MYR - 6.0)
+    tail_world = World(seed=11, plates=[quad_plate(0, "oceanic")])
+    tail_world.plume_stream = _stream_silenced()
+    tail_world.mantle_plumes = [_tail_plume(position)]
+    tail_world.elapsed_years = 1e6
+    plumes.apply(tail_world, 1e6)
+    assert np.all(tail_world.plates[0].collect("plume_heat_myr") == 0.0)
+
+
+def test_dead_plumes_drop_at_step_end():
+    """A plume whose tail ended is gone after the step (#579)."""
+    world = World(seed=11, plates=[quad_plate(0, "oceanic")])
+    world.plume_stream = _stream_silenced()
+    spent = _tail_plume((1.0, 0.0, 0.0))
+    spent.tail_end_years = -20e6
+    world.mantle_plumes = [spent]
+    world.elapsed_years = 0.0
+    out = plumes.apply(world, 1e6)
+    assert out["tail_volume_m3"] == 0.0
+    assert world.mantle_plumes == []
+
+
+def test_continental_head_books_juvenile():
+    """Flood-basalt Hc on continental hosts books juvenile volume (#579)."""
+    plate = quad_plate(0, "continental", columns=range(4), rows=range(4), density=2.0)
+    points = node_points(plate)
+    position = tuple(float(v) for v in points[len(points) // 2] / np.linalg.norm(points[len(points) // 2]))
+    world = World(seed=11, plates=[plate])
+    world.plume_stream = _stream_silenced()
+    world.mantle_plumes = [_head_plume(position)]
+    before = world.continental_material_ledger.get("juvenile_additions_m3", 0.0)
+    world.elapsed_years = 10e6
+    out = plumes.apply(world, 10e6)
+    booked = world.continental_material_ledger.get("juvenile_additions_m3", 0.0) - before
+    # Head flood basalt plus the head plume's tail, both on continental hosts.
+    assert booked == pytest.approx(out["head_volume_m3"] + out["tail_volume_m3"], rel=1e-9)
+    assert out["head_volume_m3"] == pytest.approx(7e15, rel=1e-9)
+
+
+def test_head_logs_event_with_id_host_and_volume():
+    """Each stream-born head logs id, volume, and host plate (#579)."""
+    world = World(seed=11, plates=[globe_plate("oceanic")])
+    world.elapsed_years = 200e6
+    plumes.apply(world, 200e6)
+    heads = [message for _, message in world.events if message.startswith("Mantle plume head")]
+    assert heads
+    assert all("M km3" in message and "plate" in message for message in heads)
+
+
+def test_old_plates_default_heat_to_zero():
+    """Plates made before the heat field read zero heat (#579)."""
+    plate = quad_plate(0, "oceanic")
+    assert np.all(plate.collect("plume_heat_myr") == 0.0)
+
+
+def test_diagnostics_counts_population():
+    """diagnostics() reports the live census (#579)."""
+    world = World(seed=11, plates=[])
+    world.mantle_plumes = [_head_plume((1.0, 0.0, 0.0)), _tail_plume((0.0, 1.0, 0.0))]
+    census = plumes.diagnostics(world)
+    assert census["active_plumes"] == 2
+    assert census["heads"] == 1
+    assert census["tails"] == 1

@@ -1497,8 +1497,8 @@ def set_controls(world_id: str, req: ControlsRequest) -> dict:
         )
     tuning_updates = {name: getattr(req, name) for name in TUNING_MULTIPLIER_FIELDS if getattr(req, name) is not None}
     for name, value in tuning_updates.items():
-        if value < 0.0:
-            raise HTTPException(status_code=400, detail=f"{name} must be >= 0 (got {value})")
+        if not np.isfinite(value) or value < 0.0:
+            raise HTTPException(status_code=400, detail=f"{name} must be finite and >= 0 (got {value})")
     with _compute_gate.hold(), session.lock:
         if req.sea_level_m is not None:
             # Sea level is eustatic now (see eustasy.py) -- the slider sets the conserved
