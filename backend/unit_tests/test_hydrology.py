@@ -58,6 +58,22 @@ def test_precipitation_source_partition_accounts_for_dry_wet_and_partial_cells()
     assert wet_rain + dry_runoff + dry_et == pytest.approx(liquid_input)
 
 
+def test_external_water_sources_keep_their_own_transit_loss_rules():
+    elevation = np.array([2.0, 1.0, 0.0])
+    is_ocean = np.zeros(3, dtype=bool)
+    targets = np.array([1, 2, -1])
+    dry_loss = np.array([0.1, 0.2, 0.3])
+    transit_loss = np.full(3, 0.2)
+    routed = hydrology._route_external_water_sources(
+        elevation, is_ocean, targets, np.array([100.0, 0.0, 0.0]),
+        np.array([100.0, 0.0, 0.0]), np.array([100.0, 0.0, 0.0]), dry_loss, transit_loss,
+    )
+
+    assert routed["dry_runoff"][1][2] == pytest.approx(100.0 * 0.9 * 0.8 * 0.7)
+    assert routed["meltwater"][1][2] == pytest.approx(100.0 * 0.8**3)
+    assert routed["wet_precip"][1][2] == pytest.approx(100.0)
+
+
 def test_compute_hydrology_exposes_wet_precipitation_once_in_external_supply():
     theta = 0.05 * np.arange(40)
     elevation = np.full(40, 300.0)
