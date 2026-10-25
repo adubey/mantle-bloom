@@ -1,0 +1,22 @@
+{
+  "issue": 587,
+  "seed": 997271774,
+  "save": "mantle-bloom-seed997271774-87400000y.mbworld",
+  "save_sha256": "08ad9461d9585e92be93a58d81e326c7e4b685ae7d462135d01b0e9931ed762b",
+  "horizon_myr": 43.1,
+  "steps": 431,
+  "step_years": 100000,
+  "baseline_commit": "f04cbc0772eca6d2484f7477b20004deb368206c",
+  "branch_code_commit": "244ea48f4a9ece9f358d2bde691d1623fed082a8",
+  "primary_metric": "continental area at endpoint",
+  "expected_direction": "no reliable directional prediction",
+  "expected_magnitude": "within 2%",
+  "decision_threshold_relative": 0.02,
+  "noise_basis": "approximately ±2% continental area at 43 Myr in issue #315",
+  "controls": [
+    "same save bytes",
+    "same seed and timestep",
+    "same replay script and horizon"
+  ],
+  "status": "preregistered"
+}
