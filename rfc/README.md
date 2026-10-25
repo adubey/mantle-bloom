@@ -16,7 +16,7 @@ implemented through ordinary issues and PRs (see [AGENTS.md](../AGENTS.md)), eac
 | [0004](0004-proto-cratons.md) | Proto-cratons: restarting craton formation | Withdrawn (superseded by 0009) |
 | [0005](0005-continental-recycling-balance.md) | Balance continental recycling at trenches | Draft |
 | [0006](0006-intra-oceanic-arcs.md) | Intra-oceanic arcs: new continent from the ocean | Draft |
-| [0007](0007-mantle-plumes-and-plateaus.md) | Mantle plumes: oceanic plateaus, flood basalts and hotspot tracks | Draft |
+| [0007](0007-mantle-plumes-and-plateaus.md) | Mantle plumes: oceanic plateaus, flood basalts and hotspot tracks | Accepted |
 | [0008](0008-craton-collision-jamming.md) | Cratons jam collisions: braking and fusion | Accepted |
 | [0009](0009-craton-mosaic.md) | Cratons first: continents built from cratonic cores, plates placed around them | Accepted (revised after G1) |
 | [0010](0010-rifts-follow-weak-lithosphere.md) | Rifts follow weak lithosphere | Accepted |

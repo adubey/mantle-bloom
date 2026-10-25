@@ -1,8 +1,8 @@
 # RFC 0007: Mantle plumes: oceanic plateaus, flood basalts and hotspot tracks
 
-- **Status:** Draft
+- **Status:** Accepted 2026-10-25 (owner confirmation; merged as Draft in PR #568)
 - **Date:** 2026-10-13; evidence refreshed 2026-10-14 (#403)
-- **Related:** #205 (magma transport),
+- **Related:** #573 (tracking), #205 (magma transport),
   [#407](https://github.com/adubey/mantle-bloom/issues/407) (source attribution and breakup baseline); RFCs [0010](0010-rifts-follow-weak-lithosphere.md)
   (plume weakening of cratons and conditional plume-assisted local rifting; supersedes 0003), [0009](0009-craton-mosaic.md) (cratons;
   supersedes 0004, keeps its depletion follow-up deferred),
