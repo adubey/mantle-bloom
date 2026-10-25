@@ -7,6 +7,7 @@ import base64
 import json
 import logging
 import os
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -886,7 +887,14 @@ def generate(world_id: str, req: GenerateRequest) -> StreamingResponse:
         # closed before its first step holds nothing yet.
         acquired = False
         _compute_gate.acquire()
-        session.lock.acquire()
+        try:
+            session.lock.acquire()
+        except BaseException:
+            # Lock.acquire() raises only on interpreter-level events, but if it
+            # did, `acquired` would stay False while the gate is held -- a wedge
+            # every world shares and no flag tracks. Release it first.
+            _compute_gate.release()
+            raise
         acquired = True
         try:
             # The world may have been deleted while this stream queued at the gate.
@@ -985,9 +993,11 @@ def generate_debug(world_id: str, req: GenerateDebugRequest) -> dict:
                 raise HTTPException(status_code=404, detail="no such world")
             world = debug_worlds.generate_debug_world(req.scenario, req.seed)
             _set_world(session, world)
+            # Summarized under the lock: the arrays a concurrent step mutates in
+            # place must not be read mid-step.
+            return _summary(session, world)
     finally:
         session.end_operation()
-    return _summary(session, world)
 
 
 @app.get("/debug/scenarios")
@@ -1030,15 +1040,25 @@ def step(world_id: str, req: StepRequest) -> StreamingResponse:
     `503` (before the stream starts, same as /worlds/{world_id}/animate) if a generation, step, or
     animation is already in progress."""
     session = _session_or_404(world_id)
-    world = _require_world(session)
     _require_valid_step_years(req.years)
     if not session.begin_operation():
         raise HTTPException(status_code=503, detail="a generation, step, or animation is already in progress")
+    # Captured under the flag: a replacer swapping session.world between this read
+    # and the stream's turn at the gate would leave the step mutating a detached
+    # world whose work never reaches the published state.
+    world = _require_world(session)
 
     def _stream():
         acquired = False
         _compute_gate.acquire()
-        session.lock.acquire()
+        try:
+            session.lock.acquire()
+        except BaseException:
+            # Lock.acquire() raises only on interpreter-level events, but if it
+            # did, `acquired` would stay False while the gate is held -- a wedge
+            # every world shares and no flag tracks. Release it first.
+            _compute_gate.release()
+            raise
         acquired = True
         try:
             # The world may have been deleted while this stream queued at the gate.
@@ -1260,7 +1280,6 @@ def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
     up to `steps_per_frame` full step_world calls + one render). `404` if no world has been
     generated yet, `503` if a generation, step, or animation is already in progress."""
     session = _session_or_404(world_id)
-    world = _require_world(session)
     if req.projection not in projections.PROJECTIONS:
         raise HTTPException(status_code=400, detail=f"unknown projection {req.projection!r}")
     if req.view not in render_image.VIEWS:
@@ -1281,6 +1300,9 @@ def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
     # step/animation on this world still 503s before the stream starts.
     if not session.begin_operation():
         raise HTTPException(status_code=503, detail="a generation, step, or animation is already in progress")
+    # Captured under the flag (see step): no replacer can swap session.world between
+    # this read and the stream's turn at the gate.
+    world = _require_world(session)
 
     # Clear any stale signal from a previous run (e.g. a stop request that arrived after that
     # run had already finished on its own) so this fresh run starts unsignaled.
@@ -1289,7 +1311,14 @@ def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
     def _stream():
         acquired = False
         _compute_gate.acquire()
-        session.lock.acquire()
+        try:
+            session.lock.acquire()
+        except BaseException:
+            # Lock.acquire() raises only on interpreter-level events, but if it
+            # did, `acquired` would stay False while the gate is held -- a wedge
+            # every world shares and no flag tracks. Release it first.
+            _compute_gate.release()
+            raise
         acquired = True
         try:
             # The world may have been deleted while this stream queued at the gate.
@@ -1364,7 +1393,11 @@ def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
                         animation.close()
                         raise
                     _compute_gate.acquire()
-                    session.lock.acquire()
+                    try:
+                        session.lock.acquire()
+                    except BaseException:
+                        _compute_gate.release()
+                        raise
                     acquired = True
             except GeneratorExit:
                 # A failure line (below) is yielded while holding the locks, so a
@@ -1391,6 +1424,18 @@ def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
                 _world_changed(session, completed)
                 session.lock.release()
                 _compute_gate.release()
+            elif last_frame:
+                # Disconnected mid-run: the completed frames were checkpointed
+                # individually, but without this the feed revision, render cache
+                # and index would still describe the pre-animation world. Publish
+                # them without re-checkpointing (completed=False skips the
+                # redundant pickle). Non-blocking: disconnect finalization must
+                # never park on the session lock.
+                if session.lock.acquire(blocking=False):
+                    try:
+                        _world_changed(session, False)
+                    finally:
+                        session.lock.release()
             session.end_operation()
 
     return StreamingResponse(_stream(), media_type="application/x-ndjson")
@@ -2188,9 +2233,12 @@ def public_worlds() -> dict:
     """The public worlds a logged-out viewer may open (#563)."""
     worlds = []
     for session in _registry.list():
-        summary = session.feed.summary()
-        if session.is_public and summary is not None:
-            worlds.append({"world_id": session.world_id, "name": session.name, **summary})
+        # name/is_public are mutated under the session lock by patch_world; the
+        # feed summary has its own mutex.
+        with session.lock:
+            summary = session.feed.summary()
+            if session.is_public and summary is not None:
+                worlds.append({"world_id": session.world_id, "name": session.name, **summary})
     return {"worlds": worlds}
 
 
@@ -2311,6 +2359,16 @@ _checkpoint_root: checkpoint.CheckpointStore | None = None
 _checkpoint_error: str | None = None
 
 
+# Serializes _save_index's read-all-records + atomic write. Without it, a step's
+# per-change save on one world interleaves with a rename/create/delete save on
+# another and the last writer wins with a stale snapshot (lost update), and a
+# save can catch a half-mutated record. Every mutation is followed by its own
+# save, so serialized saves always converge on current memory. The registry lock
+# inside list() stays a leaf (never held across a session lock), so this adds no
+# lock-order edge. Deadlock audit: index -> registry only.
+_index_lock = threading.Lock()
+
+
 def _save_index() -> None:
     # Best-effort, like _checkpoint_world below: a failing index write (a full or
     # unmounted volume) is logged rather than raised, so it can never skip the
@@ -2318,7 +2376,8 @@ def _save_index() -> None:
     if _checkpoint_root is None:
         return
     try:
-        _checkpoint_root.save_index([session.record() for session in _registry.list()])
+        with _index_lock:
+            _checkpoint_root.save_index([session.record() for session in _registry.list()])
     except Exception:  # noqa: BLE001 -- e.g. a full volume mustn't fail the request
         _logger.exception("checkpoint: couldn't save the registry index")
 

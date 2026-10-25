@@ -232,6 +232,39 @@ def test_failing_index_save_is_logged_not_raised(client, tmp_path):
         os.chmod(store.directory, 0o755)
 
 
+def test_concurrent_index_saves_converge_on_memory(client, tmp_path):
+    """Round-4 Finding 1: concurrent saves from different worlds must not lose
+    each other's updates. Every mutation is followed by its own save and saves
+    are serialized, so the last completed save necessarily read after every
+    completed mutation: the file must equal live memory once all threads join."""
+    import json
+    import threading
+
+    sessions = [main._registry.create(name=f"w{i}") for i in range(3)]
+    for session in sessions:
+        main._wire_session(session)
+
+    def hammer(session, tag: str) -> None:
+        for i in range(20):
+            with session.lock:
+                session.name = f"{tag}-{i}"
+                session.touch()
+            main._save_index()
+
+    threads = [threading.Thread(target=hammer, args=(s, f"t{n}")) for n, s in enumerate(sessions)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=60)
+    assert not any(thread.is_alive() for thread in threads)
+    index = {
+        record["world_id"]: record
+        for record in json.loads((tmp_path / "worlds.json").read_text())["worlds"]
+    }
+    for session in sessions:
+        assert index[session.world_id] == session.record()
+
+
 def test_blank_or_huge_world_names_are_rejected(client):
     """F9: an empty name renders as a blank option (and restores differently);
     a huge one is rewritten to worlds.json on every save."""

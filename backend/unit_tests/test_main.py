@@ -1336,6 +1336,25 @@ def test_animate_advances_the_world_and_streams_progress_then_an_mp4(client):
         assert sum(1 for _ in container.decode(video=0)) == 3
 
 
+def test_animate_disconnect_mid_stream_still_publishes_completed_frames(client):
+    # Round-4 Finding 3: animate used to defer its only _world_changed to normal
+    # completion, so a disconnect left the feed revision, render cache and index
+    # describing the pre-animation world even though the completed frames were
+    # already checkpointed. Disconnect after the first frame's progress line;
+    # the feed must still advance past the pre-animation revision.
+    _post_generate(client, json={"seed": 9, "num_plates": 6})
+    before = _default_session.feed.revision()
+    chunk_count = _post_streaming_then_disconnect(
+        f"/worlds/{_default_session.world_id}/animate",
+        {"projection": "eckert4", "view": "elevation", "width": 64, "height": 64,
+         "step_years": 100_000, "num_frames": 2},
+        disconnect_after_chunks=1,
+    )
+    assert chunk_count == 1  # confirms the scenario really did cut the stream short
+    assert _wait_until(lambda: _default_session.feed.revision() != before)
+    assert _default_session.feed.revision() != before
+
+
 def test_animate_progress_carries_a_live_stats_snapshot(client):
     # GitHub issue #155: the Stats panel used to sit frozen for the whole recording, since
     # GET /world/stats blocks on the world lock that /world/animate holds throughout. Each
