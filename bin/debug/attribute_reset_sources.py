@@ -201,8 +201,8 @@ def run_self_test() -> dict:
         from unittest import mock
 
         results = {}
-        for tag, n_nodes, full in (("lithosphere_plate.deform_columns:999", 4, True),
-                                   ("quad_tectonics._open_rift:999", 4, False)):
+        for tag, full in (("lithosphere_plate.deform_columns:999", True),
+                          ("quad_tectonics._open_rift:999", False)):
             plate = SimpleNamespace(
                 plate_id=3, crust_type="continental",
                 node_count=lambda: 4,
@@ -215,15 +215,13 @@ def run_self_test() -> dict:
             hm = np.full(4, 60_000.0)
             melting = np.array([True, True, True, False])
             prior_elev = np.array([400.0, -3000.0, 500.0, 100.0])
-            with mock.patch.object(
-                taps, "_original_erupt",
-                lambda w, pid, r, h, m, c, v, rem, melt, elev: (
-                    c.__setitem__((melt & (np.asarray(elev) > 0.0)),
-                                      elevation_lines.CRUST_TYPE_CONTINENTAL),
-                    h.__setitem__((melt & (np.asarray(elev) > 0.0)), 35_000.0),
-                    h.__setitem__((melt & ~(np.asarray(elev) > 0.0)), 11_000.0),
-                ),
-            ):
+            def _fake_erupt(_w, _pid, _r, h, _m, c, _v, _rem, melt, elev):
+                exposed = melt & (np.asarray(elev) > 0.0)
+                c.__setitem__(exposed, elevation_lines.CRUST_TYPE_CONTINENTAL)
+                h.__setitem__(exposed, 35_000.0)
+                h.__setitem__(melt & ~exposed, 11_000.0)
+
+            with mock.patch.object(taps, "_original_erupt", _fake_erupt):
                 if not full:
                     sub = np.array([0, 1, 2])
                     codes_s, hc_s, melt_s, elev_s = codes[sub], hc[sub].copy(), melting[sub], prior_elev[sub]
