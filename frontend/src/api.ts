@@ -655,7 +655,7 @@ export interface DebugScenario {
 // The "Debugging Worlds" Generate World tab's scenario picker options -- see backend
 // debug_worlds.py's DEBUG_SCENARIOS / DEBUG_SCENARIO_LABELS.
 // An unused exoplanet-style name for the Generate World dialog to offer up front
-// (#597): advisory only, POST /worlds still enforces uniqueness at creation.
+// (#597): advisory only, duplicate display names are allowed.
 export function fetchSuggestedName(): Promise<{ name: string }> {
   return fetch(`${API_BASE}/worlds/suggest-name`).then(asJson<{ name: string }>);
 }

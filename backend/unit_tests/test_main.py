@@ -1978,6 +1978,29 @@ def test_suggest_name_returns_an_unused_exoplanet_name(client):
     raw.delete(f"/worlds/{raw.get('/worlds').json()['worlds'][0]['world_id']}")
 
 
+def test_generate_identity_applies_only_on_accepted_requests(client):
+    # A rejected generate (bad params, unknown scenario) must not rename or
+    # publish the record (#599 review).
+    raw = _raw_client()
+    wid = raw.post("/worlds", json={}).json()["world_id"]
+    (before_world,) = [w for w in raw.get("/worlds").json()["worlds"] if w["world_id"] == wid]
+    before = before_world["name"]
+    resp = raw.post(
+        f"/worlds/{wid}/generate",
+        json={"seed": 1, "voronoi_points": 5000, "name": "Sneaky", "is_public": True},
+    )
+    assert resp.status_code == 400
+    resp = raw.post(
+        f"/worlds/{wid}/generate_debug",
+        json={"scenario": "nope", "name": "Sneaky", "is_public": True},
+    )
+    assert resp.status_code == 400
+    (record,) = [w for w in raw.get("/worlds").json()["worlds"] if w["world_id"] == wid]
+    assert record["name"] == before
+    assert record["is_public"] is False
+    assert raw.delete(f"/worlds/{wid}").status_code == 200
+
+
 def test_registry_crud_public_listing_and_removed_old_routes(client, saved_world):
     raw = _raw_client()
     a = raw.post("/worlds", json={"name": "A"}).json()

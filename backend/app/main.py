@@ -819,8 +819,8 @@ def create_world(req: CreateWorldRequest) -> dict:
 @app.get("/worlds/suggest-name")
 def suggest_world_name() -> dict:
     """An unused exoplanet-style name for the Generate World dialog to offer up
-    front (#597): advisory only, `POST /worlds` still enforces uniqueness when
-    the world is actually created."""
+    front (#597): advisory only, duplicate display names are allowed (identity
+    is the world_id)."""
     return {"name": world_names.default_world_name({s.name for s in _registry.list()})}
 
 
@@ -896,7 +896,6 @@ def generate(world_id: str, req: GenerateRequest) -> StreamingResponse:
     stream starts, so a bad request still gets an ordinary 400 response rather than an error
     line."""
     session = _session_or_404(world_id)
-    _apply_generate_identity(session, req.name, req.is_public)
     if req.node_density not in NODE_DENSITY_CHOICES:
         raise HTTPException(status_code=400, detail=f"unknown node_density {req.node_density!r}; choices are {NODE_DENSITY_CHOICES}")
     if req.climate_density not in climate.CLIMATE_DENSITY_CHOICES:
@@ -926,6 +925,10 @@ def generate(world_id: str, req: GenerateRequest) -> StreamingResponse:
     # world queues FIFO instead of failing.
     if not session.begin_operation():
         raise HTTPException(status_code=503, detail="a generation, step, or animation is already in progress")
+
+    # After validation and the operation flag: a rejected (400) or conflicting
+    # (503) request must not rename or publish the record (#599 review).
+    _apply_generate_identity(session, req.name, req.is_public)
 
     def _stream():
         # Taken here, not synchronously above: another world's compute queues
@@ -1024,7 +1027,6 @@ def generate_debug(world_id: str, req: GenerateDebugRequest) -> dict:
     for an unknown world id, `503` while a generation, step, or animation is in
     progress."""
     session = _session_or_404(world_id)
-    _apply_generate_identity(session, req.name, req.is_public)
     if req.scenario not in debug_worlds.DEBUG_SCENARIOS:
         raise HTTPException(
             status_code=400,
@@ -1037,6 +1039,8 @@ def generate_debug(world_id: str, req: GenerateDebugRequest) -> dict:
     # never reaches the published state.
     if not session.begin_operation():
         raise HTTPException(status_code=503, detail="a generation, step, or animation is already in progress")
+    # After validation and the operation flag: see generate() above (#599 review).
+    _apply_generate_identity(session, req.name, req.is_public)
     try:
         with _compute_gate.hold(), session.lock:
             if session.deleted:
