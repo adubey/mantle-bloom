@@ -70,9 +70,13 @@ river model, river presentation uses physical discharge and physical flow-edge l
 lake silt reads the physical lake inflow (#363). The legacy route is only a fallback now.
 Three kinds of water/forcing move along `flow_target`:
 
-- **Physical water**, in m^3/yr: area-weighted Budyko runoff of liquid precipitation plus
-  glacier meltwater. It balances the lakes (see *Balanced lakes* below), and its through-flow
-  is the river discharge, `HydrologyFields.discharge_m3_s`, in m^3/s.
+- **Physical water**, in m^3/yr: rain on the lagged wet fraction goes directly to lake storage;
+  only the dry fraction incurs land Budyko evapotranspiration and supplies runoff, alongside
+  separately routed glacier meltwater. Transit evaporation applies only over dry cell area.
+  `HydrologyFields.lake_external_supply_m3_per_yr` and its wet-rain, dry-runoff and meltwater
+  source arrays expose the settled external supply before internal lake-to-lake transfers, so
+  the in-step lake resolver can book each source once (#587). The routed through-flow is river
+  discharge, `HydrologyFields.discharge_m3_s`, in m^3/s.
 - **Glacier meltwater** is the ice ledger's per-step volume (`IceLedger.meltwater_m3`: surface
   and basal melt, overflow, ice shed at the depth guard, and snow melting on bare ground)
   divided by the step length (`hydrology.meltwater_m3_per_yr`). Melted ice is booked as
@@ -173,13 +177,13 @@ discharge, channel-width growth, deposition, geology or lake silt.
   volume / cell area). Flooded area and volume therefore change continuously rather than by
   whole cells. Lake silt settles over the wet area in proportion to each cell's wet fraction.
 - **Balanced lakes** (`lakes.LakeClimate`, issue #297): lakes use real water-balance units.
-  Inflow is area-weighted runoff (the same Budyko curve the breach gate uses) plus glacier
-  melt, routed as volume (m^3/yr). In-transit river losses on these real-unit flows are a
-  fixed per-node fraction, taken at a 100 kyr reference step
-  (`hydrology.river_transit_loss_fraction`), so they don't grow with step length. The breach
-  gate uses the same losses, and only ocean nodes are exempt: a spilling lake's
-  sink and rim lose their share like any other node. A spilling lake's inflow is the flow
-  through its sink.
+  Inflow is direct precipitation on the lagged wet area plus settled dry-cell Budyko runoff
+  and glacier melt, routed as volume (m^3/yr). In-transit river losses on these real-unit flows
+  use a fixed per-node fraction at a 100 kyr reference step
+  (`hydrology.river_transit_loss_fraction`), scaled by each cell's dry fraction. The breach
+  gate uses the same losses. A spilling sink and rim lose only their dry-area share; wet-cell
+  precipitation travels through lake storage without land runoff or transit loss. A spilling
+  lake's inflow is the flow through its sink.
   Evaporation is the real open-water rate, about 0.3 m/yr at 0 C rising to 1.8 m/yr at 25 C.
   Partly flooded cells evaporate up to 30% faster, since shallow margins warm faster
   (`SHALLOW_EVAPORATION_BOOST`). A real lake reaches balance in years to centuries, far
