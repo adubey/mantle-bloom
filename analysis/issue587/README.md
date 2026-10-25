@@ -19,6 +19,22 @@ PYTHONPATH=backend backend/.venv/bin/python bin/debug/attribute_hm_ratchet.py \
   <local-save> --myr 43.1 --checkpoint-myr 2.5 --out <scratch-output>
 ```
 
+Both successful runs used a scratch `NUMBA_CACHE_DIR`. The first baseline launch failed because Numba could not locate a writable cache directory in its managed worktree; it was relaunched with that cache setting. Only the successful run is included below.
+
 ## Results
 
-Replay results will be added here after both runs complete.
+Both runs completed all 431 steps to 130.5 Myr. Continental area changed by **+0.0164%**, within the preregistered 2% threshold.
+
+| Metric at 130.5 Myr | origin/main | RFC 0014 D1a | Change |
+|---|---:|---:|---:|
+| Continental area (km²) | 264,942,578 | 264,986,124 | +0.0164% |
+| Land area (km²) | 152,129,138 | 151,873,845 | −0.1678% |
+| Emergent continental area (km²) | 151,208,071 | 150,955,595 | −0.1670% |
+| Hm-cap area (km²) | 15,331,121 | 15,155,673 | −1.143% |
+| Hm ledger residual (km³) | −142,315.54 | 0.0000048 | — |
+| Runtime (s) | 3,272 | 3,529 | +7.85% |
+| Peak RSS (MiB) | 1,741 | 1,611 | — |
+
+The Hm ledger residual is included as secondary diagnostic context; the primary preregistered area metric is within threshold. Both runs intermittently warned that one node reached `GLACIER_MAX_DEPTH_M` with zero meltwater shed. The single-run runtime difference is not a performance result.
+
+The compact metric record is in [`replay-preregistration.json`](replay-preregistration.json).
