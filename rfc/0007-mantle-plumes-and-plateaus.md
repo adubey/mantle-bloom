@@ -239,8 +239,8 @@ partitions (which changes *where* the volume lands, not how much).
 2,500 km flood-basalt area [[Campbell & Griffiths, 1990]](#ref-campbell1990) would be
 inconsistent with plateau relief.
 - *The problem.* The median log-uniform head (V ≈ 7.1 M km³) over a Gaussian of radius
-  1,100 km (∫ w dA ≈ 2.4 M km²) adds only ~2.9 km of crust at the centre. The model's
-  water-loaded oceanic isostasy turns that into ~0.46 km of relief, against the 2–3 km
+  1,100 km (∫ w dA = π·1,100² ≈ 3.8 M km²) adds only ~1.9 km of crust at the centre. The model's
+  water-loaded oceanic isostasy turns that into ~0.29 km of relief, against the 2–3 km
   plateaus stand above the abyssal floor [[Kerr & Mahoney, 2007]](#ref-kerr2007).
 - *The fix.* The footprint depends on where the head lands, judged at the host cell under
   the plume centre at `born_years`. The oceanic/continental branch follows that host
@@ -263,7 +263,7 @@ inconsistent with plateau relief.
     (≥ 23.5 km excess).
 - **Continental: flood basalt** over the Gaussian of radius `PLUME_HEAD_RADIUS_KM`
   (1,100 km), matching the 2,000–2,500 km eruptive area. Crust added on a continent
-  includes lava and underplated intrusions; the median head adds ~2.9 km at the centre.
+  includes lava and underplated intrusions; the median head adds ~1.9 km at the centre.
 - Cells under a footprint get their share on their own host type: oceanic-coded cells
   gain Hc and `plateau_crust_m`, continental-coded cells gain Hc and juvenile continental
   material.
@@ -592,12 +592,15 @@ emplacement or plateau docking.
   a corridor (`_parcel_markers` pattern); draw head/tail markers, intersected head-footprint
   extent, and a continues-below indicator for deep tails. New `show_plumes` flag on
   `render_png_base64` (default off).
-- `backend/app/main.py`: `show_plumes` query param on `GET /world/cross-section`, passed
+- `backend/app/main.py`: `show_plumes` query param on `GET /worlds/{world_id}/cross-section`
+  (`crossSectionApi.ts` appends `/cross-section` to the world-scoped `apiBase`), passed
   through to the render.
-- `frontend/src/crossSectionApi.ts`, `App.tsx`: `showPlumes` checkbox plumbed like
-  `showFaults`/`showBoundaries`.
+- `frontend/src/crossSectionApi.ts` (URL param), `App.tsx` (`showPlumes` state beside
+  `crossSectionShowBoundaries`/`crossSectionShowFaults`), `MantleCrossSection.tsx` (layer
+  checkbox UI): plumb `showPlumes` like `showFaults`/`showBoundaries`, including threading
+  it through the section frame/cache keys so toggling refreshes.
 - `backend/app/stats.py`: active plumes, LIP events, buoyant-crust ledger and areas.
-- `backend/app/main.py`: `GET /world/plumes` listing live plumes, optional; the debug
+- `backend/app/main.py`: `GET /worlds/{world_id}/plumes` listing live plumes, optional; the debug
   view alone meets the criteria.
 - Tests:
   - `backend/unit_tests/test_plumes.py` (new):
