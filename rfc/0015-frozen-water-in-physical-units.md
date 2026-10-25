@@ -815,6 +815,34 @@ Every gate run includes an `origin/main` arm on the same save and steps, as the 
     fails without it on any save where (j) passes; otherwise the lagged heat stays.
   - If (g), (i1) and (i2) all fail, the instability is in the solve itself: D2 substeps all
     bodies (alternative D, per body), and the RFC is revised.
+
+  **Gate result (2026-10-24, #554; prototype on `claude/issue-554-g0-ice-swing` at `ea9a187`):
+  the instability is in the solve itself.** Details in
+  [`analysis/issue554/`](../analysis/issue554/README.md).
+  - Since #550, `origin/main` has no frozen river or lake ice, so arm (d) is `origin/main` and
+    every arm includes it.
+  - Every single-input arm fails on all three diagnosis saves: (a), (b), (b′), (c), (c′), (e),
+    (f), (h1) and (h2). So do four diagnostic arms, each removing one feedback:
+    - climate noise frozen;
+    - yield stress fixed;
+    - no frictional heat;
+    - no erosion.
+  - The (f) and (c′) in-step iterations never converge.
+  - (g), (i1), (i2), the leave-one-outs and (j) weren't run. (g) nests the non-converging
+    loops, and the owner chose to test alternative D instead.
+  - **Alternative D, run as a march.** Each body is marched in physical-time substeps (adaptive,
+    250 yr–10 kyr), with every fast input recomputed between substeps, until it settles or the
+    step ends.
+    - Seed 649658380: passes (swing 9.4%, gap 0.3%).
+    - Seed 997271774: passes with the climate's per-step noise frozen (14.9%, 2.9%); with the
+      noise, one 27% drop occurs at a step boundary.
+    - The ledger closes to ≤ 4 × 10⁻⁵ of accumulation where the march runs the whole step.
+  - **The ice-age save runs away under the march at both step sizes** (gap 9.2%) to
+    600–800 M km³, with sea level near −2,800 m, about 15× the LGM excess. That is for G4 and
+    the ice-age forcing.
+  - The diagnosed sliding speeds aren't physical: the fastest thin margin nodes slide ~7 km/yr.
+  - D2's revision (a march, possibly with shallow-ice flow) and the climate's per-step noise
+    go to the owner and `rfc-authoring`.
 - **G1: where does the endpoint premise hold?** On the diagnosis set, per body: τ from
   `−∂B_V/∂V` at the root (D2's perturbations), `H/|b|` alongside, and for bodies above
   10⁴ km² a direct check that substepping reaches the endpoint volume within 1%. Also report:
