@@ -7,7 +7,7 @@
 
 Under the same extension loading and inherited damage, does a localized pressurized dike change source-flank and tip/collar stresses in the predicted directions?
 
-The diagnostic compares intact tectonic loading with and without a dike, then repeats the pair with an identical near-tip damage seed. It uses a 400 × 130 km plane-strain strip, a 32 × 20 mesh, 4 mm/yr extension, 0.02 Myr steps, and a requested 2.5 Myr duration. The pressure is calibrated in the elastic mesh to the 2005 Afar dike's approximate 65 km length and 4 m mean opening; the simulated maximum opening is an independent check against the observed ~8 m bound. This is a prescribed constant-pressure source, not a finite-reservoir or plume-on/off experiment.
+The diagnostic compares intact tectonic loading with and without a dike, then repeats the pair with an identical near-tip damage seed. After review identified that an earlier version pinned the bottom-right corner only in dike-on cases, all four cases were rerun with identical displacement supports: horizontal displacement is fixed on both vertical edges, and vertical displacement is fixed at the bottom-left and bottom-right corners. The values below are from that matched-boundary rerun. It uses a 400 × 130 km plane-strain strip, a 32 × 20 mesh, 4 mm/yr extension, 0.02 Myr steps, and a requested 2.5 Myr duration. The pressure is calibrated in the elastic mesh to the 2005 Afar dike's approximate 65 km length and 4 m mean opening; the simulated maximum opening is an independent check against the observed ~8 m bound. This is a prescribed constant-pressure source, not a finite-reservoir or plume-on/off experiment.
 
 ## Result
 
@@ -15,14 +15,14 @@ The diagnostic compares intact tectonic loading with and without a dike, then re
 |---|---:|---:|---|
 | Intact, no dike | 61.93 MPa | 61.93 MPa | Continues; 0 |
 | Intact, dike | 34.47 MPa | 325.70 MPa | 5× strength guard; 0 |
-| Near-tip seed, no dike | 60.83 MPa | 69.73 MPa | Continues; 0 |
+| Near-tip seed, no dike | 61.71 MPa | 170.21 MPa | Continues; 0 |
 | Near-tip seed, dike | 35.78 MPa | 339.13 MPa | 5× strength guard; 0 |
 
-The no-dike cases complete 2.5 Myr. In the seeded pair, both cases fail the same 16 inherited seed elements; neither fails an element outside the seed. The dike-on cases stop at 0.2 Myr when the pointwise peak tensile stress crosses the numerical guard, before outside-seed failure can test advance.
+The no-dike cases complete 2.5 Myr. In the seeded pair, both cases fail the same 16 inherited seed elements; neither fails an element outside the seed. The dike-on cases stop at 0.2 Myr when the pointwise peak tensile stress crosses the numerical guard, before outside-seed failure can test advance. Matching the supports changed the seeded no-dike tip/collar peak from the previous 69.73 MPa to 170.21 MPa, while preserving the predicted source-flank relief and dike-tip concentration. This sensitivity is why the rerun supersedes the earlier unmatched comparison.
 
 The source pressure is 3.961 MPa. The elastic dike solution gives 4.000 m mean and 5.762 m maximum opening. Its equilibrium residual is `4.54e-13`; source/support force and moment residuals are `2.60e-13` and `5.19e-13`; pressure-work and stored-energy mismatch is `8.05e-7`. The minimum deformation determinant in the seeded dike-on run is positive (`0.9983`).
 
-The finite-strain mechanics support checks pass independently: affine stretch, small-strain limit, rotation objectivity, consistent tangent, implicit damage update and plastic-volume preservation are summarized in [`gate3-finite-strain-verification-review.json`](gate3-finite-strain-verification-review.json). The largest reported directional-tangent relative error is `3.38e-10`.
+The finite-strain mechanics support checks pass independently: affine stretch, small-strain limit, elastic stress objectivity, consistent tangent, implicit damage update and plastic-volume preservation are summarized in [`gate3-finite-strain-verification-review.json`](gate3-finite-strain-verification-review.json). The elastic rotation check holds plastic deformation at identity; objectivity of the plastic-flow update under finite rotations is not tested and remains required before using that update in finite-rotation applications. The largest reported directional-tangent relative error is `3.38e-10`.
 
 ## Interpretation and next gate work
 

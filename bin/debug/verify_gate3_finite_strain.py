@@ -21,6 +21,10 @@ def main():
     args = parser.parse_args()
     result = {
         "title": "RFC 0010 Gate 3 finite-strain mechanics verification",
+        "scope": (
+            "Elastic stress objectivity is checked with plastic deformation held at identity. "
+            "Plastic-flow update objectivity under finite rotations is not checked."
+        ),
         "checks": verify_finite_strain_mechanics(),
     }
     encoded = json.dumps(result, sort_keys=True, separators=(",", ":")) + "\n"

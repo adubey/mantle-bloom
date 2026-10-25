@@ -319,7 +319,7 @@ def verify_finite_strain_mechanics():
     rotated_identity_stress = response_for_deformation(rotation)
     rotated_stretch_stress = response_for_deformation(rotation @ stretch)
     expected_rotated_stress = rotation @ stretch_stress[0] @ rotation.T
-    rotation_objectivity_relative_error = float(
+    elastic_rotation_objectivity_relative_error = float(
         np.linalg.norm(rotated_stretch_stress[0] - expected_rotated_stress)
         / max(np.linalg.norm(stretch_stress[0]), 1.0)
     )
@@ -407,7 +407,7 @@ def verify_finite_strain_mechanics():
         "undeformed_max_abs_cauchy_stress_pa": zero_stress_error_pa,
         "affine_stretch_relative_error": affine_stretch_relative_error,
         "rigid_rotation_relative_stress": rigid_rotation_relative_stress,
-        "rotation_objectivity_relative_error": rotation_objectivity_relative_error,
+        "elastic_rotation_objectivity_relative_error": elastic_rotation_objectivity_relative_error,
         "small_strain_relative_errors_at_1e-4_and_1e-5": small_strain_errors,
         "plastic_determinant_max_abs_error": plastic_determinant_error,
         "consistent_tangent_directional_relative_error": tangent_relative_error,
@@ -417,7 +417,7 @@ def verify_finite_strain_mechanics():
         zero_stress_error_pa < 1.0e-5
         and affine_stretch_relative_error < 1.0e-12
         and rigid_rotation_relative_stress < 1.0e-12
-        and rotation_objectivity_relative_error < 1.0e-12
+        and elastic_rotation_objectivity_relative_error < 1.0e-12
         and small_strain_errors[1] < small_strain_errors[0]
         and small_strain_errors[1] < 1.0e-4
         and plastic_determinant_error < 1.0e-12

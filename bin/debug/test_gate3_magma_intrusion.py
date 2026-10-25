@@ -336,7 +336,9 @@ def main():
             ),
             initial_damage_field=case_damage_seed if seed_on else None,
             diagnostic_regions=case_regions,
-            additional_fixed_y_nodes=(case_mesh.bottom_right_node,) if intrusion_on else None,
+            # The same vertical pin is applied to both sides of the paired source
+            # comparison so the dike load is the only changed case input.
+            additional_fixed_y_nodes=(mesh.bottom_right_node,),
         )
         result.update({
             "case": case_name,
@@ -353,6 +355,10 @@ def main():
     output = {
         "title": "RFC 0010 Gate 3 localized magma-intrusion source screen",
         "classification": "diagnostic-only finite pressurized crack; no production model change",
+        "matched_boundary_conditions": (
+            "all cases fix left/right horizontal displacement and bottom-left/bottom-right "
+            "vertical displacement"
+        ),
         "empirical_aperture_basis": {
             "reference": "Grandin et al. (2009), 2005 Manda Hararo-Dabbahu dike inversion",
             "dike_length_m": DIKE_LENGTH_M,
