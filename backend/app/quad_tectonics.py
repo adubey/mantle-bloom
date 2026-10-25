@@ -58,6 +58,7 @@ from . import (
     rheology,
     shortening,
     terrain_noise,
+    terranes,
     torque,
 )
 from .hydroclimate import mobile_cover
@@ -219,6 +220,18 @@ def deform(plate: "PlateWithSparseQuadPatch", world: "World", other_plates: list
     )
     columns.update(_column_thermal_state(plate, fields, strained, columns))
     plate.set_fields_on_plate(**columns)
+    # Buoyant-crust tracers thin with their strained column and clear where it
+    # melted through, booked by mechanism (RFC 0007, issue #581). `strained`
+    # carries post-strain pre-magma Hc, so fresh magmatic thickening never
+    # un-thins them.
+    _apply_buoyant_column_update(
+        world,
+        plate,
+        fields["crustal_thickness_m"],
+        strained.get("crustal_thickness_m", columns["crustal_thickness_m"]),
+        strained.get("melted", np.zeros(plate.node_count(), dtype=bool)),
+        areas,
+    )
 
     _place_ceiling_overflow(plate, world, ceiling_overflow, ctx.inputs.direction_to_neighbor)
 
@@ -419,6 +432,89 @@ def _book_shed_roots(
         orogeny.record(world, "restite_delaminated_m3", float(shed_restite @ areas))
 
 
+def _patch_emplacement_years(
+    plateau: np.ndarray, arc: np.ndarray, moment: np.ndarray, areas: np.ndarray, patch: np.ndarray
+) -> float:
+    """Volume-weighted emplacement time of one consumable patch (years).
+
+    Both the tracer and age-moment sums weight by represented cell area, so the
+    age -- and the docking draw keyed on it -- does not drift with the patch's
+    latitude or refinement level (RFC 0007, issue #581). The caller skips
+    tracer-free patches; the result is undefined for them.
+    """
+    tracer_vol = (np.asarray(plateau)[patch] + np.asarray(arc)[patch]) * np.asarray(areas)[patch]
+    return float(np.sum(np.asarray(moment)[patch] * np.asarray(areas)[patch])) / float(np.sum(tracer_vol))
+
+
+def _dock_consumable_patches(
+    world: "World",
+    plate: "PlateWithSparseQuadPatch",
+    consumable: np.ndarray,
+    plateau: np.ndarray,
+    arc: np.ndarray,
+    moment: np.ndarray,
+    hc: np.ndarray,
+    areas: np.ndarray,
+) -> np.ndarray:
+    """Judge each connected consumable patch at the trench; returns the docked mask.
+
+    Consumable cells are removed oceanic-coded cells carrying buoyant crust. Each
+    patch gets one deterministic draw from its area-weighted excess and
+    volume-weighted age (`terranes.docking_draw`, keyed on the patch's lowest
+    cell index and its quantized emplacement time). A docking patch joins the
+    terrane donors minus `DOCK_LOWER_CRUST_LOSS` of its buoyant crust -- the loss
+    leaves Hc for the trench and books to `subducted_m3`, the kept share is
+    counted in `docked_m3` outside the balance -- while a patch that does not
+    dock subducts whole, booked to `subducted_m3`. In place on `hc` and the
+    tracers; the caller writes them back and routes the docked cells to
+    `_accrete_onto_survivors` (RFC 0007, issue #581).
+    """
+    docked = np.zeros(len(hc), dtype=bool)
+    if not np.any(consumable):
+        return docked
+    rows, columns = _adjacency_matrix(plate).nonzero()
+    pairs = np.stack((rows, columns), axis=1)
+    ledger = terranes.ensure_ledger(world)
+    now_years = world.elapsed_years
+    for patch in terranes.group_patches(len(hc), pairs, consumable):
+        if float(np.sum((plateau[patch] + arc[patch]) * areas[patch])) <= 0.0:
+            continue
+        # The draw re-derives its key from live tracers every step: proportional
+        # thinning and docking losses preserve the emplacement time, so a patch
+        # the step does not fully consume keeps a stable key while its cells do.
+        # Encounter memory across steps (re-judging a surviving patch with its
+        # original key) is tuning-run scope (#584), not this issue.
+        emplaced_years = _patch_emplacement_years(plateau, arc, moment, areas, patch)
+        age_myr = (now_years - emplaced_years) / 1_000_000.0
+        probability = terranes.docking_probability(
+            terranes.patch_excess_m(hc, areas, patch, 0.0), age_myr
+        )
+        quantized_emplacement_years = float(round(emplaced_years / 1_000_000.0) * 1_000_000.0)
+        if terranes.docking_draw(world.seed, plate.plate_id, int(patch.min()), quantized_emplacement_years, probability):
+            (kept_plateau, kept_arc, kept_moment), (lost_plateau, lost_arc, _) = terranes.split_docking_loss(
+                plateau[patch], arc[patch], moment[patch]
+            )
+            plateau[patch], arc[patch], moment[patch] = kept_plateau, kept_arc, kept_moment
+            hc[patch] -= lost_plateau + lost_arc
+            for source, lost_thick, kept_thick in (
+                ("plume_head", lost_plateau, kept_plateau),
+                ("arc", lost_arc, kept_arc),
+            ):
+                lost_volume = float(np.dot(lost_thick, areas[patch]))
+                if lost_volume > 0.0:
+                    terranes.record(ledger, source, "subducted_m3", lost_volume)
+                kept_volume = float(np.dot(kept_thick, areas[patch]))
+                if kept_volume > 0.0:
+                    terranes.record_docked(ledger, source, kept_volume)
+            docked[patch] = True
+        else:
+            for source, thick in (("plume_head", plateau[patch]), ("arc", arc[patch])):
+                volume = float(np.dot(thick, areas[patch]))
+                if volume > 0.0:
+                    terranes.record(ledger, source, "subducted_m3", volume)
+    return docked
+
+
 class RetreatDisposition(NamedTuple):
     """What happens to a cell if it retreats this step, decided once per `_retreat`. In order
     of precedence:
@@ -520,10 +616,23 @@ def _retreat(
         world, plate, own_points[removed], ~continental[removed], ctx.inputs.neighbor_plate_id[removed], ctx.neighbours
     )
     donors = removed & fate.donor
+    areas = plate.node_areas_m2()
+    # Buoyant-crust docking (RFC 0007, issue #581): removed oceanic-coded cells
+    # carrying plateau or arc crust group into patches; each patch docks (joining
+    # the terrane donors minus its lower-crust loss, which leaves Hc for the
+    # trench) or subducts whole, every share booked to the buoyant-crust ledger.
+    docked = np.zeros(n, dtype=bool)
+    if np.any(removed & ~donors & ~continental):
+        plateau, arc, moment = terranes.plate_tracers(plate)
+        consumable = removed & ~donors & ~continental & ((plateau + arc) > 0.0)
+        docked = _dock_consumable_patches(world, plate, consumable, plateau, arc, moment, hc, areas)
+    if np.any(docked):
+        donors |= docked
+        plate.set_fields_on_plate(crustal_thickness_m=hc)
+        _write_tracers(plate, plateau, arc, moment)
     # Everything else removed goes down the trench: its craton and its continental-derived
     # material leave the surface as deep subduction.
     subducted = removed & ~donors
-    areas = plate.node_areas_m2()
     hm_ledger.record_sink_by_mask(
         world,
         plate,
@@ -547,7 +656,7 @@ def _retreat(
             plate, donors, ~removed, world, convergence_xyz=ctx.inputs.direction_to_neighbor, years=years,
             overriders=ctx.neighbours, hm_subduct_mask=ctx.suture_hm_subduct,
             upper_plate_ids=ctx.suture_upper_plate_id, neighbour_plate_ids=ctx.inputs.neighbor_plate_id,
-            terranes=ctx.terrane,
+            terrane_mask=ctx.terrane,
         )
     plate.remove_cells(removed)
     return ~removed
@@ -595,6 +704,104 @@ def _carve_interior(plate: "PlateWithSparseQuadPatch", retreatable: np.ndarray, 
     return carved
 
 
+def _relocate_consumed_front(
+    world: "World | None",
+    plate: "PlateWithSparseQuadPatch",
+    front: np.ndarray,
+    front_ids: list[int],
+    hc: np.ndarray,
+    hm: np.ndarray,
+    codes: np.ndarray,
+    continental: np.ndarray,
+    areas: np.ndarray,
+    points: np.ndarray,
+    adjacency,
+    survivors: np.ndarray,
+    hc_volume: float,
+    hm_volume: float,
+    hc_front_start: np.ndarray,
+    material: np.ndarray,
+    craton: np.ndarray,
+    formed: np.ndarray,
+    restite: np.ndarray,
+    plateau: np.ndarray,
+    arc: np.ndarray,
+    moment: np.ndarray,
+    front_plateau_m3: float,
+    front_arc_m3: float,
+    front_moment_m3_yr: float,
+    material_volume: float,
+    craton_volume: float,
+    restite_volume: float,
+    changed: np.ndarray,
+    welded: np.ndarray,
+    donor_type: bool,
+) -> bool:
+    """Relocate one consumed front's column onto a surviving oceanic footprint.
+
+    The `_accrete_onto_survivors` isolated-terrane branch, extracted so the caller
+    stays under the complexity cap. Moves the front's Hc/Hm and provenance onto the
+    footprint relocation retypes continental; the front's buoyant crust replaces the
+    footprint's, and the displaced oceanic columns' tracers ride their Hc to the
+    other receivers in proportion to each receiver's gain. Returns whether
+    relocation placed the front (the caller's per-front `continue`).
+    """
+    was_continental = continental.copy()
+    plateau_before, moment_before = plateau.copy(), moment.copy()
+    arc_before = arc.copy()
+    hc_relocate_start = hc.copy()
+    relocated = _relocate_terrane_column(
+        hc, hm, codes, continental, areas, points, adjacency, front, survivors, hc_volume, hm_volume
+    )
+    if not np.any(relocated):
+        return False
+    changed |= relocated
+    # The terrane's new footprint is the cells relocation retyped; the rest of
+    # `relocated` received the oceanic columns it displaced.
+    _relocate_tracers(
+        material, craton, formed, areas, hc - hc_front_start, front, continental & ~was_continental,
+        material_volume, craton_volume,
+    )
+    terrane_cells = continental & ~was_continental
+    chosen_area = float(areas[terrane_cells].sum())
+    if chosen_area > 0.0:
+        plateau[terrane_cells] = front_plateau_m3 / chosen_area
+        arc[terrane_cells] = front_arc_m3 / chosen_area
+        moment[terrane_cells] = front_moment_m3_yr / chosen_area
+    receiver_gain = np.maximum(hc - hc_relocate_start, 0.0)
+    receiver_gain[terrane_cells] = 0.0
+    placed_gain = float(np.dot(receiver_gain, areas))
+    # The age moment is shared across both tracer channels: distribute the whole
+    # displaced moment once, inside whichever source iteration runs first, so a
+    # later "fix" cannot double-count it.
+    displaced_moment_m3_yr = float(np.dot(moment_before[terrane_cells], areas[terrane_cells]))
+    for source, before, live in (("plume_head", plateau_before, plateau), ("arc", arc_before, arc)):
+        displaced_m3 = float(np.dot(before[terrane_cells], areas[terrane_cells]))
+        if displaced_m3 <= 0.0:
+            continue
+        if placed_gain > 0.0:
+            live += displaced_m3 * receiver_gain / placed_gain
+            moment += displaced_moment_m3_yr * receiver_gain / placed_gain
+            displaced_moment_m3_yr = 0.0
+        elif world is not None:
+            terranes.record(terranes.ensure_ledger(world), source, "subducted_m3", displaced_m3)
+    welded |= terrane_cells
+    restite[terrane_cells] = restite_volume / float(areas[terrane_cells].sum())
+    # The oceanic columns the terrane displaced take their cover into the
+    # crust they were thickened into.
+    mobile_cover.end(world, plate, terrane_cells, "accreted_m3")
+    hm_ledger.record_suture_front(
+        world,
+        plate.plate_id,
+        front_ids,
+        hm_volume,
+        hm_volume,
+        donor_is_continental=bool(donor_type),
+        placed_hm_continental_m3=hm_volume,
+    )
+    return True
+
+
 def _accrete_onto_survivors(
     plate: "PlateWithSparseQuadPatch",
     donors: np.ndarray,
@@ -606,7 +813,7 @@ def _accrete_onto_survivors(
     hm_subduct_mask: np.ndarray | None = None,
     upper_plate_ids: np.ndarray | None = None,
     neighbour_plate_ids: np.ndarray | None = None,
-    terranes: np.ndarray | None = None,
+    terrane_mask: np.ndarray | None = None,
 ) -> None:
     """Thrust each continental suture's consumed Hc/Hm volume onto the surviving cells within
     `SUTURE_ACCRETION_SPREAD_NODES` hops behind it, as a uniform thickening. Each edge-connected run of donor cells is one suture
@@ -668,6 +875,8 @@ def _accrete_onto_survivors(
     craton = plate.collect("craton_crust_m")
     formed = plate.collect("craton_formed_years")
     restite = plate.collect("restite_m")
+    # Buoyant-crust tracers ride the fronts' Hc (RFC 0007, issue #581).
+    plateau, arc, moment = terranes.plate_tracers(plate)
     # Dense-root volume each surviving continental column may shed this step, drawn down
     # as fronts use it so two fronts sharing a belt can't both spend it.
     root_capacity = np.where(survivors, orogeny.plate_delamination_capacity_m3(plate, continental, years), 0.0)
@@ -701,6 +910,9 @@ def _accrete_onto_survivors(
             material_volume = float(np.dot(material[front], areas[front]))
             craton_volume = float(np.dot(craton[front], areas[front]))
             restite_volume = float(np.dot(restite[front], areas[front]))
+            front_plateau_m3 = float(np.dot(plateau[front], areas[front]))
+            front_arc_m3 = float(np.dot(arc[front], areas[front]))
+            front_moment_m3_yr = float(np.dot(moment[front], areas[front]))
             typed_survivors = survivors & (continental == donor_type)
             hc_volume = float(np.sum(hc[front] * areas[front]))
             hm_front_volume = float(np.sum(hm[front] * areas[front]))
@@ -721,8 +933,8 @@ def _accrete_onto_survivors(
             )
             needs_new_footprint = hc_room < hc_volume * (1.0 - 1e-12) or hm_room < hm_volume * (1.0 - 1e-12)
             if (
-                terranes is not None
-                and np.any(terranes[front])
+                terrane_mask is not None
+                and np.any(terrane_mask[front])
                 and donor_type
                 and needs_new_footprint
                 and np.any(survivors & ~continental)
@@ -733,33 +945,13 @@ def _accrete_onto_survivors(
                 # the oceanic reservoir. This preserves both categorical Hc volume and total
                 # Hc instead of either losing the fragment or counting its oceanic substrate
                 # as newly continental.
-                was_continental = continental.copy()
-                relocated = _relocate_terrane_column(
-                    hc, hm, codes, continental, areas, points, adjacency, front, survivors, hc_volume, hm_volume
-                )
-                if np.any(relocated):
-                    changed |= relocated
-                    # The terrane's new footprint is the cells relocation retyped; the rest of
-                    # `relocated` received the oceanic columns it displaced.
-                    _relocate_tracers(
-                        material, craton, formed, areas, hc - hc_front_start, front, continental & ~was_continental,
-                        material_volume, craton_volume,
-                    )
-                    terrane_cells = continental & ~was_continental
-                    welded |= terrane_cells
-                    restite[terrane_cells] = restite_volume / float(areas[terrane_cells].sum())
-                    # The oceanic columns the terrane displaced take their cover into the
-                    # crust they were thickened into.
-                    mobile_cover.end(world, plate, terrane_cells, "accreted_m3")
-                    hm_ledger.record_suture_front(
-                        world,
-                        plate.plate_id,
-                        front_neighbour_ids(front),
-                        hm_volume,
-                        hm_volume,
-                        donor_is_continental=bool(donor_type),
-                        placed_hm_continental_m3=hm_volume,
-                    )
+                if _relocate_consumed_front(
+                    world, plate, front, front_neighbour_ids(front), hc, hm, codes, continental,
+                    areas, points, adjacency, survivors, hc_volume, hm_volume, hc_front_start,
+                    material, craton, formed, restite, plateau, arc, moment,
+                    front_plateau_m3, front_arc_m3, front_moment_m3_yr,
+                    material_volume, craton_volume, restite_volume, changed, welded, donor_type,
+                ):
                     continue
             if not np.any(typed_survivors):
                 # Preserve the old any-type nearest-survivor fallback. Same-type placement is
@@ -815,20 +1007,34 @@ def _accrete_onto_survivors(
                 )
             handed_share = 0.0
             stuck = stages["no_outlet_subducted_m3"]
+            handed_plateau_m3 = handed_arc_m3 = handed_moment_m3_yr = 0.0
             if donor_type and stuck > 0.0 and overriders and hc_volume > 0.0:
                 # The plate is being consumed faster than it can hold its own crust -- a
                 # microcontinent ground into a collision. What it can't keep accretes to the
                 # plate overriding it, as real suture crust does.
                 share = stuck / hc_volume
+                handed_plateau_m3, handed_arc_m3, handed_moment_m3_yr = (
+                    share * front_plateau_m3, share * front_arc_m3, share * front_moment_m3_yr
+                )
                 handed = _hand_to_overrider(
                     world, plate, geometry.to_world(plate.frame, points[front]), overriders, stuck,
                     share * material_volume, _overrider_approach(convergence_xyz, front), years, share * restite_volume,
+                    front_plateau_m3=handed_plateau_m3, front_arc_m3=handed_arc_m3,
+                    front_moment_m3_yr=handed_moment_m3_yr,
                 )
                 handed_share = handed / hc_volume
                 stages["overrider_placed_m3"] = handed
                 stages["no_outlet_subducted_m3"] = max(stuck - handed, 0.0)
             placed_share = _carry_material(material, areas, hc - hc_front_start + shed, hc_volume, material_volume)
             _carry_material(restite, areas, hc - hc_front_start + shed, hc_volume, restite_volume)
+            # The front's buoyant crust rides the Hc it placed, in the same
+            # proportion (RFC 0007, issue #581). The handed share is passed in
+            # full, like the material: what the overriders cannot hold returns
+            # to the terminal remainder below.
+            _carry_tracers(
+                plateau, arc, moment, areas, hc - hc_front_start + shed, hc_volume,
+                front_plateau_m3, front_arc_m3, front_moment_m3_yr,
+            )
             lost_share = max(1.0 - placed_share - handed_share, 0.0)
             if world is not None:
                 # The terminal remainder is crust of a plate being consumed with no room
@@ -840,6 +1046,11 @@ def _accrete_onto_survivors(
                 orogeny.record(world, "suture_donated_m3", hc_volume)
                 for account, volume in stages.items():
                     orogeny.record(world, account, volume)
+                # The remainder's buoyant share leaves the surface with it.
+                ledger = terranes.ensure_ledger(world)
+                for source, front_m3 in (("plume_head", front_plateau_m3), ("arc", front_arc_m3)):
+                    if front_m3 > 0.0 and lost_share > 0.0:
+                        terranes.record(ledger, source, "subducted_m3", lost_share * front_m3)
             changed |= _spread_accretion_volume(
                 hm,
                 areas,
@@ -862,6 +1073,14 @@ def _accrete_onto_survivors(
                 placed_hm_continental_m3=placed_hm_continental_volume,
                 subducted_hm_m3=hm_subducted_volume,
             )
+
+    # Buoyant crust placed onto continental-coded receivers converts: the
+    # preserved share becomes juvenile continental material, the foundered share
+    # leaves Hc. Oceanic-hosted accreted crust stays live. Runs before the
+    # elevation write below so the foundered removal's relief follows (RFC 0007,
+    # issue #581).
+    _convert_buoyant_on_continental(world, changed & continental, hc, material, plateau, arc, moment, areas)
+    _write_tracers(plate, plateau, arc, moment)
 
     gained = np.flatnonzero(changed)
     density_before = lithosphere.node_crust_density(codes_before[gained], plate.crust_type)
@@ -911,6 +1130,128 @@ def _carry_material(
     share = min(placed / hc_volume, 1.0)
     material += share * material_volume * gained / placed
     return share
+
+
+def _write_tracers(plate: "PlateWithSparseQuadPatch", plateau: np.ndarray, arc: np.ndarray, moment: np.ndarray) -> None:
+    """Write buoyant-crust tracers back; the arc channel only once RFC 0006 registers it."""
+    plate.set_fields_on_plate(plateau_crust_m=plateau, buoyant_crust_time_m_yr=moment)
+    if "arc_crust_m" in SURFACE_FIELDS:
+        plate.set_fields_on_plate(arc_crust_m=arc)
+
+
+def _apply_buoyant_column_update(
+    world: "World | None",
+    plate: "PlateWithSparseQuadPatch",
+    hc_before: np.ndarray,
+    strained_hc: np.ndarray,
+    melted: np.ndarray,
+    areas: np.ndarray,
+) -> None:
+    """Thin buoyant-crust tracers with their strained column and clear melt-through.
+
+    Runs after a whole-column update that kept node order (`deform_columns` via
+    `strained`, `_open_rift` donors, failed rifts): tracers scale by the Hc ratio
+    clipped to [0, 1] (thickening never inflates them), booked to `thinned_m3` by
+    source, and a column that melted through is cleared, booked to `reset_m3`.
+    With `world=None` the fields still update but nothing is booked (RFC 0007,
+    issue #581).
+    """
+    plateau, arc, moment = terranes.plate_tracers(plate)
+    if not np.any(plateau) and not np.any(arc):
+        return
+    ledger = terranes.ensure_ledger(world) if world is not None else None
+    if np.any(melted):
+        for source, values in (("plume_head", plateau), ("arc", arc)):
+            reset_volume = float(np.dot(values[melted], areas[melted]))
+            if reset_volume > 0.0 and ledger is not None:
+                terranes.record(ledger, source, "reset_m3", reset_volume)
+            values[melted] = 0.0
+        moment[melted] = 0.0
+    ratio = np.divide(
+        strained_hc, hc_before, out=np.ones(len(hc_before)), where=np.asarray(hc_before) > 0.0
+    )
+    np.clip(ratio, 0.0, 1.0, out=ratio)
+    thinned = ratio < 1.0
+    if np.any(thinned):
+        for source, values in (("plume_head", plateau), ("arc", arc)):
+            lost = values[thinned] * (1.0 - ratio[thinned])
+            thinned_volume = float(np.dot(lost, areas[thinned]))
+            if thinned_volume > 0.0 and ledger is not None:
+                terranes.record(ledger, source, "thinned_m3", thinned_volume)
+            values[thinned] *= ratio[thinned]
+        moment[thinned] *= ratio[thinned]
+    _write_tracers(plate, plateau, arc, moment)
+
+
+def _carry_tracers(
+    plateau: np.ndarray,
+    arc: np.ndarray,
+    moment: np.ndarray,
+    areas: np.ndarray,
+    hc_gain: np.ndarray,
+    hc_volume: float,
+    front_plateau_m3: float,
+    front_arc_m3: float,
+    front_moment_m3_yr: float,
+) -> float:
+    """In place: carry a consumed front's buoyant-crust tracers with the Hc they ride
+    on, in proportion to each receiver's Hc gain -- the tracer analog of
+    `_carry_material` (RFC 0007, issue #581). Returns the placed share."""
+    gained = np.maximum(hc_gain, 0.0)
+    placed = float(np.dot(gained, areas))
+    if hc_volume <= 0.0 or placed <= 0.0:
+        return 0.0
+    share = min(placed / hc_volume, 1.0)
+    weight = share * gained / placed
+    plateau += front_plateau_m3 * weight
+    arc += front_arc_m3 * weight
+    moment += front_moment_m3_yr * weight
+    return share
+
+
+def _convert_buoyant_on_continental(
+    world: "World | None",
+    mask: np.ndarray,
+    hc: np.ndarray,
+    material: np.ndarray,
+    plateau: np.ndarray,
+    arc: np.ndarray,
+    moment: np.ndarray,
+    areas: np.ndarray,
+) -> None:
+    """In place: convert buoyant crust on continental-coded cells (`mask`).
+
+    `PLATEAU_PRESERVED_FRACTION` of the plateau + arc tracer becomes continental
+    material, booked once as juvenile (`juvenile_plateau_m3` from plateau crust,
+    plain `juvenile_additions_m3` from arc crust, whose maturation RFC 0006
+    owns); the foundered mafic share leaves Hc, booked to `foundered_m3`, and
+    the whole converted volume to `converted_m3` by source. Tracers are cleared
+    on converted cells. With `world=None` the fields still update but nothing is
+    booked (RFC 0007, issue #581).
+    """
+    cells = np.flatnonzero(mask & ((plateau + arc) > 0.0))
+    if not len(cells):
+        return
+    kept_fraction = float(np.clip(terranes.PLATEAU_PRESERVED_FRACTION, 0.0, 1.0))
+    for name, values in (("plateau", plateau[cells]), ("arc", arc[cells])):
+        kept = values * kept_fraction
+        lost = values - kept
+        juvenile_volume = float(np.dot(kept, areas[cells]))
+        foundered_volume = float(np.dot(lost, areas[cells]))
+        if world is not None and (juvenile_volume > 0.0 or foundered_volume > 0.0):
+            source = "plume_head" if name == "plateau" else "arc"
+            terranes.record(terranes.ensure_ledger(world), source, "converted_m3", juvenile_volume)
+            terranes.record(terranes.ensure_ledger(world), source, "foundered_m3", foundered_volume)
+            if juvenile_volume > 0.0:
+                if name == "plateau":
+                    continental_ledger.record(world, "juvenile_plateau_m3", juvenile_volume)
+                else:
+                    continental_ledger.record(world, "juvenile_additions_m3", juvenile_volume)
+        material[cells] += kept
+        hc[cells] -= lost
+    plateau[cells] = 0.0
+    arc[cells] = 0.0
+    moment[cells] = 0.0
 
 
 def _relocate_tracers(
@@ -1157,6 +1498,9 @@ def _hand_to_overrider(
     approach_world: np.ndarray | None,
     years: float,
     restite_volume: float = 0.0,
+    front_plateau_m3: float = 0.0,
+    front_arc_m3: float = 0.0,
+    front_moment_m3_yr: float = 0.0,
 ) -> float:
     """Accrete `volume` of a consumed front's Hc onto the quad plates overriding it, each
     through `_place_on_overrider`. The first is the candidate containing most of the front's
@@ -1192,6 +1536,8 @@ def _hand_to_overrider(
         placed += _place_on_overrider(
             world, over, front_world, remaining, share * material_volume, approach_world, years,
             share * restite_volume,
+            front_plateau_m3=share * front_plateau_m3, front_arc_m3=share * front_arc_m3,
+            front_moment_m3_yr=share * front_moment_m3_yr,
         )
     return placed
 
@@ -1221,6 +1567,9 @@ def _place_on_overrider(
     adjacency: csr_matrix | None = None,
     seed: np.ndarray | None = None,
     root_capacity: np.ndarray | None = None,
+    front_plateau_m3: float = 0.0,
+    front_arc_m3: float = 0.0,
+    front_moment_m3_yr: float = 0.0,
 ) -> float:
     """Accrete `volume` of a consumed front's Hc onto one overriding quad plate `over`, through
     the same staged `_place_suture_crust` placement on that plate, seeded at its cells nearest
@@ -1268,6 +1617,16 @@ def _place_on_overrider(
     if placed <= 0.0:
         return 0.0
     _book_shed_roots(world, material, craton, restite, areas, hc_before, shed)
+    plateau, arc, moment = terranes.plate_tracers(over)
+    # Settle distributes the front's material and restite by this Hc gain, so
+    # snapshot it before conversion removes the foundered share (RFC 0007 #581).
+    settle_gain = hc - hc_before + shed
+    _carry_tracers(
+        plateau, arc, moment, areas, settle_gain, volume,
+        front_plateau_m3, front_arc_m3, front_moment_m3_yr,
+    )
+    _convert_buoyant_on_continental(world, changed & continental, hc, material, plateau, arc, moment, areas)
+    _write_tracers(over, plateau, arc, moment)
     if world is not None:
         for account in (
             "suture_belt_placed_m3", "escape_attempted_m3", "escape_placed_m3", "delamination_attempted_m3",
@@ -1275,7 +1634,7 @@ def _place_on_overrider(
         ):
             orogeny.record(world, account, stages[account])
     settle_received_crust(
-        over, hc_before, hc, hc - hc_before + shed, changed, volume, material_volume, restite_volume,
+        over, hc_before, hc, settle_gain, changed, volume, material_volume, restite_volume,
         material, restite, craton, world=world,
     )
     return placed
@@ -1700,6 +2059,11 @@ class _StretchTransfer:
     # Mobile cover (mobile_cover.py) each rifted cell receives, and its continental share.
     received_cover_volume: np.ndarray | None = None
     received_cover_material_volume: np.ndarray | None = None
+    # Buoyant-crust tracers each rifted cell receives with its stretched share, and
+    # their age moment (RFC 0007, issue #581).
+    received_plateau_volume: np.ndarray | None = None
+    received_arc_volume: np.ndarray | None = None
+    received_moment_volume: np.ndarray | None = None
 
 
 def _allocate_stretch(
@@ -1714,6 +2078,9 @@ def _allocate_stretch(
     craton: np.ndarray | None = None,
     cover: np.ndarray | None = None,
     cover_material: np.ndarray | None = None,
+    plateau: np.ndarray | None = None,
+    arc: np.ndarray | None = None,
+    moment: np.ndarray | None = None,
 ) -> _StretchTransfer:
     """Share each rifted cell's stretched footprint (`stretch_share` of its area) out over its
     donor band -- the pre-existing cells within `K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION` hops,
@@ -1766,6 +2133,13 @@ def _allocate_stretch(
     lost_fraction = donor_area * (1.0 - thinning_ratio)
     lost_hc_volume = hc[preexisting] * lost_fraction
     lost_hm_volume = hm[preexisting] * donor_area * (1.0 - thinning_ratio)
+    if plateau is None or arc is None or moment is None:
+        received_plateau_volume = received_arc_volume = received_moment_volume = None
+    else:
+        lost_tracer = donor_area * (1.0 - thinning_ratio)
+        received_plateau_volume = share_of_donor @ (plateau[preexisting] * lost_tracer)
+        received_arc_volume = share_of_donor @ (arc[preexisting] * lost_tracer)
+        received_moment_volume = share_of_donor @ (moment[preexisting] * lost_tracer)
     is_donor = requested_area_by_donor > 0.0
     return _StretchTransfer(
         donor_indices=preexisting[is_donor],
@@ -1779,6 +2153,9 @@ def _allocate_stretch(
         ),
         received_cover_volume=None if cover is None else share_of_donor @ (cover[preexisting] * lost_fraction),
         received_cover_material_volume=None if cover_material is None else share_of_donor @ (cover_material[preexisting] * lost_fraction),
+        received_plateau_volume=received_plateau_volume,
+        received_arc_volume=received_arc_volume,
+        received_moment_volume=received_moment_volume,
     )
 
 
@@ -1812,11 +2189,14 @@ def _open_rift(
     material = plate.collect("continental_material_m")
     cover = plate.collect("mobile_cover_m")
     cover_material = plate.collect("mobile_cover_continental_m")
+    plateau, arc, moment = terranes.plate_tracers(plate)
     continental = effective_is_continental_from_codes(codes, plate.crust_type == "continental")
     transfer = _allocate_stretch(
-        plate, inserted_indices, rifted, stretch_share, hc, hm, continental, material, craton, cover, cover_material
+        plate, inserted_indices, rifted, stretch_share, hc, hm, continental, material, craton, cover, cover_material,
+        plateau, arc, moment,
     )
     areas = plate.node_areas_m2()
+    ledger = terranes.ensure_ledger(world) if world is not None else None
 
     # Donors: thin in place, erupting any column that thins through the rift threshold.
     donors, ratio = transfer.donor_indices, transfer.donor_thinning_ratio
@@ -1829,6 +2209,20 @@ def _open_rift(
         melting = (hc[donors] >= rheology.RIFT_CRITICAL_THICKNESS_M) & (new_hc < rheology.RIFT_CRITICAL_THICKNESS_M)
         sub_codes, sub_volcano, sub_remaining = codes[donors], is_volcano[donors], remaining[donors]
         material[donors] *= ratio
+        # Buoyant-crust tracers thin with their donors and clear where a donor
+        # melts through (RFC 0007, issue #581). The stretched share rides to the
+        # rifted cells live, so it is never booked here: only the retained share
+        # a melting donor's reset column destroys books to `reset_m3`.
+        melt_donors = donors[melting]
+        for source, values in (("plume_head", plateau), ("arc", arc)):
+            if np.any(melt_donors):
+                reset_volume = float(np.dot(values[melt_donors] * ratio[melting], areas[melt_donors]))
+                if reset_volume > 0.0 and ledger is not None:
+                    terranes.record(ledger, source, "reset_m3", reset_volume)
+                values[melt_donors] = 0.0
+            values[donors] *= ratio
+        moment[melt_donors] = 0.0
+        moment[donors] *= ratio
         # A donor's mobile cover stretches with it (the rest goes to the rifted cells), and is
         # gone where it melted through.
         cover[donors] *= ratio
@@ -1874,6 +2268,11 @@ def _open_rift(
     mostly_continental = transfer.received_continental_hc_volume > 0.5 * cell_hc * cell_area
     cell_codes = np.where(mostly_continental, CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC).astype(codes.dtype)
     cell_material = transfer.received_continental_material_volume / cell_area
+    # Rifted cells receive their donors' stretched buoyant crust with the same
+    # shares; fresh magmatic crust carries none (RFC 0007, issue #581).
+    cell_plateau = transfer.received_plateau_volume / cell_area
+    cell_arc = transfer.received_arc_volume / cell_area
+    cell_moment = transfer.received_moment_volume / cell_area
     magmatic_material = np.where(
         mostly_continental, magmatic_area * hc[rifted] / cell_area, 0.0
     )
@@ -1904,8 +2303,20 @@ def _open_rift(
             world, "rift_thinned_m3", float(np.dot(removed, cell_area))
         )
     _ignite_early_rift_volcanoes(world, plate.plate_id, rng_index, sub_volcano, sub_remaining, ~melting & (stretch_share < 0.5))
+    # A rifted cell that melts through resets, like a melted donor.
+    if np.any(melting):
+        for source, cell_values in (("plume_head", cell_plateau), ("arc", cell_arc)):
+            reset_volume = float(np.dot(cell_values[melting], cell_area[melting]))
+            if reset_volume > 0.0 and ledger is not None:
+                terranes.record(ledger, source, "reset_m3", reset_volume)
+        cell_plateau[melting] = 0.0
+        cell_arc[melting] = 0.0
+        cell_moment[melting] = 0.0
     hc[rifted], hm[rifted], codes[rifted] = cell_hc, cell_hm, cell_codes
     material[rifted] = cell_material
+    plateau[rifted] += cell_plateau
+    arc[rifted] += cell_arc
+    moment[rifted] += cell_moment
     cover[rifted] = cell_cover
     cover_material[rifted] = np.minimum(cell_cover_material, cell_material)
     is_volcano[rifted], remaining[rifted] = sub_volcano, sub_remaining
@@ -1924,6 +2335,7 @@ def _open_rift(
         mobile_cover_m=cover,
         mobile_cover_continental_m=np.minimum(cover_material, material),
     )
+    _write_tracers(plate, plateau, arc, moment)
 
 
 def _gap_cells_mostly_uncovered(
