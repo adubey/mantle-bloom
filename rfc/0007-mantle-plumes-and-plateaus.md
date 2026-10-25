@@ -240,7 +240,10 @@ inconsistent with plateau relief.
   water-loaded oceanic isostasy turns that into ~0.46 km of relief, against the 2–3 km
   plateaus stand above the abyssal floor [[Kerr & Mahoney, 2007]](#ref-kerr2007).
 - *The fix.* The footprint depends on where the head lands, judged at the host cell under
-  the plume centre at `born_years`.
+  the plume centre at `born_years`. The oceanic/continental branch follows that host
+  cell, so two step partitions whose plates have drifted apart can branch the same
+  scheduled event differently; the timestep acceptance below measures that branch
+  stability on a pinned-motion test.
 - **Oceanic: a plateau.** The area is set by volume:
   `A = clip(V / PLATEAU_MEAN_EXCESS_M, PLATEAU_AREA_MIN_KM2, PLATEAU_AREA_MAX_KM2)`.
   Weights are flat-topped, `w = exp(−(d/r)⁴)`, with r chosen so the kernel's own integral
@@ -295,7 +298,10 @@ any tuning replay.
 paths (`lithosphere_plate.deform_columns`'s divergent thinning,
 `quad_tectonics._allocate_stretch`, failed rifts) is multiplied by
 `1 − PLUME_CRATON_WEAKENING`, with the product clamped to [0, 1] as `cratons.rift_resistance`
-already clamps it (#385). In RFC 0010's cut strength, heated cells count as weak, so cuts are drawn toward
+already clamps it (#385). Heat integrates by interval overlap like head and tail volume:
+`plume_heat_myr` decreases by the step's elapsed years, and when a step extends beyond
+the remaining heat, that step's weakening is scaled by `remaining_heat / step_years`
+instead of applying full weakening for the whole step. In RFC 0010's cut strength, heated cells count as weak, so cuts are drawn toward
 plume-heated lithosphere and cratons rift where a plume has weakened them, after
 [[Foley, 2008]](#ref-foley2008) and [[Koptev et al., 2015]](#ref-koptev2015). Erosion,
 attrition and the collision brake are unchanged.
@@ -322,8 +328,10 @@ Java's lower-crustal edge has gone down the Solomon trench [[Mann & Taira, 2004]
   - an old Caribbean-like one (E = 5 km) gets P ≈ 0.04;
   - an active arc, whose crust is young, docks readily.
 - **The draw.** One deterministic draw per patch, keyed on (seed, plate, the patch's
-  lowest cell key, encounter start time), decides once per encounter; the result is kept
-  until the patch leaves the trench.
+  lowest cell key, volume-weighted buoyant-crust emplacement time quantized to 1 Myr),
+  decides once per encounter; the result is kept until the patch leaves the trench.
+  Keying on emplacement time rather than encounter start time keeps the draw stable
+  when different step partitions first detect the same patch on different steps.
 - **Dock.** A docking patch goes through the existing terrane path in `_retreat` (#253,
   #305, #321), losing `DOCK_LOWER_CRUST_LOSS` of its buoyant crust down the trench.
 - **Subduct.** A patch that doesn't dock subducts whole.
@@ -377,7 +385,7 @@ depletion tracer.
 not assumed.
 - At one head per 10 Myr with volumes log-uniform in [1, 50] M km³ (mean ≈ 12.5 M km³),
   heads emplace about 1.25 km³/yr on long-run average.
-- With ~25 active tails at a mean of ~0.075 km³/yr, tails emplace about 1.9 km³/yr, mostly
+- With ~32 active tails (24 tail-only plus ~8 head tails at the starting rates) at a mean of ~0.075 km³/yr, tails emplace about 2.4 km³/yr, mostly
   on the ocean floor.
 - [[Clift et al., 2009]](#ref-clift2009)'s ~1.1 km³/yr is a *preserved* (accreted) figure
   from a Cenozoic budget. It is the right comparison for `converted_m3`, not for
@@ -419,7 +427,7 @@ worlds can turn plumes off that way.
 | `PLUME_TAIL_FLUX_MIN/MAX_KM3_PER_YR` | 0.01, 0.25 | Hawaii, the strongest hotspot, peaks near 0.25 [[Van Ark & Lin, 2004]](#ref-vanark2004) | Fixed |
 | `PLUME_TAIL_LIFETIME_MYR` | 80 Myr | Length of the Hawaiian–Emperor record [[Van Ark & Lin, 2004]](#ref-vanark2004) | Sweep 40–120 |
 | `PLUME_TAIL_RADIUS_KM` | 150 km | A volcanic edifice and its apron; at least two cells at density 1 | Fixed |
-| `PLUME_TAIL_ONLY_RATE_PER_MYR` | 0.3 | Sets ~25 active hotspots with the lifetime above; Earth has ~49, 7 deep [[Courtillot et al., 2003]](#ref-courtillot2003) | Tune so 20–50 hotspots are active |
+| `PLUME_TAIL_ONLY_RATE_PER_MYR` | 0.3 | Sets ~24 active tail-only hotspots with the lifetime above (~32 with head tails); Earth has ~49, 7 deep [[Courtillot et al., 2003]](#ref-courtillot2003) | Tune so 20–50 hotspots are active |
 | `PLUME_UNIFORM_SHARE` | 0.3 | Not every plume sits on an upwelling [[Burke & Torsvik, 2004]](#ref-burke2004) | Fixed |
 | E_young, `DOCK_E_YOUNG_M` | 5,000 m excess | The young Caribbean plateau, 8–15 km total [[Kerr & Mahoney, 2007]](#ref-kerr2007), converted | Calibration assumption; sensitivity 2–8 km |
 | E_old, `DOCK_E_OLD_M` | 15,000 m excess | Between old Caribbean-like crust and Ontong Java's ≥ 23.5 km excess [[Kerr & Mahoney, 2007]](#ref-kerr2007) | Calibration assumption; sensitivity 12–20 km |
@@ -429,7 +437,7 @@ worlds can turn plumes off that way.
 | `PLATEAU_PRESERVED_FRACTION` | 0.9 | Calibration assumption: budgets count accreted plateaus as continental growth [[Clift et al., 2009]](#ref-clift2009), though they are mafic | Sensitivity at 0.5 |
 | `PLUME_HEAT_MYR` | 20 Myr | The order of thermal re-equilibration of heated lithosphere; no direct constraint | Tune with RFC 0010: craton rifting should cluster on plume-heated cells |
 | `PLUME_CRATON_WEAKENING` | 0.75 | Cancels `CRATON_RIFT_RESISTANCE` at full heat | Sweep 0.5–1.0 |
-| `PLUME_HEAD_STRESS` | in `internal_stress` units | Breakup often follows a continental plume head [[White & McKenzie, 1989]](#ref-white1989); no rate is given | Provisional design target: about half of continental plume heads followed by a split of their plate within 20 Myr; report matched plume-off/background incidence before stress tuning |
+| `PLUME_HEAD_STRESS` | 1.5 (`internal_stress` units; `STRESS_CERTAIN_RIFT` = 3.0) | Breakup often follows a continental plume head [[White & McKenzie, 1989]](#ref-white1989); no rate is given | Provisional design target: about half of continental plume heads followed by a split of their plate within 20 Myr; report matched plume-off/background incidence before stress tuning. Sensitivity at 0.75 and 3.0, plus 0 to disable |
 
 **Breakup calibration after #358.** The #403 tuning worlds record 115, 109 and 104 splits
 per Gyr on seeds 7, 11 and 2024, respectively. These whole-world counts do not measure the
@@ -478,9 +486,12 @@ emplacement or plateau docking.
   the tracer lifecycle helpers (`thin_tracers`, `clear_tracers`, `carry_tracers`), the
   phase audit for tracers, and the buoyant-crust ledger.
 - `backend/app/world.py`: the `mantle_plumes`, `plume_stream` and `buoyant_crust_ledger`
-  fields and the `plume_multiplier` knob; call `plumes.apply` in `step_world_progress`
-  after topology changes. Bracket the existing phases with the tracer audit, as the craton
-  audit is.
+  fields and the `plume_multiplier` knob; call `plumes.apply(world, years)` in
+  `step_world_progress` after topology, gap-fill and magma-transport have settled
+  (inside `if world.simulate_plate_movement`, after the magma-transport block) and
+  before `gather_node_positions` / `_advance_fluid_dynamics`, so fresh plume crust
+  exists before climate, erosion and volcanism read it in the same step. Bracket the
+  existing phases with the tracer audit, as the craton audit is.
 - `backend/app/persistence.py`: backfill the three world fields.
 - `backend/app/surface_fields.py`: register `plateau_crust_m`, `buoyant_crust_time_m_yr`
   and `plume_heat_myr`.
@@ -524,7 +535,9 @@ emplacement or plateau docking.
     - **one volume owner:** with plumes and the eruption lifecycle both on, no plume cell
       becomes `is_volcano`, and the step's total Hc change equals plume delivery plus
       non-plume eruptions, exactly;
-    - weakening halves effective craton resistance at 0.5, clamped;
+    - weakening halves effective craton resistance at 0.5, clamped, and a step
+      extending beyond the remaining heat scales that step's weakening by the
+      heat/step overlap;
     - `plume_multiplier = 0` changes nothing.
   - `backend/unit_tests/test_terranes.py` (new):
     - docking probability is in [0, 1], rises with excess and falls with age, and matches
@@ -574,9 +587,12 @@ emplacement or plateau docking.
 - [ ] **Source-attribution gate ([#407](https://github.com/adubey/mantle-bloom/issues/407),
       before tuning):** record the current-main
       elevation-driven reset route on the stripped baseline shared with RFC 0006 and on
-      an exposed oceanic-column example. With plume code, distinguish direct plume
+      an exposed oceanic-column example, covering both the column pass
+      (`lithosphere_plate.deform_columns`) and the stretch-rift donor and rifted-cell
+      paths (`quad_tectonics`). With plume code, distinguish direct plume
       juvenile volume, docked plateau conversion, and any juvenile volume the existing
-      `_erupt_melted_nodes` path makes after plume uplift. Report the latter separately;
+      `_erupt_melted_nodes` path makes after plume uplift (donor and rifted-cell
+      bookings separately). Report the latter separately;
       aggregate juvenile growth does not establish plume emplacement or docking.
 - [ ] **Isolated-head scale check (before tuning):** the unit test above passes. A median
       head on reference oceanic lithosphere gives 2.0–2.6 km of peak relief.
@@ -587,6 +603,8 @@ emplacement or plateau docking.
   - [ ] the event stream is identical across step partitions (unit test);
   - [ ] for a shared predetermined schedule, total delivered volume is identical within
         1e-9 relative for 1 Myr and 10 Myr steps;
+  - [ ] on a pinned-motion test the oceanic/continental branch agrees on over 95% of
+        events between 1 Myr and 10 Myr partitions;
   - [ ] on full replays, totals agree within 2% (positions differ).
 - [ ] Hotspot tracks: on a pinned-motion test world, one tail's crust maxima lie within 20°
       of the plate's motion direction at the plume and get younger toward it.
@@ -598,6 +616,9 @@ emplacement or plateau docking.
       [[Clift et al., 2009]](#ref-clift2009), not a fit.
 - [ ] The sensitivity runs (rate, clustering, volume distribution, docking knobs) are
       reported, with the spread of converted continental material each produces.
+- [ ] Side effects stay bounded: report plate counts and mean overlap fraction at every
+      100 Myr checkpoint beside the matched plume-off baseline; flag over 20% drift
+      for review before tuning further.
 - [ ] With RFC 0010 in place, at least half of the craton volume lost to rifting is lost in
       plume-heated cells.
 - [ ] Before tuning `PLUME_HEAD_STRESS`, report the fraction of continental heads followed
