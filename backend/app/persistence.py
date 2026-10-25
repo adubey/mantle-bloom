@@ -207,6 +207,12 @@ def _backfill_added_fields(world: World) -> None:
         world.hm_suture_budget = {}
     if not hasattr(world, "suture_transfer_stats"):
         world.suture_transfer_stats = {}
+    # ensure_ledger, not another hasattr branch: _backfill_added_fields already sits
+    # at the complexity cap (see ruff C901). Unconditional because a world pickled
+    # between the field landing and this repair may hold a bare {} or partial dict.
+    from . import terranes
+
+    terranes.ensure_ledger(world)
     ledger_missing = not hasattr(world, "continental_material_ledger")
     if ledger_missing:
         world.continental_material_ledger = {}

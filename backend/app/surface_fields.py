@@ -85,6 +85,13 @@ SURFACE_FIELDS: dict[str, SurfaceField] = {
     # craton); the formation clock blends.
     "craton_crust_m": _field(float, 0.0, RemapClass.EXTENSIVE),
     "craton_formed_years": _field(float, CRATON_UNFORMED_YEARS, RemapClass.HISTORY, sentinel=CRATON_UNFORMED_YEARS),
+    # Buoyant-crust tracers (terranes.py, shared RFCs 0006/0007). Oceanic-plateau and
+    # island-arc shares of Hc: extensive so every remap conserves their volume.
+    # `arc_crust_m` is RFC 0006's registration; the age moment accumulates here first
+    # (RFC 0007 lands first; RFC 0006's age moment adds thickness x emplacement time
+    # into the same field, and age reads out volume-weighted).
+    "plateau_crust_m": _field(float, 0.0, RemapClass.EXTENSIVE),
+    "buoyant_crust_time_m_yr": _field(float, 0.0, RemapClass.EXTENSIVE),
     "stable_continental_myr": _field(float, 0.0, RemapClass.CLOCK),
     # When the column last became a belt -- welded in a collision or stretched by a rift --
     # so it never forms craton (cratons.mark_belt, RFC 0009). Majority by area, not HISTORY:
