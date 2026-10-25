@@ -72,7 +72,8 @@ Three kinds of water/forcing move along `flow_target`:
 
 - **Physical water**, in m^3/yr: rain on the lagged wet fraction goes directly to lake storage;
   only the dry fraction incurs land Budyko evapotranspiration and supplies runoff, alongside
-  separately routed glacier meltwater. Transit evaporation applies only over dry cell area.
+  separately routed glacier meltwater. Dry runoff transit loss is scaled by the dry cell
+  fraction; glacier melt keeps the existing per-node transit loss.
   `HydrologyFields.lake_external_supply_m3_per_yr` and its wet-rain, dry-runoff and meltwater
   source arrays expose the settled external supply before internal lake-to-lake transfers, so
   the in-step lake resolver can book each source once (#587). The routed through-flow is river
