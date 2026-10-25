@@ -7,7 +7,7 @@ import {
 import type {
   AnimateResponse, DebugScenario, EarthquakeSummary, ElevationPointResponse, FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, NodeAtResponse, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, TuningKey, TuningMultipliers, VolcanoSummary, WorldRecord, WorldStats, WorldSummary,
 } from "./api";
-import { ensureWorldId, withWorldId, worldIdFromSearch, type WorldId } from "./worldRoutes";
+import { ensureWorldId, latestWorldId, withWorldId, worldIdFromSearch, type WorldId } from "./worldRoutes";
 import MapCanvas from "./MapCanvas";
 import MantleCrossSection from "./MantleCrossSection";
 import GlobeSelector from "./GlobeSelector";
@@ -409,6 +409,10 @@ export default function App() {
   const [worldId, setWorldId] = useState<WorldId | null>(() => worldIdFromSearch(window.location.search));
   const worldIdRef = useRef<WorldId | null>(worldId);
   worldIdRef.current = worldId;
+  // Shares one on-demand world resolution between rapid Generate confirmations
+  // (#595 review): without it a double-click with no selection yet could mint
+  // two worlds, one per confirmation, before either selects.
+  const ensureInflightRef = useRef<Promise<WorldId> | null>(null);
   const [summary, setSummary] = useState<WorldSummary | null>(null);
   const [renderData, setRenderData] = useState<RenderResponse | null>(null);
   // Plate Inspector's own data (see PlateInspector.tsx) -- true-frame/rotation-independent,
@@ -1129,8 +1133,8 @@ export default function App() {
   // the list arrives.
   useEffect(() => {
     if (worldId || worlds.length === 0) return;
-    const latest = [...worlds].sort((a, b) => b.updated_at - a.updated_at)[0];
-    if (latest) selectWorld(latest.world_id);
+    const latest = latestWorldId(worlds);
+    if (latest) selectWorld(latest);
   }, [worldId, worlds, selectWorld]);
 
   const createAndSelectWorld = useCallback(async (): Promise<WorldId> => {
@@ -1140,13 +1144,31 @@ export default function App() {
     return record.world_id;
   }, [refreshWorlds, selectWorld]);
 
-  // Creates the first world on demand (#592): with no selection yet (a fresh
-  // server holds no worlds), generating mints one instead of staying blocked
-  // behind a disabled button. Runs only from an explicit generate action,
+  // Resolves the world to generate into on demand (#592): with a selection it
+  // returns it untouched, otherwise it reads the world list and adopts the
+  // latest existing world, creating the first one only when the list is
+  // actually empty. Reading the list here (instead of trusting the selection
+  // state) closes the startup race where a fast Generate on a reloaded tab
+  // ran before the initial list load adopted the existing world, minting a
+  // duplicate (#595 review). Runs only from an explicit generate action,
   // never on page load, so merely opening the app creates nothing.
   const ensureSelectedWorld = useCallback(async (): Promise<WorldId> => {
-    return ensureWorldId(worldIdRef.current, createAndSelectWorld);
-  }, [createAndSelectWorld]);
+    if (!ensureInflightRef.current) {
+      ensureInflightRef.current = ensureWorldId(worldIdRef.current, async (): Promise<WorldId> => {
+        const list = await refreshWorlds();
+        if (worldIdRef.current) return worldIdRef.current;
+        const latest = latestWorldId(list);
+        if (latest) {
+          selectWorld(latest);
+          return latest;
+        }
+        return createAndSelectWorld();
+      }).finally(() => {
+        ensureInflightRef.current = null;
+      });
+    }
+    return ensureInflightRef.current;
+  }, [createAndSelectWorld, refreshWorlds, selectWorld]);
 
   const handleNewWorld = useCallback(async () => {
     setError(null);

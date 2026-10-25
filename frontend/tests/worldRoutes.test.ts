@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { ensureWorldId, publicWorldBase, withWorldId, worldBase, worldIdFromSearch } from "../src/worldRoutes.js";
+import { ensureWorldId, latestWorldId, publicWorldBase, withWorldId, worldBase, worldIdFromSearch } from "../src/worldRoutes.js";
 
 describe("worldRoutes", () => {
   it("builds admin and public bases with encoded IDs", () => {
@@ -37,5 +37,24 @@ describe("ensureWorldId", () => {
   it("creates the first world when nothing is selected yet (#592)", async () => {
     const id = await ensureWorldId(null, async () => "new-id");
     assert.equal(id, "new-id");
+  });
+});
+
+describe("latestWorldId", () => {
+  it("returns null for an empty world list", () => {
+    assert.equal(latestWorldId([]), null);
+  });
+
+  it("picks the most recently updated world without reordering the list", () => {
+    const worlds = [
+      { world_id: "old", updated_at: 1 },
+      { world_id: "new", updated_at: 3 },
+      { world_id: "mid", updated_at: 2 },
+    ];
+    assert.equal(latestWorldId(worlds), "new");
+    assert.deepEqual(
+      worlds.map((w) => w.world_id),
+      ["old", "new", "mid"],
+    );
   });
 });
