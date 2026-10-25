@@ -37,6 +37,7 @@ from . import (
     replay_log,
     run_control,
     stats,
+    world_names,
     worldsketch,
 )
 from .world_registry import FairComputeGate, WorldLimitReached, WorldRegistry, WorldSession
@@ -336,11 +337,21 @@ def _session_or_404(world_id: str) -> WorldSession:
     return session
 
 
+def _session_running(session: WorldSession) -> bool:
+    """Whether this world's run loop is on: what /view calls live (#597)."""
+    runner = session.runner
+    return runner is not None and runner.status().running
+
+
 def _public_session_or_404(world_id: str) -> WorldSession:
-    """A session the public viewer may address. Private and unknown IDs are
-    indistinguishable (both 404) so the public API cannot reveal private worlds."""
+    """A session the public viewer may address. Private idle worlds and unknown
+    IDs are indistinguishable (both 404) so the public API cannot reveal private
+    worlds -- but a world whose run loop is on answers while it runs (#597), so
+    anyone can watch a planet that is currently stepping."""
     session = _registry.find(world_id)
-    if session is None or not session.is_public or session.world is None:
+    if session is None or session.world is None:
+        raise HTTPException(status_code=404, detail="no such public world")
+    if not session.is_public and not _session_running(session):
         raise HTTPException(status_code=404, detail="no such public world")
     return session
 
@@ -2242,8 +2253,12 @@ def public_worlds() -> dict:
         # feed summary has its own mutex.
         with session.lock:
             summary = session.feed.summary()
-            if session.is_public and summary is not None:
-                worlds.append({"world_id": session.world_id, "name": session.name, **summary})
+            running = _session_running(session)
+            # A generated world answers while it is public -- and while its run
+            # loop is on even when private, so /view can watch a planet that is
+            # currently stepping (#597). It drops back out when the run stops.
+            if summary is not None and (session.is_public or running):
+                worlds.append({"world_id": session.world_id, "name": session.name, "running": running, **summary})
     return {"worlds": worlds}
 
 
@@ -2262,6 +2277,7 @@ async def public_world(world_id: str, request: Request, after: str | None = None
     _, remaining = _guest_allowance(request, guest_demo)
     return {
         "world": session.feed.summary(),
+        "running": _session_running(session),
         "steps_remaining": remaining,
         "step_limit": public_view.GUEST_STEP_LIMIT,
         "step_years": public_view.GUEST_STEP_YEARS,
@@ -2557,7 +2573,11 @@ def _import_legacy_checkpoint(store: checkpoint.CheckpointStore) -> None:
         return
     import uuid
 
-    session = WorldSession(world_id=uuid.uuid4().hex, name="Untitled world", is_public=True)
+    session = WorldSession(
+        world_id=uuid.uuid4().hex,
+        name=world_names.default_world_name({s.name for s in _registry.list()}),
+        is_public=True,
+    )
     _wire_session(session)
     _registry.adopt(session)
     with session.lock:

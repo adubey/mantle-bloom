@@ -38,10 +38,13 @@ directory is configured but couldn't be created or written.
 Open to anyone, for the logged-out `/view` page (#373). See
 [architecture.md#public-viewer](architecture.md#public-viewer).
 
-- `GET /public/worlds` lists every public world: `{"worlds": [{"world_id", "name",
-  "revision", "seed", "elapsed_years"}]}`.
+- `GET /public/worlds` lists every generated public world, plus any generated
+  world whose run loop is on even when private, so anyone can watch a planet
+  that is currently stepping (#597): `{"worlds": [{"world_id", "name",
+  "running", "revision", "seed", "elapsed_years"}]}`. A private world drops back
+  out of the list when its run stops.
 - `GET /public/worlds/{world_id}/world`: `{"world": {"revision", "seed", "elapsed_years"},
-  "steps_remaining": int | null, "step_limit": 30, "step_years": 100000}`.
+  "running": bool, "steps_remaining": int | null, "step_limit": 30, "step_years": 100000}`.
   `steps_remaining` is null (unlimited) for the admin. `revision` is an
   opaque string that changes whenever the world does (#374). `404` for a private,
   unknown, or still-empty world -- the listing never advertises the other cases.
@@ -70,7 +73,9 @@ so saves carry no registry information:
 - `GET /worlds` returns every record: metadata plus, when populated, the world
   summary and run state.
 - `POST /worlds` with `{"name"?, "is_public"?}` creates an empty record
-  (`201`); the record holds no world until Generate or Load populates it.
+  (`201`); the record holds no world until Generate or Load populates it. An
+  omitted name defaults to an exoplanet-style pick (a star name plus a lowercase
+  discovery letter, `c`/`d`/`e` weighted more, #597).
   World IDs are server-generated UUIDs. `409` past `MANTLE_BLOOM_MAX_WORLDS`
   records (default 4).
 - `PATCH /worlds/{world_id}` renames (`{"name"}`) or changes visibility

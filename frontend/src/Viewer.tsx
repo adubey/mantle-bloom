@@ -91,8 +91,9 @@ function AccountLink() {
   return null;
 }
 
-// Which public world to show (#563): `?world=<id>`, the only public one when
-// there is one, or a picker when there are several.
+// Which public world to show (#563, #597): `?world=<id>`, the only live world
+// when one is running, the only public one when there is one, or a picker when
+// there are several.
 function usePublicWorldId(): { worlds: PublicWorldListing[] | null; worldId: WorldId | null; selectWorld: (id: WorldId) => void } {
   const [worlds, setWorlds] = useState<PublicWorldListing[] | null>(null);
   const [worldId, setWorldId] = useState<WorldId | null>(() => worldIdFromSearch(window.location.search));
@@ -104,6 +105,17 @@ function usePublicWorldId(): { worlds: PublicWorldListing[] | null; worldId: Wor
         const urlId = worldIdFromSearch(window.location.search);
         if (urlId && list.some((w) => w.world_id === urlId)) return;
         if (list.length === 0) return;
+        // No selection and exactly one live world: adopt it, so /view opens on
+        // the planet that is currently stepping (#597).
+        if (!urlId) {
+          const live = list.filter((w) => w.running);
+          if (live.length === 1) {
+            const id = live[0].world_id;
+            setWorldId(id);
+            window.history.replaceState(null, "", withWorldId(window.location.href, id));
+            return;
+          }
+        }
         // No selection and exactly one public world: adopt it. A selection naming an
         // unknown, private, or deleted world falls back to the first listed one
         // instead of leaving a blank page (#563 S8).
@@ -152,7 +164,8 @@ export default function Viewer() {
           <select value={worldId ?? ""} onChange={(e) => selectWorld(e.target.value)} aria-label="World">
             {worlds.map((w) => (
               <option key={w.world_id} value={w.world_id}>
-                {w.name} · {formatMyr(w.elapsed_years)}
+                {w.name}
+                {w.running ? " ● live" : ""} · {formatMyr(w.elapsed_years)}
               </option>
             ))}
           </select>
@@ -275,6 +288,7 @@ function WorldView({ worldId }: { worldId: WorldId }) {
     <>
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, marginBottom: 12 }}>
         <span style={{ opacity: 0.7 }}>{formatMyr(worldState.elapsed_years)} elapsed</span>
+        {state.running && <span style={{ color: "#7dffa8" }}>● Live</span>}
         <span style={{ flex: 1 }} />
         {!isDemo && (
           <>

@@ -194,8 +194,10 @@ requests never get admin access, and `/login` says login isn't configured.
 <a id="public-viewer"></a>
 ### The public viewer (`backend/app/public_view.py`)
 
-Logged-out visitors land on `/view` (#373), which shows the shared world in the Eckert IV
-projection, in the biome or elevation view only, and can step it by a fixed 100 kyr. It
+Logged-out visitors land on `/view` (#373), which shows public worlds in the Eckert IV
+projection, in the biome or elevation view only, and can step them by a fixed 100 kyr. A
+world whose run loop is on lists even when private, with a live marker, so anyone can
+watch a planet that is currently stepping (#597); it drops back out when the run stops. It
 reaches the world only through `/public/worlds/{world_id}/world`, `/public/worlds/{world_id}/render` and `/public/worlds/{world_id}/step` (see
 api-reference.md). Those routes accept no projection, rotation, step size or other setting,
 so creating, saving, loading, animating and reconfiguring a world all stay behind the
@@ -573,6 +575,8 @@ hydroclimate/atmosphere_cfd.py      the atmospheric wind solver: a genuine time-
                      are diagnostic in climate.py, not CFD-solved -- the shallow-water ocean
                      solver was retired (see simulation-model/climate.md#ocean-atmospheric-fluid-dynamics)
 main.py              FastAPI routes
+world_names.py       default world names in exoplanet style: a star name plus a lowercase
+                     discovery letter (#597)
 auth.py              single-owner GitHub login: the request guard, OAuth routes and signed
                      session cookies (see #access-control above)
 run_control.py       the run/stopped status and the background thread that steps a running

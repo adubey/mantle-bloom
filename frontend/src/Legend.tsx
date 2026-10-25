@@ -171,7 +171,7 @@ export default function Legend({
           fontSize: 13,
         }}
       >
-        Click &apos;Generate World&apos; or &apos;File&apos; to begin.
+        Click &apos;Add&apos; or &apos;File&apos; to begin.
       </div>
     );
   }

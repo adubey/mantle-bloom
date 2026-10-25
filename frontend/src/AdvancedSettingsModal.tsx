@@ -1,3 +1,4 @@
+import GenerateOptionCheckbox from "./GenerateOptionCheckbox";
 import VoronoiPreview from "./VoronoiPreview";
 import ModalShell from "./ModalShell";
 
@@ -34,6 +35,10 @@ interface Props {
   // DETAIL_CHOICES) -- passed down rather than imported here to avoid a circular import
   // between this file and App.tsx.
   fluidDensityChoices: { value: number; label: string }[];
+  // Craton-first terrain and synthetic relief default on for the Random tab
+  // (#597); Advanced is the only place to turn them off.
+  cratonsFirst: boolean;
+  syntheticRelief: boolean;
   onLandPercentChange: (v: number) => void;
   onContinentalPercentChange: (v: number) => void;
   onAutoPlatesChange: (v: boolean) => void;
@@ -42,6 +47,8 @@ interface Props {
   onAxialTiltDegChange: (v: number) => void;
   onInitialSoilMaturityPercentChange: (v: number) => void;
   onFluidDensityChange: (v: number) => void;
+  onCratonsFirstChange: (v: boolean) => void;
+  onSyntheticReliefChange: (v: boolean) => void;
   onClose: () => void;
 }
 
@@ -67,6 +74,8 @@ export default function AdvancedSettingsModal({
   initialSoilMaturityPercent,
   fluidDensity,
   fluidDensityChoices,
+  cratonsFirst,
+  syntheticRelief,
   onLandPercentChange,
   onContinentalPercentChange,
   onAutoPlatesChange,
@@ -75,6 +84,8 @@ export default function AdvancedSettingsModal({
   onAxialTiltDegChange,
   onInitialSoilMaturityPercentChange,
   onFluidDensityChange,
+  onCratonsFirstChange,
+  onSyntheticReliefChange,
   onClose,
 }: Props) {
   const showVoronoiPreview = (generateMode === "human" || generateMode === "premade") && sketchImageDataUrl != null;
@@ -104,6 +115,28 @@ export default function AdvancedSettingsModal({
             style={{ width: "100%" }}
           />
         </label>
+
+        <GenerateOptionCheckbox
+          checked={cratonsFirst}
+          onChange={onCratonsFirstChange}
+          disabled={generateMode !== "random"}
+          title="Craton-first terrain"
+        >
+          Build continents from cratons before assigning plates. On by default for
+          Random worlds; turn it off for the existing plate-first approach.
+        </GenerateOptionCheckbox>
+        {cratonsFirst && (
+          <GenerateOptionCheckbox
+            checked={syntheticRelief}
+            onChange={onSyntheticReliefChange}
+            disabled={generateMode !== "random"}
+            title="Relief from a synthetic history"
+          >
+            Draw mountain belts where cratons once collided and on continents'
+            leading edges, with hilly interiors and shelves, instead of noise-shaped
+            relief.
+          </GenerateOptionCheckbox>
+        )}
 
         <label style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, fontSize: 12 }}>
           <input type="checkbox" checked={autoPlates} onChange={(e) => onAutoPlatesChange(e.target.checked)} />

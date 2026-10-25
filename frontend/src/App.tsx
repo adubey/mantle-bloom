@@ -29,7 +29,6 @@ import SaveAnimationModal from "./SaveAnimationModal";
 import Legend from "./Legend";
 import MeasureOverlay from "./MeasureOverlay";
 import ProgressBar from "./ProgressBar";
-import GenerateOptionCheckbox from "./GenerateOptionCheckbox";
 import AdminSession from "./AdminSession";
 import ProbePopup from "./ProbePopup";
 import { PREMADE_WORLDS } from "./premadeWorlds";
@@ -303,8 +302,8 @@ export default function App() {
   }, []);
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [seed, setSeed] = useState(randomSeed());
-  const [cratonsFirst, setCratonsFirst] = useState(false);
-  const [syntheticRelief, setSyntheticRelief] = useState(false);
+  const [cratonsFirst, setCratonsFirst] = useState(true);
+  const [syntheticRelief, setSyntheticRelief] = useState(true);
   const [continentalPercent, setContinentalPercent] = useState(DEFAULT_CONTINENTAL_PERCENT);
   const [landPercent, setLandPercent] = useState(DEFAULT_LAND_PERCENT);
   const [axialTiltDeg, setAxialTiltDeg] = useState(DEFAULT_AXIAL_TILT_DEG);
@@ -1170,15 +1169,6 @@ export default function App() {
     return ensureInflightRef.current;
   }, [createAndSelectWorld, refreshWorlds, selectWorld]);
 
-  const handleNewWorld = useCallback(async () => {
-    setError(null);
-    try {
-      await createAndSelectWorld();
-    } catch (e) {
-      setError(String(e));
-    }
-  }, [createAndSelectWorld]);
-
   const handleDeleteWorld = useCallback(async (id: WorldId) => {
     setError(null);
     try {
@@ -1429,20 +1419,9 @@ export default function App() {
           <button
             onClick={() => setShowFileModal(true)}
             disabled={animating}
-            className={!summary ? "start-highlight" : undefined}
             style={{ fontSize: 12 }}
           >
             📁 File...
-          </button>
-
-          <button
-            onClick={() => setShowGenerateDialog(true)}
-            disabled={busy || animating}
-            title={worldId ? "Generate into the selected world" : "Generate into a new world"}
-            className={!summary ? "start-highlight" : undefined}
-            style={{ fontSize: 12 }}
-          >
-            Generate World
           </button>
           {busy && <ProgressBar label="Generating world" fraction={genProgress} />}
 
@@ -1472,8 +1451,8 @@ export default function App() {
               </select>
             )}
             <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-              <button onClick={handleNewWorld} disabled={busy || animating || playing} style={{ flex: 1, fontSize: 12 }} title="Create an empty world">
-                + New
+              <button onClick={() => setShowGenerateDialog(true)} disabled={busy || animating || playing} style={{ flex: 1, fontSize: 12 }} title="Open the Generate World dialog">
+                Add
               </button>
               <button
                 onClick={() => {
@@ -2451,19 +2430,6 @@ export default function App() {
               )}
             </label>
 
-            {generateMode === "random" && (
-              <GenerateOptionCheckbox checked={cratonsFirst} onChange={setCratonsFirst} disabled={busy} title="Craton-first terrain">
-                Build continents from cratons before assigning plates. Random worlds use
-                the existing plate-first approach when unchecked.
-              </GenerateOptionCheckbox>
-            )}
-            {generateMode === "random" && cratonsFirst && (
-              <GenerateOptionCheckbox checked={syntheticRelief} onChange={setSyntheticRelief} disabled={busy} title="Relief from a synthetic history">
-                Draw mountain belts where cratons once collided and on continents' leading
-                edges, with hilly interiors and shelves, instead of noise-shaped relief.
-              </GenerateOptionCheckbox>
-            )}
-
             {generateMode !== "debug" && (
               <label style={{ display: "block", marginBottom: 16 }}>
                 Detail
@@ -2532,6 +2498,8 @@ export default function App() {
           initialSoilMaturityPercent={initialSoilMaturityPercent}
           fluidDensity={fluidDensity}
           fluidDensityChoices={FLUID_DETAIL_CHOICES}
+          cratonsFirst={cratonsFirst}
+          syntheticRelief={syntheticRelief}
           onLandPercentChange={setLandPercent}
           onContinentalPercentChange={setContinentalPercent}
           onAutoPlatesChange={setAutoPlates}
@@ -2540,6 +2508,8 @@ export default function App() {
           onAxialTiltDegChange={setAxialTiltDeg}
           onInitialSoilMaturityPercentChange={setInitialSoilMaturityPercent}
           onFluidDensityChange={setFluidDensity}
+          onCratonsFirstChange={setCratonsFirst}
+          onSyntheticReliefChange={setSyntheticRelief}
           onClose={() => setShowAdvancedSettings(false)}
         />
       )}
@@ -2592,6 +2562,7 @@ export default function App() {
           mapWrapperRef={mapWrapperRef}
           onClose={() => setShowFileModal(false)}
           onWorldReplaced={handleWorldReplaced}
+          onEnsureWorldId={ensureSelectedWorld}
         />
       )}
 
