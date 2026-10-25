@@ -438,8 +438,8 @@ worlds can turn plumes off that way.
 | ΔE, `DOCK_WIDTH_M` | 3,000 m | Design choice: the spread of outcomes for similar plateaus | Sensitivity 1,500–6,000 m |
 | `DOCK_LOWER_CRUST_LOSS` | 0.2 | Design choice: Ontong Java lost lower crust at its edge [[Mann & Taira, 2004]](#ref-mann2004); no fraction is given | Sensitivity 0–0.4 |
 | `PLATEAU_PRESERVED_FRACTION` | 0.9 | Calibration assumption: budgets count accreted plateaus as continental growth [[Clift et al., 2009]](#ref-clift2009), though they are mafic | Sensitivity at 0.5 |
-| `PLUME_HEAT_MYR` | 20 Myr | The order of thermal re-equilibration of heated lithosphere; no direct constraint | Tune with RFC 0010: craton rifting should cluster on plume-heated cells (see cross-RFC tuning interface) |
-| `PLUME_CRATON_WEAKENING` | 0.75 | Cancels `CRATON_RIFT_RESISTANCE` at full heat | Sweep 0.5–1.0 (see cross-RFC tuning interface) |
+| `PLUME_HEAT_MYR` | 20 Myr | The order of thermal re-equilibration of heated lithosphere; no direct constraint | Provisional; tune for plume-assisted sensitivity only after RFC 0010 Gate 3 propagation/linkage checks (see cross-RFC interface) |
+| `PLUME_CRATON_WEAKENING` | 0.75 | Cancels `CRATON_RIFT_RESISTANCE` at full heat | Provisional 0.5–1.0 sweep; heated-as-weak cannot replace local damage/growth (see cross-RFC interface) |
 | `PLUME_HEAD_STRESS` | 1.5 (`internal_stress` units; `STRESS_CERTAIN_RIFT` = 3.0) | Breakup often follows a continental plume head [[White & McKenzie, 1989]](#ref-white1989); no rate is given | Provisional design target: about half of continental plume heads followed by a split of their plate within 20 Myr; report matched plume-off/background incidence before stress tuning. Sensitivity at 0.75 and 3.0, plus 0 to disable |
 
 **Breakup calibration after #358.** The #403 tuning worlds record 115, 109 and 104 splits
@@ -454,16 +454,17 @@ fraction remains a provisional design choice, and this refresh sets no new stres
 **RFC 0010 target class and current evidence.** RFC 0010's first Earth-facing comparison is the
 plume-associated continental-rift subset. It does not claim that every Earth rift is plume-driven;
 the plume-off member of a paired test is a causal control under the same initial state and tectonic
-forcing, not a model of the full non-plume rift population. The broad 6–8 successful continental
-split-system context per 200 Myr remains a whole-population plausibility check, not a plume-event
-rate or tuning target.
+forcing, not a model of the full non-plume rift population. The 6–8 successful continental
+split-systems per 200 Myr reported by the RFC 0010 agent remain a whole-population plausibility
+check, not a plume-event rate or tuning target.
 
 RFC 0010 Gate 3 remains open ([tracking issue #487](https://github.com/adubey/mantle-bloom/issues/487)).
 Its current local-damage and dike diagnostics have not demonstrated
-causal tip propagation, segment linkage and a viable production split. The finite-reservoir dike
-screen brackets arrest between 60 and 60.5 km for one diagnostic case, whose event volume is about
-0.814 km³ against the 1–2 km³ comparison range. These results identify mechanics still to solve;
-they do not calibrate plume weakening or show that a plume caused a rift. Keep the half-of-heads
+causal tip propagation, segment linkage and a viable production split. The dike-screen figures
+reported by the RFC 0010 agent (arrest bracketed between 60 and 60.5 km, event volume about
+0.814 km³ against a 1–2 km³ comparison range) come from uncommitted Gate 3 diagnostics and are
+not yet in-repo evidence: they identify mechanics still to solve, do not calibrate plume
+weakening, and do not show that a plume caused a rift. Keep the half-of-heads
 split incidence as a provisional design choice, and do not tune plume coupling to it until local
 rift growth and the matched plume-off/on comparison are supported.
 
@@ -486,9 +487,9 @@ motion-solve force interface. RFC 0010 may use plume event time, position, host 
 read-only context for attribution and paired tests; plume presence alone must not create a cut or
 plate split. Tectonic extension and RFC 0010's local failure/growth conditions remain necessary.
 
-RFC 0010's Gate 2 first-order diagnostic converts extensional membrane resultant and integrated
-capacity to thickness-averaged stress, `sigma_ext_bar = N_ext/(Hc + Hm)` and
-`Y_bar = N_cap/(Hc + Hm)`. RFC 0007's dimensionless `PLUME_HEAD_STRESS` in
+RFC 0010's Gate 2 diagnostic pairs the extensional membrane resultant with integrated capacity
+converted through the same effective thickness (`sigma_ext = N_ext / H_eff`; the current state
+audit uses `Hc + Hm` as shell thickness). RFC 0007's dimensionless `PLUME_HEAD_STRESS` in
 `Plate.internal_stress` is only a provisional split-eligibility signal: it is not a local stress,
 force or substitute for those fields. The Gate 3 plume contribution has not yet been tested against
 that local failure and growth path. Therefore the RFC 0010 rows below describe available state and
