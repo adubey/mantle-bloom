@@ -73,7 +73,8 @@ Three kinds of water/forcing move along `flow_target`:
 - **Physical water**, in m^3/yr: rain on the lagged wet fraction goes directly to lake storage;
   only the dry fraction incurs land Budyko evapotranspiration and supplies runoff, alongside
   separately routed glacier meltwater. Dry runoff transit loss is scaled by the dry cell
-  fraction; glacier melt keeps the existing per-node transit loss.
+  fraction; glacier melt keeps the existing per-node transit loss. The breach gate preserves
+  wet-cell rain as a separate loss-free supply when chained pits merge or pass overflow on.
   `HydrologyFields.lake_external_supply_m3_per_yr` and its wet-rain, dry-runoff and meltwater
   source arrays expose the settled external supply before internal lake-to-lake transfers, so
   the in-step lake resolver can book each source once (#587). The routed through-flow is river
@@ -179,11 +180,12 @@ discharge, channel-width growth, deposition, geology or lake silt.
   whole cells. Lake silt settles over the wet area in proportion to each cell's wet fraction.
 - **Balanced lakes** (`lakes.LakeClimate`, issue #297): lakes use real water-balance units.
   Inflow is direct precipitation on the lagged wet area plus settled dry-cell Budyko runoff
-  and glacier melt, routed as volume (m^3/yr). In-transit river losses on these real-unit flows
-  use a fixed per-node fraction at a 100 kyr reference step
-  (`hydrology.river_transit_loss_fraction`), scaled by each cell's dry fraction. The breach
-  gate uses the same losses. A spilling sink and rim lose only their dry-area share; wet-cell
-  precipitation travels through lake storage without land runoff or transit loss. A spilling
+  and glacier melt, routed as volume (m^3/yr). Dry runoff transit losses use a fixed per-node
+  fraction at a 100 kyr reference step (`hydrology.river_transit_loss_fraction`), scaled by each
+  cell's dry fraction. Glacier melt keeps the existing full per-node transit loss. The breach
+  gate applies the same source-specific losses. A spilling sink and rim lose only their dry-area
+  runoff share; wet-cell precipitation travels through lake storage without land runoff or
+  transit loss. A spilling
   lake's inflow is the flow through its sink.
   Evaporation is the real open-water rate, about 0.3 m/yr at 0 C rising to 1.8 m/yr at 25 C.
   Partly flooded cells evaporate up to 30% faster, since shallow margins warm faster
