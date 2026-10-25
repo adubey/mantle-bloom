@@ -1,8 +1,8 @@
 # RFC 0007: Mantle plumes: oceanic plateaus, flood basalts and hotspot tracks
 
-- **Status:** Draft
+- **Status:** Accepted 2026-10-25 (owner confirmation; merged as Draft in PR #568)
 - **Date:** 2026-10-13; evidence refreshed 2026-10-14 (#403)
-- **Related:** #205 (magma transport),
+- **Related:** #573 (tracking), #205 (magma transport),
   [#407](https://github.com/adubey/mantle-bloom/issues/407) (source attribution and breakup baseline); RFCs [0010](0010-rifts-follow-weak-lithosphere.md)
   (plume weakening of cratons and conditional plume-assisted local rifting; supersedes 0003), [0009](0009-craton-mosaic.md) (cratons;
   supersedes 0004, keeps its depletion follow-up deferred),
@@ -670,7 +670,7 @@ emplacement or plateau docking.
 
 ## Acceptance criteria
 
-- [ ] **Source-attribution gate ([#407](https://github.com/adubey/mantle-bloom/issues/407),
+- [x] **Source-attribution gate ([#407](https://github.com/adubey/mantle-bloom/issues/407),
       before tuning):** record the current-main
       elevation-driven reset route on the stripped baseline shared with RFC 0006 and on
       an exposed oceanic-column example, covering both the column pass
@@ -680,6 +680,23 @@ emplacement or plateau docking.
       `_erupt_melted_nodes` path makes after plume uplift (donor and rifted-cell
       bookings separately). Report the latter separately;
       aggregate juvenile growth does not establish plume emplacement or docking.
+  **Result (2026-10-25, [analysis/issue407](../analysis/issue407/README.md), PR #576):**
+  on the stripped baseline (seeds 7/11/2024, 500 Myr, density 1, `8ed179f`), zero
+  oceanic-coded columns with prior elevation above sea level melted through and recoded
+  continental in 12,633 `_erupt_melted_nodes` calls (53,078 melting nodes) across all
+  three paths, and the post-recode melt-site juvenile bookings were exactly 0 m³ on
+  every seed. A synthetic exposed oceanic column drives the real reset path (recodes
+  continental, books 32.5 km of juvenile per node), so the mechanism exists in code but
+  never triggers on current main: all melt-through is sub-sea-level oceanic eruption.
+  Gross juvenile is arc-dominated (arc magmatism ~85–87% of `juvenile_additions_m3`);
+  none of it flows through the reset route.
+  **Disjoint reporting for plume-code tests:** report direct plume juvenile
+  (`plume_head`/`plume_tail` emplacement volumes), docked-plateau conversion
+  (plateau-sourced `converted_m3`), and reset-route juvenile separately — donor and
+  rifted-cell bookings separately, as above. Plateau `converted_m3` is the only figure
+  comparable to the ~1.1 km³/yr Cenozoic accretion budget. Aggregate
+  `juvenile_additions_m3` growth does not establish plume emplacement, docking, or
+  preservation.
 - [ ] **Isolated-head scale check (before tuning):** the unit test above passes. A median
       head on reference oceanic lithosphere gives 2.0–2.6 km of peak relief.
 - [ ] Over 1 Gyr on each of seeds 7, 11 and 2024: plume-head counts consistent with the
