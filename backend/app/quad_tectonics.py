@@ -1966,7 +1966,8 @@ def _gap_cells_mostly_uncovered(
 
 
 def fill_gap(
-    world: "World", plate: "PlateWithSparseQuadPatch", gap_points: np.ndarray, others: list, spacing_rad: float, max_layers: int
+    world: "World", plate: "PlateWithSparseQuadPatch", gap_points: np.ndarray, others: list, spacing_rad: float, max_layers: int,
+    years: float = 0.0,
 ) -> int:
     """Grow `plate` into the uncovered `gap_points` (world xyz) for `gaps.py`. The same
     frontier walk as boundary advance, from every boundary cell, restricted to cells whose centre lies within
@@ -1977,7 +1978,9 @@ def fill_gap(
     Unlike boundary advance there is no standoff from the neighbours' nodes. Advance keeps a
     new cell's centre `EXTEND_THRESHOLD_MULTIPLIER` spacings from them, which is what leaves
     a seam about one cell wide between two plates that stopped short of each other; gap
-    filling is what closes it. Returns how many cells were added."""
+    filling is what closes it. `years` carries the step length so stretch donors behind the
+    growth weaken with plume heat like any other rift advance (RFC 0007, #582); without it
+    donors use unweakened strength. Returns how many cells were added."""
     if plate.node_count() == 0 or len(gap_points) == 0:
         return 0
     gap_tree = cKDTree(gap_points)
@@ -1994,5 +1997,5 @@ def fill_gap(
     n = plate.node_count()
     return grow_frontier(
         plate, world, np.ones(n, dtype=bool), np.zeros(n, dtype=bool), neighbours, spacing_rad,
-        max_layers, max(1, 2 * len(gap_points)), claimable=claimable, standoff=False,
+        max_layers, max(1, 2 * len(gap_points)), claimable=claimable, standoff=False, years=years,
     )

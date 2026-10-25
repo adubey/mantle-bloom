@@ -221,7 +221,7 @@ def _adjacent_plates_to_cluster(world: "World", cluster_points: np.ndarray, spac
     return adjacent
 
 
-def fill_gaps_by_growing_neighbours(world: "World") -> list[str]:
+def fill_gaps_by_growing_neighbours(world: "World", years: float = 0.0) -> list[str]:
     """Find every sphere region no live plate currently covers (`_find_gap_points`) and grow
     the plates adjacent to it into it (`_adjacent_plates_to_cluster`,
     `_grow_adjacent_into_gap`), falling back to `_spawn_plate_from_gap` when a cluster has no
@@ -232,7 +232,8 @@ def fill_gaps_by_growing_neighbours(world: "World") -> list[str]:
     unlogged, and never spawn a plate.
 
     Mutates `world.plates`/`world.next_plate_id` (spawn) and the adjacent plates' surfaces
-    (growth) in place; returns event strings for the UI's console."""
+    (growth) in place; returns event strings for the UI's console. `years` carries the
+    step length into the stretch donors behind the growth (RFC 0007, #582)."""
     existing_context = _existing_node_tree(world)
     if existing_context is None:
         return []
@@ -269,7 +270,7 @@ def fill_gaps_by_growing_neighbours(world: "World") -> list[str]:
                 f"New {plate.crust_type} crust formed as plate {plate.plate_id} ({plate.node_count()} nodes) {where} (no adjacent plate to grow)."
             )
             continue
-        added = _grow_adjacent_into_gap(world, cluster_points, adjacent, spacing_rad)
+        added = _grow_adjacent_into_gap(world, cluster_points, adjacent, spacing_rad, years=years)
         for plate_id, n in added.items():
             events.append(f"Plate {plate_id} grew by {n} nodes into a long-vacated gap.")
 
@@ -278,12 +279,13 @@ def fill_gaps_by_growing_neighbours(world: "World") -> list[str]:
         adjacent = _adjacent_plates_to_cluster(world, seam_points, spacing_rad)
         if adjacent:
             max_radius = max(geometry.bounding_sphere(points)[1] for points in seams)
-            _grow_adjacent_into_gap(world, seam_points, adjacent, spacing_rad, max_radius)
+            _grow_adjacent_into_gap(world, seam_points, adjacent, spacing_rad, max_radius, years)
     return events
 
 
 def _grow_adjacent_into_gap(
-    world: "World", cluster_points: np.ndarray, adjacent: list[Plate], spacing_rad: float, radius_rad: float | None = None
+    world: "World", cluster_points: np.ndarray, adjacent: list[Plate], spacing_rad: float, radius_rad: float | None = None,
+    years: float = 0.0,
 ) -> dict[int, int]:
     """Grow `adjacent` plates into one gap cluster: each gap point goes to whichever adjacent
     plate has the nearest node, and each plate grows into its own share through
@@ -298,7 +300,7 @@ def _grow_adjacent_into_gap(
     for k, plate in enumerate(adjacent):
         points = cluster_points[owner == k]
         others = [p for p in world.plates if p.plate_id != plate.plate_id]
-        n = quad_tectonics.fill_gap(world, plate, points, others, spacing_rad, max_layers)
+        n = quad_tectonics.fill_gap(world, plate, points, others, spacing_rad, max_layers, years=years)
         if n:
             added[plate.plate_id] = n
     return added

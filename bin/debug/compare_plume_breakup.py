@@ -162,6 +162,8 @@ def _analyze(on: dict, off: dict) -> dict:
     matched = 0
     for h in heads:
         lo, hi = h["born"], h["born"] + WINDOW_YEARS
+        if h["host"] in vanish_at and lo < vanish_at[h["host"]] <= hi:
+            continue  # same censored set as above: both fractions run over the same windows
         if any(lo < s["time"] <= hi for s in off["splits"]):
             matched += 1
     return {
@@ -172,7 +174,7 @@ def _analyze(on: dict, off: dict) -> dict:
         "censored_windows": censored,
         "head_split_fraction": round(hits / max(1, len(heads) - censored), 4),
         "matched_off_windows_with_any_split": matched,
-        "matched_off_fraction": round(matched / max(1, len(heads)), 4),
+        "matched_off_fraction": round(matched / max(1, len(heads) - censored), 4),
         "on_splits_per_500myr": len(on["splits"]),
         "off_splits_per_500myr": len(off["splits"]),
         "off_background_expected": BACKGROUND_SPLITS.get(on["seed"]),
@@ -228,7 +230,7 @@ def main() -> None:
         print(json.dumps({"seed": seed, "plume_on": False, "heads": len(off["heads"]), "splits": len(off["splits"]), "wall_s": off["wall_s"]}), flush=True)
         results.append(_analyze(on, off))
     out = {"provenance": _provenance(), "window_years": WINDOW_YEARS, "results": results}
-    Path(args.out).write_text(json.dumps(out, indent=2))
+    Path(args.out).write_text(json.dumps(out, indent=2) + "\n")
     print(f"wrote {args.out}")
 
 

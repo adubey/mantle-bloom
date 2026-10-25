@@ -964,7 +964,12 @@ routine per-step motion.
   -- the attempt relieved some pressure, but the underlying size/overlap forcing is usually
   still there next step). Computed alongside `update_overlap_progress` in
   `merge_split.update_overlap_tracking`, reusing the same whole-sphere `compute_node_overlap`
-  read the `overlapAge` view already needs -- no separate pass.
+  read the `overlapAge` view already needs -- no separate pass. A plate that takes a
+  continental plume head also carries `PLUME_HEAD_STRESS` of extra stress per arrival
+  (`plumes._credit_head_stress`, RFC 0007 #582) -- heat weakens the craton, and the kick
+  pushes the plate toward the split gates. Both knobs are provisional, tuned in #584;
+  the head-following 20 Myr split fraction stays well below its provisional target at
+  their defaults (see `analysis/issue582`).
 
   **Overlap severity also scales uplift and slowdown directly (2026-09).** Two more local,
   already-available-fraction severity signals, both scoped to continent-continent collision
@@ -1237,6 +1242,15 @@ teal. A save from before belt marks loads with no belts and its cratons unchange
   `cratons.rift_resistance`, clamped to [0, 1];
 - donates only `1 - CRATON_STRETCH_RESISTANCE` of its share of a rift's stretched footprint,
   with fresh magmatic crust filling the rest (`quad_tectonics._allocate_stretch`);
+- thins faster under a mantle plume (RFC 0007, #582). While a column carries plume heat
+  (`plume_heat_myr`, topped to `PLUME_HEAT_MYR` near an active head and counting down
+  from there), its craton strength is scaled by `1 - PLUME_CRATON_WEAKENING`, with the
+  rift-resistance product clamped exactly as above (`cratons.heated_rift_resistance`).
+  A step that outlasts the remaining heat weakens only the heated fraction, so the
+  weakening fades gradually as the halo expires rather than switching off. It applies
+  to divergent thinning, rift-advance and gap-fill stretch donors, and failed rifts;
+  a head born mid-step tops up above `PLUME_HEAT_MYR` so the post-decay halo is exact
+  regardless of step partition. Tails stamp no heat, so weakening is head-only;
 - never flows, melts or delaminates (`orogeny.py`); an orogen ponds against it;
 - is never consumed whole by boundary retreat (`cratons.retreat_allowed`). At a collision
   front it jams: the weaker crust around it takes the shortening, and craton against craton

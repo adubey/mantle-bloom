@@ -234,7 +234,7 @@ def test_multiplier_zero_is_noop():
     ledger_before = dict(world.continental_material_ledger)
     world.elapsed_years = 5e6
     out = plumes.apply(world, 5e6)
-    assert out == {"new_heads": 0, "new_tails": 0, "head_volume_m3": 0.0, "tail_volume_m3": 0.0}
+    assert out == {"new_heads": 0, "new_tails": 0, "head_volume_m3": 0.0, "tail_volume_m3": 0.0, "credited_heads": 0}
     for name, values in before.items():
         assert np.array_equal(plate.collect(name), values)
     assert world.continental_material_ledger == ledger_before
@@ -357,6 +357,27 @@ def test_heat_refreshes_and_counts_down():
     assert np.all(tail_world.plates[0].collect("plume_heat_myr") == 0.0)
 
 
+def test_mid_step_birth_keeps_full_post_birth_halo():
+    """A head born partway through the step ends it with PLUME_HEAT_MYR minus
+    only the post-birth time, not minus the whole step (RFC 0007, #582)."""
+    world = World(seed=11, plates=[globe_plate("oceanic")])
+    world.plume_stream = _stream_silenced()
+    volume = 7e15
+    world.mantle_plumes = [plumes.MantlePlume(
+        plume_id=0,
+        position=(1.0, 0.0, 0.0),
+        born_years=2.5e6,
+        head_volume_m3=volume,
+        head_remaining_m3=volume,
+        head_end_years=5.5e6,
+        tail_flux_m3_per_yr=2e7,
+        tail_end_years=85.5e6,
+    )]
+    world.elapsed_years = 3e6
+    plumes.apply(world, 1e6)
+    assert world.plates[0].collect("plume_heat_myr").max() == pytest.approx(plumes.PLUME_HEAT_MYR - 0.5)
+
+
 def test_dead_plumes_drop_at_step_end():
     """A plume whose tail ended is gone after the step (#579)."""
     world = World(seed=11, plates=[quad_plate(0, "oceanic")])
@@ -433,6 +454,7 @@ def test_continental_head_adds_plume_stress_to_host():
     out = plumes.apply(world, 1e6)
     assert out["new_heads"] >= 1
     assert world.plates[0].internal_stress == pytest.approx(out["new_heads"] * plumes.PLUME_HEAD_STRESS)
+    assert out["credited_heads"] == out["new_heads"]
 
 
 def test_oceanic_head_adds_no_plume_stress():
@@ -441,6 +463,7 @@ def test_oceanic_head_adds_no_plume_stress():
     out = plumes.apply(world, 1e6)
     assert out["new_heads"] >= 1
     assert world.plates[0].internal_stress == pytest.approx(0.0)
+    assert out["credited_heads"] == 0
 
 
 def test_head_stress_credit_uses_plate_ids():
