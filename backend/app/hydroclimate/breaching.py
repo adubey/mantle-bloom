@@ -129,7 +129,8 @@ class WaterBalance:
     `hydrology.route_downstream` applies when lakes are balanced. `dry_fraction` applies
     Budyko runoff and transit loss only over the dry share of a partly flooded cell;
     `direct_supply_m3_per_yr` is the wet-cell precipitation that joins the lake directly and
-    bypasses land runoff and transit loss (#587). Glacier melt isn't included:
+    bypasses land runoff and transit loss, including when chained pits hand its surplus on
+    (#587). Glacier melt isn't included:
     it's computed after breaching, from the ice routing that breaching feeds."""
 
     precipitation_mm: np.ndarray
@@ -465,7 +466,8 @@ def _overflows(
     direct = np.zeros(n) if water.direct_supply_m3_per_yr is None else np.asarray(water.direct_supply_m3_per_yr)
     # Direct lake rain is associated with its drainage leaf, but does not cross dry land or
     # incur transit loss on its way there.
-    inflow = np.bincount(sink, weights=runoff_m3 * carried + direct, minlength=n)
+    runoff_inflow = np.bincount(sink, weights=runoff_m3 * carried, minlength=n)
+    direct_inflow = np.bincount(sink, weights=direct, minlength=n)
     open_water_m3 = ENDORHEIC_DEMAND_FACTOR * evaporation_mm / 1000.0 * area
 
     spill_level, exit_node = _spill_exits(chain, sink)
@@ -500,12 +502,20 @@ def _overflows(
             catchments.setdefault(downstream, [order[bounds[downstream]:bounds[downstream + 1]]]).extend(
                 catchments.get(pit) or [order[bounds[pit]:bounds[pit + 1]]]
             )
-            inflow[downstream] += inflow[pit] * share
+            runoff_inflow[downstream] += runoff_inflow[pit] * share
+            direct_inflow[downstream] += direct_inflow[pit]
             merged_into[pit] = downstream
         else:
-            surplus = inflow[pit] - demand(pit)
+            total_inflow = runoff_inflow[pit] + direct_inflow[pit]
+            surplus = total_inflow - demand(pit)
             if surplus > 0.0:
-                inflow[downstream] += surplus * share
+                # Basin evaporation consumes a mixed share of both sources. Only dry runoff
+                # incurs transit loss on its path to the next catchment.
+                runoff_share = runoff_inflow[pit] / total_inflow if total_inflow > 0.0 else 0.0
+                runoff_surplus = surplus * runoff_share
+                direct_surplus = surplus - runoff_surplus
+                runoff_inflow[downstream] += runoff_surplus * share
+                direct_inflow[downstream] += direct_surplus
         upstream_count[d] -= 1
         if upstream_count[d] == 0:
             ready.append(d)
@@ -516,7 +526,8 @@ def _overflows(
         return pit
 
     # A pit drowned by a lake downstream overflows only if that whole lake does.
-    return np.array([inflow[lake(pit)] > demand(lake(pit)) for pit in pits.tolist()], dtype=bool)
+    total_inflow = runoff_inflow + direct_inflow
+    return np.array([total_inflow[lake(pit)] > demand(lake(pit)) for pit in pits.tolist()], dtype=bool)
 
 
 def _spill_exits(chain: _PitChain, sink: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
