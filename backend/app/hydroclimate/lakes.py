@@ -291,7 +291,7 @@ class CellHypsometry:
         partial = np.divide(above_low * above_low, 4.0 * r, out=np.zeros_like(z), where=r > 0.0)
         return np.where(level >= z + r, np.clip(level - z, 0.0, None), partial)
 
-    def wet_fraction(self, level: float, idx: np.ndarray) -> np.ndarray:
+    def wet_fraction(self, level: float | np.ndarray, idx: np.ndarray) -> np.ndarray:
         z = self.elevation[idx]
         r = self.relief_m[idx]
         partial = np.divide(level - (z - r), 2.0 * r, out=np.zeros_like(z), where=r > 0.0)

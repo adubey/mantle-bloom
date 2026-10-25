@@ -1125,6 +1125,26 @@ def save_world(world_id: str) -> Response:
     )
 
 
+def _hydrology_cache_is_stale(cache) -> bool:
+    """Whether a persisted routing cache predates fields read by current API consumers."""
+    flow_accum = getattr(cache, "flow_accum", None)
+    if flow_accum is None:
+        return True
+    expected_shape = np.asarray(flow_accum).shape
+    required_fields = (
+        "discharge_m3_s",
+        "lake_external_supply_m3_per_yr",
+        "lake_external_wet_precip_m3_per_yr",
+        "lake_external_dry_runoff_m3_per_yr",
+        "lake_external_meltwater_m3_per_yr",
+    )
+    return any(
+        getattr(cache, name, None) is None
+        or np.asarray(getattr(cache, name)).shape != expected_shape
+        for name in required_fields
+    )
+
+
 @app.post("/worlds/{world_id}/load")
 async def load_world(world_id: str, request: Request) -> dict:
     """The "File > Load World" upload -- the raw bytes of a file /worlds/{world_id}/save previously
@@ -1142,10 +1162,10 @@ async def load_world(world_id: str, request: Request) -> dict:
         raise HTTPException(status_code=400, detail=f"invalid or incompatible world file: {exc}") from exc
     except Exception as exc:
         raise HTTPException(status_code=400, detail="invalid or incompatible world file") from exc
-    # Physical discharge is derived routing state. Saves from before #355 may carry a cached
-    # HydrologyFields without it; discard that cache so River/Lake Inspector APIs don't label
-    # legacy stacked-mm/yr values as m^3/s. The next simulated step rebuilds the cache.
-    if world.hydrology_cache is not None and getattr(world.hydrology_cache, "discharge_m3_s", None) is None:
+    # Derived routing fields are added over time. Old saves may carry a cache from after #355
+    # that has discharge but predates RFC 0014's external-source ledger; discard any cache
+    # missing a current-length field before inspectors can read it.
+    if world.hydrology_cache is not None and _hydrology_cache_is_stale(world.hydrology_cache):
         world.hydrology_cache = None
         world.hydrology_cache_step = None
     session = _session_or_404(world_id)

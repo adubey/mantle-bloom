@@ -6,6 +6,7 @@ import json
 import math
 import threading
 import time
+from types import SimpleNamespace
 import av
 import numpy as np
 import pytest
@@ -1028,6 +1029,22 @@ def test_rivers_and_river_at_are_empty_before_the_first_step(client):
     assert resp.status_code == 200
     assert resp.json()["rivers"] == []
     assert client.get("/world/river_at", params={"lat_deg": 0, "lon_deg": 0}).json()["river_id"] is None
+
+
+def test_loaded_hydrology_cache_is_stale_when_external_source_fields_are_missing():
+    cache = SimpleNamespace(
+        flow_accum=np.zeros(3),
+        discharge_m3_s=np.zeros(3),
+        lake_external_supply_m3_per_yr=np.zeros(3),
+        lake_external_wet_precip_m3_per_yr=np.zeros(3),
+        lake_external_dry_runoff_m3_per_yr=np.zeros(3),
+    )
+
+    assert main._hydrology_cache_is_stale(cache)
+    cache.lake_external_meltwater_m3_per_yr = np.zeros(3)
+    assert not main._hydrology_cache_is_stale(cache)
+    cache.lake_external_supply_m3_per_yr = np.zeros(2)
+    assert main._hydrology_cache_is_stale(cache)
 
 
 def test_river_at_rejects_non_finite_query(client):
