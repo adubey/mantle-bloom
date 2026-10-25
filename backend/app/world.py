@@ -1030,14 +1030,16 @@ def step_world_progress(world: World, years: float, *, motion_diagnostics: list[
         collision_polarity.end_topology(world, frames_before)
         audit.settle("unattributed_m3", "topology_removed_m3")
         # Merge remaps conserve tracers, but a plate removed outright takes its
-        # live buoyant crust with it: book the vanished volumes to
-        # `unattributed_m3` so the buoyant ledger stays exact (RFC 0007, #581).
+        # live buoyant crust with it: book the vanished volumes to the dedicated
+        # in-balance `topology_removed_m3` sink (the continental ledger's
+        # `topology_removed_m3` precedent), so the books close without touching
+        # `unattributed_m3` (RFC 0007, #581).
         buoyant_ledger = terranes.ensure_ledger(world)
         buoyant_live_after = terranes.world_live_volumes_m3(world)
         for source, before in buoyant_live_before.items():
             lost = before - buoyant_live_after.get(source, 0.0)
             if lost > 0.0:
-                terranes.record(buoyant_ledger, source, "unattributed_m3", lost)
+                terranes.record(buoyant_ledger, source, "topology_removed_m3", lost)
         # Re-home faults onto surviving plates after any merge/split, drop subducted ones.
         faults.reconcile_faults(world)
         # Stamp/clear the `overlap_onset_years` field and advance World.overlap_progress

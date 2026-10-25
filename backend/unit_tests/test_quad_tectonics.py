@@ -1831,7 +1831,7 @@ def test_docking_patch_joins_donors_minus_lower_crust_loss(monkeypatch):
     hc_after = float(np.dot(a.collect("crustal_thickness_m"), a.node_areas_m2()))
     assert hc_after == pytest.approx(hc_before - lost_vol, rel=1e-9)
     residual = terranes.balance_residual(ledger, terranes.world_live_volumes_m3(world))
-    assert residual["plume_head"] == pytest.approx(0.0, abs=1e-3 * emplaced)
+    assert residual["plume_head"] == pytest.approx(0.0, abs=1e-9 * emplaced)
     assert ledger["plume_head"]["unattributed_m3"] == 0.0
 
 
@@ -1852,12 +1852,15 @@ def test_subducting_patch_books_whole(monkeypatch):
     assert ledger["plume_head"]["subducted_m3"] == pytest.approx(consumed_vol, rel=1e-9)
     assert _buoyant_live(a) == pytest.approx(tracer_before - consumed_vol, rel=1e-9)
     residual = terranes.balance_residual(ledger, terranes.world_live_volumes_m3(world))
-    assert residual["plume_head"] == pytest.approx(0.0, abs=1e-3 * emplaced)
+    assert residual["plume_head"] == pytest.approx(0.0, abs=1e-9 * emplaced)
 
 
 def test_young_thick_patch_docks_and_old_thin_patch_subducts():
     """The natural draw follows the age-dependent threshold: a young thick patch
-    docks, an old thin one subducts (#581)."""
+    docks, an old thin one subducts (#581). The forced-draw tests above pin the
+    exact shares; this one pins the real draw path end to end. Outcomes are
+    deterministic on the fixed seed, and the P-range assertions document the
+    intent independently of them."""
     assert terranes.docking_probability(20_000.0, 1.0) > 0.99
     a, world, ctx, stamped, _ = _buoyant_overlap(20_000.0, 1.0, 50_000_000.0)
     areas_before = a.node_areas_m2()
@@ -1919,13 +1922,13 @@ def test_conversion_books_juvenile_once_clears_tracers():
     assert ledger["plume_head"]["converted_m3"] == pytest.approx(juvenile_vol, rel=1e-9)
     assert ledger["plume_head"]["foundered_m3"] == pytest.approx(foundered_vol, rel=1e-9)
     assert world.continental_material_ledger["juvenile_plateau_m3"] == pytest.approx(juvenile_vol, rel=1e-9)
-    assert _buoyant_live(a) == pytest.approx(0.0, abs=1.0)
+    assert _buoyant_live(a) == pytest.approx(0.0, abs=1e-9 * front_vol)
     # Survivors hold the pre-accretion Hc minus exactly the foundered share.
     areas = a.node_areas_m2()
     hc_live = float(np.dot(a.collect("crustal_thickness_m"), areas))
     assert hc_live == pytest.approx(hc_before - foundered_vol, rel=1e-9)
     residual = terranes.balance_residual(ledger, terranes.world_live_volumes_m3(world))
-    assert residual["plume_head"] == pytest.approx(0.0, abs=1.0)
+    assert residual["plume_head"] == pytest.approx(0.0, abs=1e-9 * front_vol)
     assert ledger["plume_head"]["unattributed_m3"] == 0.0
 
 
@@ -1939,4 +1942,122 @@ def test_oceanic_hosted_docked_crust_stays_live():
     assert world.continental_material_ledger["juvenile_plateau_m3"] == 0.0
     assert _buoyant_live(a) == pytest.approx(front_vol, rel=1e-9)
     residual = terranes.balance_residual(ledger, terranes.world_live_volumes_m3(world))
-    assert residual["plume_head"] == pytest.approx(0.0, abs=1.0)
+    assert residual["plume_head"] == pytest.approx(0.0, abs=1e-9 * front_vol)
+
+
+def test_patch_emplacement_years_weights_by_area():
+    """The draw's emplacement time is volume-weighted: cells with more area count
+    more, and uniform areas degenerate to the plain mean (review B2, #581)."""
+    plateau = np.array([1_000.0, 1_000.0])
+    arc = np.zeros(2)
+    moment = np.array([1_000.0 * 10e6, 1_000.0 * 20e6])
+    patch = np.array([0, 1])
+    assert quad_tectonics._patch_emplacement_years(
+        plateau, arc, moment, np.array([1.0, 1.0]), patch
+    ) == pytest.approx(15e6, rel=1e-12)
+    assert quad_tectonics._patch_emplacement_years(
+        plateau, arc, moment, np.array([1.0, 3.0]), patch
+    ) == pytest.approx(17.5e6, rel=1e-12)
+
+
+def test_docking_draw_is_deterministic_across_identical_runs():
+    """Two identical retreat setups draw the same outcome (review M1, #581)."""
+    def run_once():
+        a, world, ctx, _, _ = _buoyant_overlap(20_000.0, 1.0, 50_000_000.0)
+        survivors = quad_tectonics._retreat(a, world, ctx, 1.5 * SPACING, 1000)
+        return survivors, terranes.ensure_ledger(world)
+
+    survivors_a, ledger_a = run_once()
+    survivors_b, ledger_b = run_once()
+    np.testing.assert_array_equal(survivors_a, survivors_b)
+    assert ledger_a["plume_head"]["docked_m3"] == pytest.approx(ledger_b["plume_head"]["docked_m3"])
+    assert ledger_a["plume_head"]["subducted_m3"] == pytest.approx(ledger_b["plume_head"]["subducted_m3"])
+
+
+def test_rift_stretch_transfers_buoyant_crust_live_without_booking():
+    """Rifting moves the stretched tracer share to rifted cells live: no thinned
+    booking on the transferred mass, ledger closes (regression for review B1)."""
+    keys = _block((10, 20), (20, 21))
+    a = _plate(1, keys, "continental")
+    world = _world(a)
+    world.elapsed_years = 100_000_000.0
+    plateau = np.full(len(keys), 3_000.0)
+    moment = np.full(len(keys), 3_000.0 * 90_000_000.0)
+    a.set_fields_on_plate(plateau_crust_m=plateau, buoyant_crust_time_m_yr=moment)
+    ledger = terranes.ensure_ledger(world)
+    emplaced = float(np.dot(plateau, a.node_areas_m2()))
+    terranes.record(ledger, "plume_head", "emplaced_m3", emplaced)
+
+    inserted = a.insert_cells(pack_cell_keys(np.array([0]), np.array([20]), np.array([20])))
+    assert inserted[0]
+    new = a._index_of_keys(pack_cell_keys(np.array([0]), np.array([20]), np.array([20])))
+
+    quad_tectonics._open_rift(a, world, 1, new, new, np.array([1.0]))
+
+    assert ledger["plume_head"]["thinned_m3"] == 0.0
+    assert ledger["plume_head"]["reset_m3"] == 0.0
+    assert _buoyant_live(a) == pytest.approx(emplaced, rel=1e-9)
+    residual = terranes.balance_residual(ledger, terranes.world_live_volumes_m3(world))
+    assert residual["plume_head"] == pytest.approx(0.0, abs=1e-9 * emplaced)
+
+
+def test_rift_melt_donor_books_reset_only_on_the_retained_share():
+    """A donor that melts through transfers its stretched share live and books
+    `reset_m3` only on the retained share that vanishes with it (review B1)."""
+    keys = _block((10, 20), (20, 21))
+    a = _plate(1, keys, "continental")
+    thin_hc = np.full(len(keys), 6_000.0)
+    a.set_fields_on_plate(crustal_thickness_m=thin_hc)
+    world = _world(a)
+    world.elapsed_years = 100_000_000.0
+    plateau = np.full(len(keys), 2_000.0)
+    moment = np.full(len(keys), 2_000.0 * 90_000_000.0)
+    a.set_fields_on_plate(plateau_crust_m=plateau, buoyant_crust_time_m_yr=moment)
+    ledger = terranes.ensure_ledger(world)
+    emplaced = float(np.dot(plateau, a.node_areas_m2()))
+    terranes.record(ledger, "plume_head", "emplaced_m3", emplaced)
+
+    inserted = a.insert_cells(pack_cell_keys(np.array([0]), np.array([20]), np.array([20])))
+    assert inserted[0]
+    new = a._index_of_keys(pack_cell_keys(np.array([0]), np.array([20]), np.array([20])))
+
+    quad_tectonics._open_rift(a, world, 1, new, new, np.array([1.0]))
+
+    assert ledger["plume_head"]["reset_m3"] > 0.0
+    assert ledger["plume_head"]["thinned_m3"] == 0.0
+    assert _buoyant_live(a) + ledger["plume_head"]["reset_m3"] == pytest.approx(emplaced, rel=1e-9)
+    residual = terranes.balance_residual(ledger, terranes.world_live_volumes_m3(world))
+    assert residual["plume_head"] == pytest.approx(0.0, abs=1e-9 * emplaced)
+
+
+def test_audit_world_holds_tracers_to_columns_and_books_phase():
+    """The phase audit clips oceanic excess and zeroes continental hosts, booking
+    each correction to `clipped_m3` under the calling phase (review M3, #581)."""
+    ocean = _plate(1, _block((10, 20), (20, 21)), "oceanic")
+    ocean_hc = ocean.collect("crustal_thickness_m")
+    over = (lithosphere.REFERENCE_HC_OCEANIC_M + 2_000.0) - ocean_hc
+    plateau = np.full(ocean.node_count(), 5_000.0)
+    moment = plateau * 50_000_000.0
+    ocean.set_fields_on_plate(
+        crustal_thickness_m=ocean_hc + over, plateau_crust_m=plateau, buoyant_crust_time_m_yr=moment
+    )
+    continent = _plate(2, _block((30, 32), (20, 21)), "continental")
+    stale = np.full(continent.node_count(), 1_000.0)
+    continent.set_fields_on_plate(plateau_crust_m=stale, buoyant_crust_time_m_yr=stale * 40_000_000.0)
+    world = _world(ocean, continent)
+
+    terranes.audit_world(world, "eroded")
+
+    ledger = terranes.ensure_ledger(world)
+    ocean_areas = ocean.node_areas_m2()
+    assert ledger["plume_head"]["clipped_m3"] == pytest.approx(
+        float(np.dot(np.full(ocean.node_count(), 3_000.0), ocean_areas))
+        + float(np.dot(stale, continent.node_areas_m2())),
+        rel=1e-9,
+    )
+    assert ledger["plume_head"]["clipped_by_phase"]["eroded"] == pytest.approx(
+        ledger["plume_head"]["clipped_m3"], rel=1e-12
+    )
+    assert _buoyant_live(ocean) + _buoyant_live(continent) == pytest.approx(
+        float(np.dot(np.full(ocean.node_count(), 2_000.0), ocean_areas)), rel=1e-9
+    )

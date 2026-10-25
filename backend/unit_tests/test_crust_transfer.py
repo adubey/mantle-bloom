@@ -15,6 +15,7 @@ from app import (
     lithosphere,
     orogeny,
     quad_tectonics,
+    terranes,
 )
 from app.hydroclimate import mobile_cover
 from app.elevation_lines import line_spacing_rad
@@ -571,3 +572,55 @@ def test_the_upper_plate_cells_that_take_the_crust_are_marked_as_belt():
     np.testing.assert_array_equal(cratons.belt_mask(upper, world.elapsed_years), received)
     assert np.all(upper.collect("belt_formed_years")[received] == 2.0e8)
     assert not np.any(cratons.belt_mask(lower, world.elapsed_years))
+
+
+def test_transfer_column_partitions_buoyant_tracers_and_closes():
+    """A transferred column's buoyant crust converts where placed and books the
+    unplaced shares to `subducted_m3`: emplaced == live + sinks (review M3)."""
+    upper = _plate(2, _block((20, 40), (10, 40)))
+    world = _world(upper)
+    front = upper.all_points_and_elevation()[0][_columns(upper)[0] == 20]
+    tracer_vol = 5e12
+    column = crust_transfer.ConsumedColumn(
+        plate_id=99, front_world=front * 1.0, approach_world=None, hc_m3=1e14, hm_m3=0.0,
+        mobile_cover_m3=0.0, material_m3=1e14, craton_m3=0.0, restite_m3=0.0,
+        plateau_m3=tracer_vol, arc_m3=0.0, moment_m3_yr=tracer_vol * 50e6,
+    )
+    ledger = terranes.ensure_ledger(world)
+    terranes.record(ledger, "plume_head", "emplaced_m3", tracer_vol)
+
+    result = crust_transfer.transfer_column(world, column, upper)
+
+    assert result.underthrust_m3 + result.unplaced_m3 > 0.0
+    live = terranes.world_live_volumes_m3(world)["plume_head"]
+    sunk = sum(ledger["plume_head"][account] for account in ("subducted_m3", "converted_m3", "foundered_m3"))
+    assert live + sunk == pytest.approx(tracer_vol, rel=1e-9)
+    residual = terranes.balance_residual(ledger, terranes.world_live_volumes_m3(world))
+    assert residual["plume_head"] == pytest.approx(0.0, abs=1e-9 * tracer_vol)
+
+
+def test_consumed_suture_front_conserves_buoyant_crust():
+    """A suture donor front carrying plateau crust accretes-converts with the
+    buoyant ledger closing: conversion once, remainder booked (review M3)."""
+    lower = _lower()
+    upper = _plate(2, _block((20, 40), (10, 40)))
+    world = _world(lower, upper)
+    world.elapsed_years = 1.5e8
+    donors, ids = _front(lower, 2)
+    plateau = np.zeros(lower.node_count())
+    plateau[donors] = 2_000.0
+    moment = np.zeros(lower.node_count())
+    moment[donors] = 2_000.0 * 1.0e8
+    lower.set_fields_on_plate(plateau_crust_m=plateau, buoyant_crust_time_m_yr=moment)
+    ledger = terranes.ensure_ledger(world)
+    front_vol = float(np.dot(plateau[donors], lower.node_areas_m2()[donors]))
+    terranes.record(ledger, "plume_head", "emplaced_m3", front_vol)
+
+    _consume(world, lower, donors, ids)
+
+    live = terranes.world_live_volumes_m3(world)["plume_head"]
+    sunk = sum(ledger["plume_head"][account] for account in ("subducted_m3", "converted_m3", "foundered_m3"))
+    assert live + sunk == pytest.approx(front_vol, rel=1e-9)
+    residual = terranes.balance_residual(ledger, terranes.world_live_volumes_m3(world))
+    assert residual["plume_head"] == pytest.approx(0.0, abs=1e-9 * front_vol)
+    _assert_ledgers_close(world)

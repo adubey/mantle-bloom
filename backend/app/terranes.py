@@ -32,6 +32,7 @@ BALANCE_ACCOUNTS = (
     "converted_m3",
     "foundered_m3",
     "clipped_m3",
+    "topology_removed_m3",
     "unattributed_m3",
 )
 DOCKED_ACCOUNT = "docked_m3"
@@ -74,7 +75,10 @@ def live_volumes_m3(
     """Live buoyant-crust volumes by ledger source, for `balance_residual`.
 
     The plateau channel is plume-head crust (tails emplace ordinary-thickness
-    melt with no tracer, issue #581); the arc channel is RFC 0006's.
+    melt with no tracer, issue #581); the arc channel is RFC 0006's. Owner
+    decision on #581 (tails option a): the zero `plume_tail` live volume is by
+    construction, and tuning runs must exclude tail volume from
+    emplaced-oceanic-plateau denominators rather than misreading the zero.
     """
     areas = np.asarray(areas_m2, dtype=float)
     return {

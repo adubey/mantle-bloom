@@ -373,7 +373,11 @@ def _deposit_on_plate(
     plume-head buoyant ledger; continental heads and tails book juvenile to
     their sub-accounts instead. Tails emplace ordinary-thickness melt with no
     tracer, so the plateau channel stays pure head crust and per-source removal
-    booking stays exact.
+    booking stays exact. Owner decision on #581 (tails option a): tails stay
+    outside the buoyant ledger, so `plume_tail` accounts read zero and tail
+    volume is excluded from emplaced-oceanic-plateau denominators (tuning runs
+    must not misread them); revisit only with an explicit mixed-channel
+    apportionment rule.
     """
     from . import continental_ledger, lithosphere, rheology, terranes
     from .elevation_lines import ELEV_CHANGE_VOLCANO, effective_is_continental_from_codes

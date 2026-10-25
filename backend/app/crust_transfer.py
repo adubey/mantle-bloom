@@ -370,8 +370,11 @@ def _underthrust(
     material = upper.collect("continental_material_m")
     restite = upper.collect("restite_m")
     plateau, arc, moment = terranes.plate_tracers(upper)
+    # Settle distributes the column's material and restite by this Hc gain, so
+    # snapshot it before conversion removes the foundered share (RFC 0007 #581).
+    settle_gain = hc - hc_before
     quad_tectonics._carry_tracers(
-        plateau, arc, moment, upper.node_areas_m2(), hc - hc_before, volume,
+        plateau, arc, moment, upper.node_areas_m2(), settle_gain, volume,
         front_plateau_m3, front_arc_m3, front_moment_m3_yr,
     )
     quad_tectonics._convert_buoyant_on_continental(
@@ -379,7 +382,7 @@ def _underthrust(
     )
     quad_tectonics._write_tracers(upper, plateau, arc, moment)
     quad_tectonics.settle_received_crust(
-        upper, hc_before, hc, hc - hc_before, changed, volume, material_volume, restite_volume,
+        upper, hc_before, hc, settle_gain, changed, volume, material_volume, restite_volume,
         material, restite, world=world,
     )
     return placed

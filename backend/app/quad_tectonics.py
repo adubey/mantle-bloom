@@ -432,6 +432,20 @@ def _book_shed_roots(
         orogeny.record(world, "restite_delaminated_m3", float(shed_restite @ areas))
 
 
+def _patch_emplacement_years(
+    plateau: np.ndarray, arc: np.ndarray, moment: np.ndarray, areas: np.ndarray, patch: np.ndarray
+) -> float:
+    """Volume-weighted emplacement time of one consumable patch (years).
+
+    Both the tracer and age-moment sums weight by represented cell area, so the
+    age -- and the docking draw keyed on it -- does not drift with the patch's
+    latitude or refinement level (RFC 0007, issue #581). The caller skips
+    tracer-free patches; the result is undefined for them.
+    """
+    tracer_vol = (np.asarray(plateau)[patch] + np.asarray(arc)[patch]) * np.asarray(areas)[patch]
+    return float(np.sum(np.asarray(moment)[patch] * np.asarray(areas)[patch])) / float(np.sum(tracer_vol))
+
+
 def _dock_consumable_patches(
     world: "World",
     plate: "PlateWithSparseQuadPatch",
@@ -463,11 +477,14 @@ def _dock_consumable_patches(
     ledger = terranes.ensure_ledger(world)
     now_years = world.elapsed_years
     for patch in terranes.group_patches(len(hc), pairs, consumable):
-        tracer = plateau[patch] + arc[patch]
-        tracer_total = float(np.sum(tracer))
-        if tracer_total <= 0.0:
+        if float(np.sum((plateau[patch] + arc[patch]) * areas[patch])) <= 0.0:
             continue
-        emplaced_years = float(np.sum(moment[patch]) / tracer_total)
+        # The draw re-derives its key from live tracers every step: proportional
+        # thinning and docking losses preserve the emplacement time, so a patch
+        # the step does not fully consume keeps a stable key while its cells do.
+        # Encounter memory across steps (re-judging a surviving patch with its
+        # original key) is tuning-run scope (#584), not this issue.
+        emplaced_years = _patch_emplacement_years(plateau, arc, moment, areas, patch)
         age_myr = (now_years - emplaced_years) / 1_000_000.0
         probability = terranes.docking_probability(
             terranes.patch_excess_m(hc, areas, patch, 0.0), age_myr
@@ -754,6 +771,9 @@ def _relocate_consumed_front(
     receiver_gain = np.maximum(hc - hc_relocate_start, 0.0)
     receiver_gain[terrane_cells] = 0.0
     placed_gain = float(np.dot(receiver_gain, areas))
+    # The age moment is shared across both tracer channels: distribute the whole
+    # displaced moment once, inside whichever source iteration runs first, so a
+    # later "fix" cannot double-count it.
     displaced_moment_m3_yr = float(np.dot(moment_before[terrane_cells], areas[terrane_cells]))
     for source, before, live in (("plume_head", plateau_before, plateau), ("arc", arc_before, arc)):
         displaced_m3 = float(np.dot(before[terrane_cells], areas[terrane_cells]))
@@ -1598,8 +1618,11 @@ def _place_on_overrider(
         return 0.0
     _book_shed_roots(world, material, craton, restite, areas, hc_before, shed)
     plateau, arc, moment = terranes.plate_tracers(over)
+    # Settle distributes the front's material and restite by this Hc gain, so
+    # snapshot it before conversion removes the foundered share (RFC 0007 #581).
+    settle_gain = hc - hc_before + shed
     _carry_tracers(
-        plateau, arc, moment, areas, hc - hc_before + shed, volume,
+        plateau, arc, moment, areas, settle_gain, volume,
         front_plateau_m3, front_arc_m3, front_moment_m3_yr,
     )
     _convert_buoyant_on_continental(world, changed & continental, hc, material, plateau, arc, moment, areas)
@@ -1611,7 +1634,7 @@ def _place_on_overrider(
         ):
             orogeny.record(world, account, stages[account])
     settle_received_crust(
-        over, hc_before, hc, hc - hc_before + shed, changed, volume, material_volume, restite_volume,
+        over, hc_before, hc, settle_gain, changed, volume, material_volume, restite_volume,
         material, restite, craton, world=world,
     )
     return placed
@@ -2187,18 +2210,16 @@ def _open_rift(
         sub_codes, sub_volcano, sub_remaining = codes[donors], is_volcano[donors], remaining[donors]
         material[donors] *= ratio
         # Buoyant-crust tracers thin with their donors and clear where a donor
-        # melts through, booked by mechanism (RFC 0007, issue #581).
+        # melts through (RFC 0007, issue #581). The stretched share rides to the
+        # rifted cells live, so it is never booked here: only the retained share
+        # a melting donor's reset column destroys books to `reset_m3`.
         melt_donors = donors[melting]
         for source, values in (("plume_head", plateau), ("arc", arc)):
             if np.any(melt_donors):
-                reset_volume = float(np.dot(values[melt_donors], areas[melt_donors]))
+                reset_volume = float(np.dot(values[melt_donors] * ratio[melting], areas[melt_donors]))
                 if reset_volume > 0.0 and ledger is not None:
                     terranes.record(ledger, source, "reset_m3", reset_volume)
                 values[melt_donors] = 0.0
-            lost = values[donors] * (1.0 - ratio)
-            thinned_volume = float(np.dot(lost, areas[donors]))
-            if thinned_volume > 0.0 and ledger is not None:
-                terranes.record(ledger, source, "thinned_m3", thinned_volume)
             values[donors] *= ratio
         moment[melt_donors] = 0.0
         moment[donors] *= ratio
