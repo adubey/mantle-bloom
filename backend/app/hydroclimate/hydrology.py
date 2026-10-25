@@ -404,8 +404,8 @@ class HydrologyFields:
     # combined routing until their own migration. None keeps older pickled caches readable.
     breach_surge_accum: np.ndarray | None = None
     # External water settled in the hierarchy before lake-to-lake spill transfers. Wet-cell
-    # rain is routed within the lake at zero transit loss; dry runoff and glacier melt use the
-    # dry-area transit rule. D1's resolver can transfer these source terms internally without
+    # rain is routed within the lake at zero transit loss; dry runoff uses dry-area-scaled
+    # transit loss, while glacier melt keeps its full per-node loss. D1's resolver can transfer these source terms internally without
     # counting the same water twice in the world ledger (#587).
     lake_external_supply_m3_per_yr: np.ndarray = field(default_factory=lambda: np.zeros(0))
     lake_external_wet_precip_m3_per_yr: np.ndarray = field(default_factory=lambda: np.zeros(0))
@@ -1101,7 +1101,7 @@ class SpillBasins:
     neighbor_idx: np.ndarray  # the routing graph the hierarchy's catchments were built on
     stored_m3: np.ndarray  # water already standing in each cell at the start of the step
     evaporation_m_per_yr: np.ndarray  # open-water evaporation per cell
-    keep: np.ndarray | None = None  # share of passing water each node keeps (1 - transit loss); None keeps all
+    keep: np.ndarray | None = None  # blended in-step fill estimate (1 - transit loss); None keeps all
 
 
 def _spill_within_step(
@@ -1207,7 +1207,10 @@ class _SpillResolver:
 
     def _pass_on(self, start: int, amount: float, pending: np.ndarray) -> None:
         """Adds `amount` (m^3/yr) to the sink where water entering the routing at `start` settles,
-        less the transit losses on the way."""
+        less the transit losses on the way. This fill estimate uses the basin's blended keep
+        fraction for aggregate pending water; final source routing applies the wet, dry-runoff,
+        and meltwater loss rules separately. The approximation only affects in-step fill tests
+        for downstream basins (#587)."""
         node, hops = start, 0
         while hops <= len(self.flow_target):
             amount *= self.keep[node]
@@ -1670,7 +1673,8 @@ def compute_hydrology(
 
     # Physical water (issue #355 "Water units"). Lakes balance in real units (issue #297):
     # wet-area precipitation goes straight to lake storage, while dry-area Budyko runoff and
-    # glacier melt are routed along flow paths with transit losses scaled to dry area. Their
+    # glacier melt are routed along flow paths. Dry runoff's transit loss scales with dry area;
+    # meltwater keeps the existing full per-node loss. Their
     # through-flow is river discharge; settled external sources feed the lakes below at any
     # temperature. Basins this water fills open their outlets within the step, which re-routes
     # it (_spill_within_step, issue #503). The legacy routing above keeps the lagged spills:
@@ -2156,4 +2160,3 @@ def river_at(fields: HydrologyFields, rivers: list[RiverInfo], query_xyz: np.nda
     tree = cKDTree(fields.points[all_idx])
     _, nearest = tree.query(query_xyz.reshape(1, 3), k=1)
     return int(owner[int(nearest[0])])
-
