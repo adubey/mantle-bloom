@@ -794,7 +794,8 @@ def river_transit_loss_fraction(temperature_c: np.ndarray, excluded: np.ndarray)
 # Water units (issue #355). Three kinds of water move along `flow_target`:
 # - Physical water, in m^3/yr: precipitation on the lagged wet fraction goes directly to lake
 #   storage; dry-area Budyko runoff (`breaching.runoff_mm`) and glacier meltwater
-#   (`meltwater_m3_per_yr`) are routed. The source split is exposed on `HydrologyFields` for the
+#   (`meltwater_m3_per_yr`) are routed. Dry runoff uses dry-area-scaled transit loss; meltwater
+#   keeps the existing per-node transit loss. The source split is exposed on `HydrologyFields` for the
 #   D1 lake resolver. Routed through-flow is river discharge, reported in m^3/s
 #   (`HydrologyFields.discharge_m3_s`).
 # - Glacier meltwater is the #353 ice ledger's per-step volume (`IceLedger.meltwater_m3`),
@@ -1363,6 +1364,30 @@ def route_downstream(
     return np.array(through_flux), np.array(deposited)
 
 
+def _route_external_water_sources(
+    elevation: np.ndarray,
+    is_ocean: np.ndarray,
+    targets: np.ndarray,
+    dry_runoff_m3: np.ndarray,
+    wet_precip_m3: np.ndarray,
+    meltwater_m3: np.ndarray,
+    dry_transit_loss: np.ndarray,
+    transit_loss: np.ndarray,
+) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    """Route physical sources with their own transit-loss rules (#587)."""
+    return {
+        "dry_runoff": route_downstream(
+            elevation, is_ocean, targets, dry_runoff_m3, loss_fraction=dry_transit_loss
+        ),
+        "meltwater": route_downstream(
+            elevation, is_ocean, targets, meltwater_m3, loss_fraction=transit_loss
+        ),
+        "wet_precip": route_downstream(
+            elevation, is_ocean, targets, wet_precip_m3, loss_fraction=np.zeros(len(elevation))
+        ),
+    }
+
+
 def seasonal_positive_degrees(mean_c: np.ndarray, amplitude_c: np.ndarray, threshold_c: float = GLACIER_MELT_THRESHOLD_C) -> np.ndarray:
     """Year-averaged degrees above `threshold_c` of a sinusoidal annual cycle with annual mean
     `mean_c` and half-amplitude `amplitude_c`: mean of max(mean + amplitude * cos(t) -
@@ -1655,19 +1680,15 @@ def compute_hydrology(
 
     def route_sources(targets: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Route each external source separately for the future D1 ledger (#587)."""
-        dry_through, dry_settled = route_downstream(
-            elevation, is_ocean, targets, dry_runoff_m3, loss_fraction=dry_transit_loss
+        routed_sources.update(
+            _route_external_water_sources(
+                elevation, is_ocean, targets, dry_runoff_m3, wet_precip_m3, meltwater_source_m3,
+                dry_transit_loss, transit_loss,
+            )
         )
-        melt_through, melt_settled = route_downstream(
-            elevation, is_ocean, targets, meltwater_source_m3, loss_fraction=dry_transit_loss
-        )
-        wet_through, wet_settled = route_downstream(
-            elevation, is_ocean, targets, wet_precip_m3, loss_fraction=np.zeros(n)
-        )
-        routed_sources["dry_runoff"] = dry_through, dry_settled
-        routed_sources["meltwater"] = melt_through, melt_settled
-        routed_sources["wet_precip"] = wet_through, wet_settled
-        return dry_through + melt_through + wet_through, dry_settled + melt_settled + wet_settled
+        through = [routed_sources[key][0] for key in ("dry_runoff", "meltwater", "wet_precip")]
+        settled = [routed_sources[key][1] for key in ("dry_runoff", "meltwater", "wet_precip")]
+        return np.sum(through, axis=0), np.sum(settled, axis=0)
 
     flow_target, should_spill, filled_elevation, spill_target, through_m3, settled_m3 = _spill_within_step(
         SpillBasins(
