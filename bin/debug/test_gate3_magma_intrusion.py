@@ -281,13 +281,15 @@ def main():
     magma_force = pressure_force(mesh, pressure_pa, right_face_by_row, y_start, y_end)
 
     cases = []
-    for case_name, intrusion_on, seed_on in (
-        ("tectonic_intact", False, False),
-        ("tectonic_plus_dike_intact", True, False),
-        ("tectonic_near_tip_seed", False, True),
-        ("tectonic_plus_dike_near_tip_seed", True, True),
-    ):
-        case_mesh = mesh if intrusion_on else intact_mesh
+    case_specs = (
+        ("tectonic_intact", intact_mesh, False, False),
+        ("tectonic_crack_unpressurized", mesh, False, False),
+        ("tectonic_crack_pressurized", mesh, True, False),
+        ("tectonic_near_tip_seed", intact_mesh, False, True),
+        ("tectonic_crack_unpressurized_near_tip_seed", mesh, False, True),
+        ("tectonic_crack_pressurized_near_tip_seed", mesh, True, True),
+    )
+    for case_name, case_mesh, pressure_on, seed_on in case_specs:
         case_centers = case_mesh.element_centers
         case_source_region = (
             (np.abs(case_centers[:, 0] - DIKE_X_M) <= 1.5 * DX_M)
@@ -329,25 +331,25 @@ def main():
             length_m=mechanics.REFERENCE_LENGTH_M,
             seed_level=0.0,
             mesh=case_mesh,
-            external_nodal_force=magma_force if intrusion_on else None,
+            external_nodal_force=magma_force if pressure_on else None,
             external_load_metadata=(
                 {"type": "constant pressure on explicit dike faces", "pressure_pa": pressure_pa}
-                if intrusion_on else None
+                if pressure_on else None
             ),
             initial_damage_field=case_damage_seed if seed_on else None,
             diagnostic_regions=case_regions,
-            # The same vertical pin is applied to both sides of the paired source
-            # comparison so the dike load is the only changed case input.
+            # All cases share the same supports; pressure pairs also share cracked geometry.
             additional_fixed_y_nodes=(mesh.bottom_right_node,),
         )
         result.update({
             "case": case_name,
-            "magma_intrusion_on": intrusion_on,
+            "cracked_geometry_on": case_mesh is mesh,
+            "pressure_source_on": pressure_on,
             "near_tip_seed_on": seed_on,
             "initial_seed_level": SEED_LEVEL if seed_on else 0.0,
             "initial_seed_elements": int(np.count_nonzero(case_tip_seeds)) if seed_on else 0,
             "initial_seed_geometry": "two 12.5 km collars immediately beyond dike tips",
-            "dike_wall_pressure_pa": pressure_pa if intrusion_on else 0.0,
+            "dike_wall_pressure_pa": pressure_pa if pressure_on else 0.0,
         })
         cases.append(result)
         print(f"completed {case_name}", flush=True)
@@ -358,6 +360,14 @@ def main():
         "matched_boundary_conditions": (
             "all cases fix left/right horizontal displacement and bottom-left/bottom-right "
             "vertical displacement"
+        ),
+        "pressure_on_off_control": (
+            "each pressure pair shares the same disconnected crack-face mesh, displacement "
+            "supports, tectonic loading, and initial damage; only the pressure force changes"
+        ),
+        "control_scope": (
+            "the zero-pressure cracked mesh is an artificial control to isolate pressure, "
+            "not a physical no-dike host; intact-host runs are reported separately"
         ),
         "empirical_aperture_basis": {
             "reference": "Grandin et al. (2009), 2005 Manda Hararo-Dabbahu dike inversion",
@@ -387,13 +397,18 @@ def main():
             "timestep_myr": TIMESTEP_MYR,
             "initial_near_tip_damage_strain": SEED_LEVEL,
             "matched_pairs": [
-                ["tectonic_intact", "tectonic_plus_dike_intact"],
-                ["tectonic_near_tip_seed", "tectonic_plus_dike_near_tip_seed"],
+                ["tectonic_crack_unpressurized", "tectonic_crack_pressurized"],
+                [
+                    "tectonic_crack_unpressurized_near_tip_seed",
+                    "tectonic_crack_pressurized_near_tip_seed",
+                ],
             ],
+            "intact_context_cases": ["tectonic_intact", "tectonic_near_tip_seed"],
             "cases": cases,
         },
         "limits": [
             "The pressure is held constant during the diagnostic interval; the model does not resolve episode duration, magma transport, or post-intrusion solidification.",
+            "The pressure comparison conditions on an existing disconnected crack; it does not test crack nucleation, and the zero-pressure crack is an artificial control rather than an intact host.",
             "The observed Afar dike constrains this diagnostic aperture scale only, not global dike pressure, event cadence, fracture toughness, or plume attribution.",
             "A positive result is a local-mechanics screen, not calibration or validation of geological rift propagation.",
         ],

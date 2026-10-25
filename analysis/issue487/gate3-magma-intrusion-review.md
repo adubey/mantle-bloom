@@ -1,34 +1,43 @@
-# Gate 3 controlled local magma-source comparison
+# Gate 3 controlled pressure-source comparison
 
-**Date:** 2026-10-24
-**Disposition:** The prescribed dike produces the predicted local stress relief and tip stress concentration, but the diagnostic does not demonstrate propagation. Gate 3 remains open.
+**Date:** 2026-10-25
+
+**Disposition:** The corrected comparison isolates pressure on an existing crack. Pressure raises tip/collar tensile stress in both matched pairs, but its source-flank effect changes sign with the damage seed. The earlier claim of consistent pressure-driven flank relief is withdrawn. Gate 3 remains open.
 
 ## Question and control
 
-Under the same extension loading and inherited damage, does a localized pressurized dike change source-flank and tip/collar stresses in the predicted directions?
+Under the same extension loading, crack geometry, boundary conditions, and initial damage, does applying the calibrated dike pressure change source-flank and tip/collar stresses?
 
-The diagnostic compares intact tectonic loading with and without a dike, then repeats the pair with an identical near-tip damage seed. After review identified that an earlier version pinned the bottom-right corner only in dike-on cases, all four cases were rerun with identical displacement supports: horizontal displacement is fixed on both vertical edges, and vertical displacement is fixed at the bottom-left and bottom-right corners. The values below are from that matched-boundary rerun. It uses a 400 × 130 km plane-strain strip, a 32 × 20 mesh, 4 mm/yr extension, 0.02 Myr steps, and a requested 2.5 Myr duration. The pressure is calibrated in the elastic mesh to the 2005 Afar dike's approximate 65 km length and 4 m mean opening; the simulated maximum opening is an independent check against the observed ~8 m bound. This is a prescribed constant-pressure source, not a finite-reservoir or plume-on/off experiment.
+This follow-up corrects two issues in the merged #570 evidence. First, its seeded no-dike table entry used the 2.5 Myr endpoint while labeling it 0.2 Myr. Second, the pressure-on case used duplicated, disconnected crack faces while the comparison case used intact mesh. The pressure-specific pairs below now use the same cracked mesh and toggle only the pressure load. The zero-pressure crack is an artificial control that isolates pressure; it is not a physical no-dike host. Separate intact-host runs provide context for the added crack geometry; they are not the pressure control.
 
-## Result
+All cases fix horizontal displacement on both vertical edges and vertical displacement at the bottom-left and bottom-right corners. The pressure pairs also share extension rate, mesh topology, and seed state. This meets the source-attribution expectation in design principle 9: matched controls isolate the contribution being measured, and equal-time outcomes are reported.
 
-| Matched case at 0.2 Myr | Source-flank mean σxx | Tip/collar peak tensile stress | Stop / failures outside seed |
-|---|---:|---:|---|
-| Intact, no dike | 61.93 MPa | 61.93 MPa | Continues; 0 |
-| Intact, dike | 34.47 MPa | 325.70 MPa | 5× strength guard; 0 |
-| Near-tip seed, no dike | 61.71 MPa | 170.21 MPa | Continues; 0 |
-| Near-tip seed, dike | 35.78 MPa | 339.13 MPa | 5× strength guard; 0 |
+The calculation uses a 400 × 130 km plane-strain strip, a 32 × 20 mesh, 4 mm/yr extension, 0.02 Myr steps, and a requested 2.5 Myr duration. Pressure is calibrated in the elastic mesh to the 2005 Afar dike's approximate 65 km length and 4 m mean opening; peak opening is checked against the observed ~8 m bound. The source holds pressure constant and is neither a finite-reservoir nor a plume-on/off experiment.
 
-The no-dike cases complete 2.5 Myr. In the seeded pair, both cases fail the same 16 inherited seed elements; neither fails an element outside the seed. The dike-on cases stop at 0.2 Myr when the pointwise peak tensile stress crosses the numerical guard, before outside-seed failure can test advance. Matching the supports changed the seeded no-dike tip/collar peak from the previous 69.73 MPa to 170.21 MPa, while preserving the predicted source-flank relief and dike-tip concentration. This sensitivity is why the rerun supersedes the earlier unmatched comparison.
+## Results at equal elapsed time
 
-The source pressure is 3.961 MPa. The elastic dike solution gives 4.000 m mean and 5.762 m maximum opening. Its equilibrium residual is `4.54e-13`; source/support force and moment residuals are `2.60e-13` and `5.19e-13`; pressure-work and stored-energy mismatch is `8.05e-7`. The minimum deformation determinant in the seeded dike-on run is positive (`0.9983`).
+All stress values below are sampled at 0.2 Myr.
 
-The finite-strain mechanics support checks pass independently: affine stretch, small-strain limit, elastic stress objectivity, consistent tangent, implicit damage update and plastic-volume preservation are summarized in [`gate3-finite-strain-verification-review.json`](gate3-finite-strain-verification-review.json). The elastic rotation check holds plastic deformation at identity; objectivity of the plastic-flow update under finite rotations is not tested and remains required before using that update in finite-rotation applications. The largest reported directional-tangent relative error is `3.38e-10`.
+| Geometry | Pressure | Tip seed | Source-flank mean σxx | Tip/collar peak tensile stress | Stop / failures outside seed |
+|---|---|---|---:|---:|---|
+| Intact host | Off | No | 61.93 MPa | 61.93 MPa | Completes 2.5 Myr; 0 |
+| Cracked mesh | Off | No | 27.79 MPa | 299.31 MPa | Stops at 0.24 Myr on stress guard; 0 |
+| Cracked mesh | On | No | 34.47 MPa | 325.70 MPa | Stops at 0.20 Myr on stress guard; 0 |
+| Intact host | Off | Yes | 60.83 MPa | 69.73 MPa | Completes 2.5 Myr; 0 outside 16 inherited failures |
+| Cracked mesh | Off | Yes | 37.18 MPa | 328.12 MPa | Stops at 0.20 Myr on stress guard; 0 outside 16 inherited failures |
+| Cracked mesh | On | Yes | 35.78 MPa | 339.13 MPa | Stops at 0.20 Myr on stress guard; 0 outside 16 inherited failures |
+
+The matched pressure effect is seed-dependent. Without the seed, pressure increases source-flank mean σxx by 6.68 MPa and the tip/collar peak by 26.40 MPa. With the seed, pressure decreases source-flank mean σxx by 1.40 MPa and increases the tip/collar peak by 11.01 MPa. The original intact-host versus pressurized-crack comparison mixed pressure and crack-geometry effects; its source-flank relief cannot be attributed to pressure alone.
+
+The elastic pressure-source check remains: pressure is 3.961 MPa, mean opening is 4.000 m, maximum opening is 5.762 m, equilibrium residual is `4.54e-13`, source/support force and moment residuals are `2.60e-13` and `5.19e-13`, and pressure-work/stored-energy mismatch is `8.05e-7`. The minimum deformation determinant in the seeded pressure-on case is positive (`0.9983`).
+
+Independent constitutive checks remain green for affine stretch, the small-strain limit, elastic stress objectivity, the consistent tangent, implicit damage update, and plastic-volume preservation ([verification JSON](gate3-finite-strain-verification-review.json)). The rotation check holds plastic deformation at identity; plastic-flow update objectivity under finite rotations is not tested.
 
 ## Interpretation and next gate work
 
-The preregistered stress-sign prediction is supported: opening relieves extension in the source flanks and transfers a strong tensile concentration to the tips. The pointwise tip stress guard makes the propagation result inconclusive; it is not evidence of geological rift advance. Constant pressure also means this run has no finite-reservoir magma-volume closure. The source is prescribed independently of plume attribution, so it does not test RFC 0007 plume forcing.
+For this prototype, crack geometry causes most of the measured tip concentration and source-flank stress reduction relative to intact host. Adding pressure to that same crack consistently increases the tip/collar peak, but does not consistently reduce source-flank stress. No pressure-on or cracked seeded run produces failures outside the inherited seed, and the stress guard stops the cracked runs early. These results do not establish causal rift advance or support the earlier claim of a consistent pressure-driven stress-sign pattern.
 
-Gate 3 remains open. The next useful mechanics step is to couple finite-reservoir depletion, dike-tip advance and regularized host-rock stress in a single stable calculation, then test whether it causes failure beyond the inherited seed. A separate plume comparison requires an explicit spatial-temporal plume source and should change only that source between matched on/off cases.
+Gate 3 remains open. The next mechanics step is to couple finite-reservoir depletion, dike-tip advance, and regularized host-rock stress in one stable calculation, then test failure beyond the inherited seed. A plume comparison still requires an explicit spatial-temporal plume source and matched source-on/off cases.
 
 ## Reproduction
 
@@ -37,7 +46,7 @@ backend/.venv/bin/python bin/debug/test_gate3_magma_intrusion.py \
   --output analysis/issue487/gate3-magma-intrusion-review.json
 ```
 
-The result is [`gate3-magma-intrusion-review.json`](gate3-magma-intrusion-review.json). The diagnostic imports [`prototype_gate3_finite_strain.py`](../../bin/debug/prototype_gate3_finite_strain.py), which uses the shared local mechanics in [`prototype_gate3_local_feedback.py`](../../bin/debug/prototype_gate3_local_feedback.py). The mesh refactor reuses the base element gradients because the duplicated crack-face nodes retain identical reference coordinates; the controlled rerun reproduces the previous result values to floating-point roundoff.
+The compact result is [`gate3-magma-intrusion-review.json`](gate3-magma-intrusion-review.json). It identifies the two matched pressure pairs and the intact-host context cases. The diagnostic imports [`prototype_gate3_finite_strain.py`](../../bin/debug/prototype_gate3_finite_strain.py), which uses the shared local mechanics in [`prototype_gate3_local_feedback.py`](../../bin/debug/prototype_gate3_local_feedback.py).
 
 Run the independent constitutive checks with:
 
