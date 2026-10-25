@@ -101,7 +101,9 @@ Request body:
   "node_density": 4.0,
   "initial_soil_maturity": 0.0,
   "climate_density": 4.0,
-  "fluid_density": 4.0
+  "fluid_density": 4.0,
+  "name": null,
+  "is_public": null
 }
 ```
 
@@ -127,7 +129,9 @@ omitted, generation uses the plate-first layout (omission follows
 coastlines come from a synthetic tectonic history (sutures between cratons, cordilleras on
 leading margins, interior terrain types), backed by crustal thickness; when false or omitted,
 the cratons-first relief is generated as before (omission follows
-`synthetic_relief.SYNTHETIC_RELIEF_DEFAULT`). See
+`synthetic_relief.SYNTHETIC_RELIEF_DEFAULT`). `name` and `is_public` are the Generate
+World dialog's name field and Public checkbox: applied to the record being generated
+into (a null name keeps the record's name). See
 [simulation-model/foundations.md#synthetic-relief](simulation-model/foundations.md#relief-from-a-synthetic-tectonic-history-synthetic_reliefpy).
 `axial_tilt_deg` is the UI's third generation slider (degrees), defaulting to
 `world.DEFAULT_AXIAL_TILT_DEG = 23.5` (Earth's real tilt) -- doesn't affect plate generation,

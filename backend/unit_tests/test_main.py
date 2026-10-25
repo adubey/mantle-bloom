@@ -1950,6 +1950,21 @@ def test_two_populated_worlds_do_not_share_state(client, saved_world):
     assert raw.get(f"/worlds/{b}/summary").json()["elapsed_years"] == 0.0
 
 
+def test_generate_debug_applies_dialog_name_and_public_flag(client):
+    # The Generate World dialog's name + Public choice lands on the record being
+    # generated into (#597).
+    raw = _raw_client()
+    wid = raw.post("/worlds", json={}).json()["world_id"]
+    resp = raw.post(f"/worlds/{wid}/generate_debug", json={"scenario": "two_plate_divergent", "name": "Demo", "is_public": True})
+    assert resp.status_code == 200
+    (record,) = [w for w in raw.get("/worlds").json()["worlds"] if w["world_id"] == wid]
+    assert record["name"] == "Demo"
+    assert record["is_public"] is True
+    listed = raw.get("/public/worlds").json()["worlds"]
+    assert [w["world_id"] for w in listed] == [wid]
+    assert raw.delete(f"/worlds/{wid}").status_code == 200
+
+
 def test_registry_crud_public_listing_and_removed_old_routes(client, saved_world):
     raw = _raw_client()
     a = raw.post("/worlds", json={"name": "A"}).json()

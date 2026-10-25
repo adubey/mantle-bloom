@@ -229,6 +229,11 @@ class GenerateRequest(BaseModel):
     # additionally come from real plate geometry/motion (see world.generate_world's own
     # `premade_world_id` param). `None` (every other tab) is unaffected.
     premade_world_id: str | None = None
+    # The Generate World dialog's name field and Public checkbox: applied to the
+    # record being generated into (a fresh world keeps its automatic name when
+    # this is omitted). Same bounds as PATCH /worlds/{world_id}'s renames.
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    is_public: bool | None = None
 
 
 class StepRequest(BaseModel):
@@ -341,6 +346,22 @@ def _session_running(session: WorldSession) -> bool:
     """Whether this world's run loop is on: what /view calls live (#597)."""
     runner = session.runner
     return runner is not None and runner.status().running
+
+
+def _apply_generate_identity(session: WorldSession, name: str | None, is_public: bool | None) -> None:
+    """Name (and publish) the record a generate/debug-generate is about to fill (#597)."""
+    if name is None and is_public is None:
+        return
+    with session.lock:
+        changed = False
+        if name is not None and name != session.name:
+            session.name = name
+            changed = True
+        if is_public is not None and is_public != session.is_public:
+            session.is_public = is_public
+            changed = True
+    if changed:
+        _save_index()
 
 
 def _public_session_or_404(world_id: str) -> WorldSession:
@@ -867,6 +888,7 @@ def generate(world_id: str, req: GenerateRequest) -> StreamingResponse:
     stream starts, so a bad request still gets an ordinary 400 response rather than an error
     line."""
     session = _session_or_404(world_id)
+    _apply_generate_identity(session, req.name, req.is_public)
     if req.node_density not in NODE_DENSITY_CHOICES:
         raise HTTPException(status_code=400, detail=f"unknown node_density {req.node_density!r}; choices are {NODE_DENSITY_CHOICES}")
     if req.climate_density not in climate.CLIMATE_DENSITY_CHOICES:
@@ -978,6 +1000,9 @@ def generate(world_id: str, req: GenerateRequest) -> StreamingResponse:
 class GenerateDebugRequest(BaseModel):
     scenario: str
     seed: int = 0
+    # Same dialog name/public choice as GenerateRequest above.
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    is_public: bool | None = None
 
 
 @app.post("/worlds/{world_id}/generate_debug")
@@ -991,6 +1016,7 @@ def generate_debug(world_id: str, req: GenerateDebugRequest) -> dict:
     for an unknown world id, `503` while a generation, step, or animation is in
     progress."""
     session = _session_or_404(world_id)
+    _apply_generate_identity(session, req.name, req.is_public)
     if req.scenario not in debug_worlds.DEBUG_SCENARIOS:
         raise HTTPException(
             status_code=400,
