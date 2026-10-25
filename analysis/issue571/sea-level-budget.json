@@ -1,0 +1,445 @@
+{
+ "save": "seed 997271774 at 87.4 Myr",
+ "save_sha256": "08ad9461\u2026ed762b",
+ "step_years": 250000,
+ "origin_main": {
+  "commit": "8ed179fd",
+  "checkpoints": [
+   {
+    "elapsed_myr": 87.4,
+    "sea_level_m": -408.15,
+    "budget_km3": 1448298678.04,
+    "ice_debit_km3": 5184193.86,
+    "trapped_lake_km3": 319680.12,
+    "all_lake_km3": 320125.28,
+    "trapped_lake_cells": 444,
+    "trapped_lake_area_km2": 1633564.63,
+    "capacity_at_opening_level_km3": 1442794807.36,
+    "ocean_area_km2": 362621217.01,
+    "area_below_opening_level_km2": 362621217.01,
+    "mean_depth_below_opening_level_m": 3981.53,
+    "from_trapped_m": -0.0,
+    "from_capacity_m": -0.0,
+    "sea_level_change_m": 0.0,
+    "columns": {
+     "oceanic": {
+      "area_mkm2": 242.827,
+      "mean_elevation_m": -4803.0,
+      "mean_hc_m": 10229.4,
+      "mean_hm_m": 21064.4
+     },
+     "continental": {
+      "area_mkm2": 268.552,
+      "mean_elevation_m": -919.0,
+      "mean_hc_m": 31981.7,
+      "mean_hm_m": 107810.3
+     }
+    }
+   },
+   {
+    "elapsed_myr": 87.65,
+    "sea_level_m": -408.26,
+    "budget_km3": 1448298678.04,
+    "ice_debit_km3": 5173391.27,
+    "trapped_lake_km3": 90466.57,
+    "all_lake_km3": 90626.55,
+    "trapped_lake_cells": 340,
+    "trapped_lake_area_km2": 1233192.76,
+    "capacity_at_opening_level_km3": 1443074383.79,
+    "ocean_area_km2": 362215120.05,
+    "area_below_opening_level_km2": 362250652.65,
+    "mean_depth_below_opening_level_m": 3985.0,
+    "from_trapped_m": 0.66,
+    "from_capacity_m": -0.77,
+    "sea_level_change_m": -0.11,
+    "peak_rss_mb": 963.23,
+    "columns": {
+     "oceanic": {
+      "area_mkm2": 242.238,
+      "mean_elevation_m": -4814.7,
+      "mean_hc_m": 10219.3,
+      "mean_hm_m": 21529.6
+     },
+     "continental": {
+      "area_mkm2": 268.534,
+      "mean_elevation_m": -918.6,
+      "mean_hc_m": 31973.1,
+      "mean_hm_m": 107763.5
+     }
+    }
+   },
+   {
+    "elapsed_myr": 87.9,
+    "sea_level_m": -412.22,
+    "budget_km3": 1448298678.04,
+    "ice_debit_km3": 5167532.04,
+    "trapped_lake_km3": 85591.43,
+    "all_lake_km3": 85697.65,
+    "trapped_lake_cells": 339,
+    "trapped_lake_area_km2": 1245745.51,
+    "capacity_at_opening_level_km3": 1444511474.17,
+    "ocean_area_km2": 361242291.47,
+    "area_below_opening_level_km2": 362146365.08,
+    "mean_depth_below_opening_level_m": 3990.08,
+    "from_trapped_m": 0.69,
+    "from_capacity_m": -4.73,
+    "sea_level_change_m": -4.06,
+    "peak_rss_mb": 1608.84,
+    "columns": {
+     "oceanic": {
+      "area_mkm2": 242.221,
+      "mean_elevation_m": -4822.0,
+      "mean_hc_m": 10222.6,
+      "mean_hm_m": 21959.2
+     },
+     "continental": {
+      "area_mkm2": 268.491,
+      "mean_elevation_m": -916.9,
+      "mean_hc_m": 31977.0,
+      "mean_hm_m": 107758.3
+     }
+    }
+   },
+   {
+    "elapsed_myr": 88.15,
+    "sea_level_m": -418.18,
+    "budget_km3": 1448298678.04,
+    "ice_debit_km3": 5175135.97,
+    "trapped_lake_km3": 283075.37,
+    "all_lake_km3": 283282.38,
+    "trapped_lake_cells": 674,
+    "trapped_lake_area_km2": 2462039.53,
+    "capacity_at_opening_level_km3": 1446457367.84,
+    "ocean_area_km2": 360665420.96,
+    "area_below_opening_level_km2": 362398359.7,
+    "mean_depth_below_opening_level_m": 3992.66,
+    "from_trapped_m": 0.13,
+    "from_capacity_m": -10.1,
+    "sea_level_change_m": -10.02,
+    "peak_rss_mb": 1634.47,
+    "columns": {
+     "oceanic": {
+      "area_mkm2": 242.321,
+      "mean_elevation_m": -4829.6,
+      "mean_hc_m": 10225.3,
+      "mean_hm_m": 22378.5
+     },
+     "continental": {
+      "area_mkm2": 268.48,
+      "mean_elevation_m": -915.9,
+      "mean_hc_m": 31976.5,
+      "mean_hm_m": 107754.6
+     }
+    }
+   },
+   {
+    "elapsed_myr": 88.4,
+    "sea_level_m": -423.14,
+    "budget_km3": 1448298678.04,
+    "ice_debit_km3": 5159665.33,
+    "trapped_lake_km3": 279908.9,
+    "all_lake_km3": 280157.09,
+    "trapped_lake_cells": 563,
+    "trapped_lake_area_km2": 2031785.69,
+    "capacity_at_opening_level_km3": 1448268895.96,
+    "ocean_area_km2": 360518416.61,
+    "area_below_opening_level_km2": 362604629.04,
+    "mean_depth_below_opening_level_m": 3995.42,
+    "from_trapped_m": 0.18,
+    "from_capacity_m": -15.1,
+    "sea_level_change_m": -14.99,
+    "peak_rss_mb": 1655.24,
+    "columns": {
+     "oceanic": {
+      "area_mkm2": 242.389,
+      "mean_elevation_m": -4837.6,
+      "mean_hc_m": 10223.0,
+      "mean_hm_m": 22781.8
+     },
+     "continental": {
+      "area_mkm2": 268.416,
+      "mean_elevation_m": -913.9,
+      "mean_hc_m": 31982.3,
+      "mean_hm_m": 107761.3
+     }
+    }
+   },
+   {
+    "elapsed_myr": 88.65,
+    "sea_level_m": -427.72,
+    "budget_km3": 1448298678.04,
+    "ice_debit_km3": 5174169.9,
+    "trapped_lake_km3": 224320.19,
+    "all_lake_km3": 224499.68,
+    "trapped_lake_cells": 669,
+    "trapped_lake_area_km2": 2462946.93,
+    "capacity_at_opening_level_km3": 1449961567.71,
+    "ocean_area_km2": 360212460.03,
+    "area_below_opening_level_km2": 362623080.71,
+    "mean_depth_below_opening_level_m": 3999.87,
+    "from_trapped_m": 0.29,
+    "from_capacity_m": -19.76,
+    "sea_level_change_m": -19.57,
+    "peak_rss_mb": 1658.9,
+    "columns": {
+     "oceanic": {
+      "area_mkm2": 242.396,
+      "mean_elevation_m": -4845.3,
+      "mean_hc_m": 10222.5,
+      "mean_hm_m": 23179.6
+     },
+     "continental": {
+      "area_mkm2": 268.393,
+      "mean_elevation_m": -912.8,
+      "mean_hc_m": 31983.3,
+      "mean_hm_m": 107759.4
+     }
+    }
+   },
+   {
+    "elapsed_myr": 88.9,
+    "sea_level_m": -432.28,
+    "budget_km3": 1448298678.04,
+    "ice_debit_km3": 5188344.71,
+    "trapped_lake_km3": 211510.2,
+    "all_lake_km3": 211692.24,
+    "trapped_lake_cells": 528,
+    "trapped_lake_area_km2": 1916392.17,
+    "capacity_at_opening_level_km3": 1451603030.67,
+    "ocean_area_km2": 359991176.26,
+    "area_below_opening_level_km2": 362786472.02,
+    "mean_depth_below_opening_level_m": 4002.59,
+    "from_trapped_m": 0.29,
+    "from_capacity_m": -24.29,
+    "sea_level_change_m": -24.12,
+    "peak_rss_mb": 1752.58,
+    "columns": {
+     "oceanic": {
+      "area_mkm2": 242.396,
+      "mean_elevation_m": -4852.8,
+      "mean_hc_m": 10222.4,
+      "mean_hm_m": 23572.9
+     },
+     "continental": {
+      "area_mkm2": 268.397,
+      "mean_elevation_m": -912.2,
+      "mean_hc_m": 31981.2,
+      "mean_hm_m": 107755.9
+     }
+    }
+   },
+   {
+    "elapsed_myr": 89.15,
+    "sea_level_m": -436.23,
+    "budget_km3": 1448298678.04,
+    "ice_debit_km3": 5202555.34,
+    "trapped_lake_km3": 212071.15,
+    "all_lake_km3": 212352.27,
+    "trapped_lake_cells": 498,
+    "trapped_lake_area_km2": 1826524.99,
+    "capacity_at_opening_level_km3": 1453012665.89,
+    "ocean_area_km2": 359768034.11,
+    "area_below_opening_level_km2": 362921498.61,
+    "mean_depth_below_opening_level_m": 4004.98,
+    "from_trapped_m": 0.25,
+    "from_capacity_m": -28.18,
+    "sea_level_change_m": -28.07,
+    "peak_rss_mb": 1752.58,
+    "columns": {
+     "oceanic": {
+      "area_mkm2": 242.359,
+      "mean_elevation_m": -4860.2,
+      "mean_hc_m": 10222.2,
+      "mean_hm_m": 23957.3
+     },
+     "continental": {
+      "area_mkm2": 268.393,
+      "mean_elevation_m": -911.6,
+      "mean_hc_m": 31980.0,
+      "mean_hm_m": 107755.9
+     }
+    }
+   },
+   {
+    "elapsed_myr": 89.4,
+    "sea_level_m": -440.16,
+    "budget_km3": 1448298678.04,
+    "ice_debit_km3": 5199510.2,
+    "trapped_lake_km3": 258648.98,
+    "all_lake_km3": 258857.59,
+    "trapped_lake_cells": 529,
+    "trapped_lake_area_km2": 1912789.32,
+    "capacity_at_opening_level_km3": 1454388482.93,
+    "ocean_area_km2": 359726259.27,
+    "area_below_opening_level_km2": 363035008.18,
+    "mean_depth_below_opening_level_m": 4007.51,
+    "from_trapped_m": 0.13,
+    "from_capacity_m": -31.97,
+    "sea_level_change_m": -32.01,
+    "peak_rss_mb": 1752.58,
+    "columns": {
+     "oceanic": {
+      "area_mkm2": 242.364,
+      "mean_elevation_m": -4867.3,
+      "mean_hc_m": 10222.4,
+      "mean_hm_m": 24330.9
+     },
+     "continental": {
+      "area_mkm2": 268.353,
+      "mean_elevation_m": -910.0,
+      "mean_hc_m": 31983.0,
+      "mean_hm_m": 107754.4
+     }
+    }
+   }
+  ]
+ },
+ "before_550": {
+  "commit": "009d63ad",
+  "checkpoints": [
+   {
+    "elapsed_myr": 87.4,
+    "sea_level_m": -408.15,
+    "budget_km3": 1448298678.04,
+    "ice_debit_km3": 5184193.86,
+    "trapped_lake_km3": 319680.12,
+    "all_lake_km3": 320125.28,
+    "trapped_lake_cells": 444,
+    "trapped_lake_area_km2": 1633564.63,
+    "capacity_at_opening_level_km3": 1442794807.36,
+    "ocean_area_km2": 362621217.01,
+    "from_trapped_m": -0.0,
+    "from_capacity_m": -0.0,
+    "sea_level_change_m": 0.0
+   },
+   {
+    "elapsed_myr": 87.65,
+    "sea_level_m": -408.29,
+    "budget_km3": 1448298678.04,
+    "ice_debit_km3": 5173660.72,
+    "trapped_lake_km3": 59901.04,
+    "all_lake_km3": 59999.83,
+    "trapped_lake_cells": 183,
+    "trapped_lake_area_km2": 651802.43,
+    "capacity_at_opening_level_km3": 1443113978.7,
+    "ocean_area_km2": 362353188.92,
+    "from_trapped_m": 0.75,
+    "from_capacity_m": -0.88,
+    "sea_level_change_m": -0.14,
+    "peak_rss_mb": 1006.83
+   },
+   {
+    "elapsed_myr": 87.9,
+    "sea_level_m": -412.74,
+    "budget_km3": 1448298678.04,
+    "ice_debit_km3": 5175884.83,
+    "trapped_lake_km3": 172445.63,
+    "all_lake_km3": 172495.57,
+    "trapped_lake_cells": 302,
+    "trapped_lake_area_km2": 1101868.73,
+    "capacity_at_opening_level_km3": 1444604671.39,
+    "ocean_area_km2": 361409967.29,
+    "from_trapped_m": 0.43,
+    "from_capacity_m": -4.99,
+    "sea_level_change_m": -4.58,
+    "peak_rss_mb": 1656.82
+   },
+   {
+    "elapsed_myr": 88.15,
+    "sea_level_m": -418.11,
+    "budget_km3": 1448298678.04,
+    "ice_debit_km3": 5189592.98,
+    "trapped_lake_km3": 174925.33,
+    "all_lake_km3": 175034.24,
+    "trapped_lake_cells": 289,
+    "trapped_lake_area_km2": 1066320.29,
+    "capacity_at_opening_level_km3": 1446531420.9,
+    "ocean_area_km2": 361026788.77,
+    "from_trapped_m": 0.38,
+    "from_capacity_m": -10.3,
+    "sea_level_change_m": -9.96,
+    "peak_rss_mb": 1688.96
+   },
+   {
+    "elapsed_myr": 88.4,
+    "sea_level_m": -423.1,
+    "budget_km3": 1448298678.04,
+    "ice_debit_km3": 5171992.75,
+    "trapped_lake_km3": 159288.31,
+    "all_lake_km3": 159439.67,
+    "trapped_lake_cells": 211,
+    "trapped_lake_area_km2": 763211.77,
+    "capacity_at_opening_level_km3": 1448369449.39,
+    "ocean_area_km2": 360822090.29,
+    "from_trapped_m": 0.48,
+    "from_capacity_m": -15.37,
+    "sea_level_change_m": -14.95,
+    "peak_rss_mb": 1705.69
+   },
+   {
+    "elapsed_myr": 88.65,
+    "sea_level_m": -427.9,
+    "budget_km3": 1448298678.04,
+    "ice_debit_km3": 5193149.74,
+    "trapped_lake_km3": 157464.42,
+    "all_lake_km3": 157556.84,
+    "trapped_lake_cells": 344,
+    "trapped_lake_area_km2": 1275245.66,
+    "capacity_at_opening_level_km3": 1450078428.86,
+    "ocean_area_km2": 360574683.59,
+    "from_trapped_m": 0.42,
+    "from_capacity_m": -20.09,
+    "sea_level_change_m": -19.74,
+    "peak_rss_mb": 1712.13
+   },
+   {
+    "elapsed_myr": 88.9,
+    "sea_level_m": -432.25,
+    "budget_km3": 1448298678.04,
+    "ice_debit_km3": 5213091.46,
+    "trapped_lake_km3": 53782.2,
+    "all_lake_km3": 53818.23,
+    "trapped_lake_cells": 107,
+    "trapped_lake_area_km2": 388400.04,
+    "capacity_at_opening_level_km3": 1451736368.52,
+    "ocean_area_km2": 360353174.51,
+    "from_trapped_m": 0.65,
+    "from_capacity_m": -24.66,
+    "sea_level_change_m": -24.1,
+    "peak_rss_mb": 1712.13
+   },
+   {
+    "elapsed_myr": 89.15,
+    "sea_level_m": -436.28,
+    "budget_km3": 1448298678.04,
+    "ice_debit_km3": 5227610.45,
+    "trapped_lake_km3": 61450.94,
+    "all_lake_km3": 61505.73,
+    "trapped_lake_cells": 158,
+    "trapped_lake_area_km2": 576499.71,
+    "capacity_at_opening_level_km3": 1453171420.28,
+    "ocean_area_km2": 360201707.74,
+    "from_trapped_m": 0.59,
+    "from_capacity_m": -28.62,
+    "sea_level_change_m": -28.13,
+    "peak_rss_mb": 1712.13
+   },
+   {
+    "elapsed_myr": 89.4,
+    "sea_level_m": -440.08,
+    "budget_km3": 1448298678.04,
+    "ice_debit_km3": 5227750.64,
+    "trapped_lake_km3": 28792.61,
+    "all_lake_km3": 28870.31,
+    "trapped_lake_cells": 92,
+    "trapped_lake_area_km2": 340404.82,
+    "capacity_at_opening_level_km3": 1454578189.93,
+    "ocean_area_km2": 360160197.47,
+    "from_trapped_m": 0.68,
+    "from_capacity_m": -32.5,
+    "sea_level_change_m": -31.93,
+    "peak_rss_mb": 1712.13
+   }
+  ]
+ }
+}
