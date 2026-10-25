@@ -22,6 +22,8 @@ The no-dike cases complete 2.5 Myr. In the seeded pair, both cases fail the same
 
 The source pressure is 3.961 MPa. The elastic dike solution gives 4.000 m mean and 5.762 m maximum opening. Its equilibrium residual is `4.54e-13`; source/support force and moment residuals are `2.60e-13` and `5.19e-13`; pressure-work and stored-energy mismatch is `8.05e-7`. The minimum deformation determinant in the seeded dike-on run is positive (`0.9983`).
 
+The finite-strain mechanics support checks pass independently: affine stretch, small-strain limit, rotation objectivity, consistent tangent, implicit damage update and plastic-volume preservation are summarized in [`gate3-finite-strain-verification-review.json`](gate3-finite-strain-verification-review.json). The largest reported directional-tangent relative error is `3.38e-10`.
+
 ## Interpretation and next gate work
 
 The preregistered stress-sign prediction is supported: opening relieves extension in the source flanks and transfers a strong tensile concentration to the tips. The pointwise tip stress guard makes the propagation result inconclusive; it is not evidence of geological rift advance. Constant pressure also means this run has no finite-reservoir magma-volume closure. The source is prescribed independently of plume attribution, so it does not test RFC 0007 plume forcing.
@@ -36,3 +38,10 @@ backend/.venv/bin/python bin/debug/test_gate3_magma_intrusion.py \
 ```
 
 The result is [`gate3-magma-intrusion-review.json`](gate3-magma-intrusion-review.json). The diagnostic imports [`prototype_gate3_finite_strain.py`](../../bin/debug/prototype_gate3_finite_strain.py), which uses the shared local mechanics in [`prototype_gate3_local_feedback.py`](../../bin/debug/prototype_gate3_local_feedback.py). The mesh refactor reuses the base element gradients because the duplicated crack-face nodes retain identical reference coordinates; the controlled rerun reproduces the previous result values to floating-point roundoff.
+
+Run the independent constitutive checks with:
+
+```bash
+backend/.venv/bin/python bin/debug/verify_gate3_finite_strain.py \
+  --output analysis/issue487/gate3-finite-strain-verification-review.json
+```
