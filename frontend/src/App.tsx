@@ -7,7 +7,7 @@ import {
 import type {
   AnimateResponse, DebugScenario, EarthquakeSummary, ElevationPointResponse, FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, NodeAtResponse, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, TuningKey, TuningMultipliers, VolcanoSummary, WorldRecord, WorldStats, WorldSummary,
 } from "./api";
-import { withWorldId, worldIdFromSearch, type WorldId } from "./worldRoutes";
+import { ensureWorldId, latestWorldId, withWorldId, worldIdFromSearch, type WorldId } from "./worldRoutes";
 import MapCanvas from "./MapCanvas";
 import MantleCrossSection from "./MantleCrossSection";
 import GlobeSelector from "./GlobeSelector";
@@ -409,6 +409,10 @@ export default function App() {
   const [worldId, setWorldId] = useState<WorldId | null>(() => worldIdFromSearch(window.location.search));
   const worldIdRef = useRef<WorldId | null>(worldId);
   worldIdRef.current = worldId;
+  // Shares one on-demand world resolution between rapid Generate confirmations
+  // (#595 review): without it a double-click with no selection yet could mint
+  // two worlds, one per confirmation, before either selects.
+  const ensureInflightRef = useRef<Promise<WorldId> | null>(null);
   const [summary, setSummary] = useState<WorldSummary | null>(null);
   const [renderData, setRenderData] = useState<RenderResponse | null>(null);
   // Plate Inspector's own data (see PlateInspector.tsx) -- true-frame/rotation-independent,
@@ -772,78 +776,6 @@ export default function App() {
     }
   }, [applyStats]);
 
-  const handleGenerate = useCallback(async () => {
-    // The world being generated into: the selection may move mid-run (once the
-    // selector stays enabled for other states), so every commit below bails when
-    // it no longer matches instead of painting the old world over the new one.
-    const id = worldIdRef.current;
-    setBusy(true);
-    setGenProgress(undefined);
-    setError(null);
-    try {
-      // The "Human-made"/"Premade worlds" tabs' sketch rides along as a bare base64 payload --
-      // strip the data URL's `data:image/png;base64,` prefix generateWorld's caller
-      // (SketchEditor's toDataURL / the file-picker's FileReader / premadeWorlds.ts) all produce.
-      const sketchBase64 =
-        (generateMode === "human" || generateMode === "premade") && sketchImageDataUrl
-          ? sketchImageDataUrl.split(",", 2)[1] ?? null
-          : null;
-      // The "Debugging Worlds" tab's generateDebugWorld has no progress stream to report --
-      // its scripted scenarios are tiny and generate near-instantly (see debug_worlds.py) --
-      // so genProgress just stays undefined (indeterminate) for that path.
-      const s =
-        generateMode === "debug"
-          ? await generateDebugWorld(id!, debugScenario, seed)
-          : await generateWorld(id!, {
-              seed,
-              cratonsFirst: generateMode === "random" ? cratonsFirst : false,
-              syntheticRelief: generateMode === "random" && cratonsFirst ? syntheticRelief : false,
-              continentalFraction: continentalPercent / 100,
-              landFraction: landPercent / 100,
-              axialTiltDeg,
-              nodeDensity: detail,
-              initialSoilMaturity: initialSoilMaturityPercent / 100,
-              climateDensity: climateDensityForDetail(detail),
-              fluidDensity,
-              numPlates: autoPlates ? null : numPlates,
-              voronoiPoints,
-              sketchImageBase64: sketchBase64,
-              premadeWorldId: generateMode === "premade" ? premadeWorldId : null,
-              onProgress: (f) => {
-                if (worldIdRef.current === id) setGenProgress(f);
-              },
-            });
-      if (worldIdRef.current !== id) return;
-      setSummary(s);
-      setCrossSectionWorldRevision((revision) => revision + 1);
-      setSelectedPlateId(null);
-      setSelectedRiverId(null);
-      setSelectedBasin(null);
-      setSelectedBasinKind(null);
-      setShowGenerateDialog(false);
-      setStatsHistory([]); // plate ids and elapsed_years both reset with a fresh world
-      setSeaLevelM(DEFAULT_SEA_LEVEL_M); // live controls reset with a fresh world too
-      setSolarMultiplier(DEFAULT_SOLAR_MULTIPLIER);
-      setIceAgePeriodYears(DEFAULT_ICE_AGE_PERIOD_YEARS);
-      setSimulatePlateMovement(DEFAULT_SIMULATE_PLATE_MOVEMENT);
-      setSimulateClimateBiomes(DEFAULT_SIMULATE_CLIMATE_BIOMES);
-      setWindModel(DEFAULT_WIND_MODEL);
-      setFaultDeformationMode(DEFAULT_FAULT_DEFORMATION_MODE);
-      // A debug world starts with diagnostics already on server-side (see debug_worlds.py) --
-      // match that here rather than resetting to the ordinary default.
-      setDebugDiagnostics(generateMode === "debug" ? true : DEFAULT_DEBUG_DIAGNOSTICS);
-      setTuning(DEFAULT_TUNING);
-      await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), recordStats()]);
-    } catch (e) {
-      if (worldIdRef.current === id) setError(String(e));
-    } finally {
-      setBusy(false);
-      setGenProgress(undefined);
-    }
-  }, [
-    seed, cratonsFirst, syntheticRelief, continentalPercent, landPercent, axialTiltDeg, detail, fluidDensity, initialSoilMaturityPercent, autoPlates, numPlates, voronoiPoints,
-    generateMode, sketchImageDataUrl, premadeWorldId, debugScenario, projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats,
-  ]);
 
 
   // Debounced so dragging a Controls slider doesn't fire a network request (and force a
@@ -1201,20 +1133,51 @@ export default function App() {
   // the list arrives.
   useEffect(() => {
     if (worldId || worlds.length === 0) return;
-    const latest = [...worlds].sort((a, b) => b.updated_at - a.updated_at)[0];
-    if (latest) selectWorld(latest.world_id);
+    const latest = latestWorldId(worlds);
+    if (latest) selectWorld(latest);
   }, [worldId, worlds, selectWorld]);
+
+  const createAndSelectWorld = useCallback(async (): Promise<WorldId> => {
+    const record = await createWorld();
+    await refreshWorlds();
+    selectWorld(record.world_id);
+    return record.world_id;
+  }, [refreshWorlds, selectWorld]);
+
+  // Resolves the world to generate into on demand (#592): with a selection it
+  // returns it untouched, otherwise it reads the world list and adopts the
+  // latest existing world, creating the first one only when the list is
+  // actually empty. Reading the list here (instead of trusting the selection
+  // state) closes the startup race where a fast Generate on a reloaded tab
+  // ran before the initial list load adopted the existing world, minting a
+  // duplicate (#595 review). Runs only from an explicit generate action,
+  // never on page load, so merely opening the app creates nothing.
+  const ensureSelectedWorld = useCallback(async (): Promise<WorldId> => {
+    if (!ensureInflightRef.current) {
+      ensureInflightRef.current = ensureWorldId(worldIdRef.current, async (): Promise<WorldId> => {
+        const list = await refreshWorlds();
+        if (worldIdRef.current) return worldIdRef.current;
+        const latest = latestWorldId(list);
+        if (latest) {
+          selectWorld(latest);
+          return latest;
+        }
+        return createAndSelectWorld();
+      }).finally(() => {
+        ensureInflightRef.current = null;
+      });
+    }
+    return ensureInflightRef.current;
+  }, [createAndSelectWorld, refreshWorlds, selectWorld]);
 
   const handleNewWorld = useCallback(async () => {
     setError(null);
     try {
-      const record = await createWorld();
-      await refreshWorlds();
-      selectWorld(record.world_id);
+      await createAndSelectWorld();
     } catch (e) {
       setError(String(e));
     }
-  }, [refreshWorlds, selectWorld]);
+  }, [createAndSelectWorld]);
 
   const handleDeleteWorld = useCallback(async (id: WorldId) => {
     setError(null);
@@ -1235,6 +1198,83 @@ export default function App() {
       setError(String(e));
     }
   }, [refreshWorlds, selectWorld]);
+
+  const handleGenerate = useCallback(async () => {
+    // Null until the world being generated into is known: the selection may
+    // move mid-run (once the selector stays enabled for other states), so every
+    // commit and the error line below bail when it no longer matches instead of
+    // painting the old world over the new one.
+    let id: WorldId | null = null;
+    setBusy(true);
+    setGenProgress(undefined);
+    setError(null);
+    try {
+      // No selection yet (a fresh server holds no worlds): mint the first world
+      // now (#592) instead of failing against a null id.
+      id = await ensureSelectedWorld();
+      // The "Human-made"/"Premade worlds" tabs' sketch rides along as a bare base64 payload --
+      // strip the data URL's `data:image/png;base64,` prefix generateWorld's caller
+      // (SketchEditor's toDataURL / the file-picker's FileReader / premadeWorlds.ts) all produce.
+      const sketchBase64 =
+        (generateMode === "human" || generateMode === "premade") && sketchImageDataUrl
+          ? sketchImageDataUrl.split(",", 2)[1] ?? null
+          : null;
+      // The "Debugging Worlds" tab's generateDebugWorld has no progress stream to report --
+      // its scripted scenarios are tiny and generate near-instantly (see debug_worlds.py) --
+      // so genProgress just stays undefined (indeterminate) for that path.
+      const s =
+        generateMode === "debug"
+          ? await generateDebugWorld(id!, debugScenario, seed)
+          : await generateWorld(id!, {
+              seed,
+              cratonsFirst: generateMode === "random" ? cratonsFirst : false,
+              syntheticRelief: generateMode === "random" && cratonsFirst ? syntheticRelief : false,
+              continentalFraction: continentalPercent / 100,
+              landFraction: landPercent / 100,
+              axialTiltDeg,
+              nodeDensity: detail,
+              initialSoilMaturity: initialSoilMaturityPercent / 100,
+              climateDensity: climateDensityForDetail(detail),
+              fluidDensity,
+              numPlates: autoPlates ? null : numPlates,
+              voronoiPoints,
+              sketchImageBase64: sketchBase64,
+              premadeWorldId: generateMode === "premade" ? premadeWorldId : null,
+              onProgress: (f) => {
+                if (worldIdRef.current === id) setGenProgress(f);
+              },
+            });
+      if (worldIdRef.current !== id) return;
+      setSummary(s);
+      setCrossSectionWorldRevision((revision) => revision + 1);
+      setSelectedPlateId(null);
+      setSelectedRiverId(null);
+      setSelectedBasin(null);
+      setSelectedBasinKind(null);
+      setShowGenerateDialog(false);
+      setStatsHistory([]); // plate ids and elapsed_years both reset with a fresh world
+      setSeaLevelM(DEFAULT_SEA_LEVEL_M); // live controls reset with a fresh world too
+      setSolarMultiplier(DEFAULT_SOLAR_MULTIPLIER);
+      setIceAgePeriodYears(DEFAULT_ICE_AGE_PERIOD_YEARS);
+      setSimulatePlateMovement(DEFAULT_SIMULATE_PLATE_MOVEMENT);
+      setSimulateClimateBiomes(DEFAULT_SIMULATE_CLIMATE_BIOMES);
+      setWindModel(DEFAULT_WIND_MODEL);
+      setFaultDeformationMode(DEFAULT_FAULT_DEFORMATION_MODE);
+      // A debug world starts with diagnostics already on server-side (see debug_worlds.py) --
+      // match that here rather than resetting to the ordinary default.
+      setDebugDiagnostics(generateMode === "debug" ? true : DEFAULT_DEBUG_DIAGNOSTICS);
+      setTuning(DEFAULT_TUNING);
+      await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), recordStats()]);
+    } catch (e) {
+      if (worldIdRef.current === id) setError(String(e));
+    } finally {
+      setBusy(false);
+      setGenProgress(undefined);
+    }
+  }, [
+    seed, cratonsFirst, syntheticRelief, continentalPercent, landPercent, axialTiltDeg, detail, fluidDensity, initialSoilMaturityPercent, autoPlates, numPlates, voronoiPoints,
+    generateMode, sketchImageDataUrl, premadeWorldId, debugScenario, projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats, ensureSelectedWorld,
+  ]);
 
   // Restores the selected world's map after a browser refresh or a world
   // switch: worlds live in server memory (see backend main.py), so one is
@@ -1397,8 +1437,8 @@ export default function App() {
 
           <button
             onClick={() => setShowGenerateDialog(true)}
-            disabled={busy || animating || !worldId}
-            title={worldId ? "Generate into the selected world" : "Create a world first"}
+            disabled={busy || animating}
+            title={worldId ? "Generate into the selected world" : "Generate into a new world"}
             className={!summary ? "start-highlight" : undefined}
             style={{ fontSize: 12 }}
           >
