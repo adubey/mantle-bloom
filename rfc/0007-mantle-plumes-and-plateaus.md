@@ -297,6 +297,16 @@ any tuning replay.
   reads, after plume-driven breakup [[White & McKenzie, 1989]](#ref-white1989).
 - *Events.* One event is logged per head: plate, volume, and oceanic or continental.
 
+**Cross-section rendering (deliverable).** Plumes are drawn in the cross-section view,
+not just the map debug view. The section (`cross_section.py`, #360) is a shallow 3,000 km
+arc down to 350 km with a schematic asthenosphere and no volumetric mantle, so the render
+projects live `World.mantle_plumes` positions onto the section plane within a corridor,
+following the `_parcel_markers` pattern for `pending_magma_parcels`: plumes near the plane
+get head/tail markers plus the head footprint where the section cuts it; a deep tail shows a
+continues-below indicator instead of a full conduit. The render reads current plume state
+each frame behind a `show_plumes` flag (default off, like `show_faults`/`show_boundaries`);
+no cached render state is stored on World.
+
 **Weakening (for RFC 0010).** While `plume_heat_myr > 0`, craton strength in the rift
 paths (`lithosphere_plate.deform_columns`'s divergent thinning,
 `quad_tectonics._allocate_stretch`, failed rifts) is multiplied by
@@ -578,6 +588,14 @@ emplacement or plateau docking.
 - `backend/app/render_image.py`: a `plumes` debug view (plume positions, head footprints,
   tail age, plateau crust thickness), added to `DEBUG_VIEWS`; `frontend/src/api.ts` view
   union and `legendData.ts` legend.
+- `backend/app/cross_section.py`: project live plume positions onto the section plane within
+  a corridor (`_parcel_markers` pattern); draw head/tail markers, intersected head-footprint
+  extent, and a continues-below indicator for deep tails. New `show_plumes` flag on
+  `render_png_base64` (default off).
+- `backend/app/main.py`: `show_plumes` query param on `GET /world/cross-section`, passed
+  through to the render.
+- `frontend/src/crossSectionApi.ts`, `App.tsx`: `showPlumes` checkbox plumbed like
+  `showFaults`/`showBoundaries`.
 - `backend/app/stats.py`: active plumes, LIP events, buoyant-crust ledger and areas.
 - `backend/app/main.py`: `GET /world/plumes` listing live plumes, optional; the debug
   view alone meets the criteria.
@@ -600,6 +618,10 @@ emplacement or plateau docking.
       extending beyond the remaining heat scales that step's weakening by the
       heat/step overlap;
     - `plume_multiplier = 0` changes nothing.
+    - cross-section projection: a pinned plume near the section plane renders a marker at
+      the expected section position with the intersected head-footprint extent; a plume
+      outside the corridor renders nothing; rendering reads live plume state with no
+      stored render cache.
   - `backend/unit_tests/test_terranes.py` (new):
     - docking probability is in [0, 1], rises with excess and falls with age, and matches
       the example values above;
@@ -684,6 +706,10 @@ emplacement or plateau docking.
 - [ ] Side effects stay bounded: report plate counts and mean overlap fraction at every
       100 Myr checkpoint beside the matched plume-off baseline; flag over 20% drift
       for review before tuning further.
+- [ ] Cross-section deliverable: with `show_plumes` on, a pinned plume renders at the
+      expected section position (head marker plus intersected footprint extent, deep tails
+      shown as continues-below); plumes outside the corridor are omitted. The map-view
+      `plumes` debug view renders the same live plume set.
 - [ ] With RFC 0010 in place, report craton volume lost to rifting inside and outside plume-heated
       cells, split between plume-associated and other rift episodes, with a matched plume-off/on
       comparison for the plume-associated subset. Do not use a single whole-world 50% localization
