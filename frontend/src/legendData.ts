@@ -1,4 +1,4 @@
-// Legend content for every /world/render map view -- rendered client-side (see Legend.tsx)
+// Legend content for every /worlds/{world_id}/render map view -- rendered client-side (see Legend.tsx)
 // rather than baked into the PNG server-side the way it used to be (see backend
 // app/render_image.py's own "No server-side legend" comment). None of this is actually
 // data-dependent (the color stops/symbols are fixed per view, not derived from world state),
@@ -10,7 +10,7 @@
 //
 // The elevation gradient's ticks are in meters *relative to the current sea level*, not an
 // absolute figure -- render_image.py's elevation_colors shifts its stops by
-// World.sea_level_m (see main.py's /world/controls), so "0" on this static bar always means
+// World.sea_level_m (see main.py's /worlds/{world_id}/controls), so "0" on this static bar always means
 // "at whatever sea level currently is," accurate regardless of that live-adjustable value
 // without this legend needing to know it.
 

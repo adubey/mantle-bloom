@@ -1,7 +1,7 @@
 import { asJson } from "./apiResponse.js";
 
 export interface CrossSectionResponse {
-  // Raw PNG bytes, base64-encoded, following the /world/render image response convention.
+  // Raw PNG bytes, base64-encoded, following the /worlds/{world_id}/render image response convention.
   image_base64: string;
 }
 
@@ -22,7 +22,7 @@ export function crossSectionUrl(
   });
   if (showBoundaries) params.set("show_boundaries", "true");
   if (showFaults) params.set("show_faults", "true");
-  return `${apiBase}/world/cross-section?${params}`;
+  return `${apiBase}/cross-section?${params}`;
 }
 
 export function requestCrossSection(

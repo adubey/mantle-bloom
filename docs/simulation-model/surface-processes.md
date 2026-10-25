@@ -527,7 +527,7 @@ root.
   reason continental subsidence is no longer a one-way loss of dry land.
 - **Node-count creep** (the continental boundary ratchet) grows total represented area; the
   same water volume over more ocean area also lowers the stand, which is physically right.
-- The `POST /world/controls` sea-level slider now calls `eustasy.set_sea_level_via_water_
+- The `POST /worlds/{world_id}/controls` sea-level slider now calls `eustasy.set_sea_level_via_water_
   budget`: "put sea level at X" is interpreted as "add or remove ocean water until the
   *current* hypsometry floats at X", and that new `V` is then conserved going forward (a
   glacio-eustatic / bigger-ocean change, not a one-frame override the next step erases).
@@ -550,7 +550,7 @@ more strongly or weakly. These are calibration controls, not new physical laws.
 The long-run land budget is a tug-of-war between a handful of erosion, deposition, uplift and
 volcanism processes whose individual hard-coded rates can't be recalibrated for one seed
 without regressing another. Twelve **dimensionless multipliers** on `World` let the user
-retune a *live* world and watch the result, via the "Controls" window / `POST /world/controls`
+retune a *live* world and watch the result, via the "Controls" window / `POST /worlds/{world_id}/controls`
 (same immediate-`climate_cache`-recompute path as `sea_level_m`/`solar_multiplier`). Every one
 defaults to `1.0`, and `1.0` is **byte-identical** to the code before the knobs existed (plain
 IEEE `*1.0`; verified by `test_tuning_knobs.py` and an old-pickle load). Negative values are

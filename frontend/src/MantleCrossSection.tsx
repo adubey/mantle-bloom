@@ -19,6 +19,7 @@ const TILT_KEYBOARD_STEP_DEG = 1;
 const LOCATOR_SIZE = 260;
 
 interface FrameKey {
+  worldId: string;
   worldRevision: number;
   planeAngleDeg: number;
   arcPosition: number;
@@ -41,13 +42,14 @@ let cacheClock = 0;
 
 function frameCacheKey(key: FrameKey): string {
   return [
-    key.worldRevision, key.planeAngleDeg, key.arcPosition, key.width, key.height,
+    key.worldId, key.worldRevision, key.planeAngleDeg, key.arcPosition, key.width, key.height,
     Number(key.showBoundaries), Number(key.showFaults), SECTION_STYLE_VERSION,
   ].join(":");
 }
 
 function sameFrameSet(left: FrameKey, right: FrameKey): boolean {
-  return left.worldRevision === right.worldRevision
+  return left.worldId === right.worldId
+    && left.worldRevision === right.worldRevision
     && left.planeAngleDeg === right.planeAngleDeg
     && left.width === right.width
     && left.height === right.height
@@ -101,7 +103,7 @@ async function loadFrame(key: FrameKey, signal: AbortSignal): Promise<string> {
 
   const promise = (async () => {
     const response = await fetchCrossSection(
-      key.planeAngleDeg, key.arcPosition, key.width, key.height, signal, key.showBoundaries, key.showFaults,
+      key.worldId, key.planeAngleDeg, key.arcPosition, key.width, key.height, signal, key.showBoundaries, key.showFaults,
     );
     const dataUrl = `data:image/png;base64,${response.image_base64}`;
     if (signal.aborted) throw new DOMException("Cross-section request aborted", "AbortError");
@@ -126,6 +128,7 @@ function isNotImplementedError(error: unknown): boolean {
 }
 
 interface Props {
+  worldId: string;
   width: number;
   height: number;
   worldRevision: number;
@@ -297,6 +300,7 @@ function clampTilt(degrees: number): number {
 }
 
 interface GlobeLocatorProps {
+  worldId: string;
   planeAngleDeg: number;
   arcPosition: number;
   worldRevision: number;
@@ -311,7 +315,7 @@ interface GlobeLocatorProps {
 // moving the pointer by the globe's radius tilts it by one radian. The globe follows the
 // pointer, and the new tilt is committed (and its section frames fetched) on release.
 function GlobeLocator({
-  planeAngleDeg: committedTilt, arcPosition, worldRevision, onPlaneAngleChange, previewTilt, onPreviewTiltChange: setPreviewTilt,
+  worldId, planeAngleDeg: committedTilt, arcPosition, worldRevision, onPlaneAngleChange, previewTilt, onPreviewTiltChange: setPreviewTilt,
 }: GlobeLocatorProps) {
   const [textureUrl, setTextureUrl] = useState<string | null>(null);
   const drag = useRef<{ pointerId: number; startY: number; unitsPerPixel: number } | null>(null);
@@ -337,7 +341,7 @@ function GlobeLocator({
 
   useEffect(() => {
     let cancelled = false;
-    loadWorldMapPixels(worldRevision)
+    loadWorldMapPixels(worldId, worldRevision)
       .then((map) => {
         if (cancelled) return;
         const canvas = document.createElement("canvas");
@@ -354,7 +358,7 @@ function GlobeLocator({
         if (!cancelled) setTextureUrl(null);
       });
     return () => { cancelled = true; };
-  }, [worldRevision, planeAngleDeg, centerAngle, centerX, centerY]);
+  }, [worldId, worldRevision, planeAngleDeg, centerAngle, centerX, centerY]);
 
   const tiltAt = (clientY: number, startY: number, unitsPerPixel: number) =>
     clampTilt(committedTilt + ((clientY - startY) * unitsPerPixel * 180) / (Math.PI * radius));
@@ -464,6 +468,7 @@ function LegendKey({ color, label, line = false }: { color: string; label: strin
 }
 
 export default function MantleCrossSection({
+  worldId,
   width,
   height,
   worldRevision,
@@ -486,7 +491,7 @@ export default function MantleCrossSection({
   const arcPositionRef = useRef(arcPosition);
   arcPositionRef.current = arcPosition;
   const currentFrameKey: FrameKey = {
-    worldRevision, planeAngleDeg, arcPosition, width: Math.round(width), height: Math.round(height), showBoundaries, showFaults,
+    worldId, worldRevision, planeAngleDeg, arcPosition, width: Math.round(width), height: Math.round(height), showBoundaries, showFaults,
   };
   const currentCacheKey = frameCacheKey(currentFrameKey);
   const cachedDataUrl = frameCache.get(currentCacheKey)?.dataUrl ?? null;
@@ -502,14 +507,14 @@ export default function MantleCrossSection({
       : ""
   );
 
-  const frameScopeKey = [worldRevision, planeAngleDeg, Math.round(width), Math.round(height), Number(showBoundaries), Number(showFaults), SECTION_STYLE_VERSION].join(":");
+  const frameScopeKey = [worldId, worldRevision, planeAngleDeg, Math.round(width), Math.round(height), Number(showBoundaries), Number(showFaults), SECTION_STYLE_VERSION].join(":");
 
   useEffect(() => {
     const controller = new AbortController();
     scopeControllerRef.current = controller;
     const initialPosition = arcPositionRef.current;
     const activeKey: FrameKey = {
-      worldRevision, planeAngleDeg, arcPosition: initialPosition, width: Math.round(width), height: Math.round(height), showBoundaries, showFaults,
+      worldId, worldRevision, planeAngleDeg, arcPosition: initialPosition, width: Math.round(width), height: Math.round(height), showBoundaries, showFaults,
     };
     rememberActiveFrame(activeKey);
     setPrefetchProgress(null);
@@ -568,11 +573,11 @@ export default function MantleCrossSection({
       controller.abort();
       if (scopeControllerRef.current === controller) scopeControllerRef.current = null;
     };
-  }, [worldRevision, planeAngleDeg, width, height, showBoundaries, showFaults, frameScopeKey]);
+  }, [worldId, worldRevision, planeAngleDeg, width, height, showBoundaries, showFaults, frameScopeKey]);
 
   useEffect(() => {
     const activeKey: FrameKey = {
-      worldRevision, planeAngleDeg, arcPosition, width: Math.round(width), height: Math.round(height), showBoundaries, showFaults,
+      worldId, worldRevision, planeAngleDeg, arcPosition, width: Math.round(width), height: Math.round(height), showBoundaries, showFaults,
     };
     rememberActiveFrame(activeKey);
     const cached = cachedFrame(activeKey);
@@ -606,7 +611,7 @@ export default function MantleCrossSection({
       isCurrentSelection = false;
       if (ownsController) controller.abort();
     };
-  }, [worldRevision, planeAngleDeg, arcPosition, width, height, showBoundaries, showFaults, currentCacheKey]);
+  }, [worldId, worldRevision, planeAngleDeg, arcPosition, width, height, showBoundaries, showFaults, currentCacheKey]);
 
   useEffect(() => () => clearMantleCrossSectionCache(), []);
 
@@ -721,6 +726,7 @@ export default function MantleCrossSection({
       <aside style={{ minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", gap: 7, borderLeft: "1px solid #303a4d", paddingLeft: 12 }}>
         <h3 style={{ margin: "1px 0 0", fontSize: 13, fontWeight: 600 }}>Globe locator</h3>
         <GlobeLocator
+          worldId={worldId}
           planeAngleDeg={planeAngleDeg}
           arcPosition={arcPosition}
           worldRevision={worldRevision}

@@ -106,6 +106,63 @@ def test_an_unwritable_directory_fails_at_startup(tmp_path):
         tmp_path.chmod(0o700)
 
 
+def test_registry_index_round_trip_and_per_world_stores(tmp_path, world):
+    root = CheckpointStore(tmp_path)
+    assert root.load_index() is None  # no index yet: a legacy directory
+    records = [
+        {"world_id": "a" * 32, "name": "A", "is_public": True, "created_at": 1.0, "updated_at": 2.0},
+        {"world_id": "b" * 32, "name": "B", "is_public": False, "created_at": 3.0, "updated_at": 4.0},
+    ]
+    root.save_index(records)
+    assert root.load_index() == records
+    # Each world's checkpoint lives in its own subdirectory.
+    root.for_world("a" * 32).save_world(world)
+    root.for_world("a" * 32).save_status(RunStatus(running=True, step_years=10.0))
+    loaded, status = root.for_world("a" * 32).load()
+    assert (loaded.seed, status.running) == (world.seed, True)
+    assert root.for_world("b" * 32).load() == (None, RunStatus())
+
+
+def test_unreadable_registry_index_raises(tmp_path):
+    (tmp_path / checkpoint.WORLDS_INDEX_FILE).write_text("not json")
+    with pytest.raises(checkpoint.RegistryIndexError):
+        CheckpointStore(tmp_path).load_index()
+
+
+def test_suspicious_world_ids_fail_closed(tmp_path):
+    # A tampered worlds.json must not turn for_world/rmtree into a path
+    # traversal: only uuid4-hex IDs reach per-world directories, and a bad ID in
+    # the index fails closed like any other corrupt index.
+    root = CheckpointStore(tmp_path)
+    with pytest.raises(checkpoint.RegistryIndexError):
+        root.for_world("../../escape")
+    with pytest.raises(checkpoint.RegistryIndexError):
+        root.for_world("A" * 32)
+    root.save_index([
+        {"world_id": "../tampered", "name": "X", "is_public": False, "created_at": 0.0, "updated_at": 0.0}
+    ])
+    with pytest.raises(checkpoint.RegistryIndexError):
+        root.load_index()
+
+
+@pytest.mark.parametrize("field,value", [
+    ("name", 42),
+    ("is_public", "yes"),
+    ("created_at", "garbage"),
+    ("updated_at", True),
+])
+def test_garbage_metadata_types_fail_closed(tmp_path, field, value):
+    # Timestamps are read with float() at restore outside any try: a garbage one
+    # that passed validation would fail startup for every world. Reject it with
+    # the index instead, like any other corruption.
+    root = CheckpointStore(tmp_path)
+    record = {"world_id": "a" * 32, "name": "A", "is_public": True, "created_at": 1.0, "updated_at": 2.0}
+    record[field] = value
+    root.save_index([record])
+    with pytest.raises(checkpoint.RegistryIndexError):
+        root.load_index()
+
+
 def test_directory_comes_from_the_env_or_the_railway_volume(monkeypatch, tmp_path):
     monkeypatch.delenv(checkpoint.CHECKPOINT_DIR_ENV, raising=False)
     monkeypatch.delenv(checkpoint.RAILWAY_VOLUME_ENV, raising=False)

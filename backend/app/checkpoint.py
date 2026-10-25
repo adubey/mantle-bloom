@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import tempfile
 import threading
 import time
@@ -42,6 +43,16 @@ RAILWAY_VOLUME_ENV = "RAILWAY_VOLUME_MOUNT_PATH"
 WORLD_FILE = "world.mbworld"
 STATUS_FILE = "run_status.json"
 STATUS_VERSION = 1
+# The multi-world registry index (#563): metadata for every world whose
+# checkpoint lives under `WORLDS_DIR/<world_id>/` in the same root.
+WORLDS_INDEX_FILE = "worlds.json"
+WORLDS_DIR = "worlds"
+INDEX_VERSION = 1
+
+
+class RegistryIndexError(ValueError):
+    """The registry index exists but cannot be trusted. Startup must fail its
+    health check rather than silently start with an empty registry."""
 # The full app's default "Years per step" (App.tsx), for a status written before any Play.
 DEFAULT_STEP_YEARS = 100_000.0
 # Prefix of in-progress writes. Any left behind were cut off by a killed process.
@@ -71,6 +82,60 @@ class CheckpointStore:
     def from_env(cls) -> CheckpointStore | None:
         directory = os.environ.get(CHECKPOINT_DIR_ENV, "").strip() or os.environ.get(RAILWAY_VOLUME_ENV, "").strip()
         return cls(directory) if directory else None
+
+    # Registry IDs are uuid4 hex; anything else reaching a per-world path would
+    # be a tampered index turning rmtree/replay-log setup into a path traversal.
+    _WORLD_ID_PATTERN = re.compile(r"[0-9a-f]{32}")
+
+    @staticmethod
+    def _is_timestamp(value: object) -> bool:
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+    def for_world(self, world_id: str) -> CheckpointStore:
+        """The store for one world's checkpoint subdirectory (#563)."""
+        if not self._WORLD_ID_PATTERN.fullmatch(world_id):
+            raise RegistryIndexError(f"refusing suspicious world_id {world_id!r}")
+        return CheckpointStore(self.directory / WORLDS_DIR / world_id)
+
+    @property
+    def index_path(self) -> Path:
+        return self.directory / WORLDS_INDEX_FILE
+
+    def save_index(self, records: list[dict]) -> None:
+        """Atomically replace the registry index. Called on record create,
+        rename, publish/unpublish, import and delete -- not on every step."""
+        data = json.dumps({"version": INDEX_VERSION, "worlds": records})
+        self._replace(self.index_path, data.encode())
+
+    def load_index(self) -> list[dict] | None:
+        """The registry index records, or None when no index exists yet (a
+        pre-multi-world checkpoint directory). Raises RegistryIndexError when
+        an index exists but is unreadable or malformed."""
+        path = self.index_path
+        if not path.exists():
+            return None
+        try:
+            payload = json.loads(path.read_text())
+            if payload.get("version") != INDEX_VERSION or not isinstance(payload.get("worlds"), list):
+                raise ValueError(f"unexpected contents {payload!r}")
+            for record in payload["worlds"]:
+                if (
+                    not isinstance(record, dict)
+                    or not isinstance(record.get("world_id"), str)
+                    or not self._WORLD_ID_PATTERN.fullmatch(record["world_id"])
+                    # Timestamps are read with float() at restore: a non-numeric
+                    # one would raise outside any try and fail startup for every
+                    # world, so reject it here where the index fails closed.
+                    # (bool is an int subclass; a True timestamp is nonsense too.)
+                    or not isinstance(record.get("name"), str)
+                    or not isinstance(record.get("is_public"), bool)
+                    or not self._is_timestamp(record.get("created_at"))
+                    or not self._is_timestamp(record.get("updated_at"))
+                ):
+                    raise ValueError(f"unexpected record {record!r}")
+        except Exception as exc:  # noqa: BLE001 - any bad index must fail closed
+            raise RegistryIndexError(f"can't read registry index {path}: {exc}") from exc
+        return payload["worlds"]
 
     @property
     def world_path(self) -> Path:

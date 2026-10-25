@@ -22,7 +22,7 @@ single-origin setup in a Docker image on Railway, behind GitHub login (#376); se
 The two moving parts added for this:
 
 - **`backend/app/main.py` → `mount_frontend()`** — mounts a `vite build` output dir at `/`,
-  *after* every API route so `/world/*` and `/docs` keep priority, with an SPA fallback to
+  *after* every API route so `/worlds/{world_id}/*` and `/docs` keep priority, with an SPA fallback to
   `index.html`. Only active when `MANTLE_BLOOM_FRONTEND_DIST` is set, so the dev workflow is
   untouched.
 - **`backend/app/desktop.py`** — the frozen-app entry point. Locates `frontend/dist`
@@ -99,11 +99,11 @@ code is compatible and the wheels are unambiguously available there.
 
 Smoke-tested from the frozen macOS binary:
 
-- ✅ `/world/generate`, `/world/step` (numba JIT compiles on first step — adds ~1.5 s once,
-  then cached), `/world/render` (Pillow), `/world/animate` (PyAV encodes a valid MP4).
-- ✅ `/world/save` + `/world/load` round-trip (pickle).
+- ✅ `/worlds/{world_id}/generate`, `/worlds/{world_id}/step` (numba JIT compiles on first step — adds ~1.5 s once,
+  then cached), `/worlds/{world_id}/render` (Pillow), `/worlds/{world_id}/animate` (PyAV encodes a valid MP4).
+- ✅ `/worlds/{world_id}/save` + `/worlds/{world_id}/load` round-trip (pickle).
 - ✅ `scipy.spatial.cKDTree`, `astropy_healpix`.
-- ✅ GET inspector routes (`/world/rivers` etc.) and `/docs` are not shadowed by the SPA
+- ✅ GET inspector routes (`/worlds/{world_id}/rivers` etc.) and `/docs` are not shadowed by the SPA
   catch-all; a real API 404 still returns its JSON `detail`, not `index.html`.
 - The `.spec` explicitly `collect_submodules`es `uvicorn` (dynamic protocol imports) and
   `app`, and `collect_dynamic_libs`es `llvmlite` and `av`.

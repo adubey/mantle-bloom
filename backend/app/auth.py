@@ -1,7 +1,8 @@
 """Single-owner GitHub login guarding the full app (#372).
 
-The full app at `/` and every `/world/*` route are for one person: the GitHub account whose
-numeric user ID is in `MANTLE_BLOOM_GITHUB_OWNER_ID`. The ID is stable where the login name
+The full app at `/`, every `/worlds/{world_id}/*` route, and `/debug/scenarios` are for
+one person: the GitHub account whose numeric user ID is in
+`MANTLE_BLOOM_GITHUB_OWNER_ID`. The ID is stable where the login name
 isn't -- a renamed or recycled login can't inherit admin. Everyone else is sent to `/view`.
 
 Sessions are stateless: an HMAC-signed cookie carrying the owner's ID and an expiry, so there's
@@ -208,7 +209,7 @@ def is_cross_site_write(request: Request, config: AuthConfig, extra_origins: fro
 def _route_path(scope) -> tuple[str, str]:
     """(root_path, the path the router matches). Starlette keeps root_path inside
     scope["path"] (uvicorn --root-path, a mount) and strips it when routing, so the guard must
-    strip it too or /<prefix>/world/... slips past (PR #377 review)."""
+    strip it too or /<prefix>/worlds/{world_id}/... slips past (PR #377 review)."""
     path, root = scope["path"], scope.get("root_path", "")
     if root and (path == root or path.startswith(root + "/")):
         return root, path[len(root):] or "/"
@@ -216,7 +217,10 @@ def _route_path(scope) -> tuple[str, str]:
 
 
 def _is_world_route(path: str) -> bool:
-    return path == "/world" or path.startswith("/world/")
+    # /debug/scenarios is guarded too: it moved out from under /worlds/ but is
+    # still an owner-route, and the guard below also carries the cross-site
+    # write check for it.
+    return path == "/worlds" or path.startswith("/worlds/") or path.startswith("/debug/")
 
 
 def gate(request: Request, config: AuthConfig, extra_origins: frozenset[str]) -> Response | None:
@@ -232,8 +236,8 @@ def gate(request: Request, config: AuthConfig, extra_origins: frozenset[str]) ->
 
 
 class AuthMiddleware:
-    """Pure ASGI rather than BaseHTTPMiddleware, so the streamed /world/generate,
-    /world/step and /world/animate responses pass through untouched."""
+    """Pure ASGI rather than BaseHTTPMiddleware, so the streamed /worlds/{world_id}/generate,
+    /worlds/{world_id}/step and /worlds/{world_id}/animate responses pass through untouched."""
 
     def __init__(self, app, extra_origins: frozenset[str] = frozenset()):
         self.app = app

@@ -212,7 +212,7 @@ Behind a flag, a random world (no sketch, no premade world) is laid out cratons 
 (`continent_layout.CRATONS_FIRST_DEFAULT = False`) until the RFC's gate G3 decides whether it
 replaces the tiling above; `generate_plates(..., cratons_first=True)` or
 `world.generate_world(..., cratons_first=True)` turns it on. The Generate World dialog's
-Random tab exposes this as the “Craton-first terrain” checkbox, and `POST /world/generate`
+Random tab exposes this as the “Craton-first terrain” checkbox, and `POST /worlds/{world_id}/generate`
 accepts the `cratons_first` field. Sketch and premade worlds always keep plates first, since
 their geography comes from a drawing or from data.
 
@@ -318,7 +318,7 @@ A cratons-first world can replace its noise-shaped continental relief with relie
 a synthetic tectonic history (#218). It is off by default
 (`synthetic_relief.SYNTHETIC_RELIEF_DEFAULT = False`); `generate_world(...,
 cratons_first=True, synthetic_relief=True)`, the `synthetic_relief` field of
-`POST /world/generate`, or the Generate World dialog's "Relief from a synthetic history"
+`POST /worlds/{world_id}/generate`, or the Generate World dialog's "Relief from a synthetic history"
 checkbox (shown under "Craton-first terrain") turns it on. It has no effect without the
 cratons-first layout. `world.generate_world` builds the layout once, passes it to plate
 generation, and then runs `apply_synthetic_relief` in place of
@@ -448,7 +448,7 @@ The Generate World dialog's "Human-made" tab (alongside the default "Random" tab
 everything above unchanged) lets the user draw a coastline in-app (`SketchEditor.tsx`, a
 full-screen canvas: a coast pen, an eraser, and optional river/mountain pens) or load a
 coastline image drawn elsewhere, instead of generating land/sea from noise. Both paths hand
-the backend the same kind of PNG (`POST /world/generate`'s `sketch.image_base64`) under one
+the backend the same kind of PNG (`POST /worlds/{world_id}/generate`'s `sketch.image_base64`) under one
 shared convention: a mostly-white image, the coastline drawn as a near-black outline (strokes,
 not filled regions), with an optional blue-ish river stroke and brown/orange-ish mountain
 stroke. Land vs. sea is therefore never painted directly -- `worldsketch.parse_sketch_image`

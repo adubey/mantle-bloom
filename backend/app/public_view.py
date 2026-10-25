@@ -48,6 +48,12 @@ GUEST_MAX_RENDER_PX = 2400
 GUEST_LOCK_WAIT_S = 10.0
 # How long a guest's step waits on another guest's step that's already running.
 GUEST_INFLIGHT_WAIT_S = 300.0
+# How many guest requests may queue behind an already-running guest step. Each waiter
+# pins a worker thread for up to GUEST_INFLIGHT_WAIT_S, and this route is public: without
+# a cap, one burst during a slow step can occupy the whole AnyIO worker pool and starve
+# the owner's own synchronous routes. Excess waiters get a 503 at once (the viewer's
+# poll backs off and retries). Sized to leave headroom in the default 40-thread pool.
+GUEST_MAX_WAITERS = 8
 # How long GET /public/world?after=... holds a viewer's request open waiting for a new
 # revision. Kept under the idle timeout of common proxies, so the request ends on our terms.
 GUEST_POLL_WAIT_S = 25.0
@@ -209,6 +215,13 @@ class GuestStepCoordinator:
     def __init__(self) -> None:
         self._mutex = threading.Lock()
         self._inflight: threading.Event | None = None
+        self._waiter_slots = threading.BoundedSemaphore(GUEST_MAX_WAITERS)
+
+    def busy(self) -> bool:
+        """A guest step is computing right now. Lets delete refuse while one is
+        in flight instead of detaching the session underneath it."""
+        with self._mutex:
+            return self._inflight is not None
 
     def request_step(
         self,
@@ -240,8 +253,16 @@ class GuestStepCoordinator:
                     break
             # Another guest's step is running. Wait for it, then decide again: normally the
             # world has moved past `seen_revision` and this request is served for free.
-            if not inflight.wait(inflight_wait_s):
+            # The wait takes a bounded slot first: an unbounded crowd of waiters would
+            # pin a worker thread each for up to inflight_wait_s and starve the owner's
+            # routes of threads.
+            if not self._waiter_slots.acquire(blocking=False):
                 return StepOutcome("busy")
+            try:
+                if not inflight.wait(inflight_wait_s):
+                    return StepOutcome("busy")
+            finally:
+                self._waiter_slots.release()
         try:
             compute()
         finally:

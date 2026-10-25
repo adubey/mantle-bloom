@@ -22,7 +22,7 @@ Every tool also takes `--json` for structured, scriptable output.
 ## `python -m app.plate_diagnostics` -- plate geometry
 
 Reuses `main._plate_summary` / `main._plate_overlaps` -- the exact code path behind
-`GET /world/plates` and the in-app Plate Inspector.
+`GET /worlds/{world_id}/plates` and the in-app Plate Inspector.
 
 ```
 mantle-bloom plate diagnostics
@@ -100,7 +100,7 @@ whose `max_depth is None` (lakes.py's own "no known spill to the ocean" state) *
 "no drainage" unit and its floor is the min over every descendant, so a deep sub-basin is
 already covered.
 
-Both the CLI and `GET /world/stranded_basins` go through
+Both the CLI and `GET /worlds/{world_id}/stranded_basins` go through
 `stranded_basins.find_stranded_basins` / `enrich_with_persistence`, so they can't disagree.
 Persistence -- *how long* each pit has been there -- comes from `world.stranded_basin_tracks`,
 a small cross-step tracker `world.step_world` reconciles each hydrology step by matching this

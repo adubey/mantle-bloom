@@ -1,10 +1,13 @@
 # API Reference
 
-Routes over a single in-memory world (see
-[architecture.md#world-state](architecture.md#world-state)) -- no world id, one world at a
-time.
+Routes over the server's worlds (see
+[architecture.md#world-state](architecture.md#world-state)). Every world-scoped admin route
+lives under `/worlds/{world_id}/...`: the server holds several worlds in one process, and
+the world is always addressed explicitly (#563). Registry routes (`GET /worlds`,
+`POST /worlds`, `PATCH /worlds/{world_id}`, `DELETE /worlds/{world_id}`) manage the
+records themselves.
 
-Every `/world/*` route requires the admin: a GitHub session for the configured owner, or a
+Every `/worlds/*` route requires the admin: a GitHub session for the configured owner, or a
 request made on the server's own machine. Anyone else gets `401`. Cross-site writes get
 `403`. See [architecture.md#access-control](architecture.md#access-control).
 
@@ -35,28 +38,47 @@ directory is configured but couldn't be created or written.
 Open to anyone, for the logged-out `/view` page (#373). See
 [architecture.md#public-viewer](architecture.md#public-viewer).
 
-- `GET /public/world`: `{"world": {"revision", "seed", "elapsed_years"} | null,
-  "steps_remaining": int | null, "step_limit": 30, "step_years": 100000}`. `world` is null
-  before one exists. `steps_remaining` is null (unlimited) for the admin. `revision` is an
-  opaque string that changes whenever the world does (#374).
-- `GET /public/world?after=<revision>`: the same response, but held open until the world's
+- `GET /public/worlds` lists every public world: `{"worlds": [{"world_id", "name",
+  "revision", "seed", "elapsed_years"}]}`.
+- `GET /public/worlds/{world_id}/world`: `{"world": {"revision", "seed", "elapsed_years"},
+  "steps_remaining": int | null, "step_limit": 30, "step_years": 100000}`.
+  `steps_remaining` is null (unlimited) for the admin. `revision` is an
+  opaque string that changes whenever the world does (#374). `404` for a private,
+  unknown, or still-empty world -- the listing never advertises the other cases.
+- `GET /public/worlds/{world_id}/world?after=<revision>`: the same response, but held open until the world's
   revision differs from `after`, or for at most 25 s (then answered with the unchanged
   world). Viewers poll this to pick up steps that other viewers or the owner take.
-- `GET /public/render?view=elevation|biome&width=&height=`: like `/world/render`, but always
+- `GET /public/worlds/{world_id}/render?view=elevation|biome&width=&height=`: like `/worlds/{world_id}/render`, but always
   Eckert IV at the default orientation, with width and height at most 2400. It returns
   `{"revision", "seed", "elapsed_years", "image_base64"}`. Each view and size is rendered once
   per revision and then served from a cache, even while the owner holds the world. `400` for
   any other view or size, `404` before a world exists, `503` if a render is needed and the
   owner holds the world for more than 10 s.
-- `POST /public/step` with `{"revision": str}`, the revision the viewer is showing: advances
+- `POST /public/worlds/{world_id}/step` with `{"revision": str}`, the revision the viewer is showing: advances
   the world by 100 kyr and returns `{"world": {...}, "computed": bool, "steps_remaining"}`.
   Only a request that runs the step (`computed: true`) uses up allowance, and the response then
   sets the updated `mb_guest` cookie. When `revision` is stale, or another guest's step is
   already running, the request gets the resulting world without computing. `429` when a
   computation is needed but the allowance is spent, `503` while the owner is using the world,
-  `404` before a world exists.
+  `404` for a private, unknown, or still-empty world.
 
-## `POST /world/generate`
+## World registry routes
+
+World identity and management metadata live outside the pickled `World` (#563),
+so saves carry no registry information:
+
+- `GET /worlds` returns every record: metadata plus, when populated, the world
+  summary and run state.
+- `POST /worlds` with `{"name"?, "is_public"?}` creates an empty record
+  (`201`); the record holds no world until Generate or Load populates it.
+  World IDs are server-generated UUIDs. `409` past `MANTLE_BLOOM_MAX_WORLDS`
+  records (default 4).
+- `PATCH /worlds/{world_id}` renames (`{"name"}`) or changes visibility
+  (`{"is_public"}`).
+- `DELETE /worlds/{world_id}` stops the world and removes its record and
+  checkpoint. `409` while a generate, step, or animation is in progress on it.
+
+## `POST /worlds/{world_id}/generate`
 
 Request body:
 
@@ -177,10 +199,10 @@ logged) and how each one is worded.
 
 `replay_logs` lists the records this server process's replay log wrote, in the same
 `{elapsed_years, message}` shape (newest 50; empty unless `MANTLE_BLOOM_REPLAY_LOG_DIR` is
-set, see [`GET /world/replay-logs`](#get-worldreplay-logs)). They aren't world state, so they
+set, see [`GET /worlds/{world_id}/replay-logs`](#get-worldreplay-logs)). They aren't world state, so they
 stay out of `events` and out of saves.
 
-## `POST /world/step`
+## `POST /worlds/{world_id}/step`
 
 Request body:
 
@@ -193,11 +215,11 @@ Advances the current world by `years` (see
 on `World.simulate_climate_biomes`, advancing `World.atmosphere_cfd_state` by a fixed
 real-time increment (one simulated day) regardless of `years`, see
 [simulation-model/climate.md#mode-toggle](simulation-model/climate.md#always-on-not-a-mode). Returns the same summary
-shape as `/world/generate`, with `events` reflecting anything logged up through this step.
+shape as `/worlds/{world_id}/generate`, with `events` reflecting anything logged up through this step.
 `400` for a `years` that isn't positive, finite, and at most `main.MAX_STEP_YEARS`
 (100 Myr, #557), `404` if no world has been generated yet.
 
-## `POST /world/run`, `GET /world/run`
+## `POST /worlds/{world_id}/run`, `GET /worlds/{world_id}/run`
 
 Play and Stop (#375, see [architecture.md#run-and-checkpoint](architecture.md#run-and-checkpoint)).
 
@@ -213,7 +235,7 @@ survives a restart when checkpointing is configured. `400` for a `step_years` th
 positive number, `404` for `running: true` with no world, `500` if the status took effect but
 couldn't be saved to the checkpoint (it's retried with the next world checkpoint; until then a
 restart would go back to the previously saved status). `step_years` gets the same validation as
-`/world/step`'s `years` (`400` unless positive, finite, and at most 100 Myr, #557).
+`/worlds/{world_id}/step`'s `years` (`400` unless positive, finite, and at most 100 Myr, #557).
 
 Both return:
 
@@ -227,15 +249,15 @@ the step under way lands. `error` says why the run last stopped on its own (a st
 there was no world), and clears on the next `POST`. `run_version` moves on every change to the
 status or `error`, and when a step finishes after Stop. `world` is `null` before one exists.
 
-`GET /world/run?after=<revision>&run_version=<n>` is a long poll like `/public/world`'s: it
+`GET /worlds/{world_id}/run?after=<revision>&run_version=<n>` is a long poll like `/public/worlds/{world_id}/world`'s: it
 answers when the revision moves past `after` or the run state moves past `run_version` (so a
 tab sees Stop pressed in another one), or after 25 s. Without `run_version`, only the revision
 counts.
 
-## `GET /world/replay-logs`
+## `GET /worlds/{world_id}/replay-logs`
 
 The records the server's replay log has on disk, newest first (#442, see
-[architecture.md#replay-log](architecture.md#replay-log)). Behind the `/world/*` guard like
+[architecture.md#replay-log](architecture.md#replay-log)). Behind the `/worlds/{world_id}/*` guard like
 every world route.
 
 ```json
@@ -249,14 +271,14 @@ every world route.
 Without `MANTLE_BLOOM_REPLAY_LOG_DIR`: `{"enabled": false, "directory": null, "records": []}`.
 [debugging/replay-logs.md](debugging/replay-logs.md) covers replaying a record.
 
-## `GET /world/save`
+## `GET /worlds/{world_id}/save`
 
 The "File > Save World" download -- the *entire* current world (every plate surface, mantle
 field, caches, event log -- see [architecture.md#world-state](architecture.md#world-state))
 pickled as a single opaque `application/octet-stream` file (`Content-Disposition:
 attachment`), not JSON (see `backend/app/persistence.py`). The file is a versioned envelope
 that declares the world's plate surface (`quad`, or `empty` with no plates). It is not a stable interchange
-format (contrast with `/world/export_hexgrid` below): pickling by class identity ties it to
+format (contrast with `/worlds/{world_id}/export_hexgrid` below): pickling by class identity ties it to
 the code. [save-compatibility.md](save-compatibility.md) lists which older saves this build
 reads and how line-backed saves move to sparse quads. `404` if no world has been generated
 yet.
@@ -265,12 +287,12 @@ Loading a file back is equivalent to running arbitrary code from its bytes (a st
 pickle caveat) -- acceptable given this server is a single-user localhost dev tool already
 (see `main.py`'s CORS allowlist), the same trust boundary every other route here assumes.
 
-## `POST /world/load`
+## `POST /worlds/{world_id}/load`
 
-The "File > Load World" upload -- the raw bytes of a file `/world/save` previously
+The "File > Load World" upload -- the raw bytes of a file `/worlds/{world_id}/save` previously
 produced, as the request body (`Content-Type: application/octet-stream`, not JSON).
-Replaces whatever world previously existed, same as `/world/generate`. Returns the same
-summary shape `/world/generate` does; its `surface` is `"quad"` or `"empty"`.
+Replaces whatever world previously existed, same as `/worlds/{world_id}/generate`. Returns the same
+summary shape `/worlds/{world_id}/generate` does; its `surface` is `"quad"` or `"empty"`.
 
 A line-backed save (written before #251 retired that surface) is converted to sparse quads on
 load, one way (see [save-compatibility.md](save-compatibility.md)). The summary's
@@ -285,7 +307,7 @@ falls back to a partial load.
 `503` while a generation, step or animation is in progress, so a running step can't keep
 changing a world that has already been replaced.
 
-## `POST /world/controls`
+## `POST /worlds/{world_id}/controls`
 
 Request body (all fields optional, independently settable -- the "Controls" window sends
 only whichever control the user touched):
@@ -342,7 +364,7 @@ bit), and a negative value is a `400`. See
 and measured effect sizes.
 
 Forces an immediate `climate.compute_climate` recompute (stored back onto
-`world.climate_cache`) so the very next `/world/render` or `/world/stats` call reflects the
+`world.climate_cache`) so the very next `/worlds/{world_id}/render` or `/worlds/{world_id}/stats` call reflects the
 change without waiting for a step -- `climate_cache` is otherwise only refreshed once per
 step by `erosion.py`, and not at all while `simulate_climate_biomes` is `false`. `404` if no
 world has been generated yet.
@@ -357,7 +379,7 @@ multipliers:
   "ocean_deposition_multiplier": 1.0, "collision_uplift_multiplier": 1.0, "collision_uplift_reach_multiplier": 1.0, "volcanism_multiplier": 1.0 }
 ```
 
-## `GET /world/render?projection=behrmann|eckert4|globe&view=elevation|plates|platesDetail|speckle|combined|temperature|wind|oceanCurrents|humidity|precipitation|biome|resources|soilQuality|geomorph|elevReason|overlapAge|oceanCfdSediment|oceanCfdDeposition&width=1100&height=611&rotation=1,0,0,0,1,0,0,0,1`
+## `GET /worlds/{world_id}/render?projection=behrmann|eckert4|globe&view=elevation|plates|platesDetail|speckle|combined|temperature|wind|oceanCurrents|humidity|precipitation|biome|resources|soilQuality|geomorph|elevReason|overlapAge|oceanCfdSediment|oceanCfdDeposition&width=1100&height=611&rotation=1,0,0,0,1,0,0,0,1`
 
 Renders the current world as a PNG, base64-encoded. All drawing (elevation fill, plate-color
 fill, boundary outlines, pole markers, rotation arcs, per-node dots) happens server-side
@@ -429,11 +451,11 @@ hemisphere facing the viewer as an orthographic disc (see
   the coastline, pale where fresh and magenta where stuck for tens of Myr; all-backdrop is
   the healthy case. `"oceanCfdSediment"`/
   `"oceanCfdDeposition"` (from the retired ocean solver) are not valid `view` values
-  (`/world/render` rejects them with `400`, same as any other unrecognized view name).
+  (`/worlds/{world_id}/render` rejects them with `400`, same as any other unrecognized view name).
   `"cratonLayer"` / `"waterLayer"` (`render_image.LAYER_VIEWS`) aren't maps of their own:
   they return a transparent RGBA PNG painted only where there are cratons, or open ocean and
   visible lakes/seas, for the client-drawn "Plates & Faults" view to composite under its
-  vectors. `/world/render` accepts them and `/world/animate` doesn't.
+  vectors. `/worlds/{world_id}/render` accepts them and `/worlds/{world_id}/animate` doesn't.
 - `rotation` is the map's current view orientation (see
   [simulation-model/rendering-and-inspectors.md#rotating-the-view](simulation-model/rendering-and-inspectors.md#rotating-the-view)): a
   row-major 3x3 rotation matrix as 9 comma-separated floats, applied to every real-world
@@ -449,14 +471,14 @@ hemisphere facing the viewer as an orthographic disc (see
 - `image_base64` decodes to a PNG. The frontend builds `data:image/png;base64,<this>` as an
   `<img>` source and draws it onto the canvas with `drawImage` -- see `MapCanvas.tsx`.
 
-## `GET /world/cross-section?plane_angle_deg=0&position_index=0&width=1100&height=611&show_boundaries=false&show_faults=false`
+## `GET /worlds/{world_id}/cross-section?plane_angle_deg=0&position_index=0&width=1100&height=611&show_boundaries=false&show_faults=false`
 
 Renders a surface-sampled shallow mantle section for the current world. `plane_angle_deg`
 selects a great-circle plane in `[-90, 90]`; `0` is the equator and either endpoint is a
 pole-crossing plane. `position_index` selects one of 120 evenly spaced centers along that
 circle in `[0, 119]`. `show_boundaries` and `show_faults` optionally draw surface markers
 where the arc crosses plate boundaries and fault traces. `width` and `height` use the same `[1,
-main.MAX_RENDER_DIMENSION_PX]` limit as `/world/render`. `404` means there is no current world;
+main.MAX_RENDER_DIMENSION_PX]` limit as `/worlds/{world_id}/render`. `404` means there is no current world;
 `409` means the world has no active surface nodes. The JSON response contains `image_base64`
 (PNG), `world_revision`, `elapsed_years`, the request's plane and position, `arc_length_km`,
 `section_depth_km`, and `vertical_exaggeration`.
@@ -472,7 +494,7 @@ distinguish them from surface features; this is not depth-resolved mantle flow o
 parcel trajectory. The color legend is rendered by the client. Section zoom is a client-side
 view control and does not change the sampling footprint or server request size.
 
-## `POST /world/animate`
+## `POST /worlds/{world_id}/animate`
 
 The toolbar's "⏺ Record" action (opens the animation dialog, then starts this) -- an
 H.264/MP4 video of `view`/`projection`'s progress, one frame for the world's current state
@@ -490,21 +512,23 @@ plus more, each `years_per_frame` further along:
 }
 ```
 
-Same fields/validation as `/world/render`'s own query params (`rotation` is the same
+Same fields/validation as `/worlds/{world_id}/render`'s own query params (`rotation` is the same
 9-comma-separated-float string, `400` for an unrecognized `projection`/`view` or an
 out-of-range `width`/`height`), plus `num_frames` bounded to `[1,
 main.MAX_ANIMATION_FRAMES]` (480) -- each frame costs a full simulation step and render, so
 this bounds worst-case request time. `step_years` gets the same validation as
-`/world/step`'s `years` (`400` unless positive, finite, and at most 100 Myr, #557), and
-`steps_per_frame` is bounded to `[1, main.MAX_STEPS_PER_FRAME]` (1000, #557). The animation dialog's "keep going until Stop is
+`/worlds/{world_id}/step`'s `years` (`400` unless positive, finite, and at most 100 Myr, #557), and
+`steps_per_frame` is bounded to `[1, main.MAX_STEPS_PER_FRAME]` (100, the dialog's largest
+choice), so one frame holds the compute gate for at most 100 steps and a whole run for
+at most the dialog's own maximum of 47,900. The animation dialog's "keep going until Stop is
 pressed" mode just sends `num_frames` at that ceiling and expects the client to call
-`POST /world/animate/stop` (below) rather than waiting for it to be reached on its own.
+`POST /worlds/{world_id}/animate/stop` (below) rather than waiting for it to be reached on its own.
 `404` if no world has been generated yet, `503` if a step or another animation is already
 in progress.
 
 **This permanently advances the world** by up to `(num_frames - 1) * years_per_frame` years
--- less if the run is ended early via `/world/animate/stop` -- the same as calling
-`/world/step` that many times in a row -- deliberately not a side-effect-free preview (see
+-- less if the run is ended early via `/worlds/{world_id}/animate/stop` -- the same as calling
+`/worlds/{world_id}/step` that many times in a row -- deliberately not a side-effect-free preview (see
 `render_image.stream_animation_mp4`'s own docstring).
 
 The response is a stream of newline-delimited JSON objects (`application/x-ndjson`), one
@@ -518,28 +542,28 @@ per line, so the client can drive a progress bar instead of blocking on one opaq
 ```
 
 Each `progress` line carries that frame's own rendered PNG in `image_base64` (same encoding
-as `/world/render`) -- the frontend paints it straight onto the main map so the display
+as `/worlds/{world_id}/render`) -- the frontend paints it straight onto the main map so the display
 doubles as the live animation step while the run holds the world lock. The final `done` line
-carries the same summary shape `/world/generate`/`/world/step` return, plus `video_base64`
+carries the same summary shape `/worlds/{world_id}/generate`/`/worlds/{world_id}/step` return, plus `video_base64`
 (decode via `data:video/mp4;base64,<this>` -- H.264, playable directly in a `<video>`
-element), `mime`, and `stopped_early` (true if `/world/animate/stop` was what ended the run
+element), `mime`, and `stopped_early` (true if `/worlds/{world_id}/animate/stop` was what ended the run
 short of `num_frames`, rather than reaching it on its own). If rendering raises partway
 through, a `{"type": "error", "detail": "..."}` line is emitted instead -- the HTTP status
 is already `200` by then.
 
-## `POST /world/animate/stop`
+## `POST /worlds/{world_id}/animate/stop`
 
-The toolbar's "⏹ Stop" action while recording -- signals the in-progress `/world/animate`
+The toolbar's "⏹ Stop" action while recording -- signals the in-progress `/worlds/{world_id}/animate`
 stream to end cleanly after its current frame rather than the next one: the stream still
 flushes the encoder and its `done` line still carries a complete (just shorter) video,
 unlike the client simply dropping the connection. No request body; always `200`, including
 when no animation is currently running (a no-op).
 
-## `GET /world/plates`
+## `GET /worlds/{world_id}/plates`
 
 The "Plate Inspector" map mode's data source (see
 [simulation-model/rendering-and-inspectors.md#plate-inspector](simulation-model/rendering-and-inspectors.md#plate-inspector)) -- unlike
-`/world/render`, this returns plain JSON, not a baked PNG; `frontend/src/PlateInspector.tsx`
+`/worlds/{world_id}/render`, this returns plain JSON, not a baked PNG; `frontend/src/PlateInspector.tsx`
 renders and drives the interaction itself. Un-rotated/true-frame throughout (no `rotation`
 param -- the client applies its current view rotation only at draw time). `404` if no world
 has been generated yet.
@@ -608,7 +632,7 @@ has been generated yet.
   convergent years) for pairs involving this plate. Both are diagnostics for the long-run
   plate-geometry degradation tracked in [GitHub issue #119](https://github.com/adubey/mantle-bloom/issues/119).
 
-## `GET /world/plate_at?lat_deg=0&lon_deg=0`
+## `GET /worlds/{world_id}/plate_at?lat_deg=0&lon_deg=0`
 
 The Plate Inspector's click hit-test: which plate owns the node nearest `(lat_deg, lon_deg)`
 -- both in the *true* (un-rotated) frame; the client unprojects its click through whatever
@@ -622,13 +646,13 @@ non-finite input, `404` if no world has been generated yet.
 `plate_id` is `null` only if every plate is empty (shouldn't happen via the API, but a
 freshly-constructed `World` with no plates at all has no node to be nearest to).
 
-## `GET /world/rivers`
+## `GET /worlds/{world_id}/rivers`
 
 The "River Inspector" map mode's data source (see
 [simulation-model/hydrology.md#river-inspector](simulation-model/hydrology.md#river-inspector)) -- same "plain
-JSON, client renders it" contract as `/world/plates`; `frontend/src/RiverInspector.tsx`
+JSON, client renders it" contract as `/worlds/{world_id}/plates`; `frontend/src/RiverInspector.tsx`
 renders and drives the interaction itself. Un-rotated/true-frame throughout, same as
-`/world/plates`. Regrouped fresh from `world.hydrology_cache` on every call (see
+`/worlds/{world_id}/plates`. Regrouped fresh from `world.hydrology_cache` on every call (see
 `hydrology.group_rivers`) rather than persisted, so `river_id` is only meaningful against this
 same response -- not a stable identity across steps. `rivers`/`coastline_segments` are both
 `[]` before the first step (`hydrology_cache`/`climate_cache` are `None` until `erosion.py`
@@ -663,7 +687,7 @@ runs once). `404` if no world has been generated yet.
   spill path instead: several segments, stopping at visible lake water (#520; see
   [simulation-model/hydrology.md](simulation-model/hydrology.md#lake-vs-sea-tiers-a-depth-ceiling-by-size-2026-09-10)). Every
   coordinate in this response is rounded to 6 decimal places before serializing, same as
-  `/world/plates`.
+  `/worlds/{world_id}/plates`.
 - `mouth_xyz` is the network's downstream-most member, the location the River Inspector marks
   for the selected river.
 - `mouth_type` is `"ocean"` or `"lake"` (based on what the mouth's own `flow_target` empties
@@ -684,14 +708,14 @@ runs once). `404` if no world has been generated yet.
   `segments` above -- included because this view draws no filled backdrop at all, so without
   it there's no land/ocean/lake cue in the River Inspector whatsoever. The exact same segments
   are also drawn server-side into the `temperature`/`humidity`/`precipitation` views returned
-  by `GET /world/render` (no separate endpoint or query param -- it's baked directly into
+  by `GET /worlds/{world_id}/render` (no separate endpoint or query param -- it's baked directly into
   those PNGs, same as rivers/lakes are baked into the elevation view).
 
-## `GET /world/river_at?lat_deg=0&lon_deg=0`
+## `GET /worlds/{world_id}/river_at?lat_deg=0&lon_deg=0`
 
 The River Inspector's click hit-test: which river network owns the node nearest
-`(lat_deg, lon_deg)` -- same true-frame contract as `/world/plate_at`. `river_id` is an index
-into the most recent `/world/rivers` response, not a persistent id. `400` for non-finite
+`(lat_deg, lon_deg)` -- same true-frame contract as `/worlds/{world_id}/plate_at`. `river_id` is an index
+into the most recent `/worlds/{world_id}/rivers` response, not a persistent id. `400` for non-finite
 input, `404` if no world has been generated yet.
 
 ```json
@@ -701,11 +725,11 @@ input, `404` if no world has been generated yet.
 `river_id` is `null` if there are no rivers at all this step (before the first step, or a
 world with no land steep/wet enough to route any).
 
-## `GET /world/lakes`
+## `GET /worlds/{world_id}/lakes`
 
 The "Lake Inspector" map mode's data source (see
 [simulation-model/hydrology.md#lake-inspector](simulation-model/hydrology.md#lake-inspector)) -- same "plain
-JSON, client renders it" contract as `/world/rivers`; `frontend/src/LakeInspector.tsx` renders
+JSON, client renders it" contract as `/worlds/{world_id}/rivers`; `frontend/src/LakeInspector.tsx` renders
 and drives the interaction itself. A "lake" here is one connected component of
 `hydrology.LAKE_MIN_VISIBLE_DEPTH_M`-deep nodes -- exactly what's drawn as standing water
 everywhere else in this codebase -- regrouped fresh from `world.hydrology_cache` on every call,
@@ -759,38 +783,38 @@ been generated yet.
   (a legitimate state, not missing data -- see `lakes.py`'s own docstring).
 - `water_elevation_m`/`is_spilling` describe this lake's current water surface and whether
   it's actively overflowing its own outlet.
-- `inflow_rivers` is every `RiverInfo` (see `/world/rivers`) whose own mouth lands somewhere in
+- `inflow_rivers` is every `RiverInfo` (see `/worlds/{world_id}/rivers`) whose own mouth lands somewhere in
   this basin, as a small inline summary rather than a full `RiverSummary` -- the River
   Inspector's own map mode is what draws a river's full path. Each `flow_rate` is physical
   discharge in m^3/s; `length_m` is its summed geodesic flow-edge length.
 - `outflow_river` is, unlike an inflow, found by which river network (if any) owns the node
   just *outside* the rim on the far side (`Lake.outlet_target_idx`) -- the same full shape
-  `/world/rivers` returns (minus `river_id`/`speed`/`num_tributaries`, meaningless outside that
+  `/worlds/{world_id}/rivers` returns (minus `river_id`/`speed`/`num_tributaries`, meaningless outside that
   view's own ranked list), since the Lake Inspector draws this one's whole path. Its
   `flow_rate` is physical discharge in m^3/s. `null` when
   there's no live outflow to show: a closed/endorheic basin with no known spill, a resolved rim
   that isn't currently `is_spilling`, or a spilling rim whose flow hasn't yet cleared
   `hydrology.RIVER_FLOW_PERCENTILE` to register as its own river network yet.
-- `coastline_segments` is the same land/lake-vs-ocean boundary `/world/rivers` returns, included
+- `coastline_segments` is the same land/lake-vs-ocean boundary `/worlds/{world_id}/rivers` returns, included
   here for the same reason: this view draws no filled backdrop of its own.
 
-## `GET /world/lake_at?lat_deg=0&lon_deg=0`
+## `GET /worlds/{world_id}/lake_at?lat_deg=0&lon_deg=0`
 
 The Lake Inspector's click hit-test: which *basin* owns the node nearest `(lat_deg, lon_deg)`
--- same true-frame contract as `/world/river_at`, except it always resolves to something
+-- same true-frame contract as `/worlds/{world_id}/river_at`, except it always resolves to something
 informative for any land click, not just a hit on a currently-visible lake, so "click a basin
 that has no water in it right now" still returns real information (the user's own spec: "give
 me information about the basin nonetheless"). `400` for non-finite input, `404` if no world has
 been generated yet.
 
 ```json
-{ "kind": "lake", "basin": { "lake_id": 0, "is_lake": true, "...": "same shape as /world/lakes" } }
+{ "kind": "lake", "basin": { "lake_id": 0, "is_lake": true, "...": "same shape as /worlds/{world_id}/lakes" } }
 ```
 
 `kind` is one of:
 
 - `"lake"` -- the nearest node is currently flooded; `basin` is that lake's own info (`lake_id`
-  set, matching the same node's `/world/lakes` entry for this same step).
+  set, matching the same node's `/worlds/{world_id}/lakes` entry for this same step).
 - `"basin"` -- dry land, but part of a real (possibly still-unresolved/endorheic) basin;
   `basin` is that basin's own leaf catchment info, same shape as a lake entry but `is_lake:
   false`, `lake_id: null`, `member_xyz` covering the whole geometric catchment (there's no
@@ -801,11 +825,11 @@ been generated yet.
   any basin. `basin` is `null`.
 - `"ocean"` -- the nearest node is open ocean. `basin` is `null`.
 
-## `GET /world/faults`
+## `GET /worlds/{world_id}/faults`
 
 One of the "Plates & Faults" map mode's data sources (see
 [simulation-model/rendering-and-inspectors.md#fault-inspector](simulation-model/rendering-and-inspectors.md#fault-inspector)) -- same "plain
-JSON, client renders it" contract as `/world/rivers`; `frontend/src/PlatesAndFaults.tsx`
+JSON, client renders it" contract as `/worlds/{world_id}/rivers`; `frontend/src/PlatesAndFaults.tsx`
 renders the fault traces + systems over the plates (display-only there -- plate selection is
 what interaction drives). These are **intraplate** faults (see `faults.py` /
 [simulation-model/tectonics.md#faults](simulation-model/tectonics.md#faults)), distinct from plate boundaries.
@@ -865,14 +889,14 @@ is `[]` before the first step. `404` if no world has been generated yet.
 - `distance_from_boundary_km` is recomputed live each call (nearest cross-plate node), so it
   changes as the plate moves, unlike the stored `birth_distance_from_boundary_km`.
 
-## `GET /world/earthquakes`
+## `GET /worlds/{world_id}/earthquakes`
 
 Recent earthquakes (see `faults.Earthquake` / [simulation-model/tectonics.md#faults](simulation-model/tectonics.md#faults))
 for the fading epicentre overlay in the "Plates & Faults" view. The backend prunes anything
 older than `faults.EARTHQUAKE_RETAIN_MYR` (~5 Myr) every step, so this list only ever holds
 the last few Myr of activity. `[]` before the first step. `404` if no world has been generated yet.
 
-## `GET /world/volcanoes`
+## `GET /worlds/{world_id}/volcanoes`
 
 Every current volcano node (see `volcanism.py` / `elevation_lines.is_volcano`) for the
 "Plates & Faults" view's activity overlay -- same "plain JSON, client renders it" contract.
@@ -913,17 +937,17 @@ volcanoes yet. `404` if no world has been generated yet.
 - `age_myr` is `(elapsed_years - birth_years) / 1e6` -- the overlay fades a marker to zero by
   `EARTHQUAKE_RETAIN_MYR`.
 
-## `GET /world/fault_at?lat_deg=0&lon_deg=0`
+## `GET /worlds/{world_id}/fault_at?lat_deg=0&lon_deg=0`
 
 The Fault Line Inspector's click hit-test: the `fault_id` of the trace nearest
 `(lat_deg, lon_deg)` within ~120 km, else `null` -- same true-frame contract as
-`/world/river_at`. `400` for non-finite input, `404` if no world has been generated yet.
+`/worlds/{world_id}/river_at`. `400` for non-finite input, `404` if no world has been generated yet.
 
 ```json
 { "fault_id": 3 }
 ```
 
-## `GET /world/stranded_basins`
+## `GET /worlds/{world_id}/stranded_basins`
 
 Endorheic depressions whose floor sits below sea level and that have **no drainage path to
 the ocean at all** -- the "land-locked coastal pit" pathology from
@@ -967,7 +991,7 @@ matching offline dump (`python -m app.hydroclimate.stranded_basins`).
   step (at most one step stale, same tolerance as `hydrology_cache` itself). A basin new this
   step reports `persisted_years: 0`, `steps_seen: 1`.
 
-## `POST /world/export_hexgrid`
+## `POST /worlds/{world_id}/export_hexgrid`
 
 The "File > Export Hex Grid" action: tiles the sphere into a geodesic-icosahedron
 hex/pentagon dome (independent of the plate simulation's own node cloud -- see

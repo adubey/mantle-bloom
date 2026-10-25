@@ -1,6 +1,6 @@
 # Hex grid export format
 
-`POST /world/export_hexgrid` (see [api-reference.md](api-reference.md)) tiles the sphere
+`POST /worlds/{world_id}/export_hexgrid` (see [api-reference.md](api-reference.md)) tiles the sphere
 into a geodesic-icosahedron hex/pentagon dome -- the standard "hexasphere"/Goldberg-
 polyhedron-dual construction used by hex-globe strategy games -- independent of the plate
 simulation's own node cloud, and maps the current world's elevation/ocean/biome onto each

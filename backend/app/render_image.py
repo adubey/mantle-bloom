@@ -3057,28 +3057,34 @@ def stream_animation_mp4(
     stream.options = {"crf": ANIMATION_CRF, "movflags": "+faststart"}
 
     stopped_early = False
-    for i in range(num_frames):
-        if i > 0:
-            for _ in range(steps_per_frame):
-                if stop_event is not None and stop_event.is_set():
-                    stopped_early = True
+    try:
+        for i in range(num_frames):
+            if i > 0:
+                for _ in range(steps_per_frame):
+                    if stop_event is not None and stop_event.is_set():
+                        stopped_early = True
+                        break
+                    step_fn(world, step_years)
+                if stopped_early:
                     break
-                step_fn(world, step_years)
-            if stopped_early:
-                break
-        png_bytes = render_png(world, projection, view, width, height, view_rotation)
-        frame_img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
-        if frame_img.size != (enc_w, enc_h):
-            frame_img = frame_img.crop((0, 0, enc_w, enc_h))
-        av_frame = av.VideoFrame.from_ndarray(np.asarray(frame_img), format="rgb24")
-        for packet in stream.encode(av_frame):
-            container.mux(packet)
-        # The frame's own PNG rides along with the progress tick so the frontend can paint it
-        # straight onto the main map -- the animation runs in the background while the world
-        # is locked, so a normal /world/render for the same state would 503 (see main.py).
-        yield ("progress", i + 1, num_frames, png_bytes, world.elapsed_years)
+            png_bytes = render_png(world, projection, view, width, height, view_rotation)
+            frame_img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
+            if frame_img.size != (enc_w, enc_h):
+                frame_img = frame_img.crop((0, 0, enc_w, enc_h))
+            av_frame = av.VideoFrame.from_ndarray(np.asarray(frame_img), format="rgb24")
+            for packet in stream.encode(av_frame):
+                container.mux(packet)
+            # The frame's own PNG rides along with the progress tick so the frontend can paint it
+            # straight onto the main map -- the animation runs in the background while the world
+            # is locked, so a normal /world/render for the same state would 503 (see main.py).
+            yield ("progress", i + 1, num_frames, png_bytes, world.elapsed_years)
 
-    for packet in stream.encode():  # flush libx264's remaining buffered frames
-        container.mux(packet)
-    container.close()
+        for packet in stream.encode():  # flush libx264's remaining buffered frames
+            container.mux(packet)
+    finally:
+        # A disconnected client abandons this generator mid-loop (see main.py's animate
+        # GeneratorExit path): the encoder context must still be closed, or each abandoned
+        # run leaks a native libx264 context. Closed exactly once -- normal completion
+        # reaches this same finally instead of closing inline above.
+        container.close()
     yield ("done", buf.getvalue(), stopped_early)

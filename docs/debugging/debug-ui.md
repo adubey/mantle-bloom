@@ -21,7 +21,7 @@ Everything on this page and on [Debug map views](map-views.md) requires `?deb` i
 ## Event Console
 
 A side panel rendered only when `?deb` is set (`frontend/src/App.tsx`'s `EventConsole`).
-Without `?deb` the underlying data is still reachable through the API -- `GET /world/summary`'s
+Without `?deb` the underlying data is still reachable through the API -- `GET /worlds/{world_id}/summary`'s
 `events` field -- only the in-app viewer is hidden. It also lists the records the server's
 replay log wrote (the summary's `replay_logs`, see [Replay logs](replay-logs.md)), merged in
 order of elapsed time.
@@ -29,7 +29,7 @@ order of elapsed time.
 <a id="event-log"></a>
 ### Event log
 
-The `events` list on `GET /world/summary`, shown in the Event Console, logs lake
+The `events` list on `GET /worlds/{world_id}/summary`, shown in the Event Console, logs lake
 formation/splits and other discrete events.
 
 **Lake-churn aggregation -- `lakes.summarize_lake_events`.** On a long run over a dithering
@@ -60,10 +60,10 @@ that displays the result is. Tests:
 
 ## "Debugging Worlds" tab -- scripted plate scenarios
 
-The Generate World dialog's fourth tab (`POST /world/generate_debug`,
+The Generate World dialog's fourth tab (`POST /worlds/{world_id}/generate_debug`,
 `backend/app/debug_worlds.py`) builds tiny, low-resolution (`node_density=0.5`, the coarsest
 real choice), hand-placed plate configurations for fast iteration on the gap-filling problem,
-independent of any real save's history. `GET /world/debug_scenarios` lists the current
+independent of any real save's history. `GET /worlds/{world_id}/debug_scenarios` lists the current
 options; picking one and pressing Generate replaces the current world exactly like the
 Random/Human-made/Premade tabs, with `debug_diagnostics` already on (so the phase budget
 records -- see [`python -m app.phase_budget_diagnostics`](offline-cli.md#python--m-appphase_budget_diagnostics----per-phase-hchm-budget)).
