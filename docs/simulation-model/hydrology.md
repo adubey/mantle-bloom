@@ -53,7 +53,7 @@ again, the same reuse pattern `climate.compute_climate_cached` already establish
 The cratons-first generator makes one zero-duration routing pass to populate that cache at
 generation; the first simulation step replaces it with routing from that step's climate.
 That pass sets `compute_hydrology`'s `history_years` (default: the step's `years`), the span
-the breach budget and in-step basin filling (`_spill_within_step`) read, so pits a humid
+the breach budget reads, so pits a humid
 basin would long since have filled or cut through drain at t = 0 (#218, see
 [foundations](foundations.md)).
 
@@ -76,8 +76,10 @@ Three kinds of water/forcing move along `flow_target`:
   fraction; glacier melt keeps the existing per-node transit loss. The breach gate preserves
   wet-cell rain as a separate loss-free supply when chained pits merge or pass overflow on.
   `HydrologyFields.lake_external_supply_m3_per_yr` and its wet-rain, dry-runoff and meltwater
-  source arrays expose the settled external supply before internal lake-to-lake transfers, so
-  the in-step lake resolver can book each source once (#587). The routed through-flow is river
+  source arrays expose settled external supply before internal lake-to-lake transfers (#587).
+  `HydrologyFields.lake_water_ledger` reports storage change, evaporation, overflow leaving lake
+  bodies, internal transfers and residual in m³ for this step (#588). The routed through-flow
+  plus exported lake overflow is river
   discharge, `HydrologyFields.discharge_m3_s`, in m^3/s.
 - **Glacier meltwater** is the ice ledger's per-step volume (`IceLedger.meltwater_m3`: surface
   and basal melt, overflow, ice shed at the depth guard, and snow melting on bare ground)
@@ -105,7 +107,7 @@ them:
 | Geology's river-mouth resource boost | physical discharge at ocean-mouth nodes | #355 step 3 |
 | River selection and server-rendered styling | physical discharge | #355 step 4 |
 | River network visibility | physical flow-edge length | #355 step 4 |
-| Lake silt | physical lake inflow (`LakeClimate.inflow_m3_per_yr`) | #363 |
+| Lake silt | each resolved body's step-integrated supply over its final wet area | #588 (builds on #363) |
 
 No live consumer reads `flow_accum` or `water_deposited` any more; they remain only as the
 fallback for hand-built fixtures and caches without `discharge_m3_s`.
@@ -178,24 +180,30 @@ discharge, channel-width growth, deposition, geology or lake silt.
   gradually from its lowest ground, and `lake_depth` is the cell's mean water depth (water
   volume / cell area). Flooded area and volume therefore change continuously rather than by
   whole cells. Lake silt settles over the wet area in proportion to each cell's wet fraction.
-- **Balanced lakes** (`lakes.LakeClimate`, issue #297): lakes use real water-balance units.
+- **Prognostic lake storage** (`lakes.solve_lakes_prognostic`, issue #588): lakes use real
+  water-balance units and integrate liquid volume through the timestep over the hierarchy.
   Inflow is direct precipitation on the lagged wet area plus settled dry-cell Budyko runoff
   and glacier melt, routed as volume (m^3/yr). Dry runoff transit losses use a fixed per-node
   fraction at a 100 kyr reference step (`hydrology.river_transit_loss_fraction`), scaled by each
   cell's dry fraction. Glacier melt keeps the existing full per-node transit loss. The breach
-  gate applies the same source-specific losses. A spilling sink and rim lose only their dry-area
-  runoff share; wet-cell precipitation travels through lake storage without land runoff or
-  transit loss. A spilling
-  lake's inflow is the flow through its sink.
+  gate applies the same source-specific losses. Wet-cell precipitation travels through lake
+  storage without land runoff or transit loss. Each leaf sink is held terminal while external
+  supply is routed, so persisted spill state cannot route this step's full inflow past its lake.
+  The solve starts from persisted depth, limits evaporation to available liquid water, promotes
+  sibling basins when current-step water reaches their saddle, and routes only surplus above a
+  rim or depth cap to the hierarchy's receiver. A parent supersedes its children as one body, so
+  silt is deposited once from its step-integrated supply over its final wet area. Only overflow
+  leaving the lake system enters downstream discharge; transfers between sibling basins stay
+  internal. `should_spill`, `spill_target`, final water levels and `Lake.is_spilling` all come
+  from this solve. The per-step ledger residual is external supply minus evaporation, exported
+  overflow and storage change; internal transfers are recorded separately and cancel globally.
   Evaporation is the real open-water rate, about 0.3 m/yr at 0 C rising to 1.8 m/yr at 25 C.
   Partly flooded cells evaporate up to 30% faster, since shallow margins warm faster
-  (`SHALLOW_EVAPORATION_BOOST`). A real lake reaches balance in years to centuries, far
-  inside one step, so each step a lake sits at its balanced level: where its flooded area
-  evaporates exactly its inflow, capped at its rim. A lake whose inflow exceeds what it can
-  evaporate at the rim fills and spills. Its size is set by its climate, as for real closed
-  basins such as the Dead Sea or the Great Basin lakes. Every lake resolves this way: the
-  original model-unit fill and evaporation constants, kept only for direct `step_lakes`
-  calls in tests, were removed (#358 item 5).
+  (`SHALLOW_EVAPORATION_BOOST`). A lake can remain below equilibrium during a short step and
+  carries that liquid storage into the next step. At a rim or tier depth ceiling, surplus is
+  booked as overflow after evaporation rather than being lost or passed downstream as full
+  inflow. The integration uses 64 deterministic slices by default; tests can request a finer
+  partition.
 - **Flow direction** (`_compute_flow_direction`): among each node's k nearest neighbors
   strictly below its own elevation (a downhill candidate), prefers whichever one already has
   the deepest established channel (`channel_depth > CHANNEL_PREFERENCE_THRESHOLD_M`),
@@ -208,28 +216,17 @@ discharge, channel-width growth, deposition, geology or lake silt.
   the sink's water surface at the start of the step (last step's `lake_depth`, through
   `CellHypsometry`) has already reached its basin's spill point, or that spill point is at or
   below the sink's own centre (a breach notch cut to the floor), in which case it redirects to
-  `spill_target` (turning a filled-past-its-rim lake into a normal through-flowing river
-  cell). Cold nodes route water like any other: a node below `FREEZE_POINT_C` on the annual
+  `spill_target`. After lake integration, final spill edges replace this lagged estimate for
+  current-step overflow discharge. Cold nodes route water like any other: a node below `FREEZE_POINT_C` on the annual
   mean isn't a dead end (RFC 0014 D2(b), #539).
-- **Spilling within the step** (`_spill_within_step`, issue #503): the spill test above and
-  `lakes.compute_spill_routing`'s choice of governing rim both read last step's water, but a
-  100 kyr step's inflow fills most basins many times over. After routing the physical water,
-  the governing basins (`lakes.governing_bodies`) are swept from the highest floor down. One
-  whose liquid inflow, net of a rim-level lake's evaporation (`lakes.lake_evaporation_m3_per_yr`,
-  the same rate, shallow-margin boost included, that `resolve_lakes` balances against), fills
-  its remaining room opens its outlet, and its inflow is passed on to the basin that outlet
-  drains into, so a chain of pits opens in one sweep. The water is then routed again. Basins
-  whose spills run into each other form a `flow_target` cycle; they are united at their lowest
-  common ancestor in the hierarchy, which spills at its own rim if this step's water fills it
-  and otherwise pools the water at its lowest sink. A cycle that runs through a channel into a
-  neighbouring catchment instead (channel-preferring flow can cross the steepest-descent
-  catchments the hierarchy is built on) sends that node down its steepest descent. Repeats to
-  a fixed point; reaching `SPILL_WITHIN_STEP_MAX_ROUNDS` logs a warning. Without it, a river
-  crossing a chain of dry pits advanced one pit per step, and basins filling in the same step
-  spilled into each other indefinitely. `lakes.resolve_lakes` still merges lakes on last step's
-  water, so for one step a lake that routing has united and spilled can be reported at the
-  saddle below its rim (#505); the breach surge still routes on the flow directions from before
-  this resolution (#506).
+- **Spill routing** (`lakes.solve_lakes_prognostic`, issue #588): external sources are first
+  routed to hierarchy leaf sinks with those sinks held terminal. The solver advances each
+  active body through the step, sends overflow to the hierarchy-assigned receiver, and promotes
+  siblings when current water reaches their shared saddle. Transfers into another lake stay
+  internal; only overflow leaving the lake system becomes a downstream source. Channel paths
+  determine where exported flow travels, while hierarchy membership determines which basin
+  receives an internal transfer. Final `should_spill`, `flow_target`, `filled_elevation` and
+  `spill_target` come from the resolved body state.
 - **Downstream accumulation** (`route_downstream`, public -- `erosion.py` reuses it
   directly): a single forward sweep over land nodes in elevation-descending order,
   accumulating a source quantity (precipitation, for `flow_accum`; eroded material, for
@@ -299,38 +296,19 @@ al.'s fill-spill-merge family), adapted from a regular grid to this codebase's k
   sea.
 
 Each step, `compute_hydrology` builds this hierarchy fresh from current terrain
-(`lakes.build_lake_hierarchy`, bare `elevation` -- see below) -- consistent with
-`flow_target`/`flow_accum` above being recomputed fresh every step rather than advected --
-*once*, early (before flow direction, so `compute_spill_routing` above can use it), then reuses
-that same tree object later in the step (`lakes.resolve_lakes`) to resolve every lake's own
-water balance top-down, rather than paying for a second, redundant rebuild that could drift
-from the one spill routing already used. `lakes.step_lakes` -- `build_lake_hierarchy` +
-`resolve_lakes` in one call -- still exists for any caller (tests, mainly) that just wants
-"lakes for this terrain, resolved" without needing to reuse the tree for anything else.
-`resolve_lakes` resolves every lake's own water balance top-down: each lake sits at its
-balanced level (see the `LakeClimate` bullet above), where evaporation over its flooded area
-equals its real-unit inflow summed over every one of its own members (more than one can be a
-true sink once several originally separate basins have merged), clipped to
-`[dry level, max_depth]` and its lake-vs-sea tier ceiling.
-Tracking a lake's level as one scalar shared by every member, rather than a per-node depth, is
-what removes the old design's threshold-crossing failure mode entirely. A still-separate
-parent merges this step when a child's main water body reaches the shared saddle; the newly
-merged body is pinned at the saddle for continuity. A parent counts as already merged on a
-later step only when the main water in every child reaches that saddle. `_already_merged`
-checks each child's sink cell (or the lowest cell of a composite child) and inverts its mean
-depth through `CellHypsometry`; at zero mean depth it uses that cell's dry level, so equal-floor
-basins merged at their shared floor remain connected. Perched water elsewhere in the upstream
-catchment cannot make the parent look connected. `compute_spill_routing` uses the same check,
-so a false merge cannot also give every child sink the parent's distant rim. If an already-merged
-lake recedes below its saddle, it splits back into its children, each resolved at its own
-balanced level that same step. No cross-step `Lake`-object registry is needed -- continuity
-comes from the persisted per-node `lake_depth` array rather than matching this step's freshly
-rebuilt tree against last step's by member overlap.
+(`lakes.build_lake_hierarchy`, bare `elevation`) and reuses the same tree for initial routing,
+lake integration and final spill metadata. External sources route to leaf sinks with those sinks
+held terminal. `lakes.solve_lakes_prognostic` advances stored volume through the timestep using
+an implicit evaporation update. It promotes siblings when the integrated water reaches their
+shared saddle, and splits a merged body when its level falls below that saddle. Spills go to the
+hierarchy-assigned receiver, independent of the channel that later carries exported overflow.
+No cross-step `Lake` registry is needed: continuity comes from persisted per-node
+`lake_depth`, not matching freshly rebuilt tree objects by member overlap.
 
 **Lakes accumulate silt.** `silt_depth` (a persistent per-node field, carried exactly like `lake_depth`) is a
-small volume fraction (`SILT_ACCUMULATION_COEFFICIENT`, m^3 of silt per m^3 of water) of the
-same real inflow that sets the lake's level, including the flow through a spilling lake's
-sink, settling permanently (monotonically -- silt never erodes back away) on a lake's own bed.
+small volume fraction (`SILT_ACCUMULATION_COEFFICIENT`, m^3 of silt per m^3 of water) of each
+resolved body's step-integrated supply, including overflow received from a sibling body,
+settling once over its final wet area.
 Because it's sized in m^3/yr, a catchment silts the same at any node density, and the breach
 surge never reaches it (#363). The coefficient keeps the total silt laid down under the
 earlier model-unit rule, which read `water_deposited`, on a reference replay
@@ -343,7 +321,7 @@ its floor has risen to meet the surrounding rim, it stops registering as a local
 all (steepest descent no longer sees a depression there), and the lake disappears outright,
 exactly the "reaches ground level" case a lake should eventually hit.
 
-**Cold lakes keep their water.** `_water_balance` resolves a lake the same way whatever its
+**Cold lakes keep their water.** The prognostic lake solver integrates a lake the same way whatever its
 temperature: inflow, storage and spill continue under ice, as in Lake Untersee, Antarctica,
 which has been ice-covered for centuries yet holds a 169 m deep basin fed by glacier melt
 (RFC 0014 D2(b), #539). Until then a lake with any member below 0 C on the annual mean
@@ -374,70 +352,24 @@ uses for connected-water checks, avoiding a chicken-and-egg loop) covers at leas
 `SEA_MIN_FLOODED_AREA_KM2` (200,000 km^2 -- between the historical Aral Sea and the Caspian).
 `node_area_km2` is derived once per call from `4*pi*R^2 / len(elevation)`, not a node count, so
 the threshold is resolution-invariant without threading `world.node_density` into a module that
-otherwise takes only bare arrays. Each tier gets its own depth ceiling, folded into
-`_water_balance`'s existing `cap_depth` alongside the real rim (`cap_depth = min(rim_cap or
-inf, tier_max_depth)`) -- `LAKE_MAX_DEPTH_M` (1,800 m, comfortably above Baikal's real 1,642 m)
+otherwise takes only bare arrays. Each tier gets its own depth ceiling, combined with the real
+rim by `solve_lakes_prognostic` (`cap_level = min(rim_level, floor + tier_depth)`) --
+`LAKE_MAX_DEPTH_M` (1,800 m, comfortably above Baikal's real 1,642 m)
 for an ordinary basin, `SEA_MAX_DEPTH_M` (3,500 m, deeper than the Caspian's real 1,025 m --
 a simulated rift-sea basin can plausibly run deeper, but not unbounded) once promoted. Both are
 first-pass estimates pinned to those two real-world reference points, not swept.
 
-**The cap doubles as the fix for "smaller lakes should split apart" rather than staying
-pathologically merged.** It applies at whichever `Lake` node `_resolve` is currently
-resolving, leaf or already-merged composite alike -- so a composite lake's own rise is capped
-too, not just a leaf's. A depth ceiling low enough to matter sits below some basins' own
-internal merge saddles, so a composite that only stayed merged because nothing capped its rise
-can fall back below its own `min_depth` and split on the very next `_resolve` pass, using the
-ordinary split mechanism `build_lake_hierarchy`'s merge tree already provides -- no new
-mechanism needed, just removing the thing that let a merge become permanent regardless of
-whether the water level could actually still support it.
+**Depth caps create overflow and can unmerge bodies.** The cap applies to every active body,
+leaf or merged parent. If a capped lake cannot hold its integrated supply after evaporation, the
+surplus leaves through its hierarchy outlet. If a merged body's level falls below its saddle,
+it splits into its children without resetting their stored volumes. Sibling transfers enter the
+hierarchy-assigned receiver and are booked once; the per-step ledger records those transfers
+separately from external sources, evaporation, exported overflow and storage change. This is the
+prognostic D1b path in RFC 0014 (#588), which replaces balanced-level resets and last-step merge
+pins. Unit tests cover merge, split, cap overflow and budget closure.
 
-**A split rebalances each child; it doesn't refill them to the saddle.** When an
-already-merged body's balanced level falls below its `min_depth`, `_resolve` discards that
-merged resolution, restoring the silt and sea flags `_water_balance` wrote for it, and resolves
-each child as an independent lake this step: its own inflow and evaporation, its own rim (the
-parent's saddle) and its own tier cap. A child that has no inflow dries, and a fed child keeps
-the water its own balance supports. Next step's `_already_merged` reads the pair as merged only
-if both children's main water bodies reached the saddle. A child fed to its rim can trigger a
-new merge in the current step; if the merged body's balance falls below the saddle, it splits
-next step and the fed child can trigger another merge. This real merge/split churn costs a
-discarded merged balance but creates no water. Perched water no longer triggers that cycle
-(#520 part 1).
-
-Earlier code instead reset both children to the saddle, as continuity for a small evaporation
-dip. Nothing supplied that water, and the saddle level read back as merged on the next step, so
-a body whose budget could not hold it there stayed on its saddle indefinitely. On the
-`seed308161711-121.5Myr` save the reset added 4.7-5.5 M km^3 of water per step, about the
-world's whole visible lake volume, mostly from parents dried by a frozen member under the
-any-member freezing rule that RFC 0014 D2(b) later removed (#519, #521, #539).
-The reset also needed a tier-cap exception to avoid an endless merge/split loop when the tier
-cap, not evaporation, held a composite below its saddle. Per-child balance doesn't need that
-exception, because each child is already bounded by its own rim and tier cap. The old
-tier-capped reset also wrote the capped level into both children, flooding a dry child and
-removing water from a child fed above it. The merge branch
-(two children rejoining) still folds the merged body's own `_classify_tier` cap into its
-`min(node.min_depth, floor + tier_max_depth)` result, so a child large enough to reach the
-saddle on its own (one that classifies sea tier can grow past an internal saddle below
-`SEA_MAX_DEPTH_M`) doesn't merge back above the cap. `test_lakes.py` pins both cases:
-`test_a_composite_lake_held_below_its_own_saddle_by_the_tier_cap_splits` resolves twice and
-asserts no repeat split,
-`test_a_child_fed_to_the_saddle_re_splits_each_step_without_creating_water` pins the churn
-above, and
-`test_a_merged_lake_split_by_a_falling_supply_rebalances_each_child_at_its_own_level` checks
-that neither child is written above its own balance.
-
-**Known residual, not chased further: some steady-state merge/split churn remains, invisible
-to the player.** On the same save, replaying `lakes.step_lakes` repeatedly against *frozen*
-terrain/inflow (an artificial worst case -- real gameplay's climate, silt, and tectonics all
-change every step) still shows a stable ~13 splits / ~56 merges per pass, sphere-wide, once the
-depth itself has settled -- smaller basins trading membership back and forth without the depth
-bound ever being violated again. This never reaches the player: `erosion.py`'s own comment
-already documents that lake merge/split transitions are deliberately *never* routed to
-`World.log_event` at all (even the near-sea-level-aggregated ones "churn constantly along a
-dithering coastline and drown out the genuine tectonic events" -- see `summarize_lake_events`),
-so this is purely internal tree-topology churn, not a console-spam regression. Worth a closer
-look if it turns out to cost real per-step time on a large save, but not otherwise pursued here.
-
-**Sea tier reaches climate and rendering, not `hydrology.is_ocean`.** `resolve_lakes` returns
+**Sea tier reaches climate and rendering, not `hydrology.is_ocean`.**
+`solve_lakes_prognostic` returns
 a new `(N,) bool` `lake_is_sea` array (`HydrologyFields.is_sea`, same "recomputed fresh every
 step, no persistent identity" contract as `lake_depth` itself), true for every currently-wet
 member of a sea-tier lake. `climate.py`'s `_land_moisture_source` picks
@@ -458,10 +390,10 @@ tolerance and all-False-fallback contract `hydrology.sample_is_ocean` already es
 
 A river's own `flow_target` can point at a node that's genuinely part of a lake (real inflow),
 but a flooded node is never itself classified `is_river` -- checked against this step's
-*final* lake extent, after `lakes.step_lakes` runs, not the flat land/ocean split alone -- so a
+*final* lake extent, after `lakes.solve_lakes_prognostic` runs, not the flat land/ocean split alone -- so a
 river's own classification ends at the lake's shore rather than jumping straight across the
 water to whatever's on the far side, even though the water itself (`flow_target`/`flow_accum`)
-still physically continues through if the lake is spilling.
+still routes only the spill overflow downstream when the lake is spilling.
 
 A spilling sink's `flow_target` is the node beyond its lake's rim (`spill_target`), or, in a
 lake united within the step, that lake's lowest sink. That edge can span the whole lake, so it
@@ -866,7 +798,7 @@ itself -- the mouth can never itself carry standing water, so checking its own l
 would make `"lake"` unreachable and silently mislabel a river ending at a lake as `"ocean"`
 instead (a real bug an earlier version of this had, since fixed): `"other"` only when
 `flow_target` is exactly `-1` (a true, still-unresolved, not-yet-spilling dry sink -- one
-`lakes.step_lakes` is already busy growing into a real lake node by node every step, so this
+`lakes.solve_lakes_prognostic` integrates stored volume every step, so this
 reads as `"lake"` on its own the moment that basin's water crosses
 `LAKE_MIN_VISIBLE_DEPTH_M`).
 

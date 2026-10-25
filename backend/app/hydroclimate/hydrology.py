@@ -45,7 +45,7 @@ flattening terms) and channel_depth (which erosion.py itself owns, since it's th
 actually carves it).
 
 **Lakes are an explicit object tree, not a flat per-node approximation** -- see `lakes.py`
-(`lakes.Lake`, `lakes.build_lake_hierarchy`, `lakes.step_lakes`), and that same tree is now
+(`lakes.Lake`, `lakes.build_lake_hierarchy`, `lakes.solve_lakes_prognostic`), and that same tree is now
 also what drives spill *routing* here, not just water-balance bookkeeping (see above). An
 earlier version of this
 module tracked lakes purely as a flood-fill over `lake_depth`, seeded from every node that held
@@ -141,8 +141,8 @@ CHANNEL_PREFERENCE_THRESHOLD_M = 5.0
 
 # Threshold above which a node's lake_depth counts as "a visible lake" -- used both for
 # rendering (render_image.py, coastline.py) and for excluding flooded nodes from is_river/
-# group_rivers below. The lake water balance itself (`lakes.LakeClimate`, `lakes.balanced_level`)
-# lives in lakes.py, alongside the Lake tree that actually computes it -- see this module's own
+# group_rivers below. The lake water balance (`lakes.LakeClimate`, `lakes.solve_lakes_prognostic`)
+# lives in lakes.py alongside the Lake tree -- see this module's own
 # docstring and lakes.py's own module docstring for why.
 LAKE_MIN_VISIBLE_DEPTH_M = 1.0
 
@@ -315,7 +315,7 @@ class HydrologyFields:
     lake_depth: np.ndarray  # (N,) this step's final standing lake depth
     glacier_depth: np.ndarray  # (N,) this step's final accumulated ice depth
     plates_in_order: list[Plate]
-    # This step's lake merge/split transitions from lakes.step_lakes, as structured
+    # This step's lake merge/split transitions from lakes.solve_lakes_prognostic, as structured
     # `lakes.LakeEvent`s. erosion.py runs them through `lakes.summarize_lake_events` (which
     # collapses the near-sea-level coastal-pond churn a dithering low-relief shelf produces)
     # and logs the resulting lines via World.log_event -- see compute_hydrology. Defaulted
@@ -329,13 +329,12 @@ class HydrologyFields:
     # persists at the cell's mobile cover, so stripped silt leaves the record. Also defaulted,
     # see lake_events' own comment for why.
     silt_depth: np.ndarray = field(default_factory=lambda: np.zeros(0))
-    # This step's per-node silt *increment* (lakes.step_lakes) -- erosion.py adds it directly
+    # This step's per-node silt *increment* (lakes.solve_lakes_prognostic) -- erosion.py adds it directly
     # into terrain `elevation`, so a lake/endorheic basin genuinely fills in over time. Always
     # >= 0, nonzero only under standing water this step. Defaulted, same reasoning as above.
     silt_deposited: np.ndarray = field(default_factory=lambda: np.zeros(0))
-    # This step's fully-resolved depression hierarchy (lakes.step_lakes's own internal
-    # `lakes.build_lake_hierarchy` result, built from this step's `elevation` and already
-    # reconciled against last step's lake_depth -- see step_lakes's own docstring), exposed
+    # This step's fully-resolved depression hierarchy (`lakes.build_lake_hierarchy`), built
+    # from this step's `elevation` and integrated against last step's lake_depth, exposed
     # here rather than discarded so a caller needing basin floor/outlet/current-water info
     # (main.py's Lake Inspector) can read it straight off these already-resolved `Lake` objects
     # instead of rebuilding its own hierarchy -- which is more than a wasted computation:
@@ -411,6 +410,7 @@ class HydrologyFields:
     lake_external_wet_precip_m3_per_yr: np.ndarray = field(default_factory=lambda: np.zeros(0))
     lake_external_dry_runoff_m3_per_yr: np.ndarray = field(default_factory=lambda: np.zeros(0))
     lake_external_meltwater_m3_per_yr: np.ndarray = field(default_factory=lambda: np.zeros(0))
+    lake_water_ledger: "lakes.LakeStepLedger | None" = None
 
     def __getstate__(self) -> dict:
         # The spill-path drawing cache (`_spill_path_cache`) is rebuilt on first use, so a save
@@ -1085,215 +1085,6 @@ def flow_cycles(flow_target: np.ndarray) -> list[np.ndarray]:
     return cycles
 
 
-# Rounds of the within-step spill/merge fixed point (_spill_within_step). Each round either
-# opens a basin's outlet or unites basins one level higher, so real worlds settle in a few;
-# this only bounds a pathological case.
-SPILL_WITHIN_STEP_MAX_ROUNDS = 32
-
-
-@dataclass
-class SpillBasins:
-    """What _spill_within_step needs to know about this step's depression hierarchy."""
-
-    forest: list["lakes.Lake"]
-    governing: list["lakes.Lake"]  # lakes.governing_bodies: the rim each leaf's sink obeys
-    hypsometry: "lakes.CellHypsometry"
-    neighbor_idx: np.ndarray  # the routing graph the hierarchy's catchments were built on
-    stored_m3: np.ndarray  # water already standing in each cell at the start of the step
-    evaporation_m_per_yr: np.ndarray  # open-water evaporation per cell
-    keep: np.ndarray | None = None  # blended in-step fill estimate (1 - transit loss); None keeps all
-
-
-def _spill_within_step(
-    basins: SpillBasins,
-    flow_target: np.ndarray,
-    should_spill: np.ndarray,
-    filled_elevation: np.ndarray,
-    spill_target: np.ndarray,
-    route,
-    years: float,
-):
-    """Opens, within this step, the outlet of every basin this step's water fills, and unites
-    basins whose overflow runs into each other (issue #503).
-
-    `_compute_flow_direction` spills a sink only once *last* step's water reached its rim, and
-    `lakes.compute_spill_routing` unites two basins only once last step's water pooled them. At
-    100 kyr steps that lag stranded rivers: a river crossing a chain of dry pits advanced one
-    pit per step, and two basins that filled to their shared saddle in the same step each spilled
-    into the other, so the water circled between them and reached neither the sea nor a lake.
-
-    Each round sweeps the governing basins (`lakes.governing_bodies`) from the highest floor
-    down. A basin whose liquid inflow this step, net of the evaporation of a lake at its rim
-    (`lakes.lake_evaporation_m3_per_yr`), fills its remaining room opens its outlet, and its
-    inflow is passed on to the basin that outlet drains into, so a chain of pits opens in one
-    sweep. Then the basins on each flow cycle are united at their lowest common ancestor, which
-    is re-tested the same way: it spills at its own rim, or its water pools at its lowest sink.
-    A cycle that instead runs through a channel into a neighbouring catchment (routing prefers
-    an established channel, while the hierarchy's catchments follow steepest descent) is broken
-    by sending that node down its steepest descent, the path the hierarchy drains it by.
-    `route(flow_target)` re-routes after any change and returns `(through, settled)`. Repeats to
-    a fixed point, at most SPILL_WITHIN_STEP_MAX_ROUNDS rounds; reaching the cap logs a warning.
-
-    Returns `(flow_target, should_spill, filled_elevation, spill_target, through, settled)`."""
-    resolver = _SpillResolver(basins, flow_target, should_spill, filled_elevation, spill_target, route, years)
-    for _ in range(SPILL_WITHIN_STEP_MAX_ROUNDS):
-        opened = resolver.open_filled_basins()
-        united = resolver.untangle_cycles()
-        if not (opened or united):
-            break
-    else:
-        _logger.warning(
-            "basin spills did not settle within %d rounds; some rivers may stop short of an outlet this step",
-            SPILL_WITHIN_STEP_MAX_ROUNDS,
-        )
-    return (
-        resolver.flow_target, resolver.should_spill, resolver.filled_elevation, resolver.spill_target,
-        resolver.through, resolver.settled,
-    )
-
-
-class _SpillResolver:
-    """The state `_spill_within_step` iterates on: the routing, and which basin governs each sink."""
-
-    def __init__(self, basins: SpillBasins, flow_target, should_spill, filled_elevation, spill_target, route, years):
-        self.basins = basins
-        self.flow_target = flow_target.copy()
-        self.should_spill = should_spill.copy()
-        self.filled_elevation = filled_elevation.copy()
-        self.spill_target = spill_target.copy()
-        self.route = route
-        self.years = years
-        n = len(flow_target)
-        self.keep = np.ones(n) if basins.keep is None else basins.keep
-        self.climate = lakes.LakeClimate(np.zeros(n), basins.evaporation_m_per_yr)
-        self.through, self.settled = route(self.flow_target)
-
-        self.parent: dict[int, "lakes.Lake | None"] = {}
-        self.depth: dict[int, int] = {}
-        self.leaf_of_node = np.full(n, -1, dtype=np.int64)
-        stack: list[tuple["lakes.Lake", "lakes.Lake | None", int]] = [(root, None, 0) for root in basins.forest]
-        while stack:
-            lake, up, level = stack.pop()
-            self.parent[id(lake)] = up
-            self.depth[id(lake)] = level
-            if lake.children:
-                stack.extend((child, lake, level + 1) for child in lake.children)
-            else:
-                self.leaf_of_node[lake.members] = lake.sink_node_idx
-        self.body_of_sink: dict[int, "lakes.Lake"] = {}
-        for body in basins.governing:
-            for sink in lakes.leaf_sinks(body).tolist():
-                self.body_of_sink[sink] = body
-
-        elevation = basins.hypsometry.elevation
-        lowest = basins.neighbor_idx[np.arange(n), np.argmin(elevation[basins.neighbor_idx], axis=1)]
-        self.steepest = np.where(elevation[lowest] < elevation, lowest, -1)
-
-    def _reroute(self) -> None:
-        self.through, self.settled = self.route(self.flow_target)
-
-    def _fills(self, body: "lakes.Lake", inflow_m3_per_yr: float) -> bool:
-        if body.max_depth is None or body.outlet_target_idx < 0:
-            return False
-        hyp = self.basins.hypsometry
-        members = body.members
-        room = hyp.volume(body.max_depth, members) - float(self.basins.stored_m3[members].sum())
-        evaporation = lakes.lake_evaporation_m3_per_yr(body.max_depth, members, hyp, self.climate)
-        return (inflow_m3_per_yr - evaporation) * self.years >= room
-
-    def _open_outlet(self, body: "lakes.Lake", sinks: np.ndarray) -> None:
-        self.flow_target[sinks] = body.outlet_target_idx
-        self.should_spill[sinks] = True
-
-    def _pass_on(self, start: int, amount: float, pending: np.ndarray) -> None:
-        """Adds `amount` (m^3/yr) to the sink where water entering the routing at `start` settles,
-        less the transit losses on the way. This fill estimate uses the basin's blended keep
-        fraction for aggregate pending water; final source routing applies the wet, dry-runoff,
-        and meltwater loss rules separately. The approximation only affects in-step fill tests
-        for downstream basins (#587)."""
-        node, hops = start, 0
-        while hops <= len(self.flow_target):
-            amount *= self.keep[node]
-            target = int(self.flow_target[node])
-            if target < 0:
-                pending[node] += amount
-                return
-            node, hops = target, hops + 1
-
-    def open_filled_basins(self) -> bool:
-        """Opens the outlet of every governing basin this step's water fills, sweeping from the
-        highest floor down so water released upstream counts toward the basins below it."""
-        bodies = sorted({id(b): b for b in self.body_of_sink.values()}.values(), key=lambda b: -b.floor_elevation)
-        pending = np.zeros(len(self.flow_target))
-        opened = False
-        for body in bodies:
-            sinks = lakes.leaf_sinks(body)
-            if not np.any(self.flow_target[sinks] < 0):
-                continue
-            inflow = float(self.settled[sinks].sum() + pending[sinks].sum())
-            if self._fills(body, inflow):
-                self._open_outlet(body, sinks)
-                self._pass_on(body.outlet_target_idx, inflow, pending)
-                opened = True
-        if opened:
-            self._reroute()
-        return opened
-
-    def untangle_cycles(self) -> bool:
-        """Breaks every flow cycle: a channel crossing into another catchment follows its
-        steepest descent again, and basins spilling into each other are united."""
-        changed = False
-        for cycle in flow_cycles(self.flow_target):
-            changed = self._follow_catchment(cycle) or self._unite(cycle) or changed
-        if changed:
-            self._reroute()
-        return changed
-
-    def _follow_catchment(self, cycle: np.ndarray) -> bool:
-        # A channel can lead a node downhill into a neighbouring catchment, while the hierarchy
-        # drains it down its steepest descent. On a cycle that disagreement closes the loop, so
-        # the node follows the hierarchy's own path again.
-        elevation = self.basins.hypsometry.elevation
-        target = self.flow_target[cycle]
-        downhill = cycle[(elevation[target] < elevation[cycle]) & ~self.should_spill[cycle]]
-        crossing = downhill[self.leaf_of_node[self.flow_target[downhill]] != self.leaf_of_node[downhill]]
-        self.flow_target[crossing] = self.steepest[crossing]
-        return len(crossing) > 0
-
-    def _unite(self, cycle: np.ndarray) -> bool:
-        sinks_on_cycle = {int(s) for s in self.leaf_of_node[cycle] if s >= 0}
-        ancestor = self._lowest_common_ancestor([self.body_of_sink[s] for s in sinks_on_cycle if s in self.body_of_sink])
-        if ancestor is None:
-            return False
-        sinks = lakes.leaf_sinks(ancestor)
-        for sink in sinks.tolist():
-            self.body_of_sink[sink] = ancestor
-        self.filled_elevation[sinks] = ancestor.max_depth if ancestor.max_depth is not None else np.inf
-        self.spill_target[sinks] = ancestor.outlet_target_idx
-        if self._fills(ancestor, float(self.settled[sinks].sum())):
-            self._open_outlet(ancestor, sinks)
-        elif len(sinks):
-            # One lake: its water pools at its lowest ground, not at every sink it covers.
-            lowest = int(sinks[np.argmin(self.basins.hypsometry.elevation[sinks])])
-            self.flow_target[sinks] = lowest
-            self.should_spill[sinks] = True
-            self.flow_target[lowest] = -1
-            self.should_spill[lowest] = False
-        return True
-
-    def _lowest_common_ancestor(self, bodies: list["lakes.Lake"]) -> "lakes.Lake | None":
-        nodes = list({id(b): b for b in bodies}.values())
-        if not nodes:
-            return None
-        while len({id(b) for b in nodes}) > 1:
-            deepest = max(self.depth[id(b)] for b in nodes)
-            lifted = [self.parent[id(b)] if self.depth[id(b)] == deepest else b for b in nodes]
-            if any(b is None for b in lifted):
-                return None  # different roots: no shared basin to unite into
-            nodes = lifted
-        return nodes[0]
-
-
 def route_downstream(
     elevation: np.ndarray,
     is_ocean: np.ndarray,
@@ -1438,8 +1229,8 @@ def compute_hydrology(
     step's climate: depression hierarchy + spill routing (see
     `lakes.build_lake_hierarchy`/`lakes.compute_spill_routing`) -> flow direction ->
     glacier mass balance and shape (`ice_sheet.step_ice`) -> precipitation(-minus-frozen)-plus-meltwater-plus-lake-
-    breach downstream accumulation -> lake growth/evaporation/merge/split, resolved against the
-    *same* depression hierarchy spill routing already used (`lakes.resolve_lakes`) -> river
+    breach downstream accumulation -> prognostic lake storage and hierarchy spill/merge/split
+    (`lakes.solve_lakes_prognostic`) -> river
     classification (excluding flooded lake nodes, so a river ends at a lake's shore
     rather than being treated as continuing through it). A lake that's actively spilling this
     step also adds `LAKE_BREACH_EROSION_COEFFICIENT`-scaled extra "water" into the legacy route
@@ -1461,27 +1252,15 @@ def compute_hydrology(
     GLACIER_MELT_THRESHOLD_C's comment), so ice formed where only the annual mean is below
     freezing still melts back in summer. `None` means no seasonal swing anywhere.
 
-    `history_years` (default `years`) is the span basins have had to fill and outlets to be
-    cut: it sets the breach carving budget and which basins this step's water fills
-    (`_spill_within_step`). Everything else still reads `years`. Generation's zero-duration
+    `history_years` (default `years`) is the span basins have had to cut outlets: it sets the
+    breach carving budget. Lake storage uses the actual `years` timestep. Generation's zero-duration
     bootstrap passes a longer span, since its terrain stands for a drainage history it never
     ran: with no time to fill or carve, every pit ended a river (#218).
 
-    **`should_spill` (below) and a lake's own `is_spilling` (`lakes._resolve`, set inside
-    `lakes.resolve_lakes` near the end of this function) are now the same test -- "is this
-    lake's water at or above its own rim" -- applied to the same depression-hierarchy geometry,
-    just necessarily evaluated at two different points in the step** -- not two
-    independently-computed conditions that can drift apart on their own terms (that used to be
-    true, back when `should_spill` read a separately-computed Dijkstra basin-spill result --
-    see this module's own docstring). `should_spill` has to run early, against *last* step's
-    `lake_depth`, because `route_downstream` (which produces this step's `water_deposited`,
-    the very thing a lake needs to know its own *this-step* inflow) needs `flow_target` first,
-    which needs `should_spill` first. `resolve_lakes`'s own `is_spilling` runs afterward,
-    against the freshly-resolved *this-step* level. So a lake right at its rim can still show
-    `should_spill=True` while this same step's `is_spilling` says `False` (it hadn't quite
-    risen that last bit as of last step's snapshot) or vice versa -- a real, unavoidable
-    one-step lag, the same character every other persisted quantity in this codebase already
-    has, not a bug to chase further."""
+    `should_spill`, `Lake.is_spilling`, and `spill_target` are all published from the final
+    prognostic solve. The initial flow directions still use persisted water to route external
+    sources to their natural sinks; final directions then carry only overflow that leaves the
+    lake system."""
     points, elevation, prev_lake_depth, prev_glacier_depth, prev_channel_depth, prev_channel_width, prev_silt_depth, is_ocean, plates_in_order = _gather_nodes(world, node_cloud=node_cloud)
     n = len(points)
     if n <= FLOW_NEIGHBOR_COUNT:
@@ -1520,13 +1299,8 @@ def compute_hydrology(
     # every step.
 
     # The depression hierarchy is built once, here, from bare terrain alone (no water/inflow
-    # input needed -- see build_lake_hierarchy's own signature) so it can drive *both* this
-    # step's spill routing (immediately below -- see compute_spill_routing's own docstring for
-    # why lakes.py's own hierarchy, not a separate independently-computed basin-spill pass, is
-    # now the single source of truth for where a lake's overflow goes) and, later, this same
-    # step's lake water-balance resolution (`lakes.resolve_lakes`, once this step's physical water
-    # is routed) -- the exact same `forest` object threaded through both, rather than paying for a
-    # second, redundant `build_lake_hierarchy` call and risking the two disagreeing.
+    # input needed -- see build_lake_hierarchy's own signature) so the same tree determines
+    # source routing, water integration, spill targets and inspector state this step.
     #
     # With breaching on, the hierarchy's boundary edges use notched passage elevations, not
     # bare centres. A pit cheap enough to carve through this step then merges toward the ocean
@@ -1625,60 +1399,13 @@ def compute_hydrology(
     )
     ice_flow_target = _ice_surface_flow_target(elevation + new_glacier_depth, neighbor_idx, new_glacier_depth, ice_flow_target)
 
-    # A spilling lake's own surface area feeds extra erosive "water" in at its sink, on top of
-    # whatever ordinary precip/melt landed there this step -- see LAKE_BREACH_EROSION_
-    # COEFFICIENT's own comment for why. Sized from *last* step's lake extent (prev_lake_
-    # depth), the same one-step-lagged memory should_spill itself is already computed from.
-    lake_component_size = _lake_component_sizes(prev_lake_depth > LAKE_MIN_VISIBLE_DEPTH_M, neighbor_idx)
-    lake_breach_source = np.where(should_spill, LAKE_BREACH_EROSION_COEFFICIENT * lake_component_size, 0.0)
-
-    # ...and, just as importantly, at the governing rim's own lake-side member too
-    # (`rim_node_idx`, from `compute_spill_routing`) -- not only at the sink it's routed from.
-    # See LAKE_BREACH_EROSION_COEFFICIENT's own comment for why a sink-only surge leaves the
-    # true dam untouched whenever the lake's own rim happens to be the higher of the boundary
-    # edge's two members. `np.add.at` (not a plain indexed assignment) since a merged, multi-
-    # leaf lake's several original sinks can all share one governing rim node, and their
-    # surges should sum there rather than overwrite each other. Excludes the (real, if
-    # degenerate) case of a single-node lake whose only member is both its own sink *and* its
-    # own rim -- there the sink and rim terms would land on the exact same node, doubling the
-    # surge for no physical reason rather than covering two genuinely different points.
-    rim_breach_source = np.zeros(n)
-    spilling_idx = np.nonzero(should_spill)[0]
-    has_rim = (rim_node_idx[spilling_idx] >= 0) & (rim_node_idx[spilling_idx] != spilling_idx)
-    np.add.at(rim_breach_source, rim_node_idx[spilling_idx[has_rim]], lake_breach_source[spilling_idx[has_rim]])
-    is_rim_breach = rim_breach_source > 0.0
-
-    # River evaporation (see RIVER_EVAPORATION_* above) -- excluded, deliberately, at a
-    # should_spill node or its own rim: the breach term above models a lake's own
-    # concentrated overflow surge, sized purely from its surface area, not an ordinary trickle
-    # that should also lose a further fraction to evaporation in the very same step it's cut
-    # loose.
-    river_evap_fraction = river_evaporation_fraction(
-        temperature_at_nodes, years, is_ocean | should_spill | is_rim_breach
-    )
-
-    # No live consumer reads this legacy routing any more (issue #355 "Water units"): erosion,
-    # geology and river visibility use the physical routing, and lake silt reads the physical
-    # lake inflow (#363). It's kept as the fallback for caches without `discharge_m3_s`.
-    breach_surge = lake_breach_source + rim_breach_source
-    water_source = liquid_precip * dry_fraction + melt + breach_surge
-    flow_accum, water_deposited, breach_surge_accum = route_downstream(
-        elevation,
-        is_ocean,
-        flow_target,
-        water_source,
-        loss_fraction=river_evap_fraction,
-        erosion_only_source_amount=breach_surge,
-    )
-
-    # Physical water (issue #355 "Water units"). Lakes balance in real units (issue #297):
+    # Physical water (issue #355 "Water units"). Lakes use the prognostic real-unit balance
+    # introduced in RFC 0014 D1b (#588):
     # wet-area precipitation goes straight to lake storage, while dry-area Budyko runoff and
     # glacier melt are routed along flow paths. Dry runoff's transit loss scales with dry area;
     # meltwater keeps the existing full per-node loss. Their
     # through-flow is river discharge; settled external sources feed the lakes below at any
-    # temperature. Basins this water fills open their outlets within the step, which re-routes
-    # it (_spill_within_step, issue #503). The legacy routing above keeps the lagged spills:
-    # only the breach surge still reads it.
+    # temperature.
     meltwater_source_m3 = meltwater_m3_per_yr(melt, areas, years)
     routed_sources: dict[str, tuple[np.ndarray, np.ndarray]] = {}
 
@@ -1694,19 +1421,92 @@ def compute_hydrology(
         settled = [routed_sources[key][1] for key in ("dry_runoff", "meltwater", "wet_precip")]
         return np.sum(through, axis=0), np.sum(settled, axis=0)
 
-    flow_target, should_spill, filled_elevation, spill_target, through_m3, settled_m3 = _spill_within_step(
-        SpillBasins(
-            forest, lakes.governing_bodies(forest, elevation, prev_lake_depth, hypsometry), hypsometry, neighbor_idx,
-            prev_lake_depth * areas, evaporation_mm / 1000.0, keep=1.0 - dry_transit_loss,
-        ),
-        flow_target, should_spill, filled_elevation, spill_target,
-        route_sources,
-        fill_years,
+    # External sources must reach their natural leaf sinks before the prognostic solve. A
+    # previously full lake can redirect its sink along the outlet edge in `flow_target`; make
+    # each hierarchy leaf sink terminal for this source pass so persisted spill state cannot
+    # route this step's entire supply past its lake (#588).
+    source_targets = flow_target.copy()
+    leaf_sinks = np.asarray(
+        [
+            leaf.sink_node_idx for leaf in lakes.iter_all_lakes(forest)
+            if not leaf.children and not leaf.drains_at_floor
+        ],
+        dtype=np.int64,
     )
-    dry_through, dry_settled = routed_sources["dry_runoff"]
-    melt_through, melt_settled = routed_sources["meltwater"]
-    wet_through, wet_settled = routed_sources["wet_precip"]
+    leaf_sinks = leaf_sinks[(leaf_sinks >= 0) & (leaf_sinks < n)]
+    source_targets[leaf_sinks] = -1
+    through_m3, settled_m3 = route_sources(source_targets)
+    _, dry_settled = routed_sources["dry_runoff"]
+    _, melt_settled = routed_sources["meltwater"]
+    _, wet_settled = routed_sources["wet_precip"]
     external_supply = wet_settled + dry_settled + melt_settled
+
+    lake_climate = lakes.LakeClimate(
+        inflow_m3_per_yr=external_supply,
+        evaporation_m_per_yr=evaporation_mm / 1000.0,
+        external_supply_m3_per_yr=external_supply,
+        wet_precip_m3_per_yr=wet_settled,
+        dry_runoff_m3_per_yr=dry_settled,
+        meltwater_m3_per_yr=melt_settled,
+    )
+    lake_result = lakes.solve_lakes_prognostic(
+        forest, elevation, prev_lake_depth, years, lake_climate, hypsometry, is_ocean=is_ocean
+    )
+    flow_target = flow_target.copy()
+    flow_target[leaf_sinks] = -1
+    spilling_sinks = leaf_sinks[np.isin(leaf_sinks, np.flatnonzero(lake_result.should_spill))]
+    flow_target[spilling_sinks] = lake_result.spill_target[spilling_sinks]
+    should_spill = lake_result.should_spill
+    filled_elevation = lake_result.filled_elevation
+    spill_target = lake_result.spill_target
+    rim_node_idx = lake_result.rim_node_idx
+
+    # The erosion-only breach surge uses this step's resolved spill bodies. Its size remains
+    # lagged to the prior lake extent, but the spill state and rim now agree with discharge.
+    lake_component_size = _lake_component_sizes(prev_lake_depth > LAKE_MIN_VISIBLE_DEPTH_M, neighbor_idx)
+    lake_breach_source = np.where(should_spill, LAKE_BREACH_EROSION_COEFFICIENT * lake_component_size, 0.0)
+    rim_breach_source = np.zeros(n)
+    spilling_idx = np.nonzero(should_spill)[0]
+    has_rim = (rim_node_idx[spilling_idx] >= 0) & (rim_node_idx[spilling_idx] != spilling_idx)
+    np.add.at(rim_breach_source, rim_node_idx[spilling_idx[has_rim]], lake_breach_source[spilling_idx[has_rim]])
+    is_rim_breach = rim_breach_source > 0.0
+    river_evap_fraction = river_evaporation_fraction(
+        temperature_at_nodes, years, is_ocean | should_spill | is_rim_breach
+    )
+    breach_surge = lake_breach_source + rim_breach_source
+    water_source = liquid_precip * dry_fraction + melt + breach_surge
+    flow_accum, water_deposited, breach_surge_accum = route_downstream(
+        elevation,
+        is_ocean,
+        flow_target,
+        water_source,
+        loss_fraction=river_evap_fraction,
+        erosion_only_source_amount=breach_surge,
+    )
+
+    # Only volume that actually escaped a lake enters downstream discharge. Internal
+    # hierarchy transfers were already credited to their receiving basin by the solver.
+    overflow_source = lake_result.overflow_m3 / max(years, 1e-30)
+    overflow_through, overflow_settled = route_downstream(
+        elevation, is_ocean, flow_target, overflow_source, loss_fraction=transit_loss
+    )
+    overflow_settled[is_ocean] += overflow_source[is_ocean]
+    ledger = lake_result.ledger
+    lake_water_ledger = lakes.LakeStepLedger(
+        external_supply_m3=ledger.external_supply_m3,
+        evaporation_m3=ledger.evaporation_m3,
+        overflow_to_ocean_m3=float(overflow_settled[is_ocean].sum() * years),
+        overflow_out_m3=ledger.overflow_out_m3,
+        storage_change_m3=ledger.storage_change_m3,
+        internal_transfer_m3=ledger.internal_transfer_m3,
+        residual_m3=ledger.residual_m3,
+        wet_precip_m3=ledger.wet_precip_m3,
+        dry_runoff_m3=ledger.dry_runoff_m3,
+        meltwater_m3=ledger.meltwater_m3,
+    )
+    through_m3 += overflow_through
+    settled_m3 += overflow_settled
+    through_m3[leaf_sinks] = 0.0
 
     # is_river isn't known yet -- it needs this step's *final* lake_depth (below) to exclude
     # flooded nodes, so fields is built with a placeholder here and finished after.
@@ -1718,18 +1518,9 @@ def compute_hydrology(
         ice=ice,
         should_spill=should_spill,
     )
-    # Resolves the *same* forest built early (above, for spill routing) against this step's
-    # routed physical water -- not a second lakes.step_lakes call, which would rebuild the
-    # hierarchy from scratch a second time and risk it disagreeing with what spill routing just
-    # used (see lakes.resolve_lakes's own docstring).
-    # A spilling lake's sink passes its water on, so its inflow is the flow through the sink,
-    # not what settles there. That through-flow also carries on to any lake downstream
-    # without the upstream lake's own evaporation taken off. That overfeeds lake chains a
-    # little, but only through lakes already full and spilling. Subtracting it would need
-    # lakes resolved during routing (follow-up on #297).
-    # Ocean targets hold the land-to-ocean flux in `settled_m3`, since ocean nodes are sinks
-    # rather than members of the river routing graph. Expose that mouth discharge on the target
-    # too for shelf geology; river networks themselves still report their last land node.
+    # Ocean targets hold land-to-ocean flux in `settled_m3`, since ocean nodes are sinks rather
+    # than members of the river routing graph. Expose mouth discharge there for shelf geology;
+    # river networks themselves still report their last land node.
     fields.discharge_m3_s = np.where(is_ocean, settled_m3, through_m3) / SECONDS_PER_YEAR
     fields.breach_surge = breach_surge
     fields.breach_surge_accum = breach_surge_accum
@@ -1737,13 +1528,11 @@ def compute_hydrology(
     fields.lake_external_wet_precip_m3_per_yr = wet_settled
     fields.lake_external_dry_runoff_m3_per_yr = dry_settled
     fields.lake_external_meltwater_m3_per_yr = melt_settled
-    lake_climate = lakes.LakeClimate(
-        inflow_m3_per_yr=external_supply + np.where(should_spill, dry_through + melt_through + wet_through, 0.0),
-        evaporation_m_per_yr=evaporation_mm / 1000.0,
-    )
-    fields.lake_depth, fields.silt_deposited, fields.is_sea, fields.lake_events = lakes.resolve_lakes(
-        forest, elevation, prev_lake_depth, years, lake_climate, hypsometry
-    )
+    fields.lake_water_ledger = lake_water_ledger
+    fields.lake_depth = lake_result.lake_depth
+    fields.silt_deposited = lake_result.silt_deposited
+    fields.is_sea = lake_result.lake_is_sea
+    fields.lake_events = lake_result.events
     fields.lake_forest = forest
     fields.hypsometry = hypsometry
     # Record only (erosion.py folds `silt_deposited` into real `elevation` and caps the
@@ -2025,8 +1814,8 @@ def group_rivers(fields: HydrologyFields) -> list[RiverInfo]:
     as neither ocean nor lake even though the same chain reached real lake water two hops
     later). `"other"` is reserved for what it's meant to mean -- a genuine, still-unresolved dry
     interior sink (the chain runs out at `flow_target == -1` without ever crossing `is_ocean` or
-    `LAKE_MIN_VISIBLE_DEPTH_M`, not yet spilling) -- which `lakes.step_lakes` already grows into
-    a real lake node by node every step regardless of this classification; once that basin's own
+    `LAKE_MIN_VISIBLE_DEPTH_M`, not yet spilling) -- whose storage the prognostic lake solver
+    integrates every step regardless of this classification; once that basin's own
     water crosses `LAKE_MIN_VISIBLE_DEPTH_M` anywhere along the chain this same river correctly
     flips to `"lake"` on its own, no separate fix needed there.
 

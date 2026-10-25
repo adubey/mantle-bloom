@@ -627,7 +627,7 @@ def _lake_basin_summary(
     shape either way, since "a basin nonetheless" (the user's own framing) should read as the
     same kind of information, just without live water. `outlet_*`/`water_elevation_m`/
     `is_spilling` are read directly off `lake` itself (`max_depth`/
-    `current_water_elevation`/`is_spilling`, already resolved by `lakes.step_lakes` -- see
+    `current_water_elevation`/`is_spilling`, already resolved by `lakes.solve_lakes_prognostic` -- see
     `HydrologyFields.lake_forest`'s own docstring for why this must be the *same* `Lake` object
     that produced `fields.lake_depth`, not a hierarchy rebuilt from a different elevation/silt
     snapshot: the two can genuinely disagree on basin topology, which used to surface as a
@@ -673,7 +673,7 @@ def _lake_basin_summary(
     outlet_node = lake.outlet_node_idx
 
     water_elevation = lake.current_water_elevation if len(wet_members) > 0 else None
-    is_spilling = outlet_elev is not None and water_elevation is not None and water_elevation >= outlet_elev
+    is_spilling = bool(lake.is_spilling) if water_elevation is not None else False
 
     # Rivers "feeding into" this basin are matched against the full geometric catchment, not
     # just `display_members` -- a river can plausibly end anywhere in the basin (e.g. a dry

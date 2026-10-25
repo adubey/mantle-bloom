@@ -205,16 +205,526 @@ SHALLOW_EVAPORATION_BOOST = 0.3
 
 @dataclass(frozen=True)
 class LakeClimate:
-    """Real-unit water balance inputs for `resolve_lakes`, all with shape (N,).
+    """Real-unit water balance inputs, all with shape (N,).
 
-    `inflow_m3_per_yr` is the water arriving at each node this step: routed runoff that
-    settles there, or that passes through a spilling lake's sink. `evaporation_m_per_yr` is the
-    open-water evaporation rate at each node. A lake fills in years to centuries, far shorter
-    than a step, so each step it is resolved at its balanced level: the level whose flooded
-    area evaporates exactly its inflow, capped at its rim."""
+    `inflow_m3_per_yr` is the compatibility input used by `resolve_lakes` and direct fixtures.
+    The prognostic path reads disjoint settled sources from `external_supply_m3_per_yr`, falling
+    back to inflow for direct callers. Optional component arrays let the step ledger keep wet
+    precipitation, dry runoff and meltwater distinct. `evaporation_m_per_yr` is open-water
+    evaporation at each node."""
 
     inflow_m3_per_yr: np.ndarray
     evaporation_m_per_yr: np.ndarray
+    # External sources settled in each node's catchment before any inter-lake transfer.
+    # When absent, `inflow_m3_per_yr` is treated as external for direct callers and fixtures.
+    external_supply_m3_per_yr: np.ndarray | None = None
+    wet_precip_m3_per_yr: np.ndarray | None = None
+    dry_runoff_m3_per_yr: np.ndarray | None = None
+    meltwater_m3_per_yr: np.ndarray | None = None
+
+
+@dataclass(frozen=True)
+class LakeStepLedger:
+    """Integrated liquid-water budget for one hydrology step, all values in m³."""
+
+    external_supply_m3: float
+    evaporation_m3: float
+    overflow_to_ocean_m3: float
+    overflow_out_m3: float
+    storage_change_m3: float
+    internal_transfer_m3: float
+    residual_m3: float
+    wet_precip_m3: float = 0.0
+    dry_runoff_m3: float = 0.0
+    meltwater_m3: float = 0.0
+
+
+@dataclass(frozen=True)
+class LakeSolveResult:
+    lake_depth: np.ndarray
+    silt_deposited: np.ndarray
+    lake_is_sea: np.ndarray
+    events: list[LakeEvent]
+    ledger: LakeStepLedger
+    overflow_m3: np.ndarray
+    should_spill: np.ndarray
+    filled_elevation: np.ndarray
+    spill_target: np.ndarray
+    rim_node_idx: np.ndarray
+
+
+def _active_bodies(forest, elevation, depth, hypsometry):
+    """Return the current connected water bodies, using only current-step levels."""
+    return governing_bodies(forest, elevation, depth, hypsometry)
+
+
+def _ordered_spill_bodies(bodies, leaf_of_node, body_for_leaf, body_by_id, node_count):
+    """Topologically order active bodies by hierarchy receivers, breaking sibling cycles by
+    deterministic floor order so return transfers can be deferred to the next slice."""
+    active_ids = {id(body) for body in bodies}
+    outgoing: dict[int, int] = {}
+    indegree = {id(body): 0 for body in bodies}
+    for body in bodies:
+        target = body.outlet_target_idx
+        leaf_id = int(leaf_of_node[target]) if 0 <= target < node_count else -1
+        receiver = body_for_leaf.get(leaf_id)
+        if receiver is not None and id(receiver) != id(body) and id(receiver) in active_ids:
+            outgoing[id(body)] = id(receiver)
+            indegree[id(receiver)] += 1
+    ready = sorted(
+        (body for body in bodies if indegree[id(body)] == 0),
+        key=lambda body: (-body.floor_elevation, body.lake_id),
+    )
+    ordered = []
+    while ready:
+        body = ready.pop(0)
+        ordered.append(body)
+        receiver_id = outgoing.get(id(body))
+        if receiver_id is None:
+            continue
+        indegree[receiver_id] -= 1
+        if indegree[receiver_id] == 0:
+            ready.append(body_by_id[receiver_id])
+            ready.sort(key=lambda item: (-item.floor_elevation, item.lake_id))
+    if len(ordered) != len(bodies):
+        ordered_ids = {id(body) for body in ordered}
+        ordered.extend(sorted(
+            (body for body in bodies if id(body) not in ordered_ids),
+            key=lambda body: (-body.floor_elevation, body.lake_id),
+        ))
+    return ordered
+
+
+def _body_leaf_mapping(bodies, leaf_of_node):
+    body_for_leaf: dict[int, Lake] = {}
+    body_leaf_ids: dict[int, list[int]] = {}
+    for body in bodies:
+        ids = sorted({int(x) for x in leaf_of_node[body.members] if x >= 0})
+        body_leaf_ids[id(body)] = ids
+        for leaf_id in ids:
+            body_for_leaf[leaf_id] = body
+    return body_for_leaf, body_leaf_ids
+
+
+def _record_body_transitions(previous_bodies, current_bodies, events, seen_events):
+    previous_ids = {id(body) for body in previous_bodies}
+    current_ids = {id(body) for body in current_bodies}
+    for body in current_bodies:
+        if id(body) not in previous_ids and body.children:
+            key = (id(body), "merge")
+            if key not in seen_events:
+                events.append(LakeEvent("merge", len(body.members), body.min_depth, len(body.children)))
+                seen_events.add(key)
+    for body in previous_bodies:
+        if id(body) not in current_ids and body.children:
+            key = (id(body), "split")
+            if key not in seen_events:
+                events.append(LakeEvent("split", len(body.members), body.min_depth, len(body.children)))
+                seen_events.add(key)
+
+
+@dataclass
+class _PrognosticAccounting:
+    evaporation_total: float
+    ocean_overflow_total: float
+    overflow_out_total: float
+    internal_transfer_total: float
+    external_used_total: float
+    wet_precip_total: float
+    dry_runoff_total: float
+    meltwater_total: float
+    integrated_supply_at_leaf: np.ndarray
+    spilling_ids: set[int]
+    overflow_by_outlet: np.ndarray
+    deferred: dict[int, float]
+
+
+def _source_volume(rates, members, dt_step):
+    return 0.0 if rates is None or dt_step <= 0.0 else float(np.maximum(rates[members], 0.0).sum() * dt_step)
+
+
+def _integrate_body_volume(available, members, cap_level, dry_level, dt_step, evaporation, hypsometry):
+    """Implicitly integrate storage against level-dependent evaporation for one slice."""
+    if len(members) == 1:
+        node = int(members[0])
+        area = float(hypsometry.area_m2[node])
+        z = float(hypsometry.elevation[node])
+        relief = float(hypsometry.relief_m[node])
+        evap = float(evaporation[node])
+        if relief <= 0.0:
+            cap_depth = max(cap_level - z, 0.0)
+            cap_volume = area * cap_depth
+            cap_evaporation = area * evap * dt_step if cap_level > z else 0.0
+            surplus = available - cap_volume - cap_evaporation
+            if surplus > 0.0:
+                return cap_volume, cap_evaporation, surplus, cap_level
+            if available <= cap_evaporation:
+                return 0.0, max(available, 0.0), 0.0, z
+            volume = available - cap_evaporation
+            return volume, cap_evaporation, 0.0, z + volume / area
+
+        cap_wet = float(np.clip((cap_level - (z - relief)) / (2.0 * relief), 0.0, 1.0))
+        if cap_level >= z + relief:
+            cap_wet = 1.0
+        cap_depth = max(cap_level - z, 0.0) if cap_wet >= 1.0 else relief * cap_wet * cap_wet
+        cap_volume = area * cap_depth
+        cap_evaporation = area * evap * cap_wet * (1.0 + SHALLOW_EVAPORATION_BOOST * (1.0 - cap_wet)) * dt_step
+        surplus = available - cap_volume - cap_evaporation
+        if surplus > 0.0:
+            return cap_volume, cap_evaporation, surplus, cap_level
+
+        q = max(available, 0.0) / area
+        full_budget = relief + evap * dt_step
+        if cap_level >= z + relief and q >= full_budget:
+            level = z + q - evap * dt_step
+            volume = area * max(level - z, 0.0)
+            return volume, area * evap * dt_step, 0.0, level
+        alpha = relief - evap * dt_step * SHALLOW_EVAPORATION_BOOST
+        beta = evap * dt_step * (1.0 + SHALLOW_EVAPORATION_BOOST)
+        discriminant = max(beta * beta + 4.0 * alpha * q, 0.0)
+        denominator = beta + float(np.sqrt(discriminant))
+        wet = q / beta if abs(alpha) <= 1e-15 and beta > 0.0 else (
+            2.0 * q / denominator if denominator > 0.0 else 0.0
+        )
+        wet = min(max(wet, 0.0), cap_wet)
+        level = z - relief + 2.0 * relief * wet
+        volume = area * relief * wet * wet
+        evaporated = area * evap * wet * (1.0 + SHALLOW_EVAPORATION_BOOST * (1.0 - wet)) * dt_step
+        return volume, min(evaporated, available), 0.0, level
+
+    cap_volume = hypsometry.volume(cap_level, members) if np.isfinite(cap_level) else np.inf
+    z = hypsometry.elevation[members]
+    relief = hypsometry.relief_m[members]
+    area = hypsometry.area_m2[members]
+    evap_rate = evaporation[members]
+
+    def budget(level):
+        above_low = np.maximum(level - (z - relief), 0.0)
+        depth = np.divide(
+            above_low * above_low, 4.0 * relief, out=np.zeros_like(z), where=relief > 0.0
+        )
+        depth = np.where(level >= z + relief, np.maximum(level - z, 0.0), depth)
+        wet = np.where(
+            level >= z + relief,
+            (level > z - relief).astype(float),
+            np.clip(np.divide(level - (z - relief), 2.0 * relief, out=np.zeros_like(z), where=relief > 0.0), 0.0, 1.0),
+        )
+        volume = float(np.dot(depth, area))
+        evaporation_rate = float(np.dot(area * wet * (1.0 + SHALLOW_EVAPORATION_BOOST * (1.0 - wet)), evap_rate))
+        wet_area = float(np.dot(area, wet))
+        partial = (relief > 0.0) & (wet > 0.0) & (wet < 1.0)
+        d_wet = np.divide(1.0, 2.0 * relief, out=np.zeros_like(relief), where=partial)
+        evaporation_slope = float(np.dot(
+            area * evap_rate * (1.0 + SHALLOW_EVAPORATION_BOOST - 2.0 * SHALLOW_EVAPORATION_BOOST * wet),
+            d_wet,
+        ))
+        return volume, evaporation_rate * dt_step, wet_area + evaporation_slope * dt_step
+
+    _, cap_evaporation, _ = budget(cap_level)
+    surplus = available - cap_volume - cap_evaporation
+    if surplus > 0.0:
+        return cap_volume, cap_evaporation, surplus, cap_level
+    low, high = dry_level, cap_level
+    level = float(np.clip(dry_level + available / max(float(area.sum()), 1.0), low, high))
+    volume, evaporated, slope = budget(level)
+    for _ in range(8):
+        residual = volume + evaporated - available
+        if abs(residual) <= 1e-10 * max(available, 1.0):
+            break
+        if residual > 0.0:
+            high = level
+        else:
+            low = level
+        candidate = level - residual / slope if slope > 0.0 else np.nan
+        level = candidate if low < candidate < high else 0.5 * (low + high)
+        volume, evaporated, slope = budget(level)
+    if abs(volume + evaporated - available) > 1e-8 * max(available, 1.0):
+        for _ in range(32):
+            level = 0.5 * (low + high)
+            volume, evaporated, _ = budget(level)
+            if volume + evaporated > available:
+                high = level
+            else:
+                low = level
+        level = 0.5 * (low + high)
+        volume, evaporated, _ = budget(level)
+    return volume, min(evaporated, available), 0.0, level
+
+
+def _advance_prognostic_body(
+    body,
+    dt_step,
+    rates,
+    climate,
+    evaporation,
+    depth,
+    prev_lake_depth,
+    hypsometry,
+    node_area_km2,
+    node_count,
+    is_ocean,
+    accounting,
+    leaves,
+    body_leaf_ids,
+    leaf_of_node,
+    body_for_leaf,
+    pending,
+    processed,
+):
+    """Advance one active body and book its evaporation, storage and spill transfers."""
+    members = body.members
+    if len(members) == 1:
+        external_rate = float(rates[members[0]]) if dt_step > 0.0 else 0.0
+    else:
+        external_rate = float(rates[members].sum()) if dt_step > 0.0 else 0.0
+    pending_volume = pending.pop(id(body), 0.0)
+    input_volume = external_rate * dt_step + pending_volume
+    accounting.external_used_total += external_rate * dt_step
+    accounting.wet_precip_total += _source_volume(climate.wet_precip_m3_per_yr, members, dt_step)
+    accounting.dry_runoff_total += _source_volume(climate.dry_runoff_m3_per_yr, members, dt_step)
+    accounting.meltwater_total += _source_volume(climate.meltwater_m3_per_yr, members, dt_step)
+    body_leafs = body_leaf_ids[id(body)]
+    if body_leafs and external_rate > 0.0 and dt_step > 0.0:
+        total_rate = float(rates[members].sum())
+        if total_rate > 0.0:
+            for leaf_id in body_leafs:
+                leaf = leaves[leaf_id]
+                accounting.integrated_supply_at_leaf[leaf_id] += (
+                    external_rate * dt_step * float(rates[leaf.members].sum()) / total_rate
+                )
+    if input_volume <= 0.0 and not np.any(depth[members] > 0.0):
+        body.current_water_elevation = hypsometry.dry_level(members)
+        return
+    stored = (
+        float(depth[members[0]] * hypsometry.area_m2[members[0]])
+        if len(members) == 1
+        else float((depth[members] * hypsometry.area_m2[members]).sum())
+    )
+    _, tier_depth = _classify_tier(members, prev_lake_depth, node_area_km2)
+    rim_level = body.max_depth if body.max_depth is not None else np.inf
+    cap_level = min(rim_level, body.floor_elevation + tier_depth)
+    dry_level = hypsometry.dry_level(members)
+    if body.drains_at_floor:
+        cap_level = dry_level
+    available = stored + input_volume
+    new_volume, evap_volume, overflow, new_level = _integrate_body_volume(
+        available, members, cap_level, dry_level, dt_step, evaporation, hypsometry
+    )
+    accounting.evaporation_total += evap_volume
+    if len(members) == 1:
+        node = int(members[0])
+        z = float(hypsometry.elevation[node])
+        relief = float(hypsometry.relief_m[node])
+        above_low = max(new_level - (z - relief), 0.0)
+        depth[node] = (
+            max(new_level - z, 0.0)
+            if new_level >= z + relief
+            else above_low * above_low / (4.0 * relief) if relief > 0.0 else 0.0
+        )
+    else:
+        depth[members] = hypsometry.mean_depth(new_level, members)
+    body.current_water_elevation = new_level
+    body.is_spilling = overflow > 1e-9
+    if body.is_spilling:
+        accounting.spilling_ids.add(id(body))
+    if overflow <= 0.0:
+        return
+    target = body.outlet_target_idx
+    traversed = {id(body)}
+    while True:
+        leaf_id = int(leaf_of_node[target]) if 0 <= target < node_count else -1
+        receiver = body_for_leaf.get(leaf_id)
+        if receiver is None or receiver is body:
+            break
+        if id(receiver) in traversed:
+            # Depth caps can bind below a sibling saddle. In that case two capped siblings
+            # cannot merge, and their outlet edges form a closed hierarchy cycle. Export this
+            # cap surplus once instead of circulating it through zero-duration flush passes.
+            break
+        receiver_is_capped = id(receiver) in accounting.spilling_ids
+        receiver_rim = receiver.max_depth if receiver.max_depth is not None else np.inf
+        _, receiver_tier_depth = _classify_tier(receiver.members, prev_lake_depth, node_area_km2)
+        receiver_cap = min(receiver_rim, receiver.floor_elevation + receiver_tier_depth)
+        receiver_dry = hypsometry.dry_level(receiver.members)
+        if receiver.drains_at_floor:
+            receiver_cap = receiver_dry
+        artificial_cap = receiver.max_depth is None or receiver_cap < receiver_rim - 1e-6 or receiver.drains_at_floor
+        if id(receiver) not in processed or not receiver_is_capped or not artificial_cap:
+            if id(receiver) in processed:
+                accounting.deferred[leaf_id] = accounting.deferred.get(leaf_id, 0.0) + overflow
+            else:
+                pending[id(receiver)] = pending.get(id(receiver), 0.0) + overflow
+            accounting.internal_transfer_total += overflow
+            if leaf_id >= 0:
+                accounting.integrated_supply_at_leaf[leaf_id] += overflow
+            return
+        traversed.add(id(receiver))
+        accounting.internal_transfer_total += overflow
+        if leaf_id >= 0:
+            accounting.integrated_supply_at_leaf[leaf_id] += overflow
+        target = receiver.outlet_target_idx
+    accounting.overflow_out_total += overflow
+    if 0 <= target < node_count:
+        accounting.overflow_by_outlet[target] += overflow
+        if is_ocean is not None and bool(is_ocean[target]):
+            accounting.ocean_overflow_total += overflow
+
+
+def solve_lakes_prognostic(
+    forest: list[Lake],
+    elevation: np.ndarray,
+    prev_lake_depth: np.ndarray,
+    years: float,
+    climate: LakeClimate,
+    hypsometry: CellHypsometry,
+    *,
+    substeps: int = 1,
+    is_ocean: np.ndarray | None = None,
+) -> LakeSolveResult:
+    """Integrate lake storage over this timestep, promoting and splitting bodies as water
+    crosses hierarchy saddles (#588).
+
+    Each substep advances physical volume, limits evaporation to available liquid water, and
+    sends only water above a body's active cap to the leaf selected by the hierarchy outlet.
+    The uniform temporal partition is deterministic. An implicit volume update keeps the fast
+    evaporation response stable when one slice spans thousands of years, while spill cascades
+    settle through hierarchy receivers rather than repeated terrain-routing rounds.
+    """
+    n = len(elevation)
+    depth = np.asarray(prev_lake_depth, dtype=float).copy()
+    if n == 0 or years <= 0.0 or not forest:
+        zero = np.zeros(n)
+        return LakeSolveResult(
+            depth, zero, np.zeros(n, dtype=bool), [], LakeStepLedger(0, 0, 0, 0, 0, 0, 0),
+            zero.copy(), np.zeros(n, dtype=bool), np.asarray(elevation).copy(),
+            np.full(n, -1, dtype=np.int64), np.full(n, -1, dtype=np.int64),
+        )
+
+    for lake in iter_all_lakes(forest):
+        lake.is_spilling = False
+
+    steps = max(1, int(substeps))
+    dt = years / steps
+    rates = climate.external_supply_m3_per_yr
+    if rates is None:
+        rates = climate.inflow_m3_per_yr
+    rates = np.maximum(np.asarray(rates, dtype=float), 0.0)
+    evaporation = np.maximum(np.asarray(climate.evaporation_m_per_yr, dtype=float), 0.0)
+    node_area_km2 = (4.0 * np.pi * PLANET_RADIUS_KM**2) / max(n, 1)
+    leaves = [lake for lake in iter_all_lakes(forest) if not lake.children]
+    leaf_of_node = np.full(n, -1, dtype=np.int64)
+    for i, leaf in enumerate(leaves):
+        leaf_of_node[leaf.members] = i
+
+    total_initial = float((depth * hypsometry.area_m2).sum())
+    accounting = _PrognosticAccounting(
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, np.zeros(len(leaves)), set(), np.zeros(n), {}
+    )
+    events: list[LakeEvent] = []
+    seen_events: set[tuple[int, str]] = set()
+
+    for substep in range(steps + max(1, len(leaves))):
+        dt_step = dt if substep < steps else 0.0
+        bodies = _active_bodies(forest, elevation, depth, hypsometry)
+        body_by_id = {id(body): body for body in bodies}
+        body_for_leaf, body_leaf_ids = _body_leaf_mapping(bodies, leaf_of_node)
+        pending: dict[int, float] = {}
+        for leaf_id, volume in accounting.deferred.items():
+            receiver = body_for_leaf.get(leaf_id)
+            if receiver is not None:
+                pending[id(receiver)] = pending.get(id(receiver), 0.0) + volume
+        accounting.deferred = {}
+        # Hierarchy outlets select receivers; terrain flow_target is used later for exported
+        # discharge only. Sibling cycles defer return flow until the next integration slice.
+        ordered_bodies = _ordered_spill_bodies(bodies, leaf_of_node, body_for_leaf, body_by_id, n)
+        processed: set[int] = set()
+        for body in ordered_bodies:
+            if dt_step <= 0.0 and pending.get(id(body), 0.0) <= 0.0:
+                processed.add(id(body))
+                continue
+            _advance_prognostic_body(
+                body, dt_step, rates, climate, evaporation, depth, prev_lake_depth, hypsometry,
+                node_area_km2, n, is_ocean, accounting, leaves, body_leaf_ids,
+                leaf_of_node, body_for_leaf, pending, processed,
+            )
+            processed.add(id(body))
+
+        next_bodies = _active_bodies(forest, elevation, depth, hypsometry)
+        _record_body_transitions(body_by_id.values(), next_bodies, events, seen_events)
+        if substep + 1 >= steps and not accounting.deferred:
+            break
+
+    # A hierarchy cycle can survive the finite zero-duration receiver flush (for example a
+    # depth-capped endorheic sibling pair). Keep its final pass-on in the physical overflow
+    # field and ledger rather than dropping the pending volume at the end of the solve.
+    for leaf_id, volume in accounting.deferred.items():
+        sink = leaves[leaf_id].sink_node_idx
+        accounting.overflow_out_total += volume
+        if 0 <= sink < n:
+            accounting.overflow_by_outlet[sink] += volume
+            if is_ocean is not None and bool(is_ocean[sink]):
+                accounting.ocean_overflow_total += volume
+    accounting.deferred.clear()
+
+    lake_depth = np.zeros(n)
+    lake_is_sea = np.zeros(n, dtype=bool)
+    silt_deposited = np.zeros(n)
+    final_bodies = _active_bodies(forest, elevation, depth, hypsometry)
+    should_spill = np.zeros(n, dtype=bool)
+    filled_elevation = np.asarray(elevation, dtype=float).copy()
+    spill_target = np.full(n, -1, dtype=np.int64)
+    rim_node_idx = np.full(n, -1, dtype=np.int64)
+    final_body_leaf_ids: dict[int, list[int]] = {}
+    for body in final_bodies:
+        final_body_leaf_ids[id(body)] = sorted({int(x) for x in leaf_of_node[body.members] if x >= 0})
+        wet_members = body.members[depth[body.members] > 0.0]
+        body.current_water_elevation = (
+            float(np.max(hypsometry.level_from_depth(depth[wet_members], wet_members)))
+            if len(wet_members) else hypsometry.dry_level(body.members)
+        )
+        body.is_spilling = id(body) in accounting.spilling_ids
+        sinks = leaf_sinks(body)
+        if body.max_depth is not None:
+            filled_elevation[sinks] = body.max_depth
+        else:
+            filled_elevation[sinks] = np.inf
+        spill_target[sinks] = body.outlet_target_idx
+        rim_node_idx[sinks] = body.outlet_node_idx
+        if body.is_spilling:
+            should_spill[sinks] = True
+        lake_depth[body.members] = depth[body.members]
+        is_sea, _ = _classify_tier(body.members, prev_lake_depth, node_area_km2)
+        wet_fraction = hypsometry.wet_fraction(body.current_water_elevation, body.members)
+        wet = body.members[wet_fraction > 0.0]
+        if is_sea:
+            lake_is_sea[wet] = True
+        if len(wet):
+            supply = sum(accounting.integrated_supply_at_leaf[i] for i in final_body_leaf_ids[id(body)])
+            wet_area = float((hypsometry.area_m2[wet] * wet_fraction[wet_fraction > 0.0]).sum())
+            rise = SILT_ACCUMULATION_COEFFICIENT * supply / max(wet_area, 1.0)
+            silt_deposited[wet] = np.minimum(rise * wet_fraction[wet_fraction > 0.0], depth[wet])
+
+    final_storage = float((lake_depth * hypsometry.area_m2).sum())
+    storage_change = final_storage - total_initial
+    # External supply and internal transfers are both included at their receiving body; the
+    # global residual excludes internal transfers because each is debited and credited once.
+    residual = accounting.external_used_total - accounting.evaporation_total - accounting.overflow_out_total - storage_change
+    ledger = LakeStepLedger(
+        external_supply_m3=accounting.external_used_total,
+        evaporation_m3=accounting.evaporation_total,
+        overflow_to_ocean_m3=accounting.ocean_overflow_total,
+        overflow_out_m3=accounting.overflow_out_total,
+        storage_change_m3=storage_change,
+        internal_transfer_m3=accounting.internal_transfer_total,
+        residual_m3=residual,
+        wet_precip_m3=accounting.wet_precip_total,
+        dry_runoff_m3=accounting.dry_runoff_total,
+        meltwater_m3=accounting.meltwater_total,
+    )
+    return LakeSolveResult(
+        lake_depth, silt_deposited, lake_is_sea, events, ledger,
+        accounting.overflow_by_outlet, should_spill, filled_elevation, spill_target, rim_node_idx,
+    )
 
 
 def lake_evaporation_m3_per_yr(level: float, idx: np.ndarray, hyps: "CellHypsometry", climate: LakeClimate) -> float:
