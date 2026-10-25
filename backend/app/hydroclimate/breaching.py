@@ -126,13 +126,18 @@ class WaterBalance:
     `loss_fraction` is the in-transit river evaporation each node takes from water passing
     through it (`hydrology.river_transit_loss_fraction`, independent of step length). The gate routes runoff to each pit
     along steepest descent, losing that fraction at every node on the way, the same rule
-    `hydrology.route_downstream` applies when lakes are balanced. Glacier melt isn't included:
+    `hydrology.route_downstream` applies when lakes are balanced. `dry_fraction` applies
+    Budyko runoff and transit loss only over the dry share of a partly flooded cell;
+    `direct_supply_m3_per_yr` is the wet-cell precipitation that joins the lake directly and
+    bypasses land runoff and transit loss (#587). Glacier melt isn't included:
     it's computed after breaching, from the ice routing that breaching feeds."""
 
     precipitation_mm: np.ndarray
     temperature_c: np.ndarray
     area_m2: np.ndarray
     loss_fraction: np.ndarray | None = None
+    dry_fraction: np.ndarray | None = None
+    direct_supply_m3_per_yr: np.ndarray | None = None
 
 
 def open_water_evaporation_mm(temperature_c: np.ndarray) -> np.ndarray:
@@ -455,8 +460,12 @@ def _overflows(
     sink, carried = _routed_to_sinks(elevation, neighbor_idx, is_ocean, 1.0 - loss)
     area = np.asarray(water.area_m2, dtype=float)
     evaporation_mm = open_water_evaporation_mm(water.temperature_c)
-    runoff_m3 = runoff_mm(water.precipitation_mm, evaporation_mm) / 1000.0 * area
-    inflow = np.bincount(sink, weights=runoff_m3 * carried, minlength=n)
+    dry = np.ones(n) if water.dry_fraction is None else np.clip(np.asarray(water.dry_fraction), 0.0, 1.0)
+    runoff_m3 = runoff_mm(water.precipitation_mm, evaporation_mm) / 1000.0 * area * dry
+    direct = np.zeros(n) if water.direct_supply_m3_per_yr is None else np.asarray(water.direct_supply_m3_per_yr)
+    # Direct lake rain is associated with its drainage leaf, but does not cross dry land or
+    # incur transit loss on its way there.
+    inflow = np.bincount(sink, weights=runoff_m3 * carried + direct, minlength=n)
     open_water_m3 = ENDORHEIC_DEMAND_FACTOR * evaporation_mm / 1000.0 * area
 
     spill_level, exit_node = _spill_exits(chain, sink)
