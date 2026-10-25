@@ -475,8 +475,21 @@ and report the values used.
 | RFC 0010 | `PLUME_CRATON_WEAKENING` | Strength reduction on heated cells, and the "heated counts as weak" cut rule | Sweep 0.5–1.0; the product stays clamped to [0, 1] |
 | RFC 0010 | Plume-event schedule (read-only) | Key split decisions on event index, `born_years`, position, head volume and oceanic/continental branch | Event semantics are owned here; do not re-derive plume timing. Branch agreement target is in the timestep acceptance |
 | RFC 0010 | `PLUME_HEAD_STRESS` | Background split-eligibility bump only | Provisional `internal_stress` units; must never be presented as local loading (RFC 0010 forbids inferring local stress from `internal_stress`) |
-| RFC 0012 | Plateau excess thickness | Consume `plateau_crust_m` plus E as a ΔGPE/buoyancy input | Read-only; physical units (N/m) at the interface |
+| RFC 0012 | Plateau excess thickness | Derive a column ΔGPE from plume-built `plateau_crust_m`, total layer thicknesses and densities, relative to a declared compensation/reference level; project it onto the boundary | Read-only plume/material fields; the resulting load is in N/m. Thickness by itself is not a force |
 | RFC 0012 | `PLUME_HEAD_STRESS` | Nothing yet | The `internal_stress` bump is not a force response and stays out of the motion solve until re-expressed as a bounded (N/m) response or retired |
+
+**RFC 0012 boundary learned from #547 and #535.** Issue #547 is narrowed to removing the
+merge path's angular-momentum rate assignment; its matched merge-only replay is the check
+for that scope. The earlier combined merge-and-split experiment changed boundary
+classification on the first solve after a split, and stored rates are read by boundary
+classification and topology gates. Split-rate assignment therefore remains outside #547
+and is deferred to RFC 0010's split work; this is not evidence that every topology rate
+assignment can be removed together. Keep plume events and `PLUME_HEAD_STRESS` on the
+RFC 0010 eligibility/trigger side of the interface, not as motion loads. RFC 0012's G3
+transferability screen also used prescribed synthetic rift-strength profiles: it did not
+derive that strength from `World` state or validate a production plume-load law. Treat the
+column ΔGPE coupling above as a candidate physical interface until its World-derived inputs
+and plume response are separately checked.
 
 ## Detailed design (provisional touchpoints)
 
