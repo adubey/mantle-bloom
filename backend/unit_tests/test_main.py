@@ -9,6 +9,7 @@ import time
 import av
 import numpy as np
 import pytest
+import re
 from fastapi.testclient import TestClient
 from PIL import Image
 from app.lithosphere_plate import generate_plates
@@ -1963,6 +1964,18 @@ def test_generate_debug_applies_dialog_name_and_public_flag(client):
     listed = raw.get("/public/worlds").json()["worlds"]
     assert [w["world_id"] for w in listed] == [wid]
     assert raw.delete(f"/worlds/{wid}").status_code == 200
+
+
+def test_suggest_name_returns_an_unused_exoplanet_name(client):
+    raw = _raw_client()
+    first = raw.get("/worlds/suggest-name").json()["name"]
+    assert re.fullmatch(r".+ [b-g]", first), first
+    raw.post("/worlds", json={"name": first})
+    for _ in range(5):
+        again = raw.get("/worlds/suggest-name").json()["name"]
+        assert re.fullmatch(r".+ [b-g]", again), again
+        assert again != first
+    raw.delete(f"/worlds/{raw.get('/worlds').json()['worlds'][0]['world_id']}")
 
 
 def test_registry_crud_public_listing_and_removed_old_routes(client, saved_world):

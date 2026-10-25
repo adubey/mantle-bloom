@@ -72,6 +72,9 @@ so saves carry no registry information:
 
 - `GET /worlds` returns every record: metadata plus, when populated, the world
   summary and run state.
+- `GET /worlds/suggest-name` returns `{"name"}`: an unused exoplanet-style pick
+  for the Generate World dialog to offer up front (advisory only; creation still
+  enforces uniqueness).
 - `POST /worlds` with `{"name"?, "is_public"?}` creates an empty record
   (`201`); the record holds no world until Generate or Load populates it. An
   omitted name defaults to an exoplanet-style pick (a star name plus a lowercase

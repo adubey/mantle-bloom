@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./index.css";
 import {
-  animateWorld, createWorld, deleteWorld, fetchDebugScenarios, fetchEarthquakes, fetchElevationPointAt, fetchFaults, fetchLakes, fetchNodeAt, fetchPlates, fetchPointSample, fetchRivers, fetchRunState, fetchStats, fetchStatsHistory, fetchVolcanoes, fetchWorldSummary, fetchWorlds, generateDebugWorld, generateWorld, patchWorld, renderWorld, setRunState, stopAnimation, updateControls,
+  animateWorld, createWorld, deleteWorld, fetchDebugScenarios, fetchEarthquakes, fetchElevationPointAt, fetchFaults, fetchLakes, fetchNodeAt, fetchPlates, fetchPointSample, fetchRivers, fetchRunState, fetchStats, fetchStatsHistory, fetchSuggestedName, fetchVolcanoes, fetchWorldSummary, fetchWorlds, generateDebugWorld, generateWorld, patchWorld, renderWorld, setRunState, stopAnimation, updateControls,
   RunStateRefused, TUNING_MULTIPLIER_KEYS,
 } from "./api";
 import type {
@@ -412,10 +412,7 @@ export default function App() {
   const [worldId, setWorldId] = useState<WorldId | null>(() => worldIdFromSearch(window.location.search));
   const worldIdRef = useRef<WorldId | null>(worldId);
   worldIdRef.current = worldId;
-  // Shares one on-demand world resolution between rapid Generate confirmations
-  // (#595 review): without it a double-click with no selection yet could mint
-  // two worlds, one per confirmation, before either selects.
-  const ensureInflightRef = useRef<Promise<WorldId> | null>(null);
+
   const [summary, setSummary] = useState<WorldSummary | null>(null);
   const [renderData, setRenderData] = useState<RenderResponse | null>(null);
   // Plate Inspector's own data (see PlateInspector.tsx) -- true-frame/rotation-independent,
@@ -1132,21 +1129,36 @@ export default function App() {
     shownRevisionRef.current = undefined;
   }, []);
 
-  // Opens the Generate World dialog pre-filled from the selection, if any: the
-  // dialog is where a planet gets (re)named and published (#597). A blank name
-  // keeps the record's name -- the automatic exoplanet pick for a fresh world.
+  // Opens the Generate World dialog for a brand-new planet: Add always adds a
+  // world and never replaces the current one, so the dialog starts blank and
+  // public, with an unused exoplanet pick filled in once it arrives. The
+  // suggestion only lands if the user hasn't typed something meanwhile.
   const openGenerateDialog = useCallback(() => {
-    const selected = worldIdRef.current ? worlds.find((w) => w.world_id === worldIdRef.current) : undefined;
-    setGenerateName(selected?.name ?? "");
-    setGeneratePublic(selected?.is_public ?? true);
+    setGenerateName("");
+    setGeneratePublic(true);
     setShowGenerateDialog(true);
-  }, [worlds]);
+    fetchSuggestedName().then(
+      ({ name }) => setGenerateName((prev) => (prev === "" ? name : prev)),
+      () => {},
+    );
+  }, []);
+
+  // Shares one world creation between rapid Generate confirmations: without it
+  // a double-confirm could mint two worlds (and orphan one) before either selects.
+  const createInflightRef = useRef<Promise<WorldId> | null>(null);
 
   const createAndSelectWorld = useCallback(async (): Promise<WorldId> => {
-    const record = await createWorld();
-    await refreshWorlds();
-    selectWorld(record.world_id);
-    return record.world_id;
+    if (!createInflightRef.current) {
+      createInflightRef.current = (async (): Promise<WorldId> => {
+        const record = await createWorld();
+        await refreshWorlds();
+        selectWorld(record.world_id);
+        return record.world_id;
+      })().finally(() => {
+        createInflightRef.current = null;
+      });
+    }
+    return createInflightRef.current;
   }, [refreshWorlds, selectWorld]);
 
   // Resolves the world to generate into on demand (#592, #597): the selection
@@ -1154,13 +1166,11 @@ export default function App() {
   // user didn't pick, since the dialog's name would rename (and the generate
   // would overwrite) it by surprise. Runs only from an explicit generate
   // action, never on page load, so merely opening the app creates nothing.
+  // Resolves the world File > Load needs: the selection when one is open,
+  // otherwise a fresh world. (The Generate dialog no longer uses this: Add
+  // always mints its own world.)
   const ensureSelectedWorld = useCallback(async (): Promise<WorldId> => {
-    if (!ensureInflightRef.current) {
-      ensureInflightRef.current = ensureWorldId(worldIdRef.current, createAndSelectWorld).finally(() => {
-        ensureInflightRef.current = null;
-      });
-    }
-    return ensureInflightRef.current;
+    return ensureWorldId(worldIdRef.current, createAndSelectWorld);
   }, [createAndSelectWorld]);
 
   // The Controls modal's World tab: renaming and publishing apply to the
@@ -1219,9 +1229,9 @@ export default function App() {
     setGenProgress(undefined);
     setError(null);
     try {
-      // No selection yet (a fresh server holds no worlds): mint the first world
-      // now (#592) instead of failing against a null id.
-      id = await ensureSelectedWorld();
+      // Add always adds a world and never replaces the current one: mint a fresh
+      // record even when one is already selected.
+      id = await createAndSelectWorld();
       // The "Human-made"/"Premade worlds" tabs' sketch rides along as a bare base64 payload --
       // strip the data URL's `data:image/png;base64,` prefix generateWorld's caller
       // (SketchEditor's toDataURL / the file-picker's FileReader / premadeWorlds.ts) all produce.
@@ -1286,7 +1296,7 @@ export default function App() {
     }
   }, [
     seed, cratonsFirst, syntheticRelief, continentalPercent, landPercent, axialTiltDeg, detail, fluidDensity, initialSoilMaturityPercent, autoPlates, numPlates, voronoiPoints,
-    generateMode, sketchImageDataUrl, premadeWorldId, debugScenario, projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats, ensureSelectedWorld, generateName, generatePublic, refreshWorlds,
+    generateMode, sketchImageDataUrl, premadeWorldId, debugScenario, projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats, createAndSelectWorld, generateName, generatePublic, refreshWorlds,
   ]);
 
   // Restores the selected world's map after a browser refresh or a world
@@ -2237,28 +2247,6 @@ export default function App() {
           >
             <h2 style={{ fontSize: 16, marginTop: 0, marginBottom: 12 }}>Generate World</h2>
 
-            <label style={{ display: "block", marginBottom: 12 }}>
-              Name
-              <input
-                type="text"
-                value={generateName}
-                onChange={(e) => setGenerateName(e.target.value)}
-                placeholder="Leave blank for an automatic name"
-                disabled={busy}
-                style={{ width: "100%", marginTop: 4, boxSizing: "border-box" }}
-              />
-            </label>
-            <label style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 16, fontSize: 12 }}>
-              <input
-                type="checkbox"
-                checked={generatePublic}
-                onChange={(e) => setGeneratePublic(e.target.checked)}
-                disabled={busy}
-              />{" "}
-              Public
-              <span style={{ color: "#999" }}>Listed on /view for anyone to watch</span>
-            </label>
-
             <div style={{ display: "flex", marginBottom: 16, borderBottom: "1px solid #333" }}>
               {(DEBUG_UI
                 ? (["random", "human", "premade", "debug"] as const)
@@ -2475,6 +2463,28 @@ export default function App() {
                 </div>
               </label>
             )}
+
+            <label style={{ display: "block", marginBottom: 12 }}>
+              Name
+              <input
+                type="text"
+                value={generateName}
+                onChange={(e) => setGenerateName(e.target.value)}
+                placeholder="Leave blank for an automatic name"
+                disabled={busy}
+                style={{ width: "100%", marginTop: 4, boxSizing: "border-box" }}
+              />
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 16, fontSize: 12 }}>
+              <input
+                type="checkbox"
+                checked={generatePublic}
+                onChange={(e) => setGeneratePublic(e.target.checked)}
+                disabled={busy}
+              />{" "}
+              Public
+              <span style={{ color: "#999" }}>Listed on /view for anyone to watch</span>
+            </label>
 
             <div style={{ display: "flex", gap: 8, justifyContent: "space-between" }}>
               {generateMode !== "debug" && (

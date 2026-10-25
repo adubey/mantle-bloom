@@ -816,6 +816,14 @@ def create_world(req: CreateWorldRequest) -> dict:
     return _record_json(session)
 
 
+@app.get("/worlds/suggest-name")
+def suggest_world_name() -> dict:
+    """An unused exoplanet-style name for the Generate World dialog to offer up
+    front (#597): advisory only, `POST /worlds` still enforces uniqueness when
+    the world is actually created."""
+    return {"name": world_names.default_world_name({s.name for s in _registry.list()})}
+
+
 @app.get("/worlds/{world_id}")
 def get_world(world_id: str) -> dict:
     session = _session_or_404(world_id)
