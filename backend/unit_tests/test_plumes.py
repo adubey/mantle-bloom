@@ -387,6 +387,70 @@ def test_continental_head_books_juvenile():
     assert out["head_volume_m3"] == pytest.approx(7e15, rel=1e-9)
 
 
+def test_oceanic_head_stamps_plateau_and_books_emplaced():
+    """A head on oceanic hosts stamps plateau crust plus its age moment and books
+    EMPLACED to the plume-head buoyant ledger; tails stamp nothing (#581)."""
+    from app import terranes
+
+    world = World(seed=11, plates=[globe_plate("oceanic")])
+    world.plume_stream = _stream_silenced()
+    world.mantle_plumes = [_head_plume((1.0, 0.0, 0.0))]
+    world.elapsed_years = 10e6
+    out = plumes.apply(world, 10e6)
+    plate = world.plates[0]
+    from app.elevation_lines import line_spacing_rad
+
+    areas = plate.accounting_areas_m2(line_spacing_rad(world.node_density))
+    plateau = plate.collect("plateau_crust_m")
+    moment = plate.collect("buoyant_crust_time_m_yr")
+    live = float(np.sum(plateau * areas))
+    assert live == pytest.approx(out["head_volume_m3"], rel=1e-9)
+    assert float(np.sum(moment * areas)) == pytest.approx(live * 10e6, rel=1e-9)
+    ledger = terranes.ensure_ledger(world)
+    assert ledger["plume_head"]["emplaced_m3"] == pytest.approx(out["head_volume_m3"], rel=1e-9)
+    # The head plume's own tail emplaces ordinary melt: no tracer, no ledger.
+    assert not np.any(plate.collect("plateau_crust_m") < 0.0)
+    assert out["tail_volume_m3"] > 0.0
+    assert terranes.balance_residual(ledger, terranes.world_live_volumes_m3(world))["plume_head"] == pytest.approx(
+        0.0, abs=1.0
+    )
+
+
+def test_oceanic_tail_stamps_no_tracer():
+    """Tail-only plumes emplace ordinary-thickness melt with no buoyant tracer (#581)."""
+    from app import terranes
+
+    world = World(seed=11, plates=[globe_plate("oceanic")])
+    world.plume_stream = _stream_silenced()
+    world.mantle_plumes = [_tail_plume((1.0, 0.0, 0.0))]
+    world.elapsed_years = 10e6
+    out = plumes.apply(world, 10e6)
+    assert out["tail_volume_m3"] > 0.0
+    assert not np.any(world.plates[0].collect("plateau_crust_m"))
+    ledger = terranes.ensure_ledger(world)
+    assert ledger["plume_head"]["emplaced_m3"] == 0.0
+    assert ledger["plume_tail"]["emplaced_m3"] == 0.0
+
+
+def test_continental_plume_books_juvenile_by_source():
+    """Continental heads book flood-basalt juvenile, tails hotspot juvenile, each
+    under the `juvenile_additions_m3` total (#581)."""
+    plate = quad_plate(0, "continental", columns=range(4), rows=range(4), density=2.0)
+    points = node_points(plate)
+    position = tuple(float(v) for v in points[len(points) // 2] / np.linalg.norm(points[len(points) // 2]))
+    world = World(seed=11, plates=[plate])
+    world.plume_stream = _stream_silenced()
+    world.mantle_plumes = [_head_plume(position)]
+    world.elapsed_years = 10e6
+    out = plumes.apply(world, 10e6)
+    ledger = world.continental_material_ledger
+    assert ledger["juvenile_flood_basalt_m3"] == pytest.approx(out["head_volume_m3"], rel=1e-9)
+    assert ledger["juvenile_hotspot_m3"] == pytest.approx(out["tail_volume_m3"], rel=1e-9)
+    assert ledger["juvenile_additions_m3"] == pytest.approx(
+        out["head_volume_m3"] + out["tail_volume_m3"], rel=1e-9
+    )
+
+
 def test_head_logs_event_with_id_host_and_volume():
     """Each stream-born head logs id, volume, and host plate (#579)."""
     world = World(seed=11, plates=[globe_plate("oceanic")])

@@ -22,6 +22,13 @@ if TYPE_CHECKING:
 LedgerAccount = Literal[
     "initial_continental_m3",
     "juvenile_additions_m3",
+    # Mantle-plume juvenile, by source (RFC 0007, issue #581): booked alongside the
+    # parent `juvenile_additions_m3`, so the parent stays the all-source total and
+    # `balance_error_m3` is unchanged. Other juvenile (arc volcanism, rifts) books
+    # to the parent alone.
+    "juvenile_flood_basalt_m3",
+    "juvenile_hotspot_m3",
+    "juvenile_plateau_m3",
     "accreted_thickened_m3",
     "delaminated_lower_crust_m3",
     "collision_subducted_m3",
@@ -39,6 +46,9 @@ LedgerAccount = Literal[
 class ContinentalMaterialLedger(TypedDict):
     initial_continental_m3: float
     juvenile_additions_m3: float
+    juvenile_flood_basalt_m3: float
+    juvenile_hotspot_m3: float
+    juvenile_plateau_m3: float
     accreted_thickened_m3: float
     delaminated_lower_crust_m3: float
     # Suture crust no receiver anywhere could hold (quad_tectonics._accrete_onto_survivors'
@@ -70,9 +80,18 @@ class ContinentalMaterialLedger(TypedDict):
     topology_removed_m3: float
 
 
+JUVENILE_SUB_ACCOUNTS: tuple[LedgerAccount, ...] = (
+    "juvenile_flood_basalt_m3",
+    "juvenile_hotspot_m3",
+    "juvenile_plateau_m3",
+)
+"""Plume-juvenile sub-accounts of `juvenile_additions_m3` (RFC 0007, issue #581)."""
+
+
 LEDGER_KEYS: tuple[LedgerAccount, ...] = (
     "initial_continental_m3",
     "juvenile_additions_m3",
+    *JUVENILE_SUB_ACCOUNTS,
     "accreted_thickened_m3",
     "delaminated_lower_crust_m3",
     "collision_subducted_m3",
@@ -138,6 +157,10 @@ def record(world: "World", account: LedgerAccount, volume_m3: float) -> None:
     if account not in LEDGER_KEYS:
         raise KeyError(f"unknown continental-material ledger account: {account}")
     world.continental_material_ledger[account] += float(volume_m3)
+    if account in JUVENILE_SUB_ACCOUNTS:
+        # The parent stays the all-source juvenile total, so existing balances and
+        # readers are unchanged; the sub-account partitions it by plume source.
+        world.continental_material_ledger["juvenile_additions_m3"] += float(volume_m3)
 
 
 def add_material_thickness(

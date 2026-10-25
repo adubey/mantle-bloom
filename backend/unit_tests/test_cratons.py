@@ -489,7 +489,7 @@ def test_a_relocated_terrane_keeps_its_craton_and_material_on_its_new_footprint_
     craton_before = _volume(plate, "craton_crust_m")
     material_before = _volume(plate, "continental_material_m")
 
-    quad_tectonics._accrete_onto_survivors(plate, donors, ~donors, world, terranes=donors)
+    quad_tectonics._accrete_onto_survivors(plate, donors, ~donors, world, terrane_mask=donors)
 
     survivors = ~donors
     terrane = (plate.collect("crust_type_code") == CRUST_TYPE_CONTINENTAL) & survivors

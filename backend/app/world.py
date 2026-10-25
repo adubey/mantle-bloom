@@ -1000,6 +1000,11 @@ def step_world_progress(world: World, years: float, *, motion_diagnostics: list[
         collision_polarity.finish_deform_pass(world)
         world.suture_root_capacity = None
         audit.settle("audit_clipped_m3")
+        # Buoyant-crust tracers (RFC 0007, issue #581): the deform pass instruments
+        # thinning, melt-through, docking and conversion directly; the audit holds
+        # anything they missed (ceiling-overflow moves, crust-type changes) to the
+        # column bounds, booking corrections to `clipped_m3`.
+        terranes.audit_world(world, "tectonic")
         # Intraplate faults: age/spawn/retire and apply their own relief, on top of (never
         # replacing) deform()'s boundary classification -- see faults.py. Before topology
         # changes so a fresh fault's relief is in place when merge/split geometry is judged.
@@ -1018,11 +1023,21 @@ def step_world_progress(world: World, years: float, *, motion_diagnostics: list[
         # own thinning, see merge_split.maybe_split_plate).
         audit = cratons.PhaseAudit(world)
         frames_before = collision_polarity.begin_topology(world)
+        buoyant_live_before = terranes.world_live_volumes_m3(world)
         for message in merge_split.apply_topology_changes(world, years):
             world.log_event(message)
         # Hand collision evidence and front records to the plates now carrying them.
         collision_polarity.end_topology(world, frames_before)
         audit.settle("unattributed_m3", "topology_removed_m3")
+        # Merge remaps conserve tracers, but a plate removed outright takes its
+        # live buoyant crust with it: book the vanished volumes to
+        # `unattributed_m3` so the buoyant ledger stays exact (RFC 0007, #581).
+        buoyant_ledger = terranes.ensure_ledger(world)
+        buoyant_live_after = terranes.world_live_volumes_m3(world)
+        for source, before in buoyant_live_before.items():
+            lost = before - buoyant_live_after.get(source, 0.0)
+            if lost > 0.0:
+                terranes.record(buoyant_ledger, source, "unattributed_m3", lost)
         # Re-home faults onto surviving plates after any merge/split, drop subducted ones.
         faults.reconcile_faults(world)
         # Stamp/clear the `overlap_onset_years` field and advance World.overlap_progress
@@ -1097,6 +1112,9 @@ def step_world_progress(world: World, years: float, *, motion_diagnostics: list[
         audit = cratons.PhaseAudit(world)
         erosion_result = erosion.apply_erosion(world, years, node_cloud=node_cloud)
         audit.settle("eroded_m3")
+        # Erosion thins columns without touching tracers: the audit holds them to
+        # the new bounds, booking erosion's share as "eroded" (RFC 0007, #581).
+        terranes.audit_world(world, "eroded")
         if world.debug_diagnostics:
             for plate in world.plates:
                 before = before_erosion.get(plate.plate_id)
@@ -1124,6 +1142,9 @@ def step_world_progress(world: World, years: float, *, motion_diagnostics: list[
     audit = cratons.PhaseAudit(world)
     _clamp_column_caps(world)
     audit.settle("audit_clipped_m3")
+    # Column caps are the last Hc writer of the step: hold tracers to the final
+    # columns (RFC 0007, issue #581).
+    terranes.audit_world(world, "capped")
     # Advance the craton formation clocks against this step's final columns, then report any
     # mechanism that destroyed a noticeable share of the cratons this step.
     cratons.update(world, years)

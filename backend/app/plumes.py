@@ -356,7 +356,9 @@ def _footprint_share(
     return mask, weights, float(np.sum(weights * areas[mask]))
 
 
-def _deposit_on_plate(world, plate, fields: dict, mask: np.ndarray, weights: np.ndarray, norm: float, volume_m3: float) -> float:
+def _deposit_on_plate(
+    world, plate, fields: dict, mask: np.ndarray, weights: np.ndarray, norm: float, volume_m3: float, stage: str
+) -> float:
     """Add this plate's partitioned share; returns the volume placed here.
 
     A zero norm (footprint cells whose weights all underflowed far from the
@@ -365,8 +367,15 @@ def _deposit_on_plate(world, plate, fields: dict, mask: np.ndarray, weights: np.
     Oceanic-coded cells gain Hc; continental-coded cells additionally book the
     added crust as juvenile. Never sets `is_volcano`: plume relief comes from the
     plume's own budget alone (see `volcanism.apply_volcanic_activity`) (#579).
+
+    Buoyant-crust tracers (issue #581): a head emplaced on oceanic cells stamps
+    `plateau_crust_m` plus its age moment and books EMPLACED to the
+    plume-head buoyant ledger; continental heads and tails book juvenile to
+    their sub-accounts instead. Tails emplace ordinary-thickness melt with no
+    tracer, so the plateau channel stays pure head crust and per-source removal
+    booking stays exact.
     """
-    from . import continental_ledger, lithosphere, rheology
+    from . import continental_ledger, lithosphere, rheology, terranes
     from .elevation_lines import ELEV_CHANGE_VOLCANO, effective_is_continental_from_codes
 
     if norm <= 0.0:
@@ -386,11 +395,21 @@ def _deposit_on_plate(world, plate, fields: dict, mask: np.ndarray, weights: np.
     elevation[mask] = rheology.clip_elevation_bounds(elevation[mask] + shift)
     fields["reason"][mask] = ELEV_CHANGE_VOLCANO
     continental = effective_is_continental_from_codes(fields["codes"], plate.crust_type == "continental")
+    oceanic_cells = mask & ~continental
+    if stage == "head" and np.any(oceanic_cells):
+        fields["plateau"][oceanic_cells] += thick[oceanic_cells[mask]]
+        fields["moment"][oceanic_cells] += thick[oceanic_cells[mask]] * world.elapsed_years
+        terranes.record(
+            terranes.ensure_ledger(world),
+            "plume_head",
+            "emplaced_m3",
+            float(np.sum(thick[oceanic_cells[mask]] * fields["areas"][oceanic_cells])),
+        )
     juvenile = np.zeros(len(hc))
     juvenile[mask & continental] = thick[continental[mask]]
     if np.any(juvenile):
         continental_ledger.add_material_thickness(
-            world, plate, juvenile, "juvenile_additions_m3"
+            world, plate, juvenile, "juvenile_flood_basalt_m3" if stage == "head" else "juvenile_hotspot_m3"
         )
     return float(np.sum(thick * fields["areas"][mask]))
 
@@ -448,6 +467,8 @@ def apply(world, years: float) -> dict:
                 "elevation": plate.collect("elevation"),
                 "reason": plate.collect("elev_change_reason"),
                 "heat": plate.collect("plume_heat_myr"),
+                "plateau": plate.collect("plateau_crust_m"),
+                "moment": plate.collect("buoyant_crust_time_m_yr"),
             }
         )
     for plume in fresh:
@@ -492,7 +513,7 @@ def apply(world, years: float) -> dict:
                 continue
             for entry, mask, weights, norm in shares:
                 got = _deposit_on_plate(
-                    world, entry["plate"], entry, mask, weights, norm, volume * norm / total
+                    world, entry["plate"], entry, mask, weights, norm, volume * norm / total, stage
                 )
                 result[f"{stage}_volume_m3"] += got
                 if stage == "head":
@@ -509,6 +530,8 @@ def apply(world, years: float) -> dict:
             elevation=entry["elevation"],
             elev_change_reason=entry["reason"],
             plume_heat_myr=heat,
+            plateau_crust_m=entry["plateau"],
+            buoyant_crust_time_m_yr=entry["moment"],
         )
     world.mantle_plumes = [p for p in world.mantle_plumes if p.tail_end_years > t1_years]
     return result

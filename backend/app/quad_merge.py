@@ -507,6 +507,8 @@ def _place_stacking_overflow(
     if volume <= 0.0:
         return np.zeros(len(overflow), dtype=bool), 0.0
     out.setdefault("continental_material_m", np.zeros(len(overflow)))
+    out.setdefault("plateau_crust_m", np.zeros(len(overflow)))
+    out.setdefault("buoyant_crust_time_m_yr", np.zeros(len(overflow)))
     from . import quad_tectonics
     from .elevation_lines import effective_is_continental_from_codes
 
@@ -518,6 +520,19 @@ def _place_stacking_overflow(
     moving = material * share
     material_volume = float(moving @ areas)
     material -= moving
+    # Buoyant-crust tracers ride the overflow like any other Hc share (RFC 0007,
+    # issue #581). Overflow receivers are continental, so a nonzero carried share
+    # converts at the next phase audit or accretion pass, not here: the merge
+    # machinery is world-free. The arc channel is RFC 0006's and still zeros.
+    plateau = out["plateau_crust_m"]
+    moment = out["buoyant_crust_time_m_yr"]
+    zeros = np.zeros(len(hc))
+    moving_plateau = plateau * share
+    moving_moment = moment * share
+    overflow_plateau_m3 = float(moving_plateau @ areas)
+    overflow_moment_m3_yr = float(moving_moment @ areas)
+    plateau -= moving_plateau
+    moment -= moving_moment
     # The craton summed past the capped column (craton on craton) can only be overflow; it is
     # never more than the overflow, so no receiver ends up with craton above its Hc.
     craton = out.get("craton_crust_m")
@@ -541,6 +556,11 @@ def _place_stacking_overflow(
     placed = quad_tectonics._carry_material(material, areas, hc - hc_before, volume, material_volume)
     # The unplaced share stays on the overflowing cells, in proportion.
     material += (1.0 - placed) * moving
+    placed_tracers = quad_tectonics._carry_tracers(
+        plateau, zeros, moment, areas, hc - hc_before, volume, overflow_plateau_m3, 0.0, overflow_moment_m3_yr
+    )
+    plateau += (1.0 - placed_tracers) * moving_plateau
+    moment += (1.0 - placed_tracers) * moving_moment
     if craton_volume > 0.0:
         before = craton.copy()
         quad_tectonics._carry_material(craton, areas, hc - hc_before, volume, craton_volume)

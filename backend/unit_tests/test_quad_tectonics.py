@@ -15,6 +15,7 @@ from app import (
     orogeny,
     plates,
     quad_tectonics,
+    terranes,
 )
 from app.hydroclimate import volcanism
 from app.elevation_lines import CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC, line_spacing_rad
@@ -1013,7 +1014,7 @@ def test_fully_consumed_terrane_relocates_without_relabeling_oceanic_volume():
     continental_before = float(hc_before[0] * areas[0])
     total_before = float(np.dot(hc_before, areas))
 
-    quad_tectonics._accrete_onto_survivors(a, donors, survivors, terranes=donors)
+    quad_tectonics._accrete_onto_survivors(a, donors, survivors, terrane_mask=donors)
 
     hc_after = a.collect("crustal_thickness_m")
     continental = a.collect("crust_type_code") == CRUST_TYPE_CONTINENTAL
@@ -1037,7 +1038,7 @@ def test_disconnected_terrane_relocation_takes_only_the_footprint_it_needs():
     total_before = float(np.dot(a.collect("crustal_thickness_m"), areas))
     hm_before = float(np.dot(a.collect("mantle_lithosphere_thickness_m"), areas))
 
-    quad_tectonics._accrete_onto_survivors(a, donors, survivors, terranes=donors)
+    quad_tectonics._accrete_onto_survivors(a, donors, survivors, terrane_mask=donors)
 
     continental = a.collect("crust_type_code") == CRUST_TYPE_CONTINENTAL
     assert np.count_nonzero(continental & survivors) == 1
@@ -1768,3 +1769,174 @@ def test_suture_accretion_marks_exactly_the_continental_cells_it_welds_onto():
     assert np.all(a.collect("belt_formed_years")[welded] == 3.0e8)
     a, _, world = accrete(False)
     assert not np.any(cratons.belt_mask(a, world.elapsed_years))
+
+
+# --- RFC 0007 docking and conversion (#581) ---------------------------------------
+
+
+def _buoyant_overlap(excess_m: float, age_myr: float, elapsed_years: float):
+    """An oceanic plate overlapped at its end, buoyant crust stamped on the consumed
+    end. Returns (plate, world, ctx, stamped mask, emplaced volume)."""
+    keys = _block((10, 30), (20, 30))
+    a = _plate(1, keys, "oceanic")
+    b = _plate(2, _block((24, 40), (20, 30)), "oceanic")
+    world, ctx = _context(a, [b])
+    world.elapsed_years = elapsed_years
+    i, _ = _columns(a)
+    stamped = i >= 24
+    hc = a.collect("crustal_thickness_m")
+    hc[stamped] = lithosphere.REFERENCE_HC_OCEANIC_M + excess_m
+    plateau = np.where(stamped, excess_m, 0.0)
+    moment = np.where(stamped, excess_m * (elapsed_years - age_myr * 1e6), 0.0)
+    a.set_fields_on_plate(
+        crustal_thickness_m=hc, plateau_crust_m=plateau, buoyant_crust_time_m_yr=moment
+    )
+    lithosphere.sync_plate_elevation(a)
+    ledger = terranes.ensure_ledger(world)
+    emplaced = float(np.dot(plateau, a.node_areas_m2()))
+    terranes.record(ledger, "plume_head", "emplaced_m3", emplaced)
+    return a, world, ctx, stamped, emplaced
+
+
+def _buoyant_live(a) -> float:
+    areas = a.node_areas_m2()
+    return float(np.sum(a.collect("plateau_crust_m") * areas))
+
+
+def _consumed_tracer_vol(excess_m: float, survivors: np.ndarray, stamped: np.ndarray, areas: np.ndarray) -> float:
+    """Pre-removal tracer volume on consumed stamped cells."""
+    return float(np.dot(np.where(~survivors & stamped, excess_m, 0.0), areas))
+
+
+def test_docking_patch_joins_donors_minus_lower_crust_loss(monkeypatch):
+    """A docking patch accretes minus exactly its lower-crust share; the ledger
+    closes with unattributed at zero (#581)."""
+    monkeypatch.setattr(terranes, "docking_draw", lambda *args: True)
+    a, world, ctx, stamped, emplaced = _buoyant_overlap(20_000.0, 1.0, 50_000_000.0)
+    areas_before = a.node_areas_m2()
+    hc_before = float(np.dot(a.collect("crustal_thickness_m"), areas_before))
+    tracer_before = float(np.dot(a.collect("plateau_crust_m"), areas_before))
+
+    survivors = quad_tectonics._retreat(a, world, ctx, 1.5 * SPACING, 1000)
+
+    assert np.any(~survivors & stamped)
+    consumed_vol = _consumed_tracer_vol(20_000.0, survivors, stamped, areas_before)
+    kept_vol = (1.0 - terranes.DOCK_LOWER_CRUST_LOSS) * consumed_vol
+    lost_vol = terranes.DOCK_LOWER_CRUST_LOSS * consumed_vol
+    ledger = terranes.ensure_ledger(world)
+    assert ledger["plume_head"]["docked_m3"] == pytest.approx(kept_vol, rel=1e-9)
+    assert ledger["plume_head"]["subducted_m3"] == pytest.approx(lost_vol, rel=1e-9)
+    # The kept share stays live on the survivors; the loss leaves Hc too.
+    assert _buoyant_live(a) == pytest.approx(kept_vol + (tracer_before - consumed_vol), rel=1e-9)
+    hc_after = float(np.dot(a.collect("crustal_thickness_m"), a.node_areas_m2()))
+    assert hc_after == pytest.approx(hc_before - lost_vol, rel=1e-9)
+    residual = terranes.balance_residual(ledger, terranes.world_live_volumes_m3(world))
+    assert residual["plume_head"] == pytest.approx(0.0, abs=1e-3 * emplaced)
+    assert ledger["plume_head"]["unattributed_m3"] == 0.0
+
+
+def test_subducting_patch_books_whole(monkeypatch):
+    """A patch that does not dock subducts whole: nothing stays live beyond the
+    unconsumed cells, and the ledger closes (#581)."""
+    monkeypatch.setattr(terranes, "docking_draw", lambda *args: False)
+    a, world, ctx, stamped, emplaced = _buoyant_overlap(1_000.0, 100.0, 150_000_000.0)
+    areas_before = a.node_areas_m2()
+    tracer_before = float(np.dot(a.collect("plateau_crust_m"), areas_before))
+
+    survivors = quad_tectonics._retreat(a, world, ctx, 1.5 * SPACING, 1000)
+
+    assert np.any(~survivors & stamped)
+    consumed_vol = _consumed_tracer_vol(1_000.0, survivors, stamped, areas_before)
+    ledger = terranes.ensure_ledger(world)
+    assert ledger["plume_head"]["docked_m3"] == 0.0
+    assert ledger["plume_head"]["subducted_m3"] == pytest.approx(consumed_vol, rel=1e-9)
+    assert _buoyant_live(a) == pytest.approx(tracer_before - consumed_vol, rel=1e-9)
+    residual = terranes.balance_residual(ledger, terranes.world_live_volumes_m3(world))
+    assert residual["plume_head"] == pytest.approx(0.0, abs=1e-3 * emplaced)
+
+
+def test_young_thick_patch_docks_and_old_thin_patch_subducts():
+    """The natural draw follows the age-dependent threshold: a young thick patch
+    docks, an old thin one subducts (#581)."""
+    assert terranes.docking_probability(20_000.0, 1.0) > 0.99
+    a, world, ctx, stamped, _ = _buoyant_overlap(20_000.0, 1.0, 50_000_000.0)
+    areas_before = a.node_areas_m2()
+    survivors = quad_tectonics._retreat(a, world, ctx, 1.5 * SPACING, 1000)
+    ledger = terranes.ensure_ledger(world)
+    consumed_vol = _consumed_tracer_vol(20_000.0, survivors, stamped, areas_before)
+    assert ledger["plume_head"]["docked_m3"] == pytest.approx(
+        (1.0 - terranes.DOCK_LOWER_CRUST_LOSS) * consumed_vol, rel=1e-9
+    )
+    assert ledger["plume_head"]["subducted_m3"] == pytest.approx(
+        terranes.DOCK_LOWER_CRUST_LOSS * consumed_vol, rel=1e-9
+    )
+
+    assert terranes.docking_probability(1_000.0, 100.0) < 0.01
+    a, world, ctx, stamped, _ = _buoyant_overlap(1_000.0, 100.0, 150_000_000.0)
+    areas_before = a.node_areas_m2()
+    survivors = quad_tectonics._retreat(a, world, ctx, 1.5 * SPACING, 1000)
+    ledger = terranes.ensure_ledger(world)
+    consumed_vol = _consumed_tracer_vol(1_000.0, survivors, stamped, areas_before)
+    assert ledger["plume_head"]["docked_m3"] == 0.0
+    assert ledger["plume_head"]["subducted_m3"] == pytest.approx(consumed_vol, rel=1e-9)
+
+
+def _converting_accretion(crust_type: str):
+    """A 10-cell strip whose first cell donates 5 km of plateau crust onto roomy
+    same-type survivors. Returns (plate, world, front volume, Hc total before)."""
+    keys = _block((10, 20), (20, 21))
+    a = _plate(1, keys, crust_type)
+    donors = np.zeros(len(keys), dtype=bool)
+    donors[0] = True
+    hc = a.collect("crustal_thickness_m")
+    hc[0] = lithosphere.REFERENCE_HC_OCEANIC_M + 9_000.0
+    plateau = np.zeros(len(keys))
+    plateau[0] = 5_000.0
+    world = _world(a)
+    world.elapsed_years = 100_000_000.0
+    moment = np.zeros(len(keys))
+    moment[0] = 5_000.0 * 90_000_000.0
+    a.set_fields_on_plate(
+        crustal_thickness_m=hc, plateau_crust_m=plateau, buoyant_crust_time_m_yr=moment
+    )
+    lithosphere.sync_plate_elevation(a)
+    ledger = terranes.ensure_ledger(world)
+    front_vol = float(5_000.0 * a.node_areas_m2()[0])
+    terranes.record(ledger, "plume_head", "emplaced_m3", front_vol)
+    hc_before = float(np.dot(a.collect("crustal_thickness_m"), a.node_areas_m2()))
+    quad_tectonics._accrete_onto_survivors(a, donors, ~donors, world)
+    a.remove_cells(donors)
+    return a, world, front_vol, hc_before
+
+
+def test_conversion_books_juvenile_once_clears_tracers():
+    """Buoyant crust on continental-coded receivers converts: the preserved share
+    books juvenile once, the foundered share leaves Hc, tracers clear (#581)."""
+    a, world, front_vol, hc_before = _converting_accretion("continental")
+    ledger = terranes.ensure_ledger(world)
+    juvenile_vol = terranes.PLATEAU_PRESERVED_FRACTION * front_vol
+    foundered_vol = front_vol - juvenile_vol
+    assert ledger["plume_head"]["converted_m3"] == pytest.approx(juvenile_vol, rel=1e-9)
+    assert ledger["plume_head"]["foundered_m3"] == pytest.approx(foundered_vol, rel=1e-9)
+    assert world.continental_material_ledger["juvenile_plateau_m3"] == pytest.approx(juvenile_vol, rel=1e-9)
+    assert _buoyant_live(a) == pytest.approx(0.0, abs=1.0)
+    # Survivors hold the pre-accretion Hc minus exactly the foundered share.
+    areas = a.node_areas_m2()
+    hc_live = float(np.dot(a.collect("crustal_thickness_m"), areas))
+    assert hc_live == pytest.approx(hc_before - foundered_vol, rel=1e-9)
+    residual = terranes.balance_residual(ledger, terranes.world_live_volumes_m3(world))
+    assert residual["plume_head"] == pytest.approx(0.0, abs=1.0)
+    assert ledger["plume_head"]["unattributed_m3"] == 0.0
+
+
+def test_oceanic_hosted_docked_crust_stays_live():
+    """Buoyant crust accreted onto oceanic-coded receivers stays live buoyant
+    crust with no conversion booking (#581)."""
+    a, world, front_vol, _ = _converting_accretion("oceanic")
+    ledger = terranes.ensure_ledger(world)
+    assert ledger["plume_head"]["converted_m3"] == 0.0
+    assert ledger["plume_head"]["foundered_m3"] == 0.0
+    assert world.continental_material_ledger["juvenile_plateau_m3"] == 0.0
+    assert _buoyant_live(a) == pytest.approx(front_vol, rel=1e-9)
+    residual = terranes.balance_residual(ledger, terranes.world_live_volumes_m3(world))
+    assert residual["plume_head"] == pytest.approx(0.0, abs=1.0)
