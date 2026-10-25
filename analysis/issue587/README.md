@@ -37,4 +37,8 @@ Both runs completed all 431 steps to 130.5 Myr. Continental area changed by **+0
 
 The Hm ledger residual is included as secondary diagnostic context; the primary preregistered area metric is within threshold. Both runs intermittently warned that one node reached `GLACIER_MAX_DEPTH_M` with zero meltwater shed. The single-run runtime difference is not a performance result.
 
+**Hm residual follow-up:** the baseline's −142,315.54 km³ residual occurs entirely in oceanic Hm at step 390; its other 430 steps and every branch step are within about 0.00003 km³ of roundoff. D1a changes no Hm ledger or mantle-thickness writer, so this is not a direct Hm fix or a demonstrated accounting improvement. The replay cannot distinguish a trajectory-dependent hydrology-to-erosion feedback that avoided the baseline event from the exact unbooked writer; treat it as an unexplained, baseline-only diagnostic difference rather than an Hm benefit.
+
+**Routing cost:** each `route()` now performs separate dry, melt and wet downstream sweeps, with additional spill reroutes where needed. The measured +7.85% wall-time difference is from one unpaired end-to-end run and does not isolate this cost; track it in a controlled performance comparison before drawing a performance conclusion.
+
 The compact metric record is in [`replay-preregistration.json`](replay-preregistration.json).
