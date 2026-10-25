@@ -1147,10 +1147,10 @@ export default function App() {
   // a double-confirm could mint two worlds (and orphan one) before either selects.
   const createInflightRef = useRef<Promise<WorldId> | null>(null);
 
-  const createAndSelectWorld = useCallback(async (): Promise<WorldId> => {
+  const createAndSelectWorld = useCallback(async (name?: string | null): Promise<WorldId> => {
     if (!createInflightRef.current) {
       createInflightRef.current = (async (): Promise<WorldId> => {
-        const record = await createWorld();
+        const record = await createWorld(name ?? undefined);
         await refreshWorlds();
         selectWorld(record.world_id);
         return record.world_id;
@@ -1169,9 +1169,24 @@ export default function App() {
   // Resolves the world File > Load needs: the selection when one is open,
   // otherwise a fresh world. (The Generate dialog no longer uses this: Add
   // always mints its own world.)
-  const ensureSelectedWorld = useCallback(async (): Promise<WorldId> => {
-    return ensureWorldId(worldIdRef.current, createAndSelectWorld);
+  const ensureSelectedWorld = useCallback(async (name?: string | null): Promise<WorldId> => {
+    return ensureWorldId(worldIdRef.current, () => createAndSelectWorld(name));
   }, [createAndSelectWorld]);
+
+  // File > Load mints "Mantle Bloom a/b/c..." rather than an exoplanet pick (#597).
+  const ensureLoadWorld = useCallback(async (): Promise<WorldId> => {
+    if (worldIdRef.current) return worldIdRef.current;
+    const taken = new Set(worlds.map((w) => w.name));
+    let name = `Mantle Bloom ${taken.size + 1}`;
+    for (let i = 0; i < 26; i++) {
+      const candidate = `Mantle Bloom ${String.fromCharCode(97 + i)}`;
+      if (!taken.has(candidate)) {
+        name = candidate;
+        break;
+      }
+    }
+    return ensureSelectedWorld(name);
+  }, [worlds, ensureSelectedWorld]);
 
   // The Controls modal's World tab: renaming and publishing apply to the
   // selected world immediately (#597). A blank name keeps the current one.
@@ -2599,7 +2614,7 @@ export default function App() {
           mapWrapperRef={mapWrapperRef}
           onClose={() => setShowFileModal(false)}
           onWorldReplaced={handleWorldReplaced}
-          onEnsureWorldId={ensureSelectedWorld}
+          onEnsureWorldId={ensureLoadWorld}
         />
       )}
 
