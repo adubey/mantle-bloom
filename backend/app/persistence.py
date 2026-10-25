@@ -195,6 +195,11 @@ def _backfill_added_fields(world: World) -> None:
     ):
         if not hasattr(world, name):
             setattr(world, name, make())
+    # Buoyant-crust ledger needs more than a missing-key default: backfill must
+    # also repair a bare {} or partial dict, so ensure_ledger runs unconditionally.
+    from . import terranes
+
+    terranes.ensure_ledger(world)
     ledger_missing = not hasattr(world, "continental_material_ledger")
     if ledger_missing:
         world.continental_material_ledger = {}

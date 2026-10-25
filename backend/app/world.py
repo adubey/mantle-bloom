@@ -21,6 +21,7 @@ from . import (
     merge_split,
     phase_budget,
     plumes,
+    terranes,
     torque,
     worldsketch,
 )
@@ -98,6 +99,9 @@ class World:
     # Persistent craton source/sink accounts, one per formation and destruction mechanism;
     # live craton volume is derived from nodes' craton_crust_m. See cratons.py.
     craton_ledger: dict[str, float] = field(default_factory=dict)
+    # Persistent buoyant-crust accounts keyed by source (arc, plume_head, plume_tail);
+    # live volumes are derived from nodes' plateau/arc tracers. See terranes.py.
+    buoyant_crust_ledger: dict[str, dict] = field(default_factory=terranes.new_ledger)
     # Cumulative attempted / completed volume (m^3) of each orogenic relief process: suture
     # belts, tectonic escape, delamination, collapse and ductile flow. See orogeny.py.
     orogenic_relief_budget: dict[str, float] = field(default_factory=dict)
