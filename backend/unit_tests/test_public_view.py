@@ -95,6 +95,38 @@ def test_guest_cannot_create_save_load_or_run_the_world(guest, steps, method, su
     assert steps == []
 
 
+def test_running_private_world_is_visible_while_it_runs(guest, monkeypatch):
+    # A private world whose run loop is on answers on the public routes while it
+    # runs, and drops back out when the run stops (#597).
+    from app import checkpoint
+
+    session = main._wire_session(main._registry.create(name="private-live"))
+    try:
+        with session.lock:
+            main._set_world(session, SimpleNamespace(seed=11, elapsed_years=1e6))
+        assert guest.get("/public/worlds").json() == {"worlds": []}
+        assert guest.get(f"/public/worlds/{session.world_id}/world").status_code == 404
+        monkeypatch.setattr(
+            session.runner, "status", lambda: checkpoint.RunStatus(running=True, step_years=100_000.0)
+        )
+        listed = guest.get("/public/worlds").json()["worlds"]
+        assert [(w["world_id"], w["name"], w["running"]) for w in listed] == [
+            (session.world_id, "private-live", True)
+        ]
+        body = guest.get(f"/public/worlds/{session.world_id}/world").json()
+        assert body["world"]["seed"] == 11
+        assert body["running"] is True
+        monkeypatch.setattr(
+            session.runner, "status", lambda: checkpoint.RunStatus(running=False, step_years=100_000.0)
+        )
+        assert guest.get("/public/worlds").json() == {"worlds": []}
+        assert guest.get(f"/public/worlds/{session.world_id}/world").status_code == 404
+    finally:
+        if session.runner is not None:
+            session.runner.close()
+        main._registry.remove(session.world_id)
+
+
 def test_guest_step_computes_and_charges_one(guest, steps):
     before = _revision(guest)
     resp = _step(guest, before)

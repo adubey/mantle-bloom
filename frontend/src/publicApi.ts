@@ -18,10 +18,14 @@ export interface PublicWorld {
 export interface PublicWorldListing extends PublicWorld {
   world_id: WorldId;
   name: string;
+  // Whether this world's run loop is on: live worlds list even when private (#597).
+  running: boolean;
 }
 
 export interface PublicState {
   world: PublicWorld | null;
+  // Whether the selected world's run loop is on (#597).
+  running: boolean;
   // null: unlimited (the owner, viewing /view).
   steps_remaining: number | null;
   step_limit: number;

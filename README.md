@@ -61,7 +61,7 @@ versions on purpose, run `./bin/pin_deps.sh` and commit the diff.
 Builds the frontend and starts the **single-process app** in the background on `:8000` --
 FastAPI serves the frontend bundle from its own origin (`backend/app/desktop.py`), the same
 setup `bin/package.sh` freezes into a binary. Waits for it to respond, then prints the URL.
-Open `http://localhost:8000`, click **Generate World**, then **Step** or **Play**.
+Open `http://localhost:8000`, click **Add** then **Generate**, then **Step** or **Play**.
 
 For active frontend work, `--dev` runs the **two-process** setup instead -- uvicorn plus
 the Vite dev server (hot module reload) on `:5173`:

@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import type { MapView, WorldSummary } from "./api";
 import { exportHexGrid, loadWorld, saveWorld } from "./api";
 import ModalShell from "./ModalShell";
+import type { WorldId } from "./worldRoutes";
 
 // Matching backend app/geodesic.py's FREQUENCY_CHOICES/tile_count (10*frequency**2 + 2).
 const HEX_FREQUENCY_OPTIONS: { frequency: number; label: string }[] = [
@@ -24,6 +25,9 @@ interface Props {
   // interfaces, so it works uniformly across every view, not just the PNG-backed ones.
   mapWrapperRef: React.RefObject<HTMLDivElement | null>;
   onClose: () => void;
+  // Mints the world a load needs when none is selected yet (a fresh server holds
+  // no worlds, and Add no longer creates empty ones, #597).
+  onEnsureWorldId: () => Promise<WorldId>;
   // A load replaces the live world -- the caller runs the same full refresh sequence it
   // already runs after generateWorld.
   onWorldReplaced: (summary: WorldSummary) => Promise<void>;
@@ -40,7 +44,7 @@ function downloadBlob(blob: Blob, filename: string): void {
 
 export default function FileModal({
   worldId, hasWorld, seed, elapsedYears, mapView, mapWrapperRef,
-  onClose, onWorldReplaced,
+  onClose, onWorldReplaced, onEnsureWorldId,
 }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -65,10 +69,10 @@ export default function FileModal({
   }), [runAction, seed, elapsedYears, worldId]);
 
   const handleLoadFileChosen = useCallback((file: File) => runAction("load", async () => {
-    const summary = await loadWorld(worldId, file);
+    const summary = await loadWorld(worldId || (await onEnsureWorldId()), file);
     await onWorldReplaced(summary);
     onClose();
-  }), [runAction, onWorldReplaced, onClose, worldId]);
+  }), [runAction, onWorldReplaced, onClose, worldId, onEnsureWorldId]);
 
   const handleSaveImage = useCallback(() => runAction("image", async () => {
     const canvas = mapWrapperRef.current?.querySelector("canvas");
