@@ -9,20 +9,64 @@ from app import main
 from app.main import app
 
 
+_default_session = None
+
+
+def _reset_app_state():
+    """Drop every registered world and create one fresh empty default session
+    (#563) -- mirrors unit_tests/test_main.py's own `_reset_app_state`, which
+    this file's fixture follows, so the stress suite keeps working after the
+    single-world module globals (`main._state`, `main._world_lock`) were
+    replaced by the per-session `WorldRegistry`. Tests address the session
+    through the `_WorldClient` wrapper below, which maps the old unqualified
+    `/world/*` paths onto its `/worlds/{id}/*` paths, so test bodies keep the
+    URLs they were written against."""
+    global _default_session
+    for session in main._registry.list():
+        if session.runner is not None:
+            session.runner.close()
+        main._registry.remove(session.world_id)
+    _default_session = main._registry.create(name="test")
+    main._wire_session(_default_session)
+    _default_session.is_public = True
+    _default_session.world = None
+    _default_session.animation_stop_event.clear()
+
+
+class _WorldClient:
+    """Maps `/world/*` onto the default test world's `/worlds/{id}/*` paths."""
+
+    def __init__(self, inner):
+        self._inner = inner
+
+    def _map(self, url: str) -> str:
+        if url == "/world" or url.startswith("/world/") or url.startswith("/world?"):
+            return f"/worlds/{_default_session.world_id}" + url[len("/world"):]
+        return url
+
+    def get(self, url, **kwargs):
+        return self._inner.get(self._map(url), **kwargs)
+
+    def post(self, url, **kwargs):
+        return self._inner.post(self._map(url), **kwargs)
+
+
 @pytest.fixture
 def client():
-    """A TestClient over a fresh app.main (no world) -- see unit_tests/test_main.py's own
-    `client` fixture, which this mirrors, for why the module globals need resetting (#334)."""
-    main._state["world"] = None
-    main._animation_stop_event.clear()
+    """A TestClient over a fresh app.main: one empty default world, no pending
+    animation stop. Without this reset each test saw whatever world the
+    previous one left behind. A test that needs a populated world generates
+    its own. Teardown also fails a test that leaves the session lock held
+    (releasing it first, so the leak doesn't cascade into every later test
+    as a 503 or a hang)."""
+    _reset_app_state()
     # A loopback client on a loopback host: the local no-login path, so these tests exercise
     # the routes rather than the auth guard (test_auth.py covers that, #372).
-    yield TestClient(app, base_url="http://localhost", client=("127.0.0.1", 50000))
-    main._state["world"] = None
-    main._animation_stop_event.clear()
-    if main._world_lock.locked():
-        main._world_lock.release()
-        pytest.fail("test left app.main._world_lock held")
+    yield _WorldClient(TestClient(app, base_url="http://localhost", client=("127.0.0.1", 50000)))
+    _reset_app_state()
+    if _default_session.lock.locked():
+        _default_session.lock.release()
+        pytest.fail("test left the default session lock held")
 
 
 def _decode_image(body: dict) -> Image.Image:
