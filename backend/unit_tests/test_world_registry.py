@@ -1,5 +1,6 @@
 """The multi-world registry, sessions and compute gate (#563)."""
 
+import re
 import threading
 import time
 
@@ -13,7 +14,8 @@ def test_create_list_get_remove():
     a = registry.create(name="A")
     b = registry.create()
     assert a.world_id != b.world_id
-    assert b.name == "Untitled world"
+    # Unnamed worlds default to an exoplanet-style name (#597), not "Untitled world".
+    assert re.fullmatch(r".+ [b-g]", b.name), b.name
     assert registry.get(a.world_id) is a
     assert [s.world_id for s in registry.list()] == [a.world_id, b.world_id]
     assert registry.remove(a.world_id) is a

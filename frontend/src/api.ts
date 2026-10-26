@@ -595,6 +595,10 @@ async function readProgressStream(resp: Response, onProgress?: (fraction: number
 // /worlds/{world_id}/generate for the NDJSON contract this reads, same shape as animateWorld's own).
 export interface GenerateWorldOptions {
   seed: number;
+  // The Generate World dialog's name field (null keeps the record's name: the
+  // automatic exoplanet pick for a fresh world) and Public checkbox.
+  name?: string | null;
+  isPublic?: boolean | null;
   // Random-tab terrain layout; omitted follows the backend default. Sketches/premades ignore it.
   cratonsFirst?: boolean;
   // With cratonsFirst, relief from a synthetic tectonic history (#218); omitted follows the backend default.
@@ -617,7 +621,7 @@ export function generateWorld(worldId: WorldId, options: GenerateWorldOptions): 
   const {
     seed, cratonsFirst, syntheticRelief, continentalFraction, landFraction, axialTiltDeg, nodeDensity,
     initialSoilMaturity, climateDensity, fluidDensity, numPlates, voronoiPoints,
-    sketchImageBase64 = null, premadeWorldId = null, onProgress,
+    sketchImageBase64 = null, premadeWorldId = null, name = null, isPublic = null, onProgress,
   } = options;
   return fetch(`${worldBase(API_BASE, worldId)}/generate`, {
     method: "POST",
@@ -637,6 +641,8 @@ export function generateWorld(worldId: WorldId, options: GenerateWorldOptions): 
       fluid_density: fluidDensity,
       sketch: sketchImageBase64 ? { image_base64: sketchImageBase64 } : null,
       premade_world_id: premadeWorldId,
+      name,
+      is_public: isPublic,
     }),
   }).then((resp) => readProgressStream(resp, onProgress));
 }
@@ -648,6 +654,12 @@ export interface DebugScenario {
 
 // The "Debugging Worlds" Generate World tab's scenario picker options -- see backend
 // debug_worlds.py's DEBUG_SCENARIOS / DEBUG_SCENARIO_LABELS.
+// An unused exoplanet-style name for the Generate World dialog to offer up front
+// (#597): advisory only, duplicate display names are allowed.
+export function fetchSuggestedName(): Promise<{ name: string }> {
+  return fetch(`${API_BASE}/worlds/suggest-name`).then(asJson<{ name: string }>);
+}
+
 export function fetchDebugScenarios(): Promise<{ scenarios: DebugScenario[] }> {
   return fetch(`${API_BASE}/debug/scenarios`).then(asJson<{ scenarios: DebugScenario[] }>);
 }
@@ -655,11 +667,16 @@ export function fetchDebugScenarios(): Promise<{ scenarios: DebugScenario[] }> {
 // Generates one of the tiny, hand-scripted plate configurations above -- see
 // backend debug_worlds.py. Unlike generateWorld, there's no plate count/land fraction/etc to
 // choose: each scenario name is its own complete, fixed configuration.
-export function generateDebugWorld(worldId: WorldId, scenario: string, seed: number): Promise<WorldSummary> {
+export function generateDebugWorld(
+  worldId: WorldId,
+  scenario: string,
+  seed: number,
+  options?: { name?: string | null; isPublic?: boolean | null },
+): Promise<WorldSummary> {
   return fetch(`${worldBase(API_BASE, worldId)}/generate_debug`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ scenario, seed }),
+    body: JSON.stringify({ scenario, seed, name: options?.name ?? null, is_public: options?.isPublic ?? null }),
   }).then(asJson<WorldSummary>);
 }
 

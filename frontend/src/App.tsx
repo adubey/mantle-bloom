@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./index.css";
 import {
-  animateWorld, createWorld, deleteWorld, fetchDebugScenarios, fetchEarthquakes, fetchElevationPointAt, fetchFaults, fetchLakes, fetchNodeAt, fetchPlates, fetchPointSample, fetchRivers, fetchRunState, fetchStats, fetchStatsHistory, fetchVolcanoes, fetchWorldSummary, fetchWorlds, generateDebugWorld, generateWorld, patchWorld, renderWorld, setRunState, stopAnimation, updateControls,
+  animateWorld, createWorld, deleteWorld, fetchDebugScenarios, fetchEarthquakes, fetchElevationPointAt, fetchFaults, fetchLakes, fetchNodeAt, fetchPlates, fetchPointSample, fetchRivers, fetchRunState, fetchStats, fetchStatsHistory, fetchSuggestedName, fetchVolcanoes, fetchWorldSummary, fetchWorlds, generateDebugWorld, generateWorld, patchWorld, renderWorld, setRunState, stopAnimation, updateControls,
   RunStateRefused, TUNING_MULTIPLIER_KEYS,
 } from "./api";
 import type {
   AnimateResponse, DebugScenario, EarthquakeSummary, ElevationPointResponse, FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, NodeAtResponse, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, TuningKey, TuningMultipliers, VolcanoSummary, WorldRecord, WorldStats, WorldSummary,
 } from "./api";
-import { ensureWorldId, latestWorldId, withWorldId, worldIdFromSearch, type WorldId } from "./worldRoutes";
+import { ensureWorldId, withWorldId, worldIdFromSearch, type WorldId } from "./worldRoutes";
 import MapCanvas from "./MapCanvas";
 import MantleCrossSection from "./MantleCrossSection";
 import GlobeSelector from "./GlobeSelector";
@@ -29,7 +29,6 @@ import SaveAnimationModal from "./SaveAnimationModal";
 import Legend from "./Legend";
 import MeasureOverlay from "./MeasureOverlay";
 import ProgressBar from "./ProgressBar";
-import GenerateOptionCheckbox from "./GenerateOptionCheckbox";
 import AdminSession from "./AdminSession";
 import ProbePopup from "./ProbePopup";
 import { PREMADE_WORLDS } from "./premadeWorlds";
@@ -51,6 +50,11 @@ import { getCookie, setCookie } from "./cookies";
 // packaged prod server and the dev/debug server -- it only ever looks at the URL the browser
 // actually loaded, never which backend is serving it.
 const DEBUG_UI = new URLSearchParams(window.location.search).has("deb");
+
+// How often the World list re-polls itself (see the worlds effect below): new,
+// renamed, published, or newly running worlds show up without a reload (#597).
+// Infrequent on purpose -- selection changes stream through their own effects.
+const WORLDS_POLL_MS = 15000;
 
 // Current page URL with the `deb` flag added (bare `deb`, no value) -- target of the
 // sidebar's "Debug..." link. Preserves any existing query params and the hash;
@@ -303,8 +307,12 @@ export default function App() {
   }, []);
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [seed, setSeed] = useState(randomSeed());
-  const [cratonsFirst, setCratonsFirst] = useState(false);
-  const [syntheticRelief, setSyntheticRelief] = useState(false);
+  const [cratonsFirst, setCratonsFirst] = useState(true);
+  const [syntheticRelief, setSyntheticRelief] = useState(true);
+  // The Generate World dialog's name field (blank: keep the record's name) and
+  // Public checkbox (fresh worlds default to public, #597).
+  const [generateName, setGenerateName] = useState("");
+  const [generatePublic, setGeneratePublic] = useState(true);
   const [continentalPercent, setContinentalPercent] = useState(DEFAULT_CONTINENTAL_PERCENT);
   const [landPercent, setLandPercent] = useState(DEFAULT_LAND_PERCENT);
   const [axialTiltDeg, setAxialTiltDeg] = useState(DEFAULT_AXIAL_TILT_DEG);
@@ -409,10 +417,7 @@ export default function App() {
   const [worldId, setWorldId] = useState<WorldId | null>(() => worldIdFromSearch(window.location.search));
   const worldIdRef = useRef<WorldId | null>(worldId);
   worldIdRef.current = worldId;
-  // Shares one on-demand world resolution between rapid Generate confirmations
-  // (#595 review): without it a double-click with no selection yet could mint
-  // two worlds, one per confirmation, before either selects.
-  const ensureInflightRef = useRef<Promise<WorldId> | null>(null);
+
   const [summary, setSummary] = useState<WorldSummary | null>(null);
   const [renderData, setRenderData] = useState<RenderResponse | null>(null);
   // Plate Inspector's own data (see PlateInspector.tsx) -- true-frame/rotation-independent,
@@ -1092,11 +1097,22 @@ export default function App() {
 
   useEffect(() => {
     refreshWorlds().catch(() => {
-      // best-effort: the empty state still offers New World, which surfaces errors
+      // best-effort: the empty state still offers Add, which surfaces errors
     });
     const onFocus = () => refreshWorlds().catch(() => {});
     window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
+    // Re-polls the world list so worlds created, renamed, published, or
+    // started elsewhere show up without a reload or refocus (#597). Never
+    // touches the selection: with no world selected the page stays empty.
+    // Skipped while the tab is hidden.
+    const timer = window.setInterval(() => {
+      if (document.hidden) return;
+      refreshWorlds().catch(() => {});
+    }, WORLDS_POLL_MS);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.clearInterval(timer);
+    };
   }, [refreshWorlds]);
 
   // Selects a world: updates the URL (preserving ?deb), drops everything
@@ -1129,55 +1145,98 @@ export default function App() {
     shownRevisionRef.current = undefined;
   }, []);
 
-  // With no selection in the URL, adopt the most recently updated world once
-  // the list arrives.
-  useEffect(() => {
-    if (worldId || worlds.length === 0) return;
-    const latest = latestWorldId(worlds);
-    if (latest) selectWorld(latest);
-  }, [worldId, worlds, selectWorld]);
+  // Picks a fresh unused exoplanet name into the dialog's Name field (#603).
+  const refreshGenerateName = useCallback(() => {
+    fetchSuggestedName().then(
+      ({ name }) => setGenerateName(name),
+      () => {},
+    );
+  }, []);
 
-  const createAndSelectWorld = useCallback(async (): Promise<WorldId> => {
-    const record = await createWorld();
-    await refreshWorlds();
-    selectWorld(record.world_id);
-    return record.world_id;
-  }, [refreshWorlds, selectWorld]);
+  // Opens the Generate World dialog for a brand-new planet: Create always adds
+  // a world and never replaces the current one, so the dialog starts blank and
+  // public, with an unused exoplanet pick filled in once it arrives. The
+  // suggestion only lands if the user hasn't typed something meanwhile.
+  const openGenerateDialog = useCallback(() => {
+    setGenerateName("");
+    setGeneratePublic(true);
+    setShowGenerateDialog(true);
+    fetchSuggestedName().then(
+      ({ name }) => setGenerateName((prev) => (prev === "" ? name : prev)),
+      () => {},
+    );
+  }, []);
 
-  // Resolves the world to generate into on demand (#592): with a selection it
-  // returns it untouched, otherwise it reads the world list and adopts the
-  // latest existing world, creating the first one only when the list is
-  // actually empty. Reading the list here (instead of trusting the selection
-  // state) closes the startup race where a fast Generate on a reloaded tab
-  // ran before the initial list load adopted the existing world, minting a
-  // duplicate (#595 review). Runs only from an explicit generate action,
-  // never on page load, so merely opening the app creates nothing.
-  const ensureSelectedWorld = useCallback(async (): Promise<WorldId> => {
-    if (!ensureInflightRef.current) {
-      ensureInflightRef.current = ensureWorldId(worldIdRef.current, async (): Promise<WorldId> => {
-        const list = await refreshWorlds();
-        if (worldIdRef.current) return worldIdRef.current;
-        const latest = latestWorldId(list);
-        if (latest) {
-          selectWorld(latest);
-          return latest;
-        }
-        return createAndSelectWorld();
-      }).finally(() => {
-        ensureInflightRef.current = null;
+  // Shares one world creation between rapid Generate confirmations: without it
+  // a double-confirm could mint two worlds (and orphan one) before either selects.
+  const createInflightRef = useRef<Promise<WorldId> | null>(null);
+
+  const createAndSelectWorld = useCallback(async (name?: string | null): Promise<WorldId> => {
+    if (!createInflightRef.current) {
+      createInflightRef.current = (async (): Promise<WorldId> => {
+        const record = await createWorld(name ?? undefined);
+        await refreshWorlds();
+        selectWorld(record.world_id);
+        return record.world_id;
+      })().finally(() => {
+        createInflightRef.current = null;
       });
     }
-    return ensureInflightRef.current;
-  }, [createAndSelectWorld, refreshWorlds, selectWorld]);
+    return createInflightRef.current;
+  }, [refreshWorlds, selectWorld]);
 
-  const handleNewWorld = useCallback(async () => {
+  // Resolves the world to generate into on demand (#592, #597): the selection
+  // when one is open, otherwise a fresh world -- never an existing world the
+  // user didn't pick, since the dialog's name would rename (and the generate
+  // would overwrite) it by surprise. Runs only from an explicit generate
+  // action, never on page load, so merely opening the app creates nothing.
+  // Resolves the world File > Load needs: the selection when one is open,
+  // otherwise a fresh world. (The Generate dialog no longer uses this: Add
+  // always mints its own world.)
+  const ensureSelectedWorld = useCallback(async (name?: string | null): Promise<WorldId> => {
+    return ensureWorldId(worldIdRef.current, () => createAndSelectWorld(name));
+  }, [createAndSelectWorld]);
+
+  // File > Load mints "Mantle Bloom a/b/c..." rather than an exoplanet pick (#597).
+  const ensureLoadWorld = useCallback(async (): Promise<WorldId> => {
+    if (worldIdRef.current) return worldIdRef.current;
+    const taken = new Set(worlds.map((w) => w.name));
+    let name = `Mantle Bloom ${taken.size + 1}`;
+    for (let i = 0; i < 26; i++) {
+      const candidate = `Mantle Bloom ${String.fromCharCode(97 + i)}`;
+      if (!taken.has(candidate)) {
+        name = candidate;
+        break;
+      }
+    }
+    return ensureSelectedWorld(name);
+  }, [worlds, ensureSelectedWorld]);
+
+  // The Controls modal's World tab: renaming and publishing apply to the
+  // selected world immediately (#597). A blank name keeps the current one.
+  const handleWorldNameChange = useCallback(async (name: string) => {
+    const id = worldIdRef.current;
+    if (!id) return;
     setError(null);
     try {
-      await createAndSelectWorld();
+      await patchWorld(id, { name });
+      await refreshWorlds();
     } catch (e) {
       setError(String(e));
     }
-  }, [createAndSelectWorld]);
+  }, [refreshWorlds]);
+
+  const handleWorldPublicChange = useCallback(async (isPublic: boolean) => {
+    const id = worldIdRef.current;
+    if (!id) return;
+    setError(null);
+    try {
+      await patchWorld(id, { is_public: isPublic });
+      await refreshWorlds();
+    } catch (e) {
+      setError(String(e));
+    }
+  }, [refreshWorlds]);
 
   const handleDeleteWorld = useCallback(async (id: WorldId) => {
     setError(null);
@@ -1209,9 +1268,9 @@ export default function App() {
     setGenProgress(undefined);
     setError(null);
     try {
-      // No selection yet (a fresh server holds no worlds): mint the first world
-      // now (#592) instead of failing against a null id.
-      id = await ensureSelectedWorld();
+      // Add always adds a world and never replaces the current one: mint a fresh
+      // record even when one is already selected.
+      id = await createAndSelectWorld();
       // The "Human-made"/"Premade worlds" tabs' sketch rides along as a bare base64 payload --
       // strip the data URL's `data:image/png;base64,` prefix generateWorld's caller
       // (SketchEditor's toDataURL / the file-picker's FileReader / premadeWorlds.ts) all produce.
@@ -1222,11 +1281,13 @@ export default function App() {
       // The "Debugging Worlds" tab's generateDebugWorld has no progress stream to report --
       // its scripted scenarios are tiny and generate near-instantly (see debug_worlds.py) --
       // so genProgress just stays undefined (indeterminate) for that path.
+      const generateIdentity = { name: generateName.trim() || null, isPublic: generatePublic };
       const s =
         generateMode === "debug"
-          ? await generateDebugWorld(id!, debugScenario, seed)
+          ? await generateDebugWorld(id!, debugScenario, seed, generateIdentity)
           : await generateWorld(id!, {
               seed,
+              ...generateIdentity,
               cratonsFirst: generateMode === "random" ? cratonsFirst : false,
               syntheticRelief: generateMode === "random" && cratonsFirst ? syntheticRelief : false,
               continentalFraction: continentalPercent / 100,
@@ -1264,7 +1325,8 @@ export default function App() {
       // match that here rather than resetting to the ordinary default.
       setDebugDiagnostics(generateMode === "debug" ? true : DEFAULT_DEBUG_DIAGNOSTICS);
       setTuning(DEFAULT_TUNING);
-      await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), recordStats()]);
+      // Names (and the public flag) live on the world list, so refresh it too.
+      await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), recordStats(), refreshWorlds()]);
     } catch (e) {
       if (worldIdRef.current === id) setError(String(e));
     } finally {
@@ -1273,7 +1335,7 @@ export default function App() {
     }
   }, [
     seed, cratonsFirst, syntheticRelief, continentalPercent, landPercent, axialTiltDeg, detail, fluidDensity, initialSoilMaturityPercent, autoPlates, numPlates, voronoiPoints,
-    generateMode, sketchImageDataUrl, premadeWorldId, debugScenario, projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats, ensureSelectedWorld,
+    generateMode, sketchImageDataUrl, premadeWorldId, debugScenario, projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats, createAndSelectWorld, generateName, generatePublic, refreshWorlds,
   ]);
 
   // Restores the selected world's map after a browser refresh or a world
@@ -1429,20 +1491,9 @@ export default function App() {
           <button
             onClick={() => setShowFileModal(true)}
             disabled={animating}
-            className={!summary ? "start-highlight" : undefined}
             style={{ fontSize: 12 }}
           >
             📁 File...
-          </button>
-
-          <button
-            onClick={() => setShowGenerateDialog(true)}
-            disabled={busy || animating}
-            title={worldId ? "Generate into the selected world" : "Generate into a new world"}
-            className={!summary ? "start-highlight" : undefined}
-            style={{ fontSize: 12 }}
-          >
-            Generate World
           </button>
           {busy && <ProgressBar label="Generating world" fraction={genProgress} />}
 
@@ -1457,11 +1508,16 @@ export default function App() {
               <select
                 value={worldId ?? ""}
                 onChange={(e) => selectWorld(e.target.value || null)}
+                // An explicit empty option: without it the browser would display the
+                // first world while nothing is actually selected (#597: starting
+                // with no world is the point), and that world would then be
+                // unpickable since picking it fires no change event.
                 disabled={busy || animating || playing}
                 title={busy || animating || playing ? "Stop the current operation first" : undefined}
                 style={{ width: "100%", fontSize: 12, marginBottom: 6 }}
                 aria-label="World"
               >
+                <option value="">Select a world…</option>
                 {worlds.map((w) => (
                   <option key={w.world_id} value={w.world_id}>
                     {w.name}
@@ -1472,8 +1528,8 @@ export default function App() {
               </select>
             )}
             <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-              <button onClick={handleNewWorld} disabled={busy || animating || playing} style={{ flex: 1, fontSize: 12 }} title="Create an empty world">
-                + New
+              <button onClick={openGenerateDialog} disabled={busy || animating || playing} style={{ flex: 1, fontSize: 12 }} title="Open the Generate World dialog">
+                Create...
               </button>
               <button
                 onClick={() => {
@@ -1488,33 +1544,6 @@ export default function App() {
                 Delete
               </button>
             </div>
-            {worldId && (
-              <>
-                <input
-                  key={worldId}
-                  defaultValue={worlds.find((w) => w.world_id === worldId)?.name ?? ""}
-                  onBlur={(e) => {
-                    const name = e.target.value.trim();
-                    if (name && name !== worlds.find((w) => w.world_id === worldId)?.name) {
-                      patchWorld(worldId, { name }).then(() => refreshWorlds()).catch((err) => setError(String(err)));
-                    }
-                  }}
-                  style={{ width: "100%", fontSize: 12, marginBottom: 6, boxSizing: "border-box" }}
-                  aria-label="World name"
-                  title="Rename (applied on blur)"
-                />
-                <label style={{ display: "block", fontSize: 12 }}>
-                  <input
-                    type="checkbox"
-                    checked={worlds.find((w) => w.world_id === worldId)?.is_public ?? false}
-                    onChange={(e) => {
-                      patchWorld(worldId, { is_public: e.target.checked }).then(() => refreshWorlds()).catch((err) => setError(String(err)));
-                    }}
-                  />{" "}
-                  Public
-                </label>
-              </>
-            )}
           </fieldset>
 
           <button onClick={() => setShowStatsModal(true)} disabled={!summary} style={{ fontSize: 12 }}>
@@ -2451,19 +2480,6 @@ export default function App() {
               )}
             </label>
 
-            {generateMode === "random" && (
-              <GenerateOptionCheckbox checked={cratonsFirst} onChange={setCratonsFirst} disabled={busy} title="Craton-first terrain">
-                Build continents from cratons before assigning plates. Random worlds use
-                the existing plate-first approach when unchecked.
-              </GenerateOptionCheckbox>
-            )}
-            {generateMode === "random" && cratonsFirst && (
-              <GenerateOptionCheckbox checked={syntheticRelief} onChange={setSyntheticRelief} disabled={busy} title="Relief from a synthetic history">
-                Draw mountain belts where cratons once collided and on continents' leading
-                edges, with hilly interiors and shelves, instead of noise-shaped relief.
-              </GenerateOptionCheckbox>
-            )}
-
             {generateMode !== "debug" && (
               <label style={{ display: "block", marginBottom: 16 }}>
                 Detail
@@ -2486,6 +2502,40 @@ export default function App() {
                 </div>
               </label>
             )}
+
+            <label style={{ display: "block", marginBottom: 12 }}>
+              Name
+              <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                <input
+                  type="text"
+                  value={generateName}
+                  onChange={(e) => setGenerateName(e.target.value)}
+                  placeholder="Leave blank for an automatic name"
+                  disabled={busy}
+                  style={{ flex: 1, boxSizing: "border-box", minWidth: 0 }}
+                />
+                <button
+                  type="button"
+                  onClick={refreshGenerateName}
+                  disabled={busy}
+                  title="Suggest another name"
+                  aria-label="Suggest another name"
+                  style={{ fontSize: 14, lineHeight: 1 }}
+                >
+                  ↻
+                </button>
+              </div>
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 16, fontSize: 12 }}>
+              <input
+                type="checkbox"
+                checked={generatePublic}
+                onChange={(e) => setGeneratePublic(e.target.checked)}
+                disabled={busy}
+              />{" "}
+              Public
+              <span style={{ color: "#999" }}>Listed on /view for anyone to watch</span>
+            </label>
 
             <div style={{ display: "flex", gap: 8, justifyContent: "space-between" }}>
               {generateMode !== "debug" && (
@@ -2532,6 +2582,8 @@ export default function App() {
           initialSoilMaturityPercent={initialSoilMaturityPercent}
           fluidDensity={fluidDensity}
           fluidDensityChoices={FLUID_DETAIL_CHOICES}
+          cratonsFirst={cratonsFirst}
+          syntheticRelief={syntheticRelief}
           onLandPercentChange={setLandPercent}
           onContinentalPercentChange={setContinentalPercent}
           onAutoPlatesChange={setAutoPlates}
@@ -2540,6 +2592,8 @@ export default function App() {
           onAxialTiltDegChange={setAxialTiltDeg}
           onInitialSoilMaturityPercentChange={setInitialSoilMaturityPercent}
           onFluidDensityChange={setFluidDensity}
+          onCratonsFirstChange={setCratonsFirst}
+          onSyntheticReliefChange={setSyntheticRelief}
           onClose={() => setShowAdvancedSettings(false)}
         />
       )}
@@ -2567,6 +2621,10 @@ export default function App() {
           onDebugDiagnosticsChange={handleDebugDiagnosticsChange}
           onTuningChange={handleTuningChange}
           onTuningReset={handleTuningReset}
+          worldName={worlds.find((w) => w.world_id === worldId)?.name ?? ""}
+          isPublic={worlds.find((w) => w.world_id === worldId)?.is_public ?? false}
+          onWorldNameChange={handleWorldNameChange}
+          onWorldPublicChange={handleWorldPublicChange}
           onClose={() => setShowControlsModal(false)}
         />
       )}
@@ -2592,6 +2650,7 @@ export default function App() {
           mapWrapperRef={mapWrapperRef}
           onClose={() => setShowFileModal(false)}
           onWorldReplaced={handleWorldReplaced}
+          onEnsureWorldId={ensureLoadWorld}
         />
       )}
 

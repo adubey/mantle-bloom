@@ -44,13 +44,6 @@ button:disabled {
   opacity: 1;
 }
 
-/* The File and Generate World buttons before any world exists yet (see App.tsx's `summary`)
-   -- draws attention to the two ways to start (load or generate) on a blank start screen. A
-   steady highlight rather than a flash (#497). */
-.start-highlight {
-  outline: 2px solid #27c93f;
-  outline-offset: 2px;
-}
 
 /* The draggable globes (GlobeSelector.tsx, MantleCrossSection.tsx's locator): a focus ring for
    keyboard focus only, not after every drag. */
