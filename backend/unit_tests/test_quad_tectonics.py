@@ -1162,6 +1162,35 @@ def test_gap_fill_grows_an_adjacent_quad_plate_into_the_gap():
     whole._validate_leaf_topology()
 
 
+def test_gap_fill_stretch_draws_more_from_a_heated_craton(monkeypatch):
+    """RFC 0007 (#582): gap-fill growth weakens heated cratonic stretch donors
+    when the step length reaches them, drawing more than the unweakened path."""
+    from app import plumes
+
+    monkeypatch.setattr(plumes, "PLUME_CRATON_WEAKENING", 0.5)
+
+    def donor_loss(years):
+        whole = _plate(1, np.concatenate([_block((0, N), (0, N), face) for face in range(6)]), "continental")
+        hc = whole.collect("crustal_thickness_m")
+        whole.set_fields_on_plate(craton_crust_m=hc, plume_heat_myr=np.full(whole.node_count(), 20.0))
+        points = whole.all_points_and_elevation()[0]
+        hole = points @ np.array([1.0, 0.0, 0.0]) > np.cos(12 * SPACING)
+        assert np.any(hole)
+        whole.remove_cells(hole)
+        keys_before = set(map(int, whole.cell_keys))
+        hc_before = dict(zip(map(int, whole.cell_keys), whole.collect("crustal_thickness_m")))
+        areas = dict(zip(map(int, whole.cell_keys), whole.node_areas_m2()))
+        world = _world(whole)
+        gaps.fill_gaps_by_growing_neighbours(world, years=years)
+        assert whole.node_count() > len(keys_before)
+        hc_after = dict(zip(map(int, whole.cell_keys), whole.collect("crustal_thickness_m")))
+        return float(sum(max(0.0, hc_before[k] - hc_after[k]) * areas[k] for k in keys_before))
+
+    cold_loss = donor_loss(0.0)
+    hot_loss = donor_loss(1_000_000)
+    assert 0.0 < cold_loss < hot_loss
+
+
 def test_gap_spawn_in_a_quad_world_makes_a_quad_plate():
     plate = new_plate(
         5, np.eye(3), "oceanic", SPACING, seed=0,

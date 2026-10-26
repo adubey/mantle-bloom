@@ -763,7 +763,7 @@ def _refine_split_cut(points: np.ndarray, mask_a: np.ndarray) -> tuple[np.ndarra
     return mask_a, cut_normal
 
 
-def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | None:
+def maybe_split_plate(world: "World", plate: Plate, step_years: float = 0.0) -> tuple[Plate, Plate] | None:
     """If a single rigid rotation poorly explains the mantle flow across this plate's
     footprint, cluster the flow into two regimes and, if they're genuinely different, cut
     the plate along the great circle separating them (see Plate.split for the actual
@@ -831,7 +831,7 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
         if world.debug_diagnostics:
             before = phase_budget.snapshot(plate, line_spacing_rad(world.node_density))
         hc_before = plate.collect("crustal_thickness_m")
-        plate.apply_failed_rift(cut_normal, line_spacing_rad(world.node_density), world)
+        plate.apply_failed_rift(cut_normal, line_spacing_rad(world.node_density), world, step_years=step_years)
         cratons.thin_with_column(world, plate, hc_before, "rifted_failed_m3")
         mobile_cover.thin_with_column(world, plate, hc_before, "rift_thinned_m3")
         continental_ledger.thin_with_column(world, plate, hc_before, "rift_thinned_m3")
@@ -1037,7 +1037,7 @@ def apply_topology_changes(world: "World", years: float) -> list[str]:
     new_plates: list[Plate] = []
     split_done = False
     for plate in world.plates:
-        split_result = None if split_done else maybe_split_plate(world, plate)
+        split_result = None if split_done else maybe_split_plate(world, plate, step_years=years)
         if split_result is None:
             new_plates.append(plate)
         else:

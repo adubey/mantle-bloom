@@ -307,13 +307,13 @@ def _install_rift_event_traces(emit, runtime: dict):
             active.setdefault("fitted_poles_rad_per_year", []).append(np.asarray(pole, dtype=float).tolist())
         return pole
 
-    def traced_open_rift(plate, current_world, rng_index, inserted_indices, rifted, stretch_share):
+    def traced_open_rift(plate, current_world, rng_index, inserted_indices, rifted, stretch_share, *args, **kwargs):
         craton_before = plate.collect("craton_crust_m")
         area = plate.accounting_areas_m2(line_spacing_rad(current_world.node_density))
         surface = plate.surface_nodes()
         pre_state = _rift_plate_state(current_world, plate, surface, craton_before)
         before_ledger = _ledgers(current_world)
-        original_open_rift(plate, current_world, rng_index, inserted_indices, rifted, stretch_share)
+        original_open_rift(plate, current_world, rng_index, inserted_indices, rifted, stretch_share, *args, **kwargs)
         craton_after = plate.collect("craton_crust_m")
         ledger_delta = _delta(_ledgers(current_world), before_ledger).get("craton_ledger", {})
         stretch_loss = float(ledger_delta.get("rifted_stretch_m3", 0.0))
@@ -344,13 +344,13 @@ def _install_rift_event_traces(emit, runtime: dict):
                 },
             })
 
-    def traced_maybe_split(current_world, plate):
+    def traced_maybe_split(current_world, plate, *args, **kwargs):
         before_ledger = _ledgers(current_world)
         craton_before = plate.collect("craton_crust_m")
         area = plate.accounting_areas_m2(line_spacing_rad(current_world.node_density))
         runtime["active_split"] = {"plate_id": plate.plate_id}
         try:
-            result = original_maybe_split(current_world, plate)
+            result = original_maybe_split(current_world, plate, *args, **kwargs)
         finally:
             active = runtime.pop("active_split")
         ledger_delta = _delta(_ledgers(current_world), before_ledger).get("craton_ledger", {})
