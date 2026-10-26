@@ -131,7 +131,10 @@ class WaterBalance:
     `direct_supply_m3_per_yr` is the wet-cell precipitation that joins the lake directly and
     bypasses land runoff and transit loss, including when chained pits hand its surplus on
     (#587). Glacier melt isn't included:
-    it's computed after breaching, from the ice routing that breaching feeds."""
+    it's computed after breaching, from the ice routing that breaching feeds. Optional
+    `lake_evaporation_m_per_yr` and `lake_sublimation_m_per_yr` are the seasonal lake losses
+    already used by the lake resolver; when omitted, the gate keeps its annual-mean evaporation
+    estimate for callers that don't supply seasonal lake climate (#608)."""
 
     precipitation_mm: np.ndarray
     temperature_c: np.ndarray
@@ -139,6 +142,8 @@ class WaterBalance:
     loss_fraction: np.ndarray | None = None
     dry_fraction: np.ndarray | None = None
     direct_supply_m3_per_yr: np.ndarray | None = None
+    lake_evaporation_m_per_yr: np.ndarray | None = None
+    lake_sublimation_m_per_yr: np.ndarray | None = None
 
 
 def open_water_evaporation_mm(temperature_c: np.ndarray) -> np.ndarray:
@@ -468,7 +473,15 @@ def _overflows(
     # incur transit loss on its way there.
     runoff_inflow = np.bincount(sink, weights=runoff_m3 * carried, minlength=n)
     direct_inflow = np.bincount(sink, weights=direct, minlength=n)
-    open_water_m3 = ENDORHEIC_DEMAND_FACTOR * evaporation_mm / 1000.0 * area
+    if water.lake_evaporation_m_per_yr is None:
+        lake_loss_m_per_yr = evaporation_mm / 1000.0
+    else:
+        lake_loss_m_per_yr = np.asarray(water.lake_evaporation_m_per_yr, dtype=float)
+        if water.lake_sublimation_m_per_yr is not None:
+            lake_loss_m_per_yr = lake_loss_m_per_yr + np.asarray(
+                water.lake_sublimation_m_per_yr, dtype=float
+            )
+    open_water_m3 = ENDORHEIC_DEMAND_FACTOR * lake_loss_m_per_yr * area
 
     spill_level, exit_node = _spill_exits(chain, sink)
     order = np.argsort(sink, kind="stable")

@@ -199,13 +199,19 @@ discharge, channel-width growth, deposition, geology or lake silt.
   internal. `should_spill`, `spill_target`, final water levels and `Lake.is_spilling` all come
   from this solve. The per-step ledger residual is external supply minus evaporation, exported
   overflow and storage change; internal transfers are recorded separately and cancel globally.
-  Evaporation is the real open-water rate, about 0.3 m/yr at 0 C rising to 1.8 m/yr at 25 C.
-  Partly flooded cells evaporate up to 30% faster, since shallow margins warm faster
-  (`SHALLOW_EVAPORATION_BOOST`). A lake can remain below equilibrium during a short step and
-  carries that liquid storage into the next step. At a rim or tier depth ceiling, surplus is
-  booked as overflow after evaporation rather than being lost or passed downstream as full
-  inflow. Production uses one implicit full-step solve by default (`substeps=1`); tests can
-  request explicit substeps for a finer partition.
+  Lake losses use the sinusoidal seasonal cycle (#608). `seasonal_fraction_above` gives the
+  ice-free share of the year from the annual-mean temperature and undamped seasonal amplitude
+  (`A_w = A`, selected by G3); until D3 lands, the mean is the existing node air temperature.
+  `seasonal_open_mean_c` gives the mean temperature during that open season. Open-water
+  evaporation is `open_water_evaporation_mm(T_open) × f_free`, and ice-season sublimation is
+  `0.6 m/yr × (1 − f_free)`. Only open-water evaporation receives the up-to-30% shallow-margin
+  boost (`SHALLOW_EVAPORATION_BOOST`). Dry-land Budyko runoff keeps its existing annual-mean
+  potential evaporation. A lake with no ice-free season retains liquid water and balances
+  supply against sublimation and overflow; water is not converted to ice at `WATER_TO_ICE`.
+  The prognostic solver integrates storage through each timestep, limits losses to available
+  water, and books overflow above the rim or tier depth ceiling. Production uses one implicit
+  full-step solve by default (`substeps=1`); tests can request explicit substeps for a finer
+  partition.
 - **Flow direction** (`_compute_flow_direction`): among each node's k nearest neighbors
   strictly below its own elevation (a downhill candidate), prefers whichever one already has
   the deepest established channel (`channel_depth > CHANNEL_PREFERENCE_THRESHOLD_M`),
@@ -329,8 +335,8 @@ which has been ice-covered for centuries yet holds a 169 m deep basin fed by gla
 (RFC 0014 D2(b), #539). Until then a lake with any member below 0 C on the annual mean
 reported its dry floor, and the water its inflow brought was booked nowhere. That rule still
 silted the lake, so that a chronically cold catchment filled in rather than staying its own
-permanent leaf (#117); every lake now silts from its inflow anyway. Seasonal ice cover and a
-lake ice cap are RFC 0014 D2(a) and D2(c), not yet implemented.
+permanent leaf (#117); every lake now silts from its inflow anyway. Seasonal ice cover is RFC
+0014 D2(a), implemented above; a lake ice cap is D2(c), not yet implemented.
 
 ### Lake vs. sea tiers: a depth ceiling by size (2026-09-10)
 

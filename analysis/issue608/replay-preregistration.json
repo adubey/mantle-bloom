@@ -1,0 +1,52 @@
+{
+  "issue": 608,
+  "seed": 308161711,
+  "save": "mantle-bloom-seed308161711-121500000y.mbworld",
+  "save_sha256": "c557251402f9d2df3d2f67b93c2ad528674cba32055791ed089ca56d6214d6e0",
+  "horizon_myr": 1.0,
+  "steps": 10,
+  "step_years": 100000,
+  "baseline_commit": "1d1048dd354323257e86ab03628a1728b0b729a5",
+  "branch_code_commit": "c5fe0f4",
+  "branch_tree_commit": "8ca6f72",
+  "primary_metrics": ["global_visible_lake_volume_km3", "global_visible_lake_area_km2"],
+  "expected_direction": "global direction uncertain; cold seasonal lakes expected to lose more water where sublimation exceeds the prior annual-mean evaporation",
+  "decision_threshold": "none; this reports calibration shift and does not define acceptance",
+  "noise_basis": "no lake-specific run-to-run variability estimate; #519 reports deterministic identical P0/P1 replay, but this paired comparison does not characterize cross-seed or cross-resolution variation",
+  "controls": [
+    "same save bytes and SHA-256",
+    "same seed, 100 kyr step and 10-step horizon",
+    "same replay script, tracked IDs and Python environment",
+    "runs executed one at a time with no tests or other replay"
+  ],
+  "status": "complete",
+  "results": {
+    "endpoint": {
+      "origin_main": {
+        "lake_volume_km3": 1931177.923828397,
+        "lake_area_km2": 5215761.996295622,
+        "track_26_volume_km3": 606.7559914349506,
+        "track_13_volume_km3": 166.09604925938726,
+        "median_step_runtime_s": 13.757167186995503,
+        "peak_rss_mb": 1244.921875
+      },
+      "pr_branch": {
+        "lake_volume_km3": 1931946.4457634347,
+        "lake_area_km2": 5488949.763339532,
+        "track_26_volume_km3": 701.3959446976324,
+        "track_13_volume_km3": 165.09005519403604,
+        "median_step_runtime_s": 13.665035312005784,
+        "peak_rss_mb": 1052.578125
+      },
+      "relative_change_percent": {
+        "lake_volume": 0.03979550126143039,
+        "lake_area": 5.237734529258353,
+        "track_26_volume": 15.597695712713545,
+        "track_13_volume": -0.6056700745363242,
+        "median_step_runtime": -0.6695456434902273
+      }
+    },
+    "warnings": ["Both arms emitted the basin-spill 32-round warning at step 10."],
+    "interpretation": "Global volume shift is small in this run; visible lake area and tracked lake 26 move more. The large within-run lake-area fluctuations preclude interpreting this paired endpoint as a general calibration result. A single short replay does not establish performance."
+  }
+}

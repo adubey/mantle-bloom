@@ -210,8 +210,9 @@ class LakeClimate:
     `inflow_m3_per_yr` is the compatibility input used by `resolve_lakes` and direct fixtures.
     The prognostic path reads disjoint settled sources from `external_supply_m3_per_yr`, falling
     back to inflow for direct callers. Optional component arrays let the step ledger keep wet
-    precipitation, dry runoff and meltwater distinct. `evaporation_m_per_yr` is open-water
-    evaporation at each node."""
+    precipitation, dry runoff and meltwater distinct. `evaporation_m_per_yr` is open-season
+    evaporation at each node; optional `sublimation_m_per_yr` is the frozen-season loss, without
+    the shallow-margin boost."""
 
     inflow_m3_per_yr: np.ndarray
     evaporation_m_per_yr: np.ndarray
@@ -221,6 +222,7 @@ class LakeClimate:
     wet_precip_m3_per_yr: np.ndarray | None = None
     dry_runoff_m3_per_yr: np.ndarray | None = None
     meltwater_m3_per_yr: np.ndarray | None = None
+    sublimation_m_per_yr: np.ndarray | None = None
 
 
 @dataclass(frozen=True)
@@ -384,18 +386,19 @@ def _source_volume(rates, members, dt_step):
     return 0.0 if rates is None or dt_step <= 0.0 else float(np.maximum(rates[members], 0.0).sum() * dt_step)
 
 
-def _integrate_body_volume(available, members, cap_level, dry_level, dt_step, evaporation, hypsometry):
-    """Implicitly integrate storage against level-dependent evaporation for one slice."""
+def _integrate_body_volume(available, members, cap_level, dry_level, dt_step, evaporation, sublimation, hypsometry):
+    """Implicitly integrate storage against level-dependent lake losses for one slice."""
     if len(members) == 1:
         node = int(members[0])
         area = float(hypsometry.area_m2[node])
         z = float(hypsometry.elevation[node])
         relief = float(hypsometry.relief_m[node])
         evap = float(evaporation[node])
+        sub = 0.0 if sublimation is None else float(sublimation[node])
         if relief <= 0.0:
             cap_depth = max(cap_level - z, 0.0)
             cap_volume = area * cap_depth
-            cap_evaporation = area * evap * dt_step if cap_level > z else 0.0
+            cap_evaporation = area * (evap + sub) * dt_step if cap_level > z else 0.0
             surplus = available - cap_volume - cap_evaporation
             if surplus > 0.0:
                 return cap_volume, cap_evaporation, surplus, cap_level
@@ -409,19 +412,21 @@ def _integrate_body_volume(available, members, cap_level, dry_level, dt_step, ev
             cap_wet = 1.0
         cap_depth = max(cap_level - z, 0.0) if cap_wet >= 1.0 else relief * cap_wet * cap_wet
         cap_volume = area * cap_depth
-        cap_evaporation = area * evap * cap_wet * (1.0 + SHALLOW_EVAPORATION_BOOST * (1.0 - cap_wet)) * dt_step
+        cap_evaporation = area * cap_wet * (
+            evap * (1.0 + SHALLOW_EVAPORATION_BOOST * (1.0 - cap_wet)) + sub
+        ) * dt_step
         surplus = available - cap_volume - cap_evaporation
         if surplus > 0.0:
             return cap_volume, cap_evaporation, surplus, cap_level
 
         q = max(available, 0.0) / area
-        full_budget = relief + evap * dt_step
+        full_budget = relief + (evap + sub) * dt_step
         if cap_level >= z + relief and q >= full_budget:
-            level = z + q - evap * dt_step
+            level = z + q - (evap + sub) * dt_step
             volume = area * max(level - z, 0.0)
-            return volume, area * evap * dt_step, 0.0, level
+            return volume, area * (evap + sub) * dt_step, 0.0, level
         alpha = relief - evap * dt_step * SHALLOW_EVAPORATION_BOOST
-        beta = evap * dt_step * (1.0 + SHALLOW_EVAPORATION_BOOST)
+        beta = dt_step * (evap * (1.0 + SHALLOW_EVAPORATION_BOOST) + sub)
         discriminant = max(beta * beta + 4.0 * alpha * q, 0.0)
         denominator = beta + float(np.sqrt(discriminant))
         wet = q / beta if abs(alpha) <= 1e-15 and beta > 0.0 else (
@@ -430,7 +435,7 @@ def _integrate_body_volume(available, members, cap_level, dry_level, dt_step, ev
         wet = min(max(wet, 0.0), cap_wet)
         level = z - relief + 2.0 * relief * wet
         volume = area * relief * wet * wet
-        evaporated = area * evap * wet * (1.0 + SHALLOW_EVAPORATION_BOOST * (1.0 - wet)) * dt_step
+        evaporated = area * wet * (evap * (1.0 + SHALLOW_EVAPORATION_BOOST * (1.0 - wet)) + sub) * dt_step
         return volume, min(evaporated, available), 0.0, level
 
     cap_volume = hypsometry.volume(cap_level, members) if np.isfinite(cap_level) else np.inf
@@ -438,6 +443,7 @@ def _integrate_body_volume(available, members, cap_level, dry_level, dt_step, ev
     relief = hypsometry.relief_m[members]
     area = hypsometry.area_m2[members]
     evap_rate = evaporation[members]
+    sub_rate = np.zeros_like(evap_rate) if sublimation is None else np.maximum(sublimation[members], 0.0)
 
     def budget(level):
         above_low = np.maximum(level - (z - relief), 0.0)
@@ -451,12 +457,12 @@ def _integrate_body_volume(available, members, cap_level, dry_level, dt_step, ev
             np.clip(np.divide(level - (z - relief), 2.0 * relief, out=np.zeros_like(z), where=relief > 0.0), 0.0, 1.0),
         )
         volume = float(np.dot(depth, area))
-        evaporation_rate = float(np.dot(area * wet * (1.0 + SHALLOW_EVAPORATION_BOOST * (1.0 - wet)), evap_rate))
+        evaporation_rate = float(np.dot(area * wet, evap_rate * (1.0 + SHALLOW_EVAPORATION_BOOST * (1.0 - wet)) + sub_rate))
         wet_area = float(np.dot(area, wet))
         partial = (relief > 0.0) & (wet > 0.0) & (wet < 1.0)
         d_wet = np.divide(1.0, 2.0 * relief, out=np.zeros_like(relief), where=partial)
         evaporation_slope = float(np.dot(
-            area * evap_rate * (1.0 + SHALLOW_EVAPORATION_BOOST - 2.0 * SHALLOW_EVAPORATION_BOOST * wet),
+            area * (evap_rate * (1.0 + SHALLOW_EVAPORATION_BOOST - 2.0 * SHALLOW_EVAPORATION_BOOST * wet) + sub_rate),
             d_wet,
         ))
         return volume, evaporation_rate * dt_step, wet_area + evaporation_slope * dt_step
@@ -498,6 +504,7 @@ def _advance_prognostic_body(
     rates,
     climate,
     evaporation,
+    sublimation,
     depth,
     prev_lake_depth,
     hypsometry,
@@ -550,7 +557,7 @@ def _advance_prognostic_body(
         cap_level = dry_level
     available = stored + input_volume
     _, evap_volume, overflow, new_level = _integrate_body_volume(
-        available, members, cap_level, dry_level, dt_step, evaporation, hypsometry
+        available, members, cap_level, dry_level, dt_step, evaporation, sublimation, hypsometry
     )
     accounting.evaporation_total += evap_volume
     if len(members) == 1:
@@ -650,6 +657,9 @@ def solve_lakes_prognostic(
         rates = climate.inflow_m3_per_yr
     rates = np.maximum(np.asarray(rates, dtype=float), 0.0)
     evaporation = np.maximum(np.asarray(climate.evaporation_m_per_yr, dtype=float), 0.0)
+    sublimation = None if climate.sublimation_m_per_yr is None else np.maximum(
+        np.asarray(climate.sublimation_m_per_yr, dtype=float), 0.0
+    )
     node_area_km2 = (4.0 * np.pi * PLANET_RADIUS_KM**2) / max(n, 1)
     leaves = [lake for lake in iter_all_lakes(forest) if not lake.children]
     leaf_of_node = np.full(n, -1, dtype=np.int64)
@@ -686,7 +696,7 @@ def solve_lakes_prognostic(
                 processed.add(id(body))
                 continue
             _advance_prognostic_body(
-                body, dt_step, rates, climate, evaporation, depth, prev_lake_depth, hypsometry,
+                body, dt_step, rates, climate, evaporation, sublimation, depth, prev_lake_depth, hypsometry,
                 node_area_km2, n, is_ocean, accounting, leaves, body_leaf_ids,
                 leaf_of_node, body_for_leaf, pending, processed,
             )
@@ -771,10 +781,12 @@ def solve_lakes_prognostic(
 
 
 def lake_evaporation_m3_per_yr(level: float, idx: np.ndarray, hyps: "CellHypsometry", climate: LakeClimate) -> float:
-    """Evaporation from the cells `idx` at water level `level`: each cell's wet area times its
-    open-water rate, raised for partly flooded cells (SHALLOW_EVAPORATION_BOOST)."""
+    """Water loss from wet cells in m³/yr (#608); only open-water evaporation gets the
+    shallow-margin boost."""
     wet = hyps.wet_fraction(level, idx)
     rate = climate.evaporation_m_per_yr[idx] * (1.0 + SHALLOW_EVAPORATION_BOOST * (1.0 - wet))
+    if climate.sublimation_m_per_yr is not None:
+        rate = rate + climate.sublimation_m_per_yr[idx]
     return float((hyps.area_m2[idx] * wet * rate).sum())
 
 
