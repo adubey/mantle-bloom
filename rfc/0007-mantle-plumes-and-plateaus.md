@@ -697,12 +697,17 @@ emplacement or plateau docking.
   comparable to the ~1.1 km³/yr Cenozoic accretion budget. Aggregate
   `juvenile_additions_m3` growth does not establish plume emplacement, docking, or
   preservation.
-- [ ] **Isolated-head scale check (before tuning):** the unit test above passes. A median
+- [x] **Isolated-head scale check (before tuning):** the unit test above passes. A median
       head on reference oceanic lithosphere gives 2.0–2.6 km of peak relief.
-- [ ] Over 1 Gyr on each of seeds 7, 11 and 2024: plume-head counts consistent with the
+  **Result (PR #578):** median head 2.33 km relief on the reference column.
+- [x] Over 1 Gyr on each of seeds 7, 11 and 2024: plume-head counts consistent with the
       configured rate (Poisson 95% interval), a volume distribution matching the
       configured one, and 20–50 active hotspots at every 100 Myr checkpoint.
-- [ ] Timestep robustness:
+  **Result (2026-10-26, [analysis/issue584](../analysis/issue584/README.md), PR #619):**
+  93–119 heads/Gyr on seeds 7/11/2024 (Poisson(100)-consistent; 3 Gyr regen
+  matches), realized deciles match the configured distribution per variant,
+  and active hotspots read 20–46 at every post-zero 100 Myr checkpoint.
+- [ ] Timestep robustness (now tracked as #624):
   - [ ] the event stream is identical across step partitions (unit test);
   - [ ] for a shared predetermined schedule, total delivered volume is identical within
         1e-9 relative for 1 Myr and 10 Myr steps;
@@ -711,14 +716,18 @@ emplacement or plateau docking.
   - [ ] on full replays, totals agree within 2% (positions differ).
 - [ ] Hotspot tracks: on a pinned-motion test world, one tail's crust maxima lie within 20°
       of the plate's motion direction at the plume and get younger toward it.
-- [ ] The buoyant-crust ledger closes on every acceptance run, with `unattributed_m3`
+- [x] The buoyant-crust ledger closes on every acceptance run, with `unattributed_m3`
       below 1e-6 of emplaced volume, and the tracer invariants hold at every step.
+  **Result (PR #619):** `unattributed_m3` is 0.0 on all 21 tuning runs.
 - [ ] Gross emplacement, docking events and conversion are reported separately. Long-run
       `converted_m3` from plateaus is 0.3–1.5 km³/yr on the tuning seeds at the starting
       knobs. That is a sanity range around ~1.1 km³/yr of Cenozoic plateau accretion
       [[Clift et al., 2009]](#ref-clift2009), not a fit.
-- [ ] The sensitivity runs (rate, clustering, volume distribution, docking knobs) are
+  **Result (PR #619):** reported separately per the gate; the sanity range is
+  NOT met (best case ~175x low, spread ~668x vs <5x). Follow-up: #622.
+- [x] The sensitivity runs (rate, clustering, volume distribution, docking knobs) are
       reported, with the spread of converted continental material each produces.
+  **Result (PR #619):** 17 single-knob cases on seed 7 in analysis/issue584.
 - [ ] Any RFC 0010/0012 tuning of the cross-RFC coupling knobs is reported with the
       values used, and this RFC's scale, ledger and source-attribution gates are
       re-run green at those values. RFC 0010 tuning also requires its local propagation/linkage
@@ -726,6 +735,9 @@ emplacement or plateau docking.
 - [ ] Side effects stay bounded: report plate counts and mean overlap fraction at every
       100 Myr checkpoint beside the matched plume-off baseline; flag over 20% drift
       for review before tuning further.
+  **Partial (PR #619):** plate counts at every 100 Myr checkpoint are in
+  tuning.json; on/off split incidence in analysis/issue582. Mean overlap
+  fraction beside a matched plume-off baseline is still open.
 - [ ] Cross-section deliverable: with `show_plumes` on, a pinned plume renders at the
       expected section position (head marker plus intersected footprint extent, deep tails
       shown as continues-below); plumes outside the corridor are omitted. The map-view
@@ -734,16 +746,26 @@ emplacement or plateau docking.
       cells, split between plume-associated and other rift episodes, with a matched plume-off/on
       comparison for the plume-associated subset. Do not use a single whole-world 50% localization
       threshold: non-plume rifts are outside the initial plume-assisted target class.
-- [ ] Before tuning `PLUME_HEAD_STRESS`, report the fraction of continental heads followed
+  **Partial (PR #619):** heated-area fraction of split parents recorded on all
+  tuning cases (majority unheated; heat-window concentration weak). Blocked on
+  RFC 0010 for the plume-associated subset split.
+- [x] Before tuning `PLUME_HEAD_STRESS`, report the fraction of continental heads followed
       by a split within 20 Myr beside matched plume-off/background incidence under the
       physical 2 Myr cooldown. The half-of-heads target remains a provisional design
       choice, not evidence that a later split was caused by a plume.
+  **Result (PR #600 comparator, PR #619 sweep):** 0.19 head-following vs 0.52
+  matched plume-off; stress flat 0–3.0. Target unsupported. Follow-up: #623.
 - [ ] Step time changes by less than 3% at density 4; save size by less than 3%.
+  **Partial (PR #619):** mean step 4–7 s recorded per case; the density-4
+  comparison and save-size check are still open.
 - [ ] `plume_multiplier = 0` gives step results identical to a matched, pinned
       current-main run without plume code on a 10-step replay; record both commits,
       density, controls and step schedule.
-- [ ] Ledgers close; old saves load; affected tests, ruff and `bin/quality_check.sh` are
+  **Open:** now tracked as #624 together with timestep robustness.
+- [x] Ledgers close; old saves load; affected tests, ruff and `bin/quality_check.sh` are
       green.
+  **Result (PRs #598, #607, #619):** affected suites and quality gates green at
+  each merge.
 
 ## Falsification criteria
 
