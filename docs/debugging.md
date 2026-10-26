@@ -150,6 +150,7 @@ Gate 2 load, mesh and capacity diagnostics.
 | [`measure_river_hops.py`](debugging/scripts-water-ice.md#measure_river_hopspy) | river lines drawn across lakes by spill hops |
 | [`measure_discharge_calibration.py`](debugging/scripts-water-ice.md#measure_discharge_calibrationpy) | river and glacier calibration on one save in two trees |
 | [`measure_lake_silt.py`](debugging/scripts-water-ice.md#measure_lake_siltpy) | lake area, volume and silt |
+| [`gate_lake_ice_cap.py`](debugging/scripts-water-ice.md#gate_lake_ice_cappy) | RFC 0014 G5 lake ice-cap equilibrium and sensitivities |
 | [`measure_breaching.py`](debugging/scripts-water-ice.md#measure_breachingpy) | depression breaching on and off |
 | [`measure_ice_sheet.py`](debugging/scripts-water-ice.md#measure_ice_sheetpy) | glacier extent, volume, erosion and the ice ledger |
 | [`measure_seasonal_melt.py`](debugging/scripts-water-ice.md#measure_seasonal_meltpy) | glaciated land by annual-mean temperature |
