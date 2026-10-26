@@ -465,6 +465,30 @@ def test_loading_a_v5_plate_missing_its_surface_version_raises(stepped_bytes):
         persistence.load_world_bytes(_remanifested(stepped_bytes, strip))
 
 
+def test_loading_a_v5_plate_with_a_junk_surface_version_raises(stepped_bytes):
+    # The writer only ever emits ints; a string or bool version is tampering, not a
+    # newer format, so it is corrupt rather than unsupported (#596 review).
+    def spoil(manifest):
+        manifest["plates"][0]["_plate_surface_version"] = "999"
+
+    with pytest.raises(persistence.CorruptSaveError, match="surface version"):
+        persistence.load_world_bytes(_remanifested(stepped_bytes, spoil))
+
+    def spoil_bool(manifest):
+        manifest["plates"][0]["_plate_surface_version"] = True
+
+    with pytest.raises(persistence.CorruptSaveError, match="surface version"):
+        persistence.load_world_bytes(_remanifested(stepped_bytes, spoil_bool))
+
+
+def test_loading_a_v5_with_an_unresolvable_class_raises(stepped_bytes):
+    def retag(manifest):
+        _first_with_key(manifest, "__dc__")["__dc__"] = "no.such.module.Class"
+
+    with pytest.raises(persistence.CorruptSaveError, match="contradicts itself"):
+        persistence.load_world_bytes(_remanifested(stepped_bytes, retag))
+
+
 def test_loading_a_v5_missing_world_scalars_raises(stepped_bytes):
     def strip(manifest):
         manifest["world"].pop("seed")

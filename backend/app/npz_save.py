@@ -427,9 +427,12 @@ def load_world_v5(data: bytes) -> World:
             try:
                 plates = []
                 for state in manifest["plates"]:
-                    if "_plate_surface_version" not in state or state["_plate_surface_version"] is None:
+                    # The writer always emits an int (QUAD_SURFACE_FORMAT_VERSION); a
+                    # missing, null or non-int version is tampering, not a newer
+                    # format, so it is corrupt rather than unsupported (#596 review).
+                    plate_version = state.get("_plate_surface_version")
+                    if type(plate_version) is not int:
                         raise _corrupt("v5 plate entry is missing its surface version")
-                    plate_version = state["_plate_surface_version"]
                     if plate_version != QUAD_SURFACE_FORMAT_VERSION and plate_version not in LEGACY_QUAD_SURFACE_FORMAT_VERSIONS:
                         raise _unsupported(
                             f"unsupported sparse quad surface format version {plate_version!r}; "
@@ -467,6 +470,10 @@ def load_world_v5(data: bytes) -> World:
     try:
         _rebuild_climate(world)
     except Exception as exc:
+        from .persistence import SaveFormatError
+
+        if isinstance(exc, SaveFormatError):
+            raise
         raise _corrupt(f"v5 save has inconsistent arrays: {exc}") from exc
     return world
 
