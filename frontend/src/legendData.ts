@@ -759,7 +759,7 @@ export function legendFor(view: MapView): LegendSpec | null {
               max: 20,
               stops: [
                 { value: 0, color: "rgb(128, 126, 118)" },
-                { value: 10, color: "rgb(190, 90, 25)" },
+                { value: 10, color: "rgb(192, 138, 79)" },
                 { value: 20, color: "rgb(255, 150, 40)" },
               ],
               ticks: [

@@ -1322,7 +1322,8 @@ by interval overlap so any step length delivers exactly (`plumes.apply`).
 Tails stamp no tracer and stay out of the juvenile budget's plume routes;
 heads and tails on continental crust can dock as terranes (`terranes.py`).
 While a head is active its halo cells carry `plume_heat_myr` (topped to
-`PLUME_HEAT_MYR`, counting down 20 Myr), which weakens craton-rooted rift
+`PLUME_HEAT_MYR` pre-decay -- a head born mid-step tops higher so the post-decay
+halo is exact -- counting down 20 Myr), which weakens craton-rooted rift
 resistance in divergent thinning, rift-advance and gap-fill stretch donors,
 and failed rifts -- and every continental head arrival adds `PLUME_HEAD_STRESS`
 to the host plate's breakup stress. Both knobs are provisional (tuned in

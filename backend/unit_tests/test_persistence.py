@@ -80,6 +80,10 @@ def test_loading_a_world_pickled_before_plumes_existed_defaults_plume_fields():
     del world.__dict__["mantle_plumes"]
     del world.__dict__["plume_stream"]
     del world.__dict__["plume_heads_emplaced"]
+    # A genuine pre-plume plate carries no heat key at all, so pop it to exercise
+    # the lazy-materialization path, not just a present-but-zero array.
+    for plate in world.plates:
+        plate._fields.pop("plume_heat_myr", None)
 
     loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
     assert loaded.mantle_plumes == []

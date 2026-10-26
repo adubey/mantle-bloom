@@ -2418,6 +2418,7 @@ def plume_colors(heat_myr: np.ndarray, plateau_m: np.ndarray, continental: np.nd
         PLUME_VIEW_CONTINENTAL_RGB + frac * (PLUME_VIEW_HEAT_HOT_RGB - PLUME_VIEW_CONTINENTAL_RGB),
         PLUME_VIEW_OCEANIC_RGB + frac * (PLUME_VIEW_HEAT_HOT_RGB - PLUME_VIEW_OCEANIC_RGB),
     )
+    # Display-only tint scale, not a physics threshold: full green at 5 km of plateau.
     share = np.clip(np.asarray(plateau_m, dtype=float) / 5000.0, 0.0, 1.0)[:, None]
     colors = colors + share * (PLUME_VIEW_PLATEAU_RGB - colors) * 0.65
     return colors.astype(np.uint8)
@@ -2444,7 +2445,9 @@ def _draw_plume_markers(
     """Live plume positions and footprints (RFC 0007, #583): an orange ring at the head
     radius around head-active plumes, a blue ring at the tail radius around tail-stage
     ones, fading with tail age, each with a centre dot. Rings are sampled small
-    circles in 3D so they stay true on every projection."""
+    circles in 3D so they stay true on every projection. Stage-based: a head plume
+    whose head is exhausted draws the tail ring, while the stats census still counts
+    it as a head (origin-based) -- see plumes.diagnostics."""
     if not world.mantle_plumes:
         return
     earth_m = PLANET_RADIUS_KM * 1000.0

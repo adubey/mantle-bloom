@@ -405,7 +405,7 @@ def compute_stats(world: World) -> dict:
         "craton_rift_cuts": {key: craton[f"craton_{key}"] for key in cratons.CRATON_RIFT_CUT_COUNTERS},
         # Mantle plumes (RFC 0007): live census, cumulative LIP head arrivals, the
         # buoyant-crust ledger by source, and plume-affected areas (heated halo and
-        # live plume-head plateau, both km^2).
+        # plateau crust, live and relic, both km^2).
         **_plume_stats(world),
     }
 
@@ -434,10 +434,14 @@ def _plume_stats(world: World) -> dict:
         "plume_active_tails": census["tails"],
         "plume_lip_events": int(world.plume_heads_emplaced),
         "plume_heat_area_km2": heat_area_m2 / 1.0e6,
+        # All plateau_crust_m, live-head and relic: the field persists until the
+        # crust subducts, converts, or founders.
         "plume_plateau_area_km2": plateau_area_m2 / 1.0e6,
         "buoyant_crust_ledger_km3": {
             source: {
                 account: ledger[source][account] / 1.0e9
+                # clipped_by_phase is a per-phase dict, not an m3 volume: it
+                # cannot scale to km3, so it stays out of the mirror by design.
                 for account in terranes.BALANCE_ACCOUNTS + (terranes.DOCKED_ACCOUNT,)
             }
             for source in terranes.SOURCES
