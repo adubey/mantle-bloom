@@ -1318,9 +1318,13 @@ def test_load_converts_a_line_save_to_quads(client):
 
     from .legacy_lines import line_world_like, retired_class_names
 
+    import pickle
+
     lines = line_world_like(generate_world(seed=5, num_plates=6, node_density=1.0), line_spacing_rad(1.0))
+    # A pre-#251 save pickled the retired line classes. v5 never holds lines, so build
+    # that version-1 save directly instead of going through the writer.
     with retired_class_names():
-        saved = persistence.save_world_bytes(lines)
+        saved = pickle.dumps(lines)
 
     converted = client.post("/world/load", content=saved).json()
     assert converted["surface"] == "quad"

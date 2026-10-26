@@ -1,4 +1,7 @@
+import io
+import json
 import pickle
+import zipfile
 
 import numpy as np
 import pytest
@@ -39,13 +42,15 @@ def test_round_trip_preserves_a_freshly_generated_world():
         assert np.array_equal(loaded_plate.collect("elevation"), original_plate.collect("elevation"))
 
 
-def test_round_trip_preserves_state_only_a_step_would_populate():
-    # collision_progress/climate_cache/hydrology_cache/events are all empty/None on a freshly
-    # generated world -- step it first so the round trip has to actually carry a dict and the
-    # two cache dataclasses, not just empty defaults.
+def test_round_trip_drops_caches_and_rebuilds_climate():
+    # v5 saves (#596) drop every recomputable cache instead of carrying it: hydrology,
+    # CFD and erosion caches do not survive, while the loader recomputes climate_cache
+    # for a stepped world so the next step's transpiration reads a real field. Only
+    # authoritative state -- and kept scalars like hydrology_cache_step -- must match.
     world = generate_world(seed=7, num_plates=6)
     step_world(world, 5_000_000)
     step_world(world, 5_000_000)
+    assert world.climate_cache is not None and world.hydrology_cache is not None
 
     loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
 
@@ -53,12 +58,11 @@ def test_round_trip_preserves_state_only_a_step_would_populate():
     assert loaded.steps_taken == world.steps_taken == 2
     assert loaded.collision_progress == world.collision_progress
     assert loaded.events == world.events
-    assert (loaded.climate_cache is None) == (world.climate_cache is None)
-    assert (loaded.hydrology_cache is None) == (world.hydrology_cache is None)
-    if world.climate_cache is not None:
-        assert np.allclose(loaded.climate_cache.elevation_m, world.climate_cache.elevation_m)
-    if world.hydrology_cache is not None:
-        assert np.allclose(loaded.hydrology_cache.elevation, world.hydrology_cache.elevation)
+    assert loaded.hydrology_cache_step == world.hydrology_cache_step == 2
+    assert loaded.hydrology_cache is None
+    assert loaded.atmosphere_cfd_state is None
+    assert loaded.erosion_cache is None
+    assert loaded.climate_cache is not None
 
 
 def test_loading_a_world_pickled_before_steps_taken_existed_defaults_to_zero():
@@ -164,7 +168,10 @@ def test_loading_a_save_with_unitless_cached_humidity_converts_it_to_g_per_kg():
     precipitation = cache.precipitation_mm.copy()
     cache.__dict__["humidity"] = np.full_like(cache.__dict__.pop("humidity_g_kg"), 0.5)
 
-    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+    # The migration path is for pre-v5 pickle saves (v5 never carries a cache); build a
+    # version-2 envelope the way those saves hold it.
+    data = pickle.dumps({"format": persistence.SAVE_FORMAT, "version": 2, "world": world})
+    loaded = persistence.load_world_bytes(data)
     assert "humidity" not in vars(loaded.climate_cache)
     np.testing.assert_allclose(loaded.climate_cache.humidity_g_kg, 0.5 * climate.HUMIDITY_INDEX_G_KG)
     np.testing.assert_array_equal(loaded.climate_cache.precipitation_mm, precipitation)
@@ -222,10 +229,10 @@ def test_loading_another_programs_envelope_raises():
 
 def test_saves_carry_a_format_version_envelope():
     world = generate_world(seed=3, num_plates=4)
-    envelope = pickle.loads(persistence.save_world_bytes(world))
+    manifest = json.loads(zipfile.ZipFile(io.BytesIO(persistence.save_world_bytes(world))).read("manifest.json"))
 
-    assert envelope["format"] == persistence.SAVE_FORMAT
-    assert envelope["version"] == persistence.SAVE_FORMAT_VERSION
+    assert manifest["format"] == persistence.SAVE_FORMAT
+    assert manifest["version"] == persistence.SAVE_FORMAT_VERSION
 
 
 def test_old_hydroclimate_pickle_module_paths_resolve_to_moved_classes():
@@ -269,7 +276,8 @@ def test_loading_an_envelope_with_an_invalid_version_raises(version):
 def test_saves_declare_their_surface_and_the_loader_checks_it():
     lines = _line_world()
     quad = generate_world(seed=3, num_plates=4)
-    assert pickle.loads(persistence.save_world_bytes(quad))["surface"] == "quad"
+    manifest = json.loads(zipfile.ZipFile(io.BytesIO(persistence.save_world_bytes(quad))).read("manifest.json"))
+    assert manifest["surface"] == "quad"
 
     lying = _line_pickle({"format": persistence.SAVE_FORMAT, "version": 3, "surface": "quad", "world": lines})
     with pytest.raises(persistence.CorruptSaveError, match="declares a 'quad' world"):
