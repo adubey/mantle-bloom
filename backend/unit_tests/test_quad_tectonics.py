@@ -1838,8 +1838,10 @@ def _consumed_tracer_vol(excess_m: float, survivors: np.ndarray, stamped: np.nda
 
 
 def test_docking_patch_joins_donors_minus_lower_crust_loss(monkeypatch):
-    """A docking patch accretes minus exactly its lower-crust share; the ledger
-    closes with unattributed at zero (#581)."""
+    """A docking patch accretes minus exactly its lower-crust share; the kept
+    share converts 90/10 juvenile/foundered on the survivors instead of staying
+    live, and the ledger closes with unattributed at zero (#581; conversion
+    behavior #622)."""
     monkeypatch.setattr(terranes, "docking_draw", lambda *args: True)
     a, world, ctx, stamped, emplaced = _buoyant_overlap(20_000.0, 1.0, 50_000_000.0)
     areas_before = a.node_areas_m2()
@@ -1855,10 +1857,21 @@ def test_docking_patch_joins_donors_minus_lower_crust_loss(monkeypatch):
     ledger = terranes.ensure_ledger(world)
     assert ledger["plume_head"]["docked_m3"] == pytest.approx(kept_vol, rel=1e-9)
     assert ledger["plume_head"]["subducted_m3"] == pytest.approx(lost_vol, rel=1e-9)
-    # The kept share stays live on the survivors; the loss leaves Hc too.
-    assert _buoyant_live(a) == pytest.approx(kept_vol + (tracer_before - consumed_vol), rel=1e-9)
+    # The kept share converts on the survivors along with any reworked prior
+    # live tracer on the placed cells; the loss and the foundered share both
+    # leave Hc.
+    converted = ledger["plume_head"]["converted_m3"]
+    foundered = ledger["plume_head"]["foundered_m3"]
+    assert converted > 0.0
+    assert converted == pytest.approx(9.0 * foundered, rel=1e-9)
+    # At least the fresh kept share converted; reworked prior live tracer adds.
+    assert converted + foundered >= kept_vol * (1.0 - 1e-9)
+    live_after = _buoyant_live(a)
+    assert converted + foundered + ledger["plume_head"]["subducted_m3"] + live_after == pytest.approx(
+        tracer_before, rel=1e-9
+    )
     hc_after = float(np.dot(a.collect("crustal_thickness_m"), a.node_areas_m2()))
-    assert hc_after == pytest.approx(hc_before - lost_vol, rel=1e-9)
+    assert hc_after == pytest.approx(hc_before - lost_vol - foundered, rel=1e-9)
     residual = terranes.balance_residual(ledger, terranes.world_live_volumes_m3(world))
     assert residual["plume_head"] == pytest.approx(0.0, abs=1e-9 * emplaced)
     assert ledger["plume_head"]["unattributed_m3"] == 0.0
@@ -1961,17 +1974,26 @@ def test_conversion_books_juvenile_once_clears_tracers():
     assert ledger["plume_head"]["unattributed_m3"] == 0.0
 
 
-def test_oceanic_hosted_docked_crust_stays_live():
-    """Buoyant crust accreted onto oceanic-coded receivers stays live buoyant
-    crust with no conversion booking (#581)."""
-    a, world, front_vol, _ = _converting_accretion("oceanic")
+def test_oceanic_hosted_docked_crust_converts():
+    """Buoyant crust accreted onto oceanic-coded receivers converts: the preserved
+    share books juvenile continental material (which may sit on oceanic crust
+    until a later retyping), the foundered share leaves Hc, tracers clear.
+    Reverses the #581 stays-live rule (RFC 0007, #622)."""
+    a, world, front_vol, hc_before = _converting_accretion("oceanic")
     ledger = terranes.ensure_ledger(world)
-    assert ledger["plume_head"]["converted_m3"] == 0.0
-    assert ledger["plume_head"]["foundered_m3"] == 0.0
-    assert world.continental_material_ledger["juvenile_plateau_m3"] == 0.0
-    assert _buoyant_live(a) == pytest.approx(front_vol, rel=1e-9)
+    juvenile_vol = terranes.PLATEAU_PRESERVED_FRACTION * front_vol
+    foundered_vol = front_vol - juvenile_vol
+    assert ledger["plume_head"]["converted_m3"] == pytest.approx(juvenile_vol, rel=1e-9)
+    assert ledger["plume_head"]["foundered_m3"] == pytest.approx(foundered_vol, rel=1e-9)
+    assert world.continental_material_ledger["juvenile_plateau_m3"] == pytest.approx(juvenile_vol, rel=1e-9)
+    assert _buoyant_live(a) == pytest.approx(0.0, abs=1e-9 * front_vol)
+    # Survivors hold the pre-accretion Hc minus exactly the foundered share.
+    areas = a.node_areas_m2()
+    hc_live = float(np.dot(a.collect("crustal_thickness_m"), areas))
+    assert hc_live == pytest.approx(hc_before - foundered_vol, rel=1e-9)
     residual = terranes.balance_residual(ledger, terranes.world_live_volumes_m3(world))
     assert residual["plume_head"] == pytest.approx(0.0, abs=1e-9 * front_vol)
+    assert ledger["plume_head"]["unattributed_m3"] == 0.0
 
 
 def test_patch_emplacement_years_weights_by_area():
@@ -2090,3 +2112,6 @@ def test_audit_world_holds_tracers_to_columns_and_books_phase():
     assert _buoyant_live(ocean) + _buoyant_live(continent) == pytest.approx(
         float(np.dot(np.full(ocean.node_count(), 2_000.0), ocean_areas)), rel=1e-9
     )
+
+
+

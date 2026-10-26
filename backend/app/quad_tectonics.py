@@ -1074,12 +1074,15 @@ def _accrete_onto_survivors(
                 subducted_hm_m3=hm_subducted_volume,
             )
 
-    # Buoyant crust placed onto continental-coded receivers converts: the
-    # preserved share becomes juvenile continental material, the foundered share
-    # leaves Hc. Oceanic-hosted accreted crust stays live. Runs before the
-    # elevation write below so the foundered removal's relief follows (RFC 0007,
+    # Buoyant crust a front placed converts wherever it landed: the preserved
+    # share becomes juvenile continental material (which may sit on oceanic
+    # crust until a later retyping), the foundered share leaves Hc. Gating on
+    # continental coding starved the conversion -- accreted plateau lands on
+    # oceanic-coded receivers and sat live forever (RFC 0007, #622). Cells
+    # without tracer are no-ops inside the call. Runs before the elevation
+    # write below so the foundered removal's relief follows (RFC 0007,
     # issue #581).
-    _convert_buoyant_on_continental(world, changed & continental, hc, material, plateau, arc, moment, areas)
+    _convert_buoyant_on_continental(world, changed, hc, material, plateau, arc, moment, areas)
     _write_tracers(plate, plateau, arc, moment)
 
     gained = np.flatnonzero(changed)
