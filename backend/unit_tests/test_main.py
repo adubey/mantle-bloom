@@ -6,9 +6,11 @@ import json
 import math
 import threading
 import time
+from types import SimpleNamespace
 import av
 import numpy as np
 import pytest
+import re
 from fastapi.testclient import TestClient
 from PIL import Image
 from app.lithosphere_plate import generate_plates
@@ -1030,6 +1032,22 @@ def test_rivers_and_river_at_are_empty_before_the_first_step(client):
     assert client.get("/world/river_at", params={"lat_deg": 0, "lon_deg": 0}).json()["river_id"] is None
 
 
+def test_loaded_hydrology_cache_is_stale_when_external_source_fields_are_missing():
+    cache = SimpleNamespace(
+        flow_accum=np.zeros(3),
+        discharge_m3_s=np.zeros(3),
+        lake_external_supply_m3_per_yr=np.zeros(3),
+        lake_external_wet_precip_m3_per_yr=np.zeros(3),
+        lake_external_dry_runoff_m3_per_yr=np.zeros(3),
+    )
+
+    assert main._hydrology_cache_is_stale(cache)
+    cache.lake_external_meltwater_m3_per_yr = np.zeros(3)
+    assert not main._hydrology_cache_is_stale(cache)
+    cache.lake_external_supply_m3_per_yr = np.zeros(2)
+    assert main._hydrology_cache_is_stale(cache)
+
+
 def test_river_at_rejects_non_finite_query(client):
     _post_generate(client, json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
     assert client.get("/world/river_at", params={"lat_deg": "nan", "lon_deg": 0}).status_code == 400
@@ -1948,6 +1966,56 @@ def test_two_populated_worlds_do_not_share_state(client, saved_world):
     assert json.loads(lines[-1])["type"] == "done"
     assert raw.get(f"/worlds/{a}/summary").json()["elapsed_years"] == 1_000.0
     assert raw.get(f"/worlds/{b}/summary").json()["elapsed_years"] == 0.0
+
+
+def test_generate_debug_applies_dialog_name_and_public_flag(client):
+    # The Generate World dialog's name + Public choice lands on the record being
+    # generated into (#597).
+    raw = _raw_client()
+    wid = raw.post("/worlds", json={}).json()["world_id"]
+    resp = raw.post(f"/worlds/{wid}/generate_debug", json={"scenario": "two_plate_divergent", "name": "Demo", "is_public": True})
+    assert resp.status_code == 200
+    (record,) = [w for w in raw.get("/worlds").json()["worlds"] if w["world_id"] == wid]
+    assert record["name"] == "Demo"
+    assert record["is_public"] is True
+    listed = raw.get("/public/worlds").json()["worlds"]
+    assert [w["world_id"] for w in listed] == [wid]
+    assert raw.delete(f"/worlds/{wid}").status_code == 200
+
+
+def test_suggest_name_returns_an_unused_exoplanet_name(client):
+    raw = _raw_client()
+    first = raw.get("/worlds/suggest-name").json()["name"]
+    assert re.fullmatch(r".+ [b-g]", first), first
+    raw.post("/worlds", json={"name": first})
+    for _ in range(5):
+        again = raw.get("/worlds/suggest-name").json()["name"]
+        assert re.fullmatch(r".+ [b-g]", again), again
+        assert again != first
+    raw.delete(f"/worlds/{raw.get('/worlds').json()['worlds'][0]['world_id']}")
+
+
+def test_generate_identity_applies_only_on_accepted_requests(client):
+    # A rejected generate (bad params, unknown scenario) must not rename or
+    # publish the record (#599 review).
+    raw = _raw_client()
+    wid = raw.post("/worlds", json={}).json()["world_id"]
+    (before_world,) = [w for w in raw.get("/worlds").json()["worlds"] if w["world_id"] == wid]
+    before = before_world["name"]
+    resp = raw.post(
+        f"/worlds/{wid}/generate",
+        json={"seed": 1, "voronoi_points": 5000, "name": "Sneaky", "is_public": True},
+    )
+    assert resp.status_code == 400
+    resp = raw.post(
+        f"/worlds/{wid}/generate_debug",
+        json={"scenario": "nope", "name": "Sneaky", "is_public": True},
+    )
+    assert resp.status_code == 400
+    (record,) = [w for w in raw.get("/worlds").json()["worlds"] if w["world_id"] == wid]
+    assert record["name"] == before
+    assert record["is_public"] is False
+    assert raw.delete(f"/worlds/{wid}").status_code == 200
 
 
 def test_registry_crud_public_listing_and_removed_old_routes(client, saved_world):

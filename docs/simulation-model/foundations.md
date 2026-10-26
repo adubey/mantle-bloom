@@ -212,9 +212,10 @@ Behind a flag, a random world (no sketch, no premade world) is laid out cratons 
 (`continent_layout.CRATONS_FIRST_DEFAULT = False`) until the RFC's gate G3 decides whether it
 replaces the tiling above; `generate_plates(..., cratons_first=True)` or
 `world.generate_world(..., cratons_first=True)` turns it on. The Generate World dialog's
-Random tab exposes this as the “Craton-first terrain” checkbox, and `POST /worlds/{world_id}/generate`
-accepts the `cratons_first` field. Sketch and premade worlds always keep plates first, since
-their geography comes from a drawing or from data.
+Random tab enables it by default (Advanced settings is the only place to turn it off),
+and `POST /worlds/{world_id}/generate` accepts the `cratons_first` field. Sketch and
+premade worlds always keep plates first, since their geography comes from a drawing or
+from data.
 
 `lithosphere_plate.cratons_first_layout` builds the layout before any plate exists, on a
 whole-sphere cell lattice at the world's node spacing (`layout_lattice.lattice`). Steps 1-3
@@ -318,9 +319,9 @@ A cratons-first world can replace its noise-shaped continental relief with relie
 a synthetic tectonic history (#218). It is off by default
 (`synthetic_relief.SYNTHETIC_RELIEF_DEFAULT = False`); `generate_world(...,
 cratons_first=True, synthetic_relief=True)`, the `synthetic_relief` field of
-`POST /worlds/{world_id}/generate`, or the Generate World dialog's "Relief from a synthetic history"
-checkbox (shown under "Craton-first terrain") turns it on. It has no effect without the
-cratons-first layout. `world.generate_world` builds the layout once, passes it to plate
+`POST /worlds/{world_id}/generate`, or the Generate World dialog's Random tab, which
+enables it by default alongside "Craton-first terrain" (both turn off only in Advanced
+settings), turns it on. It has no effect without the cratons-first layout. `world.generate_world` builds the layout once, passes it to plate
 generation, and then runs `apply_synthetic_relief` in place of
 `initial_terrain.apply_lowland_spherical_relief` and `apply_predicted_orogens`. Initial soil,
 rivers, ice and the craton and continental ledgers are seeded afterwards, on the new

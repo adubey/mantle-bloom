@@ -1117,7 +1117,7 @@ class PlateWithSparseQuadPatch(Plate):
         is marked as belt (RFC 0009). Plume heat weakens that resistance for the heated
         fraction of the step (RFC 0007, #582); without a step to scale it by the resistance
         is exactly the unweakened one."""
-        from . import cratons, lithosphere, rheology
+        from . import cratons, lithosphere, rheology, terranes
         from .merge_split import FAILED_RIFT_BAND_MULT, FAILED_RIFT_THINNING_FRACTION
 
         cut_normal = np.asarray(cut_normal, dtype=float)
@@ -1148,6 +1148,20 @@ class PlateWithSparseQuadPatch(Plate):
         else:
             resisted = cratons.rift_resistance(craton)
         factor = np.clip(1.0 - FAILED_RIFT_THINNING_FRACTION * taper * (1.0 - resisted), 0.0, 1.0)
+        # Buoyant-crust tracers thin with the band, booked to `thinned_m3` (RFC 0007,
+        # issue #581). Without a world the fields still update but nothing is booked.
+        plateau, arc, moment = terranes.plate_tracers(self)
+        if np.any(plateau) or np.any(arc):
+            band_factor = np.ones(len(hc))
+            band_factor[in_band] = factor[in_band]
+            ledger = terranes.ensure_ledger(world) if world is not None else None
+            for source, values in (("plume_head", plateau), ("arc", arc)):
+                lost = values * (1.0 - band_factor)
+                thinned_volume = float(np.dot(lost, self.node_areas_m2()))
+                if thinned_volume > 0.0 and ledger is not None:
+                    terranes.record(ledger, source, "thinned_m3", thinned_volume)
+                values *= band_factor
+            moment *= band_factor
         hc[in_band] = np.maximum(
             hc[in_band] * factor[in_band], lithosphere.MIN_CRUSTAL_THICKNESS_M
         )
@@ -1159,12 +1173,17 @@ class PlateWithSparseQuadPatch(Plate):
         new_elevation = rheology.clip_elevation_bounds(elevation + after - before)
         moved = np.abs(new_elevation - elevation) >= ELEV_CHANGE_MIN_DELTA_M
         reason[in_band & moved] = ELEV_CHANGE_RIFT
-        self.set_fields_on_plate(
+        fields = dict(
             elevation=new_elevation,
             crustal_thickness_m=hc,
             mantle_lithosphere_thickness_m=hm,
             elev_change_reason=reason,
+            plateau_crust_m=plateau,
+            buoyant_crust_time_m_yr=moment,
         )
+        if "arc_crust_m" in SURFACE_FIELDS:
+            fields["arc_crust_m"] = arc
+        self.set_fields_on_plate(**fields)
         if world is not None:
             cratons.mark_belt(world, self, in_band)
 

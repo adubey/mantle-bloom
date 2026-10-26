@@ -27,7 +27,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Iterator
 
-from . import public_view
+from . import public_view, world_names
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, avoids an import cycle
     from .checkpoint import CheckpointStore
@@ -185,7 +185,7 @@ class WorldRegistry:
                 )
             session = WorldSession(
                 world_id=uuid.uuid4().hex,
-                name=name or "Untitled world",
+                name=name or world_names.default_world_name({s.name for s in self._sessions.values()}),
                 is_public=is_public,
             )
             self._sessions[session.world_id] = session

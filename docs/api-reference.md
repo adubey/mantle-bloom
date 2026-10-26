@@ -38,10 +38,13 @@ directory is configured but couldn't be created or written.
 Open to anyone, for the logged-out `/view` page (#373). See
 [architecture.md#public-viewer](architecture.md#public-viewer).
 
-- `GET /public/worlds` lists every public world: `{"worlds": [{"world_id", "name",
-  "revision", "seed", "elapsed_years"}]}`.
+- `GET /public/worlds` lists every generated public world, plus any generated
+  world whose run loop is on even when private, so anyone can watch a planet
+  that is currently stepping (#597): `{"worlds": [{"world_id", "name",
+  "running", "revision", "seed", "elapsed_years"}]}`. A private world drops back
+  out of the list when its run stops.
 - `GET /public/worlds/{world_id}/world`: `{"world": {"revision", "seed", "elapsed_years"},
-  "steps_remaining": int | null, "step_limit": 30, "step_years": 100000}`.
+  "running": bool, "steps_remaining": int | null, "step_limit": 30, "step_years": 100000}`.
   `steps_remaining` is null (unlimited) for the admin. `revision` is an
   opaque string that changes whenever the world does (#374). `404` for a private,
   unknown, or still-empty world -- the listing never advertises the other cases.
@@ -69,8 +72,13 @@ so saves carry no registry information:
 
 - `GET /worlds` returns every record: metadata plus, when populated, the world
   summary and run state.
+- `GET /worlds/suggest-name` returns `{"name"}`: an unused exoplanet-style pick
+  for the Generate World dialog to offer up front (advisory only; duplicate
+  display names are allowed).
 - `POST /worlds` with `{"name"?, "is_public"?}` creates an empty record
-  (`201`); the record holds no world until Generate or Load populates it.
+  (`201`); the record holds no world until Generate or Load populates it. An
+  omitted name defaults to an exoplanet-style pick (a star name plus a lowercase
+  discovery letter, `c`/`d`/`e` weighted more, #597).
   World IDs are server-generated UUIDs. `409` past `MANTLE_BLOOM_MAX_WORLDS`
   records (default 4).
 - `PATCH /worlds/{world_id}` renames (`{"name"}`) or changes visibility
@@ -96,7 +104,9 @@ Request body:
   "node_density": 4.0,
   "initial_soil_maturity": 0.0,
   "climate_density": 4.0,
-  "fluid_density": 4.0
+  "fluid_density": 4.0,
+  "name": null,
+  "is_public": null
 }
 ```
 
@@ -122,7 +132,9 @@ omitted, generation uses the plate-first layout (omission follows
 coastlines come from a synthetic tectonic history (sutures between cratons, cordilleras on
 leading margins, interior terrain types), backed by crustal thickness; when false or omitted,
 the cratons-first relief is generated as before (omission follows
-`synthetic_relief.SYNTHETIC_RELIEF_DEFAULT`). See
+`synthetic_relief.SYNTHETIC_RELIEF_DEFAULT`). `name` and `is_public` are the Generate
+World dialog's name field and Public checkbox: applied to the record being generated
+into (a null name keeps the record's name). See
 [simulation-model/foundations.md#synthetic-relief](simulation-model/foundations.md#relief-from-a-synthetic-tectonic-history-synthetic_reliefpy).
 `axial_tilt_deg` is the UI's third generation slider (degrees), defaulting to
 `world.DEFAULT_AXIAL_TILT_DEG = 23.5` (Earth's real tilt) -- doesn't affect plate generation,

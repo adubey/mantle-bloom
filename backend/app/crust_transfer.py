@@ -81,7 +81,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.sparse.csgraph import connected_components
 
-from . import continental_ledger, cratons, hm_ledger, orogeny, quad_tectonics
+from . import continental_ledger, cratons, hm_ledger, orogeny, quad_tectonics, terranes
 from .elevation_lines import effective_is_continental_from_codes, line_spacing_rad
 from .hydroclimate import mobile_cover
 from .lithosphere_plate import SUTURE_ACCRETION_MAX_HC_M
@@ -125,7 +125,8 @@ def partition(world: "World") -> CrustPartition:
 class ConsumedColumn:
     """One consumed front's column, as volumes (m^3, exact cell areas) and a world-frame
     footprint. `approach_world` is the direction the upper plate converges on the front
-    from, or None."""
+    from, or None. Buoyant-crust tracers ride the column the same way (RFC 0007,
+    issue #581): plateau/arc thickness volumes plus the shared age moment."""
 
     plate_id: int
     front_world: np.ndarray
@@ -136,6 +137,9 @@ class ConsumedColumn:
     material_m3: float
     craton_m3: float
     restite_m3: float
+    plateau_m3: float = 0.0
+    arc_m3: float = 0.0
+    moment_m3_yr: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -157,6 +161,7 @@ def column_of(
 ) -> ConsumedColumn:
     """The column a front of `plate`'s cells (indices) carries, before they're removed."""
     areas = plate.node_areas_m2()[front]
+    plateau, arc, moment = terranes.plate_tracers(plate)
 
     def volume(name: str) -> float:
         return float(np.dot(plate.collect(name)[front], areas))
@@ -171,6 +176,9 @@ def column_of(
         material_m3=volume("continental_material_m"),
         craton_m3=volume("craton_crust_m"),
         restite_m3=volume("restite_m"),
+        plateau_m3=float(np.dot(plateau[front], areas)),
+        arc_m3=float(np.dot(arc[front], areas)),
+        moment_m3_yr=float(np.dot(moment[front], areas)),
     )
 
 
@@ -277,6 +285,9 @@ def transfer_column(
     underthrust_placed = _underthrust(
         world, upper, seed, adjacency, underthrust,
         share_of(underthrust) * column.material_m3, share_of(underthrust) * column.restite_m3,
+        front_plateau_m3=share_of(underthrust) * column.plateau_m3,
+        front_arc_m3=share_of(underthrust) * column.arc_m3,
+        front_moment_m3_yr=share_of(underthrust) * column.moment_m3_yr,
     )
     # 1. What the reach can't hold under the cap is thrust up with the scraped share.
     thrust_up = scraped + (underthrust - underthrust_placed)
@@ -284,6 +295,9 @@ def transfer_column(
         world, upper, column.front_world, thrust_up, share_of(thrust_up) * column.material_m3,
         approach, years, share_of(thrust_up) * column.restite_m3, adjacency,
         seed=seed, root_capacity=roots,
+        front_plateau_m3=share_of(thrust_up) * column.plateau_m3,
+        front_arc_m3=share_of(thrust_up) * column.arc_m3,
+        front_moment_m3_yr=share_of(thrust_up) * column.moment_m3_yr,
     )
     # 2. Then the front's other overriding neighbours with continental crust.
     handed = 0.0
@@ -297,6 +311,9 @@ def transfer_column(
         handed = quad_tectonics._hand_to_overrider(
             world, upper, column.front_world, others, remaining, share_of(remaining) * column.material_m3,
             approach, years, share_of(remaining) * column.restite_m3,
+            front_plateau_m3=share_of(remaining) * column.plateau_m3,
+            front_arc_m3=share_of(remaining) * column.arc_m3,
+            front_moment_m3_yr=share_of(remaining) * column.moment_m3_yr,
         )
     # 3. The rest goes down with the slab.
     unplaced = max(remaining - handed, 0.0)
@@ -324,6 +341,9 @@ def _underthrust(
     volume: float,
     material_volume: float,
     restite_volume: float,
+    front_plateau_m3: float = 0.0,
+    front_arc_m3: float = 0.0,
+    front_moment_m3_yr: float = 0.0,
 ) -> float:
     """Add `volume` of lower crust to the base of `upper`'s continental columns within
     `UNDERTHRUST_REACH_KM` of `seed`, water-filled under the Hc cap, with its continental
@@ -347,9 +367,23 @@ def _underthrust(
     placed = volume - remaining
     if placed <= 0.0:
         return 0.0
+    material = upper.collect("continental_material_m")
+    restite = upper.collect("restite_m")
+    plateau, arc, moment = terranes.plate_tracers(upper)
+    # Settle distributes the column's material and restite by this Hc gain, so
+    # snapshot it before conversion removes the foundered share (RFC 0007 #581).
+    settle_gain = hc - hc_before
+    quad_tectonics._carry_tracers(
+        plateau, arc, moment, upper.node_areas_m2(), settle_gain, volume,
+        front_plateau_m3, front_arc_m3, front_moment_m3_yr,
+    )
+    quad_tectonics._convert_buoyant_on_continental(
+        world, changed & continental, hc, material, plateau, arc, moment, upper.node_areas_m2()
+    )
+    quad_tectonics._write_tracers(upper, plateau, arc, moment)
     quad_tectonics.settle_received_crust(
-        upper, hc_before, hc, hc - hc_before, changed, volume, material_volume, restite_volume,
-        upper.collect("continental_material_m"), upper.collect("restite_m"), world=world,
+        upper, hc_before, hc, settle_gain, changed, volume, material_volume, restite_volume,
+        material, restite, world=world,
     )
     return placed
 
@@ -367,6 +401,12 @@ def _book(
     kept_share = max(1.0 - lost_share - unplaced_share, 0.0)
     continental_ledger.record(world, "collision_lower_crust_subducted_m3", lost_share * column.material_m3)
     continental_ledger.record(world, "collision_subducted_m3", unplaced_share * column.material_m3)
+    # The column's buoyant share leaves the surface with the same shares (RFC 0007,
+    # issue #581); whatever the receivers took converted or stays live there.
+    buoyant_ledger = terranes.ensure_ledger(world)
+    for source, column_m3 in (("plume_head", column.plateau_m3), ("arc", column.arc_m3)):
+        if column_m3 > 0.0 and (lost_share + unplaced_share) > 0.0:
+            terranes.record(buoyant_ledger, source, "subducted_m3", (lost_share + unplaced_share) * column_m3)
     cratons.record(world, "collision_reworked_m3", kept_share * column.craton_m3)
     cratons.record(world, "subducted_m3", (lost_share + unplaced_share) * column.craton_m3)
     cover = max(column.mobile_cover_m3, 0.0)

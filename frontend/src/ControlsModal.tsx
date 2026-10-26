@@ -22,10 +22,15 @@ interface Props {
   onDebugDiagnosticsChange: (v: boolean) => void;
   onTuningChange: (key: TuningKey, v: number) => void;
   onTuningReset: () => void;
+  // The selected world's identity, edited on the World tab (#597).
+  worldName: string;
+  isPublic: boolean;
+  onWorldNameChange: (name: string) => void;
+  onWorldPublicChange: (isPublic: boolean) => void;
   onClose: () => void;
 }
 
-type TabKey = "climate" | "erosion" | "tectonics";
+type TabKey = "climate" | "erosion" | "tectonics" | "world";
 
 // The geomorphic-budget tuning knobs, grouped and assigned to a Controls tab. Every one is a
 // dimensionless multiplier on backend app/world.py's matching World.*_multiplier (1.0 ==
@@ -78,6 +83,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "climate", label: "Climate" },
   { key: "erosion", label: "Erosion" },
   { key: "tectonics", label: "Tectonics" },
+  { key: "world", label: "World" },
 ];
 
 const ICE_AGE_MAX_YEARS = 1_000_000;
@@ -120,6 +126,10 @@ export default function ControlsModal({
   onDebugDiagnosticsChange,
   onTuningChange,
   onTuningReset,
+  worldName,
+  isPublic,
+  onWorldNameChange,
+  onWorldPublicChange,
   onClose,
 }: Props) {
   const [tab, setTab] = useState<TabKey>("climate");
@@ -206,6 +216,46 @@ export default function ControlsModal({
             </button>
           ))}
         </div>
+
+        {tab === "world" && (
+          <div>
+            <label style={{ display: "block", marginBottom: 12, fontSize: 12 }}>
+              Name
+              <input
+                key={worldName}
+                type="text"
+                defaultValue={worldName}
+                onBlur={(e) => {
+                  const name = e.target.value.trim();
+                  if (!name) {
+                    // Blank names are rejected: restore the current one.
+                    e.currentTarget.value = worldName;
+                    return;
+                  }
+                  if (name !== worldName) onWorldNameChange(name);
+                }}
+                style={{
+                  width: "100%",
+                  marginTop: 4,
+                  boxSizing: "border-box",
+                  background: "#0f1424",
+                  color: "#e6e8ef",
+                  border: "1px solid #333",
+                  borderRadius: 4,
+                  padding: "4px 6px",
+                  fontSize: 13,
+                }}
+              />
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+              <input type="checkbox" checked={isPublic} onChange={(e) => onWorldPublicChange(e.target.checked)} />{" "}
+              Public
+            </label>
+            <div style={{ fontSize: 11, color: "#999", marginTop: 6 }}>
+              Public worlds list on /view for anyone to watch.
+            </div>
+          </div>
+        )}
 
         {tab === "climate" && (
           <div>

@@ -32,6 +32,7 @@ BALANCE_ACCOUNTS = (
     "converted_m3",
     "foundered_m3",
     "clipped_m3",
+    "topology_removed_m3",
     "unattributed_m3",
 )
 DOCKED_ACCOUNT = "docked_m3"
@@ -50,6 +51,104 @@ DOCK_LOWER_CRUST_LOSS = 0.2
 # Budgets count accreted plateaus as continental growth though mafic; the
 # sensitivity case halves it (issue #580).
 PLATEAU_PRESERVED_FRACTION = 0.9
+
+
+def plate_tracers(plate) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """A plate's buoyant-crust tracers: (plateau, arc, age moment), float copies.
+
+    `arc_crust_m` is RFC 0006's registration and may not exist yet; until it
+    lands this returns zeros for the arc channel so every writer stays exact and
+    generic over both sources (issue #581).
+    """
+    plateau = np.asarray(plate.collect("plateau_crust_m"), dtype=float)
+    moment = np.asarray(plate.collect("buoyant_crust_time_m_yr"), dtype=float)
+    try:
+        arc = np.asarray(plate.collect("arc_crust_m"), dtype=float)
+    except AttributeError:
+        arc = np.zeros(plate.node_count(), dtype=float)
+    return plateau, arc, moment
+
+
+def live_volumes_m3(
+    plateau_m: np.ndarray, arc_m: np.ndarray, areas_m2: np.ndarray
+) -> dict[str, float]:
+    """Live buoyant-crust volumes by ledger source, for `balance_residual`.
+
+    The plateau channel is plume-head crust (tails emplace ordinary-thickness
+    melt with no tracer, issue #581); the arc channel is RFC 0006's. Owner
+    decision on #581 (tails option a): the zero `plume_tail` live volume is by
+    construction, and tuning runs must exclude tail volume from
+    emplaced-oceanic-plateau denominators rather than misreading the zero.
+    """
+    areas = np.asarray(areas_m2, dtype=float)
+    return {
+        "arc": float(np.sum(np.asarray(arc_m, dtype=float) * areas)),
+        "plume_head": float(np.sum(np.asarray(plateau_m, dtype=float) * areas)),
+        "plume_tail": 0.0,
+    }
+
+
+def world_live_volumes_m3(world) -> dict[str, float]:
+    """Live buoyant-crust volumes by source, summed over every plate."""
+    from .elevation_lines import line_spacing_rad
+
+    spacing = line_spacing_rad(world.node_density)
+    total = {"arc": 0.0, "plume_head": 0.0, "plume_tail": 0.0}
+    for plate in world.plates:
+        if plate.node_count() == 0:
+            continue
+        plateau, arc, _ = plate_tracers(plate)
+        if not np.any(plateau) and not np.any(arc):
+            continue
+        for source, volume in live_volumes_m3(
+            plateau, arc, plate.accounting_areas_m2(spacing)
+        ).items():
+            total[source] += volume
+    return total
+
+
+def audit_world(world, phase: str, reference_hc_m: float = 0.0) -> float:
+    """Hold every plate's tracers to their column bounds, booking corrections.
+
+    Phase-bracket backstop for every writer the lifecycle table routes through
+    the audit (erosion, column caps, crust-type changes, anything a writer
+    missed): `0 <= plateau + arc <= E` on oceanic-coded cells, 0 on continental
+    ones. Returns the total booked volume. Idempotent; a no-op without tracers.
+    """
+    from .elevation_lines import effective_is_continental_from_codes, line_spacing_rad
+
+    ledger = ensure_ledger(world)
+    spacing = line_spacing_rad(world.node_density)
+    booked = 0.0
+    for plate in world.plates:
+        if plate.node_count() == 0:
+            continue
+        plateau, arc, moment = plate_tracers(plate)
+        if not np.any(plateau) and not np.any(arc):
+            continue
+        areas = plate.accounting_areas_m2(spacing)
+        continental = effective_is_continental_from_codes(
+            plate.collect("crust_type_code"), plate.crust_type == "continental"
+        )
+        hc = plate.collect("crustal_thickness_m")
+        # One call audits the plateau + arc total together (the bound is on the
+        # sum). The arc channel is all zeros until RFC 0006 registers it, so the
+        # whole correction is plateau crust today; when 0006 lands it owns the
+        # per-source split of a mixed correction here.
+        booked += apply_phase_audit(
+            plateau,
+            arc,
+            moment,
+            hc,
+            areas,
+            continental,
+            ledger,
+            "plume_head",
+            phase,
+            reference_hc_m,
+        )
+        plate.set_fields_on_plate(plateau_crust_m=plateau, buoyant_crust_time_m_yr=moment)
+    return booked
 
 
 def new_ledger() -> dict:

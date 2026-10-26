@@ -37,6 +37,66 @@ def _normalize(v):
     return v / np.linalg.norm(v)
 
 
+def test_precipitation_source_partition_accounts_for_dry_wet_and_partial_cells():
+    precipitation_mm = np.array([800.0, 800.0, 800.0])
+    evaporation_mm = np.array([600.0, 600.0, 600.0])
+    areas_m2 = np.array([1.0e6, 2.0e6, 3.0e6])
+    wet_fraction = np.array([0.0, 1.0, 0.25])
+
+    wet_rain, dry_runoff, dry_et = hydrology._partition_precipitation_sources(
+        precipitation_mm, evaporation_mm, areas_m2, wet_fraction
+    )
+
+    liquid_input = precipitation_mm / 1000.0 * areas_m2
+    assert wet_rain[0] == 0.0 and dry_runoff[0] > 0.0
+    assert wet_rain[1] == pytest.approx(liquid_input[1])
+    assert dry_runoff[1] == 0.0 and dry_et[1] == 0.0
+    assert wet_rain[2] == pytest.approx(liquid_input[2] * 0.25)
+    assert dry_runoff[2] == pytest.approx(
+        breaching.runoff_mm(precipitation_mm[2:3], evaporation_mm[2:3])[0] / 1000.0 * areas_m2[2] * 0.75
+    )
+    assert wet_rain + dry_runoff + dry_et == pytest.approx(liquid_input)
+
+
+def test_external_water_sources_keep_their_own_transit_loss_rules():
+    elevation = np.array([2.0, 1.0, 0.0])
+    is_ocean = np.zeros(3, dtype=bool)
+    targets = np.array([1, 2, -1])
+    dry_loss = np.array([0.1, 0.2, 0.3])
+    transit_loss = np.full(3, 0.2)
+    routed = hydrology._route_external_water_sources(
+        elevation, is_ocean, targets, np.array([100.0, 0.0, 0.0]),
+        np.array([100.0, 0.0, 0.0]), np.array([100.0, 0.0, 0.0]), dry_loss, transit_loss,
+    )
+
+    assert routed["dry_runoff"][1][2] == pytest.approx(100.0 * 0.9 * 0.8 * 0.7)
+    assert routed["meltwater"][1][2] == pytest.approx(100.0 * 0.8**3)
+    assert routed["wet_precip"][1][2] == pytest.approx(100.0)
+
+
+def test_compute_hydrology_exposes_wet_precipitation_once_in_external_supply():
+    theta = 0.05 * np.arange(40)
+    elevation = np.full(40, 300.0)
+    elevation[0:15] = -100.0
+    elevation[28:31] = -60.0
+    prev_lake_depth = np.zeros(40)
+    prev_lake_depth[28:31] = 35.0
+    world = World(seed=0, plates=[_flow_line_plate_with_lake(0, theta, elevation, prev_lake_depth)])
+    precipitation = np.full(40, 800.0)
+    fields = hydrology.compute_hydrology(world, precipitation, np.full(40, 15.0), years=100_000)
+
+    wet_fraction = hydrology._lagged_lake_wet_fraction(prev_lake_depth, fields.hypsometry)
+    wet_fraction[fields.is_ocean] = 0.0
+    areas = fields.hypsometry.area_m2
+    expected_direct_rain = float((precipitation / 1000.0 * areas * wet_fraction).sum())
+    assert fields.lake_external_wet_precip_m3_per_yr.sum() == pytest.approx(expected_direct_rain)
+    assert fields.lake_external_supply_m3_per_yr == pytest.approx(
+        fields.lake_external_wet_precip_m3_per_yr
+        + fields.lake_external_dry_runoff_m3_per_yr
+        + fields.lake_external_meltwater_m3_per_yr
+    )
+
+
 def _river_inspector_fields():
     # A hand-built 9-node HydrologyFields for the River Inspector's grouping logic, not run
     # through compute_hydrology (small enough to hit its FLOW_NEIGHBOR_COUNT bail-out path
@@ -756,9 +816,15 @@ def test_a_spilling_sink_loses_the_same_transit_share_as_any_node():
     assert loss > 0.0
     runoff_m3_s = breaching.runoff_mm(np.array([10.0]), breaching.open_water_evaporation_mm(np.array([15.0])))[0] / 1000.0
     runoff_m3_s *= _node_areas(world)[10] / hydrology.SECONDS_PER_YEAR
+    wet_fraction = hydrology._lagged_lake_wet_fraction(lake_depth, fields.hypsometry)[10]
+    dry_fraction = 1.0 - wet_fraction
     inflow_m3_s = float(fields.discharge_m3_s[fields.flow_target == 10].sum())
+    wet_rain_m3_s = 10.0 / 1000.0 * _node_areas(world)[10] * wet_fraction / hydrology.SECONDS_PER_YEAR
     assert inflow_m3_s > 0.0
-    assert fields.discharge_m3_s[10] == pytest.approx((inflow_m3_s + runoff_m3_s) * (1.0 - loss), rel=1e-12)
+    assert fields.discharge_m3_s[10] == pytest.approx(
+        (inflow_m3_s + runoff_m3_s * dry_fraction) * (1.0 - loss * dry_fraction) + wet_rain_m3_s,
+        rel=1e-12,
+    )
 
 
 def test_rivers_flow_on_through_a_cold_band_to_the_sea():
@@ -796,6 +862,11 @@ def test_discharge_carries_the_ice_ledgers_meltwater_exactly_once_at_any_step_le
         assert ledger.surface_melt_m3 > 0.0 and ledger.basal_melt_m3 > 0.0
         routed_m3 = float(fields.discharge_m3_s[sink].sum()) * hydrology.SECONDS_PER_YEAR * years
         assert routed_m3 == pytest.approx(ledger.meltwater_m3, rel=1e-9)
+        assert fields.lake_external_meltwater_m3_per_yr.sum() == pytest.approx(
+            ledger.meltwater_m3 / years, rel=1e-9
+        )
+        assert fields.lake_external_wet_precip_m3_per_yr.sum() == 0.0
+        assert fields.lake_external_dry_runoff_m3_per_yr.sum() == 0.0
 
 
 def test_discharge_from_fixed_rainfall_does_not_depend_on_step_length():

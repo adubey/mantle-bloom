@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { publicWorldBase, withWorldId, worldBase, worldIdFromSearch } from "../src/worldRoutes.js";
+import { ensureWorldId, publicWorldBase, withWorldId, worldBase, worldIdFromSearch } from "../src/worldRoutes.js";
 
 describe("worldRoutes", () => {
   it("builds admin and public bases with encoded IDs", () => {
@@ -22,3 +22,21 @@ describe("worldRoutes", () => {
     assert.equal(withWorldId("http://x/app?world=old", "abc"), "/app?world=abc");
   });
 });
+
+describe("ensureWorldId", () => {
+  it("keeps the current selection without creating a world", async () => {
+    let created = 0;
+    const id = await ensureWorldId("abc", async () => {
+      created += 1;
+      return "new-id";
+    });
+    assert.equal(id, "abc");
+    assert.equal(created, 0);
+  });
+
+  it("creates the first world when nothing is selected yet (#592)", async () => {
+    const id = await ensureWorldId(null, async () => "new-id");
+    assert.equal(id, "new-id");
+  });
+});
+

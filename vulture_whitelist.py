@@ -5,6 +5,9 @@
 
 initial_continental_m3  # unused variable (backend/app/continental_ledger.py:40)  # noqa: F821
 juvenile_additions_m3  # unused variable (backend/app/continental_ledger.py:41)  # noqa: F821
+juvenile_flood_basalt_m3  # unused variable (backend/app/continental_ledger.py:49)  # noqa: F821
+juvenile_hotspot_m3  # unused variable (backend/app/continental_ledger.py:50)  # noqa: F821
+juvenile_plateau_m3  # unused variable (backend/app/continental_ledger.py:51)  # noqa: F821
 accreted_thickened_m3  # unused variable (backend/app/continental_ledger.py:42)  # noqa: F821
 delaminated_lower_crust_m3  # unused variable (backend/app/continental_ledger.py:43)  # noqa: F821
 collision_subducted_m3  # unused variable (backend/app/continental_ledger.py:47)  # noqa: F821

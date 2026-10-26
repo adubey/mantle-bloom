@@ -222,6 +222,42 @@ def test_a_pit_downstream_of_an_overflowing_pit_sees_its_river():
     assert result.endorheic_pits.tolist() == []
 
 
+def test_water_balance_applies_dry_fraction_and_direct_wet_supply():
+    elevation = np.array([60.0, 40.0, 20.0, 0.0, 15.0, -50.0])
+    is_ocean = np.array([False] * 5 + [True])
+    args = (elevation, is_ocean, _chain(6), np.zeros(6), _ordinary_rate(6))
+    dry_only = breaching.WaterBalance(
+        np.full(6, 1500.0), np.full(6, 5.0), np.full(6, 1e10), dry_fraction=np.zeros(6)
+    )
+    direct_wet = breaching.WaterBalance(
+        np.zeros(6), np.full(6, 5.0), np.full(6, 1e10), dry_fraction=np.zeros(6),
+        direct_supply_m3_per_yr=np.array([1e13, 0.0, 0.0, 0.0, 0.0, 0.0]),
+    )
+
+    assert breaching.breach_depressions(*args, years=100_000, water=dry_only).breached_pits.tolist() == []
+    assert breaching.breach_depressions(*args, years=100_000, water=direct_wet).breached_pits.tolist() == [3]
+
+
+def test_direct_wet_supply_stays_lossless_across_chained_pits():
+    elevation = np.array([*np.linspace(300.0, 100.0, 14), 60.0, 65.0, 50.0, 52.0, -50.0])
+    n = len(elevation)
+    is_ocean = np.zeros(n, dtype=bool)
+    is_ocean[-1] = True
+    direct = np.zeros(n)
+    direct[0] = 3e10
+    water = breaching.WaterBalance(
+        np.zeros(n), np.full(n, 15.0), np.full(n, 1e10),
+        loss_fraction=np.full(n, 0.5), dry_fraction=np.zeros(n),
+        direct_supply_m3_per_yr=direct,
+    )
+
+    result = breaching.breach_depressions(
+        elevation, is_ocean, _chain(n), np.zeros(n), _ordinary_rate(n), years=100_000, water=water,
+    )
+
+    assert result.breached_pits.tolist() == [14, 16]
+
+
 def test_a_pit_passes_its_surplus_to_a_receiver_with_a_costlier_way_out():
     # Pit U (node 3) spills over node 2 (30 m), whose steepest descent runs into pit D (node 4).
     # D's own way to the sea climbs 15 m, U's only 5 m (U's path turns off before D), so D sits

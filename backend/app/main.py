@@ -37,6 +37,7 @@ from . import (
     replay_log,
     run_control,
     stats,
+    world_names,
     worldsketch,
 )
 from .world_registry import FairComputeGate, WorldLimitReached, WorldRegistry, WorldSession
@@ -228,6 +229,11 @@ class GenerateRequest(BaseModel):
     # additionally come from real plate geometry/motion (see world.generate_world's own
     # `premade_world_id` param). `None` (every other tab) is unaffected.
     premade_world_id: str | None = None
+    # The Generate World dialog's name field and Public checkbox: applied to the
+    # record being generated into (a fresh world keeps its automatic name when
+    # this is omitted). Same bounds as PATCH /worlds/{world_id}'s renames.
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    is_public: bool | None = None
 
 
 class StepRequest(BaseModel):
@@ -336,11 +342,37 @@ def _session_or_404(world_id: str) -> WorldSession:
     return session
 
 
+def _session_running(session: WorldSession) -> bool:
+    """Whether this world's run loop is on: what /view calls live (#597)."""
+    runner = session.runner
+    return runner is not None and runner.status().running
+
+
+def _apply_generate_identity(session: WorldSession, name: str | None, is_public: bool | None) -> None:
+    """Name (and publish) the record a generate/debug-generate is about to fill (#597)."""
+    if name is None and is_public is None:
+        return
+    with session.lock:
+        changed = False
+        if name is not None and name != session.name:
+            session.name = name
+            changed = True
+        if is_public is not None and is_public != session.is_public:
+            session.is_public = is_public
+            changed = True
+    if changed:
+        _save_index()
+
+
 def _public_session_or_404(world_id: str) -> WorldSession:
-    """A session the public viewer may address. Private and unknown IDs are
-    indistinguishable (both 404) so the public API cannot reveal private worlds."""
+    """A session the public viewer may address. Private idle worlds and unknown
+    IDs are indistinguishable (both 404) so the public API cannot reveal private
+    worlds -- but a world whose run loop is on answers while it runs (#597), so
+    anyone can watch a planet that is currently stepping."""
     session = _registry.find(world_id)
-    if session is None or not session.is_public or session.world is None:
+    if session is None or session.world is None:
+        raise HTTPException(status_code=404, detail="no such public world")
+    if not session.is_public and not _session_running(session):
         raise HTTPException(status_code=404, detail="no such public world")
     return session
 
@@ -784,6 +816,14 @@ def create_world(req: CreateWorldRequest) -> dict:
     return _record_json(session)
 
 
+@app.get("/worlds/suggest-name")
+def suggest_world_name() -> dict:
+    """An unused exoplanet-style name for the Generate World dialog to offer up
+    front (#597): advisory only, duplicate display names are allowed (identity
+    is the world_id)."""
+    return {"name": world_names.default_world_name({s.name for s in _registry.list()})}
+
+
 @app.get("/worlds/{world_id}")
 def get_world(world_id: str) -> dict:
     session = _session_or_404(world_id)
@@ -886,6 +926,10 @@ def generate(world_id: str, req: GenerateRequest) -> StreamingResponse:
     if not session.begin_operation():
         raise HTTPException(status_code=503, detail="a generation, step, or animation is already in progress")
 
+    # After validation and the operation flag: a rejected (400) or conflicting
+    # (503) request must not rename or publish the record (#599 review).
+    _apply_generate_identity(session, req.name, req.is_public)
+
     def _stream():
         # Taken here, not synchronously above: another world's compute queues
         # at the gate FIFO instead of 503ing. Guard the release: a generator
@@ -967,6 +1011,9 @@ def generate(world_id: str, req: GenerateRequest) -> StreamingResponse:
 class GenerateDebugRequest(BaseModel):
     scenario: str
     seed: int = 0
+    # Same dialog name/public choice as GenerateRequest above.
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    is_public: bool | None = None
 
 
 @app.post("/worlds/{world_id}/generate_debug")
@@ -992,6 +1039,8 @@ def generate_debug(world_id: str, req: GenerateDebugRequest) -> dict:
     # never reaches the published state.
     if not session.begin_operation():
         raise HTTPException(status_code=503, detail="a generation, step, or animation is already in progress")
+    # After validation and the operation flag: see generate() above (#599 review).
+    _apply_generate_identity(session, req.name, req.is_public)
     try:
         with _compute_gate.hold(), session.lock:
             if session.deleted:
@@ -1125,6 +1174,26 @@ def save_world(world_id: str) -> Response:
     )
 
 
+def _hydrology_cache_is_stale(cache) -> bool:
+    """Whether a persisted routing cache predates fields read by current API consumers."""
+    flow_accum = getattr(cache, "flow_accum", None)
+    if flow_accum is None:
+        return True
+    expected_shape = np.asarray(flow_accum).shape
+    required_fields = (
+        "discharge_m3_s",
+        "lake_external_supply_m3_per_yr",
+        "lake_external_wet_precip_m3_per_yr",
+        "lake_external_dry_runoff_m3_per_yr",
+        "lake_external_meltwater_m3_per_yr",
+    )
+    return any(
+        getattr(cache, name, None) is None
+        or np.asarray(getattr(cache, name)).shape != expected_shape
+        for name in required_fields
+    )
+
+
 @app.post("/worlds/{world_id}/load")
 async def load_world(world_id: str, request: Request) -> dict:
     """The "File > Load World" upload -- the raw bytes of a file /worlds/{world_id}/save previously
@@ -1142,10 +1211,10 @@ async def load_world(world_id: str, request: Request) -> dict:
         raise HTTPException(status_code=400, detail=f"invalid or incompatible world file: {exc}") from exc
     except Exception as exc:
         raise HTTPException(status_code=400, detail="invalid or incompatible world file") from exc
-    # Physical discharge is derived routing state. Saves from before #355 may carry a cached
-    # HydrologyFields without it; discard that cache so River/Lake Inspector APIs don't label
-    # legacy stacked-mm/yr values as m^3/s. The next simulated step rebuilds the cache.
-    if world.hydrology_cache is not None and getattr(world.hydrology_cache, "discharge_m3_s", None) is None:
+    # Derived routing fields are added over time. Old saves may carry a cache from after #355
+    # that has discharge but predates RFC 0014's external-source ledger; discard any cache
+    # missing a current-length field before inspectors can read it.
+    if world.hydrology_cache is not None and _hydrology_cache_is_stale(world.hydrology_cache):
         world.hydrology_cache = None
         world.hydrology_cache_step = None
     session = _session_or_404(world_id)
@@ -2242,8 +2311,12 @@ def public_worlds() -> dict:
         # feed summary has its own mutex.
         with session.lock:
             summary = session.feed.summary()
-            if session.is_public and summary is not None:
-                worlds.append({"world_id": session.world_id, "name": session.name, **summary})
+            running = _session_running(session)
+            # A generated world answers while it is public -- and while its run
+            # loop is on even when private, so /view can watch a planet that is
+            # currently stepping (#597). It drops back out when the run stops.
+            if summary is not None and (session.is_public or running):
+                worlds.append({"world_id": session.world_id, "name": session.name, "running": running, **summary})
     return {"worlds": worlds}
 
 
@@ -2262,6 +2335,7 @@ async def public_world(world_id: str, request: Request, after: str | None = None
     _, remaining = _guest_allowance(request, guest_demo)
     return {
         "world": session.feed.summary(),
+        "running": _session_running(session),
         "steps_remaining": remaining,
         "step_limit": public_view.GUEST_STEP_LIMIT,
         "step_years": public_view.GUEST_STEP_YEARS,
@@ -2557,7 +2631,11 @@ def _import_legacy_checkpoint(store: checkpoint.CheckpointStore) -> None:
         return
     import uuid
 
-    session = WorldSession(world_id=uuid.uuid4().hex, name="Untitled world", is_public=True)
+    session = WorldSession(
+        world_id=uuid.uuid4().hex,
+        name=world_names.default_world_name({s.name for s in _registry.list()}),
+        is_public=True,
+    )
     _wire_session(session)
     _registry.adopt(session)
     with session.lock:
