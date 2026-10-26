@@ -46,6 +46,26 @@ Railway's variables, not committed to the repository:
 - User database file (`MANTLE_BLOOM_USER_DB_PATH`, a SQLite file on the volume;
   unset means the in-memory store, the desktop default -- see #620)
 
+### Reaching the admin dashboard
+
+The full app at `/` needs the owner's session. Behind Railway's proxy the
+local-request bypass never applies (forwarding headers mark the traffic as relayed),
+so GitHub OAuth is the only remote admin path, and without it `/view` is all anyone
+gets. Checklist when the dashboard is unreachable (#626):
+
+1. Create a GitHub OAuth app whose authorization callback URL is
+   `https://<service-domain>/auth/github/callback`.
+2. Set all five Railway variables: `MANTLE_BLOOM_GITHUB_CLIENT_ID`,
+   `MANTLE_BLOOM_GITHUB_CLIENT_SECRET`, `MANTLE_BLOOM_GITHUB_OWNER_ID` (the numeric
+   user ID, e.g. `gh api user -q .id`), `MANTLE_BLOOM_SESSION_SECRET` (32+ random
+   bytes), and `MANTLE_BLOOM_PUBLIC_URL` (the public `https://` URL -- the OAuth
+   callback and the cross-site checks are derived from it).
+3. Redeploy, open `/view`, and use its Sign in entry, which lands on `/login` (with
+   setup help while login is still unconfigured) and then GitHub.
+
+Rotating the session secret signs everyone out; changing the owner ID invalidates
+existing sessions.
+
 The Railway service mounts its persistent volume at `/data`. `RAILWAY_VOLUME_MOUNT_PATH` is
 provided by Railway, and the app uses it for checkpoints. The service definition requires the
 mount and its health check verifies that the checkpoint directory can be written. See
