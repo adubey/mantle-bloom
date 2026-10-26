@@ -2112,6 +2112,3 @@ def test_audit_world_holds_tracers_to_columns_and_books_phase():
     assert _buoyant_live(ocean) + _buoyant_live(continent) == pytest.approx(
         float(np.dot(np.full(ocean.node_count(), 2_000.0), ocean_areas)), rel=1e-9
     )
-
-
-
