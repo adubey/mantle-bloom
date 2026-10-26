@@ -78,9 +78,11 @@ Three kinds of water/forcing move along `flow_target`:
   `HydrologyFields.lake_external_supply_m3_per_yr` and its wet-rain, dry-runoff and meltwater
   source arrays expose settled external supply before internal lake-to-lake transfers (#587).
   `HydrologyFields.lake_water_ledger` reports storage change, evaporation, overflow leaving lake
-  bodies, internal transfers and residual in m³ for this step (#588). The routed through-flow
-  plus exported lake overflow is river
-  discharge, `HydrologyFields.discharge_m3_s`, in m^3/s.
+  bodies, internal transfers and a pre-routing residual in m³ for this step (#588). The
+  residual closes the lake-system balance before exported overflow incurs downstream transit
+  loss; `overflow_to_ocean_m3` reports the routed amount after that loss and is not substituted
+  into the residual. Routed through-flow plus exported lake overflow is river discharge,
+  `HydrologyFields.discharge_m3_s`, in m^3/s.
 - **Glacier meltwater** is the ice ledger's per-step volume (`IceLedger.meltwater_m3`: surface
   and basal melt, overflow, ice shed at the depth guard, and snow melting on bare ground)
   divided by the step length (`hydrology.meltwater_m3_per_yr`). Melted ice is booked as
@@ -202,8 +204,8 @@ discharge, channel-width growth, deposition, geology or lake silt.
   (`SHALLOW_EVAPORATION_BOOST`). A lake can remain below equilibrium during a short step and
   carries that liquid storage into the next step. At a rim or tier depth ceiling, surplus is
   booked as overflow after evaporation rather than being lost or passed downstream as full
-  inflow. The integration uses 64 deterministic slices by default; tests can request a finer
-  partition.
+  inflow. Production uses one implicit full-step solve by default (`substeps=1`); tests can
+  request explicit substeps for a finer partition.
 - **Flow direction** (`_compute_flow_direction`): among each node's k nearest neighbors
   strictly below its own elevation (a downhill candidate), prefers whichever one already has
   the deepest established channel (`channel_depth > CHANNEL_PREFERENCE_THRESHOLD_M`),

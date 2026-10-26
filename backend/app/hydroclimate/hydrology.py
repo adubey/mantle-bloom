@@ -1491,6 +1491,9 @@ def compute_hydrology(
         elevation, is_ocean, flow_target, overflow_source, loss_fraction=transit_loss
     )
     overflow_settled[is_ocean] += overflow_source[is_ocean]
+    # Keep the solver's residual: it closes the lake-system balance before exported overflow
+    # incurs downstream transit loss. `overflow_to_ocean_m3` below reports the routed amount
+    # after that loss, so it is intentionally not a term in this pre-routing residual.
     ledger = lake_result.ledger
     lake_water_ledger = lakes.LakeStepLedger(
         external_supply_m3=ledger.external_supply_m3,
