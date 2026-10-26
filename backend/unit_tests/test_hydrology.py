@@ -97,6 +97,25 @@ def test_compute_hydrology_exposes_wet_precipitation_once_in_external_supply():
     )
 
 
+def test_seasonal_lake_inputs_leave_dry_land_budyko_pet_unchanged():
+    theta = 0.05 * np.arange(40)
+    elevation = np.linspace(100.0, -100.0, 40)
+    world = World(seed=0, plates=[_flow_line_plate(0, theta, elevation)])
+    precipitation = np.full(40, 800.0)
+    temperature = np.full(40, 5.0)
+
+    steady = hydrology.compute_hydrology(
+        world, precipitation, temperature, years=100_000, seasonal_amplitude_at_nodes=np.zeros(40)
+    )
+    seasonal = hydrology.compute_hydrology(
+        world, precipitation, temperature, years=100_000, seasonal_amplitude_at_nodes=np.full(40, 20.0)
+    )
+
+    assert seasonal.lake_external_dry_runoff_m3_per_yr == pytest.approx(
+        steady.lake_external_dry_runoff_m3_per_yr
+    )
+
+
 def _river_inspector_fields():
     # A hand-built 9-node HydrologyFields for the River Inspector's grouping logic, not run
     # through compute_hydrology (small enough to hit its FLOW_NEIGHBOR_COUNT bail-out path
@@ -803,6 +822,29 @@ def test_seasonal_positive_degrees_limits():
     assert np.all(np.diff(hydrology.seasonal_positive_degrees(np.full_like(amps, -6.0), amps)[21:]) > 0.0)
 
 
+def test_seasonal_lake_ice_helpers_match_analytic_cycle_and_are_continuous():
+    means = np.array([-2.0, -1.0, 0.0, 1.0, 2.0])
+    amplitude = np.full_like(means, 2.0)
+    fraction = hydrology.seasonal_fraction_above(means, amplitude)
+    assert fraction == pytest.approx([0.0, 1.0 / 3.0, 0.5, 2.0 / 3.0, 1.0])
+    assert hydrology.seasonal_open_mean_c(np.array([-1.0]), np.array([2.0]))[0] == pytest.approx(
+        -1.0 + 2.0 * np.sin(np.pi / 3.0) / (np.pi / 3.0)
+    )
+    assert hydrology.seasonal_freezing_degrees(np.array([-1.0]), np.array([2.0]))[0] == pytest.approx(
+        2.0 / 3.0 + np.sqrt(3.0) / np.pi
+    )
+    # Zero amplitude and threshold-touching limits are defined; the open-season mean tends
+    # to the threshold as the ice-free fraction tends to zero.
+    assert hydrology.seasonal_fraction_above(np.array([-1.0, 0.0, 1.0]), np.zeros(3)) == pytest.approx(
+        [0.0, 0.5, 1.0]
+    )
+    epsilon = 1e-8
+    near = hydrology.seasonal_open_mean_c(np.array([-2.0 - epsilon, -2.0, -2.0 + epsilon]), np.full(3, 2.0))
+    assert np.all(np.isfinite(near))
+    assert near[1] == pytest.approx(0.0)
+    assert near[2] == pytest.approx(0.0, abs=1e-5)
+
+
 def test_compute_hydrology_threads_seasonal_amplitude_into_glacier_melt():
     d = 0.002
     theta = d * np.arange(12)
@@ -848,18 +890,40 @@ def test_compute_hydrology_keeps_a_lake_where_its_water_is_cold(cold):
     ledger = fields.ice.ledger
     assert ledger.closing_m3 <= ledger.opening_m3 + ledger.accumulation_m3  # no water became ice
 
+def test_compute_hydrology_threads_frozen_season_sublimation_through_spill_basins(monkeypatch):
+    theta = 0.05 * np.arange(40)
+    elevation = np.full(40, 300.0)
+    elevation[0:15] = -100.0
+    elevation[28:31] = -60.0
+    temperature = np.full(40, 15.0)
+    temperature[28:31] = -10.0
+    precipitation = np.full(40, 100.0)
+    world = World(seed=0, plates=[_flow_line_plate(0, theta, elevation)])
+
+    with_sublimation = hydrology.compute_hydrology(
+        world, precipitation, temperature, years=1_000_000, seasonal_amplitude_at_nodes=np.zeros(40)
+    )
+    monkeypatch.setattr(hydrology, "LAKE_ICE_SUBLIMATION_M_PER_YR", 0.0)
+    without_sublimation = hydrology.compute_hydrology(
+        world, precipitation, temperature, years=1_000_000, seasonal_amplitude_at_nodes=np.zeros(40)
+    )
+
+    assert with_sublimation.lake_depth[28:31].max() > 0.0
+    assert with_sublimation.lake_depth[28:31].max() < without_sublimation.lake_depth[28:31].max()
+
 
 @pytest.mark.parametrize(
     "cold", [slice(28, 31), slice(33, 34), slice(20, 34)], ids=["cold-pit", "one-cold-member", "cold-band"]
 )
 def test_compute_hydrology_delivers_every_drop_of_liquid_water_past_cold_nodes(cold, monkeypatch):
     # The closed pit of the test above, with evaporation off and every warm node at 0 C, so no
-    # water evaporates from lakes or in transit (river_transit_loss_fraction is 0 at or below
+    # water is lost from lakes or in transit (river_transit_loss_fraction is 0 at or below
     # 0 C). The pit fills to its rim in the first step; from then on every m^3 of liquid
     # runoff and meltwater must reach the ocean, wherever the cold nodes are (RFC 0014 D2(b),
     # #539). On main the frozen nodes deleted 58% (cold pit), 4% (one cold member) and 53%
     # (cold band) of it.
     monkeypatch.setattr(breaching, "open_water_evaporation_mm", lambda t: np.zeros_like(np.asarray(t, dtype=float)))
+    monkeypatch.setattr(hydrology, "LAKE_ICE_SUBLIMATION_M_PER_YR", 0.0)
     theta = 0.05 * np.arange(40)
     elevation = np.full(40, 300.0)
     elevation[0:15] = -100.0
