@@ -144,8 +144,27 @@ def test_unconfigured_server_fails_closed(monkeypatch, remote):
         monkeypatch.delenv(f"MANTLE_BLOOM_GITHUB_{name}", raising=False)
     assert remote.get("/worlds/test-world/summary").status_code == 401
     page = remote.get("/login")
-    assert "isn&#x27;t configured" in page.text and "/auth/github" not in page.text
+    assert "isn&#x27;t configured" in page.text and 'href="/auth/github"' not in page.text
     assert remote.get("/auth/github").headers["location"] == "/login?error=unconfigured"
+
+
+def test_unconfigured_login_page_tells_the_operator_what_to_set(monkeypatch, remote):
+    # The admin's only symptom on a fresh Railway deploy is a /view whose Sign in
+    # entry lands here, so the page names the setup instead of dead-ending (#626).
+    for name in ("CLIENT_ID", "CLIENT_SECRET", "OWNER_ID"):
+        monkeypatch.delenv(f"MANTLE_BLOOM_GITHUB_{name}", raising=False)
+    page = remote.get("/login")
+    assert "isn&#x27;t configured" in page.text
+    for name in (
+        "MANTLE_BLOOM_GITHUB_CLIENT_ID",
+        "MANTLE_BLOOM_GITHUB_CLIENT_SECRET",
+        "MANTLE_BLOOM_GITHUB_OWNER_ID",
+        "MANTLE_BLOOM_SESSION_SECRET",
+        "MANTLE_BLOOM_PUBLIC_URL",
+    ):
+        assert name in page.text
+    assert "/auth/github/callback" in page.text
+    assert 'href="/auth/github"' not in page.text
 
 
 def test_short_session_secret_leaves_login_unconfigured(monkeypatch):

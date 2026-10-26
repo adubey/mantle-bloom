@@ -92,9 +92,11 @@ function AllowanceNote({ state, demo = false }: { state: PublicState; demo?: boo
 
 function AccountLink() {
   const session = useSession();
-  if (isDemo || session?.admin) return null;
-  if (session?.login_available) return <a href={`${API_BASE}/login`}>Sign in</a>;
-  return null;
+  // Always offered once the session state is known: on a server without login configured
+  // the /login page explains the setup (#626), instead of /view silently having no login
+  // entry at all.
+  if (isDemo || !session || session.admin) return null;
+  return <a href={`${API_BASE}/login`}>Sign in</a>;
 }
 
 // Which public world to show (#563, #597): `?world=<id>`, the only live world
