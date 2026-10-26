@@ -233,6 +233,207 @@ def _climate(inflow_m3_per_yr, evaporation_m_per_yr=1.0):
     return lakes.LakeClimate(inflow, np.full(len(inflow), evaporation_m_per_yr))
 
 
+def test_prognostic_lake_solver_grows_and_closes_single_basin_budget():
+    forest = lakes.build_lake_hierarchy(_SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS)
+    hyps = lakes.CellHypsometry.whole_cells(_SINK_ELEVATION)
+    climate = lakes.LakeClimate(
+        inflow_m3_per_yr=np.zeros(3),
+        evaporation_m_per_yr=np.zeros(3),
+        external_supply_m3_per_yr=np.array([1.0e13, 0.0, 0.0]),
+        wet_precip_m3_per_yr=np.array([1.0e13, 0.0, 0.0]),
+    )
+
+    result = lakes.solve_lakes_prognostic(
+        forest, _SINK_ELEVATION, np.zeros(3), 1.0, climate, hyps, substeps=8
+    )
+
+    assert result.lake_depth[0] > 0.0
+    assert np.all(result.lake_depth >= 0.0)
+    assert result.ledger.external_supply_m3 == pytest.approx(1.0e13)
+    assert result.ledger.wet_precip_m3 == pytest.approx(result.ledger.external_supply_m3)
+    assert result.ledger.dry_runoff_m3 == 0.0
+    assert result.ledger.meltwater_m3 == 0.0
+    assert result.ledger.storage_change_m3 == pytest.approx(1.0e13, rel=1e-10)
+    assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1.0e3)
+    deposited_silt_m3 = float((result.silt_deposited * hyps.area_m2).sum())
+    assert 0.0 < deposited_silt_m3 <= lakes.SILT_ACCUMULATION_COEFFICIENT * 1.0e13
+
+
+def test_prognostic_lake_solver_shrinks_by_evaporation_without_reset():
+    forest = lakes.build_lake_hierarchy(_SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS)
+    hyps = lakes.CellHypsometry.whole_cells(_SINK_ELEVATION)
+    previous = np.zeros(3)
+    previous[0] = 2.0
+    climate = lakes.LakeClimate(np.zeros(3), np.full(3, 0.5), np.zeros(3))
+
+    result = lakes.solve_lakes_prognostic(
+        forest, _SINK_ELEVATION, previous, 1.0, climate, hyps, substeps=16
+    )
+
+    assert 0.0 < result.lake_depth[0] < previous[0]
+    assert result.ledger.evaporation_m3 > 0.0
+    assert result.ledger.storage_change_m3 < 0.0
+    assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1.0e3)
+
+
+def test_prognostic_lake_solver_merges_siblings_during_the_step():
+    forest = lakes.build_lake_hierarchy(_MERGE_ELEVATION, _MERGE_IS_OCEAN, _MERGE_NEIGHBORS)
+    hyps = lakes.CellHypsometry.whole_cells(_MERGE_ELEVATION)
+    supply = np.array([1.0e16, 0.0, 0.0, 1.0e16, 0.0, 0.0])
+    climate = lakes.LakeClimate(np.zeros(6), np.zeros(6), supply)
+
+    result = lakes.solve_lakes_prognostic(
+        forest, _MERGE_ELEVATION, np.zeros(6), 1.0, climate, hyps, substeps=32,
+        is_ocean=_MERGE_IS_OCEAN,
+    )
+
+    assert any(event.kind == "merge" for event in result.events)
+    assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1.0e5)
+    assert np.all(result.lake_depth >= 0.0)
+
+
+def test_prognostic_lake_solver_splits_below_saddle_without_resetting_water():
+    forest = lakes.build_lake_hierarchy(_MERGE_ELEVATION, _MERGE_IS_OCEAN, _MERGE_NEIGHBORS)
+    hyps = lakes.CellHypsometry.whole_cells(_MERGE_ELEVATION)
+    previous = np.zeros(6)
+    for member in forest[0].members:
+        previous[member] = hyps.mean_depth(20.0, np.array([member]))[0]
+    climate = lakes.LakeClimate(np.zeros(6), np.full(6, 0.2), np.zeros(6))
+
+    result = lakes.solve_lakes_prognostic(
+        forest, _MERGE_ELEVATION, previous, 50.0, climate, hyps, substeps=32,
+        is_ocean=_MERGE_IS_OCEAN,
+    )
+
+    assert any(event.kind == "split" for event in result.events)
+    assert np.any(result.lake_depth > 0.0)
+    assert np.all(result.lake_depth >= 0.0)
+    assert result.ledger.storage_change_m3 < 0.0
+    assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1.0e6)
+
+
+def test_prognostic_spill_uses_hierarchy_receiver_independent_of_flow_channel():
+    forest = lakes.build_lake_hierarchy(_MERGE_ELEVATION, _MERGE_IS_OCEAN, _MERGE_NEIGHBORS)
+    hyps = lakes.CellHypsometry.whole_cells(_MERGE_ELEVATION)
+    upstream = next(leaf for leaf in _leaves(forest) if leaf.sink_node_idx == 0)
+    receiver_idx = upstream.outlet_target_idx
+    receiver_leaf = next(leaf for leaf in _leaves(forest) if receiver_idx in leaf.members)
+    supply = np.zeros(6)
+    supply[0] = 1.0e15
+    climate = lakes.LakeClimate(np.zeros(6), np.zeros(6), supply)
+
+    result = lakes.solve_lakes_prognostic(
+        forest, _MERGE_ELEVATION, np.zeros(6), 1.0, climate, hyps, substeps=32,
+        is_ocean=_MERGE_IS_OCEAN,
+    )
+
+    assert receiver_leaf.sink_node_idx != upstream.sink_node_idx
+    assert result.ledger.internal_transfer_m3 > 0.0
+    assert np.any(result.lake_depth[receiver_leaf.members] > 0.0)
+    assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1.0e5)
+
+
+def test_prognostic_capped_lake_books_only_surplus_after_evaporation():
+    forest = lakes.build_lake_hierarchy(_SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS)
+    hyps = lakes.CellHypsometry.whole_cells(_SINK_ELEVATION)
+    supply = np.array([1.0e17, 0.0, 0.0])
+    climate = lakes.LakeClimate(np.zeros(3), np.full(3, 0.5), supply)
+
+    result = lakes.solve_lakes_prognostic(
+        forest, _SINK_ELEVATION, np.zeros(3), 1.0, climate, hyps,
+        is_ocean=_SINK_IS_OCEAN,
+    )
+
+    lake = forest[0]
+    assert result.should_spill[lake.sink_node_idx]
+    assert result.overflow_m3[lake.outlet_target_idx] > 0.0
+    assert result.ledger.overflow_out_m3 > result.ledger.overflow_to_ocean_m3
+    assert result.ledger.evaporation_m3 > 0.0
+    assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1.0e6)
+
+
+def test_prognostic_solver_exports_prior_storage_outside_the_lake_hierarchy():
+    forest = lakes.build_lake_hierarchy(_SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS)
+    hyps = lakes.CellHypsometry.whole_cells(_SINK_ELEVATION)
+    previous = np.zeros(3)
+    previous[2] = 1.5  # ocean-connected in this step, but stored as lake water previously
+
+    result = lakes.solve_lakes_prognostic(
+        forest, _SINK_ELEVATION, previous, 1.0, _climate(np.zeros(3)), hyps,
+        is_ocean=_SINK_IS_OCEAN,
+    )
+
+    volume = previous[2] * hyps.area_m2[2]
+    assert result.lake_depth[2] == 0.0
+    assert result.overflow_m3[2] == pytest.approx(volume)
+    assert result.ledger.overflow_out_m3 == pytest.approx(volume)
+    assert result.ledger.overflow_to_ocean_m3 == pytest.approx(volume)
+    assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1.0e3)
+
+
+def test_prognostic_solver_exports_prior_storage_when_hierarchy_is_empty():
+    hyps = lakes.CellHypsometry.whole_cells(_SINK_ELEVATION)
+    previous = np.zeros(3)
+    previous[0] = 2.0
+
+    result = lakes.solve_lakes_prognostic(
+        [], _SINK_ELEVATION, previous, 1.0, _climate(np.zeros(3)), hyps,
+        is_ocean=_SINK_IS_OCEAN,
+    )
+
+    volume = previous[0] * hyps.area_m2[0]
+    assert not np.any(result.lake_depth)
+    assert result.overflow_m3[0] == pytest.approx(volume)
+    assert result.ledger.overflow_out_m3 == pytest.approx(volume)
+    assert result.ledger.overflow_to_ocean_m3 == 0.0
+    assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1.0e3)
+
+
+def test_prognostic_spill_status_tracks_the_final_substep():
+    forest = lakes.build_lake_hierarchy(_SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS)
+    hyps = lakes.CellHypsometry.whole_cells(_SINK_ELEVATION)
+    lake = forest[0]
+    previous = np.zeros(3)
+    previous[0] = 40.0  # starts above the lake's 25 m rim
+    climate = lakes.LakeClimate(np.zeros(3), np.full(3, 10.0), np.zeros(3))
+
+    result = lakes.solve_lakes_prognostic(
+        forest, _SINK_ELEVATION, previous, 1.0, climate, hyps, substeps=2,
+    )
+
+    assert result.ledger.overflow_out_m3 > 0.0  # first slice spills
+    assert result.lake_depth[0] < lake.max_depth - _SINK_ELEVATION[0]
+    assert not result.should_spill[lake.sink_node_idx]
+    assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1.0e3)
+
+
+def test_prognostic_depth_capped_siblings_break_a_closed_spill_cycle():
+    elevation = np.array([0.0, 0.0])
+    left = lakes.Lake(
+        lake_id=0, members=np.array([0]), floor_elevation=0.0, min_depth=0.0,
+        max_depth=3_000.0, outlet_node_idx=0, sink_node_idx=0, outlet_target_idx=1,
+    )
+    right = lakes.Lake(
+        lake_id=1, members=np.array([1]), floor_elevation=0.0, min_depth=0.0,
+        max_depth=3_000.0, outlet_node_idx=1, sink_node_idx=1, outlet_target_idx=0,
+    )
+    parent = lakes.Lake(
+        lake_id=2, members=np.array([0, 1]), floor_elevation=0.0, min_depth=3_000.0,
+        max_depth=None, children=[left, right],
+    )
+    supply = np.full(2, 1.0e20)
+
+    result = lakes.solve_lakes_prognostic(
+        [parent], elevation, np.zeros(2), 1.0,
+        lakes.LakeClimate(np.zeros(2), np.zeros(2), supply),
+        lakes.CellHypsometry.whole_cells(elevation), substeps=1,
+    )
+
+    assert np.all(result.should_spill)
+    assert result.ledger.overflow_out_m3 > 0.0
+    assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1.0e7)
+
+
 # -- compute_spill_routing -----------------------------------------------------------------
 
 

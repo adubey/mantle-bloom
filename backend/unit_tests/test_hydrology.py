@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from app import geometry
 from app.elevation_lines import line_spacing_rad
-from app.hydroclimate import breaching, erosion, hydrology, lakes
+from app.hydroclimate import breaching, erosion, hydrology
 from app.plates import collect_all_accounting_areas_m2
 from app.world import World, generate_world, step_world
 
@@ -203,182 +203,6 @@ def test_compute_flow_direction_a_wet_sink_spills_over_a_rim_at_its_own_floor():
     assert should_spill[0]
 
 
-def _spill_basins(elevation, forest, governing, evaporation=0.0, neighbor_idx=None):
-    n = len(elevation)
-    if neighbor_idx is None:  # a chain: each node's neighbours are the nodes either side of it
-        neighbor_idx = np.stack([np.maximum(np.arange(n) - 1, 0), np.minimum(np.arange(n) + 1, n - 1)], axis=1)
-    return hydrology.SpillBasins(
-        forest, governing, lakes.CellHypsometry(elevation, np.ones(n), np.zeros(n), 1.0), neighbor_idx,
-        np.zeros(n), np.full(n, evaporation),
-    )
-
-
-def _route_for(elevation, is_ocean, source):
-    return lambda targets: hydrology.route_downstream(elevation, is_ocean, targets, source)
-
-
-def test_spill_within_step_carries_a_river_through_a_chain_of_dry_pits():
-    # 5 -> pit B (4) -> 3 -> pit A (2) -> 1 -> ocean. Both pits start dry, so the lagged spill
-    # test holds the river in B. This step's 1,000 m^3/yr fills each pit's few m^3 of room many
-    # times over, so both open and the river reaches the sea within the step (#503).
-    elevation = np.array([-10.0, 5.0, 3.0, 10.0, 6.0, 20.0])
-    is_ocean = np.array([True, False, False, False, False, False])
-    pit_a = lakes.Lake(0, np.array([2, 3]), 3.0, 3.0, 5.0, outlet_node_idx=2, sink_node_idx=2, outlet_target_idx=1)
-    pit_b = lakes.Lake(1, np.array([4, 5]), 6.0, 6.0, 10.0, outlet_node_idx=4, sink_node_idx=4, outlet_target_idx=3)
-    flow_target = np.array([-1, 0, -1, 2, -1, 4])
-    source = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 1000.0])
-    no_spill = np.zeros(6, dtype=bool)
-
-    targets, spilling, _, _, through, _ = hydrology._spill_within_step(
-        _spill_basins(elevation, [pit_a, pit_b], [pit_a, pit_b]), flow_target, no_spill,
-        elevation.copy(), np.full(6, -1), _route_for(elevation, is_ocean, source), years=1000.0,
-    )
-    assert targets[4] == 3 and targets[2] == 1
-    assert spilling[4] and spilling[2]
-    assert through[1] == pytest.approx(1000.0)
-
-    # In a desert, a lake at B's rim would evaporate more than the river brings: B holds it.
-    targets, spilling, _, _, through, _ = hydrology._spill_within_step(
-        _spill_basins(elevation, [pit_a, pit_b], [pit_a, pit_b], evaporation=2000.0), flow_target, no_spill,
-        elevation.copy(), np.full(6, -1), _route_for(elevation, is_ocean, source), years=1000.0,
-    )
-    assert targets[4] == -1 and not spilling[4]
-    assert through[1] == 0.0
-
-
-def test_spill_within_step_opens_a_40_pit_chain_in_one_sweep():
-    # Pits p_k (2k + 2) step down toward the sea, each spilling over rim r_k (2k + 1) into the
-    # pit below. Swept from the highest floor down, water released by each pit counts toward
-    # the next, so all 40 open at once instead of one per round (a 32-round cap left this
-    # chain stranded, #503).
-    pits = 40
-    n = 2 * pits + 2
-    elevation = np.empty(n)
-    elevation[0] = -10.0
-    for k in range(pits + 1):
-        elevation[2 * k + 1] = 10.0 * k + 5.0
-        if k < pits:
-            elevation[2 * k + 2] = 10.0 * k + 3.0
-    is_ocean = np.zeros(n, dtype=bool)
-    is_ocean[0] = True
-    flow_target = np.full(n, -1)
-    flow_target[1] = 0
-    chain = []
-    for k in range(pits):
-        pit, rim, upstream = 2 * k + 2, 2 * k + 1, 2 * k + 3
-        flow_target[upstream] = pit
-        chain.append(lakes.Lake(k, np.array([pit, upstream]), elevation[pit], elevation[pit], elevation[rim],
-                                outlet_node_idx=pit, sink_node_idx=pit, outlet_target_idx=rim))
-    source = np.zeros(n)
-    source[-1] = 1000.0
-
-    targets, _, _, _, through, _ = hydrology._spill_within_step(
-        _spill_basins(elevation, chain, chain), flow_target, np.zeros(n, dtype=bool), elevation.copy(),
-        np.full(n, -1), _route_for(elevation, is_ocean, source), years=1000.0,
-    )
-    assert all(targets[2 * k + 2] == 2 * k + 1 for k in range(pits))
-    assert through[1] == pytest.approx(1000.0)
-
-
-def test_spill_within_step_counts_shallow_margin_evaporation_against_a_fill():
-    # Pit node 2 has 2 m of sub-cell relief and its rim 1 m above its centre, so a lake at the
-    # rim floods 75% of it, and that shallow margin evaporates 30% faster (lakes.
-    # SHALLOW_EVAPORATION_BOOST): 806,250 m^3/yr in all, 750,000 without the boost. The river
-    # brings 778,000 m^3/yr, so the lake balances below the rim and the pit holds -- as
-    # lakes.resolve_lakes will also find (#503).
-    elevation = np.array([-10.0, 5.0, 3.0, 20.0])
-    is_ocean = np.array([True, False, False, False])
-    pit = lakes.Lake(0, np.array([2]), 3.0, 3.0, 4.0, outlet_node_idx=2, sink_node_idx=2, outlet_target_idx=1)
-    basins = hydrology.SpillBasins(
-        [pit], [pit], lakes.CellHypsometry(elevation, np.ones(4), np.array([0.0, 0.0, 2.0, 0.0]), 1.0),
-        np.stack([np.maximum(np.arange(4) - 1, 0), np.minimum(np.arange(4) + 1, 3)], axis=1),
-        np.zeros(4), np.array([0.0, 0.0, 1.0e6, 0.0]),
-    )
-    source = np.array([0.0, 0.0, 0.0, 778_000.0])
-    targets, spilling, _, _, through, _ = hydrology._spill_within_step(
-        basins, np.array([-1, 0, -1, 2]), np.zeros(4, dtype=bool), elevation.copy(), np.full(4, -1),
-        _route_for(elevation, is_ocean, source), years=1.0e6,
-    )
-    assert targets[2] == -1 and not spilling[2]
-    assert through[1] == 0.0
-
-
-def test_spill_within_step_water_reaching_one_sink_of_a_shared_lake_fills_it_and_opens_its_outlet():
-    # One lake covers sink 2 and sink 4, and the river reaches only sink 4. Its water fills the
-    # shared lake, which opens its outlet through node 1 to the sea, whatever sink 4's
-    # temperature: before RFC 0014 D2(b) (#539), a frozen sink 4 turned the water into river ice,
-    # so the lake never filled and its other sink stayed closed.
-    elevation = np.array([-10.0, 5.0, 2.0, 30.0, 3.0])
-    is_ocean = np.array([True, False, False, False, False])
-    left = lakes.Lake(0, np.array([2]), 2.0, 2.0, 4.0, outlet_node_idx=2, sink_node_idx=2, outlet_target_idx=4)
-    right = lakes.Lake(1, np.array([3, 4]), 3.0, 3.0, 4.0, outlet_node_idx=4, sink_node_idx=4, outlet_target_idx=2)
-    pair = lakes.Lake(2, np.array([2, 3, 4]), 2.0, 4.0, 5.0, children=[left, right], outlet_node_idx=2, outlet_target_idx=1)
-    source = np.array([0.0, 0.0, 0.0, 1000.0, 0.0])
-
-    targets, spilling, _, _, through, _ = hydrology._spill_within_step(
-        _spill_basins(elevation, [pair], [pair]), np.array([-1, 0, -1, 4, -1]), np.zeros(5, dtype=bool),
-        elevation.copy(), np.full(5, -1), _route_for(elevation, is_ocean, source), years=1000.0,
-    )
-    assert targets[2] == 1 and targets[4] == 1 and spilling[2] and spilling[4]
-    assert through[1] == pytest.approx(1000.0)  # all of it reaches the sea
-
-
-def test_spill_within_step_unites_sibling_basins_that_spill_into_each_other():
-    # Sibling pits A (node 2) and B (node 3) both reached their shared saddle, so each spills
-    # into the other and the water circles. United at their parent, the pair either spills once
-    # at the parent's rim (to node 1, then the sea) or holds the water as one lake (#503).
-    elevation = np.array([-10.0, 5.0, 2.0, 3.0])
-    is_ocean = np.array([True, False, False, False])
-    pit_a = lakes.Lake(0, np.array([2]), 2.0, 2.0, 4.0, outlet_node_idx=2, sink_node_idx=2, outlet_target_idx=3)
-    pit_b = lakes.Lake(1, np.array([3]), 3.0, 3.0, 4.0, outlet_node_idx=3, sink_node_idx=3, outlet_target_idx=2)
-    pair = lakes.Lake(2, np.array([2, 3]), 2.0, 4.0, 5.0, children=[pit_a, pit_b], outlet_node_idx=2, outlet_target_idx=1)
-    circling = np.array([-1, 0, 3, 2])
-    spilling = np.array([False, False, True, True])
-    source = np.array([0.0, 0.0, 100.0, 100.0])
-
-    def run(years):
-        return hydrology._spill_within_step(
-            _spill_basins(elevation, [pair], [pit_a, pit_b]), circling, spilling,
-            np.array([-10.0, 5.0, 4.0, 4.0]), np.array([-1, 0, 3, 2]), _route_for(elevation, is_ocean, source), years=years,
-        )
-
-    targets, now_spilling, filled, spill_to, through, _ = run(years=1000.0)  # 200,000 m^3 >> 5 m^3 of room
-    assert hydrology.flow_cycles(targets) == []
-    assert targets[2] == 1 and targets[3] == 1
-    assert list(filled[2:]) == [5.0, 5.0] and list(spill_to[2:]) == [1, 1]
-    assert through[1] == pytest.approx(200.0)
-
-    targets, now_spilling, _, _, through, settled = run(years=0.01)  # 2 m^3 < 5 m^3 of room
-    assert hydrology.flow_cycles(targets) == []
-    # Held as one lake, the water pools at its lowest sink (node 2), not split between both.
-    assert targets[3] == 2 and targets[2] == -1 and not now_spilling[2]
-    assert settled[2] == pytest.approx(200.0)
-
-
-def test_spill_within_step_sends_a_channel_back_down_the_catchment_it_belongs_to():
-    # Pit A (node 1) drains at its floor over to node 2, in basin B's catchment. Node 2's
-    # steepest descent is B's outlet path (node 4, then the sea), but an old channel leads it to
-    # node 3, which drains back into A: a cycle across two separate root basins, which share no
-    # ancestor to unite in. Node 2 follows its steepest descent instead, and the water reaches
-    # the sea (#503).
-    elevation = np.array([-10.0, 4.0, 6.0, 5.0, 2.0])
-    is_ocean = np.array([True, False, False, False, False])
-    neighbor_idx = np.array([[1, 4], [2, 3], [3, 4], [1, 2], [2, 0]])
-    pit_a = lakes.Lake(0, np.array([1, 3]), 4.0, 4.0, 4.0, outlet_node_idx=1, sink_node_idx=1, outlet_target_idx=2)
-    basin_b = lakes.Lake(1, np.array([2, 4]), 2.0, 2.0, 6.0, outlet_node_idx=4, sink_node_idx=4, outlet_target_idx=0)
-    circling = np.array([-1, 2, 3, 1, 0])
-    source = np.array([0.0, 100.0, 0.0, 0.0, 0.0])
-
-    targets, _, _, _, through, _ = hydrology._spill_within_step(
-        _spill_basins(elevation, [pit_a, basin_b], [pit_a, basin_b], neighbor_idx=neighbor_idx), circling,
-        np.array([False, True, False, False, False]), np.array([-10.0, 4.0, 6.0, 5.0, 2.0]), np.array([-1, 2, -1, -1, -1]),
-        _route_for(elevation, is_ocean, source), years=1000.0,
-    )
-    assert hydrology.flow_cycles(targets) == []
-    assert targets[2] == 4
-    assert through[4] == pytest.approx(100.0)
-
-
 def test_flow_cycles_lists_each_cycle_once():
     flow_target = np.array([1, 2, 0, 2, -1, 6, 5, 4])
     cycles = sorted(sorted(c.tolist()) for c in hydrology.flow_cycles(flow_target))
@@ -569,16 +393,16 @@ def test_compute_hydrology_history_years_gives_a_zero_duration_pass_a_breach_bud
     assert _reaches_ocean(history, 29)
 
 
-def test_compute_hydrology_history_years_lets_a_zero_duration_pass_fill_a_basin(monkeypatch):
-    # With breaching off, the wet pit can only drain by filling to its rim and spilling
-    # (`_spill_within_step`), which needs time to fill.
+def test_compute_hydrology_history_years_does_not_advance_lake_storage(monkeypatch):
+    # D1b integrates lake storage over `years`; `history_years` supplies a carving history only.
     monkeypatch.setattr(hydrology, "BREACH_DEPRESSIONS_ENABLED", False)
     instant = _plateau_pit_run(2000.0, 10.0)
     assert not _reaches_ocean(instant, 29)
 
     history = _plateau_pit_run(2000.0, 10.0, history_years=100_000)
-    assert _reaches_ocean(history, 29)
-    assert history.discharge_m3_s[29] > 0.0
+    assert not _reaches_ocean(history, 29)
+    assert not history.lake_depth.any()
+    assert history.discharge_m3_s[29] == 0.0
 
 
 def test_compute_hydrology_history_years_leaves_ice_on_the_zero_length_step(monkeypatch):
@@ -634,7 +458,7 @@ def test_compute_hydrology_end_to_end_on_a_small_synthetic_world():
 
     precipitation_at_nodes = np.full(12, 800.0)
     temperature_at_nodes = np.full(12, 15.0)  # well above freezing -- no glaciation involved
-    fields = hydrology.compute_hydrology(world, precipitation_at_nodes, temperature_at_nodes, years=1_000_000)
+    fields = hydrology.compute_hydrology(world, precipitation_at_nodes, temperature_at_nodes, years=1)
 
     assert len(fields.points) == 12
     assert fields.is_ocean.tolist() == [False] * 9 + [True] * 3
@@ -689,7 +513,7 @@ def test_compute_hydrology_spilling_lake_erodes_its_outlet_from_its_own_surface_
 
     precipitation_at_nodes = np.full(22, 10.0)  # small -- the breach term should dominate
     temperature_at_nodes = np.full(22, 15.0)
-    fields = hydrology.compute_hydrology(world, precipitation_at_nodes, temperature_at_nodes, years=1_000_000)
+    fields = hydrology.compute_hydrology(world, precipitation_at_nodes, temperature_at_nodes, years=1)
 
     # A single-node lake (only node 10 is above LAKE_MIN_VISIBLE_DEPTH_M), so the breach term
     # there is exactly one component-size's worth of LAKE_BREACH_EROSION_COEFFICIENT --
@@ -704,11 +528,8 @@ def test_compute_hydrology_spilling_lake_also_erodes_its_own_rim_when_that_is_th
     # higher side of the governing boundary edge -- higher than the far side outside the lake
     # (15, elevation 200) that `max_depth` would otherwise appear to come from (confirmed
     # directly: `lakes.build_lake_hierarchy` on this exact layout gives max_depth=210 via
-    # outlet_node_idx=11, not 200 via outlet_target_idx=15). Before the rim_node_idx fix, the
-    # breach surge only ever rode `spill_target` from the sink (10) to the far side (15) --
-    # bypassing 11 entirely -- so the *actual* dam (11) never got a drop of erosive flow no
-    # matter how long the lake spilled. lake_depth[10]=170 puts the sink's water surface at
-    # 50+170=220, over the 210 cap, so it's actively spilling this step.
+    # outlet_node_idx=11, not 200 via outlet_target_idx=15). The one-year fixture starts with
+    # enough stored water to export surplus through this rim and exercise both erosion sites.
     d = 0.002
     elevation = np.array(
         [500.0, 480.0, 460.0, 440.0, 420.0, 400.0, 380.0, 360.0, 340.0, 320.0]
@@ -719,13 +540,13 @@ def test_compute_hydrology_spilling_lake_also_erodes_its_own_rim_when_that_is_th
     n = len(elevation)
     theta = d * np.arange(n)
     lake_depth = np.zeros(n)
-    lake_depth[10] = 170.0
+    lake_depth[10] = 300.0
     plate = _flow_line_plate_with_lake(0, theta, elevation, lake_depth)
     world = World(seed=0, plates=[plate])
 
     precipitation_at_nodes = np.full(n, 10.0)  # small -- the breach term should dominate
     temperature_at_nodes = np.full(n, 15.0)
-    fields = hydrology.compute_hydrology(world, precipitation_at_nodes, temperature_at_nodes, years=1_000_000)
+    fields = hydrology.compute_hydrology(world, precipitation_at_nodes, temperature_at_nodes, years=1)
 
     # Both sides of the true bottleneck now carry roughly one component-size's worth of
     # LAKE_BREACH_EROSION_COEFFICIENT -- the lake's own rim (11, previously untouched) just as
@@ -733,6 +554,15 @@ def test_compute_hydrology_spilling_lake_also_erodes_its_own_rim_when_that_is_th
     assert fields.flow_accum[11] >= hydrology.LAKE_BREACH_EROSION_COEFFICIENT
     assert fields.flow_accum[11] < hydrology.LAKE_BREACH_EROSION_COEFFICIENT * 1.1
     assert fields.flow_accum[15] >= hydrology.LAKE_BREACH_EROSION_COEFFICIENT
+    lake = fields.lake_forest[0]
+    assert fields.should_spill[lake.sink_node_idx]
+    assert lake.is_spilling
+    assert fields.flow_target[lake.sink_node_idx] == lake.outlet_target_idx
+    assert fields.discharge_m3_s[lake.outlet_target_idx] > 0.0
+    from app import main
+
+    inspector = main._lake_basin_summary(fields, lake, 0, [], {}, is_lake=True)
+    assert inspector["is_spilling"]
 
 
 def test_breach_surge_drives_flow_accum_but_never_physical_discharge(monkeypatch):
@@ -751,7 +581,7 @@ def test_breach_surge_drives_flow_accum_but_never_physical_discharge(monkeypatch
 
     def run():
         world = World(seed=0, plates=[_flow_line_plate_with_lake(0, 0.002 * np.arange(n), elevation, lake_depth)])
-        return hydrology.compute_hydrology(world, np.full(n, 10.0), np.full(n, 15.0), years=1_000_000)
+        return hydrology.compute_hydrology(world, np.full(n, 10.0), np.full(n, 15.0), years=1)
 
     surged = run()
     assert surged.breach_surge[10] == pytest.approx(hydrology.LAKE_BREACH_EROSION_COEFFICIENT)
@@ -760,7 +590,9 @@ def test_breach_surge_drives_flow_accum_but_never_physical_discharge(monkeypatch
     assert np.all(calm.breach_surge == 0.0)
     assert surged.flow_accum[10] > calm.flow_accum[10] + 0.9 * surged.breach_surge[10]
     assert np.array_equal(surged.discharge_m3_s, calm.discharge_m3_s)
-    assert surged.discharge_m3_s[10] > 0.0  # the lake's own runoff still passes through
+    # External supply now enters storage; only surplus leaves at the hierarchy outlet (#588).
+    assert surged.discharge_m3_s[10] == 0.0
+    assert surged.lake_water_ledger.residual_m3 == pytest.approx(0.0, abs=1.0e6)
 
 
 def test_breach_surge_never_sizes_lake_silt(monkeypatch):
@@ -784,7 +616,7 @@ def test_breach_surge_never_sizes_lake_silt(monkeypatch):
 
     def run():
         world = World(seed=0, plates=[_flow_line_plate_with_lake(0, 0.002 * np.arange(n), elevation, lake_depth)])
-        return hydrology.compute_hydrology(world, np.full(n, 2000.0), np.full(n, 5.0), years=1_000_000)
+        return hydrology.compute_hydrology(world, np.full(n, 2000.0), np.full(n, 5.0), years=1)
 
     surged = run()
     assert surged.breach_surge[10] > 0.0
@@ -795,10 +627,9 @@ def test_breach_surge_never_sizes_lake_silt(monkeypatch):
     assert np.array_equal(surged.silt_deposited, calm.silt_deposited)
 
 
-def test_a_spilling_sink_loses_the_same_transit_share_as_any_node():
-    # The single-node spilling lake above. Physical water has one transit-loss rule (issue
-    # #355): the spilling sink loses its share like any other node. Only the legacy routing
-    # exempts it, for the breach surge's sake.
+def test_a_lake_sink_stores_external_supply_instead_of_passing_full_inflow():
+    # The single-node lake above. External sources reach its storage, while only overflow leaves
+    # the lake and enters downstream discharge (issue #588).
     elevation = np.array(
         [500.0, 480.0, 460.0, 440.0, 420.0, 400.0, 380.0, 360.0, 340.0, 320.0]
         + [50.0]
@@ -809,22 +640,15 @@ def test_a_spilling_sink_loses_the_same_transit_share_as_any_node():
     lake_depth = np.zeros(n)
     lake_depth[10] = 160.0
     world = World(seed=0, plates=[_flow_line_plate_with_lake(0, 0.002 * np.arange(n), elevation, lake_depth)])
-    fields = hydrology.compute_hydrology(world, np.full(n, 10.0), np.full(n, 15.0), years=1_000_000)
+    fields = hydrology.compute_hydrology(world, np.full(n, 10.0), np.full(n, 15.0), years=1)
 
     assert fields.breach_surge[10] > 0.0
-    loss = hydrology.river_transit_loss_fraction(np.array([15.0]), np.array([False]))[0]
-    assert loss > 0.0
-    runoff_m3_s = breaching.runoff_mm(np.array([10.0]), breaching.open_water_evaporation_mm(np.array([15.0])))[0] / 1000.0
-    runoff_m3_s *= _node_areas(world)[10] / hydrology.SECONDS_PER_YEAR
-    wet_fraction = hydrology._lagged_lake_wet_fraction(lake_depth, fields.hypsometry)[10]
-    dry_fraction = 1.0 - wet_fraction
     inflow_m3_s = float(fields.discharge_m3_s[fields.flow_target == 10].sum())
-    wet_rain_m3_s = 10.0 / 1000.0 * _node_areas(world)[10] * wet_fraction / hydrology.SECONDS_PER_YEAR
     assert inflow_m3_s > 0.0
-    assert fields.discharge_m3_s[10] == pytest.approx(
-        (inflow_m3_s + runoff_m3_s * dry_fraction) * (1.0 - loss * dry_fraction) + wet_rain_m3_s,
-        rel=1e-12,
-    )
+    # The sink's external supply is now balanced into storage, evaporation and overflow;
+    # discharge at the lake itself contains no full-inflow pass-on (#588).
+    assert fields.discharge_m3_s[10] == 0.0
+    assert fields.lake_water_ledger.residual_m3 == pytest.approx(0.0, abs=1.0e6)
 
 
 def test_rivers_flow_on_through_a_cold_band_to_the_sea():
@@ -860,8 +684,9 @@ def test_discharge_carries_the_ice_ledgers_meltwater_exactly_once_at_any_step_le
         sink = fields.flow_target == -1
         assert not np.any(fields.is_ocean) and np.count_nonzero(sink) == 1
         assert ledger.surface_melt_m3 > 0.0 and ledger.basal_melt_m3 > 0.0
-        routed_m3 = float(fields.discharge_m3_s[sink].sum()) * hydrology.SECONDS_PER_YEAR * years
-        assert routed_m3 == pytest.approx(ledger.meltwater_m3, rel=1e-9)
+        assert fields.lake_external_meltwater_m3_per_yr.sum() > 0.0
+        assert np.all(fields.discharge_m3_s >= 0.0)
+        assert fields.lake_water_ledger.residual_m3 == pytest.approx(0.0, abs=1.0e5)
         assert fields.lake_external_meltwater_m3_per_yr.sum() == pytest.approx(
             ledger.meltwater_m3 / years, rel=1e-9
         )
@@ -1275,7 +1100,7 @@ def test_a_spill_hop_over_a_dry_basin_is_drawn_along_its_spill_path():
 
 def test_a_united_lake_pooling_hop_is_found_from_should_spill():
     # A united lake's sinks are routed to its lowest sink, not to their spill_target
-    # (`_SpillResolver._unite`), so only should_spill marks the hop.
+    # after same-step hierarchy resolution, so only should_spill marks the hop.
     fields = spill_hop_fields(lake_m=0.0)
     fields.spill_target[2] = 5
 
