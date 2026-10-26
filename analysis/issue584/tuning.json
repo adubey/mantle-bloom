@@ -1,0 +1,3998 @@
+{
+  "provenance": {
+    "script": "tune_plumes_584.py",
+    "git_head": "5664cef607d68b51126c5ae28a7aeb6dcccc1f6b",
+    "git_status_short": "M backend/app/plumes.py\n M backend/app/terranes.py\n M backend/unit_tests/test_plumes.py\n M backend/unit_tests/test_terranes.py\n?? analysis/issue584/\n?? bin/debug/tune_plumes_584.py",
+    "python": "3.14.6",
+    "controls": {
+      "steps": "default generate_world, cratons on, 5 Myr steps"
+    }
+  },
+  "results": [
+    {
+      "case": "baseline_7",
+      "seed": 7,
+      "years": 1000000000.0,
+      "knobs": {},
+      "wall_s": 995.8,
+      "mean_step_s": 4.98,
+      "lip_events_per_gyr": 119.0,
+      "lip_continental": 41,
+      "lip_oceanic": 78,
+      "lip_volume_km3_per_gyr": 1648579694.5,
+      "lip_volume_continental_km3_per_gyr": 584077497.0,
+      "lip_volume_oceanic_km3_per_gyr": 1064502197.4,
+      "active_heads_end": 12,
+      "active_tails_end": 23,
+      "splits": 45,
+      "splits_parent_heated_fraction_mean": 0.0942,
+      "splits_parent_fully_heated": 2,
+      "splits_parent_unheated": 26,
+      "plume_lip_events_stat": 119,
+      "plume_plateau_area_km2": 123624021.72748575,
+      "plume_heat_area_km2": 66513314.02267064,
+      "buoyant_crust_ledger_km3": {
+        "arc": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        },
+        "plume_head": {
+          "emplaced_m3": 1051156172.0528644,
+          "thinned_m3": 10789626.974729704,
+          "reset_m3": 355004.7649517749,
+          "subducted_m3": 458183950.8411531,
+          "converted_m3": 73634.12646529183,
+          "foundered_m3": 8181.569607254646,
+          "clipped_m3": 315636673.78148526,
+          "topology_removed_m3": 665605.391968696,
+          "unattributed_m3": 0.0,
+          "docked_m3": 1039661348.8760964
+        },
+        "plume_tail": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        }
+      },
+      "juvenile_continental_km3": {
+        "juvenile_flood_basalt_m3": 597414922.032,
+        "juvenile_hotspot_m3": 875688371.892,
+        "juvenile_plateau_m3": 73634.126
+      },
+      "head_volume_deciles_km3": [
+        1155211.6,
+        1598158.6,
+        2800510.3,
+        8783129.4,
+        22424136.3,
+        35196598.9,
+        47261664.7
+      ],
+      "checkpoints": [
+        {
+          "elapsed_years": 0.0,
+          "active_heads": 0,
+          "active_tails": 0,
+          "plates": 20,
+          "heads_so_far": 0,
+          "splits_so_far": 0,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 0.0
+        },
+        {
+          "elapsed_years": 100000000.0,
+          "active_heads": 14,
+          "active_tails": 26,
+          "plates": 28,
+          "heads_so_far": 18,
+          "splits_so_far": 9,
+          "heat_area_km2": 43125303.8,
+          "plateau_area_km2": 78838911.3
+        },
+        {
+          "elapsed_years": 200000000.0,
+          "active_heads": 4,
+          "active_tails": 23,
+          "plates": 32,
+          "heads_so_far": 27,
+          "splits_so_far": 14,
+          "heat_area_km2": 15665497.8,
+          "plateau_area_km2": 76170317.4
+        },
+        {
+          "elapsed_years": 300000000.0,
+          "active_heads": 9,
+          "active_tails": 31,
+          "plates": 33,
+          "heads_so_far": 39,
+          "splits_so_far": 16,
+          "heat_area_km2": 56616686.1,
+          "plateau_area_km2": 95225571.5
+        },
+        {
+          "elapsed_years": 400000000.0,
+          "active_heads": 9,
+          "active_tails": 23,
+          "plates": 37,
+          "heads_so_far": 50,
+          "splits_so_far": 21,
+          "heat_area_km2": 30951935.2,
+          "plateau_area_km2": 99866313.1
+        },
+        {
+          "elapsed_years": 500000000.0,
+          "active_heads": 10,
+          "active_tails": 25,
+          "plates": 39,
+          "heads_so_far": 62,
+          "splits_so_far": 26,
+          "heat_area_km2": 15802236.2,
+          "plateau_area_km2": 93284853.6
+        },
+        {
+          "elapsed_years": 600000000.0,
+          "active_heads": 7,
+          "active_tails": 22,
+          "plates": 45,
+          "heads_so_far": 71,
+          "splits_so_far": 32,
+          "heat_area_km2": 13573747.7,
+          "plateau_area_km2": 92770605.8
+        },
+        {
+          "elapsed_years": 700000000.0,
+          "active_heads": 10,
+          "active_tails": 22,
+          "plates": 47,
+          "heads_so_far": 83,
+          "splits_so_far": 34,
+          "heat_area_km2": 32980622.6,
+          "plateau_area_km2": 106476589.6
+        },
+        {
+          "elapsed_years": 800000000.0,
+          "active_heads": 9,
+          "active_tails": 22,
+          "plates": 54,
+          "heads_so_far": 95,
+          "splits_so_far": 38,
+          "heat_area_km2": 59049675.5,
+          "plateau_area_km2": 109621849.7
+        },
+        {
+          "elapsed_years": 900000000.0,
+          "active_heads": 8,
+          "active_tails": 28,
+          "plates": 54,
+          "heads_so_far": 106,
+          "splits_so_far": 41,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 110955359.3
+        },
+        {
+          "elapsed_years": 1000000000.0,
+          "active_heads": 12,
+          "active_tails": 23,
+          "plates": 55,
+          "heads_so_far": 119,
+          "splits_so_far": 45,
+          "heat_area_km2": 66513314.0,
+          "plateau_area_km2": 123624021.7
+        }
+      ],
+      "craton_keys": {
+        "craton_area_km2": 135817935.49072692,
+        "craton_continental_fraction": 0.6641000841745963,
+        "craton_volume_km3": 4766467351.394585,
+        "craton_destroyed_km3": 316739845.90304524,
+        "craton_ledger_km3": {
+          "initial_m3": 4107197532.2866306,
+          "formed_m3": 976009668.0284697,
+          "rifted_m3": 40073229.00105723,
+          "subducted_m3": 0.0,
+          "delaminated_m3": 0.0,
+          "merge_capped_m3": 0.0,
+          "collision_reworked_m3": 222694991.73158035,
+          "eroded_m3": 63081095.93637978,
+          "topology_removed_m3": 0.0,
+          "audit_clipped_m3": 0.0,
+          "unattributed_m3": -9109470.76597212,
+          "rifted_divergent_m3": 398346.72733472084,
+          "rifted_stretch_m3": 22342852.723201692,
+          "rifted_failed_m3": 17332029.550520837
+        },
+        "craton_rift_cuts": {
+          "split_cuts": 45.0,
+          "split_cuts_through_craton": 14.0,
+          "split_band_area_m2": 149683678539460.25,
+          "split_band_craton_area_m2": 21683290899690.85,
+          "failed_rift_cuts": 37.0,
+          "failed_rift_cuts_through_craton": 15.0,
+          "failed_rift_band_area_m2": 124145603728161.4,
+          "failed_rift_band_craton_area_m2": 27021533279102.555
+        }
+      }
+    },
+    {
+      "case": "baseline_11",
+      "seed": 11,
+      "years": 1000000000.0,
+      "knobs": {},
+      "wall_s": 832.7,
+      "mean_step_s": 4.16,
+      "lip_events_per_gyr": 110.0,
+      "lip_continental": 42,
+      "lip_oceanic": 68,
+      "lip_volume_km3_per_gyr": 1281834296.4,
+      "lip_volume_continental_km3_per_gyr": 530947897.8,
+      "lip_volume_oceanic_km3_per_gyr": 750886398.6,
+      "active_heads_end": 11,
+      "active_tails_end": 16,
+      "splits": 47,
+      "splits_parent_heated_fraction_mean": 0.0751,
+      "splits_parent_fully_heated": 0,
+      "splits_parent_unheated": 29,
+      "plume_lip_events_stat": 110,
+      "plume_plateau_area_km2": 155457008.4982769,
+      "plume_heat_area_km2": 14043724.007862844,
+      "buoyant_crust_ledger_km3": {
+        "arc": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        },
+        "plume_head": {
+          "emplaced_m3": 775536836.6702938,
+          "thinned_m3": 5518305.918187383,
+          "reset_m3": 368797.4370534106,
+          "subducted_m3": 252927561.06610745,
+          "converted_m3": 13089.852652418973,
+          "foundered_m3": 1454.4280724909975,
+          "clipped_m3": 247108266.8202616,
+          "topology_removed_m3": 752957.1107845355,
+          "unattributed_m3": 0.0,
+          "docked_m3": 671397367.7976989
+        },
+        "plume_tail": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        }
+      },
+      "juvenile_continental_km3": {
+        "juvenile_flood_basalt_m3": 506297459.716,
+        "juvenile_hotspot_m3": 743541364.291,
+        "juvenile_plateau_m3": 13089.853
+      },
+      "head_volume_deciles_km3": [
+        1075179.6,
+        1565200.2,
+        2938945.1,
+        6975717.5,
+        15277096.7,
+        28831527.7,
+        49322172.9
+      ],
+      "checkpoints": [
+        {
+          "elapsed_years": 0.0,
+          "active_heads": 0,
+          "active_tails": 0,
+          "plates": 9,
+          "heads_so_far": 0,
+          "splits_so_far": 0,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 0.0
+        },
+        {
+          "elapsed_years": 100000000.0,
+          "active_heads": 11,
+          "active_tails": 22,
+          "plates": 20,
+          "heads_so_far": 13,
+          "splits_so_far": 11,
+          "heat_area_km2": 15402773.4,
+          "plateau_area_km2": 109293981.9
+        },
+        {
+          "elapsed_years": 200000000.0,
+          "active_heads": 5,
+          "active_tails": 27,
+          "plates": 25,
+          "heads_so_far": 18,
+          "splits_so_far": 16,
+          "heat_area_km2": 30823903.6,
+          "plateau_area_km2": 100512437.2
+        },
+        {
+          "elapsed_years": 300000000.0,
+          "active_heads": 6,
+          "active_tails": 28,
+          "plates": 28,
+          "heads_so_far": 25,
+          "splits_so_far": 19,
+          "heat_area_km2": 61063046.5,
+          "plateau_area_km2": 106152363.1
+        },
+        {
+          "elapsed_years": 400000000.0,
+          "active_heads": 7,
+          "active_tails": 32,
+          "plates": 31,
+          "heads_so_far": 34,
+          "splits_so_far": 23,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 98420550.1
+        },
+        {
+          "elapsed_years": 500000000.0,
+          "active_heads": 5,
+          "active_tails": 28,
+          "plates": 35,
+          "heads_so_far": 41,
+          "splits_so_far": 27,
+          "heat_area_km2": 61508486.5,
+          "plateau_area_km2": 96497856.6
+        },
+        {
+          "elapsed_years": 600000000.0,
+          "active_heads": 13,
+          "active_tails": 18,
+          "plates": 43,
+          "heads_so_far": 55,
+          "splits_so_far": 33,
+          "heat_area_km2": 13984254.6,
+          "plateau_area_km2": 103781569.7
+        },
+        {
+          "elapsed_years": 700000000.0,
+          "active_heads": 11,
+          "active_tails": 31,
+          "plates": 46,
+          "heads_so_far": 68,
+          "splits_so_far": 36,
+          "heat_area_km2": 30046909.6,
+          "plateau_area_km2": 120008955.3
+        },
+        {
+          "elapsed_years": 800000000.0,
+          "active_heads": 9,
+          "active_tails": 29,
+          "plates": 51,
+          "heads_so_far": 79,
+          "splits_so_far": 41,
+          "heat_area_km2": 46188292.1,
+          "plateau_area_km2": 128106830.0
+        },
+        {
+          "elapsed_years": 900000000.0,
+          "active_heads": 14,
+          "active_tails": 19,
+          "plates": 52,
+          "heads_so_far": 96,
+          "splits_so_far": 43,
+          "heat_area_km2": 45575263.9,
+          "plateau_area_km2": 136426744.1
+        },
+        {
+          "elapsed_years": 1000000000.0,
+          "active_heads": 11,
+          "active_tails": 16,
+          "plates": 55,
+          "heads_so_far": 110,
+          "splits_so_far": 47,
+          "heat_area_km2": 14043724.0,
+          "plateau_area_km2": 155457008.5
+        }
+      ],
+      "craton_keys": {
+        "craton_area_km2": 106981486.79715192,
+        "craton_continental_fraction": 0.6130379475383302,
+        "craton_volume_km3": 3862051402.757482,
+        "craton_destroyed_km3": 274112084.4951774,
+        "craton_ledger_km3": {
+          "initial_m3": 3164901374.6785803,
+          "formed_m3": 971262112.5740781,
+          "rifted_m3": 47812333.067320734,
+          "subducted_m3": 12847535.946770918,
+          "delaminated_m3": 0.0,
+          "merge_capped_m3": 0.0,
+          "collision_reworked_m3": 163256412.55301267,
+          "eroded_m3": 54195456.126676776,
+          "topology_removed_m3": 0.0,
+          "audit_clipped_m3": 0.0,
+          "unattributed_m3": -3999653.19860372,
+          "rifted_divergent_m3": 2061060.2239132484,
+          "rifted_stretch_m3": 34009024.10208862,
+          "rifted_failed_m3": 11742248.7413189
+        },
+        "craton_rift_cuts": {
+          "split_cuts": 47.0,
+          "split_cuts_through_craton": 12.0,
+          "split_band_area_m2": 161727799062203.9,
+          "split_band_craton_area_m2": 21090865442903.19,
+          "failed_rift_cuts": 46.0,
+          "failed_rift_cuts_through_craton": 14.0,
+          "failed_rift_band_area_m2": 160737530188892.22,
+          "failed_rift_band_craton_area_m2": 23725360157190.445
+        }
+      }
+    },
+    {
+      "case": "baseline_2024",
+      "seed": 2024,
+      "years": 1000000000.0,
+      "knobs": {},
+      "wall_s": 839.1,
+      "mean_step_s": 4.2,
+      "lip_events_per_gyr": 93.0,
+      "lip_continental": 20,
+      "lip_oceanic": 73,
+      "lip_volume_km3_per_gyr": 927714962.8,
+      "lip_volume_continental_km3_per_gyr": 178575668.4,
+      "lip_volume_oceanic_km3_per_gyr": 749139294.4,
+      "active_heads_end": 4,
+      "active_tails_end": 20,
+      "splits": 67,
+      "splits_parent_heated_fraction_mean": 0.0763,
+      "splits_parent_fully_heated": 1,
+      "splits_parent_unheated": 38,
+      "plume_lip_events_stat": 93,
+      "plume_plateau_area_km2": 116139213.86746594,
+      "plume_heat_area_km2": 0.0,
+      "buoyant_crust_ledger_km3": {
+        "arc": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        },
+        "plume_head": {
+          "emplaced_m3": 721035084.7316325,
+          "thinned_m3": 9988540.570126766,
+          "reset_m3": 630514.1572769355,
+          "subducted_m3": 354381442.6003906,
+          "converted_m3": 211415.55293374974,
+          "foundered_m3": 23490.61699263885,
+          "clipped_m3": 233681587.61948055,
+          "topology_removed_m3": 2780529.6327665737,
+          "unattributed_m3": 0.0,
+          "docked_m3": 911996568.0733695
+        },
+        "plume_tail": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        }
+      },
+      "juvenile_continental_km3": {
+        "juvenile_flood_basalt_m3": 206679878.111,
+        "juvenile_hotspot_m3": 491049967.796,
+        "juvenile_plateau_m3": 211415.553
+      },
+      "head_volume_deciles_km3": [
+        1043000.5,
+        1411712.0,
+        2954559.5,
+        5504419.2,
+        12504863.2,
+        25726566.0,
+        46603298.8
+      ],
+      "checkpoints": [
+        {
+          "elapsed_years": 0.0,
+          "active_heads": 0,
+          "active_tails": 0,
+          "plates": 11,
+          "heads_so_far": 0,
+          "splits_so_far": 0,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 0.0
+        },
+        {
+          "elapsed_years": 100000000.0,
+          "active_heads": 9,
+          "active_tails": 33,
+          "plates": 21,
+          "heads_so_far": 11,
+          "splits_so_far": 10,
+          "heat_area_km2": 30786282.3,
+          "plateau_area_km2": 56075984.9
+        },
+        {
+          "elapsed_years": 200000000.0,
+          "active_heads": 12,
+          "active_tails": 26,
+          "plates": 25,
+          "heads_so_far": 23,
+          "splits_so_far": 17,
+          "heat_area_km2": 45387678.3,
+          "plateau_area_km2": 96784263.1
+        },
+        {
+          "elapsed_years": 300000000.0,
+          "active_heads": 6,
+          "active_tails": 28,
+          "plates": 32,
+          "heads_so_far": 29,
+          "splits_so_far": 24,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 89128629.7
+        },
+        {
+          "elapsed_years": 400000000.0,
+          "active_heads": 6,
+          "active_tails": 21,
+          "plates": 38,
+          "heads_so_far": 37,
+          "splits_so_far": 30,
+          "heat_area_km2": 29768987.1,
+          "plateau_area_km2": 93488904.8
+        },
+        {
+          "elapsed_years": 500000000.0,
+          "active_heads": 7,
+          "active_tails": 19,
+          "plates": 43,
+          "heads_so_far": 46,
+          "splits_so_far": 37,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 78477975.4
+        },
+        {
+          "elapsed_years": 600000000.0,
+          "active_heads": 4,
+          "active_tails": 23,
+          "plates": 42,
+          "heads_so_far": 51,
+          "splits_so_far": 44,
+          "heat_area_km2": 30254444.2,
+          "plateau_area_km2": 76624448.5
+        },
+        {
+          "elapsed_years": 700000000.0,
+          "active_heads": 10,
+          "active_tails": 23,
+          "plates": 44,
+          "heads_so_far": 63,
+          "splits_so_far": 49,
+          "heat_area_km2": 45716650.4,
+          "plateau_area_km2": 91847747.7
+        },
+        {
+          "elapsed_years": 800000000.0,
+          "active_heads": 8,
+          "active_tails": 16,
+          "plates": 49,
+          "heads_so_far": 75,
+          "splits_so_far": 58,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 94647332.1
+        },
+        {
+          "elapsed_years": 900000000.0,
+          "active_heads": 9,
+          "active_tails": 19,
+          "plates": 51,
+          "heads_so_far": 88,
+          "splits_so_far": 62,
+          "heat_area_km2": 39421077.4,
+          "plateau_area_km2": 107272406.7
+        },
+        {
+          "elapsed_years": 1000000000.0,
+          "active_heads": 4,
+          "active_tails": 20,
+          "plates": 52,
+          "heads_so_far": 93,
+          "splits_so_far": 67,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 116139213.9
+        }
+      ],
+      "craton_keys": {
+        "craton_area_km2": 90967200.43430619,
+        "craton_continental_fraction": 0.6149946838027031,
+        "craton_volume_km3": 3253283678.454428,
+        "craton_destroyed_km3": 225478399.70657834,
+        "craton_ledger_km3": {
+          "initial_m3": 1726580743.6123111,
+          "formed_m3": 1752181334.5486984,
+          "rifted_m3": 44440114.34857893,
+          "subducted_m3": 25872.0694330839,
+          "delaminated_m3": 0.0,
+          "merge_capped_m3": 0.0,
+          "collision_reworked_m3": 117899899.98755439,
+          "eroded_m3": 63533185.92392861,
+          "topology_removed_m3": 0.0,
+          "audit_clipped_m3": 0.0,
+          "unattributed_m3": -420672.622916674,
+          "rifted_divergent_m3": 69242.81873802574,
+          "rifted_stretch_m3": 37106305.576223634,
+          "rifted_failed_m3": 7264565.95361726
+        },
+        "craton_rift_cuts": {
+          "split_cuts": 67.0,
+          "split_cuts_through_craton": 10.0,
+          "split_band_area_m2": 214232568436807.25,
+          "split_band_craton_area_m2": 13780154783435.965,
+          "failed_rift_cuts": 61.0,
+          "failed_rift_cuts_through_craton": 11.0,
+          "failed_rift_band_area_m2": 183377907191474.72,
+          "failed_rift_band_craton_area_m2": 10254459533310.652
+        }
+      }
+    },
+    {
+      "case": "regen_456862899_3gyr",
+      "seed": 456862899,
+      "years": 3000000000.0,
+      "knobs": {},
+      "wall_s": 2417.3,
+      "mean_step_s": 4.03,
+      "lip_events_per_gyr": 94.67,
+      "lip_continental": 39,
+      "lip_oceanic": 245,
+      "lip_volume_km3_per_gyr": 1240221790.4,
+      "lip_volume_continental_km3_per_gyr": 144567571.2,
+      "lip_volume_oceanic_km3_per_gyr": 1095654219.2,
+      "active_heads_end": 9,
+      "active_tails_end": 23,
+      "splits": 269,
+      "splits_parent_heated_fraction_mean": 0.0403,
+      "splits_parent_fully_heated": 3,
+      "splits_parent_unheated": 198,
+      "plume_lip_events_stat": 284,
+      "plume_plateau_area_km2": 132149595.25809082,
+      "plume_heat_area_km2": 15856893.822638113,
+      "buoyant_crust_ledger_km3": {
+        "arc": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        },
+        "plume_head": {
+          "emplaced_m3": 3282485801.0349336,
+          "thinned_m3": 77390175.15741573,
+          "reset_m3": 7179967.160248158,
+          "subducted_m3": 2037835930.689599,
+          "converted_m3": 52014.99676493655,
+          "foundered_m3": 5779.444084992947,
+          "clipped_m3": 1042086159.7688998,
+          "topology_removed_m3": 7423391.98341528,
+          "unattributed_m3": 0.0,
+          "docked_m3": 4835438221.541227
+        },
+        "plume_tail": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        }
+      },
+      "juvenile_continental_km3": {
+        "juvenile_flood_basalt_m3": 438179570.076,
+        "juvenile_hotspot_m3": 692418128.712,
+        "juvenile_plateau_m3": 52014.997
+      },
+      "head_volume_deciles_km3": [
+        1002008.9,
+        1432350.7,
+        2657318.5,
+        7035636.7,
+        21268553.1,
+        34106548.7,
+        49501542.1
+      ],
+      "checkpoints": [
+        {
+          "elapsed_years": 0.0,
+          "active_heads": 0,
+          "active_tails": 0,
+          "plates": 9,
+          "heads_so_far": 0,
+          "splits_so_far": 0,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 0.0
+        },
+        {
+          "elapsed_years": 100000000.0,
+          "active_heads": 11,
+          "active_tails": 25,
+          "plates": 22,
+          "heads_so_far": 13,
+          "splits_so_far": 13,
+          "heat_area_km2": 43714925.8,
+          "plateau_area_km2": 126659385.4
+        },
+        {
+          "elapsed_years": 200000000.0,
+          "active_heads": 11,
+          "active_tails": 20,
+          "plates": 27,
+          "heads_so_far": 24,
+          "splits_so_far": 24,
+          "heat_area_km2": 27445872.2,
+          "plateau_area_km2": 108689064.1
+        },
+        {
+          "elapsed_years": 300000000.0,
+          "active_heads": 7,
+          "active_tails": 21,
+          "plates": 35,
+          "heads_so_far": 34,
+          "splits_so_far": 37,
+          "heat_area_km2": 14345993.9,
+          "plateau_area_km2": 84762587.2
+        },
+        {
+          "elapsed_years": 400000000.0,
+          "active_heads": 8,
+          "active_tails": 27,
+          "plates": 41,
+          "heads_so_far": 43,
+          "splits_so_far": 47,
+          "heat_area_km2": 53505264.0,
+          "plateau_area_km2": 80906119.5
+        },
+        {
+          "elapsed_years": 500000000.0,
+          "active_heads": 4,
+          "active_tails": 26,
+          "plates": 42,
+          "heads_so_far": 50,
+          "splits_so_far": 53,
+          "heat_area_km2": 15056064.0,
+          "plateau_area_km2": 81285635.5
+        },
+        {
+          "elapsed_years": 600000000.0,
+          "active_heads": 18,
+          "active_tails": 27,
+          "plates": 48,
+          "heads_so_far": 70,
+          "splits_so_far": 61,
+          "heat_area_km2": 89732174.6,
+          "plateau_area_km2": 113617859.5
+        },
+        {
+          "elapsed_years": 700000000.0,
+          "active_heads": 6,
+          "active_tails": 16,
+          "plates": 46,
+          "heads_so_far": 78,
+          "splits_so_far": 68,
+          "heat_area_km2": 47467649.4,
+          "plateau_area_km2": 114645959.2
+        },
+        {
+          "elapsed_years": 800000000.0,
+          "active_heads": 4,
+          "active_tails": 28,
+          "plates": 46,
+          "heads_so_far": 85,
+          "splits_so_far": 76,
+          "heat_area_km2": 14913904.3,
+          "plateau_area_km2": 137009846.9
+        },
+        {
+          "elapsed_years": 900000000.0,
+          "active_heads": 4,
+          "active_tails": 30,
+          "plates": 47,
+          "heads_so_far": 89,
+          "splits_so_far": 84,
+          "heat_area_km2": 15087336.9,
+          "plateau_area_km2": 122325572.3
+        },
+        {
+          "elapsed_years": 1000000000.0,
+          "active_heads": 3,
+          "active_tails": 24,
+          "plates": 49,
+          "heads_so_far": 95,
+          "splits_so_far": 91,
+          "heat_area_km2": 13329830.3,
+          "plateau_area_km2": 132076146.9
+        },
+        {
+          "elapsed_years": 1100000000.0,
+          "active_heads": 6,
+          "active_tails": 22,
+          "plates": 45,
+          "heads_so_far": 101,
+          "splits_so_far": 98,
+          "heat_area_km2": 26551184.8,
+          "plateau_area_km2": 139413045.5
+        },
+        {
+          "elapsed_years": 1200000000.0,
+          "active_heads": 14,
+          "active_tails": 25,
+          "plates": 44,
+          "heads_so_far": 117,
+          "splits_so_far": 105,
+          "heat_area_km2": 35364995.6,
+          "plateau_area_km2": 146093779.5
+        },
+        {
+          "elapsed_years": 1300000000.0,
+          "active_heads": 6,
+          "active_tails": 23,
+          "plates": 50,
+          "heads_so_far": 126,
+          "splits_so_far": 116,
+          "heat_area_km2": 29834701.8,
+          "plateau_area_km2": 157146466.0
+        },
+        {
+          "elapsed_years": 1400000000.0,
+          "active_heads": 7,
+          "active_tails": 27,
+          "plates": 51,
+          "heads_so_far": 136,
+          "splits_so_far": 124,
+          "heat_area_km2": 14933648.7,
+          "plateau_area_km2": 133114555.4
+        },
+        {
+          "elapsed_years": 1500000000.0,
+          "active_heads": 5,
+          "active_tails": 25,
+          "plates": 52,
+          "heads_so_far": 143,
+          "splits_so_far": 133,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 148916294.2
+        },
+        {
+          "elapsed_years": 1600000000.0,
+          "active_heads": 11,
+          "active_tails": 19,
+          "plates": 54,
+          "heads_so_far": 156,
+          "splits_so_far": 142,
+          "heat_area_km2": 44557917.5,
+          "plateau_area_km2": 161998809.3
+        },
+        {
+          "elapsed_years": 1700000000.0,
+          "active_heads": 14,
+          "active_tails": 19,
+          "plates": 53,
+          "heads_so_far": 170,
+          "splits_so_far": 153,
+          "heat_area_km2": 45968097.3,
+          "plateau_area_km2": 152463198.1
+        },
+        {
+          "elapsed_years": 1800000000.0,
+          "active_heads": 9,
+          "active_tails": 34,
+          "plates": 50,
+          "heads_so_far": 179,
+          "splits_so_far": 162,
+          "heat_area_km2": 34192458.2,
+          "plateau_area_km2": 144160851.6
+        },
+        {
+          "elapsed_years": 1900000000.0,
+          "active_heads": 5,
+          "active_tails": 15,
+          "plates": 51,
+          "heads_so_far": 186,
+          "splits_so_far": 173,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 147240613.0
+        },
+        {
+          "elapsed_years": 2000000000.0,
+          "active_heads": 3,
+          "active_tails": 25,
+          "plates": 47,
+          "heads_so_far": 189,
+          "splits_so_far": 181,
+          "heat_area_km2": 29877578.0,
+          "plateau_area_km2": 133064831.3
+        },
+        {
+          "elapsed_years": 2100000000.0,
+          "active_heads": 5,
+          "active_tails": 22,
+          "plates": 53,
+          "heads_so_far": 199,
+          "splits_so_far": 191,
+          "heat_area_km2": 29384364.9,
+          "plateau_area_km2": 165215054.6
+        },
+        {
+          "elapsed_years": 2200000000.0,
+          "active_heads": 8,
+          "active_tails": 21,
+          "plates": 49,
+          "heads_so_far": 209,
+          "splits_so_far": 198,
+          "heat_area_km2": 29001741.3,
+          "plateau_area_km2": 148342327.0
+        },
+        {
+          "elapsed_years": 2300000000.0,
+          "active_heads": 8,
+          "active_tails": 21,
+          "plates": 50,
+          "heads_so_far": 217,
+          "splits_so_far": 205,
+          "heat_area_km2": 30326482.0,
+          "plateau_area_km2": 161828845.2
+        },
+        {
+          "elapsed_years": 2400000000.0,
+          "active_heads": 10,
+          "active_tails": 28,
+          "plates": 52,
+          "heads_so_far": 227,
+          "splits_so_far": 215,
+          "heat_area_km2": 54306304.2,
+          "plateau_area_km2": 152630172.6
+        },
+        {
+          "elapsed_years": 2500000000.0,
+          "active_heads": 9,
+          "active_tails": 24,
+          "plates": 53,
+          "heads_so_far": 239,
+          "splits_so_far": 224,
+          "heat_area_km2": 31654743.2,
+          "plateau_area_km2": 168664120.7
+        },
+        {
+          "elapsed_years": 2600000000.0,
+          "active_heads": 4,
+          "active_tails": 29,
+          "plates": 54,
+          "heads_so_far": 245,
+          "splits_so_far": 232,
+          "heat_area_km2": 15513560.9,
+          "plateau_area_km2": 149399617.3
+        },
+        {
+          "elapsed_years": 2700000000.0,
+          "active_heads": 7,
+          "active_tails": 28,
+          "plates": 59,
+          "heads_so_far": 252,
+          "splits_so_far": 242,
+          "heat_area_km2": 14643872.5,
+          "plateau_area_km2": 147355596.3
+        },
+        {
+          "elapsed_years": 2800000000.0,
+          "active_heads": 8,
+          "active_tails": 26,
+          "plates": 49,
+          "heads_so_far": 264,
+          "splits_so_far": 251,
+          "heat_area_km2": 46095127.9,
+          "plateau_area_km2": 136480303.6
+        },
+        {
+          "elapsed_years": 2900000000.0,
+          "active_heads": 8,
+          "active_tails": 32,
+          "plates": 50,
+          "heads_so_far": 274,
+          "splits_so_far": 260,
+          "heat_area_km2": 29186788.1,
+          "plateau_area_km2": 125975690.0
+        },
+        {
+          "elapsed_years": 3000000000.0,
+          "active_heads": 9,
+          "active_tails": 23,
+          "plates": 45,
+          "heads_so_far": 284,
+          "splits_so_far": 269,
+          "heat_area_km2": 15856893.8,
+          "plateau_area_km2": 132149595.3
+        }
+      ],
+      "craton_keys": {
+        "craton_area_km2": 38960717.911278546,
+        "craton_continental_fraction": 0.6825141322264081,
+        "craton_volume_km3": 1546314511.204138,
+        "craton_destroyed_km3": 308554724.012638,
+        "craton_ledger_km3": {
+          "initial_m3": 1451799281.5379324,
+          "formed_m3": 403069953.6788422,
+          "rifted_m3": 69527245.18960612,
+          "subducted_m3": 9326094.193147495,
+          "delaminated_m3": 0.0,
+          "merge_capped_m3": 38993162.90222899,
+          "collision_reworked_m3": 95853124.24019305,
+          "eroded_m3": 110675113.0680126,
+          "topology_removed_m3": 0.0,
+          "audit_clipped_m3": 0.0,
+          "unattributed_m3": -15820015.580550311,
+          "rifted_divergent_m3": 289641.16249207204,
+          "rifted_stretch_m3": 56035600.770902805,
+          "rifted_failed_m3": 13202003.256211212
+        },
+        "craton_rift_cuts": {
+          "split_cuts": 269.0,
+          "split_cuts_through_craton": 16.0,
+          "split_band_area_m2": 803359610974040.0,
+          "split_band_craton_area_m2": 21955914047636.688,
+          "failed_rift_cuts": 210.0,
+          "failed_rift_cuts_through_craton": 10.0,
+          "failed_rift_band_area_m2": 628453318057648.2,
+          "failed_rift_band_craton_area_m2": 20595178619347.406
+        }
+      }
+    },
+    {
+      "case": "sens_rate_0.05",
+      "seed": 7,
+      "years": 500000000.0,
+      "knobs": {
+        "plumes.PLUME_HEAD_RATE_PER_MYR": 0.05
+      },
+      "wall_s": 470.2,
+      "mean_step_s": 4.7,
+      "lip_events_per_gyr": 62.0,
+      "lip_continental": 13,
+      "lip_oceanic": 18,
+      "lip_volume_km3_per_gyr": 814101696.7,
+      "lip_volume_continental_km3_per_gyr": 344739432.3,
+      "lip_volume_oceanic_km3_per_gyr": 469362264.4,
+      "active_heads_end": 3,
+      "active_tails_end": 25,
+      "splits": 25,
+      "splits_parent_heated_fraction_mean": 0.0435,
+      "splits_parent_fully_heated": 0,
+      "splits_parent_unheated": 17,
+      "plume_lip_events_stat": 31,
+      "plume_plateau_area_km2": 77953094.96416043,
+      "plume_heat_area_km2": 0.0,
+      "buoyant_crust_ledger_km3": {
+        "arc": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        },
+        "plume_head": {
+          "emplaced_m3": 226660178.76514038,
+          "thinned_m3": 771342.9992366543,
+          "reset_m3": 16659.13380783131,
+          "subducted_m3": 79874918.63529328,
+          "converted_m3": 221446.9902815088,
+          "foundered_m3": 24605.22114238985,
+          "clipped_m3": 65047818.91006231,
+          "topology_removed_m3": 301354.72054612,
+          "unattributed_m3": 0.0,
+          "docked_m3": 222025707.3087862
+        },
+        "plume_tail": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        }
+      },
+      "juvenile_continental_km3": {
+        "juvenile_flood_basalt_m3": 180390669.572,
+        "juvenile_hotspot_m3": 473372834.926,
+        "juvenile_plateau_m3": 221446.99
+      },
+      "head_volume_deciles_km3": [
+        1256569.7,
+        1748773.1,
+        2478147.3,
+        10584772.4,
+        19876580.6,
+        33624442.7,
+        40095977.4
+      ],
+      "checkpoints": [
+        {
+          "elapsed_years": 0.0,
+          "active_heads": 0,
+          "active_tails": 0,
+          "plates": 20,
+          "heads_so_far": 0,
+          "splits_so_far": 0,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 0.0
+        },
+        {
+          "elapsed_years": 100000000.0,
+          "active_heads": 8,
+          "active_tails": 26,
+          "plates": 29,
+          "heads_so_far": 10,
+          "splits_so_far": 10,
+          "heat_area_km2": 15342551.2,
+          "plateau_area_km2": 48086467.2
+        },
+        {
+          "elapsed_years": 200000000.0,
+          "active_heads": 6,
+          "active_tails": 23,
+          "plates": 31,
+          "heads_so_far": 18,
+          "splits_so_far": 14,
+          "heat_area_km2": 15026144.5,
+          "plateau_area_km2": 73016016.4
+        },
+        {
+          "elapsed_years": 300000000.0,
+          "active_heads": 4,
+          "active_tails": 31,
+          "plates": 34,
+          "heads_so_far": 26,
+          "splits_so_far": 19,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 67636107.1
+        },
+        {
+          "elapsed_years": 400000000.0,
+          "active_heads": 1,
+          "active_tails": 23,
+          "plates": 37,
+          "heads_so_far": 27,
+          "splits_so_far": 23,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 68174710.6
+        },
+        {
+          "elapsed_years": 500000000.0,
+          "active_heads": 3,
+          "active_tails": 25,
+          "plates": 36,
+          "heads_so_far": 31,
+          "splits_so_far": 25,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 77953095.0
+        }
+      ],
+      "craton_keys": {
+        "craton_area_km2": 126211589.57766859,
+        "craton_continental_fraction": 0.6144554206314798,
+        "craton_volume_km3": 4748480586.442611,
+        "craton_destroyed_km3": 271014007.726051,
+        "craton_ledger_km3": {
+          "initial_m3": 4107197532.2866306,
+          "formed_m3": 912297061.8820331,
+          "rifted_m3": 25605496.082555506,
+          "subducted_m3": 282443.9111812213,
+          "delaminated_m3": 0.0,
+          "merge_capped_m3": 32274436.0563077,
+          "collision_reworked_m3": 163411243.15709355,
+          "eroded_m3": 61222641.92297301,
+          "topology_removed_m3": 0.0,
+          "audit_clipped_m3": 0.0,
+          "unattributed_m3": -11782253.404060047,
+          "rifted_divergent_m3": 5488.190543527348,
+          "rifted_stretch_m3": 18143357.946122676,
+          "rifted_failed_m3": 7456649.945889284
+        },
+        "craton_rift_cuts": {
+          "split_cuts": 25.0,
+          "split_cuts_through_craton": 13.0,
+          "split_band_area_m2": 87075842582157.1,
+          "split_band_craton_area_m2": 22800804059875.984,
+          "failed_rift_cuts": 18.0,
+          "failed_rift_cuts_through_craton": 9.0,
+          "failed_rift_band_area_m2": 57983953467257.914,
+          "failed_rift_band_craton_area_m2": 15704276977985.568
+        }
+      }
+    },
+    {
+      "case": "sens_rate_0.2",
+      "seed": 7,
+      "years": 500000000.0,
+      "knobs": {
+        "plumes.PLUME_HEAD_RATE_PER_MYR": 0.2
+      },
+      "wall_s": 456.4,
+      "mean_step_s": 4.56,
+      "lip_events_per_gyr": 238.0,
+      "lip_continental": 49,
+      "lip_oceanic": 70,
+      "lip_volume_km3_per_gyr": 3297159388.9,
+      "lip_volume_continental_km3_per_gyr": 1102782448.5,
+      "lip_volume_oceanic_km3_per_gyr": 2194376940.4,
+      "active_heads_end": 20,
+      "active_tails_end": 25,
+      "splits": 29,
+      "splits_parent_heated_fraction_mean": 0.1735,
+      "splits_parent_fully_heated": 2,
+      "splits_parent_unheated": 12,
+      "plume_lip_events_stat": 119,
+      "plume_plateau_area_km2": 123986813.93366294,
+      "plume_heat_area_km2": 103583684.84169759,
+      "buoyant_crust_ledger_km3": {
+        "arc": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        },
+        "plume_head": {
+          "emplaced_m3": 1009354744.6875875,
+          "thinned_m3": 6675409.776501969,
+          "reset_m3": 318852.89131338545,
+          "subducted_m3": 266841515.8178558,
+          "converted_m3": 872014.2709415811,
+          "foundered_m3": 96890.47454906453,
+          "clipped_m3": 278213978.3895345,
+          "topology_removed_m3": 1380504.722123008,
+          "unattributed_m3": 0.0,
+          "docked_m3": 648768322.630521
+        },
+        "plume_tail": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        }
+      },
+      "juvenile_continental_km3": {
+        "juvenile_flood_basalt_m3": 633929647.675,
+        "juvenile_hotspot_m3": 709098516.076,
+        "juvenile_plateau_m3": 872014.271
+      },
+      "head_volume_deciles_km3": [
+        1155211.6,
+        1598158.6,
+        2800510.3,
+        8783129.4,
+        22424136.3,
+        35196598.9,
+        47261664.7
+      ],
+      "checkpoints": [
+        {
+          "elapsed_years": 0.0,
+          "active_heads": 0,
+          "active_tails": 0,
+          "plates": 20,
+          "heads_so_far": 0,
+          "splits_so_far": 0,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 0.0
+        },
+        {
+          "elapsed_years": 100000000.0,
+          "active_heads": 18,
+          "active_tails": 26,
+          "plates": 30,
+          "heads_so_far": 27,
+          "splits_so_far": 11,
+          "heat_area_km2": 14991963.7,
+          "plateau_area_km2": 88626053.2
+        },
+        {
+          "elapsed_years": 200000000.0,
+          "active_heads": 19,
+          "active_tails": 23,
+          "plates": 33,
+          "heads_so_far": 50,
+          "splits_so_far": 15,
+          "heat_area_km2": 31172231.8,
+          "plateau_area_km2": 102984560.1
+        },
+        {
+          "elapsed_years": 300000000.0,
+          "active_heads": 15,
+          "active_tails": 31,
+          "plates": 40,
+          "heads_so_far": 71,
+          "splits_so_far": 23,
+          "heat_area_km2": 53901574.1,
+          "plateau_area_km2": 113113499.1
+        },
+        {
+          "elapsed_years": 400000000.0,
+          "active_heads": 18,
+          "active_tails": 23,
+          "plates": 42,
+          "heads_so_far": 95,
+          "splits_so_far": 26,
+          "heat_area_km2": 112543473.8,
+          "plateau_area_km2": 123117319.6
+        },
+        {
+          "elapsed_years": 500000000.0,
+          "active_heads": 20,
+          "active_tails": 25,
+          "plates": 43,
+          "heads_so_far": 119,
+          "splits_so_far": 29,
+          "heat_area_km2": 103583684.8,
+          "plateau_area_km2": 123986813.9
+        }
+      ],
+      "craton_keys": {
+        "craton_area_km2": 133262004.12022868,
+        "craton_continental_fraction": 0.6131000527642773,
+        "craton_volume_km3": 4695757023.402764,
+        "craton_destroyed_km3": 164097722.34191057,
+        "craton_ledger_km3": {
+          "initial_m3": 4107197532.2866306,
+          "formed_m3": 752657213.458044,
+          "rifted_m3": 26352589.979354113,
+          "subducted_m3": 0.0,
+          "delaminated_m3": 0.0,
+          "merge_capped_m3": 7339388.246722544,
+          "collision_reworked_m3": 104987978.69446549,
+          "eroded_m3": 35389995.309954785,
+          "topology_removed_m3": 0.0,
+          "audit_clipped_m3": 0.0,
+          "unattributed_m3": -9972229.888586383,
+          "rifted_divergent_m3": 724.767504385344,
+          "rifted_stretch_m3": 14163019.367004363,
+          "rifted_failed_m3": 12188845.844845386
+        },
+        "craton_rift_cuts": {
+          "split_cuts": 29.0,
+          "split_cuts_through_craton": 13.0,
+          "split_band_area_m2": 95439411840914.39,
+          "split_band_craton_area_m2": 22256138613637.914,
+          "failed_rift_cuts": 16.0,
+          "failed_rift_cuts_through_craton": 8.0,
+          "failed_rift_band_area_m2": 59896967865075.73,
+          "failed_rift_band_craton_area_m2": 19263526670022.977
+        }
+      }
+    },
+    {
+      "case": "sens_cox_on",
+      "seed": 7,
+      "years": 500000000.0,
+      "knobs": {
+        "world.plume_cox_modulation": true
+      },
+      "wall_s": 454.6,
+      "mean_step_s": 4.55,
+      "lip_events_per_gyr": 60.0,
+      "lip_continental": 14,
+      "lip_oceanic": 16,
+      "lip_volume_km3_per_gyr": 751528030.1,
+      "lip_volume_continental_km3_per_gyr": 423208210.8,
+      "lip_volume_oceanic_km3_per_gyr": 328319819.3,
+      "active_heads_end": 5,
+      "active_tails_end": 22,
+      "splits": 22,
+      "splits_parent_heated_fraction_mean": 0.0705,
+      "splits_parent_fully_heated": 1,
+      "splits_parent_unheated": 15,
+      "plume_lip_events_stat": 30,
+      "plume_plateau_area_km2": 80057117.36867122,
+      "plume_heat_area_km2": 0.0,
+      "buoyant_crust_ledger_km3": {
+        "arc": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        },
+        "plume_head": {
+          "emplaced_m3": 181737559.32811323,
+          "thinned_m3": 452504.5111213777,
+          "reset_m3": 18826.987879879238,
+          "subducted_m3": 66251149.09274774,
+          "converted_m3": 30907.41069321603,
+          "foundered_m3": 3434.1567436906676,
+          "clipped_m3": 56044060.34959652,
+          "topology_removed_m3": 851.803302408,
+          "unattributed_m3": 0.0,
+          "docked_m3": 141047989.5509511
+        },
+        "plume_tail": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        }
+      },
+      "juvenile_continental_km3": {
+        "juvenile_flood_basalt_m3": 194026455.711,
+        "juvenile_hotspot_m3": 518229654.433,
+        "juvenile_plateau_m3": 30907.411
+      },
+      "head_volume_deciles_km3": [
+        1256569.7,
+        1706427.6,
+        2434178.5,
+        6609429.2,
+        16682656.9,
+        38949913.5,
+        47261664.7
+      ],
+      "checkpoints": [
+        {
+          "elapsed_years": 0.0,
+          "active_heads": 0,
+          "active_tails": 0,
+          "plates": 20,
+          "heads_so_far": 0,
+          "splits_so_far": 0,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 0.0
+        },
+        {
+          "elapsed_years": 100000000.0,
+          "active_heads": 4,
+          "active_tails": 26,
+          "plates": 30,
+          "heads_so_far": 6,
+          "splits_so_far": 11,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 46057373.3
+        },
+        {
+          "elapsed_years": 200000000.0,
+          "active_heads": 3,
+          "active_tails": 27,
+          "plates": 33,
+          "heads_so_far": 10,
+          "splits_so_far": 15,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 44435849.6
+        },
+        {
+          "elapsed_years": 300000000.0,
+          "active_heads": 2,
+          "active_tails": 40,
+          "plates": 35,
+          "heads_so_far": 14,
+          "splits_so_far": 18,
+          "heat_area_km2": 30698555.6,
+          "plateau_area_km2": 59249719.8
+        },
+        {
+          "elapsed_years": 400000000.0,
+          "active_heads": 9,
+          "active_tails": 24,
+          "plates": 38,
+          "heads_so_far": 25,
+          "splits_so_far": 21,
+          "heat_area_km2": 31172429.4,
+          "plateau_area_km2": 83754267.9
+        },
+        {
+          "elapsed_years": 500000000.0,
+          "active_heads": 5,
+          "active_tails": 22,
+          "plates": 39,
+          "heads_so_far": 30,
+          "splits_so_far": 22,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 80057117.4
+        }
+      ],
+      "craton_keys": {
+        "craton_area_km2": 126766426.67765015,
+        "craton_continental_fraction": 0.5852147650490579,
+        "craton_volume_km3": 4716713949.322431,
+        "craton_destroyed_km3": 246575369.12975585,
+        "craton_ledger_km3": {
+          "initial_m3": 4107197532.2866306,
+          "formed_m3": 856091786.1655562,
+          "rifted_m3": 18768349.251758065,
+          "subducted_m3": 11300.480768179692,
+          "delaminated_m3": 0.0,
+          "merge_capped_m3": 0.0,
+          "collision_reworked_m3": 185343985.27311444,
+          "eroded_m3": 49519117.189280204,
+          "topology_removed_m3": 0.0,
+          "audit_clipped_m3": 0.0,
+          "unattributed_m3": -7067383.065165036,
+          "rifted_divergent_m3": 3833.2050051414208,
+          "rifted_stretch_m3": 11915826.713659592,
+          "rifted_failed_m3": 6848689.333093332
+        },
+        "craton_rift_cuts": {
+          "split_cuts": 22.0,
+          "split_cuts_through_craton": 11.0,
+          "split_band_area_m2": 73547514174868.19,
+          "split_band_craton_area_m2": 20355132770020.234,
+          "failed_rift_cuts": 19.0,
+          "failed_rift_cuts_through_craton": 7.0,
+          "failed_rift_band_area_m2": 74310492353590.84,
+          "failed_rift_band_craton_area_m2": 13875735982301.371
+        }
+      }
+    },
+    {
+      "case": "sens_vol_lognormal",
+      "seed": 7,
+      "years": 500000000.0,
+      "knobs": {
+        "plumes.PLUME_VOLUME_DISTRIBUTION": "lognormal"
+      },
+      "wall_s": 437.5,
+      "mean_step_s": 4.37,
+      "lip_events_per_gyr": 124.0,
+      "lip_continental": 27,
+      "lip_oceanic": 35,
+      "lip_volume_km3_per_gyr": 1464546826.0,
+      "lip_volume_continental_km3_per_gyr": 541285158.4,
+      "lip_volume_oceanic_km3_per_gyr": 923261667.6,
+      "active_heads_end": 10,
+      "active_tails_end": 25,
+      "splits": 28,
+      "splits_parent_heated_fraction_mean": 0.0914,
+      "splits_parent_fully_heated": 0,
+      "splits_parent_unheated": 12,
+      "plume_lip_events_stat": 62,
+      "plume_plateau_area_km2": 99281527.71935539,
+      "plume_heat_area_km2": 15606396.040229578,
+      "buoyant_crust_ledger_km3": {
+        "arc": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        },
+        "plume_head": {
+          "emplaced_m3": 423769131.2778724,
+          "thinned_m3": 2226513.2191980346,
+          "reset_m3": 160467.3456383573,
+          "subducted_m3": 142280223.3496143,
+          "converted_m3": 17388.858456507143,
+          "foundered_m3": 1932.0953840563484,
+          "clipped_m3": 120323758.37340672,
+          "topology_removed_m3": 587752.892427088,
+          "unattributed_m3": 0.0,
+          "docked_m3": 427083834.3074359
+        },
+        "plume_tail": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        }
+      },
+      "juvenile_continental_km3": {
+        "juvenile_flood_basalt_m3": 308504281.724,
+        "juvenile_hotspot_m3": 580577260.38,
+        "juvenile_plateau_m3": 17388.858
+      },
+      "head_volume_deciles_km3": [
+        1000000.0,
+        1828782.3,
+        3442206.4,
+        6410967.3,
+        12682596.2,
+        32669675.8,
+        50000000.0
+      ],
+      "checkpoints": [
+        {
+          "elapsed_years": 0.0,
+          "active_heads": 0,
+          "active_tails": 0,
+          "plates": 20,
+          "heads_so_far": 0,
+          "splits_so_far": 0,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 0.0
+        },
+        {
+          "elapsed_years": 100000000.0,
+          "active_heads": 14,
+          "active_tails": 26,
+          "plates": 29,
+          "heads_so_far": 18,
+          "splits_so_far": 10,
+          "heat_area_km2": 43172641.7,
+          "plateau_area_km2": 86194704.8
+        },
+        {
+          "elapsed_years": 200000000.0,
+          "active_heads": 4,
+          "active_tails": 23,
+          "plates": 34,
+          "heads_so_far": 27,
+          "splits_so_far": 16,
+          "heat_area_km2": 15474891.9,
+          "plateau_area_km2": 80469560.9
+        },
+        {
+          "elapsed_years": 300000000.0,
+          "active_heads": 9,
+          "active_tails": 31,
+          "plates": 36,
+          "heads_so_far": 39,
+          "splits_so_far": 19,
+          "heat_area_km2": 55340953.5,
+          "plateau_area_km2": 101854053.4
+        },
+        {
+          "elapsed_years": 400000000.0,
+          "active_heads": 9,
+          "active_tails": 23,
+          "plates": 41,
+          "heads_so_far": 50,
+          "splits_so_far": 24,
+          "heat_area_km2": 30872341.2,
+          "plateau_area_km2": 90576134.4
+        },
+        {
+          "elapsed_years": 500000000.0,
+          "active_heads": 10,
+          "active_tails": 25,
+          "plates": 43,
+          "heads_so_far": 62,
+          "splits_so_far": 28,
+          "heat_area_km2": 15606396.0,
+          "plateau_area_km2": 99281527.7
+        }
+      ],
+      "craton_keys": {
+        "craton_area_km2": 125947104.38702615,
+        "craton_continental_fraction": 0.5771005646138743,
+        "craton_volume_km3": 4790109210.251888,
+        "craton_destroyed_km3": 182960736.95867306,
+        "craton_ledger_km3": {
+          "initial_m3": 4107197532.2866306,
+          "formed_m3": 865872414.9239311,
+          "rifted_m3": 20096525.965992715,
+          "subducted_m3": 26825.820796496024,
+          "delaminated_m3": 0.0,
+          "merge_capped_m3": 0.0,
+          "collision_reworked_m3": 135450433.40764102,
+          "eroded_m3": 41184098.87042576,
+          "topology_removed_m3": 0.0,
+          "audit_clipped_m3": 0.0,
+          "unattributed_m3": -13797147.106182933,
+          "rifted_divergent_m3": 3750.891429101532,
+          "rifted_stretch_m3": 12920378.389644684,
+          "rifted_failed_m3": 7172396.684918946
+        },
+        "craton_rift_cuts": {
+          "split_cuts": 28.0,
+          "split_cuts_through_craton": 12.0,
+          "split_band_area_m2": 92705694450271.45,
+          "split_band_craton_area_m2": 20801801597104.016,
+          "failed_rift_cuts": 13.0,
+          "failed_rift_cuts_through_craton": 7.0,
+          "failed_rift_band_area_m2": 47176596538889.1,
+          "failed_rift_band_craton_area_m2": 12413594594750.549
+        }
+      }
+    },
+    {
+      "case": "sens_vol_powerlaw",
+      "seed": 7,
+      "years": 500000000.0,
+      "knobs": {
+        "plumes.PLUME_VOLUME_DISTRIBUTION": "power_law"
+      },
+      "wall_s": 444.9,
+      "mean_step_s": 4.45,
+      "lip_events_per_gyr": 124.0,
+      "lip_continental": 28,
+      "lip_oceanic": 34,
+      "lip_volume_km3_per_gyr": 896280908.8,
+      "lip_volume_continental_km3_per_gyr": 487900518.7,
+      "lip_volume_oceanic_km3_per_gyr": 408380390.1,
+      "active_heads_end": 10,
+      "active_tails_end": 25,
+      "splits": 24,
+      "splits_parent_heated_fraction_mean": 0.0784,
+      "splits_parent_fully_heated": 0,
+      "splits_parent_unheated": 14,
+      "plume_lip_events_stat": 62,
+      "plume_plateau_area_km2": 83807923.79581228,
+      "plume_heat_area_km2": 15768758.10651575,
+      "buoyant_crust_ledger_km3": {
+        "arc": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        },
+        "plume_head": {
+          "emplaced_m3": 206409983.05748105,
+          "thinned_m3": 766387.3043935444,
+          "reset_m3": 147664.98039009378,
+          "subducted_m3": 65110568.121332,
+          "converted_m3": 34310.59862305879,
+          "foundered_m3": 3812.288735895418,
+          "clipped_m3": 64994288.93978147,
+          "topology_removed_m3": 192837.8941943,
+          "unattributed_m3": 0.0,
+          "docked_m3": 164134530.594263
+        },
+        "plume_tail": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        }
+      },
+      "juvenile_continental_km3": {
+        "juvenile_flood_basalt_m3": 241730471.367,
+        "juvenile_hotspot_m3": 560433319.106,
+        "juvenile_plateau_m3": 34310.599
+      },
+      "head_volume_deciles_km3": [
+        1066472.8,
+        1273860.2,
+        1618536.6,
+        3646695.2,
+        7635250.8,
+        21816094.5,
+        42284831.2
+      ],
+      "checkpoints": [
+        {
+          "elapsed_years": 0.0,
+          "active_heads": 0,
+          "active_tails": 0,
+          "plates": 20,
+          "heads_so_far": 0,
+          "splits_so_far": 0,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 0.0
+        },
+        {
+          "elapsed_years": 100000000.0,
+          "active_heads": 14,
+          "active_tails": 26,
+          "plates": 30,
+          "heads_so_far": 18,
+          "splits_so_far": 11,
+          "heat_area_km2": 42377261.6,
+          "plateau_area_km2": 78911095.9
+        },
+        {
+          "elapsed_years": 200000000.0,
+          "active_heads": 4,
+          "active_tails": 23,
+          "plates": 33,
+          "heads_so_far": 27,
+          "splits_so_far": 16,
+          "heat_area_km2": 15788902.6,
+          "plateau_area_km2": 71730686.0
+        },
+        {
+          "elapsed_years": 300000000.0,
+          "active_heads": 9,
+          "active_tails": 31,
+          "plates": 37,
+          "heads_so_far": 39,
+          "splits_so_far": 20,
+          "heat_area_km2": 56249661.6,
+          "plateau_area_km2": 73757498.6
+        },
+        {
+          "elapsed_years": 400000000.0,
+          "active_heads": 9,
+          "active_tails": 23,
+          "plates": 39,
+          "heads_so_far": 50,
+          "splits_so_far": 22,
+          "heat_area_km2": 30906224.0,
+          "plateau_area_km2": 88289080.9
+        },
+        {
+          "elapsed_years": 500000000.0,
+          "active_heads": 10,
+          "active_tails": 25,
+          "plates": 40,
+          "heads_so_far": 62,
+          "splits_so_far": 24,
+          "heat_area_km2": 15768758.1,
+          "plateau_area_km2": 83807923.8
+        }
+      ],
+      "craton_keys": {
+        "craton_area_km2": 125902163.32574387,
+        "craton_continental_fraction": 0.5800936095945335,
+        "craton_volume_km3": 4657752464.236447,
+        "craton_destroyed_km3": 214963595.337214,
+        "craton_ledger_km3": {
+          "initial_m3": 4107197532.2866306,
+          "formed_m3": 765518527.2870381,
+          "rifted_m3": 17764376.586694483,
+          "subducted_m3": 26787.474914945866,
+          "delaminated_m3": 0.0,
+          "merge_capped_m3": 0.0,
+          "collision_reworked_m3": 156860145.66677627,
+          "eroded_m3": 49160222.057351366,
+          "topology_removed_m3": 0.0,
+          "audit_clipped_m3": 0.0,
+          "unattributed_m3": -8847936.44852308,
+          "rifted_divergent_m3": 2598.0923519949,
+          "rifted_stretch_m3": 12691258.24586813,
+          "rifted_failed_m3": 5070520.248474357
+        },
+        "craton_rift_cuts": {
+          "split_cuts": 24.0,
+          "split_cuts_through_craton": 13.0,
+          "split_band_area_m2": 78959146770366.08,
+          "split_band_craton_area_m2": 22305143242820.336,
+          "failed_rift_cuts": 21.0,
+          "failed_rift_cuts_through_craton": 7.0,
+          "failed_rift_band_area_m2": 71003304098080.19,
+          "failed_rift_band_craton_area_m2": 10560911381725.396
+        }
+      }
+    },
+    {
+      "case": "sens_dock_easy",
+      "seed": 7,
+      "years": 500000000.0,
+      "knobs": {
+        "terranes.DOCK_E_YOUNG_M": 2500.0,
+        "terranes.DOCK_E_OLD_M": 10000.0
+      },
+      "wall_s": 461.2,
+      "mean_step_s": 4.61,
+      "lip_events_per_gyr": 124.0,
+      "lip_continental": 26,
+      "lip_oceanic": 36,
+      "lip_volume_km3_per_gyr": 1624460229.6,
+      "lip_volume_continental_km3_per_gyr": 809021301.0,
+      "lip_volume_oceanic_km3_per_gyr": 815438928.7,
+      "active_heads_end": 10,
+      "active_tails_end": 25,
+      "splits": 26,
+      "splits_parent_heated_fraction_mean": 0.0807,
+      "splits_parent_fully_heated": 1,
+      "splits_parent_unheated": 12,
+      "plume_lip_events_stat": 62,
+      "plume_plateau_area_km2": 101640313.96378487,
+      "plume_heat_area_km2": 15417555.502317116,
+      "buoyant_crust_ledger_km3": {
+        "arc": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        },
+        "plume_head": {
+          "emplaced_m3": 408939304.103702,
+          "thinned_m3": 3410109.5310791195,
+          "reset_m3": 328395.29059784533,
+          "subducted_m3": 137097119.6622562,
+          "converted_m3": 424682.27640077414,
+          "foundered_m3": 47186.91960008601,
+          "clipped_m3": 114781193.53698766,
+          "topology_removed_m3": 472193.02333269623,
+          "unattributed_m3": 0.0,
+          "docked_m3": 400542184.5516285
+        },
+        "plume_tail": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        }
+      },
+      "juvenile_continental_km3": {
+        "juvenile_flood_basalt_m3": 403290810.721,
+        "juvenile_hotspot_m3": 596983281.293,
+        "juvenile_plateau_m3": 424682.276
+      },
+      "head_volume_deciles_km3": [
+        1155211.6,
+        1680990.0,
+        2651018.8,
+        8761068.9,
+        18306133.4,
+        35902601.9,
+        47261664.7
+      ],
+      "checkpoints": [
+        {
+          "elapsed_years": 0.0,
+          "active_heads": 0,
+          "active_tails": 0,
+          "plates": 20,
+          "heads_so_far": 0,
+          "splits_so_far": 0,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 0.0
+        },
+        {
+          "elapsed_years": 100000000.0,
+          "active_heads": 14,
+          "active_tails": 26,
+          "plates": 29,
+          "heads_so_far": 18,
+          "splits_so_far": 11,
+          "heat_area_km2": 42296991.0,
+          "plateau_area_km2": 82321037.3
+        },
+        {
+          "elapsed_years": 200000000.0,
+          "active_heads": 4,
+          "active_tails": 23,
+          "plates": 34,
+          "heads_so_far": 27,
+          "splits_so_far": 17,
+          "heat_area_km2": 15717618.9,
+          "plateau_area_km2": 82498800.2
+        },
+        {
+          "elapsed_years": 300000000.0,
+          "active_heads": 9,
+          "active_tails": 31,
+          "plates": 36,
+          "heads_so_far": 39,
+          "splits_so_far": 20,
+          "heat_area_km2": 56346576.6,
+          "plateau_area_km2": 99065825.0
+        },
+        {
+          "elapsed_years": 400000000.0,
+          "active_heads": 9,
+          "active_tails": 23,
+          "plates": 38,
+          "heads_so_far": 50,
+          "splits_so_far": 22,
+          "heat_area_km2": 31299512.0,
+          "plateau_area_km2": 107162448.6
+        },
+        {
+          "elapsed_years": 500000000.0,
+          "active_heads": 10,
+          "active_tails": 25,
+          "plates": 43,
+          "heads_so_far": 62,
+          "splits_so_far": 26,
+          "heat_area_km2": 15417555.5,
+          "plateau_area_km2": 101640314.0
+        }
+      ],
+      "craton_keys": {
+        "craton_area_km2": 129416940.81324615,
+        "craton_continental_fraction": 0.5749388713806473,
+        "craton_volume_km3": 4768154633.943193,
+        "craton_destroyed_km3": 197414180.83086303,
+        "craton_ledger_km3": {
+          "initial_m3": 4107197532.2866306,
+          "formed_m3": 858371282.4874293,
+          "rifted_m3": 17235530.561241668,
+          "subducted_m3": 0.0,
+          "delaminated_m3": 0.0,
+          "merge_capped_m3": 10697181.677320192,
+          "collision_reworked_m3": 142450666.7895514,
+          "eroded_m3": 38937112.11553542,
+          "topology_removed_m3": 0.0,
+          "audit_clipped_m3": 0.0,
+          "unattributed_m3": -11906310.312785663,
+          "rifted_divergent_m3": 4981.748101770545,
+          "rifted_stretch_m3": 10371705.399552204,
+          "rifted_failed_m3": 6858843.413587692
+        },
+        "craton_rift_cuts": {
+          "split_cuts": 26.0,
+          "split_cuts_through_craton": 13.0,
+          "split_band_area_m2": 87827516563759.36,
+          "split_band_craton_area_m2": 23527745316093.133,
+          "failed_rift_cuts": 28.0,
+          "failed_rift_cuts_through_craton": 8.0,
+          "failed_rift_band_area_m2": 89883699028388.19,
+          "failed_rift_band_craton_area_m2": 11832009090471.086
+        }
+      }
+    },
+    {
+      "case": "sens_dock_hard",
+      "seed": 7,
+      "years": 500000000.0,
+      "knobs": {
+        "terranes.DOCK_E_YOUNG_M": 8000.0,
+        "terranes.DOCK_E_OLD_M": 20000.0
+      },
+      "wall_s": 454.4,
+      "mean_step_s": 4.54,
+      "lip_events_per_gyr": 124.0,
+      "lip_continental": 28,
+      "lip_oceanic": 34,
+      "lip_volume_km3_per_gyr": 1624460229.6,
+      "lip_volume_continental_km3_per_gyr": 846138559.6,
+      "lip_volume_oceanic_km3_per_gyr": 778321670.1,
+      "active_heads_end": 10,
+      "active_tails_end": 25,
+      "splits": 24,
+      "splits_parent_heated_fraction_mean": 0.1236,
+      "splits_parent_fully_heated": 1,
+      "splits_parent_unheated": 11,
+      "plume_lip_events_stat": 62,
+      "plume_plateau_area_km2": 89408144.59750247,
+      "plume_heat_area_km2": 15476774.086670652,
+      "buoyant_crust_ledger_km3": {
+        "arc": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        },
+        "plume_head": {
+          "emplaced_m3": 411198132.6261992,
+          "thinned_m3": 1116095.2026211026,
+          "reset_m3": 53639.8770691515,
+          "subducted_m3": 140470141.78670347,
+          "converted_m3": 72273.51675497313,
+          "foundered_m3": 8030.390750552566,
+          "clipped_m3": 126139194.81608611,
+          "topology_removed_m3": 91866.987636256,
+          "unattributed_m3": 0.0,
+          "docked_m3": 220261427.5537143
+        },
+        "plume_tail": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        }
+      },
+      "juvenile_continental_km3": {
+        "juvenile_flood_basalt_m3": 401031982.198,
+        "juvenile_hotspot_m3": 554198612.853,
+        "juvenile_plateau_m3": 72273.517
+      },
+      "head_volume_deciles_km3": [
+        1155211.6,
+        1680990.0,
+        2651018.8,
+        8761068.9,
+        18306133.4,
+        35902601.9,
+        47261664.7
+      ],
+      "checkpoints": [
+        {
+          "elapsed_years": 0.0,
+          "active_heads": 0,
+          "active_tails": 0,
+          "plates": 20,
+          "heads_so_far": 0,
+          "splits_so_far": 0,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 0.0
+        },
+        {
+          "elapsed_years": 100000000.0,
+          "active_heads": 14,
+          "active_tails": 26,
+          "plates": 29,
+          "heads_so_far": 18,
+          "splits_so_far": 10,
+          "heat_area_km2": 42472876.3,
+          "plateau_area_km2": 81935809.8
+        },
+        {
+          "elapsed_years": 200000000.0,
+          "active_heads": 4,
+          "active_tails": 23,
+          "plates": 31,
+          "heads_so_far": 27,
+          "splits_so_far": 14,
+          "heat_area_km2": 15720624.5,
+          "plateau_area_km2": 78040919.0
+        },
+        {
+          "elapsed_years": 300000000.0,
+          "active_heads": 9,
+          "active_tails": 31,
+          "plates": 35,
+          "heads_so_far": 39,
+          "splits_so_far": 19,
+          "heat_area_km2": 56970776.4,
+          "plateau_area_km2": 91185661.2
+        },
+        {
+          "elapsed_years": 400000000.0,
+          "active_heads": 9,
+          "active_tails": 23,
+          "plates": 35,
+          "heads_so_far": 50,
+          "splits_so_far": 19,
+          "heat_area_km2": 31090045.3,
+          "plateau_area_km2": 87744185.6
+        },
+        {
+          "elapsed_years": 500000000.0,
+          "active_heads": 10,
+          "active_tails": 25,
+          "plates": 39,
+          "heads_so_far": 62,
+          "splits_so_far": 24,
+          "heat_area_km2": 15476774.1,
+          "plateau_area_km2": 89408144.6
+        }
+      ],
+      "craton_keys": {
+        "craton_area_km2": 123781311.2913381,
+        "craton_continental_fraction": 0.5763952253331195,
+        "craton_volume_km3": 4639640599.731942,
+        "craton_destroyed_km3": 201484725.1109841,
+        "craton_ledger_km3": {
+          "initial_m3": 4107197532.2866306,
+          "formed_m3": 733927792.5562981,
+          "rifted_m3": 21328761.951417934,
+          "subducted_m3": 950637.4975596308,
+          "delaminated_m3": 0.0,
+          "merge_capped_m3": 0.0,
+          "collision_reworked_m3": 134280928.87032157,
+          "eroded_m3": 44521682.23945115,
+          "topology_removed_m3": 0.0,
+          "audit_clipped_m3": 0.0,
+          "unattributed_m3": 402714.552233808,
+          "rifted_divergent_m3": 1336.7595087686143,
+          "rifted_stretch_m3": 11335414.39873963,
+          "rifted_failed_m3": 9992010.793169538
+        },
+        "craton_rift_cuts": {
+          "split_cuts": 24.0,
+          "split_cuts_through_craton": 12.0,
+          "split_band_area_m2": 80047815936348.19,
+          "split_band_craton_area_m2": 20530878035745.703,
+          "failed_rift_cuts": 31.0,
+          "failed_rift_cuts_through_craton": 11.0,
+          "failed_rift_band_area_m2": 99084982190136.11,
+          "failed_rift_band_craton_area_m2": 18509243976861.547
+        }
+      }
+    },
+    {
+      "case": "sens_dock_loss_0.4",
+      "seed": 7,
+      "years": 500000000.0,
+      "knobs": {
+        "terranes.DOCK_LOWER_CRUST_LOSS": 0.4
+      },
+      "wall_s": 438.0,
+      "mean_step_s": 4.38,
+      "lip_events_per_gyr": 124.0,
+      "lip_continental": 29,
+      "lip_oceanic": 33,
+      "lip_volume_km3_per_gyr": 1624460229.6,
+      "lip_volume_continental_km3_per_gyr": 851407954.0,
+      "lip_volume_oceanic_km3_per_gyr": 773052275.7,
+      "active_heads_end": 10,
+      "active_tails_end": 25,
+      "splits": 26,
+      "splits_parent_heated_fraction_mean": 0.1246,
+      "splits_parent_fully_heated": 1,
+      "splits_parent_unheated": 9,
+      "plume_lip_events_stat": 62,
+      "plume_plateau_area_km2": 105965206.8171247,
+      "plume_heat_area_km2": 15880982.168141788,
+      "buoyant_crust_ledger_km3": {
+        "arc": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        },
+        "plume_head": {
+          "emplaced_m3": 400578321.31186354,
+          "thinned_m3": 988535.0313950113,
+          "reset_m3": 76077.46682591991,
+          "subducted_m3": 139599065.78189832,
+          "converted_m3": 3734.375739305673,
+          "foundered_m3": 414.93063770063014,
+          "clipped_m3": 124552612.10064287,
+          "topology_removed_m3": 16059.023016896,
+          "unattributed_m3": 0.0,
+          "docked_m3": 155615228.94398743
+        },
+        "plume_tail": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        }
+      },
+      "juvenile_continental_km3": {
+        "juvenile_flood_basalt_m3": 411651793.513,
+        "juvenile_hotspot_m3": 563605495.868,
+        "juvenile_plateau_m3": 3734.376
+      },
+      "head_volume_deciles_km3": [
+        1155211.6,
+        1680990.0,
+        2651018.8,
+        8761068.9,
+        18306133.4,
+        35902601.9,
+        47261664.7
+      ],
+      "checkpoints": [
+        {
+          "elapsed_years": 0.0,
+          "active_heads": 0,
+          "active_tails": 0,
+          "plates": 20,
+          "heads_so_far": 0,
+          "splits_so_far": 0,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 0.0
+        },
+        {
+          "elapsed_years": 100000000.0,
+          "active_heads": 14,
+          "active_tails": 26,
+          "plates": 29,
+          "heads_so_far": 18,
+          "splits_so_far": 10,
+          "heat_area_km2": 42564614.3,
+          "plateau_area_km2": 88488685.5
+        },
+        {
+          "elapsed_years": 200000000.0,
+          "active_heads": 4,
+          "active_tails": 23,
+          "plates": 34,
+          "heads_so_far": 27,
+          "splits_so_far": 16,
+          "heat_area_km2": 15867073.4,
+          "plateau_area_km2": 78181495.6
+        },
+        {
+          "elapsed_years": 300000000.0,
+          "active_heads": 9,
+          "active_tails": 31,
+          "plates": 37,
+          "heads_so_far": 39,
+          "splits_so_far": 19,
+          "heat_area_km2": 57838036.2,
+          "plateau_area_km2": 103620145.9
+        },
+        {
+          "elapsed_years": 400000000.0,
+          "active_heads": 9,
+          "active_tails": 23,
+          "plates": 39,
+          "heads_so_far": 50,
+          "splits_so_far": 23,
+          "heat_area_km2": 30932692.3,
+          "plateau_area_km2": 101230341.3
+        },
+        {
+          "elapsed_years": 500000000.0,
+          "active_heads": 10,
+          "active_tails": 25,
+          "plates": 39,
+          "heads_so_far": 62,
+          "splits_so_far": 26,
+          "heat_area_km2": 15880982.2,
+          "plateau_area_km2": 105965206.8
+        }
+      ],
+      "craton_keys": {
+        "craton_area_km2": 130713565.56025119,
+        "craton_continental_fraction": 0.6193346327983759,
+        "craton_volume_km3": 4696106152.421726,
+        "craton_destroyed_km3": 202767064.95970094,
+        "craton_ledger_km3": {
+          "initial_m3": 4107197532.2866306,
+          "formed_m3": 791675685.0947897,
+          "rifted_m3": 26817886.067882635,
+          "subducted_m3": 417093.2035259804,
+          "delaminated_m3": 0.0,
+          "merge_capped_m3": 7057511.86205737,
+          "collision_reworked_m3": 144345915.91178727,
+          "eroded_m3": 43303300.37452699,
+          "topology_removed_m3": 0.0,
+          "audit_clipped_m3": 0.0,
+          "unattributed_m3": -19174642.460079324,
+          "rifted_divergent_m3": 4240.496859937285,
+          "rifted_stretch_m3": 16910113.823105592,
+          "rifted_failed_m3": 9903531.747917105
+        },
+        "craton_rift_cuts": {
+          "split_cuts": 26.0,
+          "split_cuts_through_craton": 13.0,
+          "split_band_area_m2": 85058971557459.33,
+          "split_band_craton_area_m2": 21546896741689.82,
+          "failed_rift_cuts": 19.0,
+          "failed_rift_cuts_through_craton": 10.0,
+          "failed_rift_band_area_m2": 72544296884301.95,
+          "failed_rift_band_craton_area_m2": 17413798459550.28
+        }
+      }
+    },
+    {
+      "case": "sens_plateau_0.5",
+      "seed": 7,
+      "years": 500000000.0,
+      "knobs": {
+        "terranes.PLATEAU_PRESERVED_FRACTION": 0.5
+      },
+      "wall_s": 425.8,
+      "mean_step_s": 4.26,
+      "lip_events_per_gyr": 124.0,
+      "lip_continental": 30,
+      "lip_oceanic": 32,
+      "lip_volume_km3_per_gyr": 1624460229.6,
+      "lip_volume_continental_km3_per_gyr": 865866707.1,
+      "lip_volume_oceanic_km3_per_gyr": 758593522.6,
+      "active_heads_end": 10,
+      "active_tails_end": 25,
+      "splits": 26,
+      "splits_parent_heated_fraction_mean": 0.1314,
+      "splits_parent_fully_heated": 1,
+      "splits_parent_unheated": 10,
+      "plume_lip_events_stat": 62,
+      "plume_plateau_area_km2": 98661016.81089354,
+      "plume_heat_area_km2": 15480054.657913532,
+      "buoyant_crust_ledger_km3": {
+        "arc": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        },
+        "plume_head": {
+          "emplaced_m3": 412016176.07929295,
+          "thinned_m3": 1916157.5507749543,
+          "reset_m3": 119614.49535824698,
+          "subducted_m3": 129246847.62262219,
+          "converted_m3": 7611.187661340267,
+          "foundered_m3": 7611.187661340267,
+          "clipped_m3": 119925931.01115187,
+          "topology_removed_m3": 487760.807515512,
+          "unattributed_m3": 0.0,
+          "docked_m3": 367763459.661926
+        },
+        "plume_tail": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        }
+      },
+      "juvenile_continental_km3": {
+        "juvenile_flood_basalt_m3": 400213938.745,
+        "juvenile_hotspot_m3": 546727479.914,
+        "juvenile_plateau_m3": 7611.188
+      },
+      "head_volume_deciles_km3": [
+        1155211.6,
+        1680990.0,
+        2651018.8,
+        8761068.9,
+        18306133.4,
+        35902601.9,
+        47261664.7
+      ],
+      "checkpoints": [
+        {
+          "elapsed_years": 0.0,
+          "active_heads": 0,
+          "active_tails": 0,
+          "plates": 20,
+          "heads_so_far": 0,
+          "splits_so_far": 0,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 0.0
+        },
+        {
+          "elapsed_years": 100000000.0,
+          "active_heads": 14,
+          "active_tails": 26,
+          "plates": 28,
+          "heads_so_far": 18,
+          "splits_so_far": 9,
+          "heat_area_km2": 43125303.8,
+          "plateau_area_km2": 78838911.3
+        },
+        {
+          "elapsed_years": 200000000.0,
+          "active_heads": 4,
+          "active_tails": 23,
+          "plates": 32,
+          "heads_so_far": 27,
+          "splits_so_far": 14,
+          "heat_area_km2": 15679835.5,
+          "plateau_area_km2": 78813797.8
+        },
+        {
+          "elapsed_years": 300000000.0,
+          "active_heads": 9,
+          "active_tails": 31,
+          "plates": 36,
+          "heads_so_far": 39,
+          "splits_so_far": 20,
+          "heat_area_km2": 56738854.3,
+          "plateau_area_km2": 92356100.0
+        },
+        {
+          "elapsed_years": 400000000.0,
+          "active_heads": 9,
+          "active_tails": 23,
+          "plates": 40,
+          "heads_so_far": 50,
+          "splits_so_far": 23,
+          "heat_area_km2": 31818420.3,
+          "plateau_area_km2": 99068892.9
+        },
+        {
+          "elapsed_years": 500000000.0,
+          "active_heads": 10,
+          "active_tails": 25,
+          "plates": 40,
+          "heads_so_far": 62,
+          "splits_so_far": 26,
+          "heat_area_km2": 15480054.7,
+          "plateau_area_km2": 98661016.8
+        }
+      ],
+      "craton_keys": {
+        "craton_area_km2": 127033416.38013054,
+        "craton_continental_fraction": 0.5873614450397345,
+        "craton_volume_km3": 4624431618.227761,
+        "craton_destroyed_km3": 198306041.2303044,
+        "craton_ledger_km3": {
+          "initial_m3": 4107197532.2866306,
+          "formed_m3": 715540127.1714292,
+          "rifted_m3": 20686638.786897354,
+          "subducted_m3": 0.0,
+          "delaminated_m3": 0.0,
+          "merge_capped_m3": 0.0,
+          "collision_reworked_m3": 132066325.3296063,
+          "eroded_m3": 44936683.11401599,
+          "topology_removed_m3": 0.0,
+          "audit_clipped_m3": 0.0,
+          "unattributed_m3": 616393.99978476,
+          "rifted_divergent_m3": 23046.270611562777,
+          "rifted_stretch_m3": 10971623.741228117,
+          "rifted_failed_m3": 9691968.77505768
+        },
+        "craton_rift_cuts": {
+          "split_cuts": 26.0,
+          "split_cuts_through_craton": 12.0,
+          "split_band_area_m2": 90254175484296.6,
+          "split_band_craton_area_m2": 22099439754031.074,
+          "failed_rift_cuts": 22.0,
+          "failed_rift_cuts_through_craton": 10.0,
+          "failed_rift_band_area_m2": 79117601649146.62,
+          "failed_rift_band_craton_area_m2": 17203552102968.568
+        }
+      }
+    },
+    {
+      "case": "sens_heat_5myr",
+      "seed": 7,
+      "years": 500000000.0,
+      "knobs": {
+        "plumes.PLUME_HEAT_MYR": 5.0
+      },
+      "wall_s": 446.6,
+      "mean_step_s": 4.47,
+      "lip_events_per_gyr": 124.0,
+      "lip_continental": 25,
+      "lip_oceanic": 37,
+      "lip_volume_km3_per_gyr": 1624460229.6,
+      "lip_volume_continental_km3_per_gyr": 737830323.6,
+      "lip_volume_oceanic_km3_per_gyr": 886629906.0,
+      "active_heads_end": 10,
+      "active_tails_end": 25,
+      "splits": 27,
+      "splits_parent_heated_fraction_mean": 0.0467,
+      "splits_parent_fully_heated": 0,
+      "splits_parent_unheated": 22,
+      "plume_lip_events_stat": 62,
+      "plume_plateau_area_km2": 96254616.81166531,
+      "plume_heat_area_km2": 0.0,
+      "buoyant_crust_ledger_km3": {
+        "arc": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        },
+        "plume_head": {
+          "emplaced_m3": 419958851.4028389,
+          "thinned_m3": 1150948.1373459762,
+          "reset_m3": 187842.26592563512,
+          "subducted_m3": 140485622.3174844,
+          "converted_m3": 289452.7670910804,
+          "foundered_m3": 32161.418565675573,
+          "clipped_m3": 114873750.7627458,
+          "topology_removed_m3": 34611.577718384,
+          "unattributed_m3": 0.0,
+          "docked_m3": 356153499.36671084
+        },
+        "plume_tail": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        }
+      },
+      "juvenile_continental_km3": {
+        "juvenile_flood_basalt_m3": 392271263.422,
+        "juvenile_hotspot_m3": 554363241.781,
+        "juvenile_plateau_m3": 289452.767
+      },
+      "head_volume_deciles_km3": [
+        1155211.6,
+        1680990.0,
+        2651018.8,
+        8761068.9,
+        18306133.4,
+        35902601.9,
+        47261664.7
+      ],
+      "checkpoints": [
+        {
+          "elapsed_years": 0.0,
+          "active_heads": 0,
+          "active_tails": 0,
+          "plates": 20,
+          "heads_so_far": 0,
+          "splits_so_far": 0,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 0.0
+        },
+        {
+          "elapsed_years": 100000000.0,
+          "active_heads": 14,
+          "active_tails": 26,
+          "plates": 28,
+          "heads_so_far": 18,
+          "splits_so_far": 9,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 82434261.8
+        },
+        {
+          "elapsed_years": 200000000.0,
+          "active_heads": 4,
+          "active_tails": 23,
+          "plates": 33,
+          "heads_so_far": 27,
+          "splits_so_far": 15,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 74828693.9
+        },
+        {
+          "elapsed_years": 300000000.0,
+          "active_heads": 9,
+          "active_tails": 31,
+          "plates": 35,
+          "heads_so_far": 39,
+          "splits_so_far": 19,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 82360894.4
+        },
+        {
+          "elapsed_years": 400000000.0,
+          "active_heads": 9,
+          "active_tails": 23,
+          "plates": 39,
+          "heads_so_far": 50,
+          "splits_so_far": 23,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 100163140.7
+        },
+        {
+          "elapsed_years": 500000000.0,
+          "active_heads": 10,
+          "active_tails": 25,
+          "plates": 42,
+          "heads_so_far": 62,
+          "splits_so_far": 27,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 96254616.8
+        }
+      ],
+      "craton_keys": {
+        "craton_area_km2": 127731918.08107314,
+        "craton_continental_fraction": 0.6044115329358518,
+        "craton_volume_km3": 4660679522.799775,
+        "craton_destroyed_km3": 227953596.22159225,
+        "craton_ledger_km3": {
+          "initial_m3": 4107197532.2866306,
+          "formed_m3": 781435586.7347339,
+          "rifted_m3": 21205579.178496353,
+          "subducted_m3": 71464.99656507076,
+          "delaminated_m3": 0.0,
+          "merge_capped_m3": 210103.5593964322,
+          "collision_reworked_m3": 164858832.31367332,
+          "eroded_m3": 53388265.46331725,
+          "topology_removed_m3": 0.0,
+          "audit_clipped_m3": 0.0,
+          "unattributed_m3": -11780649.28985618,
+          "rifted_divergent_m3": 4928.227269157286,
+          "rifted_stretch_m3": 11662954.10176878,
+          "rifted_failed_m3": 9537696.849458434
+        },
+        "craton_rift_cuts": {
+          "split_cuts": 27.0,
+          "split_cuts_through_craton": 13.0,
+          "split_band_area_m2": 94473301918662.27,
+          "split_band_craton_area_m2": 22748660322379.92,
+          "failed_rift_cuts": 30.0,
+          "failed_rift_cuts_through_craton": 12.0,
+          "failed_rift_band_area_m2": 107001069426368.22,
+          "failed_rift_band_craton_area_m2": 19559669521055.938
+        }
+      }
+    },
+    {
+      "case": "sens_heat_50myr",
+      "seed": 7,
+      "years": 500000000.0,
+      "knobs": {
+        "plumes.PLUME_HEAT_MYR": 50.0
+      },
+      "wall_s": 433.4,
+      "mean_step_s": 4.33,
+      "lip_events_per_gyr": 124.0,
+      "lip_continental": 30,
+      "lip_oceanic": 32,
+      "lip_volume_km3_per_gyr": 1624460229.6,
+      "lip_volume_continental_km3_per_gyr": 865866707.1,
+      "lip_volume_oceanic_km3_per_gyr": 758593522.6,
+      "active_heads_end": 10,
+      "active_tails_end": 25,
+      "splits": 26,
+      "splits_parent_heated_fraction_mean": 0.1632,
+      "splits_parent_fully_heated": 1,
+      "splits_parent_unheated": 7,
+      "plume_lip_events_stat": 62,
+      "plume_plateau_area_km2": 94610734.00023223,
+      "plume_heat_area_km2": 64661008.79622795,
+      "buoyant_crust_ledger_km3": {
+        "arc": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        },
+        "plume_head": {
+          "emplaced_m3": 409950969.15563726,
+          "thinned_m3": 1877246.4004541342,
+          "reset_m3": 121668.12944693874,
+          "subducted_m3": 130727768.84621193,
+          "converted_m3": 47955.33844227872,
+          "foundered_m3": 5328.3709380309665,
+          "clipped_m3": 131292815.53934765,
+          "topology_removed_m3": 11568.372271616,
+          "unattributed_m3": 0.0,
+          "docked_m3": 293408146.79773253
+        },
+        "plume_tail": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        }
+      },
+      "juvenile_continental_km3": {
+        "juvenile_flood_basalt_m3": 402279145.669,
+        "juvenile_hotspot_m3": 549120835.618,
+        "juvenile_plateau_m3": 47955.338
+      },
+      "head_volume_deciles_km3": [
+        1155211.6,
+        1680990.0,
+        2651018.8,
+        8761068.9,
+        18306133.4,
+        35902601.9,
+        47261664.7
+      ],
+      "checkpoints": [
+        {
+          "elapsed_years": 0.0,
+          "active_heads": 0,
+          "active_tails": 0,
+          "plates": 20,
+          "heads_so_far": 0,
+          "splits_so_far": 0,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 0.0
+        },
+        {
+          "elapsed_years": 100000000.0,
+          "active_heads": 14,
+          "active_tails": 26,
+          "plates": 28,
+          "heads_so_far": 18,
+          "splits_so_far": 9,
+          "heat_area_km2": 96222965.5,
+          "plateau_area_km2": 78855810.2
+        },
+        {
+          "elapsed_years": 200000000.0,
+          "active_heads": 4,
+          "active_tails": 23,
+          "plates": 34,
+          "heads_so_far": 27,
+          "splits_so_far": 16,
+          "heat_area_km2": 15709902.9,
+          "plateau_area_km2": 80044985.1
+        },
+        {
+          "elapsed_years": 300000000.0,
+          "active_heads": 9,
+          "active_tails": 31,
+          "plates": 37,
+          "heads_so_far": 39,
+          "splits_so_far": 20,
+          "heat_area_km2": 93214086.8,
+          "plateau_area_km2": 93481404.7
+        },
+        {
+          "elapsed_years": 400000000.0,
+          "active_heads": 9,
+          "active_tails": 23,
+          "plates": 38,
+          "heads_so_far": 50,
+          "splits_so_far": 24,
+          "heat_area_km2": 60371829.7,
+          "plateau_area_km2": 98815480.6
+        },
+        {
+          "elapsed_years": 500000000.0,
+          "active_heads": 10,
+          "active_tails": 25,
+          "plates": 39,
+          "heads_so_far": 62,
+          "splits_so_far": 26,
+          "heat_area_km2": 64661008.8,
+          "plateau_area_km2": 94610734.0
+        }
+      ],
+      "craton_keys": {
+        "craton_area_km2": 128640814.28929016,
+        "craton_continental_fraction": 0.6042718359486748,
+        "craton_volume_km3": 4671726642.853013,
+        "craton_destroyed_km3": 226637555.48870918,
+        "craton_ledger_km3": {
+          "initial_m3": 4107197532.2866306,
+          "formed_m3": 791166666.0550944,
+          "rifted_m3": 33835425.85637779,
+          "subducted_m3": 0.0,
+          "delaminated_m3": 0.0,
+          "merge_capped_m3": 0.0,
+          "collision_reworked_m3": 153027743.42079148,
+          "eroded_m3": 48302430.25437248,
+          "topology_removed_m3": 0.0,
+          "audit_clipped_m3": 0.0,
+          "unattributed_m3": -8528044.042832555,
+          "rifted_divergent_m3": 15166.6146372587,
+          "rifted_stretch_m3": 11577024.382325718,
+          "rifted_failed_m3": 22243234.859414816
+        },
+        "craton_rift_cuts": {
+          "split_cuts": 26.0,
+          "split_cuts_through_craton": 12.0,
+          "split_band_area_m2": 86658467498975.53,
+          "split_band_craton_area_m2": 21995076374065.15,
+          "failed_rift_cuts": 20.0,
+          "failed_rift_cuts_through_craton": 12.0,
+          "failed_rift_band_area_m2": 70083991375470.805,
+          "failed_rift_band_craton_area_m2": 24828925619074.51
+        }
+      }
+    },
+    {
+      "case": "sens_weaken_0.5",
+      "seed": 7,
+      "years": 500000000.0,
+      "knobs": {
+        "plumes.PLUME_CRATON_WEAKENING": 0.5
+      },
+      "wall_s": 439.8,
+      "mean_step_s": 4.4,
+      "lip_events_per_gyr": 124.0,
+      "lip_continental": 28,
+      "lip_oceanic": 34,
+      "lip_volume_km3_per_gyr": 1624460229.6,
+      "lip_volume_continental_km3_per_gyr": 839332072.2,
+      "lip_volume_oceanic_km3_per_gyr": 785128157.5,
+      "active_heads_end": 10,
+      "active_tails_end": 25,
+      "splits": 25,
+      "splits_parent_heated_fraction_mean": 0.1033,
+      "splits_parent_fully_heated": 1,
+      "splits_parent_unheated": 10,
+      "plume_lip_events_stat": 62,
+      "plume_plateau_area_km2": 95299634.77722755,
+      "plume_heat_area_km2": 15270107.04772192,
+      "buoyant_crust_ledger_km3": {
+        "arc": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        },
+        "plume_head": {
+          "emplaced_m3": 412578785.5309319,
+          "thinned_m3": 1508924.0191389432,
+          "reset_m3": 124696.35720886735,
+          "subducted_m3": 114479834.0016333,
+          "converted_m3": 94971.95130106968,
+          "foundered_m3": 10552.439033452185,
+          "clipped_m3": 118766075.6506672,
+          "topology_removed_m3": 397264.40764024,
+          "unattributed_m3": 0.0,
+          "docked_m3": 288107768.88545674
+        },
+        "plume_tail": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        }
+      },
+      "juvenile_continental_km3": {
+        "juvenile_flood_basalt_m3": 399651329.293,
+        "juvenile_hotspot_m3": 549278440.429,
+        "juvenile_plateau_m3": 94971.951
+      },
+      "head_volume_deciles_km3": [
+        1155211.6,
+        1680990.0,
+        2651018.8,
+        8761068.9,
+        18306133.4,
+        35902601.9,
+        47261664.7
+      ],
+      "checkpoints": [
+        {
+          "elapsed_years": 0.0,
+          "active_heads": 0,
+          "active_tails": 0,
+          "plates": 20,
+          "heads_so_far": 0,
+          "splits_so_far": 0,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 0.0
+        },
+        {
+          "elapsed_years": 100000000.0,
+          "active_heads": 14,
+          "active_tails": 26,
+          "plates": 28,
+          "heads_so_far": 18,
+          "splits_so_far": 9,
+          "heat_area_km2": 43119986.7,
+          "plateau_area_km2": 78848979.0
+        },
+        {
+          "elapsed_years": 200000000.0,
+          "active_heads": 4,
+          "active_tails": 23,
+          "plates": 32,
+          "heads_so_far": 27,
+          "splits_so_far": 14,
+          "heat_area_km2": 15740183.3,
+          "plateau_area_km2": 79264956.4
+        },
+        {
+          "elapsed_years": 300000000.0,
+          "active_heads": 9,
+          "active_tails": 31,
+          "plates": 36,
+          "heads_so_far": 39,
+          "splits_so_far": 19,
+          "heat_area_km2": 56731205.6,
+          "plateau_area_km2": 94127497.3
+        },
+        {
+          "elapsed_years": 400000000.0,
+          "active_heads": 9,
+          "active_tails": 23,
+          "plates": 39,
+          "heads_so_far": 50,
+          "splits_so_far": 22,
+          "heat_area_km2": 30957323.4,
+          "plateau_area_km2": 91943205.2
+        },
+        {
+          "elapsed_years": 500000000.0,
+          "active_heads": 10,
+          "active_tails": 25,
+          "plates": 41,
+          "heads_so_far": 62,
+          "splits_so_far": 25,
+          "heat_area_km2": 15270107.0,
+          "plateau_area_km2": 95299634.8
+        }
+      ],
+      "craton_keys": {
+        "craton_area_km2": 124508067.56652212,
+        "craton_continental_fraction": 0.5693588636271981,
+        "craton_volume_km3": 4637959149.16594,
+        "craton_destroyed_km3": 221259133.65876326,
+        "craton_ledger_km3": {
+          "initial_m3": 4107197532.2866306,
+          "formed_m3": 752020750.5380698,
+          "rifted_m3": 17998200.240618333,
+          "subducted_m3": 25907.800447749945,
+          "delaminated_m3": 0.0,
+          "merge_capped_m3": 0.0,
+          "collision_reworked_m3": 157568861.51615316,
+          "eroded_m3": 52278844.068842426,
+          "topology_removed_m3": 0.0,
+          "audit_clipped_m3": 0.0,
+          "unattributed_m3": -6612679.9672984,
+          "rifted_divergent_m3": 510.4085813939711,
+          "rifted_stretch_m3": 8646992.239775943,
+          "rifted_failed_m3": 9350697.59226099
+        },
+        "craton_rift_cuts": {
+          "split_cuts": 25.0,
+          "split_cuts_through_craton": 12.0,
+          "split_band_area_m2": 85614671645860.25,
+          "split_band_craton_area_m2": 22043550903209.797,
+          "failed_rift_cuts": 20.0,
+          "failed_rift_cuts_through_craton": 10.0,
+          "failed_rift_band_area_m2": 74132044767855.23,
+          "failed_rift_band_craton_area_m2": 17192837881623.285
+        }
+      }
+    },
+    {
+      "case": "sens_weaken_1.0",
+      "seed": 7,
+      "years": 500000000.0,
+      "knobs": {
+        "plumes.PLUME_CRATON_WEAKENING": 1.0
+      },
+      "wall_s": 438.3,
+      "mean_step_s": 4.38,
+      "lip_events_per_gyr": 124.0,
+      "lip_continental": 28,
+      "lip_oceanic": 34,
+      "lip_volume_km3_per_gyr": 1624460229.6,
+      "lip_volume_continental_km3_per_gyr": 840998880.3,
+      "lip_volume_oceanic_km3_per_gyr": 783461349.3,
+      "active_heads_end": 10,
+      "active_tails_end": 25,
+      "splits": 28,
+      "splits_parent_heated_fraction_mean": 0.0938,
+      "splits_parent_fully_heated": 1,
+      "splits_parent_unheated": 15,
+      "plume_lip_events_stat": 62,
+      "plume_plateau_area_km2": 96053156.55163766,
+      "plume_heat_area_km2": 15835705.693610787,
+      "buoyant_crust_ledger_km3": {
+        "arc": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        },
+        "plume_head": {
+          "emplaced_m3": 410355728.3887347,
+          "thinned_m3": 1606274.2082647406,
+          "reset_m3": 64765.6351300896,
+          "subducted_m3": 116362145.0947784,
+          "converted_m3": 1306.1094149367455,
+          "foundered_m3": 145.12326832630507,
+          "clipped_m3": 119539044.66666321,
+          "topology_removed_m3": 290130.829800128,
+          "unattributed_m3": 0.0,
+          "docked_m3": 329949685.2119
+        },
+        "plume_tail": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        }
+      },
+      "juvenile_continental_km3": {
+        "juvenile_flood_basalt_m3": 401874386.436,
+        "juvenile_hotspot_m3": 553363276.162,
+        "juvenile_plateau_m3": 1306.109
+      },
+      "head_volume_deciles_km3": [
+        1155211.6,
+        1680990.0,
+        2651018.8,
+        8761068.9,
+        18306133.4,
+        35902601.9,
+        47261664.7
+      ],
+      "checkpoints": [
+        {
+          "elapsed_years": 0.0,
+          "active_heads": 0,
+          "active_tails": 0,
+          "plates": 20,
+          "heads_so_far": 0,
+          "splits_so_far": 0,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 0.0
+        },
+        {
+          "elapsed_years": 100000000.0,
+          "active_heads": 14,
+          "active_tails": 26,
+          "plates": 28,
+          "heads_so_far": 18,
+          "splits_so_far": 9,
+          "heat_area_km2": 43123841.2,
+          "plateau_area_km2": 78891042.4
+        },
+        {
+          "elapsed_years": 200000000.0,
+          "active_heads": 4,
+          "active_tails": 23,
+          "plates": 33,
+          "heads_so_far": 27,
+          "splits_so_far": 16,
+          "heat_area_km2": 15638137.7,
+          "plateau_area_km2": 76310251.3
+        },
+        {
+          "elapsed_years": 300000000.0,
+          "active_heads": 9,
+          "active_tails": 31,
+          "plates": 38,
+          "heads_so_far": 39,
+          "splits_so_far": 22,
+          "heat_area_km2": 55573369.7,
+          "plateau_area_km2": 94314435.0
+        },
+        {
+          "elapsed_years": 400000000.0,
+          "active_heads": 9,
+          "active_tails": 23,
+          "plates": 42,
+          "heads_so_far": 50,
+          "splits_so_far": 25,
+          "heat_area_km2": 31269130.5,
+          "plateau_area_km2": 99061824.5
+        },
+        {
+          "elapsed_years": 500000000.0,
+          "active_heads": 10,
+          "active_tails": 25,
+          "plates": 43,
+          "heads_so_far": 62,
+          "splits_so_far": 28,
+          "heat_area_km2": 15835705.7,
+          "plateau_area_km2": 96053156.6
+        }
+      ],
+      "craton_keys": {
+        "craton_area_km2": 131853747.14434561,
+        "craton_continental_fraction": 0.6117585757148243,
+        "craton_volume_km3": 4737031824.112794,
+        "craton_destroyed_km3": 221458013.28119096,
+        "craton_ledger_km3": {
+          "initial_m3": 4107197532.2866306,
+          "formed_m3": 851292305.1073601,
+          "rifted_m3": 28303846.73694038,
+          "subducted_m3": 84651.47537852456,
+          "delaminated_m3": 0.0,
+          "merge_capped_m3": 0.0,
+          "collision_reworked_m3": 147897362.25984937,
+          "eroded_m3": 52128590.39408601,
+          "topology_removed_m3": 0.0,
+          "audit_clipped_m3": 0.0,
+          "unattributed_m3": -6956437.585063308,
+          "rifted_divergent_m3": 821.4195380183378,
+          "rifted_stretch_m3": 13433317.344934586,
+          "rifted_failed_m3": 14869707.972467773
+        },
+        "craton_rift_cuts": {
+          "split_cuts": 28.0,
+          "split_cuts_through_craton": 14.0,
+          "split_band_area_m2": 95825819529221.03,
+          "split_band_craton_area_m2": 26998138362046.047,
+          "failed_rift_cuts": 19.0,
+          "failed_rift_cuts_through_craton": 11.0,
+          "failed_rift_band_area_m2": 64649317148770.51,
+          "failed_rift_band_craton_area_m2": 19993947612041.312
+        }
+      }
+    },
+    {
+      "case": "sens_stress_0",
+      "seed": 7,
+      "years": 500000000.0,
+      "knobs": {
+        "plumes.PLUME_HEAD_STRESS": 0.0
+      },
+      "wall_s": 430.9,
+      "mean_step_s": 4.31,
+      "lip_events_per_gyr": 124.0,
+      "lip_continental": 27,
+      "lip_oceanic": 35,
+      "lip_volume_km3_per_gyr": 1624460229.6,
+      "lip_volume_continental_km3_per_gyr": 838119627.7,
+      "lip_volume_oceanic_km3_per_gyr": 786340602.0,
+      "active_heads_end": 10,
+      "active_tails_end": 25,
+      "splits": 26,
+      "splits_parent_heated_fraction_mean": 0.0649,
+      "splits_parent_fully_heated": 0,
+      "splits_parent_unheated": 14,
+      "plume_lip_events_stat": 62,
+      "plume_plateau_area_km2": 93462680.55654159,
+      "plume_heat_area_km2": 15574328.012254067,
+      "buoyant_crust_ledger_km3": {
+        "arc": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        },
+        "plume_head": {
+          "emplaced_m3": 406657336.73550236,
+          "thinned_m3": 1816991.3967052319,
+          "reset_m3": 135108.52410845374,
+          "subducted_m3": 127614685.4874908,
+          "converted_m3": 256168.52944984013,
+          "foundered_m3": 28463.16993887113,
+          "clipped_m3": 113663589.15724315,
+          "topology_removed_m3": 174630.84951244,
+          "unattributed_m3": 0.0,
+          "docked_m3": 288652354.85621846
+        },
+        "plume_tail": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        }
+      },
+      "juvenile_continental_km3": {
+        "juvenile_flood_basalt_m3": 405572778.089,
+        "juvenile_hotspot_m3": 578602622.844,
+        "juvenile_plateau_m3": 256168.529
+      },
+      "head_volume_deciles_km3": [
+        1155211.6,
+        1680990.0,
+        2651018.8,
+        8761068.9,
+        18306133.4,
+        35902601.9,
+        47261664.7
+      ],
+      "checkpoints": [
+        {
+          "elapsed_years": 0.0,
+          "active_heads": 0,
+          "active_tails": 0,
+          "plates": 20,
+          "heads_so_far": 0,
+          "splits_so_far": 0,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 0.0
+        },
+        {
+          "elapsed_years": 100000000.0,
+          "active_heads": 14,
+          "active_tails": 26,
+          "plates": 27,
+          "heads_so_far": 18,
+          "splits_so_far": 8,
+          "heat_area_km2": 42837063.7,
+          "plateau_area_km2": 83626240.1
+        },
+        {
+          "elapsed_years": 200000000.0,
+          "active_heads": 4,
+          "active_tails": 23,
+          "plates": 33,
+          "heads_so_far": 27,
+          "splits_so_far": 15,
+          "heat_area_km2": 15662253.5,
+          "plateau_area_km2": 85061283.3
+        },
+        {
+          "elapsed_years": 300000000.0,
+          "active_heads": 9,
+          "active_tails": 31,
+          "plates": 36,
+          "heads_so_far": 39,
+          "splits_so_far": 20,
+          "heat_area_km2": 56524687.5,
+          "plateau_area_km2": 91270313.5
+        },
+        {
+          "elapsed_years": 400000000.0,
+          "active_heads": 9,
+          "active_tails": 23,
+          "plates": 39,
+          "heads_so_far": 50,
+          "splits_so_far": 25,
+          "heat_area_km2": 30996466.8,
+          "plateau_area_km2": 89498233.3
+        },
+        {
+          "elapsed_years": 500000000.0,
+          "active_heads": 10,
+          "active_tails": 25,
+          "plates": 38,
+          "heads_so_far": 62,
+          "splits_so_far": 26,
+          "heat_area_km2": 15574328.0,
+          "plateau_area_km2": 93462680.6
+        }
+      ],
+      "craton_keys": {
+        "craton_area_km2": 127729054.84034064,
+        "craton_continental_fraction": 0.596484820641385,
+        "craton_volume_km3": 4629761761.119925,
+        "craton_destroyed_km3": 221421658.63868445,
+        "craton_ledger_km3": {
+          "initial_m3": 4107197532.2866306,
+          "formed_m3": 743985887.4719763,
+          "rifted_m3": 23451065.61858849,
+          "subducted_m3": 81065.38492283136,
+          "delaminated_m3": 0.0,
+          "merge_capped_m3": 210219.66641352512,
+          "collision_reworked_m3": 147008034.75279385,
+          "eroded_m3": 52357812.785333194,
+          "topology_removed_m3": 0.0,
+          "audit_clipped_m3": 0.0,
+          "unattributed_m3": -1686539.569367436,
+          "rifted_divergent_m3": 4016.983663447071,
+          "rifted_stretch_m3": 13840288.18235662,
+          "rifted_failed_m3": 9606760.452568416
+        },
+        "craton_rift_cuts": {
+          "split_cuts": 26.0,
+          "split_cuts_through_craton": 14.0,
+          "split_band_area_m2": 89961154972643.73,
+          "split_band_craton_area_m2": 25124796956590.52,
+          "failed_rift_cuts": 29.0,
+          "failed_rift_cuts_through_craton": 12.0,
+          "failed_rift_band_area_m2": 94718957420844.86,
+          "failed_rift_band_craton_area_m2": 20621999116774.7
+        }
+      }
+    },
+    {
+      "case": "sens_stress_2",
+      "seed": 7,
+      "years": 500000000.0,
+      "knobs": {
+        "plumes.PLUME_HEAD_STRESS": 2.0
+      },
+      "wall_s": 447.3,
+      "mean_step_s": 4.47,
+      "lip_events_per_gyr": 124.0,
+      "lip_continental": 26,
+      "lip_oceanic": 36,
+      "lip_volume_km3_per_gyr": 1624460229.6,
+      "lip_volume_continental_km3_per_gyr": 816950082.9,
+      "lip_volume_oceanic_km3_per_gyr": 807510146.7,
+      "active_heads_end": 10,
+      "active_tails_end": 25,
+      "splits": 27,
+      "splits_parent_heated_fraction_mean": 0.1269,
+      "splits_parent_fully_heated": 1,
+      "splits_parent_unheated": 13,
+      "plume_lip_events_stat": 62,
+      "plume_plateau_area_km2": 93433488.09304854,
+      "plume_heat_area_km2": 15201376.953136716,
+      "buoyant_crust_ledger_km3": {
+        "arc": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        },
+        "plume_head": {
+          "emplaced_m3": 422935413.4409211,
+          "thinned_m3": 2179519.8120072205,
+          "reset_m3": 106245.65499167315,
+          "subducted_m3": 143991925.6892092,
+          "converted_m3": 13841.82612995541,
+          "foundered_m3": 1537.9806811061565,
+          "clipped_m3": 124624869.94444488,
+          "topology_removed_m3": 170558.638412664,
+          "unattributed_m3": 0.0,
+          "docked_m3": 389563216.052637
+        },
+        "plume_tail": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        }
+      },
+      "juvenile_continental_km3": {
+        "juvenile_flood_basalt_m3": 389294701.383,
+        "juvenile_hotspot_m3": 540518165.956,
+        "juvenile_plateau_m3": 13841.826
+      },
+      "head_volume_deciles_km3": [
+        1155211.6,
+        1680990.0,
+        2651018.8,
+        8761068.9,
+        18306133.4,
+        35902601.9,
+        47261664.7
+      ],
+      "checkpoints": [
+        {
+          "elapsed_years": 0.0,
+          "active_heads": 0,
+          "active_tails": 0,
+          "plates": 20,
+          "heads_so_far": 0,
+          "splits_so_far": 0,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 0.0
+        },
+        {
+          "elapsed_years": 100000000.0,
+          "active_heads": 14,
+          "active_tails": 26,
+          "plates": 30,
+          "heads_so_far": 18,
+          "splits_so_far": 11,
+          "heat_area_km2": 42890286.8,
+          "plateau_area_km2": 80538846.2
+        },
+        {
+          "elapsed_years": 200000000.0,
+          "active_heads": 4,
+          "active_tails": 23,
+          "plates": 33,
+          "heads_so_far": 27,
+          "splits_so_far": 16,
+          "heat_area_km2": 15691158.0,
+          "plateau_area_km2": 76808167.6
+        },
+        {
+          "elapsed_years": 300000000.0,
+          "active_heads": 9,
+          "active_tails": 31,
+          "plates": 37,
+          "heads_so_far": 39,
+          "splits_so_far": 20,
+          "heat_area_km2": 55530222.1,
+          "plateau_area_km2": 79081868.9
+        },
+        {
+          "elapsed_years": 400000000.0,
+          "active_heads": 9,
+          "active_tails": 23,
+          "plates": 40,
+          "heads_so_far": 50,
+          "splits_so_far": 24,
+          "heat_area_km2": 31398802.7,
+          "plateau_area_km2": 89847247.7
+        },
+        {
+          "elapsed_years": 500000000.0,
+          "active_heads": 10,
+          "active_tails": 25,
+          "plates": 41,
+          "heads_so_far": 62,
+          "splits_so_far": 27,
+          "heat_area_km2": 15201377.0,
+          "plateau_area_km2": 93433488.1
+        }
+      ],
+      "craton_keys": {
+        "craton_area_km2": 125420016.2572332,
+        "craton_continental_fraction": 0.5811452641825878,
+        "craton_volume_km3": 4737651575.338022,
+        "craton_destroyed_km3": 229388118.9690768,
+        "craton_ledger_km3": {
+          "initial_m3": 4107197532.2866306,
+          "formed_m3": 859842162.0204704,
+          "rifted_m3": 22186290.900156148,
+          "subducted_m3": 117797.50867172221,
+          "delaminated_m3": 0.0,
+          "merge_capped_m3": 0.0,
+          "collision_reworked_m3": 170927081.25116417,
+          "eroded_m3": 48455265.88646676,
+          "topology_removed_m3": 0.0,
+          "audit_clipped_m3": 0.0,
+          "unattributed_m3": -12298316.577381996,
+          "rifted_divergent_m3": 663.2839949665075,
+          "rifted_stretch_m3": 12603177.130920798,
+          "rifted_failed_m3": 9582450.48524039
+        },
+        "craton_rift_cuts": {
+          "split_cuts": 27.0,
+          "split_cuts_through_craton": 13.0,
+          "split_band_area_m2": 90698530495500.92,
+          "split_band_craton_area_m2": 22139490095437.832,
+          "failed_rift_cuts": 19.0,
+          "failed_rift_cuts_through_craton": 11.0,
+          "failed_rift_band_area_m2": 67272584726327.36,
+          "failed_rift_band_craton_area_m2": 17679743477947.094
+        }
+      }
+    },
+    {
+      "case": "sens_stress_0.75",
+      "seed": 7,
+      "years": 500000000.0,
+      "knobs": {
+        "plumes.PLUME_HEAD_STRESS": 0.75
+      },
+      "wall_s": 425.4,
+      "mean_step_s": 4.25,
+      "lip_events_per_gyr": 124.0,
+      "lip_continental": 28,
+      "lip_oceanic": 34,
+      "lip_volume_km3_per_gyr": 1624460229.6,
+      "lip_volume_continental_km3_per_gyr": 839332072.2,
+      "lip_volume_oceanic_km3_per_gyr": 785128157.5,
+      "active_heads_end": 10,
+      "active_tails_end": 25,
+      "splits": 26,
+      "splits_parent_heated_fraction_mean": 0.1164,
+      "splits_parent_fully_heated": 1,
+      "splits_parent_unheated": 13,
+      "plume_lip_events_stat": 62,
+      "plume_plateau_area_km2": 93284853.64447975,
+      "plume_heat_area_km2": 15802236.210445154,
+      "buoyant_crust_ledger_km3": {
+        "arc": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        },
+        "plume_head": {
+          "emplaced_m3": 410115371.98957986,
+          "thinned_m3": 1884664.9135068662,
+          "reset_m3": 139313.99857628628,
+          "subducted_m3": 127245952.65839054,
+          "converted_m3": 13593.785686542715,
+          "foundered_m3": 1510.4206318380798,
+          "clipped_m3": 118478853.13842852,
+          "topology_removed_m3": 298266.82175596,
+          "unattributed_m3": 0.0,
+          "docked_m3": 335768379.4789885
+        },
+        "plume_tail": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        }
+      },
+      "juvenile_continental_km3": {
+        "juvenile_flood_basalt_m3": 402114742.835,
+        "juvenile_hotspot_m3": 547186066.651,
+        "juvenile_plateau_m3": 13593.786
+      },
+      "head_volume_deciles_km3": [
+        1155211.6,
+        1680990.0,
+        2651018.8,
+        8761068.9,
+        18306133.4,
+        35902601.9,
+        47261664.7
+      ],
+      "checkpoints": [
+        {
+          "elapsed_years": 0.0,
+          "active_heads": 0,
+          "active_tails": 0,
+          "plates": 20,
+          "heads_so_far": 0,
+          "splits_so_far": 0,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 0.0
+        },
+        {
+          "elapsed_years": 100000000.0,
+          "active_heads": 14,
+          "active_tails": 26,
+          "plates": 28,
+          "heads_so_far": 18,
+          "splits_so_far": 9,
+          "heat_area_km2": 43125303.8,
+          "plateau_area_km2": 78838911.3
+        },
+        {
+          "elapsed_years": 200000000.0,
+          "active_heads": 4,
+          "active_tails": 23,
+          "plates": 32,
+          "heads_so_far": 27,
+          "splits_so_far": 14,
+          "heat_area_km2": 15665497.8,
+          "plateau_area_km2": 76170317.4
+        },
+        {
+          "elapsed_years": 300000000.0,
+          "active_heads": 9,
+          "active_tails": 31,
+          "plates": 33,
+          "heads_so_far": 39,
+          "splits_so_far": 16,
+          "heat_area_km2": 56616686.1,
+          "plateau_area_km2": 95225571.5
+        },
+        {
+          "elapsed_years": 400000000.0,
+          "active_heads": 9,
+          "active_tails": 23,
+          "plates": 37,
+          "heads_so_far": 50,
+          "splits_so_far": 21,
+          "heat_area_km2": 30951935.2,
+          "plateau_area_km2": 99866313.1
+        },
+        {
+          "elapsed_years": 500000000.0,
+          "active_heads": 10,
+          "active_tails": 25,
+          "plates": 39,
+          "heads_so_far": 62,
+          "splits_so_far": 26,
+          "heat_area_km2": 15802236.2,
+          "plateau_area_km2": 93284853.6
+        }
+      ],
+      "craton_keys": {
+        "craton_area_km2": 126881485.21646069,
+        "craton_continental_fraction": 0.5880750450596728,
+        "craton_volume_km3": 4620215408.421758,
+        "craton_destroyed_km3": 205292352.1362487,
+        "craton_ledger_km3": {
+          "initial_m3": 4107197532.2866306,
+          "formed_m3": 718310228.2713785,
+          "rifted_m3": 29067849.296090312,
+          "subducted_m3": 0.0,
+          "delaminated_m3": 0.0,
+          "merge_capped_m3": 0.0,
+          "collision_reworked_m3": 134398691.11729327,
+          "eroded_m3": 46288876.55930552,
+          "topology_removed_m3": 0.0,
+          "audit_clipped_m3": 0.0,
+          "unattributed_m3": -4463064.836440376,
+          "rifted_divergent_m3": 9494.549551280983,
+          "rifted_stretch_m3": 12337766.15313327,
+          "rifted_failed_m3": 16720588.59340576
+        },
+        "craton_rift_cuts": {
+          "split_cuts": 26.0,
+          "split_cuts_through_craton": 12.0,
+          "split_band_area_m2": 90136487456871.27,
+          "split_band_craton_area_m2": 19707370007205.26,
+          "failed_rift_cuts": 25.0,
+          "failed_rift_cuts_through_craton": 13.0,
+          "failed_rift_band_area_m2": 88439547567209.03,
+          "failed_rift_band_craton_area_m2": 25460099472326.39
+        }
+      }
+    },
+    {
+      "case": "sens_stress_3",
+      "seed": 7,
+      "years": 500000000.0,
+      "knobs": {
+        "plumes.PLUME_HEAD_STRESS": 3.0
+      },
+      "wall_s": 425.3,
+      "mean_step_s": 4.25,
+      "lip_events_per_gyr": 124.0,
+      "lip_continental": 26,
+      "lip_oceanic": 36,
+      "lip_volume_km3_per_gyr": 1624460229.6,
+      "lip_volume_continental_km3_per_gyr": 815867353.6,
+      "lip_volume_oceanic_km3_per_gyr": 808592876.1,
+      "active_heads_end": 10,
+      "active_tails_end": 25,
+      "splits": 27,
+      "splits_parent_heated_fraction_mean": 0.1116,
+      "splits_parent_fully_heated": 1,
+      "splits_parent_unheated": 13,
+      "plume_lip_events_stat": 62,
+      "plume_plateau_area_km2": 90444626.44220653,
+      "plume_heat_area_km2": 15364122.25677749,
+      "buoyant_crust_ledger_km3": {
+        "arc": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        },
+        "plume_head": {
+          "emplaced_m3": 415138270.4171075,
+          "thinned_m3": 1448249.8686557915,
+          "reset_m3": 45257.614869792385,
+          "subducted_m3": 127155940.01882643,
+          "converted_m3": 14923.173909610148,
+          "foundered_m3": 1658.1304344011278,
+          "clipped_m3": 118262021.16003996,
+          "topology_removed_m3": 251464.302707448,
+          "unattributed_m3": 0.0,
+          "docked_m3": 341765838.5418368
+        },
+        "plume_tail": {
+          "emplaced_m3": 0.0,
+          "thinned_m3": 0.0,
+          "reset_m3": 0.0,
+          "subducted_m3": 0.0,
+          "converted_m3": 0.0,
+          "foundered_m3": 0.0,
+          "clipped_m3": 0.0,
+          "topology_removed_m3": 0.0,
+          "unattributed_m3": 0.0,
+          "docked_m3": 0.0
+        }
+      },
+      "juvenile_continental_km3": {
+        "juvenile_flood_basalt_m3": 397091844.407,
+        "juvenile_hotspot_m3": 544531750.339,
+        "juvenile_plateau_m3": 14923.174
+      },
+      "head_volume_deciles_km3": [
+        1155211.6,
+        1680990.0,
+        2651018.8,
+        8761068.9,
+        18306133.4,
+        35902601.9,
+        47261664.7
+      ],
+      "checkpoints": [
+        {
+          "elapsed_years": 0.0,
+          "active_heads": 0,
+          "active_tails": 0,
+          "plates": 20,
+          "heads_so_far": 0,
+          "splits_so_far": 0,
+          "heat_area_km2": 0.0,
+          "plateau_area_km2": 0.0
+        },
+        {
+          "elapsed_years": 100000000.0,
+          "active_heads": 14,
+          "active_tails": 26,
+          "plates": 30,
+          "heads_so_far": 18,
+          "splits_so_far": 11,
+          "heat_area_km2": 42890286.8,
+          "plateau_area_km2": 80538846.2
+        },
+        {
+          "elapsed_years": 200000000.0,
+          "active_heads": 4,
+          "active_tails": 23,
+          "plates": 32,
+          "heads_so_far": 27,
+          "splits_so_far": 15,
+          "heat_area_km2": 15737457.1,
+          "plateau_area_km2": 76108816.5
+        },
+        {
+          "elapsed_years": 300000000.0,
+          "active_heads": 9,
+          "active_tails": 31,
+          "plates": 38,
+          "heads_so_far": 39,
+          "splits_so_far": 21,
+          "heat_area_km2": 55587799.5,
+          "plateau_area_km2": 90204887.6
+        },
+        {
+          "elapsed_years": 400000000.0,
+          "active_heads": 9,
+          "active_tails": 23,
+          "plates": 40,
+          "heads_so_far": 50,
+          "splits_so_far": 24,
+          "heat_area_km2": 31525678.8,
+          "plateau_area_km2": 92449432.1
+        },
+        {
+          "elapsed_years": 500000000.0,
+          "active_heads": 10,
+          "active_tails": 25,
+          "plates": 44,
+          "heads_so_far": 62,
+          "splits_so_far": 27,
+          "heat_area_km2": 15364122.3,
+          "plateau_area_km2": 90444626.4
+        }
+      ],
+      "craton_keys": {
+        "craton_area_km2": 125950683.02098046,
+        "craton_continental_fraction": 0.5822080705296284,
+        "craton_volume_km3": 4774105407.433656,
+        "craton_destroyed_km3": 210632009.03015056,
+        "craton_ledger_km3": {
+          "initial_m3": 4107197532.2866306,
+          "formed_m3": 877539884.1771789,
+          "rifted_m3": 23221822.821906745,
+          "subducted_m3": 24345.280250763215,
+          "delaminated_m3": 0.0,
+          "merge_capped_m3": 0.0,
+          "collision_reworked_m3": 145611519.07140097,
+          "eroded_m3": 50461722.66508116,
+          "topology_removed_m3": 0.0,
+          "audit_clipped_m3": 0.0,
+          "unattributed_m3": -8687400.80848906,
+          "rifted_divergent_m3": 663.2839949665075,
+          "rifted_stretch_m3": 11657333.346986173,
+          "rifted_failed_m3": 11563826.190925606
+        },
+        "craton_rift_cuts": {
+          "split_cuts": 27.0,
+          "split_cuts_through_craton": 13.0,
+          "split_band_area_m2": 92099156920415.12,
+          "split_band_craton_area_m2": 22216117040271.668,
+          "failed_rift_cuts": 24.0,
+          "failed_rift_cuts_through_craton": 12.0,
+          "failed_rift_band_area_m2": 83683605561055.73,
+          "failed_rift_band_craton_area_m2": 20409750628471.82
+        }
+      }
+    }
+  ]
+}

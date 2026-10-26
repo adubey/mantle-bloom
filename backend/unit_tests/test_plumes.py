@@ -546,6 +546,44 @@ def test_head_stress_credit_uses_plate_ids():
     assert continental.internal_stress == pytest.approx(plumes.PLUME_HEAD_STRESS)
 
 
+def test_head_volume_distribution_default_matches_log_uniform_draw_for_draw():
+    """RFC 0007 (#584): the default distribution is exactly the #579 draw, so
+    scheduled volumes are unchanged unless the knob moves."""
+    import numpy as np
+
+    from app import plumes
+
+    assert plumes.PLUME_VOLUME_DISTRIBUTION == "log_uniform"
+    for seed in range(5):
+        rng_a = np.random.default_rng(seed)
+        rng_b = np.random.default_rng(seed)
+        assert plumes._sample_head_volume_km3(rng_a) == plumes._log_uniform(
+            rng_b, plumes.PLUME_HEAD_VOLUME_MIN_KM3, plumes.PLUME_HEAD_VOLUME_MAX_KM3
+        )
+
+
+def test_head_volume_distribution_variants_stay_in_range_and_reject_unknown(monkeypatch):
+    """RFC 0007 (#584): lognormal and power-law samplers stay inside the shared
+    range; an unknown name fails loudly."""
+    import numpy as np
+
+    from app import plumes
+
+    rng = np.random.default_rng(0)
+    for name in ("log_uniform", "lognormal", "power_law"):
+        monkeypatch.setattr(plumes, "PLUME_VOLUME_DISTRIBUTION", name)
+        for _ in range(200):
+            volume = plumes._sample_head_volume_km3(rng)
+            assert plumes.PLUME_HEAD_VOLUME_MIN_KM3 <= volume <= plumes.PLUME_HEAD_VOLUME_MAX_KM3
+    monkeypatch.setattr(plumes, "PLUME_VOLUME_DISTRIBUTION", "gaussian")
+    try:
+        plumes._sample_head_volume_km3(rng)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("unknown distribution did not raise")
+
+
 def test_diagnostics_counts_population():
     """diagnostics() reports the live census (#579)."""
     world = World(seed=11, plates=[])

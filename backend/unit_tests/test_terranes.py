@@ -26,6 +26,30 @@ def test_docking_probability_stays_a_probability_and_orders_hosts():
     assert terranes.docking_probability(8_000.0, 2.0) > terranes.docking_probability(8_000.0, 100.0)
 
 
+def test_docking_knobs_default_to_module_constants_at_call_time():
+    """RFC 0007 (#584): None resolves to the module knobs, so tuning sweeps can
+    override them by setattr and unset means exactly the old defaults."""
+    import numpy as np
+
+    assert terranes.threshold_excess_m(100.0) == terranes.threshold_excess_m(
+        100.0, terranes.DOCK_E_YOUNG_M, terranes.DOCK_E_OLD_M, terranes.DOCK_COOLING_MYR
+    )
+    assert terranes.docking_probability(8_000.0, 2.0) == terranes.docking_probability(
+        8_000.0, 2.0, terranes.DOCK_E_YOUNG_M, terranes.DOCK_E_OLD_M, terranes.DOCK_COOLING_MYR, terranes.DOCK_WIDTH_M
+    )
+    plateau = np.full(4, 1000.0)
+    arc = np.full(4, 500.0)
+    moment = np.full(4, 1e6)
+    kept_default, lost_default = terranes.split_docking_loss(plateau, arc, moment)
+    kept_explicit, lost_explicit = terranes.split_docking_loss(plateau, arc, moment, terranes.DOCK_LOWER_CRUST_LOSS)
+    for default, explicit in zip(kept_default + lost_default, kept_explicit + lost_explicit):
+        np.testing.assert_array_equal(default, explicit)
+    juvenile_default, foundered_default = terranes.conversion_split(plateau, arc)
+    juvenile_explicit, foundered_explicit = terranes.conversion_split(plateau, arc, terranes.PLATEAU_PRESERVED_FRACTION)
+    np.testing.assert_array_equal(juvenile_default, juvenile_explicit)
+    np.testing.assert_array_equal(foundered_default, foundered_explicit)
+
+
 def test_threshold_excess_limits():
     """New crust faces the young threshold, ancient crust the old one (#580)."""
     assert terranes.threshold_excess_m(0.0) == pytest.approx(terranes.DOCK_E_YOUNG_M)
