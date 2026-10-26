@@ -74,7 +74,9 @@ Time-stepping:
     Myr collision -- see simulation-model/tectonics.md#merge-and-split), erode elevation and route
     rivers/lakes/glaciers from the world's current climate (every step -- see
     simulation-model/surface-processes.md#erosion, simulation-model/hydrology.md#hydrology, and
-    simulation-model/hydrology.md#glaciation), and roll each active volcano's own eruption chance (every
+    simulation-model/hydrology.md#glaciation); lake volume is integrated through the step over
+    the depression hierarchy, with only overflow exported to downstream discharge and a
+    per-step water ledger, and roll each active volcano's own eruption chance (every
     step -- see simulation-model/tectonics.md#volcanism). (Submerged crust's depth is set directly by
     isostasy, not a per-step relaxation; `bathymetry.py` now only grades continent/ocean
     margins once, at generation -- see simulation-model/surface-processes.md#bathymetry.) Boundary advance into
@@ -538,7 +540,8 @@ hydroclimate/erosion.py           every-step rain/river/weathering/glacier erosi
 hydroclimate/hydrology.py         every-step flow routing over the geology node cloud (a k-nearest-
                      neighbor graph, not a grid): basin-spill detection, steepest-
                      descent flow direction, downstream flow accumulation, glacier
-                     mass balance and shape (via ice_sheet.py) -- feeds erosion.py's river/glacier erosion and
+                     mass balance and shape (via ice_sheet.py), and prognostic lake fill-spill-merge
+                     with a conservative volume ledger -- feeds erosion.py's river/glacier erosion and
                      deposition and the rendered river/lake/glacier overlay (see
                      simulation-model/hydrology.md#hydrology and simulation-model/hydrology.md#glaciation); also
                      groups the flat is_river mask into distinct drainage networks

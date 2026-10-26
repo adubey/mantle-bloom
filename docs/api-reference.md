@@ -709,9 +709,9 @@ runs once). `404` if no world has been generated yet.
   into, not the mouth itself, and `"lake"` for a sink whose spill path reaches visible lake
   water -- see
   [simulation-model/hydrology.md#river-inspector](simulation-model/hydrology.md#river-inspector)), or `"other"`
-  (a true dead-end sink, `flow_target == -1` -- a basin `lakes.step_lakes` is already growing
-  into a real lake node by node every step, so this flips to `"lake"` on its own once that
-  basin's water crosses `LAKE_MIN_VISIBLE_DEPTH_M`).
+  (a true dead-end sink, `flow_target == -1` -- the prognostic lake solver integrates its
+  stored volume each step, so this flips to `"lake"` once the basin's water crosses
+  `LAKE_MIN_VISIBLE_DEPTH_M`).
 - `flow_rate` is physical discharge at the river mouth in m^3/s, from
   `HydrologyFields.discharge_m3_s`. `speed` is the stylized, unitless
   `hydrology.compute_river_speed` value evaluated there.
@@ -796,8 +796,10 @@ been generated yet.
   several smaller basins merging together reports its own *current* rim, not an interior saddle
   that's already flooded. `null` for an unresolved closed/endorheic basin with no known spill
   (a legitimate state, not missing data -- see `lakes.py`'s own docstring).
-- `water_elevation_m`/`is_spilling` describe this lake's current water surface and whether
-  it's actively overflowing its own outlet.
+- `water_elevation_m`/`is_spilling` describe this lake's final same-step water surface and
+  spill state from the prognostic hierarchy solve (`lakes.solve_lakes_prognostic`, #588). A
+  capped lake reports spilling when surplus leaves its body even if its depth cap sits below
+  the terrain rim.
 - `inflow_rivers` is every `RiverInfo` (see `/worlds/{world_id}/rivers`) whose own mouth lands somewhere in
   this basin, as a small inline summary rather than a full `RiverSummary` -- the River
   Inspector's own map mode is what draws a river's full path. Each `flow_rate` is physical

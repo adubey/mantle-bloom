@@ -61,20 +61,23 @@ VIS = hydrology.LAKE_MIN_VISIBLE_DEPTH_M
 SECONDS_PER_YEAR = hydrology.SECONDS_PER_YEAR
 RSS_PER_MB = 2**20 if sys.platform == "darwin" else 2**10  # ru_maxrss: bytes on macOS, KiB on Linux
 
-# The resolve inputs, kept so each tracked basin's inflow and evaporation can be read back.
+# Keep the prognostic solver inputs so each tracked basin's inflow and evaporation can be read
+# back. This diagnostic now observes the #588 production path rather than the legacy resolver.
 captured: dict = {}
-_orig_resolve_lakes = lakes.resolve_lakes
+_orig_solve_lakes_prognostic = lakes.solve_lakes_prognostic
 
 
-def _capture(*args):
-    # `compute_hydrology` passes climate and hypsometry last, both before #539 (when an
-    # `is_frozen` array came before them) and after, so either backend can be measured.
-    captured.update(climate=args[-2], hyps=args[-1])
-    return _orig_resolve_lakes(*args)
+def _capture_prognostic_lakes(
+    forest, elevation, previous_depth, years, climate, hypsometry, **kwargs
+):
+    captured.update(climate=climate, hyps=hypsometry)
+    return _orig_solve_lakes_prognostic(
+        forest, elevation, previous_depth, years, climate, hypsometry, **kwargs
+    )
 
 
-lakes.resolve_lakes = _capture
-hydrology.lakes.resolve_lakes = _capture
+lakes.solve_lakes_prognostic = _capture_prognostic_lakes
+hydrology.lakes.solve_lakes_prognostic = _capture_prognostic_lakes
 _orig_runoff_mm = hydrology.breaching.runoff_mm
 
 
