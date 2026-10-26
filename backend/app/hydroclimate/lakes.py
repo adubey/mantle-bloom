@@ -507,7 +507,7 @@ def _advance_prognostic_body(
     if body.drains_at_floor:
         cap_level = dry_level
     available = stored + input_volume
-    new_volume, evap_volume, overflow, new_level = _integrate_body_volume(
+    _, evap_volume, overflow, new_level = _integrate_body_volume(
         available, members, cap_level, dry_level, dt_step, evaporation, hypsometry
     )
     accounting.evaporation_total += evap_volume
