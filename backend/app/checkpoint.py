@@ -42,6 +42,7 @@ RAILWAY_VOLUME_ENV = "RAILWAY_VOLUME_MOUNT_PATH"
 
 WORLD_FILE = "world.mbworld"
 STATUS_FILE = "run_status.json"
+ANIMATION_PROGRESS_FILE = "animation_progress.json"
 STATUS_VERSION = 1
 # The multi-world registry index (#563): metadata for every world whose
 # checkpoint lives under `WORLDS_DIR/<world_id>/` in the same root.
@@ -159,6 +160,27 @@ class CheckpointStore:
     def save_status(self, status: RunStatus) -> None:
         data = json.dumps({"version": STATUS_VERSION, "running": status.running, "step_years": status.step_years})
         self._replace(self.status_path, data.encode())
+
+    def save_animation_progress(self, payload: dict) -> None:
+        """Record one completed animation frame for a later recovery (#638): written
+        next to the per-frame world checkpoint, cleared when a run finishes with a
+        video. Advisory only -- readers treat anything unexpected as absent."""
+        self._replace(self.directory / ANIMATION_PROGRESS_FILE, json.dumps(payload).encode())
+
+    def load_animation_progress(self) -> dict | None:
+        """The last recorded animation progress, or None when no interrupted run is
+        recoverable. Never raises: a missing, corrupt or foreign-shaped file just
+        means nothing to recover."""
+        try:
+            payload = json.loads((self.directory / ANIMATION_PROGRESS_FILE).read_bytes())
+        except (OSError, ValueError):
+            return None
+        return payload if isinstance(payload, dict) else None
+
+    def clear_animation_progress(self) -> None:
+        """Forget a finished run's progress: its video exists, so there is nothing
+        left to recover."""
+        (self.directory / ANIMATION_PROGRESS_FILE).unlink(missing_ok=True)
 
     def load(self) -> tuple[World | None, RunStatus]:
         """The checkpointed world (None if there isn't a usable one) and run status. Never

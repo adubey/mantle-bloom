@@ -1582,6 +1582,74 @@ def test_generate_unknown_tuple_message_becomes_error_line(client, monkeypatch):
     assert "unexpected generate progress" in messages[-1]["detail"]
 
 
+def test_animate_recovery_reports_recorded_progress(client, tmp_path, monkeypatch):
+    # #638: an interrupted run's sidecar must come back with its run shape, so the
+    # client can resume the remaining frames from the checkpointed world.
+    from app import checkpoint
+
+    monkeypatch.setattr(main, "_checkpoint_root", checkpoint.CheckpointStore(tmp_path))
+    _default_session.checkpoint_store = main._checkpoint_root.for_world(_default_session.world_id)
+    try:
+        payload = {
+            "completed_frames": 7, "total_frames": 20, "steps_per_frame": 10,
+            "step_years": 100_000, "projection": "eckert4", "view": "elevation",
+            "width": 64, "height": 64,
+        }
+        _default_session.checkpoint_store.save_animation_progress(payload)
+        resp = client.get(f"/worlds/{_default_session.world_id}/animate/recovery")
+        assert resp.status_code == 200
+        assert resp.json() == payload
+    finally:
+        _default_session.checkpoint_store = None
+
+
+def test_animate_recovery_404_without_a_record(client):
+    # Nothing recorded (or already finished/recovered) is a 404: this is a plain
+    # GET, so the status carries it -- no error line needed.
+    _default_session.checkpoint_store = None
+    resp = client.get(f"/worlds/{_default_session.world_id}/animate/recovery")
+    assert resp.status_code == 404
+
+
+def test_animate_recovery_503_while_a_run_is_active(client, tmp_path):
+    # Recovery must not race a live run: refuse while the operation flag is held.
+    from app import checkpoint
+
+    _default_session.checkpoint_store = checkpoint.CheckpointStore(tmp_path)
+    assert _default_session.begin_operation()
+    try:
+        resp = client.get(f"/worlds/{_default_session.world_id}/animate/recovery")
+        assert resp.status_code == 503
+    finally:
+        _default_session.end_operation()
+        _default_session.checkpoint_store = None
+
+
+def test_animate_message_line_records_and_clears_recovery(tmp_path, monkeypatch):
+    # #638: each completed frame updates the sidecar; the done line clears it, since
+    # a finished run's video leaves nothing to recover.
+    from app import checkpoint
+
+    store = checkpoint.CheckpointStore(tmp_path)
+    session = SimpleNamespace(checkpoint_store=store, deleted=False)
+    world = SimpleNamespace(stats_history=[])
+    monkeypatch.setattr(main, "_checkpoint_world", lambda session: None)
+    monkeypatch.setattr(main, "_summary", lambda session, world: {})
+    spec = {
+        "total_frames": 3, "steps_per_frame": 1, "step_years": 100_000,
+        "projection": "eckert4", "view": "elevation", "width": 64, "height": 64,
+    }
+    line, last_frame, completed = main._animate_message_line(
+        session, world, ("progress", 2, 3, b"png", 200_000.0), 1, spec)
+    assert completed is False and last_frame == 2
+    assert json.loads(line)["type"] == "progress"
+    assert store.load_animation_progress() == {**spec, "completed_frames": 2}
+    line, last_frame, completed = main._animate_message_line(
+        session, world, ("done", b"mp4", False), 2, spec)
+    assert completed is True
+    assert store.load_animation_progress() is None
+
+
 def test_animate_disconnect_mid_stream_still_publishes_completed_frames(client):
     # Round-4 Finding 3: animate used to defer its only _world_changed to normal
     # completion, so a disconnect left the feed revision, render cache and index
