@@ -1,4 +1,6 @@
+import os
 import sqlite3
+import stat
 
 import pytest
 from app import users
@@ -41,8 +43,33 @@ def test_relink_moves_identity_to_new_owner(store):
 
 
 def test_identity_for_unknown_user_fails(store):
-    with pytest.raises(KeyError):
+    with pytest.raises(KeyError) as exc:
         store.link_identity("github", "123", 999_999)
+
+    assert exc.value.args == (999_999,)
+
+
+def test_world_for_unknown_user_fails(store):
+    with pytest.raises(KeyError) as exc:
+        store.add_world("w9", 999_999)
+
+    assert exc.value.args == (999_999,)
+
+
+def test_future_schema_version_is_refused(tmp_path):
+    path = str(tmp_path / "users.db")
+    with sqlite3.connect(path) as conn:
+        conn.execute("PRAGMA user_version = 99")
+
+    with pytest.raises(ValueError, match="newer than this build reads"):
+        SqliteUserStore(path)
+
+
+def test_fresh_database_file_is_owner_only(tmp_path):
+    path = str(tmp_path / "users.db")
+    SqliteUserStore(path)
+
+    assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
 
 
 def test_subscription_upsert_and_statuses(store):
@@ -67,20 +94,42 @@ def test_subscription_upsert_and_statuses(store):
 
 
 def test_subscription_for_unknown_user_fails(store):
-    with pytest.raises(KeyError):
+    with pytest.raises(KeyError) as exc:
         store.set_subscription(999_999, status="active")
+
+    assert exc.value.args == (999_999,)
+
+
+def test_subscription_status_must_be_a_string(store):
+    ids = users.seed_test_users(store)
+
+    with pytest.raises(TypeError):
+        store.set_subscription(ids["free"], status=None)
+
+
+def test_display_name_length_is_capped(store):
+    with pytest.raises(ValueError, match="200"):
+        store.create_user("x" * 201)
+
+    assert store.create_user("x" * 200).display_name == "x" * 200
 
 
 def test_world_ownership_lifecycle(store):
     ids = users.seed_test_users(store)
-    store.add_world("w1", ids["free"])
+    # Added out of alphabetical order on purpose: the contract is oldest-first,
+    # not sorted, and the old test could not tell the difference (#620 review).
     store.add_world("w2", ids["free"])
+    store.add_world("w1", ids["free"])
     store.add_world("w3", ids["paid"])
 
     assert store.world_owner("w1") == ids["free"]
     assert store.world_owner("missing") is None
-    assert store.user_worlds(ids["free"]) == ["w1", "w2"]
+    assert store.user_worlds(ids["free"]) == ["w2", "w1"]
     assert store.user_worlds(ids["paid"]) == ["w3"]
+
+    # Re-adding under the same owner is idempotent and keeps the original slot.
+    store.add_world("w2", ids["free"])
+    assert store.user_worlds(ids["free"]) == ["w2", "w1"]
 
     store.remove_world("w1")
     assert store.world_owner("w1") is None
@@ -89,9 +138,25 @@ def test_world_ownership_lifecycle(store):
         store.remove_world("w1")
 
 
-def test_world_for_unknown_user_fails(store):
-    with pytest.raises(KeyError):
-        store.add_world("w9", 999_999)
+def test_user_worlds_tie_breaks_by_world_id(store, monkeypatch):
+    # Same timestamp for every add: insertion order and creation order stop
+    # agreeing, so only the documented tie-break passes on both backends.
+    monkeypatch.setattr(users, "_now", lambda: "t")
+    ids = users.seed_test_users(store)
+    store.add_world("b", ids["free"])
+    store.add_world("a", ids["free"])
+
+    assert store.user_worlds(ids["free"]) == ["a", "b"]
+
+
+def test_add_world_refuses_other_owners(store):
+    ids = users.seed_test_users(store)
+    store.add_world("w", ids["free"])
+
+    with pytest.raises(ValueError, match="already owned"):
+        store.add_world("w", ids["paid"])
+
+    assert store.world_owner("w") == ids["free"]
 
 
 def test_open_user_store_selects_backend(tmp_path, monkeypatch):
@@ -126,12 +191,17 @@ def test_sqlite_v1_upgrades_to_current_with_data(tmp_path):
         users._migrate_to_1(conn)
         conn.execute("PRAGMA user_version = 1")
         conn.execute("INSERT INTO users(id, display_name, created_at) VALUES (7, 'old', 't')")
+        conn.execute(
+            "INSERT INTO subscriptions(user_id, status, updated_at) VALUES (7, 'active', 't')"
+        )
         conn.execute("INSERT INTO worlds(world_id, user_id, created_at) VALUES ('w', 7, 't')")
         conn.commit()
 
     store = SqliteUserStore(path)
 
     assert store.get_user(7).display_name == "old"
+    assert store.get_subscription(7).status == "active"
+    assert store.tier(7) == "paid"
     assert store.world_owner("w") == 7
     store.link_identity("github", "1", 7)
     assert store.user_for_identity("github", "1").id == 7

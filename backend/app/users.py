@@ -15,7 +15,12 @@ same tables; tier checks read them now. Admin is an override, never stored: pass
 
 A missing user is "free", never an error: route gating (item 3) treats unknown
 callers as signed-out viewers. Anything else that names a user who isn't there --
-linking, subscribing, or adding a world -- raises `KeyError` instead of inventing one.
+linking, subscribing, or adding a world -- raises `KeyError(user_id)` instead of
+inventing one. Recording a world already owned by someone else raises `ValueError`
+(it is never silently reassigned); display names are capped at 200 characters and
+subscription statuses must be strings. Fresh database files are created owner-only
+(`0o600`); a file stamped with a newer schema version than this build reads is
+refused instead of opened.
 """
 
 from __future__ import annotations
@@ -99,7 +104,8 @@ class UserStore(ABC):
 
     @abstractmethod
     def add_world(self, world_id: str, user_id: int) -> None:
-        """Record ownership of a world file. Raises `KeyError` for an unknown user."""
+        """Record ownership of a world file. Raises `KeyError` for an unknown user and
+        `ValueError` if the id is already recorded under a different user."""
 
     @abstractmethod
     def remove_world(self, world_id: str) -> None:
@@ -111,7 +117,8 @@ class UserStore(ABC):
 
     @abstractmethod
     def user_worlds(self, user_id: int) -> list[str]:
-        """Every world id recorded for a user, oldest first."""
+        """Every world id recorded for a user, oldest first (ties broken by world id,
+        so both backends agree even when two adds share a timestamp)."""
 
     @abstractmethod
     def tier(self, user_id: int, *, admin: bool = False) -> Tier:
@@ -119,10 +126,32 @@ class UserStore(ABC):
         `free` for everyone else -- including unknown users."""
 
 
+MAX_DISPLAY_NAME_LEN = 200
+
+
+def _check_display_name(display_name: str | None) -> None:
+    if display_name is not None and len(display_name) > MAX_DISPLAY_NAME_LEN:
+        raise ValueError(f"display name longer than {MAX_DISPLAY_NAME_LEN} characters")
+
+
+def _check_status(status: str) -> None:
+    if not isinstance(status, str):
+        raise TypeError(f"subscription status must be a string, got {type(status).__name__}")
+
+
+def _tier_for_status(sub: Subscription | None, admin: bool) -> Tier:
+    if admin:
+        return "admin"
+    if sub is not None and sub.status in PAID_STATUSES:
+        return "paid"
+    return "free"
+
+
 class MemoryUserStore(UserStore):
     """In-process store: the desktop default and the unit-test backend."""
 
     def __init__(self) -> None:
+        self._lock = threading.Lock()
         self._users: dict[int, User] = {}
         self._identities: dict[tuple[str, str], tuple[int, str | None]] = {}
         self._subscriptions: dict[int, Subscription] = {}
@@ -130,18 +159,21 @@ class MemoryUserStore(UserStore):
         self._next_id = 1
 
     def create_user(self, display_name: str | None = None) -> User:
-        user = User(id=self._next_id, created_at=_now(), display_name=display_name)
-        self._users[user.id] = user
-        self._next_id += 1
+        _check_display_name(display_name)
+        with self._lock:
+            user = User(id=self._next_id, created_at=_now(), display_name=display_name)
+            self._users[user.id] = user
+            self._next_id += 1
         return user
 
     def get_user(self, user_id: int) -> User | None:
         return self._users.get(user_id)
 
     def link_identity(self, provider: str, subject: str, user_id: int, email: str | None = None) -> None:
-        if user_id not in self._users:
-            raise KeyError(user_id)
-        self._identities[(provider, subject)] = (user_id, email)
+        with self._lock:
+            if user_id not in self._users:
+                raise KeyError(user_id)
+            self._identities[(provider, subject)] = (user_id, email)
 
     def user_for_identity(self, provider: str, subject: str) -> User | None:
         hit = self._identities.get((provider, subject))
@@ -157,59 +189,64 @@ class MemoryUserStore(UserStore):
         plan: str = "paid",
         current_period_end: str | None = None,
     ) -> Subscription:
-        if user_id not in self._users:
-            raise KeyError(user_id)
-        sub = Subscription(
-            user_id=user_id,
-            status=status,
-            updated_at=_now(),
-            provider_customer_id=provider_customer_id,
-            provider_subscription_id=provider_subscription_id,
-            plan=plan,
-            current_period_end=current_period_end,
-        )
-        self._subscriptions[user_id] = sub
+        _check_status(status)
+        with self._lock:
+            if user_id not in self._users:
+                raise KeyError(user_id)
+            sub = Subscription(
+                user_id=user_id,
+                status=status,
+                updated_at=_now(),
+                provider_customer_id=provider_customer_id,
+                provider_subscription_id=provider_subscription_id,
+                plan=plan,
+                current_period_end=current_period_end,
+            )
+            self._subscriptions[user_id] = sub
         return sub
 
     def get_subscription(self, user_id: int) -> Subscription | None:
         return self._subscriptions.get(user_id)
 
     def add_world(self, world_id: str, user_id: int) -> None:
-        if user_id not in self._users:
-            raise KeyError(user_id)
-        self._worlds[world_id] = (user_id, _now())
+        with self._lock:
+            if user_id not in self._users:
+                raise KeyError(user_id)
+            hit = self._worlds.get(world_id)
+            if hit is not None and hit[0] != user_id:
+                raise ValueError(f"world {world_id!r} is already owned by user {hit[0]}")
+            if hit is None:
+                self._worlds[world_id] = (user_id, _now())
 
     def remove_world(self, world_id: str) -> None:
-        if world_id not in self._worlds:
-            raise KeyError(world_id)
-        del self._worlds[world_id]
+        with self._lock:
+            if world_id not in self._worlds:
+                raise KeyError(world_id)
+            del self._worlds[world_id]
 
     def world_owner(self, world_id: str) -> int | None:
         hit = self._worlds.get(world_id)
         return hit[0] if hit else None
 
     def user_worlds(self, user_id: int) -> list[str]:
-        return [wid for wid, (uid, _) in self._worlds.items() if uid == user_id]
+        with self._lock:
+            owned = [(wid, ts) for wid, (uid, ts) in self._worlds.items() if uid == user_id]
+        return [wid for wid, _ in sorted(owned, key=lambda item: (item[1], item[0]))]
 
     def tier(self, user_id: int, *, admin: bool = False) -> Tier:
-        if admin:
-            return "admin"
-        sub = self._subscriptions.get(user_id)
-        if sub is not None and sub.status in PAID_STATUSES:
-            return "paid"
-        return "free"
+        return _tier_for_status(self._subscriptions.get(user_id), admin)
 
 
 def _migrate_to_1(conn: sqlite3.Connection) -> None:
     """Users, the subscription cache, and world ownership."""
     conn.executescript(
         """
-        CREATE TABLE users(
+        CREATE TABLE IF NOT EXISTS users(
             id INTEGER PRIMARY KEY,
             created_at TEXT NOT NULL,
             display_name TEXT
         );
-        CREATE TABLE subscriptions(
+        CREATE TABLE IF NOT EXISTS subscriptions(
             user_id INTEGER PRIMARY KEY REFERENCES users(id),
             provider_customer_id TEXT,
             provider_subscription_id TEXT,
@@ -218,12 +255,12 @@ def _migrate_to_1(conn: sqlite3.Connection) -> None:
             current_period_end TEXT,
             updated_at TEXT NOT NULL
         );
-        CREATE TABLE worlds(
+        CREATE TABLE IF NOT EXISTS worlds(
             world_id TEXT PRIMARY KEY,
             user_id INTEGER NOT NULL REFERENCES users(id),
             created_at TEXT NOT NULL
         );
-        CREATE INDEX idx_worlds_user ON worlds(user_id);
+        CREATE INDEX IF NOT EXISTS idx_worlds_user ON worlds(user_id);
         """
     )
 
@@ -233,7 +270,7 @@ def _migrate_to_2(conn: sqlite3.Connection) -> None:
     upgrades cleanly to the current schema."""
     conn.executescript(
         """
-        CREATE TABLE identities(
+        CREATE TABLE IF NOT EXISTS identities(
             provider TEXT NOT NULL,
             subject TEXT NOT NULL,
             user_id INTEGER NOT NULL REFERENCES users(id),
@@ -241,7 +278,7 @@ def _migrate_to_2(conn: sqlite3.Connection) -> None:
             created_at TEXT NOT NULL,
             PRIMARY KEY (provider, subject)
         );
-        CREATE INDEX idx_identities_user ON identities(user_id);
+        CREATE INDEX IF NOT EXISTS idx_identities_user ON identities(user_id);
         """
     )
 
@@ -251,6 +288,10 @@ _MIGRATIONS = {1: _migrate_to_1, 2: _migrate_to_2}
 
 def _migrate(conn: sqlite3.Connection) -> None:
     version = conn.execute("PRAGMA user_version").fetchone()[0]
+    if version > SCHEMA_VERSION:
+        raise ValueError(
+            f"user database version {version} is newer than this build reads ({SCHEMA_VERSION})"
+        )
     for target in range(version + 1, SCHEMA_VERSION + 1):
         _MIGRATIONS[target](conn)
         conn.execute(f"PRAGMA user_version = {target}")
@@ -262,27 +303,43 @@ class SqliteUserStore(UserStore):
     short, so concurrent requests just queue instead of fighting over the file."""
 
     def __init__(self, path: str) -> None:
-        parent = os.path.dirname(os.path.abspath(path))
+        resolved = os.path.realpath(path)
+        fresh = not os.path.exists(resolved)
+        parent = os.path.dirname(resolved) or "."
         os.makedirs(parent, exist_ok=True)
-        self._conn = sqlite3.connect(path, check_same_thread=False)
+        self._conn = sqlite3.connect(resolved, check_same_thread=False)
         self._lock = threading.Lock()
         with self._lock:
             self._conn.execute("PRAGMA foreign_keys = ON")
             _migrate(self._conn)
+        if fresh:
+            # Emails and provider customer ids live here: keep the file owner-only.
+            os.chmod(resolved, 0o600)
 
     def _one(self, query: str, args: tuple = ()) -> sqlite3.Row | None:
         with self._lock:
             return self._conn.execute(query, args).fetchone()
 
-    def _run(self, query: str, args: tuple = ()) -> None:
+    def _integrity_owner(self, user_id: int) -> None:
+        """Map a foreign-key failure to the missing user, if that is what failed;
+        anything else (a NULL status, a broken schema) stays a loud integrity error
+        instead of masquerading as an unknown user."""
         with self._lock:
-            try:
+            known = self._conn.execute("SELECT 1 FROM users WHERE id = ?", (user_id,)).fetchone()
+        if known is None:
+            raise KeyError(user_id)
+        raise
+
+    def _run(self, query: str, args: tuple, user_id: int) -> None:
+        try:
+            with self._lock:
                 self._conn.execute(query, args)
                 self._conn.commit()
-            except sqlite3.IntegrityError as exc:
-                raise KeyError(str(exc)) from exc
+        except sqlite3.IntegrityError:
+            self._integrity_owner(user_id)
 
     def create_user(self, display_name: str | None = None) -> User:
+        _check_display_name(display_name)
         with self._lock:
             row = self._conn.execute(
                 "INSERT INTO users(display_name, created_at) VALUES (?, ?) RETURNING id, created_at",
@@ -301,6 +358,7 @@ class SqliteUserStore(UserStore):
             " VALUES (?, ?, ?, ?, ?)"
             " ON CONFLICT(provider, subject) DO UPDATE SET user_id = excluded.user_id, email = excluded.email",
             (provider, subject, user_id, email, _now()),
+            user_id,
         )
 
     def user_for_identity(self, provider: str, subject: str) -> User | None:
@@ -321,6 +379,7 @@ class SqliteUserStore(UserStore):
         plan: str = "paid",
         current_period_end: str | None = None,
     ) -> Subscription:
+        _check_status(status)
         sub = Subscription(
             user_id=user_id,
             status=status,
@@ -346,6 +405,7 @@ class SqliteUserStore(UserStore):
                 sub.current_period_end,
                 sub.updated_at,
             ),
+            user_id,
         )
         return sub
 
@@ -368,11 +428,21 @@ class SqliteUserStore(UserStore):
         )
 
     def add_world(self, world_id: str, user_id: int) -> None:
-        self._run(
-            "INSERT INTO worlds(world_id, user_id, created_at) VALUES (?, ?, ?)"
-            " ON CONFLICT(world_id) DO UPDATE SET user_id = excluded.user_id",
-            (world_id, user_id, _now()),
-        )
+        # Check and insert under one lock hold: two concurrent first-adds must not
+        # both pass the ownership check, and a world recorded under another user is
+        # never silently reassigned (that check belongs here, not just the routes).
+        with self._lock:
+            if self._conn.execute("SELECT 1 FROM users WHERE id = ?", (user_id,)).fetchone() is None:
+                raise KeyError(user_id)
+            row = self._conn.execute("SELECT user_id FROM worlds WHERE world_id = ?", (world_id,)).fetchone()
+            if row is None:
+                self._conn.execute(
+                    "INSERT INTO worlds(world_id, user_id, created_at) VALUES (?, ?, ?)",
+                    (world_id, user_id, _now()),
+                )
+                self._conn.commit()
+            elif row[0] != user_id:
+                raise ValueError(f"world {world_id!r} is already owned by user {row[0]}")
 
     def remove_world(self, world_id: str) -> None:
         with self._lock:
@@ -393,12 +463,7 @@ class SqliteUserStore(UserStore):
         return [row[0] for row in rows]
 
     def tier(self, user_id: int, *, admin: bool = False) -> Tier:
-        if admin:
-            return "admin"
-        sub = self.get_subscription(user_id)
-        if sub is not None and sub.status in PAID_STATUSES:
-            return "paid"
-        return "free"
+        return _tier_for_status(self.get_subscription(user_id), admin)
 
 
 def open_user_store() -> UserStore:
