@@ -37,6 +37,7 @@ from . import (
     replay_log,
     run_control,
     stats,
+    users,
     world_names,
     worldsketch,
 )
@@ -137,6 +138,10 @@ def _max_worlds() -> int:
 
 # Every world in this process (#563). See world_registry.py.
 _registry = WorldRegistry(max_worlds=_max_worlds())
+
+# The user/entitlement store (#620): SQLite at MANTLE_BLOOM_USER_DB_PATH, in-memory
+# when unset. Nothing gates on tiers yet (items 2-4); the store just exists for them.
+_user_store = users.open_user_store()
 
 # FastAPI runs sync `def` routes in a thread pool, so two requests can otherwise race on the
 # same World's mutable numpy arrays -- and, worse, launch Numba's `parallel=True` kernels

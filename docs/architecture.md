@@ -593,6 +593,10 @@ world_names.py       default world names in exoplanet style: a star name plus a 
                      discovery letter (#597)
 auth.py              single-owner GitHub login: the request guard, OAuth routes and signed
                      session cookies (see #access-control above)
+users.py             per-user store behind the paid tier (#620): users, linked identities,
+                     the subscription cache and world ownership; SQLite at
+                     MANTLE_BLOOM_USER_DB_PATH, in-memory when unset, tier() for
+                     free/paid/admin
 run_control.py       the run/stopped status and the background thread that steps a running
                      world (see #run-and-checkpoint above)
 checkpoint.py        atomic world and run-status checkpoints on persistent storage, and

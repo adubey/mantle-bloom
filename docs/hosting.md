@@ -43,6 +43,8 @@ Railway's variables, not committed to the repository:
 - The numeric GitHub user ID allowed into the full app
 - Session signing secret
 - Public service URL
+- User database file (`MANTLE_BLOOM_USER_DB_PATH`, a SQLite file on the volume;
+  unset means the in-memory store, the desktop default -- see #620)
 
 The Railway service mounts its persistent volume at `/data`. `RAILWAY_VOLUME_MOUNT_PATH` is
 provided by Railway, and the app uses it for checkpoints. The service definition requires the
