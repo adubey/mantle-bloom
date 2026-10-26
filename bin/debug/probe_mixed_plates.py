@@ -107,7 +107,10 @@ def retile(world, run: int):
     cratons.ensure_ledger(mixed)
     mixed.craton_ledger["initial_m3"] = cratons.live_volume_m3(mixed)
     n_continental = sum(1 for p in plates if p.crust_type == "continental")
-    world_mod.finish_generation(mixed, f"World re-tiled with {len(plates)} mixed plates ({n_continental} majority continental).")
+    # finish_generation is a heartbeat-yielding generator (#611); nobody streams here,
+    # so drain it -- calling it without draining would skip the bootstrap entirely.
+    for _ in world_mod.finish_generation(mixed, f"World re-tiled with {len(plates)} mixed plates ({n_continental} majority continental)."):
+        pass
     return mixed
 
 

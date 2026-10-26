@@ -200,6 +200,11 @@ Response: a summary --
 `surface` is always `"quad"` (plates are sparse adaptive quad patches), except that a loaded
 save with no plates reports `"empty"`.
 
+The summary arrives as the final line of a newline-delimited JSON stream
+(`application/x-ndjson`): `{"type": "progress", "fraction": f}` at the three phase
+boundaries, an overdue-gated `{"type": "heartbeat", "fraction": f}` tick wherever a slow
+sub-phase runs with no other output (#611), then the summary above as `{"type": "done", ...}`.
+
 `events` is the *entire* current event log (capped at `world.MAX_EVENT_LOG_LENGTH = 200`
 entries, oldest dropped first), not just what changed this call -- simplest for the frontend,
 which just replaces its displayed console with it on every response, and small enough not to
@@ -230,6 +235,11 @@ real-time increment (one simulated day) regardless of `years`, see
 shape as `/worlds/{world_id}/generate`, with `events` reflecting anything logged up through this step.
 `400` for a `years` that isn't positive, finite, and at most `main.MAX_STEP_YEARS`
 (100 Myr, #557), `404` if no world has been generated yet.
+
+Like generate, the response streams newline-delimited JSON: `{"type": "progress",
+"fraction": f}` after each per-plate shift/deform unit, an overdue-gated
+`{"type": "heartbeat", "fraction": f}` tick at the slow tail's sub-boundaries (#611),
+then the summary as `{"type": "done", ...}`.
 
 ## `POST /worlds/{world_id}/run`, `GET /worlds/{world_id}/run`
 
@@ -555,6 +565,12 @@ per line, so the client can drive a progress bar instead of blocking on one opaq
 ...
 {"type": "done", "mime": "video/mp4", "video_base64": "AAAAIGZ0eXBpc29t...", "stopped_early": false, "seed": 9, "elapsed_years": 19000000, "num_plates": 6, "events": []}
 ```
+
+While a frame's step batch runs, `{"type": "heartbeat", "frame": n, "total": N,
+"elapsed_years": ...}` ticks flow whenever a step lands more than a minute after the
+previous line (#611) -- imageless proof the run is still stepping, so the client's
+idle watchdog doesn't abort a slow batch as stalled. The frontend ignores their shape;
+their bytes alone reset its timer.
 
 Each `progress` line carries that frame's own rendered PNG in `image_base64` (same encoding
 as `/worlds/{world_id}/render`) -- the frontend paints it straight onto the main map so the display

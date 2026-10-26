@@ -1,7 +1,7 @@
 import numpy as np
 from app.hydroclimate import climate
 from app.torque import shift_plates_quasistatic
-from app.world import generate_world, step_world
+from app.world import PROGRESS_HEARTBEAT_INTERVAL_S, generate_world, generate_world_progress, step_world, step_world_progress
 
 
 def test_generate_world_starts_plates_at_rest():
@@ -231,3 +231,49 @@ def test_step_world_ends_with_every_column_inside_its_caps(monkeypatch):
     clamp = world.phase_budget["column_cap_clamp"]["scopes"]["all"]
     assert clamp["sum_hc_after"] > clamp["sum_hc_before"]
     assert clamp["sum_hm_after"] != clamp["sum_hm_before"]
+
+
+def test_step_world_progress_sends_heartbeats_from_its_slow_tail(monkeypatch):
+    # GitHub issue #611: the tail past the plate loops (topology, climate/erosion,
+    # caps, sea level) has no per-plate loop of its own, so a slow step went silent.
+    # An overdue tick must fire at each slow sub-boundary carrying the tail fraction --
+    # while a fast step stays exactly as silent as before.
+    world = generate_world(seed=10, num_plates=8)
+    now = [0.0]
+
+    def _fast_clock():
+        now[0] += PROGRESS_HEARTBEAT_INTERVAL_S + 1.0
+        return now[0]
+
+    monkeypatch.setattr("app.world._monotonic", _fast_clock)
+    messages = list(step_world_progress(world, 1_000_000))
+    progress = [m for m in messages if not isinstance(m, tuple)]
+    heartbeats = [m for m in messages if isinstance(m, tuple)]
+    assert len(progress) == 2 * 8 + 1  # per-plate units plus the tail unit, unchanged
+    assert progress == sorted(progress) and progress[-1] == 1.0
+    assert [m[0] for m in heartbeats] == ["heartbeat"] * 4  # topology, erosion, geology, caps
+    assert all(m[1] == progress[-2] for m in heartbeats)  # tail fraction, no progress implied
+
+
+def test_step_world_progress_stays_silent_between_ticks_when_fast():
+    # The mirror: a fast step's own per-plate ticks already prove life, so no
+    # heartbeat should pad the stream.
+    world = generate_world(seed=10, num_plates=8)
+    messages = list(step_world_progress(world, 1_000_000))
+    assert all(not isinstance(m, tuple) for m in messages)
+    assert len(messages) == 2 * 8 + 1
+
+
+def test_generate_world_progress_sends_heartbeats_from_its_slow_tail(monkeypatch):
+    # Same #611 reasoning for world creation: the relief/soil/finish-bootstrap
+    # sub-calls subdivide the final third so a multi-minute generation reads as alive.
+    now = [0.0]
+
+    def _fast_clock():
+        now[0] += PROGRESS_HEARTBEAT_INTERVAL_S + 1.0
+        return now[0]
+
+    monkeypatch.setattr("app.world._monotonic", _fast_clock)
+    messages = list(generate_world_progress(seed=10, num_plates=8))
+    assert [m[0] for m in messages] == ["progress", "progress", "heartbeat", "heartbeat", "heartbeat", "progress", "done"]
+    assert [m[1] for m in messages if m[0] != "done"] == [1 / 3, 2 / 3, 3 / 4, 5 / 6, 11 / 12, 1.0]

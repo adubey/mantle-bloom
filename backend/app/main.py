@@ -762,8 +762,8 @@ def _drain_progress(progress) -> World | None:
     client can't just abandon one of these generators wherever it happened to be suspended).
     Returns the World from generate_world_progress's final `("done", world)` message, or
     `None` for step_world_progress (which mutates its own `world` argument in place and
-    yields plain floats, never a `("done", ...)` tuple -- there's nothing further for a
-    caller to do with its return value).
+    yields plain floats and `("heartbeat", ...)` ticks, never a `("done", ...)` tuple --
+    there's nothing further for a caller to do with its return value).
 
     If generation/stepping itself raises while finishing up here, there's no request left to
     report it to (the client that would have received a `{"type": "error"}` line is already
@@ -883,6 +883,25 @@ def delete_world(world_id: str) -> dict:
     return {"deleted": world_id}
 
 
+def _generate_message_line(message):
+    """Formats one generate_world_progress message as its NDJSON line.
+
+    Returns `(line, world_or_None)`: `world_or_None` is set only for the final
+    `("done", world)` message, which carries no line of its own. Raises ValueError
+    on an unknown message kind -- the caller's except turns it into an error line,
+    never a mislabeled payload. Split out of generate() so that function stays
+    under the complexity cap."""
+    if message[0] == "progress":
+        return json.dumps({"type": "progress", "fraction": message[1]}) + "\n", None
+    if message[0] == "heartbeat":
+        # Slow sub-phase with no other output (#611): the frontend routes these
+        # to its progress bar like any progress line.
+        return json.dumps({"type": "heartbeat", "fraction": message[1]}) + "\n", None
+    if message[0] == "done":
+        return None, message[1]
+    raise ValueError(f"unexpected generate progress message: {message!r}")
+
+
 @app.post("/worlds/{world_id}/generate")
 def generate(world_id: str, req: GenerateRequest) -> StreamingResponse:
     """Streams newline-delimited JSON progress while generating a fresh world, replacing
@@ -893,7 +912,11 @@ def generate(world_id: str, req: GenerateRequest) -> StreamingResponse:
     bootstrap -- coarser-grained than /worlds/{world_id}/step's per-plate progress, see that generator's
     own docstring for why), then a final `{"type": "done", ...summary fields}` once the world
     is fully built, or a `{"type": "error", "detail": ...}` line if generation raises
-    partway through (the HTTP status is already 200 by then, same as animate). `404` for an
+    partway through (the HTTP status is already 200 by then, same as animate). Between the
+    phase boundaries, an overdue-gated `{"type": "heartbeat", "fraction": f}` tick fires
+    wherever a slow sub-phase runs with no other output (#611) -- same contract as
+    /worlds/{world_id}/animate's own heartbeat lines, and routed to the progress bar the
+    same way. `404` for an
     unknown world id (there's no existing world *content* required); `503` if a
     generation/step/animation is already in progress on this world (see
     `session.begin_operation` below). Every other validation
@@ -978,10 +1001,11 @@ def generate(world_id: str, req: GenerateRequest) -> StreamingResponse:
             world = None
             try:
                 for message in progress:
-                    if message[0] == "progress":
-                        yield json.dumps({"type": "progress", "fraction": message[1]}) + "\n"
+                    line, done_world = _generate_message_line(message)
+                    if done_world is None:
+                        yield line
                     else:
-                        world = message[1]
+                        world = done_world
                 _set_world(session, world)
                 yield json.dumps({"type": "done", **_summary(session, world)}) + "\n"
             except GeneratorExit:
@@ -1095,7 +1119,10 @@ def step(world_id: str, req: StepRequest) -> StreamingResponse:
     "progress", "fraction": f}` line after each per-plate shift()/deform() call (see
     step_world_progress's own docstring for why that's a real, if coarse, measure of
     completion), then a final `{"type": "done", ...summary fields}`, or a `{"type": "error",
-    ...}` line if the step raises partway through. `404` if no world has been generated yet,
+    ...}` line if the step raises partway through. Past the per-plate loops the tail has
+    no loop of its own, so an overdue-gated `{"type": "heartbeat", "fraction": f}` tick
+    fires at its slow sub-boundaries instead (#611) -- same fraction the progress line
+    would carry, routed to the progress bar the same way. `404` if no world has been generated yet,
     `503` (before the stream starts, same as /worlds/{world_id}/animate) if a generation, step, or
     animation is already in progress."""
     session = _session_or_404(world_id)
@@ -1130,8 +1157,18 @@ def step(world_id: str, req: StepRequest) -> StreamingResponse:
                 return
             progress = _step_progress(session, world, req.years)
             try:
-                for fraction in progress:
-                    yield json.dumps({"type": "progress", "fraction": fraction}) + "\n"
+                for message in progress:
+                    if isinstance(message, tuple):
+                        # Still inside the step's slow tail (#611): same fraction the
+                        # progress line would carry, no progress implied. The frontend
+                        # routes these to its progress bar like any progress line.
+                        # Anything else is a protocol violation -- fail loudly rather
+                        # than serializing it as a progress fraction.
+                        if message[0] != "heartbeat":
+                            raise ValueError(f"unexpected step progress message: {message!r}")
+                        yield json.dumps({"type": "heartbeat", "fraction": message[1]}) + "\n"
+                        continue
+                    yield json.dumps({"type": "progress", "fraction": message}) + "\n"
                 completed = True
                 yield json.dumps({"type": "done", **_summary(session, world)}) + "\n"
             except GeneratorExit:
@@ -1336,6 +1373,52 @@ def cross_section(
     return result
 
 
+def _animate_message_line(session, world, message, last_frame):
+    """Folds one stream_animation_mp4 message into its NDJSON line plus stream state.
+
+    Returns `(line, last_frame, completed)`. A progress line checkpoints the world
+    first -- each frame ends on a whole step, so a run that ends badly later (a
+    disconnect, a failed step or encoder) still keeps the frames before it. A
+    heartbeat line just forwards the tick: the world is mid-batch, so no checkpoint
+    (#611). The done line flips `completed` so the stream's finally publishes the run.
+    Split out of animate() so that function stays under the complexity cap."""
+    if message[0] == "heartbeat":
+        _, frame, total, elapsed_years = message
+        return json.dumps({
+            "type": "heartbeat",
+            "frame": frame,
+            "total": total,
+            "elapsed_years": elapsed_years,
+        }) + "\n", last_frame, False
+    if message[0] == "progress":
+        _, frame, total, frame_png, elapsed_years = message
+        _checkpoint_world(session)
+        return json.dumps({
+            "type": "progress",
+            "frame": frame,
+            "total": total,
+            "image_base64": base64.b64encode(frame_png).decode("ascii"),
+            "elapsed_years": elapsed_years,
+            # Each frame's step_fn call already records a stats.py snapshot onto
+            # World.stats_history (see World.record_stats, called from step_world)
+            # -- ride the latest one along here so the Stats panel can update live
+            # instead of sitting frozen until the run finishes (GET stats
+            # would just wait at the compute gate for the whole run, see its own
+            # docstring). `None` if record_stats skipped recording this step (e.g.
+            # simulate_climate_biomes off leaves climate_cache empty) -- the
+            # frontend just keeps showing its last-known snapshot in that case.
+            "stats": world.stats_history[-1] if world.stats_history else None,
+        }) + "\n", frame, False
+    _, mp4_bytes, stopped_early = message
+    return json.dumps({
+        "type": "done",
+        "mime": "video/mp4",
+        "video_base64": base64.b64encode(mp4_bytes).decode("ascii"),
+        "stopped_early": stopped_early,
+        **_summary(session, world),
+    }) + "\n", last_frame, True
+
+
 @app.post("/worlds/{world_id}/animate")
 def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
     """The "File > Make Animation" action: streams newline-delimited JSON progress while
@@ -1347,7 +1430,12 @@ def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
     "image_base64": <that frame's PNG>, "elapsed_years": <world.elapsed_years after this
     frame>, "stats": <latest World.stats_history snapshot, or null>}` as each frame finishes,
     then a final `{"type": "done",
-    "video_base64": ..., "mime": "video/mp4", ...world summary fields}`. If rendering raises partway through, a `{"type": "error",
+    "video_base64": ..., "mime": "video/mp4", ...world summary fields}`. While a frame's
+    step batch runs, `{"type": "heartbeat", "frame": n, "total": N,
+    "elapsed_years": <world.elapsed_years after this step>}` ticks flow whenever a step
+    lands more than a minute after the previous line (#611) -- imageless proof the run is
+    still stepping, so the client's idle watchdog doesn't abort a slow batch as stalled.
+    If rendering raises partway through, a `{"type": "error",
     "detail": ...}` line is emitted instead -- the HTTP status is already 200 by then, since
     the stream has started.
 
@@ -1428,38 +1516,14 @@ def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
                         message = next(animation)
                     except StopIteration:
                         break
-                    if message[0] == "progress":
-                        _, frame, total, frame_png, elapsed_years = message
-                        last_frame = frame
-                        # Each frame ends on a whole step. Saved now, a run that ends badly later
-                        # (a disconnect, a failed step or encoder) still keeps the frames before it.
-                        _checkpoint_world(session)
-                        line = json.dumps({
-                            "type": "progress",
-                            "frame": frame,
-                            "total": total,
-                            "image_base64": base64.b64encode(frame_png).decode("ascii"),
-                            "elapsed_years": elapsed_years,
-                            # Each frame's step_fn call already records a stats.py snapshot onto
-                            # World.stats_history (see World.record_stats, called from step_world)
-                            # -- ride the latest one along here so the Stats panel can update live
-                            # instead of sitting frozen until the run finishes (GET stats
-                            # would just wait at the compute gate for the whole run, see its own
-                            # docstring). `None` if record_stats skipped recording this step (e.g.
-                            # simulate_climate_biomes off leaves climate_cache empty) -- the
-                            # frontend just keeps showing its last-known snapshot in that case.
-                            "stats": world.stats_history[-1] if world.stats_history else None,
-                        }) + "\n"
-                    else:
-                        completed = True
-                        _, mp4_bytes, stopped_early = message
-                        line = json.dumps({
-                            "type": "done",
-                            "mime": "video/mp4",
-                            "video_base64": base64.b64encode(mp4_bytes).decode("ascii"),
-                            "stopped_early": stopped_early,
-                            **_summary(session, world),
-                        }) + "\n"
+                    line, last_frame, completed = _animate_message_line(session, world, message, last_frame)
+                    if message[0] == "heartbeat":
+                        # Mid-batch tick (#611): the world is only partially stepped,
+                        # so the locks stay held across this yield -- releasing them
+                        # would let a concurrent save/render observe a torn world.
+                        # The outer finally still releases on disconnect.
+                        yield line
+                        continue
                     session.lock.release()
                     _compute_gate.release()
                     acquired = False

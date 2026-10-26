@@ -33,7 +33,7 @@ from scipy.spatial import cKDTree
 from . import cratons, geometry, healpix_grid, lithosphere, mantle, plates, plumes, projections
 from .hydroclimate import biomes, climate, coastline, geology, hydrology, volcanism
 from .elevation_lines import DEFAULT_NODE_DENSITY, PLANET_RADIUS_KM, effective_is_continental_from_codes, line_spacing_rad
-from .world import World, step_world
+from .world import PROGRESS_HEARTBEAT_INTERVAL_S, HeartbeatClock, World, step_world
 
 # Climate views draw from climate.py's own fixed (H, W) grid, not the render grid below --
 # see climate.py's module docstring for why. Handled by a separate code path
@@ -3098,6 +3098,9 @@ ANIMATION_FPS = Fraction(1000, ANIMATION_FRAME_DURATION_MS)
 # libx264 quality knob (0 lossless .. 51 worst). 20 is visually lossless for a flat-shaded
 # map at this scale while keeping the file a small fraction of the equivalent GIF's size.
 ANIMATION_CRF = "20"
+# Same heartbeat interval world.py's generate/step streams use (#611) -- a slow frame
+# batch reads as alive, not stalled, to the frontend's 3-minute idle watchdog.
+ANIMATION_HEARTBEAT_INTERVAL_S = PROGRESS_HEARTBEAT_INTERVAL_S
 
 
 def stream_animation_mp4(
@@ -3143,9 +3146,14 @@ def stream_animation_mp4(
     step, so a caller can drive a live elapsed-time counter off the stream instead of it
     sitting frozen until the whole run (and its final world summary) completes -- then a
     final `("done", mp4_bytes, stopped_early)` carrying the complete video
-    and whether `stop_event` was what ended the run short of `num_frames`. Streaming
-    frame-by-frame lets the caller show a real progress bar -- and paint each frame onto the
-    live map -- instead of blocking the client on one opaque request that can take minutes on
+    and whether `stop_event` was what ended the run short of `num_frames`. While a
+    frame's step batch runs, yields `("heartbeat", frame, num_frames, elapsed_years)`
+    whenever more than ANIMATION_HEARTBEAT_INTERVAL_S has passed since the last yield:
+    a batch of slow steps with no other output tripped the client's idle watchdog
+    (#611), and these imageless ticks reset that timer without checkpointing or
+    rendering a partially-stepped frame. Streaming frame-by-frame lets the caller
+    show a real progress bar -- and paint each frame onto the live map -- instead of
+    blocking the client on one opaque request that can take minutes on
     a big world (up to num_frames frames, each up to steps_per_frame step_world calls + one
     render).
 
@@ -3165,6 +3173,7 @@ def stream_animation_mp4(
     stream.options = {"crf": ANIMATION_CRF, "movflags": "+faststart"}
 
     stopped_early = False
+    clock = HeartbeatClock()
     try:
         for i in range(num_frames):
             if i > 0:
@@ -3173,6 +3182,8 @@ def stream_animation_mp4(
                         stopped_early = True
                         break
                     step_fn(world, step_years)
+                    if clock.due():
+                        yield ("heartbeat", i + 1, num_frames, world.elapsed_years)
                 if stopped_early:
                     break
             png_bytes = render_png(world, projection, view, width, height, view_rotation)
@@ -3186,6 +3197,8 @@ def stream_animation_mp4(
             # straight onto the main map -- the animation runs in the background while the world
             # is locked, so a normal /world/render for the same state would 503 (see main.py).
             yield ("progress", i + 1, num_frames, png_bytes, world.elapsed_years)
+            # A progress line is itself proof of life for the client's watchdog.
+            clock.stamp()
 
         for packet in stream.encode():  # flush libx264's remaining buffered frames
             container.mux(packet)

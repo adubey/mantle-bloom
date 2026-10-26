@@ -377,6 +377,44 @@ def test_stream_animation_mp4_stop_event_can_interrupt_mid_frame_batch():
     assert done[2] is True  # stopped_early
 
 
+def test_stream_animation_mp4_sends_a_heartbeat_while_a_frame_batch_runs_slowly(monkeypatch):
+    # GitHub issue #611: a frame's batch of slow steps with no other output tripped the
+    # client's idle watchdog, which aborts the stream as stalled. A heartbeat must flow
+    # whenever a step lands more than ANIMATION_HEARTBEAT_INTERVAL_S after the last line.
+    world = _world()
+    now = [0.0]
+
+    def _fast_clock():
+        now[0] += render_image.ANIMATION_HEARTBEAT_INTERVAL_S + 1.0
+        return now[0]
+
+    monkeypatch.setattr("app.world._monotonic", _fast_clock)
+    messages = list(render_image.stream_animation_mp4(
+        world, "behrmann", "elevation", 64, 64, None, 100_000, 3, 2,
+    ))
+    assert [m[0] for m in messages] == ["progress", "heartbeat", "heartbeat", "heartbeat", "progress", "done"]
+    heartbeats = [m for m in messages if m[0] == "heartbeat"]
+    assert all(m[1] == 2 and m[2] == 2 for m in heartbeats)  # frame 2's batch, of 2
+    assert [m[3] for m in heartbeats] == sorted(m[3] for m in heartbeats)  # elapsed climbs
+
+
+def test_stream_animation_mp4_stays_silent_between_frames_when_steps_are_fast():
+    # The mirror: fast batches already emit a progress line per frame, so no
+    # heartbeat should pad the stream.
+    world = _world()
+    step_calls = []
+
+    def _fast_step(w, years):
+        step_calls.append(years)
+
+    messages = list(render_image.stream_animation_mp4(
+        world, "behrmann", "elevation", 64, 64, None, 100_000, 3, 2,
+        step_fn=_fast_step,
+    ))
+    assert [m[0] for m in messages] == ["progress", "progress", "done"]
+    assert len(step_calls) == 3  # (2 - 1) * 3 real, individual step_fn calls
+
+
 def test_geomorph_colors_diverge_around_zero():
     # Neutral grey at no net change, warm where the step net-lowered a node, cool where it
     # net-raised one -- and clamped to the end stops past the +-60 m band.
