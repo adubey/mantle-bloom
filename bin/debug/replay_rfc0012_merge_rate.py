@@ -101,7 +101,7 @@ def _hm_closure(snapshot: dict, initial_inventory: dict) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--seed", type=int, required=True)
-    parser.add_argument("--step-myr", type=float, choices=(0.1, 1.0, 2.0), required=True)
+    parser.add_argument("--step-myr", type=float, choices=(0.025, 0.05, 0.1, 1.0, 2.0), required=True)
     parser.add_argument("--myr", type=float, default=50.0)
     parser.add_argument("--checkpoint-myr", type=float, default=10.0)
     parser.add_argument("--out", type=Path, required=True)
@@ -157,10 +157,26 @@ def main() -> None:
             contacts = diag["blocked_contact_responses"]
             result["motion"]["contact_samples"] += len(contacts)
             result["motion"]["absolute_closing_sum_m_per_s"] += sum(abs(c["closing_rate_m_per_s"]) for c in contacts)
-            result["motion"]["peak_absolute_closing_m_per_s"] = max(
-                result["motion"]["peak_absolute_closing_m_per_s"],
-                max((abs(c["closing_rate_m_per_s"]) for c in contacts), default=0.0),
-            )
+            for contact in contacts:
+                closing = abs(contact["closing_rate_m_per_s"])
+                if closing > result["motion"]["peak_absolute_closing_m_per_s"]:
+                    result["motion"]["peak_absolute_closing_m_per_s"] = closing
+                    result["motion"]["peak_closing_contact"] = {
+                        "step_index": index,
+                        "step_myr": world.elapsed_years / 1e6,
+                        "signed_closing_rate_m_per_s": contact["closing_rate_m_per_s"],
+                        "absolute_closing_rate_m_per_s": closing,
+                        "lower_plate_id": contact["lower_plate_id"],
+                        "upper_plate_id": contact["upper_plate_id"],
+                        "force_n_per_m": contact["force_n_per_m"],
+                        "capacity_n_per_m": contact["capacity_n_per_m"],
+                        "yielded": contact["yielded"],
+                        "plate_count": len(world.plates),
+                        "topology_events_this_step": [
+                            message for event_years, message in result["topology_events"]
+                            if event_years == world.elapsed_years
+                        ],
+                    }
             result["motion"]["contact_force_sum_n_per_m"] += sum(c["force_n_per_m"] for c in contacts)
         phases = _phase_totals(world.phase_budget)
         for phase in phases.keys() | previous_phases.keys():
