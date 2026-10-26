@@ -46,6 +46,44 @@ def test_step_world_skips_recording_stats_when_climate_is_off():
     assert len(world.stats_history) == 1
 
 
+def test_step_world_progress_labels_phases_in_order():
+    # The run overlay's phase text (#629): per-pass labels plus one label per tail
+    # phase boundary, fractions non-decreasing to exactly 1.0.
+    world = generate_world(seed=10, num_plates=8)
+    progress = [m for m in step_world_progress(world, years=1_000_000) if m[0] == "progress"]
+    fractions = [fraction for _, fraction, _ in progress]
+    assert fractions[-1] == 1.0
+    assert all(b >= a for a, b in zip(fractions, fractions[1:]))
+    phases = [phase for _, _, phase in progress]
+    assert phases[0] == "Moving plates"
+    assert phases[-1] == "Balancing sea level"
+    assert "Raising mantle plumes" in phases
+    ordered = [
+        "Moving plates",
+        "Reshaping plates",
+        "Merging and splitting plates",
+        "Filling seafloor gaps",
+        "Resolving glaciers",
+        "Raising volcanoes",
+        "Forming natural resources",
+        "Balancing sea level",
+    ]
+    positions = [phases.index(phase) for phase in ordered]
+    assert positions == sorted(positions)
+
+
+def test_step_world_progress_with_everything_off_labels_only_the_final_pass():
+    # Movement and climate off: no per-plate units and no tail phases, so the only
+    # labels are the sea-level pass's own boundary and completion lines.
+    world = generate_world(seed=10, num_plates=8)
+    world.simulate_plate_movement = False
+    world.simulate_climate_biomes = False
+    assert list(step_world_progress(world, years=1_000_000)) == [
+        ("progress", 0.0, "Balancing sea level"),
+        ("progress", 1.0, "Balancing sea level"),
+    ]
+
+
 def test_step_world_gives_plates_nonzero_omega():
     world = generate_world(seed=10, num_plates=8)
     step_world(world, years=1_000_000)
@@ -237,7 +275,8 @@ def test_step_world_progress_sends_heartbeats_from_its_slow_tail(monkeypatch):
     # GitHub issue #611: the tail past the plate loops (topology, climate/erosion,
     # caps, sea level) has no per-plate loop of its own, so a slow step went silent.
     # An overdue tick must fire at each slow sub-boundary carrying the tail fraction --
-    # while a fast step stays exactly as silent as before.
+    # while a fast step stays exactly as silent as before. Progress lines are tagged
+    # ("progress", fraction, phase) (#629); heartbeats stay ("heartbeat", fraction).
     world = generate_world(seed=10, num_plates=8)
     now = [0.0]
 
@@ -247,21 +286,32 @@ def test_step_world_progress_sends_heartbeats_from_its_slow_tail(monkeypatch):
 
     monkeypatch.setattr("app.world._monotonic", _fast_clock)
     messages = list(step_world_progress(world, 1_000_000))
-    progress = [m for m in messages if not isinstance(m, tuple)]
-    heartbeats = [m for m in messages if isinstance(m, tuple)]
-    assert len(progress) == 2 * 8 + 1  # per-plate units plus the tail unit, unchanged
-    assert progress == sorted(progress) and progress[-1] == 1.0
-    assert [m[0] for m in heartbeats] == ["heartbeat"] * 4  # topology, erosion, geology, caps
-    assert all(m[1] == progress[-2] for m in heartbeats)  # tail fraction, no progress implied
+    progress = [m for m in messages if m[0] == "progress"]
+    heartbeats = [m for m in messages if m[0] == "heartbeat"]
+    assert len(progress) == 2 * 8 + 8  # per-plate units plus one labeled line per tail phase
+    fractions = [m[1] for m in progress]
+    assert fractions == sorted(fractions) and fractions[-1] == 1.0
+    assert len(heartbeats) == 4  # topology, erosion, geology, caps
+    assert all(m[1] == fractions[-2] for m in heartbeats)  # tail fraction, no progress implied
 
 
 def test_step_world_progress_stays_silent_between_ticks_when_fast():
     # The mirror: a fast step's own per-plate ticks already prove life, so no
-    # heartbeat should pad the stream.
+    # heartbeat should pad the stream (progress lines still carry their labels, #629).
     world = generate_world(seed=10, num_plates=8)
     messages = list(step_world_progress(world, 1_000_000))
-    assert all(not isinstance(m, tuple) for m in messages)
-    assert len(messages) == 2 * 8 + 1
+    assert all(m[0] == "progress" for m in messages)
+    assert len(messages) == 2 * 8 + 8
+    assert "Moving magma" not in [m[2] for m in messages]  # interval-gated: step 1 isn't its turn
+
+
+def test_step_world_progress_labels_interval_gated_tail_passes():
+    # Interval-gated tail passes label only on their own steps (#629): with steps_taken
+    # at 3, the increment to 4 fires the magma-transport interval.
+    world = generate_world(seed=10, num_plates=8)
+    world.steps_taken = 3
+    progress = [m for m in step_world_progress(world, years=1_000_000) if m[0] == "progress"]
+    assert "Moving magma" in [phase for _, _, phase in progress]
 
 
 def test_generate_world_progress_sends_heartbeats_from_its_slow_tail(monkeypatch):

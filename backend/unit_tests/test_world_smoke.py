@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from app.world import generate_world, step_world
+from app.world import generate_world, generate_world_progress, step_world
 
 # Coarse settings throughout -- this is a smoke test (nothing crashes, state stays finite and
 # in a sane range across several real steps), not a physics-precision test; see
@@ -15,6 +15,21 @@ def stepped_world():
     for _ in range(3):
         step_world(world, 3_000_000.0)
     return world
+
+
+def test_generate_world_progress_labels_each_phase():
+    # The run overlay's phase text (#629): one label per phase boundary, with the
+    # first phase naming the layout branch that actually ran.
+    for cratons_first, first in ((False, "Creating continents"), (True, "Creating cratons")):
+        messages = [
+            m for m in generate_world_progress(seed=11, cratons_first=cratons_first, **_COARSE_KWARGS)
+            if m[0] == "progress"
+        ]
+        assert [(fraction, phase) for _, fraction, phase in messages] == [
+            (pytest.approx(1 / 3), first),
+            (pytest.approx(2 / 3), "Starting mantle convection"),
+            (pytest.approx(1.0), "Seeding climate and oceans"),
+        ]
 
 
 def test_generate_world_produces_plates_with_finite_elevation():

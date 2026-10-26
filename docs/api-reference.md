@@ -201,8 +201,10 @@ Response: a summary --
 save with no plates reports `"empty"`.
 
 The summary arrives as the final line of a newline-delimited JSON stream
-(`application/x-ndjson`): `{"type": "progress", "fraction": f}` at the three phase
-boundaries, an overdue-gated `{"type": "heartbeat", "fraction": f}` tick wherever a slow
+(`application/x-ndjson`): `{"type": "progress", "fraction": f, "phase": label}` at the three phase
+boundaries (`label` is a human-readable phase name -- "Creating cratons",
+"Starting mantle convection", ... -- shown in the app's run overlay, #629),
+an overdue-gated `{"type": "heartbeat", "fraction": f}` tick wherever a slow
 sub-phase runs with no other output (#611), then the summary above as `{"type": "done", ...}`.
 
 `events` is the *entire* current event log (capped at `world.MAX_EVENT_LOG_LENGTH = 200`
@@ -237,7 +239,9 @@ shape as `/worlds/{world_id}/generate`, with `events` reflecting anything logged
 (100 Myr, #557), `404` if no world has been generated yet.
 
 Like generate, the response streams newline-delimited JSON: `{"type": "progress",
-"fraction": f}` after each per-plate shift/deform unit, an overdue-gated
+"fraction": f, "phase": label}` after each per-plate shift/deform unit and at each
+phase boundary of the tail ("Moving plates", "Resolving glaciers", ... -- shown in the
+app's run overlay, #629), an overdue-gated
 `{"type": "heartbeat", "fraction": f}` tick at the slow tail's sub-boundaries (#611),
 then the summary as `{"type": "done", ...}`.
 

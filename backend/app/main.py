@@ -892,7 +892,8 @@ def _generate_message_line(message):
     never a mislabeled payload. Split out of generate() so that function stays
     under the complexity cap."""
     if message[0] == "progress":
-        return json.dumps({"type": "progress", "fraction": message[1]}) + "\n", None
+        _, fraction, phase = message
+        return json.dumps({"type": "progress", "fraction": fraction, "phase": phase}) + "\n", None
     if message[0] == "heartbeat":
         # Slow sub-phase with no other output (#611): the frontend routes these
         # to its progress bar like any progress line.
@@ -907,7 +908,8 @@ def generate(world_id: str, req: GenerateRequest) -> StreamingResponse:
     """Streams newline-delimited JSON progress while generating a fresh world, replacing
     whatever world previously existed -- same NDJSON progress/done/error contract as
     /worlds/{world_id}/animate (see that endpoint's own docstring): a `{"type": "progress", "fraction":
-    f}` line (`f` from 0 to 1) after each of world.generate_world_progress's three phase
+    f, "phase": label}` line (`f` from 0 to 1, `label` a human-readable phase name for the
+    run overlay, #629) after each of world.generate_world_progress's three phase
     boundaries (plate/site generation, mantle-center fitting, the finish_generation
     bootstrap -- coarser-grained than /worlds/{world_id}/step's per-plate progress, see that generator's
     own docstring for why), then a final `{"type": "done", ...summary fields}` once the world
@@ -1116,7 +1118,9 @@ def step(world_id: str, req: StepRequest) -> StreamingResponse:
     are, Ocean/Atmospheric Fluid Dynamics by their own fixed real-time increment regardless
     of `req.years` (see world.py's `_advance_fluid_dynamics`). Streams newline-delimited
     JSON progress the same shape /worlds/{world_id}/generate and /worlds/{world_id}/animate do: a `{"type":
-    "progress", "fraction": f}` line after each per-plate shift()/deform() call (see
+    "progress", "fraction": f, "phase": label}` line (`f` from 0 to 1, `label` a
+    human-readable phase name for the run overlay, #629) after each per-plate
+    shift()/deform() call and at each phase boundary of the tail (see
     step_world_progress's own docstring for why that's a real, if coarse, measure of
     completion), then a final `{"type": "done", ...summary fields}`, or a `{"type": "error",
     ...}` line if the step raises partway through. Past the per-plate loops the tail has
@@ -1158,17 +1162,20 @@ def step(world_id: str, req: StepRequest) -> StreamingResponse:
             progress = _step_progress(session, world, req.years)
             try:
                 for message in progress:
-                    if isinstance(message, tuple):
+                    if not isinstance(message, tuple):
+                        # Anything but a tagged tuple is a protocol violation --
+                        # fail loudly rather than serializing it as a progress fraction.
+                        raise ValueError(f"unexpected step progress message: {message!r}")
+                    if message[0] == "heartbeat":
                         # Still inside the step's slow tail (#611): same fraction the
                         # progress line would carry, no progress implied. The frontend
                         # routes these to its progress bar like any progress line.
-                        # Anything else is a protocol violation -- fail loudly rather
-                        # than serializing it as a progress fraction.
-                        if message[0] != "heartbeat":
-                            raise ValueError(f"unexpected step progress message: {message!r}")
                         yield json.dumps({"type": "heartbeat", "fraction": message[1]}) + "\n"
                         continue
-                    yield json.dumps({"type": "progress", "fraction": message}) + "\n"
+                    if message[0] != "progress" or len(message) != 3:
+                        raise ValueError(f"unexpected step progress message: {message!r}")
+                    _, fraction, phase = message
+                    yield json.dumps({"type": "progress", "fraction": fraction, "phase": phase}) + "\n"
                 completed = True
                 yield json.dumps({"type": "done", **_summary(session, world)}) + "\n"
             except GeneratorExit:
