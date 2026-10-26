@@ -1313,6 +1313,23 @@ One without any is dropped as before, and so is one no plate touches, booking it
 moves each donor's material with the crust it gives up, balancing the transfer by cell
 volume.
 
+## Mantle plumes
+
+RFC 0007. A Cox-modulated event stream (`plumes.py`, index-keyed so changing
+`plume_multiplier` never reshuffles kept events) delivers plume heads that
+emplace flood-basalt plateaus and tails that feed hotspot tracks, each placed
+by interval overlap so any step length delivers exactly (`plumes.apply`).
+Tails stamp no tracer and stay out of the juvenile budget's plume routes;
+heads and tails on continental crust can dock as terranes (`terranes.py`).
+While a head is active its halo cells carry `plume_heat_myr` (topped to
+`PLUME_HEAT_MYR`, counting down 20 Myr), which weakens craton-rooted rift
+resistance in divergent thinning, rift-advance and gap-fill stretch donors,
+and failed rifts -- and every continental head arrival adds `PLUME_HEAD_STRESS`
+to the host plate's breakup stress. Both knobs are provisional (tuned in
+#584); the breakup comparator in `analysis/issue582` reports the head-following
+split fraction against the #407 background. The "plumes" debug view
+(`render_image.py`) paints the halo and plateau with live head/tail footprints.
+
 ## Volcanism
 
 Volcanoes can form where new crust rises at separating plates and where magma is produced
@@ -1324,7 +1341,10 @@ module: a periodic whole-sphere *detection* pass that spawned brand-new "volcani
 plates, plus a per-step *eruption* pass. The detection half is gone -- volcano creation is
 now inline in `deform()`'s own overstretched-rift handling (see [Plate motion: shift and
 deform](#boundary-evolution)) -- and `volcanism.py` now holds only the per-step eruption
-lifecycle, which is unchanged.
+lifecycle, which is unchanged. Mantle-plume flood basalts are not volcano nodes: heads
+emplace plateau crust directly through [Mantle plumes](#mantle-plumes), with plateau
+thickness tracked per node (`plateau_crust_m`) rather than erupted over a volcano's
+active life.
 
 **Creation.** A node becomes a volcano (`is_volcano=True`, plus a fresh
 `volcano_active_years_remaining` draw from `VOLCANO_ACTIVE_MIN/MAX_YEARS`, 100k-1M years) one

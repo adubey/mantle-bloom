@@ -535,6 +535,7 @@ def apply(world, years: float) -> dict:
             result["new_tails"] += 1
         else:
             result["new_heads"] += 1
+            world.plume_heads_emplaced += 1
             continental, host_plate = _center_host([e["plate"] for e in plates_data], np.asarray(plume.position))
             if plates_data:
                 plume.oceanic_host = not continental

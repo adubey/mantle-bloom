@@ -747,6 +747,37 @@ export function legendFor(view: MapView): LegendSpec | null {
           COASTLINE_SYMBOL,
         ],
       };
+    case "plumes":
+      // render_image.py's PLUME_VIEW_* colours (plume_colors + _draw_plume_markers).
+      return {
+        title: "Mantle plumes",
+        gradients: [
+          {
+            label: "Heat halo (Myr remaining)",
+            gradient: {
+              min: 0,
+              max: 20,
+              stops: [
+                { value: 0, color: "rgb(128, 126, 118)" },
+                { value: 10, color: "rgb(190, 90, 25)" },
+                { value: 20, color: "rgb(255, 150, 40)" },
+              ],
+              ticks: [
+                { value: 0, label: "0" },
+                { value: 10, label: "10" },
+                { value: 20, label: "20" },
+              ],
+            },
+          },
+        ],
+        symbols: [
+          { kind: "square", color: "rgb(90, 200, 120)", label: "Live plume-head plateau" },
+          { kind: "square", color: "rgb(255, 90, 40)", label: "Active head footprint" },
+          { kind: "square", color: "rgb(120, 160, 255)", label: "Tail footprint (young)" },
+          { kind: "square", color: "rgb(40, 55, 90)", label: "Tail footprint (old)" },
+          COASTLINE_SYMBOL,
+        ],
+      };
     case "nodeAge":
       return {
         title: "Added/Removed Points",

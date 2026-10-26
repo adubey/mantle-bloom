@@ -570,6 +570,12 @@ shortcut. These limits help readers judge what the simulation can and cannot exp
 Deliberate scoping decisions for v1 (elevation only), each an acceptable line to draw rather
 than an oversight:
 
+- **Plume heat is a countdown, not diffusing temperature.** Conductivity, advection of
+  heat with the deforming lithosphere, and the plume's own thermal evolution are all
+  folded into the `plume_heat_myr` halo and the `PLUME_CRATON_WEAKENING` factor (see
+  [Mantle plumes](tectonics.md#mantle-plumes)), and a head arrival adds breakup stress
+  as a lump `PLUME_HEAD_STRESS` rather than integrating a time-varying load;
+
 - **Two plates' lattices can't tile a shared boundary exactly.** Each plate's cells sit in
   its own rotated frame, so whole cells leave a thin uncovered or doubly-covered margin where
   two plates meet; gap filling closes the uncovered side and the overlap stays bounded (see

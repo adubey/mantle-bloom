@@ -403,4 +403,43 @@ def compute_stats(world: World) -> dict:
         },
         # Split and failed-rift cut counts, and the band areas they crossed (m^2), RFC 0003.
         "craton_rift_cuts": {key: craton[f"craton_{key}"] for key in cratons.CRATON_RIFT_CUT_COUNTERS},
+        # Mantle plumes (RFC 0007): live census, cumulative LIP head arrivals, the
+        # buoyant-crust ledger by source, and plume-affected areas (heated halo and
+        # live plume-head plateau, both km^2).
+        **_plume_stats(world),
+    }
+
+
+def _plume_stats(world: World) -> dict:
+    """Plume keys for `compute_stats` (RFC 0007, #583)."""
+    from . import plumes, terranes
+
+    census = plumes.diagnostics(world)
+    ledger = terranes.ensure_ledger(world)
+    spacing = line_spacing_rad(world.node_density)
+    heat_area_m2 = 0.0
+    plateau_area_m2 = 0.0
+    for plate in world.plates:
+        if plate.node_count() == 0:
+            continue
+        areas = plate.accounting_areas_m2(spacing)
+        heat = plate.collect("plume_heat_myr")
+        if np.any(heat > 0.0):
+            heat_area_m2 += float(np.sum(areas[heat > 0.0]))
+        plateau, _, _ = terranes.plate_tracers(plate)
+        if np.any(plateau > 0.0):
+            plateau_area_m2 += float(np.sum(areas[plateau > 0.0]))
+    return {
+        "plume_active_heads": census["heads"],
+        "plume_active_tails": census["tails"],
+        "plume_lip_events": int(world.plume_heads_emplaced),
+        "plume_heat_area_km2": heat_area_m2 / 1.0e6,
+        "plume_plateau_area_km2": plateau_area_m2 / 1.0e6,
+        "buoyant_crust_ledger_km3": {
+            source: {
+                account: ledger[source][account] / 1.0e9
+                for account in terranes.BALANCE_ACCOUNTS + (terranes.DOCKED_ACCOUNT,)
+            }
+            for source in terranes.SOURCES
+        },
     }

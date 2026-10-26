@@ -72,6 +72,22 @@ def test_loading_a_world_pickled_before_steps_taken_existed_defaults_to_zero():
     assert loaded.steps_taken == 0
 
 
+def test_loading_a_world_pickled_before_plumes_existed_defaults_plume_fields():
+    # A save from before RFC 0007 carries no plume schedule, stream, or LIP counter.
+    # The stream/schedule backfill to empty and the plain-int counter falls through
+    # to the class attribute, so the world loads plume-free with zero events.
+    world = generate_world(seed=3, num_plates=4)
+    del world.__dict__["mantle_plumes"]
+    del world.__dict__["plume_stream"]
+    del world.__dict__["plume_heads_emplaced"]
+
+    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+    assert loaded.mantle_plumes == []
+    assert loaded.plume_stream == {}
+    assert loaded.plume_heads_emplaced == 0
+    assert np.all(loaded.plates[0].collect("plume_heat_myr") == 0.0)
+
+
 def test_loading_a_world_pickled_before_removed_points_log_existed_defaults_to_empty():
     # World.removed_points_log is a `default_factory=list` field -- unlike a plain-default
     # field (steps_taken), pickle restores __dict__ directly and never calls __init__, so an

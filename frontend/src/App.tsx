@@ -214,7 +214,7 @@ const VIEW_COOKIE_NAME = "mantle-bloom-view";
 const MAP_VIEW_CHOICES = new Set<MapView>([
 
   "crossSection", "elevation", "platesDetail", "speckle", "temperature", "wind", "oceanCurrents", "humidity", "precipitation", "biome", "combined",
-  "resources", "soilQuality", "geomorph", "elevReason", "overlapAge", "nodeAge", "plateInspector", "riverInspector", "lakeInspector", "platesAndFaults", "hc", "hm", "craton",
+  "resources", "soilQuality", "geomorph", "elevReason", "overlapAge", "nodeAge", "plateInspector", "riverInspector", "lakeInspector", "platesAndFaults", "hc", "hm", "craton", "plumes",
 ]);
 const PROJECTION_CHOICES = new Set<Projection>(["behrmann", "eckert4", "globe"]);
 // The Map View select's "Debug >" optgroup (see the DEBUG_UI comment above) -- kept as its own
@@ -223,7 +223,7 @@ const PROJECTION_CHOICES = new Set<Projection>(["behrmann", "eckert4", "globe"])
 // option is no longer there to switch away from.
 const DEBUG_MAP_VIEWS = new Set<MapView>([
   "platesDetail", "speckle", "platesAndFaults", "geomorph", "elevReason", "overlapAge", "nodeAge",
-  "plateInspector", "riverInspector", "lakeInspector", "hc", "hm", "craton",
+  "plateInspector", "riverInspector", "lakeInspector", "hc", "hm", "craton", "plumes",
 ]);
 
 interface ViewCookie {
@@ -1666,6 +1666,7 @@ export default function App() {
                   <option value="hc">Hc (crustal thickness)</option>
                   <option value="hm">Hm (mantle lithosphere thickness)</option>
                   <option value="craton">Cratons</option>
+                  <option value="plumes">Plumes</option>
                 </optgroup>
               )}
             </select>

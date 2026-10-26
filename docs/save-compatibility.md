@@ -82,7 +82,10 @@ either.
 
 **Fields a save predates.** A `World` field added after a save was written is backfilled on
 load (`persistence._backfill_added_fields`: a `default_factory` field gets its empty default;
-a plain-default field falls through to the class attribute). A line field the save predates
+a plain-default field falls through to the class attribute). The RFC 0007 plume state
+backfills the same way: `mantle_plumes`/`plume_stream` to empty, `plume_heads_emplaced`
+to 0, and `plume_heat_myr` to its zero surface-field default, so a pre-plume save loads
+plume-free and its first steps schedule heads exactly as a fresh world would. A line field the save predates
 reads as its `surface_fields.SURFACE_FIELDS` default, the value the retired `ElevationLine`
 backfilled lazily. The eustatic water budget, if missing or in its pre-#257
 units, is re-snapshotted from the save's own hypsometry and sea level, so the shoreline
