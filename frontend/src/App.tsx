@@ -26,6 +26,7 @@ import AdvancedSettingsModal from "./AdvancedSettingsModal";
 import FileModal from "./FileModal";
 import AnimationModal from "./AnimationModal";
 import SaveAnimationModal from "./SaveAnimationModal";
+import WorldMenu from "./WorldMenu";
 import Legend from "./Legend";
 import MeasureOverlay from "./MeasureOverlay";
 import ProgressBar from "./ProgressBar";
@@ -1565,27 +1566,19 @@ export default function App() {
             {worlds.length === 0 ? (
               <div style={{ opacity: 0.7, marginBottom: 6 }}>No worlds yet.</div>
             ) : (
-              <select
-                value={worldId ?? ""}
-                onChange={(e) => selectWorld(e.target.value || null)}
-                // An explicit empty option: without it the browser would display the
-                // first world while nothing is actually selected (#597: starting
-                // with no world is the point), and that world would then be
-                // unpickable since picking it fires no change event.
+              <WorldMenu
+                worlds={worlds}
+                worldId={worldId}
                 disabled={busy || animating || playing}
-                title={busy || animating || playing ? "Stop the current operation first" : undefined}
-                style={{ width: "100%", fontSize: 12, marginBottom: 6 }}
-                aria-label="World"
-              >
-                <option value="">Select a world…</option>
-                {worlds.map((w) => (
-                  <option key={w.world_id} value={w.world_id}>
-                    {w.name}
-                    {w.summary ? "" : " (empty)"}
-                    {w.run?.running ? " ▶" : ""}
-                  </option>
-                ))}
-              </select>
+                disabledTitle={busy || animating || playing ? "Stop the current operation first" : undefined}
+                onSelect={(id) => selectWorld(id)}
+                onDelete={(id) => {
+                  const target = worlds.find((w) => w.world_id === id);
+                  if (target && window.confirm(`Delete ${target.name} and its checkpoint? This cannot be undone.`)) {
+                    handleDeleteWorld(id);
+                  }
+                }}
+              />
             )}
             <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
               <button onClick={openGenerateDialog} disabled={busy || animating || playing} style={{ flex: 1, fontSize: 12 }} title="Open the Generate World dialog">
