@@ -487,6 +487,14 @@ merge_split.py       plate consumption, sustained-collision continental merging 
                      at most one per step), mantle-flow-driven splitting, periodic geometric
                      defragmentation (severed-lobe / stranded-node cleanup deform() can't do),
                      event log messages
+terranes.py          shared buoyant-crust tracers and ledger (RFC 0007): per-plate plateau,
+                     arc and mobile-cover moments, docking-probability draws, and the
+                     emplaced/thinned/reset/subducted/converted/foundered/clipped balance
+                     accounts behind the stats buoyant-ledger keys
+plumes.py            mantle-plume event stream, head/tail emplacement, heat countdown and
+                     head stress (RFC 0007): index-keyed arrivals, interval-overlap exact
+                     delivery, `plume_heat_myr` weakening halo, `PLUME_HEAD_STRESS` breakup
+                     credits, LIP-event counter behind the stats plume keys
 gaps.py              whole-sphere coverage maintenance, every step (world.step_world): finds
                      any region no plate currently covers and grows the adjacent plate(s)
                      into it (`quad_tectonics.fill_gap`), or -- for ocean floor a

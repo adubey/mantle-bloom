@@ -30,7 +30,7 @@ from numba import njit
 from PIL import Image, ImageDraw, ImageFilter
 from scipy.spatial import cKDTree
 
-from . import cratons, geometry, healpix_grid, lithosphere, mantle, plates, projections
+from . import cratons, geometry, healpix_grid, lithosphere, mantle, plates, plumes, projections
 from .hydroclimate import biomes, climate, coastline, geology, hydrology, volcanism
 from .elevation_lines import DEFAULT_NODE_DENSITY, PLANET_RADIUS_KM, effective_is_continental_from_codes, line_spacing_rad
 from .world import World, step_world
@@ -77,7 +77,12 @@ RESOURCE_VIEWS = ("resources", "soilQuality")
 # "craton" is node-cloud-derived from the craton fields (cratons.py): where the cratons are,
 # which predate the simulation and which formed during it, and how far each quiet continental
 # interior's formation clock has run. Its own dispatch branch (_render_craton_view).
-DEBUG_VIEWS = ("plates", "platesDetail", "speckle", "geomorph", "elevReason", "overlapAge", "crustType", "nodeAge", "craton")
+# "plumes" is node-cloud-derived from the plume fields (plumes.py): the heat halo
+# (`plume_heat_myr`) ramping ember-to-orange and live head plateau (`plateau_crust_m`)
+# tinting green, with live plume positions and head/tail footprints overlaid as rings
+# (orange head ring at PLUME_HEAD_RADIUS_KM, blue tail ring at PLUME_TAIL_RADIUS_KM
+# fading with tail age). Its own dispatch branch (_render_plumes_view).
+DEBUG_VIEWS = ("plates", "platesDetail", "speckle", "geomorph", "elevReason", "overlapAge", "crustType", "nodeAge", "craton", "plumes")
 VIEWS = ("elevation", "combined", "biome") + CLIMATE_VIEWS + RESOURCE_VIEWS + DEBUG_VIEWS
 # Transparent RGBA layers (not standalone maps, so not in VIEWS -- /world/render accepts them,
 # /world/animate doesn't) that the client-drawn "Plates & Faults" view composites under its own
@@ -2225,11 +2230,14 @@ def _render_node_age_view(world: World, projection: str, width: int, height: int
 def _render_resampled_view(
     world: World, projection: str, width: int, height: int, view_rotation: np.ndarray,
     cell_colors: Callable[[np.ndarray], np.ndarray | None],
+    extra_draw: Callable[[ImageDraw.ImageDraw, float, float, float, float], None] | None = None,
 ) -> bytes:
     """Renders a debug view that colours each cell of the fine biome render grid (see
     biome_grid_dimensions) with `cell_colors(flat_xyz)`, given the cells' un-rotated
     positions, and overlays the coastline for orientation. `cell_colors` returning None
-    (a world with no plates) draws the plain background."""
+    (a world with no plates) draws the plain background. `extra_draw`, when given,
+    paints on top with the same projection fit (draw, scale, offset_x, offset_y,
+    pixel_scale) -- the plumes view's footprint rings use it."""
     pixel_scale = _stroke_scale(width)
     padding_px = PADDING_PX * width / REFERENCE_WIDTH_PX
     pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
@@ -2248,6 +2256,8 @@ def _render_resampled_view(
     image = Image.fromarray(pixels, mode="RGB")
     draw = ImageDraw.Draw(image)
     _draw_coastline(draw, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
+    if extra_draw is not None:
+        extra_draw(draw, scale, offset_x, offset_y, pixel_scale)
     return _encode_image(image)
 
 
@@ -2344,6 +2354,17 @@ CRATON_VIEW_BELT_RGB = np.array((40, 150, 140), dtype=float)
 # Open ocean on the "waterLayer" overlay (lakes/seas keep LAKE_COLOR_RGB / SEA_COLOR_RGB).
 WATER_LAYER_OCEAN_RGB = (40, 90, 170)
 
+# Plume debug view (see _render_plumes_view): heated halo ramps from ember to bright
+# orange with plume_heat_myr; live plume-head plateau (plateau_crust_m) is green;
+# live heads get an orange footprint ring, tails a blue one fading with tail age.
+PLUME_VIEW_OCEANIC_RGB = np.array((24, 38, 72), dtype=float)
+PLUME_VIEW_CONTINENTAL_RGB = np.array((128, 126, 118), dtype=float)
+PLUME_VIEW_HEAT_HOT_RGB = np.array((255, 150, 40), dtype=float)
+PLUME_VIEW_PLATEAU_RGB = np.array((90, 200, 120), dtype=float)
+PLUME_VIEW_HEAD_RGB = (255, 90, 40)
+PLUME_VIEW_TAIL_RGB = np.array((120, 160, 255), dtype=float)
+PLUME_VIEW_TAIL_OLD_RGB = np.array((40, 55, 90), dtype=float)
+
 
 def craton_colors(
     continental: np.ndarray, craton_m: np.ndarray, formed_years: np.ndarray, stable_myr: np.ndarray, belt: np.ndarray | None = None
@@ -2386,6 +2407,91 @@ def _render_craton_view(world: World, projection: str, width: int, height: int, 
         )
 
     return _render_resampled_view(world, projection, width, height, view_rotation, cell_colors)
+
+
+def plume_colors(heat_myr: np.ndarray, plateau_m: np.ndarray, continental: np.ndarray) -> np.ndarray:
+    """Per-node plumes view colour -- see the PLUME_VIEW_* constants: heat halo ramps
+    ember-to-orange with `plume_heat_myr`, live head plateau tints green by thickness."""
+    frac = np.clip(np.asarray(heat_myr, dtype=float) / plumes.PLUME_HEAT_MYR, 0.0, 1.0)[:, None]
+    colors = np.where(
+        continental[:, None],
+        PLUME_VIEW_CONTINENTAL_RGB + frac * (PLUME_VIEW_HEAT_HOT_RGB - PLUME_VIEW_CONTINENTAL_RGB),
+        PLUME_VIEW_OCEANIC_RGB + frac * (PLUME_VIEW_HEAT_HOT_RGB - PLUME_VIEW_OCEANIC_RGB),
+    )
+    # Display-only tint scale, not a physics threshold: full green at 5 km of plateau.
+    share = np.clip(np.asarray(plateau_m, dtype=float) / 5000.0, 0.0, 1.0)[:, None]
+    colors = colors + share * (PLUME_VIEW_PLATEAU_RGB - colors) * 0.65
+    return colors.astype(np.uint8)
+
+
+def _plume_cell_colors(world: World, flat_xyz: np.ndarray) -> np.ndarray | None:
+    """Node heat + plateau resampled onto the render grid; None with no plates."""
+    idx = _nearest_node_indices(world, flat_xyz)
+    if idx is None:
+        return None
+    live = [p for p in world.plates if p.node_count() > 0]
+    continental = np.concatenate(
+        [effective_is_continental_from_codes(p.collect("crust_type_code"), p.crust_type == "continental") for p in live]
+    )
+    heat = np.concatenate([p.collect("plume_heat_myr") for p in live])
+    plateau = np.concatenate([p.collect("plateau_crust_m") for p in live])
+    return plume_colors(heat[idx], plateau[idx], continental[idx])
+
+
+def _draw_plume_markers(
+    draw: ImageDraw.ImageDraw, world: World, projection: str, scale: float, offset_x: float, offset_y: float,
+    pixel_scale: float, view_rotation: np.ndarray,
+) -> None:
+    """Live plume positions and footprints (RFC 0007, #583): an orange ring at the head
+    radius around head-active plumes, a blue ring at the tail radius around tail-stage
+    ones, fading with tail age, each with a centre dot. Rings are sampled small
+    circles in 3D so they stay true on every projection. Stage-based: a head plume
+    whose head is exhausted draws the tail ring, while the stats census still counts
+    it as a head (origin-based) -- see plumes.diagnostics."""
+    if not world.mantle_plumes:
+        return
+    earth_m = PLANET_RADIUS_KM * 1000.0
+    width_px = max(int(round(pixel_scale)), 1)
+    dot_r = max(2.0 * pixel_scale, 2.0)
+    angles = np.linspace(0.0, 2.0 * np.pi, 49)
+    up = np.array([0.0, 0.0, 1.0])
+    for plume in world.mantle_plumes:
+        pos = np.asarray(plume.position, dtype=float)
+        pos = pos / max(float(np.linalg.norm(pos)), 1e-12)
+        head_stage = not plume.is_tail_only and plume.head_remaining_m3 > 0.0
+        if head_stage:
+            radius_rad = plumes.PLUME_HEAD_RADIUS_KM * 1000.0 / earth_m
+            color = PLUME_VIEW_HEAD_RGB
+        else:
+            radius_rad = plumes.PLUME_TAIL_RADIUS_KM * 1000.0 / earth_m
+            span = max(float(plume.tail_end_years - plume.tail_start_years), 1e-9)
+            age = float(np.clip((world.elapsed_years - plume.tail_start_years) / span, 0.0, 1.0))
+            color = tuple(int(v) for v in PLUME_VIEW_TAIL_RGB + age * (PLUME_VIEW_TAIL_OLD_RGB - PLUME_VIEW_TAIL_RGB))
+        axis = up if abs(float(pos @ up)) < 0.9 else np.array([1.0, 0.0, 0.0])
+        e1 = np.cross(pos, axis)
+        e1 = e1 / max(float(np.linalg.norm(e1)), 1e-12)
+        e2 = np.cross(pos, e1)
+        ring = (
+            np.cos(radius_rad) * pos[None, :]
+            + np.sin(radius_rad) * (np.cos(angles)[:, None] * e1[None, :] + np.sin(angles)[:, None] * e2[None, :])
+        )
+        pts = _to_pixels(scale, offset_x, offset_y, _project_points(projection, _rotate(ring, view_rotation)))
+        draw.line([tuple(p) for p in pts], fill=color, width=width_px)
+        cx, cy = _to_pixels(scale, offset_x, offset_y, _project_points(projection, _rotate(pos[None, :], view_rotation)))[0]
+        draw.ellipse([cx - dot_r, cy - dot_r, cx + dot_r, cy + dot_r], fill=color)
+
+
+def _render_plumes_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
+    """Renders "plumes" (see DEBUG_VIEWS): the `plume_heat_myr` halo and live head
+    plateau (`plateau_crust_m`) resampled onto the biome grid, with live plume
+    positions and head/tail footprints overlaid as rings via `extra_draw`."""
+    return _render_resampled_view(
+        world, projection, width, height, view_rotation,
+        lambda flat_xyz: _plume_cell_colors(world, flat_xyz),
+        lambda draw, scale, offset_x, offset_y, pixel_scale: _draw_plume_markers(
+            draw, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation
+        ),
+    )
 
 
 def _render_overlay_layer(world: World, layer: str, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
@@ -2798,6 +2904,8 @@ def _render_map_png(  # noqa: C901
         return _render_thickness_view(world, projection, view, width, height, view_rotation)
     if view == "craton":
         return _render_craton_view(world, projection, width, height, view_rotation)
+    if view == "plumes":
+        return _render_plumes_view(world, projection, width, height, view_rotation)
     if view in LAYER_VIEWS:
         return _render_overlay_layer(world, view, projection, width, height, view_rotation)
     if view == "nodeAge":

@@ -364,12 +364,14 @@ distance-band thickening at the polygon edge, `"fault"` localises it onto active
 (and scales the fault-relief layer up to compensate), `"both"` runs both. See
 simulation-model/tectonics.md#faults.
 
-The body also accepts the twelve **geomorphic-budget tuning multipliers**
+The body also accepts the fourteen **geomorphic-budget tuning multipliers**
 (`world.TUNING_MULTIPLIER_FIELDS`): `rain_erosion_multiplier`, `river_erosion_multiplier`,
 `wind_erosion_multiplier`, `ocean_erosion_multiplier`, `coastal_leveling_multiplier`,
 `glacier_erosion_multiplier`, `seismic_erosion_multiplier`, `river_deposition_multiplier`,
 `ocean_deposition_multiplier`, `collision_uplift_multiplier`,
-`collision_uplift_reach_multiplier`, `volcanism_multiplier`. Each is a dimensionless scale on
+`collision_uplift_reach_multiplier`, `volcanism_multiplier`, `fault_relief_multiplier`,
+`plume_multiplier` (plume production rate; `0` thins every scheduled event away, so the
+run is a matched plume-off twin -- see RFC 0007). Each is a dimensionless scale on
 one erosion / deposition / uplift / volcanism process, default `1.0` (== untuned, bit for
 bit), and a negative value is a `400`. See
 [simulation-model/surface-processes.md#tuning-knobs](simulation-model/surface-processes.md#live-tuning-knobs-worldtuning_multiplier_fields) for what each one scales

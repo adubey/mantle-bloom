@@ -90,9 +90,21 @@ PLUME_UNIFORM_SHARE = 0.3
 PLUME_RATE_CORRELATION_MYR = 100.0
 PLUME_RATE_MODULATION_MAX = 3.0
 PLUME_HEAT_MYR = 20.0
+# Lithospheric weakening (#582): while `plume_heat_myr` covers emplaced cells,
+# craton-rooted rift resistance is scaled by (1 - PLUME_CRATON_WEAKENING), with
+# the product clamped like `cratons.rift_resistance`. Default 0.75. The weakened
+# state decays back automatically as the heat countdown expires; decay is gradual
+# (interval-overlap scaling), not an abrupt return to full strength.
+PLUME_CRATON_WEAKENING = 0.75
 # Stream ceiling: the knob's upper bound for thinning. Changing `plume_multiplier`
 # never reshuffles kept events because every draw below is index-keyed (#579).
 PLUME_MULTIPLIER_MAX = 4.0
+# Breakup stress (RFC 0007, #582): every continental head arrival adds this much to
+# its host plate's `internal_stress` (merge_split.py), pushing plume-affected
+# continents toward the split gates. Default 1.0 against STRESS_CERTAIN_RIFT 3.0;
+# provisional -- tuned in #584. Oceanic heads add nothing (no craton to weaken, and
+# oceanic lithosphere already rifts freely).
+PLUME_HEAD_STRESS = 1.0
 COX_LOG_SIGMA = 1.0
 
 HEAD_STREAM = "head"
@@ -306,6 +318,45 @@ def _unit_vectors(plate) -> np.ndarray:
     return points / np.maximum(norms, 1e-9)
 
 
+def _heat_top_up_myr(plume_born_years: float, t0_years: float) -> float:
+    """Pre-decay heat top-up for one active head (RFC 0007, #582).
+
+    A head born mid-step has heated for only part of it, so topping to
+    `PLUME_HEAT_MYR` before this step's decay would shorten its halo by the
+    pre-birth time (partition dependence). Topping to
+    `PLUME_HEAT_MYR + (born - t0)` makes the post-decay halo exactly
+    `PLUME_HEAT_MYR - (t1 - born)`; older heads top up to the full countdown
+    exactly as before.
+    """
+    if plume_born_years <= t0_years:
+        return PLUME_HEAT_MYR
+    return PLUME_HEAT_MYR + (plume_born_years - t0_years) / 1e6
+
+
+def _credit_head_stress(plates_data: list, continental: bool, host_plate: int) -> bool:
+    """Add PLUME_HEAD_STRESS to the continental head's host plate (RFC 0007, #582).
+
+    `host_plate` is a plate id, not a `plates_data` position (ids go sparse after
+    merges). Oceanic heads and unknown hosts credit nothing. Returns True when a
+    plate was credited.
+    """
+    if not continental or host_plate < 0:
+        return False
+    for entry in plates_data:
+        if entry["plate"].plate_id == host_plate:
+            host = entry["plate"]
+            host.set_internal_stress(host.internal_stress + PLUME_HEAD_STRESS)
+            return True
+    return False
+
+
+def _credit_head_arrival(plates_data: list, continental: bool, host_plate: int, result: dict) -> None:
+    """Credit one continental head arrival (RFC 0007, #582): host stress plus the
+    `credited_heads` step-diagnostic count. Split out of `apply` for complexity."""
+    if _credit_head_stress(plates_data, continental, host_plate):
+        result["credited_heads"] += 1
+
+
 def _center_host(plates: list, position: np.ndarray) -> tuple[bool, int]:
     """Host at the plume centre: (is continental, plate id) of the nearest node."""
     from .elevation_lines import effective_is_continental_from_codes
@@ -435,10 +486,14 @@ def apply(world, years: float) -> dict:
     across plates by footprint weight, so a boundary-straddling footprint still
     places its volume exactly once. Plumes whose tail has ended are dropped at the
     end of the step.
+
+    Heat/stress take effect the step *after* arrival: deform and topology run
+    before this pass, so a fresh head's halo and stress credit land on next
+    step's rifting. Harmless at 5 Myr steps against a 20 Myr halo.
     """
     from .elevation_lines import PLANET_RADIUS_KM, line_spacing_rad
 
-    result = {"new_heads": 0, "new_tails": 0, "head_volume_m3": 0.0, "tail_volume_m3": 0.0}
+    result = {"new_heads": 0, "new_tails": 0, "head_volume_m3": 0.0, "tail_volume_m3": 0.0, "credited_heads": 0}
     if years <= 0.0 or not (world.plume_multiplier > 0.0) or not world.simulate_plate_movement:
         # `not (... > 0.0)` rather than `<= 0.0` so a NaN multiplier no-ops instead
         # of producing at ceiling rate; set_controls also rejects non-finite (#579).
@@ -480,6 +535,7 @@ def apply(world, years: float) -> dict:
             result["new_tails"] += 1
         else:
             result["new_heads"] += 1
+            world.plume_heads_emplaced += 1
             continental, host_plate = _center_host([e["plate"] for e in plates_data], np.asarray(plume.position))
             if plates_data:
                 plume.oceanic_host = not continental
@@ -488,6 +544,10 @@ def apply(world, years: float) -> dict:
                     f"Mantle plume head {plume.plume_id}: {plume.head_volume_m3 / 1e15:.1f} M km3 "
                     f"on {'oceanic' if plume.oceanic_host is not False else 'continental'} plate {host_plate}."
                 )
+            # A plate taking a continental head carries that stress toward breakup
+            # (RFC 0007, #582). Per arrival, not per step: the head's thermal halo
+            # persists separately as `plume_heat_myr`.
+            _credit_head_arrival(plates_data, continental, host_plate, result)
     earth_m = PLANET_RADIUS_KM * 1000.0
     for plume in world.mantle_plumes:
         head_vol, tail_vol, active = _stage_volumes(plume, t0_years, t1_years)
@@ -523,10 +583,11 @@ def apply(world, years: float) -> dict:
                 if stage == "head":
                     plume.head_remaining_m3 = max(0.0, plume.head_remaining_m3 - got)
         if active:
+            top_up = _heat_top_up_myr(plume.born_years, t0_years)
             for entry in plates_data:
                 dist = np.arccos(np.clip(entry["unit"] @ position, -1.0, 1.0)) * earth_m
                 refresh = dist <= 2.0 * PLUME_HEAD_RADIUS_KM * 1000.0
-                entry["heat"][refresh] = np.maximum(entry["heat"][refresh], PLUME_HEAT_MYR)
+                entry["heat"][refresh] = np.maximum(entry["heat"][refresh], top_up)
     for entry in plates_data:
         heat = np.maximum(0.0, entry["heat"] - years / 1e6)
         entry["plate"].set_fields_on_plate(

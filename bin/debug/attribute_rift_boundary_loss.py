@@ -124,9 +124,9 @@ def install(probe: Probe) -> None:
         probe.note_cut(world, plate, points, cut_normal, band_sin, kind)
         return record_rift_cut(world, plate, points, cut_normal, band_sin, kind)
 
-    def tapped_maybe_split_plate(world, plate):
+    def tapped_maybe_split_plate(world, plate, *args, **kwargs):
         probe._pending_cut = None
-        result = maybe_split_plate(world, plate)
+        result = maybe_split_plate(world, plate, *args, **kwargs)
         if result is not None:
             probe.mark_daughters(result)
         return result

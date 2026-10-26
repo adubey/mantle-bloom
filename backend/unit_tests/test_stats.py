@@ -100,6 +100,51 @@ def test_compute_stats_elevation_is_land_only():
     assert result["land_near_max_elevation_fraction"] is None
 
 
+def _headed_world() -> World:
+    """Globe world with stream-forced head arrivals in-window (RFC 0007, #583)."""
+    from app import plumes
+
+    world = _globe_world("continental")
+    world.plume_multiplier = plumes.PLUME_MULTIPLIER_MAX
+    arrival = 2.5e6
+    kept = next(
+        k
+        for k in range(200)
+        if plumes._sample_event(seed=0, stream="head", index=k, born_years=arrival,
+                                multiplier=world.plume_multiplier, cox=False,
+                                centers=world.mantle_centers) is not None
+    )
+    world.plume_stream = {"head": [kept, arrival], "tail": [10**9, 1e18]}
+    world.mantle_plumes = []
+    world.elapsed_years = 3e6
+    out = plumes.apply(world, 1e6)
+    assert out["new_heads"] >= 1
+    return world
+
+
+def test_buoyant_crust_stats_mirror_covers_every_source_and_account():
+    """RFC 0007 (#583): the stats buoyant-ledger mirror keys exactly the balance
+    accounts per source, so a new account cannot silently go unreported."""
+    from app import terranes
+
+    result = stats.compute_stats(_globe_world("continental"))
+    assert set(result["buoyant_crust_ledger_km3"]) == set(terranes.SOURCES)
+    for accounts in result["buoyant_crust_ledger_km3"].values():
+        assert set(accounts) == set(terranes.BALANCE_ACCOUNTS + (terranes.DOCKED_ACCOUNT,))
+
+
+def test_compute_stats_reports_plume_census_lip_events_and_heated_area():
+    """RFC 0007 (#583): stats carry live plume counts, cumulative LIP events,
+    the buoyant-crust ledger, and plume-affected areas."""
+    world = _headed_world()
+    result = stats.compute_stats(world)
+    assert result["plume_active_heads"] >= 1
+    assert result["plume_lip_events"] == world.plume_heads_emplaced
+    assert result["plume_lip_events"] >= 1
+    assert result["plume_heat_area_km2"] > 0.0
+    assert set(result["buoyant_crust_ledger_km3"]) == {"arc", "plume_head", "plume_tail"}
+
+
 def test_compute_stats_ocean_depth_bounds_are_consistent():
     world = _all_ocean_world()
     result = stats.compute_stats(world)

@@ -88,7 +88,8 @@ export type MapView =
   | "platesAndFaults"
   | "hc"
   | "hm"
-  | "craton";
+  | "craton"
+  | "plumes";
 
 // Transparent RGBA layers /worlds/{world_id}/render also serves (backend render_image.LAYER_VIEWS) -- not
 // maps of their own: the client-drawn "Plates & Faults" view composites them under its vectors.
@@ -405,6 +406,16 @@ export interface WorldStats {
   // the per-mechanism split.
   craton_destroyed_km3?: number;
   craton_ledger_km3?: Record<string, number>;
+  // Mantle plumes (backend app/plumes.py, RFC 0007). Absent before plumes existed.
+  plume_active_heads?: number;
+  plume_active_tails?: number;
+  // Cumulative head arrivals (LIP events). Absent before the counter existed.
+  plume_lip_events?: number;
+  plume_heat_area_km2?: number;
+  plume_plateau_area_km2?: number;
+  // Buoyant-crust ledger by source (backend app/terranes.py): arc/plume_head/plume_tail,
+  // each with the balance accounts. Absent before the ledger existed.
+  buoyant_crust_ledger_km3?: Record<string, Record<string, number>>;
   land_fraction: number;
   ocean_fraction: number;
   // Raw `elevation > sea_level_m` node fraction -- unlike land_fraction/ocean_fraction above,
