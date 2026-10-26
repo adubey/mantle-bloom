@@ -2,7 +2,10 @@
 exact containment, persistence, and generation from the shared tiling (issue #228 Phase 2).
 The representation-neutral `PlateSurface` contract is tested in test_plate_surface_contract.py."""
 
+import io
+import json
 import pickle
+import zipfile
 
 import numpy as np
 import pytest
@@ -267,8 +270,8 @@ def test_generated_quad_plates_tile_the_sphere_from_the_shared_tiling():
 def test_quad_world_round_trips_through_the_versioned_save_format():
     world = generate_world(seed=5, num_plates=5)
     data = persistence.save_world_bytes(world)
-    envelope = pickle.loads(data)
-    assert envelope["version"] == persistence.SAVE_FORMAT_VERSION
+    manifest = json.loads(zipfile.ZipFile(io.BytesIO(data)).read("manifest.json"))
+    assert manifest["version"] == persistence.SAVE_FORMAT_VERSION
 
     loaded = persistence.load_world_bytes(data)
     assert all(isinstance(p, PlateWithSparseQuadPatch) for p in loaded.plates)

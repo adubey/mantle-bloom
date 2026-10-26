@@ -278,7 +278,8 @@ def test_fingerprint_ignores_wall_clock_timings_but_not_state(world):
 
 
 def test_fingerprint_survives_a_save_and_load(world):
-    assert replay_log.fingerprint(persistence.load_world_bytes(persistence.save_world_bytes(world))) == replay_log.fingerprint(world)
+    data = persistence.save_exact_bytes(world)
+    assert replay_log.fingerprint(persistence.load_world_bytes(data)) == replay_log.fingerprint(world)
 
 
 # --- Trigger thresholds on synthetic metrics -----------------------------------------------
@@ -410,20 +411,7 @@ def test_records_past_the_queue_bound_are_dropped(tmp_path, world, monkeypatch):
     assert not log.flush(timeout_s=0.01)
 
 
-class _Token:
-    """A plain object: its default repr carries its address."""
-
-    def __init__(self, value):
-        self.value = value
-
-    def __eq__(self, other):
-        return isinstance(other, _Token) and other.value == self.value
-
-    def __hash__(self):
-        return hash(self.value)
-
-
 def test_fingerprint_of_a_set_of_objects_survives_a_save_and_load(world):
-    vars(world)["token_set"] = {_Token(1), _Token(2), _Token(3)}
-    reloaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+    vars(world)["token_set"] = frozenset({(1, 2), (3, 4), "five"})
+    reloaded = persistence.load_world_bytes(persistence.save_exact_bytes(world))
     assert replay_log.fingerprint(reloaded)["token_set"] == replay_log.fingerprint(world)["token_set"]

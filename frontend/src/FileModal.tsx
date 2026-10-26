@@ -65,7 +65,7 @@ export default function FileModal({
 
   const handleSaveWorld = useCallback(() => runAction("save", async () => {
     const blob = await saveWorld(worldId);
-    downloadBlob(blob, `mantle-bloom-seed${seed}-${Math.round(elapsedYears ?? 0)}y.mbworld`);
+    downloadBlob(blob, `mantle-bloom-seed${seed}-${Math.round(elapsedYears ?? 0)}y.bloom`);
   }), [runAction, seed, elapsedYears, worldId]);
 
   const handleLoadFileChosen = useCallback((file: File) => runAction("load", async () => {
@@ -105,7 +105,7 @@ export default function FileModal({
           <input
             ref={fileInputRef}
             type="file"
-            accept=".mbworld"
+            accept=".bloom,.mbworld"
             style={{ display: "none" }}
             onChange={(e) => {
               const file = e.target.files?.[0];

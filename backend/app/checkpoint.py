@@ -147,7 +147,7 @@ class CheckpointStore:
 
     def save_world(self, world: World) -> None:
         """Replace the world checkpoint. The caller holds the world lock, so the world can't
-        change while it's pickled."""
+        change while it's serialized."""
         started = time.monotonic()
         data = persistence.save_world_bytes(world)
         self._replace(self.world_path, data)

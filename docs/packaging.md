@@ -101,7 +101,7 @@ Smoke-tested from the frozen macOS binary:
 
 - ✅ `/worlds/{world_id}/generate`, `/worlds/{world_id}/step` (numba JIT compiles on first step — adds ~1.5 s once,
   then cached), `/worlds/{world_id}/render` (Pillow), `/worlds/{world_id}/animate` (PyAV encodes a valid MP4).
-- ✅ `/worlds/{world_id}/save` + `/worlds/{world_id}/load` round-trip (pickle).
+- ✅ `/worlds/{world_id}/save` + `/worlds/{world_id}/load` round-trip (v5).
 - ✅ `scipy.spatial.cKDTree`, `astropy_healpix`.
 - ✅ GET inspector routes (`/worlds/{world_id}/rivers` etc.) and `/docs` are not shadowed by the SPA
   catch-all; a real API 404 still returns its JSON `detail`, not `index.html`.

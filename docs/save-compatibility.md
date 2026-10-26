@@ -31,7 +31,9 @@ methods, so it never depended on those classes. `legacy_conversion.py`, `LegacyR
 
 ## 2. Save format
 
-A save is a pickled envelope. `persistence.SAVE_FORMAT_VERSION` is 4.
+A save is a versioned envelope. `persistence.SAVE_FORMAT_VERSION` is 5: new saves are a
+zip of `.npy` arrays plus a JSON manifest (see `npz_save.py`), versions 1-4 still load
+through the pickle path.
 
 | version | shape | loads? |
 |---|---|---|
@@ -39,10 +41,12 @@ A save is a pickled envelope. `persistence.SAVE_FORMAT_VERSION` is 4.
 | 2 | `{"format": "mantle-bloom-world", "version": 2, "world": World}` | yes |
 | 3 | v2 plus `"surface": "lines" \| "quad" \| "empty"`, checked against the unpickled plates | yes; this build writes only `quad` or `empty`, and a `lines` save converts on load |
 | 4 | v3 plus climate, hydrology, and surface-process classes under `app.hydroclimate` | yes; old module paths are mapped while loading |
-| > 4 | written by a newer build | no: `UnsupportedSaveVersionError` |
+| 5 | a zip of `.npy` arrays plus a JSON manifest (see `npz_save.py`); user saves drop the erosion cache plus unserializable derived scratch, replay records keep the erosion cache too, compact saves additionally drop the step-read caches (see §8) | yes; this build writes only v5 |
+| > 5 | written by a newer build | no: `UnsupportedSaveVersionError` |
 
-Each `PlateWithSparseQuadPatch` also versions its own pickled state
-(`QUAD_SURFACE_FORMAT_VERSION`, now 2). A quad plate from a newer build makes the whole save
+Each `PlateWithSparseQuadPatch` also versions its own state
+(`QUAD_SURFACE_FORMAT_VERSION`, now 2); a v5 save records it per plate and refuses a plate
+from a newer build the same way. A quad plate from a newer build makes the whole save
 `UnsupportedSaveVersionError`.
 
 | quad version | change | loads? |
@@ -68,13 +72,14 @@ recomputes it.
 **Errors.** `load_world_bytes` raises one of two `SaveFormatError`s (a `ValueError`) and never
 loads part of a save:
 
-- `CorruptSaveError`: not a readable mantle-bloom save. That covers bytes pickle can't read
-  (garbage, truncation, a class this build doesn't have), another program's envelope,
-  anything other than a `World` inside, a declared surface that doesn't match the plates, a
-  world mixing line and quad plates, or a quad plate whose cells break the leaf-topology
-  invariants. A line-backed save whose state the converter refuses (§3) is also a
-  `CorruptSaveError` ("line-backed save can't be converted").
-- `UnsupportedSaveVersionError`: an envelope version outside 1–4 (including a non-integer), or
+- `CorruptSaveError`: not a readable mantle-bloom save. That covers bytes neither pickle
+  nor zip can read (garbage, truncation, a class this build doesn't have), another
+  program's envelope or manifest, anything other than a `World` inside, a declared surface
+  that doesn't match the plates, a world mixing line and quad plates, a v5 save missing a
+  referenced array or holding an unknown tag, or a quad plate whose cells break the
+  leaf-topology invariants. A line-backed save whose state the converter refuses (§3) is
+  also a `CorruptSaveError` ("line-backed save can't be converted").
+- `UnsupportedSaveVersionError`: an envelope version outside 1–5 (including a non-integer), or
   a quad plate in another surface format version.
 
 `POST /worlds/{world_id}/load` returns `400` with `invalid or incompatible world file: <reason>` for
@@ -272,7 +277,40 @@ carries a field this build doesn't know. The only line-only plate state is
 ## 7. Multi-world registry metadata (#563)
 
 The registry's world identity and management metadata (id, name, visibility, timestamps)
-live in `worlds.json` beside the per-world checkpoints, outside the pickled `World`. A
+live in `worlds.json` beside the per-world checkpoints, outside the saved `World`. A
 save therefore carries no name or visibility: loading one into a record keeps that record's
 name and visibility, and importing a legacy one-world checkpoint creates a new record. No
 save-format change was needed for multiple worlds.
+
+## 8. Version 5 saves
+
+A v5 save is `manifest.json` plus one `.npy` array per entry under `a/` (see
+`backend/app/npz_save.py`), loaded with `allow_pickle=False` -- no code runs on load.
+The manifest holds the envelope (`format`, `version`, `surface`), the world's scalars
+and small containers, one entry per plate (header scalars, cell keys, frames, and the
+`SURFACE_FIELDS` arrays), and packed ragged array columns for dataclass lists (fault
+traces, magma parcels, quakes). Anything else in a world fails the save loudly instead
+of being dropped silently.
+
+Three profiles share the codec with different drop sets. The default
+(`save_world_bytes` -- what File > Save, checkpoints and diagnostics write) drops
+only the erosion cache and derived scratch: the erosion cache is overwritten whole
+by every erosion call, and the k-d trees, HEALPix index, land tree and
+boundary-search scratch rebuild lazily. The climate, hydrology and CFD caches and
+the polarity frame are kept -- the H9 hard gate
+(`surface_parity_gates.load_continuation`) requires a post-load step to land on
+identical authoritative state, and the next step reads all four before refreshing
+them, so dropping any of them diverges the run (#596). Replay-log records use the
+exact profile (`save_exact_bytes`), which additionally keeps the erosion cache so a
+replay re-steps exactly including its debug views. The compact profile
+(`save_compact_bytes`) drops the four step-read caches too for a smaller file (10 MB
+on the reference world vs 53 MB default); its first post-load step rebuilds them as
+it goes and lands close to but not on the uninterrupted state, pinned by an
+approximate continuation test (land fraction within 1e-3, sea level within 1 m on
+the reference world) rather than H9.
+
+User-facing saves are named `*.bloom`. Loading sniffs the content, never the
+extension: `persistence.save_kind` reports `"v5"` for a zip-manifest save and
+`"pickle"` for a legacy pickled save, and `load_world_bytes` reads both. The v1-v4
+pickle loaders stay so `bin/debug` diagnostics and old scripts keep reading old
+saves; nothing new is ever written as a pickle.

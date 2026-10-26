@@ -271,7 +271,7 @@ The layout is a registry index plus one subdirectory per world:
   and every whole step (owner, guest or run loop). An animation writes it after each frame,
   so one that ends badly keeps the frames it finished. A step that raises partway still
   publishes what it left to viewers, but isn't checkpointed, so a restart returns to the
-  last whole step. Pickling a default world takes about 30 ms and writes about 60 MB.
+  last whole step. Serializing a default world takes about 0.04 s and writes about 53 MB (v5 keeps the step-read caches so a post-load step matches; only the erosion cache and derived scratch are dropped).
 - `worlds/<world_id>/run_status.json` holds `running` and `step_years`, rewritten on every
   Play/Stop and when a run stops on its own. If that write fails, `POST
   /worlds/{world_id}/run` answers `500` and the status is written again with the next world
@@ -305,15 +305,15 @@ to `~/.mantle-bloom/replay-logs/<port>/`), every step of a world (`POST /worlds/
 
 ```mermaid
 flowchart LR
-  A[pickle the world<br/>measure health] --> B[step_world_progress]
+  A[serialize the world<br/>measure health]
   B --> C[measure health]
   C --> D{triggers fire<br/>and not rate-limited?}
-  D -- no --> E[drop the pickle]
+  D -- no --> E[drop the record]
   D -- yes --> F[queue record] --> G[writer thread:<br/>atomic write, prune to cap]
   B -- raises --> D
 ```
 
-- Before the step, under the world lock, it pickles the world (`persistence.save_world_bytes`)
+- Before the step, under the world lock, it serializes the world (`persistence.save_exact_bytes`)
   and measures `replay_log.Health`: plate count, live craton volume and ledger, the craton
   balance error, whether `continental_ledger.assert_closed` passes, genuine continental area,
   the area-weighted land fraction, and the shares of nodes at the Hc, Hm and glacier-ice
@@ -324,7 +324,7 @@ flowchart LR
   with `replay_log.annotate(key, value)`.
 - When a trigger fires, the post-step fingerprint (about 0.1 s at node density 1) is taken
   under the world lock, and the record (`before.mbworld` plus `record.json`) is queued for a
-  background thread, so the 60 MB write happens off the lock. At most `MAX_QUEUED_RECORDS` (3)
+  background thread, so the ~57 MB write happens off the lock. At most `MAX_QUEUED_RECORDS` (3)
   wait in memory; past that a record is dropped and logged. Shutdown waits up to 10 s for the
   queue. A trigger that fired stays quiet for `DEFAULT_MIN_STEPS_BETWEEN` (20) logged steps,
   and the oldest records are removed once all of them pass `DEFAULT_MAX_BYTES` (2 GB). Pruning
@@ -335,7 +335,7 @@ flowchart LR
   second save. Every random stream a step draws is seeded from `(world.seed, elapsed_years, ...)`,
   so `replay_log.replay` reruns the step from `before.mbworld` and compares fingerprints.
 - The snapshot costs about 4% of step time at node density 1 (about 90 ms on a 2.0 s step,
-  mostly the pickle). Nothing is added to the pickled `World`, so saves are unaffected.
+  mostly the serialization). Nothing is added to the saved `World`, so saves are unaffected.
 
 Records surface in `GET /worlds/{world_id}/replay-logs`, in that world's summary
 `replay_logs` (the `?deb` Event Console, cleared when that world is generated or loaded)
@@ -607,9 +607,10 @@ render_image.py      renders /worlds/{world_id}/render's requested view/resoluti
                      (see simulation-model/rendering-and-inspectors.md#render-image and simulation-model/climate.md#climate),
                      plus /worlds/{world_id}/animate's streamed H.264/MP4 rendering (stream_animation_mp4)
                      and the "speckle" coastal-dither debug overlay (see debugging/map-views.md)
-persistence.py       whole-World save/load to a single versioned pickle envelope (File >
-                     Save/Load World -- see api-reference.md's /worlds/{world_id}/save//worlds/{world_id}/load and
-                     save-compatibility.md)
+persistence.py       whole-World save/load to a single versioned envelope: v5 is a zip of
+                     `.npy` arrays plus a JSON manifest (see npz_save.py); v1-v4 pickle saves
+                     still load (File > Save/Load World -- see api-reference.md's
+                     /worlds/{world_id}/save//worlds/{world_id}/load and save-compatibility.md)
 legacy_conversion.py the legacy reader for line-backed saves and their one-way conversion
                      to sparse quads on load (issues #248/#251, see save-compatibility.md)
 geodesic.py          geodesic-icosahedron hex/pentagon dome tiling + elevation/biome

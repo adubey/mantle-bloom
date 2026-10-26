@@ -2,7 +2,10 @@
 and the compatibility policy in docs/save-compatibility.md."""
 
 import copy
+import io
+import json
 import pickle
+import zipfile
 
 import numpy as np
 import pytest
@@ -141,7 +144,8 @@ def test_converted_world_passes_the_hard_invariant_audit_and_round_trips(convert
     violations, _ = surface_parity.audit_world(world, {})
     assert violations == []
     data = persistence.save_world_bytes(world)
-    assert pickle.loads(data)["surface"] == "quad"
+    manifest = json.loads(zipfile.ZipFile(io.BytesIO(data)).read("manifest.json"))
+    assert manifest["surface"] == "quad"
     assert surface_parity.state_hash(persistence.load_world_bytes(data)) == surface_parity.state_hash(world)
 
 
@@ -272,8 +276,10 @@ def test_a_line_save_converts_on_load_exactly_as_its_world_converts_in_memory(sh
     # A save written before #251 pickled the retired line classes. Loading it reads their
     # state through inert stand-ins (legacy_conversion.legacy_unpickler) and converts it: the
     # same world converting the in-memory line plates gives.
+    # A pre-#251 save pickled the retired line classes. v5 never holds lines, so build
+    # that envelope directly instead of going through the writer.
     with retired_class_names():
-        data = persistence.save_world_bytes(shape_world)
+        data = pickle.dumps({"format": persistence.SAVE_FORMAT, "version": 3, "surface": "lines", "world": shape_world})
     assert legacy_conversion.legacy_unpickler(data).load()["surface"] == "lines"
 
     loaded = persistence.load_world_bytes(data)
