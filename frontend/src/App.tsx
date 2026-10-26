@@ -7,7 +7,7 @@ import {
 import type {
   AnimateResponse, DebugScenario, EarthquakeSummary, ElevationPointResponse, FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, NodeAtResponse, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, TuningKey, TuningMultipliers, VolcanoSummary, WorldRecord, WorldStats, WorldSummary,
 } from "./api";
-import { ensureWorldId, withWorldId, worldIdFromSearch, type WorldId } from "./worldRoutes";
+import { withWorldId, worldIdFromSearch, type WorldId } from "./worldRoutes";
 import MapCanvas from "./MapCanvas";
 import MantleCrossSection from "./MantleCrossSection";
 import GlobeSelector from "./GlobeSelector";
@@ -1198,32 +1198,11 @@ export default function App() {
     return createInflightRef.current;
   }, [refreshWorlds, selectWorld]);
 
-  // Resolves the world to generate into on demand (#592, #597): the selection
-  // when one is open, otherwise a fresh world -- never an existing world the
-  // user didn't pick, since the dialog's name would rename (and the generate
-  // would overwrite) it by surprise. Runs only from an explicit generate
-  // action, never on page load, so merely opening the app creates nothing.
-  // Resolves the world File > Load needs: the selection when one is open,
-  // otherwise a fresh world. (The Generate dialog no longer uses this: Add
-  // always mints its own world.)
-  const ensureSelectedWorld = useCallback(async (name?: string | null): Promise<WorldId> => {
-    return ensureWorldId(worldIdRef.current, () => createAndSelectWorld(name));
-  }, [createAndSelectWorld]);
-
-  // File > Load mints "Mantle Bloom a/b/c..." rather than an exoplanet pick (#597).
-  const ensureLoadWorld = useCallback(async (): Promise<WorldId> => {
-    if (worldIdRef.current) return worldIdRef.current;
-    const taken = new Set(worlds.map((w) => w.name));
-    let name = `Mantle Bloom ${taken.size + 1}`;
-    for (let i = 0; i < 26; i++) {
-      const candidate = `Mantle Bloom ${String.fromCharCode(97 + i)}`;
-      if (!taken.has(candidate)) {
-        name = candidate;
-        break;
-      }
-    }
-    return ensureSelectedWorld(name);
-  }, [worlds, ensureSelectedWorld]);
+  // Worlds only come into existence through an explicit creation action (the
+  // Generate dialog's Add, via createAndSelectWorld below). File > Load used to
+  // mint a world when none was selected -- removed in #639: loading replaces the
+  // selected world, and with none selected the Load button stays disabled instead
+  // of creating one behind the user's back.
 
   // The Controls modal's World tab: renaming and publishing apply to the
   // selected world immediately (#597). A blank name keeps the current one.
@@ -2720,7 +2699,6 @@ export default function App() {
           mapWrapperRef={mapWrapperRef}
           onClose={() => setShowFileModal(false)}
           onWorldReplaced={handleWorldReplaced}
-          onEnsureWorldId={ensureLoadWorld}
         />
       )}
 
