@@ -495,6 +495,10 @@ class World:
     plume_multiplier: float = 1.0
     # Cox clustering variant of the plume arrival process (sensitivity case only).
     plume_cox_modulation: bool = False
+    # Cumulative mantle-plume head arrivals -- LIP events (RFC 0007, #583).
+    # Incremented in `plumes.apply`'s fresh-arrival loop, read by stats.
+    # Plain-scalar default, so an older pickle loads with 0.
+    plume_heads_emplaced: int = 0
     # How a consumed lower-plate continental column splits at a polarized collision front
     # (issue #320, crust_transfer.py). Shares of the crust below the mobile cover, which all
     # goes with the scraped share. Scraped: thrust onto the upper plate's frontal belt.

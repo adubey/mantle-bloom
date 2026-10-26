@@ -238,6 +238,32 @@ def test_render_png_is_decodable_at_requested_size():
         assert image.size == (320, 180)
 
 
+def test_plumes_view_marks_active_heads_and_heat_halo():
+    """RFC 0007 (#583): the plumes debug view paints the heat halo and marks
+    active head centres, unlike a plume-free world."""
+    from app import plumes
+
+    world = _world()
+    world.plume_stream = {"head": [10**9, 1e18], "tail": [10**9, 1e18]}
+    plain = np.asarray(Image.open(io.BytesIO(render_image.render_png(world, "behrmann", "plumes", 320, 180))))
+    world.mantle_plumes = [plumes.MantlePlume(
+        plume_id=0,
+        position=tuple(float(v) for v in world.plates[0].all_points_and_elevation()[0][0]),
+        born_years=2e6,
+        head_volume_m3=7e15,
+        head_remaining_m3=7e15,
+        head_end_years=5e6,
+        tail_flux_m3_per_yr=0.0,
+        tail_end_years=5e6,
+    )]
+    world.elapsed_years = 3e6
+    plumes.apply(world, 1e6)
+    assert world.plates[0].collect("plume_heat_myr").max() > 0.0
+    headed = np.asarray(Image.open(io.BytesIO(render_image.render_png(world, "behrmann", "plumes", 320, 180))))
+    assert headed.shape == plain.shape
+    assert np.any(headed != plain)
+
+
 def test_overlay_layers_are_transparent_except_where_painted():
     world = generate_world(7, num_plates=10, continental_fraction=0.4)
     cratons.ensure_initialized(world)
