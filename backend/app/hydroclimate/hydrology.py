@@ -1203,11 +1203,17 @@ def seasonal_positive_degrees(mean_c: np.ndarray, amplitude_c: np.ndarray, thres
 
 
 def seasonal_fraction_above(mean_c: np.ndarray, amplitude_c: np.ndarray, threshold_c: float = FREEZE_POINT_C) -> np.ndarray:
-    """Fraction of a sinusoidal year spent above `threshold_c` (#608)."""
+    """Fraction of a sinusoidal year spent above `threshold_c` (issue #608).
+
+    The above-threshold interval is `2 * phi`, where `phi = arccos(-d / amplitude)` and
+    `d = mean - threshold`. With no seasonal swing, the whole year is above only when the
+    mean is strictly above the threshold. At exactly the threshold with zero amplitude, use
+    the 0.5 limit as amplitude approaches zero from above.
+    """
     d = np.asarray(mean_c, dtype=float) - threshold_c
     amp = np.clip(np.asarray(amplitude_c, dtype=float), 0.0, None)
     d, amp = np.broadcast_arrays(d, amp)
-    fraction = np.where(d > 0.0, 1.0, 0.0)
+    fraction = np.where(d > 0.0, 1.0, np.where((d == 0.0) & (amp == 0.0), 0.5, 0.0))
     partial = (amp > 0.0) & (np.abs(d) < amp)
     if np.any(partial):
         fraction[partial] = np.arccos(np.clip(-d[partial] / amp[partial], -1.0, 1.0)) / np.pi

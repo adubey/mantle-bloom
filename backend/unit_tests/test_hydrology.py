@@ -835,7 +835,9 @@ def test_seasonal_lake_ice_helpers_match_analytic_cycle_and_are_continuous():
     )
     # Zero amplitude and threshold-touching limits are defined; the open-season mean tends
     # to the threshold as the ice-free fraction tends to zero.
-    assert hydrology.seasonal_fraction_above(np.array([-1.0, 1.0]), np.zeros(2)) == pytest.approx([0.0, 1.0])
+    assert hydrology.seasonal_fraction_above(np.array([-1.0, 0.0, 1.0]), np.zeros(3)) == pytest.approx(
+        [0.0, 0.5, 1.0]
+    )
     epsilon = 1e-8
     near = hydrology.seasonal_open_mean_c(np.array([-2.0 - epsilon, -2.0, -2.0 + epsilon]), np.full(3, 2.0))
     assert np.all(np.isfinite(near))
@@ -887,8 +889,6 @@ def test_compute_hydrology_keeps_a_lake_where_its_water_is_cold(cold):
     assert fields.lake_depth[28:31].max() > 0.0
     ledger = fields.ice.ledger
     assert ledger.closing_m3 <= ledger.opening_m3 + ledger.accumulation_m3  # no water became ice
-
-
 
 def test_compute_hydrology_threads_frozen_season_sublimation_through_spill_basins(monkeypatch):
     theta = 0.05 * np.arange(40)
