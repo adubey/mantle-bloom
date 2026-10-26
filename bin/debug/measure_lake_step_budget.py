@@ -200,4 +200,3 @@ for step in range(1, int(round(args.myr * 1e6 / args.step_years)) + 1):
     result["steps"].append(record)
     print(json.dumps(record), flush=True)
     args.out.write_text(json.dumps(result, indent=1))
-
