@@ -323,6 +323,47 @@ def _record_body_transitions(previous_bodies, current_bodies, events, seen_event
                 seen_events.add(key)
 
 
+def _export_orphaned_storage(depth, area_m2, leaf_of_node, is_ocean, accounting):
+    """Route water from prior lake cells that no longer belong to a basin this step."""
+    orphaned_nodes = np.flatnonzero((leaf_of_node < 0) & (depth > 0.0))
+    if not len(orphaned_nodes):
+        return
+    orphaned_volume = depth[orphaned_nodes] * area_m2[orphaned_nodes]
+    depth[orphaned_nodes] = 0.0
+    accounting.overflow_out_total += float(orphaned_volume.sum())
+    accounting.overflow_by_outlet[orphaned_nodes] += orphaned_volume
+    if is_ocean is not None:
+        accounting.ocean_overflow_total += float(
+            orphaned_volume[np.asarray(is_ocean, dtype=bool)[orphaned_nodes]].sum()
+        )
+
+
+def _empty_lake_solve_result(elevation, depth, hypsometry, is_ocean, *, export_prior_water):
+    """Build an empty result, exporting prior water only when no lake bodies remain."""
+    n = len(depth)
+    if export_prior_water:
+        overflow = depth * hypsometry.area_m2
+        total_overflow = float(overflow.sum())
+        ocean_overflow = (
+            float(overflow[np.asarray(is_ocean, dtype=bool)].sum()) if is_ocean is not None else 0.0
+        )
+        final_depth = np.zeros(n)
+        storage_change = -total_overflow
+    else:
+        overflow = np.zeros(n)
+        total_overflow = ocean_overflow = storage_change = 0.0
+        final_depth = depth.copy()
+    zero = np.zeros(n)
+    ledger = LakeStepLedger(
+        0.0, 0.0, ocean_overflow, total_overflow, storage_change, 0.0, 0.0
+    )
+    return LakeSolveResult(
+        final_depth, zero, np.zeros(n, dtype=bool), [], ledger,
+        overflow, np.zeros(n, dtype=bool), np.asarray(elevation).copy(),
+        np.full(n, -1, dtype=np.int64), np.full(n, -1, dtype=np.int64),
+    )
+
+
 @dataclass
 class _PrognosticAccounting:
     evaporation_total: float
@@ -334,7 +375,7 @@ class _PrognosticAccounting:
     dry_runoff_total: float
     meltwater_total: float
     integrated_supply_at_leaf: np.ndarray
-    spilling_ids: set[int]
+    final_spilling_ids: set[int]
     overflow_by_outlet: np.ndarray
     deferred: dict[int, float]
 
@@ -473,6 +514,7 @@ def _advance_prognostic_body(
 ):
     """Advance one active body and book its evaporation, storage and spill transfers."""
     members = body.members
+    accounting.final_spilling_ids.discard(id(body))
     if len(members) == 1:
         external_rate = float(rates[members[0]]) if dt_step > 0.0 else 0.0
     else:
@@ -526,7 +568,7 @@ def _advance_prognostic_body(
     body.current_water_elevation = new_level
     body.is_spilling = overflow > 1e-9
     if body.is_spilling:
-        accounting.spilling_ids.add(id(body))
+        accounting.final_spilling_ids.add(id(body))
     if overflow <= 0.0:
         return
     target = body.outlet_target_idx
@@ -541,7 +583,7 @@ def _advance_prognostic_body(
             # cannot merge, and their outlet edges form a closed hierarchy cycle. Export this
             # cap surplus once instead of circulating it through zero-duration flush passes.
             break
-        receiver_is_capped = id(receiver) in accounting.spilling_ids
+        receiver_is_capped = id(receiver) in accounting.final_spilling_ids
         receiver_rim = receiver.max_depth if receiver.max_depth is not None else np.inf
         _, receiver_tier_depth = _classify_tier(receiver.members, prev_lake_depth, node_area_km2)
         receiver_cap = min(receiver_rim, receiver.floor_elevation + receiver_tier_depth)
@@ -593,11 +635,9 @@ def solve_lakes_prognostic(
     n = len(elevation)
     depth = np.asarray(prev_lake_depth, dtype=float).copy()
     if n == 0 or years <= 0.0 or not forest:
-        zero = np.zeros(n)
-        return LakeSolveResult(
-            depth, zero, np.zeros(n, dtype=bool), [], LakeStepLedger(0, 0, 0, 0, 0, 0, 0),
-            zero.copy(), np.zeros(n, dtype=bool), np.asarray(elevation).copy(),
-            np.full(n, -1, dtype=np.int64), np.full(n, -1, dtype=np.int64),
+        return _empty_lake_solve_result(
+            elevation, depth, hypsometry, is_ocean,
+            export_prior_water=bool(n) and years > 0.0,
         )
 
     for lake in iter_all_lakes(forest):
@@ -620,11 +660,14 @@ def solve_lakes_prognostic(
     accounting = _PrognosticAccounting(
         0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, np.zeros(len(leaves)), set(), np.zeros(n), {}
     )
+    _export_orphaned_storage(depth, hypsometry.area_m2, leaf_of_node, is_ocean, accounting)
     events: list[LakeEvent] = []
     seen_events: set[tuple[int, str]] = set()
 
     for substep in range(steps + max(1, len(leaves))):
         dt_step = dt if substep < steps else 0.0
+        if dt_step > 0.0:
+            accounting.final_spilling_ids.clear()
         bodies = _active_bodies(forest, elevation, depth, hypsometry)
         body_by_id = {id(body): body for body in bodies}
         body_for_leaf, body_leaf_ids = _body_leaf_mapping(bodies, leaf_of_node)
@@ -682,7 +725,7 @@ def solve_lakes_prognostic(
             float(np.max(hypsometry.level_from_depth(depth[wet_members], wet_members)))
             if len(wet_members) else hypsometry.dry_level(body.members)
         )
-        body.is_spilling = id(body) in accounting.spilling_ids
+        body.is_spilling = id(body) in accounting.final_spilling_ids
         sinks = leaf_sinks(body)
         if body.max_depth is not None:
             filled_elevation[sinks] = body.max_depth
