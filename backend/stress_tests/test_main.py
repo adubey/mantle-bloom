@@ -63,10 +63,16 @@ def client():
     # A loopback client on a loopback host: the local no-login path, so these tests exercise
     # the routes rather than the auth guard (test_auth.py covers that, #372).
     yield _WorldClient(TestClient(app, base_url="http://localhost", client=("127.0.0.1", 50000)))
-    _reset_app_state()
-    if _default_session.lock.locked():
-        _default_session.lock.release()
-        pytest.fail("test left the default session lock held")
+    # Check the test's own session before the reset below replaces it: a fresh
+    # session's lock is always unlocked, so checking after would never catch a
+    # leak (#586).
+    session = _default_session
+    try:
+        if session.lock.locked():
+            session.lock.release()
+            pytest.fail("test left the default session lock held")
+    finally:
+        _reset_app_state()
 
 
 def _decode_image(body: dict) -> Image.Image:
