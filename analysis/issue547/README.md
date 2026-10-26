@@ -583,3 +583,109 @@ comparisons and decision metrics. The initial smoke exposed that ordinary world 
 fault and earthquake messages, so they cannot serve as topology outcomes; discard those smoke
 outputs. The runner now taps `merge_split.apply_topology_changes` directly. Repeat the smoke on
 both arms with this corrected topology-event capture before starting the matrix.
+
+### Focused timestep refinement: 0.05 Myr (2026-10-26)
+
+The preregistered check was posted to [issue #547](https://github.com/adubey/mantle-bloom/issues/547#issuecomment-6408770512) before either 0.05 Myr run. It compares seed `748935664` at node density 4, `PYTHONHASHSEED=0`, 50 Myr, and 10 Myr checkpoints. The 0.1 Myr runs are reused from the current-main matrix: baseline `f04cbc0772eca6d2484f7477b20004deb368206c`, candidate model code `d553c3cfc05db4372d0bb33ec7e58aa2390b793b`. The 0.05 candidate ran from `fb516de9ee61cb54bb29a9a7050a9fa1f6c07481`, which adds only the report to the same model code. The two new runs ran serially and completed successfully.
+
+| Continuous metric, 0.05 vs 0.1 Myr | Baseline | Candidate | 10% limit |
+|---|---:|---:|:---:|
+| Accumulated driving torque | +5.17% | +5.13% | pass |
+| Accumulated residual torque | −7.06% | −2.99% | pass |
+| Mean solved rate | −0.66% | −2.29% | pass |
+| Peak solved rate | −3.08% | 0.00% | pass |
+| Mean absolute contact closing | +46.08% | +38.67% | **fail** |
+| Peak absolute contact closing | −3.39% | −3.39% | pass |
+| Mean contact force | +28.22% | +13.49% | **fail** |
+
+At every 10 Myr checkpoint, endpoint land fraction and area-weighted Hc/Hm quantiles stayed within 4.57% of the 0.1 Myr values. Cumulative deformation did not stay within tolerance: for example, divergent Hc deformation changed −27.7% baseline / −24.2% candidate, failed-rift Hc changed −349% / −260%, and failed-rift Hm changed −798% / −627%. These component budgets also reflect topology changes, so they should not be read as fixed-topology convergence tests.
+
+The candidate/baseline mean-closing difference changes from +0.51% at 0.1 Myr to −4.59% at 0.05 Myr. Its absolute size grows from `1.24e-13` to `1.62e-12 m/s` (about 13×) and changes sign. Thus refinement does not bound the contact response at the preregistered tolerance. Peak closing remains equal between arms at both step sizes.
+
+Topology differs with step size and between arms. In both arms, the Plate 2 split occurs at 2.05 Myr with 0.05 Myr steps versus 2.1 Myr with 0.1 Myr steps. At 50 Myr, baseline has 38 events and 21 plates at 0.05 Myr, versus 37 events and 20 plates at 0.1 Myr; candidate has 40 events and 20 plates at 0.05 Myr, versus 33 events and 20 plates at 0.1 Myr. At 0.05 Myr the first baseline/candidate event-log mismatch is 16.8 versus 18.0 Myr. At 0.1 Myr it is 34.4 versus 34.0 Myr.
+
+Both new runs reached 50 Myr with exit code 0. Runtime / peak RSS was 5,137 s / 1.72 GiB baseline and 5,363 s / 1.53 GiB candidate. Material and Hm ledger closure remained at rounding scale; the largest Hm residual was `1.58e5 m³` against inventory `2.71e19 m³`. Repeated glacier-depth warnings were emitted in both arms; neither run failed. Full outputs remain in scratch. The compact checkpoint and metric comparison is [timestep_refinement_005_comparison.json](timestep_refinement_005_comparison.json).
+
+**Assessment.** The prediction of bounded refinement is not supported. Torque, solved-rate, land, and thickness summaries stay within 10%, but contact closing, contact force, and several deformation budgets do not. Topology also shifts with step size. This is one-seed diagnostic evidence; it neither establishes full RFC acceptance nor supports metric tuning.
+
+**Reproduction.** With the runner's 0.05 Myr option, run the baseline and candidate serially using the same command shape as the matched replay, changing `--step-myr` to `0.05` and writing each arm to a separate scratch output:
+
+```sh
+MANTLE_BLOOM_REPLAY_BACKEND=<arm-root>/backend PYTHONHASHSEED=0 <arm-root>/backend/.venv/bin/python bin/debug/replay_rfc0012_merge_rate.py --seed 748935664 --step-myr 0.05 --myr 50 --checkpoint-myr 10 --out <scratch-output>.json
+```
+
+### Follow-up refinement probe: 0.025 Myr (2026-10-26)
+
+The follow-up question and readout method were recorded in this analysis before either run.
+We asked whether continuous measures move toward stable values across 0.1→0.05→0.025 Myr.
+The same seed, density, hash seed, horizon, and checkpoints were used.
+The two 0.025 runs completed serially. This is a one-seed trend check, not a new pass/fail
+threshold or proof of convergence.
+
+| Measure | Baseline: 0.1→0.05; 0.05→0.025 | Candidate: 0.1→0.05; 0.05→0.025 | Adjacent absolute change shrinks? |
+|---|---:|---:|:---:|
+| Accumulated driving torque | +5.17%; −3.27% | +5.13%; −3.74% | Yes, both |
+| Accumulated residual torque | −7.06%; +4.63% | −2.99%; +6.34% | Baseline only |
+| Mean solved rate | −0.66%; −0.46% | −2.29%; +0.33% | Yes, both |
+| Peak solved rate | −3.08%; 0.00% | 0.00%; 0.00% | Baseline contracts; candidate stays flat |
+| Mean absolute contact closing | +46.08%; +3.27% | +38.67%; −1.85% | Yes, both |
+| Peak absolute contact closing | −3.39%; +32.63% | −3.39%; +32.63% | No, both |
+| Mean contact force | +28.22%; −14.03% | +13.49%; −6.15% | Yes, both |
+
+The candidate/baseline gap in mean absolute closing is +0.51% at 0.1 Myr, −4.59% at 0.05,
+and −9.32% at 0.025. The within-arm candidate average changes little at 0.025, while its
+difference from baseline grows toward 10%; these are separate comparisons.
+
+Mean absolute closing changes sharply from 0.1 to 0.05 Myr, then changes only 3.27% in the
+baseline and −1.85% in the candidate at 0.025 Myr. That measure appears to be settling in
+this seed. Mean contact force also has a smaller absolute step-to-step change at 0.025, though
+the baseline still shifts 14.03% from 0.05 to 0.025. Peak closing does not settle: it rises
+32.63% in both arms on the final refinement. Residual torque also fails to contract in the
+candidate. So the refinement trend is measure-dependent; it does not support a general claim
+that the simulation has settled.
+
+Topology remains timestep-sensitive: baseline event counts are 37, 38, and 32 with final plate
+counts 20, 21, and 20 at 0.1, 0.05, and 0.025 Myr; candidate event counts are 33, 40, and 27,
+with 20 plates at all three resolutions. Cumulative deformation components do not all
+contract either, including boundary-retreat Hm and convergent-deformation Hc/Hm. Endpoint
+land fraction shifts by roughly 1.7–2.5% between adjacent resolutions; median Hm thickness
+is unchanged to the reported precision. Ledger residuals stayed at rounding scale. The runs
+took 9,705 s / 1.74 GiB peak RSS (baseline) and 9,557 s / 1.84 GiB (candidate); both reached
+50 Myr successfully. Full outputs remain in scratch. The compact comparison is
+[timestep_refinement_0025_comparison.json](timestep_refinement_0025_comparison.json).
+
+**Assessment.** Lowering the timestep substantially reduces the drift in mean contact
+closing, which is evidence that this particular average is approaching a stable value. Other
+metrics still oscillate or move farther at 0.025 Myr. Because topology events also change,
+three resolutions for one seed are not enough to establish convergence of the full simulation.
+
+## Peak contact closing trace
+
+To locate the 32.63% rise in peak absolute contact closing from 0.05 to 0.025 Myr, I repeated
+the seed-748935664, 50 Myr baseline/candidate pairs at both resolutions with a step-level peak
+record. All four runs completed serially. The candidate replay used diagnostic revision
+`933b54a`; its model code is unchanged from candidate revision `fb516de`. The baseline model
+revision is `f04cbc0`.
+
+| Arm | Step | Peak time | Peak contact | Absolute closing | Yielded at capacity | Nearby topology |
+|---|---:|---:|---|---:|:---:|---|
+| Baseline | 0.05 Myr | 4.200 Myr | 4–11 | 4.78624×10⁻¹⁰ m/s | Yes | Plate 4 split into 4 and 11 at 4.100 Myr; 2 steps before peak |
+| Candidate | 0.05 Myr | 4.200 Myr | 4–11 | 4.78624×10⁻¹⁰ m/s | Yes | Plate 4 split into 4 and 11 at 4.100 Myr; 2 steps before peak |
+| Baseline | 0.025 Myr | 2.125 Myr | 4–9 | 6.34803×10⁻¹⁰ m/s | Yes | Plate 4 split into 4 and 9 at 2.025 Myr; 4 steps before peak. Plate 6 split at 2.100 Myr, 1 step before peak |
+| Candidate | 0.025 Myr | 2.125 Myr | 4–9 | 6.34803×10⁻¹⁰ m/s | Yes | Plate 4 split into 4 and 9 at 2.025 Myr; 4 steps before peak. Plate 6 split at 2.100 Myr, 1 step before peak |
+
+At each resolution, baseline and candidate have the same peak value, contact pair, and event
+timing. The higher 0.025 Myr peak is a different contact after a different split sequence; it
+is not a candidate-only increase. Both peaks occur at yielded contacts whose force equals the
+reported capacity. The 0.05 peak is two steps after the split that created its contact. The
+0.025 peak is four steps after the split that created its contact and one step after a separate
+split. This is consistent with a topology-sensitive peak, but timing alone does not establish
+causation. The trace localizes the rise for this one seed; it does not show that peak closing
+has converged or that all topology-sensitive peaks behave the same way.
+
+The repeated runs took 4,563 s / 1,514 MiB (baseline 0.05), 4,914 s / 1,647 MiB (candidate
+0.05), 9,234 s / 1,808 MiB (baseline 0.025), and 10,454 s / 1,330 MiB (candidate 0.025).
+Ledger residuals remained near rounding scale. Full outputs remain in scratch. The compact
+trace is [peak_closing_trace_comparison.json](peak_closing_trace_comparison.json); the local
+run command used the existing replay runner with `--seed 748935664 --step-myr <0.05|0.025>
+--myr 50 --checkpoint-myr 10`, the baseline or candidate backend, and one output file per run.

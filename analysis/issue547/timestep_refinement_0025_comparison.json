@@ -1,0 +1,75 @@
+{
+  "question": "Do continuous measures move toward stable values from 0.1 to 0.05 to 0.025 Myr within each arm?",
+  "controls": {
+    "seed": 748935664,
+    "node_density": 4,
+    "pythonhashseed": 0,
+    "horizon_myr": 50,
+    "checkpoint_myr": 10,
+    "steps_myr": [0.1, 0.05, 0.025],
+    "baseline_commits": [
+      "f04cbc0772eca6d2484f7477b20004deb368206c",
+      "f04cbc0772eca6d2484f7477b20004deb368206c",
+      "f04cbc0772eca6d2484f7477b20004deb368206c"
+    ],
+    "candidate_model_commit": "d553c3cfc05db4372d0bb33ec7e58aa2390b793b",
+    "candidate_0025_commit": "fb516de9ee61cb54bb29a9a7050a9fa1f6c07481",
+    "raw_outputs": [
+      "baseline-748935664-0.1.json",
+      "candidate-748935664-0.1.json",
+      "baseline-748935664-0.05.json",
+      "candidate-748935664-0.05.json",
+      "baseline-748935664-0.025.json",
+      "candidate-748935664-0.025.json"
+    ]
+  },
+  "motion_refinement": {
+    "baseline": {
+      "accumulated_driving_torque_nm_year": {"values": [3.1623691e34, 3.3259014e34, 3.2172431e34], "percent_changes": [5.171, -3.267], "absolute_change_shrank": true},
+      "accumulated_residual_torque_nm_year": {"values": [6.8879846e19, 6.4015703e19, 6.6980457e19], "percent_changes": [-7.062, 4.631], "absolute_change_shrank": true},
+      "mean_solved_rate_cm_per_yr": {"values": [2.1144636, 2.1004953, 2.0908906], "percent_changes": [-0.661, -0.457], "absolute_change_shrank": true},
+      "peak_solved_rate_cm_per_yr": {"values": [7.2876011, 7.063468, 7.063468], "percent_changes": [-3.076, 0.0], "absolute_change_shrank": true},
+      "mean_absolute_closing_m_per_s": {"values": [2.417328e-11, 3.5313215e-11, 3.6469286e-11], "percent_changes": [46.084, 3.274], "absolute_change_shrank": true},
+      "peak_absolute_closing_m_per_s": {"values": [4.9542501e-10, 4.7862398e-10, 6.3480324e-10], "percent_changes": [-3.391, 32.631], "absolute_change_shrank": false},
+      "mean_contact_force_n_per_m": {"values": [9.4799388e12, 1.2154901e13, 1.0449341e13], "percent_changes": [28.217, -14.032], "absolute_change_shrank": true}
+    },
+    "candidate": {
+      "accumulated_driving_torque_nm_year": {"values": [3.1617755e34, 3.324121e34, 3.1999178e34], "percent_changes": [5.135, -3.736], "absolute_change_shrank": true},
+      "accumulated_residual_torque_nm_year": {"values": [6.8346179e19, 6.6300459e19, 7.0503639e19], "percent_changes": [-2.993, 6.34], "absolute_change_shrank": false},
+      "mean_solved_rate_cm_per_yr": {"values": [2.1165186, 2.067974, 2.0747176], "percent_changes": [-2.294, 0.326], "absolute_change_shrank": true},
+      "peak_solved_rate_cm_per_yr": {"values": [7.063468, 7.063468, 7.063468], "percent_changes": [0.0, 0.0], "absolute_change_shrank": false},
+      "mean_absolute_closing_m_per_s": {"values": [2.4297727e-11, 3.3693459e-11, 3.3071278e-11], "percent_changes": [38.669, -1.847], "absolute_change_shrank": true},
+      "peak_absolute_closing_m_per_s": {"values": [4.9542501e-10, 4.7862398e-10, 6.3480324e-10], "percent_changes": [-3.391, 32.631], "absolute_change_shrank": false},
+      "mean_contact_force_n_per_m": {"values": [9.4966821e12, 1.0777654e13, 1.011439e13], "percent_changes": [13.489, -6.154], "absolute_change_shrank": true}
+    }
+  },
+  "topology": {
+    "baseline": {"event_counts_by_step": {"0.1": 37, "0.05": 38, "0.025": 32}, "final_plate_counts_by_step": {"0.1": 20, "0.05": 21, "0.025": 20}},
+    "candidate": {"event_counts_by_step": {"0.1": 33, "0.05": 40, "0.025": 27}, "final_plate_counts_by_step": {"0.1": 20, "0.05": 20, "0.025": 20}}
+  },
+  "paired_contact_metrics": {
+    "candidate_minus_baseline_percent": {
+      "mean_absolute_closing": {"0.1": 0.515, "0.05": -4.587, "0.025": -9.317},
+      "mean_contact_force": {"0.1": 0.177, "0.05": -11.331, "0.025": -3.205}
+    }
+  },
+  "checkpoints": {
+    "baseline": {
+      "land_fraction": [[0.149812, 0.149707, 0.151020], [0.154610, 0.152279, 0.154672], [0.157389, 0.154365, 0.156865], [0.158363, 0.154689, 0.157989], [0.159074, 0.155707, 0.158365]],
+      "hc_median_km": [[11.687, 11.695, 11.675], [11.666, 11.656, 11.678], [11.634, 11.613, 11.645], [11.587, 11.562, 11.600], [11.554, 11.543, 11.581]],
+      "hm_median_km": [[28.228, 28.228, 28.228], [35.669, 35.669, 35.669], [38.407, 38.407, 38.407], [39.414, 39.414, 39.414], [39.784, 39.784, 39.784]]
+    },
+    "candidate": {
+      "land_fraction": [[0.149812, 0.149707, 0.151039], [0.154610, 0.152344, 0.154868], [0.157389, 0.154090, 0.157465], [0.158083, 0.155038, 0.158139], [0.159033, 0.155126, 0.158673]],
+      "hc_median_km": [[11.687, 11.695, 11.675], [11.666, 11.657, 11.673], [11.634, 11.600, 11.648], [11.586, 11.567, 11.587], [11.558, 11.542, 11.554]],
+      "hm_median_km": [[28.228, 28.228, 28.228], [35.669, 35.669, 35.669], [38.407, 38.407, 38.407], [39.414, 39.414, 39.414], [39.784, 39.784, 39.784]]
+    },
+    "row_order": "10, 20, 30, 40, 50 Myr; within each row values are for 0.1, 0.05, 0.025 Myr"
+  },
+  "run_health": {
+    "baseline": [{"step_myr": 0.025, "runtime_seconds": 9704.62, "peak_rss_mib": 1783.84}],
+    "candidate": [{"step_myr": 0.025, "runtime_seconds": 9557.04, "peak_rss_mib": 1887.86}],
+    "ledger_closure": "Residuals remained at rounding scale relative to inventory; both runs completed 50 Myr with exit code 0."
+  },
+  "interpretation": "Mean absolute closing changes much less at 0.025 than at 0.05 in both arms. Mean force also has a smaller absolute adjacent-step change, but peak closing shifts farther at 0.025, and candidate residual torque does not contract. Topology and some deformation components remain timestep-sensitive. This one-seed, three-resolution probe does not establish convergence of the full simulation."
+}

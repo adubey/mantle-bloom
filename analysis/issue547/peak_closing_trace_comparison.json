@@ -1,0 +1,134 @@
+{
+  "seed": 748935664,
+  "node_density": 4.0,
+  "horizon_myr": 50.0,
+  "baseline_model_commit": "f04cbc0772eca6d2484f7477b20004deb368206c",
+  "candidate_model_commit": "fb516de9ee61cb54bb29a9a7050a9fa1f6c07481",
+  "candidate_diagnostic_commit": "933b54ad5e2267a5efb818f06370ac87cb9bdb5c",
+  "runs": [
+    {
+      "arm": "baseline",
+      "step_myr": 0.05,
+      "peak_step_index": 84,
+      "peak_step_myr": 4.2,
+      "lower_plate_id": 4,
+      "upper_plate_id": 11,
+      "absolute_closing_rate_m_per_s": 4.786239792643565e-10,
+      "signed_closing_rate_m_per_s": 4.786239792643565e-10,
+      "force_n_per_m": 15000000000000.0,
+      "capacity_n_per_m": 15000000000000.0,
+      "yielded": true,
+      "plate_count": 12,
+      "nearest_preceding_topology_event": {
+        "time_myr": 4.1,
+        "steps_before_peak": 2,
+        "event": "Plate 4 split into plates 4 and 11."
+      },
+      "runtime_seconds": 4563.299082040787,
+      "peak_rss_mib": 1514.046875,
+      "final_hm_ledger_closure_error_m3": {
+        "all": 99840.0,
+        "continental_node": 4289.5625,
+        "oceanic_node": 117758.4375
+      }
+    },
+    {
+      "arm": "candidate",
+      "step_myr": 0.05,
+      "peak_step_index": 84,
+      "peak_step_myr": 4.2,
+      "lower_plate_id": 4,
+      "upper_plate_id": 11,
+      "absolute_closing_rate_m_per_s": 4.786239792643565e-10,
+      "signed_closing_rate_m_per_s": 4.786239792643565e-10,
+      "force_n_per_m": 15000000000000.0,
+      "capacity_n_per_m": 15000000000000.0,
+      "yielded": true,
+      "plate_count": 12,
+      "nearest_preceding_topology_event": {
+        "time_myr": 4.1,
+        "steps_before_peak": 2,
+        "event": "Plate 4 split into plates 4 and 11."
+      },
+      "runtime_seconds": 4913.557528018951,
+      "peak_rss_mib": 1647.09375,
+      "final_hm_ledger_closure_error_m3": {
+        "all": 157696.0,
+        "continental_node": -575.0625,
+        "oceanic_node": 160767.0625
+      }
+    },
+    {
+      "arm": "baseline",
+      "step_myr": 0.025,
+      "peak_step_index": 85,
+      "peak_step_myr": 2.125,
+      "lower_plate_id": 4,
+      "upper_plate_id": 9,
+      "absolute_closing_rate_m_per_s": 6.348032444962226e-10,
+      "signed_closing_rate_m_per_s": 6.348032444962226e-10,
+      "force_n_per_m": 15000000000000.0,
+      "capacity_n_per_m": 15000000000000.0,
+      "yielded": true,
+      "plate_count": 11,
+      "nearest_preceding_topology_events": [
+        {
+          "time_myr": 2.1,
+          "steps_before_peak": 1,
+          "event": "Plate 6 split into plates 6 and 10."
+        },
+        {
+          "time_myr": 2.025,
+          "steps_before_peak": 4,
+          "event": "Plate 4 split into plates 4 and 9."
+        }
+      ],
+      "runtime_seconds": 9233.982429742813,
+      "peak_rss_mib": 1807.90625,
+      "final_hm_ledger_closure_error_m3": {
+        "all": 93696.0,
+        "continental_node": -255.75,
+        "oceanic_node": 105471.75
+      }
+    },
+    {
+      "arm": "candidate",
+      "step_myr": 0.025,
+      "peak_step_index": 85,
+      "peak_step_myr": 2.125,
+      "lower_plate_id": 4,
+      "upper_plate_id": 9,
+      "absolute_closing_rate_m_per_s": 6.348032444962226e-10,
+      "signed_closing_rate_m_per_s": 6.348032444962226e-10,
+      "force_n_per_m": 15000000000000.0,
+      "capacity_n_per_m": 15000000000000.0,
+      "yielded": true,
+      "plate_count": 11,
+      "nearest_preceding_topology_events": [
+        {
+          "time_myr": 2.1,
+          "steps_before_peak": 1,
+          "event": "Plate 6 split into plates 6 and 10."
+        },
+        {
+          "time_myr": 2.025,
+          "steps_before_peak": 4,
+          "event": "Plate 4 split into plates 4 and 9."
+        }
+      ],
+      "runtime_seconds": 10453.897261857986,
+      "peak_rss_mib": 1330.234375,
+      "final_hm_ledger_closure_error_m3": {
+        "all": 34304.0,
+        "continental_node": -3839.4375,
+        "oceanic_node": 46591.4375
+      }
+    }
+  ],
+  "refinement": {
+    "peak_absolute_closing_0_05_m_per_s": 4.786239792643565e-10,
+    "peak_absolute_closing_0_025_m_per_s": 6.348032444962226e-10,
+    "increase_percent": 32.6308513386072
+  },
+  "assessment": "At each resolution baseline and candidate have identical peak values and locations. The increase from 0.05 to 0.025 Myr accompanies a different split sequence and a different yielded contact. The temporal association suggests topology sensitivity but does not establish causation; this is one seed and is not a convergence proof."
+}
