@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import statistics
 from dataclasses import dataclass
 
 import numpy as np
@@ -31,6 +32,13 @@ PLATEAU_AREA_MAX_KM2 = 2e6
 # 44-57 M km³; the distribution shape is not established (#577).
 PLUME_HEAD_VOLUME_MIN_KM3 = 1e6
 PLUME_HEAD_VOLUME_MAX_KM3 = 5e7
+# Head-volume distribution for `_sample_event` (RFC 0007, #584): "log_uniform"
+# (default, the #579 behaviour), "lognormal", or "power_law". All three sample
+# the same [MIN, MAX] range, so the sensitivity spread comes from the shape, not
+# the support. Lognormal matches the log-uniform median with sigma spanning the
+# range; power-law exponent is a sensitivity choice, not a measurement.
+PLUME_VOLUME_DISTRIBUTION = "log_uniform"
+PLUME_VOLUME_POWER_LAW_ALPHA = 1.5
 
 
 def head_footprint_area_m2(volume_m3: float) -> float:
@@ -207,6 +215,36 @@ def _log_uniform(rng: np.random.Generator, low: float, high: float) -> float:
     return float(math.exp(rng.uniform(math.log(low), math.log(high))))
 
 
+def _sample_head_volume_km3(rng: np.random.Generator) -> float:
+    """Head volume in km3 under `PLUME_VOLUME_DISTRIBUTION` (RFC 0007, #584).
+
+    The default branch is exactly the #579 draw (same call, same rng use), so
+    scheduled volumes are unchanged unless the knob moves. Every variant
+    consumes exactly one rng draw, so switching distributions cannot reshuffle
+    downstream draws.
+    """
+    low, high = PLUME_HEAD_VOLUME_MIN_KM3, PLUME_HEAD_VOLUME_MAX_KM3
+    if PLUME_VOLUME_DISTRIBUTION == "lognormal":
+        # Properly truncated lognormal by inverse CDF: one uniform draw maps
+        # onto the normal mass between the log bounds, so no pile-up lands on
+        # the clamps (review on #619).
+        log_low, log_high = math.log(low), math.log(high)
+        dist = statistics.NormalDist(
+            mu=0.5 * (log_low + log_high), sigma=(log_high - log_low) / 4.0
+        )
+        cdf_low, cdf_high = dist.cdf(log_low), dist.cdf(log_high)
+        return float(math.exp(dist.inv_cdf(cdf_low + rng.random() * (cdf_high - cdf_low))))
+    if PLUME_VOLUME_DISTRIBUTION == "power_law":
+        alpha = PLUME_VOLUME_POWER_LAW_ALPHA
+        if alpha == 1.0:
+            raise ValueError("PLUME_VOLUME_POWER_LAW_ALPHA 1.0 is degenerate (divide by zero)")
+        lo, hi = low ** (1.0 - alpha), high ** (1.0 - alpha)
+        return float((rng.random() * (hi - lo) + lo) ** (1.0 / (1.0 - alpha)))
+    if PLUME_VOLUME_DISTRIBUTION != "log_uniform":
+        raise ValueError(f"unknown plume volume distribution: {PLUME_VOLUME_DISTRIBUTION!r}")
+    return _log_uniform(rng, low, high)
+
+
 def _sample_event(
     seed: int,
     stream: str,
@@ -229,7 +267,7 @@ def _sample_event(
         return None
     position = _sample_position(rng, centers)
     if stream == HEAD_STREAM:
-        volume = _log_uniform(rng, PLUME_HEAD_VOLUME_MIN_KM3, PLUME_HEAD_VOLUME_MAX_KM3) * KM3_TO_M3
+        volume = _sample_head_volume_km3(rng) * KM3_TO_M3
         head_end = born_years + PLUME_HEAD_DURATION_MYR * 1e6
         flux = _log_uniform(rng, PLUME_TAIL_FLUX_MIN_KM3_PER_YR, PLUME_TAIL_FLUX_MAX_KM3_PER_YR) * KM3_TO_M3
         return MantlePlume(
