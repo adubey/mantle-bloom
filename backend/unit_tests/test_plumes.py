@@ -546,6 +546,41 @@ def test_head_stress_credit_uses_plate_ids():
     assert continental.internal_stress == pytest.approx(plumes.PLUME_HEAD_STRESS)
 
 
+def test_head_volume_distribution_default_matches_log_uniform_draw_for_draw():
+    """RFC 0007 (#584): the default distribution is exactly the #579 draw, so
+    scheduled volumes are unchanged unless the knob moves."""
+    from app import plumes
+
+    assert plumes.PLUME_VOLUME_DISTRIBUTION == "log_uniform"
+    for seed in range(5):
+        rng_a = np.random.default_rng(seed)
+        rng_b = np.random.default_rng(seed)
+        assert plumes._sample_head_volume_km3(rng_a) == plumes._log_uniform(
+            rng_b, plumes.PLUME_HEAD_VOLUME_MIN_KM3, plumes.PLUME_HEAD_VOLUME_MAX_KM3
+        )
+
+
+def test_head_volume_distribution_variants_stay_in_range_and_reject_unknown(monkeypatch):
+    """RFC 0007 (#584): lognormal and power-law samplers stay inside the shared
+    range; the truncated lognormal leaves no pile-up on the clamps; an unknown
+    name and a degenerate power-law alpha fail loudly."""
+    from app import plumes
+
+    rng = np.random.default_rng(0)
+    for name in ("log_uniform", "lognormal", "power_law"):
+        monkeypatch.setattr(plumes, "PLUME_VOLUME_DISTRIBUTION", name)
+        for _ in range(2000):
+            volume = plumes._sample_head_volume_km3(rng)
+            assert plumes.PLUME_HEAD_VOLUME_MIN_KM3 < volume < plumes.PLUME_HEAD_VOLUME_MAX_KM3
+    monkeypatch.setattr(plumes, "PLUME_VOLUME_DISTRIBUTION", "gaussian")
+    with pytest.raises(ValueError, match="unknown plume volume distribution"):
+        plumes._sample_head_volume_km3(rng)
+    monkeypatch.setattr(plumes, "PLUME_VOLUME_DISTRIBUTION", "power_law")
+    monkeypatch.setattr(plumes, "PLUME_VOLUME_POWER_LAW_ALPHA", 1.0)
+    with pytest.raises(ValueError, match="degenerate"):
+        plumes._sample_head_volume_km3(rng)
+
+
 def test_diagnostics_counts_population():
     """diagnostics() reports the live census (#579)."""
     world = World(seed=11, plates=[])

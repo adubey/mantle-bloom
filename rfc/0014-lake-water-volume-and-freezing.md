@@ -155,12 +155,13 @@ Following the review on PR #523, ice cover, liquid storage and routing, and phas
   - *Note (RFC 0015, if accepted):* RFC 0015 D1 replaces the frozen-node snow switch with a seasonal snow fraction, and its D4 gives snow on a lake's wet fraction to the lake (onto `lake_ice_m` while frozen), not to glacier accumulation. This RFC stops writing `IceLedger.frozen_river_ice_m3`, `frozen_river_capped_m3` and `frozen_lake_m3`; RFC 0015 D5 deletes them. See [RFC 0015](0015-frozen-water-in-physical-units.md#d4-lakes-that-freeze-and-lakes-under-ice-with-rfc-0014).
 
 **(c) A bounded, energy-limited ice cap.**
-- Each wet cell carries an ice-cap thickness `H` (water equivalent), persisted between steps.
-- **Growth:** a one-dimensional conduction law [[Leppäranta, 1993]](#ref-leppaesranta1993) driven by annual freezing degree-days. The freezing degree-days are the mirror of `seasonal_positive_degrees` below `T_ice`, in closed form.
-- **Loss:** melt from positive degree-days, and sublimation `s_ice`.
-- **Bounds:** conductive growth slows as `H` thickens, so `H` approaches an equilibrium where annual growth balances annual loss. It is bounded above by the cell's water depth.
-- **Ledger:** water entering the cap leaves liquid storage and returns when it melts. The cap is a disjoint, bounded reservoir booked by water-equivalent volume, never at `WATER_TO_ICE`.
-- **Frozen to the bed:** a cell whose cap reaches the bed is solid; further inflow there spills or ponds as liquid at the next cell. Its share is reported.
+- Each wet cell carries an ice-cap thickness `H_w` (water equivalent), persisted between steps. For heat transfer, use physical ice thickness `h_i = H_w ρ_w / ρ_i`; all water-ledger changes remain in water-equivalent volume.
+- **Winter growth:** replace the bare-ice, one-sided Stefan approximation with the seasonal interface heat budget. The upward conductive flux is `q_c = (T_f − T_s) / (h_i/k_i + h_s/k_s)`, where `T_s` is the ice/snow surface temperature and `h_s/k_s` is snow's thermal resistance. The Stefan balance is `ρ_i L_f dh_i/dt = q_c − q_w`, where positive `q_w` is heat delivered from the lake water to the ice base. Snow insulation and basal heat therefore reduce the no-snow, zero-basal-flux Stefan growth, which is an upper bound rather than a central estimate [[Leppäranta, 1993]](#ref-leppaesranta1993).
+- **Summer and seasonal loss:** keep surface melt and sublimation as distinct fluxes. Melt returns liquid water to the lake; only sublimation leaves the water system. The observed ~0.6 m summer ablation at Lake Untersee is compensated by winter basal refreezing and is not an annual sublimation rate [[Weisleitner et al., 2019]](#ref-weisleitner2019). Do not use it as `s_ice`. Ice-covered lake observations show that snow and water-to-ice heat flux vary substantially with season and lake conditions, so neither can be represented as an unqualified universal constant [[Huang et al., 2022]](#ref-huang2022).
+- **Reduced forcing and gate:** the current climate has no incident shortwave radiation, snow-depth, humidity, wind, or under-ice water-temperature state from which to calculate `T_s`, `h_s`, `q_w`, or sublimation mechanistically. RFC 0015 D4 currently sends snow on a frozen lake directly into `lake_ice_m`; a snow-insulation term therefore requires either a distinct lake-snow reservoir and a coordinated D4 change, or an observed-data-screened reduced proxy. Keep snow resistance, lake-to-ice heat flux and sublimation as separate uncertain terms in the G5 prototype. Do not pick final values by fitting cap thickness alone. If the reduced inputs cannot predict seasonal thickness and bedfast occurrence on observed lakes, defer D2(c) or scope the missing thermal state before implementation.
+- **Bounds:** integrate the annual forcing over its seasonal intervals (including partial-step overlaps); clip `H_w` to `[0, water depth]`. If `q_w > q_c`, basal melt returns ice mass to liquid rather than forcing negative thickness. At the bed limit, additional freezing stops and liquid inflow remains in the lake budget and routing.
+- **Ledger:** freezing transfers water from liquid storage to the cap; basal or surface melt returns it. Sublimation alone is an external water loss. The cap is a disjoint, bounded reservoir booked by water-equivalent volume, never at `WATER_TO_ICE`.
+- **Bedfast ice:** report the fraction and depth distribution of wet cells at the bed limit separately from cap thickness. Bottomfast ice is observed in shallow tundra lakes [[Hirose et al., 2008]](#ref-hirose2008), so the fraction is a diagnostic to compare with observations, not evidence by itself that water was lost. Preserve the current >1% G5 falsification threshold for this rerun unless the owner explicitly revises it.
 - **Glaciers:** the cap stays apart from `glacier_depth` until glacier mass balance is physical (#368). After that, a cap frozen to the bed can be handed to the glacier model by mass.
 
 ### D3. Water-surface temperature
@@ -233,14 +234,19 @@ Neither set includes the development save, seed 308161711. All runs use the ice-
 
   Compare cap thicknesses with published perennial and seasonal lake-ice thicknesses, sourced and verified in G5. *Outcome:* adopt the knobs, recalibrate them on the diagnosis set, or revise D2(c) before implementation.
 
+  **Result (issue #541; report:** [`analysis/issue541/README.md`](../analysis/issue541/README.md)**):** The three #538 diagnosis saves reach a volume plateau by 0.1 Myr under fixed climate and lake depth. At baseline, 5.09% and 18.45% of wet area freeze to the bed on seeds 910211954 and 317739385, exceeding the 1% falsification threshold; seed 635056485 is at 0.54%. Across the requested sublimation (×0.25/×1/×4) and conduction (×0.5/×1/×2) sensitivities, seed 317739385 remains above threshold (minimum 1.63%). The baseline physical-ice thickness p50s are 4.50, 9.50 and 1.71 m respectively; thickness and bed-freeze shares vary widely across settings. **G5 fails for the starting D2(c) law. Revise its bed-freeze and loss treatment before implementation.** The baseline thicknesses are compared with seasonal lake ice (Hirose et al., 2008 report a 1.25 m regional mean seasonal maximum [[Hirose et al., 2008]](#ref-hirose2008)) and perennial lake ice (Lake Untersee's measured range is 2.2–3.8 m, summer mean 3.0 m [[Steel et al., 2015]](#ref-steel2015)). The 0.6 m/yr Untersee reference is summer ablation compensated by winter refreezing, not a measured annual sublimation flux [[Weisleitner et al., 2019]](#ref-weisleitner2019); this first-order prototype omits that basal refreezing and holds climate and depth fixed.
+
+  **Revision after G5:** the diagnosis did not falsify conductive growth itself; it falsified the tested combination of bare-ice growth, fixed positive-degree-day melt, a uniform `s_ice` borrowed from summer ablation, and zero basal heat exchange. The next G5 candidate uses a snow-resisted, two-sided seasonal heat budget; records surface melt, basal melt/refreezing and sublimation as separate transfers; and reports bedfast area as a state. The starting `s_ice = 0.6 m/yr` and the no-snow Stefan coefficient are retired as adopted defaults. The new candidate must first show that its reduced forcing terms can be constrained against independent seasonal ice observations; otherwise D2(c) remains deferred. The existing diagnosis set may screen sensitivities, but the three held-out saves remain untouched.
+
 ### Knobs
 
 | Knob | Start | Source | Tuning |
 |---|---|---|---|
 | `T_ice` (water freezing threshold) | 0 °C | Physical | None |
 | `D_ref`, `a_min` (amplitude damping with depth) | Off (`A_w = A`) | Design choice; Air2Water's concept [[Piccolroaz et al., 2013]](#ref-piccolroaz2013) | G3 on observed lakes, never on world seeds |
-| Ice-growth conduction coefficient | From a Stefan-type analytic solution [[Leppäranta, 1993]](#ref-leppaesranta1993) | Literature, to be sourced numerically in G5 | G5 sensitivity on the diagnosis set |
-| `s_ice` (sublimation from ice cover) | Design choice; Untersee's ~0.6 m/yr summer ablation [[Weisleitner et al., 2019]](#ref-weisleitner2019) is a polar-desert scale reference, not a target | Calibration assumption | G5 sensitivity (×0.25, ×1, ×4) on the diagnosis set |
+| Snow thermal resistance `h_s/k_s` and surface temperature `T_s` | Not set; requires a separate lake-snow reservoir coordinated with RFC 0015 D4, or a reduced proxy validated against observed seasonal data | Snowless Stefan growth is an upper bound; current model has no snow-depth or surface-energy forcing | New G5 design screen against independent observed lakes before tuning on diagnosis saves |
+| Basal lake-to-ice heat flux `q_w` | Not set; test a literature-bounded seasonal range rather than a global constant | Observed heat flux varies strongly by season, snow, insolation and lake stratification [[Huang et al., 2022]](#ref-huang2022) | New G5 design screen; select only a range supported by available model inputs and observations |
+| `s_ice` (true sublimation from ice cover) | No adopted value; `0.6 m/yr` is removed as a default | Untersee's ~0.6 m summer ablation is compensated by winter basal refreezing, not a measured annual sublimation rate [[Weisleitner et al., 2019]](#ref-weisleitner2019) | Independently bound from observations; then sensitivity-test on the diagnosis set |
 | Ice water-equivalent ratio | 1000/917 | Densities of water and ice | None |
 | `SHALLOW_EVAPORATION_BOOST` | 0.3 (unchanged) | Existing (#297) | Out of scope |
 | `LAKE_MAX_DEPTH_M`, `SEA_MAX_DEPTH_M` | Unchanged | Existing | G4, owner decision |
@@ -292,14 +298,14 @@ Neither set includes the development save, seed 308161711. All runs use the ice-
   - A sinusoidal annual cycle with the model's synthesized amplitude stands in for real seasons, and air temperature stands in for water temperature, apart from optional depth damping.
   - Sharma et al. also name elevation and shoreline complexity as controls; neither is represented.
   - G3 measures the error of the relation and of the input separately.
-- **The ice cap's growth law and sublimation rate** are first-order: conduction-limited growth, with degree-day melt and a single sublimation rate. Their numbers are calibration assumptions, tested for sensitivity in G5. Snow insulation and radiation are not represented.
+- **The ice cap's reduced heat budget remains underdetermined.** The no-snow Stefan law overestimates winter growth, while basal heat, snow insulation, solar energy, wind and humidity vary among lakes and are not all represented in the current model. The revised design separates those fluxes, but D2(c) cannot proceed until independent observations constrain a reduced parameterization; otherwise it needs a scoped lake thermal state or deferral.
 - **Liquid water under ice** is assumed to keep its storage and spill; a frozen-to-bed cell is the only exception.
 - **Evaporation is still the temperature-only rate.** It runs 15–35% low for continental deserts and ~70% low at high altitude (#519). Lake sizes will move again when #358 and #118 give a Penman rate; that interface is preserved.
 - **Single-save evidence.** All mechanism sizes come from one 121.5 Myr world. G0 is required before implementation.
 
 ## Acceptance criteria
 
-- [ ] **G0–G5 run and recorded** in this RFC, with the owner's D4 decision.
+- [ ] **G0–G5 run and recorded** in this RFC, with the owner's D4 decision. G5's first candidate failed; the revised candidate must pass the independent forcing/observations screen before its diagnosis-set sensitivity rerun.
 - [ ] **Unit tests:**
   - [ ] the endpoint solve matches alternative C at steady state (≤ 0.1% of volume) on random hierarchies;
   - [ ] nested and asymmetric supply cases hold, spill, and evaporate exactly their total source supply;
@@ -309,7 +315,8 @@ Neither set includes the development save, seed 308161711. All runs use the ice-
   - [ ] a spill crossing catchments via a channel is delivered to the hierarchy's receiving leaf;
   - [ ] the ice-free fraction is 0 below and 1 above the threshold range and continuous between;
   - [ ] a lake with `f_free = 0` keeps liquid water and balances its supply by sublimation and overflow;
-  - [ ] ice-cap thickness stays within [0, water depth] and approaches a plateau under constant forcing;
+  - [ ] ice-cap thickness stays within [0, water depth], closes the liquid/ice budget, and approaches a plateau under constant forcing;
+  - [ ] basal melt and surface melt return water to liquid; sublimation is the only D2(c) atmospheric mass loss;
   - [ ] water at a cold sink is never deleted;
   - [ ] an enclosed lake cell with its bed below sea level uses the air temperature at its water surface;
   - [ ] silt equals coefficient × supply × years.
@@ -330,7 +337,7 @@ Neither set includes the development save, seed 308161711. All runs use the ice-
 - **G1 fails broadly:** more than 20% of lake volume is flagged to alternative C at 10 kyr steps. The equilibrium premise is wrong for this model's lakes. *Revise:* make C the default solve and the endpoint solve an optimisation for flagged-fast bodies.
 - **G2 fails:** the endpoint solve disagrees with steady-state integration beyond 0.1% of volume, or depends on processing order. *Revise:* fix the rules (order, transfer accounting) or move to C.
 - **G0 shows the interim fixes suffice:** #520 and #521 already meet the flicker, no-pinned-lakes and no-water-deleted criteria, and item 6 is under 1%, on every diagnosis save. *Revise:* withdraw D1's solve; keep the precipitation fix, the ledger, D2 and D3.
-- **The ice cap doesn't plateau:** cap volume keeps growing over 10 Myr on a diagnosis save at every G5 sensitivity setting, or more than 1% of wet area freezes to the bed. *Revise:* D2(c)'s growth and loss law.
+- **The revised ice cap doesn't plateau or still freezes >1% of wet area to the bed:** *Revise:* D2(c)'s reduced heat budget again, or defer the cap if the missing thermal forcing cannot be constrained. The bedfast share must also be compared with bottomfast-lake observations before treating it as a physical failure; the >1% threshold remains the gate until the owner decides otherwise.
 - **G3 gives no skill:** `1 − f_free` misses observed ice duration by more than 60 days median, even with observed inputs and damping. *Revise:* the sinusoid-and-air-temperature proxy is too crude; consider an ice-duration regression instead.
 
 ## References
@@ -339,8 +346,11 @@ Neither set includes the development save, seed 308161711. All runs use the ice-
 - <a id="ref-barnes2021"></a>Barnes, R., Callaghan, K. L., & Wickert, A. D. (2021). Computing water flow through complex landscapes – Part 3: Fill–Spill–Merge: flow routing in depression hierarchies. *Earth Surface Dynamics*, 9, 105–121. [https://doi.org/10.5194/esurf-9-105-2021](https://doi.org/10.5194/esurf-9-105-2021)
 - <a id="ref-benson2000"></a>Benson, B., Magnuson, J., & Sharma, S. (2000). *Global Lake and River Ice Phenology Database, Version 1*. NSIDC (G01377). [https://nsidc.org/data/G01377/versions/1](https://nsidc.org/data/G01377/versions/1)
 - <a id="ref-leppaesranta1993"></a>Leppäranta, M. (1993). A review of analytical models of sea-ice growth. *Atmosphere-Ocean*, 31(1), 123–138. [https://doi.org/10.1080/07055900.1993.9649465](https://doi.org/10.1080/07055900.1993.9649465)
+- <a id="ref-hirose2008"></a>Hirose, T., Kapfer, M., Bennett, J., Cott, P., Manson, G., & Solomon, S. (2008). Bottomfast Ice Mapping and the Measurement of Ice Thickness on Tundra Lakes Using C-Band Synthetic Aperture Radar Remote Sensing. *Journal of the American Water Resources Association*, 44(2), 285–292. [https://doi.org/10.1111/j.1752-1688.2007.00161.x](https://doi.org/10.1111/j.1752-1688.2007.00161.x)
+- <a id="ref-huang2022"></a>Huang, W., Zhao, W., Zhang, C., Leppäranta, M., Li, Z., Li, R., & Lin, Z. (2022). Sunlight penetration dominates the thermal regime and energetics of a shallow ice-covered lake in arid climate. *The Cryosphere*, 16, 1793–1806. [https://doi.org/10.5194/tc-16-1793-2022](https://doi.org/10.5194/tc-16-1793-2022)
 - <a id="ref-mason1994"></a>Mason, I. M., Guzkowska, M. A. J., Rapley, C. G., & Street-Perrott, F. A. (1994). The response of lake levels and areas to climatic change. *Climatic Change*, 27, 161–197. [https://doi.org/10.1007/BF01093590](https://doi.org/10.1007/BF01093590)
 - <a id="ref-piccolroaz2013"></a>Piccolroaz, S., Toffolon, M., & Majone, B. (2013). A simple lumped model to convert air temperature into surface water temperature in lakes. *Hydrology and Earth System Sciences*, 17, 3323–3338. [https://doi.org/10.5194/hess-17-3323-2013](https://doi.org/10.5194/hess-17-3323-2013)
 - <a id="ref-sharma2019"></a>Sharma, S., Blagrave, K., Magnuson, J. J., et al. (2019). Widespread loss of lake ice around the Northern Hemisphere in a warming world. *Nature Climate Change*, 9, 227–231. [https://doi.org/10.1038/s41558-018-0393-5](https://doi.org/10.1038/s41558-018-0393-5)
+- <a id="ref-steel2015"></a>Steel, M., McKay, C. P., & Andersen, D. T. (2015). Modeling circulation and seasonal fluctuations in perennially ice-covered and ice-walled Lake Untersee, Antarctica. *Limnology and Oceanography*, 60(4), 1231–1245. [https://doi.org/10.1002/lno.10086](https://doi.org/10.1002/lno.10086)
 - <a id="ref-weisleitner2019"></a>Weisleitner, K., Perras, A., Moissl-Eichinger, C., Andersen, D. T., & Sattler, B. (2019). Source environments of the microbiome in perennially ice-covered Lake Untersee, Antarctica. *Frontiers in Microbiology*, 10, 1019. [https://doi.org/10.3389/fmicb.2019.01019](https://doi.org/10.3389/fmicb.2019.01019)
 - <a id="ref-zhao2022"></a>Zhao, G., Li, Y., Zhou, L., & Gao, H. (2022). Evaporative water loss of 1.42 million global lakes. *Nature Communications*, 13, 3686. [https://doi.org/10.1038/s41467-022-31125-6](https://doi.org/10.1038/s41467-022-31125-6)

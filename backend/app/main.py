@@ -37,6 +37,7 @@ from . import (
     replay_log,
     run_control,
     stats,
+    users,
     world_names,
     worldsketch,
 )
@@ -137,6 +138,10 @@ def _max_worlds() -> int:
 
 # Every world in this process (#563). See world_registry.py.
 _registry = WorldRegistry(max_worlds=_max_worlds())
+
+# The user/entitlement store (#620): SQLite at MANTLE_BLOOM_USER_DB_PATH, in-memory
+# when unset. Nothing gates on tiers yet (items 2-4); the store just exists for them.
+_user_store = users.open_user_store()
 
 # FastAPI runs sync `def` routes in a thread pool, so two requests can otherwise race on the
 # same World's mutable numpy arrays -- and, worse, launch Numba's `parallel=True` kernels
@@ -453,7 +458,7 @@ def _summary(session: WorldSession, world: World) -> dict:
         # matter on the wire.
         "events": [{"elapsed_years": e, "message": m} for e, m in world.events],
         # Replay-log records this process wrote (#442), for the ?deb Event Console. Kept out of
-        # `events`, which is pickled World state.
+        # `events`, which is saved World state.
         "replay_logs": session.replay_log.recent_events() if session.replay_log is not None else [],
     }
 
@@ -1176,8 +1181,8 @@ def step(world_id: str, req: StepRequest) -> StreamingResponse:
 @app.get("/worlds/{world_id}/save")
 def save_world(world_id: str) -> Response:
     """The "File > Save World" download -- the *entire* current world (every plate/line,
-    mantle field, caches, event log -- see World) pickled as a single opaque file (see
-    persistence.py for why pickle, and docs/save-compatibility.md for which older saves load).
+    mantle field, caches, event log -- see World) as a single opaque v5 save (see
+    persistence.py, and docs/save-compatibility.md for which older saves load).
     `404` if no world has been generated yet."""
     session = _session_or_404(world_id)
     # Serialized under the lock: a concurrent step mutates the world's numpy arrays in
@@ -1185,7 +1190,7 @@ def save_world(world_id: str) -> Response:
     with session.lock:
         world = _require_world(session)
         body = persistence.save_world_bytes(world)
-        filename = f"mantle-bloom-seed{world.seed}-{int(world.elapsed_years)}y.mbworld"
+        filename = f"mantle-bloom-seed{world.seed}-{int(world.elapsed_years)}y.bloom"
     return Response(
         content=body, media_type="application/octet-stream", headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )

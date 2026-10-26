@@ -36,6 +36,9 @@ export default defineRailway(() => {
     volumeMounts: { [CHECKPOINT_MOUNT]: checkpoint },
     // Secrets are set with `railway variables --set` (docs/hosting.md), never in this file.
     env: {
+      // SQLite user database on the persistent volume (see #620). Not a secret, so it
+      // lives here rather than in dashboard variables, derived from the mount path above.
+      MANTLE_BLOOM_USER_DB_PATH: `${CHECKPOINT_MOUNT}/database.db`,
       MANTLE_BLOOM_GITHUB_CLIENT_ID: preserve(),
       MANTLE_BLOOM_GITHUB_CLIENT_SECRET: preserve(),
       MANTLE_BLOOM_GITHUB_OWNER_ID: preserve(),

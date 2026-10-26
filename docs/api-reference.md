@@ -297,16 +297,17 @@ Without `MANTLE_BLOOM_REPLAY_LOG_DIR`: `{"enabled": false, "directory": null, "r
 
 The "File > Save World" download -- the *entire* current world (every plate surface, mantle
 field, caches, event log -- see [architecture.md#world-state](architecture.md#world-state))
-pickled as a single opaque `application/octet-stream` file (`Content-Disposition:
-attachment`), not JSON (see `backend/app/persistence.py`). The file is a versioned envelope
-that declares the world's plate surface (`quad`, or `empty` with no plates). It is not a stable interchange
-format (contrast with `/worlds/{world_id}/export_hexgrid` below): pickling by class identity ties it to
+serialized as a single opaque `application/octet-stream` file (`Content-Disposition:
+attachment`, named `*.bloom`), not JSON (see `backend/app/persistence.py`). The file is a v5
+zip of `.npy` arrays plus a JSON manifest that declares the world's plate surface (`quad`,
+or `empty` with no plates); arrays load with `allow_pickle=False`, so unlike a pickle a
+v5 save carries no code. It is not a stable interchange
+format (contrast with `/worlds/{world_id}/export_hexgrid` below): encoding by class identity ties it to
 the code. [save-compatibility.md](save-compatibility.md) lists which older saves this build
 reads and how line-backed saves move to sparse quads. `404` if no world has been generated
 yet.
 
-Loading a file back is equivalent to running arbitrary code from its bytes (a standard
-pickle caveat) -- acceptable given this server is a single-user localhost dev tool already
+Loading a legacy v1-v4 pickle save still unpickles it (a standard pickle caveat) -- acceptable given this server is a single-user localhost dev tool already
 (see `main.py`'s CORS allowlist), the same trust boundary every other route here assumes.
 
 ## `POST /worlds/{world_id}/load`

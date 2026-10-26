@@ -227,12 +227,19 @@ def record_clipped_by_phase(ledger: dict, source: str, phase: str, volume_m3: fl
 
 def threshold_excess_m(
     age_myr: float,
-    e_young_m: float = DOCK_E_YOUNG_M,
-    e_old_m: float = DOCK_E_OLD_M,
-    cooling_myr: float = DOCK_COOLING_MYR,
+    e_young_m: float | None = None,
+    e_old_m: float | None = None,
+    cooling_myr: float | None = None,
 ) -> float:
     """Excess thickness a patch needs to resist at its age: young and thin may dock,
-    old and thin subducts (#580)."""
+    old and thin subducts (#580). `None` resolves to the module knobs at call time
+    so tuning runs can sweep them (RFC 0007, #584)."""
+    if e_young_m is None:
+        e_young_m = DOCK_E_YOUNG_M
+    if e_old_m is None:
+        e_old_m = DOCK_E_OLD_M
+    if cooling_myr is None:
+        cooling_myr = DOCK_COOLING_MYR
     if not math.isfinite(age_myr):
         raise ValueError(f"age must be finite, got {age_myr!r}")
     age_myr = max(age_myr, 0.0)
@@ -242,14 +249,18 @@ def threshold_excess_m(
 def docking_probability(
     excess_m: float,
     age_myr: float,
-    e_young_m: float = DOCK_E_YOUNG_M,
-    e_old_m: float = DOCK_E_OLD_M,
-    cooling_myr: float = DOCK_COOLING_MYR,
-    width_m: float = DOCK_WIDTH_M,
+    e_young_m: float | None = None,
+    e_old_m: float | None = None,
+    cooling_myr: float | None = None,
+    width_m: float | None = None,
 ) -> float:
-    """Docking probability: logistic in (excess - age threshold) / width (#580)."""
+    """Docking probability: logistic in (excess - age threshold) / width (#580).
+    `None` resolves to the module knobs at call time so tuning runs can sweep
+    them (RFC 0007, #584)."""
     if not math.isfinite(excess_m) or not math.isfinite(age_myr):
         raise ValueError(f"excess and age must be finite, got {excess_m!r}, {age_myr!r}")
+    if width_m is None:
+        width_m = DOCK_WIDTH_M
     spread = max(width_m, 1e-9)
     odds = (excess_m - threshold_excess_m(age_myr, e_young_m, e_old_m, cooling_myr)) / spread
     odds = min(max(odds, -50.0), 50.0)
@@ -370,26 +381,33 @@ def split_docking_loss(
     plateau_m: np.ndarray,
     arc_m: np.ndarray,
     age_moment_m_yr: np.ndarray,
-    loss_fraction: float = DOCK_LOWER_CRUST_LOSS,
+    loss_fraction: float | None = None,
 ) -> tuple[tuple[np.ndarray, np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray, np.ndarray]]:
     """Partial docking loss: the lower-crust share goes down the trench (#580).
 
     Returns ((kept plateau, arc, moment), (lost plateau, arc, moment)); the caller
-    books the lost share to `subducted_m3`.
+    books the lost share to `subducted_m3`. `None` resolves to the module knob at
+    call time so tuning runs can sweep it (RFC 0007, #584).
     """
+    if loss_fraction is None:
+        loss_fraction = DOCK_LOWER_CRUST_LOSS
     kept = float(np.clip(1.0 - loss_fraction, 0.0, 1.0))
     plateau, arc, moment = (np.asarray(values, dtype=float) for values in (plateau_m, arc_m, age_moment_m_yr))
     return (plateau * kept, arc * kept, moment * kept), (plateau - plateau * kept, arc - arc * kept, moment - moment * kept)
 
 
 def conversion_split(
-    plateau_m: np.ndarray, arc_m: np.ndarray, preserved_fraction: float = PLATEAU_PRESERVED_FRACTION
+    plateau_m: np.ndarray, arc_m: np.ndarray, preserved_fraction: float | None = None
 ) -> tuple[np.ndarray, np.ndarray]:
     """Docked-onto-continent conversion: preserved juvenile vs foundered mafic rock.
 
     Returns (juvenile thickness, foundered thickness); the caller books juvenile
     once, removes the foundered share from Hc, and clears the tracers (#580).
+    `None` resolves to the module knob at call time so tuning runs can sweep it
+    (RFC 0007, #584).
     """
+    if preserved_fraction is None:
+        preserved_fraction = PLATEAU_PRESERVED_FRACTION
     kept = float(np.clip(preserved_fraction, 0.0, 1.0))
     crust = np.asarray(plateau_m, dtype=float) + np.asarray(arc_m, dtype=float)
     return crust * kept, crust - crust * kept

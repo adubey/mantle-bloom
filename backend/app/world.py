@@ -539,13 +539,16 @@ class World:
     # climate for a fraction of the cost (how closely: docs/simulation-model/climate.md#wind-model,
     # GitHub issues #118 and #529) -- so it's the default; opt into "cfd"
     # via Controls for the full solve. atmosphere_cfd_state is still kept in sync (init'd at
-    # generation, never cleared) so switching to "cfd" mid-session resumes from a real, if
-    # now-stale, state rather than a cold start.
+    # generation, never cleared except by a compact save, which drops it) so switching
+    # to "cfd" mid-session resumes from a real, if now-stale, state rather than a cold
+    # start; the first cfd step after a compact load cold-starts it again instead.
     wind_model: str = "diagnostic"
     # Atmospheric wind-solver state -- see docs/simulation-model/climate.md#ocean-atmospheric-fluid-dynamics.
     # Always on, not a mode: generate_world populates it immediately after constructing this
-    # World (atmosphere_cfd.init_atmosphere_cfd) and it's never re-initialized or cleared again
-    # for the rest of this world's life -- step_world's own _advance_fluid_dynamics just keeps
+    # World (atmosphere_cfd.init_atmosphere_cfd) and nothing re-initializes or clears it
+    # again for the rest of this world's life, except a compact save (which drops it;
+    # the first cfd step then cold-starts it from a fresh diagnostic snapshot) --
+    # step_world's own _advance_fluid_dynamics just keeps
     # advancing it by a fixed SECONDS_PER_TECTONIC_STEP (one simulated day) every tectonics
     # step, gated on simulate_climate_biomes the same way erosion/hydrology already are.
     # climate.py's compute_climate sources wind_u/wind_v (and air_temperature_c) from this
@@ -555,7 +558,8 @@ class World:
     # solved -- they're diagnostic in climate.py every step (the ocean shallow-water solver was
     # retired for lack of a stable operating point; see climate.py's module docstring). Typed
     # `| None` only because a dataclass field default can't construct it inline -- never
-    # actually `None` once generate_world has returned.
+    # actually `None` once generate_world has returned, except on a compact-loaded world
+    # before its first cfd step rebuilds it.
     atmosphere_cfd_state: atmosphere_cfd.AtmosphereCFDState | None = None
 
     def log_event(self, message: str) -> None:
@@ -950,6 +954,15 @@ def _advance_fluid_dynamics(world: World, node_cloud: tuple[np.ndarray, list[Pla
     terrain = climate.compute_climate(
         world, *climate.grid_dimensions(world.fluid_density), node_cloud=node_cloud, skip_moisture=True
     )
+    if world.atmosphere_cfd_state is None:
+        # A compact save drops the CFD state; cold-start it so the first post-load
+        # step rebuilds it (#596). Seeded from a climate_density snapshot, exactly
+        # like generation (`finish_generation`) rather than the fluid_density
+        # snapshot above: the solver grid is fluid_density either way, but the
+        # source detail propagates, and the seed-resolution imprint on wind and
+        # temperature persists for the world's life.
+        seed_terrain = climate.compute_climate(world, *climate.grid_dimensions(world.climate_density))
+        world.atmosphere_cfd_state = atmosphere_cfd.init_atmosphere_cfd(world, seed_terrain)
     atmosphere_cfd.refresh_forcing(world, world.atmosphere_cfd_state, terrain)
     atmosphere_cfd.step_atmosphere_cfd(world, world.atmosphere_cfd_state, atmosphere_cfd.SECONDS_PER_TECTONIC_STEP)
 
