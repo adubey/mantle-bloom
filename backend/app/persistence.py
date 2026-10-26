@@ -76,19 +76,40 @@ def world_surface(world: World) -> str:
 
 
 def save_world_bytes(world: World) -> bytes:
-    """The approximate v5 save of `world`: a zip of `.npy` arrays plus a JSON manifest.
+    """The default v5 save of `world`: a zip of `.npy` arrays plus a JSON manifest.
     Keeps every cache the next step reads (so post-load evolution matches), drops only
     the erosion cache and derived scratch (see `npz_save.py` for the drop sets). What
     user-facing Save, checkpoints, and diagnostics share; `save_exact_bytes` is the
-    bit-identical variant for replay-log records and anywhere exactness is needed."""
-    return npz_save.save_world_v5(world, keep_caches=False)
+    bit-identical variant for replay-log records and anywhere exactness is needed,
+    and `save_compact_bytes` the smaller approximate one."""
+    return npz_save.save_world_v5(world, profile="default")
 
 
 def save_exact_bytes(world: World) -> bytes:
     """The exact v5 save of `world`, keeping the erosion cache too: a replay re-steps
     the record and must reproduce its fingerprint exactly, including the debug views
     that read the erosion cache."""
-    return npz_save.save_world_v5(world, keep_caches=True)
+    return npz_save.save_world_v5(world, profile="exact")
+
+
+def save_compact_bytes(world: World) -> bytes:
+    """The compact v5 save of `world`: additionally drops the step-read caches
+    (climate, hydrology, CFD, polarity frame) for a smaller file. Loading one
+    rebuilds them on the first post-load step, which lands close to but not on the
+    uninterrupted state -- check continuation with tolerances, never `state_hash`
+    equality (see `test_compact_profile_step_lands_within_tolerance`). Nothing
+    user-facing or replay-critical uses this profile; it is for cheap snapshots and
+    transfer where approximate continuation is acceptable."""
+    return npz_save.save_world_v5(world, profile="compact")
+
+
+def save_kind(data: bytes) -> str:
+    """Which save encoding `data` holds, sniffed from its content (never the file
+    extension): `"v5"` for a zip-manifest save, `"pickle"` for a legacy pickled
+    (v1-v4) save. Garbage also sniffs as `"pickle"` -- kind is a hint for debug
+    scripts choosing how to report a file, not a validity check; `load_world_bytes`
+    is what decides whether bytes actually load."""
+    return "v5" if npz_save.is_v5(data) else "pickle"
 
 
 def load_world_bytes(data: bytes) -> World:

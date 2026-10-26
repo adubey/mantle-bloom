@@ -424,3 +424,18 @@ def test_a_save_from_before_belt_marks_loads_with_no_belts_and_unchanged_cratons
         assert np.all(new.collect("belt_formed_years") == BELT_UNMARKED_YEARS)
         np.testing.assert_array_equal(new.collect("craton_crust_m"), old.collect("craton_crust_m"))
         np.testing.assert_array_equal(new.collect("craton_formed_years"), old.collect("craton_formed_years"))
+
+
+def test_save_kind_sniffs_v5_and_pickle():
+    world = generate_world(seed=42, num_plates=2, node_density=0.5)
+
+    assert persistence.save_kind(persistence.save_world_bytes(world)) == "v5"
+    assert persistence.save_kind(persistence.save_exact_bytes(world)) == "v5"
+    assert persistence.save_kind(persistence.save_compact_bytes(world)) == "v5"
+    assert persistence.save_kind(pickle.dumps({"format": persistence.SAVE_FORMAT, "version": 2, "world": world})) == "pickle"
+    assert persistence.save_kind(pickle.dumps(world)) == "pickle"
+    # Kind is a content sniff, not a validity check: garbage sniffs as pickle and
+    # only `load_world_bytes` decides whether bytes actually load.
+    assert persistence.save_kind(b"not a save at all") == "pickle"
+    with pytest.raises(persistence.CorruptSaveError):
+        persistence.load_world_bytes(b"not a save at all")

@@ -353,3 +353,49 @@ def test_v5_load_backfills_a_field_added_after_the_save(stepped_bytes):
     data = _remanifested(stepped_bytes, lambda m: m["world"].pop("faults"))
 
     assert persistence.load_world_bytes(data).faults == []
+
+
+def test_compact_profile_drops_step_caches_and_rebuilds_climate_on_load(stepped_world):
+    assert stepped_world.atmosphere_cfd_state is not None
+    assert stepped_world.collision_polarity_frame is not None
+
+    loaded = persistence.load_world_bytes(persistence.save_compact_bytes(stepped_world))
+
+    assert loaded.erosion_cache is None
+    assert loaded.hydrology_cache is None
+    assert loaded.atmosphere_cfd_state is None
+    assert loaded.collision_polarity_frame is None
+    # The loader rebuilds the climate cache for a stepped world (the safety net in
+    # `_rebuild_climate`); the other three rebuild on the first post-load step.
+    assert loaded.climate_cache is not None
+    assert np.any(loaded.climate_cache.precipitation_mm > 0)
+
+
+def _summarize(world):
+    hydro = world.hydrology_cache
+    return {
+        "land_frac": 1.0 - float(hydro.is_ocean.mean()),
+        "sea_level_m": float(world.sea_level_m),
+    }
+
+
+def test_compact_profile_step_lands_within_tolerance():
+    # The approximate continuation gate: a compact load rebuilds its step-read caches
+    # as it goes, landing close to but not on the uninterrupted state. Tolerances are
+    # ~5x the divergence measured on the reference world (seed 42, density 1.0, 1 Myr
+    # + 100 kyr: land fraction 2.1e-4, sea level 0.26 m) -- a tripwire for the
+    # envelope, not an exactness proof (that is H9, on the default/exact profiles).
+    world = generate_world(seed=42, node_density=1.0)
+    step_world(world, 1_000_000)
+    loaded = persistence.load_world_bytes(persistence.save_compact_bytes(world))
+    step_world(world, 100_000)
+    step_world(loaded, 100_000)
+
+    assert state_hash(loaded) != state_hash(world)
+    ref, got = _summarize(world), _summarize(loaded)
+    assert abs(got["land_frac"] - ref["land_frac"]) <= 1e-3
+    assert abs(got["sea_level_m"] - ref["sea_level_m"]) <= 1.0
+
+
+def test_compact_save_is_smaller_than_default(stepped_world, stepped_bytes):
+    assert len(persistence.save_compact_bytes(stepped_world)) < len(stepped_bytes)

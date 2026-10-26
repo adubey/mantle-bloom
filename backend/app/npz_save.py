@@ -15,16 +15,20 @@ entries; each array lives at `a/<path>.npy`. Array-valued fields of dataclass li
 (list, field) as a ragged concatenation plus offsets -- one entry per array would
 make thousands of zip entries and dominate write time (see #594).
 
-Two drop profiles share the codec. User saves drop the erosion cache (overwritten
-whole by every erosion call, read only by a debug view); both profiles drop the
+Three drop profiles share the codec. User saves drop the erosion cache (overwritten
+whole by every erosion call, read only by a debug view); all three profiles drop the
 unserializable derived scratch (k-d trees, the HEALPix grid, the boundary-search
 cache), which rebuilds lazily; replay-log records keep the erosion cache too. The
-climate, hydrology and CFD caches and the polarity frame are always kept: the H9 hard gate
+climate, hydrology and CFD caches and the polarity frame are kept by the default and
+exact profiles: the H9 hard gate
 (`surface_parity_gates.load_continuation`) requires a post-load step to land on
 identical authoritative state, and the next step reads all four before refreshing
-them. The loader recomputes a missing `climate_cache` for a save that was stepped
-(its `hydrology_cache_step` is kept) as a safety net for saves that predate it; a
-never-stepped world keeps the empty-cache signal its readers rely on.
+them. A third `compact` profile drops those four step-read caches for a smaller
+file; its first post-load step rebuilds them as it goes, landing close to but not
+on the uninterrupted state (approximate continuation, not H9). The loader recomputes
+a missing `climate_cache` for a save that was stepped (its `hydrology_cache_step`
+is kept) as a safety net for saves that predate it; a never-stepped world keeps the
+empty-cache signal its readers rely on.
 """
 
 from __future__ import annotations
@@ -47,15 +51,28 @@ VERSION = 5
 SURFACES = ("quad", "empty")
 
 # The H9 hard gate (`surface_parity_gates.load_continuation`) requires a step from a
-# loaded world to land on identical authoritative state to a step from the in-memory
-# world -- so every cache the next step reads before recomputing it must survive the
-# save. Measured during #596: dropping the climate, hydrology or CFD caches or the
-# polarity frame diverges the next step (transpiration reads the climate cache, and the
-# hydro/CFD/polarity state feeds the step before it is refreshed), while dropping the
-# erosion cache (overwritten whole by every erosion call, read only by a debug view)
-# steps identically. Replay-log records additionally keep the erosion cache so a replay
-# re-steps exactly including its debug views.
+# default/exact-loaded world to land on identical authoritative state to a step from
+# the in-memory world -- so every cache the next step reads before recomputing it
+# must survive those saves. Measured during #596: dropping the climate, hydrology or
+# CFD caches or the polarity frame diverges the next step (transpiration reads the
+# climate cache, and the hydro/CFD/polarity state feeds the step before it is
+# refreshed), while dropping the erosion cache (overwritten whole by every erosion
+# call, read only by a debug view) steps identically. Replay-log records additionally
+# keep the erosion cache so a replay re-steps exactly including its debug views. The
+# compact profile deliberately drops the four step-read caches for size; its
+# continuation is approximate, pinned by `test_compact_profile_step_lands_within_tolerance`.
 _SAVE_DROP = frozenset({"erosion_cache"})
+# Every cache the next step reads before refreshing it. The default and exact
+# profiles keep all four so a post-load step lands on identical state (H9); the
+# compact profile drops them, and the first post-load step rebuilds them as it goes.
+_STEP_CACHES = frozenset(
+    {
+        "climate_cache",
+        "hydrology_cache",
+        "atmosphere_cfd_state",
+        "collision_polarity_frame",
+    }
+)
 _DERIVED_SCRATCH = frozenset(
     {
         "land_kdtree_cache",
@@ -70,11 +87,17 @@ _DERIVED_SCRATCH = frozenset(
 )
 
 
-def _drop_for(*, keep_caches: bool) -> frozenset:
-    # Exact records keep every data cache; only unserializable scratch is dropped.
-    if keep_caches:
+def _drop_for(*, profile: str) -> frozenset:
+    """The world-attribute names the save omits. `exact` keeps every data cache;
+    `default` drops the erosion cache; `compact` additionally drops the step-read
+    caches (see `_STEP_CACHES`). All three drop the unserializable derived scratch."""
+    if profile == "exact":
         return _DERIVED_SCRATCH
-    return _DERIVED_SCRATCH | _SAVE_DROP
+    if profile == "default":
+        return _DERIVED_SCRATCH | _SAVE_DROP
+    if profile == "compact":
+        return _DERIVED_SCRATCH | _SAVE_DROP | _STEP_CACHES
+    raise ValueError(f"unknown save profile {profile!r}")
 
 
 def _freeze_scalar(value, path: str):
@@ -325,12 +348,15 @@ def is_v5(data: bytes) -> bool:
     return data[:4] == b"PK\x03\x04"
 
 
-def save_world_v5(world: World, *, keep_caches: bool) -> bytes:
+def save_world_v5(world: World, *, profile: str) -> bytes:
     """Serialize `world` as a v5 zip (`manifest.json` plus one `.npy` per array).
-    `keep_caches=False` (user saves, checkpoints) drops the erosion cache;
-    `keep_caches=True` (replay-log records) keeps it too, so a replay re-steps exactly
-    including its debug views. Unserializable derived scratch is dropped by both
-    profiles; every other cache is kept so a post-load step lands on identical state (H9)."""
+    `default` (user saves, checkpoints) drops the erosion cache; `exact`
+    (replay-log records) keeps it too, so a replay re-steps exactly including its
+    debug views; `compact` additionally drops the step-read caches for a smaller
+    file whose first post-load step rebuilds them as it goes (approximately, not
+    identically -- see `persistence.save_compact_bytes`). Unserializable derived
+    scratch is dropped by all three profiles; the default and exact profiles keep
+    every other cache so a post-load step lands on identical state (H9)."""
     from . import sparse_quad_patch
     from .persistence import world_surface
     from .sparse_quad_patch import PlateWithSparseQuadPatch
@@ -341,7 +367,7 @@ def save_world_v5(world: World, *, keep_caches: bool) -> bytes:
     surface = world_surface(world)
     if surface == "lines":
         raise _corrupt("v5 saves cannot hold line-backed plates")
-    drop = _drop_for(keep_caches=keep_caches)
+    drop = _drop_for(profile=profile)
     skip = set(PlateWithSparseQuadPatch._TOPOLOGY_CACHES) | set(PlateWithSparseQuadPatch._GEOMETRY_CACHES)
     arrays: dict[str, np.ndarray] = {}
     plates = []
@@ -427,7 +453,7 @@ def load_world_v5(data: bytes) -> World:
     world = World.__new__(World)
     world.__dict__.update(world_dict)
     world.plates = plates
-    for name in _SAVE_DROP | _DERIVED_SCRATCH:
+    for name in _SAVE_DROP | _STEP_CACHES | _DERIVED_SCRATCH:
         world.__dict__.setdefault(name, None)
     _rebuild_climate(world)
     return world

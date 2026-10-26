@@ -292,12 +292,24 @@ and small containers, one entry per plate (header scalars, cell keys, frames, an
 traces, magma parcels, quakes). Anything else in a world fails the save loudly instead
 of being dropped silently.
 
-Only the erosion cache and derived scratch are dropped: the erosion cache is
-overwritten whole by every erosion call, and the k-d trees, HEALPix index, land tree
-and boundary-search scratch rebuild lazily. The climate, hydrology and CFD caches and
-the polarity frame are always kept -- the H9 hard gate
+Three profiles share the codec with different drop sets. The default
+(`save_world_bytes` -- what File > Save, checkpoints and diagnostics write) drops
+only the erosion cache and derived scratch: the erosion cache is overwritten whole
+by every erosion call, and the k-d trees, HEALPix index, land tree and
+boundary-search scratch rebuild lazily. The climate, hydrology and CFD caches and
+the polarity frame are kept -- the H9 hard gate
 (`surface_parity_gates.load_continuation`) requires a post-load step to land on
 identical authoritative state, and the next step reads all four before refreshing
-them, so dropping any of them diverges the run (#596). Replay-log records
-additionally keep the erosion cache (see `save_exact_bytes`) so a replay re-steps
-exactly including its debug views.
+them, so dropping any of them diverges the run (#596). Replay-log records use the
+exact profile (`save_exact_bytes`), which additionally keeps the erosion cache so a
+replay re-steps exactly including its debug views. The compact profile
+(`save_compact_bytes`) drops the four step-read caches too for a smaller file; its
+first post-load step rebuilds them as it goes and lands close to but not on the
+uninterrupted state, pinned by an approximate continuation test (land fraction
+within 1e-3, sea level within 1 m on the reference world) rather than H9.
+
+User-facing saves are named `*.bloom`. Loading sniffs the content, never the
+extension: `persistence.save_kind` reports `"v5"` for a zip-manifest save and
+`"pickle"` for a legacy pickled save, and `load_world_bytes` reads both. The v1-v4
+pickle loaders stay so `bin/debug` diagnostics and old scripts keep reading old
+saves; nothing new is ever written as a pickle.

@@ -1168,7 +1168,7 @@ def save_world(world_id: str) -> Response:
     with session.lock:
         world = _require_world(session)
         body = persistence.save_world_bytes(world)
-        filename = f"mantle-bloom-seed{world.seed}-{int(world.elapsed_years)}y.mbworld"
+        filename = f"mantle-bloom-seed{world.seed}-{int(world.elapsed_years)}y.bloom"
     return Response(
         content=body, media_type="application/octet-stream", headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
