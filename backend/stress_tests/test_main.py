@@ -79,10 +79,10 @@ def _post_step(client, **kwargs) -> dict:
     same shape a plain `resp.json()` used to give directly (see unit_tests/test_main.py's
     own `_NdjsonResponse` for the fuller version of this wrapper)."""
     resp = client.post("/world/step", **kwargs)
-    assert resp.status_code == 200
+    assert resp.status_code == 200, resp.text[:2000]
     messages = [json.loads(line) for line in resp.text.splitlines() if line.strip()]
     done = messages[-1]
-    assert done["type"] == "done"
+    assert done["type"] == "done", done
     return done
 
 
