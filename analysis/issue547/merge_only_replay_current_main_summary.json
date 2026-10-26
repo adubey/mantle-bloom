@@ -1,0 +1,2991 @@
+{
+  "controls": {
+    "baseline_commit": "f04cbc0772eca6d2484f7477b20004deb368206c",
+    "candidate_commit": "d553c3cfc05db4372d0bb33ec7e58aa2390b793b",
+    "checkpoint_myr": 10.0,
+    "horizon_myr": 50.0,
+    "matched_pairs": 12,
+    "node_density": 4.0,
+    "pythonhashseed": 0,
+    "runs": 24,
+    "seeds": [
+      326494039,
+      748935664,
+      580014012,
+      111065103
+    ],
+    "step_myr": [
+      0.1,
+      1.0,
+      2.0
+    ]
+  },
+  "pairs": [
+    {
+      "baseline_commit": "f04cbc0772eca6d2484f7477b20004deb368206c",
+      "candidate_commit": "d553c3cfc05db4372d0bb33ec7e58aa2390b793b",
+      "checkpoint_trajectory": {
+        "land_fraction_baseline": [
+          0.2708314420277541,
+          0.30286277811115264,
+          0.30629884998760437,
+          0.30652920993140303,
+          0.3053989179519746,
+          0.3038955311953045
+        ],
+        "land_fraction_candidate": [
+          0.2708314420277541,
+          0.30286277811115264,
+          0.30629884998760437,
+          0.30652920993140303,
+          0.3054465536478857,
+          0.3045434214415236
+        ],
+        "max_abs_hc_hm_quantile_delta_percent": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.04987282066041747,
+          1.1172602524931592
+        ],
+        "myr": [
+          0.0,
+          10.0,
+          20.0,
+          30.0,
+          40.0,
+          50.0
+        ],
+        "plate_count_baseline": [
+          19,
+          22,
+          23,
+          23,
+          23,
+          24
+        ],
+        "plate_count_candidate": [
+          19,
+          22,
+          23,
+          23,
+          23,
+          24
+        ]
+      },
+      "endpoint": {
+        "baseline": {
+          "hc_area_weighted_km": {
+            "p50": 12.376138995559058,
+            "p90": 42.50323053679502,
+            "p99": 51.10902914039357
+          },
+          "hm_area_weighted_km": {
+            "p50": 39.78438569602929,
+            "p90": 100.00003857547242,
+            "p99": 109.99443613235357
+          },
+          "hm_inventory_m3": {
+            "all": 3.1432123234940043e+19,
+            "continental_node": 1.9798540616014262e+19,
+            "oceanic_node": 1.1633582618925779e+19
+          },
+          "hm_ledger_closure_error_m3": {
+            "all": -23552.0,
+            "continental_node": -2815.25,
+            "oceanic_node": -11776.75
+          },
+          "land_fraction": 0.3038955311953045,
+          "ledger_balance_error_m3": {
+            "continental": 0.0,
+            "craton": 0.0,
+            "hm_by_scope": {},
+            "mobile_cover": 1920.0
+          },
+          "myr": 50.0,
+          "plate_count": 24
+        },
+        "candidate": {
+          "hc_area_weighted_km": {
+            "p50": 12.380368270620348,
+            "p90": 42.49249256966281,
+            "p99": 51.05756133958399
+          },
+          "hm_area_weighted_km": {
+            "p50": 39.78438569602929,
+            "p90": 100.0000399574221,
+            "p99": 111.22336024721433
+          },
+          "hm_inventory_m3": {
+            "all": 3.1442492958131126e+19,
+            "continental_node": 1.979787024463801e+19,
+            "oceanic_node": 1.1644622713493113e+19
+          },
+          "hm_ledger_closure_error_m3": {
+            "all": 28672.0,
+            "continental_node": 3969.0,
+            "oceanic_node": 53247.0
+          },
+          "land_fraction": 0.3045434214415236,
+          "ledger_balance_error_m3": {
+            "continental": 1024.0,
+            "craton": 0.0,
+            "hm_by_scope": {},
+            "mobile_cover": 352.0
+          },
+          "myr": 50.0,
+          "plate_count": 24
+        },
+        "hc_hm_quantile_delta_percent": {
+          "hc_area_weighted_km": {
+            "p50": 0.034172814823810384,
+            "p90": -0.025263884642648806,
+            "p99": -0.10070197316446101
+          },
+          "hm_area_weighted_km": {
+            "p50": 0.0,
+            "p90": 1.381949154035821e-06,
+            "p99": 1.1172602524931592
+          }
+        },
+        "land_fraction_delta_percentage_points": 0.0647890246219085,
+        "plate_count_delta": 0
+      },
+      "largest_absolute_deformation_deltas": [
+        {
+          "baseline_m3": -3.290856644342186e+18,
+          "candidate_m3": -3.269831437993378e+18,
+          "delta_m3": 2.102520634880819e+16,
+          "delta_percent": 0.638897667722957,
+          "measure": "hm_m3",
+          "phase": "boundary_retreat"
+        },
+        {
+          "baseline_m3": 1.0457552220722299e+19,
+          "candidate_m3": 1.0447682737314726e+19,
+          "delta_m3": -9869483407572992.0,
+          "delta_percent": -0.09437661126870578,
+          "measure": "hm_m3",
+          "phase": "oceanic_cooling_relaxation"
+        },
+        {
+          "baseline_m3": -1.195348989112746e+18,
+          "candidate_m3": -1.186988061374808e+18,
+          "delta_m3": 8360927737937920.0,
+          "delta_percent": 0.6994549553385127,
+          "measure": "hc_m3",
+          "phase": "boundary_retreat"
+        }
+      ],
+      "motion": {
+        "accumulated_driving_torque_nm_year": {
+          "baseline": 3.020818474943456e+34,
+          "candidate": 3.0153008484835442e+34,
+          "delta_percent": -0.182653360527239
+        },
+        "accumulated_residual_torque_nm_year": {
+          "baseline": 7.264292756691646e+19,
+          "candidate": 7.319719451920723e+19,
+          "delta_percent": 0.7630019478223768
+        },
+        "mean_absolute_closing_m_per_s": {
+          "baseline": 2.9566826431456785e-11,
+          "candidate": 2.7761830409904848e-11,
+          "delta_percent": -6.10480135815849
+        },
+        "mean_contact_force_n_per_m": {
+          "baseline": 12409045563745.486,
+          "candidate": 12405544994115.066,
+          "delta_percent": -0.028209821717854397
+        },
+        "mean_solved_rate_cm_per_yr": {
+          "baseline": 1.8616658153467205,
+          "candidate": 1.857131060577688,
+          "delta_percent": -0.24358586442582664
+        },
+        "peak_absolute_closing_m_per_s": {
+          "baseline": 4.261243772440032e-10,
+          "candidate": 4.094418336007438e-10,
+          "delta_percent": -3.91494702817877
+        },
+        "peak_solved_rate_cm_per_yr": {
+          "baseline": 7.967616009235451,
+          "candidate": 7.967616009235451,
+          "delta_percent": 0.0
+        }
+      },
+      "peak_rss_mib": {
+        "baseline": 1359.5625,
+        "candidate": 1205.15625,
+        "delta": -154.40625
+      },
+      "runtime": {
+        "baseline_seconds": 3185.9488430023193,
+        "candidate_seconds": 4000.4569642543793,
+        "delta_percent": 25.565637158332333
+      },
+      "seed": 326494039,
+      "step_myr": 0.1,
+      "topology": {
+        "baseline_event_count": 13,
+        "baseline_fusion_or_terrane_accretion_count": 8,
+        "candidate_event_count": 11,
+        "candidate_fusion_or_terrane_accretion_count": 6,
+        "common_prefix_event_count": 6,
+        "first_difference": {
+          "baseline": {
+            "event": "Plate 7's stranded fragment (1 nodes) accreted onto plate 8.",
+            "time_myr": 41.6
+          },
+          "candidate": {
+            "event": "Plate 5's stranded fragment (1 nodes) accreted onto plate 6.",
+            "time_myr": 44.4
+          }
+        },
+        "sequences_identical": false
+      }
+    },
+    {
+      "baseline_commit": "f04cbc0772eca6d2484f7477b20004deb368206c",
+      "candidate_commit": "d553c3cfc05db4372d0bb33ec7e58aa2390b793b",
+      "checkpoint_trajectory": {
+        "land_fraction_baseline": [
+          0.2708314420277541,
+          0.2991062147777027,
+          0.30218711699556816,
+          0.30261254687978034,
+          0.29925334902778716,
+          0.299664468104378
+        ],
+        "land_fraction_candidate": [
+          0.2708314420277541,
+          0.2991062147777027,
+          0.302200681094944,
+          0.3021724284478803,
+          0.3009646607612263,
+          0.2992571261386304
+        ],
+        "max_abs_hc_hm_quantile_delta_percent": [
+          0.0,
+          0.0,
+          0.005142598173537508,
+          0.04436755134700227,
+          0.26836085111035823,
+          0.22892498716687457
+        ],
+        "myr": [
+          0.0,
+          10.0,
+          20.0,
+          30.0,
+          40.0,
+          50.0
+        ],
+        "plate_count_baseline": [
+          19,
+          21,
+          22,
+          22,
+          22,
+          23
+        ],
+        "plate_count_candidate": [
+          19,
+          21,
+          22,
+          22,
+          22,
+          23
+        ]
+      },
+      "endpoint": {
+        "baseline": {
+          "hc_area_weighted_km": {
+            "p50": 12.355882799657808,
+            "p90": 42.79734564572931,
+            "p99": 52.773472785045804
+          },
+          "hm_area_weighted_km": {
+            "p50": 39.78438569602926,
+            "p90": 100.00522091953431,
+            "p99": 105.32711370027984
+          },
+          "hm_inventory_m3": {
+            "all": 3.119346817530055e+19,
+            "continental_node": 1.9451554277999292e+19,
+            "oceanic_node": 1.1741913897301256e+19
+          },
+          "hm_ledger_closure_error_m3": {
+            "all": -1024.0,
+            "continental_node": -5021.09375,
+            "oceanic_node": 669.09375
+          },
+          "land_fraction": 0.299664468104378,
+          "ledger_balance_error_m3": {
+            "continental": 0.0,
+            "craton": -512.0,
+            "hm_by_scope": {},
+            "mobile_cover": 160.0
+          },
+          "myr": 50.0,
+          "plate_count": 23
+        },
+        "candidate": {
+          "hc_area_weighted_km": {
+            "p50": 12.354746487513719,
+            "p90": 42.8256051507426,
+            "p99": 52.894284450846484
+          },
+          "hm_area_weighted_km": {
+            "p50": 39.78438569602926,
+            "p90": 100.00503855666148,
+            "p99": 105.32451622964169
+          },
+          "hm_inventory_m3": {
+            "all": 3.118987201453535e+19,
+            "continental_node": 1.945751478130752e+19,
+            "oceanic_node": 1.1732357233227846e+19
+          },
+          "hm_ledger_closure_error_m3": {
+            "all": 4096.0,
+            "continental_node": -5384.53125,
+            "oceanic_node": 16776.53125
+          },
+          "land_fraction": 0.2992571261386304,
+          "ledger_balance_error_m3": {
+            "continental": 1024.0,
+            "craton": 0.0,
+            "hm_by_scope": {},
+            "mobile_cover": 448.0
+          },
+          "myr": 50.0,
+          "plate_count": 23
+        },
+        "hc_hm_quantile_delta_percent": {
+          "hc_area_weighted_km": {
+            "p50": -0.009196527374964389,
+            "p90": 0.06603097595635189,
+            "p99": 0.22892498716687457
+          },
+          "hm_area_weighted_km": {
+            "p50": 0.0,
+            "p90": -0.0001823533523127815,
+            "p99": -0.002466098753585717
+          }
+        },
+        "land_fraction_delta_percentage_points": -0.04073419657475985,
+        "plate_count_delta": 0
+      },
+      "largest_absolute_deformation_deltas": [
+        {
+          "baseline_m3": -3.261112037605376e+18,
+          "candidate_m3": -3.2760731875181855e+18,
+          "delta_m3": -1.4961149912809472e+16,
+          "delta_percent": -0.4587744836818117,
+          "measure": "hm_m3",
+          "phase": "boundary_retreat"
+        },
+        {
+          "baseline_m3": 1.03027043509886e+19,
+          "candidate_m3": 1.0307445338432864e+19,
+          "delta_m3": 4740987444264960.0,
+          "delta_percent": 0.04601692218616404,
+          "measure": "hm_m3",
+          "phase": "oceanic_cooling_relaxation"
+        },
+        {
+          "baseline_m3": -3.3247246309494784e+16,
+          "candidate_m3": -3.007409207157965e+16,
+          "delta_m3": 3173154237915136.0,
+          "delta_percent": 9.544111438212383,
+          "measure": "hm_m3",
+          "phase": "failed_rift_thinning"
+        }
+      ],
+      "motion": {
+        "accumulated_driving_torque_nm_year": {
+          "baseline": 2.9502224731072125e+34,
+          "candidate": 2.9580877612592477e+34,
+          "delta_percent": 0.26659983183408265
+        },
+        "accumulated_residual_torque_nm_year": {
+          "baseline": 6.7238173660333375e+19,
+          "candidate": 6.079614464243863e+19,
+          "delta_percent": -9.580910169330153
+        },
+        "mean_absolute_closing_m_per_s": {
+          "baseline": 5.686662476046327e-11,
+          "candidate": 5.728167633745693e-11,
+          "delta_percent": 0.7298684927089736
+        },
+        "mean_contact_force_n_per_m": {
+          "baseline": 8749181521246.133,
+          "candidate": 8718853437965.607,
+          "delta_percent": -0.3466390908324166
+        },
+        "mean_solved_rate_cm_per_yr": {
+          "baseline": 1.8626506081995873,
+          "candidate": 1.8811843770116126,
+          "delta_percent": 0.9950212203210657
+        },
+        "peak_absolute_closing_m_per_s": {
+          "baseline": 4.1703481936805477e-10,
+          "candidate": 4.337361691856256e-10,
+          "delta_percent": 4.004785462009831
+        },
+        "peak_solved_rate_cm_per_yr": {
+          "baseline": 7.967616009235451,
+          "candidate": 7.967616009235451,
+          "delta_percent": 0.0
+        }
+      },
+      "peak_rss_mib": {
+        "baseline": 1251.390625,
+        "candidate": 1009.3125,
+        "delta": -242.078125
+      },
+      "runtime": {
+        "baseline_seconds": 375.0227310657501,
+        "candidate_seconds": 393.90736508369446,
+        "delta_percent": 5.035597166144424
+      },
+      "seed": 326494039,
+      "step_myr": 1.0,
+      "topology": {
+        "baseline_event_count": 10,
+        "baseline_fusion_or_terrane_accretion_count": 5,
+        "candidate_event_count": 11,
+        "candidate_fusion_or_terrane_accretion_count": 6,
+        "common_prefix_event_count": 9,
+        "first_difference": {
+          "baseline": {
+            "event": "Plate 8 split into plates 8 and 23.",
+            "time_myr": 47.0
+          },
+          "candidate": {
+            "event": "Plate 16's stranded fragment (1 nodes) accreted onto plate 4.",
+            "time_myr": 44.0
+          }
+        },
+        "sequences_identical": false
+      }
+    },
+    {
+      "baseline_commit": "f04cbc0772eca6d2484f7477b20004deb368206c",
+      "candidate_commit": "d553c3cfc05db4372d0bb33ec7e58aa2390b793b",
+      "checkpoint_trajectory": {
+        "land_fraction_baseline": [
+          0.2708314420277541,
+          0.2985015966945493,
+          0.301972846015565,
+          0.30165561332884777,
+          0.3005570044207598,
+          0.29906897622204437
+        ],
+        "land_fraction_candidate": [
+          0.2708314420277541,
+          0.2985038635266644,
+          0.30201387253616946,
+          0.301779203985485,
+          0.30055637050855927,
+          0.30042125087537747
+        ],
+        "max_abs_hc_hm_quantile_delta_percent": [
+          0.0,
+          5.2749681893083325e-05,
+          0.00980718517463929,
+          0.03156486855850198,
+          0.11809336307206106,
+          0.32552406284244123
+        ],
+        "myr": [
+          0.0,
+          10.0,
+          20.0,
+          30.0,
+          40.0,
+          50.0
+        ],
+        "plate_count_baseline": [
+          19,
+          20,
+          22,
+          22,
+          22,
+          23
+        ],
+        "plate_count_candidate": [
+          19,
+          20,
+          22,
+          22,
+          22,
+          23
+        ]
+      },
+      "endpoint": {
+        "baseline": {
+          "hc_area_weighted_km": {
+            "p50": 12.348960421263014,
+            "p90": 42.60433932503112,
+            "p99": 52.50973772983818
+          },
+          "hm_area_weighted_km": {
+            "p50": 39.78438569602926,
+            "p90": 100.00037165703404,
+            "p99": 102.16443290269618
+          },
+          "hm_inventory_m3": {
+            "all": 3.1224614855369687e+19,
+            "continental_node": 1.943411245270985e+19,
+            "oceanic_node": 1.1790502402659828e+19
+          },
+          "hm_ledger_closure_error_m3": {
+            "all": -81883685787136.0,
+            "continental_node": -201625950152058.78,
+            "oceanic_node": 119742264360698.78
+          },
+          "land_fraction": 0.29906897622204437,
+          "ledger_balance_error_m3": {
+            "continental": -131633569030144.0,
+            "craton": 0.0,
+            "hm_by_scope": {},
+            "mobile_cover": 64.0
+          },
+          "myr": 50.0,
+          "plate_count": 23
+        },
+        "candidate": {
+          "hc_area_weighted_km": {
+            "p50": 12.35283832090347,
+            "p90": 42.61311198060303,
+            "p99": 52.68066956148426
+          },
+          "hm_area_weighted_km": {
+            "p50": 39.78438569602926,
+            "p90": 100.00044698260044,
+            "p99": 102.4126813612176
+          },
+          "hm_inventory_m3": {
+            "all": 3.1232276018814013e+19,
+            "continental_node": 1.942916137368879e+19,
+            "oceanic_node": 1.180311464512523e+19
+          },
+          "hm_ledger_closure_error_m3": {
+            "all": -151469106269184.0,
+            "continental_node": -235160994421869.7,
+            "oceanic_node": 83691888160749.7
+          },
+          "land_fraction": 0.30042125087537747,
+          "ledger_balance_error_m3": {
+            "continental": -135078929943552.0,
+            "craton": 0.0,
+            "hm_by_scope": {},
+            "mobile_cover": 256.0
+          },
+          "myr": 50.0,
+          "plate_count": 23
+        },
+        "hc_hm_quantile_delta_percent": {
+          "hc_area_weighted_km": {
+            "p50": 0.03140264045043377,
+            "p90": 0.020590990755619903,
+            "p99": 0.32552406284244123
+          },
+          "hm_area_weighted_km": {
+            "p50": 0.0,
+            "p90": 7.532528644771684e-05,
+            "p99": 0.2429891220145609
+          }
+        },
+        "land_fraction_delta_percentage_points": 0.13522746533330965,
+        "plate_count_delta": 0
+      },
+      "largest_absolute_deformation_deltas": [
+        {
+          "baseline_m3": -3.1289852058491945e+18,
+          "candidate_m3": -3.1037273352813937e+18,
+          "delta_m3": 2.525787056780083e+16,
+          "delta_percent": 0.8072224349474334,
+          "measure": "hm_m3",
+          "phase": "boundary_retreat"
+        },
+        {
+          "baseline_m3": 1.0196215158954787e+19,
+          "candidate_m3": 1.0184745795817046e+19,
+          "delta_m3": -1.14693631377408e+16,
+          "delta_percent": -0.11248647619668829,
+          "measure": "hm_m3",
+          "phase": "oceanic_cooling_relaxation"
+        },
+        {
+          "baseline_m3": -1.0805784254095688e+18,
+          "candidate_m3": -1.0744312302670643e+18,
+          "delta_m3": 6147195142504448.0,
+          "delta_percent": 0.568880055158837,
+          "measure": "hc_m3",
+          "phase": "boundary_retreat"
+        }
+      ],
+      "motion": {
+        "accumulated_driving_torque_nm_year": {
+          "baseline": 2.936118430655145e+34,
+          "candidate": 2.93148604592502e+34,
+          "delta_percent": -0.15777240733069392
+        },
+        "accumulated_residual_torque_nm_year": {
+          "baseline": 6.4075513649686086e+19,
+          "candidate": 6.6413685207371235e+19,
+          "delta_percent": 3.649087497711545
+        },
+        "mean_absolute_closing_m_per_s": {
+          "baseline": 8.42175064359897e-11,
+          "candidate": 7.661026136069807e-11,
+          "delta_percent": -9.032854803263007
+        },
+        "mean_contact_force_n_per_m": {
+          "baseline": 11449508441717.605,
+          "candidate": 12320620048235.459,
+          "delta_percent": 7.608288259292056
+        },
+        "mean_solved_rate_cm_per_yr": {
+          "baseline": 1.8201134661074805,
+          "candidate": 1.803896736504512,
+          "delta_percent": -0.8909735521956119
+        },
+        "peak_absolute_closing_m_per_s": {
+          "baseline": 4.735743263290995e-10,
+          "candidate": 4.74436626226779e-10,
+          "delta_percent": 0.1820833287909748
+        },
+        "peak_solved_rate_cm_per_yr": {
+          "baseline": 7.967616009235451,
+          "candidate": 7.967616009235451,
+          "delta_percent": 0.0
+        }
+      },
+      "peak_rss_mib": {
+        "baseline": 1197.546875,
+        "candidate": 1216.03125,
+        "delta": 18.484375
+      },
+      "runtime": {
+        "baseline_seconds": 188.4752607345581,
+        "candidate_seconds": 177.42748308181763,
+        "delta_percent": -5.861659301959941
+      },
+      "seed": 326494039,
+      "step_myr": 2.0,
+      "topology": {
+        "baseline_event_count": 7,
+        "baseline_fusion_or_terrane_accretion_count": 3,
+        "candidate_event_count": 7,
+        "candidate_fusion_or_terrane_accretion_count": 3,
+        "common_prefix_event_count": 5,
+        "first_difference": {
+          "baseline": {
+            "event": "Plate 5's stranded fragment (1 nodes) accreted onto plate 6.",
+            "time_myr": 48.0
+          },
+          "candidate": {
+            "event": "Plate 19's stranded fragment (6 nodes) accreted onto plate 7.",
+            "time_myr": 48.0
+          }
+        },
+        "sequences_identical": false
+      }
+    },
+    {
+      "baseline_commit": "f04cbc0772eca6d2484f7477b20004deb368206c",
+      "candidate_commit": "d553c3cfc05db4372d0bb33ec7e58aa2390b793b",
+      "checkpoint_trajectory": {
+        "land_fraction_baseline": [
+          0.12143200215827395,
+          0.14981224215994568,
+          0.1546101975124958,
+          0.15738898789801886,
+          0.1583628025927283,
+          0.1590742523992325
+        ],
+        "land_fraction_candidate": [
+          0.12143200215827395,
+          0.14981224215994568,
+          0.1546101975124958,
+          0.15738898789801886,
+          0.15808267995274866,
+          0.15903275293645858
+        ],
+        "max_abs_hc_hm_quantile_delta_percent": [
+          0.0,
+          0.0,
+          0.0,
+          5.2094998246493e-07,
+          0.07473492511318995,
+          0.8196119670807491
+        ],
+        "myr": [
+          0.0,
+          10.0,
+          20.0,
+          30.0,
+          40.0,
+          50.0
+        ],
+        "plate_count_baseline": [
+          8,
+          18,
+          20,
+          20,
+          20,
+          20
+        ],
+        "plate_count_candidate": [
+          8,
+          18,
+          20,
+          20,
+          20,
+          20
+        ]
+      },
+      "endpoint": {
+        "baseline": {
+          "hc_area_weighted_km": {
+            "p50": 11.554337243351268,
+            "p90": 34.44159329372694,
+            "p99": 49.2113999661651
+          },
+          "hm_area_weighted_km": {
+            "p50": 39.78438569602929,
+            "p90": 100.00222892191968,
+            "p99": 100.61265854291153
+          },
+          "hm_inventory_m3": {
+            "all": 2.6937296256988373e+19,
+            "continental_node": 1.2482239321702849e+19,
+            "oceanic_node": 1.445505693528553e+19
+          },
+          "hm_ledger_closure_error_m3": {
+            "all": 59392.0,
+            "continental_node": 6272.75,
+            "oceanic_node": 63487.25
+          },
+          "land_fraction": 0.1590742523992325,
+          "ledger_balance_error_m3": {
+            "continental": 512.0,
+            "craton": 256.0,
+            "hm_by_scope": {},
+            "mobile_cover": -4512.0
+          },
+          "myr": 50.0,
+          "plate_count": 20
+        },
+        "candidate": {
+          "hc_area_weighted_km": {
+            "p50": 11.557724167293921,
+            "p90": 34.44545173876608,
+            "p99": 48.808057442874436
+          },
+          "hm_area_weighted_km": {
+            "p50": 39.78438569602929,
+            "p90": 100.0022267133999,
+            "p99": 100.56534282484037
+          },
+          "hm_inventory_m3": {
+            "all": 2.6965882640596226e+19,
+            "continental_node": 1.2514603334176125e+19,
+            "oceanic_node": 1.4451279306420107e+19
+          },
+          "hm_ledger_closure_error_m3": {
+            "all": 10240.0,
+            "continental_node": 7041.0,
+            "oceanic_node": 19967.0
+          },
+          "land_fraction": 0.15903275293645858,
+          "ledger_balance_error_m3": {
+            "continental": 1024.0,
+            "craton": 256.0,
+            "hm_by_scope": {},
+            "mobile_cover": 3456.0
+          },
+          "myr": 50.0,
+          "plate_count": 20
+        },
+        "hc_hm_quantile_delta_percent": {
+          "hc_area_weighted_km": {
+            "p50": 0.029313009230381305,
+            "p90": 0.011202864531372678,
+            "p99": -0.8196119670807491
+          },
+          "hm_area_weighted_km": {
+            "p50": 0.0,
+            "p90": -2.2084705490875327e-06,
+            "p99": -0.047027599465509315
+          }
+        },
+        "land_fraction_delta_percentage_points": -0.004149946277393068,
+        "plate_count_delta": 0
+      },
+      "largest_absolute_deformation_deltas": [
+        {
+          "baseline_m3": -4.1355884306335007e+18,
+          "candidate_m3": -4.1104393113425674e+18,
+          "delta_m3": 2.514911929093325e+16,
+          "delta_percent": 0.6081146543656627,
+          "measure": "hm_m3",
+          "phase": "boundary_retreat"
+        },
+        {
+          "baseline_m3": 2.611599147395973e+17,
+          "candidate_m3": 2.645805650935808e+17,
+          "delta_m3": 3420650353983488.0,
+          "delta_percent": 1.309791495909401,
+          "measure": "hm_m3",
+          "phase": "gap_fill"
+        },
+        {
+          "baseline_m3": -1.3714481628116419e+18,
+          "candidate_m3": -1.369445085555458e+18,
+          "delta_m3": 2003077256183808.0,
+          "delta_percent": 0.1460556301360488,
+          "measure": "hc_m3",
+          "phase": "boundary_retreat"
+        }
+      ],
+      "motion": {
+        "accumulated_driving_torque_nm_year": {
+          "baseline": 3.162369104111965e+34,
+          "candidate": 3.1617754540252254e+34,
+          "delta_percent": -0.018772321231189912
+        },
+        "accumulated_residual_torque_nm_year": {
+          "baseline": 6.887984600447674e+19,
+          "candidate": 6.834617869078714e+19,
+          "delta_percent": -0.7747800621605848
+        },
+        "mean_absolute_closing_m_per_s": {
+          "baseline": 2.41732798186427e-11,
+          "candidate": 2.4297727468729945e-11,
+          "delta_percent": 0.5148149155633756
+        },
+        "mean_contact_force_n_per_m": {
+          "baseline": 9479938787151.68,
+          "candidate": 9496682067979.785,
+          "delta_percent": 0.1766180268041173
+        },
+        "mean_solved_rate_cm_per_yr": {
+          "baseline": 2.1144636081937738,
+          "candidate": 2.1165186355935486,
+          "delta_percent": 0.09718906448951684
+        },
+        "peak_absolute_closing_m_per_s": {
+          "baseline": 4.954250113033862e-10,
+          "candidate": 4.954250113033862e-10,
+          "delta_percent": 0.0
+        },
+        "peak_solved_rate_cm_per_yr": {
+          "baseline": 7.2876010981584205,
+          "candidate": 7.063467962164803,
+          "delta_percent": -3.0755406748354535
+        }
+      },
+      "peak_rss_mib": {
+        "baseline": 1631.4375,
+        "candidate": 1911.9375,
+        "delta": 280.5
+      },
+      "runtime": {
+        "baseline_seconds": 2688.9111547470093,
+        "candidate_seconds": 2729.9513850212097,
+        "delta_percent": 1.5262769170244965
+      },
+      "seed": 748935664,
+      "step_myr": 0.1,
+      "topology": {
+        "baseline_event_count": 37,
+        "baseline_fusion_or_terrane_accretion_count": 25,
+        "candidate_event_count": 33,
+        "candidate_fusion_or_terrane_accretion_count": 21,
+        "common_prefix_event_count": 21,
+        "first_difference": {
+          "baseline": {
+            "event": "Plate 1's stranded fragment (1 nodes) accreted onto plate 7.",
+            "time_myr": 34.4
+          },
+          "candidate": {
+            "event": "Plate 1's stranded fragment (1 nodes) accreted onto plate 7.",
+            "time_myr": 34.0
+          }
+        },
+        "sequences_identical": false
+      }
+    },
+    {
+      "baseline_commit": "f04cbc0772eca6d2484f7477b20004deb368206c",
+      "candidate_commit": "d553c3cfc05db4372d0bb33ec7e58aa2390b793b",
+      "checkpoint_trajectory": {
+        "land_fraction_baseline": [
+          0.12143200215827395,
+          0.14763051476821,
+          0.1520803352368984,
+          0.1551281289353414,
+          0.15721153605258284,
+          0.15818701304095117
+        ],
+        "land_fraction_candidate": [
+          0.12143200215827395,
+          0.14763051476821,
+          0.1520803352368984,
+          0.1551281289353414,
+          0.15718660002523518,
+          0.15823221226692136
+        ],
+        "max_abs_hc_hm_quantile_delta_percent": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.004099391569345902,
+          0.1975410984540757
+        ],
+        "myr": [
+          0.0,
+          10.0,
+          20.0,
+          30.0,
+          40.0,
+          50.0
+        ],
+        "plate_count_baseline": [
+          8,
+          14,
+          20,
+          20,
+          20,
+          20
+        ],
+        "plate_count_candidate": [
+          8,
+          14,
+          20,
+          20,
+          20,
+          20
+        ]
+      },
+      "endpoint": {
+        "baseline": {
+          "hc_area_weighted_km": {
+            "p50": 11.51790477767705,
+            "p90": 34.56890973274731,
+            "p99": 48.92342310540347
+          },
+          "hm_area_weighted_km": {
+            "p50": 39.78438569602926,
+            "p90": 100.00329339536255,
+            "p99": 100.97579449761393
+          },
+          "hm_inventory_m3": {
+            "all": 2.6865424157916664e+19,
+            "continental_node": 1.2339811325697567e+19,
+            "oceanic_node": 1.45256128322191e+19
+          },
+          "hm_ledger_closure_error_m3": {
+            "all": -17920.0,
+            "continental_node": -896.0,
+            "oceanic_node": -12800.0
+          },
+          "land_fraction": 0.15818701304095117,
+          "ledger_balance_error_m3": {
+            "continental": -512.0,
+            "craton": 0.0,
+            "hm_by_scope": {},
+            "mobile_cover": -352.0
+          },
+          "myr": 50.0,
+          "plate_count": 20
+        },
+        "candidate": {
+          "hc_area_weighted_km": {
+            "p50": 11.520652866335912,
+            "p90": 34.5708266701333,
+            "p99": 49.02006697280722
+          },
+          "hm_area_weighted_km": {
+            "p50": 39.78438569602926,
+            "p90": 100.00329043664604,
+            "p99": 100.97678733397336
+          },
+          "hm_inventory_m3": {
+            "all": 2.686086537018792e+19,
+            "continental_node": 1.2337581734984675e+19,
+            "oceanic_node": 1.4523283635203244e+19
+          },
+          "hm_ledger_closure_error_m3": {
+            "all": -22016.0,
+            "continental_node": -2048.0,
+            "oceanic_node": -16896.0
+          },
+          "land_fraction": 0.15823221226692136,
+          "ledger_balance_error_m3": {
+            "continental": -512.0,
+            "craton": 256.0,
+            "hm_by_scope": {},
+            "mobile_cover": 864.0
+          },
+          "myr": 50.0,
+          "plate_count": 20
+        },
+        "hc_hm_quantile_delta_percent": {
+          "hc_area_weighted_km": {
+            "p50": 0.023859275726850048,
+            "p90": 0.00554526422965688,
+            "p99": 0.1975410984540757
+          },
+          "hm_area_weighted_km": {
+            "p50": 0.0,
+            "p90": -2.9586190683276087e-06,
+            "p99": 0.0009832419386938095
+          }
+        },
+        "land_fraction_delta_percentage_points": 0.004519922597018278,
+        "plate_count_delta": 0
+      },
+      "largest_absolute_deformation_deltas": [
+        {
+          "baseline_m3": -3.9490224721543823e+18,
+          "candidate_m3": -3.953558051740451e+18,
+          "delta_m3": -4535579586068480.0,
+          "delta_percent": -0.1148532229950594,
+          "measure": "hm_m3",
+          "phase": "boundary_retreat"
+        },
+        {
+          "baseline_m3": 5.13658577775231e+17,
+          "candidate_m3": 5.125472110922957e+17,
+          "delta_m3": -1111366682935296.0,
+          "delta_percent": -0.2163629171246144,
+          "measure": "hc_m3",
+          "phase": "gap_fill"
+        },
+        {
+          "baseline_m3": -5762056083996672.0,
+          "candidate_m3": -6505432732925952.0,
+          "delta_m3": -743376648929280.0,
+          "delta_percent": -12.901239385605907,
+          "measure": "hm_m3",
+          "phase": "decompression_melting"
+        }
+      ],
+      "motion": {
+        "accumulated_driving_torque_nm_year": {
+          "baseline": 3.1960133564288523e+34,
+          "candidate": 3.196915807429107e+34,
+          "delta_percent": 0.028236771865784813
+        },
+        "accumulated_residual_torque_nm_year": {
+          "baseline": 6.551247841574889e+19,
+          "candidate": 6.8001464675422265e+19,
+          "delta_percent": 3.79925522566558
+        },
+        "mean_absolute_closing_m_per_s": {
+          "baseline": 2.9005117078606648e-11,
+          "candidate": 2.897720596005488e-11,
+          "delta_percent": -0.09622825681457288
+        },
+        "mean_contact_force_n_per_m": {
+          "baseline": 8358090595332.182,
+          "candidate": 8539712897951.155,
+          "delta_percent": 2.1730118924579003
+        },
+        "mean_solved_rate_cm_per_yr": {
+          "baseline": 2.2822549423701535,
+          "candidate": 2.287179980165595,
+          "delta_percent": 0.21579700427011855
+        },
+        "peak_absolute_closing_m_per_s": {
+          "baseline": 4.521032258124883e-10,
+          "candidate": 4.521032258124883e-10,
+          "delta_percent": 0.0
+        },
+        "peak_solved_rate_cm_per_yr": {
+          "baseline": 7.098168961715258,
+          "candidate": 7.208465415064749,
+          "delta_percent": 1.5538719061829478
+        }
+      },
+      "peak_rss_mib": {
+        "baseline": 1628.578125,
+        "candidate": 1609.6875,
+        "delta": -18.890625
+      },
+      "runtime": {
+        "baseline_seconds": 260.0605797767639,
+        "candidate_seconds": 256.9748260974884,
+        "delta_percent": -1.186551872615344
+      },
+      "seed": 748935664,
+      "step_myr": 1.0,
+      "topology": {
+        "baseline_event_count": 16,
+        "baseline_fusion_or_terrane_accretion_count": 4,
+        "candidate_event_count": 15,
+        "candidate_fusion_or_terrane_accretion_count": 3,
+        "common_prefix_event_count": 14,
+        "first_difference": {
+          "baseline": {
+            "event": "Plate 0's stranded fragment (2 nodes) accreted onto plate 13.",
+            "time_myr": 48.0
+          },
+          "candidate": {
+            "event": "Plate 14's stranded fragment (1 nodes) accreted onto plate 10.",
+            "time_myr": 48.0
+          }
+        },
+        "sequences_identical": false
+      }
+    },
+    {
+      "baseline_commit": "f04cbc0772eca6d2484f7477b20004deb368206c",
+      "candidate_commit": "d553c3cfc05db4372d0bb33ec7e58aa2390b793b",
+      "checkpoint_trajectory": {
+        "land_fraction_baseline": [
+          0.12143200215827395,
+          0.14727674702388038,
+          0.14997562259298122,
+          0.1509826997439426,
+          0.15267846565788903,
+          0.15305105554683576
+        ],
+        "land_fraction_candidate": [
+          0.12143200215827395,
+          0.14727674702388038,
+          0.14994628251124417,
+          0.15078618499770896,
+          0.15242347137294432,
+          0.15512880258208808
+        ],
+        "max_abs_hc_hm_quantile_delta_percent": [
+          0.0,
+          0.0,
+          0.27974994672702375,
+          0.22808894949854683,
+          0.36943330710590294,
+          1.6242125773198033
+        ],
+        "myr": [
+          0.0,
+          10.0,
+          20.0,
+          30.0,
+          40.0,
+          50.0
+        ],
+        "plate_count_baseline": [
+          8,
+          12,
+          16,
+          18,
+          18,
+          19
+        ],
+        "plate_count_candidate": [
+          8,
+          12,
+          16,
+          19,
+          20,
+          21
+        ]
+      },
+      "endpoint": {
+        "baseline": {
+          "hc_area_weighted_km": {
+            "p50": 11.519037853041612,
+            "p90": 35.476416063924425,
+            "p99": 48.865719842532904
+          },
+          "hm_area_weighted_km": {
+            "p50": 39.78438569602926,
+            "p90": 106.33987625600504,
+            "p99": 107.4105782675214
+          },
+          "hm_inventory_m3": {
+            "all": 2.72859147796177e+19,
+            "continental_node": 1.2577092697963373e+19,
+            "oceanic_node": 1.4708822081654331e+19
+          },
+          "hm_ledger_closure_error_m3": {
+            "all": 991415747072.0,
+            "continental_node": -4351.875,
+            "oceanic_node": 991415749119.875
+          },
+          "land_fraction": 0.15305105554683576,
+          "ledger_balance_error_m3": {
+            "continental": 0.0,
+            "craton": 256.0,
+            "hm_by_scope": {},
+            "mobile_cover": 0.0
+          },
+          "myr": 50.0,
+          "plate_count": 19
+        },
+        "candidate": {
+          "hc_area_weighted_km": {
+            "p50": 11.490222569452943,
+            "p90": 35.57217147762557,
+            "p99": 49.65940301021318
+          },
+          "hm_area_weighted_km": {
+            "p50": 39.78438569602926,
+            "p90": 106.33987625600504,
+            "p99": 107.41281580917106
+          },
+          "hm_inventory_m3": {
+            "all": 2.71818043237892e+19,
+            "continental_node": 1.2473645428290994e+19,
+            "oceanic_node": 1.4708158895498207e+19
+          },
+          "hm_ledger_closure_error_m3": {
+            "all": 48995219087872.0,
+            "continental_node": -108809462327.94922,
+            "oceanic_node": 49104028554679.95
+          },
+          "land_fraction": 0.15512880258208808,
+          "ledger_balance_error_m3": {
+            "continental": 12453303200256.0,
+            "craton": 256.0,
+            "hm_by_scope": {},
+            "mobile_cover": -64.0
+          },
+          "myr": 50.0,
+          "plate_count": 21
+        },
+        "hc_hm_quantile_delta_percent": {
+          "hc_area_weighted_km": {
+            "p50": -0.25015356279135853,
+            "p90": 0.26991287262107067,
+            "p99": 1.6242125773198033
+          },
+          "hm_area_weighted_km": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p99": 0.0020831669336050184
+          }
+        },
+        "land_fraction_delta_percentage_points": 0.20777470352523197,
+        "plate_count_delta": 2
+      },
+      "largest_absolute_deformation_deltas": [
+        {
+          "baseline_m3": -3.4698238615453696e+18,
+          "candidate_m3": -3.708649419607507e+18,
+          "delta_m3": -2.3882555806213734e+17,
+          "delta_percent": -6.8829303040117615,
+          "measure": "hm_m3",
+          "phase": "boundary_retreat"
+        },
+        {
+          "baseline_m3": 1.3736229464369332e+19,
+          "candidate_m3": 1.381006654374694e+19,
+          "delta_m3": 7.38370793776087e+16,
+          "delta_percent": 0.5375352790162403,
+          "measure": "hm_m3",
+          "phase": "oceanic_cooling_relaxation"
+        },
+        {
+          "baseline_m3": -1.1380068027644641e+18,
+          "candidate_m3": -1.190588199375962e+18,
+          "delta_m3": -5.258139661149798e+16,
+          "delta_percent": -4.620481747891702,
+          "measure": "hc_m3",
+          "phase": "boundary_retreat"
+        }
+      ],
+      "motion": {
+        "accumulated_driving_torque_nm_year": {
+          "baseline": 3.675381042776495e+34,
+          "candidate": 3.6440623054989066e+34,
+          "delta_percent": -0.8521221857837408
+        },
+        "accumulated_residual_torque_nm_year": {
+          "baseline": 6.957956078830639e+19,
+          "candidate": 7.190874667155262e+19,
+          "delta_percent": 3.3475144954316485
+        },
+        "mean_absolute_closing_m_per_s": {
+          "baseline": 2.8828174419240985e-11,
+          "candidate": 2.1358591256286502e-11,
+          "delta_percent": -25.91070476515852
+        },
+        "mean_contact_force_n_per_m": {
+          "baseline": 6422140535292.587,
+          "candidate": 6370120057763.377,
+          "delta_percent": -0.8100177385302259
+        },
+        "mean_solved_rate_cm_per_yr": {
+          "baseline": 2.369618274387852,
+          "candidate": 2.4659744921887468,
+          "delta_percent": 4.066318142561871
+        },
+        "peak_absolute_closing_m_per_s": {
+          "baseline": 1.9909091985623877e-10,
+          "candidate": 1.3348671070496343e-10,
+          "delta_percent": -32.951884093281286
+        },
+        "peak_solved_rate_cm_per_yr": {
+          "baseline": 7.063467962164803,
+          "candidate": 7.063467962164803,
+          "delta_percent": 0.0
+        }
+      },
+      "peak_rss_mib": {
+        "baseline": 1714.765625,
+        "candidate": 1726.484375,
+        "delta": 11.71875
+      },
+      "runtime": {
+        "baseline_seconds": 127.47674202919006,
+        "candidate_seconds": 129.1027750968933,
+        "delta_percent": 1.275552733635844
+      },
+      "seed": 748935664,
+      "step_myr": 2.0,
+      "topology": {
+        "baseline_event_count": 15,
+        "baseline_fusion_or_terrane_accretion_count": 3,
+        "candidate_event_count": 15,
+        "candidate_fusion_or_terrane_accretion_count": 1,
+        "common_prefix_event_count": 10,
+        "first_difference": {
+          "baseline": {
+            "event": "Plate 4 split into plates 4 and 17.",
+            "time_myr": 22.0
+          },
+          "candidate": {
+            "event": "Plate 16 split into plates 16 and 17.",
+            "time_myr": 24.0
+          }
+        },
+        "sequences_identical": false
+      }
+    },
+    {
+      "baseline_commit": "f04cbc0772eca6d2484f7477b20004deb368206c",
+      "candidate_commit": "d553c3cfc05db4372d0bb33ec7e58aa2390b793b",
+      "checkpoint_trajectory": {
+        "land_fraction_baseline": [
+          0.265604581255351,
+          0.3017612704914461,
+          0.30732462193543886,
+          0.30551200586473093,
+          0.29968367669712725,
+          0.2935434760089082
+        ],
+        "land_fraction_candidate": [
+          0.265604581255351,
+          0.3017612704914461,
+          0.30732462193543886,
+          0.30551200586473093,
+          0.29968367669712725,
+          0.2935434760089082
+        ],
+        "max_abs_hc_hm_quantile_delta_percent": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "myr": [
+          0.0,
+          10.0,
+          20.0,
+          30.0,
+          40.0,
+          50.0
+        ],
+        "plate_count_baseline": [
+          8,
+          13,
+          16,
+          16,
+          16,
+          16
+        ],
+        "plate_count_candidate": [
+          8,
+          13,
+          16,
+          16,
+          16,
+          16
+        ]
+      },
+      "endpoint": {
+        "baseline": {
+          "hc_area_weighted_km": {
+            "p50": 14.082529761883247,
+            "p90": 39.851168292795826,
+            "p99": 51.65957805306821
+          },
+          "hm_area_weighted_km": {
+            "p50": 100.0,
+            "p90": 100.00079259666822,
+            "p99": 105.16637113087154
+          },
+          "hm_inventory_m3": {
+            "all": 4.0088400960628695e+19,
+            "continental_node": 3.357269777505759e+19,
+            "oceanic_node": 6.515703185571106e+18
+          },
+          "hm_ledger_closure_error_m3": {
+            "all": -34560.0,
+            "continental_node": 6656.0,
+            "oceanic_node": -24064.0
+          },
+          "land_fraction": 0.2935434760089082,
+          "ledger_balance_error_m3": {
+            "continental": 2048.0,
+            "craton": -512.0,
+            "hm_by_scope": {},
+            "mobile_cover": 960.0
+          },
+          "myr": 50.0,
+          "plate_count": 16
+        },
+        "candidate": {
+          "hc_area_weighted_km": {
+            "p50": 14.082529761883247,
+            "p90": 39.851168292795826,
+            "p99": 51.65957805306821
+          },
+          "hm_area_weighted_km": {
+            "p50": 100.0,
+            "p90": 100.00079259666822,
+            "p99": 105.16637113087154
+          },
+          "hm_inventory_m3": {
+            "all": 4.0088400960628695e+19,
+            "continental_node": 3.357269777505759e+19,
+            "oceanic_node": 6.515703185571106e+18
+          },
+          "hm_ledger_closure_error_m3": {
+            "all": -34560.0,
+            "continental_node": 6656.0,
+            "oceanic_node": -24064.0
+          },
+          "land_fraction": 0.2935434760089082,
+          "ledger_balance_error_m3": {
+            "continental": 2048.0,
+            "craton": -512.0,
+            "hm_by_scope": {},
+            "mobile_cover": 960.0
+          },
+          "myr": 50.0,
+          "plate_count": 16
+        },
+        "hc_hm_quantile_delta_percent": {
+          "hc_area_weighted_km": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p99": 0.0
+          },
+          "hm_area_weighted_km": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p99": 0.0
+          }
+        },
+        "land_fraction_delta_percentage_points": 0.0,
+        "plate_count_delta": 0
+      },
+      "largest_absolute_deformation_deltas": [
+        {
+          "baseline_m3": 3.2341138094424064e+16,
+          "candidate_m3": 3.2341138094424064e+16,
+          "delta_m3": 0.0,
+          "delta_percent": 0.0,
+          "measure": "hc_m3",
+          "phase": "arc_magmatism"
+        },
+        {
+          "baseline_m3": 0.0,
+          "candidate_m3": 0.0,
+          "delta_m3": 0.0,
+          "delta_percent": 0.0,
+          "measure": "hm_m3",
+          "phase": "arc_magmatism"
+        },
+        {
+          "baseline_m3": 281401245040640.0,
+          "candidate_m3": 281401245040640.0,
+          "delta_m3": 0.0,
+          "delta_percent": 0.0,
+          "measure": "hc_m3",
+          "phase": "boundary_advance"
+        }
+      ],
+      "motion": {
+        "accumulated_driving_torque_nm_year": {
+          "baseline": 2.25451030993462e+34,
+          "candidate": 2.25451030993462e+34,
+          "delta_percent": 0.0
+        },
+        "accumulated_residual_torque_nm_year": {
+          "baseline": 4.3496065470010294e+19,
+          "candidate": 4.3496065470010294e+19,
+          "delta_percent": 0.0
+        },
+        "mean_absolute_closing_m_per_s": {
+          "baseline": 7.751875048372145e-12,
+          "candidate": 7.751875048372145e-12,
+          "delta_percent": 0.0
+        },
+        "mean_contact_force_n_per_m": {
+          "baseline": 13950590405094.078,
+          "candidate": 13950590405094.078,
+          "delta_percent": 0.0
+        },
+        "mean_solved_rate_cm_per_yr": {
+          "baseline": 0.6589857280079047,
+          "candidate": 0.6589857280079047,
+          "delta_percent": 0.0
+        },
+        "peak_absolute_closing_m_per_s": {
+          "baseline": 9.141225557533176e-11,
+          "candidate": 9.141225557533176e-11,
+          "delta_percent": 0.0
+        },
+        "peak_solved_rate_cm_per_yr": {
+          "baseline": 6.633391703711518,
+          "candidate": 6.633391703711518,
+          "delta_percent": 0.0
+        }
+      },
+      "peak_rss_mib": {
+        "baseline": 1563.5625,
+        "candidate": 1325.078125,
+        "delta": -238.484375
+      },
+      "runtime": {
+        "baseline_seconds": 2929.2814540863037,
+        "candidate_seconds": 3099.715277194977,
+        "delta_percent": 5.818280891749765
+      },
+      "seed": 580014012,
+      "step_myr": 0.1,
+      "topology": {
+        "baseline_event_count": 9,
+        "baseline_fusion_or_terrane_accretion_count": 1,
+        "candidate_event_count": 9,
+        "candidate_fusion_or_terrane_accretion_count": 1,
+        "common_prefix_event_count": 9,
+        "first_difference": null,
+        "sequences_identical": true
+      }
+    },
+    {
+      "baseline_commit": "f04cbc0772eca6d2484f7477b20004deb368206c",
+      "candidate_commit": "d553c3cfc05db4372d0bb33ec7e58aa2390b793b",
+      "checkpoint_trajectory": {
+        "land_fraction_baseline": [
+          0.265604581255351,
+          0.29992747897332966,
+          0.30709934940248745,
+          0.30910533413585894,
+          0.3096551212025151,
+          0.3093084402962286
+        ],
+        "land_fraction_candidate": [
+          0.265604581255351,
+          0.29992747897332966,
+          0.30709934940248745,
+          0.30910533413585894,
+          0.3096551212025151,
+          0.3093084402962286
+        ],
+        "max_abs_hc_hm_quantile_delta_percent": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "myr": [
+          0.0,
+          10.0,
+          20.0,
+          30.0,
+          40.0,
+          50.0
+        ],
+        "plate_count_baseline": [
+          8,
+          14,
+          16,
+          16,
+          16,
+          16
+        ],
+        "plate_count_candidate": [
+          8,
+          14,
+          16,
+          16,
+          16,
+          16
+        ]
+      },
+      "endpoint": {
+        "baseline": {
+          "hc_area_weighted_km": {
+            "p50": 13.494242641929153,
+            "p90": 40.00809219025433,
+            "p99": 52.25006980030786
+          },
+          "hm_area_weighted_km": {
+            "p50": 100.0,
+            "p90": 100.0041396639281,
+            "p99": 102.35441599590169
+          },
+          "hm_inventory_m3": {
+            "all": 3.979903452445099e+19,
+            "continental_node": 3.330953953850719e+19,
+            "oceanic_node": 6.489494985943812e+18
+          },
+          "hm_ledger_closure_error_m3": {
+            "all": 10752.0,
+            "continental_node": -912.21484375,
+            "oceanic_node": 528.21484375
+          },
+          "land_fraction": 0.3093084402962286,
+          "ledger_balance_error_m3": {
+            "continental": 2048.0,
+            "craton": -512.0,
+            "hm_by_scope": {},
+            "mobile_cover": -864.0
+          },
+          "myr": 50.0,
+          "plate_count": 16
+        },
+        "candidate": {
+          "hc_area_weighted_km": {
+            "p50": 13.494242641929153,
+            "p90": 40.00809219025433,
+            "p99": 52.25006980030786
+          },
+          "hm_area_weighted_km": {
+            "p50": 100.0,
+            "p90": 100.0041396639281,
+            "p99": 102.35441599590169
+          },
+          "hm_inventory_m3": {
+            "all": 3.979903452445099e+19,
+            "continental_node": 3.330953953850719e+19,
+            "oceanic_node": 6.489494985943812e+18
+          },
+          "hm_ledger_closure_error_m3": {
+            "all": 10752.0,
+            "continental_node": -912.21484375,
+            "oceanic_node": 528.21484375
+          },
+          "land_fraction": 0.3093084402962286,
+          "ledger_balance_error_m3": {
+            "continental": 2048.0,
+            "craton": -512.0,
+            "hm_by_scope": {},
+            "mobile_cover": -864.0
+          },
+          "myr": 50.0,
+          "plate_count": 16
+        },
+        "hc_hm_quantile_delta_percent": {
+          "hc_area_weighted_km": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p99": 0.0
+          },
+          "hm_area_weighted_km": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p99": 0.0
+          }
+        },
+        "land_fraction_delta_percentage_points": 0.0,
+        "plate_count_delta": 0
+      },
+      "largest_absolute_deformation_deltas": [
+        {
+          "baseline_m3": 4.666077440835584e+16,
+          "candidate_m3": 4.666077440835584e+16,
+          "delta_m3": 0.0,
+          "delta_percent": 0.0,
+          "measure": "hc_m3",
+          "phase": "arc_magmatism"
+        },
+        {
+          "baseline_m3": 0.0,
+          "candidate_m3": 0.0,
+          "delta_m3": 0.0,
+          "delta_percent": 0.0,
+          "measure": "hm_m3",
+          "phase": "arc_magmatism"
+        },
+        {
+          "baseline_m3": 1992404370653184.0,
+          "candidate_m3": 1992404370653184.0,
+          "delta_m3": 0.0,
+          "delta_percent": 0.0,
+          "measure": "hc_m3",
+          "phase": "boundary_advance"
+        }
+      ],
+      "motion": {
+        "accumulated_driving_torque_nm_year": {
+          "baseline": 2.432971801734598e+34,
+          "candidate": 2.432971801734598e+34,
+          "delta_percent": 0.0
+        },
+        "accumulated_residual_torque_nm_year": {
+          "baseline": 4.793637931872589e+19,
+          "candidate": 4.793637931872589e+19,
+          "delta_percent": 0.0
+        },
+        "mean_absolute_closing_m_per_s": {
+          "baseline": 5.528196816266375e-12,
+          "candidate": 5.528196816266375e-12,
+          "delta_percent": 0.0
+        },
+        "mean_contact_force_n_per_m": {
+          "baseline": 12016592287764.877,
+          "candidate": 12016592287764.877,
+          "delta_percent": 0.0
+        },
+        "mean_solved_rate_cm_per_yr": {
+          "baseline": 0.9203359429416406,
+          "candidate": 0.9203359429416406,
+          "delta_percent": 0.0
+        },
+        "peak_absolute_closing_m_per_s": {
+          "baseline": 1.001277574406483e-10,
+          "candidate": 1.001277574406483e-10,
+          "delta_percent": 0.0
+        },
+        "peak_solved_rate_cm_per_yr": {
+          "baseline": 6.667865916640943,
+          "candidate": 6.667865916640943,
+          "delta_percent": 0.0
+        }
+      },
+      "peak_rss_mib": {
+        "baseline": 1406.265625,
+        "candidate": 1208.265625,
+        "delta": -198.0
+      },
+      "runtime": {
+        "baseline_seconds": 289.31585121154785,
+        "candidate_seconds": 330.5569019317627,
+        "delta_percent": 14.254680670800637
+      },
+      "seed": 580014012,
+      "step_myr": 1.0,
+      "topology": {
+        "baseline_event_count": 9,
+        "baseline_fusion_or_terrane_accretion_count": 1,
+        "candidate_event_count": 9,
+        "candidate_fusion_or_terrane_accretion_count": 1,
+        "common_prefix_event_count": 9,
+        "first_difference": null,
+        "sequences_identical": true
+      }
+    },
+    {
+      "baseline_commit": "f04cbc0772eca6d2484f7477b20004deb368206c",
+      "candidate_commit": "d553c3cfc05db4372d0bb33ec7e58aa2390b793b",
+      "checkpoint_trajectory": {
+        "land_fraction_baseline": [
+          0.265604581255351,
+          0.296806507890713,
+          0.30432894107698466,
+          0.306040392596436,
+          0.30775756264486126,
+          0.30772010964642543
+        ],
+        "land_fraction_candidate": [
+          0.265604581255351,
+          0.296806507890713,
+          0.30432894107698466,
+          0.306040392596436,
+          0.30775756264486126,
+          0.30772010964642543
+        ],
+        "max_abs_hc_hm_quantile_delta_percent": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "myr": [
+          0.0,
+          10.0,
+          20.0,
+          30.0,
+          40.0,
+          50.0
+        ],
+        "plate_count_baseline": [
+          8,
+          13,
+          16,
+          16,
+          17,
+          17
+        ],
+        "plate_count_candidate": [
+          8,
+          13,
+          16,
+          16,
+          17,
+          17
+        ]
+      },
+      "endpoint": {
+        "baseline": {
+          "hc_area_weighted_km": {
+            "p50": 13.389107737945181,
+            "p90": 39.962609588771656,
+            "p99": 52.62442513343397
+          },
+          "hm_area_weighted_km": {
+            "p50": 100.0,
+            "p90": 100.00314795206658,
+            "p99": 101.59459606102546
+          },
+          "hm_inventory_m3": {
+            "all": 3.986963713529747e+19,
+            "continental_node": 3.3291957599518614e+19,
+            "oceanic_node": 6.577679535778862e+18
+          },
+          "hm_ledger_closure_error_m3": {
+            "all": 4153759513088.0,
+            "continental_node": 12388608.0,
+            "oceanic_node": 4153747128832.0
+          },
+          "land_fraction": 0.30772010964642543,
+          "ledger_balance_error_m3": {
+            "continental": -309310684598272.0,
+            "craton": 0.0,
+            "hm_by_scope": {},
+            "mobile_cover": -160.0
+          },
+          "myr": 50.0,
+          "plate_count": 17
+        },
+        "candidate": {
+          "hc_area_weighted_km": {
+            "p50": 13.389107737945181,
+            "p90": 39.962609588771656,
+            "p99": 52.62442513343397
+          },
+          "hm_area_weighted_km": {
+            "p50": 100.0,
+            "p90": 100.00314795206658,
+            "p99": 101.59459606102546
+          },
+          "hm_inventory_m3": {
+            "all": 3.986963713529747e+19,
+            "continental_node": 3.3291957599518614e+19,
+            "oceanic_node": 6.577679535778862e+18
+          },
+          "hm_ledger_closure_error_m3": {
+            "all": 4153759513088.0,
+            "continental_node": 12388608.0,
+            "oceanic_node": 4153747128832.0
+          },
+          "land_fraction": 0.30772010964642543,
+          "ledger_balance_error_m3": {
+            "continental": -309310684598272.0,
+            "craton": 0.0,
+            "hm_by_scope": {},
+            "mobile_cover": -160.0
+          },
+          "myr": 50.0,
+          "plate_count": 17
+        },
+        "hc_hm_quantile_delta_percent": {
+          "hc_area_weighted_km": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p99": 0.0
+          },
+          "hm_area_weighted_km": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p99": 0.0
+          }
+        },
+        "land_fraction_delta_percentage_points": 0.0,
+        "plate_count_delta": 0
+      },
+      "largest_absolute_deformation_deltas": [
+        {
+          "baseline_m3": 3.987786663264256e+16,
+          "candidate_m3": 3.987786663264256e+16,
+          "delta_m3": 0.0,
+          "delta_percent": 0.0,
+          "measure": "hc_m3",
+          "phase": "arc_magmatism"
+        },
+        {
+          "baseline_m3": 0.0,
+          "candidate_m3": 0.0,
+          "delta_m3": 0.0,
+          "delta_percent": 0.0,
+          "measure": "hm_m3",
+          "phase": "arc_magmatism"
+        },
+        {
+          "baseline_m3": 7355285461008384.0,
+          "candidate_m3": 7355285461008384.0,
+          "delta_m3": 0.0,
+          "delta_percent": 0.0,
+          "measure": "hc_m3",
+          "phase": "boundary_advance"
+        }
+      ],
+      "motion": {
+        "accumulated_driving_torque_nm_year": {
+          "baseline": 2.2617145893714457e+34,
+          "candidate": 2.2617145893714457e+34,
+          "delta_percent": 0.0
+        },
+        "accumulated_residual_torque_nm_year": {
+          "baseline": 3.917002667753521e+19,
+          "candidate": 3.917002667753521e+19,
+          "delta_percent": 0.0
+        },
+        "mean_absolute_closing_m_per_s": {
+          "baseline": 9.871400358765432e-12,
+          "candidate": 9.871400358765432e-12,
+          "delta_percent": 0.0
+        },
+        "mean_contact_force_n_per_m": {
+          "baseline": 8159314303848.171,
+          "candidate": 8159314303848.171,
+          "delta_percent": 0.0
+        },
+        "mean_solved_rate_cm_per_yr": {
+          "baseline": 0.7447247836991354,
+          "candidate": 0.7447247836991354,
+          "delta_percent": 0.0
+        },
+        "peak_absolute_closing_m_per_s": {
+          "baseline": 8.981690917121426e-11,
+          "candidate": 8.981690917121426e-11,
+          "delta_percent": 0.0
+        },
+        "peak_solved_rate_cm_per_yr": {
+          "baseline": 5.224589970574849,
+          "candidate": 5.224589970574849,
+          "delta_percent": 0.0
+        }
+      },
+      "peak_rss_mib": {
+        "baseline": 1107.40625,
+        "candidate": 1150.265625,
+        "delta": 42.859375
+      },
+      "runtime": {
+        "baseline_seconds": 167.66749119758606,
+        "candidate_seconds": 165.09331512451172,
+        "delta_percent": -1.5352863305152156
+      },
+      "seed": 580014012,
+      "step_myr": 2.0,
+      "topology": {
+        "baseline_event_count": 9,
+        "baseline_fusion_or_terrane_accretion_count": 0,
+        "candidate_event_count": 9,
+        "candidate_fusion_or_terrane_accretion_count": 0,
+        "common_prefix_event_count": 9,
+        "first_difference": null,
+        "sequences_identical": true
+      }
+    },
+    {
+      "baseline_commit": "f04cbc0772eca6d2484f7477b20004deb368206c",
+      "candidate_commit": "d553c3cfc05db4372d0bb33ec7e58aa2390b793b",
+      "checkpoint_trajectory": {
+        "land_fraction_baseline": [
+          0.40895809005160905,
+          0.4357304336740154,
+          0.4387628093689044,
+          0.4366383817719492,
+          0.43381563367817794,
+          0.4301491619274921
+        ],
+        "land_fraction_candidate": [
+          0.40895809005160905,
+          0.4357304336740154,
+          0.4387628093689044,
+          0.4366383817719492,
+          0.43381563367817794,
+          0.4301491619274921
+        ],
+        "max_abs_hc_hm_quantile_delta_percent": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "myr": [
+          0.0,
+          10.0,
+          20.0,
+          30.0,
+          40.0,
+          50.0
+        ],
+        "plate_count_baseline": [
+          18,
+          25,
+          25,
+          25,
+          25,
+          25
+        ],
+        "plate_count_candidate": [
+          18,
+          25,
+          25,
+          25,
+          25,
+          25
+        ]
+      },
+      "endpoint": {
+        "baseline": {
+          "hc_area_weighted_km": {
+            "p50": 21.40660096148416,
+            "p90": 49.93433825434347,
+            "p99": 63.82429866640485
+          },
+          "hm_area_weighted_km": {
+            "p50": 53.65840875332486,
+            "p90": 100.00003275225373,
+            "p99": 101.01241034526174
+          },
+          "hm_inventory_m3": {
+            "all": 3.4864035328827875e+19,
+            "continental_node": 2.5461380997294207e+19,
+            "oceanic_node": 9.402654331533664e+18
+          },
+          "hm_ledger_closure_error_m3": {
+            "all": 7680.0,
+            "continental_node": -1846.453125,
+            "oceanic_node": 1398.453125
+          },
+          "land_fraction": 0.4301491619274921,
+          "ledger_balance_error_m3": {
+            "continental": 0.0,
+            "craton": -512.0,
+            "hm_by_scope": {},
+            "mobile_cover": -8064.0
+          },
+          "myr": 50.0,
+          "plate_count": 25
+        },
+        "candidate": {
+          "hc_area_weighted_km": {
+            "p50": 21.40660096148416,
+            "p90": 49.93433825434347,
+            "p99": 63.82429866640485
+          },
+          "hm_area_weighted_km": {
+            "p50": 53.65840875332486,
+            "p90": 100.00003275225373,
+            "p99": 101.01241034526174
+          },
+          "hm_inventory_m3": {
+            "all": 3.4864035328827875e+19,
+            "continental_node": 2.5461380997294207e+19,
+            "oceanic_node": 9.402654331533664e+18
+          },
+          "hm_ledger_closure_error_m3": {
+            "all": 7680.0,
+            "continental_node": -1846.453125,
+            "oceanic_node": 1398.453125
+          },
+          "land_fraction": 0.4301491619274921,
+          "ledger_balance_error_m3": {
+            "continental": 0.0,
+            "craton": -512.0,
+            "hm_by_scope": {},
+            "mobile_cover": -8064.0
+          },
+          "myr": 50.0,
+          "plate_count": 25
+        },
+        "hc_hm_quantile_delta_percent": {
+          "hc_area_weighted_km": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p99": 0.0
+          },
+          "hm_area_weighted_km": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p99": 0.0
+          }
+        },
+        "land_fraction_delta_percentage_points": 0.0,
+        "plate_count_delta": 0
+      },
+      "largest_absolute_deformation_deltas": [
+        {
+          "baseline_m3": 3.3519588753801216e+16,
+          "candidate_m3": 3.3519588753801216e+16,
+          "delta_m3": 0.0,
+          "delta_percent": 0.0,
+          "measure": "hc_m3",
+          "phase": "arc_magmatism"
+        },
+        {
+          "baseline_m3": 0.0,
+          "candidate_m3": 0.0,
+          "delta_m3": 0.0,
+          "delta_percent": 0.0,
+          "measure": "hm_m3",
+          "phase": "arc_magmatism"
+        },
+        {
+          "baseline_m3": 1751088381296640.0,
+          "candidate_m3": 1751088381296640.0,
+          "delta_m3": 0.0,
+          "delta_percent": 0.0,
+          "measure": "hc_m3",
+          "phase": "boundary_advance"
+        }
+      ],
+      "motion": {
+        "accumulated_driving_torque_nm_year": {
+          "baseline": 2.5607871460822096e+34,
+          "candidate": 2.5607871460822096e+34,
+          "delta_percent": 0.0
+        },
+        "accumulated_residual_torque_nm_year": {
+          "baseline": 5.808948237765709e+19,
+          "candidate": 5.808948237765709e+19,
+          "delta_percent": 0.0
+        },
+        "mean_absolute_closing_m_per_s": {
+          "baseline": 1.589232442808442e-11,
+          "candidate": 1.589232442808442e-11,
+          "delta_percent": 0.0
+        },
+        "mean_contact_force_n_per_m": {
+          "baseline": 10901989088998.176,
+          "candidate": 10901989088998.176,
+          "delta_percent": 0.0
+        },
+        "mean_solved_rate_cm_per_yr": {
+          "baseline": 1.0095126821065592,
+          "candidate": 1.0095126821065592,
+          "delta_percent": 0.0
+        },
+        "peak_absolute_closing_m_per_s": {
+          "baseline": 1.4299389587055349e-10,
+          "candidate": 1.4299389587055349e-10,
+          "delta_percent": 0.0
+        },
+        "peak_solved_rate_cm_per_yr": {
+          "baseline": 9.380793732513574,
+          "candidate": 9.380793732513574,
+          "delta_percent": 0.0
+        }
+      },
+      "peak_rss_mib": {
+        "baseline": 1620.53125,
+        "candidate": 1733.09375,
+        "delta": 112.5625
+      },
+      "runtime": {
+        "baseline_seconds": 3539.06481218338,
+        "candidate_seconds": 2800.6159319877625,
+        "delta_percent": -20.865650090766245
+      },
+      "seed": 111065103,
+      "step_myr": 0.1,
+      "topology": {
+        "baseline_event_count": 8,
+        "baseline_fusion_or_terrane_accretion_count": 1,
+        "candidate_event_count": 8,
+        "candidate_fusion_or_terrane_accretion_count": 1,
+        "common_prefix_event_count": 8,
+        "first_difference": null,
+        "sequences_identical": true
+      }
+    },
+    {
+      "baseline_commit": "f04cbc0772eca6d2484f7477b20004deb368206c",
+      "candidate_commit": "d553c3cfc05db4372d0bb33ec7e58aa2390b793b",
+      "checkpoint_trajectory": {
+        "land_fraction_baseline": [
+          0.40895809005160905,
+          0.4288639270976991,
+          0.43234546350053427,
+          0.4322747896580879,
+          0.4302326168531147,
+          0.42839527174757414
+        ],
+        "land_fraction_candidate": [
+          0.40895809005160905,
+          0.4288639270976991,
+          0.43234546350053427,
+          0.4322747896580879,
+          0.4302326168531147,
+          0.42839527174757414
+        ],
+        "max_abs_hc_hm_quantile_delta_percent": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "myr": [
+          0.0,
+          10.0,
+          20.0,
+          30.0,
+          40.0,
+          50.0
+        ],
+        "plate_count_baseline": [
+          18,
+          22,
+          24,
+          24,
+          24,
+          24
+        ],
+        "plate_count_candidate": [
+          18,
+          22,
+          24,
+          24,
+          24,
+          24
+        ]
+      },
+      "endpoint": {
+        "baseline": {
+          "hc_area_weighted_km": {
+            "p50": 21.25531484447353,
+            "p90": 50.10226787714897,
+            "p99": 63.01539862535648
+          },
+          "hm_area_weighted_km": {
+            "p50": 49.78193791043658,
+            "p90": 100.00022604781601,
+            "p99": 101.6014898978119
+          },
+          "hm_inventory_m3": {
+            "all": 3.4736682245781987e+19,
+            "continental_node": 2.53472880940965e+19,
+            "oceanic_node": 9.389394151685489e+18
+          },
+          "hm_ledger_closure_error_m3": {
+            "all": 4608.0,
+            "continental_node": 9344.0,
+            "oceanic_node": 3072.0
+          },
+          "land_fraction": 0.42839527174757414,
+          "ledger_balance_error_m3": {
+            "continental": 0.0,
+            "craton": -512.0,
+            "hm_by_scope": {},
+            "mobile_cover": 416.0
+          },
+          "myr": 50.0,
+          "plate_count": 24
+        },
+        "candidate": {
+          "hc_area_weighted_km": {
+            "p50": 21.25531484447353,
+            "p90": 50.10226787714897,
+            "p99": 63.01539862535648
+          },
+          "hm_area_weighted_km": {
+            "p50": 49.78193791043658,
+            "p90": 100.00022604781601,
+            "p99": 101.6014898978119
+          },
+          "hm_inventory_m3": {
+            "all": 3.4736682245781987e+19,
+            "continental_node": 2.53472880940965e+19,
+            "oceanic_node": 9.389394151685489e+18
+          },
+          "hm_ledger_closure_error_m3": {
+            "all": 4608.0,
+            "continental_node": 9344.0,
+            "oceanic_node": 3072.0
+          },
+          "land_fraction": 0.42839527174757414,
+          "ledger_balance_error_m3": {
+            "continental": 0.0,
+            "craton": -512.0,
+            "hm_by_scope": {},
+            "mobile_cover": 416.0
+          },
+          "myr": 50.0,
+          "plate_count": 24
+        },
+        "hc_hm_quantile_delta_percent": {
+          "hc_area_weighted_km": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p99": 0.0
+          },
+          "hm_area_weighted_km": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p99": 0.0
+          }
+        },
+        "land_fraction_delta_percentage_points": 0.0,
+        "plate_count_delta": 0
+      },
+      "largest_absolute_deformation_deltas": [
+        {
+          "baseline_m3": 4.450434836004864e+16,
+          "candidate_m3": 4.450434836004864e+16,
+          "delta_m3": 0.0,
+          "delta_percent": 0.0,
+          "measure": "hc_m3",
+          "phase": "arc_magmatism"
+        },
+        {
+          "baseline_m3": 0.0,
+          "candidate_m3": 0.0,
+          "delta_m3": 0.0,
+          "delta_percent": 0.0,
+          "measure": "hm_m3",
+          "phase": "arc_magmatism"
+        },
+        {
+          "baseline_m3": 4304092143026176.0,
+          "candidate_m3": 4304092143026176.0,
+          "delta_m3": 0.0,
+          "delta_percent": 0.0,
+          "measure": "hc_m3",
+          "phase": "boundary_advance"
+        }
+      ],
+      "motion": {
+        "accumulated_driving_torque_nm_year": {
+          "baseline": 2.7341331085395084e+34,
+          "candidate": 2.7341331085395084e+34,
+          "delta_percent": 0.0
+        },
+        "accumulated_residual_torque_nm_year": {
+          "baseline": 5.659737571458495e+19,
+          "candidate": 5.659737571458495e+19,
+          "delta_percent": 0.0
+        },
+        "mean_absolute_closing_m_per_s": {
+          "baseline": 1.3666274087601287e-11,
+          "candidate": 1.3666274087601287e-11,
+          "delta_percent": 0.0
+        },
+        "mean_contact_force_n_per_m": {
+          "baseline": 10902271497669.29,
+          "candidate": 10902271497669.29,
+          "delta_percent": 0.0
+        },
+        "mean_solved_rate_cm_per_yr": {
+          "baseline": 1.1002401692077672,
+          "candidate": 1.1002401692077672,
+          "delta_percent": 0.0
+        },
+        "peak_absolute_closing_m_per_s": {
+          "baseline": 9.8718721331899e-11,
+          "candidate": 9.8718721331899e-11,
+          "delta_percent": 0.0
+        },
+        "peak_solved_rate_cm_per_yr": {
+          "baseline": 9.380793732513574,
+          "candidate": 9.380793732513574,
+          "delta_percent": 0.0
+        }
+      },
+      "peak_rss_mib": {
+        "baseline": 1249.796875,
+        "candidate": 1245.859375,
+        "delta": -3.9375
+      },
+      "runtime": {
+        "baseline_seconds": 293.0187249183655,
+        "candidate_seconds": 291.8220729827881,
+        "delta_percent": -0.40838753083468565
+      },
+      "seed": 111065103,
+      "step_myr": 1.0,
+      "topology": {
+        "baseline_event_count": 6,
+        "baseline_fusion_or_terrane_accretion_count": 0,
+        "candidate_event_count": 6,
+        "candidate_fusion_or_terrane_accretion_count": 0,
+        "common_prefix_event_count": 6,
+        "first_difference": null,
+        "sequences_identical": true
+      }
+    },
+    {
+      "baseline_commit": "f04cbc0772eca6d2484f7477b20004deb368206c",
+      "candidate_commit": "d553c3cfc05db4372d0bb33ec7e58aa2390b793b",
+      "checkpoint_trajectory": {
+        "land_fraction_baseline": [
+          0.40895809005160905,
+          0.4266292154283286,
+          0.42849055586095036,
+          0.4289238074181225,
+          0.42973971530063027,
+          0.4276870024182749
+        ],
+        "land_fraction_candidate": [
+          0.40895809005160905,
+          0.4266292154283286,
+          0.42849055586095036,
+          0.4289238074181225,
+          0.42973971530063027,
+          0.4276870024182749
+        ],
+        "max_abs_hc_hm_quantile_delta_percent": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "myr": [
+          0.0,
+          10.0,
+          20.0,
+          30.0,
+          40.0,
+          50.0
+        ],
+        "plate_count_baseline": [
+          18,
+          22,
+          25,
+          25,
+          25,
+          25
+        ],
+        "plate_count_candidate": [
+          18,
+          22,
+          25,
+          25,
+          25,
+          25
+        ]
+      },
+      "endpoint": {
+        "baseline": {
+          "hc_area_weighted_km": {
+            "p50": 21.125898460165143,
+            "p90": 50.12949770821033,
+            "p99": 63.64336514036322
+          },
+          "hm_area_weighted_km": {
+            "p50": 44.37631398348204,
+            "p90": 100.0006259543376,
+            "p99": 104.02921548967413
+          },
+          "hm_inventory_m3": {
+            "all": 3.474140737390923e+19,
+            "continental_node": 2.5293421982962024e+19,
+            "oceanic_node": 9.447985390947205e+18
+          },
+          "hm_ledger_closure_error_m3": {
+            "all": -19171851153920.0,
+            "continental_node": 17234190684730.98,
+            "oceanic_node": -36406041840314.984
+          },
+          "land_fraction": 0.4276870024182749,
+          "ledger_balance_error_m3": {
+            "continental": 500075612379136.0,
+            "craton": -512.0,
+            "hm_by_scope": {},
+            "mobile_cover": 96.0
+          },
+          "myr": 50.0,
+          "plate_count": 25
+        },
+        "candidate": {
+          "hc_area_weighted_km": {
+            "p50": 21.125898460165143,
+            "p90": 50.12949770821033,
+            "p99": 63.64336514036322
+          },
+          "hm_area_weighted_km": {
+            "p50": 44.37631398348204,
+            "p90": 100.0006259543376,
+            "p99": 104.02921548967413
+          },
+          "hm_inventory_m3": {
+            "all": 3.474140737390923e+19,
+            "continental_node": 2.5293421982962024e+19,
+            "oceanic_node": 9.447985390947205e+18
+          },
+          "hm_ledger_closure_error_m3": {
+            "all": -19171851153920.0,
+            "continental_node": 17234190684730.98,
+            "oceanic_node": -36406041840314.984
+          },
+          "land_fraction": 0.4276870024182749,
+          "ledger_balance_error_m3": {
+            "continental": 500075612379136.0,
+            "craton": -512.0,
+            "hm_by_scope": {},
+            "mobile_cover": 96.0
+          },
+          "myr": 50.0,
+          "plate_count": 25
+        },
+        "hc_hm_quantile_delta_percent": {
+          "hc_area_weighted_km": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p99": 0.0
+          },
+          "hm_area_weighted_km": {
+            "p50": 0.0,
+            "p90": 0.0,
+            "p99": 0.0
+          }
+        },
+        "land_fraction_delta_percentage_points": 0.0,
+        "plate_count_delta": 0
+      },
+      "largest_absolute_deformation_deltas": [
+        {
+          "baseline_m3": 5.28986042932265e+16,
+          "candidate_m3": 5.28986042932265e+16,
+          "delta_m3": 0.0,
+          "delta_percent": 0.0,
+          "measure": "hc_m3",
+          "phase": "arc_magmatism"
+        },
+        {
+          "baseline_m3": 0.0,
+          "candidate_m3": 0.0,
+          "delta_m3": 0.0,
+          "delta_percent": 0.0,
+          "measure": "hm_m3",
+          "phase": "arc_magmatism"
+        },
+        {
+          "baseline_m3": 1.980845192629453e+16,
+          "candidate_m3": 1.980845192629453e+16,
+          "delta_m3": 0.0,
+          "delta_percent": 0.0,
+          "measure": "hc_m3",
+          "phase": "boundary_advance"
+        }
+      ],
+      "motion": {
+        "accumulated_driving_torque_nm_year": {
+          "baseline": 2.737843819122541e+34,
+          "candidate": 2.737843819122541e+34,
+          "delta_percent": 0.0
+        },
+        "accumulated_residual_torque_nm_year": {
+          "baseline": 6.1428041503881626e+19,
+          "candidate": 6.1428041503881626e+19,
+          "delta_percent": 0.0
+        },
+        "mean_absolute_closing_m_per_s": {
+          "baseline": 4.640402779703607e-11,
+          "candidate": 4.640402779703607e-11,
+          "delta_percent": 0.0
+        },
+        "mean_contact_force_n_per_m": {
+          "baseline": 10211172719092.076,
+          "candidate": 10211172719092.076,
+          "delta_percent": 0.0
+        },
+        "mean_solved_rate_cm_per_yr": {
+          "baseline": 1.1731668082482933,
+          "candidate": 1.1731668082482933,
+          "delta_percent": 0.0
+        },
+        "peak_absolute_closing_m_per_s": {
+          "baseline": 2.863621932743757e-10,
+          "candidate": 2.863621932743757e-10,
+          "delta_percent": 0.0
+        },
+        "peak_solved_rate_cm_per_yr": {
+          "baseline": 9.380793732513574,
+          "candidate": 9.380793732513574,
+          "delta_percent": 0.0
+        }
+      },
+      "peak_rss_mib": {
+        "baseline": 1192.9375,
+        "candidate": 1203.0625,
+        "delta": 10.125
+      },
+      "runtime": {
+        "baseline_seconds": 163.49417901039124,
+        "candidate_seconds": 163.20486187934875,
+        "delta_percent": -0.1769586738767576
+      },
+      "seed": 111065103,
+      "step_myr": 2.0,
+      "topology": {
+        "baseline_event_count": 9,
+        "baseline_fusion_or_terrane_accretion_count": 2,
+        "candidate_event_count": 9,
+        "candidate_fusion_or_terrane_accretion_count": 2,
+        "common_prefix_event_count": 9,
+        "first_difference": null,
+        "sequences_identical": true
+      }
+    }
+  ],
+  "schema_version": 1,
+  "scope": "merge-only RFC 0012 #547 matched metric replay",
+  "summary": {
+    "endpoint_plate_count_differences": 1,
+    "ledger_maxima": {
+      "max_absolute_balance_error_m3": {
+        "continental": 500075612379136.0,
+        "craton": 512.0,
+        "mobile_cover": 8064.0
+      },
+      "max_absolute_hm_closure_error_m3": {
+        "all": 151469106269184.0,
+        "continental_node": 235160994421869.7,
+        "oceanic_node": 122702222748922.0
+      },
+      "max_relative_hm_closure_fraction": {
+        "all": 4.849762027523723e-06,
+        "continental_node": 1.210350719204626e-05,
+        "oceanic_node": 1.149955474057658e-05
+      }
+    },
+    "max_absolute_endpoint_hc_hm_quantile_delta_percent": 1.6242125773198033,
+    "max_absolute_land_fraction_delta_percentage_points": 0.20777470352523197,
+    "max_absolute_motion_metric_delta_percent_by_metric": {
+      "accumulated_driving_torque_nm_year": {
+        "delta_percent": -0.8521221857837408,
+        "seed": 748935664,
+        "step_myr": 2.0
+      },
+      "accumulated_residual_torque_nm_year": {
+        "delta_percent": -9.580910169330153,
+        "seed": 326494039,
+        "step_myr": 1.0
+      },
+      "mean_absolute_closing_m_per_s": {
+        "delta_percent": -25.91070476515852,
+        "seed": 748935664,
+        "step_myr": 2.0
+      },
+      "mean_contact_force_n_per_m": {
+        "delta_percent": 7.608288259292056,
+        "seed": 326494039,
+        "step_myr": 2.0
+      },
+      "mean_solved_rate_cm_per_yr": {
+        "delta_percent": 4.066318142561871,
+        "seed": 748935664,
+        "step_myr": 2.0
+      },
+      "peak_absolute_closing_m_per_s": {
+        "delta_percent": -32.951884093281286,
+        "seed": 748935664,
+        "step_myr": 2.0
+      },
+      "peak_solved_rate_cm_per_yr": {
+        "delta_percent": -3.0755406748354535,
+        "seed": 748935664,
+        "step_myr": 0.1
+      }
+    },
+    "topology_sequence_differences": 6
+  },
+  "timestep_spread_vs_0_1_myr": [
+    {
+      "arm": "baseline",
+      "delta_vs_0_1": {
+        "accumulated_driving_torque_nm_year": -2.3369825900434167,
+        "accumulated_residual_torque_nm_year": -7.440165323189088,
+        "land_fraction_percent": -1.392275521224197,
+        "mean_absolute_closing_m_per_s": 92.33252811996637,
+        "mean_contact_force_n_per_m": -29.49351764161528,
+        "mean_solved_rate_cm_per_yr": 0.05289847644773879,
+        "peak_absolute_closing_m_per_s": -2.133076247535037,
+        "peak_solved_rate_cm_per_yr": 0.0,
+        "plate_count_difference": -1
+      },
+      "seed": 326494039,
+      "step_myr": 1.0
+    },
+    {
+      "arm": "baseline",
+      "delta_vs_0_1": {
+        "accumulated_driving_torque_nm_year": -2.8038773263228496,
+        "accumulated_residual_torque_nm_year": -11.793872031572974,
+        "land_fraction_percent": -1.588228347510066,
+        "mean_absolute_closing_m_per_s": 184.83782874440956,
+        "mean_contact_force_n_per_m": -7.732561840463246,
+        "mean_solved_rate_cm_per_yr": -2.2319982940386756,
+        "peak_absolute_closing_m_per_s": 11.135234597931955,
+        "peak_solved_rate_cm_per_yr": 0.0,
+        "plate_count_difference": -1
+      },
+      "seed": 326494039,
+      "step_myr": 2.0
+    },
+    {
+      "arm": "candidate",
+      "delta_vs_0_1": {
+        "accumulated_driving_torque_nm_year": -1.8974255007778142,
+        "accumulated_residual_torque_nm_year": -16.941974290441582,
+        "land_fraction_percent": -1.735810045697602,
+        "mean_absolute_closing_m_per_s": 106.33249138003526,
+        "mean_contact_force_n_per_m": -29.71809427073417,
+        "mean_solved_rate_cm_per_yr": 1.2951868042335342,
+        "peak_absolute_closing_m_per_s": 5.933525495240858,
+        "peak_solved_rate_cm_per_yr": 0.0,
+        "plate_count_difference": -1
+      },
+      "seed": 326494039,
+      "step_myr": 1.0
+    },
+    {
+      "arm": "candidate",
+      "delta_vs_0_1": {
+        "accumulated_driving_torque_nm_year": -2.7796497520529773,
+        "accumulated_residual_torque_nm_year": -9.267444410121453,
+        "land_fraction_percent": -1.3535575802735318,
+        "mean_absolute_closing_m_per_s": 175.9553683224184,
+        "mean_contact_force_n_per_m": -0.6845724707773343,
+        "mean_solved_rate_cm_per_yr": -2.8664818118230575,
+        "peak_absolute_closing_m_per_s": 15.873999013352677,
+        "peak_solved_rate_cm_per_yr": 0.0,
+        "plate_count_difference": -1
+      },
+      "seed": 326494039,
+      "step_myr": 2.0
+    },
+    {
+      "arm": "baseline",
+      "delta_vs_0_1": {
+        "accumulated_driving_torque_nm_year": 1.0638939102061233,
+        "accumulated_residual_torque_nm_year": -4.88875597734204,
+        "land_fraction_percent": -0.5577517070799158,
+        "mean_absolute_closing_m_per_s": 19.988339589059734,
+        "mean_contact_force_n_per_m": -11.833918098078415,
+        "mean_solved_rate_cm_per_yr": 7.935408938993807,
+        "peak_absolute_closing_m_per_s": -8.744367866475907,
+        "peak_solved_rate_cm_per_yr": -2.5993757601665677,
+        "plate_count_difference": 0
+      },
+      "seed": 748935664,
+      "step_myr": 1.0
+    },
+    {
+      "arm": "baseline",
+      "delta_vs_0_1": {
+        "accumulated_driving_torque_nm_year": 16.22239282560251,
+        "accumulated_residual_torque_nm_year": 1.0158483568389083,
+        "land_fraction_percent": -3.7864058837631256,
+        "mean_absolute_closing_m_per_s": 19.256363371131695,
+        "mean_contact_force_n_per_m": -32.255464096491615,
+        "mean_solved_rate_cm_per_yr": 12.06711078901176,
+        "peak_absolute_closing_m_per_s": -59.81411609953614,
+        "peak_solved_rate_cm_per_yr": -3.0755406748354535,
+        "plate_count_difference": -1
+      },
+      "seed": 748935664,
+      "step_myr": 2.0
+    },
+    {
+      "arm": "candidate",
+      "delta_vs_0_1": {
+        "accumulated_driving_torque_nm_year": 1.1114120504397276,
+        "accumulated_residual_torque_nm_year": -0.5043647237754649,
+        "land_fraction_percent": -0.5033810047022673,
+        "mean_absolute_closing_m_per_s": 19.258914222933836,
+        "mean_contact_force_n_per_m": -10.076879095018546,
+        "mean_solved_rate_cm_per_yr": 8.06330460323052,
+        "peak_absolute_closing_m_per_s": -8.744367866475907,
+        "peak_solved_rate_cm_per_yr": 2.052779932982203,
+        "plate_count_difference": 0
+      },
+      "seed": 748935664,
+      "step_myr": 1.0
+    },
+    {
+      "arm": "candidate",
+      "delta_vs_0_1": {
+        "accumulated_driving_torque_nm_year": 15.253671820991796,
+        "accumulated_residual_torque_nm_year": 5.2125342616202515,
+        "land_fraction_percent": -2.4548090140465058,
+        "mean_absolute_closing_m_per_s": -12.09634199834522,
+        "mean_contact_force_n_per_m": -32.92267749763173,
+        "mean_solved_rate_cm_per_yr": 16.51088021236336,
+        "peak_absolute_closing_m_per_s": -73.05612198427758,
+        "peak_solved_rate_cm_per_yr": 0.0,
+        "plate_count_difference": 1
+      },
+      "seed": 748935664,
+      "step_myr": 2.0
+    },
+    {
+      "arm": "baseline",
+      "delta_vs_0_1": {
+        "accumulated_driving_torque_nm_year": 7.915754078106351,
+        "accumulated_residual_torque_nm_year": 10.208541395030553,
+        "land_fraction_percent": 5.370572189736562,
+        "mean_absolute_closing_m_per_s": -28.685682086332537,
+        "mean_contact_force_n_per_m": -13.863199055883676,
+        "mean_solved_rate_cm_per_yr": 39.659465118279606,
+        "peak_absolute_closing_m_per_s": 9.534281602026761,
+        "peak_solved_rate_cm_per_yr": 0.519707179513244,
+        "plate_count_difference": 0
+      },
+      "seed": 580014012,
+      "step_myr": 1.0
+    },
+    {
+      "arm": "baseline",
+      "delta_vs_0_1": {
+        "accumulated_driving_torque_nm_year": 0.3195496336867298,
+        "accumulated_residual_torque_nm_year": -9.945816353108544,
+        "land_fraction_percent": 4.829483465368188,
+        "mean_absolute_closing_m_per_s": 27.34209848800874,
+        "mean_contact_force_n_per_m": -41.51276708067649,
+        "mean_solved_rate_cm_per_yr": 13.010760635198809,
+        "peak_absolute_closing_m_per_s": -1.7452215723993307,
+        "peak_solved_rate_cm_per_yr": -21.23803019725815,
+        "plate_count_difference": 1
+      },
+      "seed": 580014012,
+      "step_myr": 2.0
+    },
+    {
+      "arm": "candidate",
+      "delta_vs_0_1": {
+        "accumulated_driving_torque_nm_year": 7.915754078106351,
+        "accumulated_residual_torque_nm_year": 10.208541395030553,
+        "land_fraction_percent": 5.370572189736562,
+        "mean_absolute_closing_m_per_s": -28.685682086332537,
+        "mean_contact_force_n_per_m": -13.863199055883676,
+        "mean_solved_rate_cm_per_yr": 39.659465118279606,
+        "peak_absolute_closing_m_per_s": 9.534281602026761,
+        "peak_solved_rate_cm_per_yr": 0.519707179513244,
+        "plate_count_difference": 0
+      },
+      "seed": 580014012,
+      "step_myr": 1.0
+    },
+    {
+      "arm": "candidate",
+      "delta_vs_0_1": {
+        "accumulated_driving_torque_nm_year": 0.3195496336867298,
+        "accumulated_residual_torque_nm_year": -9.945816353108544,
+        "land_fraction_percent": 4.829483465368188,
+        "mean_absolute_closing_m_per_s": 27.34209848800874,
+        "mean_contact_force_n_per_m": -41.51276708067649,
+        "mean_solved_rate_cm_per_yr": 13.010760635198809,
+        "peak_absolute_closing_m_per_s": -1.7452215723993307,
+        "peak_solved_rate_cm_per_yr": -21.23803019725815,
+        "plate_count_difference": 1
+      },
+      "seed": 580014012,
+      "step_myr": 2.0
+    },
+    {
+      "arm": "baseline",
+      "delta_vs_0_1": {
+        "accumulated_driving_torque_nm_year": 6.769245258142739,
+        "accumulated_residual_torque_nm_year": -2.568634806162509,
+        "land_fraction_percent": -0.4077399969951804,
+        "mean_absolute_closing_m_per_s": -14.007078389045006,
+        "mean_contact_force_n_per_m": 0.002590432523898562,
+        "mean_solved_rate_cm_per_yr": 8.98725580265977,
+        "peak_absolute_closing_m_per_s": -30.962982209209123,
+        "peak_solved_rate_cm_per_yr": 0.0,
+        "plate_count_difference": -1
+      },
+      "seed": 111065103,
+      "step_myr": 1.0
+    },
+    {
+      "arm": "baseline",
+      "delta_vs_0_1": {
+        "accumulated_driving_torque_nm_year": 6.914150335033248,
+        "accumulated_residual_torque_nm_year": 5.747269539293817,
+        "land_fraction_percent": -0.5723966770466987,
+        "mean_absolute_closing_m_per_s": 191.99018687934858,
+        "mean_contact_force_n_per_m": -6.336608524065046,
+        "mean_solved_rate_cm_per_yr": 16.211200616146357,
+        "peak_absolute_closing_m_per_s": 100.2618304305854,
+        "peak_solved_rate_cm_per_yr": 0.0,
+        "plate_count_difference": 0
+      },
+      "seed": 111065103,
+      "step_myr": 2.0
+    },
+    {
+      "arm": "candidate",
+      "delta_vs_0_1": {
+        "accumulated_driving_torque_nm_year": 6.769245258142739,
+        "accumulated_residual_torque_nm_year": -2.568634806162509,
+        "land_fraction_percent": -0.4077399969951804,
+        "mean_absolute_closing_m_per_s": -14.007078389045006,
+        "mean_contact_force_n_per_m": 0.002590432523898562,
+        "mean_solved_rate_cm_per_yr": 8.98725580265977,
+        "peak_absolute_closing_m_per_s": -30.962982209209123,
+        "peak_solved_rate_cm_per_yr": 0.0,
+        "plate_count_difference": -1
+      },
+      "seed": 111065103,
+      "step_myr": 1.0
+    },
+    {
+      "arm": "candidate",
+      "delta_vs_0_1": {
+        "accumulated_driving_torque_nm_year": 6.914150335033248,
+        "accumulated_residual_torque_nm_year": 5.747269539293817,
+        "land_fraction_percent": -0.5723966770466987,
+        "mean_absolute_closing_m_per_s": 191.99018687934858,
+        "mean_contact_force_n_per_m": -6.336608524065046,
+        "mean_solved_rate_cm_per_yr": 16.211200616146357,
+        "peak_absolute_closing_m_per_s": 100.2618304305854,
+        "peak_solved_rate_cm_per_yr": 0.0,
+        "plate_count_difference": 0
+      },
+      "seed": 111065103,
+      "step_myr": 2.0
+    }
+  ]
+}

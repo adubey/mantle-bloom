@@ -122,6 +122,61 @@ residual larger than rounding scale.
 scratch path. Compare the matched summaries with
 `bin/debug/summarize_rfc0012_merge_replay.py`. No metric tuning will be made during this rerun.
 
+### Current-main matched replay results (2026-10-25)
+
+The preregistered current-main matrix completed all 24 runs. Baseline was
+`f04cbc0772eca6d2484f7477b20004deb368206c`; candidate was
+`d553c3cfc05db4372d0bb33ec7e58aa2390b793b`. All other controls matched the preregistration.
+The compact results are in
+[merge_only_replay_current_main_summary.json](merge_only_replay_current_main_summary.json).
+
+**Matched outcomes.** Six of 12 event sequences differ; endpoint plate count differs in one
+pair. The largest absolute candidate/baseline changes in solved-rate metrics were 4.07% for
+mean rate and 3.08% for peak rate. Driving torque changed by at most 0.86%; residual torque by
+9.58%. Contact response has a larger outlier: for seed `748935664` at 2 Myr, mean absolute
+closing changed by −25.91% and peak closing by −32.95%. Mean contact force changed by at most
+7.61%. Endpoint land fraction changed by at most 0.208 percentage points, and Hc/Hm quantiles
+by at most 1.625%. The contact-closing differences exceed the preregistered 10% trace threshold. A follow-up trace
+of that pair is recorded below; the overall matrix remains diagnostic because the separate
+10% timestep tolerance is not met in either arm.
+
+| Seed | Step (Myr) | Mean solved rate Δ | Mean closing Δ | Mean contact force Δ | Topology same? | Events (baseline/candidate) |
+|---:|---:|---:|---:|---:|:---:|---:|
+| 326494039 | 0.1 | −0.24% | −6.10% | −0.03% | No | 13 / 11 |
+| 326494039 | 1 | +1.00% | +0.73% | −0.35% | No | 10 / 11 |
+| 326494039 | 2 | −0.89% | −9.03% | +7.61% | No | 7 / 7 |
+| 748935664 | 0.1 | +0.10% | +0.51% | +0.18% | No | 37 / 33 |
+| 748935664 | 1 | +0.22% | −0.10% | +2.17% | No | 16 / 15 |
+| 748935664 | 2 | +4.07% | −25.91% | −0.81% | No | 15 / 15 |
+| 580014012 | 0.1 | 0.00% | 0.00% | 0.00% | Yes | 9 / 9 |
+| 580014012 | 1 | 0.00% | 0.00% | 0.00% | Yes | 9 / 9 |
+| 580014012 | 2 | 0.00% | 0.00% | 0.00% | Yes | 9 / 9 |
+| 111065103 | 0.1 | 0.00% | 0.00% | 0.00% | Yes | 8 / 8 |
+| 111065103 | 1 | 0.00% | 0.00% | 0.00% | Yes | 6 / 6 |
+| 111065103 | 2 | 0.00% | 0.00% | 0.00% | Yes | 9 / 9 |
+
+**Trace of the contact-closing outlier.** The initial state hashes match. Both arms merge plates
+4 and 12 at 14 Myr; baseline applies the old blended rate, while candidate retains plate 4's last
+solved rate. At the first subsequent solve, at 16 Myr, boundary-class counts differ on all 14
+plates, but both solves converge. The first topology-path difference follows at 22 Myr: baseline
+splits plate 4, while candidate does not split then and next splits plate 16 at 24 Myr. This is
+consistent with the lagged-rate → classification → topology pathway. It does not establish that
+this event alone explains the full 50 Myr contact-closing delta. The compact trace is in
+[merge_closing_trace_summary.json](merge_closing_trace_summary.json); raw traces remain in scratch.
+
+The separate timestep tolerance also fails in both arms. Across the 1 and 2 Myr runs relative
+to 0.1 Myr, mean closing changes by as much as 192%, contact force by 41.5%, mean solved rate
+by 39.7%, peak closing by 100.3%, and accumulated driving torque by 16.2%. Those step-size
+effects occur in both arms and overlap topology changes, so they cannot be attributed solely to
+the merge-rate change. Maximum Hm ledger closure is 0.0000121 of the corresponding inventory;
+coarse-step continental balance residuals remain material and are reported in the compact JSON.
+
+**Assessment.** The current-main results again show that most global motion and endpoint metrics
+stay close, while topology and contact response diverge in some pairs. The selected merge-rate
+rule is supported by the focused handoff trace, but this broader matrix is not an unchanged-
+trajectory result. The preregistered >10% contact-closing difference still needs a per-step trace
+before #547 can be accepted. No tuning was applied.
+
 ### Design decision: kinematics presented to the first solve after a merge
 
 **Principle 8** requires merge topology and physical motion to meet at a clear interface. The
