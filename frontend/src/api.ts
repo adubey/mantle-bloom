@@ -502,12 +502,15 @@ async function readNdjsonLines(
 }
 
 // The `{type: ...}` protocol on top of readNdjsonLines that both streaming endpoints share:
-// every `progress` message goes to `onProgress`, an `error` message throws its `detail`, and
+// every `progress` message goes to `onProgress`, every `heartbeat` message goes to
+// `onHeartbeat` (when given -- the animate reader ignores them, their bytes alone
+// resetting its idle watchdog), an `error` message throws its `detail`, and
 // the `done` message is returned (null if the stream ended without one).
 async function readStreamMessages(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   onProgress: (msg: Record<string, unknown>) => void,
   onChunk?: (byteLength: number) => void,
+  onHeartbeat?: (msg: Record<string, unknown>) => void,
 ): Promise<Record<string, unknown> | null> {
   let done: Record<string, unknown> | null = null;
   await readNdjsonLines(
@@ -516,6 +519,8 @@ async function readStreamMessages(
       const msg = JSON.parse(line) as Record<string, unknown>;
       if (msg.type === "progress") {
         onProgress(msg);
+      } else if (msg.type === "heartbeat") {
+        onHeartbeat?.(msg);
       } else if (msg.type === "error") {
         throw new Error(String(msg.detail));
       } else if (msg.type === "done") {
@@ -550,14 +555,18 @@ function worldSummaryFrom(msg: Record<string, unknown>): WorldSummary {
 // app/main.py's own comment on that). No idle-timeout watchdog the way animateWorld's own
 // reader has: a generate/step run is bounded to one server-side request's worth of work
 // (not up to 480 animation frames back-to-back), so a plain fetch (no AbortController) is
-// enough here.
+// enough here. `heartbeat` ticks (see backend app/world.py's own comment on those) carry
+// a fraction like any progress line and move the bar the same way.
 async function readProgressStream(resp: Response, onProgress?: (fraction: number) => void): Promise<WorldSummary> {
   if (!resp.ok || !resp.body) {
     const detail = await resp.text();
     throw new Error(`${resp.status} ${resp.statusText}: ${detail}`);
   }
 
-  const done = await readStreamMessages(resp.body.getReader(), (msg) => onProgress?.(msg.fraction as number));
+  const fractionOf = (msg: Record<string, unknown>): void => {
+    if (typeof msg.fraction === "number") onProgress?.(msg.fraction);
+  };
+  const done = await readStreamMessages(resp.body.getReader(), fractionOf, undefined, fractionOf);
   if (!done) throw new Error("stream ended without a result");
   return worldSummaryFrom(done);
 }

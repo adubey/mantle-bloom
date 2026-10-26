@@ -176,7 +176,10 @@ def _build_debug_world(
         pinned_omegas={plate.plate_id: omega for plate, omega in zip(plates, omegas)},
         debug_diagnostics=True,
     )
-    finish_generation(world, scenario_message)
+    # finish_generation is a heartbeat-yielding generator for the streaming generate
+    # path (#611); here nobody listens, so drain it.
+    for _ in finish_generation(world, scenario_message):
+        pass
     return world
 
 
