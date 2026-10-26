@@ -7,9 +7,10 @@ Hydrology, lakes and ice are described in
 basin structure in a single save, the
 [`stranded_basins` and `lake_hierarchy_diagnostics` CLIs](offline-cli.md) are quicker.
 
-Every script here takes `--backend`, so the same script measures an `origin/main` worktree
-and a branch (see [Running the scripts](../debugging.md#running-the-scripts)). They come in
-two kinds:
+The replay and measurement scripts take `--backend`, so the same script measures an
+`origin/main` worktree and a branch (see [Running the scripts](../debugging.md#running-the-scripts)).
+The RFC 0014 G5 cap prototype uses its own checkout's backend and restricts inputs to the
+preregistered save checksums. The replay and measurement scripts come in two kinds:
 
 - **Save replays** (`measure_ice_sheet.py`, `measure_lake_silt.py`, `measure_river_endings.py`,
   `measure_river_hops.py`)
@@ -117,6 +118,21 @@ ice ledger and its worst residual; and the share of step time in `ice_sheet.step
 
 ```bash
 backend/.venv/bin/python bin/debug/measure_ice_sheet.py world.mbworld --myr 10 --out /tmp/branch.json
+```
+
+### `gate_lake_ice_cap.py`
+
+Runs RFC 0014 gate G5 (#541) on only its three preregistered diagnosis saves. It applies a
+closed-form Stefan conduction and loss balance for 10 Myr under fixed saved climate and lake
+depth, reports cap thickness, frozen-to-bed area, volume and sublimation, and crosses the
+0.25x/1x/4x sublimation and 0.5x/1x/2x conduction sensitivities. Sublimation scales with
+`1 − f_free` for each cell. It rejects saves outside the
+registered SHA-256 set. Commit only its compact JSON in `analysis/issue541/`.
+
+```bash
+backend/.venv/bin/python bin/debug/gate_lake_ice_cap.py \
+    ~/Downloads/mantle-bloom-seed910211954-220200000y.mbworld \
+    --out analysis/issue541/seed910211954.json
 ```
 
 ### `measure_seasonal_melt.py`
