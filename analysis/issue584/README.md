@@ -11,9 +11,11 @@ Starting knobs are the code defaults
 `PLATEAU_PRESERVED_FRACTION` 0.9).
 Raw per-case JSON: [tuning.json](tuning.json) (21 entries).
 
-Determinism: re-running baseline_7 reproduces the landed result bit-for-bit
-(119 LIPs, 45 splits, identical ledgers), so the deterministic head schedule
-(#579) holds and knob effects are shape-only.
+Determinism: re-running baseline_7 reproduced the landed summary statistics
+and ledgers exactly in-session (119 LIPs, 45 splits), so the deterministic
+head schedule (#579) holds and knob effects are shape-only. tuning.json
+archives the summary statistics (ledgers rounded to 1e-3 km³), not full
+trajectories, so re-verification needs a re-run, not the JSON alone.
 
 ## Baselines (starting knobs)
 
@@ -27,15 +29,17 @@ Determinism: re-running baseline_7 reproduces the landed result bit-for-bit
 Head counts sit inside the Poisson(100) 95% interval on all seeds, and the
 3 Gyr regen matches the 1 Gyr rate, so the rate is stable over deep time.
 
-Realized head-volume deciles (min, p50, max) in km³: default log-uniform
-~1.1e6 / ~7e6 / ~4.8e7; lognormal 1.0e6 / 6.4e6 / 5.0e7; power-law (α=1.5)
-1.1e6 / 3.6e6 / 4.2e7. Variants share support, so spread is shape-only (<2x
-in total volume).
+Realized head-volume deciles (min, p50, max) in km³ on baseline_7: default
+log-uniform 1.16e6 / 8.78e6 / 4.73e7; lognormal (properly truncated by
+inverse CDF, no clamp pile-up) 1.52e6 / 8.04e6 / 4.08e7; power-law (α=1.5)
+1.07e6 / 3.65e6 / 4.23e7. Variants share support, so spread is shape-only
+(<2x in total volume).
 
-Active hotspots (heads + tails) at every 100 Myr checkpoint stay 24–35,
-inside the RFC's 20–50 band (t=0 reads 0 by construction: no plume has been
-emplaced yet). Buoyant-ledger `unattributed_m3` is 0.0 on every case: the
-ledger closes.
+Active hotspots (heads + tails) at every post-zero 100 Myr checkpoint stay
+20–46, inside the RFC's 20–50 band (t=0 reads 0 by construction: no plume
+has been emplaced yet). The top end has little margin: the rate-0.2 case
+peaks at 46 against the 50 cap. Buoyant-ledger `unattributed_m3` is 0.0 on
+every case: the ledger closes.
 
 ## Sensitivity spreads (seed 7, 500 Myr)
 
@@ -43,7 +47,7 @@ ledger closes.
 | ---- | -------- | ------ | ----------- |
 | rate 0.05 / 0.2 | 62 / 238 | 25 / 29 | 0.04 / 0.17 |
 | Cox on | 60 | 22 | 0.07 |
-| lognormal / power-law | 124 / 124 | 28 / 24 | 0.09 / 0.08 |
+| lognormal / power-law | 124 / 124 | 27 / 24 | 0.11 / 0.08 |
 | dock easy / hard | 124 / 124 | 26 / 24 | 0.08 / 0.12 |
 | loss 0.4 / plateau 0.5 | 124 / 124 | 26 / 26 | 0.12 / 0.13 |
 | heat 5 / 50 Myr | 124 / 124 | 27 / 26 | 0.05 / 0.16 |
@@ -51,9 +55,13 @@ ledger closes.
 | stress 0→3 | 124 | 26–27 | 0.06–0.13 |
 
 LIP counts are identical across same-seed cases (deterministic schedule);
-rate and Cox move counts linearly. Split counts barely move under any knob:
-25–29 except the 2024 baseline outlier (67). A majority of split parents is
-fully unheated on every case.
+the rate knob moves counts linearly (62/124/238 per Gyr at 0.05/0.1/0.2).
+Cox-on recorded 30 heads vs 62 for every other same-seed case despite its
+mean-1 construction — plausibly seed variance over 5 correlation slots, or
+upper-tail clipping bias; not a rate conclusion. Split counts barely move
+under any knob: 22–29 except the 2024 baseline outlier (67). Fully-unheated
+parents are the largest group on most cases (up to 38 of 67), but not a
+majority everywhere (12/29 at rate 0.2, 7/26 at heat 50 Myr).
 
 ## Juvenile continental by source (km³/Gyr)
 

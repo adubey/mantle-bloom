@@ -29,8 +29,6 @@ def test_docking_probability_stays_a_probability_and_orders_hosts():
 def test_docking_knobs_default_to_module_constants_at_call_time():
     """RFC 0007 (#584): None resolves to the module knobs, so tuning sweeps can
     override them by setattr and unset means exactly the old defaults."""
-    import numpy as np
-
     assert terranes.threshold_excess_m(100.0) == terranes.threshold_excess_m(
         100.0, terranes.DOCK_E_YOUNG_M, terranes.DOCK_E_OLD_M, terranes.DOCK_COOLING_MYR
     )
@@ -48,6 +46,22 @@ def test_docking_knobs_default_to_module_constants_at_call_time():
     juvenile_explicit, foundered_explicit = terranes.conversion_split(plateau, arc, terranes.PLATEAU_PRESERVED_FRACTION)
     np.testing.assert_array_equal(juvenile_default, juvenile_explicit)
     np.testing.assert_array_equal(foundered_default, foundered_explicit)
+
+
+def test_docking_knob_setattr_reaches_none_path(monkeypatch):
+    """RFC 0007 (#584): moving a module knob moves the None path, proving the
+    resolution reads the live module value instead of a stale default."""
+    young_before = terranes.threshold_excess_m(0.0)
+    monkeypatch.setattr(terranes, "DOCK_E_YOUNG_M", terranes.DOCK_E_YOUNG_M + 1000.0)
+    assert terranes.threshold_excess_m(0.0) == young_before + 1000.0
+
+    plateau = np.full(2, 1000.0)
+    arc = np.full(2, 500.0)
+    juvenile_before, _ = terranes.conversion_split(plateau, arc)
+    monkeypatch.setattr(terranes, "PLATEAU_PRESERVED_FRACTION", 0.5)
+    juvenile_after, _ = terranes.conversion_split(plateau, arc)
+    # 0.9 before the patch, 0.5 after: juvenile scales with the live fraction.
+    np.testing.assert_allclose(juvenile_after, juvenile_before * (0.5 / 0.9))
 
 
 def test_threshold_excess_limits():

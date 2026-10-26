@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import statistics
 from dataclasses import dataclass
 
 import numpy as np
@@ -218,15 +219,25 @@ def _sample_head_volume_km3(rng: np.random.Generator) -> float:
     """Head volume in km3 under `PLUME_VOLUME_DISTRIBUTION` (RFC 0007, #584).
 
     The default branch is exactly the #579 draw (same call, same rng use), so
-    scheduled volumes are unchanged unless the knob moves.
+    scheduled volumes are unchanged unless the knob moves. Every variant
+    consumes exactly one rng draw, so switching distributions cannot reshuffle
+    downstream draws.
     """
     low, high = PLUME_HEAD_VOLUME_MIN_KM3, PLUME_HEAD_VOLUME_MAX_KM3
     if PLUME_VOLUME_DISTRIBUTION == "lognormal":
-        median = math.sqrt(low * high)
-        sigma = (math.log(high) - math.log(low)) / 4.0
-        return float(min(max(math.exp(math.log(median) + sigma * rng.standard_normal()), low), high))
+        # Properly truncated lognormal by inverse CDF: one uniform draw maps
+        # onto the normal mass between the log bounds, so no pile-up lands on
+        # the clamps (review on #619).
+        log_low, log_high = math.log(low), math.log(high)
+        dist = statistics.NormalDist(
+            mu=0.5 * (log_low + log_high), sigma=(log_high - log_low) / 4.0
+        )
+        cdf_low, cdf_high = dist.cdf(log_low), dist.cdf(log_high)
+        return float(math.exp(dist.inv_cdf(cdf_low + rng.random() * (cdf_high - cdf_low))))
     if PLUME_VOLUME_DISTRIBUTION == "power_law":
         alpha = PLUME_VOLUME_POWER_LAW_ALPHA
+        if alpha == 1.0:
+            raise ValueError("PLUME_VOLUME_POWER_LAW_ALPHA 1.0 is degenerate (divide by zero)")
         lo, hi = low ** (1.0 - alpha), high ** (1.0 - alpha)
         return float((rng.random() * (hi - lo) + lo) ** (1.0 / (1.0 - alpha)))
     if PLUME_VOLUME_DISTRIBUTION != "log_uniform":

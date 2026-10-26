@@ -549,8 +549,6 @@ def test_head_stress_credit_uses_plate_ids():
 def test_head_volume_distribution_default_matches_log_uniform_draw_for_draw():
     """RFC 0007 (#584): the default distribution is exactly the #579 draw, so
     scheduled volumes are unchanged unless the knob moves."""
-    import numpy as np
-
     from app import plumes
 
     assert plumes.PLUME_VOLUME_DISTRIBUTION == "log_uniform"
@@ -564,24 +562,23 @@ def test_head_volume_distribution_default_matches_log_uniform_draw_for_draw():
 
 def test_head_volume_distribution_variants_stay_in_range_and_reject_unknown(monkeypatch):
     """RFC 0007 (#584): lognormal and power-law samplers stay inside the shared
-    range; an unknown name fails loudly."""
-    import numpy as np
-
+    range; the truncated lognormal leaves no pile-up on the clamps; an unknown
+    name and a degenerate power-law alpha fail loudly."""
     from app import plumes
 
     rng = np.random.default_rng(0)
     for name in ("log_uniform", "lognormal", "power_law"):
         monkeypatch.setattr(plumes, "PLUME_VOLUME_DISTRIBUTION", name)
-        for _ in range(200):
+        for _ in range(2000):
             volume = plumes._sample_head_volume_km3(rng)
-            assert plumes.PLUME_HEAD_VOLUME_MIN_KM3 <= volume <= plumes.PLUME_HEAD_VOLUME_MAX_KM3
+            assert plumes.PLUME_HEAD_VOLUME_MIN_KM3 < volume < plumes.PLUME_HEAD_VOLUME_MAX_KM3
     monkeypatch.setattr(plumes, "PLUME_VOLUME_DISTRIBUTION", "gaussian")
-    try:
+    with pytest.raises(ValueError, match="unknown plume volume distribution"):
         plumes._sample_head_volume_km3(rng)
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("unknown distribution did not raise")
+    monkeypatch.setattr(plumes, "PLUME_VOLUME_DISTRIBUTION", "power_law")
+    monkeypatch.setattr(plumes, "PLUME_VOLUME_POWER_LAW_ALPHA", 1.0)
+    with pytest.raises(ValueError, match="degenerate"):
+        plumes._sample_head_volume_km3(rng)
 
 
 def test_diagnostics_counts_population():

@@ -349,7 +349,7 @@ def main() -> None:
         out = Path(args.out)
         out.parent.mkdir(parents=True, exist_ok=True)
         if out.exists():
-            prior = json.loads(out.read_text())["results"]
+            prior = json.loads(out.read_text()).get("results", [])
             seen = {r["case"] for r in results}
             results = [r for r in prior if r["case"] not in seen] + results
             payload["results"] = results
