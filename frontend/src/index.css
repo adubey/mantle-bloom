@@ -109,3 +109,27 @@ button:disabled {
   border-radius: 2px;
   transition: width 0.2s ease-out;
 }
+
+/* The run overlay's spinner (see RunOverlay.tsx) -- a bordered ring, same accent as the
+   progress bar above. */
+@keyframes run-spinner-turn {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.run-spinner {
+  display: inline-block;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border: 3px solid #2a2f42;
+  border-top-color: #5b8cff;
+  border-radius: 50%;
+  animation: run-spinner-turn 0.9s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .run-spinner {
+    animation: none;
+  }
+}

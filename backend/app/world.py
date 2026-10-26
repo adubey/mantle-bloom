@@ -730,11 +730,14 @@ def generate_world_progress(
     cratons_first: bool | None = None,
     synthetic_relief: bool | None = None,
 ):
-    """Generate a world, yielding `("progress", fraction)` at each of its three natural phase
-    boundaries -- plate/site generation, mantle-center fitting, then the `finish_generation`
-    bootstrap -- before a final `("done", world)` carrying the finished World, same
-    progress/done contract as render_image.stream_animation_mp4. Between those boundaries,
-    an overdue-gated `("heartbeat", fraction)` tick fires wherever a slow sub-phase runs
+    """Generate a world, yielding `("progress", fraction, phase)` at each of its three
+    natural phase boundaries -- plate/site generation, mantle-center fitting, then the
+    `finish_generation` bootstrap -- before a final `("done", world)` carrying the finished
+    World, same progress/done contract as render_image.stream_animation_mp4. The phase is
+    a human-readable label for the run overlay (#629): "Creating cratons" when the
+    cratons-first layout is in play, else "Creating continents", then "Starting mantle
+    convection" and "Seeding climate and oceans". Between those boundaries, an
+    overdue-gated `("heartbeat", fraction)` tick fires wherever a slow sub-phase runs
     with no other output (#611): reaching *into* plate generation for finer progress
     would mean instrumenting lithosphere_plate.generate_plates itself, but the relief,
     soil and finish-bootstrap sub-calls subdivide far enough to keep a multi-minute
@@ -809,7 +812,10 @@ def generate_world_progress(
         cratons_first=cratons_first,
         cratons_first_setup=layout_setup,
     )
-    yield ("progress", 1 / 3)
+    if lithosphere_plate.uses_cratons_first_layout(cratons_first, sketch, premade_world_id):
+        yield ("progress", 1 / 3, "Creating cratons")
+    else:
+        yield ("progress", 1 / 3, "Creating continents")
 
     rng = np.random.default_rng(seed)
     if premade_world_id in ("earth", "pangaea"):
@@ -827,7 +833,7 @@ def generate_world_progress(
         mantle_centers = real_plates.fit_mantle_centers(real_plate_list, candidates, rng)
     else:
         mantle_centers = mantle.generate_convection_centers(rng, n_centers=num_mantle_centers)
-    yield ("progress", 2 / 3)
+    yield ("progress", 2 / 3, "Starting mantle convection")
 
     world = World(
         seed=seed,
@@ -872,7 +878,7 @@ def generate_world_progress(
         initialize_rivers=bool(cratons_first),
     ):
         yield tick
-    yield ("progress", 1.0)
+    yield ("progress", 1.0, "Seeding climate and oceans")
     yield ("done", world)
 
 
@@ -978,20 +984,22 @@ def step_world(world: World, years: float, *, motion_diagnostics: list[dict] | N
 
 def step_world_progress(world: World, years: float, *, motion_diagnostics: list[dict] | None = None):  # noqa: C901
     """Generator form of step_world, advancing the world by `years` exactly as it did before
-    this function existed, but yielding a fraction-complete float (0 to 1) after each
-    per-plate `shift()`/`deform()` call -- main.py's /world/step endpoint streams these
-    directly to the client as NDJSON progress lines (see render_image.stream_animation_mp4
-    for the same streaming-generator shape elsewhere in this codebase). The tail past
-    the plate loops (topology, climate/erosion, caps, sea level) has no per-plate loop
-    of its own, so an overdue-gated `("heartbeat", fraction)` tick fires at its slow
-    sub-boundaries instead (#611) -- same fraction the progress line would carry, no
-    progress implied. Consumers that only drain (step_world, the replay log, _drain_progress)
-    ignore both shapes alike. The two per-plate
+    this function existed, but yielding `("progress", fraction, phase)` tuples --
+    fraction-complete (0 to 1) plus a human-readable label for the run overlay (#629) --
+    after each per-plate `shift()`/`deform()` call and at each phase boundary of the
+    tail, plus overdue-gated `("heartbeat", fraction)` ticks wherever a slow tail
+    sub-phase runs with no other output (#611) -- same fraction the progress line would
+    carry, no progress implied. main.py's /world/step endpoint streams these directly
+    to the client as NDJSON progress lines (see render_image.stream_animation_mp4
+    for the same streaming-generator shape elsewhere in this codebase). Consumers that
+    only drain (step_world, the replay log, _drain_progress) ignore all three shapes
+    alike. The two per-plate
     passes are treated as `2 * len(world.plates)` equal-weight units (plus one more for
     everything after them -- topology changes, climate/erosion/volcanism, sea level -- which
     has no comparable natural subdivision), not a measured cost split, but plate movement
     dominates a step's runtime on any world large enough for progress to matter, so this
-    still tracks real, if coarse, completion.
+    still tracks real, if coarse, completion. Boundary labels reuse the current fraction
+    (no units are consumed by naming the next phase), so fractions stay non-decreasing.
 
     Plate movement (skippable via World.simulate_plate_movement) is a coupled solve and
     batch rotation through `torque.shift_plates_quasistatic`, then
@@ -1054,7 +1062,7 @@ def step_world_progress(world: World, years: float, *, motion_diagnostics: list[
             motion_diagnostics.append({"step": world.steps_taken, "elapsed_years": world.elapsed_years, **motion_result})
         for _plate in world.plates:
             done_units += 1
-            yield done_units / total_units
+            yield ("progress", done_units / total_units, "Moving plates")
         # Collision polarity prepass (issue #318): every plate has moved and none has deformed,
         # so record subduction evidence and freeze each continental front's lower/upper plate
         # now, independent of the deform order below. Rotation invalidated the motion-phase
@@ -1076,7 +1084,7 @@ def step_world_progress(world: World, years: float, *, motion_diagnostics: list[
             others = [p for p in world.plates if p.plate_id != plate.plate_id]
             plate.deform(world, others, years, distances.get(plate.plate_id, 0.0))
             done_units += 1
-            yield done_units / total_units
+            yield ("progress", done_units / total_units, "Reshaping plates")
         collision_polarity.finish_deform_pass(world)
         world.suture_root_capacity = None
         audit.settle("audit_clipped_m3")
@@ -1101,6 +1109,7 @@ def step_world_progress(world: World, years: float, *, motion_diagnostics: list[
         # Topology: merges and splits conserve craton volume by remap; a plate or
         # stranded fragment removed outright takes its craton with it (failed rifts book their
         # own thinning, see merge_split.maybe_split_plate).
+        yield ("progress", done_units / total_units, "Merging and splitting plates")
         audit = cratons.PhaseAudit(world)
         frames_before = collision_polarity.begin_topology(world)
         buoyant_live_before = terranes.world_live_volumes_m3(world)
@@ -1132,6 +1141,7 @@ def step_world_progress(world: World, years: float, *, motion_diagnostics: list[
         if world.debug_diagnostics:
             spacing_rad = line_spacing_rad(world.node_density)
             before_gap_fill = {p.plate_id: phase_budget.snapshot(p, spacing_rad) for p in world.plates}
+        yield ("progress", done_units / total_units, "Filling seafloor gaps")
         for message in gaps.fill_gaps_by_growing_neighbours(world, years=years):
             world.log_event(message)
         if world.debug_diagnostics:
@@ -1162,12 +1172,14 @@ def step_world_progress(world: World, years: float, *, motion_diagnostics: list[
         # pass writes into destination lines by (plate_id, line_index) and running it earlier
         # could target a line that subducts, splits, or merges away in this same step.
         if world.steps_taken % magma_transport.MAGMA_TRANSPORT_INTERVAL_STEPS == 0:
+            yield ("progress", done_units / total_units, "Moving magma")
             for message in magma_transport.run_magma_transport(world, world.magma_transport_banked_years / 1_000_000.0):
                 world.log_event(message)
             world.magma_transport_banked_years = 0.0
         # Mantle plumes (RFC 0007, plumes.py): a whole-sphere pass after topology has
         # settled for this step, same reasoning as magma_transport above. Interval
         # overlap makes any step length exact; multiplier 0 is a strict no-op.
+        yield ("progress", done_units / total_units, "Raising mantle plumes")
         plumes.apply(world, years)
         # Topology behind us; climate/erosion ahead. The tail has no per-plate loop,
         # so an overdue tick here is the only sign of life a slow step sends (#611).
@@ -1182,6 +1194,7 @@ def step_world_progress(world: World, years: float, *, motion_diagnostics: list[
         # climate.py/erosion.py/hydrology.py still reads fresh off world.plates itself) --
         # see plates.gather_node_positions's own docstring for why this was worth factoring
         # out. Skipped entirely, alongside erosion below, when simulate_climate_biomes is off.
+        yield ("progress", done_units / total_units, "Resolving glaciers")
         node_cloud = gather_node_positions(world.plates)
         # Same "fixed for the rest of this step" reasoning as node_cloud above applies to
         # land_kdtree_cache -- reset here, then lazily rebuilt on whichever future caller
@@ -1217,8 +1230,10 @@ def step_world_progress(world: World, years: float, *, motion_diagnostics: list[
         if clock.due():
             yield ("heartbeat", done_units / total_units)
     if world.simulate_plate_movement:
+        yield ("progress", done_units / total_units, "Raising volcanoes")
         volcanism.apply_volcanic_activity(world, years)
     if erosion_result is not None:
+        yield ("progress", done_units / total_units, "Forming natural resources")
         geology.apply_resource_formation(world, years, erosion_result)
         # Reconcile the stranded-basin tracker against this step's freshly-rebuilt depression
         # hierarchy (world.hydrology_cache, just set by erosion) -- only on a step that
@@ -1232,6 +1247,7 @@ def step_world_progress(world: World, years: float, *, motion_diagnostics: list[
     # the hard invariant holds even where a writer misses one. Sea level below then sees the
     # clamped hypsometry. Its audit also catches every unaudited writer since the erosion
     # phase, so what it clips is audit_clipped, not delamination (#340).
+    yield ("progress", done_units / total_units, "Balancing sea level")
     audit = cratons.PhaseAudit(world)
     _clamp_column_caps(world)
     audit.settle("audit_clipped_m3")
@@ -1255,4 +1271,4 @@ def step_world_progress(world: World, years: float, *, motion_diagnostics: list[
 
     world.record_stats()
     done_units += 1
-    yield done_units / total_units
+    yield ("progress", done_units / total_units, "Balancing sea level")

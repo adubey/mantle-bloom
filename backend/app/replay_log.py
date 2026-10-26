@@ -431,7 +431,7 @@ class ReplayLog:
         max_bytes: int = DEFAULT_MAX_BYTES,
         min_steps_between: int = DEFAULT_MIN_STEPS_BETWEEN,
         triggers: dict[str, Trigger] | None = None,
-        step_progress: Callable[[World, float], Iterator[float | tuple[str, float]]] = step_world_progress,
+        step_progress: Callable[[World, float], Iterator[tuple[str, float] | tuple[str, float, str]]] = step_world_progress,
     ) -> None:
         self.directory = Path(directory)
         self.max_bytes = max_bytes
@@ -455,7 +455,7 @@ class ReplayLog:
         directory = os.environ.get(REPLAY_LOG_DIR_ENV, "").strip()
         return cls(Path(directory).expanduser()) if directory else None
 
-    def step(self, world: World, years: float) -> Iterator[float | tuple[str, float]]:
+    def step(self, world: World, years: float) -> Iterator[tuple[str, float] | tuple[str, float, str]]:
         """`step_world_progress(world, years)`, logging a record if a trigger fires. Never
         lets a failure of its own disturb the step."""
         try:

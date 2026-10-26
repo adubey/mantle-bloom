@@ -29,6 +29,8 @@ import SaveAnimationModal from "./SaveAnimationModal";
 import Legend from "./Legend";
 import MeasureOverlay from "./MeasureOverlay";
 import ProgressBar from "./ProgressBar";
+import RunOverlay from "./RunOverlay";
+import ModalShell from "./ModalShell";
 import AdminSession from "./AdminSession";
 import ProbePopup from "./ProbePopup";
 import { PREMADE_WORLDS } from "./premadeWorlds";
@@ -627,6 +629,13 @@ export default function App() {
   // indeterminate animation for that brief window), and reset to `undefined` again once the
   // run ends so a stale 100% doesn't flash before the bar disappears on the next one.
   const [genProgress, setGenProgress] = useState<number | undefined>(undefined);
+  // The run overlay's current phase text (#629): the backend's label for generate runs,
+  // "Frame i of N" for recordings, a generic line for Play's run loop (which streams no
+  // phases), and null before a run's first checkpoint arrives.
+  const [runPhase, setRunPhase] = useState<string | null>(null);
+  // The overlay's X collapses to just the pulsing progress line; its pop-out icon
+  // re-opens the overlay. Reset to expanded whenever a new run starts.
+  const [overlayCollapsed, setOverlayCollapsed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Background animation (recording) -- see AnimationModal.tsx and handleStartAnimation
   // below. `animation` is non-null only while a run is in flight -- it holds the live frame
@@ -949,6 +958,8 @@ export default function App() {
       setError(null);
       setAnimationResult(null);
       setAnimation({ frame: 0, total: numFrames, unbounded });
+      setOverlayCollapsed(false);
+      setRunPhase(null);
       const view = mapViewRef.current;
       const id = worldIdRef.current;
       try {
@@ -959,6 +970,7 @@ export default function App() {
             // selection moved on rather than painting the old world (#563 S7).
             if (worldIdRef.current !== id) return;
             setAnimation({ frame: p.frame, total: p.total, unbounded });
+            setRunPhase(unbounded ? `Recorded ${p.frame} frames` : `Frame ${p.frame} of ${p.total}`);
             // Keep the sidebar's "elapsed" readout climbing frame by frame instead of it
             // sitting frozen at the pre-recording value until the whole run resolves.
             setSummary((prev) => (prev ? { ...prev, elapsed_years: p.elapsedYears } : prev));
@@ -986,6 +998,7 @@ export default function App() {
         if (worldIdRef.current === id) setError(String(e));
       } finally {
         setAnimation(null);
+        setRunPhase(null);
       }
     },
     [projection, rotation, stepYears, handleWorldAdvanced, applyStats],
@@ -1266,6 +1279,12 @@ export default function App() {
     let id: WorldId | null = null;
     setBusy(true);
     setGenProgress(undefined);
+    setRunPhase(null);
+    setOverlayCollapsed(false);
+    // The dialog goes away the moment Generate is pressed: the spinner overlay covers
+    // the run from here, and a failure surfaces as the error dialog, not a reopened
+    // dialog (#629).
+    setShowGenerateDialog(false);
     setError(null);
     try {
       // Add always adds a world and never replaces the current one: mint a fresh
@@ -1301,8 +1320,13 @@ export default function App() {
               voronoiPoints,
               sketchImageBase64: sketchBase64,
               premadeWorldId: generateMode === "premade" ? premadeWorldId : null,
-              onProgress: (f) => {
-                if (worldIdRef.current === id) setGenProgress(f);
+              onProgress: (p) => {
+                if (worldIdRef.current === id) {
+                  setGenProgress(p.fraction);
+                  // Heartbeat ticks carry a fraction but no phase (#611): they move
+                  // the bar without clearing the current phase text.
+                  if (p.phase !== undefined) setRunPhase(p.phase);
+                }
               },
             });
       if (worldIdRef.current !== id) return;
@@ -1312,7 +1336,6 @@ export default function App() {
       setSelectedRiverId(null);
       setSelectedBasin(null);
       setSelectedBasinKind(null);
-      setShowGenerateDialog(false);
       setStatsHistory([]); // plate ids and elapsed_years both reset with a fresh world
       setSeaLevelM(DEFAULT_SEA_LEVEL_M); // live controls reset with a fresh world too
       setSolarMultiplier(DEFAULT_SOLAR_MULTIPLIER);
@@ -1332,6 +1355,7 @@ export default function App() {
     } finally {
       setBusy(false);
       setGenProgress(undefined);
+      setRunPhase(null);
     }
   }, [
     seed, cratonsFirst, syntheticRelief, continentalPercent, landPercent, axialTiltDeg, detail, fluidDensity, initialSoilMaturityPercent, autoPlates, numPlates, voronoiPoints,
@@ -1373,10 +1397,14 @@ export default function App() {
   // with a long poll, refreshing the map whenever the world moves on.
   const handlePlay = useCallback(async () => {
     setError(null);
+    // The run loop streams no phases, so the overlay shows a generic line for it (#629).
+    setOverlayCollapsed(false);
+    setRunPhase("Advancing the world");
     try {
       setPlaying((await setRunState(worldIdRef.current!, true, stepYears)).running);
     } catch (e) {
       setError(String(e));
+      setRunPhase(null);
     }
   }, [stepYears]);
 
@@ -1415,6 +1443,7 @@ export default function App() {
       if (message) setError(message);
       setPlaying(false);
       setStopping(false);
+      setRunPhase(null);
     };
     (async () => {
       let runVersion: number | undefined;
@@ -1458,6 +1487,8 @@ export default function App() {
         if (!run.running) return;
         if (STEP_YEARS_OPTIONS.includes(run.step_years)) setStepYears(run.step_years);
         setPlaying(true);
+        setOverlayCollapsed(false);
+        setRunPhase("Advancing the world");
       })
       .catch(() => {
         // best-effort: without it, Play still shows the run's state once pressed
@@ -1478,6 +1509,18 @@ export default function App() {
     interactionDisabled: animating,
   };
 
+  // The run overlay's inputs (#629): which run is showing, its headline, phase text,
+  // and fraction when the run reports one. Play's run loop streams no checkpoints, so
+  // it gets the generic phase and no fraction.
+  const runActive = busy || playing || animation !== null;
+  const overlayHeadline = animation ? "Recording animation" : busy ? "Generating world" : "Run in progress";
+  const overlayFraction =
+    animation && !animation.unbounded && animation.total > 0
+      ? animation.frame / animation.total
+      : busy
+        ? genProgress
+        : undefined;
+
   return (
     <div style={{ fontFamily: "system-ui, sans-serif", color: "#e6e8ef", padding: 24 }}>
       <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
@@ -1495,7 +1538,24 @@ export default function App() {
           >
             📁 File...
           </button>
-          {busy && <ProgressBar label="Generating world" fraction={genProgress} />}
+          {/* The run's pulsing line (#629): during a generate it carries the live
+              fraction; once the overlay's X collapses it, the line stays behind for every
+              run type, with its pop-out icon to re-open the overlay. */}
+          {(busy || (runActive && overlayCollapsed)) && (
+            <ProgressBar
+              label={overlayHeadline}
+              fraction={overlayFraction}
+              onExpand={overlayCollapsed ? () => setOverlayCollapsed(false) : undefined}
+            />
+          )}
+          {runActive && !overlayCollapsed && (
+            <RunOverlay
+              headline={overlayHeadline}
+              phase={runPhase}
+              fraction={overlayFraction}
+              onCollapse={() => setOverlayCollapsed(true)}
+            />
+          )}
 
           {/* The world selector (#563): this tab's selection lives in
               `?world=<id>`, so tabs can show different worlds. Generating a
@@ -1995,7 +2055,16 @@ export default function App() {
               {animation && <div>{animation.frame} frames recorded</div>}
             </div>
           )}
-          {error && <div style={{ color: "#ff8080", fontSize: 11 }}>{error}</div>}
+          {error && (
+            <ModalShell title="Something went wrong" onClose={() => setError(null)}>
+              <p style={{ margin: "0 0 12px" }}>{error}</p>
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <button type="button" onClick={() => setError(null)}>
+                  Dismiss
+                </button>
+              </div>
+            </ModalShell>
+          )}
 
           {DEBUG_UI && (
             <EventConsole

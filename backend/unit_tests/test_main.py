@@ -244,6 +244,27 @@ def test_generate_forwards_cratons_first_choice(client, monkeypatch):
     assert captured["cratons_first"] is True
 
 
+def test_generate_progress_lines_carry_phase_labels(client, monkeypatch):
+    # The run overlay's phase text rides the NDJSON stream (#629): every progress
+    # line carries the generator's label alongside its fraction.
+    def fake_generate_world_progress(seed, **kwargs):
+        yield ("progress", 1 / 3, "Creating continents")
+        yield ("progress", 2 / 3, "Starting mantle convection")
+        yield ("progress", 1.0, "Seeding climate and oceans")
+        yield ("done", object())
+
+    monkeypatch.setattr(main, "generate_world_progress", fake_generate_world_progress)
+    monkeypatch.setattr(main, "_set_world", lambda session, world: None)
+    monkeypatch.setattr(main, "_summary", lambda session, world: {"seed": 7})
+
+    lines = [json.loads(line) for line in _post_generate(client, json={"seed": 7}).text.splitlines() if line.strip()]
+    assert [(m["fraction"], m["phase"]) for m in lines if m["type"] == "progress"] == [
+        (pytest.approx(1 / 3), "Creating continents"),
+        (pytest.approx(2 / 3), "Starting mantle convection"),
+        (pytest.approx(1.0), "Seeding climate and oceans"),
+    ]
+
+
 def test_river_summary_draws_a_spill_hop_along_neighbour_edges():
     # Issue #520: the River Inspector's segments follow sink 2's spill path over the dry basin,
     # not one straight segment from the sink to node 6 beyond the rim.
@@ -315,6 +336,34 @@ def test_step_accepts_ui_step_sizes_and_run_accepts_the_max(client):
         "/world/run", json={"running": False, "step_years": main.MAX_STEP_YEARS}
     )
     assert resp.status_code == 200
+
+
+def test_step_progress_lines_carry_phase_labels(client, monkeypatch):
+    # Same NDJSON contract as generate above (#629).
+    def fake_step_world_progress(world, years):
+        yield ("progress", 0.5, "Moving plates")
+        yield ("progress", 1.0, "Balancing sea level")
+
+    monkeypatch.setattr(main, "step_world_progress", fake_step_world_progress)
+    _post_generate(client, json={"seed": 9, "num_plates": 6})
+    lines = [json.loads(line) for line in _post_step(client, json={"years": 1_000_000}).text.splitlines() if line.strip()]
+    assert [(m["fraction"], m["phase"]) for m in lines if m["type"] == "progress"] == [
+        (0.5, "Moving plates"),
+        (1.0, "Balancing sea level"),
+    ]
+
+
+def test_real_step_progress_lines_all_carry_phase_labels(client):
+    # The full path, not a fake: every line of a real step's stream carries a usable
+    # label for the run overlay (#629).
+    _post_generate(client, json={"seed": 9, "num_plates": 6})
+    lines = [json.loads(line) for line in _post_step(client, json={"years": 1_000_000}).text.splitlines() if line.strip()]
+    progress = [m for m in lines if m["type"] == "progress"]
+    assert len(progress) > 2  # per-plate passes, not just the tail boundaries
+    assert all(isinstance(m["phase"], str) and m["phase"] for m in progress)
+    fractions = [m["fraction"] for m in progress]
+    assert all(b >= a for a, b in zip(fractions, fractions[1:]))
+    assert fractions[-1] == 1.0
 
 
 def test_animate_rejects_invalid_step_years(client):
@@ -434,7 +483,8 @@ def test_step_disconnect_mid_stream_still_finishes_the_step(client):
     # plates shifted but not deformed, elapsed_years never advanced, no topology/climate/
     # erosion/sea-level pass. step()'s own `except GeneratorExit` drains step_world_progress
     # to completion first, so the step still fully applies -- proven here by disconnecting
-    # after only 3 of a 10-plate step's 22 total NDJSON lines (21 progress fractions + done).
+    # after only 3 of a 10-plate step's NDJSON lines (per-plate fractions plus one
+    # labeled line per tail phase boundary, then done).
     _post_generate(client, json={"seed": 1, "num_plates": 10})
     chunk_count = _post_streaming_then_disconnect(f"/worlds/{_default_session.world_id}/step", {"years": 1_000_000}, disconnect_after_chunks=3)
     assert chunk_count == 3  # confirms the scenario really did cut the stream short
@@ -473,7 +523,7 @@ def test_overlapping_step_returns_503(client, monkeypatch):
     def blocking_step_world_progress(world, years):
         entered_step_world.set()
         release_step_world.wait(timeout=5)
-        yield 1.0
+        yield ("progress", 1.0, "Moving plates")
 
     import app.main as main_module
 
@@ -543,7 +593,7 @@ def test_render_waits_for_an_in_progress_step_instead_of_racing_it(client, monke
     def blocking_step_world_progress(world, years):
         entered_step_world.set()
         release_step_world.wait(timeout=5)
-        yield 1.0
+        yield ("progress", 1.0, "Moving plates")
 
     import app.main as main_module
 
@@ -587,7 +637,7 @@ def test_step_compute_routes_do_not_race_an_in_progress_step(client, monkeypatch
     def blocking_step_world_progress(world, years):
         entered_step_world.set()
         release_step_world.wait(timeout=5)
-        yield 1.0
+        yield ("progress", 1.0, "Moving plates")
 
     import app.main as main_module
 
@@ -1412,9 +1462,28 @@ def test_step_forwards_heartbeats_from_its_slow_tail(client, monkeypatch):
     assert resp.status_code == 200
 
     messages = [json.loads(line) for line in resp.text.splitlines() if line.strip()]
-    assert [m["type"] for m in messages] == ["progress"] * 12 + ["heartbeat"] * 4 + ["progress", "done"]
+    tail = 12 / 13
+    assert [(m["type"], m.get("fraction")) for m in messages] == (
+        [("progress", f / 13) for f in range(1, 13)]
+        + [
+            ("progress", tail),  # Merging and splitting plates
+            ("progress", tail),  # Filling seafloor gaps
+            ("progress", tail),  # Raising mantle plumes
+            ("heartbeat", tail),
+            ("progress", tail),  # Resolving glaciers
+            ("heartbeat", tail),
+            ("progress", tail),  # Raising volcanoes
+            ("progress", tail),  # Forming natural resources
+            ("heartbeat", tail),
+            ("progress", tail),  # Balancing sea level (boundary)
+            ("heartbeat", tail),
+            ("progress", 1.0),  # Balancing sea level (completion)
+            ("done", None),
+        ]
+    )
+    progress = [m for m in messages if m["type"] == "progress"]
+    assert all(isinstance(m.get("phase"), str) and m["phase"] for m in progress)
     heartbeats = [m for m in messages if m["type"] == "heartbeat"]
-    assert [m["fraction"] for m in heartbeats] == [12 / 13] * 4
     assert all(set(m) == {"type", "fraction"} for m in heartbeats)
 
 
@@ -1484,7 +1553,7 @@ def test_step_unknown_tuple_message_becomes_error_line(client, monkeypatch):
     # Review on PR #617: a non-heartbeat tuple must fail loudly, never serialize as
     # a progress fraction.
     def _bogus_progress(world, years):
-        yield 0.5
+        yield ("progress", 0.5, "Moving plates")
         yield ("bogus", 0.75)
 
     monkeypatch.setattr(main, "step_world_progress", _bogus_progress)
@@ -1501,7 +1570,7 @@ def test_generate_unknown_tuple_message_becomes_error_line(client, monkeypatch):
     # Same fail-loud contract for generate: an unknown kind must never be mistaken
     # for the done payload.
     def _bogus_progress(seed, **kwargs):
-        yield ("progress", 0.5)
+        yield ("progress", 0.5, "Creating continents")
         yield ("bogus", 0.75)
 
     monkeypatch.setattr(main, "generate_world_progress", _bogus_progress)
@@ -1862,7 +1931,7 @@ def store(client, tmp_path, monkeypatch):
 
     def fake_step(world, years):
         world.elapsed_years += years
-        yield 1.0
+        yield ("progress", 1.0, "Moving plates")
 
     monkeypatch.setattr(main, "step_world_progress", fake_step)
     yield _default_session.checkpoint_store
@@ -1932,7 +2001,7 @@ def test_a_failed_step_does_not_overwrite_the_checkpoint(client, store, saved_wo
 
     def failing_step(world, years):
         world.elapsed_years += years
-        yield 0.5
+        yield ("progress", 0.5, "Moving plates")
         raise RuntimeError("degenerate geometry")
 
     monkeypatch.setattr(main, "step_world_progress", failing_step)
@@ -2024,7 +2093,7 @@ def replay_logged(client, saved_world, tmp_path, monkeypatch):
 
     def fake_step(world, years):
         world.elapsed_years += years
-        yield 1.0
+        yield ("progress", 1.0, "Moving plates")
 
     log = replay_log.ReplayLog(tmp_path, min_steps_between=1, triggers={"always": lambda outcome: {}}, step_progress=fake_step)
     _default_session.replay_log = log

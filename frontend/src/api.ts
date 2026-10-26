@@ -546,9 +546,17 @@ function worldSummaryFrom(msg: Record<string, unknown>): WorldSummary {
   };
 }
 
+// One backend run-progress checkpoint: the fraction (0 to 1) plus the backend's
+// human-readable phase label for it (#629), e.g. "Creating cratons". Older servers
+// send no label, so it stays optional.
+export interface RunProgress {
+  fraction: number;
+  phase?: string;
+}
+
 // Used by generateWorld below, which streams newline-delimited JSON progress the
 // same shape /worlds/{world_id}/animate does (see AnimateProgress/animateWorld's own comment for that
-// established contract): a `{type: "progress", fraction}` line (0 to 1) per phase/plate
+// established contract): a `{type: "progress", fraction, phase}` line per phase/plate
 // checkpoint (surfaced via `onProgress`), then a final `{type: "done", ...WorldSummary
 // fields}`, or a `{type: "error", detail}` line if generation/stepping raises partway
 // through (the HTTP status is already 200 by then, same as animate -- see backend
@@ -556,17 +564,18 @@ function worldSummaryFrom(msg: Record<string, unknown>): WorldSummary {
 // reader has: a generate/step run is bounded to one server-side request's worth of work
 // (not up to 480 animation frames back-to-back), so a plain fetch (no AbortController) is
 // enough here. `heartbeat` ticks (see backend app/world.py's own comment on those) carry
-// a fraction like any progress line and move the bar the same way.
-async function readProgressStream(resp: Response, onProgress?: (fraction: number) => void): Promise<WorldSummary> {
+// a fraction like any progress line and move the bar the same way, keeping the current phase.
+async function readProgressStream(resp: Response, onProgress?: (progress: RunProgress) => void): Promise<WorldSummary> {
   if (!resp.ok || !resp.body) {
     const detail = await resp.text();
     throw new Error(`${resp.status} ${resp.statusText}: ${detail}`);
   }
 
-  const fractionOf = (msg: Record<string, unknown>): void => {
-    if (typeof msg.fraction === "number") onProgress?.(msg.fraction);
+  const progressOf = (msg: Record<string, unknown>): void => {
+    if (typeof msg.fraction !== "number") return;
+    onProgress?.({ fraction: msg.fraction, phase: msg.phase as string | undefined });
   };
-  const done = await readStreamMessages(resp.body.getReader(), fractionOf, undefined, fractionOf);
+  const done = await readStreamMessages(resp.body.getReader(), progressOf, undefined, progressOf);
   if (!done) throw new Error("stream ended without a result");
   return worldSummaryFrom(done);
 }
@@ -609,10 +618,10 @@ async function readProgressStream(resp: Response, onProgress?: (fraction: number
 // real geometry/motion instead of the sketch alone (see world.generate_world's own
 // `premade_world_id` param). `null` (every other tab, "Dragons & Zombie World" included) is
 // unaffected.
-// `onProgress`, if given, is called with a fraction (0 to 1) as the backend's
-// generate_world_progress passes its three phase boundaries (plate/site generation,
-// mantle-center fitting, the finish_generation bootstrap -- see backend app/main.py's
-// /worlds/{world_id}/generate for the NDJSON contract this reads, same shape as animateWorld's own).
+// `onProgress`, if given, is called with each of the backend's
+// generate_world_progress phase checkpoints (fraction plus phase label -- see backend
+// app/main.py's /worlds/{world_id}/generate for the NDJSON contract this reads, same
+// shape as animateWorld's own).
 export interface GenerateWorldOptions {
   seed: number;
   // The Generate World dialog's name field (null keeps the record's name: the
@@ -634,7 +643,7 @@ export interface GenerateWorldOptions {
   voronoiPoints: number;
   sketchImageBase64?: string | null;
   premadeWorldId?: string | null;
-  onProgress?: (fraction: number) => void;
+  onProgress?: (progress: RunProgress) => void;
 }
 
 export function generateWorld(worldId: WorldId, options: GenerateWorldOptions): Promise<WorldSummary> {
