@@ -883,6 +883,25 @@ def delete_world(world_id: str) -> dict:
     return {"deleted": world_id}
 
 
+def _generate_message_line(message):
+    """Formats one generate_world_progress message as its NDJSON line.
+
+    Returns `(line, world_or_None)`: `world_or_None` is set only for the final
+    `("done", world)` message, which carries no line of its own. Raises ValueError
+    on an unknown message kind -- the caller's except turns it into an error line,
+    never a mislabeled payload. Split out of generate() so that function stays
+    under the complexity cap."""
+    if message[0] == "progress":
+        return json.dumps({"type": "progress", "fraction": message[1]}) + "\n", None
+    if message[0] == "heartbeat":
+        # Slow sub-phase with no other output (#611): the frontend routes these
+        # to its progress bar like any progress line.
+        return json.dumps({"type": "heartbeat", "fraction": message[1]}) + "\n", None
+    if message[0] == "done":
+        return None, message[1]
+    raise ValueError(f"unexpected generate progress message: {message!r}")
+
+
 @app.post("/worlds/{world_id}/generate")
 def generate(world_id: str, req: GenerateRequest) -> StreamingResponse:
     """Streams newline-delimited JSON progress while generating a fresh world, replacing
@@ -982,14 +1001,11 @@ def generate(world_id: str, req: GenerateRequest) -> StreamingResponse:
             world = None
             try:
                 for message in progress:
-                    if message[0] == "progress":
-                        yield json.dumps({"type": "progress", "fraction": message[1]}) + "\n"
-                    elif message[0] == "heartbeat":
-                        # Slow sub-phase with no other output (#611): the frontend
-                        # routes these to its progress bar like any progress line.
-                        yield json.dumps({"type": "heartbeat", "fraction": message[1]}) + "\n"
+                    line, done_world = _generate_message_line(message)
+                    if done_world is None:
+                        yield line
                     else:
-                        world = message[1]
+                        world = done_world
                 _set_world(session, world)
                 yield json.dumps({"type": "done", **_summary(session, world)}) + "\n"
             except GeneratorExit:
@@ -1142,10 +1158,14 @@ def step(world_id: str, req: StepRequest) -> StreamingResponse:
             progress = _step_progress(session, world, req.years)
             try:
                 for message in progress:
-                    if isinstance(message, tuple) and message[0] == "heartbeat":
+                    if isinstance(message, tuple):
                         # Still inside the step's slow tail (#611): same fraction the
                         # progress line would carry, no progress implied. The frontend
                         # routes these to its progress bar like any progress line.
+                        # Anything else is a protocol violation -- fail loudly rather
+                        # than serializing it as a progress fraction.
+                        if message[0] != "heartbeat":
+                            raise ValueError(f"unexpected step progress message: {message!r}")
                         yield json.dumps({"type": "heartbeat", "fraction": message[1]}) + "\n"
                         continue
                     yield json.dumps({"type": "progress", "fraction": message}) + "\n"
@@ -1497,6 +1517,13 @@ def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
                     except StopIteration:
                         break
                     line, last_frame, completed = _animate_message_line(session, world, message, last_frame)
+                    if message[0] == "heartbeat":
+                        # Mid-batch tick (#611): the world is only partially stepped,
+                        # so the locks stay held across this yield -- releasing them
+                        # would let a concurrent save/render observe a torn world.
+                        # The outer finally still releases on disconnect.
+                        yield line
+                        continue
                     session.lock.release()
                     _compute_gate.release()
                     acquired = False

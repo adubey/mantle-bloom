@@ -232,7 +232,7 @@ def test_generate_forwards_cratons_first_choice(client, monkeypatch):
 
     def fake_generate_world_progress(seed, **kwargs):
         captured.update(kwargs)
-        yield ("world", object())
+        yield ("done", object())
 
     monkeypatch.setattr(main, "generate_world_progress", fake_generate_world_progress)
     monkeypatch.setattr(main, "_set_world", lambda session, world: None)
@@ -1443,6 +1443,74 @@ def test_generate_forwards_heartbeats_from_its_slow_tail(client, monkeypatch):
         ("progress", 1.0),
     ]
     assert messages[-1]["type"] == "done"
+
+
+def test_animate_heartbeat_lines_do_not_checkpoint_the_world(client, monkeypatch):
+    # Review on PR #617: a mid-batch world is only partially stepped, so persisting
+    # it would corrupt resume. Heartbeats must add lines without checkpointing --
+    # only progress lines (whole-step boundaries) may persist.
+    from app.world import PROGRESS_HEARTBEAT_INTERVAL_S
+
+    now = [0.0]
+
+    def _fast_clock():
+        now[0] += PROGRESS_HEARTBEAT_INTERVAL_S + 1.0
+        return now[0]
+
+    monkeypatch.setattr("app.world._monotonic", _fast_clock)
+    _post_generate(client, json={"seed": 9, "num_plates": 6})
+    checkpoints = []
+    real_checkpoint = main._checkpoint_world
+    def _spy(session):
+        checkpoints.append(1)
+        return real_checkpoint(session)
+    monkeypatch.setattr(main, "_checkpoint_world", _spy)
+    resp = client.post(
+        "/world/animate",
+        json={"projection": "eckert4", "view": "elevation", "width": 64, "height": 64, "step_years": 100_000, "num_frames": 3},
+    )
+    assert resp.status_code == 200
+
+    messages = [json.loads(line) for line in resp.text.splitlines() if line.strip()]
+    progress = [m for m in messages if m["type"] == "progress"]
+    heartbeats = [m for m in messages if m["type"] == "heartbeat"]
+    assert len(heartbeats) == 2  # the stream really did tick mid-batch
+    # One checkpoint per progress line (whole-step boundaries) plus the completed-run
+    # publish in the stream's finally -- heartbeats persist nothing.
+    assert len(checkpoints) == len(progress) + 1
+
+
+def test_step_unknown_tuple_message_becomes_error_line(client, monkeypatch):
+    # Review on PR #617: a non-heartbeat tuple must fail loudly, never serialize as
+    # a progress fraction.
+    def _bogus_progress(world, years):
+        yield 0.5
+        yield ("bogus", 0.75)
+
+    monkeypatch.setattr(main, "step_world_progress", _bogus_progress)
+    _post_generate(client, json={"seed": 9, "num_plates": 6})
+    resp = client.post("/world/step", json={"years": 100_000})
+    assert resp.status_code == 200
+
+    messages = [json.loads(line) for line in resp.text.splitlines() if line.strip()]
+    assert [m["type"] for m in messages] == ["progress", "error"]
+    assert "unexpected step progress" in messages[-1]["detail"]
+
+
+def test_generate_unknown_tuple_message_becomes_error_line(client, monkeypatch):
+    # Same fail-loud contract for generate: an unknown kind must never be mistaken
+    # for the done payload.
+    def _bogus_progress(seed, **kwargs):
+        yield ("progress", 0.5)
+        yield ("bogus", 0.75)
+
+    monkeypatch.setattr(main, "generate_world_progress", _bogus_progress)
+    resp = client.post("/world/generate", json={"seed": 1, "num_plates": 6})
+    assert resp.status_code == 200
+
+    messages = [json.loads(line) for line in resp.text.splitlines() if line.strip()]
+    assert [m["type"] for m in messages] == ["progress", "error"]
+    assert "unexpected generate progress" in messages[-1]["detail"]
 
 
 def test_animate_disconnect_mid_stream_still_publishes_completed_frames(client):
