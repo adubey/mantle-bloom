@@ -41,7 +41,7 @@ through the pickle path.
 | 2 | `{"format": "mantle-bloom-world", "version": 2, "world": World}` | yes |
 | 3 | v2 plus `"surface": "lines" \| "quad" \| "empty"`, checked against the unpickled plates | yes; this build writes only `quad` or `empty`, and a `lines` save converts on load |
 | 4 | v3 plus climate, hydrology, and surface-process classes under `app.hydroclimate` | yes; old module paths are mapped while loading |
-| 5 | a zip of `.npy` arrays plus a JSON manifest (see `npz_save.py`); user saves drop the erosion cache plus unserializable derived scratch, replay records keep the erosion cache too | yes; this build writes only v5 |
+| 5 | a zip of `.npy` arrays plus a JSON manifest (see `npz_save.py`); user saves drop the erosion cache plus unserializable derived scratch, replay records keep the erosion cache too, compact saves additionally drop the step-read caches (see §8) | yes; this build writes only v5 |
 | > 5 | written by a newer build | no: `UnsupportedSaveVersionError` |
 
 Each `PlateWithSparseQuadPatch` also versions its own state
@@ -303,10 +303,11 @@ identical authoritative state, and the next step reads all four before refreshin
 them, so dropping any of them diverges the run (#596). Replay-log records use the
 exact profile (`save_exact_bytes`), which additionally keeps the erosion cache so a
 replay re-steps exactly including its debug views. The compact profile
-(`save_compact_bytes`) drops the four step-read caches too for a smaller file; its
-first post-load step rebuilds them as it goes and lands close to but not on the
-uninterrupted state, pinned by an approximate continuation test (land fraction
-within 1e-3, sea level within 1 m on the reference world) rather than H9.
+(`save_compact_bytes`) drops the four step-read caches too for a smaller file (10 MB
+on the reference world vs 53 MB default); its first post-load step rebuilds them as
+it goes and lands close to but not on the uninterrupted state, pinned by an
+approximate continuation test (land fraction within 1e-3, sea level within 1 m on
+the reference world) rather than H9.
 
 User-facing saves are named `*.bloom`. Loading sniffs the content, never the
 extension: `persistence.save_kind` reports `"v5"` for a zip-manifest save and

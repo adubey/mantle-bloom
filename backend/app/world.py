@@ -893,6 +893,10 @@ def _advance_fluid_dynamics(world: World, node_cloud: tuple[np.ndarray, list[Pla
     terrain = climate.compute_climate(
         world, *climate.grid_dimensions(world.fluid_density), node_cloud=node_cloud, skip_moisture=True
     )
+    if world.atmosphere_cfd_state is None:
+        # A compact save drops the CFD state; cold-start it from this same snapshot
+        # the way generation does, so the first post-load step rebuilds it (#596).
+        world.atmosphere_cfd_state = atmosphere_cfd.init_atmosphere_cfd(world, terrain)
     atmosphere_cfd.refresh_forcing(world, world.atmosphere_cfd_state, terrain)
     atmosphere_cfd.step_atmosphere_cfd(world, world.atmosphere_cfd_state, atmosphere_cfd.SECONDS_PER_TECTONIC_STEP)
 

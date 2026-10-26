@@ -382,9 +382,9 @@ def _summarize(world):
 def test_compact_profile_step_lands_within_tolerance():
     # The approximate continuation gate: a compact load rebuilds its step-read caches
     # as it goes, landing close to but not on the uninterrupted state. Tolerances are
-    # ~5x the divergence measured on the reference world (seed 42, density 1.0, 1 Myr
-    # + 100 kyr: land fraction 2.1e-4, sea level 0.26 m) -- a tripwire for the
-    # envelope, not an exactness proof (that is H9, on the default/exact profiles).
+    # ~5x the land-fraction and ~4x the sea-level divergence measured on the reference
+    # world (seed 42, density 1.0, 1 Myr + 100 kyr: 2.1e-4, 0.26 m) -- a tripwire for
+    # the envelope, not an exactness proof (that is H9, on the default/exact profiles).
     world = generate_world(seed=42, node_density=1.0)
     step_world(world, 1_000_000)
     loaded = persistence.load_world_bytes(persistence.save_compact_bytes(world))
@@ -399,3 +399,75 @@ def test_compact_profile_step_lands_within_tolerance():
 
 def test_compact_save_is_smaller_than_default(stepped_world, stepped_bytes):
     assert len(persistence.save_compact_bytes(stepped_world)) < len(stepped_bytes)
+
+
+def test_compact_cfd_mode_load_steps_without_crashing():
+    # A compact save drops the CFD state; in cfd wind mode the first post-load step
+    # must cold-start it, not dereference None in `refresh_forcing` (#596 review).
+    # Crash-regression only (the envelope pin above is diagnostic-mode): completes
+    # and holds sane summary state.
+    world = generate_world(seed=3, num_plates=2, node_density=0.5)
+    world.wind_model = "cfd"
+    step_world(world, 100_000)
+    loaded = persistence.load_world_bytes(persistence.save_compact_bytes(world))
+
+    assert loaded.atmosphere_cfd_state is None
+    step_world(loaded, 100_000)
+
+    assert loaded.atmosphere_cfd_state is not None
+    assert 0.0 <= 1.0 - float(loaded.hydrology_cache.is_ocean.mean()) <= 1.0
+    assert np.isfinite(loaded.sea_level_m)
+
+
+def test_resolve_rejects_non_dataclass():
+    with pytest.raises(persistence.CorruptSaveError, match="non-dataclass"):
+        npz_save._resolve("builtins.dict")
+    with pytest.raises(persistence.CorruptSaveError, match="non-dataclass"):
+        npz_save._resolve("os.makedirs")
+
+
+def test_loading_a_v5_naming_a_non_dataclass_raises(stepped_bytes):
+    def retag(manifest):
+        _first_with_key(manifest, "__dc__")["__dc__"] = "builtins.dict"
+
+    with pytest.raises(persistence.CorruptSaveError, match="non-dataclass"):
+        persistence.load_world_bytes(_remanifested(stepped_bytes, retag))
+
+
+def test_loading_a_v5_with_inconsistent_arrays_raises(stepped_bytes, monkeypatch):
+    from app.hydroclimate import climate
+
+    def drop_climate(manifest):
+        manifest["world"]["climate_cache"] = None
+
+    def boom(*args, **kwargs):
+        raise ValueError("inconsistent test grid")
+
+    monkeypatch.setattr(climate, "compute_climate", boom)
+
+    with pytest.raises(persistence.CorruptSaveError, match="inconsistent arrays"):
+        persistence.load_world_bytes(_remanifested(stepped_bytes, drop_climate))
+
+
+def test_loading_a_v5_with_a_wrong_typed_climate_cache_raises(stepped_bytes):
+    def spoil(manifest):
+        manifest["world"]["climate_cache"] = [1, 2]
+
+    with pytest.raises(persistence.CorruptSaveError, match="not climate fields"):
+        persistence.load_world_bytes(_remanifested(stepped_bytes, spoil))
+
+
+def test_loading_a_v5_plate_missing_its_surface_version_raises(stepped_bytes):
+    def strip(manifest):
+        del manifest["plates"][0]["_plate_surface_version"]
+
+    with pytest.raises(persistence.CorruptSaveError, match="surface version"):
+        persistence.load_world_bytes(_remanifested(stepped_bytes, strip))
+
+
+def test_loading_a_v5_missing_world_scalars_raises(stepped_bytes):
+    def strip(manifest):
+        manifest["world"].pop("seed")
+
+    with pytest.raises(persistence.CorruptSaveError, match="missing world fields"):
+        persistence.load_world_bytes(_remanifested(stepped_bytes, strip))

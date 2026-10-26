@@ -18,6 +18,8 @@ user's old save -- stands regardless of this module.
 
 from __future__ import annotations
 
+import dataclasses
+
 import numpy as np
 
 from . import npz_save
@@ -133,6 +135,16 @@ def load_world_bytes(data: bytes) -> World:
     _drop_derived_caches(world)
     _migrate_climate_humidity_units(world)
     _backfill_water_budget(world)
+    if npz_save.is_v5(data):
+        # v5 freeze writes every field the build knows (dropped caches are set to
+        # None by the loader, new fields backfilled above), so an unresolvable one
+        # is a tampered manifest -- fail here, not later with AttributeError (#596
+        # review). `hasattr`, not `__dict__`: plain-default fields legitimately fall
+        # through to their class attribute, same as old pickles. Only v5: old pickles
+        # predate fields this check cannot know about.
+        missing = [f.name for f in dataclasses.fields(World) if not hasattr(world, f.name)]
+        if missing:
+            raise CorruptSaveError(f"v5 save is missing world fields: {missing}")
     return world
 
 
@@ -183,11 +195,15 @@ def _migrate_climate_humidity_units(world: World) -> None:
     precipitation. Its humidity is only rendered until that step recomputes it, so the index
     is scaled by the same factor its constants were (`climate.HUMIDITY_INDEX_G_KG`), not
     re-derived."""
-    cache = world.climate_cache
-    if cache is None or "humidity" not in vars(cache):
-        return
     from .hydroclimate import climate
 
+    cache = getattr(world, "climate_cache", None)
+    if cache is None:
+        return
+    if not isinstance(cache, climate.ClimateFields):
+        raise CorruptSaveError(f"save holds a {type(cache).__name__} climate cache, not climate fields")
+    if "humidity" not in vars(cache):
+        return
     cache.humidity_g_kg = vars(cache).pop("humidity") * climate.HUMIDITY_INDEX_G_KG
 
 

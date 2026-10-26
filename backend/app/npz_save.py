@@ -209,7 +209,10 @@ def freeze(value, path: str, arrays: dict):
 
 
 def _resolve(dotted: str):
-    """Import `a.b.C` by trying the longest importable module prefix first."""
+    """Import `a.b.C` by trying the longest importable module prefix first. Only
+    dataclass types resolve: thaw instantiates the result with manifest-controlled
+    keyword arguments, so anything else -- even `builtins.dict`, let alone
+    callables with side effects -- must fail the load, not run (#596 review)."""
     parts = dotted.split(".")
     for i in range(len(parts) - 1, 0, -1):
         try:
@@ -218,6 +221,8 @@ def _resolve(dotted: str):
             continue
         for part in parts[i:]:
             obj = getattr(obj, part)
+        if not (isinstance(obj, type) and dataclasses.is_dataclass(obj)):
+            raise _corrupt(f"v5 save names a non-dataclass {dotted!r}")
         return obj
     raise ImportError(dotted)
 
@@ -422,7 +427,9 @@ def load_world_v5(data: bytes) -> World:
             try:
                 plates = []
                 for state in manifest["plates"]:
-                    plate_version = state.get("_plate_surface_version")
+                    if "_plate_surface_version" not in state or state["_plate_surface_version"] is None:
+                        raise _corrupt("v5 plate entry is missing its surface version")
+                    plate_version = state["_plate_surface_version"]
                     if plate_version != QUAD_SURFACE_FORMAT_VERSION and plate_version not in LEGACY_QUAD_SURFACE_FORMAT_VERSIONS:
                         raise _unsupported(
                             f"unsupported sparse quad surface format version {plate_version!r}; "
@@ -455,7 +462,12 @@ def load_world_v5(data: bytes) -> World:
     world.plates = plates
     for name in _SAVE_DROP | _STEP_CACHES | _DERIVED_SCRATCH:
         world.__dict__.setdefault(name, None)
-    _rebuild_climate(world)
+    # Inconsistent arrays surface here, not as raw compute errors: the loader either
+    # returns a whole world or raises `CorruptSaveError` (#596 review).
+    try:
+        _rebuild_climate(world)
+    except Exception as exc:
+        raise _corrupt(f"v5 save has inconsistent arrays: {exc}") from exc
     return world
 
 
