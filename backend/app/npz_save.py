@@ -15,11 +15,11 @@ entries; each array lives at `a/<path>.npy`. Array-valued fields of dataclass li
 (list, field) as a ragged concatenation plus offsets -- one entry per array would
 make thousands of zip entries and dominate write time (see #594).
 
-Two drop profiles share the codec. Both drop the erosion cache (overwritten whole by
-every erosion call, read only by a debug view) and the unserializable derived scratch
-(k-d trees, the HEALPix grid, the boundary-search cache), which rebuilds lazily;
-replay-log records additionally keep the erosion cache. The climate, hydrology and CFD
-caches and the polarity frame are always kept: the H9 hard gate
+Two drop profiles share the codec. User saves drop the erosion cache (overwritten
+whole by every erosion call, read only by a debug view); both profiles drop the
+unserializable derived scratch (k-d trees, the HEALPix grid, the boundary-search
+cache), which rebuilds lazily; replay-log records keep the erosion cache too. The
+climate, hydrology and CFD caches and the polarity frame are always kept: the H9 hard gate
 (`surface_parity_gates.load_continuation`) requires a post-load step to land on
 identical authoritative state, and the next step reads all four before refreshing
 them. The loader recomputes a missing `climate_cache` for a save that was stepped
@@ -56,7 +56,6 @@ SURFACES = ("quad", "empty")
 # steps identically. Replay-log records additionally keep the erosion cache so a replay
 # re-steps exactly including its debug views.
 _SAVE_DROP = frozenset({"erosion_cache"})
-_RECORD_DROP = frozenset()
 _DERIVED_SCRATCH = frozenset(
     {
         "land_kdtree_cache",
@@ -72,8 +71,9 @@ _DERIVED_SCRATCH = frozenset(
 
 
 def _drop_for(*, keep_caches: bool) -> frozenset:
+    # Exact records keep every data cache; only unserializable scratch is dropped.
     if keep_caches:
-        return _DERIVED_SCRATCH | _RECORD_DROP
+        return _DERIVED_SCRATCH
     return _DERIVED_SCRATCH | _SAVE_DROP
 
 
@@ -81,23 +81,33 @@ def _freeze_scalar(value, path: str):
     """`None`, an exact-typed scalar, or a tagged non-finite float. Exact-type matching
     matters: `np.float64` subclasses `float`, and silently keeping one as a JSON float
     loses the type (`replay_log._feed` hashes type names)."""
-    if value is None or type(value) in (bool, int, str, bytes):
+    if value is None or type(value) in (bool, int, str):
         return value
     if type(value) is float:
         if math.isfinite(value):
             return value
         return {"__nonfinite__": "nan" if math.isnan(value) else ("inf" if value > 0 else "-inf")}
+    if isinstance(value, bytes):
+        # The manifest is JSON, so raw bytes have no encoding: fail here with the path
+        # instead of dying later in json.dumps with no location (#596 review).
+        raise TypeError(f"unencodable bytes at {path}; tag-encode the field or drop it from the save")
     if isinstance(value, np.generic):
-        return {"__np_scalar__": {"dtype": str(value.dtype), "value": value.item()}}
+        item = value.item()
+        if isinstance(item, bytes):
+            raise TypeError(f"unencodable numpy bytes scalar ({value.dtype}) at {path}")
+        return {"__np_scalar__": {"dtype": str(value.dtype), "value": item}}
     raise TypeError(f"unencodable scalar {type(value).__name__} at {path}")
 
 
 def _pack_arrays(field: str, path: str, vals: list, arrays: dict) -> dict:
     """Pack one array-valued column of a dataclass list into a single zip entry: the
-    concatenation of every present array plus per-item lengths and shapes."""
+    concatenation of every present array plus per-item lengths, shapes, and an explicit
+    null bitmap (an empty array and a missing one both have length 0, so lengths alone
+    cannot tell them apart)."""
+    nulls = [i for i, v in enumerate(vals) if v is None]
     present = [(i, v) for i, v in enumerate(vals) if v is not None]
     if not present:
-        return {"__packed__": f"{path}.{field}", "dtype": None, "lengths": [0] * len(vals), "shapes": []}
+        return {"__packed__": f"{path}.{field}", "dtype": None, "lengths": [0] * len(vals), "shapes": [], "nulls": nulls}
     dtype = present[0][1].dtype
     for i, v in present:
         if v.dtype != dtype:
@@ -112,7 +122,7 @@ def _pack_arrays(field: str, path: str, vals: list, arrays: dict) -> dict:
         lengths.append(0 if v is None else v.size)
         shapes.append([] if v is None else list(v.shape))
     assert sum(lengths) == flat.size
-    return {"__packed__": entry, "dtype": str(dtype), "lengths": lengths, "shapes": shapes}
+    return {"__packed__": entry, "dtype": str(dtype), "lengths": lengths, "shapes": shapes, "nulls": nulls}
 
 
 def _freeze_dataclass_list(items: list, path: str, arrays: dict) -> dict:
@@ -127,7 +137,8 @@ def _freeze_dataclass_list(items: list, path: str, arrays: dict) -> dict:
         if all(v is None or isinstance(v, np.ndarray) for v in vals):
             cols[f.name] = _pack_arrays(f.name, path, vals, arrays)
         elif all(isinstance(v, np.generic) for v in vals):
-            cols[f.name] = [{"__np_scalar__": {"dtype": str(v.dtype), "value": v.item()}} for v in vals]
+            # Route through _freeze_scalar so numpy bytes scalars fail with a path (#596).
+            cols[f.name] = [_freeze_scalar(v, f"{path}.{f.name}[{i}]") for i, v in enumerate(vals)]
         else:
             # Scalars, tuples, nested dataclasses -- encoded per item; correctness over
             # packing for the rare non-array column.
@@ -189,9 +200,11 @@ def _resolve(dotted: str):
 
 
 def _thaw_packed(node: dict, zf: zipfile.ZipFile) -> list:
-    """Split one packed column back into per-item arrays (`None` where lengths say 0)."""
+    """Split one packed column back into per-item arrays (`None` exactly where the null
+    bitmap says so -- a present-but-empty array keeps its shape)."""
     if node["dtype"] is None:
         return [None] * len(node["lengths"])
+    nulls = set(node["nulls"])
     try:
         with zf.open(f"a/{node['__packed__']}.npy") as fh:
             flat = np.load(fh, allow_pickle=False)
@@ -203,8 +216,11 @@ def _thaw_packed(node: dict, zf: zipfile.ZipFile) -> list:
     if flat.dtype != dtype:
         raise _corrupt(f"v5 array {node['__packed__']!r} changed dtype {flat.dtype} to {dtype}")
     items, cursor = [], 0
-    for length, shape in zip(node["lengths"], node["shapes"]):
-        items.append(None if length == 0 else flat[cursor : cursor + length].reshape(shape))
+    for i, (length, shape) in enumerate(zip(node["lengths"], node["shapes"])):
+        try:
+            items.append(None if i in nulls else flat[cursor : cursor + length].reshape(shape))
+        except ValueError as exc:
+            raise _corrupt(f"v5 array {node['__packed__']!r} item {i} does not fit shape {shape}: {exc}") from exc
         cursor += length
     if cursor != flat.size:
         raise _corrupt(f"v5 array {node['__packed__']!r} has inconsistent offsets")
@@ -283,7 +299,7 @@ def _thaw_tagged(tag: str, payload, node: dict, zf: zipfile.ZipFile, plates_by_i
 
 
 def _thaw_column(col, zf: zipfile.ZipFile, plates_by_id: dict | None = None) -> list:
-    if isinstance(col, dict) and set(col) == {"__packed__", "dtype", "lengths", "shapes"}:
+    if isinstance(col, dict) and set(col) == {"__packed__", "dtype", "lengths", "shapes", "nulls"}:
         return _thaw_packed(col, zf)
     if isinstance(col, list):
         return [thaw(v, zf, plates_by_id) for v in col]
@@ -311,9 +327,10 @@ def is_v5(data: bytes) -> bool:
 
 def save_world_v5(world: World, *, keep_caches: bool) -> bytes:
     """Serialize `world` as a v5 zip (`manifest.json` plus one `.npy` per array).
-    `keep_caches=False` (user saves, checkpoints) drops every recomputable cache;
-    `keep_caches=True` (replay-log records) keeps the data caches so a replay re-steps
-    exactly. Unserializable derived scratch is dropped by both profiles."""
+    `keep_caches=False` (user saves, checkpoints) drops the erosion cache;
+    `keep_caches=True` (replay-log records) keeps it too, so a replay re-steps exactly
+    including its debug views. Unserializable derived scratch is dropped by both
+    profiles; every other cache is kept so a post-load step lands on identical state (H9)."""
     from . import sparse_quad_patch
     from .persistence import world_surface
     from .sparse_quad_patch import PlateWithSparseQuadPatch
@@ -344,9 +361,10 @@ def save_world_v5(world: World, *, keep_caches: bool) -> bytes:
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as zf:
         zf.writestr("manifest.json", json.dumps(manifest))
         for path in sorted(arrays):
-            entry = io.BytesIO()
-            np.save(entry, arrays[path], allow_pickle=False)
-            zf.writestr(f"a/{path}.npy", entry.getvalue())
+            # Write straight into the zip: `np.save` streams header-then-data, so the
+            # unseekable entry works and each array is copied once, not twice (#596).
+            with zf.open(f"a/{path}.npy", "w") as entry:
+                np.save(entry, arrays[path], allow_pickle=False)
     return buf.getvalue()
 
 
@@ -360,52 +378,56 @@ def load_world_v5(data: bytes) -> World:
         PlateWithSparseQuadPatch,
     )
 
-    try:
-        zf = zipfile.ZipFile(io.BytesIO(data))
-        manifest = json.loads(zf.read("manifest.json"))
-    except Exception as exc:
-        raise _corrupt(f"not a readable mantle-bloom save ({type(exc).__name__}: {exc})") from exc
-    if not isinstance(manifest, dict) or manifest.get("format") != FORMAT:
-        raise _corrupt(f"not a mantle-bloom save (format {manifest.get('format')!r})" if isinstance(manifest, dict) else "not a mantle-bloom save")
-    version = manifest.get("version")
-    if version != VERSION:
-        raise _unsupported(f"unsupported save format version {version!r}; this build reads v5 plates in 1-{QUAD_SURFACE_FORMAT_VERSION}")
-    if manifest.get("surface") not in SURFACES:
-        raise _corrupt(f"save declares unknown surface {manifest.get('surface')!r}")
-    try:
-        plates = []
-        for state in manifest["plates"]:
-            plate_version = state.get("_plate_surface_version")
-            if plate_version != QUAD_SURFACE_FORMAT_VERSION and plate_version not in LEGACY_QUAD_SURFACE_FORMAT_VERSIONS:
-                raise _unsupported(
-                    f"unsupported sparse quad surface format version {plate_version!r}; "
-                    f"this build reads versions 1-{QUAD_SURFACE_FORMAT_VERSION}"
-                )
-            plate = PlateWithSparseQuadPatch.__new__(PlateWithSparseQuadPatch)
-            plate.__dict__.update({k: thaw(v, zf) for k, v in state.items() if k != "_plate_surface_version"})
-            plate._reset_caches()
-            plate._validate_leaf_topology()
-            plates.append(plate)
-        # Plate references elsewhere (see `HydrologyFields.plates_in_order`) re-link to
-        # the loaded plates by id, so the cache reads the world's own plates.
-        plates_by_id = {plate.plate_id: plate for plate in plates}
-        if len(plates_by_id) != len(plates):
-            raise _corrupt("v5 save holds two plates with one id")
-        world_dict = {k: thaw(v, zf, plates_by_id) for k, v in manifest["world"].items()}
-        actual = "empty" if not plates else "quad"
-        if manifest.get("surface") != actual:
-            raise _corrupt(f"save declares a {manifest.get('surface')!r} world but holds a {actual!r} one")
-    except Exception as exc:  # noqa: BLE001 - every unreadable shape maps to CorruptSaveError
-        from .persistence import SaveFormatError
+    from .persistence import SaveFormatError
 
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            try:
+                manifest = json.loads(zf.read("manifest.json"))
+            except Exception as exc:
+                raise _corrupt(f"not a readable mantle-bloom save ({type(exc).__name__}: {exc})") from exc
+            if not isinstance(manifest, dict) or manifest.get("format") != FORMAT:
+                raise _corrupt(f"not a mantle-bloom save (format {manifest.get('format')!r})" if isinstance(manifest, dict) else "not a mantle-bloom save")
+            version = manifest.get("version")
+            if version != VERSION:
+                raise _unsupported(f"unsupported save format version {version!r}; this build reads v5 plates in 1-{QUAD_SURFACE_FORMAT_VERSION}")
+            if manifest.get("surface") not in SURFACES:
+                raise _corrupt(f"save declares unknown surface {manifest.get('surface')!r}")
+            try:
+                plates = []
+                for state in manifest["plates"]:
+                    plate_version = state.get("_plate_surface_version")
+                    if plate_version != QUAD_SURFACE_FORMAT_VERSION and plate_version not in LEGACY_QUAD_SURFACE_FORMAT_VERSIONS:
+                        raise _unsupported(
+                            f"unsupported sparse quad surface format version {plate_version!r}; "
+                            f"this build reads versions 1-{QUAD_SURFACE_FORMAT_VERSION}"
+                        )
+                    plate = PlateWithSparseQuadPatch.__new__(PlateWithSparseQuadPatch)
+                    plate.__dict__.update({k: thaw(v, zf) for k, v in state.items() if k != "_plate_surface_version"})
+                    plate._reset_caches()
+                    plate._validate_leaf_topology()
+                    plates.append(plate)
+                # Plate references elsewhere (see `HydrologyFields.plates_in_order`) re-link to
+                # the loaded plates by id, so the cache reads the world's own plates.
+                plates_by_id = {plate.plate_id: plate for plate in plates}
+                if len(plates_by_id) != len(plates):
+                    raise _corrupt("v5 save holds two plates with one id")
+                world_dict = {k: thaw(v, zf, plates_by_id) for k, v in manifest["world"].items()}
+                actual = "empty" if not plates else "quad"
+                if manifest.get("surface") != actual:
+                    raise _corrupt(f"save declares a {manifest.get('surface')!r} world but holds a {actual!r} one")
+            except Exception as exc:  # noqa: BLE001 - every unreadable shape maps to CorruptSaveError
+                if isinstance(exc, SaveFormatError):
+                    raise
+                raise _corrupt(f"v5 save contradicts itself ({type(exc).__name__}: {exc})") from exc
+    except Exception as exc:
         if isinstance(exc, SaveFormatError):
             raise
-        raise _corrupt(f"v5 save contradicts itself ({type(exc).__name__}: {exc})") from exc
-    zf.close()
+        raise _corrupt(f"not a readable mantle-bloom save ({type(exc).__name__}: {exc})") from exc
     world = World.__new__(World)
     world.__dict__.update(world_dict)
     world.plates = plates
-    for name in _SAVE_DROP | _RECORD_DROP | _DERIVED_SCRATCH:
+    for name in _SAVE_DROP | _DERIVED_SCRATCH:
         world.__dict__.setdefault(name, None)
     _rebuild_climate(world)
     return world

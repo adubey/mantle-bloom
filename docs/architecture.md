@@ -311,7 +311,7 @@ flowchart LR
   B -- raises --> D
 ```
 
-- Before the step, under the world lock, it serializes the world (`persistence.save_record_bytes`)
+- Before the step, under the world lock, it serializes the world (`persistence.save_exact_bytes`)
   and measures `replay_log.Health`: plate count, live craton volume and ledger, the craton
   balance error, whether `continental_ledger.assert_closed` passes, genuine continental area,
   the area-weighted land fraction, and the shares of nodes at the Hc, Hm and glacier-ice

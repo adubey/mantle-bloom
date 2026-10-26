@@ -217,3 +217,139 @@ def test_a_quad_plate_from_a_newer_build_makes_the_save_unsupported(monkeypatch)
     monkeypatch.undo()
     with pytest.raises(persistence.UnsupportedSaveVersionError, match="sparse quad surface format version"):
         persistence.load_world_bytes(data)
+
+
+def _packed_column_bytes():
+    """A packed (empty, missing, present) column plus zip bytes holding its entry."""
+    arrays = {}
+    node = npz_save._pack_arrays("f", "p", [np.zeros((0, 3)), None, np.zeros((2, 2))], arrays)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as out:
+        for name, arr in arrays.items():
+            entry = io.BytesIO()
+            np.save(entry, arr, allow_pickle=False)
+            out.writestr(f"a/{name}.npy", entry.getvalue())
+    return node, buf.getvalue()
+
+
+def _thaw_packed(node, data):
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        return npz_save._thaw_packed(node, zf)
+
+
+def test_packed_column_keeps_empty_arrays_distinct_from_missing():
+    # An empty array and a missing one both have length 0: only the null bitmap
+    # tells them apart (#596 review).
+    node, data = _packed_column_bytes()
+
+    back = _thaw_packed(node, data)
+
+    assert isinstance(back[0], np.ndarray) and back[0].shape == (0, 3)
+    assert back[1] is None
+    assert back[2].shape == (2, 2)
+
+
+def test_thaw_packed_rejects_a_retagged_dtype():
+    node, data = _packed_column_bytes()
+    node = dict(node, dtype="int32")
+
+    with pytest.raises(persistence.CorruptSaveError, match="changed dtype"):
+        _thaw_packed(node, data)
+
+
+def test_thaw_packed_rejects_inconsistent_offsets():
+    # The last item is shrunk with its shape, so every reshape fits but the cursor
+    # stops short of the entry.
+    node, data = _packed_column_bytes()
+    node = dict(node, lengths=[0, 0, 2], shapes=[[0, 3], [], [1, 2]])
+
+    with pytest.raises(persistence.CorruptSaveError, match="inconsistent offsets"):
+        _thaw_packed(node, data)
+
+
+def test_thaw_packed_rejects_an_item_that_does_not_fit_its_shape():
+    node, data = _packed_column_bytes()
+    node = dict(node, lengths=[1, 0, 4])
+
+    with pytest.raises(persistence.CorruptSaveError, match="does not fit shape"):
+        _thaw_packed(node, data)
+
+
+def _first_with_key(node, key):
+    if isinstance(node, dict):
+        if key in node:
+            return node
+        for v in node.values():
+            hit = _first_with_key(v, key)
+            if hit is not None:
+                return hit
+    elif isinstance(node, list):
+        for v in node:
+            hit = _first_with_key(v, key)
+            if hit is not None:
+                return hit
+    return None
+
+
+def test_loading_a_v5_with_an_unknown_tag_raises(stepped_bytes):
+    def retag(manifest):
+        node = _first_with_key(manifest, "__npy__")
+        node["__unwritten_future_tag__"] = node.pop("__npy__")
+
+    with pytest.raises(persistence.CorruptSaveError, match="unknown tag"):
+        persistence.load_world_bytes(_remanifested(stepped_bytes, retag))
+
+
+def test_loading_a_v5_with_a_bad_healpix_nside_raises(stepped_bytes):
+    def spoil(manifest):
+        _first_with_key(manifest, "__healpix_grid__")["__healpix_grid__"] = -4
+
+    with pytest.raises(persistence.CorruptSaveError, match="bad HEALPix nside"):
+        persistence.load_world_bytes(_remanifested(stepped_bytes, spoil))
+
+
+def test_loading_a_v5_with_duplicate_plate_ids_raises(stepped_bytes):
+    def duplicate(manifest):
+        manifest["plates"].append(manifest["plates"][0])
+
+    with pytest.raises(persistence.CorruptSaveError, match="two plates with one id"):
+        persistence.load_world_bytes(_remanifested(stepped_bytes, duplicate))
+
+
+def test_bytes_attributes_fail_with_a_path(stepped_world):
+    stepped_world.__dict__["_bytes_probe"] = b"nope"
+    try:
+        with pytest.raises(TypeError, match="_bytes_probe"):
+            persistence.save_world_bytes(stepped_world)
+    finally:
+        del stepped_world.__dict__["_bytes_probe"]
+
+
+def test_numpy_bytes_scalars_fail_with_a_path(stepped_world):
+    stepped_world.__dict__["_bytes_probe"] = np.bytes_(b"nope")
+    try:
+        with pytest.raises(TypeError, match="_bytes_probe"):
+            persistence.save_world_bytes(stepped_world)
+    finally:
+        del stepped_world.__dict__["_bytes_probe"]
+
+
+def test_exact_profile_step_lands_on_identical_state():
+    # The H9 gate at unit scale for the exact profile: stepping the loaded copy
+    # matches stepping the world (the approximate profile has its own pin above).
+    world = generate_world(seed=11, num_plates=2, node_density=0.5)
+    step_world(world, 1_000_000)
+    loaded = persistence.load_world_bytes(persistence.save_exact_bytes(world))
+    step_world(world, 100_000)
+    step_world(loaded, 100_000)
+
+    assert state_hash(loaded) == state_hash(world)
+
+
+def test_v5_load_backfills_a_field_added_after_the_save(stepped_bytes):
+    manifest, _ = _manifest(stepped_bytes)
+    assert "faults" in manifest["world"]
+
+    data = _remanifested(stepped_bytes, lambda m: m["world"].pop("faults"))
+
+    assert persistence.load_world_bytes(data).faults == []

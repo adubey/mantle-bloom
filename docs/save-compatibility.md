@@ -41,7 +41,7 @@ through the pickle path.
 | 2 | `{"format": "mantle-bloom-world", "version": 2, "world": World}` | yes |
 | 3 | v2 plus `"surface": "lines" \| "quad" \| "empty"`, checked against the unpickled plates | yes; this build writes only `quad` or `empty`, and a `lines` save converts on load |
 | 4 | v3 plus climate, hydrology, and surface-process classes under `app.hydroclimate` | yes; old module paths are mapped while loading |
-| 5 | a zip of `.npy` arrays plus a JSON manifest (see `npz_save.py`), dropping every recomputable cache | yes; this build writes only v5 |
+| 5 | a zip of `.npy` arrays plus a JSON manifest (see `npz_save.py`); user saves drop the erosion cache plus unserializable derived scratch, replay records keep the erosion cache too | yes; this build writes only v5 |
 | > 5 | written by a newer build | no: `UnsupportedSaveVersionError` |
 
 Each `PlateWithSparseQuadPatch` also versions its own state
