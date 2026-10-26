@@ -79,7 +79,10 @@ class UserStore(ABC):
 
     @abstractmethod
     def link_identity(self, provider: str, subject: str, user_id: int, email: str | None = None) -> None:
-        """Attach a provider login to a user. Raises `KeyError` for an unknown user."""
+        """Attach a provider login to a user. Raises `KeyError` for an unknown user and
+        `ValueError` if the login is already attached to a different user (merging
+        accounts needs an explicit, separately authorized flow -- never a silent
+        transfer on link)."""
 
     @abstractmethod
     def user_for_identity(self, provider: str, subject: str) -> User | None:
@@ -173,6 +176,9 @@ class MemoryUserStore(UserStore):
         with self._lock:
             if user_id not in self._users:
                 raise KeyError(user_id)
+            hit = self._identities.get((provider, subject))
+            if hit is not None and hit[0] != user_id:
+                raise ValueError(f"identity {provider}:{subject} is already linked to user {hit[0]}")
             self._identities[(provider, subject)] = (user_id, email)
 
     def user_for_identity(self, provider: str, subject: str) -> User | None:
@@ -353,13 +359,23 @@ class SqliteUserStore(UserStore):
         return User(id=row[0], created_at=row[1], display_name=row[2]) if row else None
 
     def link_identity(self, provider: str, subject: str, user_id: int, email: str | None = None) -> None:
-        self._run(
-            "INSERT INTO identities(provider, subject, user_id, email, created_at)"
-            " VALUES (?, ?, ?, ?, ?)"
-            " ON CONFLICT(provider, subject) DO UPDATE SET user_id = excluded.user_id, email = excluded.email",
-            (provider, subject, user_id, email, _now()),
-            user_id,
-        )
+        # Check and write under one lock hold: the owner check and the upsert must be
+        # atomic, and a login attached elsewhere is never silently transferred.
+        with self._lock:
+            if self._conn.execute("SELECT 1 FROM users WHERE id = ?", (user_id,)).fetchone() is None:
+                raise KeyError(user_id)
+            row = self._conn.execute(
+                "SELECT user_id FROM identities WHERE provider = ? AND subject = ?", (provider, subject)
+            ).fetchone()
+            if row is not None and row[0] != user_id:
+                raise ValueError(f"identity {provider}:{subject} is already linked to user {row[0]}")
+            self._conn.execute(
+                "INSERT INTO identities(provider, subject, user_id, email, created_at)"
+                " VALUES (?, ?, ?, ?, ?)"
+                " ON CONFLICT(provider, subject) DO UPDATE SET user_id = excluded.user_id, email = excluded.email",
+                (provider, subject, user_id, email, _now()),
+            )
+            self._conn.commit()
 
     def user_for_identity(self, provider: str, subject: str) -> User | None:
         row = self._one(

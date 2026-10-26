@@ -33,13 +33,25 @@ def test_link_and_look_up_identity(store):
     assert store.user_for_identity("google", "123") is None
 
 
-def test_relink_moves_identity_to_new_owner(store):
+def test_relink_to_another_owner_is_rejected(store):
+    # A login attached elsewhere must not silently transfer: merging accounts needs
+    # an explicit, separately authorized flow (PR #621 P1 review).
     first = store.create_user()
     second = store.create_user()
-    store.link_identity("github", "123", first.id)
-    store.link_identity("github", "123", second.id)
+    store.link_identity("github", "123", first.id, email="old@example.com")
 
-    assert store.user_for_identity("github", "123") == second
+    with pytest.raises(ValueError, match="already linked"):
+        store.link_identity("github", "123", second.id)
+
+    assert store.user_for_identity("github", "123") == first
+
+
+def test_same_owner_relink_updates_email(store):
+    user = store.create_user()
+    store.link_identity("github", "123", user.id, email="old@example.com")
+    store.link_identity("github", "123", user.id, email="new@example.com")
+
+    assert store.user_for_identity("github", "123") == user
 
 
 def test_identity_for_unknown_user_fails(store):
