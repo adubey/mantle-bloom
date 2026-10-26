@@ -229,6 +229,7 @@ LAKE_BREACH_EROSION_COEFFICIENT = 4000.0
 # between the two thresholds (annual mean below 0C, summer above it) still melts back every
 # step, so it doesn't build a permanent glacier.
 FREEZE_POINT_C = 0.0
+LAKE_ICE_SUBLIMATION_M_PER_YR = 0.6
 GLACIER_MELT_THRESHOLD_C = 0.0
 GLACIER_ACCUMULATION_RATE = 0.02
 GLACIER_MELT_RATE_M_PER_MYR = 400.0
@@ -1201,6 +1202,39 @@ def seasonal_positive_degrees(mean_c: np.ndarray, amplitude_c: np.ndarray, thres
     return out
 
 
+def seasonal_fraction_above(mean_c: np.ndarray, amplitude_c: np.ndarray, threshold_c: float = FREEZE_POINT_C) -> np.ndarray:
+    """Fraction of a sinusoidal year spent above `threshold_c` (#608)."""
+    d = np.asarray(mean_c, dtype=float) - threshold_c
+    amp = np.clip(np.asarray(amplitude_c, dtype=float), 0.0, None)
+    d, amp = np.broadcast_arrays(d, amp)
+    fraction = np.where(d > 0.0, 1.0, 0.0)
+    partial = (amp > 0.0) & (np.abs(d) < amp)
+    if np.any(partial):
+        fraction[partial] = np.arccos(np.clip(-d[partial] / amp[partial], -1.0, 1.0)) / np.pi
+    return np.clip(fraction, 0.0, 1.0)
+
+
+def seasonal_open_mean_c(mean_c: np.ndarray, amplitude_c: np.ndarray, threshold_c: float = FREEZE_POINT_C) -> np.ndarray:
+    """Mean temperature during the above-threshold part of a sinusoidal year (#608)."""
+    mean = np.asarray(mean_c, dtype=float)
+    amp = np.clip(np.asarray(amplitude_c, dtype=float), 0.0, None)
+    mean, amp = np.broadcast_arrays(mean, amp)
+    d = mean - threshold_c
+    open_mean = np.full(d.shape, threshold_c, dtype=float)
+    always_open = d >= amp
+    open_mean[always_open] = mean[always_open]
+    partial = (amp > 0.0) & (d > -amp) & (d < amp)
+    if np.any(partial):
+        phi = np.arccos(np.clip(-d[partial] / amp[partial], -1.0, 1.0))
+        open_mean[partial] = mean[partial] + amp[partial] * np.sin(phi) / phi
+    return open_mean
+
+
+def seasonal_freezing_degrees(mean_c: np.ndarray, amplitude_c: np.ndarray, threshold_c: float = FREEZE_POINT_C) -> np.ndarray:
+    """Year-averaged degrees below `threshold_c` in a sinusoidal cycle (#608)."""
+    return seasonal_positive_degrees(threshold_c - np.asarray(mean_c, dtype=float), amplitude_c, 0.0)
+
+
 def _ice_surface_flow_target(
     ice_surface: np.ndarray, neighbor_idx: np.ndarray, glacier_depth: np.ndarray, ground_target: np.ndarray
 ) -> np.ndarray:
@@ -1322,6 +1356,19 @@ def compute_hydrology(
     dry_transit_loss = transit_loss * dry_fraction
     fill_years = years if history_years is None else history_years
     liquid_precip = np.where(is_frozen, 0.0, precipitation_at_nodes)
+    seasonal_amplitude = (
+        seasonal_amplitude_at_nodes if seasonal_amplitude_at_nodes is not None else np.zeros(n)
+    )
+    ice_free_fraction = seasonal_fraction_above(
+        temperature_at_nodes, seasonal_amplitude, FREEZE_POINT_C
+    )
+    open_season_temperature_c = seasonal_open_mean_c(
+        temperature_at_nodes, seasonal_amplitude, FREEZE_POINT_C
+    )
+    lake_open_evaporation_m_per_yr = (
+        breaching.open_water_evaporation_mm(open_season_temperature_c) / 1000.0 * ice_free_fraction
+    )
+    lake_sublimation_m_per_yr = LAKE_ICE_SUBLIMATION_M_PER_YR * (1.0 - ice_free_fraction)
     evaporation_mm = breaching.open_water_evaporation_mm(temperature_at_nodes)
     wet_precip_m3, dry_runoff_m3, _ = _partition_precipitation_sources(
         liquid_precip, evaporation_mm, areas, wet_fraction
@@ -1340,6 +1387,8 @@ def compute_hydrology(
                 liquid_precip, temperature_at_nodes, areas,
                 loss_fraction=dry_transit_loss, dry_fraction=dry_fraction,
                 direct_supply_m3_per_yr=wet_precip_m3,
+                lake_evaporation_m_per_yr=lake_open_evaporation_m_per_yr,
+                lake_sublimation_m_per_yr=lake_sublimation_m_per_yr,
             ),
             mobile_cover_m=mobile_cover,
             prior_notch_m=collect_all_breach_notch_depth(plates_in_order),
@@ -1443,7 +1492,8 @@ def compute_hydrology(
 
     lake_climate = lakes.LakeClimate(
         inflow_m3_per_yr=external_supply,
-        evaporation_m_per_yr=evaporation_mm / 1000.0,
+        evaporation_m_per_yr=lake_open_evaporation_m_per_yr,
+        sublimation_m_per_yr=lake_sublimation_m_per_yr,
         external_supply_m3_per_yr=external_supply,
         wet_precip_m3_per_yr=wet_settled,
         dry_runoff_m3_per_yr=dry_settled,

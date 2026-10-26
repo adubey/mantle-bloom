@@ -803,6 +803,27 @@ def test_seasonal_positive_degrees_limits():
     assert np.all(np.diff(hydrology.seasonal_positive_degrees(np.full_like(amps, -6.0), amps)[21:]) > 0.0)
 
 
+def test_seasonal_lake_ice_helpers_match_analytic_cycle_and_are_continuous():
+    means = np.array([-2.0, -1.0, 0.0, 1.0, 2.0])
+    amplitude = np.full_like(means, 2.0)
+    fraction = hydrology.seasonal_fraction_above(means, amplitude)
+    assert fraction == pytest.approx([0.0, 1.0 / 3.0, 0.5, 2.0 / 3.0, 1.0])
+    assert hydrology.seasonal_open_mean_c(np.array([-1.0]), np.array([2.0]))[0] == pytest.approx(
+        -1.0 + 2.0 * np.sin(np.pi / 3.0) / (np.pi / 3.0)
+    )
+    assert hydrology.seasonal_freezing_degrees(np.array([-1.0]), np.array([2.0]))[0] == pytest.approx(
+        2.0 / 3.0 + np.sqrt(3.0) / np.pi
+    )
+    # Zero amplitude and threshold-touching limits are defined; the open-season mean tends
+    # to the threshold as the ice-free fraction tends to zero.
+    assert hydrology.seasonal_fraction_above(np.array([-1.0, 1.0]), np.zeros(2)) == pytest.approx([0.0, 1.0])
+    epsilon = 1e-8
+    near = hydrology.seasonal_open_mean_c(np.array([-2.0 - epsilon, -2.0, -2.0 + epsilon]), np.full(3, 2.0))
+    assert np.all(np.isfinite(near))
+    assert near[1] == pytest.approx(0.0)
+    assert near[2] == pytest.approx(0.0, abs=1e-5)
+
+
 def test_compute_hydrology_threads_seasonal_amplitude_into_glacier_melt():
     d = 0.002
     theta = d * np.arange(12)
