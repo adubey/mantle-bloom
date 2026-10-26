@@ -1145,8 +1145,16 @@ export default function App() {
     shownRevisionRef.current = undefined;
   }, []);
 
-  // Opens the Generate World dialog for a brand-new planet: Add always adds a
-  // world and never replaces the current one, so the dialog starts blank and
+  // Picks a fresh unused exoplanet name into the dialog's Name field (#603).
+  const refreshGenerateName = useCallback(() => {
+    fetchSuggestedName().then(
+      ({ name }) => setGenerateName(name),
+      () => {},
+    );
+  }, []);
+
+  // Opens the Generate World dialog for a brand-new planet: Create always adds
+  // a world and never replaces the current one, so the dialog starts blank and
   // public, with an unused exoplanet pick filled in once it arrives. The
   // suggestion only lands if the user hasn't typed something meanwhile.
   const openGenerateDialog = useCallback(() => {
@@ -1521,7 +1529,7 @@ export default function App() {
             )}
             <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
               <button onClick={openGenerateDialog} disabled={busy || animating || playing} style={{ flex: 1, fontSize: 12 }} title="Open the Generate World dialog">
-                Add
+                Create...
               </button>
               <button
                 onClick={() => {
@@ -2497,14 +2505,26 @@ export default function App() {
 
             <label style={{ display: "block", marginBottom: 12 }}>
               Name
-              <input
-                type="text"
-                value={generateName}
-                onChange={(e) => setGenerateName(e.target.value)}
-                placeholder="Leave blank for an automatic name"
-                disabled={busy}
-                style={{ width: "100%", marginTop: 4, boxSizing: "border-box" }}
-              />
+              <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                <input
+                  type="text"
+                  value={generateName}
+                  onChange={(e) => setGenerateName(e.target.value)}
+                  placeholder="Leave blank for an automatic name"
+                  disabled={busy}
+                  style={{ flex: 1, boxSizing: "border-box", minWidth: 0 }}
+                />
+                <button
+                  type="button"
+                  onClick={refreshGenerateName}
+                  disabled={busy}
+                  title="Suggest another name"
+                  aria-label="Suggest another name"
+                  style={{ fontSize: 14, lineHeight: 1 }}
+                >
+                  ↻
+                </button>
+              </div>
             </label>
             <label style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 16, fontSize: 12 }}>
               <input
