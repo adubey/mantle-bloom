@@ -1027,7 +1027,7 @@ def test_subfreezing_lake_keeps_liquid_and_balances_supply_against_sublimation()
     climate = lakes.LakeClimate(
         np.full(7, 2.0e10 / 7.0),
         np.zeros(7),
-        np.full(7, hydrology.LAKE_ICE_SUBLIMATION_M_PER_YR),
+        sublimation_m_per_yr=np.full(7, hydrology.LAKE_ICE_SUBLIMATION_M_PER_YR),
     )
     floor = hyps.dry_level(lake.members)
     level = lakes.balanced_level(lake, hyps, climate, floor, 200.0)
@@ -1064,7 +1064,7 @@ def test_shallow_margins_evaporate_faster_but_total_evaporation_never_falls_as_t
     # Half-flooded floor cell: its wet half evaporates faster than open water would.
     half = lakes.lake_evaporation_m3_per_yr(0.0, floor, hyps, climate)
     assert half == pytest.approx(0.5 * 1.0e10 * (1.0 + 0.5 * lakes.SHALLOW_EVAPORATION_BOOST))
-    ice_climate = lakes.LakeClimate(np.zeros(1), np.zeros(1), np.full(1, 0.6))
+    ice_climate = lakes.LakeClimate(np.zeros(1), np.zeros(1), sublimation_m_per_yr=np.full(1, 0.6))
     sublimation = lakes.lake_evaporation_m3_per_yr(100.0, np.array([0]), _hyps([100.0], [20.0]), ice_climate)
     assert sublimation == pytest.approx(0.5 * 1.0e10 * 0.6)
     levels = np.linspace(-15.0, 60.0, 3001)

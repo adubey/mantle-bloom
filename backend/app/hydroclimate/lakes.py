@@ -781,10 +781,12 @@ def solve_lakes_prognostic(
 
 
 def lake_evaporation_m3_per_yr(level: float, idx: np.ndarray, hyps: "CellHypsometry", climate: LakeClimate) -> float:
-    """Evaporation from the cells `idx` at water level `level`: each cell's wet area times its
-    open-water rate, raised for partly flooded cells (SHALLOW_EVAPORATION_BOOST)."""
+    """Water loss from wet cells in m³/yr (#608); only open-water evaporation gets the
+    shallow-margin boost."""
     wet = hyps.wet_fraction(level, idx)
     rate = climate.evaporation_m_per_yr[idx] * (1.0 + SHALLOW_EVAPORATION_BOOST * (1.0 - wet))
+    if climate.sublimation_m_per_yr is not None:
+        rate = rate + climate.sublimation_m_per_yr[idx]
     return float((hyps.area_m2[idx] * wet * rate).sum())
 
 

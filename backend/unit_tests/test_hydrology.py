@@ -917,12 +917,13 @@ def test_compute_hydrology_threads_frozen_season_sublimation_through_spill_basin
 )
 def test_compute_hydrology_delivers_every_drop_of_liquid_water_past_cold_nodes(cold, monkeypatch):
     # The closed pit of the test above, with evaporation off and every warm node at 0 C, so no
-    # water evaporates from lakes or in transit (river_transit_loss_fraction is 0 at or below
+    # water is lost from lakes or in transit (river_transit_loss_fraction is 0 at or below
     # 0 C). The pit fills to its rim in the first step; from then on every m^3 of liquid
     # runoff and meltwater must reach the ocean, wherever the cold nodes are (RFC 0014 D2(b),
     # #539). On main the frozen nodes deleted 58% (cold pit), 4% (one cold member) and 53%
     # (cold band) of it.
     monkeypatch.setattr(breaching, "open_water_evaporation_mm", lambda t: np.zeros_like(np.asarray(t, dtype=float)))
+    monkeypatch.setattr(hydrology, "LAKE_ICE_SUBLIMATION_M_PER_YR", 0.0)
     theta = 0.05 * np.arange(40)
     elevation = np.full(40, 300.0)
     elevation[0:15] = -100.0
