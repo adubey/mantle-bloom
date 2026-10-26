@@ -97,6 +97,25 @@ def test_compute_hydrology_exposes_wet_precipitation_once_in_external_supply():
     )
 
 
+def test_seasonal_lake_inputs_leave_dry_land_budyko_pet_unchanged():
+    theta = 0.05 * np.arange(40)
+    elevation = np.linspace(100.0, -100.0, 40)
+    world = World(seed=0, plates=[_flow_line_plate(0, theta, elevation)])
+    precipitation = np.full(40, 800.0)
+    temperature = np.full(40, 5.0)
+
+    steady = hydrology.compute_hydrology(
+        world, precipitation, temperature, years=100_000, seasonal_amplitude_at_nodes=np.zeros(40)
+    )
+    seasonal = hydrology.compute_hydrology(
+        world, precipitation, temperature, years=100_000, seasonal_amplitude_at_nodes=np.full(40, 20.0)
+    )
+
+    assert seasonal.lake_external_dry_runoff_m3_per_yr == pytest.approx(
+        steady.lake_external_dry_runoff_m3_per_yr
+    )
+
+
 def _river_inspector_fields():
     # A hand-built 9-node HydrologyFields for the River Inspector's grouping logic, not run
     # through compute_hydrology (small enough to hit its FLOW_NEIGHBOR_COUNT bail-out path
@@ -868,6 +887,29 @@ def test_compute_hydrology_keeps_a_lake_where_its_water_is_cold(cold):
     assert fields.lake_depth[28:31].max() > 0.0
     ledger = fields.ice.ledger
     assert ledger.closing_m3 <= ledger.opening_m3 + ledger.accumulation_m3  # no water became ice
+
+
+
+def test_compute_hydrology_threads_frozen_season_sublimation_through_spill_basins(monkeypatch):
+    theta = 0.05 * np.arange(40)
+    elevation = np.full(40, 300.0)
+    elevation[0:15] = -100.0
+    elevation[28:31] = -60.0
+    temperature = np.full(40, 15.0)
+    temperature[28:31] = -10.0
+    precipitation = np.full(40, 100.0)
+    world = World(seed=0, plates=[_flow_line_plate(0, theta, elevation)])
+
+    with_sublimation = hydrology.compute_hydrology(
+        world, precipitation, temperature, years=1_000_000, seasonal_amplitude_at_nodes=np.zeros(40)
+    )
+    monkeypatch.setattr(hydrology, "LAKE_ICE_SUBLIMATION_M_PER_YR", 0.0)
+    without_sublimation = hydrology.compute_hydrology(
+        world, precipitation, temperature, years=1_000_000, seasonal_amplitude_at_nodes=np.zeros(40)
+    )
+
+    assert with_sublimation.lake_depth[28:31].max() > 0.0
+    assert with_sublimation.lake_depth[28:31].max() < without_sublimation.lake_depth[28:31].max()
 
 
 @pytest.mark.parametrize(

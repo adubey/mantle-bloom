@@ -1027,7 +1027,7 @@ def test_subfreezing_lake_keeps_liquid_and_balances_supply_against_sublimation()
     climate = lakes.LakeClimate(
         np.full(7, 2.0e10 / 7.0),
         np.zeros(7),
-        np.full(7, 0.6),
+        np.full(7, hydrology.LAKE_ICE_SUBLIMATION_M_PER_YR),
     )
     floor = hyps.dry_level(lake.members)
     level = lakes.balanced_level(lake, hyps, climate, floor, 200.0)

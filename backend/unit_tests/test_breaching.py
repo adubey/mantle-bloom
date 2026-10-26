@@ -205,6 +205,31 @@ def test_a_cheap_pit_breaches_only_when_its_catchment_outpaces_evaporation():
     assert dry.endorheic_pits.tolist() == [3]
 
 
+def test_breach_gate_uses_the_seasonal_lake_losses_when_supplied():
+    elevation = np.array([60.0, 40.0, 20.0, 0.0, 15.0, -50.0])
+    is_ocean = np.array([False] * 5 + [True])
+    args = (elevation, is_ocean, _chain(6), np.zeros(6), _ordinary_rate(6))
+    direct = np.zeros(6)
+    direct[0] = 7.0e9
+    annual_mean = breaching.WaterBalance(
+        np.zeros(6), np.full(6, 5.0), np.full(6, 1.0e10),
+        dry_fraction=np.zeros(6), direct_supply_m3_per_yr=direct,
+    )
+    seasonal = breaching.WaterBalance(
+        np.zeros(6), np.full(6, 5.0), np.full(6, 1.0e10),
+        dry_fraction=np.zeros(6), direct_supply_m3_per_yr=direct,
+        lake_evaporation_m_per_yr=np.full(6, 0.9),
+        lake_sublimation_m_per_yr=np.full(6, 0.2),
+    )
+
+    legacy = breaching.breach_depressions(*args, years=100_000, water=annual_mean)
+    seasonal_result = breaching.breach_depressions(*args, years=100_000, water=seasonal)
+
+    assert legacy.breached_pits.tolist() == [3]
+    assert seasonal_result.breached_pits.tolist() == []
+    assert seasonal_result.endorheic_pits.tolist() == [3]
+
+
 def test_a_pit_downstream_of_an_overflowing_pit_sees_its_river():
     # A long wet slope drains into pit 14, which overflows over node 15 into pit 16. Pit 16's
     # own two-node catchment can't outpace a rim-level lake's evaporation, but the slope's
