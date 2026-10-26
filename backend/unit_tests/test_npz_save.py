@@ -5,7 +5,6 @@ import zipfile
 import numpy as np
 import pytest
 from app import npz_save, persistence
-from app.hydroclimate import climate
 from app.replay_log import fingerprint
 from app.surface_parity import state_hash
 from app.world import generate_world, step_world
@@ -55,29 +54,34 @@ def test_round_trip_keeps_authoritative_state(stepped_world, stepped_bytes):
     assert loaded.collision_progress == stepped_world.collision_progress
 
 
-def test_save_drops_recomputable_caches_and_rebuilds_climate(stepped_world, stepped_bytes):
+def test_save_keeps_step_read_caches_and_drops_erosion_and_scratch(stepped_world, stepped_bytes):
     assert stepped_world.climate_cache is not None and stepped_world.hydrology_cache is not None
 
     loaded = persistence.load_world_bytes(stepped_bytes)
 
-    assert loaded.hydrology_cache is None
+    # The H9 gate requires a post-load step to land on identical authoritative state,
+    # so every cache the next step reads before refreshing it survives the save; only
+    # the erosion cache (overwritten whole by every erosion call) and the derived
+    # scratch go.
     assert loaded.hydrology_cache_step == stepped_world.hydrology_cache_step
-    assert loaded.atmosphere_cfd_state is None
+    np.testing.assert_array_equal(loaded.climate_cache.precipitation_mm, stepped_world.climate_cache.precipitation_mm)
+    np.testing.assert_array_equal(loaded.hydrology_cache.is_ocean, stepped_world.hydrology_cache.is_ocean)
+    assert loaded.atmosphere_cfd_state is not None
     assert loaded.erosion_cache is None
+    assert loaded.collision_polarity_frame is not None
     assert loaded.land_kdtree_cache is None
     assert loaded.node_position_tree_cache is None
-    # A stepped save reloads with a rebuilt climate cache, so the first post-load
-    # step's transpiration reads a real field instead of the zeros path (#596).
-    assert loaded.climate_cache is not None
-    assert np.any(loaded.climate_cache.precipitation_mm > 0)
 
 
-def test_rebuilt_climate_matches_a_fresh_compute(stepped_world, stepped_bytes):
-    loaded = persistence.load_world_bytes(stepped_bytes)
-    fresh = climate.compute_climate(loaded, *climate.grid_dimensions(loaded.climate_density))
+def test_post_load_step_lands_on_identical_state():
+    # The H9 gate at unit scale: stepping the loaded copy matches stepping the world.
+    world = generate_world(seed=11, num_plates=2, node_density=0.5)
+    step_world(world, 1_000_000)
+    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+    step_world(world, 100_000)
+    step_world(loaded, 100_000)
 
-    np.testing.assert_array_equal(loaded.climate_cache.precipitation_mm, fresh.precipitation_mm)
-    np.testing.assert_array_equal(loaded.climate_cache.air_temperature_c, fresh.air_temperature_c)
+    assert state_hash(loaded) == state_hash(world)
 
 
 def test_fresh_world_keeps_the_empty_cache_signal():
@@ -90,8 +94,8 @@ def test_fresh_world_keeps_the_empty_cache_signal():
     assert state_hash(loaded) == state_hash(world)
 
 
-def test_record_profile_keeps_data_caches(stepped_world):
-    data = persistence.save_record_bytes(stepped_world)
+def test_exact_profile_keeps_all_data_caches(stepped_world):
+    data = persistence.save_exact_bytes(stepped_world)
     loaded = persistence.load_world_bytes(data)
 
     assert loaded.climate_cache is not None
@@ -119,6 +123,20 @@ def test_entry_count_stays_batched(stepped_bytes):
     assert len(zf.namelist()) < 500
 
 
+def test_v5_save_is_smaller_than_the_pickle_it_replaces(stepped_world):
+    import pickle as _pickle
+
+    legacy = _pickle.dumps(
+        {
+            "format": persistence.SAVE_FORMAT,
+            "version": 4,
+            "surface": persistence.world_surface(stepped_world),
+            "world": stepped_world,
+        }
+    )
+    assert len(persistence.save_world_bytes(stepped_world)) < len(legacy)
+
+
 def test_unencodable_attribute_fails_closed():
     world = generate_world(seed=3, num_plates=2, node_density=0.5)
     world.__dict__["_probe_weird"] = object()
@@ -142,6 +160,19 @@ def _remanifested(stepped_bytes, mutate):
             if name != "manifest.json":
                 out.writestr(name, zf.read(name))
     return buf.getvalue()
+
+
+def test_loading_a_save_missing_its_climate_cache_rebuilds_it(stepped_world, stepped_bytes):
+    # Safety net for saves that predate the kept cache: the loader recomputes a missing
+    # climate cache for a stepped world instead of leaving the zeros-transpiration path.
+    def drop_climate(manifest):
+        manifest["world"].pop("climate_cache")
+
+    data = _remanifested(stepped_bytes, drop_climate)
+    loaded = persistence.load_world_bytes(data)
+
+    assert loaded.climate_cache is not None
+    assert np.any(loaded.climate_cache.precipitation_mm > 0)
 
 
 def test_loading_a_newer_v5_raises():

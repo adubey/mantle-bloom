@@ -286,19 +286,18 @@ save-format change was needed for multiple worlds.
 
 A v5 save is `manifest.json` plus one `.npy` array per entry under `a/` (see
 `backend/app/npz_save.py`), loaded with `allow_pickle=False` -- no code runs on load.
-The manifest carries the envelope (`format`, `version`, `surface`), the world's scalars
+The manifest holds the envelope (`format`, `version`, `surface`), the world's scalars
 and small containers, one entry per plate (header scalars, cell keys, frames, and the
 `SURFACE_FIELDS` arrays), and packed ragged array columns for dataclass lists (fault
 traces, magma parcels, quakes). Anything else in a world fails the save loudly instead
 of being dropped silently.
 
-Dropped on save, rebuilt on use: the climate, hydrology, erosion and CFD caches, the
-collision-polarity frame, the boundary-search scratch, and every k-d tree / HEALPix
-index cache (the HEALPix grid itself rebuilds from `nside`). A save that was stepped
-reloads with a recomputed `climate_cache` -- keyed off the kept `hydrology_cache_step`
--- so the first post-load step's transpiration reads a real field; a never-stepped world
-keeps the empty-cache signal its readers check for. The rebuild uses post-step
-elevation, so it is fresher but not bit-identical to the in-step cache it replaces:
-about a 0.08 pp land-fraction difference after one 100 kyr step, self-correcting on the
-next step (#596). Replay-log records keep the data caches (see `save_record_bytes`) so
-a replay re-steps exactly.
+Only the erosion cache and derived scratch are dropped: the erosion cache is
+overwritten whole by every erosion call, and the k-d trees, HEALPix index, land tree
+and boundary-search scratch rebuild lazily. The climate, hydrology and CFD caches and
+the polarity frame are always kept -- the H9 hard gate
+(`surface_parity_gates.load_continuation`) requires a post-load step to land on
+identical authoritative state, and the next step reads all four before refreshing
+them, so dropping any of them diverges the run (#596). Replay-log records
+additionally keep the erosion cache (see `save_exact_bytes`) so a replay re-steps
+exactly including its debug views.

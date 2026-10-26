@@ -37,9 +37,9 @@ from .world import World
 #   `app.hydroclimate`. Pickle records class module paths, so earlier builds cannot read
 #   the new paths.
 # - Version 5 replaces pickle with a zip of `.npy` arrays plus a JSON manifest (see
-#   `npz_save.py`), dropping every recomputable cache (see `npz_save._DATA_CACHES`) and
-#   recomputing `climate_cache` on load. Versions 1-4 still load through the pickle
-#   path; only v5 is written.
+#   `npz_save.py`), dropping only the erosion cache and derived scratch: every cache
+#   the next step reads stays, so a post-load step lands on identical state (H9).
+#   Versions 1-4 still load through the pickle path; only v5 is written.
 #
 # Bump on any change an older build can't read. docs/save-compatibility.md is the policy for
 # line-backed (legacy) saves and how they move to quads (legacy_conversion.py).
@@ -76,16 +76,18 @@ def world_surface(world: World) -> str:
 
 
 def save_world_bytes(world: World) -> bytes:
-    """The v5 save of `world`: a zip of `.npy` arrays plus a JSON manifest, without the
-    recomputable caches (see `npz_save.py` for the drop set). What user-facing Save,
-    checkpoints, and diagnostics share; replay-log records use `save_record_bytes`."""
+    """The approximate v5 save of `world`: a zip of `.npy` arrays plus a JSON manifest.
+    Keeps every cache the next step reads (so post-load evolution matches), drops only
+    the erosion cache and derived scratch (see `npz_save.py` for the drop sets). What
+    user-facing Save, checkpoints, and diagnostics share; `save_exact_bytes` is the
+    bit-identical variant for replay-log records and anywhere exactness is needed."""
     return npz_save.save_world_v5(world, keep_caches=False)
 
 
-def save_record_bytes(world: World) -> bytes:
-    """The v5 save of `world` keeping its data caches, for replay-log records: a replay
-    re-steps the record and must reproduce its fingerprint exactly, which needs the
-    pre-step caches a user save drops."""
+def save_exact_bytes(world: World) -> bytes:
+    """The exact v5 save of `world`, keeping the erosion cache too: a replay re-steps
+    the record and must reproduce its fingerprint exactly, including the debug views
+    that read the erosion cache."""
     return npz_save.save_world_v5(world, keep_caches=True)
 
 

@@ -269,7 +269,7 @@ The layout is a registry index plus one subdirectory per world:
   and every whole step (owner, guest or run loop). An animation writes it after each frame,
   so one that ends badly keeps the frames it finished. A step that raises partway still
   publishes what it left to viewers, but isn't checkpointed, so a restart returns to the
-  last whole step. Serializing a default world takes about 0.05 s and writes about 10 MB (v5, caches dropped); loading it back takes about 0.6 s, including the climate-cache rebuild.
+  last whole step. Serializing a default world takes about 0.04 s and writes about 53 MB (v5 keeps the step-read caches so a post-load step matches; only the erosion cache and derived scratch are dropped).
 - `worlds/<world_id>/run_status.json` holds `running` and `step_years`, rewritten on every
   Play/Stop and when a run stops on its own. If that write fails, `POST
   /worlds/{world_id}/run` answers `500` and the status is written again with the next world
@@ -322,7 +322,7 @@ flowchart LR
   with `replay_log.annotate(key, value)`.
 - When a trigger fires, the post-step fingerprint (about 0.1 s at node density 1) is taken
   under the world lock, and the record (`before.mbworld` plus `record.json`) is queued for a
-  background thread, so the ~56 MB write happens off the lock. At most `MAX_QUEUED_RECORDS` (3)
+  background thread, so the ~57 MB write happens off the lock. At most `MAX_QUEUED_RECORDS` (3)
   wait in memory; past that a record is dropped and logged. Shutdown waits up to 10 s for the
   queue. A trigger that fired stays quiet for `DEFAULT_MIN_STEPS_BETWEEN` (20) logged steps,
   and the oldest records are removed once all of them pass `DEFAULT_MAX_BYTES` (2 GB). Pruning

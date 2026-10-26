@@ -278,7 +278,7 @@ def test_fingerprint_ignores_wall_clock_timings_but_not_state(world):
 
 
 def test_fingerprint_survives_a_save_and_load(world):
-    data = persistence.save_record_bytes(world)
+    data = persistence.save_exact_bytes(world)
     assert replay_log.fingerprint(persistence.load_world_bytes(data)) == replay_log.fingerprint(world)
 
 
@@ -413,5 +413,5 @@ def test_records_past_the_queue_bound_are_dropped(tmp_path, world, monkeypatch):
 
 def test_fingerprint_of_a_set_of_objects_survives_a_save_and_load(world):
     vars(world)["token_set"] = frozenset({(1, 2), (3, 4), "five"})
-    reloaded = persistence.load_world_bytes(persistence.save_record_bytes(world))
+    reloaded = persistence.load_world_bytes(persistence.save_exact_bytes(world))
     assert replay_log.fingerprint(reloaded)["token_set"] == replay_log.fingerprint(world)["token_set"]

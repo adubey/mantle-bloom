@@ -42,11 +42,11 @@ def test_round_trip_preserves_a_freshly_generated_world():
         assert np.array_equal(loaded_plate.collect("elevation"), original_plate.collect("elevation"))
 
 
-def test_round_trip_drops_caches_and_rebuilds_climate():
-    # v5 saves (#596) drop every recomputable cache instead of carrying it: hydrology,
-    # CFD and erosion caches do not survive, while the loader recomputes climate_cache
-    # for a stepped world so the next step's transpiration reads a real field. Only
-    # authoritative state -- and kept scalars like hydrology_cache_step -- must match.
+def test_round_trip_keeps_step_read_caches():
+    # v5 saves (#596) keep every cache the next step reads before refreshing it -- the
+    # H9 gate requires a post-load step to land on identical authoritative state. Only
+    # the erosion cache (overwritten whole by every erosion call) and derived scratch
+    # are dropped.
     world = generate_world(seed=7, num_plates=6)
     step_world(world, 5_000_000)
     step_world(world, 5_000_000)
@@ -59,10 +59,13 @@ def test_round_trip_drops_caches_and_rebuilds_climate():
     assert loaded.collision_progress == world.collision_progress
     assert loaded.events == world.events
     assert loaded.hydrology_cache_step == world.hydrology_cache_step == 2
-    assert loaded.hydrology_cache is None
-    assert loaded.atmosphere_cfd_state is None
-    assert loaded.erosion_cache is None
+    assert loaded.hydrology_cache is not None
+    np.testing.assert_array_equal(loaded.hydrology_cache.elevation, world.hydrology_cache.elevation)
     assert loaded.climate_cache is not None
+    np.testing.assert_array_equal(loaded.climate_cache.precipitation_mm, world.climate_cache.precipitation_mm)
+    assert loaded.atmosphere_cfd_state is not None
+    assert loaded.erosion_cache is None
+    assert loaded.land_kdtree_cache is None
 
 
 def test_loading_a_world_pickled_before_steps_taken_existed_defaults_to_zero():

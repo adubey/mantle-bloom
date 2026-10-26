@@ -15,14 +15,16 @@ entries; each array lives at `a/<path>.npy`. Array-valued fields of dataclass li
 (list, field) as a ragged concatenation plus offsets -- one entry per array would
 make thousands of zip entries and dominate write time (see #594).
 
-Two drop profiles share the codec. User saves and checkpoints drop every recomputable
-cache; replay-log records keep the data caches so a replay re-steps exactly
-(`replay_log` compares fingerprints). Unserializable derived scratch (k-d trees, the
-HEALPix grid, the boundary-search cache) is dropped by both profiles and rebuilt
-lazily, the same lifecycle those caches already have. The loader recomputes
-`climate_cache` when the save was stepped (its `hydrology_cache_step` is kept), so the
-first post-load step's transpiration reads a real field; a never-stepped world keeps
-the empty-cache signal its readers rely on.
+Two drop profiles share the codec. Both drop the erosion cache (overwritten whole by
+every erosion call, read only by a debug view) and the unserializable derived scratch
+(k-d trees, the HEALPix grid, the boundary-search cache), which rebuilds lazily;
+replay-log records additionally keep the erosion cache. The climate, hydrology and CFD
+caches and the polarity frame are always kept: the H9 hard gate
+(`surface_parity_gates.load_continuation`) requires a post-load step to land on
+identical authoritative state, and the next step reads all four before refreshing
+them. The loader recomputes a missing `climate_cache` for a save that was stepped
+(its `hydrology_cache_step` is kept) as a safety net for saves that predate it; a
+never-stepped world keeps the empty-cache signal its readers rely on.
 """
 
 from __future__ import annotations
@@ -44,19 +46,17 @@ FORMAT = "mantle-bloom-world"
 VERSION = 5
 SURFACES = ("quad", "empty")
 
-# Recomputable caches and unserializable derived scratch, dropped from user saves and
-# checkpoints. Replay-log records keep the data caches (first set) so a replay of the
-# record re-steps exactly; both profiles drop the derived scratch (second set), which
-# rebuilds lazily from the state around it.
-_DATA_CACHES = frozenset(
-    {
-        "climate_cache",
-        "hydrology_cache",
-        "atmosphere_cfd_state",
-        "erosion_cache",
-        "collision_polarity_frame",
-    }
-)
+# The H9 hard gate (`surface_parity_gates.load_continuation`) requires a step from a
+# loaded world to land on identical authoritative state to a step from the in-memory
+# world -- so every cache the next step reads before recomputing it must survive the
+# save. Measured during #596: dropping the climate, hydrology or CFD caches or the
+# polarity frame diverges the next step (transpiration reads the climate cache, and the
+# hydro/CFD/polarity state feeds the step before it is refreshed), while dropping the
+# erosion cache (overwritten whole by every erosion call, read only by a debug view)
+# steps identically. Replay-log records additionally keep the erosion cache so a replay
+# re-steps exactly including its debug views.
+_SAVE_DROP = frozenset({"erosion_cache"})
+_RECORD_DROP = frozenset()
 _DERIVED_SCRATCH = frozenset(
     {
         "land_kdtree_cache",
@@ -72,7 +72,9 @@ _DERIVED_SCRATCH = frozenset(
 
 
 def _drop_for(*, keep_caches: bool) -> frozenset:
-    return _DERIVED_SCRATCH if keep_caches else _DERIVED_SCRATCH | _DATA_CACHES
+    if keep_caches:
+        return _DERIVED_SCRATCH | _RECORD_DROP
+    return _DERIVED_SCRATCH | _SAVE_DROP
 
 
 def _freeze_scalar(value, path: str):
@@ -403,7 +405,7 @@ def load_world_v5(data: bytes) -> World:
     world = World.__new__(World)
     world.__dict__.update(world_dict)
     world.plates = plates
-    for name in _DATA_CACHES | _DERIVED_SCRATCH:
+    for name in _SAVE_DROP | _RECORD_DROP | _DERIVED_SCRATCH:
         world.__dict__.setdefault(name, None)
     _rebuild_climate(world)
     return world
