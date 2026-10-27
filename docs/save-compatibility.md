@@ -277,10 +277,15 @@ carries a field this build doesn't know. The only line-only plate state is
 ## 7. Multi-world registry metadata (#563)
 
 The registry's world identity and management metadata (id, name, visibility, timestamps)
-live in `worlds.json` beside the per-world checkpoints, outside the saved `World`. A
-save therefore carries no name or visibility: loading one into a record keeps that record's
-name and visibility, and importing a legacy one-world checkpoint creates a new record. No
-save-format change was needed for multiple worlds.
+live in `worlds.json` beside the per-world checkpoints, outside the saved `World`. The
+record name additionally rides in the v5 manifest as advisory metadata
+(`persistence.save_world_bytes(..., name=...)`, read back with
+`persistence.load_world_name`): `POST /worlds/import` names the new record from it, so a
+saved planet reloads under its own name (#652). Visibility is never carried. A
+replace-load into an existing record (`POST /worlds/{world_id}/load`) keeps that record's
+name and visibility, and importing a legacy one-world checkpoint creates a new record.
+The name key is ignored on read, so older builds load named saves and just drop the name;
+pre-v5 pickles carry no name and import under an explicit or generated one.
 
 ## 8. Version 5 saves
 

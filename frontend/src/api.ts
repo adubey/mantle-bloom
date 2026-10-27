@@ -991,16 +991,61 @@ export function saveWorld(worldId: WorldId): Promise<Blob> {
   return fetch(`${worldBase(API_BASE, worldId)}/save`).then(asBlob);
 }
 
+// The `409` payload of POST /worlds/import when the resolved name is taken --
+// the duplicate-name dialog's three options (keep both, rename, cancel) are
+// built on exactly these fields (see backend app/main.py's import_world).
+export interface WorldImportConflict {
+  duplicateName: string;
+  existingWorldId: string;
+  // Equal seeds: the upload is the same planet at another date, not a coincidence.
+  samePlanet: boolean;
+  uploadedElapsedYears: number;
+  existingElapsedYears: number | null;
+  suggestedName: string;
+}
+
+export class WorldImportConflictError extends Error {
+  conflict: WorldImportConflict;
+  constructor(conflict: WorldImportConflict) {
+    super(`a world named "${conflict.duplicateName}" already exists`);
+    this.name = "WorldImportConflictError";
+    this.conflict = conflict;
+  }
+}
+
 // "File > Load World" -- `file` is the raw bytes of a file saveWorld() previously produced
-// (an <input type="file">'s File object, or any Blob). Replaces whatever world previously
-// existed, same as generateWorld -- the caller should run the same full refresh sequence it
-// runs after generateWorld.
-export function loadWorld(worldId: WorldId, file: Blob): Promise<WorldSummary> {
-  return fetch(`${worldBase(API_BASE, worldId)}/load`, {
+// (an <input type="file">'s File object, or any Blob). The save becomes a brand-new world
+// record: loading never replaces the open planet and works with no worlds yet (#652).
+// The record name is `opts.name`, else the name stamped into the save, else a fresh
+// generated one. When the resolved name is taken (and `allowDuplicate` is unset) this
+// throws WorldImportConflictError carrying the dialog's options; any other failure
+// throws a plain Error like every other fetch helper here.
+export async function importWorld(file: Blob, opts?: { name?: string; allowDuplicate?: boolean }): Promise<WorldRecord> {
+  const params = new URLSearchParams();
+  if (opts?.name !== undefined) params.set("name", opts.name);
+  if (opts?.allowDuplicate) params.set("allow_duplicate", "true");
+  const query = params.toString();
+  const resp = await fetch(`${API_BASE}/worlds/import${query ? `?${query}` : ""}`, {
     method: "POST",
     headers: { "Content-Type": "application/octet-stream" },
     body: file,
-  }).then(asJson<WorldSummary>);
+  });
+  if (resp.status === 409) {
+    const body = (await resp.json()) as { detail: unknown };
+    // A string detail is the world-cap refusal, not a name conflict.
+    if (typeof body.detail === "object" && body.detail !== null) {
+      const d = body.detail as Record<string, unknown>;
+      throw new WorldImportConflictError({
+        duplicateName: String(d.duplicate_name),
+        existingWorldId: String(d.existing_world_id),
+        samePlanet: d.same_planet === true,
+        uploadedElapsedYears: Number(d.uploaded_elapsed_years),
+        existingElapsedYears: typeof d.existing_elapsed_years === "number" ? d.existing_elapsed_years : null,
+        suggestedName: String(d.suggested_name),
+      });
+    }
+  }
+  return asJson<WorldRecord>(resp);
 }
 
 export interface AnimateResponse extends WorldSummary {

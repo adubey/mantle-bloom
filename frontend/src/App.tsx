@@ -1261,10 +1261,18 @@ export default function App() {
   }, [refreshWorlds, selectWorld]);
 
   // Worlds only come into existence through an explicit creation action (the
-  // Generate dialog's Add, via createAndSelectWorld below). File > Load used to
-  // mint a world when none was selected -- removed in #639: loading replaces the
-  // selected world, and with none selected the Load button stays disabled instead
-  // of creating one behind the user's back.
+  // Generate dialog's Add, via createAndSelectWorld above, or File > Load World's
+  // import, via handleWorldImported below). #639's auto-minting on selection stays
+  // removed: nothing here creates a world behind the user's back.
+
+  // FileModal's "Load World" (#652) -- the save arrives as a brand-new record, so
+  // unlike handleWorldReplaced there is nothing to sync into the live view:
+  // refresh the menu and select the newcomer, and the selection-restore effect
+  // loads it exactly like a world picked from the menu.
+  const handleWorldImported = useCallback(async (record: WorldRecord) => {
+    await refreshWorlds();
+    selectWorld(record.world_id);
+  }, [refreshWorlds, selectWorld]);
 
   // The Controls modal's World tab: renaming and publishing apply to the
   // selected world immediately (#597). A blank name keeps the current one.
@@ -2762,7 +2770,7 @@ export default function App() {
           mapView={mapView}
           mapWrapperRef={mapWrapperRef}
           onClose={() => setShowFileModal(false)}
-          onWorldReplaced={handleWorldReplaced}
+          onWorldImported={handleWorldImported}
         />
       )}
 

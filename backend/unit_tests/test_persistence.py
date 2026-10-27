@@ -25,6 +25,15 @@ def _line_pickle(payload) -> bytes:
         return pickle.dumps(payload)
 
 
+def test_manifest_name_round_trips_and_defaults_to_none():
+    # #652: File > Save stamps the record name into the v5 manifest; a save
+    # written without one (checkpoints, old saves) reports None.
+    world = generate_world(seed=42, num_plates=4, node_density=0.5, climate_density=0.5, fluid_density=0.5)
+    assert persistence.load_world_name(persistence.save_world_bytes(world, name="Epsilon Andretti b")) == "Epsilon Andretti b"
+    assert persistence.load_world_name(persistence.save_world_bytes(world)) is None
+    assert persistence.load_world_name(b"definitely not a saved world") is None
+
+
 def test_round_trip_preserves_a_freshly_generated_world():
     world = generate_world(seed=42, num_plates=6)
     data = persistence.save_world_bytes(world)
