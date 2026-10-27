@@ -2,7 +2,6 @@ import { useCallback, useRef, useState } from "react";
 import type { MapView, WorldSummary } from "./api";
 import { exportHexGrid, loadWorld, saveWorld } from "./api";
 import ModalShell from "./ModalShell";
-import type { WorldId } from "./worldRoutes";
 
 // Matching backend app/geodesic.py's FREQUENCY_CHOICES/tile_count (10*frequency**2 + 2).
 const HEX_FREQUENCY_OPTIONS: { frequency: number; label: string }[] = [
@@ -25,9 +24,6 @@ interface Props {
   // interfaces, so it works uniformly across every view, not just the PNG-backed ones.
   mapWrapperRef: React.RefObject<HTMLDivElement | null>;
   onClose: () => void;
-  // Mints the world a load needs when none is selected yet (a fresh server holds
-  // no worlds, and Add no longer creates empty ones, #597).
-  onEnsureWorldId: () => Promise<WorldId>;
   // A load replaces the live world -- the caller runs the same full refresh sequence it
   // already runs after generateWorld.
   onWorldReplaced: (summary: WorldSummary) => Promise<void>;
@@ -44,7 +40,7 @@ function downloadBlob(blob: Blob, filename: string): void {
 
 export default function FileModal({
   worldId, hasWorld, seed, elapsedYears, mapView, mapWrapperRef,
-  onClose, onWorldReplaced, onEnsureWorldId,
+  onClose, onWorldReplaced,
 }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -69,10 +65,14 @@ export default function FileModal({
   }), [runAction, seed, elapsedYears, worldId]);
 
   const handleLoadFileChosen = useCallback((file: File) => runAction("load", async () => {
-    const summary = await loadWorld(worldId || (await onEnsureWorldId()), file);
+    // Loading replaces the selected world -- creating one is the Create...
+    // dialog's job (#639), so with none selected the Load button below stays
+    // disabled instead of minting a world behind the user's back.
+    if (!worldId) throw new Error("Create or select a world first, then load into it.");
+    const summary = await loadWorld(worldId, file);
     await onWorldReplaced(summary);
     onClose();
-  }), [runAction, onWorldReplaced, onClose, worldId, onEnsureWorldId]);
+  }), [runAction, onWorldReplaced, onClose, worldId]);
 
   const handleSaveImage = useCallback(() => runAction("image", async () => {
     const canvas = mapWrapperRef.current?.querySelector("canvas");
@@ -98,7 +98,7 @@ export default function FileModal({
             <button onClick={handleSaveWorld} disabled={!hasWorld || busy !== null} style={{ flex: 1, fontSize: 12 }}>
               {busy === "save" ? "Saving..." : "Save World"}
             </button>
-            <button onClick={() => fileInputRef.current?.click()} disabled={busy !== null} style={{ flex: 1, fontSize: 12 }}>
+            <button onClick={() => fileInputRef.current?.click()} disabled={!worldId || busy !== null} title={!worldId ? "Create or select a world first -- loading replaces it entirely" : undefined} style={{ flex: 1, fontSize: 12 }}>
               {busy === "load" ? "Loading..." : "Load World"}
             </button>
           </div>
@@ -116,6 +116,7 @@ export default function FileModal({
           <div style={{ fontSize: 11, opacity: 0.6 }}>
             Saves the complete simulation state to a single file, with no guarantee of
             compatibility across app versions. Loading replaces the current world entirely.
+            {!worldId && " Create or select a world first -- loading never creates one."}
           </div>
         </fieldset>
 
