@@ -57,5 +57,8 @@ def test_star_names_are_not_known_exoplanet_hosts():
         "LHS 1140", "K2-18", "TOI-700", "Ross 128", "Wolf 1061", "55 Cancri",
         "Upsilon Andromedae", "Mu Arae", "HD 40307", "HD 209458",
         "51 Pegasi", "47 Ursae Majoris", "Pollux",
+        # Removed by the alias-aware re-check, pinned against re-adding: HD 191785
+        # hosts TOI-5789 b-e, and HIP 79672 duplicates 18 Scorpii.
+        "HD 191785", "HIP 79672",
     }
     assert not (set(STAR_NAMES) & known_hosts)

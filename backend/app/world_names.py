@@ -6,17 +6,19 @@ from collections.abc import Collection
 # Sun-like stars with no known (confirmed) planets, so a fresh world never borrows
 # the name of a real planetary system (#640). Every entry below was checked against
 # the NASA Exoplanet Archive's confirmed-planets table (`pscomppars`, distinct
-# hostnames, October 2026) and came back absent; solar-twin/analog status follows
-# the usual literature lists. That check also ruled out lookalikes that do host
-# planets despite their status -- 16 Cygni B, HD 42618, HD 141004 and HD 45184
-# among them -- plus debated cases (59 Virginis) and unconfirmed candidates
-# (Alpha Centauri A), which are left out. The claim can go stale with new
-# discoveries; re-run the archive check before extending this list.
+# hostnames, October 2026) two ways: directly, and by cross-identifying all SIMBAD
+# aliases for each entry against the same hostname list -- hostnames use discovery
+# catalogs (TOI, K2), so a bare HD-number check misses hosts like TOI-5789. That
+# alias-aware check ruled out lookalikes carrying planets despite twin status
+# (16 Cygni B, HD 42618, HD 141004, HD 45184, HD 168009 and HD 191785 itself),
+# a duplicate (HIP 79672 is 18 Scorpii), debated cases (59 Virginis) and
+# unconfirmed candidates (Alpha Centauri A), all left out. Solar-twin/analog
+# status follows the usual literature lists. The claim can go stale with new
+# discoveries; re-run both checks before extending this list.
 STAR_NAMES: tuple[str, ...] = (
     "18 Scorpii",
     "HD 98618",
     "HIP 56948",
-    "HIP 79672",
     "HIP 100963",
     "HIP 73815",
     "HD 143436",
@@ -25,6 +27,8 @@ STAR_NAMES: tuple[str, ...] = (
     "HD 10307",
     "HD 34411",
     "HD 138573",
+    "HD 135101",
+    "HD 150248",
     "HD 197027",
     "HD 76151",
     "Sigma Draconis",
@@ -43,7 +47,6 @@ STAR_NAMES: tuple[str, ...] = (
     "HD 9986",
     "HD 73350",
     "HD 187237",
-    "HD 191785",
     "HD 19632",
     "37 Geminorum",
     "Beta Canum Venaticorum",
