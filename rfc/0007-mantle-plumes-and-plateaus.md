@@ -293,8 +293,10 @@ any tuning replay.
   from the plume's own budget alone. (Mineral deposits, which `volcanism.py` grows per
   eruption, are not grown on plume cells; out of scope.)
 - *Breakup stress.* A plate whose continental cells take a head gets `PLUME_HEAD_STRESS`
-  added to its `internal_stress`, the breakup pressure `merge_split.maybe_split_plate`
-  reads, after plume-driven breakup [[White & McKenzie, 1989]](#ref-white1989).
+  added to its `internal_stress`, one input among several that
+  `merge_split.maybe_split_plate` reads. The bump relaxes two split gates but
+  cannot create a cut or force a split on its own, and no head-conditional
+  incidence is claimed (#623).
 - *Events.* One event is logged per head: plate, volume, and oceanic or continental.
 
 **Cross-section rendering (deliverable).** Plumes are drawn in the cross-section view,
@@ -450,16 +452,16 @@ worlds can turn plumes off that way.
 | `PLATEAU_PRESERVED_FRACTION` | 0.9 | Calibration assumption: budgets count accreted plateaus as continental growth [[Clift et al., 2009]](#ref-clift2009), though they are mafic | Sensitivity at 0.5 |
 | `PLUME_HEAT_MYR` | 20 Myr | The order of thermal re-equilibration of heated lithosphere; no direct constraint | Provisional; tune for plume-assisted sensitivity only after RFC 0010 Gate 3 propagation/linkage checks (see cross-RFC interface) |
 | `PLUME_CRATON_WEAKENING` | 0.75 | Cancels `CRATON_RIFT_RESISTANCE` at full heat | Provisional 0.5–1.0 sweep; heated-as-weak cannot replace local damage/growth (see cross-RFC interface) |
-| `PLUME_HEAD_STRESS` | 1.5 (`internal_stress` units; `STRESS_CERTAIN_RIFT` = 3.0) | Breakup often follows a continental plume head [[White & McKenzie, 1989]](#ref-white1989); no rate is given | Provisional design target: about half of continental plume heads followed by a split of their plate within 20 Myr; report matched plume-off/background incidence before stress tuning. Sensitivity at 0.75 and 3.0, plus 0 to disable |
+| `PLUME_HEAD_STRESS` | 1.0 (`internal_stress` units; `STRESS_CERTAIN_RIFT` = 3.0) | Breakup often follows a continental plume head [[White & McKenzie, 1989]](#ref-white1989); no rate is given | Weak coupling only: the half-of-heads incidence target is dropped (#623 -- head-following 0.19 vs matched 0.52 in #582, flat response 0-3.0 in #584). Sensitivity at 0.75 and 3.0, plus 0 to disable |
 
-**Breakup calibration after #358.** The #403 tuning worlds record 115, 109 and 104 splits
+**Breakup calibration after #358 (closed by #623).** The #403 tuning worlds record 115, 109 and 104 splits
 per Gyr on seeds 7, 11 and 2024, respectively. These whole-world counts do not measure the
-conditional 20 Myr split incidence at a head's host. A split within 20 Myr of a head can
-also occur under the current 2 Myr cooldown without plume stress. Before the half-of-heads target supports
-stress tuning, report it beside matched plume-off/background split incidence at the same
-scheduled head times and host plates, with the same step schedule and controls. The half
-fraction remains a provisional design choice, and this refresh sets no new stress value.
-[#407](https://github.com/adubey/mantle-bloom/issues/407) includes that baseline comparison.
+conditional 20 Myr split incidence at a head's host. The half-of-heads target is dropped:
+the #582 comparator found head-following incidence (0.19) below matched plume-off
+incidence (0.52), and the #584 stress sweep was flat across 0-3.0. A head's stress bump
+relaxes two split gates but does not set the split rate, so no head-conditional target
+constrains stress tuning. Conditioning a future target on already-rift-prone flow states
+is left to RFC 0010's local-damage machinery.
 
 **RFC 0010 target class and current evidence.** RFC 0010's first Earth-facing comparison is the
 plume-associated continental-rift subset. It does not claim that every Earth rift is plume-driven;
@@ -474,9 +476,10 @@ causal tip propagation, segment linkage and a viable production split. The dike-
 reported by the RFC 0010 agent (arrest bracketed between 60 and 60.5 km, event volume about
 0.814 km³ against a 1–2 km³ comparison range) come from uncommitted Gate 3 diagnostics and are
 not yet in-repo evidence: they identify mechanics still to solve, do not calibrate plume
-weakening, and do not show that a plume caused a rift. Keep the half-of-heads
-split incidence as a provisional design choice, and do not tune plume coupling to it until local
-rift growth and the matched plume-off/on comparison are supported.
+weakening, and do not show that a plume caused a rift. The half-of-heads
+split incidence target is dropped (#623), and plume coupling is not tuned to
+any head-conditional incidence until local rift growth and the matched
+plume-off/on comparison are supported.
 
 Tune on seeds 7, 11 and 2024 to 1 Gyr, plus a regenerated seed 456862899 to 3 Gyr; run the
 replays one at a time, after the isolated-head scale check passes. Record the generating
@@ -751,10 +754,11 @@ emplacement or plateau docking.
   RFC 0010 for the plume-associated subset split.
 - [x] Before tuning `PLUME_HEAD_STRESS`, report the fraction of continental heads followed
       by a split within 20 Myr beside matched plume-off/background incidence under the
-      physical 2 Myr cooldown. The half-of-heads target remains a provisional design
-      choice, not evidence that a later split was caused by a plume.
+      physical 2 Myr cooldown. A later split following a head is not evidence the
+      plume caused it; the half-of-heads target is dropped (#623).
   **Result (PR #600 comparator, PR #619 sweep):** 0.19 head-following vs 0.52
-  matched plume-off; stress flat 0–3.0. Target unsupported. Follow-up: #623.
+  matched plume-off; stress flat 0–3.0. Target dropped by #623; table value
+  corrected to the code's 1.0.
 - [ ] Step time changes by less than 3% at density 4; save size by less than 3%.
   **Partial (PR #619):** mean step 4–7 s recorded per case; the density-4
   comparison and save-size check are still open.
