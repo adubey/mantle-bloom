@@ -708,9 +708,7 @@ def test_multiplier_zero_matches_plume_off_replay(monkeypatch):
             # years=0 takes the real early-return path without touching the
             # world, so this pins the patched dict to the real contract.
             assert set(zero_result) == set(plumes.apply(world, 0.0))
-            monkeypatch.setattr(
-                plumes, "apply", lambda wd, yrs, *a, **k: dict(zero_result)
-            )
+            monkeypatch.setattr(plumes, "apply", lambda *a, **k: dict(zero_result))
         for _ in range(10):
             world_mod.step_world(world, 1e6)
         return _world_fingerprint(world)
