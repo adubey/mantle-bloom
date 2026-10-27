@@ -4,6 +4,7 @@ import gc
 import io
 import json
 import math
+import tempfile
 import threading
 import time
 from types import SimpleNamespace
@@ -1348,6 +1349,24 @@ def test_load_with_malformed_bytes_returns_400(client):
     resp = client.post("/world/load", content=b"definitely not a saved world")
     assert resp.status_code == 400
     assert "not a readable mantle-bloom save" in resp.json()["detail"]
+
+
+def test_load_rejects_an_upload_over_the_size_cap(client, monkeypatch, tmp_path):
+    # A huge upload must be refused while it is still streaming in (#376): a hosted
+    # container has no RAM to spare for buffering it before unpickling even starts.
+    # Spool into the test's tmp dir and require it to be empty afterwards: the refused
+    # upload's temp file must not leak.
+    monkeypatch.setattr(main, "MAX_LOAD_WORLD_BYTES", 10)
+    real_mkstemp = tempfile.mkstemp
+
+    def mkstemp_in_tmp_dir(*args, **kwargs):
+        kwargs.setdefault("dir", str(tmp_path))
+        return real_mkstemp(*args, **kwargs)
+
+    monkeypatch.setattr(tempfile, "mkstemp", mkstemp_in_tmp_dir)
+    resp = client.post("/world/load", content=b"0123456789ABCDEF")
+    assert resp.status_code == 413
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_load_reports_a_save_from_a_newer_build_as_unsupported(client):

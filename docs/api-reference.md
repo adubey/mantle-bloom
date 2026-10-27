@@ -331,6 +331,10 @@ readable save (corrupt, truncated, or not a mantle-bloom file) or are in a forma
 newer than this build reads (the save envelope or one of its sparse-quad plates). Nothing
 falls back to a partial load.
 
+The body streams to a temp file and unpickles from disk, so a large upload never sits in
+RAM twice (as bytes and as a world). Bodies past 512 MB (`MAX_LOAD_WORLD_BYTES` in
+`backend/app/main.py`) are refused with `413` while still streaming.
+
 `503` while a generation, step or animation is in progress, so a running step can't keep
 changing a world that has already been replaced.
 

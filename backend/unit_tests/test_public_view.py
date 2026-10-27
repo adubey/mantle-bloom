@@ -423,14 +423,14 @@ def test_owner_changes_invalidate_viewer_renders(steps, monkeypatch, change):
         monkeypatch.setattr(main.climate, "compute_climate", lambda *args: None)
         assert client.post(f"/worlds/{_S.world_id}/controls", json={"solar_multiplier": 1.1}).status_code == 200
     else:
-        monkeypatch.setattr(main.persistence, "load_world_bytes", lambda body: _AnyWorld(
+        monkeypatch.setattr(main.persistence, "load_world_file", lambda file: _AnyWorld(
             seed=7, elapsed_years=0.0, hydrology_cache=None))
         assert client.post(f"/worlds/{_S.world_id}/load", content=b"save").status_code == 200
     assert client.get(f"/public/worlds/{_S.world_id}/render").json()["revision"] != before
 
 
 def test_load_while_the_world_is_busy_is_refused(steps, monkeypatch):
-    monkeypatch.setattr(main.persistence, "load_world_bytes", lambda body: _AnyWorld(
+    monkeypatch.setattr(main.persistence, "load_world_file", lambda file: _AnyWorld(
         seed=8, elapsed_years=0.0, hydrology_cache=None))
     before = _revision(_local())
     assert _S.begin_operation()
