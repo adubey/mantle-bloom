@@ -1371,14 +1371,19 @@ def advance_lake_ice(
     growth_we = np.clip(integrated_growth_i, 0.0, None) * ratio
     sublimation_we = sublimation_i * ratio
     melting_we = melting_i * ratio
-    new_ice = h * ratio
-    new_liquid = liquid + melting_we - growth_we
-    # Growth is limited by the liquid actually available after melt. Correct the integrated
-    # trajectory by the deficit at a fully bedfast shallow cell, preserving total mass.
-    deficit = np.maximum(-new_liquid, 0.0)
-    new_ice = np.maximum(new_ice - deficit, 0.0)
-    growth_we = np.maximum(growth_we - deficit, 0.0)
-    new_liquid = np.maximum(new_liquid, 0.0)
+    # A shallow bed limit can be reached before the end of a long step. The unconstrained
+    # Stefan trajectory must not keep cycling new ice through melt/sublimation after all local
+    # liquid has frozen. Freeze only liquid available at step start, melt only ice already
+    # stored, and limit sublimation to the remaining ice inventory.
+    growth_we = np.minimum(growth_we, liquid)
+    melting_we = np.minimum(melting_we, ice)
+    sublimation_we = np.minimum(sublimation_we, np.maximum(ice + growth_we - melting_we, 0.0))
+    new_ice = np.maximum(ice + growth_we - melting_we - sublimation_we, 0.0)
+    max_ice_we = np.minimum(LAKE_ICE_MAX_THICKNESS_M * ratio, ice + liquid)
+    excess_ice_we = np.maximum(new_ice - max_ice_we, 0.0)
+    growth_we = np.maximum(growth_we - excess_ice_we, 0.0)
+    new_ice = np.maximum(ice + growth_we - melting_we - sublimation_we, 0.0)
+    new_liquid = np.maximum(liquid - growth_we + melting_we, 0.0)
     ice_delta = float(np.dot(new_ice - ice, area))
     return new_ice, new_liquid, {
         "sublimation_m3": float(np.dot(sublimation_we, area)),
