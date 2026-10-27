@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { API_BASE } from "./api";
 import Legend from "./Legend";
 import MapCanvas from "./MapCanvas";
+import ProgressBar from "./ProgressBar";
 import {
   fetchPublicState,
   fetchPublicWorlds,
@@ -245,7 +246,10 @@ function WorldView({ worldId }: { worldId: WorldId }) {
   // Follow the selected public world: a long poll that answers when anyone
   // (another viewer, or the owner) changes it, so this page re-renders
   // without stepping itself (#374). Restarted on every revision change,
-  // including this viewer's own steps.
+  // including this viewer's own steps. A poll answer that only carries new
+  // step progress (same revision) still commits: that is the wait progress
+  // bar's live feed (#653).
+  const progressKeyRef = useRef<string | null>(null);
   useEffect(() => {
     if (!loaded) return;
     const seen = revision ?? "";
@@ -254,8 +258,12 @@ function WorldView({ worldId }: { worldId: WorldId }) {
     const poll = () => {
       fetchPublicState(worldId, seen, controller.signal, isDemo).then(
         (next) => {
-          if ((next.world?.revision ?? "") === seen) poll();
-          else setState(next);
+          const progressKey = JSON.stringify(next.step_progress ?? null);
+          if ((next.world?.revision ?? "") === seen && progressKey === progressKeyRef.current) poll();
+          else {
+            progressKeyRef.current = progressKey;
+            setState(next);
+          }
         },
         () => {
           // Back off on errors (server restarting, network blip) rather than spinning.
@@ -337,6 +345,15 @@ function WorldView({ worldId }: { worldId: WorldId }) {
         {isDemo && <AllowanceNote state={state} demo />}
       </div>
       {notice && <p style={{ opacity: 0.8 }}>{notice}</p>}
+      {state.step_progress && (
+        <div style={{ marginBottom: 12 }}>
+          <ProgressBar
+            label="Step in progress"
+            text={`Step in progress: ${state.step_progress.phase}`}
+            fraction={state.step_progress.fraction}
+          />
+        </div>
+      )}
       <div ref={mapWrapperRef}>
         <MapCanvas
           imageBase64={image}

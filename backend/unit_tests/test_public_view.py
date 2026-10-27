@@ -176,7 +176,10 @@ def test_owner_steps_from_the_viewer_without_an_allowance(steps):
     assert "set-cookie" not in resp.headers
 
 
-def test_step_while_owner_holds_the_world_is_busy(guest, steps):
+def test_step_while_owner_holds_the_world_is_busy(guest, steps, monkeypatch):
+    # The share window is shortened: nothing lands, so the 503 still comes, fast.
+    monkeypatch.setattr(public_view, "GUEST_OWNER_STEP_WAIT_S", 0.05)
+    monkeypatch.setattr(public_view, "GUEST_OWNER_STEP_POLL_S", 0.01)
     revision = _revision(guest)
     main._compute_gate.acquire()
     try:
@@ -185,6 +188,81 @@ def test_step_while_owner_holds_the_world_is_busy(guest, steps):
         main._compute_gate.release()
     assert steps == []
     assert guest.get(f"/public/worlds/{_S.world_id}/world").json()["steps_remaining"] == public_view.GUEST_STEP_LIMIT
+
+
+def test_busy_guest_shares_an_owner_step_landing_in_time(guest, steps, monkeypatch):
+    # #653: viewers all asking for the same advance share it however it was computed --
+    # the owner's step landing inside the share window answers this guest for free.
+    monkeypatch.setattr(public_view, "GUEST_OWNER_STEP_WAIT_S", 5.0)
+    revision = _revision(guest)
+    main._compute_gate.acquire()
+    try:
+        def advance():
+            time.sleep(0.2)
+            _S.feed.publish(_S.world)
+
+        worker = threading.Thread(target=advance)
+        worker.start()
+        try:
+            resp = _step(guest, revision)
+        finally:
+            worker.join()
+    finally:
+        main._compute_gate.release()
+    assert resp.status_code == 200
+    assert resp.json()["computed"] is False
+    assert steps == []
+    assert guest.get(f"/public/worlds/{_S.world_id}/world").json()["steps_remaining"] == public_view.GUEST_STEP_LIMIT
+
+
+def test_guest_step_progress_is_published_and_cleared(guest, steps, monkeypatch):
+    # #653: each progress message reaches the session slot (heartbeats carry no new
+    # position), and the slot is cleared when the step lands.
+    published = []
+    monkeypatch.setattr(_S, "set_guest_step_progress", published.append)
+
+    def fake_step(w, years):
+        w.elapsed_years += years
+        yield ("progress", 0.25, "Shifting plates")
+        yield ("heartbeat", 0.25)
+        yield ("progress", 0.5, "Climate")
+
+    monkeypatch.setattr(main, "step_world_progress", fake_step)
+    resp = _step(guest)
+    assert resp.status_code == 200
+    assert resp.json()["computed"] is True
+    assert published == [(0.25, "Shifting plates"), (0.5, "Climate"), None]
+
+
+def test_public_world_reports_guest_step_progress(guest, steps):
+    # #653: the viewer poll carries the live wait-bar position.
+    _S.set_guest_step_progress((0.5, "Shifting plates"))
+    assert guest.get(f"/public/worlds/{_S.world_id}/world").json()["step_progress"] == {
+        "fraction": 0.5,
+        "phase": "Shifting plates",
+    }
+    _S.set_guest_step_progress(None)
+    assert guest.get(f"/public/worlds/{_S.world_id}/world").json()["step_progress"] is None
+
+
+def test_animation_frame_publishes_for_viewers():
+    # #653: each animation frame publishes its revision, so /view watches the steps
+    # instead of nothing until the run's final publish. No checkpoint store: the
+    # checkpoint/sidecar helpers no-op, isolating the publish.
+    session = SimpleNamespace(
+        world=SimpleNamespace(seed=7, elapsed_years=0.0, stats_history=[]),
+        checkpoint_store=None,
+        deleted=False,
+        feed=public_view.WorldFeed(),
+        public_renders=public_view.RenderCache(),
+    )
+    before = session.feed.revision()
+    line, frame, completed = main._animate_message_line(
+        session, session.world, ("progress", 1, 2, b"png", 0.0), 0, {"total_frames": 2}
+    )
+    assert frame == 1 and completed is False
+    assert session.feed.revision() != before
+    assert session.feed.summary()["elapsed_years"] == 0.0
 
 
 def test_cross_site_step_is_refused(guest, steps):

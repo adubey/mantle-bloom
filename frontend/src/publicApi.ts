@@ -22,6 +22,11 @@ export interface PublicWorldListing extends PublicWorld {
   running: boolean;
 }
 
+export interface PublicStepProgress {
+  fraction: number;
+  phase: string;
+}
+
 export interface PublicState {
   world: PublicWorld | null;
   // Whether the selected world's run loop is on (#597).
@@ -30,6 +35,9 @@ export interface PublicState {
   steps_remaining: number | null;
   step_limit: number;
   step_years: number;
+  // A guest step computing right now, whoever triggered it: the wait progress
+  // bar's live position, or null when no step is running (#653).
+  step_progress: PublicStepProgress | null;
 }
 
 export interface PublicStepResult {
