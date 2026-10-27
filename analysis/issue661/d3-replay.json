@@ -1,0 +1,253 @@
+{
+  "issue": 661,
+  "rfc": "0014",
+  "save_sha256": "a43962a149a0ec96f1dbee3e6c675be98d50422c47e0455e062aa72a7d1da4d7",
+  "seed": 997271774,
+  "start_age_myr": 130.5,
+  "steps": 10,
+  "step_years": 100000,
+  "ice_age_period_years": 0,
+  "script": "bin/debug/gate_lake_ice_heldout.py",
+  "arms": {
+    "origin_main": {
+      "backend_commit": "8a69bab69c32114c9a42a321d0b80c2db3d9c393",
+      "runtime_seconds": {
+        "total": 64.22158737602876,
+        "median_step": 6.209270791994641,
+        "p90_step": 7.006455029174685
+      },
+      "peak_rss_mb": 2095.0625,
+      "max_step_ledger_residual_pct": 1.0957848206106066e-10,
+      "acceptance": {
+        "physical_ice_at_most_2m": true,
+        "nonnegative_reservoirs": true,
+        "ice_within_local_water_inventory": true,
+        "deep_bedfast_area_at_most_1pct": true,
+        "ledger_residual_at_most_0p1pct": true,
+        "zero_supply_steps": 0
+      },
+      "trajectory": [
+        {
+          "step": 1,
+          "wet_lake_nodes": 549,
+          "liquid_volume_km3": 579295.781815521,
+          "ice_water_equivalent_volume_km3": 375.82851109608714,
+          "max_physical_ice_m": 1.9671107897020363,
+          "shallow_bedfast_area_pct": 0.0,
+          "deep_bedfast_area_pct": 0.0,
+          "ledger_residual_pct": 1.306230831139397e-11
+        },
+        {
+          "step": 2,
+          "wet_lake_nodes": 276,
+          "liquid_volume_km3": 230977.6506064136,
+          "ice_water_equivalent_volume_km3": 92.09540861838147,
+          "max_physical_ice_m": 1.8733215858906025,
+          "shallow_bedfast_area_pct": 0.0,
+          "deep_bedfast_area_pct": 0.0,
+          "ledger_residual_pct": 1.306230831139397e-11
+        },
+        {
+          "step": 3,
+          "wet_lake_nodes": 274,
+          "liquid_volume_km3": 275199.4249847946,
+          "ice_water_equivalent_volume_km3": 62.90598235624748,
+          "max_physical_ice_m": 1.780407878283332,
+          "shallow_bedfast_area_pct": 0.0,
+          "deep_bedfast_area_pct": 0.0,
+          "ledger_residual_pct": 1.306230831139397e-11
+        },
+        {
+          "step": 4,
+          "wet_lake_nodes": 334,
+          "liquid_volume_km3": 330617.0508190983,
+          "ice_water_equivalent_volume_km3": 125.48921933290875,
+          "max_physical_ice_m": 1.9799746356258645,
+          "shallow_bedfast_area_pct": 1.364354460995979,
+          "deep_bedfast_area_pct": 0.0,
+          "ledger_residual_pct": 1.306230831139397e-11
+        },
+        {
+          "step": 5,
+          "wet_lake_nodes": 218,
+          "liquid_volume_km3": 343095.57771208405,
+          "ice_water_equivalent_volume_km3": 124.72384284616938,
+          "max_physical_ice_m": 1.9546056736032669,
+          "shallow_bedfast_area_pct": 0.0,
+          "deep_bedfast_area_pct": 0.0,
+          "ledger_residual_pct": 5.374892626597088e-11
+        },
+        {
+          "step": 6,
+          "wet_lake_nodes": 322,
+          "liquid_volume_km3": 341561.50060754793,
+          "ice_water_equivalent_volume_km3": 142.6023672944994,
+          "max_physical_ice_m": 1.9657363117730793,
+          "shallow_bedfast_area_pct": 0.0,
+          "deep_bedfast_area_pct": 0.0,
+          "ledger_residual_pct": 5.374892626597088e-11
+        },
+        {
+          "step": 7,
+          "wet_lake_nodes": 346,
+          "liquid_volume_km3": 322290.860099739,
+          "ice_water_equivalent_volume_km3": 136.78789951063533,
+          "max_physical_ice_m": 1.926543733923257,
+          "shallow_bedfast_area_pct": 0.0,
+          "deep_bedfast_area_pct": 0.0,
+          "ledger_residual_pct": 5.374892626597088e-11
+        },
+        {
+          "step": 8,
+          "wet_lake_nodes": 360,
+          "liquid_volume_km3": 299944.5224182454,
+          "ice_water_equivalent_volume_km3": 135.8465638648745,
+          "max_physical_ice_m": 2.0000000000000036,
+          "shallow_bedfast_area_pct": 0.0,
+          "deep_bedfast_area_pct": 0.0,
+          "ledger_residual_pct": 5.374892626597088e-11
+        },
+        {
+          "step": 9,
+          "wet_lake_nodes": 221,
+          "liquid_volume_km3": 265221.2044179753,
+          "ice_water_equivalent_volume_km3": 89.27247254888668,
+          "max_physical_ice_m": 1.9693823944707818,
+          "shallow_bedfast_area_pct": 0.0,
+          "deep_bedfast_area_pct": 0.0,
+          "ledger_residual_pct": 5.374892626597088e-11
+        },
+        {
+          "step": 10,
+          "wet_lake_nodes": 311,
+          "liquid_volume_km3": 250172.19044495444,
+          "ice_water_equivalent_volume_km3": 108.27840087806678,
+          "max_physical_ice_m": 1.9988454473806472,
+          "shallow_bedfast_area_pct": 0.0,
+          "deep_bedfast_area_pct": 0.0,
+          "ledger_residual_pct": 1.0957848206106066e-10
+        }
+      ]
+    },
+    "d3": {
+      "backend_commit": "a1ab8eb1df558a3ef495308604781993983101e2",
+      "runtime_seconds": {
+        "total": 65.10415096004726,
+        "median_step": 6.467741562490119,
+        "p90_step": 7.199764278891962
+      },
+      "peak_rss_mb": 1892.3125,
+      "max_step_ledger_residual_pct": 1.8999844227095186e-10,
+      "acceptance": {
+        "physical_ice_at_most_2m": true,
+        "nonnegative_reservoirs": true,
+        "ice_within_local_water_inventory": true,
+        "deep_bedfast_area_at_most_1pct": true,
+        "ledger_residual_at_most_0p1pct": true,
+        "zero_supply_steps": 0
+      },
+      "trajectory": [
+        {
+          "step": 1,
+          "wet_lake_nodes": 443,
+          "liquid_volume_km3": 168792.60746967708,
+          "ice_water_equivalent_volume_km3": 132.41956446552283,
+          "max_physical_ice_m": 1.978886272006845,
+          "shallow_bedfast_area_pct": 0.0,
+          "deep_bedfast_area_pct": 0.0,
+          "ledger_residual_pct": 1.2723262910094186e-11
+        },
+        {
+          "step": 2,
+          "wet_lake_nodes": 141,
+          "liquid_volume_km3": 82122.9673335207,
+          "ice_water_equivalent_volume_km3": 83.76797088377369,
+          "max_physical_ice_m": 1.8953638496039678,
+          "shallow_bedfast_area_pct": 0.0,
+          "deep_bedfast_area_pct": 0.0,
+          "ledger_residual_pct": 1.2723262910094186e-11
+        },
+        {
+          "step": 3,
+          "wet_lake_nodes": 225,
+          "liquid_volume_km3": 92870.24885381474,
+          "ice_water_equivalent_volume_km3": 88.99708171586278,
+          "max_physical_ice_m": 1.9690367774181405,
+          "shallow_bedfast_area_pct": 0.0,
+          "deep_bedfast_area_pct": 0.0,
+          "ledger_residual_pct": 1.2723262910094186e-11
+        },
+        {
+          "step": 4,
+          "wet_lake_nodes": 303,
+          "liquid_volume_km3": 123308.03777055877,
+          "ice_water_equivalent_volume_km3": 114.0978859121467,
+          "max_physical_ice_m": 1.9800044443609583,
+          "shallow_bedfast_area_pct": 2.2682698587627637,
+          "deep_bedfast_area_pct": 0.0,
+          "ledger_residual_pct": 1.2723262910094186e-11
+        },
+        {
+          "step": 5,
+          "wet_lake_nodes": 182,
+          "liquid_volume_km3": 153551.07489316445,
+          "ice_water_equivalent_volume_km3": 99.61512955440506,
+          "max_physical_ice_m": 1.9499422832628586,
+          "shallow_bedfast_area_pct": 2.4918114906177444,
+          "deep_bedfast_area_pct": 0.0,
+          "ledger_residual_pct": 6.984705897854738e-11
+        },
+        {
+          "step": 6,
+          "wet_lake_nodes": 569,
+          "liquid_volume_km3": 426201.79076509015,
+          "ice_water_equivalent_volume_km3": 178.8243945623059,
+          "max_physical_ice_m": 1.933274709211396,
+          "shallow_bedfast_area_pct": 0.0,
+          "deep_bedfast_area_pct": 0.0,
+          "ledger_residual_pct": 6.984705897854738e-11
+        },
+        {
+          "step": 7,
+          "wet_lake_nodes": 208,
+          "liquid_volume_km3": 353082.61126597086,
+          "ice_water_equivalent_volume_km3": 224.64870905164526,
+          "max_physical_ice_m": 1.9912051882967343,
+          "shallow_bedfast_area_pct": 0.0,
+          "deep_bedfast_area_pct": 0.0,
+          "ledger_residual_pct": 6.984705897854738e-11
+        },
+        {
+          "step": 8,
+          "wet_lake_nodes": 251,
+          "liquid_volume_km3": 325942.28977648926,
+          "ice_water_equivalent_volume_km3": 207.67598293736762,
+          "max_physical_ice_m": 1.9213526593658152,
+          "shallow_bedfast_area_pct": 0.0,
+          "deep_bedfast_area_pct": 0.0,
+          "ledger_residual_pct": 6.984705897854738e-11
+        },
+        {
+          "step": 9,
+          "wet_lake_nodes": 329,
+          "liquid_volume_km3": 286943.0579856456,
+          "ice_water_equivalent_volume_km3": 255.2947008861543,
+          "max_physical_ice_m": 1.977769626808526,
+          "shallow_bedfast_area_pct": 3.8353508120113755,
+          "deep_bedfast_area_pct": 0.0,
+          "ledger_residual_pct": 6.984705897854738e-11
+        },
+        {
+          "step": 10,
+          "wet_lake_nodes": 325,
+          "liquid_volume_km3": 265116.88267826807,
+          "ice_water_equivalent_volume_km3": 238.32861378522375,
+          "max_physical_ice_m": 1.905426513138356,
+          "shallow_bedfast_area_pct": 0.755587287695206,
+          "deep_bedfast_area_pct": 0.0,
+          "ledger_residual_pct": 1.8999844227095186e-10
+        }
+      ]
+    }
+  }
+}
