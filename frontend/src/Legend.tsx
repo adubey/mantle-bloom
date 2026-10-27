@@ -141,6 +141,11 @@ function SymbolRow({ symbol, onClick, selected }: { symbol: LegendSymbol; onClic
 // this one never obscures any part of the map. Still updates instantly on a projection/view
 // change and stays legible during a live rotation-preview drag (which only ever re-draws the
 // canvas above it).
+//
+// A native <details> expando: on narrow viewports it starts closed so the map gets the
+// screen (see index.css's legend rules, #654), while desktop CSS keeps it visibly open.
+// Native disclosure means touch expand/collapse and the expanded state come free, with
+// no JS viewport tracking to drift out of sync on rotation or resize.
 export default function Legend({
   mapView,
   projection,
@@ -194,7 +199,8 @@ export default function Legend({
   };
 
   return (
-    <div
+    <details
+      className="legend-details"
       style={{
         marginTop: 10,
         padding: 10,
@@ -205,8 +211,14 @@ export default function Legend({
         userSelect: "none",
       }}
     >
+      <summary className="legend-summary">
+        <span style={{ fontSize: 13, fontWeight: 600 }}>{spec.title}</span>
+        <span className="legend-chevron" aria-hidden>
+          ▸
+        </span>
+      </summary>
+      <div className="legend-body">
       <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-        <div style={{ fontSize: 13, fontWeight: 600, flexShrink: 0 }}>{spec.title}</div>
         {spec.gradient && (
           <div style={{ flex: "1 1 260px", minWidth: 200, maxWidth: 420 }}>
             <GradientBar gradient={spec.gradient} />
@@ -254,6 +266,7 @@ export default function Legend({
           );
         })}
       </div>
-    </div>
+      </div>
+    </details>
   );
 }
