@@ -42,6 +42,26 @@ def test_round_trip_preserves_a_freshly_generated_world():
         assert np.array_equal(loaded_plate.collect("elevation"), original_plate.collect("elevation"))
 
 
+def test_load_world_file_matches_load_world_bytes(tmp_path):
+    # The upload route spools large saves to disk instead of holding the whole body in RAM
+    # (#648): loading from a file object must give the same world as loading from bytes.
+    world = generate_world(seed=3, num_plates=4, node_density=0.5, climate_density=0.5, fluid_density=0.5)
+    path = tmp_path / "world.mbworld"
+    data = persistence.save_world_bytes(world)
+    path.write_bytes(data)
+    with open(path, "rb") as handle:
+        loaded = persistence.load_world_file(handle)
+    assert loaded.seed == world.seed
+    assert loaded.elapsed_years == world.elapsed_years
+    assert len(loaded.plates) == len(world.plates)
+    assert np.array_equal(loaded.plates[0].collect("elevation"), world.plates[0].collect("elevation"))
+    # Byte-level pin on this change's own contract: streaming from disk must give the
+    # same world as loading from bytes. A save/load round trip is not byte-stable in
+    # general -- backfills normalize older state on the way in -- so this compares the
+    # two load paths against each other, not against the pre-save world.
+    assert persistence.save_world_bytes(loaded) == persistence.save_world_bytes(persistence.load_world_bytes(data))
+
+
 def test_round_trip_keeps_step_read_caches():
     # v5 saves (#596) keep every cache the next step reads before refreshing it -- the
     # H9 gate requires a post-load step to land on identical authoritative state. Only

@@ -66,6 +66,32 @@ def test_step_world_populates_hydrology_and_climate_caches(stepped_world):
     assert world.hydrology_cache is not None
 
 
+def test_finish_generation_baseline_solves_fresh_after_the_cfd_state_exists(monkeypatch):
+    # The elapsed_years=0 baseline must be solved after init_atmosphere_cfd populates
+    # World.atmosphere_cfd_state: compute_climate reads that state to pick its
+    # air-temperature path (cold-start compute_air_temperature with no state yet,
+    # compute_air_temperature_diagnostic once it exists), so lending record_stats the
+    # pre-state bootstrap snapshot would silently move stats_history[0] (#376 review).
+    # finish_generation therefore solves twice -- the bootstrap seed, released right
+    # after (see the `del terrain` there, which is the actual peak-RAM saving), then the
+    # baseline -- and a freshly generated world still reads as "no step has run yet".
+    from app.hydroclimate import climate
+
+    calls = 0
+    real_compute_climate = climate.compute_climate
+
+    def counting(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return real_compute_climate(*args, **kwargs)
+
+    monkeypatch.setattr(climate, "compute_climate", counting)
+    world = generate_world(seed=11, **_COARSE_KWARGS)
+    assert calls == 2
+    assert world.climate_cache is None
+    assert len(world.stats_history) == 1
+
+
 def test_isostasy_derived_elevation_matches_hc_hm_state_at_generation():
     """Immediately after generation (no deform/erosion has run yet), every plate's
     `elevation` is exactly `isostatic_elevation(Hc, Hm)` -- the derived-field contract

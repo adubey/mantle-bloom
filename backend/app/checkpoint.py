@@ -210,7 +210,10 @@ class CheckpointStore:
             _logger.warning("checkpoint: no saved world in %s; starting without one", self.directory)
             return None
         try:
-            world = persistence.load_world_bytes(path.read_bytes())
+            # Stream from disk: a checkpoint is a whole world, and holding its bytes
+            # beside the world it builds doubles restore-time RAM (#648).
+            with open(path, "rb") as checkpoint_file:
+                world = persistence.load_world_file(checkpoint_file)
         except Exception as exc:  # noqa: BLE001 - any unreadable file must leave the server startable
             aside = path.with_name(f"{path.name}.invalid-{int(time.time())}")
             _logger.error(

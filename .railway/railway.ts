@@ -44,6 +44,10 @@ export default defineRailway(() => {
       MANTLE_BLOOM_GITHUB_OWNER_ID: preserve(),
       MANTLE_BLOOM_SESSION_SECRET: preserve(),
       MANTLE_BLOOM_PUBLIC_URL: preserve(),
+      // Two worlds fit the container's RAM: about 135 MB steady state per default-detail
+      // world on top of a ~170 MB baseline, with a fresh generate peaking near 480 MB (see
+      // docs/hosting.md). Raise this only alongside the service's memory.
+      MANTLE_BLOOM_MAX_WORLDS: "2",
     },
   });
 

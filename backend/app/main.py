@@ -7,6 +7,7 @@ import base64
 import json
 import logging
 import os
+import tempfile
 import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -56,6 +57,12 @@ from .world import (
 # client's query string, and PIL will happily try to allocate whatever it's told, so an
 # unbounded value here would let a malformed or malicious request force a huge allocation.
 MAX_RENDER_DIMENSION_PX = 4000
+# The largest world file /worlds/{world_id}/load accepts, in bytes -- a default-detail world
+# pickles to tens of MB, so this is an order of magnitude of headroom, not a tight fit.
+# Enforced while the body is still streaming in (see _spool_upload_to_tempfile): a hosted
+# container with a few hundred MB of free RAM must refuse a huge upload before buffering it,
+# not after unpickling has already doubled it.
+MAX_LOAD_WORLD_BYTES = 512 * 1024 * 1024
 # Each animation frame costs a full step_world + render, so this bounds worst-case request
 # time for POST /worlds/{world_id}/animate the same way MAX_RENDER_DIMENSION_PX bounds /worlds/{world_id}/render's
 # own worst case. Also doubles as the safety ceiling for "keep going until Stop is pressed"
@@ -1243,30 +1250,76 @@ def _hydrology_cache_is_stale(cache) -> bool:
     )
 
 
+async def _spool_upload_to_tempfile(request: Request) -> str:
+    """Stream the request body to a temp file, returning its path. The upload route reads
+    the world back from disk (see persistence.load_world_file) instead of holding the whole
+    body in RAM as bytes alongside the unpickled world -- a default-detail save is tens of
+    MB, and a hosted container has no RAM to spare for both copies at once. Bodies past
+    MAX_LOAD_WORLD_BYTES are refused with a `413` while still streaming, before any of
+    that work starts."""
+    fd, path = tempfile.mkstemp(prefix="mantle-bloom-upload-", suffix=".mbworld")
+    size = 0
+    try:
+        with os.fdopen(fd, "wb") as tmp:
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > MAX_LOAD_WORLD_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"world file exceeds the {MAX_LOAD_WORLD_BYTES // (1024 * 1024)} MB upload limit",
+                    )
+                tmp.write(chunk)
+    except BaseException:
+        # os.fdopen raising leaves fd open (the `with` never took it); closing an
+        # already-closed fd just raises OSError, which the suppress below absorbs.
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+        raise
+    return path
+
+
 @app.post("/worlds/{world_id}/load")
 async def load_world(world_id: str, request: Request) -> dict:
     """The "File > Load World" upload -- the raw bytes of a file /worlds/{world_id}/save previously
     produced, as the request body (not JSON -- see persistence.py). Replaces whatever world
     previously existed, same as /worlds/{world_id}/generate. A line-backed (legacy) save is converted to
     sparse quads on load, one way -- see docs/save-compatibility.md; the summary's
-    `surface_conversion` then reports what changed. `400` with the reason if the
+    `surface_conversion` then reports what changed. The body streams to a temp file and
+    loads from disk, so a large upload never sits in RAM twice (as bytes and as a
+    world). `400` with the reason if the
     bytes are corrupt or in a save format this build doesn't read; any other failure is
-    still a `400`, without detail. `503` while a generation, step, or animation is in
+    still a `400`, without detail. `413` when the upload passes MAX_LOAD_WORLD_BYTES.
+    `503` while a generation, step, or animation is in
     progress."""
-    body = await request.body()
+    # Refuse an unknown world before touching disk: unpickling is wasted work when there
+    # is no record to replace. (begin_operation stays where it is -- holding the busy
+    # flag across a slow upload would stall every other operation on this world.)
+    session = _session_or_404(world_id)
+    upload_path = await _spool_upload_to_tempfile(request)
     try:
-        world = persistence.load_world_bytes(body)
+        with open(upload_path, "rb") as upload:
+            world = persistence.load_world_file(upload)
     except persistence.SaveFormatError as exc:
         raise HTTPException(status_code=400, detail=f"invalid or incompatible world file: {exc}") from exc
     except Exception as exc:
         raise HTTPException(status_code=400, detail="invalid or incompatible world file") from exc
+    finally:
+        try:
+            os.unlink(upload_path)
+        except OSError:
+            pass
     # Derived routing fields are added over time. Old saves may carry a cache from after #355
     # that has discharge but predates RFC 0014's external-source ledger; discard any cache
     # missing a current-length field before inspectors can read it.
     if world.hydrology_cache is not None and _hydrology_cache_is_stale(world.hydrology_cache):
         world.hydrology_cache = None
         world.hydrology_cache_step = None
-    session = _session_or_404(world_id)
     # Under the lock, so a step can't still be mutating the world viewers are told replaced it.
     if not session.begin_operation():
         raise HTTPException(status_code=503, detail="a generation, step, or animation is already in progress")

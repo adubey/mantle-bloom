@@ -911,6 +911,16 @@ def finish_generation(world: World, log_message: str, initialize_rivers: bool = 
     # step_world re-solves sea_level_m against this fixed budget every step (see eustasy.py).
     eustasy.initialize_water_budget(world)
 
+    # Release the bootstrap snapshot before the baseline stats entry runs its own
+    # full-density solve below: holding both at once doubles this phase's peak allocation,
+    # which is what tips a hosted generate over a small container's RAM cap (#376). The
+    # snapshot is deliberately *not* lent to record_stats via climate_cache: compute_climate
+    # reads world.atmosphere_cfd_state to pick its air-temperature path (cold-start
+    # compute_air_temperature with no state yet, compute_air_temperature_diagnostic once
+    # the state above exists), so the baseline must solve fresh after the state it has
+    # always seen -- reusing this pre-state snapshot would silently move stats_history[0].
+    del terrain
+
     if initialize_rivers:
         # Seed first-step routing and river channels as part of generation, not as a later
         # terrain mutation. The short hydrology interval also lets cold high ranges acquire
