@@ -7,7 +7,7 @@ import {
 import type {
   AnimateResponse, AnimationRecovery, DebugScenario, EarthquakeSummary, ElevationPointResponse, FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, NodeAtResponse, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, TuningKey, TuningMultipliers, VolcanoSummary, WorldRecord, WorldStats, WorldSummary,
 } from "./api";
-import { ensureWorldId, withWorldId, worldIdFromSearch, type WorldId } from "./worldRoutes";
+import { withWorldId, worldIdFromSearch, type WorldId } from "./worldRoutes";
 import MapCanvas from "./MapCanvas";
 import MantleCrossSection from "./MantleCrossSection";
 import GlobeSelector from "./GlobeSelector";
@@ -25,8 +25,9 @@ import ControlsModal from "./ControlsModal";
 import AdvancedSettingsModal from "./AdvancedSettingsModal";
 import FileModal from "./FileModal";
 import AnimationModal from "./AnimationModal";
-import SaveAnimationModal from "./SaveAnimationModal";
 import AnimationStoppedModal, { type FailedAnimation } from "./AnimationStoppedModal";
+import SaveAnimationModal from "./SaveAnimationModal";
+import WorldMenu from "./WorldMenu";
 import Legend from "./Legend";
 import MeasureOverlay from "./MeasureOverlay";
 import ProgressBar from "./ProgressBar";
@@ -1241,32 +1242,11 @@ export default function App() {
     return createInflightRef.current;
   }, [refreshWorlds, selectWorld]);
 
-  // Resolves the world to generate into on demand (#592, #597): the selection
-  // when one is open, otherwise a fresh world -- never an existing world the
-  // user didn't pick, since the dialog's name would rename (and the generate
-  // would overwrite) it by surprise. Runs only from an explicit generate
-  // action, never on page load, so merely opening the app creates nothing.
-  // Resolves the world File > Load needs: the selection when one is open,
-  // otherwise a fresh world. (The Generate dialog no longer uses this: Add
-  // always mints its own world.)
-  const ensureSelectedWorld = useCallback(async (name?: string | null): Promise<WorldId> => {
-    return ensureWorldId(worldIdRef.current, () => createAndSelectWorld(name));
-  }, [createAndSelectWorld]);
-
-  // File > Load mints "Mantle Bloom a/b/c..." rather than an exoplanet pick (#597).
-  const ensureLoadWorld = useCallback(async (): Promise<WorldId> => {
-    if (worldIdRef.current) return worldIdRef.current;
-    const taken = new Set(worlds.map((w) => w.name));
-    let name = `Mantle Bloom ${taken.size + 1}`;
-    for (let i = 0; i < 26; i++) {
-      const candidate = `Mantle Bloom ${String.fromCharCode(97 + i)}`;
-      if (!taken.has(candidate)) {
-        name = candidate;
-        break;
-      }
-    }
-    return ensureSelectedWorld(name);
-  }, [worlds, ensureSelectedWorld]);
+  // Worlds only come into existence through an explicit creation action (the
+  // Generate dialog's Add, via createAndSelectWorld below). File > Load used to
+  // mint a world when none was selected -- removed in #639: loading replaces the
+  // selected world, and with none selected the Load button stays disabled instead
+  // of creating one behind the user's back.
 
   // The Controls modal's World tab: renaming and publishing apply to the
   // selected world immediately (#597). A blank name keeps the current one.
@@ -1587,6 +1567,7 @@ export default function App() {
           {(busy || (runActive && overlayCollapsed)) && (
             <ProgressBar
               label={overlayHeadline}
+              text={runPhase ? `${overlayHeadline}: ${runPhase}` : overlayHeadline}
               fraction={overlayFraction}
               onExpand={overlayCollapsed ? () => setOverlayCollapsed(false) : undefined}
             />
@@ -1608,27 +1589,19 @@ export default function App() {
             {worlds.length === 0 ? (
               <div style={{ opacity: 0.7, marginBottom: 6 }}>No worlds yet.</div>
             ) : (
-              <select
-                value={worldId ?? ""}
-                onChange={(e) => selectWorld(e.target.value || null)}
-                // An explicit empty option: without it the browser would display the
-                // first world while nothing is actually selected (#597: starting
-                // with no world is the point), and that world would then be
-                // unpickable since picking it fires no change event.
+              <WorldMenu
+                worlds={worlds}
+                worldId={worldId}
                 disabled={busy || animating || playing}
-                title={busy || animating || playing ? "Stop the current operation first" : undefined}
-                style={{ width: "100%", fontSize: 12, marginBottom: 6 }}
-                aria-label="World"
-              >
-                <option value="">Select a world…</option>
-                {worlds.map((w) => (
-                  <option key={w.world_id} value={w.world_id}>
-                    {w.name}
-                    {w.summary ? "" : " (empty)"}
-                    {w.run?.running ? " ▶" : ""}
-                  </option>
-                ))}
-              </select>
+                disabledTitle={busy || animating || playing ? "Stop the current operation first" : undefined}
+                onSelect={(id) => selectWorld(id)}
+                onDelete={(id) => {
+                  const target = worlds.find((w) => w.world_id === id);
+                  if (target && window.confirm(`Delete ${target.name} and its checkpoint? This cannot be undone.`)) {
+                    handleDeleteWorld(id);
+                  }
+                }}
+              />
             )}
             <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
               <button onClick={openGenerateDialog} disabled={busy || animating || playing} style={{ flex: 1, fontSize: 12 }} title="Open the Generate World dialog">
@@ -2763,7 +2736,6 @@ export default function App() {
           mapWrapperRef={mapWrapperRef}
           onClose={() => setShowFileModal(false)}
           onWorldReplaced={handleWorldReplaced}
-          onEnsureWorldId={ensureLoadWorld}
         />
       )}
 

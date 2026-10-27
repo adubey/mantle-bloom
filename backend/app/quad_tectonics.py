@@ -1074,12 +1074,17 @@ def _accrete_onto_survivors(
                 subducted_hm_m3=hm_subducted_volume,
             )
 
-    # Buoyant crust placed onto continental-coded receivers converts: the
-    # preserved share becomes juvenile continental material, the foundered share
-    # leaves Hc. Oceanic-hosted accreted crust stays live. Runs before the
-    # elevation write below so the foundered removal's relief follows (RFC 0007,
-    # issue #581).
-    _convert_buoyant_on_continental(world, changed & continental, hc, material, plateau, arc, moment, areas)
+    # Buoyant crust a front placed converts wherever it landed: the preserved
+    # share becomes juvenile continental material (which may sit on oceanic
+    # crust until a later retyping), the foundered share leaves Hc. Gating on
+    # continental coding starved the conversion -- accreted plateau lands on
+    # oceanic-coded receivers and sat live forever (RFC 0007, #622). Only Hc
+    # gainers convert, so Hm-only spread and shed cells carrying pre-existing
+    # tracer are left alone; cells without tracer are no-ops inside the call.
+    # Runs before the elevation write below so the foundered removal's relief
+    # follows (RFC 0007, issue #581).
+    placed = changed & (continental | ((hc - hc_before) > 0.0))
+    _convert_buoyant_on_continental(world, placed, hc, material, plateau, arc, moment, areas)
     _write_tracers(plate, plateau, arc, moment)
 
     gained = np.flatnonzero(changed)
@@ -1219,7 +1224,8 @@ def _convert_buoyant_on_continental(
     moment: np.ndarray,
     areas: np.ndarray,
 ) -> None:
-    """In place: convert buoyant crust on continental-coded cells (`mask`).
+    """In place: convert buoyant crust on the masked cells, whatever their crust
+    code (callers pass placed receivers; #622).
 
     `PLATEAU_PRESERVED_FRACTION` of the plateau + arc tracer becomes continental
     material, booked once as juvenile (`juvenile_plateau_m3` from plateau crust,
@@ -1625,7 +1631,11 @@ def _place_on_overrider(
         plateau, arc, moment, areas, settle_gain, volume,
         front_plateau_m3, front_arc_m3, front_moment_m3_yr,
     )
-    _convert_buoyant_on_continental(world, changed & continental, hc, material, plateau, arc, moment, areas)
+    # Same #622 rule as the in-plate path: handed buoyant crust converts on any
+    # receiver it thickened, not just continental-coded ones.
+    _convert_buoyant_on_continental(
+        world, changed & (continental | (settle_gain > 0.0)), hc, material, plateau, arc, moment, areas
+    )
     _write_tracers(over, plateau, arc, moment)
     if world is not None:
         for account in (
