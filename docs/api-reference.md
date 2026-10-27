@@ -594,6 +594,17 @@ flushes the encoder and its `done` line still carries a complete (just shorter) 
 unlike the client simply dropping the connection. No request body; always `200`, including
 when no animation is currently running (a no-op).
 
+## `GET /worlds/{world_id}/animate/recovery`
+
+What an interrupted animation run left recoverable (#638): the server records one
+sidecar entry per completed frame next to the world checkpoint, so a run that dies
+mid-batch still leaves its completed frames' simulation work behind. Returns that
+record -- `completed_frames` plus the run's static shape (`total_frames`,
+`steps_per_frame`, `step_years`, `projection`, `view`, `width`, `height`) -- for
+resuming the remaining frames from the checkpointed world. `404` when no
+interrupted run is on record (never recorded, already finished with a video, or
+already recovered); `503` while a run is still in progress. Read-only.
+
 ## `GET /worlds/{world_id}/plates`
 
 The "Plate Inspector" map mode's data source (see

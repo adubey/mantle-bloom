@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./index.css";
 import {
-  animateWorld, createWorld, deleteWorld, fetchDebugScenarios, fetchEarthquakes, fetchElevationPointAt, fetchFaults, fetchLakes, fetchNodeAt, fetchPlates, fetchPointSample, fetchRivers, fetchRunState, fetchStats, fetchStatsHistory, fetchSuggestedName, fetchVolcanoes, fetchWorldSummary, fetchWorlds, generateDebugWorld, generateWorld, patchWorld, renderWorld, setRunState, stopAnimation, updateControls,
+  animateWorld, createWorld, deleteWorld, fetchAnimationRecovery, fetchDebugScenarios, fetchEarthquakes, fetchElevationPointAt, fetchFaults, fetchLakes, fetchNodeAt, fetchPlates, fetchPointSample, fetchRivers, fetchRunState, fetchStats, fetchStatsHistory, fetchSuggestedName, fetchVolcanoes, fetchWorldSummary, fetchWorlds, generateDebugWorld, generateWorld, patchWorld, renderWorld, setRunState, stopAnimation, updateControls,
   RunStateRefused, TUNING_MULTIPLIER_KEYS,
 } from "./api";
 import type {
-  AnimateResponse, DebugScenario, EarthquakeSummary, ElevationPointResponse, FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, NodeAtResponse, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, TuningKey, TuningMultipliers, VolcanoSummary, WorldRecord, WorldStats, WorldSummary,
+  AnimateResponse, AnimationRecovery, DebugScenario, EarthquakeSummary, ElevationPointResponse, FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, NodeAtResponse, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, TuningKey, TuningMultipliers, VolcanoSummary, WorldRecord, WorldStats, WorldSummary,
 } from "./api";
 import { withWorldId, worldIdFromSearch, type WorldId } from "./worldRoutes";
 import MapCanvas from "./MapCanvas";
@@ -25,6 +25,7 @@ import ControlsModal from "./ControlsModal";
 import AdvancedSettingsModal from "./AdvancedSettingsModal";
 import FileModal from "./FileModal";
 import AnimationModal from "./AnimationModal";
+import AnimationStoppedModal, { type FailedAnimation } from "./AnimationStoppedModal";
 import SaveAnimationModal from "./SaveAnimationModal";
 import WorldMenu from "./WorldMenu";
 import Legend from "./Legend";
@@ -655,6 +656,14 @@ export default function App() {
   // cleanly and still returns the video (see handleStopAnimation below).
   const [animation, setAnimation] = useState<{ frame: number; total: number; unbounded: boolean } | null>(null);
   const [animationResult, setAnimationResult] = useState<AnimateResponse | null>(null);
+  // A recording that failed mid-run (#638): the dialog replaces the old bare error,
+  // offering recovery from the server's per-frame checkpoints. `recovery` is the
+  // animate/recovery payload fetched when the failure landed (null when the run never
+  // recorded a frame or already finished). `recoveringAnimation` guards Recover
+  // against double clicks while the resume run starts.
+  const [animationFailure, setAnimationFailure] = useState<{ failure: FailedAnimation; recovery: AnimationRecovery | null } | null>(null);
+  const [recoveringAnimation, setRecoveringAnimation] = useState(false);
+  const animationFrameRef = useRef(0);
   const animating = animation !== null;
 
   // Two refresh() calls can be in flight at once -- e.g. changing map mode while a step is
@@ -959,6 +968,7 @@ export default function App() {
       setError(null);
       setAnimationResult(null);
       setAnimation({ frame: 0, total: numFrames, unbounded });
+      animationFrameRef.current = 0;
       setOverlayCollapsed(false);
       setRunPhase(null);
       const view = mapViewRef.current;
@@ -971,6 +981,7 @@ export default function App() {
             // selection moved on rather than painting the old world (#563 S7).
             if (worldIdRef.current !== id) return;
             setAnimation({ frame: p.frame, total: p.total, unbounded });
+            animationFrameRef.current = p.frame;
             setRunPhase(unbounded ? `Recorded ${p.frame} frames` : `Frame ${p.frame} of ${p.total}`);
             // Keep the sidebar's "elapsed" readout climbing frame by frame instead of it
             // sitting frozen at the pre-recording value until the whole run resolves.
@@ -996,7 +1007,17 @@ export default function App() {
         setAnimationResult(result);
         await handleWorldAdvanced(result);
       } catch (e) {
-        if (worldIdRef.current === id) setError(String(e));
+        // A failed recording ends in the "Animation stopped" dialog, not a bare
+        // error (#638): the server kept every completed frame's simulation work,
+        // so offer resuming from the last checkpoint. The recovery fetch failing
+        // just means nothing to resume -- the dialog says so.
+        if (worldIdRef.current === id) {
+          const recovery = await fetchAnimationRecovery(id!).catch(() => null);
+          setAnimationFailure({
+            failure: { frame: animationFrameRef.current, total: numFrames, unbounded, error: String(e) },
+            recovery,
+          });
+        }
       } finally {
         setAnimation(null);
         setRunPhase(null);
@@ -1004,6 +1025,28 @@ export default function App() {
     },
     [projection, rotation, stepYears, handleWorldAdvanced, applyStats],
   );
+
+  // The stopped-animation dialog's "Recover..." button (#638): resumes the frames
+  // the failed run never reached as a new bounded run from the checkpointed world,
+  // which already holds the completed frames' simulation work. The resumed run's
+  // own save dialog follows normally; the lost partial video can't be rebuilt.
+  const handleRecoverAnimation = useCallback(async () => {
+    const failed = animationFailure;
+    if (!failed || !failed.recovery) return;
+    const remaining = failed.recovery.total_frames - failed.recovery.completed_frames;
+    if (remaining < 1) return;
+    setRecoveringAnimation(true);
+    setAnimationFailure(null);
+    try {
+      await handleStartAnimation({
+        numFrames: remaining,
+        stepsPerFrame: failed.recovery.steps_per_frame,
+        unbounded: false,
+      });
+    } finally {
+      setRecoveringAnimation(false);
+    }
+  }, [animationFailure, handleStartAnimation]);
 
   // The toolbar's "Stop" button while recording -- asks the server to end the animation
   // cleanly after its current frame (see api.ts's stopAnimation) so it still finishes with a
@@ -2711,6 +2754,16 @@ export default function App() {
           result={animationResult}
           onSave={handleSaveAnimation}
           onDiscard={handleDiscardAnimation}
+        />
+      )}
+
+      {animationFailure && (
+        <AnimationStoppedModal
+          failure={animationFailure.failure}
+          recovery={animationFailure.recovery}
+          recovering={recoveringAnimation}
+          onRecover={handleRecoverAnimation}
+          onClose={() => setAnimationFailure(null)}
         />
       )}
     </div>
