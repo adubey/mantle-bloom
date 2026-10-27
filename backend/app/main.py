@@ -405,10 +405,51 @@ def _world_changed(session: WorldSession, completed: bool = True) -> None:
     # the most recently updated world, and without this a restart would fall back
     # to the stale updated_at from the record's creation. A tiny atomic write.
     _save_index()
+    # Capture the audience before publishing: publish pops the waiter list, so a
+    # check afterwards would always see nobody (#658).
+    watched = session.feed.has_waiters()
     session.public_renders.clear()
     session.feed.publish(session.world)
+    if watched:
+        _prerender_viewer_image(session)
     if completed:
         _checkpoint_world(session)
+
+
+def _prerender_viewer_image(session: WorldSession) -> None:
+    """Render the canonical viewer PNG into the world's RenderCache right after a
+    published change, so /view's first render request after a step is a cache hit,
+    not a seconds-long computation behind the world lock (#658). The caller holds
+    the session lock, same as the on-demand render path. Public worlds with a viewer
+    following them only: with no audience a multi-second render on every change is
+    pure cost (and slows the suite's public-by-default test sessions), and the
+    owner's own sizes are rendered on demand. A failed render is logged, never
+    raised -- the change itself already published and must not fail because its
+    preview did. The caller checks the audience first (`WorldFeed.has_waiters`,
+    captured before publishing pops the waiter list); this helper only enforces
+    the public-world gate."""
+    world = session.world
+    if world is None or not session.is_public:
+        return
+    try:
+        revision = session.feed.revision()
+        image_base64 = render_image.render_png_base64(
+            world,
+            public_view.GUEST_PROJECTION,
+            public_view.GUEST_DEFAULT_VIEW,
+            public_view.GUEST_DEFAULT_WIDTH,
+            public_view.GUEST_DEFAULT_HEIGHT,
+            _parse_view_rotation(None),
+            False,
+            False,
+        )
+        session.public_renders.put(
+            revision,
+            (public_view.GUEST_DEFAULT_VIEW, public_view.GUEST_DEFAULT_WIDTH, public_view.GUEST_DEFAULT_HEIGHT),
+            {**session.feed.summary(), "image_base64": image_base64},
+        )
+    except Exception:  # noqa: BLE001 -- preview must not fail the change; see docstring
+        _logger.exception("viewer pre-render failed for world %s", session.world_id)
 
 
 def _set_world(session: WorldSession, world: World) -> None:
@@ -1580,8 +1621,13 @@ def _animate_message_line(session, world, message, last_frame, anim_spec: dict):
         # /view watchers: an animation otherwise shows them nothing until its final
         # publish minutes or hours later (#653). No checkpoint or index write here --
         # the frame was just checkpointed above and the run's finally publishes fully.
+        # The viewer preview is pre-rendered like any other published change (#658;
+        # audience captured first -- publish pops the waiter list).
+        watched = session.feed.has_waiters()
         session.public_renders.clear()
         session.feed.publish(world)
+        if watched:
+            _prerender_viewer_image(session)
         return json.dumps({
             "type": "progress",
             "frame": frame,

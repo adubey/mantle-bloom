@@ -248,11 +248,13 @@ def test_public_world_reports_guest_step_progress(guest, steps):
 def test_animation_frame_publishes_for_viewers():
     # #653: each animation frame publishes its revision, so /view watches the steps
     # instead of nothing until the run's final publish. No checkpoint store: the
-    # checkpoint/sidecar helpers no-op, isolating the publish.
+    # checkpoint/sidecar helpers no-op, isolating the publish. No waiter follows it,
+    # so the viewer preview pre-render (#658) stays skipped.
     session = SimpleNamespace(
         world=SimpleNamespace(seed=7, elapsed_years=0.0, stats_history=[]),
         checkpoint_store=None,
         deleted=False,
+        is_public=True,
         feed=public_view.WorldFeed(),
         public_renders=public_view.RenderCache(),
     )
@@ -470,6 +472,75 @@ def test_viewers_share_one_render_per_revision(guest, steps, monkeypatch):
     assert after["image_base64"] == "png3"
     assert after["revision"] == _revision(guest) != first["revision"]
     assert after["elapsed_years"] == public_view.GUEST_STEP_YEARS
+
+
+def _watch_in_background():
+    """A thread long-polling the world's feed, so the session has a viewer following
+    it (#658). Returns its thread, already holding a waiter slot."""
+    thread = threading.Thread(
+        target=lambda: asyncio.run(_S.feed.wait_past(_S.feed.revision(), 30.0)), daemon=True
+    )
+    thread.start()
+    deadline = time.monotonic() + 5.0
+    while not _S.feed.has_waiters():
+        assert time.monotonic() < deadline, "watcher thread never registered"
+        time.sleep(0.01)
+    return thread
+
+
+def test_step_prerenders_while_a_viewer_watches(guest, steps, monkeypatch):
+    # #658: with a viewer following, the step's canonical viewer PNG is already
+    # cached -- the first viewer render is a hit, not a computation.
+    calls = []
+    monkeypatch.setattr(main.render_image, "render_png_base64", lambda *args: calls.append(args) or "png")
+    watcher = _watch_in_background()
+    try:
+        _step(guest)
+    finally:
+        watcher.join()
+    assert len(calls) == 1
+    key = (public_view.GUEST_DEFAULT_VIEW, public_view.GUEST_DEFAULT_WIDTH, public_view.GUEST_DEFAULT_HEIGHT)
+    entry = _S.public_renders.get(_S.feed.revision(), key)
+    assert entry is not None and entry["image_base64"] == "png"
+    assert entry["revision"] == _S.feed.revision()
+
+
+def test_prerender_skips_an_unwatched_world(guest, steps, monkeypatch):
+    # #658: with no viewer following, a multi-second render on every change is pure
+    # cost -- the world still publishes, just without a preview.
+    calls = []
+    monkeypatch.setattr(main.render_image, "render_png_base64", lambda *args: calls.append(args) or "png")
+    assert not _S.feed.has_waiters()
+    main._world_changed(_S)
+    assert calls == []
+    assert _S.feed.summary() is not None
+
+
+def test_prerender_skips_private_worlds(guest, steps, monkeypatch):
+    # #658: with no /view audience a pre-render is pure cost, so private worlds skip it.
+    calls = []
+    monkeypatch.setattr(main.render_image, "render_png_base64", lambda *args: calls.append(args) or "png")
+    _S.is_public = False
+    try:
+        main._world_changed(_S)
+    finally:
+        _S.is_public = True
+    assert calls == []
+
+
+def test_prerender_failure_does_not_break_the_change(guest, steps, monkeypatch):
+    # #658: the change already published; its preview must not fail it.
+    def boom(*args):
+        raise RuntimeError("no GPU")
+
+    monkeypatch.setattr(main.render_image, "render_png_base64", boom)
+    watcher = _watch_in_background()
+    try:
+        before = _S.feed.revision()
+        main._world_changed(_S)
+    finally:
+        watcher.join()
+    assert _S.feed.revision() != before
 
 
 def test_cached_render_is_served_while_the_owner_holds_the_world(guest, steps, monkeypatch):

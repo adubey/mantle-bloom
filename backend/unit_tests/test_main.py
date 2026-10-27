@@ -1767,7 +1767,7 @@ def test_animate_sidecar_never_passes_a_failed_checkpoint(tmp_path, monkeypatch)
         checkpoint_store=store,
         deleted=False,
         runner=None,
-        world=object(),
+        world=SimpleNamespace(seed=9, elapsed_years=200_000.0),
         feed=main.public_view.WorldFeed(),
         public_renders=main.public_view.RenderCache(),
     )

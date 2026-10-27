@@ -209,6 +209,11 @@ export default function Viewer() {
         </label>
       )}
       {!worldId && worlds && worlds.length === 0 && <p>No world has been generated yet. Check back later.</p>}
+      {worlds === null && (
+        <div style={{ padding: "48px 0", textAlign: "center" }}>
+          <span className="run-spinner" role="status" aria-label="Loading" />
+        </div>
+      )}
       {worldId && <WorldView key={worldId} worldId={worldId} />}
     </main>
   );
@@ -325,7 +330,12 @@ function WorldView({ worldId }: { worldId: WorldId }) {
   // A failed fetch used to fall through to a blank page, swallowing the message (#563 S8).
   if (!state?.world) {
     if (error) return <p role="alert" style={{ color: "#ff9b9b" }}>{error}</p>;
-    return null;
+    // The first fetch hasn't landed: a spinner, not a blank page (#658).
+    return (
+      <div style={{ padding: "48px 0", textAlign: "center" }}>
+        <span className="run-spinner" role="status" aria-label="Loading" />
+      </div>
+    );
   }
   const worldState = state.world;
   return (

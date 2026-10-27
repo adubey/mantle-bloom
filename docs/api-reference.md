@@ -59,7 +59,10 @@ Open to anyone, for the logged-out `/view` page (#373). See
 - `GET /public/worlds/{world_id}/render?view=elevation|biome&width=&height=`: like `/worlds/{world_id}/render`, but always
   Eckert IV at the default orientation, with width and height at most 2400. It returns
   `{"revision", "seed", "elapsed_years", "image_base64"}`. Each view and size is rendered once
-  per revision and then served from a cache shared by all viewers, even while the owner holds the world. `400` for
+  per revision and then served from a cache shared by all viewers, even while the owner holds the world.
+  While a viewer follows a public world, every published change also pre-renders the canonical
+  viewer image (combined at the viewer's size) into that cache, so the next poll's render is
+  already a hit; unwatched worlds and other sizes still render on demand (#658). `400` for
   any other view or size, `404` before a world exists, `503` if a render is needed and the
   owner holds the world for more than 10 s.
 - `POST /public/worlds/{world_id}/step` with `{"revision": str}`, the revision the viewer is showing: advances
