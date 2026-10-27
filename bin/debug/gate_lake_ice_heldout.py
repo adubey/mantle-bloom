@@ -28,6 +28,7 @@ args = parse_replay_args(__doc__, lambda ap: ap.set_defaults(myr=1.0, checkpoint
 
 from app import persistence, plates, world as world_mod  # noqa: E402
 from app.elevation_lines import line_spacing_rad  # noqa: E402
+from lake_ice_snapshot import lake_ice_snapshot  # noqa: E402
 
 HELDOUT_SHA256 = {
     "9980103ce9bd7733e4671bc3bec0d48359b45a8e457bc76a73dd769f8840f342": 373936961,
@@ -87,26 +88,18 @@ step_seconds = []
 
 
 def snapshot(step: int, runtime_s: float | None) -> dict:
-    hydro = world.hydrology_cache
-    plate_order = hydro.plates_in_order if hydro is not None else world.plates
-    liquid_m = plates.collect_all_lake_depth(plate_order)
-    ice_we_m = plates.collect_all_lake_ice(plate_order)
-    elevations = plates.collect_all_elevation(plate_order)
-    areas_m2 = plates.collect_all_accounting_areas_m2(
-        plate_order, line_spacing_rad(world.node_density)
-    )
-    if hydro is None or len(hydro.is_ocean) != len(liquid_m):
-        is_ocean = elevations <= world.sea_level_m
-    else:
-        is_ocean = hydro.is_ocean
-
+    state = lake_ice_snapshot(world, plates, line_spacing_rad)
+    hydro = state["hydro"]
+    liquid_m = state["liquid_m"]
+    ice_we_m = state["ice_we_m"]
+    areas_m2 = state["areas_m2"]
+    wet = state["wet"]
+    shallow = state["shallow"]
+    deep = state["deep"]
+    bedfast = state["bedfast"]
     total_water_m = liquid_m + ice_we_m
-    wet = (total_water_m > 1e-6) & ~is_ocean & (areas_m2 > 0.0)
     ice_m = ice_we_m * ICE_TO_WATER_DENSITY
     wet_area = float(areas_m2[wet].sum())
-    shallow = wet & (total_water_m <= 2.0)
-    deep = wet & (total_water_m > 2.0)
-    bedfast = wet & (liquid_m <= 1e-6) & (ice_we_m > 1e-6)
     shallow_area = float(areas_m2[shallow].sum())
     deep_area = float(areas_m2[deep].sum())
     under_ice_area = float(areas_m2[wet & (ice_we_m > 1e-6) & (liquid_m > 1e-6)].sum())

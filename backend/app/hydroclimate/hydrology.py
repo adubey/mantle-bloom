@@ -83,7 +83,7 @@ from __future__ import annotations
 import heapq
 import logging
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -1246,7 +1246,6 @@ def seasonal_freezing_degrees(mean_c: np.ndarray, amplitude_c: np.ndarray, thres
 
 LAKE_ICE_MAX_THICKNESS_M = 2.0
 LAKE_ICE_DENSITY_RATIO = 917.0 / 1000.0
-LAKE_ICE_STEFAN_M_PER_SQRT_C_DAY = 0.0335
 
 
 def advance_lake_ice(
@@ -1289,7 +1288,7 @@ def advance_lake_ice(
     )
     sublimation_rate = (
         LAKE_ICE_SUBLIMATION_M_PER_YR
-        * (1.0 - np.clip(ice_cover_fraction, 0.0, 1.0))
+        * np.clip(ice_cover_fraction, 0.0, 1.0)
         / ratio
     )
     loss_rate = melt_rate + sublimation_rate
@@ -1712,17 +1711,14 @@ def compute_hydrology(
     # after that loss, so it is intentionally not a term in this pre-routing residual.
     ledger = lake_result.ledger
     liquid_storage_change_m3 = float(np.dot(lake_result.lake_depth - prev_lake_depth, areas))
-    lake_water_ledger = lakes.LakeStepLedger(
+    phase_ledger = lakes.LakeStepLedger(
         external_supply_m3=ledger.external_supply_m3,
         evaporation_m3=ledger.evaporation_m3,
         overflow_to_ocean_m3=float(overflow_settled[is_ocean].sum() * years),
         overflow_out_m3=ledger.overflow_out_m3,
         storage_change_m3=liquid_storage_change_m3,
         internal_transfer_m3=ledger.internal_transfer_m3,
-        residual_m3=(
-            ledger.external_supply_m3 - ledger.evaporation_m3 - ice_budget["sublimation_m3"]
-            - ledger.overflow_out_m3 - liquid_storage_change_m3 - ice_budget["ice_storage_change_m3"]
-        ),
+        residual_m3=0.0,
         wet_precip_m3=ledger.wet_precip_m3,
         dry_runoff_m3=ledger.dry_runoff_m3,
         meltwater_m3=ledger.meltwater_m3,
@@ -1731,6 +1727,18 @@ def compute_hydrology(
         freezing_m3=ice_budget["freezing_m3"],
         melting_m3=ice_budget["melting_m3"],
     )
+    # Close the liquid and ice sub-budgets separately; freezing and melting cancel when
+    # combined, while the ice-only residual exposes any error in the phase transfer itself.
+    liquid_residual_m3 = (
+        phase_ledger.external_supply_m3 - phase_ledger.evaporation_m3
+        - phase_ledger.overflow_out_m3 - phase_ledger.storage_change_m3
+        - phase_ledger.freezing_m3 + phase_ledger.melting_m3
+    )
+    ice_residual_m3 = (
+        phase_ledger.freezing_m3 - phase_ledger.melting_m3
+        - phase_ledger.sublimation_m3 - phase_ledger.ice_storage_change_m3
+    )
+    lake_water_ledger = replace(phase_ledger, residual_m3=liquid_residual_m3 + ice_residual_m3)
     through_m3 += overflow_through
     settled_m3 += overflow_settled
     through_m3[leaf_sinks] = 0.0
