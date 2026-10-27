@@ -1428,8 +1428,11 @@ def _animate_message_line(session, world, message, last_frame, anim_spec: dict):
         }) + "\n", last_frame, False
     if message[0] == "progress":
         _, frame, total, frame_png, elapsed_years = message
-        _checkpoint_world(session)
-        _record_animation_progress(session, {**anim_spec, "completed_frames": frame})
+        # The sidecar must never get ahead of the checkpoint: if this frame's
+        # world save failed, recovery keeps pointing at the older checkpointed
+        # frame (resuming may redo a little work, but never silently skips any).
+        if _checkpoint_world(session):
+            _record_animation_progress(session, {**anim_spec, "completed_frames": frame})
         return json.dumps({
             "type": "progress",
             "frame": frame,
@@ -2600,20 +2603,24 @@ def _save_index() -> None:
         _logger.exception("checkpoint: couldn't save the registry index")
 
 
-def _checkpoint_world(session: WorldSession) -> None:
+def _checkpoint_world(session: WorldSession) -> bool:
     """Write `session`'s world to its checkpoint; the caller holds the session
     lock. A failed write is logged rather than raised: the world in memory is
-    fine, and the next change retries."""
+    fine, and the next change retries. Returns whether the checkpoint now matches
+    the world -- false only when a save was attempted and failed, so dependents
+    (the animation recovery sidecar, #638) can stay consistent with it rather than
+    running ahead of what is actually on disk."""
     world = session.world
     if session.checkpoint_store is None or world is None or session.deleted:
-        return
+        return True
     try:
         session.checkpoint_store.save_world(world)
     except Exception:  # noqa: BLE001 -- e.g. a full or unmounted volume mustn't fail the step
         _logger.exception("checkpoint: couldn't save the world")
-        return
+        return False
     if session.runner is not None:
         session.runner.retry_unsaved_status()
+    return True
 
 
 def _save_run_status(session: WorldSession, status: checkpoint.RunStatus) -> None:

@@ -1633,7 +1633,7 @@ def test_animate_message_line_records_and_clears_recovery(tmp_path, monkeypatch)
     store = checkpoint.CheckpointStore(tmp_path)
     session = SimpleNamespace(checkpoint_store=store, deleted=False)
     world = SimpleNamespace(stats_history=[])
-    monkeypatch.setattr(main, "_checkpoint_world", lambda session: None)
+    monkeypatch.setattr(main, "_checkpoint_world", lambda session: True)
     monkeypatch.setattr(main, "_summary", lambda session, world: {})
     spec = {
         "total_frames": 3, "steps_per_frame": 1, "step_years": 100_000,
@@ -1647,6 +1647,26 @@ def test_animate_message_line_records_and_clears_recovery(tmp_path, monkeypatch)
     line, last_frame, completed = main._animate_message_line(
         session, world, ("done", b"mp4", False), 2, spec)
     assert completed is True
+    assert store.load_animation_progress() is None
+
+
+def test_animate_sidecar_never_passes_a_failed_checkpoint(tmp_path, monkeypatch):
+    # Review on PR #647: _checkpoint_world logs and swallows a failed save, so the
+    # sidecar must not advance past it -- recovery keeps the older checkpointed
+    # frame (a resume may redo work, never silently skip it).
+    from types import SimpleNamespace
+    from app import checkpoint
+
+    store = checkpoint.CheckpointStore(tmp_path)
+    session = SimpleNamespace(checkpoint_store=store, deleted=False, runner=None, world=object())
+
+    def _boom(world):
+        raise OSError("volume gone")
+
+    monkeypatch.setattr(store, "save_world", _boom)
+    assert main._checkpoint_world(session) is False
+    assert main._animate_message_line(
+        session, SimpleNamespace(stats_history=[]), ("progress", 2, 3, b"png", 200_000.0), 1, {})[2] is False
     assert store.load_animation_progress() is None
 
 
