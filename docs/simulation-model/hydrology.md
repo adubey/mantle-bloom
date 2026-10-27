@@ -334,11 +334,9 @@ exactly the "reaches ground level" case a lake should eventually hit.
 **Cold lakes keep their water.** The prognostic lake solver integrates a lake the same way whatever its
 temperature: inflow, storage and spill continue under ice, as in Lake Untersee, Antarctica,
 which has been ice-covered for centuries yet holds a 169 m deep basin fed by glacier melt
-(RFC 0014 D2(b), #539). Until then a lake with any member below 0 C on the annual mean
-reported its dry floor, and the water its inflow brought was booked nowhere. That rule still
-silted the lake, so that a chronically cold catchment filled in rather than staying its own
-permanent leaf (#117); every lake now silts from its inflow anyway. Seasonal ice cover is RFC
-0014 D2(a), implemented above; a lake ice cap is D2(c), not yet implemented.
+(RFC 0014 D2(b), #539). Every lake also silts from its resolved inflow. Seasonal ice cover
+uses the D2(a) proxy above; physical lake ice is stored separately in the bounded D2(c)
+reservoir described above.
 
 ### Lake vs. sea tiers: a depth ceiling by size (2026-09-10)
 

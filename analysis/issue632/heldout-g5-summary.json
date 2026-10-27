@@ -1,0 +1,60 @@
+{
+ "issue": 632,
+ "rfc": "0014",
+ "gate": "held-out-lake-ice-acceptance",
+ "steps": 10,
+ "step_years": 100000,
+ "ice_age_period_years": 0,
+ "criteria": {
+  "physical_ice_at_most_2m": true,
+  "nonnegative_reservoirs": true,
+  "ice_within_local_water_inventory": true,
+  "deep_bedfast_area_at_most_1pct": true,
+  "ledger_residual_at_most_0p1pct": true
+ },
+ "saves": [
+  {
+   "seed": 373936961,
+   "sha256": "9980103ce9bd7733e4671bc3bec0d48359b45a8e457bc76a73dd769f8840f342",
+   "start_age_myr": 244.4,
+   "wet_lake_nodes_per_step": [369,425,440,446,576,666,773,850,934,982],
+   "max_physical_ice_m_per_step": [2,2,2,2,2,2,2,2,2,2],
+   "deep_bedfast_area_pct_per_step": [0,0,0,0,0,0,0,0,0,0],
+   "liquid_under_ice_area_pct_per_step": [17.8049,26.1392,24.8531,26.935,33.5129,38.932,40.2494,48.5047,50.937,49.4843],
+   "max_ledger_residual_pct": 3.3893e-10,
+   "zero_supply_steps": 0,
+   "peak_rss_mb": 4051.6,
+   "runtime_seconds": 191.97,
+   "passed": true
+  },
+  {
+   "seed": 997271774,
+   "sha256": "a43962a149a0ec96f1dbee3e6c675be98d50422c47e0455e062aa72a7d1da4d7",
+   "start_age_myr": 130.5,
+   "wet_lake_nodes_per_step": [823,586,543,611,500,617,653,671,648,738],
+   "max_physical_ice_m_per_step": [2,2,2,2,2,2,2,2,2,2],
+   "deep_bedfast_area_pct_per_step": [0,0,0,0,0,0,0,0,0,0],
+   "liquid_under_ice_area_pct_per_step": [34.1093,30.6058,14.9034,32.9817,41.8028,21.0592,33.9689,33.6075,29.187,27.4286],
+   "max_ledger_residual_pct": 6.9759e-11,
+   "zero_supply_steps": 0,
+   "peak_rss_mb": 2074.0,
+   "runtime_seconds": 66.49,
+   "passed": true
+  },
+  {
+   "seed": 456862899,
+   "sha256": "e6a6c7514ae52601d8d2e3ae541da3c1dcb727cde141a79b0bee39d3c962e865",
+   "start_age_myr": 19191.8,
+   "wet_lake_nodes_per_step": [0,0,0,0,0,0,0,1,1,1],
+   "max_physical_ice_m_per_step": [0,0,0,0,0,0,0,0,0,0],
+   "deep_bedfast_area_pct_per_step": [0,0,0,0,0,0,0,0,0,0],
+   "liquid_under_ice_area_pct_per_step": [0,0,0,0,0,0,0,0,0,0],
+   "max_ledger_residual_pct": 1.8554e-9,
+   "zero_supply_steps": 7,
+   "peak_rss_mb": 2517.9,
+   "runtime_seconds": 71.43,
+   "passed": true,
+   "lake_signal_note": "No lakes for seven steps; one liquid-only lake node for final three steps. Lake-ice checks are non-informative."
+  }
+ ]
+}
