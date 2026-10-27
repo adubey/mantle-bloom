@@ -677,15 +677,32 @@ export default function App() {
   // response from the most recently *issued* call, so a stale response is silently dropped
   // instead of overwriting a newer one.
   const renderRequestIdRef = useRef(0);
+  // A map render of the world is in flight (rotation commit, projection/view change).
+  // Rotations and view switches had no busy indication at all (#634) -- this drives
+  // the sidebar's indeterminate progress line while the fetch runs. Counted by the
+  // same request id as the data commit: a stale response resolving first must not
+  // clear the line while the latest fetch is still out.
+  const [rendering, setRendering] = useState(false);
   const refresh = useCallback(async (proj: Projection, view: MapView, viewRotation: Mat3) => {
-    if (view === "crossSection" || view === "plateInspector" || view === "riverInspector" || view === "lakeInspector" || view === "platesAndFaults") return; // frontend-rendered views do not use renderData
+    // Frontend-rendered views do not use renderData. Invalidate any render still in
+    // flight on the way out (#644): without this, a pending fetch's finally stays the
+    // latest-request cleanup and the "Rendering map" line lingers until it settles,
+    // even though nothing on screen wants its image any more.
+    if (view === "crossSection" || view === "plateInspector" || view === "riverInspector" || view === "lakeInspector" || view === "platesAndFaults") {
+      renderRequestIdRef.current++;
+      setRendering(false);
+      return;
+    }
     const requestId = ++renderRequestIdRef.current;
     const { showMountains: mountains, showPlainsPlateaus: plainsPlateaus } = terrainOverlayRef.current;
+    setRendering(true);
     try {
       const data = await renderWorld(worldIdRef.current!, proj, view, RENDER_WIDTH, RENDER_HEIGHT, viewRotation, mountains, plainsPlateaus);
       if (requestId === renderRequestIdRef.current) setRenderData(data);
     } catch (e) {
       if (requestId === renderRequestIdRef.current) setError(String(e));
+    } finally {
+      if (requestId === renderRequestIdRef.current) setRendering(false);
     }
   }, []);
 
@@ -1571,6 +1588,12 @@ export default function App() {
               fraction={overlayFraction}
               onExpand={overlayCollapsed ? () => setOverlayCollapsed(false) : undefined}
             />
+          )}
+          {/* Map renders have no run behind them, so the overlay above never covers
+              them -- rotation commits and view switches get the same indeterminate
+              line instead, suppressed while a run's own display is up (#634). */}
+          {rendering && !runActive && (
+            <ProgressBar label="Rendering map" />
           )}
           {runActive && !overlayCollapsed && (
             <RunOverlay
