@@ -1244,6 +1244,33 @@ def seasonal_freezing_degrees(mean_c: np.ndarray, amplitude_c: np.ndarray, thres
     return seasonal_positive_degrees(threshold_c - np.asarray(mean_c, dtype=float), amplitude_c, 0.0)
 
 
+def _lake_water_surface_temperature_c(
+    air_temperature_at_bed_c: np.ndarray,
+    ocean_temperature_c: np.ndarray,
+    is_ocean: np.ndarray,
+    elevation_m: np.ndarray,
+    previous_lake_depth_m: np.ndarray,
+    hypsometry: "lakes.CellHypsometry",
+    air_temperature_elevation_m: np.ndarray | None = None,
+) -> np.ndarray:
+    """Water temperature from last step's lake level and the connected-ocean mask (RFC 0014
+    D3, #661). `lake_depth` is mean depth over sub-cell relief, so recover its water level
+    through the same hypsometry used by the lake solve rather than adding depth to bed height.
+    The temperature correction uses the air lapse rate between the bed and that surface."""
+    from . import climate
+
+    surface_elevation_m = np.asarray(elevation_m, dtype=float).copy()
+    wet_idx = np.flatnonzero(np.asarray(previous_lake_depth_m) > 0.0)
+    if len(wet_idx):
+        surface_elevation_m[wet_idx] = hypsometry.level_from_depth(previous_lake_depth_m[wet_idx], wet_idx)
+    air_at_water_surface_c = climate.air_temperature_at_elevation(
+        air_temperature_at_bed_c,
+        elevation_m if air_temperature_elevation_m is None else air_temperature_elevation_m,
+        surface_elevation_m,
+    )
+    return np.where(is_ocean, ocean_temperature_c, air_at_water_surface_c)
+
+
 LAKE_ICE_MAX_THICKNESS_M = 2.0
 LAKE_ICE_DENSITY_RATIO = 917.0 / 1000.0
 
@@ -1415,6 +1442,9 @@ def compute_hydrology(
     node_cloud: tuple[np.ndarray, list[Plate]] | None = None,
     seasonal_amplitude_at_nodes: np.ndarray | None = None,
     history_years: float | None = None,
+    air_temperature_at_nodes: np.ndarray | None = None,
+    ocean_temperature_at_nodes: np.ndarray | None = None,
+    air_temperature_elevation_at_nodes: np.ndarray | None = None,
 ) -> HydrologyFields:
     """Runs the full flow-routing pipeline against the world's current node cloud and this
     step's climate: depression hierarchy + spill routing (see
@@ -1430,6 +1460,11 @@ def compute_hydrology(
     physical discharge, channel growth and river classification exclude it. `precipitation_at_nodes`/
     `temperature_at_nodes` are precomputed by the caller (erosion.py, which already needs the
     same climate-grid lookups for its own erosion terms) rather than looked up again here.
+    Optional `air_temperature_at_nodes` and `ocean_temperature_at_nodes` let D3 compute lake
+    water temperature after this function builds the current connected-ocean mask and the
+    hypsometry needed to recover the lagged water surface. The optional air-temperature
+    elevation identifies the terrain height where the sampled climate temperature applies;
+    direct callers that omit these fields use their supplied temperature at node elevation.
     `node_cloud`, likewise, is erosion.py's own already-gathered (points, plates_in_order) pair (see
     plates.gather_node_positions), reused here instead of re-deriving every node's world
     position from scratch a second time this same step.
@@ -1501,6 +1536,15 @@ def compute_hydrology(
     # Use persisted water from the start of this step to partition precipitation over wet and
     # dry area. Partial cells retain their actual flooded fraction (#587).
     hypsometry = lakes.CellHypsometry.from_terrain(elevation, areas, neighbor_idx)
+    lake_temperature_c = _lake_water_surface_temperature_c(
+        temperature_at_nodes if air_temperature_at_nodes is None else air_temperature_at_nodes,
+        temperature_at_nodes if ocean_temperature_at_nodes is None else ocean_temperature_at_nodes,
+        is_ocean,
+        elevation,
+        prev_lake_depth,
+        hypsometry,
+        air_temperature_elevation_at_nodes,
+    )
     wet_fraction = _lagged_lake_wet_fraction(prev_lake_depth, hypsometry)
     wet_fraction = np.where(is_ocean, 0.0, wet_fraction)
     dry_fraction = 1.0 - wet_fraction
@@ -1516,12 +1560,8 @@ def compute_hydrology(
     seasonal_amplitude = (
         seasonal_amplitude_at_nodes if seasonal_amplitude_at_nodes is not None else np.zeros(n)
     )
-    ice_free_fraction = seasonal_fraction_above(
-        temperature_at_nodes, seasonal_amplitude, FREEZE_POINT_C
-    )
-    open_season_temperature_c = seasonal_open_mean_c(
-        temperature_at_nodes, seasonal_amplitude, FREEZE_POINT_C
-    )
+    ice_free_fraction = seasonal_fraction_above(lake_temperature_c, seasonal_amplitude, FREEZE_POINT_C)
+    open_season_temperature_c = seasonal_open_mean_c(lake_temperature_c, seasonal_amplitude, FREEZE_POINT_C)
     lake_open_evaporation_m_per_yr = (
         breaching.open_water_evaporation_mm(open_season_temperature_c) / 1000.0 * ice_free_fraction
     )
@@ -1663,7 +1703,7 @@ def compute_hydrology(
     # liquid solver's already-booked external export for this step.
     prev_lake_ice_m = collect_all_lake_ice(plates_in_order)
     lake_ice_m, lake_depth_after_phase, ice_budget = advance_lake_ice(
-        prev_lake_ice_m, lake_result.lake_depth, areas, temperature_at_nodes,
+        prev_lake_ice_m, lake_result.lake_depth, areas, lake_temperature_c,
         seasonal_amplitude, 1.0 - ice_free_fraction, years,
     )
     lake_result.lake_depth[:] = lake_depth_after_phase

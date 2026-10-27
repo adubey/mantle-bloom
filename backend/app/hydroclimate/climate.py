@@ -505,6 +505,17 @@ def compute_land_temperature(insolation_row: np.ndarray, elevation_m: np.ndarray
     return base - altitude_cooling
 
 
+def air_temperature_at_elevation(
+    air_temperature_c: np.ndarray, base_elevation_m: np.ndarray, target_elevation_m: np.ndarray
+) -> np.ndarray:
+    """Adjust near-surface air temperature from the terrain elevation to a nearby surface
+    elevation with the model's standard lapse rate. Used for lake water surfaces, whose
+    height differs from the bed under them (RFC 0014 D3, #661)."""
+    return np.asarray(air_temperature_c, dtype=float) - LAPSE_RATE_C_PER_KM * (
+        np.asarray(target_elevation_m, dtype=float) - np.asarray(base_elevation_m, dtype=float)
+    ) / 1000.0
+
+
 def compute_ocean_temperature_baseline(insolation_row: np.ndarray, height: int, width: int) -> np.ndarray:
     """Pre-advection zonal baseline -- narrower range and a freezing floor relative to land,
     since water has far more thermal inertia."""

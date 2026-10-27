@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from app import geometry
 from app.elevation_lines import line_spacing_rad
-from app.hydroclimate import breaching, erosion, hydrology
+from app.hydroclimate import breaching, erosion, hydrology, lakes
 from app.plates import collect_all_accounting_areas_m2
 from app.world import World, generate_world, step_world
 
@@ -114,6 +114,34 @@ def test_seasonal_lake_inputs_leave_dry_land_budyko_pet_unchanged():
     assert seasonal.lake_external_dry_runoff_m3_per_yr == pytest.approx(
         steady.lake_external_dry_runoff_m3_per_yr
     )
+
+
+def test_lake_temperature_uses_lagged_water_surface_and_connected_ocean_mask():
+    elevation = np.array([-100.0, -100.0, 200.0])
+    previous_depth = np.array([64.0, 64.0, 0.0])
+    hypsometry = lakes.CellHypsometry(
+        elevation=elevation,
+        area_m2=np.ones(3),
+        relief_m=np.array([100.0, 100.0, 0.0]),
+        reference_area_m2=1.0,
+    )
+
+    water_temperature = hydrology._lake_water_surface_temperature_c(
+        air_temperature_at_bed_c=np.full(3, 10.0),
+        ocean_temperature_c=np.full(3, 5.0),
+        is_ocean=np.array([False, True, False]),
+        elevation_m=elevation,
+        previous_lake_depth_m=previous_depth,
+        hypsometry=hypsometry,
+    )
+
+    # A mean depth of 64 m in a cell with 100 m sub-cell relief puts its water surface at
+    # -40 m, not bed elevation + mean depth (RFC 0014's shared hypsometry contract).
+    # The enclosed below-sea-level lake uses air temperature there; connected ocean uses ocean.
+    assert water_temperature[0] == pytest.approx(10.0 - 6.5 * 0.06)
+    assert water_temperature[1] == pytest.approx(5.0)
+    # A newly formed lake has no previous water level, so this step uses the bed-level air temp.
+    assert water_temperature[2] == pytest.approx(10.0)
 
 
 def _river_inspector_fields():

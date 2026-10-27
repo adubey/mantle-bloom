@@ -199,10 +199,15 @@ discharge, channel-width growth, deposition, geology or lake silt.
   internal. `should_spill`, `spill_target`, final water levels and `Lake.is_spilling` all come
   from this solve. The per-step ledger residual is external supply minus evaporation, exported
   overflow and storage change; internal transfers are recorded separately and cancel globally.
-  Lake losses use the sinusoidal seasonal cycle (#608). `seasonal_fraction_above` gives the
-  ice-free share of the year from the annual-mean temperature and undamped seasonal amplitude
-  (`A_w = A`, selected by G3); until D3 lands, the mean is the existing node air temperature.
-  `seasonal_open_mean_c` gives the mean temperature during that open season. Open-water
+  Lake losses use the sinusoidal seasonal cycle (#608). For a previously wet lake cell,
+  hydrology recovers the lagged water-surface elevation from its persisted mean depth and
+  `CellHypsometry`, then adjusts the cell's air temperature from bed to water surface with the
+  climate lapse rate (RFC 0014 D3, #661). An enclosed lake below sea level uses air temperature;
+  only cells connected to the open ocean use ocean temperature. A newly wet cell has no prior
+  lake level and uses its bed-level air temperature for this step. `seasonal_fraction_above`
+  gives the ice-free share of the year from that water-surface mean and the undamped seasonal
+  amplitude (`A_w = A`, selected by G3). `seasonal_open_mean_c` gives the mean temperature
+  during that open season. Open-water
   evaporation is `open_water_evaporation_mm(T_open) × f_free`, and ice-season sublimation is
   `0.6 m/yr × (1 − f_free)`. Only open-water evaporation receives the up-to-30% shallow-margin
   boost (`SHALLOW_EVAPORATION_BOOST`). Dry-land Budyko runoff keeps its existing annual-mean
