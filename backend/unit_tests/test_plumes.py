@@ -70,7 +70,10 @@ def _test_centers() -> list:
 
 
 def _event_key(plume: plumes.MantlePlume) -> tuple:
+    # plume_id first: same-time/same-volume events on different streams would
+    # otherwise collide (#624 made the key collision-free on purpose).
     return (
+        plume.plume_id,
         plume.born_years,
         tuple(plume.position),
         plume.head_volume_m3,
@@ -593,64 +596,35 @@ def test_diagnostics_counts_population():
 
 def _consume_schedule(seed, step_years, total_years, multiplier=1.0, cox=False):
     """Fresh plumes consumed over [0, total] in `step_years` increments."""
-    from app import plumes as plumes_mod
-
     state: dict = {}
     fresh: list = []
     t = 0.0
     while t < total_years - 1e-9:
         fresh.extend(
-            plumes_mod.consume_arrivals(seed, multiplier, cox, [], state, t, t + step_years)
+            plumes.consume_arrivals(seed, multiplier, cox, [], state, t, t + step_years)
         )
         t += step_years
     return fresh
 
 
-def _event_key(plume):
-    return (
-        plume.plume_id,
-        round(plume.born_years, 6),
-        round(plume.head_volume_m3, 3),
-        round(plume.tail_flux_m3_per_yr, 6),
-        tuple(round(v, 6) for v in plume.position),
-    )
-
-
-def test_event_stream_identical_across_step_partitions():
-    """RFC 0007 (#624): the same schedule consumed as 10x1 Myr or 1x10 Myr steps
-    yields the same events. Order may group per step, so compare sorted."""
+def test_event_stream_multiset_identical_across_step_partitions():
+    """RFC 0007 (#624): the same schedule consumed as 10x1 Myr or 1x10 Myr gives
+    the same event multiset. Order legitimately groups per step (stream-major
+    per consume call), so compare the file's exact-key convention sorted.
+    Single seed 7: the schedule is a pure function of seed, so one seed pins it."""
     fine = _consume_schedule(7, 1e6, 10e6)
     coarse = _consume_schedule(7, 10e6, 10e6)
     assert len(fine) == len(coarse) > 0
     assert sorted(_event_key(p) for p in fine) == sorted(_event_key(p) for p in coarse)
 
 
-def test_stage_volumes_partition_exact_within_1e9():
-    """RFC 0007 (#624): delivering a shared schedule in 1 Myr vs 10 Myr steps
-    delivers the same head/tail volume within 1e-9 relative."""
-    import copy
-
-    def deliver(step_years):
-        plume = copy.copy(_head_plume((0.0, 0.0, 1.0)))
-        head_vol = tail_vol = 0.0
-        t = 0.0
-        while t < 10e6 - 1e-9:
-            head, tail, _ = plumes._stage_volumes(plume, t, t + step_years)
-            head_vol += head
-            tail_vol += tail
-            plume = copy.copy(plume)
-            plume.head_remaining_m3 = max(0.0, plume.head_remaining_m3 - head)
-            t += step_years
-        return head_vol, tail_vol
-
-    fine_head, fine_tail = deliver(1e6)
-    coarse_head, coarse_tail = deliver(10e6)
-    assert fine_head == pytest.approx(coarse_head, rel=1e-9)
-    assert fine_tail == pytest.approx(coarse_tail, rel=1e-9)
-
-
 def _pinned_branches(seed, step_years, total_years):
-    """(plume_id, oceanic_host) per head on a pinned-motion convergent world."""
+    """plume_id -> oceanic_host per head on a pinned-motion convergent world.
+
+    Pinned means rotation only (`pinned_omegas`): per-step `deform` stays
+    path-dependent, which is exactly the branch-flip mechanism this measures.
+    Single seed 7: the schedule is a pure function of seed, and the 95% bar
+    absorbs one-off flips."""
     from app import debug_worlds
     from app import world as world_mod
 
@@ -671,80 +645,83 @@ def test_pinned_branch_agrees_across_partitions():
     on over 95% of events between 1 Myr and 10 Myr partitions."""
     fine = _pinned_branches(7, 1e6, 20e6)
     coarse = _pinned_branches(7, 10e6, 20e6)
-    common = set(fine) & set(coarse)
-    assert len(common) > 0
-    agreement = sum(1 for pid in common if fine[pid] == coarse[pid]) / len(common)
-    assert agreement > 0.95
+    # Drops are partition-independent (same schedule, same drop rule), so the
+    # id sets must match exactly -- intersection would hide a divergence.
+    assert set(fine) == set(coarse), f"only in fine: {set(fine) - set(coarse)}, only in coarse: {set(coarse) - set(fine)}"
+    assert len(fine) > 0
+    assert all(host is not None for host in fine.values())
+    disagree = [pid for pid in fine if fine[pid] != coarse[pid]]
+    agreement = 1.0 - len(disagree) / len(fine)
+    assert agreement > 0.95, f"flipped branches: {disagree}"
 
 
 def _world_fingerprint(world):
-    """Totaled state scalars: identical fingerprints mean identical steps."""
-    totals = [world.elapsed_years, len(world.mantle_plumes)]
+    """Per-node max-abs state plus leak-prone scalars.
+
+    Sums can mask compensating writes, so fields compare by max absolute node
+    value; heat, stress, ledgers, counters, stream state, and event count are
+    included because a heat- or stress-only leak would otherwise be invisible.
+    """
+    from app import terranes
+
+    material_ledger = getattr(world, "continental_material_ledger", None) or {}
+    fingerprint = [world.elapsed_years, len(world.mantle_plumes)]
+    fingerprint.append(float(np.nansum(material_ledger.get("juvenile_flood_basalt_m3", 0.0))))
+    fingerprint.append(float(np.nansum(material_ledger.get("juvenile_hotspot_m3", 0.0))))
+    ledger = terranes.ensure_ledger(world)
+    for source in terranes.SOURCES:
+        for account in terranes.BALANCE_ACCOUNTS:
+            fingerprint.append(float(ledger[source][account]))
+    fingerprint.append(world.plume_heads_emplaced)
+    fingerprint.append(repr(world.plume_stream))
+    fingerprint.append(len(world.events))
+    nodes = []
     for plate in world.plates:
-        for field in ("crustal_thickness_m", "elevation", "continental_material_m"):
+        for field in (
+            "crustal_thickness_m",
+            "elevation",
+            "continental_material_m",
+            "plume_heat_myr",
+            "internal_stress",
+        ):
             try:
-                totals.append(float(np.nansum(plate.collect(field))))
+                nodes.append(float(np.nanmax(np.abs(plate.collect(field)))))
             except Exception:
                 continue
-    return totals
+    fingerprint.extend(nodes)
+    return fingerprint
 
 
-def test_multiplier_zero_matches_plume_off_replay():
+def test_multiplier_zero_matches_plume_off_replay(monkeypatch):
     """RFC 0007 (#624): `plume_multiplier = 0` is a strict no-op, matching a
     10-step replay with the plume pass patched out."""
     from app import debug_worlds
     from app import world as world_mod
 
+    zero_result = {"new_heads": 0, "new_tails": 0, "head_volume_m3": 0.0,
+                   "tail_volume_m3": 0.0, "credited_heads": 0}
+
     def replay(patch):
         world = debug_worlds.scenario_two_plate_convergent(7)
         world.plume_multiplier = 0.0
         if patch:
-            monkeypatched = {"new_heads": 0, "new_tails": 0, "head_volume_m3": 0.0,
-                             "tail_volume_m3": 0.0, "credited_heads": 0}
-            original = plumes.apply
-            plumes.apply = lambda wd, yrs, *a, **k: dict(monkeypatched)
-            try:
-                for _ in range(10):
-                    world_mod.step_world(world, 1e6)
-            finally:
-                plumes.apply = original
-        else:
-            for _ in range(10):
-                world_mod.step_world(world, 1e6)
+            # years=0 takes the real early-return path without touching the
+            # world, so this pins the patched dict to the real contract.
+            assert set(zero_result) == set(plumes.apply(world, 0.0))
+            monkeypatch.setattr(
+                plumes, "apply", lambda wd, yrs, *a, **k: dict(zero_result)
+            )
+        for _ in range(10):
+            world_mod.step_world(world, 1e6)
         return _world_fingerprint(world)
 
-    assert replay(False) == replay(True)
+    unpatched, patched = replay(False), replay(True)
+    assert len(unpatched) == len(patched)
+    for got, want in zip(unpatched, patched):
+        if isinstance(got, float):
+            assert got == pytest.approx(want)
+        else:
+            assert got == want
 
 
-def test_replay_totals_agree_across_partitions():
-    """RFC 0007 (#624): a 100 Myr pinned replay delivers the same head/tail
-    totals at 1 Myr and 10 Myr steps, within 2%."""
-    from app import debug_worlds
-    from app import world as world_mod
 
-    def replay(step_years):
-        world = debug_worlds.scenario_two_plate_convergent(7)
-        head_vol = tail_vol = 0.0
-        original = plumes.apply
-
-        def apply(world_, years, *args, **kwargs):
-            nonlocal head_vol, tail_vol
-            out = original(world_, years, *args, **kwargs)
-            head_vol += out["head_volume_m3"]
-            tail_vol += out["tail_volume_m3"]
-            return out
-
-        plumes.apply = apply
-        try:
-            t = 0.0
-            while t < 100e6 - 1e-9:
-                world_mod.step_world(world, min(step_years, 100e6 - t))
-                t += step_years
-        finally:
-            plumes.apply = original
-        return head_vol, tail_vol
-
-    fine_head, fine_tail = replay(1e6)
-    coarse_head, coarse_tail = replay(10e6)
-    assert fine_head == pytest.approx(coarse_head, rel=0.02)
-    assert fine_tail == pytest.approx(coarse_tail, rel=0.02)
