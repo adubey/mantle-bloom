@@ -674,7 +674,15 @@ export default function App() {
   // clear the line while the latest fetch is still out.
   const [rendering, setRendering] = useState(false);
   const refresh = useCallback(async (proj: Projection, view: MapView, viewRotation: Mat3) => {
-    if (view === "crossSection" || view === "plateInspector" || view === "riverInspector" || view === "lakeInspector" || view === "platesAndFaults") return; // frontend-rendered views do not use renderData
+    // Frontend-rendered views do not use renderData. Invalidate any render still in
+    // flight on the way out (#644): without this, a pending fetch's finally stays the
+    // latest-request cleanup and the "Rendering map" line lingers until it settles,
+    // even though nothing on screen wants its image any more.
+    if (view === "crossSection" || view === "plateInspector" || view === "riverInspector" || view === "lakeInspector" || view === "platesAndFaults") {
+      renderRequestIdRef.current++;
+      setRendering(false);
+      return;
+    }
     const requestId = ++renderRequestIdRef.current;
     const { showMountains: mountains, showPlainsPlateaus: plainsPlateaus } = terrainOverlayRef.current;
     setRendering(true);
