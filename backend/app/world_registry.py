@@ -139,12 +139,16 @@ class WorldSession:
     _guest_step_progress_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def set_guest_step_progress(self, progress: tuple[float, str] | None) -> None:
-        """Publish a guest step's current position (or clear it when done). Wakes
-        the world's viewers so a long poll answered for progress, not just for a
-        new revision (see main.py's public_world)."""
+        """Publish a guest step's current position (or clear it when done). A new
+        position wakes the world's viewers so a long poll answers for progress, not
+        just for a new revision (see main.py's public_world). Clearing does not wake:
+        the step's publish lands microseconds later and wakes for the new revision --
+        and waking here would pop the waiter list just before `_world_changed`
+        captures its pre-render audience (#658)."""
         with self._guest_step_progress_lock:
             self._guest_step_progress = progress
-        self.feed.wake()
+        if progress is not None:
+            self.feed.wake()
 
     def guest_step_progress(self) -> tuple[float, str] | None:
         """The latest published guest-step position, for the public world poll."""

@@ -46,6 +46,14 @@ GUEST_STEP_LIMIT = 30
 GUEST_STEP_YEARS = 100_000.0
 GUEST_PROJECTION = "eckert4"
 GUEST_VIEWS = ("elevation", "biome", "combined")
+# The image /view itself asks for (Viewer.tsx's fixed combined view at
+# MAX_DISPLAY_WIDTH * RENDER_SCALE): the one PNG the server pre-renders into the
+# RenderCache on every published change, so the first viewer after a step hits
+# cache instantly (#658). Kept as server constants -- not negotiated per request --
+# so there is exactly one eager image per revision.
+GUEST_DEFAULT_VIEW = "combined"
+GUEST_DEFAULT_WIDTH = 2200
+GUEST_DEFAULT_HEIGHT = 1222
 # The viewer renders at 2x its 1100x611 display size; a little headroom past that, but well
 # under the admin cap, since a guest render holds the world lock.
 GUEST_MAX_RENDER_PX = 2400
@@ -129,6 +137,14 @@ class WorldFeed:
         with self._mutex:
             waiters, self._waiters = self._waiters, []
         _wake_all(waiters)
+
+    def has_waiters(self) -> bool:
+        """A viewer is following this world right now. Gates the viewer preview
+        pre-render (#658): with an audience the render pays for itself on the next
+        poll; without one it is pure cost on every change. Best-effort by nature --
+        a waiter arriving mid-render just renders on demand as before."""
+        with self._mutex:
+            return bool(self._waiters)
 
     async def wait_past(self, seen: str, timeout_s: float, changed: Callable[[], bool] | None = None) -> None:
         """Return once the revision differs from `seen` or `changed()` is true, or after
