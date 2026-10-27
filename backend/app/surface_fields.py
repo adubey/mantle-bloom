@@ -59,6 +59,8 @@ SURFACE_FIELDS: dict[str, SurfaceField] = {
     "channel_depth": _field(float, 0.0, RemapClass.INTENSIVE),
     "channel_width": _field(float, 0.0, RemapClass.INTENSIVE, coupled_to=("channel_depth",)),
     "lake_depth": _field(float, 0.0, RemapClass.EXTENSIVE),
+    # Lake ice is a disjoint water-equivalent reservoir (RFC 0014 D2(c), #632).
+    "lake_ice_m": _field(float, 0.0, RemapClass.EXTENSIVE),
     "glacier_depth": _field(float, 0.0, RemapClass.EXTENSIVE),
     "silt_depth": _field(float, 0.0, RemapClass.EXTENSIVE),
     "is_volcano": _field(bool, False, RemapClass.BOOLEAN_PROVENANCE),

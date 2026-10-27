@@ -292,16 +292,21 @@ def trapped_water_volume_m3(world: "World") -> float:
     fell as precipitation and would otherwise have run back to the sea; debiting them is what
     makes sea level fall as an ice age's ice sheets grow (glacio-eustasy). 0.0 for a world
     with neither."""
-    from ..plates import collect_all_accounting_areas_m2, collect_all_glacier_depth, collect_all_lake_depth
+    from ..plates import (
+        collect_all_accounting_areas_m2, collect_all_glacier_depth, collect_all_lake_depth,
+        collect_all_lake_ice,
+    )
 
     if not world.plates:
         return 0.0
     glacier_depth = collect_all_glacier_depth(world.plates)
     lake_depth = collect_all_lake_depth(world.plates)
+    lake_ice_m = collect_all_lake_ice(world.plates)
     areas_m2 = collect_all_accounting_areas_m2(world.plates, line_spacing_rad(world.node_density))
-    ice = _ICE_WATER_EQUIVALENT * float(np.dot(areas_m2, np.clip(glacier_depth, 0.0, None)))
-    lakes = float(np.dot(areas_m2, np.where(lake_depth >= _LAKE_MIN_TRAPPED_DEPTH_M, lake_depth, 0.0)))
-    return ice + lakes
+    glacier_ice = _ICE_WATER_EQUIVALENT * float(np.dot(areas_m2, np.clip(glacier_depth, 0.0, None)))
+    lake_liquid = float(np.dot(areas_m2, np.where(lake_depth >= _LAKE_MIN_TRAPPED_DEPTH_M, lake_depth, 0.0)))
+    lake_ice = float(np.dot(areas_m2, np.clip(lake_ice_m, 0.0, None)))
+    return glacier_ice + lake_liquid + lake_ice
 
 
 def solve_sea_level(elevations: np.ndarray, areas_m2: np.ndarray, water_volume_m3: float) -> float:

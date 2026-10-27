@@ -313,6 +313,8 @@ hierarchy-assigned receiver, independent of the channel that later carries expor
 No cross-step `Lake` registry is needed: continuity comes from persisted per-node
 `lake_depth`, not matching freshly rebuilt tree objects by member overlap.
 
+**Lake ice is a separate water-equivalent reservoir (RFC 0014 D2(c), #632).** `lake_ice_m` is a persistent extensive surface field, independent from liquid `lake_depth`. The seasonal ice proxy grows by a Stefan freezing-degree relation, melts with the existing glacier positive-degree law, and loses water through sublimation. It caps physical thickness at 2 m (0.917 density ratio converts that to 1.834 m water equivalent); freezing and melt transfer water locally between liquid and ice. Sublimation is charged to the ice reservoir, not liquid storage. `lake_water_ledger` reports liquid and ice storage changes plus sublimation, so its residual closes the combined water budget. This empirical cap assumes the modeled lake scope is non-permafrost; it does not calculate permafrost or ground heat. Existing saves default the new field to zero through the surface-field registry.
+
 **Lakes accumulate silt.** `silt_depth` (a persistent per-node field, carried exactly like `lake_depth`) is a
 small volume fraction (`SILT_ACCUMULATION_COEFFICIENT`, m^3 of silt per m^3 of water) of each
 resolved body's step-integrated supply, including overflow received from a sibling body,

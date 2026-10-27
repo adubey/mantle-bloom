@@ -1,0 +1,852 @@
+{
+ "issue": 541,
+ "rfc": "0014",
+ "gate": "G5",
+ "save": "mantle-bloom-seed317739385-200800000y.mbworld",
+ "save_sha256": "6c806f913e4c79bb351b5eb5a143abcfc273df39b3bdf4ce9823fec7d27fb0cd",
+ "seed": 317739385,
+ "age_myr": 200.8,
+ "axial_tilt_deg": 23.5,
+ "climate_density": 8.0,
+ "lake_nodes": 2270,
+ "wet_lake_area_km2": 6355997.968,
+ "shallow_lake_area_km2": 1056509.226,
+ "deep_lake_area_km2": 5299488.741,
+ "physical_ice_cap_m": 2.0,
+ "permafrost_assumption": "not represented; all modeled lakes treated as non-permafrost",
+ "lake_depth_m": {
+  "p50_m": 632.331907,
+  "p90_m": 2304.41067,
+  "p99_m": 4351.034166,
+  "max_m": 7881.592292
+ },
+ "temperature_c": {
+  "mean_p50": 6.257,
+  "amplitude_p50": 16.017,
+  "fdd_c_days_p50": 830.455,
+  "pdd_c_days_p50": 3150.453
+ },
+ "method": {
+  "climate_and_depth": "held fixed at saved state; sampled on live nodes",
+  "water_surface": "air temperature and seasonal amplitude sampled at lake nodes; amplitude depth damping off",
+  "growth": "Stefan ODE d(h_i^2)/dt=2*k*FDD/(rho_i*L_f), integrated exactly against constant annual losses; physical ice capped at min(2 m, local lake depth); water-equivalent conversion 917/1000",
+  "conductivity": "k=2.1 W m-1 K-1 baseline; scale factors 0.5, 1, 2",
+  "melt": "existing glacier positive-degree law: 400 m/Myr at 20 annual-mean positive C, capped at 3x; converted to water equivalent",
+  "sublimation": "0.6 m water equivalent per ice-covered year, multiplied by 1-f_free for each cell; scale factors 0.25, 1, 4",
+  "step_years": "closed-form integration; checkpoints at 0, 0.1, 0.5, 1, 2.5, 5, 7.5, 10 Myr",
+  "duration_years": 10000000.0,
+  "limits": "No climate, lake-depth, or water-budget feedback; non-permafrost 2 m physical cap is an owner-directed empirical bound."
+ },
+ "runs": [
+  {
+   "final_thickness_we": {
+    "p50_m": 1.834,
+    "p90_m": 1.834,
+    "p99_m": 1.834,
+    "max_m": 1.834
+   },
+   "final_physical_ice_thickness": {
+    "p50_m": 2.0,
+    "p90_m": 2.0,
+    "p99_m": 2.0,
+    "max_m": 2.0
+   },
+   "wet_cells": 2270,
+   "ice_covered_cells": 1744,
+   "frozen_to_bed_wet_area_pct": 11.231336,
+   "shallow_bedfast_wet_area_pct": 11.231336,
+   "deep_bedfast_deep_area_pct": 0.0,
+   "max_physical_ice_m": 2.0,
+   "cap_volume_km3": 8045.083516,
+   "global_sublimation_km3_yr": 303.355823606,
+   "volume_trajectory": [
+    {
+     "time_myr": 0.0,
+     "cap_volume_km3": 0.0,
+     "wet_area_ice_covered_pct": 0.0,
+     "frozen_to_bed_wet_area_pct": 0.0,
+     "shallow_bedfast_wet_area_pct": 0.0,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 0.1,
+     "cap_volume_km3": 8045.083516,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.231336,
+     "shallow_bedfast_wet_area_pct": 11.231336,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 0.5,
+     "cap_volume_km3": 8045.083516,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.231336,
+     "shallow_bedfast_wet_area_pct": 11.231336,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 1.0,
+     "cap_volume_km3": 8045.083516,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.231336,
+     "shallow_bedfast_wet_area_pct": 11.231336,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 2.5,
+     "cap_volume_km3": 8045.083516,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.231336,
+     "shallow_bedfast_wet_area_pct": 11.231336,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 5.0,
+     "cap_volume_km3": 8045.083516,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.231336,
+     "shallow_bedfast_wet_area_pct": 11.231336,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 7.5,
+     "cap_volume_km3": 8045.083516,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.231336,
+     "shallow_bedfast_wet_area_pct": 11.231336,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 10.0,
+     "cap_volume_km3": 8045.083516,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.231336,
+     "shallow_bedfast_wet_area_pct": 11.231336,
+     "deep_bedfast_deep_area_pct": 0.0
+    }
+   ],
+   "sublimation_scale": 0.25,
+   "conduction_coefficient_scale": 0.5
+  },
+  {
+   "final_thickness_we": {
+    "p50_m": 1.834,
+    "p90_m": 1.834,
+    "p99_m": 1.834,
+    "max_m": 1.834
+   },
+   "final_physical_ice_thickness": {
+    "p50_m": 2.0,
+    "p90_m": 2.0,
+    "p99_m": 2.0,
+    "max_m": 2.0
+   },
+   "wet_cells": 2270,
+   "ice_covered_cells": 1744,
+   "frozen_to_bed_wet_area_pct": 11.27129,
+   "shallow_bedfast_wet_area_pct": 11.27129,
+   "deep_bedfast_deep_area_pct": 0.0,
+   "max_physical_ice_m": 2.0,
+   "cap_volume_km3": 8213.293254,
+   "global_sublimation_km3_yr": 303.355823606,
+   "volume_trajectory": [
+    {
+     "time_myr": 0.0,
+     "cap_volume_km3": 0.0,
+     "wet_area_ice_covered_pct": 0.0,
+     "frozen_to_bed_wet_area_pct": 0.0,
+     "shallow_bedfast_wet_area_pct": 0.0,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 0.1,
+     "cap_volume_km3": 8213.293254,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.27129,
+     "shallow_bedfast_wet_area_pct": 11.27129,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 0.5,
+     "cap_volume_km3": 8213.293254,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.27129,
+     "shallow_bedfast_wet_area_pct": 11.27129,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 1.0,
+     "cap_volume_km3": 8213.293254,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.27129,
+     "shallow_bedfast_wet_area_pct": 11.27129,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 2.5,
+     "cap_volume_km3": 8213.293254,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.27129,
+     "shallow_bedfast_wet_area_pct": 11.27129,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 5.0,
+     "cap_volume_km3": 8213.293254,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.27129,
+     "shallow_bedfast_wet_area_pct": 11.27129,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 7.5,
+     "cap_volume_km3": 8213.293254,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.27129,
+     "shallow_bedfast_wet_area_pct": 11.27129,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 10.0,
+     "cap_volume_km3": 8213.293254,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.27129,
+     "shallow_bedfast_wet_area_pct": 11.27129,
+     "deep_bedfast_deep_area_pct": 0.0
+    }
+   ],
+   "sublimation_scale": 0.25,
+   "conduction_coefficient_scale": 1.0
+  },
+  {
+   "final_thickness_we": {
+    "p50_m": 1.834,
+    "p90_m": 1.834,
+    "p99_m": 1.834,
+    "max_m": 1.834
+   },
+   "final_physical_ice_thickness": {
+    "p50_m": 2.0,
+    "p90_m": 2.0,
+    "p99_m": 2.0,
+    "max_m": 2.0
+   },
+   "wet_cells": 2270,
+   "ice_covered_cells": 1744,
+   "frozen_to_bed_wet_area_pct": 11.27129,
+   "shallow_bedfast_wet_area_pct": 11.27129,
+   "deep_bedfast_deep_area_pct": 0.0,
+   "max_physical_ice_m": 2.0,
+   "cap_volume_km3": 8291.710091,
+   "global_sublimation_km3_yr": 303.355823606,
+   "volume_trajectory": [
+    {
+     "time_myr": 0.0,
+     "cap_volume_km3": 0.0,
+     "wet_area_ice_covered_pct": 0.0,
+     "frozen_to_bed_wet_area_pct": 0.0,
+     "shallow_bedfast_wet_area_pct": 0.0,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 0.1,
+     "cap_volume_km3": 8291.710091,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.27129,
+     "shallow_bedfast_wet_area_pct": 11.27129,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 0.5,
+     "cap_volume_km3": 8291.710091,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.27129,
+     "shallow_bedfast_wet_area_pct": 11.27129,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 1.0,
+     "cap_volume_km3": 8291.710091,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.27129,
+     "shallow_bedfast_wet_area_pct": 11.27129,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 2.5,
+     "cap_volume_km3": 8291.710091,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.27129,
+     "shallow_bedfast_wet_area_pct": 11.27129,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 5.0,
+     "cap_volume_km3": 8291.710091,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.27129,
+     "shallow_bedfast_wet_area_pct": 11.27129,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 7.5,
+     "cap_volume_km3": 8291.710091,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.27129,
+     "shallow_bedfast_wet_area_pct": 11.27129,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 10.0,
+     "cap_volume_km3": 8291.710091,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.27129,
+     "shallow_bedfast_wet_area_pct": 11.27129,
+     "deep_bedfast_deep_area_pct": 0.0
+    }
+   ],
+   "sublimation_scale": 0.25,
+   "conduction_coefficient_scale": 2.0
+  },
+  {
+   "final_thickness_we": {
+    "p50_m": 0.854429,
+    "p90_m": 1.764388,
+    "p99_m": 1.834,
+    "max_m": 1.834
+   },
+   "final_physical_ice_thickness": {
+    "p50_m": 0.931765,
+    "p90_m": 1.924088,
+    "p99_m": 2.0,
+    "max_m": 2.0
+   },
+   "wet_cells": 2270,
+   "ice_covered_cells": 1744,
+   "frozen_to_bed_wet_area_pct": 11.101175,
+   "shallow_bedfast_wet_area_pct": 11.101175,
+   "deep_bedfast_deep_area_pct": 0.0,
+   "max_physical_ice_m": 2.0,
+   "cap_volume_km3": 5143.204154,
+   "global_sublimation_km3_yr": 1213.423294423,
+   "volume_trajectory": [
+    {
+     "time_myr": 0.0,
+     "cap_volume_km3": 0.0,
+     "wet_area_ice_covered_pct": 0.0,
+     "frozen_to_bed_wet_area_pct": 0.0,
+     "shallow_bedfast_wet_area_pct": 0.0,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 0.1,
+     "cap_volume_km3": 5143.204154,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.101175,
+     "shallow_bedfast_wet_area_pct": 11.101175,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 0.5,
+     "cap_volume_km3": 5143.204154,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.101175,
+     "shallow_bedfast_wet_area_pct": 11.101175,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 1.0,
+     "cap_volume_km3": 5143.204154,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.101175,
+     "shallow_bedfast_wet_area_pct": 11.101175,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 2.5,
+     "cap_volume_km3": 5143.204154,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.101175,
+     "shallow_bedfast_wet_area_pct": 11.101175,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 5.0,
+     "cap_volume_km3": 5143.204154,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.101175,
+     "shallow_bedfast_wet_area_pct": 11.101175,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 7.5,
+     "cap_volume_km3": 5143.204154,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.101175,
+     "shallow_bedfast_wet_area_pct": 11.101175,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 10.0,
+     "cap_volume_km3": 5143.204154,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.101175,
+     "shallow_bedfast_wet_area_pct": 11.101175,
+     "deep_bedfast_deep_area_pct": 0.0
+    }
+   ],
+   "sublimation_scale": 1.0,
+   "conduction_coefficient_scale": 0.5
+  },
+  {
+   "final_thickness_we": {
+    "p50_m": 1.570045,
+    "p90_m": 1.834,
+    "p99_m": 1.834,
+    "max_m": 1.834
+   },
+   "final_physical_ice_thickness": {
+    "p50_m": 1.712153,
+    "p90_m": 2.0,
+    "p99_m": 2.0,
+    "max_m": 2.0
+   },
+   "wet_cells": 2270,
+   "ice_covered_cells": 1744,
+   "frozen_to_bed_wet_area_pct": 11.231336,
+   "shallow_bedfast_wet_area_pct": 11.231336,
+   "deep_bedfast_deep_area_pct": 0.0,
+   "max_physical_ice_m": 2.0,
+   "cap_volume_km3": 7355.747843,
+   "global_sublimation_km3_yr": 1213.423294423,
+   "volume_trajectory": [
+    {
+     "time_myr": 0.0,
+     "cap_volume_km3": 0.0,
+     "wet_area_ice_covered_pct": 0.0,
+     "frozen_to_bed_wet_area_pct": 0.0,
+     "shallow_bedfast_wet_area_pct": 0.0,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 0.1,
+     "cap_volume_km3": 7355.747843,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.231336,
+     "shallow_bedfast_wet_area_pct": 11.231336,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 0.5,
+     "cap_volume_km3": 7355.747843,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.231336,
+     "shallow_bedfast_wet_area_pct": 11.231336,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 1.0,
+     "cap_volume_km3": 7355.747843,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.231336,
+     "shallow_bedfast_wet_area_pct": 11.231336,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 2.5,
+     "cap_volume_km3": 7355.747843,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.231336,
+     "shallow_bedfast_wet_area_pct": 11.231336,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 5.0,
+     "cap_volume_km3": 7355.747843,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.231336,
+     "shallow_bedfast_wet_area_pct": 11.231336,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 7.5,
+     "cap_volume_km3": 7355.747843,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.231336,
+     "shallow_bedfast_wet_area_pct": 11.231336,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 10.0,
+     "cap_volume_km3": 7355.747843,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.231336,
+     "shallow_bedfast_wet_area_pct": 11.231336,
+     "deep_bedfast_deep_area_pct": 0.0
+    }
+   ],
+   "sublimation_scale": 1.0,
+   "conduction_coefficient_scale": 1.0
+  },
+  {
+   "final_thickness_we": {
+    "p50_m": 1.834,
+    "p90_m": 1.834,
+    "p99_m": 1.834,
+    "max_m": 1.834
+   },
+   "final_physical_ice_thickness": {
+    "p50_m": 2.0,
+    "p90_m": 2.0,
+    "p99_m": 2.0,
+    "max_m": 2.0
+   },
+   "wet_cells": 2270,
+   "ice_covered_cells": 1744,
+   "frozen_to_bed_wet_area_pct": 11.231336,
+   "shallow_bedfast_wet_area_pct": 11.231336,
+   "deep_bedfast_deep_area_pct": 0.0,
+   "max_physical_ice_m": 2.0,
+   "cap_volume_km3": 8047.297599,
+   "global_sublimation_km3_yr": 1213.423294423,
+   "volume_trajectory": [
+    {
+     "time_myr": 0.0,
+     "cap_volume_km3": 0.0,
+     "wet_area_ice_covered_pct": 0.0,
+     "frozen_to_bed_wet_area_pct": 0.0,
+     "shallow_bedfast_wet_area_pct": 0.0,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 0.1,
+     "cap_volume_km3": 8047.297599,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.231336,
+     "shallow_bedfast_wet_area_pct": 11.231336,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 0.5,
+     "cap_volume_km3": 8047.297599,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.231336,
+     "shallow_bedfast_wet_area_pct": 11.231336,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 1.0,
+     "cap_volume_km3": 8047.297599,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.231336,
+     "shallow_bedfast_wet_area_pct": 11.231336,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 2.5,
+     "cap_volume_km3": 8047.297599,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.231336,
+     "shallow_bedfast_wet_area_pct": 11.231336,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 5.0,
+     "cap_volume_km3": 8047.297599,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.231336,
+     "shallow_bedfast_wet_area_pct": 11.231336,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 7.5,
+     "cap_volume_km3": 8047.297599,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.231336,
+     "shallow_bedfast_wet_area_pct": 11.231336,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 10.0,
+     "cap_volume_km3": 8047.297599,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.231336,
+     "shallow_bedfast_wet_area_pct": 11.231336,
+     "deep_bedfast_deep_area_pct": 0.0
+    }
+   ],
+   "sublimation_scale": 1.0,
+   "conduction_coefficient_scale": 2.0
+  },
+  {
+   "final_thickness_we": {
+    "p50_m": 0.226053,
+    "p90_m": 0.519981,
+    "p99_m": 0.702875,
+    "max_m": 0.73361
+   },
+   "final_physical_ice_thickness": {
+    "p50_m": 0.246513,
+    "p90_m": 0.567045,
+    "p99_m": 0.766494,
+    "max_m": 0.800011
+   },
+   "wet_cells": 2270,
+   "ice_covered_cells": 1744,
+   "frozen_to_bed_wet_area_pct": 1.632662,
+   "shallow_bedfast_wet_area_pct": 1.632662,
+   "deep_bedfast_deep_area_pct": 0.0,
+   "max_physical_ice_m": 2.0,
+   "cap_volume_km3": 1492.232418,
+   "global_sublimation_km3_yr": 4853.693177691,
+   "volume_trajectory": [
+    {
+     "time_myr": 0.0,
+     "cap_volume_km3": 0.0,
+     "wet_area_ice_covered_pct": 0.0,
+     "frozen_to_bed_wet_area_pct": 0.0,
+     "shallow_bedfast_wet_area_pct": 0.0,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 0.1,
+     "cap_volume_km3": 1492.232418,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 1.632662,
+     "shallow_bedfast_wet_area_pct": 1.632662,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 0.5,
+     "cap_volume_km3": 1492.232418,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 1.632662,
+     "shallow_bedfast_wet_area_pct": 1.632662,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 1.0,
+     "cap_volume_km3": 1492.232418,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 1.632662,
+     "shallow_bedfast_wet_area_pct": 1.632662,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 2.5,
+     "cap_volume_km3": 1492.232418,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 1.632662,
+     "shallow_bedfast_wet_area_pct": 1.632662,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 5.0,
+     "cap_volume_km3": 1492.232418,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 1.632662,
+     "shallow_bedfast_wet_area_pct": 1.632662,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 7.5,
+     "cap_volume_km3": 1492.232418,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 1.632662,
+     "shallow_bedfast_wet_area_pct": 1.632662,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 10.0,
+     "cap_volume_km3": 1492.232418,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 1.632662,
+     "shallow_bedfast_wet_area_pct": 1.632662,
+     "deep_bedfast_deep_area_pct": 0.0
+    }
+   ],
+   "sublimation_scale": 4.0,
+   "conduction_coefficient_scale": 0.5
+  },
+  {
+   "final_thickness_we": {
+    "p50_m": 0.443575,
+    "p90_m": 1.030949,
+    "p99_m": 1.403003,
+    "max_m": 1.45849
+   },
+   "final_physical_ice_thickness": {
+    "p50_m": 0.483724,
+    "p90_m": 1.124263,
+    "p99_m": 1.529992,
+    "max_m": 1.590502
+   },
+   "wet_cells": 2270,
+   "ice_covered_cells": 1744,
+   "frozen_to_bed_wet_area_pct": 4.340911,
+   "shallow_bedfast_wet_area_pct": 4.340911,
+   "deep_bedfast_deep_area_pct": 0.0,
+   "max_physical_ice_m": 2.0,
+   "cap_volume_km3": 2941.683088,
+   "global_sublimation_km3_yr": 4853.693177691,
+   "volume_trajectory": [
+    {
+     "time_myr": 0.0,
+     "cap_volume_km3": 0.0,
+     "wet_area_ice_covered_pct": 0.0,
+     "frozen_to_bed_wet_area_pct": 0.0,
+     "shallow_bedfast_wet_area_pct": 0.0,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 0.1,
+     "cap_volume_km3": 2941.683088,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 4.340911,
+     "shallow_bedfast_wet_area_pct": 4.340911,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 0.5,
+     "cap_volume_km3": 2941.683088,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 4.340911,
+     "shallow_bedfast_wet_area_pct": 4.340911,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 1.0,
+     "cap_volume_km3": 2941.683088,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 4.340911,
+     "shallow_bedfast_wet_area_pct": 4.340911,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 2.5,
+     "cap_volume_km3": 2941.683088,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 4.340911,
+     "shallow_bedfast_wet_area_pct": 4.340911,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 5.0,
+     "cap_volume_km3": 2941.683088,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 4.340911,
+     "shallow_bedfast_wet_area_pct": 4.340911,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 7.5,
+     "cap_volume_km3": 2941.683088,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 4.340911,
+     "shallow_bedfast_wet_area_pct": 4.340911,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 10.0,
+     "cap_volume_km3": 2941.683088,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 4.340911,
+     "shallow_bedfast_wet_area_pct": 4.340911,
+     "deep_bedfast_deep_area_pct": 0.0
+    }
+   ],
+   "sublimation_scale": 4.0,
+   "conduction_coefficient_scale": 1.0
+  },
+  {
+   "final_thickness_we": {
+    "p50_m": 0.854893,
+    "p90_m": 1.764712,
+    "p99_m": 1.834,
+    "max_m": 1.834
+   },
+   "final_physical_ice_thickness": {
+    "p50_m": 0.932271,
+    "p90_m": 1.92444,
+    "p99_m": 2.0,
+    "max_m": 2.0
+   },
+   "wet_cells": 2270,
+   "ice_covered_cells": 1744,
+   "frozen_to_bed_wet_area_pct": 11.101175,
+   "shallow_bedfast_wet_area_pct": 11.101175,
+   "deep_bedfast_deep_area_pct": 0.0,
+   "max_physical_ice_m": 2.0,
+   "cap_volume_km3": 5144.77948,
+   "global_sublimation_km3_yr": 4853.693177691,
+   "volume_trajectory": [
+    {
+     "time_myr": 0.0,
+     "cap_volume_km3": 0.0,
+     "wet_area_ice_covered_pct": 0.0,
+     "frozen_to_bed_wet_area_pct": 0.0,
+     "shallow_bedfast_wet_area_pct": 0.0,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 0.1,
+     "cap_volume_km3": 5144.77948,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.101175,
+     "shallow_bedfast_wet_area_pct": 11.101175,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 0.5,
+     "cap_volume_km3": 5144.77948,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.101175,
+     "shallow_bedfast_wet_area_pct": 11.101175,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 1.0,
+     "cap_volume_km3": 5144.77948,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.101175,
+     "shallow_bedfast_wet_area_pct": 11.101175,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 2.5,
+     "cap_volume_km3": 5144.77948,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.101175,
+     "shallow_bedfast_wet_area_pct": 11.101175,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 5.0,
+     "cap_volume_km3": 5144.77948,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.101175,
+     "shallow_bedfast_wet_area_pct": 11.101175,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 7.5,
+     "cap_volume_km3": 5144.77948,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.101175,
+     "shallow_bedfast_wet_area_pct": 11.101175,
+     "deep_bedfast_deep_area_pct": 0.0
+    },
+    {
+     "time_myr": 10.0,
+     "cap_volume_km3": 5144.77948,
+     "wet_area_ice_covered_pct": 76.853124,
+     "frozen_to_bed_wet_area_pct": 11.101175,
+     "shallow_bedfast_wet_area_pct": 11.101175,
+     "deep_bedfast_deep_area_pct": 0.0
+    }
+   ],
+   "sublimation_scale": 4.0,
+   "conduction_coefficient_scale": 2.0
+  }
+ ]
+}

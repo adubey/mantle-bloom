@@ -227,7 +227,7 @@ class LakeClimate:
 
 @dataclass(frozen=True)
 class LakeStepLedger:
-    """Integrated liquid-water budget for one hydrology step, all values in m³."""
+    """Integrated lake liquid-plus-ice budget for one hydrology step, all values in m³."""
 
     external_supply_m3: float
     evaporation_m3: float
@@ -239,6 +239,10 @@ class LakeStepLedger:
     wet_precip_m3: float = 0.0
     dry_runoff_m3: float = 0.0
     meltwater_m3: float = 0.0
+    sublimation_m3: float = 0.0
+    ice_storage_change_m3: float = 0.0
+    freezing_m3: float = 0.0
+    melting_m3: float = 0.0
 
 
 @dataclass(frozen=True)

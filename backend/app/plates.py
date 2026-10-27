@@ -831,6 +831,10 @@ def collect_all_lake_depth(plate_list: list[Plate]) -> np.ndarray:
     return _collect_all(plate_list, "lake_depth")
 
 
+def collect_all_lake_ice(plate_list: list[Plate]) -> np.ndarray:
+    return _collect_all(plate_list, "lake_ice_m")
+
+
 def collect_all_glacier_depth(plate_list: list[Plate]) -> np.ndarray:
     return _collect_all(plate_list, "glacier_depth")
 
