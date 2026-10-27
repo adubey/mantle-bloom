@@ -1,100 +1,73 @@
 # RFC 0014 D2(c): production G5 replay
 
-## Pre-registration
+## Question and governing principles
 
-Before running the production replay, the expected direction and metrics are registered here.
-The replay checks whether the owner-selected 2 m non-permafrost ice cap behaves correctly when
-the full world, liquid routing, and lake ledger advance together.
+Does the owner-selected 2 m physical ice ceiling behave as a bounded, conservative lake-ice
+reservoir when production climate, terrain, routing, and liquid-plus-ice ledgers advance
+through long steps?
 
-### Inputs and controls
+The prior behavior violated **design principle 3** (represent seasonal processes in aggregate
+across long steps) by applying sublimation in proportion to open water, inverting the intended
+ice-covered loss. It also violated **principle 6** (account for material through every process)
+when the phase-specific lake ledger did not expose that loss correctly. The fix weights
+sublimation by ice-covered fraction and books it as loss from the ice reservoir.
 
-- Diagnosis saves only: seeds 910211954, 635056485, and 317739385, with the SHA-256 values
-  registered in #538 and repeated in `analysis/issue541/README.md`.
-- Held-out acceptance saves registered in #538 are used only for the final acceptance replay;
-  no thresholds or implementation choices are tuned against them.
-- Replay 10 Myr per save in 100 kyr steps, with the ice-age control set to `never`
-  (`ice_age_period_years = 0`). Run one save at a time.
-- Use the production `world.step_world` path, including evolving climate, terrain, liquid
-  routing, and the lake liquid-plus-ice ledger. The 2 m physical cap is not retuned.
+The observable invariants are: physical ice thickness ≤2 m; ice water equivalent does not
+exceed local liquid-plus-ice inventory; liquid water remains beneath ice when present; deep
+bedfast fraction (water depth >2 m) ≤1%; and each production step's combined lake-water ledger
+residual ≤0.1% of positive external supply. The empirical cap represents the owner's
+non-permafrost scope. This model does not calculate ground heat or permafrost.
 
-### Metrics and expected direction
+## Production diagnosis
 
-- Maximum physical lake-ice thickness must remain at or below 2 m.
-- Water-equivalent lake ice must not exceed the combined local lake-water inventory.
-- Deep-water bedfast area (total water depth >2 m) must remain at or below 1% of deep-water
-  lake area. Report shallow bedfast area separately.
-- Report cap volume at 0.1 Myr intervals, the change from 0.1 to 10 Myr, and integrated
-  sublimation. The static-prototype plateau is a reference; evolving production forcing means
-  volume trajectory is descriptive rather than a separate pass/fail threshold.
-- Every step's combined liquid-plus-ice ledger residual must be at most 0.1% of that step's
-  external lake supply. Report steps with zero supply separately.
-- Report liquid volume under ice, so the run shows whether storage and routing continue while
-  the cap is present.
+Three preregistered diagnosis saves completed 10 Myr replays at 100 kyr steps (101 snapshots
+per save), with ice_age_period_years = 0. See [production-g5-summary.json](production-g5-summary.json)
+for checkpoint metrics, inputs, and provenance. Replays used backend commit
+`855d5fe574f18c9efa0779ed94677eb6d65dcbc5`.
 
-The owner-selected cap and ledger criteria are the primary checks. A failed bound or ledger
-criterion requires a code correction before held-out acceptance. No diagnosis result will be
-used to alter the 2 m cap.
-
-## Results
-
-All three preregistered diagnosis saves completed 10 Myr production replays at 100 kyr
-steps (101 snapshots per save), with ice_age_period_years = 0. Results are in
-[production-g5-summary.json](production-g5-summary.json); it records each checkpoint's
-lake area, liquid and ice volumes, liquid-under-ice area, physical ice maximum, inventory
-excess, shallow/deep bedfast fractions, cumulative sublimation, ledger residual, and peak
-RSS. Inputs and checksums matched the pre-registration.
-
-| Seed | Runtime | Ice water-equivalent range | Liquid-under-ice range | Shallow bedfast range | Deep bedfast max | Max ledger residual | Peak RSS |
+| Seed | Runtime | Ice water-equivalent range | Liquid-under-ice area max | Shallow bedfast max | Deep bedfast max | Max ledger residual | Peak RSS |
 |---:|---:|---:|---:|---:|---:|---:|---:|
-| 910211954 | 1,857 s | 0–5,992 km³ | 0–71.0% | 0–70.6% | 0% | 3×10⁻⁹% | 4,330 MB |
-| 635056485 | 1,016 s | 0–258 km³ | 0–19.0% | 0–92.6% | 0% | 2×10⁻⁹% | 3,651 MB |
-| 317739385 | 1,940 s | 0–1,755 km³ | 0–55.5% | 0–65.0% | 0% | <0.5×10⁻⁹% (rounds to 0) | 5,753 MB |
+| 910211954 | 1,796 s | 0–2,721 km³ | 62.09% | 4.64% | 0% | 2×10⁻⁹% | 5,693 MB |
+| 635056485 | 906 s | 0–26.5 km³ | 17.49% | 0% | 0% | 2×10⁻⁹% | 3,644 MB |
+| 317739385 | 1,856 s | 0–1,771 km³ | 49.00% | 3.63% | 0% | 1×10⁻⁹% | 5,919 MB |
 
-Every checkpoint passed the preregistered bounds: maximum physical ice thickness was 2 m,
-water-equivalent ice never exceeded local combined lake-water inventory, deep bedfast area
-was zero, and stepwise lake-ledger residuals were far below the 0.1% tolerance. Liquid
-storage remained under ice during every frozen checkpoint. Shallow bedfast fractions varied
-widely and are reported separately; they do not count toward the deep-water bound.
-
-Ice volume was strongly time-dependent, not a plateau. The 0.1-to-10 Myr changes were
-+49.5%, +163.5%, and −30.0% for seeds 910211954, 635056485, and 317739385, respectively.
-This is descriptive production behavior under evolving climate and terrain, not a failed
-gate. Cumulative sublimation was recorded in the JSON for each run. Glacier depth-limit
-warnings appeared during the broader world simulation; they concern glacier handling and
-did not correspond to any lake-ice gate violation.
-
-An earlier attempt at seed 910211954 was discarded after the ledger exposed an implementation
-bug. The production limiter was corrected and committed as ae745ec; the reported result is
-the complete rerun on that corrected commit.
+All snapshots met the physical cap, nonnegative-reservoir, local-inventory, deep-bedfast, and
+ledger checks. Ice volume changed over the run (0.1-to-10 Myr changes: −14.36%, +36.17%, and
+−58.99%, respectively); this is descriptive behavior under evolving forcing, not a plateau
+gate. The plateau is only expected in the fixed-forcing prototype. Shallow bedfast area is
+reported separately. Cumulative sublimation is recorded in the JSON. A few computed physical
+thickness values exceed 2 m by floating-point roundoff at about 10⁻¹⁵ m; they are 2 m within
+numerical precision.
 
 ## Held-out acceptance
 
-The three reserved #538 saves completed ten 100 kyr production steps each with the ice-age
-control set to `never`. Results are summarized in
-[heldout-g5-summary.json](heldout-g5-summary.json); only compact metrics are checked in, while
-full replay outputs remain in scratch storage.
+Three reserved #538 saves completed ten 100 kyr production steps each. Results and checksums
+are in [heldout-g5-summary.json](heldout-g5-summary.json); full replay outputs remain in
+scratch storage.
 
-| Seed | Start age | Wet lake nodes across 10 steps | Max ice | Deep bedfast max | Liquid under ice max | Max ledger residual | Zero-supply steps | Peak RSS |
+| Seed | Start age | Wet lake nodes | Max physical ice | Deep bedfast max | Liquid-under-ice area max | Max ledger residual | Zero-supply steps | Peak RSS |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 373936961 | 244.4 Myr | 369–982 | 2.00 m | 0% | 50.94% | 3.39×10⁻¹⁰% | 0 | 4,052 MB |
-| 997271774 | 130.5 Myr | 500–823 | 2.00 m | 0% | 41.80% | 6.98×10⁻¹¹% | 0 | 2,074 MB |
-| 456862899 | 19,191.8 Myr | 0–1 | 0 m | 0% | 0% | 1.86×10⁻⁹% | 7 | 2,518 MB |
+| 373936961 | 244.4 Myr | 275–568 | 2.00 m | 0% | 49.88% | 1.02×10⁻¹⁰% | 0 | 4,714 MB |
+| 997271774 | 130.5 Myr | 218–549 | 2.00 m | 0% | 25.63% | 1.10×10⁻¹⁰% | 0 | 2,035 MB |
+| 456862899 | 19,191.8 Myr | 0–1 | 0 m | 0% | 0% | 1.82×10⁻⁹% | 7 | 2,874 MB |
 
-All five coded acceptance checks passed on all three saves: the 2 m physical ice bound,
-nonnegative reservoirs, ice within local water inventory, deep bedfast area at most 1%, and
-per-step ledger residual at most 0.1% of positive external supply. The first two saves had
-lake ice throughout. The extreme-age third save had no lake water in seven steps, then one
-liquid-only lake node for three steps; its lake-ice and under-ice checks are therefore
-non-informative, though its water ledgers close when supply occurs. Keep this limitation in
-view when interpreting aggregate held-out acceptance.
+All five coded acceptance checks pass on all three saves: physical ice ≤2 m, nonnegative
+reservoirs, ice within local water inventory, deep bedfast ≤1%, and per-step ledger residual
+≤0.1% of positive external supply. The first two saves had lake ice during the replay and
+retained liquid under ice. The extreme-age third save had no lakes for seven steps and one
+liquid-only node for three; its lake-ice and under-ice checks are non-informative. Therefore
+held-out evidence is positive but comes from two informative ice-bearing saves.
 
-The first held-out load exposed a stale pre-#633 saved collision-polarity cache without stable
-per-node keys. Persistence now drops such incompatible cached frames so the next production
-step rebuilds them. A focused old-pickle regression check passes. The first save also emitted
-the existing glacier 5 km depth-limit warning during replay; this is separate from the lake
-ice metrics.
+The first held-out load exposed an incompatible collision-polarity cache in older saves;
+persistence now drops cached frames without stable cell keys so production rebuilds them. A
+focused old-pickle regression check passes. Glacier depth-limit warnings during replay are
+outside the lake-ice metrics.
 
-## Reproduction
+## Verification and reproduction
+
+Final checks passed: ruff on the changed hydrology files, `./bin/quality_check.sh`, and
+`./bin/affected_test.sh --base origin/main` (1,876 passed). The held-out and production replays
+were each run sequentially, with no replay overlapping tests or another replay.
 
 Run one save at a time with the matching local save substituted for `<local-save>`:
 
@@ -104,5 +77,5 @@ PYTHONPATH=backend backend/.venv/bin/python bin/debug/gate_lake_ice_production.p
   --out analysis/issue632/production-g5-seed<seed>.json
 ```
 
-For held-out acceptance, substitute a preregistered #538 save and use
+For held-out acceptance, use a preregistered #538 save and
 `bin/debug/gate_lake_ice_heldout.py` with `--myr 1 --step-years 100000 --checkpoint-myr 0.1`.

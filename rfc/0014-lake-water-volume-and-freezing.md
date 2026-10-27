@@ -295,7 +295,7 @@ Neither set includes the development save, seed 308161711. All runs use the ice-
 
 ## Acceptance criteria
 
-- [ ] **G0–G5 run and recorded** in this RFC, with the owner's D4 decision. G5's prior unbounded candidate failed; its bounded offline diagnosis now passes with a cap-volume plateau, bounded water-equivalent cap and 0% deep-water bedfast area across the diagnosis saves. Report shallow bedfast area separately. Production implementation and combined-ledger validation remain open in #632; the #615 postprocessed sensitivity does not satisfy the diagnosis criterion.
+- [ ] **G0–G5 run and recorded** in this RFC, with the owner's D4 decision. G5's prior unbounded candidate failed; its bounded offline diagnosis passed with a cap-volume plateau, bounded water-equivalent cap and 0% deep-water bedfast area across the diagnosis saves. The production implementation and combined-ledger validation now pass on three diagnosis saves and all coded bounds pass on three reserved held-out saves (two had informative lake ice; the third had almost no lake water). See [#632 analysis](../analysis/issue632/README.md). Report shallow bedfast area separately. The #615 postprocessed sensitivity does not satisfy the production diagnosis criterion.
 - [ ] **Unit tests:**
   - [ ] the endpoint solve matches alternative C at steady state (≤ 0.1% of volume) on random hierarchies;
   - [ ] nested and asymmetric supply cases hold, spill, and evaporate exactly their total source supply;
@@ -305,7 +305,7 @@ Neither set includes the development save, seed 308161711. All runs use the ice-
   - [ ] a spill crossing catchments via a channel is delivered to the hierarchy's receiving leaf;
   - [ ] the ice-free fraction is 0 below and 1 above the threshold range and continuous between;
   - [ ] a lake with `f_free = 0` keeps liquid water and balances its supply by sublimation and overflow;
-  - [ ] physical ice thickness stays within 2 m and the water-equivalent cap stays within available water depth, closes the liquid/ice budget, and cap volume approaches a plateau under constant forcing;
+  - [ ] physical ice thickness stays within 2 m and the water-equivalent cap stays within available water depth, closes the liquid/ice budget, and cap volume approaches a plateau under constant forcing (unit tests and fixed-forcing prototype; production replay verifies bounds and reports the evolving trajectory);
   - [ ] basal melt and surface melt return water to liquid; sublimation is the only D2(c) atmospheric mass loss;
   - [ ] water at a cold sink is never deleted;
   - [ ] an enclosed lake cell with its bed below sea level uses the air temperature at its water surface;
