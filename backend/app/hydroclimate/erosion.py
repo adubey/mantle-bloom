@@ -1919,11 +1919,10 @@ def apply_erosion(
     wind_v_at_nodes = fields.wind_v[row, col]
     wind_speed = np.hypot(wind_u_at_nodes, wind_v_at_nodes)
     humidity = fields.humidity_g_kg[row, col]
-    # Preliminary, elevation-only ocean test -- just for the ocean-vs-air temperature pick
-    # feeding the flow solve below. The authoritative, connectivity-aware mask
-    # (`hydro.is_ocean`, which also excludes an enclosed interior sub-sea-level pit) is only
-    # available after compute_hydrology; `is_ocean_node` is rebound to it right after.
-    is_ocean_node = elevation <= world.sea_level_m
+    # Climate samples the last step's connectivity-aware ocean mask, with an elevation
+    # fallback before the first hydrology solve. Use that same mask here so an enclosed
+    # below-sea-level lake keeps air temperature rather than reading as open ocean (#661).
+    is_ocean_node = fields.is_ocean[row, col]
     # The same real temperature a node actually experiences that render_image.py's own
     # temperature view displays -- ocean surface over water, moderated air over land.
     temperature = np.where(is_ocean_node, fields.ocean_temperature_c[row, col], fields.air_temperature_c[row, col])
@@ -1940,7 +1939,14 @@ def apply_erosion(
         relief_m=elevation - world.sea_level_m,
     )
     hydro = hydrology.compute_hydrology(
-        world, precipitation_mm, temperature, years, node_cloud=node_cloud, seasonal_amplitude_at_nodes=seasonal_amplitude
+        world,
+        precipitation_mm,
+        temperature,
+        years,
+        node_cloud=node_cloud,
+        seasonal_amplitude_at_nodes=seasonal_amplitude,
+        air_temperature_at_nodes=fields.air_temperature_c[row, col],
+        ocean_temperature_at_nodes=fields.ocean_temperature_c[row, col],
     )
     world.hydrology_cache = hydro
     world.hydrology_cache_step = world.steps_taken

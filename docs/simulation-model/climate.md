@@ -301,7 +301,10 @@ already-cached snapshot, not this step's still-unknown one. Zero everywhere on a
 first call (`world.climate_cache is None`), self-correcting after one step. A frozen surface
 (`air_temperature_c` below `hydrology.FREEZE_POINT_C`) can't evaporate, so lake/river
 evaporation -- but not transpiration, already near zero in any biome cold enough to freeze --
-is zeroed there.
+is zeroed there. This climate-grid moisture source continues to use `air_temperature_c`; RFC
+0014 D3's hypsometry-based water-surface temperature is used by hydrology's lake freezing,
+ice and water-budget evaporation calculations, without changing this diagnostic moisture
+source (#661).
 
 **Transpiration recycles last step's own rainfall -- it can't manufacture moisture from
 nothing.** `_vegetation_transpiration_source` scales `VEGETATION_TRANSPIRATION_BY_BIOME`'s
