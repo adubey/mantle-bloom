@@ -636,7 +636,8 @@ export default function App() {
   // phases), and null before a run's first checkpoint arrives.
   const [runPhase, setRunPhase] = useState<string | null>(null);
   // The overlay's X collapses to just the pulsing progress line; its pop-out icon
-  // re-opens the overlay. Reset to expanded whenever a new run starts.
+  // re-opens the overlay. Generate and Record start expanded; Play (stepping) starts
+  // collapsed on the progress line (#653).
   const [overlayCollapsed, setOverlayCollapsed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Background animation (recording) -- see AnimationModal.tsx and handleStartAnimation
@@ -1438,7 +1439,9 @@ export default function App() {
   const handlePlay = useCallback(async () => {
     setError(null);
     // The run loop streams no phases, so the overlay shows a generic line for it (#629).
-    setOverlayCollapsed(false);
+    // Stepping starts on the progress line, not the pop-out overlay (#653): the toolbar's
+    // Stop button stays clickable either way, and the line's pop-out icon re-opens it.
+    setOverlayCollapsed(true);
     setRunPhase("Advancing the world");
     try {
       setPlaying((await setRunState(worldIdRef.current!, true, stepYears)).running);
@@ -1527,7 +1530,8 @@ export default function App() {
         if (!run.running) return;
         if (STEP_YEARS_OPTIONS.includes(run.step_years)) setStepYears(run.step_years);
         setPlaying(true);
-        setOverlayCollapsed(false);
+        // Same collapsed default as a fresh Play press above (#653).
+        setOverlayCollapsed(true);
         setRunPhase("Advancing the world");
       })
       .catch(() => {

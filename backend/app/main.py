@@ -9,6 +9,7 @@ import logging
 import os
 import tempfile
 import threading
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -1466,7 +1467,9 @@ def _animate_message_line(session, world, message, last_frame, anim_spec: dict):
     first -- each frame ends on a whole step, so a run that ends badly later (a
     disconnect, a failed step or encoder) still keeps the frames before it -- and
     records the frame in the recovery sidecar (`anim_spec` carries the run's static
-    parameters for a later resume, #638). A heartbeat line just forwards the tick:
+    parameters for a later resume, #638). It also publishes the frame to the world's
+    viewers (no checkpoint/index write -- just feed + render-cache) so /view watches
+    each animation step instead of nothing until the end (#653). A heartbeat line just forwards the tick:
     the world is mid-batch, so no checkpoint (#611). The done line flips `completed`
     so the stream's finally publishes the run, and clears the recovery sidecar: a
     finished run's video exists, so there is nothing left to recover.
@@ -1486,6 +1489,12 @@ def _animate_message_line(session, world, message, last_frame, anim_spec: dict):
         # frame (resuming may redo a little work, but never silently skips any).
         if _checkpoint_world(session):
             _record_animation_progress(session, {**anim_spec, "completed_frames": frame})
+        # Each frame ends on a whole step with the locks held, so publish it for
+        # /view watchers: an animation otherwise shows them nothing until its final
+        # publish minutes or hours later (#653). No checkpoint or index write here --
+        # the frame was just checkpointed above and the run's finally publishes fully.
+        session.public_renders.clear()
+        session.feed.publish(world)
         return json.dumps({
             "type": "progress",
             "frame": frame,
@@ -2517,23 +2526,32 @@ def public_worlds() -> dict:
 
 @app.get("/public/worlds/{world_id}/world")
 async def public_world(world_id: str, request: Request, after: str | None = None, guest_demo: bool = False) -> dict:
-    """What the viewer shows for one public world: its revision and age, and this
-    browser's remaining step allowance.
+    """What the viewer shows for one public world: its revision and age, this
+    browser's remaining step allowance, and a guest step's live progress, if one
+    is computing.
 
     With `after`, a long poll (#374): while `after` is still the current revision, wait up to
     public_view.GUEST_POLL_WAIT_S for the world to change before answering. This is how every
     viewer follows steps that others (or the owner) take without computing anything itself.
+    The poll also answers when a guest step publishes new progress without a new revision
+    yet, which is what drives /view's wait progress bar mid-step (#653).
     Async, so a waiting viewer holds no worker thread."""
     session = _public_session_or_404(world_id)
     if after is not None:
-        await session.feed.wait_past(after, public_view.GUEST_POLL_WAIT_S)
+        progress_before = session.guest_step_progress()
+        await session.feed.wait_past(
+            after, public_view.GUEST_POLL_WAIT_S,
+            changed=lambda: session.guest_step_progress() != progress_before,
+        )
     _, remaining = _guest_allowance(request, guest_demo)
+    progress = session.guest_step_progress()
     return {
         "world": session.feed.summary(),
         "running": _session_running(session),
         "steps_remaining": remaining,
         "step_limit": public_view.GUEST_STEP_LIMIT,
         "step_years": public_view.GUEST_STEP_YEARS,
+        "step_progress": None if progress is None else {"fraction": progress[0], "phase": progress[1]},
     }
 
 
@@ -2578,17 +2596,38 @@ def public_render(world_id: str, view: str = "elevation", width: int = 1100, hei
     return entry
 
 
+def _await_owner_step(session: WorldSession, seen_revision: str) -> bool:
+    """True when the world moved past `seen_revision` within the share window. Called
+    after the guest coordinator reports `busy` -- almost always the owner's step or
+    animation holding the world -- so a viewer asking for the same advance shares the
+    owner's result instead of failing (#653). Sync polling, not the feed's async wait:
+    this route is sync (it may compute), and a waiter that arrived here holds a worker
+    thread either way. Costs nothing when the owner already finished."""
+    deadline = time.monotonic() + public_view.GUEST_OWNER_STEP_WAIT_S
+    while session.feed.revision() == seen_revision:
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(public_view.GUEST_OWNER_STEP_POLL_S)
+    return True
+
+
 def _run_guest_step(session: WorldSession) -> None:
     # Runs with the coordinator's lock pair held. A delete that slipped in between the
     # coordinator's acquire and here stands down instead of stepping a detached world.
+    # Each progress message is also published to the session's progress slot (waking the
+    # world's long-polling viewers) so /view shows a live wait progress bar for the
+    # step, whatever viewer triggered it (#653). Heartbeats carry no new position, so
+    # they don't republish.
     completed = False
     try:
         if session.deleted:
             return
-        for _ in _step_progress(session, _require_world(session), public_view.GUEST_STEP_YEARS):
-            pass
+        for message in _step_progress(session, _require_world(session), public_view.GUEST_STEP_YEARS):
+            if isinstance(message, tuple) and message[0] == "progress" and len(message) == 3:
+                session.set_guest_step_progress((message[1], message[2]))
         completed = True
     finally:
+        session.set_guest_step_progress(None)
         _world_changed(session, completed)
 
 
@@ -2599,7 +2638,9 @@ def public_step(world_id: str, req: PublicStepRequest, request: Request, respons
     browser across all public worlds, not per world. `computed` says whether it did; a
     stale `revision`, or a step another viewer already has running, is answered with the
     resulting world for free. `429` when a computation is needed and the allowance is
-    spent, `503` if the owner is using the world, `404` for a private or unknown world."""
+    spent, `503` if the owner is using the world, `404` for a private or unknown world.
+    A `busy` owner step is shared, not refused, when it lands in time: viewers all
+    asking for the same advance get the resulting world however it was computed (#653)."""
     session = _public_session_or_404(world_id)
     config, remaining = _guest_allowance(request, guest_demo)
     outcome = session.guest_steps.request_step(
@@ -2611,6 +2652,8 @@ def public_step(world_id: str, req: PublicStepRequest, request: Request, respons
     )
     if outcome.status == "exhausted":
         raise HTTPException(status_code=429, detail="step allowance used up")
+    if outcome.status == "busy" and _await_owner_step(session, req.revision):
+        outcome = public_view.StepOutcome("shared")
     if outcome.status == "busy":
         raise HTTPException(status_code=503, detail="the world is busy; try again shortly")
     if outcome.status == "computed" and remaining is not None:

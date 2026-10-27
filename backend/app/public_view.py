@@ -13,12 +13,19 @@ limit, not an anti-abuse control.
 Only a request that actually runs the simulation is charged. Each step request names the world
 revision its viewer is looking at. If the world has already moved past it (another viewer, or
 the owner, stepped since), or another guest's step is already running, the request is answered
-with the resulting world without computing anything, and costs nothing.
+with the resulting world without computing anything, and costs nothing. A request refused
+because the owner holds the world waits up to `GUEST_OWNER_STEP_WAIT_S` for their step to
+land and shares that too: viewers asking for the same advance get one result however it was
+computed (#653).
 
 Every viewer shares the one world, so the work of following it is shared too (#374): each
 change to the world publishes a new revision through `WorldFeed`, which viewers long-poll
 instead of each asking for steps or renders of their own, and `RenderCache` renders each view
-once per revision however many viewers ask for it.
+once per revision however many viewers ask for it. A computing guest step also publishes its
+live (fraction, phase) to the session's progress slot, waking the long poll without a new
+revision, which is what drives /view's wait progress bar mid-step; each animation frame
+publishes its revision the same way, so viewers watch the owner's recording step by step
+instead of nothing until it ends (#653).
 """
 
 from __future__ import annotations
@@ -48,6 +55,13 @@ GUEST_MAX_RENDER_PX = 2400
 GUEST_LOCK_WAIT_S = 10.0
 # How long a guest's step waits on another guest's step that's already running.
 GUEST_INFLIGHT_WAIT_S = 300.0
+# How long a guest refused as busy waits for the owner's step or animation frame to
+# land and shares it, before failing with 503 (#653). Owner steps are the same
+# advance the viewer asked for, so sharing beats refusing; past this window the
+# request fails rather than pin a worker thread for the whole owner run.
+GUEST_OWNER_STEP_WAIT_S = 60.0
+# Poll granularity of that wait: the feed revision is a cheap mutex read.
+GUEST_OWNER_STEP_POLL_S = 0.5
 # How many guest requests may queue behind an already-running guest step. Each waiter
 # pins a worker thread for up to GUEST_INFLIGHT_WAIT_S, and this route is public: without
 # a cap, one burst during a slow step can occupy the whole AnyIO worker pool and starve

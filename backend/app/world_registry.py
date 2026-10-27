@@ -131,6 +131,25 @@ class WorldSession:
     deleted: bool = field(default=False, repr=False)
     _operation_busy: bool = field(default=False, repr=False)
     _busy_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+    # A guest step's live progress for /view watchers: (fraction 0-1, phase label),
+    # or None when no guest step is computing. Written by the computing thread while
+    # it holds the session lock, so it gets its own mutex -- readers (the public
+    # world poll) must never park on the session lock mid-step (#653).
+    _guest_step_progress: tuple[float, str] | None = field(default=None, repr=False)
+    _guest_step_progress_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+
+    def set_guest_step_progress(self, progress: tuple[float, str] | None) -> None:
+        """Publish a guest step's current position (or clear it when done). Wakes
+        the world's viewers so a long poll answered for progress, not just for a
+        new revision (see main.py's public_world)."""
+        with self._guest_step_progress_lock:
+            self._guest_step_progress = progress
+        self.feed.wake()
+
+    def guest_step_progress(self) -> tuple[float, str] | None:
+        """The latest published guest-step position, for the public world poll."""
+        with self._guest_step_progress_lock:
+            return self._guest_step_progress
 
     def touch(self) -> None:
         self.updated_at = time.time()
