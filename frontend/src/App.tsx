@@ -1524,6 +1524,7 @@ export default function App() {
           {(busy || (runActive && overlayCollapsed)) && (
             <ProgressBar
               label={overlayHeadline}
+              text={runPhase ? `${overlayHeadline}: ${runPhase}` : overlayHeadline}
               fraction={overlayFraction}
               onExpand={overlayCollapsed ? () => setOverlayCollapsed(false) : undefined}
             />
