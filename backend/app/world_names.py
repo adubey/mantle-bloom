@@ -62,7 +62,7 @@ LETTER_WEIGHTS: tuple[tuple[str, int], ...] = (
 
 
 def default_world_name(used: Collection[str] = (), rng: random.Random | None = None) -> str:
-    """A name like "Kepler-442 d", avoiding every name in `used` (#597)."""
+    """A name like "18 Scorpii d", avoiding every name in `used` (#597)."""
     draw = rng if rng is not None else random.Random()
     letters = [letter for letter, _ in LETTER_WEIGHTS]
     weights = [weight for _, weight in LETTER_WEIGHTS]

@@ -53,9 +53,9 @@ def test_star_names_are_not_known_exoplanet_hosts():
     # can't run here); this pins the previously-used hosts as gone for good.
     known_hosts = {
         "Kepler-22", "Kepler-62", "Kepler-69", "Kepler-186", "Kepler-442",
-        "TRAPPIST-1", "Gliese 581", "Gliese 667 C", "Gliese 876", "LHS 1140",
-        "K2-18", "TOI-700", "Ross 128", "Wolf 1061", "55 Cancri",
+        "TRAPPIST-1", "Proxima Centauri", "Gliese 581", "Gliese 667 C", "Gliese 876",
+        "LHS 1140", "K2-18", "TOI-700", "Ross 128", "Wolf 1061", "55 Cancri",
         "Upsilon Andromedae", "Mu Arae", "HD 40307", "HD 209458",
-        "51 Pegasi", "47 Ursae Majoris",
+        "51 Pegasi", "47 Ursae Majoris", "Pollux",
     }
     assert not (set(STAR_NAMES) & known_hosts)
