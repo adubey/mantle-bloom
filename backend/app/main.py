@@ -1380,14 +1380,43 @@ def cross_section(
     return result
 
 
-def _animate_message_line(session, world, message, last_frame):
+def _record_animation_progress(session, payload: dict) -> None:
+    """Persist one completed animation frame's recovery record next to the world
+    checkpoint (#638). Same contract as _checkpoint_world: skipped without a store,
+    logged rather than raised on failure -- a recording must never die because its
+    bookkeeping did."""
+    store = session.checkpoint_store
+    if store is None or session.deleted:
+        return
+    try:
+        store.save_animation_progress(payload)
+    except Exception:  # noqa: BLE001 -- see _checkpoint_world's own comment
+        _logger.exception("checkpoint: couldn't save animation progress")
+
+
+def _clear_animation_progress(session) -> None:
+    """Forget a finished run's recovery record: its video exists, so there is
+    nothing left to recover (#638). Same skip/log contract as _checkpoint_world."""
+    store = session.checkpoint_store
+    if store is None or session.deleted:
+        return
+    try:
+        store.clear_animation_progress()
+    except Exception:  # noqa: BLE001 -- see _checkpoint_world's own comment
+        _logger.exception("checkpoint: couldn't clear animation progress")
+
+
+def _animate_message_line(session, world, message, last_frame, anim_spec: dict):
     """Folds one stream_animation_mp4 message into its NDJSON line plus stream state.
 
     Returns `(line, last_frame, completed)`. A progress line checkpoints the world
     first -- each frame ends on a whole step, so a run that ends badly later (a
-    disconnect, a failed step or encoder) still keeps the frames before it. A
-    heartbeat line just forwards the tick: the world is mid-batch, so no checkpoint
-    (#611). The done line flips `completed` so the stream's finally publishes the run.
+    disconnect, a failed step or encoder) still keeps the frames before it -- and
+    records the frame in the recovery sidecar (`anim_spec` carries the run's static
+    parameters for a later resume, #638). A heartbeat line just forwards the tick:
+    the world is mid-batch, so no checkpoint (#611). The done line flips `completed`
+    so the stream's finally publishes the run, and clears the recovery sidecar: a
+    finished run's video exists, so there is nothing left to recover.
     Split out of animate() so that function stays under the complexity cap."""
     if message[0] == "heartbeat":
         _, frame, total, elapsed_years = message
@@ -1399,7 +1428,11 @@ def _animate_message_line(session, world, message, last_frame):
         }) + "\n", last_frame, False
     if message[0] == "progress":
         _, frame, total, frame_png, elapsed_years = message
-        _checkpoint_world(session)
+        # The sidecar must never get ahead of the checkpoint: if this frame's
+        # world save failed, recovery keeps pointing at the older checkpointed
+        # frame (resuming may redo a little work, but never silently skips any).
+        if _checkpoint_world(session):
+            _record_animation_progress(session, {**anim_spec, "completed_frames": frame})
         return json.dumps({
             "type": "progress",
             "frame": frame,
@@ -1417,6 +1450,9 @@ def _animate_message_line(session, world, message, last_frame):
             "stats": world.stats_history[-1] if world.stats_history else None,
         }) + "\n", frame, False
     _, mp4_bytes, stopped_early = message
+    # Finished with a video in hand -- stopped early by the user or ran to the end,
+    # either way there is nothing left to recover, so forget the sidecar (#638).
+    _clear_animation_progress(session)
     return json.dumps({
         "type": "done",
         "mime": "video/mp4",
@@ -1509,6 +1545,17 @@ def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
                 req.step_years, req.steps_per_frame, req.num_frames,
                 step_fn=lambda w, y: _step_world(session, w, y), stop_event=session.animation_stop_event,
             )
+            # Static run parameters for the recovery sidecar: a resume replays the
+            # same run shape from the checkpointed world (#638).
+            anim_spec = {
+                "total_frames": req.num_frames,
+                "steps_per_frame": req.steps_per_frame,
+                "step_years": req.step_years,
+                "projection": req.projection,
+                "view": req.view,
+                "width": req.width,
+                "height": req.height,
+            }
             try:
                 while True:
                     # Advance one frame while holding the locks, then let them go
@@ -1523,7 +1570,7 @@ def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
                         message = next(animation)
                     except StopIteration:
                         break
-                    line, last_frame, completed = _animate_message_line(session, world, message, last_frame)
+                    line, last_frame, completed = _animate_message_line(session, world, message, last_frame, anim_spec)
                     if message[0] == "heartbeat":
                         # Mid-batch tick (#611): the world is only partially stepped,
                         # so the locks stay held across this yield -- releasing them
@@ -1602,6 +1649,25 @@ def animate_stop(world_id: str) -> dict:
     cleared at the start of each new animate() run, not here, so it can't leak into one."""
     _session_or_404(world_id).animation_stop_event.set()
     return {"status": "ok"}
+
+
+@app.get("/worlds/{world_id}/animate/recovery")
+def animation_recovery(world_id: str) -> dict:
+    """Reports an interrupted animation run's recoverable state (#638): the recovery
+    sidecar's completed-frame count plus the run's static parameters, so the client
+    can offer resuming the remaining frames from the checkpointed world instead of
+    redoing the whole run. 404 when no interrupted run is on record (never recorded,
+    already finished with a video, or already recovered); 503 while a run is still
+    in progress on this world. Read-only: it never mutates the world or the sidecar
+    (a resume clears it when the resumed run finishes)."""
+    session = _session_or_404(world_id)
+    if session.operation_busy():
+        raise HTTPException(status_code=503, detail="a generation, step, or animation is already in progress")
+    store = session.checkpoint_store
+    progress = store.load_animation_progress() if store is not None else None
+    if progress is None:
+        raise HTTPException(status_code=404, detail="no interrupted animation to recover")
+    return progress
 
 
 @app.post("/worlds/{world_id}/controls")
@@ -2537,20 +2603,24 @@ def _save_index() -> None:
         _logger.exception("checkpoint: couldn't save the registry index")
 
 
-def _checkpoint_world(session: WorldSession) -> None:
+def _checkpoint_world(session: WorldSession) -> bool:
     """Write `session`'s world to its checkpoint; the caller holds the session
     lock. A failed write is logged rather than raised: the world in memory is
-    fine, and the next change retries."""
+    fine, and the next change retries. Returns whether the checkpoint now matches
+    the world -- false only when a save was attempted and failed, so dependents
+    (the animation recovery sidecar, #638) can stay consistent with it rather than
+    running ahead of what is actually on disk."""
     world = session.world
     if session.checkpoint_store is None or world is None or session.deleted:
-        return
+        return True
     try:
         session.checkpoint_store.save_world(world)
     except Exception:  # noqa: BLE001 -- e.g. a full or unmounted volume mustn't fail the step
         _logger.exception("checkpoint: couldn't save the world")
-        return
+        return False
     if session.runner is not None:
         session.runner.retry_unsaved_status()
+    return True
 
 
 def _save_run_status(session: WorldSession, status: checkpoint.RunStatus) -> None:

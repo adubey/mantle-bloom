@@ -22,7 +22,8 @@ import numpy as np
 SOURCES = ("arc", "plume_head", "plume_tail")
 # Reservoirs that partition emplaced buoyant crust; the balance closes over these
 # plus live tracers (see balance_residual). `docked_m3` counts docking events and
-# sits outside the balance because docked crust stays live; `clipped_by_phase`
+# sits outside the balance because it is an event tally, not a disposition --
+# docked crust converts or subducts afterwards; `clipped_by_phase`
 # records the per-phase share of `clipped_m3` outside it for the same reason.
 BALANCE_ACCOUNTS = (
     "emplaced_m3",
@@ -202,7 +203,8 @@ def record(ledger: dict, source: str, account: str, volume_m3: float) -> float:
 
 
 def record_docked(ledger: dict, source: str, volume_m3: float) -> float:
-    """Count a docking event volume outside the balance (docked crust stays live)."""
+    """Count a docking event volume outside the balance (an event tally: the crust
+    itself converts, subducts, or stays live afterwards)."""
     if source not in ledger:
         raise KeyError(f"unknown buoyant-crust source: {source!r}")
     if not math.isfinite(volume_m3) or volume_m3 < 0.0:

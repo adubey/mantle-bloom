@@ -171,3 +171,35 @@ def test_directory_comes_from_the_env_or_the_railway_volume(monkeypatch, tmp_pat
     assert CheckpointStore.from_env().directory == tmp_path / "volume"
     monkeypatch.setenv(checkpoint.CHECKPOINT_DIR_ENV, str(tmp_path / "explicit"))
     assert CheckpointStore.from_env().directory == tmp_path / "explicit"
+
+
+def test_animation_progress_round_trip_and_clear(tmp_path):
+    # #638: an interrupted animation run's recovery record must survive a reload and
+    # vanish once cleared (a finished run's video exists, so nothing is recoverable).
+    from app.checkpoint import ANIMATION_PROGRESS_FILE
+
+    store = CheckpointStore(tmp_path)
+    assert store.load_animation_progress() is None
+    payload = {
+        "completed_frames": 7, "total_frames": 20, "steps_per_frame": 10,
+        "step_years": 100_000, "projection": "eckert4", "view": "elevation",
+        "width": 64, "height": 64,
+    }
+    store.save_animation_progress(payload)
+    assert (tmp_path / ANIMATION_PROGRESS_FILE).exists()
+    assert CheckpointStore(tmp_path).load_animation_progress() == payload
+    store.clear_animation_progress()
+    assert store.load_animation_progress() is None
+
+
+def test_animation_progress_ignores_garbage(tmp_path):
+    # Advisory only: anything unexpected reads as "nothing to recover", never raises.
+    from app.checkpoint import ANIMATION_PROGRESS_FILE
+
+    store = CheckpointStore(tmp_path)
+    (tmp_path / ANIMATION_PROGRESS_FILE).write_bytes(b"not json{{")
+    assert store.load_animation_progress() is None
+    (tmp_path / ANIMATION_PROGRESS_FILE).write_bytes(b"[1, 2]")
+    assert store.load_animation_progress() is None
+    store.clear_animation_progress()  # a missing file must not raise either
+    assert store.load_animation_progress() is None

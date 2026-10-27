@@ -1206,7 +1206,36 @@ export async function animateWorld(
 // what makes the animation dialog's "keep going until Stop is pressed" mode useful. A no-op
 // if no animation is running.
 export function stopAnimation(worldId: WorldId): Promise<void> {
-  return fetch(`${worldBase(API_BASE, worldId)}/animate/stop`, { method: "POST" }).then(() => undefined);
+  // Bounded so a hung server can't leave the toolbar's Stop hanging forever (#638):
+  // the caller reports a delivery failure instead of silently swallowing it.
+  return fetch(`${worldBase(API_BASE, worldId)}/animate/stop`, {
+    method: "POST",
+    signal: AbortSignal.timeout(30000),
+  }).then(() => undefined);
+}
+
+// What GET /worlds/{world_id}/animate/recovery reports about an interrupted run
+// (#638): how far it got plus the static run shape, so the client can resume the
+// remaining frames from the checkpointed world instead of redoing the whole run.
+export interface AnimationRecovery {
+  completed_frames: number;
+  total_frames: number;
+  steps_per_frame: number;
+  step_years: number;
+  projection: string;
+  view: string;
+  width: number;
+  height: number;
+}
+
+export async function fetchAnimationRecovery(worldId: WorldId): Promise<AnimationRecovery | null> {
+  // Null (not a throw) when there is nothing to recover: the run never recorded a
+  // frame, already finished with a video, or was already recovered. Anything else
+  // non-OK still throws.
+  const resp = await fetch(`${worldBase(API_BASE, worldId)}/animate/recovery`);
+  if (resp.status === 404) return null;
+  if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}: ${await resp.text()}`);
+  return (await resp.json()) as AnimationRecovery;
 }
 
 // "File > Export Hex Grid" data -- a geodesic-icosahedron hex/pentagon tiling of the sphere

@@ -46,9 +46,10 @@ function fmtMyr(years: number): string {
 export default function AnimationModal({ hasWorld, stepYears, mapView, onClose, onStartAnimation }: Props) {
   const [numFrames, setNumFrames] = useState(DEFAULT_NUM_FRAMES);
   const [stepsPerFrame, setStepsPerFrame] = useState(DEFAULT_STEPS_PER_FRAME);
-  // Defaults to on -- most recordings are "run until I've seen enough", not a pre-planned
-  // frame count, so the common case shouldn't require touching the checkbox.
-  const [unbounded, setUnbounded] = useState(true);
+  // Defaults to off: a bounded run shows the determinate frame/total progress bar,
+  // while unbounded runs only get the spinner (#637). "Run until I've seen enough"
+  // stays one checkbox away.
+  const [unbounded, setUnbounded] = useState(false);
   const yearsPerFrame = stepsPerFrame * stepYears;
 
   const isRenderedMapView = !NON_RENDERED_VIEWS.includes(mapView);

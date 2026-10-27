@@ -44,3 +44,21 @@ def test_numeral_fallback_when_every_combination_is_taken():
     used = {f"{star} {letter}" for star in STAR_NAMES for letter, _ in LETTER_WEIGHTS}
     name = default_world_name(used=used, rng=random.Random(3))
     assert re.fullmatch(r".+ [b-g] \d+", name), name
+
+
+def test_star_names_are_not_known_exoplanet_hosts():
+    # #640: a fresh world must never borrow a real planetary system's name. The full
+    # planet-free verification is recorded in world_names.py's STAR_NAMES comment
+    # (NASA Exoplanet Archive check, October 2026 -- it needs the network, so it
+    # can't run here); this pins the previously-used hosts as gone for good.
+    known_hosts = {
+        "Kepler-22", "Kepler-62", "Kepler-69", "Kepler-186", "Kepler-442",
+        "TRAPPIST-1", "Proxima Centauri", "Gliese 581", "Gliese 667 C", "Gliese 876",
+        "LHS 1140", "K2-18", "TOI-700", "Ross 128", "Wolf 1061", "55 Cancri",
+        "Upsilon Andromedae", "Mu Arae", "HD 40307", "HD 209458",
+        "51 Pegasi", "47 Ursae Majoris", "Pollux",
+        # Removed by the alias-aware re-check, pinned against re-adding: HD 191785
+        # hosts TOI-5789 b-e, and HIP 79672 duplicates 18 Scorpii.
+        "HD 191785", "HIP 79672",
+    }
+    assert not (set(STAR_NAMES) & known_hosts)

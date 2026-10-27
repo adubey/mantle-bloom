@@ -1,9 +1,13 @@
 import type { CSSProperties } from "react";
 
 interface Props {
-  // Also doubles as the accessible name (aria-label) -- there's no visible text label, just
-  // the animated bar itself, so screen readers need this to announce what's in progress.
+  // Also doubles as the accessible name (aria-label) for the bar itself, so screen
+  // readers announce it even when no visible text is shown.
   label: string;
+  // Plain-text status shown above the bar (#635): a raw string, never markup, so no
+  // hyperlink can ever render here -- the run overlay keeps the learn links, while
+  // the progress line stays a simple text view.
+  text?: string;
   // When the bar fronts an expanded run overlay (see RunOverlay.tsx), the pop-out icon
   // that re-opens it after the overlay's X collapsed it (#629).
   onExpand?: () => void;
@@ -17,11 +21,15 @@ interface Props {
   fraction?: number;
 }
 
-export default function ProgressBar({ label, onExpand, style, fraction }: Props) {
+export default function ProgressBar({ label, text, onExpand, style, fraction }: Props) {
   const determinate = fraction !== undefined;
   const percent = determinate ? Math.round(fraction * 100) : undefined;
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+    <>
+      {text !== undefined && (
+        <div style={{ fontSize: 11, opacity: 0.75, marginBottom: 4 }}>{text}</div>
+      )}
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
       <div
         className="progress-track"
         aria-label={label}
@@ -56,6 +64,7 @@ export default function ProgressBar({ label, onExpand, style, fraction }: Props)
           ⤢
         </button>
       )}
-    </div>
+      </div>
+    </>
   );
 }
