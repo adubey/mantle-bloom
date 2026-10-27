@@ -14,19 +14,19 @@
 
 ## Held-out replay results
 
-The same held-out save was replayed serially on `origin/main` (`8a69bab69c32114c9a42a321d0b80c2db3d9c393`) and the D3 implementation (`a1ab8eb1df558a3ef495308604781993983101e2`). Both arms ran the exact ten-step 100 kyr held-out driver; the baseline completed in 64.22 s (peak RSS 2,145 MB) and the D3 arm in 65.10 s (peak RSS 1,938 MB).
+The same held-out save was replayed serially on `origin/main` (`8a69bab69c32114c9a42a321d0b80c2db3d9c393`) and the D3 implementation (`f03e269ff73a1067dc16248c60a764e96312a15a`). Both arms ran the exact ten-step 100 kyr held-out driver; the baseline completed in 64.22 s (peak RSS 2,095 MiB) and the D3 arm in 64.93 s (peak RSS 2,073 MiB).
 
 | Endpoint at 131.5 Myr | `origin/main` | D3 | Change |
 |---|---:|---:|---:|
-| Lake ice water equivalent | 108.278 km³ | 238.329 km³ | +130.050 km³ (+120.1%) |
-| Liquid lake volume | 250,172.190 km³ | 265,116.883 km³ | +14,944.692 km³ (+6.0%) |
-| Wet lake area | 1,242,839.933 km² | 1,288,309.427 km² | +45,469.494 km² (+3.7%) |
-| Maximum physical ice | 1.999 m | 1.905 m | -0.093 m (-4.7%) |
-| Shallow bedfast area | 0.000 % | 0.756 % | +0.756 % |
+| Lake ice water equivalent | 108.278 km³ | 247.455 km³ | +139.177 km³ (+128.5%) |
+| Liquid lake volume | 250,172.190 km³ | 268,585.481 km³ | +18,413.291 km³ (+7.4%) |
+| Wet lake area | 1,242,839.933 km² | 1,327,801.148 km² | +84,961.214 km² (+6.8%) |
+| Maximum physical ice | 1.999 m | 1.906 m | -0.093 m (-4.7%) |
+| Shallow bedfast area | 0.000 % | 0.000 % | +0.000 % |
 | Deep bedfast area | 0.000 % | 0.000 % | +0.000 % |
-| Max per-step ledger residual / positive supply | 1.1e-10% | 1.9e-10% | both pass 0.1% gate |
+| Max per-step ledger residual / positive supply | 1.1e-10% | 6.99e-11% | both pass 0.1% gate |
 
-Both arms passed all held-out checks: physical ice ≤2 m (within floating-point tolerance), nonnegative reservoirs, ice within local liquid-plus-ice inventory, deep bedfast area ≤1%, and lake ledger residual ≤0.1% of positive supply. The observed ice-water-equivalent volume rose by about 111% on this one save. This is a clear model response on the tested trajectory, not a calibrated estimate of typical change; one seed and one 1 Myr interval do not quantify seed-to-seed or long-term variability. The per-step series, both commits, checksums, runtime, RSS and acceptance results are in [`d3-replay.json`](d3-replay.json). Full driver outputs remain in scratch storage.
+Both arms passed all held-out checks: physical ice ≤2 m (within floating-point tolerance), nonnegative reservoirs, ice within local liquid-plus-ice inventory, deep bedfast area ≤1%, and lake ledger residual ≤0.1% of positive supply. Maximum shallow bedfast area during the interval was 1.36% on `origin/main` and 5.86% with D3; this is reported separately from the deep-water acceptance bound. The endpoint ice-water-equivalent volume increased by 128.5% on this one save. This is a clear model response on the tested trajectory, not a calibrated estimate of typical change; one seed and one 1 Myr interval do not quantify seed-to-seed or long-term variability. The per-step series, both commits, checksum, runtime, RSS and acceptance results are in [`d3-replay.json`](d3-replay.json). Full driver outputs remain in scratch storage.
 
 Reproduction command (replace `<local-save>` and `<scratch-output>` with local paths):
 
