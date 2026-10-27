@@ -304,7 +304,9 @@ field, caches, event log -- see [architecture.md#world-state](architecture.md#wo
 serialized as a single opaque `application/octet-stream` file (`Content-Disposition:
 attachment`, named `*.bloom`), not JSON (see `backend/app/persistence.py`). The file is a v5
 zip of `.npy` arrays plus a JSON manifest that declares the world's plate surface (`quad`,
-or `empty` with no plates); arrays load with `allow_pickle=False`, so unlike a pickle a
+or `empty` with no plates) and carries the record's display name, so a later import
+restores it (`POST /worlds/import` below; see [save-compatibility.md](save-compatibility.md#7-multi-world-registry-metadata-563)).
+Arrays load with `allow_pickle=False`, so unlike a pickle a
 v5 save carries no code. It is not a stable interchange
 format (contrast with `/worlds/{world_id}/export_hexgrid` below): encoding by class identity ties it to
 the code. [save-compatibility.md](save-compatibility.md) lists which older saves this build
@@ -314,11 +316,31 @@ yet.
 Loading a legacy v1-v4 pickle save still unpickles it (a standard pickle caveat) -- acceptable given this server is a single-user localhost dev tool already
 (see `main.py`'s CORS allowlist), the same trust boundary every other route here assumes.
 
+## `POST /worlds/import`
+
+The "File > Load World" upload -- the raw bytes of a save file as the request body
+(`Content-Type: application/octet-stream`, not JSON). The save becomes a brand-new world
+record (`201`, the record JSON): loading never replaces the open planet and works with
+no worlds yet (#652). The record name is the `name` query param, else the display name
+stamped into the save's manifest at save time, else a fresh generated name.
+
+A resolved name another record already holds is a `409` (unless `allow_duplicate=true`),
+with a JSON `detail` carrying the duplicate-name dialog's options: `duplicate_name`,
+`existing_world_id`, `same_planet` (equal seeds -- the upload is the same planet at
+another date), `uploaded_elapsed_years`, `existing_elapsed_years` (`null` when the
+existing record is empty), and `suggested_name` (the first unused `"<name> (1)"`).
+`409` past the world cap, like `POST /worlds`. The new record is private.
+
+Same spooling, size cap, and `400` contract as `POST /worlds/{world_id}/load` below.
+
 ## `POST /worlds/{world_id}/load`
 
-The "File > Load World" upload -- the raw bytes of a file `/worlds/{world_id}/save` previously
-produced, as the request body (`Content-Type: application/octet-stream`, not JSON).
-Replaces whatever world previously existed, same as `/worlds/{world_id}/generate`. Returns the same
+A save-file upload that replaces one record's world in place -- the raw bytes of a file
+`/worlds/{world_id}/save` previously produced, as the request body
+(`Content-Type: application/octet-stream`, not JSON).
+Same as `/worlds/{world_id}/generate`, whatever world previously existed is gone. Kept for
+scripts and API use; File > Load World imports through `POST /worlds/import` instead.
+Returns the same
 summary shape `/worlds/{world_id}/generate` does; its `surface` is `"quad"` or `"empty"`.
 
 A line-backed save (written before #251 retired that surface) is converted to sparse quads on

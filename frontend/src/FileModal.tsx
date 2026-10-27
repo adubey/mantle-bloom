@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
-import type { MapView, WorldSummary } from "./api";
-import { exportHexGrid, loadWorld, saveWorld } from "./api";
+import type { MapView, WorldImportConflict, WorldRecord } from "./api";
+import { exportHexGrid, importWorld, saveWorld, WorldImportConflictError } from "./api";
 import ModalShell from "./ModalShell";
 
 // Matching backend app/geodesic.py's FREQUENCY_CHOICES/tile_count (10*frequency**2 + 2).
@@ -24,9 +24,8 @@ interface Props {
   // interfaces, so it works uniformly across every view, not just the PNG-backed ones.
   mapWrapperRef: React.RefObject<HTMLDivElement | null>;
   onClose: () => void;
-  // A load replaces the live world -- the caller runs the same full refresh sequence it
-  // already runs after generateWorld.
-  onWorldReplaced: (summary: WorldSummary) => Promise<void>;
+  // A load adds a brand-new world record -- the caller refreshes the list and selects it.
+  onWorldImported: (record: WorldRecord) => Promise<void>;
 }
 
 function downloadBlob(blob: Blob, filename: string): void {
@@ -40,10 +39,13 @@ function downloadBlob(blob: Blob, filename: string): void {
 
 export default function FileModal({
   worldId, hasWorld, seed, elapsedYears, mapView, mapWrapperRef,
-  onClose, onWorldReplaced,
+  onClose, onWorldImported,
 }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // A file whose import hit a taken name, awaiting the user's pick of the
+  // dialog's three options: keep both, rename, or cancel (#652).
+  const [conflict, setConflict] = useState<{ file: File; conflict: WorldImportConflict } | null>(null);
   const [hexFrequency, setHexFrequency] = useState(DEFAULT_HEX_FREQUENCY);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -64,15 +66,36 @@ export default function FileModal({
     downloadBlob(blob, `mantle-bloom-seed${seed}-${Math.round(elapsedYears ?? 0)}y.bloom`);
   }), [runAction, seed, elapsedYears, worldId]);
 
-  const handleLoadFileChosen = useCallback((file: File) => runAction("load", async () => {
-    // Loading replaces the selected world -- creating one is the Create...
-    // dialog's job (#639), so with none selected the Load button below stays
-    // disabled instead of minting a world behind the user's back.
-    if (!worldId) throw new Error("Create or select a world first, then load into it.");
-    const summary = await loadWorld(worldId, file);
-    await onWorldReplaced(summary);
+  const finishImport = useCallback(async (record: WorldRecord) => {
+    setConflict(null);
+    await onWorldImported(record);
     onClose();
-  }), [runAction, onWorldReplaced, onClose, worldId]);
+  }, [onWorldImported, onClose]);
+
+  const handleLoadFileChosen = useCallback((file: File) => runAction("load", async () => {
+    // Loading adds the save as a new world -- the open planet is never touched,
+    // so no selection is needed first (#652, superseding #639's disabled Load).
+    try {
+      await finishImport(await importWorld(file));
+    } catch (e) {
+      if (e instanceof WorldImportConflictError) {
+        setConflict({ file, conflict: e.conflict });
+        return;
+      }
+      throw e;
+    }
+  }), [runAction, finishImport]);
+
+  // The duplicate-name dialog's options (a) and (b): keep both under one name,
+  // or take the server's unused "<name> (1)" suggestion. Cancel just drops the
+  // pending file and leaves this modal open.
+  const handleConflictChoice = useCallback((choice: "keep" | "rename") => runAction("load", async () => {
+    if (!conflict) return;
+    const record = choice === "keep"
+      ? await importWorld(conflict.file, { allowDuplicate: true })
+      : await importWorld(conflict.file, { name: conflict.conflict.suggestedName });
+    await finishImport(record);
+  }), [runAction, conflict, finishImport]);
 
   const handleSaveImage = useCallback(() => runAction("image", async () => {
     const canvas = mapWrapperRef.current?.querySelector("canvas");
@@ -98,7 +121,7 @@ export default function FileModal({
             <button onClick={handleSaveWorld} disabled={!hasWorld || busy !== null} style={{ flex: 1, fontSize: 12 }}>
               {busy === "save" ? "Saving..." : "Save World"}
             </button>
-            <button onClick={() => fileInputRef.current?.click()} disabled={!worldId || busy !== null} title={!worldId ? "Create or select a world first -- loading replaces it entirely" : undefined} style={{ flex: 1, fontSize: 12 }}>
+            <button onClick={() => fileInputRef.current?.click()} disabled={busy !== null} style={{ flex: 1, fontSize: 12 }}>
               {busy === "load" ? "Loading..." : "Load World"}
             </button>
           </div>
@@ -113,10 +136,37 @@ export default function FileModal({
               if (file) handleLoadFileChosen(file);
             }}
           />
+          {conflict && (
+            <div style={{ border: "1px solid #665", borderRadius: 6, padding: 8, marginBottom: 6, fontSize: 12 }}>
+              <div style={{ marginBottom: 4 }}>
+                A world named &ldquo;{conflict.conflict.duplicateName}&rdquo; already exists.
+                {conflict.conflict.samePlanet && (
+                  <>
+                    {" "}This looks like the same planet at another date
+                    {conflict.conflict.existingElapsedYears !== null && (
+                      <> (this file: {Math.round(conflict.conflict.uploadedElapsedYears).toLocaleString()}y, existing: {Math.round(conflict.conflict.existingElapsedYears).toLocaleString()}y)</>
+                    )}
+                    .
+                  </>
+                )}
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button onClick={() => handleConflictChoice("keep")} disabled={busy !== null} style={{ flex: 1, fontSize: 12 }}>
+                  Load anyway
+                </button>
+                <button onClick={() => handleConflictChoice("rename")} disabled={busy !== null} style={{ flex: 1, fontSize: 12 }}>
+                  Load as &ldquo;{conflict.conflict.suggestedName}&rdquo;
+                </button>
+                <button onClick={() => setConflict(null)} disabled={busy !== null} style={{ flex: 1, fontSize: 12 }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
           <div style={{ fontSize: 11, opacity: 0.6 }}>
             Saves the complete simulation state to a single file, with no guarantee of
-            compatibility across app versions. Loading replaces the current world entirely.
-            {!worldId && " Create or select a world first -- loading never creates one."}
+            compatibility across app versions. Loading adds the file&apos;s planet as a new
+            world and selects it -- the open planet is never touched.
           </div>
         </fieldset>
 

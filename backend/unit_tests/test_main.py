@@ -1404,6 +1404,87 @@ def test_load_converts_a_line_save_to_quads(client):
     assert client.post("/world/load", content=resaved).json()["surface"] == "quad"
 
 
+def _saved_bytes(client, seed=5):
+    """A v5 save of a small generated world, via the default test session (whose
+    record name, "test", the save's manifest therefore carries)."""
+    _post_generate(client, json={"seed": seed, "num_plates": 4})
+    return client.get("/world/save").content
+
+
+def test_import_adds_a_new_record_and_leaves_the_open_world_alone(client):
+    # #652: File > Load World must not destroy the current planet.
+    saved = _saved_bytes(client, seed=5)
+    resp = client.post("/worlds/import", params={"name": "Second"}, content=saved)
+    assert resp.status_code == 201
+    record = resp.json()
+    assert record["name"] == "Second"
+    assert record["summary"]["seed"] == 5
+    worlds = client.get("/worlds").json()["worlds"]
+    assert len(worlds) == 2
+    default = next(w for w in worlds if w["world_id"] == _default_session.world_id)
+    assert default["summary"]["seed"] == 5
+    assert default["summary"]["elapsed_years"] == 0.0
+
+
+def test_import_works_with_no_worlds_yet(client):
+    # #652: loading is allowed when the server holds no worlds at all.
+    saved = _saved_bytes(client, seed=5)
+    assert client._inner.delete(f"/worlds/{_default_session.world_id}").status_code == 200
+    resp = client.post("/worlds/import", params={"name": "First"}, content=saved)
+    assert resp.status_code == 201
+    assert resp.json()["name"] == "First"
+    assert len(client.get("/worlds").json()["worlds"]) == 1
+
+
+def test_import_restores_the_manifest_name(client):
+    # #652: without an explicit name the record takes the save's stamped name.
+    client._inner.patch(f"/worlds/{_default_session.world_id}", json={"name": "Named"})
+    saved = _saved_bytes(client, seed=5)
+    client._inner.patch(f"/worlds/{_default_session.world_id}", json={"name": "test"})
+    resp = client.post("/worlds/import", content=saved)
+    assert resp.status_code == 201
+    assert resp.json()["name"] == "Named"
+
+
+def test_import_duplicate_name_reports_conflict_with_same_planet_options(client):
+    # #652: the manifest name "test" collides with the default session, so the
+    # first import is a 409 carrying the dialog's three options; keeping both
+    # (a) and the suggested rename (b) then succeed.
+    saved = _saved_bytes(client, seed=5)
+    resp = client.post("/worlds/import", content=saved)
+    assert resp.status_code == 409
+    conflict = resp.json()["detail"]
+    assert conflict["duplicate_name"] == "test"
+    assert conflict["existing_world_id"] == _default_session.world_id
+    assert conflict["same_planet"] is True
+    assert conflict["uploaded_elapsed_years"] == 0.0
+    assert conflict["existing_elapsed_years"] == 0.0
+    assert conflict["suggested_name"] == "test (1)"
+    kept = client.post("/worlds/import", params={"allow_duplicate": True}, content=saved)
+    assert kept.status_code == 201
+    assert kept.json()["name"] == "test"
+    renamed = client.post("/worlds/import", params={"name": conflict["suggested_name"]}, content=saved)
+    assert renamed.status_code == 201
+    assert renamed.json()["name"] == "test (1)"
+
+
+def test_import_duplicate_name_from_another_seed_is_not_the_same_planet(client):
+    # #652: equal seeds mean the same planet at another date; different seeds
+    # are just a name collision, and the dialog must not claim otherwise.
+    saved5 = _saved_bytes(client, seed=5)
+    assert client.post("/worlds/import", params={"name": "Other"}, content=saved5).status_code == 201
+    saved6 = _saved_bytes(client, seed=6)
+    resp = client.post("/worlds/import", params={"name": "Other"}, content=saved6)
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["same_planet"] is False
+
+
+def test_import_with_malformed_bytes_returns_400(client):
+    resp = client.post("/worlds/import", content=b"definitely not a saved world")
+    assert resp.status_code == 400
+    assert "not a readable mantle-bloom save" in resp.json()["detail"]
+
+
 def test_animate_advances_the_world_and_streams_progress_then_an_mp4(client):
     _post_generate(client, json={"seed": 9, "num_plates": 6})
     resp = client.post(

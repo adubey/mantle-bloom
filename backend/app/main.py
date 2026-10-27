@@ -1220,14 +1220,26 @@ def save_world(world_id: str) -> Response:
     `404` if no world has been generated yet."""
     session = _session_or_404(world_id)
     # Serialized under the lock: a concurrent step mutates the world's numpy arrays in
-    # place, and pickling them mid-step would write a torn, unloadable file.
+    # place, and pickling them mid-step would write a torn, unloadable file. The
+    # record's display name rides in the manifest so a later import restores it
+    # (see `POST /worlds/import` and docs/save-compatibility.md §7).
     with session.lock:
         world = _require_world(session)
-        body = persistence.save_world_bytes(world)
+        body = persistence.save_world_bytes(world, name=session.name)
         filename = f"mantle-bloom-seed{world.seed}-{int(world.elapsed_years)}y.bloom"
     return Response(
         content=body, media_type="application/octet-stream", headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
+
+
+def _discard_stale_hydrology_cache(world: World) -> None:
+    """Drop a loaded world's routing cache when it predates fields current API consumers
+    read (see `_hydrology_cache_is_stale`). Shared by the replace-load and import routes:
+    an old save's cache must never reach the inspectors. A world whose cache is dropped
+    rebuilds it on its next step."""
+    if world.hydrology_cache is not None and _hydrology_cache_is_stale(world.hydrology_cache):
+        world.hydrology_cache = None
+        world.hydrology_cache_step = None
 
 
 def _hydrology_cache_is_stale(cache) -> bool:
@@ -1286,9 +1298,10 @@ async def _spool_upload_to_tempfile(request: Request) -> str:
 
 @app.post("/worlds/{world_id}/load")
 async def load_world(world_id: str, request: Request) -> dict:
-    """The "File > Load World" upload -- the raw bytes of a file /worlds/{world_id}/save previously
-    produced, as the request body (not JSON -- see persistence.py). Replaces whatever world
-    previously existed, same as /worlds/{world_id}/generate. A line-backed (legacy) save is converted to
+    """A save-file upload that replaces one record's world in place -- the raw bytes of a
+    file /worlds/{world_id}/save previously produced, as the request body (not JSON --
+    see persistence.py). Same as /worlds/{world_id}/generate, whatever world previously
+    existed is gone. A line-backed (legacy) save is converted to
     sparse quads on load, one way -- see docs/save-compatibility.md; the summary's
     `surface_conversion` then reports what changed. The body streams to a temp file and
     loads from disk, so a large upload never sits in RAM twice (as bytes and as a
@@ -1296,7 +1309,9 @@ async def load_world(world_id: str, request: Request) -> dict:
     bytes are corrupt or in a save format this build doesn't read; any other failure is
     still a `400`, without detail. `413` when the upload passes MAX_LOAD_WORLD_BYTES.
     `503` while a generation, step, or animation is in
-    progress."""
+    progress. Kept for scripts and API use; File > Load World now imports through
+    `POST /worlds/import`, which adds the planet as a new record instead of destroying
+    the open one (#652)."""
     # Refuse an unknown world before touching disk: unpickling is wasted work when there
     # is no record to replace. (begin_operation stays where it is -- holding the busy
     # flag across a slow upload would stall every other operation on this world.)
@@ -1314,12 +1329,7 @@ async def load_world(world_id: str, request: Request) -> dict:
             os.unlink(upload_path)
         except OSError:
             pass
-    # Derived routing fields are added over time. Old saves may carry a cache from after #355
-    # that has discharge but predates RFC 0014's external-source ledger; discard any cache
-    # missing a current-length field before inspectors can read it.
-    if world.hydrology_cache is not None and _hydrology_cache_is_stale(world.hydrology_cache):
-        world.hydrology_cache = None
-        world.hydrology_cache_step = None
+    _discard_stale_hydrology_cache(world)
     # Under the lock, so a step can't still be mutating the world viewers are told replaced it.
     if not session.begin_operation():
         raise HTTPException(status_code=503, detail="a generation, step, or animation is already in progress")
@@ -1340,6 +1350,83 @@ async def load_world(world_id: str, request: Request) -> dict:
             session.lock.release()
     finally:
         session.end_operation()
+
+
+def _suggest_import_name(base: str, used: set[str]) -> str:
+    """First `"<base> (1)"`, `"<base> (2)"`, ... not in `used` -- the duplicate-name
+    import dialog's option (b) default (#652)."""
+    n = 1
+    while True:
+        candidate = f"{base} ({n})"
+        if candidate not in used:
+            return candidate
+        n += 1
+
+
+def _duplicate_import_conflict(name: str, existing: WorldSession, world: World) -> dict:
+    """The `409` payload when an import's resolved name is already taken: which record
+    holds it, whether the upload looks like the same planet at another date (equal
+    seeds -- a re-generated same-seed world *is* the same planet, so seed equality
+    is the right signal, not a false positive), both dates for the dialog's notice,
+    and the option (b) default name."""
+    existing_world = existing.world
+    same_planet = existing_world is not None and existing_world.seed == world.seed
+    return {
+        "duplicate_name": name,
+        "existing_world_id": existing.world_id,
+        "same_planet": same_planet,
+        "uploaded_elapsed_years": world.elapsed_years,
+        "existing_elapsed_years": None if existing_world is None else existing_world.elapsed_years,
+        "suggested_name": _suggest_import_name(name, {s.name for s in _registry.list()}),
+    }
+
+
+@app.post("/worlds/import", status_code=201)
+async def import_world(request: Request, name: str | None = None, allow_duplicate: bool = False) -> dict:
+    """The "File > Load World" upload -- the raw bytes of a save file as the request body
+    (not JSON, same spooling, size cap and `400` contract as `/worlds/{world_id}/load`).
+    Unlike that route this one never destroys anything: the save becomes a brand-new
+    world record, so loading works with no worlds yet and leaves the open planet alone
+    (#652). The record name is the `name` query param, else the display name stamped
+    into the save's manifest at save time (see `persistence.load_world_name`), else a
+    fresh generated name. A resolved name another record already holds is a `409`
+    (unless `allow_duplicate`): the payload names the existing record, says whether
+    the upload looks like the same planet at another date, and suggests an unused
+    `"<name> (1)"` -- the File dialog's three options (keep both, rename, cancel)
+    are built on exactly this. `409` past the world cap, like `POST /worlds`. The new
+    session is private; publish it afterwards like any created world."""
+    upload_path = await _spool_upload_to_tempfile(request)
+    try:
+        with open(upload_path, "rb") as upload:
+            saved_name = persistence.load_world_name_file(upload)
+            upload.seek(0)
+            world = persistence.load_world_file(upload)
+    except persistence.SaveFormatError as exc:
+        raise HTTPException(status_code=400, detail=f"invalid or incompatible world file: {exc}") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="invalid or incompatible world file") from exc
+    finally:
+        try:
+            os.unlink(upload_path)
+        except OSError:
+            pass
+    _discard_stale_hydrology_cache(world)
+    resolved = name or saved_name
+    if not resolved:
+        resolved = world_names.default_world_name({s.name for s in _registry.list()})
+    existing = next((s for s in _registry.list() if s.name == resolved), None)
+    if existing is not None and not allow_duplicate:
+        raise HTTPException(status_code=409, detail=_duplicate_import_conflict(resolved, existing, world))
+    try:
+        session = _registry.create(name=resolved)
+    except WorldLimitReached as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    _wire_session(session)
+    _save_index()
+    # Fresh session, nothing contends with it -- the lock just honors `_set_world`'s contract.
+    with session.lock:
+        _set_world(session, world)
+    return _record_json(session)
 
 
 @app.get("/worlds/{world_id}/render")

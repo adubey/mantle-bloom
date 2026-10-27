@@ -362,7 +362,7 @@ def is_v5_file(file: BinaryIO) -> bool:
     return is_v5(magic)
 
 
-def save_world_v5(world: World, *, profile: str) -> bytes:
+def save_world_v5(world: World, *, profile: str, name: str | None = None) -> bytes:
     """Serialize `world` as a v5 zip (`manifest.json` plus one `.npy` per array).
     `default` (user saves, checkpoints) drops the erosion cache; `exact`
     (replay-log records) keeps it too, so a replay re-steps exactly including its
@@ -370,7 +370,12 @@ def save_world_v5(world: World, *, profile: str) -> bytes:
     file whose first post-load step rebuilds them as it goes (approximately, not
     identically -- see `persistence.save_compact_bytes`). Unserializable derived
     scratch is dropped by all three profiles; the default and exact profiles keep
-    every other cache so a post-load step lands on identical state (H9)."""
+    every other cache so a post-load step lands on identical state (H9). `name`
+    is record metadata, not world state: the manifest carries it (see
+    `persistence.load_world_name`) so an import can restore the planet's display
+    name, but the loader ignores it -- an older build reads a named save fine
+    and just drops the name (#652). Only File > Save passes one; checkpoints
+    stay nameless so their bytes don't churn with renames."""
     from . import sparse_quad_patch
     from .persistence import world_surface
     from .sparse_quad_patch import PlateWithSparseQuadPatch
@@ -397,6 +402,8 @@ def save_world_v5(world: World, *, profile: str) -> bytes:
         # "plates" itself is excluded here: it rides in the per-plate list above.
         "world": {k: freeze(v, f"world/{k}", arrays) for k, v in vars(world).items() if k not in drop and k != "plates"},
     }
+    if name is not None:
+        manifest["name"] = name
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as zf:
         zf.writestr("manifest.json", json.dumps(manifest))
