@@ -1251,6 +1251,7 @@ def _lake_water_surface_temperature_c(
     elevation_m: np.ndarray,
     previous_lake_depth_m: np.ndarray,
     hypsometry: "lakes.CellHypsometry",
+    air_temperature_elevation_m: np.ndarray | None = None,
 ) -> np.ndarray:
     """Water temperature from last step's lake level and the connected-ocean mask (RFC 0014
     D3, #661). `lake_depth` is mean depth over sub-cell relief, so recover its water level
@@ -1263,7 +1264,9 @@ def _lake_water_surface_temperature_c(
     if len(wet_idx):
         surface_elevation_m[wet_idx] = hypsometry.level_from_depth(previous_lake_depth_m[wet_idx], wet_idx)
     air_at_water_surface_c = climate.air_temperature_at_elevation(
-        air_temperature_at_bed_c, elevation_m, surface_elevation_m
+        air_temperature_at_bed_c,
+        elevation_m if air_temperature_elevation_m is None else air_temperature_elevation_m,
+        surface_elevation_m,
     )
     return np.where(is_ocean, ocean_temperature_c, air_at_water_surface_c)
 
@@ -1441,6 +1444,7 @@ def compute_hydrology(
     history_years: float | None = None,
     air_temperature_at_nodes: np.ndarray | None = None,
     ocean_temperature_at_nodes: np.ndarray | None = None,
+    air_temperature_elevation_at_nodes: np.ndarray | None = None,
 ) -> HydrologyFields:
     """Runs the full flow-routing pipeline against the world's current node cloud and this
     step's climate: depression hierarchy + spill routing (see
@@ -1458,8 +1462,9 @@ def compute_hydrology(
     same climate-grid lookups for its own erosion terms) rather than looked up again here.
     Optional `air_temperature_at_nodes` and `ocean_temperature_at_nodes` let D3 compute lake
     water temperature after this function builds the current connected-ocean mask and the
-    hypsometry needed to recover the lagged water surface. Direct callers that omit them use
-    their supplied temperature as both source fields.
+    hypsometry needed to recover the lagged water surface. The optional air-temperature
+    elevation identifies the terrain height where the sampled climate temperature applies;
+    direct callers that omit these fields use their supplied temperature at node elevation.
     `node_cloud`, likewise, is erosion.py's own already-gathered (points, plates_in_order) pair (see
     plates.gather_node_positions), reused here instead of re-deriving every node's world
     position from scratch a second time this same step.
@@ -1538,6 +1543,7 @@ def compute_hydrology(
         elevation,
         prev_lake_depth,
         hypsometry,
+        air_temperature_elevation_at_nodes,
     )
     wet_fraction = _lagged_lake_wet_fraction(prev_lake_depth, hypsometry)
     wet_fraction = np.where(is_ocean, 0.0, wet_fraction)

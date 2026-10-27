@@ -1947,6 +1947,7 @@ def apply_erosion(
         seasonal_amplitude_at_nodes=seasonal_amplitude,
         air_temperature_at_nodes=fields.air_temperature_c[row, col],
         ocean_temperature_at_nodes=fields.ocean_temperature_c[row, col],
+        air_temperature_elevation_at_nodes=fields.elevation_m[row, col],
     )
     world.hydrology_cache = hydro
     world.hydrology_cache_step = world.steps_taken
