@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import type { RefObject } from "react";
 import type { MapView, Projection } from "./api";
 import { CRATON_LEGEND_LABEL, faultKindForLegendLabel, legendFor } from "./legendData";
@@ -143,9 +144,11 @@ function SymbolRow({ symbol, onClick, selected }: { symbol: LegendSymbol; onClic
 // canvas above it).
 //
 // A native <details> expando: on narrow viewports it starts closed so the map gets the
-// screen (see index.css's legend rules, #654), while desktop CSS keeps it visibly open.
-// Native disclosure means touch expand/collapse and the expanded state come free, with
-// no JS viewport tracking to drift out of sync on rotation or resize.
+// screen, while desktop pins it open. The open state is driven from a matchMedia query
+// rather than CSS overrides: Chromium >=131 hides closed details through ::details-content
+// content-visibility, which a child's display:block does not escape, so a CSS-only
+// force-open would leave desktop Chrome with a hidden legend (#654 review). Native
+// disclosure still means touch expand/collapse and the expanded state come free.
 export default function Legend({
   mapView,
   projection,
@@ -162,6 +165,18 @@ export default function Legend({
   showPlainsPlateaus,
   onTogglePlainsPlateaus,
 }: Props) {
+  // Wide viewport pins the expando open (see the component doc comment); the query
+  // listener keeps it correct across rotation, resize, and devtools docking.
+  const [isDesktop, setIsDesktop] = useState(() => window.matchMedia("(min-width: 701px)").matches);
+  useEffect(() => {
+    const query = window.matchMedia("(min-width: 701px)");
+    const onChange = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, []);
+  // The user's own toggle, meaningful only off-desktop where the summary reads as one.
+  const [mobileOpen, setMobileOpen] = useState(false);
+
   if (!hasWorld) {
     return (
       <div
@@ -201,6 +216,10 @@ export default function Legend({
   return (
     <details
       className="legend-details"
+      open={isDesktop || mobileOpen}
+      onToggle={(e) => {
+        if (!isDesktop) setMobileOpen((e.target as HTMLDetailsElement).open);
+      }}
       style={{
         marginTop: 10,
         padding: 10,

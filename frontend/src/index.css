@@ -134,12 +134,14 @@ button:disabled {
   }
 }
 
-/* The map legend's expando (see Legend.tsx, #654): a native <details> element, closed by
-   default everywhere. Narrow viewports (phones) keep that default so the map gets the
-   screen; the summary row is the touch target. Wide viewports instead pin the body open
-   and hide the disclosure affordance, which is exactly the always-open panel desktop
-   had before. 700px is the only viewport breakpoint in this UI: below it the 1100px map
-   render is already scaled to fit, so the legend is what has to give. */
+/* The map legend's expando (see Legend.tsx, #654): a native <details> element whose open
+   state comes from a matchMedia query -- open on wide viewports (the always-open panel
+   desktop had before), closed by default on narrow ones (phones) so the map gets the
+   screen and the summary row is the touch target. 700px is the only viewport breakpoint
+   in this UI: below it the 1100px map render is already scaled to fit, so the legend is
+   what has to give. No force-open CSS here on purpose: Chromium >=131 hides closed
+   details through ::details-content content-visibility, which a child's display:block
+   does not escape. */
 .legend-summary {
   display: flex;
   align-items: center;
@@ -174,12 +176,6 @@ button:disabled {
 }
 
 @media (min-width: 701px) {
-  .legend-details:not([open]) > .legend-body {
-    display: block;
-  }
-  .legend-details:not([open]) > .legend-summary {
-    margin-bottom: 6;
-  }
   .legend-summary {
     cursor: default;
   }
