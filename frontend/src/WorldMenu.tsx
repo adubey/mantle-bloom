@@ -22,6 +22,13 @@ export default function WorldMenu({ worlds, worldId, disabled, disabledTitle, on
   const rootRef = useRef<HTMLDivElement | null>(null);
   const selected = worlds.find((w) => w.world_id === worldId) ?? null;
 
+  // A run starting mid-menu hides the popup: its rows must not resurface on
+  // re-enable without a new click, and the delete buttons only make sense while
+  // the menu is up for an idle selection.
+  useEffect(() => {
+    if (disabled) setOpen(false);
+  }, [disabled]);
+
   // Close on outside click or Escape; nothing global lingers after unmount.
   useEffect(() => {
     if (!open) return;
@@ -55,7 +62,7 @@ export default function WorldMenu({ worlds, worldId, disabled, disabledTitle, on
         aria-label="World"
         style={{ width: "100%", fontSize: 12, textAlign: "left" }}
       >
-        {selected ? selected.name : "Select a world…"}
+        {selected ? `${selected.name}${selected.summary ? "" : " (empty)"}${selected.run?.running ? " ▶" : ""}` : "Select a world…"}
       </button>
       {open && !disabled && (
         <div role="menu" aria-label="Worlds" style={{ position: "absolute", zIndex: 50, left: 0, right: 0, background: "#1a1d29", border: "1px solid #555", borderRadius: 6, padding: 4, maxHeight: 220, overflowY: "auto" }}>
