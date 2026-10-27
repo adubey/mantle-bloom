@@ -7,7 +7,9 @@ import base64
 import json
 import logging
 import os
+import tempfile
 import threading
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -56,6 +58,12 @@ from .world import (
 # client's query string, and PIL will happily try to allocate whatever it's told, so an
 # unbounded value here would let a malformed or malicious request force a huge allocation.
 MAX_RENDER_DIMENSION_PX = 4000
+# The largest world file /worlds/{world_id}/load accepts, in bytes -- a default-detail world
+# pickles to tens of MB, so this is an order of magnitude of headroom, not a tight fit.
+# Enforced while the body is still streaming in (see _spool_upload_to_tempfile): a hosted
+# container with a few hundred MB of free RAM must refuse a huge upload before buffering it,
+# not after unpickling has already doubled it.
+MAX_LOAD_WORLD_BYTES = 512 * 1024 * 1024
 # Each animation frame costs a full step_world + render, so this bounds worst-case request
 # time for POST /worlds/{world_id}/animate the same way MAX_RENDER_DIMENSION_PX bounds /worlds/{world_id}/render's
 # own worst case. Also doubles as the safety ceiling for "keep going until Stop is pressed"
@@ -1213,14 +1221,26 @@ def save_world(world_id: str) -> Response:
     `404` if no world has been generated yet."""
     session = _session_or_404(world_id)
     # Serialized under the lock: a concurrent step mutates the world's numpy arrays in
-    # place, and pickling them mid-step would write a torn, unloadable file.
+    # place, and pickling them mid-step would write a torn, unloadable file. The
+    # record's display name rides in the manifest so a later import restores it
+    # (see `POST /worlds/import` and docs/save-compatibility.md §7).
     with session.lock:
         world = _require_world(session)
-        body = persistence.save_world_bytes(world)
+        body = persistence.save_world_bytes(world, name=session.name)
         filename = f"mantle-bloom-seed{world.seed}-{int(world.elapsed_years)}y.bloom"
     return Response(
         content=body, media_type="application/octet-stream", headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
+
+
+def _discard_stale_hydrology_cache(world: World) -> None:
+    """Drop a loaded world's routing cache when it predates fields current API consumers
+    read (see `_hydrology_cache_is_stale`). Shared by the replace-load and import routes:
+    an old save's cache must never reach the inspectors. A world whose cache is dropped
+    rebuilds it on its next step."""
+    if world.hydrology_cache is not None and _hydrology_cache_is_stale(world.hydrology_cache):
+        world.hydrology_cache = None
+        world.hydrology_cache_step = None
 
 
 def _hydrology_cache_is_stale(cache) -> bool:
@@ -1243,30 +1263,74 @@ def _hydrology_cache_is_stale(cache) -> bool:
     )
 
 
+async def _spool_upload_to_tempfile(request: Request) -> str:
+    """Stream the request body to a temp file, returning its path. The upload route reads
+    the world back from disk (see persistence.load_world_file) instead of holding the whole
+    body in RAM as bytes alongside the unpickled world -- a default-detail save is tens of
+    MB, and a hosted container has no RAM to spare for both copies at once. Bodies past
+    MAX_LOAD_WORLD_BYTES are refused with a `413` while still streaming, before any of
+    that work starts."""
+    fd, path = tempfile.mkstemp(prefix="mantle-bloom-upload-", suffix=".mbworld")
+    size = 0
+    try:
+        with os.fdopen(fd, "wb") as tmp:
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > MAX_LOAD_WORLD_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"world file exceeds the {MAX_LOAD_WORLD_BYTES // (1024 * 1024)} MB upload limit",
+                    )
+                tmp.write(chunk)
+    except BaseException:
+        # os.fdopen raising leaves fd open (the `with` never took it); closing an
+        # already-closed fd just raises OSError, which the suppress below absorbs.
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+        raise
+    return path
+
+
 @app.post("/worlds/{world_id}/load")
 async def load_world(world_id: str, request: Request) -> dict:
-    """The "File > Load World" upload -- the raw bytes of a file /worlds/{world_id}/save previously
-    produced, as the request body (not JSON -- see persistence.py). Replaces whatever world
-    previously existed, same as /worlds/{world_id}/generate. A line-backed (legacy) save is converted to
+    """A save-file upload that replaces one record's world in place -- the raw bytes of a
+    file /worlds/{world_id}/save previously produced, as the request body (not JSON --
+    see persistence.py). Same as /worlds/{world_id}/generate, whatever world previously
+    existed is gone. A line-backed (legacy) save is converted to
     sparse quads on load, one way -- see docs/save-compatibility.md; the summary's
-    `surface_conversion` then reports what changed. `400` with the reason if the
+    `surface_conversion` then reports what changed. The body streams to a temp file and
+    loads from disk, so a large upload never sits in RAM twice (as bytes and as a
+    world). `400` with the reason if the
     bytes are corrupt or in a save format this build doesn't read; any other failure is
-    still a `400`, without detail. `503` while a generation, step, or animation is in
-    progress."""
-    body = await request.body()
+    still a `400`, without detail. `413` when the upload passes MAX_LOAD_WORLD_BYTES.
+    `503` while a generation, step, or animation is in
+    progress. Kept for scripts and API use; File > Load World now imports through
+    `POST /worlds/import`, which adds the planet as a new record instead of destroying
+    the open one (#652)."""
+    # Refuse an unknown world before touching disk: unpickling is wasted work when there
+    # is no record to replace. (begin_operation stays where it is -- holding the busy
+    # flag across a slow upload would stall every other operation on this world.)
+    session = _session_or_404(world_id)
+    upload_path = await _spool_upload_to_tempfile(request)
     try:
-        world = persistence.load_world_bytes(body)
+        with open(upload_path, "rb") as upload:
+            world = persistence.load_world_file(upload)
     except persistence.SaveFormatError as exc:
         raise HTTPException(status_code=400, detail=f"invalid or incompatible world file: {exc}") from exc
     except Exception as exc:
         raise HTTPException(status_code=400, detail="invalid or incompatible world file") from exc
-    # Derived routing fields are added over time. Old saves may carry a cache from after #355
-    # that has discharge but predates RFC 0014's external-source ledger; discard any cache
-    # missing a current-length field before inspectors can read it.
-    if world.hydrology_cache is not None and _hydrology_cache_is_stale(world.hydrology_cache):
-        world.hydrology_cache = None
-        world.hydrology_cache_step = None
-    session = _session_or_404(world_id)
+    finally:
+        try:
+            os.unlink(upload_path)
+        except OSError:
+            pass
+    _discard_stale_hydrology_cache(world)
     # Under the lock, so a step can't still be mutating the world viewers are told replaced it.
     if not session.begin_operation():
         raise HTTPException(status_code=503, detail="a generation, step, or animation is already in progress")
@@ -1287,6 +1351,83 @@ async def load_world(world_id: str, request: Request) -> dict:
             session.lock.release()
     finally:
         session.end_operation()
+
+
+def _suggest_import_name(base: str, used: set[str]) -> str:
+    """First `"<base> (1)"`, `"<base> (2)"`, ... not in `used` -- the duplicate-name
+    import dialog's option (b) default (#652)."""
+    n = 1
+    while True:
+        candidate = f"{base} ({n})"
+        if candidate not in used:
+            return candidate
+        n += 1
+
+
+def _duplicate_import_conflict(name: str, existing: WorldSession, world: World) -> dict:
+    """The `409` payload when an import's resolved name is already taken: which record
+    holds it, whether the upload looks like the same planet at another date (equal
+    seeds -- a re-generated same-seed world *is* the same planet, so seed equality
+    is the right signal, not a false positive), both dates for the dialog's notice,
+    and the option (b) default name."""
+    existing_world = existing.world
+    same_planet = existing_world is not None and existing_world.seed == world.seed
+    return {
+        "duplicate_name": name,
+        "existing_world_id": existing.world_id,
+        "same_planet": same_planet,
+        "uploaded_elapsed_years": world.elapsed_years,
+        "existing_elapsed_years": None if existing_world is None else existing_world.elapsed_years,
+        "suggested_name": _suggest_import_name(name, {s.name for s in _registry.list()}),
+    }
+
+
+@app.post("/worlds/import", status_code=201)
+async def import_world(request: Request, name: str | None = None, allow_duplicate: bool = False) -> dict:
+    """The "File > Load World" upload -- the raw bytes of a save file as the request body
+    (not JSON, same spooling, size cap and `400` contract as `/worlds/{world_id}/load`).
+    Unlike that route this one never destroys anything: the save becomes a brand-new
+    world record, so loading works with no worlds yet and leaves the open planet alone
+    (#652). The record name is the `name` query param, else the display name stamped
+    into the save's manifest at save time (see `persistence.load_world_name`), else a
+    fresh generated name. A resolved name another record already holds is a `409`
+    (unless `allow_duplicate`): the payload names the existing record, says whether
+    the upload looks like the same planet at another date, and suggests an unused
+    `"<name> (1)"` -- the File dialog's three options (keep both, rename, cancel)
+    are built on exactly this. `409` past the world cap, like `POST /worlds`. The new
+    session is private; publish it afterwards like any created world."""
+    upload_path = await _spool_upload_to_tempfile(request)
+    try:
+        with open(upload_path, "rb") as upload:
+            saved_name = persistence.load_world_name_file(upload)
+            upload.seek(0)
+            world = persistence.load_world_file(upload)
+    except persistence.SaveFormatError as exc:
+        raise HTTPException(status_code=400, detail=f"invalid or incompatible world file: {exc}") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="invalid or incompatible world file") from exc
+    finally:
+        try:
+            os.unlink(upload_path)
+        except OSError:
+            pass
+    _discard_stale_hydrology_cache(world)
+    resolved = name or saved_name
+    if not resolved:
+        resolved = world_names.default_world_name({s.name for s in _registry.list()})
+    existing = next((s for s in _registry.list() if s.name == resolved), None)
+    if existing is not None and not allow_duplicate:
+        raise HTTPException(status_code=409, detail=_duplicate_import_conflict(resolved, existing, world))
+    try:
+        session = _registry.create(name=resolved)
+    except WorldLimitReached as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    _wire_session(session)
+    _save_index()
+    # Fresh session, nothing contends with it -- the lock just honors `_set_world`'s contract.
+    with session.lock:
+        _set_world(session, world)
+    return _record_json(session)
 
 
 @app.get("/worlds/{world_id}/render")
@@ -1380,14 +1521,45 @@ def cross_section(
     return result
 
 
-def _animate_message_line(session, world, message, last_frame):
+def _record_animation_progress(session, payload: dict) -> None:
+    """Persist one completed animation frame's recovery record next to the world
+    checkpoint (#638). Same contract as _checkpoint_world: skipped without a store,
+    logged rather than raised on failure -- a recording must never die because its
+    bookkeeping did."""
+    store = session.checkpoint_store
+    if store is None or session.deleted:
+        return
+    try:
+        store.save_animation_progress(payload)
+    except Exception:  # noqa: BLE001 -- see _checkpoint_world's own comment
+        _logger.exception("checkpoint: couldn't save animation progress")
+
+
+def _clear_animation_progress(session) -> None:
+    """Forget a finished run's recovery record: its video exists, so there is
+    nothing left to recover (#638). Same skip/log contract as _checkpoint_world."""
+    store = session.checkpoint_store
+    if store is None or session.deleted:
+        return
+    try:
+        store.clear_animation_progress()
+    except Exception:  # noqa: BLE001 -- see _checkpoint_world's own comment
+        _logger.exception("checkpoint: couldn't clear animation progress")
+
+
+def _animate_message_line(session, world, message, last_frame, anim_spec: dict):
     """Folds one stream_animation_mp4 message into its NDJSON line plus stream state.
 
     Returns `(line, last_frame, completed)`. A progress line checkpoints the world
     first -- each frame ends on a whole step, so a run that ends badly later (a
-    disconnect, a failed step or encoder) still keeps the frames before it. A
-    heartbeat line just forwards the tick: the world is mid-batch, so no checkpoint
-    (#611). The done line flips `completed` so the stream's finally publishes the run.
+    disconnect, a failed step or encoder) still keeps the frames before it -- and
+    records the frame in the recovery sidecar (`anim_spec` carries the run's static
+    parameters for a later resume, #638). It also publishes the frame to the world's
+    viewers (no checkpoint/index write -- just feed + render-cache) so /view watches
+    each animation step instead of nothing until the end (#653). A heartbeat line just forwards the tick:
+    the world is mid-batch, so no checkpoint (#611). The done line flips `completed`
+    so the stream's finally publishes the run, and clears the recovery sidecar: a
+    finished run's video exists, so there is nothing left to recover.
     Split out of animate() so that function stays under the complexity cap."""
     if message[0] == "heartbeat":
         _, frame, total, elapsed_years = message
@@ -1399,7 +1571,17 @@ def _animate_message_line(session, world, message, last_frame):
         }) + "\n", last_frame, False
     if message[0] == "progress":
         _, frame, total, frame_png, elapsed_years = message
-        _checkpoint_world(session)
+        # The sidecar must never get ahead of the checkpoint: if this frame's
+        # world save failed, recovery keeps pointing at the older checkpointed
+        # frame (resuming may redo a little work, but never silently skips any).
+        if _checkpoint_world(session):
+            _record_animation_progress(session, {**anim_spec, "completed_frames": frame})
+        # Each frame ends on a whole step with the locks held, so publish it for
+        # /view watchers: an animation otherwise shows them nothing until its final
+        # publish minutes or hours later (#653). No checkpoint or index write here --
+        # the frame was just checkpointed above and the run's finally publishes fully.
+        session.public_renders.clear()
+        session.feed.publish(world)
         return json.dumps({
             "type": "progress",
             "frame": frame,
@@ -1417,6 +1599,9 @@ def _animate_message_line(session, world, message, last_frame):
             "stats": world.stats_history[-1] if world.stats_history else None,
         }) + "\n", frame, False
     _, mp4_bytes, stopped_early = message
+    # Finished with a video in hand -- stopped early by the user or ran to the end,
+    # either way there is nothing left to recover, so forget the sidecar (#638).
+    _clear_animation_progress(session)
     return json.dumps({
         "type": "done",
         "mime": "video/mp4",
@@ -1509,6 +1694,17 @@ def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
                 req.step_years, req.steps_per_frame, req.num_frames,
                 step_fn=lambda w, y: _step_world(session, w, y), stop_event=session.animation_stop_event,
             )
+            # Static run parameters for the recovery sidecar: a resume replays the
+            # same run shape from the checkpointed world (#638).
+            anim_spec = {
+                "total_frames": req.num_frames,
+                "steps_per_frame": req.steps_per_frame,
+                "step_years": req.step_years,
+                "projection": req.projection,
+                "view": req.view,
+                "width": req.width,
+                "height": req.height,
+            }
             try:
                 while True:
                     # Advance one frame while holding the locks, then let them go
@@ -1523,7 +1719,7 @@ def animate(world_id: str, req: AnimateRequest) -> StreamingResponse:
                         message = next(animation)
                     except StopIteration:
                         break
-                    line, last_frame, completed = _animate_message_line(session, world, message, last_frame)
+                    line, last_frame, completed = _animate_message_line(session, world, message, last_frame, anim_spec)
                     if message[0] == "heartbeat":
                         # Mid-batch tick (#611): the world is only partially stepped,
                         # so the locks stay held across this yield -- releasing them
@@ -1602,6 +1798,25 @@ def animate_stop(world_id: str) -> dict:
     cleared at the start of each new animate() run, not here, so it can't leak into one."""
     _session_or_404(world_id).animation_stop_event.set()
     return {"status": "ok"}
+
+
+@app.get("/worlds/{world_id}/animate/recovery")
+def animation_recovery(world_id: str) -> dict:
+    """Reports an interrupted animation run's recoverable state (#638): the recovery
+    sidecar's completed-frame count plus the run's static parameters, so the client
+    can offer resuming the remaining frames from the checkpointed world instead of
+    redoing the whole run. 404 when no interrupted run is on record (never recorded,
+    already finished with a video, or already recovered); 503 while a run is still
+    in progress on this world. Read-only: it never mutates the world or the sidecar
+    (a resume clears it when the resumed run finishes)."""
+    session = _session_or_404(world_id)
+    if session.operation_busy():
+        raise HTTPException(status_code=503, detail="a generation, step, or animation is already in progress")
+    store = session.checkpoint_store
+    progress = store.load_animation_progress() if store is not None else None
+    if progress is None:
+        raise HTTPException(status_code=404, detail="no interrupted animation to recover")
+    return progress
 
 
 @app.post("/worlds/{world_id}/controls")
@@ -2398,23 +2613,32 @@ def public_worlds() -> dict:
 
 @app.get("/public/worlds/{world_id}/world")
 async def public_world(world_id: str, request: Request, after: str | None = None, guest_demo: bool = False) -> dict:
-    """What the viewer shows for one public world: its revision and age, and this
-    browser's remaining step allowance.
+    """What the viewer shows for one public world: its revision and age, this
+    browser's remaining step allowance, and a guest step's live progress, if one
+    is computing.
 
     With `after`, a long poll (#374): while `after` is still the current revision, wait up to
     public_view.GUEST_POLL_WAIT_S for the world to change before answering. This is how every
     viewer follows steps that others (or the owner) take without computing anything itself.
+    The poll also answers when a guest step publishes new progress without a new revision
+    yet, which is what drives /view's wait progress bar mid-step (#653).
     Async, so a waiting viewer holds no worker thread."""
     session = _public_session_or_404(world_id)
     if after is not None:
-        await session.feed.wait_past(after, public_view.GUEST_POLL_WAIT_S)
+        progress_before = session.guest_step_progress()
+        await session.feed.wait_past(
+            after, public_view.GUEST_POLL_WAIT_S,
+            changed=lambda: session.guest_step_progress() != progress_before,
+        )
     _, remaining = _guest_allowance(request, guest_demo)
+    progress = session.guest_step_progress()
     return {
         "world": session.feed.summary(),
         "running": _session_running(session),
         "steps_remaining": remaining,
         "step_limit": public_view.GUEST_STEP_LIMIT,
         "step_years": public_view.GUEST_STEP_YEARS,
+        "step_progress": None if progress is None else {"fraction": progress[0], "phase": progress[1]},
     }
 
 
@@ -2459,17 +2683,38 @@ def public_render(world_id: str, view: str = "elevation", width: int = 1100, hei
     return entry
 
 
+def _await_owner_step(session: WorldSession, seen_revision: str) -> bool:
+    """True when the world moved past `seen_revision` within the share window. Called
+    after the guest coordinator reports `busy` -- almost always the owner's step or
+    animation holding the world -- so a viewer asking for the same advance shares the
+    owner's result instead of failing (#653). Sync polling, not the feed's async wait:
+    this route is sync (it may compute), and a waiter that arrived here holds a worker
+    thread either way. Costs nothing when the owner already finished."""
+    deadline = time.monotonic() + public_view.GUEST_OWNER_STEP_WAIT_S
+    while session.feed.revision() == seen_revision:
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(public_view.GUEST_OWNER_STEP_POLL_S)
+    return True
+
+
 def _run_guest_step(session: WorldSession) -> None:
     # Runs with the coordinator's lock pair held. A delete that slipped in between the
     # coordinator's acquire and here stands down instead of stepping a detached world.
+    # Each progress message is also published to the session's progress slot (waking the
+    # world's long-polling viewers) so /view shows a live wait progress bar for the
+    # step, whatever viewer triggered it (#653). Heartbeats carry no new position, so
+    # they don't republish.
     completed = False
     try:
         if session.deleted:
             return
-        for _ in _step_progress(session, _require_world(session), public_view.GUEST_STEP_YEARS):
-            pass
+        for message in _step_progress(session, _require_world(session), public_view.GUEST_STEP_YEARS):
+            if isinstance(message, tuple) and message[0] == "progress" and len(message) == 3:
+                session.set_guest_step_progress((message[1], message[2]))
         completed = True
     finally:
+        session.set_guest_step_progress(None)
         _world_changed(session, completed)
 
 
@@ -2480,7 +2725,9 @@ def public_step(world_id: str, req: PublicStepRequest, request: Request, respons
     browser across all public worlds, not per world. `computed` says whether it did; a
     stale `revision`, or a step another viewer already has running, is answered with the
     resulting world for free. `429` when a computation is needed and the allowance is
-    spent, `503` if the owner is using the world, `404` for a private or unknown world."""
+    spent, `503` if the owner is using the world, `404` for a private or unknown world.
+    A `busy` owner step is shared, not refused, when it lands in time: viewers all
+    asking for the same advance get the resulting world however it was computed (#653)."""
     session = _public_session_or_404(world_id)
     config, remaining = _guest_allowance(request, guest_demo)
     outcome = session.guest_steps.request_step(
@@ -2492,6 +2739,8 @@ def public_step(world_id: str, req: PublicStepRequest, request: Request, respons
     )
     if outcome.status == "exhausted":
         raise HTTPException(status_code=429, detail="step allowance used up")
+    if outcome.status == "busy" and _await_owner_step(session, req.revision):
+        outcome = public_view.StepOutcome("shared")
     if outcome.status == "busy":
         raise HTTPException(status_code=503, detail="the world is busy; try again shortly")
     if outcome.status == "computed" and remaining is not None:
@@ -2537,20 +2786,24 @@ def _save_index() -> None:
         _logger.exception("checkpoint: couldn't save the registry index")
 
 
-def _checkpoint_world(session: WorldSession) -> None:
+def _checkpoint_world(session: WorldSession) -> bool:
     """Write `session`'s world to its checkpoint; the caller holds the session
     lock. A failed write is logged rather than raised: the world in memory is
-    fine, and the next change retries."""
+    fine, and the next change retries. Returns whether the checkpoint now matches
+    the world -- false only when a save was attempted and failed, so dependents
+    (the animation recovery sidecar, #638) can stay consistent with it rather than
+    running ahead of what is actually on disk."""
     world = session.world
     if session.checkpoint_store is None or world is None or session.deleted:
-        return
+        return True
     try:
         session.checkpoint_store.save_world(world)
     except Exception:  # noqa: BLE001 -- e.g. a full or unmounted volume mustn't fail the step
         _logger.exception("checkpoint: couldn't save the world")
-        return
+        return False
     if session.runner is not None:
         session.runner.retry_unsaved_status()
+    return True
 
 
 def _save_run_status(session: WorldSession, status: checkpoint.RunStatus) -> None:

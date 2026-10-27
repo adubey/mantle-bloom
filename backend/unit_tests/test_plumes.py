@@ -70,7 +70,10 @@ def _test_centers() -> list:
 
 
 def _event_key(plume: plumes.MantlePlume) -> tuple:
+    # plume_id first: same-time/same-volume events on different streams would
+    # otherwise collide (#624 made the key collision-free on purpose).
     return (
+        plume.plume_id,
         plume.born_years,
         tuple(plume.position),
         plume.head_volume_m3,
@@ -589,3 +592,134 @@ def test_diagnostics_counts_population():
     assert census["active_plumes"] == 2
     assert census["heads"] == 1
     assert census["tails"] == 1
+
+
+def _consume_schedule(seed, step_years, total_years, multiplier=1.0, cox=False):
+    """Fresh plumes consumed over [0, total] in `step_years` increments."""
+    state: dict = {}
+    fresh: list = []
+    t = 0.0
+    while t < total_years - 1e-9:
+        fresh.extend(
+            plumes.consume_arrivals(seed, multiplier, cox, [], state, t, t + step_years)
+        )
+        t += step_years
+    return fresh
+
+
+def test_event_stream_multiset_identical_across_step_partitions():
+    """RFC 0007 (#624): the same schedule consumed as 10x1 Myr or 1x10 Myr gives
+    the same event multiset. Order legitimately groups per step (stream-major
+    per consume call), so compare the file's exact-key convention sorted.
+    Single seed 7: the schedule is a pure function of seed, so one seed pins it."""
+    fine = _consume_schedule(7, 1e6, 10e6)
+    coarse = _consume_schedule(7, 10e6, 10e6)
+    assert len(fine) == len(coarse) > 0
+    assert sorted(_event_key(p) for p in fine) == sorted(_event_key(p) for p in coarse)
+
+
+def _pinned_branches(seed, step_years, total_years):
+    """plume_id -> oceanic_host per head on a pinned-motion convergent world.
+
+    Pinned means rotation only (`pinned_omegas`): per-step `deform` stays
+    path-dependent, which is exactly the branch-flip mechanism this measures.
+    Single seed 7: the schedule is a pure function of seed, and the 95% bar
+    absorbs one-off flips."""
+    from app import debug_worlds
+    from app import world as world_mod
+
+    world = debug_worlds.scenario_two_plate_convergent(seed)
+    t = 0.0
+    while t < total_years - 1e-9:
+        world_mod.step_world(world, min(step_years, total_years - t))
+        t += step_years
+    return {
+        plume.plume_id: plume.oceanic_host
+        for plume in world.mantle_plumes
+        if not plume.is_tail_only
+    }
+
+
+def test_pinned_branch_agrees_across_partitions():
+    """RFC 0007 (#624): on pinned motion, the oceanic/continental branch agrees
+    on over 95% of events between 1 Myr and 10 Myr partitions."""
+    fine = _pinned_branches(7, 1e6, 20e6)
+    coarse = _pinned_branches(7, 10e6, 20e6)
+    # Drops are partition-independent (same schedule, same drop rule), so the
+    # id sets must match exactly -- intersection would hide a divergence.
+    assert set(fine) == set(coarse), f"only in fine: {set(fine) - set(coarse)}, only in coarse: {set(coarse) - set(fine)}"
+    assert len(fine) > 0
+    assert all(host is not None for host in fine.values())
+    disagree = [pid for pid in fine if fine[pid] != coarse[pid]]
+    agreement = 1.0 - len(disagree) / len(fine)
+    assert agreement > 0.95, f"flipped branches: {disagree}"
+
+
+def _world_fingerprint(world):
+    """Per-node max-abs state plus leak-prone scalars.
+
+    Sums can mask compensating writes, so fields compare by max absolute node
+    value; heat, stress, ledgers, counters, stream state, and event count are
+    included because a heat- or stress-only leak would otherwise be invisible.
+    """
+    from app import terranes
+
+    material_ledger = getattr(world, "continental_material_ledger", None) or {}
+    fingerprint = [world.elapsed_years, len(world.mantle_plumes)]
+    fingerprint.append(float(np.nansum(material_ledger.get("juvenile_flood_basalt_m3", 0.0))))
+    fingerprint.append(float(np.nansum(material_ledger.get("juvenile_hotspot_m3", 0.0))))
+    ledger = terranes.ensure_ledger(world)
+    for source in terranes.SOURCES:
+        for account in terranes.BALANCE_ACCOUNTS:
+            fingerprint.append(float(ledger[source][account]))
+    fingerprint.append(world.plume_heads_emplaced)
+    fingerprint.append(repr(world.plume_stream))
+    fingerprint.append(len(world.events))
+    nodes = []
+    for plate in world.plates:
+        for field in (
+            "crustal_thickness_m",
+            "elevation",
+            "continental_material_m",
+            "plume_heat_myr",
+            "internal_stress",
+        ):
+            try:
+                nodes.append(float(np.nanmax(np.abs(plate.collect(field)))))
+            except Exception:
+                continue
+    fingerprint.extend(nodes)
+    return fingerprint
+
+
+def test_multiplier_zero_matches_plume_off_replay(monkeypatch):
+    """RFC 0007 (#624): `plume_multiplier = 0` is a strict no-op, matching a
+    10-step replay with the plume pass patched out."""
+    from app import debug_worlds
+    from app import world as world_mod
+
+    zero_result = {"new_heads": 0, "new_tails": 0, "head_volume_m3": 0.0,
+                   "tail_volume_m3": 0.0, "credited_heads": 0}
+
+    def replay(patch):
+        world = debug_worlds.scenario_two_plate_convergent(7)
+        world.plume_multiplier = 0.0
+        if patch:
+            # years=0 takes the real early-return path without touching the
+            # world, so this pins the patched dict to the real contract.
+            assert set(zero_result) == set(plumes.apply(world, 0.0))
+            monkeypatch.setattr(plumes, "apply", lambda *a, **k: dict(zero_result))
+        for _ in range(10):
+            world_mod.step_world(world, 1e6)
+        return _world_fingerprint(world)
+
+    unpatched, patched = replay(False), replay(True)
+    assert len(unpatched) == len(patched)
+    for got, want in zip(unpatched, patched):
+        if isinstance(got, float):
+            assert got == pytest.approx(want)
+        else:
+            assert got == want
+
+
+

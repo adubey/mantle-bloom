@@ -133,3 +133,53 @@ button:disabled {
     animation: none;
   }
 }
+
+/* The map legend's expando (see Legend.tsx, #654): a native <details> element whose open
+   state comes from a matchMedia query -- open on wide viewports (the always-open panel
+   desktop had before), closed by default on narrow ones (phones) so the map gets the
+   screen and the summary row is the touch target. 700px is the only viewport breakpoint
+   in this UI: below it the 1100px map render is already scaled to fit, so the legend is
+   what has to give. No force-open CSS here on purpose: Chromium >=131 hides closed
+   details through ::details-content content-visibility, which a child's display:block
+   does not escape. */
+.legend-summary {
+  display: flex;
+  align-items: center;
+  gap: 6;
+  cursor: pointer;
+  margin-bottom: 6;
+  list-style: none;
+}
+
+.legend-summary::-webkit-details-marker {
+  display: none;
+}
+
+.legend-details:not([open]) > .legend-summary {
+  margin-bottom: 0;
+}
+
+.legend-chevron {
+  font-size: 11px;
+  opacity: 0.7;
+  transition: transform 0.15s ease-out;
+}
+
+.legend-details[open] > .legend-summary > .legend-chevron {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .legend-chevron {
+    transition: none;
+  }
+}
+
+@media (min-width: 701px) {
+  .legend-summary {
+    cursor: default;
+  }
+  .legend-chevron {
+    display: none;
+  }
+}

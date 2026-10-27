@@ -44,31 +44,41 @@ Open to anyone, for the logged-out `/view` page (#373). See
   "running", "revision", "seed", "elapsed_years"}]}`. A private world drops back
   out of the list when its run stops.
 - `GET /public/worlds/{world_id}/world`: `{"world": {"revision", "seed", "elapsed_years"},
-  "running": bool, "steps_remaining": int | null, "step_limit": 30, "step_years": 100000}`.
+  "running": bool, "steps_remaining": int | null, "step_limit": 30, "step_years": 100000,
+  "step_progress": {"fraction", "phase"} | null}`.
   `steps_remaining` is null (unlimited) for the admin. `revision` is an
-  opaque string that changes whenever the world does (#374). `404` for a private,
+  opaque string that changes whenever the world does (#374). `step_progress` is a guest
+  step's live position, whoever triggered it -- the wait progress bar's feed -- or null
+  when no step is computing (#653). `404` for a private,
   unknown, or still-empty world -- the listing never advertises the other cases.
 - `GET /public/worlds/{world_id}/world?after=<revision>`: the same response, but held open until the world's
   revision differs from `after`, or for at most 25 s (then answered with the unchanged
-  world). Viewers poll this to pick up steps that other viewers or the owner take.
+  world). Viewers poll this to pick up steps that other viewers or the owner take. The poll
+  also answers early when a guest step publishes new progress without a new revision yet,
+  so the wait progress bar moves mid-step (#653).
 - `GET /public/worlds/{world_id}/render?view=elevation|biome&width=&height=`: like `/worlds/{world_id}/render`, but always
   Eckert IV at the default orientation, with width and height at most 2400. It returns
   `{"revision", "seed", "elapsed_years", "image_base64"}`. Each view and size is rendered once
-  per revision and then served from a cache, even while the owner holds the world. `400` for
+  per revision and then served from a cache shared by all viewers, even while the owner holds the world. `400` for
   any other view or size, `404` before a world exists, `503` if a render is needed and the
   owner holds the world for more than 10 s.
 - `POST /public/worlds/{world_id}/step` with `{"revision": str}`, the revision the viewer is showing: advances
   the world by 100 kyr and returns `{"world": {...}, "computed": bool, "steps_remaining"}`.
   Only a request that runs the step (`computed: true`) uses up allowance, and the response then
   sets the updated `mb_guest` cookie. When `revision` is stale, or another guest's step is
-  already running, the request gets the resulting world without computing. `429` when a
-  computation is needed but the allowance is spent, `503` while the owner is using the world,
+  already running, the request gets the resulting world without computing. A request refused
+  as busy waits up to 60 s for the owner's step to land and shares it (`computed: false`)
+  rather than failing: viewers asking for the same advance get one result however it was
+  computed (#653). `429` when a
+  computation is needed but the allowance is spent, `503` while the owner is using the world
+  past that window,
   `404` for a private, unknown, or still-empty world.
 
 ## World registry routes
 
 World identity and management metadata live outside the pickled `World` (#563),
-so saves carry no registry information:
+so saves carry no registry information except the record's display name, stamped into
+the v5 manifest for `POST /worlds/import` to restore (#652):
 
 - `GET /worlds` returns every record: metadata plus, when populated, the world
   summary and run state.
@@ -304,7 +314,9 @@ field, caches, event log -- see [architecture.md#world-state](architecture.md#wo
 serialized as a single opaque `application/octet-stream` file (`Content-Disposition:
 attachment`, named `*.bloom`), not JSON (see `backend/app/persistence.py`). The file is a v5
 zip of `.npy` arrays plus a JSON manifest that declares the world's plate surface (`quad`,
-or `empty` with no plates); arrays load with `allow_pickle=False`, so unlike a pickle a
+or `empty` with no plates) and carries the record's display name, so a later import
+restores it (`POST /worlds/import` below; see [save-compatibility.md](save-compatibility.md#7-multi-world-registry-metadata-563)).
+Arrays load with `allow_pickle=False`, so unlike a pickle a
 v5 save carries no code. It is not a stable interchange
 format (contrast with `/worlds/{world_id}/export_hexgrid` below): encoding by class identity ties it to
 the code. [save-compatibility.md](save-compatibility.md) lists which older saves this build
@@ -314,11 +326,31 @@ yet.
 Loading a legacy v1-v4 pickle save still unpickles it (a standard pickle caveat) -- acceptable given this server is a single-user localhost dev tool already
 (see `main.py`'s CORS allowlist), the same trust boundary every other route here assumes.
 
+## `POST /worlds/import`
+
+The "File > Load World" upload -- the raw bytes of a save file as the request body
+(`Content-Type: application/octet-stream`, not JSON). The save becomes a brand-new world
+record (`201`, the record JSON): loading never replaces the open planet and works with
+no worlds yet (#652). The record name is the `name` query param, else the display name
+stamped into the save's manifest at save time, else a fresh generated name.
+
+A resolved name another record already holds is a `409` (unless `allow_duplicate=true`),
+with a JSON `detail` carrying the duplicate-name dialog's options: `duplicate_name`,
+`existing_world_id`, `same_planet` (equal seeds -- the upload is the same planet at
+another date), `uploaded_elapsed_years`, `existing_elapsed_years` (`null` when the
+existing record is empty), and `suggested_name` (the first unused `"<name> (1)"`).
+`409` past the world cap, like `POST /worlds`. The new record is private.
+
+Same spooling, size cap, and `400` contract as `POST /worlds/{world_id}/load` below.
+
 ## `POST /worlds/{world_id}/load`
 
-The "File > Load World" upload -- the raw bytes of a file `/worlds/{world_id}/save` previously
-produced, as the request body (`Content-Type: application/octet-stream`, not JSON).
-Replaces whatever world previously existed, same as `/worlds/{world_id}/generate`. Returns the same
+A save-file upload that replaces one record's world in place -- the raw bytes of a file
+`/worlds/{world_id}/save` previously produced, as the request body
+(`Content-Type: application/octet-stream`, not JSON).
+Same as `/worlds/{world_id}/generate`, whatever world previously existed is gone. Kept for
+scripts and API use; File > Load World imports through `POST /worlds/import` instead.
+Returns the same
 summary shape `/worlds/{world_id}/generate` does; its `surface` is `"quad"` or `"empty"`.
 
 A line-backed save (written before #251 retired that surface) is converted to sparse quads on
@@ -330,6 +362,10 @@ was never converted, and stays with the world through later saves.
 readable save (corrupt, truncated, or not a mantle-bloom file) or are in a format version
 newer than this build reads (the save envelope or one of its sparse-quad plates). Nothing
 falls back to a partial load.
+
+The body streams to a temp file and unpickles from disk, so a large upload never sits in
+RAM twice (as bytes and as a world). Bodies past 512 MB (`MAX_LOAD_WORLD_BYTES` in
+`backend/app/main.py`) are refused with `413` while still streaming.
 
 `503` while a generation, step or animation is in progress, so a running step can't keep
 changing a world that has already been replaced.
@@ -578,7 +614,9 @@ their bytes alone reset its timer.
 
 Each `progress` line carries that frame's own rendered PNG in `image_base64` (same encoding
 as `/worlds/{world_id}/render`) -- the frontend paints it straight onto the main map so the display
-doubles as the live animation step while the run holds the world lock. The final `done` line
+doubles as the live animation step while the run holds the world lock. Each frame also publishes
+the world's revision to its viewers (feed + render cache, no checkpoint), so `/view` watches
+every animation step instead of nothing until the run ends (#653). The final `done` line
 carries the same summary shape `/worlds/{world_id}/generate`/`/worlds/{world_id}/step` return, plus `video_base64`
 (decode via `data:video/mp4;base64,<this>` -- H.264, playable directly in a `<video>`
 element), `mime`, and `stopped_early` (true if `/worlds/{world_id}/animate/stop` was what ended the run
@@ -593,6 +631,17 @@ stream to end cleanly after its current frame rather than the next one: the stre
 flushes the encoder and its `done` line still carries a complete (just shorter) video,
 unlike the client simply dropping the connection. No request body; always `200`, including
 when no animation is currently running (a no-op).
+
+## `GET /worlds/{world_id}/animate/recovery`
+
+What an interrupted animation run left recoverable (#638): the server records one
+sidecar entry per completed frame next to the world checkpoint, so a run that dies
+mid-batch still leaves its completed frames' simulation work behind. Returns that
+record -- `completed_frames` plus the run's static shape (`total_frames`,
+`steps_per_frame`, `step_years`, `projection`, `view`, `width`, `height`) -- for
+resuming the remaining frames from the checkpointed world. `404` when no
+interrupted run is on record (never recorded, already finished with a video, or
+already recovered); `503` while a run is still in progress. Read-only.
 
 ## `GET /worlds/{world_id}/plates`
 

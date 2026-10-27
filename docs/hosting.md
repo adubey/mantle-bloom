@@ -19,9 +19,10 @@ The service is a small hosted preview, not a multi-user world service:
 - Logged-out visitors can use the public viewer and its limited step allowance.
 - The owner keeps several named worlds in one process, each addressed by world ID; the
   public viewer opens whichever ones the owner marks public. There are no separate
-  user-owned worlds or general user accounts.
+  user-owned worlds or general user accounts. On Railway the registry holds at most two
+  worlds (`MANTLE_BLOOM_MAX_WORLDS: "2"` in `.railway/railway.ts`); the app default is 4.
 - A Railway volume stores the registry index plus every world's checkpoint and run status
-  (`worlds.json` and `worlds/<id>/` per world; a default world pickles to about 60 MB).
+  (`worlds.json` and `worlds/<id>/` per world; a default world saves to about 20 MB).
   On restart or wake, the process restores all of that state. If the service sleeps,
   simulation pauses until a request wakes it; elapsed time is the time simulated, not
   wall-clock time.
@@ -29,6 +30,22 @@ The service is a small hosted preview, not a multi-user world service:
   checkpoints. This setup does not provide horizontal scaling or parallel physics workers:
   independently running worlds take turns at one compute gate. `MANTLE_BLOOM_MAX_WORLDS`
   caps the registry (default 4 records); size the volume and memory for the worlds kept.
+
+## Memory and uploading worlds
+
+Worlds are memory-resident. Measured on a default-detail world (point density 4,
+climate resolution 4, fluid resolution 2): the process idles near 170 MB after imports, a
+fresh process generating its first world peaks near 480 MB, and each additional resident
+world adds roughly 135 MB. Two such worlds plus a generation fit under 800 MB; four plus a
+generation do not. Raise `MANTLE_BLOOM_MAX_WORLDS` only alongside the service's memory,
+budgeting per world at the detail the worlds are generated with (lower detail choices use
+proportionally less: a Very Low world settles at only a few MB).
+
+To avoid generating on the host at all, generate locally and upload the result: File > Save
+World on the local app, then File > Load World on the hosted app (admin only, like every
+`/worlds/*` route). The upload streams to a temp file and unpickles from disk rather than
+holding the whole body in RAM, and bodies past 512 MB (`MAX_LOAD_WORLD_BYTES` in
+`backend/app/main.py`) are refused with `413` while still streaming.
 
 The route and access details are documented in the [API reference](api-reference.md).
 The checkpoint and startup behavior are in [architecture](architecture.md#run-and-checkpoint).

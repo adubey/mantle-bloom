@@ -19,6 +19,10 @@ user's old save -- stands regardless of this module.
 from __future__ import annotations
 
 import dataclasses
+import io
+import json
+import zipfile
+from typing import BinaryIO
 
 import numpy as np
 
@@ -77,14 +81,16 @@ def world_surface(world: World) -> str:
     raise CorruptSaveError("save mixes line-backed and sparse-quad plates")
 
 
-def save_world_bytes(world: World) -> bytes:
+def save_world_bytes(world: World, *, name: str | None = None) -> bytes:
     """The default v5 save of `world`: a zip of `.npy` arrays plus a JSON manifest.
     Keeps every cache the next step reads (so post-load evolution matches), drops only
     the erosion cache and derived scratch (see `npz_save.py` for the drop sets). What
     user-facing Save, checkpoints, and diagnostics share; `save_exact_bytes` is the
     bit-identical variant for replay-log records and anywhere exactness is needed,
-    and `save_compact_bytes` the smaller approximate one."""
-    return npz_save.save_world_v5(world, profile="default")
+    and `save_compact_bytes` the smaller approximate one. `name` stamps the record's
+    display name into the manifest (see `load_world_name`); checkpoints pass none so
+    a rename doesn't churn their bytes."""
+    return npz_save.save_world_v5(world, profile="default", name=name)
 
 
 def save_exact_bytes(world: World) -> bytes:
@@ -127,8 +133,54 @@ def load_world_bytes(data: bytes) -> World:
     `World.surface_conversion`."""
     if npz_save.is_v5(data):
         world = npz_save.load_world_v5(data)
+        is_v5 = True
     else:
         world = _load_pickled_world(data)
+        is_v5 = False
+    return _finish_loaded_world(world, is_v5=is_v5)
+
+
+def load_world_file(file: BinaryIO) -> World:
+    """`load_world_bytes` from an already-open seekable binary file: the save streams
+    from disk, so a large upload never sits in RAM as bytes alongside the world it
+    builds (see main.py's `/worlds/{world_id}/load`). Same errors, same conversions,
+    same backfills."""
+    if npz_save.is_v5_file(file):
+        world = npz_save.load_world_v5_file(file)
+        is_v5 = True
+    else:
+        world = _load_pickled_world_file(file)
+        is_v5 = False
+    return _finish_loaded_world(world, is_v5=is_v5)
+
+
+def load_world_name(data: bytes) -> str | None:
+    """The display name stamped into a v5 save's manifest at save time (see
+    `save_world_bytes`), or `None` when the save carries none -- every pre-v5
+    pickle, and any v5 save written without one. Reads only the manifest, never
+    the arrays, so it stays cheap on a tens-of-MB save. A present-but-not-a-string
+    name is ignored, not an error: the name is advisory record metadata, and a
+    tampered label must not block loading the world itself (#652)."""
+    return load_world_name_file(io.BytesIO(data))
+
+
+def load_world_name_file(file: BinaryIO) -> str | None:
+    """`load_world_name` from an already-open binary file: only the manifest is
+    read, so a large upload never sits in RAM as bytes just to learn its name."""
+    if not npz_save.is_v5_file(file):
+        return None
+    try:
+        with zipfile.ZipFile(file) as zf:
+            manifest = json.loads(zf.read("manifest.json"))
+    except Exception:  # noqa: BLE001 - any unreadable zip just has no name
+        return None
+    name = manifest.get("name") if isinstance(manifest, dict) else None
+    return name if isinstance(name, str) and name else None
+
+
+def _finish_loaded_world(world: World, *, is_v5: bool) -> World:
+    """Backfills and validation shared by `load_world_bytes` and `load_world_file`,
+    which differ only in where the save streams from."""
     _migrate_plate_ages(world)
     _backfill_added_fields(world)
     _drop_incompatible_collision_polarity_frame(world)
@@ -136,7 +188,7 @@ def load_world_bytes(data: bytes) -> World:
     _drop_derived_caches(world)
     _migrate_climate_humidity_units(world)
     _backfill_water_budget(world)
-    if npz_save.is_v5(data):
+    if is_v5:
         # v5 freeze writes every field the build knows (dropped caches are set to
         # None by the loader, new fields backfilled above), so an unresolvable one
         # is a tampered manifest -- fail here, not later with AttributeError (#596
@@ -153,7 +205,7 @@ def _load_pickled_world(data: bytes) -> World:
     """The `World` in a pre-v5 (pickled) save, converted to sparse quads when it is
     line-backed. Carries the envelope and surface checks the pickle format needs; v5
     validates its own manifest inside `npz_save.load_world_v5`."""
-    from .legacy_conversion import convert_world_to_quad, legacy_unpickler
+    from .legacy_conversion import legacy_unpickler
 
     try:
         payload = legacy_unpickler(data).load()
@@ -161,6 +213,30 @@ def _load_pickled_world(data: bytes) -> World:
         raise
     except Exception as exc:  # noqa: BLE001 - pickle raises many types on foreign input
         raise CorruptSaveError(f"not a readable mantle-bloom save ({type(exc).__name__}: {exc})") from exc
+    return _world_from_pickled_payload(payload)
+
+
+def _load_pickled_world_file(file: BinaryIO) -> World:
+    """`_load_pickled_world` from an already-open binary file: unpickling streams
+    from disk, so the whole save never sits in RAM as bytes alongside the world it
+    builds. Same envelope checks, same line-backed conversion."""
+    from .legacy_conversion import legacy_file_unpickler
+
+    try:
+        payload = legacy_file_unpickler(file).load()
+    except SaveFormatError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - pickle raises many types on foreign input
+        raise CorruptSaveError(f"not a readable mantle-bloom save ({type(exc).__name__}: {exc})") from exc
+    return _world_from_pickled_payload(payload)
+
+
+def _world_from_pickled_payload(payload: object) -> World:
+    """Validate the unpickled envelope and convert a line-backed world to sparse
+    quads -- shared by `_load_pickled_world` and `_load_pickled_world_file`, which
+    differ only in where the bytes stream from."""
+    from .legacy_conversion import convert_world_to_quad
+
     declared = None
     if isinstance(payload, dict) and "format" in payload:
         if payload.get("format") != SAVE_FORMAT:

@@ -26,6 +26,15 @@ def _line_pickle(payload) -> bytes:
         return pickle.dumps(payload)
 
 
+def test_manifest_name_round_trips_and_defaults_to_none():
+    # #652: File > Save stamps the record name into the v5 manifest; a save
+    # written without one (checkpoints, old saves) reports None.
+    world = generate_world(seed=42, num_plates=4, node_density=0.5, climate_density=0.5, fluid_density=0.5)
+    assert persistence.load_world_name(persistence.save_world_bytes(world, name="Epsilon Andretti b")) == "Epsilon Andretti b"
+    assert persistence.load_world_name(persistence.save_world_bytes(world)) is None
+    assert persistence.load_world_name(b"definitely not a saved world") is None
+
+
 def test_round_trip_preserves_a_freshly_generated_world():
     world = generate_world(seed=42, num_plates=6)
     data = persistence.save_world_bytes(world)
@@ -41,6 +50,26 @@ def test_round_trip_preserves_a_freshly_generated_world():
         assert np.allclose(loaded_plate.frame, original_plate.frame)
         assert np.array_equal(loaded_plate.cell_keys, original_plate.cell_keys)
         assert np.array_equal(loaded_plate.collect("elevation"), original_plate.collect("elevation"))
+
+
+def test_load_world_file_matches_load_world_bytes(tmp_path):
+    # The upload route spools large saves to disk instead of holding the whole body in RAM
+    # (#648): loading from a file object must give the same world as loading from bytes.
+    world = generate_world(seed=3, num_plates=4, node_density=0.5, climate_density=0.5, fluid_density=0.5)
+    path = tmp_path / "world.mbworld"
+    data = persistence.save_world_bytes(world)
+    path.write_bytes(data)
+    with open(path, "rb") as handle:
+        loaded = persistence.load_world_file(handle)
+    assert loaded.seed == world.seed
+    assert loaded.elapsed_years == world.elapsed_years
+    assert len(loaded.plates) == len(world.plates)
+    assert np.array_equal(loaded.plates[0].collect("elevation"), world.plates[0].collect("elevation"))
+    # Byte-level pin on this change's own contract: streaming from disk must give the
+    # same world as loading from bytes. A save/load round trip is not byte-stable in
+    # general -- backfills normalize older state on the way in -- so this compares the
+    # two load paths against each other, not against the pre-save world.
+    assert persistence.save_world_bytes(loaded) == persistence.save_world_bytes(persistence.load_world_bytes(data))
 
 
 def test_round_trip_keeps_step_read_caches():

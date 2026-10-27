@@ -4,6 +4,7 @@ import gc
 import io
 import json
 import math
+import tempfile
 import threading
 import time
 from types import SimpleNamespace
@@ -1350,6 +1351,24 @@ def test_load_with_malformed_bytes_returns_400(client):
     assert "not a readable mantle-bloom save" in resp.json()["detail"]
 
 
+def test_load_rejects_an_upload_over_the_size_cap(client, monkeypatch, tmp_path):
+    # A huge upload must be refused while it is still streaming in (#376): a hosted
+    # container has no RAM to spare for buffering it before unpickling even starts.
+    # Spool into the test's tmp dir and require it to be empty afterwards: the refused
+    # upload's temp file must not leak.
+    monkeypatch.setattr(main, "MAX_LOAD_WORLD_BYTES", 10)
+    real_mkstemp = tempfile.mkstemp
+
+    def mkstemp_in_tmp_dir(*args, **kwargs):
+        kwargs.setdefault("dir", str(tmp_path))
+        return real_mkstemp(*args, **kwargs)
+
+    monkeypatch.setattr(tempfile, "mkstemp", mkstemp_in_tmp_dir)
+    resp = client.post("/world/load", content=b"0123456789ABCDEF")
+    assert resp.status_code == 413
+    assert list(tmp_path.iterdir()) == []
+
+
 def test_load_reports_a_save_from_a_newer_build_as_unsupported(client):
     import pickle
 
@@ -1383,6 +1402,87 @@ def test_load_converts_a_line_save_to_quads(client):
     assert client.get("/world/render").status_code == 200
     resaved = client.get("/world/save").content
     assert client.post("/world/load", content=resaved).json()["surface"] == "quad"
+
+
+def _saved_bytes(client, seed=5):
+    """A v5 save of a small generated world, via the default test session (whose
+    record name, "test", the save's manifest therefore carries)."""
+    _post_generate(client, json={"seed": seed, "num_plates": 4})
+    return client.get("/world/save").content
+
+
+def test_import_adds_a_new_record_and_leaves_the_open_world_alone(client):
+    # #652: File > Load World must not destroy the current planet.
+    saved = _saved_bytes(client, seed=5)
+    resp = client.post("/worlds/import", params={"name": "Second"}, content=saved)
+    assert resp.status_code == 201
+    record = resp.json()
+    assert record["name"] == "Second"
+    assert record["summary"]["seed"] == 5
+    worlds = client.get("/worlds").json()["worlds"]
+    assert len(worlds) == 2
+    default = next(w for w in worlds if w["world_id"] == _default_session.world_id)
+    assert default["summary"]["seed"] == 5
+    assert default["summary"]["elapsed_years"] == 0.0
+
+
+def test_import_works_with_no_worlds_yet(client):
+    # #652: loading is allowed when the server holds no worlds at all.
+    saved = _saved_bytes(client, seed=5)
+    assert client._inner.delete(f"/worlds/{_default_session.world_id}").status_code == 200
+    resp = client.post("/worlds/import", params={"name": "First"}, content=saved)
+    assert resp.status_code == 201
+    assert resp.json()["name"] == "First"
+    assert len(client.get("/worlds").json()["worlds"]) == 1
+
+
+def test_import_restores_the_manifest_name(client):
+    # #652: without an explicit name the record takes the save's stamped name.
+    client._inner.patch(f"/worlds/{_default_session.world_id}", json={"name": "Named"})
+    saved = _saved_bytes(client, seed=5)
+    client._inner.patch(f"/worlds/{_default_session.world_id}", json={"name": "test"})
+    resp = client.post("/worlds/import", content=saved)
+    assert resp.status_code == 201
+    assert resp.json()["name"] == "Named"
+
+
+def test_import_duplicate_name_reports_conflict_with_same_planet_options(client):
+    # #652: the manifest name "test" collides with the default session, so the
+    # first import is a 409 carrying the dialog's three options; keeping both
+    # (a) and the suggested rename (b) then succeed.
+    saved = _saved_bytes(client, seed=5)
+    resp = client.post("/worlds/import", content=saved)
+    assert resp.status_code == 409
+    conflict = resp.json()["detail"]
+    assert conflict["duplicate_name"] == "test"
+    assert conflict["existing_world_id"] == _default_session.world_id
+    assert conflict["same_planet"] is True
+    assert conflict["uploaded_elapsed_years"] == 0.0
+    assert conflict["existing_elapsed_years"] == 0.0
+    assert conflict["suggested_name"] == "test (1)"
+    kept = client.post("/worlds/import", params={"allow_duplicate": True}, content=saved)
+    assert kept.status_code == 201
+    assert kept.json()["name"] == "test"
+    renamed = client.post("/worlds/import", params={"name": conflict["suggested_name"]}, content=saved)
+    assert renamed.status_code == 201
+    assert renamed.json()["name"] == "test (1)"
+
+
+def test_import_duplicate_name_from_another_seed_is_not_the_same_planet(client):
+    # #652: equal seeds mean the same planet at another date; different seeds
+    # are just a name collision, and the dialog must not claim otherwise.
+    saved5 = _saved_bytes(client, seed=5)
+    assert client.post("/worlds/import", params={"name": "Other"}, content=saved5).status_code == 201
+    saved6 = _saved_bytes(client, seed=6)
+    resp = client.post("/worlds/import", params={"name": "Other"}, content=saved6)
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["same_planet"] is False
+
+
+def test_import_with_malformed_bytes_returns_400(client):
+    resp = client.post("/worlds/import", content=b"definitely not a saved world")
+    assert resp.status_code == 400
+    assert "not a readable mantle-bloom save" in resp.json()["detail"]
 
 
 def test_animate_advances_the_world_and_streams_progress_then_an_mp4(client):
@@ -1580,6 +1680,111 @@ def test_generate_unknown_tuple_message_becomes_error_line(client, monkeypatch):
     messages = [json.loads(line) for line in resp.text.splitlines() if line.strip()]
     assert [m["type"] for m in messages] == ["progress", "error"]
     assert "unexpected generate progress" in messages[-1]["detail"]
+
+
+def test_animate_recovery_reports_recorded_progress(client, tmp_path, monkeypatch):
+    # #638: an interrupted run's sidecar must come back with its run shape, so the
+    # client can resume the remaining frames from the checkpointed world.
+    from app import checkpoint
+
+    monkeypatch.setattr(main, "_checkpoint_root", checkpoint.CheckpointStore(tmp_path))
+    _default_session.checkpoint_store = main._checkpoint_root.for_world(_default_session.world_id)
+    try:
+        payload = {
+            "completed_frames": 7, "total_frames": 20, "steps_per_frame": 10,
+            "step_years": 100_000, "projection": "eckert4", "view": "elevation",
+            "width": 64, "height": 64,
+        }
+        _default_session.checkpoint_store.save_animation_progress(payload)
+        resp = client.get(f"/worlds/{_default_session.world_id}/animate/recovery")
+        assert resp.status_code == 200
+        assert resp.json() == payload
+    finally:
+        _default_session.checkpoint_store = None
+
+
+def test_animate_recovery_404_without_a_record(client):
+    # Nothing recorded (or already finished/recovered) is a 404: this is a plain
+    # GET, so the status carries it -- no error line needed.
+    _default_session.checkpoint_store = None
+    resp = client.get(f"/worlds/{_default_session.world_id}/animate/recovery")
+    assert resp.status_code == 404
+
+
+def test_animate_recovery_503_while_a_run_is_active(client, tmp_path):
+    # Recovery must not race a live run: refuse while the operation flag is held.
+    from app import checkpoint
+
+    _default_session.checkpoint_store = checkpoint.CheckpointStore(tmp_path)
+    assert _default_session.begin_operation()
+    try:
+        resp = client.get(f"/worlds/{_default_session.world_id}/animate/recovery")
+        assert resp.status_code == 503
+    finally:
+        _default_session.end_operation()
+        _default_session.checkpoint_store = None
+
+
+def test_animate_message_line_records_and_clears_recovery(tmp_path, monkeypatch):
+    # #638: each completed frame updates the sidecar; the done line clears it, since
+    # a finished run's video leaves nothing to recover.
+    from app import checkpoint
+
+    store = checkpoint.CheckpointStore(tmp_path)
+    session = SimpleNamespace(
+        checkpoint_store=store,
+        deleted=False,
+        feed=main.public_view.WorldFeed(),
+        public_renders=main.public_view.RenderCache(),
+    )
+    world = SimpleNamespace(seed=9, elapsed_years=200_000.0, stats_history=[])
+    monkeypatch.setattr(main, "_checkpoint_world", lambda session: True)
+    monkeypatch.setattr(main, "_summary", lambda session, world: {})
+    spec = {
+        "total_frames": 3, "steps_per_frame": 1, "step_years": 100_000,
+        "projection": "eckert4", "view": "elevation", "width": 64, "height": 64,
+    }
+    line, last_frame, completed = main._animate_message_line(
+        session, world, ("progress", 2, 3, b"png", 200_000.0), 1, spec)
+    assert completed is False and last_frame == 2
+    assert json.loads(line)["type"] == "progress"
+    assert store.load_animation_progress() == {**spec, "completed_frames": 2}
+    line, last_frame, completed = main._animate_message_line(
+        session, world, ("done", b"mp4", False), 2, spec)
+    assert completed is True
+    assert store.load_animation_progress() is None
+
+
+def test_animate_sidecar_never_passes_a_failed_checkpoint(tmp_path, monkeypatch):
+    # Review on PR #647: _checkpoint_world logs and swallows a failed save, so the
+    # sidecar must not advance past it -- recovery keeps the older checkpointed
+    # frame (a resume may redo work, never silently skip it).
+    from types import SimpleNamespace
+    from app import checkpoint
+
+    store = checkpoint.CheckpointStore(tmp_path)
+    session = SimpleNamespace(
+        checkpoint_store=store,
+        deleted=False,
+        runner=None,
+        world=object(),
+        feed=main.public_view.WorldFeed(),
+        public_renders=main.public_view.RenderCache(),
+    )
+
+    def _boom(world):
+        raise OSError("volume gone")
+
+    monkeypatch.setattr(store, "save_world", _boom)
+    assert main._checkpoint_world(session) is False
+    assert main._animate_message_line(
+        session,
+        SimpleNamespace(seed=9, elapsed_years=200_000.0, stats_history=[]),
+        ("progress", 2, 3, b"png", 200_000.0),
+        1,
+        {},
+    )[2] is False
+    assert store.load_animation_progress() is None
 
 
 def test_animate_disconnect_mid_stream_still_publishes_completed_frames(client):

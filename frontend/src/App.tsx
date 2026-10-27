@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./index.css";
 import {
-  animateWorld, createWorld, deleteWorld, fetchDebugScenarios, fetchEarthquakes, fetchElevationPointAt, fetchFaults, fetchLakes, fetchNodeAt, fetchPlates, fetchPointSample, fetchRivers, fetchRunState, fetchStats, fetchStatsHistory, fetchSuggestedName, fetchVolcanoes, fetchWorldSummary, fetchWorlds, generateDebugWorld, generateWorld, patchWorld, renderWorld, setRunState, stopAnimation, updateControls,
+  animateWorld, createWorld, deleteWorld, fetchAnimationRecovery, fetchDebugScenarios, fetchEarthquakes, fetchElevationPointAt, fetchFaults, fetchLakes, fetchNodeAt, fetchPlates, fetchPointSample, fetchRivers, fetchRunState, fetchStats, fetchStatsHistory, fetchSuggestedName, fetchVolcanoes, fetchWorldSummary, fetchWorlds, generateDebugWorld, generateWorld, patchWorld, renderWorld, setRunState, stopAnimation, updateControls,
   RunStateRefused, TUNING_MULTIPLIER_KEYS,
 } from "./api";
 import type {
-  AnimateResponse, DebugScenario, EarthquakeSummary, ElevationPointResponse, FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, NodeAtResponse, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, TuningKey, TuningMultipliers, VolcanoSummary, WorldRecord, WorldStats, WorldSummary,
+  AnimateResponse, AnimationRecovery, DebugScenario, EarthquakeSummary, ElevationPointResponse, FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, NodeAtResponse, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, TuningKey, TuningMultipliers, VolcanoSummary, WorldRecord, WorldStats, WorldSummary,
 } from "./api";
-import { ensureWorldId, withWorldId, worldIdFromSearch, type WorldId } from "./worldRoutes";
+import { withWorldId, worldIdFromSearch, type WorldId } from "./worldRoutes";
 import MapCanvas from "./MapCanvas";
 import MantleCrossSection from "./MantleCrossSection";
 import GlobeSelector from "./GlobeSelector";
@@ -25,7 +25,9 @@ import ControlsModal from "./ControlsModal";
 import AdvancedSettingsModal from "./AdvancedSettingsModal";
 import FileModal from "./FileModal";
 import AnimationModal from "./AnimationModal";
+import AnimationStoppedModal, { type FailedAnimation } from "./AnimationStoppedModal";
 import SaveAnimationModal from "./SaveAnimationModal";
+import WorldMenu from "./WorldMenu";
 import Legend from "./Legend";
 import MeasureOverlay from "./MeasureOverlay";
 import ProgressBar from "./ProgressBar";
@@ -634,7 +636,8 @@ export default function App() {
   // phases), and null before a run's first checkpoint arrives.
   const [runPhase, setRunPhase] = useState<string | null>(null);
   // The overlay's X collapses to just the pulsing progress line; its pop-out icon
-  // re-opens the overlay. Reset to expanded whenever a new run starts.
+  // re-opens the overlay. Generate and Record start expanded; Play (stepping) starts
+  // collapsed on the progress line (#653).
   const [overlayCollapsed, setOverlayCollapsed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Background animation (recording) -- see AnimationModal.tsx and handleStartAnimation
@@ -654,6 +657,14 @@ export default function App() {
   // cleanly and still returns the video (see handleStopAnimation below).
   const [animation, setAnimation] = useState<{ frame: number; total: number; unbounded: boolean } | null>(null);
   const [animationResult, setAnimationResult] = useState<AnimateResponse | null>(null);
+  // A recording that failed mid-run (#638): the dialog replaces the old bare error,
+  // offering recovery from the server's per-frame checkpoints. `recovery` is the
+  // animate/recovery payload fetched when the failure landed (null when the run never
+  // recorded a frame or already finished). `recoveringAnimation` guards Recover
+  // against double clicks while the resume run starts.
+  const [animationFailure, setAnimationFailure] = useState<{ failure: FailedAnimation; recovery: AnimationRecovery | null } | null>(null);
+  const [recoveringAnimation, setRecoveringAnimation] = useState(false);
+  const animationFrameRef = useRef(0);
   const animating = animation !== null;
 
   // Two refresh() calls can be in flight at once -- e.g. changing map mode while a step is
@@ -667,15 +678,32 @@ export default function App() {
   // response from the most recently *issued* call, so a stale response is silently dropped
   // instead of overwriting a newer one.
   const renderRequestIdRef = useRef(0);
+  // A map render of the world is in flight (rotation commit, projection/view change).
+  // Rotations and view switches had no busy indication at all (#634) -- this drives
+  // the sidebar's indeterminate progress line while the fetch runs. Counted by the
+  // same request id as the data commit: a stale response resolving first must not
+  // clear the line while the latest fetch is still out.
+  const [rendering, setRendering] = useState(false);
   const refresh = useCallback(async (proj: Projection, view: MapView, viewRotation: Mat3) => {
-    if (view === "crossSection" || view === "plateInspector" || view === "riverInspector" || view === "lakeInspector" || view === "platesAndFaults") return; // frontend-rendered views do not use renderData
+    // Frontend-rendered views do not use renderData. Invalidate any render still in
+    // flight on the way out (#644): without this, a pending fetch's finally stays the
+    // latest-request cleanup and the "Rendering map" line lingers until it settles,
+    // even though nothing on screen wants its image any more.
+    if (view === "crossSection" || view === "plateInspector" || view === "riverInspector" || view === "lakeInspector" || view === "platesAndFaults") {
+      renderRequestIdRef.current++;
+      setRendering(false);
+      return;
+    }
     const requestId = ++renderRequestIdRef.current;
     const { showMountains: mountains, showPlainsPlateaus: plainsPlateaus } = terrainOverlayRef.current;
+    setRendering(true);
     try {
       const data = await renderWorld(worldIdRef.current!, proj, view, RENDER_WIDTH, RENDER_HEIGHT, viewRotation, mountains, plainsPlateaus);
       if (requestId === renderRequestIdRef.current) setRenderData(data);
     } catch (e) {
       if (requestId === renderRequestIdRef.current) setError(String(e));
+    } finally {
+      if (requestId === renderRequestIdRef.current) setRendering(false);
     }
   }, []);
 
@@ -958,6 +986,7 @@ export default function App() {
       setError(null);
       setAnimationResult(null);
       setAnimation({ frame: 0, total: numFrames, unbounded });
+      animationFrameRef.current = 0;
       setOverlayCollapsed(false);
       setRunPhase(null);
       const view = mapViewRef.current;
@@ -970,6 +999,7 @@ export default function App() {
             // selection moved on rather than painting the old world (#563 S7).
             if (worldIdRef.current !== id) return;
             setAnimation({ frame: p.frame, total: p.total, unbounded });
+            animationFrameRef.current = p.frame;
             setRunPhase(unbounded ? `Recorded ${p.frame} frames` : `Frame ${p.frame} of ${p.total}`);
             // Keep the sidebar's "elapsed" readout climbing frame by frame instead of it
             // sitting frozen at the pre-recording value until the whole run resolves.
@@ -995,7 +1025,17 @@ export default function App() {
         setAnimationResult(result);
         await handleWorldAdvanced(result);
       } catch (e) {
-        if (worldIdRef.current === id) setError(String(e));
+        // A failed recording ends in the "Animation stopped" dialog, not a bare
+        // error (#638): the server kept every completed frame's simulation work,
+        // so offer resuming from the last checkpoint. The recovery fetch failing
+        // just means nothing to resume -- the dialog says so.
+        if (worldIdRef.current === id) {
+          const recovery = await fetchAnimationRecovery(id!).catch(() => null);
+          setAnimationFailure({
+            failure: { frame: animationFrameRef.current, total: numFrames, unbounded, error: String(e) },
+            recovery,
+          });
+        }
       } finally {
         setAnimation(null);
         setRunPhase(null);
@@ -1003,6 +1043,28 @@ export default function App() {
     },
     [projection, rotation, stepYears, handleWorldAdvanced, applyStats],
   );
+
+  // The stopped-animation dialog's "Recover..." button (#638): resumes the frames
+  // the failed run never reached as a new bounded run from the checkpointed world,
+  // which already holds the completed frames' simulation work. The resumed run's
+  // own save dialog follows normally; the lost partial video can't be rebuilt.
+  const handleRecoverAnimation = useCallback(async () => {
+    const failed = animationFailure;
+    if (!failed || !failed.recovery) return;
+    const remaining = failed.recovery.total_frames - failed.recovery.completed_frames;
+    if (remaining < 1) return;
+    setRecoveringAnimation(true);
+    setAnimationFailure(null);
+    try {
+      await handleStartAnimation({
+        numFrames: remaining,
+        stepsPerFrame: failed.recovery.steps_per_frame,
+        unbounded: false,
+      });
+    } finally {
+      setRecoveringAnimation(false);
+    }
+  }, [animationFailure, handleStartAnimation]);
 
   // The toolbar's "Stop" button while recording -- asks the server to end the animation
   // cleanly after its current frame (see api.ts's stopAnimation) so it still finishes with a
@@ -1198,32 +1260,19 @@ export default function App() {
     return createInflightRef.current;
   }, [refreshWorlds, selectWorld]);
 
-  // Resolves the world to generate into on demand (#592, #597): the selection
-  // when one is open, otherwise a fresh world -- never an existing world the
-  // user didn't pick, since the dialog's name would rename (and the generate
-  // would overwrite) it by surprise. Runs only from an explicit generate
-  // action, never on page load, so merely opening the app creates nothing.
-  // Resolves the world File > Load needs: the selection when one is open,
-  // otherwise a fresh world. (The Generate dialog no longer uses this: Add
-  // always mints its own world.)
-  const ensureSelectedWorld = useCallback(async (name?: string | null): Promise<WorldId> => {
-    return ensureWorldId(worldIdRef.current, () => createAndSelectWorld(name));
-  }, [createAndSelectWorld]);
+  // Worlds only come into existence through an explicit creation action (the
+  // Generate dialog's Add, via createAndSelectWorld above, or File > Load World's
+  // import, via handleWorldImported below). #639's auto-minting on selection stays
+  // removed: nothing here creates a world behind the user's back.
 
-  // File > Load mints "Mantle Bloom a/b/c..." rather than an exoplanet pick (#597).
-  const ensureLoadWorld = useCallback(async (): Promise<WorldId> => {
-    if (worldIdRef.current) return worldIdRef.current;
-    const taken = new Set(worlds.map((w) => w.name));
-    let name = `Mantle Bloom ${taken.size + 1}`;
-    for (let i = 0; i < 26; i++) {
-      const candidate = `Mantle Bloom ${String.fromCharCode(97 + i)}`;
-      if (!taken.has(candidate)) {
-        name = candidate;
-        break;
-      }
-    }
-    return ensureSelectedWorld(name);
-  }, [worlds, ensureSelectedWorld]);
+  // FileModal's "Load World" (#652) -- the save arrives as a brand-new record, so
+  // unlike handleWorldReplaced there is nothing to sync into the live view:
+  // refresh the menu and select the newcomer, and the selection-restore effect
+  // loads it exactly like a world picked from the menu.
+  const handleWorldImported = useCallback(async (record: WorldRecord) => {
+    await refreshWorlds();
+    selectWorld(record.world_id);
+  }, [refreshWorlds, selectWorld]);
 
   // The Controls modal's World tab: renaming and publishing apply to the
   // selected world immediately (#597). A blank name keeps the current one.
@@ -1398,7 +1447,9 @@ export default function App() {
   const handlePlay = useCallback(async () => {
     setError(null);
     // The run loop streams no phases, so the overlay shows a generic line for it (#629).
-    setOverlayCollapsed(false);
+    // Stepping starts on the progress line, not the pop-out overlay (#653): the toolbar's
+    // Stop button stays clickable either way, and the line's pop-out icon re-opens it.
+    setOverlayCollapsed(true);
     setRunPhase("Advancing the world");
     try {
       setPlaying((await setRunState(worldIdRef.current!, true, stepYears)).running);
@@ -1487,7 +1538,8 @@ export default function App() {
         if (!run.running) return;
         if (STEP_YEARS_OPTIONS.includes(run.step_years)) setStepYears(run.step_years);
         setPlaying(true);
-        setOverlayCollapsed(false);
+        // Same collapsed default as a fresh Play press above (#653).
+        setOverlayCollapsed(true);
         setRunPhase("Advancing the world");
       })
       .catch(() => {
@@ -1544,9 +1596,16 @@ export default function App() {
           {(busy || (runActive && overlayCollapsed)) && (
             <ProgressBar
               label={overlayHeadline}
+              text={runPhase ? `${overlayHeadline}: ${runPhase}` : overlayHeadline}
               fraction={overlayFraction}
               onExpand={overlayCollapsed ? () => setOverlayCollapsed(false) : undefined}
             />
+          )}
+          {/* Map renders have no run behind them, so the overlay above never covers
+              them -- rotation commits and view switches get the same indeterminate
+              line instead, suppressed while a run's own display is up (#634). */}
+          {rendering && !runActive && (
+            <ProgressBar label="Rendering map" />
           )}
           {runActive && !overlayCollapsed && (
             <RunOverlay
@@ -1565,27 +1624,19 @@ export default function App() {
             {worlds.length === 0 ? (
               <div style={{ opacity: 0.7, marginBottom: 6 }}>No worlds yet.</div>
             ) : (
-              <select
-                value={worldId ?? ""}
-                onChange={(e) => selectWorld(e.target.value || null)}
-                // An explicit empty option: without it the browser would display the
-                // first world while nothing is actually selected (#597: starting
-                // with no world is the point), and that world would then be
-                // unpickable since picking it fires no change event.
+              <WorldMenu
+                worlds={worlds}
+                worldId={worldId}
                 disabled={busy || animating || playing}
-                title={busy || animating || playing ? "Stop the current operation first" : undefined}
-                style={{ width: "100%", fontSize: 12, marginBottom: 6 }}
-                aria-label="World"
-              >
-                <option value="">Select a world…</option>
-                {worlds.map((w) => (
-                  <option key={w.world_id} value={w.world_id}>
-                    {w.name}
-                    {w.summary ? "" : " (empty)"}
-                    {w.run?.running ? " ▶" : ""}
-                  </option>
-                ))}
-              </select>
+                disabledTitle={busy || animating || playing ? "Stop the current operation first" : undefined}
+                onSelect={(id) => selectWorld(id)}
+                onDelete={(id) => {
+                  const target = worlds.find((w) => w.world_id === id);
+                  if (target && window.confirm(`Delete ${target.name} and its checkpoint? This cannot be undone.`)) {
+                    handleDeleteWorld(id);
+                  }
+                }}
+              />
             )}
             <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
               <button onClick={openGenerateDialog} disabled={busy || animating || playing} style={{ flex: 1, fontSize: 12 }} title="Open the Generate World dialog">
@@ -2719,8 +2770,7 @@ export default function App() {
           mapView={mapView}
           mapWrapperRef={mapWrapperRef}
           onClose={() => setShowFileModal(false)}
-          onWorldReplaced={handleWorldReplaced}
-          onEnsureWorldId={ensureLoadWorld}
+          onWorldImported={handleWorldImported}
         />
       )}
 
@@ -2739,6 +2789,16 @@ export default function App() {
           result={animationResult}
           onSave={handleSaveAnimation}
           onDiscard={handleDiscardAnimation}
+        />
+      )}
+
+      {animationFailure && (
+        <AnimationStoppedModal
+          failure={animationFailure.failure}
+          recovery={animationFailure.recovery}
+          recovering={recoveringAnimation}
+          onRecover={handleRecoverAnimation}
+          onClose={() => setAnimationFailure(null)}
         />
       )}
     </div>

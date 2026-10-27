@@ -39,6 +39,7 @@ import io
 import json
 import math
 import zipfile
+from typing import BinaryIO
 
 import numpy as np
 
@@ -353,7 +354,15 @@ def is_v5(data: bytes) -> bool:
     return data[:4] == b"PK\x03\x04"
 
 
-def save_world_v5(world: World, *, profile: str) -> bytes:
+def is_v5_file(file: BinaryIO) -> bool:
+    """`is_v5` for an open binary file: peeks at the zip magic, then rewinds, so the
+    loader that runs next still sees the whole stream. The file must be seekable."""
+    magic = file.read(4)
+    file.seek(0)
+    return is_v5(magic)
+
+
+def save_world_v5(world: World, *, profile: str, name: str | None = None) -> bytes:
     """Serialize `world` as a v5 zip (`manifest.json` plus one `.npy` per array).
     `default` (user saves, checkpoints) drops the erosion cache; `exact`
     (replay-log records) keeps it too, so a replay re-steps exactly including its
@@ -361,7 +370,12 @@ def save_world_v5(world: World, *, profile: str) -> bytes:
     file whose first post-load step rebuilds them as it goes (approximately, not
     identically -- see `persistence.save_compact_bytes`). Unserializable derived
     scratch is dropped by all three profiles; the default and exact profiles keep
-    every other cache so a post-load step lands on identical state (H9)."""
+    every other cache so a post-load step lands on identical state (H9). `name`
+    is record metadata, not world state: the manifest carries it (see
+    `persistence.load_world_name`) so an import can restore the planet's display
+    name, but the loader ignores it -- an older build reads a named save fine
+    and just drops the name (#652). Only File > Save passes one; checkpoints
+    stay nameless so their bytes don't churn with renames."""
     from . import sparse_quad_patch
     from .persistence import world_surface
     from .sparse_quad_patch import PlateWithSparseQuadPatch
@@ -388,6 +402,8 @@ def save_world_v5(world: World, *, profile: str) -> bytes:
         # "plates" itself is excluded here: it rides in the per-plate list above.
         "world": {k: freeze(v, f"world/{k}", arrays) for k, v in vars(world).items() if k not in drop and k != "plates"},
     }
+    if name is not None:
+        manifest["name"] = name
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as zf:
         zf.writestr("manifest.json", json.dumps(manifest))
@@ -403,6 +419,36 @@ def load_world_v5(data: bytes) -> World:
     """The `World` in v5 bytes. Raises `CorruptSaveError` for anything that is not a
     readable v5 save and `UnsupportedSaveVersionError` for a newer v5 or a plate
     surface format this build does not read. Never loads partially."""
+    from .persistence import SaveFormatError
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            return _load_world_v5_from_zip(zf)
+    except Exception as exc:
+        if isinstance(exc, SaveFormatError):
+            raise
+        raise _corrupt(f"not a readable mantle-bloom save ({type(exc).__name__}: {exc})") from exc
+
+
+def load_world_v5_file(file: BinaryIO) -> World:
+    """`load_world_v5` from an already-open binary file: entries stream from disk, so
+    a large save never sits in RAM as bytes alongside the world it builds (see
+    `persistence.load_world_file`). Same errors, same validation. The file is read
+    from its current position and must stay open for the call."""
+    from .persistence import SaveFormatError
+
+    try:
+        with zipfile.ZipFile(file) as zf:
+            return _load_world_v5_from_zip(zf)
+    except Exception as exc:
+        if isinstance(exc, SaveFormatError):
+            raise
+        raise _corrupt(f"not a readable mantle-bloom save ({type(exc).__name__}: {exc})") from exc
+
+
+def _load_world_v5_from_zip(zf: zipfile.ZipFile) -> World:
+    """The manifest/plates/world body of `load_world_v5`, shared by the bytes and
+    file entry points, which differ only in where the zip streams from."""
     from .sparse_quad_patch import (
         LEGACY_QUAD_SURFACE_FORMAT_VERSIONS,
         QUAD_SURFACE_FORMAT_VERSION,
@@ -412,54 +458,48 @@ def load_world_v5(data: bytes) -> World:
     from .persistence import SaveFormatError
 
     try:
-        with zipfile.ZipFile(io.BytesIO(data)) as zf:
-            try:
-                manifest = json.loads(zf.read("manifest.json"))
-            except Exception as exc:
-                raise _corrupt(f"not a readable mantle-bloom save ({type(exc).__name__}: {exc})") from exc
-            if not isinstance(manifest, dict) or manifest.get("format") != FORMAT:
-                raise _corrupt(f"not a mantle-bloom save (format {manifest.get('format')!r})" if isinstance(manifest, dict) else "not a mantle-bloom save")
-            version = manifest.get("version")
-            if version != VERSION:
-                raise _unsupported(f"unsupported save format version {version!r}; this build reads v5 plates in 1-{QUAD_SURFACE_FORMAT_VERSION}")
-            if manifest.get("surface") not in SURFACES:
-                raise _corrupt(f"save declares unknown surface {manifest.get('surface')!r}")
-            try:
-                plates = []
-                for state in manifest["plates"]:
-                    # The writer always emits an int (QUAD_SURFACE_FORMAT_VERSION); a
-                    # missing, null or non-int version is tampering, not a newer
-                    # format, so it is corrupt rather than unsupported (#596 review).
-                    plate_version = state.get("_plate_surface_version")
-                    if type(plate_version) is not int:
-                        raise _corrupt("v5 plate entry is missing its surface version")
-                    if plate_version != QUAD_SURFACE_FORMAT_VERSION and plate_version not in LEGACY_QUAD_SURFACE_FORMAT_VERSIONS:
-                        raise _unsupported(
-                            f"unsupported sparse quad surface format version {plate_version!r}; "
-                            f"this build reads versions 1-{QUAD_SURFACE_FORMAT_VERSION}"
-                        )
-                    plate = PlateWithSparseQuadPatch.__new__(PlateWithSparseQuadPatch)
-                    plate.__dict__.update({k: thaw(v, zf) for k, v in state.items() if k != "_plate_surface_version"})
-                    plate._reset_caches()
-                    plate._validate_leaf_topology()
-                    plates.append(plate)
-                # Plate references elsewhere (see `HydrologyFields.plates_in_order`) re-link to
-                # the loaded plates by id, so the cache reads the world's own plates.
-                plates_by_id = {plate.plate_id: plate for plate in plates}
-                if len(plates_by_id) != len(plates):
-                    raise _corrupt("v5 save holds two plates with one id")
-                world_dict = {k: thaw(v, zf, plates_by_id) for k, v in manifest["world"].items()}
-                actual = "empty" if not plates else "quad"
-                if manifest.get("surface") != actual:
-                    raise _corrupt(f"save declares a {manifest.get('surface')!r} world but holds a {actual!r} one")
-            except Exception as exc:  # noqa: BLE001 - every unreadable shape maps to CorruptSaveError
-                if isinstance(exc, SaveFormatError):
-                    raise
-                raise _corrupt(f"v5 save contradicts itself ({type(exc).__name__}: {exc})") from exc
+        manifest = json.loads(zf.read("manifest.json"))
     except Exception as exc:
+        raise _corrupt(f"not a readable mantle-bloom save ({type(exc).__name__}: {exc})") from exc
+    if not isinstance(manifest, dict) or manifest.get("format") != FORMAT:
+        raise _corrupt(f"not a mantle-bloom save (format {manifest.get('format')!r})" if isinstance(manifest, dict) else "not a mantle-bloom save")
+    version = manifest.get("version")
+    if version != VERSION:
+        raise _unsupported(f"unsupported save format version {version!r}; this build reads v5 plates in 1-{QUAD_SURFACE_FORMAT_VERSION}")
+    if manifest.get("surface") not in SURFACES:
+        raise _corrupt(f"save declares unknown surface {manifest.get('surface')!r}")
+    try:
+        plates = []
+        for state in manifest["plates"]:
+            # The writer always emits an int (QUAD_SURFACE_FORMAT_VERSION); a
+            # missing, null or non-int version is tampering, not a newer
+            # format, so it is corrupt rather than unsupported (#596 review).
+            plate_version = state.get("_plate_surface_version")
+            if type(plate_version) is not int:
+                raise _corrupt("v5 plate entry is missing its surface version")
+            if plate_version != QUAD_SURFACE_FORMAT_VERSION and plate_version not in LEGACY_QUAD_SURFACE_FORMAT_VERSIONS:
+                raise _unsupported(
+                    f"unsupported sparse quad surface format version {plate_version!r}; "
+                    f"this build reads versions 1-{QUAD_SURFACE_FORMAT_VERSION}"
+                )
+            plate = PlateWithSparseQuadPatch.__new__(PlateWithSparseQuadPatch)
+            plate.__dict__.update({k: thaw(v, zf) for k, v in state.items() if k != "_plate_surface_version"})
+            plate._reset_caches()
+            plate._validate_leaf_topology()
+            plates.append(plate)
+        # Plate references elsewhere (see `HydrologyFields.plates_in_order`) re-link to
+        # the loaded plates by id, so the cache reads the world's own plates.
+        plates_by_id = {plate.plate_id: plate for plate in plates}
+        if len(plates_by_id) != len(plates):
+            raise _corrupt("v5 save holds two plates with one id")
+        world_dict = {k: thaw(v, zf, plates_by_id) for k, v in manifest["world"].items()}
+        actual = "empty" if not plates else "quad"
+        if manifest.get("surface") != actual:
+            raise _corrupt(f"save declares a {manifest.get('surface')!r} world but holds a {actual!r} one")
+    except Exception as exc:  # noqa: BLE001 - every unreadable shape maps to CorruptSaveError
         if isinstance(exc, SaveFormatError):
             raise
-        raise _corrupt(f"not a readable mantle-bloom save ({type(exc).__name__}: {exc})") from exc
+        raise _corrupt(f"v5 save contradicts itself ({type(exc).__name__}: {exc})") from exc
     world = World.__new__(World)
     world.__dict__.update(world_dict)
     world.plates = plates
