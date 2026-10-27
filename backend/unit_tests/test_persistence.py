@@ -65,11 +65,20 @@ def test_load_world_file_matches_load_world_bytes(tmp_path):
     assert loaded.elapsed_years == world.elapsed_years
     assert len(loaded.plates) == len(world.plates)
     assert np.array_equal(loaded.plates[0].collect("elevation"), world.plates[0].collect("elevation"))
-    # Byte-level pin on this change's own contract: streaming from disk must give the
-    # same world as loading from bytes. A save/load round trip is not byte-stable in
-    # general -- backfills normalize older state on the way in -- so this compares the
-    # two load paths against each other, not against the pre-save world.
-    assert persistence.save_world_bytes(loaded) == persistence.save_world_bytes(persistence.load_world_bytes(data))
+    # Compare the serialized members, not the whole ZIP archive: ZIP headers carry
+    # modification times at two-second resolution, so equivalent saves can differ if
+    # they straddle a timestamp tick. A save/load round trip is not byte-stable in
+    # general -- backfills normalize older state on the way in -- so compare the two
+    # load paths against each other, not against the pre-save world.
+    file_archive = zipfile.ZipFile(io.BytesIO(persistence.save_world_bytes(loaded)))
+    bytes_archive = zipfile.ZipFile(
+        io.BytesIO(persistence.save_world_bytes(persistence.load_world_bytes(data)))
+    )
+    with file_archive, bytes_archive:
+        assert file_archive.namelist() == bytes_archive.namelist()
+        assert [file_archive.read(name) for name in file_archive.namelist()] == [
+            bytes_archive.read(name) for name in bytes_archive.namelist()
+        ]
 
 
 def test_round_trip_keeps_step_read_caches():
