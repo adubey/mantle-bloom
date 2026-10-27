@@ -722,4 +722,86 @@ def test_multiplier_zero_matches_plume_off_replay(monkeypatch):
             assert got == want
 
 
+def _rotation_matrix(axis, angle):
+    """Rodrigues rotation for un-rotating centroids into the t=0 frame."""
+    axis = np.asarray(axis, dtype=float)
+    axis = axis / np.linalg.norm(axis)
+    kx, ky, kz = axis
+    k = np.array([[0.0, -kz, ky], [kz, 0.0, -kx], [-ky, kx, 0.0]])
+    return np.eye(3) + math.sin(angle) * k + (1.0 - math.cos(angle)) * (k @ k)
+
+
+def test_hotspot_track_aligns_with_plate_motion(monkeypatch):
+    """RFC 0007 (#666): on a pinned-motion world, a tail's per-step deposition
+    maxima form a track within 20 degrees of the plate's motion direction at
+    the plume and get younger toward it.
+
+    Background arrivals are suppressed (stream pushed past the horizon) so the
+    only tail is the injected one; the injected plume is fixed in the mantle
+    frame while the pinned plate rotates under it, so per-step maxima are
+    un-rotated into the t=0 frame before fitting. Single seed 7: the asserted
+    geometry is a pure function of seed and scripted motion."""
+    from app import debug_worlds, geometry
+    from app import world as world_mod
+
+    world = debug_worlds.scenario_two_plate_convergent(7)
+    world.plume_stream = {"head": [10**6, float("inf")], "tail": [10**6, float("inf")]}
+    position = geometry.latlon_to_xyz(math.radians(10.0), math.radians(-30.0))
+    plates = [plate for plate in world.plates if plate.node_count() > 0]
+    continental, host = plumes._center_host(plates, np.asarray(position))
+    assert not continental
+    omega = np.asarray(world.pinned_omegas[host], dtype=float)
+    tail = plumes.MantlePlume(
+        plume_id=-1,
+        position=tuple(float(v) for v in position),
+        born_years=0.0,
+        head_volume_m3=0.0,
+        head_remaining_m3=0.0,
+        head_end_years=0.0,
+        tail_flux_m3_per_yr=2e8,
+        tail_end_years=80e6,
+    )
+    world.mantle_plumes.append(tail)
+
+    steps = []
+    original = plumes._deposit_on_plate
+
+    def tap(world_, plate, fields, mask, weights, norm, volume_m3, stage):
+        out = original(world_, plate, fields, mask, weights, norm, volume_m3, stage)
+        if stage == "tail" and out > 0.0 and plate.plate_id == host:
+            xyz = np.asarray(plumes._unit_vectors(plate), dtype=float)[mask]
+            share = np.asarray(weights, dtype=float)
+            centroid = (xyz * (share / share.sum())[:, None]).sum(axis=0)
+            steps.append((float(world_.elapsed_years), centroid / np.linalg.norm(centroid)))
+        return out
+
+    monkeypatch.setattr(plumes, "_deposit_on_plate", tap)
+    for _ in range(30):
+        world_mod.step_world(world, 1e6)
+    assert len(steps) >= 20
+
+    plume = np.asarray(position, dtype=float)
+    plume = plume / np.linalg.norm(plume)
+    axis = omega / np.linalg.norm(omega)
+    motion = np.cross(axis, plume)
+    motion = motion / np.linalg.norm(motion)
+    start_frame = [
+        (year, _rotation_matrix(axis, -np.linalg.norm(omega) * year) @ centroid)
+        for year, centroid in steps
+    ]
+    # Track direction: youngest-third centroid minus oldest-third centroid.
+    ordered = sorted(start_frame, key=lambda entry: entry[0])
+    third = max(1, len(ordered) // 3)
+    old = np.mean([point for _, point in ordered[:third]], axis=0)
+    young = np.mean([point for _, point in ordered[-third:]], axis=0)
+    direction = young - old
+    direction = direction / np.linalg.norm(direction)
+    angle = math.degrees(math.acos(max(-1.0, min(1.0, float(np.dot(direction, -motion))))))
+    assert angle < 20.0
+    # Age order: younger deposits sit closer to the plume along -motion.
+    years = np.array([year for year, _ in ordered])
+    upstream = np.array([(point - plume) @ -motion for _, point in ordered])
+    assert float(np.corrcoef(years, upstream)[0, 1]) > 0.9
+
+
 
