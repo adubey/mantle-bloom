@@ -2651,6 +2651,10 @@ def apply_erosion(
     # (is_volcano/volcano_active_years_remaining/soil_*/resource deposits, ...) untouched
     # automatically, the same "don't silently wipe fields this site doesn't know about"
     # guarantee line.replace used to provide.
+    lake_ice_m = getattr(hydro, "lake_ice_m", np.zeros(0))
+    if np.asarray(lake_ice_m).shape != np.asarray(hydro.lake_depth).shape:
+        lake_ice_m = np.zeros_like(hydro.lake_depth)
+
     offset = 0
     for plate in plates_in_order:
         n = plate.node_count()
@@ -2662,6 +2666,7 @@ def apply_erosion(
             channel_reference_elevation_m=new_elevation[offset : offset + n],
             breach_notch_depth_m=new_breach_notch_depth[offset : offset + n],
             lake_depth=hydro.lake_depth[offset : offset + n],
+            lake_ice_m=lake_ice_m[offset : offset + n],
             glacier_depth=hydro.glacier_depth[offset : offset + n],
             silt_depth=new_silt_depth[offset : offset + n],
             elev_change_reason=new_elev_change_reason[offset : offset + n],

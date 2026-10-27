@@ -4,7 +4,8 @@
 Uses the preregistered #538 diagnosis saves only. The cap recurrence is a diagnostic
 implementation of D2(c), not production code: a Stefan conduction increment in physical ice
 thickness, converted to water equivalent, minus the existing glacier positive-degree melt law
-and a constant sublimation flux. Climate and bathymetry are held fixed for this screen.
+and a constant sublimation flux. Physical ice is capped at 2 m; the water-equivalent cap is
+also limited by available lake water. Climate and bathymetry are held fixed for this screen.
 
 Usage (one save at a time; do not run beside a replay or test):
 
@@ -37,6 +38,7 @@ SECONDS_PER_DAY = 86400.0
 SECONDS_PER_YEAR = 365.25 * SECONDS_PER_DAY
 YEARS = 10_000_000.0
 STEP_YEARS = 100_000.0
+MAX_PHYSICAL_ICE_M = 2.0
 SUBLIMATION_SCALES = (0.25, 1.0, 4.0)
 CONDUCTION_SCALES = (0.5, 1.0, 2.0)
 DIAGNOSIS_SAVES = {
@@ -73,6 +75,9 @@ def _simulate(depth_m: np.ndarray, area_m2: np.ndarray, fdd_c_days: np.ndarray,
     loss_i_m_yr = melt_i_m_yr + sublimation_we_m_yr * RHO_WATER_KG_M3 / RHO_ICE_KG_M3
     equilibrium_i_m = np.divide(q_m2_yr, loss_i_m_yr, out=np.zeros_like(q_m2_yr), where=loss_i_m_yr > 0.0)
     bed_i_m = depth_m * RHO_WATER_KG_M3 / RHO_ICE_KG_M3
+    max_i_m = np.minimum(MAX_PHYSICAL_ICE_M, bed_i_m)
+    shallow = depth_m <= MAX_PHYSICAL_ICE_M
+    deep_area_m2 = float(area_m2[~shallow].sum())
     snapshots = []
     for t_years in (0.0, 100_000.0, 500_000.0, 1_000_000.0, 2_500_000.0,
                     5_000_000.0, 7_500_000.0, YEARS):
@@ -82,7 +87,7 @@ def _simulate(depth_m: np.ndarray, area_m2: np.ndarray, fdd_c_days: np.ndarray,
         cap_i_m = np.zeros_like(depth_m)
         active = (equilibrium_i_m > 0.0) & (t_years > 0.0)
         low = np.zeros_like(depth_m)
-        high = np.minimum(equilibrium_i_m, bed_i_m)
+        high = np.minimum(equilibrium_i_m, max_i_m)
         target = loss_i_m_yr * t_years
         for _ in range(48):
             mid = (low + high) * 0.5
@@ -94,16 +99,19 @@ def _simulate(depth_m: np.ndarray, area_m2: np.ndarray, fdd_c_days: np.ndarray,
             low = np.where(active & below_target, mid, low)
             high = np.where(active & ~below_target, mid, high)
         cap_i_m = np.where(active, (low + high) * 0.5, cap_i_m)
-        # If the bed lies below the unconstrained equilibrium, the cell freezes solid;
-        # the cap remains at that bound under this fixed-depth diagnostic.
-        cap_i_m = np.where(active, np.minimum(cap_i_m, bed_i_m), 0.0)
+        # The owner-directed non-permafrost rule limits surface ice to 2 m; shallow
+        # water may still freeze to the bed. Keep the physical thickness in metres.
+        cap_i_m = np.where(active, np.minimum(cap_i_m, max_i_m), 0.0)
         cap_we_m = cap_i_m * RHO_ICE_KG_M3 / RHO_WATER_KG_M3
+        bedfast = cap_i_m >= bed_i_m - 1e-9
         volume_m3 = float(np.dot(cap_we_m, area_m2))
         snapshots.append({
             "time_myr": round(t_years / 1_000_000.0, 2),
             "cap_volume_km3": round(volume_m3 / 1e9, 6),
             "wet_area_ice_covered_pct": round(100.0 * float(area_m2[cap_we_m > 0].sum()) / wet_area, 6),
-            "frozen_to_bed_area_pct": round(100.0 * float(area_m2[cap_we_m >= depth_m - 1e-9].sum()) / wet_area, 6),
+            "frozen_to_bed_wet_area_pct": round(100.0 * float(area_m2[bedfast].sum()) / wet_area, 6),
+            "shallow_bedfast_wet_area_pct": round(100.0 * float(area_m2[bedfast & shallow].sum()) / wet_area, 6),
+            "deep_bedfast_deep_area_pct": round(100.0 * float(area_m2[bedfast & ~shallow].sum()) / deep_area_m2, 6) if deep_area_m2 else 0.0,
         })
 
     wet = cap_we_m > 0.0
@@ -114,7 +122,10 @@ def _simulate(depth_m: np.ndarray, area_m2: np.ndarray, fdd_c_days: np.ndarray,
         "final_physical_ice_thickness": _stats(cap_we_m * RHO_WATER_KG_M3 / RHO_ICE_KG_M3),
         "wet_cells": int(len(depth_m)),
         "ice_covered_cells": int(wet.sum()),
-        "frozen_to_bed_wet_area_pct": round(100.0 * float(area_m2[cap_we_m >= depth_m - 1e-9].sum()) / wet_area, 6),
+        "frozen_to_bed_wet_area_pct": round(100.0 * float(area_m2[cap_i_m >= bed_i_m - 1e-9].sum()) / wet_area, 6),
+        "shallow_bedfast_wet_area_pct": round(100.0 * float(area_m2[(cap_i_m >= bed_i_m - 1e-9) & shallow].sum()) / wet_area, 6),
+        "deep_bedfast_deep_area_pct": round(100.0 * float(area_m2[(cap_i_m >= bed_i_m - 1e-9) & ~shallow].sum()) / deep_area_m2, 6) if deep_area_m2 else 0.0,
+        "max_physical_ice_m": MAX_PHYSICAL_ICE_M,
         "cap_volume_km3": round(volume_m3 / 1e9, 6),
         "global_sublimation_km3_yr": round(sublimation_m3_yr / 1e9, 9),
         "volume_trajectory": snapshots,
@@ -185,6 +196,10 @@ def measure(save: Path) -> dict:
         "climate_density": float(world.climate_density),
         "lake_nodes": int(len(depth)),
         "wet_lake_area_km2": round(float(area.sum()) / 1e6, 3),
+        "shallow_lake_area_km2": round(float(area[depth <= MAX_PHYSICAL_ICE_M].sum()) / 1e6, 3),
+        "deep_lake_area_km2": round(float(area[depth > MAX_PHYSICAL_ICE_M].sum()) / 1e6, 3),
+        "physical_ice_cap_m": MAX_PHYSICAL_ICE_M,
+        "permafrost_assumption": "not represented; all modeled lakes treated as non-permafrost",
         "lake_depth_m": _stats(depth),
         "temperature_c": {"mean_p50": round(float(np.percentile(mean_c, 50)), 3),
                           "amplitude_p50": round(float(np.percentile(amp_c, 50)), 3),
@@ -193,13 +208,13 @@ def measure(save: Path) -> dict:
         "method": {
             "climate_and_depth": "held fixed at saved state; sampled on live nodes",
             "water_surface": "air temperature and seasonal amplitude sampled at lake nodes; amplitude depth damping off",
-            "growth": "Stefan ODE d(H_i^2)/dt=2*k*FDD/(rho_i*L_f), integrated exactly against constant annual losses; water-equivalent conversion 917/1000",
+            "growth": "Stefan ODE d(h_i^2)/dt=2*k*FDD/(rho_i*L_f), integrated exactly against constant annual losses; physical ice capped at min(2 m, local lake depth); water-equivalent conversion 917/1000",
             "conductivity": "k=2.1 W m-1 K-1 baseline; scale factors 0.5, 1, 2",
             "melt": "existing glacier positive-degree law: 400 m/Myr at 20 annual-mean positive C, capped at 3x; converted to water equivalent",
             "sublimation": "0.6 m water equivalent per ice-covered year, multiplied by 1-f_free for each cell; scale factors 0.25, 1, 4",
             "step_years": "closed-form integration; checkpoints at 0, 0.1, 0.5, 1, 2.5, 5, 7.5, 10 Myr",
             "duration_years": YEARS,
-            "limits": "No climate, lake-depth, or water-budget feedback; cap bounded by fixed lake depth.",
+            "limits": "No climate, lake-depth, or water-budget feedback; non-permafrost 2 m physical cap is an owner-directed empirical bound.",
         },
         "runs": runs,
     }
@@ -215,7 +230,7 @@ def main() -> None:
     args.out.write_text(json.dumps(result, indent=1) + "\n")
     print(json.dumps({k: result[k] for k in ("seed", "age_myr", "lake_nodes", "wet_lake_area_km2")}))
     for run in result["runs"]:
-        print(json.dumps({k: run[k] for k in ("sublimation_scale", "conduction_coefficient_scale", "cap_volume_km3", "frozen_to_bed_wet_area_pct", "global_sublimation_km3_yr")}))
+        print(json.dumps({k: run[k] for k in ("sublimation_scale", "conduction_coefficient_scale", "cap_volume_km3", "frozen_to_bed_wet_area_pct", "shallow_bedfast_wet_area_pct", "deep_bedfast_deep_area_pct", "global_sublimation_km3_yr")}))
 
 
 if __name__ == "__main__":

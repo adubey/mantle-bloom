@@ -183,6 +183,7 @@ def _finish_loaded_world(world: World, *, is_v5: bool) -> World:
     which differ only in where the save streams from."""
     _migrate_plate_ages(world)
     _backfill_added_fields(world)
+    _drop_incompatible_collision_polarity_frame(world)
     _drop_retired_state(world)
     _drop_derived_caches(world)
     _migrate_climate_humidity_units(world)
@@ -352,6 +353,45 @@ def _backfill_added_fields(world: World) -> None:
     orogeny.ensure_budget(world)
     # A save from before the mobile cover holds none, so this seeds an empty opening balance.
     mobile_cover.ensure_ledger(world)
+
+
+def _drop_incompatible_collision_polarity_frame(world: World) -> None:
+    """Discard a saved polarity frame whose per-node schema predates stable cell keys.
+
+    Older saves can carry a frame that the next plate-motion solve reads before the
+    collision prepass rebuilds it. Such frames cannot be remapped safely after load, so
+    start the first step without stale contact masks and let that prepass replace them.
+    """
+    frame = getattr(world, "collision_polarity_frame", None)
+    masks = getattr(frame, "masks", None)
+    if frame is None:
+        return
+    if not isinstance(masks, dict):
+        world.collision_polarity_frame = None
+        return
+    required_arrays = (
+        "lower",
+        "upper",
+        "front_id",
+        "continental",
+        "retreat_eligible",
+        "run_eligible",
+        "retreatable",
+        "override",
+    )
+    for mask in masks.values():
+        node_keys = getattr(mask, "node_keys", None)
+        if node_keys is None:
+            world.collision_polarity_frame = None
+            return
+        try:
+            key_count = len(node_keys)
+            if any(len(getattr(mask, name)) != key_count for name in required_arrays):
+                world.collision_polarity_frame = None
+                return
+        except (AttributeError, TypeError):
+            world.collision_polarity_frame = None
+            return
 
 
 def _drop_retired_state(world: World) -> None:

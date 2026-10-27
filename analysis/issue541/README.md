@@ -1,6 +1,53 @@
 # RFC 0014 G5: bounded lake-ice cap diagnosis (#541)
 
-## Result
+## Updated G5 result: 2 m non-permafrost cap
+
+The G5 diagnostic was rerun with the owner-directed hard 2 m physical-ice ceiling and the
+three preregistered #538 diagnosis saves. The diagnostic retains the existing below-cap
+seasonal growth/loss proxy and runs all nine sublimation (×0.25/×1/×4) by conduction
+(×0.5/×1/×2) settings for 10 Myr. It holds climate, bathymetry, area and water supply fixed.
+It assumes non-permafrost lakes; Mantle Bloom has no permafrost or ground-temperature state.
+
+The cap is physical ice thickness `h_i`; its water-equivalent ledger depth is
+`H_w = h_i × 917/1000`, bounded by the lake's available water depth. Thus the effective
+physical limit is `h_i ≤ min(2 m, lake_depth × 1000/917)`. A cell is bedfast when its cap's
+water equivalent reaches lake depth. Lake depths ≤2 m are reported as shallow; the 1% gate
+applies only to bedfast area over all lake area deeper than 2 m.
+
+### Baseline setting (1× sublimation, 1× conduction)
+
+| Seed | Physical ice p50 / p90 / p99 / max (m) | Shallow bedfast / wet area | Deep bedfast / deep-water area | Cap volume at 10 Myr (km³) | Sublimation (km³/yr) |
+|---:|---:|---:|---:|---:|---:|
+| 910211954 | 2.00 / 2.00 / 2.00 / 2.00 | 2.570% | 0% | 20,107.81 | 3,335.50 |
+| 635056485 | 2.00 / 2.00 / 2.00 / 2.00 | 0.537% | 0% | 3,331.73 | 734.03 |
+| 317739385 | 1.71 / 2.00 / 2.00 / 2.00 | 11.231% | 0% | 7,355.75 | 1,213.42 |
+
+Thickness percentiles include zero-thickness wet cells. For all three saves and all nine
+sensitivity settings, physical thickness stays at or below 2 m, deep-water bedfast area is
+0%, and cap volume reaches its plateau by 0.1 Myr and remains there through 10 Myr. The
+revised deep-water bedfast criterion passes in this fixed-climate G5 diagnostic. Shallow
+bedfast area can exceed 1% of total wet area and is reported separately by the owner's
+criterion.
+
+### Sensitivity range across nine settings
+
+| Seed | Shallow bedfast / wet area (%) | Deep bedfast / deep area (%) | Cap volume range (km³) |
+|---:|---:|---:|---:|
+| 910211954 | 1.155–2.679 | 0 | 6,552.77–20,880.56 |
+| 635056485 | 0.177–0.537 | 0 | 1,909.81–3,336.73 |
+| 317739385 | 1.633–11.271 | 0 | 1,492.23–8,291.71 |
+
+Compact outputs are `rerun-2m-seed910211954.json`, `rerun-2m-seed635056485.json`, and
+`rerun-2m-seed317739385.json`. Each preserves the original save checksum and per-run volume
+trajectory. Reproduce one save at a time using the command in the diagnostic script's usage
+docstring, directing output to `analysis/issue541/rerun-2m-seed<seed>.json`.
+
+This is the RFC 0014 G5 offline prototype, not a production-code replay. It verifies the
+2 m physical bound, available-water-equivalent bound, depth-stratified bedfast metric and
+fixed-forcing plateau; it does not validate dynamic lake routing or a full production water
+ledger.
+
+## Prior result: unbounded cap
 
 The starting D2(c) formulation does **not** pass G5. The baseline sublimation and conduction
 settings reach a volume plateau on all three preregistered diagnosis saves, but more than 1% of

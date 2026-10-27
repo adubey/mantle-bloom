@@ -6,6 +6,7 @@ import zipfile
 import numpy as np
 import pytest
 from app import legacy_conversion, persistence, sparse_quad_patch
+from app.collision_polarity import PlateCollisionMasks, PolarityFrame
 from app.hydroclimate import climate
 from app.elevation_lines import line_spacing_rad
 from app.world import generate_world, step_world
@@ -95,6 +96,31 @@ def test_round_trip_keeps_step_read_caches():
     assert loaded.atmosphere_cfd_state is not None
     assert loaded.erosion_cache is None
     assert loaded.land_kdtree_cache is None
+
+
+def test_loading_a_save_drops_pre_node_key_collision_polarity_frame():
+    # Older saves can contain a polarity frame that torque reads before rebuilding the
+    # collision prepass. Without stable per-node keys, those masks cannot be aligned safely.
+    world = generate_world(seed=7, num_plates=4)
+    mask = PlateCollisionMasks(
+        lower=np.zeros(1, dtype=bool),
+        upper=np.zeros(1, dtype=bool),
+        front_id=np.full(1, -1, dtype=np.int32),
+        node_keys=np.zeros(1, dtype=np.int64),
+        continental=np.zeros(1, dtype=bool),
+        retreat_eligible=np.zeros(1, dtype=bool),
+        run_eligible=np.zeros(1, dtype=bool),
+        retreatable=np.zeros(1, dtype=bool),
+        override=np.zeros(1, dtype=bool),
+    )
+    del mask.node_keys  # reproduce a frame saved before #633 added stable cell keys
+    world.collision_polarity_frame = PolarityFrame(0.0, {0: mask}, {})
+
+    # Old pickle saves restore dataclass __dict__ directly and do not recreate new fields.
+    data = pickle.dumps({"format": persistence.SAVE_FORMAT, "version": 2, "world": world})
+    loaded = persistence.load_world_bytes(data)
+
+    assert loaded.collision_polarity_frame is None
 
 
 def test_loading_a_world_pickled_before_steps_taken_existed_defaults_to_zero():

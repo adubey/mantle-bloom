@@ -313,6 +313,8 @@ hierarchy-assigned receiver, independent of the channel that later carries expor
 No cross-step `Lake` registry is needed: continuity comes from persisted per-node
 `lake_depth`, not matching freshly rebuilt tree objects by member overlap.
 
+**Lake ice is a separate water-equivalent reservoir (RFC 0014 D2(c), #632).** `lake_ice_m` is a persistent extensive surface field, independent from liquid `lake_depth`. The seasonal ice proxy grows by a Stefan freezing-degree relation, melts with the existing glacier positive-degree law, and loses water through sublimation weighted by the ice-covered fraction. Physical thickness is capped at 2 m (the 0.917 ice-to-water density ratio converts this to 1.834 m water equivalent); freezing and melt transfer water locally between liquid and ice. Sublimation is charged to the ice reservoir, not liquid storage. `lake_water_ledger` reports liquid and ice storage changes plus sublimation, and tracks phase-specific residuals as well as the combined water budget. Production replays confirm the cap, inventory and ledger bounds; ice volume need not plateau under evolving climate and terrain. The 2 m cap is an owner-selected empirical assumption for non-permafrost lakes, not a ground-heat or permafrost calculation. Existing saves default the new field to zero through the surface-field registry.
+
 **Lakes accumulate silt.** `silt_depth` (a persistent per-node field, carried exactly like `lake_depth`) is a
 small volume fraction (`SILT_ACCUMULATION_COEFFICIENT`, m^3 of silt per m^3 of water) of each
 resolved body's step-integrated supply, including overflow received from a sibling body,
@@ -332,11 +334,9 @@ exactly the "reaches ground level" case a lake should eventually hit.
 **Cold lakes keep their water.** The prognostic lake solver integrates a lake the same way whatever its
 temperature: inflow, storage and spill continue under ice, as in Lake Untersee, Antarctica,
 which has been ice-covered for centuries yet holds a 169 m deep basin fed by glacier melt
-(RFC 0014 D2(b), #539). Until then a lake with any member below 0 C on the annual mean
-reported its dry floor, and the water its inflow brought was booked nowhere. That rule still
-silted the lake, so that a chronically cold catchment filled in rather than staying its own
-permanent leaf (#117); every lake now silts from its inflow anyway. Seasonal ice cover is RFC
-0014 D2(a), implemented above; a lake ice cap is D2(c), not yet implemented.
+(RFC 0014 D2(b), #539). Every lake also silts from its resolved inflow. Seasonal ice cover
+uses the D2(a) proxy above; physical lake ice is stored separately in the bounded D2(c)
+reservoir described above.
 
 ### Lake vs. sea tiers: a depth ceiling by size (2026-09-10)
 

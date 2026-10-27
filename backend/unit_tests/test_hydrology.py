@@ -869,7 +869,7 @@ def test_compute_hydrology_threads_seasonal_amplitude_into_glacier_melt():
 
 
 @pytest.mark.parametrize("cold", [slice(28, 31), slice(33, 34)], ids=["cold-pit", "one-cold-member"])
-def test_compute_hydrology_keeps_a_lake_where_its_water_is_cold(cold):
+def test_compute_hydrology_keeps_a_lake_where_its_water_is_cold(cold, monkeypatch):
     # A closed 360 m pit (nodes 28-30) on a 300 m plateau, fed by warm rain on the plateau.
     # Liquid water isn't frozen by the annual mean (RFC 0014 D2(b), #539): water reaching a pit
     # below 0 C pools as a lake there, and a lake with one cold member in its catchment keeps
@@ -884,13 +884,15 @@ def test_compute_hydrology_keeps_a_lake_where_its_water_is_cold(cold):
     temperature[cold] = -10.0
     world = World(seed=0, plates=[_flow_line_plate(0, theta, elevation)])
 
+    # Isolate D2(b): D2(c) surface losses can exhaust an unsupplied reservoir over a million years.
+    monkeypatch.setattr(hydrology, "LAKE_ICE_SUBLIMATION_M_PER_YR", 0.0)
     fields = hydrology.compute_hydrology(world, np.full(40, 800.0), temperature, years=1_000_000)
     assert not fields.is_ocean[28:31].any()
     assert fields.lake_depth[28:31].max() > 0.0
     ledger = fields.ice.ledger
     assert ledger.closing_m3 <= ledger.opening_m3 + ledger.accumulation_m3  # no water became ice
 
-def test_compute_hydrology_threads_frozen_season_sublimation_through_spill_basins(monkeypatch):
+def test_compute_hydrology_sublimates_covered_lake_ice_and_closes_its_ledger(monkeypatch):
     theta = 0.05 * np.arange(40)
     elevation = np.full(40, 300.0)
     elevation[0:15] = -100.0
@@ -899,17 +901,24 @@ def test_compute_hydrology_threads_frozen_season_sublimation_through_spill_basin
     temperature[28:31] = -10.0
     precipitation = np.full(40, 100.0)
     world = World(seed=0, plates=[_flow_line_plate(0, theta, elevation)])
+    years = 1_000.0
+    monkeypatch.setattr(hydrology, "LAKE_ICE_SUBLIMATION_M_PER_YR", 1e-4)
 
     with_sublimation = hydrology.compute_hydrology(
-        world, precipitation, temperature, years=1_000_000, seasonal_amplitude_at_nodes=np.zeros(40)
+        world, precipitation, temperature, years=years, seasonal_amplitude_at_nodes=np.zeros(40)
     )
     monkeypatch.setattr(hydrology, "LAKE_ICE_SUBLIMATION_M_PER_YR", 0.0)
     without_sublimation = hydrology.compute_hydrology(
-        world, precipitation, temperature, years=1_000_000, seasonal_amplitude_at_nodes=np.zeros(40)
+        world, precipitation, temperature, years=years, seasonal_amplitude_at_nodes=np.zeros(40)
     )
 
     assert with_sublimation.lake_depth[28:31].max() > 0.0
-    assert with_sublimation.lake_depth[28:31].max() < without_sublimation.lake_depth[28:31].max()
+    assert np.any(with_sublimation.lake_ice_m[28:31] > 0.0)
+    assert with_sublimation.lake_water_ledger.sublimation_m3 > 0.0
+    assert without_sublimation.lake_water_ledger.sublimation_m3 == 0.0
+    assert abs(with_sublimation.lake_water_ledger.residual_m3) <= 1e-9 * (
+        with_sublimation.lake_water_ledger.external_supply_m3
+    )
 
 
 @pytest.mark.parametrize(
@@ -943,7 +952,13 @@ def test_compute_hydrology_delivers_every_drop_of_liquid_water_past_cold_nodes(c
     liquid_m3 = float(np.dot(np.where((temperature < 0.0) | fields.is_ocean, 0.0, precipitation) / 1000.0, areas))
     source_m3 = liquid_m3 + fields.ice.ledger.meltwater_m3 / years  # Budyko runoff is all of it with no evaporation
     ocean_m3 = float(fields.discharge_m3_s[fields.is_ocean].sum()) * hydrology.SECONDS_PER_YEAR
-    assert ocean_m3 == pytest.approx(source_m3, rel=1e-9)
+    ledger = fields.lake_water_ledger
+    stored_or_lost_m3_per_year = (
+        ledger.storage_change_m3 + ledger.ice_storage_change_m3 + ledger.evaporation_m3
+        + ledger.sublimation_m3
+    ) / years
+    assert ocean_m3 == pytest.approx(source_m3 - stored_or_lost_m3_per_year, rel=1e-9)
+    assert abs(ledger.residual_m3) <= 1e-9 * ledger.external_supply_m3
 
 
 def test_compute_hydrology_banks_a_cold_chains_snow_as_ice():

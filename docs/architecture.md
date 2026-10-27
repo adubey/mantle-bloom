@@ -624,3 +624,5 @@ geodesic.py          geodesic-icosahedron hex/pentagon dome tiling + elevation/b
 
 See [simulation-model.md](simulation-model.md) for what each of these actually computes and
 why.
+
+Lake ice (`lake_ice_m`, water equivalent) is a persistent extensive surface field. `hydroclimate/hydrology.py` owns its phase transfers and combined lake liquid-plus-ice budget; `hydroclimate/erosion.py` commits the returned state alongside `lake_depth`; `hydroclimate/eustasy.py` includes the reservoir in trapped surface-water volume.
