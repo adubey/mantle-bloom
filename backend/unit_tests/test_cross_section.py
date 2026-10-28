@@ -216,6 +216,68 @@ def test_plume_markers_flag_head_footprint_and_tail_roles():
     assert tail_samples == [0]  # the tail-only plume's nearest sample
 
 
+def test_render_draws_each_plume_glyph_once_at_its_sample_column(monkeypatch):
+    """RFC 0007 (#669): the render loop visits every pixel column, so plume
+    glyphs must paint once at the sample's own column -- the tail tick stays a
+    1 px line (not a sample-wide slab) and the head ellipse keeps its fill
+    instead of being buried by repeated outlines."""
+    sample_xyz = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [-1.0, 0.0, 0.0]])
+    tangent = np.tile([0.0, 1.0, 0.0], (len(sample_xyz), 1))
+    distances = np.array([-1500.0, 0.0, 1500.0])
+    fields = {
+        "elevation": np.zeros(3),
+        "crustal_thickness_m": np.full(3, 35_000.0),
+        "mantle_lithosphere_thickness_m": np.full(3, 120_000.0),
+        "crust_type_code": np.full(3, CRUST_TYPE_OCEANIC),
+        "glacier_depth": np.zeros(3),
+        "is_volcano": np.zeros(3, dtype=bool),
+        "volcano_active_years_remaining": np.zeros(3),
+        "moho_thermal_lag_c": np.zeros(3),
+    }
+    monkeypatch.setattr(cross_section, "_great_circle_samples", lambda *_: (sample_xyz, tangent, distances))
+    monkeypatch.setattr(cross_section, "_sample_fields", lambda *_: (fields, np.zeros(3, dtype=bool), sample_xyz))
+    monkeypatch.setattr(cross_section, "_biome_colors", lambda *_: np.zeros((3, 3)))
+    monkeypatch.setattr(cross_section.orogeny, "moho_temperature_c", lambda hc, hm, lag: np.zeros_like(hc))
+    monkeypatch.setattr(cross_section, "_geotherm_temperature", lambda hc, hm, lag, depth: np.zeros_like(depth))
+    monkeypatch.setattr(
+        cross_section.mantle,
+        "flow_at",
+        lambda points, _centers: np.zeros((len(points), 3)),
+    )
+    world = SimpleNamespace(
+        node_density=4.0,
+        sea_level_m=1000.0,
+        elapsed_years=0.0,
+        solar_multiplier=1.0,
+        steps_taken=0,
+        mantle_centers=[],
+        pending_magma_parcels=[],
+        mantle_plumes=[_live_head(sample_xyz[1]), _tail_only(sample_xyz[0])],
+    )
+
+    image_base64, _ = cross_section.render_png_base64(world, 0.0, 0, 800, 500, show_plumes=True)
+    image = Image.open(io.BytesIO(base64.b64decode(image_base64))).convert("RGB")
+    pixels = np.asarray(image)
+    tail_rows = np.all(pixels == cross_section.PLUME_TAIL_COLOR, axis=-1).sum(axis=1)
+    # The tick line is 1 px wide; only the ellipse and arrowhead rows are wider.
+    # A per-column repaint would smear the tick across the sample (~250 px).
+    assert tail_rows.max() <= 10
+    assert int(np.count_nonzero(tail_rows)) > 50  # the tick still spans depth
+    # The head ellipse (9x9 at its center column) keeps pink fill at its middle;
+    # repeated outlines used to bury it under the dark outline colour.
+    width, height = 800, 500
+    margin_x, margin_top = 20, 38
+    arc_width = (width - 2 * margin_x) * (690.0 / 820.0)
+    horizontal_scale = arc_width / (
+        2.0 * cross_section.PLANET_RADIUS_KM
+        * np.sin(cross_section.ARC_LENGTH_KM / (2.0 * cross_section.PLANET_RADIUS_KM))
+    )
+    vertical_scale = cross_section.VERTICAL_EXAGGERATION * horizontal_scale
+    center_x = width // 2
+    top = margin_top + round(height * 0.08) + vertical_scale
+    assert image.getpixel((center_x, round(top) - 5)) == cross_section.PLUME_HEAD_FILL
+
+
 def test_plume_markers_omit_plumes_outside_corridor_and_dead_stages():
     """RFC 0007 (#669): a plume off the section plane is omitted, as is a plume
     whose head and tail stages both ended."""
@@ -225,3 +287,25 @@ def test_plume_markers_omit_plumes_outside_corridor_and_dead_stages():
     assert dict(cross_section._plume_markers(_marker_world([off_plane]), sample_xyz, 60.0)) == {}
     spent = _live_head(sample_xyz[middle], head_end_years=100.0, tail_end_years=100.0)
     assert dict(cross_section._plume_markers(_marker_world([spent]), sample_xyz, 60.0)) == {}
+
+
+def test_merge_plume_markers_prefers_head_then_tail_over_footprint():
+    """RFC 0007 (#669): at a shared sample the head glyph wins over another
+    plume's footprint, and a tail wins over a footprint -- the render merge
+    must not depend on plume order."""
+    sample_xyz, _, _ = cross_section._great_circle_samples(0.0, 0, 60.0)
+    middle = len(sample_xyz) // 2
+    # B's footprint (radius ~437 km, samples ~30 km apart) covers the middle
+    # and middle+5, but B sorts after the tail so a naive last-wins dict would
+    # bury both the head and the tail under footprint paint.
+    world = _marker_world(
+        [
+            _live_head(sample_xyz[middle]),
+            _tail_only(sample_xyz[middle + 5]),
+            _live_head(sample_xyz[middle + 10]),
+        ]
+    )
+    merged = cross_section._merge_plume_markers(world, sample_xyz, 60.0)
+    assert merged[middle] == "head"
+    assert merged[middle + 5] == "tail"
+    assert merged[middle + 10] == "head"

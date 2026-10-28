@@ -222,20 +222,28 @@ def _boundary_sample_indices(world, sample_xyz: np.ndarray, node_xyz: np.ndarray
     return np.flatnonzero(sampled_plate_ids[1:] != sampled_plate_ids[:-1]) + 1
 
 
-def _draw_plume_marker(draw, role, x, x0, x1, top, lith_end_y, bottom_y, floor_y) -> None:
+def _draw_plume_marker(draw, role, x, x0, x1, top, lith_end_y, bottom_y, floor_y, center) -> None:
     """One plume marker: head gets an ellipse over its footprint band, a tail
     gets an ellipse plus a continues-below tick (the deep conduit extends past
-    the 350 km section, so no full conduit is drawn)."""
+    the 350 km section, so no full conduit is drawn).
+
+    The render loop calls this once per pixel column, so the footprint band
+    tiles across its sample's columns on every call -- but the ellipse, tick
+    line and arrowhead paint only when `center` (the sample's own column) to
+    avoid smearing one glyph across the whole sample width.
+    """
     if role == "head_footprint":
         draw.rectangle((x0, round(top) - 4, x1, round(top)), fill=PLUME_HEAD_FILL)
     elif role == "head":
         draw.rectangle((x0, round(top) - 4, x1, round(top)), fill=PLUME_HEAD_FILL)
-        draw.ellipse((x - 4, top - 9, x + 4, top - 1), fill=PLUME_HEAD_FILL, outline=(45, 24, 24))
+        if center:
+            draw.ellipse((x - 4, top - 9, x + 4, top - 1), fill=PLUME_HEAD_FILL, outline=(45, 24, 24))
     elif role == "tail":
-        draw.ellipse((x - 3, top - 7, x + 3, top - 1), fill=PLUME_TAIL_COLOR, outline=(45, 24, 24))
-        base = min(bottom_y, floor_y)
-        draw.line((x, lith_end_y, x, base), fill=PLUME_TAIL_COLOR, width=1)
-        draw.polygon(((x, base), (x - 3, base - 6), (x + 3, base - 6)), fill=PLUME_TAIL_COLOR)
+        if center:
+            draw.ellipse((x - 3, top - 7, x + 3, top - 1), fill=PLUME_TAIL_COLOR, outline=(45, 24, 24))
+            base = min(bottom_y, floor_y)
+            draw.line((x, lith_end_y, x, base), fill=PLUME_TAIL_COLOR, width=1)
+            draw.polygon(((x, base), (x - 3, base - 6), (x + 3, base - 6)), fill=PLUME_TAIL_COLOR)
 
 
 def render_png_base64(
@@ -387,7 +395,10 @@ def render_png_base64(
             draw.ellipse((x - 3, top - 5, x + 3, top + 1), fill=color, outline=(45, 24, 24))
         role = plume_by_sample.get(i)
         if role is not None:
-            _draw_plume_marker(draw, role, x, x0, x1, top, round(lith_end), round(bottom), height - margin_bottom)
+            _draw_plume_marker(
+                draw, role, x, x0, x1, top, round(lith_end), round(bottom),
+                height - margin_bottom, center=(x == round(x_samples[i])),
+            )
         if volcano[i]:
             color = (237, 126, 60) if active_vent[i] else (183, 190, 193)
             draw.polygon(((x, top - 2), (x - 3, top - 8), (x + 3, top - 8)), fill=color, outline=(32, 29, 38))
