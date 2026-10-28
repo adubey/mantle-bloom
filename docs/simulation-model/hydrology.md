@@ -343,11 +343,14 @@ which has been ice-covered for centuries yet holds a 169 m deep basin fed by gla
 uses the D2(a) proxy above; physical lake ice is stored separately in the bounded D2(c)
 reservoir described above.
 
-### Lake vs. sea tiers: a depth ceiling by size (2026-09-10)
+### Lake vs. sea tiers: numerical depth guards by size
 
-The model caps how deep a closed lake can become based on the size of the land area draining
-into it. This keeps small ponds and broad inland seas from being treated as the same feature.
-The cap is an approximation for lake processes too small or complex to resolve directly.
+The model has a tier-specific depth guard based on the size of the land area draining into a
+closed lake. This keeps small ponds and broad inland seas from being treated as the same
+feature. The 1,800 m lake-tier and 3,500 m sea-tier values are numerical guards, not validated
+physical depth limits. When a guard routes overflow, the solver emits one aggregate warning
+for the step with the number of bodies and gross overflow by tier; the overflow remains booked
+through the lake hierarchy and water ledger.
 
 Before this, a closed basin's only depth limit was its own real geological rim (`max_depth` --
 unbounded for a genuinely endorheic basin) -- so a large, gently-sloped drainage catchment
@@ -365,12 +368,12 @@ uses for connected-water checks, avoiding a chicken-and-egg loop) covers at leas
 `SEA_MIN_FLOODED_AREA_KM2` (200,000 km^2 -- between the historical Aral Sea and the Caspian).
 `node_area_km2` is derived once per call from `4*pi*R^2 / len(elevation)`, not a node count, so
 the threshold is resolution-invariant without threading `world.node_density` into a module that
-otherwise takes only bare arrays. Each tier gets its own depth ceiling, combined with the real
+otherwise takes only bare arrays. Each tier gets its own numerical guard, combined with the real
 rim by `solve_lakes_prognostic` (`cap_level = min(rim_level, floor + tier_depth)`) --
-`LAKE_MAX_DEPTH_M` (1,800 m, comfortably above Baikal's real 1,642 m)
-for an ordinary basin, `SEA_MAX_DEPTH_M` (3,500 m, deeper than the Caspian's real 1,025 m --
-a simulated rift-sea basin can plausibly run deeper, but not unbounded) once promoted. Both are
-first-pass estimates pinned to those two real-world reference points, not swept.
+`LAKE_MAX_DEPTH_M` (1,800 m) for an ordinary basin and `SEA_MAX_DEPTH_M` (3,500 m) once
+promoted. These are not observationally calibrated thresholds; G4 on three diagnosis saves
+found repeated overflow on two of them. The owner retained them only as guards with warnings
+(RFC 0014 D4, #553).
 
 **Depth caps create overflow and can unmerge bodies.** The cap applies to every active body,
 leaf or merged parent. If a capped lake cannot hold its integrated supply after evaporation, the

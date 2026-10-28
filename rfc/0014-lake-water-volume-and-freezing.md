@@ -174,12 +174,9 @@ Following the review on PR #523, ice cover, liquid storage and routing, and phas
 
 ### D4. The depth caps
 
-After D1–D3, measure how often `LAKE_MAX_DEPTH_M` and `SEA_MAX_DEPTH_M` bind, on which lakes, and with what supply surplus (G4). Options:
-- keep both caps;
-- keep them only as numerical guards with a warning, like `GLACIER_MAX_DEPTH_M`;
-- remove them, leaving lakes bounded by their rim and their balance.
+After D1–D3, measure how often `LAKE_MAX_DEPTH_M` and `SEA_MAX_DEPTH_M` bind, on which lakes, and with what supply surplus (G4). The options were to keep both caps as model limits, retain them only as numerical guards with a warning (like `GLACIER_MAX_DEPTH_M`), or remove them.
 
-The choice is the owner's after G4. Water a cap holds back is booked as overflow at the cap, never dropped.
+**Owner decision after G4:** retain both only as numerical guards with a warning; they are not validated physical lake-depth limits. When either tier cap routes overflow, the solver emits one aggregate warning for the solve with affected-body counts and gross routed overflow by tier. Water a cap holds back remains booked through the lake hierarchy and ledger.
 
 ### Implementation order
 
@@ -224,7 +221,9 @@ Neither set includes the development save, seed 308161711. All runs use the ice-
   - **(b)** At the same lakes' latitudes and continentality, report the model's synthesized amplitude (`biomes.seasonal_temp_amplitude`) against the observed one, since (a) validates the relation and not the model's input.
 
   **Result (issue #540; report:** [`analysis/issue540/README.md`](../analysis/issue540/README.md)**):** The 1990–2018 sample contains 54 lakes with at least 20 observed years. The undamped proxy's median absolute error is 10.61 days, meeting the ≤30-day target. Depth damping is not adopted: the full-sample fit improves by only 0.10 day and its leave-one-lake-out median error is worse (11.28 days vs. 10.61 days undamped). The model's synthesized seasonal amplitude has 2.08 °C median absolute error and +0.75 °C median bias. The evaporation calibration check passes across all nine #519 reference lakes; its largest increase in relative absolute error over the published observation-range endpoints is 3.91%, below the 10% allowance. G3 passes. The lake sample, source provenance, per-lake results and limitations are in the linked report and its compact JSON. G3 validates cover duration only, not D2(b) or D2(c).
-- **G4: depth caps.** After D1–D3 on the diagnosis set, report how often each cap binds, on which lakes and with what surplus. *Outcome:* the owner chooses among the D4 options.
+- **G4: depth caps.** After D1–D3 on the diagnosis set, report how often each cap binds, on which lakes and with what surplus. *Outcome:* retain both as numerical guards with warnings when they route overflow; see the result below.
+
+**G4 result and D4 decision (issue #553; report:** [`analysis/issue553/README.md`](../analysis/issue553/README.md)**):** On the three checksum-matched diagnosis saves, each replayed for ten 100 kyr steps on the merged C-default solver, the lake cap bound for 34, 2 and 13 body-steps (seeds 910211954, 635056485 and 317739385); the sea cap bound for 12, 0 and 1 body-steps. The largest gross per-body overflow surpluses were `4.5591e20` and `2.2244e20 m³` across the lake and sea tiers on seed 910211954, `5.6545e17 m³` for the lake tier on seed 635056485, and `1.0229e20` plus `2.8775e17 m³` for the lake and sea tiers on seed 317739385. See the report for binding-step frequencies, body areas, sink identities, and the surplus accounting. Both caps bind repeatedly on two saves; seed 635056485 has no sea-cap events. G4 is complete. **D4:** retain both ceilings only as numerical guards and warn when they route overflow; the thresholds are not validated physical limits. Overflow stays booked through the lake hierarchy and ledger.
 - **G5: ice-cap budget.** On the diagnosis set over 10 Myr, report cap thickness, cap volume over time, global sublimation flux, and bedfast area split into lake depth ≤2 m and >2 m. Bedfast area divided by total lake area deeper than 2 m must be ≤1%; shallow bedfast area is reported separately. *Outcome:* adopt or revise the empirical cap rule after checking the full simulation and ledger.
 
 **Result (issue #541; report:** [`analysis/issue541/README.md`](../analysis/issue541/README.md)**):** The three #538 diagnosis saves reach a volume plateau by 0.1 Myr under fixed climate and lake depth. Under the prior unbounded starting law, 5.09% and 18.45% of wet area freeze to the bed on seeds 910211954 and 317739385; seed 635056485 is at 0.54%. The prior law fails the revised depth-aware diagnosis because deep-water bedfast area is 2.344% and 3.777% of total wet area on the two failing seeds. Its baseline physical-ice thickness p50s were 4.50, 9.50 and 1.71 m respectively. This prior result is historical and does not test the 2 m cap.
@@ -239,7 +238,7 @@ Neither set includes the development save, seed 308161711. All runs use the ice-
 | Ice/water density ratio | 917/1000 | Physical densities; converts the physical cap to the water-equivalent ledger | None |
 | Existing seasonal cover and below-cap growth/loss terms | Retain their current values | Existing D2(c) treatment | Not retuned by this design decision; G5 reports resulting cap volume and global sublimation |
 | `SHALLOW_EVAPORATION_BOOST` | 0.3 (unchanged) | Existing (#297) | Out of scope |
-| `LAKE_MAX_DEPTH_M`, `SEA_MAX_DEPTH_M` | Unchanged | Existing | G4, owner decision |
+| `LAKE_MAX_DEPTH_M`, `SEA_MAX_DEPTH_M` | Unchanged; numerical guards with warnings on binding | Existing thresholds, not physically calibrated | G4, owner decision |
 | G1 thresholds | 0.1 × Δt, 1% | Design choice | Owner may revise |
 
 ### Cost and saves
@@ -295,7 +294,7 @@ Neither set includes the development save, seed 308161711. All runs use the ice-
 
 ## Acceptance criteria
 
-- [ ] **G0–G5 run and recorded** in this RFC, with the owner's D4 decision. G5's prior unbounded candidate failed; its bounded offline diagnosis passed with a cap-volume plateau, bounded water-equivalent cap and 0% deep-water bedfast area across the diagnosis saves. The production implementation and combined-ledger validation now pass on three diagnosis saves and all coded bounds pass on three reserved held-out saves (two had informative lake ice; the third had almost no lake water). See [#632 analysis](../analysis/issue632/README.md). Report shallow bedfast area separately. The #615 postprocessed sensitivity does not satisfy the production diagnosis criterion.
+- [x] **G0–G5 run and recorded** in this RFC, with the owner's D4 decision. G5's prior unbounded candidate failed; its bounded offline diagnosis passed with a cap-volume plateau, bounded water-equivalent cap and 0% deep-water bedfast area across the diagnosis saves. The production implementation and combined-ledger validation now pass on three diagnosis saves and all coded bounds pass on three reserved held-out saves (two had informative lake ice; the third had almost no lake water). See [#632 analysis](../analysis/issue632/README.md). Report shallow bedfast area separately. The #615 postprocessed sensitivity does not satisfy the production diagnosis criterion.
 - [ ] **Unit tests:**
   - [ ] the endpoint solve matches alternative C at steady state (≤ 0.1% of volume) on random hierarchies;
   - [ ] nested and asymmetric supply cases hold, spill, and evaporate exactly their total source supply;

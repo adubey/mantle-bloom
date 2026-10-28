@@ -72,9 +72,12 @@ already-persisted array sidesteps needing that judgment call at all.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 
 import numpy as np
+
+_logger = logging.getLogger(__name__)
 
 # Silt settled on a lake's bed per cubic metre of water flowing into it (issue #363): each
 # step a lake gains its real inflow (`LakeClimate.inflow_m3_per_yr`, the same water that sets
@@ -384,6 +387,43 @@ class _PrognosticAccounting:
     final_spilling_ids: set[int]
     overflow_by_outlet: np.ndarray
     deferred: dict[int, float]
+    # Counts are unique active bodies within this solve; gross overflow can count water again
+    # when a downstream capped body receives and passes on the same transfer (#553).
+    lake_cap_body_ids: set[int] = field(default_factory=set)
+    sea_cap_body_ids: set[int] = field(default_factory=set)
+    lake_cap_overflow_m3: float = 0.0
+    sea_cap_overflow_m3: float = 0.0
+
+
+def _warn_if_depth_caps_bound(accounting: _PrognosticAccounting) -> None:
+    """Warn once per solve when a lake-tier or sea-tier depth guard routes overflow (#553)."""
+    lake_bodies = len(accounting.lake_cap_body_ids)
+    sea_bodies = len(accounting.sea_cap_body_ids)
+    if lake_bodies == 0 and sea_bodies == 0:
+        return
+    _logger.warning(
+        "lake depth-cap guard bound: lake tier (%.0f m) bodies=%d "
+        "(%.3g km^3 gross overflow), sea tier (%.0f m) bodies=%d "
+        "(%.3g km^3 gross overflow); overflow is booked through lake routing",
+        LAKE_MAX_DEPTH_M,
+        lake_bodies,
+        accounting.lake_cap_overflow_m3 / 1e9,
+        SEA_MAX_DEPTH_M,
+        sea_bodies,
+        accounting.sea_cap_overflow_m3 / 1e9,
+    )
+
+
+def _record_tier_cap_overflow(accounting, body, is_sea, overflow, tier_cap_limits_body):
+    """Accumulate a guard binding without changing the overflow's ordinary routing (#553)."""
+    if overflow <= 1e-9 or not tier_cap_limits_body:
+        return
+    if is_sea:
+        accounting.sea_cap_body_ids.add(id(body))
+        accounting.sea_cap_overflow_m3 += overflow
+    else:
+        accounting.lake_cap_body_ids.add(id(body))
+        accounting.lake_cap_overflow_m3 += overflow
 
 
 def _source_volume(rates, members, dt_step):
@@ -553,9 +593,11 @@ def _advance_prognostic_body(
         if len(members) == 1
         else float((depth[members] * hypsometry.area_m2[members]).sum())
     )
-    _, tier_depth = _classify_tier(members, prev_lake_depth, node_area_km2)
+    is_sea, tier_depth = _classify_tier(members, prev_lake_depth, node_area_km2)
     rim_level = body.max_depth if body.max_depth is not None else np.inf
-    cap_level = min(rim_level, body.floor_elevation + tier_depth)
+    tier_cap_level = body.floor_elevation + tier_depth
+    cap_level = min(rim_level, tier_cap_level)
+    tier_cap_limits_body = not body.drains_at_floor and tier_cap_level < rim_level - 1e-6
     dry_level = hypsometry.dry_level(members)
     if body.drains_at_floor:
         cap_level = dry_level
@@ -563,6 +605,7 @@ def _advance_prognostic_body(
     _, evap_volume, overflow, new_level = _integrate_body_volume(
         available, members, cap_level, dry_level, dt_step, evaporation, sublimation, hypsometry
     )
+    _record_tier_cap_overflow(accounting, body, is_sea, overflow, tier_cap_limits_body)
     accounting.evaporation_total += evap_volume
     if len(members) == 1:
         node = int(members[0])
@@ -778,6 +821,7 @@ def solve_lakes_prognostic(
         dry_runoff_m3=accounting.dry_runoff_total,
         meltwater_m3=accounting.meltwater_total,
     )
+    _warn_if_depth_caps_bound(accounting)
     return LakeSolveResult(
         lake_depth, silt_deposited, lake_is_sea, events, ledger,
         accounting.overflow_by_outlet, should_spill, filled_elevation, spill_target, rim_node_idx,
