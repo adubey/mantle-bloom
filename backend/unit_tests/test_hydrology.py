@@ -949,6 +949,30 @@ def test_compute_hydrology_sublimates_covered_lake_ice_and_closes_its_ledger(mon
     )
 
 
+def test_lake_ice_cap_respects_local_water_inventory_and_plateaus():
+    area = np.array([1.0e10, 1.0e10])
+    initial_liquid = np.array([10.0, 1.0])
+    prior_ice = np.zeros(2)
+    mean_c = np.full(2, -10.0)
+    amplitude_c = np.zeros(2)
+    no_sublimation = np.zeros(2)
+
+    ice, liquid, _ = hydrology.advance_lake_ice(
+        prior_ice, initial_liquid, area, mean_c, amplitude_c, no_sublimation, 1.0e9,
+    )
+    plateau_ice, plateau_liquid, _ = hydrology.advance_lake_ice(
+        ice, liquid, area, mean_c, amplitude_c, no_sublimation, 1.0e9,
+    )
+
+    physical_thickness = ice / hydrology.LAKE_ICE_DENSITY_RATIO
+    assert physical_thickness[0] == pytest.approx(hydrology.LAKE_ICE_MAX_THICKNESS_M)
+    assert physical_thickness[1] <= initial_liquid[1] / hydrology.LAKE_ICE_DENSITY_RATIO
+    assert np.all(ice <= initial_liquid)
+    np.testing.assert_allclose(ice + liquid, initial_liquid, rtol=0.0, atol=1e-12)
+    np.testing.assert_allclose(plateau_ice, ice, rtol=0.0, atol=1e-12)
+    np.testing.assert_allclose(plateau_liquid, liquid, rtol=0.0, atol=1e-12)
+
+
 @pytest.mark.parametrize(
     "cold", [slice(28, 31), slice(33, 34), slice(20, 34)], ids=["cold-pit", "one-cold-member", "cold-band"]
 )

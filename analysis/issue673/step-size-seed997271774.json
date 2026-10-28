@@ -1,0 +1,103 @@
+{
+ "issue": 673,
+ "rfc": "0014",
+ "backend_commit": "6ebf8cd19ee0098822ff9eae6685a22e20f9db32",
+ "save_sha256": "a43962a149a0ec96f1dbee3e6c675be98d50422c47e0455e062aa72a7d1da4d7",
+ "ice_age_control": "never",
+ "forcing_source": "captured once from a 10 kyr production step, then frozen across both solves",
+ "capture_step_years": 10000.0,
+ "capture_step_runtime_s": 6.351626208052039,
+ "solver": "prognostic C for all bodies; endpoint optimization disabled",
+ "results": {
+  "10k": {
+   "lake_volume_m3": 180015003918995.06,
+   "ice_volume_m3": 104294178590.01541,
+   "combined_volume_m3": 180119298097585.06,
+   "body_count": 19
+  },
+  "100k": {
+   "lake_volume_m3": 180057694618114.44,
+   "ice_volume_m3": 104294178590.01541,
+   "combined_volume_m3": 180161988796704.47,
+   "body_count": 19
+  }
+ },
+ "matched_bodies_over_10000_km2": [
+  {
+   "area_10k_km2": 931712.9240806315,
+   "area_100k_km2": 931712.9240806315,
+   "volume_10k_m3": 20090193099289.01,
+   "volume_100k_m3": 20090193099289.01,
+   "relative_difference": 0.0,
+   "pass_5pct_fallback_bound": true
+  },
+  {
+   "area_10k_km2": 389770.1152711871,
+   "area_100k_km2": 389770.1152711871,
+   "volume_10k_m3": 130376624962093.97,
+   "volume_100k_m3": 130376624962093.97,
+   "relative_difference": 0.0,
+   "pass_5pct_fallback_bound": true
+  },
+  {
+   "area_10k_km2": 103510.41893877304,
+   "area_100k_km2": 103510.41893877304,
+   "volume_10k_m3": 1847195841605.3584,
+   "volume_100k_m3": 1847195841605.3584,
+   "relative_difference": 0.0,
+   "pass_5pct_fallback_bound": true
+  },
+  {
+   "area_10k_km2": 46121.69854040896,
+   "area_100k_km2": 46121.69854040896,
+   "volume_10k_m3": 785771729609.9526,
+   "volume_100k_m3": 786585089223.4663,
+   "relative_difference": 0.0010340389420763593,
+   "pass_5pct_fallback_bound": true
+  },
+  {
+   "area_10k_km2": 46585.840280061435,
+   "area_100k_km2": 46585.840280061435,
+   "volume_10k_m3": 1559933209410.4985,
+   "volume_100k_m3": 1559933209410.4985,
+   "relative_difference": 0.0,
+   "pass_5pct_fallback_bound": true
+  },
+  {
+   "area_10k_km2": 30750.278337957705,
+   "area_100k_km2": 30750.278337957705,
+   "volume_10k_m3": 546925288763.5326,
+   "volume_100k_m3": 551873441234.918,
+   "relative_difference": 0.008966100017991405,
+   "pass_5pct_fallback_bound": true
+  },
+  {
+   "area_10k_km2": 16334.545958120476,
+   "area_100k_km2": 16334.545958120476,
+   "volume_10k_m3": 1218340906753.711,
+   "volume_100k_m3": 1218340906753.711,
+   "relative_difference": 0.0,
+   "pass_5pct_fallback_bound": true
+  },
+  {
+   "area_10k_km2": 12078.323412551514,
+   "area_100k_km2": 12078.323412551514,
+   "volume_10k_m3": 6994499613152.235,
+   "volume_100k_m3": 6994499613152.235,
+   "relative_difference": 0.0,
+   "pass_5pct_fallback_bound": true
+  },
+  {
+   "area_10k_km2": 11974.834889587653,
+   "area_100k_km2": 11974.834889587653,
+   "volume_10k_m3": 1885023245520.404,
+   "volume_100k_m3": 1885023245520.404,
+   "relative_difference": 0.0,
+   "pass_5pct_fallback_bound": true
+  }
+ ],
+ "matched_large_body_count": 9,
+ "fallback_5pct_pass_count": 9,
+ "fallback_5pct_fail_count": 0,
+ "largest_relative_difference": 0.008966100017991405
+}

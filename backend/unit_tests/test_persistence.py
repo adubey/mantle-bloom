@@ -174,6 +174,16 @@ def test_loading_a_world_pickled_before_removed_points_log_existed_defaults_to_e
     assert loaded.removed_points_log == []
 
 
+def test_loading_a_save_without_lake_ice_defaults_to_zero():
+    world = generate_world(seed=3, num_plates=4)
+    for plate in world.plates:
+        plate._fields.pop("lake_ice_m", None)
+
+    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+
+    assert np.all(loaded.plates[0].collect("lake_ice_m") == 0.0)
+
+
 def test_round_trip_preserves_stats_history():
     # World.stats_history is what makes a save/load round trip keep the Stats panel's history
     # charts (see World.record_stats/GET /world/stats_history) -- generation records one

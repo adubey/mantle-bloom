@@ -295,31 +295,33 @@ Neither set includes the development save, seed 308161711. All runs use the ice-
 ## Acceptance criteria
 
 - [x] **G0–G5 run and recorded** in this RFC, with the owner's D4 decision. G5's prior unbounded candidate failed; its bounded offline diagnosis passed with a cap-volume plateau, bounded water-equivalent cap and 0% deep-water bedfast area across the diagnosis saves. The production implementation and combined-ledger validation now pass on three diagnosis saves and all coded bounds pass on three reserved held-out saves (two had informative lake ice; the third had almost no lake water). See [#632 analysis](../analysis/issue632/README.md). Report shallow bedfast area separately. The #615 postprocessed sensitivity does not satisfy the production diagnosis criterion.
-- [ ] **Unit tests:**
-  - [ ] the endpoint solve matches alternative C at steady state (≤ 0.1% of volume) on random hierarchies;
-  - [ ] nested and asymmetric supply cases hold, spill, and evaporate exactly their total source supply;
-  - [ ] growing and shrinking single basins close their budget with no plug term;
-  - [ ] a perched lake above a saddle doesn't merge its parent;
-  - [ ] a merged lake whose balance falls below its saddle splits with each child at its own balance;
-  - [ ] a spill crossing catchments via a channel is delivered to the hierarchy's receiving leaf;
-  - [ ] the ice-free fraction is 0 below and 1 above the threshold range and continuous between;
-  - [ ] a lake with `f_free = 0` keeps liquid water and balances its supply by sublimation and overflow;
-  - [ ] physical ice thickness stays within 2 m and the water-equivalent cap stays within available water depth, closes the liquid/ice budget, and cap volume approaches a plateau under constant forcing (unit tests and fixed-forcing prototype; production replay verifies bounds and reports the evolving trajectory);
-  - [ ] basal melt and surface melt return water to liquid; sublimation is the only D2(c) atmospheric mass loss;
-  - [ ] water at a cold sink is never deleted;
-  - [ ] an enclosed lake cell with its bed below sea level uses the air temperature at its water surface;
-  - [ ] silt equals coefficient × supply × years.
-- [ ] **Ledger closes:** |residual| ≤ 0.1% of lake supply on every step of a 10-step replay on each held-out save.
-- [ ] **No water deleted:** liquid water lost outside the ledger is 0 on held-out saves.
-- [ ] **No pinned lakes:** no non-spilling, uncapped body (not flagged to C) whose endpoint evaporation differs from its supply by more than 5% (proposed, owner to confirm).
-- [ ] **Flicker:** per step, the fraction of bodies above 10⁴ km² whose volume change reverses sign on consecutive steps with |ΔV| > 50% of V is ≤ 5% (proposed; ice-age control "never"). Global volume max/min is reported but isn't pass/fail.
-- [ ] **Step robustness of the lake solve:** on frozen terrain and climate from each held-out save, solving with Δt = 10 kyr and 100 kyr gives the same endpoint volumes for unflagged bodies (≤ 0.1%) and volumes within 5% for flagged ones. Whole-model 100 × 10 kyr vs 10 × 100 kyr comparisons are reported, not pass/fail, because tectonics differs.
-- [ ] **Resolution:** global lake area agrees within 20% between node densities 4 and 6 on one held-out seed (proposed).
+- [x] **Unit tests audited** against the cases below; the three gaps found were filled with focused regressions, and the targeted tests pass (see [issue #673 analysis](../analysis/issue673/README.md)).
+  - [x] nested and asymmetric supply cases hold, spill, and evaporate exactly their total source supply;
+  - [x] growing and shrinking single basins close their budget with no plug term;
+  - [x] a perched lake above a saddle doesn't merge its parent;
+  - [x] a merged lake whose balance falls below its saddle splits with each child at its own balance;
+  - [x] a spill crossing catchments via a channel is delivered to the hierarchy's receiving leaf;
+  - [x] the ice-free fraction is 0 below and 1 above the threshold range and continuous between;
+  - [x] a lake with `f_free = 0` keeps liquid water and balances its supply by sublimation and overflow;
+  - [x] physical ice thickness stays within 2 m and the water-equivalent cap stays within available water depth, closes the liquid/ice budget, and cap volume approaches a plateau under fixed forcing; production replays verify bounds and report the evolving trajectory;
+  - [x] basal melt and surface melt return water to liquid; sublimation is the only D2(c) atmospheric mass loss;
+  - [x] water at a cold sink is never deleted;
+  - [x] an enclosed lake cell with its bed below sea level uses the air temperature at its water surface;
+  - [x] silt equals coefficient × supply × years;
+  - [x] endpoint-vs-C steady-state agreement is not applicable to production: #589 keeps the endpoint optimization disabled, so every body uses prognostic C.
+- [x] **Ledger closes:** |residual| ≤ 0.1% of lake supply on every step of a 10-step replay on each held-out save. The maximum was 1.82×10⁻¹¹ of supply (seed 456862899); see [issue #673 analysis](../analysis/issue673/README.md).
+- [x] **No water deleted:** cold-water diagnostics report zero liquid water deleted by freezing and zero unbooked lake inflow on all 30 held-out steps. The ledger is scoped to represented surface water, lakes and ice; subsurface exchange is out of scope, as clarified by PR #672.
+- [x] **No pinned lakes:** not applicable to current production, because #589 leaves the endpoint path disabled and all bodies use prognostic C; there are no unflagged endpoint bodies.
+- [ ] **Flicker:** per step, the fraction of bodies above 10⁴ km² whose volume change reverses sign on consecutive steps with |ΔV| > 50% of V is ≤ 5% (ice-age control "never"). It failed on two informative held-out saves: maxima 1/4 (25%) and 1/3 (33.3%); the third had no body above 10⁴ km². See [issue #673 analysis](../analysis/issue673/README.md).
+- [x] **Step robustness of the lake solve:** with forcing and terrain frozen from each held-out save, all matched large C-fallback bodies were within 5% between Δt = 10 kyr and 100 kyr (maximum 3.95%). There are no unflagged endpoint bodies in current production. Whole-model 100 × 10 kyr vs 10 × 100 kyr comparisons remain descriptive because tectonics differs.
+- [ ] **Resolution:** global lake area agrees within 20% between node densities 4 and 6 on one held-out seed. The reserved held-out set has only density-4 saves and no same-seed density-6 pair; this remains unmeasured.
 - [ ] **Evaporation calibration:** D2's `e_open(T_open) × f_free` on #519's reference-lake table, using ERA5 1990–2019 means and amplitudes sampled at HydroLAKES v1 polygon centroids, doesn't worsen any lake's fit by more than 10% against today's formula. G3 reports this check passing across all nine lakes; the largest increase over published observation-range endpoints is 3.91%.
-- [ ] **Side effects:** breached-pit counts and floor-drain toggles reported against `origin/main`; the #503 and #218 tests pass.
-- [ ] **Runtime:** median step time at density 4 within +10% of `origin/main`.
-- [ ] **Saves:** old saves load (`test_persistence.py`); `lake_ice_m` defaults to 0.
-- [ ] **Docs** updated as listed above.
+- [x] **Side effects:** breached-pit counts and floor-drain toggles are reported against the pre-C `origin/main` baseline in [issue #588's comparison](../analysis/issue588/replay-comparison.json); the #503 and #218 hydrology/breaching tests pass.
+- [x] **Runtime:** density-4 median step time was 8.5% lower than the baseline median in the #588 same-save comparison, within +10%; see [issue #588 analysis](../analysis/issue588/README.md).
+- [x] **Saves:** old saves load (`test_persistence.py`); a focused regression confirms a missing `lake_ice_m` defaults to 0.
+- [x] **Docs** describe the landed behavior in `docs/simulation-model/hydrology.md` and the RFC's subsurface ledger boundary in this document.
+
+**Final disposition (#673):** RFC 0014 remains Accepted and open. The held-out flicker threshold fails, and the density-resolution check lacks a paired held-out density-6 save. The smallest follow-up for flicker is to report per-body reversals with their merge/split/spill events and identify the mechanism before changing the model; resolution needs a preregistered same-seed held-out pair.
 
 ## Falsification criteria
 

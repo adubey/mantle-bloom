@@ -1,0 +1,542 @@
+{
+ "issue": 539,
+ "commit": "6ebf8cd19ee0098822ff9eae6685a22e20f9db32",
+ "save_sha256": "a43962a149a0ec96f1dbee3e6c675be98d50422c47e0455e062aa72a7d1da4d7",
+ "step_years": 100000.0,
+ "elapsed_years": 130500000.0,
+ "nodes": 132540,
+ "steps": [
+  {
+   "step": 1,
+   "elapsed_years": 130600000.0,
+   "runtime_s": 6.267771499988157,
+   "peak_rss_mb": 1010.71875,
+   "deleted_by_freezing_m3_s": 0.0,
+   "unbooked_lake_inflow_m3_s": 0.0,
+   "held_at_depth_cap_m3_s": 0.0,
+   "cold_sink_count": 233,
+   "cold_sink_inflow_m3_s": 219.17061968280296,
+   "cold_spilling_sinks": 10,
+   "ocean_discharge_m3_s": 1132306.0397529833,
+   "lake_volume_km3": 173801.88639227787,
+   "lake_area_km2": 1501373.7383471185,
+   "cold_lake_volume_km3": 3.189514382051948e-05,
+   "cold_lake_area_km2": 0.0,
+   "glacier_volume_km3": 4441709.240881078,
+   "breached_pits": 57,
+   "floor_drain_leaves": 48,
+   "floor_drain_toggles": null,
+   "top_cold_sinks": [
+    {
+     "inflow_m3_s": 217.52369878128164,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.3664168997003878,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.16724561770710974,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.10669802325527974,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.08859978556980132,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    }
+   ]
+  },
+  {
+   "step": 2,
+   "elapsed_years": 130700000.0,
+   "runtime_s": 7.132395791995805,
+   "peak_rss_mb": 1116.234375,
+   "deleted_by_freezing_m3_s": 0.0,
+   "unbooked_lake_inflow_m3_s": 0.0,
+   "held_at_depth_cap_m3_s": 0.0,
+   "cold_sink_count": 217,
+   "cold_sink_inflow_m3_s": 1.9482873825606444,
+   "cold_spilling_sinks": 10,
+   "ocean_discharge_m3_s": 1134693.578395511,
+   "lake_volume_km3": 85089.1849886109,
+   "lake_area_km2": 423444.45375704626,
+   "cold_lake_volume_km3": 2.9684076339703665e-05,
+   "cold_lake_area_km2": 0.0,
+   "glacier_volume_km3": 4446249.018853493,
+   "breached_pits": 111,
+   "floor_drain_leaves": 47,
+   "floor_drain_toggles": 65,
+   "top_cold_sinks": [
+    {
+     "inflow_m3_s": 0.3675638091960027,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.1811679495827165,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.15197284092367938,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.113733767915632,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.10564031959516842,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    }
+   ]
+  },
+  {
+   "step": 3,
+   "elapsed_years": 130800000.0,
+   "runtime_s": 9.18877899996005,
+   "peak_rss_mb": 1756.0625,
+   "deleted_by_freezing_m3_s": 0.0,
+   "unbooked_lake_inflow_m3_s": 0.0,
+   "held_at_depth_cap_m3_s": 0.0,
+   "cold_sink_count": 210,
+   "cold_sink_inflow_m3_s": 1.738667768565744,
+   "cold_spilling_sinks": 15,
+   "ocean_discharge_m3_s": 1054740.0149815173,
+   "lake_volume_km3": 94004.12895790013,
+   "lake_area_km2": 669220.8553891191,
+   "cold_lake_volume_km3": 1.7958139638579257e-05,
+   "cold_lake_area_km2": 0.0,
+   "glacier_volume_km3": 4451230.288783372,
+   "breached_pits": 67,
+   "floor_drain_leaves": 44,
+   "floor_drain_toggles": 63,
+   "top_cold_sinks": [
+    {
+     "inflow_m3_s": 0.3234174935011698,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.1425115108802291,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.11235246228013615,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.10271909247874349,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.09353496876402619,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    }
+   ]
+  },
+  {
+   "step": 4,
+   "elapsed_years": 130900000.0,
+   "runtime_s": 7.436423666018527,
+   "peak_rss_mb": 1756.0625,
+   "deleted_by_freezing_m3_s": 0.0,
+   "unbooked_lake_inflow_m3_s": 0.0,
+   "held_at_depth_cap_m3_s": 0.0,
+   "cold_sink_count": 203,
+   "cold_sink_inflow_m3_s": 1.6845802487230173,
+   "cold_spilling_sinks": 18,
+   "ocean_discharge_m3_s": 1091628.247426379,
+   "lake_volume_km3": 125270.62546302748,
+   "lake_area_km2": 951996.1814258279,
+   "cold_lake_volume_km3": 1.8635098821279912e-05,
+   "cold_lake_area_km2": 0.0,
+   "glacier_volume_km3": 4457388.402177079,
+   "breached_pits": 78,
+   "floor_drain_leaves": 55,
+   "floor_drain_toggles": 51,
+   "top_cold_sinks": [
+    {
+     "inflow_m3_s": 0.30284534325821005,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.12599243464541626,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.11321371622741125,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.09893047136679052,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.09823735808302032,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    }
+   ]
+  },
+  {
+   "step": 5,
+   "elapsed_years": 131000000.0,
+   "runtime_s": 7.568743916985113,
+   "peak_rss_mb": 1756.0625,
+   "deleted_by_freezing_m3_s": 0.0,
+   "unbooked_lake_inflow_m3_s": 0.0,
+   "held_at_depth_cap_m3_s": 0.0,
+   "cold_sink_count": 196,
+   "cold_sink_inflow_m3_s": 1.6267301389265825,
+   "cold_spilling_sinks": 21,
+   "ocean_discharge_m3_s": 1170072.8245005312,
+   "lake_volume_km3": 153399.2653211165,
+   "lake_area_km2": 629907.1047539285,
+   "cold_lake_volume_km3": 1.936514680539608e-05,
+   "cold_lake_area_km2": 0.0,
+   "glacier_volume_km3": 4461808.181422912,
+   "breached_pits": 156,
+   "floor_drain_leaves": 77,
+   "floor_drain_toggles": 76,
+   "top_cold_sinks": [
+    {
+     "inflow_m3_s": 0.2330804326880243,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.21163332957928704,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.1702844452057777,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.15738468173609838,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.1068244299459144,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    }
+   ]
+  },
+  {
+   "step": 6,
+   "elapsed_years": 131100000.0,
+   "runtime_s": 6.968841124966275,
+   "peak_rss_mb": 1756.0625,
+   "deleted_by_freezing_m3_s": 0.0,
+   "unbooked_lake_inflow_m3_s": 0.0,
+   "held_at_depth_cap_m3_s": 0.0,
+   "cold_sink_count": 191,
+   "cold_sink_inflow_m3_s": 1.6277645284381812,
+   "cold_spilling_sinks": 23,
+   "ocean_discharge_m3_s": 1120177.4109018352,
+   "lake_volume_km3": 385213.03685245663,
+   "lake_area_km2": 938976.6118863213,
+   "cold_lake_volume_km3": 558.8646830086078,
+   "cold_lake_area_km2": 4502.236577628201,
+   "glacier_volume_km3": 4466339.2379777115,
+   "breached_pits": 95,
+   "floor_drain_leaves": 72,
+   "floor_drain_toggles": 83,
+   "top_cold_sinks": [
+    {
+     "inflow_m3_s": 0.23208794723504345,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.20660505289477146,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.14647131686618114,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.13424068114344623,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.12074295500667312,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    }
+   ]
+  },
+  {
+   "step": 7,
+   "elapsed_years": 131200000.0,
+   "runtime_s": 8.885708625020925,
+   "peak_rss_mb": 1756.0625,
+   "deleted_by_freezing_m3_s": 0.0,
+   "unbooked_lake_inflow_m3_s": 0.0,
+   "held_at_depth_cap_m3_s": 0.0,
+   "cold_sink_count": 190,
+   "cold_sink_inflow_m3_s": 1.7617721194528537,
+   "cold_spilling_sinks": 22,
+   "ocean_discharge_m3_s": 1125579.260854835,
+   "lake_volume_km3": 354884.150335603,
+   "lake_area_km2": 1068291.9101008358,
+   "cold_lake_volume_km3": 366.821335208896,
+   "cold_lake_area_km2": 4502.236577628201,
+   "glacier_volume_km3": 4471220.987519411,
+   "breached_pits": 111,
+   "floor_drain_leaves": 74,
+   "floor_drain_toggles": 78,
+   "top_cold_sinks": [
+    {
+     "inflow_m3_s": 0.3230839422351203,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.1675672534137756,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.1464622129037034,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.12240198059026364,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.11437803174294188,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    }
+   ]
+  },
+  {
+   "step": 8,
+   "elapsed_years": 131300000.0,
+   "runtime_s": 7.328751583991107,
+   "peak_rss_mb": 1756.0625,
+   "deleted_by_freezing_m3_s": 0.0,
+   "unbooked_lake_inflow_m3_s": 0.0,
+   "held_at_depth_cap_m3_s": 0.0,
+   "cold_sink_count": 179,
+   "cold_sink_inflow_m3_s": 1.61114850524236,
+   "cold_spilling_sinks": 18,
+   "ocean_discharge_m3_s": 1123443.7521706058,
+   "lake_volume_km3": 330106.43907477014,
+   "lake_area_km2": 1143381.1978179766,
+   "cold_lake_volume_km3": 183.43138290829913,
+   "cold_lake_area_km2": 4502.236577628201,
+   "glacier_volume_km3": 4475048.37175238,
+   "breached_pits": 76,
+   "floor_drain_leaves": 68,
+   "floor_drain_toggles": 78,
+   "top_cold_sinks": [
+    {
+     "inflow_m3_s": 0.4597472840386625,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.16393745931305626,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.13471040545569138,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.11344365613308335,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.09307824151758953,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    }
+   ]
+  },
+  {
+   "step": 9,
+   "elapsed_years": 131400000.0,
+   "runtime_s": 8.705011916987132,
+   "peak_rss_mb": 1756.0625,
+   "deleted_by_freezing_m3_s": 0.0,
+   "unbooked_lake_inflow_m3_s": 0.0,
+   "held_at_depth_cap_m3_s": 0.0,
+   "cold_sink_count": 185,
+   "cold_sink_inflow_m3_s": 2.717593286359056,
+   "cold_spilling_sinks": 16,
+   "ocean_discharge_m3_s": 1184330.2130458646,
+   "lake_volume_km3": 286880.84115387296,
+   "lake_area_km2": 840979.9745188083,
+   "cold_lake_volume_km3": 2.403423785423392e-05,
+   "cold_lake_area_km2": 0.0,
+   "glacier_volume_km3": 4478316.27674646,
+   "breached_pits": 126,
+   "floor_drain_leaves": 67,
+   "floor_drain_toggles": 87,
+   "top_cold_sinks": [
+    {
+     "inflow_m3_s": 1.0565767936865305,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.38987909810436716,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.16076582231215003,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.1333468833648295,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.10339205835014428,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    }
+   ]
+  },
+  {
+   "step": 10,
+   "elapsed_years": 131500000.0,
+   "runtime_s": 8.125000959029421,
+   "peak_rss_mb": 1756.0625,
+   "deleted_by_freezing_m3_s": 0.0,
+   "unbooked_lake_inflow_m3_s": 0.0,
+   "held_at_depth_cap_m3_s": 0.0,
+   "cold_sink_count": 189,
+   "cold_sink_inflow_m3_s": 15.895613080950714,
+   "cold_spilling_sinks": 16,
+   "ocean_discharge_m3_s": 1137941.9967619048,
+   "lake_volume_km3": 268585.48146430694,
+   "lake_area_km2": 939071.1652461614,
+   "cold_lake_volume_km3": 2.501984444559241e-05,
+   "cold_lake_area_km2": 0.0,
+   "glacier_volume_km3": 4482023.988258856,
+   "breached_pits": 66,
+   "floor_drain_leaves": 74,
+   "floor_drain_toggles": 89,
+   "top_cold_sinks": [
+    {
+     "inflow_m3_s": 13.713717474182475,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.4135564122345614,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.3664546413085576,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.22506013800359734,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    },
+    {
+     "inflow_m3_s": 0.15813841398585562,
+     "spill_delivered_m3_s": 0.0,
+     "flood_then_empty_m3_s": 0.0,
+     "lake_depth_m": 0.0
+    }
+   ]
+  }
+ ],
+ "seed": 997271774,
+ "input_label": "#538 reserved held-out save, seed 997271774"
+}
