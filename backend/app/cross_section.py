@@ -15,7 +15,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 from scipy.spatial import cKDTree
 
-from . import faults, geometry, mantle, orogeny, plates
+from . import faults, geometry, mantle, orogeny, plates, plumes
 from .elevation_lines import (
     CRUST_TYPE_CONTINENTAL,
     CRUST_TYPE_INHERIT,
@@ -33,6 +33,10 @@ MANTLE_LITHOSPHERE = (66, 90, 90)
 ASTHENOSPHERE = (117, 108, 148)
 MAGMA_PALETTE = ((201, 61, 61), (244, 122, 60), (255, 214, 90))
 SEA_LEVEL_COLOR = (83, 159, 203)
+# Plume markers use a hot-pink hue distinct from the magma palette's reds and
+# oranges (active vents, stored melt, fault lines all sit in that family).
+PLUME_HEAD_FILL = (236, 72, 153)
+PLUME_TAIL_COLOR = (190, 24, 93)
 
 
 def _world_surface(world) -> tuple[np.ndarray, dict[str, np.ndarray], np.ndarray]:
@@ -126,12 +130,14 @@ def _plume_markers(world, sample_xyz: np.ndarray, spacing_km: float) -> list[tup
 
     Roles are `"head"` (nearest sample to a head-stage plume), `"head_footprint"`
     (further samples inside the head's emplacement radius), and `"tail"` (nearest
-    sample to a tail-stage plume). Only plumes within the same corridor rule as
-    `_parcel_markers` are projected; the deep tail conduit below the 350 km
-    section is drawn as a continues-below tick by the renderer (RFC 0007).
+    sample to a tail-stage plume). Only plumes whose nearest sample is within
+    the same corridor rule as `_parcel_markers` are projected, so a head just
+    outside the corridor is omitted even if its footprint crosses the section;
+    the deep tail conduit below the 350 km section is drawn as a
+    continues-below tick by the renderer (RFC 0007). Head and tail stages are
+    disjoint by construction (`tail_start_years == head_end_years`), so a
+    head-stage plume never shows a conduit tick.
     """
-    from . import plumes as plumes_mod
-
     live = [p for p in (getattr(world, "mantle_plumes", ()) or ()) if p is not None]
     if len(sample_xyz) == 0 or not live:
         return []
@@ -157,8 +163,8 @@ def _plume_markers(world, sample_xyz: np.ndarray, spacing_km: float) -> list[tup
             and plume.tail_start_years <= elapsed < plume.tail_end_years
         )
         if head_live:
-            radius_m = plumes_mod.head_kernel_radius_m(
-                plumes_mod.head_footprint_area_m2(plume.head_volume_m3)
+            radius_m = plumes.head_kernel_radius_m(
+                plumes.head_footprint_area_m2(plume.head_volume_m3)
             )
             # along-arc distance in km (radius_m is meters -- see the /1000).
             along_km = np.arccos(np.clip(sample_xyz @ unit[rank], -1.0, 1.0)) * PLANET_RADIUS_KM
@@ -221,15 +227,15 @@ def _draw_plume_marker(draw, role, x, x0, x1, top, lith_end_y, bottom_y, floor_y
     gets an ellipse plus a continues-below tick (the deep conduit extends past
     the 350 km section, so no full conduit is drawn)."""
     if role == "head_footprint":
-        draw.rectangle((x0, round(top) - 2, x1, round(top)), fill=(244, 122, 60))
+        draw.rectangle((x0, round(top) - 4, x1, round(top)), fill=PLUME_HEAD_FILL)
     elif role == "head":
-        draw.rectangle((x0, round(top) - 2, x1, round(top)), fill=(244, 122, 60))
-        draw.ellipse((x - 4, top - 9, x + 4, top - 1), fill=(244, 122, 60), outline=(45, 24, 24))
+        draw.rectangle((x0, round(top) - 4, x1, round(top)), fill=PLUME_HEAD_FILL)
+        draw.ellipse((x - 4, top - 9, x + 4, top - 1), fill=PLUME_HEAD_FILL, outline=(45, 24, 24))
     elif role == "tail":
-        draw.ellipse((x - 3, top - 7, x + 3, top - 1), fill=(201, 61, 61), outline=(45, 24, 24))
+        draw.ellipse((x - 3, top - 7, x + 3, top - 1), fill=PLUME_TAIL_COLOR, outline=(45, 24, 24))
         base = min(bottom_y, floor_y)
-        draw.line((x, lith_end_y, x, base), fill=(201, 61, 61), width=1)
-        draw.polygon(((x, base), (x - 3, base - 6), (x + 3, base - 6)), fill=(201, 61, 61))
+        draw.line((x, lith_end_y, x, base), fill=PLUME_TAIL_COLOR, width=1)
+        draw.polygon(((x, base), (x - 3, base - 6), (x + 3, base - 6)), fill=PLUME_TAIL_COLOR)
 
 
 def render_png_base64(
