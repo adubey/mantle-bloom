@@ -128,6 +128,10 @@ Here `S̄`, `Ē` and `Ō` are step-averaged supply, evaporation (including D2's 
 
 The residual should be zero to round-off; it's an acceptance criterion.
 
+**Boundary:** this ledger covers the represented surface-water, lake and ice reservoirs. It
+does not include subsurface storage or groundwater exchange, so ledger closure is not a claim
+of whole-land water-cycle closure.
+
 **Silt** (#363) is deposited once per body, from its step-averaged supply `S̄`, including the spill-through of a spilling lake (as today), over its final wet area, with `SILT_ACCUMULATION_COEFFICIENT`. A body whose resolution is superseded by its parent's deposits nothing, since its silt is part of the parent's.
 
 **Bounds:** levels stay within [dry level, rim]; every booked flux is ≥ 0; ice-cap thickness stays within [0, water depth].
@@ -290,6 +294,7 @@ Neither set includes the development save, seed 308161711. All runs use the ice-
 - **The 2 m physical-ice ceiling is an owner-supplied empirical assumption** for modeled non-permafrost lakes. It does not resolve seasonal lake thermodynamics or represent permafrost. Treat the hard ceiling as a simplification of the owner's “rarely thicker than 2 m” premise; revisit it if the target scope includes permafrost lakes or observations contradict the bound.
 - **Liquid water under ice** is assumed to keep its storage and spill; a frozen-to-bed cell is the only exception.
 - **Evaporation is still the temperature-only rate.** It runs 15–35% low for continental deserts and ~70% low at high altitude (#519). Lake sizes will move again when #358 and #118 give a Penman rate; that interface is preserved.
+- **Subsurface water storage is outside this RFC.** Water can infiltrate soil, sediment and porous or fractured rock, where it may be stored and later return to surface waters. The amount and movement depend on porosity and permeability and vary substantially by material [[U.S. Geological Survey, n.d.]](#ref-usgs-infiltration). This design has no soil-moisture or groundwater reservoir, infiltration flux, or delayed groundwater return; any future representation should book those transfers explicitly rather than count them as evaporation or unexplained loss.
 - **Single-save evidence.** All mechanism sizes come from one 121.5 Myr world. G0 is required before implementation.
 
 ## Acceptance criteria
@@ -344,5 +349,6 @@ Neither set includes the development save, seed 308161711. All runs use the ice-
 - <a id="ref-sharma2019"></a>Sharma, S., Blagrave, K., Magnuson, J. J., et al. (2019). Widespread loss of lake ice around the Northern Hemisphere in a warming world. *Nature Climate Change*, 9, 227–231. [https://doi.org/10.1038/s41558-018-0393-5](https://doi.org/10.1038/s41558-018-0393-5)
 - <a id="ref-steel2015"></a>Steel, M., McKay, C. P., & Andersen, D. T. (2015). Modeling circulation and seasonal fluctuations in perennially ice-covered and ice-walled Lake Untersee, Antarctica. *Limnology and Oceanography*, 60(4), 1231–1245. [https://doi.org/10.1002/lno.10086](https://doi.org/10.1002/lno.10086)
 - <a id="ref-subin2012"></a>Subin, Z. M., Riley, W. J., & Mironov, D. (2012). An improved lake model for climate simulations: Model structure, evaluation, and sensitivity analyses in CESM1. *Journal of Advances in Modeling Earth Systems*, 4, M02001. [https://doi.org/10.1029/2011MS000072](https://doi.org/10.1029/2011MS000072)
+- <a id="ref-usgs-infiltration"></a>U.S. Geological Survey. (n.d.). *Infiltration and the Water Cycle*. [https://www.usgs.gov/water-science-school/science/infiltration-and-water-cycle](https://www.usgs.gov/water-science-school/science/infiltration-and-water-cycle)
 - <a id="ref-weisleitner2019"></a>Weisleitner, K., Perras, A., Moissl-Eichinger, C., Andersen, D. T., & Sattler, B. (2019). Source environments of the microbiome in perennially ice-covered Lake Untersee, Antarctica. *Frontiers in Microbiology*, 10, 1019. [https://doi.org/10.3389/fmicb.2019.01019](https://doi.org/10.3389/fmicb.2019.01019)
 - <a id="ref-zhao2022"></a>Zhao, G., Li, Y., Zhou, L., & Gao, H. (2022). Evaporative water loss of 1.42 million global lakes. *Nature Communications*, 13, 3686. [https://doi.org/10.1038/s41467-022-31125-6](https://doi.org/10.1038/s41467-022-31125-6)
