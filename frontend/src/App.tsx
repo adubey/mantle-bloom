@@ -1164,15 +1164,21 @@ export default function App() {
   // The world list and this tab's selection (#563). The list is refreshed after
   // local world actions and when the tab regains focus, so a second tab's new
   // world shows up without a reload.
-  // Only the newest refresh may commit its list. Closing the Delete confirm
-  // dialog refocuses the window, and that focus refresh can be answered before
-  // the DELETE yet land after the delete's own refresh -- putting the deleted
-  // world back in the selector until the next poll.
+  // A refresh never overwrites a list from a later-started one. Closing the
+  // Delete confirm dialog refocuses the window, and that focus refresh can be
+  // answered before the DELETE yet land after the delete's own refresh --
+  // putting the deleted world back in the selector until the next poll. Keyed
+  // on the newest committed request, not the newest started, so a later
+  // request that fails doesn't also discard an earlier one's fresh list.
   const worldsRequestRef = useRef(0);
+  const worldsCommittedRef = useRef(0);
   const refreshWorlds = useCallback(async (): Promise<WorldRecord[]> => {
     const request = ++worldsRequestRef.current;
     const { worlds: list } = await fetchWorlds();
-    if (request === worldsRequestRef.current) setWorlds(list);
+    if (request > worldsCommittedRef.current) {
+      worldsCommittedRef.current = request;
+      setWorlds(list);
+    }
     return list;
   }, []);
 
