@@ -292,6 +292,29 @@ def test_prognostic_lake_solver_merges_siblings_during_the_step():
     assert np.all(result.lake_depth >= 0.0)
 
 
+def test_prognostic_lake_solver_closes_asymmetric_nested_supply_budget():
+    forest = lakes.build_lake_hierarchy(_MERGE_ELEVATION, _MERGE_IS_OCEAN, _MERGE_NEIGHBORS)
+    hyps = lakes.CellHypsometry.whole_cells(_MERGE_ELEVATION)
+    supply = np.array([1.0e16, 0.0, 0.0, 4.0e16, 0.0, 0.0])
+    climate = lakes.LakeClimate(
+        inflow_m3_per_yr=np.zeros(6),
+        evaporation_m_per_yr=np.array([0.3, 0.3, 0.3, 1.0, 1.0, 1.0]),
+        external_supply_m3_per_yr=supply,
+        dry_runoff_m3_per_yr=supply,
+    )
+
+    result = lakes.solve_lakes_prognostic(
+        forest, _MERGE_ELEVATION, np.zeros(6), 5.0, climate, hyps, substeps=32,
+        is_ocean=_MERGE_IS_OCEAN,
+    )
+
+    assert result.ledger.external_supply_m3 == pytest.approx(supply.sum() * 5.0)
+    assert result.ledger.internal_transfer_m3 > 0.0
+    assert result.ledger.evaporation_m3 > 0.0
+    assert result.ledger.overflow_out_m3 > 0.0
+    assert result.ledger.residual_m3 == pytest.approx(0.0, abs=1.0e6)
+
+
 def test_prognostic_lake_solver_splits_below_saddle_without_resetting_water():
     forest = lakes.build_lake_hierarchy(_MERGE_ELEVATION, _MERGE_IS_OCEAN, _MERGE_NEIGHBORS)
     hyps = lakes.CellHypsometry.whole_cells(_MERGE_ELEVATION)

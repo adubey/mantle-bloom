@@ -1,0 +1,30 @@
+{
+ "issue": 673,
+ "rfc": "0014",
+ "backend_commit": "6ebf8cd19ee0098822ff9eae6685a22e20f9db32",
+ "save_sha256": "e6a6c7514ae52601d8d2e3ae541da3c1dcb727cde141a79b0bee39d3c962e865",
+ "ice_age_control": "never",
+ "forcing_source": "captured once from a 10 kyr production step, then frozen across both solves",
+ "capture_step_years": 10000.0,
+ "capture_step_runtime_s": 16.8878346660058,
+ "solver": "prognostic C for all bodies; endpoint optimization disabled",
+ "results": {
+  "10k": {
+   "lake_volume_m3": 15229946739.720367,
+   "ice_volume_m3": 0.0,
+   "combined_volume_m3": 15229946739.720367,
+   "body_count": 1
+  },
+  "100k": {
+   "lake_volume_m3": 15291275140.978456,
+   "ice_volume_m3": 0.0,
+   "combined_volume_m3": 15291275140.978456,
+   "body_count": 1
+  }
+ },
+ "matched_bodies_over_10000_km2": [],
+ "matched_large_body_count": 0,
+ "fallback_5pct_pass_count": 0,
+ "fallback_5pct_fail_count": 0,
+ "largest_relative_difference": null
+}
