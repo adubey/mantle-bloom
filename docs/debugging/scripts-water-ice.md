@@ -93,6 +93,25 @@ real-unit coefficient. Each is split by whether the lake was spilling.
 backend/.venv/bin/python bin/debug/measure_lake_silt.py world.mbworld --myr 10 --out /tmp/branch.json
 ```
 
+### `gate_lake_endpoint.py`
+
+Refreshes RFC 0014 G1 (#589) on the three registered diagnosis saves under the current D2(c)
+lake-ice sequence. It captures one production 10 kyr step's C liquid forcing and subsequent
+ice-phase inputs, then compares endpoint equilibrium against an independently substepped direct
+C integration for isolated leaf bodies (1,000 steps by default; `--transient-substeps 4000` for
+a convergence check). Every body above 10,000 km² is measured, plus a seeded 5% sample of smaller
+bodies. Merged bodies, leaves that could receive hierarchy transfers, spilling bodies, invalid
+and unsampled bodies count as fallback. It records liquid endpoint error (the G1 criterion), a
+secondary combined liquid-plus-ice comparison, relaxation and fill times, starting-volume
+coverage and the capture step runtime. Direct offline measurements do not form a production
+eligibility cache.
+
+```bash
+backend/.venv/bin/python bin/debug/gate_lake_endpoint.py \
+    ~/Downloads/mantle-bloom-seed910211954-220200000y.mbworld \
+    --out analysis/issue589/seed910211954.json
+```
+
 ### `measure_breaching.py`
 
 Measures least-cost depression breaching (`app/breaching.py`, #297). For each seed it
