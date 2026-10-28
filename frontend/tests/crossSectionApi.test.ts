@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { requestCrossSection } from "../src/crossSectionApi.js";
+import { crossSectionUrl, requestCrossSection } from "../src/crossSectionApi.js";
 import { advanceCrossSectionPosition, nearbyCrossSectionPositions } from "../src/crossSectionFrames.js";
 import { projectGreatCirclePoint } from "../src/crossSectionLocator.js";
 
@@ -34,6 +34,14 @@ test("requests the selected cross-section frame with its dimensions and abort si
   });
   assert.equal(requestedSignal, controller.signal);
   assert.deepEqual(response, { image_base64: "cG5n" });
+});
+
+test("encodes the plumes flag only when enabled", () => {
+  const without = crossSectionUrl("http://x", 10, 2, 320, 200);
+  assert.equal(without.includes("show_plumes"), false);
+
+  const withPlumes = crossSectionUrl("http://x", 10, 2, 320, 200, false, false, true);
+  assert.equal(withPlumes.includes("show_plumes=true"), true);
 });
 
 test("preserves the backend status when section rendering is unavailable", async () => {

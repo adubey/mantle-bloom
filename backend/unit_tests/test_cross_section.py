@@ -151,3 +151,59 @@ def test_sampling_empty_world_reports_no_active_surface_nodes():
 
     with pytest.raises(ValueError, match="no active surface nodes"):
         cross_section._sample_fields(world, np.array([[1.0, 0.0, 0.0]]))
+
+
+def _marker_world(plumes):
+    return SimpleNamespace(mantle_plumes=plumes, elapsed_years=1_000_000.0)
+
+
+def _live_head(position, head_end_years=3_000_000.0, tail_end_years=80_000_000.0):
+    from app import plumes as plumes_mod
+
+    return plumes_mod.MantlePlume(
+        plume_id=0,
+        position=tuple(position),
+        born_years=0.0,
+        head_volume_m3=8e15,
+        head_remaining_m3=8e15,
+        head_end_years=head_end_years,
+        tail_flux_m3_per_yr=1e8,
+        tail_end_years=tail_end_years,
+    )
+
+
+def _tail_only(position):
+    import dataclasses
+
+    return dataclasses.replace(
+        _live_head(position),
+        plume_id=-1,
+        head_volume_m3=0.0,
+        head_remaining_m3=0.0,
+        head_end_years=0.0,
+    )
+
+
+def test_plume_markers_flag_head_footprint_and_tail_roles():
+    """RFC 0007 (#669): a live head marks its nearest sample plus the
+    intersected footprint extent; a live tail-only plume marks tail."""
+    sample_xyz, _, _ = cross_section._great_circle_samples(0.0, 0, 60.0)
+    middle = len(sample_xyz) // 2
+    world = _marker_world([_live_head(sample_xyz[middle]), _tail_only(sample_xyz[0])])
+
+    markers = dict(cross_section._plume_markers(world, sample_xyz, 60.0))
+
+    assert markers[middle] == "head"
+    tail_samples = [index for index, role in markers.items() if role == "tail"]
+    assert len(tail_samples) == 1  # the tail-only plume's nearest sample
+
+
+def test_plume_markers_omit_plumes_outside_corridor_and_dead_stages():
+    """RFC 0007 (#669): a plume off the section plane is omitted, as is a plume
+    whose head and tail stages both ended."""
+    sample_xyz, _, _ = cross_section._great_circle_samples(0.0, 0, 60.0)
+    middle = len(sample_xyz) // 2
+    off_plane = _live_head(-sample_xyz[middle])
+    assert dict(cross_section._plume_markers(_marker_world([off_plane]), sample_xyz, 60.0)) == {}
+    spent = _live_head(sample_xyz[middle], head_end_years=100.0, tail_end_years=100.0)
+    assert dict(cross_section._plume_markers(_marker_world([spent]), sample_xyz, 60.0)) == {}

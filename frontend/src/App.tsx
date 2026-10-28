@@ -346,6 +346,7 @@ export default function App() {
   const [crossSectionArcPosition, setCrossSectionArcPosition] = useState(0);
   const [crossSectionShowBoundaries, setCrossSectionShowBoundaries] = useState(false);
   const [crossSectionShowFaults, setCrossSectionShowFaults] = useState(false);
+  const [crossSectionShowPlumes, setCrossSectionShowPlumes] = useState(false);
   // Local cache epoch: advance it after every operation that can change sampled section data.
   // The globes (see globeTexture.ts) key their world map on it too.
   const [crossSectionWorldRevision, setCrossSectionWorldRevision] = useState(0);
@@ -2138,8 +2139,10 @@ export default function App() {
               arcPosition={crossSectionArcPosition}
               showBoundaries={crossSectionShowBoundaries}
               showFaults={crossSectionShowFaults}
+              showPlumes={crossSectionShowPlumes}
               onLayerToggle={(layer, enabled) => {
                 if (layer === "boundaries") setCrossSectionShowBoundaries(enabled);
+                else if (layer === "plumes") setCrossSectionShowPlumes(enabled);
                 else setCrossSectionShowFaults(enabled);
               }}
               onPlaneAngleChange={setCrossSectionPlaneAngleDeg}

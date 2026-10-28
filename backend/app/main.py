@@ -1537,6 +1537,7 @@ def cross_section(
     height: int = 611,
     show_boundaries: bool = False,
     show_faults: bool = False,
+    show_plumes: bool = False,
 ) -> dict:
     """Render one surface-sampled section for the shallow mantle view (#360).
 
@@ -1556,6 +1557,7 @@ def cross_section(
             _, result = cross_section_view.render_png_base64(
                 world, plane_angle_deg, position_index, width, height,
                 show_boundaries=show_boundaries, show_faults=show_faults,
+                show_plumes=show_plumes,
             )
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
