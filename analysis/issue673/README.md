@@ -77,6 +77,16 @@ The density-4 runtime and baseline side-effect measurements are already recorded
 `analysis/issue588/replay-comparison.json`; the baseline commit is recorded above. The held-out
 resolution comparison remains open because the preregistered set lacks a density-6 pair.
 
+## Verification
+
+- `backend/.venv/bin/ruff check` — passed.
+- `./bin/quality_check.sh` — passed; vulture and knip reported no dead code, and jscpd found
+  no new duplicates.
+- `./bin/affected_test.sh --base origin/main` — 176 passed across the three modified backend
+  test files (46 warnings).
+- `./bin/stress_test.sh` — 58 passed (73 warnings).
+- Frontend checks were not applicable; no frontend files changed.
+
 ## RFC disposition
 
 Keep RFC 0014 **Accepted and open**. The water budget, cold-sink retention, step-size response,
