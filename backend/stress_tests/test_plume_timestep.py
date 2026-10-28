@@ -81,6 +81,9 @@ def _track_geometry(seed, monkeypatch):
     steps = []
     original = plumes._deposit_on_plate
 
+    # The tap couples to _deposit_on_plate's 8-argument signature; a signature
+    # change must update this test. Acceptable for a stress test, where the
+    # alternative (end-state crust maxima) cannot recover per-step ages.
     def tap(world_, plate, fields, mask, weights, norm, volume_m3, stage):
         out = original(world_, plate, fields, mask, weights, norm, volume_m3, stage)
         if stage == "tail" and out > 0.0 and plate.plate_id == host:
