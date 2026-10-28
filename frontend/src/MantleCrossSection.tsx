@@ -470,6 +470,32 @@ function LegendKey({ color, label, line = false }: { color: string; label: strin
   );
 }
 
+function OverlayLegendKeys({ showBoundaries, showFaults, showPlumes }: {
+  showBoundaries: boolean; showFaults: boolean; showPlumes: boolean;
+}) {
+  return (
+    <>
+      {showBoundaries && <LegendKey color="#58BEFF" label="Plate boundary" line />}
+      {showFaults && <LegendKey color="#FF7D57" label="Fault line" line />}
+      {showPlumes && <LegendKey color="#F67A3C" label="Mantle plume" />}
+    </>
+  );
+}
+
+function OverlayLayerToggles({ showBoundaries, showFaults, showPlumes, onLayerToggle }: {
+  showBoundaries: boolean; showFaults: boolean; showPlumes: boolean;
+  onLayerToggle: (layer: "boundaries" | "faults" | "plumes", enabled: boolean) => void;
+}) {
+  return (
+    <fieldset style={{ border: 0, padding: 0, margin: "1px 0 0", display: "grid", gap: 4, fontSize: 10 }}>
+      <legend style={{ color: "#aeb8ca", padding: 0, marginBottom: 2 }}>Cross-section overlays</legend>
+      <label style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={showBoundaries} onChange={(event) => onLayerToggle("boundaries", event.target.checked)} /> Plate boundaries</label>
+      <label style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={showFaults} onChange={(event) => onLayerToggle("faults", event.target.checked)} /> Fault lines</label>
+      <label style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={showPlumes} onChange={(event) => onLayerToggle("plumes", event.target.checked)} /> Mantle plumes</label>
+    </fieldset>
+  );
+}
+
 export default function MantleCrossSection({
   worldId,
   width,
@@ -720,9 +746,7 @@ export default function MantleCrossSection({
           <LegendKey color="#F47A3C" label="Stored melt source" />
           <LegendKey color="#FFD278" label="Melt-eligible estimate" />
           <LegendKey color="#47ECD2" label="Mantle flow (schematic depth)" line />
-          {showBoundaries && <LegendKey color="#58BEFF" label="Plate boundary" line />}
-          {showFaults && <LegendKey color="#FF7D57" label="Fault line" line />}
-          {showPlumes && <LegendKey color="#F67A3C" label="Mantle plume" />}
+          <OverlayLegendKeys showBoundaries={showBoundaries} showFaults={showFaults} showPlumes={showPlumes} />
           <LegendKey color="#ED7E3C" label="Active vent" />
           <LegendKey color="#B7BEC1" label="Dormant vent" />
         </div>
@@ -784,12 +808,12 @@ export default function MantleCrossSection({
           </div>
         </div>
 
-        <fieldset style={{ border: 0, padding: 0, margin: "1px 0 0", display: "grid", gap: 4, fontSize: 10 }}>
-          <legend style={{ color: "#aeb8ca", padding: 0, marginBottom: 2 }}>Cross-section overlays</legend>
-          <label style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={showBoundaries} onChange={(event) => onLayerToggle("boundaries", event.target.checked)} /> Plate boundaries</label>
-          <label style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={showFaults} onChange={(event) => onLayerToggle("faults", event.target.checked)} /> Fault lines</label>
-          <label style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={showPlumes} onChange={(event) => onLayerToggle("plumes", event.target.checked)} /> Mantle plumes</label>
-        </fieldset>
+        <OverlayLayerToggles
+          showBoundaries={showBoundaries}
+          showFaults={showFaults}
+          showPlumes={showPlumes}
+          onLayerToggle={onLayerToggle}
+        />
 
       </aside>
     </div>
