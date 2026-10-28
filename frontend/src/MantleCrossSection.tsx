@@ -27,6 +27,7 @@ interface FrameKey {
   height: number;
   showBoundaries: boolean;
   showFaults: boolean;
+  showPlumes: boolean;
 }
 
 interface CachedFrame {
@@ -43,7 +44,7 @@ let cacheClock = 0;
 function frameCacheKey(key: FrameKey): string {
   return [
     key.worldId, key.worldRevision, key.planeAngleDeg, key.arcPosition, key.width, key.height,
-    Number(key.showBoundaries), Number(key.showFaults), SECTION_STYLE_VERSION,
+    Number(key.showBoundaries), Number(key.showFaults), Number(key.showPlumes), SECTION_STYLE_VERSION,
   ].join(":");
 }
 
@@ -54,7 +55,8 @@ function sameFrameSet(left: FrameKey, right: FrameKey): boolean {
     && left.width === right.width
     && left.height === right.height
     && left.showBoundaries === right.showBoundaries
-    && left.showFaults === right.showFaults;
+    && left.showFaults === right.showFaults
+    && left.showPlumes === right.showPlumes;
 }
 
 function rememberActiveFrame(key: FrameKey): void {
@@ -103,7 +105,7 @@ async function loadFrame(key: FrameKey, signal: AbortSignal): Promise<string> {
 
   const promise = (async () => {
     const response = await fetchCrossSection(
-      key.worldId, key.planeAngleDeg, key.arcPosition, key.width, key.height, signal, key.showBoundaries, key.showFaults,
+      key.worldId, key.planeAngleDeg, key.arcPosition, key.width, key.height, signal, key.showBoundaries, key.showFaults, key.showPlumes,
     );
     const dataUrl = `data:image/png;base64,${response.image_base64}`;
     if (signal.aborted) throw new DOMException("Cross-section request aborted", "AbortError");
@@ -136,7 +138,8 @@ interface Props {
   arcPosition: number;
   showBoundaries: boolean;
   showFaults: boolean;
-  onLayerToggle: (layer: "boundaries" | "faults", enabled: boolean) => void;
+  showPlumes: boolean;
+  onLayerToggle: (layer: "boundaries" | "faults" | "plumes", enabled: boolean) => void;
   onPlaneAngleChange: (value: number) => void;
   onArcPositionChange: (value: number) => void;
 }
@@ -467,6 +470,32 @@ function LegendKey({ color, label, line = false }: { color: string; label: strin
   );
 }
 
+function OverlayLegendKeys({ showBoundaries, showFaults, showPlumes }: {
+  showBoundaries: boolean; showFaults: boolean; showPlumes: boolean;
+}) {
+  return (
+    <>
+      {showBoundaries && <LegendKey color="#58BEFF" label="Plate boundary" line />}
+      {showFaults && <LegendKey color="#FF7D57" label="Fault line" line />}
+      {showPlumes && <LegendKey color="#C93D3D" label="Plume tail" />}
+    </>
+  );
+}
+
+function OverlayLayerToggles({ showBoundaries, showFaults, showPlumes, onLayerToggle }: {
+  showBoundaries: boolean; showFaults: boolean; showPlumes: boolean;
+  onLayerToggle: (layer: "boundaries" | "faults" | "plumes", enabled: boolean) => void;
+}) {
+  return (
+    <fieldset style={{ border: 0, padding: 0, margin: "1px 0 0", display: "grid", gap: 4, fontSize: 10 }}>
+      <legend style={{ color: "#aeb8ca", padding: 0, marginBottom: 2 }}>Cross-section overlays</legend>
+      <label style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={showBoundaries} onChange={(event) => onLayerToggle("boundaries", event.target.checked)} /> Plate boundaries</label>
+      <label style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={showFaults} onChange={(event) => onLayerToggle("faults", event.target.checked)} /> Fault lines</label>
+      <label style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={showPlumes} onChange={(event) => onLayerToggle("plumes", event.target.checked)} /> Mantle plumes</label>
+    </fieldset>
+  );
+}
+
 export default function MantleCrossSection({
   worldId,
   width,
@@ -476,6 +505,7 @@ export default function MantleCrossSection({
   arcPosition,
   showBoundaries,
   showFaults,
+  showPlumes,
   onLayerToggle,
   onPlaneAngleChange,
   onArcPositionChange,
@@ -491,7 +521,7 @@ export default function MantleCrossSection({
   const arcPositionRef = useRef(arcPosition);
   arcPositionRef.current = arcPosition;
   const currentFrameKey: FrameKey = {
-    worldId, worldRevision, planeAngleDeg, arcPosition, width: Math.round(width), height: Math.round(height), showBoundaries, showFaults,
+    worldId, worldRevision, planeAngleDeg, arcPosition, width: Math.round(width), height: Math.round(height), showBoundaries, showFaults, showPlumes,
   };
   const currentCacheKey = frameCacheKey(currentFrameKey);
   const cachedDataUrl = frameCache.get(currentCacheKey)?.dataUrl ?? null;
@@ -507,14 +537,14 @@ export default function MantleCrossSection({
       : ""
   );
 
-  const frameScopeKey = [worldId, worldRevision, planeAngleDeg, Math.round(width), Math.round(height), Number(showBoundaries), Number(showFaults), SECTION_STYLE_VERSION].join(":");
+  const frameScopeKey = [worldId, worldRevision, planeAngleDeg, Math.round(width), Math.round(height), Number(showBoundaries), Number(showFaults), Number(showPlumes), SECTION_STYLE_VERSION].join(":");
 
   useEffect(() => {
     const controller = new AbortController();
     scopeControllerRef.current = controller;
     const initialPosition = arcPositionRef.current;
     const activeKey: FrameKey = {
-      worldId, worldRevision, planeAngleDeg, arcPosition: initialPosition, width: Math.round(width), height: Math.round(height), showBoundaries, showFaults,
+      worldId, worldRevision, planeAngleDeg, arcPosition: initialPosition, width: Math.round(width), height: Math.round(height), showBoundaries, showFaults, showPlumes,
     };
     rememberActiveFrame(activeKey);
     setPrefetchProgress(null);
@@ -573,11 +603,11 @@ export default function MantleCrossSection({
       controller.abort();
       if (scopeControllerRef.current === controller) scopeControllerRef.current = null;
     };
-  }, [worldId, worldRevision, planeAngleDeg, width, height, showBoundaries, showFaults, frameScopeKey]);
+  }, [worldId, worldRevision, planeAngleDeg, width, height, showBoundaries, showFaults, showPlumes, frameScopeKey]);
 
   useEffect(() => {
     const activeKey: FrameKey = {
-      worldId, worldRevision, planeAngleDeg, arcPosition, width: Math.round(width), height: Math.round(height), showBoundaries, showFaults,
+      worldId, worldRevision, planeAngleDeg, arcPosition, width: Math.round(width), height: Math.round(height), showBoundaries, showFaults, showPlumes,
     };
     rememberActiveFrame(activeKey);
     const cached = cachedFrame(activeKey);
@@ -611,7 +641,7 @@ export default function MantleCrossSection({
       isCurrentSelection = false;
       if (ownsController) controller.abort();
     };
-  }, [worldId, worldRevision, planeAngleDeg, arcPosition, width, height, showBoundaries, showFaults, currentCacheKey]);
+  }, [worldId, worldRevision, planeAngleDeg, arcPosition, width, height, showBoundaries, showFaults, showPlumes, currentCacheKey]);
 
   useEffect(() => () => clearMantleCrossSectionCache(), []);
 
@@ -713,11 +743,10 @@ export default function MantleCrossSection({
           <LegendKey color="#526779" label="Oceanic crust" />
           <LegendKey color="#425A5A" label="Mantle lithosphere" />
           <LegendKey color="#756C94" label="Schematic asthenosphere" />
-          <LegendKey color="#F47A3C" label="Stored melt source" />
+          <LegendKey color="#F47A3C" label="Magma" />
           <LegendKey color="#FFD278" label="Melt-eligible estimate" />
           <LegendKey color="#47ECD2" label="Mantle flow (schematic depth)" line />
-          {showBoundaries && <LegendKey color="#58BEFF" label="Plate boundary" line />}
-          {showFaults && <LegendKey color="#FF7D57" label="Fault line" line />}
+          <OverlayLegendKeys showBoundaries={showBoundaries} showFaults={showFaults} showPlumes={showPlumes} />
           <LegendKey color="#ED7E3C" label="Active vent" />
           <LegendKey color="#B7BEC1" label="Dormant vent" />
         </div>
@@ -779,11 +808,12 @@ export default function MantleCrossSection({
           </div>
         </div>
 
-        <fieldset style={{ border: 0, padding: 0, margin: "1px 0 0", display: "grid", gap: 4, fontSize: 10 }}>
-          <legend style={{ color: "#aeb8ca", padding: 0, marginBottom: 2 }}>Cross-section overlays</legend>
-          <label style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={showBoundaries} onChange={(event) => onLayerToggle("boundaries", event.target.checked)} /> Plate boundaries</label>
-          <label style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={showFaults} onChange={(event) => onLayerToggle("faults", event.target.checked)} /> Fault lines</label>
-        </fieldset>
+        <OverlayLayerToggles
+          showBoundaries={showBoundaries}
+          showFaults={showFaults}
+          showPlumes={showPlumes}
+          onLayerToggle={onLayerToggle}
+        />
 
       </aside>
     </div>

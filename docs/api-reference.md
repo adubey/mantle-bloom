@@ -539,13 +539,17 @@ hemisphere facing the viewer as an orthographic disc (see
 - `image_base64` decodes to a PNG. The frontend builds `data:image/png;base64,<this>` as an
   `<img>` source and draws it onto the canvas with `drawImage` -- see `MapCanvas.tsx`.
 
-## `GET /worlds/{world_id}/cross-section?plane_angle_deg=0&position_index=0&width=1100&height=611&show_boundaries=false&show_faults=false`
+## `GET /worlds/{world_id}/cross-section?plane_angle_deg=0&position_index=0&width=1100&height=611&show_boundaries=false&show_faults=false&show_plumes=false`
 
 Renders a surface-sampled shallow mantle section for the current world. `plane_angle_deg`
 selects a great-circle plane in `[-90, 90]`; `0` is the equator and either endpoint is a
 pole-crossing plane. `position_index` selects one of 120 evenly spaced centers along that
 circle in `[0, 119]`. `show_boundaries` and `show_faults` optionally draw surface markers
-where the arc crosses plate boundaries and fault traces. `width` and `height` use the same `[1,
+where the arc crosses plate boundaries and fault traces. `show_plumes` optionally draws
+live mantle plumes intersecting the section: a head-stage plume gets an ellipse over its
+surface footprint band, and a tail-stage plume gets an ellipse plus a continues-below tick
+for the deep conduit (head and tail stages never overlap, so a head never shows a conduit).
+`width` and `height` use the same `[1,
 main.MAX_RENDER_DIMENSION_PX]` limit as `/worlds/{world_id}/render`. `404` means there is no current world;
 `409` means the world has no active surface nodes. The JSON response contains `image_base64`
 (PNG), `world_revision`, `elapsed_years`, the request's plane and position, `arc_length_km`,

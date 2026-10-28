@@ -151,3 +151,252 @@ def test_sampling_empty_world_reports_no_active_surface_nodes():
 
     with pytest.raises(ValueError, match="no active surface nodes"):
         cross_section._sample_fields(world, np.array([[1.0, 0.0, 0.0]]))
+
+
+def _marker_world(plumes):
+    return SimpleNamespace(mantle_plumes=plumes, elapsed_years=1_000_000.0)
+
+
+def _live_head(position, head_end_years=3_000_000.0, tail_end_years=80_000_000.0):
+    from app import plumes as plumes_mod
+
+    return plumes_mod.MantlePlume(
+        plume_id=0,
+        position=tuple(position),
+        born_years=0.0,
+        head_volume_m3=8e15,
+        head_remaining_m3=8e15,
+        head_end_years=head_end_years,
+        tail_flux_m3_per_yr=1e8,
+        tail_end_years=tail_end_years,
+    )
+
+
+def _tail_only(position):
+    import dataclasses
+
+    return dataclasses.replace(
+        _live_head(position),
+        plume_id=-1,
+        head_volume_m3=0.0,
+        head_remaining_m3=0.0,
+        head_end_years=0.0,
+    )
+
+
+def test_plume_markers_flag_head_footprint_and_tail_roles():
+    """RFC 0007 (#669): a live head marks its nearest sample plus the
+    intersected footprint extent; a live tail-only plume marks tail."""
+    from app import plumes as plumes_mod
+
+    sample_xyz, _, _ = cross_section._great_circle_samples(0.0, 0, 60.0)
+    middle = len(sample_xyz) // 2
+    world = _marker_world([_live_head(sample_xyz[middle]), _tail_only(sample_xyz[0])])
+
+    markers = dict(cross_section._plume_markers(world, sample_xyz, 60.0))
+
+    assert markers[middle] == "head"
+    radius_km = (
+        plumes_mod.head_kernel_radius_m(plumes_mod.head_footprint_area_m2(8e15)) / 1000.0
+    )
+    # Along-arc step between adjacent samples, from the sample geometry itself.
+    step_km = float(
+        np.arccos(np.clip(sample_xyz[0] @ sample_xyz[1], -1.0, 1.0))
+        * cross_section.PLANET_RADIUS_KM
+    )
+    expected_footprint = {
+        index
+        for index in range(len(sample_xyz))
+        if index != middle and abs(index - middle) * step_km <= radius_km
+    }
+    assert radius_km > 60.0  # the test only means something with real extent
+    footprint = {index for index, role in markers.items() if role == "head_footprint"}
+    assert footprint == expected_footprint
+    tail_samples = [index for index, role in markers.items() if role == "tail"]
+    assert tail_samples == [0]  # the tail-only plume's nearest sample
+
+
+def test_render_draws_each_plume_glyph_once_at_its_sample_column(monkeypatch):
+    """RFC 0007 (#669): the render loop visits every pixel column, so plume
+    glyphs must paint once at the sample's own column -- the tail tick stays a
+    1 px line (not a sample-wide slab) and the head ellipse keeps its fill
+    instead of being buried by repeated outlines."""
+    sample_xyz = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [-1.0, 0.0, 0.0]])
+    tangent = np.tile([0.0, 1.0, 0.0], (len(sample_xyz), 1))
+    distances = np.array([-1500.0, 0.0, 1500.0])
+    fields = {
+        "elevation": np.zeros(3),
+        "crustal_thickness_m": np.full(3, 35_000.0),
+        "mantle_lithosphere_thickness_m": np.full(3, 120_000.0),
+        "crust_type_code": np.full(3, CRUST_TYPE_OCEANIC),
+        "glacier_depth": np.zeros(3),
+        "is_volcano": np.zeros(3, dtype=bool),
+        "volcano_active_years_remaining": np.zeros(3),
+        "moho_thermal_lag_c": np.zeros(3),
+    }
+    monkeypatch.setattr(cross_section, "_great_circle_samples", lambda *_: (sample_xyz, tangent, distances))
+    monkeypatch.setattr(cross_section, "_sample_fields", lambda *_: (fields, np.zeros(3, dtype=bool), sample_xyz))
+    monkeypatch.setattr(cross_section, "_biome_colors", lambda *_: np.zeros((3, 3)))
+    monkeypatch.setattr(cross_section.orogeny, "moho_temperature_c", lambda hc, hm, lag: np.zeros_like(hc))
+    monkeypatch.setattr(cross_section, "_geotherm_temperature", lambda hc, hm, lag, depth: np.zeros_like(depth))
+    monkeypatch.setattr(
+        cross_section.mantle,
+        "flow_at",
+        lambda points, _centers: np.zeros((len(points), 3)),
+    )
+    world = SimpleNamespace(
+        node_density=4.0,
+        sea_level_m=1000.0,
+        elapsed_years=0.0,
+        solar_multiplier=1.0,
+        steps_taken=0,
+        mantle_centers=[],
+        pending_magma_parcels=[],
+        mantle_plumes=[_live_head(sample_xyz[1]), _tail_only(sample_xyz[0])],
+    )
+
+    image_base64, _ = cross_section.render_png_base64(world, 0.0, 0, 800, 500, show_plumes=True)
+    image = Image.open(io.BytesIO(base64.b64decode(image_base64))).convert("RGB")
+    pixels = np.asarray(image)
+    tail_rows = np.all(pixels == cross_section.PLUME_TAIL_COLOR, axis=-1).sum(axis=1)
+    # The tick line is 1 px wide; only the ellipse and arrowhead rows are wider.
+    # A per-column repaint would smear the tick across the sample (~250 px).
+    assert tail_rows.max() <= 10
+    assert int(np.count_nonzero(tail_rows)) > 50  # the tick still spans depth
+    # One head ellipse plus one tail ellipse worth of dark outline: the
+    # per-column repaint drew one outline per owned column (~250 each here).
+    # Found by colour so the pin survives layout changes.
+    outlines = int(np.all(pixels == (45, 24, 24), axis=-1).sum())
+    assert outlines <= 80
+
+
+def _sized_ocean_fields(count):
+    return {
+        "elevation": np.zeros(count),
+        "crustal_thickness_m": np.full(count, 35_000.0),
+        "mantle_lithosphere_thickness_m": np.full(count, 120_000.0),
+        "crust_type_code": np.full(count, CRUST_TYPE_OCEANIC),
+        "glacier_depth": np.zeros(count),
+        "is_volcano": np.zeros(count, dtype=bool),
+        "volcano_active_years_remaining": np.zeros(count),
+        "moho_thermal_lag_c": np.zeros(count),
+    }
+
+
+def test_render_draws_tail_tick_for_every_marker_at_fractional_widths(monkeypatch):
+    """RFC 0007 (#669): real sections have fractional sample x positions, and
+    the glyph column must be one the sample actually owns -- over several
+    render widths every tail marker gets its tick column (round() used to land
+    on the neighbour's column for ~half the samples, dropping their glyphs)."""
+    # Real geometry (fractional x_samples); everything else schematic.
+    monkeypatch.setattr(
+        cross_section, "_sample_fields",
+        lambda _world, points: (
+            _sized_ocean_fields(len(points)), np.zeros(len(points), dtype=bool), points,
+        ),
+    )
+    monkeypatch.setattr(
+        cross_section, "_biome_colors", lambda _w, pts, _e: np.zeros((len(pts), 3))
+    )
+    monkeypatch.setattr(cross_section.orogeny, "moho_temperature_c", lambda hc, hm, lag: np.zeros_like(hc))
+    monkeypatch.setattr(cross_section, "_geotherm_temperature", lambda hc, hm, lag, depth: np.zeros_like(depth))
+    monkeypatch.setattr(
+        cross_section.mantle, "flow_at", lambda points, _c: np.zeros((len(points), 3))
+    )
+    sample_xyz, _, _ = cross_section._great_circle_samples(0.0, 0, 60.0)
+    world = SimpleNamespace(
+        node_density=4.0,
+        sea_level_m=1000.0,
+        elapsed_years=0.0,
+        solar_multiplier=1.0,
+        steps_taken=0,
+        mantle_centers=[],
+        pending_magma_parcels=[],
+        mantle_plumes=[_tail_only(sample_xyz[i]) for i in (10, 40, 70)],
+    )
+
+    for width in (700, 1100, 1600):
+        image_base64, _ = cross_section.render_png_base64(world, 0.0, 0, width, 500, show_plumes=True)
+        image = Image.open(io.BytesIO(base64.b64decode(image_base64))).convert("RGB")
+        pixels = np.asarray(image)
+        tail_cols = np.all(pixels == cross_section.PLUME_TAIL_COLOR, axis=-1).sum(axis=0)
+        # A tick column carries the full conduit depth (~70+ rows here); the
+        # ellipse and arrowhead touch any one column for at most a few rows.
+        assert int(np.count_nonzero(tail_cols > 30)) == 3
+
+
+def test_plume_markers_omit_plumes_outside_corridor_and_dead_stages():
+    """RFC 0007 (#669): a plume off the section plane is omitted, as is a plume
+    whose head and tail stages both ended."""
+    sample_xyz, _, _ = cross_section._great_circle_samples(0.0, 0, 60.0)
+    middle = len(sample_xyz) // 2
+    off_plane = _live_head(-sample_xyz[middle])
+    assert dict(cross_section._plume_markers(_marker_world([off_plane]), sample_xyz, 60.0)) == {}
+    spent = _live_head(sample_xyz[middle], head_end_years=100.0, tail_end_years=100.0)
+    assert dict(cross_section._plume_markers(_marker_world([spent]), sample_xyz, 60.0)) == {}
+
+
+def test_plume_markers_skip_nonfinite_positions():
+    """RFC 0007 (#669): a plume with a NaN position must not mark sample 0 --
+    argmax over NaNs returns 0 and a NaN distance passes a plain range check."""
+    sample_xyz, _, _ = cross_section._great_circle_samples(0.0, 0, 60.0)
+    bad = _live_head((float("nan"), float("nan"), float("nan")))
+    assert dict(cross_section._plume_markers(_marker_world([bad]), sample_xyz, 60.0)) == {}
+
+
+def test_plume_markers_draw_cut_footprint_without_ellipse_outside_corridor():
+    """RFC 0007 (#669): a head whose centre is just outside the corridor still
+    paints the footprint band where the section cuts it -- only the head
+    ellipse requires the centre within the corridor. A tail outside the
+    corridor stays fully omitted."""
+    from app import plumes as plumes_mod
+
+    sample_xyz, _, _ = cross_section._great_circle_samples(0.0, 0, 60.0)
+    middle = len(sample_xyz) // 2
+    # 200 km off the section plane: outside the 90 km corridor, well inside
+    # the ~438 km footprint radius. (Plane 0 samples lie in the x-y plane.)
+    off = sample_xyz[middle] + 0.0314 * np.array([0.0, 0.0, 1.0])
+    off = tuple(off / np.linalg.norm(off))
+    markers = dict(cross_section._plume_markers(_marker_world([_live_head(off)]), sample_xyz, 60.0))
+    assert "head" not in markers.values()
+    radius_km = (
+        plumes_mod.head_kernel_radius_m(plumes_mod.head_footprint_area_m2(8e15)) / 1000.0
+    )
+    # Measured from the off-plane plume position, so the band is narrower than
+    # the centred 29-sample extent -- it shrinks smoothly instead of vanishing.
+    off_hat = np.asarray(off)
+    expected = {
+        index
+        for index in range(len(sample_xyz))
+        if np.arccos(np.clip(sample_xyz[index] @ off_hat, -1.0, 1.0))
+        * cross_section.PLANET_RADIUS_KM
+        <= radius_km
+    }
+    assert 0 < len(expected) < 29
+    assert {index for index, role in markers.items() if role == "head_footprint"} == expected
+    assert (
+        dict(cross_section._plume_markers(_marker_world([_tail_only(off)]), sample_xyz, 60.0))
+        == {}
+    )
+
+
+def test_merge_plume_markers_prefers_head_then_tail_over_footprint():
+    """RFC 0007 (#669): at a shared sample the head glyph wins over another
+    plume's footprint, and a tail wins over a footprint -- the render merge
+    must not depend on plume order."""
+    sample_xyz, _, _ = cross_section._great_circle_samples(0.0, 0, 60.0)
+    middle = len(sample_xyz) // 2
+    # B's footprint (radius ~437 km, samples ~30 km apart) covers the middle
+    # and middle+5, but B sorts after the tail so a naive last-wins dict would
+    # bury both the head and the tail under footprint paint.
+    world = _marker_world(
+        [
+            _live_head(sample_xyz[middle]),
+            _tail_only(sample_xyz[middle + 5]),
+            _live_head(sample_xyz[middle + 10]),
+        ]
+    )
+    merged = cross_section._merge_plume_markers(world, sample_xyz, 60.0)
+    assert merged[middle] == "head"
+    assert merged[middle + 5] == "tail"
+    assert merged[middle + 10] == "head"
