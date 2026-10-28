@@ -1,11 +1,12 @@
-"""Plume step-partition replay agreement (RFC 0007, #624).
+"""Plume step-partition checks (RFC 0007, #624) and the hotspot track test (#666).
 
 Slow, full-simulation checks live here rather than in backend/unit_tests/ --
 see bin/stress_test.sh. The 100 Myr pinned replay below is a proxy for the
 RFC's full-replay box: it exercises the same schedule/emplacement code path
 at both partitions, and the 2% bar absorbs `deform` path-dependence across
 partitions (which is why it is 2% here but 1e-9 on the shared-schedule unit
-test). Single seed 7: the schedule is a pure function of seed.
+test). Seeds are few and stated per test: the schedule is a pure function of
+seed, and multi-seed tests say so where the cutoffs depend on it.
 """
 
 import math
