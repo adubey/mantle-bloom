@@ -1,0 +1,218 @@
+{
+  "issue": 675,
+  "rfc": "0014",
+  "baseline_model_commit": "6ebf8cd19ee0098822ff9eae6685a22e20f9db32",
+  "instrumented_replay_commit": "f22bda1785a8792453e4513e95d2655d41267eb5",
+  "current_model_source_sha256": {
+    "backend/app/hydroclimate/lakes.py": "37f99f89207802ec0a16cda45bb34f50957910b20b6f12262a6cac2670518200",
+    "backend/app/hydroclimate/hydrology.py": "0339c0c94a238c93c4beea1dda87409c16a2de0950940b65559e512e96de7008",
+    "backend/app/hydroclimate/erosion.py": "f0b0f0d56a27a82372038ee2fc5dc6f51acc6efc8d26d00ea401976ac5ea81a9",
+    "backend/app/world.py": "81125af099d7b140d28a72bcda9563809c32ecda66dbfeac1c4f34c0dda0d7cc"
+  },
+  "save": {
+    "seed": 997271774,
+    "sha256": "a43962a149a0ec96f1dbee3e6c675be98d50422c47e0455e062aa72a7d1da4d7"
+  },
+  "control": "ice_age_period_years=0 (never)",
+  "horizon_years": 800000,
+  "anchor_reference": {
+    "elapsed_years": 131200000.0,
+    "area_km2": 31118.858138517386,
+    "volume_km3": 59.61800888993292,
+    "anchor_cell_count": 8
+  },
+  "dynamic_geographic_replays": {
+    "10k": {
+      "step_years": 10000.0,
+      "step_count": 80,
+      "maximum_normalized_ledger_residual": 1.9306226254509756e-13,
+      "maximum_anchor_match_distance_km": 2.8695855526439553,
+      "records": [
+        {
+          "elapsed_years": 130550000.0,
+          "anchor_points_wet": 8,
+          "anchor_component_area_km2": 1310952.7584189551,
+          "anchor_component_volume_km3": 67807.19225966491,
+          "global_area_km2": 2118832.8627390964,
+          "global_volume_km3": 173196.88094473514,
+          "normalized_ledger_residual": 1.0062158607539593e-15
+        },
+        {
+          "elapsed_years": 131200000.0,
+          "anchor_points_wet": 8,
+          "anchor_component_area_km2": 1489253.4580432826,
+          "anchor_component_volume_km3": 84984.8984597476,
+          "global_area_km2": 2798303.5634738607,
+          "global_volume_km3": 352592.36466329446,
+          "normalized_ledger_residual": 4.330870381071045e-16
+        },
+        {
+          "elapsed_years": 131300000.0,
+          "anchor_points_wet": 8,
+          "anchor_component_area_km2": 1512188.5327113941,
+          "anchor_component_volume_km3": 86642.16250137267,
+          "global_area_km2": 2868036.267381338,
+          "global_volume_km3": 303450.2363429399,
+          "normalized_ledger_residual": 3.2807102351458264e-15
+        }
+      ],
+      "largest_single_step_anchor_volume_change_km3": 47904.1443585922,
+      "largest_change_before_after_years": [
+        130540000.0,
+        130550000.0
+      ]
+    },
+    "25k": {
+      "step_years": 25000.0,
+      "step_count": 32,
+      "maximum_normalized_ledger_residual": 5.576540362127556e-13,
+      "maximum_anchor_match_distance_km": 2.8695855526439553,
+      "records": [
+        {
+          "elapsed_years": 130550000.0,
+          "anchor_points_wet": 8,
+          "anchor_component_area_km2": 931712.9240806315,
+          "anchor_component_volume_km3": 19870.39164810942,
+          "global_area_km2": 1553687.373339431,
+          "global_volume_km3": 127890.41421720307,
+          "normalized_ledger_residual": 2.5466464408444103e-14
+        },
+        {
+          "elapsed_years": 131200000.0,
+          "anchor_points_wet": 8,
+          "anchor_component_area_km2": 1446251.2115186541,
+          "anchor_component_volume_km3": 77619.68520962809,
+          "global_area_km2": 2701483.31631196,
+          "global_volume_km3": 364378.75894805556,
+          "normalized_ledger_residual": 3.547999597470086e-14
+        },
+        {
+          "elapsed_years": 131300000.0,
+          "anchor_points_wet": 8,
+          "anchor_component_area_km2": 1462043.9010861132,
+          "anchor_component_volume_km3": 79662.54454992188,
+          "global_area_km2": 2707111.2823021454,
+          "global_volume_km3": 327645.244750271,
+          "normalized_ledger_residual": 7.448144121830279e-15
+        }
+      ],
+      "largest_single_step_anchor_volume_change_km3": 23520.436938977226,
+      "largest_change_before_after_years": [
+        130625000.0,
+        130650000.0
+      ]
+    },
+    "100k": {
+      "step_years": 100000,
+      "coarse_time_series": [
+        {
+          "elapsed_years": 130600000.0,
+          "max_anchor_match_distance_km": 2.778323901746133,
+          "matched_components": [
+            {
+              "anchor_centers_in_component": 8,
+              "volume_km3": 20090.193099289012,
+              "area_km2": 931712.9240806315,
+              "mean_depth_m": 21.562642934370608
+            }
+          ]
+        },
+        {
+          "elapsed_years": 130700000.0,
+          "max_anchor_match_distance_km": 2.2258016292993754,
+          "matched_components": []
+        },
+        {
+          "elapsed_years": 130800000.0,
+          "max_anchor_match_distance_km": 1.7231583542684061,
+          "matched_components": [
+            {
+              "anchor_centers_in_component": 6,
+              "volume_km3": 49.092224792867505,
+              "area_km2": 23381.0275016702,
+              "mean_depth_m": 2.0996607094945103
+            }
+          ]
+        },
+        {
+          "elapsed_years": 130900000.0,
+          "max_anchor_match_distance_km": 1.246779648407373,
+          "matched_components": [
+            {
+              "anchor_centers_in_component": 6,
+              "volume_km3": 39.67512767776793,
+              "area_km2": 23381.0275016702,
+              "mean_depth_m": 1.6968941024911661
+            }
+          ]
+        },
+        {
+          "elapsed_years": 131000000.0,
+          "max_anchor_match_distance_km": 0.8179566076190546,
+          "matched_components": []
+        },
+        {
+          "elapsed_years": 131100000.0,
+          "max_anchor_match_distance_km": 0.40167288487929037,
+          "matched_components": [
+            {
+              "anchor_centers_in_component": 7,
+              "volume_km3": 147.76666959849456,
+              "area_km2": 61995.14372013838,
+              "mean_depth_m": 2.383520074823124
+            }
+          ]
+        },
+        {
+          "elapsed_years": 131200000.0,
+          "max_anchor_match_distance_km": 0.0,
+          "matched_components": [
+            {
+              "anchor_centers_in_component": 8,
+              "volume_km3": 59.61800888993292,
+              "area_km2": 31118.858138517386,
+              "mean_depth_m": 1.915816082471892
+            }
+          ]
+        },
+        {
+          "elapsed_years": 131300000.0,
+          "max_anchor_match_distance_km": 0.39917035573467124,
+          "matched_components": [
+            {
+              "anchor_centers_in_component": 8,
+              "volume_km3": 157.58617620443363,
+              "area_km2": 65796.04250954663,
+              "mean_depth_m": 2.3950707397267657
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "10k_standard_large_body_detector": {
+    "reversals_total": 0,
+    "maximum_normalized_ledger_residual": 1.9306226254509756e-13
+  },
+  "mechanism_screens": {
+    "evaporation_model_temperature_only": {
+      "seed997_step8_pre_event_mean_m_per_year": 1.4448189027211453,
+      "p10_m_per_year": 1.4402119306651364,
+      "p90_m_per_year": 1.450668234903024,
+      "no_inflow_turnover_years": 1.3259904607170345,
+      "seed3739_step5_pre_event_mean_m_per_year": 0.8168516394207005,
+      "no_inflow_turnover_years_deep": 903.6875167152368,
+      "wind_or_deep_temperature_forcing": "not present in saved-world model state"
+    },
+    "sediment_footprint_screen": {
+      "seed997_prior_step_deposit_km3": 55.99644870905002,
+      "seed997_rebound_km3": 97.9681673145007,
+      "seed3739_prior_step_deposit_km3": 415.9855996475617,
+      "seed3739_component_drop_km3": 132450.0,
+      "seed997_solver_spill_target_prior_step_silt_m": 0.041,
+      "note": "equal-area footprint screen, post-solve deposition; not a sediment-only causal run"
+    },
+    "porewater_and_shoreline": "capacity screens only; no connected-store dynamic perturbation yet",
+    "basin_level_flux_lineage": "not measured; scratch body-counter tap was discarded because hierarchy flushes recount transfers"
+  }
+}
