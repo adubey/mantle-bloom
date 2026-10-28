@@ -851,8 +851,9 @@ export function fetchCrossSection(
   signal?: AbortSignal,
   showBoundaries = false,
   showFaults = false,
+  showPlumes = false,
 ): Promise<CrossSectionResponse> {
-  return requestCrossSection(worldBase(API_BASE, worldId), planeAngleDeg, positionIndex, width, height, signal, fetch, showBoundaries, showFaults);
+  return requestCrossSection(worldBase(API_BASE, worldId), planeAngleDeg, positionIndex, width, height, signal, fetch, showBoundaries, showFaults, showPlumes);
 }
 
 export function fetchPlates(worldId: WorldId): Promise<PlatesResponse> {

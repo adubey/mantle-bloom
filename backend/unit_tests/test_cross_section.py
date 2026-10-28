@@ -187,6 +187,8 @@ def _tail_only(position):
 def test_plume_markers_flag_head_footprint_and_tail_roles():
     """RFC 0007 (#669): a live head marks its nearest sample plus the
     intersected footprint extent; a live tail-only plume marks tail."""
+    from app import plumes as plumes_mod
+
     sample_xyz, _, _ = cross_section._great_circle_samples(0.0, 0, 60.0)
     middle = len(sample_xyz) // 2
     world = _marker_world([_live_head(sample_xyz[middle]), _tail_only(sample_xyz[0])])
@@ -194,8 +196,24 @@ def test_plume_markers_flag_head_footprint_and_tail_roles():
     markers = dict(cross_section._plume_markers(world, sample_xyz, 60.0))
 
     assert markers[middle] == "head"
+    radius_km = (
+        plumes_mod.head_kernel_radius_m(plumes_mod.head_footprint_area_m2(8e15)) / 1000.0
+    )
+    # Along-arc step between adjacent samples, from the sample geometry itself.
+    step_km = float(
+        np.arccos(np.clip(sample_xyz[0] @ sample_xyz[1], -1.0, 1.0))
+        * cross_section.PLANET_RADIUS_KM
+    )
+    expected_footprint = {
+        index
+        for index in range(len(sample_xyz))
+        if index != middle and abs(index - middle) * step_km <= radius_km
+    }
+    assert radius_km > 60.0  # the test only means something with real extent
+    footprint = {index for index, role in markers.items() if role == "head_footprint"}
+    assert footprint == expected_footprint
     tail_samples = [index for index, role in markers.items() if role == "tail"]
-    assert len(tail_samples) == 1  # the tail-only plume's nearest sample
+    assert tail_samples == [0]  # the tail-only plume's nearest sample
 
 
 def test_plume_markers_omit_plumes_outside_corridor_and_dead_stages():

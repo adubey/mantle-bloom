@@ -160,14 +160,32 @@ def _plume_markers(world, sample_xyz: np.ndarray, spacing_km: float) -> list[tup
             radius_m = plumes_mod.head_kernel_radius_m(
                 plumes_mod.head_footprint_area_m2(plume.head_volume_m3)
             )
-            along = np.arccos(np.clip(sample_xyz @ unit[rank], -1.0, 1.0)) * PLANET_RADIUS_KM
-            for other in np.flatnonzero(along <= radius_m):
+            # along-arc distance in km (radius_m is meters -- see the /1000).
+            along_km = np.arccos(np.clip(sample_xyz @ unit[rank], -1.0, 1.0)) * PLANET_RADIUS_KM
+            for other in np.flatnonzero(along_km <= radius_m / 1000.0):
                 if int(other) != int(index):
                     markers.append((int(other), "head_footprint"))
             markers.append((int(index), "head"))
         elif tail_live:
             markers.append((int(index), "tail"))
     return markers
+
+
+# Marker priority when plumes share a sample: heads read first, then tails,
+# then footprint extent.
+_PLUME_ROLE_PRIORITY = {"head": 0, "tail": 1, "head_footprint": 2}
+
+
+def _merge_plume_markers(world, sample_xyz: np.ndarray, spacing_km: float) -> dict[int, str]:
+    """Merge plume markers with head > tail > footprint priority, so a later
+    plume's footprint never overwrites an earlier plume's head/tail marker
+    at a shared sample."""
+    merged: dict[int, str] = {}
+    for sample_index, role in _plume_markers(world, sample_xyz, spacing_km):
+        incumbent = merged.get(sample_index)
+        if incumbent is None or _PLUME_ROLE_PRIORITY[role] < _PLUME_ROLE_PRIORITY[incumbent]:
+            merged[sample_index] = role
+    return merged
 
 
 def _parcel_markers(world, sample_xyz: np.ndarray, spacing_km: float) -> list[tuple[int, float]]:
@@ -266,9 +284,7 @@ def render_png_base64(
     # plotting rectangle made the frame read as an asthenosphere block (#360).
     points_for_parcels = sample_xyz
     marker_by_sample = dict(_parcel_markers(world, points_for_parcels, spacing_km))
-    plume_by_sample: dict[int, str] = (
-        dict(_plume_markers(world, sample_xyz, spacing_km)) if show_plumes else {}
-    )
+    plume_by_sample = _merge_plume_markers(world, sample_xyz, spacing_km) if show_plumes else {}
     fault_samples: set[int] = set()
     if show_faults:
         by_id = {plate.plate_id: plate for plate in world_plates}
