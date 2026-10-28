@@ -71,7 +71,7 @@ Use these Markdown links to jump directly to detailed sections on the topic page
 - [Resources and soil (geology.py, plus volcanism.py's own eruption roll)](simulation-model/surface-processes.md#resources-and-soil-geologypy-plus-volcanismpys-own-eruption-roll)
 - [Hydrology: rivers and lakes (hydrology.py)](simulation-model/hydrology.md#hydrology-rivers-and-lakes-hydrologypy)
 - [Lakes are an explicit object tree (lakes.py, not hydrology.py)](simulation-model/hydrology.md#lakes-are-an-explicit-tree)
-- [Lake vs. sea tiers: a depth ceiling by size (2026-09-10)](simulation-model/hydrology.md#lake-vs-sea-tiers-a-depth-ceiling-by-size-2026-09-10)
+- [Lake vs. sea tiers: numerical depth guards by size](simulation-model/hydrology.md#lake-vs-sea-tiers-numerical-depth-guards-by-size)
 - [Glaciation (hydrology.py)](simulation-model/hydrology.md#glaciation-hydrologypy)
 - [River Inspector](simulation-model/hydrology.md#river-inspector)
 - [Lake Inspector](simulation-model/hydrology.md#lake-inspector)

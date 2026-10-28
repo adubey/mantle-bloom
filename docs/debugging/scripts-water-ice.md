@@ -23,6 +23,18 @@ preregistered save checksums. The replay and measurement scripts come in two kin
 
 ## Rivers and lakes
 
+### `gate_lake_depth_caps.py`
+
+Replays the RFC 0014 G4 diagnosis saves and records each lake- or sea-tier artificial depth-cap
+binding by active body and step. It reports the body's leaf-sink identity, area, cap level,
+direct external supply and positive overflow surplus; rim-limited spills and floor drains do
+not count as depth-cap events. Commit only the compact diagnosis result in `analysis/issue553/`.
+
+```bash
+backend/.venv/bin/python bin/debug/gate_lake_depth_caps.py world.mbworld --myr 1 \
+    --step-years 100000 --out /tmp/seed.json
+```
+
 ### `measure_river_endings.py`
 
 Measures where rivers end (#503). Each step, from that step's hydrology, it records:
