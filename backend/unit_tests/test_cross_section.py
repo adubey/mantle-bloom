@@ -263,19 +263,66 @@ def test_render_draws_each_plume_glyph_once_at_its_sample_column(monkeypatch):
     # A per-column repaint would smear the tick across the sample (~250 px).
     assert tail_rows.max() <= 10
     assert int(np.count_nonzero(tail_rows)) > 50  # the tick still spans depth
-    # The head ellipse (9x9 at its center column) keeps pink fill at its middle;
-    # repeated outlines used to bury it under the dark outline colour.
-    width, height = 800, 500
-    margin_x, margin_top = 20, 38
-    arc_width = (width - 2 * margin_x) * (690.0 / 820.0)
-    horizontal_scale = arc_width / (
-        2.0 * cross_section.PLANET_RADIUS_KM
-        * np.sin(cross_section.ARC_LENGTH_KM / (2.0 * cross_section.PLANET_RADIUS_KM))
+    # One head ellipse plus one tail ellipse worth of dark outline: the
+    # per-column repaint drew one outline per owned column (~250 each here).
+    # Found by colour so the pin survives layout changes.
+    outlines = int(np.all(pixels == (45, 24, 24), axis=-1).sum())
+    assert outlines <= 80
+
+
+def _sized_ocean_fields(count):
+    return {
+        "elevation": np.zeros(count),
+        "crustal_thickness_m": np.full(count, 35_000.0),
+        "mantle_lithosphere_thickness_m": np.full(count, 120_000.0),
+        "crust_type_code": np.full(count, CRUST_TYPE_OCEANIC),
+        "glacier_depth": np.zeros(count),
+        "is_volcano": np.zeros(count, dtype=bool),
+        "volcano_active_years_remaining": np.zeros(count),
+        "moho_thermal_lag_c": np.zeros(count),
+    }
+
+
+def test_render_draws_tail_tick_for_every_marker_at_fractional_widths(monkeypatch):
+    """RFC 0007 (#669): real sections have fractional sample x positions, and
+    the glyph column must be one the sample actually owns -- over several
+    render widths every tail marker gets its tick column (round() used to land
+    on the neighbour's column for ~half the samples, dropping their glyphs)."""
+    # Real geometry (fractional x_samples); everything else schematic.
+    monkeypatch.setattr(
+        cross_section, "_sample_fields",
+        lambda _world, points: (
+            _sized_ocean_fields(len(points)), np.zeros(len(points), dtype=bool), points,
+        ),
     )
-    vertical_scale = cross_section.VERTICAL_EXAGGERATION * horizontal_scale
-    center_x = width // 2
-    top = margin_top + round(height * 0.08) + vertical_scale
-    assert image.getpixel((center_x, round(top) - 5)) == cross_section.PLUME_HEAD_FILL
+    monkeypatch.setattr(
+        cross_section, "_biome_colors", lambda _w, pts, _e: np.zeros((len(pts), 3))
+    )
+    monkeypatch.setattr(cross_section.orogeny, "moho_temperature_c", lambda hc, hm, lag: np.zeros_like(hc))
+    monkeypatch.setattr(cross_section, "_geotherm_temperature", lambda hc, hm, lag, depth: np.zeros_like(depth))
+    monkeypatch.setattr(
+        cross_section.mantle, "flow_at", lambda points, _c: np.zeros((len(points), 3))
+    )
+    sample_xyz, _, _ = cross_section._great_circle_samples(0.0, 0, 60.0)
+    world = SimpleNamespace(
+        node_density=4.0,
+        sea_level_m=1000.0,
+        elapsed_years=0.0,
+        solar_multiplier=1.0,
+        steps_taken=0,
+        mantle_centers=[],
+        pending_magma_parcels=[],
+        mantle_plumes=[_tail_only(sample_xyz[i]) for i in (10, 40, 70)],
+    )
+
+    for width in (700, 1100, 1600):
+        image_base64, _ = cross_section.render_png_base64(world, 0.0, 0, width, 500, show_plumes=True)
+        image = Image.open(io.BytesIO(base64.b64decode(image_base64))).convert("RGB")
+        pixels = np.asarray(image)
+        tail_cols = np.all(pixels == cross_section.PLUME_TAIL_COLOR, axis=-1).sum(axis=0)
+        # A tick column carries the full conduit depth (~70+ rows here); the
+        # ellipse and arrowhead touch any one column for at most a few rows.
+        assert int(np.count_nonzero(tail_cols > 30)) == 3
 
 
 def test_plume_markers_omit_plumes_outside_corridor_and_dead_stages():

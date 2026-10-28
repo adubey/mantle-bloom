@@ -477,8 +477,8 @@ function OverlayLegendKeys({ showBoundaries, showFaults, showPlumes }: {
     <>
       {showBoundaries && <LegendKey color="#58BEFF" label="Plate boundary" line />}
       {showFaults && <LegendKey color="#FF7D57" label="Fault line" line />}
-      {showPlumes && <LegendKey color="#EC4899" label="Mantle plume" />}
-      {showPlumes && <LegendKey color="#BE185D" label="Plume tail" />}
+      {showPlumes && <LegendKey color="#F47A3C" label="Mantle plume" />}
+      {showPlumes && <LegendKey color="#C93D3D" label="Plume tail" />}
     </>
   );
 }

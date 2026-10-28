@@ -33,10 +33,11 @@ MANTLE_LITHOSPHERE = (66, 90, 90)
 ASTHENOSPHERE = (117, 108, 148)
 MAGMA_PALETTE = ((201, 61, 61), (244, 122, 60), (255, 214, 90))
 SEA_LEVEL_COLOR = (83, 159, 203)
-# Plume markers use a hot-pink hue distinct from the magma palette's reds and
-# oranges (active vents, stored melt, fault lines all sit in that family).
-PLUME_HEAD_FILL = (236, 72, 153)
-PLUME_TAIL_COLOR = (190, 24, 93)
+# Plume markers reuse the magma hues (per UX request): the head band/ellipse
+# shares the stored-melt orange and the tail the weak-magma red. The legend's
+# separate "Mantle plume" / "Plume tail" keys disambiguate them from vents.
+PLUME_HEAD_FILL = (244, 122, 60)
+PLUME_TAIL_COLOR = (201, 61, 61)
 
 
 def _world_surface(world) -> tuple[np.ndarray, dict[str, np.ndarray], np.ndarray]:
@@ -291,6 +292,11 @@ def render_png_base64(
     )
     x_pixel = np.arange(width)
     nearest = np.clip(np.searchsorted(x_samples, x_pixel, side="right") - 1, 0, len(x_samples) - 1)
+    # First pixel column owned by each sample: searchsorted(..., side="right")
+    # hands column x to the sample at or left of x, so ceil(x_samples[i]) is
+    # always visited and always owned by i (round() could land on i-1's column
+    # when the fractional part exceeds 0.5, silently dropping that glyph).
+    owner = np.ceil(x_samples).astype(int)
 
     image = Image.new("RGB", (width, height), (14, 20, 34))
     draw = ImageDraw.Draw(image)
@@ -397,7 +403,7 @@ def render_png_base64(
         if role is not None:
             _draw_plume_marker(
                 draw, role, x, x0, x1, top, round(lith_end), round(bottom),
-                height - margin_bottom, center=(x == round(x_samples[i])),
+                height - margin_bottom, center=(x == owner[i]),
             )
         if volcano[i]:
             color = (237, 126, 60) if active_vent[i] else (183, 190, 193)
