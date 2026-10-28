@@ -1335,7 +1335,7 @@ plumes where they intersect the section arc: head ellipse over its footprint
 band, tail ellipse with a continues-below tick for the deep conduit. A head
 whose centre lies off the section plane still paints its footprint band where
 the arc cuts it -- only the ellipse needs the centre within the corridor -- so
-an absent band means no plume, not an off-plane one.
+an absent band means no live head cuts the section.
 
 ## Volcanism
 
