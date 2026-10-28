@@ -27,7 +27,6 @@ import FileModal from "./FileModal";
 import AnimationModal from "./AnimationModal";
 import AnimationStoppedModal, { type FailedAnimation } from "./AnimationStoppedModal";
 import SaveAnimationModal from "./SaveAnimationModal";
-import WorldMenu from "./WorldMenu";
 import Legend from "./Legend";
 import MeasureOverlay from "./MeasureOverlay";
 import ProgressBar from "./ProgressBar";
@@ -1165,9 +1164,15 @@ export default function App() {
   // The world list and this tab's selection (#563). The list is refreshed after
   // local world actions and when the tab regains focus, so a second tab's new
   // world shows up without a reload.
+  // Only the newest refresh may commit its list. Closing the Delete confirm
+  // dialog refocuses the window, and that focus refresh can be answered before
+  // the DELETE yet land after the delete's own refresh -- putting the deleted
+  // world back in the selector until the next poll.
+  const worldsRequestRef = useRef(0);
   const refreshWorlds = useCallback(async (): Promise<WorldRecord[]> => {
+    const request = ++worldsRequestRef.current;
     const { worlds: list } = await fetchWorlds();
-    setWorlds(list);
+    if (request === worldsRequestRef.current) setWorlds(list);
     return list;
   }, []);
 
@@ -1625,19 +1630,27 @@ export default function App() {
             {worlds.length === 0 ? (
               <div style={{ opacity: 0.7, marginBottom: 6 }}>No worlds yet.</div>
             ) : (
-              <WorldMenu
-                worlds={worlds}
-                worldId={worldId}
+              <select
+                value={worldId ?? ""}
+                onChange={(e) => selectWorld(e.target.value || null)}
+                // An explicit empty option: without it the browser would display the
+                // first world while nothing is actually selected (#597: starting
+                // with no world is the point), and that world would then be
+                // unpickable since picking it fires no change event.
                 disabled={busy || animating || playing}
-                disabledTitle={busy || animating || playing ? "Stop the current operation first" : undefined}
-                onSelect={(id) => selectWorld(id)}
-                onDelete={(id) => {
-                  const target = worlds.find((w) => w.world_id === id);
-                  if (target && window.confirm(`Delete ${target.name} and its checkpoint? This cannot be undone.`)) {
-                    handleDeleteWorld(id);
-                  }
-                }}
-              />
+                title={busy || animating || playing ? "Stop the current operation first" : undefined}
+                style={{ width: "100%", fontSize: 12, marginBottom: 6 }}
+                aria-label="World"
+              >
+                <option value="">Select a world…</option>
+                {worlds.map((w) => (
+                  <option key={w.world_id} value={w.world_id}>
+                    {w.name}
+                    {w.summary ? "" : " (empty)"}
+                    {w.run?.running ? " ▶" : ""}
+                  </option>
+                ))}
+              </select>
             )}
             <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
               <button onClick={openGenerateDialog} disabled={busy || animating || playing} style={{ flex: 1, fontSize: 12 }} title="Open the Generate World dialog">

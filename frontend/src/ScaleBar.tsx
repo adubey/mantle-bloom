@@ -68,6 +68,29 @@ function niceScaleKm(roughKm: number): number {
   return niceResidual * magnitude;
 }
 
+// A 2x3 dot-grid grip on the docked bar's left edge: the conventional drag-handle
+// cue, alongside the grab cursor, that this card is picked up rather than clicked.
+// Docked only -- floating on the map the bar stays the bare label-plus-ticks.
+const GRIP_DOT_GAP = 4;
+const GRIP_WIDTH = GRIP_DOT_GAP + 2;
+const GRIP_INSET = 5;
+
+function DragGrip() {
+  const dots = [0, 1, 2].flatMap((row) => [0, 1].map((col) => ({ cx: 1 + col * GRIP_DOT_GAP, cy: 1 + row * GRIP_DOT_GAP })));
+  return (
+    <svg
+      aria-hidden
+      width={GRIP_WIDTH}
+      height={2 * GRIP_DOT_GAP + 2}
+      style={{ position: "absolute", left: GRIP_INSET, top: "50%", transform: "translateY(-50%)", opacity: 0.6 }}
+    >
+      {dots.map(({ cx, cy }) => (
+        <circle key={`${cx},${cy}`} cx={cx} cy={cy} r={1} fill={STROKE} />
+      ))}
+    </svg>
+  );
+}
+
 // oxlint-disable-next-line eslint/complexity -- over the cap when it was turned on; split it rather than add more
 export default function ScaleBar({ projection, width, height, displayWidth, displayHeight, mapWrapperRef }: Props) {
   const [dropped, setDropped] = useState<{ left: number; top: number } | null>(null); // viewport px
@@ -265,7 +288,8 @@ export default function ScaleBar({ projection, width, height, displayWidth, disp
                 border: "1px solid #333",
                 borderRadius: 4,
                 background: "rgba(255, 255, 255, 0.04)",
-                padding: "3px 6px",
+                position: "relative",
+                padding: `3px 6px 3px ${2 * GRIP_INSET + GRIP_WIDTH}px`,
                 font: "inherit",
                 flexShrink: 0,
                 marginLeft: "auto",
@@ -278,6 +302,7 @@ export default function ScaleBar({ projection, width, height, displayWidth, disp
               }
         }
       >
+        {!isDropped && <DragGrip />}
         <svg width={svgWidth} height={svgHeight} aria-hidden>
           {!vertical ? (
             <>
