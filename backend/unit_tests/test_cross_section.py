@@ -336,6 +336,50 @@ def test_plume_markers_omit_plumes_outside_corridor_and_dead_stages():
     assert dict(cross_section._plume_markers(_marker_world([spent]), sample_xyz, 60.0)) == {}
 
 
+def test_plume_markers_skip_nonfinite_positions():
+    """RFC 0007 (#669): a plume with a NaN position must not mark sample 0 --
+    argmax over NaNs returns 0 and a NaN distance passes a plain range check."""
+    sample_xyz, _, _ = cross_section._great_circle_samples(0.0, 0, 60.0)
+    bad = _live_head((float("nan"), float("nan"), float("nan")))
+    assert dict(cross_section._plume_markers(_marker_world([bad]), sample_xyz, 60.0)) == {}
+
+
+def test_plume_markers_draw_cut_footprint_without_ellipse_outside_corridor():
+    """RFC 0007 (#669): a head whose centre is just outside the corridor still
+    paints the footprint band where the section cuts it -- only the head
+    ellipse requires the centre within the corridor. A tail outside the
+    corridor stays fully omitted."""
+    from app import plumes as plumes_mod
+
+    sample_xyz, _, _ = cross_section._great_circle_samples(0.0, 0, 60.0)
+    middle = len(sample_xyz) // 2
+    # 200 km off the section plane: outside the 90 km corridor, well inside
+    # the ~438 km footprint radius. (Plane 0 samples lie in the x-y plane.)
+    off = sample_xyz[middle] + 0.0314 * np.array([0.0, 0.0, 1.0])
+    off = tuple(off / np.linalg.norm(off))
+    markers = dict(cross_section._plume_markers(_marker_world([_live_head(off)]), sample_xyz, 60.0))
+    assert "head" not in markers.values()
+    radius_km = (
+        plumes_mod.head_kernel_radius_m(plumes_mod.head_footprint_area_m2(8e15)) / 1000.0
+    )
+    # Measured from the off-plane plume position, so the band is narrower than
+    # the centred 29-sample extent -- it shrinks smoothly instead of vanishing.
+    off_hat = np.asarray(off)
+    expected = {
+        index
+        for index in range(len(sample_xyz))
+        if np.arccos(np.clip(sample_xyz[index] @ off_hat, -1.0, 1.0))
+        * cross_section.PLANET_RADIUS_KM
+        <= radius_km
+    }
+    assert 0 < len(expected) < 29
+    assert {index for index, role in markers.items() if role == "head_footprint"} == expected
+    assert (
+        dict(cross_section._plume_markers(_marker_world([_tail_only(off)]), sample_xyz, 60.0))
+        == {}
+    )
+
+
 def test_merge_plume_markers_prefers_head_then_tail_over_footprint():
     """RFC 0007 (#669): at a shared sample the head glyph wins over another
     plume's footprint, and a tail wins over a footprint -- the render merge

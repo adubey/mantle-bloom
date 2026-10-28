@@ -131,13 +131,14 @@ def _plume_markers(world, sample_xyz: np.ndarray, spacing_km: float) -> list[tup
 
     Roles are `"head"` (nearest sample to a head-stage plume), `"head_footprint"`
     (further samples inside the head's emplacement radius), and `"tail"` (nearest
-    sample to a tail-stage plume). Only plumes whose nearest sample is within
-    the same corridor rule as `_parcel_markers` are projected, so a head just
-    outside the corridor is omitted even if its footprint crosses the section;
-    the deep tail conduit below the 350 km section is drawn as a
-    continues-below tick by the renderer (RFC 0007). Head and tail stages are
-    disjoint by construction (`tail_start_years == head_end_years`), so a
-    head-stage plume never shows a conduit tick.
+    sample to a tail-stage plume). The head ellipse and tail glyphs require the
+    plume centre within the same corridor rule as `_parcel_markers`, but the
+    footprint band is drawn wherever the section cuts it -- a head just outside
+    the corridor still paints its band, only without the ellipse. The deep tail
+    conduit below the 350 km section is drawn as a continues-below tick by the
+    renderer (RFC 0007). Head and tail stages are disjoint by construction
+    (`tail_start_years == head_end_years`), so a head-stage plume never shows
+    a conduit tick.
     """
     live = [p for p in (getattr(world, "mantle_plumes", ()) or ()) if p is not None]
     if len(sample_xyz) == 0 or not live:
@@ -153,7 +154,7 @@ def _plume_markers(world, sample_xyz: np.ndarray, spacing_km: float) -> list[tup
     markers: list[tuple[int, str]] = []
     unit = positions / norms[:, None]
     for rank, (plume, index, dist) in enumerate(zip(live, nearest, distance_km)):
-        if dist > corridor_km:
+        if not np.isfinite(dist):
             continue
         head_live = (
             not plume.is_tail_only
@@ -169,11 +170,17 @@ def _plume_markers(world, sample_xyz: np.ndarray, spacing_km: float) -> list[tup
             )
             # along-arc distance in km (radius_m is meters -- see the /1000).
             along_km = np.arccos(np.clip(sample_xyz @ unit[rank], -1.0, 1.0)) * PLANET_RADIUS_KM
-            for other in np.flatnonzero(along_km <= radius_m / 1000.0):
-                if int(other) != int(index):
-                    markers.append((int(other), "head_footprint"))
-            markers.append((int(index), "head"))
-        elif tail_live:
+            inside = np.flatnonzero(along_km <= radius_m / 1000.0)
+            if dist > corridor_km:
+                # Centre off-section: show where the plane cuts the footprint,
+                # but no head ellipse.
+                markers.extend((int(other), "head_footprint") for other in inside)
+            else:
+                for other in inside:
+                    if int(other) != int(index):
+                        markers.append((int(other), "head_footprint"))
+                markers.append((int(index), "head"))
+        elif tail_live and dist <= corridor_km:
             markers.append((int(index), "tail"))
     return markers
 
