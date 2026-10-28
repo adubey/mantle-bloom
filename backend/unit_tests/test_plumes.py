@@ -720,6 +720,3 @@ def test_multiplier_zero_matches_plume_off_replay(monkeypatch):
             assert got == pytest.approx(want)
         else:
             assert got == want
-
-
-
