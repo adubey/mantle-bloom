@@ -477,7 +477,6 @@ function OverlayLegendKeys({ showBoundaries, showFaults, showPlumes }: {
     <>
       {showBoundaries && <LegendKey color="#58BEFF" label="Plate boundary" line />}
       {showFaults && <LegendKey color="#FF7D57" label="Fault line" line />}
-      {showPlumes && <LegendKey color="#F47A3C" label="Mantle plume" />}
       {showPlumes && <LegendKey color="#C93D3D" label="Plume tail" />}
     </>
   );
@@ -744,7 +743,7 @@ export default function MantleCrossSection({
           <LegendKey color="#526779" label="Oceanic crust" />
           <LegendKey color="#425A5A" label="Mantle lithosphere" />
           <LegendKey color="#756C94" label="Schematic asthenosphere" />
-          <LegendKey color="#F47A3C" label="Stored melt source" />
+          <LegendKey color="#F47A3C" label="Magma" />
           <LegendKey color="#FFD278" label="Melt-eligible estimate" />
           <LegendKey color="#47ECD2" label="Mantle flow (schematic depth)" line />
           <OverlayLegendKeys showBoundaries={showBoundaries} showFaults={showFaults} showPlumes={showPlumes} />
