@@ -1,0 +1,709 @@
+{
+  "issue": 675,
+  "base_commit": "2cefff3b3bb073c0d791e8444ec1fac3db66db15",
+  "trace_identity": "(plate-local surface-node key, plate_id)",
+  "storage_boundary": "old and new stock use the current step's basin cell IDs; old/new membership stock delta is separately reported as connectivity reassignment",
+  "source_sha256": {
+    "backend/app/hydroclimate/hydrology.py": "f656762287f4520d5018f57048619131322b162f096cb6ae1446a1a411173e03",
+    "backend/app/hydroclimate/lakes.py": "15603b20cee7f72c45ced62746896ee79d9f149fc5c7c1165390ab7dcdc7e18b",
+    "bin/debug/trace_lake_event_anchor.py": "dfeb01a2fb1cda2d7ac8936539fc90e1b754c51abfd394d532e566c1afff909c",
+    "bin/debug/trace_lake_drainage_phases.py": "13b851f437a64cbc4b7dda3727622d2fb0f034e8c7bedee642ab2661b3ad64ff"
+  },
+  "events": [
+    {
+      "seed": 373936961,
+      "save_sha256": "9980103ce9bd7733e4671bc3bec0d48359b45a8e457bc76a73dd769f8840f342",
+      "step": 5,
+      "component_storage_change_m3": -105533221504038.81,
+      "basin_storage_change_m3": -105501782136834.47,
+      "basin_external_supply_m3": 29497658315855624,
+      "evaporation_m3": 5452268317724848,
+      "ice_sublimation_m3": 168390445990049.25,
+      "net_boundary_transfer_m3": -23982501334277560,
+      "connectivity_reassignment_m3": -31439367204.34375,
+      "residual_m3": -2.46875,
+      "normalized_residual": 8.369308416163305e-17,
+      "attribution_fraction": 0.9999999999999766,
+      "transfer_edges": [
+        {
+          "source_lake_id": 741,
+          "receiver_lake_id": 269,
+          "source_node_id": [
+            360287971766698055,
+            14
+          ],
+          "target_node_id": [
+            360287971783475271,
+            14
+          ],
+          "target_is_ocean": false,
+          "destination_type": "lake",
+          "volume_m3": 1.0574332156257542e+16,
+          "direction": "in"
+        },
+        {
+          "source_lake_id": 801,
+          "receiver_lake_id": 741,
+          "source_node_id": [
+            360287971783475271,
+            14
+          ],
+          "target_node_id": [
+            360287971766698055,
+            14
+          ],
+          "target_is_ocean": false,
+          "destination_type": "lake",
+          "volume_m3": 3.45568334905351e+16,
+          "direction": "out"
+        },
+        {
+          "source_lake_id": 741,
+          "receiver_lake_id": 801,
+          "source_node_id": [
+            360287971766698055,
+            14
+          ],
+          "target_node_id": [
+            360287971783475271,
+            14
+          ],
+          "target_is_ocean": false,
+          "destination_type": "lake",
+          "volume_m3": 3.4556833490535096e+16,
+          "direction": "in"
+        },
+        {
+          "source_lake_id": 801,
+          "receiver_lake_id": null,
+          "source_node_id": [
+            360287971783475271,
+            14
+          ],
+          "target_node_id": [
+            360287971766698055,
+            14
+          ],
+          "target_is_ocean": false,
+          "destination_type": "non_lake_sink",
+          "volume_m3": 3.4556833490535096e+16,
+          "direction": "out"
+        }
+      ],
+      "component_delta_m3": -105533221504038.81,
+      "tracked_basin_delta_m3": -105501782136834.47,
+      "trace_vs_whole_world": {
+        "supply_error_m3": 160.0,
+        "wet_precip_error_m3": 0.0,
+        "dry_runoff_error_m3": -16.0,
+        "meltwater_error_m3": 0.0,
+        "evaporation_error_m3": 48.0,
+        "ice_sublimation_error_m3": 0.0,
+        "traced_overflow_error_m3": -32.0,
+        "global_trace_residual_m3": 75552.125,
+        "top_basin_node_residuals": [
+          {
+            "node_id": [
+              1560281109,
+              45
+            ],
+            "residual_m3": -3.4795501408676724e+16,
+            "storage_change_m3": -4428298089605.271,
+            "supply_m3": 350346226497699.56,
+            "losses_m3": 179266419805853.88,
+            "spill_out_m3": 90428636677796.88,
+            "spill_in_m3": 3.4710421940573068e+16
+          },
+          {
+            "node_id": [
+              1476395027,
+              45
+            ],
+            "residual_m3": 3.477879758717831e+16,
+            "storage_change_m3": 0.0,
+            "supply_m3": 0.0,
+            "losses_m3": 141877293868808.38,
+            "spill_out_m3": 3.467525485654128e+16,
+            "spill_in_m3": 38334563231776.414
+          },
+          {
+            "node_id": [
+              1543503893,
+              45
+            ],
+            "residual_m3": 3.4766861011525236e+16,
+            "storage_change_m3": -4192310540108.606,
+            "supply_m3": 0.0,
+            "losses_m3": 95724904305377.05,
+            "spill_out_m3": 6.932829578166744e+16,
+            "spill_in_m3": 3.4652967363907476e+16
+          },
+          {
+            "node_id": [
+              1526726676,
+              45
+            ],
+            "residual_m3": -3.4673376781995252e+16,
+            "storage_change_m3": 0.0,
+            "supply_m3": 0.0,
+            "losses_m3": 1951635764710.7485,
+            "spill_out_m3": 3.4652967363907476e+16,
+            "spill_in_m3": 6.932829578166744e+16
+          },
+          {
+            "node_id": [
+              1459617810,
+              45
+            ],
+            "residual_m3": -3.466992535060819e+16,
+            "storage_change_m3": -5690673699617.584,
+            "supply_m3": 95406375067453.38,
+            "losses_m3": 68091991468381.93,
+            "spill_out_m3": 38334563231776.414,
+            "spill_in_m3": 3.467525485654128e+16
+          },
+          {
+            "node_id": [
+              1543503894,
+              45
+            ],
+            "residual_m3": 3.462028000052888e+16,
+            "storage_change_m3": -3464037794713.9546,
+            "supply_m3": 0.0,
+            "losses_m3": 3750734428320.642,
+            "spill_out_m3": 3.4710421940573068e+16,
+            "spill_in_m3": 90428636677796.88
+          },
+          {
+            "node_id": [
+              1543503897,
+              45
+            ],
+            "residual_m3": -3.038393999579983e+16,
+            "storage_change_m3": -6755023043049.059,
+            "supply_m3": 5759937041839570.0,
+            "losses_m3": 238379408222167.28,
+            "spill_out_m3": 9867344540546646.0,
+            "spill_in_m3": 3.4722971879686024e+16
+          },
+          {
+            "node_id": [
+              360287971817029697,
+              14
+            ],
+            "residual_m3": 2.5023623800771904e+16,
+            "storage_change_m3": -5589902285955.786,
+            "supply_m3": 0.0,
+            "losses_m3": 173586363918480.4,
+            "spill_out_m3": 3.4722971879686024e+16,
+            "spill_in_m3": 9867344540546646.0
+          },
+          {
+            "node_id": [
+              360287971783475271,
+              14
+            ],
+            "residual_m3": 2.4054179567811456e+16,
+            "storage_change_m3": 317898192748.84546,
+            "supply_m3": 0.0,
+            "losses_m3": 71360335341158.16,
+            "spill_out_m3": 6.911366698107019e+16,
+            "spill_in_m3": 4.513116564679264e+16
+          },
+          {
+            "node_id": [
+              360287971817029699,
+              14
+            ],
+            "residual_m3": 1.5718042280036648e+16,
+            "storage_change_m3": -2159482802841.2422,
+            "supply_m3": 0.0,
+            "losses_m3": 2820081262734.377,
+            "spill_out_m3": 3.46906970606906e+16,
+            "spill_in_m3": 1.8973315379113844e+16
+          }
+        ]
+      },
+      "transfer_destination_classes": [
+        "lake",
+        "non_lake_sink"
+      ]
+    },
+    {
+      "seed": 997271774,
+      "save_sha256": "a43962a149a0ec96f1dbee3e6c675be98d50422c47e0455e062aa72a7d1da4d7",
+      "step": 7,
+      "component_storage_change_m3": -88148660708.56168,
+      "basin_storage_change_m3": -53895130672.918335,
+      "basin_membership_storage_change_m3": -58982520241.87903,
+      "basin_external_supply_m3": 106918035809003344,
+      "evaporation_m3": 8762781079754260,
+      "ice_sublimation_m3": 0,
+      "net_boundary_transfer_m3": -98155308624379760,
+      "connectivity_reassignment_m3": -34253530035.64334,
+      "residual_m3": -0.9183349609375,
+      "normalized_residual": 8.58914919254595e-18,
+      "attribution_fraction": 0.999999999989582,
+      "transfer_edges": [
+        {
+          "source_lake_id": 19,
+          "receiver_lake_id": 15,
+          "source_node_id": [
+            587202684,
+            1
+          ],
+          "target_node_id": [
+            570425469,
+            1
+          ],
+          "target_is_ocean": false,
+          "destination_type": "lake",
+          "volume_m3": 5.917953900385963e+16,
+          "direction": "out"
+        },
+        {
+          "source_lake_id": 15,
+          "receiver_lake_id": 16,
+          "source_node_id": [
+            570425470,
+            1
+          ],
+          "target_node_id": [
+            587202687,
+            1
+          ],
+          "target_is_ocean": false,
+          "destination_type": "lake",
+          "volume_m3": 5.91795440912492e+16,
+          "direction": "in"
+        },
+        {
+          "source_lake_id": 16,
+          "receiver_lake_id": 15,
+          "source_node_id": [
+            587202687,
+            1
+          ],
+          "target_node_id": [
+            570425470,
+            1
+          ],
+          "target_is_ocean": false,
+          "destination_type": "lake",
+          "volume_m3": 9.815531371176933e+16,
+          "direction": "out"
+        },
+        {
+          "source_lake_id": 21,
+          "receiver_lake_id": 16,
+          "source_node_id": [
+            603979905,
+            1
+          ],
+          "target_node_id": [
+            587202688,
+            1
+          ],
+          "target_is_ocean": false,
+          "destination_type": "lake",
+          "volume_m3": 2.1359646316034492e+16,
+          "direction": "in"
+        },
+        {
+          "source_lake_id": 16,
+          "receiver_lake_id": 15,
+          "source_node_id": [
+            587202687,
+            1
+          ],
+          "target_node_id": [
+            570425470,
+            1
+          ],
+          "target_is_ocean": false,
+          "destination_type": "lake",
+          "volume_m3": 2.1359646316034492e+16,
+          "direction": "out"
+        }
+      ],
+      "component_delta_m3": -88148660708.56168,
+      "tracked_basin_delta_m3": -53895130672.918335,
+      "trace_vs_whole_world": {
+        "supply_error_m3": -256.0,
+        "wet_precip_error_m3": 32.0,
+        "dry_runoff_error_m3": 128.0,
+        "meltwater_error_m3": 0.0078125,
+        "evaporation_error_m3": -80.0,
+        "ice_sublimation_error_m3": 0.0,
+        "traced_overflow_error_m3": 128.0,
+        "global_trace_residual_m3": 4730.5,
+        "top_basin_node_residuals": [
+          {
+            "node_id": [
+              587202687,
+              1
+            ],
+            "residual_m3": 6.04684174886517e+16,
+            "storage_change_m3": -41468709.7146098,
+            "supply_m3": 0.0,
+            "losses_m3": 133001593565787.77,
+            "spill_out_m3": 1.1951496002780382e+17,
+            "spill_in_m3": 5.91795440912492e+16
+          },
+          {
+            "node_id": [
+              553648249,
+              1
+            ],
+            "residual_m3": -4.516950047771644e+16,
+            "storage_change_m3": -7145823001.986651,
+            "supply_m3": 4.558516276878711e+16,
+            "losses_m3": 415669436893673.44,
+            "spill_out_m3": 0.0,
+            "spill_in_m3": 0.0
+          },
+          {
+            "node_id": [
+              570425472,
+              1
+            ],
+            "residual_m3": -3.993803260605032e+16,
+            "storage_change_m3": -1543022755.2841845,
+            "supply_m3": 4.035322647505152e+16,
+            "losses_m3": 415195412023950.75,
+            "spill_out_m3": 0.0,
+            "spill_in_m3": 0.0
+          },
+          {
+            "node_id": [
+              587202682,
+              1
+            ],
+            "residual_m3": 3.963995361188658e+16,
+            "storage_change_m3": 3003342057.6276817,
+            "supply_m3": 99372692758908.25,
+            "losses_m3": 491729671075679.1,
+            "spill_out_m3": 3.924759363022774e+16,
+            "spill_in_m3": 0.0
+          },
+          {
+            "node_id": [
+              603979899,
+              1
+            ],
+            "residual_m3": -3.915209983699432e+16,
+            "storage_change_m3": 157048001.74284273,
+            "supply_m3": 0.0,
+            "losses_m3": 95493636185425.97,
+            "spill_out_m3": 0.0,
+            "spill_in_m3": 3.924759363022774e+16
+          },
+          {
+            "node_id": [
+              587202684,
+              1
+            ],
+            "residual_m3": 3.863664967018069e+16,
+            "storage_change_m3": -1415184761.9252415,
+            "supply_m3": 2.08802738724058e+16,
+            "losses_m3": 337385953911619.0,
+            "spill_out_m3": 5.917953900385963e+16,
+            "spill_in_m3": 0.0
+          },
+          {
+            "node_id": [
+              587202688,
+              1
+            ],
+            "residual_m3": -2.126400873490888e+16,
+            "storage_change_m3": -11643653.197752535,
+            "supply_m3": 0.0,
+            "losses_m3": 95637592769263.58,
+            "spill_out_m3": 0.0,
+            "spill_in_m3": 2.1359646316034492e+16
+          },
+          {
+            "node_id": [
+              587202681,
+              1
+            ],
+            "residual_m3": 564779947497515.2,
+            "storage_change_m3": -3699403514.8267574,
+            "supply_m3": 0.0,
+            "losses_m3": 564783646901030.1,
+            "spill_out_m3": 0.0,
+            "spill_in_m3": 0.0
+          },
+          {
+            "node_id": [
+              570425464,
+              1
+            ],
+            "residual_m3": 563721469594271.6,
+            "storage_change_m3": -8185651635.579976,
+            "supply_m3": 0.0,
+            "losses_m3": 563729655245907.2,
+            "spill_out_m3": 0.0,
+            "spill_in_m3": 0.0
+          },
+          {
+            "node_id": [
+              570425466,
+              1
+            ],
+            "residual_m3": 512286853350501.5,
+            "storage_change_m3": -6661350506.732771,
+            "supply_m3": 0.0,
+            "losses_m3": 512293514701008.25,
+            "spill_out_m3": 0.0,
+            "spill_in_m3": 0.0
+          }
+        ]
+      },
+      "transfer_destination_classes": [
+        "lake"
+      ]
+    },
+    {
+      "seed": 997271774,
+      "save_sha256": "a43962a149a0ec96f1dbee3e6c675be98d50422c47e0455e062aa72a7d1da4d7",
+      "step": 8,
+      "component_storage_change_m3": 97968167314.50067,
+      "basin_storage_change_m3": 89793149096.25998,
+      "basin_membership_storage_change_m3": 89793149096.25998,
+      "basin_external_supply_m3": 67922923244875460,
+      "evaporation_m3": 9154673502879016,
+      "ice_sublimation_m3": 0,
+      "net_boundary_transfer_m3": -58250644337516550,
+      "connectivity_reassignment_m3": 8175018218.240692,
+      "residual_m3": 0.259979248046875,
+      "normalized_residual": 3.827562708242088e-18,
+      "attribution_fraction": 0.9999999999973462,
+      "transfer_edges": [
+        {
+          "source_lake_id": 10,
+          "receiver_lake_id": 13,
+          "source_node_id": [
+            587202687,
+            1
+          ],
+          "target_node_id": [
+            587202686,
+            1
+          ],
+          "target_is_ocean": false,
+          "destination_type": "lake",
+          "volume_m3": 2.0779817052444116e+16,
+          "direction": "out"
+        },
+        {
+          "source_lake_id": 499,
+          "receiver_lake_id": 13,
+          "source_node_id": [
+            587202684,
+            1
+          ],
+          "target_node_id": [
+            603979901,
+            1
+          ],
+          "target_is_ocean": false,
+          "destination_type": "lake",
+          "volume_m3": 3.747082728507243e+16,
+          "direction": "out"
+        },
+        {
+          "source_lake_id": 487,
+          "receiver_lake_id": 10,
+          "source_node_id": [
+            587202690,
+            1
+          ],
+          "target_node_id": [
+            570425473,
+            1
+          ],
+          "target_is_ocean": false,
+          "destination_type": "lake",
+          "volume_m3": 6.1995340632599736e+16,
+          "direction": "in"
+        },
+        {
+          "source_lake_id": 13,
+          "receiver_lake_id": 10,
+          "source_node_id": [
+            587202686,
+            1
+          ],
+          "target_node_id": [
+            587202687,
+            1
+          ],
+          "target_is_ocean": false,
+          "destination_type": "lake",
+          "volume_m3": 5.825064433751654e+16,
+          "direction": "in"
+        },
+        {
+          "source_lake_id": 10,
+          "receiver_lake_id": 13,
+          "source_node_id": [
+            587202687,
+            1
+          ],
+          "target_node_id": [
+            587202686,
+            1
+          ],
+          "target_is_ocean": false,
+          "destination_type": "lake",
+          "volume_m3": 1.2024598497011629e+17,
+          "direction": "out"
+        }
+      ],
+      "component_delta_m3": 97968167314.50067,
+      "tracked_basin_delta_m3": 89793149096.25998,
+      "trace_vs_whole_world": {
+        "supply_error_m3": 128.0,
+        "wet_precip_error_m3": 64.0,
+        "dry_runoff_error_m3": -128.0,
+        "meltwater_error_m3": 0.0078125,
+        "evaporation_error_m3": 32.0,
+        "ice_sublimation_error_m3": -0.0625,
+        "traced_overflow_error_m3": 0.0,
+        "global_trace_residual_m3": 660.5625,
+        "top_basin_node_residuals": [
+          {
+            "node_id": [
+              587202687,
+              1
+            ],
+            "residual_m3": 8.307866835643019e+16,
+            "storage_change_m3": 3682997073.400053,
+            "supply_m3": 0.0,
+            "losses_m3": 303506988389265.5,
+            "spill_out_m3": 1.410258020225604e+17,
+            "spill_in_m3": 5.825064433751654e+16
+          },
+          {
+            "node_id": [
+              570425473,
+              1
+            ],
+            "residual_m3": -6.168791018345073e+16,
+            "storage_change_m3": 2416908420.261157,
+            "supply_m3": 0.0,
+            "losses_m3": 307428032240585.7,
+            "spill_out_m3": 0.0,
+            "spill_in_m3": 6.1995340632599736e+16
+          },
+          {
+            "node_id": [
+              587202684,
+              1
+            ],
+            "residual_m3": 3.78415337227337e+16,
+            "storage_change_m3": 8528655456.206857,
+            "supply_m3": 59147269292515.67,
+            "losses_m3": 429845178298320.6,
+            "spill_out_m3": 3.747082728507243e+16,
+            "spill_in_m3": 0.0
+          },
+          {
+            "node_id": [
+              587202682,
+              1
+            ],
+            "residual_m3": -3.1556222390769492e+16,
+            "storage_change_m3": 4811240345.762247,
+            "supply_m3": 3.208298320112987e+16,
+            "losses_m3": 526755999120036.44,
+            "spill_out_m3": 0.0,
+            "spill_in_m3": 0.0
+          },
+          {
+            "node_id": [
+              570425472,
+              1
+            ],
+            "residual_m3": -2.2319714563917596e+16,
+            "storage_change_m3": 2538497593.5637655,
+            "supply_m3": 2.2775759396542656e+16,
+            "losses_m3": 456042294127469.94,
+            "spill_out_m3": 0.0,
+            "spill_in_m3": 0.0
+          },
+          {
+            "node_id": [
+              570425464,
+              1
+            ],
+            "residual_m3": -1.2441084651343006e+16,
+            "storage_change_m3": 4941533887.596316,
+            "supply_m3": 1.3005033377910412e+16,
+            "losses_m3": 563943785033518.8,
+            "spill_out_m3": 0.0,
+            "spill_in_m3": 0.0
+          },
+          {
+            "node_id": [
+              553648250,
+              1
+            ],
+            "residual_m3": 2303150122027736.0,
+            "storage_change_m3": 2469165402.362446,
+            "supply_m3": 0.0,
+            "losses_m3": 394156084228617.1,
+            "spill_out_m3": 3.937987705206385e+16,
+            "spill_in_m3": 3.747088548343013e+16
+          },
+          {
+            "node_id": [
+              553648251,
+              1
+            ],
+            "residual_m3": -1591451828788024.0,
+            "storage_change_m3": 3311454976.8476057,
+            "supply_m3": 0.0,
+            "losses_m3": 317536428390716.06,
+            "spill_out_m3": 3.747088548343013e+16,
+            "spill_in_m3": 3.937987705206385e+16
+          },
+          {
+            "node_id": [
+              587202681,
+              1
+            ],
+            "residual_m3": 564853585516040.8,
+            "storage_change_m3": 6687939893.529761,
+            "supply_m3": 0.0,
+            "losses_m3": 564846897576147.2,
+            "spill_out_m3": 0.0,
+            "spill_in_m3": 0.0
+          },
+          {
+            "node_id": [
+              570425466,
+              1
+            ],
+            "residual_m3": 560399130845368.5,
+            "storage_change_m3": 5051137919.061922,
+            "supply_m3": 0.0,
+            "losses_m3": 560394079707449.44,
+            "spill_out_m3": 0.0,
+            "spill_in_m3": 0.0
+          }
+        ]
+      },
+      "transfer_destination_classes": [
+        "lake"
+      ]
+    }
+  ],
+  "gate": {
+    "max_residual_fraction_of_supply": 0.001,
+    "min_component_attribution_fraction": 0.99,
+    "passed": true
+  },
+  "transfer_edge_semantics": "Each row is one boundary ledger record, with direction relative to the tracked basin and the model lake ID or sink class. Paired in/out rows can represent a routed transfer at opposite boundaries; use net_boundary_transfer_m3 for basin net balance. target_is_ocean is explicit."
+}

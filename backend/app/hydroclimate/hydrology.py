@@ -82,6 +82,7 @@ from __future__ import annotations
 
 import heapq
 import logging
+import os
 
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
@@ -415,12 +416,19 @@ class HydrologyFields:
     lake_water_ledger: "lakes.LakeStepLedger | None" = None
     # Water-equivalent cap state, appended to preserve prior positional constructor fields.
     lake_ice_m: np.ndarray = field(default_factory=lambda: np.zeros(0))
+    # Opt-in event accounting; omitted from saves because it is a transient diagnostic.
+    lake_solve_trace: "lakes.LakeSolveTrace | None" = None
+    lake_ice_trace: dict[str, np.ndarray] | None = None
+    lake_trace_node_ids: np.ndarray | None = None
 
     def __getstate__(self) -> dict:
         # The spill-path drawing cache (`_spill_path_cache`) is rebuilt on first use, so a save
         # never carries paths from older drawing rules.
         state = self.__dict__.copy()
         state.pop("_spill_path_cache", None)
+        state.pop("lake_solve_trace", None)
+        state.pop("lake_ice_trace", None)
+        state.pop("lake_trace_node_ids", None)
         return state
 
 
@@ -1283,7 +1291,9 @@ def advance_lake_ice(
     amplitude_c: np.ndarray,
     ice_cover_fraction: np.ndarray,
     years: float,
-) -> tuple[np.ndarray, np.ndarray, dict[str, float]]:
+    *,
+    trace_node_budget: bool = False,
+) -> tuple[np.ndarray, np.ndarray, dict[str, float | np.ndarray]]:
     """Advance the capped lake-ice reservoir with jointly integrated growth and loss.
 
     This solves ``dh/dt = q/h - loss`` toward its equilibrium thickness, rather than
@@ -1299,6 +1309,12 @@ def advance_lake_ice(
         "sublimation_m3": 0.0, "ice_storage_change_m3": 0.0,
         "freezing_m3": 0.0, "melting_m3": 0.0,
     }
+    if trace_node_budget:
+        zero_budget.update(
+            sublimation_by_node_m3=np.zeros_like(area),
+            freezing_by_node_m3=np.zeros_like(area),
+            melting_by_node_m3=np.zeros_like(area),
+        )
     if dt == 0.0 or len(ice) == 0:
         return ice.copy(), liquid.copy(), zero_budget
 
@@ -1411,12 +1427,19 @@ def advance_lake_ice(
     new_ice = np.maximum(ice + growth_we - melting_we - sublimation_we, 0.0)
     new_liquid = np.maximum(liquid - growth_we + melting_we, 0.0)
     ice_delta = float(np.dot(new_ice - ice, area))
-    return new_ice, new_liquid, {
+    budget = {
         "sublimation_m3": float(np.dot(sublimation_we, area)),
         "ice_storage_change_m3": ice_delta,
         "freezing_m3": float(np.dot(growth_we, area)),
         "melting_m3": float(np.dot(melting_we, area)),
     }
+    if trace_node_budget:
+        budget.update(
+            sublimation_by_node_m3=sublimation_we * area,
+            freezing_by_node_m3=growth_we * area,
+            melting_by_node_m3=melting_we * area,
+        )
+    return new_ice, new_liquid, budget
 
 
 def _ice_surface_flow_target(
@@ -1488,6 +1511,19 @@ def compute_hydrology(
     sources to their natural sinks; final directions then carry only overflow that leaves the
     lake system."""
     points, elevation, prev_lake_depth, prev_glacier_depth, prev_channel_depth, prev_channel_width, prev_silt_depth, is_ocean, plates_in_order = _gather_nodes(world, node_cloud=node_cloud)
+    diagnostic_trace = os.environ.get("MANTLE_BLOOM_LAKE_LINEAGE_TRACE") == "1"
+    # Surface keys are only unique within one plate; qualify them for cross-plate event tracing (#675).
+    trace_node_ids = (
+        np.concatenate([
+            np.column_stack((
+                nodes.node_ids[:, 0],
+                np.full(len(nodes.node_ids), plate.plate_id, dtype=np.uint64),
+            ))
+            for plate in plates_in_order
+            for nodes in (plate.surface_nodes(),)
+        ], axis=0)
+        if diagnostic_trace else None
+    )
     n = len(points)
     if n <= FLOW_NEIGHBOR_COUNT:
         empty_i = np.zeros(n, dtype=np.int64)
@@ -1696,7 +1732,9 @@ def compute_hydrology(
         meltwater_m3_per_yr=melt_settled,
     )
     lake_result = lakes.solve_lakes_prognostic(
-        forest, elevation, prev_lake_depth, years, lake_climate, hypsometry, is_ocean=is_ocean
+        forest, elevation, prev_lake_depth, years, lake_climate, hypsometry,
+        is_ocean=is_ocean,
+        diagnostic_trace=diagnostic_trace,
     )
     # D2(c) keeps lake ice as a separate water-equivalent reservoir. Phase transfers happen
     # after liquid routing: they conserve local water, while any routed overflow remains the
@@ -1705,6 +1743,7 @@ def compute_hydrology(
     lake_ice_m, lake_depth_after_phase, ice_budget = advance_lake_ice(
         prev_lake_ice_m, lake_result.lake_depth, areas, lake_temperature_c,
         seasonal_amplitude, 1.0 - ice_free_fraction, years,
+        trace_node_budget=lake_result.trace is not None,
     )
     lake_result.lake_depth[:] = lake_depth_after_phase
     flow_target = flow_target.copy()
@@ -1789,6 +1828,12 @@ def compute_hydrology(
         points, elevation, is_ocean, neighbor_idx, flow_target, flow_accum, water_deposited, filled_elevation, spill_target,
         np.zeros(n, dtype=bool), prev_lake_depth, new_glacier_depth, plates_in_order, ice_flow_target=ice_flow_target,
         lake_ice_m=lake_ice_m,
+        lake_solve_trace=lake_result.trace,
+        lake_ice_trace=(
+            {name: ice_budget[name] for name in ("sublimation_by_node_m3", "freezing_by_node_m3", "melting_by_node_m3")}
+            if lake_result.trace is not None else None
+        ),
+        lake_trace_node_ids=trace_node_ids,
         channel_width=prev_channel_width,
         breach_notch_m=breach.notch_m if breach is not None else np.zeros(0),
         ice=ice,

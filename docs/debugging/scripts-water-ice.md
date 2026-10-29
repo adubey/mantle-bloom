@@ -7,16 +7,20 @@ Hydrology, lakes and ice are described in
 basin structure in a single save, the
 [`stranded_basins` and `lake_hierarchy_diagnostics` CLIs](offline-cli.md) are quicker.
 
-The replay and measurement scripts take `--backend`, so the same script measures an
+Most replay and measurement scripts take `--backend`, so the same script measures an
 `origin/main` worktree and a branch (see [Running the scripts](../debugging.md#running-the-scripts)).
 The RFC 0014 G5 cap prototype uses its own checkout's backend and restricts inputs to the
-preregistered save checksums. The replay and measurement scripts come in two kinds:
+preregistered save checksums. Save replays and seed runs share these two command-line patterns:
 
 - **Save replays** (`measure_ice_sheet.py`, `measure_lake_silt.py`, `measure_river_endings.py`,
-  `measure_river_hops.py`)
+  `measure_river_hops.py`, `trace_lake_drainage_phases.py`)
   share `replay_lib.py`'s command line: a save, `--backend`, `--myr` (required),
   `--step-years` (default 100 kyr), `--checkpoint-myr` (default 1) and `--out` (required).
   Each records step runtime and peak RSS.
+- **Fixed-forcing solver controls** (`gate_lake_partition.py`) capture one registered #675
+  event checkpoint and compare the lake solve under 10, 25 and 100 kyr partitions. Terrain,
+  hierarchy, outlets and climate forcing remain fixed. The script requires the repository's
+  backend and takes `deep` or `shallow`, a save, and `--out`.
 - **Seed runs** (`measure_breaching.py`, `measure_ice_loading.py`,
   `measure_meltwater_faults.py`, `measure_seasonal_melt.py`) share `seed_run_lib.py`'s command
   line: `--backend`, `--seeds`, `--steps`, `--years` (step length) and `--every`, plus `--out`.
@@ -103,6 +107,40 @@ real-unit coefficient. Each is split by whether the lake was spilling.
 
 ```bash
 backend/.venv/bin/python bin/debug/measure_lake_silt.py world.mbworld --myr 10 --out /tmp/branch.json
+```
+
+### `trace_lake_drainage_phases.py`
+
+Replays a saved lake-flicker event and maps the modeled drainage catchment in selected phases.
+For each phase, it selects governing lake hierarchy bodies whose wet members overlap a
+connected component containing the fixed geographic anchors. The output reports each matched
+component's volume and wet area, the selected bodies' total member area, and the dry-land
+catchment area. The optional PNG colors catchment land orange and connected lake water blue.
+These are model hierarchy catchments, not independently measured watershed divides.
+
+```bash
+backend/.venv/bin/python bin/debug/trace_lake_drainage_phases.py world.mbworld \
+    --anchors analysis/issue675/shallow-lake-anchor.json \
+    --phase pre-drop=6 --phase low=7 --phase rebound=8 \
+    --myr 0.8 --step-years 100000 --out /tmp/shallow-catchments.npz \
+    --figure-out /tmp/shallow-catchments.png
+```
+
+### `gate_lake_partition.py`
+
+Runs the RFC 0014 G7 fixed-forcing partition control on the registered deep step-5 or shallow
+step-8 #675 event. Each case replays to a common checkpoint, captures the fixed terrain,
+hierarchy/outlets, liquid and ice stores, and one 100 kyr interval of lake and ice climate, then
+compares 10, 25 and 100 kyr integrations. It writes a compact JSON result and records endpoint
+storage, anchor connectivity, component count, merge/split timing and ledger closure. The
+registered held-out cases are for this attribution/robustness gate only; they must not be used
+to select mechanism ranges for G8.
+
+```bash
+NUMBA_CACHE_DIR=/tmp/rfc0014-g7-numba-cache backend/.venv/bin/python \
+  bin/debug/gate_lake_partition.py deep world.mbworld --out /tmp/deep.json
+NUMBA_CACHE_DIR=/tmp/rfc0014-g7-numba-cache backend/.venv/bin/python \
+  bin/debug/gate_lake_partition.py shallow world.mbworld --out /tmp/shallow.json
 ```
 
 ### `gate_lake_endpoint.py`

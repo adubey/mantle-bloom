@@ -1,0 +1,59 @@
+{
+  "issue": 675,
+  "commit": "f1250e061523aa63ea5340e57af353bebd6eb7c6",
+  "save_sha256": "a43962a149a0ec96f1dbee3e6c675be98d50422c47e0455e062aa72a7d1da4d7",
+  "step_years": 100000,
+  "definition": "Union of governing lake hierarchy body members whose wet nodes intersect anchor-containing connected lake components; this is the model assignment, not an independently derived watershed.",
+  "phases": {
+    "pre-drop": {
+      "step": 6,
+      "elapsed_years": 131100000,
+      "connected_lake_volume_km3": 147.76666959849456,
+      "connected_lake_cell_footprint_area_km2": 61995.14372013838,
+      "connected_lake_hypsometric_wet_area_km2": 39840.0,
+      "drainage_member_count": 685,
+      "drainage_member_area_km2": 2684704.2527643656,
+      "dry_land_catchment_area_km2": 2622709.1090442273
+    },
+    "low": {
+      "step": 7,
+      "elapsed_years": 131200000,
+      "connected_lake_volume_km3": 59.61800888993292,
+      "connected_lake_cell_footprint_area_km2": 31118.858138517386,
+      "connected_lake_hypsometric_wet_area_km2": 20712.095838041227,
+      "drainage_member_count": 234,
+      "drainage_member_area_km2": 909978.4924565495,
+      "dry_land_catchment_area_km2": 878859.6343180321
+    },
+    "rebound": {
+      "step": 8,
+      "elapsed_years": 131300000,
+      "connected_lake_volume_km3": 157.58617620443363,
+      "connected_lake_cell_footprint_area_km2": 65796.04250954663,
+      "connected_lake_hypsometric_wet_area_km2": 45536.0,
+      "drainage_member_count": 483,
+      "drainage_member_area_km2": 1901786.9933013672,
+      "dry_land_catchment_area_km2": 1835990.9507918207
+    }
+  },
+  "catchment_membership_transitions": [
+    {
+      "from": "pre-drop",
+      "to": "low",
+      "persistent_member_count": 234,
+      "added_member_count": 0,
+      "removed_member_count": 451,
+      "added_member_area_km2": 0,
+      "removed_member_area_km2": 1774725.7603078154
+    },
+    {
+      "from": "low",
+      "to": "rebound",
+      "persistent_member_count": 234,
+      "added_member_count": 249,
+      "removed_member_count": 0,
+      "added_member_area_km2": 991808.5008448184,
+      "removed_member_area_km2": 0
+    }
+  ]
+}
