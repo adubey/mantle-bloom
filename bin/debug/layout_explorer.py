@@ -23,9 +23,11 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import threading
 import time
 import traceback
 from concurrent.futures import CancelledError, ProcessPoolExecutor, as_completed
+from concurrent.futures.process import BrokenProcessPool
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import import_module
 from pathlib import Path
@@ -66,12 +68,17 @@ KNOBS = [
     ("plate_partition", "PLATE_AREA_BAND", "frange", "Plates", "Refine area band"),
     ("plate_partition", "PLATE_COST_BELT", "float", "Plates", "Boundary cost: belt"),
     ("plate_partition", "PLATE_COST_MARGIN", "float", "Plates", "Boundary cost: margin"),
-    ("plate_partition", "PLATE_COST_CORE", "float", "Plates", "Boundary cost: core"),
+    ("plate_partition", "PLATE_COST_CORE", "float", "Plates", "Boundary cost: core (follows margin)"),
     ("plate_partition", "PLATE_COST_LAND_LINK", "float", "Plates", "Boundary cost: land link"),
     ("lithosphere_plate", "MIN_AUTO_PLATES", "int", "Plates", "Auto plate count min"),
     ("lithosphere_plate", "MAX_AUTO_PLATES", "int", "Plates", "Auto plate count max"),
 ]
 KNOB_BY_NAME = {k[1]: k for k in KNOBS}
+# Knobs the backend sets from another knob at import (`PLATE_COST_CORE = PLATE_COST_MARGIN`).
+# Overriding the source alone moves the derived knob too, as editing the source line would.
+DERIVED_KNOBS = {"PLATE_COST_CORE": "PLATE_COST_MARGIN"}
+# (low, high) knob pairs whose effective values must stay ordered.
+ORDERED_KNOBS = [("MIN_AUTO_PLATES", "MAX_AUTO_PLATES")]
 
 # Each worker's import-time knob values, captured before its first override.
 _worker_defaults: dict[str, object] = {}
@@ -114,6 +121,16 @@ def _patch(overrides: dict) -> None:
         setattr(mod, name, _worker_defaults[name])
     for name, value in overrides.items():
         setattr(_module(KNOB_BY_NAME[name][0]), name, _coerce(name, value))
+    for derived, source in DERIVED_KNOBS.items():
+        if source in overrides and derived not in overrides:
+            setattr(_module(KNOB_BY_NAME[derived][0]), derived, _coerce(source, overrides[source]))
+
+
+def _check_order(overrides: dict, defaults: dict) -> None:
+    for low, high in ORDERED_KNOBS:
+        lo, hi = overrides.get(low, defaults[low]), overrides.get(high, defaults[high])
+        if lo > hi:
+            raise ValueError(f"{low} = {lo} is above {high} = {hi}")
 
 
 def _pixel_xyz() -> np.ndarray:
@@ -147,9 +164,9 @@ def _maps(layout) -> dict:
         "width": MAP_WIDTH,
         "height": MAP_HEIGHT,
         "kind": _b64(kind[nearest]),
-        "plate": _b64(layout.plate[nearest].astype(np.uint8)),
+        "plate": _b64(layout.plate[nearest].astype(np.uint16)),
         "craton": _b64((layout.core[nearest] + 1).astype(np.uint16)),
-        "continent": _b64((layout.continent[nearest] + 1).astype(np.uint8)),
+        "continent": _b64((layout.continent[nearest] + 1).astype(np.uint16)),
         "nuclei": _lonlat(layout.nuclei),
         "nucleus_craton": layout.nucleus_craton.tolist(),
         "sites": _lonlat(layout.sites) if len(layout.sites) else [],
@@ -197,9 +214,14 @@ def run_job(job: dict) -> dict:
 
 class Handler(BaseHTTPRequestHandler):
     pool: ProcessPoolExecutor
+    workers: int
     defaults: list[dict]
+    # Guards `pool`, `active` and `stopped` across request threads.
+    lock = threading.RLock()
     # Batch token -> its futures, so /api/stop can cancel a batch's queued jobs.
     active: dict[str, list] = {}
+    # Tokens stopped before their batch arrived; the batch is refused when it does.
+    stopped: set[str] = set()
 
     def log_message(self, format, *args):  # noqa: A002 -- BaseHTTPRequestHandler's signature
         pass
@@ -211,46 +233,90 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(200, "text/html; charset=utf-8", body)
 
     def do_POST(self):
-        request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        try:
+            request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        except (TypeError, ValueError) as exc:  # no Content-Length, or malformed JSON
+            return self._send(400, "text/plain", f"bad request: {exc}".encode())
+        if not isinstance(request, dict):
+            return self._send(400, "text/plain", b"bad request: expected a JSON object")
+        token = str(request.get("batch"))
         if self.path == "/api/stop":
-            # Jobs already running in a worker finish; queued ones never start.
-            for future in self.active.pop(str(request.get("batch")), []):
-                future.cancel()
-            return self._send(200, "text/plain", b"stopped")
+            return self._stop(token)
         if self.path != "/api/generate":
             return self._send(404, "text/plain", b"not found")
+        defaults = {d["name"]: d["default"] for d in self.defaults}
         try:
-            jobs = [
-                {
-                    "index": i,
-                    "seed": int(job["seed"]),
-                    "world": request.get("world", {}),
-                    "overrides": {k: _jsonable(_coerce(k, v)) for k, v in job.get("overrides", {}).items()},
-                }
-                for i, job in enumerate(request["jobs"][:MAX_JOBS])
-            ]
+            jobs = []
+            for i, job in enumerate(request["jobs"][:MAX_JOBS]):
+                overrides = {k: _jsonable(_coerce(k, v)) for k, v in job.get("overrides", {}).items()}
+                _check_order(overrides, defaults)
+                jobs.append({"index": i, "seed": int(job["seed"]), "world": request.get("world", {}), "overrides": overrides})
         except (KeyError, ValueError, TypeError) as exc:
             return self._send(400, "text/plain", str(exc).encode())
-        return self._stream(str(request.get("batch")), jobs)
+        return self._stream(token, jobs)
+
+    def _stop(self, token: str) -> None:
+        """Cancel a batch's queued jobs; jobs a worker has already taken still finish. A stop
+        that beats its batch here is remembered, and the batch is refused on arrival."""
+        with self.lock:
+            futures = self.active.pop(token, None)
+            if futures is None:
+                self.stopped.add(token)
+        for future in futures or []:
+            future.cancel()
+        return self._send(200, "text/plain", b"stopped")
+
+    def _submit(self, jobs: list[dict]) -> tuple[ProcessPoolExecutor, list]:
+        with self.lock:
+            pool = Handler.pool
+            try:
+                return pool, [pool.submit(run_job, job) for job in jobs]
+            except BrokenProcessPool:
+                self._replace_pool(pool)
+                return Handler.pool, [Handler.pool.submit(run_job, job) for job in jobs]
+
+    def _replace_pool(self, broken: ProcessPoolExecutor) -> None:
+        """A worker died (killed, out of memory): every later submit to that pool fails, so
+        start a new one, once, however many request threads notice."""
+        with self.lock:
+            if Handler.pool is broken:
+                Handler.pool = ProcessPoolExecutor(max_workers=self.workers)
+        broken.shutdown(wait=False, cancel_futures=True)
 
     def _stream(self, token: str, jobs: list[dict]) -> None:
-        """Run `jobs` and write each result as one NDJSON line as it finishes."""
+        """Run `jobs` and write each result as one NDJSON line as it finishes. A failure the
+        page can't infer from a closed stream is sent as a final `{"fatal": ...}` line."""
         self.send_response(200)
         self.send_header("Content-Type", "application/x-ndjson")
         self.end_headers()
-        futures = [self.pool.submit(run_job, job) for job in jobs]
-        self.active[token] = futures
+        with self.lock:
+            if token in self.stopped:
+                self.stopped.discard(token)
+                return
+            pool, futures = self._submit(jobs)
+            self.active[token] = futures
         try:
             for future in as_completed(futures):
-                if future.cancelled():
-                    continue
-                self.wfile.write((json.dumps(future.result()) + "\n").encode())
-                self.wfile.flush()
+                if not future.cancelled():
+                    self._write(future.result())
         except (BrokenPipeError, ConnectionResetError, CancelledError):
+            pass  # the page closed the stream or stopped the batch
+        except Exception as exc:  # a dead worker, or a result that won't serialise
+            if isinstance(exc, BrokenProcessPool):
+                self._replace_pool(pool)
+            try:
+                self._write({"fatal": f"{type(exc).__name__}: {exc}"})
+            except OSError:
+                pass
+        finally:
             for future in futures:
                 future.cancel()
-        finally:
-            self.active.pop(token, None)
+            with self.lock:
+                self.active.pop(token, None)
+
+    def _write(self, record: dict) -> None:
+        self.wfile.write((json.dumps(record) + "\n").encode())
+        self.wfile.flush()
 
     def _send(self, code: int, content_type: str, body: bytes) -> None:
         self.send_response(code)
@@ -266,6 +332,7 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=4)
     args = parser.parse_args()
     Handler.defaults = knob_defaults()
+    Handler.workers = args.workers
     Handler.pool = ProcessPoolExecutor(max_workers=args.workers)
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     print(f"Layout explorer on http://127.0.0.1:{args.port}/", flush=True)

@@ -100,7 +100,7 @@ dialog canvas { width: 100%; aspect-ratio: 2 / 1; image-rendering: pixelated; bo
     <div class="row"><label>Node density</label><select id="nodeDensity"><option>0.5</option><option selected>1</option><option>2</option><option>4</option></select><span></span></div>
     <div class="row"><label title="Blank: drawn from the seed">Plates (blank = auto)</label><input type="number" id="numPlates" min="2" placeholder="auto"><span></span></div>
     <div class="row"><label title="Blank: plates.CONTINENTAL_AREA_FRACTION">Continental fraction</label><input type="number" id="contFrac" step="0.01" placeholder="0.5"><span></span></div>
-    <div class="row"><label title="UI default 0.29; blank = no land threshold">Land fraction</label><input type="number" id="landFrac" step="0.01" value="0.29"><span></span></div>
+    <div class="row"><label title="UI default 0.29; blank = no land-fraction target (land wherever continental relief clears sea level)">Land fraction</label><input type="number" id="landFrac" step="0.01" value="0.29"><span></span></div>
   </fieldset>
   <div id="knobs"></div>
 </aside>
@@ -171,7 +171,9 @@ function setKnob(row, k, v) {
   markChanged(row, k);
 }
 function readKnob(row, k) {
-  const inputs = [...row.querySelectorAll("input")].map(i => Number(i.value));
+  // A cleared input means the default, not 0.
+  const fallback = isRange(k) ? k.default : [k.default];
+  const inputs = [...row.querySelectorAll("input")].map((input, j) => input.value.trim() === "" ? fallback[j] : Number(input.value));
   return isRange(k) ? inputs : inputs[0];
 }
 function markChanged(row, k) {
@@ -230,7 +232,7 @@ function updateModeRows() {
 function sweepValues(k) {
   const vals = $("sweepValues").value.split(/[,\s]+/).filter(Boolean).map(Number);
   if (!vals.length || vals.some(v => !Number.isFinite(v))) throw new Error("Values must be a comma-separated list of numbers.");
-  return vals.slice(0, 12).map(v => isIntKind(k) ? Math.round(v) : v);
+  return [...new Set(vals.map(v => isIntKind(k) ? Math.round(v) : v))].slice(0, 12);
 }
 function numOrNull(id) { const v = $(id).value.trim(); return v === "" ? null : Number(v); }
 function worldSettings() {
@@ -247,8 +249,11 @@ function load() {
   try { state = JSON.parse(localStorage.getItem(STORE)); } catch (e) {}
   if (!state) { fillSweepDefaults(); return; }
   for (const [id, v] of Object.entries(state.form || {})) if ($(id)) { if ($(id).type === "checkbox") $(id).checked = v; else $(id).value = v; }
+  // Saved state is shared by every checkout served on this port: a select whose saved option
+  // isn't on this checkout (a renamed knob) falls back to its first option.
+  for (const sel of document.querySelectorAll("aside select, .toolbar select")) if (sel.selectedIndex < 0) sel.selectedIndex = 0;
   for (const [name, v] of Object.entries(state.knobs || {})) { const k = knobByName(name); if (k) setKnob(rowFor(name), k, v); }
-  if (!$("sweepFrom").value || !$("sweepValues").value) fillSweepDefaults();
+  if (!$("sweepFrom").value || !$("sweepValues").value || state.form?.sweepKnob !== $("sweepKnob").value) fillSweepDefaults();
 }
 
 // ---- batches ------------------------------------------------------------------------
@@ -257,7 +262,7 @@ function seedJobs(seed, n, overrides) {
 }
 function newBatches() {
   const n = Math.max(1, Math.min(40, Number($("count").value) || 10));
-  const seed = Number($("seed").value) || 0;
+  const seed = Math.trunc(Number($("seed").value)) || 0;
   const base = overrides();
   const make = fields => ({ id: nextBatchId++, world: worldSettings(), base, status: "queued", seconds: 0, ...fields });
   const seedsTitle = n === 1 ? `seed ${seed}` : `seeds ${seed}–${seed + n - 1}`;
@@ -325,6 +330,7 @@ async function runBatch(batch) {
       let nl;
       while ((nl = buf.indexOf("\n")) >= 0) {
         const r = JSON.parse(buf.slice(0, nl)); buf = buf.slice(nl + 1);
+        if (r.fatal) throw new Error(`server: ${r.fatal}`);
         r.label = batch.jobs[r.index].label;
         if (r.ok) decode(r);
         batch.results[r.index] = r;
@@ -333,10 +339,15 @@ async function runBatch(batch) {
         drawHead(batch);
       }
     }
+    if (batch.results.some(r => r.pending)) throw new Error("the server ended the batch early; see its log");
     batch.status = "done";
   } catch (e) {
     batch.status = e.name === "AbortError" ? "stopped" : "error";
-    if (batch.status === "error") batch.error = String(e.message || e);
+    if (batch.status === "error") {
+      batch.error = String(e.message || e);
+      // Don't leave the server working through a batch nothing will show.
+      cancelBatch(batch);
+    }
   }
   batch.seconds = (performance.now() - batch.started) / 1000;
   finishBatch(batch, batch.status);
@@ -370,8 +381,8 @@ function clearWorkspace() {
 }
 function b64(s, Type) { const bin = atob(s), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); return new Type(u8.buffer); }
 function decode(r) {
-  r.kind = b64(r.kind, Uint8Array); r.plate = b64(r.plate, Uint8Array);
-  r.craton = b64(r.craton, Uint16Array); r.continent = b64(r.continent, Uint8Array);
+  r.kind = b64(r.kind, Uint8Array); r.plate = b64(r.plate, Uint16Array);
+  r.craton = b64(r.craton, Uint16Array); r.continent = b64(r.continent, Uint16Array);
 }
 
 // ---- drawing ------------------------------------------------------------------------

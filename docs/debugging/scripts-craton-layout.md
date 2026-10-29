@@ -160,15 +160,20 @@ PYTHONPATH=backend backend/.venv/bin/python bin/debug/layout_explorer.py --port 
 - Belts: belt width, closure radius and lens.
 - Plates: point sites, candidate partitions, refinement, boundary costs, auto plate count.
 
-Each knob starts at its value on the checkout, so a branch's edits show as its defaults.
-World settings (node density, plate count, continental and land fraction) are passed to
-`lithosphere_plate.cratons_first_layout`.
+Each knob's default is its value on the checkout, so a branch's edits show as its defaults.
+The browser keeps knobs you change between visits, and Reset knobs returns them to the
+checkout's values. Restart the server after editing backend code: pool workers start on
+demand and would pick up the edit while the page still shows the old defaults.
+`PLATE_COST_CORE` follows an override of `PLATE_COST_MARGIN` unless it is set itself, as
+it does in `plate_partition.py`. World settings (node density, plate count, continental and
+land fraction) are passed to `lithosphere_plate.cratons_first_layout`.
 
 **Jobs.** Each map is one job: a seed plus constant overrides. A job runs
 `cratons_first_layout` in a process pool (`--workers`, default 4), with the overrides
 applied to the modules for that job and reset before the next one. A job builds the layout
 only, without plates or relief: about 1 s per layout at node density 1 and about 5 s at 4.
-A layout that raises, such as the partition failure in #510, is shown as an error tile.
+A layout that raises, such as the partition failure in #510, is shown as an error tile. If a
+worker process dies, the column reports the error and the server starts a new pool.
 
 **Batches.** Each Generate adds a column of maps to the right of the earlier ones:
 - **N seeds** at fixed knobs.
@@ -182,7 +187,9 @@ other end held at the sidebar's value. A value that would put min above max is r
 before the batch runs.
 
 A column's header lists its changed knobs, with the median and range of the layout
-diagnostics (`ContinentLayout.diagnostics`). Stop cancels the jobs that haven't started.
+diagnostics (`ContinentLayout.diagnostics`). Stop cancels the batch's queued jobs and any
+columns still waiting. Jobs the pool has already handed to its workers, up to about
+`--workers` + 1, still finish.
 
 **Display.** Maps can be coloured by geology, land and water, plate, craton or continent, with
 overlays for plate boundaries, coastline, craton nuclei and plate sites. Click a map for an
