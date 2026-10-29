@@ -1,12 +1,11 @@
 """Cross-plate merge on sparse quad plates (issue #228 Phase 4): the frame remap of an absorbed
 plate onto the surviving plate's lattice, checked by exact cell area -- see quad_merge.py."""
 
-import copy
 
 import numpy as np
 import pytest
 
-from app import continental_ledger, geometry, lithosphere, merge_split, quad_merge
+from app import continental_ledger, geometry, lithosphere, mantle, merge_split, quad_merge, torque
 from app.elevation_lines import (
     CRUST_TYPE_CONTINENTAL,
     CRUST_TYPE_INHERIT,
@@ -413,59 +412,77 @@ def test_merged_elevation_is_isostatic_plus_the_carried_residual():
     assert np.allclose((keep.collect("elevation") - isostatic)[new], -250.0)
 
 
-def _momentum(*plates) -> np.ndarray:
-    return sum(quad_merge._inertia(p) @ p.omega for p in plates)
-
-
-def test_merge_conserves_angular_momentum_against_the_merged_plates_own_inertia():
+def test_merge_does_not_blend_angular_velocity_from_absorbed_plate():
     keep = _cap(1, np.eye(3), _direction(0.0))
     absorb = _cap(2, ROTATED, _direction(2 * RADIUS + 0.5 * SPACING))
-    keep.set_omega(np.array([0.0, 0.0, 1e-9]))
+    keep_omega = np.array([0.0, 0.0, 1e-9])
+    keep.set_omega(keep_omega)
     absorb.set_omega(np.array([2e-9, 0.0, 0.0]))
-    momentum = _momentum(keep, absorb)
 
     quad_merge.merge(keep, absorb, np.zeros((0, 3)))
 
-    assert np.allclose(quad_merge._inertia(keep) @ keep.omega, momentum, rtol=1e-12, atol=0.0)
+    np.testing.assert_array_equal(keep.omega, keep_omega)
     assert keep.age_years == 0.0
 
 
-def test_crust_removed_at_the_suture_cap_leaves_with_the_absorbed_plates_momentum():
+def test_merge_preserves_survivor_rate_below_the_normal_speed_floor():
+    keep = _cap(1, np.eye(3), _direction(0.0))
+    absorb = _cap(2, ROTATED, _direction(2 * RADIUS + 0.5 * SPACING))
+    keep_omega = np.array([0.0, 0.0, mantle.cm_per_yr_to_rad_per_yr(0.1)])
+    keep.set_omega(keep_omega)
+    absorb.set_omega(np.array([2e-9, 0.0, 0.0]))
+
+    quad_merge.merge(keep, absorb, np.zeros((0, 3)))
+
+    np.testing.assert_array_equal(keep.omega, keep_omega)
+
+
+def test_crust_removed_at_the_suture_cap_does_not_assign_a_merged_rate():
     # Both plates at the cap, so overflow has nowhere on the merged plate to go and leaves.
     keep = _cap(1, np.eye(3), _direction(0.0))
     absorb = _cap(2, ROTATED, _direction(2 * RADIUS - 3 * SPACING))
     for plate in (keep, absorb):
         plate.set_fields_on_plate(crustal_thickness_m=np.full(plate.node_count(), SUTURE_ACCRETION_MAX_HC_M))
-    keep.set_omega(np.array([0.0, 0.0, 1e-9]))
+    keep_omega = np.array([0.0, 0.0, 1e-9])
+    keep.set_omega(keep_omega)
     absorb.set_omega(np.array([2e-9, 0.0, 0.0]))
-    momentum = _momentum(keep, absorb)
-    probe_keep, probe_absorb = copy.deepcopy(keep), copy.deepcopy(absorb)
-    lost, _ = quad_merge._transfer(probe_keep, probe_absorb, np.zeros((0, 3)))
-    assert np.linalg.norm(lost) > 0.0
+    before = _volume([keep, absorb], "crustal_thickness_m")
 
     quad_merge.merge(keep, absorb, np.zeros((0, 3)))
 
-    retained = momentum - lost @ absorb.omega
-    assert np.allclose(quad_merge._inertia(keep) @ keep.omega, retained, rtol=1e-12, atol=0.0)
-    assert not np.allclose(retained, momentum, rtol=1e-6, atol=0.0)
+    assert _volume([keep], "crustal_thickness_m") < before
+    np.testing.assert_array_equal(keep.omega, keep_omega)
 
 
-def test_overflow_placed_on_the_merged_plate_keeps_its_momentum():
-    # PR #306 review: Hc stacked past the cap and placed elsewhere on the merged plate never
-    # left it, so it mustn't be subtracted as lost momentum -- with room for all of it, the
-    # merge conserves both plates' momentum outright.
+def test_overflow_placed_on_the_merged_plate_conserves_crustal_volume():
+    # PR #306 review: overflow placed elsewhere on the merged plate remains in the world.
     keep = _cap(1, np.eye(3), _direction(0.0))
     absorb = _cap(2, ROTATED, _direction(2 * RADIUS - 3 * SPACING))
     keep.set_fields_on_plate(crustal_thickness_m=np.full(keep.node_count(), 0.8 * SUTURE_ACCRETION_MAX_HC_M))
-    keep.set_omega(np.array([0.0, 0.0, 1e-9]))
-    absorb.set_omega(np.array([2e-9, 0.0, 0.0]))
-    momentum = _momentum(keep, absorb)
     before = _volume([keep, absorb], "crustal_thickness_m")
 
     quad_merge.merge(keep, absorb, np.zeros((0, 3)))
 
     assert _volume([keep], "crustal_thickness_m") == pytest.approx(before, rel=1e-9)
-    assert np.allclose(quad_merge._inertia(keep) @ keep.omega, momentum, rtol=1e-12, atol=0.0)
+
+
+def test_merged_plate_motion_comes_from_its_current_loads():
+    keep = _cap(1, np.eye(3), _direction(0.0))
+    absorb = _cap(2, ROTATED, _direction(2 * RADIUS + 0.5 * SPACING))
+    quad_merge.merge(keep, absorb, np.zeros((0, 3)))
+    # The identity tests above cover rate preservation; this test covers solver response to
+    # new loads independently of the survivor's stored rate.
+    world = _world(keep)
+    world.mantle_centers = []
+
+    np.testing.assert_array_equal(torque.solve_plates_quasistatic(world)[keep.plate_id], np.zeros(3))
+    world.mantle_centers = mantle.generate_convection_centers(np.random.default_rng(930), n_centers=8)
+    loaded_rate_a = torque.solve_plates_quasistatic(world)[keep.plate_id]
+    world.mantle_centers = mantle.generate_convection_centers(np.random.default_rng(931), n_centers=8)
+    loaded_rate_b = torque.solve_plates_quasistatic(world)[keep.plate_id]
+    assert np.linalg.norm(loaded_rate_a) > 0.0
+    assert np.linalg.norm(loaded_rate_b) > 0.0
+    assert not np.allclose(loaded_rate_a, loaded_rate_b, rtol=1e-6, atol=0.0)
 
 
 def _overlapping_pair():

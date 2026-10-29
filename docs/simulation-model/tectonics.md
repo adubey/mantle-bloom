@@ -499,6 +499,15 @@ already merged a ready closing-rate pair). Separately, `_merge_probability` now 
 large pair's odds toward certainty in proportion to `|omega_a - omega_b| / MAX_PLATE_RATE` --
 a fast, decisive convergence merges more readily than a slow oblique graze.
 
+**Motion after a merge (RFC 0012, #547).** A merge changes plate identity, geometry, and
+material; it does not assign a new angular rate. `quad_merge.merge` leaves the surviving
+plate's last solved `omega` in place as the lagged kinematic estimate for the next motion
+pass. Boundary classifications and rate-dependent loads on that pass may therefore reflect
+the retained rate; the quasi-static solver then replaces it using the merged plate's current
+loads and resistance. The merge does not blend the absorbed plate's angular momentum or clamp
+the result to a minimum speed. This follows RFC 0012's staggered timestep and does not claim
+that the retained rate is the merged plate's new equilibrium.
+
 ## Quad deformation
 
 Plate boundaries can add or remove surface cells as plates collide or separate. The mesh is
