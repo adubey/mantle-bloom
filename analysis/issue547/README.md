@@ -134,13 +134,15 @@ stress test running concurrently. Record commit, runtime, peak RSS, checkpoints,
 topology sequence and event times, and ledger closure. Full outputs stay in scratch; check in a
 compact JSON summary and the command template.
 
-**Measures and decision rule.** Compare accumulated driving and residual torque, mean and peak
+**Historical measures and decision rule (superseded 2026-10-29).** Compare accumulated
+driving and residual torque, mean and peak
 solved rate, relative contact closing/slip and force, per-step Hc/Hm deformation, Hc/Hm
 distributions, land fraction, topology event time/order, and continental/craton/mobile-cover/Hm
-ledger closure. Apply RFC 0012's 10% continuous-metric timestep criterion separately to each
-arm; report topology differences separately. Any >10% baseline/candidate continuous difference
-must be traced to its first divergent step before acceptance or tuning. The result is diagnostic
-if either arm misses the timestep tolerance. Ledger closure must be reported, including any
+ledger closure. At the time, the preregistration applied RFC 0012's 10% continuous-metric
+timestep criterion separately to each arm and required topology differences to be reported
+separately. It required tracing any >10% baseline/candidate continuous difference before
+acceptance or tuning. Missing the timestep tolerance made the result diagnostic under that old
+rule. Ledger closure must be reported, including any
 residual larger than rounding scale.
 
 **Reproduction.** Reuse `bin/debug/replay_rfc0012_merge_rate.py`, selecting the baseline with
@@ -162,9 +164,9 @@ mean rate and 3.08% for peak rate. Driving torque changed by at most 0.86%; resi
 9.58%. Contact response has a larger outlier: for seed `748935664` at 2 Myr, mean absolute
 closing changed by −25.91% and peak closing by −32.95%. Mean contact force changed by at most
 7.61%. Endpoint land fraction changed by at most 0.208 percentage points, and Hc/Hm quantiles
-by at most 1.625%. The contact-closing differences exceed the preregistered 10% trace threshold. A follow-up trace
-of that pair is recorded below; the overall matrix remains diagnostic because the separate
-10% timestep tolerance is not met in either arm.
+by at most 1.625%. Under the historical preregistered 10% trace threshold, the contact-closing
+differences triggered a follow-up trace of that pair, recorded below. The separate 10% timestep
+tolerance described here is superseded; the matrix remains diagnostic evidence, not a gate.
 
 | Seed | Step (Myr) | Mean solved rate Δ | Mean closing Δ | Mean contact force Δ | Topology same? | Events (baseline/candidate) |
 |---:|---:|---:|---:|---:|:---:|---:|
@@ -190,18 +192,19 @@ consistent with the lagged-rate → classification → topology pathway. It does
 this event alone explains the full 50 Myr contact-closing delta. The compact trace is in
 [merge_closing_trace_summary.json](merge_closing_trace_summary.json); raw traces remain in scratch.
 
-The separate timestep tolerance also fails in both arms. Across the 1 and 2 Myr runs relative
+Under the superseded timestep tolerance, both arms failed. Across the 1 and 2 Myr runs relative
 to 0.1 Myr, mean closing changes by as much as 192%, contact force by 41.5%, mean solved rate
 by 39.7%, peak closing by 100.3%, and accumulated driving torque by 16.2%. Those step-size
 effects occur in both arms and overlap topology changes, so they cannot be attributed solely to
 the merge-rate change. Maximum Hm ledger closure is 0.0000121 of the corresponding inventory;
 coarse-step continental balance residuals remain material and are reported in the compact JSON.
 
-**Assessment.** The current-main results again show that most global motion and endpoint metrics
+**Historical assessment under the preregistered gate.** The current-main results again show
+that most global motion and endpoint metrics
 stay close, while topology and contact response diverge in some pairs. The selected merge-rate
 rule is supported by the focused handoff trace, but this broader matrix is not an unchanged-
-trajectory result. The preregistered >10% contact-closing difference still needs a per-step trace
-before #547 can be accepted. No tuning was applied.
+trajectory result. The preregistered >10% contact-closing difference was used to motivate the
+per-step trace below; this former threshold is not a current acceptance gate. No tuning was applied.
 
 ### Design decision: kinematics presented to the first solve after a merge
 
@@ -242,14 +245,15 @@ solve, classification changes on four plates (including the merged plate), while
 plate's solved rate differs by only 0.009 cm/yr. Thus the rule is implementable and the rate
 handoff is causal for classification in this event. It does **not** make classification
 invariant across the old and new merge behavior; the resulting contact-response and topology
-differences are reported above and remain subject to #547's acceptance decision.
+differences are reported above as evidence for #547's acceptance decision.
 
-The 24-run matched replay already tests this selected rule because its candidate is precisely
+The historical 24-run matched replay already tests this selected rule because its candidate is
+precisely
 the merge-only implementation retaining the survivor rate. Repeating those same runs would add
-no evidence. The matrix found 3/12 different topology sequences, contact metrics beyond 10% in
-some pairs, and did not meet RFC 0012's 10% timestep criterion in either arm. This rules out
-claiming acceptance from the current evidence; it does not justify restoring the blend or
-introducing a classification iteration. Any future iteration should be a separately scoped RFC
+no evidence. Under the preregistered 10% checks, the matrix found 3/12 different topology
+sequences, contact metrics beyond 10% in some pairs, and missed the timestep criterion in both
+arms. These are reported outcomes, not current acceptance gates; they do not justify restoring
+the blend or introducing a classification iteration. Any future iteration should be a separately scoped RFC
 decision with a convergence invariant and a new preregistered replay.
 
 ### Matched merge-rate handoff trace
@@ -311,13 +315,15 @@ fingerprints, event histories, and ledger validity checks above matched.
 assignments change physical motion, deformation, material closure, or geological outcomes,
 once each resulting plate is advanced by the quasi-static load solve?
 
-**Expected direction and size.** Expect no change in the next motion solve or in the subsequent
+**Historical prediction (superseded 2026-10-29).** Expect no change in the next motion solve
+or in the subsequent
 world trajectory. The solver is quasi-static and replaces every live plate's rate from the
 current loads and resistance before rotating it; topology runs after the motion and deformation
 phases. The removed state assignments should therefore affect only the stored rate between a
 topology event and the next solve. The primary comparison is exact equality of per-step solved
 rates, forces, deformation, event ordering, and final inventories for each matched baseline and
-implementation run. Continuous step-size comparisons use RFC 0012's 10% tolerance. Report any
+implementation run. The original plan compared step sizes against the former RFC 0012 10%
+tolerance. Report any
 nonzero trajectory difference and its first checkpoint without tuning the model.
 
 **Controls.** Generate the same world independently in each arm using `generate_world(seed,
@@ -329,12 +335,14 @@ below. Run baseline and implementation serially, paired by seed and timestep, wi
 simulation active at a time. Set `PYTHONHASHSEED=0` in both arms. Record checkpoints every
 10 Myr. Exclude 5 Myr.
 
-**Metrics.** Record accumulated driving and residual torque response; mean and peak solved
+**Historical metrics and decision rule (superseded 2026-10-29).** Record accumulated driving
+and residual torque response; mean and peak solved
 plate rate; relative contact closing/slip; per-step Hc/Hm deformation and area-weighted Hc/Hm
 distributions; land fraction; plate count; topology event time/order; and continental-material,
 craton, mobile-cover, and Hm-ledger closure. Report endpoint values and checkpoint trajectories.
-Check every continuous metric across 0.1/1/2 Myr against the RFC 0012 10% tolerance, and report
-topology event-time/order differences separately. Record runtime and peak RSS for every run.
+The original preregistration checked continuous metrics across 0.1/1/2 Myr against the RFC
+0012 10% tolerance and reported topology event-time/order separately. Record runtime and peak
+RSS for every run.
 
 **Decision.** Because the proposed change removes state that G1 found unused by the next physical
 solve, any change in a solved-load metric or a material ledger is unexpected and requires finding
@@ -570,13 +578,14 @@ or size is assumed. The run will record the first changed classification/load af
 where captured, along with the complete preregistered replay metrics. The prior combined-change
 matrix cannot answer this question.
 
-**Metrics and decision threshold.** Compare accumulated driving and residual torque response,
+**Historical metrics and decision threshold (superseded 2026-10-29).** The original plan
+compared accumulated driving and residual torque response,
 mean and peak solved plate rate, relative contact closing/slip, per-step Hc/Hm deformation and
 area-weighted Hc/Hm distributions, land fraction, topology event time/order, and
-continental-material, craton, mobile-cover, and Hm-ledger closure. Compare continuous metrics
-across 0.1/1/2 Myr steps with RFC 0012's 10% tolerance; report topology differences separately.
-If any continuous metric exceeds tolerance, identify its first divergent step and cause before
-acceptance or tuning. Ledger closure must remain at numerical-rounding scale.
+continental-material, craton, mobile-cover, and Hm-ledger closure. Its 10% step-size tolerance
+and trace-before-acceptance rule were part of that superseded preregistration; topology differences
+and ledger closure remain characterization measures. Ledger closure must remain at
+numerical-rounding scale.
 
 **Controls.** Use `generate_world(seed, node_density=4.0)` for seeds `326494039`, `748935664`,
 `580014012`, and `111065103`; compare baseline `f155b7eb36727f452139955b13350593db57cbcd`
@@ -595,14 +604,15 @@ Example baseline command:
 MANTLE_BLOOM_REPLAY_BACKEND=<baseline-root>/backend PYTHONHASHSEED=0 <baseline-root>/backend/.venv/bin/python <candidate-root>/bin/debug/replay_rfc0012_merge_rate.py --seed <seed> --step-myr <0.1|1|2> --myr 50 --checkpoint-myr 10 --out <scratch-output>.json
 ```
 
-Compare checkpoint trajectories and endpoints for the preregistered measures; continuous
-metrics must stay within 10% across step sizes. Any larger difference must be traced to its
-first divergent step before acceptance. Report topology sequence changes separately and
-require all four ledger balance errors to remain at numerical-rounding scale. The runner stores
+Compare checkpoint trajectories and endpoints for the preregistered measures. The original 10%
+step-size threshold and trace-before-acceptance rule are historical and superseded; current RFC
+wording treats timestep sensitivity as characterization. Report topology sequence changes
+separately and check all four ledger balance errors. The runner stores
 one compact JSON summary per arm; full output and saves remain outside Git. This preregistration
 and runner are committed before the first matrix arm.
 
-**Status.** Preregistered for the narrowed candidate. The matrix has not started.
+**Status at the time of preregistration.** The matrix had not started; the later replay results
+are reported in the sections above.
 Before the matrix, run one 0.1 Myr instrumentation smoke on each arm to validate backend
 selection, the runner's schema and ledger fields; exclude both from all baseline/candidate
 comparisons and decision metrics. The initial smoke exposed that ordinary world events include
@@ -614,7 +624,10 @@ both arms with this corrected topology-event capture before starting the matrix.
 
 The preregistered check was posted to [issue #547](https://github.com/adubey/mantle-bloom/issues/547#issuecomment-6408770512) before either 0.05 Myr run. It compares seed `748935664` at node density 4, `PYTHONHASHSEED=0`, 50 Myr, and 10 Myr checkpoints. The 0.1 Myr runs are reused from the current-main matrix: baseline `f04cbc0772eca6d2484f7477b20004deb368206c`, candidate model code `d553c3cfc05db4372d0bb33ec7e58aa2390b793b`. The 0.05 candidate ran from `fb516de9ee61cb54bb29a9a7050a9fa1f6c07481`, which adds only the report to the same model code. The two new runs ran serially and completed successfully.
 
-| Continuous metric, 0.05 vs 0.1 Myr | Baseline | Candidate | 10% limit |
+The 10% column records the historical preregistered reference; under the current RFC wording,
+these differences characterize timestep sensitivity rather than pass or fail acceptance.
+
+| Continuous metric, 0.05 vs 0.1 Myr | Baseline | Candidate | Historical 10% reference |
 |---|---:|---:|:---:|
 | Accumulated driving torque | +5.17% | +5.13% | pass |
 | Accumulated residual torque | −7.06% | −2.99% | pass |

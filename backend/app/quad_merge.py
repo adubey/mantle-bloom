@@ -79,7 +79,10 @@ def merge(
     `absorb`'s territory and fields are remapped onto `keep`'s lattice by exact area (see the
     module docstring). `other_points_xyz` are every other live plate's nodes (world xyz),
     which `keep` doesn't grow over; nor does it grow into any of `other_plates`' cells. With
-    `world`, the cells the suture welds are marked as belt (RFC 0009).
+    `world`, the cells the suture welds are marked as belt (RFC 0009). The caller chooses
+    the survivor: collision merges keep the lower plate ID, while forced overlap merges keep
+    the plate with more nodes. The retained plate's rate can therefore be either faster
+    or slower than the absorbed plate's rate until the next solve (RFC 0012, #547).
 
     Plate motion is solved from the merged plate's new loads on the next motion pass; this
     topology change transfers material but does not assign a rate (RFC 0012, #547)."""
@@ -422,7 +425,7 @@ def _transfer(
     hc[is_new] = np.clip(hc[is_new], lithosphere.MIN_CRUSTAL_THICKNESS_M, SUTURE_ACCRETION_MAX_HC_M)
     hm[is_new] = np.clip(hm[is_new], lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M, lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M)
     overflow = np.where(stacked | is_new, np.maximum(uncapped_hc - hc, 0.0), 0.0)
-    spread, _ = _place_stacking_overflow(keep, out, overflow, target_area)
+    spread = _place_stacking_overflow(keep, out, overflow, target_area)
 
     # Elevation: isostasy from the new column plus the carried erosion/texture residual, as in
     # `coarsen_cells`; on a stacked column both plates' residuals blend by area.
@@ -472,11 +475,10 @@ def _place_stacking_overflow(
     above the capped column is the overflow's own: it goes with the overflow and keeps its
     oldest date, so welding two cratons doesn't destroy any (#340). What can't be placed
     leaves its material and craton above the column for `merge_split.merge_plates` and its
-    craton audit to book. Returns the cells whose Hc the placement changed and the share of
-    `overflow` it placed, the same share on every overflowing cell."""
+    craton audit to book. Returns the cells whose Hc the placement changed."""
     volume = float(overflow @ areas)
     if volume <= 0.0:
-        return np.zeros(len(overflow), dtype=bool), 0.0
+        return np.zeros(len(overflow), dtype=bool)
     out.setdefault("continental_material_m", np.zeros(len(overflow)))
     out.setdefault("plateau_crust_m", np.zeros(len(overflow)))
     out.setdefault("buoyant_crust_time_m_yr", np.zeros(len(overflow)))
@@ -555,7 +557,7 @@ def _place_stacking_overflow(
                 points = keep.surface_nodes().local_xyz
                 _, nearest = cKDTree(points[sources]).query(points[gained])
                 formed[gained] = np.minimum(formed[gained], formed[sources][nearest])
-    return changed, placed
+    return changed
 
 
 def _materialised(keep: "PlateWithSparseQuadPatch", absorb: "PlateWithSparseQuadPatch") -> list[str]:

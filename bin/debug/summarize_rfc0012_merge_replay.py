@@ -113,12 +113,12 @@ def _checkpoint_trajectory(baseline: dict[str, Any], candidate: dict[str, Any]) 
         rows["land_fraction_baseline"].append(base["land_fraction"])
         rows["land_fraction_candidate"].append(changed["land_fraction"])
         rows["max_abs_hc_hm_quantile_delta_percent"].append(
-            max(
+            max((
                 abs(value)
                 for family in quantile_delta.values()
                 for value in family.values()
                 if value is not None
-            )
+            ), default=None)
         )
     return {"myr": times, **rows}
 

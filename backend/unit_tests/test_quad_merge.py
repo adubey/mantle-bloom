@@ -425,6 +425,18 @@ def test_merge_does_not_blend_angular_velocity_from_absorbed_plate():
     assert keep.age_years == 0.0
 
 
+def test_merge_preserves_survivor_rate_below_the_normal_speed_floor():
+    keep = _cap(1, np.eye(3), _direction(0.0))
+    absorb = _cap(2, ROTATED, _direction(2 * RADIUS + 0.5 * SPACING))
+    keep_omega = np.array([0.0, 0.0, mantle.cm_per_yr_to_rad_per_yr(0.1)])
+    keep.set_omega(keep_omega)
+    absorb.set_omega(np.array([2e-9, 0.0, 0.0]))
+
+    quad_merge.merge(keep, absorb, np.zeros((0, 3)))
+
+    np.testing.assert_array_equal(keep.omega, keep_omega)
+
+
 def test_crust_removed_at_the_suture_cap_does_not_assign_a_merged_rate():
     # Both plates at the cap, so overflow has nowhere on the merged plate to go and leaves.
     keep = _cap(1, np.eye(3), _direction(0.0))
@@ -458,7 +470,10 @@ def test_merged_plate_motion_comes_from_its_current_loads():
     keep = _cap(1, np.eye(3), _direction(0.0))
     absorb = _cap(2, ROTATED, _direction(2 * RADIUS + 0.5 * SPACING))
     quad_merge.merge(keep, absorb, np.zeros((0, 3)))
-    world = World(seed=0, plates=[keep], mantle_centers=[], next_plate_id=3, node_density=DENSITY)
+    # The identity tests above cover rate preservation; this test covers solver response to
+    # new loads independently of the survivor's stored rate.
+    world = _world(keep)
+    world.mantle_centers = []
 
     np.testing.assert_array_equal(torque.solve_plates_quasistatic(world)[keep.plate_id], np.zeros(3))
     world.mantle_centers = mantle.generate_convection_centers(np.random.default_rng(930), n_centers=8)

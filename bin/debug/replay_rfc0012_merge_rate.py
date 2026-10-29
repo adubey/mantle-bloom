@@ -23,6 +23,7 @@ import sys
 import time
 from collections import defaultdict
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -119,6 +120,21 @@ def _write_json(path: Path, value: dict) -> None:
     temporary.replace(path)
 
 
+def _peak_rss_mib() -> float:
+    # getrusage reports bytes on macOS/BSD and KiB on Linux.
+    divisor = 2**10 if sys.platform == "linux" else 2**20
+    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / divisor
+
+
+def _topology_events_for_previous_step(topology_events: list[list[Any]], elapsed_years: float, step_years: float) -> list[str]:
+    previous_step_years = elapsed_years - step_years
+    return [
+        message
+        for event_years, message in topology_events
+        if np.isclose(event_years, previous_step_years, rtol=0.0, atol=1.0)
+    ]
+
+
 def _load_resume(path: Path, args) -> tuple[object, dict]:
     checkpoint = json.loads(path.read_text())
     for key, expected in (("seed", args.seed), ("step_myr", args.step_myr)):
@@ -128,7 +144,31 @@ def _load_resume(path: Path, args) -> tuple[object, dict]:
     if not save_path or not Path(save_path).is_file():
         raise ValueError(f"Resume checkpoint does not name an existing world save: {save_path!r}")
     world = persistence.load_world_bytes(Path(save_path).read_bytes())
-    expected_years = float(checkpoint["checkpoints"][-1]["myr"]) * 1e6
+    world.debug_diagnostics = True
+    save_myr = float(checkpoint["world_save_myr"])
+    save_index = next(
+        (i for i, row in enumerate(checkpoint["checkpoints"]) if abs(float(row["myr"]) - save_myr) < 1e-9),
+        None,
+    )
+    if save_index is None:
+        raise ValueError(f"Summary has no checkpoint matching world save at {save_myr:g} Myr")
+    # A crash can leave the JSON several checkpoints ahead of its one restart save. Roll
+    # cumulative diagnostics back to the saved checkpoint before continuing from that world.
+    checkpoint["checkpoints"] = checkpoint["checkpoints"][: save_index + 1]
+    checkpoint["topology_events"] = [event for event in checkpoint["topology_events"] if event[0] <= world.elapsed_years]
+    saved_row = checkpoint["checkpoints"][-1]
+    if "motion_cumulative" not in saved_row:
+        raise ValueError("Resume summary predates cumulative checkpoint metrics; restart the replay to preserve ledger accuracy")
+    checkpoint["motion"] = saved_row.get("motion_cumulative", {})
+    deformation = defaultdict(lambda: defaultdict(float))
+    for row in checkpoint["checkpoints"]:
+        for phase, measures in row.get("deformation_since_checkpoint", {}).items():
+            for measure, value in measures.items():
+                deformation[phase][measure] += value
+    checkpoint["deformation"] = {phase: dict(values) for phase, values in deformation.items()}
+    checkpoint["runtime_seconds"] = saved_row.get("runtime_seconds", 0.0)
+    checkpoint["peak_rss_mib"] = saved_row.get("peak_rss_mib", 0.0)
+    expected_years = save_myr * 1e6
     if abs(world.elapsed_years - expected_years) > 1.0:
         raise ValueError(
             f"Saved world is at {world.elapsed_years / 1e6:g} Myr, summary is at {expected_years / 1e6:g} Myr"
@@ -144,6 +184,20 @@ def _load_resume(path: Path, args) -> tuple[object, dict]:
     return world, result
 
 
+def _validate_intervals(parser, args) -> int:
+    save_step = round(args.world_save_myr / args.step_myr)
+    if abs(save_step * args.step_myr - args.world_save_myr) > 1e-9:
+        parser.error("--world-save-myr must fall on a timestep boundary")
+    checkpoint_steps = round(args.checkpoint_myr / args.step_myr)
+    if args.checkpoint_myr <= 0 or abs(checkpoint_steps * args.step_myr - args.checkpoint_myr) > 1e-9:
+        parser.error("--checkpoint-myr must be a positive multiple of --step-myr")
+    if abs(args.world_save_myr / args.checkpoint_myr - round(args.world_save_myr / args.checkpoint_myr)) > 1e-9:
+        parser.error("--world-save-myr must fall on a checkpoint boundary")
+    if args.world_save_myr > args.myr:
+        parser.error("--world-save-myr must not exceed --myr")
+    return checkpoint_steps
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--seed", type=int, required=True)
@@ -157,17 +211,12 @@ def main() -> None:
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     logger = _configure_logging(args.log or args.out.with_suffix(".log"))
-    save_step = round(args.world_save_myr / args.step_myr)
-    if abs(save_step * args.step_myr - args.world_save_myr) > 1e-9:
-        parser.error("--world-save-myr must fall on a timestep boundary")
-    if args.world_save_myr > args.myr:
-        parser.error("--world-save-myr must not exceed --myr")
+    checkpoint_steps = _validate_intervals(parser, args)
     commit = subprocess.run(
         ["git", "rev-parse", "HEAD"], cwd=backend_root.parent, check=True, capture_output=True, text=True
     ).stdout.strip()
     seconds = args.step_myr * 1e6
     steps = round(args.myr / args.step_myr)
-    checkpoint_steps = round(args.checkpoint_myr / args.step_myr)
     if args.resume_from:
         world, result = _load_resume(args.resume_from, args)
         if args.myr < world.elapsed_years / 1e6:
@@ -177,7 +226,6 @@ def main() -> None:
         world_save_path = Path(result["world_save_path"])
         if not world_save_path.is_file():
             raise ValueError(f"Saved world disappeared before resume: {world_save_path}")
-        world_saved = True
         logger.info("Resuming from %.6f Myr checkpoint %s", world.elapsed_years / 1e6, args.resume_from)
     else:
         world = world_mod.generate_world(seed=args.seed, node_density=4.0)
@@ -202,7 +250,6 @@ def main() -> None:
             "world_save_myr": None,
         }
         start_index = 0
-        world_saved = False
         logger.info("Generated seed %d at node density 4; model commit %s", args.seed, commit)
     previous_phases = _phase_totals(world.phase_budget)
     original_topology = merge_split.apply_topology_changes
@@ -251,10 +298,9 @@ def main() -> None:
                             "capacity_n_per_m": contact["capacity_n_per_m"],
                             "yielded": contact["yielded"],
                             "plate_count": len(world.plates),
-                            "topology_events_this_step": [
-                                message for event_years, message in result["topology_events"]
-                                if event_years == world.elapsed_years
-                            ],
+                            "topology_events_previous_step": _topology_events_for_previous_step(
+                                result["topology_events"], world.elapsed_years, seconds
+                            ),
                         }
                 result["motion"]["contact_force_sum_n_per_m"] += sum(
                     c["force_n_per_m"] for c in contacts
@@ -273,7 +319,7 @@ def main() -> None:
                 world.elapsed_years / 1e6,
                 len(world.plates),
                 result["motion"].get("peak_absolute_closing_m_per_s", 0.0),
-                resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / (2**20),
+                _peak_rss_mib(),
             )
             if index % checkpoint_steps == 0 or index == steps:
                 row = _snapshot(world)
@@ -282,14 +328,20 @@ def main() -> None:
                 row["deformation_since_checkpoint"] = {
                     phase: dict(values) for phase, values in result["deformation_window"].items()
                 }
+                row["motion_cumulative"] = dict(result["motion"])
                 result["deformation_window"] = defaultdict(lambda: defaultdict(float))
                 result["checkpoints"].append(row)
                 args.out.parent.mkdir(parents=True, exist_ok=True)
                 result["runtime_seconds"] = runtime_before + time.time() - started
-                result["peak_rss_mib"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / (2**20)
-                if not world_saved and world.elapsed_years / 1e6 >= args.world_save_myr:
-                    save_path = args.world_save_path or args.out.with_name(
-                        f"{args.out.stem}-{world.elapsed_years / 1e6:g}myr.mbworld"
+                result["peak_rss_mib"] = _peak_rss_mib()
+                row["runtime_seconds"] = result["runtime_seconds"]
+                row["peak_rss_mib"] = result["peak_rss_mib"]
+                superseded_save_path = None
+                if world.elapsed_years / 1e6 >= args.world_save_myr:
+                    previous_save = result.get("world_save_path")
+                    base_save_path = args.world_save_path or args.out.with_suffix("")
+                    save_path = base_save_path.with_name(
+                        f"{base_save_path.stem}-{world.elapsed_years / 1e6:g}myr.mbworld"
                     )
                     save_path.parent.mkdir(parents=True, exist_ok=True)
                     temporary = save_path.with_suffix(save_path.suffix + ".tmp")
@@ -297,10 +349,13 @@ def main() -> None:
                     temporary.replace(save_path)
                     result["world_save_path"] = str(save_path)
                     result["world_save_myr"] = world.elapsed_years / 1e6
-                    world_saved = True
+                    if previous_save and Path(previous_save) != save_path:
+                        superseded_save_path = Path(previous_save)
                     logger.info("Saved restartable world at %.6f Myr to %s", world.elapsed_years / 1e6, save_path)
                 args.out.parent.mkdir(parents=True, exist_ok=True)
                 _write_json(args.out, result)
+                if superseded_save_path is not None:
+                    superseded_save_path.unlink(missing_ok=True)
                 logger.info("Wrote summary checkpoint at %.6f Myr to %s", world.elapsed_years / 1e6, args.out)
     except BaseException:
         logger.exception(
@@ -318,7 +373,7 @@ def main() -> None:
     motion["mean_absolute_closing_m_per_s"] = motion.pop("absolute_closing_sum_m_per_s") / contact_samples
     motion["mean_contact_force_n_per_m"] = motion.pop("contact_force_sum_n_per_m") / contact_samples
     result["runtime_seconds"] = runtime_before + time.time() - started
-    result["peak_rss_mib"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / (2**20)
+    result["peak_rss_mib"] = _peak_rss_mib()
     result["motion"] = dict(motion)
     result["deformation"] = {phase: dict(values) for phase, values in result["deformation"].items()}
     _write_json(args.out, result)

@@ -103,6 +103,7 @@ def main() -> None:
     original_merge = quad_merge.merge
     original_solve = torque.solve_plates_quasistatic
     original_topology = merge_split.apply_topology_changes
+    pending_target_merge: dict[str, Any] | None = None
     trace: dict[str, Any] = {
         "commit": commit,
         "seed": args.seed,
@@ -116,11 +117,12 @@ def main() -> None:
     }
 
     def traced_merge(keep, absorb, other_points_xyz, other_plates=(), world=None):
+        nonlocal pending_target_merge
         matching = keep.plate_id == args.keep_plate and absorb.plate_id == args.absorb_plate
         before = {"keep_omega": _omega(keep), "absorb_omega": _omega(absorb)} if matching else None
         original_merge(keep, absorb, other_points_xyz, other_plates, world)
         if matching:
-            trace["merge"] = {
+            pending_target_merge = {
                 "step": world.steps_taken if world is not None else None,
                 "elapsed_myr": world.elapsed_years / 1e6 if world is not None else None,
                 "keep_plate_id": keep.plate_id,
@@ -134,7 +136,7 @@ def main() -> None:
         pre_solve = {plate.plate_id: _omega(plate) for plate in current_world.plates if plate.node_count()}
         solve_diagnostics: dict[str, Any] = {}
         solved = original_solve(current_world, diagnostics=solve_diagnostics)
-        if current_world.steps_taken == round(16.0 / args.step_myr) + 1:
+        if trace["merge"] is not None and trace["next_solve"] is None:
             trace["next_solve"] = {
                 "step": current_world.steps_taken,
                 "elapsed_myr_before_step": current_world.elapsed_years / 1e6,
@@ -161,6 +163,13 @@ def main() -> None:
                 "elapsed_myr": current_world.elapsed_years / 1e6,
                 "message": message,
             })
+            if (
+                pending_target_merge is not None
+                and trace["merge"] is None
+                and f"Plates {args.keep_plate} and {args.absorb_plate}" in message
+                and any(word in message.lower() for word in ("merged into", "fused into", "accreted onto"))
+            ):
+                trace["merge"] = {**pending_target_merge, "topology_event": message}
             yield message
 
     quad_merge.merge = traced_merge
@@ -169,11 +178,14 @@ def main() -> None:
     try:
         for _ in range(round(args.stop_myr / args.step_myr)):
             world_mod.step_world(world, args.step_myr * 1e6)
-            if world.elapsed_years >= 16e6:
-                # Keep the exact post-topology survivor rate at the event for comparison.
-                if trace["merge"] is not None and "survivor_omega_after_step" not in trace["merge"]:
-                    survivor = next((p for p in world.plates if p.plate_id == args.keep_plate), None)
-                    trace["merge"]["survivor_omega_after_step"] = _omega(survivor) if survivor else None
+            if (
+                trace["merge"] is not None
+                and "survivor_omega_after_step" not in trace["merge"]
+                and world.elapsed_years > trace["merge"]["elapsed_myr"] * 1e6
+            ):
+                # Capture the state after the first complete solve/step following this merge.
+                survivor = next((p for p in world.plates if p.plate_id == args.keep_plate), None)
+                trace["merge"]["survivor_omega_after_step"] = _omega(survivor) if survivor else None
     finally:
         quad_merge.merge = original_merge
         torque.solve_plates_quasistatic = original_solve

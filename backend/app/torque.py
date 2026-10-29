@@ -845,8 +845,8 @@ def integrate_omega(
     try:
         new_omega = np.linalg.solve(lhs, rhs)
     except np.linalg.LinAlgError:
-        # Near-empty / degenerate-footprint plate -> singular system; same damped fallback
-        # `lithosphere.omega_from_angular_momentum` uses rather than crash the whole step.
+        # Near-empty / degenerate-footprint plate -> singular system; damp the diagonal rather
+        # than crash the whole step.
         lhs_reg = lhs + 1e-6 * np.trace(lhs) * np.eye(3)
         new_omega = np.linalg.solve(lhs_reg, rhs)
     return mantle.clamp_rate(new_omega)
