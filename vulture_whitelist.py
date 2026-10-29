@@ -93,3 +93,6 @@ _.pix_fmt  # unused attribute (bin/debug/profile_animation_60m.py:72)  # noqa: F
 _.options  # unused attribute (bin/debug/profile_animation_60m.py:73)  # noqa: F821
 _.__defaults__  # unused attribute (bin/debug/sweep_lib.py:148)  # noqa: F821
 _.__defaults__  # unused attribute (bin/debug/sweep_lib.py:149)  # noqa: F821
+# False positives: BaseHTTPRequestHandler dispatches do_<METHOD> by name (#685).
+_.do_GET  # unused method (bin/debug/layout_explorer.py:207)  # noqa: F821
+_.do_POST  # unused method (bin/debug/layout_explorer.py:213)  # noqa: F821
