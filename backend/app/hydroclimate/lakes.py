@@ -260,6 +260,32 @@ class LakeSolveResult:
     filled_elevation: np.ndarray
     spill_target: np.ndarray
     rim_node_idx: np.ndarray
+    trace: "LakeSolveTrace | None" = None
+
+
+@dataclass(frozen=True)
+class LakeTransferTrace:
+    """One routed spill transaction, including its source and receiving basin IDs."""
+
+    source_node_idx: int
+    target_node_idx: int
+    volume_m3: float
+    internal: bool
+    source_lake_id: int
+    receiver_lake_id: int | None
+
+
+@dataclass(frozen=True)
+class LakeSolveTrace:
+    """Per-node source/loss terms and spill edges for one prognostic lake solve."""
+
+    external_supply_m3: np.ndarray
+    wet_precip_m3: np.ndarray
+    dry_runoff_m3: np.ndarray
+    meltwater_m3: np.ndarray
+    evaporation_m3: np.ndarray
+    liquid_sublimation_m3: np.ndarray
+    transfers: tuple[LakeTransferTrace, ...]
 
 
 def _active_bodies(forest, elevation, depth, hypsometry):
@@ -345,6 +371,11 @@ def _export_orphaned_storage(depth, area_m2, leaf_of_node, is_ocean, accounting)
         accounting.ocean_overflow_total += float(
             orphaned_volume[np.asarray(is_ocean, dtype=bool)[orphaned_nodes]].sum()
         )
+    if accounting.trace_transfers is not None:
+        accounting.trace_transfers.extend(
+            LakeTransferTrace(int(node), -1, float(volume), False, -1, None)
+            for node, volume in zip(orphaned_nodes, orphaned_volume)
+        )
 
 
 def _empty_lake_solve_result(elevation, depth, hypsometry, is_ocean, *, export_prior_water):
@@ -387,12 +418,47 @@ class _PrognosticAccounting:
     final_spilling_ids: set[int]
     overflow_by_outlet: np.ndarray
     deferred: dict[int, float]
+    trace_external_by_node: np.ndarray | None = None
+    trace_wet_precip_by_node: np.ndarray | None = None
+    trace_dry_runoff_by_node: np.ndarray | None = None
+    trace_meltwater_by_node: np.ndarray | None = None
+    trace_evaporation_by_node: np.ndarray | None = None
+    trace_sublimation_by_node: np.ndarray | None = None
+    trace_transfers: list[LakeTransferTrace] | None = None
     # Counts are unique active bodies within this solve; gross overflow can count water again
     # when a downstream capped body receives and passes on the same transfer (#553).
     lake_cap_body_ids: set[int] = field(default_factory=set)
     sea_cap_body_ids: set[int] = field(default_factory=set)
     lake_cap_overflow_m3: float = 0.0
     sea_cap_overflow_m3: float = 0.0
+
+
+def _new_prognostic_accounting(leaf_count: int, node_count: int, diagnostic_trace: bool):
+    return _PrognosticAccounting(
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, np.zeros(leaf_count), set(),
+        np.zeros(node_count), {},
+        trace_external_by_node=np.zeros(node_count) if diagnostic_trace else None,
+        trace_wet_precip_by_node=np.zeros(node_count) if diagnostic_trace else None,
+        trace_dry_runoff_by_node=np.zeros(node_count) if diagnostic_trace else None,
+        trace_meltwater_by_node=np.zeros(node_count) if diagnostic_trace else None,
+        trace_evaporation_by_node=np.zeros(node_count) if diagnostic_trace else None,
+        trace_sublimation_by_node=np.zeros(node_count) if diagnostic_trace else None,
+        trace_transfers=[] if diagnostic_trace else None,
+    )
+
+
+def _build_solve_trace(accounting, diagnostic_trace: bool):
+    if not diagnostic_trace:
+        return None
+    return LakeSolveTrace(
+        accounting.trace_external_by_node,
+        accounting.trace_wet_precip_by_node,
+        accounting.trace_dry_runoff_by_node,
+        accounting.trace_meltwater_by_node,
+        accounting.trace_evaporation_by_node,
+        accounting.trace_sublimation_by_node,
+        tuple(accounting.trace_transfers),
+    )
 
 
 def _warn_if_depth_caps_bound(accounting: _PrognosticAccounting) -> None:
@@ -428,6 +494,89 @@ def _record_tier_cap_overflow(accounting, body, is_sea, overflow, tier_cap_limit
 
 def _source_volume(rates, members, dt_step):
     return 0.0 if rates is None or dt_step <= 0.0 else float(np.maximum(rates[members], 0.0).sum() * dt_step)
+
+
+def _loss_by_node(evaporated, members, level, dt_step, evaporation, sublimation, hypsometry):
+    """Allocate the integrated body loss to member nodes at the solved water level."""
+    area = hypsometry.area_m2[members]
+    wet = hypsometry.wet_fraction(level, members)
+    evaporation_rate = np.maximum(evaporation[members], 0.0)
+    sublimation_rate = (
+        np.zeros_like(evaporation_rate)
+        if sublimation is None else np.maximum(sublimation[members], 0.0)
+    )
+    evaporation_loss = (
+        area * wet * evaporation_rate * (1.0 + SHALLOW_EVAPORATION_BOOST * (1.0 - wet)) * dt_step
+    )
+    sublimation_loss = area * wet * sublimation_rate * dt_step
+    raw_total = float(evaporation_loss.sum() + sublimation_loss.sum())
+    if evaporated <= 0.0:
+        return evaporation_loss * 0.0, sublimation_loss * 0.0
+    if raw_total > 0.0:
+        scale = evaporated / raw_total
+        return evaporation_loss * scale, sublimation_loss * scale
+    weights = area * (evaporation_rate + sublimation_rate)
+    if float(weights.sum()) <= 0.0:
+        weights = area
+    fallback = evaporated * weights / max(float(weights.sum()), 1.0)
+    total_rate = evaporation_rate + sublimation_rate
+    evap_share = np.divide(
+        evaporation_rate, total_rate, out=np.ones_like(total_rate), where=total_rate > 0.0
+    )
+    return fallback * evap_share, fallback * (1.0 - evap_share)
+
+
+def _trace_transfer(accounting, source, receiver, target, volume, *, internal, depth):
+    if accounting.trace_transfers is None:
+        return
+    source_node = int(source.outlet_node_idx)
+    if source_node < 0:
+        source_node = int(source.sink_node_idx)
+    target_node = int(target)
+    accounting.trace_transfers.append(
+        LakeTransferTrace(
+            int(source_node), target_node if 0 <= target_node < len(accounting.overflow_by_outlet) else -1,
+            float(volume), internal, int(source.lake_id),
+            None if receiver is None else int(receiver.lake_id),
+        )
+    )
+
+
+def _trace_deferred_export(accounting, body, sink, volume, depth):
+    if accounting.trace_transfers is None:
+        return
+    source_node = int(body.outlet_node_idx)
+    if source_node < 0:
+        source_node = int(body.sink_node_idx)
+    accounting.trace_transfers.append(
+        LakeTransferTrace(
+            int(source_node), int(sink), float(volume), False, int(body.lake_id), None,
+        )
+    )
+
+
+def _trace_node_source(accounting, rates, climate, members, dt_step):
+    if accounting.trace_external_by_node is not None and dt_step > 0.0:
+        accounting.trace_external_by_node[members] += rates[members] * dt_step
+        accounting.trace_wet_precip_by_node[members] += np.maximum(
+            climate.wet_precip_m3_per_yr[members], 0.0
+        ) * dt_step
+        accounting.trace_dry_runoff_by_node[members] += np.maximum(
+            climate.dry_runoff_m3_per_yr[members], 0.0
+        ) * dt_step
+        accounting.trace_meltwater_by_node[members] += np.maximum(
+            climate.meltwater_m3_per_yr[members], 0.0
+        ) * dt_step
+
+
+def _trace_body_losses(accounting, evaporated, members, level, dt_step, evaporation, sublimation, hypsometry):
+    if accounting.trace_evaporation_by_node is None:
+        return
+    evaporation_loss, sublimation_loss = _loss_by_node(
+        evaporated, members, level, dt_step, evaporation, sublimation, hypsometry
+    )
+    accounting.trace_evaporation_by_node[members] += evaporation_loss
+    accounting.trace_sublimation_by_node[members] += sublimation_loss
 
 
 def _integrate_body_volume(available, members, cap_level, dry_level, dt_step, evaporation, sublimation, hypsometry):
@@ -573,6 +722,7 @@ def _advance_prognostic_body(
     pending_volume = pending.pop(id(body), 0.0)
     input_volume = external_rate * dt_step + pending_volume
     accounting.external_used_total += external_rate * dt_step
+    _trace_node_source(accounting, rates, climate, members, dt_step)
     accounting.wet_precip_total += _source_volume(climate.wet_precip_m3_per_yr, members, dt_step)
     accounting.dry_runoff_total += _source_volume(climate.dry_runoff_m3_per_yr, members, dt_step)
     accounting.meltwater_total += _source_volume(climate.meltwater_m3_per_yr, members, dt_step)
@@ -605,6 +755,9 @@ def _advance_prognostic_body(
     _, evap_volume, overflow, new_level = _integrate_body_volume(
         available, members, cap_level, dry_level, dt_step, evaporation, sublimation, hypsometry
     )
+    _trace_body_losses(
+        accounting, evap_volume, members, new_level, dt_step, evaporation, sublimation, hypsometry
+    )
     _record_tier_cap_overflow(accounting, body, is_sea, overflow, tier_cap_limits_body)
     accounting.evaporation_total += evap_volume
     if len(members) == 1:
@@ -626,6 +779,7 @@ def _advance_prognostic_body(
     if overflow <= 0.0:
         return
     target = body.outlet_target_idx
+    route_source = body
     traversed = {id(body)}
     while True:
         leaf_id = int(leaf_of_node[target]) if 0 <= target < node_count else -1
@@ -650,16 +804,20 @@ def _advance_prognostic_body(
                 accounting.deferred[leaf_id] = accounting.deferred.get(leaf_id, 0.0) + overflow
             else:
                 pending[id(receiver)] = pending.get(id(receiver), 0.0) + overflow
+            _trace_transfer(accounting, route_source, receiver, target, overflow, internal=True, depth=depth)
             accounting.internal_transfer_total += overflow
             if leaf_id >= 0:
                 accounting.integrated_supply_at_leaf[leaf_id] += overflow
             return
         traversed.add(id(receiver))
+        _trace_transfer(accounting, route_source, receiver, target, overflow, internal=True, depth=depth)
         accounting.internal_transfer_total += overflow
         if leaf_id >= 0:
             accounting.integrated_supply_at_leaf[leaf_id] += overflow
+        route_source = receiver
         target = receiver.outlet_target_idx
     accounting.overflow_out_total += overflow
+    _trace_transfer(accounting, route_source, None, target, overflow, internal=False, depth=depth)
     if 0 <= target < node_count:
         accounting.overflow_by_outlet[target] += overflow
         if is_ocean is not None and bool(is_ocean[target]):
@@ -676,6 +834,7 @@ def solve_lakes_prognostic(
     *,
     substeps: int = 1,
     is_ocean: np.ndarray | None = None,
+    diagnostic_trace: bool = False,
 ) -> LakeSolveResult:
     """Integrate lake storage over this timestep, promoting and splitting bodies as water
     crosses hierarchy saddles (#588).
@@ -714,9 +873,7 @@ def solve_lakes_prognostic(
         leaf_of_node[leaf.members] = i
 
     total_initial = float((depth * hypsometry.area_m2).sum())
-    accounting = _PrognosticAccounting(
-        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, np.zeros(len(leaves)), set(), np.zeros(n), {}
-    )
+    accounting = _new_prognostic_accounting(len(leaves), n, diagnostic_trace)
     _export_orphaned_storage(depth, hypsometry.area_m2, leaf_of_node, is_ocean, accounting)
     events: list[LakeEvent] = []
     seen_events: set[tuple[int, str]] = set()
@@ -764,6 +921,7 @@ def solve_lakes_prognostic(
             accounting.overflow_by_outlet[sink] += volume
             if is_ocean is not None and bool(is_ocean[sink]):
                 accounting.ocean_overflow_total += volume
+            _trace_deferred_export(accounting, leaves[leaf_id], sink, volume, depth)
     accounting.deferred.clear()
 
     lake_depth = np.zeros(n)
@@ -822,9 +980,11 @@ def solve_lakes_prognostic(
         meltwater_m3=accounting.meltwater_total,
     )
     _warn_if_depth_caps_bound(accounting)
+    trace = _build_solve_trace(accounting, diagnostic_trace)
     return LakeSolveResult(
         lake_depth, silt_deposited, lake_is_sea, events, ledger,
         accounting.overflow_by_outlet, should_spill, filled_elevation, spill_target, rim_node_idx,
+        trace,
     )
 
 
