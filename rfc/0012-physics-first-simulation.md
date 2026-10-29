@@ -1,12 +1,20 @@
 # RFC 0012: Physics-first simulation
 
-- **Status:** Accepted (2026-10-16)
-- **Date:** 2026-10-16
+- **Status:** Implemented (2026-10-29)
+- **Date:** 2026-10-16 (implemented 2026-10-29)
 - **Related:** #464 (tracking), #465 (gate G1), #535 (gate G3); RFCs [0009](0009-craton-mosaic.md)
   (cratons-first layout), [0010](0010-rifts-follow-weak-lithosphere.md) (rift routing), and
   [0011](https://github.com/adubey/mantle-bloom/blob/claude/rfc-0011-contact-strength/rfc/0011-contact-strength.md)
   (collision resistance); [#682](https://github.com/adubey/mantle-bloom/issues/682)
   (adaptive timestep investigation); design principles 1–5 and 8–9
+
+## Outcome
+
+The accepted implementation path is complete. G1 and boundary-load normalization were recorded in #465 and #468; the reduced quasi-static contact pilot landed in [PR #491](https://github.com/adubey/mantle-bloom/pull/491), with G2 accepted by the project owner with the caveats below; G3's rift/transform transfer diagnostics are recorded in #535; and merge-rate ownership plus its matched characterization landed in [PR #684](https://github.com/adubey/mantle-bloom/pull/684), completing [#547](https://github.com/adubey/mantle-bloom/issues/547). Evidence is retained in [analysis/rfc0012](../analysis/rfc0012/README.md) and [analysis/issue547](../analysis/issue547/README.md).
+
+The selected implementation adds no persistent state. Existing saves remain compatible; the G2 state inputs and derived layer partition are documented in “Cost and saves.” The merge behavior is described in [the tectonics model documentation](../docs/simulation-model/tectonics.md). The targeted quasi-static, torque, merge, persistence and save tests passed (168 tests); the RFC 0012 implementation PR's affected test gate passed 1,827 tests, and both its backend and frontend CI checks passed.
+
+Results retain their limits: merge-only timestep sensitivity is mixed and does not establish timestep invariance. G2's density-4 runtime evidence is provisional: matched cProfile medians showed +6.1%, while an earlier five-step phase-tapped sample showed +94.8%. The owner accepted G2 without a clean unprofiled repeat; this RFC does not claim a definitive runtime bound. G3 demonstrates diagnostic transferability only; a production integrated-strength law was not selected. Split-rate assignments remain deferred to RFC 0010. The quiet-host, extreme-rate and adaptive-step follow-ups remain in [#493](https://github.com/adubey/mantle-bloom/issues/493), [#494](https://github.com/adubey/mantle-bloom/issues/494) and [#682](https://github.com/adubey/mantle-bloom/issues/682), respectively.
 
 ## Problem
 
@@ -700,7 +708,7 @@ this pilot.
 
 ## Acceptance criteria
 
-- [ ] **G1 first:** verify the Problem inventory against code; record force, torque, traction,
+- [x] **G1 first:** verify the Problem inventory against code; record force, torque, traction,
       units, ownership, feedback, current costs and rule replacement for convergence,
       subduction, rifting, transform motion, basal drag, ridge push, topology, and deformation.
       The proposed boundary-load normalization varies by no more than 10% across node density,
@@ -749,17 +757,9 @@ this pilot.
       broad geological example while matching definitions and labeling this as a scale screen,
       not calibration. Any world-level rift evolution or material-changing implementation must
       close the principle-6 rift ledgers against its cellwise inventory.
-- [ ] Any pilot that consumes material properties identifies the upper-crust, lower-crust,
-      and lithospheric-mantle derived state it reads. Any composition fractions are bounded
-      and material transfers conserve layer budgets. Temperature and any optional fluid state
-      have an explicit update cadence and timestep-sensitivity result. The G2 contact pilot
-      adds no persistent per-node state and no encoded save-size growth. If a later age pilot
-      adds one seafloor-age field, its encoded save-size growth stays below 5% across
-      representative saved worlds, with lifecycle cost reported separately from runtime.
-- [ ] Any implementation selected by the gates has equation-level tests, save compatibility
-      for new persistent state, updated simulation docs, and measured runtime at density 4.
-- [ ] No process is accepted solely because software tests pass; its force law and outcome
-      are compared with a stated physical benchmark or a clearly labeled design hypothesis.
+- [x] Any pilot that consumes material properties identifies the upper-crust, lower-crust, and lithospheric-mantle derived state it reads. Any composition fractions are bounded and material transfers conserve layer budgets. Temperature and any optional fluid state have an explicit update cadence and timestep-sensitivity result. The G2 contact pilot adds no persistent per-node state and no encoded save-size growth. If a later age pilot adds one seafloor-age field, its encoded save-size growth stays below 5% across representative saved worlds, with lifecycle cost reported separately from runtime. The G2 layer inputs/derived partition are documented above; it introduces no composition fractions or new temperature/fluid state. No seafloor-age pilot was selected.
+- [x] Any implementation selected by the gates has equation-level tests, save compatibility for new persistent state, updated simulation docs, and measured runtime at density 4. The density-4 runtime measurement is provisional as described under G2; no new persistent state or save migration was required.
+- [x] No process is accepted solely because software tests pass; its force law and outcome are compared with a stated physical benchmark or a clearly labeled design hypothesis.
 
 ## Falsification criteria
 
