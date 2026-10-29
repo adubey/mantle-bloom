@@ -101,8 +101,8 @@ function AccountLink() {
 }
 
 // Which public world to show (#563, #597): `?world=<id>`, the only live world
-// when one is running, the only public one when there is one, or a picker when
-// there are several.
+// when one is running, or else the first listed one, with a picker when there
+// are several.
 function usePublicWorldId(): { worlds: PublicWorldListing[] | null; worldId: WorldId | null; selectWorld: (id: WorldId | null) => void } {
   const [worlds, setWorlds] = useState<PublicWorldListing[] | null>(null);
   const [worldId, setWorldId] = useState<WorldId | null>(() => worldIdFromSearch(window.location.search));
@@ -117,8 +117,9 @@ function usePublicWorldId(): { worlds: PublicWorldListing[] | null; worldId: Wor
 
   // Applies the selection rules to a freshly fetched list: keep watching the
   // selected world (a new live world only joins the picker, never steals the
-  // view), adopt the only live or only public world when nothing is selected,
-  // and fall back when the selection names a world that is gone.
+  // view), and otherwise open on a listed world straight away -- every public
+  // world's image is pre-rendered on the server (#658), so there is no reason
+  // to show an empty page under a picker that already displays a world.
   const adoptFromList = useCallback(
     (list: PublicWorldListing[]) => {
       const urlId = worldIdFromSearch(window.location.search);
@@ -129,19 +130,15 @@ function usePublicWorldId(): { worlds: PublicWorldListing[] | null; worldId: Wor
       }
       // No selection and exactly one live world: adopt it, so /view opens on
       // the planet that is currently stepping (#597).
-      if (!urlId) {
-        const live = list.filter((w) => w.running);
-        if (live.length === 1) {
-          selectWorld(live[0].world_id);
-          return;
-        }
+      const live = list.filter((w) => w.running);
+      if (!urlId && live.length === 1) {
+        selectWorld(live[0].world_id);
+        return;
       }
-      // No selection and exactly one public world: adopt it. A selection naming an
-      // unknown, private, or deleted world falls back to the first listed one
-      // instead of leaving a blank page (#563 S8).
-      if ((!urlId && list.length === 1) || urlId) {
-        selectWorld(list[0].world_id);
-      }
+      // Otherwise the first listed world: with no selection, the one the picker
+      // shows; with an unknown, private, or deleted one, a fallback instead of a
+      // blank page (#563 S8).
+      selectWorld(list[0].world_id);
     },
     [selectWorld],
   );
