@@ -31,7 +31,6 @@ MOTION_METRICS = (
 )
 QUANTILES = ("p50", "p90", "p99")
 QUANTILE_FIELDS = ("hc_area_weighted_km", "hm_area_weighted_km")
-M_PER_S_TO_CM_PER_YR = 3_155_760_000.0
 
 
 def _percent_delta(baseline: float, candidate: float) -> float | None:
