@@ -7,9 +7,16 @@ removes the angular-momentum blend and rate clamp from merges while retaining sp
 pole assignments until RFC 0010 changes split selection. The earlier replay and traces below
 tested removing both merge and split assignments; they are historical evidence for coupling,
 not acceptance evidence for the merge-only implementation. The merge-only matched metric check
-is now complete; see the results below. The older combined-change replay remains historical.
+is now complete; see the results below. On 2026-10-29, RFC 0012 changed the timestep
+criterion: report four-seed mean metrics for each arm and step, plus per-seed spread, topology
+differences, and per-run ledger closure. The former 10% timestep tolerance is no longer a
+pass/fail gate. The older combined-change replay remains historical. The implementation PR rebases the merge
+change on current main `2cefff3b`; the four-seed matrix below was run earlier against baseline
+`f04cbc07` and candidate `d553c3cf`. Current main has since changed its material-overflow tracer
+handling. No new 24-run matrix was run for this PR, so those metrics characterize the recorded
+matched pair rather than a fresh comparison against `2cefff3b`.
 
-## Merge-only matched replay (current scope)
+## Merge-only matched replay (recorded comparison)
 
 **Question.** Does removing the merge angular-momentum blend and rate clamp change motion,
 deformation, ledgers, or geological outcomes when split daughter pole assignments remain?
@@ -69,22 +76,41 @@ roundoff scale in every coarse-step run.
 Runtime changes range from −7.7% to +11.2% (mean +0.4%); peak RSS ranges from 1.18 to 1.90
 GiB. These do not suggest a consistent performance change.
 
-**Timestep criterion.** The continuous-metric 10% timestep tolerance is not met in either arm.
-Across 1 and 2 Myr versus 0.1 Myr, mean solved rate differs by as much as 43.1%; mean absolute
-closing differs by as much as 200% (0.0510 to 0.1529 cm/yr, `111065103`); mean contact force
-differs by as much as 37.6%; peak closing differs by as much as 78.2%; and accumulated driving
-torque differs by as much as 15.0%. These timestep effects occur in baseline and candidate, and
-can overlap topology changes, so they cannot be assigned to the merge-only code change. The
-matrix does not establish timestep robustness at the preregistered tolerance.
+**Timestep characterization under the current acceptance criterion.** For each arm, the
+following are the relative differences between the four-seed arithmetic mean metric at 1 or 2
+Myr and the corresponding mean at 0.1 Myr. Per-seed values and spread remain in the JSON summary.
+These values characterize sensitivity; no 10% pass/fail limit applies.
 
-**Assessment.** The merge-only change preserves many global metrics and 9 of 12 topology
-sequences, but it does not produce unchanged trajectories: contact response exceeds 10% in
-several matched pairs, and three sequences diverge. This agrees with the recorded mechanism:
-post-topology rates are read by later boundary classification and topology gates. The matched
-replay is diagnostic evidence, not a clean acceptance result. The focused merge trace below
-confirms that a merge-rate change can alter the next solve's classification. A design response
-and an accepted timestep criterion remain necessary before #547 can be called complete. No
-tuning was applied to these outcomes.
+| Continuous metric | Arm | 1 vs 0.1 Myr | 2 vs 0.1 Myr |
+|---|---|---:|---:|
+| Mean solved rate | Baseline | +9.2% | +8.2% |
+| Mean solved rate | Candidate | +9.7% | +9.7% |
+| Mean absolute closing | Baseline | +35.8% | +118.8% |
+| Mean absolute closing | Candidate | +39.3% | +103.8% |
+| Mean contact force | Baseline | −14.4% | −22.5% |
+| Mean contact force | Candidate | −14.1% | −20.7% |
+| Peak absolute closing | Baseline | −7.6% | −9.3% |
+| Peak absolute closing | Candidate | −4.8% | −13.6% |
+| Accumulated driving torque | Baseline | +2.9% | +5.6% |
+| Accumulated driving torque | Candidate | +3.0% | +5.3% |
+
+The comparison does not show a consistent timestep-invariance improvement: the candidate is
+closer on some contact metrics at 2 Myr, while worse on mean closing at 1 Myr and peak closing
+at 2 Myr. Contact response remains strongly step-sensitive in both arms. The full comparison
+and topology differences are recorded above and in the compact JSON.
+
+**Assessment.** The merge-only change preserves many global metrics but changes contact response
+and topology in some matched pairs. The focused merge trace confirms that a merge-rate change can
+alter the next solve's classification. Under the current RFC contract, timestep differences are
+reported as a limitation rather than used to fail acceptance. These results do not claim
+unchanged trajectories or show that the candidate is consistently more timestep-invariant than
+baseline. The old 10% threshold below records the preregistration used for the runs; RFC 0012's
+updated acceptance wording supersedes it. No tuning was applied to these outcomes.
+
+> **Historical preregistration note (2026-10-29):** the 10% timestep thresholds in the
+> original preregistration and dated sections below were the criteria in force when those
+> runs were designed. RFC 0012 now treats timestep sensitivity as characterization, not a
+> pass/fail invariance gate. See the current four-seed averages above and [#547](https://github.com/adubey/mantle-bloom/issues/547).
 
 ### Updated matched replay preregistration on current main (2026-10-25)
 
