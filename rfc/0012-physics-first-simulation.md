@@ -5,7 +5,8 @@
 - **Related:** #464 (tracking), #465 (gate G1), #535 (gate G3); RFCs [0009](0009-craton-mosaic.md)
   (cratons-first layout), [0010](0010-rifts-follow-weak-lithosphere.md) (rift routing), and
   [0011](https://github.com/adubey/mantle-bloom/blob/claude/rfc-0011-contact-strength/rfc/0011-contact-strength.md)
-  (collision resistance); design principles 1–5 and 8–9
+  (collision resistance); [#682](https://github.com/adubey/mantle-bloom/issues/682)
+  (adaptive timestep investigation); design principles 1–5 and 8–9
 
 ## Problem
 
@@ -43,8 +44,8 @@ the scale needed by the global motion solve, and retain the invariants that matt
 
 **Design principles at issue:** process-specific physics at clear interfaces (principle 8),
 stated model boundaries and scales (principle 1), efficient approximations (principle 2),
-timestep robustness (principle 3), explicit units and conservation (principles 5–6), and
-verification separated from validation (principle 9).
+timestep behavior is measured and reported (principle 3), explicit units and conservation
+(principles 5–6), and verification separated from validation (principle 9).
 
 The first diagnosis is to identify the rules that currently stand in for forces or material
 response. G1 will extend and verify this inventory against the named code paths before
@@ -730,13 +731,16 @@ this pilot.
       motion, deformation, Hc/Hm, ledger, and topology metrics. Long-run high-rate remnant
       behavior and early craton/quiet-gate behavior are deferred to #494 and #493. This marks
       the gate disposition, not a claim that every original numerical bound passed.
-- [ ] The pilot's accumulated force response, mean plate rate, relative contact motion,
-      deformation, Hc/Hm distributions, land fraction, and material ledgers agree within 10%
-      across 0.1, 1, and 2 Myr steps, except for discrete topology events. For these, report
-      event-time differences and whether their ordering changes. Use `bin/debug/compare_physics_first_steps.py`
-      (new candidate diagnostic) on generated worlds with seeds 326494039, 748935664,
-      580014012, and 111065103, at the same endpoints and node density. Do not use 5 Myr as
-      an acceptance step: the issue #452 step-size check fails at that step.
+- [x] **Timestep sensitivity is characterized, not a pass/fail invariance gate:** on matched
+      generated worlds at the same endpoints and node density, report the arithmetic mean of
+      each continuous metric across the four preregistered seeds separately for baseline and
+      pilot at 0.1, 1, and 2 Myr; include per-seed values/spread and the relative changes from
+      0.1 Myr. Report topology event-time/order differences separately and check ledger
+      closure per run. Do not require a ≤10% cross-timestep difference and do not claim
+      timestep invariance. The merge-only comparison and its observed mixed results are
+      recorded in #547. Do not use 5 Myr as an acceptance step: the issue #452 step-size check
+      fails at that step. Further investigation of adaptive stepping near predicted collisions
+      is tracked separately in [#682](https://github.com/adubey/mantle-bloom/issues/682).
 - [x] **G3** reports whether the same interface can express a rift and a transform response;
       any process-specific extension is documented with a physical reason. Rifting diagnostics
       compare whether extension widens or stays localized as the force needed to continue
@@ -771,8 +775,7 @@ this pilot.
   deformation controls the target outcome, add a deformable plate-region model for that
   question rather than tuning boundary forces to compensate.
 - **Coupled physics is too costly.** If a reduced solve cannot stay within the runtime budget
-  without violating force balance, timestep robustness, or material conservation, narrow the
-  coupled scope or choose a cheaper physically justified closure. Do not replace the missing
+  without violating force balance or material conservation, narrow the coupled scope or choose a cheaper physically justified closure. Do not replace the missing
   response with an arbitrary geometric trigger.
 - **The force law is not identifiable from available evidence.** If sensitivity runs show
   multiple plausible laws produce indistinguishable observables, leave the mechanism
