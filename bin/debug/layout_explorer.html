@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Layout Explorer</title>
+<!-- Served by layout_explorer.py (#685), which fills in KNOBS below. -->
+<style>
+:root {
+  --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1f22; --muted: #6b7078; --line: #dcdad4;
+  --accent: #2f6db5; --changed: #fff3d6; --changed-ink: #8a5a00; --bad: #b3261e; --chip: #eef2f7;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #16181b; --panel: #1f2226; --ink: #e6e6e3; --muted: #9aa0a8; --line: #33373d;
+    --accent: #6ea3e6; --changed: #3a3020; --changed-ink: #f0c36a; --bad: #f2867e; --chip: #2a3038; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 13px/1.4 system-ui, -apple-system, sans-serif; }
+.app { display: grid; grid-template-columns: 330px 1fr; height: 100vh; }
+aside { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; padding: 12px 14px 40px; }
+main { overflow: auto; padding: 0 18px 40px; min-width: 0; }
+h1 { font-size: 15px; margin: 0 0 2px; }
+.sub { color: var(--muted); margin-bottom: 10px; }
+fieldset { border: 1px solid var(--line); border-radius: 6px; margin: 0 0 10px; padding: 6px 8px 8px; }
+legend { font-weight: 600; padding: 0 4px; }
+.row { display: grid; grid-template-columns: 1fr 120px 18px; gap: 4px; align-items: center; padding: 2px 3px; border-radius: 4px; }
+.row.changed { background: var(--changed); }
+.row.changed label { color: var(--changed-ink); }
+.row label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pair { display: flex; gap: 3px; }
+input, select, button { font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 2px 4px; min-width: 0; }
+input[type=number] { width: 100%; }
+.reset { border: none; background: none; cursor: pointer; color: var(--muted); padding: 0; visibility: hidden; }
+.row.changed .reset { visibility: visible; }
+.actions { position: sticky; top: -12px; background: var(--panel); padding: 6px 0 8px; margin: -6px 0 6px; display: flex; gap: 6px; flex-wrap: wrap; z-index: 2; }
+button { cursor: pointer; }
+button:disabled { opacity: .5; cursor: default; }
+button.primary { background: var(--accent); color: white; border-color: var(--accent); padding: 4px 12px; }
+button.stop { background: var(--bad); color: white; border-color: var(--bad); padding: 4px 12px; }
+.toolbar { position: sticky; top: 0; left: 0; z-index: 3; background: var(--bg); display: flex; gap: 14px; flex-wrap: wrap; align-items: center; padding: 12px 0 6px; }
+.toolbar label { display: inline-flex; gap: 4px; align-items: center; }
+.legend { position: sticky; left: 0; display: flex; gap: 10px; flex-wrap: wrap; color: var(--muted); margin-bottom: 10px; }
+.empty { color: var(--muted); padding: 30px 0; }
+.workspace { display: flex; gap: 14px; align-items: flex-start; width: max-content; }
+.batch { flex: 0 0 360px; width: 360px; }
+.head { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; margin-bottom: 8px; min-height: 120px; }
+.head .top { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+.head .top b { font-size: 13px; }
+.head .x { border: none; background: none; color: var(--muted); font-size: 15px; padding: 0 2px; }
+.chips { display: flex; flex-wrap: wrap; gap: 3px; margin: 4px 0; }
+.chip { background: var(--chip); border-radius: 3px; padding: 0 5px; font-size: 12px; }
+.chip.k { background: var(--changed); color: var(--changed-ink); }
+.chip.swept { outline: 1.5px solid var(--changed-ink); font-weight: 600; }
+.sum { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.sum b { color: var(--ink); font-weight: 600; }
+.status.bad { color: var(--bad); }
+.tiles { display: flex; flex-direction: column; gap: 10px; }
+.tile { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px; cursor: zoom-in; }
+.tile canvas, .tile .err { width: 100%; aspect-ratio: 2 / 1; display: block; border-radius: 3px; image-rendering: pixelated; background: var(--line); }
+.tile .err { background: none; color: var(--bad); overflow: auto; white-space: pre-wrap; font-size: 12px; padding: 6px; cursor: default; }
+.cap { display: flex; justify-content: space-between; margin-top: 4px; gap: 8px; font-size: 12px; }
+.cap .t { font-weight: 600; white-space: nowrap; }
+.cap .s { color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
+.sw { display: inline-block; width: 11px; height: 11px; border-radius: 2px; vertical-align: -1px; margin-right: 3px; }
+dialog { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); width: min(1100px, 96vw); padding: 12px; }
+dialog::backdrop { background: rgb(0 0 0 / .5); }
+dialog canvas { width: 100%; aspect-ratio: 2 / 1; image-rendering: pixelated; border-radius: 4px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 2px 18px; margin-top: 8px; font-variant-numeric: tabular-nums; }
+.stats div { display: flex; justify-content: space-between; border-bottom: 1px dotted var(--line); }
+.hint { color: var(--muted); font-size: 12px; margin-top: 4px; }
+@media (max-width: 760px) { .app { grid-template-columns: 1fr; height: auto; } aside { border-right: none; } .batch { flex-basis: 300px; width: 300px; } }
+</style>
+</head>
+<body>
+<div class="app">
+<aside>
+  <h1>Layout explorer</h1>
+  <div class="sub">Cratons-first layout (RFC 0009): continents, cratons, belts, land and plates.</div>
+  <div class="actions">
+    <button class="primary" id="go">Generate</button>
+    <button class="stop" id="stop" hidden>Stop</button>
+    <button id="reroll" title="New random base seed, then generate">Reroll seeds</button>
+    <button id="resetAll">Reset knobs</button>
+  </div>
+  <fieldset>
+    <legend>Batch</legend>
+    <div class="row"><label>Mode</label><select id="mode"><option value="seeds">N seeds, fixed knobs</option><option value="columns">Sweep across columns</option><option value="sweep">Sweep down one column</option></select><span></span></div>
+    <div class="row"><label>Base seed</label><input type="number" id="seed" value="1"><span></span></div>
+    <div class="row"><label>Worlds (N)</label><input type="number" id="count" value="10" min="1" max="40"><span></span></div>
+    <div id="sweepRows" hidden>
+      <div class="row"><label>Knob</label><select id="sweepKnob"></select><span></span></div>
+      <div class="row" id="sweepEndRow"><label title="How a (min, max) knob is swept">Sweep how</label><select id="sweepEnd"><option value="fixed">fixed value (k–k)</option><option value="min">min only</option><option value="max">max only</option></select><span></span></div>
+      <div class="row" id="sweepRangeRow"><label>From, to</label><span class="pair"><input type="number" id="sweepFrom" step="any"><input type="number" id="sweepTo" step="any"></span><span></span></div>
+      <div class="row" id="sweepValuesRow"><label title="One column per value, comma-separated">Values</label><input id="sweepValues" placeholder="1, 2, 4"><span></span></div>
+      <div class="hint" id="sweepHint"></div>
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>World</legend>
+    <div class="row"><label>Node density</label><select id="nodeDensity"><option>0.5</option><option selected>1</option><option>2</option><option>4</option></select><span></span></div>
+    <div class="row"><label title="Blank: drawn from the seed">Plates (blank = auto)</label><input type="number" id="numPlates" min="2" placeholder="auto"><span></span></div>
+    <div class="row"><label title="Blank: plates.CONTINENTAL_AREA_FRACTION">Continental fraction</label><input type="number" id="contFrac" step="0.01" placeholder="0.5"><span></span></div>
+    <div class="row"><label title="UI default 0.29; blank = no land-fraction target (land wherever continental relief clears sea level)">Land fraction</label><input type="number" id="landFrac" step="0.01" value="0.29"><span></span></div>
+  </fieldset>
+  <div id="knobs"></div>
+</aside>
+<main>
+  <div class="toolbar">
+    <label>Colour <select id="colour">
+      <option value="geology">Geology</option><option value="land">Land / water</option><option value="plates">Plates</option>
+      <option value="cratons">Cratons</option><option value="continents">Continents</option>
+    </select></label>
+    <label><input type="checkbox" id="ovBound" checked> Plate boundaries</label>
+    <label><input type="checkbox" id="ovCoast" checked> Coastline</label>
+    <label><input type="checkbox" id="ovNuclei"> Craton nuclei</label>
+    <label><input type="checkbox" id="ovSites"> Plate sites</label>
+    <button id="clear">Clear workspace</button>
+  </div>
+  <div class="legend" id="legend"></div>
+  <div class="workspace" id="workspace"></div>
+  <div class="empty" id="empty">Press Generate. Each batch is added as a new column on the right.</div>
+</main>
+</div>
+<dialog id="detail"><div class="cap"><span class="t" id="dTitle"></span><button id="dClose">Close</button></div><canvas id="dCanvas"></canvas><div class="stats" id="dStats"></div></dialog>
+<script>
+const KNOBS = /*__KNOBS__*/[];
+const STORE = "layoutExplorer.v1";
+const $ = id => document.getElementById(id);
+const batches = [];
+let nextBatchId = 1;
+let running = null;
+let stopRequested = false;
+
+// ---- form ---------------------------------------------------------------------------
+function isRange(k) { return k.kind === "frange" || k.kind === "irange"; }
+function buildKnobs() {
+  const groups = {};
+  for (const k of KNOBS) (groups[k.group] ||= []).push(k);
+  const host = $("knobs");
+  for (const [name, knobs] of Object.entries(groups)) {
+    const fs = document.createElement("fieldset");
+    fs.innerHTML = `<legend>${name}</legend>`;
+    for (const k of knobs) {
+      const row = document.createElement("div");
+      row.className = "row"; row.dataset.knob = k.name;
+      const step = k.kind === "int" || k.kind === "irange" ? "1" : "any";
+      const inputs = isRange(k)
+        ? `<span class="pair"><input type="number" step="${step}"><input type="number" step="${step}"></span>`
+        : `<input type="number" step="${step}">`;
+      row.innerHTML = `<label title="${k.module}.${k.name}">${k.label}</label>${inputs}<button class="reset" title="Reset to ${JSON.stringify(k.default)}">↺</button>`;
+      row.querySelectorAll("input").forEach(inp => inp.addEventListener("input", () => { markChanged(row, k); save(); }));
+      row.querySelector(".reset").addEventListener("click", () => { setKnob(row, k, k.default); save(); });
+      fs.appendChild(row);
+      setKnob(row, k, k.default);
+    }
+    host.appendChild(fs);
+  }
+  const sel = $("sweepKnob");
+  for (const k of KNOBS) sel.add(new Option(isRange(k) ? `${k.label} (range)` : k.label, k.name));
+  sel.addEventListener("change", () => { updateModeRows(); fillSweepDefaults(); });
+  $("sweepEnd").addEventListener("change", fillSweepDefaults);
+}
+function isIntKind(k) { return k.kind === "int" || k.kind === "irange"; }
+function sweepKnob() { return knobByName($("sweepKnob").value); }
+function show(v) { return Array.isArray(v) ? v.join("–") : v; }
+function knobByName(name) { return KNOBS.find(k => k.name === name); }
+function rowFor(name) { return document.querySelector(`.row[data-knob="${name}"]`); }
+function setKnob(row, k, v) {
+  const inputs = row.querySelectorAll("input");
+  if (isRange(k)) { inputs[0].value = v[0]; inputs[1].value = v[1]; } else inputs[0].value = v;
+  markChanged(row, k);
+}
+function readKnob(row, k) {
+  // A cleared input means the default, not 0.
+  const fallback = isRange(k) ? k.default : [k.default];
+  const inputs = [...row.querySelectorAll("input")].map((input, j) => input.value.trim() === "" ? fallback[j] : Number(input.value));
+  return isRange(k) ? inputs : inputs[0];
+}
+function markChanged(row, k) {
+  row.classList.toggle("changed", JSON.stringify(readKnob(row, k)) !== JSON.stringify(k.default));
+}
+function overrides() {
+  const out = {};
+  for (const k of KNOBS) {
+    const row = rowFor(k.name);
+    if (row.classList.contains("changed")) out[k.name] = readKnob(row, k);
+  }
+  return out;
+}
+function fillSweepDefaults() {
+  const k = sweepKnob(), cur = readKnob(rowFor(k.name), k), end = $("sweepEnd").value;
+  const round = x => isIntKind(k) ? Math.round(x) : +x.toPrecision(3);
+  let from, to, values;
+  if (!isRange(k)) {
+    [from, to] = [cur * 0.5, cur * 1.5];
+    values = [0.5, 0.75, 1, 1.5, 2].map(f => cur * f);
+  } else if (end === "fixed") {
+    // Every whole count in the current range, e.g. 2, 3, 4, 5, 6 for continent count.
+    [from, to] = cur;
+    values = isIntKind(k) && cur[1] - cur[0] < 12
+      ? Array.from({ length: cur[1] - cur[0] + 1 }, (_, i) => cur[0] + i)
+      : Array.from({ length: 5 }, (_, i) => cur[0] + (cur[1] - cur[0]) * i / 4);
+  } else if (end === "min") {
+    [from, to] = [cur[0] * 0.5, cur[1]];
+    values = [cur[0] * 0.5, cur[0] * 0.75, cur[0], (cur[0] + cur[1]) / 2, cur[1]];
+  } else {
+    [from, to] = [cur[0], cur[1] * 1.5];
+    values = [cur[0], (cur[0] + cur[1]) / 2, cur[1], cur[1] * 1.25, cur[1] * 1.5];
+  }
+  $("sweepFrom").value = round(from); $("sweepTo").value = round(to);
+  $("sweepValues").value = [...new Set(values.map(round))].join(", ");
+}
+function sweptOverride(k, v) {
+  // A range knob sweeps one number into a (min, max) pair; the other end stays at the
+  // sidebar's value.
+  if (!isRange(k)) return v;
+  const cur = readKnob(rowFor(k.name), k), end = $("sweepEnd").value;
+  const pair = end === "fixed" ? [v, v] : end === "min" ? [v, cur[1]] : [cur[0], v];
+  if (pair[0] > pair[1]) throw new Error(`${k.label} = ${show(pair)}: min is above max. Sweeping the ${end} end keeps the other end at ${end === "min" ? cur[1] : cur[0]}.`);
+  return pair;
+}
+function updateModeRows() {
+  const mode = $("mode").value;
+  $("sweepRows").hidden = mode === "seeds";
+  $("sweepEndRow").hidden = !isRange(sweepKnob());
+  $("sweepRangeRow").hidden = mode !== "sweep";
+  $("sweepValuesRow").hidden = mode !== "columns";
+  $("sweepHint").textContent = mode === "columns"
+    ? "One column per value, each with the same N seeds (base seed onward), so rows line up across columns."
+    : "Uses the base seed for every world. Changing a knob changes later random draws, so neighbours differ beyond that knob alone.";
+}
+function sweepValues(k) {
+  const vals = $("sweepValues").value.split(/[,\s]+/).filter(Boolean).map(Number);
+  if (!vals.length || vals.some(v => !Number.isFinite(v))) throw new Error("Values must be a comma-separated list of numbers.");
+  return [...new Set(vals.map(v => isIntKind(k) ? Math.round(v) : v))].slice(0, 12);
+}
+function numOrNull(id) { const v = $(id).value.trim(); return v === "" ? null : Number(v); }
+function worldSettings() {
+  return { node_density: Number($("nodeDensity").value), num_plates: numOrNull("numPlates"),
+           continental_fraction: numOrNull("contFrac"), land_fraction: numOrNull("landFrac") };
+}
+const FORM_IDS = ["mode", "seed", "count", "sweepKnob", "sweepEnd", "sweepFrom", "sweepTo", "sweepValues", "nodeDensity", "numPlates", "contFrac", "landFrac", "colour", "ovBound", "ovCoast", "ovNuclei", "ovSites"];
+function save() {
+  const form = Object.fromEntries(FORM_IDS.map(id => [id, $(id).type === "checkbox" ? $(id).checked : $(id).value]));
+  try { localStorage.setItem(STORE, JSON.stringify({ form, knobs: overrides() })); } catch (e) {}
+}
+function load() {
+  let state = null;
+  try { state = JSON.parse(localStorage.getItem(STORE)); } catch (e) {}
+  if (!state) { fillSweepDefaults(); return; }
+  for (const [id, v] of Object.entries(state.form || {})) if ($(id)) { if ($(id).type === "checkbox") $(id).checked = v; else $(id).value = v; }
+  // Saved state is shared by every checkout served on this port: a select whose saved option
+  // isn't on this checkout (a renamed knob) falls back to its first option.
+  for (const sel of document.querySelectorAll("aside select, .toolbar select")) if (sel.selectedIndex < 0) sel.selectedIndex = 0;
+  for (const [name, v] of Object.entries(state.knobs || {})) { const k = knobByName(name); if (k) setKnob(rowFor(name), k, v); }
+  if (!$("sweepFrom").value || !$("sweepValues").value || state.form?.sweepKnob !== $("sweepKnob").value) fillSweepDefaults();
+}
+
+// ---- batches ------------------------------------------------------------------------
+function seedJobs(seed, n, overrides) {
+  return Array.from({ length: n }, (_, i) => ({ seed: seed + i, overrides, label: `seed ${seed + i}` }));
+}
+function newBatches() {
+  const n = Math.max(1, Math.min(40, Number($("count").value) || 10));
+  const seed = Math.trunc(Number($("seed").value)) || 0;
+  const base = overrides();
+  const make = fields => ({ id: nextBatchId++, world: worldSettings(), base, status: "queued", seconds: 0, ...fields });
+  const seedsTitle = n === 1 ? `seed ${seed}` : `seeds ${seed}–${seed + n - 1}`;
+  const mode = $("mode").value;
+  let out;
+  if (mode === "seeds") {
+    out = [make({ title: seedsTitle, jobs: seedJobs(seed, n, base) })];
+  } else if (mode === "columns") {
+    const k = sweepKnob();
+    out = sweepValues(k).map(v => {
+      const value = sweptOverride(k, v), swept = { ...base, [k.name]: value };
+      return make({ base: swept, title: `${k.label} = ${show(value)}`, subtitle: seedsTitle, sweptKnob: k.name, jobs: seedJobs(seed, n, swept) });
+    });
+  } else {
+    const k = sweepKnob();
+    const a = Number($("sweepFrom").value), b = Number($("sweepTo").value);
+    const how = isRange(k) ? ` (${$("sweepEnd").selectedOptions[0].text})` : "";
+    out = [make({ title: `sweep · seed ${seed}`, sweep: `${k.label}${how}: ${a} → ${b}`, jobs: Array.from({ length: n }, (_, i) => {
+      let v = n === 1 ? a : a + (b - a) * i / (n - 1);
+      v = isIntKind(k) ? Math.round(v) : +v.toPrecision(4);
+      const value = sweptOverride(k, v);
+      return { seed, overrides: { ...base, [k.name]: value }, label: `${k.label} = ${show(value)}` };
+    }) })];
+  }
+  for (const batch of out) batch.results = batch.jobs.map(j => ({ pending: true, label: j.label }));
+  return out;
+}
+async function generate() {
+  if (running) return;
+  save();
+  let queue;
+  try { queue = newBatches(); } catch (e) { alert(e.message); return; }
+  for (const batch of queue) { batches.push(batch); addColumn(batch); }
+  $(`batch${queue[0].id}`).scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" });
+  stopRequested = false;
+  for (const batch of queue) {
+    if (!batches.includes(batch)) continue;
+    if (stopRequested) { finishBatch(batch, "stopped"); continue; }
+    await runBatch(batch);
+  }
+  setRunning(null);
+}
+function finishBatch(batch, status) {
+  batch.status = status;
+  batch.results.forEach((r, i) => { if (r.pending) { batch.results[i] = { stopped: true, label: r.label }; drawTile(batch, i); } });
+  drawHead(batch);
+}
+async function runBatch(batch) {
+  batch.status = "running";
+  batch.started = performance.now();
+  batch.controller = new AbortController();
+  batch.token = `${Date.now()}-${batch.id}`;
+  setRunning(batch);
+  drawHead(batch);
+  try {
+    const resp = await fetch("/api/generate", { method: "POST", signal: batch.controller.signal, headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ batch: batch.token, world: batch.world, jobs: batch.jobs.map(({ seed, overrides }) => ({ seed, overrides })) }) });
+    if (!resp.ok) throw new Error(await resp.text());
+    const reader = resp.body.getReader(), dec = new TextDecoder();
+    let buf = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const r = JSON.parse(buf.slice(0, nl)); buf = buf.slice(nl + 1);
+        if (r.fatal) throw new Error(`server: ${r.fatal}`);
+        r.label = batch.jobs[r.index].label;
+        if (r.ok) decode(r);
+        batch.results[r.index] = r;
+        drawTile(batch, r.index);
+        batch.seconds = (performance.now() - batch.started) / 1000;
+        drawHead(batch);
+      }
+    }
+    if (batch.results.some(r => r.pending)) throw new Error("the server ended the batch early; see its log");
+    batch.status = "done";
+  } catch (e) {
+    batch.status = e.name === "AbortError" ? "stopped" : "error";
+    if (batch.status === "error") {
+      batch.error = String(e.message || e);
+      // Don't leave the server working through a batch nothing will show.
+      cancelBatch(batch);
+    }
+  }
+  batch.seconds = (performance.now() - batch.started) / 1000;
+  finishBatch(batch, batch.status);
+}
+function setRunning(batch) {
+  running = batch;
+  $("go").disabled = !!batch; $("reroll").disabled = !!batch;
+  $("stop").hidden = !batch;
+}
+function cancelBatch(batch) {
+  // Cancel the queued jobs server side too: the pool would otherwise keep working through
+  // them until the server next tries to write to the closed stream.
+  fetch("/api/stop", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ batch: batch.token }) }).catch(() => {});
+  batch.controller.abort();
+}
+function stop() {
+  stopRequested = true;
+  if (running) cancelBatch(running);
+}
+function removeBatch(batch) {
+  if (running === batch) cancelBatch(batch);
+  batches.splice(batches.indexOf(batch), 1);
+  $(`batch${batch.id}`)?.remove();
+  $("empty").hidden = batches.length > 0;
+}
+function clearWorkspace() {
+  stop();
+  batches.length = 0;
+  $("workspace").innerHTML = "";
+  $("empty").hidden = false;
+}
+function b64(s, Type) { const bin = atob(s), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); return new Type(u8.buffer); }
+function decode(r) {
+  r.kind = b64(r.kind, Uint8Array); r.plate = b64(r.plate, Uint16Array);
+  r.craton = b64(r.craton, Uint16Array); r.continent = b64(r.continent, Uint16Array);
+}
+
+// ---- drawing ------------------------------------------------------------------------
+const GEO = { ocean: [31, 78, 121], shelf: [96, 143, 181], shelfCore: [78, 118, 152], margin: [201, 181, 138], belt: [90, 163, 154], core: [122, 82, 48] };
+const LAND = [214, 196, 150], WATER = [44, 96, 145];
+function hue(i, l = 0.55, s = 0.55) {
+  const h = ((i * 0.618034) % 1) * 6, c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs(h % 2 - 1)), m = l - c / 2;
+  const [r, g, b] = h < 1 ? [c, x, 0] : h < 2 ? [x, c, 0] : h < 3 ? [0, c, x] : h < 4 ? [0, x, c] : h < 5 ? [x, 0, c] : [c, 0, x];
+  return [(r + m) * 255, (g + m) * 255, (b + m) * 255];
+}
+function pixelColour(r, i, mode) {
+  const kind = r.kind[i] & 3, land = r.kind[i] & 4;
+  if (mode === "geology") {
+    if (kind === 0) return GEO.ocean;
+    if (!land) return kind === 3 ? GEO.shelfCore : GEO.shelf;
+    return kind === 1 ? GEO.margin : kind === 2 ? GEO.belt : GEO.core;
+  }
+  if (mode === "land") return land ? LAND : WATER;
+  if (mode === "plates") return hue(r.plate[i] + 1, land ? 0.68 : kind ? 0.5 : 0.36, land ? 0.5 : 0.4);
+  if (mode === "cratons") {
+    if (r.craton[i]) return hue(r.craton[i] * 7 + 3, land ? 0.5 : 0.35, 0.7);
+    if (kind === 0) return [38, 52, 70];
+    return kind === 2 ? [120, 140, 135] : land ? [170, 165, 155] : [90, 105, 120];
+  }
+  if (r.continent[i]) return hue(r.continent[i] * 3 + 1, land ? 0.6 : 0.4, 0.55);
+  return [38, 52, 70];
+}
+function paint(canvas, r, scale) {
+  const W = r.width, H = r.height, mode = $("colour").value;
+  canvas.width = W * scale; canvas.height = H * scale;
+  const ctx = canvas.getContext("2d");
+  const img = ctx.createImageData(W, H), d = img.data;
+  const bound = $("ovBound").checked, coast = $("ovCoast").checked;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x, right = y * W + (x + 1) % W, down = Math.min(y + 1, H - 1) * W + x;
+    let c = pixelColour(r, i, mode);
+    if (coast && ((r.kind[i] ^ r.kind[right]) & 4 || (r.kind[i] ^ r.kind[down]) & 4)) c = [245, 245, 240];
+    if (bound && (r.plate[i] !== r.plate[right] || r.plate[i] !== r.plate[down])) c = [15, 15, 18];
+    d.set([c[0], c[1], c[2], 255], i * 4);
+  }
+  const tmp = new OffscreenCanvas(W, H); tmp.getContext("2d").putImageData(img, 0, 0);
+  ctx.imageSmoothingEnabled = false; ctx.drawImage(tmp, 0, 0, W * scale, H * scale);
+  const toXY = ([lon, lat]) => [(lon + 180) / 360 * canvas.width, (90 - lat) / 180 * canvas.height];
+  if ($("ovSites").checked) {
+    ctx.fillStyle = "rgba(255,255,255,.85)";
+    for (const p of r.sites) { const [x, y] = toXY(p); ctx.fillRect(x - 1, y - 1, 2, 2); }
+  }
+  if ($("ovNuclei").checked) {
+    r.nuclei.forEach((p, j) => {
+      const [x, y] = toXY(p), c = hue(r.nucleus_craton[j] * 7 + 10, 0.6, 0.9);
+      ctx.beginPath(); ctx.arc(x, y, 2.2 * scale, 0, 7); ctx.fillStyle = `rgb(${c})`; ctx.fill();
+      ctx.lineWidth = 1; ctx.strokeStyle = "#000"; ctx.stroke();
+    });
+  }
+}
+function addColumn(batch) {
+  $("empty").hidden = true;
+  const col = document.createElement("section");
+  col.className = "batch"; col.id = `batch${batch.id}`;
+  col.innerHTML = `<div class="head"></div><div class="tiles"></div>`;
+  $("workspace").appendChild(col);
+  const tiles = col.querySelector(".tiles");
+  batch.results.forEach((_, i) => {
+    const t = document.createElement("div"); t.className = "tile"; t.id = `tile${batch.id}-${i}`;
+    t.addEventListener("click", () => openDetail(batch, i));
+    tiles.appendChild(t); drawTile(batch, i);
+  });
+  drawHead(batch);
+}
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]); }
+function drawHead(batch) {
+  const head = document.querySelector(`#batch${batch.id} .head`);
+  if (!head) return;
+  const w = batch.world;
+  const world = [`density ${w.node_density}×`, `plates ${w.num_plates ?? "auto"}`];
+  if (w.continental_fraction != null) world.push(`continental ${w.continental_fraction}`);
+  world.push(`land ${w.land_fraction ?? "none"}`);
+  const knobs = Object.entries(batch.base).map(([name, v]) => `<span class="chip k${name === batch.sweptKnob ? " swept" : ""}" title="${name}">${esc(knobByName(name).label)} = ${esc(Array.isArray(v) ? v.join("–") : v)}</span>`);
+  if (batch.sweep) knobs.push(`<span class="chip k">${esc(batch.sweep)}</span>`);
+  const ok = batch.results.filter(r => r.ok), bad = batch.results.filter(r => r.ok === false).length;
+  const done = batch.results.filter(r => !r.pending).length;
+  const span = key => { const v = ok.map(r => r.stats[key]); return v.length ? `<b>${fmt(median(v))}</b> (${fmt(Math.min(...v))}–${fmt(Math.max(...v))})` : "–"; };
+  const status = batch.status === "queued" ? "queued"
+    : batch.status === "running" ? `running ${done}/${batch.results.length}`
+    : batch.status === "stopped" ? `<span class="status bad">stopped at ${done}/${batch.results.length}</span>`
+    : batch.status === "error" ? `<span class="status bad">${esc(batch.error)}</span>` : "done";
+  head.innerHTML = `<div class="top"><b>#${batch.id} · ${esc(batch.title)}${batch.subtitle ? ` <span class="sum">· ${esc(batch.subtitle)}</span>` : ""}</b><span class="sum">${status} · ${batch.seconds.toFixed(1)} s<button class="x" title="Remove column">×</button></span></div>
+    <div class="chips">${world.map(s => `<span class="chip">${s}</span>`).join("")}${knobs.length ? knobs.join("") : `<span class="chip">default knobs</span>`}</div>
+    <div class="sum">${bad ? `<span class="status bad">${bad} failed</span> · ` : ""}median (range) over ${ok.length}:<br>
+    continents ${span("continents")} · cratons ${span("cratons")} · plates ${span("plates")}<br>
+    joined ${span("joined_nucleus_share")} · core ${span("core_share_of_continent")} · belt ${span("belt_share_of_continent")}</div>`;
+  head.querySelector(".x").addEventListener("click", () => removeBatch(batch));
+}
+function drawTile(batch, i) {
+  const r = batch.results[i], t = $(`tile${batch.id}-${i}`);
+  if (!t) return;
+  const cap = s => `<div class="cap"><span class="t">${esc(r.label)}</span><span class="s">${s}</span></div>`;
+  if (r.pending) { t.innerHTML = `<canvas></canvas>${cap("…")}`; return; }
+  if (r.stopped) { t.innerHTML = `<div class="err">stopped</div>${cap("–")}`; return; }
+  if (!r.ok) { t.innerHTML = `<div class="err">${esc(r.error)}</div>${cap("failed")}`; return; }
+  t.innerHTML = "";
+  const c = document.createElement("canvas"); t.appendChild(c); paint(c, r, 1);
+  const s = r.stats;
+  t.insertAdjacentHTML("beforeend", cap(`${s.continents} cont · ${s.cratons} cratons · ${s.plates} plates · land ${(100 * s.land_fraction).toFixed(0)}%`));
+}
+function median(a) { const s = [...a].sort((x, y) => x - y); return s.length ? s[Math.floor((s.length - 1) / 2)] : NaN; }
+function fmt(v) { return Number.isInteger(v) ? v : v.toFixed(2); }
+function openDetail(batch, i) {
+  const r = batch.results[i];
+  if (!r || !r.ok) return;
+  $("dTitle").textContent = `#${batch.id} · ${r.label} · ${r.seconds.toFixed(2)} s`;
+  paint($("dCanvas"), r, 2);
+  const extra = Object.entries(r.overrides).map(([k, v]) => [k, JSON.stringify(v)]);
+  $("dStats").innerHTML = [...Object.entries(r.stats), ...extra].map(([k, v]) => `<div><span>${k}</span><span>${typeof v === "number" ? fmt(v) : esc(v)}</span></div>`).join("");
+  $("detail").showModal();
+}
+function legend() {
+  const mode = $("colour").value, sw = (c, t) => `<span><span class="sw" style="background:rgb(${c})"></span>${t}</span>`;
+  $("legend").innerHTML = mode === "geology"
+    ? [sw(GEO.ocean, "ocean"), sw(GEO.shelf, "submerged continental"), sw(GEO.shelfCore, "submerged craton"), sw(GEO.margin, "margin"), sw(GEO.belt, "belt"), sw(GEO.core, "craton")].join("")
+    : mode === "land" ? [sw(WATER, "water"), sw(LAND, "land")].join("")
+    : mode === "plates" ? "One hue per plate; lighter = land, mid = continental, dark = ocean."
+    : mode === "cratons" ? "One hue per craton; grey = non-cratonic continental, green-grey = belt."
+    : "One hue per continent.";
+}
+function repaint() { legend(); save(); for (const b of batches) b.results.forEach((_, i) => drawTile(b, i)); }
+
+buildKnobs(); load(); legend(); updateModeRows();
+$("mode").addEventListener("change", () => { updateModeRows(); save(); });
+$("go").addEventListener("click", generate);
+$("stop").addEventListener("click", stop);
+$("clear").addEventListener("click", clearWorkspace);
+$("reroll").addEventListener("click", () => { $("seed").value = Math.floor(Math.random() * 1e6); generate(); });
+$("resetAll").addEventListener("click", () => { KNOBS.forEach(k => setKnob(rowFor(k.name), k, k.default)); save(); });
+["colour", "ovBound", "ovCoast", "ovNuclei", "ovSites"].forEach(id => $(id).addEventListener("change", repaint));
+["seed", "count", "sweepKnob", "sweepEnd", "sweepFrom", "sweepTo", "sweepValues", "nodeDensity", "numPlates", "contFrac", "landFrac"].forEach(id => $(id).addEventListener("change", save));
+$("dClose").addEventListener("click", () => $("detail").close());
+$("detail").addEventListener("click", e => { if (e.target === $("detail")) $("detail").close(); });
+document.addEventListener("keydown", e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) generate(); });
+</script>
+</body>
+</html>

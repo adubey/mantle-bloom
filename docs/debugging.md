@@ -73,6 +73,7 @@ cratons sit (RFC 0009).
 | [`measure_belt_marks.py`](debugging/scripts-craton-layout.md#measure_belt_markspy) | belt area, formation audit and step-time cost of belt marks |
 | [`render_craton_map.py`](debugging/scripts-craton-layout.md#render_craton_mappy) | a plain map of plates, crust and cratons from a seed or save |
 | [`render_layout_sheets.py`](debugging/scripts-craton-layout.md#render_layout_sheetspy) | contact sheets of cratons-first layouts at t = 0 |
+| [`layout_explorer.py`](debugging/scripts-craton-layout.md#layout_explorerpy) | how the cratons-first layout knobs change many seeds' layouts, interactively in a browser |
 | [`render_earth_cratons.py`](debugging/scripts-craton-layout.md#render_earth_cratonspy) | Earth's plates over its cratons, as a reference figure |
 
 ### Collisions and plate motion

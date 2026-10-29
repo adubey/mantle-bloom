@@ -142,6 +142,63 @@ PYTHONPATH=backend backend/.venv/bin/python bin/debug/render_layout_sheets.py \
     --seeds 7,11,2024 --land-fraction 0.29 --out /tmp/sheets
 ```
 
+### `layout_explorer.py`
+
+An interactive explorer for the cratons-first layout's tuning constants (#685). It serves one
+page, `bin/debug/layout_explorer.html`, on localhost. Choose a port other than 8000 and 5173,
+which belong to the user's own instance.
+
+```bash
+PYTHONPATH=backend backend/.venv/bin/python bin/debug/layout_explorer.py --port 8765
+```
+
+**Knobs.** The sidebar lists the module constants in the script's `KNOBS` table:
+- Continents: count range, Poisson-disc spacing, Dirichlet size concentration, outline and
+  growth noise.
+- Cratons: the craton-clustering concentration, craton share, nucleus steps, size scale,
+  core radius and spacing.
+- Belts: belt width, closure radius and lens.
+- Plates: point sites, candidate partitions, refinement, boundary costs, auto plate count.
+
+Each knob's default is its value on the checkout, so a branch's edits show as its defaults.
+The browser keeps knobs you change between visits, and Reset knobs returns them to the
+checkout's values. Restart the server after editing backend code: pool workers start on
+demand and would pick up the edit while the page still shows the old defaults.
+`PLATE_COST_CORE` follows an override of `PLATE_COST_MARGIN` unless it is set itself, as
+it does in `plate_partition.py`. World settings (node density, plate count, continental and
+land fraction) are passed to `lithosphere_plate.cratons_first_layout`.
+
+**Jobs.** Each map is one job: a seed plus constant overrides. A job runs
+`cratons_first_layout` in a process pool (`--workers`, default 4), with the overrides
+applied to the modules for that job and reset before the next one. A job builds the layout
+only, without plates or relief: about 1 s per layout at node density 1 and about 5 s at 4.
+A layout that raises, such as the partition failure in #510, is shown as an error tile. If a
+worker process dies, the column reports the error and the server starts a new pool.
+
+**Batches.** Each Generate adds a column of maps to the right of the earlier ones:
+- **N seeds** at fixed knobs.
+- **Sweep across columns**: one column per value of a knob, each with the same N seeds, so
+  rows line up.
+- **Sweep down one column**: one knob stepped over N values at a fixed seed.
+
+A (min, max) knob such as `CONTINENT_COUNT_RANGE` is swept one of three ways: as a fixed
+value (`k`–`k`, which sets the continent count itself), or by its min or max end with the
+other end held at the sidebar's value. A value that would put min above max is rejected
+before the batch runs.
+
+A column's header lists its changed knobs, with the median and range of the layout
+diagnostics (`ContinentLayout.diagnostics`). Stop cancels the batch's queued jobs and any
+columns still waiting. Jobs the pool has already handed to its workers, up to about
+`--workers` + 1, still finish.
+
+**Display.** Maps can be coloured by geology, land and water, plate, craton or continent, with
+overlays for plate boundaries, coastline, craton nuclei and plate sites. Click a map for an
+enlarged view and all its diagnostics.
+
+A knob changes the random draws that follow it. The same seed under different settings is
+therefore a different world from that point on, not a slightly altered one. To compare
+settings, use several seeds per column rather than single maps.
+
 ### `render_earth_cratons.py`
 
 A reference figure for RFC 0009: Earth's 16 bundled plate outlines (NNR-MORVEL56, see
