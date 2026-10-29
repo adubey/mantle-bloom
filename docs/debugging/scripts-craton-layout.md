@@ -176,6 +176,11 @@ A layout that raises, such as the partition failure in #510, is shown as an erro
   rows line up.
 - **Sweep down one column**: one knob stepped over N values at a fixed seed.
 
+A (min, max) knob such as `CONTINENT_COUNT_RANGE` is swept one of three ways: as a fixed
+value (`k`–`k`, which sets the continent count itself), or by its min or max end with the
+other end held at the sidebar's value. A value that would put min above max is rejected
+before the batch runs.
+
 A column's header lists its changed knobs, with the median and range of the layout
 diagnostics (`ContinentLayout.diagnostics`). Stop cancels the jobs that haven't started.
 

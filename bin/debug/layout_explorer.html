@@ -89,6 +89,7 @@ dialog canvas { width: 100%; aspect-ratio: 2 / 1; image-rendering: pixelated; bo
     <div class="row"><label>Worlds (N)</label><input type="number" id="count" value="10" min="1" max="40"><span></span></div>
     <div id="sweepRows" hidden>
       <div class="row"><label>Knob</label><select id="sweepKnob"></select><span></span></div>
+      <div class="row" id="sweepEndRow"><label title="How a (min, max) knob is swept">Sweep how</label><select id="sweepEnd"><option value="fixed">fixed value (k–k)</option><option value="min">min only</option><option value="max">max only</option></select><span></span></div>
       <div class="row" id="sweepRangeRow"><label>From, to</label><span class="pair"><input type="number" id="sweepFrom" step="any"><input type="number" id="sweepTo" step="any"></span><span></span></div>
       <div class="row" id="sweepValuesRow"><label title="One column per value, comma-separated">Values</label><input id="sweepValues" placeholder="1, 2, 4"><span></span></div>
       <div class="hint" id="sweepHint"></div>
@@ -155,9 +156,13 @@ function buildKnobs() {
     host.appendChild(fs);
   }
   const sel = $("sweepKnob");
-  for (const k of KNOBS.filter(k => !isRange(k))) sel.add(new Option(k.label, k.name));
-  sel.addEventListener("change", fillSweepDefaults);
+  for (const k of KNOBS) sel.add(new Option(isRange(k) ? `${k.label} (range)` : k.label, k.name));
+  sel.addEventListener("change", () => { updateModeRows(); fillSweepDefaults(); });
+  $("sweepEnd").addEventListener("change", fillSweepDefaults);
 }
+function isIntKind(k) { return k.kind === "int" || k.kind === "irange"; }
+function sweepKnob() { return knobByName($("sweepKnob").value); }
+function show(v) { return Array.isArray(v) ? v.join("–") : v; }
 function knobByName(name) { return KNOBS.find(k => k.name === name); }
 function rowFor(name) { return document.querySelector(`.row[data-knob="${name}"]`); }
 function setKnob(row, k, v) {
@@ -181,14 +186,41 @@ function overrides() {
   return out;
 }
 function fillSweepDefaults() {
-  const k = knobByName($("sweepKnob").value);
-  const v = readKnob(rowFor(k.name), k);
-  $("sweepFrom").value = +(v * 0.5).toPrecision(3); $("sweepTo").value = +(v * 1.5).toPrecision(3);
-  $("sweepValues").value = [0.5, 0.75, 1, 1.5, 2].map(f => k.kind === "int" ? Math.round(v * f) : +(v * f).toPrecision(3)).join(", ");
+  const k = sweepKnob(), cur = readKnob(rowFor(k.name), k), end = $("sweepEnd").value;
+  const round = x => isIntKind(k) ? Math.round(x) : +x.toPrecision(3);
+  let from, to, values;
+  if (!isRange(k)) {
+    [from, to] = [cur * 0.5, cur * 1.5];
+    values = [0.5, 0.75, 1, 1.5, 2].map(f => cur * f);
+  } else if (end === "fixed") {
+    // Every whole count in the current range, e.g. 2, 3, 4, 5, 6 for continent count.
+    [from, to] = cur;
+    values = isIntKind(k) && cur[1] - cur[0] < 12
+      ? Array.from({ length: cur[1] - cur[0] + 1 }, (_, i) => cur[0] + i)
+      : Array.from({ length: 5 }, (_, i) => cur[0] + (cur[1] - cur[0]) * i / 4);
+  } else if (end === "min") {
+    [from, to] = [cur[0] * 0.5, cur[1]];
+    values = [cur[0] * 0.5, cur[0] * 0.75, cur[0], (cur[0] + cur[1]) / 2, cur[1]];
+  } else {
+    [from, to] = [cur[0], cur[1] * 1.5];
+    values = [cur[0], (cur[0] + cur[1]) / 2, cur[1], cur[1] * 1.25, cur[1] * 1.5];
+  }
+  $("sweepFrom").value = round(from); $("sweepTo").value = round(to);
+  $("sweepValues").value = [...new Set(values.map(round))].join(", ");
+}
+function sweptOverride(k, v) {
+  // A range knob sweeps one number into a (min, max) pair; the other end stays at the
+  // sidebar's value.
+  if (!isRange(k)) return v;
+  const cur = readKnob(rowFor(k.name), k), end = $("sweepEnd").value;
+  const pair = end === "fixed" ? [v, v] : end === "min" ? [v, cur[1]] : [cur[0], v];
+  if (pair[0] > pair[1]) throw new Error(`${k.label} = ${show(pair)}: min is above max. Sweeping the ${end} end keeps the other end at ${end === "min" ? cur[1] : cur[0]}.`);
+  return pair;
 }
 function updateModeRows() {
   const mode = $("mode").value;
   $("sweepRows").hidden = mode === "seeds";
+  $("sweepEndRow").hidden = !isRange(sweepKnob());
   $("sweepRangeRow").hidden = mode !== "sweep";
   $("sweepValuesRow").hidden = mode !== "columns";
   $("sweepHint").textContent = mode === "columns"
@@ -198,14 +230,14 @@ function updateModeRows() {
 function sweepValues(k) {
   const vals = $("sweepValues").value.split(/[,\s]+/).filter(Boolean).map(Number);
   if (!vals.length || vals.some(v => !Number.isFinite(v))) throw new Error("Values must be a comma-separated list of numbers.");
-  return vals.slice(0, 12).map(v => k.kind === "int" ? Math.round(v) : v);
+  return vals.slice(0, 12).map(v => isIntKind(k) ? Math.round(v) : v);
 }
 function numOrNull(id) { const v = $(id).value.trim(); return v === "" ? null : Number(v); }
 function worldSettings() {
   return { node_density: Number($("nodeDensity").value), num_plates: numOrNull("numPlates"),
            continental_fraction: numOrNull("contFrac"), land_fraction: numOrNull("landFrac") };
 }
-const FORM_IDS = ["mode", "seed", "count", "sweepKnob", "sweepFrom", "sweepTo", "sweepValues", "nodeDensity", "numPlates", "contFrac", "landFrac", "colour", "ovBound", "ovCoast", "ovNuclei", "ovSites"];
+const FORM_IDS = ["mode", "seed", "count", "sweepKnob", "sweepEnd", "sweepFrom", "sweepTo", "sweepValues", "nodeDensity", "numPlates", "contFrac", "landFrac", "colour", "ovBound", "ovCoast", "ovNuclei", "ovSites"];
 function save() {
   const form = Object.fromEntries(FORM_IDS.map(id => [id, $(id).type === "checkbox" ? $(id).checked : $(id).value]));
   try { localStorage.setItem(STORE, JSON.stringify({ form, knobs: overrides() })); } catch (e) {}
@@ -234,18 +266,20 @@ function newBatches() {
   if (mode === "seeds") {
     out = [make({ title: seedsTitle, jobs: seedJobs(seed, n, base) })];
   } else if (mode === "columns") {
-    const k = knobByName($("sweepKnob").value);
+    const k = sweepKnob();
     out = sweepValues(k).map(v => {
-      const swept = { ...base, [k.name]: v };
-      return make({ base: swept, title: `${k.label} = ${v}`, subtitle: seedsTitle, sweptKnob: k.name, jobs: seedJobs(seed, n, swept) });
+      const value = sweptOverride(k, v), swept = { ...base, [k.name]: value };
+      return make({ base: swept, title: `${k.label} = ${show(value)}`, subtitle: seedsTitle, sweptKnob: k.name, jobs: seedJobs(seed, n, swept) });
     });
   } else {
-    const k = knobByName($("sweepKnob").value);
+    const k = sweepKnob();
     const a = Number($("sweepFrom").value), b = Number($("sweepTo").value);
-    out = [make({ title: `sweep · seed ${seed}`, sweep: `${k.label}: ${a} → ${b}`, jobs: Array.from({ length: n }, (_, i) => {
+    const how = isRange(k) ? ` (${$("sweepEnd").selectedOptions[0].text})` : "";
+    out = [make({ title: `sweep · seed ${seed}`, sweep: `${k.label}${how}: ${a} → ${b}`, jobs: Array.from({ length: n }, (_, i) => {
       let v = n === 1 ? a : a + (b - a) * i / (n - 1);
-      v = k.kind === "int" ? Math.round(v) : +v.toPrecision(4);
-      return { seed, overrides: { ...base, [k.name]: v }, label: `${k.label} = ${v}` };
+      v = isIntKind(k) ? Math.round(v) : +v.toPrecision(4);
+      const value = sweptOverride(k, v);
+      return { seed, overrides: { ...base, [k.name]: value }, label: `${k.label} = ${show(value)}` };
     }) })];
   }
   for (const batch of out) batch.results = batch.jobs.map(j => ({ pending: true, label: j.label }));
@@ -473,7 +507,7 @@ $("clear").addEventListener("click", clearWorkspace);
 $("reroll").addEventListener("click", () => { $("seed").value = Math.floor(Math.random() * 1e6); generate(); });
 $("resetAll").addEventListener("click", () => { KNOBS.forEach(k => setKnob(rowFor(k.name), k, k.default)); save(); });
 ["colour", "ovBound", "ovCoast", "ovNuclei", "ovSites"].forEach(id => $(id).addEventListener("change", repaint));
-["seed", "count", "sweepKnob", "sweepFrom", "sweepTo", "sweepValues", "nodeDensity", "numPlates", "contFrac", "landFrac"].forEach(id => $(id).addEventListener("change", save));
+["seed", "count", "sweepKnob", "sweepEnd", "sweepFrom", "sweepTo", "sweepValues", "nodeDensity", "numPlates", "contFrac", "landFrac"].forEach(id => $(id).addEventListener("change", save));
 $("dClose").addEventListener("click", () => $("detail").close());
 $("detail").addEventListener("click", e => { if (e.target === $("detail")) $("detail").close(); });
 document.addEventListener("keydown", e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) generate(); });
