@@ -21,7 +21,7 @@ implemented through ordinary issues and PRs (see [AGENTS.md](../AGENTS.md)), eac
 | [0009](0009-craton-mosaic.md) | Cratons first: continents built from cratonic cores, plates placed around them | Accepted (revised after G1) |
 | [0010](0010-rifts-follow-weak-lithosphere.md) | Rifts follow weak lithosphere | Accepted |
 | [0011](https://github.com/adubey/mantle-bloom/blob/claude/rfc-0011-contact-strength/rfc/0011-contact-strength.md) | Collisions are held by lithospheric strength | Draft |
-| [0012](0012-physics-first-simulation.md) | Physics-first simulation | Accepted |
+| [0012](0012-physics-first-simulation.md) | Physics-first simulation | Implemented |
 | [0014](0014-lake-water-volume-and-freezing.md) | Lakes conserve their water: in-step fill-spill-merge, seasonal freezing and water-surface temperature | Accepted |
 | [0015](0015-frozen-water-in-physical-units.md) | Frozen water in physical units: glacier mass balance, ice flow and meltwater, freezing lakes and rivers, ocean ice and polar snow | Accepted |
 
