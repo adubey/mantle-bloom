@@ -1,0 +1,470 @@
+{
+ "issue": 693,
+ "baseline_commit": "23ad7d7875093ccb449a6ec531d96de5fb6c4b14",
+ "branch_commit": "254729b7ed11555a1cb34c37f353ea49450853a4",
+ "purpose": "Five 100 kyr steps from each registered G8 checkpoint; ice_age_period_years=0.",
+ "windows": {
+  "A": {
+   "baseline": {
+    "checkpoint_sha256": null,
+    "peak_rss_gb": 4.76,
+    "records": [
+     {
+      "age_myr": 221.7,
+      "anchor_silt_mm_yr": 0.0032,
+      "anchor_volume_km3": 249388.3,
+      "dV_km3": null,
+      "surface_m": -1318.0,
+      "spill_level_m": null,
+      "max_body_supply_over_world": 13.007,
+      "unbounded_over_world": null,
+      "world_silt_m3": 108600000000000.0,
+      "internal_over_external": 22.4,
+      "overflow_out_m3": 5.8818e+17,
+      "normalized_residual": 5.6e-13
+     },
+     {
+      "age_myr": 221.8,
+      "anchor_silt_mm_yr": 0.0077,
+      "anchor_volume_km3": 879182.5,
+      "dV_km3": 629794.2,
+      "surface_m": -805.3,
+      "spill_level_m": -805.6,
+      "max_body_supply_over_world": 15.576,
+      "unbounded_over_world": null,
+      "world_silt_m3": 81440000000000.0,
+      "internal_over_external": 16.2,
+      "overflow_out_m3": 6.2998e+17,
+      "normalized_residual": 5.7e-14
+     },
+     {
+      "age_myr": 221.9,
+      "anchor_silt_mm_yr": 0.0027,
+      "anchor_volume_km3": 668128.7,
+      "dV_km3": -211053.8,
+      "surface_m": -986.5,
+      "spill_level_m": null,
+      "max_body_supply_over_world": 21.787,
+      "unbounded_over_world": null,
+      "world_silt_m3": 126900000000000.0,
+      "internal_over_external": 23.9,
+      "overflow_out_m3": 6.9624e+17,
+      "normalized_residual": 2e-13
+     },
+     {
+      "age_myr": 222.0,
+      "anchor_silt_mm_yr": 0.008,
+      "anchor_volume_km3": 930601.9,
+      "dV_km3": 262473.2,
+      "surface_m": -711.3,
+      "spill_level_m": -676.4,
+      "max_body_supply_over_world": 22.211,
+      "unbounded_over_world": null,
+      "world_silt_m3": 119300000000000.0,
+      "internal_over_external": 22.9,
+      "overflow_out_m3": 6.7968e+17,
+      "normalized_residual": 3e-13
+     },
+     {
+      "age_myr": 222.1,
+      "anchor_silt_mm_yr": 0.0028,
+      "anchor_volume_km3": 727033.1,
+      "dV_km3": -203568.7,
+      "surface_m": -796.3,
+      "spill_level_m": null,
+      "max_body_supply_over_world": 22.599,
+      "unbounded_over_world": null,
+      "world_silt_m3": 133500000000000.0,
+      "internal_over_external": 23.2,
+      "overflow_out_m3": 7.6914e+17,
+      "normalized_residual": 6.1e-13
+     }
+    ]
+   },
+   "branch": {
+    "checkpoint_sha256": null,
+    "peak_rss_gb": 3.88,
+    "records": [
+     {
+      "age_myr": 221.7,
+      "anchor_silt_mm_yr": 0.0032,
+      "anchor_volume_km3": 249388.3,
+      "dV_km3": null,
+      "surface_m": -1318.0,
+      "spill_level_m": null,
+      "max_body_supply_over_world": 0.312,
+      "unbounded_over_world": 0.312,
+      "world_silt_m3": 7068000000000.0,
+      "internal_over_external": 22.4,
+      "overflow_out_m3": 5.8818e+17,
+      "normalized_residual": 5.6e-13
+     },
+     {
+      "age_myr": 221.8,
+      "anchor_silt_mm_yr": 0.0024,
+      "anchor_volume_km3": 879182.5,
+      "dV_km3": 629794.2,
+      "surface_m": -805.3,
+      "spill_level_m": -805.6,
+      "max_body_supply_over_world": 0.346,
+      "unbounded_over_world": 0.346,
+      "world_silt_m3": 4770000000000.0,
+      "internal_over_external": 16.2,
+      "overflow_out_m3": 6.3007e+17,
+      "normalized_residual": 5.8e-14
+     },
+     {
+      "age_myr": 221.9,
+      "anchor_silt_mm_yr": 0.0027,
+      "anchor_volume_km3": 668155.7,
+      "dV_km3": -211026.8,
+      "surface_m": -986.6,
+      "spill_level_m": null,
+      "max_body_supply_over_world": 0.309,
+      "unbounded_over_world": 0.309,
+      "world_silt_m3": 8370000000000.0,
+      "internal_over_external": 25.7,
+      "overflow_out_m3": 6.9621e+17,
+      "normalized_residual": 2e-13
+     },
+     {
+      "age_myr": 222.0,
+      "anchor_silt_mm_yr": 0.0023,
+      "anchor_volume_km3": 930634.7,
+      "dV_km3": 262478.9,
+      "surface_m": -711.3,
+      "spill_level_m": -676.4,
+      "max_body_supply_over_world": 0.292,
+      "unbounded_over_world": 0.292,
+      "world_silt_m3": 4933000000000.0,
+      "internal_over_external": 23.5,
+      "overflow_out_m3": 6.6622e+17,
+      "normalized_residual": 2.9e-13
+     },
+     {
+      "age_myr": 222.1,
+      "anchor_silt_mm_yr": 0.0027,
+      "anchor_volume_km3": 684541.4,
+      "dV_km3": -246093.2,
+      "surface_m": -883.1,
+      "spill_level_m": null,
+      "max_body_supply_over_world": 0.282,
+      "unbounded_over_world": 0.282,
+      "world_silt_m3": 5200000000000.0,
+      "internal_over_external": 25.6,
+      "overflow_out_m3": 8.1477e+17,
+      "normalized_residual": 2.8e-14
+     }
+    ]
+   }
+  },
+  "B": {
+   "baseline": {
+    "checkpoint_sha256": null,
+    "peak_rss_gb": 5.46,
+    "records": [
+     {
+      "age_myr": 222.2,
+      "anchor_silt_mm_yr": 0.0061,
+      "anchor_volume_km3": 115361.0,
+      "dV_km3": null,
+      "surface_m": 634.0,
+      "spill_level_m": null,
+      "max_body_supply_over_world": 23.094,
+      "unbounded_over_world": null,
+      "world_silt_m3": 108300000000000.0,
+      "internal_over_external": 23.6,
+      "overflow_out_m3": 5.6562e+17,
+      "normalized_residual": 7.1e-14
+     },
+     {
+      "age_myr": 222.3,
+      "anchor_silt_mm_yr": 0.0086,
+      "anchor_volume_km3": 246986.1,
+      "dV_km3": 131625.1,
+      "surface_m": 664.9,
+      "spill_level_m": 664.8,
+      "max_body_supply_over_world": 23.805,
+      "unbounded_over_world": null,
+      "world_silt_m3": 117300000000000.0,
+      "internal_over_external": 24.5,
+      "overflow_out_m3": 6.2378e+17,
+      "normalized_residual": 1.2e-13
+     },
+     {
+      "age_myr": 222.4,
+      "anchor_silt_mm_yr": 0.0056,
+      "anchor_volume_km3": 251579.6,
+      "dV_km3": 4593.5,
+      "surface_m": 668.5,
+      "spill_level_m": 668.5,
+      "max_body_supply_over_world": 30.215,
+      "unbounded_over_world": null,
+      "world_silt_m3": 155500000000000.0,
+      "internal_over_external": 32.3,
+      "overflow_out_m3": 5.8179e+17,
+      "normalized_residual": 9.2e-14
+     },
+     {
+      "age_myr": 222.5,
+      "anchor_silt_mm_yr": 0.0059,
+      "anchor_volume_km3": 251278.1,
+      "dV_km3": -301.5,
+      "surface_m": 670.1,
+      "spill_level_m": 670.1,
+      "max_body_supply_over_world": 29.938,
+      "unbounded_over_world": null,
+      "world_silt_m3": 146400000000000.0,
+      "internal_over_external": 30.2,
+      "overflow_out_m3": 5.9683e+17,
+      "normalized_residual": 1.4e-13
+     },
+     {
+      "age_myr": 222.6,
+      "anchor_silt_mm_yr": 0.0069,
+      "anchor_volume_km3": 163017.4,
+      "dV_km3": -88260.7,
+      "surface_m": 671.7,
+      "spill_level_m": 671.7,
+      "max_body_supply_over_world": 29.068,
+      "unbounded_over_world": null,
+      "world_silt_m3": 153200000000000.0,
+      "internal_over_external": 30.1,
+      "overflow_out_m3": 6.7908e+17,
+      "normalized_residual": 7.5e-14
+     }
+    ]
+   },
+   "branch": {
+    "checkpoint_sha256": null,
+    "peak_rss_gb": 6.39,
+    "records": [
+     {
+      "age_myr": 222.2,
+      "anchor_silt_mm_yr": 0.0061,
+      "anchor_volume_km3": 115361.0,
+      "dV_km3": null,
+      "surface_m": 634.0,
+      "spill_level_m": null,
+      "max_body_supply_over_world": 0.245,
+      "unbounded_over_world": 0.245,
+      "world_silt_m3": 4470000000000.0,
+      "internal_over_external": 23.6,
+      "overflow_out_m3": 5.6562e+17,
+      "normalized_residual": 7.1e-14
+     },
+     {
+      "age_myr": 222.3,
+      "anchor_silt_mm_yr": 0.0052,
+      "anchor_volume_km3": 246986.1,
+      "dV_km3": 131625.1,
+      "surface_m": 664.9,
+      "spill_level_m": 664.8,
+      "max_body_supply_over_world": 0.303,
+      "unbounded_over_world": 0.303,
+      "world_silt_m3": 4961000000000.0,
+      "internal_over_external": 24.5,
+      "overflow_out_m3": 6.2379e+17,
+      "normalized_residual": 1.2e-13
+     },
+     {
+      "age_myr": 222.4,
+      "anchor_silt_mm_yr": 0.0056,
+      "anchor_volume_km3": 251733.8,
+      "dV_km3": 4747.7,
+      "surface_m": 668.5,
+      "spill_level_m": 668.5,
+      "max_body_supply_over_world": 0.323,
+      "unbounded_over_world": 0.323,
+      "world_silt_m3": 4900000000000.0,
+      "internal_over_external": 31.7,
+      "overflow_out_m3": 5.8202e+17,
+      "normalized_residual": 9e-14
+     },
+     {
+      "age_myr": 222.5,
+      "anchor_silt_mm_yr": 0.0059,
+      "anchor_volume_km3": 251431.0,
+      "dV_km3": -302.8,
+      "surface_m": 670.1,
+      "spill_level_m": 670.1,
+      "max_body_supply_over_world": 0.332,
+      "unbounded_over_world": 0.332,
+      "world_silt_m3": 4873000000000.0,
+      "internal_over_external": 32.6,
+      "overflow_out_m3": 5.9667e+17,
+      "normalized_residual": 1.3e-13
+     },
+     {
+      "age_myr": 222.6,
+      "anchor_silt_mm_yr": 0.0068,
+      "anchor_volume_km3": 162904.2,
+      "dV_km3": -88526.8,
+      "surface_m": 671.8,
+      "spill_level_m": 671.8,
+      "max_body_supply_over_world": 0.252,
+      "unbounded_over_world": 0.252,
+      "world_silt_m3": 5273000000000.0,
+      "internal_over_external": 30.3,
+      "overflow_out_m3": 6.7927e+17,
+      "normalized_residual": 7.5e-14
+     }
+    ]
+   }
+  },
+  "C": {
+   "baseline": {
+    "checkpoint_sha256": null,
+    "peak_rss_gb": 5.62,
+    "records": [
+     {
+      "age_myr": 201.1,
+      "anchor_silt_mm_yr": 0.0656,
+      "anchor_volume_km3": 264786.7,
+      "dV_km3": null,
+      "surface_m": 296.5,
+      "spill_level_m": -1471.2,
+      "max_body_supply_over_world": 10.483,
+      "unbounded_over_world": null,
+      "world_silt_m3": 29020000000000.0,
+      "internal_over_external": 10.4,
+      "overflow_out_m3": 4.6067e+17,
+      "normalized_residual": 1.4e-12
+     },
+     {
+      "age_myr": 201.2,
+      "anchor_silt_mm_yr": 0.0785,
+      "anchor_volume_km3": 3194.5,
+      "dV_km3": -261592.2,
+      "surface_m": 775.5,
+      "spill_level_m": -1469.6,
+      "max_body_supply_over_world": 15.449,
+      "unbounded_over_world": null,
+      "world_silt_m3": 41170000000000.0,
+      "internal_over_external": 15.3,
+      "overflow_out_m3": 4.6031e+17,
+      "normalized_residual": 3.6e-15
+     },
+     {
+      "age_myr": 201.3,
+      "anchor_silt_mm_yr": 0.0683,
+      "anchor_volume_km3": 372576.2,
+      "dV_km3": 369381.7,
+      "surface_m": 807.0,
+      "spill_level_m": -1454.3,
+      "max_body_supply_over_world": 12.726,
+      "unbounded_over_world": null,
+      "world_silt_m3": 36890000000000.0,
+      "internal_over_external": 12.9,
+      "overflow_out_m3": 4.8908e+17,
+      "normalized_residual": 1.7e-13
+     },
+     {
+      "age_myr": 201.4,
+      "anchor_silt_mm_yr": 0.0711,
+      "anchor_volume_km3": 2960.7,
+      "dV_km3": -369615.5,
+      "surface_m": 784.4,
+      "spill_level_m": -1465.4,
+      "max_body_supply_over_world": 12.873,
+      "unbounded_over_world": null,
+      "world_silt_m3": 37660000000000.0,
+      "internal_over_external": 12.9,
+      "overflow_out_m3": 5.1794e+17,
+      "normalized_residual": 3.8e-14
+     },
+     {
+      "age_myr": 201.5,
+      "anchor_silt_mm_yr": 0.0792,
+      "anchor_volume_km3": 265691.6,
+      "dV_km3": 262730.9,
+      "surface_m": 309.5,
+      "spill_level_m": -1450.0,
+      "max_body_supply_over_world": 12.706,
+      "unbounded_over_world": null,
+      "world_silt_m3": 34660000000000.0,
+      "internal_over_external": 13.0,
+      "overflow_out_m3": 4.2465e+17,
+      "normalized_residual": 8.1e-14
+     }
+    ]
+   },
+   "branch": {
+    "checkpoint_sha256": null,
+    "peak_rss_gb": 6.05,
+    "records": [
+     {
+      "age_myr": 201.1,
+      "anchor_silt_mm_yr": 0.0021,
+      "anchor_volume_km3": 264786.7,
+      "dV_km3": null,
+      "surface_m": 296.5,
+      "spill_level_m": -1471.2,
+      "max_body_supply_over_world": 0.33,
+      "unbounded_over_world": 0.33,
+      "world_silt_m3": 2990000000000.0,
+      "internal_over_external": 10.4,
+      "overflow_out_m3": 4.6067e+17,
+      "normalized_residual": 1.4e-12
+     },
+     {
+      "age_myr": 201.2,
+      "anchor_silt_mm_yr": 0.0019,
+      "anchor_volume_km3": 3199.7,
+      "dV_km3": -261587.0,
+      "surface_m": 775.6,
+      "spill_level_m": -1471.2,
+      "max_body_supply_over_world": 0.375,
+      "unbounded_over_world": 0.375,
+      "world_silt_m3": 2638000000000.0,
+      "internal_over_external": 15.3,
+      "overflow_out_m3": 4.6031e+17,
+      "normalized_residual": 3.8e-15
+     },
+     {
+      "age_myr": 201.3,
+      "anchor_silt_mm_yr": 0.0018,
+      "anchor_volume_km3": 372572.3,
+      "dV_km3": 369372.6,
+      "surface_m": 803.6,
+      "spill_level_m": -1457.7,
+      "max_body_supply_over_world": 0.329,
+      "unbounded_over_world": 0.329,
+      "world_silt_m3": 2962000000000.0,
+      "internal_over_external": 12.9,
+      "overflow_out_m3": 4.8911e+17,
+      "normalized_residual": 1.7e-13
+     },
+     {
+      "age_myr": 201.4,
+      "anchor_silt_mm_yr": 0.0021,
+      "anchor_volume_km3": 2949.8,
+      "dV_km3": -369622.4,
+      "surface_m": 778.4,
+      "spill_level_m": -1470.5,
+      "max_body_supply_over_world": 0.384,
+      "unbounded_over_world": 0.384,
+      "world_silt_m3": 2803000000000.0,
+      "internal_over_external": 12.9,
+      "overflow_out_m3": 5.1797e+17,
+      "normalized_residual": 3.8e-14
+     },
+     {
+      "age_myr": 201.5,
+      "anchor_silt_mm_yr": 0.0023,
+      "anchor_volume_km3": 265611.5,
+      "dV_km3": 262661.7,
+      "surface_m": 302.7,
+      "spill_level_m": -1456.8,
+      "max_body_supply_over_world": 0.362,
+      "unbounded_over_world": 0.362,
+      "world_silt_m3": 2707000000000.0,
+      "internal_over_external": 12.9,
+      "overflow_out_m3": 4.2486e+17,
+      "normalized_residual": 8.1e-14
+     }
+    ]
+   }
+  }
+ }
+}
