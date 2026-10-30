@@ -1,15 +1,15 @@
 {
 "issue": 696,
-"purpose": "Unperturbed A/B replay of the capped-sibling cycle fix. Five 100 kyr steps from each #680 checkpoint.",
+"purpose": "Unperturbed A/B replay of the capped-sibling cycle fix, second run after review. Five 100 kyr steps from each #680 checkpoint.",
 "windows": {
 "A": {
 "checkpoint_sha256": "e4b0b4f09b87584aa7f77045f0f079f2309de0132049915a9aeb5589add27340",
-"baseline_peak_rss_gb": 4.008361984,
-"branch_peak_rss_gb": 4.54926336,
+"baseline_peak_rss_gb": 4.89234432,
+"branch_peak_rss_gb": 5.112692736,
 "baseline": [
 {
 "age_myr": 221.7,
-"seconds": 17.890885207998508,
+"seconds": 18.429196708995732,
 "leaves": 990,
 "passes": 991,
 "pass_limit": 991,
@@ -29,8 +29,20 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 610978074900848.0,
 "settled_wet_m3": 6.960865276371742e+16,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 3262380906879962.0,
 "settled_on_flow_cycle_m3": 7.287103367059739e+16,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 5.1469413648043315e+17,
+"other_export_fate": {
+"source_m3": 5.1469413648043315e+17,
+"ocean_m3": 2.4661419127497856e+17,
+"transit_loss_m3": 8102868867702592.0,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 2.59977076337752e+17,
+"settled_on_flow_cycle_m3": 2.59977076337752e+17,
 "settled_at_dead_end_m3": 0.0
 },
 "parent_outlet": {
@@ -42,6 +54,7 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 7955105218896896.0,
 "settled_wet_m3": 6.226693107412224e+16,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 3259975452479108.0,
 "settled_on_flow_cycle_m3": 6.552690652660134e+16,
 "settled_at_dead_end_m3": 0.0
@@ -54,7 +67,7 @@
 },
 {
 "age_myr": 221.8,
-"seconds": 16.90187049999804,
+"seconds": 18.53468433299713,
 "leaves": 991,
 "passes": 992,
 "pass_limit": 992,
@@ -74,9 +87,21 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 782604473080800.0,
 "settled_wet_m3": 8.210956769404045e+16,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 626502017311443.8,
 "settled_on_flow_cycle_m3": 6.701513390901449e+16,
 "settled_at_dead_end_m3": 1.57209358023374e+16
+},
+"other_export_m3": 5.4551488051341235e+17,
+"other_export_fate": {
+"source_m3": 5.4551488051341235e+17,
+"ocean_m3": 2.5756893831296896e+17,
+"transit_loss_m3": 1.1713071138497536e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 2.7623287106194586e+17,
+"settled_on_flow_cycle_m3": 2.7623287106194586e+17,
+"settled_at_dead_end_m3": 0.0
 },
 "parent_outlet": {
 "by_class_m3": {
@@ -87,6 +112,7 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 2330879767818816.0,
 "settled_wet_m3": 1.4707164475911696e+16,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 6.6480629940702184e+16,
 "settled_on_flow_cycle_m3": 608438601235886.9,
 "settled_at_dead_end_m3": 8.057935581537798e+16
@@ -99,7 +125,7 @@
 },
 {
 "age_myr": 221.9,
-"seconds": 16.63557462499739,
+"seconds": 17.49802616600209,
 "leaves": 1003,
 "passes": 1004,
 "pass_limit": 1004,
@@ -119,8 +145,20 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 445537009822272.0,
 "settled_wet_m3": 7.925307544989147e+16,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 187790496721699.22,
 "settled_on_flow_cycle_m3": 7.944086594661317e+16,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 6.182084613355884e+17,
+"other_export_fate": {
+"source_m3": 6.182084613355884e+17,
+"ocean_m3": 2.952591287662514e+17,
+"transit_loss_m3": 1.604762126890112e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 3.0690171130043584e+17,
+"settled_on_flow_cycle_m3": 3.0690171130043584e+17,
 "settled_at_dead_end_m3": 0.0
 },
 "parent_outlet": {
@@ -132,6 +170,7 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 1229780569011312.0,
 "settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 7.865662238742413e+16,
 "settled_on_flow_cycle_m3": 187923112385375.1,
 "settled_at_dead_end_m3": 7.846869927503875e+16
@@ -144,7 +183,7 @@
 },
 {
 "age_myr": 222.0,
-"seconds": 41.0716433330017,
+"seconds": 42.36056600000302,
 "leaves": 1032,
 "passes": 1033,
 "pass_limit": 1033,
@@ -164,8 +203,20 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 603270190971680.0,
 "settled_wet_m3": 7.586878705372272e+16,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 559745956639352.2,
 "settled_on_flow_cycle_m3": 7.642853301036208e+16,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 6.098611149826469e+17,
+"other_export_fate": {
+"source_m3": 6.098611149826469e+17,
+"ocean_m3": 2.625519755253297e+17,
+"transit_loss_m3": 1.4525884548023296e+16,
+"settled_wet_m3": 1.5868139345509636e+16,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 3.1691511556378426e+17,
+"settled_on_flow_cycle_m3": 3.327832549092939e+17,
 "settled_at_dead_end_m3": 0.0
 },
 "parent_outlet": {
@@ -177,6 +228,7 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 2956241895953760.0,
 "settled_wet_m3": 7.351581534874064e+16,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 559745956639352.2,
 "settled_on_flow_cycle_m3": 7.351581534874064e+16,
 "settled_at_dead_end_m3": 559745956639352.2
@@ -189,7 +241,7 @@
 },
 {
 "age_myr": 222.1,
-"seconds": 16.19975170899852,
+"seconds": 17.09230383400427,
 "leaves": 988,
 "passes": 989,
 "pass_limit": 989,
@@ -209,8 +261,20 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 558803602066656.0,
 "settled_wet_m3": 7.414082349459437e+16,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 2.084347298408255e+17,
 "settled_on_flow_cycle_m3": 2.8257555333541987e+17,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 4.893147043204965e+17,
+"other_export_fate": {
+"source_m3": 4.893147043204965e+17,
+"ocean_m3": 2.6069431163485376e+17,
+"transit_loss_m3": 1.4023956525508416e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 2.1459643616013434e+17,
+"settled_on_flow_cycle_m3": 2.1459643616013437e+17,
 "settled_at_dead_end_m3": 0.0
 },
 "parent_outlet": {
@@ -222,6 +286,7 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 794663643170880.0,
 "settled_wet_m3": 7.390496345349014e+16,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 2.084347298408255e+17,
 "settled_on_flow_cycle_m3": 7.630546647834886e+16,
 "settled_at_dead_end_m3": 2.060342268159668e+17
@@ -236,7 +301,7 @@
 "branch": [
 {
 "age_myr": 221.7,
-"seconds": 9.063506667000183,
+"seconds": 8.476430082999286,
 "leaves": 990,
 "passes": 61,
 "pass_limit": 991,
@@ -256,8 +321,20 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 610978074900848.0,
 "settled_wet_m3": 6.960865276371742e+16,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 3262380906879962.0,
 "settled_on_flow_cycle_m3": 7.287103367059739e+16,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 5.1469413648043315e+17,
+"other_export_fate": {
+"source_m3": 5.1469413648043315e+17,
+"ocean_m3": 2.4661419127497856e+17,
+"transit_loss_m3": 8102868867702592.0,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 2.59977076337752e+17,
+"settled_on_flow_cycle_m3": 2.59977076337752e+17,
 "settled_at_dead_end_m3": 0.0
 },
 "parent_outlet": {
@@ -267,11 +344,12 @@
 "routed_from_parent_outlet": {
 "source_m3": 7.348201174549824e+16,
 "ocean_m3": 0.0,
-"transit_loss_m3": 7955105218896896.0,
+"transit_loss_m3": 7999307087725752.0,
 "settled_wet_m3": 6.226693107412224e+16,
-"settled_dry_m3": 3259975452479108.0,
-"settled_on_flow_cycle_m3": 6.552690652660134e+16,
-"settled_at_dead_end_m3": 0.0
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 3215773583650251.0,
+"settled_on_flow_cycle_m3": 6.226693107412224e+16,
+"settled_at_dead_end_m3": 3215773583650251.0
 }
 },
 "anchor_component": {
@@ -281,7 +359,7 @@
 },
 {
 "age_myr": 221.8,
-"seconds": 7.921440625003015,
+"seconds": 8.380347999998776,
 "leaves": 991,
 "passes": 74,
 "pass_limit": 992,
@@ -301,9 +379,21 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 790052032777008.0,
 "settled_wet_m3": 8.305077876308005e+16,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 624308652319470.5,
 "settled_on_flow_cycle_m3": 6.795415028157347e+16,
 "settled_at_dead_end_m3": 1.5720937133826052e+16
+},
+"other_export_m3": 5.4551253441267354e+17,
+"other_export_fate": {
+"source_m3": 5.4551253441267354e+17,
+"ocean_m3": 2.575689783293495e+17,
+"transit_loss_m3": 1.171293864434368e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 2.7623061743898038e+17,
+"settled_on_flow_cycle_m3": 2.7623061743898038e+17,
+"settled_at_dead_end_m3": 0.0
 },
 "parent_outlet": {
 "by_class_m3": {
@@ -314,6 +404,7 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 2346246291491520.0,
 "settled_wet_m3": 1.4707165722771912e+16,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 6.7411727433913096e+16,
 "settled_on_flow_cycle_m3": 606290163255276.1,
 "settled_at_dead_end_m3": 8.151260299342973e+16
@@ -326,7 +417,7 @@
 },
 {
 "age_myr": 221.9,
-"seconds": 7.650450875000388,
+"seconds": 8.093276082996454,
 "leaves": 1003,
 "passes": 69,
 "pass_limit": 1004,
@@ -346,21 +437,35 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 436346291124832.0,
 "settled_wet_m3": 7.75734493757814e+16,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 217631744008656.66,
 "settled_on_flow_cycle_m3": 7.779108111979006e+16,
 "settled_at_dead_end_m3": 0.0
 },
+"other_export_m3": 6.180118917594072e+17,
+"other_export_fate": {
+"source_m3": 6.180118917594072e+17,
+"ocean_m3": 2.951094787209378e+17,
+"transit_loss_m3": 1.6017987760464384e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 3.0688442527800506e+17,
+"settled_on_flow_cycle_m3": 3.0688442527800506e+17,
+"settled_at_dead_end_m3": 0.0
+},
 "parent_outlet": {
 "by_class_m3": {
-"another_basin": 7.82274274109149e+16
+"another_basin": 7.80083109363046e+16,
+"no_parent": 219116474610282.7
 },
 "routed_from_parent_outlet": {
-"source_m3": 7.82274274109149e+16,
+"source_m3": 7.80083109363046e+16,
 "ocean_m3": 0.0,
-"transit_loss_m3": 1207848566399520.0,
+"transit_loss_m3": 1206516859236896.0,
 "settled_wet_m3": 0.0,
-"settled_dry_m3": 7.701957884451538e+16,
-"settled_on_flow_cycle_m3": 217784767447671.5,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 7.680179407706771e+16,
+"settled_on_flow_cycle_m3": 0.0,
 "settled_at_dead_end_m3": 7.680179407706771e+16
 }
 },
@@ -371,7 +476,7 @@
 },
 {
 "age_myr": 222.0,
-"seconds": 32.19891516599455,
+"seconds": 32.606501500005834,
 "leaves": 1033,
 "passes": 76,
 "pass_limit": 1034,
@@ -391,22 +496,36 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 561094054022136.0,
 "settled_wet_m3": 7.054218156940527e+16,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 559744277029091.8,
 "settled_on_flow_cycle_m3": 7.110192584643436e+16,
 "settled_at_dead_end_m3": 0.0
 },
+"other_export_m3": 6.080183737723914e+17,
+"other_export_fate": {
+"source_m3": 6.080183737723914e+17,
+"ocean_m3": 2.6252953564977226e+17,
+"transit_loss_m3": 1.4530322093468032e+16,
+"settled_wet_m3": 1.4117458900382958e+16,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 3.168410571287682e+17,
+"settled_on_flow_cycle_m3": 3.3095851602915117e+17,
+"settled_at_dead_end_m3": 0.0
+},
 "parent_outlet": {
 "by_class_m3": {
-"another_basin": 7.16630199004565e+16
+"another_basin": 7.110327562342741e+16,
+"no_parent": 559744277029091.8
 },
 "routed_from_parent_outlet": {
-"source_m3": 7.16630199004565e+16,
+"source_m3": 7.110327562342741e+16,
 "ocean_m3": 0.0,
 "transit_loss_m3": 2790049124241376.0,
 "settled_wet_m3": 6.831322649918603e+16,
-"settled_dry_m3": 559744277029091.8,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 0.0,
 "settled_on_flow_cycle_m3": 6.831322649918603e+16,
-"settled_at_dead_end_m3": 559744277029091.8
+"settled_at_dead_end_m3": 0.0
 }
 },
 "anchor_component": {
@@ -416,7 +535,7 @@
 },
 {
 "age_myr": 222.1,
-"seconds": 7.938624290996813,
+"seconds": 8.187277707998874,
 "leaves": 989,
 "passes": 82,
 "pass_limit": 990,
@@ -436,22 +555,36 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 523986980695456.0,
 "settled_wet_m3": 6.757153832863579e+16,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 2.1148977888405715e+17,
 "settled_on_flow_cycle_m3": 2.7906131721269293e+17,
 "settled_at_dead_end_m3": 0.0
 },
+"other_export_m3": 4.895561367404799e+17,
+"other_export_fate": {
+"source_m3": 4.895561367404799e+17,
+"ocean_m3": 2.608353350708718e+17,
+"transit_loss_m3": 1.4028604018093184e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 2.1469219765151485e+17,
+"settled_on_flow_cycle_m3": 2.1469219765151485e+17,
+"settled_at_dead_end_m3": 0.0
+},
 "parent_outlet": {
 "by_class_m3": {
-"another_basin": 2.795853041933884e+17
+"another_basin": 6.809552530933123e+16,
+"no_parent": 2.1148977888405715e+17
 },
 "routed_from_parent_outlet": {
-"source_m3": 2.7958530419338838e+17,
+"source_m3": 6.809552530933123e+16,
 "ocean_m3": 0.0,
-"transit_loss_m3": 767932921947488.0,
-"settled_wet_m3": 6.732759238738376e+16,
-"settled_dry_m3": 2.1148977888405715e+17,
-"settled_on_flow_cycle_m3": 6.97276172970857e+16,
-"settled_at_dead_end_m3": 2.0908975397435523e+17
+"transit_loss_m3": 2654566100757448.0,
+"settled_wet_m3": 6.5440959208573784e+16,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 0.0,
+"settled_on_flow_cycle_m3": 6.5440959208573784e+16,
+"settled_at_dead_end_m3": 0.0
 }
 },
 "anchor_component": {
@@ -463,12 +596,12 @@
 },
 "B": {
 "checkpoint_sha256": "86fb5b7d2044846ac751906ff996184c7abe5454c93b39033bd82338e8749544",
-"baseline_peak_rss_gb": 5.399085056,
-"branch_peak_rss_gb": 5.221269504,
+"baseline_peak_rss_gb": 4.611997696,
+"branch_peak_rss_gb": 5.219352576,
 "baseline": [
 {
 "age_myr": 222.2,
-"seconds": 16.69302529199922,
+"seconds": 17.826385458000004,
 "leaves": 1006,
 "passes": 1007,
 "pass_limit": 1007,
@@ -488,9 +621,21 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 645143508531712.0,
 "settled_wet_m3": 8.543456232232946e+16,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 2.03501089885866e+17,
 "settled_on_flow_cycle_m3": 2.8893565220819546e+17,
 "settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 2.7603788840585315e+17,
+"other_export_fate": {
+"source_m3": 2.7603788840585315e+17,
+"ocean_m3": 2.231829339227537e+17,
+"transit_loss_m3": 9568435779415808.0,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 4.328651870368368e+16,
+"settled_on_flow_cycle_m3": 4.328651861741986e+16,
+"settled_at_dead_end_m3": 86263823.22615995
 },
 "parent_outlet": {
 "by_class_m3": {
@@ -501,6 +646,7 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 3335731314273536.0,
 "settled_wet_m3": 8.274397451658766e+16,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 2.03501089885866e+17,
 "settled_on_flow_cycle_m3": 2.8409432591840128e+17,
 "settled_at_dead_end_m3": 2150738484052391.5
@@ -513,7 +659,7 @@
 },
 {
 "age_myr": 222.3,
-"seconds": 15.89068324999971,
+"seconds": 16.926641707999806,
 "leaves": 990,
 "passes": 991,
 "pass_limit": 991,
@@ -533,8 +679,20 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 796455951717296.0,
 "settled_wet_m3": 1.0488896428518126e+17,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 623001255289866.1,
 "settled_on_flow_cycle_m3": 1.0551196554047114e+17,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 5.1715397772548806e+17,
+"other_export_fate": {
+"source_m3": 5.1715397772548806e+17,
+"ocean_m3": 5.0106930868996563e+17,
+"transit_loss_m3": 1.5967554866509504e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 117114169012909.25,
+"settled_on_flow_cycle_m3": 117114169012909.25,
 "settled_at_dead_end_m3": 0.0
 },
 "parent_outlet": {
@@ -547,6 +705,7 @@
 "ocean_m3": 8.635112748171363e+16,
 "transit_loss_m3": 1.93325551958584e+16,
 "settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 624738814616400.5,
 "settled_on_flow_cycle_m3": 0.0,
 "settled_at_dead_end_m3": 624738814616400.5
@@ -559,7 +718,7 @@
 },
 {
 "age_myr": 222.4,
-"seconds": 36.88568716699956,
+"seconds": 41.09783287499886,
 "leaves": 960,
 "passes": 961,
 "pass_limit": 961,
@@ -579,8 +738,20 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 7905431528896.0,
 "settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 2.380251664059972e+17,
 "settled_on_flow_cycle_m3": 2.380251664059972e+17,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 3.4667506517366746e+17,
+"other_export_fate": {
+"source_m3": 3.4667506517366746e+17,
+"ocean_m3": 3.192895093016447e+17,
+"transit_loss_m3": 2.212050963244877e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 5265046239573986.0,
+"settled_on_flow_cycle_m3": 5265046239573986.0,
 "settled_at_dead_end_m3": 0.0
 },
 "parent_outlet": {
@@ -592,6 +763,7 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 0.0,
 "settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 2.3803307183752608e+17,
 "settled_on_flow_cycle_m3": 2.355109143500148e+17,
 "settled_at_dead_end_m3": 2522157487511289.5
@@ -604,7 +776,7 @@
 },
 {
 "age_myr": 222.5,
-"seconds": 7.697121124998375,
+"seconds": 8.310002500002156,
 "leaves": 999,
 "passes": 87,
 "pass_limit": 1000,
@@ -624,8 +796,20 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 0.0,
 "settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 0.0,
 "settled_on_flow_cycle_m3": 0.0,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 5.958479966610063e+17,
+"other_export_fate": {
+"source_m3": 5.958479966610063e+17,
+"ocean_m3": 5.7380526689024576e+17,
+"transit_loss_m3": 2.1956855729038336e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 85874041722294.27,
+"settled_on_flow_cycle_m3": 85874041722294.27,
 "settled_at_dead_end_m3": 0.0
 },
 "parent_outlet": {
@@ -635,6 +819,7 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 0.0,
 "settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 0.0,
 "settled_on_flow_cycle_m3": 0.0,
 "settled_at_dead_end_m3": 0.0
@@ -647,7 +832,7 @@
 },
 {
 "age_myr": 222.6,
-"seconds": 15.778120124996349,
+"seconds": 16.753057207999518,
 "leaves": 971,
 "passes": 972,
 "pass_limit": 972,
@@ -667,8 +852,20 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 2529667011784896.0,
 "settled_wet_m3": 2.3699202936995712e+17,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 229469991466493.2,
 "settled_on_flow_cycle_m3": 2.372214993614236e+17,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 4.452996474104851e+17,
+"other_export_fate": {
+"source_m3": 4.452996474104851e+17,
+"ocean_m3": 4.062790132480309e+17,
+"transit_loss_m3": 3.878691912899763e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 233715033456523.94,
+"settled_on_flow_cycle_m3": 233715033456523.94,
 "settled_at_dead_end_m3": 0.0
 },
 "parent_outlet": {
@@ -680,6 +877,7 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 584275667168.0,
 "settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 2.3975058209754134e+17,
 "settled_on_flow_cycle_m3": 0.0,
 "settled_at_dead_end_m3": 2.3975058209754134e+17
@@ -694,7 +892,7 @@
 "branch": [
 {
 "age_myr": 222.2,
-"seconds": 7.699208042002283,
+"seconds": 8.13408325000637,
 "leaves": 1006,
 "passes": 69,
 "pass_limit": 1007,
@@ -714,21 +912,35 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 645143508531712.0,
 "settled_wet_m3": 8.543456232232946e+16,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 2.03501089885866e+17,
 "settled_on_flow_cycle_m3": 2.8893565220819546e+17,
 "settled_at_dead_end_m3": 0.0
 },
+"other_export_m3": 2.7603788840585315e+17,
+"other_export_fate": {
+"source_m3": 2.7603788840585315e+17,
+"ocean_m3": 2.231829339227537e+17,
+"transit_loss_m3": 9568435779415808.0,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 4.328651870368368e+16,
+"settled_on_flow_cycle_m3": 4.328651861741986e+16,
+"settled_at_dead_end_m3": 86263823.22615995
+},
 "parent_outlet": {
 "by_class_m3": {
-"another_basin": 2.895807957167272e+17
+"another_basin": 8.60797058308612e+16,
+"no_parent": 2.03501089885866e+17
 },
 "routed_from_parent_outlet": {
-"source_m3": 2.895807957167272e+17,
+"source_m3": 8.60797058308612e+16,
 "ocean_m3": 0.0,
 "transit_loss_m3": 3335731314273536.0,
 "settled_wet_m3": 8.274397451658766e+16,
-"settled_dry_m3": 2.03501089885866e+17,
-"settled_on_flow_cycle_m3": 2.8409432591840128e+17,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 0.0,
+"settled_on_flow_cycle_m3": 8.059323603253528e+16,
 "settled_at_dead_end_m3": 2150738484052391.5
 }
 },
@@ -739,7 +951,7 @@
 },
 {
 "age_myr": 222.3,
-"seconds": 7.3340866250000545,
+"seconds": 7.733442209006171,
 "leaves": 988,
 "passes": 63,
 "pass_limit": 989,
@@ -759,22 +971,36 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 761872542907088.0,
 "settled_wet_m3": 1.0518505297814291e+17,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 623000181136614.5,
 "settled_on_flow_cycle_m3": 1.0580805315927952e+17,
 "settled_at_dead_end_m3": 0.0
 },
+"other_export_m3": 5.172110186025436e+17,
+"other_export_fate": {
+"source_m3": 5.172110186025436e+17,
+"ocean_m3": 5.0113212518052346e+17,
+"transit_loss_m3": 1.596188474063712e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 117008681383017.78,
+"settled_on_flow_cycle_m3": 117008681383017.78,
+"settled_at_dead_end_m3": 0.0
+},
 "parent_outlet": {
 "by_class_m3": {
-"another_basin": 1.0656992570218661e+17
+"another_basin": 1.0594518789031426e+17,
+"no_parent": 624737811872346.8
 },
 "routed_from_parent_outlet": {
-"source_m3": 1.0656992570218661e+17,
+"source_m3": 1.0594518789031426e+17,
 "ocean_m3": 0.0,
-"transit_loss_m3": 1073473716413536.0,
-"settled_wet_m3": 1.0487171417390072e+17,
-"settled_dry_m3": 624737811872346.8,
-"settled_on_flow_cycle_m3": 1.0487171417390072e+17,
-"settled_at_dead_end_m3": 624737811872346.8
+"transit_loss_m3": 3932733667757760.0,
+"settled_wet_m3": 1.020124542225565e+17,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 0.0,
+"settled_on_flow_cycle_m3": 1.020124542225565e+17,
+"settled_at_dead_end_m3": 0.0
 }
 },
 "anchor_component": {
@@ -784,7 +1010,7 @@
 },
 {
 "age_myr": 222.4,
-"seconds": 29.68111783399945,
+"seconds": 31.500183166004717,
 "leaves": 959,
 "passes": 83,
 "pass_limit": 960,
@@ -804,22 +1030,36 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 520093502448768.0,
 "settled_wet_m3": 7.1136868797233496e+16,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 2.3829037175069418e+17,
 "settled_on_flow_cycle_m3": 3.094272405479277e+17,
 "settled_at_dead_end_m3": 0.0
 },
+"other_export_m3": 2.718437376663861e+17,
+"other_export_fate": {
+"source_m3": 2.718437376663861e+17,
+"ocean_m3": 2.5696893337204016e+17,
+"transit_loss_m3": 9609870429702112.0,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 5264933864643836.0,
+"settled_on_flow_cycle_m3": 5264933864643836.0,
+"settled_at_dead_end_m3": 0.0
+},
 "parent_outlet": {
 "by_class_m3": {
-"another_basin": 3.0994733405037645e+17
+"another_basin": 7.164899130597863e+16,
+"no_parent": 2.3829834274439782e+17
 },
 "routed_from_parent_outlet": {
-"source_m3": 3.0994733405037645e+17,
+"source_m3": 7.164899130597863e+16,
 "ocean_m3": 0.0,
-"transit_loss_m3": 2639069290897536.0,
+"transit_loss_m3": 2639069290897512.0,
 "settled_wet_m3": 6.900992201508112e+16,
-"settled_dry_m3": 2.3829834274439782e+17,
-"settled_on_flow_cycle_m3": 3.047859238009248e+17,
-"settled_at_dead_end_m3": 2522340958554121.0
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 0.0,
+"settled_on_flow_cycle_m3": 6.900992201508112e+16,
+"settled_at_dead_end_m3": 0.0
 }
 },
 "anchor_component": {
@@ -829,7 +1069,7 @@
 },
 {
 "age_myr": 222.5,
-"seconds": 7.627834792001522,
+"seconds": 8.068863583001075,
 "leaves": 1002,
 "passes": 81,
 "pass_limit": 1003,
@@ -849,8 +1089,20 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 535837579021808.0,
 "settled_wet_m3": 7.469977624399797e+16,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 0.0,
 "settled_on_flow_cycle_m3": 7.469977624399797e+16,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 5.2158973315839386e+17,
+"other_export_fate": {
+"source_m3": 5.2158973315839386e+17,
+"ocean_m3": 5.1079508219857766e+17,
+"transit_loss_m3": 1.0708895283796864e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 85755676019334.1,
+"settled_on_flow_cycle_m3": 85755676019334.1,
 "settled_at_dead_end_m3": 0.0
 },
 "parent_outlet": {
@@ -859,11 +1111,12 @@
 },
 "routed_from_parent_outlet": {
 "source_m3": 7.523561382301978e+16,
-"ocean_m3": 0.0,
-"transit_loss_m3": 752958042784368.0,
-"settled_wet_m3": 7.448265578023541e+16,
+"ocean_m3": 5.9639406134232424e+16,
+"transit_loss_m3": 1.5596207688787352e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 0.0,
-"settled_on_flow_cycle_m3": 7.448265578023541e+16,
+"settled_on_flow_cycle_m3": 0.0,
 "settled_at_dead_end_m3": 0.0
 }
 },
@@ -874,7 +1127,7 @@
 },
 {
 "age_myr": 222.6,
-"seconds": 7.5782350419976865,
+"seconds": 7.913533041995834,
 "leaves": 964,
 "passes": 84,
 "pass_limit": 965,
@@ -894,23 +1147,36 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 3347830120365056.0,
 "settled_wet_m3": 3.4694887043285914e+17,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 227792214096297.3,
 "settled_on_flow_cycle_m3": 3.471766626469554e+17,
 "settled_at_dead_end_m3": 0.0
 },
+"other_export_m3": 3.2855336665305715e+17,
+"other_export_fate": {
+"source_m3": 3.2855336665305715e+17,
+"ocean_m3": 3.0914263265927046e+17,
+"transit_loss_m3": 1.917717167072557e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 233562323061103.78,
+"settled_on_flow_cycle_m3": 233562323061103.78,
+"settled_at_dead_end_m3": 0.0
+},
 "parent_outlet": {
 "by_class_m3": {
-"river": 1.1087697612422277e+17,
-"another_basin": 2.3964751664309773e+17
+"no_parent": 3.5029600922142944e+17,
+"another_basin": 228483545891075.06
 },
 "routed_from_parent_outlet": {
-"source_m3": 3.505244927673205e+17,
-"ocean_m3": 9.377209035609861e+16,
-"transit_loss_m3": 1.7105936779156032e+16,
+"source_m3": 228483545891075.06,
+"ocean_m3": 0.0,
+"transit_loss_m3": 1051011031823.4688,
 "settled_wet_m3": 0.0,
-"settled_dry_m3": 2.3964646563206592e+17,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 227432534859251.6,
 "settled_on_flow_cycle_m3": 0.0,
-"settled_at_dead_end_m3": 2.3964646563206592e+17
+"settled_at_dead_end_m3": 227432534859251.6
 }
 },
 "anchor_component": {
@@ -922,12 +1188,12 @@
 },
 "C": {
 "checkpoint_sha256": "041b7430a6cf8867f2e2c76f18c3328e440add585ee4a2e4b3055e7766c2217e",
-"baseline_peak_rss_gb": 5.736022016,
-"branch_peak_rss_gb": 6.045155328,
+"baseline_peak_rss_gb": 6.055985152,
+"branch_peak_rss_gb": 5.976064,
 "baseline": [
 {
 "age_myr": 201.1,
-"seconds": 10.35111158399377,
+"seconds": 11.011540999999852,
 "leaves": 502,
 "passes": 26,
 "pass_limit": 503,
@@ -947,8 +1213,20 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 0.0,
 "settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 0.0,
 "settled_on_flow_cycle_m3": 0.0,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 4.606681007996053e+17,
+"other_export_fate": {
+"source_m3": 4.606681007996053e+17,
+"ocean_m3": 4.404022062141445e+17,
+"transit_loss_m3": 1.2033731120279424e+16,
+"settled_wet_m3": 168421544200912.47,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 8063741920980498.0,
+"settled_on_flow_cycle_m3": 8232163465181410.0,
 "settled_at_dead_end_m3": 0.0
 },
 "parent_outlet": {
@@ -958,6 +1236,7 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 0.0,
 "settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 0.0,
 "settled_on_flow_cycle_m3": 0.0,
 "settled_at_dead_end_m3": 0.0
@@ -970,7 +1249,7 @@
 },
 {
 "age_myr": 201.2,
-"seconds": 52.73696066600678,
+"seconds": 56.31353404199763,
 "leaves": 489,
 "passes": 33,
 "pass_limit": 490,
@@ -990,8 +1269,20 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 0.0,
 "settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 0.0,
 "settled_on_flow_cycle_m3": 0.0,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 4.603131228255511e+17,
+"other_export_fate": {
+"source_m3": 4.603131228255511e+17,
+"ocean_m3": 4.4617696804710086e+17,
+"transit_loss_m3": 1.4135913654373248e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 241124076927.25452,
+"settled_on_flow_cycle_m3": 241124076927.25452,
 "settled_at_dead_end_m3": 0.0
 },
 "parent_outlet": {
@@ -1001,6 +1292,7 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 0.0,
 "settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 0.0,
 "settled_on_flow_cycle_m3": 0.0,
 "settled_at_dead_end_m3": 0.0
@@ -1013,7 +1305,7 @@
 },
 {
 "age_myr": 201.3,
-"seconds": 10.148733624999295,
+"seconds": 10.563995500000601,
 "leaves": 485,
 "passes": 31,
 "pass_limit": 486,
@@ -1033,8 +1325,20 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 0.0,
 "settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 0.0,
 "settled_on_flow_cycle_m3": 0.0,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 4.890812421151809e+17,
+"other_export_fate": {
+"source_m3": 4.890812421151809e+17,
+"ocean_m3": 4.7616612057321626e+17,
+"transit_loss_m3": 1.1811524466938688e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 1103597075026005.6,
+"settled_on_flow_cycle_m3": 1103597075026005.6,
 "settled_at_dead_end_m3": 0.0
 },
 "parent_outlet": {
@@ -1044,6 +1348,7 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 0.0,
 "settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 0.0,
 "settled_on_flow_cycle_m3": 0.0,
 "settled_at_dead_end_m3": 0.0
@@ -1056,7 +1361,7 @@
 },
 {
 "age_myr": 201.4,
-"seconds": 11.82613054200192,
+"seconds": 12.394846750001307,
 "leaves": 488,
 "passes": 489,
 "pass_limit": 489,
@@ -1076,8 +1381,20 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 69138578911661.0,
 "settled_wet_m3": 5980097123709419.0,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 0.0,
 "settled_on_flow_cycle_m3": 5980097123709419.0,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 5.1189114099778874e+17,
+"other_export_fate": {
+"source_m3": 5.1189114099778874e+17,
+"ocean_m3": 4.7952369939430016e+17,
+"transit_loss_m3": 1.1706484018831424e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 2.066095758465713e+16,
+"settled_on_flow_cycle_m3": 2.066095758465713e+16,
 "settled_at_dead_end_m3": 0.0
 },
 "parent_outlet": {
@@ -1089,6 +1406,7 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 256650724562866.0,
 "settled_wet_m3": 5792584978058214.0,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 0.0,
 "settled_on_flow_cycle_m3": 5792584978058214.0,
 "settled_at_dead_end_m3": 0.0
@@ -1101,7 +1419,7 @@
 },
 {
 "age_myr": 201.5,
-"seconds": 12.001460999999836,
+"seconds": 12.65435791699565,
 "leaves": 503,
 "passes": 504,
 "pass_limit": 504,
@@ -1121,8 +1439,20 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 0.0,
 "settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 2.0790661728103498e+17,
 "settled_on_flow_cycle_m3": 2.0790661728103498e+17,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 2.1674629834776614e+17,
+"other_export_fate": {
+"source_m3": 2.1674629834776614e+17,
+"ocean_m3": 1.773735930695158e+17,
+"transit_loss_m3": 7132260501964544.0,
+"settled_wet_m3": 4322011769157087.5,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 2.7918433007128696e+16,
+"settled_on_flow_cycle_m3": 3.2240444776285784e+16,
 "settled_at_dead_end_m3": 0.0
 },
 "parent_outlet": {
@@ -1134,6 +1464,7 @@
 "ocean_m3": 2.049288318729925e+17,
 "transit_loss_m3": 2977785408042464.0,
 "settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 0.0,
 "settled_on_flow_cycle_m3": 0.0,
 "settled_at_dead_end_m3": 0.0
@@ -1148,7 +1479,7 @@
 "branch": [
 {
 "age_myr": 201.1,
-"seconds": 10.40251958299632,
+"seconds": 11.1648389999973,
 "leaves": 502,
 "passes": 26,
 "pass_limit": 503,
@@ -1168,8 +1499,20 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 0.0,
 "settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 0.0,
 "settled_on_flow_cycle_m3": 0.0,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 4.606681007996053e+17,
+"other_export_fate": {
+"source_m3": 4.606681007996053e+17,
+"ocean_m3": 4.404022062141445e+17,
+"transit_loss_m3": 1.2033731120279424e+16,
+"settled_wet_m3": 168421544200912.47,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 8063741920980498.0,
+"settled_on_flow_cycle_m3": 8232163465181410.0,
 "settled_at_dead_end_m3": 0.0
 },
 "parent_outlet": {
@@ -1179,6 +1522,7 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 0.0,
 "settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 0.0,
 "settled_on_flow_cycle_m3": 0.0,
 "settled_at_dead_end_m3": 0.0
@@ -1191,7 +1535,7 @@
 },
 {
 "age_myr": 201.2,
-"seconds": 53.49956420799572,
+"seconds": 55.839527749994886,
 "leaves": 489,
 "passes": 33,
 "pass_limit": 490,
@@ -1211,8 +1555,20 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 0.0,
 "settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 0.0,
 "settled_on_flow_cycle_m3": 0.0,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 4.603131228255511e+17,
+"other_export_fate": {
+"source_m3": 4.603131228255511e+17,
+"ocean_m3": 4.4617696804710086e+17,
+"transit_loss_m3": 1.4135913654373248e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 241124076927.25452,
+"settled_on_flow_cycle_m3": 241124076927.25452,
 "settled_at_dead_end_m3": 0.0
 },
 "parent_outlet": {
@@ -1222,6 +1578,7 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 0.0,
 "settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 0.0,
 "settled_on_flow_cycle_m3": 0.0,
 "settled_at_dead_end_m3": 0.0
@@ -1234,7 +1591,7 @@
 },
 {
 "age_myr": 201.3,
-"seconds": 9.97763895800017,
+"seconds": 10.855423417000566,
 "leaves": 485,
 "passes": 31,
 "pass_limit": 486,
@@ -1254,8 +1611,20 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 0.0,
 "settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 0.0,
 "settled_on_flow_cycle_m3": 0.0,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 4.890812421151809e+17,
+"other_export_fate": {
+"source_m3": 4.890812421151809e+17,
+"ocean_m3": 4.7616612057321626e+17,
+"transit_loss_m3": 1.1811524466938688e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 1103597075026005.6,
+"settled_on_flow_cycle_m3": 1103597075026005.6,
 "settled_at_dead_end_m3": 0.0
 },
 "parent_outlet": {
@@ -1265,6 +1634,7 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 0.0,
 "settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 0.0,
 "settled_on_flow_cycle_m3": 0.0,
 "settled_at_dead_end_m3": 0.0
@@ -1277,7 +1647,7 @@
 },
 {
 "age_myr": 201.4,
-"seconds": 9.762409583003318,
+"seconds": 10.42742683400138,
 "leaves": 488,
 "passes": 27,
 "pass_limit": 489,
@@ -1297,8 +1667,20 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 69138578911661.0,
 "settled_wet_m3": 5980097123709419.0,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 0.0,
 "settled_on_flow_cycle_m3": 5980097123709419.0,
+"settled_at_dead_end_m3": 0.0
+},
+"other_export_m3": 5.1189114099778874e+17,
+"other_export_fate": {
+"source_m3": 5.1189114099778874e+17,
+"ocean_m3": 4.7952369939430016e+17,
+"transit_loss_m3": 1.1706484018831424e+16,
+"settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 2.066095758465713e+16,
+"settled_on_flow_cycle_m3": 2.066095758465713e+16,
 "settled_at_dead_end_m3": 0.0
 },
 "parent_outlet": {
@@ -1310,6 +1692,7 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 256650724562866.0,
 "settled_wet_m3": 5792584978058214.0,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 0.0,
 "settled_on_flow_cycle_m3": 5792584978058214.0,
 "settled_at_dead_end_m3": 0.0
@@ -1322,7 +1705,7 @@
 },
 {
 "age_myr": 201.5,
-"seconds": 9.843674917006865,
+"seconds": 10.863838375000341,
 "leaves": 503,
 "passes": 29,
 "pass_limit": 504,
@@ -1342,19 +1725,32 @@
 "ocean_m3": 0.0,
 "transit_loss_m3": 0.0,
 "settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 2.0790661727429862e+17,
 "settled_on_flow_cycle_m3": 2.0790661727429862e+17,
 "settled_at_dead_end_m3": 0.0
 },
+"other_export_m3": 2.167441461463662e+17,
+"other_export_fate": {
+"source_m3": 2.167441461463662e+17,
+"ocean_m3": 1.7737315159590125e+17,
+"transit_loss_m3": 7132250993277760.0,
+"settled_wet_m3": 4320285858123340.0,
+"settled_ice_m3": 0.0,
+"settled_dry_m3": 2.791845769906383e+16,
+"settled_on_flow_cycle_m3": 3.2238743557187176e+16,
+"settled_at_dead_end_m3": 0.0
+},
 "parent_outlet": {
 "by_class_m3": {
-"river": 2.0790661727429862e+17
+"no_parent": 2.0790661727429862e+17
 },
 "routed_from_parent_outlet": {
-"source_m3": 2.0790661727429862e+17,
-"ocean_m3": 2.0492883186703747e+17,
-"transit_loss_m3": 2977785407261152.0,
+"source_m3": 0.0,
+"ocean_m3": 0.0,
+"transit_loss_m3": 0.0,
 "settled_wet_m3": 0.0,
+"settled_ice_m3": 0.0,
 "settled_dry_m3": 0.0,
 "settled_on_flow_cycle_m3": 0.0,
 "settled_at_dead_end_m3": 0.0
@@ -1369,5 +1765,5 @@
 }
 },
 "baseline_commit": "d709f2b5aaac5ae45f1aae8680c5737a7b572ea4",
-"branch_commit": "6393180eedb3a17e9918e2228f5a6f3af4cbe85e"
+"branch_commit": "6a29294f434e2739804aca08084e6b38c4295f1e"
 }

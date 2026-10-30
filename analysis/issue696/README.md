@@ -3,7 +3,8 @@
 The fix works: the capped-pair cycle is gone, the pass limit is no longer reached, and the first
 step's final export, ocean overflow and lake volume match `origin/main` exactly. One preregistered
 threshold failed because it was set wrongly; see [Results](#results). Final export reaches the
-ocean in none of the 15 steps on either arm, and nearly all of it then leaves the model.
+ocean in none of the 15 steps on either arm. Counting ordinary outlet exports too, 22.5% of
+external supply settles on river-router flow cycles and leaves the model.
 
 ## Preregistration
 
@@ -58,8 +59,12 @@ lake ice, to account for the 1.69e18 m³ and the 45% the first report left unexp
 
 ## Results
 
-Baseline `d709f2b5`, branch `6393180e`. Compact results are in
+Baseline `d709f2b5`, branch `6a29294f`. Compact results are in
 [`replay.json`](replay.json); the script is `bin/debug/measure_lake_cycle_export.py`.
+
+The second run reproduced the first on every compared measure, in all 15 steps on both arms:
+lake volume, final export and ocean overflow on both, and silt and passes on the branch. So the
+review's split path never fired in these windows, and the tables below hold for the fixed code.
 The branch was then rebased over #697 and #695, which change no lake code or checkpoint-replay path.
 
 ```bash
@@ -102,13 +107,15 @@ surplus moves about two hops, and ignored that one volume is counted again at ev
 cascade. The control steps C 201.1–201.3 had no capped cycle and read 10–15 on both arms, so the
 threshold could not have passed even there.
 
-A follow-up step on window B at 222.2 Myr classified what remains. Of 2.55e19 m³ internal transfer,
+A follow-up step on the first run's code, window B at 222.2 Myr classified what remains. Of 2.55e19 m³ internal transfer,
 1.54e19 m³ moved between reciprocal pairs, and 99.6% of that was between bodies both at a real rim.
 That step had 114 merges, and its 70 reciprocal pairs match its 69 passes, which points to a merge
-ladder climbing about one rung per pass. Capped pairs carried only 4.7e15 m³. The largest directional count, 3, was a one-way pair receiving three different volumes.
+ladder climbing about one rung per pass. Capped pairs carried only 4.7e15 m³. The largest directional count, 3, was a one-way pair receiving three different volumes. Held returns aren't sends, so branch send counts
+omit them.
 
 The ladder ends on its own and does not reach the pass limit, so it is not this issue's defect. It
-still counts as silt supply, so #693 should measure it.
+still counts as silt supply, so #693 should measure it. A held return is not credited to the
+receiving leaf's silt supply either, including surplus from the capped basin's own supply.
 
 ### What moved
 
@@ -143,32 +150,42 @@ significant figures.
 
 | Window | Five steps (s) | Peak RSS (GB) |
 |---|---:|---:|
-| A | 109 → 65 | 4.0 → 4.5 |
-| B | 93 → 60 | 5.4 → 5.2 |
-| C | 97 → 93 | 5.7 → 6.0 |
+| A | 114 → 66 | 4.9 → 5.1 |
+| B | 101 → 63 | 4.6 → 5.2 |
+| C | 103 → 99 | 6.1 → 6.0 |
 
-## Where final export goes
+## Where exported water goes
 
-Each step's final export was routed again alone through that step's flow targets and transit
-losses. Over all 15 steps on the branch, it totals 1.93e18 m³, 12.8% of external supply (11.1% on
-baseline).
+Each step's exports were routed again alone through that step's flow targets and transit losses.
+Over the 15 branch steps, the lake system exported 8.76e18 m³, 58% of external supply. The two
+paths below account for all but 0.0001% of that; the remainder is storage orphaned by hierarchy
+change, which the script doesn't route.
 
-| Destination | Share of final export |
-|---|---:|
-| Ocean | 0 |
-| Lost in transit | 0.46% |
-| Settled on a flow cycle | 98.7% |
-| Settled at a dead end | 0.81% |
+| Destination | Final export at a leaf sink | Export through an outlet | Total |
+|---:|---:|---:|---:|
+| Volume (m³) | 1.93e18 | 6.83e18 | 8.76e18 |
+| Ocean | 0 | 75.3% | 5.14e18 |
+| Lost in transit | 0.46% | 2.73% | 1.95e17 |
+| Settled on a flow cycle | 98.7% | 22.0% | 3.41e18 |
+| Settled at a dead end | 0.81% | 0.00% | 1.57e16 |
 
-About 45% of it settles on dry cells. The flow cycle is the same pair seen by the river router: each
-spilling sink points across the rim at the other, so `route_downstream` treats those nodes as stuck
-and keeps the water there.
+The first report gave only the final-export column. Its 12.8% of supply is therefore a lower bound
+on stranded water: flow cycles hold 3.41e18 m³, **22.5% of external supply**. Outlet exports account
+for the 1.69e18 m³ that first report left unexplained, as 1.50e18 m³ on cycles and 1.86e17 m³ lost in
+transit. The script can't separate the closed-cycle guard from ordinary spills within that column.
+
+About 45% of final export settles on dry cells, unevenly: four steps read 70–100%, and most others
+under 5%. Lake ice is ruled out, since no settling cell in any step was icy. The cause is still
+unknown; a dry sub-leaf sink inside a merged body is the remaining candidate.
+
+A flow cycle here is the river router's view of the same pair: each spilling sink points across the
+rim at the other, so `route_downstream` treats those nodes as stuck and keeps the water there.
 
 **Settled land water goes nowhere.** `settled_m3` is read only to report ocean-node discharge, and
-`overflow_settled` only for the ocean figure. The ledger books final export as leaving the lake
+`overflow_settled` only for the ocean figure. The ledger books this water as leaving the lake
 system, which is why it closes, but nothing receives it: not a lake, not the ocean, and not a later
-step's supply. It is not a silent ledger error, because the ledger's boundary stops at the export.
-It is still the largest open question in this water path. Principle 6 applies directly.
+step's supply. It is not a ledger error, because the ledger's boundary stops at the export. It is
+still the largest open question in this water path. Principle 6 applies directly.
 
 ## Recommendation: export through the parent's outlet
 
@@ -182,6 +199,10 @@ Use the parent's outlet, and deliver through the hierarchy instead of the river 
   that reaches the ocean (15% of all final export).
 - So the transfer must go to the body that owns the parent's outlet target, or the ocean, as an
   ordinary hierarchy transfer. That body may have room, in which case the water stays in lakes.
+
+Outlet exports that strand on a flow cycle need the same look, since they are a similar volume and
+this recommendation does not cover them. Delivering final export through the hierarchy would fix
+only the first column above.
 
 This changes where water goes, moves ocean overflow and lake storage, and needs its own replay
 comparison. It also touches how a cap relates to a real saddle, so it may need an RFC 0014 revision.
