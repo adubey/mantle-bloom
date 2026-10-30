@@ -692,7 +692,7 @@ def test_cached_node_healpix_index_shares_grid_and_index_across_world_callers():
 
 
 @functools.lru_cache(maxsize=1)
-def _cratons_first(seed: int = 7):
+def _cratons_first(seed: int = 1):
     return generate_plates(seed, land_fraction=0.29, cratons_first=True)
 
 
@@ -702,7 +702,7 @@ def _cell_signature(plates_list):
 
 def test_cratons_first_plates_carry_mixed_crust_with_per_node_codes_hc_and_hm():
     plates = _cratons_first()
-    layout = cratons_first_layout(7, land_fraction=0.29).layout
+    layout = cratons_first_layout(1, land_fraction=0.29).layout
     assert len(plates) == layout.num_plates
     mixed = 0
     for plate in plates:
@@ -733,7 +733,7 @@ def test_cratons_first_land_fraction_reads_the_continental_mask():
 
 
 def test_cratons_first_seeds_each_core_as_a_whole_genuine_column():
-    layout = cratons_first_layout(7, land_fraction=0.29).layout
+    layout = cratons_first_layout(1, land_fraction=0.29).layout
     for plate in _cratons_first():
         core = layout.is_core[layout.nearest(plate.all_points_and_elevation()[0])]
         craton = plate.collect("craton_crust_m")
@@ -747,7 +747,7 @@ def test_cratons_first_seeds_each_core_as_a_whole_genuine_column():
 def test_cratons_first_marks_its_generated_belts_and_nothing_else():
     """RFC 0009: generation's belts are Proterozoic welds, dated CRATON_BELT_SEED_AGE_YEARS
     before the start, and never form craton (cratons.update)."""
-    layout = cratons_first_layout(7, land_fraction=0.29).layout
+    layout = cratons_first_layout(1, land_fraction=0.29).layout
     for plate in _cratons_first():
         belt = layout.belt[layout.nearest(plate.all_points_and_elevation()[0])]
         np.testing.assert_array_equal(cratons.belt_mask(plate, 0.0), belt)
@@ -774,7 +774,7 @@ def test_cratons_first_leaves_sketch_and_premade_generation_unchanged():
 def test_cratons_first_land_mask_is_the_generated_land():
     """The partition sees land before any plate exists (#462): its mask must be the land the
     plates are then built with."""
-    layout = cratons_first_layout(7, land_fraction=0.29).layout
+    layout = cratons_first_layout(1, land_fraction=0.29).layout
     plates_list = _cratons_first()
     land = np.concatenate([p.collect("elevation") > 0.0 for p in plates_list])
     predicted = np.concatenate([layout.land[layout.nearest(p.all_points_and_elevation()[0])] for p in plates_list])

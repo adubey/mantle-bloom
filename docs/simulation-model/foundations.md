@@ -223,7 +223,7 @@ are `continent_layout.build_geography`; the relief fields are drawn next and giv
 mask (continental crust whose relief sample clears the land threshold); steps 4-5 are
 `plate_partition.partition_plates`, which reads that mask:
 
-1. **Continents.** 2-6 centres (`CONTINENT_COUNT_RANGE`), Poisson-disc sampled
+1. **Continents.** 4-7 centres (`CONTINENT_COUNT_RANGE`), Poisson-disc sampled
    `CONTINENT_SPACING_KM = 4000` apart. `continental_fraction` is a share of the surface here,
    clamped to 0.05-0.9 and defaulting to `plates.CONTINENTAL_AREA_FRACTION = 0.5`; a
    Dirichlet draw (`CONTINENT_SIZE_CONCENTRATION = 2`) splits that area between continents.
