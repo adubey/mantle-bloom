@@ -1,0 +1,117 @@
+diff --git a/backend/app/hydroclimate/hydrology.py b/backend/app/hydroclimate/hydrology.py
+index 5b825ae..cdffe7b 100644
+--- a/backend/app/hydroclimate/hydrology.py
++++ b/backend/app/hydroclimate/hydrology.py
+@@ -1293,6 +1293,7 @@ def advance_lake_ice(
+     years: float,
+     *,
+     trace_node_budget: bool = False,
++    solved_sublimation_m3: float | None = None,
+ ) -> tuple[np.ndarray, np.ndarray, dict[str, float | np.ndarray]]:
+     """Advance the capped lake-ice reservoir with jointly integrated growth and loss.
+ 
+@@ -1419,6 +1420,22 @@ def advance_lake_ice(
+     # stored, and limit sublimation to the remaining ice inventory.
+     growth_we = np.minimum(growth_we, liquid)
+     melting_we = np.minimum(melting_we, ice)
++    if solved_sublimation_m3 is not None:
++        # #694 probe: the solve has already debited sublimation from the liquid, at the body
++        # level. The ice keeps its thickness trajectory and only exchanges the net change with
++        # the liquid, so the pass-through liquid -> ice -> vapour is booked once, at the solve's
++        # figure. Ice on a cell the solve left dry returns to liquid here, not to vapour.
++        if trace_node_budget:
++            raise NotImplementedError("#694 probe does not trace node budgets")
++        target_ice = np.clip(h * ratio, 0.0, np.minimum(LAKE_ICE_MAX_THICKNESS_M * ratio, ice + liquid))
++        ice_delta = float(np.dot(target_ice - ice, area))
++        phase_through_ice = solved_sublimation_m3 + ice_delta
++        return target_ice, ice + liquid - target_ice, {
++            "sublimation_m3": solved_sublimation_m3,
++            "ice_storage_change_m3": ice_delta,
++            "freezing_m3": max(phase_through_ice, 0.0),
++            "melting_m3": max(-phase_through_ice, 0.0),
++        }
+     sublimation_we = np.minimum(sublimation_we, np.maximum(ice + growth_we - melting_we, 0.0))
+     new_ice = np.maximum(ice + growth_we - melting_we - sublimation_we, 0.0)
+     max_ice_we = np.minimum(LAKE_ICE_MAX_THICKNESS_M * ratio, ice + liquid)
+@@ -1597,6 +1614,8 @@ def compute_hydrology(
+         seasonal_amplitude_at_nodes if seasonal_amplitude_at_nodes is not None else np.zeros(n)
+     )
+     ice_free_fraction = seasonal_fraction_above(lake_temperature_c, seasonal_amplitude, FREEZE_POINT_C)
++    # #694 probe: the same continuous rate `advance_lake_ice` used, now inside the body's budget.
++    lake_sublimation_m_per_yr = LAKE_ICE_SUBLIMATION_M_PER_YR * np.clip(1.0 - ice_free_fraction, 0.0, 1.0)
+     open_season_temperature_c = seasonal_open_mean_c(lake_temperature_c, seasonal_amplitude, FREEZE_POINT_C)
+     lake_open_evaporation_m_per_yr = (
+         breaching.open_water_evaporation_mm(open_season_temperature_c) / 1000.0 * ice_free_fraction
+@@ -1620,7 +1639,7 @@ def compute_hydrology(
+                 loss_fraction=dry_transit_loss, dry_fraction=dry_fraction,
+                 direct_supply_m3_per_yr=wet_precip_m3,
+                 lake_evaporation_m_per_yr=lake_open_evaporation_m_per_yr,
+-                lake_sublimation_m_per_yr=np.zeros(n),
++                lake_sublimation_m_per_yr=lake_sublimation_m_per_yr,
+             ),
+             mobile_cover_m=mobile_cover,
+             prior_notch_m=collect_all_breach_notch_depth(plates_in_order),
+@@ -1725,7 +1744,7 @@ def compute_hydrology(
+     lake_climate = lakes.LakeClimate(
+         inflow_m3_per_yr=external_supply,
+         evaporation_m_per_yr=lake_open_evaporation_m_per_yr,
+-        sublimation_m_per_yr=np.zeros(n),
++        sublimation_m_per_yr=lake_sublimation_m_per_yr,
+         external_supply_m3_per_yr=external_supply,
+         wet_precip_m3_per_yr=wet_settled,
+         dry_runoff_m3_per_yr=dry_settled,
+@@ -1744,6 +1763,7 @@ def compute_hydrology(
+         prev_lake_ice_m, lake_result.lake_depth, areas, lake_temperature_c,
+         seasonal_amplitude, 1.0 - ice_free_fraction, years,
+         trace_node_budget=lake_result.trace is not None,
++        solved_sublimation_m3=lake_result.ledger.sublimation_m3,
+     )
+     lake_result.lake_depth[:] = lake_depth_after_phase
+     flow_target = flow_target.copy()
+@@ -1792,7 +1812,8 @@ def compute_hydrology(
+     liquid_storage_change_m3 = float(np.dot(lake_result.lake_depth - prev_lake_depth, areas))
+     phase_ledger = lakes.LakeStepLedger(
+         external_supply_m3=ledger.external_supply_m3,
+-        evaporation_m3=ledger.evaporation_m3,
++        # #694 probe: the solve's loss total includes sublimation, which the ledger books apart.
++        evaporation_m3=ledger.evaporation_m3 - ledger.sublimation_m3,
+         overflow_to_ocean_m3=float(overflow_settled[is_ocean].sum() * years),
+         overflow_out_m3=ledger.overflow_out_m3,
+         storage_change_m3=liquid_storage_change_m3,
+diff --git a/backend/app/hydroclimate/lakes.py b/backend/app/hydroclimate/lakes.py
+index 9afe38e..611d277 100644
+--- a/backend/app/hydroclimate/lakes.py
++++ b/backend/app/hydroclimate/lakes.py
+@@ -437,6 +437,8 @@ class _PrognosticAccounting:
+     trace_evaporation_by_node: np.ndarray | None = None
+     trace_sublimation_by_node: np.ndarray | None = None
+     trace_transfers: list[LakeTransferTrace] | None = None
++    # #694 probe: the part of `evaporation_total` that is body-level sublimation.
++    sublimation_total: float = 0.0
+     # Counts are unique active bodies within this solve; gross overflow can count water again
+     # when a downstream capped body receives and passes on the same transfer (#553).
+     lake_cap_body_ids: set[int] = field(default_factory=set)
+@@ -671,11 +673,14 @@ def _trace_node_source(accounting, rates, climate, members, dt_step):
+ 
+ 
+ def _trace_body_losses(accounting, evaporated, members, level, dt_step, evaporation, sublimation, hypsometry):
+-    if accounting.trace_evaporation_by_node is None:
++    if accounting.trace_evaporation_by_node is None and sublimation is None:
+         return
+     evaporation_loss, sublimation_loss = _loss_by_node(
+         evaporated, members, level, dt_step, evaporation, sublimation, hypsometry
+     )
++    accounting.sublimation_total += float(sublimation_loss.sum())
++    if accounting.trace_evaporation_by_node is None:
++        return
+     accounting.trace_evaporation_by_node[members] += evaporation_loss
+     accounting.trace_sublimation_by_node[members] += sublimation_loss
+ 
+@@ -1121,6 +1126,7 @@ def solve_lakes_prognostic(
+         wet_precip_m3=accounting.wet_precip_total,
+         dry_runoff_m3=accounting.dry_runoff_total,
+         meltwater_m3=accounting.meltwater_total,
++        sublimation_m3=accounting.sublimation_total,
+     )
+     _warn_if_depth_caps_bound(accounting)
+     trace = _build_solve_trace(accounting, diagnostic_trace)
