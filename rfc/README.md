@@ -46,9 +46,9 @@ refreshed implementation order (subject to each RFC's acceptance and diagnosis g
 3. 0009's gates. G1 (done, #426) found a mosaic inside today's plates doesn't give rifts a
    way around, so 0009 now generates cratons first and places plates around them. G3 (#472)
    initially selected RFC 0010's static minimum cut with a resistance fallback, but #480's
-   routing diagnostics missed the per-seed target. RFC 0010 now proposes local damage-driven
-   cuts that may link into a rift; its load and accumulation diagnosis gates must pass before
-   implementation issues are opened. RFCs 0009 and 0010 replace 0003, whose cut steering
+   routing diagnostics missed the per-seed target. RFC 0010's local-scale evidence phase is
+   closed as Gate 3a in #487. Gate 3b (#699) now owns the plate-scale, geological-duration rift
+   closure and evaluation; implementation issues follow those results. RFCs 0009 and 0010 replace 0003, whose cut steering
    couldn't avoid cratons (PR #418), and 0004.
 4. 0006 and 0007, after separating their proposed production from existing elevation-driven
    continental resets ([#406](https://github.com/adubey/mantle-bloom/issues/406),

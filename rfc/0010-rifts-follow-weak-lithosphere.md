@@ -2,8 +2,8 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-15
-- **Last revised:** 2026-10-18 after #480 routing diagnostics; revised local-cut design accepted and tracked in #487
-- **Related:** #487 (tracking), #481 (superseded tracker), #480 (min-cut diagnostic), #472 / PR #479 (RFC 0009 G3), #389 (RFC 0003 tracking), #378, #385, #388 (RFC 0003 gates), PR #418 (RFC
+- **Last revised:** 2026-10-30; project owner closed Gate 3a (local-scale evidence) and opened Gate 3b (#699) for plate-scale, geological-duration evaluation
+- **Related:** #699 (Gate 3b tracking), #487 (closed Gate 3a evidence), #481 (superseded tracker), #480 (min-cut diagnostic), #472 / PR #479 (RFC 0009 G3), #389 (RFC 0003 tracking), #378, #385, #388 (RFC 0003 gates), PR #418 (RFC
   0003 solution 1); RFCs [0003](0003-rifting-around-cratons.md) (superseded by RFC 0010),
   [0009](0009-craton-mosaic.md) (cratons-first layout; G3 initially selected the min-cut),
   [0007](0007-mantle-plumes-and-plateaus.md) (plume weakening),
@@ -543,13 +543,35 @@ source or explicit design-choice status, and the sensitivity plan before impleme
        `analysis/issue487/gate2-interface-sensitivity.json`, and
        `analysis/issue487/gate2-rigid-projection-audit.md` and
        `analysis/issue487/gate2-rigid-projection-audit.json`).
-2. [ ] In synthetic tests, damage is timestep-partition invariant, bounded, absent under compression
-       or sub-yield loading, and advances only through adjacent cells with supported positive loading.
-3. [ ] Segments can nucleate independently, propagate, arrest and link; a transform/transfer zone
-       transfers shear without making an instantaneous plate-wide split.
+2. [x] **Gate 3a — local-scale evidence phase closed by owner (2026-10-30).** The local work is
+       recorded in `analysis/issue487/README.md`,
+       the [Gate 3a acceptance matrix](../analysis/issue487/gate3-acceptance-matrix.md). It includes
+       constitutive and conservation coupons; weak-seed versus intact-control initiation evidence
+       (3 MPa sensitivity initiates, 14 MPa control does not in 9 tested flaws); local finite-strain,
+       layered brittle–ductile and moving-tip growth/arrest diagnostics; and matched finite-source
+       stress-transfer evidence. These results are reference evidence, not calibrated natural-rift
+       parameters or a predictive plate model. Known limitations are retained: some local outcomes
+       remain mesh/assumption sensitive; the recent finite-source host test has no damage outside its
+       prescribed seed and does not advance its fixed crack; and its pressure-work comparison omits
+       boundary and inelastic terms. Those limitations do not keep Gate 3a open; plate-scale
+       consequences are Gate 3b.
+3. [ ] **Gate 3b — plate-scale geological breakup (tracked by #699).** On real spherical plate
+       meshes at production resolution and timestep, matched whole-planet histories spanning at
+       least 200 Myr demonstrate that rifting initiates preferentially in weak lithosphere, remains
+       suppressed or diverted by strong/cratonic regions, and forms a connected viable boundary
+       before a plate split. Report failed and successful rift systems separately, including their
+       duration, length, crust type, segment linkage/arrest, daughter-plate sizes and craton
+       intersections. No instantaneous plate-wide split may stand in for propagation. Repeat the
+       decisive comparisons at a finer surface resolution and with a halved timestep; qualitative
+       outcomes and named split/rift measures must remain within preregistered tolerances. Material
+       advection, crust/mantle ledgers and boundary work must close, and runtime must be reported
+       against the production budget. Local coupons can verify pieces of this closure but do not
+       satisfy this criterion.
 4. [ ] A plate splits only after a connected viable rift boundary forms; split frequency and mean plate
        count remain within 10% of the matched baseline unless the RFC is revised with a justified new
-       target.
+       target. Also report successful continental split-system counts per 200 Myr against the broad
+       6–8-system Earth-history context in Assumptions and uncertainty; this is a plausibility
+       diagnostic, not an additional pass threshold.
 5. [ ] On seeds 7, 11 and 2024 over 1 Gyr, the successful split line-craton rate and band-craton
        exposure each fall at least 50% against a matched old-algorithm replay, with continental,
        oceanic and mixed crust reported separately. These are project acceptance targets, not claims
@@ -560,28 +582,111 @@ source or explicit design-choice status, and the sensitivity plan before impleme
 7. [ ] Crust/mantle ledgers balance; old saves load; deterministic event identities and timestep tests
        pass; runtime overhead is measured at density 4 and remains within the existing 2% step-time
        budget or the RFC is revised with a measured trade-off.
+8. [ ] **Gate 3b conditional mantle/magma attribution at plate scale:** preserve a tectonic-only or
+       mantle-independent control. Where plume or magma forcing is represented, compare matched
+       geological-duration whole-sphere histories with and without that forcing. Attribute changes
+       separately in rift initiation, growth, linkage, and successful split-system counts, with
+       source volume and force/torque budgets closed. A plume-assisted case may increase rifting, but
+       the model must also permit rifts without plumes. Local finite-source coupons and their stress
+       transfer measures are supporting verification only. Do not infer plate-scale causal benefit
+       from a prescribed crack-tip test or tune forcing to match a single observed endpoint.
 
 ## Falsification criteria
 
 - **No defensible local loading field:** the 2026-10-19 trace found current force/torque data
   insufficient to support a spatial extensional load without an added transfer/equilibrium rule.
-  Do not calibrate the damage law from these data. Extend the force interface and repeat the
-  diagnosis, or revise/reject the physical local-damage premise in favor of a clearly labeled
+  Do not calibrate friction, creep or fracture from these data. Extend the force interface and repeat
+  the diagnosis, or revise/reject the physical local-mechanics premise in favor of a clearly labeled
   phenomenological rift model.
-- **Damage does not localize:** if weak inherited zones do not attract segments under controlled
-  loading, or damage spreads diffusely regardless of strength, revise the constitutive law; do not
-  tune only the craton-resistance parameter.
+- **Local deformation does not localize:** if weak inherited zones do not attract slip and fracture
+  under controlled loading, or deformation spreads diffusely regardless of strength, revise the
+  constitutive law; do not tune only the craton-resistance parameter.
 - **Segments do not produce viable boundaries:** if propagation/linkage cannot produce a connected
   separator without violating daughter size, fit or material budgets, reject the proposed topology
   transition and revisit the segment model.
 - **No improvement against baseline:** if line-craton and band-craton measures miss the 50% target
   on any named seed after the approved parameter sensitivity range, reject or revise the mechanism;
   do not claim acceptance from improved B alone.
-- **Timestep dependence or runaway damage:** if event timing, final strain or rift geometry changes
-  materially under equivalent step partitions, or damage softening causes uncontrolled rupture, the
-  integration/constitutive law is falsified and must be revised.
+- **Timestep dependence or runaway deformation:** if event timing, stress, thinning or rift geometry
+  changes materially under equivalent step partitions/refinements, or softening causes uncontrolled
+  rupture, the integration/constitutive law is falsified and must be revised; do not hide it with a
+  strain or stress clamp.
+- **Unphysical magma-assisted growth:** if a dike proxy fails force/moment/work closure, exceeds its
+  independent aperture or magma-volume bound, creates fracture without a supplied source, or fails to
+  show the expected local stress relief alongside tip stress transfer, revise or reject the
+  intrusion coupling; do not replace it with a fitted propagation multiplier.
 
 ## References
+
+- <a id="ref-wilson1992"></a>Wilson, C. D. (1992). *Linear Elastic Fracture Mechanics Primer*.
+  NASA Technical Memorandum 103591. [NASA Technical Reports Server](https://ntrs.nasa.gov/citations/19920021173).
+- <a id="ref-schultz2008"></a>Schultz, R. A., Mège, D., & Diot, H. (2008). Emplacement
+  conditions of igneous dikes in Ethiopian Traps. *Journal of Volcanology and Geothermal Research*,
+  178(4), 683–692. [doi:10.1016/j.jvolgeores.2008.08.012](https://doi.org/10.1016/j.jvolgeores.2008.08.012)
+- <a id="ref-carpenter2022"></a>Carpenter, B. M., Williams, J. N., Fagereng, Å., Wedmore, L. N. J.,
+  Biggs, J., Mphepo, F., Mdala, H., Dulanya, Z., & Manda, B. (2022). Comparing intrarift and border
+  fault structure in the Malawi Rift: Implications for normal fault growth. *Journal of Structural
+  Geology*, 165, 104761. [doi:10.1016/j.jsg.2022.104761](https://doi.org/10.1016/j.jsg.2022.104761)
+- <a id="ref-vachon2019"></a>Vachon, R., & Hieronymus, C. F. (2019). Mechanical energy balance and
+  apparent fracture toughness for dykes in elastoplastic host rock with large-scale yielding.
+  *Geophysical Journal International*, 219(3), 1786–1804.
+  [doi:10.1093/gji/ggz383](https://doi.org/10.1093/gji/ggz383)
+- <a id="ref-hatton1994"></a>Hatton, C. G., Main, I. G., & Meredith, P. G. (1994). Non-universal
+  scaling of fracture length and opening displacement. *Nature*, 367, 160–162.
+  [doi:10.1038/367160a0](https://doi.org/10.1038/367160a0)
+- <a id="ref-buck2006"></a>Buck, W. R., Einarsson, P., & Brandsdóttir, B. (2006). Tectonic
+  stress and magma chamber size as controls on dike propagation: Constraints from the 1975–1984
+  Krafla rifting episode. *Journal of Geophysical Research: Solid Earth*, 111, B12404.
+  [doi:10.1029/2005JB003879](https://doi.org/10.1029/2005JB003879)
+- <a id="ref-sigmundsson2015"></a>Sigmundsson, F., et al. (2015). Segmented lateral dyke growth
+  in a rifting event at Bárðarbunga volcanic system, Iceland. *Nature*, 517, 191–195.
+  [doi:10.1038/nature14111](https://doi.org/10.1038/nature14111)
+- <a id="ref-maccaferri2016"></a>Maccaferri, F., E. Rivalta, & Y. Aoki (2016). On the mechanisms
+  governing dike arrest: Insight from the 2000 Miyakejima dike injection. *Earth and Planetary
+  Science Letters*, 434, 64–74. [doi:10.1016/j.epsl.2015.11.024](https://doi.org/10.1016/j.epsl.2015.11.024)
+- <a id="ref-ueda2005"></a>Ueda, H., E. Fujita, M. Ukawa, E. Yamamoto, M. Irwan, & F. Kimata
+  (2005). Magma intrusion and discharge process at the initial stage of the 2000 activity of
+  Miyakejima, Central Japan, inferred from tilt and GPS data. *Geophysical Journal International*,
+  161(3), 891–906. [doi:10.1111/j.1365-246X.2005.02602.x](https://doi.org/10.1111/j.1365-246X.2005.02602.x)
+- <a id="ref-corti2023"></a>Corti, N., et al. (2023). Feeders vs arrested dikes: A case study from
+  the Younger Stampar eruption in Iceland. *Journal of Volcanology and Geothermal Research*, 443,
+  107914. [doi:10.1016/j.jvolgeores.2023.107914](https://doi.org/10.1016/j.jvolgeores.2023.107914)
+- <a id="ref-konstantinou2024"></a>Konstantinou, K. I. (2024). Dike volume derived from seismicity
+  as a gauge of fracture toughness and propagation dynamics. *Scientific Reports*, 14, 17593.
+  [doi:10.1038/s41598-024-67724-0](https://doi.org/10.1038/s41598-024-67724-0)
+- <a id="ref-geshi2020"></a>Geshi, N., J. Browning, & S. Kusumoto (2020). Magmatic overpressures,
+  volatile exsolution and potential explosivity of fissure eruptions inferred via dike aspect ratios.
+  *Scientific Reports*, 10, 9406. [doi:10.1038/s41598-020-66226-z](https://doi.org/10.1038/s41598-020-66226-z)
+
+- <a id="ref-grandin2009"></a>Grandin, R., et al. (2009). September 2005 Manda Hararo-Dabbahu
+  rifting event, Afar (Ethiopia): Constraints provided by geodetic data. *Journal of Geophysical
+  Research: Solid Earth*, 114, B08404. [doi:10.1029/2008JB005843](https://doi.org/10.1029/2008JB005843)
+- <a id="ref-grandin2010"></a>Grandin, R., A. Socquet, E. Jacques, N. Mazzoni, J.-B. de
+  Chabalier, and G. C. P. King (2010). Sequence of rifting in Afar, Manda-Hararo rift, Ethiopia,
+  2005-2009: Time-space evolution and interactions between dikes from interferometric synthetic
+  aperture radar and static stress change modeling. *Journal of Geophysical Research: Solid Earth*,
+  115, B10413. [doi:10.1029/2009JB000815](https://doi.org/10.1029/2009JB000815)
+- <a id="ref-grandin2011"></a>Grandin, R., et al. (2011). Seismicity during lateral dike
+  propagation: Insights from new data in the recent Manda Hararo-Dabbahu rifting episode (Afar,
+  Ethiopia). *Geochemistry, Geophysics, Geosystems*, 12, Q0AB08.
+  [doi:10.1029/2010GC003434](https://doi.org/10.1029/2010GC003434)
+- <a id="ref-belachew2011"></a>Belachew, M., C. J. Ebinger, D. Coté, D. Keir, J. V. Rowland,
+  J. O. S. Hammond, and A. Ayele (2011). Comparison of dike intrusions in an incipient
+  seafloor-spreading segment in Afar, Ethiopia: Seismicity perspectives. *Journal of Geophysical
+  Research: Solid Earth*, 116, B06405.
+  [doi:10.1029/2010JB007908](https://doi.org/10.1029/2010JB007908)
+
+- <a id="ref-bendick2006"></a>Bendick, R., S. McClusky, R. Bilham, L. Asfaw, and S. Klemperer (2006). Distributed Nubia–Somalia relative motion and dike intrusion in the Main Ethiopian Rift. *Geophysical Journal International*, 165(1), 303–310. [doi:10.1111/j.1365-246X.2006.02904.x](https://doi.org/10.1111/j.1365-246X.2006.02904.x)
+
+- <a id="ref-kogan2012"></a>Kogan, L., S. Fisseha, R. Bendick, R. Reilinger, S. McClusky, R. King, and T. Solomon (2012). Lithospheric strength and strain localization in continental extension from observations of the East African Rift. *Journal of Geophysical Research: Solid Earth*, 117, B03402. [doi:10.1029/2011JB008516](https://doi.org/10.1029/2011JB008516)
+
+- <a id="ref-simo1988"></a>Simo, J. C. (1988). A framework for finite strain elastoplasticity
+  based on maximum plastic dissipation and the multiplicative decomposition: Part I. Continuum
+  formulation. *Computer Methods in Applied Mechanics and Engineering*, 66(2), 199–219.
+  [doi:10.1016/0045-7825(88)90104-1](https://doi.org/10.1016/0045-7825(88)90104-1)
+
+- <a id="ref-allken2012"></a>Allken, V., Huismans, R. S., & Thieulot, C. (2012). Factors controlling the mode of rift interaction in brittle–ductile coupled systems: A 3D numerical study. *Geochemistry, Geophysics, Geosystems*, 13, Q05010. [doi:10.1029/2012GC004077](https://doi.org/10.1029/2012GC004077)
+- <a id="ref-glerum2018"></a>Glerum, A., Thieulot, C., Fraters, M., Blom, C., & Spakman, W. (2018). Nonlinear viscoplasticity in ASPECT: Benchmarking and applications to subduction. *Solid Earth*, 9, 267–294. [doi:10.5194/se-9-267-2018](https://doi.org/10.5194/se-9-267-2018)
 
 - <a id="ref-brace1980"></a>Brace, W. F., & Kohlstedt, D. L. (1980). Limits on lithospheric
   stress imposed by laboratory experiments. *Journal of Geophysical Research: Solid Earth*,
