@@ -66,8 +66,8 @@ revision of the same RFC is open, wait for it or build on it, and tell the user.
   `git stash`.
 - Put saves and large outputs in `~/mantle-bloom-captures/<rfc-or-issue>/`, as
   [`AGENTS.md`](../../../AGENTS.md#workflow) describes, not in a temporary directory or the
-  handoff directory. If another machine needs them, ask the project owner how to transfer them.
-  Compare checksums after any copy.
+  handoff directory. If another machine needs them, use the
+  [`b2-saves`](../b2-saves/SKILL.md) skill. Compare checksums after any copy.
 
 **Create the tracker.** Use [`create-issue`](../create-issue/SKILL.md) to create one new issue
 for this revision, linking the RFC and origin issue, and add the
@@ -106,7 +106,8 @@ described in [`AGENTS.md`](../../../AGENTS.md#workflow):
 - each waiting session: its issue, branch, worktree, and the prompt the user should give it
   to resume.
 
-If the edit session may run on another machine, send this note with the evidence.
+If the edit session may run on another machine, use the [`b2-saves`](../b2-saves/SKILL.md)
+skill to send this note with the evidence.
 
 **Hand over.** Give the user a prompt to paste into a new session:
 

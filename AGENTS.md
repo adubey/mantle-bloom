@@ -101,7 +101,8 @@ Run from the repo root (or worktree root).
   contents or personal paths into a commit, issue, PR, or checked-in report. Keep durable
   run labels, checksums, commands, and findings in the appropriate analysis report or RFC.
   Keep saves and large outputs out of temporary directories, in
-  `~/mantle-bloom-captures/<rfc-or-issue>/` with a `SHA256SUMS` file beside them.
+  `~/mantle-bloom-captures/<rfc-or-issue>/` with a `SHA256SUMS` file beside them. To get
+  them or a private note to another machine, use the `b2-saves` skill.
 - Tool-agnostic skills for these workflows are in `.agents/skills/`; Claude Code's
   `.claude/skills` links there. Any coding agent working in this repo can use them:
   `explore-problem`, `create-issue`, `start-issue`,

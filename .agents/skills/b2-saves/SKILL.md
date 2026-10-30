@@ -23,6 +23,27 @@ moved out of it. Bucket copies stay until someone deletes them by hand.
 | Protect a local copy | `bin/b2_saves.py pin <name>`, undo with `unpin` |
 | Check the setup | `bin/b2_saves.py doctor` |
 
+## Move evidence to another machine
+
+Automatic sync covers only saves in the local directory. Anything else, including files in
+`~/mantle-bloom-captures/<rfc-or-issue>/` and private handoff notes, stays on this machine
+until you push it by name. Purge never touches those files.
+
+```bash
+# On the machine that has the files:
+bin/b2_saves.py push ~/mantle-bloom-captures/<rfc-or-issue>/* --note "<rfc-or-issue>"
+# On the other machine, naming the destination:
+MANTLE_BLOOM_SAVES_DIR=~/mantle-bloom-captures/<rfc-or-issue> bin/b2_saves.py pull <name>
+```
+
+A file whose name is taken by different contents, such as a generic `world.mbworld`, gets a
+SHA-1 prefix added to its name, so check `list` for the name to pull. Each file must be under
+5 GB.
+The bucket is private, so a handoff note's personal paths may go there, but never into a
+commit, issue or PR.
+
+## What `list` shows
+
 `list` shows whether each file is `local`, `cloud` or `both`, where `both` means the same
 bytes by SHA-1, plus its size, simulated age, upload date, source machine, world name and
 note. Metadata is stored with each file and can't be edited later, so give a note at push

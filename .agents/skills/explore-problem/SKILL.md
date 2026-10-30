@@ -111,8 +111,9 @@ or a changed hypothesis. Its `## Exploration summary` is the complete account.
   relevant registered trees. Treat other worktrees as read-only evidence unless the user
   explicitly directs otherwise.
 - If relevant evidence or uncommitted work is in an inaccessible worktree, clone, or host,
-  record it as a missing dependency, continue independent investigation, and ask the user
-  for access or a durable handoff only when that evidence is needed to decide the next step.
+  record it as a missing dependency and continue independent investigation. Only when that
+  evidence is needed to decide the next step, use the [`b2-saves`](../b2-saves/SKILL.md) skill
+  to fetch it. If it isn't in the bucket, ask the user to push it from the machine that has it.
 - Do not implement a model change or create downstream RFC or implementation artifacts
   during exploration. If the user approved an exploration tracker, use it as the
   investigation record: add comments with

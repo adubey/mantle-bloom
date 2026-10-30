@@ -69,8 +69,9 @@ revision after new evidence, use [`edit-rfc`](../edit-rfc/SKILL.md); for a revie
   isolation. Never base work on the primary checkout's possibly stale local `main`.
 - A remote PR branch does not contain uncommitted or unpushed work from another machine.
   If the RFC or run depends on such work and it cannot be located in an accessible
-  worktree or artifact, state the missing dependency and continue independent reading or
-  analysis; don't silently recreate or claim that work.
+  worktree, artifact or the [`b2-saves`](../b2-saves/SKILL.md) bucket, state the missing
+  dependency and continue independent reading or analysis; don't silently recreate or claim
+  that work.
 
 ## 3. Recover run information before repeating work
 
@@ -85,8 +86,8 @@ revision after new evidence, use [`edit-rfc`](../edit-rfc/SKILL.md); for a revie
 - Prefer a checked-in `analysis/issue<N>/README.md` or RFC gate result. Verify it records
   the script/command, save name and SHA, seed, step schedule and controls, commit(s),
   measured values and conclusion. Check referenced compact JSON and scripts against the
-  current files. A save or raw replay output may be local and unavailable to download;
-  don't treat an unverified filename or a run on a different commit as equivalent evidence.
+  current files. A save or raw replay output may be on another machine, so check
+  [`b2-saves`](../b2-saves/SKILL.md) before calling it unavailable; don't treat an unverified filename or a run on a different commit as equivalent evidence.
 - Keep machine-specific paths private. Use the local-only handoff procedure in
   [`AGENTS.md`](../../../AGENTS.md#workflow); use a neutral artifact basename/run label and
   checksum in repository-facing records.
