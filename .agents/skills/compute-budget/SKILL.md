@@ -62,6 +62,11 @@ is over budget even if it says `RUN`.
   until python3 bin/compute_budget.py check --run sim --gb 6; do sleep 120; done
   ```
 
+Two agents that check within the same few seconds can both get `RUN`, because a run counts
+only once it appears in `ps`. An agent the user prompted directly doesn't need to allow for
+this, since those rarely start in the same moment. Automatically spawned agents do: whatever
+spawns a batch of them should start their heavy runs one at a time, at least 30 seconds apart.
+
 Never stop or pause another agent's run to make room. If you're the one holding things up,
 and your work can use less, shrink it: fewer workers, a shorter horizon or a younger save.
 
