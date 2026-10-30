@@ -70,8 +70,8 @@ in this order:
 
 1. **Header:** title; status (Draft, Accepted, Implemented, or Withdrawn with any superseding RFC; see `complete-rfc`);
    date; related issues and RFCs. Revising an accepted RFC doesn't change its Accepted status
-   or add an "under revision" state. Name the trigger and date in the status and date lines,
-   as in `Accepted (revised after G1)`.
+   or add an "under revision" state. Add each revision's date and trigger to the status line,
+   newest first, as in `Accepted (revised 2026-10-30 after G2; revised 2026-10-17 after G1)`.
    Add one dated entry per revision to `## Revision note`, newest first, after the header and
    any `## Outcome`. Each entry gives the revision PR, what the earlier version proposed, what
    the evidence showed with links, and what changed, as in RFC 0009. For each changed gate or

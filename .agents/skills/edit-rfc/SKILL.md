@@ -54,8 +54,8 @@ revision of the same RFC is open, wait for it or build on it, and tell the user.
 - Commit the work in progress and debug scripts that produced the evidence, then push that
   commit to a new branch that is never rewritten:
   `<agent>/issue-<N>-evidence-<slug>`. A later rebase of the working branch can't then lose
-  it. This branch never becomes a PR, so it doesn't need `pre-push-check`. Never use
-  `git stash`.
+  it. This branch never becomes a PR, so it doesn't need `pre-push-check`. Leave it in place
+  after the RFC closes. Never use `git stash`.
 - Keep saves and outputs as [`AGENTS.md`](../../../AGENTS.md#workflow) describes under
   private evidence, not in a temporary directory. If another machine needs them, ask the
   project owner how to transfer them. Compare checksums after any copy.
@@ -244,8 +244,8 @@ running, with a one-line prompt that links its return note.
 Read the return note first, and ignore one this issue has already acted on.
 
 - **Continue, or rebase and continue:** run `git fetch origin`, then rebase this session's own
-  branch onto `origin/main`. If the branch was already pushed, tell the user the note calls for
-  a rebase, then push with `--force-with-lease`.
+  branch onto `origin/main`. If the branch was already pushed, push it with
+  `--force-with-lease`. This doesn't need the user's approval.
 - **Rerun, re-scope, stop or wait:** follow the note. Results it marks invalid don't count as
   evidence for the revised RFC.
 - **New session:** get the branch and worktree from the private note, and confirm with the
